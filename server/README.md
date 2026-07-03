@@ -63,3 +63,9 @@ backpack-dev.qtie.jp                  -> http://localhost:8801
 (catch-all)                           -> http_status:404
 ```
 The 8801 rule (mock/preview/static) and DNS/tunnel id are untouched.
+
+## Ingress change log
+- 2026-07-03 (REQ-0024): applied via Cloudflare Tunnel Configuration API
+  (PUT accounts/<acct>/cfd_tunnel/<tunnel_id>/configurations), config
+  version 1 -> 2. Verified after apply: `curl https://backpack-dev.qtie.jp/api/health`
+  -> `{"ok":true,"version":"0.1.0"}`; `/mock/` still 200.
