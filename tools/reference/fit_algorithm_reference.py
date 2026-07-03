@@ -1,5 +1,7 @@
 # Provenance: user-provided reference algorithm, trusted & NORMATIVE (REQ-0020, 2026-07-03).
 # Verbatim copy of tmp/fit_algorithm.py -- do not modify; port logic elsewhere, not here.
+# v2: rotation tie-break order amended per user directive 2026-07-04 (solve() now
+# iterates k=(0,3,1,2) so rot0 > CW90 > CCW90 > 180 on scale ties); v1 in git history.
 # -*- coding: utf-8 -*-
 """
 画像修正フィットアルゴリズム
@@ -97,7 +99,7 @@ def solve(allowed, content):
     best = None
     for flip in (False, True):
         m0 = content[:, ::-1] if flip else content
-        for k in range(4):                # 反時計回り 90°×k
+        for k in (0, 3, 1, 2):            # 反時計回り 90°×k
             m = np.rot90(m0, k)
             floor = best['scale'] if best else 0.0   # 既知の最良より下は探索不要
             r = max_scale(allowed, m, floor=floor)

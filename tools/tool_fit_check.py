@@ -234,7 +234,7 @@ def solve(allowed, content):
     best = None
     for flip in (False, True):
         m0 = content[:, ::-1] if flip else content
-        for k in range(4):   # counter-clockwise 90 deg x k
+        for k in (0, 3, 1, 2):   # counter-clockwise 90 deg x k
             m = np.rot90(m0, k)
             floor = best['scale'] if best else 0.0   # no need to search below the known best
             r = max_scale(allowed, m, floor=floor)

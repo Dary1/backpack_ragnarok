@@ -276,6 +276,93 @@ class TestSolveParity(PadPinnedTestCase):
         assert_solve_equal(self, b_ref, b_port, "solve l_blob/5-col-layout")
 
 
+class TestSolveTieBreak(PadPinnedTestCase):
+    """REQ-0028: verifies solve()'s amended rotation tie-break order.
+
+    Real-world bug (REQ-0028 investigation): tall (h>w) art fit into a wide
+    2-cell horizontal region is scale-IDENTICAL whether rotated CCW90 (k=1)
+    or CW90 (k=3, i.e. CCW270) -- rotating a plain filled rectangle 90 deg
+    either direction yields the same rectangle shape/extent, so max_scale()
+    returns the exact same scale for both. Before the REQ-0028 amendment,
+    solve() iterated k in (0,1,2,3) and kept the FIRST strictly-greater
+    scale, so on a tie the earlier-visited k=1 (CCW90) always won -- even
+    when the user's intended/expected orientation was CW90. This is exactly
+    why 5 real sprite icons ended up rotated the wrong way (CCW instead of
+    CW) in content/sprite_all_v7.svg.
+
+    The amendment changes solve()'s iteration order to k=(0,3,1,2), so on a
+    scale tie between k=1 and k=3, k=3 (CW90) is now visited FIRST and wins
+    (solve() only replaces `best` on STRICT '>' improvement, so the first
+    candidate to reach the top score is the one that sticks).
+
+    Rotation-direction convention (see reference module's own comment,
+    "反時計回り 90°×k" = "counter-clockwise 90 deg x k"): solve()'s `rot`
+    field is measured in the reference's own CCW-degree convention, where
+    rot = k*90 for np.rot90(mask, k) (numpy's rot90 rotates CCW by default).
+    So:
+      k=0 -> rot=0    (no rotation)
+      k=1 -> rot=90   (CCW90)
+      k=2 -> rot=180
+      k=3 -> rot=270  (CCW270 == CW90 visually: rotating CCW by 270 degrees
+                       lands on the exact same orientation as rotating CW by
+                       90 degrees -- 270 CCW and 90 CW are the same net turn)
+    This test asserts best['rot'] == 270 for the tie case, which in this
+    convention means "the CW90 orientation won the tie" -- NOT that the
+    image is somehow left rotated 270 degrees counter-clockwise from a
+    visual-CW perspective; 270-CCW and 90-CW are literally the same
+    transform.
+    """
+
+    def test_tall_rect_in_wide_region_ties_ccw90_cw90_picks_cw90(self):
+        # Wide 2-horizontal-cell allowed region (mirrors the real 5-icon
+        # scenario: 128x64 target region, wide).
+        allowed_ref, cellset = ref.build_region([FIT_CHAR * 2])
+        allowed_port = port.build_region(cellset)
+
+        # Tall (h > w) filled rectangle content -- no real icon art needed;
+        # a plain filled rectangle reproduces the tie exactly because
+        # rotating a solid rectangle 90 deg CCW or CW yields pixel-identical
+        # rotated masks (both just swap h/w), so their max_scale() is
+        # necessarily equal, while the unrotated (k=0) and 180 (k=2)
+        # orientations keep the original (worse-fitting) tall aspect and so
+        # are strictly worse in this wide region.
+        content = np.zeros((90, 40), bool)
+        content[:, :] = True
+
+        b_ref = ref.solve(allowed_ref, content)
+        b_port = port.solve(allowed_port, content)
+
+        # First confirm the two ports agree with each other (standard parity
+        # check), then confirm the winning orientation is specifically the
+        # amended tie-break choice.
+        assert_solve_equal(self, b_ref, b_port, "solve tall-rect tie-break")
+
+        self.assertIsNotNone(b_ref)
+        self.assertEqual(b_ref['rot'], 270,
+                          "tie-break must pick k=3 (rot=270, CCW270==visual CW90), "
+                          "not the old k=1 (rot=90, CCW90) default")
+        self.assertFalse(b_ref['flip'])
+
+        # Sanity: independently confirm this really is a tie and that rot0/180
+        # are strictly worse, so the assertion above is proving tie-break
+        # ORDER and not just "CW90 happened to be uniquely best".
+        m_k1 = np.rot90(content, 1)
+        m_k3 = np.rot90(content, 3)
+        r_k1 = ref.max_scale(allowed_ref, m_k1, floor=0.0)
+        r_k3 = ref.max_scale(allowed_ref, m_k3, floor=0.0)
+        self.assertIsNotNone(r_k1)
+        self.assertIsNotNone(r_k3)
+        self.assertAlmostEqual(r_k1[0], r_k3[0], places=9,
+                                msg="k=1 and k=3 must be an exact scale tie for this test to be meaningful")
+
+        m_k0 = content
+        m_k2 = np.rot90(content, 2)
+        r_k0 = ref.max_scale(allowed_ref, m_k0, floor=0.0)
+        r_k2 = ref.max_scale(allowed_ref, m_k2, floor=0.0)
+        self.assertLess(r_k0[0], r_k1[0], "rot0 must be strictly worse than the CCW90/CW90 tie")
+        self.assertLess(r_k2[0], r_k1[0], "rot180 must be strictly worse than the CCW90/CW90 tie")
+
+
 class TestSolveAnyAngleParity(PadPinnedTestCase):
     def test_square_single_cell(self):
         allowed_ref, cellset = ref.build_region(SINGLE_CELL_LAYOUT)
