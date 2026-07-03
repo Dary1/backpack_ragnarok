@@ -4,7 +4,7 @@ tools/build_fit_report.py -- Fit-check RESULT visualization page builder (REQ-00
 
 Deterministic report/build script. For every symbol with a "shape" def across
 the project's live + draft defs files, runs the fit CHECK against the current
-live sprite (content/sprite_all_v4.svg) by IMPORTING tool_fit_check.py as a
+live sprite (content/sprite_all_v6.svg) by IMPORTING tool_fit_check.py as a
 module -- it does not reimplement, fork, or duplicate any of that tool's
 algorithmic logic. All allowed-region masks, content masks, coverage numbers,
 and solve() prescriptions come directly from tool_fit_check's own functions.
@@ -52,8 +52,9 @@ import tool_fit_check as fit  # noqa: E402  (import as module -- do not fork its
 # CONFIG
 # ---------------------------------------------------------------------
 # Sprite path is parameterizable via --sprite (REQ: v5 fit-report regen);
-# defaults to v4 for backward compatibility with existing invocations.
-DEFAULT_SPRITE_PATH = os.path.join(PROJECT_ROOT, "content", "sprite_all_v4.svg")
+# defaults to v6, the current canonical sprite (v5/v6 fix iterations landed
+# the centered-position re-fixes; v6 is what the live report is built from).
+DEFAULT_SPRITE_PATH = os.path.join(PROJECT_ROOT, "content", "sprite_all_v6.svg")
 SPRITE_PATH = DEFAULT_SPRITE_PATH
 DEFS_PATHS = [
     os.path.join(PROJECT_ROOT, "content", "live", "live_items.json"),
@@ -222,6 +223,11 @@ def badge_html(status):
 
 
 def coverage_table_html(coverage, violated_faces):
+    """Per-cell coverage is INFORMATIONAL ONLY (ART-WARN, <20% floor) and must
+    never be styled/rendered as a FAIL. Verdict (PASS/FAIL badge) is driven
+    solely by overflow (see badge_html / check_icon status) -- this table
+    never influences that. Cells below 20% get an amber ART-WARN style,
+    explicitly distinct from the red/FAIL styling used for overflow."""
     if not coverage:
         return '<div class="cov-none">n/a</div>'
     bad_cells = set()
@@ -233,10 +239,10 @@ def coverage_table_html(coverage, violated_faces):
         inner = cell_key.strip("()")
         c_str, r_str = inner.split(",")
         c, r = int(c_str), int(r_str)
-        low = pct < 30.0
+        art_warn = pct < 20.0
         overflow_here = (c, r) in bad_cells
-        cls = "cov-low" if low else "cov-ok"
-        marker = " (low)" if low else ""
+        cls = "cov-artwarn" if art_warn else "cov-ok"
+        marker = " (ART-WARN)" if art_warn else ""
         overflow_span = '<span class="cov-of">overflow</span>' if overflow_here else ""
         rows.append(
             f'<div class="cov-cell {cls}"><span class="cov-xy">({c},{r})</span>'
@@ -317,7 +323,7 @@ def card_html(rec):
     {fixed_img}
   </div>
   <div class="cov-section">
-    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-title">per-cell coverage (&lt;20% = ART-WARN, informational only -- does not affect PASS/FAIL)</div>
     {cov}
   </div>
   {fix_text_html(rec)}
@@ -343,6 +349,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
   --green: #5cb573;
   --red: #d62828;
   --blue: #7ecbe8;
+  --amber: #d69e2e;
 }}
 * {{ box-sizing: border-box; }}
 body {{
@@ -397,7 +404,7 @@ h2 {{ color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transfor
 .cov-grid {{ display: flex; flex-wrap: wrap; gap: 4px; }}
 .cov-cell {{ font-size: 11px; padding: 3px 6px; border-radius: 4px; background: var(--panel2);
   border: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }}
-.cov-cell.cov-low {{ border-color: var(--red); background: #2a1414; color: #ff9c9c; }}
+.cov-cell.cov-artwarn {{ border-color: var(--amber); background: #2c2410; color: #ecc873; }}
 .cov-of {{ font-size: 9px; color: var(--red); text-transform: uppercase; }}
 .cov-none {{ font-size: 11px; color: var(--muted); font-style: italic; }}
 
@@ -470,7 +477,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description="Build fit-check result visualization page (REQ-0022)")
     ap.add_argument("--sprite", default=DEFAULT_SPRITE_PATH,
-                    help="path to sprite SVG to check/render against (default: content/sprite_all_v4.svg)")
+                    help="path to sprite SVG to check/render against (default: content/sprite_all_v6.svg)")
     args = ap.parse_args()
 
     results = build_report(sprite_path=args.sprite)

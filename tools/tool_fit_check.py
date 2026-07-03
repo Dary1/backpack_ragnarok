@@ -565,11 +565,20 @@ def check_icon(sprite_root, entry, render_dir=None, tag=""):
         pct = 100.0 * cell_content.sum() / (CELL * CELL)
         coverage[f"({c},{r})"] = round(pct, 1)
 
+    # Verdict is OVERFLOW-ONLY (user ruling: "Fixes execute because of OVERFLOW,
+    # not because of per-cell coverage"). `coverage` above is informational only
+    # and must NEVER affect `status`, `any_fail` (see main()), or fix-triggering.
     status = "PASS" if overflow_px == 0 else "FAIL"
+
+    # ART-WARN: informational-only flag for cells whose content coverage is
+    # below the 20% floor. This does NOT affect status/exit-code/fix-triggering
+    # -- it exists purely so low-coverage art can be surfaced to artists.
+    art_warn_cells = [key for key, pct in coverage.items() if pct < 20.0]
 
     result = dict(
         id=eid, icon=icon_id, status=status, overflow_px=overflow_px,
         violated_faces=violated_faces, coverage=coverage,
+        art_warn_cells=art_warn_cells,
     )
 
     if render_dir:
@@ -667,6 +676,9 @@ def format_check_line(r):
     cov = r.get("coverage") or {}
     cov_vals = list(cov.values())
     cov_str = f"{min(cov_vals):.1f}-{max(cov_vals):.1f}%" if cov_vals else "n/a"
+    # NOTE: r["status"] (the PASS/FAIL word printed here) is overflow-only and
+    # is never altered by the ART-WARN suffix below -- ART-WARN is strictly
+    # informational (per-cell coverage <20%), it must never read as a failure.
     line = f"{r['status']:4s}    {r['id']:24s} icon={str(r['icon']):24s} overflow_px={r.get('overflow_px')} coverage={cov_str}"
     if r["status"] == "FAIL":
         if r.get("escalate"):
@@ -678,6 +690,9 @@ def format_check_line(r):
                 for v in viol
             )
             line += f"  violations: {faces_summary}"
+    art_warn = r.get("art_warn_cells") or []
+    if art_warn:
+        line += f"  [ART-WARN low-coverage cells (informational only, <20%): {', '.join(art_warn)}]"
     return line
 
 
