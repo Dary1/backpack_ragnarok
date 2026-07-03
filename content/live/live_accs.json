@@ -1,0 +1,162 @@
+{
+ "schema": "acc/2",
+ "entries": [
+  {
+   "id": "acc_gem",
+   "name": "Ruby Gem",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-acc_gem",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_host",
+      "stat": "damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Fits any gem socket.",
+   "name_ja": "ルビーの宝石",
+   "flavor_ja": "どんな宝石ソケットにも合う。"
+  },
+  {
+   "id": "acc_frost",
+   "name": "Frost Orb",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-frost_orb",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "host_on_hit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Chill",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Cold that keeps its promises.",
+   "name_ja": "フロストオーブ",
+   "flavor_ja": "約束を守る、冷気。"
+  },
+  {
+   "id": "acc_whet",
+   "name": "Whetstone",
+   "slot": "edge",
+   "reqTags": [
+    "Metal"
+   ],
+   "icon": "icon-whetstone",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_host",
+      "stat": "damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Requires a Metal edge socket.",
+   "name_ja": "砥石",
+   "flavor_ja": "金属の刃ソケットが必要。"
+  },
+  {
+   "id": "acc_arrow",
+   "name": "Arrowhead",
+   "slot": "edge",
+   "reqTags": [],
+   "icon": "icon-acc_arrowhead",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_host",
+      "stat": "damage",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Fits any edge socket.",
+   "name_ja": "鏃",
+   "flavor_ja": "どんな刃ソケットにも合う。"
+  },
+  {
+   "id": "acc_poison",
+   "name": "Poison Coat",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-poison_vial",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "host_on_hit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Poison",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Coat sockets exist only on Weapons.",
+   "name_ja": "毒コート",
+   "flavor_ja": "コートソケットは武器にしか存在しない。"
+  },
+  {
+   "id": "acc_guard",
+   "name": "Guard (Tsuba)",
+   "slot": "bond",
+   "reqTags": [],
+   "icon": "icon-acc_guard",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "host_on_hit"
+     },
+     "verb": {
+      "t": "block",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Unseats if disassembled.",
+   "name_ja": "鍔",
+   "flavor_ja": "分解されれば、外れ落ちる。"
+  }
+ ]
+}

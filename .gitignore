@@ -1,0 +1,5 @@
+.secrets/
+.venv/
+tmp/
+node_modules/
+*.bak

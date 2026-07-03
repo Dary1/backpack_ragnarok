@@ -1,0 +1,165 @@
+{
+ "version": 2,
+ "types": [
+  "Weapon",
+  "WeaponPart",
+  "Shield",
+  "Rune",
+  "Reagent",
+  "Relic",
+  "Curse"
+ ],
+ "elements": [
+  "Flame",
+  "Frost",
+  "Oil",
+  "Poison",
+  "Beast",
+  "Metal",
+  "Wood"
+ ],
+ "socketTypes": [
+  "gem",
+  "edge",
+  "coat",
+  "bond"
+ ],
+ "socketTags": [
+  "Metal",
+  "Bone"
+ ],
+ "triggers": [
+  "every_secs",
+  "battle_start",
+  "adjacent",
+  "passive",
+  "host_on_hit",
+  "on_hit",
+  "on_bp_damaged"
+ ],
+ "verbs": [
+  "strike",
+  "multi_strike",
+  "block",
+  "heal_bp",
+  "apply_status",
+  "add_on_hit_status",
+  "amp_status",
+  "buff_host",
+  "buff_self_per_tag",
+  "buff_adjacent",
+  "cleanse",
+  "reflect_damage",
+  "lifesteal",
+  "haste",
+  "slow_enemy",
+  "bonus_vs_blocked"
+ ],
+ "statuses": [
+  "Burn",
+  "Poison",
+  "Chill",
+  "Regen",
+  "Spikes",
+  "Stun",
+  "Weakness",
+  "Haste"
+ ],
+ "rarities": [
+  "Common",
+  "Uncommon",
+  "Rare",
+  "Relic"
+ ],
+ "dps_ceiling_warn": {
+  "Common": 12,
+  "Uncommon": 15,
+  "Rare": 18,
+  "Relic": 24
+ },
+ "trigger_domains": {
+  "accessory_only": [
+   "host_on_hit"
+  ],
+  "po_only": [
+   "adjacent",
+   "on_hit",
+   "every_secs",
+   "battle_start",
+   "on_bp_damaged"
+  ],
+  "both": [
+   "passive"
+  ]
+ },
+ "ranged_verb_params": {
+  "strike": [
+   "n"
+  ],
+  "multi_strike": [
+   "n"
+  ],
+  "block": [
+   "n"
+  ],
+  "heal_bp": [
+   "n"
+  ],
+  "apply_status": [
+   "n"
+  ],
+  "add_on_hit_status": [
+   "n"
+  ],
+  "buff_host": [
+   "n"
+  ],
+  "buff_self_per_tag": [
+   "n"
+  ],
+  "buff_adjacent": [
+   "n"
+  ],
+  "reflect_damage": [
+   "n"
+  ],
+  "lifesteal": [
+   "n"
+  ],
+  "haste": [
+   "n"
+  ],
+  "slow_enemy": [
+   "n"
+  ],
+  "bonus_vs_blocked": [
+   "n"
+  ]
+ },
+ "excluded_attested": {
+  "gold_pickup": "Gold-as-item (BH: coins occupy backpack space) -- our game has no shop/gold economy loop; excluded as a non-portable resource verb.",
+  "mana_conductivity": "Mana Stone conductive-path powering (BH sec4 P6) -- superseded by our own Linker connectivity mechanic; not re-added as a generic verb to avoid a duplicate system.",
+  "energy_cost": "Energy/turn spend to use an item (BH sec5) -- we have no turn-based energy resource; combat is tick-driven, not energy-gated.",
+  "stamina_cost": "Stamina cost/regen per attack (BB sec5) -- real-time stamina-gating resource, not part of our tick/BP model.",
+  "shop_reroll": "Shop reroll / reserve / sell-for-half (BB/Brawl sec8) -- meta-loop economy verbs, not combat effect verbs; out of scope for the effect vocab.",
+  "recipe_craft": "Adjacency-combine crafting into a new item (BB/Brawl sec4 P10, sec7) -- a content/authoring-time transform, not a runtime combat verb; would require a separate crafting-rule system.",
+  "refinery_mod": "Paid stat-mod purchase (BH Refinery, sec7) -- gold-gated meta upgrade, not a runtime effect.",
+  "accuracy_crit": "Accuracy%/miss and crit-double-damage (BB sec5) -- adds a hit/miss RNG layer our combat model doesn't have; deferred, not part of this vocab.",
+  "charm_status": "Charm status (flips enemy to your side, BH sec6) -- PvE-encounter-flipping status with no defined ally-side semantics in our engine; excluded pending a combat-side redesign."
+ },
+ "provenance": {
+  "on_hit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
+  "on_bp_damaged": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
+  "multi_strike": "research sec5 BH 'Uses per turn... some multi-use (can be used 2 times)'",
+  "buff_adjacent": "research sec4 P1 Ruby ('adjacent Weapons get +4 damage') and Amethyst/Emerald row/column beams",
+  "cleanse": "research sec7/sec8 BH Healer ('pay 10g to cleanse all curses') and curse-removal economy note in sec10 pitfall 'Curses only work if removal is scarce'",
+  "reflect_damage": "research sec6 Spikes status ('attacker takes X on melee hit') and BB Spikes ('reflect 1/stack vs melee')",
+  "lifesteal": "research sec6 BB Vampirism ('heal 1/stack on melee hit, same cap') and Bloody Dagger ('heals 4 per adjacent Vampiric item')",
+  "haste": "research sec6 BH Haste status ('each block instance gives +X block') and BB Heat ('+2% speed... shift all trigger speeds')",
+  "slow_enemy": "research sec6 BH Slow status (paired opposite of Haste, 'each block instance gives -X block')",
+  "bonus_vs_blocked": "research sec5 BH Block convention ('Block expires... consumed before HP') combined with BB Spikes cap-vs-hit pattern; a bonus keyed on a defended target is an extrapolated-but-attested combination of block+on_hit verb templates",
+  "Stun": "research sec6 BB framework verb 'Stun'",
+  "Weakness": "research sec6 BH 'Rage / Weak: each hit deals +X / -X damage' (paired-opposite status convention)",
+  "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'"
+ }
+}

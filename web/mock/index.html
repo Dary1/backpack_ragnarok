@@ -1,0 +1,1869 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>backpack_ragnarok — Canvas Mock v0.6</title>
+<style>
+  :root{
+    --bg:#121212; --panel:#1c1a17; --line:#2e2a24; --text:#e8e0d0; --dim:#9a917f;
+    --cyan:#59d6d6; --dud:#6a6a6a; --combo:#f5a93b; --ok:#5cb573; --bad:#c05050;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,sans-serif}
+  header{padding:14px 22px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;letter-spacing:.5px}
+  header .v{color:var(--dim);font-size:12px}
+  #hint{padding:8px 22px;color:#c9bd9c;font-size:13px;background:#181611;border-bottom:1px solid var(--line)}
+  main{display:flex;gap:18px;padding:18px 22px;align-items:flex-start;flex-wrap:wrap}
+  #canvasWrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px}
+  aside{flex:1;min-width:340px;max-width:520px;display:flex;flex-direction:column;gap:14px}
+  section.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  section.card h2{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--dim)}
+  .togglebar label{margin-right:14px;cursor:pointer;user-select:none}
+  ul.plain{list-style:none;margin:0;padding:0}
+  ul.plain li{padding:4px 0;border-bottom:1px dashed var(--line)}
+  ul.plain li:last-child{border-bottom:0}
+  .tag{display:inline-block;padding:0 6px;border-radius:8px;font-size:11px;background:#2a2620;color:var(--dim);margin-left:4px}
+  .mut{color:var(--cyan)} .dudt{color:var(--dud)}
+  #tooltip{position:fixed;pointer-events:none;z-index:10;background:#0e0d0b;border:1px solid #4a4234;border-radius:8px;
+    padding:10px 12px;max-width:300px;display:none;box-shadow:0 6px 18px rgba(0,0,0,.6);font-size:13px}
+  #tooltip h3{margin:0 0 4px;font-size:14px}
+  #tooltip .shape{color:var(--dim);font-size:12px}
+  #tooltip .eff{margin-top:6px}
+  #tooltip .ok{color:var(--ok)} #tooltip .bad{color:var(--bad)}
+  .r-Common{color:#9aa5ad}.r-Uncommon{color:#5cb573}.r-Rare{color:#6c95e0}.r-Relic{color:#c07ae0}
+  .combo-chip{color:var(--combo)}
+  .sk{display:inline-block;width:14px;text-align:center;color:var(--cyan)}
+  footer{padding:10px 22px;color:var(--dim);font-size:12px;border-top:1px solid var(--line)}
+  svg text{user-select:none}
+  .beam-flow{stroke-dasharray:7 5;animation:flow 1.2s linear infinite}
+  .L.en{display:none}.lang-en .L.en{display:inline}.lang-en .L.ja{display:none}
+  #langBtn{position:fixed;top:10px;right:14px;z-index:20;background:#26221c;color:#e8e0d0;border:1px solid #4a4234;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+  @keyframes flow{to{stroke-dashoffset:-24}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+
+  <!-- 1. Greatsword : vertical two-hander, blade up -->
+  <symbol id="icon-greatsword" viewBox="0 0 64 192">
+    <path d="M 32 12 L 42 34 L 42 128 L 22 128 L 22 34 Z" fill="#aebcc8" stroke="none"/>
+    <path d="M 32 12 L 42 34 L 42 128 L 32 128 Z" fill="#7d8b99" stroke="none"/>
+    <path d="M 32 20 L 34 36 L 34 122 L 30 122 L 30 36 Z" fill="#5f6b77" stroke="none"/>
+    <path d="M 32 12 L 42 34 L 42 128 L 22 128 L 22 34 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="12" y="127" width="40" height="11" rx="4" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="132.5" r="3" fill="#a83232" stroke="#2b2016" stroke-width="2"/>
+    <rect x="27" y="138" width="10" height="33" rx="2" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 27 145 L 37 149 M 27 152 L 37 156 M 27 159 L 37 163" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="32" cy="175" r="7" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+    <path d="M 25 30 L 25 120" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 2. Dagger : diagonal, pointing up-right -->
+  <symbol id="icon-dagger" viewBox="0 0 64 64">
+    <g transform="rotate(45 32 32)">
+      <path d="M 32 6 L 38 18 L 37 33 L 27 33 L 26 18 Z" fill="#aebcc8" stroke="none"/>
+      <path d="M 32 6 L 38 18 L 37 33 L 32 33 Z" fill="#7d8b99" stroke="none"/>
+      <path d="M 32 6 L 38 18 L 37 33 L 27 33 L 26 18 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="21" y="33" width="22" height="6" rx="3" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+      <rect x="28" y="39" width="8" height="13" rx="2" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M 28 43 L 36 45 M 28 47 L 36 49" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="32" cy="55" r="4.5" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+      <path d="M 30 12 L 29.5 30" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
+    </g>
+  </symbol>
+
+  <!-- 3. Fang : curved beast fang, blood-tipped -->
+  <symbol id="icon-fang" viewBox="0 0 64 64">
+    <path d="M 25 7 C 36 5 45 11 45 19 C 45 35 35 49 20 57 C 25 47 26 35 24 25 C 22 15 22 9 25 7 Z" fill="#f4eddc" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 25 7 C 36 5 45 11 45 19 C 45 21 44.7 23 44.2 25 C 37 20 30 19 23.6 21.5 C 22.9 14.5 23 9 25 7 Z" fill="#dccb9f" stroke="none"/>
+    <path d="M 20 57 C 24 51 26.5 45 27.5 40 C 30 45 29 52 20 57 Z" fill="#a83232" stroke="none"/>
+    <path d="M 25 7 C 36 5 45 11 45 19 C 45 35 35 49 20 57 C 25 47 26 35 24 25 C 22 15 22 9 25 7 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 40 16 C 42 19 42.5 23 41.5 28" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="2.5" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 4. Tower shield : steel kite shield, bronze boss -->
+  <symbol id="icon-tower_shield" viewBox="0 0 128 128">
+    <path d="M 64 8 C 88 17 104 20 118 22 C 118 58 108 94 64 120 C 20 94 10 58 10 22 C 24 20 40 17 64 8 Z" fill="#aebcc8" stroke="none"/>
+    <path d="M 64 21 C 84 28 97 30 106 32 C 106 60 98 88 64 106 C 30 88 22 60 22 32 C 31 30 44 28 64 21 Z" fill="#7d8b99" stroke="none"/>
+    <path d="M 64 8 C 88 17 104 20 118 22 L 118 30 C 104 28 88 25 64 16 C 40 25 24 28 10 30 L 10 22 C 24 20 40 17 64 8 Z" fill="#b08340" stroke="none"/>
+    <path d="M 64 8 C 88 17 104 20 118 22 C 118 58 108 94 64 120 C 20 94 10 58 10 22 C 24 20 40 17 64 8 Z" fill="none" stroke="#2b2016" stroke-width="6" stroke-linejoin="round"/>
+    <circle cx="64" cy="60" r="16" fill="#b08340" stroke="#2b2016" stroke-width="4"/>
+    <circle cx="64" cy="60" r="7" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+    <circle cx="32" cy="38" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="96" cy="38" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="26" cy="62" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="102" cy="62" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="40" cy="90" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="88" cy="90" r="3.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2.5"/>
+    <path d="M 24 40 C 26 60 32 78 44 92" fill="none" stroke="#d7dfe6" stroke-opacity="0.5" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 5. Whetstone : grey block with groove and sparks -->
+  <symbol id="icon-whetstone" viewBox="0 0 64 64">
+    <path d="M 6 32 L 18 20 L 58 20 L 46 32 Z" fill="#9fabb6" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 46 32 L 58 20 L 58 42 L 46 54 Z" fill="#5f6b77" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 6 32 L 46 32 L 46 54 L 6 54 Z" fill="#7d8b99" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 14 27 L 50 25" fill="none" stroke="#4a4438" stroke-width="4" stroke-linecap="round"/>
+    <path d="M 6 48 L 46 48" fill="none" stroke="#5f6b77" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 52 14 L 56 8 M 58 15 L 60 10 M 44 12 L 47 6" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 6. Flame rune : stone tablet with glowing flame sigil -->
+  <symbol id="icon-flame_rune" viewBox="0 0 64 64">
+    <rect x="9" y="9" width="46" height="46" rx="5" fill="#7d8b99" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="14" y="14" width="36" height="36" rx="3" fill="none" stroke="#5f6b77" stroke-width="2"/>
+    <path d="M 32 17 C 36 23 43 27 43 36 C 43 44 38 49 32 49 C 26 49 21 44 21 36 C 21 31 24 28 25.5 24 C 27 27.5 29.5 28 29.5 24.5 C 29.5 21.5 30.5 19 32 17 Z" fill="#e8642c" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 32 31 C 34.5 34.5 37 36 37 40.5 C 37 44.5 34.8 46.5 32 46.5 C 29.2 46.5 27 44.5 27 40.5 C 27 36.5 30 35 32 31 Z" fill="#f5a93b" stroke="none"/>
+  </symbol>
+
+  <!-- 7. Oil flask : round glass flask, dark oil, cork -->
+  <symbol id="icon-oil_flask" viewBox="0 0 64 64">
+    <circle cx="32" cy="38" r="20" fill="#cfdfea" stroke="#2b2016" stroke-width="3"/>
+    <path d="M 14 33 C 15 48 22 56 32 56 C 42 56 49 48 50 33 C 44 37 38 34 32 33 C 26 32 20 31 14 33 Z" fill="#4a4438" stroke="none"/>
+    <circle cx="39" cy="45" r="2" fill="#5d5648" stroke="none"/>
+    <path d="M 25 22 L 25 10 L 39 10 L 39 22" fill="#cfdfea" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="23" y="3" width="18" height="9" rx="3" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 19 30 Q 20 23 26 20" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 8. Frost orb : icy orb with snowflake facets -->
+  <symbol id="icon-frost_orb" viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="24" fill="#7ecbe8" stroke="#2b2016" stroke-width="3"/>
+    <circle cx="32" cy="32" r="17" fill="#a5dcef" stroke="none"/>
+    <path d="M 32 17 L 32 47 M 19 24.5 L 45 39.5 M 45 24.5 L 19 39.5" fill="none" stroke="#f2fbff" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 28 22 L 32 26 L 36 22 M 28 42 L 32 38 L 36 42" fill="none" stroke="#f2fbff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="32" cy="32" r="3.5" fill="#f2fbff" stroke="none"/>
+    <path d="M 16 25 Q 19 17 27 13.5" fill="none" stroke="#ffffff" stroke-opacity="0.8" stroke-width="3" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 9. Poison vial : slim vial, bubbling green liquid -->
+  <symbol id="icon-poison_vial" viewBox="0 0 64 64">
+    <rect x="25" y="4" width="14" height="8" rx="2" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="23" y="11" width="18" height="5" rx="2" fill="#b9c9d6" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 26 16 L 26 42 C 26 51 28.5 55 32 55 C 35.5 55 38 51 38 42 L 38 16 Z" fill="#d6e3ed" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 26 30 C 30 27.5 34 32.5 38 30 L 38 42 C 38 51 35.5 55 32 55 C 28.5 55 26 51 26 42 Z" fill="#7cb548" stroke="none"/>
+    <circle cx="30" cy="37" r="2" fill="#a9d67c" stroke="none"/>
+    <circle cx="34" cy="45" r="2.5" fill="#a9d67c" stroke="none"/>
+    <circle cx="29.5" cy="50" r="1.5" fill="#a9d67c" stroke="none"/>
+    <circle cx="33.5" cy="23" r="2" fill="#7cb548" fill-opacity="0.85" stroke="none"/>
+    <circle cx="30" cy="19" r="1.2" fill="#7cb548" fill-opacity="0.7" stroke="none"/>
+    <path d="M 28.5 20 L 28.5 46" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 10. Herb pouch : drawstring pouch with herb sprigs -->
+  <symbol id="icon-herb_pouch" viewBox="0 0 64 64">
+    <path d="M 27 16 C 25 10 20 7 14 7" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 27 16 C 25 10 20 7 14 7" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 14 7 C 10 4 5 5 4 8 C 8 11 12 10 14 7 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 21 10 C 19 5 14 4 11 5 C 13 9 17 11 21 10 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 33 15 C 34 9 38 5 44 4" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 33 15 C 34 9 38 5 44 4" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 44 4 C 48 3 53 5 54 9 C 50 11 45 9 44 4 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 38 8 C 40 4 45 3 48 4 C 46 8 42 10 38 8 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 30 14 L 30 7" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 30 14 L 30 7" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 30 7 C 28 3 24 2 21 3 C 23 7 27 8 30 7 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 24 14 C 24 11 40 11 40 14 L 42 23 C 35 27 29 27 22 23 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 22 22 C 13 27 8 36 8 44 C 8 53 18 58 32 58 C 46 58 56 53 56 44 C 56 36 51 27 42 22 C 36 26 28 26 22 22 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 26 30 C 24 38 22 44 19 50 M 38 30 C 40 38 42 44 45 50" fill="none" stroke="#5f3d22" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 21 21 C 28 25 36 25 43 21" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 43 21 C 47 23 48 27 47 30" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="47" cy="31" r="2" fill="#e9b64d" stroke="#2b2016" stroke-width="2"/>
+  </symbol>
+
+  <!-- 11. Golden idol : seated deity statuette -->
+  <symbol id="icon-golden_idol" viewBox="0 0 64 128">
+    <path d="M 23 38 L 32 15 L 41 38 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="24" r="2.5" fill="#a83232" stroke="#2b2016" stroke-width="2"/>
+    <rect x="12" y="104" width="40" height="14" rx="4" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 12 104 C 12 94 20 88 32 88 C 44 88 52 94 52 104 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 23 58 C 21 74 19 84 15 92 C 24 96 40 96 49 92 C 45 84 43 74 41 58 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 27 74 Q 32 78 37 74" fill="none" stroke="#b08340" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="19" y="82" width="26" height="9" rx="4.5" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="44" r="13" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+    <path d="M 25 44 Q 27.5 46.5 30 44 M 34 44 Q 36.5 46.5 39 44" fill="none" stroke="#2b2016" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 29 50 Q 32 52 35 50" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 26 62 Q 32 67 38 62" fill="none" stroke="#b08340" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="32" cy="67" r="2" fill="#a83232" stroke="none"/>
+    <path d="M 24 37 Q 26.5 33.5 30.5 32.8" fill="none" stroke="#fff7dc" stroke-opacity="0.85" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 15 22 L 16.8 26.2 L 21 28 L 16.8 29.8 L 15 34 L 13.2 29.8 L 9 28 L 13.2 26.2 Z" fill="#fff7dc" stroke="none"/>
+    <path d="M 50 58 L 51.2 60.8 L 54 62 L 51.2 63.2 L 50 66 L 48.8 63.2 L 46 62 L 48.8 60.8 Z" fill="#fff7dc" stroke="none"/>
+  </symbol>
+
+  <!-- 12. Linker core : neutral octagonal rune disc, cyan core -->
+  <symbol id="icon-linker_core" viewBox="0 0 64 64">
+    <polygon points="56,42 42,56 22,56 8,42 8,22 22,8 42,8 56,22" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="12" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="52" cy="32" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="32" cy="52" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="12" cy="32" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="46.1" cy="46.1" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="17.9" cy="17.9" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="46.1" cy="17.9" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="17.9" cy="46.1" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="32" cy="32" r="16" fill="#4a4438" stroke="#2b2016" stroke-width="3"/>
+    <path d="M 45.5 32 L 41 32 M 32 45.5 L 32 41 M 18.5 32 L 23 32 M 32 18.5 L 32 23 M 41.55 41.55 L 38.36 38.36 M 22.45 41.55 L 25.64 38.36 M 22.45 22.45 L 25.64 25.64 M 41.55 22.45 L 38.36 25.64" fill="none" stroke="#e9b64d" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="32" cy="32" r="10" fill="#59d6d6" fill-opacity="0.3" stroke="none"/>
+    <circle cx="32" cy="32" r="6.5" fill="#59d6d6" stroke="#2b2016" stroke-width="3"/>
+    <circle cx="30" cy="29.5" r="2" fill="#c9f2f2" stroke="none"/>
+  </symbol>
+
+</svg>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+
+  <!-- 13. Blade (part) : bare sword blade, tip up, tang stub at bottom -->
+  
+
+  <!-- 14. Hilt (part) : leather grip, gold pommel, tang socket at top -->
+  
+
+  <!-- 15. Ruby gem (accessory) : cut brilliant, bold facets -->
+  <symbol id="icon-acc_gem" viewBox="0 0 64 64">
+    <path d="M 24 10 L 40 10 L 54 26 L 32 56 L 10 26 Z" fill="#a83232" stroke="none"/>
+    <path d="M 24 10 L 40 10 L 46 26 L 18 26 Z" fill="#cf5050" stroke="none"/>
+    <path d="M 18 26 L 46 26 L 32 56 Z" fill="#8f2626" stroke="none"/>
+    <path d="M 10 26 L 54 26" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 18 26 L 32 56 M 46 26 L 32 56" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 24 10 L 18 26 M 40 10 L 46 26" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 24 10 L 40 10 L 54 26 L 32 56 L 10 26 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 22 15 L 23.2 17.8 L 26 19 L 23.2 20.2 L 22 23 L 20.8 20.2 L 18 19 L 20.8 17.8 Z" fill="#ffe9e9" stroke="none"/>
+  </symbol>
+
+  <!-- 16. Crossguard / tsuba (accessory) : bronze plate, central slot -->
+  <symbol id="icon-acc_guard" viewBox="0 0 64 64">
+    <rect x="8" y="8" width="48" height="48" rx="15" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="13" y="13" width="38" height="38" rx="11" fill="none" stroke="#8f6a34" stroke-width="2"/>
+    <rect x="27.5" y="17" width="9" height="30" rx="3" fill="#4a4438" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="18.5" cy="32" r="2.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2"/>
+    <circle cx="45.5" cy="32" r="2.5" fill="#e9b64d" stroke="#2b2016" stroke-width="2"/>
+    <path d="M 16 21 Q 19 16.5 24 14.5" fill="none" stroke="#e9b64d" stroke-opacity="0.6" stroke-width="2.5" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 17. Arrowhead (accessory) : steel point, tip up, no shaft -->
+  <symbol id="icon-acc_arrowhead" viewBox="0 0 64 64">
+    <path d="M 32 5 L 52 50 L 32 39 L 12 50 Z" fill="#aebcc8" stroke="none"/>
+    <path d="M 32 5 L 52 50 L 32 39 Z" fill="#7d8b99" stroke="none"/>
+    <path d="M 32 12 L 33.5 22 L 33.5 36 L 30.5 36 L 30.5 22 Z" fill="#5f6b77" stroke="none"/>
+    <path d="M 32 5 L 52 50 L 32 39 L 12 50 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 28.5 14 L 19 36" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+</svg>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="icon-blade" preserveAspectRatio="none" viewBox="0 0 64 128">
+    <path d="M24,128 L24,118 L22,108 L22,30 L32,8 L42,30 L42,108 L40,118 L40,128 Z" fill="#aebcc8"/>
+    <path d="M32,8 L42,30 L42,108 L40,118 L40,128 L32,128 Z" fill="#7d8b99"/>
+    <path d="M31,13 L24.5,30 L24.5,106 L26.5,117 L26.5,128" fill="none" stroke="#d7dfe6" stroke-width="2"/>
+    <path d="M32,24 L32,110" fill="none" stroke="#4a4438" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M24,128 L24,118 L22,108 L22,30 L32,8 L42,30 L42,108 L40,118 L40,128" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+  <symbol id="icon-hilt" preserveAspectRatio="none" viewBox="0 0 64 64">
+    <path d="M25,9 L39,9 L39,44 L25,44 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M25,14 L39,19 M25,21 L39,26 M25,28 L39,33 M25,35 L39,40" fill="none" stroke="#2b2016" stroke-width="2.2"/>
+    <rect x="26" y="40" width="12" height="5" rx="1.5" fill="#b08340" stroke="#2b2016" stroke-width="2.5"/>
+    <path d="M22,0 L42,0 L40,10 L24,10 Z" fill="#b08340"/>
+    <path d="M23.4,4 L40.6,4" stroke="#e9b64d" stroke-width="2"/>
+    <path d="M22,0 L24,10 L40,10 L42,0" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="32" cy="52" r="9" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+    <path d="M37.8,53.6 A6,6 0 0 1 33,57.9" fill="none" stroke="#b08340" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="28.8" cy="48.6" r="1.6" fill="#d7dfe6"/>
+  </symbol>
+</svg>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+
+  <!-- 18. Flame tablet (1x2) : tall standing rune stone, rounded top, glowing flame sigil -->
+  <symbol id="icon-flame_tablet" viewBox="0 0 64 128">
+    <path d="M 9 120 L 9 32 C 9 17 19 8 32 8 C 45 8 55 17 55 32 L 55 120 Z" fill="#7d8b99" stroke="none"/>
+    <path d="M 32 8 C 45 8 55 17 55 32 L 55 120 L 46 120 L 46 32 C 46 21.5 41 12.5 32 8 Z" fill="#5f6b77" stroke="none"/>
+    <path d="M 13 116 C 13 70 13 42 14 32 C 15 22 20 14.5 26 11.5" fill="none" stroke="#aebcc8" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 17 114 L 17 33 C 17 22 24 15 32 15 C 40 15 46 22 46 33 L 46 114" fill="none" stroke="#5f6b77" stroke-width="2"/>
+    <path d="M 24 13 C 26 17 25 21 27 24" fill="none" stroke="#5f6b77" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 49 90 C 47 97 48.5 104 46 111" fill="none" stroke="#5f6b77" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 32 24 C 36 30 43 34 43 43 C 43 51 38 56 32 56 C 26 56 21 51 21 43 C 21 38 24 35 25.5 31 C 27 34.5 29.5 35 29.5 31.5 C 29.5 28.5 30.5 26 32 24 Z" fill="#e8642c" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 32 38 C 34.5 41.5 37 43 37 47.5 C 37 51.5 34.8 53.5 32 53.5 C 29.2 53.5 27 51.5 27 47.5 C 27 43.5 30 42 32 38 Z" fill="#f5a93b" stroke="none"/>
+    <path d="M 15 30 L 16.2 32.8 L 19 34 L 16.2 35.2 L 15 38 L 13.8 35.2 L 11 34 L 13.8 32.8 Z" fill="#f5a93b" stroke="none"/>
+    <path d="M 49 48 L 50.2 50.8 L 53 52 L 50.2 53.2 L 49 56 L 47.8 53.2 L 45 52 L 47.8 50.8 Z" fill="#f5a93b" stroke="none"/>
+    <path d="M 22 72 L 32 67 L 42 72 M 22 81 L 42 81 M 22 90 L 32 95 L 42 90" fill="none" stroke="#4a4438" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 32 102 L 36 107.5 L 32 113 L 28 107.5 Z" fill="none" stroke="#4a4438" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 9 120 L 9 32 C 9 17 19 8 32 8 C 45 8 55 17 55 32 L 55 120 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 19. Oil flask II (1x2) : tall glass bottle, cork, narrow neck, round body, dark oil -->
+  <symbol id="icon-oil_flask2" viewBox="0 0 64 128">
+    <circle cx="32" cy="90" r="28" fill="#cfdfea" stroke="#2b2016" stroke-width="3"/>
+    <path d="M 5.6 82.5 C 7.5 100 18 115.5 32 115.5 C 46 115.5 56.5 100 58.4 82.5 C 49 86.5 40.5 84 32 83 C 23.5 82 14.5 79 5.6 82.5 Z" fill="#4a4438" stroke="none"/>
+    <circle cx="40.5" cy="100" r="2.2" fill="#5d5648" stroke="none"/>
+    <circle cx="26" cy="107" r="1.5" fill="#5d5648" stroke="none"/>
+    <path d="M 26 64 L 26 21 L 38 21 L 38 64" fill="#cfdfea" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="22.5" y="8" width="19" height="15" rx="3" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 26 14 L 38 14" fill="none" stroke="#5f3d22" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 13 84 Q 14.5 71 25 65.5" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="3" stroke-linecap="round"/>
+    <path d="M 29.5 27 L 29.5 58" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 20. Dagger II (1x2) : vertical dagger, tip up, bronze guard, leather grip -->
+  <symbol id="icon-dagger2" viewBox="0 0 64 128">
+    <path d="M 32 8 L 41 27 L 39.5 68 L 24.5 68 L 23 27 Z" fill="#aebcc8" stroke="none"/>
+    <path d="M 32 8 L 41 27 L 39.5 68 L 32 68 Z" fill="#7d8b99" stroke="none"/>
+    <path d="M 32 20 L 32 62" fill="none" stroke="#4a4438" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 26.5 26 L 27.5 63" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 32 8 L 41 27 L 39.5 68 L 24.5 68 L 23 27 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <rect x="16" y="66" width="32" height="9" rx="3.5" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 19 70.5 L 45 70.5" fill="none" stroke="#e9b64d" stroke-width="2" stroke-linecap="round"/>
+    <rect x="26" y="75" width="12" height="29" rx="2.5" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 26 82 L 38 85 M 26 89 L 38 92 M 26 96 L 38 99" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="32" cy="111.5" r="7" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
+    <circle cx="29.5" cy="109" r="1.8" fill="#d7dfe6" stroke="none"/>
+  </symbol>
+
+  <!-- 21. Herb satchel (1x2) : tall leather satchel, strap loop, buckled flap, herb sprigs -->
+  <symbol id="icon-herb_satchel" viewBox="0 0 64 128">
+    <path d="M 21 50 C 21 14 43 14 43 50" fill="none" stroke="#2b2016" stroke-width="8" stroke-linecap="round"/>
+    <path d="M 21 50 C 21 14 43 14 43 50" fill="none" stroke="#8a5a33" stroke-width="4" stroke-linecap="round"/>
+    <path d="M 24 52 C 21 44 17 37 11 32" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 24 52 C 21 44 17 37 11 32" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 11 32 C 6 28 3.5 20 7 15.5 C 11.5 19 13 26 11 32 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 16 39 C 14 33 9.5 30 5.5 31 C 7.5 36 12 39.5 16 39 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 40 52 C 43 44 47 37 53 32" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 40 52 C 43 44 47 37 53 32" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 53 32 C 58 28 60.5 20 57 15.5 C 52.5 19 51 26 53 32 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 48 39 C 50 33 54.5 30 58.5 31 C 56.5 36 52 39.5 48 39 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 32 50 L 32 28" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
+    <path d="M 32 50 L 32 28" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 32 28 C 30 21 26 18.5 21.5 19.5 C 23.5 25 27.5 28.5 32 28 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M 32 33 C 34 27 38.5 25 42.5 26 C 40.5 31 36 33.5 32 33 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+    <rect x="10" y="46" width="44" height="72" rx="7" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 15 92 L 15 110 M 49 92 L 49 110" fill="none" stroke="#5f3d22" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 14 108 C 22 112 42 112 50 108" fill="none" stroke="#5f3d22" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 10 53 L 54 53 L 54 76 C 54 82 49 85 43 85 L 21 85 C 15 85 10 82 10 76 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 13 88 C 21 91 43 91 51 88" fill="none" stroke="#5f3d22" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 15 59 C 19 57 24 56 28 56" fill="none" stroke="#b08340" stroke-width="2" stroke-linecap="round"/>
+    <rect x="28.5" y="53" width="7" height="27" fill="#5f3d22" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <rect x="25" y="69" width="14" height="11" rx="2.5" fill="#b08340" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 32 69.5 L 32 77" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 22. Beast jaw (L-shape, top-left quadrant empty) : ivory lower jawbone, fangs up -->
+  <symbol id="icon-beast_jaw" viewBox="0 0 128 128">
+    <path d="M 101 10 C 109 8 116 13 117 21 C 117.5 30 113 38 111 46 C 117 60 119 76 113 90 C 104 108 82 118 60 119 C 38 120 20 113 14 103 C 10.5 97 10.5 90 14 86 C 28 83.5 46 86 60 86.5 C 72 87 80 80 84 68 C 86 58 85 46 83.5 36 C 83 32 84.5 29.5 86.5 31 C 89 39 94 41 97 34 C 98.5 26 99 15 101 10 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 111 46 C 117 60 119 76 113 90 C 106 102 94 110 82 114 C 95 104 104 92 106 76 C 107.5 64 106 54 111 46 Z" fill="#dccb9f" stroke="none"/>
+    <path d="M 17 102 C 26 111 44 116 62 116 C 74 115.4 84 113 92 108 C 82 115 70 118.4 58 118.8 C 38 119.5 24 112 17 102 Z" fill="#dccb9f" stroke="none"/>
+    <path d="M 17 90 C 30 87.5 46 89.5 60 90 C 70 90.4 76 87 80 81" fill="none" stroke="#dccb9f" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 99 28 C 97 38 98 50 102 60" fill="none" stroke="#dccb9f" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 99 21 C 104 18.5 110 19.5 114 24" fill="none" stroke="#dccb9f" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="27" cy="99" r="2.4" fill="#dccb9f" stroke="#4a4438" stroke-width="2"/>
+    <path d="M 28.5 87.5 L 28.5 91 M 43.5 87.5 L 43.5 91 M 58 87 L 58 90.5" fill="none" stroke="#4a4438" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 15 91 C 14.5 80 17.5 71.5 21 68 C 24 72.5 26.3 81 26.5 91 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 30.5 90 C 30 78 33 69 36.5 66 C 40 71 42 80 42 90 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 34.2 71 C 34.8 68 35.6 66.7 36.5 66 C 37.4 67 38.3 68.5 38.8 71.5 C 37.2 69.8 35.8 69.8 34.2 71 Z" fill="#a83232" stroke="none"/>
+    <path d="M 46 89.5 C 45.5 78.5 48.5 70.5 52 67.5 C 55.3 72 57.3 80.5 57.5 89.5 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 61.5 86 C 61 76 63.5 68.5 67 65.5 C 70.3 70 72.3 78 72.5 86 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M 102 14.5 C 106.5 12.5 111 13.5 114 17" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="2.5" stroke-linecap="round"/>
+  </symbol>
+
+</svg>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+
+  <!-- 1. Rime shard -->
+  
+
+  <!-- 2. Frost nail : point DOWN -->
+  
+
+  <!-- 3. Hoarfrost creep : bottom-left cell (x0-64,y64-128) empty -->
+  
+
+  <!-- 4. Glacier cleaver : empty top-right (x64-128,y0-64) and bottom-left (x0-64,y128-192) -->
+  
+
+  <!-- 5. Permafrost ward : empty top-left (x0-64,y0-64) and top-right (x128-192,y0-64) -->
+  
+
+  <!-- 6. Niflheim crown : empty bottom-left (x0-64,y64-128) and bottom-right (x128-192,y64-128) -->
+  
+
+</svg>
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+<symbol id="icon-rime_shard" viewBox="0 0 64 128">
+  <polygon points="10,64 19,36 27,66 23,104 12,98" fill="#7d8b99" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="22,14 45,26 51,74 38,118 23,100 17,56" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="25,22 35,18 39,62 29,94 22,58" fill="#d7dfe6"/>
+  <polygon points="45,26 51,74 38,118 41,70" fill="#7d8b99"/>
+  <path d="M37,32 L41,72" stroke="#59d6d6" stroke-width="3" stroke-linecap="round" opacity="0.9"/>
+  <circle cx="41" cy="80" r="3" fill="#59d6d6"/>
+  <polygon points="8,108 20,100 30,106 44,98 56,108 52,120 12,120" fill="#4a4438" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="14,104 22,99 28,104 20,108" fill="#efe6d2"/>
+  <polygon points="40,100 48,104 42,108" fill="#efe6d2"/>
+  <path d="M6,96 Q16,90 24,95" stroke="#d7dfe6" stroke-width="2.5" fill="none" opacity="0.55"/>
+  <path d="M38,92 Q50,86 58,92" stroke="#d7dfe6" stroke-width="2.5" fill="none" opacity="0.55"/>
+</symbol>
+<symbol id="icon-frost_nail" viewBox="0 0 64 192">
+  <polygon points="16,8 48,8 56,26 48,44 16,44 8,26" fill="#aebcc8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="18,11 46,11 51,19 13,19" fill="#d7dfe6"/>
+  <polygon points="48,44 56,26 52,40" fill="#7d8b99"/>
+  <rect x="20" y="44" width="24" height="12" rx="3" fill="#b08340" stroke="#2b2016" stroke-width="3"/>
+  <circle cx="26" cy="50" r="2" fill="#e9b64d"/><circle cx="38" cy="50" r="2" fill="#e9b64d"/>
+  <polygon points="25,56 39,56 35,150 29,150" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M28,58 L30,146" stroke="#d7dfe6" stroke-width="2.5"/>
+  <path d="M36,58 L33,146" stroke="#7d8b99" stroke-width="2"/>
+  <polygon points="25,78 12,88 24,96" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="38,96 52,104 39,114" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="26,104 16,114 26,120" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="20,86 16,90 22,92" fill="#d7dfe6"/>
+  <polygon points="44,102 48,106 42,108" fill="#d7dfe6"/>
+  <polygon points="29,150 35,150 32,178" fill="#d7dfe6" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="10,166 22,146 26,164" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="54,164 44,144 40,162" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="16,152 20,160 12,160" fill="#d7dfe6"/>
+  <polygon points="48,150 50,158 42,158" fill="#d7dfe6"/>
+  <polygon points="6,172 58,172 54,184 10,184" fill="#efe6d2" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="32" cy="160" r="3" fill="#59d6d6"/>
+</symbol>
+<symbol id="icon-hoarfrost_creep" viewBox="0 0 128 128">
+  <path d="M6,58 C10,24 40,4 78,8 C104,10 120,32 118,58 C116,84 106,104 88,116 C78,122 70,118 74,112 C88,100 100,84 100,64 C100,44 84,32 62,32 C40,32 24,44 22,62 C20,70 8,68 6,58 Z"
+        fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M12,44 C22,18 52,6 80,10 C100,13 112,28 114,44 C102,30 82,22 60,24 C40,26 22,34 16,52 Z" fill="#d7dfe6"/>
+  <path d="M100,70 C98,88 88,102 76,112 C84,100 94,88 96,68 Z" fill="#7d8b99"/>
+  <polygon points="34,26 42,10 48,28" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="60,18 68,2 74,20" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="88,22 98,10 100,26" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="110,44 124,40 114,56" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="108,74 122,78 110,88" fill="#7ecbe8" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="40,20 45,12 48,22" fill="#d7dfe6"/>
+  <polygon points="66,12 69,6 72,14" fill="#d7dfe6"/>
+  <circle cx="68" cy="18" r="4.5" fill="#59d6d6" stroke="#2b2016" stroke-width="2"/>
+  <path d="M80,100 C90,96 102,98 110,106 C102,114 88,116 80,110 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+</symbol>
+<symbol id="icon-glacier_cleaver" viewBox="0 0 128 192">
+  <polygon points="12,12 26,6 60,118 46,124" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M18,26 L32,22 M24,46 L38,42 M30,66 L44,62 M36,86 L50,82" stroke="#2b2016" stroke-width="2"/>
+  <polygon points="8,4 24,0 28,12 12,16" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="42,78 104,66 120,80 122,128 116,168 92,188 70,182 80,140 56,118" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="48,80 102,70 112,80 58,92" fill="#d7dfe6"/>
+  <polygon points="80,140 70,182 82,185 90,144" fill="#7d8b99"/>
+  <polygon points="58,118 84,138 80,150 60,128" fill="#7d8b99" opacity="0.6"/>
+  <path d="M96,86 L88,114 L98,136" stroke="#2b2016" stroke-width="2" fill="none"/>
+  <path d="M120,84 L122,128 L116,168 L92,186" stroke="#59d6d6" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+  <polygon points="54,116 62,110 66,122 58,126" fill="#d7dfe6"/>
+</symbol>
+<symbol id="icon-permafrost_ward" viewBox="0 0 192 128">
+  <polygon points="74,10 118,12 124,86 68,84" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="78,14 92,13 90,82 72,80" fill="#d7dfe6"/>
+  <polygon points="118,12 124,86 110,84 112,14" fill="#7d8b99"/>
+  <path d="M96,26 L104,26 M100,22 L100,44 M96,52 L104,60 M104,52 L96,60" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  <polygon points="72,8 120,10 118,18 74,16" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+  <polygon points="6,70 26,70 26,84 46,84 46,70 66,70 66,84 126,84 126,70 146,70 146,84 166,84 166,70 186,70 186,120 6,120" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <rect x="10" y="88" width="176" height="8" fill="#d7dfe6"/>
+  <path d="M40,96 L40,118 M88,96 L88,118 M136,96 L136,118 M64,106 L64,118 M112,106 L112,118 M160,106 L160,118 M6,106 L186,106" stroke="#7d8b99" stroke-width="2"/>
+  <polygon points="4,116 188,116 184,126 8,126" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+</symbol>
+<symbol id="icon-niflheim_crown" viewBox="0 0 192 128">
+  <polygon points="12,42 26,8 42,42" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="48,42 66,2 84,42" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="86,44 96,4 106,44" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="108,42 126,2 144,42" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="150,42 166,8 180,42" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="16,40 26,14 32,40" fill="#d7dfe6"/>
+  <polygon points="52,40 66,8 72,40" fill="#d7dfe6"/>
+  <polygon points="112,40 126,8 132,40" fill="#d7dfe6"/>
+  <polygon points="154,40 166,14 170,40" fill="#d7dfe6"/>
+  <circle cx="96" cy="26" r="8" fill="#d7dfe6" stroke="#2b2016" stroke-width="3"/>
+  <circle cx="96" cy="26" r="3.5" fill="#59d6d6"/>
+  <rect x="8" y="40" width="176" height="22" rx="4" fill="#7ecbe8" stroke="#2b2016" stroke-width="3"/>
+  <rect x="12" y="43" width="168" height="6" fill="#d7dfe6"/>
+  <rect x="10" y="50" width="174" height="5" fill="#e9b64d"/>
+  <circle cx="32" cy="52.5" r="2.2" fill="#b08340"/><circle cx="72" cy="52.5" r="2.2" fill="#b08340"/>
+  <circle cx="120" cy="52.5" r="2.2" fill="#b08340"/><circle cx="160" cy="52.5" r="2.2" fill="#b08340"/>
+  <polygon points="76,62 116,62 110,102 82,102" fill="#7ecbe8" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="104,64 110,100 96,100 98,64" fill="#7d8b99"/>
+  <polygon points="80,64 88,64 86,100 82,100" fill="#d7dfe6"/>
+  <path d="M74,100 Q82,94 90,100 Q98,106 106,100 Q112,96 118,100 L114,114 Q96,120 78,114 Z" fill="#efe6d2" stroke="#2b2016" stroke-width="2.5" stroke-linejoin="round"/>
+</symbol>
+</svg>
+
+<header>
+  <h1>backpack_ragnarok — Canvas Mock</h1>
+  <span class="v">v0.6 · conn tiles · ranges ×3 · JA/EN · PO golden v1.5 · 2026-07-02</span>
+  <button id="langBtn">🇬🇧 EN</button>
+</header>
+<div id="hint"><span class="L ja"><b>ドラッグ</b>でアイテム⇄インベントリ移動 · <b>リンカーまたは空きピースをドラッグ</b>=BPごと移動(リンクは追従再計算) · <b>ダブルクリック</b>=時計回り回転 · アクセサリーはソケットへドラッグ(緑=型+ソケットタグ一致) · <b>チェインボタン</b>=組立武器の一体/個別移動切替 · ◆金ノッチ=タグ接続タイル(conn) · Escでキャンセル</span><span class="L en"><b>Drag</b> items ⇄ Inventory · <b>Drag a Linker or empty Piece</b> = move the whole BP · <b>Double-click</b> = rotate CW · Accessories onto sockets (green = type+socket-tags match) · <b>Chain button</b> toggles linked movement · gold ◆ notches = tag-connection (conn) tiles · Esc cancels</span></div>
+<main>
+  <div id="canvasWrap"></div>
+  <aside>
+    <section class="card togglebar">
+      <h2><span class="L ja">表示</span><span class="L en">View</span></h2>
+      <label><input type="checkbox" id="tgBeams" checked> <span class="L ja">リンクビーム</span><span class="L en">Link beams</span></label>
+      <label><input type="checkbox" id="tgCombos" checked> <span class="L ja">コンボ強調+接続線</span><span class="L en">Combo highlights</span></label>
+    </section>
+    <section class="card">
+      <h2><span class="L ja">ソケットモデル(アイテムタグとは独立)</span><span class="L en">Socket model (independent from item tags)</span></h2>
+      <ul class="plain" style="font-size:12.5px">
+        <li>Every <b>socket</b> declares a <b>type</b> (<span class="sk">◆</span>gem / <span class="sk">▷</span>edge / <span class="sk">●</span>coat / <span class="sk">▭</span>bond) AND its own <b>socket tags</b> (e.g. Metal, Bone).</li>
+        <li>An accessory seats if: socket type matches its slot type, AND the socket carries all tags the accessory requires.</li>
+        <li>Examples here: Whetstone needs edge+<b>Metal</b> → fits Dagger/Blade, rejects Beast Jaw's edge(<b>Bone</b>). Arrowhead needs edge only → fits both. Poison Coat fits any coat socket — and coat sockets exist only on Weapons (the old type rule is now structural).</li>
+        <li>Item combat tags (Flame, Oil, Beast…) are a SEPARATE system used only for grid chemistry (adjacency combos).</li>
+      </ul>
+    </section>
+    <section class="card">
+      <h2><span class="L ja">発動中コンボ(ライブ)</span><span class="L en">Active combos (live)</span></h2>
+      <ul class="plain" id="comboList"></ul>
+    </section>
+    <section class="card">
+      <h2><span class="L ja">BP — 各1リンカー · ドラッグ可</span><span class="L en">BPs — 1 Linker each · draggable</span></h2>
+      <ul class="plain" id="bpList"></ul>
+    </section>
+    <section class="card">
+      <h2><span class="L ja">リンク(ライブ — BPを動かすと再トレース)</span><span class="L en">Links (live)</span></h2>
+      <ul class="plain" id="linkList"></ul>
+    </section>
+    <section class="card">
+      <h2><span class="L ja">適用中ルール</span><span class="L en">Rules in force</span></h2>
+      <ul class="plain" style="font-size:12.5px;color:var(--dim)">
+        <li><b>Single-cell scarcity:</b> no 1×1 filler POs. Former 1×1s are Accessories now.</li>
+        <li><b>Frozen Canvas</b>, no Gold; Transmutator is the only currency.</li>
+        <li>One Linker per BP; Linkers connect only to Linkers; POs never span BPs.</li>
+        <li>Parts assemble flush; chain button controls linked movement; guard unseats on disassembly.</li>
+        <li>Strength comes from the canvas only. BP HP (mock): pieces × 5.</li>
+      </ul>
+    </section>
+  </aside>
+</main>
+<div id="tooltip"></div>
+<footer>Mock v0.5 — engine is pure &amp; covered by node operation-emulation tests (12 scenarios). backpack-dev.qtie.jp/mock/</footer>
+<script>
+// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v3)
+// Source: live_items.json + live_accs.json + scenario.json
+// Generated: 2026-07-02T14:16:15.815Z
+(function(root,factory){
+  if(typeof module!=='undefined'&&module.exports)module.exports=factory();
+  else root.GameData=factory();
+})(typeof self!=='undefined'?self:globalThis,function(){
+'use strict';
+const LAYOUT={"ROWS":6,"COLS":6};
+const ITEMS={
+ "blade": {
+  "name": "Longsword Blade",
+  "name_ja": "ロングソードの刀身",
+  "type": "WeaponPart",
+  "el": [
+   "Metal"
+  ],
+  "rarity": "Common",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "icon": "icon-blade",
+  "sockets": [
+   {
+    "t": "edge",
+    "tags": [
+     "Metal"
+    ],
+    "ax": 0.5,
+    "ay": 0.38
+   }
+  ],
+  "eff": "Every 1.8–2.2s: Strike 22–38 (when assembled).",
+  "eff_en": "Every 1.8–2.2s: Strike 22–38 (when assembled).",
+  "eff_ja": "1.8〜2.2秒ごとに: 22〜38 ダメージ（組み立て時のみ）。",
+  "flavor": "Inert alone; sings when it finds its hilt.",
+  "flavor_ja": "それ単体では沈黙している。柄を見つけたときだけ歌う。",
+  "stretch": true
+ },
+ "hilt": {
+  "name": "Sword Hilt",
+  "name_ja": "剣の柄",
+  "type": "WeaponPart",
+  "el": [
+   "Metal",
+   "Wood"
+  ],
+  "rarity": "Common",
+  "shape": [
+   [
+    0,
+    0
+   ]
+  ],
+  "icon": "icon-hilt",
+  "sockets": [
+   {
+    "t": "gem",
+    "tags": [
+     "Metal"
+    ],
+    "ax": 0.5,
+    "ay": 0.81
+   }
+  ],
+  "eff": "",
+  "eff_en": "",
+  "eff_ja": "",
+  "flavor": "A pommel waiting for a stone.",
+  "flavor_ja": "石を待つ、柄頭。",
+  "stretch": true
+ },
+ "flame_tablet": {
+  "name": "Flame Rune Tablet",
+  "name_ja": "炎のルーンタブレット",
+  "type": "Rune",
+  "el": [
+   "Flame"
+  ],
+  "rarity": "Uncommon",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "icon": "icon-flame_tablet",
+  "sockets": [],
+  "eff": "Adjacent Weapon: Apply 4–8 Burn on hit. Adjacent Oil: Burn applications x2.",
+  "eff_en": "Adjacent Weapon: Apply 4–8 Burn on hit. Adjacent Oil: Burn applications x2.",
+  "eff_ja": "隣接するWeapon: 命中時に 火傷 4〜8 付与。 隣接するOil: 火傷 付与量 ×2。",
+  "flavor": "A shard of Muspelheim litany.",
+  "flavor_ja": "ムスペルヘイムの経文が刻まれた欠片。",
+  "conn": [
+   [
+    0,
+    -1
+   ],
+   [
+    1,
+    -1
+   ]
+  ]
+ },
+ "oil_flask": {
+  "name": "Oil Flask",
+  "name_ja": "油の小瓶",
+  "type": "Reagent",
+  "el": [
+   "Oil"
+  ],
+  "rarity": "Common",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "icon": "icon-oil_flask2",
+  "sockets": [],
+  "eff": "Adjacent Flame: Burn applications x2.",
+  "eff_en": "Adjacent Flame: Burn applications x2.",
+  "eff_ja": "隣接するFlame: 火傷 付与量 ×2。",
+  "flavor": "Slow gold that loves a spark.",
+  "flavor_ja": "火花を愛する、粘る黄金。",
+  "conn": [
+   [
+    0,
+    1
+   ],
+   [
+    1,
+    1
+   ]
+  ]
+ },
+ "dagger": {
+  "name": "Dagger",
+  "name_ja": "ダガー",
+  "type": "Weapon",
+  "el": [
+   "Metal"
+  ],
+  "rarity": "Common",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "icon": "icon-dagger2",
+  "sockets": [
+   {
+    "t": "edge",
+    "tags": [
+     "Metal"
+    ],
+    "ax": 0.62,
+    "ay": 0.24
+   },
+   {
+    "t": "coat",
+    "tags": [
+     "Metal"
+    ],
+    "ax": 0.38,
+    "ay": 0.52
+   }
+  ],
+  "eff": "Every 0.9–1.2s: Strike 7–11.",
+  "eff_en": "Every 0.9–1.2s: Strike 7–11.",
+  "eff_ja": "0.9〜1.2秒ごとに: 7〜11 ダメージ。",
+  "flavor": "Quick, honest work.",
+  "flavor_ja": "速く、そして正直な仕事。"
+ },
+ "herb_pouch": {
+  "name": "Herb Satchel",
+  "name_ja": "薬草の巾着",
+  "type": "Relic",
+  "el": [],
+  "rarity": "Common",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    1,
+    0
+   ]
+  ],
+  "icon": "icon-herb_satchel",
+  "sockets": [],
+  "eff": "Every 1.8–2.2s: Heal this BP 4–8.",
+  "eff_en": "Every 1.8–2.2s: Heal this BP 4–8.",
+  "eff_ja": "1.8〜2.2秒ごとに: このBPを 4〜8 回復。",
+  "flavor": "Smells like a meadow that survived.",
+  "flavor_ja": "生き残った草原の匂いがする。"
+ },
+ "tower_shield": {
+  "name": "Tower Shield",
+  "name_ja": "タワーシールド",
+  "type": "Shield",
+  "el": [
+   "Metal"
+  ],
+  "rarity": "Uncommon",
+  "shape": [
+   [
+    0,
+    0
+   ],
+   [
+    0,
+    1
+   ],
+   [
+    1,
+    0
+   ],
+   [
+    1,
+    1
+   ]
+  ],
+  "icon": "icon-tower_shield",
+  "sockets": [],
+  "eff": "Battle start: Block 26–46.",
+  "eff_en": "Battle start: Block 26–46.",
+  "eff_ja": "戦闘開始時: ブロック 26〜46。",
+  "flavor": "A wall that agreed to travel.",
+  "flavor_ja": "旅に出ることを了承した、壁。"
+ },
+ "beast_jaw": {
+  "name": "Beast Jaw",
+  "name_ja": "獣の顎",
+  "type": "Weapon",
+  "el": [
+   "Beast"
+  ],
+  "rarity": "Uncommon",
+  "shape": [
+   [
+    0,
+    1
+   ],
+   [
+    1,
+    0
+   ],
+   [
+    1,
+    1
+   ]
+  ],
+  "icon": "icon-beast_jaw",
+  "sockets": [
+   {
+    "t": "edge",
+    "tags": [
+     "Bone"
+    ],
+    "ax": 0.72,
+    "ay": 0.3
+   },
+   {
+    "t": "coat",
+    "tags": [
+     "Bone"
+    ],
+    "ax": 0.3,
+    "ay": 0.72
+   }
+  ],
+  "eff": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast PO in this BP.",
+  "eff_en": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast PO in this BP.",
+  "eff_ja": "1.4〜1.7秒ごとに: 13〜23 ダメージ。 このBP内の他の Beast（属性）ごとに ダメージ +4〜8。",
+  "flavor": "It still remembers how to bite.",
+  "flavor_ja": "噛み方を、まだ覚えている。"
+ }
+};
+const ACC_DEFS={
+ "acc_gem": {
+  "name": "Ruby Gem",
+  "name_ja": "ルビーの宝石",
+  "slot": "gem",
+  "reqTags": [],
+  "icon": "icon-acc_gem",
+  "rarity": "Uncommon",
+  "eff": "+4–8 damage to the host.",
+  "eff_en": "+4–8 damage to the host.",
+  "eff_ja": "装備先に ダメージ +4〜8。",
+  "flavor": "Fits any gem socket.",
+  "flavor_ja": "どんな宝石ソケットにも合う。"
+ },
+ "acc_frost": {
+  "name": "Frost Orb",
+  "name_ja": "フロストオーブ",
+  "slot": "gem",
+  "reqTags": [],
+  "icon": "icon-frost_orb",
+  "rarity": "Uncommon",
+  "eff": "On host hit: Apply 4–8 Chill.",
+  "eff_en": "On host hit: Apply 4–8 Chill.",
+  "eff_ja": "装備先が命中した時: 氷結 4〜8 付与。",
+  "flavor": "Cold that keeps its promises.",
+  "flavor_ja": "約束を守る、冷気。"
+ },
+ "acc_whet": {
+  "name": "Whetstone",
+  "name_ja": "砥石",
+  "slot": "edge",
+  "reqTags": [
+   "Metal"
+  ],
+  "icon": "icon-whetstone",
+  "rarity": "Common",
+  "eff": "+4–8 damage to the host.",
+  "eff_en": "+4–8 damage to the host.",
+  "eff_ja": "装備先に ダメージ +4〜8。",
+  "flavor": "Requires a Metal edge socket.",
+  "flavor_ja": "金属の刃ソケットが必要。"
+ },
+ "acc_arrow": {
+  "name": "Arrowhead",
+  "name_ja": "鏃",
+  "slot": "edge",
+  "reqTags": [],
+  "icon": "icon-acc_arrowhead",
+  "rarity": "Common",
+  "eff": "+2–4 damage to the host.",
+  "eff_en": "+2–4 damage to the host.",
+  "eff_ja": "装備先に ダメージ +2〜4。",
+  "flavor": "Fits any edge socket.",
+  "flavor_ja": "どんな刃ソケットにも合う。"
+ },
+ "acc_poison": {
+  "name": "Poison Coat",
+  "name_ja": "毒コート",
+  "slot": "coat",
+  "reqTags": [],
+  "icon": "icon-poison_vial",
+  "rarity": "Common",
+  "eff": "On host hit: Apply 2–4 Poison.",
+  "eff_en": "On host hit: Apply 2–4 Poison.",
+  "eff_ja": "装備先が命中した時: 毒 2〜4 付与。",
+  "flavor": "Coat sockets exist only on Weapons.",
+  "flavor_ja": "コートソケットは武器にしか存在しない。"
+ },
+ "acc_guard": {
+  "name": "Guard (Tsuba)",
+  "name_ja": "鍔",
+  "slot": "bond",
+  "reqTags": [],
+  "icon": "icon-acc_guard",
+  "rarity": "Uncommon",
+  "eff": "On host hit: Block 4–8.",
+  "eff_en": "On host hit: Block 4–8.",
+  "eff_ja": "装備先が命中した時: ブロック 4〜8。",
+  "flavor": "Unseats if disassembled.",
+  "flavor_ja": "分解されれば、外れ落ちる。"
+ }
+};
+const SCENARIO={
+ "linked": true,
+ "bps": [
+  {
+   "id": "alpha",
+   "name": "BP Alpha",
+   "color": "#BF9000",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1
+    ]
+   ],
+   "origin": [
+    1,
+    1
+   ],
+   "linker": {
+    "off": [
+     2,
+     1
+    ],
+    "dirs": [
+     1,
+     4
+    ]
+   }
+  },
+  {
+   "id": "beta",
+   "name": "BP Beta",
+   "color": "#F1C232",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     0,
+     2
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     1,
+     2
+    ]
+   ],
+   "origin": [
+    1,
+    4
+   ],
+   "linker": {
+    "off": [
+     0,
+     0
+    ],
+    "dirs": [
+     5
+    ]
+   }
+  },
+  {
+   "id": "gamma",
+   "name": "BP Gamma",
+   "color": "#E8DE33",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ],
+    [
+     2,
+     0
+    ],
+    [
+     2,
+     1
+    ]
+   ],
+   "origin": [
+    4,
+    2
+   ],
+   "linker": {
+    "off": [
+     0,
+     0
+    ],
+    "dirs": [
+     2,
+     3
+    ]
+   }
+  },
+  {
+   "id": "delta",
+   "name": "BP Delta",
+   "color": "#9A5B18",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "origin": [
+    4,
+    5
+   ],
+   "linker": {
+    "off": [
+     0,
+     0
+    ],
+    "dirs": [
+     6
+    ]
+   }
+  }
+ ],
+ "pos": [
+  {
+   "uid": "p1",
+   "id": "blade",
+   "loc": "grid",
+   "cell": [
+    1,
+    1
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p2",
+   "id": "hilt",
+   "loc": "grid",
+   "cell": [
+    3,
+    1
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p3",
+   "id": "flame_tablet",
+   "loc": "grid",
+   "cell": [
+    1,
+    2
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p4",
+   "id": "tower_shield",
+   "loc": "grid",
+   "cell": [
+    1,
+    5
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p5",
+   "id": "dagger",
+   "loc": "grid",
+   "cell": [
+    4,
+    3
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p6",
+   "id": "herb_pouch",
+   "loc": "grid",
+   "cell": [
+    5,
+    2
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p7",
+   "id": "beast_jaw",
+   "loc": "grid",
+   "cell": [
+    4,
+    5
+   ],
+   "rot": 0
+  },
+  {
+   "uid": "p8",
+   "id": "oil_flask",
+   "loc": "inv",
+   "cell": null,
+   "rot": 0
+  }
+ ],
+ "accs": [
+  {
+   "uid": "a1",
+   "id": "acc_gem",
+   "host": {
+    "po": "p2",
+    "si": 0
+   }
+  },
+  {
+   "uid": "a2",
+   "id": "acc_guard",
+   "host": "bond"
+  },
+  {
+   "uid": "a3",
+   "id": "acc_whet",
+   "host": "inv"
+  },
+  {
+   "uid": "a4",
+   "id": "acc_arrow",
+   "host": "inv"
+  },
+  {
+   "uid": "a5",
+   "id": "acc_poison",
+   "host": "inv"
+  },
+  {
+   "uid": "a6",
+   "id": "acc_frost",
+   "host": "inv"
+  }
+ ]
+};
+function makeState(){
+ return JSON.parse(JSON.stringify(SCENARIO));
+}
+return {LAYOUT,ITEMS,ACC_DEFS,makeState};
+});
+
+</script>
+<script>
+// backpack_ragnarok mock — pure engine (no DOM). Runs in browser (window.Engine) and node (module.exports).
+(function(root,factory){
+  if(typeof module!=='undefined'&&module.exports)module.exports=factory();
+  else root.Engine=factory();
+})(typeof self!=='undefined'?self:globalThis,function(){
+'use strict';
+function rotOffsets(base,k){
+  let off=base.map(o=>[o[0],o[1]]);
+  for(let i=0;i<(k%4+4)%4;i++)off=off.map(([r,c])=>[c,-r]);
+  const mr=Math.min(...off.map(o=>o[0])),mc=Math.min(...off.map(o=>o[1]));
+  return off.map(([r,c])=>[r-mr,c-mc]);
+}
+function create(ITEMS,ACC_DEFS,layout){
+  const ROWS=layout.ROWS,COLS=layout.COLS;
+  const key=(r,c)=>r+','+c;
+  const shapeInfo=(id,rot)=>{
+    const off=rotOffsets(ITEMS[id].shape,rot);
+    return {off,h:Math.max(...off.map(o=>o[0]))+1,w:Math.max(...off.map(o=>o[1]))+1};
+  };
+  const bpCells=bp=>bp.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
+  const linkerCell=bp=>[bp.origin[0]+bp.linker.off[0],bp.origin[1]+bp.linker.off[1]];
+  const cellBPMap=st=>{const m={};for(const bp of st.bps)for(const [r,c] of bpCells(bp))m[key(r,c)]=bp.id;return m;};
+  const linkerMap=st=>{const m={};for(const bp of st.bps)m[key(...linkerCell(bp))]=bp.id;return m;};
+  const poByUid=(st,u)=>st.pos.find(p=>p.uid===u);
+  const cellsOf=(st,p)=>{
+    if(p.loc!=='grid')return [];
+    return shapeInfo(p.id,p.rot).off.map(([r,c])=>[p.cell[0]+r,p.cell[1]+c]);
+  };
+  const occupancy=(st,excl)=>{
+    const ex=excl||[],m={};
+    for(const p of st.pos){
+      if(p.loc!=='grid'||ex.includes(p.uid))continue;
+      for(const [r,c] of cellsOf(st,p))m[key(r,c)]=p.uid;
+    }
+    return m;
+  };
+  function canPlaceCells(st,cells,exclUids){
+    const cbp=cellBPMap(st),lk=linkerMap(st),occ=occupancy(st,exclUids);
+    let bp=null;
+    for(const [r,c] of cells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells,why:'outside canvas'};
+      const b=cbp[key(r,c)];
+      if(!b)return {ok:false,cells,why:'Dead Space'};
+      if(bp&&b!==bp)return {ok:false,cells,why:'spans two BPs'};
+      bp=b;
+      if(lk[key(r,c)])return {ok:false,cells,why:'Linker cell'};
+      if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
+    }
+    return {ok:true,cells,bp};
+  }
+  const canPlacePO=(st,uid,rot,anchor)=>{
+    const p=poByUid(st,uid);
+    const off=shapeInfo(p.id,rot).off;
+    return canPlaceCells(st,off.map(([r,c])=>[anchor[0]+r,anchor[1]+c]),[uid]);
+  };
+  function movePO(st,uid,anchor){ // anchor==='inv' stows
+    const p=poByUid(st,uid);
+    if(anchor==='inv'){p.loc='inv';p.cell=null;unseatOrphans(st);return {ok:true};}
+    const chk=canPlacePO(st,uid,p.rot,anchor);
+    if(!chk.ok)return chk;
+    p.loc='grid';p.cell=anchor;unseatOrphans(st);return {ok:true};
+  }
+  function rotatePO(st,uid){ // dblclick CW; in place if placed
+    const p=poByUid(st,uid);
+    const nr=(p.rot+1)%4;
+    if(p.loc==='inv'){p.rot=nr;return {ok:true};}
+    const chk=canPlacePO(st,uid,nr,p.cell);
+    if(chk.ok){p.rot=nr;unseatOrphans(st);return {ok:true};}
+    return chk;
+  }
+  const bpById=(st,id)=>st.bps.find(b=>b.id===id);
+  function canMoveBP(st,bpId,origin){
+    const bp=bpById(st,bpId);
+    const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
+    const others=new Set();
+    for(const ob of st.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCells(ob))others.add(key(r,c));}
+    for(const [r,c] of newCells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside canvas'};
+      if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+    }
+    return {ok:true,cells:newCells};
+  }
+  function poInBP(st,p,bp){
+    if(p.loc!=='grid')return false;
+    const set=new Set(bpCells(bp).map(([r,c])=>key(r,c)));
+    return cellsOf(st,p).every(([r,c])=>set.has(key(r,c)));
+  }
+  function moveBP(st,bpId,origin){
+    const bp=bpById(st,bpId);
+    const chk=canMoveBP(st,bpId,origin);
+    if(!chk.ok)return chk;
+    const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
+    const inside=st.pos.filter(p=>poInBP(st,p,bp));
+    bp.origin=origin;
+    for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
+    return {ok:true};
+  }
+  function assembly(st){
+    const b=st.pos.find(p=>p.id==='blade'&&p.loc==='grid');
+    const h=st.pos.find(p=>p.id==='hilt'&&p.loc==='grid');
+    if(!b||!h||b.rot%4!==0)return null;
+    const bc=cellsOf(st,b),bottom=bc[bc.length-1],cbp=cellBPMap(st);
+    if(h.cell[0]===bottom[0]+1&&h.cell[1]===bottom[1]&&cbp[key(...h.cell)]===cbp[key(...bottom)])
+      return {blade:b,hilt:h,bp:cbp[key(...h.cell)],cells:bc.concat([h.cell]),anchor:b.cell};
+    return null;
+  }
+  function canPlaceAssembly(st,anchor){
+    const asm=assembly(st);
+    if(!asm)return {ok:false,cells:[],why:'not assembled'};
+    const cells=[[anchor[0],anchor[1]],[anchor[0]+1,anchor[1]],[anchor[0]+2,anchor[1]]];
+    return canPlaceCells(st,cells,[asm.blade.uid,asm.hilt.uid]);
+  }
+  function moveAssembly(st,anchor){ // anchor==='inv' stows both parts
+    const asm=assembly(st);
+    if(!asm)return {ok:false,why:'not assembled'};
+    if(anchor==='inv'){
+      asm.blade.loc='inv';asm.blade.cell=null;
+      asm.hilt.loc='inv';asm.hilt.cell=null;
+      unseatOrphans(st);return {ok:true};
+    }
+    const chk=canPlaceAssembly(st,anchor);
+    if(!chk.ok)return chk;
+    asm.blade.cell=[anchor[0],anchor[1]];
+    asm.hilt.cell=[anchor[0]+2,anchor[1]];
+    unseatOrphans(st);return {ok:true};
+  }
+  function sockets(st){
+    const out=[];
+    for(const p of st.pos){
+      if(p.loc!=='grid')continue;
+      const def=ITEMS[p.id];
+      (def.sockets||[]).forEach((s,si)=>{
+        const acc=st.accs.find(a=>a.host&&a.host.po===p.uid&&a.host.si===si);
+        out.push({skey:p.uid+':'+si,host:p.uid,si,t:s.t,tags:s.tags||[],accUid:acc?acc.uid:null,ax:s.ax,ay:s.ay});
+      });
+    }
+    const asm=assembly(st);
+    if(asm){
+      const acc=st.accs.find(a=>a.host==='bond');
+      out.push({skey:'bond',host:'bond',si:0,t:'bond',tags:['Metal'],accUid:acc?acc.uid:null});
+    }
+    return out;
+  }
+  function hostOk(st,accUid,sock){
+    const a=st.accs.find(x=>x.uid===accUid),d=ACC_DEFS[a.id];
+    if(sock.t!==d.slot)return {ok:false,why:'socket type '+sock.t+' ≠ '+d.slot};
+    if(sock.accUid&&sock.accUid!==accUid)return {ok:false,why:'socket occupied'};
+    for(const t of (d.reqTags||[]))
+      if(!sock.tags.includes(t))return {ok:false,why:'socket lacks tag '+t+' (has: '+(sock.tags.join(', ')||'none')+')'};
+    return {ok:true};
+  }
+  function seatAcc(st,accUid,skey){
+    const sock=sockets(st).find(s=>s.skey===skey);
+    if(!sock)return {ok:false,why:'no such socket'};
+    const v=hostOk(st,accUid,sock);
+    if(!v.ok)return v;
+    const a=st.accs.find(x=>x.uid===accUid);
+    a.host=sock.host==='bond'?'bond':{po:sock.host,si:sock.si};
+    return {ok:true};
+  }
+  function stowAcc(st,accUid){st.accs.find(x=>x.uid===accUid).host='inv';return {ok:true};}
+  function unseatOrphans(st){
+    const asm=assembly(st);
+    for(const a of st.accs){
+      if(a.host==='bond'&&!asm)a.host='inv';
+      if(a.host&&a.host.po){const p=poByUid(st,a.host.po);if(!p||p.loc!=='grid')a.host='inv';}
+    }
+  }
+  function adjacent(A,B){
+    for(const [r1,c1] of A)for(const [r2,c2] of B)
+      if(Math.abs(r1-r2)+Math.abs(c1-c2)===1)return true;
+    return false;
+  }
+  // conn = EXTERNAL target tiles this item's tag-connection reaches (directional)
+  function connTargets(st,p){
+    const def=ITEMS[p.id];
+    if(p.loc!=='grid'||!def.conn||!def.conn.length)return [];
+    let sh=def.shape.map(o=>[o[0],o[1]]),cn=def.conn.map(o=>[o[0],o[1]]);
+    for(let i=0;i<(p.rot%4+4)%4;i++){sh=sh.map(([r,c])=>[c,-r]);cn=cn.map(([r,c])=>[c,-r]);}
+    const mr=Math.min(...sh.map(o=>o[0])),mc=Math.min(...sh.map(o=>o[1]));
+    return cn.map(([r,c])=>[r-mr+p.cell[0],c-mc+p.cell[1]]);
+  }
+  function contactPairs(A,B){
+    const out=[];
+    for(const a of A)for(const b of B)
+      if(Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])===1)out.push([a,b]);
+    return out;
+  }
+  function combos(st){
+    const out=[],cbp=cellBPMap(st),placed=st.pos.filter(p=>p.loc==='grid');
+    const asm=assembly(st);
+    if(asm)out.push({name:'Assembled: Longsword',cells:asm.cells,desc:'Blade + Hilt flush-joined → Strike 10 / 4 ticks.'});
+    for(const a of placed)for(const b of placed){
+      if(a.uid>=b.uid)continue;
+      const ca=cellsOf(st,a),cb=cellsOf(st,b);
+      if(cbp[key(...ca[0])]!==cbp[key(...cb[0])])continue;
+      const ta=connTargets(st,a),tb=connTargets(st,b);
+      const hit=(T,cells)=>T.filter(t=>cells.some(c=>c[0]===t[0]&&c[1]===t[1]));
+      const pairs=hit(ta,cb).concat(hit(tb,ca)); // target tiles that landed on the partner
+      if(!pairs.length)continue;
+      const da=ITEMS[a.id],db=ITEMS[b.id];
+      const fl=da.el.includes('Flame')?a:(db.el.includes('Flame')?b:null);
+      const oil=da.el.includes('Oil')?a:(db.el.includes('Oil')?b:null);
+      if(fl&&oil&&fl!==oil)out.push({name:'Ignite',cells:ca.concat(cb),pairs,desc:'Flame + Oil connected → Burn applications ×2.'});
+      const wep=(da.type==='Weapon'||a.id==='blade')?a:((db.type==='Weapon'||b.id==='blade')?b:null);
+      if(fl&&wep&&fl!==wep)out.push({name:'Flaming Blade',cells:ca.concat(cb),pairs,desc:'Flame connected to a Weapon → adds Burn on hit.'});
+    }
+    for(const bp of st.bps){
+      const beasts=placed.filter(p=>ITEMS[p.id].el.includes('Beast')&&cbp[key(...cellsOf(st,p)[0])]===bp.id);
+      if(beasts.length>=2)out.push({name:'Pack Instinct',cells:beasts.flatMap(p=>cellsOf(st,p)),desc:beasts.length+' Beast POs in '+bp.name+' → each +2 damage per other.'});
+    }
+    return out;
+  }
+  const DIRS={0:[-1,0],1:[-1,1],2:[0,1],3:[1,1],4:[1,0],5:[1,-1],6:[0,-1],7:[-1,-1]};
+  function traceBeams(st){
+    const lk=linkerMap(st),beams=[];
+    for(const bp of st.bps)for(const d of bp.linker.dirs){
+      let [r,c]=linkerCell(bp);const path=[];let to=null;
+      while(true){
+        r+=DIRS[d][0];c+=DIRS[d][1];
+        if(r<1||r>ROWS||c<1||c>COLS)break;
+        path.push([r,c]);
+        if(lk[key(r,c)]){to=lk[key(r,c)];break;}
+      }
+      beams.push({from:bp.id,dir:d,path,to});
+    }
+    for(const bm of beams)bm.mutual=!!(bm.to&&beams.some(o=>o.from===bm.to&&o.to===bm.from));
+    return beams;
+  }
+  return {connTargets,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
+          canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
+          sockets,hostOk,seatAcc,stowAcc,unseatOrphans,combos,traceBeams,DIRS,key};
+}
+return {create,rotOffsets};
+});
+
+</script>
+<script>
+// backpack_ragnarok mock v0.5 — UI layer (browser only; all logic lives in engine.js)
+(function(){
+'use strict';
+const {LAYOUT,ITEMS,ACC_DEFS}=GameData;
+const E=Engine.create(ITEMS,ACC_DEFS,LAYOUT);
+const state=GameData.makeState();
+const ROWS=LAYOUT.ROWS,COLS=LAYOUT.COLS;
+const CELL=80,PAD=38,INVX=PAD+COLS*CELL+34,INVY=PAD,INVW=200,INVCOL=2,INVBOX=92;
+const SOCK_GLYPH={gem:'◆',edge:'▷',coat:'●',bond:'▭'};
+const ARROWS={0:'↑',1:'↗',2:'→',3:'↘',4:'↓',5:'↙',6:'←',7:'↖'};
+const key=E.key,cx=c=>PAD+(c-1)*CELL+CELL/2,cy=r=>PAD+(r-1)*CELL+CELL/2;
+const LANG={cur:'ja'};
+const T=(d,f)=>LANG.cur==='ja'?(d[f+'_ja']||d[f]):d[f];
+const EFF=d=>LANG.cur==='ja'?(d.eff_ja||d.eff):(d.eff_en||d.eff);
+const NS='http://www.w3.org/2000/svg';
+function el(n,att,parent){const e=document.createElementNS(NS,n);for(const k in att)e.setAttribute(k,att[k]);if(parent)parent.appendChild(e);return e;}
+function mapPt(k,x,y,W0,H0){k=k%4;if(k===0)return [x,y];if(k===1)return [H0-y,x];if(k===2)return [W0-x,H0-y];return [y,W0-x];}
+const W=PAD*2+COLS*CELL+INVW+42,H=PAD*2+ROWS*CELL;
+const svg=el('svg',{width:W,height:H,viewBox:'0 0 '+W+' '+H});
+document.getElementById('canvasWrap').appendChild(svg);
+const defs=el('defs',{},svg);
+const mk=(id,color)=>{const m=el('marker',{id,viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);el('path',{d:'M0,0 L10,5 L0,10 z',fill:color},m);};
+mk('arr','#59d6d6');mk('arrDud','#6a6a6a');
+const gBase=el('g',{},svg),gBeams=el('g',{},svg),gItems=el('g',{},svg),gSock=el('g',{},svg),
+      gLinkers=el('g',{},svg),gChain=el('g',{},svg),gInvFrame=el('g',{},svg),gInv=el('g',{},svg),
+      gTarget=el('g',{'pointer-events':'none'},svg),gCarry=el('g',{'pointer-events':'none'},svg);
+el('rect',{x:INVX-10,y:INVY-10,width:INVW+20,height:ROWS*CELL+20,rx:10,fill:'#171512',stroke:'#3a342a','stroke-width':1.5},gInvFrame);
+el('text',{x:INVX+INVW/2,y:INVY+12,'text-anchor':'middle',fill:'#c9bd9c','font-size':13,'font-weight':'bold'},gInvFrame).textContent='INVENTORY';
+el('text',{x:INVX+INVW/2,y:INVY+28,'text-anchor':'middle',fill:'#6f675a','font-size':10.5},gInvFrame).textContent='items parked here take no effect';
+
+const tooltip=document.getElementById('tooltip');
+function showTip(html,ev){tooltip.innerHTML=html;tooltip.style.display='block';moveTip(ev);}
+function moveTip(ev){const m=16;let x=ev.clientX+m,y=ev.clientY+m;
+  const r=tooltip.getBoundingClientRect();
+  if(x+r.width>innerWidth-8)x=ev.clientX-r.width-m;if(y+r.height>innerHeight-8)y=ev.clientY-r.height-m;
+  tooltip.style.left=x+'px';tooltip.style.top=y+'px';}
+function hideTip(){tooltip.style.display='none';}
+function hover(g,html){g.addEventListener('mousemove',moveTip);
+  g.addEventListener('mouseenter',e=>showTip(typeof html==='function'?html():html,e));
+  g.addEventListener('mouseleave',hideTip);}
+function poTip(p){
+  const d=ITEMS[p.id],si=E.shapeInfo(p.id,p.rot);
+  let s='<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
+  '<div class="shape">'+si.h+'×'+si.w+' (rot '+(p.rot%4*90)+'°) · '+d.type+(d.el.length?' · tags: '+d.el.join(', '):'')+'</div>'+
+  '<div class="eff">'+EFF(d)+'</div>';
+  const hosted=state.accs.filter(a=>a.host&&a.host.po===p.uid);
+  if(hosted.length)s+='<div class="eff ok">Seated: '+hosted.map(a=>ACC_DEFS[a.id].name).join(', ')+'</div>';
+  return s;
+}
+function accTip(a,host){
+  const d=ACC_DEFS[a.id];
+  return '<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
+  '<div class="shape">Accessory · slot: '+d.slot+' '+SOCK_GLYPH[d.slot]+(d.reqTags.length?' · needs socket tags: '+d.reqTags.join(', '):' · no tag requirement')+(host?' · on '+host:'')+'</div>'+
+  '<div class="eff">'+EFF(d)+'</div>';
+}
+const poByUid=u=>state.pos.find(p=>p.uid===u);
+const bpById=id=>state.bps.find(b=>b.id===id);
+function poBox(p){const {w,h}=E.shapeInfo(p.id,p.rot);
+  return {x:PAD+(p.cell[1]-1)*CELL,y:PAD+(p.cell[0]-1)*CELL,w:w*CELL,h:h*CELL};}
+function outlinePath(cells){
+  const set=new Set(cells.map(([r,c])=>key(r,c)));let d='';
+  for(const [r,c] of cells){
+    const x=PAD+(c-1)*CELL,y=PAD+(r-1)*CELL;
+    if(!set.has(key(r-1,c)))d+='M'+x+','+y+' h'+CELL+' ';
+    if(!set.has(key(r+1,c)))d+='M'+x+','+(y+CELL)+' h'+CELL+' ';
+    if(!set.has(key(r,c-1)))d+='M'+x+','+y+' v'+CELL+' ';
+    if(!set.has(key(r,c+1)))d+='M'+(x+CELL)+','+y+' v'+CELL+' ';
+  }
+  return d;
+}
+function drawPOArt(p,parent,x,y){ // art only, at pixel (x,y), rotation-aware
+  const {w,h}=E.shapeInfo(p.id,p.rot);
+  const {w:cw,h:ch}=E.shapeInfo(p.id,0),W0=cw*CELL,H0=ch*CELL,k=p.rot%4;
+  const tr=['translate('+x+','+y+')','translate('+(x+w*CELL)+','+y+') rotate(90)',
+            'translate('+(x+w*CELL)+','+(y+h*CELL)+') rotate(180)','translate('+x+','+(y+h*CELL)+') rotate(270)'][k];
+  const inner=el('g',{transform:tr},parent);
+  const d=ITEMS[p.id];
+  if(d.stretch)el('use',{href:'#'+d.icon,x:W0*0.10,y:4,width:W0*0.80,height:H0-8},inner);
+  else el('use',{href:'#'+d.icon,x:W0*0.06,y:H0*0.05,width:W0*0.88,height:H0*0.90},inner);
+}
+let carry=null;
+function renderAll(){
+  E.unseatOrphans(state);
+  gBase.innerHTML='';gBeams.innerHTML='';gItems.innerHTML='';gSock.innerHTML='';
+  gLinkers.innerHTML='';gChain.innerHTML='';gInv.innerHTML='';gTarget.innerHTML='';
+  const hiddenBP=(carry&&carry.armed&&carry.kind==='bp')?carry.bpId:null;
+  const cbp=E.cellBPMap(state);
+  // axis labels
+  for(let c=1;c<=COLS;c++)el('text',{x:cx(c),y:PAD-16,fill:'#6f675a','text-anchor':'middle','font-size':12},gBase).textContent=String.fromCharCode(64+c);
+  for(let r=1;r<=ROWS;r++)el('text',{x:PAD-16,y:cy(r)+4,fill:'#6f675a','text-anchor':'middle','font-size':12},gBase).textContent=r;
+  // cells
+  for(let r=1;r<=ROWS;r++)for(let c=1;c<=COLS;c++){
+    const id=cbp[key(r,c)],bp=id&&id!==hiddenBP?bpById(id):null;
+    el('rect',{x:PAD+(c-1)*CELL,y:PAD+(r-1)*CELL,width:CELL,height:CELL,rx:3,
+      fill:bp?bp.color:'#191919','fill-opacity':bp?0.26:1,stroke:bp?bp.color:'#242424','stroke-opacity':bp?0.35:1,'stroke-width':1},gBase);
+  }
+  const occ=E.occupancy(state);
+  const lkm=E.linkerMap(state);
+  for(const bp of state.bps){
+    if(bp.id===hiddenBP)continue;
+    const cells=E.bpCells(bp);
+    el('path',{d:outlinePath(cells),stroke:bp.color,'stroke-width':3,fill:'none','stroke-linecap':'square'},gBase);
+    const r0=Math.min(...cells.map(c=>c[0])),c0=Math.min(...cells.filter(c=>c[0]===r0).map(c=>c[1]));
+    el('text',{x:PAD+(c0-1)*CELL+4,y:PAD+(r0-1)*CELL-6,fill:bp.color,'font-size':12,'font-weight':'bold'},gBase).textContent=bp.name+' · HP '+(cells.length*5);
+    // empty pieces are BP grab handles
+    for(const [r,c] of cells){
+      if(occ[key(r,c)]||lkm[key(r,c)])continue;
+      const hit=el('rect',{x:PAD+(c-1)*CELL,y:PAD+(r-1)*CELL,width:CELL,height:CELL,fill:'transparent',cursor:'grab'},gBase);
+      hit.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
+      hover(hit,'<h3>'+bp.name+'</h3><div class="eff">Empty Piece — drag here (or the Linker) to move the whole BP with its contents.</div>');
+    }
+  }
+  // beams
+  for(const bm of E.traceBeams(state)){
+    if(bm.from===hiddenBP||bm.to===hiddenBP)continue;
+    const bp=bpById(bm.from),lc=E.linkerCell(bp);
+    let x0=cx(lc[1]),y0=cy(lc[0]),x1,y1;
+    if(bm.to){
+      const last=bm.path[bm.path.length-1];x1=cx(last[1]);y1=cy(last[0]);
+      const L=Math.hypot(x1-x0,y1-y0),ux=(x1-x0)/L,uy=(y1-y0)/L;
+      x0+=ux*28;y0+=uy*28;x1-=ux*26;y1-=uy*26;
+      let px=0,py=0;if(bm.mutual){px=-uy*5;py=ux*5;}
+      el('line',{x1:x0+px,y1:y0+py,x2:x1+px,y2:y1+py,stroke:'#59d6d6','stroke-width':3,'marker-end':'url(#arr)',class:'beam-flow','stroke-opacity':.95},gBeams);
+    }else{
+      const dv=E.DIRS[bm.dir],vl=Math.hypot(dv[1],dv[0]),ux=dv[1]/vl,uy=dv[0]/vl;
+      const b={x0:PAD,y0:PAD,x1:PAD+COLS*CELL,y1:PAD+ROWS*CELL};
+      let t=Infinity;
+      if(ux>0)t=Math.min(t,(b.x1-x0)/ux);if(ux<0)t=Math.min(t,(b.x0-x0)/ux);
+      if(uy>0)t=Math.min(t,(b.y1-y0)/uy);if(uy<0)t=Math.min(t,(b.y0-y0)/uy);
+      x1=x0+ux*t;y1=y0+uy*t;x0+=ux*28;y0+=uy*28;
+      el('line',{x1:x0,y1:y0,x2:x1+ux*8,y2:y1+uy*8,stroke:'#6a6a6a','stroke-width':2,'marker-end':'url(#arrDud)','stroke-dasharray':'3 6','stroke-opacity':.7},gBeams);
+      el('text',{x:x1+ux*20,y:y1+uy*20+4,fill:'#6a6a6a','font-size':15,'text-anchor':'middle'},gBeams).textContent='×';
+    }
+  }
+  // combos & items
+  const cs=E.combos(state),comboSet=new Set();
+  if(document.getElementById('tgCombos').checked)cs.forEach(c=>c.cells.forEach(([r,cc])=>comboSet.add(key(r,cc))));
+  const asm=E.assembly(state);
+  const carriedUids=carry&&carry.armed?(carry.kind==='po'?[carry.uid]:carry.kind==='asm'?[asm?asm.blade.uid:null,asm?asm.hilt.uid:null].filter(Boolean):[]):[];
+  const mergeSword=asm&&state.linked&&!carriedUids.length;
+  for(const p of state.pos){
+    if(p.loc!=='grid')continue;
+    if(carriedUids.includes(p.uid))continue;
+    if(hiddenBP&&E.poInBP(state,p,bpById(hiddenBP)))continue;
+    if(mergeSword&&(p.uid===asm.blade.uid||p.uid===asm.hilt.uid))continue;
+    const g=el('g',{cursor:'grab'},gItems);
+    for(const [r,c] of E.cellsOf(state,p)){
+      const hl=comboSet.has(key(r,c));
+      el('rect',{x:PAD+(c-1)*CELL+3,y:PAD+(r-1)*CELL+3,width:CELL-6,height:CELL-6,rx:6,fill:'#000','fill-opacity':.22,
+        stroke:hl?'#f5a93b':'#00000000','stroke-width':2},g);
+    }
+    const box=poBox(p);
+    drawPOArt(p,g,box.x,box.y);
+    for(const [r,c] of E.connTargets(state,p)){
+      if(r<1||r>ROWS||c<1||c>COLS)continue;
+      const nx=cx(c),ny=cy(r);
+      el('path',{d:'M'+nx+','+(ny-8)+' L'+(nx+8)+','+ny+' L'+nx+','+(ny+8)+' L'+(nx-8)+','+ny+' Z',
+        fill:'none',stroke:'#e9b64d','stroke-width':1.5,'stroke-dasharray':'3 2','stroke-opacity':.8,'pointer-events':'none'},gTarget);
+    }
+    hover(g,()=>poTip(p));
+    g.addEventListener('pointerdown',e=>startCarry(e,carry?'':(state.linked&&asm&&(p.uid===asm.blade.uid||p.uid===asm.hilt.uid))?'asm':'po',p.uid));
+    g.addEventListener('dblclick',()=>{if(carry)return;const r=E.rotatePO(state,p.uid);if(r.ok)renderAll();else flash(r.cells);});
+  }
+  if(mergeSword){
+    const bx=poBox(asm.blade),hx=poBox(asm.hilt);
+    const g=el('g',{cursor:'grab'},gItems);
+    for(const [r,c] of asm.cells){
+      const hl=comboSet.has(key(r,c));
+      el('rect',{x:PAD+(c-1)*CELL+3,y:PAD+(r-1)*CELL+3,width:CELL-6,height:CELL-6,rx:6,fill:'#000','fill-opacity':.22,
+        stroke:hl?'#f5a93b':'#00000000','stroke-width':2},g);
+    }
+    el('path',{d:outlinePath(asm.cells),stroke:'#d7dfe6','stroke-width':1.5,'stroke-dasharray':'2 4',fill:'none','stroke-opacity':.9},g);
+    el('use',{href:'#icon-blade',x:bx.x+bx.w*0.10,y:bx.y+6,width:bx.w*0.80,height:bx.h-6},g);
+    el('use',{href:'#icon-hilt',x:hx.x+hx.w*0.10,y:hx.y,width:hx.w*0.80,height:hx.h-8},g);
+
+    hover(g,'<h3>Longsword <span style="font-size:12px;color:#d7dfe6">assembled · linked</span></h3><div class="eff">Strike 10 / 4 ticks. Drag moves Blade+Hilt together (guard stays). Use the chain button to unlink. Double-click rotates the Blade.</div>');
+    g.addEventListener('pointerdown',e=>startCarry(e,'asm',asm.blade.uid));
+    g.addEventListener('dblclick',()=>{if(carry)return;const r=E.rotatePO(state,asm.blade.uid);if(r.ok)renderAll();else flash(r.cells);});
+  }
+  // active connections: filled diamonds on target tiles that landed
+  if(document.getElementById('tgCombos').checked)
+    for(const c of cs)if(c.pairs)
+      for(const t of c.pairs){
+        const nx=cx(t[1]),ny=cy(t[0]);
+        el('path',{d:'M'+nx+','+(ny-9)+' L'+(nx+9)+','+ny+' L'+nx+','+(ny+9)+' L'+(nx-9)+','+ny+' Z',
+          fill:'#f5a93b','fill-opacity':.65,stroke:'#2b2016','stroke-width':1.5,'pointer-events':'none'},gItems);
+      }
+  // chain-link toggle button (top-right of the assembly)
+  if(asm&&!carriedUids.length&&!(hiddenBP&&E.poInBP(state,asm.blade,bpById(hiddenBP)))){
+    const rs=asm.cells.map(c=>c[0]),csn=asm.cells.map(c=>c[1]);
+    const x=PAD+Math.max(...csn)*CELL-2,y=PAD+(Math.min(...rs)-1)*CELL+2;
+    const g=el('g',{cursor:'pointer'},gChain);
+    el('circle',{cx:x,cy:y,r:11,fill:'#0e0d0b',stroke:state.linked?'#59d6d6':'#7a7568','stroke-width':2},g);
+    const col=state.linked?'#59d6d6':'#7a7568';
+    el('circle',{cx:x-3.5,cy:y,r:3.2,fill:'none',stroke:col,'stroke-width':2},g);
+    el('circle',{cx:x+3.5,cy:y,r:3.2,fill:'none',stroke:col,'stroke-width':2},g);
+    if(!state.linked)el('line',{x1:x-6,y1:y+6,x2:x+6,y2:y-6,stroke:'#c05050','stroke-width':2},g);
+    hover(g,()=>state.linked?
+      '<h3>Chain: LINKED</h3><div class="eff">Bond matched — Blade and Hilt move as one (guard stays seated). Click to unlink and move parts separately.</div>':
+      '<h3>Chain: UNLINKED</h3><div class="eff">Parts move separately (moving a part apart breaks the bond; the guard unseats). Click to link.</div>');
+    g.addEventListener('pointerdown',e=>e.stopPropagation());
+    g.addEventListener('click',e=>{e.stopPropagation();state.linked=!state.linked;renderAll();});
+  }
+  // linkers
+  for(const bp of state.bps){
+    if(bp.id===hiddenBP)continue;
+    const lc=E.linkerCell(bp),x=cx(lc[1]),y=cy(lc[0]);
+    const g=el('g',{cursor:'grab'},gLinkers);
+    el('circle',{cx:x,cy:y,r:26,fill:'#0e0d0b','fill-opacity':.55,stroke:'#59d6d6','stroke-opacity':.5},g);
+    el('use',{href:'#icon-linker_core',x:x-22,y:y-22,width:44,height:44},g);
+    for(const d of bp.linker.dirs){
+      const ang=(d*45-90)*Math.PI/180;
+      el('circle',{cx:x+Math.cos(ang)*30,cy:y+Math.sin(ang)*30,r:4,fill:'#59d6d6'},g);
+    }
+    hover(g,()=>{
+      const txt=E.traceBeams(state).filter(z=>z.from===bp.id).map(z=>{
+        const t=z.to?('links '+z.to.toUpperCase()+(z.mutual?' (mutual)':'')):'dud — flies off the canvas';
+        return 'dir '+z.dir+' '+ARROWS[z.dir]+' → '+t;}).join('<br>');
+      return '<h3>BP Linker</h3><div class="shape">one per BP · drag to move the whole BP</div><div class="eff">'+txt+'</div>';});
+    g.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
+  }
+  // sockets (diegetic)
+  for(const s of E.sockets(state)){
+    let x,y;
+    if(s.host==='bond'){
+      if(!asm)continue;
+      x=cx(asm.hilt.cell[1]);y=PAD+(asm.hilt.cell[0]-1)*CELL;
+      if(hiddenBP&&cbp[key(...asm.hilt.cell)]===hiddenBP)continue;
+    }else{
+      const p=poByUid(s.host);
+      if(hiddenBP&&E.poInBP(state,p,bpById(hiddenBP)))continue;
+      if(carriedUids.includes(p.uid))continue;
+      const box=poBox(p),{w:cw,h:ch}=E.shapeInfo(p.id,0),W0=cw*CELL,H0=ch*CELL;
+      const [mx,my]=mapPt(p.rot%4,s.ax*W0,s.ay*H0,W0,H0);
+      x=box.x+mx;y=box.y+my;
+    }
+    if(s.accUid&&!(carry&&carry.armed&&carry.kind==='acc'&&carry.uid===s.accUid)){
+      const a=state.accs.find(z=>z.uid===s.accUid);
+      const g=el('g',{cursor:'grab'},gSock);
+      if(a.id==='acc_guard'){
+        el('rect',{x:x-23,y:y-7,width:46,height:14,rx:6,fill:'#b08340',stroke:'#2b2016','stroke-width':2.5},g);
+        el('circle',{cx:x-12,cy:y,r:2.2,fill:'#e9b64d'},g);
+        el('circle',{cx:x+12,cy:y,r:2.2,fill:'#e9b64d'},g);
+      }else el('use',{href:'#'+ACC_DEFS[a.id].icon,x:x-12,y:y-12,width:24,height:24},g);
+      el('circle',{cx:x,cy:y,r:15,fill:'transparent'},g);
+      hover(g,()=>accTip(a,s.host==='bond'?'Blade–Hilt bond':ITEMS[poByUid(s.host).id].name));
+      g.addEventListener('pointerdown',e=>startCarry(e,'acc',a.uid));
+    }else if(!s.accUid){
+      const g=el('g',{},gSock);
+      if(s.t==='bond')el('rect',{x:x-23,y:y-7,width:46,height:14,rx:6,fill:'none',stroke:'#b08340','stroke-width':1.5,'stroke-dasharray':'3 3','stroke-opacity':.8},g);
+      else{
+        el('circle',{cx:x,cy:y,r:9,fill:'#0e0d0b','fill-opacity':.5,stroke:'#b08340','stroke-width':1.5,'stroke-dasharray':'3 3','stroke-opacity':.8},g);
+        el('text',{x:x,y:y+3.5,'text-anchor':'middle','font-size':9,fill:'#b08340'},g).textContent=SOCK_GLYPH[s.t];
+      }
+      hover(g,'<h3>Empty '+s.t+' socket '+SOCK_GLYPH[s.t]+'</h3><div class="shape">socket tags: '+(s.tags.join(', ')||'none')+'</div><div class="eff">Accepts '+s.t+'-type accessories whose required tags are all present here.</div>');
+    }
+  }
+  // inventory
+  let slot=0;
+  const entries=[...state.pos.filter(p=>p.loc==='inv').map(o=>({kind:'po',o})),
+                 ...state.accs.filter(a=>a.host==='inv').map(o=>({kind:'acc',o}))];
+  for(const en of entries){
+    if(carry&&carry.armed&&carry.uid===en.o.uid)continue;
+    const col=slot%INVCOL,row=Math.floor(slot/INVCOL);slot++;
+    const bx=INVX+col*(INVBOX+6),by=INVY+40+row*(INVBOX+6);
+    const g=el('g',{cursor:'grab'},gInv);
+    el('rect',{x:bx,y:by,width:INVBOX,height:INVBOX,rx:8,fill:'#1e1b16',stroke:'#3a342a'},g);
+    if(en.kind==='po'){
+      const p=en.o,{w,h}=E.shapeInfo(p.id,p.rot);
+      const sc=Math.min(66/(w*CELL),66/(h*CELL)),dw=w*CELL*sc,dh=h*CELL*sc;
+      const ig=el('g',{transform:'translate('+(bx+(INVBOX-dw)/2)+','+(by+(INVBOX-dh)/2)+') scale('+sc+')'},g);
+      drawPOArt(p,ig,0,0);
+      hover(g,()=>poTip(p));
+      g.addEventListener('pointerdown',e=>startCarry(e,'po',p.uid));
+      g.addEventListener('dblclick',()=>{if(carry)return;E.rotatePO(state,p.uid);renderAll();});
+    }else{
+      const a=en.o;
+      el('use',{href:'#'+ACC_DEFS[a.id].icon,x:bx+INVBOX/2-20,y:by+INVBOX/2-22,width:40,height:40},g);
+      el('text',{x:bx+INVBOX/2,y:by+INVBOX-8,'text-anchor':'middle','font-size':9.5,fill:'#9a917f'},g).textContent=T(ACC_DEFS[a.id],'name')+' '+SOCK_GLYPH[ACC_DEFS[a.id].slot];
+      hover(g,()=>accTip(a,null));
+      g.addEventListener('pointerdown',e=>startCarry(e,'acc',a.uid));
+    }
+  }
+  // panels
+  document.getElementById('comboList').innerHTML=cs.length?cs.map(c=>'<li><b class="combo-chip">'+c.name+'</b> — '+c.desc+'</li>').join(''):'<li style="color:var(--dim)">none — try placing Flame next to Oil</li>';
+  const cbp2=E.cellBPMap(state);
+  document.getElementById('bpList').innerHTML=state.bps.map(b=>{
+    const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' pieces · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+  document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
+    const A=bm.from.toUpperCase();
+    if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';
+    if(bm.to)return '<li>→ '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' links '+bm.to.toUpperCase()+'</li>';
+    return '<li class="dudt">× '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' — dud (flies off canvas)</li>';}).join('');
+}
+function flash(cells){
+  for(const [r,c] of (cells||[])){
+    if(r<1||r>ROWS||c<1||c>COLS)continue;
+    const f=el('rect',{x:PAD+(c-1)*CELL+2,y:PAD+(r-1)*CELL+2,width:CELL-4,height:CELL-4,rx:6,fill:'none',stroke:'#c05050','stroke-width':3},gTarget);
+    setTimeout(()=>f.remove(),350);
+  }
+}
+function svgPt(e){const r=svg.getBoundingClientRect();return {x:(e.clientX-r.left)*(W/r.width),y:(e.clientY-r.top)*(H/r.height)};}
+function cellAt(pt){return [Math.floor((pt.y-PAD)/CELL)+1,Math.floor((pt.x-PAD)/CELL)+1];}
+function startCarry(e,kind,uid){
+  if(carry||!kind)return;
+  // NOTE: no preventDefault — it would suppress derived click/dblclick (rotation)
+  const pt=svgPt(e),cell=cellAt(pt);
+  const c={kind,uid,sx:e.clientX,sy:e.clientY,armed:false,drop:null};
+  if(kind==='po'){const p=poByUid(uid);c.grabOff=p.loc==='grid'?[cell[0]-p.cell[0],cell[1]-p.cell[1]]:[0,0];}
+  if(kind==='asm'){const asm=E.assembly(state);c.grabOff=[cell[0]-asm.anchor[0],cell[1]-asm.anchor[1]];}
+  if(kind==='bp'){const bp=bpById(uid);c.bpId=uid;c.grabOff=[cell[0]-bp.origin[0],cell[1]-bp.origin[1]];}
+  carry=c;
+}
+svg.addEventListener('pointermove',e=>{
+  if(!carry)return;
+  if(!carry.armed){
+    if(Math.hypot(e.clientX-carry.sx,e.clientY-carry.sy)<5)return;
+    carry.armed=true;hideTip();renderAll();
+  }
+  const pt=svgPt(e),cell=cellAt(pt),overInv=pt.x>INVX-14;
+  gCarry.innerHTML='';gTarget.innerHTML='';
+  const paint=(cells,ok)=>{for(const [r,c] of cells){
+    if(r<1||r>ROWS||c<1||c>COLS)continue;
+    el('rect',{x:PAD+(c-1)*CELL+2,y:PAD+(r-1)*CELL+2,width:CELL-4,height:CELL-4,rx:6,
+      fill:ok?'#5cb573':'#c05050','fill-opacity':.25,stroke:ok?'#5cb573':'#c05050','stroke-width':2},gTarget);}};
+  if(carry.kind==='po'){
+    const p=poByUid(carry.uid);
+    const anchor=[cell[0]-carry.grabOff[0],cell[1]-carry.grabOff[1]];
+    if(overInv){carry.drop={type:'inv'};}
+    else{
+      const chk=E.canPlacePO(state,p.uid,p.rot,anchor);
+      carry.drop=chk.ok?{type:'grid',anchor}:null;
+      paint(chk.cells,chk.ok);
+    }
+    const {w,h}=E.shapeInfo(p.id,p.rot);
+    const gh=el('g',{opacity:.75},gCarry);
+    drawPOArt(p,gh,pt.x-w*CELL/2,pt.y-h*CELL/2);
+  }else if(carry.kind==='asm'){
+    const asm=E.assembly(state);
+    const anchor=[cell[0]-carry.grabOff[0],cell[1]-carry.grabOff[1]];
+    if(overInv){carry.drop={type:'inv'};}
+    else{
+      const chk=E.canPlaceAssembly(state,anchor);
+      carry.drop=chk.ok?{type:'grid',anchor}:null;
+      paint(chk.cells,chk.ok);
+    }
+    const gh=el('g',{opacity:.75},gCarry);
+    el('use',{href:'#icon-blade',x:pt.x-32,y:pt.y-110,width:64,height:150},gh);
+    el('use',{href:'#icon-hilt',x:pt.x-32,y:pt.y+40,width:64,height:66},gh);
+  }else if(carry.kind==='bp'){
+    const bp=bpById(carry.bpId);
+    const origin=[cell[0]-carry.grabOff[0],cell[1]-carry.grabOff[1]];
+    if(overInv){carry.drop=null;}
+    else{
+      const chk=E.canMoveBP(state,carry.bpId,origin);
+      carry.drop=chk.ok?{type:'bp',origin}:null;
+      paint(chk.cells,chk.ok);
+      const gh=el('g',{opacity:.5},gCarry);
+      for(const [r,c] of chk.cells)
+        if(r>=1&&r<=ROWS&&c>=1&&c<=COLS)
+          el('rect',{x:PAD+(c-1)*CELL+4,y:PAD+(r-1)*CELL+4,width:CELL-8,height:CELL-8,rx:6,fill:bp.color,'fill-opacity':.4},gh);
+    }
+  }else if(carry.kind==='acc'){
+    const a=state.accs.find(z=>z.uid===carry.uid);
+    let best=null,bd=26;
+    for(const s of E.sockets(state)){
+      let x,y;
+      const asm=E.assembly(state);
+      if(s.host==='bond'){if(!asm)continue;x=cx(asm.hilt.cell[1]);y=PAD+(asm.hilt.cell[0]-1)*CELL;}
+      else{const p=poByUid(s.host);const box=poBox(p),{w:cw,h:ch}=E.shapeInfo(p.id,0);
+        const [mx,my]=mapPt(p.rot%4,s.ax*cw*CELL,s.ay*ch*CELL,cw*CELL,ch*CELL);x=box.x+mx;y=box.y+my;}
+      const v=E.hostOk(state,carry.uid,s),dist=Math.hypot(x-pt.x,y-pt.y);
+      el('circle',{cx:x,cy:y,r:12,fill:'none',stroke:v.ok?'#5cb573':'#c05050','stroke-width':2,'stroke-opacity':dist<bd?1:.55},gTarget);
+      if(dist<bd){bd=dist;best={s,v};}
+    }
+    carry.drop=overInv?{type:'inv'}:(best&&best.v.ok?{type:'sock',skey:best.s.skey}:null);
+    if(best)showTip('<h3>'+ACC_DEFS[a.id].name+' → '+best.s.t+' '+SOCK_GLYPH[best.s.t]+'</h3><div class="eff '+(best.v.ok?'ok':'bad')+'">'+(best.v.ok?'MATCH: type & socket tags OK':'NO: '+best.v.why)+'</div>',e);
+    el('use',{href:'#'+ACC_DEFS[a.id].icon,x:pt.x-16,y:pt.y-16,width:32,height:32,opacity:.85},gCarry);
+  }
+});
+window.addEventListener('pointerup',()=>{
+  if(!carry)return;
+  if(!carry.armed){carry=null;return;} // plain click: keep DOM so dblclick can fire
+  const c=carry;carry=null;
+  if(c.kind==='po'&&c.drop)E.movePO(state,c.uid,c.drop.type==='inv'?'inv':c.drop.anchor);
+  else if(c.kind==='asm'&&c.drop)E.moveAssembly(state,c.drop.type==='inv'?'inv':c.drop.anchor);
+  else if(c.kind==='bp'&&c.drop)E.moveBP(state,c.bpId,c.drop.origin);
+  else if(c.kind==='acc'){
+    if(c.drop&&c.drop.type==='sock')E.seatAcc(state,c.uid,c.drop.skey);
+    else if(c.drop&&c.drop.type==='inv')E.stowAcc(state,c.uid);
+  }
+  gCarry.innerHTML='';gTarget.innerHTML='';hideTip();renderAll();
+});
+window.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&carry){carry=null;gCarry.innerHTML='';gTarget.innerHTML='';renderAll();}
+  if((e.key==='r'||e.key==='R')&&carry&&carry.kind==='po')poByUid(carry.uid).rot=(poByUid(carry.uid).rot+1)%4;
+});
+const langBtn=document.getElementById('langBtn');
+if(langBtn)langBtn.addEventListener('click',()=>{
+  LANG.cur=LANG.cur==='ja'?'en':'ja';
+  document.body.classList.toggle('lang-en',LANG.cur==='en');
+  langBtn.textContent=LANG.cur==='ja'?'\uD83C\uDDEC\uD83C\uDDE7 EN':'\uD83C\uDDEF\uD83C\uDDF5 \u65E5\u672C\u8A9E';
+  renderAll();
+});
+document.getElementById('tgBeams').addEventListener('change',e=>gBeams.setAttribute('visibility',e.target.checked?'visible':'hidden'));
+document.getElementById('tgCombos').addEventListener('change',renderAll);
+renderAll();
+})();
+
+</script>
+</body>
+</html>

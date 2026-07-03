@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+
+  <!-- 1. Rime shard -->
+  <symbol id="icon-rime_shard" viewBox="0 0 64 128">
+    <path d="M 10 112 C 16 106 24 108 32 110 C 40 108 48 106 54 112 C 48 118 40 116 32 114 C 24 116 16 118 10 112 Z" fill="#aebcc8" stroke="none"/>
+    <path d="M 30 10 L 44 44 L 46 92 C 46 106 40 114 32 116 C 24 114 18 106 18 92 L 20 44 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 31 30 L 39 56 L 40 90 C 40 100 36 106 32 108 C 30 105 30 100 30 90 Z" fill="#4a4438" stroke="none"/>
+    <path d="M 30 10 L 44 44 L 40 46 L 28 18 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 20 44 L 26 52 L 24 96 C 24 104 22 108 20 110 C 18 106 18 100 18 92 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 33 62 L 37 78 L 35 92 L 31 92 L 30 78 Z" fill="#59d6d6" stroke="none"/>
+    <path d="M 30 10 L 32 116 M 44 44 L 40 96 M 20 44 L 24 96" fill="none" stroke="#59d6d6" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 30 10 L 44 44 L 46 92 C 46 106 40 114 32 116 C 24 114 18 106 18 92 L 20 44 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 10 112 C 16 106 24 108 32 110 C 40 108 48 106 54 112" fill="none" stroke="#2b2016" stroke-width="2.5" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 2. Frost nail : point DOWN -->
+  <symbol id="icon-frost_nail" viewBox="0 0 64 192">
+    <rect x="24" y="14" width="16" height="30" rx="3" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 24 20 L 40 24 M 24 27 L 40 31 M 24 34 L 40 38" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <rect x="20" y="42" width="24" height="14" rx="3" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="26" cy="49" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <circle cx="38" cy="49" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
+    <path d="M 24 54 L 40 54 L 36 150 L 32 182 L 28 150 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 33 54 L 40 54 L 36 150 L 32 182 L 32 150 Z" fill="#4a4438" stroke="none"/>
+    <path d="M 29 54 L 33 54 L 32 150 L 32 176 L 30 150 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 24 54 L 29 54 L 30 150 L 30 170 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 33 58 L 32 178 M 29 60 L 30 150 M 36.5 60 L 34 150" fill="none" stroke="#59d6d6" stroke-width="1.6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M 24 54 L 40 54 L 36 150 L 32 182 L 28 150 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 3. Hoarfrost creep : bottom-left cell (x0-64,y64-128) empty -->
+  <symbol id="icon-hoarfrost_creep" viewBox="0 0 128 128">
+    <path d="M 8 48 C 9 34 20 24 34 20 L 40 26 L 50 17 L 60 24 L 70 15 L 82 22 C 96 27 108 38 114 52 L 108 58 L 118 66 L 110 74 L 120 84 L 112 92 C 110 106 100 118 84 120 C 90 110 94 98 92 86 C 90 70 80 58 66 54 C 54 51 42 52 33 58 C 24 63 17 62 12 58 C 8 55 7 52 8 48 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 82 22 C 96 27 108 38 114 52 L 108 58 L 118 66 L 110 74 L 120 84 L 112 92 C 110 106 100 118 84 120 C 90 110 94 98 92 86 L 82 74 C 90 80 98 72 96 60 C 94 48 86 40 78 34 Z" fill="#4a4438" opacity="0.4"/>
+    <path d="M 66 54 C 80 58 90 70 92 86 L 80 88 C 78 72 70 62 58 58 Z" fill="#4a4438" opacity="0.3"/>
+    <path d="M 8 48 C 9 34 20 24 34 20 L 40 26 L 50 17 L 60 24 L 70 15 L 80 20 L 74 30 C 62 25 52 26 44 29 C 30 34 20 42 15 52 Z" fill="#d7dfe6"/>
+    <path d="M 34 20 L 40 26 L 50 17 L 58 22 L 52 30 C 46 27 42 27 38 29 Z" fill="#d7dfe6" opacity="0.85"/>
+    <path d="M 40 26 L 46 40 M 60 24 L 62 42 M 88 32 L 92 52 M 104 60 L 92 70 M 110 82 L 96 88 M 100 106 L 88 108" fill="none" stroke="#4a4438" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 50 17 C 50 9 52 4 54 0" fill="none" stroke="#d7dfe6" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 70 15 C 72 7 74 3 78 0" fill="none" stroke="#aebcc8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 34 20 C 28 14 26 8 26 3" fill="none" stroke="#aebcc8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 114 52 C 122 50 127 52 130 56" fill="none" stroke="#d7dfe6" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 118 66 C 126 66 130 70 132 76" fill="none" stroke="#aebcc8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 120 84 C 128 88 130 94 130 100" fill="none" stroke="#d7dfe6" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 84 120 C 86 126 84 128 82 128" fill="none" stroke="#aebcc8" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M 14 42 C 8 38 5 32 5 26" fill="none" stroke="#aebcc8" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="58" cy="36" r="6.5" fill="#59d6d6" stroke="#2b2016" stroke-width="2.5"/>
+    <circle cx="55.5" cy="33.5" r="2" fill="#d7dfe6"/>
+    <path d="M 8 48 C 9 34 20 24 34 20 L 40 26 L 50 17 L 60 24 L 70 15 L 82 22 C 96 27 108 38 114 52 L 108 58 L 118 66 L 110 74 L 120 84 L 112 92 C 110 106 100 118 84 120 C 90 110 94 98 92 86 C 90 70 80 58 66 54 C 54 51 42 52 33 58 C 24 63 17 62 12 58 C 8 55 7 52 8 48 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 4. Glacier cleaver : empty top-right (x64-128,y0-64) and bottom-left (x0-64,y128-192) -->
+  <symbol id="icon-glacier_cleaver" viewBox="0 0 128 192">
+    <rect x="12" y="12" width="18" height="44" rx="4" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 12 20 L 30 24 M 12 28 L 30 32 M 12 36 L 30 40 M 12 44 L 30 48" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <rect x="8" y="6" width="26" height="10" rx="3" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="21" cy="11" r="2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.4"/>
+    <path d="M 28 40 L 60 46 L 62 92 L 100 100 L 102 150 L 120 156 L 116 184 L 84 176 L 82 126 L 44 116 L 40 78 L 26 74 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 60 46 L 62 92 L 100 100 L 102 150 L 120 156 L 116 184 L 84 176 L 82 126 L 60 120 L 60 92 L 44 88 L 44 78 Z" fill="#4a4438" stroke="none" opacity="0.42"/>
+    <path d="M 28 40 L 60 46 L 58 56 L 34 52 L 33 76 L 26 74 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 62 92 L 100 100 L 98 110 L 66 104 L 66 96 Z" fill="#d7dfe6" stroke="none" opacity="0.9"/>
+    <path d="M 40 62 L 54 82 L 50 108 L 88 118 L 92 150" fill="none" stroke="#4a4438" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 118 168 L 116 184 L 84 176 L 85 162 Z" fill="#59d6d6" stroke="none"/>
+    <path d="M 28 40 L 60 46 L 62 92 L 100 100 L 102 150 L 120 156 L 116 184 L 84 176 L 82 126 L 44 116 L 40 78 L 26 74 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+
+  <!-- 5. Permafrost ward : empty top-left (x0-64,y0-64) and top-right (x128-192,y0-64) -->
+  <symbol id="icon-permafrost_ward" viewBox="0 0 192 128">
+    <path d="M 8 84 L 184 84 L 184 118 L 8 118 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 8 84 L 184 84 L 184 90 L 8 90 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 8 108 L 184 108 L 184 118 L 8 118 Z" fill="#4a4438" stroke="none"/>
+    <path d="M 34 90 L 34 108 M 78 90 L 78 108 M 130 90 L 130 108 M 162 90 L 162 108" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 8 99 L 34 99 M 78 99 L 130 99 M 162 99 L 184 99" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 56 108 L 56 118 M 104 108 L 104 118 M 148 108 L 148 118" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <path d="M 74 18 L 118 18 L 122 84 L 70 84 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 74 18 L 92 18 L 90 84 L 70 84 Z" fill="#d7dfe6" stroke="none"/>
+    <path d="M 106 18 L 118 18 L 122 84 L 106 84 Z" fill="#4a4438" stroke="none" opacity="0.45"/>
+    <path d="M 96 34 L 96 66 M 84 46 L 108 46 M 88 58 L 104 58" fill="none" stroke="#59d6d6" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M 8 114 C 26 106 44 112 64 110 C 90 108 120 114 150 110 C 168 108 178 112 184 114 L 184 118 L 8 118 Z" fill="#efe6d2" stroke="none"/>
+    <path d="M 74 18 L 118 18 L 122 84 L 70 84 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 8 84 L 184 84 L 184 118 L 8 118 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 8 112 C 26 105 44 111 64 109 C 90 107 120 113 150 109 C 168 107 178 111 184 113" fill="none" stroke="#2b2016" stroke-width="2.5" stroke-linecap="round"/>
+  </symbol>
+
+  <!-- 6. Niflheim crown : empty bottom-left (x0-64,y64-128) and bottom-right (x128-192,y64-128) -->
+  <symbol id="icon-niflheim_crown" viewBox="0 0 192 128">
+    <path d="M 66 60 L 60 20 L 74 40 L 96 8 L 118 40 L 132 20 L 126 60 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 66 60 L 60 20 L 74 40 L 96 8 L 96 60 Z" fill="#d7dfe6" stroke="none" opacity="0.8"/>
+    <path d="M 96 8 L 118 40 L 132 20 L 126 60 L 96 60 Z" fill="#4a4438" stroke="none" opacity="0.4"/>
+    <rect x="68" y="58" width="56" height="18" rx="4" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 73 67 C 80 62 87 72 96 67 C 105 62 112 72 119 67" fill="none" stroke="#e9b64d" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M 70 76 L 122 76 L 116 116 L 76 116 Z" fill="#7ecbe8" stroke="none"/>
+    <path d="M 70 76 L 96 76 L 96 116 L 76 116 Z" fill="#d7dfe6" stroke="none" opacity="0.7"/>
+    <path d="M 108 76 L 122 76 L 116 116 L 96 116 L 96 76 Z" fill="#4a4438" stroke="none" opacity="0.4"/>
+    <path d="M 76 90 L 116 90 M 79 104 L 113 104" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="96" cy="34" r="8" fill="#d7dfe6" stroke="#2b2016" stroke-width="3"/>
+    <circle cx="93" cy="31" r="2.2" fill="#efe6d2" stroke="none"/>
+    <path d="M 66 60 L 60 20 L 74 40 L 96 8 L 118 40 L 132 20 L 126 60 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M 70 76 L 122 76 L 116 116 L 76 116 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+
+</svg>

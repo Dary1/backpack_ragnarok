@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>batch-001 fit-check results</title>
+<style>
+:root {
+  --bg: #14110d;
+  --panel: #1d1912;
+  --panel2: #241f16;
+  --border: #3a3222;
+  --text: #e8d9b0;
+  --muted: #8a8270;
+  --gold: #c9a227;
+  --green: #5cb573;
+  --red: #d62828;
+  --blue: #7ecbe8;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 32px;
+  background: var(--bg); color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+h1 { color: var(--gold); letter-spacing: 0.06em; text-transform: uppercase; font-size: 22px;
+     border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
+h2 { color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transform: uppercase;
+     margin-top: 40px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+.provenance { color: var(--muted); font-size: 12px; margin-bottom: 4px; font-style: italic; }
+.summary-bar { display: flex; gap: 14px; margin: 18px 0 8px 0; flex-wrap: wrap; }
+.summary-chip { padding: 8px 16px; border-radius: 8px; background: var(--panel);
+  border: 1px solid var(--border); font-size: 14px; }
+.summary-chip b { font-size: 18px; }
+.chip-pass b { color: var(--green); }
+.chip-fail b { color: var(--red); }
+.chip-skip b { color: var(--muted); }
+
+.gallery { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 16px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; width: 340px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-pass { border-color: #2f5c3b; }
+.card-fail { border-color: #6e2626; }
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-title { font-size: 17px; font-weight: bold; }
+.card-sub { font-size: 11px; color: var(--muted); }
+.stat-line { font-size: 12px; color: var(--text); }
+
+.badge { font-size: 11px; padding: 3px 10px; border-radius: 10px; text-transform: uppercase;
+  letter-spacing: 0.04em; font-weight: bold; }
+.badge-pass { background: #1e3a24; color: var(--green); border: 1px solid #2f5c3b; }
+.badge-fail { background: #3a1e1e; color: #ff8a8a; border: 1px solid #6e2626; }
+.badge-skip { background: #2a2a2a; color: var(--muted); border: 1px solid #444; }
+
+.card-imgs { display: flex; gap: 8px; flex-wrap: wrap; }
+.img-block { flex: 1; min-width: 140px; background: var(--panel2); border-radius: 6px;
+  padding: 6px; text-align: center; }
+.img-label { font-size: 10px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.03em; margin-bottom: 4px; }
+.img-block img { max-width: 100%; height: auto; image-rendering: pixelated;
+  border-radius: 4px; border: 1px solid var(--border); }
+.img-error { color: var(--red); font-size: 11px; }
+
+.cov-section { margin-top: 4px; }
+.cov-title { font-size: 10px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.03em; margin-bottom: 4px; }
+.cov-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.cov-cell { font-size: 11px; padding: 3px 6px; border-radius: 4px; background: var(--panel2);
+  border: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }
+.cov-cell.cov-low { border-color: var(--red); background: #2a1414; color: #ff9c9c; }
+.cov-of { font-size: 9px; color: var(--red); text-transform: uppercase; }
+.cov-none { font-size: 11px; color: var(--muted); font-style: italic; }
+
+.fix-text { font-size: 12px; color: var(--blue); background: var(--panel2);
+  border-radius: 6px; padding: 8px; border: 1px solid var(--border); }
+.fix-escalate { color: #ffb37e; }
+.fix-infeasible { color: var(--red); }
+.fix-rotnote { color: var(--gold); }
+
+table.skip-table { width: 100%; border-collapse: collapse; font-size: 12px; color: var(--muted); margin-top: 10px; }
+table.skip-table td, table.skip-table th { padding: 4px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+table.skip-table th { color: var(--gold); text-transform: uppercase; font-size: 10px; letter-spacing: 0.03em; }
+table.skip-table tr:hover td { color: var(--text); }
+</style></head><body>
+
+<h1>batch-001 fit-check results</h1>
+<div class="provenance">tool_fit_check.py -- full parity port of user-provided fit_algorithm.py, REQ-0020</div>
+<div class="meta">generated 2026-07-03 09:28:48 </div>
+
+<div class="summary-bar">
+  <div class="summary-chip chip-pass">PASS: <b>14</b></div>
+  <div class="summary-chip chip-fail">FAIL: <b>0</b></div>
+  <div class="summary-chip chip-skip">SKIPPED: <b>6</b></div>
+  <div class="summary-chip">checked: <b>14</b></div>
+  <div class="summary-chip">total defs: <b>20</b></div>
+</div>
+
+<h2>checked icons</h2>
+<div class="gallery">
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">blade</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-blade &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="blade_current.png" alt="blade current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">30.9%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">35.6%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">hilt</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-hilt &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="hilt_current.png" alt="hilt current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-low"><span class="cov-xy">(0,0)</span><span class="cov-pct">26.5% (low)</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">flame_tablet</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-flame_tablet &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="flame_tablet_current.png" alt="flame_tablet current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">75.3%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">82.3%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">oil_flask</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-oil_flask2 &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="oil_flask_current.png" alt="oil_flask current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-low"><span class="cov-xy">(0,0)</span><span class="cov-pct">26.8% (low)</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">70.2%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">dagger</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-dagger2 &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="dagger_current.png" alt="dagger current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-low"><span class="cov-xy">(0,0)</span><span class="cov-pct">29.4% (low)</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">32.8%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">herb_pouch</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-herb_satchel &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="herb_pouch_current.png" alt="herb_pouch current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">59.6%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">72.1%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">tower_shield</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-tower_shield &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="tower_shield_current.png" alt="tower_shield current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">69.5%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">69.5%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">47.4%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,1)</span><span class="cov-pct">47.4%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">beast_jaw</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-beast_jaw &middot; source=content/live/live_items.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="beast_jaw_current.png" alt="beast_jaw current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">43.7%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">71.4%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,1)</span><span class="cov-pct">66.3%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">rime_shard</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-rime_shard &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="rime_shard_current.png" alt="rime_shard current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">38.2%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">61.4%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">frost_nail</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-frost_nail &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="frost_nail_current.png" alt="frost_nail current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">52.3%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">33.5%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,2)</span><span class="cov-pct">41.3%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">hoarfrost_creep</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-hoarfrost_creep &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="hoarfrost_creep_current.png" alt="hoarfrost_creep current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">32.8%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">48.3%</span></div><div class="cov-cell cov-low"><span class="cov-xy">(1,1)</span><span class="cov-pct">26.5% (low)</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">glacier_cleaver</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-glacier_cleaver &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="glacier_cleaver_current.png" alt="glacier_cleaver current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-low"><span class="cov-xy">(0,0)</span><span class="cov-pct">28.5% (low)</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">31.6%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,1)</span><span class="cov-pct">85.4%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,2)</span><span class="cov-pct">58.7%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">permafrost_ward</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-permafrost_ward &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="permafrost_ward_current.png" alt="permafrost_ward current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">78.2%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(0,1)</span><span class="cov-pct">83.6%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,1)</span><span class="cov-pct">95.8%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(2,1)</span><span class="cov-pct">84.3%</span></div></div>
+  </div>
+  
+</div>
+<div class="card card-pass">
+  <div class="card-head">
+    <div class="card-title">niflheim_crown</div>
+    <span class="badge badge-pass">PASS</span>
+  </div>
+  <div class="card-sub">icon=icon-niflheim_crown &middot; source=content/batches/batch-001-niflheim/draft.json</div>
+  <div class="stat-line">overflow: <b>0 px</b></div>
+  <div class="card-imgs">
+    <div class="img-block"><div class="img-label">current placement</div><img src="niflheim_crown_current.png" alt="niflheim_crown current" loading="lazy"/></div>
+    
+  </div>
+  <div class="cov-section">
+    <div class="cov-title">per-cell coverage (&lt;30% flagged -- binding art rule)</div>
+    <div class="cov-grid"><div class="cov-cell cov-ok"><span class="cov-xy">(0,0)</span><span class="cov-pct">60.9%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,0)</span><span class="cov-pct">71.2%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(2,0)</span><span class="cov-pct">41.3%</span></div><div class="cov-cell cov-ok"><span class="cov-xy">(1,1)</span><span class="cov-pct">46.8%</span></div></div>
+  </div>
+  
+</div>
+</div>
+
+<h2>skipped (6)</h2>
+<table class="skip-table">
+<tr><th>id</th><th>icon</th><th>source</th><th>reason</th></tr>
+<tr><td>acc_gem</td><td>icon-acc_gem</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+<tr><td>acc_frost</td><td>icon-frost_orb</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+<tr><td>acc_whet</td><td>icon-whetstone</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+<tr><td>acc_arrow</td><td>icon-acc_arrowhead</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+<tr><td>acc_poison</td><td>icon-poison_vial</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+<tr><td>acc_guard</td><td>icon-acc_guard</td><td>content/live/live_accs.json</td><td>no shape field (accessory / non-cell item)</td></tr>
+</table>
+
+</body></html>

@@ -1,0 +1,432 @@
+{
+ "schema": "po/2",
+ "entries": [
+  {
+   "id": "blade",
+   "name": "Longsword Blade",
+   "type": "WeaponPart",
+   "el": [
+    "Metal"
+   ],
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-blade",
+   "stretch": true,
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.5,
+     "ay": 0.38
+    }
+   ],
+   "part": {
+    "assembles": "longsword",
+    "role": "blade"
+   },
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.8,
+       2.2
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       22,
+       38
+      ]
+     },
+     "cond": "assembled"
+    }
+   ],
+   "flavor": "Inert alone; sings when it finds its hilt.",
+   "name_ja": "ロングソードの刀身",
+   "flavor_ja": "それ単体では沈黙している。柄を見つけたときだけ歌う。"
+  },
+  {
+   "id": "hilt",
+   "name": "Sword Hilt",
+   "type": "WeaponPart",
+   "el": [
+    "Metal",
+    "Wood"
+   ],
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ]
+   ],
+   "icon": "icon-hilt",
+   "stretch": true,
+   "sockets": [
+    {
+     "t": "gem",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.5,
+     "ay": 0.81
+    }
+   ],
+   "part": {
+    "assembles": "longsword",
+    "role": "hilt"
+   },
+   "effects": [],
+   "flavor": "A pommel waiting for a stone.",
+   "name_ja": "剣の柄",
+   "flavor_ja": "石を待つ、柄頭。"
+  },
+  {
+   "id": "flame_tablet",
+   "name": "Flame Rune Tablet",
+   "type": "Rune",
+   "el": [
+    "Flame"
+   ],
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "conn": [
+    [
+     0,
+     -1
+    ],
+    [
+     1,
+     -1
+    ]
+   ],
+   "icon": "icon-flame_tablet",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "type",
+      "tag": "Weapon"
+     },
+     "verb": {
+      "t": "add_on_hit_status",
+      "status": "Burn",
+      "n": [
+       4,
+       8
+      ]
+     }
+    },
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "element",
+      "tag": "Oil"
+     },
+     "verb": {
+      "t": "amp_status",
+      "status": "Burn",
+      "mult": 2
+     }
+    }
+   ],
+   "flavor": "A shard of Muspelheim litany.",
+   "name_ja": "炎のルーンタブレット",
+   "flavor_ja": "ムスペルヘイムの経文が刻まれた欠片。"
+  },
+  {
+   "id": "oil_flask",
+   "name": "Oil Flask",
+   "type": "Reagent",
+   "el": [
+    "Oil"
+   ],
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "conn": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-oil_flask2",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "adjacent",
+      "tagKind": "element",
+      "tag": "Flame"
+     },
+     "verb": {
+      "t": "amp_status",
+      "status": "Burn",
+      "mult": 2
+     }
+    }
+   ],
+   "flavor": "Slow gold that loves a spark.",
+   "name_ja": "油の小瓶",
+   "flavor_ja": "火花を愛する、粘る黄金。"
+  },
+  {
+   "id": "dagger",
+   "name": "Dagger",
+   "type": "Weapon",
+   "el": [
+    "Metal"
+   ],
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-dagger2",
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.62,
+     "ay": 0.24
+    },
+    {
+     "t": "coat",
+     "tags": [
+      "Metal"
+     ],
+     "ax": 0.38,
+     "ay": 0.52
+    }
+   ],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       0.9,
+       1.2
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       7,
+       11
+      ]
+     }
+    }
+   ],
+   "flavor": "Quick, honest work.",
+   "name_ja": "ダガー",
+   "flavor_ja": "速く、そして正直な仕事。"
+  },
+  {
+   "id": "herb_pouch",
+   "name": "Herb Satchel",
+   "type": "Relic",
+   "el": [],
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-herb_satchel",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.8,
+       2.2
+      ]
+     },
+     "verb": {
+      "t": "heal_bp",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Smells like a meadow that survived.",
+   "name_ja": "薬草の巾着",
+   "flavor_ja": "生き残った草原の匂いがする。"
+  },
+  {
+   "id": "tower_shield",
+   "name": "Tower Shield",
+   "type": "Shield",
+   "el": [
+    "Metal"
+   ],
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-tower_shield",
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "block",
+      "n": [
+       26,
+       46
+      ]
+     }
+    }
+   ],
+   "flavor": "A wall that agreed to travel.",
+   "name_ja": "タワーシールド",
+   "flavor_ja": "旅に出ることを了承した、壁。"
+  },
+  {
+   "id": "beast_jaw",
+   "name": "Beast Jaw",
+   "type": "Weapon",
+   "el": [
+    "Beast"
+   ],
+   "rarity": "Uncommon",
+   "shape": [
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-beast_jaw",
+   "sockets": [
+    {
+     "t": "edge",
+     "tags": [
+      "Bone"
+     ],
+     "ax": 0.72,
+     "ay": 0.3
+    },
+    {
+     "t": "coat",
+     "tags": [
+      "Bone"
+     ],
+     "ax": 0.3,
+     "ay": 0.72
+    }
+   ],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.4,
+       1.7
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       13,
+       23
+      ]
+     }
+    },
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_self_per_tag",
+      "tagKind": "element",
+      "tag": "Beast",
+      "stat": "damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "It still remembers how to bite.",
+   "name_ja": "獣の顎",
+   "flavor_ja": "噛み方を、まだ覚えている。"
+  }
+ ]
+}
