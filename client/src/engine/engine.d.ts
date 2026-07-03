@@ -1,10 +1,12 @@
-// Typed surface for mock-src/engine.js — REQ-0026 T0.1, extended REQ-0027 T0.2.
+// Typed surface for mock-src/engine.js — REQ-0026 T0.1, extended REQ-0027 T0.2,
+// extended REQ-0030 Phase 2 (inventory model).
 //
 // This is NOT a full re-typing of the engine; it covers the queries T0.1's
 // read-only board calls plus the mutator surface T0.2's drag/drop, rotate,
-// BP move, and SI seat/unseat interactions call. The engine itself is
-// consumed as-is (see adapter.ts) — these types describe its existing
-// behavior, they do not change it.
+// BP move, and SI seat/unseat interactions call, plus REQ-0030 Phase 2's
+// inventory-page mutators/queries and the canvas<->page BP transfer API.
+// The engine itself is consumed as-is (see adapter.ts) — these types
+// describe its existing behavior, they do not change it.
 //
 // REQ-0027 T0.2 verification note: re-read mock-src/engine.js fresh against
 // every mutator declaration below. Found and fixed one drift: movePO,
@@ -15,6 +17,13 @@
 // which the drag-drop layer's reject-flash rendering needs. All other
 // mutators' declared shapes already matched engine.js exactly (rotatePO,
 // canMoveBP, canPlaceAssembly, hostOk, seatSI, stowSI, unseatOrphans).
+//
+// REQ-0030 Phase 2 verification note: every inv* declaration below was
+// checked line-for-line against mock-src/engine.js's "Inventory model"
+// section (added Phase 1). Container shape ({bps,pos,sis}) mirrors
+// GameState's own {bps,pos,sis} fields exactly (byte-identical field
+// names), per the engine's own design note ("mirrors the top-level
+// st.{bps,pos,sis} arrays field-for-field").
 
 /** [row, col] grid cell, 1-based per engine.js convention. */
 export type Cell = [number, number];
@@ -106,7 +115,21 @@ export interface PO {
   rot: number; // 0..3
 }
 
+/** SI host, canvas semantics: 'inv' (unseated/legacy list-stow), 'bond'
+ * (blade+hilt assembly's bond socket), or a per-PO socket ref. */
 export type SIHost = 'inv' | 'bond' | { po: string; si: number };
+
+/** SI host, INVENTORY PAGE semantics (REQ-0030 Phase 2): a free-placed SI
+ * within a page carries a {page,cell} host object (distinct from the
+ * canvas 'bond' shape and from the legacy 'inv' string sentinel); a
+ * page-stowed-but-unseated SI (invStowSI) uses the SAME 'inv' string
+ * sentinel as canvas/legacy (see engine.js invStowSI comment: "distinct
+ * from a free-placed {page,cell} host" -- i.e. 'inv' itself is shared
+ * vocabulary, only the object shape is page-specific). A per-PO seated
+ * host inside a page is `{po,si}`, same shape as canvas (uid-keyed, so it
+ * never needs rewriting on a BP transfer).
+ */
+export type InvSIHost = 'inv' | { page: number; cell: Cell } | { po: string; si: number };
 
 export interface SI {
   uid: string;
@@ -114,11 +137,27 @@ export interface SI {
   host: SIHost;
 }
 
+/** One inventory page: mirrors the top-level GameState's {bps,pos,sis}
+ * shape field-for-field (REQ-0030 Phase 1 design). PO/SI records inside a
+ * page use the SAME record shapes as canvas (PO.loc/cell, SI.uid/id) --
+ * only SI.host may additionally take the page-local free-placement shape
+ * ({page,cell}), see InvSIHost above. */
+export interface InvPage {
+  bps: BP[];
+  pos: PO[];
+  sis: SI[];
+}
+
+export interface Inventory {
+  pages: InvPage[]; // length PAGE_COUNT (5)
+}
+
 export interface GameState {
   linked: boolean;
   bps: BP[];
   pos: PO[];
   sis: SI[];
+  inv?: Inventory; // absent on a legacy (pre-REQ-0030) saved state; run migrateState() before use
 }
 
 export interface ShapeInfo {
@@ -186,6 +225,12 @@ export interface Combo {
   pairs?: Cell[];
 }
 
+/** Location descriptor for a BP transfer (REQ-0030 Phase 2): identifies
+ * WHICH container (canvas, or a specific 0-based inventory page) a BP
+ * transfer's source/target is. Mirrors engine.js's canTransferBP/
+ * transferBP `from`/`to` argument shape exactly. */
+export type LocRef = { loc: 'canvas' } | { loc: 'inv'; page: number };
+
 /** Return type of Engine.create(...) — the per-content engine instance. */
 export interface EngineInstance {
   key: (r: number, c: number) => string;
@@ -225,6 +270,110 @@ export interface EngineInstance {
   connectionsFrom: (st: GameState, p: PO) => Connection[];
   allConnections: (st: GameState) => AllConnection[];
   contactPairs: (A: Cell[], B: Cell[]) => Array<[Cell, Cell]>;
+
+  // -----------------------------------------------------------------------
+  // Inventory model (REQ-0030 Phase 1 engine / Phase 2 client consumer).
+  // Page index `pg` is always 0-based (0..PAGE_COUNT-1), matching
+  // engine.js's `page(st,n)` -- NOT the 1-based tab label shown in the UI.
+  // -----------------------------------------------------------------------
+
+  /** Number of inventory pages (5). */
+  PAGE_COUNT: number;
+
+  /** Fresh, empty {pages:[PAGE_COUNT x {bps:[],pos:[],sis:[]}]}. Used for
+   * client-side migration fallback (a state with no st.inv at all) and
+   * anywhere else a correctly-shaped empty inventory is needed without
+   * hand-rolling the page array shape. */
+  emptyInventory: () => Inventory;
+
+  /** Pure legality check for placing/moving PO `uid` (already present in
+   * page `pg`'s pos[]) at rotation `rot`, anchored at `anchor`. Free
+   * placement (no BP) is legal; landing on a BP requires full containment
+   * (same law as canvas, just not mandatory the way canvas is). */
+  invCanPlacePO: (st: GameState, pg: number, uid: string, rot: number, anchor: Cell) => PlacementCheck;
+  /** Mutates: moves PO `uid` within page `pg` to `anchor`. No 'inv' sentinel
+   * variant here (a page IS already an inventory container) -- always a
+   * concrete cell. */
+  invMovePO: (st: GameState, pg: number, uid: string, anchor: Cell) => { ok: boolean; why?: string; cells?: Cell[]; bp?: string };
+  /** dblclick-CW rotate equivalent inside a page (mirrors rotatePO). */
+  invRotatePO: (st: GameState, pg: number, uid: string) => { ok: boolean; why?: string; cells?: Cell[]; bp?: string };
+
+  /** Free-placed SI legality within a page -- ALWAYS a single [row,col]
+   * cell (1x1 footprint regardless of the SI's own def), and MAY NOT land
+   * on any BP cell (a bare SI cannot sit on top of BP infrastructure --
+   * resolved ambiguity, see REQ-0030 report). `exclUids` defaults to
+   * `[uid]` when omitted (matches engine.js's own default). */
+  invCanPlaceSI: (st: GameState, pg: number, uid: string, anchor: Cell, exclUids?: string[]) => PlacementCheck;
+  /** Mutates: relocates a free-placed SI within page `pg` to `anchor`
+   * (sets its host to `{page:pg,cell:anchor}`). */
+  invMoveSI: (st: GameState, pg: number, uid: string, anchor: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
+
+  /** Every open/filled socket of every PO placed in page `pg` (free-placed
+   * or on an inventory BP alike) -- same shape as sockets(st), but NEVER
+   * emits a 'bond' pseudo-socket (no assembly concept inside a page). */
+  pageSockets: (st: GameState, pg: number) => Socket[];
+  /** Seats SI `siUid` (must already be IN this page's sis[]) onto socket
+   * `skey` (from pageSockets). Works whether the target PO is free-placed
+   * or sitting on an inventory BP -- no distinction needed. */
+  invSeatSI: (st: GameState, pg: number, siUid: string, skey: string) => { ok: boolean; why?: string };
+  /** Unseats SI `siUid` within page `pg` -- sets host to the 'inv' string
+   * sentinel (page-local stow, distinct from a free-placed {page,cell}
+   * host; the SI keeps no on-grid footprint until moved via invMoveSI). */
+  invStowSI: (st: GameState, pg: number, siUid: string) => { ok: boolean; why?: string };
+
+  /** Legality for placing/moving an entire BP within page `pg`: bounds,
+   * no overlap with another BP in the page, AND (page-specific) no
+   * overlap with any free-placed PO/SI already in the page. `exclUids`
+   * should list the BP's own traveling contents' uids when checking a
+   * same-page reposition (see invMoveBP). */
+  invCanPlaceBP: (st: GameState, pg: number, bpId: string, origin: Cell, exclUids?: string[]) => PlacementCheck;
+  /** Mutates: relocates BP `bpId` WITHIN its own page `pg` (no cross-
+   * container transfer -- see canTransferBP/transferBP for that). Contents
+   * (POs fully inside the BP) shift by the same dr/dc, same as moveBP. */
+  invMoveBP: (st: GameState, pg: number, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** True if PO `p` (already page-local) is fully contained within BP
+   * `bp`'s footprint (both from the SAME page's arrays). Container-
+   * independent shape math, callable with any {bps,pos,sis}-shaped page. */
+  poInBPIn: (p: PO, bp: BP) => boolean;
+  /** Absolute [row,col] cells of PO `p`, page-container-independent (same
+   * math as cellsOf, just not requiring the full GameState). */
+  cellsOfIn: (p: PO) => Cell[];
+  /** cell -> BP id map for an explicit {bps,...} container (canvas OR one
+   * page) -- container-parameterized equivalent of cellBPMap. */
+  cellBPMapIn: (container: { bps: BP[] }) => Record<string, string>;
+  /** Occupancy map (PO footprints AND free-placed 1x1 SIs) for an explicit
+   * {pos,sis} container -- container-parameterized equivalent of
+   * occupancy(), extended to also block free-placed SI cells. */
+  invOccupancy: (container: { pos: PO[]; sis?: SI[] }, exclUids?: string[]) => Record<string, string>;
+
+  /** Pure (no mutation) legality check for transferring BP `bpId` from
+   * container `from` to container `to`, landing at `origin` within `to`.
+   * A canvas target enforces canvas's simpler rule (bounds + no BP
+   * overlap; POs on canvas always belong to a BP already, so there is no
+   * free-placed-item overlap concept there). A page target additionally
+   * checks free-placed PO/SI overlap, excluding the BP's own traveling
+   * contents. */
+  canTransferBP: (st: GameState, from: LocRef, to: LocRef, bpId: string, origin: Cell) => PlacementCheck;
+  /** Mutates. Fails CLEANLY (state fully untouched) when illegal --
+   * legality is always checked first via canTransferBP internally, so a
+   * rejected transfer never partially moves contents. On success, splices
+   * the BP + every PO fully inside it + those POs' seated SIs out of
+   * `from`'s arrays and into `to`'s arrays, shifting moved POs' cell by
+   * the BP's new-origin-minus-old-origin delta. If `to.loc==='canvas'`,
+   * also runs unseatOrphans (a transferred blade/hilt pair might now
+   * (dis)qualify for the 'bond' assembly seat). */
+  transferBP: (st: GameState, from: LocRef, to: LocRef, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
+
+  /** Accepts a LEGACY-shaped state (no st.inv, and/or legacy loc:'inv'/
+   * host:'inv' list-inventory entries) and returns a NEW state object
+   * (does NOT mutate the input) with a populated st.inv: legacy unplaced
+   * POs first-fit-placed (POs first, then SIs, per REQ-0030 orchestrator
+   * default), starting on page 1 (index 0) and overflowing onto
+   * subsequent pages if page 1 fills. Un-fittable leftovers (all 5 pages
+   * full) remain in their original legacy loc:'inv'/host:'inv' form --
+   * never silently dropped. Safe/idempotent to call on an ALREADY-migrated
+   * state (no legacy entries left to migrate -- a no-op copy). */
+  migrateState: (oldState: GameState) => GameState;
 }
 
 export interface EngineModule {
