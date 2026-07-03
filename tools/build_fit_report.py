@@ -4,7 +4,7 @@ tools/build_fit_report.py -- Fit-check RESULT visualization page builder (REQ-00
 
 Deterministic report/build script. For every symbol with a "shape" def across
 the project's live + draft defs files, runs the fit CHECK against the current
-live sprite (content/sprite_all_v6.svg) by IMPORTING tool_fit_check.py as a
+live sprite (content/sprite_all_v7.svg) by IMPORTING tool_fit_check.py as a
 module -- it does not reimplement, fork, or duplicate any of that tool's
 algorithmic logic. All allowed-region masks, content masks, coverage numbers,
 and solve() prescriptions come directly from tool_fit_check's own functions.
@@ -52,9 +52,10 @@ import tool_fit_check as fit  # noqa: E402  (import as module -- do not fork its
 # CONFIG
 # ---------------------------------------------------------------------
 # Sprite path is parameterizable via --sprite (REQ: v5 fit-report regen);
-# defaults to v6, the current canonical sprite (v5/v6 fix iterations landed
-# the centered-position re-fixes; v6 is what the live report is built from).
-DEFAULT_SPRITE_PATH = os.path.join(PROJECT_ROOT, "content", "sprite_all_v6.svg")
+# defaults to v7, the current canonical sprite (REQ-0025: art unified to
+# v7, legacy v3/v4/v5/v6 removed; v7 also carries the pruned orphan-symbol
+# set from the REQ-0025 cleanup).
+DEFAULT_SPRITE_PATH = os.path.join(PROJECT_ROOT, "content", "sprite_all_v7.svg")
 SPRITE_PATH = DEFAULT_SPRITE_PATH
 DEFS_PATHS = [
     os.path.join(PROJECT_ROOT, "content", "live", "live_items.json"),
@@ -477,7 +478,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description="Build fit-check result visualization page (REQ-0022)")
     ap.add_argument("--sprite", default=DEFAULT_SPRITE_PATH,
-                    help="path to sprite SVG to check/render against (default: content/sprite_all_v6.svg)")
+                    help="path to sprite SVG to check/render against (default: content/sprite_all_v7.svg)")
     args = ap.parse_args()
 
     results = build_report(sprite_path=args.sprite)
