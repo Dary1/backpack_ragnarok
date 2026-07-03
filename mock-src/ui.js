@@ -1,13 +1,14 @@
 // backpack_ragnarok mock v0.5 — UI layer (browser only; all logic lives in engine.js)
 (function(){
 'use strict';
-const {LAYOUT,ITEMS,ACC_DEFS}=GameData;
-const E=Engine.create(ITEMS,ACC_DEFS,LAYOUT);
+const {LAYOUT,ITEMS,SI_DEFS}=GameData;
+const E=Engine.create(ITEMS,SI_DEFS,LAYOUT);
 const state=GameData.makeState();
 const ROWS=LAYOUT.ROWS,COLS=LAYOUT.COLS;
 const CELL=80,PAD=38,INVX=PAD+COLS*CELL+34,INVY=PAD,INVW=200,INVCOL=2,INVBOX=92;
 const SOCK_GLYPH={gem:'◆',edge:'▷',coat:'●',bond:'▭'};
 const ARROWS={0:'↑',1:'↗',2:'→',3:'↘',4:'↓',5:'↙',6:'←',7:'↖'};
+const COMPASS={0:'N',1:'NE',2:'E',3:'SE',4:'S',5:'SW',6:'W',7:'NW'};
 const key=E.key,cx=c=>PAD+(c-1)*CELL+CELL/2,cy=r=>PAD+(r-1)*CELL+CELL/2;
 const LANG={cur:'ja'};
 const T=(d,f)=>LANG.cur==='ja'?(d[f+'_ja']||d[f]):d[f];
@@ -43,14 +44,14 @@ function poTip(p){
   let s='<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
   '<div class="shape">'+si.h+'×'+si.w+' (rot '+(p.rot%4*90)+'°) · '+d.type+(d.el.length?' · tags: '+d.el.join(', '):'')+'</div>'+
   '<div class="eff">'+EFF(d)+'</div>';
-  const hosted=state.accs.filter(a=>a.host&&a.host.po===p.uid);
-  if(hosted.length)s+='<div class="eff ok">Seated: '+hosted.map(a=>ACC_DEFS[a.id].name).join(', ')+'</div>';
+  const hosted=state.sis.filter(a=>a.host&&a.host.po===p.uid);
+  if(hosted.length)s+='<div class="eff ok">Seated: '+hosted.map(a=>SI_DEFS[a.id].name).join(', ')+'</div>';
   return s;
 }
-function accTip(a,host){
-  const d=ACC_DEFS[a.id];
+function siTip(a,host){
+  const d=SI_DEFS[a.id];
   return '<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
-  '<div class="shape">Accessory · slot: '+d.slot+' '+SOCK_GLYPH[d.slot]+(d.reqTags.length?' · needs socket tags: '+d.reqTags.join(', '):' · no tag requirement')+(host?' · on '+host:'')+'</div>'+
+  '<div class="shape">Socket Item · slot: '+d.slot+' '+SOCK_GLYPH[d.slot]+(d.reqTags.length?' · needs socket tags: '+d.reqTags.join(', '):' · no tag requirement')+(host?' · on '+host:'')+'</div>'+
   '<div class="eff">'+EFF(d)+'</div>';
 }
 const poByUid=u=>state.pos.find(p=>p.uid===u);
@@ -215,7 +216,7 @@ function renderAll(){
     hover(g,()=>{
       const txt=E.traceBeams(state).filter(z=>z.from===bp.id).map(z=>{
         const t=z.to?('links '+z.to.toUpperCase()+(z.mutual?' (mutual)':'')):'dud — flies off the canvas';
-        return 'dir '+z.dir+' '+ARROWS[z.dir]+' → '+t;}).join('<br>');
+        return COMPASS[z.dir]+' '+ARROWS[z.dir]+' → '+t;}).join('<br>');
       return '<h3>BP Linker</h3><div class="shape">one per BP · drag to move the whole BP</div><div class="eff">'+txt+'</div>';});
     g.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
   }
@@ -234,31 +235,31 @@ function renderAll(){
       const [mx,my]=mapPt(p.rot%4,s.ax*W0,s.ay*H0,W0,H0);
       x=box.x+mx;y=box.y+my;
     }
-    if(s.accUid&&!(carry&&carry.armed&&carry.kind==='acc'&&carry.uid===s.accUid)){
-      const a=state.accs.find(z=>z.uid===s.accUid);
+    if(s.siUid&&!(carry&&carry.armed&&carry.kind==='si'&&carry.uid===s.siUid)){
+      const a=state.sis.find(z=>z.uid===s.siUid);
       const g=el('g',{cursor:'grab'},gSock);
       if(a.id==='acc_guard'){
         el('rect',{x:x-23,y:y-7,width:46,height:14,rx:6,fill:'#b08340',stroke:'#2b2016','stroke-width':2.5},g);
         el('circle',{cx:x-12,cy:y,r:2.2,fill:'#e9b64d'},g);
         el('circle',{cx:x+12,cy:y,r:2.2,fill:'#e9b64d'},g);
-      }else el('use',{href:'#'+ACC_DEFS[a.id].icon,x:x-12,y:y-12,width:24,height:24},g);
+      }else el('use',{href:'#'+SI_DEFS[a.id].icon,x:x-12,y:y-12,width:24,height:24},g);
       el('circle',{cx:x,cy:y,r:15,fill:'transparent'},g);
-      hover(g,()=>accTip(a,s.host==='bond'?'Blade–Hilt bond':ITEMS[poByUid(s.host).id].name));
-      g.addEventListener('pointerdown',e=>startCarry(e,'acc',a.uid));
-    }else if(!s.accUid){
+      hover(g,()=>siTip(a,s.host==='bond'?'Blade–Hilt bond':ITEMS[poByUid(s.host).id].name));
+      g.addEventListener('pointerdown',e=>startCarry(e,'si',a.uid));
+    }else if(!s.siUid){
       const g=el('g',{},gSock);
       if(s.t==='bond')el('rect',{x:x-23,y:y-7,width:46,height:14,rx:6,fill:'none',stroke:'#b08340','stroke-width':1.5,'stroke-dasharray':'3 3','stroke-opacity':.8},g);
       else{
         el('circle',{cx:x,cy:y,r:9,fill:'#0e0d0b','fill-opacity':.5,stroke:'#b08340','stroke-width':1.5,'stroke-dasharray':'3 3','stroke-opacity':.8},g);
         el('text',{x:x,y:y+3.5,'text-anchor':'middle','font-size':9,fill:'#b08340'},g).textContent=SOCK_GLYPH[s.t];
       }
-      hover(g,'<h3>Empty '+s.t+' socket '+SOCK_GLYPH[s.t]+'</h3><div class="shape">socket tags: '+(s.tags.join(', ')||'none')+'</div><div class="eff">Accepts '+s.t+'-type accessories whose required tags are all present here.</div>');
+      hover(g,'<h3>Empty '+s.t+' socket '+SOCK_GLYPH[s.t]+'</h3><div class="shape">socket tags: '+(s.tags.join(', ')||'none')+'</div><div class="eff">Accepts '+s.t+'-type Socket Items whose required tags are all present here.</div>');
     }
   }
   // inventory
   let slot=0;
   const entries=[...state.pos.filter(p=>p.loc==='inv').map(o=>({kind:'po',o})),
-                 ...state.accs.filter(a=>a.host==='inv').map(o=>({kind:'acc',o}))];
+                 ...state.sis.filter(a=>a.host==='inv').map(o=>({kind:'si',o}))];
   for(const en of entries){
     if(carry&&carry.armed&&carry.uid===en.o.uid)continue;
     const col=slot%INVCOL,row=Math.floor(slot/INVCOL);slot++;
@@ -275,10 +276,10 @@ function renderAll(){
       g.addEventListener('dblclick',()=>{if(carry)return;E.rotatePO(state,p.uid);renderAll();});
     }else{
       const a=en.o;
-      el('use',{href:'#'+ACC_DEFS[a.id].icon,x:bx+INVBOX/2-20,y:by+INVBOX/2-22,width:40,height:40},g);
-      el('text',{x:bx+INVBOX/2,y:by+INVBOX-8,'text-anchor':'middle','font-size':9.5,fill:'#9a917f'},g).textContent=T(ACC_DEFS[a.id],'name')+' '+SOCK_GLYPH[ACC_DEFS[a.id].slot];
-      hover(g,()=>accTip(a,null));
-      g.addEventListener('pointerdown',e=>startCarry(e,'acc',a.uid));
+      el('use',{href:'#'+SI_DEFS[a.id].icon,x:bx+INVBOX/2-20,y:by+INVBOX/2-22,width:40,height:40},g);
+      el('text',{x:bx+INVBOX/2,y:by+INVBOX-8,'text-anchor':'middle','font-size':9.5,fill:'#9a917f'},g).textContent=T(SI_DEFS[a.id],'name')+' '+SOCK_GLYPH[SI_DEFS[a.id].slot];
+      hover(g,()=>siTip(a,null));
+      g.addEventListener('pointerdown',e=>startCarry(e,'si',a.uid));
     }
   }
   // panels
@@ -286,12 +287,12 @@ function renderAll(){
   const cbp2=E.cellBPMap(state);
   document.getElementById('bpList').innerHTML=state.bps.map(b=>{
     const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
-    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
   document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
     const A=bm.from.toUpperCase();
-    if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';
-    if(bm.to)return '<li>→ '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' links '+bm.to.toUpperCase()+'</li>';
-    return '<li class="dudt">× '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' — dud (flies off canvas)</li>';}).join('');
+    if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';
+    if(bm.to)return '<li>→ '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' links '+bm.to.toUpperCase()+'</li>';
+    return '<li class="dudt">× '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' — dud (flies off canvas)</li>';}).join('');
 }
 function flash(cells){
   for(const [r,c] of (cells||[])){
@@ -361,8 +362,8 @@ svg.addEventListener('pointermove',e=>{
         if(r>=1&&r<=ROWS&&c>=1&&c<=COLS)
           el('rect',{x:PAD+(c-1)*CELL+4,y:PAD+(r-1)*CELL+4,width:CELL-8,height:CELL-8,rx:6,fill:bp.color,'fill-opacity':.4},gh);
     }
-  }else if(carry.kind==='acc'){
-    const a=state.accs.find(z=>z.uid===carry.uid);
+  }else if(carry.kind==='si'){
+    const a=state.sis.find(z=>z.uid===carry.uid);
     let best=null,bd=26;
     for(const s of E.sockets(state)){
       let x,y;
@@ -375,8 +376,8 @@ svg.addEventListener('pointermove',e=>{
       if(dist<bd){bd=dist;best={s,v};}
     }
     carry.drop=overInv?{type:'inv'}:(best&&best.v.ok?{type:'sock',skey:best.s.skey}:null);
-    if(best)showTip('<h3>'+ACC_DEFS[a.id].name+' → '+best.s.t+' '+SOCK_GLYPH[best.s.t]+'</h3><div class="eff '+(best.v.ok?'ok':'bad')+'">'+(best.v.ok?'MATCH: type & socket tags OK':'NO: '+best.v.why)+'</div>',e);
-    el('use',{href:'#'+ACC_DEFS[a.id].icon,x:pt.x-16,y:pt.y-16,width:32,height:32,opacity:.85},gCarry);
+    if(best)showTip('<h3>'+SI_DEFS[a.id].name+' → '+best.s.t+' '+SOCK_GLYPH[best.s.t]+'</h3><div class="eff '+(best.v.ok?'ok':'bad')+'">'+(best.v.ok?'MATCH: type & socket tags OK':'NO: '+best.v.why)+'</div>',e);
+    el('use',{href:'#'+SI_DEFS[a.id].icon,x:pt.x-16,y:pt.y-16,width:32,height:32,opacity:.85},gCarry);
   }
 });
 window.addEventListener('pointerup',()=>{
@@ -386,9 +387,9 @@ window.addEventListener('pointerup',()=>{
   if(c.kind==='po'&&c.drop)E.movePO(state,c.uid,c.drop.type==='inv'?'inv':c.drop.anchor);
   else if(c.kind==='asm'&&c.drop)E.moveAssembly(state,c.drop.type==='inv'?'inv':c.drop.anchor);
   else if(c.kind==='bp'&&c.drop)E.moveBP(state,c.bpId,c.drop.origin);
-  else if(c.kind==='acc'){
-    if(c.drop&&c.drop.type==='sock')E.seatAcc(state,c.uid,c.drop.skey);
-    else if(c.drop&&c.drop.type==='inv')E.stowAcc(state,c.uid);
+  else if(c.kind==='si'){
+    if(c.drop&&c.drop.type==='sock')E.seatSI(state,c.uid,c.drop.skey);
+    else if(c.drop&&c.drop.type==='inv')E.stowSI(state,c.uid);
   }
   gCarry.innerHTML='';gTarget.innerHTML='';hideTip();renderAll();
 });

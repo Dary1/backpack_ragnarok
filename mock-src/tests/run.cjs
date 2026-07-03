@@ -10,7 +10,7 @@ function T(name,fn){
 }
 function eq(a,b,msg){if(JSON.stringify(a)!==JSON.stringify(b))throw new Error((msg||'')+' expected '+JSON.stringify(b)+' got '+JSON.stringify(a));}
 function ok(v,msg){if(!v)throw new Error(msg||'expected truthy');}
-function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.ACC_DEFS,Data.LAYOUT)};}
+function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT)};}
 
 T('initial state integrity: no overlaps, all POs legally placed',()=>{
   const {st,E}=fresh();
@@ -25,40 +25,40 @@ T('socket/tag matrix: whetstone rejected by Bone edge (jaw), accepted by Metal e
   const {st,E}=fresh();
   const jawEdge=E.sockets(st).find(s=>s.host==='p7'&&s.t==='edge');
   const dagEdge=E.sockets(st).find(s=>s.host==='p5'&&s.t==='edge');
-  const r1=E.seatAcc(st,'a3',jawEdge.skey);
+  const r1=E.seatSI(st,'a3',jawEdge.skey);
   ok(!r1.ok&&r1.why.includes('lacks tag Metal'),'jaw should reject whetstone: '+r1.why);
-  ok(E.seatAcc(st,'a3',dagEdge.skey).ok,'dagger should accept whetstone');
+  ok(E.seatSI(st,'a3',dagEdge.skey).ok,'dagger should accept whetstone');
 });
 
 T('socket/tag matrix: arrowhead (no req) fits Bone edge; poison fits Bone coat; type mismatch rejected',()=>{
   const {st,E}=fresh();
   const jawEdge=E.sockets(st).find(s=>s.host==='p7'&&s.t==='edge');
   const jawCoat=E.sockets(st).find(s=>s.host==='p7'&&s.t==='coat');
-  ok(E.seatAcc(st,'a4',jawEdge.skey).ok,'arrowhead should fit jaw edge');
-  ok(E.seatAcc(st,'a5',jawCoat.skey).ok,'poison should fit jaw coat');
-  const r=E.seatAcc(st,'a1',E.sockets(st).find(s=>s.host==='p5'&&s.t==='edge').skey);
+  ok(E.seatSI(st,'a4',jawEdge.skey).ok,'arrowhead should fit jaw edge');
+  ok(E.seatSI(st,'a5',jawCoat.skey).ok,'poison should fit jaw coat');
+  const r=E.seatSI(st,'a1',E.sockets(st).find(s=>s.host==='p5'&&s.t==='edge').skey);
   ok(!r.ok&&r.why.includes('socket type'),'gem into edge must fail on TYPE');
 });
 
 T('gem socket occupancy: frost rejected while ruby seated; accepted after stow; self-reseat allowed',()=>{
   const {st,E}=fresh();
   const pommel=()=>E.sockets(st).find(s=>s.host==='p2'&&s.t==='gem');
-  const r1=E.seatAcc(st,'a6',pommel().skey);
+  const r1=E.seatSI(st,'a6',pommel().skey);
   ok(!r1.ok&&r1.why==='socket occupied','frost must be blocked by ruby');
-  ok(E.seatAcc(st,'a1',pommel().skey).ok,'ruby re-seating onto its own socket must be OK (self-occupancy fix)');
-  E.stowAcc(st,'a1');
-  ok(E.seatAcc(st,'a6',pommel().skey).ok,'frost fits after ruby stowed');
+  ok(E.seatSI(st,'a1',pommel().skey).ok,'ruby re-seating onto its own socket must be OK (self-occupancy fix)');
+  E.stowSI(st,'a1');
+  ok(E.seatSI(st,'a6',pommel().skey).ok,'frost fits after ruby stowed');
 });
 
 T('guard lifecycle: stow → reseat → auto-unseat on disassembly (regression for invisible-guard bug)',()=>{
   const {st,E}=fresh();
-  E.stowAcc(st,'a2');
-  eq(st.accs.find(a=>a.id==='acc_guard').host,'inv','guard stowed');
-  ok(E.seatAcc(st,'a2','bond').ok,'guard reseats on bond');
+  E.stowSI(st,'a2');
+  eq(st.sis.find(a=>a.id==='acc_guard').host,'inv','guard stowed');
+  ok(E.seatSI(st,'a2','bond').ok,'guard reseats on bond');
   st.linked=false;
   ok(E.movePO(st,'p2','inv').ok,'hilt stowed (unlinked)');
   E.unseatOrphans(st);
-  eq(st.accs.find(a=>a.id==='acc_guard').host,'inv','guard auto-unseated when bond broke');
+  eq(st.sis.find(a=>a.id==='acc_guard').host,'inv','guard auto-unseated when bond broke');
 });
 
 T('rotation: inventory rotate free; blocked in-place rotate fails with reason',()=>{
@@ -92,12 +92,12 @@ T('linked assembly moves as one (guard stays); unlinked moves blade alone (hilt 
   ok(E.moveAssembly(st,[4,3]).ok,'linked move of whole longsword into gamma col 3');
   eq(st.pos.find(p=>p.uid==='p1').cell,[4,3],'blade moved');
   eq(st.pos.find(p=>p.uid==='p2').cell,[6,3],'hilt moved with blade');
-  eq(st.accs.find(a=>a.id==='acc_guard').host,'bond','guard stayed seated');
+  eq(st.sis.find(a=>a.id==='acc_guard').host,'bond','guard stayed seated');
   // unlinked: blade alone to inventory; hilt must remain placed
   st.linked=false;
   ok(E.movePO(st,'p1','inv').ok);
   eq(st.pos.find(p=>p.uid==='p2').loc,'grid','hilt remains on canvas');
-  eq(st.accs.find(a=>a.id==='acc_guard').host,'inv','guard unseated');
+  eq(st.sis.find(a=>a.id==='acc_guard').host,'inv','guard unseated');
 });
 
 T('assembly to inventory stows both parts',()=>{

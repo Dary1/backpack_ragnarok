@@ -78,7 +78,7 @@ for (const verbT of vocab.verbs) {
 }
 
 // ---- also cover every trigger at least once (some triggers aren't hit by the verb loop) ----
-// on_hit, on_bp_damaged, battle_start need at least one PO example; host_on_hit needs an ACC example.
+// on_hit, on_bp_damaged, battle_start need at least one PO example; host_on_hit needs an SI example.
 const extraPO = [
   {
     id: 'selftest_trig_on_hit', name: 'Selftest trig on_hit', type: vocab.types[0], el: [],
@@ -98,7 +98,7 @@ const extraPO = [
 ];
 poEntries.push(...extraPO);
 
-const accEntries = [
+const siEntries = [
   {
     id: 'selftest_trig_host_on_hit', name: 'Selftest trig host_on_hit', slot: 'gem', reqTags: [],
     icon: 'icon-selftest_trig_host_on_hit', rarity: 'Common',
@@ -107,19 +107,19 @@ const accEntries = [
 ];
 
 // ---- 2. validate via tool_validate.cjs (shell out, same code path as real content) ----
-const batchDraft = { schema: 'batch/1', batch: 'self_test_vocab', items: poEntries, accs: accEntries };
+const batchDraft = { schema: 'batch/1', batch: 'self_test_vocab', items: poEntries, sis: siEntries };
 const draftPath = path.join(DIR, '_self_test_vocab_draft.json');
 fs.writeFileSync(draftPath, JSON.stringify(batchDraft, null, 2));
 
 const liveItemsPath = path.join(DIR, 'live_items.json');
-const liveAccsPath = path.join(DIR, 'live_accs.json');
+const liveSIsPath = path.join(DIR, 'live_sis.json');
 const vocabPath = path.join(DIR, 'content_vocab.json');
 const validatorPath = path.join(DIR, 'tool_validate.cjs');
 
 let validateOut = '';
 let validateExit = 0;
 try {
-  validateOut = execFileSync('node', [validatorPath, vocabPath, liveItemsPath, liveAccsPath, draftPath], { encoding: 'utf8' });
+  validateOut = execFileSync('node', [validatorPath, vocabPath, liveItemsPath, liveSIsPath, draftPath], { encoding: 'utf8' });
 } catch (e) {
   validateExit = e.status;
   validateOut = (e.stdout || '') + (e.stderr || '');
@@ -142,7 +142,7 @@ if (errorLineCount > 0) {
 // ---- 3. render every effect in both locales; check both are non-empty and distinct per verb ----
 log('');
 log('--- render checks (EN / JA) ---');
-const allEntries = poEntries.concat(accEntries);
+const allEntries = poEntries.concat(siEntries);
 for (const entry of allEntries) {
   const en = renderAll(entry.effects, 'en');
   const ja = renderAll(entry.effects, 'ja');
@@ -182,13 +182,13 @@ const badEntry = {
   effects: [{ trigger: { t: 'every_ticks', n: 3 }, verb: { t: 'strike', n: 10 } }], // bare int, should fail
   _expect_reject: 'bare int n instead of [lo,hi] range must be rejected',
 };
-const negBatch = { schema: 'batch/1', batch: 'self_test_vocab_neg', items: [badEntry], accs: [] };
+const negBatch = { schema: 'batch/1', batch: 'self_test_vocab_neg', items: [badEntry], sis: [] };
 const negPath = path.join(DIR, '_self_test_vocab_neg_draft.json');
 fs.writeFileSync(negPath, JSON.stringify(negBatch, null, 2));
 let negOut = '';
 let negExit = 0;
 try {
-  negOut = execFileSync('node', [validatorPath, vocabPath, liveItemsPath, liveAccsPath, negPath], { encoding: 'utf8' });
+  negOut = execFileSync('node', [validatorPath, vocabPath, liveItemsPath, liveSIsPath, negPath], { encoding: 'utf8' });
 } catch (e) {
   negExit = e.status;
   negOut = (e.stdout || '') + (e.stderr || '');
@@ -214,7 +214,7 @@ console.log(lines.join('\n'));
 console.log('');
 console.log('=== self_test_vocab.cjs summary ===');
 console.log('verbs covered: ' + vocab.verbs.length + ' / triggers covered (incl. extras): ' +
-  new Set(poEntries.concat(accEntries).flatMap(e => e.effects.map(f => f.trigger.t))).size + ' of ' + vocab.triggers.length);
+  new Set(poEntries.concat(siEntries).flatMap(e => e.effects.map(f => f.trigger.t))).size + ' of ' + vocab.triggers.length);
 console.log('failures: ' + failures);
 if (failures === 0) {
   console.log('ALL GREEN');

@@ -101,7 +101,7 @@ CLI:
 Each defs.json is either:
   - {"schema":..., "entries": [ {..., "icon": "icon-X", "shape": [[c,r],...]}, ...]}
   - a bare list of such entries
-Entries without a "shape" field (plain accessories) are SKIPPED (reported).
+Entries without a "shape" field (plain socket items) are SKIPPED (reported).
 Entries whose "icon" has no matching <symbol> in the sprite are SKIPPED (reported).
 """
 import sys
@@ -508,7 +508,7 @@ def check_icon(sprite_root, entry, render_dir=None, tag=""):
     eid = entry.get("id", icon_id)
 
     if not shape:
-        return dict(id=eid, icon=icon_id, status="SKIPPED", reason="no shape field (accessory / non-cell item)")
+        return dict(id=eid, icon=icon_id, status="SKIPPED", reason="no shape field (socket item / non-cell item)")
 
     sym, viewbox = extract_symbol(sprite_root, icon_id)
     if sym is None:

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // tool_gen_data.cjs — generates data.js (GameData UMD module) from live JSON + scenario.json.
-// Usage: node tool_gen_data.cjs <vocab> <items> <accs> <scenario.json> <out data.js>
+// Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>
 //
 // v3 changes:
-//   - ITEMS/ACC_DEFS entries now also carry: name_ja, eff_en, eff_ja (rendered via
+//   - ITEMS/SI_DEFS entries now also carry: name_ja, eff_en, eff_ja (rendered via
 //     eff_render.cjs render(effect,locale), all effects joined with ' '), flavor,
 //     flavor_ja, and "conn" (passed through for POs, when present).
 //   - Legacy "eff" field is kept = eff_en, for backward compat with existing UI code.
@@ -22,16 +22,16 @@ function renderEffJoined(effects, locale) {
 function main() {
   const args = process.argv.slice(2);
   if (args.length < 5) {
-    console.error('Usage: node tool_gen_data.cjs <vocab> <items> <accs> <scenario.json> <out data.js>');
+    console.error('Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>');
     process.exit(1);
   }
-  const [vocabPath, itemsPath, accsPath, scenarioPath, outPath] = args;
+  const [vocabPath, itemsPath, sisPath, scenarioPath, outPath] = args;
   const items = loadJSON(itemsPath);
-  const accs = loadJSON(accsPath);
+  const sis = loadJSON(sisPath);
   const scenario = loadJSON(scenarioPath);
 
   const itemEntries = items.entries || [];
-  const accEntries = accs.entries || [];
+  const siEntries = sis.entries || [];
 
   if (!scenario.layout || !Number.isInteger(scenario.layout.ROWS) || !Number.isInteger(scenario.layout.COLS)) {
     console.error('scenario.json missing layout.{ROWS,COLS}');
@@ -64,12 +64,12 @@ function main() {
     ITEMS[e.id] = rec;
   }
 
-  // Build ACC_DEFS map
-  const ACC_DEFS = {};
-  for (const e of accEntries) {
+  // Build SI_DEFS map
+  const SI_DEFS = {};
+  for (const e of siEntries) {
     const eff_en = renderEffJoined(e.effects, 'en');
     const eff_ja = renderEffJoined(e.effects, 'ja');
-    ACC_DEFS[e.id] = {
+    SI_DEFS[e.id] = {
       name: e.name,
       name_ja: e.name_ja,
       slot: e.slot,
@@ -82,7 +82,7 @@ function main() {
       flavor: e.flavor,
       flavor_ja: e.flavor_ja,
     };
-    if (e.conn !== undefined) ACC_DEFS[e.id].conn = e.conn;
+    if (e.conn !== undefined) SI_DEFS[e.id].conn = e.conn;
   }
 
   // makeState payload = deep copy of scenario minus "layout"
@@ -90,7 +90,7 @@ function main() {
   delete scenarioForState.layout;
 
   const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v3)\n' +
-    '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(accsPath) + ' + ' + path.basename(scenarioPath) + '\n' +
+    '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(sisPath) + ' + ' + path.basename(scenarioPath) + '\n' +
     '// Generated: ' + new Date().toISOString() + '\n';
 
   const src = banner +
@@ -101,16 +101,16 @@ function main() {
     "'use strict';\n" +
     "const LAYOUT=" + JSON.stringify(LAYOUT) + ";\n" +
     "const ITEMS=" + JSON.stringify(ITEMS, null, 1) + ";\n" +
-    "const ACC_DEFS=" + JSON.stringify(ACC_DEFS, null, 1) + ";\n" +
+    "const SI_DEFS=" + JSON.stringify(SI_DEFS, null, 1) + ";\n" +
     "const SCENARIO=" + JSON.stringify(scenarioForState, null, 1) + ";\n" +
     "function makeState(){\n" +
     " return JSON.parse(JSON.stringify(SCENARIO));\n" +
     "}\n" +
-    "return {LAYOUT,ITEMS,ACC_DEFS,makeState};\n" +
+    "return {LAYOUT,ITEMS,SI_DEFS,makeState};\n" +
     "});\n";
 
   fs.writeFileSync(outPath, src);
-  console.log('Wrote ' + outPath + ' — ' + Object.keys(ITEMS).length + ' items, ' + Object.keys(ACC_DEFS).length + ' accs, LAYOUT=' + JSON.stringify(LAYOUT));
+  console.log('Wrote ' + outPath + ' — ' + Object.keys(ITEMS).length + ' items, ' + Object.keys(SI_DEFS).length + ' sis, LAYOUT=' + JSON.stringify(LAYOUT));
 }
 
 main();

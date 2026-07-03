@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // tool_integrate.cjs — S3 dynamic integration check for backpack_ragnarok batches.
-// Usage: node tool_integrate.cjs <vocab> <items> <accs> <approved_batch.json>
+// Usage: node tool_integrate.cjs <vocab> <items> <sis> <approved_batch.json>
 // For each batch PO: build a synthetic 1-BP-covers-6x6 state via the engine and
-// exercise placement/rotation/socket behavior. For batch ACCs: probe socket matching.
+// exercise placement/rotation/socket behavior. For batch SIs: probe socket matching.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -13,39 +13,39 @@ function loadJSON(p) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 function main() {
   const args = process.argv.slice(2);
   if (args.length < 4) {
-    console.error('Usage: node tool_integrate.cjs <vocab> <items> <accs> <approved_batch.json>');
+    console.error('Usage: node tool_integrate.cjs <vocab> <items> <sis> <approved_batch.json>');
     process.exit(1);
   }
-  const [vocabPath, itemsPath, accsPath, batchPath] = args;
+  const [vocabPath, itemsPath, sisPath, batchPath] = args;
   const vocab = loadJSON(vocabPath);
   const liveItems = loadJSON(itemsPath);
-  const liveAccs = loadJSON(accsPath);
+  const liveSIs = loadJSON(sisPath);
   const batch = loadJSON(batchPath);
 
   const batchItems = batch.items || [];
-  const batchAccs = batch.accs || [];
+  const batchSIs = batch.sis || [];
 
   const liveItemEntries = liveItems.entries || [];
-  const liveAccEntries = liveAccs.entries || [];
+  const liveSIEntries = liveSIs.entries || [];
 
-  // Merge ITEMS/ACC_DEFS maps: live + batch (batch entries override/extend for probing).
+  // Merge ITEMS/SI_DEFS maps: live + batch (batch entries override/extend for probing).
   const ITEMS = {};
   for (const e of liveItemEntries) ITEMS[e.id] = toItemDef(e);
   for (const e of batchItems) ITEMS[e.id] = toItemDef(e);
 
-  const ACC_DEFS = {};
-  for (const e of liveAccEntries) ACC_DEFS[e.id] = toAccDef(e);
-  for (const e of batchAccs) ACC_DEFS[e.id] = toAccDef(e);
+  const SI_DEFS = {};
+  for (const e of liveSIEntries) SI_DEFS[e.id] = toSIDef(e);
+  for (const e of batchSIs) SI_DEFS[e.id] = toSIDef(e);
 
-  // Add synthetic probe accessories: one per socketType x tag-combo we need to test.
+  // Add synthetic probe socket items: one per socketType x tag-combo we need to test.
   // probe_<type>_notag: slot=type, reqTags=[]
   // probe_<type>_needs_<tag>: slot=type, reqTags=[tag]
   const socketTypes = vocab.socketTypes || ['gem', 'edge', 'coat', 'bond'];
   const socketTags = vocab.socketTags || ['Metal', 'Bone'];
   for (const st of socketTypes) {
-    ACC_DEFS['__probe_' + st + '_open'] = { name: 'Probe(' + st + ',open)', slot: st, reqTags: [], icon: 'icon-probe', rarity: 'Common', eff: '' };
+    SI_DEFS['__probe_' + st + '_open'] = { name: 'Probe(' + st + ',open)', slot: st, reqTags: [], icon: 'icon-probe', rarity: 'Common', eff: '' };
     for (const tg of socketTags) {
-      ACC_DEFS['__probe_' + st + '_need_' + tg] = { name: 'Probe(' + st + ',' + tg + ')', slot: st, reqTags: [tg], icon: 'icon-probe', rarity: 'Common', eff: '' };
+      SI_DEFS['__probe_' + st + '_need_' + tg] = { name: 'Probe(' + st + ',' + tg + ')', slot: st, reqTags: [tg], icon: 'icon-probe', rarity: 'Common', eff: '' };
     }
   }
   // mismatched-type probe generator: for a socket of type T, a probe with slot != T
@@ -57,7 +57,7 @@ function main() {
   function toItemDef(e) {
     return { name: e.name, type: e.type, el: e.el, rarity: e.rarity, shape: e.shape, icon: e.icon, sockets: e.sockets || [], stretch: e.stretch, eff: '' };
   }
-  function toAccDef(e) {
+  function toSIDef(e) {
     return { name: e.name, slot: e.slot, reqTags: e.reqTags || [], icon: e.icon, rarity: e.rarity, eff: '' };
   }
 
@@ -73,7 +73,7 @@ function main() {
         linker: { off: [0, 0], dirs: [] },
       }],
       pos: [],
-      accs: [],
+      sis: [],
     };
   }
   function buildFullMinusLinker() {
@@ -86,7 +86,7 @@ function main() {
     return cells;
   }
 
-  const E = Engine.create(ITEMS, ACC_DEFS, LAYOUT);
+  const E = Engine.create(ITEMS, SI_DEFS, LAYOUT);
 
   const report = [];
   let errorCount = 0;
@@ -125,7 +125,7 @@ function main() {
       else fail(e.id, 'rotation ' + rot + ' not legal at any tested anchor: ' + lastWhy);
     }
 
-    // Sockets: every socket seats a matching probe accessory; rejects type-mismatch probe;
+    // Sockets: every socket seats a matching probe socket item; rejects type-mismatch probe;
     // rejects tag-requiring probe if socket lacks that tag.
     const sockets = e.sockets || [];
     if (sockets.length === 0) {
@@ -133,7 +133,7 @@ function main() {
     } else {
       st = freshState();
       st.pos = [{ uid, id: e.id, loc: 'grid', cell: [2, 1], rot: 0 }];
-      st.accs = [];
+      st.sis = [];
       const engSockets = E.sockets(st).filter(s => s.host === uid);
       sockets.forEach((sdef, si) => {
         const sock = engSockets.find(s => s.si === si);
@@ -141,16 +141,16 @@ function main() {
 
         // matching probe (open, no reqTags)
         const matchProbeId = '__probe_' + sdef.t + '_open';
-        st.accs.push({ uid: 'probe_match_' + si, id: matchProbeId, host: 'inv' });
-        const seatOk = E.seatAcc(st, 'probe_match_' + si, sock.skey);
+        st.sis.push({ uid: 'probe_match_' + si, id: matchProbeId, host: 'inv' });
+        const seatOk = E.seatSI(st, 'probe_match_' + si, sock.skey);
         if (seatOk.ok) info('PASS socket[' + si + '] (' + sdef.t + ') seats matching probe');
         else fail(e.id, 'socket[' + si + '] (' + sdef.t + ') rejected a matching-type probe: ' + seatOk.why);
-        if (seatOk.ok) E.stowAcc(st, 'probe_match_' + si);
+        if (seatOk.ok) E.stowSI(st, 'probe_match_' + si);
 
         // type-mismatched probe should be rejected
         const mismatchId = mismatchTypeFor(sdef.t);
-        st.accs.push({ uid: 'probe_mismatch_' + si, id: mismatchId, host: 'inv' });
-        const seatBad = E.seatAcc(st, 'probe_mismatch_' + si, sock.skey);
+        st.sis.push({ uid: 'probe_mismatch_' + si, id: mismatchId, host: 'inv' });
+        const seatBad = E.seatSI(st, 'probe_mismatch_' + si, sock.skey);
         if (!seatBad.ok) info('PASS socket[' + si + '] rejects type-mismatched probe (' + seatBad.why + ')');
         else fail(e.id, 'socket[' + si + '] incorrectly accepted a type-mismatched probe (' + mismatchId + ')');
 
@@ -159,8 +159,8 @@ function main() {
         const missingTag = socketTags.find(t => !tags.includes(t));
         if (missingTag) {
           const tagProbeId = '__probe_' + sdef.t + '_need_' + missingTag;
-          st.accs.push({ uid: 'probe_tag_' + si, id: tagProbeId, host: 'inv' });
-          const seatTag = E.seatAcc(st, 'probe_tag_' + si, sock.skey);
+          st.sis.push({ uid: 'probe_tag_' + si, id: tagProbeId, host: 'inv' });
+          const seatTag = E.seatSI(st, 'probe_tag_' + si, sock.skey);
           if (!seatTag.ok) info('PASS socket[' + si + '] rejects probe requiring absent tag ' + missingTag + ' (' + seatTag.why + ')');
           else fail(e.id, 'socket[' + si + '] incorrectly accepted a probe requiring absent tag ' + missingTag);
         } else {
@@ -182,13 +182,13 @@ function main() {
     report.push('');
   }
 
-  // ---------- ACC checks ----------
-  for (const e of batchAccs) {
-    report.push('ACC ' + e.id + ' (' + e.name + ')');
-    if (!ACC_DEFS[e.id]) { fail(e.id, 'not found in merged ACC_DEFS map'); continue; }
+  // ---------- SI checks ----------
+  for (const e of batchSIs) {
+    report.push('SI ' + e.id + ' (' + e.name + ')');
+    if (!SI_DEFS[e.id]) { fail(e.id, 'not found in merged SI_DEFS map'); continue; }
 
     const st = freshState();
-    // synthetic host PO with one socket matching this acc's slot, tagged with all vocab tags
+    // synthetic host PO with one socket matching this SI's slot, tagged with all vocab tags
     // so we can independently test the "correct slot, has tag" and "correct slot, missing tag" cases.
     const hostId = '__synthhost_' + e.slot;
     if (!ITEMS[hostId]) {
@@ -198,12 +198,12 @@ function main() {
       };
     }
     st.pos.push({ uid: 'synthhost', id: hostId, loc: 'grid', cell: [2, 1], rot: 0 });
-    st.accs.push({ uid: 'probe_acc', id: e.id, host: 'inv' });
+    st.sis.push({ uid: 'probe_si', id: e.id, host: 'inv' });
 
     const sock = E.sockets(st).find(s => s.host === 'synthhost');
     if (!sock) { fail(e.id, 'engine failed to report synthetic host socket'); report.push(''); continue; }
 
-    const seat = E.seatAcc(st, 'probe_acc', sock.skey);
+    const seat = E.seatSI(st, 'probe_si', sock.skey);
     const reqTags = e.reqTags || [];
     if (reqTags.length === 0 || reqTags.every(t => socketTags.includes(t))) {
       if (seat.ok) info('PASS seats into matching slot=' + e.slot + ' with all-tags host');
@@ -221,9 +221,9 @@ function main() {
     }
     const st2 = freshState();
     st2.pos.push({ uid: 'synthhost2', id: otherHostId, loc: 'grid', cell: [2, 1], rot: 0 });
-    st2.accs.push({ uid: 'probe_acc2', id: e.id, host: 'inv' });
+    st2.sis.push({ uid: 'probe_si2', id: e.id, host: 'inv' });
     const sock2 = E.sockets(st2).find(s => s.host === 'synthhost2');
-    const seat2 = E.seatAcc(st2, 'probe_acc2', sock2.skey);
+    const seat2 = E.seatSI(st2, 'probe_si2', sock2.skey);
     if (!seat2.ok) info('PASS rejects mismatched slot (' + otherSlot + '): ' + seat2.why);
     else fail(e.id, 'incorrectly seated into a mismatched-slot socket (' + otherSlot + ')');
 
@@ -238,9 +238,9 @@ function main() {
       }
       const st3 = freshState();
       st3.pos.push({ uid: 'synthhost3', id: bareHostId, loc: 'grid', cell: [2, 1], rot: 0 });
-      st3.accs.push({ uid: 'probe_acc3', id: e.id, host: 'inv' });
+      st3.sis.push({ uid: 'probe_si3', id: e.id, host: 'inv' });
       const sock3 = E.sockets(st3).find(s => s.host === 'synthhost3');
-      const seat3 = E.seatAcc(st3, 'probe_acc3', sock3.skey);
+      const seat3 = E.seatSI(st3, 'probe_si3', sock3.skey);
       if (!seat3.ok) info('PASS rejects same-slot host lacking required tags ' + JSON.stringify(reqTags) + ': ' + seat3.why);
       else fail(e.id, 'incorrectly seated into a same-slot host lacking required tags ' + JSON.stringify(reqTags));
     } else {
@@ -256,7 +256,7 @@ function main() {
   console.log(report.join('\n'));
   console.log('--- summary ---');
   console.log('PO entries checked: ' + batchItems.length);
-  console.log('ACC entries checked: ' + batchAccs.length);
+  console.log('SI entries checked: ' + batchSIs.length);
   console.log('errors: ' + errorCount);
   process.exit(errorCount > 0 ? 1 : 0);
 }

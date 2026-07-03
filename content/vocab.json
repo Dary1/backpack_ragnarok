@@ -78,7 +78,7 @@
   "Relic": 24
  },
  "trigger_domains": {
-  "accessory_only": [
+  "socket_item_only": [
    "host_on_hit"
   ],
   "po_only": [

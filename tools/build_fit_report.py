@@ -57,7 +57,7 @@ DEFAULT_SPRITE_PATH = os.path.join(PROJECT_ROOT, "content", "sprite_all_v4.svg")
 SPRITE_PATH = DEFAULT_SPRITE_PATH
 DEFS_PATHS = [
     os.path.join(PROJECT_ROOT, "content", "live", "live_items.json"),
-    os.path.join(PROJECT_ROOT, "content", "live", "live_accs.json"),
+    os.path.join(PROJECT_ROOT, "content", "live", "live_sis.json"),
     os.path.join(PROJECT_ROOT, "content", "batches", "batch-001-niflheim", "draft.json"),
 ]
 OUT_DIR = os.path.join(PROJECT_ROOT, "web", "preview", "batch-001", "fit")

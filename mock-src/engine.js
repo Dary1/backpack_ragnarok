@@ -10,7 +10,7 @@ function rotOffsets(base,k){
   const mr=Math.min(...off.map(o=>o[0])),mc=Math.min(...off.map(o=>o[1]));
   return off.map(([r,c])=>[r-mr,c-mc]);
 }
-function create(ITEMS,ACC_DEFS,layout){
+function create(ITEMS,SI_DEFS,layout){
   const ROWS=layout.ROWS,COLS=layout.COLS;
   const key=(r,c)=>r+','+c;
   const shapeInfo=(id,rot)=>{
@@ -130,38 +130,38 @@ function create(ITEMS,ACC_DEFS,layout){
       if(p.loc!=='grid')continue;
       const def=ITEMS[p.id];
       (def.sockets||[]).forEach((s,si)=>{
-        const acc=st.accs.find(a=>a.host&&a.host.po===p.uid&&a.host.si===si);
-        out.push({skey:p.uid+':'+si,host:p.uid,si,t:s.t,tags:s.tags||[],accUid:acc?acc.uid:null,ax:s.ax,ay:s.ay});
+        const seated=st.sis.find(a=>a.host&&a.host.po===p.uid&&a.host.si===si);
+        out.push({skey:p.uid+':'+si,host:p.uid,si,t:s.t,tags:s.tags||[],siUid:seated?seated.uid:null,ax:s.ax,ay:s.ay});
       });
     }
     const asm=assembly(st);
     if(asm){
-      const acc=st.accs.find(a=>a.host==='bond');
-      out.push({skey:'bond',host:'bond',si:0,t:'bond',tags:['Metal'],accUid:acc?acc.uid:null});
+      const seated=st.sis.find(a=>a.host==='bond');
+      out.push({skey:'bond',host:'bond',si:0,t:'bond',tags:['Metal'],siUid:seated?seated.uid:null});
     }
     return out;
   }
-  function hostOk(st,accUid,sock){
-    const a=st.accs.find(x=>x.uid===accUid),d=ACC_DEFS[a.id];
+  function hostOk(st,siUid,sock){
+    const a=st.sis.find(x=>x.uid===siUid),d=SI_DEFS[a.id];
     if(sock.t!==d.slot)return {ok:false,why:'socket type '+sock.t+' ≠ '+d.slot};
-    if(sock.accUid&&sock.accUid!==accUid)return {ok:false,why:'socket occupied'};
+    if(sock.siUid&&sock.siUid!==siUid)return {ok:false,why:'socket occupied'};
     for(const t of (d.reqTags||[]))
       if(!sock.tags.includes(t))return {ok:false,why:'socket lacks tag '+t+' (has: '+(sock.tags.join(', ')||'none')+')'};
     return {ok:true};
   }
-  function seatAcc(st,accUid,skey){
+  function seatSI(st,siUid,skey){
     const sock=sockets(st).find(s=>s.skey===skey);
     if(!sock)return {ok:false,why:'no such socket'};
-    const v=hostOk(st,accUid,sock);
+    const v=hostOk(st,siUid,sock);
     if(!v.ok)return v;
-    const a=st.accs.find(x=>x.uid===accUid);
+    const a=st.sis.find(x=>x.uid===siUid);
     a.host=sock.host==='bond'?'bond':{po:sock.host,si:sock.si};
     return {ok:true};
   }
-  function stowAcc(st,accUid){st.accs.find(x=>x.uid===accUid).host='inv';return {ok:true};}
+  function stowSI(st,siUid){st.sis.find(x=>x.uid===siUid).host='inv';return {ok:true};}
   function unseatOrphans(st){
     const asm=assembly(st);
-    for(const a of st.accs){
+    for(const a of st.sis){
       if(a.host==='bond'&&!asm)a.host='inv';
       if(a.host&&a.host.po){const p=poByUid(st,a.host.po);if(!p||p.loc!=='grid')a.host='inv';}
     }
@@ -229,7 +229,7 @@ function create(ITEMS,ACC_DEFS,layout){
   }
   return {connTargets,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
-          sockets,hostOk,seatAcc,stowAcc,unseatOrphans,combos,traceBeams,DIRS,key};
+          sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key};
 }
 return {create,rotOffsets};
 });

@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v3)
-// Source: live_items.json + live_accs.json + scenario.json
-// Generated: 2026-07-02T14:16:15.815Z
+// Source: live_items.json + live_sis.json + scenario.json
+// Generated: 2026-07-03T10:47:10.977Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -291,14 +291,14 @@ const ITEMS={
     "ay": 0.72
    }
   ],
-  "eff": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast PO in this BP.",
-  "eff_en": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast PO in this BP.",
+  "eff": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast element in this BP.",
+  "eff_en": "Every 1.4–1.7s: Strike 13–23. +4–8 damage per other Beast element in this BP.",
   "eff_ja": "1.4〜1.7秒ごとに: 13〜23 ダメージ。 このBP内の他の Beast（属性）ごとに ダメージ +4〜8。",
   "flavor": "It still remembers how to bite.",
   "flavor_ja": "噛み方を、まだ覚えている。"
  }
 };
-const ACC_DEFS={
+const SI_DEFS={
  "acc_gem": {
   "name": "Ruby Gem",
   "name_ja": "ルビーの宝石",
@@ -633,7 +633,7 @@ const SCENARIO={
    "rot": 0
   }
  ],
- "accs": [
+ "sis": [
   {
    "uid": "a1",
    "id": "acc_gem",
@@ -672,5 +672,5 @@ const SCENARIO={
 function makeState(){
  return JSON.parse(JSON.stringify(SCENARIO));
 }
-return {LAYOUT,ITEMS,ACC_DEFS,makeState};
+return {LAYOUT,ITEMS,SI_DEFS,makeState};
 });
