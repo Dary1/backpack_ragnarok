@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Playwright (REQ-0031 Phase A)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
