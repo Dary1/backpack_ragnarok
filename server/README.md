@@ -69,6 +69,31 @@ backpack-dev.qtie.jp                  -> http://localhost:8801
 ```
 The 8801 rule (mock/preview/static) and DNS/tunnel id are untouched.
 
+## Client (REQ-0026 T0.1)
+The real game client lives in `~/backpack_ragnarok/client/` (Vite + React +
+TypeScript + PixiJS) and is served as **static files** by the same
+`backpack-web.service` this file's sibling section documents -- no separate
+service, no ingress change. Build output goes straight to `web/app/`, which
+`backpack-web.service` already exposes at `/app/` (it serves the whole
+`web/` directory as-is).
+
+Build + deploy:
+```
+cd client
+npm install     # first time only; node_modules is gitignored
+npm run build   # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
+```
+The build output (`web/app/`) is committed directly to the repo -- it is the
+deployed artifact. There is no separate "deploy" step beyond running the
+build and committing the result; `backpack-web.service` picks it up
+immediately since it serves `web/` from disk on every request.
+
+Verify: `curl https://backpack-dev.qtie.jp/app/` -> 200, HTML with a hashed
+JS bundle under `/app/assets/`. The client fetches game content from
+`/api/content` (this service, see Endpoints above) at runtime -- no game
+content (item names, effect/flavor text) is baked into the client bundle;
+see `client/README.md` for the client's own structure and scope notes.
+
 ## Ingress change log
 - 2026-07-03 (REQ-0024): applied via Cloudflare Tunnel Configuration API
   (PUT accounts/<acct>/cfd_tunnel/<tunnel_id>/configurations), config
