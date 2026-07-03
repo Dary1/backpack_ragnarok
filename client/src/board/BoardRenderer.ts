@@ -218,6 +218,59 @@ export class BoardRenderer {
     return this.deps.ops.boardId;
   }
 
+  /**
+   * Re-points this ALREADY-MOUNTED renderer at a different BoardOps
+   * (REQ-0031 Phase A bug fix -- "tab-switch freeze"). Replaces the old
+   * remount-a-whole-new-PixiJS-Application-per-tab-click pattern (see
+   * InventoryBoard.tsx's prior module comment, now superseded): destroying
+   * a PixiJS Application calls GlContextSystem.destroy(), which releases
+   * the WebGL context via the WEBGL_lose_context extension's
+   * loseContext() -- per the WebGL spec this is ASYNCHRONOUS (the actual
+   * `webglcontextlost` event and the browser/GPU-process's reclamation of
+   * the context both fire on a later task, not synchronously when
+   * loseContext() returns). InventoryBoard.tsx's old effect called
+   * destroy() in its cleanup and then, in the SAME effect-flush, ran a
+   * brand new BoardRenderer.mount() (a new Application + a new
+   * canvas.getContext('webgl2', ...) call on the SAME <canvas> element)
+   * before the browser had actually finished tearing down the old
+   * context. Under this box's software GL path (swiftshader -- no real
+   * GPU in this headless server environment), that race left the driver
+   * in a state where every subsequent shader compile failed, which sent
+   * PixiJS's GlLimitsSystem.contextChange() -> checkMaxIfStatementsInShader()
+   * (rendering/batcher/gl/utils/checkMaxIfStatementsInShader.mjs) into its
+   * `while(true){ compile; if(!ok) maxIfs=maxIfs/2|0; else break; }` loop
+   * FOREVER (confirmed live via a CDP Debugger.pause taken mid-hang,
+   * repeatedly landing on that exact frame; renderer process CPU pegged
+   * at ~100% and climbing, page fully unresponsive for 16+ seconds and
+   * still not recovered when observation stopped) -- a real infinite
+   * busy-loop, not merely a slow stall.
+   *
+   * The fix: never destroy/recreate the Application or its <canvas>/WebGL
+   * context for a tab switch at all. This board stays mounted for the
+   * InventoryBoard component's entire lifetime; only its BoardOps (which
+   * page's engine calls to use) changes. Because `ops.boardId` changes
+   * too (canvas vs. a specific inventory page id), the drag.ts board
+   * registry entry must be re-keyed: unregister the OLD boardId, swap
+   * `this.deps.ops`, register the NEW boardId. Any in-flight carry/ghost/
+   * target-tint visuals are cleared (a carry that started against the
+   * OLD page's ops is meaningless once the ops swap -- same as if the
+   * user had pressed Esc); the caller is responsible for calling
+   * render(state) immediately after to redraw against the new ops.
+   */
+  setOps(ops: BoardOps): void {
+    if (this.disposed) return;
+    this.unregisterBoard?.();
+    this.deps = { ...this.deps, ops };
+    this.unregisterBoard = registerBoard(this.boardId, this.makeCommitApi());
+    // A carry armed against the previous page's ops (e.g. mid-drag when
+    // the page changed -- not expected via the Tabs UI per its own
+    // module comment, but defensive regardless) is no longer meaningful
+    // once this board's identity/ops change out from under it.
+    cancelCarry();
+    this.gCarry.removeChildren();
+    this.gTarget.removeChildren();
+  }
+
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;

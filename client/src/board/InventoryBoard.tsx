@@ -1,20 +1,34 @@
-// React wrapper for BoardRenderer (INVENTORY board) — REQ-0030 Phase 2.
+// React wrapper for BoardRenderer (INVENTORY board) — REQ-0030 Phase 2,
+// fixed REQ-0031 Phase A (tab-switch freeze).
+//
 // Sibling of board/Board.tsx: mounts a SECOND, independent PixiJS
 // Application/<canvas>, rendering the ACTIVE tab's inventory page (same
 // grid dimensions as canvas, neutral background, dimmed/dormant linkers,
 // no beams/combos/◇/◆ -- all enforced inside BoardRenderer itself via
 // `ops.isCanvas===false`, see BoardRenderer.ts's render()).
 //
-// Remount-on-tab-switch: BoardOps binds a page index at construction time
-// (see board/boardOps.ts's makeInvOps(engine, page)) -- there is no
-// "re-point this renderer at a different page" operation, so switching
-// tabs destroys the current BoardRenderer instance and mounts a fresh one
-// bound to the new page's ops. This matches the task spec's "switching
-// tabs re-renders the inventory board only" -- the canvas board's own
-// effect/subscription never depends on activeInvPage, so it is untouched
-// by a tab switch. Texture loading is cached (loadSpriteTextures()'s
-// module-level promise), so a tab-switch remount never re-decodes sprite
-// art -- only a new (cheap) PixiJS Application + a fresh render() call.
+// REQ-0031 Phase A fix -- persistent mount, ops-swap on tab switch (NOT
+// remount-per-tab-switch): the original REQ-0030 Phase 2 design destroyed
+// and recreated the whole BoardRenderer (a new PixiJS Application, a new
+// WebGL context on the SAME <canvas> element) every time `page` changed,
+// on the theory that "BoardOps binds a page index at construction time,
+// so there is no re-point operation". That theory turned out to be fixable
+// rather than fundamental: BoardRenderer now exposes `setOps()` (see its
+// doc comment) precisely so a mounted board CAN be re-pointed at a
+// different page's ops without touching the Application/canvas/context at
+// all. The remount pattern was also the CONFIRMED root cause of a real bug
+// (see REQ-0031 Phase A's E2E test `tab-switch-stability.spec.ts` and
+// BoardRenderer.setOps's doc comment for the live-reproduced mechanism:
+// destroying a WebGL context via WEBGL_lose_context.loseContext() is
+// asynchronous, and immediately creating a new context on the same canvas
+// before the old one finished tearing down left this box's software GL
+// driver (swiftshader -- no real GPU in this server environment) unable to
+// ever successfully compile a shader again, spinning PixiJS's
+// checkMaxIfStatementsInShader() into a genuine infinite loop -- confirmed
+// via a CDP Debugger.pause captured mid-hang). So: mount ONCE (same
+// lifecycle shape as Board.tsx's canvas board -- effect deps only depend on
+// boot-readiness, never on `page`), and swap ops + re-render via a second,
+// separate effect keyed on `page`.
 import { useEffect, useRef, useState } from 'react';
 import { BoardRenderer } from './BoardRenderer';
 import { makeInvOps } from './boardOps';
@@ -28,6 +42,9 @@ export function InventoryBoard() {
   const snapshot = useGameStore();
   const page = snapshot.activeInvPage;
 
+  // Mount the Application/<canvas> exactly ONCE per successful boot --
+  // same shape as Board.tsx's own effect. Never remounted on a tab
+  // switch (see module comment above).
   useEffect(() => {
     if (snapshot.status !== 'ready' || !snapshot.engine || !snapshot.gameData || !canvasRef.current) return;
     let cancelled = false;
@@ -38,13 +55,16 @@ export function InventoryBoard() {
     (async () => {
       const textures = await loadSpriteTextures();
       if (cancelled) return;
+      // Bind to whatever page is currently active AT MOUNT TIME; a later
+      // page change is handled by the ops-swap effect below, never by
+      // remounting this effect (deps intentionally omit `page`).
       const renderer = await BoardRenderer.mount(canvas, {
         engine,
         items: gameData.ITEMS,
         siDefs: gameData.SI_DEFS,
         textures,
         layout: gameData.LAYOUT,
-        ops: makeInvOps(engine, page),
+        ops: makeInvOps(engine, snapshot.activeInvPage),
       });
       if (cancelled) {
         renderer.destroy();
@@ -60,10 +80,20 @@ export function InventoryBoard() {
       rendererRef.current = null;
       setReady(false);
     };
-    // Remount whenever the active page changes (BoardOps' page index is
-    // fixed at construction) or once boot completes.
+    // Mount once per boot -- deliberately NOT keyed on `page` (see module
+    // comment: page changes are handled by the effect below via
+    // setOps(), never by tearing down/recreating this Application).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot.status === 'ready', page]);
+  }, [snapshot.status === 'ready']);
+
+  // Re-point the ALREADY-MOUNTED renderer at the newly-active page's ops
+  // whenever the tab changes, then re-render immediately against the new
+  // ops+state so the board shows the new page without a blank/stale frame.
+  useEffect(() => {
+    if (!ready || !rendererRef.current || !snapshot.engine || !snapshot.state) return;
+    rendererRef.current.setOps(makeInvOps(snapshot.engine, page));
+    rendererRef.current.render(snapshot.state);
+  }, [ready, page, snapshot.engine, snapshot.state]);
 
   useEffect(() => {
     if (ready && rendererRef.current && snapshot.state) {
