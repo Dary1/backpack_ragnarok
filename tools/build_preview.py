@@ -129,8 +129,15 @@ def render_card(entry):
     rarity = entry.get("rarity", "Common")
     color = RARITY_COLOR.get(rarity, "#9aa5ad")
 
-    chips = [f'<span class="chip chip-type">{esc(entry.get("type",""))}</span>']
-    for el in entry.get("el", []):
+    # tags[0] is always the former type-tag; remaining entries are former
+    # elements (REQ-0022 batch 3/4 -- see content JSON's migrated "tags"
+    # field, tools/migrate_tag_hierarchy.cjs). Render identically to the old
+    # type/el chip split: first tag as the "type" chip, the rest as "el" chips.
+    tags = entry.get("tags") or []
+    type_tag = tags[0] if tags else ""
+    el_tags = tags[1:]
+    chips = [f'<span class="chip chip-type">{esc(type_tag)}</span>']
+    for el in el_tags:
         chips.append(f'<span class="chip chip-el">{esc(el)}</span>')
 
     sockets_html = ""

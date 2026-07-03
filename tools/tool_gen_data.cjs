@@ -2,6 +2,13 @@
 // tool_gen_data.cjs — generates data.js (GameData UMD module) from live JSON + scenario.json.
 // Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>
 //
+// v4 changes (REQ-0022 batch 3/4):
+//   - ITEMS entries now carry "tags" (ordered array, tags[0]=former type,
+//     tags[1..]=former elements in original order) instead of separate
+//     "type"/"el" fields. Content JSON (live_items.json / draft.json) was
+//     migrated by tools/migrate_tag_hierarchy.cjs; this generator just passes
+//     e.tags through unchanged.
+//
 // v3 changes:
 //   - ITEMS/SI_DEFS entries now also carry: name_ja, eff_en, eff_ja (rendered via
 //     eff_render.cjs render(effect,locale), all effects joined with ' '), flavor,
@@ -47,8 +54,10 @@ function main() {
     const rec = {
       name: e.name,
       name_ja: e.name_ja,
-      type: e.type,
-      el: e.el,
+      // tags[0] is always the former type-tag; remaining entries are former
+      // elements -- see REQ-0022 batch 3/4. Passed through as-is from the
+      // migrated content JSON (content already stores tags, not type/el).
+      tags: e.tags,
       rarity: e.rarity,
       shape: e.shape,
       icon: e.icon,
@@ -89,7 +98,7 @@ function main() {
   const scenarioForState = JSON.parse(JSON.stringify(scenario));
   delete scenarioForState.layout;
 
-  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v3)\n' +
+  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v4)\n' +
     '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(sisPath) + ' + ' + path.basename(scenarioPath) + '\n' +
     '// Generated: ' + new Date().toISOString() + '\n';
 

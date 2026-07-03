@@ -40,8 +40,21 @@ function main() {
   // Add synthetic probe socket items: one per socketType x tag-combo we need to test.
   // probe_<type>_notag: slot=type, reqTags=[]
   // probe_<type>_needs_<tag>: slot=type, reqTags=[tag]
-  const socketTypes = vocab.socketTypes || ['gem', 'edge', 'coat', 'bond'];
-  const socketTags = vocab.socketTags || ['Metal', 'Bone'];
+  // Slot-shape tokens (a socket's `t` field selects exactly one of these,
+  // unchanged flat equality) vs attribute tokens (a socket's `tags` field,
+  // now hierarchy-matched via Engine.hasTag). Both kinds of token live in
+  // ONE unified vocab.json "socket_tags" parent-map tree (Q1=B applied to
+  // sockets) -- the slot/attribute split itself is not a tree concept, it's
+  // just which historical axis each literal string belongs to, same as the
+  // old separate socketTypes/socketTags arrays. Fall back to the legacy
+  // flat keys if an older vocab.json is ever passed in.
+  const SOCKET_SLOT_TOKENS = ['gem', 'edge', 'coat', 'bond'];
+  const SOCKET_ATTR_TOKENS = ['Metal', 'Bone'];
+  const socketTagsTree = vocab.socket_tags || null;
+  const socketTypes = vocab.socketTypes ||
+    (socketTagsTree ? SOCKET_SLOT_TOKENS.filter(t => Object.prototype.hasOwnProperty.call(socketTagsTree, t)) : SOCKET_SLOT_TOKENS);
+  const socketTags = vocab.socketTags ||
+    (socketTagsTree ? SOCKET_ATTR_TOKENS.filter(t => Object.prototype.hasOwnProperty.call(socketTagsTree, t)) : SOCKET_ATTR_TOKENS);
   for (const st of socketTypes) {
     SI_DEFS['__probe_' + st + '_open'] = { name: 'Probe(' + st + ',open)', slot: st, reqTags: [], icon: 'icon-probe', rarity: 'Common', eff: '' };
     for (const tg of socketTags) {
@@ -55,7 +68,8 @@ function main() {
   }
 
   function toItemDef(e) {
-    return { name: e.name, type: e.type, el: e.el, rarity: e.rarity, shape: e.shape, icon: e.icon, sockets: e.sockets || [], stretch: e.stretch, eff: '' };
+    // tags[0]=former type, tags[1..]=former elements (REQ-0022 batch 3/4).
+    return { name: e.name, tags: e.tags, rarity: e.rarity, shape: e.shape, icon: e.icon, sockets: e.sockets || [], stretch: e.stretch, eff: '' };
   }
   function toSIDef(e) {
     return { name: e.name, slot: e.slot, reqTags: e.reqTags || [], icon: e.icon, rarity: e.rarity, eff: '' };
@@ -193,7 +207,7 @@ function main() {
     const hostId = '__synthhost_' + e.slot;
     if (!ITEMS[hostId]) {
       ITEMS[hostId] = {
-        name: 'Synthetic Host (' + e.slot + ')', type: 'Weapon', el: [], rarity: 'Common',
+        name: 'Synthetic Host (' + e.slot + ')', tags: ['Weapon'], rarity: 'Common',
         shape: [[0, 0]], icon: 'icon-synthhost', sockets: [{ t: e.slot, tags: socketTags.slice(), ax: 0.5, ay: 0.5 }], eff: '',
       };
     }
@@ -215,7 +229,7 @@ function main() {
     const otherHostId = '__synthhost_' + otherSlot;
     if (!ITEMS[otherHostId]) {
       ITEMS[otherHostId] = {
-        name: 'Synthetic Host (' + otherSlot + ')', type: 'Weapon', el: [], rarity: 'Common',
+        name: 'Synthetic Host (' + otherSlot + ')', tags: ['Weapon'], rarity: 'Common',
         shape: [[0, 0]], icon: 'icon-synthhost', sockets: [{ t: otherSlot, tags: socketTags.slice(), ax: 0.5, ay: 0.5 }], eff: '',
       };
     }
@@ -232,7 +246,7 @@ function main() {
       const bareHostId = '__synthhost_bare_' + e.slot;
       if (!ITEMS[bareHostId]) {
         ITEMS[bareHostId] = {
-          name: 'Synthetic Bare Host (' + e.slot + ')', type: 'Weapon', el: [], rarity: 'Common',
+          name: 'Synthetic Bare Host (' + e.slot + ')', tags: ['Weapon'], rarity: 'Common',
           shape: [[0, 0]], icon: 'icon-synthhost', sockets: [{ t: e.slot, tags: [], ax: 0.5, ay: 0.5 }], eff: '',
         };
       }

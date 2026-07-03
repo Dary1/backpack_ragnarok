@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// self_test_vocab.cjs -- builds one effect per verb in content/vocab.json v2, validates each
+// self_test_vocab.cjs -- builds one effect per verb in content/vocab.json, validates each
+// (REQ-0022 batch 3/4: vocab.json's flat "types" array became the "po_tags" hierarchy tree;
+// this file uses Object.keys(vocab.po_tags)[0] ("Weapon", the first-declared root) wherever
+// it used to read vocab.types[0], and builds PO-entry fixtures with "tags" instead of
+// separate "type"/"el" fields, matching the migrated content JSON schema.)
 // via tool_validate.cjs (shelled out to via execFileSync), and renders every effect in both
 // locales via eff_render.cjs. Exits 0 and prints "ALL GREEN" iff everything passes; exits 1
 // on any failure with a diagnostic dump.
@@ -19,6 +23,10 @@ const { render, renderAll } = require('./eff_render.cjs');
 
 const DIR = __dirname;
 const vocab = JSON.parse(fs.readFileSync(path.join(DIR, '..', 'content', 'vocab.json'), 'utf8'));
+// PO Tag hierarchy roots (REQ-0022 batch 3/4): vocab.po_tags is a parent-map
+// { tagName: parent|null }; Object.keys() preserves declaration order, so
+// POTagNames[0] === 'Weapon', matching the old vocab.types[0] usage below.
+const POTagNames = Object.keys(vocab.po_tags || {});
 
 let failures = 0;
 const lines = [];
@@ -47,13 +55,13 @@ function buildEffectForVerb(verbT) {
   if (verbT === 'buff_self_per_tag' || verbT === 'buff_adjacent') {
     verb.stat = 'damage';
     verb.tagKind = 'type';
-    verb.tag = vocab.types[0]; // Weapon
+    verb.tag = POTagNames[0]; // Weapon
   }
 
   // choose a trigger appropriate to the verb; buff_adjacent pairs naturally with "adjacent"
   let trigger;
   if (verbT === 'buff_adjacent') {
-    trigger = { t: 'adjacent', tagKind: 'type', tag: vocab.types[0] };
+    trigger = { t: 'adjacent', tagKind: 'type', tag: POTagNames[0] };
   } else if (verbT === 'buff_self_per_tag' || verbT === 'buff_host') {
     trigger = { t: 'passive' };
   } else if (verbT === 'battle_start_test') {
@@ -70,8 +78,8 @@ for (const verbT of vocab.verbs) {
   const entry = {
     id: 'selftest_' + verbT,
     name: 'Selftest ' + verbT,
-    type: vocab.types[0], // Weapon
-    el: [],
+    // tags[0]=former type (REQ-0022 batch 3/4); no former elements here.
+    tags: [POTagNames[0]], // Weapon
     rarity: 'Common',
     shape: [[0, 0]],
     part: { assembles: 'na', role: 'na' }, // satisfy 1x1 scarcity rule
@@ -89,17 +97,17 @@ for (const verbT of vocab.verbs) {
 // on_hit, on_bp_damaged, battle_start need at least one PO example; host_on_hit needs an SI example.
 const extraPO = [
   {
-    id: 'selftest_trig_on_hit', name: 'Selftest trig on_hit', type: vocab.types[0], el: [],
+    id: 'selftest_trig_on_hit', name: 'Selftest trig on_hit', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_on_hit', sockets: [],
     effects: [{ trigger: { t: 'on_hit' }, verb: { t: 'strike', n: [2, 4] } }],
   },
   {
-    id: 'selftest_trig_bp_damaged', name: 'Selftest trig bp_damaged', type: vocab.types[0], el: [],
+    id: 'selftest_trig_bp_damaged', name: 'Selftest trig bp_damaged', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_bp_damaged', sockets: [],
     effects: [{ trigger: { t: 'on_bp_damaged' }, verb: { t: 'block', n: [2, 4] } }],
   },
   {
-    id: 'selftest_trig_battle_start', name: 'Selftest trig battle_start', type: vocab.types[0], el: [],
+    id: 'selftest_trig_battle_start', name: 'Selftest trig battle_start', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_battle_start', sockets: [],
     effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'block', n: [8, 12] } }],
   },
@@ -185,7 +193,7 @@ if (!singleCheckJA.includes('22〜38')) {
 
 // ---- 4. negative test: bare int (non-range) must be REJECTED by validator ----
 const badEntry = {
-  id: 'selftest_bad_bare_int', name: 'Selftest bad bare int', type: vocab.types[0], el: [],
+  id: 'selftest_bad_bare_int', name: 'Selftest bad bare int', tags: [POTagNames[0]],
   rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_bad_bare_int', sockets: [],
   effects: [{ trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: 10 } }], // bare int, should fail
   _expect_reject: 'bare int n instead of [lo,hi] range must be rejected',

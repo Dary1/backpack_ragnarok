@@ -41,8 +41,12 @@ function hover(g,html){g.addEventListener('mousemove',moveTip);
   g.addEventListener('mouseleave',hideTip);}
 function poTip(p){
   const d=ITEMS[p.id],si=E.shapeInfo(p.id,p.rot);
+  // d.tags[0] is always the former type-tag; remaining entries are former
+  // elements (REQ-0022 batch 3/4). Render identically to the old
+  // "<type> · tags: <el1, el2>" display.
+  const dTags=d.tags||[],dType=dTags[0]||'',dEl=dTags.slice(1);
   let s='<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
-  '<div class="shape">'+si.h+'×'+si.w+' (rot '+(p.rot%4*90)+'°) · '+d.type+(d.el.length?' · tags: '+d.el.join(', '):'')+'</div>'+
+  '<div class="shape">'+si.h+'×'+si.w+' (rot '+(p.rot%4*90)+'°) · '+dType+(dEl.length?' · tags: '+dEl.join(', '):'')+'</div>'+
   '<div class="eff">'+EFF(d)+'</div>';
   const hosted=state.sis.filter(a=>a.host&&a.host.po===p.uid);
   if(hosted.length)s+='<div class="eff ok">Seated: '+hosted.map(a=>SI_DEFS[a.id].name).join(', ')+'</div>';
