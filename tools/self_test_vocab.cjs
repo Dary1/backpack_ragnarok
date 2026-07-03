@@ -1,8 +1,16 @@
 #!/usr/bin/env node
-// self_test_vocab.cjs -- builds one effect per verb in content_vocab.json v2, validates each
-// via the same rules tool_validate.cjs enforces (in-process reuse, no shelling out), and renders
-// every effect in both locales via eff_render.cjs. Exits 0 and prints "ALL GREEN" iff everything
-// passes; exits 1 on any failure with a diagnostic dump.
+// self_test_vocab.cjs -- builds one effect per verb in content/vocab.json v2, validates each
+// via tool_validate.cjs (shelled out to via execFileSync), and renders every effect in both
+// locales via eff_render.cjs. Exits 0 and prints "ALL GREEN" iff everything passes; exits 1
+// on any failure with a diagnostic dump.
+// NOTE (REQ-0022 batch 6): tool_validate.cjs does not exist anywhere in this project (it was
+// never built -- see docs/terminology_alignment_plan.md S1.8). The two validator-dependent
+// checks below (range-validation passthrough and the negative bare-int-rejection test) will
+// report FAIL until that tool is written; every other check in this script (effect rendering
+// across all verbs/triggers, EN/JA non-empty + non-fallthrough, single render() sanity) runs
+// and passes standalone. This file's own require paths (content/vocab.json, live_items.json,
+// live_sis.json) were fixed to point at their real locations; tool_validate.cjs was left
+// unbuilt rather than guessed at, since it requires its own validation-rule design.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -10,7 +18,7 @@ const { execFileSync } = require('child_process');
 const { render, renderAll } = require('./eff_render.cjs');
 
 const DIR = __dirname;
-const vocab = JSON.parse(fs.readFileSync(path.join(DIR, 'content_vocab.json'), 'utf8'));
+const vocab = JSON.parse(fs.readFileSync(path.join(DIR, '..', 'content', 'vocab.json'), 'utf8'));
 
 let failures = 0;
 const lines = [];
@@ -51,7 +59,7 @@ function buildEffectForVerb(verbT) {
   } else if (verbT === 'battle_start_test') {
     trigger = { t: 'battle_start' };
   } else {
-    trigger = { t: 'every_ticks', n: 3 };
+    trigger = { t: 'every_secs', s: [2, 3] };
   }
   return { trigger, verb };
 }
@@ -111,9 +119,9 @@ const batchDraft = { schema: 'batch/1', batch: 'self_test_vocab', items: poEntri
 const draftPath = path.join(DIR, '_self_test_vocab_draft.json');
 fs.writeFileSync(draftPath, JSON.stringify(batchDraft, null, 2));
 
-const liveItemsPath = path.join(DIR, 'live_items.json');
-const liveSIsPath = path.join(DIR, 'live_sis.json');
-const vocabPath = path.join(DIR, 'content_vocab.json');
+const liveItemsPath = path.join(DIR, '..', 'content', 'live', 'live_items.json');
+const liveSIsPath = path.join(DIR, '..', 'content', 'live', 'live_sis.json');
+const vocabPath = path.join(DIR, '..', 'content', 'vocab.json');
 const validatorPath = path.join(DIR, 'tool_validate.cjs');
 
 let validateOut = '';
@@ -161,14 +169,14 @@ for (const entry of allEntries) {
 }
 
 // also exercise render() singular API directly (not just renderAll)
-const singleCheck = render({ trigger: { t: 'every_ticks', n: 2 }, verb: { t: 'strike', n: [22, 38] } }, 'en');
+const singleCheck = render({ trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [22, 38] } }, 'en');
 log('');
 log('single render() sanity: ' + singleCheck);
-if (singleCheck !== 'Every 2 ticks: Strike 22–38.') {
+if (singleCheck !== 'Every 2s: Strike 22–38.') {
   failures++;
-  log('FAIL: expected "Every 2 ticks: Strike 22–38." got "' + singleCheck + '"');
+  log('FAIL: expected "Every 2s: Strike 22–38." got "' + singleCheck + '"');
 }
-const singleCheckJA = render({ trigger: { t: 'every_ticks', n: 2 }, verb: { t: 'strike', n: [22, 38] } }, 'ja');
+const singleCheckJA = render({ trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [22, 38] } }, 'ja');
 log('single render() JA sanity: ' + singleCheckJA);
 if (!singleCheckJA.includes('22〜38')) {
   failures++;
@@ -179,7 +187,7 @@ if (!singleCheckJA.includes('22〜38')) {
 const badEntry = {
   id: 'selftest_bad_bare_int', name: 'Selftest bad bare int', type: vocab.types[0], el: [],
   rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_bad_bare_int', sockets: [],
-  effects: [{ trigger: { t: 'every_ticks', n: 3 }, verb: { t: 'strike', n: 10 } }], // bare int, should fail
+  effects: [{ trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: 10 } }], // bare int, should fail
   _expect_reject: 'bare int n instead of [lo,hi] range must be rejected',
 };
 const negBatch = { schema: 'batch/1', batch: 'self_test_vocab_neg', items: [badEntry], sis: [] };

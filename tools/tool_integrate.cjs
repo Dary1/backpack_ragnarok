@@ -6,7 +6,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const Engine = require('./v05_engine.js');
+const Engine = require('../mock-src/engine.js');
 
 function loadJSON(p) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 
