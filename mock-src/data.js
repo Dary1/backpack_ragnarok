@@ -1,6 +1,6 @@
-// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v3)
+// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v4)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T10:47:10.977Z
+// Generated: 2026-07-03T11:15:29.126Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -11,8 +11,8 @@ const ITEMS={
  "blade": {
   "name": "Longsword Blade",
   "name_ja": "ロングソードの刀身",
-  "type": "WeaponPart",
-  "el": [
+  "tags": [
+   "WeaponPart",
    "Metal"
   ],
   "rarity": "Common",
@@ -47,8 +47,8 @@ const ITEMS={
  "hilt": {
   "name": "Sword Hilt",
   "name_ja": "剣の柄",
-  "type": "WeaponPart",
-  "el": [
+  "tags": [
+   "WeaponPart",
    "Metal",
    "Wood"
   ],
@@ -80,8 +80,8 @@ const ITEMS={
  "flame_tablet": {
   "name": "Flame Rune Tablet",
   "name_ja": "炎のルーンタブレット",
-  "type": "Rune",
-  "el": [
+  "tags": [
+   "Rune",
    "Flame"
   ],
   "rarity": "Uncommon",
@@ -116,8 +116,8 @@ const ITEMS={
  "oil_flask": {
   "name": "Oil Flask",
   "name_ja": "油の小瓶",
-  "type": "Reagent",
-  "el": [
+  "tags": [
+   "Reagent",
    "Oil"
   ],
   "rarity": "Common",
@@ -152,8 +152,8 @@ const ITEMS={
  "dagger": {
   "name": "Dagger",
   "name_ja": "ダガー",
-  "type": "Weapon",
-  "el": [
+  "tags": [
+   "Weapon",
    "Metal"
   ],
   "rarity": "Common",
@@ -195,8 +195,9 @@ const ITEMS={
  "herb_pouch": {
   "name": "Herb Satchel",
   "name_ja": "薬草の巾着",
-  "type": "Relic",
-  "el": [],
+  "tags": [
+   "Relic"
+  ],
   "rarity": "Common",
   "shape": [
    [
@@ -219,8 +220,8 @@ const ITEMS={
  "tower_shield": {
   "name": "Tower Shield",
   "name_ja": "タワーシールド",
-  "type": "Shield",
-  "el": [
+  "tags": [
+   "Shield",
    "Metal"
   ],
   "rarity": "Uncommon",
@@ -253,8 +254,8 @@ const ITEMS={
  "beast_jaw": {
   "name": "Beast Jaw",
   "name_ja": "獣の顎",
-  "type": "Weapon",
-  "el": [
+  "tags": [
+   "Weapon",
    "Beast"
   ],
   "rarity": "Uncommon",
