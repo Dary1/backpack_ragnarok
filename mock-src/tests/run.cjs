@@ -10,7 +10,7 @@ function T(name,fn){
 }
 function eq(a,b,msg){if(JSON.stringify(a)!==JSON.stringify(b))throw new Error((msg||'')+' expected '+JSON.stringify(b)+' got '+JSON.stringify(a));}
 function ok(v,msg){if(!v)throw new Error(msg||'expected truthy');}
-function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT)};}
+function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES)};}
 
 T('initial state integrity: no overlaps, all POs legally placed',()=>{
   const {st,E}=fresh();

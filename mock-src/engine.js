@@ -332,50 +332,28 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //   new: any established connection whose sender has tag Flame and whose
   //        port tag is Oil -> Ignite (the partner is guaranteed tagged Oil
   //        by connectionsFrom()'s tag-hierarchy check already).
-  // "blade" keeps its pre-existing special-case Weapon-alias for Flaming
-  // Blade: blade's own tags are [WeaponPart, Metal] (no Weapon tag), but the
-  // OLD code already treated `a.id==='blade'` as Weapon-equivalent for this
-  // one recipe (`(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')`). That
-  // special case is not expressible purely via tags/ports (it is keyed on
-  // item id, not on any tag), so it is preserved here VERBATIM as a documented
-  // recipe-level exception rather than silently dropped or reinterpreted.
+  // "blade" (tags: [WeaponPart, Metal]) now matches a Weapon-tagged port via
+  // the po_tags hierarchy walk (WeaponPart < Weapon, content/vocab.json) --
+  // no item-id special case is needed anymore. Before that hierarchy edge
+  // existed, blade could only match through a narrow LEGACY_ID_ALIAS keyed
+  // on the literal id 'blade'; that alias (and its partnerMatchesPortTag
+  // wrapper) has been removed now that the real hierarchy produces the same
+  // result via plain hasTag()/tagsRelated() (REQ-0023 follow-up, user-approved).
   const COMBO_RECIPES=[
     {name:'Ignite',ownerTag:'Flame',portTag:'Oil',
      desc:'Flame + Oil connected → Burn applications ×2.'},
     {name:'Flaming Blade',ownerTag:'Flame',portTag:'Weapon',
      desc:'Flame connected to a Weapon → adds Burn on hit.'},
   ];
-  // legacyIdAlias: pre-port-model special case, kept VERBATIM rather than
-  // dropped or reinterpreted. Before REQ-0023, combos() treated the item id
-  // "blade" as Weapon-equivalent for the Flaming Blade recipe specifically
-  // (`(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')`), even though
-  // blade's own declared tags are [WeaponPart, Metal] -- no Weapon tag, and
-  // today's po_tags tree is degenerate (no WeaponPart->Weapon hierarchy
-  // edge), so a pure tag-hierarchy connection check can never match blade
-  // for a Weapon-tagged port. This is NOT expressible as a tagged port
-  // (it's keyed on item id, not a tag), so it is preserved as a narrow,
-  // documented, recipe-scoped alias table rather than silently changing
-  // this combo's behavior. Keyed by [recipeName][portTag] -> extra id that
-  // counts as a match for that port tag, alongside the normal tag-hierarchy
-  // check (which still governs every other partner).
-  const LEGACY_ID_ALIAS={'Flaming Blade':{'Weapon':['blade']}};
-  function partnerMatchesPortTag(recipeName,portTag,partner){
-    if(hasTag(ITEMS[partner.id].tags,portTag,poTree))return true;
-    const aliases=(LEGACY_ID_ALIAS[recipeName]||{})[portTag]||[];
-    return aliases.includes(partner.id);
-  }
   function combos(st){
     const out=[],cbp=cellBPMap(st),placed=st.pos.filter(p=>p.loc==='grid');
     const asm=assembly(st);
     if(asm)out.push({name:'Assembled: Longsword',cells:asm.cells,desc:'Blade + Hilt flush-joined → Strike 10 / 4 ticks.'});
 
     // General connection-based combo resolution (REQ-0023): a port's tiles
-    // landing on a partner normally requires the partner to carry the
-    // port's tag (checked inside connectionsFrom(), via the PO Tag
-    // hierarchy walk). The "blade" legacy alias above is the one
-    // pre-existing exception that bypasses connectionsFrom()'s strict tag
-    // check -- for that single case only, we re-scan port hits directly
-    // instead of trusting allConnections()'s already-tag-filtered list.
+    // landing on a partner requires the partner to carry the port's tag,
+    // per the PO Tag hierarchy walk (hasTag()/poTree) -- no item-id special
+    // case remains (see the LEGACY_ID_ALIAS removal note above).
     for(const recipe of COMBO_RECIPES){
       // group every landed tile by the connected (uidA,uidB) pair, so a PO
       // whose port has multiple target tiles (e.g. a 2-tile port) still
@@ -409,7 +387,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
                 const partnerCells=cellsOf(st,partner);
                 if(!partnerCells.some(([r,c])=>r===tr&&c===tc))continue;
                 if(cbp[key(...partnerCells[0])]!==bpOfP)continue; // never across BPs
-                if(!partnerMatchesPortTag(recipe.name,needPortTag,partner))continue;
+                if(!hasTag(ITEMS[partner.id].tags,needPortTag,poTree))continue;
                 const k=[p.uid,partner.uid].sort().join('|');
                 if(!byPair.has(k))byPair.set(k,{a:p,b:partner,tiles:[]});
                 const rec=byPair.get(k);

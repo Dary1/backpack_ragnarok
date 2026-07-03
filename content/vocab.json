@@ -2,7 +2,7 @@
  "version": 4,
  "po_tags": {
   "Weapon": null,
-  "WeaponPart": null,
+  "WeaponPart": "Weapon",
   "Shield": null,
   "Rune": null,
   "Reagent": null,

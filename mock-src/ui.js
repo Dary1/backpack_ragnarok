@@ -1,8 +1,8 @@
 // backpack_ragnarok mock v0.5 — UI layer (browser only; all logic lives in engine.js)
 (function(){
 'use strict';
-const {LAYOUT,ITEMS,SI_DEFS}=GameData;
-const E=Engine.create(ITEMS,SI_DEFS,LAYOUT);
+const {LAYOUT,ITEMS,SI_DEFS,TREES}=GameData;
+const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
 const state=GameData.makeState();
 const ROWS=LAYOUT.ROWS,COLS=LAYOUT.COLS;
 const CELL=80,PAD=38,INVX=PAD+COLS*CELL+34,INVY=PAD,INVW=200,INVCOL=2,INVBOX=92;

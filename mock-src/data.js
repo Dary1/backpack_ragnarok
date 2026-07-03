@@ -1,12 +1,38 @@
-// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v5)
+// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v6)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T11:58:29.309Z
+// Generated: 2026-07-03T12:11:24.843Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
 })(typeof self!=='undefined'?self:globalThis,function(){
 'use strict';
 const LAYOUT={"ROWS":6,"COLS":6};
+const TREES={
+ "po": {
+  "Weapon": null,
+  "WeaponPart": "Weapon",
+  "Shield": null,
+  "Rune": null,
+  "Reagent": null,
+  "Relic": null,
+  "Curse": null,
+  "Flame": null,
+  "Frost": null,
+  "Oil": null,
+  "Poison": null,
+  "Beast": null,
+  "Metal": null,
+  "Wood": null
+ },
+ "socket": {
+  "gem": null,
+  "edge": null,
+  "coat": null,
+  "bond": null,
+  "Metal": null,
+  "Bone": null
+ }
+};
 const ITEMS={
  "blade": {
   "name": "Longsword Blade",
@@ -696,5 +722,5 @@ const SCENARIO={
 function makeState(){
  return JSON.parse(JSON.stringify(SCENARIO));
 }
-return {LAYOUT,ITEMS,SI_DEFS,makeState};
+return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
 });

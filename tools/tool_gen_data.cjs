@@ -2,6 +2,13 @@
 // tool_gen_data.cjs — generates data.js (GameData UMD module) from live JSON + scenario.json.
 // Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>
 //
+// v6 changes (REQ-0023 follow-up, WeaponPart<Weapon hierarchy edge):
+//   - vocabPath is now actually loaded (previously destructured but unused)
+//     and its po_tags/socket_tags parent-maps are passed through into data.js
+//     as TREES = {po, socket}, so Engine.create() call sites (mock-src/ui.js,
+//     mock-src/tests/run.cjs) can wire the REAL content/vocab.json hierarchy
+//     into the engine instead of implicitly defaulting to degenerate {} trees.
+//
 // v5 changes (REQ-0023):
 //   - ITEMS/SI_DEFS entries now carry "ports" (array of {tiles,tag}) instead of
 //     the old flat "conn" (array of [x,y] tiles, no tag). Content JSON was
@@ -39,6 +46,7 @@ function main() {
     process.exit(1);
   }
   const [vocabPath, itemsPath, sisPath, scenarioPath, outPath] = args;
+  const vocab = loadJSON(vocabPath);
   const items = loadJSON(itemsPath);
   const sis = loadJSON(sisPath);
   const scenario = loadJSON(scenarioPath);
@@ -104,7 +112,7 @@ function main() {
   const scenarioForState = JSON.parse(JSON.stringify(scenario));
   delete scenarioForState.layout;
 
-  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v5)\n' +
+  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v6)\n' +
     '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(sisPath) + ' + ' + path.basename(scenarioPath) + '\n' +
     '// Generated: ' + new Date().toISOString() + '\n';
 
@@ -115,13 +123,14 @@ function main() {
     "})(typeof self!=='undefined'?self:globalThis,function(){\n" +
     "'use strict';\n" +
     "const LAYOUT=" + JSON.stringify(LAYOUT) + ";\n" +
+    "const TREES=" + JSON.stringify({po: vocab.po_tags || {}, socket: vocab.socket_tags || {}}, null, 1) + ";\n" +
     "const ITEMS=" + JSON.stringify(ITEMS, null, 1) + ";\n" +
     "const SI_DEFS=" + JSON.stringify(SI_DEFS, null, 1) + ";\n" +
     "const SCENARIO=" + JSON.stringify(scenarioForState, null, 1) + ";\n" +
     "function makeState(){\n" +
     " return JSON.parse(JSON.stringify(SCENARIO));\n" +
     "}\n" +
-    "return {LAYOUT,ITEMS,SI_DEFS,makeState};\n" +
+    "return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};\n" +
     "});\n";
 
   fs.writeFileSync(outPath, src);
