@@ -418,11 +418,21 @@ def centered_position(allowed, kern):
 
 
 def shape_to_cellset(shape):
-    """shape: [[col,row], ...] (our JSON convention) -> normalized {(row,col)}."""
-    cols = [c for c, r in shape]
-    rows = [r for c, r in shape]
+    """shape: [[row,col], ...] -- REQ-0029: this MUST match the engine's own
+    convention, which is the single source of truth for shape coordinates.
+    See mock-src/engine.js's shapeInfo()/cellsOf()/bpCells() (each destructures
+    offset tuples as `([r,c]) => ...`, i.e. first=row, second=col) and
+    scenario.json placements (blade cell=[1,1], hilt cell=[3,1], stacked
+    vertically one row apart at the same column -- confirmed against
+    assembly()'s h.cell[0]===bottom[0]+1 check). Before REQ-0029 this function
+    incorrectly read shape tuples as [col,row] (a REQ-0019 orchestrator guess
+    that was never verified against the engine), which silently transposed
+    every non-square-bbox shape mask AND some square-bbox asymmetric cell
+    patterns (e.g. hoarfrost_creep). Returns normalized {(row,col)}."""
+    rows = [r for r, c in shape]
+    cols = [c for r, c in shape]
     r0, c0 = min(rows), min(cols)
-    return {(r - r0, c - c0) for c, r in shape}, (max(rows) - r0 + 1), (max(cols) - c0 + 1)
+    return {(r - r0, c - c0) for r, c in shape}, (max(rows) - r0 + 1), (max(cols) - c0 + 1)
 
 
 def extract_symbol(sprite_root, icon_id):

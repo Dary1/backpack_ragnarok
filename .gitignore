@@ -4,3 +4,4 @@ tmp/
 node_modules/
 *.bak
 data/
+__pycache__/

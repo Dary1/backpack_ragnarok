@@ -109,6 +109,10 @@ def render_current_placement(sprite_root, entry, out_path):
     icon_id = entry.get("icon")
     shape = entry.get("shape")
     sym, viewbox = fit.extract_symbol(sprite_root, icon_id)
+    # REQ-0029: shape_to_cellset (tool_fit_check.py) reads shape as [row,col],
+    # matching mock-src/engine.js's shapeInfo()/cellsOf() convention -- this
+    # script has no independent shape-reading logic of its own, so it inherits
+    # the corrected convention automatically via this import.
     cellset, rows, cols = fit.shape_to_cellset(shape)
     allowed = fit.build_region(cellset)
     H, W = allowed.shape

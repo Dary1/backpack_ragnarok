@@ -61,11 +61,19 @@ def entries_of(data):
 
 
 def shape_bbox_cells(shape):
-    """shape: [[col,row],...] -> (cols, rows, cellset normalized to origin)."""
-    cols = [c for c, r in shape]
-    rows = [r for c, r in shape]
+    """shape: [[row,col],...] -- REQ-0029: matches mock-src/engine.js's own
+    convention (shapeInfo/cellsOf/bpCells all destructure offset tuples as
+    ([r,c]) => ..., first=row second=col; cross-checked against
+    scenario.json's blade/hilt vertical stacking). Previously this function
+    read shape tuples as [col,row], transposing the rendered shapegrid for
+    every non-square-bbox item (and silently mismatching cell PATTERNS for
+    some square-bbox items, e.g. hoarfrost_creep) relative to the live board.
+    Returns (cols, rows, cellset normalized to origin), cellset entries are
+    (col,row) pairs for direct use as (cc,rr) in the grid-drawing loop below."""
+    rows = [r for r, c in shape]
+    cols = [c for r, c in shape]
     c0, r0 = min(cols), min(rows)
-    cellset = {(c - c0, r - r0) for c, r in shape}
+    cellset = {(c - c0, r - r0) for r, c in shape}
     return (max(cols) - c0 + 1), (max(rows) - r0 + 1), cellset
 
 
@@ -78,16 +86,17 @@ def conn_notch_polygon(cx, cy, half=4.48):
 
 def render_shapegrid(shape, port_tiles):
     """Build the <svg class="shapegrid">...</svg> markup for one item's shape.
-    port_tiles: list of absolute [col,row] external-neighbor coordinates (same
-    coordinate frame as shape, before normalization) -- the union of every
+    port_tiles: list of absolute [row,col] external-neighbor coordinates (REQ-0029:
+    same [row,col] convention as shape and as mock-src/engine.js's portTargets(),
+    same coordinate frame as shape, before normalization) -- the union of every
     Connection Port's `tiles` on this entry (REQ-0023; ports replaced the old
     flat `conn` list with ports:[{tiles,tag},...], but notch rendering is
     purely geometric and doesn't care which port/tag a tile belongs to).
     Matches live_items.json's flame_tablet/oil_flask port-tile convention
     (formerly the "conn" convention)."""
     cols, rows, cellset = shape_bbox_cells(shape)
-    c0 = min(c for c, r in shape)
-    r0 = min(r for c, r in shape)
+    r0 = min(r for r, c in shape)
+    c0 = min(c for r, c in shape)
     w, h = cols * CELL_PX, rows * CELL_PX
 
     parts = [f'<svg class="shapegrid" viewBox="0 0 {w} {h}" width="{w}" height="{h}">']
@@ -103,8 +112,11 @@ def render_shapegrid(shape, port_tiles):
     parts.append("__USE_PLACEHOLDER__")
 
     if port_tiles:
-        for i, (ncol, nrow) in enumerate(port_tiles):
-            # neighbor cell in normalized (0-based) coords
+        for i, (nrow, ncol) in enumerate(port_tiles):
+            # neighbor cell in normalized (0-based) coords -- port tiles are
+            # [row,col] pairs (REQ-0029, same convention as shape; see
+            # mock-src/engine.js portTargets(): port.tiles destructured as
+            # ([r,c]) => ...)
             ncc, nrr = ncol - c0, nrow - r0
             cx = ncc * CELL_PX + CELL_PX / 2
             cy = nrr * CELL_PX + CELL_PX / 2
