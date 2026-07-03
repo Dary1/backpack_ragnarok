@@ -210,11 +210,15 @@ html, body {
    .inventory-grid/.inventory-slot/.inventory-rarity/.inventory-label/
    .inventory-empty) -- the inventory is a real tabbed PixiJS board now
    (see .board-column/.inv-tabs/.inventory-board-canvas below).
-   .inventory-note is KEPT (still shown above the inventory board). */
+   .inventory-note is KEPT, moved BELOW the inventory board container,
+   left-aligned (REQ-0031 Phase B UI restructure -- was above the
+   tabs/board before; text-align left is the default block behavior, no
+   extra rule needed for that half of the change). */
 .inventory-note {
   font-size: 11px;
   color: var(--dim);
-  margin: 2px 0 8px;
+  margin: 8px 0 0;
+  text-align: left;
 }
 
 .board-column {
@@ -223,20 +227,41 @@ html, body {
   gap: 6px;
 }
 
+/* REQ-0031 Phase B: title + tab row, shared by BOTH the Canvas column
+   (title + PresetTabs) and the Inventory column (title + Tabs) -- tabs
+   are right-aligned in the SAME row as the label, per the task's
+   verbatim UI change request. */
+.board-column-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .board-column-title {
   margin: 0;
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--dim);
+  white-space: nowrap;
 }
 
-.inv-tabs {
+.inv-tabs,
+.preset-tabs {
   display: flex;
   gap: 4px;
 }
 
-.inv-tab {
+.preset-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inv-tab,
+.preset-tab {
   background: var(--panel);
   color: var(--dim);
   border: 1px solid var(--line);
@@ -247,15 +272,48 @@ html, body {
   font-weight: 600;
 }
 
-.inv-tab:hover {
+.inv-tab:hover,
+.preset-tab:hover {
   border-color: var(--cyan);
   color: var(--text);
 }
 
-.inv-tab-active {
+.inv-tab-active,
+.preset-tab-active {
   background: #232019;
   color: var(--cyan);
   border-color: var(--cyan);
+}
+
+/* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
+   button in place, same box footprint, so the tab row doesn't jump. */
+.inv-tab-rename-input,
+.preset-tab-rename-input {
+  background: #0e0d0b;
+  color: var(--text);
+  border: 1px solid var(--cyan);
+  border-radius: 8px 8px 0 0;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  width: 84px;
+}
+
+.preset-add-btn {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.preset-add-btn:hover {
+  border-color: var(--cyan);
+  color: var(--cyan);
 }
 
 .inventory-board-canvas {

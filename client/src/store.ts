@@ -167,6 +167,65 @@ export function setActiveInvPage(page: number): void {
   setSnapshot({ ...snapshot, activeInvPage: clamped });
 }
 
+// ---------------------------------------------------------------------
+// Preset actions (REQ-0031 Phase B). All three go through the engine's
+// preset mutators (switchPreset/addPreset/renamePreset) then
+// notifyStateChanged() -- same pattern as every board interaction commit
+// in BoardRenderer.ts -- so auto-save picks up the change exactly like
+// any other mutation, and the canvas board's existing render(state)-on-
+// stateVersion-bump subscription (Board.tsx) redraws the newly-active
+// preset's bps/pos/sis with NO Pixi Application recreation (Phase A
+// lesson: canvas ops read state.bps/pos/sis directly -- see
+// boardOps.ts's makeCanvasOps container(){return state;} -- so
+// switchPreset() mutating those same top-level fields in place is
+// already everything Board.tsx's render() needs; there is no separate
+// per-preset BoardOps/boardId the way inventory pages have one per page,
+// so no setOps() call is needed here at all, only the state mutation +
+// notifyStateChanged() re-render every other commit already relies on).
+
+/** Switches the active preset (0-based index). Beams/connections/combos
+ * recompute automatically on the next render() since they are always
+ * derived fresh from st.bps/st.pos (traceBeams/combos take no cached
+ * state) -- nothing preset-specific needs to be invalidated by hand. */
+export function switchActivePreset(n: number): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.switchPreset(st, n);
+  if (r.ok) notifyStateChanged();
+}
+
+/** Appends a brand-new EMPTY preset and immediately switches to it
+ * ("Preset+ appends a preset, switches to it" -- REQ-0031 UI spec). */
+export function addNewPresetAndSwitch(name?: string): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const added = engine.addPreset(st, name);
+  if (!added.ok || added.index === undefined) return;
+  const switched = engine.switchPreset(st, added.index);
+  if (switched.ok) notifyStateChanged();
+}
+
+/** Renames preset `n` (0-based) -- works for the active or an inactive
+ * preset identically (engine.renamePreset only touches names[]). */
+export function renameActivePreset(n: number, name: string): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.renamePreset(st, n, name);
+  if (r.ok) notifyStateChanged();
+}
+
+/** Renames inventory page `n` (0-based). */
+export function renameInventoryPage(n: number, name: string): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.renameInvPage(st, n, name);
+  if (r.ok) notifyStateChanged();
+}
+
 /**
  * Pings subscribers after an in-place mutation of `snapshot.state` (an
  * engine mutator call, an Esc-cancel, or a Save/Load field replacement).
