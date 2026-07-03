@@ -2,6 +2,12 @@
 // tool_gen_data.cjs — generates data.js (GameData UMD module) from live JSON + scenario.json.
 // Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>
 //
+// v5 changes (REQ-0023):
+//   - ITEMS/SI_DEFS entries now carry "ports" (array of {tiles,tag}) instead of
+//     the old flat "conn" (array of [x,y] tiles, no tag). Content JSON was
+//     migrated by tools/migrate_connection_ports.cjs; this generator just passes
+//     e.ports through unchanged (was e.conn previously).
+//
 // v4 changes (REQ-0022 batch 3/4):
 //   - ITEMS entries now carry "tags" (ordered array, tags[0]=former type,
 //     tags[1..]=former elements in original order) instead of separate
@@ -12,7 +18,7 @@
 // v3 changes:
 //   - ITEMS/SI_DEFS entries now also carry: name_ja, eff_en, eff_ja (rendered via
 //     eff_render.cjs render(effect,locale), all effects joined with ' '), flavor,
-//     flavor_ja, and "conn" (passed through for POs, when present).
+//     flavor_ja, and "ports" (passed through for POs, when present; REQ-0023 conn->ports).
 //   - Legacy "eff" field is kept = eff_en, for backward compat with existing UI code.
 'use strict';
 const fs = require('fs');
@@ -69,7 +75,7 @@ function main() {
       flavor_ja: e.flavor_ja,
     };
     if (e.stretch) rec.stretch = e.stretch;
-    if (e.conn !== undefined) rec.conn = e.conn;
+    if (e.ports !== undefined) rec.ports = e.ports;
     ITEMS[e.id] = rec;
   }
 
@@ -91,14 +97,14 @@ function main() {
       flavor: e.flavor,
       flavor_ja: e.flavor_ja,
     };
-    if (e.conn !== undefined) SI_DEFS[e.id].conn = e.conn;
+    if (e.ports !== undefined) SI_DEFS[e.id].ports = e.ports;
   }
 
   // makeState payload = deep copy of scenario minus "layout"
   const scenarioForState = JSON.parse(JSON.stringify(scenario));
   delete scenarioForState.layout;
 
-  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v4)\n' +
+  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v5)\n' +
     '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(sisPath) + ' + ' + path.basename(scenarioPath) + '\n' +
     '// Generated: ' + new Date().toISOString() + '\n';
 

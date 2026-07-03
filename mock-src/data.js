@@ -1,6 +1,6 @@
-// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v4)
+// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v5)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T11:15:29.126Z
+// Generated: 2026-07-03T11:48:41.011Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -102,15 +102,33 @@ const ITEMS={
   "eff_ja": "隣接するWeapon: 命中時に 火傷 4〜8 付与。 隣接するOil: 火傷 付与量 ×2。",
   "flavor": "A shard of Muspelheim litany.",
   "flavor_ja": "ムスペルヘイムの経文が刻まれた欠片。",
-  "conn": [
-   [
-    0,
-    -1
-   ],
-   [
-    1,
-    -1
-   ]
+  "ports": [
+   {
+    "tiles": [
+     [
+      0,
+      -1
+     ],
+     [
+      1,
+      -1
+     ]
+    ],
+    "tag": "Weapon"
+   },
+   {
+    "tiles": [
+     [
+      0,
+      -1
+     ],
+     [
+      1,
+      -1
+     ]
+    ],
+    "tag": "Oil"
+   }
   ]
  },
  "oil_flask": {
@@ -138,15 +156,20 @@ const ITEMS={
   "eff_ja": "隣接するFlame: 火傷 付与量 ×2。",
   "flavor": "Slow gold that loves a spark.",
   "flavor_ja": "火花を愛する、粘る黄金。",
-  "conn": [
-   [
-    0,
-    1
-   ],
-   [
-    1,
-    1
-   ]
+  "ports": [
+   {
+    "tiles": [
+     [
+      0,
+      1
+     ],
+     [
+      1,
+      1
+     ]
+    ],
+    "tag": "Flame"
+   }
   ]
  },
  "dagger": {

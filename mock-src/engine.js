@@ -235,14 +235,84 @@ function create(ITEMS,SI_DEFS,layout,trees){
       if(Math.abs(r1-r2)+Math.abs(c1-c2)===1)return true;
     return false;
   }
-  // conn = EXTERNAL target tiles this item's tag-connection reaches (directional)
-  function connTargets(st,p){
+
+  // ---------------------------------------------------------------------
+  // Connection Port model (REQ-0023).
+  //
+  // A PO's `ports` (content field, replacing the old flat `conn`) is an
+  // array of {tiles:[[dr,dc],...], tag}. `tiles` are EXTERNAL target cells
+  // (outside the PO's own shape, orthogonally adjacent, negative offsets
+  // allowed), expressed in the SAME unrotated/unnormalized coordinate frame
+  // as `shape` -- i.e. identical convention to the old `conn` field, just
+  // grouped per-tag instead of being one flat list. `tag` is the PO Tag
+  // (po_tags tree) this port is searching for on a partner PO.
+  //
+  // portTargets(st,p): for a placed PO p, returns one entry per port:
+  // {tag, tiles:[[r,c],...]} with `tiles` rotated (same rotation transform
+  // as connTargets used to apply to the old flat conn list) and translated
+  // to absolute canvas coordinates. Used by the UI for the ◇ target-tile
+  // markers/tooltips, and by connectionsFrom() below for resolution.
+  function portTargets(st,p){
     const def=ITEMS[p.id];
-    if(p.loc!=='grid'||!def.conn||!def.conn.length)return [];
-    let sh=def.shape.map(o=>[o[0],o[1]]),cn=def.conn.map(o=>[o[0],o[1]]);
-    for(let i=0;i<(p.rot%4+4)%4;i++){sh=sh.map(([r,c])=>[c,-r]);cn=cn.map(([r,c])=>[c,-r]);}
+    if(p.loc!=='grid'||!def.ports||!def.ports.length)return [];
+    let sh=def.shape.map(o=>[o[0],o[1]]);
+    for(let i=0;i<(p.rot%4+4)%4;i++)sh=sh.map(([r,c])=>[c,-r]);
     const mr=Math.min(...sh.map(o=>o[0])),mc=Math.min(...sh.map(o=>o[1]));
-    return cn.map(([r,c])=>[r-mr+p.cell[0],c-mc+p.cell[1]]);
+    return def.ports.map(port=>{
+      let cn=port.tiles.map(o=>[o[0],o[1]]);
+      for(let i=0;i<(p.rot%4+4)%4;i++)cn=cn.map(([r,c])=>[c,-r]);
+      return {tag:port.tag,tiles:cn.map(([r,c])=>[r-mr+p.cell[0],c-mc+p.cell[1]])};
+    });
+  }
+  // Back-compat/UI convenience: every target tile across every port of a PO,
+  // flattened (no tag), matching the old connTargets() shape exactly -- the
+  // ◇ marker rendering only ever needed tile positions, not tags.
+  function connTargets(st,p){
+    return portTargets(st,p).flatMap(port=>port.tiles);
+  }
+
+  // connectionsFrom(st,p): established connections FROM PO p (p is the port
+  // owner/"sender"; per REQ-0023 the port belongs to the sender and the
+  // relation is directional -- mutuality is not required). Returns
+  // [{tag, tile:[r,c], partner:<PO>}...], one entry per (port, landed tile,
+  // partner) triple where:
+  //   - the port's tile lands on a cell occupied by `partner`
+  //   - `partner` is in the SAME BP as `p` (guard retained from REQ-0022;
+  //     ports can never connect across BPs even if the tile arithmetic
+  //     would otherwise land inside a neighboring BP's footprint)
+  //   - `partner` has a tag equal to, or hierarchy-related to (via the
+  //     PO Tag tree, poTree), the port's tag
+  function connectionsFrom(st,p){
+    if(p.loc!=='grid')return [];
+    const cbp=cellBPMap(st),placed=st.pos.filter(q=>q.loc==='grid'&&q.uid!==p.uid);
+    const bpOfP=cbp[key(...cellsOf(st,p)[0])];
+    const out=[];
+    for(const port of portTargets(st,p)){
+      for(const [tr,tc] of port.tiles){
+        for(const partner of placed){
+          const partnerCells=cellsOf(st,partner);
+          const landed=partnerCells.some(([r,c])=>r===tr&&c===tc);
+          if(!landed)continue;
+          if(cbp[key(...partnerCells[0])]!==bpOfP)continue; // never across BPs
+          const partnerTags=ITEMS[partner.id].tags;
+          if(!hasTag(partnerTags,port.tag,poTree))continue;
+          out.push({tag:port.tag,tile:[tr,tc],partner});
+        }
+      }
+    }
+    return out;
+  }
+  // allConnections(st): every established connection on the board, as
+  // {from:<PO>, to:<PO>, tag, tile}. Directional (one entry per sender-port
+  // hit; mutual connections between two ported POs each produce their own
+  // entries, not merged).
+  function allConnections(st){
+    const out=[];
+    for(const p of st.pos){
+      if(p.loc!=='grid')continue;
+      for(const c of connectionsFrom(st,p))out.push({from:p,to:c.partner,tag:c.tag,tile:c.tile});
+    }
+    return out;
   }
   function contactPairs(A,B){
     const out=[];
@@ -250,25 +320,111 @@ function create(ITEMS,SI_DEFS,layout,trees){
       if(Math.abs(a[0]-b[0])+Math.abs(a[1]-b[1])===1)out.push([a,b]);
     return out;
   }
+
+  // Declarative combo-recipe table (REQ-0023): recipes no longer hard-code
+  // which PO owns which tag by inspecting both sides ad hoc -- each recipe
+  // just names the OWNER tag (the tag the connection's sender/from-PO must
+  // have) and the PORT tag it must have connected via (which, by
+  // connectionsFrom()'s own contract, is already tag-matched against the
+  // partner -- so "port tag X" means "connected to a partner tagged X").
+  // This is a mechanical unpacking of the old combos() hard-coded checks:
+  //   old: fl = PO tagged Flame; oil = PO tagged Oil; connected(fl,oil) -> Ignite
+  //   new: any established connection whose sender has tag Flame and whose
+  //        port tag is Oil -> Ignite (the partner is guaranteed tagged Oil
+  //        by connectionsFrom()'s tag-hierarchy check already).
+  // "blade" keeps its pre-existing special-case Weapon-alias for Flaming
+  // Blade: blade's own tags are [WeaponPart, Metal] (no Weapon tag), but the
+  // OLD code already treated `a.id==='blade'` as Weapon-equivalent for this
+  // one recipe (`(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')`). That
+  // special case is not expressible purely via tags/ports (it is keyed on
+  // item id, not on any tag), so it is preserved here VERBATIM as a documented
+  // recipe-level exception rather than silently dropped or reinterpreted.
+  const COMBO_RECIPES=[
+    {name:'Ignite',ownerTag:'Flame',portTag:'Oil',
+     desc:'Flame + Oil connected → Burn applications ×2.'},
+    {name:'Flaming Blade',ownerTag:'Flame',portTag:'Weapon',
+     desc:'Flame connected to a Weapon → adds Burn on hit.'},
+  ];
+  // legacyIdAlias: pre-port-model special case, kept VERBATIM rather than
+  // dropped or reinterpreted. Before REQ-0023, combos() treated the item id
+  // "blade" as Weapon-equivalent for the Flaming Blade recipe specifically
+  // (`(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')`), even though
+  // blade's own declared tags are [WeaponPart, Metal] -- no Weapon tag, and
+  // today's po_tags tree is degenerate (no WeaponPart->Weapon hierarchy
+  // edge), so a pure tag-hierarchy connection check can never match blade
+  // for a Weapon-tagged port. This is NOT expressible as a tagged port
+  // (it's keyed on item id, not a tag), so it is preserved as a narrow,
+  // documented, recipe-scoped alias table rather than silently changing
+  // this combo's behavior. Keyed by [recipeName][portTag] -> extra id that
+  // counts as a match for that port tag, alongside the normal tag-hierarchy
+  // check (which still governs every other partner).
+  const LEGACY_ID_ALIAS={'Flaming Blade':{'Weapon':['blade']}};
+  function partnerMatchesPortTag(recipeName,portTag,partner){
+    if(hasTag(ITEMS[partner.id].tags,portTag,poTree))return true;
+    const aliases=(LEGACY_ID_ALIAS[recipeName]||{})[portTag]||[];
+    return aliases.includes(partner.id);
+  }
   function combos(st){
     const out=[],cbp=cellBPMap(st),placed=st.pos.filter(p=>p.loc==='grid');
     const asm=assembly(st);
     if(asm)out.push({name:'Assembled: Longsword',cells:asm.cells,desc:'Blade + Hilt flush-joined → Strike 10 / 4 ticks.'});
-    for(const a of placed)for(const b of placed){
-      if(a.uid>=b.uid)continue;
-      const ca=cellsOf(st,a),cb=cellsOf(st,b);
-      if(cbp[key(...ca[0])]!==cbp[key(...cb[0])])continue;
-      const ta=connTargets(st,a),tb=connTargets(st,b);
-      const hit=(T,cells)=>T.filter(t=>cells.some(c=>c[0]===t[0]&&c[1]===t[1]));
-      const pairs=hit(ta,cb).concat(hit(tb,ca)); // target tiles that landed on the partner
-      if(!pairs.length)continue;
-      const da=ITEMS[a.id],db=ITEMS[b.id];
-      const fl=hasTag(da.tags,'Flame',poTree)?a:(hasTag(db.tags,'Flame',poTree)?b:null);
-      const oil=hasTag(da.tags,'Oil',poTree)?a:(hasTag(db.tags,'Oil',poTree)?b:null);
-      if(fl&&oil&&fl!==oil)out.push({name:'Ignite',cells:ca.concat(cb),pairs,desc:'Flame + Oil connected → Burn applications ×2.'});
-      const wep=(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')?a:((hasTag(db.tags,'Weapon',poTree)||b.id==='blade')?b:null);
-      if(fl&&wep&&fl!==wep)out.push({name:'Flaming Blade',cells:ca.concat(cb),pairs,desc:'Flame connected to a Weapon → adds Burn on hit.'});
+
+    // General connection-based combo resolution (REQ-0023): a port's tiles
+    // landing on a partner normally requires the partner to carry the
+    // port's tag (checked inside connectionsFrom(), via the PO Tag
+    // hierarchy walk). The "blade" legacy alias above is the one
+    // pre-existing exception that bypasses connectionsFrom()'s strict tag
+    // check -- for that single case only, we re-scan port hits directly
+    // instead of trusting allConnections()'s already-tag-filtered list.
+    for(const recipe of COMBO_RECIPES){
+      // group every landed tile by the connected (uidA,uidB) pair, so a PO
+      // whose port has multiple target tiles (e.g. a 2-tile port) still
+      // renders a diamond marker on EACH landed tile (matches the old
+      // combos() behavior, which collected all hit() tiles into one pairs[]
+      // per combo instance) while only emitting ONE combo entry per pair.
+      //
+      // BIDIRECTIONAL by design: the old pre-REQ-0023 code detected e.g.
+      // "Ignite" from EITHER side's conn (`hit(ta,cb).concat(hit(tb,ca))`),
+      // with no notion of which PO "owned" the check. Under the port model
+      // each side now owns its OWN port with its OWN tag (flame_tablet: a
+      // port tagged Oil, searching for an Oil partner; oil_flask: a port
+      // tagged Flame, searching for a Flame partner) -- both represent the
+      // same recipe from opposite ends. So a recipe matches a connection
+      // where EITHER (owner has ownerTag AND port tagged portTag) OR
+      // (owner has portTag AND port tagged ownerTag) -- i.e. or across the
+      // recipe's two tag roles -- and tiles from both directions are
+      // merged into one combo entry per connected pair (exactly like the
+      // old concat()).
+      const roles=[[recipe.ownerTag,recipe.portTag],[recipe.portTag,recipe.ownerTag]];
+      const byPair=new Map();
+      for(const [needOwnerTag,needPortTag] of roles){
+        for(const p of placed){
+          if(!hasTag(ITEMS[p.id].tags,needOwnerTag,poTree))continue;
+          const bpOfP=cbp[key(...cellsOf(st,p)[0])];
+          for(const port of portTargets(st,p)){
+            if(port.tag!==needPortTag)continue;
+            for(const [tr,tc] of port.tiles){
+              for(const partner of placed){
+                if(partner.uid===p.uid)continue;
+                const partnerCells=cellsOf(st,partner);
+                if(!partnerCells.some(([r,c])=>r===tr&&c===tc))continue;
+                if(cbp[key(...partnerCells[0])]!==bpOfP)continue; // never across BPs
+                if(!partnerMatchesPortTag(recipe.name,needPortTag,partner))continue;
+                const k=[p.uid,partner.uid].sort().join('|');
+                if(!byPair.has(k))byPair.set(k,{a:p,b:partner,tiles:[]});
+                const rec=byPair.get(k);
+                if(!rec.tiles.some(([r,c])=>r===tr&&c===tc))rec.tiles.push([tr,tc]);
+              }
+            }
+          }
+        }
+      }
+      for(const rec of byPair.values()){
+        const cells=cellsOf(st,rec.a).concat(cellsOf(st,rec.b));
+        out.push({name:recipe.name,cells,pairs:rec.tiles,desc:recipe.desc});
+      }
     }
+
     for(const bp of st.bps){
       const beasts=placed.filter(p=>hasTag(ITEMS[p.id].tags,'Beast',poTree)&&cbp[key(...cellsOf(st,p)[0])]===bp.id);
       if(beasts.length>=2)out.push({name:'Pack Instinct',cells:beasts.flatMap(p=>cellsOf(st,p)),desc:beasts.length+' Beast POs in '+bp.name+' → each +2 damage per other.'});
@@ -291,7 +447,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     for(const bm of beams)bm.mutual=!!(bm.to&&beams.some(o=>o.from===bm.to&&o.to===bm.from));
     return beams;
   }
-  return {connTargets,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
+  return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key};
 }
