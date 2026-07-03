@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v5)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T11:48:41.011Z
+// Generated: 2026-07-03T11:58:29.309Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
