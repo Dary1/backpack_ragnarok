@@ -21,11 +21,11 @@ function gameDataFromApiContent(payload){
       flavor:e.flavor,flavor_ja:e.flavor_ja};
     if(e.stretch)ITEMS[id].stretch=e.stretch;
     if(e.ports!==undefined)ITEMS[id].ports=e.ports;
-    // /api/content serves raw content/live entries (effects=AST), which lack
-    // the pre-rendered eff_en/eff_ja text the baked data.js has (rendered via
-    // eff_render.cjs at build time). Server-side rendering of the AST is out
-    // of scope for REQ-0024 v0 (server has no eff_render port yet) -- until
-    // then, live mode shows blank effect text; this is a known, accepted gap.
+    // REQ-0024 gap closed: server/api.cjs now renders eff_en/eff_ja from the
+    // effects AST at content-load time via tools/eff_render.cjs (the same
+    // renderer tool_gen_data.cjs uses to bake mock-src/data.js), so e.eff_en/
+    // e.eff_ja here are already non-empty, byte-identical rendered strings
+    // whenever the source entry has effects.
   }
   const SI_DEFS={};
   for(const id in payload.sis){

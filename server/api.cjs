@@ -12,6 +12,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const storage = require('./storage.cjs');
+// REQ-0024 gap fix: render effect AST -> EN/JA display text server-side,
+// using the SAME renderer tool_gen_data.cjs uses to bake mock-src/data.js,
+// so live-mode tooltips are byte-identical to baked-mode tooltips.
+const { render } = require('../tools/eff_render.cjs');
 
 const HOST = '127.0.0.1';
 const PORT = 8802;
@@ -37,6 +41,13 @@ function loadJSON(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
+// Joins all effect renderings (in the given locale) with a single space.
+// Mirrors tools/tool_gen_data.cjs's renderEffJoined exactly, so live-served
+// eff_en/eff_ja match the baked mock-src/data.js strings byte-for-byte.
+function renderEffJoined(effects, locale) {
+  return (effects || []).map(function (e) { return render(e, locale); }).join(' ');
+}
+
 // Builds the /api/content payload fresh from content/live + vocab.
 // Shape mirrors mock-src/data.js (GameData): { items, sis, trees, scenario }.
 // This is intentionally a straight, un-cached-at-source read of content/live —
@@ -52,11 +63,17 @@ function buildContentPayload() {
 
   const ITEMS = {};
   for (const e of itemEntries) {
-    ITEMS[e.id] = e;
+    ITEMS[e.id] = Object.assign({}, e, {
+      eff_en: renderEffJoined(e.effects, 'en'),
+      eff_ja: renderEffJoined(e.effects, 'ja'),
+    });
   }
   const SIS = {};
   for (const e of siEntries) {
-    SIS[e.id] = e;
+    SIS[e.id] = Object.assign({}, e, {
+      eff_en: renderEffJoined(e.effects, 'en'),
+      eff_ja: renderEffJoined(e.effects, 'ja'),
+    });
   }
   const trees = { po: vocab.po_tags || {}, socket: vocab.socket_tags || {} };
 

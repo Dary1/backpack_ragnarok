@@ -23,7 +23,12 @@ on `127.0.0.1:8802` only.
 - `GET /api/health` → `{ok:true, version:"<semver>"}`
 - `GET /api/content` → `{items, sis, trees, scenario, layout}`, read fresh
   from `content/live/*.json` + `content/vocab.json` (mtime-checked cache —
-  content/live stays the single source of truth; this is not a copy).
+  content/live stays the single source of truth; this is not a copy). Each
+  item/si entry also carries server-rendered `eff_en`/`eff_ja` display text,
+  produced from its `effects` AST via `tools/eff_render.cjs` (the same
+  renderer `tools/tool_gen_data.cjs` uses to bake `mock-src/data.js`), so
+  live-mode tooltips are byte-identical to baked-mode tooltips (closes the
+  REQ-0024 "blank effect text in live mode" gap).
 - `GET /api/profile/default/canvas` → `{schema_version, profile_id,
   updated_at, canvas}` or 404 if nothing saved yet.
 - `PUT /api/profile/default/canvas` (body = canvas JSON, ≤64KB) → same
