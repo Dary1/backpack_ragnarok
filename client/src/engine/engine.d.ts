@@ -1,11 +1,20 @@
-// Typed surface for mock-src/engine.js — REQ-0026 T0.1.
+// Typed surface for mock-src/engine.js — REQ-0026 T0.1, extended REQ-0027 T0.2.
 //
-// This is NOT a full re-typing of the engine; it covers only the queries
-// T0.1's read-only board actually calls (grid/BP/PO layout, sockets, beams,
-// connection ports). The engine itself is consumed as-is (see adapter.ts) —
-// these types describe its existing behavior, they do not change it.
-// Extend as later T-phases (drag-drop, linker editing, save) need more of
-// the surface engine.js already exports (movePO, seatSI, combos, etc).
+// This is NOT a full re-typing of the engine; it covers the queries T0.1's
+// read-only board calls plus the mutator surface T0.2's drag/drop, rotate,
+// BP move, and SI seat/unseat interactions call. The engine itself is
+// consumed as-is (see adapter.ts) — these types describe its existing
+// behavior, they do not change it.
+//
+// REQ-0027 T0.2 verification note: re-read mock-src/engine.js fresh against
+// every mutator declaration below. Found and fixed one drift: movePO,
+// moveBP, and moveAssembly's failure path returns whatever the internal
+// canPlaceCells()/canMoveBP()/canPlaceAssembly() check produced (a
+// PlacementCheck-shaped object carrying `cells` and often `bp`), not just
+// `{ok,why?}` — the previous declarations dropped `cells`/`bp` on failure,
+// which the drag-drop layer's reject-flash rendering needs. All other
+// mutators' declared shapes already matched engine.js exactly (rotatePO,
+// canMoveBP, canPlaceAssembly, hostOk, seatSI, stowSI, unseatOrphans).
 
 /** [row, col] grid cell, 1-based per engine.js convention. */
 export type Cell = [number, number];
@@ -192,15 +201,15 @@ export interface EngineInstance {
   occupancy: (st: GameState, excl?: string[]) => Record<string, string>;
 
   canPlacePO: (st: GameState, uid: string, rot: number, anchor: Cell) => PlacementCheck;
-  movePO: (st: GameState, uid: string, anchor: Cell | 'inv') => { ok: boolean; why?: string };
+  movePO: (st: GameState, uid: string, anchor: Cell | 'inv') => { ok: boolean; why?: string; cells?: Cell[]; bp?: string };
   rotatePO: (st: GameState, uid: string) => { ok: boolean; why?: string; cells?: Cell[] };
   canMoveBP: (st: GameState, bpId: string, origin: Cell) => PlacementCheck;
-  moveBP: (st: GameState, bpId: string, origin: Cell) => { ok: boolean; why?: string };
+  moveBP: (st: GameState, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
   poInBP: (st: GameState, p: PO, bp: BP) => boolean;
 
   assembly: (st: GameState) => Assembly | null;
   canPlaceAssembly: (st: GameState, anchor: Cell) => PlacementCheck;
-  moveAssembly: (st: GameState, anchor: Cell | 'inv') => { ok: boolean; why?: string };
+  moveAssembly: (st: GameState, anchor: Cell | 'inv') => { ok: boolean; why?: string; cells?: Cell[]; bp?: string };
 
   sockets: (st: GameState) => Socket[];
   hostOk: (st: GameState, siUid: string, sock: Socket) => { ok: boolean; why?: string };
