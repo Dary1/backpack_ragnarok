@@ -13,7 +13,7 @@ Regenerates web/preview/<batch>/index.html from:
 
 Deterministic: same inputs -> byte-identical output (no timestamps, no
 non-deterministic ordering). Preserves the current page's dark-parchment
-look, JA/EN i18n toggle, gallery cards with shapegrid + conn-notch markers,
+look, JA/EN i18n toggle, gallery cards with shapegrid + Connection Port notch markers,
 batch stats bars, and live-roster comparison table.
 
 Usage:
@@ -76,12 +76,15 @@ def conn_notch_polygon(cx, cy, half=4.48):
     return " ".join(f"{x},{y}" for x, y in pts)
 
 
-def render_shapegrid(shape, conn):
+def render_shapegrid(shape, port_tiles):
     """Build the <svg class="shapegrid">...</svg> markup for one item's shape.
-    conn: list of absolute [col,row] external-neighbor coordinates (same coordinate
-    frame as shape, before normalization), one per connecting shape-cell, in the
-    same relative order as they appear in shape (matches live_items.json's
-    flame_tablet/oil_flask conn convention)."""
+    port_tiles: list of absolute [col,row] external-neighbor coordinates (same
+    coordinate frame as shape, before normalization) -- the union of every
+    Connection Port's `tiles` on this entry (REQ-0023; ports replaced the old
+    flat `conn` list with ports:[{tiles,tag},...], but notch rendering is
+    purely geometric and doesn't care which port/tag a tile belongs to).
+    Matches live_items.json's flame_tablet/oil_flask port-tile convention
+    (formerly the "conn" convention)."""
     cols, rows, cellset = shape_bbox_cells(shape)
     c0 = min(c for c, r in shape)
     r0 = min(r for c, r in shape)
@@ -99,8 +102,8 @@ def render_shapegrid(shape, conn):
     icon = None  # filled in by caller (needs entry dict); placeholder replaced below
     parts.append("__USE_PLACEHOLDER__")
 
-    if conn:
-        for i, (ncol, nrow) in enumerate(conn):
+    if port_tiles:
+        for i, (ncol, nrow) in enumerate(port_tiles):
             # neighbor cell in normalized (0-based) coords
             ncc, nrr = ncol - c0, nrow - r0
             cx = ncc * CELL_PX + CELL_PX / 2
@@ -116,10 +119,20 @@ def render_shapegrid(shape, conn):
 def render_card(entry):
     shape = entry.get("shape")
     icon_id = entry.get("icon")
-    conn = entry.get("conn")
+    ports = entry.get("ports") or []
+    # Flatten + dedupe every port's tiles into one list purely for notch
+    # rendering (geometric only; see render_shapegrid docstring above).
+    port_tiles = []
+    seen_tiles = set()
+    for port in ports:
+        for t in port.get("tiles", []):
+            tt = tuple(t)
+            if tt not in seen_tiles:
+                seen_tiles.add(tt)
+                port_tiles.append(t)
 
     if shape:
-        parts, w, h = render_shapegrid(shape, conn)
+        parts, w, h = render_shapegrid(shape, port_tiles)
         use_tag = f'<use href="#{icon_id}" x="0" y="0" width="{w}" height="{h}"/>'
         parts = [p if p != "__USE_PLACEHOLDER__" else use_tag for p in parts]
         shape_html = "".join(parts)
@@ -139,6 +152,10 @@ def render_card(entry):
     chips = [f'<span class="chip chip-type">{esc(type_tag)}</span>']
     for el in el_tags:
         chips.append(f'<span class="chip chip-el">{esc(el)}</span>')
+    for port in ports:
+        port_tag = port.get("tag", "")
+        if port_tag:
+            chips.append(f'<span class="chip chip-port">&#9671; {esc(port_tag)}</span>')
 
     sockets_html = ""
     sockets = entry.get("sockets") or []
@@ -311,6 +328,7 @@ h2 {{ color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transfor
         border: 1px solid var(--border); color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }}
 .chip-type {{ color: #d7c48a; }}
 .chip-el {{ color: #7ecbe8; }}
+.chip-port {{ color: #f4d35e; }}
 .sockets {{ display: flex; flex-wrap: wrap; gap: 4px; }}
 .socket-pill {{ font-size: 11px; padding: 2px 6px; border-radius: 4px; background: #2a2416;
                border: 1px solid var(--border); color: var(--text); }}

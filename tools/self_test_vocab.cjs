@@ -88,7 +88,12 @@ for (const verbT of vocab.verbs) {
     effects: [effect],
   };
   if (effect.trigger.t === 'adjacent') {
-    entry.conn = [[0, 0]]; // required: non-empty subset of shape cells
+    // REQ-0023: conn -> ports ({tiles,tag}). tag reuses this entry's own
+    // trigger tag so a hypothetical future tool_validate.cjs schema check
+    // (see file header -- tool_validate.cjs does not exist yet) would see
+    // a self-consistent port whose tag matches what the effect claims to
+    // react to.
+    entry.ports = [{ tiles: [[0, 0]], tag: effect.trigger.tag }]; // required: non-empty subset of shape cells
   }
   poEntries.push(entry);
 }
