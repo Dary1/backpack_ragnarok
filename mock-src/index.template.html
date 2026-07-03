@@ -40,6 +40,7 @@
   .beam-flow{stroke-dasharray:7 5;animation:flow 1.2s linear infinite}
   .L.en{display:none}.lang-en .L.en{display:inline}.lang-en .L.ja{display:none}
   #langBtn{position:fixed;top:10px;right:14px;z-index:20;background:#26221c;color:#e8e0d0;border:1px solid #4a4234;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:13px}
+  header button{background:#26221c;color:#e8e0d0;border:1px solid #4a4234;border-radius:8px;padding:5px 12px;cursor:pointer;font-size:13px}
   @keyframes flow{to{stroke-dashoffset:-24}}
 </style>
 </head>
@@ -47,7 +48,10 @@
 <!--SPRITE-->
 <header>
   <h1>backpack_ragnarok — Canvas Mock</h1>
-  <span class="v">v0.7 · Connection Ports · ranges ×3 · JA/EN · PO golden v1.5 · 2026-07-03</span>
+  <span class="v">v0.8 · Dynamic content (REQ-0024) · Connection Ports · ranges ×3 · JA/EN · PO golden v1.5 · 2026-07-03</span>
+  <button id="saveCanvasBtn"><span class="L ja">保存</span><span class="L en">Save</span></button>
+  <button id="loadCanvasBtn"><span class="L ja">読込</span><span class="L en">Load</span></button>
+  <span id="canvasIoStatus" style="font-size:12px;color:var(--dim)"></span>
   <button id="langBtn">🇬🇧 EN</button>
 </header>
 <div id="hint"><span class="L ja"><b>ドラッグ</b>でアイテム⇄インベントリ移動 · <b>リンカーまたは空きセルをドラッグ</b>=BPごと移動(リンクは追従再計算) · <b>ダブルクリック</b>=時計回り回転 · ソケットアイテムはソケットへドラッグ(緑=型+ソケットタグ一致) · <b>チェインボタン</b>=組立武器の一体/個別移動切替 · ◆金ノッチ=接続ポート対象タイル · Escでキャンセル</span><span class="L en"><b>Drag</b> items ⇄ Inventory · <b>Drag a Linker or empty Cell</b> = move the whole BP · <b>Double-click</b> = rotate CW · Socket Items onto sockets (green = type+socket-tags match) · <b>Chain button</b> toggles linked movement · gold ◆ notches = Connection Port target tiles · Esc cancels</span></div>

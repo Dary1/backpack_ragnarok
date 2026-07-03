@@ -1,9 +1,80 @@
-// backpack_ragnarok mock v0.5 — UI layer (browser only; all logic lives in engine.js)
+// backpack_ragnarok mock v0.6 — UI layer (browser only; all logic lives in engine.js)
+// REQ-0024: data supply is now dynamic. Boot fetches /api/content and builds a
+// GameData-shaped object from it; on any failure (network error, bad shape,
+// non-2xx) it falls back to the baked mock-src/data.js (offline-first
+// principle from REQ-0024). Engine/UI logic below is unchanged either way.
 (function(){
 'use strict';
-const {LAYOUT,ITEMS,SI_DEFS,TREES}=GameData;
+
+// Converts the /api/content response ({items,sis,trees,scenario,layout}) into
+// the same shape mock-src/data.js exports (GameData: {LAYOUT,ITEMS,SI_DEFS,
+// TREES,makeState}) so every downstream call site is identical regardless of
+// data source.
+function gameDataFromApiContent(payload){
+  const LAYOUT=payload.layout||(payload.scenario&&payload.scenario.layout);
+  if(!LAYOUT||!Number.isInteger(LAYOUT.ROWS)||!Number.isInteger(LAYOUT.COLS))throw new Error('content: missing layout');
+  const ITEMS={};
+  for(const id in payload.items){
+    const e=payload.items[id];
+    ITEMS[id]={name:e.name,name_ja:e.name_ja,tags:e.tags,rarity:e.rarity,shape:e.shape,icon:e.icon,
+      sockets:e.sockets||[],eff:e.eff_en||'',eff_en:e.eff_en||'',eff_ja:e.eff_ja||'',
+      flavor:e.flavor,flavor_ja:e.flavor_ja};
+    if(e.stretch)ITEMS[id].stretch=e.stretch;
+    if(e.ports!==undefined)ITEMS[id].ports=e.ports;
+    // /api/content serves raw content/live entries (effects=AST), which lack
+    // the pre-rendered eff_en/eff_ja text the baked data.js has (rendered via
+    // eff_render.cjs at build time). Server-side rendering of the AST is out
+    // of scope for REQ-0024 v0 (server has no eff_render port yet) -- until
+    // then, live mode shows blank effect text; this is a known, accepted gap.
+  }
+  const SI_DEFS={};
+  for(const id in payload.sis){
+    const e=payload.sis[id];
+    SI_DEFS[id]={name:e.name,name_ja:e.name_ja,slot:e.slot,reqTags:e.reqTags||[],icon:e.icon,
+      rarity:e.rarity,eff:e.eff_en||'',eff_en:e.eff_en||'',eff_ja:e.eff_ja||'',
+      flavor:e.flavor,flavor_ja:e.flavor_ja};
+    if(e.ports!==undefined)SI_DEFS[id].ports=e.ports;
+  }
+  const TREES=payload.trees||{po:{},socket:{}};
+  const scenarioForState=JSON.parse(JSON.stringify(payload.scenario||{}));
+  delete scenarioForState.layout;
+  function makeState(){return JSON.parse(JSON.stringify(scenarioForState));}
+  return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
+}
+
+// Small visible badge (REQ-0024 deliverable: "visible small badge live/baked").
+function showDataSourceBadge(source){
+  const b=document.createElement('div');
+  b.id='dataSourceBadge';
+  b.textContent=source==='live'?'live data':'baked data';
+  b.style.cssText='position:fixed;bottom:10px;right:14px;z-index:20;'+
+    'background:'+(source==='live'?'#1c3d2e':'#3d301c')+';color:'+(source==='live'?'#5cb573':'#e0b35c')+';'+
+    'border:1px solid '+(source==='live'?'#2f6b4d':'#6b5a2f')+';border-radius:8px;'+
+    'padding:4px 10px;font-size:11px;font-family:system-ui,sans-serif;letter-spacing:.5px;pointer-events:none';
+  document.body.appendChild(b);
+  console.log('[backpack_ragnarok] data source: '+source);
+}
+
+async function resolveGameData(){
+  try{
+    const res=await fetch('/api/content');
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const payload=await res.json();
+    const gd=gameDataFromApiContent(payload);
+    showDataSourceBadge('live');
+    return gd;
+  }catch(e){
+    console.warn('[backpack_ragnarok] /api/content unavailable, falling back to baked data.js:',e.message);
+    showDataSourceBadge('baked');
+    return GameData;
+  }
+}
+
+async function boot(){
+const GD=await resolveGameData();
+const {LAYOUT,ITEMS,SI_DEFS,TREES}=GD;
 const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
-const state=GameData.makeState();
+const state=GD.makeState();
 const ROWS=LAYOUT.ROWS,COLS=LAYOUT.COLS;
 const CELL=80,PAD=38,INVX=PAD+COLS*CELL+34,INVY=PAD,INVW=200,INVCOL=2,INVBOX=92;
 const SOCK_GLYPH={gem:'◆',edge:'▷',coat:'●',bond:'▭'};
@@ -420,5 +491,57 @@ if(langBtn)langBtn.addEventListener('click',()=>{
 });
 document.getElementById('tgBeams').addEventListener('change',e=>gBeams.setAttribute('visibility',e.target.checked?'visible':'hidden'));
 document.getElementById('tgCombos').addEventListener('change',renderAll);
+
+// REQ-0024: Save/Load canvas via server/storage.cjs (profile "default").
+// Saves the whole state document ({linked,bps,pos,sis}) -- exactly what
+// GameData.makeState() produces -- so Load can restore it by replacing
+// state's own keys in place (state is a top-level const, never reassigned;
+// engine/UI code elsewhere always reads through this same reference).
+// This is a direct data restore, not a redesign of the engine: no new
+// engine mutator is introduced, and all subsequent reads/writes still go
+// through the existing E.* functions operating on this same `state` object.
+const saveBtn=document.getElementById('saveCanvasBtn');
+const loadBtn=document.getElementById('loadCanvasBtn');
+const saveStatus=document.getElementById('canvasIoStatus');
+function setIoStatus(msg,isErr){
+  if(!saveStatus)return;
+  saveStatus.textContent=msg;
+  saveStatus.style.color=isErr?'#c05050':'#5cb573';
+}
+if(saveBtn)saveBtn.addEventListener('click',async()=>{
+  try{
+    const res=await fetch('/api/profile/default/canvas',{
+      method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)});
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    setIoStatus(LANG.cur==='ja'?'保存しました':'Saved',false);
+  }catch(e){
+    console.warn('[backpack_ragnarok] canvas save failed:',e.message);
+    setIoStatus(LANG.cur==='ja'?'保存失敗':'Save failed',true);
+  }
+});
+if(loadBtn)loadBtn.addEventListener('click',async()=>{
+  try{
+    const res=await fetch('/api/profile/default/canvas');
+    if(res.status===404){setIoStatus(LANG.cur==='ja'?'保存データなし':'No saved canvas',true);return;}
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const doc=await res.json();
+    const canvas=doc.canvas;
+    if(!canvas||!Array.isArray(canvas.pos)||!Array.isArray(canvas.bps))throw new Error('malformed saved canvas');
+    // Replace state's fields in place (const state, never reassigned).
+    state.linked=canvas.linked;
+    state.bps=canvas.bps;
+    state.pos=canvas.pos;
+    state.sis=canvas.sis||[];
+    carry=null;gCarry.innerHTML='';gTarget.innerHTML='';hideTip();
+    renderAll();
+    setIoStatus(LANG.cur==='ja'?'読み込みました':'Loaded',false);
+  }catch(e){
+    console.warn('[backpack_ragnarok] canvas load failed:',e.message);
+    setIoStatus(LANG.cur==='ja'?'読み込み失敗':'Load failed',true);
+  }
+});
+
 renderAll();
+} // end boot()
+boot();
 })();
