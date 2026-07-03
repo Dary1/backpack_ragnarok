@@ -129,7 +129,40 @@ def assert_solve_any_angle_equal(tc, b_ref, b_port, msg="", scale_places=9):
     tc.assertEqual(tuple(b_ref['pos']), tuple(b_port['pos']), msg + " (pos)")
 
 
-class TestBuildRegionParity(unittest.TestCase):
+class PadPinnedTestCase(unittest.TestCase):
+    """Base class for tests that compare geometry (allowed-region masks,
+    placements, solve() results) between the reference module and the port.
+
+    Context (PAD policy change 2026-07-03): the reference
+    (tools/reference/fit_algorithm_reference.py) is pinned NORMATIVE at
+    PAD=2 and must stay byte-identical forever. tool_fit_check.py's
+    production PAD was changed 2->5 (padding policy change, user directive).
+    A naive reference-vs-port comparison at mismatched PAD values would
+    produce different allowed-region geometry and fail for a reason that has
+    nothing to do with whether the ported ALGORITHM/MECHANISM still matches
+    the reference -- that would be testing "did the constants change"
+    (trivially yes), not "did the port silently diverge from the trusted
+    mechanism" (the actual thing this suite exists to prove).
+
+    So for the duration of each reference-comparison test, we monkeypatch
+    tool_fit_check's module-level PAD down to match the reference's PAD
+    (via setUp/tearDown, restored unconditionally afterward even on
+    failure/error) and run the comparison at that shared, pinned value.
+    This keeps the suite proving MECHANISM parity, not constant equality.
+    Production code (imported fresh elsewhere, or after this suite has
+    finished) is unaffected -- see TestPortDefaultPad below, which asserts
+    the real production default (5) with NO monkeypatching in effect.
+    """
+
+    def setUp(self):
+        self._orig_port_pad = port.PAD
+        port.PAD = ref.PAD  # pin port to reference's PAD (2) for this test only
+
+    def tearDown(self):
+        port.PAD = self._orig_port_pad  # restore production default (5)
+
+
+class TestBuildRegionParity(PadPinnedTestCase):
     def test_ref_layout(self):
         allowed_ref, cellset_ref = ref.build_region(REF_LAYOUT)
         allowed_port, cellset_port = port.build_region_from_layout(REF_LAYOUT)
@@ -152,7 +185,7 @@ class TestBuildRegionParity(unittest.TestCase):
         assert_masks_equal(self, allowed_ref, allowed_port, "build_region(cellset) vs build_region(layout)")
 
 
-class TestFindPlacementParity(unittest.TestCase):
+class TestFindPlacementParity(PadPinnedTestCase):
     def test_various_kernels_single_cell(self):
         allowed_ref, _ = ref.build_region(SINGLE_CELL_LAYOUT)
         allowed_port = port.build_region(ref.build_region(SINGLE_CELL_LAYOUT)[1])
@@ -173,7 +206,7 @@ class TestFindPlacementParity(unittest.TestCase):
         self.assertIsNone(port.find_placement(allowed_port, kern))
 
 
-class TestMaxScaleParity(unittest.TestCase):
+class TestMaxScaleParity(PadPinnedTestCase):
     def test_square_single_cell(self):
         allowed_ref, cellset = ref.build_region(SINGLE_CELL_LAYOUT)
         allowed_port = port.build_region(cellset)
@@ -208,7 +241,7 @@ class TestMaxScaleParity(unittest.TestCase):
         assert_max_scale_equal(self, r_ref, r_port, "max_scale l_blob/5-col-layout")
 
 
-class TestSolveParity(unittest.TestCase):
+class TestSolveParity(PadPinnedTestCase):
     def test_square_single_cell(self):
         allowed_ref, cellset = ref.build_region(SINGLE_CELL_LAYOUT)
         allowed_port = port.build_region(cellset)
@@ -243,7 +276,7 @@ class TestSolveParity(unittest.TestCase):
         assert_solve_equal(self, b_ref, b_port, "solve l_blob/5-col-layout")
 
 
-class TestSolveAnyAngleParity(unittest.TestCase):
+class TestSolveAnyAngleParity(PadPinnedTestCase):
     def test_square_single_cell(self):
         allowed_ref, cellset = ref.build_region(SINGLE_CELL_LAYOUT)
         allowed_port = port.build_region(cellset)
@@ -345,6 +378,23 @@ class TestLoadContentParity(unittest.TestCase):
         m_ref = ref.load_content(self._img_path)
         m_port = port.load_content(self._img_path)
         assert_masks_equal(self, m_ref, m_port, "load_content")
+
+
+class TestPortDefaultPad(unittest.TestCase):
+    """Confirms tool_fit_check's own production/default PAD constant is 5
+    (padding policy change, 2026-07-03) -- with NO monkeypatching in effect.
+    This is intentionally NOT a PadPinnedTestCase: it must see the module's
+    real, unmodified attribute. Uses importlib.reload to defend against test
+    ordering artifacts (e.g. if unittest ever ran this in the same process
+    after a PadPinnedTestCase whose tearDown somehow failed to restore)."""
+
+    def test_default_pad_is_5(self):
+        import importlib
+        importlib.reload(port)
+        try:
+            self.assertEqual(port.PAD, 5, "tool_fit_check production default PAD must be 5")
+        finally:
+            importlib.reload(port)
 
 
 if __name__ == '__main__':

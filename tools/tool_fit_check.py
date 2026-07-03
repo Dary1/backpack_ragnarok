@@ -121,7 +121,7 @@ except Exception:
     HAVE_SCIPY = False
 
 CELL = 100
-PAD = 2
+PAD = 5
 SVG_NS = "http://www.w3.org/2000/svg"
 ET.register_namespace("", SVG_NS)
 
