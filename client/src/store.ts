@@ -1,4 +1,5 @@
-// Module-level game-data/state store — REQ-0026 T0.1, extended REQ-0027 T0.2.
+// Module-level game-data/state store — REQ-0026 T0.1, extended REQ-0027
+// T0.2, extended REQ-0030 Phase 2 (inventory tabs + migrateState wiring).
 // Per the spec: "engine stays shared & framework-free... no React-owned
 // game state". This store lives entirely outside React; React only
 // subscribes to it (via useGameStore below) for the read-only bits it
@@ -19,7 +20,24 @@
 // wrapper (new outer object -> React re-renders) whose `state` field is
 // the SAME GameState object reference (no restructuring of game data).
 // Call this after every successful engine mutator call, and after Esc-
-// cancel / Save / Load, so Board/ItemPanel/inventory panel all refresh.
+// cancel / Save / Load, so Board/inventory board all refresh.
+//
+// REQ-0030 Phase 2 additions:
+//  - `activeInvPage`: 0-based index of the currently-shown inventory tab
+//    (1..5 in the UI, 0..4 internally, matching engine.js's page()
+//    convention). Per the task spec, tab state is NOT persisted to
+//    localStorage -- it lives here, in the module store, same as every
+//    other piece of ephemeral UI state (locale, ioStatus) already does;
+//    it simply resets to page 0 on a fresh page load, same as `locale`
+//    defaults to 'en' rather than remembering a prior session.
+//  - `boot()`/`loadGame()` both run the loaded state through
+//    engine.migrateState() before it becomes `snapshot.state` -- so ANY
+//    saved profile (pre-REQ-0030 legacy shape, or already-current) always
+//    ends up with a populated `state.inv` before the board ever reads it.
+//    migrateState() is documented safe/idempotent on an already-migrated
+//    state (no legacy loc:'inv'/host:'inv' entries left to move -- a
+//    structural no-op copy), so this is unconditionally correct to call
+//    every time, not just on a detected-legacy shape.
 import { useSyncExternalStore } from 'react';
 import { Engine } from './engine/adapter';
 import type { EngineInstance, GameState } from './engine/engine.d.ts';
@@ -47,6 +65,9 @@ export interface StoreSnapshot {
    * #canvasIoStatus (localized message + ok/error color). null = nothing
    * to show yet. */
   ioStatus: { message: string; isError: boolean } | null;
+  /** 0-based active inventory tab/page index (REQ-0030 Phase 2). Module-
+   * store-only, never persisted (see module comment above). */
+  activeInvPage: number;
 }
 
 let snapshot: StoreSnapshot = {
@@ -59,6 +80,7 @@ let snapshot: StoreSnapshot = {
   locale: 'en',
   stateVersion: 0,
   ioStatus: null,
+  activeInvPage: 0,
 };
 
 const listeners = new Set<() => void>();
@@ -78,7 +100,12 @@ export function subscribe(listener: () => void): () => void {
 }
 
 /** Loads content from the live API and builds the engine instance + initial
- * GameState. Called once at boot (see main.tsx). */
+ * GameState. Called once at boot (see main.tsx). Runs the freshly-built
+ * state through engine.migrateState() (REQ-0030 Phase 2) so `state.inv` is
+ * always populated regardless of whether the resolved GameData came from
+ * the baked scenario (already current-shape, migrateState is a no-op copy)
+ * or a saved profile predating REQ-0030 (legacy loc:'inv'/host:'inv'
+ * entries get first-fit placed onto page 1+, see engine.js's doc). */
 export async function boot(): Promise<void> {
   const resolved = await resolveGameData('default');
   if (resolved.source === 'error' || !resolved.gameData) {
@@ -87,7 +114,7 @@ export async function boot(): Promise<void> {
   }
   const gameData = resolved.gameData;
   const engine = Engine.create(gameData.ITEMS, gameData.SI_DEFS, gameData.LAYOUT, gameData.TREES);
-  const state = gameData.makeState();
+  const state = engine.migrateState(gameData.makeState());
   setSnapshot({
     ...snapshot,
     status: 'ready',
@@ -101,6 +128,20 @@ export async function boot(): Promise<void> {
 
 export function setLocale(locale: Locale): void {
   setSnapshot({ ...snapshot, locale });
+}
+
+/** Sets the active inventory tab (0-based page index, 0..PAGE_COUNT-1).
+ * REQ-0030 Phase 2 -- switching tabs re-renders the inventory board only
+ * (the canvas board's own snapshot subscription is unaffected: it never
+ * reads activeInvPage). Out-of-range indices are clamped defensively
+ * (PAGE_COUNT is always 5 today, but this keeps the store honest even if
+ * that ever changes). */
+export function setActiveInvPage(page: number): void {
+  const engine = snapshot.engine;
+  const max = engine ? engine.PAGE_COUNT - 1 : 4;
+  const clamped = Math.max(0, Math.min(max, page));
+  if (clamped === snapshot.activeInvPage) return;
+  setSnapshot({ ...snapshot, activeInvPage: clamped });
 }
 
 /**
@@ -137,7 +178,10 @@ function ioText(key: keyof typeof IO_STRINGS): string {
  * Save: PUT the CURRENT live GameState (bare, unwrapped -- see api.ts's
  * saveCanvas) to /api/profile/default/canvas. Mirrors mock-src/ui.js's
  * saveBtn handler exactly (same endpoint, same body shape, same status
- * strings). Profile id is hardcoded to 'default' for T0.2, same as the mock.
+ * strings) -- `st` already carries `st.inv` (REQ-0030 Phase 1's makeState()
+ * shape), so no extra wiring is needed here: the existing bare-state PUT
+ * already round-trips the inventory pages as-is. Profile id is hardcoded
+ * to 'default' for T0.2, same as the mock.
  */
 export async function saveGame(): Promise<void> {
   const st = snapshot.state;
@@ -154,10 +198,16 @@ export async function saveGame(): Promise<void> {
 /**
  * Load: GET /api/profile/default/canvas, then replace state's OWN FIELDS
  * in place (never reassign `snapshot.state` to a new object) -- mirrors
- * the mock's `state.linked=...; state.bps=...; state.pos=...; state.sis=...`.
- * On 404 shows "No saved canvas" (not an error). Caller (Header) is
- * responsible for canceling any active drag/carry BEFORE calling this, same
- * order as the mock (`carry=null` before the field replacement).
+ * the mock's `state.linked=...; state.bps=...; state.pos=...; state.sis=...`,
+ * extended (REQ-0030 Phase 2) to also replace `state.inv` and to run the
+ * fetched canvas through engine.migrateState() FIRST -- a profile saved by
+ * an older client (pre-REQ-0030, no `inv` field / legacy loc:'inv' list
+ * entries) is migrated to the current spatial shape before it ever
+ * replaces the live state, so the inventory board never has to special-
+ * case a missing/legacy shape. On 404 shows "No saved canvas" (not an
+ * error). Caller (Header) is responsible for canceling any active drag/
+ * carry BEFORE calling this, same order as the mock (`carry=null` before
+ * the field replacement).
  */
 export async function loadGame(): Promise<void> {
   const st = snapshot.state;
@@ -169,10 +219,11 @@ export async function loadGame(): Promise<void> {
       setIoStatus(ioText('noSavedCanvas'), true);
       return;
     }
-    const canvas = doc.canvas;
-    if (!canvas || !Array.isArray(canvas.pos) || !Array.isArray(canvas.bps)) {
+    const rawCanvas = doc.canvas;
+    if (!rawCanvas || !Array.isArray(rawCanvas.pos) || !Array.isArray(rawCanvas.bps)) {
       throw new Error('malformed saved canvas');
     }
+    const canvas = engine.migrateState(rawCanvas);
     // Cancel any active drag BEFORE the field replacement -- same order as
     // the mock (`carry=null` before `state.linked=...` etc). No engine call:
     // this is a pure UI-state abort (matches Esc-cancel semantics), and
@@ -184,6 +235,7 @@ export async function loadGame(): Promise<void> {
     st.bps = canvas.bps;
     st.pos = canvas.pos;
     st.sis = canvas.sis || [];
+    st.inv = canvas.inv;
     notifyStateChanged();
     setIoStatus(ioText('loaded'), false);
   } catch (e) {
