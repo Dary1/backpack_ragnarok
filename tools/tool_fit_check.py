@@ -615,6 +615,30 @@ def fix_icon(sprite_root, entry, any_angle=False):
     allowed = build_region(cellset)
     H, W = allowed.shape
 
+    # REQ-0029 fixer-policy guard (art_golden v3.3, binding: aspect ratio is
+    # inviolable; "never fix by squeezing"). rasterize_symbol() below renders
+    # the symbol's own viewBox stretched to exactly W x H (see its docstring:
+    # "mapped from its own viewBox stretched exactly to out_w/out_h") --
+    # i.e. if the symbol's viewBox aspect does not match the shape bbox
+    # aspect, this stretch step ITSELF silently squeezes/distorts the art
+    # before solve() ever runs, which would let solve() report a deceptively
+    # clean rot=0 "fix" for what is actually a structural aspect violation.
+    # check_icon() already flags this as a structural FAIL; fix_icon() must
+    # refuse to proceed past it too, for the exact same reason -- this is a
+    # code-level guard (fix_icon simply cannot produce a SOLVED result for an
+    # aspect-mismatched symbol), not just a comment.
+    vb_w, vb_h = viewbox[2], viewbox[3]
+    shape_aspect = cols / rows
+    vb_aspect = vb_w / vb_h
+    if abs(shape_aspect - vb_aspect) > 0.02 * max(shape_aspect, vb_aspect):
+        return dict(
+            id=eid, icon=icon_id, status="FAIL",
+            reason=(f"ESCALATION: STRUCTURAL viewBox aspect {vb_w:.0f}x{vb_h:.0f} does not "
+                    f"match shape bbox {cols}x{rows} cells -- fix_icon refuses to rasterize "
+                    f"(would silently squeeze/distort per art_golden v3.3). Fix the shape or redraw."),
+            escalate="rotation_required",
+        )
+
     content_natural = rasterize_symbol(sym, viewbox, W, H)
     content = crop_to_content(content_natural)
     if content.size == 0:
@@ -624,6 +648,23 @@ def fix_icon(sprite_root, entry, any_angle=False):
         best = solve_any_angle(allowed, content)
         if best is None:
             return dict(id=eid, icon=icon_id, status="INFEASIBLE")
+        # REQ-0029 fixer-policy guard (art_golden v3.3, binding): rotation and
+        # flip are NEVER an allowed fix. If solve_any_angle()'s best-scoring
+        # placement requires a nonzero rotation or a flip, this is a
+        # structural aspect/shape mismatch -- ESCALATE ("fix the shape or
+        # redraw"), do not synthesize a rotate/flip transform. This check is
+        # structural (guards the return value itself), not a policy note --
+        # no caller of fix_icon can get a rotate/flip SOLVED result out of it.
+        if best["deg"] % 360 != 0 or best["flip"]:
+            return dict(
+                id=eid, icon=icon_id, status="FAIL",
+                reason=(f"ESCALATION: solve_any_angle() best fit requires rotation="
+                        f"{best['deg']:.2f}deg flip={best['flip']} -- rotation/flip is "
+                        f"never an applied fix (art_golden v3.3). Fix the shape or redraw."),
+                escalate="rotation_or_flip_required_by_solver",
+                rotation_deg=round(best["deg"], 2), flip=best["flip"],
+                scale_pct=round(best["scale"] * 100, 2), any_angle=True,
+            )
         placed_kernel = scaled(best["mask"], best["scale"])
         pos_first_yx = tuple(best["pos"])
         pos_centered_yx = centered_position(allowed, placed_kernel) or pos_first_yx
@@ -643,6 +684,27 @@ def fix_icon(sprite_root, entry, any_angle=False):
     best = solve(allowed, content)
     if best is None:
         return dict(id=eid, icon=icon_id, status="INFEASIBLE")
+
+    # REQ-0029 fixer-policy guard (art_golden v3.3, binding: "Fit fixes may
+    # translate, uniformly scale ... never distort"; "the art is NOT rotated
+    # ... Fixer rotation prescriptions ... are ESCALATIONS, never
+    # auto-applied"). solve() searches all 4x90-degree rotations and both
+    # flips as part of its max-scale search (that part of the ported
+    # algorithm is untouched, see module docstring's trust directive), but
+    # THIS caller must never turn a nonzero-rotation or flipped winner into
+    # an applied SOLVED fix. This is a structural guard on fix_icon's return
+    # value -- any caller (build_fit_report.py, this file's own `fix` CLI
+    # mode) gets an escalation dict instead of transform numbers to apply.
+    if best["rot"] % 360 != 0 or best["flip"]:
+        return dict(
+            id=eid, icon=icon_id, status="FAIL",
+            reason=(f"ESCALATION: solve() best fit requires rotation={best['rot']}deg "
+                    f"flip={best['flip']} -- rotation/flip is never an applied fix "
+                    f"(art_golden v3.3). Fix the shape or redraw."),
+            escalate="rotation_or_flip_required_by_solver",
+            rotation_deg=best["rot"], flip=best["flip"],
+            scale_pct=round(best["scale"] * 100, 2), any_angle=False,
+        )
 
     # Placement-selection policy (REQ-0023): solve() itself is untouched and
     # still returns the reference's top-left-most feasible position
@@ -709,6 +771,19 @@ def format_check_line(r):
 def format_fix_line(r):
     if r["status"] in ("SKIPPED", "EMPTY_CONTENT", "INFEASIBLE"):
         return f"{r['status']:10s} {r['id']:24s} icon={str(r['icon']):24s}"
+    if r["status"] == "FAIL" and r.get("escalate") == "rotation_required":
+        # REQ-0029 fixer-policy guard: symbol's own viewBox aspect doesn't
+        # match its shape bbox aspect -- fix_icon refused to even rasterize
+        # (would silently squeeze/distort). Structural, needs shape-or-redraw.
+        return (f"ESCALATE   {r['id']:24s} icon={str(r['icon']):24s} "
+                f"reason={r.get('reason','')}")
+    if r["status"] == "FAIL" and r.get("escalate") == "rotation_or_flip_required_by_solver":
+        # REQ-0029 fixer-policy guard: solve()/solve_any_angle() found a
+        # rotate/flip-only improvement, which is never an applied fix
+        # (art_golden v3.3) -- surfaced as an escalation, not a transform.
+        return (f"ESCALATE   {r['id']:24s} icon={str(r['icon']):24s} "
+                f"rot={r['rotation_deg']} flip={r['flip']} scale={r['scale_pct']:.2f}% "
+                f"reason={r.get('reason','')}")
     unit = "deg" if r.get("any_angle") else "deg(90-step)"
     pos_first = r.get("pos_first_xy", r["pos_xy"])
     pos_centered = r.get("pos_centered_xy", r["pos_xy"])
