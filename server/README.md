@@ -117,3 +117,63 @@ payload shape.
   (PUT accounts/<acct>/cfd_tunnel/<tunnel_id>/configurations), config
   version 1 -> 2. Verified after apply: `curl https://backpack-dev.qtie.jp/api/health`
   -> `{"ok":true,"version":"0.1.0"}`; `/mock/` still 200.
+
+## E2E test suite (REQ-0031 Phase A)
+
+Server-side headless-Chromium Playwright rig living in `client/e2e/`
+(config: `client/playwright.config.ts`). Exercises the REAL deployed
+`/app/` bundle against the REAL API service, through the SAME
+Cloudflare tunnel hostname a real browser would use --
+`baseURL: 'https://backpack-dev.qtie.jp'`, NOT `http://127.0.0.1:8801`.
+This is deliberate: 8801 (backpack-web.service, static files) has NO
+local proxy to 8802 (backpack-api.service) -- only the tunnel's ingress
+rule splits `/api/*` to :8802 (see "Cloudflare tunnel ingress" above).
+A baseURL of `127.0.0.1:8801` would make every `/api/*` fetch the client
+performs 404, so every test must run against the tunnel hostname.
+
+### Running
+
+```
+cd client
+npm install                 # first time only (installs @playwright/test + playwright)
+npx playwright install chromium   # first time only, downloads a browser
+npm run e2e                 # runs the whole suite (playwright test)
+npx playwright test e2e/bp-transfer.spec.ts   # run one file
+```
+
+### Prereqs / fallback
+
+Chromium must be installed via `npx playwright install chromium`
+(downloads to `~/.cache/ms-playwright/`). If chromium fails to launch due
+to missing shared libraries on a fresh box, run
+`npx playwright install-deps --dry-run` to print the exact `apt-get`
+command needed WITHOUT running it (this box has no sudo access for the
+agent account) -- hand that command to someone who can run it with sudo,
+then retry. On THIS box chromium was already installed and launched
+successfully with no missing-library issues, so this fallback path has
+not been needed here to date.
+
+### Profile safety (backup/restore)
+
+Several tests PUT canvas state to the live API as test-fixture setup
+(there is no separate test/staging profile -- `server/storage.cjs`'s
+allowlist is exactly `["default"]`). `client/e2e/global-setup.ts` backs
+up `data/profiles/default.json` to a timestamped file under `/tmp` (or
+records its absence, if no profile has been saved yet) BEFORE any test
+runs; `client/e2e/global-teardown.ts` restores it byte-for-byte AFTER the
+whole run, even if tests fail (Playwright guarantees globalTeardown runs
+once globalSetup has completed) -- restoration is verified via a sha256
+comparison, and teardown itself throws if the hashes don't match, so a
+broken restore is never silent.
+
+### Test files
+
+- `smoke.spec.ts` -- `GET /api/health`, app boot + live data-source badge.
+- `tab-switch-stability.spec.ts` -- REQ-0031 bug 2 regression test (15
+  tab clicks, asserts no hang and no refetch storm).
+- `bp-transfer.spec.ts` (+ `fixtures/bp-transfer-fixture.json`) --
+  REQ-0031 bug 1 regression tests (empty BP transfer, BP-with-contents
+  transfer, round trip, illegal-overlap rejection).
+- `baseline-smoke.spec.ts` (+ `fixtures/baseline-smoke-fixture.json`) --
+  live data-source indicator, free-PO drag both directions, double-click
+  rotate.
