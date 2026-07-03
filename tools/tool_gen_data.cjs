@@ -2,6 +2,17 @@
 // tool_gen_data.cjs — generates data.js (GameData UMD module) from live JSON + scenario.json.
 // Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>
 //
+// v7 changes (REQ-0030 Phase 1, inventory model):
+//   - makeState() now ALSO returns an `inv` field: {pages:[5 x {bps:[],pos:[],
+//     sis:[]}]} -- 5 independent, initially-EMPTY inventory pages (same grid
+//     dimensions as canvas, per REQ-0030 orchestrator default). This is
+//     purely additive: legacy consumers reading only linked/bps/pos/sis off
+//     the returned state are unaffected; engine.js's canvas code paths never
+//     look at st.inv. Migrating an OLDER saved state (no `inv` field, and/or
+//     legacy loc:'inv'/host:'inv' list-inventory entries) is handled by
+//     Engine.create(...).migrateState(oldState), not here -- this generator
+//     only controls the FRESH/default scenario shape.
+//
 // v6 changes (REQ-0023 follow-up, WeaponPart<Weapon hierarchy edge):
 //   - vocabPath is now actually loaded (previously destructured but unused)
 //     and its po_tags/socket_tags parent-maps are passed through into data.js
@@ -112,7 +123,7 @@ function main() {
   const scenarioForState = JSON.parse(JSON.stringify(scenario));
   delete scenarioForState.layout;
 
-  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v6)\n' +
+  const banner = '// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)\n' +
     '// Source: ' + path.basename(itemsPath) + ' + ' + path.basename(sisPath) + ' + ' + path.basename(scenarioPath) + '\n' +
     '// Generated: ' + new Date().toISOString() + '\n';
 
@@ -122,13 +133,20 @@ function main() {
     "  else root.GameData=factory();\n" +
     "})(typeof self!=='undefined'?self:globalThis,function(){\n" +
     "'use strict';\n" +
+    "function makeEmptyInventory(){\n" + // REQ-0030 Phase 1: 5 independent empty pages,
+    "  const pages=[];\n" +               // same grid dims as canvas (page-local [row,col]).
+    "  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});\n" +
+    "  return {pages};\n" +
+    "}\n" +
     "const LAYOUT=" + JSON.stringify(LAYOUT) + ";\n" +
     "const TREES=" + JSON.stringify({po: vocab.po_tags || {}, socket: vocab.socket_tags || {}}, null, 1) + ";\n" +
     "const ITEMS=" + JSON.stringify(ITEMS, null, 1) + ";\n" +
     "const SI_DEFS=" + JSON.stringify(SI_DEFS, null, 1) + ";\n" +
     "const SCENARIO=" + JSON.stringify(scenarioForState, null, 1) + ";\n" +
     "function makeState(){\n" +
-    " return JSON.parse(JSON.stringify(SCENARIO));\n" +
+    " const st=JSON.parse(JSON.stringify(SCENARIO));\n" +
+    " st.inv=makeEmptyInventory();\n" + // REQ-0030 Phase 1: 5 empty pages, see banner note above
+    " return st;\n" +
     "}\n" +
     "return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};\n" +
     "});\n";

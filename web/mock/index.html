@@ -444,14 +444,19 @@
 <div id="tooltip"></div>
 <footer>Mock v0.5 — engine is pure &amp; covered by node operation-emulation tests (12 scenarios). backpack-dev.qtie.jp/mock/</footer>
 <script>
-// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v6)
+// backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T12:11:24.843Z
+// Generated: 2026-07-03T19:31:06.147Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
 })(typeof self!=='undefined'?self:globalThis,function(){
 'use strict';
+function makeEmptyInventory(){
+  const pages=[];
+  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});
+  return {pages};
+}
 const LAYOUT={"ROWS":6,"COLS":6};
 const TREES={
  "po": {
@@ -1166,7 +1171,9 @@ const SCENARIO={
  ]
 };
 function makeState(){
- return JSON.parse(JSON.stringify(SCENARIO));
+ const st=JSON.parse(JSON.stringify(SCENARIO));
+ st.inv=makeEmptyInventory();
+ return st;
 }
 return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
 });
@@ -1600,9 +1607,390 @@ function create(ITEMS,SI_DEFS,layout,trees){
     for(const bm of beams)bm.mutual=!!(bm.to&&beams.some(o=>o.from===bm.to&&o.to===bm.from));
     return beams;
   }
+
+  // =======================================================================
+  // Inventory model (REQ-0030 Phase 1).
+  //
+  // ADDITIVE ONLY: everything above this point (canvas state/API) is
+  // byte-for-byte unchanged. The inventory is 5 independent PAGES, each
+  // shaped exactly like a page-scoped "canvas": st.inv.pages[n] = {bps:[],
+  // pos:[], sis:[]}, mirroring the top-level st.{bps,pos,sis} arrays field-
+  // for-field. This means a BP transfer between canvas and a page (or
+  // between two pages) is a structural move: splice the BP object out of
+  // one container's bps[] and into another's, remap the contained POs'
+  // absolute cell (same dr/dc technique as moveBP), and splice/keep the
+  // POs' own pos[]/sis[] entries in lockstep -- no new "origin" bookkeeping
+  // field is needed because uid/skey references inside `sis[].host` (e.g.
+  // {po:uid,si:index}) stay valid across the move: they name the PO by
+  // uid, not by container, so moving the PO's pos[] entry and its seated
+  // sis[] entries into the same target container's arrays is sufficient.
+  //
+  // Page grid dimensions == canvas (ROWS x COLS), per REQ-0030 orchestrator
+  // default. All cell/anchor arguments below are [row,col], SAME convention
+  // as the rest of this file (canvas is the convention authority).
+  //
+  // Key mechanical DIFFERENCE from canvas placement (canPlaceCells):
+  //   - Canvas requires EVERY PO cell to land on some BP ("Dead Space" is
+  //     illegal for POs) -- a BP is mandatory infrastructure.
+  //   - Inventory pages allow POs to be free-placed directly on the empty
+  //     grid (no BP) OR fully inside exactly one BP (same containment law
+  //     as canvas: fully inside ONE BP, never straddling two). A free PO
+  //     must not overlap ANY BP footprint (partial overlap is illegal --
+  //     it must be either fully outside every BP, or fully inside one).
+  // So invCanPlaceCells() below is a distinct function from canPlaceCells(),
+  // not a parameterization of it -- the "no BP found" branch is legal here
+  // (free placement) whereas on canvas it is the 'Dead Space' rejection.
+  const PAGE_COUNT=5;
+
+  // Fresh, empty inventory (5 independent pages). Used by migrateState()
+  // (added in a follow-up commit, for a legacy state with no st.inv at
+  // all) and exposed on the engine instance so any other caller can
+  // obtain a correctly-shaped empty inventory without hand-rolling the
+  // page array shape. NOTE: mock-src/data.js's makeState() does NOT call
+  // this -- data.js loads before engine.js in the mock HTML build order
+  // (index.template.html), so it carries its own tiny inline equivalent
+  // (makeEmptyInventory() in tool_gen_data.cjs) instead of depending on
+  // Engine at data-definition time; the two independently produce the
+  // identical {pages:[5 x {bps:[],pos:[],sis:[]}]} shape.
+  function emptyInventory(){
+    const pages=[];
+    for(let i=0;i<PAGE_COUNT;i++)pages.push({bps:[],pos:[],sis:[]});
+    return {pages};
+  }
+
+  function page(st,n){return st.inv.pages[n];}
+
+  // bpCellsIn/occupancyIn/cellsOfIn: same math as the canvas bpCells/
+  // cellsOf/occupancy helpers above, just parameterized over an explicit
+  // POs/BPs array pair (a "container": either the canvas st itself, via
+  // {bps:st.bps,pos:st.pos}, or one st.inv.pages[n]) instead of being
+  // hard-wired to st.bps/st.pos. Coordinates are [row,col], page-local
+  // (each page has its own independent ROWS x COLS grid, same size as
+  // canvas per REQ-0030 default).
+  const bpCellsIn=bp=>bpCells(bp); // shape math is container-independent
+  function cellsOfIn(p){
+    if(p.loc!=='grid')return [];
+    return shapeInfo(p.id,p.rot).off.map(([r,c])=>[p.cell[0]+r,p.cell[1]+c]);
+  }
+  function cellBPMapIn(container){
+    const m={};
+    for(const bp of container.bps)for(const [r,c] of bpCellsIn(bp))m[key(r,c)]=bp.id;
+    return m;
+  }
+  // occupancy from POs (their footprint cells) AND free-placed SIs (each
+  // exactly 1 cell, per REQ-0030 orchestrator default) already in the page.
+  function invOccupancy(container,exclUids){
+    const ex=exclUids||[],m={};
+    for(const p of container.pos){
+      if(p.loc!=='grid'||ex.includes(p.uid))continue;
+      for(const [r,c] of cellsOfIn(p))m[key(r,c)]=p.uid;
+    }
+    for(const a of (container.sis||[])){
+      if(!a.host||typeof a.host!=='object'||!('cell' in a.host))continue; // free-placed SI marker
+      if(ex.includes(a.uid))continue;
+      const [r,c]=a.host.cell;
+      m[key(r,c)]=a.uid;
+    }
+    return m;
+  }
+  // invCanPlaceCells: legality of `cells` (already-translated absolute
+  // [row,col] cells) within one page container. Unlike canPlaceCells
+  // (canvas), landing on NO BP is legal here (free placement); landing on
+  // a BP requires ALL cells in the SAME BP (containment law, still shared
+  // with canvas).
+  function invCanPlaceCells(container,cells,exclUids){
+    const cbp=cellBPMapIn(container),occ=invOccupancy(container,exclUids);
+    let bp=null,anyBp=false;
+    for(const [r,c] of cells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells,why:'outside page'};
+      const b=cbp[key(r,c)];
+      if(b){
+        anyBp=true;
+        if(bp&&b!==bp)return {ok:false,cells,why:'spans two BPs'};
+        bp=b;
+      }
+      if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
+    }
+    if(anyBp){
+      // must be FULLY inside the one BP found -- re-check every cell
+      // belongs to that same bp (catches partial-overlap: some cells on
+      // the BP, others free-floating outside it).
+      for(const [r,c] of cells)if(cbp[key(r,c)]!==bp)return {ok:false,cells,why:'straddles BP edge'};
+    }
+    return {ok:true,cells,bp};
+  }
+  const poByUidIn=(container,u)=>container.pos.find(p=>p.uid===u);
+
+  // invCanPlacePO(st,page,uid,rot,anchor): pure legality check for placing/
+  // moving PO `uid` (already present in page `page`'s pos[]) at rotation
+  // `rot`, anchored at [row,col] `anchor`. Usable by the client for drag
+  // previews (no mutation).
+  function invCanPlacePO(st,pg,uid,rot,anchor){
+    const container=page(st,pg);
+    const p=poByUidIn(container,uid);
+    const off=shapeInfo(p.id,rot).off;
+    return invCanPlaceCells(container,off.map(([r,c])=>[anchor[0]+r,anchor[1]+c]),[uid]);
+  }
+  // invMovePO: mutates. `anchor==='inv'` has no meaning inside a page (a
+  // page IS an inventory container already) -- callers wanting to remove a
+  // PO from a page entirely should use transferBP or drop the PO via a
+  // higher-level "delete/unplace" op; movePO-in-page always requires a
+  // concrete [row,col] anchor.
+  function invMovePO(st,pg,uid,anchor){
+    const chk=invCanPlacePO(st,pg,uid,page(st,pg).pos.find(p=>p.uid===uid).rot,anchor);
+    if(!chk.ok)return chk;
+    const p=poByUidIn(page(st,pg),uid);
+    p.loc='grid';p.cell=anchor;
+    return {ok:true};
+  }
+  // invRotatePO: dblclick-CW equivalent inside a page (mirrors rotatePO).
+  function invRotatePO(st,pg,uid){
+    const p=poByUidIn(page(st,pg),uid);
+    const nr=(p.rot+1)%4;
+    const chk=invCanPlacePO(st,pg,uid,nr,p.cell);
+    if(!chk.ok)return chk;
+    p.rot=nr;
+    return {ok:true};
+  }
+
+  // invCanPlaceSI(st,page,uid,anchor): free-placed SI footprint is ALWAYS
+  // 1x1 (REQ-0030 orchestrator default), regardless of the SI's def --
+  // socketed SIs (seated on a PO's socket) occupy no cell at all (same as
+  // canvas). `anchor` is the single [row,col] cell.
+  //
+  // Resolved ambiguity (see report): the spec's BP-overlap law ("if a PO
+  // overlaps a BP it must fit entirely within that BP; a free-placed PO
+  // must not overlap any BP") is stated for POs. A free-placed SI is
+  // simpler (it is never "mounted on" a BP the way a PO can be -- there is
+  // no partial/full containment distinction for a single cell) -- default:
+  // a free-placed SI may NEVER land on a BP cell at all (a BP is occupied
+  // infrastructure a bare SI cannot sit on top of). This is a plain
+  // per-cell check, not a reuse of invCanPlaceCells' containment logic
+  // (which would wrongly treat "1 cell inside a BP" as trivially "fully
+  // inside" and accept it).
+  function invCanPlaceSI(st,pg,uid,anchor,exclUids){
+    const container=page(st,pg);
+    const [r,c]=anchor;
+    const ex=exclUids||[uid];
+    if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:[anchor],why:'outside page'};
+    const cbp=cellBPMapIn(container);
+    if(cbp[key(r,c)])return {ok:false,cells:[anchor],why:'BP-overlap'};
+    const occ=invOccupancy(container,ex);
+    if(occ[key(r,c)])return {ok:false,cells:[anchor],why:'occupied'};
+    return {ok:true,cells:[anchor]};
+  }
+  function invMoveSI(st,pg,uid,anchor){
+    const chk=invCanPlaceSI(st,pg,uid,anchor,[uid]);
+    if(!chk.ok)return chk;
+    const a=page(st,pg).sis.find(x=>x.uid===uid);
+    a.host={page:pg,cell:anchor};
+    return {ok:true};
+  }
+
+  // pageSockets(st,page): every open/filled socket of every PO placed in
+  // this page, same shape as sockets(st) (canvas). Assemblies (blade+hilt
+  // "bond" joint) are a canvas-only mechanic in the current roster (no
+  // equivalent construct is specced for inventory pages), so no 'bond'
+  // pseudo-socket is emitted here -- resolved ambiguity (see report).
+  function pageSockets(st,pg){
+    const container=page(st,pg);
+    const out=[];
+    for(const p of container.pos){
+      if(p.loc!=='grid')continue;
+      const def=ITEMS[p.id];
+      (def.sockets||[]).forEach((s,si)=>{
+        const seated=container.sis.find(a=>a.host&&a.host.po===p.uid&&a.host.si===si);
+        out.push({skey:p.uid+':'+si,host:p.uid,si,t:s.t,tags:s.tags||[],siUid:seated?seated.uid:null,ax:s.ax,ay:s.ay});
+      });
+    }
+    return out;
+  }
+  // invSeatSI/invStowSI: seat/unseat an SI onto a PO's socket WITHIN a
+  // page. Works for both a PO free-placed directly in the page and a PO
+  // hosted on an inventory BP (both are just "POs in this page's pos[]" --
+  // no distinction needed). Resolved ambiguity (see report): spec is
+  // silent on whether a free-placed (no-BP) PO accepts SI seating; default
+  // is YES (an inventory PO can be equipped/unequipped regardless of
+  // whether it currently sits on an inventory BP), matching "SI seat/
+  // unseat also works inside the inventory" (spec item 4) which does not
+  // condition on BP presence.
+  function invSeatSI(st,pg,siUid,skey){
+    const container=page(st,pg);
+    const sock=pageSockets(st,pg).find(s=>s.skey===skey);
+    if(!sock)return {ok:false,why:'no such socket'};
+    const a=container.sis.find(x=>x.uid===siUid);
+    if(!a)return {ok:false,why:'no such SI in this page'};
+    const d=SI_DEFS[a.id];
+    if(sock.t!==d.slot)return {ok:false,why:'socket type '+sock.t+' ≠ '+d.slot};
+    if(sock.siUid&&sock.siUid!==siUid)return {ok:false,why:'socket occupied'};
+    for(const t of (d.reqTags||[]))
+      if(!hasTag(sock.tags,t,socketTree))return {ok:false,why:'socket lacks tag '+t+' (has: '+(sock.tags.join(', ')||'none')+')'};
+    a.host={po:sock.host,si:sock.si};
+    return {ok:true};
+  }
+  function invStowSI(st,pg,siUid){
+    const a=page(st,pg).sis.find(x=>x.uid===siUid);
+    if(!a)return {ok:false,why:'no such SI in this page'};
+    a.host='inv'; // stowed-within-page sentinel; distinct from a free-placed {page,cell} host
+    return {ok:true};
+  }
+
+  // invCanPlaceBP(st,page,bpId,origin): legality for placing/moving an
+  // entire BP within one page. Must fit in bounds, must not overlap any
+  // OTHER BP already in the page, and (page-specific, since a page can
+  // already have free-placed POs/SIs sitting where canvas never would at
+  // BP-placement time) must not overlap any free-placed PO or free-placed
+  // SI already in the page either. POs/SIs that are themselves CONTENTS of
+  // this same BP (i.e. traveling with it) are excluded from the overlap
+  // check via exclUids.
+  function invCanPlaceBP(st,pg,bpId,origin,exclUids){
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
+    const ex=exclUids||[];
+    const others=new Set();
+    for(const ob of container.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
+    const occ=invOccupancy(container,ex);
+    for(const [r,c] of newCells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside page'};
+      if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+      if(occ[key(r,c)])return {ok:false,cells:newCells,why:'overlaps free-placed item'};
+    }
+    return {ok:true,cells:newCells};
+  }
+  function poInBPIn(p,bp){
+    if(p.loc!=='grid')return false;
+    const set=new Set(bpCellsIn(bp).map(([r,c])=>key(r,c)));
+    return cellsOfIn(p).every(([r,c])=>set.has(key(r,c)));
+  }
+  // invMoveBP: relocate a BP within its OWN page (no cross-container
+  // transfer -- see transferBP below for canvas<->page / page<->page).
+  // Mirrors moveBP(): contents (POs fully inside the BP) shift by the same
+  // dr/dc; their seated SIs need no change (host references the PO uid,
+  // unaffected by the PO's cell moving).
+  function invMoveBP(st,pg,bpId,origin){
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    const inside=container.pos.filter(p=>poInBPIn(p,bp));
+    const chk=invCanPlaceBP(st,pg,bpId,origin,inside.map(p=>p.uid));
+    if(!chk.ok)return chk;
+    const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
+    bp.origin=origin;
+    for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
+    return {ok:true};
+  }
+
+  // ---------------------------------------------------------------------
+  // BP transfer: canvas<->page and page<->page. Dragging a BP moves it
+  // WITH all contents -- every PO fully inside its footprint, and every SI
+  // seated on one of those POs' sockets (their `host` needs no rewriting,
+  // only their container array membership changes, since host keys PO by
+  // uid). This is why the inv/canvas containers deliberately mirror each
+  // other's {bps,pos,sis} shape: a transfer is nothing more than "splice
+  // these 3 kinds of records out of container A's arrays, into container
+  // B's arrays, and shift the moved POs' absolute [row,col] cell by the
+  // BP's new-origin-minus-old-origin delta" -- the SAME arithmetic
+  // moveBP/invMoveBP already use for an in-place BP move, just crossing a
+  // container boundary too.
+  //
+  // Location descriptor shape: {loc:'canvas'} | {loc:'inv', page:N}
+  // (N is 0-based page index, 0..4). Chosen over per-record container refs
+  // (e.g. tagging every BP/PO/SI with its own {loc,page}) because it keeps
+  // ALL existing canvas code paths byte-identical: st.bps/st.pos/st.sis
+  // stay flat arrays with the OLD record shape (no new fields), and the
+  // "which container is this record in" question is answered by which
+  // array it currently lives in, not by a field on the record itself.
+  function containerOf(st,locRef){
+    return locRef.loc==='canvas'?st:page(st,locRef.page);
+  }
+  function bpFrom(container,bpId){return container.bps.find(b=>b.id===bpId);}
+
+  // canTransferBP(st,from,to,bpId,origin): pure (no mutation) legality
+  // check for transferring BP `bpId` from container `from` to container
+  // `to`, landing at `origin` [row,col] within `to`. Reuses the target
+  // container's OWN placement rule (invCanPlaceBP for a page target,
+  // canMoveBP's overlap/bounds logic inlined for a canvas target) so a
+  // canvas target still enforces canvas's simpler rule (no free-placed
+  // items to avoid there -- POs on canvas always belong to a BP already).
+  function canTransferBP(st,from,to,bpId,origin){
+    const src=containerOf(st,from);
+    const bp=bpFrom(src,bpId);
+    if(!bp)return {ok:false,why:'BP not found in source container'};
+    if(to.loc==='canvas'){
+      const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
+      const others=new Set();
+      for(const ob of st.bps){for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
+      for(const [r,c] of newCells){
+        if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside canvas'};
+        if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+      }
+      return {ok:true,cells:newCells};
+    }
+    // target is a page: contents traveling with the BP must be excluded
+    // from the target's own overlap check (they don't exist there YET,
+    // but conceptually they don't collide with themselves).
+    const inside=src.pos.filter(p=>poInBPIn(p,bp));
+    const tmpContainer={bps:page(st,to.page).bps,pos:page(st,to.page).pos,sis:page(st,to.page).sis};
+    const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
+    const others=new Set();
+    for(const ob of tmpContainer.bps){for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
+    const occ=invOccupancy(tmpContainer,inside.map(p=>p.uid));
+    for(const [r,c] of newCells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside page'};
+      if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+      if(occ[key(r,c)])return {ok:false,cells:newCells,why:'overlaps free-placed item'};
+    }
+    return {ok:true,cells:newCells};
+  }
+
+  // transferBP: mutates. Fails CLEANLY (state untouched) when illegal --
+  // legality is checked FIRST via canTransferBP, before any splice, so a
+  // rejected transfer never partially moves contents.
+  function transferBP(st,from,to,bpId,origin){
+    const chk=canTransferBP(st,from,to,bpId,origin);
+    if(!chk.ok)return chk;
+    const src=containerOf(st,from),dst=containerOf(st,to);
+    const bp=bpFrom(src,bpId);
+    const inside=src.pos.filter(p=>poInBPIn(p,bp));
+    const insideUids=new Set(inside.map(p=>p.uid));
+    const insideSis=src.sis.filter(a=>a.host&&a.host.po&&insideUids.has(a.host.po));
+    const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
+    // splice BP out of src, shift+push into dst
+    src.bps=src.bps.filter(b=>b.id!==bpId);
+    bp.origin=origin;
+    dst.bps.push(bp);
+    // splice contained POs out of src.pos, shift cell, push into dst.pos
+    src.pos=src.pos.filter(p=>!insideUids.has(p.uid));
+    for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
+    dst.pos.push(...inside);
+    // splice their seated SIs out of src.sis, push into dst.sis (host
+    // untouched -- it names the PO by uid, which is unaffected by the move)
+    src.sis=src.sis.filter(a=>!(a.host&&a.host.po&&insideUids.has(a.host.po)));
+    dst.sis.push(...insideSis);
+    // if the destination is canvas, run unseatOrphans since e.g. a moved
+    // blade/hilt pair might now (dis)qualify for the 'bond' assembly seat;
+    // inventory containers have no 'bond' concept (see pageSockets note).
+    if(to.loc==='canvas')unseatOrphans(st);
+    return {ok:true};
+  }
+
+  // linkStateInv (dormancy helper): NO new traceBeams/connections variant
+  // is added for pages -- Linker dormancy (spec item 7) is enforced simply
+  // by traceBeams/connectionsFrom/allConnections/combos continuing to
+  // iterate ONLY st.bps/st.pos (the canvas arrays), never st.inv.pages[].
+  // A BP sitting in an inventory page is, structurally, not a member of
+  // st.bps at all while it's there -- so it is automatically invisible to
+  // every canvas-only computation with ZERO extra guard code. This is
+  // verified by an explicit test (a linker-bearing BP transferred into a
+  // page must contribute nothing to traceBeams()).
+
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
-          sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key};
+          sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
+          // Inventory model (REQ-0030 Phase 1) -- additive exports only.
+          PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
+          pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,poInBPIn,cellsOfIn,cellBPMapIn,
+          invOccupancy,canTransferBP,transferBP};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });
