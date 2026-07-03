@@ -1,15 +1,65 @@
-// PixiJS read-only board renderer — REQ-0026 T0.1.
+// PixiJS board renderer — REQ-0026 T0.1 (read-only), extended REQ-0027 T0.2
+// with edit interactions (drag/drop, rotate, BP move, SI seat/unseat).
 // Framework-free (no React here); layout constants (CELL/PAD) and the
 // overall composition mirror mock-src/ui.js's SVG renderAll() for visual
 // parity (same reference, not pixel-exact): grid cells tinted by BP (dead
 // space cells get a flat dark fill, same as the mock), BP outlines +
 // name/HP label, linker cores + direction dots, beams (solid+arrowhead when
-// linked, dashed+x when a dud), placed PO art, port target ◇ marks, and
-// established-connection ◆ marks. Drag-drop, combos, inventory panel and
-// Save/Load are NOT rendered here (T0.2 scope; see REQ-0026 spec's
-// non-goals) -- this is the read-only subset only.
+// linked, dashed+x when a dud), placed PO art, port target ◇ marks,
+// established-connection ◆ marks, sockets (empty + seated SI), and the
+// chain-link toggle button.
+//
+// REQ-0027 T0.2 interaction model (see also board/drag.ts, board/rotate.ts):
+// pointer events only (no HTML5 dragstart/dragover/drop), matching both the
+// mock (mock-src/ui.js uses pointerdown/pointermove/pointerup throughout)
+// and PixiJS's own event system (FederatedPointerEvent, eventMode='static').
+// Each interactive Pixi object gets a 'pointerdown' listener that calls
+// startCarry() (drag.ts); the STAGE gets a 'globalpointermove' listener
+// (fires regardless of which object is under the pointer, so a fast drag
+// off an object's bounds is never dropped) that arms the drag past a 5px
+// threshold, computes the target cell, runs the SAME engine legality
+// queries the mock uses (canPlacePO/canPlaceAssembly/canMoveBP/hostOk), and
+// paints green/red target-cell tints + a ghost sprite following the
+// pointer. `window`'s 'pointerup' commits the drag via the matching engine
+// mutator (movePO/moveAssembly/moveBP/seatSI/stowSI) -- listening on
+// `window` (not the canvas) mirrors the mock's own
+// `window.addEventListener('pointerup', ...)`, so a pointerup outside the
+// canvas bounds still resolves the drag. `window`'s 'keydown' handles Esc
+// (abort carry, no engine call) the same way.
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
-import type { EngineInstance, GameState, ItemDefMap, Layout } from '../engine/engine.d.ts';
+import type { FederatedPointerEvent } from 'pixi.js';
+import type { Assembly, Cell, EngineInstance, GameState, ItemDefMap, Layout, PO, SIDefMap, Socket } from '../engine/engine.d.ts';
+import {
+  armCarry,
+  cancelCarry,
+  getCarry,
+  startCarry,
+  subscribeCarry,
+  takeCarry,
+  updateCarry,
+  type CarryState,
+  type DropTarget,
+} from './drag';
+import { notifyStateChanged } from '../store';
+
+const SOCK_GLYPH: Record<string, string> = { gem: '◆', edge: '▷', coat: '●', bond: '▬' };
+// Nearest-socket search radius in board-canvas pixels — CELL is 80 in both
+// the mock and this renderer, so the mock's absolute-pixel threshold (26px)
+// ports directly with no rescaling.
+const SOCKET_SEARCH_RADIUS = 26;
+// Plain-click vs drag threshold, pixels — same as the mock's
+// `Math.hypot(dx,dy) < 5`.
+const DRAG_ARM_THRESHOLD = 5;
+// Double-click detection window, ms — Pixi's federated events do not expose
+// a native multi-click/dblclick concept the way DOM elements do, so this is
+// tracked manually: a second pointerdown on the SAME uid within this window
+// (with the first pointerdown never having armed a drag) is treated as a
+// double-click-rotate, mirroring the mock's native SVG `dblclick` listener
+// behaviorally (not mechanically).
+const DBLCLICK_WINDOW_MS = 300;
+// Reject-flash duration, ms — matches the mock's flash()'s `setTimeout(...,
+// 350)`.
+const FLASH_MS = 350;
 
 const CELL = 80;
 const PAD = 38;
@@ -34,8 +84,37 @@ function cy(r: number): number {
 export interface BoardDeps {
   engine: EngineInstance;
   items: ItemDefMap;
+  siDefs: SIDefMap;
   textures: Map<string, Texture>;
   layout: Layout;
+}
+
+/**
+ * Rotates+maps a point (x,y) in a PO's UNROTATED bbox (W0 x H0) into the
+ * bbox's ROTATED frame -- exact port of mock-src/ui.js's `mapPt(k,x,y,W0,H0)`
+ * (used there for socket anchor positioning). k is the rotation step
+ * (0..3, 90° CW each). Kept as a free function (not engine logic -- this is
+ * pure display-geometry, same category as cx()/cy()/DIR_ANGLES above).
+ */
+function mapPt(k: number, x: number, y: number, W0: number, H0: number): [number, number] {
+  const kk = k % 4;
+  if (kk === 0) return [x, y];
+  if (kk === 1) return [H0 - y, x];
+  if (kk === 2) return [W0 - x, H0 - y];
+  return [y, W0 - x];
+}
+
+export interface BoardCallbacks {
+  /** Returns true if the given client (viewport) coordinates are over the
+   * inventory drop zone. REQ-0027 T0.2 adaptation note: the mock detects
+   * "pointer over inventory" via an SVG-local x threshold (`pt.x >
+   * INVX-14`) because its inventory panel is laid out inside the SAME SVG
+   * canvas as the board. Here the board is a separate PixiJS <canvas> from
+   * the React-rendered inventory panel (a different DOM element entirely),
+   * so that coordinate math does not carry over -- instead the caller
+   * (Board.tsx) supplies a predicate that checks viewport-space
+   * containment against the inventory panel DOM node's bounding rect. */
+  isOverInventory: (clientX: number, clientY: number) => boolean;
 }
 
 export class BoardRenderer {
@@ -44,38 +123,69 @@ export class BoardRenderer {
   private gBase = new Container();
   private gBeams = new Container();
   private gItems = new Container();
+  private gSock = new Container();
   private gLinkers = new Container();
+  private gChain = new Container();
   private gTarget = new Container();
+  private gCarry = new Container();
   private deps: BoardDeps;
+  private callbacks: BoardCallbacks;
   private disposed = false;
+  private lastState: GameState | null = null;
+  private unsubscribeCarry: (() => void) | null = null;
+  // Manual double-click bookkeeping (see DBLCLICK_WINDOW_MS above): last
+  // pointerdown timestamp per uid, cleared once consumed or expired.
+  private lastPointerDown = new Map<string, number>();
+  private flashTimers = new Set<ReturnType<typeof setTimeout>>();
 
-  private constructor(app: Application, deps: BoardDeps) {
+  private constructor(app: Application, deps: BoardDeps, callbacks: BoardCallbacks) {
     this.app = app;
     this.deps = deps;
-    this.root.addChild(this.gBase, this.gBeams, this.gItems, this.gLinkers, this.gTarget);
+    this.callbacks = callbacks;
+    this.root.addChild(
+      this.gBase,
+      this.gBeams,
+      this.gItems,
+      this.gSock,
+      this.gLinkers,
+      this.gChain,
+      this.gTarget,
+      this.gCarry
+    );
     this.app.stage.addChild(this.root);
+    this.app.stage.eventMode = 'static';
+    this.app.stage.hitArea = this.app.screen;
+    this.wireGlobalInteraction();
   }
 
-  static async mount(canvas: HTMLCanvasElement, deps: BoardDeps): Promise<BoardRenderer> {
+  static async mount(canvas: HTMLCanvasElement, deps: BoardDeps, callbacks: BoardCallbacks): Promise<BoardRenderer> {
     const app = new Application();
     const width = PAD * 2 + deps.layout.COLS * CELL;
     const height = PAD * 2 + deps.layout.ROWS * CELL;
     await app.init({ canvas, width, height, background: '#121212', antialias: true });
-    return new BoardRenderer(app, deps);
+    return new BoardRenderer(app, deps, callbacks);
   }
 
   destroy(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const t of this.flashTimers) clearTimeout(t);
+    this.flashTimers.clear();
+    this.unsubscribeCarry?.();
+    window.removeEventListener('pointerup', this.onWindowPointerUp);
+    window.removeEventListener('keydown', this.onWindowKeyDown);
     this.app.destroy(true, { children: true });
   }
 
   render(state: GameState): void {
+    this.lastState = state;
     const { engine, items, textures, layout } = this.deps;
     this.gBase.removeChildren();
     this.gBeams.removeChildren();
     this.gItems.removeChildren();
+    this.gSock.removeChildren();
     this.gLinkers.removeChildren();
+    this.gChain.removeChildren();
     this.gTarget.removeChildren();
 
     const cbp = engine.cellBPMap(state);
@@ -124,6 +234,24 @@ export class BoardRenderer {
       label.x = PAD + (c0 - 1) * CELL + 4;
       label.y = PAD + (r0 - 1) * CELL - 18;
       this.gBase.addChild(label);
+
+      // Empty-cell BP grab handles (REQ-0027 T0.2): every BP cell that is
+      // neither occupied by a placed PO nor the linker's own cell is an
+      // invisible drag source for moving the whole BP (matches the mock's
+      // `hit` rects in this exact spot in its renderAll()).
+      const occForHandles = engine.occupancy(state);
+      const linkerMapForHandles = engine.linkerMap(state);
+      for (const [r, c] of cells) {
+        const ck = `${r},${c}`;
+        if (occForHandles[ck] || linkerMapForHandles[ck]) continue;
+        const hit = new Graphics();
+        hit.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
+        hit.fill({ color: '#000000', alpha: 0.001 }); // invisible but hit-testable
+        hit.eventMode = 'static';
+        hit.cursor = 'grab';
+        hit.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
+        this.gBase.addChild(hit);
+      }
     }
 
     // beams
@@ -196,11 +324,23 @@ export class BoardRenderer {
     // wrong CODE PATH for this state. flame_tablet has no hilt to assemble
     // with, so it always takes the generic path and always looked correct.
     const asm = engine.assembly(state);
-    const mergeSword = !!(asm && state.linked);
+    // A carried blade/hilt should not render as the merged visual (matches
+    // the mock's `mergeSword=asm&&state.linked&&!carriedUids.length`).
+    const activeCarry = getCarry();
+    const carriedUids = new Set<string>();
+    if (activeCarry && activeCarry.armed) {
+      if (activeCarry.kind === 'po' || activeCarry.kind === 'si') carriedUids.add(activeCarry.uid);
+      else if (activeCarry.kind === 'asm' && asm) {
+        carriedUids.add(asm.blade.uid);
+        carriedUids.add(asm.hilt.uid);
+      }
+    }
+    const mergeSword = !!(asm && state.linked && carriedUids.size === 0);
 
     // placed POs
     for (const p of state.pos) {
       if (p.loc !== 'grid' || !p.cell) continue;
+      if (carriedUids.has(p.uid)) continue;
       if (mergeSword && (p.uid === asm!.blade.uid || p.uid === asm!.hilt.uid)) continue;
       const def = items[p.id];
       if (!def) continue;
@@ -211,6 +351,14 @@ export class BoardRenderer {
         w: w * CELL,
         h: h * CELL,
       };
+      const hit = new Graphics();
+      hit.rect(box.x, box.y, box.w, box.h);
+      hit.fill({ color: '#000000', alpha: 0.001 });
+      hit.eventMode = 'static';
+      hit.cursor = 'grab';
+      const isAssemblyPart = !!(state.linked && asm && (p.uid === asm.blade.uid || p.uid === asm.hilt.uid));
+      hit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, p, isAssemblyPart, asm));
+      this.gItems.addChild(hit);
       for (const [r, c] of engine.cellsOf(state, p)) {
         const bg = new Graphics();
         bg.roundRect(PAD + (c - 1) * CELL + 3, PAD + (r - 1) * CELL + 3, CELL - 6, CELL - 6, 6);
@@ -272,6 +420,18 @@ export class BoardRenderer {
           h: h * CELL,
         };
       };
+      const asmHit = new Graphics();
+      asmHit.rect(
+        PAD + (Math.min(...a.cells.map((c) => c[1])) - 1) * CELL,
+        PAD + (Math.min(...a.cells.map((c) => c[0])) - 1) * CELL,
+        (Math.max(...a.cells.map((c) => c[1])) - Math.min(...a.cells.map((c) => c[1])) + 1) * CELL,
+        (Math.max(...a.cells.map((c) => c[0])) - Math.min(...a.cells.map((c) => c[0])) + 1) * CELL
+      );
+      asmHit.fill({ color: '#000000', alpha: 0.001 });
+      asmHit.eventMode = 'static';
+      asmHit.cursor = 'grab';
+      asmHit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, a.blade, true, a));
+      this.gItems.addChild(asmHit);
       for (const [r, c] of a.cells) {
         const bg = new Graphics();
         bg.roundRect(PAD + (c - 1) * CELL + 3, PAD + (r - 1) * CELL + 3, CELL - 6, CELL - 6, 6);
@@ -315,6 +475,41 @@ export class BoardRenderer {
       }
     }
 
+    // Chain-link toggle (REQ-0027 T0.2): a small clickable circle at the
+    // top-right of the assembly's bounding box. Purely a UI-state toggle on
+    // state.linked -- NOT an engine mutator (mirrors the mock's chain
+    // button exactly: `state.linked=!state.linked; renderAll();`, no
+    // E.* call). Only shown while an assembly exists and isn't currently
+    // being carried (matches the mock's `if(asm&&!carriedUids.length...)`).
+    if (asm && carriedUids.size === 0) {
+      const rs = asm.cells.map((c) => c[0]);
+      const csn = asm.cells.map((c) => c[1]);
+      const tx = PAD + Math.max(...csn) * CELL - 2;
+      const ty = PAD + (Math.min(...rs) - 1) * CELL + 2;
+      const col = state.linked ? 0x59d6d6 : 0x7a7568;
+      const btn = new Graphics();
+      btn.circle(tx, ty, 11);
+      btn.fill({ color: '#0e0d0b' });
+      btn.stroke({ color: col, width: 2 });
+      btn.circle(tx - 3.5, ty, 3.2);
+      btn.stroke({ color: col, width: 2 });
+      btn.circle(tx + 3.5, ty, 3.2);
+      btn.stroke({ color: col, width: 2 });
+      if (!state.linked) {
+        btn.moveTo(tx - 6, ty + 6).lineTo(tx + 6, ty - 6);
+        btn.stroke({ color: '#c05050', width: 2 });
+      }
+      btn.eventMode = 'static';
+      btn.cursor = 'pointer';
+      btn.on('pointerdown', (e: FederatedPointerEvent) => e.stopPropagation());
+      btn.on('click', (e: FederatedPointerEvent) => {
+        e.stopPropagation();
+        state.linked = !state.linked;
+        notifyStateChanged();
+      });
+      this.gChain.addChild(btn);
+    }
+
     // port target ◇ marks
     for (const p of state.pos) {
       if (p.loc !== 'grid') continue;
@@ -349,6 +544,9 @@ export class BoardRenderer {
       core.circle(x, y, 26);
       core.fill({ color: '#0e0d0b', alpha: 0.55 });
       core.stroke({ color: '#59d6d6', alpha: 0.5, width: 1 });
+      core.eventMode = 'static';
+      core.cursor = 'grab';
+      core.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
       this.gLinkers.addChild(core);
       const linkerTexture = textures.get('icon-linker_core');
       if (linkerTexture) {
@@ -367,6 +565,101 @@ export class BoardRenderer {
         this.gLinkers.addChild(dot);
       }
     }
+
+    // Sockets (diegetic, REQ-0027 T0.2): empty-socket outlines (dashed
+    // circle/rounded-rect + glyph, per socket type) and seated SI icons
+    // (drag sources). Mirrors the mock's sockets rendering block exactly,
+    // including the special acc_guard "guard bar" visual and the
+    // host==='bond' special-case position (hilt's top cell edge).
+    for (const s of engine.sockets(state)) {
+      if (carriedUids.has(s.host) || (s.siUid && carriedUids.has(s.siUid))) continue;
+      const pos = this.socketScreenPos(state, s, asm);
+      if (!pos) continue;
+      const { x, y } = pos;
+      if (s.siUid) {
+        const a = state.sis.find((z) => z.uid === s.siUid);
+        if (!a) continue;
+        const siDef = this.deps.siDefs[a.id];
+        const g = new Container();
+        g.eventMode = 'static';
+        g.cursor = 'grab';
+        if (a.id === 'acc_guard') {
+          const bar = new Graphics();
+          bar.roundRect(x - 23, y - 7, 46, 14, 6);
+          bar.fill({ color: '#b08340' });
+          bar.stroke({ color: '#2b2016', width: 2.5 });
+          bar.circle(x - 12, y, 2.2);
+          bar.fill({ color: '#e9b64d' });
+          bar.circle(x + 12, y, 2.2);
+          bar.fill({ color: '#e9b64d' });
+          g.addChild(bar);
+        } else if (siDef) {
+          const tex = textures.get(siDef.icon);
+          if (tex) {
+            const sprite = new Sprite(tex);
+            sprite.x = x - 12;
+            sprite.y = y - 12;
+            sprite.width = 24;
+            sprite.height = 24;
+            g.addChild(sprite);
+          }
+        }
+        const hitCircle = new Graphics();
+        hitCircle.circle(x, y, 15);
+        hitCircle.fill({ color: '#000000', alpha: 0.001 });
+        g.addChild(hitCircle);
+        g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
+        this.gSock.addChild(g);
+      } else {
+        const g = new Graphics();
+        if (s.t === 'bond') {
+          g.roundRect(x - 23, y - 7, 46, 14, 6);
+          g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+        } else {
+          g.circle(x, y, 9);
+          g.fill({ color: '#0e0d0b', alpha: 0.5 });
+          g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+          const glyph = new Text({
+            text: SOCK_GLYPH[s.t] ?? '?',
+            style: { fill: '#b08340', fontSize: 9 },
+          });
+          glyph.anchor.set(0.5);
+          glyph.x = x;
+          glyph.y = y + 1;
+          g.addChild(glyph);
+        }
+        this.gSock.addChild(g);
+      }
+    }
+  }
+
+  /**
+   * Screen (board-canvas-local pixel) position of a socket -- REQ-0027
+   * T0.2. Mirrors the mock's inline math in renderAll()'s sockets block and
+   * pointermove's 'si' branch (both duplicate the same computation there;
+   * consolidated into one helper here). Two cases:
+   *  - host==='bond': the Blade-Hilt bond socket, positioned at the hilt's
+   *    top cell edge (asm.hilt.cell's row, one cell up from center).
+   *  - per-PO socket: the socket's ax/ay anchor fractions (0..1 of the
+   *    PO's UNROTATED bbox) mapped through the PO's current rotation via
+   *    mapPt(), then offset by the PO's screen-space box origin.
+   * Returns null if the socket cannot be positioned (e.g. bond socket but
+   * no assembly currently exists).
+   */
+  private socketScreenPos(state: GameState, s: Socket, asm: Assembly | null): { x: number; y: number } | null {
+    const { engine } = this.deps;
+    if (s.host === 'bond') {
+      if (!asm) return null;
+      return { x: cx(asm.hilt.cell![1]), y: PAD + (asm.hilt.cell![0] - 1) * CELL };
+    }
+    const p = state.pos.find((z) => z.uid === s.host);
+    if (!p || p.loc !== 'grid' || !p.cell) return null;
+    const box = { x: PAD + (p.cell[1] - 1) * CELL, y: PAD + (p.cell[0] - 1) * CELL };
+    const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
+    const W0 = cw * CELL;
+    const H0 = ch * CELL;
+    const [mx, my] = mapPt(((p.rot % 4) + 4) % 4, (s.ax ?? 0) * W0, (s.ay ?? 0) * H0, W0, H0);
+    return { x: box.x + mx, y: box.y + my };
   }
 
   private arrowHead(x: number, y: number, angle: number, color: string): Graphics {
@@ -378,5 +671,366 @@ export class BoardRenderer {
     g.closePath();
     g.fill({ color });
     return g;
+  }
+
+  // -----------------------------------------------------------------------
+  // Interaction machinery — REQ-0027 T0.2.
+  // -----------------------------------------------------------------------
+
+  /** Board-canvas-local pixel coords -> grid cell, matching the mock's
+   * `cellAt(pt)`. */
+  private cellAt(x: number, y: number): Cell {
+    return [Math.floor((y - PAD) / CELL) + 1, Math.floor((x - PAD) / CELL) + 1];
+  }
+
+  /** Converts a raw client (viewport) coordinate to board-canvas-local
+   * pixel space, accounting for CSS scaling of the canvas element -- same
+   * purpose as the mock's `svgPt(e)` (which scales by `W/rect.width`). */
+  private clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
+    const rect = this.app.canvas.getBoundingClientRect();
+    const scaleX = this.app.canvas.width / (rect.width || 1) / (this.app.renderer.resolution || 1);
+    const scaleY = this.app.canvas.height / (rect.height || 1) / (this.app.renderer.resolution || 1);
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+
+  /** pointerdown on a PO group -- REQ-0027 T0.2 double-click vs drag
+   * disambiguation (see DBLCLICK_WINDOW_MS's module comment). Manual
+   * bookkeeping: if a second pointerdown for this uid arrives within the
+   * window AND the carry that the first pointerdown may have started never
+   * armed (i.e. it was a plain click), treat this as a double-click and
+   * call rotatePO immediately -- otherwise, start a normal drag exactly
+   * like any other pointerdown (matches the mock's own dual dblclick+
+   * pointerdown listeners coexisting on the same SVG group). */
+  private handlePOPointerDown(
+    e: FederatedPointerEvent,
+    p: PO,
+    isAssemblyPart: boolean,
+    asm: Assembly | null
+  ): void {
+    if (getCarry()) return; // matches mock's `if(carry)return` guard (dblclick) / `if(carry||!kind)return` (startCarry)
+    const now = performance.now();
+    const last = this.lastPointerDown.get(p.uid);
+    this.lastPointerDown.delete(p.uid);
+    if (last !== undefined && now - last <= DBLCLICK_WINDOW_MS) {
+      // Double-click: rotate in place. rotatePO always targets the PO
+      // whose uid started the carry-equivalent gesture -- for an assembled+
+      // linked pair this is always the blade (matches the mock's asm block
+      // calling `E.rotatePO(state,asm.blade.uid)`).
+      const rotateUid = isAssemblyPart && asm ? asm.blade.uid : p.uid;
+      const r = this.deps.engine.rotatePO(this.lastState!, rotateUid);
+      if (r.ok) notifyStateChanged();
+      else this.flash(r.cells);
+      return;
+    }
+    this.lastPointerDown.set(p.uid, now);
+    // Kind selection mirrors the mock exactly: an assembled+linked blade/
+    // hilt drags as 'asm' (the whole assembly), everything else as 'po'.
+    const kind = isAssemblyPart ? 'asm' : 'po';
+    this.beginDrag(e, kind, isAssemblyPart && asm ? asm.blade.uid : p.uid, undefined);
+  }
+
+  /** Starts a carry from a Pixi pointerdown event (board-originated drag:
+   * PO, assembly, BP/linker). Computes grabOff in CELL space, matching the
+   * mock's startCarry() branches per kind. */
+  private beginDrag(e: FederatedPointerEvent, kind: CarryState['kind'], uid: string, bpId?: string): void {
+    if (getCarry()) return;
+    const state = this.lastState;
+    if (!state) return;
+    const { engine } = this.deps;
+    const local = { x: e.global.x, y: e.global.y };
+    const cell = this.cellAt(local.x, local.y);
+    let grabOff: [number, number] = [0, 0];
+    if (kind === 'po') {
+      const p = state.pos.find((z) => z.uid === uid);
+      if (p && p.loc === 'grid' && p.cell) grabOff = [cell[0] - p.cell[0], cell[1] - p.cell[1]];
+    } else if (kind === 'asm') {
+      const asm = engine.assembly(state);
+      if (asm) grabOff = [cell[0] - asm.anchor[0], cell[1] - asm.anchor[1]];
+    } else if (kind === 'bp' && bpId) {
+      const bp = state.bps.find((b) => b.id === bpId);
+      if (bp) grabOff = [cell[0] - bp.origin[0], cell[1] - bp.origin[1]];
+    }
+    startCarry({ kind, uid, bpId, sx: e.clientX, sy: e.clientY, grabOff });
+  }
+
+  /**
+   * Starts a carry from an EXTERNAL (non-Pixi, i.e. React inventory panel)
+   * pointerdown -- REQ-0027 T0.2. Public so Board.tsx can wire the React
+   * inventory panel's onPointerDown handlers into the same carry/drag
+   * machinery the board canvas uses (single mental model per the task
+   * spec's "pointer events let you unify board-originated and panel-
+   * originated drags"). Inventory-sourced items are always loc/host==='inv'
+   * so grabOff is always [0,0] (matches the mock's inventory pointerdown,
+   * which also never sets a non-zero grabOff for inv-sourced drags).
+   */
+  startExternalDrag(kind: 'po' | 'si', uid: string, clientX: number, clientY: number): void {
+    if (getCarry()) return;
+    startCarry({ kind, uid, sx: clientX, sy: clientY, grabOff: [0, 0] });
+  }
+
+  /** Wires stage-wide pointermove (arm + legality preview + ghost), window
+   * pointerup (commit), and window keydown (Esc cancel). Called once from
+   * the constructor. */
+  private wireGlobalInteraction(): void {
+    this.app.stage.on('globalpointermove', this.onGlobalPointerMove);
+    window.addEventListener('pointerup', this.onWindowPointerUp);
+    window.addEventListener('keydown', this.onWindowKeyDown);
+    // Re-render ghost/target layers whenever drag.ts's carry state changes
+    // for reasons other than a pointermove we already handle inline below
+    // (e.g. an external startExternalDrag() call from the React inventory
+    // panel, which this renderer did not itself trigger) -- keeps the
+    // canvas' ghost/legality-tint in sync regardless of WHERE the drag
+    // began.
+    this.unsubscribeCarry = subscribeCarry(() => {
+      const carry = getCarry();
+      if (!carry) {
+        this.gCarry.removeChildren();
+        this.gTarget.removeChildren();
+      }
+    });
+  }
+
+  private onGlobalPointerMove = (e: FederatedPointerEvent): void => {
+    const carry = getCarry();
+    if (!carry || !this.lastState) return;
+    if (!carry.armed) {
+      if (Math.hypot(e.clientX - carry.sx, e.clientY - carry.sy) < DRAG_ARM_THRESHOLD) return;
+      armCarry();
+      // Re-render so the carried item's original-position art disappears
+      // (matches the mock's `hideTip();renderAll();` on arm) -- the
+      // carriedUids computation in render() reads getCarry() fresh.
+      this.render(this.lastState);
+    }
+    const local = this.clientToLocal(e.clientX, e.clientY);
+    const overInv = this.callbacks.isOverInventory(e.clientX, e.clientY);
+    this.gCarry.removeChildren();
+    this.gTarget.removeChildren();
+    const state = this.lastState;
+    const { engine } = this.deps;
+    const cell = this.cellAt(local.x, local.y);
+
+    const paint = (cells: Cell[] | undefined, ok: boolean) => {
+      for (const [r, c] of cells ?? []) {
+        if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
+        const rect = new Graphics();
+        rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
+        rect.fill({ color: ok ? '#5cb573' : '#c05050', alpha: 0.25 });
+        rect.stroke({ color: ok ? '#5cb573' : '#c05050', width: 2 });
+        this.gTarget.addChild(rect);
+      }
+    };
+
+    let drop: DropTarget | null = null;
+    if (carry.kind === 'po') {
+      const p = state.pos.find((z) => z.uid === carry.uid);
+      if (p) {
+        const anchor: Cell = [cell[0] - carry.grabOff[0], cell[1] - carry.grabOff[1]];
+        if (overInv) {
+          drop = { type: 'inv' };
+        } else {
+          const chk = engine.canPlacePO(state, p.uid, p.rot, anchor);
+          drop = chk.ok ? { type: 'grid', anchor } : null;
+          paint(chk.cells, chk.ok);
+        }
+        const def = this.deps.items[p.id];
+        const { w, h } = engine.shapeInfo(p.id, p.rot);
+        this.renderGhostPO(p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
+      }
+    } else if (carry.kind === 'asm') {
+      const asm = engine.assembly(state);
+      if (asm) {
+        const anchor: Cell = [cell[0] - carry.grabOff[0], cell[1] - carry.grabOff[1]];
+        if (overInv) {
+          drop = { type: 'inv' };
+        } else {
+          const chk = engine.canPlaceAssembly(state, anchor);
+          drop = chk.ok ? { type: 'grid', anchor } : null;
+          paint(chk.cells, chk.ok);
+        }
+        this.renderGhostAssembly(asm, local.x, local.y);
+      }
+    } else if (carry.kind === 'bp' && carry.bpId) {
+      const bp = state.bps.find((b) => b.id === carry.bpId);
+      if (bp) {
+        const origin: Cell = [cell[0] - carry.grabOff[0], cell[1] - carry.grabOff[1]];
+        if (overInv) {
+          drop = null;
+        } else {
+          const chk = engine.canMoveBP(state, carry.bpId, origin);
+          drop = chk.ok ? { type: 'bp', origin } : null;
+          paint(chk.cells, chk.ok);
+          if (chk.ok && chk.cells) this.renderGhostBP(bp.color, chk.cells);
+        }
+      }
+    } else if (carry.kind === 'si') {
+      const a = state.sis.find((z) => z.uid === carry.uid);
+      if (a) {
+        const asm = engine.assembly(state);
+        let best: { s: Socket; v: { ok: boolean; why?: string } } | null = null;
+        let bd = SOCKET_SEARCH_RADIUS;
+        for (const s of engine.sockets(state)) {
+          const pos = this.socketScreenPos(state, s, asm);
+          if (!pos) continue;
+          const v = engine.hostOk(state, carry.uid, s);
+          const dist = Math.hypot(pos.x - local.x, pos.y - local.y);
+          const ring = new Graphics();
+          ring.circle(pos.x, pos.y, 12);
+          ring.stroke({ color: v.ok ? '#5cb573' : '#c05050', width: 2, alpha: dist < bd ? 1 : 0.55 });
+          this.gTarget.addChild(ring);
+          if (dist < bd) {
+            bd = dist;
+            best = { s, v };
+          }
+        }
+        drop = overInv ? { type: 'inv' } : best && best.v.ok ? { type: 'sock', skey: best.s.skey } : null;
+        const siDef = this.deps.siDefs[a.id];
+        if (siDef) {
+          const tex = this.deps.textures.get(siDef.icon);
+          if (tex) {
+            const sprite = new Sprite(tex);
+            sprite.x = local.x - 16;
+            sprite.y = local.y - 16;
+            sprite.width = 32;
+            sprite.height = 32;
+            sprite.alpha = 0.85;
+            this.gCarry.addChild(sprite);
+          }
+        }
+      }
+    }
+    updateCarry(local.x, local.y, drop);
+  };
+
+  private onWindowPointerUp = (): void => {
+    const c = takeCarry();
+    if (!c || !this.lastState) return;
+    if (!c.armed) return; // plain click: no engine call, let dblclick logic (handlePOPointerDown) own it
+    const state = this.lastState;
+    const { engine } = this.deps;
+    const drop = c.drop;
+    if (c.kind === 'po' && drop && (drop.type === 'inv' || drop.type === 'grid')) {
+      engine.movePO(state, c.uid, drop.type === 'inv' ? 'inv' : drop.anchor);
+    } else if (c.kind === 'asm' && drop && (drop.type === 'inv' || drop.type === 'grid')) {
+      engine.moveAssembly(state, drop.type === 'inv' ? 'inv' : drop.anchor);
+    } else if (c.kind === 'bp' && drop && c.bpId && drop.type === 'bp') {
+      engine.moveBP(state, c.bpId, drop.origin);
+    } else if (c.kind === 'si') {
+      if (drop?.type === 'sock') engine.seatSI(state, c.uid, drop.skey);
+      else if (drop?.type === 'inv') engine.stowSI(state, c.uid);
+    }
+    this.gCarry.removeChildren();
+    this.gTarget.removeChildren();
+    notifyStateChanged();
+  };
+
+  private onWindowKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && getCarry()) {
+      cancelCarry();
+      this.gCarry.removeChildren();
+      this.gTarget.removeChildren();
+      if (this.lastState) this.render(this.lastState);
+    }
+  };
+
+  /** Ghost PO art following the pointer during a drag -- reuses the same
+   * rotation-aware art placement as the placed-PO rendering above
+   * (drawPOArt equivalent), at reduced opacity, matching the mock's
+   * `opacity:.75` ghost. */
+  private renderGhostPO(p: PO, def: ItemDefMap[string] | undefined, x: number, y: number): void {
+    if (!def) return;
+    const { engine, textures } = this.deps;
+    const texture = textures.get(def.icon);
+    if (!texture) return;
+    const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
+    const W0 = cw * CELL;
+    const H0 = ch * CELL;
+    const k = ((p.rot % 4) + 4) % 4;
+    const sprite = new Sprite(texture);
+    if (def.stretch) {
+      sprite.x = W0 * 0.1;
+      sprite.y = 4;
+      sprite.width = W0 * 0.8;
+      sprite.height = H0 - 8;
+    } else {
+      sprite.x = W0 * 0.06;
+      sprite.y = H0 * 0.05;
+      sprite.width = W0 * 0.88;
+      sprite.height = H0 * 0.9;
+    }
+    const inner = new Container();
+    inner.alpha = 0.75;
+    inner.addChild(sprite);
+    const { w, h } = engine.shapeInfo(p.id, p.rot);
+    if (k === 0) {
+      inner.position.set(x, y);
+    } else if (k === 1) {
+      inner.position.set(x + w * CELL, y);
+      inner.rotation = Math.PI / 2;
+    } else if (k === 2) {
+      inner.position.set(x + w * CELL, y + h * CELL);
+      inner.rotation = Math.PI;
+    } else {
+      inner.position.set(x, y + h * CELL);
+      inner.rotation = -Math.PI / 2;
+    }
+    this.gCarry.addChild(inner);
+  }
+
+  /** Ghost for the carried Blade+Hilt assembly -- fixed-size icons at
+   * offsets from the pointer, matching the mock's assembly ghost
+   * (`x:pt.x-32,y:pt.y-110,w:64,h:150` for blade, `y:pt.y+40,h:66` hilt). */
+  private renderGhostAssembly(asm: Assembly, px: number, py: number): void {
+    const { items, textures } = this.deps;
+    const bladeDef = items[asm.blade.id];
+    const bladeTex = bladeDef && textures.get(bladeDef.icon);
+    if (bladeTex) {
+      const sprite = new Sprite(bladeTex);
+      sprite.x = px - 32;
+      sprite.y = py - 110;
+      sprite.width = 64;
+      sprite.height = 150;
+      sprite.alpha = 0.75;
+      this.gCarry.addChild(sprite);
+    }
+    const hiltDef = items[asm.hilt.id];
+    const hiltTex = hiltDef && textures.get(hiltDef.icon);
+    if (hiltTex) {
+      const sprite = new Sprite(hiltTex);
+      sprite.x = px - 32;
+      sprite.y = py + 40;
+      sprite.width = 64;
+      sprite.height = 66;
+      sprite.alpha = 0.75;
+      this.gCarry.addChild(sprite);
+    }
+  }
+
+  /** Ghost preview for a dragged BP -- tinted cells in the BP's own color
+   * at low alpha, matching the mock's BP-carry ghost. */
+  private renderGhostBP(color: string, cells: Cell[]): void {
+    for (const [r, c] of cells) {
+      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
+      const rect = new Graphics();
+      rect.roundRect(PAD + (c - 1) * CELL + 4, PAD + (r - 1) * CELL + 4, CELL - 8, CELL - 8, 6);
+      rect.fill({ color, alpha: 0.4 });
+      this.gCarry.addChild(rect);
+    }
+  }
+
+  /** Brief red-outline reject feedback on illegal double-click-rotate
+   * targets -- matches the mock's flash() (350ms auto-remove). */
+  private flash(cells: Cell[] | undefined): void {
+    for (const [r, c] of cells ?? []) {
+      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
+      const rect = new Graphics();
+      rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
+      rect.stroke({ color: '#c05050', width: 3 });
+      this.gTarget.addChild(rect);
+      const timer = setTimeout(() => {
+        rect.destroy();
+        this.flashTimers.delete(timer);
+      }, FLASH_MS);
+      this.flashTimers.add(timer);
+    }
   }
 }
