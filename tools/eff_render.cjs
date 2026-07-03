@@ -49,7 +49,7 @@ function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-var TAG_KIND_EN = { type: 'type', element: 'PO' };
+var TAG_KIND_EN = { type: 'type', element: 'element' };
 
 // =========================================================================
 // English renderer

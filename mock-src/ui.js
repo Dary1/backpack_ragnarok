@@ -102,12 +102,12 @@ function renderAll(){
     el('path',{d:outlinePath(cells),stroke:bp.color,'stroke-width':3,fill:'none','stroke-linecap':'square'},gBase);
     const r0=Math.min(...cells.map(c=>c[0])),c0=Math.min(...cells.filter(c=>c[0]===r0).map(c=>c[1]));
     el('text',{x:PAD+(c0-1)*CELL+4,y:PAD+(r0-1)*CELL-6,fill:bp.color,'font-size':12,'font-weight':'bold'},gBase).textContent=bp.name+' · HP '+(cells.length*5);
-    // empty pieces are BP grab handles
+    // empty cells are BP grab handles
     for(const [r,c] of cells){
       if(occ[key(r,c)]||lkm[key(r,c)])continue;
       const hit=el('rect',{x:PAD+(c-1)*CELL,y:PAD+(r-1)*CELL,width:CELL,height:CELL,fill:'transparent',cursor:'grab'},gBase);
       hit.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
-      hover(hit,'<h3>'+bp.name+'</h3><div class="eff">Empty Piece — drag here (or the Linker) to move the whole BP with its contents.</div>');
+      hover(hit,'<h3>'+bp.name+'</h3><div class="eff">Empty Cell — drag here (or the Linker) to move the whole BP with its contents.</div>');
     }
   }
   // beams
@@ -286,7 +286,7 @@ function renderAll(){
   const cbp2=E.cellBPMap(state);
   document.getElementById('bpList').innerHTML=state.bps.map(b=>{
     const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
-    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' pieces · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
   document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
     const A=bm.from.toUpperCase();
     if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' dir '+bm.dir+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';
