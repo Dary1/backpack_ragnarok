@@ -23,7 +23,8 @@
 import { useSyncExternalStore } from 'react';
 import { Engine } from './engine/adapter';
 import type { EngineInstance, GameState } from './engine/engine.d.ts';
-import { resolveGameData, type DataSource, type GameData } from './api';
+import { fetchCanvas, resolveGameData, saveCanvas, type DataSource, type GameData } from './api';
+import { cancelCarry } from './board/drag';
 export type { DataSource };
 
 export type Locale = 'en' | 'ja';
@@ -42,6 +43,10 @@ export interface StoreSnapshot {
    * already new each time) but useful for effects that want to depend on
    * "did the game state change" without depending on `state` identity. */
   stateVersion: number;
+  /** Save/Load status line shown in the Header, mirroring the mock's
+   * #canvasIoStatus (localized message + ok/error color). null = nothing
+   * to show yet. */
+  ioStatus: { message: string; isError: boolean } | null;
 }
 
 let snapshot: StoreSnapshot = {
@@ -53,6 +58,7 @@ let snapshot: StoreSnapshot = {
   state: null,
   locale: 'en',
   stateVersion: 0,
+  ioStatus: null,
 };
 
 const listeners = new Set<() => void>();
@@ -108,6 +114,82 @@ export function setLocale(locale: Locale): void {
  */
 export function notifyStateChanged(): void {
   setSnapshot({ ...snapshot, stateVersion: snapshot.stateVersion + 1 });
+}
+
+/** Sets (or clears, pass null) the Save/Load status line. */
+export function setIoStatus(message: string, isError: boolean): void {
+  setSnapshot({ ...snapshot, ioStatus: { message, isError } });
+}
+
+const IO_STRINGS = {
+  saved: { ja: '保存しました', en: 'Saved' },
+  saveFailed: { ja: '保存失敗', en: 'Save failed' },
+  loaded: { ja: '読み込みました', en: 'Loaded' },
+  loadFailed: { ja: '読み込み失敗', en: 'Load failed' },
+  noSavedCanvas: { ja: '保存データなし', en: 'No saved canvas' },
+} as const;
+
+function ioText(key: keyof typeof IO_STRINGS): string {
+  return IO_STRINGS[key][snapshot.locale];
+}
+
+/**
+ * Save: PUT the CURRENT live GameState (bare, unwrapped -- see api.ts's
+ * saveCanvas) to /api/profile/default/canvas. Mirrors mock-src/ui.js's
+ * saveBtn handler exactly (same endpoint, same body shape, same status
+ * strings). Profile id is hardcoded to 'default' for T0.2, same as the mock.
+ */
+export async function saveGame(): Promise<void> {
+  const st = snapshot.state;
+  if (!st) return;
+  try {
+    await saveCanvas('default', st);
+    setIoStatus(ioText('saved'), false);
+  } catch (e) {
+    console.warn('[backpack_ragnarok] canvas save failed:', e instanceof Error ? e.message : e);
+    setIoStatus(ioText('saveFailed'), true);
+  }
+}
+
+/**
+ * Load: GET /api/profile/default/canvas, then replace state's OWN FIELDS
+ * in place (never reassign `snapshot.state` to a new object) -- mirrors
+ * the mock's `state.linked=...; state.bps=...; state.pos=...; state.sis=...`.
+ * On 404 shows "No saved canvas" (not an error). Caller (Header) is
+ * responsible for canceling any active drag/carry BEFORE calling this, same
+ * order as the mock (`carry=null` before the field replacement).
+ */
+export async function loadGame(): Promise<void> {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  try {
+    const doc = await fetchCanvas('default');
+    if (!doc) {
+      setIoStatus(ioText('noSavedCanvas'), true);
+      return;
+    }
+    const canvas = doc.canvas;
+    if (!canvas || !Array.isArray(canvas.pos) || !Array.isArray(canvas.bps)) {
+      throw new Error('malformed saved canvas');
+    }
+    // Cancel any active drag BEFORE the field replacement -- same order as
+    // the mock (`carry=null` before `state.linked=...` etc). No engine call:
+    // this is a pure UI-state abort (matches Esc-cancel semantics), and
+    // BoardRenderer's carry-subscription clears the ghost/target Pixi
+    // layers as a side effect of the carry becoming null (see
+    // BoardRenderer.wireGlobalInteraction's subscribeCarry callback).
+    cancelCarry();
+    st.linked = canvas.linked;
+    st.bps = canvas.bps;
+    st.pos = canvas.pos;
+    st.sis = canvas.sis || [];
+    notifyStateChanged();
+    setIoStatus(ioText('loaded'), false);
+  } catch (e) {
+    console.warn('[backpack_ragnarok] canvas load failed:', e instanceof Error ? e.message : e);
+    setIoStatus(ioText('loadFailed'), true);
+  }
 }
 
 /** React hook: subscribes the calling component to the store. */

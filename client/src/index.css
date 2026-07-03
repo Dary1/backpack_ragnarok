@@ -196,7 +196,33 @@ html, body {
 .tooltip-eff {
   margin-top: 6px;
 }
+
 /* REQ-0027 T0.2 additions below */
+
+.io-status {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.io-btn {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.io-btn:hover:not(:disabled) {
+  border-color: var(--cyan);
+}
+
+.io-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .inventory-panel {
   margin-bottom: 18px;

@@ -94,6 +94,24 @@ JS bundle under `/app/assets/`. The client fetches game content from
 content (item names, effect/flavor text) is baked into the client bundle;
 see `client/README.md` for the client's own structure and scope notes.
 
+### T0.2 (REQ-0027) -- edit interactions + Save/Load
+Landed on top of T0.1's read-only board: drag/drop (PO, assembly, BP,
+Socket Item), double-click rotate, Esc-cancel, and a Header Save/Load pair
+wired to `saveCanvas`/`fetchCanvas` (client/src/api.ts). Save PUTs the bare
+live `GameState` (no wrapper) to `PUT /api/profile/default/canvas`, same
+body shape `mock-src/ui.js`'s save handler sends and same shape
+`mock-src/data.js`'s `makeState()` produces (`{linked,bps,pos,sis}`).
+
+State-interop verification (profiles must be interchangeable between the
+mock and this client): fetched the live `/api/content` `scenario`
+(stripped of `layout`, same as `gameDataFromApiContent`'s normalization),
+PUT it back verbatim to `/api/profile/default/canvas`, then GET it back --
+the round-tripped `canvas` was byte-identical to the PUT body and had
+exactly the 4 expected top-level keys (`linked`, `bps`, `pos`, `sis`), no
+added/renamed/dropped fields. Confirms the client's save body shape survives
+the server's storage layer unchanged and matches the mock's own save
+payload shape.
+
 ## Ingress change log
 - 2026-07-03 (REQ-0024): applied via Cloudflare Tunnel Configuration API
   (PUT accounts/<acct>/cfd_tunnel/<tunnel_id>/configurations), config

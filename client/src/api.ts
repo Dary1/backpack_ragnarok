@@ -143,6 +143,26 @@ export async function fetchCanvas(profileId: string): Promise<ApiCanvasDoc | nul
 }
 
 /**
+ * PUT /api/profile/:id/canvas — REQ-0027 T0.2. Body is the BARE GameState
+ * object (not wrapped in {canvas:...} -- the server wraps it in storage),
+ * exactly mirroring mock-src/ui.js's save handler:
+ *   fetch('/api/profile/default/canvas', {method:'PUT', body:JSON.stringify(state)})
+ * Throws ApiError on any non-2xx response (including 413 if the body
+ * exceeds the server's size cap, per server/README.md).
+ */
+export async function saveCanvas(profileId: string, state: GameState): Promise<ApiCanvasDoc> {
+  const res = await fetch(`/api/profile/${encodeURIComponent(profileId)}/canvas`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(state),
+  });
+  if (!res.ok) {
+    throw new ApiError(`HTTP ${res.status} for PUT /api/profile/${profileId}/canvas`, res.status);
+  }
+  return (await res.json()) as ApiCanvasDoc;
+}
+
+/**
  * Converts the /api/content payload into the engine-ready GameData shape --
  * a typed port of mock-src/ui.js's gameDataFromApiContent(). Field-for-field
  * identical defaulting: eff falls back to eff_en, TREES defaults to
