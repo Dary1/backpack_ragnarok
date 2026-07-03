@@ -1273,6 +1273,43 @@ export class BoardRenderer {
       // rendered on the destination board in the first place).
       if (boardIdEquals(carry.originBoard, this.boardId)) this.render(this.lastState);
     }
+    // REQ-0031 Phase A bug fix (BP inventory<->canvas transfer sometimes
+    // silently failing): every PixiJS Application's EventSystem listens
+    // for native `pointermove` on `document` itself (see PixiJS's
+    // EventSystem.addEvents: `globalThis.document.addEventListener
+    // ('pointermove', this._onPointerMove, true)`), NOT scoped to that
+    // Application's own <canvas> bounds. Since the canvas board and the
+    // inventory board are TWO independent PixiJS Applications, EVERY
+    // mouse move during a drag fires `globalpointermove` on BOTH boards'
+    // stages -- including the board the pointer is NOT physically over,
+    // which then maps the pointer's (foreign) screen coordinates into ITS
+    // OWN local cell space and computes a nonsense (usually out-of-bounds
+    // or bogusly-legal) cell, then unconditionally calls updateCarry(),
+    // clobbering whatever `carry.drop` the CORRECT board (the one the
+    // pointer is actually over) had just set. Confirmed live: a CDP-
+    // captured trace of a failing drag showed the canvas board correctly
+    // computing `{ok:true, drop:{origin:[6,4]}}` on the pointer's real
+    // final position, immediately followed by the INVENTORY board's
+    // handler for the SAME native event overwriting `carry.drop` back to
+    // null (it mapped the same screen point into its own coordinate
+    // space, got an out-of-page cell, and legitimately reported "outside
+    // page" -- but that result is meaningless since the pointer was never
+    // over the inventory board at that moment). Listener registration
+    // order made this a race that failed roughly half the time depending
+    // on drag speed/sample count. Fix: a board only acts as the authority
+    // for a move event when the pointer is ACTUALLY within its own
+    // canvas's current bounding rect; otherwise it clears its own
+    // ghost/target visuals (the pointer left it) but does NOT touch
+    // `carry.drop` at all, leaving that decision to whichever board's
+    // handler for this SAME event finds the pointer genuinely inside its
+    // own bounds.
+    const rect = this.app.canvas.getBoundingClientRect();
+    const withinBounds = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+    if (!withinBounds) {
+      this.gCarry.removeChildren();
+      this.gTarget.removeChildren();
+      return;
+    }
     const local = this.clientToLocal(e.clientX, e.clientY);
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
