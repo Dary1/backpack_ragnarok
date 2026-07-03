@@ -139,6 +139,71 @@ T('grid chemistry: Ignite fires when Flame and Oil become adjacent',()=>{
   ok(E.combos(st).some(c=>c.name==='Ignite'),'Ignite fires');
 });
 
+// ---------------------------------------------------------------------
+// Hierarchy-walk tests (REQ-0022 batch 3/4). hasTag() is exercised directly
+// with SYNTHETIC trees (not real vocab.json data) so these tests don't
+// depend on/pollute actual content -- per the plan's own preference for
+// unit-testing the shared helper in isolation. Today's real po_tags/
+// socket_tags trees are fully degenerate (every node a root), so these
+// synthetic fixtures are the only place actual multi-level hierarchy
+// containment is exercised end-to-end.
+T('hierarchy: child tag satisfies ancestor-gated check',()=>{
+  const tree={TestWeapon:null,TestSword:'TestWeapon'};
+  // an item tagged only with the child (TestSword) satisfies a check for
+  // the ancestor (TestWeapon) ...
+  ok(Engine.hasTag(['TestSword'],'TestWeapon',tree),
+     'TestSword should satisfy a TestWeapon-gated check (child->ancestor)');
+  // ... and symmetrically, an item tagged only with the ancestor
+  // (TestWeapon) satisfies a check for the descendant (TestSword), per the
+  // ground truth's SYMMETRIC "same tag, or tag within the hierarchy" rule.
+  ok(Engine.hasTag(['TestWeapon'],'TestSword',tree),
+     'TestWeapon should satisfy a TestSword-gated check (ancestor->child)');
+});
+
+T('hierarchy: PO tag and Socket tag namespaces never cross-match',()=>{
+  // "Metal" is a real coincidental name shared by both real namespaces today
+  // (po_tags has it as a former element; socket_tags has it as a former
+  // socket tag) -- exercise that exact collision with synthetic trees shaped
+  // the same way, to prove hasTag() never conflates the two even when the
+  // tag STRING is identical, because the tree argument scopes the walk.
+  const poTree={Metal:null,Flame:null};
+  const socketTree={Metal:null,Bone:null};
+  // an item tagged 'Metal' in the po_tags sense must not satisfy a
+  // socket-tree-scoped 'Metal' check (and vice versa) -- these tests pass
+  // the SAME tag list against DIFFERENT trees and confirm the tree argument
+  // is what the containment check is actually scoped by. Since both trees
+  // here are degenerate, cross-namespace non-interference reduces to: the
+  // caller must always pass the correct tree, and hasTag() has no way to
+  // silently pick the wrong one (no shared/global tree state).
+  ok(Engine.hasTag(['Metal'],'Metal',poTree),'Metal should match itself within po tree');
+  ok(Engine.hasTag(['Metal'],'Metal',socketTree),'Metal should match itself within socket tree');
+  // A tag that's a PO-tree descendant of some node must not accidentally
+  // satisfy a same-named lookup in the socket tree with a DIFFERENT parent
+  // (proves the parent-chain walk is tree-scoped, not global): give "Metal"
+  // a parent in the po tree only, and confirm the socket tree (where Metal
+  // is a root with no such parent) does not inherit that relationship.
+  const poTreeWithParent={Ore:null,Metal:'Ore'};
+  const socketTreeNoParent={Metal:null,Bone:null};
+  ok(Engine.hasTag(['Metal'],'Ore',poTreeWithParent),
+     'in the po tree, Metal (child of Ore) should satisfy an Ore-gated check');
+  ok(!Engine.hasTag(['Metal'],'Ore',socketTreeNoParent),
+     'the socket tree has no "Ore" node/relationship -- must not match at all');
+});
+
+T('hierarchy: unrelated sibling tags do not match',()=>{
+  const tree={TestWeapon:null,TestSword:'TestWeapon',TestShield:'TestWeapon'};
+  // TestSword and TestShield are siblings (same parent, TestWeapon) with no
+  // ancestor/descendant relationship to EACH OTHER -- a check for one must
+  // not be satisfied by the other.
+  ok(!Engine.hasTag(['TestSword'],'TestShield',tree),
+     'TestSword must not satisfy a TestShield-gated check (unrelated siblings)');
+  ok(!Engine.hasTag(['TestShield'],'TestSword',tree),
+     'TestShield must not satisfy a TestSword-gated check (unrelated siblings)');
+  // also confirm two flat/degenerate (no relation at all) root tags don't match
+  const flatTree={Flame:null,Frost:null};
+  ok(!Engine.hasTag(['Flame'],'Frost',flatTree),'Flame must not satisfy a Frost-gated check');
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

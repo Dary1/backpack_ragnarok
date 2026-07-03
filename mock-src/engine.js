@@ -10,7 +10,67 @@ function rotOffsets(base,k){
   const mr=Math.min(...off.map(o=>o[0])),mc=Math.min(...off.map(o=>o[1]));
   return off.map(([r,c])=>[r-mr,c-mc]);
 }
-function create(ITEMS,SI_DEFS,layout){
+
+// ---------------------------------------------------------------------
+// Hierarchy-walk helper (REQ-0022 batch 3/4).
+//
+// ONE shared mechanism used by BOTH the PO Tag tree and the Socket Type
+// tree (two SEPARATE, independent namespaces that never cross-match --
+// user ruling Q1=B). Each tree is a flat parent-map: { tagName: parentName
+// | null }, null/absent meaning a root. Today both content/vocab.json
+// trees (po_tags, socket_tags) are fully DEGENERATE (every node a root),
+// so containment below only ever succeeds via exact string equality --
+// zero behavior change from the old flat-array membership checks. A future
+// non-degenerate tree (e.g. "Sword" parented under "Weapon") would then
+// let ancestor/descendant checks succeed without any call-site changes.
+//
+// ancestorsOf(tree, tag): [tag, tag's parent, tag's grandparent, ...] up
+// to (and stopping at) the first root.
+function ancestorsOf(tree, tag){
+  const chain=[tag];
+  let cur=tag,guard=0;
+  while(tree && Object.prototype.hasOwnProperty.call(tree,cur) && tree[cur]!=null && guard<1000){
+    cur=tree[cur];
+    chain.push(cur);
+    guard++;
+  }
+  return chain;
+}
+
+// tagsRelated(tree, tagA, tagB): true if tagA===tagB, or tagA is an
+// ancestor of tagB, or tagB is an ancestor of tagA (true hierarchy
+// containment, either direction, along the SAME lineage/tree). This is
+// the symmetric "same tag, or tag within the hierarchy" rule from the
+// ground-truth glossary.
+function tagsRelated(tree, tagA, tagB){
+  if(tagA===tagB)return true;
+  const chainA=ancestorsOf(tree,tagA);
+  if(chainA.includes(tagB))return true;
+  const chainB=ancestorsOf(tree,tagB);
+  if(chainB.includes(tagA))return true;
+  return false;
+}
+
+// hasTag(tagList, targetTag, tree): does `tagList` (an item's/socket's own
+// tag array) satisfy a check for `targetTag`, per the tree's hierarchy?
+// True if ANY tag in tagList is tagsRelated to targetTag within `tree`.
+// `tree` must be the specific namespace's parent-map (po_tags or
+// socket_tags) -- callers must NEVER pass the wrong tree, since the two
+// namespaces never cross-match (Q1=B). Degenerate/missing tree ({} or
+// undefined) reduces this to plain array-membership (exact match only).
+function hasTag(tagList, targetTag, tree){
+  const list=tagList||[];
+  const t=tree||{};
+  return list.some(tag=>tagsRelated(t,tag,targetTag));
+}
+
+function create(ITEMS,SI_DEFS,layout,trees){
+  // trees: optional {po:{tag:parent|null,...}, socket:{tag:parent|null,...}}.
+  // Defaults to fully degenerate (empty parent-maps) -- i.e. today's actual
+  // vocab.json content -- so existing call sites Engine.create(ITEMS,SI_DEFS,
+  // LAYOUT) keep working unchanged with exact-match-only tag semantics.
+  const poTree=(trees&&trees.po)||{};
+  const socketTree=(trees&&trees.socket)||{};
   const ROWS=layout.ROWS,COLS=layout.COLS;
   const key=(r,c)=>r+','+c;
   const shapeInfo=(id,rot)=>{
@@ -145,8 +205,12 @@ function create(ITEMS,SI_DEFS,layout){
     const a=st.sis.find(x=>x.uid===siUid),d=SI_DEFS[a.id];
     if(sock.t!==d.slot)return {ok:false,why:'socket type '+sock.t+' ≠ '+d.slot};
     if(sock.siUid&&sock.siUid!==siUid)return {ok:false,why:'socket occupied'};
+    // Tag matching is hierarchical (Socket Type tree, REQ-0022 batch 3/4):
+    // a required tag is satisfied if the socket carries that exact tag OR a
+    // tag within the SAME socket_tags hierarchy (never the po_tags tree).
+    // Degenerate tree today => exact-match only, same as the old .includes().
     for(const t of (d.reqTags||[]))
-      if(!sock.tags.includes(t))return {ok:false,why:'socket lacks tag '+t+' (has: '+(sock.tags.join(', ')||'none')+')'};
+      if(!hasTag(sock.tags,t,socketTree))return {ok:false,why:'socket lacks tag '+t+' (has: '+(sock.tags.join(', ')||'none')+')'};
     return {ok:true};
   }
   function seatSI(st,siUid,skey){
@@ -199,14 +263,14 @@ function create(ITEMS,SI_DEFS,layout){
       const pairs=hit(ta,cb).concat(hit(tb,ca)); // target tiles that landed on the partner
       if(!pairs.length)continue;
       const da=ITEMS[a.id],db=ITEMS[b.id];
-      const fl=da.el.includes('Flame')?a:(db.el.includes('Flame')?b:null);
-      const oil=da.el.includes('Oil')?a:(db.el.includes('Oil')?b:null);
+      const fl=hasTag(da.tags,'Flame',poTree)?a:(hasTag(db.tags,'Flame',poTree)?b:null);
+      const oil=hasTag(da.tags,'Oil',poTree)?a:(hasTag(db.tags,'Oil',poTree)?b:null);
       if(fl&&oil&&fl!==oil)out.push({name:'Ignite',cells:ca.concat(cb),pairs,desc:'Flame + Oil connected → Burn applications ×2.'});
-      const wep=(da.type==='Weapon'||a.id==='blade')?a:((db.type==='Weapon'||b.id==='blade')?b:null);
+      const wep=(hasTag(da.tags,'Weapon',poTree)||a.id==='blade')?a:((hasTag(db.tags,'Weapon',poTree)||b.id==='blade')?b:null);
       if(fl&&wep&&fl!==wep)out.push({name:'Flaming Blade',cells:ca.concat(cb),pairs,desc:'Flame connected to a Weapon → adds Burn on hit.'});
     }
     for(const bp of st.bps){
-      const beasts=placed.filter(p=>ITEMS[p.id].el.includes('Beast')&&cbp[key(...cellsOf(st,p)[0])]===bp.id);
+      const beasts=placed.filter(p=>hasTag(ITEMS[p.id].tags,'Beast',poTree)&&cbp[key(...cellsOf(st,p)[0])]===bp.id);
       if(beasts.length>=2)out.push({name:'Pack Instinct',cells:beasts.flatMap(p=>cellsOf(st,p)),desc:beasts.length+' Beast POs in '+bp.name+' → each +2 damage per other.'});
     }
     return out;
@@ -231,5 +295,5 @@ function create(ITEMS,SI_DEFS,layout){
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key};
 }
-return {create,rotOffsets};
+return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });
