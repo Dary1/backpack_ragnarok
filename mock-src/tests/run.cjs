@@ -124,7 +124,10 @@ T('BP move rejections: overlap and out-of-canvas',()=>{
   const {st,E}=fresh();
   const r1=E.canMoveBP(st,'delta',[1,4]);
   ok(!r1.ok&&r1.why==='overlaps another BP',r1.why);
-  const r2=E.canMoveBP(st,'delta',[6,6]);
+  // REQ-0031 Phase B (8x8 grid): out-of-canvas origin derived from
+  // Data.LAYOUT (not hardcoded 6x6) so this test stays correct regardless
+  // of grid size -- ROWS+1/COLS+1 is guaranteed outside the canvas.
+  const r2=E.canMoveBP(st,'delta',[Data.LAYOUT.ROWS+1,Data.LAYOUT.COLS+1]);
   ok(!r2.ok&&r2.why==='outside canvas',r2.why);
 });
 
