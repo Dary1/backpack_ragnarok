@@ -18,16 +18,6 @@
     ]
    ],
    "icon": "icon-rime_shard",
-   "conn": [
-    [
-     1,
-     0
-    ],
-    [
-     1,
-     1
-    ]
-   ],
    "sockets": [],
    "effects_text_ja": "隣接するWeapon: 命中時に 氷結 4〜8 付与。",
    "effects_text_en": "Adjacent Weapon: Apply 4–8 Chill on hit.",
@@ -37,6 +27,21 @@
    "tags": [
     "Rune",
     "Frost"
+   ],
+   "ports": [
+    {
+     "tiles": [
+      [
+       1,
+       0
+      ],
+      [
+       1,
+       1
+      ]
+     ],
+     "tag": "Weapon"
+    }
    ]
   },
   {
@@ -96,12 +101,6 @@
     ]
    ],
    "icon": "icon-hoarfrost_creep",
-   "conn": [
-    [
-     0,
-     1
-    ]
-   ],
    "sockets": [],
    "effects_text_ja": "隣接するFlame: 氷結 付与量 ×2。 1.8〜2.2秒ごとに: 氷結 4〜8 付与。",
    "effects_text_en": "Adjacent Flame: Chill applications x2. Every 1.8–2.2s: Apply 4–8 Chill.",
@@ -112,6 +111,17 @@
     "Reagent",
     "Frost",
     "Wood"
+   ],
+   "ports": [
+    {
+     "tiles": [
+      [
+       0,
+       1
+      ]
+     ],
+     "tag": "Flame"
+    }
    ]
   },
   {
@@ -213,20 +223,6 @@
     ]
    ],
    "icon": "icon-niflheim_crown",
-   "conn": [
-    [
-     0,
-     1
-    ],
-    [
-     2,
-     1
-    ],
-    [
-     1,
-     2
-    ]
-   ],
    "sockets": [
     {
      "t": "gem",
@@ -250,6 +246,25 @@
     "Relic",
     "Frost",
     "Metal"
+   ],
+   "ports": [
+    {
+     "tiles": [
+      [
+       0,
+       1
+      ],
+      [
+       2,
+       1
+      ],
+      [
+       1,
+       2
+      ]
+     ],
+     "tag": "Frost"
+    }
    ]
   }
  ]
