@@ -283,6 +283,266 @@ T('Connection Port: cross-BP still blocked even with a matching tag',()=>{
   ok(conns2.length===1&&conns2[0].partner.uid==='partner2','control case (same BP) should connect: '+JSON.stringify(conns2.map(c=>({tag:c.tag,partner:c.partner&&c.partner.uid}))));
 });
 
+// ---------------------------------------------------------------------
+// Inventory model tests (REQ-0030 Phase 1). Pages are independent 5x
+// containers, same ROWS x COLS as canvas (Data.LAYOUT, 6x6 here). Most
+// tests use the live fresh() fixture (canvas untouched, inventory pages
+// start empty) and place freshly-defined PO/SI instances directly into a
+// page's pos[]/sis[] arrays (mirroring how the real client will do it: a
+// PO "enters" a page by existing in that page's pos[] before any
+// invMovePO/invCanPlacePO call is made -- these functions place/validate
+// an EXISTING record's cell, they don't create new inventory items from
+// thin air, matching how movePO/canPlacePO also expect the PO to already
+// be a member of st.pos).
+//
+// A couple of tests need an inventory-resident BP (to test PO-on-BP
+// containment, BP transfer, and linker dormancy) -- for those, a small
+// synthetic single-BP fixture (invBPFixture) is used so the fixture's BP
+// shape/linker/origin are self-contained and don't depend on the live
+// roster's specific layout.
+function invBPFixture(){
+  const ITEMS={
+    small_po:{name:'Small PO',tags:[],shape:[[0,0]],icon:'icon-x',sockets:[
+      {t:'gem',tags:['Metal'],ax:0.5,ay:0.5},
+    ]},
+    wide_po:{name:'Wide PO',tags:[],shape:[[0,0],[0,1]],icon:'icon-x',sockets:[]},
+  };
+  const SI_DEFS={
+    small_si:{name:'Small SI',slot:'gem',reqTags:[]},
+  };
+  const LAYOUT={ROWS:6,COLS:6};
+  const TREES={po:{},socket:{}};
+  function freshState(){
+    return {
+      linked:true,bps:[],pos:[],sis:[],
+      inv:{pages:[{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]},
+    };
+  }
+  return {ITEMS,SI_DEFS,LAYOUT,TREES,freshState};
+}
+
+T('inventory: makeState() carries 5 independent empty pages, same dims as canvas',()=>{
+  const {st}=fresh();
+  ok(st.inv&&Array.isArray(st.inv.pages)&&st.inv.pages.length===5,'5 pages expected');
+  for(const pg of st.inv.pages){
+    eq(pg.bps,[],'page starts with no BPs');
+    eq(pg.pos,[],'page starts with no POs');
+    eq(pg.sis,[],'page starts with no SIs');
+  }
+});
+
+T('inventory: free PO placement legality -- bounds, PO-PO collision, BP-overlap rejection',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.pos.push({uid:'x1',id:'small_po',loc:'grid',cell:[1,1],rot:0});
+  // out of bounds
+  const oob=E.invCanPlacePO(st,0,'x1',0,[7,1]);
+  ok(!oob.ok&&oob.why==='outside page','out-of-bounds rejected: '+JSON.stringify(oob));
+  // free placement in open space is legal
+  ok(E.invCanPlacePO(st,0,'x1',0,[2,2]).ok,'free placement on empty page cell should be legal');
+  // PO-PO collision: place a second PO at [3,3], then try to move x1 onto it
+  pg.pos.push({uid:'x2',id:'small_po',loc:'grid',cell:[3,3],rot:0});
+  const coll=E.invCanPlacePO(st,0,'x1',0,[3,3]);
+  ok(!coll.ok&&coll.why==='occupied','PO-PO collision rejected: '+JSON.stringify(coll));
+  // BP overlap: add a BP covering [5,5]-[6,6], then a free PO must not overlap it partially
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[5,5],linker:{off:[0,0],dirs:[]}});
+  const straddle=E.invCanPlacePO(st,0,'x1',0,[5,4]); // wide_po-like span would straddle; use x1 (1x1) landing exactly on the BP edge cell instead:
+  // a 1x1 PO landing fully on the BP is actually the CONTAINMENT case (legal) -- to test "free PO must not overlap a BP"
+  // we need a PO whose shape straddles being partly free and partly on the BP. Use wide_po (2 cells horizontal).
+  pg.pos.push({uid:'x3',id:'wide_po',loc:'grid',cell:[10,10],rot:0}); // parked far away initially (invalid cell tolerated since we only canPlace-check, never validate at push time)
+  const partial=E.invCanPlacePO(st,0,'x3',0,[5,4]); // cells [5,4](free) and [5,5](on bpA) -- straddles page-space vs BP
+  ok(!partial.ok,'PO partially overlapping a BP (straddling free space and BP) must be rejected: '+JSON.stringify(partial));
+});
+
+T('inventory: PO fully-inside-one-BP containment law (accept inside, reject straddling edge, reject spanning two BPs)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],linker:{off:[0,0],dirs:[]}});
+  pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
+  // fully inside bpA: [1,1] covers cells (1,1)-(1,2), both inside bpA (cols 1-2) -- accept
+  ok(E.invCanPlacePO(st,0,'w1',0,[1,1]).ok,'wide_po fully inside bpA should be accepted');
+  // straddling bpA's edge: anchor [1,2] -> cells (1,2) inside bpA, (1,3) inside bpB -- two different BPs
+  const spans=E.invCanPlacePO(st,0,'w1',0,[1,2]);
+  ok(!spans.ok&&spans.why==='spans two BPs','wide_po straddling bpA/bpB edge should be rejected: '+JSON.stringify(spans));
+  // spanning BP edge into free space: anchor [1,0] is out of bounds (col 0); use anchor [2,2] -> row2 is free space (bpA is only row1), so
+  // cells (2,2) free,(2,3) free -- both free, legal (not a containment case at all); instead test straddle-into-free directly:
+  // anchor [1,1] but shift bpA to only occupy row1 col1 (shrink) -- reuse existing single-cell edge case instead:
+  const single=invBPFixtureSingleCellEdge(E);
+  ok(single.ok,'single-cell straddle sub-check ran');
+});
+function invBPFixtureSingleCellEdge(E){
+  // A BP occupying only cell (1,1); a wide_po anchored at (1,1) covers (1,1)[on BP] and (1,2)[free space] --
+  // must be rejected (straddles BP edge into open page space, not "fully inside").
+  const ITEMS={wide_po:{name:'Wide PO',tags:[],shape:[[0,0],[0,1]],icon:'icon-x',sockets:[]}};
+  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[{bps:[{id:'bpX',name:'BP X',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[0,0],dirs:[]}}],pos:[{uid:'w9',id:'wide_po',loc:'grid',cell:[5,5],rot:0}],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]}};
+  const E2=Engine.create(ITEMS,{},{ROWS:6,COLS:6},{po:{},socket:{}});
+  const r=E2.invCanPlacePO(st,0,'w9',0,[1,1]);
+  return {ok:(!r.ok&&r.why==='straddles BP edge')};
+}
+
+T('inventory: free SI 1-cell occupancy + collision with PO/BP/SI',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
+  pg.sis.push({uid:'s1',id:'small_si',host:'inv'});
+  pg.sis.push({uid:'s2',id:'small_si',host:{page:0,cell:[4,4]}});
+  // out of bounds
+  ok(!E.invCanPlaceSI(st,0,'s1',[0,0]).ok,'out of bounds rejected');
+  // collision with BP
+  const onBp=E.invCanPlaceSI(st,0,'s1',[1,1]);
+  ok(!onBp.ok&&onBp.why==='BP-overlap','SI landing on a BP cell must be rejected: '+JSON.stringify(onBp));
+  // collision with PO
+  const onPo=E.invCanPlaceSI(st,0,'s1',[3,3]);
+  ok(!onPo.ok&&onPo.why==='occupied','SI landing on a PO cell must be rejected: '+JSON.stringify(onPo));
+  // collision with another free SI
+  const onSi=E.invCanPlaceSI(st,0,'s1',[4,4]);
+  ok(!onSi.ok&&onSi.why==='occupied','SI landing on another free SI cell must be rejected: '+JSON.stringify(onSi));
+  // legal empty cell
+  ok(E.invCanPlaceSI(st,0,'s1',[5,5]).ok,'empty page cell should accept the free SI');
+  ok(E.invMoveSI(st,0,'s1',[5,5]).ok);
+  eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,{page:0,cell:[5,5]},'free SI host records page+cell');
+});
+
+T('inventory: SI seat/unseat on an inventory-BP-hosted PO',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[1,1],rot:0}); // fully inside bpA, has a gem socket
+  pg.sis.push({uid:'s1',id:'small_si',host:'inv'});
+  const skey=E.pageSockets(st,0).find(s=>s.host==='p1').skey;
+  ok(E.invSeatSI(st,0,'s1',skey).ok,'seat onto inventory-BP-hosted PO socket');
+  eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,{po:'p1',si:0});
+  ok(E.invStowSI(st,0,'s1').ok,'unseat back to inv');
+  eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,'inv');
+});
+
+T('inventory: SI seat/unseat on a free-placed PO (resolved ambiguity: free-placed POs DO accept SIs)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  // no BP at all in this page -- p1 is entirely free-placed
+  pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[2,2],rot:0});
+  pg.sis.push({uid:'s1',id:'small_si',host:'inv'});
+  const skey=E.pageSockets(st,0).find(s=>s.host==='p1').skey;
+  ok(E.invSeatSI(st,0,'s1',skey).ok,'free-placed PO (no host BP) should still accept SI seating');
+  eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,{po:'p1',si:0});
+});
+
+T('inventory BP transfer: canvas -> page carries POs+SIs with origin remap; rejects on target collision',()=>{
+  const {st,E}=fresh();
+  // delta (2x2 @ [4,5]) hosts p7 (beast_jaw, cells [4,6],[5,5],[5,6]); a2 guard is on 'bond', not on delta -- use p7's own sockets instead.
+  // Seat the arrowhead (a4) onto beast_jaw's edge socket first, so we can verify it travels with the transfer.
+  const jawEdge=E.sockets(st).find(s=>s.host==='p7'&&s.t==='edge');
+  ok(E.seatSI(st,'a4',jawEdge.skey).ok,'arrowhead seated onto jaw edge (pre-transfer)');
+  const before=JSON.stringify(E.cellsOf(st,st.pos.find(p=>p.uid==='p7')));
+  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok,'delta transfers from canvas to page 1 at [1,1]');
+  eq(st.bps.some(b=>b.id==='delta'),false,'delta no longer on canvas');
+  const pg=st.inv.pages[0];
+  const movedBp=pg.bps.find(b=>b.id==='delta');
+  ok(!!movedBp,'delta now present in page 1');
+  eq(movedBp.origin,[1,1]);
+  const jaw=pg.pos.find(p=>p.uid==='p7');
+  ok(!!jaw,'jaw (p7) moved into the page along with its BP');
+  // origin shifted by [1,1]-[4,5] = [-3,-4]; verify absolute cells shifted by the same delta
+  const afterCells=E.cellsOfIn(jaw);
+  const beforeCells=JSON.parse(before);
+  const expectCells=beforeCells.map(([r,c])=>[r-3,c-4]);
+  eq(afterCells,expectCells,'jaw cells shifted by the same delta as its BP (origin remap)');
+  const seatedArrow=pg.sis.find(a=>a.uid==='a4');
+  ok(!!seatedArrow&&seatedArrow.host&&seatedArrow.host.po==='p7','arrowhead SI travelled into the page with its host PO, host ref unchanged');
+  eq(st.sis.some(a=>a.uid==='a4'),false,'arrowhead no longer listed in canvas sis[]');
+  // now collide: try transferring gamma on top of delta's new position in the SAME page
+  const gammaChk=E.canTransferBP(st,{loc:'canvas'},{loc:'inv',page:0},'gamma',[1,1]);
+  ok(!gammaChk.ok,'transferring gamma onto delta\'s occupied page cells should be rejected: '+JSON.stringify(gammaChk));
+  eq(st.bps.some(b=>b.id==='gamma'),true,'gamma must remain on canvas -- rejected transfer must not partially move state');
+});
+
+T('inventory BP transfer: page -> canvas reverse carries contents back',()=>{
+  const {st,E}=fresh();
+  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:2},'delta',[1,1]).ok,'delta to page 3 first');
+  ok(E.transferBP(st,{loc:'inv',page:2},{loc:'canvas'},'delta',[4,5]).ok,'delta back to canvas at its original spot');
+  ok(st.bps.some(b=>b.id==='delta'),'delta back on canvas');
+  eq(st.bps.find(b=>b.id==='delta').origin,[4,5]);
+  const jaw=st.pos.find(p=>p.uid==='p7');
+  eq(jaw.loc,'grid');
+  eq(jaw.cell,[4,5],'jaw restored to its original absolute cell (round-trip origin remap)');
+  ok(st.inv.pages[2].bps.length===0&&st.inv.pages[2].pos.length===0,'page 3 empty again after the BP left');
+});
+
+T('inventory BP transfer: page -> page carries contents',()=>{
+  const {st,E}=fresh();
+  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok);
+  ok(E.transferBP(st,{loc:'inv',page:0},{loc:'inv',page:3},'delta',[2,2]).ok,'page1 -> page4');
+  eq(st.inv.pages[0].bps.length,0,'page1 empty after leaving');
+  const movedBp=st.inv.pages[3].bps.find(b=>b.id==='delta');
+  ok(!!movedBp);
+  eq(movedBp.origin,[2,2]);
+  const jaw=st.inv.pages[3].pos.find(p=>p.uid==='p7');
+  ok(!!jaw,'jaw present in page4');
+  eq(E.cellsOfIn(jaw),[[2,3],[3,2],[3,3]],'jaw cells recomputed for the new page4 origin');
+});
+
+T('inventory: linker dormancy -- a linker-bearing BP transferred into a page emits nothing from traceBeams',()=>{
+  const {st,E}=fresh();
+  const beamsBefore=E.traceBeams(st);
+  ok(beamsBefore.some(b=>b.from==='delta'),'sanity: delta contributes a beam while on canvas');
+  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok);
+  const beamsAfter=E.traceBeams(st);
+  ok(!beamsAfter.some(b=>b.from==='delta'),'delta must contribute NO beam once it is in an inventory page');
+  ok(!beamsAfter.some(b=>b.to==='delta'),'no other BP\'s beam should resolve TO delta while it is dormant in inventory');
+  // and it must not appear in connections/combos either (both scoped to st.bps/st.pos, same guarantee)
+  const conns=E.allConnections(st);
+  ok(!conns.some(c=>c.from.uid==='p7'||c.to.uid==='p7'),'jaw (now in inventory with delta) contributes no connections');
+});
+
+T('inventory: rotation of a free-placed PO',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[3,3],rot:0}); // horizontal, cells (3,3)-(3,4)
+  ok(E.invRotatePO(st,0,'w1').ok,'free-placed PO rotates in the open page');
+  eq(pg.pos.find(p=>p.uid==='w1').rot,1);
+  eq(E.cellsOfIn(pg.pos.find(p=>p.uid==='w1')).length,2,'still a 2-cell footprint after rotation');
+  // blocked rotate: pin a neighbor so the rotated footprint collides
+  pg.pos.push({uid:'w2',id:'wide_po',loc:'grid',cell:[10,10],rot:0});
+  // force w1 back to rot0 at [5,5] (cells (5,5)-(5,6)), place w2 at (6,5) so a vertical rotation would collide
+  pg.pos.find(p=>p.uid==='w1').rot=0;pg.pos.find(p=>p.uid==='w1').cell=[5,5];
+  pg.pos.find(p=>p.uid==='w2').cell=[6,5];pg.pos.find(p=>p.uid==='w2').rot=0;
+  const blocked=E.invRotatePO(st,0,'w1');
+  ok(!blocked.ok,'rotate into an occupied cell should be rejected: '+JSON.stringify(blocked));
+});
+
+T('inventory: 5-page bounds/independence -- identical coordinates on different pages do not collide',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  for(let i=0;i<5;i++)st.inv.pages[i].pos.push({uid:'q'+i,id:'small_po',loc:'grid',cell:[2,2],rot:0});
+  // same [2,2] cell used on every page -- each page is independent, so each PO's OWN placement there must be legal
+  for(let i=0;i<5;i++){
+    const chk=E.invCanPlacePO(st,i,'q'+i,0,[2,2]);
+    ok(chk.ok,'page '+i+' should independently accept its own PO at the SAME coordinate another page also uses: '+JSON.stringify(chk));
+  }
+  // bounds: page index range sanity (5 pages, 0..4) -- out-of-range page access should not silently succeed
+  ok(st.inv.pages.length===5&&st.inv.pages[4]!==undefined&&st.inv.pages[5]===undefined,'exactly 5 pages, 0-indexed 0..4');
+  // out-of-bounds cell rejected on every page independently
+  for(let i=0;i<5;i++){
+    const oob=E.invCanPlacePO(st,i,'q'+i,0,[0,0]);
+    ok(!oob.ok&&oob.why==='outside page','page '+i+' should reject an out-of-bounds cell');
+  }
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
