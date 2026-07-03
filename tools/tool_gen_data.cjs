@@ -136,7 +136,21 @@ function main() {
     "function makeEmptyInventory(){\n" + // REQ-0030 Phase 1: 5 independent empty pages,
     "  const pages=[];\n" +               // same grid dims as canvas (page-local [row,col]).
     "  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});\n" +
-    "  return {pages};\n" +
+    "  return {pages,names:['1','2','3','4','5']};\n" + // REQ-0031 Phase B: default page display names
+    "}\n" +
+    // REQ-0031 Phase B: 5 presets, slot 0 (active) carries the scenario's
+    // actual content (supplied by makeState() below, matching how
+    // engine.js's own makePresetsMeta()/switchPreset() treat the active
+    // slot -- store[0] stays null since preset 0's content lives at the
+    // top-level st.{linked,bps,pos,sis} fields, never duplicated into
+    // store), presets 1-4 start EMPTY (no BPs -- "new presets start
+    // empty", REQ-0031 preset model decision).
+    "function makeEmptyPresetSlot(){\n" +
+    "  return {linked:true,bps:[],pos:[],sis:[]};\n" +
+    "}\n" +
+    "function makePresetsMeta(){\n" +
+    "  return {active:0,names:['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5'],\n" +
+    "    store:[null,makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot()]};\n" +
     "}\n" +
     "const LAYOUT=" + JSON.stringify(LAYOUT) + ";\n" +
     "const TREES=" + JSON.stringify({po: vocab.po_tags || {}, socket: vocab.socket_tags || {}}, null, 1) + ";\n" +
@@ -146,6 +160,7 @@ function main() {
     "function makeState(){\n" +
     " const st=JSON.parse(JSON.stringify(SCENARIO));\n" +
     " st.inv=makeEmptyInventory();\n" + // REQ-0030 Phase 1: 5 empty pages, see banner note above
+    " st.presets=makePresetsMeta();\n" + // REQ-0031 Phase B: 5 presets, slot 0 = this scenario's content (implicit -- see makePresetsMeta note above)
     " return st;\n" +
     "}\n" +
     "return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};\n" +

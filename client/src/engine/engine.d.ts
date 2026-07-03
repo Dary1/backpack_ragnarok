@@ -150,6 +150,7 @@ export interface InvPage {
 
 export interface Inventory {
   pages: InvPage[]; // length PAGE_COUNT (5)
+  names?: string[]; // display names, one per page, defaults to "1".."5" (REQ-0031 Phase B); absent on a pre-REQ-0031 saved state
 }
 
 export interface GameState {
@@ -158,6 +159,28 @@ export interface GameState {
   pos: PO[];
   sis: SI[];
   inv?: Inventory; // absent on a legacy (pre-REQ-0030) saved state; run migrateState() before use
+  presets?: Presets; // absent on a legacy (pre-REQ-0031) saved state; run migrateState() before use
+}
+
+/** One preset's canvas snapshot -- same shape as GameState's own top-level
+ * canvas fields (REQ-0031 Phase B). Used for every INACTIVE preset's
+ * entry in Presets.store; the ACTIVE preset's content lives directly on
+ * GameState.{linked,bps,pos,sis} instead (never duplicated into store). */
+export interface PresetSlot {
+  linked: boolean;
+  bps: BP[];
+  pos: PO[];
+  sis: SI[];
+}
+
+/** st.presets (REQ-0031 Phase B): active preset index, display names (one
+ * per preset, grows by 1 with every addPreset()), and store (one slot per
+ * preset -- store[active] is ALWAYS null, since that preset's content
+ * lives at the top-level GameState fields instead). */
+export interface Presets {
+  active: number;
+  names: string[];
+  store: Array<PresetSlot | null>;
 }
 
 export interface ShapeInfo {
@@ -371,9 +394,72 @@ export interface EngineInstance {
    * default), starting on page 1 (index 0) and overflowing onto
    * subsequent pages if page 1 fills. Un-fittable leftovers (all 5 pages
    * full) remain in their original legacy loc:'inv'/host:'inv' form --
-   * never silently dropped. Safe/idempotent to call on an ALREADY-migrated
-   * state (no legacy entries left to migrate -- a no-op copy). */
+   * never silently dropped. ALSO (REQ-0031 Phase B) materializes st.inv.names
+   * (defaults "1".."5") and st.presets (5 presets, slot 0 = whatever this
+   * state's own top-level canvas already is, slots 1-4 empty) if either is
+   * missing -- "migrateState handles pre-preset saves". Safe/idempotent to
+   * call on an ALREADY-migrated state (no legacy entries left to migrate,
+   * st.inv.names/st.presets already present -- a no-op copy). */
   migrateState: (oldState: GameState) => GameState;
+
+  // -----------------------------------------------------------------------
+  // Preset model (REQ-0031 Phase B). st.{linked,bps,pos,sis} remains THE
+  // ACTIVE preset's canvas -- every function above this section keeps
+  // reading/writing those same top-level fields, unaware presets exist.
+  // -----------------------------------------------------------------------
+
+  /** Number of presets a freshly-made state carries (5). Distinct from
+   * st.presets.store.length, which GROWS with addPreset() -- PRESET_COUNT
+   * is only the initial/default count. */
+  PRESET_COUNT: number;
+
+  /** Fresh {active:0,names:[...],store:[...]} for `count` presets: slot 0
+   * has store[0]=null (its content is supplied separately, at the
+   * top-level GameState fields), every other slot holds an empty preset
+   * snapshot (emptyPresetSlot()). */
+  makePresetsMeta: (count: number) => Presets;
+
+  /** A fresh, EMPTY preset snapshot: {linked:true,bps:[],pos:[],sis:[]}.
+   * Used internally by makePresetsMeta/addPreset; exposed for callers that
+   * need a correctly-shaped empty preset without hand-rolling it. */
+  emptyPresetSlot: () => PresetSlot;
+
+  /** Atomically swaps the ACTIVE preset's top-level canvas fields
+   * (st.linked/bps/pos/sis) with st.presets.store[n]'s snapshot; sets
+   * st.presets.active=n. Both the outgoing and incoming configurations
+   * are fully preserved (the outgoing canvas is written into
+   * store[oldActive], never discarded). No-op (still {ok:true}) if `n` is
+   * already the active preset. Runs unseatOrphans() on the newly-active
+   * canvas afterward (mirrors movePO/transferBP's own post-mutation
+   * cleanup). Rejects out-of-range `n`. */
+  switchPreset: (st: GameState, n: number) => { ok: boolean; why?: string };
+
+  /** Appends a brand-new EMPTY preset (never copies any content/uid) to
+   * st.presets.store, and a matching entry to st.presets.names (defaults
+   * to "Preset N", 1-based). Returns the new preset's 0-based index. */
+  addPreset: (st: GameState, name?: string) => { ok: boolean; why?: string; index?: number };
+
+  /** Sets preset `n`'s (0-based) display name -- works identically whether
+   * `n` is the currently-active preset or an inactive stored one. */
+  renamePreset: (st: GameState, n: number, name: string) => { ok: boolean; why?: string };
+
+  /** Sets inventory page `n`'s (0-based) display name on st.inv.names.
+   * Materializes st.inv.names defensively (to the PAGE_COUNT-long default)
+   * if it was missing/short before applying the one requested change. */
+  renameInvPage: (st: GameState, n: number, name: string) => { ok: boolean; why?: string };
+
+  /** The live st.inv.names array, defaulting to "1".."5" for any state
+   * built without one (pure read helper -- never mutates st.inv). */
+  invPageNames: (st: GameState) => string[];
+
+  /** Read-only auditor for the "one uid, exactly one place" physicality
+   * rule: scans every PO/SI uid across the shared inventory
+   * (st.inv.pages[]), the ACTIVE preset's canvas (st.pos/st.sis), and
+   * every INACTIVE preset's stored snapshot (st.presets.store[i], i!==
+   * active). Returns {ok:true,duplicates:[]} if every uid appears exactly
+   * once, else {ok:false,why,duplicates:[uid,...]} naming every uid found
+   * 2+ times. Does not check for missing uids, only duplication. */
+  checkUidInvariant: (st: GameState) => { ok: boolean; why?: string; duplicates: string[] };
 }
 
 export interface EngineModule {

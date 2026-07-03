@@ -582,6 +582,183 @@ T('migrateState: legacy list-inventory (loc:\'inv\' POs, host:\'inv\' SIs) -> fi
   eq(migrated.sis.find(a=>a.uid==='a2').host,'bond','bonded guard (a2) untouched by migration');
 });
 
+
+// =======================================================================
+// Preset model tests (REQ-0031 Phase B). Engine API: makePresetsMeta,
+// emptyPresetSlot, switchPreset, addPreset, renamePreset, renameInvPage,
+// invPageNames, checkUidInvariant. All additive on top of the canvas/
+// inventory model above -- st.linked/bps/pos/sis remains the ACTIVE
+// preset's canvas exactly as before presets existed.
+// =======================================================================
+
+T('presets: makeState() carries 5 presets, slot 0 active with scenario content, 1-4 empty',()=>{
+  const {st}=fresh();
+  ok(st.presets&&st.presets.active===0,'preset 0 active by default');
+  eq(st.presets.names,['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5']);
+  eq(st.presets.store.length,5,'5 preset slots');
+  ok(st.presets.store[0]===null,'active slot (0) has no store entry -- content lives at top level');
+  for(let i=1;i<5;i++){
+    const slot=st.presets.store[i];
+    ok(slot&&slot.bps.length===0&&slot.pos.length===0&&slot.sis.length===0,'preset '+i+' starts empty (no BPs -- physical items never pre-populated)');
+  }
+  // sanity: preset 0's "content" IS the scenario's live canvas (bps non-empty)
+  ok(st.bps.length>0,'active preset (0) carries the real scenario BPs');
+});
+
+T('presets: switchPreset preserves BOTH configurations across a round trip',()=>{
+  const {st,E}=fresh();
+  const origBps=JSON.parse(JSON.stringify(st.bps));
+  const origPos=JSON.parse(JSON.stringify(st.pos));
+  const origSis=JSON.parse(JSON.stringify(st.sis));
+  const origLinked=st.linked;
+  ok(E.switchPreset(st,1).ok,'switch to preset 1');
+  eq(st.presets.active,1);
+  ok(st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'preset 1 (empty) now live at top level');
+  eq(st.presets.store[0],{linked:origLinked,bps:origBps,pos:origPos,sis:origSis},'preset 0 fully preserved in store[0]');
+  ok(st.presets.store[1]===null,'newly-active slot (1) has no store entry');
+  ok(E.switchPreset(st,0).ok,'switch back to preset 0');
+  eq(st.presets.active,0);
+  eq(st.bps,origBps,'preset 0 bps restored exactly');
+  eq(st.pos,origPos,'preset 0 pos restored exactly');
+  eq(st.sis,origSis,'preset 0 sis restored exactly');
+  eq(st.linked,origLinked,'preset 0 linked flag restored exactly');
+  ok(st.presets.store[1].bps.length===0&&st.presets.store[1].pos.length===0,'preset 1 (still empty) correctly preserved in store[1]');
+  ok(st.presets.store[0]===null,'active slot (0, restored) has no store entry again');
+});
+
+T('presets: switchPreset is a no-op (still ok:true) when already active; rejects out-of-range',()=>{
+  const {st,E}=fresh();
+  const before=JSON.stringify(st.bps);
+  ok(E.switchPreset(st,0).ok,'switching to the already-active preset succeeds trivially');
+  eq(st.presets.active,0);
+  eq(JSON.stringify(st.bps),before,'no mutation from a same-preset switch');
+  const bad=E.switchPreset(st,99);
+  ok(!bad.ok&&bad.why==='preset index out of range','out-of-range preset index rejected');
+  const bad2=E.switchPreset(st,-1);
+  ok(!bad2.ok,'negative preset index rejected');
+});
+
+T('presets: addPreset appends an EMPTY preset (no BPs/POs/SIs) and grows names[]',()=>{
+  const {st,E}=fresh();
+  const before=st.presets.store.length;
+  const r=E.addPreset(st);
+  ok(r.ok&&r.index===before,'addPreset returns the new 0-based index');
+  eq(st.presets.store.length,before+1);
+  eq(st.presets.names.length,before+1);
+  eq(st.presets.names[before],'Preset '+(before+1),'default name "Preset N"');
+  const added=st.presets.store[before];
+  ok(added.bps.length===0&&added.pos.length===0&&added.sis.length===0,'new preset starts empty');
+  // custom name variant
+  const r2=E.addPreset(st,'Boss Fight');
+  eq(st.presets.names[st.presets.names.length-1],'Boss Fight','custom name honored');
+});
+
+T('presets: renamePreset sets names[n] for either the active or an inactive slot',()=>{
+  const {st,E}=fresh();
+  ok(E.renamePreset(st,0,'Main Loadout').ok,'rename the currently-active preset');
+  eq(st.presets.names[0],'Main Loadout');
+  ok(E.renamePreset(st,2,'PvP Build').ok,'rename an inactive preset');
+  eq(st.presets.names[2],'PvP Build');
+  const bad=E.renamePreset(st,99,'Nope');
+  ok(!bad.ok,'out-of-range preset rename rejected');
+});
+
+T('presets: renaming survives a switchPreset (names[] independent of active/store split)',()=>{
+  const {st,E}=fresh();
+  E.renamePreset(st,0,'Main');
+  E.renamePreset(st,1,'Alt');
+  E.switchPreset(st,1);
+  eq(st.presets.names,['Main','Alt','Preset 3','Preset 4','Preset 5'],'names array untouched by switching which preset is active');
+  E.switchPreset(st,0);
+  eq(st.presets.names[0],'Main');
+  eq(st.presets.names[1],'Alt');
+});
+
+T('inventory: renameInvPage sets st.inv.names[n]; defaults to "1".."5"',()=>{
+  const {st,E}=fresh();
+  eq(E.invPageNames(st),['1','2','3','4','5'],'default page names');
+  ok(E.renameInvPage(st,3,'Materials').ok);
+  eq(st.inv.names[3],'Materials');
+  eq(E.invPageNames(st)[3],'Materials');
+  const bad=E.renameInvPage(st,99,'Nope');
+  ok(!bad.ok,'out-of-range page rename rejected');
+});
+
+T('inventory: renameInvPage materializes names[] defensively on a state built without one',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState(); // this fixture's inv has no `names` field at all
+  ok(!st.inv.names,'fixture sanity: no names field yet');
+  ok(E.renameInvPage(st,0,'Consumables').ok);
+  eq(st.inv.names.length,5,'names[] materialized to full PAGE_COUNT length');
+  eq(st.inv.names[0],'Consumables');
+  eq(st.inv.names[1],'2','untouched slots fall back to default "N"');
+});
+
+T('presets: uid non-duplication invariant -- fresh state passes, injected duplicate is caught',()=>{
+  const {st,E}=fresh();
+  const r1=E.checkUidInvariant(st);
+  eq(r1,{ok:true,duplicates:[]},'fresh makeState() satisfies the invariant');
+  // Inject a duplicate PO uid into an inactive preset's store (simulates a
+  // hypothetical bug where an item got copied instead of moved).
+  const dupPO=JSON.parse(JSON.stringify(st.pos[0]));
+  st.presets.store[1].pos.push(dupPO);
+  const r2=E.checkUidInvariant(st);
+  ok(!r2.ok&&r2.duplicates.includes('po:'+dupPO.uid),'duplicate PO uid across active canvas + inactive preset store is caught: '+JSON.stringify(r2));
+});
+
+T('presets: uid non-duplication invariant -- switchPreset never creates a duplicate',()=>{
+  const {st,E}=fresh();
+  E.switchPreset(st,1);
+  ok(E.checkUidInvariant(st).ok,'invariant holds after switching to an empty preset');
+  E.switchPreset(st,0);
+  ok(E.checkUidInvariant(st).ok,'invariant holds after switching back');
+});
+
+T('presets: uid non-duplication invariant also spans the shared inventory pages',()=>{
+  const {st,E}=fresh();
+  // p8 (oil_flask) legally sits loc:'inv' in the raw scenario fixture
+  // (pre-migration) -- run migrateState so it becomes a real inv.pages[]
+  // member, then confirm the invariant sees it there (and does NOT also
+  // see it duplicated in the active preset's st.pos, which it should not
+  // be, since migrateState moves rather than copies).
+  const migrated=E.migrateState(st);
+  ok(E.checkUidInvariant(migrated).ok,'migrated state (item moved into shared inventory) satisfies the invariant');
+  // now inject a bogus duplicate of an inventory-page item into the
+  // active preset's pos[] directly -- the auditor must catch a
+  // cross-container (inventory vs active canvas) duplicate too, not just
+  // an inter-preset one.
+  const invItem=migrated.inv.pages[0].pos[0];
+  migrated.pos.push(JSON.parse(JSON.stringify(invItem)));
+  const r=E.checkUidInvariant(migrated);
+  ok(!r.ok&&r.duplicates.includes('po:'+invItem.uid),'duplicate spanning shared-inventory + active canvas is caught');
+});
+
+T('migrateState: pre-preset legacy save gets 5 presets (slot 0 = its own canvas, 1-4 empty) and inv.names',()=>{
+  const {st:legacy}=fresh();
+  delete legacy.presets;
+  delete legacy.inv.names;
+  const legacyBps=JSON.parse(JSON.stringify(legacy.bps));
+  const migrated=Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES).migrateState(legacy);
+  ok(migrated.presets&&migrated.presets.active===0,'migrated state has an active preset 0');
+  eq(migrated.presets.names,['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5']);
+  eq(migrated.presets.store.length,5);
+  ok(migrated.presets.store[0]===null,'active slot has no store entry');
+  for(let i=1;i<5;i++)ok(migrated.presets.store[i].bps.length===0,'migrated preset '+i+' is empty');
+  eq(migrated.bps,legacyBps,'the legacy canvas itself becomes preset 0 (active) content, untouched');
+  eq(migrated.inv.names,['1','2','3','4','5'],'inv.names materialized to defaults');
+  ok(Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES).checkUidInvariant(migrated).ok,'migrated state satisfies the uid invariant');
+});
+
+T('migrateState: a state that ALREADY has presets/inv.names is left alone (idempotent)',()=>{
+  const {st,E}=fresh();
+  E.renamePreset(st,0,'Custom Name');
+  E.renameInvPage(st,0,'Custom Page');
+  const migrated=E.migrateState(st);
+  eq(migrated.presets.names[0],'Custom Name','pre-existing preset name not clobbered by migration');
+  eq(migrated.inv.names[0],'Custom Page','pre-existing inv page name not clobbered by migration');
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

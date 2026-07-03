@@ -473,7 +473,38 @@ function create(ITEMS,SI_DEFS,layout,trees){
   function emptyInventory(){
     const pages=[];
     for(let i=0;i<PAGE_COUNT;i++)pages.push({bps:[],pos:[],sis:[]});
-    return {pages};
+    return {pages,names:defaultPageNames()};
+  }
+
+  // Default inventory page display names ("1".."5", PAGE_COUNT-long).
+  // Kept as a function (not a module-level constant) since PAGE_COUNT is
+  // itself a `const` above but this keeps the two visibly coupled at the
+  // call site.
+  function defaultPageNames(){
+    const out=[];
+    for(let i=0;i<PAGE_COUNT;i++)out.push(String(i+1));
+    return out;
+  }
+
+  // invPageNames(st): the live names array, defaulting defensively for any
+  // st.inv built without one (older hand-rolled fixtures/tests, or a
+  // migrated state -- see migrateState below). Never mutates st.inv itself
+  // here (renameInvPage is the only mutator) -- this is a pure read helper.
+  function invPageNames(st){
+    return (st.inv && Array.isArray(st.inv.names)) ? st.inv.names : defaultPageNames();
+  }
+
+  // renameInvPage(st,n,name): sets inventory page n's (0-based) display
+  // name. Materializes st.inv.names if it was missing/short (defensive --
+  // same reasoning as invPageNames above: a state built before this field
+  // existed should not crash on first rename, it should just adopt the
+  // default names array and then apply the one requested change).
+  function renameInvPage(st,n,name){
+    if(!st.inv)return {ok:false,why:'no inventory'};
+    if(!(n>=0&&n<PAGE_COUNT))return {ok:false,why:'page index out of range'};
+    if(!Array.isArray(st.inv.names)||st.inv.names.length!==PAGE_COUNT)st.inv.names=defaultPageNames();
+    st.inv.names[n]=String(name);
+    return {ok:true};
   }
 
   function page(st,n){return st.inv.pages[n];}
@@ -842,9 +873,170 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     return null;
   }
+
+  // =======================================================================
+  // Preset model (REQ-0031 Phase B).
+  //
+  // ADDITIVE, on top of the canvas/inventory model above: st.{linked,bps,
+  // pos,sis} continues to be THE ACTIVE preset's canvas -- every existing
+  // canvas function (movePO, moveBP, traceBeams, combos, ...) keeps reading
+  ///writing those same top-level fields, completely unaware presets exist
+  // at all. `st.presets = {active, names, store}` sits alongside:
+  //   - active: 0-based index of which preset is CURRENTLY live at the
+  //     top-level st.{linked,bps,pos,sis} fields.
+  //   - names: display names, one per preset, PRESET_COUNT-long by default
+  //     ("Preset 1".."Preset 5") but grows by 1 with every addPreset().
+  //   - store: one slot per preset, PRESET_COUNT/names-length-long.
+  //     store[active] is ALWAYS null (that preset's content lives at the
+  //     top level, not duplicated here) -- every OTHER index holds a plain
+  //     {linked,bps,pos,sis} snapshot object for that inactive preset.
+  //
+  // switchPreset(st,n) is the ONLY mutator that moves content between the
+  // top level and store[]; it is atomic (both directions happen in one
+  // call, never leaving a half-swapped state even if this function were
+  // to throw mid-way -- it does not, since neither step can fail: n is
+  // range-checked up front and the swap itself is unconditional object
+  // reassignment, not a legality-gated placement).
+  //
+  // Physicality (REQ-0031 preset model decision, flagged to the user): a
+  // uid (PO or SI) lives in EXACTLY ONE place across the shared inventory
+  // (st.inv.pages[]) and every preset (the active top-level fields, plus
+  // every inactive store[] snapshot) at all times. This falls out
+  // constructively rather than needing active enforcement: new presets
+  // ALWAYS start empty (addPreset below never copies/shares any uid), and
+  // the only way an item ever reaches a preset's canvas is by a normal
+  // drag from the shared inventory (or another preset's canvas, via the
+  // shared inventory) using the SAME movePO/moveBP/transferBP mutators
+  // presets never bypass. checkUidInvariant() below is a read-only auditor
+  // for this invariant, used by tests (and available to any future caller
+  // wanting to assert the invariant still holds after a sequence of
+  // mutations) -- it is not itself part of the mutation path.
+  const PRESET_COUNT=5;
+
+  function defaultPresetNames(n){
+    const out=[];
+    for(let i=0;i<n;i++)out.push('Preset '+(i+1));
+    return out;
+  }
+
+  // emptyPresetSlot(): a fresh, EMPTY preset snapshot -- {linked:true,
+  // bps:[],pos:[],sis:[]}, same shape as the top-level canvas fields.
+  // "New presets start empty (BPs are physical too)" (REQ-0031) -- no
+  // items/BPs are ever copied into a newly-added preset.
+  function emptyPresetSlot(){
+    return {linked:true,bps:[],pos:[],sis:[]};
+  }
+
+  // makePresetsMeta(count): a fresh {active:0,names:[...],store:[...]}
+  // block for `count` presets, slot 0 (the default active one) has
+  // store[0]=null (its content lives at the top level, supplied by the
+  // caller -- see makeState()'s own construction), every other slot holds
+  // an empty preset snapshot.
+  function makePresetsMeta(count){
+    const names=defaultPresetNames(count);
+    const store=[];
+    for(let i=0;i<count;i++)store.push(i===0?null:emptyPresetSlot());
+    return {active:0,names,store};
+  }
+
+  // switchPreset(st,n): atomic swap of the ACTIVE preset's top-level
+  // canvas fields (st.linked/bps/pos/sis) with store[n]'s snapshot --
+  // st.presets.active becomes n. Both configurations (the one being
+  // switched OUT and the one being switched IN) are fully preserved: the
+  // outgoing active canvas is written into store[oldActive] (never
+  // discarded), and the incoming store[n] snapshot becomes the new live
+  // top-level fields (store[n] is then set to null, since that preset's
+  // content now lives at the top level like every other active preset
+  // always does). A no-op (still {ok:true}) if n is already the active
+  // preset.
+  function switchPreset(st,n){
+    if(!st.presets)return {ok:false,why:'no presets'};
+    const meta=st.presets;
+    if(!(n>=0&&n<meta.store.length))return {ok:false,why:'preset index out of range'};
+    if(n===meta.active)return {ok:true};
+    const outgoing={linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis};
+    const incoming=meta.store[n];
+    meta.store[meta.active]=outgoing;
+    st.linked=incoming.linked;st.bps=incoming.bps;st.pos=incoming.pos;st.sis=incoming.sis;
+    meta.store[n]=null;
+    meta.active=n;
+    unseatOrphans(st);
+    return {ok:true};
+  }
+
+  // addPreset(st,name?): appends a brand-new EMPTY preset (never copies
+  // any content/uid from anywhere -- "Preset+ appends a preset", REQ-0031)
+  // to st.presets.store, and a matching entry to st.presets.names
+  // (defaults to "Preset N" where N is the new 1-based slot number).
+  // Returns the new preset's 0-based index so callers (e.g. the client's
+  // "Preset+" button) can immediately switchPreset() to it.
+  function addPreset(st,name){
+    if(!st.presets)return {ok:false,why:'no presets'};
+    const meta=st.presets;
+    const idx=meta.store.length;
+    meta.store.push(emptyPresetSlot());
+    meta.names.push(name?String(name):('Preset '+(idx+1)));
+    return {ok:true,index:idx};
+  }
+
+  // renamePreset(st,n,name): sets preset n's (0-based) display name. Works
+  // for the active preset or any stored one identically (names[] is
+  // independent of which slot is currently active).
+  function renamePreset(st,n,name){
+    if(!st.presets)return {ok:false,why:'no presets'};
+    const meta=st.presets;
+    if(!(n>=0&&n<meta.names.length))return {ok:false,why:'preset index out of range'};
+    meta.names[n]=String(name);
+    return {ok:true};
+  }
+
+  // checkUidInvariant(st): read-only auditor for the "one uid, exactly one
+  // place" physicality rule (REQ-0031 preset model decision). Scans every
+  // PO/SI uid across: the shared inventory (st.inv.pages[].pos/sis), the
+  // ACTIVE preset's canvas (st.pos/st.sis), and every INACTIVE preset's
+  // stored snapshot (st.presets.store[i].pos/sis, i!==active). Returns
+  // {ok:true} if every uid appears exactly once across all of those
+  // locations combined, else {ok:false,why,duplicates:[uid,...]} naming
+  // every uid that appears 2+ times (an empty `duplicates` list with
+  // ok:false never happens -- ok is false if and only if duplicates is
+  // non-empty). Does NOT check for "missing" uids (an item deleted
+  // outright is not this invariant's concern) -- only duplication.
+  function checkUidInvariant(st){
+    const seen=new Map(); // uid -> count
+    const bump=(uid)=>seen.set(uid,(seen.get(uid)||0)+1);
+    for(const p of st.pos)bump('po:'+p.uid);
+    for(const a of st.sis)bump('si:'+a.uid);
+    if(st.presets){
+      st.presets.store.forEach((snap,i)=>{
+        if(i===st.presets.active)return; // active slot's store entry is always null by construction
+        if(!snap)return;
+        for(const p of snap.pos)bump('po:'+p.uid);
+        for(const a of snap.sis)bump('si:'+a.uid);
+      });
+    }
+    if(st.inv){
+      for(const pg of st.inv.pages){
+        for(const p of pg.pos)bump('po:'+p.uid);
+        for(const a of pg.sis)bump('si:'+a.uid);
+      }
+    }
+    const duplicates=[...seen.entries()].filter(([,c])=>c>1).map(([uid])=>uid);
+    if(duplicates.length)return {ok:false,why:'uid(s) appear in more than one place',duplicates};
+    return {ok:true,duplicates:[]};
+  }
+
   function migrateState(oldState){
     const st=JSON.parse(JSON.stringify(oldState)); // never mutate the input
     if(!st.inv)st.inv=emptyInventory();
+    if(!Array.isArray(st.inv.names)||st.inv.names.length!==PAGE_COUNT)st.inv.names=defaultPageNames();
+    // Pre-preset saved profile (no st.presets at all): the CURRENT
+    // top-level canvas fields (already legacy-migrated above/below into
+    // st.linked/bps/pos/sis) become preset 0 (the active one), and 4
+    // fresh EMPTY presets are appended after it -- "makeState: 5 presets,
+    // 1 active with current scenario content, 2-5 empty" extended here to
+    // migration: the ONE preset a legacy save ever had (today's single
+    // implicit canvas) becomes slot 0, matching that same shape.
+    if(!st.presets)st.presets=makePresetsMeta(PRESET_COUNT);
     const legacyPOs=st.pos.filter(p=>p.loc==='inv');
     const legacySIs=st.sis.filter(a=>a.host==='inv');
     const migratedPOUids=new Set(),migratedSIUids=new Set();
@@ -889,7 +1081,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
           pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,poInBPIn,cellsOfIn,cellBPMapIn,
-          invOccupancy,canTransferBP,transferBP,migrateState};
+          invOccupancy,canTransferBP,transferBP,migrateState,
+          // Preset model (REQ-0031 Phase B) -- additive exports only.
+          PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,
+          renameInvPage,invPageNames,checkUidInvariant};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });

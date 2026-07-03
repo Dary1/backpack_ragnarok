@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T22:04:00.955Z
+// Generated: 2026-07-03T22:07:31.783Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -9,7 +9,14 @@
 function makeEmptyInventory(){
   const pages=[];
   for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});
-  return {pages};
+  return {pages,names:['1','2','3','4','5']};
+}
+function makeEmptyPresetSlot(){
+  return {linked:true,bps:[],pos:[],sis:[]};
+}
+function makePresetsMeta(){
+  return {active:0,names:['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5'],
+    store:[null,makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot()]};
 }
 const LAYOUT={"ROWS":8,"COLS":8};
 const TREES={
@@ -727,6 +734,7 @@ const SCENARIO={
 function makeState(){
  const st=JSON.parse(JSON.stringify(SCENARIO));
  st.inv=makeEmptyInventory();
+ st.presets=makePresetsMeta();
  return st;
 }
 return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
