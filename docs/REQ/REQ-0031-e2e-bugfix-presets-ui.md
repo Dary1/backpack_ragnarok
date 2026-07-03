@@ -1,13 +1,15 @@
-# REQ-0031 Phase A -- E2E rig + two bug fixes: outcome
+# REQ-0031 -- E2E rig + two bug fixes (Phase A) + auto-save/8x8/presets/UI (Phase B): outcome
 
-Status: DONE. This file documents what actually happened during Phase A
-(server-side headless-Chromium E2E rig, plus fixing the two
-already-known-broken behaviors: inventory tab-switch freeze, and BP
-inventory<->canvas transfer). No prior `docs/REQ/` directory existed in
-this repo before this file -- REQ-000x labels up to this point were a
-commit-message-only convention, never backed by a written spec doc. This
-file is written after the fact, as a record of Phase A's outcome, not as
-a spec that preceded the work.
+Status: Phase A DONE, Phase B DONE. This file documents what actually
+happened during Phase A (server-side headless-Chromium E2E rig, plus
+fixing the two already-known-broken behaviors: inventory tab-switch
+freeze, and BP inventory<->canvas transfer) and Phase B (auto-save, 8x8
+grids, the engine preset model, tab-row UI restructure, long-press
+rename -- see the dedicated section near the end of this file). No prior
+`docs/REQ/` directory existed in this repo before this file -- REQ-000x
+labels up to this point were a commit-message-only convention, never
+backed by a written spec doc. This file is written after the fact, as a
+record of each phase's outcome, not as a spec that preceded the work.
 
 ## 1. E2E rig
 
@@ -118,3 +120,90 @@ receiving `undefined`), 8/8 PASSED after.
   this smoke test was chosen specifically because engine.rotatePO()
   reports it as unconditionally legal there (verified via a direct
   engine sanity check before writing the test).
+
+## Phase B outcome (2026-07-04, DONE)
+
+Implemented in server repo ~/backpack_ragnarok, 5 commits:
+  (a) 5438f6e -- canvas + inventory page grid 6x6 -> 8x8. content/live/
+      scenario.json's layout field is the single source of truth for
+      BOTH canvas dims (mock-src/data.js's LAYOUT, regenerated via
+      tools/tool_gen_data.cjs) and inventory page dims (engine.js's
+      page() grid == canvas ROWS x COLS by design, unchanged since
+      REQ-0030) -- one JSON edit + one regenerate covered the whole
+      requirement, no engine code change needed. All 4 existing BPs'
+      origins/placements stayed legal unchanged (max prior extent was
+      row/col 6, comfortably inside 8x8). One test fixed (a hardcoded
+      [6,6] out-of-canvas probe became legal at 8x8; now derives the
+      probe from Data.LAYOUT.ROWS+1/COLS+1 so it stays correct at any
+      grid size). 31/31 green.
+  (b) 4ec2814 -- engine preset model (ADDITIVE): st.presets={active,
+      names,store}, store[active] always null (content lives at the
+      top-level st.{linked,bps,pos,sis} fields, unchanged shape/API).
+      New API: PRESET_COUNT/makePresetsMeta/emptyPresetSlot/
+      switchPreset/addPreset/renamePreset/renameInvPage/invPageNames/
+      checkUidInvariant. migrateState() extended to materialize
+      st.inv.names and st.presets on any pre-Phase-B saved profile
+      (idempotent otherwise). +13 tests (switch round-trip preserves
+      BOTH configs, no-op/out-of-range, addPreset empties + name
+      growth, rename incl. defensive materialization, uid-invariant
+      fresh-pass + injected-duplicate-caught across switchPreset and
+      across the shared inventory, migration upgrade + idempotency).
+      44/44 green.
+  (c) ca9a77d -- client auto-save. Choke point: store.ts's
+      notifyStateChanged(), confirmed the ONE function every committed
+      engine mutation already flows through (every drag-drop/rotate/
+      seat-stow commit, chain-link toggle, loadGame()'s field
+      replacement) and NEVER called mid-drag (drag.ts's carry pub-sub
+      is separate and never touches `state`) -- so "don't save while a
+      drag is in progress, commit then save" required zero extra guard
+      code. 800ms debounce, monotonic-token-guarded PUT, three-state
+      indicator (saved/saving/offline). Save/Load buttons retired from
+      Header.tsx; boot-time load unchanged (fully automatic).
+  (d) 3226fe0 -- tab-row UI restructure + preset UI + long-press
+      rename. New shared LongPressTabs.tsx (pointerdown 600ms timer +
+      8px move-cancels-timer, used by both Tabs.tsx and new
+      PresetTabs.tsx) so a long-press arms an inline rename input while
+      a plain click still switches immediately on pointerup. Inventory
+      tabs moved into the "Inventory" label row (right-aligned); the
+      "items parked here take no effect" note moved below the
+      inventory board, left-aligned. Canvas title row gained
+      PresetTabs.tsx (preset tabs + "Preset+" button, appends+switches
+      via one action). Preset switching needed NO setOps()/Application
+      churn (unlike inventory page switching): canvas ops already read
+      state.bps/pos/sis directly, so switchPreset() mutating those same
+      fields + notifyStateChanged() is everything Board.tsx's existing
+      render-on-stateVersion-bump effect needs; beams/combos always
+      recompute fresh from state on every render, so no extra
+      invalidation was needed for the newly-active preset's own
+      connections either.
+  (e) f937757 -- E2E extensions + full gate + deploy. New specs:
+      grid-8x8, preset-switch (place+switch+switch-back via drag,
+      Preset+), long-press-rename (both tab kinds, Escape-cancel,
+      short-click-still-switches), auto-save (zero-click persistence
+      round trip, mid-drag-does-not-save). Existing specs (bp-transfer,
+      baseline-smoke) updated to use a new shared client/e2e/helpers.ts
+      instead of clicking the now-retired Save button. Bug found+fixed
+      during this gate: the 8x8 grid widened each board from ~556px to
+      716px, overflowing the E2E rig's 1400x1000 viewport and wrapping
+      Canvas above Inventory -- every drag-based spec failed with the
+      target simply never having moved (grab point computed outside the
+      viewport). Fixed via playwright.config.ts (2000x1400 viewport,
+      re-specified inside projects[0].use since devices['Desktop
+      Chrome']'s own viewport otherwise wins over the top-level
+      default).
+
+Gate (final, all green): engine tests 44/44 (31 pre-existing + 13 new);
+server/tests/api_test.cjs 9/9; tsc -b --noEmit clean; oxlint 0/0;
+vite build succeeds; node scripts/check_sprites.mjs 21/21 non-blank;
+E2E full suite 21/21 (smoke 2, baseline-smoke 3, bp-transfer 4,
+tab-switch-stability 1, grid-8x8 3, preset-switch 2, long-press-rename
+4, auto-save 2); pages 200 (/, /app/, /mock/, /preview/batch-001/,
+/preview/batch-001/fit/); web/app/ + web/mock/ redeployed; real profile
+(data/profiles/default.json) proven byte-identical throughout via
+direct sha256sum (e0b1015a73039498d6757a7ed3757400a6b1240b0a4bf71528000f27e9319846)
+across 3 full E2E runs' global-teardown plus this session's own
+before/after checks; git tree clean after every commit.
+
+No deviations from the task spec; the only unplanned addition was the
+E2E viewport fix (a genuine latent config bug the 8x8 change exposed,
+not a scope change).
