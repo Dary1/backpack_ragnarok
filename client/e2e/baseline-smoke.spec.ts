@@ -3,46 +3,18 @@
 // fixes must not have broken.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
+import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/baseline-smoke-fixture.json', import.meta.url);
 
+// REQ-0031 Phase B: Save/Load buttons retired -- see helpers.ts.
 async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
   await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await page.goto('/app/');
-  await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-  await page.waitForTimeout(400);
+  await bootApp(page);
 }
 
-const CELL = 80;
-const PAD = 38;
-const cx = (c: number) => PAD + (c - 1) * CELL + CELL / 2;
-const cy = (r: number) => PAD + (r - 1) * CELL + CELL / 2;
-
-async function drag(
-  page: import('@playwright/test').Page,
-  grab: { x: number; y: number },
-  drop: { x: number; y: number },
-  steps = 8
-) {
-  await page.mouse.move(grab.x, grab.y);
-  await page.mouse.down();
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    await page.mouse.move(grab.x + (drop.x - grab.x) * t, grab.y + (drop.y - grab.y) * t, { steps: 1 });
-    await page.waitForTimeout(25);
-  }
-  await page.waitForTimeout(150);
-  await page.mouse.up();
-  await page.waitForTimeout(250);
-}
-
-async function saveAndFetch(page: import('@playwright/test').Page) {
-  await page.locator('button:has-text("Save")').click();
-  await page.waitForTimeout(400);
-  const resp = await page.request.get('/api/profile/default/canvas');
-  return (await resp.json()).canvas;
-}
+const saveAndFetch = autoSaveAndFetch;
 
 test('app boots and shows the live data-source indicator', async ({ page }) => {
   await page.goto('/app/');

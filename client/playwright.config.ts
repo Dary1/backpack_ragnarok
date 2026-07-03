@@ -35,7 +35,23 @@ export default defineConfig({
   use: {
     baseURL: 'https://backpack-dev.qtie.jp',
     headless: true,
-    viewport: { width: 1400, height: 1000 },
+    // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
+    // 716px (PAD*2 + COLS*CELL = 38*2 + 8*80); at the old 1400x1000
+    // viewport, two 738px-wide .board-column boxes (716 + 10px padding *
+    // 2 from .board-wrap) plus the 420px-max item-panel overflow the
+    // viewport width and .app-main's flex-wrap stacks Canvas above
+    // Inventory instead of side by side -- this does not affect
+    // correctness (both boards still render/function) but DOES move
+    // board-canvas/inventory-board-canvas far enough apart vertically
+    // that fixed-viewport pixel-coordinate drags (grab/drop points
+    // computed from each board's own boundingBox(), same technique every
+    // spec uses) can land outside the viewport entirely. 1500 width is
+    // comfortably enough for both columns + the item panel side by side
+    // (738*2 + 420 + gaps ~= 1914 needs more, so height stacking may
+    // still occur at moderate widths -- 2000x1400 leaves generous margin
+    // for both the side-by-side layout AND enough vertical room that even
+    // a stacked fallback keeps every element within the viewport).
+    viewport: { width: 2000, height: 1400 },
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
     trace: 'retain-on-failure',
@@ -44,7 +60,15 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      // NOTE: devices['Desktop Chrome'] itself sets viewport:{width:1280,
+      // height:720} -- spreading it AFTER the top-level `use` block's own
+      // viewport (which Playwright does deep-merge, but per-key, and this
+      // spread order means devices[...]'s viewport wins) silently
+      // overrode the 2000x1400 viewport set above. Re-specify it
+      // explicitly here so the actual effective viewport is NOT the
+      // devices preset's 1280x720 (confirmed via a live re-run: the
+      // top-level viewport alone was NOT enough -- REQ-0031 Phase B fix).
+      use: { ...devices['Desktop Chrome'], viewport: { width: 2000, height: 1400 } },
     },
   ],
 });
