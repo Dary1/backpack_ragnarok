@@ -21,7 +21,7 @@ Usage:
         --draft content/batches/batch-001-niflheim/draft.json \
         --live-items content/live/live_items.json \
         --live-sis content/live/live_sis.json \
-        --sprite content/sprite_all_v9.svg \
+        --sprite content/sprite_all_v10.svg \
         --out web/preview/batch-001/index.html \
         --batch-id batch-001-niflheim
 """
