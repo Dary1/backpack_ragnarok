@@ -1,42 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
 
-  <!-- 1. Greatsword : vertical two-hander, blade up -->
-  <symbol id="icon-greatsword" viewBox="0 0 64 192">
-    <path d="M 32 12 L 42 34 L 42 128 L 22 128 L 22 34 Z" fill="#aebcc8" stroke="none"/>
-    <path d="M 32 12 L 42 34 L 42 128 L 32 128 Z" fill="#7d8b99" stroke="none"/>
-    <path d="M 32 20 L 34 36 L 34 122 L 30 122 L 30 36 Z" fill="#5f6b77" stroke="none"/>
-    <path d="M 32 12 L 42 34 L 42 128 L 22 128 L 22 34 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="12" y="127" width="40" height="11" rx="4" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="32" cy="132.5" r="3" fill="#a83232" stroke="#2b2016" stroke-width="2"/>
-    <rect x="27" y="138" width="10" height="33" rx="2" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 27 145 L 37 149 M 27 152 L 37 156 M 27 159 L 37 163" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
-    <circle cx="32" cy="175" r="7" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
-    <path d="M 25 30 L 25 120" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
-  </symbol>
-
-  <!-- 2. Dagger : diagonal, pointing up-right -->
-  <symbol id="icon-dagger" viewBox="0 0 64 64">
-    <g transform="rotate(45 32 32)">
-      <path d="M 32 6 L 38 18 L 37 33 L 27 33 L 26 18 Z" fill="#aebcc8" stroke="none"/>
-      <path d="M 32 6 L 38 18 L 37 33 L 32 33 Z" fill="#7d8b99" stroke="none"/>
-      <path d="M 32 6 L 38 18 L 37 33 L 27 33 L 26 18 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-      <rect x="21" y="33" width="22" height="6" rx="3" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-      <rect x="28" y="39" width="8" height="13" rx="2" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-      <path d="M 28 43 L 36 45 M 28 47 L 36 49" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="32" cy="55" r="4.5" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
-      <path d="M 30 12 L 29.5 30" fill="none" stroke="#d7dfe6" stroke-width="2" stroke-linecap="round"/>
-    </g>
-  </symbol>
-
-  <!-- 3. Fang : curved beast fang, blood-tipped -->
-  <symbol id="icon-fang" viewBox="0 0 64 64">
-    <path d="M 25 7 C 36 5 45 11 45 19 C 45 35 35 49 20 57 C 25 47 26 35 24 25 C 22 15 22 9 25 7 Z" fill="#f4eddc" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 25 7 C 36 5 45 11 45 19 C 45 21 44.7 23 44.2 25 C 37 20 30 19 23.6 21.5 C 22.9 14.5 23 9 25 7 Z" fill="#dccb9f" stroke="none"/>
-    <path d="M 20 57 C 24 51 26.5 45 27.5 40 C 30 45 29 52 20 57 Z" fill="#a83232" stroke="none"/>
-    <path d="M 25 7 C 36 5 45 11 45 19 C 45 35 35 49 20 57 C 25 47 26 35 24 25 C 22 15 22 9 25 7 Z" fill="none" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 40 16 C 42 19 42.5 23 41.5 28" fill="none" stroke="#ffffff" stroke-opacity="0.7" stroke-width="2.5" stroke-linecap="round"/>
-  </symbol>
-
   <!-- 4. Tower shield : steel kite shield, bronze boss -->
   <symbol id="icon-tower_shield" viewBox="0 0 128 128">
     <path d="M 64 8 C 88 17 104 20 118 22 C 118 58 108 94 64 120 C 20 94 10 58 10 22 C 24 20 40 17 64 8 Z" fill="#aebcc8" stroke="none"/>
@@ -64,24 +27,6 @@
     <path d="M 52 14 L 56 8 M 58 15 L 60 10 M 44 12 L 47 6" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
   </symbol>
 
-  <!-- 6. Flame rune : stone tablet with glowing flame sigil -->
-  <symbol id="icon-flame_rune" viewBox="0 0 64 64">
-    <rect x="9" y="9" width="46" height="46" rx="5" fill="#7d8b99" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="14" y="14" width="36" height="36" rx="3" fill="none" stroke="#5f6b77" stroke-width="2"/>
-    <path d="M 32 17 C 36 23 43 27 43 36 C 43 44 38 49 32 49 C 26 49 21 44 21 36 C 21 31 24 28 25.5 24 C 27 27.5 29.5 28 29.5 24.5 C 29.5 21.5 30.5 19 32 17 Z" fill="#e8642c" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 32 31 C 34.5 34.5 37 36 37 40.5 C 37 44.5 34.8 46.5 32 46.5 C 29.2 46.5 27 44.5 27 40.5 C 27 36.5 30 35 32 31 Z" fill="#f5a93b" stroke="none"/>
-  </symbol>
-
-  <!-- 7. Oil flask : round glass flask, dark oil, cork -->
-  <symbol id="icon-oil_flask" viewBox="0 0 64 64">
-    <circle cx="32" cy="38" r="20" fill="#cfdfea" stroke="#2b2016" stroke-width="3"/>
-    <path d="M 14 33 C 15 48 22 56 32 56 C 42 56 49 48 50 33 C 44 37 38 34 32 33 C 26 32 20 31 14 33 Z" fill="#4a4438" stroke="none"/>
-    <circle cx="39" cy="45" r="2" fill="#5d5648" stroke="none"/>
-    <path d="M 25 22 L 25 10 L 39 10 L 39 22" fill="#cfdfea" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <rect x="23" y="3" width="18" height="9" rx="3" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 19 30 Q 20 23 26 20" fill="none" stroke="#ffffff" stroke-opacity="0.65" stroke-width="3" stroke-linecap="round"/>
-  </symbol>
-
   <!-- 8. Frost orb : icy orb with snowflake facets -->
   <symbol id="icon-frost_orb" viewBox="0 0 64 64">
     <circle cx="32" cy="32" r="24" fill="#7ecbe8" stroke="#2b2016" stroke-width="3"/>
@@ -104,46 +49,6 @@
     <circle cx="33.5" cy="23" r="2" fill="#7cb548" fill-opacity="0.85" stroke="none"/>
     <circle cx="30" cy="19" r="1.2" fill="#7cb548" fill-opacity="0.7" stroke="none"/>
     <path d="M 28.5 20 L 28.5 46" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
-  </symbol>
-
-  <!-- 10. Herb pouch : drawstring pouch with herb sprigs -->
-  <symbol id="icon-herb_pouch" viewBox="0 0 64 64">
-    <path d="M 27 16 C 25 10 20 7 14 7" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
-    <path d="M 27 16 C 25 10 20 7 14 7" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 14 7 C 10 4 5 5 4 8 C 8 11 12 10 14 7 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M 21 10 C 19 5 14 4 11 5 C 13 9 17 11 21 10 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M 33 15 C 34 9 38 5 44 4" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
-    <path d="M 33 15 C 34 9 38 5 44 4" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 44 4 C 48 3 53 5 54 9 C 50 11 45 9 44 4 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M 38 8 C 40 4 45 3 48 4 C 46 8 42 10 38 8 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M 30 14 L 30 7" fill="none" stroke="#2b2016" stroke-width="4.5" stroke-linecap="round"/>
-    <path d="M 30 14 L 30 7" fill="none" stroke="#6d9e4f" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 30 7 C 28 3 24 2 21 3 C 23 7 27 8 30 7 Z" fill="#6d9e4f" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
-    <path d="M 24 14 C 24 11 40 11 40 14 L 42 23 C 35 27 29 27 22 23 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 22 22 C 13 27 8 36 8 44 C 8 53 18 58 32 58 C 46 58 56 53 56 44 C 56 36 51 27 42 22 C 36 26 28 26 22 22 Z" fill="#8a5a33" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 26 30 C 24 38 22 44 19 50 M 38 30 C 40 38 42 44 45 50" fill="none" stroke="#5f3d22" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 21 21 C 28 25 36 25 43 21" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
-    <path d="M 43 21 C 47 23 48 27 47 30" fill="none" stroke="#e9b64d" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="47" cy="31" r="2" fill="#e9b64d" stroke="#2b2016" stroke-width="2"/>
-  </symbol>
-
-  <!-- 11. Golden idol : seated deity statuette -->
-  <symbol id="icon-golden_idol" viewBox="0 0 64 128">
-    <path d="M 23 38 L 32 15 L 41 38 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="32" cy="24" r="2.5" fill="#a83232" stroke="#2b2016" stroke-width="2"/>
-    <rect x="12" y="104" width="40" height="14" rx="4" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 12 104 C 12 94 20 88 32 88 C 44 88 52 94 52 104 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 23 58 C 21 74 19 84 15 92 C 24 96 40 96 49 92 C 45 84 43 74 41 58 Z" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <path d="M 27 74 Q 32 78 37 74" fill="none" stroke="#b08340" stroke-width="2.5" stroke-linecap="round"/>
-    <rect x="19" y="82" width="26" height="9" rx="4.5" fill="#e9b64d" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
-    <circle cx="32" cy="44" r="13" fill="#e9b64d" stroke="#2b2016" stroke-width="3"/>
-    <path d="M 25 44 Q 27.5 46.5 30 44 M 34 44 Q 36.5 46.5 39 44" fill="none" stroke="#2b2016" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 29 50 Q 32 52 35 50" fill="none" stroke="#2b2016" stroke-width="2" stroke-linecap="round"/>
-    <path d="M 26 62 Q 32 67 38 62" fill="none" stroke="#b08340" stroke-width="3" stroke-linecap="round"/>
-    <circle cx="32" cy="67" r="2" fill="#a83232" stroke="none"/>
-    <path d="M 24 37 Q 26.5 33.5 30.5 32.8" fill="none" stroke="#fff7dc" stroke-opacity="0.85" stroke-width="2.5" stroke-linecap="round"/>
-    <path d="M 15 22 L 16.8 26.2 L 21 28 L 16.8 29.8 L 15 34 L 13.2 29.8 L 9 28 L 13.2 26.2 Z" fill="#fff7dc" stroke="none"/>
-    <path d="M 50 58 L 51.2 60.8 L 54 62 L 51.2 63.2 L 50 66 L 48.8 63.2 L 46 62 L 48.8 60.8 Z" fill="#fff7dc" stroke="none"/>
   </symbol>
 
   <!-- 12. Linker core : neutral octagonal rune disc, cyan core -->
