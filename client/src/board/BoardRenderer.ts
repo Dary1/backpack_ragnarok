@@ -404,16 +404,13 @@ export class BoardRenderer {
         const W0 = cw * CELL;
         const H0 = ch * CELL;
         const k = ((p.rot % 4) + 4) % 4;
+        // REQ-0028 (aspect law): uniform contain-fit box (was independent
+        // x/y insets per def.stretch branch -- see fitSpriteToBox doc).
+        // Box tightness presets (stretch vs non-stretch) preserved.
         if (def.stretch) {
-          sprite.x = W0 * 0.1;
-          sprite.y = 4;
-          sprite.width = W0 * 0.8;
-          sprite.height = H0 - 8;
+          BoardRenderer.fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
         } else {
-          sprite.x = W0 * 0.06;
-          sprite.y = H0 * 0.05;
-          sprite.width = W0 * 0.88;
-          sprite.height = H0 * 0.9;
+          BoardRenderer.fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
         }
         const inner = new Container();
         inner.eventMode = 'none'; // decorative art, see constructor note
@@ -486,15 +483,15 @@ export class BoardRenderer {
       outline.eventMode = 'none'; // decorative, see constructor note
       this.gItems.addChild(outline);
 
+      // REQ-0028 (aspect law): uniform contain-fit box (was independent
+      // x/y insets: bx.w*0.10..0.80 vs +6..-6 for blade, hx.w*0.10..0.80 vs
+      // +0..-8 for hilt -- see fitSpriteToBox doc).
       const bx = poBox(a.blade);
       const bladeDef = items[a.blade.id];
       const bladeTexture = bladeDef && textures.get(bladeDef.icon);
       if (bladeTexture) {
         const sprite = new Sprite(bladeTexture);
-        sprite.x = bx.x + bx.w * 0.1;
-        sprite.y = bx.y + 6;
-        sprite.width = bx.w * 0.8;
-        sprite.height = bx.h - 6;
+        BoardRenderer.fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
@@ -503,10 +500,7 @@ export class BoardRenderer {
       const hiltTexture = hiltDef && textures.get(hiltDef.icon);
       if (hiltTexture) {
         const sprite = new Sprite(hiltTexture);
-        sprite.x = hx.x + hx.w * 0.1;
-        sprite.y = hx.y;
-        sprite.width = hx.w * 0.8;
-        sprite.height = hx.h - 8;
+        BoardRenderer.fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
@@ -768,6 +762,30 @@ export class BoardRenderer {
     return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
   }
 
+  /** REQ-0028 (aspect law): sizes+positions a Sprite to uniformly contain-fit
+   * its texture's OWN native aspect ratio inside a (bx, by, bw, bh) box,
+   * centered -- never stretching width/height independently. Replaces the
+   * old pattern (three call sites: placed-PO art, ghost-PO art, merged
+   * Longsword blade/hilt art) that set sprite.width/sprite.height from two
+   * DIFFERENT box-fraction formulas per axis (e.g. `W0*0.8` for width vs
+   * `H0-8` for height), which would visibly distort any icon whose native
+   * texture aspect didn't exactly match the box aspect. With v8's
+   * exact-aspect viewBoxes for all symbols, contain-fit and the old
+   * stretch-fill produce IDENTICAL pixels for placed art (box aspect ==
+   * texture aspect already) -- this is a correctness/safety fix, not a
+   * visual change, for any icon actually shipped today. */
+  private static fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: number, bh: number): void {
+    const texW = sprite.texture.width;
+    const texH = sprite.texture.height;
+    const scale = texW > 0 && texH > 0 ? Math.min(bw / texW, bh / texH) : 1;
+    const w = texW * scale;
+    const h = texH * scale;
+    sprite.width = w;
+    sprite.height = h;
+    sprite.x = bx + (bw - w) / 2;
+    sprite.y = by + (bh - h) / 2;
+  }
+
   /** pointerdown on a PO group -- REQ-0027 T0.2 double-click vs drag
    * disambiguation (see DBLCLICK_WINDOW_MS's module comment). Manual
    * bookkeeping: if a second pointerdown for this uid arrives within the
@@ -1021,16 +1039,12 @@ export class BoardRenderer {
     const H0 = ch * CELL;
     const k = ((p.rot % 4) + 4) % 4;
     const sprite = new Sprite(texture);
+    // REQ-0028 (aspect law): uniform contain-fit box, matching the
+    // placed-PO draw path above (see fitSpriteToBox doc).
     if (def.stretch) {
-      sprite.x = W0 * 0.1;
-      sprite.y = 4;
-      sprite.width = W0 * 0.8;
-      sprite.height = H0 - 8;
+      BoardRenderer.fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
     } else {
-      sprite.x = W0 * 0.06;
-      sprite.y = H0 * 0.05;
-      sprite.width = W0 * 0.88;
-      sprite.height = H0 * 0.9;
+      BoardRenderer.fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
     }
     const inner = new Container();
     inner.alpha = 0.75;

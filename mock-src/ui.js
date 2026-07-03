@@ -161,8 +161,22 @@ function drawPOArt(p,parent,x,y){ // art only, at pixel (x,y), rotation-aware
             'translate('+(x+w*CELL)+','+(y+h*CELL)+') rotate(180)','translate('+x+','+(y+h*CELL)+') rotate(270)'][k];
   const inner=el('g',{transform:tr},parent);
   const d=ITEMS[p.id];
-  if(d.stretch)el('use',{href:'#'+d.icon,x:W0*0.10,y:4,width:W0*0.80,height:H0-8},inner);
-  else el('use',{href:'#'+d.icon,x:W0*0.06,y:H0*0.05,width:W0*0.88,height:H0*0.90},inner);
+  // REQ-0028 (aspect law): art must be contain-fit uniformly, never
+  // stretched to fill independently on x/y. `stretch` items (blade/hilt)
+  // historically used a tighter safe-box than other items -- that box-
+  // TIGHTNESS distinction is preserved (still two margin presets below),
+  // but each box is now built with the SAME fractional inset on both axes
+  // (instead of different x-fraction vs y-fraction/absolute-px formulas),
+  // so the box itself never encodes a non-uniform squeeze. The <use>
+  // element's box is then handed to the symbol at its own (now
+  // aspect-correct, non-"none") preserveAspectRatio, which contain-fits
+  // (default xMidYMid meet) rather than stretching -- box-level symmetry
+  // plus symbol-level meet together guarantee no axis is scaled
+  // independently of the other, matching solve()'s own uniform-scale
+  // contract (see tools/tool_fit_check.py fix_icon / art_golden.md v3.2).
+  const m=d.stretch?0.10:0.08; // uniform margin fraction, same on both axes
+  const bx=W0*m,by=H0*m,bw=W0*(1-2*m),bh=H0*(1-2*m);
+  el('use',{href:'#'+d.icon,x:bx,y:by,width:bw,height:bh},inner);
 }
 let carry=null;
 function renderAll(){
@@ -256,8 +270,11 @@ function renderAll(){
         stroke:hl?'#f5a93b':'#00000000','stroke-width':2},g);
     }
     el('path',{d:outlinePath(asm.cells),stroke:'#d7dfe6','stroke-width':1.5,'stroke-dasharray':'2 4',fill:'none','stroke-opacity':.9},g);
-    el('use',{href:'#icon-blade',x:bx.x+bx.w*0.10,y:bx.y+6,width:bx.w*0.80,height:bx.h-6},g);
-    el('use',{href:'#icon-hilt',x:hx.x+hx.w*0.10,y:hx.y,width:hx.w*0.80,height:hx.h-8},g);
+    // REQ-0028 (aspect law): same uniform-margin contain-fit box as
+    // drawPOArt above (was independent x/y insets: bx.w*0.10..0.80 vs
+    // +6..-6, and hx.w*0.10..0.80 vs +0..-8 -- non-uniform on the two axes).
+    el('use',{href:'#icon-blade',x:bx.x+bx.w*0.10,y:bx.y+bx.h*0.10,width:bx.w*0.80,height:bx.h*0.80},g);
+    el('use',{href:'#icon-hilt',x:hx.x+hx.w*0.10,y:hx.y+hx.h*0.10,width:hx.w*0.80,height:hx.h*0.80},g);
 
     hover(g,'<h3>Longsword <span style="font-size:12px;color:#d7dfe6">assembled · linked</span></h3><div class="eff">Strike 10 / 4 ticks. Drag moves Blade+Hilt together (guard stays). Use the chain button to unlink. Double-click rotates the Blade.</div>');
     g.addEventListener('pointerdown',e=>startCarry(e,'asm',asm.blade.uid));
