@@ -1,33 +1,29 @@
 {
- "version": 2,
- "types": [
-  "Weapon",
-  "WeaponPart",
-  "Shield",
-  "Rune",
-  "Reagent",
-  "Relic",
-  "Curse"
- ],
- "elements": [
-  "Flame",
-  "Frost",
-  "Oil",
-  "Poison",
-  "Beast",
-  "Metal",
-  "Wood"
- ],
- "socketTypes": [
-  "gem",
-  "edge",
-  "coat",
-  "bond"
- ],
- "socketTags": [
-  "Metal",
-  "Bone"
- ],
+ "version": 3,
+ "po_tags": {
+  "Weapon": null,
+  "WeaponPart": null,
+  "Shield": null,
+  "Rune": null,
+  "Reagent": null,
+  "Relic": null,
+  "Curse": null,
+  "Flame": null,
+  "Frost": null,
+  "Oil": null,
+  "Poison": null,
+  "Beast": null,
+  "Metal": null,
+  "Wood": null
+ },
+ "socket_tags": {
+  "gem": null,
+  "edge": null,
+  "coat": null,
+  "bond": null,
+  "Metal": null,
+  "Bone": null
+ },
  "triggers": [
   "every_secs",
   "battle_start",

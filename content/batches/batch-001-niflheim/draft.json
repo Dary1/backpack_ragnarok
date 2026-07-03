@@ -6,10 +6,6 @@
   {
    "id": "rime_shard",
    "name": "Rime Shard",
-   "type": "Rune",
-   "el": [
-    "Frost"
-   ],
    "rarity": "Common",
    "shape": [
     [
@@ -37,16 +33,15 @@
    "effects_text_en": "Adjacent Weapon: Apply 4–8 Chill on hit.",
    "flavor_ja": "決して完全には溶けない。",
    "flavor": "It never fully thaws.",
-   "name_ja": "霧氷のかけら"
+   "name_ja": "霧氷のかけら",
+   "tags": [
+    "Rune",
+    "Frost"
+   ]
   },
   {
    "id": "frost_nail",
    "name": "Frost Nail",
-   "type": "WeaponPart",
-   "el": [
-    "Frost",
-    "Metal"
-   ],
    "rarity": "Common",
    "shape": [
     [
@@ -75,16 +70,16 @@
    "effects_text_en": "Every 1.4–1.7s: Strike 10–20.",
    "flavor_ja": "冷気の中で打たれ、そのまま留まる。",
    "flavor": "Driven in cold, it stays.",
-   "name_ja": "フロストネイル"
+   "name_ja": "フロストネイル",
+   "tags": [
+    "WeaponPart",
+    "Frost",
+    "Metal"
+   ]
   },
   {
    "id": "hoarfrost_creep",
    "name": "Hoarfrost Creep",
-   "type": "Reagent",
-   "el": [
-    "Frost",
-    "Wood"
-   ],
    "rarity": "Common",
    "shape": [
     [
@@ -112,16 +107,16 @@
    "effects_text_en": "Adjacent Flame: Chill applications x2. Every 1.8–2.2s: Apply 4–8 Chill.",
    "flavor_ja": "炎が息づくところで、霜は深く飲み込む。",
    "flavor": "Where fire breathes, the frost drinks deep.",
-   "name_ja": "ホアフロスト・クリープ"
+   "name_ja": "ホアフロスト・クリープ",
+   "tags": [
+    "Reagent",
+    "Frost",
+    "Wood"
+   ]
   },
   {
    "id": "glacier_cleaver",
    "name": "Glacier Cleaver",
-   "type": "Weapon",
-   "el": [
-    "Frost",
-    "Metal"
-   ],
    "rarity": "Uncommon",
    "shape": [
     [
@@ -154,15 +149,16 @@
    "effects_text_en": "Every 0.9–1.2s: Strike 10–16. On hit: Apply 2–4 Chill.",
    "flavor_ja": "冬そのものの重さで、重い。",
    "flavor": "Heavy the way a winter is heavy.",
-   "name_ja": "氷河の大斧"
+   "name_ja": "氷河の大斧",
+   "tags": [
+    "Weapon",
+    "Frost",
+    "Metal"
+   ]
   },
   {
    "id": "permafrost_ward",
    "name": "Permafrost Ward",
-   "type": "Shield",
-   "el": [
-    "Frost"
-   ],
    "rarity": "Uncommon",
    "shape": [
     [
@@ -188,16 +184,15 @@
    "effects_text_en": "Battle start: Block 22–38.",
    "flavor_ja": "冷気は己の胸算用と、己の壁を持つ。（スケーリング壁の派生は語彙イベント待ち）",
    "flavor": "Cold keeps its own counsel, and its own wall. (Scaling-ward variant awaits a vocab event.)",
-   "name_ja": "永久凍土の守り"
+   "name_ja": "永久凍土の守り",
+   "tags": [
+    "Shield",
+    "Frost"
+   ]
   },
   {
    "id": "niflheim_crown",
    "name": "Crown of Niflheim",
-   "type": "Relic",
-   "el": [
-    "Frost",
-    "Metal"
-   ],
    "rarity": "Rare",
    "shape": [
     [
@@ -250,7 +245,12 @@
    "effects_text_en": "Every 1.4–1.7s: Strike 20–30. +4–8 damage per other Frost PO in this BP. Adjacent Frost: Chill applications x2.",
    "flavor_ja": "霧は、己が葬った王すべてを覚えている。",
    "flavor": "The mist remembers every king it buried.",
-   "name_ja": "ニヴルヘイムの王冠"
+   "name_ja": "ニヴルヘイムの王冠",
+   "tags": [
+    "Relic",
+    "Frost",
+    "Metal"
+   ]
   }
  ]
 }
