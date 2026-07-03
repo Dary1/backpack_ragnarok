@@ -3,7 +3,7 @@
 //
 // Runs the SAME repackaging logic as client/src/board/sprites.ts (imports
 // its real, unduplicated parseSymbols()/standaloneSvgString() exports --
-// no fork of the logic) over every <symbol> in content/sprite_all_v8.svg,
+// no fork of the logic) over every <symbol> in content/sprite_all_v9.svg,
 // writes each standalone SVG document to a temp dir, then rasterizes each
 // with the same cairosvg the server venv / tools/tool_fit_check.py use and
 // asserts every one produced visible (alpha>0) pixels.
@@ -51,7 +51,7 @@ async function main() {
   const { mod, server } = await loadSpritesModule();
   const { parseSymbols, standaloneSvgString } = mod;
 
-  const spriteSheetPath = path.join(REPO_ROOT, 'content', 'sprite_all_v8.svg');
+  const spriteSheetPath = path.join(REPO_ROOT, 'content', 'sprite_all_v9.svg');
   const fs = await import('node:fs');
   const svgSource = fs.readFileSync(spriteSheetPath, 'utf-8');
 
