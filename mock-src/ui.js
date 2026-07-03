@@ -48,6 +48,16 @@ function poTip(p){
   let s='<h3>'+T(d,'name')+' <span class="r-'+d.rarity+'" style="font-size:12px">'+d.rarity+'</span></h3>'+
   '<div class="shape">'+si.h+'×'+si.w+' (rot '+(p.rot%4*90)+'°) · '+dType+(dEl.length?' · tags: '+dEl.join(', '):'')+'</div>'+
   '<div class="eff">'+EFF(d)+'</div>';
+  // Connection Port tags (REQ-0023): each port's own tag is a PO Tag (same
+  // namespace/hierarchy as d.tags above, not a separate vocabulary), shown
+  // untranslated like every other tag string in this tooltip (JA mode only
+  // localizes surrounding prose, per eff_render.cjs's "隣接する<tag>" convention)
+  // -- one line per port, since a PO can carry multiple ports with distinct
+  // tags (e.g. flame_tablet: Weapon + Oil, on the same physical tile set).
+  if((d.ports||[]).length){
+    const label=LANG.cur==='ja'?'接続ポート対象タグ':'Connection Port target tag';
+    s+='<div class="shape">'+label+': '+d.ports.map(port=>port.tag).join(', ')+'</div>';
+  }
   const hosted=state.sis.filter(a=>a.host&&a.host.po===p.uid);
   if(hosted.length)s+='<div class="eff ok">Seated: '+hosted.map(a=>SI_DEFS[a.id].name).join(', ')+'</div>';
   return s;
