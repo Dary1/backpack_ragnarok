@@ -181,9 +181,27 @@ export class BoardRenderer {
       }
     }
 
+    // Assembled Longsword (blade+hilt flush-joined, BP linked): mirrors
+    // mock-src/ui.js's `mergeSword` special-case exactly (REQ-0026 follow-up,
+    // PO orientation bug). When active, the mock does NOT run the generic
+    // rotation-aware drawPOArt() for blade/hilt -- it draws a dedicated merged
+    // visual instead: each part's own icon in its own (unrotated) poBox, no
+    // rotation wrapper, plus a dashed outline spanning all 3 cells. This
+    // renderer used to have no such special-case at all, so blade (a
+    // stretch:true, 1x2 vertical-footprint PO) fell into the generic path
+    // and rendered using ITS OWN box math -- which is correct in isolation,
+    // but wrong here because the live scenario always has blade+hilt
+    // assembled+linked, so the mock never uses that path for this content;
+    // the generic path's numbers were never wrong, they were simply the
+    // wrong CODE PATH for this state. flame_tablet has no hilt to assemble
+    // with, so it always takes the generic path and always looked correct.
+    const asm = engine.assembly(state);
+    const mergeSword = !!(asm && state.linked);
+
     // placed POs
     for (const p of state.pos) {
       if (p.loc !== 'grid' || !p.cell) continue;
+      if (mergeSword && (p.uid === asm!.blade.uid || p.uid === asm!.hilt.uid)) continue;
       const def = items[p.id];
       if (!def) continue;
       const { w, h } = engine.shapeInfo(p.id, p.rot);
@@ -232,6 +250,68 @@ export class BoardRenderer {
           inner.rotation = -Math.PI / 2;
         }
         this.gItems.addChild(inner);
+      }
+    }
+
+    // merged Longsword visual (mock-src/ui.js's mergeSword block, ~L250-262):
+    // dark cell backdrops across all 3 cells (blade's 2 + hilt's 1), a dashed
+    // outline around the combined footprint, then blade's and hilt's icons
+    // each in their own unrotated poBox -- same x/y/width/height formula as
+    // the mock's `bx.x+bx.w*0.10, bx.y+6, bx.w*0.80, bx.h-6` (blade) and
+    // `hx.x+hx.w*0.10, hx.y, hx.w*0.80, hx.h-8` (hilt). No rotation transform
+    // here: assembly() only ever matches when blade.rot%4===0 (engine.js
+    // guard), so the merged visual is always axis-aligned.
+    if (mergeSword) {
+      const a = asm!;
+      const poBox = (p: (typeof a)['blade']) => {
+        const { w, h } = engine.shapeInfo(p.id, p.rot);
+        return {
+          x: PAD + (p.cell![1] - 1) * CELL,
+          y: PAD + (p.cell![0] - 1) * CELL,
+          w: w * CELL,
+          h: h * CELL,
+        };
+      };
+      for (const [r, c] of a.cells) {
+        const bg = new Graphics();
+        bg.roundRect(PAD + (c - 1) * CELL + 3, PAD + (r - 1) * CELL + 3, CELL - 6, CELL - 6, 6);
+        bg.fill({ color: '#000000', alpha: 0.22 });
+        this.gItems.addChild(bg);
+      }
+      const cellSet = new Set(a.cells.map(([r, c]) => `${r},${c}`));
+      const outline = new Graphics();
+      for (const [r, c] of a.cells) {
+        const x = PAD + (c - 1) * CELL;
+        const y = PAD + (r - 1) * CELL;
+        if (!cellSet.has(`${r - 1},${c}`)) outline.moveTo(x, y).lineTo(x + CELL, y);
+        if (!cellSet.has(`${r + 1},${c}`)) outline.moveTo(x, y + CELL).lineTo(x + CELL, y + CELL);
+        if (!cellSet.has(`${r},${c - 1}`)) outline.moveTo(x, y).lineTo(x, y + CELL);
+        if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
+      }
+      outline.stroke({ color: '#d7dfe6', width: 1.5, alpha: 0.9 });
+      this.gItems.addChild(outline);
+
+      const bx = poBox(a.blade);
+      const bladeDef = items[a.blade.id];
+      const bladeTexture = bladeDef && textures.get(bladeDef.icon);
+      if (bladeTexture) {
+        const sprite = new Sprite(bladeTexture);
+        sprite.x = bx.x + bx.w * 0.1;
+        sprite.y = bx.y + 6;
+        sprite.width = bx.w * 0.8;
+        sprite.height = bx.h - 6;
+        this.gItems.addChild(sprite);
+      }
+      const hx = poBox(a.hilt);
+      const hiltDef = items[a.hilt.id];
+      const hiltTexture = hiltDef && textures.get(hiltDef.icon);
+      if (hiltTexture) {
+        const sprite = new Sprite(hiltTexture);
+        sprite.x = hx.x + hx.w * 0.1;
+        sprite.y = hx.y;
+        sprite.width = hx.w * 0.8;
+        sprite.height = hx.h - 8;
+        this.gItems.addChild(sprite);
       }
     }
 
