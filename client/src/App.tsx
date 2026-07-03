@@ -12,7 +12,7 @@ import { InventoryBoard } from './board/InventoryBoard';
 import { Header } from './Header';
 import { ItemPanel } from './ItemPanel';
 import { Tabs } from './Tabs';
-import { loadGame, saveGame, setLocale, useGameStore } from './store';
+import { setLocale, useGameStore } from './store';
 
 function App() {
   const snapshot = useGameStore();
@@ -25,10 +25,7 @@ function App() {
         source={snapshot.source}
         locale={snapshot.locale}
         onToggleLocale={toggleLocale}
-        onSave={() => void saveGame()}
-        onLoad={() => void loadGame()}
-        ioStatus={snapshot.ioStatus}
-        canEdit={snapshot.status === 'ready'}
+        autoSaveStatus={snapshot.autoSaveStatus}
       />
       <main className="app-main">
         <div className="board-column">

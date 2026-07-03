@@ -38,6 +38,26 @@
 //    state (no legacy loc:'inv'/host:'inv' entries left to move -- a
 //    structural no-op copy), so this is unconditionally correct to call
 //    every time, not just on a detected-legacy shape.
+//
+// REQ-0031 Phase B addition -- auto-save (Save/Load buttons retired):
+// notifyStateChanged() is the ONE choke point every engine mutation in the
+// app already flows through (confirmed by reading every call site: every
+// drag-drop/rotate/seat-stow commit in BoardRenderer.ts, the chain-link
+// toggle, and loadGame()'s own field-replacement all call it, and NONE of
+// them call it mid-drag -- drag.ts's updateCarry()/armCarry() are a
+// completely separate pub-sub that never touches `state` or this store;
+// only a drag's final pointerup COMMIT mutates state and calls
+// notifyStateChanged()). So scheduleAutoSave() is invoked from inside
+// notifyStateChanged() itself: any mutation anywhere in the app
+// automatically debounce-schedules a background PUT, and "don't save
+// mid-drag" falls out for free from the fact that this function is
+// simply never called until a drag has already committed. autoSaveStatus
+// mirrors the old ioStatus concept but with three states aimed at a
+// persistent small indicator rather than a one-shot toast: 'saved'
+// (nothing pending, last write succeeded), 'saving' (a debounced write is
+// pending or in flight), 'offline' (the last attempted write failed --
+// network/server error; the local state is NOT lost, just not yet
+// persisted, and the next mutation's debounce will retry).
 import { useSyncExternalStore } from 'react';
 import { Engine } from './engine/adapter';
 import type { EngineInstance, GameState } from './engine/engine.d.ts';
@@ -61,10 +81,13 @@ export interface StoreSnapshot {
    * already new each time) but useful for effects that want to depend on
    * "did the game state change" without depending on `state` identity. */
   stateVersion: number;
-  /** Save/Load status line shown in the Header, mirroring the mock's
-   * #canvasIoStatus (localized message + ok/error color). null = nothing
-   * to show yet. */
-  ioStatus: { message: string; isError: boolean } | null;
+  /** Auto-save status shown in the Header's small indicator (REQ-0031
+   * Phase B; replaces the retired Save/Load buttons' one-shot ioStatus
+   * line). 'saved' = last write succeeded and nothing is pending;
+   * 'saving' = a debounced write is scheduled or a PUT is in flight;
+   * 'offline' = the most recent PUT attempt failed (state is still safe
+   * locally; the next mutation's debounce will retry the write). */
+  autoSaveStatus: 'saved' | 'saving' | 'offline';
   /** 0-based active inventory tab/page index (REQ-0030 Phase 2). Module-
    * store-only, never persisted (see module comment above). */
   activeInvPage: number;
@@ -79,7 +102,7 @@ let snapshot: StoreSnapshot = {
   state: null,
   locale: 'en',
   stateVersion: 0,
-  ioStatus: null,
+  autoSaveStatus: 'saved',
   activeInvPage: 0,
 };
 
@@ -155,43 +178,65 @@ export function setActiveInvPage(page: number): void {
  */
 export function notifyStateChanged(): void {
   setSnapshot({ ...snapshot, stateVersion: snapshot.stateVersion + 1 });
+  scheduleAutoSave();
 }
 
-/** Sets (or clears, pass null) the Save/Load status line. */
-export function setIoStatus(message: string, isError: boolean): void {
-  setSnapshot({ ...snapshot, ioStatus: { message, isError } });
+// ---------------------------------------------------------------------
+// Auto-save (REQ-0031 Phase B). Save/Load buttons are retired: every
+// mutation debounce-schedules a background PUT via notifyStateChanged()
+// above (the one choke point all engine mutators/commit paths already
+// call -- see module comment). Load stays automatic at boot (boot() below,
+// unchanged from REQ-0030/T0.2).
+// ---------------------------------------------------------------------
+const AUTO_SAVE_DEBOUNCE_MS = 800;
+let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+// Monotonically-increasing token: if a NEWER debounced save has been
+// scheduled by the time an in-flight PUT resolves, that PUT's result is
+// stale and must not flip autoSaveStatus back to 'saved' out of order
+// (the newer save's own completion will do that instead).
+let autoSaveToken = 0;
+
+function setAutoSaveStatus(status: StoreSnapshot['autoSaveStatus']): void {
+  if (snapshot.autoSaveStatus === status) return;
+  setSnapshot({ ...snapshot, autoSaveStatus: status });
 }
 
-const IO_STRINGS = {
-  saved: { ja: '保存しました', en: 'Saved' },
-  saveFailed: { ja: '保存失敗', en: 'Save failed' },
-  loaded: { ja: '読み込みました', en: 'Loaded' },
-  loadFailed: { ja: '読み込み失敗', en: 'Load failed' },
-  noSavedCanvas: { ja: '保存データなし', en: 'No saved canvas' },
-} as const;
-
-function ioText(key: keyof typeof IO_STRINGS): string {
-  return IO_STRINGS[key][snapshot.locale];
+/** Debounces a background PUT of the current live GameState. Called from
+ * notifyStateChanged() -- i.e. after every committed engine mutation
+ * (drag-drop, rotate, seat/stow, chain-link toggle, preset switch, rename,
+ * ...) and after loadGame()'s own field replacement. Resets the timer on
+ * every call within the debounce window, so a rapid burst of mutations
+ * (e.g. several drags in quick succession) collapses into a single PUT
+ * AUTO_SAVE_DEBOUNCE_MS after the last one. Never fires while a drag is
+ * merely in progress: notifyStateChanged() (and therefore this function)
+ * is only ever invoked at a drag's COMMIT (pointerup resolving against an
+ * engine mutator), never during pointermove -- there is no separate
+ * "in-progress" mutation event to guard against here. */
+function scheduleAutoSave(): void {
+  if (!snapshot.state) return;
+  setAutoSaveStatus('saving');
+  if (autoSaveTimer !== null) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => {
+    autoSaveTimer = null;
+    void flushAutoSave();
+  }, AUTO_SAVE_DEBOUNCE_MS);
 }
 
-/**
- * Save: PUT the CURRENT live GameState (bare, unwrapped -- see api.ts's
- * saveCanvas) to /api/profile/default/canvas. Mirrors mock-src/ui.js's
- * saveBtn handler exactly (same endpoint, same body shape, same status
- * strings) -- `st` already carries `st.inv` (REQ-0030 Phase 1's makeState()
- * shape), so no extra wiring is needed here: the existing bare-state PUT
- * already round-trips the inventory pages as-is. Profile id is hardcoded
- * to 'default' for T0.2, same as the mock.
- */
-export async function saveGame(): Promise<void> {
+/** Immediately PUTs the current live GameState (no debounce) -- used by
+ * the debounce timer's expiry. Exported so tests/callers needing a
+ * synchronous "save right now, don't wait for the debounce" escape hatch
+ * (e.g. a future beforeunload handler) have one, though nothing in the UI
+ * currently calls it directly other than the debounce timer itself. */
+export async function flushAutoSave(): Promise<void> {
   const st = snapshot.state;
   if (!st) return;
+  const myToken = ++autoSaveToken;
   try {
     await saveCanvas('default', st);
-    setIoStatus(ioText('saved'), false);
+    if (myToken === autoSaveToken) setAutoSaveStatus('saved');
   } catch (e) {
-    console.warn('[backpack_ragnarok] canvas save failed:', e instanceof Error ? e.message : e);
-    setIoStatus(ioText('saveFailed'), true);
+    console.warn('[backpack_ragnarok] auto-save failed:', e instanceof Error ? e.message : e);
+    if (myToken === autoSaveToken) setAutoSaveStatus('offline');
   }
 }
 
@@ -215,10 +260,7 @@ export async function loadGame(): Promise<void> {
   if (!st || !engine) return;
   try {
     const doc = await fetchCanvas('default');
-    if (!doc) {
-      setIoStatus(ioText('noSavedCanvas'), true);
-      return;
-    }
+    if (!doc) return; // no saved canvas yet -- not an error, nothing to load
     const rawCanvas = doc.canvas;
     if (!rawCanvas || !Array.isArray(rawCanvas.pos) || !Array.isArray(rawCanvas.bps)) {
       throw new Error('malformed saved canvas');
@@ -236,11 +278,14 @@ export async function loadGame(): Promise<void> {
     st.pos = canvas.pos;
     st.sis = canvas.sis || [];
     st.inv = canvas.inv;
+    st.presets = canvas.presets;
+    // NOTE: this reload just replaced state's fields FROM the server's own
+    // saved copy, so there is nothing new to auto-save -- notifyStateChanged()
+    // still bumps stateVersion (so the boards re-render) but the resulting
+    // scheduleAutoSave() call is a harmless no-op PUT of unchanged data.
     notifyStateChanged();
-    setIoStatus(ioText('loaded'), false);
   } catch (e) {
     console.warn('[backpack_ragnarok] canvas load failed:', e instanceof Error ? e.message : e);
-    setIoStatus(ioText('loadFailed'), true);
   }
 }
 

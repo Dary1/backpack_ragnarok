@@ -197,31 +197,13 @@ html, body {
   margin-top: 6px;
 }
 
-/* REQ-0027 T0.2 additions below */
-
-.io-status {
+/* REQ-0031 Phase B: Save/Load buttons retired (auto-save runs in the
+   background) -- .io-status/.io-btn (REQ-0027 T0.2) replaced by the
+   persistent auto-save indicator below. */
+.auto-save-status {
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.io-btn {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 12px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.io-btn:hover:not(:disabled) {
-  border-color: var(--cyan);
-}
-
-.io-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* REQ-0030 Phase 2: retired the old drag-source list (.inventory-panel/
