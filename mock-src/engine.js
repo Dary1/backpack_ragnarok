@@ -461,15 +461,15 @@ function create(ITEMS,SI_DEFS,layout,trees){
   const PAGE_COUNT=5;
 
   // Fresh, empty inventory (5 independent pages). Used by migrateState()
-  // (added in a follow-up commit, for a legacy state with no st.inv at
-  // all) and exposed on the engine instance so any other caller can
-  // obtain a correctly-shaped empty inventory without hand-rolling the
-  // page array shape. NOTE: mock-src/data.js's makeState() does NOT call
-  // this -- data.js loads before engine.js in the mock HTML build order
-  // (index.template.html), so it carries its own tiny inline equivalent
-  // (makeEmptyInventory() in tool_gen_data.cjs) instead of depending on
-  // Engine at data-definition time; the two independently produce the
-  // identical {pages:[5 x {bps:[],pos:[],sis:[]}]} shape.
+  // below (for a legacy state with no st.inv at all) and exposed on the
+  // engine instance so any other caller can obtain a correctly-shaped
+  // empty inventory without hand-rolling the page array shape. NOTE:
+  // mock-src/data.js's makeState() does NOT call this -- data.js loads
+  // before engine.js in the mock HTML build order (index.template.html),
+  // so it carries its own tiny inline equivalent (makeEmptyInventory() in
+  // tool_gen_data.cjs) instead of depending on Engine at data-definition
+  // time; the two independently produce the identical {pages:[5 x {bps:
+  // [],pos:[],sis:[]}]} shape.
   function emptyInventory(){
     const pages=[];
     for(let i=0;i<PAGE_COUNT;i++)pages.push({bps:[],pos:[],sis:[]});
@@ -802,13 +802,94 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // verified by an explicit test (a linker-bearing BP transferred into a
   // page must contribute nothing to traceBeams()).
 
+  // migrateState(oldState): accepts the LEGACY shape and returns a NEW
+  // state object with a populated st.inv (does not mutate oldState).
+  // Legacy representation found in this codebase (see report):
+  //   - Legacy "inventory" was never spatial -- it was implicit LIST
+  //     membership via existing sentinel fields, not a separate list
+  //     structure:
+  //       * unplaced PO: a st.pos[] entry with loc==='inv', cell===null
+  //         (rot preserved).
+  //       * unplaced/unseated SI: a st.sis[] entry with host==='inv'
+  //         (string sentinel, unrelated to any page/cell).
+  //   - Canvas-placed POs/BPs and seated SIs are untouched by migration.
+  // migrateState() first-fit places legacy unplaced POs (in st.pos order),
+  // THEN legacy unplaced SIs (in st.sis order, as free 1x1 placements),
+  // onto page 1 (index 0) -- per REQ-0030 orchestrator default ("POs
+  // first, then SIs"). If page 1 fills up, remaining items overflow onto
+  // page 2, page 3, ... (still first-fit, still deterministic scan order
+  // row-major top-left-to-bottom-right) rather than being silently
+  // dropped -- resolved ambiguity (see report): the REQ text says "onto
+  // page 1" without specifying overflow behavior; dropping items on
+  // migration would be a silent data-loss bug, so overflow-to-next-page is
+  // the safe interpretation.
+  function firstFitCell(container,shapeOff){
+    for(let r=1;r<=ROWS;r++){
+      for(let c=1;c<=COLS;c++){
+        const cells=shapeOff.map(([dr,dc])=>[r+dr,c+dc]);
+        if(invCanPlaceCells(container,cells,[]).ok)return [r,c];
+      }
+    }
+    return null;
+  }
+  function firstFitSICell(container){
+    const cbp=cellBPMapIn(container),occ=invOccupancy(container,[]);
+    for(let r=1;r<=ROWS;r++){
+      for(let c=1;c<=COLS;c++){
+        if(cbp[key(r,c)])continue; // SIs never land on a BP cell (see invCanPlaceSI)
+        if(!occ[key(r,c)])return [r,c];
+      }
+    }
+    return null;
+  }
+  function migrateState(oldState){
+    const st=JSON.parse(JSON.stringify(oldState)); // never mutate the input
+    if(!st.inv)st.inv=emptyInventory();
+    const legacyPOs=st.pos.filter(p=>p.loc==='inv');
+    const legacySIs=st.sis.filter(a=>a.host==='inv');
+    const migratedPOUids=new Set(),migratedSIUids=new Set();
+    let pageIdx=0;
+    for(const p of legacyPOs){
+      let placedOn=null;
+      while(pageIdx<PAGE_COUNT){
+        const container=st.inv.pages[pageIdx];
+        const cell=firstFitCell(container,shapeInfo(p.id,p.rot).off);
+        if(cell){placedOn={pageIdx,cell};break;}
+        pageIdx++; // this page is full for this shape -- try the next page
+      }
+      if(!placedOn)break; // all 5 pages full -- item stays as legacy loc:'inv' (never dropped)
+      p.loc='grid';p.cell=placedOn.cell;
+      st.inv.pages[placedOn.pageIdx].pos.push(p);
+      migratedPOUids.add(p.uid);
+    }
+    // Remove ONLY the successfully-migrated entries from st.pos; any
+    // un-fittable leftovers (all 5 pages full) simply remain in st.pos with
+    // their original loc:'inv',cell:null -- never silently dropped.
+    st.pos=st.pos.filter(p=>!migratedPOUids.has(p.uid));
+    pageIdx=0;
+    for(const a of legacySIs){
+      let placedOn=null;
+      while(pageIdx<PAGE_COUNT){
+        const container=st.inv.pages[pageIdx];
+        const cell=firstFitSICell(container);
+        if(cell){placedOn={pageIdx,cell};break;}
+        pageIdx++;
+      }
+      if(!placedOn)break;
+      a.host={page:placedOn.pageIdx,cell:placedOn.cell};
+      st.inv.pages[placedOn.pageIdx].sis.push(a);
+      migratedSIUids.add(a.uid);
+    }
+    st.sis=st.sis.filter(a=>!migratedSIUids.has(a.uid));
+    return st;
+  }
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
           pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,poInBPIn,cellsOfIn,cellBPMapIn,
-          invOccupancy,canTransferBP,transferBP};
+          invOccupancy,canTransferBP,transferBP,migrateState};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });

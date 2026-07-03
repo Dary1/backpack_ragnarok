@@ -543,6 +543,42 @@ T('inventory: 5-page bounds/independence -- identical coordinates on different p
   }
 });
 
+T('migrateState: legacy list-inventory (loc:\'inv\' POs, host:\'inv\' SIs) -> first-fit page 1 placement',()=>{
+  const {st:legacy,E}=fresh();
+  // sanity on the fixture's actual legacy shape (found in mock-src/data.js SCENARIO):
+  // p8 (oil_flask) is loc:'inv',cell:null; a3/a4/a5/a6 are host:'inv'.
+  eq(legacy.pos.find(p=>p.uid==='p8').loc,'inv');
+  eq(legacy.pos.find(p=>p.uid==='p8').cell,null);
+  ok(['a3','a4','a5','a6'].every(u=>legacy.sis.find(a=>a.uid===u).host==='inv'),'4 legacy stowed SIs (host:inv) present in the fixture');
+  delete legacy.inv; // simulate an OLDER saved profile that predates st.inv entirely
+  const migrated=E.migrateState(legacy);
+  ok(migrated!==legacy,'migrateState must not mutate its input');
+  ok(!legacy.inv,'original legacy object left untouched (no inv field added to it)');
+  ok(migrated.inv&&migrated.inv.pages.length===5,'migrated state has the 5-page inventory');
+  // oil_flask (PO) should now be spatially placed on page 1 (index 0), no longer in the flat pos[] list
+  ok(!migrated.pos.some(p=>p.uid==='p8'),'oil_flask no longer sits in the flat legacy pos[] list');
+  const placedOil=migrated.inv.pages[0].pos.find(p=>p.uid==='p8');
+  ok(!!placedOil,'oil_flask migrated onto page 1');
+  eq(placedOil.loc,'grid');
+  ok(Array.isArray(placedOil.cell)&&placedOil.cell.length===2,'oil_flask has a concrete [row,col] cell after migration');
+  // legality: the migrated placement must itself be legal per invCanPlacePO (first-fit never places illegally)
+  const reCheck=E.invCanPlacePO(migrated,0,'p8',placedOil.rot,placedOil.cell);
+  // re-run against a clone excluding p8 itself (invCanPlacePO already excludes the uid internally)
+  ok(reCheck.ok,'first-fit placement must itself be legal: '+JSON.stringify(reCheck));
+  // the 4 legacy SIs should now be free-placed 1x1 on page 1 (or overflow pages), never left as bare host:'inv'
+  ok(!migrated.sis.some(a=>['a3','a4','a5','a6'].includes(a.uid)),'legacy stowed SIs no longer sit as flat host:inv entries');
+  for(const uid of ['a3','a4','a5','a6']){
+    const found=migrated.inv.pages.flatMap(pg=>pg.sis).find(a=>a.uid===uid);
+    ok(!!found,'SI '+uid+' migrated into some page');
+    ok(found.host&&typeof found.host==='object'&&Array.isArray(found.host.cell),'SI '+uid+' has a free {page,cell} host after migration: '+JSON.stringify(found.host));
+  }
+  // canvas-placed POs/BPs and seated SIs (a1 gem, a2 guard) must be untouched by migration
+  eq(migrated.bps.length,legacy.bps.length,'canvas BPs unchanged');
+  ok(migrated.pos.some(p=>p.uid==='p1'&&p.loc==='grid'),'canvas-placed blade untouched');
+  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'seated gem (a1) untouched by migration');
+  eq(migrated.sis.find(a=>a.uid==='a2').host,'bond','bonded guard (a2) untouched by migration');
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
