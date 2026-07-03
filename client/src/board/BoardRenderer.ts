@@ -152,6 +152,34 @@ export class BoardRenderer {
       this.gTarget,
       this.gCarry
     );
+    // PixiJS v8 hit-testing note (REQ-0027 T0.2 interaction bug fix): once
+    // ANY ancestor in the scene graph has eventMode 'static'/'dynamic'
+    // (the stage does, below), EventBoundary's hitTestRecursive() treats
+    // that interactive mode as inherited by every descendant during
+    // recursion -- a purely-decorative child (default eventMode 'passive',
+    // never explicitly set) still gets hitTestFn() run against it and,
+    // if its bounds contain the point, yields a match. That match is an
+    // EMPTY array (since the decorative node itself is not
+    // isInteractive()), but an empty array is still truthy in JS, so it
+    // stops sibling iteration (which runs LAST-ADDED-FIRST) dead in its
+    // tracks -- a decorative Sprite/Graphics added AFTER a sibling `hit`
+    // target (e.g. a PO's art on top of its own hit rect) silently
+    // swallows the pointer event before the real interactive sibling is
+    // ever tested. This is what made every dblclick/drag on this board
+    // resolve to the stage/root Container instead of the intended PO/BP/
+    // SI target. Fix: explicitly mark every purely-decorative node
+    // eventMode='none' (NOT the default 'passive') so
+    // EventBoundary._interactivePrune() excludes it -- and its subtree --
+    // from hit-testing entirely, regardless of add-order. gBeams (beam
+    // lines/arrowheads/dud marks), gTarget (drop-target tint/rings,
+    // reject-flash), and gCarry (drag ghost sprites) never host a
+    // listener anywhere in this file, so the whole group is marked here;
+    // gBase/gItems/gSock/gLinkers mix interactive hit objects with
+    // decorative art and are annotated per-node at each creation site
+    // below instead.
+    this.gBeams.eventMode = 'none';
+    this.gTarget.eventMode = 'none';
+    this.gCarry.eventMode = 'none';
     this.app.stage.addChild(this.root);
     this.app.stage.eventMode = 'static';
     this.app.stage.hitArea = this.app.screen;
@@ -205,6 +233,7 @@ export class BoardRenderer {
           g.fill({ color: '#191919', alpha: 1 });
           g.stroke({ color: '#242424', alpha: 1, width: 1 });
         }
+        g.eventMode = 'none'; // decorative cell tint, see constructor note
         this.gBase.addChild(g);
       }
     }
@@ -223,6 +252,7 @@ export class BoardRenderer {
         if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
       }
       outline.stroke({ color: bp.color, width: 3, cap: 'square' });
+      outline.eventMode = 'none'; // decorative, see constructor note
       this.gBase.addChild(outline);
 
       const r0 = Math.min(...cells.map((cell) => cell[0]));
@@ -233,6 +263,7 @@ export class BoardRenderer {
       });
       label.x = PAD + (c0 - 1) * CELL + 4;
       label.y = PAD + (r0 - 1) * CELL - 18;
+      label.eventMode = 'none'; // decorative, see constructor note
       this.gBase.addChild(label);
 
       // Empty-cell BP grab handles (REQ-0027 T0.2): every BP cell that is
@@ -363,6 +394,7 @@ export class BoardRenderer {
         const bg = new Graphics();
         bg.roundRect(PAD + (c - 1) * CELL + 3, PAD + (r - 1) * CELL + 3, CELL - 6, CELL - 6, 6);
         bg.fill({ color: '#000000', alpha: 0.22 });
+        bg.eventMode = 'none'; // decorative backdrop, see constructor note
         this.gItems.addChild(bg);
       }
       const texture = textures.get(def.icon);
@@ -384,6 +416,7 @@ export class BoardRenderer {
           sprite.height = H0 * 0.9;
         }
         const inner = new Container();
+        inner.eventMode = 'none'; // decorative art, see constructor note
         inner.addChild(sprite);
         if (k === 0) {
           inner.position.set(box.x, box.y);
@@ -436,6 +469,7 @@ export class BoardRenderer {
         const bg = new Graphics();
         bg.roundRect(PAD + (c - 1) * CELL + 3, PAD + (r - 1) * CELL + 3, CELL - 6, CELL - 6, 6);
         bg.fill({ color: '#000000', alpha: 0.22 });
+        bg.eventMode = 'none'; // decorative backdrop, see constructor note
         this.gItems.addChild(bg);
       }
       const cellSet = new Set(a.cells.map(([r, c]) => `${r},${c}`));
@@ -449,6 +483,7 @@ export class BoardRenderer {
         if (!cellSet.has(`${r},${c + 1}`)) outline.moveTo(x + CELL, y).lineTo(x + CELL, y + CELL);
       }
       outline.stroke({ color: '#d7dfe6', width: 1.5, alpha: 0.9 });
+      outline.eventMode = 'none'; // decorative, see constructor note
       this.gItems.addChild(outline);
 
       const bx = poBox(a.blade);
@@ -460,6 +495,7 @@ export class BoardRenderer {
         sprite.y = bx.y + 6;
         sprite.width = bx.w * 0.8;
         sprite.height = bx.h - 6;
+        sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
       const hx = poBox(a.hilt);
@@ -471,6 +507,7 @@ export class BoardRenderer {
         sprite.y = hx.y;
         sprite.width = hx.w * 0.8;
         sprite.height = hx.h - 8;
+        sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
     }
@@ -532,6 +569,7 @@ export class BoardRenderer {
       diamond.moveTo(nx, ny - 9).lineTo(nx + 9, ny).lineTo(nx, ny + 9).lineTo(nx - 9, ny).closePath();
       diamond.fill({ color: '#f5a93b', alpha: 0.65 });
       diamond.stroke({ color: '#2b2016', width: 1.5 });
+      diamond.eventMode = 'none'; // decorative, see constructor note
       this.gItems.addChild(diamond);
     }
 
@@ -555,6 +593,7 @@ export class BoardRenderer {
         sprite.height = 44;
         sprite.x = x - 22;
         sprite.y = y - 22;
+        sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gLinkers.addChild(sprite);
       }
       for (const d of bp.linker.dirs) {
@@ -562,6 +601,7 @@ export class BoardRenderer {
         const dot = new Graphics();
         dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);
         dot.fill({ color: '#59d6d6' });
+        dot.eventMode = 'none'; // decorative, see constructor note
         this.gLinkers.addChild(dot);
       }
     }
@@ -592,6 +632,7 @@ export class BoardRenderer {
           bar.fill({ color: '#e9b64d' });
           bar.circle(x + 12, y, 2.2);
           bar.fill({ color: '#e9b64d' });
+          bar.eventMode = 'none'; // decorative, see constructor note
           g.addChild(bar);
         } else if (siDef) {
           const tex = textures.get(siDef.icon);
@@ -601,6 +642,7 @@ export class BoardRenderer {
             sprite.y = y - 12;
             sprite.width = 24;
             sprite.height = 24;
+            sprite.eventMode = 'none'; // decorative art, see constructor note
             g.addChild(sprite);
           }
         }
@@ -612,13 +654,22 @@ export class BoardRenderer {
         this.gSock.addChild(g);
       } else {
         const g = new Graphics();
+        g.eventMode = 'none'; // decorative empty-socket outline, see constructor note
         if (s.t === 'bond') {
           g.roundRect(x - 23, y - 7, 46, 14, 6);
           g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+          this.gSock.addChild(g);
         } else {
           g.circle(x, y, 9);
           g.fill({ color: '#0e0d0b', alpha: 0.5 });
           g.stroke({ color: '#b08340', width: 1.5, alpha: 0.8 });
+          // Graphics has allowChildren=false in PixiJS v8 (it's a leaf
+          // "view" node, like Sprite/Text) -- calling g.addChild(glyph)
+          // directly triggers the "addChild: Only Containers will be
+          // allowed to add children in v8.0.0" deprecation warning (the
+          // only console warning this app produced). Fixed by wrapping
+          // both the Graphics and the Text in a plain Container (which
+          // does allow children) and adding that to gSock instead.
           const glyph = new Text({
             text: SOCK_GLYPH[s.t] ?? '?',
             style: { fill: '#b08340', fontSize: 9 },
@@ -626,11 +677,35 @@ export class BoardRenderer {
           glyph.anchor.set(0.5);
           glyph.x = x;
           glyph.y = y + 1;
-          g.addChild(glyph);
+          glyph.eventMode = 'none'; // decorative, see constructor note
+          const wrap = new Container();
+          wrap.eventMode = 'none'; // decorative, see constructor note
+          wrap.addChild(g, glyph);
+          this.gSock.addChild(wrap);
         }
-        this.gSock.addChild(g);
       }
     }
+
+    // Force an immediate render pass (REQ-0027 T0.2 interaction bug fix,
+    // root cause #2): PixiJS's EventBoundary resolves hit targets against
+    // `renderer.lastObjectRendered`, which is ONLY ever assigned inside
+    // renderer.render() -- normally invoked automatically once per frame
+    // by the Application's Ticker (via TickerPlugin -> app.render() ->
+    // renderer.render({container: stage})). That auto-render loop is
+    // driven by requestAnimationFrame, which browsers suspend/throttle
+    // for backgrounded or non-visible tabs (document.hidden) -- so on a
+    // tab that hasn't had a chance to paint a real animation frame yet
+    // (or one the browser has deprioritized), `lastObjectRendered` can
+    // stay stale/unset indefinitely, and EVERY pointer event resolves to
+    // the wrong hit-test root (observed: every click hit-tested as the
+    // bare stage Container, never any actual PO/BP/SI target). This board
+    // has no continuous animation -- it only needs to redraw when
+    // `render(state)` is called (i.e. on a real state change) -- so it
+    // must not depend on an implicit, timing-sensitive animation-frame
+    // loop for event-routing correctness. Rendering synchronously here
+    // makes hit-testing correct immediately after every state change,
+    // independent of tab visibility/ticker timing.
+    this.app.renderer.render({ container: this.app.stage });
   }
 
   /**
