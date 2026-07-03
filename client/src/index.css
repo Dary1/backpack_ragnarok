@@ -1,13 +1,24 @@
+/* backpack_ragnarok client — REQ-0026 T0.1 base styles.
+   Color palette matches mock-src/index.template.html's :root vars for
+   visual continuity between the mock and the real client. */
 :root {
   color-scheme: dark;
   font: 15px/1.45 system-ui, 'Segoe UI', Roboto, sans-serif;
+  --bg: #121212;
+  --panel: #1c1a17;
+  --line: #2e2a24;
+  --text: #e8e0d0;
+  --dim: #9a917f;
+  --cyan: #59d6d6;
+  --ok: #5cb573;
+  --bad: #c05050;
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  background: #121212;
-  color: #e8e0d0;
+  background: var(--bg);
+  color: var(--text);
 }
 
 #root {
@@ -16,4 +27,172 @@ html, body {
 
 * {
   box-sizing: border-box;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.app-header h1 {
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: 0.5px;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.data-source-badge {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+}
+
+.badge-live {
+  background: #1c3d2e;
+  color: #5cb573;
+  border-color: #2f6b4d;
+}
+
+.badge-error {
+  background: #3d1c1c;
+  color: #e05c5c;
+  border-color: #6b2f2f;
+}
+
+.badge-pending {
+  background: #2a2620;
+  color: var(--dim);
+  border-color: var(--line);
+}
+
+.lang-toggle {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.lang-toggle:hover {
+  border-color: var(--cyan);
+}
+
+.app-main {
+  display: flex;
+  gap: 18px;
+  padding: 18px 22px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.board-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  display: inline-flex;
+}
+
+.board-canvas {
+  display: block;
+}
+
+.board-placeholder {
+  min-width: 560px;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+}
+
+.board-error {
+  color: var(--bad);
+}
+
+.item-panel {
+  flex: 1;
+  min-width: 320px;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.item-panel h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--dim);
+}
+
+.item-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+
+.item-list li {
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+  cursor: default;
+}
+
+.item-list li:last-child {
+  border-bottom: 0;
+}
+
+.rarity.r-Common { color: #9aa5ad; }
+.rarity.r-Uncommon { color: #5cb573; }
+.rarity.r-Rare { color: #6c95e0; }
+.rarity.r-Relic { color: #c07ae0; }
+
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 10;
+  background: #0e0d0b;
+  border: 1px solid #4a4234;
+  border-radius: 8px;
+  padding: 10px 12px;
+  max-width: 300px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+}
+
+.tooltip h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.tooltip-meta {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.tooltip-eff {
+  margin-top: 6px;
 }
