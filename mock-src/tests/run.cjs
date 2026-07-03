@@ -204,6 +204,85 @@ T('hierarchy: unrelated sibling tags do not match',()=>{
   ok(!Engine.hasTag(['Flame'],'Frost',flatTree),'Flame must not satisfy a Frost-gated check');
 });
 
+// ---------------------------------------------------------------------
+// Connection Port tests (REQ-0023). A small synthetic 2-BP fixture (two
+// 2x2 BPs, "north" rows 1-2 and "south" rows 3-4, both cols 1-2, sharing a
+// north/south border at row2|row3) with synthetic ITEMS is used instead of
+// the shared game scenario, so each test's placement/adjacency intent is
+// self-contained and doesn't depend on (or risk colliding with) the live
+// roster's layout. No linkers needed for these checks -- linker.dirs:[].
+function portFixture(){
+  const ITEMS={
+    port_owner:{name:'Port Owner',tags:['Sender'],shape:[[0,0]],icon:'icon-x',sockets:[],
+      ports:[{tiles:[[1,0]],tag:'Target'}]}, // port aims one cell straight down (external)
+    partner_match:{name:'Partner Match',tags:['Target'],shape:[[0,0]],icon:'icon-x',sockets:[]},
+    partner_unrelated:{name:'Partner Unrelated',tags:['Unrelated'],shape:[[0,0]],icon:'icon-x',sockets:[]},
+    partner_child:{name:'Partner Child',tags:['ChildOfTarget'],shape:[[0,0]],icon:'icon-x',sockets:[]},
+  };
+  const SI_DEFS={};
+  const LAYOUT={ROWS:4,COLS:2};
+  function freshState(){
+    return {
+      linked:true,
+      bps:[
+        {id:'north',name:'North',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}},
+        {id:'south',name:'South',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[3,1],linker:{off:[0,0],dirs:[]}},
+      ],
+      pos:[],
+      sis:[],
+    };
+  }
+  return {ITEMS,SI_DEFS,LAYOUT,freshState};
+}
+
+T('Connection Port: tile reached but partner tag unrelated -> no connection',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,freshState}=portFixture();
+  // po_tags tree: Target and Unrelated are unrelated roots (no hierarchy edge).
+  const poTree={Sender:null,Target:null,Unrelated:null};
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,{po:poTree});
+  const st=freshState();
+  st.pos.push({uid:'owner',id:'port_owner',loc:'grid',cell:[1,1],rot:0}); // port tile targets [2,1]
+  st.pos.push({uid:'partner',id:'partner_unrelated',loc:'grid',cell:[2,1],rot:0}); // occupies the port's target tile, same BP
+  const conns=E.connectionsFrom(st,st.pos.find(p=>p.uid==='owner'));
+  ok(conns.length===0,'tile is reached (partner sits on the port target tile) but tag is unrelated -- must NOT connect: '+JSON.stringify(conns));
+});
+
+T('Connection Port: port tag matches a partner via hierarchy (synthetic child tag)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,freshState}=portFixture();
+  // ChildOfTarget is a hierarchy descendant of Target -- per the ground-truth
+  // "same tag, or tag within the hierarchy" rule, a partner tagged only with
+  // the CHILD must still satisfy a port searching for the ANCESTOR tag.
+  const poTree={Sender:null,Target:null,ChildOfTarget:'Target'};
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,{po:poTree});
+  const st=freshState();
+  st.pos.push({uid:'owner',id:'port_owner',loc:'grid',cell:[1,1],rot:0}); // port tile targets [2,1]
+  st.pos.push({uid:'partner',id:'partner_child',loc:'grid',cell:[2,1],rot:0}); // tagged ChildOfTarget, same BP
+  const conns=E.connectionsFrom(st,st.pos.find(p=>p.uid==='owner'));
+  ok(conns.length===1&&conns[0].tag==='Target'&&conns[0].partner.uid==='partner','port tagged Target should connect to a partner tagged only the child ChildOfTarget, via hierarchy: '+JSON.stringify(conns.map(c=>({tag:c.tag,partner:c.partner&&c.partner.uid}))));
+});
+
+T('Connection Port: cross-BP still blocked even with a matching tag',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,freshState}=portFixture();
+  const poTree={Sender:null,Target:null};
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,{po:poTree});
+  const st=freshState();
+  // owner at north's bottom row [2,1]; port tile targets [3,1], which is
+  // SOUTH's top row -- a different BP, even though the tile arithmetic
+  // lands exactly on an occupied, correctly-tagged partner cell.
+  st.pos.push({uid:'owner',id:'port_owner',loc:'grid',cell:[2,1],rot:0});
+  st.pos.push({uid:'partner',id:'partner_match',loc:'grid',cell:[3,1],rot:0});
+  const conns=E.connectionsFrom(st,st.pos.find(p=>p.uid==='owner'));
+  ok(conns.length===0,'partner has the matching tag AND sits on the port target tile, but is in a DIFFERENT BP -- must NOT connect (same-BP guard, REQ-0023): '+JSON.stringify(conns));
+  // sanity/control: the identical setup entirely WITHIN one BP (south's own
+  // 2x2) DOES connect, proving the rejection above is specifically the
+  // cross-BP guard and not some other fixture mistake.
+  const st2=freshState();
+  st2.pos.push({uid:'owner2',id:'port_owner',loc:'grid',cell:[3,1],rot:0}); // south top row; port targets [4,1]
+  st2.pos.push({uid:'partner2',id:'partner_match',loc:'grid',cell:[4,1],rot:0}); // south bottom row, same BP
+  const conns2=E.connectionsFrom(st2,st2.pos.find(p=>p.uid==='owner2'));
+  ok(conns2.length===1&&conns2[0].partner.uid==='partner2','control case (same BP) should connect: '+JSON.stringify(conns2.map(c=>({tag:c.tag,partner:c.partner&&c.partner.uid}))));
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
