@@ -15,6 +15,8 @@
 //   PUT    /api/schedule/rooms/:id/slots/:slotIndex
 //   PUT    /api/schedule/rooms/:id/swap
 //   GET    /api/schedule/rooms/:id/run
+//   GET    /api/schedule/dungeons                        (REQ-0036 P1-C, no auth)
+//   POST   /api/schedule/rooms/:id/dev/backdate           (REQ-0036 P1-C, dev-only)
 //   GET    /api/warehouse
 //   POST   /api/warehouse/claim
 //
@@ -229,6 +231,7 @@ const SCHEDULE_ROOM_RE = /^\/api\/schedule\/rooms\/([^/]+)$/;
 const SCHEDULE_ROOM_SLOT_RE = /^\/api\/schedule\/rooms\/([^/]+)\/slots\/([0-9]+)$/;
 const SCHEDULE_ROOM_SWAP_RE = /^\/api\/schedule\/rooms\/([^/]+)\/swap$/;
 const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
+const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/backdate$/; // REQ-0036 P1-C: dev-only E2E time-control hook
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
 
@@ -247,6 +250,25 @@ function handle(req, res) {
       sendJSON(res, 200, payload);
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'content read failed: ' + e.message });
+    }
+    return;
+  }
+
+  // REQ-0036 P1-C: GET /api/schedule/dungeons -- public read data (the
+  // pilot batch's one dungeon def + its 4 formation defs), matching
+  // /api/content's own no-auth convention. Deliberately special-cased
+  // HERE, BEFORE the schedule auth gate further down (scheduleMatch's
+  // resolveAuth() call) -- this route needs no caller identity at all
+  // (unlike every other /api/schedule/* route, which always operates on
+  // "the caller's own rooms/warehouse"), so forcing it through
+  // resolveAuth() would require a token (or a dev_mode fallback) for no
+  // reason. Read-only, no body.
+  if (p === '/api/schedule/dungeons' && req.method === 'GET') {
+    try {
+      const payload = schedule.listDungeonsAndFormations();
+      sendJSON(res, 200, { ok: true, dungeons: payload.dungeons, formations: payload.formations });
+    } catch (e) {
+      sendJSON(res, 500, { ok: false, error: 'dungeons read failed: ' + e.message });
     }
     return;
   }
@@ -393,6 +415,7 @@ function handle(req, res) {
   // note (REQ-0039 design-first-class requirement).
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
+    p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE);
   if (scheduleMatch) {
     const token = getAuthToken(req);
@@ -402,6 +425,17 @@ function handle(req, res) {
       return;
     }
     const callerId = resolved.player.playerId;
+    // REQ-0036 P1-C: true only when this request resolved via the
+    // dev_mode NO-TOKEN fallback (never for a real, valid guest token,
+    // even one belonging to the dev player's own id by coincidence --
+    // this deliberately mirrors the PROFILE route's own
+    // isDefaultAlias check above, which also gates on `!token`, not
+    // merely "resolved player happens to be the dev player"). Used ONLY
+    // to gate the dev/backdate route below (a test-control seam, not a
+    // gameplay feature) -- see schedule.cjs's devBackdateActiveRun() doc
+    // comment and server/README.md's "E2E time-control" section.
+    const devUserForGate = admin.readDevUser();
+    const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
 
     // Loads (and lazily migrates, per REQ-0037's legacy-default fallback)
     // the caller's own profile canvas -- schedule routes always operate
@@ -556,6 +590,41 @@ function handle(req, res) {
           settled: run.settled,
         });
       } catch (e) { sendScheduleError(e); }
+      return;
+    }
+
+    // ---- POST /api/schedule/rooms/:id/dev/backdate (REQ-0036 P1-C: dev-
+    // only E2E time-control hook) ----
+    // Body: {extraSecsIntoPast?: number} (default 5). Rewrites the
+    // room's CURRENT/LAST run's startedAt further into the past so its
+    // run-clock reads as already elapsed on the next read -- see
+    // schedule.cjs's devBackdateActiveRun() doc comment for the full
+    // rationale and server/README.md's "E2E time-control" section.
+    // GATED to the dev_mode no-token fallback caller ONLY
+    // (callerIsDevFallback, computed above) -- a real guest token,
+    // even a perfectly valid one, gets 403 here, never 200. This is a
+    // test-control seam, not a gameplay feature: it never touches the
+    // run's seed (reward RNG is untouched), it only moves a timestamp.
+    const devBackdateMatch = p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE);
+    if (devBackdateMatch) {
+      const roomId = decodeURIComponent(devBackdateMatch[1]);
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!callerIsDevFallback) {
+        sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+        return;
+      }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body = {};
+        if (bodyStr) {
+          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        }
+        try {
+          const room = schedule.getOwnRoomOr404(roomId, callerId);
+          const run = schedule.devBackdateActiveRun(room, body.extraSecsIntoPast);
+          sendJSON(res, 200, { ok: true, runId: run.id, startedAt: run.startedAt, durationSecs: run.durationSecs });
+        } catch (e) { sendScheduleError(e); }
+      });
       return;
     }
 

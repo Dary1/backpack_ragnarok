@@ -203,6 +203,19 @@ fs.writeFileSync(path.join(batchDir, 'skills.json'), JSON.stringify({
   ],
 }));
 fs.writeFileSync(path.join(batchDir, 'items.json'), JSON.stringify({ schema: 'po/2', entries: [] }));
+// REQ-0036 P1-C: formations.json fixture (schedule.cjs's
+// getScheduleContent() now unconditionally loads this path for the new
+// GET /api/schedule/dungeons route) -- mirrors the real batch-002
+// content's 4-entry shape, trimmed to 2 entries (enough to exercise "a
+// formations list exists / has entries" without duplicating the full
+// real content).
+fs.writeFileSync(path.join(batchDir, 'formations.json'), JSON.stringify({
+  schema: 'formation/1',
+  entries: [
+    { id: 'formation1', i18n: { en: { name: 'Standard Line' }, ja: { name: '標準陣形' } }, canvases: { unit1: 'F2:M9', unit2: 'N2:U9', unit3: 'B10:I17', unit4: 'R10:Y17' } },
+    { id: 'formation2', i18n: { en: { name: 'Tank Vanguard' }, ja: { name: 'タンク先鋒' } }, canvases: { unit1: 'J2:Q9', unit2: 'B6:I13', unit3: 'R6:Y13', unit4: 'J10:Q17' } },
+  ],
+}));
 
 os.homedir = () => fakeRepoHome;
 delete require.cache[require.resolve('../players.cjs')];
@@ -1318,6 +1331,102 @@ async function main() {
     const second = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(second.status, 200);
     assert.strictEqual(second.body.room.status, 'canceled');
+  });
+
+  // =====================================================================
+  // REQ-0036 P1-C: GET /api/schedule/dungeons (no-auth) + POST .../dev/
+  // backdate (dev-only) -- new server surface added for the client half.
+  // =====================================================================
+
+  await AT('schedule: GET /api/schedule/dungeons returns the dungeon list + formations, no auth required', async () => {
+    // No token at all AND not even routed through resolveAuth -- confirm
+    // by using a deliberately garbage token too (must still 200, unlike
+    // every OTHER /api/schedule/* route, which would 401 on a bad token).
+    const noToken = await scheduleReq('GET', '/api/schedule/dungeons', undefined);
+    assert.strictEqual(noToken.status, 200);
+    assert.ok(Array.isArray(noToken.body.dungeons) && noToken.body.dungeons.length >= 1, 'dungeons list present');
+    assert.strictEqual(noToken.body.dungeons[0].id, 'test_dungeon', 'fixture dungeon id present');
+    assert.ok(Array.isArray(noToken.body.formations) && noToken.body.formations.length === 2, 'both fixture formations present');
+    assert.ok(noToken.body.formations.some((f) => f.id === 'formation1'));
+    assert.ok(noToken.body.formations[0].canvases && noToken.body.formations[0].canvases.unit1, 'formation carries its canvases box map');
+
+    const garbageToken = await scheduleReq('GET', '/api/schedule/dungeons', 'totally-bogus-token-value');
+    assert.strictEqual(garbageToken.status, 200, 'a bad token must not block this no-auth route (never resolveAuth-gated)');
+  });
+
+  await AT('schedule: POST /api/schedule/rooms/:id/dev/backdate is dev-only (403 for a real guest token) and moves an active run\'s clock into the past for the dev fallback caller', async () => {
+    // Room owned by ScheduleP1 (a REAL guest token, not the dev fallback).
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(roomAfter.body.room.status, 'active', 'room must be running for this test to mean anything');
+
+    // A real (non-dev) guest token -- even the room's OWN owner's token --
+    // must be refused 403, never allowed to fast-forward their own run.
+    const asOwner = await scheduleReq('POST', '/api/schedule/rooms/' + roomId + '/dev/backdate', scheduleP1.token, {});
+    assert.strictEqual(asOwner.status, 403, 'a real guest token (even the room owner\'s own) must be refused: ' + JSON.stringify(asOwner.body));
+
+    // The dev_mode fallback caller (no token at all) CAN backdate -- but
+    // only ITS OWN rooms (ownership is still enforced via
+    // getOwnRoomOr404) -- this room belongs to scheduleP1, not the dev
+    // player, so even the dev fallback gets 404 here (never touches
+    // another player's room).
+    const asDevOnOthersRoom = await scheduleReq('POST', '/api/schedule/rooms/' + roomId + '/dev/backdate', undefined, {});
+    assert.strictEqual(asDevOnOthersRoom.status, 404, 'dev fallback must not backdate a room it does not own: ' + JSON.stringify(asDevOnOthersRoom.body));
+
+    // Create a room OWNED BY the dev fallback player itself, fill all 4
+    // slots (dev player's own profile canvas was seeded by
+    // ensureDevPlayer() + this suite's own admin fixtures -- but schedule
+    // routes need the dev player to actually HAVE a canvas with 4 usable
+    // presets; reuse the exact same makeTestCanvas() shape scheduleP1/P2
+    // already use, written directly to the dev player's own profile).
+    scheduleStorage.writeProfile(devPlayer.playerId, makeTestCanvas());
+    const devRoomRes = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    assert.strictEqual(devRoomRes.status, 200, 'dev fallback must be able to create its own room: ' + JSON.stringify(devRoomRes.body));
+    const devRoomId = devRoomRes.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const slotRes = await scheduleReq('PUT', '/api/schedule/rooms/' + devRoomId + '/slots/' + i, undefined, { presetIndex: i });
+      assert.strictEqual(slotRes.status, 200, 'dev fallback slot ' + i + ' assign: ' + JSON.stringify(slotRes.body));
+    }
+    const devRoomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + devRoomId, undefined);
+    assert.strictEqual(devRoomAfter.body.room.status, 'active');
+    const devRunId = devRoomAfter.body.room.lastRunId;
+    const rawRunBefore = scheduleStorage.readRun(devRunId);
+    assert.strictEqual(schedule.runClock(rawRunBefore).isSettled, false, 'run must not already be settled (test would be meaningless otherwise)');
+
+    const backdateRes = await scheduleReq('POST', '/api/schedule/rooms/' + devRoomId + '/dev/backdate', undefined, { extraSecsIntoPast: 5 });
+    assert.strictEqual(backdateRes.status, 200, JSON.stringify(backdateRes.body));
+    assert.strictEqual(backdateRes.body.runId, devRunId);
+
+    // The run's OWN persisted seed must be completely untouched by this
+    // call (test-control seam, not a gameplay/reward-RNG-biasing knob).
+    const rawRunAfter = scheduleStorage.readRun(devRunId);
+    assert.strictEqual(rawRunAfter.seed, rawRunBefore.seed, 'backdate must never touch the run\'s seed');
+    assert.strictEqual(schedule.runClock(rawRunAfter).isSettled, true, 'run clock must now read as settled');
+
+    // A subsequent GET on the room must observe + settle it (lazy
+    // settlement, same settleRoomIfDue() path every other test relies
+    // on) -- confirms the backdate hook is a genuine drop-in substitute
+    // for real wall-clock time from the room-lifecycle's point of view.
+    const settledView = await scheduleReq('GET', '/api/schedule/rooms/' + devRoomId, undefined);
+    assert.notStrictEqual(settledView.body.room.status, 'active', 'room must have settled out of active status');
+
+    // Cleanup: cancel the dev room + clear anything it rewarded, so this
+    // fixture player's state does not leak into any later test in this
+    // file that might also touch the dev player's warehouse/rooms.
+    for (const item of schedule.listWarehouse(devPlayer.playerId)) scheduleStorage.deleteWarehouseItem(devPlayer.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + devRoomId, undefined);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: POST .../dev/backdate on a room with no run yet is a 400, not a crash', async () => {
+    scheduleStorage.writeProfile(devPlayer.playerId, makeTestCanvas());
+    const created = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const res = await scheduleReq('POST', '/api/schedule/rooms/' + roomId + '/dev/backdate', undefined, {});
+    assert.strictEqual(res.status, 400, JSON.stringify(res.body));
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, undefined);
   });
 
   os.homedir = realHomedir;

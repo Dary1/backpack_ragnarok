@@ -37,6 +37,7 @@ const DUNGEON_PATH = path.join(BATCH_DIR, 'dungeon.json');
 const ENEMIES_PATH = path.join(BATCH_DIR, 'enemies.json');
 const SKILLS_PATH = path.join(BATCH_DIR, 'skills.json');
 const ITEMS_PILOT_PATH = path.join(BATCH_DIR, 'items.json');
+const FORMATIONS_PATH = path.join(BATCH_DIR, 'formations.json'); // REQ-0036 P1-C: GET /api/schedule/dungeons
 
 // ---------------------------------------------------------------------
 // Tunables (this REQ's own; distinct from sim/combat.cjs's TUNABLES,
@@ -70,6 +71,7 @@ function getScheduleContent() {
     enemies: statMtimeMs(ENEMIES_PATH),
     skills: statMtimeMs(SKILLS_PATH),
     pilotItems: statMtimeMs(ITEMS_PILOT_PATH),
+    formations: statMtimeMs(FORMATIONS_PATH), // REQ-0036 P1-C
   };
   const stale = !contentCache || Object.keys(mtimes).some((k) => mtimes[k] !== contentCache.mtimes[k]);
   if (!stale) return contentCache.payload;
@@ -79,6 +81,7 @@ function getScheduleContent() {
   const dungeonDef = loadJSON(DUNGEON_PATH);
   const enemies = loadJSON(ENEMIES_PATH);
   const skills = loadJSON(SKILLS_PATH);
+  const formationsDoc = loadJSON(FORMATIONS_PATH); // REQ-0036 P1-C
 
   const itemDefsById = {};
   for (const e of liveItems.entries) itemDefsById[e.id] = e;
@@ -92,9 +95,33 @@ function getScheduleContent() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  const payload = { itemDefsById, dungeonDef, enemyDefsById, skillDefsById };
+  const payload = { itemDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
+}
+
+// ---------------------------------------------------------------------
+// REQ-0036 P1-C: GET /api/schedule/dungeons support. The rooms API never
+// exposed a dungeon/formation LIST endpoint (P1-B only ever consumed a
+// caller-supplied dungeonId/formationId at room-create time) -- the
+// client's create-room form needs somewhere to fetch the pilot batch's
+// one dungeon def + 4 formation defs from, rather than hardcoding them.
+// Reuses getScheduleContent()'s own mtime-cache (dungeonDef +
+// formationsDoc are already loaded there) -- no second cache/read path.
+// Public, read-only, matches /api/content's own no-auth convention (see
+// server/api.cjs's route dispatch -- this route is special-cased BEFORE
+// the schedule auth gate for exactly this reason).
+// ---------------------------------------------------------------------
+function listDungeonsAndFormations() {
+  const { dungeonDef, formationsDoc } = getScheduleContent();
+  const dungeons = [{ id: dungeonDef.id, name: dungeonDef.name, i18n: dungeonDef.i18n || {} }];
+  const formations = (formationsDoc.entries || []).map((f) => ({
+    id: f.id,
+    name: (f.i18n && f.i18n.en && f.i18n.en.name) || f.id,
+    i18n: f.i18n || {},
+    canvases: f.canvases,
+  }));
+  return { dungeons, formations };
 }
 
 // Reward-roll id -> real content item id resolution table. batch-002's
@@ -705,6 +732,44 @@ function claimWarehouseItem(playerId, itemUid, profileCanvas, itemDefsById) {
 // the only participating player IS the owner, so this is a straight
 // policy check against the room's OWN cancelPolicy.
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// REQ-0036 P1-C: dev-only run-clock backdate hook, for E2E "run settles"
+// coverage without burning real wall-clock time. See server/README.md's
+// "E2E time-control (dev-only backdate hook)" section for the full
+// rationale/gating writeup. THIS IS A TEST-CONTROL SEAM, NOT A GAMEPLAY
+// FEATURE: it never touches the SEED (a caller cannot bias reward RNG --
+// startRun()'s crypto.randomBytes(16) seed generation is completely
+// untouched by this function), it only rewrites the ALREADY-COMPUTED
+// run's own `startedAt` timestamp further into the past so its run-clock
+// (elapsedSecs = (Date.now()-startedAt)/1000) reads as already elapsed on
+// the very next read -- exactly mirroring what server/tests/api_test.cjs's
+// own forceRunElapsed() test helper has done (server-internally) since
+// P1-B. This is the same idea, exposed as a real HTTP route so E2E specs
+// (which only have HTTP access, no direct require() of schedule.cjs) can
+// do the equivalent without waiting out a real dungeon run's full
+// durationSecs (~20s+ for the real niflheim_depths content with a
+// detection/unlock-capable unit; unboundedly longer -- e.g. 999s -- for a
+// unit that never clears a detection-mode encounter at all, per this
+// REQ's own P1-C measurement).
+//
+// Caller gating (server/api.cjs's route handler, NOT here): only
+// reachable when the RESOLVED caller is the dev_mode fallback player
+// (no token sent, dev_mode:true) -- see admin.cjs's resolveAuth()/
+// readDevUser(). A real guest token (even a valid one) is REFUSED
+// (403) by api.cjs before this function is ever called, so no ordinary
+// authenticated player can fast-forward their own or anyone else's run.
+function devBackdateActiveRun(room, extraSecsIntoPast) {
+  if (!room.lastRunId) {
+    const err = new Error('room has no run to backdate'); err.code = 'BAD_REQUEST'; throw err;
+  }
+  const run = storage.readRun(room.lastRunId);
+  if (!run) { const err = new Error('run record not found'); err.code = 'NOT_FOUND'; throw err; }
+  const pastMs = Date.now() - (run.durationSecs + Math.max(0, Number(extraSecsIntoPast) || 5)) * 1000;
+  run.startedAt = new Date(pastMs).toISOString();
+  storage.writeRun(run.id, run);
+  return run;
+}
+
 function cancelRoom(room) {
   if (room.status === 'canceled') return room; // idempotent
   if (room.cancelPolicy.immediate || room.status !== 'active') {
@@ -759,4 +824,6 @@ module.exports = {
   listWarehouse,
   claimWarehouseItem,
   cancelRoom,
+  listDungeonsAndFormations,
+  devBackdateActiveRun,
 };

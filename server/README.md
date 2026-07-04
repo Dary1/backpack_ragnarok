@@ -362,6 +362,99 @@ placement has a genuine placeable item to work with today; any id absent
 from the table falls back to identity (used as-is), so the table becomes
 a no-op the day real batch-002 content replaces the placeholders.
 
+### P1-C addendum: client + two new routes
+
+REQ-0036 P1-C built the CLIENT half of the Dungeon Schedule feature
+(`client/src/schedule/*` -- Schedule page, slots UI, run monitor with a
+persistent PixiJS scene, Warehouse tab) and added exactly two new server
+routes to support it, both documented here:
+
+**`GET /api/schedule/dungeons`** -- the rooms API never exposed a
+dungeon/formation LIST (P1-B only ever consumed a caller-supplied
+`dungeonId`/`formationId` at room-create time); the client's create-room
+form needs somewhere to fetch the pilot batch's one dungeon def + 4
+formation defs from. Reuses `getScheduleContent()`'s existing mtime-cache
+(now also loading `formations.json`) -- no second content-cache path.
+**No auth required** -- this is public read data, matching `/api/content`'s
+own no-auth convention. Special-cased in `api.cjs`'s `handle()` BEFORE the
+schedule auth gate (`scheduleMatch`/`resolveAuth()`), for the same reason
+`/api/content` and `/api/health` never go through `resolveAuth` either --
+it needs no caller identity at all. Response shape:
+```js
+{ ok: true, dungeons: [{id, name, i18n}], formations: [{id, name, i18n, canvases}] }
+```
+
+**`POST /api/schedule/rooms/:id/dev/backdate`** -- a dev-only E2E
+time-control seam, added because the real `niflheim_depths` dungeon's
+measured `durationSecs` (see "E2E time-control" below) is NOT reliably
+short: with a unit that cannot act during `detection`/`unlock`-mode
+encounters, a run's last event lands at `t=999` (the trap encounter's
+`every_secs:[999,999]` skill cadence never fires, so the encounter simply
+times out at that value) -- a real E2E run could otherwise need to
+poll-wait through a run that "completes" its simulation instantly but
+whose run-clock replay window is 999 real seconds long. This route
+rewrites the room's current/last run's OWN `startedAt` timestamp further
+into the past (default 5s of margin past `durationSecs`) so
+`runClock(run).isSettled` reads `true` on the very next read -- it is the
+exact same trick `server/tests/api_test.cjs`'s own internal
+`forceRunElapsed()` helper has used since P1-B, now exposed as a real
+HTTP route so Playwright specs (which only have HTTP access) can do the
+same thing. **This is a test-control seam, not a gameplay feature**:
+- It NEVER touches the run's `seed` -- `schedule.cjs`'s
+  `devBackdateActiveRun()` only rewrites `startedAt`; reward RNG
+  (`distributeRewardsUniform`, the run's own event log) is completely
+  unaffected, so a test cannot use this route to bias its own rewards.
+- **Gating** (enforced in `api.cjs`, not `schedule.cjs`): only reachable
+  when the request resolved via the `dev_mode` NO-TOKEN fallback --
+  `callerIsDevFallback = !token && devUser.dev_mode===true && callerId===devUser.playerId`,
+  the same shape as the profile route's existing `isDefaultAlias` check.
+  A real guest token -- even the room owner's own valid token -- gets
+  `403`, never `200`. Ownership is ALSO still enforced normally
+  (`getOwnRoomOr404`): the dev fallback player can only backdate ITS OWN
+  rooms, never another player's.
+- Body: `{extraSecsIntoPast?: number}` (default 5). Response:
+  `{ok, runId, startedAt, durationSecs}`.
+
+Covered by 3 new server tests (`server/tests/api_test.cjs`, both
+files/pg mode): the no-auth dungeons list, the 403-for-real-token +
+404-for-not-your-room + happy-path-for-dev-fallback backdate gating, and
+a 400 on a room with no run yet.
+
+### E2E time-control decision (REQ-0036 P1-C)
+
+Measured empirically (`sim/combat.cjs`'s `runDungeon` invoked directly
+against the real `content/batches/batch-002-dungeon-pilot/dungeon.json`
++ `formation1`, three different seeds) before choosing an approach:
+- A unit whose POs default to `modes:['battle']` (the common case --
+  most content has no reason to fight during `detection`/`unlock` mode
+  encounters) hits the `enc_trap_1` detection encounter's timeout at
+  `t=999` (that encounter's only skill has an `every_secs:[999,999]`
+  cadence that never fires without a discovering hit) -- `durationSecs`
+  for the WHOLE run is `max(event.t)` across every encounter, so this one
+  stalled encounter alone makes the run's replay window 999 real
+  seconds, regardless of how fast every other encounter cleared.
+- A unit whose PO effects explicitly opt into
+  `modes:['battle','detection','unlock']` (with a nonzero
+  `bounce_budget`) clears every encounter for real: measured
+  `durationSecs` was **21s** across 3 different seeds (`node -e` probe
+  script, not committed -- ad hoc measurement only).
+- **Decision**: use BOTH. The "monitor shows events & progress" E2E
+  coverage uses a REAL run against `niflheim_depths` with a
+  detection/unlock-capable fixture preset and polls for real (bounded by
+  a generous-but-finite Playwright timeout) -- this is cheap enough (21s)
+  to be worth covering the real poll-and-diff client behavior end to end
+  at least once. Every OTHER schedule E2E test (run settles / rewards /
+  claim / cancel-after-active-run) uses the `POST .../dev/backdate` hook
+  instead, to avoid burning 21+ real seconds per test across a whole
+  spec file. This matches the task brief's own steer ("make the
+  empirically-informed choice, not a default assumption") -- a pure
+  content-only fix (author a deliberately-short test dungeon) was
+  rejected as more invasive than a single dev-gated timestamp-rewrite
+  route, and pure real-time polling everywhere was rejected as an
+  unnecessarily slow full E2E suite for no additional coverage value
+  (the backdate hook exercises the identical `settleRoomIfDue()` /
+  `runClock()` code path real elapsed time would).
+
 ## Content i18n (REQ-0038)
 
 `content/live/live_items.json` / `live_sis.json` entries carry base
