@@ -540,13 +540,25 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
 // lazy, poll-driven scheduler, consistent with this service's overall
 // "compute instantly, reveal/react lazily" philosophy.
 function settleRoomIfDue(room, profileCanvas, itemDefsById) {
-  if (room.status !== 'active' || !room.lastRunId) return room;
-  const run = storage.readRun(room.lastRunId);
-  if (!run) return room;
-  const clock = runClock(run);
-  if (!clock.isSettled) return room;
-  const { room: settledRoom } = settleRun(room, run, profileCanvas, itemDefsById);
-  return maybeAutoStartNextRun(settledRoom, profileCanvas);
+  if (room.status === 'active' && room.lastRunId) {
+    const run = storage.readRun(room.lastRunId);
+    if (run) {
+      const clock = runClock(run);
+      if (clock.isSettled) {
+        const { room: settledRoom } = settleRun(room, run, profileCanvas, itemDefsById);
+        return maybeAutoStartNextRun(settledRoom, profileCanvas);
+      }
+    }
+    return room; // still mid-run (clock not yet elapsed)
+  }
+  // Not currently active: this covers BOTH "the very first run, once all
+  // 4 slots just got filled" (status is 'open', cooldownUntil is still
+  // null) AND "a later cooldown window that has now cleared" -- either
+  // way, maybeAutoStartNextRun's own guards (cancelRequested, cooldown
+  // not yet elapsed, incomplete slots) decide whether anything actually
+  // happens.
+  if (room.status === 'open') return maybeAutoStartNextRun(room, profileCanvas);
+  return room;
 }
 
 // maybeAutoStartNextRun (golden i "then AUTO-SCHEDULE the next run after

@@ -8,6 +8,15 @@
 //   PUT  /api/admin/item/:id
 //   GET  /api/profile/:playerId/canvas
 //   PUT  /api/profile/:playerId/canvas
+//   POST   /api/schedule/rooms                          (REQ-0036 P1-B)
+//   GET    /api/schedule/rooms
+//   GET    /api/schedule/rooms/:id
+//   DELETE /api/schedule/rooms/:id
+//   PUT    /api/schedule/rooms/:id/slots/:slotIndex
+//   PUT    /api/schedule/rooms/:id/swap
+//   GET    /api/schedule/rooms/:id/run
+//   GET    /api/warehouse
+//   POST   /api/warehouse/claim
 //
 // REQ-0037: auth is now token-based (X-Auth-Token header), resolved via
 // admin.cjs's resolveAuth()/isItemAdminToken(). See
@@ -30,6 +39,7 @@ const path = require('path');
 const os = require('os');
 const storage = require('./storage.cjs');
 const admin = require('./admin.cjs');
+const schedule = require('./schedule.cjs'); // REQ-0036 P1-B: Dungeon Schedule service
 // REQ-0024 gap fix: render effect AST -> EN/JA display text server-side,
 // using the SAME renderer tool_gen_data.cjs uses to bake mock-src/data.js,
 // so live-mode tooltips are byte-identical to baked-mode tooltips.
@@ -213,6 +223,15 @@ function getAuthToken(req) {
 const PROFILE_CANVAS_RE = /^\/api\/profile\/([^/]+)\/canvas$/;
 const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
 
+// REQ-0036 P1-B: Dungeon Schedule service routes.
+const SCHEDULE_ROOMS_RE = /^\/api\/schedule\/rooms$/;
+const SCHEDULE_ROOM_RE = /^\/api\/schedule\/rooms\/([^/]+)$/;
+const SCHEDULE_ROOM_SLOT_RE = /^\/api\/schedule\/rooms\/([^/]+)\/slots\/([0-9]+)$/;
+const SCHEDULE_ROOM_SWAP_RE = /^\/api\/schedule\/rooms\/([^/]+)\/swap$/;
+const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
+const WAREHOUSE_RE = /^\/api\/warehouse$/;
+const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
+
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
   const p = url.pathname;
@@ -364,12 +383,239 @@ function handle(req, res) {
     return;
   }
 
+  // ---- REQ-0036 P1-B: Dungeon Schedule + Warehouse routes ----
+  // Every route below resolves the CALLER'S identity from the token
+  // FIRST (same admin.resolveAuth() every other authenticated route
+  // uses, including the dev_mode fallback) -- a room/warehouse id is
+  // NEVER trusted as identity, matching the profile routes' own
+  // convention. All bodies are pure JSON; auth is header-only (no
+  // cookies/CSRF token needed) -- see server/README.md's "Bot-friendly"
+  // note (REQ-0039 design-first-class requirement).
+  const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
+    p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
+    p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE);
+  if (scheduleMatch) {
+    const token = getAuthToken(req);
+    const resolved = admin.resolveAuth(token);
+    if (!resolved.ok) {
+      sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
+      return;
+    }
+    const callerId = resolved.player.playerId;
+
+    // Loads (and lazily migrates, per REQ-0037's legacy-default fallback)
+    // the caller's own profile canvas -- schedule routes always operate
+    // on the CALLER'S OWN presets/inventory (P1-B solo scope: golden b's
+    // "any number of players" collapses to "1 player, 4 units" here).
+    function loadOwnCanvas() {
+      const doc = storage.readProfile(callerId);
+      return doc ? doc.canvas : null;
+    }
+    function requireOwnCanvas() {
+      const canvas = loadOwnCanvas();
+      if (!canvas) {
+        const err = new Error('no saved canvas for this profile yet'); err.code = 'BAD_REQUEST'; throw err;
+      }
+      return canvas;
+    }
+    function scheduleErrToStatus(e) {
+      if (e.code === 'NOT_FOUND') return 404;
+      if (e.code === 'CONFLICT') return 409;
+      if (e.code === 'BAD_REQUEST') return 400;
+      return 500;
+    }
+    function sendScheduleError(e) {
+      sendJSON(res, scheduleErrToStatus(e), { ok: false, error: e.message });
+    }
+    // settleRoomIfDue() is called by every room-touching handler before
+    // anything else -- this is the lazy, poll-driven "scheduler" (see
+    // schedule.cjs's own header comment on the run-clock design): the
+    // next auto-run only actually starts the moment SOME request happens
+    // to look at this room after its cooldown has elapsed.
+    function loadAndSettleRoom(roomId) {
+      const room = schedule.getOwnRoomOr404(roomId, callerId);
+      const { itemDefsById } = schedule.getScheduleContent();
+      return schedule.settleRoomIfDue(room, loadOwnCanvas(), itemDefsById);
+    }
+
+    // ---- POST/GET /api/schedule/rooms ----
+    if (p.match(SCHEDULE_ROOMS_RE)) {
+      if (req.method === 'GET') {
+        try {
+          sendJSON(res, 200, { ok: true, rooms: schedule.listOwnRooms(callerId) });
+        } catch (e) { sendScheduleError(e); }
+        return;
+      }
+      if (req.method === 'POST') {
+        readBody(req, (err, bodyStr) => {
+          if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+          let body;
+          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+          try {
+            const room = schedule.createRoom(callerId, body);
+            sendJSON(res, 200, { ok: true, room });
+          } catch (e) { sendScheduleError(e); }
+        });
+        return;
+      }
+      sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+      return;
+    }
+
+    // ---- GET/DELETE /api/schedule/rooms/:id ----
+    const roomMatch = p.match(SCHEDULE_ROOM_RE);
+    if (roomMatch) {
+      const roomId = decodeURIComponent(roomMatch[1]);
+      if (req.method === 'GET') {
+        try {
+          const room = loadAndSettleRoom(roomId);
+          sendJSON(res, 200, { ok: true, room });
+        } catch (e) { sendScheduleError(e); }
+        return;
+      }
+      if (req.method === 'DELETE') {
+        try {
+          const room = loadAndSettleRoom(roomId);
+          const canceled = schedule.cancelRoom(room);
+          sendJSON(res, 200, { ok: true, room: canceled });
+        } catch (e) { sendScheduleError(e); }
+        return;
+      }
+      sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+      return;
+    }
+
+    // ---- PUT /api/schedule/rooms/:id/slots/:slotIndex (golden b/d) ----
+    const slotMatch = p.match(SCHEDULE_ROOM_SLOT_RE);
+    if (slotMatch) {
+      const roomId = decodeURIComponent(slotMatch[1]);
+      const slotIndex = parseInt(slotMatch[2], 10);
+      if (req.method !== 'PUT') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body;
+        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        try {
+          const room = loadAndSettleRoom(roomId);
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas();
+          const updated = schedule.assignSlot(room, callerId, slotIndex, body.presetIndex, canvas, itemDefsById);
+          sendJSON(res, 200, { ok: true, room: updated });
+        } catch (e) { sendScheduleError(e); }
+      });
+      return;
+    }
+
+    // ---- PUT /api/schedule/rooms/:id/swap (golden j) ----
+    const swapMatch = p.match(SCHEDULE_ROOM_SWAP_RE);
+    if (swapMatch) {
+      const roomId = decodeURIComponent(swapMatch[1]);
+      if (req.method !== 'PUT') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body;
+        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        try {
+          const room = loadAndSettleRoom(roomId);
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas();
+          const result = schedule.swapUnit(room, body.slot, body.presetIndex, canvas, itemDefsById);
+          sendJSON(res, 200, { ok: true, room: result.room, applied: result.applied });
+        } catch (e) { sendScheduleError(e); }
+      });
+      return;
+    }
+
+    // ---- GET /api/schedule/rooms/:id/run (run-clock-paced replay view) ----
+    const runMatch = p.match(SCHEDULE_ROOM_RUN_RE);
+    if (runMatch) {
+      const roomId = decodeURIComponent(runMatch[1]);
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const room = loadAndSettleRoom(roomId);
+        if (!room.lastRunId) { sendJSON(res, 404, { ok: false, error: 'this room has no run yet' }); return; }
+        const run = storage.readRun(room.lastRunId);
+        if (!run) { sendJSON(res, 404, { ok: false, error: 'run record not found' }); return; }
+        const clock = schedule.runClock(run);
+        sendJSON(res, 200, {
+          ok: true,
+          runId: run.id,
+          roomId: run.roomId,
+          startedAt: run.startedAt,
+          durationSecs: run.durationSecs,
+          clock: { elapsedSecs: clock.elapsedSecs, isSettled: clock.isSettled, pct: clock.pct },
+          events: schedule.visibleEvents(run),
+          // Summary fields are always present (computed instantly at run
+          // start) but represent the FINAL outcome even before the
+          // clock finishes -- a spectator-safe client should treat
+          // `result`/`rewards` as "the eventual outcome", only fully
+          // authoritative once clock.isSettled is true (matching how
+          // visibleEvents() itself withholds not-yet-reached events).
+          result: run.result, finalProgressPct: run.finalProgressPct,
+          cooldownSecs: run.cooldownSecs, levelAfter: run.levelAfter, H: run.H,
+          settled: run.settled,
+        });
+      } catch (e) { sendScheduleError(e); }
+      return;
+    }
+
+    // ---- GET /api/warehouse (golden e/f) ----
+    if (p.match(WAREHOUSE_RE)) {
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        sendJSON(res, 200, { ok: true, items: schedule.listWarehouse(callerId) });
+      } catch (e) { sendScheduleError(e); }
+      return;
+    }
+
+    // ---- POST /api/warehouse/claim {itemUid} (golden f) ----
+    if (p.match(WAREHOUSE_CLAIM_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body;
+        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        if (typeof body.itemUid !== 'string' || !body.itemUid) {
+          sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
+        }
+        try {
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas();
+          const result = schedule.claimWarehouseItem(callerId, body.itemUid, canvas, itemDefsById);
+          storage.writeProfile(callerId, canvas); // persist the inventory placement
+          sendJSON(res, 200, { ok: true, placed: result.placed, uid: result.newUid });
+        } catch (e) { sendScheduleError(e); }
+      });
+      return;
+    }
+  }
+
   sendJSON(res, 404, { ok: false, error: 'not found' });
+}
+
+// REQ-0036 P1-B: periodic warehouse TTL sweep (golden e: "expired items
+// purge lazily on read + scheduled sweep"). Every warehouse read already
+// purges lazily (schedule.cjs's purgeExpiredWarehouseItems, called by
+// listWarehouse/claimWarehouseItem/addToWarehouse) -- this interval is
+// the belt-and-suspenders half for players who simply never poll their
+// warehouse (so expired rows don't sit on disk/in pg forever). Runs
+// against every player currently registered (small-scale registry, same
+// assumption server/players.cjs's own listPlayers() already makes).
+// .unref() so this timer never keeps the process alive on its own (same
+// convention as pg_sync.cjs's worker.unref()).
+const WAREHOUSE_SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
+function sweepAllWarehouses() {
+  const players = require('./players.cjs');
+  for (const player of players.listPlayers()) {
+    try { schedule.purgeExpiredWarehouseItems(player.playerId); } catch (e) { /* best-effort */ }
+  }
 }
 
 function main() {
   admin.ensureDevUser(); // REQ-0035: create data/config/dev_user.json with defaults if missing
   admin.ensureDevPlayer(); // REQ-0037: create/refresh data/players/dev.json, log the token once on first creation
+  const sweepTimer = setInterval(sweepAllWarehouses, WAREHOUSE_SWEEP_INTERVAL_MS);
+  sweepTimer.unref();
   const server = http.createServer((req, res) => {
     try {
       handle(req, res);
