@@ -749,6 +749,270 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // stay flat arrays with the OLD record shape (no new fields), and the
   // "which container is this record in" question is answered by which
   // array it currently lives in, not by a field on the record itself.
+  // =======================================================================
+  // Reference model core (REQ-0033 Phase 1).
+  //
+  // Inventory is MASTER: every uid (PO/BP/SI) has exactly ONE home record,
+  // living in st.inv.pages[n].{pos,bps,sis}. A "reference" is a SEPARATE
+  // record, SAME uid, SAME shape as the home record (a PO reference is
+  // {uid,id,loc,cell,rot}; a BP reference is the usual {id,name,color,
+  // shape,origin,linker} object; an SI reference is {uid,id,host}) living
+  // in a preset's canvas -- st.{bps,pos,sis} for the ACTIVE preset, or
+  // st.presets.store[i].{bps,pos,sis} for an inactive one. This is why
+  // NOTHING about canPlacePO/movePO/cellsOf/sockets/traceBeams/combos/
+  // switchPreset needs to change: they only ever read/write "whichever
+  // array the record currently lives in" and were always agnostic to
+  // whether that record was the sole copy of a uid or one of several.
+  //
+  // A uid may have AT MOST ONE reference per preset (that preset's own
+  // canvas), but the SAME uid may be simultaneously referenced by several
+  // DIFFERENT presets -- each such reference is an independent record with
+  // its own cell/rot/origin/host, so e.g. an SI can be seated in preset A
+  // and stowed in preset B at the same time ("preset owns its SI seat
+  // state after creation").
+  //
+  // usageOf(st,uid): every preset index (0-based) that currently holds a
+  // reference to `uid`, scanning the ACTIVE preset's top-level fields
+  // (st.bps/pos/sis) for st.presets.active, and every OTHER preset's
+  // store[i] snapshot for the rest. Deliberately recomputed on demand
+  // (never cached/stored) -- REQ-0033 orchestrator direction: "prefer
+  // computing from active canvas + presets.store on demand over stored
+  // duplication" -- at this scale (PRESET_COUNT=5, a few dozen placed
+  // items) a full preset scan is microseconds; see the perf note on
+  // tintSets below for the measurement.
+  function presetCanvasOf(st,idx){
+    return idx===st.presets.active?{bps:st.bps,pos:st.pos,sis:st.sis}:(st.presets.store[idx]||{bps:[],pos:[],sis:[]});
+  }
+  function presetCount(st){return st.presets?st.presets.store.length:0;}
+  function usageOf(st,uid){
+    if(!st.presets)return [];
+    const out=[];
+    for(let i=0;i<presetCount(st);i++){
+      const c=presetCanvasOf(st,i);
+      const hit=c.pos.some(p=>p.uid===uid)||c.bps.some(b=>b.id===uid)||c.sis.some(a=>a.uid===uid);
+      if(hit)out.push(i);
+    }
+    return out;
+  }
+  // usedByCurrent/usedByOthers: convenience predicates over usageOf(), the
+  // direct engine-level building blocks behind the red/yellow rules (spec
+  // items 2-3). "Current" means st.presets.active.
+  function usedByCurrent(st,uid){
+    if(!st.presets)return false;
+    return usageOf(st,uid).includes(st.presets.active);
+  }
+  function usedByOthers(st,uid){
+    if(!st.presets)return false;
+    const active=st.presets.active;
+    return usageOf(st,uid).some(i=>i!==active);
+  }
+  // Every uid (PO/BP/SI) that currently has a HOME in the shared inventory
+  // -- the universe tintSets()/isUnitIndependent() need to scan. Canvas-
+  // only synthetic fixtures (tests that hand-build a `st` with no st.inv at
+  // all) simply produce an empty universe -- these queries then correctly
+  // report empty red/yellow sets rather than throwing.
+  function allHomeUids(st){
+    const out=[];
+    if(!st.inv)return out;
+    for(const pg of st.inv.pages){
+      for(const p of pg.pos)out.push(p.uid);
+      for(const b of pg.bps)out.push(b.id);
+      for(const a of pg.sis)out.push(a.uid);
+    }
+    return out;
+  }
+  // tintSets(st): {red,yellow,canvasYellow} -- all Sets of uid strings.
+  //   red: every uid referenced by the CURRENT preset (spec item 2) --
+  //     shown in the INVENTORY with the red "already used here" tint, and
+  //     also the set the red rule (createRef) itself refuses to duplicate.
+  //   yellow: every uid used by at least one OTHER preset (spec item 3) --
+  //     shown in the INVENTORY with the yellow "shared elsewhere" tint.
+  //     NOT mutually exclusive with red: a uid can be referenced by the
+  //     current preset AND by another preset at the same time (red wins
+  //     visually in the inventory per spec's red-vs-yellow framing, but
+  //     both booleans are exposed here -- rendering policy is a Phase 2
+  //     concern, not this function's).
+  //   canvasYellow: the subset of `red` that is ALSO in `yellow` -- i.e.
+  //     uids sitting on the CURRENT canvas right now that are shared with
+  //     some other preset ("the same yellow indicator also shows on the
+  //     Preset(canvas) display", spec item 3).
+  // Perf: O(PRESET_COUNT x items-per-preset) per uid tested x number of
+  // home uids scanned = O(homes x presets x canvas-size), i.e. a handful
+  // of presets times a few dozen items -- comfortably sub-millisecond at
+  // this game's scale; no caching/index maintenance is warranted (measured
+  // via the perf smoke test in run.cjs).
+  function tintSets(st){
+    const red=new Set(),yellow=new Set();
+    for(const uid of allHomeUids(st)){
+      const usage=usageOf(st,uid);
+      if(!usage.length)continue;
+      const cur=st.presets&&usage.includes(st.presets.active);
+      const others=usage.some(i=>!st.presets||i!==st.presets.active);
+      if(cur)red.add(uid);
+      if(others)yellow.add(uid);
+    }
+    const canvasYellow=new Set([...red].filter(u=>yellow.has(u)));
+    return {red,yellow,canvasYellow};
+  }
+  // isUnitIndependent(st,n): true iff preset n's referenced uids share NO
+  // uid with any OTHER preset -- "a Preset containing ZERO yellow-tinted
+  // items is an independent Unit" (spec item 5), phrased as a direct
+  // per-preset predicate rather than requiring the caller to intersect
+  // tintSets() themselves. Empty presets are vacuously independent.
+  function isUnitIndependent(st,n){
+    if(!st.presets)return true;
+    const mine=presetCanvasOf(st,n);
+    const mineUids=new Set([...mine.pos.map(p=>p.uid),...mine.bps.map(b=>b.id),...mine.sis.map(a=>a.uid)]);
+    if(!mineUids.size)return true;
+    for(let i=0;i<presetCount(st);i++){
+      if(i===n)continue;
+      const other=presetCanvasOf(st,i);
+      for(const p of other.pos)if(mineUids.has(p.uid))return false;
+      for(const b of other.bps)if(mineUids.has(b.id))return false;
+      for(const a of other.sis)if(mineUids.has(a.uid))return false;
+    }
+    return true;
+  }
+
+  // homeLocationOf(st,uid): {page,kind,record} locating uid's ONE home
+  // record in st.inv.pages, or null if it has no home (not yet migrated,
+  // or a synthetic test fixture with no st.inv). kind: 'po'|'bp'|'si'.
+  function homeLocationOf(st,uid){
+    if(!st.inv)return null;
+    for(let pg=0;pg<st.inv.pages.length;pg++){
+      const c=st.inv.pages[pg];
+      const p=c.pos.find(x=>x.uid===uid);
+      if(p)return {page:pg,kind:'po',record:p};
+      const b=c.bps.find(x=>x.id===uid);
+      if(b)return {page:pg,kind:'bp',record:b};
+      const a=c.sis.find(x=>x.uid===uid);
+      if(a)return {page:pg,kind:'si',record:a};
+    }
+    return null;
+  }
+
+  // createRef(st,kind,uid,placement): creates a REFERENCE to a home item
+  // in the CURRENT preset's canvas (st.pos/bps/sis). Refuses (red rule) if
+  // the current preset already holds a reference to this uid. The home
+  // record is left untouched in st.inv.pages. `placement` shape depends on
+  // `kind`:
+  //   'po': {cell,rot} (or 'inv' meaning "no canvas presence" -- but a
+  //     bare createRef is only ever called to PLACE onto canvas, so
+  //     'inv' is not a valid placement here; use removeRef to go back).
+  //   'bp': {origin} -- contents are NOT handled here (see
+  //     bpReferenceSet/transferBP for the nested-content walk).
+  //   'si': {host} -- typically {po:refUid,si:index} (seating onto an
+  //     ALREADY-referenced PO's socket) or 'inv' (a bare stowed reference,
+  //     e.g. an SI referenced onto the canvas without being seated yet --
+  //     not currently reachable from the client's own drag UX, but kept
+  //     legal at the engine level since nothing else requires it be seated
+  //     immediately).
+  // Returns {ok:false,why:'already referenced by current preset'} (the red
+  // rule) or {ok:false,why:'no home'} if uid has no home record at all.
+  function createRef(st,kind,uid,placement){
+    if(usedByCurrent(st,uid))return {ok:false,why:'already referenced by current preset'};
+    const home=homeLocationOf(st,uid);
+    if(!home||home.kind!==kind)return {ok:false,why:'no home'};
+    if(kind==='po'){
+      const src=home.record;
+      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot)};
+      // Validate canvas placement legality (bounds/BP-containment/overlap)
+      // the SAME way movePO always has -- push first (canPlacePO needs the
+      // uid present in st.pos to compute its own-uid exclusion correctly,
+      // same chicken-and-egg the client's previewCrossBoardPO workaround
+      // exists for today), then roll back on rejection so a failed
+      // reference creation leaves st untouched, matching transferBP's
+      // "fails cleanly" contract.
+      st.pos.push(ref);
+      const chk=canPlacePO(st,uid,ref.rot,ref.cell);
+      if(!chk.ok){st.pos.pop();return chk;}
+      return {ok:true,ref};
+    }
+    if(kind==='bp'){
+      const src=home.record;
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
+      st.bps.push(ref);
+      return {ok:true,ref};
+    }
+    if(kind==='si'){
+      const src=home.record;
+      const ref={uid:src.uid,id:src.id,host:'inv'};
+      st.sis.push(ref);
+      if(placement.host&&placement.host!=='inv'){
+        const skey=placement.host==='bond'?'bond':(placement.host.po+':'+placement.host.si);
+        const seat=seatSI(st,uid,skey);
+        if(!seat.ok){st.sis.pop();return seat;}
+      }
+      return {ok:true,ref};
+    }
+    return {ok:false,why:'unknown kind'};
+  }
+
+  // removeRef(st,kind,uid): removes the CURRENT preset's reference to uid
+  // (if any) from st.pos/bps/sis. The home record is NEVER touched -- the
+  // item stays exactly where it already is in inventory (canvas->inv drag
+  // under the reference model: "drop cell irrelevant", spec + engine
+  // design section). A no-op {ok:true,removed:false} if the current
+  // preset holds no such reference (nothing to remove is not an error).
+  function removeRef(st,kind,uid){
+    if(kind==='po'){
+      const idx=st.pos.findIndex(p=>p.uid===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.pos.splice(idx,1);
+      st.sis=st.sis.filter(a=>!(a.host&&typeof a.host==='object'&&a.host.po===uid));
+      unseatOrphans(st);
+      return {ok:true,removed:true};
+    }
+    if(kind==='bp'){
+      const idx=st.bps.findIndex(b=>b.id===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.bps.splice(idx,1);
+      return {ok:true,removed:true};
+    }
+    if(kind==='si'){
+      const idx=st.sis.findIndex(a=>a.uid===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.sis.splice(idx,1);
+      return {ok:true,removed:true};
+    }
+    return {ok:false,why:'unknown kind'};
+  }
+
+  // bpReferenceSet(st,bpUid): given a BP's uid (its home, wherever it
+  // currently sits in st.inv.pages), computes the nested reference set a
+  // canvas reference-creation must bring along: {bp:uid, pos:[uid,...],
+  // sis:[uid,...], excluded:[uid,...]}. Containment ("which POs are inside
+  // this BP") is evaluated against the HOME page (poInBPIn against the
+  // home BP's own origin/shape in its home container) -- the home
+  // placement is the only page-independent source of truth for "is this
+  // PO inside this BP", since canvas references get their OWN origin
+  // (spec: "preset keeps its OWN SI seat assignments... after creation",
+  // same principle extends to "which POs travel" being decided once, at
+  // reference-creation time, from the home arrangement).
+  //   pos: home-contained POs NOT already referenced by the current preset.
+  //   excluded: home-contained POs that ARE already referenced by the
+  //     current preset (spec item 4 -- these are the ones left behind).
+  //   sis: SIs seated on any INCLUDED (non-excluded) PO. An excluded PO's
+  //     own seated SI does NOT travel (test: "excluded PO's SI stays") --
+  //     it simply remains un-referenced by this operation (the SI's home
+  //     is untouched either way; only whether a NEW reference is created
+  //     for it is affected).
+  function bpReferenceSet(st,bpUid){
+    const home=homeLocationOf(st,bpUid);
+    if(!home||home.kind!=='bp')return {ok:false,why:'no home'};
+    const container=st.inv.pages[home.page];
+    const bp=home.record;
+    const contained=container.pos.filter(p=>poInBPIn(p,bp));
+    const pos=[],excluded=[];
+    for(const p of contained){
+      if(usedByCurrent(st,p.uid))excluded.push(p.uid);
+      else pos.push(p.uid);
+    }
+    const includedSet=new Set(pos);
+    const sis=container.sis.filter(a=>a.host&&typeof a.host==='object'&&a.host.po&&includedSet.has(a.host.po)).map(a=>a.uid);
+    return {ok:true,bp:bpUid,pos,sis,excluded};
+  }
+
   function containerOf(st,locRef){
     return locRef.loc==='canvas'?st:page(st,locRef.page);
   }
@@ -1084,7 +1348,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
           invOccupancy,canTransferBP,transferBP,migrateState,
           // Preset model (REQ-0031 Phase B) -- additive exports only.
           PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,
-          renameInvPage,invPageNames,checkUidInvariant};
+          renameInvPage,invPageNames,checkUidInvariant,
+          // Reference model core (REQ-0033 Phase 1a) -- additive exports only.
+          usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,bpReferenceSet,
+          createRef,removeRef,homeLocationOf};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });
