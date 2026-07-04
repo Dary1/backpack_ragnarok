@@ -30,6 +30,7 @@ const VOCAB_PATH = path.join(CONTENT_DIR, 'vocab.json');
 const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
 const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json');
 const SCENARIO_PATH = path.join(LIVE_DIR, 'scenario.json');
+const REGISTRY_PATH = path.join(CONTENT_DIR, 'registry.json');
 
 // ---- content cache (mtime-checked; re-read only when a source file changes) ----
 let contentCache = null; // { mtimes: {vocab,items,sis,scenario}, payload }
@@ -58,6 +59,12 @@ function buildContentPayload() {
   const items = loadJSON(ITEMS_PATH);
   const sis = loadJSON(SIS_PATH);
   const scenario = loadJSON(SCENARIO_PATH);
+  // REQ-0035: batch-level provenance for the Dex's "provenance" section.
+  // Optional -- an absent/unreadable registry.json degrades to `null`,
+  // never a 500 (this file is metadata, not required for the board to
+  // function).
+  let registry = null;
+  try { registry = loadJSON(REGISTRY_PATH); } catch (e) { registry = null; }
 
   const itemEntries = items.entries || [];
   const siEntries = sis.entries || [];
@@ -84,6 +91,7 @@ function buildContentPayload() {
     trees: trees,
     scenario: scenario,
     layout: scenario.layout || null,
+    registry: registry,
   };
 }
 
@@ -93,12 +101,14 @@ function getContent() {
     items: statMtimeMs(ITEMS_PATH),
     sis: statMtimeMs(SIS_PATH),
     scenario: statMtimeMs(SCENARIO_PATH),
+    registry: statMtimeMs(REGISTRY_PATH),
   };
   const stale = !contentCache ||
     mtimes.vocab !== contentCache.mtimes.vocab ||
     mtimes.items !== contentCache.mtimes.items ||
     mtimes.sis !== contentCache.mtimes.sis ||
-    mtimes.scenario !== contentCache.mtimes.scenario;
+    mtimes.scenario !== contentCache.mtimes.scenario ||
+    mtimes.registry !== contentCache.mtimes.registry;
   if (stale) {
     contentCache = { mtimes: mtimes, payload: buildContentPayload() };
   }

@@ -31,6 +31,7 @@
 import { useEffect } from 'react';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
+import { Dex } from './dex/Dex';
 import { Header } from './Header';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -97,9 +98,7 @@ function App() {
         {route === 'settings' ? (
           <PlaceholderPage titleJa="設定" titleEn="Settings" locale={snapshot.locale} />
         ) : null}
-        {route === 'dex' ? (
-          <PlaceholderPage titleJa="図鑑" titleEn="Dex" locale={snapshot.locale} />
-        ) : null}
+        {route === 'dex' ? <Dex locale={snapshot.locale} /> : null}
       </main>
     </div>
   );

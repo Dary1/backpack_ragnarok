@@ -76,12 +76,35 @@ export interface ApiScenario extends GameState {
   layout?: Layout;
 }
 
+/** Batch-level provenance record (content/registry.json's `batches[]`
+ * entries) -- REQ-0035's Dex provenance section. This repo's registry
+ * schema does not (yet) carry a per-item id list, so provenance
+ * resolution in the Dex can only offer batch-level info, not a precise
+ * per-item mapping -- see docs/REQ/REQ-0035-item-encyclopedia.md. */
+export interface ApiRegistryBatch {
+  id: string;
+  date?: string;
+  drafted_by?: string;
+  icons_by?: string;
+  submitted?: number;
+  approved?: number;
+  expected_rejects_confirmed?: number;
+  s2_real_catches?: number;
+  status?: string;
+  preview?: string;
+}
+
+export interface ApiRegistry {
+  batches: ApiRegistryBatch[];
+}
+
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
   trees: ApiTrees;
   scenario: ApiScenario;
   layout: Layout | null;
+  registry: ApiRegistry | null;
 }
 
 export interface ApiCanvasDoc {
