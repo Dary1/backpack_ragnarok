@@ -446,7 +446,7 @@
 <script>
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-03T22:07:31.783Z
+// Generated: 2026-07-04T12:12:41.835Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -1939,23 +1939,310 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // stay flat arrays with the OLD record shape (no new fields), and the
   // "which container is this record in" question is answered by which
   // array it currently lives in, not by a field on the record itself.
-  function containerOf(st,locRef){
-    return locRef.loc==='canvas'?st:page(st,locRef.page);
+  // =======================================================================
+  // Reference model core (REQ-0033 Phase 1).
+  //
+  // Inventory is MASTER: every uid (PO/BP/SI) has exactly ONE home record,
+  // living in st.inv.pages[n].{pos,bps,sis}. A "reference" is a SEPARATE
+  // record, SAME uid, SAME shape as the home record (a PO reference is
+  // {uid,id,loc,cell,rot}; a BP reference is the usual {id,name,color,
+  // shape,origin,linker} object; an SI reference is {uid,id,host}) living
+  // in a preset's canvas -- st.{bps,pos,sis} for the ACTIVE preset, or
+  // st.presets.store[i].{bps,pos,sis} for an inactive one. This is why
+  // NOTHING about canPlacePO/movePO/cellsOf/sockets/traceBeams/combos/
+  // switchPreset needs to change: they only ever read/write "whichever
+  // array the record currently lives in" and were always agnostic to
+  // whether that record was the sole copy of a uid or one of several.
+  //
+  // A uid may have AT MOST ONE reference per preset (that preset's own
+  // canvas), but the SAME uid may be simultaneously referenced by several
+  // DIFFERENT presets -- each such reference is an independent record with
+  // its own cell/rot/origin/host, so e.g. an SI can be seated in preset A
+  // and stowed in preset B at the same time ("preset owns its SI seat
+  // state after creation").
+  //
+  // usageOf(st,uid): every preset index (0-based) that currently holds a
+  // reference to `uid`, scanning the ACTIVE preset's top-level fields
+  // (st.bps/pos/sis) for st.presets.active, and every OTHER preset's
+  // store[i] snapshot for the rest. Deliberately recomputed on demand
+  // (never cached/stored) -- REQ-0033 orchestrator direction: "prefer
+  // computing from active canvas + presets.store on demand over stored
+  // duplication" -- at this scale (PRESET_COUNT=5, a few dozen placed
+  // items) a full preset scan is microseconds; see the perf note on
+  // tintSets below for the measurement.
+  function presetCanvasOf(st,idx){
+    return idx===st.presets.active?{bps:st.bps,pos:st.pos,sis:st.sis}:(st.presets.store[idx]||{bps:[],pos:[],sis:[]});
   }
-  function bpFrom(container,bpId){return container.bps.find(b=>b.id===bpId);}
+  function presetCount(st){return st.presets?st.presets.store.length:0;}
+  function usageOf(st,uid){
+    if(!st.presets)return [];
+    const out=[];
+    for(let i=0;i<presetCount(st);i++){
+      const c=presetCanvasOf(st,i);
+      const hit=c.pos.some(p=>p.uid===uid)||c.bps.some(b=>b.id===uid)||c.sis.some(a=>a.uid===uid);
+      if(hit)out.push(i);
+    }
+    return out;
+  }
+  // usedByCurrent/usedByOthers: convenience predicates over usageOf(), the
+  // direct engine-level building blocks behind the red/yellow rules (spec
+  // items 2-3). "Current" means st.presets.active.
+  function usedByCurrent(st,uid){
+    if(!st.presets)return false;
+    return usageOf(st,uid).includes(st.presets.active);
+  }
+  function usedByOthers(st,uid){
+    if(!st.presets)return false;
+    const active=st.presets.active;
+    return usageOf(st,uid).some(i=>i!==active);
+  }
+  // Every uid (PO/BP/SI) that currently has a HOME in the shared inventory
+  // -- the universe tintSets()/isUnitIndependent() need to scan. Canvas-
+  // only synthetic fixtures (tests that hand-build a `st` with no st.inv at
+  // all) simply produce an empty universe -- these queries then correctly
+  // report empty red/yellow sets rather than throwing.
+  function allHomeUids(st){
+    const out=[];
+    if(!st.inv)return out;
+    for(const pg of st.inv.pages){
+      for(const p of pg.pos)out.push(p.uid);
+      for(const b of pg.bps)out.push(b.id);
+      for(const a of pg.sis)out.push(a.uid);
+    }
+    return out;
+  }
+  // tintSets(st): {red,yellow,canvasYellow} -- all Sets of uid strings.
+  //   red: every uid referenced by the CURRENT preset (spec item 2) --
+  //     shown in the INVENTORY with the red "already used here" tint, and
+  //     also the set the red rule (createRef) itself refuses to duplicate.
+  //   yellow: every uid used by at least one OTHER preset (spec item 3) --
+  //     shown in the INVENTORY with the yellow "shared elsewhere" tint.
+  //     NOT mutually exclusive with red: a uid can be referenced by the
+  //     current preset AND by another preset at the same time (red wins
+  //     visually in the inventory per spec's red-vs-yellow framing, but
+  //     both booleans are exposed here -- rendering policy is a Phase 2
+  //     concern, not this function's).
+  //   canvasYellow: the subset of `red` that is ALSO in `yellow` -- i.e.
+  //     uids sitting on the CURRENT canvas right now that are shared with
+  //     some other preset ("the same yellow indicator also shows on the
+  //     Preset(canvas) display", spec item 3).
+  // Perf: O(PRESET_COUNT x items-per-preset) per uid tested x number of
+  // home uids scanned = O(homes x presets x canvas-size), i.e. a handful
+  // of presets times a few dozen items -- comfortably sub-millisecond at
+  // this game's scale; no caching/index maintenance is warranted (measured
+  // via the perf smoke test in run.cjs).
+  function tintSets(st){
+    const red=new Set(),yellow=new Set();
+    for(const uid of allHomeUids(st)){
+      const usage=usageOf(st,uid);
+      if(!usage.length)continue;
+      const cur=st.presets&&usage.includes(st.presets.active);
+      const others=usage.some(i=>!st.presets||i!==st.presets.active);
+      if(cur)red.add(uid);
+      if(others)yellow.add(uid);
+    }
+    const canvasYellow=new Set([...red].filter(u=>yellow.has(u)));
+    return {red,yellow,canvasYellow};
+  }
+  // isUnitIndependent(st,n): true iff preset n's referenced uids share NO
+  // uid with any OTHER preset -- "a Preset containing ZERO yellow-tinted
+  // items is an independent Unit" (spec item 5), phrased as a direct
+  // per-preset predicate rather than requiring the caller to intersect
+  // tintSets() themselves. Empty presets are vacuously independent.
+  function isUnitIndependent(st,n){
+    if(!st.presets)return true;
+    const mine=presetCanvasOf(st,n);
+    const mineUids=new Set([...mine.pos.map(p=>p.uid),...mine.bps.map(b=>b.id),...mine.sis.map(a=>a.uid)]);
+    if(!mineUids.size)return true;
+    for(let i=0;i<presetCount(st);i++){
+      if(i===n)continue;
+      const other=presetCanvasOf(st,i);
+      for(const p of other.pos)if(mineUids.has(p.uid))return false;
+      for(const b of other.bps)if(mineUids.has(b.id))return false;
+      for(const a of other.sis)if(mineUids.has(a.uid))return false;
+    }
+    return true;
+  }
 
-  // canTransferBP(st,from,to,bpId,origin): pure (no mutation) legality
-  // check for transferring BP `bpId` from container `from` to container
-  // `to`, landing at `origin` [row,col] within `to`. Reuses the target
-  // container's OWN placement rule (invCanPlaceBP for a page target,
-  // canMoveBP's overlap/bounds logic inlined for a canvas target) so a
-  // canvas target still enforces canvas's simpler rule (no free-placed
-  // items to avoid there -- POs on canvas always belong to a BP already).
+  // homeLocationOf(st,uid): {page,kind,record} locating uid's ONE home
+  // record in st.inv.pages, or null if it has no home (not yet migrated,
+  // or a synthetic test fixture with no st.inv). kind: 'po'|'bp'|'si'.
+  function homeLocationOf(st,uid){
+    if(!st.inv)return null;
+    for(let pg=0;pg<st.inv.pages.length;pg++){
+      const c=st.inv.pages[pg];
+      const p=c.pos.find(x=>x.uid===uid);
+      if(p)return {page:pg,kind:'po',record:p};
+      const b=c.bps.find(x=>x.id===uid);
+      if(b)return {page:pg,kind:'bp',record:b};
+      const a=c.sis.find(x=>x.uid===uid);
+      if(a)return {page:pg,kind:'si',record:a};
+    }
+    return null;
+  }
+
+  // createRef(st,kind,uid,placement): creates a REFERENCE to a home item
+  // in the CURRENT preset's canvas (st.pos/bps/sis). Refuses (red rule) if
+  // the current preset already holds a reference to this uid. The home
+  // record is left untouched in st.inv.pages. `placement` shape depends on
+  // `kind`:
+  //   'po': {cell,rot} (or 'inv' meaning "no canvas presence" -- but a
+  //     bare createRef is only ever called to PLACE onto canvas, so
+  //     'inv' is not a valid placement here; use removeRef to go back).
+  //   'bp': {origin} -- contents are NOT handled here (see
+  //     bpReferenceSet/transferBP for the nested-content walk).
+  //   'si': {host} -- typically {po:refUid,si:index} (seating onto an
+  //     ALREADY-referenced PO's socket) or 'inv' (a bare stowed reference,
+  //     e.g. an SI referenced onto the canvas without being seated yet --
+  //     not currently reachable from the client's own drag UX, but kept
+  //     legal at the engine level since nothing else requires it be seated
+  //     immediately).
+  // Returns {ok:false,why:'already referenced by current preset'} (the red
+  // rule) or {ok:false,why:'no home'} if uid has no home record at all.
+  function createRef(st,kind,uid,placement){
+    if(usedByCurrent(st,uid))return {ok:false,why:'already referenced by current preset'};
+    const home=homeLocationOf(st,uid);
+    if(!home||home.kind!==kind)return {ok:false,why:'no home'};
+    if(kind==='po'){
+      const src=home.record;
+      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot)};
+      // Validate canvas placement legality (bounds/BP-containment/overlap)
+      // the SAME way movePO always has -- push first (canPlacePO needs the
+      // uid present in st.pos to compute its own-uid exclusion correctly,
+      // same chicken-and-egg the client's previewCrossBoardPO workaround
+      // exists for today), then roll back on rejection so a failed
+      // reference creation leaves st untouched, matching transferBP's
+      // "fails cleanly" contract.
+      st.pos.push(ref);
+      const chk=canPlacePO(st,uid,ref.rot,ref.cell);
+      if(!chk.ok){st.pos.pop();return chk;}
+      return {ok:true,ref};
+    }
+    if(kind==='bp'){
+      const src=home.record;
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
+      st.bps.push(ref);
+      return {ok:true,ref};
+    }
+    if(kind==='si'){
+      const src=home.record;
+      const ref={uid:src.uid,id:src.id,host:'inv'};
+      st.sis.push(ref);
+      if(placement.host&&placement.host!=='inv'){
+        const skey=placement.host==='bond'?'bond':(placement.host.po+':'+placement.host.si);
+        const seat=seatSI(st,uid,skey);
+        if(!seat.ok){st.sis.pop();return seat;}
+      }
+      return {ok:true,ref};
+    }
+    return {ok:false,why:'unknown kind'};
+  }
+
+  // removeRef(st,kind,uid): removes the CURRENT preset's reference to uid
+  // (if any) from st.pos/bps/sis. The home record is NEVER touched -- the
+  // item stays exactly where it already is in inventory (canvas->inv drag
+  // under the reference model: "drop cell irrelevant", spec + engine
+  // design section). A no-op {ok:true,removed:false} if the current
+  // preset holds no such reference (nothing to remove is not an error).
+  function removeRef(st,kind,uid){
+    if(kind==='po'){
+      const idx=st.pos.findIndex(p=>p.uid===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.pos.splice(idx,1);
+      st.sis=st.sis.filter(a=>!(a.host&&typeof a.host==='object'&&a.host.po===uid));
+      unseatOrphans(st);
+      return {ok:true,removed:true};
+    }
+    if(kind==='bp'){
+      const idx=st.bps.findIndex(b=>b.id===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.bps.splice(idx,1);
+      return {ok:true,removed:true};
+    }
+    if(kind==='si'){
+      const idx=st.sis.findIndex(a=>a.uid===uid);
+      if(idx===-1)return {ok:true,removed:false};
+      st.sis.splice(idx,1);
+      return {ok:true,removed:true};
+    }
+    return {ok:false,why:'unknown kind'};
+  }
+
+  // bpReferenceSet(st,bpUid): given a BP's uid (its home, wherever it
+  // currently sits in st.inv.pages), computes the nested reference set a
+  // canvas reference-creation must bring along: {bp:uid, pos:[uid,...],
+  // sis:[uid,...], excluded:[uid,...]}. Containment ("which POs are inside
+  // this BP") is evaluated against the HOME page (poInBPIn against the
+  // home BP's own origin/shape in its home container) -- the home
+  // placement is the only page-independent source of truth for "is this
+  // PO inside this BP", since canvas references get their OWN origin
+  // (spec: "preset keeps its OWN SI seat assignments... after creation",
+  // same principle extends to "which POs travel" being decided once, at
+  // reference-creation time, from the home arrangement).
+  //   pos: home-contained POs NOT already referenced by the current preset.
+  //   excluded: home-contained POs that ARE already referenced by the
+  //     current preset (spec item 4 -- these are the ones left behind).
+  //   sis: SIs seated on any INCLUDED (non-excluded) PO. An excluded PO's
+  //     own seated SI does NOT travel (test: "excluded PO's SI stays") --
+  //     it simply remains un-referenced by this operation (the SI's home
+  //     is untouched either way; only whether a NEW reference is created
+  //     for it is affected).
+  function bpReferenceSet(st,bpUid){
+    const home=homeLocationOf(st,bpUid);
+    if(!home||home.kind!=='bp')return {ok:false,why:'no home'};
+    const container=st.inv.pages[home.page];
+    const bp=home.record;
+    const contained=container.pos.filter(p=>poInBPIn(p,bp));
+    const pos=[],excluded=[];
+    for(const p of contained){
+      if(usedByCurrent(st,p.uid))excluded.push(p.uid);
+      else pos.push(p.uid);
+    }
+    const includedSet=new Set(pos);
+    const sis=container.sis.filter(a=>a.host&&typeof a.host==='object'&&a.host.po&&includedSet.has(a.host.po)).map(a=>a.uid);
+    return {ok:true,bp:bpUid,pos,sis,excluded};
+  }
+
+  // ---------------------------------------------------------------------
+  // BP transfer under the reference model (REQ-0033 Phase 1).
+  //
+  // Three distinct cases, dispatched on {from.loc,to.loc}:
+  //   inv -> canvas: REFERENCE creation with exclusions (spec item 4).
+  //     The BP's home stays in st.inv.pages[from.page] untouched; the
+  //     CURRENT preset (`to` must be {loc:'canvas'}) gets a NEW BP
+  //     reference at `origin`, plus new PO/SI references for
+  //     bpReferenceSet()'s non-excluded contents (placed at the SAME
+  //     relative cell offset from the new origin as their home records
+  //     have from the BP's home origin -- i.e. the arrangement is
+  //     preserved, just translated to the new origin, exactly like the
+  //     old physical transferBP's dr/dc shift).
+  //   canvas -> inv: REFERENCE removal. Removes the CURRENT preset's BP
+  //     reference and every PO/SI reference it brought along (their own
+  //     current-preset references, i.e. removeRef('po'/'si') for each
+  //     nested uid still referenced by the current preset). The home
+  //     record(s) are never touched; `to.page`/`origin` are IGNORED (spec:
+  //     "drop cell irrelevant"). `from` must be {loc:'canvas'}.
+  //   inv -> inv (page<->page): PHYSICAL home move, byte-identical to the
+  //     REQ-0030 behavior (splice the BP's home + its home-contained POs/
+  //     SIs from one page's arrays into another's, shifting cells by the
+  //     origin delta) -- inventory pages hold homes, not references, so
+  //     moving a BP between two pages is still a real relocation of the
+  //     one-and-only home record, same as before this REQ.
+  // canvas -> canvas is not a reachable case via this function (a single
+  // active preset's canvas is the only "canvas" container that exists at
+  // a time; moving a reference from one preset to another is expressed as
+  // removeRef in the source preset + createRef in the destination preset
+  // after switchPreset, not a single transferBP call).
+  function bpFrom(container,bpId){return container.bps.find(b=>b.id===bpId);}
   function canTransferBP(st,from,to,bpId,origin){
-    const src=containerOf(st,from);
-    const bp=bpFrom(src,bpId);
-    if(!bp)return {ok:false,why:'BP not found in source container'};
-    if(to.loc==='canvas'){
+    if(from.loc==='inv'&&to.loc==='inv'){
+      return canTransferBPPhysical(st,from,to,bpId,origin);
+    }
+    if(from.loc==='inv'&&to.loc==='canvas'){
+      const home=homeLocationOf(st,bpId);
+      if(!home||home.kind!=='bp'||home.page!==from.page)return {ok:false,why:'BP not found in source container'};
+      if(usedByCurrent(st,bpId))return {ok:false,why:'already referenced by current preset'};
+      const bp=home.record;
       const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
       const others=new Set();
       for(const ob of st.bps){for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
@@ -1965,9 +2252,17 @@ function create(ITEMS,SI_DEFS,layout,trees){
       }
       return {ok:true,cells:newCells};
     }
-    // target is a page: contents traveling with the BP must be excluded
-    // from the target's own overlap check (they don't exist there YET,
-    // but conceptually they don't collide with themselves).
+    if(from.loc==='canvas'&&to.loc==='inv'){
+      const idx=st.bps.findIndex(b=>b.id===bpId);
+      if(idx===-1)return {ok:false,why:'BP not found in source container'};
+      return {ok:true,cells:bpCellsIn(st.bps[idx])};
+    }
+    return {ok:false,why:'unsupported transfer'};
+  }
+  function canTransferBPPhysical(st,from,to,bpId,origin){
+    const src=page(st,from.page);
+    const bp=bpFrom(src,bpId);
+    if(!bp)return {ok:false,why:'BP not found in source container'};
     const inside=src.pos.filter(p=>poInBPIn(p,bp));
     const tmpContainer={bps:page(st,to.page).bps,pos:page(st,to.page).pos,sis:page(st,to.page).sis};
     const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
@@ -1983,33 +2278,59 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // transferBP: mutates. Fails CLEANLY (state untouched) when illegal --
-  // legality is checked FIRST via canTransferBP, before any splice, so a
-  // rejected transfer never partially moves contents.
+  // legality is checked FIRST via canTransferBP, before any mutation.
   function transferBP(st,from,to,bpId,origin){
     const chk=canTransferBP(st,from,to,bpId,origin);
     if(!chk.ok)return chk;
-    const src=containerOf(st,from),dst=containerOf(st,to);
+    if(from.loc==='inv'&&to.loc==='inv')return transferBPPhysical(st,from,to,bpId,origin);
+    if(from.loc==='inv'&&to.loc==='canvas')return transferBPCreateRef(st,from,bpId,origin);
+    if(from.loc==='canvas'&&to.loc==='inv')return transferBPRemoveRef(st,bpId);
+    return {ok:false,why:'unsupported transfer'};
+  }
+  function transferBPCreateRef(st,from,bpId,origin){
+    const home=homeLocationOf(st,bpId);
+    const bp=home.record;
+    const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
+    const nested=bpReferenceSet(st,bpId);
+    const bpRef=createRef(st,'bp',bpId,{origin});
+    for(const uid of nested.pos){
+      const poHome=homeLocationOf(st,uid).record;
+      createRef(st,'po',uid,{cell:[poHome.cell[0]+dr,poHome.cell[1]+dc],rot:poHome.rot});
+    }
+    for(const uid of nested.sis){
+      const siHome=homeLocationOf(st,uid).record;
+      createRef(st,'si',uid,{host:siHome.host});
+    }
+    unseatOrphans(st);
+    return bpRef;
+  }
+  function transferBPRemoveRef(st,bpId){
+    const bpRefIdx=st.bps.findIndex(b=>b.id===bpId);
+    const bpRef=st.bps[bpRefIdx];
+    // every PO reference currently on canvas that is contained within this
+    // BP reference's OWN footprint (its canvas origin/shape, NOT the home
+    // one) is nested content that arrived with it -- remove those
+    // references too (their homes are untouched).
+    const nestedUids=st.pos.filter(p=>poInBPIn(p,bpRef)).map(p=>p.uid);
+    for(const uid of nestedUids)removeRef(st,'po',uid);
+    removeRef(st,'bp',bpId);
+    return {ok:true};
+  }
+  function transferBPPhysical(st,from,to,bpId,origin){
+    const src=page(st,from.page),dst=page(st,to.page);
     const bp=bpFrom(src,bpId);
     const inside=src.pos.filter(p=>poInBPIn(p,bp));
     const insideUids=new Set(inside.map(p=>p.uid));
     const insideSis=src.sis.filter(a=>a.host&&a.host.po&&insideUids.has(a.host.po));
     const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
-    // splice BP out of src, shift+push into dst
     src.bps=src.bps.filter(b=>b.id!==bpId);
     bp.origin=origin;
     dst.bps.push(bp);
-    // splice contained POs out of src.pos, shift cell, push into dst.pos
     src.pos=src.pos.filter(p=>!insideUids.has(p.uid));
     for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
     dst.pos.push(...inside);
-    // splice their seated SIs out of src.sis, push into dst.sis (host
-    // untouched -- it names the PO by uid, which is unaffected by the move)
     src.sis=src.sis.filter(a=>!(a.host&&a.host.po&&insideUids.has(a.host.po)));
     dst.sis.push(...insideSis);
-    // if the destination is canvas, run unseatOrphans since e.g. a moved
-    // blade/hilt pair might now (dis)qualify for the 'bond' assembly seat;
-    // inventory containers have no 'bond' concept (see pageSockets note).
-    if(to.loc==='canvas')unseatOrphans(st);
     return {ok:true};
   }
 
@@ -2044,6 +2365,32 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // page 1" without specifying overflow behavior; dropping items on
   // migration would be a silent data-loss bug, so overflow-to-next-page is
   // the safe interpretation.
+  // firstFitBPOrigin(container,shape): like firstFitCell, but for placing
+  // a whole NEW BP's own footprint (a BP does not need to land "inside"
+  // another BP the way a PO does -- it needs bounds-fit, no overlap with
+  // an EXISTING BP, and no overlap with any free-placed PO/SI already in
+  // the page). Used only by migrateState v3 to find a first-fit home
+  // origin for a canvas-resident BP with no home yet. Deliberately a
+  // separate scan from firstFitCell (which enforces invCanPlaceCells'
+  // PO-in-BP containment law -- wrong rule for placing a BP itself).
+  function firstFitBPOrigin(container,shape){
+    const others=new Set();
+    for(const ob of container.bps)for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));
+    const occ=invOccupancy(container,[]);
+    for(let r=1;r<=ROWS;r++){
+      for(let c=1;c<=COLS;c++){
+        const cells=shape.map(([dr,dc])=>[r+dr,c+dc]);
+        let good=true;
+        for(const [cr,cc] of cells){
+          if(cr<1||cr>ROWS||cc<1||cc>COLS){good=false;break;}
+          if(others.has(key(cr,cc))){good=false;break;}
+          if(occ[key(cr,cc)]){good=false;break;}
+        }
+        if(good)return [r,c];
+      }
+    }
+    return null;
+  }
   function firstFitCell(container,shapeOff){
     for(let r=1;r<=ROWS;r++){
       for(let c=1;c<=COLS;c++){
@@ -2191,41 +2538,81 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // ok:false never happens -- ok is false if and only if duplicates is
   // non-empty). Does NOT check for "missing" uids (an item deleted
   // outright is not this invariant's concern) -- only duplication.
+  // checkUidInvariant(st): read-only auditor for the REQ-0033 reference
+  // model invariant (replaces the REQ-0031 "uid lives in exactly one place"
+  // physicality rule):
+  //   - every uid (PO/BP/SI) has a HOME exactly once across st.inv.pages.
+  //   - every preset (the active top-level fields, plus every inactive
+  //     store[i] snapshot) holds AT MOST ONE reference to any given uid.
+  // Returns {ok:true} when both hold, else {ok:false,why,duplicates:[...]}
+  // -- `duplicates` entries are 'po:<uid>'/'bp:<uid>'/'si:<uid>' tagged
+  // strings (same convention as REQ-0031's checker) naming every home
+  // that appears 2+ times AND every (uid) that has 2+ references within
+  // the SAME preset. A uid referenced by several DIFFERENT presets is NOT
+  // a violation (that is the yellow/shared case, not a duplicate) -- only
+  // >1 reference to the same uid WITHIN one preset's own canvas counts.
   function checkUidInvariant(st){
-    const seen=new Map(); // uid -> count
-    const bump=(uid)=>seen.set(uid,(seen.get(uid)||0)+1);
-    for(const p of st.pos)bump('po:'+p.uid);
-    for(const a of st.sis)bump('si:'+a.uid);
-    if(st.presets){
-      st.presets.store.forEach((snap,i)=>{
-        if(i===st.presets.active)return; // active slot's store entry is always null by construction
-        if(!snap)return;
-        for(const p of snap.pos)bump('po:'+p.uid);
-        for(const a of snap.sis)bump('si:'+a.uid);
-      });
-    }
+    const homeSeen=new Map(); // uid -> count, across st.inv.pages only
+    const bumpHome=(uid)=>homeSeen.set(uid,(homeSeen.get(uid)||0)+1);
     if(st.inv){
       for(const pg of st.inv.pages){
-        for(const p of pg.pos)bump('po:'+p.uid);
-        for(const a of pg.sis)bump('si:'+a.uid);
+        for(const p of pg.pos)bumpHome('po:'+p.uid);
+        for(const b of pg.bps)bumpHome('bp:'+b.id);
+        for(const a of pg.sis)bumpHome('si:'+a.uid);
       }
     }
-    const duplicates=[...seen.entries()].filter(([,c])=>c>1).map(([uid])=>uid);
-    if(duplicates.length)return {ok:false,why:'uid(s) appear in more than one place',duplicates};
+    const duplicates=[...homeSeen.entries()].filter(([,c])=>c>1).map(([uid])=>uid);
+    // per-preset reference duplication: within ONE preset's own canvas,
+    // the same uid must never appear twice (that would mean two
+    // independent references to the same item coexisting in one preset,
+    // which createRef's red-rule check is specifically designed to
+    // prevent -- this audits that no OTHER code path ever violated it).
+    if(st.presets){
+      for(let i=0;i<presetCount(st);i++){
+        const c=presetCanvasOf(st,i);
+        const seen=new Map();
+        const bump=(tag)=>seen.set(tag,(seen.get(tag)||0)+1);
+        for(const p of c.pos)bump('po:'+p.uid);
+        for(const b of c.bps)bump('bp:'+b.id);
+        for(const a of c.sis)bump('si:'+a.uid);
+        for(const [tag,cnt] of seen.entries())if(cnt>1)duplicates.push(tag+'@preset'+i);
+      }
+    }
+    if(duplicates.length)return {ok:false,why:'uid(s) violate the home/reference invariant',duplicates};
     return {ok:true,duplicates:[]};
   }
 
+  // migrateState v3 (REQ-0033): rebuilds any older-shaped saved state into
+  // the reference model. Chains through the EXISTING v1/v2 migration path
+  // first (unchanged -- legacy loc:'inv'/host:'inv' list-membership items
+  // still become spatial inventory homes exactly as before, and a
+  // pre-preset save still gets its 5-preset scaffold), THEN performs the
+  // v3 step: any uid CURRENTLY sitting physically on a canvas (the active
+  // top-level fields OR any preset's store[i] snapshot) is, under the old
+  // model, its own sole copy -- v3 gives each such uid a first-fit
+  // INVENTORY home (same firstFitCell/firstFitSICell scan already used for
+  // legacy list-membership items) and REPLACES the physical canvas record
+  // with a reference (same uid, same cell/rot/origin/host -- the visible
+  // arrangement is byte-preserved, only its "am I the only copy" status
+  // changes). BPs get inventory homes first (so their contained POs' BP-
+  // containment/home page is well-defined), then POs, then SIs.
+  //
+  // Idempotent: a state that has ALREADY been through v3 (every canvas-
+  // resident uid already has a home in st.inv.pages) leaves every record
+  // untouched -- the "does uid already have a home" check below is exactly
+  // what makes a second migrateState() call a no-op for those uids.
   function migrateState(oldState){
+    const st=migrateStateV2(oldState);
+    migrateCanvasToReferencesV3(st);
+    return st;
+  }
+  // migrateStateV2: the REQ-0030/0031 legacy-shape migration, extracted
+  // unchanged (byte-identical logic) so v3 can chain through it via a
+  // plain function call instead of duplicating it inline.
+  function migrateStateV2(oldState){
     const st=JSON.parse(JSON.stringify(oldState)); // never mutate the input
     if(!st.inv)st.inv=emptyInventory();
     if(!Array.isArray(st.inv.names)||st.inv.names.length!==PAGE_COUNT)st.inv.names=defaultPageNames();
-    // Pre-preset saved profile (no st.presets at all): the CURRENT
-    // top-level canvas fields (already legacy-migrated above/below into
-    // st.linked/bps/pos/sis) become preset 0 (the active one), and 4
-    // fresh EMPTY presets are appended after it -- "makeState: 5 presets,
-    // 1 active with current scenario content, 2-5 empty" extended here to
-    // migration: the ONE preset a legacy save ever had (today's single
-    // implicit canvas) becomes slot 0, matching that same shape.
     if(!st.presets)st.presets=makePresetsMeta(PRESET_COUNT);
     const legacyPOs=st.pos.filter(p=>p.loc==='inv');
     const legacySIs=st.sis.filter(a=>a.host==='inv');
@@ -2237,16 +2624,13 @@ function create(ITEMS,SI_DEFS,layout,trees){
         const container=st.inv.pages[pageIdx];
         const cell=firstFitCell(container,shapeInfo(p.id,p.rot).off);
         if(cell){placedOn={pageIdx,cell};break;}
-        pageIdx++; // this page is full for this shape -- try the next page
+        pageIdx++;
       }
-      if(!placedOn)break; // all 5 pages full -- item stays as legacy loc:'inv' (never dropped)
+      if(!placedOn)break;
       p.loc='grid';p.cell=placedOn.cell;
       st.inv.pages[placedOn.pageIdx].pos.push(p);
       migratedPOUids.add(p.uid);
     }
-    // Remove ONLY the successfully-migrated entries from st.pos; any
-    // un-fittable leftovers (all 5 pages full) simply remain in st.pos with
-    // their original loc:'inv',cell:null -- never silently dropped.
     st.pos=st.pos.filter(p=>!migratedPOUids.has(p.uid));
     pageIdx=0;
     for(const a of legacySIs){
@@ -2265,6 +2649,122 @@ function create(ITEMS,SI_DEFS,layout,trees){
     st.sis=st.sis.filter(a=>!migratedSIUids.has(a.uid));
     return st;
   }
+  // migrateCanvasToReferencesV3: MUTATES `st` in place (st is already a
+  // fresh deep clone by the time migrateState calls this, via
+  // migrateStateV2's own JSON round-trip -- no separate clone needed
+  // here). Walks every preset's canvas (active top-level fields, plus
+  // every store[i] snapshot) exactly once, giving each not-yet-homed
+  // canvas-resident uid a first-fit inventory home and leaving its canvas
+  // record in place AS a reference (no further edit needed to the record
+  // itself -- a physical record and a reference record are byte-identical
+  // in shape; only the bookkeeping of "does a home exist elsewhere"
+  // changes). Order: BPs first, then POs, then SIs.
+  function migrateCanvasToReferencesV3(st){
+    // migrateCanvasToReferencesV3: MUTATES `st` in place (st is already a
+    // fresh deep clone by the time migrateState calls this, via
+    // migrateStateV2's own JSON round-trip). Walks every preset's canvas
+    // (active top-level fields, plus every store[i] snapshot) exactly
+    // once, giving each not-yet-homed canvas-resident uid a first-fit
+    // inventory home and leaving its canvas record in place AS a
+    // reference (a physical record and a reference record are byte-
+    // identical in shape; only the bookkeeping of "does a home exist
+    // elsewhere" changes).
+    //
+    // Critical correctness requirement: a BP and the POs it physically
+    // contained ON CANVAS must be homed TOGETHER, at the SAME relative
+    // offsets, on the SAME page -- otherwise bpReferenceSet()'s home-page
+    // containment check (poInBPIn against the home record) would see them
+    // as unrelated once migrated (the BP homed on one page, its former
+    // contents homed on a totally different page/cell by an independent
+    // first-fit scan). So BPs are migrated as a UNIT with their canvas-
+    // contained POs and those POs' seated SIs -- mirroring the exact
+    // splice-and-shift arithmetic transferBPPhysical/the old transferBP
+    // already use for a same-model page<->page move, just landing in a
+    // freshly chosen home page/origin instead of a caller-specified one.
+    // Any PO that was NOT inside a BP on canvas (a free-placed PO -- not
+    // reachable via the current client UX, since canvas always requires a
+    // BP host, but tolerated defensively) is homed independently as its
+    // own free-placed inventory item. SIs not seated on any BP-contained
+    // PO (e.g. the 'bond' assembly guard) are homed independently as
+    // free-placed 1x1 items.
+    const canvases=[];
+    canvases.push({bps:st.bps,pos:st.pos,sis:st.sis});
+    if(st.presets){
+      st.presets.store.forEach((snap,i)=>{
+        if(i===st.presets.active)return;
+        if(snap)canvases.push(snap);
+      });
+    }
+    const homedBP=new Set(),homedPO=new Set(),homedSI=new Set();
+    for(const pg of st.inv.pages){
+      for(const b of pg.bps)homedBP.add(b.id);
+      for(const p of pg.pos)homedPO.add(p.uid);
+      for(const a of pg.sis)homedSI.add(a.uid);
+    }
+    let pageIdx=0;
+    for(const c of canvases){
+      for(const bp of c.bps){
+        if(homedBP.has(bp.id))continue;
+        const inside=c.pos.filter(p=>!homedPO.has(p.uid)&&poInBPIn(p,bp));
+        const insideUids=new Set(inside.map(p=>p.uid));
+        const insideSis=c.sis.filter(a=>a.host&&typeof a.host==='object'&&a.host.po&&insideUids.has(a.host.po));
+        let placedOn=null;
+        while(pageIdx<PAGE_COUNT){
+          const container=st.inv.pages[pageIdx];
+          const cell=firstFitBPOrigin(container,bp.shape);
+          if(cell){placedOn={pageIdx,cell};break;}
+          pageIdx++;
+        }
+        if(!placedOn)continue; // all pages full -- leave un-homed (never silently drop the reference itself)
+        const dr=placedOn.cell[0]-bp.origin[0],dc=placedOn.cell[1]-bp.origin[1];
+        const homeBp=JSON.parse(JSON.stringify(bp));
+        homeBp.origin=placedOn.cell;
+        st.inv.pages[placedOn.pageIdx].bps.push(homeBp);
+        homedBP.add(bp.id);
+        for(const p of inside){
+          st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:[p.cell[0]+dr,p.cell[1]+dc],rot:p.rot});
+          homedPO.add(p.uid);
+        }
+        for(const a of insideSis){
+          st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{po:a.host.po,si:a.host.si}});
+          homedSI.add(a.uid);
+        }
+      }
+    }
+    pageIdx=0;
+    for(const c of canvases){
+      for(const p of c.pos){
+        if(homedPO.has(p.uid))continue;
+        if(p.loc!=='grid')continue; // no cell to derive a shape-preserving home from
+        let placedOn=null;
+        while(pageIdx<PAGE_COUNT){
+          const container=st.inv.pages[pageIdx];
+          const cell=firstFitCell(container,shapeInfo(p.id,p.rot).off);
+          if(cell){placedOn={pageIdx,cell};break;}
+          pageIdx++;
+        }
+        if(!placedOn)continue;
+        st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:placedOn.cell,rot:p.rot});
+        homedPO.add(p.uid);
+      }
+    }
+    pageIdx=0;
+    for(const c of canvases){
+      for(const a of c.sis){
+        if(homedSI.has(a.uid))continue;
+        let placedOn=null;
+        while(pageIdx<PAGE_COUNT){
+          const container=st.inv.pages[pageIdx];
+          const cell=firstFitSICell(container);
+          if(cell){placedOn={pageIdx,cell};break;}
+          pageIdx++;
+        }
+        if(!placedOn)continue;
+        st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{page:placedOn.pageIdx,cell:placedOn.cell}});
+        homedSI.add(a.uid);
+      }
+    }
+  }
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
@@ -2274,7 +2774,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
           invOccupancy,canTransferBP,transferBP,migrateState,
           // Preset model (REQ-0031 Phase B) -- additive exports only.
           PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,
-          renameInvPage,invPageNames,checkUidInvariant};
+          renameInvPage,invPageNames,checkUidInvariant,
+          // Reference model (REQ-0033 Phase 1) -- additive exports only.
+          usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,bpReferenceSet,
+          createRef,removeRef,homeLocationOf};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });
