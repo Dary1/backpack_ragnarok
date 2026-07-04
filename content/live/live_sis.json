@@ -24,8 +24,12 @@
     }
    ],
    "flavor": "Fits any gem socket.",
-   "name_ja": "ルビーの宝石",
-   "flavor_ja": "どんな宝石ソケットにも合う。"
+   "i18n": {
+    "ja": {
+     "name": "ルビーの宝石",
+     "flavor": "どんな宝石ソケットにも合う。"
+    }
+   }
   },
   {
    "id": "acc_frost",
@@ -50,8 +54,12 @@
     }
    ],
    "flavor": "Cold that keeps its promises.",
-   "name_ja": "フロストオーブ",
-   "flavor_ja": "約束を守る、冷気。"
+   "i18n": {
+    "ja": {
+     "name": "フロストオーブ",
+     "flavor": "約束を守る、冷気。"
+    }
+   }
   },
   {
    "id": "acc_whet",
@@ -78,8 +86,12 @@
     }
    ],
    "flavor": "Requires a Metal edge socket.",
-   "name_ja": "砥石",
-   "flavor_ja": "金属の刃ソケットが必要。"
+   "i18n": {
+    "ja": {
+     "name": "砥石",
+     "flavor": "金属の刃ソケットが必要。"
+    }
+   }
   },
   {
    "id": "acc_arrow",
@@ -104,8 +116,12 @@
     }
    ],
    "flavor": "Fits any edge socket.",
-   "name_ja": "鏃",
-   "flavor_ja": "どんな刃ソケットにも合う。"
+   "i18n": {
+    "ja": {
+     "name": "鏃",
+     "flavor": "どんな刃ソケットにも合う。"
+    }
+   }
   },
   {
    "id": "acc_poison",
@@ -130,8 +146,12 @@
     }
    ],
    "flavor": "Coat sockets exist only on Weapons.",
-   "name_ja": "毒コート",
-   "flavor_ja": "コートソケットは武器にしか存在しない。"
+   "i18n": {
+    "ja": {
+     "name": "毒コート",
+     "flavor": "コートソケットは武器にしか存在しない。"
+    }
+   }
   },
   {
    "id": "acc_guard",
@@ -155,8 +175,12 @@
     }
    ],
    "flavor": "Unseats if disassembled.",
-   "name_ja": "鍔",
-   "flavor_ja": "分解されれば、外れ落ちる。"
+   "i18n": {
+    "ja": {
+     "name": "鍔",
+     "flavor": "分解されれば、外れ落ちる。"
+    }
+   }
   }
  ]
 }

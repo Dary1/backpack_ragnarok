@@ -51,12 +51,16 @@
     }
    ],
    "flavor": "Inert alone; sings when it finds its hilt.",
-   "name_ja": "ロングソードの刀身",
-   "flavor_ja": "それ単体では沈黙している。柄を見つけたときだけ歌う。",
    "tags": [
     "WeaponPart",
     "Metal"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ロングソードの刀身",
+     "flavor": "それ単体では沈黙している。柄を見つけたときだけ歌う。"
+    }
+   }
   },
   {
    "id": "hilt",
@@ -86,13 +90,17 @@
    },
    "effects": [],
    "flavor": "A pommel waiting for a stone.",
-   "name_ja": "剣の柄",
-   "flavor_ja": "石を待つ、柄頭。",
    "tags": [
     "WeaponPart",
     "Metal",
     "Wood"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "剣の柄",
+     "flavor": "石を待つ、柄頭。"
+    }
+   }
   },
   {
    "id": "flame_tablet",
@@ -140,8 +148,6 @@
     }
    ],
    "flavor": "A shard of Muspelheim litany.",
-   "name_ja": "炎のルーンタブレット",
-   "flavor_ja": "ムスペルヘイムの経文が刻まれた欠片。",
    "tags": [
     "Rune",
     "Flame"
@@ -173,7 +179,13 @@
      ],
      "tag": "Oil"
     }
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "炎のルーンタブレット",
+     "flavor": "ムスペルヘイムの経文が刻まれた欠片。"
+    }
+   }
   },
   {
    "id": "oil_flask",
@@ -206,8 +218,6 @@
     }
    ],
    "flavor": "Slow gold that loves a spark.",
-   "name_ja": "油の小瓶",
-   "flavor_ja": "火花を愛する、粘る黄金。",
    "tags": [
     "Reagent",
     "Oil"
@@ -226,7 +236,13 @@
      ],
      "tag": "Flame"
     }
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "油の小瓶",
+     "flavor": "火花を愛する、粘る黄金。"
+    }
+   }
   },
   {
    "id": "dagger",
@@ -280,12 +296,16 @@
     }
    ],
    "flavor": "Quick, honest work.",
-   "name_ja": "ダガー",
-   "flavor_ja": "速く、そして正直な仕事。",
    "tags": [
     "Weapon",
     "Metal"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ダガー",
+     "flavor": "速く、そして正直な仕事。"
+    }
+   }
   },
   {
    "id": "herb_pouch",
@@ -322,11 +342,15 @@
     }
    ],
    "flavor": "Smells like a meadow that survived.",
-   "name_ja": "薬草の巾着",
-   "flavor_ja": "生き残った草原の匂いがする。",
    "tags": [
     "Relic"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "薬草の巾着",
+     "flavor": "生き残った草原の匂いがする。"
+    }
+   }
   },
   {
    "id": "tower_shield",
@@ -367,12 +391,16 @@
     }
    ],
    "flavor": "A wall that agreed to travel.",
-   "name_ja": "タワーシールド",
-   "flavor_ja": "旅に出ることを了承した、壁。",
    "tags": [
     "Shield",
     "Metal"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "タワーシールド",
+     "flavor": "旅に出ることを了承した、壁。"
+    }
+   }
   },
   {
    "id": "beast_jaw",
@@ -445,12 +473,16 @@
     }
    ],
    "flavor": "It still remembers how to bite.",
-   "name_ja": "獣の顎",
-   "flavor_ja": "噛み方を、まだ覚えている。",
    "tags": [
     "Weapon",
     "Beast"
-   ]
+   ],
+   "i18n": {
+    "ja": {
+     "name": "獣の顎",
+     "flavor": "噛み方を、まだ覚えている。"
+    }
+   }
   }
  ]
 }

@@ -164,11 +164,19 @@ function findLiveEntry(id) {
 
 // ---- validation ----
 
+// REQ-0038: formal i18n adoption. `i18n` (a map keyed by locale, e.g.
+// {ja: {name, flavor}}) is now the primary editable locale-content field;
+// name_ja/flavor_ja stay in the allowlist too (back-compat -- content/
+// live/*.json itself no longer has them post-migration, but an old
+// client/script/test PUTting the flat shape is still accepted and still
+// round-trips through server/api.cjs's withBackCompatI18n() on the next
+// GET /api/content, so nothing regresses for stale callers).
+const SUPPORTED_LOCALES = new Set(['ja']);
 const ITEM_ALLOWED_KEYS = new Set([
-  'name', 'name_ja', 'flavor', 'flavor_ja', 'rarity', 'tags', 'effects', 'sockets', 'stretch',
+  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'tags', 'effects', 'sockets', 'stretch',
 ]);
 const SI_ALLOWED_KEYS = new Set([
-  'name', 'name_ja', 'flavor', 'flavor_ja', 'rarity', 'effects',
+  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'effects',
 ]);
 
 function isFiniteNum(v) {
@@ -221,6 +229,38 @@ function validateEffect(eff, vocab, ctx) {
   }
   if (eff.cond !== undefined && eff.cond !== 'assembled') {
     throw new Error(ctx + ': unknown effect.cond "' + eff.cond + '"');
+  }
+}
+
+/** Validates the i18n map: must be a plain object whose keys are all in
+ * SUPPORTED_LOCALES (today just {"ja"} -- REQ-0038: "whitelist i18n map
+ * keys to a fixed locale set {ja} for now"). Each locale's value must
+ * itself be a plain object with only name/flavor keys, each a string
+ * when present -- same per-field type rule the base name/flavor fields
+ * already get. Throws a descriptive Error on any violation. */
+function validateI18n(i18n, ctx) {
+  if (!i18n || typeof i18n !== 'object' || Array.isArray(i18n)) {
+    throw new Error(ctx + ': i18n must be an object');
+  }
+  for (const locale of Object.keys(i18n)) {
+    if (!SUPPORTED_LOCALES.has(locale)) {
+      throw new Error(ctx + ': unknown i18n locale "' + locale + '" (supported: ' + Array.from(SUPPORTED_LOCALES).join(', ') + ')');
+    }
+    const entry = i18n[locale];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new Error(ctx + ': i18n.' + locale + ' must be an object');
+    }
+    for (const key of Object.keys(entry)) {
+      if (key !== 'name' && key !== 'flavor') {
+        throw new Error(ctx + ': unknown field "' + key + '" in i18n.' + locale + ' (only name/flavor are editable)');
+      }
+    }
+    if (entry.name !== undefined && typeof entry.name !== 'string') {
+      throw new Error(ctx + ': i18n.' + locale + '.name must be a string');
+    }
+    if (entry.flavor !== undefined && typeof entry.flavor !== 'string') {
+      throw new Error(ctx + ': i18n.' + locale + '.flavor must be a string');
+    }
   }
 }
 
@@ -291,6 +331,9 @@ function validateBody(body, kind, vocab) {
       throw new Error(k + ' must be a string');
     }
   }
+  if (body.i18n !== undefined) {
+    validateI18n(body.i18n, 'i18n');
+  }
 }
 
 // ---- write path ----
@@ -318,6 +361,21 @@ function applyAdminEdit(id, body) {
   const entries = found.doc.entries;
   const original = entries[found.index];
   const merged = Object.assign({}, original, body);
+  // REQ-0038: `i18n` is a map-of-maps (locale -> {name,flavor}) -- a
+  // shallow Object.assign above would REPLACE the whole i18n map with
+  // whatever the PUT body sent, silently dropping any locale/field the
+  // client didn't include (e.g. a JA-only edit form sending only
+  // i18n.ja.name would wipe out an existing i18n.ja.flavor). Merge one
+  // level deeper instead: each locale in body.i18n is merged into the
+  // corresponding locale in the original entry's i18n (if any), so a
+  // partial edit only ever touches the fields it actually sent.
+  if (body.i18n !== undefined) {
+    const mergedI18n = Object.assign({}, original.i18n || {});
+    for (const locale of Object.keys(body.i18n)) {
+      mergedI18n[locale] = Object.assign({}, (original.i18n && original.i18n[locale]) || {}, body.i18n[locale]);
+    }
+    merged.i18n = mergedI18n;
+  }
 
   // Re-render effects (both locales) as a pre-commit gate -- if this
   // throws, nothing below runs and nothing is written.

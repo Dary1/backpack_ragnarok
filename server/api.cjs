@@ -67,6 +67,28 @@ function renderEffJoined(effects, locale) {
   return (effects || []).map(function (e) { return render(e, locale); }).join(' ');
 }
 
+// REQ-0038: formal i18n content shape. content/live/*.json entries now
+// carry an `i18n` map (e.g. i18n.ja.{name,flavor}) instead of flat
+// name_ja/flavor_ja fields (see tools/migrate_i18n.cjs). Chosen served
+// shape (per the REQ-0038 design decision -- "pick ONE approach and apply
+// it consistently"): serve the new `i18n` map AS WELL AS computed back-
+// compat top-level name_ja/flavor_ja fields, mirrored from
+// i18n.ja.name/i18n.ja.flavor. This keeps every EXISTING consumer of the
+// wire shape working unchanged (client/src/api.ts's ApiItemEntry/
+// ApiSIEntry, client/src/ItemPanel.tsx's localized(), mock-src/ui.js's
+// gameDataFromApiContent(), tools/tool_gen_data.cjs's baked data.js)
+// while the Dex v2 UI (client/src/dex/*) and the admin edit form read the
+// formal i18n map directly. Only the SERVER'S OWN computation is new;
+// the on-disk file no longer has the flat fields at all post-migration.
+function withBackCompatI18n(entry) {
+  const ja = entry.i18n && entry.i18n.ja;
+  if (!ja) return entry;
+  const out = Object.assign({}, entry);
+  if (out.name_ja === undefined && typeof ja.name === 'string') out.name_ja = ja.name;
+  if (out.flavor_ja === undefined && typeof ja.flavor === 'string') out.flavor_ja = ja.flavor;
+  return out;
+}
+
 // Builds the /api/content payload fresh from content/live + vocab.
 // Shape mirrors mock-src/data.js (GameData): { items, sis, trees, scenario }.
 // This is intentionally a straight, un-cached-at-source read of content/live —
@@ -88,17 +110,17 @@ function buildContentPayload() {
 
   const ITEMS = {};
   for (const e of itemEntries) {
-    ITEMS[e.id] = Object.assign({}, e, {
+    ITEMS[e.id] = withBackCompatI18n(Object.assign({}, e, {
       eff_en: renderEffJoined(e.effects, 'en'),
       eff_ja: renderEffJoined(e.effects, 'ja'),
-    });
+    }));
   }
   const SIS = {};
   for (const e of siEntries) {
-    SIS[e.id] = Object.assign({}, e, {
+    SIS[e.id] = withBackCompatI18n(Object.assign({}, e, {
       eff_en: renderEffJoined(e.effects, 'en'),
       eff_ja: renderEffJoined(e.effects, 'ja'),
-    });
+    }));
   }
   const trees = { po: vocab.po_tags || {}, socket: vocab.socket_tags || {} };
   // REQ-0035: closed-vocabulary lists for the Dex admin edit form's

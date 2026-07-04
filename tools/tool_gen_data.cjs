@@ -50,6 +50,20 @@ function renderEffJoined(effects, locale) {
   return (effects || []).map(function (e) { return render(e, locale); }).join(' ');
 }
 
+// REQ-0038: content entries now carry a formal i18n.ja.{name,flavor} map
+// instead of flat name_ja/flavor_ja fields (see tools/migrate_i18n.cjs).
+// This baked-data.js generator still emits FLAT name_ja/flavor_ja fields
+// on ITEMS/SI_DEFS records (mock-src/ui.js's gameDataFromApiContent() and
+// client/src/api.ts both read that flat shape) -- jaName()/jaFlavor()
+// read the new i18n map first, falling back to a legacy _ja field only
+// for defensiveness against a not-yet-migrated fixture/content file.
+function jaName(e) {
+  return (e.i18n && e.i18n.ja && e.i18n.ja.name !== undefined) ? e.i18n.ja.name : e.name_ja;
+}
+function jaFlavor(e) {
+  return (e.i18n && e.i18n.ja && e.i18n.ja.flavor !== undefined) ? e.i18n.ja.flavor : e.flavor_ja;
+}
+
 function main() {
   const args = process.argv.slice(2);
   if (args.length < 5) {
@@ -78,7 +92,7 @@ function main() {
     const eff_ja = renderEffJoined(e.effects, 'ja');
     const rec = {
       name: e.name,
-      name_ja: e.name_ja,
+      name_ja: jaName(e),
       // tags[0] is always the former type-tag; remaining entries are former
       // elements -- see REQ-0022 batch 3/4. Passed through as-is from the
       // migrated content JSON (content already stores tags, not type/el).
@@ -91,7 +105,7 @@ function main() {
       eff_en,
       eff_ja,
       flavor: e.flavor,
-      flavor_ja: e.flavor_ja,
+      flavor_ja: jaFlavor(e),
     };
     if (e.stretch) rec.stretch = e.stretch;
     if (e.ports !== undefined) rec.ports = e.ports;
@@ -105,7 +119,7 @@ function main() {
     const eff_ja = renderEffJoined(e.effects, 'ja');
     SI_DEFS[e.id] = {
       name: e.name,
-      name_ja: e.name_ja,
+      name_ja: jaName(e),
       slot: e.slot,
       reqTags: e.reqTags || [],
       icon: e.icon,
@@ -114,7 +128,7 @@ function main() {
       eff_en,
       eff_ja,
       flavor: e.flavor,
-      flavor_ja: e.flavor_ja,
+      flavor_ja: jaFlavor(e),
     };
     if (e.ports !== undefined) SI_DEFS[e.id].ports = e.ports;
   }
