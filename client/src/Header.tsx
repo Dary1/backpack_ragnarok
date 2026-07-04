@@ -5,13 +5,16 @@
 // old one-shot ioStatus line with a small persistent auto-save indicator:
 // "saved ✓" / "saving…" / "offline" (store.ts's autoSaveStatus). Load stays
 // fully automatic at boot (main.tsx calls store.ts's boot(), unchanged).
-import type { DataSource, Locale } from './store';
+// REQ-0034 adds the global Nav bar next to the title (see Nav.tsx).
+import { Nav } from './Nav';
+import type { DataSource, Locale, Route } from './store';
 
 interface HeaderProps {
   source: DataSource | null;
   locale: Locale;
   onToggleLocale: () => void;
   autoSaveStatus: 'saved' | 'saving' | 'offline';
+  route: Route;
 }
 
 const STATUS_TEXT: Record<'saved' | 'saving' | 'offline', { ja: string; en: string }> = {
@@ -26,12 +29,15 @@ const STATUS_COLOR: Record<'saved' | 'saving' | 'offline', string> = {
   offline: '#c05050',
 };
 
-export function Header({ source, locale, onToggleLocale, autoSaveStatus }: HeaderProps) {
+export function Header({ source, locale, onToggleLocale, autoSaveStatus, route }: HeaderProps) {
   const badgeLabel = source === 'live' ? 'live' : source === 'error' ? 'error' : '…';
   const badgeClass = source === 'live' ? 'badge-live' : source === 'error' ? 'badge-error' : 'badge-pending';
   return (
     <header className="app-header">
-      <h1>backpack_ragnarok</h1>
+      <div className="header-title-row">
+        <h1>backpack_ragnarok</h1>
+        <Nav active={route} locale={locale} />
+      </div>
       <div className="header-controls">
         <span className={`data-source-badge ${badgeClass}`}>{badgeLabel}</span>
         <span className="auto-save-status" style={{ color: STATUS_COLOR[autoSaveStatus] }} data-status={autoSaveStatus}>

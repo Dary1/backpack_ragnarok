@@ -67,6 +67,19 @@ export type { DataSource };
 
 export type Locale = 'en' | 'ja';
 
+// REQ-0034 -- global nav route. Hash-based: '#/backpacks' (default),
+// '#/schedule', '#/friends', '#/dex', '#/settings'. Lives in the module
+// store, same pattern as `locale`/`activeInvPage` -- kept in sync with
+// `location.hash` both ways by initRouting() below.
+export type Route = 'backpacks' | 'schedule' | 'friends' | 'dex' | 'settings';
+
+const VALID_ROUTES: Route[] = ['backpacks', 'schedule', 'friends', 'dex', 'settings'];
+
+function routeFromHash(hash: string): Route {
+  const raw = hash.replace(/^#\/?/, '');
+  return (VALID_ROUTES as string[]).includes(raw) ? (raw as Route) : 'backpacks';
+}
+
 export interface StoreSnapshot {
   status: 'loading' | 'ready' | 'error';
   source: DataSource | null;
@@ -91,6 +104,9 @@ export interface StoreSnapshot {
   /** 0-based active inventory tab/page index (REQ-0030 Phase 2). Module-
    * store-only, never persisted (see module comment above). */
   activeInvPage: number;
+  /** Current nav route (REQ-0034). Synced both ways with `location.hash`
+   * by initRouting() -- see module comment there. */
+  route: Route;
 }
 
 let snapshot: StoreSnapshot = {
@@ -104,6 +120,7 @@ let snapshot: StoreSnapshot = {
   stateVersion: 0,
   autoSaveStatus: 'saved',
   activeInvPage: 0,
+  route: routeFromHash(typeof location !== 'undefined' ? location.hash : ''),
 };
 
 const listeners = new Set<() => void>();
@@ -165,6 +182,53 @@ export function setActiveInvPage(page: number): void {
   const clamped = Math.max(0, Math.min(max, page));
   if (clamped === snapshot.activeInvPage) return;
   setSnapshot({ ...snapshot, activeInvPage: clamped });
+}
+
+// ---------------------------------------------------------------------
+// Routing (REQ-0034). Hash-based, no router library -- see Route type's
+// doc comment above. Two entry points:
+//   - setRoute(route): called by nav UI. Updates the store AND writes
+//     location.hash (so back/forward + shareable/deep-link URLs work).
+//   - initRouting(): called once at boot (main.tsx) to (a) seed the store
+//     from whatever hash the page loaded with (covers a fresh deep-link
+//     load, e.g. /app/#/dex) and (b) subscribe to the browser's
+//     `hashchange` event so back/forward navigation also updates the
+//     store (covers the reverse direction: browser -> store).
+// ---------------------------------------------------------------------
+
+/** Switches the active route. Writes `location.hash` so the URL reflects
+ * the change (reload/deep-link/back-forward all stay consistent with
+ * this single source of truth). Does NOT touch Board/InventoryBoard
+ * mounting -- those stay mounted at all times regardless of route (see
+ * App.tsx's module comment) so this never risks the Pixi-recreation bug
+ * documented in REQ-0031 Phase A / REQ-0034. */
+export function setRoute(route: Route): void {
+  if (route === snapshot.route) return;
+  setSnapshot({ ...snapshot, route });
+  if (typeof location !== 'undefined') {
+    location.hash = `#/${route}`;
+  }
+}
+
+/** Wires the store's `route` to `location.hash` (both directions -- see
+ * module comment above). Call once at boot. Returns an unsubscribe
+ * function (not currently used by any caller, but keeps this symmetric
+ * with `subscribe()` and testable in isolation). */
+export function initRouting(): () => void {
+  if (typeof location !== 'undefined') {
+    const initial = routeFromHash(location.hash);
+    if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
+  }
+  const onHashChange = () => {
+    if (typeof location === 'undefined') return;
+    const next = routeFromHash(location.hash);
+    if (next !== snapshot.route) setSnapshot({ ...snapshot, route: next });
+  };
+  if (typeof window !== 'undefined') {
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }
+  return () => {};
 }
 
 // ---------------------------------------------------------------------

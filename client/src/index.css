@@ -51,6 +51,42 @@ html, body {
   letter-spacing: 0.5px;
 }
 
+/* REQ-0034 -- global nav bar, next to the title. */
+.header-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.global-nav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nav-link:hover {
+  border-color: var(--cyan);
+  color: var(--text);
+}
+
+.nav-link-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
 .header-controls {
   display: flex;
   align-items: center;
@@ -320,4 +356,36 @@ html, body {
   /* Same box treatment as the canvas board (.board-canvas is a plain
      block already) -- no extra rule needed beyond what .board-wrap
      already gives every board a container for. */
+}
+
+/* REQ-0034 -- backpacks view stays mounted at all times (Board's and
+   InventoryBoard's Pixi Applications must never be destroyed/recreated
+   on route switch, see App.tsx's module comment); only visibility
+   toggles via this class. */
+.backpacks-view {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.route-hidden {
+  display: none;
+}
+
+/* REQ-0034 -- placeholder pages (Schedule/Friends/Settings). */
+.placeholder-page {
+  flex: 1;
+  padding: 40px 22px;
+}
+
+.placeholder-page h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.placeholder-note {
+  color: var(--dim);
+  font-size: 14px;
 }
