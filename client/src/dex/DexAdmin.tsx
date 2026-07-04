@@ -87,7 +87,12 @@ function rowToEffect(row: EffectRow): Record<string, unknown> {
   return { trigger, verb };
 }
 
-export function DexAdmin({ locale, payload, me, onSaved }: DexAdminProps) {
+export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
+  // REQ-0037: identity for the PUT /api/admin/item/:id call is now carried
+  // entirely by the stored auth token (see api.ts's putAdminItem) -- the
+  // me prop is kept on DexAdminProps (DexRoot.tsx still resolves and
+  // passes it) purely as context for a future per-editor audit trail /
+  // display, not consumed as an argument to putAdminItem anymore.
   const entries = useMemo(() => combineEntries(payload), [payload]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<{
@@ -181,7 +186,7 @@ export function DexAdmin({ locale, payload, me, onSaved }: DexAdminProps) {
         body.tags = form.tags;
         body.stretch = form.stretch;
       }
-      await putAdminItem(selected.id, me.playerId, body);
+      await putAdminItem(selected.id, body);
       setSaveOk(true);
       onSaved();
     } catch (e) {

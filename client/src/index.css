@@ -908,3 +908,113 @@ html, body {
   color: var(--bad);
   font-size: 13px;
 }
+
+/* REQ-0037 -- Settings page (account block + logout) and REQ-0039 "Now"
+   (bot/API-mode placeholder). Both sections share the same card-style
+   language already used elsewhere (.dex-admin-viewonly-note's
+   background/border pattern). */
+.settings-page {
+  flex: 1;
+  padding: 40px 22px;
+  max-width: 560px;
+}
+
+.settings-page h2 {
+  margin: 0 0 18px;
+  font-size: 20px;
+}
+
+.settings-section {
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-account-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.settings-field-label {
+  color: var(--dim);
+}
+
+.settings-field-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.settings-account-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.settings-logout-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-logout-btn:hover {
+  background: rgba(192, 80, 80, 0.12);
+}
+
+.settings-bot-placeholder p {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.settings-bot-placeholder-note {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* REQ-0037 -- invite welcome banner. Fixed-ish placement right under the
+   header, dismissable, auto-hides after a few seconds (store.ts). */
+.invite-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1c3d2e;
+  color: #5cb573;
+  border-bottom: 1px solid #2f6b4d;
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.invite-banner-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}

@@ -58,22 +58,48 @@
 // pending or in flight), 'offline' (the last attempted write failed --
 // network/server error; the local state is NOT lost, just not yet
 // persisted, and the next mutation's debounce will retry).
+//
+// REQ-0037 addition -- guest auth: `me` holds the resolved /api/me
+// identity (playerId/name/roles), fetched once at boot() and again after
+// the invite-route flow completes. The canvas profile id used by
+// boot()/scheduleAutoSave() is `me.playerId` (or the dev-mode fallback id
+// the server resolves when no token is stored) -- see resolveProfileId()
+// below -- replacing the old hardcoded 'default' string, so different
+// logged-in guests get isolated boards. `welcomeBanner` is the minimal,
+// dependency-free toast shown right after the invite flow resolves a
+// player (see handleInviteRoute()); it auto-clears after a few seconds.
 import { useSyncExternalStore } from 'react';
 import { Engine } from './engine/adapter';
 import type { EngineInstance, GameState } from './engine/engine.d.ts';
-import { fetchCanvas, resolveGameData, saveCanvas, type DataSource, type GameData } from './api';
+import {
+  clearStoredToken,
+  fetchCanvas,
+  fetchMe,
+  resolveGameData,
+  saveCanvas,
+  setStoredToken,
+  type ApiMe,
+  type DataSource,
+  type GameData,
+} from './api';
 import { cancelCarry } from './board/drag';
 export type { DataSource };
 
 export type Locale = 'en' | 'ja';
 
 // REQ-0034 -- global nav route. Hash-based: '#/backpacks' (default),
-// '#/schedule', '#/friends', '#/dex', '#/settings'. Lives in the module
-// store, same pattern as `locale`/`activeInvPage` -- kept in sync with
-// `location.hash` both ways by initRouting() below.
+// '#/schedule', '#/friends', '#/dex', '#/settings'. REQ-0037 adds
+// '#/invite/<token>', handled as a special one-shot route (see
+// routeFromHash()/handleInviteRoute() below) that immediately redirects
+// to '#/backpacks' once the invite token has been stored + resolved --
+// it never stays the ACTIVE route in the store for more than an instant,
+// so the Route union itself does not need an 'invite' member; App.tsx
+// never has to render anything for it.
 export type Route = 'backpacks' | 'schedule' | 'friends' | 'dex' | 'settings';
 
 const VALID_ROUTES: Route[] = ['backpacks', 'schedule', 'friends', 'dex', 'settings'];
+
+const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
 function routeFromHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, '');
@@ -107,6 +133,17 @@ export interface StoreSnapshot {
   /** Current nav route (REQ-0034). Synced both ways with `location.hash`
    * by initRouting() -- see module comment there. */
   route: Route;
+  /** REQ-0037: the resolved /api/me identity for the current session (a
+   * stored guest token, or the dev-mode fallback player when none is
+   * stored). null until the first fetchMe() resolves (or fails -- a
+   * failure is treated as "no identity", non-fatal, same posture
+   * DexRoot.tsx already established for its own /api/me call). */
+  me: ApiMe | null;
+  /** REQ-0037: minimal welcome banner text shown right after the invite
+   * flow resolves a player, or null when nothing should be shown. Plain
+   * module-store field -- no toast library exists in this app (see
+   * Settings.tsx / InviteBanner rendering in App.tsx for the consumer). */
+  welcomeBanner: string | null;
 }
 
 let snapshot: StoreSnapshot = {
@@ -121,6 +158,8 @@ let snapshot: StoreSnapshot = {
   autoSaveStatus: 'saved',
   activeInvPage: 0,
   route: routeFromHash(typeof location !== 'undefined' ? location.hash : ''),
+  me: null,
+  welcomeBanner: null,
 };
 
 const listeners = new Set<() => void>();
@@ -139,15 +178,43 @@ export function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** REQ-0037: resolves the canvas profile id to use for boot()/auto-save --
+ * the authenticated player's own playerId (from the store's `me`, once
+ * resolved), falling back to the literal 'default' alias ONLY if `me`
+ * has not resolved yet (e.g. a fetchMe() call still in flight, or it
+ * failed entirely) so there is always SOME id to attempt -- the server's
+ * own dev_mode-gated alias handles that fallback id correctly on its
+ * side (see docs/REQ/REQ-0037-guest-auth.md). Once `me` resolves, this
+ * always prefers the real playerId over the alias. */
+function resolveProfileId(): string {
+  return snapshot.me?.playerId ?? 'default';
+}
+
 /** Loads content from the live API and builds the engine instance + initial
  * GameState. Called once at boot (see main.tsx). Runs the freshly-built
  * state through engine.migrateState() (REQ-0030 Phase 2) so `state.inv` is
  * always populated regardless of whether the resolved GameData came from
  * the baked scenario (already current-shape, migrateState is a no-op copy)
  * or a saved profile predating REQ-0030 (legacy loc:'inv'/host:'inv'
- * entries get first-fit placed onto page 1+, see engine.js's doc). */
+ * entries get first-fit placed onto page 1+, see engine.js's doc).
+ *
+ * REQ-0037: resolves /api/me FIRST (before fetching the canvas), so the
+ * canvas profile id used is the authenticated player's own id, not a
+ * hardcoded 'default' string. A fetchMe() failure is treated the same
+ * way DexRoot.tsx already treats it -- non-fatal, falls back to the
+ * 'default' alias via resolveProfileId() above (which the server maps to
+ * the dev player when dev_mode is true).
+ */
 export async function boot(): Promise<void> {
-  const resolved = await resolveGameData('default');
+  let me: ApiMe | null = null;
+  try {
+    me = await fetchMe();
+  } catch (e) {
+    me = null;
+  }
+  if (me) setSnapshot({ ...snapshot, me });
+
+  const resolved = await resolveGameData(resolveProfileId());
   if (resolved.source === 'error' || !resolved.gameData) {
     setSnapshot({ ...snapshot, status: 'error', source: 'error', error: resolved.error ?? 'unknown error' });
     return;
@@ -185,15 +252,16 @@ export function setActiveInvPage(page: number): void {
 }
 
 // ---------------------------------------------------------------------
-// Routing (REQ-0034). Hash-based, no router library -- see Route type's
-// doc comment above. Two entry points:
+// Routing (REQ-0034, extended REQ-0037 for #/invite/<token>). Hash-based,
+// no router library -- see Route type's doc comment above. Entry points:
 //   - setRoute(route): called by nav UI. Updates the store AND writes
 //     location.hash (so back/forward + shareable/deep-link URLs work).
 //   - initRouting(): called once at boot (main.tsx) to (a) seed the store
 //     from whatever hash the page loaded with (covers a fresh deep-link
-//     load, e.g. /app/#/dex) and (b) subscribe to the browser's
-//     `hashchange` event so back/forward navigation also updates the
-//     store (covers the reverse direction: browser -> store).
+//     load, e.g. /app/#/dex, OR a fresh invite link /app/#/invite/<token>)
+//     and (b) subscribe to the browser's `hashchange` event so back/
+//     forward navigation also updates the store (covers the reverse
+//     direction: browser -> store).
 // ---------------------------------------------------------------------
 
 /** Switches the active route. Writes `location.hash` so the URL reflects
@@ -210,17 +278,103 @@ export function setRoute(route: Route): void {
   }
 }
 
+/** REQ-0037: handles landing on `#/invite/<token>`. Stores the token,
+ * resolves /api/me with it, redirects to #/backpacks, and shows a brief
+ * welcome banner with the resolved player's name. If /api/me fails for
+ * this token (e.g. the invite link is stale/garbage), the token is still
+ * stored (matching "trust the link, let the normal 401 surface on the
+ * next real request" -- there is no separate invite-validation endpoint)
+ * but no welcome banner is shown, and we still redirect to #/backpacks
+ * rather than stranding the user on a dead invite URL. Exported for
+ * testability; called from initRouting() below whenever the CURRENT hash
+ * matches the invite pattern. */
+export async function handleInviteRoute(token: string): Promise<void> {
+  setStoredToken(token);
+  let me: ApiMe | null = null;
+  try {
+    me = await fetchMe();
+  } catch (e) {
+    me = null;
+  }
+  if (me) {
+    setSnapshot({ ...snapshot, me, welcomeBanner: welcomeBannerText(me) });
+    scheduleWelcomeBannerClear();
+  }
+  setRouteReplacingHash('backpacks');
+}
+
+function welcomeBannerText(me: ApiMe): string {
+  return me.name;
+}
+
+let welcomeBannerTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Auto-hides the welcome banner a few seconds after it appears --
+ * "brief" per docs/REQ/REQ-0037-guest-auth.md's client section. Also
+ * dismissable early (see clearWelcomeBanner(), wired to the banner's own
+ * close control if one exists in the UI). */
+function scheduleWelcomeBannerClear(delayMs = 5000): void {
+  if (welcomeBannerTimer !== null) clearTimeout(welcomeBannerTimer);
+  welcomeBannerTimer = setTimeout(() => {
+    welcomeBannerTimer = null;
+    clearWelcomeBanner();
+  }, delayMs);
+}
+
+/** Dismisses the welcome banner immediately (early-dismiss action, or
+ * called internally by the auto-hide timer above). */
+export function clearWelcomeBanner(): void {
+  if (snapshot.welcomeBanner === null) return;
+  setSnapshot({ ...snapshot, welcomeBanner: null });
+}
+
+/** Like setRoute(), but uses history.replaceState-style semantics for the
+ * hash (no back-button entry for the one-shot invite hash itself) -- the
+ * invite link should not leave "#/invite/<token>" sitting in browser
+ * history for the user to accidentally navigate back onto. Falls back to
+ * a plain hash write if the History API isn't available for some reason. */
+function setRouteReplacingHash(route: Route): void {
+  setSnapshot({ ...snapshot, route });
+  if (typeof location === 'undefined') return;
+  const newUrl = location.pathname + location.search + `#/${route}`;
+  if (typeof history !== 'undefined' && typeof history.replaceState === 'function') {
+    history.replaceState(null, '', newUrl);
+  } else {
+    location.hash = `#/${route}`;
+  }
+}
+
 /** Wires the store's `route` to `location.hash` (both directions -- see
  * module comment above). Call once at boot. Returns an unsubscribe
  * function (not currently used by any caller, but keeps this symmetric
- * with `subscribe()` and testable in isolation). */
+ * with `subscribe()` and testable in isolation).
+ *
+ * REQ-0037: if the CURRENT hash (at call time, or on any later
+ * hashchange) matches `#/invite/<token>`, this hands off to
+ * handleInviteRoute() instead of treating it as a normal route -- the
+ * store's `route` field is seeded to 'backpacks' immediately (so nothing
+ * ever tries to render an "invite" page) while the async token
+ * resolution runs in the background and then replaces the hash with
+ * #/backpacks for real once it resolves.
+ */
 export function initRouting(): () => void {
   if (typeof location !== 'undefined') {
-    const initial = routeFromHash(location.hash);
-    if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
+    const inviteMatch = INVITE_HASH_RE.exec(location.hash);
+    if (inviteMatch) {
+      setSnapshot({ ...snapshot, route: 'backpacks' });
+      void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
+    } else {
+      const initial = routeFromHash(location.hash);
+      if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
+    }
   }
   const onHashChange = () => {
     if (typeof location === 'undefined') return;
+    const inviteMatch = INVITE_HASH_RE.exec(location.hash);
+    if (inviteMatch) {
+      void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
+      return;
+    }
     const next = routeFromHash(location.hash);
     if (next !== snapshot.route) setSnapshot({ ...snapshot, route: next });
   };
@@ -229,6 +383,19 @@ export function initRouting(): () => void {
     return () => window.removeEventListener('hashchange', onHashChange);
   }
   return () => {};
+}
+
+/** REQ-0037: Settings page's Logout action. Clears the stored token and
+ * reloads the page -- the simplest correct way back to a clean
+ * dev-mode/unauthenticated state (every module-level store field, the
+ * engine instance, the Pixi Applications, etc. all get a fresh start,
+ * avoiding any risk of stale per-player state leaking into the next
+ * session, which a soft in-place reset would have to reproduce by hand). */
+export function logout(): void {
+  clearStoredToken();
+  if (typeof location !== 'undefined') {
+    location.reload();
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -349,13 +516,15 @@ function scheduleAutoSave(): void {
  * the debounce timer's expiry. Exported so tests/callers needing a
  * synchronous "save right now, don't wait for the debounce" escape hatch
  * (e.g. a future beforeunload handler) have one, though nothing in the UI
- * currently calls it directly other than the debounce timer itself. */
+ * currently calls it directly other than the debounce timer itself.
+ * REQ-0037: saves to resolveProfileId() (the authenticated player's own
+ * id), not a hardcoded 'default'. */
 export async function flushAutoSave(): Promise<void> {
   const st = snapshot.state;
   if (!st) return;
   const myToken = ++autoSaveToken;
   try {
-    await saveCanvas('default', st);
+    await saveCanvas(resolveProfileId(), st);
     if (myToken === autoSaveToken) setAutoSaveStatus('saved');
   } catch (e) {
     console.warn('[backpack_ragnarok] auto-save failed:', e instanceof Error ? e.message : e);
@@ -364,9 +533,11 @@ export async function flushAutoSave(): Promise<void> {
 }
 
 /**
- * Load: GET /api/profile/default/canvas, then replace state's OWN FIELDS
- * in place (never reassign `snapshot.state` to a new object) -- mirrors
- * the mock's `state.linked=...; state.bps=...; state.pos=...; state.sis=...`,
+ * Load: GET /api/profile/:profileId/canvas (REQ-0037: the authenticated
+ * player's own id via resolveProfileId(), not a hardcoded 'default'),
+ * then replace state's OWN FIELDS in place (never reassign
+ * `snapshot.state` to a new object) -- mirrors the mock's
+ * `state.linked=...; state.bps=...; state.pos=...; state.sis=...`,
  * extended (REQ-0030 Phase 2) to also replace `state.inv` and to run the
  * fetched canvas through engine.migrateState() FIRST -- a profile saved by
  * an older client (pre-REQ-0030, no `inv` field / legacy loc:'inv' list
@@ -382,7 +553,7 @@ export async function loadGame(): Promise<void> {
   const engine = snapshot.engine;
   if (!st || !engine) return;
   try {
-    const doc = await fetchCanvas('default');
+    const doc = await fetchCanvas(resolveProfileId());
     if (!doc) return; // no saved canvas yet -- not an error, nothing to load
     const rawCanvas = doc.canvas;
     if (!rawCanvas || !Array.isArray(rawCanvas.pos) || !Array.isArray(rawCanvas.bps)) {

@@ -28,14 +28,23 @@
 // at all times. This is what makes "route away and back N times, boards
 // still interactive" hold -- there is no remount for a route switch to
 // ever race.
+//
+// REQ-0037: #/settings now renders the dedicated Settings component
+// (account block + logout, REQ-0037; bot-mode placeholder, REQ-0039
+// "Now") instead of the generic PlaceholderPage. An InviteBanner renders
+// at the top level (outside the route switch, like Header) so the
+// welcome toast can appear regardless of which route the invite flow
+// redirected onto.
 import { useEffect } from 'react';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { DexRoot } from './dex/DexRoot';
 import { Header } from './Header';
+import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
 import { PresetTabs } from './PresetTabs';
+import { Settings } from './Settings';
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
 
@@ -59,6 +68,7 @@ function App() {
         autoSaveStatus={snapshot.autoSaveStatus}
         route={route}
       />
+      <InviteBanner text={snapshot.welcomeBanner} locale={snapshot.locale} />
       <main className="app-main">
         {/* Backpacks view: ALWAYS mounted (see module comment above). Only
             visibility (CSS) changes with route. */}
@@ -95,9 +105,7 @@ function App() {
         {route === 'friends' ? (
           <PlaceholderPage titleJa="フレンズ" titleEn="Friends" locale={snapshot.locale} />
         ) : null}
-        {route === 'settings' ? (
-          <PlaceholderPage titleJa="設定" titleEn="Settings" locale={snapshot.locale} />
-        ) : null}
+        {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}
       </main>
     </div>
