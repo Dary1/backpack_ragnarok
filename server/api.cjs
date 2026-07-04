@@ -4,8 +4,25 @@
 // Listens on 127.0.0.1:8802. Endpoints:
 //   GET  /api/health
 //   GET  /api/content
-//   GET  /api/profile/default/canvas
-//   PUT  /api/profile/default/canvas
+//   GET  /api/me
+//   PUT  /api/admin/item/:id
+//   GET  /api/profile/:playerId/canvas
+//   PUT  /api/profile/:playerId/canvas
+//
+// REQ-0037: auth is now token-based (X-Auth-Token header), resolved via
+// admin.cjs's resolveAuth()/isItemAdminToken(). See
+// docs/REQ/REQ-0037-guest-auth.md for the full design:
+//   - /api/me: 200 {playerId,name,roles} for the resolved player (valid
+//     token, or no-token+dev_mode fallback to the dev player); 401 if a
+//     token is present but unknown, or absent with dev_mode:false.
+//   - /api/profile/:playerId/canvas: the URL's :playerId is NEVER trusted
+//     as auth -- the ACTUAL player is resolved from the token, and the
+//     request is rejected (403) if that player's own id doesn't match
+//     the URL. The literal id "default" is a dev_mode-only compat alias
+//     for the dev player (old E2E specs / hardcoded call sites).
+//   - PUT /api/admin/item/:id: same token resolution, then an
+//     item_admin role check -- unchanged 403 status convention from
+//     REQ-0035, mechanism replaced.
 'use strict';
 const http = require('http');
 const fs = require('fs');
@@ -163,6 +180,13 @@ function readBody(req, cb) {
   });
 }
 
+// REQ-0037: resolves the auth token from the X-Auth-Token header (case-
+// insensitive per node:http's own header lowercasing).
+function getAuthToken(req) {
+  const raw = req.headers['x-auth-token'];
+  return typeof raw === 'string' && raw ? raw : undefined;
+}
+
 // ---- routing ----
 const PROFILE_CANVAS_RE = /^\/api\/profile\/([^/]+)\/canvas$/;
 const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
@@ -186,12 +210,19 @@ function handle(req, res) {
     return;
   }
 
-  // REQ-0035: dev identity endpoint. No auth on this endpoint itself --
-  // it always answers as "the local dev user" (see admin.cjs's module
-  // comment / docs/REQ/REQ-0035-item-encyclopedia.md).
+  // REQ-0037: /api/me now resolves the caller via the X-Auth-Token
+  // header (falling back to the dev player when dev_mode is true and no
+  // token was sent at all). 401 for a present-but-unknown token, or an
+  // absent token with dev_mode:false.
   if (p === '/api/me' && req.method === 'GET') {
     try {
-      sendJSON(res, 200, admin.getMe());
+      const resolved = admin.resolveAuth(getAuthToken(req));
+      if (!resolved.ok) {
+        sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
+        return;
+      }
+      const player = resolved.player;
+      sendJSON(res, 200, { playerId: player.playerId, name: player.name, roles: player.roles });
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'me read failed: ' + e.message });
     }
@@ -201,9 +232,9 @@ function handle(req, res) {
   const adminItemMatch = ADMIN_ITEM_RE.exec(p);
   if (adminItemMatch && req.method === 'PUT') {
     const itemId = decodeURIComponent(adminItemMatch[1]);
-    const playerId = req.headers['x-player-id'];
-    if (!admin.isItemAdmin(playerId)) {
-      sendJSON(res, 403, { ok: false, error: 'forbidden: X-Player-Id missing or not an item_admin' });
+    const token = getAuthToken(req);
+    if (!admin.isItemAdminToken(token)) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: missing/invalid token or not an item_admin' });
       return;
     }
     readBody(req, (err, bodyStr) => {
@@ -240,15 +271,31 @@ function handle(req, res) {
 
   const m = PROFILE_CANVAS_RE.exec(p);
   if (m) {
-    const profileId = m[1];
-    if (!storage.isAllowedProfileId(profileId)) {
-      sendJSON(res, 404, { ok: false, error: 'unknown profile id' });
+    const urlPlayerId = m[1];
+    const token = getAuthToken(req);
+    const resolved = admin.resolveAuth(token);
+    if (!resolved.ok) {
+      sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
+      return;
+    }
+    const actualPlayer = resolved.player;
+    // REQ-0037 compat alias: the literal URL segment "default" maps to
+    // the dev player's OWN profile, but ONLY while dev_mode is true (see
+    // docs/REQ/REQ-0037-guest-auth.md's "Compat alias" note). Outside of
+    // that window "default" is just an unknown/mismatched id like any
+    // other and falls through to the normal ownership check below.
+    const devUser = admin.readDevUser();
+    const isDefaultAlias = urlPlayerId === 'default' && devUser.dev_mode === true && actualPlayer.playerId === devUser.playerId;
+    const effectivePlayerId = isDefaultAlias ? actualPlayer.playerId : urlPlayerId;
+
+    if (!isDefaultAlias && effectivePlayerId !== actualPlayer.playerId) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: token does not authorize profile "' + urlPlayerId + '"' });
       return;
     }
 
     if (req.method === 'GET') {
       try {
-        const doc = storage.readProfile(profileId);
+        const doc = storage.readProfile(effectivePlayerId);
         if (!doc) {
           sendJSON(res, 404, { ok: false, error: 'no saved canvas for this profile' });
           return;
@@ -278,7 +325,7 @@ function handle(req, res) {
           return;
         }
         try {
-          const doc = storage.writeProfile(profileId, canvas);
+          const doc = storage.writeProfile(effectivePlayerId, canvas);
           sendJSON(res, 200, doc);
         } catch (e) {
           if (e.code === 'TOO_LARGE') {
@@ -300,6 +347,7 @@ function handle(req, res) {
 
 function main() {
   admin.ensureDevUser(); // REQ-0035: create data/config/dev_user.json with defaults if missing
+  admin.ensureDevPlayer(); // REQ-0037: create/refresh data/players/dev.json, log the token once on first creation
   const server = http.createServer((req, res) => {
     try {
       handle(req, res);
