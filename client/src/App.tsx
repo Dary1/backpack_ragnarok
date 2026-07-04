@@ -35,11 +35,16 @@
 // at the top level (outside the route switch, like Header) so the
 // welcome toast can appear regardless of which route the invite flow
 // redirected onto.
+//
+// REQ-0038: chrome strings below (Canvas/Inventory titles, inventory
+// note, placeholder titles) now go through ./i18n.ts's t() instead of
+// inline locale ternaries.
 import { useEffect } from 'react';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { DexRoot } from './dex/DexRoot';
 import { Header } from './Header';
+import { t } from './i18n';
 import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -75,7 +80,7 @@ function App() {
         <div className={`backpacks-view${route === 'backpacks' ? '' : ' route-hidden'}`}>
           <div className="board-column">
             <div className="board-column-header">
-              <h2 className="board-column-title">{snapshot.locale === 'ja' ? 'キャンバス' : 'Canvas'}</h2>
+              <h2 className="board-column-title">{t(snapshot.locale, 'app.canvasTitle')}</h2>
               {snapshot.status === 'ready' ? <PresetTabs /> : null}
             </div>
             <div className="board-wrap">
@@ -84,27 +89,21 @@ function App() {
           </div>
           <div className="board-column">
             <div className="board-column-header">
-              <h2 className="board-column-title">{snapshot.locale === 'ja' ? 'インベントリ' : 'Inventory'}</h2>
+              <h2 className="board-column-title">{t(snapshot.locale, 'app.inventoryTitle')}</h2>
               {snapshot.status === 'ready' ? <Tabs /> : null}
             </div>
             <div className="board-wrap">
               <InventoryBoard />
             </div>
-            <div className="inventory-note">
-              {snapshot.locale === 'ja' ? '格納中のアイテムは効果を発揮しません' : 'items parked here take no effect'}
-            </div>
+            <div className="inventory-note">{t(snapshot.locale, 'app.inventoryNote')}</div>
           </div>
           {snapshot.status === 'ready' && snapshot.gameData ? (
             <ItemPanel items={snapshot.gameData.ITEMS} siDefs={snapshot.gameData.SI_DEFS} locale={snapshot.locale} />
           ) : null}
         </div>
 
-        {route === 'schedule' ? (
-          <PlaceholderPage titleJa="スケジュール" titleEn="Schedule" locale={snapshot.locale} />
-        ) : null}
-        {route === 'friends' ? (
-          <PlaceholderPage titleJa="フレンズ" titleEn="Friends" locale={snapshot.locale} />
-        ) : null}
+        {route === 'schedule' ? <PlaceholderPage titleKey="nav.schedule" locale={snapshot.locale} /> : null}
+        {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}
       </main>

@@ -6,7 +6,10 @@
 // "saved ✓" / "saving…" / "offline" (store.ts's autoSaveStatus). Load stays
 // fully automatic at boot (main.tsx calls store.ts's boot(), unchanged).
 // REQ-0034 adds the global Nav bar next to the title (see Nav.tsx).
+// REQ-0038: status text + the lang-toggle button label now go through
+// ./i18n.ts's t() instead of an inline STATUS_TEXT/ternary table.
 import { Nav } from './Nav';
+import { t } from './i18n';
 import type { DataSource, Locale, Route } from './store';
 
 interface HeaderProps {
@@ -17,10 +20,10 @@ interface HeaderProps {
   route: Route;
 }
 
-const STATUS_TEXT: Record<'saved' | 'saving' | 'offline', { ja: string; en: string }> = {
-  saved: { ja: '保存済み ✓', en: 'saved ✓' },
-  saving: { ja: '保存中…', en: 'saving…' },
-  offline: { ja: 'オフライン', en: 'offline' },
+const STATUS_KEY: Record<'saved' | 'saving' | 'offline', 'header.status.saved' | 'header.status.saving' | 'header.status.offline'> = {
+  saved: 'header.status.saved',
+  saving: 'header.status.saving',
+  offline: 'header.status.offline',
 };
 
 const STATUS_COLOR: Record<'saved' | 'saving' | 'offline', string> = {
@@ -41,10 +44,10 @@ export function Header({ source, locale, onToggleLocale, autoSaveStatus, route }
       <div className="header-controls">
         <span className={`data-source-badge ${badgeClass}`}>{badgeLabel}</span>
         <span className="auto-save-status" style={{ color: STATUS_COLOR[autoSaveStatus] }} data-status={autoSaveStatus}>
-          {STATUS_TEXT[autoSaveStatus][locale]}
+          {t(locale, STATUS_KEY[autoSaveStatus])}
         </span>
         <button type="button" className="lang-toggle" onClick={onToggleLocale}>
-          {locale === 'ja' ? '🇬🇧 EN' : '🇯🇵 日本語'}
+          {t(locale, 'header.langToggle')}
         </button>
       </div>
     </header>

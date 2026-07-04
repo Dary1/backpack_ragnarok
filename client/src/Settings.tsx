@@ -3,9 +3,12 @@
 // scope landing here -- see docs/REQ/REQ-0039-bot-api-pending.md).
 // Replaces the generic PlaceholderPage App.tsx used to render for this
 // route. Follows the same "fetch /api/me, treat failure as roles-less,
-// non-fatal" pattern DexRoot.tsx already established.
+// non-fatal" pattern DexRoot.tsx already established. Migrated to formal
+// chrome i18n (REQ-0038) -- all locale ternaries below go through
+// ./i18n.ts's t() now.
 import { useEffect, useState } from 'react';
 import { fetchMe, type ApiMe } from './api';
+import { t } from './i18n';
 import { logout, type Locale } from './store';
 
 interface SettingsProps {
@@ -35,14 +38,14 @@ export function Settings({ locale }: SettingsProps) {
 
   return (
     <div className="settings-page">
-      <h2>{locale === 'ja' ? '設定' : 'Settings'}</h2>
+      <h2>{t(locale, 'settings.title')}</h2>
 
       <section className="settings-section settings-account">
-        <h3>{locale === 'ja' ? 'アカウント' : 'Account'}</h3>
+        <h3>{t(locale, 'settings.account')}</h3>
         {me ? (
           <div className="settings-account-body">
             <div className="settings-field">
-              <span className="settings-field-label">{locale === 'ja' ? '名前' : 'Name'}</span>
+              <span className="settings-field-label">{t(locale, 'settings.name')}</span>
               <span className="settings-field-value">{me.name}</span>
             </div>
             <div className="settings-field">
@@ -50,20 +53,18 @@ export function Settings({ locale }: SettingsProps) {
               <span className="settings-field-value settings-field-mono">{me.playerId}</span>
             </div>
             <div className="settings-field">
-              <span className="settings-field-label">{locale === 'ja' ? '権限' : 'Roles'}</span>
+              <span className="settings-field-label">{t(locale, 'settings.roles')}</span>
               <span className="settings-field-value">
-                {me.roles.length > 0 ? me.roles.join(', ') : locale === 'ja' ? '（なし）' : '(none)'}
+                {me.roles.length > 0 ? me.roles.join(', ') : t(locale, 'settings.rolesNone')}
               </span>
             </div>
             <button type="button" className="settings-logout-btn" onClick={logout}>
-              {locale === 'ja' ? 'ログアウト' : 'Log out'}
+              {t(locale, 'settings.logout')}
             </button>
           </div>
         ) : (
           <div className="settings-account-error">
-            {locale === 'ja'
-              ? 'アカウント情報の読み込みに失敗しました' + (error ? `: ${error}` : '')
-              : 'Failed to load account info' + (error ? `: ${error}` : '')}
+            {t(locale, 'settings.accountLoadError') + (error ? `: ${error}` : '')}
           </div>
         )}
       </section>
@@ -72,13 +73,9 @@ export function Settings({ locale }: SettingsProps) {
           interactive elements (no key generation, no input fields). The
           "Pending" section of that REQ is explicitly NOT built here. */}
       <section className="settings-section settings-bot-placeholder">
-        <h3>{locale === 'ja' ? 'API・ボットモード' : 'API / Bot mode'}</h3>
-        <p>{locale === 'ja' ? '近日公開予定' : 'Coming soon'}</p>
-        <p className="settings-bot-placeholder-note">
-          {locale === 'ja'
-            ? 'ボットや自動化向けのプログラム的アクセスは今後追加予定です。'
-            : 'Programmatic access for bots/automation will land in a future update.'}
-        </p>
+        <h3>{t(locale, 'settings.botTitle')}</h3>
+        <p>{t(locale, 'settings.botComingSoon')}</p>
+        <p className="settings-bot-placeholder-note">{t(locale, 'settings.botNote')}</p>
       </section>
     </div>
   );

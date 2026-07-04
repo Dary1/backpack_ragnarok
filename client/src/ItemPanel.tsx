@@ -10,6 +10,7 @@
 // retired, just the drag-source list.
 import { useState } from 'react';
 import type { ItemDef, SIDef } from './engine/engine.d.ts';
+import { t } from './i18n';
 import type { Locale } from './store';
 
 interface TooltipState {
@@ -57,7 +58,7 @@ export function ItemPanel({ items, siDefs, locale }: ItemPanelProps) {
 
   return (
     <aside className="item-panel">
-      <h2>{locale === 'ja' ? 'アイテム' : 'Items'}</h2>
+      <h2>{t(locale, 'itemPanel.items')}</h2>
       <ul className="item-list">
         {itemEntries.map(([id, def]) => {
           const dType = def.tags?.[0] ?? '';
@@ -75,7 +76,7 @@ export function ItemPanel({ items, siDefs, locale }: ItemPanelProps) {
           );
         })}
       </ul>
-      <h2>{locale === 'ja' ? 'ソケットアイテム' : 'Socket Items'}</h2>
+      <h2>{t(locale, 'itemPanel.socketItems')}</h2>
       <ul className="item-list">
         {siEntries.map(([id, def]) => {
           const meta = `Socket Item · slot: ${def.slot}${def.reqTags.length ? ` · needs socket tags: ${def.reqTags.join(', ')}` : ' · no tag requirement'}`;

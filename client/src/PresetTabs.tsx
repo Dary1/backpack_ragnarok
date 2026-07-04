@@ -19,6 +19,7 @@
 // churn is needed here at all, since canvas ops never carried a
 // per-preset identity the way inventory pages carry a per-page one).
 import { LongPressTabs } from './LongPressTabs';
+import { t } from './i18n';
 import { addNewPresetAndSwitch, renameActivePreset, switchActivePreset, useGameStore } from './store';
 
 export function PresetTabs() {
@@ -43,7 +44,7 @@ export function PresetTabs() {
         activeClassName="preset-tab-active"
       />
       <button type="button" className="preset-add-btn" onClick={() => addNewPresetAndSwitch()} title="Add preset">
-        {snapshot.locale === 'ja' ? 'プリセット＋' : 'Preset+'}
+        {t(snapshot.locale, 'preset.add')}
       </button>
     </div>
   );
