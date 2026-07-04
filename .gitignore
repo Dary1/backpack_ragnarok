@@ -5,3 +5,4 @@ node_modules/
 *.bak
 data/
 __pycache__/
+.env

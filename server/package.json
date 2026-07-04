@@ -1,0 +1,14 @@
+{
+  "name": "backpack-ragnarok-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "backpack_ragnarok server/ -- backpack-api (REQ-0024) + Postgres backend (REQ-0040)",
+  "main": "api.cjs",
+  "scripts": {
+    "test": "node tests/api_test.cjs",
+    "test:pg": "STORAGE_BACKEND=pg node tests/api_test.cjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
