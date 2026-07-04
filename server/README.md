@@ -254,18 +254,161 @@ working completely unchanged; only the Dex v2 admin UI reads `i18n`
 directly. `tools/eff_render.cjs` never reads name/flavor fields at all
 (effect-AST rendering only) and needed no change.
 
+## Postgres backend (REQ-0040)
+
+`storage.cjs`'s profile persistence gained a second backend: a
+self-hosted Supabase Postgres instance running under Docker on this same
+box. Backend selection is an env var, `STORAGE_BACKEND` (`files` |
+`pg`), read at call time by `storage.cjs`; the files backend (original
+REQ-0024 behavior, `data/profiles/<id>.json`) remains the default and is
+always available as a fallback. `players.cjs` (the token/role registry,
+`data/players/<id>.json`) is intentionally OUT of scope for this REQ and
+stays on the files backend in both modes -- it is small, low-frequency,
+and its synchronous API is deeply embedded in `admin.cjs`'s auth-
+resolution chain (`resolveAuth`, used on every request); moving it would
+have meant threading async through every route handler for no real
+benefit at this data volume.
+
+**Self-hosted Supabase** lives at `~/supabase` on this box (a `git clone
+--depth 1 https://github.com/supabase/supabase`, official `docker/`
+compose tree, commit pulled 2026-07-04) -- OUTSIDE this repo entirely,
+its own git remote, its own `.gitignore`-equivalent (`docker/.env` is
+never committed anywhere). All 11 containers (`db`, `kong`/API gateway +
+Studio, `auth`, `rest`, `realtime`, `storage`, `meta`, `imgproxy`,
+`edge-functions`, `pooler`/Supavisor) run via `docker compose` with
+`restart: unless-stopped`. Only Postgres (via the Supavisor pooler,
+ports 5432 and 6543) and the Kong API gateway (which also fronts Studio,
+port 54321/54443) are published, and ALL FOUR are bound to `127.0.0.1`
+only (`docker compose ps` / `ss -tlnp` show no `0.0.0.0` binding from
+this stack) -- nothing here is reachable off-box. Studio (the Supabase
+admin UI) is therefore only reachable via an SSH tunnel:
+```
+ssh -i ~/.ssh/backpack_ed25519 -L 54321:127.0.0.1:54321 qtie@192.168.0.6
+```
+then browse `http://localhost:54321` locally (dashboard login is
+`server/.env`'s sibling `~/supabase/docker/.env`'s `DASHBOARD_USERNAME`/
+`DASHBOARD_PASSWORD`, gitignored/never committed, not reproduced here).
+
+**Why port 54321/54443 instead of the compose default 8000/8443**: this
+box already had an unrelated process bound to `0.0.0.0:8000`; rather than
+fight over it, Kong's ports were moved to 54321 (HTTP) / 54443 (HTTPS) in
+`~/supabase/docker/.env` (`KONG_HTTP_PORT`/`KONG_HTTPS_PORT`) -- a purely
+local renumbering, no functional difference.
+
+**Schema** (`server/migrations/001_init.sql`, idempotent): two tables,
+`profiles(player_id text primary key, doc jsonb not null, updated_at
+timestamptz)` and `players(player_id text primary key, doc jsonb not
+null, created_at timestamptz)` (the `players` table exists for schema
+completeness/future use per the original REQ but is not yet written to
+by any code -- see the scope note above), plus a dedicated `backpack`
+role granted ONLY `SELECT/INSERT/UPDATE/DELETE` on those two tables (no
+DDL, no superuser, no access to Supabase's own auth/storage/realtime
+schemas). Apply with the postgres superuser:
+```
+docker exec -i supabase-db psql -U postgres < server/migrations/001_init.sql
+```
+The `backpack` role's password is set out-of-band (never in a committed
+file): `docker exec -i supabase-db psql -U postgres` then `ALTER ROLE
+backpack WITH PASSWORD '...';`, and the matching `DATABASE_URL` written
+into `server/.env` (gitignored; see `server/.env.example` for the
+shape). Because Postgres here is fronted by Supavisor (the pooler --
+both the 5432 and 6543 published ports route through it, there is no
+bare direct-to-`db` port on the host), `DATABASE_URL`'s username must be
+in `role.tenant_id` form (`backpack.backpack`, matching `~/supabase/
+docker/.env`'s `POOLER_TENANT_ID=backpack`) or Supavisor rejects the
+connection with `ENOIDENTIFIER`.
+
+**Synchronous pg access** (`server/pg_sync.cjs` + `server/
+pg_sync_worker.cjs`): `storage.cjs`'s public API
+(`readProfile`/`writeProfile`) has always been fully synchronous --
+it throws synchronously and returns its result directly, and the
+existing 46-test suite calls it exactly that way in several places
+(`assert.throws(() => storage.readProfile(...), ...)`,
+`const doc = storage.writeProfile(...); assert.strictEqual(doc.schema_version, ...)`
+with no `await`) -- so keeping that exact contract in pg mode, without
+touching the test file, was a hard requirement. The `pg` driver itself is
+async-only. The bridge: `pg_sync_worker.cjs` runs on a background
+`worker_thread` and owns the real `pg.Pool`; `pg_sync.cjs`'s `querySync()`
+posts a query to it and blocks the CALLING thread with `Atomics.wait()`
+on a `SharedArrayBuffer` until the worker writes the result back. This is
+a deliberate trade-off (one query at a time, blocks the event loop for
+the call's duration) accepted because profile reads/writes are low-
+frequency, small-payload (64KB cap) operations, not a high-throughput
+hot path.
+
+**Test isolation**: every profile key written to Postgres is prefixed
+with a hash of the current process's repo-root path (`sha256(REPO_ROOT)
+.slice(0,16)`, the same `os.homedir()`-derived path `DATA_DIR` has
+always come from). The test suite remaps `os.homedir()` to a fresh temp
+directory before each `require()` (pre-existing pattern, unchanged) --
+so pg-mode test runs automatically land under their own throwaway
+namespace and never collide with real data or each other, with zero
+test-file changes. The real deployment's namespace is a pure function of
+its real repo root, so it is stable across restarts.
+
+**Migration + byte-equivalence** (`server/tool_migrate_to_pg.cjs` /
+`server/tool_export_files.cjs`): the migration tool imports every
+`data/profiles/*.json` into the `profiles` table (upsert, idempotent;
+skips the legacy pre-REQ-0037 `default.json` itself, which is not a
+real player id -- `dev.json`, if present, migrates normally). The export
+tool reverses this (pg -> a plain JSON files tree) for backup parity and
+for verifying the migration didn't lose data. IMPORTANT CAVEAT: Postgres's
+`jsonb` column type is a decomposed BINARY format, not text-preserving --
+it always returns object keys in its own canonical (alphabetical) order,
+so a re-exported file is NOT byte-identical at the raw-text level to the
+pre-migration original (this is standard, documented Postgres behavior,
+not a bug here). Verify with a parsed deep-equality check instead:
+```
+node -e "
+const fs = require('fs');
+const a = JSON.parse(fs.readFileSync('<exported>/profiles/dev.json','utf8'));
+const b = JSON.parse(fs.readFileSync('data/profiles/dev.json','utf8'));
+require('assert').deepStrictEqual(a, b);
+console.log('semantically identical');
+"
+```
+This was run against the real `dev` profile during the REQ-0040 rollout
+and passed (`deepStrictEqual` clean).
+
+**Flipping the live service to pg mode**: set `STORAGE_BACKEND=pg` and
+the real `DATABASE_URL` in `server/.env` (loaded via the systemd user
+unit's `EnvironmentFile=`, see below), then `systemctl --user restart
+backpack-api.service`. Verify `curl 127.0.0.1:8802/api/health`, `/api/me`,
+and a profile GET/PUT round trip.
+
+**Rollback**: edit `server/.env`, set `STORAGE_BACKEND=files`, then
+`systemctl --user restart backpack-api.service`. The files backend reads
+whatever is currently in `data/profiles/*.json` on disk (untouched by pg
+mode, since pg mode never writes there) -- no data migration needed to
+roll back, only a restart. Confirmed working during the REQ-0040
+rollout (round-tripped `/api/profile/default/canvas` correctly
+immediately after the rollback restart).
+
+**Server tests, both backends**: `node server/tests/api_test.cjs` (files
+mode, default) and `STORAGE_BACKEND=pg DATABASE_URL=... node
+server/tests/api_test.cjs` (pg mode) both currently pass 46/46 -- run
+both after any `storage.cjs` change. `server/package.json` has `npm
+test`/`npm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
+in the environment first).
+
 ## systemd (user unit, Node v24 via nvm)
 `~/.config/systemd/user/backpack-api.service`:
 ```
+[Service]
+EnvironmentFile=%h/backpack_ragnarok/server/.env
 ExecStart=/home/qtie/.nvm/versions/node/v24.18.0/bin/node %h/backpack_ragnarok/server/api.cjs
 Restart=on-failure
 WantedBy=default.target
 ```
-Enable/start: `systemctl --user enable --now backpack-api.service`.
-Check: `systemctl --user is-active backpack-api.service` and
+`EnvironmentFile=` (REQ-0040) loads `server/.env` (gitignored --
+`STORAGE_BACKEND`, `DATABASE_URL`; see "Postgres backend" above) as real
+process env vars for the service -- `api.cjs` itself has no dotenv
+dependency and never reads a `.env` file directly. Enable/start:
+`systemctl --user enable --now backpack-api.service`. Check:
+`systemctl --user is-active backpack-api.service` and
 `curl 127.0.0.1:8802/api/health`. **Restart after any server/*.cjs
-change** (`systemctl --user restart backpack-api.service`) — the unit
-does not hot-reload.
+change, or after editing server/.env** (`systemctl --user restart
+backpack-api.service`) — the unit does not hot-reload.
 
 ## Cloudflare tunnel ingress (backpack-dev, remote-managed config)
 Config lives in Cloudflare, not in a file in this repo — recorded here for
