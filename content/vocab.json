@@ -1,5 +1,6 @@
 {
- "version": 4,
+ "version": 5,
+ "modes": ["battle", "detection", "unlock"],
  "po_tags": {
   "Weapon": null,
   "WeaponPart": "Weapon",

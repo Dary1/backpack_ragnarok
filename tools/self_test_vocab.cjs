@@ -86,6 +86,10 @@ for (const verbT of vocab.verbs) {
     icon: 'icon-selftest_' + verbT,
     sockets: [],
     effects: [effect],
+    // REQ-0036 P1-A: vocab v5 adds a closed "modes" vocab (battle/detection/
+    // unlock). Existing POs default to modes:["battle"] per the ratified
+    // combat spec S6.1 -- probe that default here for every per-verb fixture.
+    modes: ['battle'],
   };
   if (effect.trigger.t === 'adjacent') {
     // REQ-0023: conn -> ports ({tiles,tag}). tag reuses this entry's own
@@ -105,19 +109,74 @@ const extraPO = [
     id: 'selftest_trig_on_hit', name: 'Selftest trig on_hit', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_on_hit', sockets: [],
     effects: [{ trigger: { t: 'on_hit' }, verb: { t: 'strike', n: [2, 4] } }],
+    modes: ['battle'],
   },
   {
     id: 'selftest_trig_bp_damaged', name: 'Selftest trig bp_damaged', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_bp_damaged', sockets: [],
     effects: [{ trigger: { t: 'on_bp_damaged' }, verb: { t: 'block', n: [2, 4] } }],
+    modes: ['battle'],
   },
   {
     id: 'selftest_trig_battle_start', name: 'Selftest trig battle_start', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_battle_start', sockets: [],
     effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'block', n: [8, 12] } }],
+    modes: ['battle'],
   },
 ];
 poEntries.push(...extraPO);
+
+// ---- REQ-0036 P1-A: probe vocab v5's new "modes" field ----
+// vocab.json v5 adds a top-level closed-vocab "modes" list: ["battle",
+// "detection", "unlock"] (see combat_spec_draft.md S6.1/S9). There is no
+// tool_validate.cjs to actually validate against (see file header note --
+// that gap is pre-existing and out of scope here), so this check is kept
+// LOCAL/self-contained: it just verifies each fixture's "modes" array
+// round-trips through JSON and only contains values from vocab.modes.
+const modeProbeEntries = [
+  {
+    id: 'selftest_modes_detection', name: 'Selftest modes detection', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0]], icon: 'icon-selftest_modes_detection', sockets: [],
+    effects: [{ trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: [2, 4] } }],
+    modes: ['detection'],
+  },
+  {
+    id: 'selftest_modes_unlock', name: 'Selftest modes unlock', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0]], icon: 'icon-selftest_modes_unlock', sockets: [],
+    effects: [{ trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: [2, 4] } }],
+    modes: ['unlock'],
+  },
+  {
+    id: 'selftest_modes_multi', name: 'Selftest modes multi', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0]], icon: 'icon-selftest_modes_multi', sockets: [],
+    effects: [{ trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: [2, 4] } }],
+    modes: ['battle', 'detection'],
+  },
+];
+poEntries.push(...modeProbeEntries);
+
+log('');
+log('--- modes field probe (REQ-0036 P1-A, vocab v5) ---');
+const vocabModes = vocab.modes || [];
+for (const entry of poEntries) {
+  if (!Array.isArray(entry.modes)) {
+    failures++;
+    log('FAIL: ' + entry.id + ' has no modes array');
+    continue;
+  }
+  // round-trip through JSON to prove the field survives serialization
+  const roundTripped = JSON.parse(JSON.stringify(entry.modes));
+  const roundTripOk = Array.isArray(roundTripped) &&
+    roundTripped.length === entry.modes.length &&
+    roundTripped.every((m, i) => m === entry.modes[i]);
+  const valuesOk = entry.modes.length > 0 && entry.modes.every(m => vocabModes.includes(m));
+  const ok = roundTripOk && valuesOk;
+  log((ok ? 'OK  ' : 'FAIL') + ' ' + entry.id + '  modes: ' + JSON.stringify(entry.modes));
+  if (!ok) {
+    failures++;
+    log('FAIL: ' + entry.id + ' modes field did not round-trip or contained a value outside vocab.modes ' + JSON.stringify(vocabModes));
+  }
+}
 
 const siEntries = [
   {

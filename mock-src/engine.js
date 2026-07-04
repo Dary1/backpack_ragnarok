@@ -129,6 +129,12 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return chk;
   }
   const bpById=(st,id)=>st.bps.find(b=>b.id===id);
+  // bpHpMax(st,bpId): read-only accessor for a BP's authored max-HP field
+  // (REQ-0036 P1-A). Returns bp.hpMax if present, else undefined. Pure read,
+  // NO mutation, NO combat/HP-mutation logic here -- this is only a read
+  // surface for sim/combat.cjs; the engine itself has no combat/HP-mutation
+  // logic and never will (combat lives entirely in sim/combat.cjs).
+  const bpHpMax=(st,bpId)=>{const bp=bpById(st,bpId);return bp?bp.hpMax:undefined;};
   function canMoveBP(st,bpId,origin){
     const bp=bpById(st,bpId);
     const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
@@ -1754,7 +1760,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
       }
     }
   }
-  return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
+  return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
