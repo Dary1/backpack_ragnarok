@@ -296,6 +296,62 @@ export class BoardRenderer {
     const cbp = ops.cellBPMap(state);
     const bpById = (id: string) => container.bps.find((b) => b.id === id)!;
 
+    // REQ-0033 Phase 2: red/yellow usage-tint overlays (spec items 2-3).
+    // Recomputed FRESH on every render() call (never cached) -- per
+    // engine.js's own perf note on tintSets(), a full scan at this game's
+    // scale (PRESET_COUNT presets x a few dozen items) is comfortably
+    // sub-millisecond, so there is no correctness/perf reason to memoize
+    // this across renders; recomputing here guarantees it is always
+    // correct after every state mutation AND every preset switch, with no
+    // separate invalidation bookkeeping to get wrong.
+    //   INVENTORY board: tint.red (used by the CURRENT preset) and
+    //     tint.yellow (used by at least one OTHER preset) both apply --
+    //     red takes visual precedence when a uid is in both sets (spec's
+    //     red-vs-yellow framing puts "already used here" first).
+    //   CANVAS board: only tint.canvasYellow applies (uids on the canvas
+    //     right now that are ALSO shared with another preset) -- canvas
+    //     never shows red, since every canvas item is by definition used
+    //     by the current preset already (that's not useful information to
+    //     highlight on the canvas itself).
+    // Color choice (documented here once, reused by every draw site
+    // below): red 0xff3b3b @ alpha 0.20, yellow 0xffd23b @ alpha 0.20 --
+    // chosen to read clearly as a translucent wash against this app's
+    // dark (#121212 background / #191919 grid cell) theme without
+    // fighting the BP-color grid tint (alpha 0.26) or an item's own dark
+    // backdrop (alpha 0.22) already drawn at similar alpha levels nearby.
+    const tint = engine.tintSets(state);
+    const TINT_RED = 0xff3b3b;
+    const TINT_YELLOW = 0xffd23b;
+    const TINT_ALPHA = 0.2;
+    /** Draws a translucent tint wash over exactly `cells` (not a bounding
+     * box -- correct for L-shapes/shapes-with-holes alike, matching every
+     * other per-cell drawing loop in this file) into `layer`, colored red
+     * if `uid` is in the CURRENT preset's usage set, else yellow if it is
+     * in the shared/other-presets set, else nothing. `redSet`/`yellowSet`
+     * are passed explicitly (rather than this method reading `tint`
+     * directly) so the SAME helper serves both boards: the inventory call
+     * sites pass {red:tint.red, yellow:tint.yellow}, the canvas call
+     * sites pass {red:new Set(), yellow:tint.canvasYellow} (canvas never
+     * shows red -- see the note above). */
+    const drawTintOverlay = (layer: Container, cells: Cell[], uid: string, redSet: Set<string>, yellowSet: Set<string>): void => {
+      const color = redSet.has(uid) ? TINT_RED : yellowSet.has(uid) ? TINT_YELLOW : null;
+      if (color === null) return;
+      for (const [r, c] of cells) {
+        if (r < 1 || r > layout.ROWS || c < 1 || c > layout.COLS) continue;
+        const g = new Graphics();
+        g.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
+        g.fill({ color, alpha: TINT_ALPHA });
+        g.eventMode = 'none'; // decorative tint overlay, see constructor note
+        layer.addChild(g);
+      }
+    };
+    // Per-board red/yellow set selection (see color-choice note above):
+    // inventory shows both red and yellow; canvas shows canvasYellow only
+    // (as its own "yellow" set, with an empty red set so drawTintOverlay's
+    // red-takes-precedence check never fires there).
+    const tintRedSet = ops.isCanvas ? new Set<string>() : tint.red;
+    const tintYellowSet = ops.isCanvas ? tint.canvasYellow : tint.yellow;
+
     // grid cells: canvas tints by BP color (dead-space cells get a flat
     // dark fill); inventory boards use a NEUTRAL grid background for every
     // cell regardless of BP occupancy (REQ-0030 spec item 1: "neutral grid
@@ -337,6 +393,12 @@ export class BoardRenderer {
       outline.stroke({ color: bp.color, width: 3, cap: 'square' });
       outline.eventMode = 'none'; // decorative, see constructor note
       this.gBase.addChild(outline);
+
+      // REQ-0033 Phase 2: BP usage tint -- the BP's OWN footprint cells,
+      // independent of whatever POs sitting on/inside it also get tinted
+      // individually below (a BP used by the current preset = red on its
+      // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
+      drawTintOverlay(this.gBase, cells, bp.id, tintRedSet, tintYellowSet);
 
       const r0 = Math.min(...cells.map((cell) => cell[0]));
       const c0 = Math.min(...cells.filter((cell) => cell[0] === r0).map((cell) => cell[1]));
@@ -485,6 +547,11 @@ export class BoardRenderer {
         bg.eventMode = 'none'; // decorative backdrop, see constructor note
         this.gItems.addChild(bg);
       }
+      // REQ-0033 Phase 2: PO usage tint, drawn into gItems (same layer as
+      // this PO's own backdrop above, so it paints above the base grid/
+      // BP-color tint but stays below the PO's own sprite art, which is
+      // added to gItems next).
+      drawTintOverlay(this.gItems, ops.cellsOf(state, p), p.uid, tintRedSet, tintYellowSet);
       const texture = textures.get(def.icon);
       if (texture) {
         const sprite = new Sprite(texture);
@@ -729,6 +796,20 @@ export class BoardRenderer {
             g.addChild(sprite);
           }
         }
+        // REQ-0033 Phase 2: seated-SI usage tint -- a small translucent
+        // wash directly under the SI's own icon (a circle, not a full
+        // grid cell, since a seated SI's visual footprint is the socket
+        // glyph itself, not a cell-aligned box -- matching the acc_guard
+        // bar / icon sizing immediately above, which are also drawn in
+        // raw x/y screen space rather than cell-snapped).
+        const siTintColor = tintRedSet.has(a.uid) ? TINT_RED : tintYellowSet.has(a.uid) ? TINT_YELLOW : null;
+        if (siTintColor !== null) {
+          const siTint = new Graphics();
+          siTint.circle(x, y, 16);
+          siTint.fill({ color: siTintColor, alpha: TINT_ALPHA });
+          siTint.eventMode = 'none'; // decorative tint overlay, see constructor note
+          g.addChild(siTint);
+        }
         const hitCircle = new Graphics();
         hitCircle.circle(x, y, 15);
         hitCircle.fill({ color: '#000000', alpha: 0.001 });
@@ -792,6 +873,10 @@ export class BoardRenderer {
       bg.fill({ color: '#000000', alpha: 0.22 });
       bg.eventMode = 'none';
       g.addChild(bg);
+      // REQ-0033 Phase 2: free-placed SI usage tint (inventory-only, same
+      // as every other tint call site -- see the drawTintOverlay doc
+      // comment near `container`/`cbp` above for the color/alpha choice).
+      drawTintOverlay(g, [[r, c]], a.uid, tintRedSet, tintYellowSet);
       if (siDef) {
         const tex = textures.get(siDef.icon);
         if (tex) {
