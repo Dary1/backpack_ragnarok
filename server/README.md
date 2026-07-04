@@ -7,25 +7,42 @@ on `127.0.0.1:8802` only.
 ## Files
 - `api.cjs` — HTTP server (node:http only, no framework deps). Entry point
   for the `backpack-api.service` systemd unit.
-- `storage.cjs` — THE repository module. Every read/write of persisted
-  profile data goes through this file. Data directory:
+- `storage.cjs` — THE repository module for canvas profiles. Every read/
+  write of persisted profile data goes through this file. Data directory:
   `~/backpack_ragnarok/data/profiles/<id>.json` (gitignored). Writes are
   atomic (tmp file + `fs.renameSync`). Every stored document carries a
-  `schema_version` field. Profile ids are a fixed allowlist (`["default"]`
-  only) — no user-controlled paths. Body size cap: 64KB.
+  `schema_version` field. Body size cap: 64KB. Profile ids are now (REQ-
+  0037) "any known player id" — see `players.cjs` and "Auth" below; this
+  module answers "does this id exist as a known player", NOT "is the
+  current caller authorized to use it" (that's `api.cjs`'s job).
   When Postgres is introduced later, only this module's internals change;
   its exported API (`readProfile`, `writeProfile`, etc.) is the seam.
-- `admin.cjs` — REQ-0035: dev-user identity (`data/config/dev_user.json`)
-  + the admin item-edit write path (validation against `content/vocab.json`
-  + atomic write to `content/live/live_items.json`/`live_sis.json`). See
-  "Admin API" below.
-- `tests/api_test.cjs` — storage round-trip, content endpoint shape,
-  profile PUT/GET round-trip, oversized-body rejection, `/api/me` shape,
-  admin-write validation (vocab/range/schema-allowlist rejections), 403
-  auth-guard cases, and a dedicated real-repo test that edits the actual
-  `content/live/live_items.json`, verifies the change, then restores the
-  original bytes and checks a sha256 match (try/finally — restoration runs
-  even if an assertion above it fails). Run with
+- `players.cjs` (REQ-0037) — THE player registry module. Every read/write
+  of a player record goes through this file. Data directory:
+  `~/backpack_ragnarok/data/players/<playerId>.json` (gitignored). Record
+  shape: `{playerId, name, roles, token, createdAt}`. Same atomic-write
+  convention as `storage.cjs`. Tokens are server-generated
+  (`crypto.randomBytes(24).toString('hex')`), long, random, never
+  sequential/guessable, and never regenerated once minted.
+- `cli_invite.cjs` (REQ-0037) — operator CLI: `node server/cli_invite.cjs
+  <name> [--roles r1,r2]`. Mints a new player via `players.cjs` and prints
+  an invite URL. Not exposed via HTTP. See "Auth" below.
+- `admin.cjs` — dev-user/dev-player bootstrap (`data/config/dev_user.json`
+  + `data/players/dev.json`), the auth-resolution function used by every
+  authenticated route (`resolveAuth`), the admin role guard
+  (`isItemAdminToken`), and the admin item-edit write path (validation
+  against `content/vocab.json` + atomic write to `content/live/
+  live_items.json`/`live_sis.json`). See "Auth" and "Admin API" below.
+- `tests/api_test.cjs` — storage/registry round-trip, content endpoint
+  shape, profile PUT/GET round-trip (per-player + the `default` alias),
+  oversized-body rejection, `/api/me` token resolution (valid/invalid/
+  dev_mode fallback/dev_mode off), profile-ownership 401/403 matrix,
+  admin-write validation (vocab/range/schema-allowlist rejections),
+  admin-guard 403 matrix (missing/invalid token, valid token lacking the
+  role, dev-mode fallback), and a dedicated real-repo test that edits the
+  actual `content/live/live_items.json`, verifies the change, then
+  restores the original bytes and checks a sha256 match (try/finally —
+  restoration runs even if an assertion above it fails). Run with
   `node server/tests/api_test.cjs`.
 
 ## Endpoints
@@ -37,41 +54,128 @@ on `127.0.0.1:8802` only.
   produced from its `effects` AST via `tools/eff_render.cjs` (the same
   renderer `tools/tool_gen_data.cjs` uses to bake `mock-src/data.js`), so
   live-mode tooltips are byte-identical to baked-mode tooltips (closes the
-  REQ-0024 "blank effect text in live mode" gap).
-- `GET /api/profile/default/canvas` → `{schema_version, profile_id,
-  updated_at, canvas}` or 404 if nothing saved yet.
-- `PUT /api/profile/default/canvas` (body = canvas JSON, ≤64KB) → same
-  shape as GET, 200 on success, 413 if the body exceeds the cap.
-- `GET /api/me` → `{playerId, name, roles}`, read from
-  `data/config/dev_user.json` (created with `{"playerId":"dev","name":
-  "Developer","roles":["item_admin"]}` on first server boot if missing).
-  See "Admin API" below.
+  REQ-0024 "blank effect text in live mode" gap). No auth required.
+- `GET /api/me` → `{playerId, name, roles}` for the token-resolved player
+  (REQ-0037; see "Auth" below), or `401` if the token is present-but-
+  invalid, or absent with `dev_mode:false`.
+- `GET /api/profile/:playerId/canvas` / `PUT /api/profile/:playerId/canvas`
+  (body = canvas JSON, ≤64KB on PUT) → same shape as before
+  (`{schema_version, profile_id, updated_at, canvas}`), 200/404/413, PLUS
+  (REQ-0037) `401` for a missing/invalid token (when required) and `403`
+  if the token's own player does not match `:playerId`. See "Auth" below.
 - `PUT /api/admin/item/:id` → see "Admin API" below.
 
-**Accepted dev risk**: profile PUT is publicly reachable on the dev URL
-(single fixed profile id, size-capped, no path injection possible). Revisit
-at the account/auth phase (= Postgres phase), per REQ-0024.
+**Accepted dev risk (unchanged from REQ-0024/REQ-0035)**: this is a small
+dev-grade deployment — profile storage has no rate limiting, no request
+signing beyond the bearer token itself, no HTTPS termination in this
+service (TLS ends at the Cloudflare tunnel). Revisit at a real
+productionization pass.
 
-## Admin API (REQ-0035)
+## Auth (REQ-0037)
 
-**Roles model**: `data/config/dev_user.json` (gitignored, same treatment as
-`data/profiles/`) models the current dev "session" as a single user object
-`{playerId, name, roles}`. `roles` is an array of role strings; today only
-`item_admin` is checked anywhere. `GET /api/me` returns this object as-is
-(no auth on `/api/me` itself — it always answers as "the local dev user",
-there being no login/session system at all yet).
+**Model**: a small player registry (`players.cjs`, `data/players/
+<playerId>.json`), each record `{playerId, name, roles, token,
+createdAt}`. Requests authenticate via an `X-Auth-Token` header carrying
+one player's `token` verbatim. There is no session/cookie layer, no
+password, no OAuth — a token IS the credential, valid indefinitely until
+an operator manually edits/deletes the player's registry file. This
+replaces REQ-0035's `X-Player-Id`-trusted-at-face-value mechanism
+entirely — that header is no longer read anywhere in this codebase.
+
+**Auth resolution** (`admin.cjs`'s `resolveAuth(token)`, the SINGLE
+function `/api/me`, the profile routes, and the admin guard all funnel
+through):
+1. `X-Auth-Token` present and matches a known player's token → resolves
+   to that player.
+2. `X-Auth-Token` present but matches no known token → `401` (`/api/me`,
+   profile routes) — an invalid/garbage/expired-looking token is always
+   an auth failure, never silently downgraded to "anonymous".
+3. `X-Auth-Token` absent entirely:
+   - `dev_mode: true` → falls back to the dev player (see below) — so
+     `/mock/` and any unauthenticated dev flow keeps working with zero
+     token at all.
+   - `dev_mode: false` → `401`.
+
+**`dev_mode` flag**: lives as a boolean field on `data/config/
+dev_user.json` itself (`{"playerId":"dev","name":"Developer",
+"roles":["item_admin"],"dev_mode":true}`) — the same config-file
+convention `admin.cjs` already established for the dev identity in
+REQ-0035, just extended with one more field rather than introducing a
+separate config file. **Default is `true`** on a freshly-created
+`dev_user.json` (i.e. a brand-new box, or one upgraded from pre-REQ-0037
+where the file didn't have this key yet — `admin.cjs`'s `readDevUser()`
+treats a missing key the same as `true`, for backward compatibility).
+This flag is meant to be **flipped to `false` by hand** (edit the file,
+`systemctl --user restart backpack-api.service`) once real guest tokens
+are the only intended entry path for this deployment — there is no
+endpoint to toggle it remotely, by design.
+
+**Dev player bootstrap**: at server boot (`api.cjs`'s `main()`),
+`admin.ensureDevUser()` creates `data/config/dev_user.json` with the
+default shape above if missing (unchanged from REQ-0035), then
+`admin.ensureDevPlayer()` creates (or, on a later boot, simply reuses) a
+matching `data/players/dev.json` registry entry — same `playerId`/`name`/
+`roles` as `dev_user.json`, plus a freshly-generated `token` the FIRST
+time this runs. **The token is printed to the server's own stdout/journal
+exactly once** — only on the boot where the registry file is first
+created. Every later boot reuses the existing token unchanged (no re-log,
+no rotation) — check `journalctl --user -u backpack-api.service` right
+after a fresh deploy if you need it, or just read the `token` field
+directly from `data/players/dev.json` (gitignored, root-readable only in
+the sense that it's just a normal file on this dev box). **The token is
+never included in any HTTP response body, ever.**
+
+**Per-player profiles**: `GET`/`PUT /api/profile/:playerId/canvas` now
+accept any player id known to the registry — but the URL's `:playerId` is
+NEVER trusted as the auth mechanism. `api.cjs`'s route handler resolves
+the ACTUAL player from the token first (same `resolveAuth()` as `/api/me`,
+including the `dev_mode` fallback), then compares that player's own id
+against the URL segment. A mismatch → `403` (the token is valid and
+belongs to someone, just not to the profile being requested) — this is
+how per-player board isolation is enforced: player A's token can never
+read or write player B's profile, full stop.
+
+**Migration + the `default` alias**: `data/profiles/default.json` (the
+pre-REQ-0037 single fixed profile) is now the dev player's own profile.
+The dev player's `readProfile()` call falls back to reading
+`default.json`'s contents if the dev player's own profile file doesn't
+exist yet (a plain fallback READ, never a rename — `default.json` is left
+on disk untouched, so this is safe to run repeatedly and never loses
+data). Additionally, the literal URL segment `/api/profile/default/canvas`
+is kept as a **`dev_mode`-only compat alias** for the dev player's own
+profile — this is intentional, permanent (not a temporary shim to delete
+later) compatibility for old E2E specs / any hardcoded `'default'` call
+site, and stops working the moment `dev_mode` is flipped to `false` (at
+that point `"default"` is just an unknown/mismatched player id like any
+other, and 401/403s the same way).
+
+**CLI invite tool**: `node server/cli_invite.cjs <name> [--roles
+r1,r2]` — run by hand over SSH (an operator tool, never exposed via
+HTTP). Creates a fresh player (`players.cjs`'s `createPlayer()` — new
+`playerId`, new random `token`) and prints an invite URL:
+`https://backpack-dev.qtie.jp/app/#/invite/<token>`. Omitting `--roles`
+defaults to `roles: []` (a plain guest, no elevated permissions — grant
+`item_admin` etc. explicitly via `--roles item_admin` or a comma-
+separated list). Hand the printed URL to the guest; visiting it in the
+client stores the token in `localStorage`, resolves `/api/me`, and
+redirects to `#/backpacks` with a brief welcome banner (see
+`client/src/store.ts`'s `handleInviteRoute()`).
+
+## Admin API (REQ-0035, auth mechanism replaced by REQ-0037)
 
 **`PUT /api/admin/item/:id`** edits one item's editable fields in
 `content/live/live_items.json` (POs) or `content/live/live_sis.json` (SIs).
 
-- **Auth guard**: the request must carry an `X-Player-Id` header whose
-  value matches `dev_user.json`'s `playerId`, AND that user's `roles` must
-  include `item_admin`. Missing header, unrecognized id, or a recognized id
-  lacking the role → `403`. **This header is trusted at face value — it is
-  NOT a real authentication mechanism** (no signature, token, or session of
-  any kind backs it). This is intentionally dev-grade, matching the
-  existing accepted-risk posture on the profile-PUT endpoint above; real
-  auth hardening is deferred to the EOS/account phase.
+- **Auth guard**: resolves the request's `X-Auth-Token` via the exact same
+  `resolveAuth()` as `/api/me` (including the `dev_mode` fallback to the
+  dev player when no token is sent), then checks the resolved player's
+  `roles` includes `item_admin`. Missing token, invalid token, or a
+  resolved player lacking the role → `403` — this endpoint keeps its
+  original REQ-0035 status-code convention (403 for every guard failure,
+  not 401 for an invalid token the way the profile routes distinguish it)
+  since existing tests/clients already depend on that exact contract;
+  only the underlying mechanism changed (a real registry lookup instead
+  of a client-supplied header trusted at face value).
 - **`:id` must be a LIVE item** — found in `live_items.json` or
   `live_sis.json`'s `entries[]`. There is no `content/staging/`/`content/
   draft/` directory in this repo today, so this is enforced simply as "id
@@ -105,9 +209,7 @@ there being no login/session system at all yet).
   permissions survive the replace). `fs.renameSync` updates the
   destination's mtime, so `/api/content`'s existing mtime-checked cache
   (see `getContent()` in `api.cjs`) naturally serves the updated content on
-  the very next request — no server restart needed, and no new
-  cache-invalidation code was required (confirmed by reading `api.cjs`
-  before writing this feature, not assumed).
+  the very next request — no server restart needed.
 - **No other file is ever touched, and this endpoint never invokes git.**
 
 **Content-edit review policy**: `PUT /api/admin/item/:id` writes directly
@@ -128,7 +230,9 @@ WantedBy=default.target
 ```
 Enable/start: `systemctl --user enable --now backpack-api.service`.
 Check: `systemctl --user is-active backpack-api.service` and
-`curl 127.0.0.1:8802/api/health`.
+`curl 127.0.0.1:8802/api/health`. **Restart after any server/*.cjs
+change** (`systemctl --user restart backpack-api.service`) — the unit
+does not hot-reload.
 
 ## Cloudflare tunnel ingress (backpack-dev, remote-managed config)
 Config lives in Cloudflare, not in a file in this repo — recorded here for
@@ -182,16 +286,9 @@ wired to `saveCanvas`/`fetchCanvas` (client/src/api.ts). Save PUTs the bare
 live `GameState` (no wrapper) to `PUT /api/profile/default/canvas`, same
 body shape `mock-src/ui.js`'s save handler sends and same shape
 `mock-src/data.js`'s `makeState()` produces (`{linked,bps,pos,sis}`).
-
-State-interop verification (profiles must be interchangeable between the
-mock and this client): fetched the live `/api/content` `scenario`
-(stripped of `layout`, same as `gameDataFromApiContent`'s normalization),
-PUT it back verbatim to `/api/profile/default/canvas`, then GET it back --
-the round-tripped `canvas` was byte-identical to the PUT body and had
-exactly the 4 expected top-level keys (`linked`, `bps`, `pos`, `sis`), no
-added/renamed/dropped fields. Confirms the client's save body shape survives
-the server's storage layer unchanged and matches the mock's own save
-payload shape.
+(REQ-0031 Phase B later retired the Save/Load buttons in favor of auto-
+save; REQ-0037 later replaced the hardcoded `'default'` profile id with
+the authenticated player's own id -- see "Auth" above.)
 
 ## Ingress change log
 - 2026-07-03 (REQ-0024): applied via Cloudflare Tunnel Configuration API
@@ -234,18 +331,28 @@ then retry. On THIS box chromium was already installed and launched
 successfully with no missing-library issues, so this fallback path has
 not been needed here to date.
 
-### Profile safety (backup/restore)
+### Profile / player safety (backup/restore)
 
-Several tests PUT canvas state to the live API as test-fixture setup
-(there is no separate test/staging profile -- `server/storage.cjs`'s
-allowlist is exactly `["default"]`). `client/e2e/global-setup.ts` backs
-up `data/profiles/default.json` to a timestamped file under `/tmp` (or
-records its absence, if no profile has been saved yet) BEFORE any test
-runs; `client/e2e/global-teardown.ts` restores it byte-for-byte AFTER the
+Several tests PUT canvas state to the live API as test-fixture setup.
+`client/e2e/global-setup.ts` backs up `data/profiles/default.json` (or
+records its absence) AND `content/live/live_items.json`/`live_sis.json`
+to timestamped files under `/tmp` BEFORE any test runs;
+`client/e2e/global-teardown.ts` restores each byte-for-byte AFTER the
 whole run, even if tests fail (Playwright guarantees globalTeardown runs
 once globalSetup has completed) -- restoration is verified via a sha256
 comparison, and teardown itself throws if the hashes don't match, so a
-broken restore is never silent.
+broken restore is never silent. REQ-0037 extends this: `guest-
+auth.spec.ts` mints brand-new guest players via the real `server/
+cli_invite.cjs` CLI, registers each created file (both the `data/
+players/<id>.json` registry entry and the `data/profiles/<id>.json`
+profile file, if one gets created) into a shared tracked-files ledger
+(`GUEST_AUTH_TRACKED_FILES_PATH`, reset at the start of every run by
+global-setup.ts), and global-teardown.ts deletes every file in that
+ledger at the end of the run -- verified the same way (sha256 of the
+now-deleted file must equal the "missing" sentinel), since these files
+never existed before the test run and therefore always follow the
+"delete, don't restore" path (mirroring the existing absent-marker
+convention for `data/profiles/default.json` when it doesn't exist yet).
 
 ### Test files
 
@@ -258,3 +365,18 @@ broken restore is never silent.
 - `baseline-smoke.spec.ts` (+ `fixtures/baseline-smoke-fixture.json`) --
   live data-source indicator, free-PO drag both directions, double-click
   rotate.
+- `dex.spec.ts` / `dex-admin.spec.ts` -- REQ-0035 Dex display + admin
+  edit-mode coverage (role-gated toggle, form edit + persistence,
+  restore-via-second-edit).
+- `nav-routing.spec.ts` -- REQ-0034 hash routing + the WebGL-churn
+  regression guard (5 round trips away from `#/backpacks` and back).
+- `grid-8x8.spec.ts`, `preset-switch.spec.ts`, `long-press-rename.spec.ts`,
+  `auto-save.spec.ts` -- REQ-0031 Phase B coverage (8x8 grid, presets,
+  tab/preset rename, debounced auto-save).
+- `guest-auth.spec.ts` (REQ-0037) -- mints two guest players via the real
+  `cli_invite.cjs` CLI; covers the `#/invite/<token>` flow (token stored,
+  `/api/me` resolves, redirect + welcome banner), per-player board
+  isolation (a drag/auto-save on player A's board never appears on player
+  B's, and cross-player profile reads 403), logout (clears the token,
+  reload returns to the dev-mode/default state), and the Settings page's
+  account block + REQ-0039 bot-mode placeholder block.

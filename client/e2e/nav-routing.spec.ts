@@ -63,7 +63,11 @@ test('clicking through all 5 nav routes updates hash + active highlight + conten
       label: 'Settings',
       hash: '#/settings',
       contentCheck: async () => {
-        await expect(page.locator('.placeholder-page h2')).toHaveText('Settings');
+        // REQ-0037: #/settings now renders the dedicated Settings.tsx
+        // component (account block + REQ-0039 bot-mode placeholder)
+        // instead of the generic PlaceholderPage -- assert on its own
+        // root class + heading instead.
+        await expect(page.locator('.settings-page h2')).toHaveText('Settings');
       },
     },
   ];
