@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const storage = require('./storage.cjs');
+const admin = require('./admin.cjs');
 // REQ-0024 gap fix: render effect AST -> EN/JA display text server-side,
 // using the SAME renderer tool_gen_data.cjs uses to bake mock-src/data.js,
 // so live-mode tooltips are byte-identical to baked-mode tooltips.
@@ -142,6 +143,7 @@ function readBody(req, cb) {
 
 // ---- routing ----
 const PROFILE_CANVAS_RE = /^\/api\/profile\/([^/]+)\/canvas$/;
+const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -159,6 +161,58 @@ function handle(req, res) {
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'content read failed: ' + e.message });
     }
+    return;
+  }
+
+  // REQ-0035: dev identity endpoint. No auth on this endpoint itself --
+  // it always answers as "the local dev user" (see admin.cjs's module
+  // comment / docs/REQ/REQ-0035-item-encyclopedia.md).
+  if (p === '/api/me' && req.method === 'GET') {
+    try {
+      sendJSON(res, 200, admin.getMe());
+    } catch (e) {
+      sendJSON(res, 500, { ok: false, error: 'me read failed: ' + e.message });
+    }
+    return;
+  }
+
+  const adminItemMatch = ADMIN_ITEM_RE.exec(p);
+  if (adminItemMatch && req.method === 'PUT') {
+    const itemId = decodeURIComponent(adminItemMatch[1]);
+    const playerId = req.headers['x-player-id'];
+    if (!admin.isItemAdmin(playerId)) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: X-Player-Id missing or not an item_admin' });
+      return;
+    }
+    readBody(req, (err, bodyStr) => {
+      if (err) {
+        if (err.code === 'TOO_LARGE') {
+          sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_BODY_BYTES + ' bytes' });
+        } else {
+          sendJSON(res, 400, { ok: false, error: 'body read failed: ' + err.message });
+        }
+        return;
+      }
+      let body;
+      try {
+        body = JSON.parse(bodyStr);
+      } catch (e) {
+        sendJSON(res, 400, { ok: false, error: 'invalid JSON body' });
+        return;
+      }
+      try {
+        const merged = admin.applyAdminEdit(itemId, body);
+        contentCache = null; // force a fresh read on the next /api/content (mtime already changed too)
+        sendJSON(res, 200, { ok: true, id: itemId, item: merged });
+      } catch (e) {
+        const code = e.code === 'NOT_FOUND' ? 404 : 400;
+        sendJSON(res, code, { ok: false, error: e.message });
+      }
+    });
+    return;
+  }
+  if (adminItemMatch) {
+    sendJSON(res, 405, { ok: false, error: 'method not allowed' });
     return;
   }
 
@@ -223,6 +277,7 @@ function handle(req, res) {
 }
 
 function main() {
+  admin.ensureDevUser(); // REQ-0035: create data/config/dev_user.json with defaults if missing
   const server = http.createServer((req, res) => {
     try {
       handle(req, res);

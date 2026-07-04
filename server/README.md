@@ -15,8 +15,17 @@ on `127.0.0.1:8802` only.
   only) — no user-controlled paths. Body size cap: 64KB.
   When Postgres is introduced later, only this module's internals change;
   its exported API (`readProfile`, `writeProfile`, etc.) is the seam.
+- `admin.cjs` — REQ-0035: dev-user identity (`data/config/dev_user.json`)
+  + the admin item-edit write path (validation against `content/vocab.json`
+  + atomic write to `content/live/live_items.json`/`live_sis.json`). See
+  "Admin API" below.
 - `tests/api_test.cjs` — storage round-trip, content endpoint shape,
-  profile PUT/GET round-trip, oversized-body rejection. Run with
+  profile PUT/GET round-trip, oversized-body rejection, `/api/me` shape,
+  admin-write validation (vocab/range/schema-allowlist rejections), 403
+  auth-guard cases, and a dedicated real-repo test that edits the actual
+  `content/live/live_items.json`, verifies the change, then restores the
+  original bytes and checks a sha256 match (try/finally — restoration runs
+  even if an assertion above it fails). Run with
   `node server/tests/api_test.cjs`.
 
 ## Endpoints
@@ -33,10 +42,82 @@ on `127.0.0.1:8802` only.
   updated_at, canvas}` or 404 if nothing saved yet.
 - `PUT /api/profile/default/canvas` (body = canvas JSON, ≤64KB) → same
   shape as GET, 200 on success, 413 if the body exceeds the cap.
+- `GET /api/me` → `{playerId, name, roles}`, read from
+  `data/config/dev_user.json` (created with `{"playerId":"dev","name":
+  "Developer","roles":["item_admin"]}` on first server boot if missing).
+  See "Admin API" below.
+- `PUT /api/admin/item/:id` → see "Admin API" below.
 
 **Accepted dev risk**: profile PUT is publicly reachable on the dev URL
 (single fixed profile id, size-capped, no path injection possible). Revisit
 at the account/auth phase (= Postgres phase), per REQ-0024.
+
+## Admin API (REQ-0035)
+
+**Roles model**: `data/config/dev_user.json` (gitignored, same treatment as
+`data/profiles/`) models the current dev "session" as a single user object
+`{playerId, name, roles}`. `roles` is an array of role strings; today only
+`item_admin` is checked anywhere. `GET /api/me` returns this object as-is
+(no auth on `/api/me` itself — it always answers as "the local dev user",
+there being no login/session system at all yet).
+
+**`PUT /api/admin/item/:id`** edits one item's editable fields in
+`content/live/live_items.json` (POs) or `content/live/live_sis.json` (SIs).
+
+- **Auth guard**: the request must carry an `X-Player-Id` header whose
+  value matches `dev_user.json`'s `playerId`, AND that user's `roles` must
+  include `item_admin`. Missing header, unrecognized id, or a recognized id
+  lacking the role → `403`. **This header is trusted at face value — it is
+  NOT a real authentication mechanism** (no signature, token, or session of
+  any kind backs it). This is intentionally dev-grade, matching the
+  existing accepted-risk posture on the profile-PUT endpoint above; real
+  auth hardening is deferred to the EOS/account phase.
+- **`:id` must be a LIVE item** — found in `live_items.json` or
+  `live_sis.json`'s `entries[]`. There is no `content/staging/`/`content/
+  draft/` directory in this repo today, so this is enforced simply as "id
+  found in one of the two live files, else 404" — draft/staging content
+  (if introduced later) can never match this lookup and stays uneditable
+  via this endpoint.
+- **Body schema allowlist**: unknown top-level keys → `400`. Editable keys:
+  `name`, `name_ja`, `flavor`, `flavor_ja`, `rarity`, `effects` (all
+  entries), plus `tags`/`sockets`/`stretch` for POs only (SIs have no
+  `tags`/`sockets`/`stretch` fields in schema `si/2`). Shape/ports are
+  intentionally NOT editable via this endpoint (geometry editing is
+  deferred, see `docs/REQ/REQ-0035-item-encyclopedia.md`).
+- **Closed-vocabulary validation** (against `content/vocab.json`, always
+  server-side): `rarity` ∈ `vocab.rarities`; every tag ∈ `vocab.po_tags`
+  keys, and `tags[0]` specifically must be a ROOT tag (a `po_tags` key
+  whose value is `null`); every effect's `trigger.t` ∈ `vocab.triggers` and
+  `verb.t` ∈ `vocab.verbs`; any `status` field ∈ `vocab.statuses`; every
+  socket's `t`/`tags` ∈ `vocab.socket_tags` keys.
+- **Range validation**: any `[lo,hi]` pair (`trigger.s` for `every_secs`,
+  `verb.n` for any ranged verb) must have both values finite, `> 0`, and
+  `lo <= hi` — anything else is rejected.
+- **Effect re-render gate**: after merging the edit (in-memory, never
+  applied to disk yet), every effect is re-rendered via
+  `tools/eff_render.cjs`'s `render()` for both `en` and `ja`. If rendering
+  throws for any effect, the ENTIRE write is rejected (`400`) and nothing
+  is persisted — this mirrors the render step `/api/content` already
+  performs on every read, just moved to write-time as a pre-commit gate.
+- **Write**: atomic (tmp file in the same directory + `fs.renameSync`,
+  same pattern as `storage.cjs`'s `writeProfile`; the tmp file's mode is
+  set to match the original file's mode before the rename, so file
+  permissions survive the replace). `fs.renameSync` updates the
+  destination's mtime, so `/api/content`'s existing mtime-checked cache
+  (see `getContent()` in `api.cjs`) naturally serves the updated content on
+  the very next request — no server restart needed, and no new
+  cache-invalidation code was required (confirmed by reading `api.cjs`
+  before writing this feature, not assumed).
+- **No other file is ever touched, and this endpoint never invokes git.**
+
+**Content-edit review policy**: `PUT /api/admin/item/:id` writes directly
+to `content/live/*.json` on disk but performs NO git operation of any
+kind — it does not stage, commit, or push. Content edits made through this
+endpoint (whether from the Dex admin UI or a direct API call) are reviewed
+and committed to git at batch cadence by a human or orchestrator, exactly
+like every other content edit in this repo's existing workflow (see
+`content/batches/`'s batch-review convention). Do not wire up auto-commit
+here without a deliberate, separately-reviewed decision to do so.
 
 ## systemd (user unit, Node v24 via nvm)
 `~/.config/systemd/user/backpack-api.service`:
