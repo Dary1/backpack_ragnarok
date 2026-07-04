@@ -85,22 +85,31 @@ addition (REQ-0036 P1-A commit (a)) is the pure read-only accessor
 - **S9** Locked defaults: all OQ1-OQ19 locked rulings referenced inline in
   code comments at their point of use (grep for `OQ` in `sim/combat.cjs`).
 
-## Spec truncation finding (documented per task instructions)
+## Spec note correction (P1-B chore -- corrects a P1-A misdiagnosis)
 
-`docs/combat_spec_draft.md` v0.3 (555 lines) is truncated **mid-sentence**
-at line 555: `"| OQ5 (pen) | pen = occupied pass-throug"`. S9's table is
-incomplete and S10 (tunables consolidation table) and S11 (VX list) are
-**missing from the source file entirely**. This is a genuine gap in the
-source document, not an omission on this implementation's part. Every
-constant S10 would have held is already given inline via `[TUNABLE]` /
-`[LOCKED OQn]` markers scattered through S1-S9's prose (quoted verbatim in
-the REQ-0036 P1-A task brief), and the VX list (S11: VX-1 BP hpMax, VX-2
-enemy/formation schema, VX-3 resolved by the `modes` vocab making the old
-`Tool` po_tag placeholder dead, VX-4 attack-profile schema) is fully
-described inline too. This implementation recovers S10 in the Tunables
-table below and S11 is realized as the `hpMax` field (VX-1), the enemy def
-v2 / formation def schemas (VX-2), the `modes` vocab (VX-3), and the
-`attack_profile` schema (VX-4) — all present in the code and content.
+P1-A's original note here (titled "Spec truncation finding") claimed
+`docs/combat_spec_draft.md` was genuinely truncated mid-sentence at line
+555, with S10/S11 missing from the source document entirely. **That
+diagnosis was wrong.** The real, filesystem-hosted `combat_spec_draft.md`
+is a complete 615-line v0.3 document -- S9's locked-defaults table runs to
+completion and section 10 (tunables) exists in full. What P1-A actually
+hit was a **stale sandbox-mount read**: the sandbox this repo's dev work
+runs in mounts `docs/` from a separate filesystem, and at the time of the
+P1-A pass, that mount was serving a cached/older byte range of the file
+(555 of 615 lines, cut off mid-table-row) rather than its then-current
+contents. The server itself never had a copy of this doc at all (`docs/`
+is not part of this git repo -- combat_spec_draft.md lives only on the
+docs filesystem), so there was no way for P1-A to cross-check the
+sandbox's read against a second source at the time.
+
+This matters only as a documentation-accuracy correction, not a
+functional one: every constant the real S10 holds was independently
+already recovered inline in the Tunables table below (each cross-checked
+against the P1-A task brief's verbatim `[TUNABLE]`/`[LOCKED OQn]` quotes),
+and the real S10 table matches this reconstruction exactly -- so nothing
+in `sim/combat.cjs` or this table needs to change as a result of this
+correction. The fix here is purely: stop asserting a false claim about
+the source document's completeness.
 
 ## Tunables table (reconstructed S10)
 

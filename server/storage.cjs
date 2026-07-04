@@ -231,6 +231,252 @@ function writeProfile(id, canvas) {
   return writeProfileFiles(id, canvas);
 }
 
+
+// ---- REQ-0036 P1-B: schedule (rooms/runs) + warehouse persistence ----
+// Same "one persistence root per concern, files+pg parity" convention as
+// readProfile/writeProfile above. Three new roots:
+//   rooms:     data/schedule/rooms/<roomId>.json      | pg: schedule_rooms
+//   runs:      data/schedule/runs/<runId>.json         | pg: schedule_runs
+//   warehouse: data/warehouse/<playerId>/<itemUid>.json | pg: warehouse_items
+// pg-mode test isolation reuses the SAME NAMESPACE prefix already computed
+// above from REPO_ROOT (sha256(REPO_ROOT).slice(0,16)) -- every id below is
+// namespaced the same way namespacedId() already does for profiles, so a
+// test run against a remapped os.homedir() gets its own throwaway rows
+// automatically, with zero test-file-specific pg setup.
+
+const SCHEDULE_DIR = path.join(REPO_ROOT, 'data', 'schedule');
+const ROOMS_DIR = path.join(SCHEDULE_DIR, 'rooms');
+const RUNS_DIR = path.join(SCHEDULE_DIR, 'runs');
+const WAREHOUSE_DIR = path.join(REPO_ROOT, 'data', 'warehouse');
+
+function ensureScheduleDirs() {
+  fs.mkdirSync(ROOMS_DIR, { recursive: true });
+  fs.mkdirSync(RUNS_DIR, { recursive: true });
+  fs.mkdirSync(WAREHOUSE_DIR, { recursive: true });
+}
+ensureScheduleDirs();
+
+function roomPath(id) { return path.join(ROOMS_DIR, id + '.json'); }
+function runPath(id) { return path.join(RUNS_DIR, id + '.json'); }
+function warehousePlayerDir(playerId) { return path.join(WAREHOUSE_DIR, playerId); }
+function warehouseItemPath(playerId, itemUid) { return path.join(warehousePlayerDir(playerId), itemUid + '.json'); }
+
+function atomicWriteJSON(dir, filePath, obj) {
+  fs.mkdirSync(dir, { recursive: true });
+  const json = JSON.stringify(obj, null, 1);
+  const tmpName = '.' + path.basename(filePath) + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
+  const tmpPath = path.join(dir, tmpName);
+  fs.writeFileSync(tmpPath, json, 'utf8');
+  fs.renameSync(tmpPath, filePath);
+}
+
+// ---- rooms: files backend ----
+
+function readRoomFiles(id) {
+  const p = roomPath(id);
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+function writeRoomFiles(id, doc) {
+  atomicWriteJSON(ROOMS_DIR, roomPath(id), doc);
+  return doc;
+}
+function deleteRoomFiles(id) {
+  const p = roomPath(id);
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+}
+function listRoomsFiles() {
+  ensureScheduleDirs();
+  const files = fs.readdirSync(ROOMS_DIR).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
+  const out = [];
+  for (const f of files) {
+    try { out.push(JSON.parse(fs.readFileSync(path.join(ROOMS_DIR, f), 'utf8'))); }
+    catch (e) { /* skip unreadable/corrupt */ }
+  }
+  return out;
+}
+
+// ---- rooms: pg backend ----
+
+function readRoomPg(id) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM schedule_rooms WHERE room_id = $1', [namespacedId(id)]);
+  return res.rows.length > 0 ? res.rows[0].doc : null;
+}
+function writeRoomPg(id, doc) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync(
+    'INSERT INTO schedule_rooms (room_id, doc, updated_at) VALUES ($1, $2::jsonb, now()) ' +
+    'ON CONFLICT (room_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = EXCLUDED.updated_at',
+    [namespacedId(id), JSON.stringify(doc)]
+  );
+  return doc;
+}
+function deleteRoomPg(id) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync('DELETE FROM schedule_rooms WHERE room_id = $1', [namespacedId(id)]);
+}
+function listRoomsPg() {
+  const { querySync } = require('./pg_sync.cjs');
+  const prefix = NAMESPACE + ':';
+  const res = querySync('SELECT doc FROM schedule_rooms WHERE room_id LIKE $1', [prefix + '%']);
+  return res.rows.map((r) => r.doc);
+}
+
+// ---- rooms: public API ----
+
+function readRoom(id) {
+  return backendMode() === 'pg' ? readRoomPg(id) : readRoomFiles(id);
+}
+function writeRoom(id, doc) {
+  return backendMode() === 'pg' ? writeRoomPg(id, doc) : writeRoomFiles(id, doc);
+}
+function deleteRoom(id) {
+  return backendMode() === 'pg' ? deleteRoomPg(id) : deleteRoomFiles(id);
+}
+function listRooms() {
+  return backendMode() === 'pg' ? listRoomsPg() : listRoomsFiles();
+}
+
+// ---- runs: files backend ----
+
+function readRunFiles(id) {
+  const p = runPath(id);
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+function writeRunFiles(id, doc) {
+  atomicWriteJSON(RUNS_DIR, runPath(id), doc);
+  return doc;
+}
+function listRunsForRoomFiles(roomId) {
+  ensureScheduleDirs();
+  const files = fs.readdirSync(RUNS_DIR).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
+  const out = [];
+  for (const f of files) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(RUNS_DIR, f), 'utf8'));
+      if (doc.roomId === roomId) out.push(doc);
+    } catch (e) { /* skip */ }
+  }
+  return out;
+}
+
+// ---- runs: pg backend ----
+
+function readRunPg(id) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM schedule_runs WHERE run_id = $1', [namespacedId(id)]);
+  return res.rows.length > 0 ? res.rows[0].doc : null;
+}
+function writeRunPg(id, roomId, doc) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync(
+    'INSERT INTO schedule_runs (run_id, room_id, doc, updated_at) VALUES ($1, $2, $3::jsonb, now()) ' +
+    'ON CONFLICT (run_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = EXCLUDED.updated_at',
+    [namespacedId(id), namespacedId(roomId), JSON.stringify(doc)]
+  );
+  return doc;
+}
+function listRunsForRoomPg(roomId) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM schedule_runs WHERE room_id = $1', [namespacedId(roomId)]);
+  return res.rows.map((r) => r.doc);
+}
+
+// ---- runs: public API ----
+
+function readRun(id) {
+  return backendMode() === 'pg' ? readRunPg(id) : readRunFiles(id);
+}
+// `doc` must carry its own `roomId` field (both backends key runs by
+// run_id alone; pg also stores room_id in its own column for the indexed
+// per-room listing query -- writeRun always derives that column from
+// doc.roomId, so callers never pass it as a separate parameter).
+function writeRun(id, doc) {
+  if (!doc || typeof doc.roomId !== 'string' || !doc.roomId) {
+    throw new Error('writeRun: doc.roomId is required');
+  }
+  return backendMode() === 'pg' ? writeRunPg(id, doc.roomId, doc) : writeRunFiles(id, doc);
+}
+function listRunsForRoom(roomId) {
+  return backendMode() === 'pg' ? listRunsForRoomPg(roomId) : listRunsForRoomFiles(roomId);
+}
+
+// ---- warehouse: files backend ----
+
+function readWarehouseItemFiles(playerId, itemUid) {
+  const p = warehouseItemPath(playerId, itemUid);
+  if (!fs.existsSync(p)) return null;
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+function writeWarehouseItemFiles(playerId, itemUid, doc) {
+  atomicWriteJSON(warehousePlayerDir(playerId), warehouseItemPath(playerId, itemUid), doc);
+  return doc;
+}
+function deleteWarehouseItemFiles(playerId, itemUid) {
+  const p = warehouseItemPath(playerId, itemUid);
+  if (fs.existsSync(p)) fs.unlinkSync(p);
+}
+function listWarehouseItemsFiles(playerId) {
+  const dir = warehousePlayerDir(playerId);
+  if (!fs.existsSync(dir)) return [];
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
+  const out = [];
+  for (const f of files) {
+    try { out.push(JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'))); }
+    catch (e) { /* skip */ }
+  }
+  return out;
+}
+
+// ---- warehouse: pg backend ----
+
+function readWarehouseItemPg(playerId, itemUid) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM warehouse_items WHERE item_uid = $1', [namespacedId(itemUid)]);
+  return res.rows.length > 0 ? res.rows[0].doc : null;
+}
+function writeWarehouseItemPg(playerId, itemUid, doc) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync(
+    'INSERT INTO warehouse_items (item_uid, player_id, doc, harvested_at, updated_at) ' +
+    'VALUES ($1, $2, $3::jsonb, $4, now()) ' +
+    'ON CONFLICT (item_uid) DO UPDATE SET doc = EXCLUDED.doc, harvested_at = EXCLUDED.harvested_at, updated_at = EXCLUDED.updated_at',
+    [namespacedId(itemUid), namespacedId(playerId), JSON.stringify(doc), doc.harvestedAt]
+  );
+  return doc;
+}
+function deleteWarehouseItemPg(playerId, itemUid) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync('DELETE FROM warehouse_items WHERE item_uid = $1', [namespacedId(itemUid)]);
+}
+function listWarehouseItemsPg(playerId) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM warehouse_items WHERE player_id = $1', [namespacedId(playerId)]);
+  return res.rows.map((r) => r.doc);
+}
+
+// ---- warehouse: public API ----
+// Every function takes playerId explicitly (rather than deriving it from
+// itemUid) because the files backend partitions its directory tree by
+// player and the pg backend needs it for the player_id column -- callers
+// (schedule.cjs) always know the owning player already (it's the caller's
+// OWN warehouse, or a participant id from a run's reward assignment).
+
+function readWarehouseItem(playerId, itemUid) {
+  return backendMode() === 'pg' ? readWarehouseItemPg(playerId, itemUid) : readWarehouseItemFiles(playerId, itemUid);
+}
+function writeWarehouseItem(playerId, itemUid, doc) {
+  return backendMode() === 'pg' ? writeWarehouseItemPg(playerId, itemUid, doc) : writeWarehouseItemFiles(playerId, itemUid, doc);
+}
+function deleteWarehouseItem(playerId, itemUid) {
+  return backendMode() === 'pg' ? deleteWarehouseItemPg(playerId, itemUid) : deleteWarehouseItemFiles(playerId, itemUid);
+}
+function listWarehouseItems(playerId) {
+  return backendMode() === 'pg' ? listWarehouseItemsPg(playerId) : listWarehouseItemsFiles(playerId);
+}
+
 module.exports = {
   SCHEMA_VERSION,
   MAX_BODY_BYTES,
@@ -243,4 +489,24 @@ module.exports = {
   namespacedId,
   readProfile,
   writeProfile,
+  // REQ-0036 P1-B: schedule (rooms/runs) + warehouse persistence
+  ROOMS_DIR,
+  RUNS_DIR,
+  WAREHOUSE_DIR,
+  ensureScheduleDirs,
+  roomPath,
+  runPath,
+  warehousePlayerDir,
+  warehouseItemPath,
+  readRoom,
+  writeRoom,
+  deleteRoom,
+  listRooms,
+  readRun,
+  writeRun,
+  listRunsForRoom,
+  readWarehouseItem,
+  writeWarehouseItem,
+  deleteWarehouseItem,
+  listWarehouseItems,
 };
