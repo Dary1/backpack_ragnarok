@@ -84,6 +84,17 @@ function buildContentPayload() {
     });
   }
   const trees = { po: vocab.po_tags || {}, socket: vocab.socket_tags || {} };
+  // REQ-0035: closed-vocabulary lists for the Dex admin edit form's
+  // dropdowns (trigger types, verb types, statuses, rarities). Server-side
+  // validation (admin.cjs) is the actual source of truth/enforcement --
+  // this is purely so the client can render matching dropdown options
+  // without duplicating vocab.json's lists by hand.
+  const vocabLists = {
+    triggers: vocab.triggers || [],
+    verbs: vocab.verbs || [],
+    statuses: vocab.statuses || [],
+    rarities: vocab.rarities || [],
+  };
 
   return {
     items: ITEMS,
@@ -92,6 +103,7 @@ function buildContentPayload() {
     scenario: scenario,
     layout: scenario.layout || null,
     registry: registry,
+    vocab: vocabLists,
   };
 }
 

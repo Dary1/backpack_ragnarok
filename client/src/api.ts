@@ -98,6 +98,17 @@ export interface ApiRegistry {
   batches: ApiRegistryBatch[];
 }
 
+/** Closed-vocabulary lists for the Dex admin edit form's dropdowns
+ * (REQ-0035). Server-side validation in server/admin.cjs is the actual
+ * source of truth/enforcement -- this is purely so the client can render
+ * matching dropdown options without a separate vocab fetch. */
+export interface ApiVocabLists {
+  triggers: string[];
+  verbs: string[];
+  statuses: string[];
+  rarities: string[];
+}
+
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
@@ -105,6 +116,7 @@ export interface ApiContentPayload {
   scenario: ApiScenario;
   layout: Layout | null;
   registry: ApiRegistry | null;
+  vocab: ApiVocabLists;
 }
 
 export interface ApiCanvasDoc {
@@ -282,4 +294,60 @@ export async function resolveGameData(profileId = 'default'): Promise<ResolvedGa
   } catch (e) {
     return { source: 'error', gameData: null, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+// ---- REQ-0035: /api/me + admin item-edit endpoint ----
+
+export interface ApiMe {
+  playerId: string;
+  name: string;
+  roles: string[];
+}
+
+/** GET /api/me. No auth on this endpoint itself -- see server/README.md's
+ * "Admin API" section / docs/REQ/REQ-0035-item-encyclopedia.md. */
+export function fetchMe(): Promise<ApiMe> {
+  return getJSON<ApiMe>('/api/me');
+}
+
+export interface AdminPutResult {
+  ok: true;
+  id: string;
+  item: Record<string, unknown>;
+}
+
+export interface AdminPutError {
+  ok: false;
+  error: string;
+}
+
+/** PUT /api/admin/item/:id -- REQ-0035. `playerId` is sent as the
+ * X-Player-Id header (the server's dev-grade auth check, see
+ * server/admin.cjs). Throws ApiError on any non-2xx response; the
+ * error's `message` is the server's own `error` string (surfaced
+ * verbatim to the edit form) where the response body could be parsed as
+ * JSON, so validation failures are readable, not just an HTTP status.
+ */
+export async function putAdminItem(
+  id: string,
+  playerId: string,
+  body: Record<string, unknown>
+): Promise<AdminPutResult> {
+  const res = await fetch(`/api/admin/item/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', 'X-Player-Id': playerId },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let parsed: AdminPutResult | AdminPutError | null = null;
+  try {
+    parsed = JSON.parse(text) as AdminPutResult | AdminPutError;
+  } catch (e) {
+    parsed = null;
+  }
+  if (!res.ok) {
+    const message = parsed && 'error' in parsed && parsed.error ? parsed.error : `HTTP ${res.status}`;
+    throw new ApiError(message, res.status);
+  }
+  return parsed as AdminPutResult;
 }

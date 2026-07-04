@@ -263,7 +263,13 @@ function applyAdminEdit(id, body) {
   const nextEntries = entries.slice();
   nextEntries[found.index] = merged;
   const nextDoc = Object.assign({}, found.doc, { entries: nextEntries });
-  const json = JSON.stringify(nextDoc, null, 1);
+  // Preserve the original file's trailing-newline convention (every
+  // content/live/*.json file in this repo ends with a single trailing
+  // newline) -- JSON.stringify never adds one, so without this the
+  // rewritten file would silently lose it on every admin edit.
+  const originalText = fs.readFileSync(found.path, 'utf8');
+  const hadTrailingNewline = originalText.endsWith('\n');
+  const json = JSON.stringify(nextDoc, null, 1) + (hadTrailingNewline ? '\n' : '');
 
   const dir = path.dirname(found.path);
   const tmpName = '.' + path.basename(found.path) + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';

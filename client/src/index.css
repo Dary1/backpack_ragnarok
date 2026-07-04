@@ -693,3 +693,218 @@ html, body {
   color: var(--dim);
   font-style: italic;
 }
+
+/* REQ-0035 -- admin edit mode (DexRoot/DexAdmin). */
+.dex-root {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dex-mode-toggle-row {
+  display: flex;
+  gap: 4px;
+  padding: 10px 22px 0;
+}
+
+.dex-mode-toggle {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dex-mode-toggle-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.dex-admin {
+  display: flex;
+  gap: 16px;
+  padding: 14px 22px 22px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dex-admin-list {
+  width: 260px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.dex-admin-list-item {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dex-admin-list-item:hover {
+  background: #232019;
+}
+
+.dex-admin-list-item-active {
+  background: #232019;
+  color: var(--cyan);
+}
+
+.dex-admin-form {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.dex-admin-form-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+}
+
+.dex-admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.dex-admin-field > span {
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dex-admin-field input[type="text"],
+.dex-admin-field input[type="number"],
+.dex-admin-field select,
+.dex-admin-field textarea {
+  background: #0e0d0b;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.dex-admin-field textarea {
+  min-height: 50px;
+  resize: vertical;
+}
+
+.dex-admin-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.dex-admin-tag-editor {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dex-admin-subfield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.dex-admin-effect-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.dex-admin-effect-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.dex-admin-effect-row select,
+.dex-admin-effect-row input {
+  background: #0e0d0b;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  width: 90px;
+}
+
+.dex-admin-viewonly-note {
+  font-size: 12px;
+  color: var(--dim);
+  font-style: italic;
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.dex-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dex-admin-save-btn {
+  background: var(--cyan);
+  color: #0e0d0b;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dex-admin-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dex-admin-save-ok {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+.dex-admin-save-error {
+  color: var(--bad);
+  font-size: 13px;
+}

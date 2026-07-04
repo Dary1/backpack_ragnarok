@@ -1,20 +1,20 @@
 // Item Encyclopedia (図鑑) display view — REQ-0035. Read-only reference/
 // wiki view: search + filters over a combined PO+SI item grid, each item
 // expandable into a maximum-detail card. Admin edit mode (a SEPARATE
-// view/layout per the spec, not overlaid here) lives in ./DexAdmin.tsx,
-// reached via its own toggle rendered by DexRoot (see dex/DexRoot.tsx).
+// view/layout per the spec, not overlaid here) lives in ./DexAdmin.tsx;
+// both are reached through ./DexRoot.tsx, which owns the /api/content +
+// /api/me fetches and the view/edit toggle.
 //
-// Data source: GET /api/content directly (api.ts's fetchContent()), NOT
-// the engine-normalized GameData the boards use -- the raw payload still
-// carries fields the boards' normalization drops (e.g. `part`, the raw
-// `effects` AST) that this reference view needs to show. This is a
-// read-only view with its own independent fetch; it does not touch
-// store.ts's engine/GameState at all.
-import { useEffect, useMemo, useState } from 'react';
-import { fetchContent, type ApiContentPayload, type ApiItemEntry, type ApiSIEntry } from '../api';
+// Data source: the `payload` prop is the raw GET /api/content response
+// (api.ts's ApiContentPayload), NOT the engine-normalized GameData the
+// boards use -- the raw payload still carries fields the boards'
+// normalization drops (e.g. `part`, the raw `effects` AST) that this
+// reference view needs to show. This is a read-only view; it does not
+// touch store.ts's engine/GameState at all.
+import { useMemo, useState } from 'react';
+import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
 import type { Locale } from '../store';
 import { iconDataUrl } from './dexIcons';
-import { ancestryPath } from './vocabTree';
 import { ItemDetailCard } from './ItemDetailCard';
 
 export interface DexEntry {
@@ -38,6 +38,7 @@ function nameJaOf(e: ApiItemEntry | ApiSIEntry): string {
 
 interface DexProps {
   locale: Locale;
+  payload: ApiContentPayload;
 }
 
 const RESERVED_TABS: Array<{ ja: string; en: string }> = [
@@ -46,29 +47,13 @@ const RESERVED_TABS: Array<{ ja: string; en: string }> = [
   { ja: '検索プリセット', en: 'Search Presets' },
 ];
 
-export function Dex({ locale }: DexProps) {
-  const [payload, setPayload] = useState<ApiContentPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
+export function Dex({ locale, payload }: DexProps) {
   const [query, setQuery] = useState('');
   const [rarityFilter, setRarityFilter] = useState<string>('');
   const [tagFilter, setTagFilter] = useState<string>('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchContent()
-      .then((p) => {
-        if (!cancelled) setPayload(p);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const entries = useMemo(() => (payload ? combineEntries(payload) : []), [payload]);
+  const entries = useMemo(() => combineEntries(payload), [payload]);
 
   const rarities = useMemo(() => {
     const set = new Set<string>();
@@ -101,18 +86,6 @@ export function Dex({ locale }: DexProps) {
       return true;
     });
   }, [entries, query, rarityFilter, tagFilter]);
-
-  if (error) {
-    return (
-      <div className="dex-view dex-error">
-        {locale === 'ja' ? '図鑑の読み込みに失敗しました: ' : 'Failed to load the dex: '}
-        {error}
-      </div>
-    );
-  }
-  if (!payload) {
-    return <div className="dex-view dex-loading">{locale === 'ja' ? '読み込み中…' : 'Loading…'}</div>;
-  }
 
   return (
     <div className="dex-view">
@@ -183,7 +156,7 @@ export function Dex({ locale }: DexProps) {
                   dexEntry={e}
                   locale={locale}
                   tagTree={payload.trees.po}
-                  registry={null}
+                  registry={payload.registry}
                 />
               ) : null}
             </div>
@@ -196,5 +169,3 @@ export function Dex({ locale }: DexProps) {
     </div>
   );
 }
-
-export { ancestryPath };

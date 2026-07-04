@@ -457,6 +457,13 @@ async function main() {
       const reread = JSON.parse(changedBytes.toString('utf8'));
       const changedEntry = reread.entries.find((e) => e.id === 'dagger');
       assert.strictEqual(changedEntry.name, originalName + ' (test-edit)');
+      // Fidelity check: the rewritten file must preserve the original's
+      // trailing-newline convention (every content/live/*.json in this
+      // repo ends with exactly one trailing newline) -- admin.cjs's write
+      // path explicitly re-adds it since JSON.stringify never does.
+      if (originalBytes.toString('utf8').endsWith('\n')) {
+        assert.ok(changedBytes.toString('utf8').endsWith('\n'), 'rewritten file must keep the trailing newline the original had');
+      }
     } finally {
       // ALWAYS restore, even if an assertion above threw -- bytes AND mode
       // (the admin write path's atomic tmp-file+rename can change the
