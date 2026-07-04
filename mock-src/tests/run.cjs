@@ -442,59 +442,71 @@ T('inventory: SI seat/unseat on a free-placed PO (resolved ambiguity: free-place
   eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,{po:'p1',si:0});
 });
 
-T('inventory BP transfer: canvas -> page carries POs+SIs with origin remap; rejects on target collision',()=>{
-  const {st,E}=fresh();
-  // delta (2x2 @ [4,5]) hosts p7 (beast_jaw, cells [4,6],[5,5],[5,6]); a2 guard is on 'bond', not on delta -- use p7's own sockets instead.
-  // Seat the arrowhead (a4) onto beast_jaw's edge socket first, so we can verify it travels with the transfer.
-  const jawEdge=E.sockets(st).find(s=>s.host==='p7'&&s.t==='edge');
-  ok(E.seatSI(st,'a4',jawEdge.skey).ok,'arrowhead seated onto jaw edge (pre-transfer)');
-  const before=JSON.stringify(E.cellsOf(st,st.pos.find(p=>p.uid==='p7')));
-  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok,'delta transfers from canvas to page 1 at [1,1]');
-  eq(st.bps.some(b=>b.id==='delta'),false,'delta no longer on canvas');
-  const pg=st.inv.pages[0];
-  const movedBp=pg.bps.find(b=>b.id==='delta');
-  ok(!!movedBp,'delta now present in page 1');
-  eq(movedBp.origin,[1,1]);
-  const jaw=pg.pos.find(p=>p.uid==='p7');
-  ok(!!jaw,'jaw (p7) moved into the page along with its BP');
-  // origin shifted by [1,1]-[4,5] = [-3,-4]; verify absolute cells shifted by the same delta
-  const afterCells=E.cellsOfIn(jaw);
-  const beforeCells=JSON.parse(before);
-  const expectCells=beforeCells.map(([r,c])=>[r-3,c-4]);
-  eq(afterCells,expectCells,'jaw cells shifted by the same delta as its BP (origin remap)');
-  const seatedArrow=pg.sis.find(a=>a.uid==='a4');
-  ok(!!seatedArrow&&seatedArrow.host&&seatedArrow.host.po==='p7','arrowhead SI travelled into the page with its host PO, host ref unchanged');
-  eq(st.sis.some(a=>a.uid==='a4'),false,'arrowhead no longer listed in canvas sis[]');
-  // now collide: try transferring gamma on top of delta's new position in the SAME page
-  const gammaChk=E.canTransferBP(st,{loc:'canvas'},{loc:'inv',page:0},'gamma',[1,1]);
-  ok(!gammaChk.ok,'transferring gamma onto delta\'s occupied page cells should be rejected: '+JSON.stringify(gammaChk));
-  eq(st.bps.some(b=>b.id==='gamma'),true,'gamma must remain on canvas -- rejected transfer must not partially move state');
+T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT preset\'s BP reference + nested PO/SI references; home(s) untouched',()=>{
+  const {st:legacy,E}=fresh();
+  const migrated=E.migrateState(legacy);
+  const jawEdge=E.sockets(migrated).find(s=>s.host==='p7'&&s.t==='edge');
+  ok(E.createRef(migrated,'si','a4',{host:{po:'p7',si:jawEdge.si}}).ok,'arrowhead referenced+seated onto jaw edge (pre-removal)');
+  const homeDeltaBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'delta').record));
+  const homeJawBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'p7').record));
+  const r=E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]);
+  ok(r.ok,'canvas->inv transfer (reference removal) should succeed: '+JSON.stringify(r));
+  eq(migrated.bps.some(b=>b.id==='delta'),false,'delta reference removed from current preset canvas');
+  eq(migrated.pos.some(p=>p.uid==='p7'),false,'jaw (p7) reference removed along with its BP');
+  eq(migrated.sis.some(a=>a.uid==='a4'),false,'arrowhead reference removed (was seated on the removed jaw reference)');
+  // homes MUST be completely untouched -- "drop cell irrelevant" (spec)
+  eq(E.homeLocationOf(migrated,'delta').record,homeDeltaBefore,'delta HOME untouched by reference removal');
+  eq(E.homeLocationOf(migrated,'p7').record,homeJawBefore,'jaw HOME untouched by reference removal');
+  ok(!!E.homeLocationOf(migrated,'a4'),'arrowhead SI still has a home somewhere in inventory');
+  ok(E.checkUidInvariant(migrated).ok,'invariant holds after reference removal');
+  // yellow/usage must now show delta/p7 as unused by ANY preset
+  eq(E.usageOf(migrated,'delta'),[],'delta has zero references anywhere after removal');
+  eq(E.usageOf(migrated,'p7'),[],'jaw has zero references anywhere after removal');
 });
 
-T('inventory BP transfer: page -> canvas reverse carries contents back',()=>{
-  const {st,E}=fresh();
-  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:2},'delta',[1,1]).ok,'delta to page 3 first');
-  ok(E.transferBP(st,{loc:'inv',page:2},{loc:'canvas'},'delta',[4,5]).ok,'delta back to canvas at its original spot');
-  ok(st.bps.some(b=>b.id==='delta'),'delta back on canvas');
-  eq(st.bps.find(b=>b.id==='delta').origin,[4,5]);
-  const jaw=st.pos.find(p=>p.uid==='p7');
-  eq(jaw.loc,'grid');
-  eq(jaw.cell,[4,5],'jaw restored to its original absolute cell (round-trip origin remap)');
-  ok(st.inv.pages[2].bps.length===0&&st.inv.pages[2].pos.length===0,'page 3 empty again after the BP left');
+T('REQ-0033 BP transfer inv -> canvas: creates a BP reference + nested PO/SI references at the new origin; home(s) untouched; red rule on re-reference',()=>{
+  const {st:legacy,E}=fresh();
+  const migrated=E.migrateState(legacy);
+  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:2},'delta',[1,1]).ok,'first remove delta\'s reference from the current preset (target page is irrelevant to a removal)');
+  const homePage=E.homeLocationOf(migrated,'delta').page;
+  const homeBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'delta').record));
+  const r=E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'canvas'},'delta',[6,5]);
+  ok(r.ok,'inv->canvas transfer (reference creation) should succeed: '+JSON.stringify(r));
+  ok(migrated.bps.some(b=>b.id==='delta'),'delta reference now back on the current preset\'s canvas');
+  eq(migrated.bps.find(b=>b.id==='delta').origin,[6,5],'new reference uses the requested origin');
+  const jawRef=migrated.pos.find(p=>p.uid==='p7');
+  ok(!!jawRef,'jaw (p7) reference recreated alongside delta');
+  eq(jawRef.cell,[6,5],'jaw reference cell recomputed relative to the NEW origin (home arrangement preserved)');
+  // home must be untouched by the reference-creation (still sitting wherever migrateState first-fit it)
+  eq(E.homeLocationOf(migrated,'delta').record,homeBefore,'delta HOME untouched by reference creation');
+  ok(E.checkUidInvariant(migrated).ok,'invariant holds after reference creation');
+  // red rule: referencing the SAME uid into the SAME (current) preset again must fail
+  const dup=E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'canvas'},'delta',[1,1]);
+  ok(!dup.ok,'re-referencing delta into the preset that already references it must be rejected (red rule): '+JSON.stringify(dup));
+  ok(migrated.bps.some(b=>b.id==='delta'&&JSON.stringify(b.origin)===JSON.stringify([6,5])),'rejected re-reference must not have moved/duplicated the existing one');
 });
 
-T('inventory BP transfer: page -> page carries contents',()=>{
-  const {st,E}=fresh();
-  ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok);
-  ok(E.transferBP(st,{loc:'inv',page:0},{loc:'inv',page:3},'delta',[2,2]).ok,'page1 -> page4');
-  eq(st.inv.pages[0].bps.length,0,'page1 empty after leaving');
-  const movedBp=st.inv.pages[3].bps.find(b=>b.id==='delta');
-  ok(!!movedBp);
+T('REQ-0033 BP transfer inv-page -> inv-page: stays a PHYSICAL home move (byte-identical to pre-REQ-0033 behavior)',()=>{
+  const {st:legacy,E}=fresh();
+  const migrated=E.migrateState(legacy);
+  // first pull delta's reference off the current preset's canvas, so its
+  // home page is the only place it exists (page<->page is a pure home
+  // relocation and never needs to consult/alter any preset's reference).
+  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok);
+  const homePage=E.homeLocationOf(migrated,'delta').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'inv',page:3},'delta',[2,2]).ok,'page->page physical move');
+  eq(st_pagesEmptyOfBP(migrated,homePage,'delta'),true,'origin page no longer holds delta\'s home');
+  const movedBp=migrated.inv.pages[3].bps.find(b=>b.id==='delta');
+  ok(!!movedBp,'delta home now present in page 4');
   eq(movedBp.origin,[2,2]);
-  const jaw=st.inv.pages[3].pos.find(p=>p.uid==='p7');
-  ok(!!jaw,'jaw present in page4');
-  eq(E.cellsOfIn(jaw),[[2,3],[3,2],[3,3]],'jaw cells recomputed for the new page4 origin');
+  const jaw=migrated.inv.pages[3].pos.find(p=>p.uid==='p7');
+  ok(!!jaw,'jaw (p7) home present in page 4 (travelled with its BP home, same as pre-REQ-0033)');
+  eq(E.cellsOfIn(jaw),[[2,3],[3,2],[3,3]],'jaw home cells recomputed for the new page4 origin');
+  ok(E.checkUidInvariant(migrated).ok,'invariant holds after a pure home relocation');
 });
+function st_pagesEmptyOfBP(st,pageIdx,bpId){
+  return !st.inv.pages[pageIdx].bps.some(b=>b.id===bpId);
+}
 
 T('inventory: linker dormancy -- a linker-bearing BP transferred into a page emits nothing from traceBeams',()=>{
   const {st,E}=fresh();
@@ -695,16 +707,42 @@ T('inventory: renameInvPage materializes names[] defensively on a state built wi
   eq(st.inv.names[1],'2','untouched slots fall back to default "N"');
 });
 
-T('presets: uid non-duplication invariant -- fresh state passes, injected duplicate is caught',()=>{
+T('REQ-0033 uid invariant: home-duplication across inventory pages is caught; a uid shared by MULTIPLE presets is NOT a violation',()=>{
   const {st,E}=fresh();
-  const r1=E.checkUidInvariant(st);
-  eq(r1,{ok:true,duplicates:[]},'fresh makeState() satisfies the invariant');
-  // Inject a duplicate PO uid into an inactive preset's store (simulates a
-  // hypothetical bug where an item got copied instead of moved).
-  const dupPO=JSON.parse(JSON.stringify(st.pos[0]));
-  st.presets.store[1].pos.push(dupPO);
-  const r2=E.checkUidInvariant(st);
-  ok(!r2.ok&&r2.duplicates.includes('po:'+dupPO.uid),'duplicate PO uid across active canvas + inactive preset store is caught: '+JSON.stringify(r2));
+  const migrated=E.migrateState(st);
+  const r1=E.checkUidInvariant(migrated);
+  eq(r1,{ok:true,duplicates:[]},'freshly migrated state satisfies the invariant');
+  // legitimate sharing: reference alpha (and its home-contained POs,
+  // including p3/flame_tablet) into a second, currently-empty preset --
+  // this must NOT be flagged (it is exactly the yellow/shared case the
+  // reference model exists to allow).
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'alpha (+contents) referenced into preset 1 too');
+  E.switchPreset(migrated,0);
+  ok(E.checkUidInvariant(migrated).ok,'sharing the same uid across two DIFFERENT presets is legal, not a duplicate');
+  ok(E.usageOf(migrated,'p3').length===2,'sanity: p3 (home-contained in alpha) is indeed referenced by 2 presets now');
+  // real violation: inject a duplicate HOME record (same uid appearing
+  // twice across st.inv.pages) -- simulates a hypothetical bug where an
+  // item's home got copied instead of moved.
+  const dupHome=JSON.parse(JSON.stringify(migrated.inv.pages[0].pos[0]));
+  migrated.inv.pages[1].pos.push(dupHome);
+  const r2=E.checkUidInvariant(migrated);
+  ok(!r2.ok&&r2.duplicates.includes('po:'+dupHome.uid),'duplicate HOME across two inventory pages is caught: '+JSON.stringify(r2));
+});
+
+T('REQ-0033 uid invariant: a duplicate REFERENCE within the SAME preset\'s own canvas is caught',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  ok(E.checkUidInvariant(migrated).ok,'sanity: migrated state starts clean');
+  // Inject a bogus SECOND reference to an already-referenced uid into the
+  // CURRENT preset's own canvas (bypassing createRef's red-rule gate --
+  // simulates a hypothetical bug in some future call site).
+  const dupRef=JSON.parse(JSON.stringify(migrated.pos.find(p=>p.uid==='p1')));
+  dupRef.cell=[8,8];
+  migrated.pos.push(dupRef);
+  const r=E.checkUidInvariant(migrated);
+  ok(!r.ok&&r.duplicates.some(d=>d.startsWith('po:p1@preset')),'two references to the SAME uid within one preset\'s canvas is caught: '+JSON.stringify(r));
 });
 
 T('presets: uid non-duplication invariant -- switchPreset never creates a duplicate',()=>{
@@ -715,24 +753,6 @@ T('presets: uid non-duplication invariant -- switchPreset never creates a duplic
   ok(E.checkUidInvariant(st).ok,'invariant holds after switching back');
 });
 
-T('presets: uid non-duplication invariant also spans the shared inventory pages',()=>{
-  const {st,E}=fresh();
-  // p8 (oil_flask) legally sits loc:'inv' in the raw scenario fixture
-  // (pre-migration) -- run migrateState so it becomes a real inv.pages[]
-  // member, then confirm the invariant sees it there (and does NOT also
-  // see it duplicated in the active preset's st.pos, which it should not
-  // be, since migrateState moves rather than copies).
-  const migrated=E.migrateState(st);
-  ok(E.checkUidInvariant(migrated).ok,'migrated state (item moved into shared inventory) satisfies the invariant');
-  // now inject a bogus duplicate of an inventory-page item into the
-  // active preset's pos[] directly -- the auditor must catch a
-  // cross-container (inventory vs active canvas) duplicate too, not just
-  // an inter-preset one.
-  const invItem=migrated.inv.pages[0].pos[0];
-  migrated.pos.push(JSON.parse(JSON.stringify(invItem)));
-  const r=E.checkUidInvariant(migrated);
-  ok(!r.ok&&r.duplicates.includes('po:'+invItem.uid),'duplicate spanning shared-inventory + active canvas is caught');
-});
 
 T('migrateState: pre-preset legacy save gets 5 presets (slot 0 = its own canvas, 1-4 empty) and inv.names',()=>{
   const {st:legacy}=fresh();
@@ -757,6 +777,327 @@ T('migrateState: a state that ALREADY has presets/inv.names is left alone (idemp
   const migrated=E.migrateState(st);
   eq(migrated.presets.names[0],'Custom Name','pre-existing preset name not clobbered by migration');
   eq(migrated.inv.names[0],'Custom Page','pre-existing inv page name not clobbered by migration');
+});
+
+// =======================================================================
+// REQ-0033 reference model tests. Inventory is MASTER: every uid has
+// exactly one HOME in st.inv.pages; the active preset's canvas (st.bps/
+// pos/sis) and every inactive preset's store[i] snapshot hold REFERENCES
+// (byte-identical record shape to a home record -- canPlacePO/movePO/
+// cellsOf/sockets/traceBeams/combos/switchPreset all keep working
+// unmodified against them). See docs/REQ/REQ-0033-inventory-reference-
+// model.md's "Engine design" section for the adopted spec this suite
+// exercises.
+// =======================================================================
+
+T('REQ-0033 red rule: placing (referencing) an item already used by the CURRENT preset is refused; allowed into a DIFFERENT preset',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // p3 (flame_tablet) is already referenced by the active preset (0) --
+  // referencing it again into preset 0 must fail (red rule).
+  eq(E.usedByCurrent(migrated,'p3'),true,'sanity: p3 already used by current preset');
+  const dup=E.createRef(migrated,'po','p3',{cell:[7,7],rot:0});
+  ok(!dup.ok&&dup.why==='already referenced by current preset','re-referencing p3 into its OWN current preset is refused: '+JSON.stringify(dup));
+  // remove it from preset 0, switch to an empty preset, referencing it
+  // THERE is allowed (no red rule violation -- different preset).
+  ok(E.removeRef(migrated,'po','p3').ok);
+  E.switchPreset(migrated,1);
+  // preset 1 has no BPs of its own yet -- bring alpha along so there is a
+  // legal cell to drop p3 onto (canvas requires BP infrastructure).
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
+  ok(E.removeRef(migrated,'po','p3').ok,'p3 arrived nested under alpha -- remove that automatic reference first');
+  const r=E.createRef(migrated,'po','p3',{cell:[1,2],rot:0});
+  ok(r.ok,'referencing p3 into a DIFFERENT (currently-active) preset is allowed: '+JSON.stringify(r));
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0033 yellow data: an item referenced by an OTHER preset is flagged yellow (and canvasYellow when it also sits on the current canvas); clears when that reference is removed',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  let tints=E.tintSets(migrated);
+  ok(!tints.yellow.has('p3'),'p3 not yellow yet -- only referenced by the current preset so far');
+  // reference alpha (brings p1/p2/p3) into preset 1 too
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
+  E.switchPreset(migrated,0);
+  tints=E.tintSets(migrated);
+  ok(tints.yellow.has('p3'),'p3 now used by preset 1 too -- yellow from preset 0\'s perspective');
+  ok(tints.red.has('p3'),'p3 is ALSO used by the current preset (0) -- red too (not mutually exclusive)');
+  ok(tints.canvasYellow.has('p3'),'p3 sits on the CURRENT canvas and is shared -- canvasYellow set too');
+  ok(!tints.yellow.has('p4'),'p4 (tower_shield, only ever in preset 0) must not be yellow');
+  // remove preset 1's reference to alpha (and its nested contents) -- yellow must clear
+  E.switchPreset(migrated,1);
+  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:alphaPage},'alpha',[1,1]).ok);
+  E.switchPreset(migrated,0);
+  tints=E.tintSets(migrated);
+  ok(!tints.yellow.has('p3'),'p3 no longer shared once preset 1\'s reference is removed -- yellow clears');
+  ok(!tints.canvasYellow.has('p3'),'canvasYellow clears too');
+  ok(tints.red.has('p3'),'p3 remains red (still used by the current preset itself)');
+});
+
+T('REQ-0033 canvas -> inv removes ONLY the reference; the home (and its arrangement) is completely untouched',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  const homeBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'p4').record));
+  ok(E.removeRef(migrated,'po','p4').ok,'remove tower_shield\'s reference from the current preset');
+  eq(migrated.pos.some(p=>p.uid==='p4'),false,'no longer referenced by current preset canvas');
+  eq(E.homeLocationOf(migrated,'p4').record,homeBefore,'home untouched -- same page, same cell, same rot');
+  eq(E.usageOf(migrated,'p4'),[],'p4 now used by no preset at all');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by current preset, arrives with only the other; SIs follow their (included) PO; the excluded PO\'s own SI stays behind',()=>{
+  // Synthetic fixture: a 2-cell "box" BP containing two 1x1 POs side by
+  // side, each with a gem socket + a seated SI, PLUS a separate small
+  // "parking" BP elsewhere on the same page -- lets pA hold an
+  // independent reference (on the parking BP) while box/pB stay
+  // untouched, isolating the exclusion rule from the live scenario's
+  // specific geometry.
+  const ITEMS={
+    box_po:{name:'Box PO',tags:[],shape:[[0,0]],icon:'icon-x',sockets:[{t:'gem',tags:[],ax:0.5,ay:0.5}]},
+  };
+  const SI_DEFS={gem_si:{name:'Gem SI',slot:'gem',reqTags:[]}};
+  const LAYOUT={ROWS:8,COLS:8};
+  const TREES={po:{},socket:{}};
+  const bp={id:'box',name:'Box',color:'#fff',shape:[[0,0],[0,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}};
+  const parking={id:'parking',name:'Parking',color:'#fff',shape:[[0,0],[0,1]],origin:[5,5],linker:{off:[0,1],dirs:[]}};
+  const st={
+    linked:true,
+    bps:[bp,parking],
+    pos:[
+      {uid:'pA',id:'box_po',loc:'grid',cell:[1,1],rot:0},
+      {uid:'pB',id:'box_po',loc:'grid',cell:[1,2],rot:0},
+    ],
+    sis:[
+      {uid:'sA',id:'gem_si',host:{po:'pA',si:0}},
+      {uid:'sB',id:'gem_si',host:{po:'pB',si:0}},
+    ],
+    inv:{pages:[{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]},
+    presets:{active:0,names:['Preset 1','Preset 2'],store:[null,{linked:true,bps:[],pos:[],sis:[]}]},
+  };
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const migrated=E.migrateState(st); // gives box/parking/pA/pB/sA/sB inventory homes, current canvas keeps its references
+  // Remove box's reference (cascades: drops pA/pB/sA/sB references too),
+  // keep parking (empty BP, no contents) referenced -- then re-reference
+  // pA alone onto parking's single free cell, so pA is "already used by
+  // current preset" while pB/box are not.
+  const boxPage=E.homeLocationOf(migrated,'box').page;
+  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:boxPage},'box',[1,1]).ok,'remove box\'s reference (cascades: drops pA/pB/sA/sB references too)');
+  eq(migrated.pos.length,0,'canvas fully cleared of box\'s former contents');
+  ok(migrated.bps.some(b=>b.id==='parking'),'sanity: parking BP is still referenced (untouched by removing box)');
+  ok(E.createRef(migrated,'po','pA',{cell:[5,5],rot:0}).ok,'pA independently re-referenced onto the parking BP\'s cell');
+  const brs=E.bpReferenceSet(migrated,'box');
+  eq(brs.pos,['pB'],'only pB (not already used) is included');
+  eq(brs.excluded,['pA'],'pA (already used by current preset) is excluded');
+  eq(brs.sis,['sB'],'sB (seated on the INCLUDED pB) follows');
+  ok(!brs.sis.includes('sA'),'sA (seated on the EXCLUDED pA) does not travel');
+  // now actually perform the transfer and confirm the resulting canvas state
+  const r=E.transferBP(migrated,{loc:'inv',page:boxPage},{loc:'canvas'},'box',[3,3]);
+  ok(r.ok,'box reference created with exclusion: '+JSON.stringify(r));
+  ok(migrated.pos.some(p=>p.uid==='pB'),'pB reference now on canvas');
+  ok(!migrated.pos.some(p=>p.uid==='pA'&&JSON.stringify(p.cell)===JSON.stringify([3,4])),'pA was NOT re-added at the box\'s new nested slot (it stayed at its own independent reference)');
+  eq(migrated.pos.find(p=>p.uid==='pA').cell,[5,5],'pA\'s pre-existing independent reference (on parking) is undisturbed');
+  ok(migrated.sis.some(a=>a.uid==='sB'),'sB reference travelled with pB');
+  ok(!migrated.sis.some(a=>a.uid==='sA'),'sA (excluded PO\'s SI) did not travel -- stays un-referenced');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0033 preset-owned SI seat divergence: the SAME SI uid can be seated in one preset and stowed (or seated elsewhere) in another, independently',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // a1 (ruby gem) is seated on p2 (hilt) in the current (active) preset.
+  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'sanity: a1 seated on hilt in preset 0');
+  // reference beta (which contains p4/tower_shield with a gem socket) into
+  // preset 1, then reference a1 there too but leave it STOWED (host:'inv')
+  // -- independent of preset 0's seating.
+  E.switchPreset(migrated,1);
+  const betaPage=E.homeLocationOf(migrated,'beta').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:betaPage},{loc:'canvas'},'beta',[1,1]).ok);
+  const cr=E.createRef(migrated,'si','a1',{host:'inv'});
+  ok(cr.ok,'a1 referenced into preset 1, left stowed: '+JSON.stringify(cr));
+  eq(migrated.sis.find(a=>a.uid==='a1').host,'inv','preset 1\'s OWN reference to a1 starts stowed');
+  E.switchPreset(migrated,0);
+  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'preset 0\'s reference to a1 is STILL seated on the hilt -- unaffected by preset 1\'s stowed copy');
+  ok(E.checkUidInvariant(migrated).ok,'invariant holds despite the same uid having two independent seat states');
+});
+
+T('REQ-0033 isUnitIndependent: positive (no shared uids) and negative (shares a uid with another preset) cases',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  ok(E.isUnitIndependent(migrated,0),'preset 0 alone (no other preset references anything yet) is independent');
+  ok(E.isUnitIndependent(migrated,1),'empty preset 1 is vacuously independent');
+  // make preset 1 share alpha (+contents) with preset 0 -- both become non-independent
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
+  ok(!E.isUnitIndependent(migrated,1),'preset 1 now shares alpha/p1/p2/p3 with preset 0 -- NOT independent');
+  E.switchPreset(migrated,0);
+  ok(!E.isUnitIndependent(migrated,0),'preset 0 is likewise no longer independent (symmetric sharing)');
+  // gamma/delta/p5/p6/p7 were never touched -- preset 0 still independent
+  // WITH RESPECT to those uids individually is not what isUnitIndependent
+  // reports (it is whole-preset), so instead verify a THIRD, still-
+  // untouched preset remains independent.
+  ok(E.isUnitIndependent(migrated,2),'preset 2 (never referenced anything) remains independent');
+});
+
+T('REQ-0033 checkUidInvariant: catches home-duplication and per-preset reference duplication, accepts legitimate cross-preset sharing (covered above); sanity on a totally fresh un-migrated fixture (no st.inv) never throws',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState(); // no st.presets at all
+  const r=E.checkUidInvariant(st);
+  eq(r,{ok:true,duplicates:[]},'a state with no presets/home items at all trivially satisfies the invariant');
+});
+
+T('REQ-0033 migrateState v3: canvas-physical scenario -> homed + referenced, arrangement byte-preserved, idempotent',()=>{
+  const {st:legacy,E}=fresh();
+  const beforeBps=JSON.parse(JSON.stringify(legacy.bps));
+  const beforePos=JSON.parse(JSON.stringify(legacy.pos.filter(p=>p.loc==='grid')));
+  const migrated=E.migrateState(legacy);
+  ok(migrated!==legacy,'migrateState must not mutate its input');
+  // every canvas-resident uid now has a home
+  for(const p of beforePos){
+    const home=E.homeLocationOf(migrated,p.uid);
+    ok(!!home&&home.kind==='po','PO '+p.uid+' has an inventory home after v3 migration');
+  }
+  for(const bp of beforeBps){
+    const home=E.homeLocationOf(migrated,bp.id);
+    ok(!!home&&home.kind==='bp','BP '+bp.id+' has an inventory home after v3 migration');
+  }
+  // arrangement byte-preserved: the CANVAS reference still shows the exact
+  // same cells/origins as before migration (only "is this the sole copy"
+  // changed, not the visible layout).
+  eq(migrated.bps,beforeBps,'canvas BP references are byte-identical to the pre-migration physical layout');
+  eq(migrated.pos.filter(p=>p.loc==='grid'),beforePos,'canvas PO references are byte-identical to the pre-migration physical layout');
+  ok(E.checkUidInvariant(migrated).ok,'migrated state satisfies the reference-model invariant');
+  // idempotence: migrating an already-v3 state again changes nothing
+  // structurally relevant (every uid already has a home, so the second
+  // pass homes nothing new).
+  const migratedTwice=E.migrateState(migrated);
+  eq(migratedTwice.bps,migrated.bps,'second migration pass leaves canvas BPs unchanged');
+  eq(migratedTwice.pos,migrated.pos,'second migration pass leaves canvas POs unchanged');
+  eq(migratedTwice.inv,migrated.inv,'second migration pass leaves inventory homes unchanged (idempotent)');
+  ok(E.checkUidInvariant(migratedTwice).ok);
+});
+
+T('REQ-0033 switchPreset with references: swapping which preset is active is indifferent to reference-vs-home (structural swap only, unaffected by REQ-0033)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  const origBps=JSON.parse(JSON.stringify(migrated.bps));
+  const origPos=JSON.parse(JSON.stringify(migrated.pos));
+  ok(E.switchPreset(migrated,1).ok);
+  ok(migrated.bps.length===0&&migrated.pos.length===0,'preset 1 (empty) now live -- no references at all');
+  ok(E.switchPreset(migrated,0).ok);
+  eq(migrated.bps,origBps,'preset 0\'s references restored exactly across the round trip');
+  eq(migrated.pos,origPos,'preset 0\'s PO references restored exactly');
+  // homes were never touched by any of this
+  ok(E.checkUidInvariant(migrated).ok);
+  for(const p of origPos)ok(!!E.homeLocationOf(migrated,p.uid),'PO '+p.uid+' still has its home after switching back and forth');
+});
+
+T('REQ-0033 inv <-> inv stays physical (no reference/exclusion logic applies to a pure home relocation)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
+  ok(E.transferBP(st,{loc:'inv',page:0},{loc:'inv',page:2},'bpA',[3,3]).ok,'page1 -> page3, pure home move');
+  eq(st.inv.pages[0].bps.length,0,'origin page empty');
+  const moved=st.inv.pages[2].bps.find(b=>b.id==='bpA');
+  ok(!!moved);
+  eq(moved.origin,[3,3]);
+  const w1=st.inv.pages[2].pos.find(p=>p.uid==='w1');
+  ok(!!w1,'w1 (home-contained PO) travelled with its BP\'s home');
+});
+
+T('REQ-0033 linker dormancy unaffected: a linker-bearing BP still contributes nothing to traceBeams while its home sits in an inventory page, REGARDLESS of whether any preset currently references it',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  const beamsBefore=E.traceBeams(migrated);
+  ok(beamsBefore.some(b=>b.from==='delta'),'sanity: delta contributes a beam while referenced on the current canvas');
+  ok(E.removeRef(migrated,'po','p7').ok,'remove nested jaw reference first (poInBPIn needs delta\'s own reference footprint, independent check)');
+  ok(E.removeRef(migrated,'bp','delta').ok,'remove delta\'s reference entirely -- it now exists ONLY as a home, referenced by no preset');
+  eq(E.usageOf(migrated,'delta'),[],'delta is referenced by zero presets');
+  const beamsAfter=E.traceBeams(migrated);
+  ok(!beamsAfter.some(b=>b.from==='delta'||b.to==='delta'),'delta (home-only, unreferenced by any preset) contributes nothing to traceBeams');
+  const conns=E.allConnections(migrated);
+  ok(!conns.some(c=>c.from.uid==='p7'||c.to.uid==='p7'),'jaw (home-only, unreferenced) contributes no connections');
+});
+
+T('REQ-0033 perf smoke: tintSets/usageOf stay fast at PRESET_COUNT scale with the live scenario\'s item count',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // reference every BP into every preset (worst case: everything shared
+  // with everything) to maximize usageOf's scan work per uid.
+  for(let i=1;i<5;i++){
+    E.switchPreset(migrated,i);
+    for(const bpId of ['alpha','beta','gamma']){
+      if(E.usedByCurrent(migrated,bpId))continue;
+      const home=E.homeLocationOf(migrated,bpId);
+      if(home)E.transferBP(migrated,{loc:'inv',page:home.page},{loc:'canvas'},bpId,[1,1+3*i]);
+    }
+  }
+  E.switchPreset(migrated,0);
+  const t0=Date.now();
+  for(let i=0;i<200;i++)E.tintSets(migrated);
+  const elapsed=Date.now()-t0;
+  ok(elapsed<1000,'200x tintSets() over a 5-preset, multiply-shared scenario should stay well under 1s (got '+elapsed+'ms) -- confirms on-demand computation (no caching) is fast enough at this scale');
+});
+
+T('REQ-0033 usedByCurrent/usedByOthers as standalone predicates match usageOf exactly',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  eq(E.usedByCurrent(migrated,'p1'),true);
+  eq(E.usedByOthers(migrated,'p1'),false);
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
+  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by preset 1 (now current)');
+  eq(E.usedByOthers(migrated,'p1'),true,'p1 ALSO used by preset 0 (an other preset)');
+  E.switchPreset(migrated,0);
+  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by preset 0 (current again)');
+  eq(E.usedByOthers(migrated,'p1'),true,'p1 also used by preset 1 (now an other)');
+  eq(E.usedByCurrent(migrated,'p4'),true,'p4 (tower_shield) only ever referenced by preset 0');
+  eq(E.usedByOthers(migrated,'p4'),false,'p4 not shared with anyone');
+});
+
+T('REQ-0033 createRef rejects a uid with no home at all (defensive: not reachable via normal client flow, but must fail cleanly not throw)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  const r=E.createRef(migrated,'po','no-such-uid',{cell:[1,1],rot:0});
+  ok(!r.ok&&r.why==='no home','referencing a nonexistent uid fails cleanly: '+JSON.stringify(r));
+  eq(migrated.pos.some(p=>p.uid==='no-such-uid'),false,'nothing was pushed onto canvas');
+});
+
+T('REQ-0033 red rule applies identically to a bare SI reference (not just POs/BPs)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // a1 (ruby) is already referenced (seated on p2/hilt) by the current preset.
+  eq(E.usedByCurrent(migrated,'a1'),true);
+  const dup=E.createRef(migrated,'si','a1',{host:'inv'});
+  ok(!dup.ok&&dup.why==='already referenced by current preset','re-referencing a1 (an SI) into its own current preset is refused');
+});
+
+T('REQ-0033 bpReferenceSet happy path: no exclusions when the current preset does not yet use any of the BP\'s contents',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1); // empty preset -- references none of alpha's contents yet
+  const brs=E.bpReferenceSet(migrated,'alpha');
+  ok(brs.ok);
+  eq(brs.excluded,[],'nothing excluded -- preset 1 has no prior references at all');
+  eq(new Set(brs.pos),new Set(['p1','p2','p3']),'all 3 home-contained POs included');
+});
+
+T('REQ-0033 tintSets on a synthetic canvas-only fixture with no st.inv/st.presets never throws and reports empty sets',()=>{
+  const st={linked:true,bps:[],pos:[],sis:[]};
+  const E=Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES);
+  const t=E.tintSets(st);
+  eq([...t.red],[]);
+  eq([...t.yellow],[]);
+  eq([...t.canvasYellow],[]);
+  ok(E.isUnitIndependent(st,0),'no presets at all -- vacuously independent');
 });
 
 console.log('----------------------------------');
