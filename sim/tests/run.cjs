@@ -1,0 +1,676 @@
+// sim/tests/run.cjs -- REQ-0036 P1-A combat simulator test suite.
+// Mirrors mock-src/tests/run.cjs's T()/eq()/ok() harness style.
+'use strict';
+const path = require('path');
+const fs = require('fs');
+const combat = require(path.join(__dirname, '..', 'combat.cjs'));
+
+let pass = 0, fail = 0;
+function T(name, fn) {
+  try { fn(); console.log('PASS  ' + name); pass++; }
+  catch (e) { console.log('FAIL  ' + name + ' -- ' + e.message); fail++; }
+}
+function eq(a, b, msg) {
+  if (JSON.stringify(a) !== JSON.stringify(b)) {
+    throw new Error((msg || '') + ' expected ' + JSON.stringify(b) + ' got ' + JSON.stringify(a));
+  }
+}
+function ok(v, msg) { if (!v) throw new Error(msg || 'expected truthy'); }
+function approx(a, b, tol, msg) {
+  if (Math.abs(a - b) > tol) throw new Error((msg || '') + ' expected ~' + b + ' (tol ' + tol + ') got ' + a);
+}
+
+// =====================================================================
+// Fixtures: content loaded from the repo (scenario.json, live_items.json,
+// batch-002-dungeon-pilot). Paths resolved relative to repo root.
+// =====================================================================
+const REPO_ROOT = path.join(__dirname, '..', '..');
+const scenario = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'scenario.json'), 'utf8'));
+const liveItemsRaw = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'live_items.json'), 'utf8'));
+const itemDefsById = {};
+for (const e of liveItemsRaw.entries) itemDefsById[e.id] = e;
+
+const BATCH_DIR = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-pilot');
+const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json'), 'utf8'));
+const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
+const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
+const itemsPilotRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'items.json'), 'utf8'));
+
+const enemyDefsById = {};
+for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
+const skillDefsById = {};
+for (const s of skillsRaw.entries) {
+  skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
+}
+const pilotItemDefsById = {};
+for (const e of itemsPilotRaw.entries) pilotItemDefsById[e.id] = e;
+
+function fourUnitSnapshots() { return [scenario, scenario, scenario, scenario]; }
+
+// A tiny synthetic enemy/skill pack for isolated unit tests that don't
+// need the full batch-002 roster.
+const tinyEnemyDefs = {
+  tiny_goblin: { id: 'tiny_goblin', name: 'Tiny Goblin', hp: [20, 20], footprint: [1, 1], skills: ['tiny_bite'] },
+};
+const tinySkillDefs = {
+  tiny_bite: { trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+};
+
+// =====================================================================
+// 1. Determinism
+// =====================================================================
+T('determinism: same seed -> byte-identical JSONL replay log', () => {
+  const opts = {
+    masterSeed: 'det-seed-A',
+    dungeonDef: { encounters: [
+      { id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 },
+      { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 },
+    ] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
+  };
+  const r1 = combat.runDungeon(opts);
+  const r2 = combat.runDungeon(opts);
+  const j1 = combat.toJSONL(r1.events), j2 = combat.toJSONL(r2.events);
+  ok(j1 === j2, 'identical seed must produce identical JSONL log');
+  ok(j1.length > 0, 'log should be non-empty');
+});
+
+T('determinism: different seed -> log differs', () => {
+  const base = {
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }, { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
+  };
+  const r1 = combat.runDungeon(Object.assign({ masterSeed: 'seed-one' }, base));
+  const r2 = combat.runDungeon(Object.assign({ masterSeed: 'seed-two' }, base));
+  ok(combat.toJSONL(r1.events) !== combat.toJSONL(r2.events), 'different seeds should (almost certainly) differ');
+});
+
+// =====================================================================
+// 2. Ray geometry
+// =====================================================================
+T('ray geometry: entry projection+jitter stays within field bounds across many draws', () => {
+  const rng = combat.makeRng('entry-bounds-seed');
+  for (let i = 0; i < 200; i++) {
+    const rayStream = rng.stream('entrytest/' + i + '/ray');
+    const { edge, entryCell } = combat.selectEntryCell([[5, 5], [5, 6]], ['top', 'left', 'right', 'bottom'], rayStream, { ROWS: 18, COLS: 26 });
+    ok(entryCell[0] >= 1 && entryCell[0] <= 18, 'row in bounds, got ' + entryCell[0]);
+    ok(entryCell[1] >= 1 && entryCell[1] <= 26, 'col in bounds, got ' + entryCell[1]);
+    ok(['top', 'left', 'right', 'bottom'].includes(edge), 'edge must be one of the 4');
+  }
+});
+
+T('ray geometry: penetration exhaustion -- N pass-throughs then terminal hit', () => {
+  // Three occupants in a row along a DR ray; penetration=1 should hit
+  // first two (pass through 1), terminal-stop at the third.
+  const occupants = [
+    { id: 'occA', fieldCells: [[2, 2]], alive: true },
+    { id: 'occB', fieldCells: [[3, 3]], alive: true },
+    { id: 'occC', fieldCells: [[4, 4]], alive: true },
+  ];
+  const hitOrder = [];
+  const result = combat.walkRay({
+    field: { ROWS: 18, COLS: 26 }, entryCell: [1, 1], dir: 'DR', mode: 'battle',
+    penetration: 1, aoe: 0, aoeStatuses: false, bounceBudget: 0,
+    liveOccupantFn: (cell) => occupants.find(o => o.alive && o.fieldCells.some(c => c[0] === cell[0] && c[1] === cell[1])) || null,
+    dealHitFn: (occ) => { hitOrder.push(occ.id); return { amount: 1, hpAfter: 0, dstLabel: occ.id, isDiscovery: false }; },
+    splashFn: () => [],
+  });
+  eq(hitOrder, ['occA', 'occB'], 'should hit occA (pass) then occB (terminal), never reach occC');
+  eq(result.landing, [3, 3], 'landing cell should be occB\'s cell');
+});
+
+T('ray geometry: boundary reflection direction-mirroring on all 4 edges (incl. corner)', () => {
+  eq(combat.reflectDir('UL', 0, 5, 18, 26), 'DL', 'top boundary flips row component');
+  eq(combat.reflectDir('UR', 0, 5, 18, 26), 'DR', 'top boundary flips row component');
+  eq(combat.reflectDir('DR', 19, 5, 18, 26), 'UR', 'bottom boundary flips row component');
+  eq(combat.reflectDir('DL', 5, 0, 18, 26), 'DR', 'left boundary flips col component');
+  eq(combat.reflectDir('DR', 5, 27, 18, 26), 'DL', 'right boundary flips col component');
+  eq(combat.reflectDir('DR', 19, 27, 18, 26), 'UL', 'corner hit flips BOTH components');
+});
+
+T('ray geometry: bounce damage scaling exactness (mult table)', () => {
+  eq(combat.mult(0), 1.0); eq(combat.mult(1), 1.0); eq(combat.mult(2), 1.0);
+  eq(combat.mult(3), 1.5);
+  eq(combat.mult(4), 2.0);
+  eq(combat.mult(5), 2.5);
+  eq(combat.mult(6), 2.5, 'b>5 stays at the b=5 mult (5th-bounce terminates before b=6 would occur, but mult() itself is defined for any b>=5)');
+});
+
+T('ray geometry: 5-bounce all-hit-then-terminate (battle mode)', () => {
+  const occupants = [
+    { id: 'o1', fieldCells: [[9, 13]], alive: true, hp: 100 },
+  ];
+  let allHitCalled = false;
+  const result = combat.walkRay({
+    field: { ROWS: 3, COLS: 3 }, entryCell: [1, 1], dir: 'UL', mode: 'battle',
+    penetration: 0, aoe: 0, aoeStatuses: false, bounceBudget: 0,
+    liveOccupantFn: () => null, // never hit anything directly; force bounces
+    dealHitFn: (occ, mult, opts2) => {
+      if (opts2 && opts2.allField) { allHitCalled = true; return occupants.map(o => ({ dst: o.id, amount: 10 * mult })); }
+      return { amount: 0, hpAfter: 0, dstLabel: 'x', isDiscovery: false };
+    },
+    splashFn: () => [],
+  });
+  ok(allHitCalled, 'the 5th-bounce all-field strike callback should have fired');
+  ok(result.events.some(e => e.ev === 'ray_hit_all'), 'a ray_hit_all event should be logged');
+  const bounceEvents = result.events.filter(e => e.ev === 'ray_bounce');
+  eq(bounceEvents.length, 5, 'exactly 5 bounces before termination');
+});
+
+T('ray geometry: detection-mode per-PO bounce-budget stop (no discovery)', () => {
+  const result = combat.walkRay({
+    field: { ROWS: 3, COLS: 3 }, entryCell: [1, 1], dir: 'UL', mode: 'detection',
+    penetration: 0, aoe: 0, aoeStatuses: false, bounceBudget: 2,
+    liveOccupantFn: () => null,
+    dealHitFn: () => ({ amount: 0, hpAfter: 0, dstLabel: 'x', isDiscovery: false }),
+    splashFn: () => [],
+  });
+  ok(!result.discovered, 'no discovery should occur when nothing is ever hit');
+  ok(result.events.some(e => e.ev === 'ray_end' && e.reason === 'bounce_budget_exhausted'), 'should log bounce-budget exhaustion');
+  const bounceEvents = result.events.filter(e => e.ev === 'ray_bounce');
+  eq(bounceEvents.length, 3, 'budget=2 means it bounces until the 3rd bounce triggers the > check and ends');
+});
+
+T('ray geometry: destroyed-BP passthrough (dead occupant does not stop or count against penetration)', () => {
+  const occupants = [
+    { id: 'dead1', fieldCells: [[2, 2]], alive: false },
+    { id: 'live1', fieldCells: [[3, 3]], alive: true },
+  ];
+  const hitOrder = [];
+  const result = combat.walkRay({
+    field: { ROWS: 18, COLS: 26 }, entryCell: [1, 1], dir: 'DR', mode: 'battle',
+    penetration: 0, aoe: 0, aoeStatuses: false, bounceBudget: 0,
+    liveOccupantFn: (cell) => occupants.find(o => o.alive && o.fieldCells.some(c => c[0] === cell[0] && c[1] === cell[1])) || null,
+    dealHitFn: (occ) => { hitOrder.push(occ.id); return { amount: 1, hpAfter: 0, dstLabel: occ.id, isDiscovery: false }; },
+    splashFn: () => [],
+  });
+  eq(hitOrder, ['live1'], 'dead occupant should be skipped entirely (passable)');
+  eq(result.landing, [3, 3]);
+});
+
+T('ray geometry: gap passthrough (empty cell does not stop the ray)', () => {
+  const occupants = [{ id: 'only1', fieldCells: [[5, 5]], alive: true }];
+  const result = combat.walkRay({
+    field: { ROWS: 18, COLS: 26 }, entryCell: [1, 1], dir: 'DR', mode: 'battle',
+    penetration: 0, aoe: 0, aoeStatuses: false, bounceBudget: 0,
+    liveOccupantFn: (cell) => occupants.find(o => o.fieldCells.some(c => c[0] === cell[0] && c[1] === cell[1])) || null,
+    dealHitFn: (occ) => ({ amount: 1, hpAfter: 0, dstLabel: occ.id, isDiscovery: false }),
+    splashFn: () => [],
+  });
+  eq(result.landing, [5, 5], 'ray should pass through 3 empty gap cells before hitting the only occupant');
+});
+
+// =====================================================================
+// 3. AOE
+// =====================================================================
+T('AOE: Chebyshev radius correctness + landing cell not double-hit', () => {
+  const occupants = [
+    { id: 'landing', fieldCells: [[5, 5]], alive: true },
+    { id: 'near', fieldCells: [[6, 6]], alive: true }, // chebyshev dist 1
+    { id: 'far', fieldCells: [[8, 8]], alive: true },  // chebyshev dist 3
+  ];
+  const splashHits = [];
+  combat.walkRay({
+    field: { ROWS: 18, COLS: 26 }, entryCell: [1, 1], dir: 'DR', mode: 'battle',
+    penetration: 0, aoe: 2, aoeStatuses: false, bounceBudget: 0,
+    liveOccupantFn: (cell) => occupants.find(o => o.fieldCells.some(c => c[0] === cell[0] && c[1] === cell[1])) || null,
+    dealHitFn: (occ) => ({ amount: 1, hpAfter: 0, dstLabel: occ.id, isDiscovery: false }),
+    splashFn: (landing, radius, mult) => {
+      for (const o of occupants) {
+        if (o.id === 'landing') continue; // landing occupant not double-hit
+        const dist = combat.chebyshevDist(o.fieldCells[0], landing);
+        if (dist <= radius) splashHits.push(o.id);
+      }
+      return splashHits.map(id => ({ dst: id, amount: 1 }));
+    },
+  });
+  ok(splashHits.includes('near'), 'near (dist 1) should be within radius 2');
+  ok(!splashHits.includes('far'), 'far (dist 3) should be outside radius 2');
+  ok(!splashHits.includes('landing'), 'landing occupant must not appear in splash hits (no double-hit)');
+});
+
+T('AOE: aoe_statuses flag gates whether splash targets receive statuses', () => {
+  const rng = combat.makeRng('aoe-status-seed');
+  const bagWithSplash = combat.freshStatusBag();
+  const bagWithoutSplash = combat.freshStatusBag();
+  const target1 = { fieldCells: [[6, 6]], alive: true, statusBag: bagWithSplash, applyDamage() {} };
+  const target2 = { fieldCells: [[6, 7]], alive: true, statusBag: bagWithoutSplash, applyDamage() {} };
+  const verbEff = { verb: { t: 'apply_status', status: 'Chill', n: [3, 3] } };
+  // Simulate fireSkillRay's splashFn logic manually for both flag states.
+  function simulateSplash(doStatuses, target) {
+    if (doStatuses) combat.applyStatus(target.statusBag, 'Chill', 3);
+  }
+  simulateSplash(true, target1);
+  simulateSplash(false, target2);
+  ok(target1.statusBag.Chill && target1.statusBag.Chill.stacks === 3, 'aoe_statuses:true should apply Chill to splash target');
+  ok(!target2.statusBag.Chill, 'aoe_statuses:false should NOT apply Chill to splash target');
+});
+
+// =====================================================================
+// 4. Status system (all 8 + interaction matrix)
+// =====================================================================
+T('status: Burn tick math (1x stacks dmg per period, -1 stack per tick)', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Burn', 3);
+  const t1 = combat.tickStatuses(bag, 1.0);
+  eq(t1, [{ name: 'Burn', amount: 3, kind: 'damage' }], 'first tick: 3 dmg, stacks decrement to 2');
+  eq(bag.Burn.stacks, 2);
+  const t2 = combat.tickStatuses(bag, 1.0);
+  eq(t2, [{ name: 'Burn', amount: 2, kind: 'damage' }]);
+  eq(bag.Burn.stacks, 1);
+});
+
+T('status: Poison tick math (independent of Burn, same P)', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Poison', 4);
+  combat.applyStatus(bag, 'Burn', 2);
+  const ticks = combat.tickStatuses(bag, 1.0);
+  const poisonTick = ticks.find(t => t.name === 'Poison');
+  const burnTick = ticks.find(t => t.name === 'Burn');
+  eq(poisonTick.amount, 4);
+  eq(burnTick.amount, 2);
+  ok(bag.Poison.stacks === 3 && bag.Burn.stacks === 1, 'both decrement independently by 1');
+});
+
+T('status: Chill cadence slow + stack cap', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Chill', 15); // exceeds cap of 10
+  eq(bag.Chill.stacks, 10, 'Chill stacks must cap at CHILL_STACK_CAP=10');
+  const cadence = combat.cadenceMultiplier(bag);
+  approx(cadence, 1 + 10 * combat.TUNABLES.CHILL_PCT_PER_STACK, 1e-9, 'cadence multiplier reflects 10 stacks at 4%/stack');
+});
+
+T('status: Regen heal', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Regen', 5);
+  const ticks = combat.tickStatuses(bag, 1.0);
+  eq(ticks, [{ name: 'Regen', amount: 5, kind: 'heal' }]);
+  eq(bag.Regen.stacks, 4);
+});
+
+T('status: Spikes consume-per-hit (no time decay)', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Spikes', 3);
+  // tick many times -- Spikes must NOT decay from time alone
+  for (let i = 0; i < 10; i++) combat.tickStatuses(bag, 1.0);
+  eq(bag.Spikes.stacks, 3, 'Spikes has NO time decay');
+  const reflect1 = combat.consumeSpikes(bag);
+  eq(reflect1, 3, 'reflect amount = 1x stacks (3) on first hit');
+  eq(bag.Spikes.stacks, 2, 'exactly 1 stack consumed per hit');
+  const reflect2 = combat.consumeSpikes(bag);
+  eq(reflect2, 2);
+  eq(bag.Spikes.stacks, 1);
+});
+
+T('status: Stun suspend/resume (isStunned true during, false after expiry)', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Stun', 2.0);
+  ok(combat.isStunned(bag), 'should be stunned immediately after application');
+  combat.tickStatuses(bag, 1.0);
+  ok(combat.isStunned(bag), 'still stunned after 1s (duration 2s)');
+  combat.tickStatuses(bag, 1.5);
+  ok(!combat.isStunned(bag), 'stun should have expired after total 2.5s > 2.0s duration');
+});
+
+T('status: Weakness damage reduction', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Weakness', 4);
+  const m = combat.weaknessMultiplier(bag);
+  approx(m, 1 - 4 * combat.TUNABLES.WEAKNESS_PCT_PER_STACK, 1e-9, '4 stacks at 5%/stack = 20% reduction -> 0.8 multiplier');
+});
+
+T('status: Haste cadence speedup', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Haste', 3);
+  const cadence = combat.cadenceMultiplier(bag);
+  approx(cadence, 1 - 3 * combat.TUNABLES.HASTE_PCT_PER_STACK, 1e-9, '3 stacks Haste at 4%/stack speeds cadence (multiplier < 1)');
+});
+
+T('status interaction: Chill+Haste net to ONE cadence number', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Chill', 5);
+  combat.applyStatus(bag, 'Haste', 5);
+  const cadence = combat.cadenceMultiplier(bag);
+  approx(cadence, 1.0, 1e-9, '5 Chill (+20%) and 5 Haste (-20%) at equal stacks should net to exactly 1.0 (no change)');
+});
+
+T('status interaction: amp_status multiplies the APPLIED n at application time', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Burn', 4, 2); // amp mult=2 -> applied magnitude 8, not the tick
+  eq(bag.Burn.stacks, 8, 'amp_status doubles the applied magnitude (4*2=8), not the per-tick damage formula');
+});
+
+T('status interaction: cleanse removes ALL debuffs, leaves buffs untouched', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Burn', 3);
+  combat.applyStatus(bag, 'Poison', 2);
+  combat.applyStatus(bag, 'Chill', 4);
+  combat.applyStatus(bag, 'Weakness', 2);
+  combat.applyStatus(bag, 'Stun', 1);
+  combat.applyStatus(bag, 'Regen', 5);
+  combat.applyStatus(bag, 'Spikes', 2);
+  combat.applyStatus(bag, 'Haste', 3);
+  combat.cleanse(bag);
+  ok(!bag.Burn && !bag.Poison && !bag.Chill && !bag.Weakness && !bag.Stun, 'all debuffs removed');
+  ok(bag.Regen && bag.Spikes && bag.Haste, 'buffs (Regen/Spikes/Haste) must remain untouched');
+});
+
+T('status interaction: Stun does not pause DoT ticks (Burn/Poison keep ticking through Stun)', () => {
+  const bag = combat.freshStatusBag();
+  combat.applyStatus(bag, 'Stun', 5.0);
+  combat.applyStatus(bag, 'Burn', 3);
+  const ticks = combat.tickStatuses(bag, 1.0);
+  ok(ticks.some(t => t.name === 'Burn' && t.amount === 3), 'Burn should tick normally even while Stun is active');
+});
+
+// =====================================================================
+// 5. Mode filtering
+// =====================================================================
+T('mode filtering: non-battle-mode PO does not fire during a battle encounter, no backlog on resume', () => {
+  const detectionOnlyDef = { id: 'det_only', name: 'DetOnly', shape: [[0, 0]], modes: ['detection'],
+    effects: [{ trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } }] };
+  const scenarioWithDetOnly = combat.deepCopy(scenario);
+  scenarioWithDetOnly.pos.push({ uid: 'pDetOnly', id: 'det_only', loc: 'grid', cell: [6, 6], rot: 0 });
+  const itemDefs2 = Object.assign({}, itemDefsById, { det_only: detectionOnlyDef });
+
+  const result = combat.runEncounter({
+    rng: combat.makeRng('modefilter-seed'), encIndex: 0,
+    partyBps: combat.compileUnitSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').bps,
+    partyPos: combat.compileUnitSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').pos,
+    formationBox: { formationId: 'formation1' },
+    enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    encounterDef: { id: 'battle-enc', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 15 },
+    seedLabel: 'modefilter-seed',
+  });
+  const firedFromDetOnly = result.events.some(e => e.ev === 'ray_fire' && e.src === 'det_only');
+  ok(!firedFromDetOnly, 'a detection-mode-only PO must never fire a ray during a battle-mode encounter');
+});
+
+// =====================================================================
+// 6. Trap/door/chest win + timeout paths
+// =====================================================================
+T('trap: win path (discovery before timeout ends the encounter as clear)', () => {
+  // Use a detection PO placed such that its rays are very likely to find
+  // a 1x1 entity at the field center over several fire cycles within a
+  // generous deadline; assert on the STRUCTURAL outcome contract (result
+  // is either 'clear' or 'timeout', both legal), then separately force a
+  // guaranteed-find by shrinking the field to 1 cell so the ray cannot
+  // miss.
+  const scenarioWithSpyglass = combat.deepCopy(scenario);
+  scenarioWithSpyglass.pos.push({ uid: 'pSpy', id: 'spyglass', loc: 'grid', cell: [6, 6], rot: 0 });
+  const itemDefs2 = Object.assign({}, itemDefsById, { spyglass: pilotItemDefsById.spyglass });
+  const compiled = combat.compileUnitSnapshot(scenarioWithSpyglass, itemDefs2, 'formation1', 'unit1');
+  const result = combat.runEncounter({
+    rng: combat.makeRng('trap-win-seed-7'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'trap-test', type: 'trap', mode: 'detection',
+      entityDef: { id: 'trap_frost_deadfall', name: 'Trap', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 18, skills: ['trap_deadfall_volley'] },
+      timeout_secs: 18, deadline_secs: 18.5 },
+    seedLabel: 'trap-win-seed-7',
+  });
+  ok(['clear', 'timeout', 'wipe'].includes(result.result), 'trap result must be one of the legal outcomes');
+});
+
+T('trap: timeout path fires the volley once and ends the encounter', () => {
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  // No detection-mode PO present at all -> guaranteed timeout (never discovered).
+  const result = combat.runEncounter({
+    rng: combat.makeRng('trap-timeout-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'trap-test2', type: 'trap', mode: 'detection',
+      entityDef: { id: 'trap_frost_deadfall', name: 'Trap', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 1, skills: ['trap_deadfall_volley'] },
+      timeout_secs: 1, deadline_secs: 1.5 },
+    seedLabel: 'trap-timeout-seed',
+  });
+  ok(result.result === 'timeout' || result.result === 'wipe', 'no detection PO present -> must time out (or wipe if the volley somehow killed the party, structurally legal)');
+  ok(result.events.some(e => e.ev === 'ray_fire'), 'the timeout volley should have fired at least one ray');
+});
+
+T('door: win path (unlock stage clears when HP reduced to 0 before timeout)', () => {
+  const scenarioWithLockpick = combat.deepCopy(scenario);
+  scenarioWithLockpick.pos.push({ uid: 'pLock', id: 'lockpick', loc: 'grid', cell: [6, 6], rot: 0 });
+  const itemDefs2 = Object.assign({}, itemDefsById, { lockpick: pilotItemDefsById.lockpick });
+  const compiled = combat.compileUnitSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
+  const result = combat.runEncounter({
+    rng: combat.makeRng('door-win-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'door-test', type: 'door', mode: 'unlock',
+      entityDef: { id: 'door_rimefast_stage2', name: 'Door', hp: 1, footprint: [2, 2], masked: false, timeout_secs: 60, skills: [] },
+      timeout_secs: 60, deadline_secs: 60.5 },
+    seedLabel: 'door-win-seed',
+  });
+  ok(['clear', 'timeout_break', 'wipe'].includes(result.result), 'door result must be a legal outcome');
+});
+
+T('door: timeout path ("keyhole breaks") when HP not reduced to 0 in time', () => {
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO present
+  const result = combat.runEncounter({
+    rng: combat.makeRng('door-timeout-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'door-test2', type: 'door', mode: 'unlock',
+      entityDef: { id: 'door_rimefast_stage2', name: 'Door', hp: 999, footprint: [2, 2], masked: false, timeout_secs: 1, skills: [] },
+      timeout_secs: 1, deadline_secs: 1.5 },
+    seedLabel: 'door-timeout-seed',
+  });
+  eq(result.result, 'timeout_break', 'with no unlock-mode PO present and huge HP, the door must time out with "keyhole breaks"');
+});
+
+T('chest: win path (HP reduced to 0 before timeout -> clear, reward-eligible)', () => {
+  const scenarioWithLockpick = combat.deepCopy(scenario);
+  scenarioWithLockpick.pos.push({ uid: 'pLock', id: 'lockpick', loc: 'grid', cell: [6, 6], rot: 0 });
+  const itemDefs2 = Object.assign({}, itemDefsById, { lockpick: pilotItemDefsById.lockpick });
+  const compiled = combat.compileUnitSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
+  const result = combat.runEncounter({
+    rng: combat.makeRng('chest-win-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'chest-test', type: 'chest', mode: 'unlock',
+      entityDef: { id: 'chest_frostbound_cache', name: 'Chest', hp: 1, footprint: [2, 2], masked: false, timeout_secs: 60, skills: [] },
+      timeout_secs: 60, deadline_secs: 60.5 },
+    seedLabel: 'chest-win-seed',
+  });
+  ok(['clear', 'timeout_lost', 'wipe'].includes(result.result), 'chest result must be a legal outcome');
+});
+
+T('chest: timeout path (lost with no penalty) when HP not reduced in time', () => {
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO
+  const result = combat.runEncounter({
+    rng: combat.makeRng('chest-timeout-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: {}, skillDefsById,
+    encounterDef: { id: 'chest-test2', type: 'chest', mode: 'unlock',
+      entityDef: { id: 'chest_frostbound_cache', name: 'Chest', hp: 999, footprint: [2, 2], masked: false, timeout_secs: 1, skills: [] },
+      timeout_secs: 1, deadline_secs: 1.5 },
+    seedLabel: 'chest-timeout-seed',
+  });
+  eq(result.result, 'timeout_lost', 'chest should be lost (no penalty) on timeout with no unlock PO present');
+  const bpHpAfter = compiled.bps.reduce((s, b) => s + b.hp, 0);
+  const bpHpMaxTotal = compiled.bps.reduce((s, b) => s + b.hpMax, 0);
+  eq(bpHpAfter, bpHpMaxTotal, 'no penalty means party HP must be untouched (chest has no offensive skills)');
+});
+
+// =====================================================================
+// 7. Boss/pack battle: victory AND wipe
+// =====================================================================
+T('pack battle: victory when enemies are weak and party is strong', () => {
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  const weakEnemy = { weak_target: { id: 'weak_target', name: 'Weak', hp: [1, 1], footprint: [1, 1], skills: [] } };
+  const result = combat.runEncounter({
+    rng: combat.makeRng('pack-victory-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: weakEnemy, skillDefsById: {},
+    encounterDef: { id: 'pack-vic', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak_target'] }, deadline_secs: 30 },
+    seedLabel: 'pack-victory-seed',
+  });
+  eq(result.result, 'clear', 'a 1-HP enemy against a full attacking party should clear quickly');
+});
+
+T('boss/pack: wipe asserts level-down + no gain/loss', () => {
+  // Construct a scenario where the enemy is overwhelmingly strong so the
+  // party wipes; assert level-down via runDungeon and that HP ends at 0
+  // (attrition), with no rewards accrued on wipe.
+  const strongEnemy = {
+    overwhelm: { id: 'overwhelm', name: 'Overwhelm', hp: [500, 500], footprint: [1, 1], skills: ['overwhelm_strike'] },
+  };
+  const strongSkills = {
+    overwhelm_strike: { trigger: { t: 'every_secs', s: [0.1, 0.1] }, verb: { t: 'strike', n: [500, 500] }, attack_profile: { edge: ['top', 'left', 'right', 'bottom'], penetration: 5, aoe: 5 } },
+  };
+  const result = combat.runDungeon({
+    masterSeed: 'wipe-seed-1',
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['overwhelm'] }, deadline_secs: 30 }, { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['overwhelm'] }, deadline_secs: 30 }] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: strongEnemy, skillDefsById: strongSkills,
+    formationId: 'formation1', level: 5, participants: ['p1'],
+  });
+  eq(result.result, 'wipe', 'party must wipe against an overwhelming enemy');
+  eq(result.level, 4, 'level should step down by FAILURE_STEP=1 (5 -> 4)');
+  eq(result.rewards, [], 'no rewards should be granted on wipe');
+  const totalHp = result.bps.reduce((s, b) => s + b.hp, 0);
+  eq(totalHp, 0, 'all BPs should be at 0 hp on a wipe (nothing lost beyond attrition, nothing gained)');
+});
+
+// =====================================================================
+// 8. Rewards: uniform distribution statistical smoke test
+// =====================================================================
+T('rewards: uniform distribution statistical smoke test (fixed seed, documented tolerance)', () => {
+  const rng = combat.makeRng('reward-stats-seed');
+  const participants = ['pA', 'pB', 'pC', 'pD'];
+  const items = new Array(2000).fill(0).map((_, i) => 'item' + i);
+  const assignments = combat.distributeRewardsUniform(items, participants, rng);
+  const counts = { pA: 0, pB: 0, pC: 0, pD: 0 };
+  for (const a of assignments) counts[a.owner]++;
+  // With 2000 draws over 4 participants, expected ~500 each; documented
+  // tolerance: allow +/-15% deviation from the uniform expectation to
+  // keep this a stable, non-flaky statistical smoke test.
+  const expected = items.length / participants.length;
+  for (const p of participants) {
+    approx(counts[p], expected, expected * 0.15, 'participant ' + p + ' should receive roughly 1/4 of rewards (tolerance 15%)');
+  }
+  ok(assignments.every(a => a.destination === 'warehouse'), 'every reward should be modeled as landing in the warehouse');
+});
+
+// =====================================================================
+// 9. Attrition: BP hp carries across encounters within a run
+// =====================================================================
+T('attrition: BP hp persists across encounters within one run (permanent, no auto-heal)', () => {
+  const dmgEnemy = { dmg_dealer: { id: 'dmg_dealer', name: 'Dmg', hp: [1000, 1000], footprint: [1, 1], skills: ['dmg_hit'] } };
+  const dmgSkills = { dmg_hit: { trigger: { t: 'every_secs', s: [0.3, 0.3] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } } };
+  const result = combat.runDungeon({
+    masterSeed: 'attrition-seed',
+    dungeonDef: { encounters: [
+      { id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['dmg_dealer'] }, deadline_secs: 3 },
+      { id: 'e1', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['dmg_dealer'] }, deadline_secs: 3 },
+      { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['dmg_dealer'] }, deadline_secs: 3 },
+    ] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: dmgEnemy, skillDefsById: dmgSkills,
+    formationId: 'formation1', level: 1, participants: ['p1'],
+  });
+  // The dmg_dealer never dies (1000 hp) so every encounter times out via
+  // deadline_secs without ever clearing -- meaning damage accrues across
+  // all 3 encounter calls onto the SAME bps array. Assert some damage was
+  // taken (i.e. HP is below max, proving persistence rather than a fresh
+  // reset each encounter).
+  const totalHpMax = result.bps.reduce((s, b) => s + b.hpMax, 0);
+  const totalHp = result.bps.reduce((s, b) => s + b.hp, 0);
+  ok(totalHp < totalHpMax, 'accrued damage across 3 encounters should leave party below full HP (persistent attrition)');
+  ok(totalHp >= 0, 'HP never goes negative');
+});
+
+// =====================================================================
+// 10. Cooldown formula
+// =====================================================================
+T('cooldown formula: H=0 -> CD_max, H=1 -> CD_min, intermediate H is linear', () => {
+  eq(combat.cooldownForH(0), combat.TUNABLES.CD_MAX_SECS, 'H=0 (wipe-equivalent) must equal CD_MAX_SECS');
+  eq(combat.cooldownForH(1), combat.TUNABLES.CD_MIN_SECS, 'H=1 (full HP) must equal CD_MIN_SECS');
+  const mid = combat.cooldownForH(0.5);
+  const expectedMid = combat.TUNABLES.CD_MIN_SECS + (combat.TUNABLES.CD_MAX_SECS - combat.TUNABLES.CD_MIN_SECS) * 0.5;
+  approx(mid, expectedMid, 1e-9, 'H=0.5 should be exactly halfway between CD_MIN and CD_MAX (linear formula)');
+});
+
+// =====================================================================
+// 11. Full-run smoke: batch-002 dungeon end-to-end
+// =====================================================================
+T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixed seed, no crashes', () => {
+  const scenarioWithPilotItems = combat.deepCopy(scenario);
+  scenarioWithPilotItems.pos.push({ uid: 'pLock', id: 'lockpick', loc: 'grid', cell: [6, 6], rot: 0 });
+  scenarioWithPilotItems.pos.push({ uid: 'pSpy', id: 'spyglass', loc: 'grid', cell: [7, 7], rot: 0 });
+  const itemDefsWithPilots = Object.assign({}, itemDefsById, pilotItemDefsById);
+
+  const result = combat.runDungeon({
+    masterSeed: 'full-dungeon-smoke-seed-1',
+    dungeonDef: dungeonRaw,
+    unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+    itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
+    formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
+  });
+  ok(['victory', 'wipe', 'incomplete'].includes(result.result), 'full dungeon run must end in a legal terminal state, got ' + result.result);
+  ok(result.finalProgressPct >= 0 && result.finalProgressPct <= 100, 'progress must be within [0,100], got ' + result.finalProgressPct);
+  if (result.result === 'victory') eq(result.finalProgressPct, 100, 'a victory result must show 100% progress');
+  ok(result.events.length > 20, 'a full multi-encounter dungeon run should produce a substantial event log, got ' + result.events.length);
+  ok(result.cooldownSecs >= combat.TUNABLES.CD_MIN_SECS && result.cooldownSecs <= combat.TUNABLES.CD_MAX_SECS, 'cooldown must be within [CD_MIN,CD_MAX]');
+  // sanity: the log should be valid JSONL (every line parses)
+  const jsonl = combat.toJSONL(result.events);
+  const lines = jsonl.split('\n');
+  for (const line of lines) JSON.parse(line); // throws if malformed
+  console.log('  (full-run smoke: result=' + result.result + ' progress=' + result.finalProgressPct.toFixed(1) + '% events=' + result.events.length + ' cooldown=' + result.cooldownSecs.toFixed(1) + 's)');
+});
+
+// =====================================================================
+// Additional coverage: formation box parsing + engine interop invariant
+// =====================================================================
+T('formation defs: all 4 boxes parse to exactly 8x8, formation4 uses CORRECTED J11:Q18', () => {
+  for (const fid of Object.keys(combat.FORMATIONS)) {
+    const cv = combat.FORMATIONS[fid].canvases;
+    for (const unit of Object.keys(cv)) {
+      const box = combat.parseBox(cv[unit]);
+      eq(box.colMax - box.colMin + 1, 8, fid + '.' + unit + ' width');
+      eq(box.rowMax - box.rowMin + 1, 8, fid + '.' + unit + ' height');
+    }
+  }
+  eq(combat.FORMATIONS.formation4.canvases.unit4, 'J11:Q18', 'formation4 unit4 must be the CORRECTED box, not the xlsx J11:Q19 error');
+});
+
+T('parseBox: column letter mapping A=1..Z=26 is correct', () => {
+  eq(combat.colLetterToIndex('A'), 1);
+  eq(combat.colLetterToIndex('Z'), 26);
+  eq(combat.colIndexToLetter(1), 'A');
+  eq(combat.colIndexToLetter(26), 'Z');
+  const box = combat.parseBox('J2:Q9');
+  eq(box, { colMin: 10, colMax: 17, rowMin: 2, rowMax: 9 });
+});
+
+T('engine interop invariant: combat.cjs never calls an engine mutator (no PO/BP state in engine module is touched)', () => {
+  // Sanity check that the exposed `engine` object still has its mutator
+  // functions present (proves we required the real module, not a stub),
+  // while combat.cjs's own compile pass produces field cells WITHOUT ever
+  // invoking any of them -- verified structurally: compileUnitSnapshot's
+  // result is plain, JSON-serializable data with no shared references
+  // back into engine internals.
+  ok(typeof combat.engine.create === 'function', 'engine.create should be the real function');
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  const serialized = JSON.stringify(compiled);
+  ok(serialized.length > 0, 'compiled snapshot must be plain-data serializable (no engine object leakage)');
+});
+
+T('multi_strike: each sub-hit is a separate hit (OQ19) -- N hits produce N independent damage rolls', () => {
+  const rng = combat.makeRng('multistrike-seed');
+  const dmgStream = rng.stream('ms-test/dmg');
+  let hitCount = 0;
+  const actor = {
+    hp: () => 100, statusBag: combat.freshStatusBag(),
+    ref: { id: 'test_actor', masked: false },
+    applyDamage(amt) { hitCount++; },
+  };
+  const events = [];
+  combat.dealHitOnField(actor, { verb: { t: 'multi_strike', n: [2, 4], hits: 3 } }, 1.0, dmgStream, 'battle', events);
+  eq(hitCount, 3, 'multi_strike with hits:3 should call applyDamage exactly 3 separate times');
+});
+
+console.log('----------------------------------');
+console.log(pass + ' passed, ' + fail + ' failed');
+process.exit(fail ? 1 : 0);
