@@ -1,9 +1,20 @@
-// Item Encyclopedia (図鑑) display view — REQ-0035. Read-only reference/
-// wiki view: search + filters over a combined PO+SI item grid, each item
-// expandable into a maximum-detail card. Admin edit mode (a SEPARATE
-// view/layout per the spec, not overlaid here) lives in ./DexAdmin.tsx;
-// both are reached through ./DexRoot.tsx, which owns the /api/content +
-// /api/me fetches and the view/edit toggle.
+// Item Encyclopedia (図鑑) display view — REQ-0035, rebuilt REQ-0038 for
+// Dex v2. Read-only reference/wiki view: search + filters over a combined
+// PO+SI item grid. Two REQ-0038 changes from the original REQ-0035
+// layout:
+//   1. Catalog cards render each item ON its cell shape (a mini shape
+//      grid with the icon mounted on the anchor cell -- ShapeGrid.tsx,
+//      reused, DOM-based per dexIcons.ts's module comment), not as a
+//      bare <img> icon.
+//   2. Selecting a card no longer expands it inline -- it switches the
+//      WHOLE view into the two-pane detail layout (DexDetail.tsx: large
+//      diagram left, item list right), a distinct mode from the catalog
+//      grid, per the task spec's "Detail screen splits into two big
+//      panes" (not an inline-expansion overlay on the catalog anymore).
+//
+// Admin edit mode (a SEPARATE view/layout per the spec, not overlaid
+// here) lives in ./DexAdmin.tsx; both are reached through ./DexRoot.tsx,
+// which owns the /api/content + /api/me fetches and the view/edit toggle.
 //
 // Data source: the `payload` prop is the raw GET /api/content response
 // (api.ts's ApiContentPayload), NOT the engine-normalized GameData the
@@ -13,9 +24,12 @@
 // touch store.ts's engine/GameState at all.
 import { useMemo, useState } from 'react';
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
+import type { Cell } from '../engine/engine.d.ts';
+import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
+import { DexDetail } from './DexDetail';
 import { iconDataUrl } from './dexIcons';
-import { ItemDetailCard } from './ItemDetailCard';
+import { ShapeGrid } from './ShapeGrid';
 
 export interface DexEntry {
   id: string;
@@ -35,23 +49,22 @@ function nameOf(e: ApiItemEntry | ApiSIEntry): string {
 function nameJaOf(e: ApiItemEntry | ApiSIEntry): string {
   return e.name_ja || '';
 }
+function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
+  return ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+}
 
 interface DexProps {
   locale: Locale;
   payload: ApiContentPayload;
 }
 
-const RESERVED_TABS: Array<{ ja: string; en: string }> = [
-  { ja: 'ソケットアイテム', en: 'Socket Items' },
-  { ja: 'BP', en: 'BPs' },
-  { ja: '検索プリセット', en: 'Search Presets' },
-];
+const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchPresets'];
 
 export function Dex({ locale, payload }: DexProps) {
   const [query, setQuery] = useState('');
   const [rarityFilter, setRarityFilter] = useState<string>('');
   const [tagFilter, setTagFilter] = useState<string>('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
 
@@ -65,7 +78,7 @@ export function Dex({ locale, payload }: DexProps) {
     const set = new Set<string>();
     for (const e of entries) {
       if (e.kind === 'po') {
-        for (const t of (e.entry as ApiItemEntry).tags || []) set.add(t);
+        for (const tag of (e.entry as ApiItemEntry).tags || []) set.add(tag);
       }
     }
     return Array.from(set).sort();
@@ -87,15 +100,35 @@ export function Dex({ locale, payload }: DexProps) {
     });
   }, [entries, query, rarityFilter, tagFilter]);
 
+  // REQ-0038: selecting a card switches the whole view into the two-pane
+  // detail layout -- the list shown there is `filtered` (so the current
+  // search/filter selection carries over into the detail right-pane
+  // list), not the full unfiltered `entries`.
+  if (selectedId) {
+    return (
+      <div className="dex-view">
+        <DexDetail
+          entries={filtered}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onBack={() => setSelectedId(null)}
+          locale={locale}
+          tagTree={payload.trees.po}
+          registry={payload.registry}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="dex-view">
       <div className="dex-tab-row">
         <button type="button" className="dex-tab dex-tab-active">
-          {locale === 'ja' ? 'アイテム' : 'Items'}
+          {t(locale, 'dex.tabItems')}
         </button>
-        {RESERVED_TABS.map((t) => (
-          <button key={t.en} type="button" className="dex-tab" disabled title={locale === 'ja' ? '今後対応予定' : 'reserved for later'}>
-            {locale === 'ja' ? t.ja : t.en}
+        {RESERVED_TABS.map((key) => (
+          <button key={key} type="button" className="dex-tab" disabled title={t(locale, 'dex.reservedTitle')}>
+            {t(locale, key)}
           </button>
         ))}
       </div>
@@ -104,12 +137,12 @@ export function Dex({ locale, payload }: DexProps) {
         <input
           type="text"
           className="dex-search"
-          placeholder={locale === 'ja' ? '名前またはIDで検索…' : 'Search by name or id…'}
+          placeholder={t(locale, 'dex.searchPlaceholder')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
         <select className="dex-filter" value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)}>
-          <option value="">{locale === 'ja' ? 'レアリティ: すべて' : 'Rarity: all'}</option>
+          <option value="">{t(locale, 'dex.rarityAll')}</option>
           {rarities.map((r) => (
             <option key={r} value={r}>
               {r}
@@ -117,10 +150,10 @@ export function Dex({ locale, payload }: DexProps) {
           ))}
         </select>
         <select className="dex-filter" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
-          <option value="">{locale === 'ja' ? 'タグ: すべて' : 'Tag: all'}</option>
-          {tags.map((t) => (
-            <option key={t} value={t}>
-              {t}
+          <option value="">{t(locale, 'dex.tagAll')}</option>
+          {tags.map((tag) => (
+            <option key={tag} value={tag}>
+              {tag}
             </option>
           ))}
         </select>
@@ -132,16 +165,16 @@ export function Dex({ locale, payload }: DexProps) {
       <div className="dex-grid">
         {filtered.map((e) => {
           const icon = iconDataUrl(e.entry.icon);
-          const expanded = expandedId === e.id;
           return (
-            <div key={e.id} className={`dex-card${expanded ? ' dex-card-expanded' : ''}`}>
+            <div key={e.id} className="dex-card">
               <button
                 type="button"
                 className="dex-card-summary"
-                onClick={() => setExpandedId(expanded ? null : e.id)}
-                aria-expanded={expanded}
+                onClick={() => setSelectedId(e.id)}
               >
-                {icon ? <img className="dex-icon" src={icon} alt={e.entry.icon} /> : <div className="dex-icon dex-icon-missing" />}
+                <span className="dex-card-shape">
+                  <ShapeGrid shape={shapeOf(e.entry)} cellPx={20} iconUrl={icon} iconAlt={e.entry.icon} />
+                </span>
                 <div className="dex-card-summary-text">
                   <div className="dex-card-name">{locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry)}</div>
                   <div className="dex-card-meta">
@@ -151,20 +184,10 @@ export function Dex({ locale, payload }: DexProps) {
                   </div>
                 </div>
               </button>
-              {expanded ? (
-                <ItemDetailCard
-                  dexEntry={e}
-                  locale={locale}
-                  tagTree={payload.trees.po}
-                  registry={payload.registry}
-                />
-              ) : null}
             </div>
           );
         })}
-        {filtered.length === 0 ? (
-          <div className="dex-empty">{locale === 'ja' ? '該当するアイテムがありません。' : 'No items match.'}</div>
-        ) : null}
+        {filtered.length === 0 ? <div className="dex-empty">{t(locale, 'dex.noMatch')}</div> : null}
       </div>
     </div>
   );
