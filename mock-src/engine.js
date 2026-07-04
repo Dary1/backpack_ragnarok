@@ -507,6 +507,62 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:true};
   }
 
+  // reorderInvPage(st,from,to): moves inventory page `from` to index `to`
+  // (0-based, same splice-out/splice-in semantics as reorderPreset). The
+  // page's ENTIRE contents ({bps,pos,sis}) and its display name move
+  // together as one unit -- st.inv.pages and st.inv.names are permuted in
+  // lockstep so page N's name always still describes page N's contents
+  // after the move.
+  //
+  // Page-index-sensitive embedded data audit (REQ-0032): st.inv.pages[]
+  // entries are read live everywhere (homeLocationOf/allHomeUids/page()
+  // all scan st.inv.pages fresh, so simply permuting the array keeps
+  // those correct with no further work) EXCEPT ONE spot -- a free-placed
+  // (unseated) SI's own home record embeds its page index directly, as
+  // `host:{page:<idx>,cell:[r,c]}` (see invMoveSI and migrateCanvasTo-
+  // ReferencesV3). That embedded `page` number is written on every free-
+  // placed SI home but is not currently read back by any legality check
+  // (invOccupancy only reads `.cell`) -- still, it is live, addressable
+  // state describing "which page this SI lives on", so it must be
+  // corrected to the item's NEW page index after a reorder, exactly like
+  // its surrounding page array slot, or it would silently go stale and
+  // mislead any future/external consumer. This function walks every page
+  // AFTER the splice and rewrites `host.page` to match the item's actual
+  // (new) page index; every other record shape (POs, BPs, seated-SI
+  // {po,si} hosts, stowed 'inv' sentinel) carries no page-index field at
+  // all, so nothing else needs remapping.
+  //
+  // Caller contract: `activeInvPage` (which inventory tab is currently
+  // shown) is CLIENT-side UI state, not part of engine `st` -- this
+  // function does not know or care which page is "active"; the client
+  // (store.ts) is responsible for applying the identical index-shift rule
+  // (reorderPresetIndex's logic, generalized) to its own activeInvPage
+  // field after a successful call here, mirroring the preset active-index
+  // rule on the inventory-page axis.
+  function reorderInvPage(st,from,to){
+    if(!st.inv)return {ok:false,why:'no inventory'};
+    if(!(from>=0&&from<PAGE_COUNT))return {ok:false,why:'from index out of range'};
+    if(!(to>=0&&to<PAGE_COUNT))return {ok:false,why:'to index out of range'};
+    if(from===to)return {ok:true};
+    if(!Array.isArray(st.inv.names)||st.inv.names.length!==PAGE_COUNT)st.inv.names=defaultPageNames();
+    const pages=st.inv.pages.slice();
+    const names=st.inv.names.slice();
+    const [movedPage]=pages.splice(from,1);
+    pages.splice(to,0,movedPage);
+    const [movedName]=names.splice(from,1);
+    names.splice(to,0,movedName);
+    // Fix up embedded page-index data (see doc above) to match each SI's
+    // ACTUAL post-move page index.
+    for(let i=0;i<pages.length;i++){
+      for(const a of pages[i].sis){
+        if(a.host&&typeof a.host==='object'&&'page' in a.host)a.host.page=i;
+      }
+    }
+    st.inv.pages=pages;
+    st.inv.names=names;
+    return {ok:true};
+  }
+
   function page(st,n){return st.inv.pages[n];}
 
   // bpCellsIn/occupancyIn/cellsOfIn: same math as the canvas bpCells/
@@ -1337,6 +1393,129 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:true};
   }
 
+  // ---------------------------------------------------------------------
+  // reorderPreset/deletePreset (REQ-0032). Both operate on the FULL
+  // logical array of preset slots -- names[] and a "materialized" store[]
+  // where the active slot's real content (which normally lives at the
+  // top-level st.linked/bps/pos/sis fields, not in store[active]) is
+  // substituted in for the splice/slice, then the result is re-split back
+  // into {top-level fields, store[], active} exactly like switchPreset
+  // already does. This means the preset's store/names/reference-set data
+  // always "moves as a unit" for free -- there is no separate per-index
+  // bookkeeping to keep in sync, because usageOf/tintSets/homeLocationOf
+  // etc. are ALL live scans over st.presets.store (via presetCanvasOf)
+  // rather than anything cached by index; once the arrays are correctly
+  // permuted, every derived query is automatically correct on the next
+  // call (no invalidation step needed).
+  //
+  // active-index adjustment rule (shared by both reorder directions):
+  //   - if the moved slot (`from`) IS the active preset, active simply
+  //     FOLLOWS it to `to` (the same preset is still "the one that's
+  //     live", just relabeled to a new position).
+  //   - otherwise, active only shifts by one slot if `from` and `to`
+  //     straddle it (i.e. the splice pulled the active slot's neighbors
+  //     across it): moving a preset from BEFORE active to AT/AFTER active
+  //     shifts active left by one (its old neighbors closed the gap);
+  //     moving a preset from AFTER active to AT/BEFORE active shifts
+  //     active right by one. A move entirely on one side of active (both
+  //     `from` and `to` less than active, or both greater) never touches
+  //     active's index at all -- the preset active still identifies is
+  //     unaffected either way.
+  function reorderPresetIndex(active,from,to){
+    if(from===active)return to;
+    if(from<active&&to>=active)return active-1;
+    if(from>active&&to<=active)return active+1;
+    return active;
+  }
+  // materializePresets(st): the logical store[] with the active slot's
+  // real snapshot substituted in (a plain {linked,bps,pos,sis} object --
+  // NOT a reference to the live top-level fields, since callers below
+  // reassign the top-level fields separately after the splice).
+  function materializePresets(st){
+    const meta=st.presets;
+    return meta.store.map((slot,i)=>i===meta.active?{linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis}:slot);
+  }
+  // splitBackPresets(st,slots,names,active): the inverse of
+  // materializePresets -- writes `slots`/`names`/`active` back into
+  // st.presets/top-level fields, restoring store[active]=null and copying
+  // the active slot's snapshot fields onto st.linked/bps/pos/sis (same
+  // shape switchPreset already produces).
+  function splitBackPresets(st,slots,names,active){
+    const activeSlot=slots[active];
+    st.linked=activeSlot.linked;st.bps=activeSlot.bps;st.pos=activeSlot.pos;st.sis=activeSlot.sis;
+    const store=slots.map((slot,i)=>i===active?null:slot);
+    st.presets={active,names,store};
+  }
+  // reorderPreset(st,from,to): moves preset slot `from` to index `to`
+  // (both 0-based; `to` is the DESTINATION index in the post-move array,
+  // i.e. same "splice one out, splice it back in at `to`" semantics as
+  // Array.prototype.splice used twice -- NOT "insert before/after"
+  // ambiguity, see the reorder tests for concrete before/after arrays).
+  // The preset's entire slot (store content + its own names[] entry)
+  // moves together as a unit. No-op (still {ok:true}) if from===to.
+  function reorderPreset(st,from,to){
+    if(!st.presets)return {ok:false,why:'no presets'};
+    const meta=st.presets;
+    const len=meta.store.length;
+    if(!(from>=0&&from<len))return {ok:false,why:'from index out of range'};
+    if(!(to>=0&&to<len))return {ok:false,why:'to index out of range'};
+    if(from===to)return {ok:true};
+    const slots=materializePresets(st);
+    const names=meta.names.slice();
+    const [movedSlot]=slots.splice(from,1);
+    slots.splice(to,0,movedSlot);
+    const [movedName]=names.splice(from,1);
+    names.splice(to,0,movedName);
+    const newActive=reorderPresetIndex(meta.active,from,to);
+    splitBackPresets(st,slots,names,newActive);
+    return {ok:true};
+  }
+
+  // deletePreset(st,n): removes preset `n` ENTIRELY -- its reference set
+  // (store slot) and its names[] entry both vanish. Refuses (returns
+  // {ok:false}, does NOT mutate st at all) when n is the last remaining
+  // preset (must always keep at least 1). Per REQ-0033's reference model
+  // (which supersedes REQ-0032's original "first-fit physical return"
+  // paragraph -- presets hold REFERENCES into inventory, not physical
+  // copies), deleting a preset's reference set never touches st.inv: every
+  // uid the deleted preset referenced simply loses that one reference;
+  // its inventory home (and every OTHER preset's own reference to the
+  // same uid, if shared/yellow) is completely untouched.
+  //
+  // nearest-remaining-tab rule (when the ACTIVE preset is the one
+  // deleted): prefer the SAME index in the post-splice (shorter) array if
+  // one still exists there (i.e. we deleted somewhere before the end --
+  // the preset that used to be at n+1 slides into n, so landing back on
+  // index n now shows "the next tab over", a sensible default for a
+  // trash-drop gesture where the user's attention stays roughly where
+  // it was); otherwise (n was the LAST slot) fall back to the new last
+  // index (post-splice length - 1). Deleting a NON-active preset leaves
+  // active pointing at the SAME preset it did before, index-shifted left
+  // by one if the deleted slot was before it (straddle rule, same idea as
+  // reorderPresetIndex above but for a pure removal rather than a move).
+  function deletePreset(st,n){
+    if(!st.presets)return {ok:false,why:'no presets'};
+    const meta=st.presets;
+    const len=meta.store.length;
+    if(!(n>=0&&n<len))return {ok:false,why:'preset index out of range'};
+    if(len<=1)return {ok:false,why:'cannot delete the last remaining preset'};
+    const slots=materializePresets(st);
+    const names=meta.names.slice();
+    slots.splice(n,1);
+    names.splice(n,1);
+    const newLen=slots.length;
+    let newActive;
+    if(n===meta.active){
+      newActive=Math.min(n,newLen-1); // same index if still occupied, else new last index
+    } else if(n<meta.active){
+      newActive=meta.active-1;
+    } else {
+      newActive=meta.active;
+    }
+    splitBackPresets(st,slots,names,newActive);
+    return {ok:true};
+  }
+
   // checkUidInvariant(st): read-only auditor for the "one uid, exactly one
   // place" physicality rule (REQ-0031 preset model decision). Scans every
   // PO/SI uid across: the shared inventory (st.inv.pages[].pos/sis), the
@@ -1587,7 +1766,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
           renameInvPage,invPageNames,checkUidInvariant,
           // Reference model (REQ-0033 Phase 1) -- additive exports only.
           usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,bpReferenceSet,
-          createRef,removeRef,homeLocationOf};
+          createRef,removeRef,homeLocationOf,
+          // Tab reorder + preset trash-delete (REQ-0032) -- additive exports only.
+          reorderPreset,deletePreset,reorderInvPage};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });

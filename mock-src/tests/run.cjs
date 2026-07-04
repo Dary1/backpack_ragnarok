@@ -1100,6 +1100,271 @@ T('REQ-0033 tintSets on a synthetic canvas-only fixture with no st.inv/st.preset
   ok(E.isUnitIndependent(st,0),'no presets at all -- vacuously independent');
 });
 
+
+// =======================================================================
+// REQ-0032: tab reorder (presets + inventory pages) and preset trash
+// delete. Per REQ-0033 (which landed after REQ-0032 was speced and
+// supersedes its "first-fit physical return" paragraph): presets hold
+// REFERENCES into the shared inventory, so deletePreset only ever drops
+// a preset's reference set -- inventory homes/items are NEVER touched.
+// =======================================================================
+
+T('REQ-0032 reorderPreset: moving a preset RIGHT across the active preset shifts active left to keep pointing at the same preset',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,2); // active=2 ("Preset 3")
+  const namesBefore=migrated.presets.names.slice();
+  ok(E.reorderPreset(migrated,0,3).ok,'move preset 0 to index 3, straddling active(2)');
+  // preset 0 (name 'Preset 1') moved from before active to at/after active
+  // -> active shifts LEFT by one (2->1), still identifying "Preset 3".
+  eq(migrated.presets.active,1,'active index shifted left to keep tracking Preset 3');
+  eq(migrated.presets.names[1],namesBefore[2],'the preset at the new active index is still "Preset 3" by name');
+  // expected name order after splice(0,1)+splice(3,0,moved): [P2,P3,P4,P1,P5]
+  eq(migrated.presets.names,[namesBefore[1],namesBefore[2],namesBefore[3],namesBefore[0],namesBefore[4]]);
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 reorderPreset: moving a preset LEFT across the active preset shifts active right to keep pointing at the same preset',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1); // active=1 ("Preset 2")
+  const namesBefore=migrated.presets.names.slice();
+  ok(E.reorderPreset(migrated,3,0).ok,'move preset 3 to index 0, straddling active(1) from the other side');
+  // preset 3 moved from AFTER active to AT/BEFORE active -> active shifts RIGHT by one (1->2).
+  eq(migrated.presets.active,2,'active index shifted right to keep tracking Preset 2');
+  eq(migrated.presets.names[2],namesBefore[1],'the preset at the new active index is still "Preset 2" by name');
+  eq(migrated.presets.names,[namesBefore[3],namesBefore[0],namesBefore[1],namesBefore[2],namesBefore[4]]);
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 reorderPreset: moving the ACTIVE preset itself -- active follows it to the destination index',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // active is preset 0 by default -- give it a distinguishing rename so we can identify it post-move.
+  E.renamePreset(migrated,0,'MyActive');
+  ok(E.reorderPreset(migrated,0,3).ok,'move the active preset itself from 0 to 3');
+  eq(migrated.presets.active,3,'active follows the moved preset to its new index');
+  eq(migrated.presets.names[3],'MyActive');
+  // its actual canvas content (p1..p8 etc, since it was preset 0 = the live scenario) must still be the live top-level fields
+  ok(migrated.pos.some(p=>p.uid==='p3'),'the moved-and-still-active preset\'s content is still the live canvas');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 reorderPreset: a move entirely on ONE side of active never shifts active',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,4); // active=4, last slot
+  const namesBefore=migrated.presets.names.slice();
+  ok(E.reorderPreset(migrated,0,1).ok,'swap-ish move entirely among indices 0/1, both before active(4)');
+  eq(migrated.presets.active,4,'active untouched -- move never crossed it');
+  eq(migrated.presets.names,[namesBefore[1],namesBefore[0],namesBefore[2],namesBefore[3],namesBefore[4]]);
+});
+
+T('REQ-0032 reorderPreset: preset content (store slot) moves as a UNIT with its name, not just the label',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 now references alpha (+ contents)');
+  E.renamePreset(migrated,1,'HasAlpha');
+  E.switchPreset(migrated,0); // preset 1's content now lives in store[1]
+  ok(E.reorderPreset(migrated,1,4).ok,'move preset 1 (HasAlpha, currently inactive) to the end');
+  eq(migrated.presets.names[4],'HasAlpha');
+  ok(migrated.presets.store[4].bps.some(b=>b.id==='alpha'),'the alpha reference moved WITH its preset to slot 4, not left behind');
+  eq(migrated.presets.store[1],null===migrated.presets.store[1]?null:migrated.presets.store[1],'sanity no-op');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 reorderPreset: rejects out-of-range indices and no-ops on from===to',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  const before=JSON.stringify(migrated.presets);
+  const bad1=E.reorderPreset(migrated,0,99);
+  ok(!bad1.ok,'to index out of range rejected');
+  const bad2=E.reorderPreset(migrated,-1,2);
+  ok(!bad2.ok,'from index out of range rejected');
+  eq(JSON.stringify(migrated.presets),before,'rejected calls never mutate state');
+  ok(E.reorderPreset(migrated,2,2).ok,'from===to is a no-op success');
+  eq(JSON.stringify(migrated.presets),before,'no-op leaves state byte-identical');
+});
+
+T('REQ-0032 reorderInvPage: moving a page RIGHT across the active page (client-side index rule mirrored here on inv.pages)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // Manually distribute recognizable markers across pages 0-3 (names) so we
+  // can track identity through the reorder independent of content.
+  migrated.inv.names=['Alpha','Bravo','Charlie','Delta','Echo'];
+  const namesBefore=migrated.inv.names.slice();
+  const activeInvPage=1; // simulate the client's activeInvPage tracking 'Bravo'
+  ok(E.reorderInvPage(migrated,0,3).ok,'move page 0 to index 3, straddling activeInvPage(1)');
+  // mirror of reorderPresetIndex, applied by hand (client owns this, but we verify the same rule produces a correct result)
+  const newActive=(0<activeInvPage&&3>=activeInvPage)?activeInvPage-1:activeInvPage;
+  eq(newActive,0,'the mirrored index rule points at 0');
+  eq(migrated.inv.names[newActive],'Bravo','page at the recomputed active index is still Bravo by name');
+  eq(migrated.inv.names,['Bravo','Charlie','Delta','Alpha','Echo']);
+});
+
+T('REQ-0032 reorderInvPage: moving the page currently marked active (client concept) -- names/content track the destination',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  migrated.inv.names=['Alpha','Bravo','Charlie','Delta','Echo'];
+  ok(E.reorderInvPage(migrated,1,4).ok,'move page 1 (Bravo) to the end');
+  eq(migrated.inv.names,['Alpha','Charlie','Delta','Echo','Bravo']);
+  // "active follows" is the client's job (activeInvPage=1 -> 4); assert the
+  // engine-side data the client would read at index 4 is indeed Bravo's.
+  eq(migrated.inv.names[4],'Bravo');
+});
+
+T('REQ-0032 reorderInvPage: page contents (items/BPs/homes) move WITH the page, not left behind',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // everything currently homes on page 0 (see fixture audit) -- move page 0
+  // (holding alpha/beta/gamma/delta + p1-p8 + a1-a6) to index 2.
+  const page0Before=JSON.parse(JSON.stringify(migrated.inv.pages[0]));
+  // expected page contents after the move: identical EXCEPT free-placed
+  // SIs' embedded host.page is correctly rewritten 0->2 (see the dedicated
+  // host.page remap test below for that behavior in isolation).
+  const expected=JSON.parse(JSON.stringify(page0Before));
+  for(const a of expected.sis){if(a.host&&typeof a.host==='object'&&'page' in a.host)a.host.page=2;}
+  ok(E.reorderInvPage(migrated,0,2).ok);
+  eq(migrated.inv.pages[2],expected,'the full page object (bps/pos/sis) landed intact at its new index, host.page corrected');
+  eq(migrated.inv.pages[0].pos.length,0,'the page that used to be at 0 (previously empty page 1) is now at 0, still empty');
+  ok(E.checkUidInvariant(migrated).ok,'moving inventory pages never disturbs the home/reference invariant');
+  ok(E.homeLocationOf(migrated,'alpha').page===2,'homeLocationOf finds alpha at its NEW page index (live scan, self-correcting)');
+});
+
+T('REQ-0032 reorderInvPage: embedded free-placed-SI host.page is remapped to the item\'s new page index',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  // a free-placed (unseated) SI home record on page 1, matching the shape
+  // migrateCanvasToReferencesV3 produces: {uid,id,host:{page,cell}}.
+  st.inv.pages[1].sis.push({uid:'freeSi1',id:'small_si',host:{page:1,cell:[2,2]}});
+  ok(E.reorderInvPage(st,1,3).ok,'move page 1 (holding freeSi1) to index 3');
+  const moved=st.inv.pages[3].sis.find(a=>a.uid==='freeSi1');
+  ok(moved,'the SI home record moved to page 3 with its page');
+  eq(moved.host.page,3,'host.page was rewritten to match the SI\'s actual new page index');
+  eq(moved.host.cell,[2,2],'cell untouched by the reorder (only the page number changed)');
+});
+
+T('REQ-0032 reorderInvPage: rejects out-of-range indices and no-ops on from===to; materializes names[] defensively',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState(); // this fixture's inv has no `names` field at all
+  const bad1=E.reorderInvPage(st,0,99);
+  ok(!bad1.ok,'to index out of range rejected');
+  const bad2=E.reorderInvPage(st,-1,2);
+  ok(!bad2.ok,'from index out of range rejected');
+  ok(E.reorderInvPage(st,2,2).ok,'from===to is a no-op success');
+  ok(E.reorderInvPage(st,0,1).ok,'a real move materializes names[] defensively');
+  eq(st.inv.names.length,5,'names[] materialized to full PAGE_COUNT length even though the fixture never had one');
+});
+
+T('REQ-0032 deletePreset: deleting a NON-active preset leaves active pointing at the SAME preset (index shifts left if deleted-before)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,2); // active=2 ("Preset 3")
+  const activeName=migrated.presets.names[2];
+  ok(E.deletePreset(migrated,0).ok,'delete preset 0 (before active)');
+  eq(migrated.presets.names.length,4);
+  eq(migrated.presets.active,1,'active shifted left by one since the deleted slot was before it');
+  eq(migrated.presets.names[1],activeName,'active index still identifies the SAME preset (Preset 3) by name');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 deletePreset: deleting the ACTIVE preset lands on the nearest remaining tab (same index if occupied)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1); // active=1 ("Preset 2"), NOT the last slot
+  const namesBefore=migrated.presets.names.slice();
+  ok(E.deletePreset(migrated,1).ok,'delete the active preset itself');
+  eq(migrated.presets.names.length,4);
+  eq(migrated.presets.active,1,'lands on the SAME index -- the preset that used to be at 2 (Preset 3) now occupies it');
+  eq(migrated.presets.names[1],namesBefore[2],'index 1 now shows what used to be Preset 3 (nearest remaining tab)');
+});
+
+T('REQ-0032 deletePreset: deleting the ACTIVE preset when it was the LAST slot falls back to the new last index',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,4); // active=4, the LAST slot
+  const namesBefore=migrated.presets.names.slice();
+  ok(E.deletePreset(migrated,4).ok,'delete the active preset, which was the last slot');
+  eq(migrated.presets.names.length,4);
+  eq(migrated.presets.active,3,'lands on the new last index (3) -- there is no slot 4 anymore');
+  eq(migrated.presets.names[3],namesBefore[3],'index 3 still shows the preset that was already there (Preset 4)');
+});
+
+T('REQ-0032 deletePreset: refuses to delete the LAST remaining preset -- state completely unchanged',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // collapse down to exactly 1 preset first
+  ok(E.deletePreset(migrated,4).ok);
+  ok(E.deletePreset(migrated,3).ok);
+  ok(E.deletePreset(migrated,2).ok);
+  ok(E.deletePreset(migrated,1).ok);
+  eq(migrated.presets.names.length,1,'sanity: down to exactly 1 preset');
+  const before=JSON.stringify(migrated.presets);
+  const beforeInv=JSON.stringify(migrated.inv);
+  const r=E.deletePreset(migrated,0);
+  ok(!r.ok,'refused: cannot delete the last remaining preset');
+  eq(JSON.stringify(migrated.presets),before,'presets completely unchanged by the refused call');
+  eq(JSON.stringify(migrated.inv),beforeInv,'inventory completely unchanged too');
+});
+
+T('REQ-0032 deletePreset: drops ONLY the preset\'s reference set -- inventory items/homes are COMPLETELY untouched (REQ-0033 supersedes physical first-fit-return)',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 references alpha (+contents: p1,p2 -- p3 excluded, already used by preset 0)');
+  const invBefore=JSON.parse(JSON.stringify(migrated.inv));
+  ok(E.usageOf(migrated,'alpha').includes(1),'sanity: preset 1 uses alpha before delete');
+  E.switchPreset(migrated,0);
+  ok(E.deletePreset(migrated,1).ok,'delete preset 1 (non-active, holds the alpha reference)');
+  eq(JSON.parse(JSON.stringify(migrated.inv)),invBefore,'inventory (all homes, all items, all positions) is BYTE-IDENTICAL after the delete');
+  ok(!E.usageOf(migrated,'alpha').includes(1),'alpha\'s reference from the deleted preset is simply gone (usageOf no longer includes any slot holding it, since preset 1 doesn\'t exist anymore)');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
+T('REQ-0032 tint recompute after REORDER: a red/yellow-tinted item\'s tint state survives a reorder of unrelated presets',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 shares alpha/p1/p2 with preset 0');
+  E.switchPreset(migrated,0);
+  const tintsBefore=E.tintSets(migrated);
+  ok(tintsBefore.yellow.has('p1')&&tintsBefore.yellow.has('alpha'),'sanity: p1/alpha yellow (shared with preset 1) before reorder');
+  // reorder presets 3 and 4 (both unrelated to the sharing between 0 and 1) -- must not disturb tint state at all.
+  ok(E.reorderPreset(migrated,3,4).ok);
+  const tintsAfter=E.tintSets(migrated);
+  eq([...tintsAfter.red].sort(),[...tintsBefore.red].sort(),'red set unchanged by an unrelated reorder');
+  eq([...tintsAfter.yellow].sort(),[...tintsBefore.yellow].sort(),'yellow set unchanged by an unrelated reorder');
+  ok(tintsAfter.yellow.has('p1')&&tintsAfter.yellow.has('alpha'),'p1/alpha still correctly yellow after the reorder');
+});
+
+T('REQ-0032 tint recompute after DELETE: a deleted preset\'s tint contribution disappears without affecting other presets\' tint state',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  E.switchPreset(migrated,1);
+  const alphaPage=E.homeLocationOf(migrated,'alpha').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 shares alpha/p1/p2 with preset 0');
+  // also give preset 2 its own INDEPENDENT reference, unrelated to the alpha sharing, to prove it survives untouched.
+  E.switchPreset(migrated,2);
+  const deltaPage=E.homeLocationOf(migrated,'delta').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:deltaPage},{loc:'canvas'},'delta',[1,1]).ok,'preset 2 independently references delta');
+  E.switchPreset(migrated,0);
+  ok(E.tintSets(migrated).yellow.has('delta'),'sanity: delta yellow too (shared between preset 0-home and preset 2 reference)');
+  ok(E.deletePreset(migrated,1).ok,'delete preset 1 -- drops the alpha/p1/p2 sharing entirely');
+  const tints=E.tintSets(migrated);
+  ok(!tints.yellow.has('p1'),'p1 no longer yellow -- its only OTHER reference (preset 1) is gone');
+  ok(!tints.yellow.has('alpha'),'alpha no longer yellow either');
+  ok(tints.red.has('p1')&&tints.red.has('alpha'),'p1/alpha remain red -- still used by the current preset (0) itself, home untouched');
+  // delta's sharing (with the surviving preset 2, renumbered after the splice) must be unaffected.
+  ok(tints.yellow.has('delta'),'delta STILL yellow -- its sharing with the surviving preset (now at index 1 post-splice) is untouched by an unrelated preset\'s deletion');
+  ok(E.checkUidInvariant(migrated).ok);
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
