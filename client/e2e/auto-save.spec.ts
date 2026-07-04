@@ -69,7 +69,16 @@ test.describe('auto-save', () => {
     expect(po).toBeTruthy();
     expect(po.loc).toBe('grid');
     expect(po.cell).toEqual([1, 2]);
-    expect(canvas.inv.pages[0].pos.some((p: any) => p.uid === 'p900')).toBe(false);
+    // REQ-0033 Phase 2: inv -> canvas is now REFERENCE CREATION, not a
+    // physical move -- the home stays in inv.pages[0], untouched, at its
+    // ORIGINAL cell [5,5] (see fixtures/preset-fixture.json), alongside
+    // the brand-new canvas reference asserted above. This auto-save round
+    // trip is still exactly what it was testing (a mutation persists with
+    // zero save/load clicks) -- only the specific shape of "the mutation"
+    // changed under the reference model.
+    const home = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p900');
+    expect(home).toBeTruthy();
+    expect(home.cell).toEqual([5, 5]);
 
     // And the reloaded PAGE itself (not just the API) shows the PO gone
     // from the inventory board and present on canvas -- full round trip

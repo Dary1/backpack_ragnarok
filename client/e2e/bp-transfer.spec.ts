@@ -34,6 +34,25 @@
 // specified for the empty-BP, contents-carrying, and overlap-rejection
 // cases) -- so no engine changes were needed or made; this is a pure
 // client interaction-layer fix.
+//
+// REQ-0033 Phase 2 update: tests 1-3 below were written against the
+// PRE-REQ-0033 "physicality" transfer model (inv->canvas PHYSICALLY
+// removed the BP from inv.pages[0]; canvas->inv physically removed it
+// from canvas.bps). Phase 1 (mock-src/engine.js) replaced that with the
+// reference model: inv->canvas now CREATES A REFERENCE (the home stays
+// in inv.pages[0] untouched, forever, regardless of how many presets
+// reference it) and canvas->inv now REMOVES A REFERENCE (the home was
+// never touched to begin with -- there is nothing to "put back", the
+// item was always sitting right there in inventory). Assertions below
+// were updated accordingly: every place that used to assert "the BP is
+// GONE from inv.pages[0].bps after a transfer to canvas" now asserts "the
+// BP is STILL in inv.pages[0].bps, unchanged, AND also now present in
+// canvas.bps as an independent reference" -- and every place that used to
+// assert "the BP reappeared in inv.pages[0].bps after a transfer back"
+// now simply confirms canvas.bps no longer references it (the home was
+// there the whole time). Test 4 (illegal overlap rejection) is UNCHANGED
+// -- a rejected transfer still leaves both sides exactly as they were,
+// which is equally true under either model.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
@@ -72,7 +91,13 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const moved = canvas.bps.find((b: any) => b.id === 'test_empty');
     expect(moved).toBeTruthy();
     expect(moved.origin).toEqual([6, 5]);
-    expect(canvas.inv.pages[0].bps.some((b: any) => b.id === 'test_empty')).toBe(false);
+    // REQ-0033 Phase 2: inv -> canvas is now REFERENCE CREATION, not a
+    // physical move -- the home stays in inv.pages[0], untouched, at its
+    // ORIGINAL origin, forever (until something explicitly removes the
+    // home itself, which no operation in this test does).
+    const home = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_empty');
+    expect(home).toBeTruthy();
+    expect(home.origin).toEqual([1, 1]);
   });
 
   test('2. BP with 1 PO + seated SI: inventory -> canvas (contents travel with it)', async ({ page }) => {
@@ -80,9 +105,26 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // test_full: 1x1 BP at inv page0 origin (1,4), hosting PO p100 (hilt)
-    // with SI a100 (acc_gem) seated on its gem socket. Grab via its only
-    // cell (also the linker cell), drop onto free canvas cell (6,4).
+    // test_full: 2-cell BP at inv page0 origin (1,4) (cells (1,4) linker
+    // + (1,5) free), hosting PO p100 (hilt) at (1,5) with SI a100
+    // (acc_gem) seated on its gem socket. Grab via its linker cell (1,4),
+    // drop onto free canvas cells (6,4)-(6,5).
+    //
+    // REQ-0033 Phase 2 fixture note: test_full was originally a 1x1 BP
+    // whose SOLE cell was also its linker cell, with p100 sitting on that
+    // same cell. That arrangement is legal to STORE (invCanPlaceCells has
+    // no linker-cell exclusion -- only canPlacePO's CANVAS-side
+    // canPlaceCells does), but was never actually legal to TRANSFER onto
+    // canvas: canPlacePO always rejects a PO landing on a BP's linker
+    // cell there. The pre-REQ-0033 physical transferBPPhysical splice
+    // never caught this (it moved the PO's record directly, with no
+    // canPlacePO re-validation at all) -- a latent bug that simply never
+    // surfaced. REQ-0033's reference-model createRef('po',...) DOES
+    // validate every new PO reference through the real canPlacePO, which
+    // correctly rejects this arrangement now. Fixed by widening
+    // test_full to 2 cells (shape [[0,0],[0,1]]) so its PO occupies the
+    // non-linker cell -- a fixture correction, not a workaround around a
+    // client bug.
     await drag(
       page,
       { x: invBox.x + cx(4), y: invBox.y + cy(1) },
@@ -97,23 +139,43 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const po = canvas.pos.find((p: any) => p.uid === 'p100');
     expect(po).toBeTruthy();
     expect(po.loc).toBe('grid');
-    expect(po.cell).toEqual([6, 4]); // travelled with the BP (same delta)
+    expect(po.cell).toEqual([6, 5]); // travelled with the BP (same delta: home was [1,5], BP origin delta is [5,0])
 
     const si = canvas.sis.find((s: any) => s.uid === 'a100');
     expect(si).toBeTruthy();
     expect(si.host).toEqual({ po: 'p100', si: 0 }); // host unchanged (keyed by uid)
 
-    expect(canvas.inv.pages[0].bps.some((b: any) => b.id === 'test_full')).toBe(false);
-    expect(canvas.inv.pages[0].pos.some((p: any) => p.uid === 'p100')).toBe(false);
-    expect(canvas.inv.pages[0].sis.some((s: any) => s.uid === 'a100')).toBe(false);
+    // REQ-0033 Phase 2: inv -> canvas is now REFERENCE CREATION (with
+    // nested PO/SI contents also referenced, per bpReferenceSet) -- the
+    // BP's home AND its home-contained PO/SI all stay in inv.pages[0],
+    // completely untouched, at their ORIGINAL positions, alongside the
+    // brand-new canvas references asserted above.
+    const homeBp = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_full');
+    expect(homeBp).toBeTruthy();
+    expect(homeBp.origin).toEqual([1, 4]);
+    const homePo = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p100');
+    expect(homePo).toBeTruthy();
+    expect(homePo.cell).toEqual([1, 5]);
+    const homeSi = canvas.inv.pages[0].sis.find((s: any) => s.uid === 'a100');
+    expect(homeSi).toBeTruthy();
+    expect(homeSi.host).toEqual({ po: 'p100', si: 0 });
   });
 
   test('3. round trip: canvas -> inventory -> canvas (no state corruption)', async ({ page }) => {
+    // REQ-0033 Phase 2 rewrite: under the reference model, a canvas->inv
+    // drag is a REFERENCE REMOVAL that ignores the drop cell entirely
+    // ("drop cell irrelevant" -- engine.js's transferBPRemoveRef/
+    // removeRef) -- the home's position in inv.pages[0] NEVER changes,
+    // regardless of where the pointer drops it. So "round trip" here
+    // means: the home stays at its ORIGINAL origin [1,1] throughout every
+    // step (it is never relocated by ANY of these drags), while the
+    // CANVAS reference is created, then removed, then created again.
     await loadFixtureAndBoot(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // Step A: test_empty inv -> canvas at (6,5).
+    // Step A: test_empty inv -> canvas at (6,5) -- a NEW reference; the
+    // home (still at [1,1]) is untouched.
     await drag(
       page,
       { x: invBox.x + cx(1), y: invBox.y + cy(1) },
@@ -121,6 +183,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     );
     let canvas = await saveAndFetch(page);
     expect(canvas.bps.find((b: any) => b.id === 'test_empty')?.origin).toEqual([6, 5]);
+    expect(canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_empty')?.origin).toEqual([1, 1]);
 
     // Reload to get a fresh boot reading the just-saved state (Save/Load
     // round trip, same as a real user closing and reopening the app).
@@ -128,9 +191,10 @@ test.describe('BP inventory <-> canvas transfer', () => {
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
 
-    // Step B: drag it back canvas -> inventory page0, landing at a free
-    // page-local region, e.g. origin (3,3)-(3,4) (both free per the
-    // fixture's inventory page0 layout).
+    // Step B: drag it back canvas -> inventory page0. The drop landing
+    // cell (3,3) is DELIBERATELY irrelevant under the reference model --
+    // this removes the canvas reference only; the home stays exactly at
+    // [1,1], never having moved.
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
@@ -140,13 +204,14 @@ test.describe('BP inventory <-> canvas transfer', () => {
     );
     canvas = await saveAndFetch(page);
     expect(canvas.bps.some((b: any) => b.id === 'test_empty')).toBe(false);
-    const backInInv = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_empty');
-    expect(backInInv).toBeTruthy();
-    expect(backInInv.origin).toEqual([3, 3]);
+    const home = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_empty');
+    expect(home).toBeTruthy();
+    expect(home.origin).toEqual([1, 1]); // untouched -- drop cell was irrelevant
 
-    // Step C: drag it forward again canvas... no wait, it's in inventory
-    // now -- drag inv -> canvas once more to complete the "round trip"
-    // (canvas -> inventory -> canvas), landing back at (6,5).
+    // Step C: drag it forward again -- inv -> canvas once more to
+    // complete the "round trip" (canvas -> inventory -> canvas), grabbing
+    // from the home's REAL (unmoved) position [1,1], landing back at
+    // (6,5) on canvas.
     await page.reload();
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
@@ -154,20 +219,22 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const canvasBox3 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
       page,
-      { x: invBox3.x + cx(3), y: invBox3.y + cy(3) },
+      { x: invBox3.x + cx(1), y: invBox3.y + cy(1) },
       { x: canvasBox3.x + cx(5), y: canvasBox3.y + cy(6) }
     );
     canvas = await saveAndFetch(page);
     const finalBp = canvas.bps.find((b: any) => b.id === 'test_empty');
     expect(finalBp).toBeTruthy();
     expect(finalBp.origin).toEqual([6, 5]);
-    expect(canvas.inv.pages[0].bps.some((b: any) => b.id === 'test_empty')).toBe(false);
+    const finalHome = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_empty');
+    expect(finalHome).toBeTruthy();
+    expect(finalHome.origin).toEqual([1, 1]); // still untouched throughout
 
     // No state corruption: the OTHER fixture BP (test_full, never
     // touched) and its PO/SI must be exactly as the fixture left them.
     const untouchedBp = canvas.inv.pages[0].bps.find((b: any) => b.id === 'test_full');
     expect(untouchedBp?.origin).toEqual([1, 4]);
-    expect(canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p100')?.cell).toEqual([1, 4]);
+    expect(canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p100')?.cell).toEqual([1, 5]);
   });
 
   test('4. illegal overlap: BP dropped onto an occupied canvas region is rejected', async ({ page }) => {

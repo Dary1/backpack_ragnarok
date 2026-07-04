@@ -41,9 +41,20 @@ test('free PO drags from inventory grid to a legal canvas BP slot, and back', as
   expect(po).toBeTruthy();
   expect(po.loc).toBe('grid');
   expect(po.cell).toEqual([6, 3]);
-  expect(canvas.inv.pages[0].pos.some((p: any) => p.uid === 'p200')).toBe(false);
+  // REQ-0033 Phase 2: inv -> canvas is now REFERENCE CREATION, not a
+  // physical move -- the home stays in inv.pages[0] untouched, at its
+  // ORIGINAL cell [4,4] (see fixtures/baseline-smoke-fixture.json),
+  // alongside the brand-new canvas reference asserted above.
+  let home = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p200');
+  expect(home).toBeTruthy();
+  expect(home.cell).toEqual([4, 4]);
 
-  // Reverse: drag it back from canvas to a free inventory cell, e.g. (4,4).
+  // Reverse: drag it back from canvas to inventory -- REFERENCE REMOVAL
+  // (drop cell irrelevant); dropping at (4,4) here is deliberately the
+  // SAME cell the home has always occupied, so this assertion reads
+  // identically whether or not the drop cell "did anything" -- the point
+  // is the canvas reference is gone and the home (never touched) is
+  // still exactly where it always was.
   await page.reload();
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
   await page.waitForTimeout(400);

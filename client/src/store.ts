@@ -231,6 +231,29 @@ export async function boot(): Promise<void> {
     engine,
     state,
   });
+
+  // REQ-0033 Phase 2 -- READ-ONLY DEV/E2E DEBUG HOOK, always-on (this
+  // codebase has no existing import.meta.env.DEV-gated convention to
+  // follow -- grepped for one before adding this; there is none -- and
+  // this is a local/mock-backed dev app with no production deployment
+  // concept of its own, so an always-present hook carries no real
+  // exposure risk). Exposes the reference-model queries (tintSets/
+  // usageOf/isUnitIndependent/usedByCurrent) directly off the live
+  // `engine`/`state` closures captured here -- both are stable
+  // references that the engine mutates IN PLACE (see this file's own
+  // module comment), so this hook always reflects the CURRENT state with
+  // zero extra wiring, even across preset switches/board mutations/
+  // reloads-within-this-boot. Exists purely so client/e2e/*.spec.ts can
+  // assert on exact uid sets (`page.evaluate(() => window.__backpackDebug
+  // .tintSets())`) instead of reverse-engineering PixiJS canvas pixel
+  // colors -- never used by any production UI code path in this app.
+  (window as unknown as { __backpackDebug: unknown }).__backpackDebug = {
+    tintSets: () => engine.tintSets(state),
+    usageOf: (uid: string) => engine.usageOf(state, uid),
+    usedByCurrent: (uid: string) => engine.usedByCurrent(state, uid),
+    usedByOthers: (uid: string) => engine.usedByOthers(state, uid),
+    isUnitIndependent: (n: number) => engine.isUnitIndependent(state, n),
+  };
 }
 
 export function setLocale(locale: Locale): void {
