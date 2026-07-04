@@ -66,6 +66,7 @@ import {
 } from './drag';
 import type { BoardOps } from './boardOps';
 import { notifyStateChanged } from '../store';
+import { fitBoxInBounds } from '../render/itemCard';
 
 const SOCK_GLYPH: Record<string, string> = { gem: '◆', edge: '▷', coat: '●', bond: '▬' };
 // Nearest-socket search radius in board-canvas pixels — CELL is 80 in both
@@ -1006,15 +1007,18 @@ export class BoardRenderer {
    * texture aspect already) -- this is a correctness/safety fix, not a
    * visual change, for any icon actually shipped today. */
   private static fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: number, bh: number): void {
-    const texW = sprite.texture.width;
-    const texH = sprite.texture.height;
-    const scale = texW > 0 && texH > 0 ? Math.min(bw / texW, bh / texH) : 1;
-    const w = texW * scale;
-    const h = texH * scale;
-    sprite.width = w;
-    sprite.height = h;
-    sprite.x = bx + (bw - w) / 2;
-    sprite.y = by + (bh - h) / 2;
+    // REQ-0038 R2: delegates to the shared, framework-agnostic box-fit
+    // function (client/src/render/itemCard.ts's fitBoxInBounds) instead of
+    // duplicating the scale/center formula here -- this is now the ONLY
+    // place BoardRenderer computes that math; the Dex (ShapeGrid.tsx)
+    // calls the exact same shared function for its own icon-on-shape
+    // compositing, so both consumers stay byte-for-byte in sync by
+    // construction, not by convention.
+    const box = fitBoxInBounds(sprite.texture.width, sprite.texture.height, bx, by, bw, bh);
+    sprite.width = box.w;
+    sprite.height = box.h;
+    sprite.x = box.x;
+    sprite.y = box.y;
   }
 
   /** pointerdown on a PO group -- REQ-0027 T0.2 double-click vs drag
