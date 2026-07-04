@@ -82,6 +82,7 @@ const DICT = {
 
     // Dex detail (ItemDetailCard.tsx)
     'dex.detail.tags': 'Tags (hierarchy)',
+    'dex.detail.name': 'Name',
     'dex.detail.type': 'type',
     'dex.detail.shape': 'Shape',
     'dex.detail.ports': 'Ports',
@@ -175,6 +176,7 @@ const DICT = {
     'dex.backToList': '← 一覧に戻る',
 
     'dex.detail.tags': 'タグ（階層）',
+    'dex.detail.name': '名前',
     'dex.detail.type': '型',
     'dex.detail.shape': '形状',
     'dex.detail.ports': 'ポート',
