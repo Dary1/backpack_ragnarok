@@ -281,3 +281,46 @@ test.describe('REQ-0038: chrome language toggle', () => {
     await expect(page.locator('.dex-tab-active', { hasText: 'Items' })).toBeVisible();
   });
 });
+
+test.describe('REQ-0038 R2: edit-mode list thumbnails render shape-mounted across the FULL footprint', () => {
+  test('blade (2-cell) and tower_shield (4-cell) admin list thumbnails report the real footprint, not a single squeezed cell', async ({ page }) => {
+    const original = existsSync(DEV_USER_PATH) ? readDevUser() : null;
+    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+
+    try {
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Dex' }).click();
+      await expect(page.locator('.dex-root')).toBeVisible();
+
+      await expect(page.locator('.dex-mode-toggle-row')).toBeVisible();
+      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
+      await expect(page.locator('.dex-admin')).toBeVisible();
+
+      const contentResp = await page.request.get('/api/content');
+      const content = await contentResp.json();
+
+      for (const itemId of ['blade', 'tower_shield']) {
+        const row = page.locator('.dex-admin-list-item', { hasText: `(${itemId})` }).first();
+        await expect(row).toBeVisible();
+
+        const overlay = row.locator('.dex-admin-list-thumb .shape-grid-icon-overlay');
+        await expect(overlay).toHaveCount(1);
+
+        const shape = content.items[itemId].shape as Array<[number, number]>;
+        const expectedW = Math.max(...shape.map((c) => c[1])) + 1;
+        const expectedH = Math.max(...shape.map((c) => c[0])) + 1;
+        // Same shared client/src/render/itemCard.ts footprint math the
+        // catalog card and diagram use (see dex.spec.ts) -- the edit-mode
+        // list thumbnail is a THIRD independent consumer of the same fix,
+        // per the task spec's "reuse in the edit-mode list thumbnails too".
+        await expect(overlay).toHaveAttribute('data-footprint-w', String(expectedW));
+        await expect(overlay).toHaveAttribute('data-footprint-h', String(expectedH));
+        expect(expectedW * expectedH).toBeGreaterThan(1);
+
+        await expect(overlay.locator('.shape-grid-cell-icon')).toHaveCount(1);
+      }
+    } finally {
+      if (original !== null) writeFileSync(DEV_USER_PATH, original);
+    }
+  });
+});
