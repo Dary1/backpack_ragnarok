@@ -54,6 +54,7 @@ import { t } from './i18n';
 import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
+import { SchedulePage } from './schedule/SchedulePage';
 import { PresetTabs } from './PresetTabs';
 import { PresetTrashZone } from './PresetTrashZone';
 import { Settings } from './Settings';
@@ -116,7 +117,7 @@ function App() {
           ) : null}
         </div>
 
-        {route === 'schedule' ? <PlaceholderPage titleKey="nav.schedule" locale={snapshot.locale} /> : null}
+        {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}

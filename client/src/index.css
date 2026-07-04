@@ -1403,3 +1403,434 @@ html, body {
   font-size: 11px;
   align-self: flex-start;
 }
+
+/* ---------------------------------------------------------------------
+   Schedule (REQ-0036 P1-C) -- Rooms/Warehouse tabs, room cards, slots
+   panel, monitor (small + expanded Pixi view). Reuses the same palette
+   vars (--panel/--line/--dim/--cyan/--ok/--bad) and card/tab visual
+   language already established by .dex-mode-toggle / .settings-section
+   above, rather than inventing a new visual system for this feature.
+--------------------------------------------------------------------- */
+.schedule-page {
+  flex: 1;
+  padding: 0 22px 22px;
+  max-width: 900px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.schedule-tab-row {
+  display: flex;
+  gap: 4px;
+  padding: 10px 0 0;
+}
+
+.schedule-tab {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.schedule-tab-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.schedule-loading,
+.schedule-empty {
+  color: var(--dim);
+  font-size: 14px;
+  padding: 12px 0;
+}
+
+.schedule-error {
+  color: var(--bad);
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+.schedule-rooms-view,
+.schedule-rooms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.schedule-room-card {
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.schedule-room-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.schedule-room-card-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.schedule-room-id {
+  color: var(--dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.schedule-status-badge {
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.schedule-status-badge-idle { background: rgba(154, 145, 127, 0.18); color: var(--dim); }
+.schedule-status-badge-cooldown { background: rgba(89, 214, 214, 0.15); color: var(--cyan); }
+.schedule-status-badge-running { background: rgba(92, 181, 115, 0.18); color: var(--ok); }
+.schedule-status-badge-cancelPending { background: rgba(192, 80, 80, 0.15); color: var(--bad); }
+.schedule-status-badge-canceled { background: rgba(192, 80, 80, 0.1); color: var(--bad); }
+
+.schedule-room-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.schedule-expand-btn,
+.schedule-cancel-btn,
+.schedule-monitor-expand-btn,
+.schedule-claim-btn {
+  background: transparent;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.schedule-expand-btn,
+.schedule-monitor-expand-btn {
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+}
+
+.schedule-cancel-btn {
+  color: var(--bad);
+  border: 1px solid var(--bad);
+}
+
+.schedule-claim-btn {
+  color: var(--ok);
+  border: 1px solid var(--ok);
+}
+
+.schedule-room-card-body {
+  display: flex;
+  gap: 14px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.schedule-room-expanded {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Slots panel */
+.schedule-slots-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.schedule-slots-no-presets {
+  color: var(--bad);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.schedule-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.schedule-slot-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-slot-label {
+  font-size: 11px;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.schedule-slot-empty {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.schedule-slot-queued-badge {
+  background: rgba(89, 214, 214, 0.15);
+  color: var(--cyan);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 10px;
+  align-self: flex-start;
+}
+
+.schedule-slot-error {
+  color: var(--bad);
+  font-size: 11px;
+}
+
+/* Create-room form */
+.schedule-create-panel {
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.schedule-create-panel h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.schedule-create-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.schedule-field-label {
+  color: var(--dim);
+}
+
+.schedule-select,
+.schedule-input {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.schedule-visibility-fixed {
+  color: var(--dim);
+  font-style: italic;
+  padding: 6px 0;
+}
+
+.schedule-create-btn {
+  background: transparent;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  padding: 7px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.schedule-create-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Monitor */
+.schedule-monitor {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schedule-monitor-empty {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.schedule-monitor-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.schedule-monitor-progress-label {
+  color: var(--dim);
+  min-width: 60px;
+}
+
+.schedule-monitor-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #0e0d0b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.schedule-monitor-progress-fill {
+  height: 100%;
+  background: var(--cyan);
+  transition: width 0.3s ease;
+}
+
+.schedule-monitor-progress-pct {
+  min-width: 36px;
+  text-align: right;
+  color: var(--text);
+}
+
+.schedule-monitor-encounter,
+.schedule-monitor-telegraph {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.schedule-monitor-expanded {
+  display: block;
+}
+
+.schedule-monitor-hidden {
+  display: none;
+}
+
+.schedule-monitor-canvas {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0e0d0b;
+}
+
+.schedule-monitor-summary {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-monitor-result {
+  font-weight: 700;
+}
+
+.schedule-monitor-rewards-none,
+.schedule-monitor-level-dropped {
+  color: var(--bad);
+  font-size: 12px;
+}
+
+.schedule-monitor-rewards-title {
+  color: var(--ok);
+  font-size: 12px;
+}
+
+.schedule-monitor-settled-badge {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.schedule-monitor-cooldown {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+/* Warehouse tab */
+.schedule-warehouse-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.schedule-warehouse-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-warehouse-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.schedule-warehouse-cap {
+  color: var(--dim);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.schedule-warehouse-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.schedule-warehouse-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.schedule-warehouse-item-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.schedule-warehouse-item-harvested,
+.schedule-warehouse-item-expiry {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.schedule-toast {
+  background: rgba(92, 181, 115, 0.15);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+}

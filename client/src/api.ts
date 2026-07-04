@@ -437,3 +437,242 @@ export async function putAdminItem(
   }
   return parsed as AdminPutResult;
 }
+
+// ---- REQ-0036 P1-C: Dungeon Schedule + Warehouse client API ----
+// Talks to server/api.cjs's /api/schedule/* and /api/warehouse* routes
+// (server/schedule.cjs is the business logic; see server/README.md's
+// "Dungeon Schedule API" section for the full endpoint table). Same
+// conventions as every function above: ApiError on non-2xx, authHeaders()
+// spread into every request's headers, a JSDoc citing the exact server
+// route each function hits.
+
+/** One room's cancel policy (golden g). `immediate:false` means "cancel
+ * after the current run finishes" rather than right away. */
+export interface ApiCancelPolicy {
+  immediate: boolean;
+}
+
+/** One unit slot (golden b) -- `presetIndex` is one of the OWNER's own
+ * preset indices (0-based), or null if unfilled. */
+export interface ApiRoomSlot {
+  presetIndex: number | null;
+}
+
+/** A queued swap (golden j) -- present once `PUT .../swap` is queued
+ * (`applied:false`) while a run is active; cleared once the queued swap
+ * is applied at the next run settle. */
+export interface ApiPendingSwap {
+  slot: number;
+  presetIndex: number;
+  notify: boolean;
+  queuedAt: string;
+}
+
+/** Room document shape -- mirrors server/schedule.cjs's room document
+ * field-for-field (see that file's own header comment / server/README.md). */
+export interface ApiRoom {
+  id: string;
+  ownerId: string;
+  dungeonId: string;
+  level: number;
+  visibility: 'self';
+  formationId: string;
+  cancelPolicy: ApiCancelPolicy;
+  slots: ApiRoomSlot[];
+  status: 'open' | 'active' | 'canceled';
+  cancelRequested: boolean;
+  pendingSwap: ApiPendingSwap | null;
+  cooldownUntil: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastRunId: string | null;
+}
+
+/** POST /api/schedule/rooms body. */
+export interface ApiCreateRoomBody {
+  dungeonId: string;
+  level?: number;
+  formationId?: string;
+  cancelPolicy?: ApiCancelPolicy;
+}
+
+/** GET .../run's run-clock event -- opaque to the client's type system
+ * beyond {t,seq,ev} (every event's own extra fields vary by `ev`, see
+ * sim/README.md's event schema table / docs/combat_spec_draft.md
+ * S1.5/S3.6) -- the monitor reads fields off this dynamically (dst/src/
+ * path/cell ids etc.) rather than a fully-typed union, matching how
+ * api.ts already treats EffectAst as opaque (server-rendered, client
+ * never interprets the AST itself). */
+export interface ApiRunEvent {
+  t: number;
+  seq: number;
+  ev: string;
+  [key: string]: unknown;
+}
+
+/** GET /api/schedule/rooms/:id/run response shape (server/api.cjs's
+ * SCHEDULE_ROOM_RUN_RE handler). `result`/`rewards`-adjacent summary
+ * fields are always the EVENTUAL final outcome, even before
+ * `settled`/`clock.isSettled` is true -- see server/README.md's
+ * "Run-clock design" section. */
+export interface ApiRunView {
+  ok: true;
+  runId: string;
+  roomId: string;
+  startedAt: string;
+  durationSecs: number;
+  clock: { elapsedSecs: number; isSettled: boolean; pct: number };
+  events: ApiRunEvent[];
+  result: 'victory' | 'wipe' | 'incomplete';
+  finalProgressPct: number;
+  cooldownSecs: number;
+  levelAfter: number;
+  H: number;
+  settled: boolean;
+}
+
+/** GET /api/schedule/dungeons's per-dungeon/-formation entries. */
+export interface ApiDungeonEntry {
+  id: string;
+  name: string;
+  i18n?: ApiI18nMap;
+}
+export interface ApiFormationEntry {
+  id: string;
+  name: string;
+  i18n?: ApiI18nMap;
+  canvases: Record<string, string>;
+}
+export interface ApiDungeonsPayload {
+  ok: true;
+  dungeons: ApiDungeonEntry[];
+  formations: ApiFormationEntry[];
+}
+
+/** One warehouse row (golden e/f). `itemId` resolves against
+ * fetchContent()'s items map for name/icon (see WarehouseTab.tsx --
+ * reuses the SAME item lookup every other content-aware view already
+ * uses, no second item-lookup path). */
+export interface ApiWarehouseItem {
+  itemUid: string;
+  playerId: string;
+  itemId: string;
+  harvestedAt: string;
+  expiresAt: string;
+  sourceRoomId: string;
+  sourceRunId: string;
+}
+
+async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(init?.headers ?? {}) },
+  });
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch (e) {
+    parsed = null;
+  }
+  if (!res.ok) {
+    const message =
+      parsed && typeof parsed === 'object' && parsed !== null && 'error' in parsed && typeof (parsed as { error: unknown }).error === 'string'
+        ? (parsed as { error: string }).error
+        : `HTTP ${res.status} for ${path}`;
+    throw new ApiError(message, res.status);
+  }
+  return parsed as T;
+}
+
+/** GET /api/schedule/dungeons -- no auth required (public read data,
+ * matches /api/content's own no-auth convention). Used by the
+ * create-room form's dungeon/formation selects. */
+export function fetchDungeons(): Promise<ApiDungeonsPayload> {
+  return scheduleJSON<ApiDungeonsPayload>('/api/schedule/dungeons');
+}
+
+/** POST /api/schedule/rooms -- creates a room owned by the caller. */
+export function createRoom(body: ApiCreateRoomBody): Promise<{ ok: true; room: ApiRoom }> {
+  return scheduleJSON('/api/schedule/rooms', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** GET /api/schedule/rooms -- lists the CALLER's own rooms only. */
+export function fetchRooms(): Promise<{ ok: true; rooms: ApiRoom[] }> {
+  return scheduleJSON('/api/schedule/rooms');
+}
+
+/** GET /api/schedule/rooms/:id -- settles a due run first (server-side
+ * lazy settlement), then returns the room. */
+export function fetchRoom(roomId: string): Promise<{ ok: true; room: ApiRoom }> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}`);
+}
+
+/** DELETE /api/schedule/rooms/:id -- cancel (golden g). Immediate or
+ * queued (`cancelRequested`) depending on the room's own cancelPolicy +
+ * whether a run is currently active. */
+export function cancelRoom(roomId: string): Promise<{ ok: true; room: ApiRoom }> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE' });
+}
+
+/** PUT /api/schedule/rooms/:id/slots/:slotIndex {presetIndex} -- assigns
+ * one of the caller's OWN presets to a unit slot (golden b). Throws
+ * ApiError(409) on a deploy-gate violation (see errorMessageFor() in
+ * schedule/errors.ts for the human-readable mapping of the 409 message). */
+export function assignSlot(roomId: string, slotIndex: number, presetIndex: number): Promise<{ ok: true; room: ApiRoom }> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/slots/${slotIndex}`, {
+    method: 'PUT',
+    body: JSON.stringify({ presetIndex }),
+  });
+}
+
+/** PUT /api/schedule/rooms/:id/swap {slot, presetIndex} -- golden j. */
+export function swapUnit(
+  roomId: string,
+  slot: number,
+  presetIndex: number
+): Promise<{ ok: true; room: ApiRoom; applied: boolean }> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/swap`, {
+    method: 'PUT',
+    body: JSON.stringify({ slot, presetIndex }),
+  });
+}
+
+/** GET /api/schedule/rooms/:id/run -- run-clock-paced replay view (see
+ * server/README.md's "Run-clock design"). Poll roughly every ~2s while a
+ * room is active/has a recent run; each poll returns the FULL events
+ * array up to the current elapsedSecs (not just new deltas) -- see
+ * Monitor.tsx's own poll-and-diff loop for how the client tracks "last
+ * rendered event index" across polls. */
+export function fetchRun(roomId: string): Promise<ApiRunView> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/run`);
+}
+
+/** POST /api/schedule/rooms/:id/dev/backdate -- REQ-0036 P1-C dev-only
+ * E2E time-control seam (see server/README.md's "P1-C addendum" /
+ * schedule.cjs's devBackdateActiveRun() doc comment). ONLY succeeds
+ * (200) when the caller resolved via the dev_mode no-token fallback;
+ * any real guest token gets 403. Not called by any production UI path --
+ * exported here solely so client/e2e/schedule.spec.ts can drive it over
+ * the same typed client every other test helper uses, rather than a raw
+ * fetch call in the spec file. */
+export function devBackdateRun(roomId: string, extraSecsIntoPast?: number): Promise<{ ok: true; runId: string; startedAt: string; durationSecs: number }> {
+  return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/dev/backdate`, {
+    method: 'POST',
+    body: JSON.stringify(extraSecsIntoPast != null ? { extraSecsIntoPast } : {}),
+  });
+}
+
+/** GET /api/warehouse -- lists the caller's own warehouse items (server
+ * purges expired rows first). */
+export function fetchWarehouse(): Promise<{ ok: true; items: ApiWarehouseItem[] }> {
+  return scheduleJSON('/api/warehouse');
+}
+
+/** POST /api/warehouse/claim {itemUid} -- moves one warehouse item into
+ * the caller's own inventory via first-fit placement (golden f). Throws
+ * ApiError(409) when no inventory page has space (item stays in the
+ * warehouse, untouched server-side). */
+export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; placed: { page: number; cell: [number, number] }; uid: string }> {
+  return scheduleJSON('/api/warehouse/claim', { method: 'POST', body: JSON.stringify({ itemUid }) });
+}
