@@ -42,7 +42,12 @@ test('clicking through all 5 nav routes updates hash + active highlight + conten
       label: 'Schedule',
       hash: '#/schedule',
       contentCheck: async () => {
-        await expect(page.locator('.placeholder-page h2')).toHaveText('Schedule');
+        // REQ-0036 P1-C: #/schedule now renders the real SchedulePage
+        // (Rooms/Warehouse tabs) instead of the generic PlaceholderPage --
+        // assert on its own root class + the Rooms tab, which is always
+        // present regardless of whether any room has been created yet.
+        await expect(page.locator('.schedule-page')).toBeVisible();
+        await expect(page.locator('.schedule-tab', { hasText: 'Rooms' })).toBeVisible();
       },
     },
     {

@@ -424,36 +424,59 @@ a 400 on a room with no run yet.
 
 Measured empirically (`sim/combat.cjs`'s `runDungeon` invoked directly
 against the real `content/batches/batch-002-dungeon-pilot/dungeon.json`
-+ `formation1`, three different seeds) before choosing an approach:
-- A unit whose POs default to `modes:['battle']` (the common case --
-  most content has no reason to fight during `detection`/`unlock` mode
-  encounters) hits the `enc_trap_1` detection encounter's timeout at
-  `t=999` (that encounter's only skill has an `every_secs:[999,999]`
-  cadence that never fires without a discovering hit) -- `durationSecs`
-  for the WHOLE run is `max(event.t)` across every encounter, so this one
-  stalled encounter alone makes the run's replay window 999 real
-  seconds, regardless of how fast every other encounter cleared.
-- A unit whose PO effects explicitly opt into
++ `formation1`, multiple seeds) before choosing an approach -- two
+different unit configurations were probed, and they behave very
+differently, which is the whole reason this needed measuring instead of
+assuming:
+- The actual `client/e2e/fixtures/schedule-fixture.json` used by
+  `schedule.spec.ts` (plain `dagger` POs, no explicit `modes` field, so
+  they default to `modes:['battle']` only -- the common case, since most
+  content has no reason to act during `detection`/`unlock` mode
+  encounters) hits `enc_trap_1`'s detection-mode timeout at `t=999`
+  (that encounter's only skill has an `every_secs:[999,999]` cadence
+  that never fires without a discovering hit). `durationSecs` for the
+  WHOLE run is `max(event.t)` across every encounter, so this one
+  stalled encounter alone makes the run's full-settlement replay window
+  **999 real seconds**, regardless of how fast every other encounter
+  cleared or whether the run result is victory or wipe. This was
+  confirmed by direct re-measurement against the real fixture, not
+  assumed.
+- A separate, hand-built unit whose PO effects explicitly opt into
   `modes:['battle','detection','unlock']` (with a nonzero
-  `bounce_budget`) clears every encounter for real: measured
-  `durationSecs` was **21s** across 3 different seeds (`node -e` probe
-  script, not committed -- ad hoc measurement only).
-- **Decision**: use BOTH. The "monitor shows events & progress" E2E
-  coverage uses a REAL run against `niflheim_depths` with a
-  detection/unlock-capable fixture preset and polls for real (bounded by
-  a generous-but-finite Playwright timeout) -- this is cheap enough (21s)
-  to be worth covering the real poll-and-diff client behavior end to end
-  at least once. Every OTHER schedule E2E test (run settles / rewards /
-  claim / cancel-after-active-run) uses the `POST .../dev/backdate` hook
-  instead, to avoid burning 21+ real seconds per test across a whole
-  spec file. This matches the task brief's own steer ("make the
-  empirically-informed choice, not a default assumption") -- a pure
-  content-only fix (author a deliberately-short test dungeon) was
-  rejected as more invasive than a single dev-gated timestamp-rewrite
-  route, and pure real-time polling everywhere was rejected as an
-  unnecessarily slow full E2E suite for no additional coverage value
-  (the backdate hook exercises the identical `settleRoomIfDue()` /
-  `runClock()` code path real elapsed time would).
+  `bounce_budget`) clears every encounter for real and was measured at
+  `durationSecs` of **21s** across 3 seeds (`node -e` probe script, not
+  committed -- ad hoc measurement only, and NOT the configuration the
+  E2E fixture actually uses).
+- **Decision**: given the real fixture's 999s figure, waiting for real
+  settlement anywhere in the suite is a non-starter. The implementation
+  uses BOTH time-control strategies, split by what each test actually
+  needs to observe:
+  - The **"monitor: events & progress"** test never waits for
+    settlement at all -- it only asserts that the event count and
+    progress % *increase* within the first few real seconds of a
+    freshly-started run (`enc_pack_1`, the first encounter, clears in
+    ~1s of sim-time), which is fast regardless of the 999s figure since
+    that stall only affects the LATER `enc_trap_1` encounter. This
+    covers the real poll-and-diff client behavior (the actual ~2s
+    polling cadence against `GET .../run`) end to end without needing
+    the run to ever finish.
+  - Every OTHER schedule E2E test that needs a *settled* room (run
+    completes / rewards land in the warehouse / claim moves an item to
+    inventory / cancel-after-active-run) uses the dev-only
+    `POST .../dev/backdate` hook instead, running as the dev-mode
+    fallback caller (empty-string token), to avoid ever waiting the full
+    999s per test across the spec file. This hook rewrites the run's
+    `startedAt` into the past by `durationSecs + extraSecsIntoPast`, so
+    the very next `settleRoomIfDue()` call (triggered by any GET/DELETE
+    on the room) settles it immediately -- exercising the identical
+    `settleRoomIfDue()` / run-clock code path real elapsed time would,
+    just without the wait.
+  This matches the task brief's own steer ("make the empirically-informed
+  choice, not a default assumption"): a pure content-only fix (author a
+  deliberately-short test dungeon) was rejected as more invasive than a
+  single dev-gated timestamp-rewrite route, and pure real-time polling
+  everywhere was rejected outright once the actual fixture measured at
+  999s, not the 21s figure from the unrelated hand-built probe unit.
 
 ## Content i18n (REQ-0038)
 

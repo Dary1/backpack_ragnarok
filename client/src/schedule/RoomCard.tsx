@@ -29,8 +29,13 @@ type RoomUiStatus = 'idle' | 'cooldown' | 'running' | 'cancelPending' | 'cancele
  * 'canceled' = status:'canceled'. */
 function deriveStatus(room: ApiRoom): RoomUiStatus {
   if (room.status === 'canceled') return 'canceled';
-  if (room.status === 'active') return 'running';
+  // Checked BEFORE the plain 'active' -> 'running' mapping: a room that
+  // is currently running but flagged cancelRequested (golden g,
+  // cancelPolicy.immediate:false) should read as "cancel pending" to the
+  // player, not plainly "running" -- the cancellation is already
+  // committed, only deferred until the in-flight run settles.
   if (room.cancelRequested) return 'cancelPending';
+  if (room.status === 'active') return 'running';
   if (room.cooldownUntil && Date.parse(room.cooldownUntil) > Date.now()) return 'cooldown';
   return 'idle';
 }
