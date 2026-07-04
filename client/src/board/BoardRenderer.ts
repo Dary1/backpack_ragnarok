@@ -1070,10 +1070,58 @@ export class BoardRenderer {
   private commitPODrop(uid: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void {
     const state = this.lastState;
     if (!state) return;
-    const { ops } = this.deps;
+    const { engine, ops } = this.deps;
     const sameBoard = boardIdEquals(originBoard, this.boardId);
+    // REQ-0033 Phase 2: cross-board PO drops are no longer a universal
+    // splice-then-movePO -- the reference model gives each of the three
+    // possible crossings its OWN distinct meaning (see engine.js's
+    // reference-model module comment / engine.d.ts's createRef/removeRef
+    // doc comments for the authoritative rules this mirrors):
+    //   inv -> canvas: REFERENCE CREATION. The PO's home (living in
+    //     state.inv.pages[originBoard.page].pos) is left completely
+    //     untouched; engine.createRef makes a NEW canvas reference at
+    //     drop.anchor, rot omitted so createRef defaults it to the home
+    //     record's own rot (matches whatever the ghost preview showed,
+    //     since the ghost read `p.rot` from the SAME origin container --
+    //     see onGlobalPointerMove's 'po' branch). createRef internally
+    //     refuses (red rule) if usedByCurrent is already true for this
+    //     uid -- deliberately NOT re-checked here client-side (the ghost
+    //     preview already gated this during the drag via
+    //     previewCrossBoardPO's own usedByCurrent guard; a stale/illegal
+    //     attempt still fails safely here, just via createRef's own
+    //     {ok:false} rather than a duplicated client-side check).
+    //   canvas -> inv: REFERENCE REMOVAL. Per spec ("drop cell
+    //     irrelevant; no placement occurs"): engine.removeRef deletes
+    //     ONLY the current preset's canvas reference; the home in
+    //     state.inv.pages is never touched, and drop.anchor/drop.type are
+    //     deliberately ignored -- no ops.movePO call follows for this
+    //     direction. removeRef always succeeds (a harmless
+    //     {ok:true,removed:false} no-op if, somehow, nothing was there to
+    //     remove), so there is no rejection path to handle here.
+    //   inv <-> inv (both boards are inventory pages, different page
+    //     indices): UNCHANGED physical home relocation -- inventory pages
+    //     hold homes, not references, so this is still a real splice
+    //     (splicePOAcrossBoardsPhysical, renamed from the old universal
+    //     splicePOAcrossBoards to make this scoping explicit) followed by
+    //     the destination page's own movePO-equivalent, exactly as
+    //     pre-REQ-0033.
+    // Same-board (sameBoard===true, including a same-page inventory drag)
+    // is completely unaffected: falls straight through to ops.movePO
+    // below, same as always.
     if (!sameBoard) {
-      this.splicePOAcrossBoards(state, uid, originBoard, this.boardId);
+      if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas') {
+        if (drop.type === 'grid') engine.createRef(state, 'po', uid, { cell: drop.anchor });
+      } else if (originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
+        engine.removeRef(state, 'po', uid);
+      } else {
+        // inv -> inv: still a physical home move.
+        this.splicePOAcrossBoardsPhysical(state, uid, originBoard, this.boardId);
+        if (drop.type === 'grid') ops.movePO(state, uid, drop.anchor);
+      }
+      this.gCarry.removeChildren();
+      this.gTarget.removeChildren();
+      notifyStateChanged();
+      return;
     }
     if (drop.type === 'grid') {
       ops.movePO(state, uid, drop.anchor);
@@ -1139,10 +1187,47 @@ export class BoardRenderer {
   private commitSIDrop(uid: string, originBoard: BoardId, drop: DropTarget): void {
     const state = this.lastState;
     if (!state) return;
-    const { ops } = this.deps;
+    const { engine, ops } = this.deps;
     const sameBoard = boardIdEquals(originBoard, this.boardId);
+    // REQ-0033 Phase 2: same three-way split as commitPODrop above (see
+    // its comment for the full rationale) -- inv->canvas creates a
+    // reference, canvas->inv removes one, inv<->inv stays a physical
+    // splice. An SI's `host` placement shape for createRef is either
+    // 'bond' / {po,si} (immediately seat the new reference onto that
+    // socket -- derived from drop.skey, which the engine's own seatSI
+    // uses in the identical '<poUid>:<siIndex>' or 'bond' string form,
+    // see mock-src/engine.js's seatSI) or the 'inv' sentinel (a bare
+    // stowed reference, not seated onto anything -- used for a 'grid' or
+    // 'inv'-type drop landing on canvas; canvas has no free-placed-SI
+    // concept of its own -- boardOps.ts's makeCanvasOps.canPlaceSI always
+    // reports NOT_SUPPORTED -- so a bare SI reference with host:'inv' is
+    // the only sensible canvas-side outcome for those drop types, and in
+    // practice 'grid'/'inv'-type SI drops targeting the canvas board are
+    // not reachable via the current drag UX, which always resolves a
+    // canvas SI drop to either a 'sock' hit or an outright illegal/no-op
+    // drop -- this branch exists for completeness/robustness, not because
+    // it is exercised today).
     if (!sameBoard) {
-      this.spliceSIAcrossBoards(state, uid, originBoard, this.boardId);
+      if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas') {
+        if (drop.type === 'sock') {
+          const host = drop.skey === 'bond' ? ('bond' as const) : { po: drop.skey.slice(0, drop.skey.lastIndexOf(':')), si: Number(drop.skey.slice(drop.skey.lastIndexOf(':') + 1)) };
+          engine.createRef(state, 'si', uid, { host });
+        } else {
+          engine.createRef(state, 'si', uid, { host: 'inv' });
+        }
+      } else if (originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
+        engine.removeRef(state, 'si', uid);
+      } else {
+        // inv -> inv: still a physical home move.
+        this.spliceSIAcrossBoardsPhysical(state, uid, originBoard, this.boardId);
+        if (drop.type === 'sock') ops.seatSI(state, uid, drop.skey);
+        else if (drop.type === 'grid') ops.moveSI(state, uid, drop.anchor);
+        else if (drop.type === 'inv') ops.stowSI(state, uid);
+      }
+      this.gCarry.removeChildren();
+      this.gTarget.removeChildren();
+      notifyStateChanged();
+      return;
     }
     if (drop.type === 'sock') {
       ops.seatSI(state, uid, drop.skey);
@@ -1156,17 +1241,23 @@ export class BoardRenderer {
     notifyStateChanged();
   }
 
-  /** Splices a PO record (and any SI seated on it) out of `from`'s
-   * container arrays and into `to`'s, WITHOUT yet validating/placing it --
-   * the caller must immediately follow up with `to`'s own movePO-
-   * equivalent (which both validates AND sets p.loc/p.cell). This is the
-   * PO/SI-level analogue of engine.js's transferBP splice step (see
-   * BoardCommitApi's commitPO doc) -- kept here (not in engine.js) because,
-   * unlike a BP transfer, a lone PO/SI crossing containers has no BP-
-   * shaped "contents" to carry and no shared bounds/overlap precheck to
-   * reuse; it is a pure array-membership move, then a normal placement
-   * call owns legality exactly as it already does for a same-board move. */
-  private splicePOAcrossBoards(state: GameState, uid: string, from: BoardId, to: BoardId): void {
+  /** REQ-0033 Phase 2 note: this is now ONLY the inv<->inv (page-to-page)
+   * physical home relocation path -- renamed from the pre-REQ-0033
+   * `splicePOAcrossBoards` (which used to handle EVERY cross-board
+   * crossing, including inv<->canvas) to make that scoping explicit now
+   * that inv<->canvas crossings are reference create/remove operations
+   * handled directly in commitPODrop via engine.createRef/removeRef, not
+   * this splice mechanic at all. Splices a PO record (and any SI seated
+   * on it) out of `from`'s container arrays and into `to`'s, WITHOUT yet
+   * validating/placing it -- the caller must immediately follow up with
+   * `to`'s own movePO-equivalent (which both validates AND sets
+   * p.loc/p.cell). This is the PO/SI-level analogue of engine.js's
+   * transferBP splice step, applied to inventory-page-to-page moves only
+   * (a lone PO/SI crossing PAGES has no BP-shaped "contents" to carry and
+   * no shared bounds/overlap precheck to reuse; it is a pure
+   * array-membership move, then a normal placement call owns legality
+   * exactly as it already does for a same-board move). */
+  private splicePOAcrossBoardsPhysical(state: GameState, uid: string, from: BoardId, to: BoardId): void {
     const { engine } = this.deps;
     const fromContainer = from.loc === 'canvas' ? state : state.inv!.pages[from.page];
     const toContainer = to.loc === 'canvas' ? state : state.inv!.pages[to.page];
@@ -1186,10 +1277,14 @@ export class BoardRenderer {
     if (to.loc === 'canvas') engine.unseatOrphans(state);
   }
 
-  /** Splices a lone (not-seated-on-a-PO) SI record across containers --
-   * same rationale as splicePOAcrossBoards, simpler (no dependent SI
+  /** REQ-0033 Phase 2 note: same inv<->inv-only scoping as
+   * splicePOAcrossBoardsPhysical above (renamed from the pre-REQ-0033
+   * `spliceSIAcrossBoards`) -- inv<->canvas SI crossings are now reference
+   * create/remove operations handled directly in commitSIDrop. Splices a
+   * lone (not-seated-on-a-PO) SI record across PAGE containers -- same
+   * rationale as splicePOAcrossBoardsPhysical, simpler (no dependent SI
    * records of its own to carry). */
-  private spliceSIAcrossBoards(state: GameState, uid: string, from: BoardId, to: BoardId): void {
+  private spliceSIAcrossBoardsPhysical(state: GameState, uid: string, from: BoardId, to: BoardId): void {
     const fromContainer = from.loc === 'canvas' ? state : state.inv!.pages[from.page];
     const toContainer = to.loc === 'canvas' ? state : state.inv!.pages[to.page];
     if (fromContainer === toContainer) return;
@@ -1214,6 +1309,23 @@ export class BoardRenderer {
    * rule to the engine.
    */
   private previewCrossBoardPO(state: GameState, uid: string, originBoard: BoardId, rot: number, anchor: Cell): { ok: boolean; cells: Cell[] } {
+    // REQ-0033 Phase 2 red-rule guard: an inv -> canvas hover must show
+    // illegal/red the instant `uid` is already referenced by the CURRENT
+    // preset, REGARDLESS of geometric fit (spec item 2: "CANNOT be placed
+    // again into that same preset") -- even an empty cell must read as
+    // illegal here, since createRef itself would refuse the reference
+    // creation outright on commit. This check is cheap and read-only
+    // (engine.usedByCurrent never mutates state), so it is always safe to
+    // run first, before falling through to the existing splice/
+    // canPlacePO/unsplice geometric preview below -- that geometric path
+    // is 100% unchanged and still owns every other legality concern (an
+    // inv<->inv preview, i.e. originBoard.loc==='inv' && this.boardId is
+    // ALSO 'inv', has no red-rule concept -- that crossing stays a
+    // physical move, never a reference -- so the guard is scoped strictly
+    // to the inv->canvas direction).
+    if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas' && this.deps.engine.usedByCurrent(state, uid)) {
+      return { ok: false, cells: [] };
+    }
     const originContainer = originBoard.loc === 'canvas' ? state : state.inv!.pages[originBoard.page];
     const idx = originContainer.pos.findIndex((p) => p.uid === uid);
     if (idx === -1) return { ok: false, cells: [] };
@@ -1241,6 +1353,14 @@ export class BoardRenderer {
    * board) or a free cell (invCanPlaceSI). SI records carry no dependents
    * of their own, so the splice is a single-array move. */
   private previewCrossBoardSIFreeCell(state: GameState, uid: string, originBoard: BoardId, anchor: Cell): { ok: boolean; cells: Cell[] } {
+    // REQ-0033 Phase 2 red-rule guard -- identical rationale to
+    // previewCrossBoardPO's guard above: createRef's red-rule check
+    // (usedByCurrent) is kind-agnostic, so an SI already referenced by
+    // the current preset must show illegal here too, before any
+    // geometric free-cell check runs.
+    if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas' && this.deps.engine.usedByCurrent(state, uid)) {
+      return { ok: false, cells: [] };
+    }
     const originContainer = originBoard.loc === 'canvas' ? state : state.inv!.pages[originBoard.page];
     const idx = originContainer.sis.findIndex((a) => a.uid === uid);
     if (idx === -1) return { ok: false, cells: [] };
@@ -1338,11 +1458,30 @@ export class BoardRenderer {
       const originContainer = carry.originBoard.loc === 'canvas' ? state : state.inv!.pages[carry.originBoard.page];
       const p = originContainer.pos.find((z) => z.uid === carry.uid);
       if (p) {
-        const chk = sameBoard
-          ? ops.canPlacePO(state, p.uid, p.rot, anchor)
-          : this.previewCrossBoardPO(state, p.uid, carry.originBoard, p.rot, anchor);
-        drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
-        paint(chk.cells, chk.ok);
+        // REQ-0033 Phase 2: a canvas-originated PO hovering an INVENTORY
+        // board is always a reference REMOVAL on commit (removeRef),
+        // which per spec always succeeds and ignores the drop cell
+        // entirely ("ghost should communicate 'return' e.g. neutral
+        // tint, never red for legality since removal always succeeds").
+        // Skip canPlacePO/previewCrossBoardPO's geometric check
+        // completely for this direction -- there is no geometric
+        // legality question to ask, since the home position is untouched
+        // regardless of where the pointer happens to be -- and paint a
+        // neutral (not green, not red) "will return to inventory"
+        // indicator at the hovered cell instead. `drop` still needs a
+        // concrete DropTarget so the centralized pointerup commit has
+        // somewhere to route to (commitPODrop for this direction ignores
+        // drop.anchor entirely, so the exact cell recorded here is moot).
+        if (carry.originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
+          drop = { type: 'grid', anchor, board: this.boardId };
+          this.paintNeutralReturn(anchor);
+        } else {
+          const chk = sameBoard
+            ? ops.canPlacePO(state, p.uid, p.rot, anchor)
+            : this.previewCrossBoardPO(state, p.uid, carry.originBoard, p.rot, anchor);
+          drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
+          paint(chk.cells, chk.ok);
+        }
         const def = this.deps.items[p.id];
         const { w, h } = engine.shapeInfo(p.id, p.rot);
         this.renderGhostPO(p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
@@ -1378,39 +1517,53 @@ export class BoardRenderer {
       const originContainer = carry.originBoard.loc === 'canvas' ? state : state.inv!.pages[carry.originBoard.page];
       const a = originContainer.sis.find((z) => z.uid === carry.uid);
       if (a) {
-        const asm = ops.isCanvas ? engine.assembly(state) : null;
-        let best: { s: Socket; v: { ok: boolean; why?: string } } | null = null;
-        let bd = SOCKET_SEARCH_RADIUS;
-        for (const s of ops.sockets(state)) {
-          const pos = this.socketScreenPos(state, s, asm);
-          if (!pos) continue;
-          const v = sameBoard ? ops.hostOk(state, carry.uid, s) : this.previewCrossBoardSocket(state, carry.uid, carry.originBoard, s);
-          const dist = Math.hypot(pos.x - local.x, pos.y - local.y);
-          const ring = new Graphics();
-          ring.circle(pos.x, pos.y, 12);
-          ring.stroke({ color: v.ok ? '#5cb573' : '#c05050', width: 2, alpha: dist < bd ? 1 : 0.55 });
-          this.gTarget.addChild(ring);
-          if (dist < bd) {
-            bd = dist;
-            best = { s, v };
-          }
-        }
-        if (best && best.v.ok) {
-          drop = { type: 'sock', skey: best.s.skey, board: this.boardId };
+        // REQ-0033 Phase 2: same neutral-return special-case as the 'po'
+        // branch above -- a canvas-originated SI hovering an INVENTORY
+        // board is always a reference REMOVAL on commit (removeRef),
+        // which always succeeds and ignores the drop cell entirely. Skip
+        // the socket search AND the free-cell geometric check completely
+        // for this direction (neither hostOk/previewCrossBoardSocket nor
+        // canPlaceSI/previewCrossBoardSIFreeCell have any bearing on
+        // whether the removal will succeed -- it always will), and paint
+        // a neutral "will return to inventory" indicator instead.
+        if (carry.originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
+          drop = { type: 'grid', anchor: cell, board: this.boardId };
+          this.paintNeutralReturn(cell);
         } else {
-          // No socket hit -- a free inventory cell is a valid drop target
-          // (REQ-0030: free-placed SIs); canvas has no free-cell concept
-          // for SIs, so ops.canPlaceSI there always reports failure and
-          // this simply paints red/no-drop, matching pre-Phase-2 behavior
-          // for "dropped on empty canvas space".
-          const freeChk = sameBoard
-            ? ops.canPlaceSI(state, carry.uid, cell)
-            : this.previewCrossBoardSIFreeCell(state, carry.uid, carry.originBoard, cell);
-          if (freeChk.ok) {
-            drop = { type: 'grid', anchor: cell, board: this.boardId };
-            paint(freeChk.cells, true);
-          } else if (!ops.isCanvas) {
-            paint(freeChk.cells.length ? freeChk.cells : [cell], false);
+          const asm = ops.isCanvas ? engine.assembly(state) : null;
+          let best: { s: Socket; v: { ok: boolean; why?: string } } | null = null;
+          let bd = SOCKET_SEARCH_RADIUS;
+          for (const s of ops.sockets(state)) {
+            const pos = this.socketScreenPos(state, s, asm);
+            if (!pos) continue;
+            const v = sameBoard ? ops.hostOk(state, carry.uid, s) : this.previewCrossBoardSocket(state, carry.uid, carry.originBoard, s);
+            const dist = Math.hypot(pos.x - local.x, pos.y - local.y);
+            const ring = new Graphics();
+            ring.circle(pos.x, pos.y, 12);
+            ring.stroke({ color: v.ok ? '#5cb573' : '#c05050', width: 2, alpha: dist < bd ? 1 : 0.55 });
+            this.gTarget.addChild(ring);
+            if (dist < bd) {
+              bd = dist;
+              best = { s, v };
+            }
+          }
+          if (best && best.v.ok) {
+            drop = { type: 'sock', skey: best.s.skey, board: this.boardId };
+          } else {
+            // No socket hit -- a free inventory cell is a valid drop target
+            // (REQ-0030: free-placed SIs); canvas has no free-cell concept
+            // for SIs, so ops.canPlaceSI there always reports failure and
+            // this simply paints red/no-drop, matching pre-Phase-2 behavior
+            // for "dropped on empty canvas space".
+            const freeChk = sameBoard
+              ? ops.canPlaceSI(state, carry.uid, cell)
+              : this.previewCrossBoardSIFreeCell(state, carry.uid, carry.originBoard, cell);
+            if (freeChk.ok) {
+              drop = { type: 'grid', anchor: cell, board: this.boardId };
+              paint(freeChk.cells, true);
+            } else if (!ops.isCanvas) {
+              paint(freeChk.cells.length ? freeChk.cells : [cell], false);
+            }
           }
         }
         const siDef = this.deps.siDefs[a.id];
@@ -1546,6 +1699,25 @@ export class BoardRenderer {
       rect.fill({ color, alpha: 0.4 });
       this.gCarry.addChild(rect);
     }
+  }
+
+  /** REQ-0033 Phase 2: neutral "will return to inventory" hover
+   * indicator for a canvas-originated PO/SI carry hovering an inventory
+   * board -- a dim/neutral-gray tint (NOT green, NOT red) at the hovered
+   * cell, communicating "dropping anywhere here removes the canvas
+   * reference and the item stays exactly where its home already is" --
+   * there is no legality question to visualize for this direction
+   * (removeRef always succeeds, drop cell is irrelevant), so this is
+   * deliberately never colored as a pass/fail judgment the way `paint`
+   * above is for every OTHER drag direction. */
+  private paintNeutralReturn(cell: Cell): void {
+    const [r, c] = cell;
+    if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) return;
+    const rect = new Graphics();
+    rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
+    rect.fill({ color: '#8a8a8a', alpha: 0.18 });
+    rect.stroke({ color: '#8a8a8a', width: 2, alpha: 0.5 });
+    this.gTarget.addChild(rect);
   }
 
   /** Brief red-outline reject feedback on illegal double-click-rotate

@@ -379,12 +379,39 @@ export interface EngineInstance {
   canTransferBP: (st: GameState, from: LocRef, to: LocRef, bpId: string, origin: Cell) => PlacementCheck;
   /** Mutates. Fails CLEANLY (state fully untouched) when illegal --
    * legality is always checked first via canTransferBP internally, so a
-   * rejected transfer never partially moves contents. On success, splices
-   * the BP + every PO fully inside it + those POs' seated SIs out of
-   * `from`'s arrays and into `to`'s arrays, shifting moved POs' cell by
-   * the BP's new-origin-minus-old-origin delta. If `to.loc==='canvas'`,
-   * also runs unseatOrphans (a transferred blade/hilt pair might now
-   * (dis)qualify for the 'bond' assembly seat). */
+   * rejected transfer never partially moves contents.
+   *
+   * REQ-0033 Phase 1 note (signature UNCHANGED -- only the internal
+   * semantics of two of its three cases changed under the reference
+   * model; LocRef/argument shape is exactly as before): dispatches on
+   * {from.loc,to.loc} into three distinct behaviors --
+   *   inv -> inv: UNCHANGED physical relocation (inventory pages hold
+   *     homes, not references -- splices the BP + every PO fully inside
+   *     it + those POs' seated SIs out of `from`'s page arrays and into
+   *     `to`'s, shifting moved POs' cell by the origin delta, exactly as
+   *     pre-REQ-0033).
+   *   inv -> canvas: now REFERENCE CREATION with exclusion (spec item 4).
+   *     The BP's home stays in st.inv.pages[from.page] untouched; the
+   *     CURRENT preset's canvas gets a NEW BP reference at `origin` plus
+   *     new PO/SI references for every home-contained PO NOT already
+   *     referenced by the current preset (see bpReferenceSet below) --
+   *     already-referenced POs are EXCLUDED (left behind, per spec item
+   *     4), translated to the same relative offset from the new origin
+   *     their home records have from the BP's home origin.
+   *   canvas -> inv: now REFERENCE REMOVAL. Removes the CURRENT preset's
+   *     BP reference and every PO/SI reference it brought along (nested
+   *     content still referenced by the current preset, matched against
+   *     the BP reference's OWN canvas footprint, not its home one); the
+   *     home record(s) are NEVER touched, and `to.page`/`origin` are
+   *     IGNORED entirely ("drop cell irrelevant" -- the item already
+   *     lives exactly where its home is).
+   * If `to.loc==='canvas'` (either the physical or reference-creation
+   * case), also runs unseatOrphans (a transferred blade/hilt pair might
+   * now (dis)qualify for the 'bond' assembly seat). canvas -> canvas is
+   * not a reachable case (a single active preset's canvas is the only
+   * "canvas" container that exists at a time -- moving a reference
+   * between two PRESETS is expressed as removeRef + switchPreset +
+   * createRef, not a single transferBP call). */
   transferBP: (st: GameState, from: LocRef, to: LocRef, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
 
   /** Accepts a LEGACY-shaped state (no st.inv, and/or legacy loc:'inv'/
@@ -399,7 +426,21 @@ export interface EngineInstance {
    * state's own top-level canvas already is, slots 1-4 empty) if either is
    * missing -- "migrateState handles pre-preset saves". Safe/idempotent to
    * call on an ALREADY-migrated state (no legacy entries left to migrate,
-   * st.inv.names/st.presets already present -- a no-op copy). */
+   * st.inv.names/st.presets already present -- a no-op copy).
+   *
+   * REQ-0033 Phase 1 v3 addition (signature UNCHANGED, chains through the
+   * above v1/v2 legacy migration first, then applies one more step): any
+   * uid CURRENTLY sitting PHYSICALLY on any canvas (the active top-level
+   * fields, or any preset's store[i] snapshot) -- under the pre-REQ-0033
+   * model, necessarily its own sole copy -- is given a first-fit INVENTORY
+   * home (same firstFit algorithm as the legacy step above), and the
+   * canvas record is replaced in-place by a REFERENCE (same uid/cell/rot/
+   * origin/host -- visually byte-identical; only its "am I the only copy"
+   * status changes). BPs get homes first (so contained POs' BP-containment
+   * is well-defined against the home arrangement), then POs, then SIs.
+   * Idempotent for v3 too: a state where every canvas-resident uid already
+   * has a home is left untouched by this step (a no-op on an
+   * already-v3 state). */
   migrateState: (oldState: GameState) => GameState;
 
   // -----------------------------------------------------------------------
@@ -452,14 +493,151 @@ export interface EngineInstance {
    * built without one (pure read helper -- never mutates st.inv). */
   invPageNames: (st: GameState) => string[];
 
-  /** Read-only auditor for the "one uid, exactly one place" physicality
-   * rule: scans every PO/SI uid across the shared inventory
-   * (st.inv.pages[]), the ACTIVE preset's canvas (st.pos/st.sis), and
-   * every INACTIVE preset's stored snapshot (st.presets.store[i], i!==
-   * active). Returns {ok:true,duplicates:[]} if every uid appears exactly
-   * once, else {ok:false,why,duplicates:[uid,...]} naming every uid found
-   * 2+ times. Does not check for missing uids, only duplication. */
+  /** Read-only auditor for the REQ-0033 reference-model invariant
+   * (REPLACES the pre-REQ-0033 "uid lives in exactly one place"
+   * physicality rule this same function used to check -- signature
+   * unchanged, semantics rewritten; see mock-src/engine.js's own updated
+   * comment on checkUidInvariant for the authoritative description this
+   * mirrors). Now checks TWO things:
+   *   (a) every uid (PO/BP/SI) has a HOME AT MOST ONCE across
+   *     st.inv.pages -- a uid with 2+ home records is a duplicate/
+   *     collision bug.
+   *   (b) no SINGLE preset's own canvas (the active top-level fields, or
+   *     any inactive store[i] snapshot) references the same uid twice --
+   *     two independent references to one item coexisting within ONE
+   *     preset would mean createRef's red-rule guard was bypassed
+   *     somewhere.
+   * A uid referenced by several DIFFERENT presets is explicitly NOT a
+   * violation of either rule -- that is the intended yellow/shared case
+   * (spec item 3), not a duplicate. Returns {ok:true,duplicates:[]} if
+   * both hold, else {ok:false,why,duplicates:[...]} where each entry is
+   * either a 'po:<uid>'/'bp:<uid>'/'si:<uid>' tag (a home appearing 2+
+   * times) or the same tag suffixed '@preset<i>' (a within-preset
+   * reference duplicate). Does not check for missing uids (an item
+   * deleted outright is not this invariant's concern), only duplication. */
   checkUidInvariant: (st: GameState) => { ok: boolean; why?: string; duplicates: string[] };
+
+  // -----------------------------------------------------------------------
+  // Reference model (REQ-0033 Phase 1 engine / Phase 2 client consumer).
+  // "Inventory is master": every PO/BP/SI uid has exactly ONE home record,
+  // living in st.inv.pages[n].{pos,bps,sis}. A preset's own canvas (the
+  // active top-level st.{bps,pos,sis}, or an inactive st.presets.store[i]
+  // snapshot) holds REFERENCES to home records -- same uid, same record
+  // shape as the home, but a physically separate object living in the
+  // preset's own arrays. A uid may have at most ONE reference per preset,
+  // but the SAME uid may be simultaneously referenced by several DIFFERENT
+  // presets (that is the yellow/shared case, not a violation -- see
+  // checkUidInvariant above). All queries below are deliberately
+  // recomputed on demand (never cached) -- comfortably sub-millisecond at
+  // this game's scale (PRESET_COUNT presets x a few dozen items), per the
+  // perf note on tintSets in mock-src/engine.js.
+  // -----------------------------------------------------------------------
+
+  /** Every preset index (0-based) that currently holds a reference to
+   * `uid` -- scans the ACTIVE preset's top-level fields (st.bps/pos/sis)
+   * for st.presets.active, and every OTHER preset's store[i] snapshot for
+   * the rest. Returns [] if st.presets is missing (a pre-preset/synthetic
+   * state) or if `uid` is referenced nowhere. This is the direct building
+   * block behind usedByCurrent/usedByOthers/tintSets/isUnitIndependent
+   * below -- none of them maintain their own index; they all call this. */
+  usageOf: (st: GameState, uid: string) => number[];
+  /** True iff the CURRENTLY ACTIVE preset (st.presets.active) holds a
+   * reference to `uid` -- the direct predicate behind the red tint (spec
+   * item 2, "already used in the CURRENT preset") and the exact rule
+   * createRef's red-rule guard enforces (refuses to create a second
+   * reference for the current preset when this is already true). False
+   * if st.presets is missing. */
+  usedByCurrent: (st: GameState, uid: string) => boolean;
+  /** True iff at least one preset OTHER THAN the currently active one
+   * holds a reference to `uid` -- the direct predicate behind the yellow
+   * tint (spec item 3, "used by OTHER presets"). NOT mutually exclusive
+   * with usedByCurrent (a uid can be referenced by the current preset AND
+   * by another preset at the same time). False if st.presets is missing. */
+  usedByOthers: (st: GameState, uid: string) => boolean;
+  /** {red,yellow,canvasYellow} -- all Sets of uid strings, computed fresh
+   * over every uid with a home in st.inv.pages[] (allHomeUids):
+   *   red: every uid referenced by the CURRENT preset (spec item 2) --
+   *     render this INVENTORY-side as the translucent faint red overlay.
+   *   yellow: every uid used by at least one OTHER preset (spec item 3)
+   *     -- render this INVENTORY-side as the translucent faint yellow
+   *     overlay. Not mutually exclusive with red (see usedByOthers doc).
+   *   canvasYellow: the subset of `red` ALSO in `yellow` -- i.e. uids
+   *     sitting on the CURRENT canvas right now that are ALSO shared with
+   *     some other preset ("the same yellow indicator also shows on the
+   *     Preset(canvas) display", spec item 3). Render this CANVAS-side as
+   *     the yellow overlay -- canvas never shows red (every canvas item
+   *     is, by definition, used by the current preset already). */
+  tintSets: (st: GameState) => { red: Set<string>; yellow: Set<string>; canvasYellow: Set<string> };
+  /** True iff preset `n`'s referenced uids share NO uid with any OTHER
+   * preset -- "a Preset containing ZERO yellow-tinted items is an
+   * independent Unit" (spec item 5), phrased as a direct per-preset
+   * predicate rather than requiring the caller to intersect tintSets()
+   * themselves. Empty presets are vacuously independent. True if
+   * st.presets is missing (nothing to conflict with). */
+  isUnitIndependent: (st: GameState, n: number) => boolean;
+  /** Locates uid's ONE home record: {page,kind,record}, kind is
+   * 'po'|'bp'|'si', page is the 0-based st.inv.pages[] index, record is
+   * the actual PO/BP/SI object (mutating it mutates the home in place,
+   * same aliasing convention as every other engine accessor in this
+   * file). Returns null if uid has no home (not yet migrated, or absent
+   * entirely -- e.g. a synthetic test fixture with no st.inv at all). */
+  homeLocationOf: (st: GameState, uid: string) => { page: number; kind: 'po' | 'bp' | 'si'; record: PO | BP | SI } | null;
+  /** Given a BP's uid, computes the nested reference set a canvas
+   * reference-creation for it must bring along (used internally by
+   * transferBP's inv->canvas case; exposed here for callers -- e.g. E2E
+   * assertions or a future UI preview -- that want to know the exclusion
+   * outcome WITHOUT actually performing the transfer). Containment ("is
+   * this PO inside this BP") is evaluated against the BP's HOME page,
+   * never a canvas footprint. Returns {ok:false,why:'no home'} if bpUid
+   * has no home or its home isn't a BP. On success:
+   *   pos: home-contained PO uids NOT already referenced by the current
+   *     preset (these travel with the BP reference).
+   *   excluded: home-contained PO uids that ARE already referenced by the
+   *     current preset (spec item 4 -- these are LEFT BEHIND, not brought
+   *     along as a second reference).
+   *   sis: SI uids seated on any INCLUDED (non-excluded) PO -- an
+   *     excluded PO's own seated SI does NOT travel either (its home is
+   *     untouched regardless; only whether a NEW reference is created for
+   *     it is affected by the exclusion). */
+  bpReferenceSet: (st: GameState, bpUid: string) => { ok: boolean; why?: string; bp?: string; pos?: string[]; sis?: string[]; excluded?: string[] };
+  /** Creates a REFERENCE to home item `uid` in the CURRENT preset's canvas
+   * (st.pos/bps/sis) -- the home record in st.inv.pages is never touched.
+   * Refuses with {ok:false,why:'already referenced by current preset'}
+   * (the red rule) if usedByCurrent(st,uid) is already true, or
+   * {ok:false,why:'no home'} if uid has no home record (or its home's own
+   * kind doesn't match the requested `kind`). `placement` shape depends on
+   * `kind`:
+   *   'po': {cell:Cell; rot?:number} -- rot defaults to the home record's
+   *     OWN rot if omitted. The new reference is validated for canvas
+   *     legality (bounds/BP-containment/overlap) via the SAME canPlacePO
+   *     check any other canvas placement uses; a geometrically-illegal
+   *     placement fails CLEANLY (state left untouched, matching every
+   *     other engine mutator's fail-clean contract) -- the red-rule check
+   *     happens first and is unconditional, but a passing red-rule check
+   *     does NOT guarantee geometric success, so callers must still check
+   *     `.ok` for both reasons.
+   *   'bp': {origin:Cell} -- creates ONLY the BP's own reference; nested
+   *     PO/SI contents are NOT handled here (see bpReferenceSet/
+   *     transferBP for the nested-content walk -- createRef('bp',...) is
+   *     a building block transferBP composes, not a full BP-with-contents
+   *     operation by itself).
+   *   'si': {host: 'inv' | 'bond' | {po:string; si:number}} -- 'inv'
+   *     creates a bare stowed reference (not seated); {po,si} or 'bond'
+   *     additionally seats it onto that socket immediately (fails cleanly
+   *     -- reference not created -- if the seat attempt itself is
+   *     illegal). */
+  createRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string, placement: { cell?: Cell; rot?: number; origin?: Cell; host?: 'inv' | 'bond' | { po: string; si: number } }) => { ok: boolean; why?: string; ref?: PO | BP | SI };
+  /** Removes the CURRENT preset's reference to `uid` (if any) from
+   * st.pos/bps/sis -- the home record in st.inv.pages is NEVER touched
+   * (canvas -> inventory drag under the reference model: "drop cell
+   * irrelevant", the item stays exactly where its home already is).
+   * ALWAYS succeeds: {ok:true,removed:false} (not an error) if the
+   * current preset holds no such reference to begin with. For kind
+   * 'po', ALSO cascades to remove any SI references seated on that PO
+   * reference (their own homes likewise untouched) and runs
+   * unseatOrphans() afterward (mirrors every other PO-removal path's
+   * post-mutation cleanup). */
+  removeRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string) => { ok: boolean; removed?: boolean; why?: string };
 }
 
 export interface EngineModule {
