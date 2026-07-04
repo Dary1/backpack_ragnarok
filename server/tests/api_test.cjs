@@ -402,6 +402,125 @@ T('admin: applyAdminEdit happy path (fixture repo) persists + re-renders effects
   assert.strictEqual(entryAfterReject.name, 'FX Dagger Mk2', 'rejected write must not have persisted anything');
 });
 
+
+// ---- REQ-0038: i18n content shape + effects array growth/shrinkage ----
+
+T('admin: applyAdminEdit accepts effects array GROWTH (add one effect) and persists correctly', () => {
+  const before = admin.findLiveEntry('fx_dagger');
+  const beforeCount = before.doc.entries[before.index].effects.length;
+  const grownEffects = before.doc.entries[before.index].effects.concat([
+    { trigger: { t: 'battle_start' }, verb: { t: 'block', n: [3, 6] } },
+  ]);
+  const merged = admin.applyAdminEdit('fx_dagger', { effects: grownEffects });
+  assert.strictEqual(merged.effects.length, beforeCount + 1, 'effects array must have grown by exactly one');
+  const reread = JSON.parse(fs.readFileSync(path.join(liveDir, 'live_items.json'), 'utf8'));
+  const entry = reread.entries.find((e) => e.id === 'fx_dagger');
+  assert.strictEqual(entry.effects.length, beforeCount + 1, 'growth must persist to disk');
+  assert.strictEqual(entry.effects[entry.effects.length - 1].verb.t, 'block');
+});
+
+T('admin: applyAdminEdit accepts effects array SHRINKAGE (remove one effect), including down to an empty array', () => {
+  const before = admin.findLiveEntry('fx_dagger');
+  const currentEffects = before.doc.entries[before.index].effects;
+  assert.ok(currentEffects.length > 0, 'fixture must have at least one effect to shrink from');
+  const shrunk = currentEffects.slice(0, currentEffects.length - 1);
+  const merged = admin.applyAdminEdit('fx_dagger', { effects: shrunk });
+  assert.strictEqual(merged.effects.length, currentEffects.length - 1);
+  // Shrink all the way down to an empty array -- must be an ACCEPTED,
+  // valid state (not rejected), per the REQ-0038 spec ("an empty effects
+  // array must be an accepted (valid) state").
+  const emptied = admin.applyAdminEdit('fx_dagger', { effects: [] });
+  assert.deepStrictEqual(emptied.effects, [], 'empty effects array must be accepted');
+  const reread = JSON.parse(fs.readFileSync(path.join(liveDir, 'live_items.json'), 'utf8'));
+  const entry = reread.entries.find((e) => e.id === 'fx_dagger');
+  assert.deepStrictEqual(entry.effects, [], 'empty effects array must persist to disk');
+});
+
+T('admin: applyAdminEdit accepts writes to the i18n map and merges one level deep (does not clobber sibling fields)', () => {
+  // Seed an i18n.ja.flavor value first (simulating a prior edit), then
+  // send a body that only touches i18n.ja.name -- the existing flavor
+  // must survive the merge (server/admin.cjs's one-level-deep merge).
+  admin.applyAdminEdit('fx_dagger', { i18n: { ja: { name: 'FXダガー', flavor: '最初のフレーバー' } } });
+  const merged = admin.applyAdminEdit('fx_dagger', { i18n: { ja: { name: 'FXダガーMk3' } } });
+  assert.strictEqual(merged.i18n.ja.name, 'FXダガーMk3');
+  assert.strictEqual(merged.i18n.ja.flavor, '最初のフレーバー', 'sibling i18n.ja.flavor must survive a name-only edit');
+  const reread = JSON.parse(fs.readFileSync(path.join(liveDir, 'live_items.json'), 'utf8'));
+  const entry = reread.entries.find((e) => e.id === 'fx_dagger');
+  assert.strictEqual(entry.i18n.ja.name, 'FXダガーMk3');
+  assert.strictEqual(entry.i18n.ja.flavor, '最初のフレーバー');
+});
+
+T('admin: applyAdminEdit REJECTS an unknown locale key in the i18n map, with a clear error, and leaves the file unchanged', () => {
+  const beforeText = fs.readFileSync(path.join(liveDir, 'live_items.json'), 'utf8');
+  assert.throws(
+    () => admin.applyAdminEdit('fx_dagger', { i18n: { fr: { name: 'Poignard FX' } } }),
+    /unknown i18n locale "fr"/
+  );
+  const afterText = fs.readFileSync(path.join(liveDir, 'live_items.json'), 'utf8');
+  assert.strictEqual(afterText, beforeText, 'a rejected i18n locale write must not touch the file at all');
+});
+
+T('admin: applyAdminEdit REJECTS an unknown field inside an i18n locale entry', () => {
+  assert.throws(
+    () => admin.applyAdminEdit('fx_dagger', { i18n: { ja: { name: 'x', notAField: 'y' } } }),
+    /unknown field "notAField" in i18n\.ja/
+  );
+});
+
+// ---- REQ-0038: migration integrity (tools/migrate_i18n.cjs) ----
+
+T('migrate_i18n: every migrated i18n.ja.{name,flavor} value is byte-identical to the pre-migration name_ja/flavor_ja it replaced, for EVERY entry (not a sample)', () => {
+  const migrate = require('../../tools/migrate_i18n.cjs');
+
+  // Build a fixture doc carrying legacy name_ja/flavor_ja fields on
+  // several entries (mirroring the real content shape before the (b)
+  // migration commit ran) -- deliberately includes entries with only
+  // name_ja, only flavor_ja, both, and neither, so the "every entry, not
+  // a sample" requirement is exercised across every combination.
+  const fixtureDoc = {
+    schema: 'po/2',
+    entries: [
+      { id: 'alpha', name: 'Alpha', name_ja: 'アルファ', flavor: 'a', flavor_ja: 'あ' },
+      { id: 'beta', name: 'Beta', name_ja: 'ベータ' },
+      { id: 'gamma', name: 'Gamma', flavor: 'g', flavor_ja: 'が' },
+      { id: 'delta', name: 'Delta' },
+    ],
+  };
+  // Capture the exact pre-migration values for every entry BEFORE
+  // mutating anything (migrateDoc operates on a clone, but we still want
+  // our own independent "before" snapshot to compare against).
+  const beforeValues = fixtureDoc.entries.map((e) => ({ id: e.id, name_ja: e.name_ja, flavor_ja: e.flavor_ja }));
+
+  const result = migrate.migrateDoc(fixtureDoc);
+  // Assert the verification the script itself performs also holds when
+  // driven from this test (independent check, not just trusting the
+  // script's own internal assert).
+  migrate.verifyMigration(result.records);
+
+  for (const before of beforeValues) {
+    const migratedEntry = result.doc.entries.find((e) => e.id === before.id);
+    assert.ok(migratedEntry, 'migrated entry must still exist: ' + before.id);
+    if (before.name_ja !== undefined) {
+      assert.strictEqual(migratedEntry.i18n.ja.name, before.name_ja, 'i18n.ja.name must be byte-identical to the original name_ja for ' + before.id);
+      assert.strictEqual(migratedEntry.name_ja, undefined, 'name_ja must be deleted after migration for ' + before.id);
+    }
+    if (before.flavor_ja !== undefined) {
+      assert.strictEqual(migratedEntry.i18n.ja.flavor, before.flavor_ja, 'i18n.ja.flavor must be byte-identical to the original flavor_ja for ' + before.id);
+      assert.strictEqual(migratedEntry.flavor_ja, undefined, 'flavor_ja must be deleted after migration for ' + before.id);
+    }
+    if (before.name_ja === undefined && before.flavor_ja === undefined) {
+      assert.strictEqual(migratedEntry.i18n, undefined, 'an entry with neither _ja field must get no i18n map at all: ' + before.id);
+    }
+  }
+
+  // Idempotency: re-running migrateDoc on the ALREADY-migrated doc must
+  // be a true no-op (zero records, doc unchanged) -- proves "safe to
+  // re-run" independently of the CLI's own idempotency, per entry.
+  const secondPass = migrate.migrateDoc(result.doc);
+  assert.strictEqual(secondPass.records.length, 0, 're-running migration on an already-migrated doc must find nothing left to migrate');
+  assert.deepStrictEqual(secondPass.doc, result.doc, 're-running migration must not change the doc at all');
+});
+
 async function main() {
   await AT('api: PUT then GET /api/profile/:playerId/canvas round-trips for a real guest token', async () => {
     await new Promise((resolve, reject) => {

@@ -34,3 +34,15 @@ web service (no ingress change needed; `web/` is already served as-is).
 - `src/board/` — PixiJS board renderer (grid, BPs, POs, beams, port marks).
 - `src/store.ts` — module-level game-data/state store; React subscribes to
   it via a hook for the read-only UI (header, item panel, tooltips).
+- `src/i18n.ts` (REQ-0038) — client CHROME i18n: an EN-keyed dictionary
+  (`{en:{...}, ja:{...}}`) + `t(locale, key, args?)` lookup, covering nav
+  labels, buttons, status text, placeholders. This is a SEPARATE concern
+  from content i18n (item/SI name/flavor text, served via `content/live/
+  *.json`'s `i18n.ja.{name,flavor}` map, read directly by `src/dex/*`) --
+  the same single `Locale` toggle (Header.tsx) drives both.
+- `src/dex/` (REQ-0035, rebuilt REQ-0038) — Item Encyclopedia (図鑑):
+  `DexRoot.tsx` (data fetch + view/edit toggle), `Dex.tsx` (catalog, shape-
+  mounted cards via `ShapeGrid.tsx`), `DexDetail.tsx` (two-pane detail:
+  diagram left, item list right), `DexDiagram.tsx` (large shape/port/
+  socket diagram), `ItemDetailCard.tsx` (detail fields), `DexAdmin.tsx`
+  (edit mode: locale-only fields, effect add/delete, thumbnails).

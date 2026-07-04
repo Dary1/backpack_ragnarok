@@ -183,11 +183,25 @@ redirects to `#/backpacks` with a brief welcome banner (see
   (if introduced later) can never match this lookup and stays uneditable
   via this endpoint.
 - **Body schema allowlist**: unknown top-level keys → `400`. Editable keys:
-  `name`, `name_ja`, `flavor`, `flavor_ja`, `rarity`, `effects` (all
+  `name`, `name_ja`, `flavor`, `flavor_ja`, `i18n`, `rarity`, `effects` (all
   entries), plus `tags`/`sockets`/`stretch` for POs only (SIs have no
   `tags`/`sockets`/`stretch` fields in schema `si/2`). Shape/ports are
   intentionally NOT editable via this endpoint (geometry editing is
-  deferred, see `docs/REQ/REQ-0035-item-encyclopedia.md`).
+  deferred, see the item-encyclopedia REQ). `effects` may grow or shrink
+  freely (including down to an empty array) -- there is no fixed-length
+  assumption anywhere in validation (REQ-0038).
+- **`i18n` map (REQ-0038)**: `{<locale>: {name?, flavor?}}`, whitelisted
+  to a fixed locale set (today just `{ja}` -- see `SUPPORTED_LOCALES` in
+  `admin.cjs`); an unknown locale key or an unknown field inside a
+  locale's entry is rejected with a `400` and the error names the exact
+  bad key. The write MERGES one level deep into the entry's existing
+  `i18n` map (a JA-only edit never clobbers a sibling field some other
+  edit already set) rather than replacing the whole map. `name_ja`/
+  `flavor_ja` remain accepted top-level keys too (back-compat -- the
+  actual on-disk content/live/*.json files no longer carry them after the
+  REQ-0038 migration, but an old caller sending the flat shape still
+  works and still round-trips through `/api/content`'s computed
+  back-compat fields, see below).
 - **Closed-vocabulary validation** (against `content/vocab.json`, always
   server-side): `rarity` ∈ `vocab.rarities`; every tag ∈ `vocab.po_tags`
   keys, and `tags[0]` specifically must be a ROOT tag (a `po_tags` key
@@ -220,6 +234,25 @@ and committed to git at batch cadence by a human or orchestrator, exactly
 like every other content edit in this repo's existing workflow (see
 `content/batches/`'s batch-review convention). Do not wire up auto-commit
 here without a deliberate, separately-reviewed decision to do so.
+
+## Content i18n (REQ-0038)
+
+`content/live/live_items.json` / `live_sis.json` entries carry base
+`name`/`flavor` fields (always English) plus a formal `i18n` map keyed by
+locale, e.g. `i18n: {ja: {name, flavor}}`. The legacy flat `name_ja`/
+`flavor_ja` fields were migrated into this shape by `tools/
+migrate_i18n.cjs` (idempotent, verifies every migrated value is
+byte-identical to the field it replaced) and no longer exist on disk.
+
+`/api/content`'s `buildContentPayload()` serves BOTH shapes: the new
+`i18n` map as-is, plus COMPUTED back-compat top-level `name_ja`/
+`flavor_ja` fields mirrored from `i18n.ja` (see `withBackCompatI18n()` in
+`api.cjs`). This was a deliberate choice over serving only the new shape
+-- it means `mock-src/ui.js`, `client/src/api.ts`'s existing consumers,
+and `tools/tool_gen_data.cjs`'s baked `mock-src/data.js` output all keep
+working completely unchanged; only the Dex v2 admin UI reads `i18n`
+directly. `tools/eff_render.cjs` never reads name/flavor fields at all
+(effect-AST rendering only) and needed no change.
 
 ## systemd (user unit, Node v24 via nvm)
 `~/.config/systemd/user/backpack-api.service`:
