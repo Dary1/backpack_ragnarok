@@ -1,6 +1,8 @@
-// Detail diagram (図解) — REQ-0038. Large shape grid with the icon
-// composited on the anchor cell (reuses ShapeGrid, per the task's "reuse
-// ShapeGrid.tsx if it already does grid-cell layout" instruction), plus:
+// Detail diagram (図解) — REQ-0038, enlarged ~5x + icon-fix REQ-0038
+// feedback round 2. Large shape grid with the icon composited across the
+// item's FULL footprint (reuses ShapeGrid + the shared client/src/render/
+// itemCard.ts fit math -- see ShapeGrid.tsx's module comment for the bug
+// this replaces), plus:
 //   - every Connection Port drawn OUTSIDE the shape footprint (ports'
 //     tiles already commonly sit at negative/out-of-bounds coordinates
 //     relative to the shape, e.g. live_items.json's flame_tablet ports
@@ -19,18 +21,33 @@
 // chips are raw content-vocab strings, not translated; only the socket
 // "type"/"tags" prefix labels and coordinate axis hints go through
 // ./i18n.ts's t()).
+//
+// REQ-0038 feedback round 2 sizing: the base per-cell pixel size is 5x
+// REQ-0038's original 46px (so a bare cell wants to be 230px), capped by
+// DIAGRAM_MAX_HEIGHT_PX so a tall/many-row item (or a narrow viewport)
+// never forces the diagram (or its detail-pane parent) to overflow --
+// "scales sanely, capped by available height" per the task spec. The cap
+// is deliberately generous (620px) so it comfortably fits the two-pane
+// detail layout's left pane at the E2E viewport's height (see
+// DexDetail.tsx / index.css's .dex-detail-pane-left) while still reading
+// as dramatically larger than the old fixed 46px/cell.
 import type { ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { ShapeGrid } from './ShapeGrid';
 
-const DIAGRAM_CELL_PX = 46;
+const BASE_CELL_PX = 46;
+const DIAGRAM_SCALE = 5;
+const DIAGRAM_MAX_HEIGHT_PX = 620;
+const DIAGRAM_MAX_WIDTH_PX = 620;
 
 interface DexDiagramProps {
   entry: ApiItemEntry | ApiSIEntry;
   shape: Cell[];
   iconUrl: string | null;
+  iconDims?: { width: number; height: number } | null;
+  iconStretch?: boolean;
   locale: Locale;
 }
 
@@ -65,7 +82,7 @@ function computeBoxes(shape: Cell[], ports: Array<{ tiles: Cell[] }>) {
   return { gridBox, shapeBox };
 }
 
-export function DexDiagram({ entry, shape, iconUrl, locale }: DexDiagramProps) {
+export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, locale }: DexDiagramProps) {
   const ports = (entry.ports ?? []) as Array<{ tiles: Cell[]; tag: string }>;
   const sockets = ('sockets' in entry ? entry.sockets : undefined) ?? [];
 
@@ -76,8 +93,19 @@ export function DexDiagram({ entry, shape, iconUrl, locale }: DexDiagramProps) {
   const { gridBox, shapeBox } = computeBoxes(shape, ports);
   const nCols = gridBox.maxCol - gridBox.minCol + 1;
   const nRows = gridBox.maxRow - gridBox.minRow + 1;
-  const gridWidthPx = nCols * DIAGRAM_CELL_PX;
-  const gridHeightPx = nRows * DIAGRAM_CELL_PX;
+
+  // REQ-0038 R2: 5x the original per-cell size, then capped so the WHOLE
+  // grid (nRows/nCols cells) fits within DIAGRAM_MAX_HEIGHT_PX x
+  // DIAGRAM_MAX_WIDTH_PX -- "about 5x larger... cap by available height"
+  // per the task spec. Uses whichever axis is more constraining so
+  // multi-row AND multi-col items both stay on-screen.
+  const uncappedCellPx = BASE_CELL_PX * DIAGRAM_SCALE;
+  const cellPxByHeight = DIAGRAM_MAX_HEIGHT_PX / nRows;
+  const cellPxByWidth = DIAGRAM_MAX_WIDTH_PX / nCols;
+  const diagramCellPx = Math.max(BASE_CELL_PX, Math.min(uncappedCellPx, cellPxByHeight, cellPxByWidth));
+
+  const gridWidthPx = nCols * diagramCellPx;
+  const gridHeightPx = nRows * diagramCellPx;
   const shapeWidthCells = shapeBox.maxCol - shapeBox.minCol + 1;
   const shapeHeightCells = shapeBox.maxRow - shapeBox.minRow + 1;
 
@@ -94,8 +122,8 @@ export function DexDiagram({ entry, shape, iconUrl, locale }: DexDiagramProps) {
   // the FULL grid box (may be larger than the shape box alone if ports
   // extend outside it), so the shape sub-region's own pixel origin
   // within that overlay must be offset first.
-  const shapeOriginXPx = (shapeBox.minCol - gridBox.minCol) * DIAGRAM_CELL_PX;
-  const shapeOriginYPx = (shapeBox.minRow - gridBox.minRow) * DIAGRAM_CELL_PX;
+  const shapeOriginXPx = (shapeBox.minCol - gridBox.minCol) * diagramCellPx;
+  const shapeOriginYPx = (shapeBox.minRow - gridBox.minRow) * diagramCellPx;
 
   return (
     <div className="dex-diagram">
@@ -103,9 +131,11 @@ export function DexDiagram({ entry, shape, iconUrl, locale }: DexDiagramProps) {
         <ShapeGrid
           shape={shape}
           portTiles={allPortTiles}
-          cellPx={DIAGRAM_CELL_PX}
+          cellPx={diagramCellPx}
           iconUrl={iconUrl}
           iconAlt={entry.name}
+          iconDims={iconDims}
+          iconStretch={iconStretch}
           showCoords
         />
         {sockets.length > 0 ? (
@@ -118,8 +148,8 @@ export function DexDiagram({ entry, shape, iconUrl, locale }: DexDiagramProps) {
             {sockets.map((s, i) => {
               const ax = s.ax ?? 0.5;
               const ay = s.ay ?? 0.5;
-              const markerX = shapeOriginXPx + ax * (shapeWidthCells * DIAGRAM_CELL_PX);
-              const markerY = shapeOriginYPx + ay * (shapeHeightCells * DIAGRAM_CELL_PX);
+              const markerX = shapeOriginXPx + ax * (shapeWidthCells * diagramCellPx);
+              const markerY = shapeOriginYPx + ay * (shapeHeightCells * diagramCellPx);
               // Callout line target: a label slot to the right of the
               // grid, stacked one per socket -- offset far enough right
               // that it clears the grid itself regardless of grid width.

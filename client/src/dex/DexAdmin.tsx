@@ -32,7 +32,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { ShapeGrid } from './ShapeGrid';
-import { iconDataUrl } from './dexIcons';
+import { iconDataUrl, iconDims } from './dexIcons';
 
 interface DexAdminProps {
   locale: Locale;
@@ -49,6 +49,12 @@ function combineEntries(payload: ApiContentPayload): DexEntry[] {
 
 function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
   return ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+}
+
+// REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
+// (see ShapeGrid.tsx) -- only POs carry this field.
+function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
+  return 'stretch' in e ? e.stretch : undefined;
 }
 
 // Effect form-row shape -- a superset of every verb's optional fields, so
@@ -195,7 +201,14 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
           {entries.map((e) => (
             <button key={e.id} type="button" className="dex-admin-list-item" onClick={() => setSelectedId(e.id)}>
               <span className="dex-admin-list-thumb">
-                <ShapeGrid shape={shapeOf(e.entry)} cellPx={14} iconUrl={iconDataUrl(e.entry.icon)} iconAlt={e.entry.icon} />
+                <ShapeGrid
+                shape={shapeOf(e.entry)}
+                cellPx={14}
+                iconUrl={iconDataUrl(e.entry.icon)}
+                iconAlt={e.entry.icon}
+                iconDims={iconDims(e.entry.icon)}
+                iconStretch={stretchOf(e.entry)}
+              />
               </span>
               <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}
               <span className="dex-card-id">({e.id})</span>
@@ -272,7 +285,14 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
             onClick={() => setSelectedId(e.id)}
           >
             <span className="dex-admin-list-thumb">
-              <ShapeGrid shape={shapeOf(e.entry)} cellPx={14} iconUrl={iconDataUrl(e.entry.icon)} iconAlt={e.entry.icon} />
+              <ShapeGrid
+                shape={shapeOf(e.entry)}
+                cellPx={14}
+                iconUrl={iconDataUrl(e.entry.icon)}
+                iconAlt={e.entry.icon}
+                iconDims={iconDims(e.entry.icon)}
+                iconStretch={stretchOf(e.entry)}
+              />
             </span>
             <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}
             <span className="dex-card-id">({e.id})</span>

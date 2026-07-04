@@ -16,7 +16,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { DexDiagram } from './DexDiagram';
-import { iconDataUrl } from './dexIcons';
+import { iconDataUrl, iconDims } from './dexIcons';
 import { ItemDetailCard } from './ItemDetailCard';
 import { ShapeGrid } from './ShapeGrid';
 
@@ -34,12 +34,40 @@ function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
   return ('shape' in entry && Array.isArray(entry.shape) ? entry.shape : []) as Cell[];
 }
 
+// REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
+// (see ShapeGrid.tsx) -- only POs carry this field.
+function stretchOf(entry: ApiItemEntry | ApiSIEntry): boolean | undefined {
+  return 'stretch' in entry ? entry.stretch : undefined;
+}
+
 // Small helper (used only by the right-pane list rows) -- reuses
-// ShapeGrid at a small cellPx, same shape-mounted-icon rendering as the
-// catalog grid and the edit-mode list, per the task spec's "reuse this
-// shape-mounted rendering, smaller" instruction for list rows.
-function ShapeMountedThumb({ shape, iconUrl, iconAlt }: { shape: Cell[]; iconUrl: string | null; iconAlt: string }) {
-  return <ShapeGrid shape={shape} cellPx={16} iconUrl={iconUrl} iconAlt={iconAlt} />;
+// ShapeGrid at a small cellPx, same shape-mounted-icon rendering (fixed
+// REQ-0038 R2 to span the full footprint via the shared itemCard.ts
+// module) as the catalog grid and the edit-mode list, per the task spec's
+// "reuse this shape-mounted rendering, smaller" instruction for list rows.
+function ShapeMountedThumb({
+  shape,
+  iconUrl,
+  iconAlt,
+  iconId,
+  stretch,
+}: {
+  shape: Cell[];
+  iconUrl: string | null;
+  iconAlt: string;
+  iconId: string;
+  stretch?: boolean;
+}) {
+  return (
+    <ShapeGrid
+      shape={shape}
+      cellPx={16}
+      iconUrl={iconUrl}
+      iconAlt={iconAlt}
+      iconDims={iconDims(iconId)}
+      iconStretch={stretch}
+    />
+  );
 }
 
 export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTree, registry }: DexDetailProps) {
@@ -57,6 +85,8 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
               entry={selected.entry}
               shape={shapeOf(selected.entry)}
               iconUrl={iconDataUrl(selected.entry.icon)}
+              iconDims={iconDims(selected.entry.icon)}
+              iconStretch={stretchOf(selected.entry)}
               locale={locale}
             />
             <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} />
@@ -78,7 +108,13 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
                   onClick={() => onSelect(e.id)}
                 >
                   <span className="dex-detail-item-list-shape">
-                    <ShapeMountedThumb shape={shapeOf(e.entry)} iconUrl={icon} iconAlt={e.entry.icon} />
+                    <ShapeMountedThumb
+                      shape={shapeOf(e.entry)}
+                      iconUrl={icon}
+                      iconAlt={e.entry.icon}
+                      iconId={e.entry.icon}
+                      stretch={stretchOf(e.entry)}
+                    />
                   </span>
                   <span className="dex-detail-item-list-text">
                     <span className="dex-card-name">{locale === 'ja' ? e.entry.name_ja || e.entry.name : e.entry.name}</span>

@@ -28,7 +28,7 @@ import type { Cell } from '../engine/engine.d.ts';
 import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
 import { DexDetail } from './DexDetail';
-import { iconDataUrl } from './dexIcons';
+import { iconDataUrl, iconDims } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 
 export interface DexEntry {
@@ -51,6 +51,12 @@ function nameJaOf(e: ApiItemEntry | ApiSIEntry): string {
 }
 function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
   return ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+}
+// REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
+// (see ShapeGrid.tsx) -- only POs carry this field; SIs have no shape at
+// all so it's moot for them.
+function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
+  return 'stretch' in e ? e.stretch : undefined;
 }
 
 interface DexProps {
@@ -173,7 +179,14 @@ export function Dex({ locale, payload }: DexProps) {
                 onClick={() => setSelectedId(e.id)}
               >
                 <span className="dex-card-shape">
-                  <ShapeGrid shape={shapeOf(e.entry)} cellPx={20} iconUrl={icon} iconAlt={e.entry.icon} />
+                  <ShapeGrid
+                    shape={shapeOf(e.entry)}
+                    cellPx={20}
+                    iconUrl={icon}
+                    iconAlt={e.entry.icon}
+                    iconDims={iconDims(e.entry.icon)}
+                    iconStretch={stretchOf(e.entry)}
+                  />
                 </span>
                 <div className="dex-card-summary-text">
                   <div className="dex-card-name">{locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry)}</div>

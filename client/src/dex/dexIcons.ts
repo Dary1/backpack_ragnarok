@@ -28,3 +28,15 @@ export function iconDataUrl(iconId: string): string | null {
   if (!sym) return null;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(standaloneSvgString(sym))}`;
 }
+
+/** REQ-0038 R2: returns the icon's own SVG viewBox width/height (the
+ * symbol's NATIVE aspect ratio) -- needed by client/src/render/itemCard.ts's
+ * computeItemCardLayout/computeDomIconOverlay to contain-fit the icon into
+ * its full multi-cell footprint box (same aspect-ratio input BoardRenderer
+ * gets for free from a Pixi Texture's width/height). Returns null if the
+ * icon id is not found (caller falls back to a square aspect). */
+export function iconDims(iconId: string): { width: number; height: number } | null {
+  const sym = symbolsById().get(iconId);
+  if (!sym) return null;
+  return { width: sym.width, height: sym.height };
+}

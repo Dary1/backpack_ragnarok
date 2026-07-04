@@ -1021,17 +1021,25 @@ html, body {
 
 /* REQ-0038 -- Dex v2: shape-mounted catalog rendering, two-pane detail
    diagram layout, edit-mode v2 (effect add/delete, locale-only fields,
-   thumbnails). */
+   thumbnails). Extended REQ-0038 feedback round 2: the icon overlay is no
+   longer positioned per-cell (that was the squeezed-into-first-cell bug --
+   see ShapeGrid.tsx's module comment) -- its box now comes entirely from
+   client/src/render/itemCard.ts's shared fit math, applied as inline
+   left/top/width/height on both the wrapper (.shape-grid-icon-overlay,
+   sized to the item's full footprint) and the <img> itself
+   (.shape-grid-cell-icon, the contain-fit box within that footprint). The
+   rules below intentionally do NOT set position/inset/width/height (that
+   would fight the computed inline styles) -- only non-geometric styling. */
 
 .shape-grid-cell {
   position: relative;
 }
 
+.shape-grid-icon-overlay {
+  pointer-events: none;
+}
+
 .shape-grid-cell-icon {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
   object-fit: contain;
   pointer-events: none;
 }
@@ -1054,7 +1062,15 @@ html, body {
   justify-content: center;
 }
 
-/* Two-pane detail layout (DexDetail.tsx). */
+/* Two-pane detail layout (DexDetail.tsx) -- REQ-0038, rebalanced REQ-0038
+   feedback round 2 to an explicit LEFT/RIGHT HALF split (was 65%/300px-
+   fixed, which left the diagram cramped) -- "split the detail panel into
+   LEFT/RIGHT halves (diagram left, rest right)" per the task spec. Each
+   pane is `flex: 1 1 50%` off the same basis so they land at ~half the
+   row width each (E2E asserts this ratio via boundingBox() widths). Both
+   panes cap at 80vh so a tall enlarged diagram (see DexDiagram.tsx's
+   DIAGRAM_MAX_HEIGHT_PX) never grows the pane past the viewport --
+   overflow-y:auto keeps the rest of the fields/list reachable. */
 .dex-detail-two-pane {
   display: flex;
   gap: 18px;
@@ -1063,17 +1079,21 @@ html, body {
 }
 
 .dex-detail-pane-left {
-  flex: 1 1 65%;
+  flex: 1 1 50%;
   min-width: 0;
+  max-width: 50%;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 16px;
+  max-height: 80vh;
+  overflow-y: auto;
 }
 
 .dex-detail-pane-right {
-  flex: 0 0 300px;
-  max-width: 300px;
+  flex: 1 1 50%;
+  min-width: 0;
+  max-width: 50%;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
