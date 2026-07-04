@@ -1013,23 +1013,46 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:true,bp:bpUid,pos,sis,excluded};
   }
 
-  function containerOf(st,locRef){
-    return locRef.loc==='canvas'?st:page(st,locRef.page);
-  }
+  // ---------------------------------------------------------------------
+  // BP transfer under the reference model (REQ-0033 Phase 1).
+  //
+  // Three distinct cases, dispatched on {from.loc,to.loc}:
+  //   inv -> canvas: REFERENCE creation with exclusions (spec item 4).
+  //     The BP's home stays in st.inv.pages[from.page] untouched; the
+  //     CURRENT preset (`to` must be {loc:'canvas'}) gets a NEW BP
+  //     reference at `origin`, plus new PO/SI references for
+  //     bpReferenceSet()'s non-excluded contents (placed at the SAME
+  //     relative cell offset from the new origin as their home records
+  //     have from the BP's home origin -- i.e. the arrangement is
+  //     preserved, just translated to the new origin, exactly like the
+  //     old physical transferBP's dr/dc shift).
+  //   canvas -> inv: REFERENCE removal. Removes the CURRENT preset's BP
+  //     reference and every PO/SI reference it brought along (their own
+  //     current-preset references, i.e. removeRef('po'/'si') for each
+  //     nested uid still referenced by the current preset). The home
+  //     record(s) are never touched; `to.page`/`origin` are IGNORED (spec:
+  //     "drop cell irrelevant"). `from` must be {loc:'canvas'}.
+  //   inv -> inv (page<->page): PHYSICAL home move, byte-identical to the
+  //     REQ-0030 behavior (splice the BP's home + its home-contained POs/
+  //     SIs from one page's arrays into another's, shifting cells by the
+  //     origin delta) -- inventory pages hold homes, not references, so
+  //     moving a BP between two pages is still a real relocation of the
+  //     one-and-only home record, same as before this REQ.
+  // canvas -> canvas is not a reachable case via this function (a single
+  // active preset's canvas is the only "canvas" container that exists at
+  // a time; moving a reference from one preset to another is expressed as
+  // removeRef in the source preset + createRef in the destination preset
+  // after switchPreset, not a single transferBP call).
   function bpFrom(container,bpId){return container.bps.find(b=>b.id===bpId);}
-
-  // canTransferBP(st,from,to,bpId,origin): pure (no mutation) legality
-  // check for transferring BP `bpId` from container `from` to container
-  // `to`, landing at `origin` [row,col] within `to`. Reuses the target
-  // container's OWN placement rule (invCanPlaceBP for a page target,
-  // canMoveBP's overlap/bounds logic inlined for a canvas target) so a
-  // canvas target still enforces canvas's simpler rule (no free-placed
-  // items to avoid there -- POs on canvas always belong to a BP already).
   function canTransferBP(st,from,to,bpId,origin){
-    const src=containerOf(st,from);
-    const bp=bpFrom(src,bpId);
-    if(!bp)return {ok:false,why:'BP not found in source container'};
-    if(to.loc==='canvas'){
+    if(from.loc==='inv'&&to.loc==='inv'){
+      return canTransferBPPhysical(st,from,to,bpId,origin);
+    }
+    if(from.loc==='inv'&&to.loc==='canvas'){
+      const home=homeLocationOf(st,bpId);
+      if(!home||home.kind!=='bp'||home.page!==from.page)return {ok:false,why:'BP not found in source container'};
+      if(usedByCurrent(st,bpId))return {ok:false,why:'already referenced by current preset'};
+      const bp=home.record;
       const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
       const others=new Set();
       for(const ob of st.bps){for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
@@ -1039,9 +1062,17 @@ function create(ITEMS,SI_DEFS,layout,trees){
       }
       return {ok:true,cells:newCells};
     }
-    // target is a page: contents traveling with the BP must be excluded
-    // from the target's own overlap check (they don't exist there YET,
-    // but conceptually they don't collide with themselves).
+    if(from.loc==='canvas'&&to.loc==='inv'){
+      const idx=st.bps.findIndex(b=>b.id===bpId);
+      if(idx===-1)return {ok:false,why:'BP not found in source container'};
+      return {ok:true,cells:bpCellsIn(st.bps[idx])};
+    }
+    return {ok:false,why:'unsupported transfer'};
+  }
+  function canTransferBPPhysical(st,from,to,bpId,origin){
+    const src=page(st,from.page);
+    const bp=bpFrom(src,bpId);
+    if(!bp)return {ok:false,why:'BP not found in source container'};
     const inside=src.pos.filter(p=>poInBPIn(p,bp));
     const tmpContainer={bps:page(st,to.page).bps,pos:page(st,to.page).pos,sis:page(st,to.page).sis};
     const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
@@ -1057,33 +1088,59 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // transferBP: mutates. Fails CLEANLY (state untouched) when illegal --
-  // legality is checked FIRST via canTransferBP, before any splice, so a
-  // rejected transfer never partially moves contents.
+  // legality is checked FIRST via canTransferBP, before any mutation.
   function transferBP(st,from,to,bpId,origin){
     const chk=canTransferBP(st,from,to,bpId,origin);
     if(!chk.ok)return chk;
-    const src=containerOf(st,from),dst=containerOf(st,to);
+    if(from.loc==='inv'&&to.loc==='inv')return transferBPPhysical(st,from,to,bpId,origin);
+    if(from.loc==='inv'&&to.loc==='canvas')return transferBPCreateRef(st,from,bpId,origin);
+    if(from.loc==='canvas'&&to.loc==='inv')return transferBPRemoveRef(st,bpId);
+    return {ok:false,why:'unsupported transfer'};
+  }
+  function transferBPCreateRef(st,from,bpId,origin){
+    const home=homeLocationOf(st,bpId);
+    const bp=home.record;
+    const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
+    const nested=bpReferenceSet(st,bpId);
+    const bpRef=createRef(st,'bp',bpId,{origin});
+    for(const uid of nested.pos){
+      const poHome=homeLocationOf(st,uid).record;
+      createRef(st,'po',uid,{cell:[poHome.cell[0]+dr,poHome.cell[1]+dc],rot:poHome.rot});
+    }
+    for(const uid of nested.sis){
+      const siHome=homeLocationOf(st,uid).record;
+      createRef(st,'si',uid,{host:siHome.host});
+    }
+    unseatOrphans(st);
+    return bpRef;
+  }
+  function transferBPRemoveRef(st,bpId){
+    const bpRefIdx=st.bps.findIndex(b=>b.id===bpId);
+    const bpRef=st.bps[bpRefIdx];
+    // every PO reference currently on canvas that is contained within this
+    // BP reference's OWN footprint (its canvas origin/shape, NOT the home
+    // one) is nested content that arrived with it -- remove those
+    // references too (their homes are untouched).
+    const nestedUids=st.pos.filter(p=>poInBPIn(p,bpRef)).map(p=>p.uid);
+    for(const uid of nestedUids)removeRef(st,'po',uid);
+    removeRef(st,'bp',bpId);
+    return {ok:true};
+  }
+  function transferBPPhysical(st,from,to,bpId,origin){
+    const src=page(st,from.page),dst=page(st,to.page);
     const bp=bpFrom(src,bpId);
     const inside=src.pos.filter(p=>poInBPIn(p,bp));
     const insideUids=new Set(inside.map(p=>p.uid));
     const insideSis=src.sis.filter(a=>a.host&&a.host.po&&insideUids.has(a.host.po));
     const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
-    // splice BP out of src, shift+push into dst
     src.bps=src.bps.filter(b=>b.id!==bpId);
     bp.origin=origin;
     dst.bps.push(bp);
-    // splice contained POs out of src.pos, shift cell, push into dst.pos
     src.pos=src.pos.filter(p=>!insideUids.has(p.uid));
     for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
     dst.pos.push(...inside);
-    // splice their seated SIs out of src.sis, push into dst.sis (host
-    // untouched -- it names the PO by uid, which is unaffected by the move)
     src.sis=src.sis.filter(a=>!(a.host&&a.host.po&&insideUids.has(a.host.po)));
     dst.sis.push(...insideSis);
-    // if the destination is canvas, run unseatOrphans since e.g. a moved
-    // blade/hilt pair might now (dis)qualify for the 'bond' assembly seat;
-    // inventory containers have no 'bond' concept (see pageSockets note).
-    if(to.loc==='canvas')unseatOrphans(st);
     return {ok:true};
   }
 
