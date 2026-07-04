@@ -39,6 +39,12 @@
 // REQ-0038: chrome strings below (Canvas/Inventory titles, inventory
 // note, placeholder titles) now go through ./i18n.ts's t() instead of
 // inline locale ternaries.
+//
+// REQ-0032: the Canvas column's .board-wrap gets a second modifier class
+// (.board-wrap-canvas, position:relative) so PresetTrashZone can center
+// itself over exactly this box via CSS absolute positioning -- the
+// inventory column's own .board-wrap is untouched (inventory tabs never
+// show a trash zone, so there is nothing to position there).
 import { useEffect } from 'react';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
@@ -49,6 +55,7 @@ import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
 import { PresetTabs } from './PresetTabs';
+import { PresetTrashZone } from './PresetTrashZone';
 import { Settings } from './Settings';
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
@@ -83,8 +90,15 @@ function App() {
               <h2 className="board-column-title">{t(snapshot.locale, 'app.canvasTitle')}</h2>
               {snapshot.status === 'ready' ? <PresetTabs /> : null}
             </div>
-            <div className="board-wrap">
+            <div className="board-wrap board-wrap-canvas">
               <Board />
+              {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
+                  PRESET tab is being dragged (see PresetTrashZone.tsx's own
+                  module comment -- inventory-tab drags never satisfy its
+                  kind==='preset' gate). Centered over the Canvas board via
+                  CSS (.preset-trash-zone, absolutely positioned within
+                  this relatively-positioned .board-wrap-canvas). */}
+              <PresetTrashZone />
             </div>
           </div>
           <div className="board-column">

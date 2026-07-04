@@ -144,6 +144,13 @@ export interface StoreSnapshot {
    * module-store field -- no toast library exists in this app (see
    * Settings.tsx / InviteBanner rendering in App.tsx for the consumer). */
   welcomeBanner: string | null;
+  /** REQ-0032: brief inline feedback shown when a trash-drop delete is
+   * REFUSED (dropping the last remaining preset onto the trash zone) --
+   * a short-lived message the preset-tab row can render as a shake/toast
+   * right next to the tabs, mirroring welcomeBanner's "plain module-store
+   * field, auto-clears after a few seconds" pattern (no toast library in
+   * this app). null when nothing should be shown. */
+  presetDeleteRefused: string | null;
 }
 
 let snapshot: StoreSnapshot = {
@@ -160,6 +167,7 @@ let snapshot: StoreSnapshot = {
   route: routeFromHash(typeof location !== 'undefined' ? location.hash : ''),
   me: null,
   welcomeBanner: null,
+  presetDeleteRefused: null,
 };
 
 const listeners = new Set<() => void>();
@@ -469,6 +477,101 @@ export function renameActivePreset(n: number, name: string): void {
   if (!st || !engine) return;
   const r = engine.renamePreset(st, n, name);
   if (r.ok) notifyStateChanged();
+}
+
+/** REQ-0032: commits a preset drag-to-reorder (0-based from/to) through
+ * engine.reorderPreset -- same "engine mutator + notifyStateChanged()"
+ * pattern as every other preset action above, so auto-save picks up the
+ * new order/active index exactly like any other mutation. The engine
+ * itself recomputes `active` so it keeps identifying the SAME preset
+ * across the move (see reorderPreset's own doc); this wrapper does not
+ * need to touch anything UI-side beyond the standard re-render+autosave. */
+export function reorderActivePreset(from: number, to: number): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.reorderPreset(st, from, to);
+  if (r.ok) notifyStateChanged();
+}
+
+/** REQ-0032: deletes preset `n` (0-based) via the preset trash-drop-zone.
+ * Refusal (last remaining preset) sets `presetDeleteRefused` to a brief
+ * message instead of mutating anything -- PresetTabs.tsx renders this as
+ * short-lived inline feedback (see clearPresetDeleteRefused's auto-hide
+ * timer below), and the tab is NOT removed, matching the spec's "show
+ * brief inline feedback... do not remove the tab". A successful delete
+ * drops ONLY the preset's own reference set (engine.deletePreset never
+ * touches st.inv -- see REQ-0033's reference model, which supersedes
+ * REQ-0032's original physical-return paragraph) and lands `active` on
+ * the engine's own nearest-remaining-tab choice. */
+export function deleteActivePresetTab(n: number): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.deletePreset(st, n);
+  if (r.ok) {
+    notifyStateChanged();
+    return;
+  }
+  setSnapshot({ ...snapshot, presetDeleteRefused: 'Cannot delete the last remaining preset' });
+  schedulePresetDeleteRefusedClear();
+}
+
+let presetDeleteRefusedTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Auto-hides the trash-refusal message a few seconds after it appears --
+ * "brief" per the REQ-0032 spec, same pattern as
+ * scheduleWelcomeBannerClear() above. */
+function schedulePresetDeleteRefusedClear(delayMs = 3000): void {
+  if (presetDeleteRefusedTimer !== null) clearTimeout(presetDeleteRefusedTimer);
+  presetDeleteRefusedTimer = setTimeout(() => {
+    presetDeleteRefusedTimer = null;
+    clearPresetDeleteRefused();
+  }, delayMs);
+}
+
+/** Dismisses the trash-refusal message immediately (called internally by
+ * the auto-hide timer above; also safe to call from a UI close control if
+ * one is ever added). */
+export function clearPresetDeleteRefused(): void {
+  if (snapshot.presetDeleteRefused === null) return;
+  setSnapshot({ ...snapshot, presetDeleteRefused: null });
+}
+
+/** REQ-0032: the SAME active-index adjustment rule reorderPreset's engine
+ * function applies to st.presets.active, generalized here for
+ * `activeInvPage` -- which inventory tab is "currently shown" is CLIENT-
+ * side UI state (see this file's own module comment / StoreSnapshot doc),
+ * so engine.reorderInvPage does not and cannot touch it; this is the
+ * client-side mirror of that same rule:
+ *   - if the moved page (`from`) IS the active one, active follows it to
+ *     `to`.
+ *   - otherwise active shifts by one only if `from`/`to` straddle it
+ *     (closing/opening a gap on one side of it).
+ *   - a move entirely on one side of active never touches it. */
+function reorderedActiveIndex(active: number, from: number, to: number): number {
+  if (from === active) return to;
+  if (from < active && to >= active) return active - 1;
+  if (from > active && to <= active) return active + 1;
+  return active;
+}
+
+/** REQ-0032: commits an inventory-page drag-to-reorder (0-based from/to)
+ * through engine.reorderInvPage, THEN applies reorderedActiveIndex() to
+ * this store's own `activeInvPage` field so the shown tab keeps tracking
+ * the SAME page across the move -- the engine has no concept of "which
+ * page is active" (that lives only here), so this bookkeeping step is
+ * this wrapper's job alone, unlike the preset case where the engine
+ * itself owns `active`. */
+export function reorderInventoryPage(from: number, to: number): void {
+  const st = snapshot.state;
+  const engine = snapshot.engine;
+  if (!st || !engine) return;
+  const r = engine.reorderInvPage(st, from, to);
+  if (!r.ok) return;
+  const nextActive = reorderedActiveIndex(snapshot.activeInvPage, from, to);
+  setSnapshot({ ...snapshot, activeInvPage: nextActive });
+  notifyStateChanged();
 }
 
 /** Renames inventory page `n` (0-based). */

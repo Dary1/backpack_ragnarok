@@ -493,6 +493,51 @@ export interface EngineInstance {
    * built without one (pure read helper -- never mutates st.inv). */
   invPageNames: (st: GameState) => string[];
 
+  /** REQ-0032: moves preset slot `from` to index `to` (both 0-based,
+   * splice-out/splice-in semantics). The preset's ENTIRE content (store
+   * slot, or the live top-level canvas fields if it was the active
+   * preset) and its names[] entry move together as one unit. `active`
+   * is recomputed so it keeps identifying the SAME preset it did before
+   * the move: if the moved preset (`from`) IS the active one, active
+   * follows it to `to`; otherwise active shifts by one slot only when
+   * `from`/`to` straddle it (closing/opening a gap on one side of it),
+   * and is untouched when the move is entirely on one side of active.
+   * No-op (still {ok:true}) if from===to. Rejects out-of-range indices
+   * (state left completely untouched on rejection). */
+  reorderPreset: (st: GameState, from: number, to: number) => { ok: boolean; why?: string };
+
+  /** REQ-0032: removes preset `n` (0-based) ENTIRELY -- its reference set
+   * (store slot) and its names[] entry both vanish. Per the REQ-0033
+   * reference model, this NEVER touches st.inv: a deleted preset's
+   * references simply disappear; inventory homes (and every OTHER
+   * preset's own references to the same uids, if shared) are completely
+   * untouched. Refuses (returns {ok:false}, does NOT mutate st at all)
+   * when `n` is the last remaining preset (at least 1 must always
+   * remain). If the deleted preset was the ACTIVE one, active lands on
+   * the "nearest remaining tab": the same index if a preset still
+   * occupies it after the splice (the next tab over slides into the
+   * gap), else the new last index. Deleting a non-active preset leaves
+   * active pointing at the same preset as before (index shifts left by
+   * one only if the deleted slot was before it). */
+  deletePreset: (st: GameState, n: number) => { ok: boolean; why?: string };
+
+  /** REQ-0032: moves inventory page `from` to index `to` (both 0-based,
+   * same splice semantics as reorderPreset). The page's entire contents
+   * ({bps,pos,sis}) and its st.inv.names entry move together as one
+   * unit. Also rewrites any free-placed SI's embedded `host.page` field
+   * (see migrateState's v3 step) to the item's actual NEW page index --
+   * the only page-index-shaped data embedded anywhere outside the
+   * st.inv.pages array position itself (every other query --
+   * homeLocationOf/allHomeUids/tintSets/usageOf -- scans st.inv.pages
+   * live, so it self-corrects from the permuted array with no further
+   * work). `activeInvPage` (which tab is shown) is CLIENT-side UI state,
+   * not part of engine `st` -- the caller (store.ts) is responsible for
+   * applying the identical index-shift rule to its own activeInvPage
+   * after a successful call here. No-op (still {ok:true}) if
+   * from===to. Rejects out-of-range indices (state left completely
+   * untouched on rejection). */
+  reorderInvPage: (st: GameState, from: number, to: number) => { ok: boolean; why?: string };
+
   /** Read-only auditor for the REQ-0033 reference-model invariant
    * (REPLACES the pre-REQ-0033 "uid lives in exactly one place"
    * physicality rule this same function used to check -- signature

@@ -352,6 +352,89 @@ html, body {
   color: var(--cyan);
 }
 
+/* REQ-0032 -- drag-to-reorder + preset trash-drop-zone. */
+
+/* Canvas board's .board-wrap needs position:relative so the trash overlay
+   (position:absolute) centers over exactly this box, not the page --
+   ONLY the canvas one gets this modifier class (App.tsx); the inventory
+   board's .board-wrap is untouched, matching "inventory tabs never show a
+   trash zone" (there is nothing to position over there anyway). */
+.board-wrap-canvas {
+  position: relative;
+}
+
+.tab-dragging {
+  opacity: 0.4;
+}
+
+/* Live insertion-gap indicator shown between tabs while dragging (see
+   LongPressTabs.tsx's dragOverGap) -- a thin highlighted sliver rendered
+   in the gap the dragged tab would land in on drop. */
+.tab-drop-gap-wrap {
+  display: contents;
+}
+
+.tab-drop-gap {
+  display: inline-block;
+  width: 3px;
+  align-self: stretch;
+  background: var(--cyan);
+  border-radius: 2px;
+}
+
+/* Trash-drop-zone overlay (PresetTrashZone.tsx) -- centered over the
+   Canvas board, visible ONLY for the duration of a preset-tab drag. */
+.preset-trash-zone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px 30px;
+  background: rgba(18, 18, 18, 0.92);
+  border: 2px dashed var(--bad);
+  border-radius: 14px;
+  color: var(--bad);
+  /* NOTE: intentionally NOT pointer-events:none -- document.elementFromPoint
+     (LongPressTabs.tsx's drop hit-test) skips pointer-events:none elements
+     entirely, which would make a drop onto this zone undetectable. This
+     element is never itself a REAL event target in practice (it only
+     renders while a tab drag has already captured the pointer via
+     window-level listeners), so leaving default pointer-events is safe. */
+  z-index: 20;
+}
+
+.preset-trash-zone-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.preset-trash-zone-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Brief inline feedback when a trash-drop delete is refused (last
+   remaining preset) -- see store.ts's presetDeleteRefused /
+   schedulePresetDeleteRefusedClear(). A short shake draws the eye without
+   needing a toast library. */
+.preset-delete-refused {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bad);
+  animation: preset-delete-refused-shake 0.4s ease-in-out;
+}
+
+@keyframes preset-delete-refused-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
 .inventory-board-canvas {
   /* Same box treatment as the canvas board (.board-canvas is a plain
      block already) -- no extra rule needed beyond what .board-wrap

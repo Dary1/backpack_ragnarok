@@ -16,8 +16,18 @@
 // "Inventory" label row (see App.tsx), right-aligned via CSS
 // (.board-column-header/.inv-tabs), per the task's verbatim UI change
 // request.
+//
+// REQ-0032 addition: drag-to-reorder (LongPressTabs' kind='inv' path).
+// reorderInventoryPage (store.ts) commits the reorder through
+// engine.reorderInvPage AND shifts this component's own activeInvPage
+// index via the same straddle rule reorderActivePreset's engine call
+// applies internally -- see store.ts's reorderedActiveIndex() doc.
+// Inventory tabs NEVER pass onDeletePreset -- kind='inv' means
+// LongPressTabs' trash-zone hit-test is unreachable for this instance
+// regardless (isOverTrashZone() short-circuits on kind!=='preset'), so
+// there is no risk of an inventory tab ever trash-deleting anything.
 import { LongPressTabs } from './LongPressTabs';
-import { renameInventoryPage, setActiveInvPage, useGameStore } from './store';
+import { renameInventoryPage, reorderInventoryPage, setActiveInvPage, useGameStore } from './store';
 
 export function Tabs() {
   const snapshot = useGameStore();
@@ -33,6 +43,8 @@ export function Tabs() {
       active={active}
       onSwitch={setActiveInvPage}
       onRename={renameInventoryPage}
+      onReorder={reorderInventoryPage}
+      kind="inv"
       className="inv-tabs"
       tabClassName="inv-tab"
       activeClassName="inv-tab-active"

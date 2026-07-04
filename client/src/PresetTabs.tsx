@@ -18,9 +18,27 @@
 // same as any other mutation (Phase A's lesson: no setOps/Application
 // churn is needed here at all, since canvas ops never carried a
 // per-preset identity the way inventory pages carry a per-page one).
+//
+// REQ-0032 addition: drag-to-reorder (LongPressTabs' kind='preset' path)
+// + trash-drop delete. reorderActivePreset/deleteActivePresetTab are
+// forwarded straight through to LongPressTabs, which owns the full
+// gesture disambiguation (click vs long-press-rename vs drag) and the
+// trash-zone hit-testing -- this component only wires the store actions
+// up, same "thin binding" shape as every other prop here.
+// presetDeleteRefused renders as brief inline feedback next to the tabs
+// when a trash-drop delete is refused (last remaining preset) -- the tab
+// itself is never removed in that case (store.ts's deleteActivePresetTab
+// leaves state untouched on refusal).
 import { LongPressTabs } from './LongPressTabs';
 import { t } from './i18n';
-import { addNewPresetAndSwitch, renameActivePreset, switchActivePreset, useGameStore } from './store';
+import {
+  addNewPresetAndSwitch,
+  deleteActivePresetTab,
+  renameActivePreset,
+  reorderActivePreset,
+  switchActivePreset,
+  useGameStore,
+} from './store';
 
 export function PresetTabs() {
   const snapshot = useGameStore();
@@ -39,6 +57,9 @@ export function PresetTabs() {
         active={active}
         onSwitch={switchActivePreset}
         onRename={renameActivePreset}
+        onReorder={reorderActivePreset}
+        onDeletePreset={deleteActivePresetTab}
+        kind="preset"
         className="preset-tabs"
         tabClassName="preset-tab"
         activeClassName="preset-tab-active"
@@ -46,6 +67,7 @@ export function PresetTabs() {
       <button type="button" className="preset-add-btn" onClick={() => addNewPresetAndSwitch()} title="Add preset">
         {t(snapshot.locale, 'preset.add')}
       </button>
+      {snapshot.presetDeleteRefused ? <span className="preset-delete-refused">{snapshot.presetDeleteRefused}</span> : null}
     </div>
   );
 }
