@@ -1145,26 +1145,49 @@ html, body {
   justify-content: center;
 }
 
-/* Two-pane detail layout (DexDetail.tsx) -- REQ-0038, rebalanced REQ-0038
-   feedback round 2 to an explicit LEFT/RIGHT HALF split (was 65%/300px-
-   fixed, which left the diagram cramped) -- "split the detail panel into
-   LEFT/RIGHT halves (diagram left, rest right)" per the task spec. Each
-   pane is `flex: 1 1 50%` off the same basis so they land at ~half the
-   row width each (E2E asserts this ratio via boundingBox() widths). Both
-   panes cap at 80vh so a tall enlarged diagram (see DexDiagram.tsx's
-   DIAGRAM_MAX_HEIGHT_PX) never grows the pane past the viewport --
-   overflow-y:auto keeps the rest of the fields/list reachable. */
-.dex-detail-two-pane {
+/* Detail view layout (DexDetail.tsx) -- REQ-0038, restructured Dex
+   feedback round 3 (fix 2). WIDE screens: three flex columns in DOM
+   order [list | diagram | info], per the task spec verbatim: "the
+   ALL-ITEMS LIST on the FAR LEFT; the DETAIL PANEL sits to its right and
+   is itself split into left/right blocks: 図解(diagram) LEFT | その他情報
+   (info) RIGHT" -- list gets a narrower fixed-ish basis (thumbnails +
+   names only need to be legible, not half the screen), diagram and info
+   split the remaining width evenly. All three columns cap at 80vh with
+   overflow-y:auto (unchanged behavior from the old two-pane rule) so a
+   tall enlarged diagram or a long item list never grows the row past the
+   viewport.
+
+   NARROW/vertical (縦長) screens (viewport width below
+   DEX_DETAIL_WIDE_BREAKPOINT_PX = 1100px, chosen as a sensible cutoff
+   comfortably below the E2E rig's 2000px viewport but above typical
+   phone/tablet-portrait widths) keep the layout REQ-0038 already had:
+   stacked full-width blocks in DOM source order (list, then diagram,
+   then info) -- flex-direction:column turns the same three flex children
+   into a vertical stack with no per-child width math needed. This is the
+   "current layout is fine on narrow screens, keep it via a responsive
+   breakpoint" instruction verbatim. */
+.dex-detail-columns {
   display: flex;
   gap: 18px;
   align-items: flex-start;
   min-height: 0;
 }
 
-.dex-detail-pane-left {
-  flex: 1 1 50%;
+.dex-detail-col-list {
+  flex: 0 1 260px;
+  min-width: 200px;
+  max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dex-detail-col-diagram {
+  flex: 1 1 40%;
   min-width: 0;
-  max-width: 50%;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1173,16 +1196,32 @@ html, body {
   overflow-y: auto;
 }
 
-.dex-detail-pane-right {
-  flex: 1 1 50%;
+.dex-detail-col-info {
+  flex: 1 1 40%;
   min-width: 0;
-  max-width: 50%;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 8px;
+  padding: 16px;
   max-height: 80vh;
   overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  /* Narrow/vertical (縦長) fallback -- stack the three columns full-width
+     in source order (list, diagram, info), same shape the pre-R3 layout
+     showed at narrow viewports (a two-pane flex row that wraps). */
+  .dex-detail-columns {
+    flex-direction: column;
+  }
+
+  .dex-detail-col-list,
+  .dex-detail-col-diagram,
+  .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
 }
 
 .dex-detail-back-btn {

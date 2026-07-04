@@ -29,7 +29,7 @@
 // "scales sanely, capped by available height" per the task spec. The cap
 // is deliberately generous (620px) so it comfortably fits the two-pane
 // detail layout's left pane at the E2E viewport's height (see
-// DexDetail.tsx / index.css's .dex-detail-pane-left) while still reading
+// DexDetail.tsx / index.css's .dex-detail-col-diagram) while still reading
 // as dramatically larger than the old fixed 46px/cell.
 import type { ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
