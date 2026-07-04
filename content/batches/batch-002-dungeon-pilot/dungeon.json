@@ -1,0 +1,57 @@
+{
+  "schema": "dungeon/1",
+  "batch": "batch-002-dungeon-pilot",
+  "id": "niflheim_depths",
+  "name": "Niflheim Depths",
+  "i18n": { "en": { "name": "Niflheim Depths" }, "ja": { "name": "ニヴルヘイムの深層" } },
+  "theme": "Niflheim/Frost-continuation (extends batch-001-niflheim's Frost family into a monster/dungeon setting)",
+  "level_scaling": {
+    "note": "Documented interpretation (S4.6 gives no formula, only 'bounded per encounter difficulty'): pack_budget(level) = PACK_BUDGET_BASE + PACK_BUDGET_PER_LEVEL*(level-1), implemented as packBudgetForLevel() in sim/combat.cjs. Enemy hp ranges in batch002_enemies.json are the LEVEL-1 baseline; a future content-scaling tool would multiply hp/skill-cadence by a level-derived factor before compiling a pack -- not required for this pilot's smoke test, which runs at a fixed level.",
+    "scaling_knob": "pack_budget_linear_by_level",
+    "baseline_level": 1
+  },
+  "encounters": [
+    { "id": "enc_pack_1", "type": "pack", "mode": "battle",
+      "enemyPack": { "enemyIds": ["frost_gnoll", "ice_archer"] },
+      "deadline_secs": 90,
+      "rewardItems": ["reward_frost_shard_common"] },
+
+    { "id": "enc_trap_1", "type": "trap", "mode": "detection",
+      "entityDef": { "id": "trap_frost_deadfall", "name": "Frost Deadfall", "hp": 1, "footprint": [1, 1], "masked": true, "timeout_secs": 18, "skills": ["trap_deadfall_volley"] },
+      "timeout_secs": 18,
+      "deadline_secs": 18.5 },
+
+    { "id": "enc_pack_2", "type": "pack", "mode": "battle",
+      "enemyPack": { "enemyIds": ["rime_shaman", "glacier_wisp", "glacier_wisp"] },
+      "deadline_secs": 90,
+      "rewardItems": ["reward_frost_shard_common"] },
+
+    { "id": "enc_door_1_stage1", "type": "door", "mode": "detection",
+      "entityDef": { "id": "door_rimefast_stage1", "name": "Rimefast Door (hidden)", "hp": 1, "footprint": [1, 1], "masked": true, "timeout_secs": 20, "skills": [] },
+      "timeout_secs": 20,
+      "deadline_secs": 20.5,
+      "note": "Stage 1 of the door chain: detection. If cleared (discovered), the schedule would normally chain into enc_door_1_stage2 (unlock) -- see notes.md for how P1-B's schedule service is expected to sequence stage1->stage2 as two back-to-back schedule entries sharing one door id." },
+
+    { "id": "enc_door_1_stage2", "type": "door", "mode": "unlock",
+      "entityDef": { "id": "door_rimefast_stage2", "name": "Rimefast Door", "hp": 60, "footprint": [2, 2], "masked": false, "timeout_secs": 25, "skills": ["door_keeper_strike"] },
+      "timeout_secs": 25,
+      "deadline_secs": 25.5,
+      "rewardItems": [] },
+
+    { "id": "enc_pack_3", "type": "pack", "mode": "battle",
+      "enemyPack": { "enemyIds": ["frostback_bear", "niflheim_stalker"] },
+      "deadline_secs": 100,
+      "rewardItems": ["reward_frost_shard_uncommon"] },
+
+    { "id": "enc_chest_1", "type": "chest", "mode": "unlock",
+      "entityDef": { "id": "chest_frostbound_cache", "name": "Frostbound Cache", "hp": 40, "footprint": [2, 2], "masked": false, "timeout_secs": 22, "skills": [] },
+      "timeout_secs": 22,
+      "deadline_secs": 22.5,
+      "rewardItems": ["reward_frostbound_cache_roll"] },
+
+    { "id": "enc_boss", "type": "boss", "mode": "battle",
+      "enemyPack": { "enemyIds": ["hrimgrimnir"] },
+      "deadline_secs": 180,
+      "rewardItems": ["reward_boss_relic_roll"] }
+  ]
+}
