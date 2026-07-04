@@ -6,19 +6,22 @@
 // reads) plus a THIRD root (data/config/dev_user.json, gitignored like
 // data/profiles/).
 //
-// **Dev-grade auth, intentionally**: the X-Player-Id header is trusted at
-// face value (matched against dev_user.json's own playerId + roles) with
-// no signature/session/token of any kind. This is the same posture
-// server/README.md already documents for the profile-PUT endpoint
-// ("accepted dev risk... revisit at the account/auth phase"). Real
-// hardening (sessions, tokens, real user records) is explicitly deferred
-// to that later phase -- do not mistake this for production auth.
+// REQ-0037 update: the old "X-Player-Id header trusted at face value"
+// mechanism is GONE. Auth now resolves a real, server-generated,
+// unguessable token (server/players.cjs's registry) via resolveAuth()
+// below, used by /api/me, the profile routes (server/api.cjs), and the
+// admin guard (isItemAdminToken() below). data/config/dev_user.json is
+// still the SOURCE for the dev player's identity/roles (and now also
+// carries the dev_mode flag), but the dev player also gets a token, kept
+// in sync via server/players.cjs's ensureFixedPlayer(). See
+// docs/REQ/REQ-0037-guest-auth.md for the full design.
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { render } = require('../tools/eff_render.cjs');
+const players = require('./players.cjs');
 
 const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
 const CONTENT_DIR = path.join(REPO_ROOT, 'content');
@@ -30,7 +33,11 @@ const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json');
 const CONFIG_DIR = path.join(REPO_ROOT, 'data', 'config');
 const DEV_USER_PATH = path.join(CONFIG_DIR, 'dev_user.json');
 
-const DEFAULT_DEV_USER = { playerId: 'dev', name: 'Developer', roles: ['item_admin'] };
+// REQ-0037: dev_mode defaults to true (see docs/REQ/REQ-0037-guest-auth.md
+// -- "meant to be flipped to false by hand... once real guest tokens are
+// the only intended entry path"). DEFAULT_DEV_USER keeps its REQ-0035
+// shape plus this one new field.
+const DEFAULT_DEV_USER = { playerId: 'dev', name: 'Developer', roles: ['item_admin'], dev_mode: true };
 
 // ---- data/config/dev_user.json ----
 
@@ -49,25 +56,85 @@ function ensureDevUser() {
 
 function readDevUser() {
   ensureDevUser();
-  return JSON.parse(fs.readFileSync(DEV_USER_PATH, 'utf8'));
+  const raw = JSON.parse(fs.readFileSync(DEV_USER_PATH, 'utf8'));
+  // Defensive default for pre-REQ-0037 files that predate dev_mode (an
+  // existing dev_user.json on a box upgraded from REQ-0035 won't have
+  // this key yet) -- absent means "not yet turned off", i.e. true.
+  if (typeof raw.dev_mode !== 'boolean') raw.dev_mode = true;
+  return raw;
+}
+
+/** REQ-0037: ensures the dev player has a registry entry under
+ * data/players/dev.json (token, createdAt), created from dev_user.json's
+ * current name/roles the FIRST time this runs, and left with its token
+ * UNCHANGED on every subsequent boot (idempotent -- see
+ * server/players.cjs's ensureFixedPlayer doc comment). Prints the dev
+ * token to stdout/journal exactly once, only on first creation, NEVER in
+ * any HTTP response body. Call once at server boot (main()) -- also safe
+ * to call lazily/repeatedly (e.g. from tests), since it only logs on the
+ * single transition from "no data/players/dev.json" to "created one".
+ */
+function ensureDevPlayer() {
+  const devUser = readDevUser();
+  const result = players.ensureFixedPlayer(devUser.playerId, devUser.name, devUser.roles);
+  if (result.created) {
+    // eslint-disable-next-line no-console
+    console.log(
+      '[backpack-api] created dev player "' + result.player.playerId + '" -- ' +
+      'invite URL: https://backpack-dev.qtie.jp/app/#/invite/' + result.player.token
+    );
+  }
+  return result.player;
 }
 
 /** GET /api/me: returns the dev_user.json contents (creating the default
  * file first if this is a fresh box). Today's file models exactly one
- * user; this function just returns it, no wrapping. */
+ * FIXED user (the dev player); guest players live entirely in
+ * server/players.cjs's registry and never touch this file. Kept for
+ * back-compat / the dev_mode flag's home, per REQ-0037. */
 function getMe() {
   return readDevUser();
 }
 
-/** Looks up whether `playerId` (as supplied via the X-Player-Id header) is
- * a known user with the `item_admin` role. Written as a general
- * lookup-by-id (not a hardcoded single-value compare) so it keeps working
- * unchanged if dev_user.json ever grows into a list of users -- today it
- * is a single object, so this checks that object's own playerId/roles. */
-function isItemAdmin(playerId) {
-  if (!playerId) return false;
-  const user = readDevUser();
-  return user.playerId === playerId && Array.isArray(user.roles) && user.roles.includes('item_admin');
+/** REQ-0037 auth resolution -- the SINGLE function used by /api/me, the
+ * profile routes, and the admin guard. Given an X-Auth-Token header
+ * value (may be undefined/empty), returns:
+ *   { ok: true, player } on success (valid token, or no-token+dev_mode
+ *     fallback to the dev player)
+ *   { ok: false, reason: 'invalid_token' } for a present-but-unknown token
+ *   { ok: false, reason: 'no_token' } for an absent token with
+ *     dev_mode:false
+ * Never throws -- every caller maps `reason` to the HTTP status it wants
+ * (401 for /api/me and the profile routes; the admin guard's 403 wraps
+ * BOTH failure reasons uniformly, see isItemAdminToken() below and
+ * server/api.cjs's admin route handler).
+ */
+function resolveAuth(token) {
+  if (token) {
+    const player = players.findPlayerByToken(token);
+    if (player) return { ok: true, player: player };
+    return { ok: false, reason: 'invalid_token' };
+  }
+  const devUser = readDevUser();
+  if (devUser.dev_mode) {
+    const devPlayer = ensureDevPlayer();
+    return { ok: true, player: devPlayer };
+  }
+  return { ok: false, reason: 'no_token' };
+}
+
+/** REQ-0037 admin guard: resolves `token` via resolveAuth() then checks
+ * the resolved player's roles include item_admin. Returns true/false
+ * only -- every failure mode (invalid token, no token, resolved player
+ * lacking the role) collapses to `false`, matching the existing 403
+ * status-code convention for this endpoint (see
+ * docs/REQ/REQ-0037-guest-auth.md's admin-guard section: no information
+ * leak distinguishing "no token" from "bad role"). */
+function isItemAdminToken(token) {
+  const resolved = resolveAuth(token);
+  if (!resolved.ok) return false;
+  const roles = resolved.player.roles;
+  return Array.isArray(roles) && roles.includes('item_admin');
 }
 
 // ---- content/live read helpers ----
@@ -79,9 +146,8 @@ function loadJSON(p) {
 /** Locates `id` in content/live/live_items.json or live_sis.json. Returns
  * {kind:'item'|'si', doc, entries, index} or null if not found in either
  * (this is also how "draft/staging items are not editable" is enforced --
- * there is no content/staging directory in this repo today, so anything
- * not in one of these two live files is simply unknown to this endpoint,
- * see docs/REQ/REQ-0035-item-encyclopedia.md). */
+ * there is no content/staging directory in this repo today, see
+ * docs/REQ/REQ-0035-item-encyclopedia.md). */
 function findLiveEntry(id) {
   const itemsDoc = loadJSON(ITEMS_PATH);
   const itemIdx = (itemsDoc.entries || []).findIndex((e) => e.id === id);
@@ -292,8 +358,10 @@ module.exports = {
   DEFAULT_DEV_USER,
   ensureDevUser,
   readDevUser,
+  ensureDevPlayer,
   getMe,
-  isItemAdmin,
+  resolveAuth,
+  isItemAdminToken,
   findLiveEntry,
   validateBody,
   applyAdminEdit,
