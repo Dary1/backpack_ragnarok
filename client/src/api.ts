@@ -83,10 +83,21 @@ export interface ApiPortDef {
   tag: string;
 }
 
+// REQ-0038: formal i18n content shape -- a map keyed by locale (today
+// only "ja" is server-whitelisted, see server/admin.cjs's
+// SUPPORTED_LOCALES), each locale carrying its own name/flavor override.
+// Base name/flavor on the entry itself stay English always; this map is
+// where every OTHER locale's copy lives. The server ALSO still computes
+// back-compat top-level name_ja/flavor_ja fields (mirrored from
+// i18n.ja) for legacy consumers (mock-src/ui.js, ItemPanel.tsx's
+// localized() helper) -- the Dex v2 UI reads i18n directly instead.
+export type ApiI18nMap = Record<string, { name?: string; flavor?: string }>;
+
 export interface ApiItemEntry {
   id: string;
   name: string;
   name_ja?: string;
+  i18n?: ApiI18nMap;
   tags: string[];
   rarity: string;
   shape: Array<[number, number]>;
@@ -106,6 +117,7 @@ export interface ApiSIEntry {
   id: string;
   name: string;
   name_ja?: string;
+  i18n?: ApiI18nMap;
   slot: string;
   reqTags?: string[];
   icon: string;
