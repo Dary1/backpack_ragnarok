@@ -144,6 +144,13 @@ fs.writeFileSync(path.join(liveDir, 'live_items.json'), JSON.stringify({
     { id: 'blade', name: 'Blade', tags: ['Weapon'], shape: [[0, 0]] },
     { id: 'fx_dagger', name: 'FX Dagger', tags: ['Weapon'], shape: [[0, 0]],
       effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'strike', n: [5, 9] } }] },
+    // REQ-0036 P1-B: an actively-attacking PO (every_secs + attack_profile)
+    // for the schedule test dungeon fixture above -- guarantees a fast,
+    // deterministic kill of the 1hp weak_slime fixture enemy, so test runs
+    // have a small, predictable durationSecs.
+    { id: 'test_sword', name: 'Test Sword', tags: ['Weapon'], shape: [[0, 0]],
+      effects: [{ trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [50, 50] },
+        attack_profile: { edge: ['top'], direction: 'front', penetration: 0, aoe: 0, aoe_statuses: false } }] },
   ],
 }));
 fs.writeFileSync(path.join(liveDir, 'live_sis.json'), JSON.stringify({
@@ -157,6 +164,46 @@ fs.writeFileSync(path.join(liveDir, 'live_sis.json'), JSON.stringify({
 fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({
   layout: { ROWS: 6, COLS: 6 }, linked: true, bps: [], pos: [], sis: [],
 }));
+
+// REQ-0036 P1-B: minimal batch-002-dungeon-pilot-SHAPED fixture content
+// (schedule.cjs's getScheduleContent() reads these exact paths). A tiny,
+// fast, deterministic dungeon: one pack encounter (a single very-weak
+// enemy so a real unit reliably wins in well under a second of sim-time,
+// keeping durationSecs small) + one boss (also weak, same reason),
+// mirroring the shape of the real content/batches/batch-002-dungeon-pilot
+// fixtures exactly (same schema fields) but scaled down for test speed.
+// rewardItems reference 'blade'/'fx_dagger' DIRECTLY (already defined
+// above in live_items.json) rather than a reward-roll id -- exercises
+// resolveRewardItemId()'s identity-fallback path (an id absent from
+// REWARD_ROLL_TO_ITEM_ID passes through unchanged), which is exactly
+// what a real content batch will do once batch-002 goes live with real
+// item ids instead of placeholder roll ids.
+const batchDir = path.join(contentDir, 'batches', 'batch-002-dungeon-pilot');
+fs.mkdirSync(batchDir, { recursive: true });
+fs.writeFileSync(path.join(batchDir, 'dungeon.json'), JSON.stringify({
+  schema: 'dungeon/1', id: 'test_dungeon', name: 'Test Dungeon',
+  encounters: [
+    { id: 'enc_pack_1', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak_slime'] }, deadline_secs: 30, rewardItems: ['blade'] },
+    { id: 'enc_boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['weak_slime'] }, deadline_secs: 30, rewardItems: ['fx_dagger'] },
+  ],
+}));
+fs.writeFileSync(path.join(batchDir, 'enemies.json'), JSON.stringify({
+  schema: 'enemy/1',
+  entries: [
+    { id: 'weak_slime', name: 'Weak Slime', hp: [1, 1], footprint: [1, 1], skills: ['slime_bite'], rarity: 'common', pack_role: 'line' },
+  ],
+}));
+fs.writeFileSync(path.join(batchDir, 'skills.json'), JSON.stringify({
+  schema: 'skill/1',
+  entries: [
+    { id: 'slime_bite', name_en: 'Slime Bite',
+      trigger: { t: 'every_secs', s: [5.0, 5.0] }, verb: { t: 'strike', n: [1, 1] },
+      attack_profile: { edge: ['top'], direction: 'front', penetration: 0, aoe: 0, aoe_statuses: false },
+      modes: ['battle'] },
+  ],
+}));
+fs.writeFileSync(path.join(batchDir, 'items.json'), JSON.stringify({ schema: 'po/2', entries: [] }));
+
 os.homedir = () => fakeRepoHome;
 delete require.cache[require.resolve('../players.cjs')];
 delete require.cache[require.resolve('../storage.cjs')];
@@ -230,7 +277,7 @@ T('api: GET /api/content shape has items/sis/trees/scenario, item count matches 
   assert.strictEqual(res.statusCode, 200);
   const parsed = JSON.parse(res.body);
   assert.ok(parsed.items && parsed.sis && parsed.trees && parsed.scenario, 'keys present');
-  assert.strictEqual(Object.keys(parsed.items).length, 2, 'two items in fixture (blade + fx_dagger)');
+  assert.strictEqual(Object.keys(parsed.items).length, 3, 'three items in fixture (blade + fx_dagger + REQ-0036 P1-B test_sword)');
   assert.ok(parsed.items.blade, 'blade item present');
   assert.strictEqual(Object.keys(parsed.sis).length, 2, 'two sis in fixture (acc_gem + fx_ring)');
   assert.deepStrictEqual(parsed.trees.po, { Weapon: null, WeaponPart: 'Weapon', Metal: null });
@@ -771,6 +818,506 @@ async function main() {
       });
       api.handle(req, res);
     });
+  });
+
+
+  // =====================================================================
+  // REQ-0036 P1-B: Dungeon Schedule + Warehouse test group. Runs against
+  // the SAME synthetic fakeRepoHome/repoRoot fixture as the tests above
+  // (os.homedir() is still pointed there) -- schedule.cjs resolves its
+  // own content paths (content/live/*.json, content/batches/batch-002-
+  // dungeon-pilot/*.json) the same mtime-cached way api.cjs's
+  // buildContentPayload() does, so the tiny fixture dungeon written
+  // above (batchDir: 'test_dungeon', one weak_slime pack + boss) is what
+  // every schedule test below actually runs.
+  // =====================================================================
+  const schedule = require('../schedule.cjs');
+  const scheduleStorage = require('../storage.cjs');
+
+  // Builds a fresh, internally-independent profile canvas: 4 presets
+  // (indices 0-3), each with ITS OWN uniquely-tagged BP + a placed
+  // 'test_sword' PO wired to attack (every_secs strike, see the
+  // live_items.json fixture above) so a real sim run reliably kills the
+  // 1hp weak_slime fixture enemy fast. Every uid across all 4 presets is
+  // globally unique (tagged by preset index) so isUnitIndependent() is
+  // true for every one of them against each other -- tests that need an
+  // independence VIOLATION deliberately clone one preset's uids into
+  // another below.
+  function makeTestCanvas() {
+    function presetCanvas(tag) {
+      return {
+        linked: true,
+        bps: [{ id: 'bp_' + tag, name: 'BP ' + tag, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+        pos: [{ uid: 'po_' + tag, id: 'test_sword', loc: 'grid', cell: [1, 1], rot: 0 }],
+        sis: [],
+      };
+    }
+    const p0 = presetCanvas('t0'), p1 = presetCanvas('t1'), p2 = presetCanvas('t2'), p3 = presetCanvas('t3');
+    return Object.assign({}, p0, {
+      layout: { ROWS: 8, COLS: 8 },
+      inv: { pages: [{ bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }], names: ['1', '2', '3', '4', '5'] },
+      presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, p1, p2, p3, null] },
+    });
+  }
+
+  function fillAllSlots(scheduleApi, room, callerId, canvas, itemDefsById) {
+    let r = room;
+    for (let i = 0; i < 4; i++) r = scheduleApi.assignSlot(r, callerId, i, i, canvas, itemDefsById);
+    return r;
+  }
+
+  // Force a run's clock to read as fully elapsed, without a real sleep --
+  // rewrites startedAt into the past by (durationSecs + margin) seconds.
+  function forceRunElapsed(runId) {
+    const run = scheduleStorage.readRun(runId);
+    run.startedAt = new Date(Date.now() - (run.durationSecs + 5) * 1000).toISOString();
+    scheduleStorage.writeRun(runId, run);
+  }
+
+  const scheduleP1 = playersFixture.createPlayer('ScheduleP1', []);
+  const scheduleP2 = playersFixture.createPlayer('ScheduleP2', []);
+  scheduleStorage.writeProfile(scheduleP1.playerId, makeTestCanvas());
+  scheduleStorage.writeProfile(scheduleP2.playerId, makeTestCanvas());
+
+  function scheduleReq(method, urlPath, token, body) {
+    return new Promise((resolve, reject) => {
+      const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
+      const req2 = mockReq(method, urlPath, bodyStr, authHeaders(token));
+      const res2 = mockRes((b) => {
+        let parsed = null;
+        try { parsed = JSON.parse(b); } catch (e) { /* leave null */ }
+        resolve({ status: res2.statusCode, body: parsed });
+      });
+      try { api.handle(req2, res2); } catch (e) { reject(e); }
+    });
+  }
+
+  await AT('schedule: POST /api/schedule/rooms creates a room owned by the caller', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', cancelPolicy: { immediate: false } });
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.room.ownerId, scheduleP1.playerId);
+    assert.strictEqual(res.body.room.visibility, 'self');
+    assert.strictEqual(res.body.room.status, 'open');
+    assert.strictEqual(res.body.room.slots.length, 4);
+  });
+
+  await AT('schedule: GET /api/schedule/rooms lists only the caller\'s own rooms', async () => {
+    const before = await scheduleReq('GET', '/api/schedule/rooms', scheduleP2.token);
+    assert.strictEqual(before.body.rooms.length, 0, 'ScheduleP2 has created no rooms yet');
+    await scheduleReq('POST', '/api/schedule/rooms', scheduleP2.token, { dungeonId: 'test_dungeon', level: 1 });
+    const after = await scheduleReq('GET', '/api/schedule/rooms', scheduleP2.token);
+    assert.strictEqual(after.body.rooms.length, 1);
+    const p1List = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    assert.ok(p1List.body.rooms.length >= 1, 'ScheduleP1 still sees its own room from the prior test');
+    assert.ok(p1List.body.rooms.every((r) => r.ownerId === scheduleP1.playerId), 'every listed room belongs to the caller');
+  });
+
+  await AT('schedule: auth isolation -- player B cannot GET or DELETE player A\'s room (404, not 403)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const getRes = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP2.token);
+    assert.strictEqual(getRes.status, 404, 'cross-player GET must 404, never 403 (no existence leak)');
+    const delRes = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP2.token);
+    assert.strictEqual(delRes.status, 404, 'cross-player DELETE must 404');
+    // Sanity: the OWNER can still see it fine.
+    const ownGet = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(ownGet.status, 200);
+  });
+
+  await AT('schedule: invalid token is rejected with 401 on every schedule route', async () => {
+    const res = await scheduleReq('GET', '/api/schedule/rooms', 'totally-bogus-token-value');
+    assert.strictEqual(res.status, 401);
+  });
+
+  await AT('schedule: deploy gate -- assigning a preset that shares a uid with another of the caller\'s OWN presets is refused 409', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    // Make preset index 4 an EXACT duplicate of preset 0 -- guaranteed uid overlap.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    const preset0Snapshot = { bps: doc.canvas.bps, pos: doc.canvas.pos, sis: doc.canvas.sis };
+    doc.canvas.presets.store[4] = JSON.parse(JSON.stringify(preset0Snapshot));
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
+
+    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
+    assert.strictEqual(res.status, 409, 'independence violation must be 409: ' + JSON.stringify(res.body));
+    assert.ok(/independent/i.test(res.body.error));
+
+    // Clean up: clear the duplicate so later tests' independence holds.
+    const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc2.canvas.presets.store[4] = null;
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
+  });
+
+  await AT('schedule: deploy gate -- a preset already deployed in another of the caller\'s ACTIVE rooms is refused 409 on cross-room overlap', async () => {
+    // Room X: fill all 4 slots with presets 0-3 and start its run (-> status 'active').
+    const roomXRes = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomXId = roomXRes.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomXId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign: ' + JSON.stringify(assignRes.body));
+    }
+    const roomXAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomXId, scheduleP1.token);
+    assert.strictEqual(roomXAfter.body.room.status, 'active', 'room X must auto-start its first run once all 4 slots are filled');
+
+    // Room Y: try to also deploy preset 0 (already active in room X) -> 409.
+    const roomYRes = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomYId = roomYRes.body.room.id;
+    const overlapRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomYId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
+    assert.strictEqual(overlapRes.status, 409, 'cross-room overlap must be 409: ' + JSON.stringify(overlapRes.body));
+    assert.ok(/active schedule/i.test(overlapRes.body.error));
+
+    // Cleanup: settle room X's run (force-elapse) so it doesn't leak into
+    // later tests as still-active, then clear whatever it rewarded so
+    // warehouse-count assertions in LATER tests start from a clean slate.
+    const roomXRaw = scheduleStorage.readRoom(roomXId);
+    forceRunElapsed(roomXRaw.lastRunId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomXId, scheduleP1.token); // triggers settle
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomXId, scheduleP1.token);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomYId, scheduleP1.token);
+  });
+
+  await AT('schedule: run executes and persists a replay log + summary; fixed seed -> deterministic re-simulation', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(roomAfter.body.room.status, 'active');
+    const runId = roomAfter.body.room.lastRunId;
+    assert.ok(runId, 'room must record its lastRunId');
+
+    const runRaw = scheduleStorage.readRun(runId);
+    assert.ok(Array.isArray(runRaw.events) && runRaw.events.length > 0, 'run must persist a non-empty replay log');
+    assert.ok(['victory', 'wipe', 'incomplete'].includes(runRaw.result), 'run must persist a legal summary result');
+    assert.strictEqual(typeof runRaw.seed, 'string', 'run must persist its crypto-random seed');
+    assert.strictEqual(typeof runRaw.durationSecs, 'number');
+
+    // Determinism: re-running combat.runDungeon with the SAME persisted
+    // seed + same unit snapshots must reproduce the identical event log
+    // (sim/combat.cjs's own documented determinism guarantee, exercised
+    // here through the schedule service's actual persisted seed).
+    const combat = require('../../sim/combat.cjs');
+    const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById } = schedule.getScheduleContent();
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    const unitSnapshots = fillAllSlotsSnapshotsFrom(doc.canvas);
+    const replay = combat.runDungeon({
+      masterSeed: runRaw.seed, dungeonDef, unitSnapshots, itemDefsById, enemyDefsById, skillDefsById,
+      formationId: 'formation1', level: 1, participants: [scheduleP1.playerId],
+    });
+    // Semantic (deep-equal) comparison, not raw string equality: in pg
+    // mode, runRaw.events came back through a jsonb column, which (per
+    // server/README.md's own documented caveat) reorders object keys
+    // into Postgres's canonical order -- NOT byte-identical at the raw-
+    // JSON-text level even though the DATA is identical. Files mode
+    // preserves insertion order exactly, so this same assertion is
+    // strictly stronger there; deepStrictEqual is the correct invariant
+    // in BOTH backends (determinism is about the DATA, not incidental
+    // key ordering introduced by a storage round-trip).
+    assert.deepStrictEqual(replay.events, runRaw.events, 'same seed + same unit snapshots must reproduce a semantically-identical replay log');
+    assert.strictEqual(replay.result, runRaw.result);
+
+    // GET run: run-clock fields present, events is an array (possibly
+    // truncated to what's "aired" so far -- immediately after start this
+    // may be a strict subset of the full log).
+    const runView = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', scheduleP1.token);
+    assert.strictEqual(runView.status, 200);
+    assert.ok(runView.body.clock && typeof runView.body.clock.elapsedSecs === 'number');
+    assert.ok(Array.isArray(runView.body.events));
+    assert.ok(runView.body.events.length <= runRaw.events.length, 'visible events must never exceed the full persisted log');
+
+    // Cleanup: settle (this run also rewards -- clear those too) then cancel.
+    forceRunElapsed(runId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  function fillAllSlotsSnapshotsFrom(canvas) {
+    const active = { bps: canvas.bps, pos: canvas.pos, sis: canvas.sis };
+    return [active, canvas.presets.store[1], canvas.presets.store[2], canvas.presets.store[3]];
+  }
+
+  await AT('schedule: victory rewards land in the warehouse with a harvestedAt + 7-day expiresAt (golden e)', async () => {
+    // Defensive: clear any warehouse items left by earlier tests in this
+    // group (each of which is supposed to clean up after itself, but this
+    // assertion cares about an EXACT count, so start from a known-empty slate).
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    const runId = roomAfter.body.room.lastRunId;
+    const runRaw = scheduleStorage.readRun(runId);
+    assert.strictEqual(runRaw.result, 'victory', 'the test_sword fixture (50dmg/1s) must reliably one-shot the 1hp weak_slime fixture');
+
+    forceRunElapsed(runId);
+    const settledView = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle
+    assert.strictEqual(settledView.body.room.status, 'open', 'settled room returns to open (cooldown, not canceled)');
+    assert.ok(settledView.body.room.cooldownUntil, 'cooldownUntil must be set after a settled run');
+
+    const wh = await scheduleReq('GET', '/api/warehouse', scheduleP1.token);
+    assert.strictEqual(wh.status, 200);
+    assert.strictEqual(wh.body.items.length, 2, 'both encounters (pack + boss) award one reward item each in this fixture dungeon');
+    for (const item of wh.body.items) {
+      assert.ok(item.harvestedAt, 'harvestedAt present');
+      assert.ok(item.expiresAt, 'expiresAt present');
+      const ttlMs = Date.parse(item.expiresAt) - Date.parse(item.harvestedAt);
+      assert.ok(Math.abs(ttlMs - schedule.WAREHOUSE_TTL_MS) < 1000, 'TTL must be ~7 days (golden e): got ' + ttlMs + 'ms');
+    }
+    // Cleanup: clear warehouse for later cap tests + cancel the room.
+    for (const item of wh.body.items) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: warehouse cap (200 items) is enforced -- the 201st insert is refused, no reverse inventory->warehouse path exists', async () => {
+    const before = schedule.listWarehouse(scheduleP1.playerId);
+    for (const item of before) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid); // start from a clean slate
+    for (let i = 0; i < schedule.WAREHOUSE_CAP; i++) {
+      const r = schedule.addToWarehouse(scheduleP1.playerId, {
+        itemUid: 'cap_' + i, playerId: scheduleP1.playerId, itemId: 'blade',
+        harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + schedule.WAREHOUSE_TTL_MS).toISOString(),
+      });
+      assert.strictEqual(r.ok, true, 'insert ' + i + ' should succeed under the cap');
+    }
+    assert.strictEqual(schedule.listWarehouse(scheduleP1.playerId).length, schedule.WAREHOUSE_CAP);
+    const overflow = schedule.addToWarehouse(scheduleP1.playerId, {
+      itemUid: 'cap_overflow', playerId: scheduleP1.playerId, itemId: 'blade',
+      harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + schedule.WAREHOUSE_TTL_MS).toISOString(),
+    });
+    assert.strictEqual(overflow.ok, false, 'the 201st insert must be refused');
+    assert.strictEqual(schedule.listWarehouse(scheduleP1.playerId).length, schedule.WAREHOUSE_CAP, 'cap must not be exceeded');
+
+    // No reverse (inventory -> warehouse) path: schedule.cjs's module
+    // exports contain no such function at all -- this is a structural
+    // assertion, not a behavioral one (there is nothing to call).
+    assert.strictEqual(typeof schedule.moveInventoryToWarehouse, 'undefined', 'no inventory->warehouse function must exist (golden r ban, generalized ahead of P3)');
+
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+  });
+
+  await AT('schedule: claim moves a warehouse item into inventory via first-fit; refuses with no mutation when no space; TTL-expired items are purged lazily', async () => {
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    // Fill EVERY cell of EVERY inventory page with a distinct 1x1
+    // placeholder PO ('blade', a real 1x1-shaped fixture item) so NO
+    // first-fit cell can possibly exist anywhere -- a full-page BP would
+    // NOT work here (a PO landing entirely inside one BP is normal/legal
+    // placement, not blocked), so this uses actual PO occupancy instead,
+    // which invCanPlaceCells's 'occupied' check genuinely blocks.
+    for (const page of doc.canvas.inv.pages) {
+      page.bps = []; page.sis = [];
+      const filler = [];
+      for (let r = 1; r <= 8; r++) for (let c = 1; c <= 8; c++) filler.push({ uid: 'filler_' + r + '_' + c + '_' + Math.random().toString(36).slice(2), id: 'blade', loc: 'grid', cell: [r, c], rot: 0 });
+      page.pos = filler;
+    }
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
+
+    const whId = 'claim_test_full_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+    const claimFullRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimFullRes.status, 409, 'claim must refuse when there is no space anywhere: ' + JSON.stringify(claimFullRes.body));
+    assert.ok(schedule.listWarehouse(scheduleP1.playerId).some((i) => i.itemUid === whId), 'refused claim must NOT delete the warehouse item');
+
+    // Clear the filler BPs and retry -- must now succeed via first-fit.
+    const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
+    for (const page of doc2.canvas.inv.pages) { page.bps = []; page.pos = []; page.sis = []; }
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
+    const claimOkRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimOkRes.status, 200, 'claim must succeed once space exists: ' + JSON.stringify(claimOkRes.body));
+    assert.deepStrictEqual(claimOkRes.body.placed.cell, [1, 1], 'first-fit must land at the first legal cell, [1,1]');
+    assert.ok(!schedule.listWarehouse(scheduleP1.playerId).some((i) => i.itemUid === whId), 'claimed item must be removed from the warehouse');
+    const doc3 = scheduleStorage.readProfile(scheduleP1.playerId);
+    assert.ok(doc3.canvas.inv.pages[0].pos.some((p) => p.uid === claimOkRes.body.uid), 'claimed item must now be a real inventory PO');
+
+    // TTL: an already-expired item never surfaces via claim (lazily purged).
+    const expiredId = 'claim_test_expired_' + Date.now();
+    scheduleStorage.writeWarehouseItem(scheduleP1.playerId, expiredId, { itemUid: expiredId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(), expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() });
+    const claimExpiredRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: expiredId });
+    assert.strictEqual(claimExpiredRes.status, 404, 'an expired warehouse item must 404 on claim (lazily purged)');
+    assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, expiredId), null, 'expired item must actually be deleted by the purge');
+  });
+
+  await AT('schedule: cooldown value follows the CD_min/CD_max/(1-H) formula; wipe drops the room level by failureStep (floored at LEVEL_MIN)', async () => {
+    const combat = require('../../sim/combat.cjs');
+    // Cooldown formula check (golden l): re-derive expected cooldown from
+    // the SAME cooldownForH sim exposes, for a few H values, and confirm
+    // schedule-produced runs land in the legal [CD_MIN,CD_MAX] band.
+    assert.ok(Math.abs(combat.cooldownForH(1) - combat.TUNABLES.CD_MIN_SECS) < 1e-9, 'H=1 (full HP) -> CD_MIN');
+    assert.ok(Math.abs(combat.cooldownForH(0) - combat.TUNABLES.CD_MAX_SECS) < 1e-9, 'H=0 (wipe) -> CD_MAX');
+    const midExpected = combat.TUNABLES.CD_MIN_SECS + (combat.TUNABLES.CD_MAX_SECS - combat.TUNABLES.CD_MIN_SECS) * 0.5;
+    assert.ok(Math.abs(combat.cooldownForH(0.5) - midExpected) < 1e-9, 'linear formula must hold at H=0.5');
+
+    // Wipe level-down: build a room whose units have ZERO attack (no
+    // every_secs effect) against the same weak_slime -- with no damage
+    // output, the pack's own deadline_secs will elapse into a wipe.
+    // (weak_slime itself has no offense with s:[5,5] cadence and 1hp, so
+    // this deliberately uses a non-attacking 'blade' preset instead of
+    // 'test_sword' to force a guaranteed non-clear.)
+    const zeroDmgCanvas = (() => {
+      const c = makeTestCanvas();
+      const swap = (canvas) => { for (const p of canvas.pos) p.id = 'blade'; return canvas; };
+      swap({ bps: c.bps, pos: c.pos, sis: c.sis });
+      for (const idx of [1, 2, 3]) swap(c.presets.store[idx]);
+      return c;
+    })();
+    scheduleStorage.writeProfile(scheduleP2.playerId, zeroDmgCanvas);
+
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP2.token, { dungeonId: 'test_dungeon', level: 3, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP2.token, { presetIndex: i });
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP2.token);
+    const runRaw = scheduleStorage.readRun(roomAfter.body.room.lastRunId);
+    assert.notStrictEqual(runRaw.result, 'victory', 'a zero-damage party must not win: got ' + runRaw.result);
+
+    forceRunElapsed(roomAfter.body.room.lastRunId);
+    const settledView = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP2.token);
+    if (runRaw.result === 'wipe') {
+      assert.strictEqual(settledView.body.room.level, 3 - schedule.DEFAULT_FAILURE_STEP, 'golden i: level drops by failureStep on wipe');
+      const wh = await scheduleReq('GET', '/api/warehouse', scheduleP2.token);
+      assert.strictEqual(wh.body.items.filter((it) => it.sourceRoomId === roomId).length, 0, 'golden i: nothing gained on wipe');
+    }
+    // Level floor: repeatedly wipe from level 1 must never drop below LEVEL_MIN.
+    const floored = combat.levelDownOnWipe(combat.TUNABLES.LEVEL_MIN);
+    assert.strictEqual(floored, combat.TUNABLES.LEVEL_MIN, 'levelDownOnWipe must floor at LEVEL_MIN');
+
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP2.token);
+  });
+
+  await AT('schedule: swap is queued (not applied) while a run is active, and applies once that run settles (golden j)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign must succeed: ' + JSON.stringify(assignRes.body));
+    }
+    const active = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(active.body.room.status, 'active', 'precondition: room has a run in flight');
+
+    const swapWhileActive = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 0, presetIndex: 1 });
+    assert.strictEqual(swapWhileActive.status, 200);
+    assert.strictEqual(swapWhileActive.body.applied, false, 'a swap requested mid-run must be QUEUED, not applied immediately');
+    assert.ok(swapWhileActive.body.room.pendingSwap, 'pendingSwap must be recorded on the room');
+    assert.strictEqual(swapWhileActive.body.room.slots[0].presetIndex, 0, 'the slot itself must NOT change yet');
+
+    forceRunElapsed(active.body.room.lastRunId);
+    const settled = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle + pending-swap application
+    assert.strictEqual(settled.body.room.pendingSwap, null, 'pendingSwap must be cleared once applied');
+    // Note: preset 1 shares NO uid with preset 0 in this fixture (both
+    // independently tagged), so applying the swap must succeed legally.
+    assert.strictEqual(settled.body.room.slots[0].presetIndex, 1, 'golden j: the swap applies AFTER the run ends');
+
+    // Swap with NO run active applies immediately.
+    const swapNow = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 1, presetIndex: 2 });
+    assert.strictEqual(swapNow.body.applied, true, 'a swap requested with no active run must apply immediately');
+
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: cancel policy -- immediate:true cancels right away; immediate:false with an active run only flags cancelRequested until settle (golden g)', async () => {
+    // immediate: true
+    const roomA = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, cancelPolicy: { immediate: true } });
+    const cancelA = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomA.body.room.id, scheduleP1.token);
+    assert.strictEqual(cancelA.body.room.status, 'canceled', 'immediate:true must cancel right away');
+
+    // immediate: false, WITH an active run -> flagged, not canceled yet.
+    const roomB = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', cancelPolicy: { immediate: false } });
+    const roomBId = roomB.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomBId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    const roomBActive = await scheduleReq('GET', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
+    assert.strictEqual(roomBActive.body.room.status, 'active');
+    const cancelB = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
+    assert.strictEqual(cancelB.body.room.status, 'active', 'immediate:false with a run in flight must NOT cancel yet');
+    assert.strictEqual(cancelB.body.room.cancelRequested, true, 'cancelRequested must be flagged instead');
+
+    // Once that run settles, the flagged cancel is honored instead of auto-scheduling the next run.
+    forceRunElapsed(roomBActive.body.room.lastRunId);
+    const afterSettle = await scheduleReq('GET', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
+    assert.strictEqual(afterSettle.body.room.status, 'canceled', 'golden g: cancel-after-current-run is honored once the run settles');
+
+    // immediate: false with NO active run cancels right away (nothing to "finish first").
+    const roomC = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, cancelPolicy: { immediate: false } });
+    const cancelC = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomC.body.room.id, scheduleP1.token);
+    assert.strictEqual(cancelC.body.room.status, 'canceled', 'immediate:false with no run active must cancel immediately (nothing to wait for)');
+  });
+
+  await AT('schedule: room CRUD -- level defaults/clamps to LEVEL_MIN, unknown formationId falls back to the default formation', async () => {
+    const combat = require('../../sim/combat.cjs');
+    const noLevel = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon' });
+    assert.strictEqual(noLevel.body.room.level, combat.TUNABLES.LEVEL_MIN, 'omitted level must default to LEVEL_MIN');
+    const badFormation = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', formationId: 'not_a_real_formation' });
+    assert.strictEqual(badFormation.body.room.formationId, schedule.DEFAULT_FORMATION_ID, 'unknown formationId falls back to the documented default');
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + noLevel.body.room.id, scheduleP1.token);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + badFormation.body.room.id, scheduleP1.token);
+  });
+
+  await AT('schedule: creating a room without a dungeonId is a 400', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { level: 1 });
+    assert.strictEqual(res.status, 400);
+  });
+
+  await AT('schedule: assigning an out-of-range slot index or an out-of-range presetIndex is a 400, not a crash', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const badSlot = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/99', scheduleP1.token, { presetIndex: 0 });
+    assert.strictEqual(badSlot.status, 400);
+    const badPreset = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 99 });
+    assert.strictEqual(badPreset.status, 400);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: starting a run with an incomplete party (not all 4 slots filled) is refused, never silently runs a partial party', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
+    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { presetIndex: 1 });
+    // Only 2 of 4 slots filled -- room must stay 'open', no run started.
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(roomAfter.body.room.status, 'open', 'a room with an incomplete party must never auto-start a run');
+    assert.strictEqual(roomAfter.body.room.lastRunId, null);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: GET warehouse for a player with none is an empty list, not an error', async () => {
+    const freshPlayer = playersFixture.createPlayer('FreshWarehouseOwner', []);
+    const res = await scheduleReq('GET', '/api/warehouse', freshPlayer.token);
+    assert.strictEqual(res.status, 200);
+    assert.deepStrictEqual(res.body.items, []);
+  });
+
+  await AT('schedule: claiming an unknown/nonexistent warehouse itemUid is a 404', async () => {
+    const res = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: 'no_such_item_uid_at_all' });
+    assert.strictEqual(res.status, 404);
+  });
+
+  await AT('schedule: claim requires an itemUid in the body (400 when missing)', async () => {
+    const res = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, {});
+    assert.strictEqual(res.status, 400);
+  });
+
+  await AT('schedule: swap on an out-of-range slot index is a 400', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 99, presetIndex: 0 });
+    assert.strictEqual(res.status, 400);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: GET run on a room with no run yet is a 404', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const res = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', scheduleP1.token);
+    assert.strictEqual(res.status, 404);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: canceling an already-canceled room is idempotent (still 200, still canceled)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, cancelPolicy: { immediate: true } });
+    const roomId = created.body.room.id;
+    const first = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(first.body.room.status, 'canceled');
+    const second = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(second.status, 200);
+    assert.strictEqual(second.body.room.status, 'canceled');
   });
 
   os.homedir = realHomedir;

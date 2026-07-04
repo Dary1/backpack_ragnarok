@@ -581,7 +581,15 @@ function maybeAutoStartNextRun(room, profileCanvas) {
   // one -- defensive; assignSlot never actually clears a slot today, but
   // this guards any future path that could).
   if (room.slots.some((s) => s.presetIndex == null)) return room;
-  return startRun(room, profileCanvas);
+  // startRun() returns the RUN document (its own persisted record), not
+  // the room -- but it mutates `room` in place (status/lastRunId/
+  // updatedAt) before persisting it via storage.writeRoom, so the SAME
+  // `room` object reference is already up to date by the time it
+  // returns. Returning `room` here (not startRun's return value) is what
+  // callers of maybeAutoStartNextRun/settleRoomIfDue actually expect
+  // (they operate on rooms throughout, never runs).
+  startRun(room, profileCanvas);
+  return room;
 }
 
 // ---------------------------------------------------------------------

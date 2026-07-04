@@ -33,17 +33,27 @@ on `127.0.0.1:8802` only.
   (`isItemAdminToken`), and the admin item-edit write path (validation
   against `content/vocab.json` + atomic write to `content/live/
   live_items.json`/`live_sis.json`). See "Auth" and "Admin API" below.
+- `schedule.cjs` (REQ-0036 P1-B) — the Dungeon Schedule SERVICE (rooms,
+  runs, warehouse). Business logic module; `api.cjs` wires HTTP routes to
+  it, `storage.cjs` persists its 3 new roots (rooms/runs/warehouse
+  items). Solo-scope (P1): a room's 4 unit slots are always filled from
+  the ROOM OWNER'S OWN presets (multi-player joins are P2). See "Dungeon
+  Schedule API" below for the full endpoint table + design notes.
 - `tests/api_test.cjs` — storage/registry round-trip, content endpoint
   shape, profile PUT/GET round-trip (per-player + the `default` alias),
   oversized-body rejection, `/api/me` token resolution (valid/invalid/
   dev_mode fallback/dev_mode off), profile-ownership 401/403 matrix,
   admin-write validation (vocab/range/schema-allowlist rejections),
   admin-guard 403 matrix (missing/invalid token, valid token lacking the
-  role, dev-mode fallback), and a dedicated real-repo test that edits the
+  role, dev-mode fallback), a dedicated real-repo test that edits the
   actual `content/live/live_items.json`, verifies the change, then
   restores the original bytes and checks a sha256 match (try/finally —
-  restoration runs even if an assertion above it fails). Run with
-  `node server/tests/api_test.cjs`.
+  restoration runs even if an assertion above it fails), and (REQ-0036
+  P1-B) the Dungeon Schedule test group (room CRUD + deploy gate, run
+  execution/determinism, warehouse cap/TTL/claim, cooldown/wipe/swap/
+  cancel policies, auth isolation). Run with `node server/tests/
+  api_test.cjs` (files mode) or `STORAGE_BACKEND=pg DATABASE_URL=...
+  node server/tests/api_test.cjs` (pg mode) — both must pass.
 
 ## Endpoints
 - `GET /api/health` → `{ok:true, version:"<semver>"}`
@@ -64,6 +74,8 @@ on `127.0.0.1:8802` only.
   (REQ-0037) `401` for a missing/invalid token (when required) and `403`
   if the token's own player does not match `:playerId`. See "Auth" below.
 - `PUT /api/admin/item/:id` → see "Admin API" below.
+- Dungeon Schedule + Warehouse endpoints (REQ-0036 P1-B) → see "Dungeon
+  Schedule API" below for the full table.
 
 **Accepted dev risk (unchanged from REQ-0024/REQ-0035)**: this is a small
 dev-grade deployment — profile storage has no rate limiting, no request
@@ -234,6 +246,121 @@ and committed to git at batch cadence by a human or orchestrator, exactly
 like every other content edit in this repo's existing workflow (see
 `content/batches/`'s batch-review convention). Do not wire up auto-commit
 here without a deliberate, separately-reviewed decision to do so.
+
+## Dungeon Schedule API (REQ-0036 P1-B)
+
+Server-authoritative "schedule a dungeon run" service: rooms (solo scope
+— every slot is filled from the room OWNER'S OWN presets; multi-player
+joins are a P2 concern), runs (executed instantly via `sim/combat.cjs`'s
+`runDungeon`, replayed at 1× wall time — see "Run-clock design" below),
+and a per-player warehouse (200-item cap, 7-day TTL). Implements golden
+a-q of `docs/REQ/REQ-0036-dungeon-schedule.md`; golden r (warehouse-
+scoped trade between players of the same schedule) is explicitly P3 and
+NOT built here.
+
+**Auth**: every route below uses the exact same `X-Auth-Token` /
+`resolveAuth()` mechanism as the profile routes (see "Auth" above),
+including the `dev_mode` no-token fallback. A room/warehouse id in the
+URL is NEVER trusted as identity — the caller's playerId is always
+resolved from the token first, and a room owned by a different player
+404s (not 403s) to avoid leaking room existence to a non-owner. Bodies
+are pure JSON, auth is header-only — no cookies, no CSRF token, no
+session state (REQ-0039 Bot API design-first-class requirement).
+
+| method | path | body | notes |
+|---|---|---|---|
+| POST | `/api/schedule/rooms` | `{dungeonId, level?, formationId?, cancelPolicy?:{immediate}}` | Creates a room owned by the caller. `visibility` is always `"self"` in P1-B. Returns `{ok, room}`. |
+| GET | `/api/schedule/rooms` | — | Lists the CALLER's own rooms only. Returns `{ok, rooms:[...]}`. |
+| GET | `/api/schedule/rooms/:id` | — | Settles a due run first (see run-clock), then returns `{ok, room}`. 404 if not found or not owned by the caller. |
+| DELETE | `/api/schedule/rooms/:id` | — | Cancel (golden g). Immediate if `cancelPolicy.immediate` or no run is active; else flags `cancelRequested` (honored once the in-flight run settles). Returns `{ok, room}`. |
+| PUT | `/api/schedule/rooms/:id/slots/:slotIndex` | `{presetIndex}` | Assigns one of the CALLER'S OWN presets (0-based) to a unit slot (golden b). Enforces the deploy gate (golden d) — `409` on an independence violation or a cross-room active-unit overlap. |
+| PUT | `/api/schedule/rooms/:id/swap` | `{slot, presetIndex}` | Queues (or, if no run is active, immediately applies) a unit swap (golden j). Returns `{ok, room, applied:boolean}`. |
+| GET | `/api/schedule/rooms/:id/run` | — | The room's last/current run, run-clock-paced (see below): `events` only includes entries whose `t` has "arrived" in wall-clock time. Also returns the full (always-final) `result`/`rewards`/`cooldownSecs` summary plus a `settled` flag and `clock:{elapsedSecs,isSettled,pct}`. |
+| GET | `/api/warehouse` | — | Lists the caller's own warehouse items (expired rows purged first). |
+| POST | `/api/warehouse/claim` | `{itemUid}` | Moves one warehouse item into the caller's OWN inventory via first-fit engine placement (golden f). `409` if no inventory page has space (item stays in the warehouse, untouched). There is no reverse (inventory→warehouse) path anywhere in this API. |
+
+**Status codes**: `400` bad/missing body fields, `401` missing/invalid
+token, `404` room/run/warehouse-item not found (including "not yours"),
+`409` deploy-gate violation or no-inventory-space-to-claim, `413`
+oversized body, `500` unexpected error. Every error body is `{ok:false,
+error:"<message>"}`.
+
+### Run-clock design (instant-sim + timed playback)
+
+The ENTIRE run is simulated INSTANTLY the moment it starts —
+`sim/combat.cjs`'s `runDungeon` is an event-driven continuous-time sim,
+not a realtime loop, so there is no `setTimeout` chain, no sleeping
+thread, no background timer held open for a run's duration. Every event
+in the resulting log already carries its own `t` (seconds since run
+start). Two wall-clock fields are added once, at persistence time:
+`startedAt` (captured the instant the run is created) and `durationSecs`
+(the last event's `t`). A "run clock" is then a pure, stateless
+computation any caller can perform independently:
+
+```
+elapsedSecs = (Date.now() - Date.parse(run.startedAt)) / 1000
+isSettled   = elapsedSecs >= run.durationSecs
+```
+
+`GET /api/schedule/rooms/:id/run` filters the (already fully computed)
+event array down to `ev.t <= elapsedSecs` — a client monitor polling this
+endpoint sees events "arrive" at the same pace a live-ticking sim would
+produce them, without the server ever having blocked on the run's actual
+duration. This is deliberately "the sim runs instantly, the *reveal* is
+paced to real time," not "the sim runs in real time," for two reasons:
+
+1. **Offline-first friendly** — a room's outcome exists complete and
+   durable the instant the run starts. A client that goes offline
+   mid-"broadcast" and reconnects later just resumes reading from
+   wherever `elapsedSecs` now points; there is no lost state and no
+   reconnect protocol to design.
+2. **Cheap** — the server holds no per-run timer, interval, or worker
+   thread for the run's duration, no matter how many rooms are "in
+   flight" from a spectating point of view. A run's actual EFFECTS
+   (rewards landing in the warehouse, cooldown starting, the level
+   changing on a wipe, a queued swap applying, the next run
+   auto-scheduling) are computed and applied exactly once, lazily, the
+   first time ANY request touches that room after `isSettled` becomes
+   true (`settleRoomIfDue()` in `schedule.cjs`, called at the top of
+   every room route handler). This makes "scheduled auto-runs" (golden i)
+   a real, observable design fact without any standing scheduler
+   process — it is a purely lazy, poll-driven mechanism.
+
+### Warehouse semantics (golden e/f)
+
+- Cap: 200 items per player. Enforced at insert time (`addToWarehouse`);
+  a reward that arrives to an already-full warehouse is silently
+  dropped (documented interpretation — the REQ specifies the cap but not
+  reward-arrival overflow behavior; blocking run settlement on warehouse
+  space seemed strictly worse).
+- TTL: 7 days from `harvestedAt`. Purged lazily on every warehouse read
+  (list/claim/insert all purge first) AND via an hourly
+  `setInterval` sweep in `api.cjs` (`sweepAllWarehouses`, `.unref()`'d so
+  it never keeps the process alive on its own) that walks every
+  registered player — belt-and-suspenders for a player who never polls
+  their own warehouse.
+- Claim (`POST /api/warehouse/claim`) is FIRST-FIT only: it scans the
+  caller's 5 inventory pages in order and places the claimed item at the
+  first legal `[row,col]` cell found (via `mock-src/engine.js`'s
+  exported `invCanPlacePO`/`invMovePO` — `engine.js`'s own internal
+  `firstFitCell` isn't exported, so this is a documented push-scan-
+  rollback re-implementation using only the exported API). No space
+  anywhere → `409`, warehouse item untouched.
+- There is NO inventory→warehouse path anywhere in this service (golden
+  r's reverse-direction ban, generalized here ahead of P3 trade — trade
+  itself is not built).
+
+### Reward-roll-id resolution
+
+`content/batches/batch-002-dungeon-pilot/dungeon.json` references
+abstract reward-roll ids (`reward_frost_shard_common` etc.) rather than
+real `content/live/live_items.json` ids, since that batch's own items
+haven't been through the S5 (icon art) / S7 (user review) pipeline
+stages yet. `schedule.cjs`'s `REWARD_ROLL_TO_ITEM_ID` table maps each
+roll id to a real, already-live item id so warehouse claim → inventory
+placement has a genuine placeable item to work with today; any id absent
+from the table falls back to identity (used as-is), so the table becomes
+a no-op the day real batch-002 content replaces the placeholders.
 
 ## Content i18n (REQ-0038)
 
