@@ -47,6 +47,16 @@ const FORMATIONS_PATH = path.join(BATCH_DIR, 'formations.json'); // REQ-0036 P1-
 // ---------------------------------------------------------------------
 const WAREHOUSE_CAP = 200; // golden e: "max 200 items"
 const WAREHOUSE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // golden e: "kept up to one week"
+// REQ-0041 (P1 UX round 1): two-phase warehouse claim. A row transitions
+// claimable -> claiming (server, on POST /api/warehouse/claim) -> deleted
+// (server, on the NEXT successful profile PUT that contains the minted
+// uid anywhere in the saved canvas -- see finalizeClaimingItemsForCanvas()
+// below, called from server/api.cjs's profile PUT handler). A `claiming`
+// row older than this timeout lazily reverts to `claimable` the next time
+// warehouse rows are read (purgeExpiredWarehouseItems), so a crashed/
+// abandoned client claim never permanently strands the item -- "no item
+// loss on crash" per the REQ's own design note.
+const WAREHOUSE_CLAIM_TIMEOUT_MS = 120 * 1000; // 120s
 const UNIT_SLOTS = ['unit1', 'unit2', 'unit3', 'unit4']; // golden b: party = 4 Units
 const DEFAULT_FORMATION_ID = 'formation1';
 const DEFAULT_FAILURE_STEP = 1; // golden i default, matches sim TUNABLES.FAILURE_STEP
@@ -634,6 +644,30 @@ function isExpired(item, nowMs) {
 // `playerId` and returns the surviving (unexpired) list -- callers never
 // see an expired item, whether they triggered the purge themselves or a
 // previous sweep already caught it.
+// normalizeWarehouseStatus: rows written before REQ-0041 have no `status`
+// field at all -- treated as 'claimable' (the only status that existed
+// implicitly before this REQ). Also lazily reverts a `claiming` row whose
+// claimedAt is older than WAREHOUSE_CLAIM_TIMEOUT_MS back to 'claimable'
+// (clearing claimedAt), persisting the reversion immediately so every
+// OTHER concurrent reader converges on the same state. Returns the
+// (possibly mutated + re-persisted) item.
+function normalizeWarehouseStatus(playerId, item, nowMs) {
+  if (item.status !== 'claiming') {
+    if (item.status !== 'claimable') {
+      item.status = 'claimable'; // migrate a pre-REQ-0041 row missing `status`
+      storage.writeWarehouseItem(playerId, item.itemUid, item);
+    }
+    return item;
+  }
+  const claimedAtMs = item.claimedAt ? Date.parse(item.claimedAt) : 0;
+  if (!claimedAtMs || (nowMs - claimedAtMs) >= WAREHOUSE_CLAIM_TIMEOUT_MS) {
+    item.status = 'claimable';
+    item.claimedAt = null;
+    storage.writeWarehouseItem(playerId, item.itemUid, item);
+  }
+  return item;
+}
+
 function purgeExpiredWarehouseItems(playerId) {
   const now = Date.now();
   const items = storage.listWarehouseItems(playerId);
@@ -642,7 +676,7 @@ function purgeExpiredWarehouseItems(playerId) {
     if (isExpired(item, now)) {
       storage.deleteWarehouseItem(playerId, item.itemUid);
     } else {
-      survivors.push(item);
+      survivors.push(normalizeWarehouseStatus(playerId, item, now));
     }
   }
   return survivors;
@@ -694,62 +728,114 @@ function listWarehouse(playerId) {
   return purgeExpiredWarehouseItems(playerId);
 }
 
-// claimWarehouseItem (golden f): "Warehouse -> inventory transfer any
-// time." FIRST-FIT engine home placement (per task brief); refuses (no
-// mutation) if there is no space anywhere across the player's 5
-// inventory pages. NO inventory->warehouse path exists anywhere in this
-// module (golden r's reverse-direction ban, generalized here even ahead
-// of P3 trade -- there is simply no function that moves an item from a
-// home back into a warehouse row).
+// claimWarehouseItem (golden f, REWRITTEN by REQ-0041 -- two-phase
+// claim). BUG #3 ROOT CAUSE (CONFIRMED by live reproduction against the
+// running dev server -- see the REQ-0041 outcome doc for the exact
+// repro/observation): the OLD version of this function did server-side
+// first-fit placement into `profileCanvas` IN PLACE, and server/api.cjs's
+// route handler then called storage.writeProfile() with that mutated
+// canvas -- a SECOND, server-side writer racing the client's own
+// 800ms-debounced auto-save PUT (client/src/store.ts's scheduleAutoSave/
+// flushAutoSave via notifyStateChanged(), the app's ONE auto-save choke
+// point). The client's in-memory canvas never learned about the server's
+// insertion; whichever PUT physically lands last at the storage layer
+// wins, so a stale client-side auto-save (already in flight, or
+// triggered by the claim response handler's own subsequent state churn)
+// can overwrite the server's just-written inventory placement with the
+// client's OLD copy -- the claimed item vanishes from the persisted
+// profile even though the HTTP response reported success.
 //
-// Item identity (per task brief): a warehouse row is a REFERENCE to a
-// content item id (`itemId`) with its own uid (`itemUid`, minted at
-// harvest time by settleRun). Claiming does not reuse `itemUid` as the
-// new inventory PO's uid -- a FRESH inventory uid is minted here, since
-// `itemUid` names the warehouse-row instance (which is deleted on
-// claim), not the eventual on-canvas PO instance; this keeps warehouse
-// uids and inventory/engine uids in visibly separate id spaces (matches
-// the existing convention of every uid-minting call site in this repo
-// using a distinguishing prefix, e.g. players.cjs's 'p_', this module's
-// own 'room_'/'run_'/'wh_').
-function claimWarehouseItem(playerId, itemUid, profileCanvas, itemDefsById) {
-  purgeExpiredWarehouseItems(playerId);
+// FIX (two-phase claim, per the REQ's own design): the server no longer
+// EVER writes a profile on claim -- claiming a row here only flips its
+// `status` to 'claiming' (+ claimedAt) and returns the item's CONTENT DEF
+// id (`itemId`) plus the row's own `itemUid`. The CLIENT then performs
+// the first-fit placement itself (client/src/schedule/WarehouseTab.tsx),
+// reusing `itemUid` AS the new inventory PO/SI's own uid (a deliberate
+// interpretation change from the old server-side version, which minted a
+// SEPARATE fresh uid -- reusing itemUid instead makes server-side
+// finalization an exact, unambiguous uid-membership check, see
+// finalizeClaimingItemsForCanvas() below, rather than a fuzzier
+// itemId-based heuristic), then calls the SAME notifyStateChanged() every
+// other board mutation already goes through -- restoring "one writer"
+// (the client's own auto-save is once again the only path that ever
+// writes this player's profile). The server finalizes (deletes the
+// warehouse row) the moment a profile PUT arrives whose saved canvas
+// actually contains `itemUid` anywhere (see finalizeClaimingItemsForCanvas,
+// called from server/api.cjs's profile PUT handler) -- and lazily reverts
+// an abandoned `claiming` row back to `claimable` after
+// WAREHOUSE_CLAIM_TIMEOUT_MS elapses uncommitted (see
+// normalizeWarehouseStatus() above), so a client crash/tab-close mid-claim
+// never permanently strands the item.
+//
+// NO inventory->warehouse path exists anywhere in this module (golden r's
+// reverse-direction ban, generalized here even ahead of P3 trade -- there
+// is simply no function that moves an item from a home back into a
+// warehouse row).
+function claimWarehouseItem(playerId, itemUid, itemDefsById) {
+  purgeExpiredWarehouseItems(playerId); // also normalizes/reverts stale 'claiming' rows (see normalizeWarehouseStatus above)
   const item = storage.readWarehouseItem(playerId, itemUid);
   if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
+  if (item.status && item.status !== 'claimable') {
+    const err = new Error('warehouse item is already being claimed'); err.code = 'CONFLICT'; throw err;
+  }
 
   const itemDef = itemDefsById[item.itemId];
   if (!itemDef) { const err = new Error('claimed item references an unknown content item id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
 
-  const engine = makeEngine(itemDefsById);
-  if (!profileCanvas.inv) profileCanvas.inv = engine.emptyInventory();
+  item.status = 'claiming';
+  item.claimedAt = new Date().toISOString();
+  storage.writeWarehouseItem(playerId, itemUid, item);
 
-  const newUid = genId('po');
-  let placed = null;
-  for (let pg = 0; pg < profileCanvas.inv.pages.length && !placed; pg++) {
-    const container = profileCanvas.inv.pages[pg];
-    container.pos.push({ uid: newUid, id: item.itemId, loc: 'grid', cell: [1, 1], rot: 0 });
-    let cell = null;
-    outer:
-    for (let r = 1; r <= 8 && !cell; r++) {
-      for (let c = 1; c <= 8 && !cell; c++) {
-        const chk = engine.invCanPlacePO(profileCanvas, pg, newUid, 0, [r, c]);
-        if (chk.ok) cell = [r, c];
-      }
-    }
-    if (cell) {
-      engine.invMovePO(profileCanvas, pg, newUid, cell);
-      placed = { page: pg, cell };
-    } else {
-      container.pos.pop(); // no room on this page -- roll back, try next page
+  return { itemUid, itemId: item.itemId };
+}
+
+// finalizeClaimingItemsForCanvas (REQ-0041): called by server/api.cjs's
+// profile PUT handler AFTER a successful storage.writeProfile() (i.e.
+// once the client's own auto-save has actually landed). Deletes every
+// one of `playerId`'s CURRENTLY 'claiming' warehouse rows whose itemUid
+// now appears anywhere in the just-saved `canvas` -- the client mints the
+// claimed item's on-canvas uid by REUSING the warehouse row's own
+// itemUid (see claimWarehouseItem's doc above), so this is an exact,
+// unambiguous uid-membership scan, not a fuzzy itemId-based heuristic.
+// Scans the active preset's top-level fields, every inactive preset's
+// store[] snapshot, AND every inventory page (a claimed item's HOME
+// always lands in st.inv per the reference model, REQ-0033, regardless
+// of whether any preset happens to reference it yet) -- covers a PO's
+// `pos[].uid`, a BP's `bps[].id`, and an SI's `sis[].uid` (a claimed
+// warehouse item is always a PO or SI in practice -- see the REQ-0041
+// outcome doc's note on why BPs are never claimable content -- but this
+// scan checks all three arrays uniformly for robustness, matching
+// engine.js's own presetUidSet()-style scans elsewhere in this file).
+// A simple O(claiming rows + canvas items) scan -- comfortably
+// sub-millisecond at this project's scale (a handful of claiming rows, a
+// few dozen placed items per canvas), no index/cache warranted, matching
+// the perf posture engine.js's own tintSets()/usageOf() already accept
+// for a similarly-shaped full scan.
+function finalizeClaimingItemsForCanvas(playerId, canvas) {
+  if (!canvas) return;
+  const claimingItems = storage.listWarehouseItems(playerId).filter((i) => i.status === 'claiming');
+  if (!claimingItems.length) return;
+
+  const presentUids = new Set();
+  const collectFrom = (container) => {
+    if (!container) return;
+    for (const p of container.pos || []) presentUids.add(p.uid);
+    for (const b of container.bps || []) presentUids.add(b.id);
+    for (const a of container.sis || []) presentUids.add(a.uid);
+  };
+  collectFrom(canvas); // active preset's top-level fields
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) collectFrom(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) collectFrom(pg);
+  }
+
+  for (const item of claimingItems) {
+    if (presentUids.has(item.itemUid)) {
+      storage.deleteWarehouseItem(playerId, item.itemUid);
     }
   }
-  if (!placed) {
-    const err = new Error('no space in inventory (all pages full) -- claim refused, warehouse item retained');
-    err.code = 'CONFLICT'; throw err;
-  }
-
-  storage.deleteWarehouseItem(playerId, itemUid);
-  return { profileCanvas, placed, newUid };
 }
 
 // ---------------------------------------------------------------------
@@ -850,7 +936,9 @@ module.exports = {
   grantWarehouseItem,
   listWarehouse,
   claimWarehouseItem,
+  finalizeClaimingItemsForCanvas,
   cancelRoom,
   listDungeonsAndFormations,
   devBackdateActiveRun,
+  WAREHOUSE_CLAIM_TIMEOUT_MS,
 };

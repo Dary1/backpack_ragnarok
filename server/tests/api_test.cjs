@@ -1198,45 +1198,119 @@ async function main() {
     for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
   });
 
-  await AT('schedule: claim moves a warehouse item into inventory via first-fit; refuses with no mutation when no space; TTL-expired items are purged lazily', async () => {
-    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
-    // Fill EVERY cell of EVERY inventory page with a distinct 1x1
-    // placeholder PO ('blade', a real 1x1-shaped fixture item) so NO
-    // first-fit cell can possibly exist anywhere -- a full-page BP would
-    // NOT work here (a PO landing entirely inside one BP is normal/legal
-    // placement, not blocked), so this uses actual PO occupancy instead,
-    // which invCanPlaceCells's 'occupied' check genuinely blocks.
-    for (const page of doc.canvas.inv.pages) {
-      page.bps = []; page.sis = [];
-      const filler = [];
-      for (let r = 1; r <= 8; r++) for (let c = 1; c <= 8; c++) filler.push({ uid: 'filler_' + r + '_' + c + '_' + Math.random().toString(36).slice(2), id: 'blade', loc: 'grid', cell: [r, c], rot: 0 });
-      page.pos = filler;
-    }
-    scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
-
-    const whId = 'claim_test_full_' + Date.now();
+  // REQ-0041: REWRITTEN for the two-phase claim design (bug #3 fix --
+  // see schedule.cjs's claimWarehouseItem doc for the full root-cause
+  // writeup: the OLD version's server-side first-fit + storage.writeProfile
+  // raced the client's own debounced auto-save PUT and could silently
+  // lose the claimed item). The OLD assertions here (claim placing the
+  // item server-side, a 409 for "no inventory space") are now WRONG --
+  // the server never touches profileCanvas/inventory space on claim at
+  // all anymore; first-fit placement is entirely the CLIENT's job.
+  await AT('schedule: two-phase claim -- POST /api/warehouse/claim marks the row "claiming" and returns {itemUid,itemId} WITHOUT touching the profile; a claiming row cannot be claimed again (409); an unknown/expired uid is 404', async () => {
+    const whId = 'claim_test_' + Date.now();
     schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
-    const claimFullRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
-    assert.strictEqual(claimFullRes.status, 409, 'claim must refuse when there is no space anywhere: ' + JSON.stringify(claimFullRes.body));
-    assert.ok(schedule.listWarehouse(scheduleP1.playerId).some((i) => i.itemUid === whId), 'refused claim must NOT delete the warehouse item');
+    const beforeDoc = scheduleStorage.readProfile(scheduleP1.playerId);
 
-    // Clear the filler BPs and retry -- must now succeed via first-fit.
-    const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
-    for (const page of doc2.canvas.inv.pages) { page.bps = []; page.pos = []; page.sis = []; }
-    scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
-    const claimOkRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
-    assert.strictEqual(claimOkRes.status, 200, 'claim must succeed once space exists: ' + JSON.stringify(claimOkRes.body));
-    assert.deepStrictEqual(claimOkRes.body.placed.cell, [1, 1], 'first-fit must land at the first legal cell, [1,1]');
-    assert.ok(!schedule.listWarehouse(scheduleP1.playerId).some((i) => i.itemUid === whId), 'claimed item must be removed from the warehouse');
-    const doc3 = scheduleStorage.readProfile(scheduleP1.playerId);
-    assert.ok(doc3.canvas.inv.pages[0].pos.some((p) => p.uid === claimOkRes.body.uid), 'claimed item must now be a real inventory PO');
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimRes.status, 200, 'claim must succeed: ' + JSON.stringify(claimRes.body));
+    assert.strictEqual(claimRes.body.itemUid, whId, 'response echoes the warehouse row\'s own itemUid (the client reuses this AS the new inventory uid)');
+    assert.strictEqual(claimRes.body.itemId, 'blade', 'response carries the CONTENT def id so the client can run engine first-fit itself');
+    assert.strictEqual(claimRes.body.placed, undefined, 'the two-phase response must NOT report a server-side placement -- there is none');
 
-    // TTL: an already-expired item never surfaces via claim (lazily purged).
+    // The row must still exist (not deleted) but now be 'claiming', and
+    // the profile must be COMPLETELY untouched by the claim call itself
+    // -- this is the crux of bug #3's fix: no second writer.
+    const row = scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId);
+    assert.ok(row, 'claiming row must still exist (not deleted) -- only status changes');
+    assert.strictEqual(row.status, 'claiming');
+    assert.ok(row.claimedAt, 'claimedAt must be set');
+    const afterDoc = scheduleStorage.readProfile(scheduleP1.playerId);
+    assert.deepStrictEqual(afterDoc.canvas, beforeDoc.canvas, 'claim must NOT mutate the profile canvas at all (server is no longer a writer on this path)');
+
+    // A 'claiming' row is not visible as claimable and cannot be claimed
+    // again -- 409, not a silent double-claim.
+    const doubleClaimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(doubleClaimRes.status, 409, 'claiming an already-claiming row must 409: ' + JSON.stringify(doubleClaimRes.body));
+
+    // Clean up: revert this row back to claimable via the same mechanism
+    // production code uses (direct storage write, matching how a real
+    // lazy-timeout revert would leave it) so later tests in this file see
+    // a clean warehouse state.
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
+
+    // Unknown/nonexistent uid -- 404 (unchanged from the old behavior).
+    const notFoundRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: 'no_such_uid_' + Date.now() });
+    assert.strictEqual(notFoundRes.status, 404);
+
+    // TTL: an already-expired item never surfaces via claim (lazily purged) -- unchanged.
     const expiredId = 'claim_test_expired_' + Date.now();
     scheduleStorage.writeWarehouseItem(scheduleP1.playerId, expiredId, { itemUid: expiredId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(), expiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() });
     const claimExpiredRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: expiredId });
     assert.strictEqual(claimExpiredRes.status, 404, 'an expired warehouse item must 404 on claim (lazily purged)');
     assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, expiredId), null, 'expired item must actually be deleted by the purge');
+  });
+
+  await AT('schedule: two-phase claim finalization -- a profile PUT containing the claimed itemUid deletes the warehouse row; a claiming row older than the timeout lazily reverts to claimable and is claimable again', async () => {
+    const whId = 'claim_finalize_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimRes.status, 200, JSON.stringify(claimRes.body));
+    assert.ok(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId), 'claiming row exists before the client places it');
+
+    // Simulate the CLIENT's own engine first-fit placement + auto-save:
+    // place a PO whose uid is the warehouse row's own itemUid (per the
+    // two-phase design, the client reuses itemUid AS the new PO's uid --
+    // see schedule.cjs's claimWarehouseItem doc) into an empty inventory
+    // page, then PUT the profile exactly as store.ts's flushAutoSave
+    // would.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.inv.pages[0].pos.push({ uid: whId, id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 });
+    const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
+    assert.strictEqual(putRes.status, 200, 'profile PUT (the client\'s auto-save) must succeed: ' + JSON.stringify(putRes.body));
+
+    // The profile PUT handler must have finalized (deleted) the claiming
+    // row as a side effect, since whId now appears in the saved canvas.
+    assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId), null, 'claiming row must be deleted once its uid lands in a saved canvas (server finalizes on save)');
+
+    // Simulated ABANDONED claim: force a 'claiming' row with an old
+    // claimedAt (older than WAREHOUSE_CLAIM_TIMEOUT_MS) via direct
+    // data-file manipulation (mirrors this file's own forceRunElapsed()
+    // helper's backdate-a-timestamp pattern) -- must lazily revert to
+    // 'claimable' (and thus be claimable again) the next time warehouse
+    // rows are read, WITHOUT ever losing the item.
+    const abandonedId = 'claim_abandoned_' + Date.now();
+    const oldClaimedAt = new Date(Date.now() - schedule.WAREHOUSE_CLAIM_TIMEOUT_MS - 5000).toISOString();
+    scheduleStorage.writeWarehouseItem(scheduleP1.playerId, abandonedId, {
+      itemUid: abandonedId, playerId: scheduleP1.playerId, itemId: 'blade',
+      harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString(),
+      status: 'claiming', claimedAt: oldClaimedAt,
+    });
+    // listWarehouse (GET /api/warehouse) triggers the lazy revert via
+    // purgeExpiredWarehouseItems -> normalizeWarehouseStatus.
+    const listed = schedule.listWarehouse(scheduleP1.playerId);
+    const found = listed.find((i) => i.itemUid === abandonedId);
+    assert.ok(found, 'abandoned row must still be present (never lost)');
+    assert.strictEqual(found.status, 'claimable', 'abandoned row must have lazily reverted to claimable after the timeout');
+    assert.strictEqual(found.claimedAt, null, 'claimedAt must be cleared on revert');
+    const reclaimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: abandonedId });
+    assert.strictEqual(reclaimRes.status, 200, 'a reverted-to-claimable row must be claimable again: ' + JSON.stringify(reclaimRes.body));
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, abandonedId); // cleanup
+  });
+
+  await AT('schedule: pre-REQ-0041 warehouse rows with no `status` field at all are treated as claimable (migration on read)', async () => {
+    const legacyId = 'claim_legacy_' + Date.now();
+    scheduleStorage.writeWarehouseItem(scheduleP1.playerId, legacyId, {
+      itemUid: legacyId, playerId: scheduleP1.playerId, itemId: 'blade',
+      harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString(),
+      // no `status` field at all -- exactly what a pre-REQ-0041 row looks like.
+    });
+    const listed = schedule.listWarehouse(scheduleP1.playerId);
+    const found = listed.find((i) => i.itemUid === legacyId);
+    assert.ok(found, 'legacy row must be listed');
+    assert.strictEqual(found.status, 'claimable', 'a legacy row missing `status` must be treated/migrated as claimable');
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: legacyId });
+    assert.strictEqual(claimRes.status, 200, 'a legacy row must be claimable: ' + JSON.stringify(claimRes.body));
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, legacyId); // cleanup
   });
 
   await AT('schedule: cooldown value follows the CD_min/CD_max/(1-H) formula; wipe drops the room level by failureStep (floored at LEVEL_MIN)', async () => {

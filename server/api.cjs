@@ -462,6 +462,18 @@ function handle(req, res) {
         }
         try {
           const doc = storage.writeProfile(effectivePlayerId, canvas);
+          // REQ-0041 two-phase claim: this is THE single writer for a
+          // player's own profile again (see schedule.cjs's
+          // claimWarehouseItem doc for bug #3's root cause) -- so THIS is
+          // also the correct, single place to finalize any of the
+          // caller's 'claiming' warehouse rows whose minted uid (reused
+          // from the warehouse row's own itemUid, see that same doc)
+          // just landed in the saved canvas. Best-effort: a failure here
+          // must never fail the profile save itself (the save already
+          // succeeded by this point) -- worst case a stale 'claiming' row
+          // sits until its own lazy timeout reverts it, never a lost
+          // profile write.
+          try { schedule.finalizeClaimingItemsForCanvas(effectivePlayerId, canvas); } catch (e2) { /* best-effort, see comment above */ }
           sendJSON(res, 200, doc);
         } catch (e) {
           if (e.code === 'TOO_LARGE') {
@@ -721,11 +733,17 @@ function handle(req, res) {
           sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
         }
         try {
+          // REQ-0041 two-phase claim: this route no longer touches
+          // profileCanvas or calls storage.writeProfile AT ALL (see
+          // schedule.cjs's claimWarehouseItem doc for the full BUG #3
+          // root-cause writeup) -- it only flips the warehouse row to
+          // 'claiming' and hands back the content itemId (+ the row's own
+          // itemUid, which the client reuses as the new inventory
+          // PO/SI's own uid) so the CLIENT can place it via the engine
+          // itself, through the app's one auto-save choke point.
           const { itemDefsById } = schedule.getScheduleContent();
-          const canvas = requireOwnCanvas();
-          const result = schedule.claimWarehouseItem(callerId, body.itemUid, canvas, itemDefsById);
-          storage.writeProfile(callerId, canvas); // persist the inventory placement
-          sendJSON(res, 200, { ok: true, placed: result.placed, uid: result.newUid });
+          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById);
+          sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId });
         } catch (e) { sendScheduleError(e); }
       });
       return;
