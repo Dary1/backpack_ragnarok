@@ -22,13 +22,37 @@
 // Board/InventoryBoard "one Pixi Application forever" discipline this
 // task brief calls out explicitly.
 import { useEffect, useRef, useState } from 'react';
-import { fetchDungeons, fetchRun, type ApiRoom, type ApiRunEvent, type ApiRunView } from '../api';
+import {
+  fetchContent,
+  fetchDungeons,
+  fetchRun,
+  fetchWarehouse,
+  type ApiContentPayload,
+  type ApiRoom,
+  type ApiRunEvent,
+  type ApiRunView,
+  type ApiWarehouseItem,
+} from '../api';
 import { loadSpriteTextures } from '../board/sprites';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
 import { MonitorRenderer, type MonitorUnitVisual } from './MonitorRenderer';
+
+/** Same item-name resolution WarehouseTab.tsx already uses (itemId ->
+ * localized display name, falling back to the raw id if content hasn't
+ * loaded yet or the id is unrecognized) -- kept as a small local copy
+ * rather than exporting/importing across the two modules, since it is a
+ * single three-line lookup and the two components' content-fetch
+ * lifecycles are independent (this component fetches content lazily,
+ * only once a run actually settles, not on every mount). */
+function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
+  const entry = content?.items[itemId] ?? content?.sis[itemId];
+  if (!entry) return itemId;
+  if (locale === 'ja') return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
+  return entry.name;
+}
 
 interface MonitorProps {
   room: ApiRoom;
@@ -61,6 +85,8 @@ export function Monitor({ room, locale }: MonitorProps) {
   const rendererRef = useRef<MonitorRenderer | null>(null);
   const lastEventIndexRef = useRef(0);
   const unitsMountedRef = useRef(false);
+  const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
+  const [content, setContent] = useState<ApiContentPayload | null>(null);
 
   // Poll GET .../run every ~2s while this room has (or recently had) a
   // run. Stops implicitly if the room has no lastRunId at all (no run
@@ -109,33 +135,62 @@ export function Monitor({ room, locale }: MonitorProps) {
     };
   }, [expanded, mountedOnce]);
 
-  // Mount player-side unit visuals once (formation box + BP footprint +
-  // one representative icon per slot) -- these never change mid-run, so
-  // this only needs to run once after both the renderer AND the room's
-  // own preset/formation data are available.
+  // Mount player-side unit visuals once (formation box + full BP/PO
+  // canvas copy) -- these never change mid-run, so this only needs to
+  // run once after both the renderer AND the room's own preset/
+  // formation data are available.
+  //
+  // REQ-0045 (d) root cause: this used to take only `presetCanvas.bps[0]`
+  // (the FIRST bp) and hand MonitorRenderer a single {bpColor,bpShape}
+  // pair, which mountUnits() then drew as if that one shape alone
+  // occupied the WHOLE formation box starting at its own local (0,0) --
+  // "only the first BP is copied, auto-placed top-left". The preset's
+  // OTHER BPs (and every placed PO) were silently dropped from the
+  // visual entirely. sim/combat.cjs's compileUnitSnapshot was ALWAYS
+  // correct here (its own bps.map(...) already iterates every BP, each
+  // offset by its own origin -- see localBpCells) -- this was purely a
+  // client-side DISPLAY bug, the actual combat simulation never had it.
+  // Fixed by copying the preset's bps/pos arrays 1:1 (same "canvas is
+  // already 8x8, no auto-repositioning" contract compileUnitSnapshot
+  // already follows): every BP's cells are its own shape offsets PLUS
+  // its own origin (mirroring sim/combat.cjs's localBpCells formula
+  // exactly), and every placed (loc==='grid') PO becomes its own icon
+  // entry at its own origin cell.
   useEffect(() => {
     if (!mountedOnce || !rendererRef.current || unitsMountedRef.current) return;
     const presets = snapshot.state?.presets;
     const activeCanvas = snapshot.state;
+    const itemDefs = snapshot.gameData?.ITEMS;
     if (!activeCanvas) return;
     const units: MonitorUnitVisual[] = room.slots.map((slot, idx) => {
       const box = `unit${idx + 1}`;
-      let bpColor = '#888888';
-      let bpShape: [number, number][] = [];
       let label = `U${idx + 1}`;
+      const bps: MonitorUnitVisual['bps'] = [];
+      const icons: MonitorUnitVisual['icons'] = [];
       if (slot.presetIndex != null) {
         const presetCanvas =
           presets && slot.presetIndex === presets.active
             ? activeCanvas
             : presets?.store[slot.presetIndex] ?? null;
-        const bp = presetCanvas?.bps?.[0];
-        if (bp) {
-          bpColor = bp.color;
-          bpShape = bp.shape;
+        if (presetCanvas?.bps?.length) {
           label = presets?.names[slot.presetIndex] ?? label;
+          for (const bp of presetCanvas.bps) {
+            // Mirrors sim/combat.cjs's localBpCells: shape offsets PLUS
+            // this BP's own origin -- NOT re-normalized to (0,0).
+            const cells: [number, number][] = bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]);
+            bps.push({ color: bp.color, cells });
+          }
+        }
+        if (presetCanvas?.pos?.length && itemDefs) {
+          for (const po of presetCanvas.pos) {
+            if (po.loc !== 'grid' || !po.cell) continue;
+            const def = itemDefs[po.id];
+            if (!def) continue; // unknown/stale item id -- skip this one icon defensively, other units unaffected
+            icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell });
+          }
         }
       }
-      return { slotIndex: idx, box, bpColor, bpShape, label };
+      return { slotIndex: idx, box, bps, label, icons };
     });
     // NOTE: `box` above is a placeholder key ("unit1".."unit4"), NOT yet
     // the real "F2:M9"-style box string -- the real box strings live in
@@ -155,13 +210,61 @@ export function Monitor({ room, locale }: MonitorProps) {
         const withRealBoxes = units.map((u) => ({ ...u, box: formation?.canvases[`unit${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountUnits(withRealBoxes);
         unitsMountedRef.current = true;
+        // REQ-0045 (d)/(f) regression-test seam: expose this room's
+        // mounted units + enemy marker bounds keyed by roomId, same
+        // "assert on real data instead of reverse-engineering canvas
+        // pixels" rationale as store.ts's own __backpackDebug hook --
+        // multiple room cards can each have their own Monitor instance
+        // mounted simultaneously, so this is a roomId-keyed map, not a
+        // single flat object. Never read by any production UI code path.
+        interface MonitorDebugEntry {
+          units: () => MonitorUnitVisual[];
+          enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
+        }
+        const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
+        if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
+        debugWin.__monitorDebug[room.id] = {
+          units: () => rendererRef.current?.getLastMountedUnits() ?? [],
+          enemyBounds: () => rendererRef.current?.getEnemyMarkerBounds() ?? [],
+        };
       } catch (e) {
         // Non-fatal -- the expanded view simply shows no unit
         // footprints if the formation lookup fails; ray animation and
         // the enemy side are unaffected.
       }
     })();
-  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.state?.presets]);
+  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.state?.presets, snapshot.gameData, room.id]);
+
+  // REQ-0045 (e): once a run has genuinely settled (NOT merely
+  // `run.result !== 'incomplete'` -- see the summary-gate fix below for
+  // why that distinction matters) with a non-wipe result, fetch the
+  // reward list. The warehouse is the actual reward ledger (golden e/f);
+  // GET .../run itself carries no `rewards` field at all. Filtered down
+  // to rows whose sourceRunId matches THIS run, so a monitor showing an
+  // OLDER run's summary (or a different room's) never bleeds another
+  // run's rewards into view. Runs once per runId (guarded by the
+  // `rewards === null` check combined with the runId-keyed effect deps),
+  // not on every ~2s poll tick.
+  useEffect(() => {
+    if (!run || !run.settled || run.result === 'wipe' || rewards !== null) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [contentPayload, whRes] = await Promise.all([fetchContent(), fetchWarehouse()]);
+        if (cancelled) return;
+        setContent(contentPayload);
+        setRewards(whRes.items.filter((it) => it.sourceRunId === run.runId));
+      } catch (e) {
+        // Non-fatal -- the rewards list simply stays empty/unloaded if
+        // this fetch fails; the rest of the summary panel (result,
+        // level, cooldown) is unaffected.
+        if (!cancelled) setRewards([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [run, rewards]);
 
   // Feed only the NEW tail of events to the renderer on every poll
   // update -- track lastEventIndex across polls (per the run-clock
@@ -239,7 +342,21 @@ export function Monitor({ room, locale }: MonitorProps) {
         <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
       </div>
 
-      {run && (settled || run.result !== 'incomplete') ? (
+      {/* REQ-0045 (e) root cause #1: this panel used to reveal itself
+          whenever `run.result !== 'incomplete'`, but result/rewards-
+          adjacent fields are computed INSTANTLY at run start and always
+          reflect the EVENTUAL final outcome (see ApiRunView's own doc
+          comment in api.ts and server/api.cjs's matching comment on the
+          GET .../run handler) -- so "Victory" could render the moment a
+          run started, long before anything had actually happened,
+          whenever the run's eventual (correctly-computed) outcome
+          happened to be a win. The gate now strictly requires `settled`
+          (== run.clock.isSettled, mirrored server-side into the
+          `settled` field), matching visibleEvents()'s own
+          not-yet-reached-events withholding discipline -- a spectator
+          never sees the outcome before the run's own clock says it's
+          over. */}
+      {run && settled ? (
         <div className="schedule-monitor-summary" data-testid="schedule-monitor-summary">
           <div className="schedule-monitor-result">
             {t(
@@ -253,7 +370,32 @@ export function Monitor({ room, locale }: MonitorProps) {
               <div className="schedule-monitor-level-dropped">{t(locale, 'schedule.monitor.levelDropped', { level: run.levelAfter })}</div>
             </>
           ) : (
-            <div className="schedule-monitor-rewards-title">{t(locale, 'schedule.monitor.rewardsTitle')}</div>
+            <>
+              <div className="schedule-monitor-rewards-title">{t(locale, 'schedule.monitor.rewardsTitle')}</div>
+              {/* REQ-0045 (e) root cause #2: `run.rewards` was never a
+                  real field at all (GET .../run carries no such key) --
+                  the warehouse IS the reward ledger; this list is
+                  fetched (see the effect above) and rendered here for
+                  the first time. `rewards === null` means "not fetched
+                  yet" (still loading); `[]` means "fetched, genuinely
+                  zero rows" (e.g. a victory whose reward roll produced
+                  nothing this time, or the run's rows were already
+                  claimed+consumed elsewhere before this panel loaded). */}
+              {rewards === null ? (
+                <div className="schedule-monitor-rewards-loading" data-testid="schedule-monitor-rewards-loading">{t(locale, 'schedule.loading')}</div>
+              ) : rewards.length === 0 ? (
+                <div className="schedule-monitor-rewards-none" data-testid="schedule-monitor-rewards-none">{t(locale, 'schedule.monitor.rewardsNone')}</div>
+              ) : (
+                <ul className="schedule-monitor-rewards-list" data-testid="schedule-monitor-rewards-list">
+                  {rewards.map((item) => (
+                    <li className="schedule-monitor-reward-row" key={item.itemUid} data-testid="schedule-monitor-reward-row" data-item-uid={item.itemUid}>
+                      {localizedItemName(locale, content, item.itemId)}
+                      {item.kind === 'tm' && typeof item.qty === 'number' ? ` x${item.qty}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
           {settled ? <div className="schedule-monitor-settled-badge">{t(locale, 'schedule.monitor.settled')}</div> : null}
           {run.cooldownSecs > 0 ? (

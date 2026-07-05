@@ -1139,3 +1139,146 @@ test.afterAll(async () => {
     }
   }
 });
+
+test.describe('REQ-0045 (d): monitor copies the FULL preset canvas (all BPs at real positions + placed POs), not just bps[0]', () => {
+  test('a 2-BP unit with 2 placed POs is mounted with BOTH BPs at their own distinct origins and BOTH POs present -- not truncated to the first BP auto-placed top-left', async ({ page }) => {
+    // Preset index 9 (bp_multi_a @ origin [1,1], bp_multi_b @ origin
+    // [5,5], each with its own placed 'dagger' PO) -- see
+    // schedule-fixture.json's own header comment for this preset's
+    // exact shape. Slots 1-3 use presets 0,1,2 (self-contained, no
+    // permanent lock -- this test cancels its own room immediately
+    // after asserting, freeing all 4 for later tests).
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    const presetsForThisTest = [9, 0, 1, 2];
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, presetsForThisTest[i]);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    // TWO separate expand toggles exist here: RoomCard's own
+    // [data-testid="schedule-room-expand-toggle"] reveals the
+    // SlotsPanel+Monitor SECTION (what every other schedule.spec.ts test
+    // already clicks -- sufficient for reading the small, always-visible
+    // progress/encounter/telegraph summary), and Monitor's OWN internal
+    // .schedule-monitor-expand-btn (no distinct testid; shares the same
+    // i18n expand/collapse label text) additionally reveals the Pixi
+    // CANVAS view specifically, which is what actually triggers
+    // MonitorRenderer.mount() + mountUnits() -- required here since this
+    // test inspects mounted-units data, not just the summary text.
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await card.locator('.schedule-monitor-expand-btn').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+
+    // REQ-0045 (d) regression assertion: read the monitor's ACTUAL
+    // mounted-units data (MonitorRenderer.ts's getLastMountedUnits(),
+    // exposed via window.__monitorDebug[roomId].units() -- same "assert on
+    // real data instead of reverse-engineering canvas pixels" rationale
+    // as store.ts's own __backpackDebug hook) and verify slot 0 (preset
+    // 9) carries BOTH bp_multi_a's cells (relative to its own origin
+    // [1,1], i.e. still starting at local (1,1), NOT renormalized to
+    // (0,0)) AND bp_multi_b's cells (relative to origin [5,5]) -- proving
+    // the FULL canvas was copied, not just bps[0] auto-placed top-left.
+    await expect(async () => {
+      const units = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { units: () => Array<{ slotIndex: number; bps: Array<{ color: string; cells: [number, number][] }>; icons: Array<{ origin: [number, number] }> }> }> };
+        return w.__monitorDebug?.[rid]?.units() ?? [];
+      }, roomId);
+      expect(units.length).toBe(4);
+      const unit0 = units.find((u) => u.slotIndex === 0);
+      expect(unit0).toBeTruthy();
+      expect(unit0!.bps.length).toBe(2);
+      const bpA = unit0!.bps.find((b) => b.color === '#e94d4d'); // bp_multi_a
+      const bpB = unit0!.bps.find((b) => b.color === '#4de9b6'); // bp_multi_b
+      expect(bpA).toBeTruthy();
+      expect(bpB).toBeTruthy();
+      // bp_multi_a: shape [[0,0],[0,1],[1,0],[1,1]] + origin [1,1] -> cells [[1,1],[1,2],[2,1],[2,2]].
+      expect(bpA!.cells).toEqual(expect.arrayContaining([[1, 1], [1, 2], [2, 1], [2, 2]]));
+      // bp_multi_b: shape [[0,0],[0,1],[1,0],[1,1]] + origin [5,5] -> cells [[5,5],[5,6],[6,5],[6,6]] -- proves this BP is NOT collapsed onto bp_multi_a's origin/top-left.
+      expect(bpB!.cells).toEqual(expect.arrayContaining([[5, 5], [5, 6], [6, 5], [6, 6]]));
+      // Both placed POs present, each at its OWN origin (not merged/dropped).
+      expect(unit0!.icons.length).toBe(2);
+      const origins = unit0!.icons.map((ic) => ic.origin.join(','));
+      expect(origins).toEqual(expect.arrayContaining(['1,1', '5,5']));
+    }).toPass({ timeout: 10000 });
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s right edge', () => {
+  test('every enemy marker created during a REAL, unbackdated run stays within the field\'s own pixel width (x + rendered label width <= FIELD_W)', async ({ page }) => {
+    // Mirrors the "monitor: events & progress" test's own approach (a
+    // REAL, un-backdated run, polled for real events over a bounded
+    // window) rather than forcing a specific enemy into a contrived
+    // near-edge position -- this exercises the ACTUAL fix
+    // (MonitorRenderer.ts's getOrCreateEnemyMarker/truncateLabelToFit)
+    // against genuine ray_fire events from a real encounter, using
+    // whatever enemy ids/positions the fixture's real content actually
+    // produces.
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await card.locator('.schedule-monitor-expand-btn').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+
+    // Wait for at least one enemy marker to actually be created (a real
+    // ray_fire event against the enemy field), then assert EVERY marker
+    // ever created stays within FIELD_W, polling repeatedly over a
+    // bounded window since more markers can appear as the encounter
+    // progresses (a single check right after the first marker appears
+    // would miss any that show up moments later).
+    let checkedAtLeastOne = false;
+    await expect(async () => {
+      const result = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }> }> };
+        return w.__monitorDebug?.[rid]?.enemyBounds() ?? [];
+      }, roomId);
+      expect(result.length).toBeGreaterThan(0);
+    }).toPass({ timeout: 10000 });
+
+    // Keep polling for a further bounded window, re-checking the FULL
+    // marker set every tick, so markers created slightly later are also
+    // covered.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const bounds = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }> }> };
+        return w.__monitorDebug?.[rid]?.enemyBounds() ?? [];
+      }, roomId);
+      for (const marker of bounds) {
+        checkedAtLeastOne = true;
+        expect(marker.x + marker.labelWidth).toBeLessThanOrEqual(468); // FIELD_W = FIELD_COLS(26) * FIELD_CELL_PX(18)
+      }
+      await page.waitForTimeout(300);
+    }
+    expect(checkedAtLeastOne).toBe(true);
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});

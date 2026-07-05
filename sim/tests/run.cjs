@@ -647,6 +647,90 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
   }
 });
 
+T('REQ-0045 (f) guard: compileEnemyPack NEVER places a pack member outside the enemy field\'s own bounds (col/row), across many seeds and pack sizes -- the reported overflow was client-side label rendering only, never the placement math', () => {
+  // Regression guard (not a fix -- see the REQ-0045 outcome doc): the
+  // reported bug ("enemy-side placement overflows past the right edge
+  // of the enemy plane") was found to be a CLIENT-side rendering bug
+  // (client/src/schedule/MonitorRenderer.ts's enemy Text label carried
+  // no width clamp -- fixed there). The SIM's own placement math
+  // (compileEnemyPack's column-fill-with-row-wrap), right here, was
+  // ALWAYS correct: every pack member's fieldCells stay within
+  // [enemyFieldBox.rowMin, rowMax] x [colMin, colMax], regardless of
+  // pack size or footprint mix. This asserts that fact explicitly and
+  // permanently across a heavy seed x pack-size sweep, using the REAL
+  // batch-002 enemy roster (footprints from 1x1 up to 3x3, the actual
+  // range this sim ships with).
+  const enemyFieldBox = { rowMin: 1, colMin: 1, rowMax: combat.FIELD_ROWS, colMax: combat.FIELD_COLS };
+  const rosterIds = Object.keys(enemyDefsById);
+  ok(rosterIds.length > 0, 'sanity: the real batch-002 roster must be non-empty for this sweep to mean anything');
+  let violations = 0;
+  let totalChecked = 0;
+  for (let seedIdx = 0; seedIdx < 60; seedIdx++) {
+    const rng = combat.makeRng('pack-bounds-seed-' + seedIdx);
+    // Vary pack size across the sweep, up to a genuinely large pack (69
+    // members, matching the REQ-0045 investigation's own upper bound) --
+    // deterministic per seedIdx, not random, so this test is itself
+    // reproducible.
+    const packSize = 1 + (seedIdx % 69);
+    const enemyIds = [];
+    for (let i = 0; i < packSize; i++) enemyIds.push(rosterIds[i % rosterIds.length]);
+    const packDef = { enemyIds };
+    const enemies = combat.compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox);
+    for (const enemy of enemies) {
+      for (const [r, c] of enemy.fieldCells) {
+        totalChecked++;
+        if (r < enemyFieldBox.rowMin || r > enemyFieldBox.rowMax || c < enemyFieldBox.colMin || c > enemyFieldBox.colMax) {
+          violations++;
+          console.log('  (VIOLATION: seed ' + seedIdx + ', packSize ' + packSize + ', enemy ' + enemy.id + ', cell [' + r + ',' + c + '] outside [' + enemyFieldBox.rowMin + '-' + enemyFieldBox.rowMax + ',' + enemyFieldBox.colMin + '-' + enemyFieldBox.colMax + '])');
+        }
+      }
+    }
+  }
+  ok(totalChecked > 100, 'sanity: this sweep must actually check a substantial number of cells, got ' + totalChecked);
+  eq(violations, 0, violations + ' of ' + totalChecked + ' checked cells fell outside the enemy field\'s own bounds -- see VIOLATION lines above for exact seed/pack/enemy/cell');
+});
+
+T('REQ-0045 (e) guard: an instant/forced wipe classifies as result==\'wipe\' with EMPTY rewards + 0 lrdstReward + no victory run_end event -- never misclassified as a win', () => {
+  // Regression guard (not a fix -- see the REQ-0045 outcome doc): the
+  // reported bug ("Victory displayed when clearly not a victory; no
+  // rewards shown") was found to be a CLIENT-side display bug
+  // (client/src/schedule/Monitor.tsx revealed the summary panel
+  // prematurely -- before `settled` -- and never actually rendered
+  // run.rewards at all, since GET .../run never even carries a
+  // `rewards` field; the warehouse is the real reward ledger). The sim's
+  // OWN victory/wipe classification, right here, was ALWAYS correct --
+  // this asserts that fact explicitly and permanently: a devastating
+  // synthetic enemy (n:[9999,9999] every 0.01s) against the fixture's
+  // real party guarantees a wipe on the very FIRST encounter, well
+  // before the boss (the only path to 'victory') is ever reached.
+  const devastatingEnemyDefs = {
+    instant_kill_boss: { id: 'instant_kill_boss', name: 'Instant Kill Boss', hp: [99999, 99999], footprint: [1, 1], skills: ['instant_kill_strike'] },
+  };
+  const devastatingSkillDefs = {
+    instant_kill_strike: { trigger: { t: 'every_secs', s: [0.01, 0.01] }, verb: { t: 'strike', n: [9999, 9999] }, attack_profile: { edge: ['top'], penetration: 999, aoe: 0 } },
+  };
+  const dungeonDef = { schema: 'dungeon/1', id: 'forced_wipe_test', name: 'Forced Wipe Test', encounters: [
+    { id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['instant_kill_boss'] }, deadline_secs: 5, rewardItems: ['should_never_be_granted'] },
+    { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['instant_kill_boss'] }, deadline_secs: 5 },
+  ] };
+  for (let i = 0; i < 10; i++) {
+    const result = combat.runDungeon({
+      masterSeed: 'forced-wipe-seed-' + i,
+      dungeonDef,
+      unitSnapshots: fourUnitSnapshots(),
+      itemDefsById, enemyDefsById: devastatingEnemyDefs, skillDefsById: devastatingSkillDefs,
+      formationId: 'formation1', level: 1, participants: ['alice'],
+    });
+    eq(result.result, 'wipe', 'a devastating enemy must force a wipe (seed forced-wipe-seed-' + i + '), got ' + result.result);
+    eq(result.rewards, [], 'a wiped run must show ZERO rewards, never the first encounter\'s rewardItems');
+    eq(result.lrdstReward, 0, 'a wiped run must accrue ZERO lrdst, matching the item-reward invariant');
+    const runEndEvents = result.events.filter((e) => e.ev === 'run_end');
+    eq(runEndEvents.length, 1, 'exactly one run_end event must be emitted');
+    eq(runEndEvents[0].result, 'wipe', 'the run_end event itself must carry result:\'wipe\', never \'victory\'');
+    ok(!result.events.some((e) => e.ev === 'run_end' && e.result === 'victory'), 'no run_end event may EVER claim victory on a forced wipe');
+  }
+});
+
 T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]; a single cleared boss rolls within [5,10]',()=>{
   // Isolate ONE encounter type at a time via a minimal synthetic dungeon
   // def (bypasses batch-002's specific encounter mix so this test is
@@ -732,6 +816,50 @@ T('engine interop invariant: combat.cjs never calls an engine mutator (no PO/BP 
   const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
   const serialized = JSON.stringify(compiled);
   ok(serialized.length > 0, 'compiled snapshot must be plain-data serializable (no engine object leakage)');
+});
+
+T('REQ-0045 (d) guard: compileUnitSnapshot copies EVERY BP on the unit, each at its own real origin -- never just bps[0] auto-placed at (0,0)', () => {
+  // Regression guard (not a fix -- see the REQ-0045 outcome doc): the
+  // reported bug ("only the first BP of a deployed unit is copied into
+  // the run, auto-placed top-left") was found to be a CLIENT-side
+  // display-only bug (client/src/schedule/Monitor.tsx/MonitorRenderer.ts
+  // truncated to bps[0] for the monitor's visual only) -- the actual
+  // combat simulation, right here, was ALWAYS correct: this asserts
+  // that fact explicitly and permanently, as a standing guard against
+  // ever reintroducing a bps[0]-only truncation at the SIM layer, since
+  // that would be a far more serious bug than a display-only one (it
+  // would mean the game's actual outcome silently ignores every BP but
+  // the first on every multi-BP unit).
+  //
+  // content/live/scenario.json's own top-level canvas has 4 BPs at 4
+  // genuinely distinct origins (alpha@[1,1], beta@[1,4], gamma@[4,2],
+  // delta@[4,5]) -- exactly the "multiple BPs on one unit's 8x8 local
+  // canvas" shape this guards.
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  eq(compiled.bps.length, scenario.bps.length, 'every BP on the preset canvas must be present in the compiled snapshot, not just the first');
+  ok(compiled.bps.length >= 2, 'sanity: the fixture scenario must actually have multiple BPs for this guard to mean anything');
+  // Cross-check EVERY bp by id: its compiled localCells must equal its
+  // OWN shape offsets PLUS its OWN origin (never renormalized to (0,0),
+  // never collapsed onto some OTHER bp's origin).
+  for (const bpDef of scenario.bps) {
+    const compiledBp = compiled.bps.find((b) => b.id === bpDef.id);
+    ok(compiledBp, 'bp ' + bpDef.id + ' must be present in the compiled snapshot');
+    const expectedLocalCells = bpDef.shape.map(([dr, dc]) => [bpDef.origin[0] + dr, bpDef.origin[1] + dc]);
+    eq(compiledBp.localCells, expectedLocalCells, 'bp ' + bpDef.id + ' localCells must be its own shape+origin, not truncated/renormalized/collapsed onto another bp');
+  }
+  // The 4 bps' local cell sets must be MUTUALLY DISJOINT (proving they
+  // occupy their own real, distinct positions rather than all
+  // collapsing onto one origin, e.g. all onto (0,0) or all onto the
+  // first bp's own origin -- the exact shape the reported bug would take
+  // if it existed at this layer).
+  const seen = new Set();
+  for (const bp of compiled.bps) {
+    for (const [r, c] of bp.localCells) {
+      const key = r + ',' + c;
+      ok(!seen.has(key), 'cell ' + key + ' claimed by more than one bp -- bps are overlapping/collapsed, not at their own distinct positions');
+      seen.add(key);
+    }
+  }
 });
 
 T('multi_strike: each sub-hit is a separate hit (OQ19) -- N hits produce N independent damage rolls', () => {
