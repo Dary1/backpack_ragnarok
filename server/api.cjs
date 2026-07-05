@@ -6,6 +6,7 @@
 //   GET  /api/content
 //   GET  /api/me
 //   PUT  /api/admin/item/:id
+//   POST /api/admin/warehouse/grant                      (REQ-0041 feedback 1, dev grant)
 //   GET  /api/profile/:playerId/canvas
 //   PUT  /api/profile/:playerId/canvas
 //   POST   /api/schedule/rooms                          (REQ-0036 P1-B)
@@ -224,6 +225,7 @@ function getAuthToken(req) {
 // ---- routing ----
 const PROFILE_CANVAS_RE = /^\/api\/profile\/([^/]+)\/canvas$/;
 const ADMIN_ITEM_RE = /^\/api\/admin\/item\/([^/]+)$/;
+const ADMIN_WAREHOUSE_GRANT_RE = /^\/api\/admin\/warehouse\/grant$/; // REQ-0041 feedback 1: dev grant
 
 // REQ-0036 P1-B: Dungeon Schedule service routes.
 const SCHEDULE_ROOMS_RE = /^\/api\/schedule\/rooms$/;
@@ -328,6 +330,77 @@ function handle(req, res) {
     return;
   }
   if (adminItemMatch) {
+    sendJSON(res, 405, { ok: false, error: 'method not allowed' });
+    return;
+  }
+
+  // REQ-0041 feedback 1: POST /api/admin/warehouse/grant {itemId} -- dev
+  // grant, gated EXACTLY like PUT /api/admin/item/:id above (same
+  // admin.isItemAdminToken(token) guard, same 403 body shape/wording) --
+  // mirrors that route's auth-gate style deliberately (per the task: "the
+  // existing PUT /api/admin/item/:id route is presumably the sibling
+  // pattern... find it and mirror its auth-gate style exactly"). Inserts
+  // a warehouse row for the CALLER (the resolved item_admin themselves --
+  // there is no "grant to a different player" concept here, matching
+  // every other schedule/warehouse route's "always operates on the
+  // caller's own data" convention), subject to the SAME cap/TTL rules
+  // every other warehouse insertion goes through (schedule.cjs's
+  // addToWarehouse, via grantWarehouseItem). Validates itemId against the
+  // COMBINED item defs (schedule.getScheduleContent().itemDefsById, the
+  // same map claimWarehouseItem/settleRun already trust) before inserting
+  // -- 400 for an unknown id, never a silent insert of a dangling
+  // reference.
+  const adminWarehouseGrantMatch = ADMIN_WAREHOUSE_GRANT_RE.exec(p);
+  if (adminWarehouseGrantMatch && req.method === 'POST') {
+    const token = getAuthToken(req);
+    if (!admin.isItemAdminToken(token)) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: missing/invalid token or not an item_admin' });
+      return;
+    }
+    readBody(req, (err, bodyStr) => {
+      if (err) {
+        if (err.code === 'TOO_LARGE') {
+          sendJSON(res, 413, { ok: false, error: 'request body exceeds ' + MAX_BODY_BYTES + ' bytes' });
+        } else {
+          sendJSON(res, 400, { ok: false, error: 'body read failed: ' + err.message });
+        }
+        return;
+      }
+      let body;
+      try {
+        body = JSON.parse(bodyStr);
+      } catch (e) {
+        sendJSON(res, 400, { ok: false, error: 'invalid JSON body' });
+        return;
+      }
+      if (typeof body.itemId !== 'string' || !body.itemId) {
+        sendJSON(res, 400, { ok: false, error: 'itemId is required' });
+        return;
+      }
+      try {
+        const { itemDefsById } = schedule.getScheduleContent();
+        if (!itemDefsById[body.itemId]) {
+          sendJSON(res, 400, { ok: false, error: 'unknown item id "' + body.itemId + '"' });
+          return;
+        }
+        // The caller's OWN playerId (resolved from the token, same as
+        // every other authenticated route -- never trusts a client-
+        // supplied id) is who the grant lands in the warehouse for.
+        const resolved = admin.resolveAuth(token);
+        const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
+        const result = schedule.grantWarehouseItem(targetPlayerId, body.itemId);
+        if (!result.ok) {
+          sendJSON(res, 409, { ok: false, error: 'warehouse full' });
+          return;
+        }
+        sendJSON(res, 200, { ok: true, item: result.item });
+      } catch (e) {
+        sendJSON(res, 500, { ok: false, error: 'grant failed: ' + e.message });
+      }
+    });
+    return;
+  }
+  if (adminWarehouseGrantMatch) {
     sendJSON(res, 405, { ok: false, error: 'method not allowed' });
     return;
   }

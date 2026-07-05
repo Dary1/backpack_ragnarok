@@ -126,6 +126,9 @@ const DICT = {
     'dexAdmin.localeSwitchLabel': 'Editing language',
     'dexAdmin.nameField': 'Name',
     'dexAdmin.flavorField': 'Flavor',
+    'dexAdmin.grantToWarehouse': 'Acquire to warehouse',
+    'dexAdmin.grantToWarehouseSuccess': 'Added to your warehouse.',
+    'dexAdmin.grantToWarehouseFailed': 'Could not add to warehouse: ',
 
     // Schedule (Schedule.tsx / schedule/*) -- REQ-0036 P1-C
     'schedule.title': 'Dungeon Schedule',
@@ -299,6 +302,9 @@ const DICT = {
     'dexAdmin.localeSwitchLabel': '編集言語',
     'dexAdmin.nameField': '名前',
     'dexAdmin.flavorField': 'フレーバー',
+    'dexAdmin.grantToWarehouse': 'アイテムを倉庫に取得',
+    'dexAdmin.grantToWarehouseSuccess': '倉庫に追加しました。',
+    'dexAdmin.grantToWarehouseFailed': '倉庫に追加できませんでした: ',
 
     // Schedule (Schedule.tsx / schedule/*) -- REQ-0036 P1-C
     'schedule.title': 'ダンジョンスケジュール',

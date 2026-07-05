@@ -833,6 +833,95 @@ async function main() {
     });
   });
 
+  // ---------------------------------------------------------------------
+  // REQ-0041 feedback 1: POST /api/admin/warehouse/grant {itemId} -- dev
+  // grant, gated EXACTLY like PUT /api/admin/item/:id above (see that
+  // route's own tests immediately above, which this group mirrors 1:1
+  // for the auth-gate cases: 200 for item_admin, 403 for a non-admin
+  // guest, 403 for no token when dev_mode is off, 400 for an unknown
+  // itemId, and the warehouse row actually appearing via listWarehouse).
+  // ---------------------------------------------------------------------
+  await AT('api: POST /api/admin/warehouse/grant returns 403 when no token is sent and dev_mode is false', async () => {
+    const original = fs.readFileSync(devUserPath, 'utf8');
+    fs.writeFileSync(devUserPath, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'], dev_mode: false }));
+    try {
+      await new Promise((resolve, reject) => {
+        const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'blade' }));
+        const res = mockRes((body) => {
+          try {
+            assert.strictEqual(res.statusCode, 403, 'expected 403 got ' + res.statusCode + ': ' + body);
+            resolve();
+          } catch (e) { reject(e); }
+        });
+        api.handle(req, res);
+      });
+    } finally {
+      fs.writeFileSync(devUserPath, original);
+    }
+  });
+
+  await AT('api: POST /api/admin/warehouse/grant returns 403 when a valid token\'s player lacks item_admin (guest/non-admin)', async () => {
+    await new Promise((resolve, reject) => {
+      const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'blade' }), authHeaders(guestA.token));
+      const res = mockRes((body) => {
+        try {
+          assert.strictEqual(res.statusCode, 403, 'expected 403 got ' + res.statusCode + ': ' + body);
+          resolve();
+        } catch (e) { reject(e); }
+      });
+      api.handle(req, res);
+    });
+  });
+
+  await AT('api: POST /api/admin/warehouse/grant returns 400 for an unknown itemId (valid admin token)', async () => {
+    await new Promise((resolve, reject) => {
+      const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'totally_not_a_real_item_id' }), authHeaders(adminGuest.token));
+      const res = mockRes((body) => {
+        try {
+          assert.strictEqual(res.statusCode, 400, 'expected 400 got ' + res.statusCode + ': ' + body);
+          resolve();
+        } catch (e) { reject(e); }
+      });
+      api.handle(req, res);
+    });
+  });
+
+  await AT('api: POST /api/admin/warehouse/grant happy path (200) for an item_admin guest -- the granted row actually appears via listWarehouse', async () => {
+    const schedule2 = require('../schedule.cjs');
+    const before = schedule2.listWarehouse(adminGuest.playerId).length;
+    await new Promise((resolve, reject) => {
+      const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'blade' }), authHeaders(adminGuest.token));
+      const res = mockRes((body) => {
+        try {
+          assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
+          const parsed = JSON.parse(body);
+          assert.strictEqual(parsed.ok, true);
+          assert.strictEqual(parsed.item.itemId, 'blade');
+          assert.strictEqual(parsed.item.status, 'claimable', 'a freshly-granted row starts claimable (REQ-0041 two-phase claim status field)');
+          resolve();
+        } catch (e) { reject(e); }
+      });
+      api.handle(req, res);
+    });
+    const after = schedule2.listWarehouse(adminGuest.playerId);
+    assert.strictEqual(after.length, before + 1, 'listWarehouse must show exactly one new row for the granting admin');
+    assert.ok(after.some((i) => i.itemId === 'blade'), 'the granted item id must actually be present');
+    for (const i of after) if (i.itemId === 'blade' && i.playerId === undefined) { /* no-op, shape check only */ }
+  });
+
+  await AT('api: POST /api/admin/warehouse/grant succeeds with NO token at all when dev_mode is true (dev-player fallback keeps item_admin)', async () => {
+    await new Promise((resolve, reject) => {
+      const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'fx_dagger' }));
+      const res = mockRes((body) => {
+        try {
+          assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
+          resolve();
+        } catch (e) { reject(e); }
+      });
+      api.handle(req, res);
+    });
+  });
+
 
   // =====================================================================
   // REQ-0036 P1-B: Dungeon Schedule + Warehouse test group. Runs against

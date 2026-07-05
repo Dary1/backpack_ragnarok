@@ -676,3 +676,13 @@ export function fetchWarehouse(): Promise<{ ok: true; items: ApiWarehouseItem[] 
 export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; placed: { page: number; cell: [number, number] }; uid: string }> {
   return scheduleJSON('/api/warehouse/claim', { method: 'POST', body: JSON.stringify({ itemUid }) });
 }
+
+/** POST /api/admin/warehouse/grant {itemId} -- REQ-0041 feedback 1 (dev
+ * grant). item_admin only (403 otherwise, same auth-gate convention as
+ * putAdminItem above). Inserts a warehouse row for the CALLER (the
+ * resolved item_admin themselves) referencing content item `itemId`,
+ * subject to the same cap/TTL rules as any other warehouse insertion.
+ * 400 if `itemId` isn't a known content item id. */
+export function grantWarehouseItem(itemId: string): Promise<{ ok: true; item: ApiWarehouseItem }> {
+  return scheduleJSON('/api/admin/warehouse/grant', { method: 'POST', body: JSON.stringify({ itemId }) });
+}

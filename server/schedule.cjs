@@ -660,8 +660,34 @@ function purgeExpiredWarehouseItems(playerId) {
 function addToWarehouse(playerId, doc) {
   const survivors = purgeExpiredWarehouseItems(playerId);
   if (survivors.length >= WAREHOUSE_CAP) return { ok: false, reason: 'warehouse full' };
-  storage.writeWarehouseItem(playerId, doc.itemUid, doc);
-  return { ok: true, item: doc };
+  // REQ-0041: every warehouse row now carries a claim-state `status`
+  // ('claimable' | 'claiming') -- new rows (reward accrual via settleRun,
+  // or the new dev-grant path) always start 'claimable'. Callers that
+  // don't pass one (pre-REQ-0041 call sites) get it defaulted here rather
+  // than at every call site individually.
+  const withStatus = doc.status ? doc : Object.assign({}, doc, { status: 'claimable' });
+  storage.writeWarehouseItem(playerId, withStatus.itemUid, withStatus);
+  return { ok: true, item: withStatus };
+}
+
+// grantWarehouseItem (REQ-0041 feedback 1 -- dev grant): inserts a
+// warehouse row for `playerId` referencing content item `itemId`, subject
+// to the SAME cap/TTL rules every other warehouse insertion goes through
+// (addToWarehouse above -- no special-cased dev path for the cap). Caller
+// (server/api.cjs's POST /api/admin/warehouse/grant route) is responsible
+// for the item_admin auth gate and for validating `itemId` against the
+// combined item defs BEFORE calling this (this function itself does not
+// re-validate itemId against content -- see the route handler).
+function grantWarehouseItem(playerId, itemId) {
+  const now = new Date().toISOString();
+  const itemUid = genId('wh');
+  const doc = {
+    itemUid, playerId, itemId,
+    harvestedAt: now, expiresAt: new Date(Date.now() + WAREHOUSE_TTL_MS).toISOString(),
+    sourceRoomId: null, sourceRunId: null, // dev grant -- no originating run
+    status: 'claimable',
+  };
+  return addToWarehouse(playerId, doc);
 }
 
 function listWarehouse(playerId) {
@@ -821,6 +847,7 @@ module.exports = {
   isExpired,
   purgeExpiredWarehouseItems,
   addToWarehouse,
+  grantWarehouseItem,
   listWarehouse,
   claimWarehouseItem,
   cancelRoom,

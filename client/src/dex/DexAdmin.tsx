@@ -26,7 +26,7 @@
 // for it; a raw PUT with a header override still gets rejected server-
 // side regardless of what this form allows the user to type.
 import { useEffect, useMemo, useState } from 'react';
-import { putAdminItem, type ApiContentPayload, type ApiItemEntry, type ApiMe, type ApiSIEntry } from '../api';
+import { grantWarehouseItem, putAdminItem, type ApiContentPayload, type ApiItemEntry, type ApiMe, type ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
 import type { Locale } from '../store';
@@ -162,6 +162,13 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
   const [saving, setSaving] = useState(false);
+  // REQ-0041 feedback 1: dev-only "acquire to warehouse" button state --
+  // per-item toast text (success or failure), keyed by nothing more than
+  // "the currently selected item" since only one grant can be in flight
+  // at a time from this form (mirrors this component's existing
+  // single-item-selected editing model).
+  const [granting, setGranting] = useState(false);
+  const [grantMessage, setGrantMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const selected = entries.find((e) => e.id === selectedId) || null;
   const selectedIsPO = selected?.kind === 'po';
@@ -186,6 +193,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
     setEditLocale('en');
     setSaveError(null);
     setSaveOk(false);
+    setGrantMessage(null);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const tagOptions = useMemo(() => Object.keys(payload.trees.po), [payload.trees.po]);
@@ -271,6 +279,28 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
       setSaveError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
+    }
+  };
+
+  // REQ-0041 feedback 1: dev-only "acquire to warehouse" button --
+  // visible ONLY in EDIT mode (DexAdmin is itself only rendered when
+  // DexRoot.tsx's own /api/me-derived `isAdmin` check passes -- see that
+  // file's module comment -- so no SEPARATE role check is needed here;
+  // this form is already gated end-to-end on item_admin). Posts to the
+  // new dev-grant endpoint for the CURRENTLY SELECTED item and shows a
+  // brief success/failure message using the SAME inline
+  // save-error/save-ok pattern this form already uses elsewhere (no
+  // toast library in this app).
+  const grantToWarehouse = async () => {
+    setGranting(true);
+    setGrantMessage(null);
+    try {
+      await grantWarehouseItem(selected.id);
+      setGrantMessage({ ok: true, text: t(locale, 'dexAdmin.grantToWarehouseSuccess') });
+    } catch (e) {
+      setGrantMessage({ ok: false, text: t(locale, 'dexAdmin.grantToWarehouseFailed') + (e instanceof Error ? e.message : String(e)) });
+    } finally {
+      setGranting(false);
     }
   };
 
@@ -488,8 +518,25 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
           <button type="button" className="dex-admin-save-btn" onClick={() => void save()} disabled={saving}>
             {saving ? t(locale, 'dexAdmin.saving') : t(locale, 'dexAdmin.save')}
           </button>
+          <button
+            type="button"
+            className="dex-admin-grant-btn"
+            onClick={() => void grantToWarehouse()}
+            disabled={granting}
+            data-testid="dex-admin-grant-warehouse-btn"
+          >
+            {t(locale, 'dexAdmin.grantToWarehouse')}
+          </button>
           {saveOk ? <span className="dex-admin-save-ok">{t(locale, 'dexAdmin.saveOk')}</span> : null}
           {saveError ? <span className="dex-admin-save-error">{saveError}</span> : null}
+          {grantMessage ? (
+            <span
+              className={grantMessage.ok ? 'dex-admin-save-ok' : 'dex-admin-save-error'}
+              data-testid="dex-admin-grant-warehouse-message"
+            >
+              {grantMessage.text}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>
