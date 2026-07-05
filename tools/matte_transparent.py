@@ -2,16 +2,29 @@
 """
 matte_transparent.py -- Background removal for flat/solid-backdrop SD illustrations.
 
-Uses rembg (U2Net) with alpha matting + mask post-processing enabled. Plain
-rembg.remove() leaves large soft/uncertain regions (e.g. wispy ice-drip
-splash effects) at partial alpha, which shows as a grey 'ghost' smear once
-composited onto a real background. alpha_matting cleans up edge quality
-(proper antialiasing instead of jagged pixels); post_process_mask removes
-the soft-uncertain interior/edge regions via morphological cleanup. Using
-BOTH together (this script's default) gave the cleanest result in testing --
-alpha_matting alone or post_process_mask alone each fixed only half the
-problem. See content/proposals/monsters-002/transparent_test/ for the
-comparison grid this was decided from.
+Segmentation model: isnet-anime (not the rembg default, u2net). u2net is
+trained on general photo/human segmentation and was silently deleting real
+character geometry on our cel-shaded illustrations -- e.g. it cut away most
+of the frost golem's actual foot/toe shapes and thin ice-shard linework,
+not just background. isnet-anime (purpose-trained on anime/illustration
+art) preserved that geometry correctly in a side-by-side test. birefnet-general
+(a heavier general-purpose matting model) was comparable in quality but
+~8x slower on CPU (130s vs 15s per image) with no clear edge-quality win
+for this art style, so isnet-anime is the better fit for a 50-monster batch.
+See content/proposals/monsters-002/model_test/ for the comparison images.
+
+alpha_matting + post_process_mask are still both enabled on top of that,
+per the earlier fix: alpha_matting keeps edges smoothly antialiased,
+post_process_mask removes soft/uncertain "ghost" regions (e.g. wispy
+ice-drip splash effects) that plain remove() leaves at partial alpha.
+
+Note: switching the SD *generation* checkpoint (DreamShaper_8, vanilla
+SD1.5) to get a cleaner background at generation time was also tried and
+did not help -- see git log for that test. Both alternate checkpoints
+still bled the requested background color into the character itself (or,
+for vanilla SD1.5, ignored the flat-background instruction and rendered a
+full scene instead). Background separation is handled at the segmentation
+step, not via generation prompting.
 
 Usage:
   python3 tools/matte_transparent.py --in path/in.png --out path/out.png
@@ -28,7 +41,7 @@ _session = None
 def get_session():
     global _session
     if _session is None:
-        _session = new_session('u2net')
+        _session = new_session('isnet-anime')
     return _session
 
 def matte(path_in, path_out):
