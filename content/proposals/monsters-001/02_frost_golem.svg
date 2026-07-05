@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 300">
+  <!-- Frost Golem : hulking blocky ice construct, uneven shoulders, chunky fists. Accent: cyan core -->
+  <path d="M 30 116 L 8 176 L 4 214 L 30 216 L 46 178 L 58 130 Z" fill="#5aa9c9" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 2 210 L 30 208 L 40 236 L 34 260 L 6 258 L -2 232 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 78 226 L 70 292 L 108 292 L 110 232 Z" fill="#5f6b77" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 150 232 L 152 292 L 190 292 L 182 226 Z" fill="#5f6b77" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 66 288 L 112 288 L 114 298 L 64 298 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 148 288 L 194 288 L 196 298 L 146 298 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 58 96 L 118 74 L 176 88 L 200 120 L 196 200 L 176 236 L 92 240 L 66 208 L 52 140 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M 80 120 L 128 108 L 168 122 L 172 190 L 128 210 L 84 190 Z" fill="#a5dcef" stroke="none"/>
+  <path d="M 112 74 L 120 40 L 132 78 Z" fill="#cfdfea" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 150 82 L 166 52 L 172 90 Z" fill="#cfdfea" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 196 118 L 224 108 L 208 138 Z" fill="#cfdfea" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 190 118 L 228 150 L 244 200 L 220 210 L 200 168 L 182 138 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 216 196 L 250 194 L 258 224 L 248 250 L 216 248 L 208 220 Z" fill="#5aa9c9" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 100 66 L 138 58 L 154 84 L 140 106 L 106 106 L 92 84 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 112 150 L 128 138 L 144 150 L 138 176 L 118 176 Z" fill="#59d6d6" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 108 84 L 120 82 L 118 92 L 108 92 Z" fill="#59d6d6" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M 128 84 L 140 84 L 138 94 L 128 94 Z" fill="#59d6d6" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+</svg>

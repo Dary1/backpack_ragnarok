@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 200">
+  <!-- Snow Bat : spread membranous wings, scalloped bat trailing edge, small body, splayed ears. Accent: cyan eyes -->
+  <path d="M 166 86 C 130 62 92 44 44 40 L 60 74 C 40 66 26 62 12 62 L 40 92 C 24 90 16 94 8 98 C 24 108 40 118 60 122 C 44 126 36 132 30 140 C 54 138 84 130 116 124 C 134 120 152 114 164 112 Z" fill="#a5dcef" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 158 96 L 52 56 M 154 108 L 34 84 M 150 118 L 22 100" fill="none" stroke="#7ecbe8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 174 86 C 210 62 248 44 296 40 L 280 74 C 300 66 314 62 328 62 L 300 92 C 316 90 324 94 332 98 C 316 108 300 118 280 122 C 296 126 304 132 310 140 C 286 138 256 130 224 124 C 206 120 188 114 176 112 Z" fill="#a5dcef" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 182 96 L 288 56 M 186 108 L 306 84 M 190 118 L 318 100" fill="none" stroke="#7ecbe8" stroke-width="4" stroke-linecap="round"/>
+  <path d="M 150 86 C 150 72 190 72 190 86 L 186 140 C 182 156 158 156 154 140 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 160 96 C 168 92 172 92 180 96 L 178 134 C 174 142 166 142 162 134 Z" fill="#cfdfea" stroke="none"/>
+  <path d="M 158 150 L 150 168 L 158 166 L 162 152 Z" fill="#5f6b77" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M 182 150 L 190 168 L 182 166 L 178 152 Z" fill="#5f6b77" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M 150 84 C 150 66 190 66 190 84 C 184 96 156 96 150 84 Z" fill="#7ecbe8" stroke="#2b2016" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M 150 74 L 132 44 L 156 66 Z" fill="#cfdfea" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M 190 74 L 208 44 L 184 66 Z" fill="#cfdfea" stroke="#2b2016" stroke-width="4" stroke-linejoin="round"/>
+  <circle cx="162" cy="80" r="5" fill="#59d6d6" stroke="#2b2016" stroke-width="3"/>
+  <circle cx="178" cy="80" r="5" fill="#59d6d6" stroke="#2b2016" stroke-width="3"/>
+  <path d="M 164 90 L 166 98 L 168 90 Z M 172 90 L 174 98 L 176 90 Z" fill="#f2fbff" stroke="#2b2016" stroke-width="2" stroke-linejoin="round"/>
+</svg>
