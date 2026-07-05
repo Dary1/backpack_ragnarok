@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="utf-8"/><title>monsters-002 preview / プレビュー</title>
+<style>
+:root {
+  --bg: #14110d;
+  --panel: #1d1912;
+  --panel2: #241f16;
+  --border: #3a3222;
+  --text: #e8d9b0;
+  --muted: #8a8270;
+  --gold: #c9a227;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 32px;
+  background: var(--bg); color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+h1 { color: var(--gold); letter-spacing: 0.06em; text-transform: uppercase; font-size: 22px;
+     border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 16px; }
+h2 { color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transform: uppercase;
+     margin-top: 40px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; line-height: 1.6; }
+.note-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 18px; margin-bottom: 28px; font-size: 13px; line-height: 1.7; color: var(--text); }
+.note-box b { color: var(--gold); }
+.gallery { display: flex; flex-wrap: wrap; gap: 22px; margin-top: 16px; }
+.card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px; width: 300px; display: flex; flex-direction: column; gap: 8px;
+}
+.card-num { font-size: 12px; color: var(--gold); letter-spacing: 0.05em; }
+.card-img { width: 100%; border-radius: 6px; background: var(--panel2); display: block; }
+.card-title-ja { font-size: 16px; font-weight: bold; }
+.card-title-en { font-size: 11px; color: var(--muted); letter-spacing: 0.02em; }
+.card-tech { font-size: 11px; color: #7ecbe8; margin-top: 2px; }
+.card-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.dropped { border-color: #6a4030; opacity: 0.75; }
+.dropped .card-img { filter: grayscale(0.6); }
+.section-muted { opacity: 0.9; }
+
+.i18n span[lang="en"] { display: none; }
+.i18n span[lang="ja"] { display: inline; }
+body.lang-en .i18n span[lang="en"] { display: inline; }
+body.lang-en .i18n span[lang="ja"] { display: none; }
+
+#lang-toggle {
+  position: fixed; top: 18px; right: 18px; z-index: 100;
+  background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  font-size: 20px; line-height: 1; padding: 10px 14px; border-radius: 999px;
+  cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  font-family: inherit;
+}
+#lang-toggle:hover { border-color: var(--gold); }
+</style></head><body>
+<button id="lang-toggle" title="Switch language / 言語切り替え" data-lang="ja">🇯🇵</button>
+
+<h1><span class="i18n"><span lang="ja">monsters-002 プレビュー — スタイル比較(Frost Golem)</span><span lang="en">monsters-002 preview — style bake-off (Frost Golem)</span></span></h1>
+<div class="meta"><span class="i18n">
+<span lang="ja">monsters-001とは異なり、これは「1つのコンセプト(Frost Golem = round1で最も評価の高かった案)を複数のスタイル/技法で描き比べる」ラウンドです。画風がまだ統一されていないのは意図的なもので、この中から品質基準となるスタイルを選定するための比較材料です。生成はシンプルな2Dイラスト生成のみ(3D変換・リグ・アニメ工程なし)。</span>
+<span lang="en">Unlike monsters-001, this round fixes ONE concept (Frost Golem — the strongest-rated design from round 1) and renders it across several distinct styles/techniques for comparison. The style is intentionally NOT unified yet — this is comparison material to pick the quality baseline. Generation uses a simple static 2D illustration pipeline only (no 3D conversion / rigging / animation).</span>
+</span></div>
+
+<h2><span class="i18n"><span lang="ja">スタイル候補</span><span lang="en">Style Candidates</span></span></h2>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">#1</div>
+  <img class="card-img" src="01_dreamshaper_painterly.png"/>
+  <div class="card-title-ja">塗り込み系コンセプトアート</div>
+  <div class="card-title-en">Painterly concept art</div>
+  <div class="card-tech">DreamShaper_8 · dpmpp_2m karras · 30 steps + hires-fix</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">写実寄りのデジタルペインティング。劇的な縁光と質感重視。</span><span lang="en">Semi-realistic digital painting, dramatic rim light, texture-forward.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">#2</div>
+  <img class="card-img" src="02_toonyou_cel.png"/>
+  <div class="card-title-ja">セルシェード系トゥーン</div>
+  <div class="card-title-en">Cel-shaded toon</div>
+  <div class="card-tech">toonyou_beta6 · dpmpp_2m karras · 30 steps + hires-fix</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">太い輪郭線とフラットな塗り。初回生成では意図しない人物が写り込んだため、ネガティブプロンプトを強化して再生成した版。</span><span lang="en">Bold outlines, flat shading. First attempt included an unintended extra human character; this is a regenerated version with strengthened negative prompt to enforce a solo creature.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">#3</div>
+  <img class="card-img" src="04_dreamshaper_ink.png"/>
+  <div class="card-title-ja">水彩・インク画風</div>
+  <div class="card-title-en">Watercolor / ink illustration</div>
+  <div class="card-tech">DreamShaper_8 (同一チェックポイント、プロンプトのみ変更) · 30 steps + hires-fix</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">同じチェックポイントでもプロンプトだけでここまで画風が変わる例。柔らかい滲みと筆致。</span><span lang="en">Same checkpoint as #1, style driven purely by prompt wording. Soft washes and visible brush texture.</span></span></div>
+</div>
+
+</div>
+
+<h2 class="section-muted"><span class="i18n"><span lang="ja">除外した候補</span><span lang="en">Dropped Candidate</span></span></h2>
+<div class="gallery section-muted">
+<div class="card dropped">
+  <div class="card-num">#4 (dropped)</div>
+  <div class="card-title-ja">SDXLベース・高精細</div>
+  <div class="card-title-en">SDXL base, high-detail</div>
+  <div class="card-tech">sd_xl_base_1.0</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">このGPU(8GB)ではSDXL単体ロード時にVRAM不足でハング(進捗停止)し、interruptで中断。今回のシンプル方針では見送り。将来別途調査の価値あり。</span><span lang="en">On this 8GB GPU, loading SDXL alone caused a VRAM-pressure hang (progress stalled indefinitely); interrupted manually. Dropped for now given the "simple, reliable" mandate — worth investigating separately later.</span></span></div>
+</div>
+</div>
+
+<h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
+<div class="note-box">
+<span class="i18n">
+<span lang="ja">この3案から採用番号(またはさらなる調整の指示)を返してください。決定したスタイルを以後50体全ての基準スタイルとして固定し、本番生成に進みます。</span>
+<span lang="en">Please return the accepted number(s) (or further adjustment instructions) from these 3 candidates. Whichever style is chosen becomes the fixed baseline style for all 50 monsters going forward.</span>
+</span>
+</div>
+
+<script>
+(function () {
+  var btn = document.getElementById('lang-toggle');
+  var body = document.body;
+  function setLang(en) {
+    body.classList.toggle('lang-en', en);
+    btn.textContent = en ? '🇯🇵' : '🇬🇧';
+    btn.setAttribute('data-lang', en ? 'en' : 'ja');
+  }
+  btn.addEventListener('click', function () {
+    setLang(btn.getAttribute('data-lang') !== 'en');
+  });
+  setLang(false);
+})();
+</script>
+</body></html>
