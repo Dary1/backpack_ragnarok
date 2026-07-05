@@ -1391,6 +1391,171 @@ T('REQ-0032 tint recompute after DELETE: a deleted preset\'s tint contribution d
   ok(E.checkUidInvariant(migrated).ok);
 });
 
+// ---------------------------------------------------------------------
+// REQ-0042: TM (Transmutator) model tests. Reuses invBPFixture()'s small
+// ITEMS/LAYOUT shape (same pattern as the free-SI occupancy tests above)
+// but each freshState() page needs tms:[] added by hand here since
+// invBPFixture()'s own freshState() predates REQ-0042 (byte-identical to
+// the pre-existing fixture, tms:[] appended) -- this ALSO exercises the
+// exact "old-shaped page" case migrateStateV2's backfill loop is meant to
+// repair, see the dedicated migrateState test below for that path
+// specifically.
+function tmFixture(){
+  const base=invBPFixture();
+  function freshState(){
+    const st=base.freshState();
+    for(const pg of st.inv.pages)pg.tms=[];
+    return st;
+  }
+  return {...base,freshState};
+}
+
+T('REQ-0042 TM: place onto an empty page cell',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const chk=E.tmCanPlace(st,0,'t1',[5,5]);
+  ok(chk.ok,'empty cell should accept a fresh TM stack: '+JSON.stringify(chk));
+  const mv=E.tmMove(st,0,'t1',[5,5],'lrdst',10);
+  ok(mv.ok,'tmMove with idIfNew/qtyIfNew should mint a fresh stack: '+JSON.stringify(mv));
+  const rec=st.inv.pages[0].tms.find(t=>t.uid==='t1');
+  ok(rec&&rec.id==='lrdst'&&rec.qty===10,'fresh stack minted with correct id/qty: '+JSON.stringify(rec));
+  eq(rec.cell,[5,5],'fresh stack cell recorded');
+});
+
+T('REQ-0042 TM: 1x1 footprint collides with BP/PO/SI/another-id-TM exactly like a free SI',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
+  pg.sis.push({uid:'s2',id:'small_si',host:{page:0,cell:[4,4]}});
+  pg.tms.push({uid:'t1',id:'lrdst',qty:5,cell:[6,6]});
+  ok(!E.tmCanPlace(st,0,'t9',[0,0]).ok,'out of bounds rejected');
+  const onBp=E.tmCanPlace(st,0,'t9',[1,1]);
+  ok(!onBp.ok&&onBp.why==='BP-overlap','TM landing on a BP cell must be rejected: '+JSON.stringify(onBp));
+  const onPo=E.tmCanPlace(st,0,'t9',[3,3]);
+  ok(!onPo.ok&&onPo.why==='occupied','TM landing on a PO cell must be rejected: '+JSON.stringify(onPo));
+  const onSi=E.tmCanPlace(st,0,'t9',[4,4]);
+  ok(!onSi.ok&&onSi.why==='occupied','TM landing on a free SI cell must be rejected: '+JSON.stringify(onSi));
+  const onOtherIdTm=E.tmCanPlace(st,0,'t9',[6,6]);
+  ok(!onOtherIdTm.ok&&onOtherIdTm.why==='occupied','TM landing on a DIFFERENT-id TM stack must be rejected: '+JSON.stringify(onOtherIdTm));
+  ok(E.tmCanPlace(st,0,'t9',[5,5]).ok,'empty page cell should accept the TM');
+});
+
+T('REQ-0042 TM: move relocates an existing stack (no merge) when the destination is empty',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  st.inv.pages[0].tms.push({uid:'t1',id:'lrdst',qty:5,cell:[2,2]});
+  const mv=E.tmMove(st,0,'t1',[5,5]);
+  ok(mv.ok,'move to an empty cell should succeed: '+JSON.stringify(mv));
+  const rec=st.inv.pages[0].tms.find(t=>t.uid==='t1');
+  eq(rec.cell,[5,5],'stack relocated');
+  eq(rec.qty,5,'qty unchanged by a plain move');
+  eq(st.inv.pages[0].tms.length,1,'still exactly one stack -- no merge happened');
+});
+
+T('REQ-0042 TM: drop onto an existing SAME-id stack MERGES quantities -- destination uid survives, dragged uid discarded',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.tms.push({uid:'dest1',id:'lrdst',qty:7,cell:[5,5]});
+  pg.tms.push({uid:'dragged1',id:'lrdst',qty:3,cell:[2,2]});
+  const chk=E.tmCanPlace(st,0,'dragged1',[5,5]);
+  ok(chk.ok&&chk.mergeInto==='dest1','same-id drop reports a merge target: '+JSON.stringify(chk));
+  const mv=E.tmMove(st,0,'dragged1',[5,5]);
+  ok(mv.ok&&mv.mergedInto==='dest1','tmMove performs the merge: '+JSON.stringify(mv));
+  eq(pg.tms.length,1,'exactly one stack survives the merge');
+  const survivor=pg.tms[0];
+  eq(survivor.uid,'dest1','the DESTINATION stack uid survives (documented judgment call)');
+  eq(survivor.qty,10,'quantities summed (7+3)');
+  ok(!pg.tms.find(t=>t.uid==='dragged1'),'the dragged uid record is gone entirely');
+});
+
+T('REQ-0042 TM: drop onto a DIFFERENT-id stack is a plain collision, not a merge',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.tms.push({uid:'dest1',id:'other_tm',qty:7,cell:[5,5]});
+  pg.tms.push({uid:'dragged1',id:'lrdst',qty:3,cell:[2,2]});
+  const chk=E.tmCanPlace(st,0,'dragged1',[5,5]);
+  ok(!chk.ok&&chk.why==='occupied','different-id drop is rejected as occupied, not merged: '+JSON.stringify(chk));
+});
+
+T('REQ-0042 spendTM: sufficient balance drains largest-stack-first within one page',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.tms.push({uid:'big',id:'lrdst',qty:20,cell:[1,1]});
+  pg.tms.push({uid:'small',id:'lrdst',qty:5,cell:[2,2]});
+  const res=E.spendTM(st,0,'lrdst',22);
+  ok(res.ok,'spend of 22 against a 25 total should succeed: '+JSON.stringify(res));
+  const big=pg.tms.find(t=>t.uid==='big');
+  const small=pg.tms.find(t=>t.uid==='small');
+  ok(!big,'the LARGEST stack is drained FIRST and fully consumed (20 of the 22 spent)');
+  ok(small&&small.qty===3,'remaining 2 spent from the smaller stack, 3 left: '+JSON.stringify(small));
+});
+
+T('REQ-0042 spendTM: insufficient balance fails cleanly with NO partial mutation',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.tms.push({uid:'big',id:'lrdst',qty:5,cell:[1,1]});
+  pg.tms.push({uid:'small',id:'lrdst',qty:3,cell:[2,2]});
+  const before=JSON.parse(JSON.stringify(pg.tms));
+  const res=E.spendTM(st,0,'lrdst',100);
+  ok(!res.ok&&res.why==='insufficient','spend of 100 against an 8 total must fail: '+JSON.stringify(res));
+  eq(pg.tms,before,'page tms[] completely unchanged after a failed spend -- no partial mutation');
+});
+
+T('REQ-0042 migrateState: an old-shaped page (no .tms key at all) is defensively backfilled with tms:[]',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  // Deliberately OMIT tms from every page -- simulates a save persisted
+  // before REQ-0042 shipped (post-REQ-0030 page shape {bps,pos,sis} only).
+  const oldSt={
+    linked:true,bps:[],pos:[],sis:[],
+    inv:{pages:[{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]},
+  };
+  ok(!Array.isArray(oldSt.inv.pages[0].tms),'sanity: fixture truly has no .tms key pre-migration');
+  const migrated=E.migrateState(oldSt);
+  for(let i=0;i<5;i++){
+    ok(Array.isArray(migrated.inv.pages[i].tms),'page '+i+' gets a backfilled tms:[] array');
+    eq(migrated.inv.pages[i].tms,[],'backfilled tms[] starts empty');
+  }
+  // idempotent: migrating an already-migrated state must leave tms[] alone.
+  migrated.inv.pages[0].tms.push({uid:'t1',id:'lrdst',qty:1,cell:[1,1]});
+  const migratedAgain=E.migrateState(migrated);
+  eq(migratedAgain.inv.pages[0].tms,[{uid:'t1',id:'lrdst',qty:1,cell:[1,1]}],'a second migrateState call must not disturb existing tms[] contents');
+});
+
+T('REQ-0042 checkUidInvariant: catches a duplicate TM uid across two pages',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  ok(E.checkUidInvariant(st).ok,'sanity: fresh empty state has no invariant violation');
+  st.inv.pages[0].tms.push({uid:'dupe',id:'lrdst',qty:1,cell:[1,1]});
+  st.inv.pages[1].tms.push({uid:'dupe',id:'lrdst',qty:1,cell:[1,1]});
+  const audit=E.checkUidInvariant(st);
+  ok(!audit.ok,'duplicate TM uid across two pages must be caught');
+  ok(audit.duplicates.includes('tm:dupe'),'duplicates list names the tm:-tagged uid: '+JSON.stringify(audit.duplicates));
+});
+
+T('REQ-0042 checkUidInvariant: a TM uid and a PO uid sharing the same literal string do NOT collide (independent tag namespaces, matches existing po/bp/si behavior)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  st.inv.pages[0].pos.push({uid:'shared1',id:'small_po',loc:'grid',cell:[1,1],rot:0});
+  st.inv.pages[0].tms.push({uid:'shared1',id:'lrdst',qty:1,cell:[2,2]});
+  ok(E.checkUidInvariant(st).ok,'a PO and a TM sharing the same uid string is NOT flagged -- independent tag namespaces');
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

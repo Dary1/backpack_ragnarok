@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-04T12:12:41.835Z
+// Generated: 2026-07-05T08:00:10.104Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -8,7 +8,7 @@
 'use strict';
 function makeEmptyInventory(){
   const pages=[];
-  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});
+  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[],tms:[]});
   return {pages,names:['1','2','3','4','5']};
 }
 function makeEmptyPresetSlot(){
@@ -488,7 +488,8 @@ const SCENARIO={
      1,
      4
     ]
-   }
+   },
+   "hpMax": 90
   },
   {
    "id": "beta",
@@ -532,7 +533,8 @@ const SCENARIO={
     "dirs": [
      5
     ]
-   }
+   },
+   "hpMax": 90
   },
   {
    "id": "gamma",
@@ -577,7 +579,8 @@ const SCENARIO={
      2,
      3
     ]
-   }
+   },
+   "hpMax": 90
   },
   {
    "id": "delta",
@@ -613,7 +616,8 @@ const SCENARIO={
     "dirs": [
      6
     ]
-   }
+   },
+   "hpMax": 60
   }
  ],
  "pos": [

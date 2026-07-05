@@ -149,7 +149,7 @@ function main() {
     "'use strict';\n" +
     "function makeEmptyInventory(){\n" + // REQ-0030 Phase 1: 5 independent empty pages,
     "  const pages=[];\n" +               // same grid dims as canvas (page-local [row,col]).
-    "  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[]});\n" +
+    "  for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[],tms:[]});\n" +
     "  return {pages,names:['1','2','3','4','5']};\n" + // REQ-0031 Phase B: default page display names
     "}\n" +
     // REQ-0031 Phase B: 5 presets, slot 0 (active) carries the scenario's

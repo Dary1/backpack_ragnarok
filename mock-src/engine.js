@@ -488,7 +488,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // [],pos:[],sis:[]}]} shape.
   function emptyInventory(){
     const pages=[];
-    for(let i=0;i<PAGE_COUNT;i++)pages.push({bps:[],pos:[],sis:[]});
+    for(let i=0;i<PAGE_COUNT;i++)pages.push({bps:[],pos:[],sis:[],tms:[]});
     return {pages,names:defaultPageNames()};
   }
 
@@ -612,6 +612,19 @@ function create(ITEMS,SI_DEFS,layout,trees){
       const [r,c]=a.host.cell;
       m[key(r,c)]=a.uid;
     }
+    // REQ-0042: TM (Transmutator) stacks occupy their cell exactly like a
+    // free-placed SI (1x1, `cell` field directly on the record -- no
+    // host wrapper needed since TM never seats on a socket). A TM stack
+    // DOES block a PO/SI/other-id-TM from landing on its cell (it is a
+    // real physical occupant of that cell) -- but see tmCanPlace()'s own
+    // comment for how a SAME-id TM drop on this cell is treated as a
+    // legal merge rather than a collision (checked BEFORE this shared
+    // occupancy map is consulted, by tmCanPlace itself).
+    for(const tm of (container.tms||[])){
+      if(ex.includes(tm.uid))continue;
+      const [r,c]=tm.cell;
+      m[key(r,c)]=tm.uid;
+    }
     return m;
   }
   // invCanPlaceCells: legality of `cells` (already-translated absolute
@@ -707,6 +720,150 @@ function create(ITEMS,SI_DEFS,layout,trees){
     a.host={page:pg,cell:anchor};
     return {ok:true};
   }
+
+  // ---------------------------------------------------------------------
+  // TM (Transmutator) model -- REQ-0042. TM is a NEW, 4th inventory-page
+  // kind (alongside PO/BP/SI), page-scoped record {uid,id,qty,cell}. Key
+  // design decisions, all made because no existing precedent covers a
+  // STACKABLE item kind (grep for "qty" in this file before REQ-0042
+  // returns zero matches -- every other kind is a singular uid==one
+  // physical item):
+  //
+  //   - TM is INVENTORY-ONLY BY OMISSION, not by an explicit deny-list.
+  //     Exactly like every other "kind not implemented here" case in this
+  //     engine (createRef/removeRef only dispatch 'po'|'bp'|'si', see
+  //     their 'unknown kind' fallthrough), TM simply never gets a
+  //     createRef/removeRef branch and never appears in st.bps/pos/sis or
+  //     any presets.store[i] snapshot -- so it structurally cannot reach
+  //     the canvas. No new "restriction check" is needed or added.
+  //   - Footprint is always 1x1, and the free-cell collision rule is a
+  //     byte-for-byte copy of invCanPlaceSI's free-SI rule: outside-page
+  //     rejection, BP-overlap rejection (a TM stack can never sit ON a
+  //     BP, exactly like a free SI), then the shared invOccupancy map.
+  //   - Stacking/merge: dropping a TM onto a cell already holding a TM
+  //     stack of the SAME `id` is a legal MERGE (qty adds), not a
+  //     collision -- checked explicitly BEFORE invOccupancy would reject
+  //     it as 'occupied'. Judgment call (undocumented in the REQ text):
+  //     the DESTINATION stack's uid survives the merge; the dragged
+  //     stack's uid is discarded (removed from the page's tms[] array
+  //     entirely). This mirrors the general UX intuition of "drop THIS
+  //     onto THAT pile" -- the pile (destination) is what remains named.
+  //   - spendTM(st,id,qty): the REQ doc says "consumes across stacks"
+  //     without specifying whether that means across ALL inventory pages
+  //     or just the one page the caller is looking at. Judgment call
+  //     (documented here since the REQ text is genuinely ambiguous):
+  //     spend is scoped to ONE page (the caller-specified `pg`), NOT a
+  //     cross-page search. Rationale: every other page-scoped mutator in
+  //     this file (invCanPlacePO, invMoveSI, invSeatSI, etc.) operates on
+  //     exactly one page's container and never reaches into sibling
+  //     pages; a currency that could be silently drained from a page the
+  //     player isn't even looking at would break the "what you see is
+  //     what you have here" model the rest of the inventory system
+  //     relies on. "Across stacks" is satisfied WITHIN that one page:
+  //     multiple same-id tms[] entries on one page (which can only arise
+  //     if a stack was ever split -- not possible in v1 since there is no
+  //     split UI -- or from two independent grants/rolls landing on
+  //     different free cells before ever being dragged together) are
+  //     drained LARGEST-STACK-FIRST until `qty` is satisfied. Callers
+  //     needing a true cross-page spend must loop pages themselves.
+  //     Fails cleanly (throws no partial mutation) if the total available
+  //     ON THAT PAGE is less than `qty` -- returns {ok:false} and the
+  //     page's tms[] array is completely unchanged (checked BEFORE any
+  //     mutation, not rolled back after).
+
+  // tmCanPlace(st,page,uid,anchor,exclUids): pure legality check, mirrors
+  // invCanPlaceSI exactly (1x1, page-bounds, no-BP-overlap, then shared
+  // occupancy) -- the ONE difference is that landing on an existing TM
+  // stack of the SAME `id` is reported as a legal merge target rather
+  // than an 'occupied' rejection (see mergeInto in the result).
+  function tmCanPlace(st,pg,uid,anchor,exclUids){
+    const container=page(st,pg);
+    const [r,c]=anchor;
+    const ex=exclUids||[uid];
+    if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:[anchor],why:'outside page'};
+    const cbp=cellBPMapIn(container);
+    if(cbp[key(r,c)])return {ok:false,cells:[anchor],why:'BP-overlap'};
+    const dragged=container.tms.find(t=>t.uid===uid);
+    const destTm=container.tms.find(t=>!ex.includes(t.uid)&&t.cell[0]===r&&t.cell[1]===c);
+    if(destTm){
+      if(dragged&&destTm.id===dragged.id)return {ok:true,cells:[anchor],mergeInto:destTm.uid};
+      return {ok:false,cells:[anchor],why:'occupied'};
+    }
+    const occ=invOccupancy(container,ex);
+    if(occ[key(r,c)])return {ok:false,cells:[anchor],why:'occupied'};
+    return {ok:true,cells:[anchor]};
+  }
+
+  // tmMove(st,page,uid,anchor): places/moves a TM stack. If the
+  // destination cell holds ANOTHER stack of the same id (tmCanPlace's
+  // mergeInto), the two stacks are merged (qty summed) and the DRAGGED
+  // uid's own record is removed from tms[] -- the destination stack's uid
+  // survives (see the module comment above for why). Otherwise a plain
+  // move (or first-ever placement, if `uid` has no existing record yet --
+  // used by grant/reward/gacha-finalize call sites that mint a brand new
+  // TM stack directly onto a page).
+  function tmMove(st,pg,uid,anchor,idIfNew,qtyIfNew){
+    const chk=tmCanPlace(st,pg,uid,anchor,[uid]);
+    if(!chk.ok)return chk;
+    const container=page(st,pg);
+    let rec=container.tms.find(t=>t.uid===uid);
+    if(!rec){
+      if(typeof idIfNew!=='string'||!Number.isFinite(qtyIfNew))return {ok:false,why:'no existing TM uid and no idIfNew/qtyIfNew given'};
+      rec={uid,id:idIfNew,qty:qtyIfNew,cell:anchor};
+      container.tms.push(rec);
+      return {ok:true};
+    }
+    if(chk.mergeInto&&chk.mergeInto!==uid){
+      const dest=container.tms.find(t=>t.uid===chk.mergeInto);
+      dest.qty+=rec.qty;
+      container.tms=container.tms.filter(t=>t.uid!==uid);
+      return {ok:true,mergedInto:dest.uid};
+    }
+    rec.cell=anchor;
+    return {ok:true};
+  }
+
+  // firstFitTMCell(container): row-major top-left-to-bottom-right scan
+  // for the first free cell a TM stack could occupy -- byte-identical
+  // scan shape to firstFitSICell, just consulting invOccupancy the same
+  // way (a fresh TM stack never merges into anything by construction of
+  // "first fit onto an empty cell", so no merge-detection needed here).
+  function firstFitTMCell(container){
+    const cbp=cellBPMapIn(container),occ=invOccupancy(container,[]);
+    for(let r=1;r<=ROWS;r++){
+      for(let c=1;c<=COLS;c++){
+        if(cbp[key(r,c)])continue;
+        if(!occ[key(r,c)])return [r,c];
+      }
+    }
+    return null;
+  }
+
+  // spendTM(st,pg,id,qty): consumes `qty` of TM `id` from page `pg`,
+  // largest-stack-first, across every same-id stack ON THAT PAGE (see the
+  // module comment above for why this is page-scoped, not cross-page).
+  // Fails cleanly -- {ok:false,why:'insufficient'} -- with NO mutation at
+  // all if the page's total is less than `qty` (checked up front, before
+  // touching any stack).
+  function spendTM(st,pg,id,qty){
+    if(!Number.isFinite(qty)||qty<0)return {ok:false,why:'invalid qty'};
+    const container=page(st,pg);
+    const stacks=container.tms.filter(t=>t.id===id).sort((a,b)=>b.qty-a.qty);
+    const total=stacks.reduce((sum,t)=>sum+t.qty,0);
+    if(total<qty)return {ok:false,why:'insufficient',have:total,need:qty};
+    let remaining=qty;
+    const drained=[];
+    for(const t of stacks){
+      if(remaining<=0)break;
+      const take=Math.min(t.qty,remaining);
+      t.qty-=take;
+      remaining-=take;
+      if(t.qty===0)drained.push(t.uid);
+    }
+    if(drained.length)container.tms=container.tms.filter(t=>!drained.includes(t.uid));
+    return {ok:true,spent:qty};
+  }
+
 
   // pageSockets(st,page): every open/filled socket of every PO placed in
   // this page, same shape as sockets(st) (canvas). Assemblies (blade+hilt
@@ -1592,6 +1749,16 @@ function create(ITEMS,SI_DEFS,layout,trees){
         for(const p of pg.pos)bumpHome('po:'+p.uid);
         for(const b of pg.bps)bumpHome('bp:'+b.id);
         for(const a of pg.sis)bumpHome('si:'+a.uid);
+        // REQ-0042: TM stacks get the SAME home-uniqueness audit as every
+        // other kind, using the same 'kind:uid' tag convention ('tm:' is
+        // a new, independent tag prefix -- a TM uid colliding with a
+        // PO/BP/SI uid of the literal same string is NOT flagged here,
+        // matching how po/bp/si already never cross-check each other's
+        // uid namespaces either). TM never appears in any preset canvas
+        // (it structurally cannot reach canvas -- see the TM model
+        // comment above tmCanPlace), so unlike po/bp/si there is no
+        // per-preset reference-duplication check to add for tms below.
+        for(const tm of (pg.tms||[]))bumpHome('tm:'+tm.uid);
       }
     }
     const duplicates=[...homeSeen.entries()].filter(([,c])=>c>1).map(([uid])=>uid);
@@ -1646,6 +1813,14 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const st=JSON.parse(JSON.stringify(oldState)); // never mutate the input
     if(!st.inv)st.inv=emptyInventory();
     if(!Array.isArray(st.inv.names)||st.inv.names.length!==PAGE_COUNT)st.inv.names=defaultPageNames();
+    // REQ-0042: defensive per-page backfill for the NEW tms[] array --
+    // any save that predates the TM feature has st.inv.pages[n] shapes
+    // WITHOUT a .tms key at all (the whole-st.inv guard above only covers
+    // "no st.inv object exists yet", not "st.inv exists but individual
+    // pages lack a field a later REQ introduced"). Modeled directly on
+    // the st.inv.names defensive-backfill idiom immediately above (same
+    // "if missing/malformed, fill in the empty default" shape).
+    for(const pg of st.inv.pages)if(!Array.isArray(pg.tms))pg.tms=[];
     if(!st.presets)st.presets=makePresetsMeta(PRESET_COUNT);
     const legacyPOs=st.pos.filter(p=>p.loc==='inv');
     const legacySIs=st.sis.filter(a=>a.host==='inv');
@@ -1812,7 +1987,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
           usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,isUnitDeployable,bpReferenceSet,
           createRef,removeRef,homeLocationOf,
           // Tab reorder + preset trash-delete (REQ-0032) -- additive exports only.
-          reorderPreset,deletePreset,reorderInvPage};
+          reorderPreset,deletePreset,reorderInvPage,
+          // TM (Transmutator) model (REQ-0042) -- additive exports only.
+          tmCanPlace,tmMove,firstFitTMCell,spendTM};
 }
 return {create,rotOffsets,hasTag,ancestorsOf,tagsRelated};
 });
