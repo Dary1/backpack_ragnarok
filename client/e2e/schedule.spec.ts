@@ -44,7 +44,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
-import { bootApp } from './helpers';
+import { bootApp, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
 const CLI_INVITE_PATH = join(REPO_ROOT, 'server', 'cli_invite.cjs');
@@ -363,16 +363,43 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       // placement inspector, so a direct API round-trip is the correct
       // mirror of the existing convention here).
       const itemUid = wh.items[0].itemUid;
+      // REQ-0041 two-phase claim: the server no longer places anything --
+      // it only marks the row 'claiming' and returns {itemUid,itemId}
+      // (server/schedule.cjs's claimWarehouseItem doc). This test
+      // simulates the CLIENT's own remaining responsibility (engine
+      // first-fit placement + a profile PUT/auto-save), mirroring
+      // server/tests/api_test.cjs's own "two-phase claim finalization"
+      // test's exact simulation pattern -- the REAL client-side flow
+      // (WarehouseTab.tsx) is covered end-to-end by its own dedicated
+      // UI-level tests elsewhere in this file.
       const claimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid } });
       expect(claimRes.status()).toBe(200);
       const claimBody = await claimRes.json();
-      expect(claimBody.placed).toBeTruthy();
+      expect(claimBody.itemUid).toBe(itemUid);
+      expect(typeof claimBody.itemId).toBe('string');
+
+      // Row must now be 'claiming' -- verify via a second claim attempt
+      // being refused 409 (cannot claim an already-claiming row).
+      const reClaimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid } });
+      expect(reClaimRes.status()).toBe(409);
+
+      const canvasBeforeResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasBefore = (await canvasBeforeResp.json()).canvas;
+      canvasBefore.inv.pages[0].pos.push({ uid: claimBody.itemUid, id: claimBody.itemId, loc: 'grid', cell: [1, 1], rot: 0 });
+      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvasBefore });
+      expect(putRes.status()).toBe(200);
+
+      // The profile PUT (this run's "auto-save") must have finalized
+      // (deleted) the claiming row as a side effect, since itemUid now
+      // appears in the saved canvas.
+      const whAfterRes = await page.request.get('/api/warehouse');
+      const whAfter = await whAfterRes.json();
+      expect(whAfter.items.some((i: any) => i.itemUid === itemUid)).toBe(false);
 
       const canvasResp = await page.request.get('/api/profile/dev/canvas');
       const canvas = (await canvasResp.json()).canvas;
-      const placedPo = canvas.inv.pages[claimBody.placed.page].pos.find((p: any) => p.uid === claimBody.uid);
+      const placedPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === claimBody.itemUid);
       expect(placedPo).toBeTruthy();
-      expect(placedPo.cell).toEqual(claimBody.placed.cell);
 
       // Cancel the dev room + clear its warehouse rows so this test
       // leaves no debris behind on the shared dev profile beyond what
@@ -493,6 +520,392 @@ test.describe('cancel flow', () => {
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await expect(card).toHaveAttribute('data-room-status', 'cancelPending', { timeout: 10000 });
+  });
+});
+
+test.describe('REQ-0041: dev grant -> warehouse (Dex EDIT mode acquire button)', () => {
+  test('clicking the Dex EDIT-mode acquire button grants the selected item into the caller\'s OWN warehouse', async ({ page }) => {
+    // This flow is DEV-ONLY and item_admin-gated -- it operates on the
+    // DEV_MODE fallback player's own warehouse (there is no per-guest
+    // "which item_admin session" concept in this app; the grant endpoint
+    // always resolves the caller the same way every other admin route
+    // does, see server/api.cjs's POST /api/admin/warehouse/grant). Uses
+    // the SAME dev_user.json role-flip convention e2e/dex-admin.spec.ts
+    // already established, restored in a finally.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devUserPath = path.join(REPO_ROOT, 'data', 'config', 'dev_user.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const originalDevUser = fs.existsSync(devUserPath) ? fs.readFileSync(devUserPath, 'utf8') : null;
+    const devProfileExisted = fs.existsSync(devProfilePath);
+    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
+
+    try {
+      fs.writeFileSync(devUserPath, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+
+      // Baseline: dev's own warehouse, count before granting.
+      const beforeRes = await page.request.get('/api/warehouse');
+      const beforeCount = (await beforeRes.json()).items.length;
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Dex' }).click();
+      await expect(page.locator('.dex-root')).toBeVisible();
+      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
+      await expect(page.locator('.dex-admin')).toBeVisible();
+
+      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
+      await page.locator('[data-testid="dex-admin-grant-warehouse-btn"]').click();
+      await expect(page.locator('[data-testid="dex-admin-grant-warehouse-message"]')).toBeVisible({ timeout: 10000 });
+
+      // The warehouse actually gained exactly one 'dagger' row.
+      const afterRes = await page.request.get('/api/warehouse');
+      const afterItems = (await afterRes.json()).items;
+      expect(afterItems.length).toBe(beforeCount + 1);
+      const granted = afterItems.find((i: any) => i.itemId === 'dagger' && i.status === 'claimable');
+      expect(granted).toBeTruthy();
+
+      // Cleanup: remove the granted row so it doesn't leak into other
+      // tests that read the dev player's warehouse.
+      const p = path.join(REPO_ROOT, 'data', 'warehouse', 'dev', granted.itemUid + '.json');
+      if (fs.existsSync(p)) fs.rmSync(p);
+    } finally {
+      if (originalDevUser !== null) fs.writeFileSync(devUserPath, originalDevUser);
+      else if (fs.existsSync(devUserPath)) fs.rmSync(devUserPath);
+      if (devProfileExisted && devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
+      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath);
+    }
+  });
+});
+
+test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse, cross-page fallback, finalization)', () => {
+  // These three tests all drive the REAL UI against the DEV_MODE
+  // fallback player, NOT this suite's own guest player -- reaching into
+  // data/warehouse/<playerId>/<uid>.json directly (the pattern the
+  // earlier "settled run" test also started from) only works when the
+  // live API server's STORAGE_BACKEND is 'files'; this box's actual
+  // running service loads STORAGE_BACKEND=pg from server/.env (see
+  // server/README.md's "Postgres backend" section), so a raw warehouse
+  // JSON file written to disk is invisible to it. The ONLY grant path
+  // that works regardless of storage backend is the real HTTP endpoint
+  // (POST /api/admin/warehouse/grant), which is item_admin-gated and
+  // always inserts into the CALLER's own warehouse (server/api.cjs's own
+  // doc comment: "there is no 'grant to a different player' concept
+  // here") -- so these tests flip data/config/dev_user.json to
+  // item_admin (same convention e2e/dex-admin.spec.ts and the "settled
+  // run" test above already use), grant via that endpoint, and then
+  // drive the UI via a PLAIN bootApp(page) (no #/invite/<token> in the
+  // URL) -- store.ts's boot() calls fetchMe() first, which resolves to
+  // the SAME dev_mode fallback player when no token is stored at all
+  // (client/src/api.ts's fetchMe() sends X-Auth-Token only when one is
+  // stored; store.ts's resolveProfileId() then uses snapshot.me.playerId
+  // once /api/me resolves), so a plain boot lands on exactly the same
+  // "dev" identity the grant just populated.
+  test.beforeEach(async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devUserPath = path.join(REPO_ROOT, 'data', 'config', 'dev_user.json');
+    (globalThis as any).__req0041DevUserBackup = fs.existsSync(devUserPath) ? fs.readFileSync(devUserPath, 'utf8') : null;
+    fs.writeFileSync(devUserPath, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+  });
+  test.afterEach(async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devUserPath = path.join(REPO_ROOT, 'data', 'config', 'dev_user.json');
+    const backup = (globalThis as any).__req0041DevUserBackup as string | null;
+    if (backup !== null) fs.writeFileSync(devUserPath, backup);
+    else if (fs.existsSync(devUserPath)) fs.rmSync(devUserPath);
+  });
+
+  async function grantHiltToDev(page: Page): Promise<string> {
+    const res = await page.request.post('/api/admin/warehouse/grant', { data: { itemId: 'hilt' } });
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    return body.item.itemUid as string;
+  }
+
+  async function clearDevWarehouseRow(page: Page, itemUid: string): Promise<void> {
+    // Best-effort cleanup via a claim + no-op discard is not available
+    // (no explicit delete route) -- rows expire on their own (7-day TTL)
+    // and are otherwise harmless test debris scoped to the dev player,
+    // matching the "settled run" test's own established tolerance for
+    // this; this helper exists mainly to document that omission rather
+    // than to guarantee removal.
+    void page;
+    void itemUid;
+  }
+
+  test('claim finds a fitting cell on the OPEN inventory page, pulses it, and auto-saves without a manual save click', async ({ page }) => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfileExisted = fs.existsSync(devProfilePath);
+    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
+
+    try {
+      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      const grantUid = await grantHiltToDev(page);
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+
+      const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
+      await expect(row).toBeVisible({ timeout: 10000 });
+
+      // The embedded inventory board (portal target) is present and
+      // shows the SAME Tabs/InventoryBoard component the Backpacks page
+      // uses -- a real <canvas> is mounted inside the warehouse slot.
+      await expect(page.locator('[data-testid="schedule-warehouse-board-slot"] .board-wrap canvas')).toBeVisible({ timeout: 10000 });
+
+      await page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`).click();
+      await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toBeVisible({ timeout: 10000 });
+
+      // No manual save button exists anywhere in this app (REQ-0031
+      // Phase B retired it) -- wait out the auto-save debounce, then
+      // verify the placement landed via the profile canvas API (page 0,
+      // since activeInvPage defaults to 0 and this is a fresh boot).
+      await waitForAutoSave(page);
+      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvas = (await canvasResp.json()).canvas;
+      const placed = canvas.inv.pages[0].pos.find((p: any) => p.uid === grantUid);
+      expect(placed).toBeTruthy();
+      expect(placed.id).toBe('hilt');
+
+      // Finalization: the warehouse row is now gone (server finalized on
+      // the profile PUT the auto-save performed).
+      const whRes = await page.request.get('/api/warehouse');
+      const whItems = (await whRes.json()).items;
+      expect(whItems.some((i: any) => i.itemUid === grantUid)).toBe(false);
+
+      await clearDevWarehouseRow(page, grantUid);
+    } finally {
+      if (devProfileExisted && devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
+      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath);
+    }
+  });
+
+  test('when the active page has no space, claim auto-places on ANOTHER page and pulse-highlights that page\'s tab', async ({ page }) => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfileExisted = fs.existsSync(devProfilePath);
+    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
+
+    try {
+      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+
+      // Fill inventory page 0 completely (8x8 = 64 cells) with 64 unique
+      // 1x1 'hilt' POs -- guarantees invCanPlacePO finds no free cell on
+      // page 0, forcing the claim's first-fit scan to fall through to
+      // page 1 (the REQ's own "open page first, else other pages in
+      // order" spec). Written directly via the same profile PUT surface
+      // every other test in this file already uses to seed state, rather
+      // than via 64 real drag gestures.
+      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvas = (await canvasResp.json()).canvas;
+      canvas.inv.pages[0].pos = [];
+      for (let r = 1; r <= 8; r++) {
+        for (let c = 1; c <= 8; c++) {
+          canvas.inv.pages[0].pos.push({ uid: `fill_${r}_${c}`, id: 'hilt', loc: 'grid', cell: [r, c], rot: 0 });
+        }
+      }
+      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+      expect(putRes.status()).toBe(200);
+
+      const grantUid = await grantHiltToDev(page);
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+
+      const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
+      await expect(row).toBeVisible({ timeout: 10000 });
+      await page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`).click();
+
+      // Toast must be the CROSS-PAGE variant (names the destination
+      // page), not the same-page one.
+      await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toContainText(/page 2|ページ 2/i, { timeout: 10000 });
+
+      // The inv tab button for page index 1 (0-based; "page 2" 1-based)
+      // gets the tab-claim-pulse CSS class applied.
+      const tab1 = page.locator('[data-tab-kind="inv"][data-tab-index="1"]');
+      await expect(tab1).toHaveClass(/tab-claim-pulse/, { timeout: 2000 });
+
+      await waitForAutoSave(page);
+      const finalCanvasResp = await page.request.get('/api/profile/dev/canvas');
+      const finalCanvas = (await finalCanvasResp.json()).canvas;
+      expect(finalCanvas.inv.pages[0].pos.find((p: any) => p.uid === grantUid)).toBeFalsy();
+      const placedOnPage1 = finalCanvas.inv.pages[1].pos.find((p: any) => p.uid === grantUid);
+      expect(placedOnPage1).toBeTruthy();
+
+      await clearDevWarehouseRow(page, grantUid);
+    } finally {
+      if (devProfileExisted && devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
+      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath);
+    }
+  });
+
+  test('when NO page has space anywhere, claim shows a toast + inline error and the warehouse row REMAINS (claiming, revertible)', async ({ page }) => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfileExisted = fs.existsSync(devProfilePath);
+    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
+
+    try {
+      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+
+      // Fill ALL 5 pages completely.
+      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvas = (await canvasResp.json()).canvas;
+      for (let pg = 0; pg < canvas.inv.pages.length; pg++) {
+        const pos = [];
+        for (let r = 1; r <= 8; r++) {
+          for (let c = 1; c <= 8; c++) {
+            pos.push({ uid: `fillall_${pg}_${r}_${c}`, id: 'hilt', loc: 'grid', cell: [r, c], rot: 0 });
+          }
+        }
+        canvas.inv.pages[pg].pos = pos;
+      }
+      await page.request.put('/api/profile/dev/canvas', { data: canvas });
+
+      const grantUid = await grantHiltToDev(page);
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+
+      const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
+      await expect(row).toBeVisible({ timeout: 10000 });
+      await page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`).click();
+
+      await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toContainText(/no space|空き/i, { timeout: 10000 });
+      await expect(row.locator('.schedule-slot-error')).toContainText(/no space|空き/i, { timeout: 10000 });
+
+      // Row REMAINS present (no item loss) and still 'claiming'
+      // immediately after the failed claim -- this is the client-
+      // observable half of the "reverts after timeout if never saved"
+      // guarantee. The server-side lazy timeout-revert mechanism itself
+      // (WAREHOUSE_CLAIM_TIMEOUT_MS) is exercised directly, without
+      // waiting the real 120s, by server/tests/api_test.cjs's own
+      // dedicated tests (both files+pg mode: the "two-phase claim
+      // finalization" test's abandoned-claim assertion, and the
+      // dev/backdate-claim hook's own test) -- this UI-level test
+      // confirms the CLIENT correctly leaves the row alone on a failed
+      // placement rather than double-checking the server's own timeout
+      // arithmetic a third time.
+      const whRes = await page.request.get('/api/warehouse');
+      const whItem = (await whRes.json()).items.find((i: any) => i.itemUid === grantUid);
+      expect(whItem).toBeTruthy();
+      expect(whItem.status).toBe('claiming');
+
+      await clearDevWarehouseRow(page, grantUid);
+    } finally {
+      if (devProfileExisted && devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
+      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath);
+    }
+  });
+});
+
+test.describe('REQ-0041: deploy gate -- empty-BP preset is refused 409 and disabled client-side', () => {
+  test('a preset with ZERO BP (fixture preset index 4, empty) cannot be selected in the slot dropdown, and a raw API assign is refused 409 empty_unit', async ({ page }) => {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+
+    // Server-side: a raw API assign of the empty preset (index 4 in the
+    // fixture, see e2e/fixtures/schedule-fixture.json's presets.store[4]
+    // === null, i.e. a fresh, BP-less preset) is refused 409 empty_unit.
+    const res = await apiAssignSlot(page, player.token, roomId, 0, 4);
+    expect(res.status).toBe(409);
+    expect(res.body.reason).toBe('empty_unit');
+
+    // Client-side: the slot dropdown's OPTION for preset index 4 is
+    // disabled (pre-emptive UI gate, SlotsPanel.tsx) -- the option text
+    // also carries the "cannot deploy" i18n suffix.
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    const select0 = card.locator('[data-testid="schedule-slot-select-0"]');
+    await expect(select0).toBeVisible({ timeout: 10000 });
+    const emptyOption = select0.locator('option[value="4"]');
+    await expect(emptyOption).toBeDisabled();
+    await expect(emptyOption).toHaveText(/cannot deploy|展開不可/);
+
+    // A preset WITH a BP (index 0) remains selectable and unaffected by
+    // this gate.
+    const okOption = select0.locator('option[value="0"]');
+    await expect(okOption).toBeEnabled();
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+test.describe('REQ-0041: monitor freeze regression guard', () => {
+  test('expanding the monitor for a room with a REAL (non-empty) unit never freezes -- progress/telegraph readouts settle within a bounded timeout', async ({ page }) => {
+    // This is a defensive regression guard for the historical monitor
+    // freeze (bug #4): its root cause (MonitorRenderer.ts's
+    // cellIdToColRow assuming a "M9"-string cell id when sim/combat.cjs
+    // actually emits raw [row,col] tuples on ray_fire/ray_bounce/
+    // ray_step -- see fieldGeometry.ts's cellIdToColRow doc) can no
+    // longer be triggered via an EMPTY-BP unit specifically, since the
+    // server-side deploy gate now refuses to ever let one be assigned to
+    // a room slot at all (see the "empty-BP preset" test above) -- so
+    // this test instead exercises the general "expand the monitor and
+    // let it run" path end-to-end with a real, deployable unit, inside a
+    // bounded timeout, as a standing guard against any regression of
+    // either fix (fieldGeometry.ts's shape-tolerant parsing, or
+    // MonitorRenderer.ts/Monitor.tsx's per-event try/catch + unconditional
+    // lastEventIndexRef advance) ever reintroducing a stuck/looping
+    // render path.
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, 3);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+
+    const monitor = card.locator('[data-testid="schedule-monitor"]');
+    await expect(monitor).toBeVisible({ timeout: 10000 });
+
+    // Guard: the page must remain RESPONSIVE (not spinning/frozen) --
+    // proven by a totally unrelated evaluate() round-trip completing
+    // promptly, plus the monitor's own progress readout actually
+    // reaching a non-placeholder value, both within a bounded window.
+    await expect(async () => {
+      const alive = await page.evaluate(() => 1 + 1);
+      expect(alive).toBe(2);
+    }).toPass({ timeout: 5000 });
+
+    await expect(monitor.locator('[data-testid="schedule-monitor-progress-pct"]')).not.toHaveText('', { timeout: 8000 });
+    await expect(card.locator('[data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+test.describe('REQ-0041: /preview/batch-002/ static preview page', () => {
+  test('serves 200 and shows the dungeon name, an enemy, a formation, and the placeholder-icon note', async ({ page }) => {
+    const res = await page.request.get('/preview/batch-002/');
+    expect(res.status()).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('Niflheim Depths');
+    expect(body).toContain('Frost Gnoll');
+    expect(body).toContain('Standard Line');
+    expect(body.toLowerCase()).toContain('placeholder icon');
   });
 });
 
