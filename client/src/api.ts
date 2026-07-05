@@ -209,10 +209,21 @@ export interface GameData {
 
 export class ApiError extends Error {
   readonly status?: number;
-  constructor(message: string, status?: number) {
+  /** REQ-0041: a structured machine-readable reason string, when the
+   * server attached one (e.g. server/schedule.cjs's assignSlot sets
+   * err.reason='empty_unit' for the empty-BP deploy-gate 409, threaded
+   * through by server/api.cjs's sendScheduleError as a `reason` field on
+   * the JSON error body) -- undefined for every error body that doesn't
+   * carry one (every OTHER existing 409/4xx/5xx this client surfaces).
+   * schedule/errors.ts's friendlyScheduleError checks this FIRST,
+   * preferentially, before falling back to its existing message-substring
+   * matching for older/other error shapes. */
+  readonly reason?: string;
+  constructor(message: string, status?: number, reason?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.reason = reason;
   }
 }
 
@@ -580,7 +591,11 @@ async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
       parsed && typeof parsed === 'object' && parsed !== null && 'error' in parsed && typeof (parsed as { error: unknown }).error === 'string'
         ? (parsed as { error: string }).error
         : `HTTP ${res.status} for ${path}`;
-    throw new ApiError(message, res.status);
+    const reason =
+      parsed && typeof parsed === 'object' && parsed !== null && 'reason' in parsed && typeof (parsed as { reason: unknown }).reason === 'string'
+        ? (parsed as { reason: string }).reason
+        : undefined;
+    throw new ApiError(message, res.status, reason);
   }
   return parsed as T;
 }
@@ -669,11 +684,18 @@ export function fetchWarehouse(): Promise<{ ok: true; items: ApiWarehouseItem[] 
   return scheduleJSON('/api/warehouse');
 }
 
-/** POST /api/warehouse/claim {itemUid} -- moves one warehouse item into
- * the caller's own inventory via first-fit placement (golden f). Throws
- * ApiError(409) when no inventory page has space (item stays in the
- * warehouse, untouched server-side). */
-export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; placed: { page: number; cell: [number, number] }; uid: string }> {
+/** POST /api/warehouse/claim {itemUid} -- REQ-0041 two-phase claim (bug
+ * #3 fix). No longer places anything server-side: marks the warehouse
+ * row 'claiming' and returns the CONTENT def id (`itemId`) plus the
+ * row's own `itemUid` (which the CALLER reuses AS the new inventory
+ * PO/SI's own uid -- see server/schedule.cjs's claimWarehouseItem doc
+ * for why this makes server-side finalization exact). The caller
+ * (WarehouseTab.tsx) is responsible for running the engine's own
+ * first-fit placement and then letting the normal auto-save
+ * (notifyStateChanged()) persist it -- this function's job ends at
+ * "the row is now claiming, here's what it is". Throws ApiError(409)
+ * if the row is already claiming/gone, ApiError(404) if unknown/expired. */
+export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; itemUid: string; itemId: string }> {
   return scheduleJSON('/api/warehouse/claim', { method: 'POST', body: JSON.stringify({ itemUid }) });
 }
 

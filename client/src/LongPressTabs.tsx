@@ -296,6 +296,15 @@ export function LongPressTabs({
               onPointerMove={handlePointerMove(i)}
               onPointerUp={handlePointerUp(i)}
               onPointerLeave={handlePointerLeave}
+              // REQ-0041: lets external code (WarehouseTab.tsx's claim
+              // flow) find a SPECIFIC inventory tab button by index (via
+              // a plain DOM query, e.g. `[data-tab-kind="inv"][data-tab-
+              // index="2"]`) to apply a brief CSS pulse animation when an
+              // auto-claimed item lands on a page OTHER than the
+              // currently-open one -- a lightweight, additive attribute;
+              // no existing behavior of this shared component changes.
+              data-tab-kind={kind}
+              data-tab-index={i}
             >
               {names[i] ?? i + 1}
             </button>

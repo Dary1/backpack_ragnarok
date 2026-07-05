@@ -45,9 +45,26 @@
 // itself over exactly this box via CSS absolute positioning -- the
 // inventory column's own .board-wrap is untouched (inventory tabs never
 // show a trash zone, so there is nothing to position there).
+//
+// REQ-0041: the inventory column (Tabs + InventoryBoard + its note) now
+// renders via a PORTAL (react-dom's createPortal) instead of always
+// rendering directly here -- see board/inventorySlot.ts's module comment
+// for the full Pixi-instance decision writeup ("reuse the existing
+// InventoryBoard/Tabs instance via a portal" vs "stand up a second Pixi
+// Application", and why the former was chosen). useInventorySlot()
+// returns null by DEFAULT (nothing has claimed the slot), in which case
+// the inventory column renders in its NORMAL Backpacks-page position
+// exactly as before (a portal with a null target is simply "render
+// nowhere else", so createPortal is only actually invoked once some
+// consumer -- WarehouseTab.tsx -- registers a slot element). This is a
+// STRICT ADDITIVE change to this component's existing behavior: with no
+// slot registered (the common case, including every existing E2E spec),
+// this file's rendered output is byte-identical to before.
 import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
+import { useInventorySlot } from './board/inventorySlot';
 import { DexRoot } from './dex/DexRoot';
 import { Header } from './Header';
 import { t } from './i18n';
@@ -61,6 +78,26 @@ import { Settings } from './Settings';
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
 
+/** The inventory column's actual content (Tabs + board-wrap +
+ * InventoryBoard + note) -- extracted to its own function so it can be
+ * rendered EITHER inline (normal Backpacks-page position, default) OR
+ * via createPortal into a WarehouseTab-registered slot, with the exact
+ * same JSX either way (no behavior fork -- see module comment above). */
+function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean }) {
+  return (
+    <div className="board-column">
+      <div className="board-column-header">
+        <h2 className="board-column-title">{t(locale, 'app.inventoryTitle')}</h2>
+        {ready ? <Tabs /> : null}
+      </div>
+      <div className="board-wrap">
+        <InventoryBoard />
+      </div>
+      <div className="inventory-note">{t(locale, 'app.inventoryNote')}</div>
+    </div>
+  );
+}
+
 function App() {
   const snapshot = useGameStore();
 
@@ -71,6 +108,14 @@ function App() {
 
   const toggleLocale = () => setLocale(snapshot.locale === 'ja' ? 'en' : 'ja');
   const route = snapshot.route;
+  // REQ-0041: null (default) unless WarehouseTab.tsx has registered its
+  // own slot element -- see board/inventorySlot.ts / InventoryColumn doc
+  // above. When non-null, the inventory column portals THERE instead of
+  // rendering in its normal spot below (a single physical DOM subtree
+  // can only be in one place at a time, which is correct: the Warehouse
+  // tab and the Backpacks page are never both the current route).
+  const inventorySlot = useInventorySlot();
+  const inventoryReady = snapshot.status === 'ready';
 
   return (
     <div className="app-shell">
@@ -102,20 +147,30 @@ function App() {
               <PresetTrashZone />
             </div>
           </div>
-          <div className="board-column">
-            <div className="board-column-header">
-              <h2 className="board-column-title">{t(snapshot.locale, 'app.inventoryTitle')}</h2>
-              {snapshot.status === 'ready' ? <Tabs /> : null}
-            </div>
-            <div className="board-wrap">
-              <InventoryBoard />
-            </div>
-            <div className="inventory-note">{t(snapshot.locale, 'app.inventoryNote')}</div>
-          </div>
+          {/* REQ-0041: render the inventory column INLINE here only when
+              no slot has claimed it (see InventoryColumn's doc above) --
+              otherwise it portals into the Warehouse tab's slot instead,
+              and THIS position renders nothing (not even an empty
+              .board-column -- when the Warehouse tab is open, this
+              backpacks-view is itself route-hidden anyway, so there is no
+              visible gap either way). */}
+          {inventorySlot === null ? <InventoryColumn locale={snapshot.locale} ready={inventoryReady} /> : null}
           {snapshot.status === 'ready' && snapshot.gameData ? (
             <ItemPanel items={snapshot.gameData.ITEMS} siDefs={snapshot.gameData.SI_DEFS} locale={snapshot.locale} />
           ) : null}
         </div>
+
+        {/* REQ-0041: portal target -- when WarehouseTab.tsx has registered
+            a slot, the SAME InventoryColumn (same Tabs/InventoryBoard/
+            canvas/Pixi Application instance -- see inventorySlot.ts's doc)
+            renders there instead, via createPortal. Rendered OUTSIDE the
+            backpacks-view/route-hidden switch above (a portal's physical
+            DOM location is wherever its target element lives -- always
+            somewhere inside SchedulePage's own tree here -- so its
+            visibility already naturally follows the Schedule/Warehouse
+            tab being on-screen; no additional route-hidden bookkeeping is
+            needed for the portaled copy). */}
+        {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} />, inventorySlot) : null}
 
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}

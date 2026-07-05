@@ -32,6 +32,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BoardRenderer } from './BoardRenderer';
 import { makeInvOps } from './boardOps';
+import { setInventoryRenderer } from './inventoryRenderer';
 import { loadSpriteTextures } from './sprites';
 import { useGameStore } from '../store';
 
@@ -71,6 +72,13 @@ export function InventoryBoard() {
         return;
       }
       rendererRef.current = renderer;
+      // REQ-0041: publish this singleton renderer so WarehouseTab.tsx can
+      // call pulseCellsSuccess() on it after a claim placement -- see
+      // board/inventoryRenderer.ts's module comment for why this seam
+      // exists (the Warehouse tab reuses THIS SAME InventoryBoard
+      // instance via a portal, per board/inventorySlot.ts's Pixi-
+      // instance decision, rather than mounting its own renderer).
+      setInventoryRenderer(renderer);
       setReady(true);
     })();
 
@@ -78,6 +86,7 @@ export function InventoryBoard() {
       cancelled = true;
       rendererRef.current?.destroy();
       rendererRef.current = null;
+      setInventoryRenderer(null);
       setReady(false);
     };
     // Mount once per boot -- deliberately NOT keyed on `page` (see module

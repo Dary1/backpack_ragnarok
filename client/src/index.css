@@ -441,6 +441,33 @@ html, body {
      already gives every board a container for. */
 }
 
+/* REQ-0041: warehouse-claim cross-page notification -- applied to a
+   SPECIFIC inv-tab button (found via [data-tab-index], see
+   LongPressTabs.tsx) when an auto-claimed item lands on a page OTHER
+   than the currently-open one. ~3 pulses per the task brief ("PULSE that
+   page's tab, a CSS keyframe animation, ~3 pulses"). */
+.tab-claim-pulse {
+  animation: tab-claim-pulse 0.5s ease-in-out 3;
+}
+
+@keyframes tab-claim-pulse {
+  0%, 100% { box-shadow: none; background-color: transparent; }
+  50% { box-shadow: 0 0 0 3px var(--good, #59d68a); background-color: rgba(89, 214, 138, 0.25); }
+}
+
+/* REQ-0041: Warehouse tab's embedded inventory column slot (the portal
+   TARGET the SAME InventoryBoard/Tabs instance renders into -- see
+   board/inventorySlot.ts's Pixi-instance decision doc). Laid out like a
+   scaled-down mirror of App.tsx's own .board-column so the embedded
+   board reads as "the same Inventory panel, just here too", not a
+   visually distinct reimplementation. */
+.schedule-warehouse-board-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 /* REQ-0034 -- backpacks view stays mounted at all times (Board's and
    InventoryBoard's Pixi Applications must never be destroyed/recreated
    on route switch, see App.tsx's module comment); only visibility

@@ -86,6 +86,14 @@ const DBLCLICK_WINDOW_MS = 300;
 // Reject-flash duration, ms — matches the mock's flash()'s `setTimeout(...,
 // 350)`.
 const FLASH_MS = 350;
+// REQ-0041: warehouse-claim placement pulse ("ピコンピコン") -- a
+// SUCCESS-colored (green, not reject-red) pulse on the cell(s) an
+// auto-claimed item just landed on, distinct from flash()'s reject
+// feedback. ~2s total per the REQ's "pulse for ~2 seconds" spec,
+// composed of a few discrete on/off blinks (a single fade doesn't read
+// as "pikon-pikon" -- a repeated blink does).
+const CLAIM_PULSE_TOTAL_MS = 2000;
+const CLAIM_PULSE_BLINK_MS = 330; // ~3 full on/off cycles across the 2s total
 // Inventory linker dormancy visual (REQ-0030): dimmed core alpha, vs the
 // canvas core's alpha (0.5 stroke / 0.55 fill, see render()).
 const INV_LINKER_ALPHA = 0.22;
@@ -1823,6 +1831,49 @@ export class BoardRenderer {
         this.flashTimers.delete(timer);
       }, FLASH_MS);
       this.flashTimers.add(timer);
+    }
+  }
+
+  /** REQ-0041 -- warehouse-claim placement pulse ("ピコンピコン"): a
+   * SUCCESS-colored (green) blinking outline over `cells` for ~2 seconds
+   * total, reusing this class's EXISTING flash-overlay mechanism
+   * (gTarget layer + this.flashTimers bookkeeping, same as the private
+   * flash() reject-feedback above) rather than inventing a new Pixi
+   * overlay approach -- per the task brief's own instruction to reuse
+   * an existing highlight/flash mechanism if the renderer already has
+   * one. PUBLIC (unlike flash()) so WarehouseTab.tsx's claim-flow code
+   * can call it directly on the renderer instance it already holds a
+   * ref to, immediately after committing the engine placement mutation
+   * (before/alongside notifyStateChanged()). Composed of repeated
+   * on/off blinks (not a single fade) to read as a distinct "received an
+   * item" cue, visually different from the reject-flash's single red
+   * outline. Safe to call on a disposed renderer (no-op) or with no
+   * cells (no-op either way).
+   */
+  pulseCellsSuccess(cells: Cell[] | undefined): void {
+    if (this.disposed) return;
+    for (const [r, c] of cells ?? []) {
+      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
+      const rect = new Graphics();
+      rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
+      rect.stroke({ color: '#59d68a', width: 3 });
+      rect.visible = true;
+      this.gTarget.addChild(rect);
+      let elapsed = 0;
+      let currentTimer: ReturnType<typeof setTimeout>;
+      const blink = (): void => {
+        this.flashTimers.delete(currentTimer);
+        elapsed += CLAIM_PULSE_BLINK_MS;
+        rect.visible = !rect.visible;
+        if (elapsed >= CLAIM_PULSE_TOTAL_MS) {
+          rect.destroy();
+          return;
+        }
+        currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
+        this.flashTimers.add(currentTimer);
+      };
+      currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
+      this.flashTimers.add(currentTimer);
     }
   }
 }
