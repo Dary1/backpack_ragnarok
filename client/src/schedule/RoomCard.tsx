@@ -3,6 +3,19 @@
 // every second via plain setInterval/Date.now() -- no library needed for
 // this), cancel button, and an expand toggle that reveals the SlotsPanel
 // + Monitor for this room.
+//
+// UX pass (schedule-ux-improvements): the collapsed card used to show
+// nothing but an opaque room_xxxxxxx id + level, so same-level rooms
+// were indistinguishable at a glance -- now also shows the resolved
+// dungeon display name (passed down from SchedulePage.tsx, which joins
+// room.dungeonId against the already-fetched dungeons list, same
+// localizedName() CreateRoomForm.tsx uses) and a formatted createdAt
+// (room document already carries this field field-for-field from the
+// server, see api.ts's ApiRoom -- nothing new to fetch). Also swaps the
+// native window.confirm() cancel prompt for an inline confirm row that
+// matches the rest of this dark theme (still just local state + two
+// buttons -- no modal library, same "no library" posture as this file's
+// own countdown formatter already has).
 import { useEffect, useState } from 'react';
 import { cancelRoom as apiCancelRoom, type ApiRoom } from '../api';
 import { t } from '../i18n';
@@ -13,6 +26,10 @@ import { SlotsPanel } from './SlotsPanel';
 interface RoomCardProps {
   room: ApiRoom;
   locale: Locale;
+  /** Resolved display name for room.dungeonId. Falls back to
+   * schedule.dungeonUnknown (existing key) if the id doesn't match
+   * anything currently in the dungeons list. */
+  dungeonName: string;
   expanded: boolean;
   onToggleExpand: () => void;
   onChanged: () => void | Promise<void>;
@@ -59,9 +76,10 @@ export function formatCountdown(ms: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export function RoomCard({ room, locale, expanded, onToggleExpand, onChanged }: RoomCardProps) {
+export function RoomCard({ room, locale, dungeonName, expanded, onToggleExpand, onChanged }: RoomCardProps) {
   const [now, setNow] = useState(() => Date.now());
   const [cancelPending, setCancelPending] = useState(false);
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -70,9 +88,10 @@ export function RoomCard({ room, locale, expanded, onToggleExpand, onChanged }: 
 
   const status = deriveStatus(room);
   const cooldownRemainingMs = room.cooldownUntil ? Date.parse(room.cooldownUntil) - now : 0;
+  const createdAtLabel = new Date(room.createdAt).toLocaleString(locale, { dateStyle: 'short', timeStyle: 'short' });
 
-  const handleCancel = async () => {
-    if (!window.confirm(t(locale, 'schedule.cancelConfirm'))) return;
+  const runCancel = async () => {
+    setConfirmingCancel(false);
     setCancelPending(true);
     try {
       await apiCancelRoom(room.id);
@@ -95,8 +114,8 @@ export function RoomCard({ room, locale, expanded, onToggleExpand, onChanged }: 
           <button type="button" className="schedule-expand-btn" onClick={onToggleExpand} data-testid="schedule-room-expand-toggle">
             {expanded ? t(locale, 'schedule.collapse') : t(locale, 'schedule.expand')}
           </button>
-          {status !== 'canceled' ? (
-            <button type="button" className="schedule-cancel-btn" onClick={handleCancel} disabled={cancelPending} data-testid="schedule-room-cancel-btn">
+          {status !== 'canceled' && !confirmingCancel ? (
+            <button type="button" className="schedule-cancel-btn" onClick={() => setConfirmingCancel(true)} disabled={cancelPending} data-testid="schedule-room-cancel-btn">
               {t(locale, 'schedule.cancelButton')}
             </button>
           ) : null}
@@ -104,13 +123,29 @@ export function RoomCard({ room, locale, expanded, onToggleExpand, onChanged }: 
       </div>
 
       <div className="schedule-room-card-body">
+        <span className="schedule-room-dungeon" data-testid="schedule-room-dungeon">{dungeonName}</span>
         <span className="schedule-room-level">{t(locale, 'schedule.levelLine', { level: room.level })}</span>
+        <span className="schedule-room-created" data-testid="schedule-room-created">{createdAtLabel}</span>
         {status === 'cooldown' ? (
           <span className="schedule-room-countdown" data-testid="schedule-room-countdown">
             {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs) })}
           </span>
         ) : null}
       </div>
+
+      {confirmingCancel ? (
+        <div className="schedule-room-cancel-confirm" data-testid="schedule-room-cancel-confirm">
+          <span>{t(locale, 'schedule.cancelConfirm')}</span>
+          <div className="schedule-room-cancel-confirm-actions">
+            <button type="button" className="schedule-cancel-btn" onClick={runCancel} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-yes">
+              {t(locale, 'schedule.cancelConfirmYes')}
+            </button>
+            <button type="button" className="schedule-expand-btn" onClick={() => setConfirmingCancel(false)} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-no">
+              {t(locale, 'schedule.cancelConfirmNo')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {expanded ? (
         <div className="schedule-room-expanded">

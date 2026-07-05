@@ -12,6 +12,11 @@
   --cyan: #59d6d6;
   --ok: #5cb573;
   --bad: #c05050;
+  /* schedule-ux-improvements: dedicated "needs your input" tone for the
+     idle room status -- distinct from --bad (error/danger) and --ok
+     (success), and no longer overloading --dim so idle can be the most
+     eye-catching non-canceled state instead of the least. */
+  --warn: #d1a24a;
 }
 
 html, body {
@@ -1669,11 +1674,16 @@ html, body {
   font-weight: 600;
 }
 
-.schedule-status-badge-idle { background: rgba(154, 145, 127, 0.18); color: var(--dim); }
+/* schedule-ux-improvements: idle (needs the player's input -- fill
+   slots) now gets the most visually distinct non-error color instead of
+   the most muted one; canceled (inert/historical, the vast majority of
+   a long-lived list) moves to --dim instead of sharing --bad with
+   cancelPending, which is still actually in flight. */
+.schedule-status-badge-idle { background: rgba(209, 162, 74, 0.2); color: var(--warn); }
 .schedule-status-badge-cooldown { background: rgba(89, 214, 214, 0.15); color: var(--cyan); }
 .schedule-status-badge-running { background: rgba(92, 181, 115, 0.18); color: var(--ok); }
 .schedule-status-badge-cancelPending { background: rgba(192, 80, 80, 0.15); color: var(--bad); }
-.schedule-status-badge-canceled { background: rgba(192, 80, 80, 0.1); color: var(--bad); }
+.schedule-status-badge-canceled { background: rgba(154, 145, 127, 0.14); color: var(--dim); }
 
 .schedule-room-card-actions {
   display: flex;
@@ -1782,11 +1792,66 @@ html, body {
 }
 
 /* Create-room form */
+/* schedule-ux-improvements: toolbar row pinned above the rooms list --
+   holds the create-room toggle button + the hide-canceled checkbox, so
+   both the primary action and the list's own filter state are visible
+   without scrolling past whatever the list currently contains. */
+.schedule-rooms-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.schedule-create-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.schedule-hide-canceled-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+/* schedule-ux-improvements: inline cancel confirmation, replacing
+   window.confirm() -- same card-adjacent placement, themed instead of a
+   native browser dialog. */
+.schedule-room-cancel-confirm {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  background: rgba(192, 80, 80, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.schedule-room-cancel-confirm-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .schedule-create-panel {
   background: #0e0d0b;
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 14px 16px;
+  margin-bottom: 12px;
 }
 
 .schedule-create-panel h3 {

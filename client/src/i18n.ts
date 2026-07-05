@@ -171,6 +171,10 @@ const DICT = {
     'schedule.expand': 'Expand',
     'schedule.collapse': 'Collapse',
     'schedule.roomId': 'Room',
+    'schedule.hideCanceledToggle': 'Hide canceled ({count})',
+    'schedule.allHidden': 'All rooms are canceled and hidden. Uncheck above to view them.',
+    'schedule.cancelConfirmYes': 'Yes, cancel it',
+    'schedule.cancelConfirmNo': 'No',
 
     // Slots panel (SlotsPanel.tsx)
     'schedule.slots.title': 'Units',
@@ -383,6 +387,10 @@ const DICT = {
     'schedule.expand': '展開',
     'schedule.collapse': '折りたたむ',
     'schedule.roomId': 'ルーム',
+    'schedule.hideCanceledToggle': 'キャンセル済みを非表示（{count}件）',
+    'schedule.allHidden': 'すべてキャンセル済みのため非表示です。上のチェックを外すと表示されます。',
+    'schedule.cancelConfirmYes': 'はい、キャンセルする',
+    'schedule.cancelConfirmNo': 'いいえ',
 
     // Slots panel (SlotsPanel.tsx)
     'schedule.slots.title': 'ユニット',

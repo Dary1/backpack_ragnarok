@@ -28,7 +28,7 @@ interface CreateRoomFormProps {
   onCreate: (body: ApiCreateRoomBody) => void | Promise<void>;
 }
 
-function localizedName(locale: Locale, entry: { id: string; name: string; i18n?: Record<string, { name?: string }> }): string {
+export function localizedName(locale: Locale, entry: { id: string; name: string; i18n?: Record<string, { name?: string }> }): string {
   if (locale === 'ja' && entry.i18n?.ja?.name) return entry.i18n.ja.name;
   return entry.name;
 }
