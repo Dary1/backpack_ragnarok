@@ -155,6 +155,14 @@ export class BoardRenderer {
   private gChain = new Container();
   private gTarget = new Container();
   private gCarry = new Container();
+  // REQ-0042: BP move-handle badge layer -- MUST render above gItems
+  // (PO art), which is the whole point of the handle (grab a BP even
+  // when every one of its cells is covered by placed POs, which leaves
+  // no empty cell for the existing empty-cell-grab-handle mechanism
+  // above to use). Positioned right after gItems/before gSock so the
+  // badge sits below socket/linker glyphs but still clearly above PO
+  // art -- see the constructor's addChild order below.
+  private gBadges = new Container();
   private deps: BoardDeps;
   private disposed = false;
   private lastState: GameState | null = null;
@@ -172,6 +180,7 @@ export class BoardRenderer {
       this.gBase,
       this.gBeams,
       this.gItems,
+      this.gBadges, // REQ-0042: above gItems (PO art), see field comment
       this.gSock,
       this.gLinkers,
       this.gChain,
@@ -296,6 +305,7 @@ export class BoardRenderer {
     this.gBase.removeChildren();
     this.gBeams.removeChildren();
     this.gItems.removeChildren();
+    this.gBadges.removeChildren(); // REQ-0042
     this.gSock.removeChildren();
     this.gLinkers.removeChildren();
     this.gChain.removeChildren();
@@ -419,6 +429,44 @@ export class BoardRenderer {
       label.y = PAD + (r0 - 1) * CELL - 18;
       label.eventMode = 'none'; // decorative, see constructor note
       this.gBase.addChild(label);
+
+      // REQ-0042: move-handle badge at the BP's TOP-LEFT cell (r0,c0,
+      // same top-left this label already computed above), on BOTH boards
+      // (this loop runs for canvas and inventory alike -- no ops.isCanvas
+      // gate, unlike the direction-dots block below which IS
+      // canvas-only). Necessary because a BP fully covered by placed POs
+      // has no empty cell left for the existing empty-cell-grab-handle
+      // mechanism (this same loop, further below) to use -- the badge is
+      // an ALWAYS-VISIBLE grab affordance regardless of what's on top of
+      // the BP. Drawn into gBadges (above gItems/PO art, see the
+      // constructor's addChild order) so it is never occluded by a PO's
+      // own sprite. Only the badge glyph itself is pointer-interactive
+      // (eventMode='static' + pointerdown) -- the decorative backing
+      // circle behind it gets eventMode='none', same convention every
+      // other decorative node in this file follows (see the constructor's
+      // own doc comment on why this is load-bearing, not cosmetic).
+      const badgeX = PAD + (c0 - 1) * CELL + 14;
+      const badgeY = PAD + (r0 - 1) * CELL + 14;
+      const badgeBg = new Graphics();
+      badgeBg.circle(badgeX, badgeY, 12);
+      badgeBg.fill({ color: '#0e0d0b', alpha: 0.85 });
+      badgeBg.stroke({ color: bp.color, width: 1.5 });
+      badgeBg.eventMode = 'none'; // decorative backing, see constructor note
+      this.gBadges.addChild(badgeBg);
+      const badgeGlyph = new Text({
+        text: '✥', // simple, reliably-rendering move/cross-arrows glyph
+        style: { fill: '#f2fbff', fontSize: 16 },
+      });
+      badgeGlyph.anchor.set(0.5);
+      badgeGlyph.x = badgeX;
+      badgeGlyph.y = badgeY;
+      badgeGlyph.eventMode = 'static';
+      badgeGlyph.cursor = 'grab';
+      // SAME whole-BP-move entry point the linker-grab core (below) and
+      // the empty-cell handles (further below) both call -- reused
+      // verbatim, not a new drag code path.
+      badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
+      this.gBadges.addChild(badgeGlyph);
 
       // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
       // Phase 2): every BP cell that is neither occupied by a placed PO
