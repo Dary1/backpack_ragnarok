@@ -73,6 +73,15 @@ export interface BoardOps {
   canMoveBP(state: GameState, bpId: string, origin: Cell): PlacementCheck;
   moveBP(state: GameState, bpId: string, origin: Cell): MoveResult;
 
+  /** REQ-0045 (a2): legality + commit for rotating a BP 90 degrees CW in
+   * place (dblclick trigger -- see BoardRenderer.ts's handleBPPointerDown).
+   * Canvas delegates directly to engine.canRotateBP/rotateBP; inventory
+   * delegates to engine.invCanRotateBP/invRotateBP (page-scoped, same
+   * "delegate, don't reimplement" convention every other BP op here
+   * follows). */
+  canRotateBP(state: GameState, bpId: string): PlacementCheck;
+  rotateBP(state: GameState, bpId: string): MoveResult;
+
   /** Free-cell SI placement -- inventory-only. Canvas implementation
    * always returns {ok:false}: SIs cannot be free-placed on canvas. */
   canPlaceSI(state: GameState, uid: string, anchor: Cell): PlacementCheck;
@@ -118,6 +127,12 @@ export function makeCanvasOps(engine: EngineInstance): BoardOps {
     },
     moveBP(state, bpId, origin) {
       return engine.moveBP(state, bpId, origin);
+    },
+    canRotateBP(state, bpId) {
+      return engine.canRotateBP(state, bpId);
+    },
+    rotateBP(state, bpId) {
+      return engine.rotateBP(state, bpId);
     },
     canPlaceSI() {
       return NOT_SUPPORTED;
@@ -197,6 +212,12 @@ export function makeInvOps(engine: EngineInstance, page: number): BoardOps {
     },
     moveBP(state, bpId, origin) {
       return engine.invMoveBP(state, page, bpId, origin);
+    },
+    canRotateBP(state, bpId) {
+      return engine.invCanRotateBP(state, page, bpId);
+    },
+    rotateBP(state, bpId) {
+      return engine.invRotateBP(state, page, bpId);
     },
     canPlaceSI(state, uid, anchor) {
       return engine.invCanPlaceSI(state, page, uid, anchor);

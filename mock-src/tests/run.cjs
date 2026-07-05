@@ -1582,6 +1582,144 @@ T('REQ-0042 checkUidInvariant: a TM uid and a PO uid sharing the same literal st
   ok(E.checkUidInvariant(st).ok,'a PO and a TM sharing the same uid string is NOT flagged -- independent tag namespaces');
 });
 
+
+// =====================================================================
+// REQ-0045 (a2): BP rotation (canRotateBP/rotateBP canvas,
+// invCanRotateBP/invRotateBP inventory). A genuine physical 90-degree-CW
+// rotation of the whole BP: shape (about its own bbox), linker cell +
+// dirs (+2 mod 8), and every contained PO's cell + rot (+1 mod 4).
+// =====================================================================
+function rotateFixtureItems(){
+  return { test_po:{name:'Test PO',tags:[],shape:[[0,0]],icon:'icon-x',sockets:[]} };
+}
+
+T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center linker and one contained PO rotates correctly (cell/dir remapping)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={
+    linked:true,
+    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+    pos:[{uid:'p1',id:'test_po',loc:'grid',cell:[4,3],rot:0}], // sits on the shape's foot cell (local [2,1] -> absolute [4,3])
+    sis:[],
+  };
+  const before=JSON.parse(JSON.stringify(st));
+  const r=E.rotateBP(st,'lshape');
+  ok(r.ok,'rotation of an unobstructed BP must succeed: '+JSON.stringify(r));
+  const bp=st.bps[0];
+  // Shape: [r,c]->[c,-r] then renormalized. Original offsets
+  // [[0,0],[1,0],[2,0],[2,1]] -> raw rotated [[0,0],[0,-1],[0,-2],[1,-2]]
+  // -> min row 0, min col -2 -> renormalized [[0,2],[0,1],[0,0],[1,0]].
+  eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'shape rotated 90deg CW about its own bbox');
+  // Linker off [2,1] -> raw rotated [1,-2] -> renormalized (same mr=0,mc=-2) -> [1,0].
+  eq(bp.linker.off,[1,0],'linker cell rotates WITH the shape (same renormalization delta)');
+  // Dirs [0,2] (N,E) -> +2 mod 8 -> [2,4] (E,S).
+  eq(bp.linker.dirs,[2,4],'linker beam directions rotate by +2 mod 8');
+  eq(bp.origin,[2,2],'BP origin itself does not move during an in-place rotation');
+  // The contained PO sat on the foot cell (local [2,1], absolute [4,3]);
+  // after rotation the foot is now at local [1,0] -> absolute [3,2]; the
+  // PO travels there, and its own rot advances 0->1 (matching rotatePO's
+  // own +1 mod 4 convention).
+  const po=st.pos.find(p=>p.uid==='p1');
+  eq(po.cell,[3,2],'contained PO cell remapped through the same rotation transform');
+  eq(po.rot,1,'contained PO rot advances by 1 (mod 4), same amount the BP itself turned');
+  ok(JSON.stringify(st)!==JSON.stringify(before),'sanity: state actually changed');
+});
+
+T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (shape, PO cell/rot, linker cell/dir) -- identity',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={
+    linked:true,
+    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+    pos:[{uid:'p1',id:'test_po',loc:'grid',cell:[4,3],rot:0}],
+    sis:[],
+  };
+  const original=JSON.parse(JSON.stringify(st));
+  for(let i=0;i<4;i++){
+    const r=E.rotateBP(st,'lshape');
+    ok(r.ok,'rotation '+(i+1)+' of 4 must succeed (BP has room to turn freely): '+JSON.stringify(r));
+  }
+  eq(st.bps[0].shape,original.bps[0].shape,'shape identical after 4x rotation');
+  eq(st.bps[0].linker,original.bps[0].linker,'linker cell+dirs identical after 4x rotation');
+  eq(st.bps[0].origin,original.bps[0].origin,'origin identical after 4x rotation');
+  eq(st.pos[0].cell,original.pos[0].cell,'contained PO cell identical after 4x rotation');
+  eq(st.pos[0].rot,original.pos[0].rot,'contained PO rot identical after 4x rotation (1+1+1+1=4 mod 4=0)');
+});
+
+T('REQ-0045 canRotateBP: canvas -- blocked when the rotated footprint would overlap another BP; state completely unchanged on refusal',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={
+    linked:true,
+    bps:[
+      {id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[0,0],dirs:[]}},
+      // Sits exactly on a cell the rotated footprint will need (see the
+      // shape-rotation test above: rotated absolute cells are origin+
+      // [[0,2],[0,1],[0,0],[1,0]] = (2,4),(2,3),(2,2),(3,2)).
+      {id:'blocker',name:'B',color:'#000',shape:[[0,0]],origin:[2,4],linker:{off:[0,0],dirs:[]}},
+    ],
+    pos:[],sis:[],
+  };
+  const before=JSON.parse(JSON.stringify(st));
+  const chk=E.canRotateBP(st,'lshape');
+  ok(!chk.ok&&chk.why==='overlaps another BP','rotation into an occupied cell must be refused: '+JSON.stringify(chk));
+  const r=E.rotateBP(st,'lshape');
+  ok(!r.ok,'rotateBP must also refuse (delegates to canRotateBP)');
+  eq(st,before,'state completely unchanged after a refused rotation (all-or-nothing, matches moveBP discipline)');
+});
+
+T('REQ-0045 canRotateBP: canvas -- blocked when rotation would push the shape outside canvas bounds',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  // A 1x4 horizontal bar with its origin at the top-right corner: rotating
+  // to vertical needs 4 rows downward, which fits (8 rows) -- instead
+  // place it so the rotated vertical bar would run past row 8.
+  const st={
+    linked:true,
+    bps:[{id:'bar',name:'Bar',color:'#fff',shape:[[0,0],[0,1],[0,2],[0,3]],origin:[6,1],linker:{off:[0,0],dirs:[]}}],
+    pos:[],sis:[],
+  };
+  const chk=E.canRotateBP(st,'bar');
+  ok(!chk.ok&&chk.why==='outside canvas','rotating a 4-long bar from row 6 would run to row 9, past ROWS=8: '+JSON.stringify(chk));
+});
+
+T('REQ-0045 invRotateBP: inventory page -- same math as canvas, contained PO travels, free-item occupancy excludes the BP\'s OWN contents',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={
+    linked:true,bps:[],pos:[],sis:[],
+    inv:{pages:[
+      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+       pos:[{uid:'ip1',id:'test_po',loc:'grid',cell:[4,3],rot:0}],sis:[],tms:[]},
+      {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},
+    ],names:['1','2','3','4','5']},
+  };
+  const chk=E.invCanRotateBP(st,0,'inv_l');
+  ok(chk.ok,'unobstructed inventory rotation must be legal (BP OWN contained PO must not self-block): '+JSON.stringify(chk));
+  const r=E.invRotateBP(st,0,'inv_l');
+  ok(r.ok,'inventory rotation commit succeeds');
+  const bp=st.inv.pages[0].bps[0];
+  eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'inventory BP shape rotates identically to the canvas math');
+  eq(bp.linker.dirs,[2,4],'inventory linker dirs rotate +2 mod 8 identically');
+  const po=st.inv.pages[0].pos.find(p=>p.uid==='ip1');
+  eq(po.cell,[3,2],'inventory contained PO cell remapped identically');
+  eq(po.rot,1,'inventory contained PO rot advances identically');
+});
+
+T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-placed PO (occupancy check still applies to non-owned items)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={
+    linked:true,bps:[],pos:[],sis:[],
+    inv:{pages:[
+      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[0,0],dirs:[]}}],
+       // Foreign free PO sitting exactly on a cell the rotated footprint needs (absolute (2,4), per the shape-rotation math above).
+       pos:[{uid:'foreign',id:'test_po',loc:'grid',cell:[2,4],rot:0}],sis:[],tms:[]},
+      {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},
+    ],names:['1','2','3','4','5']},
+  };
+  const before=JSON.parse(JSON.stringify(st));
+  const chk=E.invCanRotateBP(st,0,'inv_l');
+  ok(!chk.ok&&chk.why==='overlaps free-placed item','a genuinely foreign free PO must still block rotation: '+JSON.stringify(chk));
+  const r=E.invRotateBP(st,0,'inv_l');
+  ok(!r.ok,'commit refused too');
+  eq(st,before,'state completely unchanged after a refused inventory rotation');
+});
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);

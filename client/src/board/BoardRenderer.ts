@@ -171,6 +171,7 @@ export class BoardRenderer {
   // Manual double-click bookkeeping (see DBLCLICK_WINDOW_MS above): last
   // pointerdown timestamp per uid, cleared once consumed or expired.
   private lastPointerDown = new Map<string, number>();
+  private lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
   private flashTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private constructor(app: Application, deps: BoardDeps) {
@@ -465,7 +466,7 @@ export class BoardRenderer {
       // SAME whole-BP-move entry point the linker-grab core (below) and
       // the empty-cell handles (further below) both call -- reused
       // verbatim, not a new drag code path.
-      badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
+      badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
       this.gBadges.addChild(badgeGlyph);
 
       // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
@@ -486,7 +487,7 @@ export class BoardRenderer {
         hit.fill({ color: '#000000', alpha: 0.001 }); // invisible but hit-testable
         hit.eventMode = 'static';
         hit.cursor = 'grab';
-        hit.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
+        hit.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
         this.gBase.addChild(hit);
       }
     }
@@ -784,7 +785,7 @@ export class BoardRenderer {
       core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_LINKER_ALPHA, width: 1 });
       core.eventMode = 'static';
       core.cursor = 'grab';
-      core.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'bp', bp.id, bp.id));
+      core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
       this.gLinkers.addChild(core);
       const linkerTexture = textures.get('icon-linker_core');
       if (linkerTexture) {
@@ -1088,6 +1089,40 @@ export class BoardRenderer {
    * identically on an inventory board via this.deps.ops.rotatePO
    * (invRotatePO), REQ-0030 spec item 3: "rotate with dblclick works in
    * inventory too". */
+  /** pointerdown on a BP's move-handle badge, an empty BP cell, or its
+   * linker core -- REQ-0045 (a2) double-click vs drag disambiguation,
+   * mirroring handlePOPointerDown's own manual dblclick-window bookkeeping
+   * exactly (Pixi has no native dblclick event). A second pointerdown for
+   * the SAME bpId within DBLCLICK_WINDOW_MS, whose first click never armed
+   * a drag, rotates the BP in place via ops.canRotateBP/rotateBP (canvas)
+   * or invCanRotateBP/invRotateBP (inventory, via BoardOps's ROTATE
+   * indirection -- see boardOps.ts). Uses lastBPPointerDown (a SEPARATE
+   * map from PO's own lastPointerDown -- see that field's doc) so a BP id
+   * and a PO uid sharing the same literal string can never cross-trigger
+   * each other's double-click. This handler is the ONE place all three
+   * BP-drag entry points (move-handle badge, empty-cell handles, linker
+   * core) route through -- POs keep their OWN separate dblclick handling
+   * (handlePOPointerDown) entirely untouched, so a click landing on a PO
+   * that happens to sit on top of a BP cell is never intercepted here
+   * (call sites only wire this handler to BP-only hit areas: the badge,
+   * empty cells with no PO, and the linker core circle, never a PO's own
+   * sprite/hit-shape). */
+  private handleBPPointerDown(e: FederatedPointerEvent, bpId: string): void {
+    if (getCarry()) return;
+    const now = performance.now();
+    const last = this.lastBPPointerDown.get(bpId);
+    this.lastBPPointerDown.delete(bpId);
+    if (last !== undefined && now - last <= DBLCLICK_WINDOW_MS) {
+      const { ops } = this.deps;
+      const r = ops.rotateBP(this.lastState!, bpId);
+      if (r.ok) notifyStateChanged();
+      else this.flash(r.cells);
+      return;
+    }
+    this.lastBPPointerDown.set(bpId, now);
+    this.beginDrag(e, 'bp', bpId, bpId);
+  }
+
   private handlePOPointerDown(
     e: FederatedPointerEvent,
     p: PO,

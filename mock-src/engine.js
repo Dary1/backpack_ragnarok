@@ -171,6 +171,148 @@ function create(ITEMS,SI_DEFS,layout,trees){
     for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
     return {ok:true};
   }
+
+  // ---------------------------------------------------------------------
+  // BP rotation (REQ-0045 a2) -- a genuine PHYSICAL 90-degree-CW rotation
+  // of the whole BP (shape + linker + every contained PO), triggered by
+  // double-click on the BP's move-handle badge or an empty BP cell (POs
+  // keep their own existing dblclick-rotate behavior, see client-side
+  // rotate.ts wiring -- this is engine-level geometry only).
+  //
+  // computeRotatedBP(bp, containedPOs): PURE function, no state mutation,
+  // no legality check -- returns the CANDIDATE new shape/linker/PO layout
+  // as if the rotation were applied, for the caller (canRotateBP/
+  // invCanPlaceBP-style legality wrapper) to test before committing. Both
+  // the canvas (rotateBP) and inventory (invRotateBP) paths below share
+  // this one function, exactly like moveBP/invMoveBP already share the
+  // same dr/dc-shift arithmetic pattern -- only the container/legality
+  // plumbing differs between canvas and inventory, never the geometry.
+  //
+  // Rotation math, precisely:
+  //   - bp.shape is a set of [dr,dc] OFFSETS from bp.origin (same
+  //     convention rotOffsets() uses for PO shapes). Rotating the BP 90
+  //     degrees CW about its own bounding box uses the EXACT SAME
+  //     transform rotOffsets applies per step: [r,c] -> [c,-r] (this is
+  //     the standard 2D rotate-90-CW-about-origin matrix [[0,1],[-1,0]]
+  //     applied to a [row,col] pair, matching engine.js's own [row,col]
+  //     axis convention: row increases downward, col increases
+  //     rightward, so a CW rotation swaps roles with a sign flip on the
+  //     row half). After transforming every offset, the result is
+  //     renormalized (subtract the new min row/col from every offset)
+  //     so the smallest offset is back at [0,0] -- IDENTICAL to
+  //     rotOffsets' own renormalization step -- which keeps bp.origin
+  //     meaningful as "the shape's own top-left" after rotation, exactly
+  //     as it was before.
+  //   - The linker's own off:[dr,dc] cell lives in the SAME local
+  //     coordinate space as the shape offsets (it's relative to
+  //     bp.origin too, per linkerCell()'s own `[bp.origin[0]+off[0],
+  //     bp.origin[1]+off[1]]`), so it goes through the IDENTICAL
+  //     transform+renormalization -- using the SAME renormalization
+  //     delta the shape computed (not a separately-computed one), since
+  //     the linker's off must stay expressed against the SAME new
+  //     origin the rotated shape now uses.
+  //   - Each contained PO's own rot field increments by 1 (mod 4) --
+  //     REUSING rotatePO's own "+1 mod 4" convention exactly (a PO's rot
+  //     is a 4-valued 90-degree-step field; physically rotating the BP
+  //     it sits in rotates the PO the same 90 degrees, so its own
+  //     orientation field advances by exactly one step too, the same
+  //     amount the BP itself just turned).
+  //   - Each contained PO's own cell is remapped: first expressed as a
+  //     LOCAL offset from the OLD bp.origin (cell-origin), then run
+  //     through the SAME [r,c]->[c,-r] transform + the SAME
+  //     renormalization delta the shape used, then re-anchored to the
+  //     (unchanged) bp.origin -- since the BP's origin point itself does
+  //     not move during a rotation (only the shape/contents rotate
+  //     AROUND it), contained POs end up at
+  //     origin + rotatedLocalOffset, exactly mirroring how bpCells()
+  //     itself derives absolute cells from bp.origin + bp.shape offsets.
+  //   - Linker DIRS rotate by +2 (mod 8): DIRS is an 8-point compass
+  //     (0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW, see traceBeams' own DIRS
+  //     table), each step = 45 degrees. A 90-degree rotation is exactly
+  //     2 such 45-degree steps, so a beam direction shifts by exactly
+  //     +2 (mod 8) under a 90-degree CW turn -- verified consistent with
+  //     the SAME [r,c]->[c,-r] transform above: DIRS[0]=[-1,0] (N)
+  //     transforms to [0,1], which is DIRS[2] (E) -- exactly dir 0+2,
+  //     confirming +2 mod 8 is not an independent convention invented
+  //     for this REQ but the same rotation matrix already governing
+  //     shape/PO rotation, applied to the compass table.
+  function rotateOffsetCW(off){
+    return off.map(([r,c])=>[c,-r]);
+  }
+  function computeRotatedBP(bp,containedPOs){
+    const rotatedShape=rotateOffsetCW(bp.shape);
+    const mr=Math.min(...rotatedShape.map(o=>o[0])),mc=Math.min(...rotatedShape.map(o=>o[1]));
+    const newShape=rotatedShape.map(([r,c])=>[r-mr,c-mc]);
+    const [lr,lc]=rotateOffsetCW([bp.linker.off])[0];
+    const newLinkerOff=[lr-mr,lc-mc];
+    const newDirs=bp.linker.dirs.map(d=>(d+2)%8);
+    const newPOs=containedPOs.map(p=>{
+      const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
+      const [rr,rc]=rotateOffsetCW([localOld])[0];
+      const newLocal=[rr-mr,rc-mc];
+      return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4};
+    });
+    return {shape:newShape,linkerOff:newLinkerOff,dirs:newDirs,pos:newPOs};
+  }
+  // canRotateBP(st,bpId): legality for rotating bpId 90 degrees CW IN
+  // PLACE on the canvas (origin unchanged, only shape/linker/contents
+  // rotate). Uses the SAME canPlaceCells() occupancy/bounds/Dead-Space
+  // check every other canvas placement query uses, fed the ROTATED
+  // absolute cells instead of a translated set -- exclUids covers the BP
+  // itself's own contained POs (they are moving/rotating WITH the BP,
+  // never a collision against themselves), matching moveBP's own
+  // poInBP-derived exclusion. A BP with no contents rotates freely as
+  // long as its own rotated footprint still fits (bounds + no overlap
+  // with another BP's cells, since Dead-Space is DEFINED as "outside
+  // every BP's footprint" and the rotating BP's own footprint still
+  // covers its own linker-check the same way placement does).
+  function canRotateBP(st,bpId){
+    const bp=bpById(st,bpId);
+    if(!bp)return {ok:false,cells:[],why:'no such BP'};
+    const inside=st.pos.filter(p=>poInBP(st,p,bp));
+    const rotated=computeRotatedBP(bp,inside);
+    const newCells=rotated.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
+    const others=new Set();
+    for(const ob of st.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCells(ob))others.add(key(r,c));}
+    for(const [r,c] of newCells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside canvas'};
+      if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+    }
+    // Contained POs must ALSO still fit within the rotated shape's own
+    // cells (their own shape/rot may no longer fit the rotated BP's new
+    // footprint at their remapped cell -- e.g. a PO near the rotated
+    // shape's new edge could fall outside it). Reuses canPlaceCells'
+    // Dead-Space semantics against a TEMPORARY view of the BP with its
+    // rotated shape, so a PO landing outside the rotated footprint is
+    // correctly refused exactly like any other out-of-BP placement.
+    const tmpCellBP={};
+    for(const [r,c] of newCells)tmpCellBP[key(r,c)]=bp.id;
+    for(const rp of rotated.pos){
+      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[rp.cell[0]+r,rp.cell[1]+c]);
+      for(const [r,c] of poCells){
+        if(!tmpCellBP[key(r,c)])return {ok:false,cells:newCells,why:'contained PO would fall outside the rotated shape'};
+      }
+    }
+    return {ok:true,cells:newCells,rotated,inside};
+  }
+  // rotateBP(st,bpId): commits canRotateBP's candidate rotation -- shape,
+  // linker off+dirs, and every contained PO's cell+rot all update
+  // atomically (either the whole rotation applies, or -- on illegality --
+  // nothing changes at all, same all-or-nothing discipline moveBP uses).
+  function rotateBP(st,bpId){
+    const chk=canRotateBP(st,bpId);
+    if(!chk.ok)return chk;
+    const bp=bpById(st,bpId);
+    bp.shape=chk.rotated.shape;
+    bp.linker.off=chk.rotated.linkerOff;
+    bp.linker.dirs=chk.rotated.dirs;
+    for(const rp of chk.rotated.pos){
+      const p=poByUid(st,rp.uid);
+      p.cell=rp.cell;p.rot=rp.rot;
+    }
+    return {ok:true};
+  }
+
   function assembly(st){
     const b=st.pos.find(p=>p.id==='blade'&&p.loc==='grid');
     const h=st.pos.find(p=>p.id==='hilt'&&p.loc==='grid');
@@ -978,6 +1120,57 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const dr=origin[0]-bp.origin[0],dc=origin[1]-bp.origin[1];
     bp.origin=origin;
     for(const p of inside)p.cell=[p.cell[0]+dr,p.cell[1]+dc];
+    return {ok:true};
+  }
+
+  // invCanRotateBP/invRotateBP (REQ-0045 a2): the inventory-page twin of
+  // canRotateBP/rotateBP, mirroring invCanPlaceBP/invMoveBP's own
+  // "same math, container/legality wired for a page instead of the
+  // canvas" pattern. Legality here also needs invOccupancy's free-
+  // placed-PO/SI check (a page can hold items that never sit inside any
+  // BP at all, unlike canvas) -- exactly the same free-item concern
+  // invCanPlaceBP already accounts for. The rotating BP's OWN contained
+  // POs are excluded from that occupancy test (they travel/rotate WITH
+  // it), same exclUids discipline invMoveBP uses (and the SAME one bug
+  // (a)'s fix taught: never omit this exclusion at any BP-rotation/move
+  // call site, canvas or inventory).
+  function invCanRotateBP(st,pg,bpId){
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    if(!bp)return {ok:false,cells:[],why:'no such BP'};
+    const inside=container.pos.filter(p=>poInBPIn(p,bp));
+    const rotated=computeRotatedBP(bp,inside);
+    const newCells=rotated.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
+    const others=new Set();
+    for(const ob of container.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
+    const occ=invOccupancy(container,inside.map(p=>p.uid));
+    for(const [r,c] of newCells){
+      if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside page'};
+      if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
+      if(occ[key(r,c)])return {ok:false,cells:newCells,why:'overlaps free-placed item'};
+    }
+    const tmpCellBP={};
+    for(const [r,c] of newCells)tmpCellBP[key(r,c)]=bp.id;
+    for(const rp of rotated.pos){
+      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[rp.cell[0]+r,rp.cell[1]+c]);
+      for(const [r,c] of poCells){
+        if(!tmpCellBP[key(r,c)])return {ok:false,cells:newCells,why:'contained PO would fall outside the rotated shape'};
+      }
+    }
+    return {ok:true,cells:newCells,rotated,inside};
+  }
+  function invRotateBP(st,pg,bpId){
+    const chk=invCanRotateBP(st,pg,bpId);
+    if(!chk.ok)return chk;
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    bp.shape=chk.rotated.shape;
+    bp.linker.off=chk.rotated.linkerOff;
+    bp.linker.dirs=chk.rotated.dirs;
+    for(const rp of chk.rotated.pos){
+      const p=container.pos.find(z=>z.uid===rp.uid);
+      p.cell=rp.cell;p.rot=rp.rot;
+    }
     return {ok:true};
   }
 
@@ -1997,11 +2190,11 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
   }
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
-          canPlacePO,movePO,rotatePO,canMoveBP,moveBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
+          canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
-          pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,poInBPIn,cellsOfIn,cellBPMapIn,
+          pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,poInBPIn,cellsOfIn,cellBPMapIn,
           invOccupancy,canTransferBP,transferBP,migrateState,
           // Preset model (REQ-0031 Phase B) -- additive exports only.
           PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,

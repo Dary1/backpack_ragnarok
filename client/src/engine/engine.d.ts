@@ -290,6 +290,17 @@ export interface EngineInstance {
   rotatePO: (st: GameState, uid: string) => { ok: boolean; why?: string; cells?: Cell[] };
   canMoveBP: (st: GameState, bpId: string, origin: Cell) => PlacementCheck;
   moveBP: (st: GameState, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** REQ-0045 (a2): legality for rotating `bpId` 90 degrees CW IN PLACE
+   * (origin unchanged; shape/linker/contained-PO layout all rotate about
+   * the BP's own bounding box). See mock-src/engine.js's computeRotatedBP
+   * doc comment for the exact transform ([r,c]->[c,-r] + renormalize,
+   * same matrix rotOffsets uses for PO shapes; linker dirs shift +2 mod
+   * 8; contained PO rot advances +1 mod 4). */
+  canRotateBP: (st: GameState, bpId: string) => PlacementCheck;
+  /** Mutates: commits canRotateBP's candidate rotation atomically (shape,
+   * linker off+dirs, every contained PO's cell+rot) -- all-or-nothing,
+   * same discipline as moveBP. */
+  rotateBP: (st: GameState, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
   poInBP: (st: GameState, p: PO, bp: BP) => boolean;
 
   assembly: (st: GameState) => Assembly | null;
@@ -371,6 +382,15 @@ export interface EngineInstance {
    * container transfer -- see canTransferBP/transferBP for that). Contents
    * (POs fully inside the BP) shift by the same dr/dc, same as moveBP. */
   invMoveBP: (st: GameState, pg: number, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** REQ-0045 (a2): the inventory-page twin of canRotateBP -- same
+   * rotation math, plus the page's own free-placed-PO/SI occupancy check
+   * (invCanPlaceBP's own concern), excluding the rotating BP's OWN
+   * contained POs (bug (a)'s fix: never omit this exclusion at any BP
+   * move/rotate legality call site, canvas or inventory). */
+  invCanRotateBP: (st: GameState, pg: number, bpId: string) => PlacementCheck;
+  /** Mutates: commits invCanRotateBP's candidate rotation atomically,
+   * same all-or-nothing discipline as invMoveBP/rotateBP. */
+  invRotateBP: (st: GameState, pg: number, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
   /** True if PO `p` (already page-local) is fully contained within BP
    * `bp`'s footprint (both from the SAME page's arrays). Container-
    * independent shape math, callable with any {bps,pos,sis}-shaped page. */
