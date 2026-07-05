@@ -1194,7 +1194,17 @@ async function main() {
 
     const wh = await scheduleReq('GET', '/api/warehouse', scheduleP1.token);
     assert.strictEqual(wh.status, 200);
-    assert.strictEqual(wh.body.items.length, 2, 'both encounters (pack + boss) award one reward item each in this fixture dungeon');
+    // REQ-0042: a victorious run now ALSO drops a single aggregate LRDST
+    // reward row (kind:'tm', qty>0) alongside the 2 item rewards -- 3
+    // rows total in this fixture dungeon (1 pack + 1 boss item reward,
+    // plus 1 lrdst row covering both encounters' LRDST rolls).
+    assert.strictEqual(wh.body.items.length, 3, 'both encounters (pack + boss) award one reward item each, PLUS one aggregate LRDST reward row (REQ-0042)');
+    const lrdstRows = wh.body.items.filter((i) => i.kind === 'tm' && i.itemId === 'lrdst');
+    assert.strictEqual(lrdstRows.length, 1, 'exactly one aggregate LRDST reward row for the whole run');
+    assert.ok(lrdstRows[0].qty > 0, 'LRDST reward row carries a positive qty: ' + JSON.stringify(lrdstRows[0]));
+    // Range sanity: 1 non-boss (pack) encounter [1-3] + 1 boss encounter
+    // [5-10] cleared in this fixture dungeon -> total in [1+5, 3+10] = [6,13].
+    assert.ok(lrdstRows[0].qty >= 6 && lrdstRows[0].qty <= 13, 'LRDST qty within the expected combined pack+boss range: got ' + lrdstRows[0].qty);
     for (const item of wh.body.items) {
       assert.ok(item.harvestedAt, 'harvestedAt present');
       assert.ok(item.expiresAt, 'expiresAt present');

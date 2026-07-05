@@ -117,6 +117,19 @@ const TUNABLES = {
   // list length, EXCLUDING the boss (boss is "pinned at 100%" per S8.2,
   // i.e. it is the entry that brings progress to exactly 100).
   // See computeEncounterDeltas() below for the exact algorithm.
+
+  // REQ-0042: LRDST (Transmutator currency) drop range per cleared
+  // encounter -- uniform-random within range, matching
+  // distributeRewardsUniform's own uniform-random reward-distribution
+  // shape (no existing reward roll in this file uses a different
+  // distribution, so uniform is the consistent choice here too, per the
+  // REQ's own "uniform is fine unless existing reward rolls use a
+  // different distribution shape" guidance). Non-boss encounters roll
+  // LOW (a small trickle per room cleared); the boss (the "clear the
+  // dungeon" capstone encounter) rolls the HIGH range as a larger
+  // lump-sum finishing bonus.
+  LRDST_DROP_NON_BOSS_RANGE: [1, 3],
+  LRDST_DROP_BOSS_RANGE: [5, 10],
 };
 
 // =====================================================================
@@ -1376,6 +1389,8 @@ function runDungeon(opts) {
   let progressPct = 0;
   let runResult = 'in_progress';
   const rewardsAccrued = [];
+  let lrdstAccrued = 0; // REQ-0042: total LRDST rolled across every cleared encounter this run
+  const lrdstStream = rng.stream('rewards/lrdst-qty');
 
   allEvents.push({ t: 0, seq: seq++, ev: 'progress', enc: -1, pct: 0 });
 
@@ -1398,6 +1413,18 @@ function runDungeon(opts) {
       progressPct = targetPct;
       allEvents.push({ t: encResult.events.length ? encResult.events[encResult.events.length - 1].t : 0, seq: seq++, ev: 'progress', enc: i, pct: progressPct });
       if (encDef.rewardItems && encDef.rewardItems.length) rewardsAccrued.push(...encDef.rewardItems);
+      // REQ-0042: LRDST drop for this cleared encounter -- boss gets the
+      // HIGH range (a bigger capstone bonus), every other cleared
+      // encounter gets the LOW range. Uniform-random within range, same
+      // seeded RNG instance already threaded through this whole
+      // function (own named sub-stream so it can never desync any other
+      // roll, same "independent named sub-streams" discipline every
+      // other roll in this file already follows).
+      {
+        const lrdstRange = encDef.type === 'boss' ? TUNABLES.LRDST_DROP_BOSS_RANGE : TUNABLES.LRDST_DROP_NON_BOSS_RANGE;
+        const lrdstQty = Math.round(lrdstStream.range(lrdstRange[0], lrdstRange[1]));
+        lrdstAccrued += lrdstQty;
+      }
       if (encDef.type === 'door' && encResult.result === 'clear') {
         // Shortcut: solved hidden door applies +J% (S8.3), a ranged
         // tunable resolved via the "shortcut" sub-stream (see TUNABLES
@@ -1440,12 +1467,20 @@ function runDungeon(opts) {
   }
 
   const rewardAssignments = (runResult === 'wipe') ? [] : distributeRewardsUniform(rewardsAccrued, participants, rng);
+  // REQ-0042: a wipe grants NO LRDST either -- same "wipe = nothing else"
+  // rule golden i already applies to item rewards (see settleRun's own
+  // comment in server/schedule.cjs), applied consistently to the new
+  // currency drop. LRDST accrued while progressing through encounters
+  // BEFORE the eventual wipe is discarded, not partially banked -- this
+  // mirrors rewardsAccrued's own handling (rewardAssignments is forced
+  // to [] on a wipe regardless of what was pushed during the run).
+  const lrdstReward = (runResult === 'wipe') ? 0 : lrdstAccrued;
 
   allEvents.push({ t: 0, seq: seq++, ev: 'run_end', result: runResult, final_pct: progressPct, party_bp_hp: allBps.map(b => b.hp), H });
 
   return {
     events: allEvents, finalProgressPct: progressPct, result: runResult,
-    rewards: rewardAssignments, cooldownSecs, level: newLevel, H,
+    rewards: rewardAssignments, lrdstReward, cooldownSecs, level: newLevel, H,
     bps: allBps, // exposed so tests can assert attrition/HP directly
   };
 }

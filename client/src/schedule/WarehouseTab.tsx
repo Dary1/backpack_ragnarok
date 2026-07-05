@@ -40,6 +40,7 @@ import {
 } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { setInventorySlot } from '../board/inventorySlot';
+import type { EngineInstance, GameState } from '../engine/engine.d.ts';
 import { friendlyScheduleError, isApiErrorStatus } from './errors';
 import { formatCountdown } from './RoomCard';
 import { t } from '../i18n';
@@ -80,6 +81,61 @@ function itemKindOf(content: ApiContentPayload | null, itemId: string): 'po' | '
 interface PlacementResult {
   page: number;
   cell: [number, number];
+}
+
+/**
+ * REQ-0042: claiming a TM warehouse row (kind:'tm', e.g. an LRDST
+ * reward/grant) merges into an EXISTING matching-id inventory stack if
+ * one exists ANYWHERE on `openPage`, otherwise first-fit-CREATES a new
+ * stack -- reusing engine.js's tmMove/tmCanPlace (the SAME merge-on-
+ * same-id-drop logic the engine's own drag-and-drop TM handling uses,
+ * see mock-src/engine.js's TM model comment for the merge/uid-survivor
+ * design). Tries `openPage` first, then every other page in ascending
+ * order, exactly like firstFitPlace's po/si branches -- but the SCAN
+ * itself is simpler here: rather than probing every cell for a legal
+ * spot, this walks the page's EXISTING tms[] stacks first (an O(stacks)
+ * check, since a same-id stack merge is legal from ANY of its own
+ * cells -- tmCanPlace's mergeInto branch fires the moment the anchor
+ * cell matches an existing same-id stack's OWN cell) before falling back
+ * to the same row-major empty-cell scan invCanPlaceSI/invCanPlacePO use
+ * (via tmCanPlace, which already implements that exact 1x1/BP-overlap/
+ * occupancy rule -- see commit (b)).
+ */
+function firstFitOrMergeTM(
+  engine: EngineInstance,
+  state: GameState,
+  uid: string,
+  itemId: string,
+  qty: number,
+  openPage: number,
+  pageCount: number
+): PlacementResult | null {
+  const pageOrder = [openPage, ...Array.from({ length: pageCount }, (_, i) => i).filter((i) => i !== openPage)];
+  for (const pg of pageOrder) {
+    const container = state.inv!.pages[pg];
+    // Existing-stack merge check: any same-id stack on this page is a
+    // legal merge target from its OWN cell (tmCanPlace's mergeInto path).
+    const existingStack = container.tms.find((t) => t.id === itemId);
+    if (existingStack) {
+      const chk = engine.tmMove(state, pg, uid, existingStack.cell, itemId, qty);
+      if (chk.ok) return { page: pg, cell: existingStack.cell };
+    }
+    // No mergeable stack on this page -- first-fit a NEW stack via the
+    // same row-major scan firstFitPlace's po/si branches use, just
+    // against tmCanPlace/tmMove.
+    let found: [number, number] | null = null;
+    for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
+      for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
+        const chk = engine.tmCanPlace(state, pg, uid, [r, c]);
+        if (chk.ok) found = [r, c];
+      }
+    }
+    if (found) {
+      const mv = engine.tmMove(state, pg, uid, found, itemId, qty);
+      if (mv.ok) return { page: pg, cell: found };
+    }
+  }
+  return null;
 }
 
 /** Client-side first-fit placement for a claimed item -- mirrors the
@@ -252,9 +308,17 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
       // server/schedule.cjs's claimWarehouseItem doc for why this is
       // what makes server-side finalization on the next profile save
       // exact rather than a fuzzy itemId-based heuristic).
-      const kind = itemKindOf(content, claimed.itemId);
+      // REQ-0042: a TM-kind row (claimed.kind==='tm', e.g. an LRDST
+      // reward/grant) takes a DIFFERENT placement path -- merge into an
+      // existing matching-id stack if one exists, otherwise first-fit a
+      // new stack (see firstFitOrMergeTM's own doc above) -- rather than
+      // firstFitPlace's plain po/si first-fit (which has no merge
+      // concept at all).
+      const kind = claimed.kind === 'tm' ? 'tm' : itemKindOf(content, claimed.itemId);
       const openPage = snapshot.activeInvPage;
-      const placed = firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
+      const placed = kind === 'tm'
+        ? firstFitOrMergeTM(engine, state, claimed.itemUid, claimed.itemId, claimed.qty ?? 1, openPage, engine.PAGE_COUNT)
+        : firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
 
       if (!placed) {
         // No space anywhere -- per the REQ's own accepted design, leave
@@ -275,6 +339,8 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
       // the seam here, per the REQ-0041 Pixi-instance reuse decision).
       const renderer = getInventoryRenderer();
       const cells = kind === 'po' ? engine.cellsOfIn(state.inv.pages[placed.page].pos.find((p) => p.uid === claimed.itemUid)!) : [placed.cell];
+      // (kind 'si' and 'tm' both fall through to the [placed.cell]
+      // branch above -- both are always exactly 1x1, same as an SI.)
       // Only pulse if the placement landed on the CURRENTLY-DISPLAYED
       // page -- pulseCellsSuccess draws into gTarget, which always
       // reflects whatever page InventoryBoard.tsx's own ops-swap effect

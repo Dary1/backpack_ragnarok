@@ -261,6 +261,33 @@ export async function boot(): Promise<void> {
   const gameData = resolved.gameData;
   const engine = Engine.create(gameData.ITEMS, gameData.SI_DEFS, gameData.LAYOUT, gameData.TREES);
   const state = engine.migrateState(gameData.makeState());
+
+  // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when
+  // resolveGameData() reported this profile as genuinely fresh (GET
+  // .../canvas 404'd, no saved profile existed at all). This can only
+  // ever fire ONCE per player in practice: the very first successful
+  // auto-save after this makes canvasDoc.canvas truthy forever after, so
+  // every subsequent boot() call for the same player takes the OTHER
+  // branch and never re-seeds (no risk of silently topping up an
+  // existing profile on every reload). The dev player already has a
+  // saved profile from long before this REQ existed, so this branch
+  // never fires for them either -- their 999x grant is a SEPARATE,
+  // explicit one-time operational action via the warehouse (see REQ-0042
+  // commit (e)'s report), never this automatic client-side seed. Placed
+  // on inventory page 0 via engine.tmMove's idIfNew/qtyIfNew mint path
+  // (same function the gacha roll's finalize-side merge uses) rather
+  // than hand-constructing a {uid,id,qty,cell} literal, so the seed goes
+  // through the SAME legality/collision checks (tmCanPlace) any other TM
+  // placement does -- on a truly fresh page (freshly emptyInventory()'d
+  // by migrateState above) cell [1,1] is always free, so this cannot
+  // fail in practice, but routing through the real engine API rather
+  // than a raw push keeps this seed subject to the same invariants as
+  // everything else instead of being a special-cased bypass.
+  if (resolved.isFreshProfile && state.inv) {
+    const seedUid = 'lrdst_starter_' + Math.random().toString(36).slice(2, 10);
+    engine.tmMove(state, 0, seedUid, [1, 1], 'lrdst', 100);
+  }
+
   setSnapshot({
     ...snapshot,
     status: 'ready',

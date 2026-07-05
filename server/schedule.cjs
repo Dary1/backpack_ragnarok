@@ -539,6 +539,7 @@ function startRun(room, profileCanvas) {
     result: result.result, // 'victory' | 'wipe' | 'incomplete'
     finalProgressPct: result.finalProgressPct,
     rewards: result.rewards, // [{item, participant}] per distributeRewardsUniform
+    lrdstReward: result.lrdstReward || 0, // REQ-0042: total LRDST rolled this run (0 on wipe)
     cooldownSecs: result.cooldownSecs,
     levelAfter: result.level, // wipe -> level-1 (floored); else unchanged
     H: result.H,
@@ -582,6 +583,25 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
         sourceRoomId: room.id, sourceRunId: run.id,
       };
       addToWarehouse(assignment.owner, doc);
+    }
+    // REQ-0042: LRDST reward -- lands in the warehouse as ONE qty-bearing
+    // TM row for the room owner (solo scope: the sole participant is
+    // always room.ownerId, same as the item-reward loop above uses
+    // assignment.owner per-item; LRDST is a single aggregate drop for
+    // the whole run rather than a per-encounter warehouse row, since
+    // stacking multiple tiny qty rows would just immediately merge on
+    // claim anyway -- see the TM claim-merge behavior below). Skipped
+    // entirely when lrdstReward is 0 (a wipe, or -- defensively -- an
+    // older run doc from before this field existed).
+    if (run.lrdstReward > 0) {
+      const itemUid = genId('wh');
+      const doc = {
+        itemUid, playerId: room.ownerId, itemId: 'lrdst', qty: run.lrdstReward,
+        kind: 'tm',
+        harvestedAt: now, expiresAt: new Date(Date.now() + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: room.id, sourceRunId: run.id,
+      };
+      addToWarehouse(room.ownerId, doc);
     }
   }
   // wipe: golden i "nothing else" -- no rewards, no other side effect
@@ -838,7 +858,7 @@ function listWarehouse(playerId) {
 // reverse-direction ban, generalized here even ahead of P3 trade -- there
 // is simply no function that moves an item from a home back into a
 // warehouse row).
-function claimWarehouseItem(playerId, itemUid, itemDefsById) {
+function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById) {
   purgeExpiredWarehouseItems(playerId); // also normalizes/reverts stale 'claiming' rows (see normalizeWarehouseStatus above)
   const item = storage.readWarehouseItem(playerId, itemUid);
   if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
@@ -846,14 +866,24 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById) {
     const err = new Error('warehouse item is already being claimed'); err.code = 'CONFLICT'; throw err;
   }
 
-  const itemDef = itemDefsById[item.itemId];
-  if (!itemDef) { const err = new Error('claimed item references an unknown content item id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
+  // REQ-0042: a TM-kind row (kind:'tm', e.g. an LRDST reward/grant)
+  // validates against tmDefsById instead of itemDefsById -- everything
+  // else about the two-phase claim mechanism (mark 'claiming', return
+  // WITHOUT touching the profile, finalize on the next PUT containing
+  // the reused uid) is identical between kinds.
+  if (item.kind === 'tm') {
+    const tmDef = (tmDefsById || {})[item.itemId];
+    if (!tmDef) { const err = new Error('claimed item references an unknown tm id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
+  } else {
+    const itemDef = itemDefsById[item.itemId];
+    if (!itemDef) { const err = new Error('claimed item references an unknown content item id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
+  }
 
   item.status = 'claiming';
   item.claimedAt = new Date().toISOString();
   storage.writeWarehouseItem(playerId, itemUid, item);
 
-  return { itemUid, itemId: item.itemId };
+  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty };
 }
 
 // finalizeClaimingItemsForCanvas (REQ-0041): called by server/api.cjs's

@@ -839,9 +839,13 @@ function handle(req, res) {
           // itemUid, which the client reuses as the new inventory
           // PO/SI's own uid) so the CLIENT can place it via the engine
           // itself, through the app's one auto-save choke point.
-          const { itemDefsById } = schedule.getScheduleContent();
-          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById);
-          sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId });
+          const { itemDefsById, tmDefsById } = schedule.getScheduleContent();
+          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById);
+          // REQ-0042: echo kind/qty too (undefined for a plain PO/SI row,
+          // 'tm'/a number for a TM-kind row) so the client can dispatch
+          // to the correct placement path (engine PO/SI first-fit vs.
+          // TM place-or-merge).
+          sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId, kind: result.kind, qty: result.qty });
         } catch (e) { sendScheduleError(e); }
       });
       return;

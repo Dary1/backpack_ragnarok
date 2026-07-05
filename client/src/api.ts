@@ -370,6 +370,17 @@ export interface ResolvedGameData {
   source: DataSource;
   gameData: GameData | null;
   error?: string;
+  /** REQ-0042: true iff GET /api/profile/:id/canvas 404'd (no saved
+   * canvas existed for this player yet) -- i.e. this is a GENUINELY
+   * fresh profile, never saved before. store.ts's boot() uses this
+   * (and ONLY this -- never re-checked on any later boot, since a
+   * fresh profile's first save makes canvasDoc.canvas truthy forever
+   * after) to seed a one-time starter LRDST stack, exactly once, on a
+   * brand new profile -- see boot()'s own comment for why this is the
+   * correct, safe hook (never re-fires for an existing save, including
+   * the dev player's, which already has a saved profile from long
+   * before this REQ existed). */
+  isFreshProfile: boolean;
 }
 
 /**
@@ -398,9 +409,9 @@ export async function resolveGameData(profileId: string): Promise<ResolvedGameDa
       const canvas = canvasDoc.canvas;
       gameData.makeState = () => JSON.parse(JSON.stringify(canvas));
     }
-    return { source: 'live', gameData };
+    return { source: 'live', gameData, isFreshProfile: !canvasDoc?.canvas };
   } catch (e) {
-    return { source: 'error', gameData: null, error: e instanceof Error ? e.message : String(e) };
+    return { source: 'error', gameData: null, error: e instanceof Error ? e.message : String(e), isFreshProfile: false };
   }
 }
 
@@ -589,6 +600,12 @@ export interface ApiWarehouseItem {
   expiresAt: string;
   sourceRoomId: string;
   sourceRunId: string;
+  /** REQ-0042: present (and 'tm') for a TM (Transmutator)-kind row, e.g.
+   * an LRDST reward/grant -- absent for a plain PO/SI row. */
+  kind?: 'tm';
+  /** REQ-0042: TM-kind rows carry a stack quantity. Absent for a plain
+   * PO/SI row (those are always singular). */
+  qty?: number;
 }
 
 async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -712,7 +729,7 @@ export function fetchWarehouse(): Promise<{ ok: true; items: ApiWarehouseItem[] 
  * (notifyStateChanged()) persist it -- this function's job ends at
  * "the row is now claiming, here's what it is". Throws ApiError(409)
  * if the row is already claiming/gone, ApiError(404) if unknown/expired. */
-export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; itemUid: string; itemId: string }> {
+export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; itemUid: string; itemId: string; kind?: 'tm'; qty?: number }> {
   return scheduleJSON('/api/warehouse/claim', { method: 'POST', body: JSON.stringify({ itemUid }) });
 }
 

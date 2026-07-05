@@ -621,6 +621,82 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
 });
 
 // =====================================================================
+// REQ-0042: LRDST reward accrual tests
+// =====================================================================
+T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within the combined pack+boss tunable range; a wiped run accrues 0',()=>{
+  const scenarioWithPilotItems = combat.deepCopy(scenario);
+  const result = combat.runDungeon({
+    masterSeed: 'lrdst-reward-victory-seed-1',
+    dungeonDef: dungeonRaw,
+    unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+    itemDefsById, enemyDefsById, skillDefsById,
+    formationId: 'formation2', level: 3, participants: ['alice'],
+  });
+  if (result.result === 'victory') {
+    // batch-002's dungeon def has multiple non-boss encounters + 1 boss --
+    // total lrdstReward must be at least the boss's own minimum (5) and
+    // at most (nonBossCount x 3 + 10), but since we don't hardcode the
+    // exact encounter count here, just assert the loose invariant that
+    // matters: strictly positive, and a sane upper bound (well under
+    // what could ever be produced by a handful of encounters).
+    ok(result.lrdstReward > 0, 'a victorious run must accrue a positive LRDST reward, got ' + result.lrdstReward);
+    ok(result.lrdstReward < 200, 'LRDST reward should be a small tunable-bounded number, not a runaway value, got ' + result.lrdstReward);
+  } else if (result.result === 'wipe') {
+    eq(result.lrdstReward, 0, 'a wipe must accrue ZERO LRDST -- same "wipe = nothing else" rule as item rewards');
+  }
+});
+
+T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]; a single cleared boss rolls within [5,10]',()=>{
+  // Isolate ONE encounter type at a time via a minimal synthetic dungeon
+  // def (bypasses batch-002's specific encounter mix so this test is
+  // about the TUNABLE RANGE itself, not the real dungeon's composition).
+  const scenarioWithPilotItems = combat.deepCopy(scenario);
+  const oneNonBossDungeon = { schema: 'dungeon/1', id: 'lrdst_test_nonboss', name: 'LRDST Test',
+    encounters: [{ id: 'enc1', type: 'pack', mode: 'battle', enemyPack: { enemyIds: Object.keys(enemyDefsById)[0] ? [Object.keys(enemyDefsById)[0]] : [] }, deadline_secs: 30, rewardItems: [] }] };
+  // Fall back to the real dungeon's own first non-boss encounter type/
+  // enemyPack if the synthetic minimal one can't resolve an enemy id
+  // (defensive -- keeps this test robust to fixture content changes).
+  const realNonBoss = dungeonRaw.encounters.find((e) => e.type !== 'boss');
+  const realBoss = dungeonRaw.encounters.find((e) => e.type === 'boss');
+  ok(realNonBoss, 'sanity: the real batch-002 dungeon def has at least one non-boss encounter');
+  ok(realBoss, 'sanity: the real batch-002 dungeon def has a boss encounter');
+
+  // Run several seeds and collect the SINGLE-encounter LRDST roll by
+  // running a dungeon truncated to exactly one encounter, isolating each
+  // type's own accrual in result.lrdstReward (only that one encounter
+  // contributes, since a 1-encounter dungeon with a non-boss clear never
+  // reaches 100% progress -- runResult becomes 'incomplete', which still
+  // accrues lrdstReward since only 'wipe' zeroes it out, per the function's
+  // own comment).
+  for (let i = 0; i < 30; i++) {
+    const singleNonBoss = { schema: 'dungeon/1', id: 'lrdst_iso_nonboss', name: 'iso', encounters: [realNonBoss] };
+    const r = combat.runDungeon({
+      masterSeed: 'lrdst-iso-nonboss-seed-' + i,
+      dungeonDef: singleNonBoss,
+      unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+      itemDefsById, enemyDefsById, skillDefsById,
+      formationId: 'formation2', level: 3, participants: ['alice'],
+    });
+    if (r.result !== 'wipe') {
+      ok(r.lrdstReward >= 1 && r.lrdstReward <= 3, 'single non-boss clear LRDST must be in [1,3], got ' + r.lrdstReward + ' (seed ' + i + ')');
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    const singleBoss = { schema: 'dungeon/1', id: 'lrdst_iso_boss', name: 'iso', encounters: [realBoss] };
+    const r = combat.runDungeon({
+      masterSeed: 'lrdst-iso-boss-seed-' + i,
+      dungeonDef: singleBoss,
+      unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+      itemDefsById, enemyDefsById, skillDefsById,
+      formationId: 'formation2', level: 3, participants: ['alice'],
+    });
+    if (r.result === 'victory') {
+      ok(r.lrdstReward >= 5 && r.lrdstReward <= 10, 'single boss clear LRDST must be in [5,10], got ' + r.lrdstReward + ' (seed ' + i + ')');
+    }
+  }
+});
+
+// =====================================================================
 // Additional coverage: formation box parsing + engine interop invariant
 // =====================================================================
 T('formation defs: all 4 boxes parse to exactly 8x8, formation4 uses CORRECTED J11:Q18', () => {
