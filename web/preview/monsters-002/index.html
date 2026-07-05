@@ -227,6 +227,151 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
 <span lang="en">Giant spider: generated twice, and both times came back as a dramatic hero-shot scene (sky, light rays, rock walls) instead of an isolated single creature, even with explicit negative-prompt bans on "scenery, ground, cave, rock formation, environment." As a result, isnet-anime segmentation classified almost the entire image as background, leaving it nearly empty after transparency processing. This composition tendency may be specific to this concept (spider-type), not seen with any of the other monsters.</span>
 </span></div>
 
+<h2><span class="i18n"><span lang="ja">多様なモンスター候補 第2弾(見切れ対策・15体)</span><span lang="en">Diverse Monster Candidates, Round 2 (anti-cropping fix, 15 monsters)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">前回8体のうちskeletonのみ合格(理由: 見切れがない・画風も良い)、他は全て見切れが原因でNGとのフィードバックを受け、プロンプトに「全身が完全にフレーム内に収まる、余白を確保」を追加して15体を新規生成。結果: 見切れ自体は大きく改善したが、代わりに一部で新しい問題が出た — 「筋骨隆々の戦士」系の説明が、この checkpoint では劇的な一枚絵(空・岩・エネルギー効果込みの背景)を誘発しやすく、そのケースでは孤立キャラ向けのisnet-animeが背景を切り離せず、透過処理後も背景が残ったままになった(下記に⚠で明記)。skeletonのような比較的落ち着いた構図は今回も安定している。⚠の付いていないカードは見切れ・背景残りともに確認されていません。</span>
+<span lang="en">From the first batch of 8, only skeleton passed (no cropping, and the style was liked); everything else was rejected for cropping. This round adds "entire body fully contained within frame, comfortable margin" to the prompt and generates 15 new monsters. Result: cropping is much improved, but a new issue showed up instead for some — descriptions like "muscular warrior" tend to push this checkpoint toward dramatic key-art compositions (sky, rock, energy-effect backgrounds), and in those cases isnet-anime couldn't isolate a background to remove, so the background survived transparency processing (flagged with ⚠ below). Calmer, skeleton-like compositions stayed reliable this round too. Cards without a ⚠ showed no cropping or background-removal issues in spot-checking.</span>
+</span></div>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">goblin2</div>
+  <img class="card-img checker" src="variety2/goblin2.png"/>
+  <div class="card-title-ja">ゴブリン(2回目)</div>
+  <div class="card-title-en">Goblin (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600001</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 背景が除去できていません</span><span lang="en">⚠ Background did not get removed</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">orc2</div>
+  <img class="card-img checker" src="variety2/orc2.png"/>
+  <div class="card-title-ja">オーク(2回目)</div>
+  <div class="card-title-en">Orc (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600002</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 背景が除去できておらず、全身も写っていません(見切れ)</span><span lang="en">⚠ Background not removed, and not full body (cropped)</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">wolf2</div>
+  <img class="card-img checker" src="variety2/wolf2.png"/>
+  <div class="card-title-ja">ウルフ(2回目)</div>
+  <div class="card-title-en">Wolf (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600003</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 背景が除去できていません</span><span lang="en">⚠ Background did not get removed</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">lizardman2</div>
+  <img class="card-img checker" src="variety2/lizardman2.png"/>
+  <div class="card-title-ja">リザードマン(2回目)</div>
+  <div class="card-title-en">Lizardman (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600004</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">mushroom2</div>
+  <img class="card-img checker" src="variety2/mushroom2.png"/>
+  <div class="card-title-ja">マッシュルーム(2回目)</div>
+  <div class="card-title-en">Mushroom (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600005</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">giant_bat2</div>
+  <img class="card-img checker" src="variety2/giant_bat2.png"/>
+  <div class="card-title-ja">ジャイアントバット(2回目)</div>
+  <div class="card-title-en">Giant Bat (v2)</div>
+  <div class="card-tech">toonyou_beta6 · seed 600006</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">zombie</div>
+  <img class="card-img checker" src="variety2/zombie.png"/>
+  <div class="card-title-ja">ゾンビ</div>
+  <div class="card-title-en">Zombie</div>
+  <div class="card-tech">toonyou_beta6 · seed 600007</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">imp</div>
+  <img class="card-img checker" src="variety2/imp.png"/>
+  <div class="card-title-ja">インプ</div>
+  <div class="card-title-en">Imp</div>
+  <div class="card-tech">toonyou_beta6 · seed 600008</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 意匠が小悪魔というよりサキュバス寄りになっています</span><span lang="en">⚠ Design leans more succubus-like than the intended small imp</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">slime</div>
+  <img class="card-img checker" src="variety2/slime.png"/>
+  <div class="card-title-ja">スライム</div>
+  <div class="card-title-en">Slime</div>
+  <div class="card-tech">toonyou_beta6 · seed 600009</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ スライム自体ではなく「少女+ペット」のような構図になっています</span><span lang="en">⚠ Came out as a girl holding a pet rather than the slime itself</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">mummy</div>
+  <img class="card-img checker" src="variety2/mummy.png"/>
+  <div class="card-title-ja">マミー</div>
+  <div class="card-title-en">Mummy</div>
+  <div class="card-tech">toonyou_beta6 · seed 600010</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 2体になっており、背景も除去できていません</span><span lang="en">⚠ Came out as two characters, and background not removed</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">harpy</div>
+  <img class="card-img checker" src="variety2/harpy.png"/>
+  <div class="card-title-ja">ハーピー</div>
+  <div class="card-title-en">Harpy</div>
+  <div class="card-tech">toonyou_beta6 · seed 600011</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">minotaur</div>
+  <img class="card-img checker" src="variety2/minotaur.png"/>
+  <div class="card-title-ja">ミノタウロス</div>
+  <div class="card-title-en">Minotaur</div>
+  <div class="card-tech">toonyou_beta6 · seed 600012</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">cyclops</div>
+  <img class="card-img checker" src="variety2/cyclops.png"/>
+  <div class="card-title-ja">サイクロプス</div>
+  <div class="card-title-en">Cyclops</div>
+  <div class="card-tech">toonyou_beta6 · seed 600013</div>
+  
+</div>
+
+<div class="card">
+  <div class="card-num">giant_crab</div>
+  <img class="card-img checker" src="variety2/giant_crab.png"/>
+  <div class="card-title-ja">ジャイアントクラブ</div>
+  <div class="card-title-en">Giant Crab</div>
+  <div class="card-tech">toonyou_beta6 · seed 600014</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 背景が除去できておらず、カニというより鎧の人型に見えます</span><span lang="en">⚠ Background not removed, and reads more as an armored humanoid than a crab</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">stone_golem</div>
+  <img class="card-img checker" src="variety2/stone_golem.png"/>
+  <div class="card-title-ja">ストーンゴーレム</div>
+  <div class="card-title-en">Stone Golem</div>
+  <div class="card-tech">toonyou_beta6 · seed 600015</div>
+  <div class="card-note" style="color:#e08a6a"><span class="i18n"><span lang="ja">⚠ 背景が除去できていません</span><span lang="en">⚠ Background did not get removed</span></span></div>
+</div>
+
+
+</div>
+
 <h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
 <div class="note-box">
 <span class="i18n">
