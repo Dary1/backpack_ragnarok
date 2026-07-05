@@ -196,9 +196,12 @@ function resolveRewardItemId(rollId) {
 }
 
 // Engine instance factory. schedule.cjs only ever needs shapeInfo/
-// invCanPlacePO/invMovePO (warehouse claim first-fit) and
-// isUnitIndependent (deploy gate) -- never sockets/combos/beams -- so a
-// minimal 8x8-layout instance bound to the CURRENT item defs is enough.
+// invCanPlacePO/invMovePO (warehouse claim first-fit) and isUnitDeployable
+// (empty-unit gate) -- never sockets/combos/beams -- so a minimal 8x8-
+// layout instance bound to the CURRENT item defs is enough. (REQ-0045:
+// isUnitIndependent is no longer part of the deploy gate -- see
+// deployedUidSetsForGate's doc -- but this engine instance is still used
+// for it where callers want the static display/tint concept.)
 // A fresh instance per call is cheap (no heavy setup in Engine.create)
 // and safest against itemDefsById changing between calls (content hot-
 // reload, same mtime-cache convention as api.cjs's own content path).
@@ -395,20 +398,75 @@ function isUnitDeployable(engine, canvas, presetIndex) {
   return engine.isUnitDeployable(canvas, presetIndex);
 }
 
-// Every uid deployed by `playerId` across every OTHER currently-ACTIVE
-// room (status 'active', i.e. mid-run or awaiting its next auto-run) --
-// the cross-room half of golden d's gate. `excludeRoomId` lets a check
-// against the room being acted on itself skip its own already-recorded
-// deployment (re-assigning a slot within the SAME room is a same-room
-// concern, not a cross-room overlap).
-function deployedUidsForOtherActiveRooms(playerId, excludeRoomId, profileCanvas) {
+// REQ-0045 (b)+(c) deploy gate v2 -- DEPLOYED-OVERLAP, replacing
+// isUnitIndependent-as-gate entirely.
+//
+// Root cause of bug (b): the OLD gate called isUnitIndependent (engine.js)
+// as a hard blocker. isUnitIndependent is a STATIC, EDIT-TIME predicate --
+// "does this preset share ANY uid with ANY OTHER preset in the player's
+// OWN warehouse" (REQ-0033's yellow-tint concept) -- completely unrelated
+// to whether that OTHER preset's unit is actually DEPLOYED anywhere. A
+// player routinely has presets that share a spare/backup item (e.g. two
+// presets both referencing the same off-duty SI sitting unused in
+// inventory) with NO intention of ever running them simultaneously --
+// the old gate blocked deployment of EITHER preset unconditionally the
+// moment such sharing existed, regardless of whether the other preset
+// was deployed anywhere at all. Root cause of bug (c): duplicate-preset
+// detection was an ACCIDENT of the same broken check, not a real rule --
+// assigning the SAME presetIndex to two slots of the SAME room never
+// intersects that preset against "OTHER presets" (it IS the other slot's
+// preset, i==i is always skipped), so isUnitIndependent trivially passed
+// for a duplicate; conversely, 4 GENUINELY unique presets could still
+// each independently fail isUnitIndependent's check against unrelated
+// OTHER presets in the player's warehouse (e.g. preset 5, not even
+// involved in this room, sharing an item with preset 3) -- explaining
+// the exact "unique-4 refuses to start; duplicate reuse starts fine"
+// inversion the user reported: the gate was checking a completely
+// different, WRONG set (global warehouse-wide preset-vs-preset sharing)
+// instead of the only set that actually matters for a deploy decision
+// (uids currently ACTUALLY deployed elsewhere).
+//
+// New rule: a preset is assignable to a room slot iff its own uid set
+// does not intersect the uid sets of every OTHER unit CURRENTLY DEPLOYED
+// -- meaning assigned to a slot of (a) any of the player's OTHER
+// currently-ACTIVE rooms, OR (b) any OTHER slot of THIS SAME room being
+// edited, checked REGARDLESS of this room's own status (a room being
+// filled slot-by-slot is not yet 'active', but two of its OWN slots
+// pointing at the same uids -- e.g. the same presetIndex assigned twice,
+// or two different presets sharing a uid -- is exactly the "same units
+// deployed twice" case golden d's "no overlap" rule was always meant to
+// forbid, active-room-only or not). isUnitIndependent is UNCHANGED and
+// stays exactly what it always was -- the static "yellow" independence
+// concept, still used for pure display/tint purposes -- it is simply no
+// longer consulted anywhere in this deploy gate.
+//
+// deployedUidSetsForGate(playerId, room, profileCanvas): every uid
+// currently assigned to (a) this SAME room's OTHR slots (any status --
+// checked unconditionally, since duplicate-within-this-room is always
+// illegal regardless of whether the room has gone active yet) plus (b)
+// every OTHER room of this player with status==='active'. `room` is the
+// room being edited (already loaded by the caller) -- its OWN slots are
+// read directly from it rather than re-fetched from storage, so a
+// same-request check sees the room's CURRENT in-memory slot state
+// (including any slot the caller is in the middle of assigning via a
+// prior call in the same request, though assignSlot is only ever called
+// once per HTTP request today).
+function deployedUidSetsForGate(playerId, room, profileCanvas, excludeSlotIndex) {
   const out = new Set();
+  // (a) this room's OWN other slots, regardless of the room's own status.
+  room.slots.forEach((slot, i) => {
+    if (i === excludeSlotIndex) return; // the slot being assigned right now never counts against itself
+    if (slot.presetIndex == null) return;
+    const presetCanvas = presetCanvasOf(profileCanvas, slot.presetIndex);
+    for (const uid of presetUidSet(presetCanvas)) out.add(uid);
+  });
+  // (b) every OTHER active room this player owns.
   const rooms = storage.listRooms();
-  for (const room of rooms) {
-    if (room.id === excludeRoomId) continue;
-    if (room.ownerId !== playerId) continue;
-    if (room.status !== 'active') continue; // only CURRENTLY-ACTIVE schedules gate (golden d)
-    for (const slot of room.slots) {
+  for (const otherRoom of rooms) {
+    if (otherRoom.id === room.id) continue; // this room's own slots already covered by (a) above
+    if (otherRoom.ownerId !== playerId) continue;
+    if (otherRoom.status !== 'active') continue; // only CURRENTLY-ACTIVE schedules gate (golden d)
+    for (const slot of otherRoom.slots) {
       if (slot.presetIndex == null) continue;
       const presetCanvas = presetCanvasOf(profileCanvas, slot.presetIndex);
       for (const uid of presetUidSet(presetCanvas)) out.add(uid);
@@ -418,11 +476,10 @@ function deployedUidsForOtherActiveRooms(playerId, excludeRoomId, profileCanvas)
 }
 
 // assignSlot: golden b/d. `presetIndex` picks one of the CALLER's OWN
-// presets (0-based) to fill room slot `slotIndex`. Enforces the full
-// deploy gate: (1) isUnitIndependent for that preset against the
-// player's OTHER presets, (2) no uid overlap with the player's OWN
-// deployed units in any other CURRENTLY-ACTIVE room. Throws
-// {code:'CONFLICT'} (mapped to 409 by api.cjs) on either violation.
+// presets (0-based) to fill room slot `slotIndex`. Enforces the deploy
+// gate: DEPLOYED-OVERLAP only (see deployedUidSetsForGate's doc above) --
+// isUnitIndependent is intentionally NOT consulted here (REQ-0045 v2).
+// Throws {code:'CONFLICT'} (mapped to 409 by api.cjs) on a violation.
 function assignSlot(room, callerId, slotIndex, presetIndex, profileCanvas, itemDefsById) {
   if (slotIndex < 0 || slotIndex >= UNIT_SLOTS.length) {
     const err = new Error('slotIndex out of range'); err.code = 'BAD_REQUEST'; throw err;
@@ -436,25 +493,27 @@ function assignSlot(room, callerId, slotIndex, presetIndex, profileCanvas, itemD
     // "dead on arrival" -- and must never be assignable to a room slot.
     // This is the server-authoritative half of the deploy gate (the
     // client also disables the slot-picker option pre-emptively, but the
-    // server is the one that actually enforces it, same as
-    // isUnitIndependent just below). err.reason is a STRUCTURED,
-    // machine-readable tag (distinct from err.message, which stays a
-    // human string) -- threaded through by sendScheduleError (api.cjs)
-    // as a `reason` field on the JSON error body, read by the client's
-    // ApiError.reason / friendlyScheduleError (schedule/errors.ts).
+    // server is the one that actually enforces it). err.reason is a
+    // STRUCTURED, machine-readable tag (distinct from err.message, which
+    // stays a human string) -- threaded through by sendScheduleError
+    // (api.cjs) as a `reason` field on the JSON error body, read by the
+    // client's ApiError.reason / friendlyScheduleError (schedule/errors.ts).
     const err = new Error('empty unit: preset has no Backpack (BP) and cannot be deployed');
     err.code = 'CONFLICT'; err.reason = 'empty_unit'; throw err;
   }
-  if (!isUnitIndependent(engine, profileCanvas, presetIndex)) {
-    const err = new Error('preset is not independent: it shares an item with another of your presets');
-    err.code = 'CONFLICT'; throw err;
-  }
   const myPresetUids = presetUidSet(presetCanvasOf(profileCanvas, presetIndex));
-  const otherActiveUids = deployedUidsForOtherActiveRooms(callerId, room.id, profileCanvas);
+  const deployedElsewhere = deployedUidSetsForGate(callerId, room, profileCanvas, slotIndex);
   for (const uid of myPresetUids) {
-    if (otherActiveUids.has(uid)) {
-      const err = new Error('preset overlaps a unit already deployed in another active schedule');
-      err.code = 'CONFLICT'; throw err;
+    if (deployedElsewhere.has(uid)) {
+      // Same {code,reason} shape golden d's overlap rejection has always
+      // used -- reason is intentionally the SAME 'deployed_overlap' tag
+      // regardless of whether the overlap came from this room's own
+      // other slots (duplicate preset, bug c) or another active room
+      // (cross-room overlap, bug b's correct remaining half) -- both are
+      // the exact same underlying violation ("this uid is already
+      // deployed somewhere"), not two different error classes.
+      const err = new Error('preset overlaps a unit already deployed in an active schedule (this room\'s other slots, or another active room)');
+      err.code = 'CONFLICT'; err.reason = 'deployed_overlap'; throw err;
     }
   }
   room.slots[slotIndex] = { presetIndex };
@@ -1379,7 +1438,7 @@ module.exports = {
   presetCanvasOf,
   presetUidSet,
   isUnitIndependent,
-  deployedUidsForOtherActiveRooms,
+  deployedUidSetsForGate,
   createRoom,
   getRoomOr404,
   getOwnRoomOr404,

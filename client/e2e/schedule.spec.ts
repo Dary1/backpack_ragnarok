@@ -164,7 +164,7 @@ test.describe('dungeons list (no auth)', () => {
 });
 
 test.describe('create room + slots UI', () => {
-  test('create-room form creates a room; assigning all 4 slots with the SAME preset (independence gate allows same-room reuse across slots) auto-starts a run', async ({ page }) => {
+  test('create-room form creates a room; assigning all 4 slots with 4 DIFFERENT, mutually-unique presets auto-starts a run (REQ-0045 c: unique-4 must start)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
@@ -185,14 +185,19 @@ test.describe('create room + slots UI', () => {
     await page.locator('[data-testid="schedule-room-expand-toggle"]').first().click();
     await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible();
 
-    // Per assignSlot's ACTUAL overlap logic (deployedUidsForOtherActiveRooms
-    // gates cross-ROOM overlap for OTHER active rooms, never same-room
-    // reuse across this room's own 4 slots) -- fill all 4 slots with the
-    // SAME preset (index 1, "Slot2" in the fixture) rather than needing 4
-    // distinct independent presets; least invasive fixture setup.
+    // REQ-0045 (b)+(c) deploy gate v2: fill each slot with a DIFFERENT
+    // preset (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
+    // distinct-uid presets, see schedule-fixture.json's own header
+    // comment) -- this is the "4 units with fully unique presets" case
+    // the OLD gate (isUnitIndependent-as-gate) used to incorrectly
+    // REFUSE (a preset sharing an item with some OTHER unrelated preset
+    // elsewhere in the warehouse blocked deployment even though nothing
+    // here overlaps anything actually deployed) -- the NEW deploy-
+    // overlap gate correctly allows this, since none of these 4 presets'
+    // uid sets intersect each other OR anything deployed elsewhere.
     for (let i = 0; i < 4; i++) {
-      await page.locator(`[data-testid="schedule-slot-select-${i}"]`).selectOption('1');
-      await expect(page.locator(`[data-testid="schedule-slot-select-${i}"]`)).toHaveValue('1', { timeout: 10000 });
+      await page.locator(`[data-testid="schedule-slot-select-${i}"]`).selectOption(String(i));
+      await expect(page.locator(`[data-testid="schedule-slot-select-${i}"]`)).toHaveValue(String(i), { timeout: 10000 });
     }
 
     // A full party auto-starts the first run (server-side
@@ -206,10 +211,62 @@ test.describe('create room + slots UI', () => {
     await expect(page.locator('[data-testid="schedule-room-status-badge"]').first()).toHaveText('Running', { timeout: 10000 });
 
     // Cancel immediately (default cancelPolicy) so this room's deployed
-    // preset (index 1) does not stay "active" and block later tests'
-    // OWN use of other presets via the cross-room deploy gate -- this
-    // test's own assertions are already complete at this point.
+    // presets (0,1,2,3) do not stay "active" and block later tests' OWN
+    // use of those presets via the cross-room deploy gate -- this test's
+    // own assertions are already complete at this point.
     await apiCancelRoom(page, player.token, roomId!);
+  });
+
+  test('assigning the SAME presetIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicate presets must be REFUSED)', async ({ page }) => {
+    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+
+    const first = await apiAssignSlot(page, player.token, roomId, 0, 1);
+    expect(first.status).toBe(200);
+    // Same presetIndex (1) into a DIFFERENT slot of the SAME room -- the
+    // uid set is IDENTICAL to slot 0's, so this is a same-room duplicate-
+    // deployment attempt, correctly refused regardless of the room's own
+    // status (it is still 'open', not yet 'active', at this point --
+    // deployedUidSetsForGate checks this room's OWN other slots
+    // unconditionally, not just when the room has gone active).
+    const dup = await apiAssignSlot(page, player.token, roomId, 1, 1);
+    expect(dup.status).toBe(409);
+    expect(dup.body.reason).toBe('deployed_overlap');
+
+    // Room never reaches 4/4 filled, so it correctly never auto-starts.
+    const view = await apiGetRoom(page, player.token, roomId);
+    expect(view.body.room.status).toBe('open');
+    expect(view.body.room.slots[1].presetIndex).toBeNull();
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('a preset sharing a uid with another of the caller\'s OWN presets, where that OTHER preset is NOT deployed anywhere, deploys OK (REQ-0045 b: mere cross-preset sharing must NOT block)', async ({ page }) => {
+    // Clone preset index 1's uids into preset index 4 (normally empty)
+    // -- preset 1 and preset 4 now share EVERY uid, making both "yellow"
+    // (isUnitIndependent would report false for either against the
+    // other) -- but NEITHER is deployed anywhere yet. Assigning preset 1
+    // to a room slot must succeed: the OLD gate (isUnitIndependent-as-
+    // gate) would have refused this unconditionally; the NEW deploy-
+    // overlap gate only cares whether the OTHER preset's units are
+    // ACTUALLY deployed, which preset 4 is not. Uses the same GET/mutate/
+    // PUT-canvas HTTP round-trip convention as the warehouse-rewards test
+    // above (this file drives everything through the real API, never
+    // requires server internals directly).
+    const beforeRes = await page.request.get(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token } });
+    const canvasBefore = (await beforeRes.json()).canvas;
+    canvasBefore.presets.store[4] = JSON.parse(JSON.stringify(canvasBefore.presets.store[1]));
+    const putRes = await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: canvasBefore });
+    expect(putRes.status()).toBe(200);
+
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    const res = await apiAssignSlot(page, player.token, roomId, 0, 1);
+    expect(res.status).toBe(200);
+    await apiCancelRoom(page, player.token, roomId);
+    // No explicit restore needed: the describe-block's own beforeEach
+    // re-PUTs the pristine fixture before every subsequent test.
   });
 });
 
@@ -333,12 +390,12 @@ test.describe('monitor: events & progress', () => {
     // Fresh room, same fixture preset in all 4 slots.
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    // Preset index 2 -- distinct from the earlier "create room" test's
-    // preset index 1 (still deployed in an active room at this point in
-    // the suite; reusing it here would legitimately 409 via the
-    // cross-room deploy gate, which is not what THIS test is checking).
+    // Fill each slot with a DIFFERENT preset (0,1,2,3 -- the fixture's 4
+    // mutually-unique, globally-distinct-uid presets). Every test in
+    // this file now cancels its own room immediately after use, so no
+    // preset index needs to be "reserved" against any other test.
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomId, i, 2);
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
       expect(r.status).toBe(200);
     }
     // The auto-start (maybeAutoStartNextRun) only fires the NEXT time
@@ -389,7 +446,7 @@ test.describe('run settles via dev/backdate hook', () => {
   test('dev/backdate is refused (403) for a real guest token, even the room owner\'s own', async ({ page }) => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await apiAssignSlot(page, player.token, roomId, i, 1);
+    for (let i = 0; i < 4; i++) await apiAssignSlot(page, player.token, roomId, i, i);
     const res = await page.request.post(`/api/schedule/rooms/${roomId}/dev/backdate`, {
       headers: { 'X-Auth-Token': player.token },
       data: {},
@@ -433,7 +490,7 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {
-        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { presetIndex: 1 } });
+        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { presetIndex: i } });
         expect(r.status()).toBe(200);
       }
       // Auto-start fires on the next room read (lazy settlement).
@@ -563,15 +620,15 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
 
 test.describe('deploy-gate 409 across rooms', () => {
   test('assigning the SAME preset to a slot in a SECOND room while the first room is ACTIVE is refused 409', async ({ page }) => {
-    // Room A: fill all 4 slots (preset index 1) -- this makes it ACTIVE
-    // (a run actually starts), which is required for
-    // deployedUidsForOtherActiveRooms to fire at all (it only gates
-    // OTHER rooms whose status === 'active', not merely "has a slot
-    // assigned").
+    // Room A: fill all 4 slots with 4 DIFFERENT, mutually-unique presets
+    // (0,1,2,3) -- this makes it ACTIVE (a run actually starts), which is
+    // required for deployedUidSetsForGate's cross-room check to fire at
+    // all (it only gates OTHER rooms whose status === 'active', not
+    // merely "has a slot assigned").
     const roomA = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomAId = roomA.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomAId, i, 1);
+      const r = await apiAssignSlot(page, player.token, roomAId, i, i);
       expect(r.status).toBe(200);
     }
     // Auto-start fires on the next room read (lazy settlement -- see the
@@ -581,11 +638,14 @@ test.describe('deploy-gate 409 across rooms', () => {
       expect(view.body.room.status).toBe('active');
     }).toPass({ timeout: 10000 });
 
-    // Room B: attempt to also deploy preset index 1 (already active in
-    // room A) -> 409 with the "overlaps a unit already deployed" message.
+    // Room B: attempt to also deploy preset index 0 (Room A's slot 0,
+    // already active in room A) -> 409 with the "overlaps a unit already
+    // deployed" message. This is a genuine CROSS-room overlap (the same
+    // preset's uid set is already deployed elsewhere), which remains
+    // correctly refused under the new deploy-overlap gate.
     const roomB = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomBId = roomB.body.room.id;
-    const overlapRes = await apiAssignSlot(page, player.token, roomBId, 0, 1);
+    const overlapRes = await apiAssignSlot(page, player.token, roomBId, 0, 0);
     expect(overlapRes.status).toBe(409);
     expect(overlapRes.body.error).toMatch(/active schedule/i);
 
@@ -598,8 +658,16 @@ test.describe('deploy-gate 409 across rooms', () => {
     const cardB = page.locator(`[data-room-id="${roomBId}"]`);
     await expect(cardB).toBeVisible({ timeout: 10000 });
     await cardB.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await cardB.locator('[data-testid="schedule-slot-select-0"]').selectOption('1');
+    await cardB.locator('[data-testid="schedule-slot-select-0"]').selectOption('0');
     await expect(cardB.locator('.schedule-slot-error')).toContainText('already has a unit deployed', { timeout: 10000 });
+
+    // Cancel room A so its deployed presets (0,1,2,3) free up for later
+    // tests in this suite -- every other test in this file cancels its
+    // own room(s) once its assertions are complete; this one is no
+    // exception (room B never got any slot filled, so canceling it too
+    // is harmless belt-and-suspenders, though not strictly required).
+    await apiCancelRoom(page, player.token, roomAId);
+    await apiCancelRoom(page, player.token, roomBId);
   });
 });
 
@@ -615,10 +683,24 @@ test.describe('cancel flow', () => {
   test('non-immediate cancel policy while a run is active flags cancelRequested (badge), room only cancels once that run settles', async ({ page }) => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1', cancelPolicy: { immediate: false } });
     const roomId = created.body.room.id;
-    // Preset index 0 -- the fixture's ACTIVE preset (top-level canvas
-    // fields), distinct from 1/2/3 used by the other tests above.
+    // Fill each slot with 4 FULLY DEDICATED presets (5,6,7,8 -- NOT
+    // 0,1,2,3, which several OTHER tests in this file also deploy via
+    // the natural i->i mapping): this test's whole point is to prove a
+    // NON-immediate cancelPolicy only FLAGS cancelRequested while the
+    // run keeps running -- there is no non-dev-fallback way for a plain
+    // guest to force-settle their own real run early (the dev/backdate
+    // hook is gated to the dev fallback caller only, confirmed 403'd for
+    // a guest token by the test in the "run settles via dev/backdate
+    // hook" describe block above), and niflheim_depths' real
+    // durationSecs is 999 -- so this room's 4 deployed presets stay
+    // genuinely "active" in the database for the rest of this suite's
+    // run, with no way to free them early. Presets 5-8 (bp_t5..bp_t8,
+    // added specifically for this test -- see schedule-fixture.json's
+    // own dedicated tail presets) are never touched by any other test in
+    // this file, so this permanent lock never collides with anything.
+    const presetsForThisTest = [5, 6, 7, 8];
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomId, i, 0);
+      const r = await apiAssignSlot(page, player.token, roomId, i, presetsForThisTest[i]);
       expect(r.status).toBe(200);
     }
     // Auto-start fires on the next room read (lazy settlement).
@@ -982,7 +1064,7 @@ test.describe('REQ-0041: monitor freeze regression guard', () => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomId, i, 3);
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
       expect(r.status).toBe(200);
     }
     await expect(async () => {

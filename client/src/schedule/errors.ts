@@ -31,7 +31,20 @@ export function friendlyScheduleError(locale: Locale, error: unknown): string {
   if (error instanceof ApiError && error.reason === 'empty_unit') {
     return t(locale, 'schedule.error.emptyUnit');
   }
-  if (raw.includes('not independent')) return t(locale, 'schedule.error.notIndependent');
+  // REQ-0045 (b)+(c) deploy gate v2: the OLD isUnitIndependent-based
+  // "not independent" 409 no longer exists at all (that predicate is no
+  // longer part of the deploy gate -- see server/schedule.cjs's
+  // deployedUidSetsForGate doc) -- assignSlot's ONLY overlap rejection
+  // now carries the STRUCTURED reason 'deployed_overlap' (covers BOTH the
+  // cross-room case the old 'active schedule' substring match used to
+  // catch, and the NEW same-room-duplicate-preset case bug (c) needed),
+  // checked preferentially exactly like 'empty_unit' above. The old
+  // 'active schedule' substring fallback below is kept only as defense-
+  // in-depth (harmless if e.reason is ever missing for some reason) but
+  // is no longer the primary detection path.
+  if (error instanceof ApiError && error.reason === 'deployed_overlap') {
+    return t(locale, 'schedule.error.crossRoomOverlap');
+  }
   if (raw.includes('active schedule')) return t(locale, 'schedule.error.crossRoomOverlap');
   if (raw.includes('no space in inventory')) return t(locale, 'schedule.error.noWarehouseSpace');
   if (raw.includes('empty unit') || raw.includes('no Backpack')) return t(locale, 'schedule.error.emptyUnit');

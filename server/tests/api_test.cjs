@@ -1063,23 +1063,99 @@ async function main() {
     assert.strictEqual(res.status, 401);
   });
 
-  await AT('schedule: deploy gate -- assigning a preset that shares a uid with another of the caller\'s OWN presets is refused 409', async () => {
+  // REQ-0045 (b)+(c): deploy gate v2 replaces isUnitIndependent-as-gate
+  // (a STATIC, warehouse-wide "does this preset share any uid with ANY
+  // OTHER preset anywhere" check -- the yellow-tint concept) with a
+  // DYNAMIC deployed-overlap check (deployedUidSetsForGate in
+  // server/schedule.cjs): a preset is assignable iff its uid set does
+  // not intersect any uid set ACTUALLY deployed right now, either in
+  // this same room's OTHER slots or in another of the caller's currently
+  // ACTIVE rooms. The three tests below cover the three distinct
+  // scenarios the old gate got wrong or never had to distinguish:
+  //   1. yellow-but-idle (shares a uid with an undeployed sibling
+  //      preset) must now DEPLOY OK -- the old gate refused this
+  //      unconditionally, which was bug (b).
+  //   2. duplicate presetIndex assigned to two slots of the SAME room
+  //      must be REFUSED (identical uid sets, so trivially overlapping)
+  //      -- the old gate ALLOWED this (it only ever consulted
+  //      isUnitIndependent, a warehouse-wide static property, never the
+  //      room's own other slots), which was one half of bug (c).
+  //   3. four mutually-unique presets filling all 4 slots of one room
+  //      must SUCCEED and auto-start -- the old gate refused this
+  //      whenever any one of the 4 happened to share a uid with some
+  //      OTHER unrelated preset elsewhere in the warehouse (a false
+  //      positive against a preset not even being deployed), which was
+  //      the other half of bug (c). makeTestCanvas()'s presets 0-3 are
+  //      already globally unique against each other by construction (see
+  //      its own doc comment above), so fillAllSlots() below IS this
+  //      scenario already -- asserted explicitly here as its own named
+  //      test rather than only implicitly via the cross-room-overlap
+  //      test further down.
+  await AT('schedule: deploy gate v2 -- a preset sharing a uid with another of the caller\'s OWN presets, where that OTHER preset is NOT deployed anywhere, deploys OK (REQ-0045 b)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    // Make preset index 4 an EXACT duplicate of preset 0 -- guaranteed uid overlap.
+    // Make preset index 4 an EXACT duplicate of preset 0's uids --
+    // guaranteed uid overlap between them ("yellow") -- but preset 4 is
+    // NOT deployed anywhere (no room references it).
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     const preset0Snapshot = { bps: doc.canvas.bps, pos: doc.canvas.pos, sis: doc.canvas.sis };
     doc.canvas.presets.store[4] = JSON.parse(JSON.stringify(preset0Snapshot));
     scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
 
     const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
-    assert.strictEqual(res.status, 409, 'independence violation must be 409: ' + JSON.stringify(res.body));
-    assert.ok(/independent/i.test(res.body.error));
+    assert.strictEqual(res.status, 200, 'mere cross-preset uid sharing (neither side deployed) must NOT block: ' + JSON.stringify(res.body));
 
-    // Clean up: clear the duplicate so later tests' independence holds.
+    // Clean up: clear the duplicate + the room.
     const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
     doc2.canvas.presets.store[4] = null;
     scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: deploy gate v2 -- assigning the SAME presetIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicates must be REFUSED)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    const first = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 1 });
+    assert.strictEqual(first.status, 200, 'slot 0 assign: ' + JSON.stringify(first.body));
+
+    // Same presetIndex (1) into a DIFFERENT slot of the SAME room -- the
+    // uid set is IDENTICAL to slot 0's, so this is a same-room duplicate-
+    // deployment attempt. This must be refused regardless of the room's
+    // own status (still 'open' here, not yet 'active') --
+    // deployedUidSetsForGate checks this room's OWN other slots
+    // unconditionally, not just once the room has gone active.
+    const dup = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { presetIndex: 1 });
+    assert.strictEqual(dup.status, 409, 'same-room duplicate presetIndex must be 409: ' + JSON.stringify(dup.body));
+    assert.strictEqual(dup.body.reason, 'deployed_overlap', 'the 409 body must carry a structured reason=deployed_overlap');
+
+    // Room never reaches 4/4 filled, so it correctly never auto-starts.
+    const view = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(view.body.room.status, 'open');
+    assert.strictEqual(view.body.room.slots[1].presetIndex, null, 'the rejected duplicate assign must not have mutated slot 1');
+
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: deploy gate v2 -- four mutually-unique presets filling all 4 slots of one room succeeds and auto-starts (REQ-0045 c: unique-4 must start)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    // makeTestCanvas()'s presets 0-3 are globally unique against each
+    // other (see its own doc comment above) -- filling all 4 slots with
+    // them, one per slot, must succeed and auto-start a run.
+    for (let i = 0; i < 4; i++) {
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique preset ' + i + '): ' + JSON.stringify(r.body));
+    }
+    const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(after.body.room.status, 'active', 'four mutually-unique presets must auto-start the room\'s first run');
+
+    // Cleanup: settle + clear rewards so later tests start from a clean
+    // slate, mirroring the cross-room-overlap test's own cleanup below.
+    const roomRaw = scheduleStorage.readRoom(roomId);
+    forceRunElapsed(roomRaw.lastRunId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
   await AT('schedule: deploy gate -- a preset with ZERO BP is refused 409 empty_unit, and a preset with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
@@ -1593,33 +1669,79 @@ async function main() {
   });
 
   await AT('schedule: swap is queued (not applied) while a run is active, and applies once that run settles (golden j)', async () => {
-    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
-    const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) {
-      const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
-      assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign must succeed: ' + JSON.stringify(assignRes.body));
+    // REQ-0045 (b)+(c) deploy gate v2 fallout: with all 4 slots filled by
+    // 4 mutually-unique presets (0,1,2,3), swapping slot 0 to preset 1
+    // (as this test originally did) is now correctly refused by
+    // applyPendingSwapIfAny's own assignSlot call -- preset 1 is
+    // SIMULTANEOUSLY still deployed live in slot 1 of this SAME room at
+    // the moment the swap would apply, which the new deploy-overlap gate
+    // (deployedUidSetsForGate) correctly treats as a same-room overlap,
+    // regardless of the fact that preset 1 and preset 0 share no uid
+    // WITH EACH OTHER (that was the old, no-longer-relevant check). This
+    // is not a regression to route around -- it is the gate correctly
+    // refusing to double-deploy the same preset into two slots at once.
+    // Fixed by giving preset index 4 (normally empty/null, reserved for
+    // the empty_unit test elsewhere in this file) a REAL, uniquely-
+    // tagged BP+PO here, used ONLY as the swap TARGET (never itself
+    // occupying any of the room's other 3 slots), then restoring it to
+    // null afterward so the empty_unit test's own precondition holds for
+    // every test that runs after this one.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.presets.store[4] = {
+      linked: true,
+      bps: [{ id: 'bp_swaptarget', name: 'BP swaptarget', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+      pos: [{ uid: 'po_swaptarget', id: 'test_sword', loc: 'grid', cell: [1, 1], rot: 0 }],
+      sis: [],
+    };
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
+
+    try {
+      const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+      const roomId = created.body.room.id;
+      for (let i = 0; i < 4; i++) {
+        const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+        assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign must succeed: ' + JSON.stringify(assignRes.body));
+      }
+      const active = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+      assert.strictEqual(active.body.room.status, 'active', 'precondition: room has a run in flight');
+
+      const swapWhileActive = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 0, presetIndex: 4 });
+      assert.strictEqual(swapWhileActive.status, 200);
+      assert.strictEqual(swapWhileActive.body.applied, false, 'a swap requested mid-run must be QUEUED, not applied immediately');
+      assert.ok(swapWhileActive.body.room.pendingSwap, 'pendingSwap must be recorded on the room');
+      assert.strictEqual(swapWhileActive.body.room.slots[0].presetIndex, 0, 'the slot itself must NOT change yet');
+
+      forceRunElapsed(active.body.room.lastRunId);
+      const settled = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle + pending-swap application
+      assert.strictEqual(settled.body.room.pendingSwap, null, 'pendingSwap must be cleared once applied');
+      // preset 4 (the swap target) shares no uid with ANY of 0/1/2/3 and
+      // is not deployed anywhere else, so applying the swap is legal.
+      assert.strictEqual(settled.body.room.slots[0].presetIndex, 4, 'golden j: the swap applies AFTER the run ends');
+
+      // Swap with NO run active applies immediately. Target preset 2 is
+      // currently live in slot 2 of this SAME room -- correctly refused
+      // now (same-room overlap), so this second assertion swaps slot 1
+      // (currently preset 1) to preset 1 itself is a no-op-shaped case;
+      // instead verify the "applies immediately when no run is active"
+      // behavior using a legality-refusal shape: assignSlot's own
+      // same-room-overlap gate applies identically whether queued or
+      // immediate, so the meaningful thing left to prove here is that
+      // NO queuing happens (immediate 200 with applied:true) when the
+      // room is not active -- done by first canceling this room's
+      // current run state is not an option (would delete state); instead
+      // swap slot 3 (currently preset 3) to itself, which is always
+      // legal (a preset never overlaps its own current slot -- excluded
+      // by assignSlot's own excludeSlotIndex) and unambiguously proves
+      // the immediate-apply path.
+      const swapNow = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 3, presetIndex: 3 });
+      assert.strictEqual(swapNow.body.applied, true, 'a swap requested with no active run must apply immediately');
+
+      await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    } finally {
+      const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
+      doc2.canvas.presets.store[4] = null;
+      scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
     }
-    const active = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
-    assert.strictEqual(active.body.room.status, 'active', 'precondition: room has a run in flight');
-
-    const swapWhileActive = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 0, presetIndex: 1 });
-    assert.strictEqual(swapWhileActive.status, 200);
-    assert.strictEqual(swapWhileActive.body.applied, false, 'a swap requested mid-run must be QUEUED, not applied immediately');
-    assert.ok(swapWhileActive.body.room.pendingSwap, 'pendingSwap must be recorded on the room');
-    assert.strictEqual(swapWhileActive.body.room.slots[0].presetIndex, 0, 'the slot itself must NOT change yet');
-
-    forceRunElapsed(active.body.room.lastRunId);
-    const settled = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle + pending-swap application
-    assert.strictEqual(settled.body.room.pendingSwap, null, 'pendingSwap must be cleared once applied');
-    // Note: preset 1 shares NO uid with preset 0 in this fixture (both
-    // independently tagged), so applying the swap must succeed legally.
-    assert.strictEqual(settled.body.room.slots[0].presetIndex, 1, 'golden j: the swap applies AFTER the run ends');
-
-    // Swap with NO run active applies immediately.
-    const swapNow = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 1, presetIndex: 2 });
-    assert.strictEqual(swapNow.body.applied, true, 'a swap requested with no active run must apply immediately');
-
-    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
   await AT('schedule: cancel policy -- immediate:true cancels right away; immediate:false with an active run only flags cancelRequested until settle (golden g)', async () => {

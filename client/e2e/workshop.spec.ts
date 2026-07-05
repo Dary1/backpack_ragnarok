@@ -284,24 +284,36 @@ test.describe('Reward LRDST reaching warehouse', () => {
 
   test('a dungeon run reward deposits LRDST into the warehouse (reusing the dev backdate route to fast-forward)', async ({ page }) => {
     await withDevProfileBackup(async () => {
+      // REQ-0045 (b)+(c) deploy gate v2: presets 0-3 must be 4
+      // MUTUALLY-UNIQUE units (distinct BP/PO uids) -- a preset already
+      // deployed in another of this room's OWN slots is now correctly
+      // refused (deployedUidSetsForGate's same-room check), so all 4
+      // slots can no longer share ONE identical preset the way this test
+      // originally did (presets.store all null + presetIndex:0 for
+      // every slot, which resolved to the SAME top-level canvas fields
+      // 4 times over -- a same-room duplicate deployment, now a 409).
+      function presetCanvas(tag: string) {
+        return {
+          linked: true,
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+          pos: [{ uid: `e2e_po_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 }],
+          sis: [],
+        };
+      }
+      const p0 = presetCanvas('p0');
       const canvas = {
-        linked: true,
-        bps: [{ id: 'e2e_bp', name: 'E2E BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
-        pos: [{ uid: 'e2e_po', id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 }],
-        sis: [],
+        ...p0,
         inv: { pages: [{ bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }], names: ['1', '2', '3', '4', '5'] },
-        presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, null, null, null, null] },
+        presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, presetCanvas('p1'), presetCanvas('p2'), presetCanvas('p3'), null] },
       };
       const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
       expect(putRes.status()).toBe(200);
 
-      // Create a room, fill all 4 slots with preset 0 (an independence
-      // violation across slots is fine here -- schedule.cjs's deploy
-      // gate only requires >=1 BP per preset, this test does not touch
-      // isUnitIndependent's cross-room concern), start it via the deploy
-      // (assignSlot auto-starts once all 4 slots are filled, matching
-      // schedule.spec.ts's own room-fill convention), then backdate it
-      // to force settlement without waiting real dungeon time.
+      // Create a room, fill all 4 slots with 4 DIFFERENT, mutually-
+      // unique presets (0,1,2,3), which auto-starts the run once all 4
+      // are filled (matching schedule.spec.ts's own room-fill
+      // convention), then backdate it to force settlement without
+      // waiting real dungeon time.
       const dungeonsRes = await page.request.get('/api/schedule/dungeons');
       const dungeons = await dungeonsRes.json();
       const dungeonId = dungeons.dungeons?.[0]?.id ?? dungeons.dungeon?.id;
@@ -312,7 +324,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
       const room = (await createRes.json()).room;
 
       for (let i = 0; i < 4; i++) {
-        const slotRes = await page.request.put(`/api/schedule/rooms/${room.id}/slots/${i}`, { data: { presetIndex: 0 } });
+        const slotRes = await page.request.put(`/api/schedule/rooms/${room.id}/slots/${i}`, { data: { presetIndex: i } });
         expect(slotRes.status()).toBe(200);
       }
 
