@@ -513,7 +513,18 @@ export interface ApiRoom {
   id: string;
   ownerId: string;
   dungeonId: string;
+  /** REQ-0043: which generator produced (or will produce) this room's
+   * dungeon def -- 'default' (procedural) or 'test_fixed' (hand-authored
+   * batch-002 sequence, verbatim). Always present on a room created
+   * after REQ-0043 landed; see server/schedule.cjs's resolveDungeonType()
+   * for how a legacy room without this field is still handled server-side. */
+  dungeonType?: 'default' | 'test_fixed';
   level: number;
+  /** REQ-0043: the seed sim/dungen.cjs's generator used (or will use) to
+   * build this room's dungeon layout. Always present (random by default);
+   * only a dev/item_admin caller may have CHOSEN this value explicitly at
+   * create-room time (see ApiCreateRoomBody.genSeed). */
+  genSeed?: string;
   visibility: 'self';
   formationId: string;
   cancelPolicy: ApiCancelPolicy;
@@ -527,10 +538,18 @@ export interface ApiRoom {
   lastRunId: string | null;
 }
 
-/** POST /api/schedule/rooms body. */
+/** POST /api/schedule/rooms body. REQ-0043: `dungeonType` selects which
+ * sim/dungen.cjs generator produces this room's dungeon ('default' or
+ * 'test_fixed'); `genSeed` lets a caller pin the generator's seed for a
+ * reproducible layout -- server-side GATED to a dev/item_admin caller
+ * only (403 for anyone else who sends a non-empty genSeed, same pattern
+ * as the dev/backdate route), so the client only ever renders the seed
+ * input when `/api/me`'s roles include item_admin (see CreateRoomForm.tsx). */
 export interface ApiCreateRoomBody {
   dungeonId: string;
+  dungeonType?: 'default' | 'test_fixed';
   level?: number;
+  genSeed?: string;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
 }
@@ -576,6 +595,14 @@ export interface ApiDungeonEntry {
   name: string;
   i18n?: ApiI18nMap;
 }
+/** REQ-0043: one entry per sim/dungen.cjs generator type ('default' /
+ * 'test_fixed'). `i18n[locale].note` is a short level-scaling/fixed-spawn
+ * hint shown under the type selector. */
+export interface ApiDungeonTypeEntry {
+  id: 'default' | 'test_fixed';
+  name: string;
+  i18n?: Record<string, { name?: string; note?: string }>;
+}
 export interface ApiFormationEntry {
   id: string;
   name: string;
@@ -585,6 +612,9 @@ export interface ApiFormationEntry {
 export interface ApiDungeonsPayload {
   ok: true;
   dungeons: ApiDungeonEntry[];
+  /** REQ-0043: the generator type list (kept alongside `dungeons` for
+   * back-compat -- `dungeons` is untouched). */
+  types: ApiDungeonTypeEntry[];
   formations: ApiFormationEntry[];
 }
 

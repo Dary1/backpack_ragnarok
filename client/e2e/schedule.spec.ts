@@ -94,6 +94,10 @@ async function apiCreateRoom(page: Page, token: string, body: Record<string, unk
   if (json.room?.id) createdRoomIds.push(json.room.id);
   return { status: res.status(), body: json };
 }
+async function apiListRooms(page: Page, token: string): Promise<any> {
+  const res = await page.request.get('/api/schedule/rooms', { headers: { 'X-Auth-Token': token } });
+  return { status: res.status(), body: await res.json() };
+}
 async function apiGetRoom(page: Page, token: string, roomId: string): Promise<any> {
   const res = await page.request.get(`/api/schedule/rooms/${roomId}`, { headers: { 'X-Auth-Token': token } });
   return { status: res.status(), body: await res.json() };
@@ -206,6 +210,121 @@ test.describe('create room + slots UI', () => {
     // OWN use of other presets via the cross-room deploy gate -- this
     // test's own assertions are already complete at this point.
     await apiCancelRoom(page, player.token, roomId!);
+  });
+});
+
+test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only seed field', () => {
+  test('create-room form offers a dungeon TYPE selector (default/test_fixed) and creating a default-type room via the UI works end to end', async ({ page }) => {
+    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+    // This spec's own `player` guest may already own rooms created by
+    // OTHER tests in this file (canceled rooms stay listed, just
+    // status:'canceled') -- capture the id set BEFORE creating, and diff
+    // afterward, rather than trusting the room-card list's `.first()`
+    // position to be "the room this test just created" (test order
+    // within the full suite run is not this test's own to control).
+    const beforeIds = new Set(
+      (await apiListRooms(page, player.token)).body.rooms.map((r: { id: string }) => r.id)
+    );
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    await expect(page.locator('.schedule-page')).toBeVisible();
+
+    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
+    const typeOptions = await page.locator('[data-testid="schedule-dungeon-type-select"] option').allTextContents();
+    expect(typeOptions.length).toBe(2); // default + test_fixed
+
+    // Explicitly select the 'default' (generated) type -- option VALUES
+    // are the raw type ids ('default'/'test_fixed'), independent of
+    // locale-specific display text.
+    await page.locator('[data-testid="schedule-dungeon-type-select"]').selectOption('default');
+    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toHaveValue('default');
+
+    await page.locator('[data-testid="schedule-level-input"]').fill('3');
+    await page.locator('[data-testid="schedule-create-submit"]').click();
+
+    await expect(async () => {
+      const rooms = (await apiListRooms(page, player.token)).body.rooms as Array<{ id: string }>;
+      expect(rooms.some((r) => !beforeIds.has(r.id))).toBe(true);
+    }).toPass({ timeout: 10000 });
+
+    const afterRooms = (await apiListRooms(page, player.token)).body.rooms as Array<{ id: string }>;
+    const newRoom = afterRooms.find((r) => !beforeIds.has(r.id));
+    expect(newRoom).toBeTruthy();
+    const roomId = newRoom!.id;
+    createdRoomIds.push(roomId);
+
+    // Confirm the SERVER actually recorded dungeonType:'default' and
+    // level:3 on this room (not just that the form submitted without
+    // error) -- this is the real end-to-end assertion.
+    const roomView = await apiGetRoom(page, player.token, roomId);
+    expect(roomView.body.room.dungeonType).toBe('default');
+    expect(roomView.body.room.level).toBe(3);
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('the generator-seed field is HIDDEN for a plain guest (no item_admin role)', async ({ page }) => {
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toHaveCount(0);
+  });
+
+  test('the generator-seed field IS visible for the dev_mode fallback caller (item_admin), and a seeded room persists the exact seed', async ({ page }) => {
+    // Plain bootApp (no #/invite/<token> in the URL) resolves to the
+    // dev_mode fallback player via /api/me, same convention
+    // schedule.spec.ts's own REQ-0041 dev-grant tests already use. The
+    // dev fallback player accumulates rooms across THIS WHOLE spec
+    // file's run (other describe blocks create dev-owned rooms too), so
+    // `.first()` in the rooms list is NOT reliably "the room this test
+    // just created" -- capture the set of room ids BEFORE submitting and
+    // diff against the set AFTER to find the genuinely new one, rather
+    // than trusting list order/position.
+    const beforeRes = await page.request.get('/api/schedule/rooms');
+    const idsBefore = new Set(((await beforeRes.json()).rooms as Array<{ id: string }>).map((r) => r.id));
+
+    await page.goto('/app/#/schedule');
+    await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toBeVisible({ timeout: 10000 });
+
+    await page.locator('[data-testid="schedule-dungeon-type-select"]').selectOption('default');
+    await page.locator('[data-testid="schedule-level-input"]').fill('2');
+    await page.locator('[data-testid="schedule-gen-seed-input"]').fill('e2e-dev-seed-req0043');
+    await page.locator('[data-testid="schedule-create-submit"]').click();
+
+    await expect(async () => {
+      const afterRes = await page.request.get('/api/schedule/rooms');
+      const afterRooms = (await afterRes.json()).rooms as Array<{ id: string }>;
+      expect(afterRooms.some((r) => !idsBefore.has(r.id))).toBe(true);
+    }).toPass({ timeout: 10000 });
+
+    const afterRes = await page.request.get('/api/schedule/rooms');
+    const afterRooms = (await afterRes.json()).rooms as Array<{ id: string }>;
+    const newRoom = afterRooms.find((r) => !idsBefore.has(r.id));
+    expect(newRoom).toBeTruthy();
+    const roomId = newRoom!.id;
+
+    // No X-Auth-Token -- resolves via the dev_mode fallback, same as
+    // apiBackdate()'s own convention in this file.
+    const roomRes = await page.request.get(`/api/schedule/rooms/${roomId}`);
+    const roomBody = await roomRes.json();
+    expect(roomBody.room.genSeed).toBe('e2e-dev-seed-req0043');
+    expect(roomBody.room.dungeonType).toBe('default');
+    expect(roomBody.room.level).toBe(2);
+
+    await page.request.delete(`/api/schedule/rooms/${roomId}`);
+  });
+
+  test('a plain guest token is refused (403) if it tries to POST a genSeed directly via the API (server-side gate, independent of the UI hiding the field)', async ({ page }) => {
+    const res = await page.request.post('/api/schedule/rooms', {
+      headers: { 'X-Auth-Token': player.token },
+      data: { dungeonId: 'niflheim_depths', dungeonType: 'default', level: 1, genSeed: 'guest-should-not-be-able-to-set-this' },
+    });
+    expect(res.status()).toBe(403);
   });
 });
 

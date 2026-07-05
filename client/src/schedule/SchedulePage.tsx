@@ -11,9 +11,11 @@ import {
   ApiError,
   createRoom as apiCreateRoom,
   fetchDungeons,
+  fetchMe,
   fetchRooms,
   type ApiCreateRoomBody,
   type ApiDungeonsPayload,
+  type ApiMe,
   type ApiRoom,
 } from '../api';
 import { t } from '../i18n';
@@ -38,6 +40,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   const [tab, setTab] = useState<ScheduleTab>('rooms');
   const [rooms, setRooms] = useState<ApiRoom[] | null>(null);
   const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
+  const [me, setMe] = useState<ApiMe | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -63,11 +66,24 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e));
       }
     })();
+    // REQ-0043: /api/me failure is non-fatal here too (same "roles-less
+    // on failure" convention DexRoot.tsx/Settings.tsx already use) -- it
+    // just means the dev-only genSeed field stays hidden, same as a
+    // plain guest.
+    fetchMe()
+      .then((m) => {
+        if (!cancelled) setMe(m);
+      })
+      .catch(() => {
+        if (!cancelled) setMe(null);
+      });
     void reloadRooms();
     return () => {
       cancelled = true;
     };
   }, [reloadRooms]);
+
+  const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
 
   // Rooms list poll -- keeps status/cooldown/lastRunId reasonably fresh
   // even while nothing is expanded (Monitor.tsx polls the RUN endpoint
@@ -138,7 +154,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           <div className="schedule-create-panel">
             <h3>{t(locale, 'schedule.createTitle')}</h3>
             {createError ? <div className="schedule-error">{createError}</div> : null}
-            <CreateRoomForm locale={locale} dungeons={dungeons} creating={creating} onCreate={handleCreate} />
+            <CreateRoomForm locale={locale} dungeons={dungeons} creating={creating} isAdmin={isAdmin} onCreate={handleCreate} />
           </div>
         </div>
       ) : (

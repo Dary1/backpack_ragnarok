@@ -4,6 +4,17 @@
 // disabled/label-only field, never a real selector: golden c's other
 // visibility levels are P2+ and the server always forces
 // visibility:"self" regardless of what a client sends).
+//
+// REQ-0043: gains a dungeon TYPE selector (default / test_fixed, backed
+// by GET /api/schedule/dungeons' new `types` list) and a dev-only
+// generator-seed input. The seed field is rendered ONLY when the caller
+// resolves as item_admin via /api/me (see SchedulePage.tsx, which fetches
+// /api/me the same "non-fatal, roles-less on failure" way DexRoot.tsx/
+// Settings.tsx already do, and passes the result down as `isAdmin`) --
+// this mirrors the server's OWN gate (POST /api/schedule/rooms 403s a
+// body-supplied genSeed for anyone who isn't the dev_mode fallback or
+// item_admin), so a plain guest never even SEES a control that would
+// just 403 if they used it.
 import { useEffect, useState } from 'react';
 import type { ApiCreateRoomBody, ApiDungeonsPayload } from '../api';
 import { t } from '../i18n';
@@ -13,6 +24,7 @@ interface CreateRoomFormProps {
   locale: Locale;
   dungeons: ApiDungeonsPayload | null;
   creating: boolean;
+  isAdmin: boolean;
   onCreate: (body: ApiCreateRoomBody) => void | Promise<void>;
 }
 
@@ -21,9 +33,16 @@ function localizedName(locale: Locale, entry: { id: string; name: string; i18n?:
   return entry.name;
 }
 
-export function CreateRoomForm({ locale, dungeons, creating, onCreate }: CreateRoomFormProps) {
+function localizedNote(locale: Locale, entry: { i18n?: Record<string, { note?: string }> }): string | undefined {
+  if (locale === 'ja') return entry.i18n?.ja?.note ?? entry.i18n?.en?.note;
+  return entry.i18n?.en?.note;
+}
+
+export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }: CreateRoomFormProps) {
   const [dungeonId, setDungeonId] = useState('');
+  const [dungeonType, setDungeonType] = useState('');
   const [level, setLevel] = useState(1);
+  const [genSeed, setGenSeed] = useState('');
   const [formationId, setFormationId] = useState('');
   const [cancelImmediate, setCancelImmediate] = useState(true);
 
@@ -32,6 +51,7 @@ export function CreateRoomForm({ locale, dungeons, creating, onCreate }: CreateR
   // away" flow).
   useEffect(() => {
     if (dungeons && dungeons.dungeons.length > 0 && !dungeonId) setDungeonId(dungeons.dungeons[0].id);
+    if (dungeons && dungeons.types.length > 0 && !dungeonType) setDungeonType(dungeons.types[0].id);
     if (dungeons && dungeons.formations.length > 0 && !formationId) setFormationId(dungeons.formations[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dungeons]);
@@ -40,12 +60,18 @@ export function CreateRoomForm({ locale, dungeons, creating, onCreate }: CreateR
     return <div className="schedule-loading">{t(locale, 'schedule.loading')}</div>;
   }
 
+  const selectedType = dungeons.types.find((ty) => ty.id === dungeonType);
+  const typeNote = selectedType ? localizedNote(locale, selectedType) : undefined;
+
   const handleSubmit = (evt: React.FormEvent) => {
     evt.preventDefault();
     if (!dungeonId) return;
+    const trimmedSeed = genSeed.trim();
     void onCreate({
       dungeonId,
+      dungeonType: (dungeonType as 'default' | 'test_fixed') || undefined,
       level,
+      genSeed: isAdmin && trimmedSeed ? trimmedSeed : undefined,
       formationId: formationId || undefined,
       cancelPolicy: { immediate: cancelImmediate },
     });
@@ -70,6 +96,27 @@ export function CreateRoomForm({ locale, dungeons, creating, onCreate }: CreateR
       </label>
 
       <label className="schedule-field">
+        <span className="schedule-field-label">{t(locale, 'schedule.dungeonTypeLabel')}</span>
+        <select
+          className="schedule-select"
+          value={dungeonType}
+          onChange={(e) => setDungeonType(e.target.value)}
+          data-testid="schedule-dungeon-type-select"
+        >
+          {dungeons.types.map((ty) => (
+            <option key={ty.id} value={ty.id}>
+              {localizedName(locale, ty)}
+            </option>
+          ))}
+        </select>
+        {typeNote ? (
+          <span className="schedule-field-note" data-testid="schedule-dungeon-type-note">
+            {typeNote}
+          </span>
+        ) : null}
+      </label>
+
+      <label className="schedule-field">
         <span className="schedule-field-label">{t(locale, 'schedule.levelLabel')}</span>
         <input
           className="schedule-input"
@@ -80,6 +127,20 @@ export function CreateRoomForm({ locale, dungeons, creating, onCreate }: CreateR
           data-testid="schedule-level-input"
         />
       </label>
+
+      {isAdmin ? (
+        <label className="schedule-field">
+          <span className="schedule-field-label">{t(locale, 'schedule.genSeedLabel')}</span>
+          <input
+            className="schedule-input"
+            type="text"
+            value={genSeed}
+            placeholder={t(locale, 'schedule.genSeedPlaceholder')}
+            onChange={(e) => setGenSeed(e.target.value)}
+            data-testid="schedule-gen-seed-input"
+          />
+        </label>
+      ) : null}
 
       <label className="schedule-field">
         <span className="schedule-field-label">{t(locale, 'schedule.formationLabel')}</span>
