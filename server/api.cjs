@@ -205,6 +205,67 @@ function sendJSON(res, code, obj) {
   res.end(body);
 }
 
+// REQ-0045 (g): plain-text response helper, same header discipline as
+// sendJSON above (Content-Length + CORS) but text/plain instead of
+// application/json -- used only by GET .../run?format=text below.
+function sendText(res, code, body) {
+  res.writeHead(code, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Access-Control-Allow-Origin': '*',
+  });
+  res.end(body);
+}
+
+// REQ-0045 (g): server-side mirror of client/src/schedule/Monitor.tsx's
+// humanizeEvent() -- same one-line-per-event vocabulary (t, type, actor,
+// cells, dmg, status per the task brief), kept as an intentional CJS
+// port rather than a shared module (the client copy is TypeScript/React-
+// facing and reads run.events straight off already-fetched state; this
+// one is a plain string formatter over the same ApiRunEvent wire shape,
+// with no other shared dependency worth introducing a cross-runtime
+// module boundary for). Falls back to a generic line for any event
+// shape not explicitly covered, matching the client copy's own
+// graceful-degradation behavior.
+function humanizeEventText(ev) {
+  const t = typeof ev.t === 'number' ? ev.t.toFixed(2) : '?';
+  const cellStr = (c) => (Array.isArray(c) ? '[' + c[0] + ',' + c[1] + ']' : String(c));
+  switch (ev.ev) {
+    case 'encounter_start':
+      return 't=' + t + 's  encounter #' + ev.enc + ' starts (' + ev.kind + ', formation ' + ev.formation + ')';
+    case 'telegraph':
+      return 't=' + t + 's  telegraph: ' + ev.src + ' winds up ' + ev.skill + ' from the ' + ev.edge + ' edge (fires at t=' + (typeof ev.fires_at === 'number' ? ev.fires_at.toFixed(2) : '?') + 's)';
+    case 'ray_fire':
+      return 't=' + t + 's  ray fired by ' + ev.src + ' into the ' + ev.field + ' field, entering at ' + cellStr(ev.entry);
+    case 'ray_step':
+      return 't=' + t + 's  ray travels through ' + (Array.isArray(ev.path) ? ev.path.length : '?') + ' cell(s)';
+    case 'ray_bounce':
+      return 't=' + t + 's  ray bounces at ' + cellStr(ev.at) + ' (new dir ' + ev.new_dir + ', bounce #' + ev.bounce + ')';
+    case 'ray_hit':
+      return 't=' + t + 's  HIT: ' + ev.dst + ' takes ' + ev.amount + ' dmg (hp after: ' + ev.hp_after + ')';
+    case 'ray_aoe': {
+      const hits = Array.isArray(ev.hits) ? ev.hits : [];
+      const hitList = hits.map((h) => h.dst + ':' + h.amount).join(', ');
+      return 't=' + t + 's  AOE at ' + cellStr(ev.center) + ' (radius ' + ev.radius + '): ' + (hitList || 'no targets');
+    }
+    case 'ray_hit_all': {
+      const hits = Array.isArray(ev.hits) ? ev.hits : [];
+      const hitList = hits.map((h) => h.dst + ':' + h.amount).join(', ');
+      return 't=' + t + 's  HIT ALL (whole field): ' + (hitList || 'no targets');
+    }
+    case 'reflect_damage':
+      return 't=' + t + 's  reflect: ' + ev.dst + ' takes ' + ev.amount + ' reflected dmg';
+    case 'progress':
+      return 't=' + t + 's  progress: encounter #' + ev.enc + ' -> ' + ev.pct + '%';
+    case 'shortcut':
+      return 't=' + t + 's  shortcut: encounter #' + ev.enc + ' grants +' + (typeof ev.jump_pct === 'number' ? ev.jump_pct.toFixed(1) : ev.jump_pct) + '% (now ' + ev.pct_after + '%)';
+    case 'run_end':
+      return 't=' + t + 's  RUN END: ' + String(ev.result).toUpperCase() + ' at ' + ev.final_pct + '% progress';
+    default:
+      return 't=' + t + 's  ' + ev.ev + '  ' + JSON.stringify(ev);
+  }
+}
+
 function readBody(req, cb) {
   let chunks = [];
   let total = 0;
@@ -751,6 +812,20 @@ function handle(req, res) {
         if (!room.lastRunId) { sendJSON(res, 404, { ok: false, error: 'this room has no run yet' }); return; }
         const run = storage.readRun(room.lastRunId);
         if (!run) { sendJSON(res, 404, { ok: false, error: 'run record not found' }); return; }
+        const visible = schedule.visibleEvents(run);
+        // REQ-0045 (g): GET .../run?format=text -- optional, nice-to-
+        // have plain-text mirror of the same time-gated visibleEvents()
+        // this route already sends as JSON, one humanized line per
+        // event (see humanizeEventText's own doc), for a quick curl/
+        // browser-tab inspection without needing the client UI at all.
+        // Any value OTHER than exactly 'text' (including absent) falls
+        // through to the existing JSON response, unchanged.
+        if (url.searchParams.get('format') === 'text') {
+          const lines = visible.map((ev, idx) => idx + ': ' + humanizeEventText(ev));
+          const body = lines.length > 0 ? lines.join('\n') + '\n' : '(no events yet)\n';
+          sendText(res, 200, body);
+          return;
+        }
         const clock = schedule.runClock(run);
         sendJSON(res, 200, {
           ok: true,
@@ -759,7 +834,7 @@ function handle(req, res) {
           startedAt: run.startedAt,
           durationSecs: run.durationSecs,
           clock: { elapsedSecs: clock.elapsedSecs, isSettled: clock.isSettled, pct: clock.pct },
-          events: schedule.visibleEvents(run),
+          events: visible,
           // Summary fields are always present (computed instantly at run
           // start) but represent the FINAL outcome even before the
           // clock finishes -- a spectator-safe client should treat

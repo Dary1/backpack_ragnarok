@@ -1270,6 +1270,59 @@ async function main() {
     return [active, canvas.presets.store[1], canvas.presets.store[2], canvas.presets.store[3]];
   }
 
+  await AT('schedule: GET .../run?format=text (REQ-0045 g) returns a plain-text, one-humanized-line-per-event mirror of the same visibleEvents() the JSON route sends -- any OTHER/absent format value still returns JSON unchanged', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(roomAfter.body.room.status, 'active');
+
+    // Plain-text request -- driven DIRECTLY via mockReq/api.handle (not
+    // the scheduleReq() helper above, which always JSON.parse's the
+    // body and would just get `null` back for a non-JSON response).
+    const textReq = mockReq('GET', '/api/schedule/rooms/' + roomId + '/run?format=text', undefined, authHeaders(scheduleP1.token));
+    const textRes = await new Promise((resolve) => {
+      const res2 = mockRes((b) => resolve({ status: res2.statusCode, headers: res2.headers, body: b }));
+      api.handle(textReq, res2);
+    });
+    assert.strictEqual(textRes.status, 200);
+    assert.ok(textRes.headers['Content-Type'].startsWith('text/plain'), 'format=text must respond text/plain, not application/json');
+    assert.ok(textRes.body.length > 0, 'text body must be non-empty (this room has a real in-flight run with real events)');
+    // Every non-empty line must start with "N: " (the same idx-prefixed
+    // shape Monitor.tsx's own log panel renders) -- a crude but effective
+    // proxy for "this is humanized text, not raw JSON": a bare
+    // JSON.parse of the WHOLE body must fail (it is NOT one JSON
+    // document), while every individual line starts with a plain integer
+    // index, never a JSON delimiter.
+    let threwOnWholeBodyParse = false;
+    try { JSON.parse(textRes.body); } catch (e) { threwOnWholeBodyParse = true; }
+    assert.ok(threwOnWholeBodyParse, 'the whole text body must NOT itself be one parseable JSON document (it is multi-line humanized text)');
+    const lines = textRes.body.split('\n').filter((l) => l.length > 0);
+    assert.ok(lines.length > 0, 'must have at least one non-empty line');
+    for (const line of lines) assert.ok(/^\d+: /.test(line), 'every line must start with "N: " (idx-prefixed humanized event), got: ' + JSON.stringify(line));
+
+    // Absent format param (the default JSON route) is completely
+    // unaffected by this new branch.
+    const jsonRes = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', scheduleP1.token);
+    assert.strictEqual(jsonRes.status, 200);
+    assert.ok(Array.isArray(jsonRes.body.events));
+
+    // A bogus/unknown format value also falls through to JSON, not text
+    // and not an error -- only the EXACT string 'text' is special-cased.
+    const bogusReq = mockReq('GET', '/api/schedule/rooms/' + roomId + '/run?format=bogus', undefined, authHeaders(scheduleP1.token));
+    const bogusRes = await new Promise((resolve) => {
+      const res2 = mockRes((b) => { let parsed = null; try { parsed = JSON.parse(b); } catch (e) { /* leave null */ } resolve({ status: res2.statusCode, body: parsed }); });
+      api.handle(bogusReq, res2);
+    });
+    assert.strictEqual(bogusRes.status, 200);
+    assert.ok(Array.isArray(bogusRes.body.events), 'an unrecognized format value must still return the normal JSON shape, not error or text');
+
+    forceRunElapsed(roomAfter.body.room.lastRunId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
   await AT('schedule: victory rewards land in the warehouse with a harvestedAt + 7-day expiresAt (golden e)', async () => {
     // Defensive: clear any warehouse items left by earlier tests in this
     // group (each of which is supposed to clean up after itself, but this

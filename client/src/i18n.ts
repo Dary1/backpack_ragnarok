@@ -208,6 +208,13 @@ const DICT = {
     'schedule.monitor.masked': '?',
     'schedule.monitor.settled': 'Settled',
     'schedule.monitor.awaitingRun': 'No run yet -- fill all 4 unit slots to start one.',
+    // REQ-0045 (g): expanded-view Log tab.
+    'schedule.monitor.tabField': 'Field',
+    'schedule.monitor.tabLog': 'Log',
+    'schedule.monitor.copyJsonl': 'Copy raw JSONL',
+    'schedule.monitor.copied': 'Copied!',
+    'schedule.monitor.copyFailed': 'Copy failed',
+    'schedule.monitor.logEmpty': 'No events yet.',
 
     // Warehouse tab (WarehouseTab.tsx)
     'schedule.warehouse.title': 'Warehouse',
@@ -409,6 +416,13 @@ const DICT = {
     'schedule.monitor.masked': '？',
     'schedule.monitor.settled': '確定済み',
     'schedule.monitor.awaitingRun': 'まだランがありません -- 4体すべてのユニットスロットを埋めると開始します。',
+    // REQ-0045 (g): expanded-view Log tab.
+    'schedule.monitor.tabField': 'フィールド',
+    'schedule.monitor.tabLog': 'ログ',
+    'schedule.monitor.copyJsonl': '生のJSONLをコピー',
+    'schedule.monitor.copied': 'コピーしました！',
+    'schedule.monitor.copyFailed': 'コピーに失敗しました',
+    'schedule.monitor.logEmpty': 'まだイベントがありません。',
 
     // Warehouse tab (WarehouseTab.tsx)
     'schedule.warehouse.title': '倉庫',

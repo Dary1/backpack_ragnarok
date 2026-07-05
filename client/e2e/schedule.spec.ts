@@ -1282,3 +1282,72 @@ test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL copy', () => {
+  test('the Log tab shows idx-prefixed humanized lines for real events, and the copy button places raw JSONL (one JSON.parse-able line per event) on the clipboard', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await card.locator('.schedule-monitor-expand-btn').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+
+    // Field tab is the default; switch to Log.
+    await card.locator('[data-testid="schedule-monitor-tab-log"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor-log-panel"]')).toBeVisible();
+    // The Field pane's canvas is now CSS-hidden (still mounted, per the
+    // "mount once, toggle visibility" discipline), not removed.
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeHidden();
+
+    // Real events must appear as idx-prefixed humanized lines within a
+    // bounded wait (this is a real, un-backdated run -- events accrue
+    // over real wall-clock time, same "monitor: events & progress"
+    // convention as the earlier real-run test in this file).
+    await expect(async () => {
+      const text = await card.locator('[data-testid="schedule-monitor-log-text"]').textContent();
+      expect(text).toBeTruthy();
+      expect(text!.length).toBeGreaterThan(0);
+      expect(text).toMatch(/^0: /); // first line always idx 0
+    }).toPass({ timeout: 8000 });
+
+    // Copy raw JSONL -> clipboard content must be MULTIPLE independently
+    // JSON.parse-able lines (never one single JSON document, never the
+    // humanized text) -- proves the copy button captures the RAW event
+    // objects, not the rendered display text.
+    await card.locator('[data-testid="schedule-monitor-log-copy-btn"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor-log-copy-status"]')).toBeVisible({ timeout: 3000 });
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText.length).toBeGreaterThan(0);
+    const jsonlLines = clipboardText.split('\n').filter((l) => l.length > 0);
+    expect(jsonlLines.length).toBeGreaterThan(0);
+    for (const line of jsonlLines) {
+      const parsed = JSON.parse(line); // throws if any line is not valid JSON on its own
+      expect(typeof parsed.ev).toBe('string');
+      expect(typeof parsed.seq).toBe('number');
+    }
+
+    // Switch back to Field -- canvas reappears, log panel hides (both
+    // still mounted underneath, never remounted).
+    await card.locator('[data-testid="schedule-monitor-tab-field"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible();
+    await expect(card.locator('[data-testid="schedule-monitor-log-panel"]')).toBeHidden();
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});

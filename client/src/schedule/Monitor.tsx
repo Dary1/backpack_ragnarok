@@ -54,6 +54,54 @@ function localizedItemName(locale: Locale, content: ApiContentPayload | null, it
   return entry.name;
 }
 
+/** REQ-0045 (g): one humanized, one-line-per-event sentence per the
+ * task brief's exact field list (t, type, actor, cells, dmg, status) --
+ * covers every ev.ev value sim/combat.cjs actually emits (see
+ * MonitorRenderer.ts's own applyOneEvent switch for the same
+ * vocabulary, mirrored here for TEXT instead of a Pixi visual). Falls
+ * back to a generic "t=Xs <ev> {raw JSON}" line for any event shape not
+ * explicitly covered, so a future/unknown event type never disappears
+ * from the log silently -- it just renders less prettily until this
+ * function is extended for it. */
+function humanizeEvent(ev: ApiRunEvent): string {
+  const t = typeof ev.t === 'number' ? ev.t.toFixed(2) : '?';
+  const cellStr = (c: unknown): string => (Array.isArray(c) ? `[${c[0]},${c[1]}]` : String(c));
+  switch (ev.ev) {
+    case 'encounter_start':
+      return `t=${t}s  encounter #${ev.enc} starts (${ev.kind}, formation ${ev.formation})`;
+    case 'telegraph':
+      return `t=${t}s  telegraph: ${ev.src} winds up ${ev.skill} from the ${ev.edge} edge (fires at t=${typeof ev.fires_at === 'number' ? ev.fires_at.toFixed(2) : '?'}s)`;
+    case 'ray_fire':
+      return `t=${t}s  ray fired by ${ev.src} into the ${ev.field} field, entering at ${cellStr(ev.entry)}`;
+    case 'ray_step':
+      return `t=${t}s  ray travels through ${Array.isArray(ev.path) ? ev.path.length : '?'} cell(s)`;
+    case 'ray_bounce':
+      return `t=${t}s  ray bounces at ${cellStr(ev.at)} (new dir ${ev.new_dir}, bounce #${ev.bounce})`;
+    case 'ray_hit':
+      return `t=${t}s  HIT: ${ev.dst} takes ${ev.amount} dmg (hp after: ${ev.hp_after})`;
+    case 'ray_aoe': {
+      const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string; amount?: number }>) : [];
+      const hitList = hits.map((h) => `${h.dst}:${h.amount}`).join(', ');
+      return `t=${t}s  AOE at ${cellStr(ev.center)} (radius ${ev.radius}): ${hitList || 'no targets'}`;
+    }
+    case 'ray_hit_all': {
+      const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string; amount?: number }>) : [];
+      const hitList = hits.map((h) => `${h.dst}:${h.amount}`).join(', ');
+      return `t=${t}s  HIT ALL (whole field): ${hitList || 'no targets'}`;
+    }
+    case 'reflect_damage':
+      return `t=${t}s  reflect: ${ev.dst} takes ${ev.amount} reflected dmg`;
+    case 'progress':
+      return `t=${t}s  progress: encounter #${ev.enc} -> ${ev.pct}%`;
+    case 'shortcut':
+      return `t=${t}s  shortcut: encounter #${ev.enc} grants +${typeof ev.jump_pct === 'number' ? ev.jump_pct.toFixed(1) : ev.jump_pct}% (now ${ev.pct_after}%)`;
+    case 'run_end':
+      return `t=${t}s  RUN END: ${String(ev.result).toUpperCase()} at ${ev.final_pct}% progress`;
+    default:
+      return `t=${t}s  ${ev.ev}  ${JSON.stringify(ev)}`;
+  }
+}
+
 interface MonitorProps {
   room: ApiRoom;
   locale: Locale;
@@ -87,6 +135,12 @@ export function Monitor({ room, locale }: MonitorProps) {
   const unitsMountedRef = useRef(false);
   const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
+  /** REQ-0045 (g): expanded-view tab -- 'field' (the existing Pixi
+   * canvas) or 'log' (a new humanized text panel + raw JSONL copy
+   * button). Local, not persisted -- purely a display toggle within the
+   * already-expanded monitor section. */
+  const [activeTab, setActiveTab] = useState<'field' | 'log'>('field');
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
 
   // Poll GET .../run every ~2s while this room has (or recently had) a
   // run. Stops implicitly if the room has no lastRunId at all (no run
@@ -337,9 +391,68 @@ export function Monitor({ room, locale }: MonitorProps) {
 
       {/* The canvas stays in the DOM once created (mounted lazily on
           first expand, per the module comment) -- only CSS visibility
-          toggles afterward, never a remount. */}
+          toggles afterward, never a remount. REQ-0045 (g): the expanded
+          section now also carries a "Log" tab (humanized one-line-per-
+          event text + a raw JSONL copy button) alongside the existing
+          "Field" (Pixi canvas) tab -- both panes stay mounted, only
+          their own CSS visibility toggles on tab switch, same
+          "mount once, toggle visibility" discipline as expand/collapse
+          itself. */}
       <div className={`schedule-monitor-expanded${expanded ? '' : ' schedule-monitor-hidden'}`}>
-        <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+        <div className="schedule-monitor-tabs">
+          <button
+            type="button"
+            className={`schedule-monitor-tab-btn${activeTab === 'field' ? ' schedule-monitor-tab-btn-active' : ''}`}
+            data-testid="schedule-monitor-tab-field"
+            onClick={() => setActiveTab('field')}
+          >
+            {t(locale, 'schedule.monitor.tabField')}
+          </button>
+          <button
+            type="button"
+            className={`schedule-monitor-tab-btn${activeTab === 'log' ? ' schedule-monitor-tab-btn-active' : ''}`}
+            data-testid="schedule-monitor-tab-log"
+            onClick={() => setActiveTab('log')}
+          >
+            {t(locale, 'schedule.monitor.tabLog')}
+          </button>
+        </div>
+        <div className={activeTab === 'field' ? '' : 'schedule-monitor-hidden'}>
+          <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+        </div>
+        <div className={activeTab === 'log' ? 'schedule-monitor-log-panel' : 'schedule-monitor-hidden'} data-testid="schedule-monitor-log-panel">
+          <div className="schedule-monitor-log-actions">
+            <button
+              type="button"
+              className="schedule-monitor-log-copy-btn"
+              data-testid="schedule-monitor-log-copy-btn"
+              onClick={async () => {
+                // Raw JSONL -- one event per line, same wire shape
+                // GET .../run's own `events` array already carries (no
+                // server-side toJSONL() call needed here; this is
+                // exactly combat.cjs's own toJSONL format: one
+                // JSON.stringify'd event per line).
+                const jsonl = (run?.events ?? []).map((ev) => JSON.stringify(ev)).join('\n');
+                try {
+                  await navigator.clipboard.writeText(jsonl);
+                  setCopyStatus('copied');
+                } catch (e) {
+                  setCopyStatus('failed');
+                }
+                setTimeout(() => setCopyStatus('idle'), 2000);
+              }}
+            >
+              {t(locale, 'schedule.monitor.copyJsonl')}
+            </button>
+            {copyStatus === 'copied' ? <span className="schedule-monitor-log-copy-status" data-testid="schedule-monitor-log-copy-status">{t(locale, 'schedule.monitor.copied')}</span> : null}
+            {copyStatus === 'failed' ? <span className="schedule-monitor-log-copy-status schedule-monitor-log-copy-failed">{t(locale, 'schedule.monitor.copyFailed')}</span> : null}
+          </div>
+          <pre className="schedule-monitor-log-text" data-testid="schedule-monitor-log-text">
+            {run && run.events.length > 0
+              ? run.events.map((ev, idx) => `${idx}: ${humanizeEvent(ev)}`).join('\n')
+              : t(locale, 'schedule.monitor.logEmpty')}
+          </pre>
+        </div>
       </div>
 
       {/* REQ-0045 (e) root cause #1: this panel used to reveal itself
