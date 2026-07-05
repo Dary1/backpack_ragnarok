@@ -1,0 +1,436 @@
+// sim/dungen.cjs -- REQ-0043 dungeon auto-generation.
+//
+// generate(dungeonType, level, seed) -> dungeon def, in EXACTLY the shape
+// sim/combat.cjs's runDungeon() consumes (see sim/README.md's "Dungeon
+// def (informal, this implementation's own schema)" section):
+//   { id, name, encounters: [ {id,type,mode,enemyPack?,entityDef?,
+//     timeout_secs?,deadline_secs?,rewardItems?}, ... ] }
+//
+// Two dungeonTypes:
+//   - 'default': procedurally generated via the pack grammar below,
+//     scaled by `level`. Deterministic: the SAME (dungeonType, level,
+//     seed) triple always produces a byte-identical def (same encounter
+//     count/order/composition/rewards) -- proven by a JSON.stringify
+//     equality test in sim/tests/dungen_test.cjs.
+//   - 'test_fixed': returns batch-002's own hand-authored dungeon.json
+//     VERBATIM (deep-copied, so a caller can never mutate the cached
+//     source doc) -- generator-independent fixed spawns, for
+//     tests/dev that want a known, stable encounter sequence regardless
+//     of seed/level.
+//
+// Uses sim/combat.cjs's OWN seeded RNG (makeRng) so the generator's rolls
+// live in the same "named sub-stream, never desyncs an unrelated roll"
+// discipline as every other roll in this codebase (S1.2) -- the
+// generator's master seed is caller-supplied and independent of (never
+// derived from) a run's own masterSeed; callers that want a dev-fixed
+// dungeon LAYOUT and a separately-random combat RNG pass two different
+// seeds to dungen.generate() and combat.runDungeon() respectively (see
+// server/schedule.cjs wiring).
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+const combat = require(path.join(__dirname, 'combat.cjs'));
+
+const BATCH_DIR = path.join(__dirname, '..', 'content', 'batches', 'batch-002-dungeon-pilot');
+const DUNGEON_FIXED_PATH = path.join(BATCH_DIR, 'dungeon.json');
+const ENEMIES_PATH = path.join(BATCH_DIR, 'enemies.json');
+const ENTITIES_PATH = path.join(BATCH_DIR, 'entities.json');
+
+function deepCopy(x) { return JSON.parse(JSON.stringify(x)); }
+
+let fixedDungeonCache = null;
+function loadFixedDungeon() {
+  if (!fixedDungeonCache) fixedDungeonCache = JSON.parse(fs.readFileSync(DUNGEON_FIXED_PATH, 'utf8'));
+  return fixedDungeonCache;
+}
+
+let enemyRosterCache = null;
+function loadEnemyRoster() {
+  if (!enemyRosterCache) {
+    const raw = JSON.parse(fs.readFileSync(ENEMIES_PATH, 'utf8'));
+    enemyRosterCache = raw.entries;
+  }
+  return enemyRosterCache;
+}
+
+let entityTemplatesCache = null;
+function loadEntityTemplates() {
+  if (!entityTemplatesCache) {
+    const raw = JSON.parse(fs.readFileSync(ENTITIES_PATH, 'utf8'));
+    const byId = {};
+    for (const e of raw.entries) byId[e.id] = e;
+    entityTemplatesCache = byId;
+  }
+  return entityTemplatesCache;
+}
+
+// =====================================================================
+// Level-scaling knobs (all documented interpretations -- REQ-0043 gives
+// no exact formulas beyond "scaled by level", matching the same
+// AMBIGUITY RULE precedent sim/combat.cjs's own TUNABLES section
+// already sets: pick a simple, monotone-in-level, deterministic scheme
+// and cite it here rather than in a scattered inline comment).
+// =====================================================================
+const DUNGEN_TUNABLES = {
+  // Number of pack (battle) encounters before the boss. Grows every 3
+  // levels, capped so a generated dungeon never runs unboundedly long.
+  PACKS_BASE: 2,
+  PACKS_PER_3_LEVELS: 1,
+  PACKS_MAX: 6,
+
+  // Trap encounters: 0-2, more likely as level rises (soft scaling via
+  // a level-derived probability curve, capped at 2 per the task brief).
+  TRAP_MAX: 2,
+
+  // Hidden-door chain (stage1 detection + stage2 unlock): 0 or 1.
+  DOOR_CHAIN_MAX: 1,
+
+  // Chest: 0 or 1.
+  CHEST_MAX: 1,
+
+  // Pack composition: base member count (before rarity/level bonuses)
+  // and the extra members a higher pack rarity roll adds -- mirrors
+  // combat.cjs's PACK_RARITY_WEIGHTS common/magic/rare tiers (S4.6) but
+  // there is no magic/rare enemy roster yet in batch-002 (every entry is
+  // "common"), so this generator's documented interpretation is: a
+  // magic/rare rarity ROLL still draws from the same common roster, but
+  // adds extra pack members (a tougher pack, not a tougher individual
+  // enemy) -- consistent with "no formula given" per S4.6's own gap.
+  PACK_BASE_MEMBERS: 2,
+  PACK_RARITY_BONUS_MEMBERS: { common: 0, magic: 1, rare: 2 },
+  PACK_MAX_MEMBERS: 5,
+
+  // Reward roll ids -- reused verbatim from batch-002's own reward
+  // vocabulary (server/schedule.cjs's REWARD_ROLL_TO_ITEM_ID already
+  // resolves every one of these to a real live item id, so a generated
+  // dungeon's rewards resolve through the EXACT SAME table with zero
+  // server-side changes).
+  REWARD_PACK_LOW: 'reward_frost_shard_common',
+  REWARD_PACK_HIGH: 'reward_frost_shard_uncommon',
+  REWARD_CHEST: 'reward_frostbound_cache_roll',
+  REWARD_BOSS: 'reward_boss_relic_roll',
+};
+
+function packsForLevel(level) {
+  const n = DUNGEN_TUNABLES.PACKS_BASE + Math.floor((level - 1) / 3) * DUNGEN_TUNABLES.PACKS_PER_3_LEVELS;
+  return Math.max(1, Math.min(DUNGEN_TUNABLES.PACKS_MAX, n));
+}
+
+// rollCount: deterministic "0..max" roll whose probability of a higher
+// count increases with level (documented interpretation: level/(level+4)
+// chance per extra unit, i.e. asymptotically approaches max as level
+// grows, staying near 0 at level 1). Uses its own named sub-stream so it
+// never desyncs any other roll.
+function rollCountForLevel(rng, streamName, max, level) {
+  if (max <= 0) return 0;
+  const stream = rng.stream(streamName);
+  let count = 0;
+  for (let i = 0; i < max; i++) {
+    const pLevelUp = level / (level + 4);
+    if (stream.next() < pLevelUp) count++;
+    else break; // once a level fails to add one more, stop (monotone-ish, simple, deterministic)
+  }
+  return count;
+}
+
+function rollPackRarity(rng, streamName) {
+  const stream = rng.stream(streamName);
+  const r = stream.next();
+  const w = combat.TUNABLES.PACK_RARITY_WEIGHTS;
+  if (r < w.rare) return 'rare';
+  if (r < w.rare + w.magic) return 'magic';
+  return 'common';
+}
+
+function enemyWeight(def) {
+  // "per-enemy hp-weight" (S4.6) -- midpoint of the def's [lo,hi] hp
+  // range, the simplest single-number stand-in for "how much budget one
+  // copy of this enemy costs" (documented interpretation, consistent
+  // with combat.cjs's own hp-range-rolling convention elsewhere).
+  return (def.hp[0] + def.hp[1]) / 2;
+}
+
+// buildPack: picks enemyIds for one pack encounter, bounded by the level
+// budget (packBudgetForLevel) and the pack's own rolled rarity (extra
+// member slots per DUNGEN_TUNABLES.PACK_RARITY_BONUS_MEMBERS). Always
+// includes at least one 'line'-role enemy (a pack needs a front line);
+// fills remaining slots by cycling role preference line -> support ->
+// anchor, stopping once either the member cap or the hp-weight budget
+// would be exceeded. Picks WITHIN each role via the seeded RNG so two
+// different (type,level,seed) combos can differ in exact composition
+// while staying deterministic for a FIXED seed.
+function buildPack(rng, streamPrefix, roster, level) {
+  const budget = combat.packBudgetForLevel(level);
+  const rarity = rollPackRarity(rng, streamPrefix + '/rarity');
+  const targetMembers = Math.min(
+    DUNGEN_TUNABLES.PACK_MAX_MEMBERS,
+    DUNGEN_TUNABLES.PACK_BASE_MEMBERS + DUNGEN_TUNABLES.PACK_RARITY_BONUS_MEMBERS[rarity]
+  );
+
+  const byRole = { line: [], support: [], anchor: [] };
+  for (const def of roster) {
+    if (def.pack_role === 'boss') continue; // boss roster never appears in a regular pack
+    const role = byRole[def.pack_role] ? def.pack_role : 'line';
+    byRole[role].push(def);
+  }
+
+  const pickStream = rng.stream(streamPrefix + '/pick');
+  function pickFrom(list) {
+    if (list.length === 0) return null;
+    const idx = Math.floor(pickStream.next() * list.length);
+    return list[Math.min(idx, list.length - 1)];
+  }
+
+  const roleOrder = ['line', 'support', 'anchor'];
+  const chosen = [];
+  let weightSum = 0;
+  let roleIdx = 0;
+  let guard = 0;
+  while (chosen.length < targetMembers && guard < 50) {
+    guard++;
+    const role = roleOrder[roleIdx % roleOrder.length];
+    roleIdx++;
+    const candidates = byRole[role].length > 0 ? byRole[role] : byRole.line;
+    const def = pickFrom(candidates);
+    if (!def) continue;
+    const w = enemyWeight(def);
+    // Always accept the FIRST (line) member even if it alone would
+    // exceed budget (a pack of zero enemies makes no sense); afterwards
+    // respect the budget strictly.
+    if (chosen.length > 0 && weightSum + w > budget) continue;
+    chosen.push(def.id);
+    weightSum += w;
+  }
+  if (chosen.length === 0) {
+    // Degenerate roster guard (should not happen with batch-002's real
+    // roster, which always has >=1 'line' entry) -- fall back to the
+    // cheapest enemy available so a pack is never empty.
+    const cheapest = roster.filter(d => d.pack_role !== 'boss').sort((a, b) => enemyWeight(a) - enemyWeight(b))[0];
+    if (cheapest) chosen.push(cheapest.id);
+  }
+  return chosen;
+}
+
+function bossIdFor(roster) {
+  const boss = roster.find(d => d.pack_role === 'boss');
+  return boss ? boss.id : null;
+}
+
+// generateDefault: the procedural 'default' dungeonType. Builds the full
+// encounter list per REQ-0043: pack count/composition scaled by level
+// (via the pack grammar above), 0-2 traps, 0-1 hidden-door chain, 0-1
+// chest, boss final. Interleave order (documented interpretation: no
+// spec given for encounter ORDER beyond "boss final") -- packs and
+// traps/doors/chest are interleaved in a fixed, seed-independent
+// STRUCTURAL order (packs first with traps/door/chest woven in after
+// every other pack once rolled) so the generated def's SHAPE (which
+// indices hold which types) is stable and easy to reason about, while
+// WHICH enemies/rarity/reward each slot gets is what the seed varies.
+function generateDefault(level, seed) {
+  const rng = combat.makeRng(seed);
+  const roster = loadEnemyRoster();
+  const entityTemplates = loadEntityTemplates();
+
+  const nPacks = packsForLevel(level);
+  const nTraps = rollCountForLevel(rng, 'dungen/traps/count', DUNGEN_TUNABLES.TRAP_MAX, level);
+  const nDoorChains = rollCountForLevel(rng, 'dungen/doors/count', DUNGEN_TUNABLES.DOOR_CHAIN_MAX, level);
+  const nChests = rollCountForLevel(rng, 'dungen/chest/count', DUNGEN_TUNABLES.CHEST_MAX, level);
+
+  const encounters = [];
+  let encSeq = 0;
+  function nextId(prefix) { return prefix + '_' + (encSeq++); }
+
+  // Packs, with a trap woven in after every other pack (once traps are
+  // available) and the door chain woven in around the mid-point, and
+  // the chest placed just before the boss -- fixed structural slots,
+  // seed only affects composition/rewards within each slot.
+  let trapsPlaced = 0;
+  let doorsPlaced = 0;
+  for (let i = 0; i < nPacks; i++) {
+    const enemyIds = buildPack(rng, 'dungen/pack/' + i, roster, level);
+    encounters.push({
+      id: nextId('enc_pack'),
+      type: 'pack',
+      mode: 'battle',
+      enemyPack: { enemyIds },
+      deadline_secs: 90,
+      rewardItems: [DUNGEN_TUNABLES.REWARD_PACK_LOW],
+    });
+
+    // Weave a trap in after this pack (every other pack slot) while
+    // traps remain to place.
+    if (trapsPlaced < nTraps && (i % 2 === 1)) {
+      const tmpl = entityTemplates.trap_frost_deadfall;
+      encounters.push({
+        id: nextId('enc_trap'),
+        type: 'trap',
+        mode: 'detection',
+        entityDef: {
+          id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
+          masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
+        },
+        timeout_secs: tmpl.timeout_secs,
+        deadline_secs: tmpl.timeout_secs + 0.5,
+      });
+      trapsPlaced++;
+    }
+
+    // Weave the hidden-door chain (2 stages) in around the midpoint.
+    if (doorsPlaced < nDoorChains && i === Math.floor(nPacks / 2)) {
+      const s1 = entityTemplates.door_rimefast_stage1;
+      const s2 = entityTemplates.door_rimefast_stage2;
+      encounters.push({
+        id: nextId('enc_door_stage1'),
+        type: 'door',
+        mode: 'detection',
+        entityDef: {
+          id: s1.id, name: s1.name, hp: s1.hp, footprint: s1.footprint,
+          masked: s1.masked, timeout_secs: s1.timeout_secs, skills: s1.skills,
+        },
+        timeout_secs: s1.timeout_secs,
+        deadline_secs: s1.timeout_secs + 0.5,
+      });
+      encounters.push({
+        id: nextId('enc_door_stage2'),
+        type: 'door',
+        mode: 'unlock',
+        entityDef: {
+          id: s2.id, name: s2.name, hp: s2.hp, footprint: s2.footprint,
+          masked: s2.masked, timeout_secs: s2.timeout_secs, skills: s2.skills,
+        },
+        timeout_secs: s2.timeout_secs,
+        deadline_secs: s2.timeout_secs + 0.5,
+        rewardItems: [],
+      });
+      doorsPlaced++;
+    }
+  }
+
+  // Any traps/doors that didn't fit the weave loop above (e.g. nPacks==1
+  // leaves no "every other pack" slot) get appended just before the
+  // chest/boss, so the requested count is always honored exactly.
+  while (trapsPlaced < nTraps) {
+    const tmpl = entityTemplates.trap_frost_deadfall;
+    encounters.push({
+      id: nextId('enc_trap'),
+      type: 'trap',
+      mode: 'detection',
+      entityDef: {
+        id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
+        masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
+      },
+      timeout_secs: tmpl.timeout_secs,
+      deadline_secs: tmpl.timeout_secs + 0.5,
+    });
+    trapsPlaced++;
+  }
+  while (doorsPlaced < nDoorChains) {
+    const s1 = entityTemplates.door_rimefast_stage1;
+    const s2 = entityTemplates.door_rimefast_stage2;
+    encounters.push({
+      id: nextId('enc_door_stage1'), type: 'door', mode: 'detection',
+      entityDef: { id: s1.id, name: s1.name, hp: s1.hp, footprint: s1.footprint, masked: s1.masked, timeout_secs: s1.timeout_secs, skills: s1.skills },
+      timeout_secs: s1.timeout_secs, deadline_secs: s1.timeout_secs + 0.5,
+    });
+    encounters.push({
+      id: nextId('enc_door_stage2'), type: 'door', mode: 'unlock',
+      entityDef: { id: s2.id, name: s2.name, hp: s2.hp, footprint: s2.footprint, masked: s2.masked, timeout_secs: s2.timeout_secs, skills: s2.skills },
+      timeout_secs: s2.timeout_secs, deadline_secs: s2.timeout_secs + 0.5, rewardItems: [],
+    });
+    doorsPlaced++;
+  }
+
+  // Chest, just before the boss.
+  for (let i = 0; i < nChests; i++) {
+    const tmpl = entityTemplates.chest_frostbound_cache;
+    encounters.push({
+      id: nextId('enc_chest'),
+      type: 'chest',
+      mode: 'unlock',
+      entityDef: {
+        id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
+        masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
+      },
+      timeout_secs: tmpl.timeout_secs,
+      deadline_secs: tmpl.timeout_secs + 0.5,
+      rewardItems: [DUNGEN_TUNABLES.REWARD_CHEST],
+    });
+  }
+
+  // Boss, always final, always present, always 100% pinned (S8.2).
+  const bossId = bossIdFor(roster);
+  encounters.push({
+    id: nextId('enc_boss'),
+    type: 'boss',
+    mode: 'battle',
+    enemyPack: { enemyIds: bossId ? [bossId] : [] },
+    deadline_secs: 180,
+    rewardItems: [DUNGEN_TUNABLES.REWARD_BOSS],
+  });
+
+  return {
+    schema: 'dungeon/1',
+    id: 'generated_default_lv' + level,
+    name: 'Generated Dungeon (Lv.' + level + ')',
+    i18n: {
+      en: { name: 'Generated Dungeon (Lv.' + level + ')' },
+      ja: { name: '自動生成ダンジョン（Lv.' + level + '）' },
+    },
+    dungeonType: 'default',
+    level,
+    generatorSeed: seed,
+    encounters,
+  };
+}
+
+// generateTestFixed: returns batch-002's hand-authored dungeon.json
+// VERBATIM (deep-copied so the cache is never mutated by a caller), per
+// REQ-0043's "generator-independent fixed spawns for tests/dev" -- level
+// and seed are accepted but IGNORED (the whole point of this type is a
+// known, stable sequence regardless of either), except that the doc's
+// own `level`/`generatorSeed` echo fields are still set for caller
+// introspection/logging symmetry with generateDefault's return shape.
+function generateTestFixed(level, seed) {
+  const fixed = deepCopy(loadFixedDungeon());
+  fixed.dungeonType = 'test_fixed';
+  fixed.level = level;
+  fixed.generatorSeed = seed;
+  return fixed;
+}
+
+const GENERATORS = {
+  default: generateDefault,
+  test_fixed: generateTestFixed,
+};
+
+const DUNGEON_TYPES = Object.keys(GENERATORS);
+
+/**
+ * generate(dungeonType='default', level, seed) -> dungeon def.
+ * Deterministic: the SAME (dungeonType, level, seed) triple always
+ * returns a byte-identical (JSON.stringify-equal) def. Throws on an
+ * unknown dungeonType (caller's job to validate against DUNGEON_TYPES
+ * first if a friendlier 400 is wanted -- see server/schedule.cjs).
+ */
+function generate(dungeonType, level, seed) {
+  const type = dungeonType || 'default';
+  const gen = GENERATORS[type];
+  if (!gen) throw new Error('dungen.generate: unknown dungeonType ' + JSON.stringify(type) + ' (known: ' + DUNGEON_TYPES.join(', ') + ')');
+  const lvl = Number.isFinite(level) ? Math.max(1, Math.floor(level)) : 1;
+  const sd = (seed === undefined || seed === null) ? 'dungen-default-seed' : String(seed);
+  return gen(lvl, sd);
+}
+
+module.exports = {
+  generate,
+  DUNGEON_TYPES,
+  DUNGEN_TUNABLES,
+  packsForLevel,
+  rollCountForLevel,
+  rollPackRarity,
+  buildPack,
+  loadEnemyRoster,
+  loadEntityTemplates,
+  loadFixedDungeon,
+};

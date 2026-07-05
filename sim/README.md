@@ -14,9 +14,24 @@ framework-free, dependency-free (beyond a read-only interop with
   field-cell placement), entry-cell selection, ray walker, field/occupancy
   helpers, replay-log helpers, actor wrappers, skill firing, enemy pack
   compilation, skill scheduling, `runEncounter`, `runDungeon`.
+- `sim/dungen.cjs` (REQ-0043) — dungeon auto-generation.
+  `generate(dungeonType, level, seed)` returns a dungeon def in EXACTLY
+  the shape `runDungeon` consumes. Two types: `'default'` (procedural --
+  pack count/composition scaled by level via the pack grammar below, 0-2
+  traps, 0-1 hidden-door chain, 0-1 chest, boss final; deterministic --
+  same (type,level,seed) always yields a byte-identical def) and
+  `'test_fixed'` (returns batch-002's own hand-authored `dungeon.json`
+  VERBATIM, generator-independent of level/seed -- for tests/dev that
+  want a known, stable spawn sequence). Uses `combat.cjs`'s own
+  `makeRng`/named-sub-stream discipline and `packBudgetForLevel`/
+  `PACK_RARITY_WEIGHTS` (previously exported but unused outside tests --
+  this module is their first real consumer, per `combat.cjs`'s own
+  Interpretation #2 note that pack-budget wiring was left to "a future
+  content-generation tool").
 - `sim/tests/run.cjs` — test suite (T()/eq()/ok() harness mirroring
   `mock-src/tests/run.cjs`'s style), ≥30 scenarios covering every category
-  in the REQ-0036 P1-A task brief.
+  in the REQ-0036 P1-A task brief, plus REQ-0043's dungen determinism/
+  level-scaling/test_fixed-passthrough coverage.
 - `content/batches/batch-002-dungeon-pilot/` — starter content (dungeon
   def, enemies, formations, pilot items) used by the full-dungeon smoke
   test and available for future hand-authored content work.

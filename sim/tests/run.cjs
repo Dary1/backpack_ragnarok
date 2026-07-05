@@ -4,6 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const combat = require(path.join(__dirname, '..', 'combat.cjs'));
+const dungen = require(path.join(__dirname, '..', 'dungen.cjs'));
 
 let pass = 0, fail = 0;
 function T(name, fn) {
@@ -745,6 +746,142 @@ T('multi_strike: each sub-hit is a separate hit (OQ19) -- N hits produce N indep
   const events = [];
   combat.dealHitOnField(actor, { verb: { t: 'multi_strike', n: [2, 4], hits: 3 } }, 1.0, dmgStream, 'battle', events);
   eq(hitCount, 3, 'multi_strike with hits:3 should call applyDamage exactly 3 separate times');
+});
+
+
+// =====================================================================
+// REQ-0043: dungeon auto-generation (sim/dungen.cjs)
+// =====================================================================
+T('dungen determinism: same (type,level,seed) => byte-identical def (default type)', () => {
+  const a = dungen.generate('default', 5, 'det-seed-1');
+  const b = dungen.generate('default', 5, 'det-seed-1');
+  eq(a, b, 'two generate() calls with identical inputs must produce byte-identical (JSON.stringify-equal) defs');
+});
+
+T('dungen determinism: different seeds produce different defs (sanity -- generator is not seed-blind)', () => {
+  const a = dungen.generate('default', 5, 'seed-alpha');
+  const b = dungen.generate('default', 5, 'seed-beta');
+  ok(JSON.stringify(a) !== JSON.stringify(b), 'different seeds at the same level should (almost always) differ in composition');
+});
+
+T('dungen determinism: same (type,level,seed) => byte-identical def across MANY levels (smoke, not just one)', () => {
+  for (const lvl of [1, 2, 3, 7, 10, 15, 20]) {
+    const a = dungen.generate('default', lvl, 'multi-level-seed');
+    const b = dungen.generate('default', lvl, 'multi-level-seed');
+    eq(a, b, 'level ' + lvl + ' must be deterministic');
+  }
+});
+
+T('dungen: default type always ends with exactly one boss encounter, pinned last', () => {
+  for (const lvl of [1, 4, 9, 16]) {
+    const d = dungen.generate('default', lvl, 'boss-check-' + lvl);
+    const last = d.encounters[d.encounters.length - 1];
+    eq(last.type, 'boss', 'level ' + lvl + ' last encounter must be type boss');
+    const bossCount = d.encounters.filter((e) => e.type === 'boss').length;
+    eq(bossCount, 1, 'level ' + lvl + ' must have exactly one boss encounter');
+  }
+});
+
+T('dungen: default type -- trap count is bounded 0-2, door chain 0-1 (as two entries), chest 0-1', () => {
+  for (const lvl of [1, 5, 10, 20]) {
+    for (const seed of ['s1', 's2', 's3', 's4', 's5']) {
+      const d = dungen.generate('default', lvl, seed + '-' + lvl);
+      const trapCount = d.encounters.filter((e) => e.type === 'trap').length;
+      const doorCount = d.encounters.filter((e) => e.type === 'door').length;
+      const chestCount = d.encounters.filter((e) => e.type === 'chest').length;
+      ok(trapCount >= 0 && trapCount <= 2, 'trap count must be 0-2, got ' + trapCount);
+      ok(doorCount === 0 || doorCount === 2, 'door chain must appear as 0 or 2 entries (stage1+stage2), got ' + doorCount);
+      ok(chestCount >= 0 && chestCount <= 1, 'chest count must be 0-1, got ' + chestCount);
+    }
+  }
+});
+
+T('dungen: level scaling is monotone non-decreasing -- packsForLevel(level) never decreases as level rises', () => {
+  let prev = dungen.packsForLevel(1);
+  for (let lvl = 2; lvl <= 30; lvl++) {
+    const cur = dungen.packsForLevel(lvl);
+    ok(cur >= prev, 'packsForLevel(' + lvl + ')=' + cur + ' must be >= packsForLevel(' + (lvl - 1) + ')=' + prev);
+    prev = cur;
+  }
+});
+
+T('dungen: level scaling is monotone non-decreasing -- packBudgetForLevel(level) never decreases as level rises', () => {
+  let prev = combat.packBudgetForLevel(1);
+  for (let lvl = 2; lvl <= 30; lvl++) {
+    const cur = combat.packBudgetForLevel(lvl);
+    ok(cur >= prev, 'packBudgetForLevel(' + lvl + ')=' + cur + ' must be >= packBudgetForLevel(' + (lvl - 1) + ')=' + prev);
+    prev = cur;
+  }
+});
+
+T('dungen: higher level => generated pack member counts trend >= lower level (smoke, aggregate over many seeds)', () => {
+  function avgPackMembers(level) {
+    let total = 0, packEncCount = 0;
+    for (let i = 0; i < 40; i++) {
+      const d = dungen.generate('default', level, 'scale-smoke-' + level + '-' + i);
+      for (const e of d.encounters) {
+        if (e.type === 'pack') { total += e.enemyPack.enemyIds.length; packEncCount++; }
+      }
+    }
+    return total / packEncCount;
+  }
+  const avgLow = avgPackMembers(1);
+  const avgHigh = avgPackMembers(15);
+  ok(avgHigh >= avgLow, 'average pack member count at level 15 (' + avgHigh + ') should be >= level 1 (' + avgLow + ')');
+});
+
+T('dungen: test_fixed type returns batch-002 dungeon.json verbatim (byte-equal), regardless of level/seed', () => {
+  const raw = dungen.loadFixedDungeon();
+  for (const [lvl, seed] of [[1, 'a'], [7, 'b'], [99, 'anything']]) {
+    const got = dungen.generate('test_fixed', lvl, seed);
+    eq(got.id, raw.id, 'test_fixed id must match batch-002 dungeon.json');
+    eq(got.encounters, raw.encounters, 'test_fixed encounters must be byte-identical to batch-002 dungeon.json, regardless of level/seed');
+    eq(got.name, raw.name);
+  }
+});
+
+T('dungen: test_fixed is generator-independent -- two different seeds produce identical encounters', () => {
+  const a = dungen.generate('test_fixed', 3, 'fixed-seed-x');
+  const b = dungen.generate('test_fixed', 3, 'fixed-seed-y');
+  eq(a.encounters, b.encounters, 'test_fixed encounters must not vary by seed at all');
+});
+
+T('dungen: unknown dungeonType throws (caller-facing validation seam)', () => {
+  let threw = false;
+  try { dungen.generate('not_a_real_type', 1, 'x'); } catch (e) { threw = true; }
+  ok(threw, 'generate() must throw for an unknown dungeonType');
+});
+
+T('dungen: default() with no seed/level args still returns a valid, runnable def (defaults applied)', () => {
+  const d = dungen.generate('default', undefined, undefined);
+  ok(Array.isArray(d.encounters) && d.encounters.length > 0, 'default-arg generate() must still produce a non-empty encounter list');
+  eq(d.encounters[d.encounters.length - 1].type, 'boss');
+});
+
+T('dungen: a generated default-type def actually RUNS through combat.runDungeon end-to-end without throwing', () => {
+  const d = dungen.generate('default', 6, 'runnable-check-seed');
+  const result = combat.runDungeon({
+    masterSeed: 'runnable-check-combat-seed',
+    dungeonDef: d,
+    unitSnapshots: fourUnitSnapshots(),
+    itemDefsById, enemyDefsById, skillDefsById,
+    formationId: 'formation1', level: 6, participants: ['alice'],
+  });
+  ok(result.result === 'victory' || result.result === 'wipe' || result.result === 'incomplete', 'runDungeon must return a recognized result for a generated def');
+  ok(Array.isArray(result.events) && result.events.length > 0, 'runDungeon must produce events for a generated def');
+});
+
+T('dungen: a generated def only ever references enemy ids that exist in the batch-002 roster (compileEnemyPack never throws missing-def)', () => {
+  for (let i = 0; i < 20; i++) {
+    const d = dungen.generate('default', (i % 20) + 1, 'roster-check-' + i);
+    for (const e of d.encounters) {
+      if (e.enemyPack) {
+        for (const eid of e.enemyPack.enemyIds) {
+          ok(!!enemyDefsById[eid], 'generated encounter references unknown enemy id ' + eid);
+        }
+      }
+    }
+  }
 });
 
 console.log('----------------------------------');
