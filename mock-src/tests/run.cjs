@@ -1475,6 +1475,32 @@ T('REQ-0042 TM: drop onto an existing SAME-id stack MERGES quantities -- destina
   ok(!pg.tms.find(t=>t.uid==='dragged1'),'the dragged uid record is gone entirely');
 });
 
+T('REQ-0042 TM: tmMove with a BRAND NEW uid (no prior tms[] record -- the grant/reward/gacha-mint/claim-merge shape) merges into an existing same-id stack on first placement',()=>{
+  // Regression test for a real bug caught by E2E coverage of the
+  // warehouse TM-claim-merge flow (client/e2e/workshop.spec.ts): the
+  // test above pre-seeds BOTH 'dest1' and 'dragged1' as EXISTING tms[]
+  // records before merging them, which never exercises the actual shape
+  // every real call site uses (WarehouseTab.tsx's firstFitOrMergeTM,
+  // WorkshopPage.tsx's refund path) -- a freshly-claimed/granted/minted
+  // uid that has NEVER been in tms[] before, merging on its very first
+  // tmMove call via idIfNew/qtyIfNew. tmMove used to check "does uid
+  // already have a rec" BEFORE checking chk.mergeInto, so this exact
+  // shape always minted a duplicate stack instead of merging.
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  pg.tms.push({uid:'existing1',id:'lrdst',qty:50,cell:[5,5]});
+  const chk=E.tmCanPlace(st,0,'brand_new_uid',[5,5],undefined,'lrdst');
+  ok(chk.ok&&chk.mergeInto==='existing1','brand-new uid landing on an existing stack reports a merge target: '+JSON.stringify(chk));
+  const mv=E.tmMove(st,0,'brand_new_uid',[5,5],'lrdst',25);
+  ok(mv.ok&&mv.mergedInto==='existing1','tmMove merges a brand-new uid into the existing stack rather than minting a duplicate: '+JSON.stringify(mv));
+  eq(pg.tms.length,1,'exactly one stack -- no duplicate minted');
+  eq(pg.tms[0].uid,'existing1','the pre-existing stack uid survives');
+  eq(pg.tms[0].qty,75,'quantities summed (50+25)');
+  ok(!pg.tms.find(t=>t.uid==='brand_new_uid'),'no stray brand_new_uid record was ever left behind');
+});
+
 T('REQ-0042 TM: drop onto a DIFFERENT-id stack is a plain collision, not a merge',()=>{
   const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=tmFixture();
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);

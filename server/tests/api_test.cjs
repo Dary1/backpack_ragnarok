@@ -1479,6 +1479,37 @@ async function main() {
     assert.strictEqual(res.status, 400);
   });
 
+  await AT('gacha: claiming a TM warehouse row that MERGES into an existing same-id inventory stack still finalizes (deletes) the warehouse row -- regression test for a real bug where a merged claim never leaves its own uid anywhere in the saved canvas, so uid-only finalize logic left the row stuck in claiming status forever', async () => {
+    // Seed an EXISTING lrdst stack directly into the players own
+    // inventory (mirrors the clients firstFitOrMergeTM merge branch,
+    // which lands the claim on the EXISTING stacks own cell, discarding
+    // the claimed rows uid entirely -- see mock-src/engine.js tmMove doc:
+    // the destination stack uid persists and the dragged one is
+    // discarded).
+    const existingDoc = scheduleStorage.readProfile(scheduleP1.playerId);
+    existingDoc.canvas.inv.pages[0].tms = existingDoc.canvas.inv.pages[0].tms || [];
+    existingDoc.canvas.inv.pages[0].tms.push({ uid: 'existing_lrdst_stack', id: 'lrdst', qty: 50, cell: [8, 8] });
+    scheduleStorage.writeProfile(scheduleP1.playerId, existingDoc.canvas);
+
+    const whId = 'claim_tm_merge_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'lrdst', kind: 'tm', qty: 25, harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimRes.status, 200, JSON.stringify(claimRes.body));
+    assert.ok(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId), 'claiming row exists before the client merges it in');
+
+    // Simulate the clients merge: the claimed rows OWN uid never
+    // appears anywhere in the saved canvas (it was discarded by the
+    // merge) -- only the pre-existing 'existing_lrdst_stack' uid, now
+    // carrying the summed qty.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    const stack = doc.canvas.inv.pages[0].tms.find((t) => t.uid === 'existing_lrdst_stack');
+    stack.qty += 25;
+    const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
+    assert.strictEqual(putRes.status, 200, 'profile PUT (the auto-save after the merge) must succeed: ' + JSON.stringify(putRes.body));
+
+    assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId), null, 'the claiming row must finalize (be deleted) even though its OWN uid never appears in the saved canvas -- a same-id tms[] stack existing anywhere is sufficient finalize evidence for a TM-kind claim');
+  });
+
   await AT('schedule: pre-REQ-0041 warehouse rows with no `status` field at all are treated as claimable (migration on read)', async () => {
     const legacyId = 'claim_legacy_' + Date.now();
     scheduleStorage.writeWarehouseItem(scheduleP1.playerId, legacyId, {

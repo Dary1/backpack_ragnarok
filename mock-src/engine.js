@@ -771,12 +771,20 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     page's tms[] array is completely unchanged (checked BEFORE any
   //     mutation, not rolled back after).
 
-  // tmCanPlace(st,page,uid,anchor,exclUids): pure legality check, mirrors
-  // invCanPlaceSI exactly (1x1, page-bounds, no-BP-overlap, then shared
-  // occupancy) -- the ONE difference is that landing on an existing TM
-  // stack of the SAME `id` is reported as a legal merge target rather
-  // than an 'occupied' rejection (see mergeInto in the result).
-  function tmCanPlace(st,pg,uid,anchor,exclUids){
+  // tmCanPlace(st,page,uid,anchor,exclUids,idIfNew): pure legality check,
+  // mirrors invCanPlaceSI exactly (1x1, page-bounds, no-BP-overlap, then
+  // shared occupancy) -- the ONE difference is that landing on an
+  // existing TM stack of the SAME `id` is reported as a legal merge
+  // target rather than an 'occupied' rejection (see mergeInto in the
+  // result). `idIfNew` is an OPTIONAL fallback id used only when `uid`
+  // has no existing tms[] record of its own yet (the grant/reward/
+  // gacha-mint/claim-merge shape -- a brand new uid being placed for the
+  // very first time, which cannot otherwise know what id it would be
+  // merging as). Omit it for the plain "is this uid's EXISTING stack
+  // allowed here" check (e.g. WarehouseTab's free-cell scan, which
+  // deliberately wants a real 'occupied' rejection on any occupied cell,
+  // not a merge, since it is searching for a brand new EMPTY cell).
+  function tmCanPlace(st,pg,uid,anchor,exclUids,idIfNew){
     const container=page(st,pg);
     const [r,c]=anchor;
     const ex=exclUids||[uid];
@@ -784,9 +792,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const cbp=cellBPMapIn(container);
     if(cbp[key(r,c)])return {ok:false,cells:[anchor],why:'BP-overlap'};
     const dragged=container.tms.find(t=>t.uid===uid);
+    const draggedId=dragged?dragged.id:idIfNew;
     const destTm=container.tms.find(t=>!ex.includes(t.uid)&&t.cell[0]===r&&t.cell[1]===c);
     if(destTm){
-      if(dragged&&destTm.id===dragged.id)return {ok:true,cells:[anchor],mergeInto:destTm.uid};
+      if(draggedId&&destTm.id===draggedId)return {ok:true,cells:[anchor],mergeInto:destTm.uid};
       return {ok:false,cells:[anchor],why:'occupied'};
     }
     const occ=invOccupancy(container,ex);
@@ -803,21 +812,35 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // used by grant/reward/gacha-finalize call sites that mint a brand new
   // TM stack directly onto a page).
   function tmMove(st,pg,uid,anchor,idIfNew,qtyIfNew){
-    const chk=tmCanPlace(st,pg,uid,anchor,[uid]);
+    const chk=tmCanPlace(st,pg,uid,anchor,[uid],idIfNew);
     if(!chk.ok)return chk;
     const container=page(st,pg);
     let rec=container.tms.find(t=>t.uid===uid);
+    // Merge check FIRST, before the "does uid already have a record"
+    // branch below -- a BRAND NEW uid (grant/reward/gacha-mint call sites
+    // that mint a fresh stack straight onto a page, e.g. WarehouseTab's
+    // firstFitOrMergeTM) can legally land on an existing same-id stack on
+    // its VERY FIRST placement, with no prior rec of its own. Fixed
+    // 2026-07-05: this branch used to run AFTER the "no rec yet" mint
+    // branch below, so a fresh uid landing on a mergeable stack always
+    // minted a duplicate stack instead of merging (caught by E2E
+    // coverage of the warehouse TM-claim-merge flow, not by the
+    // engine-level unit tests -- every existing merge test happened to
+    // pre-seed the dragged uid with its own record first, which masked
+    // the ordering bug).
+    if(chk.mergeInto&&chk.mergeInto!==uid){
+      const dest=container.tms.find(t=>t.uid===chk.mergeInto);
+      const qtyToAdd=rec?rec.qty:qtyIfNew;
+      if(!Number.isFinite(qtyToAdd))return {ok:false,why:'no existing TM uid and no idIfNew/qtyIfNew given'};
+      dest.qty+=qtyToAdd;
+      container.tms=container.tms.filter(t=>t.uid!==uid);
+      return {ok:true,mergedInto:dest.uid};
+    }
     if(!rec){
       if(typeof idIfNew!=='string'||!Number.isFinite(qtyIfNew))return {ok:false,why:'no existing TM uid and no idIfNew/qtyIfNew given'};
       rec={uid,id:idIfNew,qty:qtyIfNew,cell:anchor};
       container.tms.push(rec);
       return {ok:true};
-    }
-    if(chk.mergeInto&&chk.mergeInto!==uid){
-      const dest=container.tms.find(t=>t.uid===chk.mergeInto);
-      dest.qty+=rec.qty;
-      container.tms=container.tms.filter(t=>t.uid!==uid);
-      return {ok:true,mergedInto:dest.uid};
     }
     rec.cell=anchor;
     return {ok:true};

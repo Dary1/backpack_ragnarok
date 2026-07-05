@@ -914,11 +914,29 @@ function finalizeClaimingItemsForCanvas(playerId, canvas) {
   if (!claimingItems.length) return;
 
   const presentUids = new Set();
+  // REQ-0042: also track which TM ids exist anywhere in the canvas at
+  // all -- a TM-kind claim that MERGES into an existing same-id stack
+  // (firstFitOrMergeTM's mergeInto path, client/src/schedule/
+  // WarehouseTab.tsx) intentionally DISCARDS the claimed row's own uid
+  // (the destination stack's uid survives, see mock-src/engine.js's
+  // tmMove doc comment) -- so a pure uid-membership check like the one
+  // POs/SIs/BPs use below can never finalize a merged TM claim; it would
+  // sit in 'claiming' forever (and eventually lazy-revert on timeout,
+  // silently handing the qty back for reclaiming -- a real duplication
+  // bug caught by E2E coverage of the TM-claim-merge flow). A same-id TM
+  // stack existing ANYWHERE in the just-saved canvas is sufficient
+  // finalize evidence: the claim flow always calls tmMove (merge or
+  // fresh-place) as part of the SAME mutation that precedes this very
+  // auto-save, so if a matching-id stack exists at all, this row's own
+  // qty is either sitting in it (merged) or in its own fresh stack
+  // (unmerged) -- either way, the claim landed.
+  const presentTmIds = new Set();
   const collectFrom = (container) => {
     if (!container) return;
     for (const p of container.pos || []) presentUids.add(p.uid);
     for (const b of container.bps || []) presentUids.add(b.id);
     for (const a of container.sis || []) presentUids.add(a.uid);
+    for (const t of container.tms || []) { presentUids.add(t.uid); presentTmIds.add(t.id); }
   };
   collectFrom(canvas); // active preset's top-level fields
   if (canvas.presets && Array.isArray(canvas.presets.store)) {
@@ -929,7 +947,10 @@ function finalizeClaimingItemsForCanvas(playerId, canvas) {
   }
 
   for (const item of claimingItems) {
-    if (presentUids.has(item.itemUid)) {
+    const finalized = item.kind === 'tm'
+      ? (presentUids.has(item.itemUid) || presentTmIds.has(item.itemId))
+      : presentUids.has(item.itemUid);
+    if (finalized) {
       storage.deleteWarehouseItem(playerId, item.itemUid);
     }
   }

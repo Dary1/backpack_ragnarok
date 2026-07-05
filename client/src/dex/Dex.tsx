@@ -230,7 +230,7 @@ export function Dex({ locale, payload }: DexProps) {
             {tms.map((tmEntry) => {
               const icon = iconDataUrl(tmEntry.icon);
               return (
-                <div key={tmEntry.id} className="dex-card dex-tm-card">
+                <div key={tmEntry.id} className="dex-tm-card">
                   <span className="dex-card-shape">
                     <ShapeGrid
                       shape={[[0, 0]]}

@@ -686,6 +686,19 @@ html, body {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+  /* Fixed 2026-07-05: used to also carry the .dex-card classname to
+     reuse its panel background/border/radius -- but that made this
+     display-only TM card indistinguishable, via a plain .dex-card
+     selector, from the real selectable PO/SI catalog cards, which broke
+     e2e/dex.spec.ts's "dex item count matches PO+SI count" assertion (it
+     legitimately scopes .dex-card to mean "the selectable catalog", and
+     TM is a genuinely separate third kind, never meant to be counted
+     there). Duplicated the panel look directly here instead of sharing
+     the classname. */
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .dex-tm-stackable {

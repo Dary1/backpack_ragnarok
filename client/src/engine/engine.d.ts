@@ -381,7 +381,7 @@ export interface EngineInstance {
    * PLUS: landing on an existing TM stack of the SAME `id` is reported as
    * a legal merge target (`mergeInto: <destination uid>`) instead of an
    * 'occupied' rejection. */
-  tmCanPlace: (st: GameState, pg: number, uid: string, anchor: Cell, exclUids?: string[]) => PlacementCheck & { mergeInto?: string };
+  tmCanPlace: (st: GameState, pg: number, uid: string, anchor: Cell, exclUids?: string[], idIfNew?: string) => PlacementCheck & { mergeInto?: string };
   /** Mutates: places/moves/merges a TM stack. If `uid` has no existing
    * record in page `pg` yet, `idIfNew`/`qtyIfNew` mint a fresh stack
    * there (used by grant/reward/gacha-finalize call sites). If the

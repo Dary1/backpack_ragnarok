@@ -229,6 +229,17 @@ test.describe('REQ-0032 tab reorder + preset trash-delete', () => {
     expect(tints.red).not.toContain('p900');
 
     const invCanvasBefore = (await autoSaveAndFetch(page)).inv;
+    // REQ-0042: this fixture predates the tms:[] field engine.js's
+    // migrateStateV2 now defensively backfills onto every inventory page
+    // -- the "before" snapshot above is read straight off whatever raw
+    // JSON is currently persisted (fetchSavedCanvas is a plain GET, no
+    // migration applied), while the "after" snapshot below reflects a
+    // REAL client round-trip (the drag-drop auto-save), which DOES run
+    // through migrateState first. Backfilling tms:[] here keeps this
+    // test's actual intent (inventory homes/positions/pages are
+    // COMPLETELY untouched by a preset delete) accurate without being
+    // tripped up by an unrelated, expected schema-evolution field.
+    for (const pg of invCanvasBefore.pages) if (!pg.tms) pg.tms = [];
 
     // Drag "Bravo" (index 1, non-active) onto the trash zone (centered
     // over the Canvas board).

@@ -278,14 +278,36 @@ export async function boot(): Promise<void> {
   // (same function the gacha roll's finalize-side merge uses) rather
   // than hand-constructing a {uid,id,qty,cell} literal, so the seed goes
   // through the SAME legality/collision checks (tmCanPlace) any other TM
-  // placement does -- on a truly fresh page (freshly emptyInventory()'d
-  // by migrateState above) cell [1,1] is always free, so this cannot
-  // fail in practice, but routing through the real engine API rather
-  // than a raw push keeps this seed subject to the same invariants as
-  // everything else instead of being a special-cased bypass.
+  // placement does. Uses firstFitTMCell to find the landing cell rather
+  // than assuming [1,1] is free -- migrateState (called just above) has
+  // ALREADY first-fit-homed the baked scenario's own starter BP/PO/SI
+  // content into inventory page 0 via its REQ-0033 reference-model
+  // migration (migrateCanvasToReferencesV3), typically starting at
+  // [1,1] itself, so a fresh profile's page 0 is USUALLY not actually
+  // empty by the time this runs (a real bug, first found via E2E
+  // coverage of the guest-creation-100-LRDST flow -- see this file's
+  // git history for the fix).
   if (resolved.isFreshProfile && state.inv) {
-    const seedUid = 'lrdst_starter_' + Math.random().toString(36).slice(2, 10);
-    engine.tmMove(state, 0, seedUid, [1, 1], 'lrdst', 100);
+    // Fixed 2026-07-05: this used to hardcode cell [1,1] as the seed's
+    // landing spot, assuming a truly fresh page starts empty -- but
+    // migrateState()'s own REQ-0033 reference-model migration
+    // (migrateCanvasToReferencesV3) ALREADY first-fits every canvas-
+    // resident starter BP/PO/SI (the baked scenario's own starting
+    // content) into an inventory home before this code ever runs, and
+    // that first-fit walk conventionally starts at [1,1] too -- so on a
+    // real fresh profile [1,1] is normally ALREADY occupied by the
+    // scenario's own starter content by the time this line runs,
+    // silently failing tmMove's placement (caught by E2E coverage of the
+    // guest-creation-100-LRDST flow, not by any engine-level unit test,
+    // since those construct a bare freshState() with no scenario content
+    // competing for the same cell). Use firstFitTMCell to find a
+    // genuinely free cell instead of assuming one.
+    const seedPage = state.inv.pages[0];
+    const seedCell = engine.firstFitTMCell(seedPage);
+    if (seedCell) {
+      const seedUid = 'lrdst_starter_' + Math.random().toString(36).slice(2, 10);
+      engine.tmMove(state, 0, seedUid, seedCell, 'lrdst', 100);
+    }
   }
 
   setSnapshot({
