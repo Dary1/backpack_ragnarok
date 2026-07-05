@@ -5,6 +5,16 @@
 })(typeof self!=='undefined'?self:globalThis,function(){
 'use strict';
 function rotOffsets(base,k){
+  // Defensive guard (REQ-0041 bug #4 hardening): an EMPTY `base` shape
+  // (never produced by any real content item today, but a 0-BP unit's
+  // degenerate footprint elsewhere in this REQ's investigation made clear
+  // this whole family of "spread an empty array into Math.min/max" bugs
+  // is a real landmine -- see client/src/render/itemCard.ts's
+  // computeFootprintCells fix, the client-side twin of this guard) would
+  // make Math.min(...[].map(...)) evaluate to +Infinity, propagating a
+  // non-finite value into every returned offset. Short-circuit to an
+  // empty result instead.
+  if(!base||base.length===0)return [];
   let off=base.map(o=>[o[0],o[1]]);
   for(let i=0;i<(k%4+4)%4;i++)off=off.map(([r,c])=>[c,-r]);
   const mr=Math.min(...off.map(o=>o[0])),mc=Math.min(...off.map(o=>o[1]));
@@ -935,6 +945,34 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     return true;
   }
+  // isUnitDeployable(st,n): REQ-0041 feedback 5 -- "presets WITHOUT any BP
+  // must NOT be deployable" (Backpack-as-HP: zero BP means the unit has no
+  // hp pool at all, i.e. it would be "dead on arrival" the instant a run
+  // started -- combat_spec_draft.md/sim/combat.cjs's totalHpMax==0 guard
+  // already treats an all-zero-BP PARTY specially; this is the single-unit
+  // precondition that keeps an individual unit from ever reaching that
+  // state in the first place). Returns true iff preset n's canvas has AT
+  // LEast one BP (bps.length>=1) -- a PURELY STRUCTURAL check, completely
+  // independent of isUnitIndependent's uid-sharing concern: this is a
+  // SEPARATE predicate on purpose (per the REQ: "combine with
+  // isUnitIndependent at call sites, keep functions separate" -- do not
+  // fold this into isUnitIndependent's own logic, and do not make
+  // isUnitIndependent imply/require it). Callers that need both
+  // conditions (e.g. the deploy gate) AND the two predicates together at
+  // the call site. Uses the SAME presetCanvasOf(st,idx) lookup
+  // isUnitIndependent/presetUidSet/tintSets already share (idx===active
+  // reads the top-level canvas fields; any other index reads that
+  // preset's store[] snapshot) -- no separate/duplicated canvas lookup.
+  function isUnitDeployable(st,n){
+    // Mirrors isUnitIndependent's own "no st.presets at all" guard
+    // (vacuous case) -- presetCanvasOf() itself does NOT null-check
+    // st.presets (it directly reads st.presets.active), so this function
+    // must guard BEFORE calling it, exactly like isUnitIndependent does,
+    // rather than relying on presetCanvasOf to degrade gracefully.
+    if(!st.presets)return false;
+    const canvas=presetCanvasOf(st,n);
+    return !!(canvas&&Array.isArray(canvas.bps)&&canvas.bps.length>=1);
+  }
 
   // homeLocationOf(st,uid): {page,kind,record} locating uid's ONE home
   // record in st.inv.pages, or null if it has no home (not yet migrated,
@@ -1771,7 +1809,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
           PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,
           renameInvPage,invPageNames,checkUidInvariant,
           // Reference model (REQ-0033 Phase 1) -- additive exports only.
-          usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,bpReferenceSet,
+          usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,isUnitDeployable,bpReferenceSet,
           createRef,removeRef,homeLocationOf,
           // Tab reorder + preset trash-delete (REQ-0032) -- additive exports only.
           reorderPreset,deletePreset,reorderInvPage};

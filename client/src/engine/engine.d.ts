@@ -620,6 +620,14 @@ export interface EngineInstance {
    * themselves. Empty presets are vacuously independent. True if
    * st.presets is missing (nothing to conflict with). */
   isUnitIndependent: (st: GameState, n: number) => boolean;
+  /** REQ-0041: true iff preset n's canvas has >=1 BP ("Backpack-as-HP --
+   * no BP = dead on arrival", feedback 5). A SEPARATE, purely structural
+   * predicate from isUnitIndependent -- callers that need both AND them
+   * together at the call site (see server/schedule.cjs's assignSlot and
+   * client/src/schedule/SlotsPanel.tsx). False if st.presets is missing
+   * (mirrors isUnitIndependent's own "vacuous" convention, but inverted:
+   * an empty/no-preset-system canvas has no BPs to deploy). */
+  isUnitDeployable: (st: GameState, n: number) => boolean;
   /** Locates uid's ONE home record: {page,kind,record}, kind is
    * 'po'|'bp'|'si', page is the 0-based st.inv.pages[] index, record is
    * the actual PO/BP/SI object (mutating it mutates the home in place,

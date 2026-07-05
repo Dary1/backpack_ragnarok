@@ -294,6 +294,17 @@ function isUnitIndependent(engine, canvas, presetIndex) {
   return engine.isUnitIndependent(canvas, presetIndex);
 }
 
+// isUnitDeployable(engine, canvas, presetIndex) -- REQ-0041 feedback 5
+// server-side half of the deploy gate ("presets WITHOUT any BP must NOT
+// be deployable" -- Backpack-as-HP, zero BP = dead on arrival).
+// Delegates to mock-src/engine.js's OWN exported isUnitDeployable (same
+// "delegate, don't reimplement" convention as isUnitIndependent just
+// above -- this is the actual golden predicate, not a server-side
+// reimplementation of the bps.length check).
+function isUnitDeployable(engine, canvas, presetIndex) {
+  return engine.isUnitDeployable(canvas, presetIndex);
+}
+
 // Every uid deployed by `playerId` across every OTHER currently-ACTIVE
 // room (status 'active', i.e. mid-run or awaiting its next auto-run) --
 // the cross-room half of golden d's gate. `excludeRoomId` lets a check
@@ -330,6 +341,20 @@ function assignSlot(room, callerId, slotIndex, presetIndex, profileCanvas, itemD
     const err = new Error('presetIndex out of range for this player'); err.code = 'BAD_REQUEST'; throw err;
   }
   const engine = makeEngine(itemDefsById);
+  if (!isUnitDeployable(engine, profileCanvas, presetIndex)) {
+    // REQ-0041 feedback 5: a preset with zero BP has no HP pool at all --
+    // "dead on arrival" -- and must never be assignable to a room slot.
+    // This is the server-authoritative half of the deploy gate (the
+    // client also disables the slot-picker option pre-emptively, but the
+    // server is the one that actually enforces it, same as
+    // isUnitIndependent just below). err.reason is a STRUCTURED,
+    // machine-readable tag (distinct from err.message, which stays a
+    // human string) -- threaded through by sendScheduleError (api.cjs)
+    // as a `reason` field on the JSON error body, read by the client's
+    // ApiError.reason / friendlyScheduleError (schedule/errors.ts).
+    const err = new Error('empty unit: preset has no Backpack (BP) and cannot be deployed');
+    err.code = 'CONFLICT'; err.reason = 'empty_unit'; throw err;
+  }
   if (!isUnitIndependent(engine, profileCanvas, presetIndex)) {
     const err = new Error('preset is not independent: it shares an item with another of your presets');
     err.code = 'CONFLICT'; throw err;
@@ -882,6 +907,29 @@ function devBackdateActiveRun(room, extraSecsIntoPast) {
   return run;
 }
 
+// devBackdateClaimedWarehouseItem (REQ-0041 E2E hook, mirrors
+// devBackdateActiveRun's own test-control-seam shape exactly): rewrites a
+// 'claiming' warehouse row's claimedAt further into the past so
+// normalizeWarehouseStatus's own WAREHOUSE_CLAIM_TIMEOUT_MS lazy-revert
+// logic treats it as abandoned on the very next read -- without making
+// any E2E test actually wait out the real 120s timeout. Gated to the
+// dev_mode fallback caller only by the route handler (server/api.cjs),
+// same as dev/backdate; never touches a row's itemId/harvestedAt/
+// expiresAt, only claimedAt (a test-control seam, not a gameplay
+// feature). Throws NOT_FOUND if the row doesn't exist, BAD_REQUEST if it
+// isn't currently 'claiming' (nothing to backdate).
+function devBackdateClaimedWarehouseItem(playerId, itemUid, extraSecsIntoPast) {
+  const item = storage.readWarehouseItem(playerId, itemUid);
+  if (!item) { const err = new Error('warehouse item not found'); err.code = 'NOT_FOUND'; throw err; }
+  if (item.status !== 'claiming') {
+    const err = new Error('warehouse item is not currently claiming'); err.code = 'BAD_REQUEST'; throw err;
+  }
+  const pastMs = Date.now() - (WAREHOUSE_CLAIM_TIMEOUT_MS + Math.max(0, Number(extraSecsIntoPast) || 5) * 1000);
+  item.claimedAt = new Date(pastMs).toISOString();
+  storage.writeWarehouseItem(playerId, itemUid, item);
+  return item;
+}
+
 function cancelRoom(room) {
   if (room.status === 'canceled') return room; // idempotent
   if (room.cancelPolicy.immediate || room.status !== 'active') {
@@ -934,6 +982,7 @@ module.exports = {
   purgeExpiredWarehouseItems,
   addToWarehouse,
   grantWarehouseItem,
+  devBackdateClaimedWarehouseItem,
   listWarehouse,
   claimWarehouseItem,
   finalizeClaimingItemsForCanvas,

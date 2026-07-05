@@ -15,6 +15,18 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 
+// REQ-0041 feedback 5 client-side deploy gate: a preset with zero BP has
+// no HP pool ("dead on arrival") and must be pre-emptively disabled in
+// this dropdown -- NOT merely rejected after the fact by the server's
+// own 409 empty_unit (server/schedule.cjs's assignSlot; see errors.ts's
+// friendlyScheduleError for the message-side handling of that 409, which
+// still applies as defense-in-depth for any path that bypasses this
+// disabled state, e.g. a stale render). Computed directly off the live
+// engine/state (same pattern this file already avoids duplicating --
+// see store.ts's own __backpackDebug hook for the same
+// engine.isUnitDeployable(state, n) call). Pure/cheap: PRESET_COUNT is
+// small (a handful of presets), so recomputing on every render is fine.
+
 interface SlotsPanelProps {
   room: ApiRoom;
   locale: Locale;
@@ -30,6 +42,15 @@ export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
   const [slotErrors, setSlotErrors] = useState<Record<number, string>>({});
 
   const presetNames = presets?.names ?? [];
+  const engine = snapshot.engine;
+  const state = snapshot.state;
+  // Index -> deployable (true if unknown/engine not ready yet -- fails
+  // open into "let the server's own 409 catch it" rather than disabling
+  // every option before the engine has booted).
+  const deployableByIndex = (idx: number): boolean => {
+    if (!engine || !state) return true;
+    return engine.isUnitDeployable(state, idx);
+  };
 
   const handleSelect = async (slotIndex: number, value: string) => {
     if (value === '') return;
@@ -73,11 +94,14 @@ export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
                 data-testid={`schedule-slot-select-${slotIndex}`}
               >
                 <option value="">{t(locale, 'schedule.slots.selectPreset')}</option>
-                {presetNames.map((name, idx) => (
-                  <option key={idx} value={idx}>
-                    {name}
-                  </option>
-                ))}
+                {presetNames.map((name, idx) => {
+                  const deployable = deployableByIndex(idx);
+                  return (
+                    <option key={idx} value={idx} disabled={!deployable} title={deployable ? undefined : t(locale, 'schedule.slots.emptyUnitReason')}>
+                      {deployable ? name : t(locale, 'schedule.slots.emptyUnitOption', { name })}
+                    </option>
+                  );
+                })}
               </select>
               {slot && slot.presetIndex == null ? <span className="schedule-slot-empty">{t(locale, 'schedule.slots.empty')}</span> : null}
               {queued ? (

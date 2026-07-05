@@ -942,6 +942,32 @@ T('REQ-0033 isUnitIndependent: positive (no shared uids) and negative (shares a 
   ok(E.isUnitIndependent(migrated,2),'preset 2 (never referenced anything) remains independent');
 });
 
+T('REQ-0041 isUnitDeployable: true iff the preset canvas has >=1 BP -- a SEPARATE predicate from isUnitIndependent',()=>{
+  const {st,E}=fresh();
+  const migrated=E.migrateState(st);
+  // Preset 0 is the freshly-migrated ACTIVE preset -- the fixture's
+  // top-level st.bps still holds alpha/beta/gamma/delta at this point
+  // (migrateState references them in place, does not move them out of
+  // the active preset's own canvas), so preset 0 has >=1 BP.
+  ok(E.isUnitDeployable(migrated,0),'preset 0 (has BPs on the active canvas) is deployable');
+  // Every OTHER preset starts completely empty post-migration (REQ-0031:
+  // "new presets start empty") -- 0 BPs, hence NOT deployable, even
+  // though (per the test immediately above) an empty preset IS vacuously
+  // independent. This is the crux of "combine, don't conflate": an empty
+  // preset passes isUnitIndependent but must fail isUnitDeployable.
+  ok(!E.isUnitDeployable(migrated,1),'empty preset 1 has 0 BPs -- NOT deployable despite being vacuously independent');
+  ok(E.isUnitIndependent(migrated,1),'(sanity) preset 1 is still independent -- isUnitDeployable is a SEPARATE, additional gate');
+  // Move a BP into preset 1 via the SAME transferBP path the independence
+  // test above uses -- preset 1 should become deployable the moment it
+  // has >=1 BP, regardless of independence status.
+  E.switchPreset(migrated,1);
+  const betaPage=E.homeLocationOf(migrated,'beta').page;
+  ok(E.transferBP(migrated,{loc:'inv',page:betaPage},{loc:'canvas'},'beta',[1,1]).ok);
+  ok(E.isUnitDeployable(migrated,1),'preset 1 now has a BP (beta) -- deployable');
+  // Out-of-range / no-presets-at-all inputs must never throw.
+  ok(!E.isUnitDeployable({bps:[],pos:[],sis:[]},0),'a bare canvas-shaped object with no st.presets at all must not throw (presetCanvasOf returns null)');
+});
+
 T('REQ-0033 checkUidInvariant: catches home-duplication and per-preset reference duplication, accepts legitimate cross-preset sharing (covered above); sanity on a totally fresh un-migrated fixture (no st.inv) never throws',()=>{
   const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);

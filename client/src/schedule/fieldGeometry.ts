@@ -19,21 +19,63 @@ export function colLetterToIndex(letter: string): number {
   return letter.toUpperCase().charCodeAt(0) - 'A'.charCodeAt(0) + 1;
 }
 
-/** Parses a cell id like "M9" into {col, row} (both 1-based: col 1..26,
- * row 1..18) -- sim/combat.cjs's ray events (ray_step's path entries,
- * ray_fire's entry, ray_bounce's at, ray_hit's dst, ray_aoe's center/
- * hits[].dst) all use this exact id shape. */
-export function cellIdToColRow(cellId: string): { col: number; row: number } {
-  const m = /^([A-Za-z]+)(\d+)$/.exec(cellId.trim());
+/** A field cell as sim/combat.cjs ACTUALLY emits it on the wire, for the
+ * event fields this module resolves (ray_fire's `entry`, ray_bounce's
+ * `at`, ray_step's `path[]` entries): a raw `[row, col]` NUMBER TUPLE
+ * (both 1-based), NOT a "M9"-style string -- see sim/combat.cjs's
+ * `events.push({ ev: 'ray_fire', ..., entry: entryCell.slice() })` /
+ * `{ ev: 'ray_bounce', at: next.slice(), ... }` / `{ ev: 'ray_step', path:
+ * pathBatch.slice() }`. A "M9"-style STRING id is only ever used for
+ * entity/actor LABELS (dst/src -- sim/combat.cjs's maskLabel()), never
+ * for a position -- those are unrelated to this type and never flow
+ * through cellIdToColRow. `RawCell` is exported so callers (mainly
+ * MonitorRenderer.ts) can type their event-field reads without an `any`. */
+export type RawCell = [number, number];
+
+/** BUG #4 FIX (REQ-0041) -- root cause: this function used to assume its
+ * argument was ALWAYS a "M9"-style string and called `cellId.trim()`
+ * unconditionally. sim/combat.cjs's actual ray_fire/ray_bounce/ray_step
+ * events carry `entry`/`at`/`path[]` as raw `[row,col]` NUMBER TUPLES,
+ * never strings (confirmed by a live repro against the running dev
+ * server + a captured browser exception: "TypeError: e.trim is not a
+ * function ... at cellIdToColRow ... at cellIdToXY ... at
+ * MonitorRenderer.animateStep ... at MonitorRenderer.applyEvents" --
+ * `path.map(id => cellIdToXY(id, ...))` threw on the very first
+ * `[row,col]` array entry it tried to `.trim()`). Since Monitor.tsx's
+ * poll effect only advances `lastEventIndexRef` AFTER applyEvents()
+ * returns successfully, this exception fired again on EVERY subsequent
+ * ~2s poll tick forever (the same un-advanced event range re-processed
+ * each time), pegging the render thread in a permanent crash-loop --
+ * observed directly as the browser tab's renderer becoming unresponsive
+ * (CDP screenshot calls timed out) within a few poll cycles of expanding
+ * the monitor. FIX: accept EITHER shape -- a raw `[row,col]` tuple used
+ * directly, or (kept for forward-compat / defensive robustness, e.g. a
+ * future server change that switches to string ids, or a hand-built test
+ * fixture) a "M9"-style string parsed as before. Any other shape (null,
+ * undefined, a malformed string, an empty/wrong-length array) falls back
+ * to {col:1,row:1} -- degrades to drawing at a fixed corner rather than
+ * throwing, matching this module's existing "never throw on bad input"
+ * posture for a malformed string id. */
+export function cellIdToColRow(cell: string | RawCell | null | undefined): { col: number; row: number } {
+  if (Array.isArray(cell)) {
+    const [row, col] = cell;
+    if (typeof row === 'number' && typeof col === 'number' && Number.isFinite(row) && Number.isFinite(col)) {
+      return { col, row };
+    }
+    return { col: 1, row: 1 };
+  }
+  if (typeof cell !== 'string') return { col: 1, row: 1 };
+  const m = /^([A-Za-z]+)(\d+)$/.exec(cell.trim());
   if (!m) return { col: 1, row: 1 };
   return { col: colLetterToIndex(m[1]), row: parseInt(m[2], 10) };
 }
 
-/** Converts a cell id to pixel coordinates (top-left of the cell) within
- * a field box of `cellPx` per cell -- callers add half a cell for a
- * center point. */
-export function cellIdToXY(cellId: string, cellPx: number): { x: number; y: number } {
-  const { col, row } = cellIdToColRow(cellId);
+/** Converts a cell (string id OR raw [row,col] tuple -- see
+ * cellIdToColRow's doc) to pixel coordinates (top-left of the cell)
+ * within a field box of `cellPx` per cell -- callers add half a cell for
+ * a center point. */
+export function cellIdToXY(cell: string | RawCell | null | undefined, cellPx: number): { x: number; y: number } {
+  const { col, row } = cellIdToColRow(cell);
   return { x: (col - 1) * cellPx, y: (row - 1) * cellPx };
 }
 

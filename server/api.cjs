@@ -236,6 +236,7 @@ const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
 const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/backdate$/; // REQ-0036 P1-C: dev-only E2E time-control hook
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
+const WAREHOUSE_DEV_BACKDATE_CLAIM_RE = /^\/api\/warehouse\/dev\/backdate-claim$/; // REQ-0041 E2E hook, dev-only
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -501,7 +502,7 @@ function handle(req, res) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
-    p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE);
+    p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) || p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE);
   if (scheduleMatch) {
     const token = getAuthToken(req);
     const resolved = admin.resolveAuth(token);
@@ -544,7 +545,19 @@ function handle(req, res) {
       return 500;
     }
     function sendScheduleError(e) {
-      sendJSON(res, scheduleErrToStatus(e), { ok: false, error: e.message });
+      // REQ-0041: thread a STRUCTURED e.reason through as a `reason`
+      // field on the JSON error body, when the thrown error carries one
+      // (e.g. schedule.cjs's assignSlot sets err.reason='empty_unit' for
+      // the empty-BP deploy-gate 409) -- omitted entirely (not even
+      // `reason: undefined`) for every OTHER schedule error this route
+      // surface throws today, none of which set e.reason, so existing
+      // response bodies for those are byte-identical to before this
+      // change (strict additive). The client's ApiError.reason /
+      // schedule/errors.ts's friendlyScheduleError read this field
+      // preferentially before falling back to message-substring matching.
+      const body = { ok: false, error: e.message };
+      if (typeof e.reason === 'string') body.reason = e.reason;
+      sendJSON(res, scheduleErrToStatus(e), body);
     }
     // settleRoomIfDue() is called by every room-touching handler before
     // anything else -- this is the lazy, poll-driven "scheduler" (see
@@ -708,6 +721,38 @@ function handle(req, res) {
           const room = schedule.getOwnRoomOr404(roomId, callerId);
           const run = schedule.devBackdateActiveRun(room, body.extraSecsIntoPast);
           sendJSON(res, 200, { ok: true, runId: run.id, startedAt: run.startedAt, durationSecs: run.durationSecs });
+        } catch (e) { sendScheduleError(e); }
+      });
+      return;
+    }
+
+    // ---- POST /api/warehouse/dev/backdate-claim (REQ-0041 E2E hook,
+    // dev-only) ----
+    // Body: {itemUid, extraSecsIntoPast?}. Rewrites a 'claiming'
+    // warehouse row's claimedAt further into the past so it reads as an
+    // ABANDONED claim (older than WAREHOUSE_CLAIM_TIMEOUT_MS) on the very
+    // next read, exactly mirroring the existing dev/backdate room route's
+    // own test-control-seam shape/gating (schedule.cjs's
+    // devBackdateClaimedWarehouseItem() doc) -- lets E2E cover the
+    // "abandoned claim lazily reverts to claimable" path without waiting
+    // out the real 120s timeout. GATED to the dev_mode fallback caller
+    // ONLY, same as dev/backdate.
+    if (p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!callerIsDevFallback) {
+        sendJSON(res, 403, { ok: false, error: 'forbidden: dev/backdate-claim is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+        return;
+      }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body = {};
+        if (bodyStr) {
+          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        }
+        if (!body.itemUid) { sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return; }
+        try {
+          const item = schedule.devBackdateClaimedWarehouseItem(callerId, body.itemUid, body.extraSecsIntoPast);
+          sendJSON(res, 200, { ok: true, itemUid: item.itemUid, claimedAt: item.claimedAt });
         } catch (e) { sendScheduleError(e); }
       });
       return;

@@ -1050,6 +1050,28 @@ async function main() {
     scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
   });
 
+  await AT('schedule: deploy gate -- a preset with ZERO BP is refused 409 empty_unit, and a preset with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
+    const roomId = created.body.room.id;
+    // Preset index 4 starts life completely empty post-migration (REQ-0031:
+    // "new presets start empty") -- 0 BPs, so it must be refused with a
+    // STRUCTURED reason ('empty_unit'), distinct from the independence 409
+    // above (an empty preset IS vacuously independent -- see mock-src/
+    // tests/run.cjs's own "combine, don't conflate" test for this exact
+    // distinction at the engine layer; this is the server-side half).
+    const emptyRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 4 });
+    assert.strictEqual(emptyRes.status, 409, 'zero-BP preset must be refused 409: ' + JSON.stringify(emptyRes.body));
+    assert.strictEqual(emptyRes.body.reason, 'empty_unit', 'the 409 body must carry a structured reason=empty_unit');
+    assert.ok(/no Backpack|empty unit/i.test(emptyRes.body.error));
+
+    // Sanity: preset index 0 (the fixture's real, BP-bearing preset) is NOT
+    // affected by this gate -- assigning it must still succeed 200.
+    const okRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
+    assert.strictEqual(okRes.status, 200, 'a preset WITH a BP must still be assignable: ' + JSON.stringify(okRes.body));
+
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
   await AT('schedule: deploy gate -- a preset already deployed in another of the caller\'s ACTIVE rooms is refused 409 on cross-room overlap', async () => {
     // Room X: fill all 4 slots with presets 0-3 and start its run (-> status 'active').
     const roomXRes = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
@@ -1590,6 +1612,55 @@ async function main() {
     const res = await scheduleReq('POST', '/api/schedule/rooms/' + roomId + '/dev/backdate', undefined, {});
     assert.strictEqual(res.status, 400, JSON.stringify(res.body));
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, undefined);
+  });
+
+  await AT('schedule: POST /api/warehouse/dev/backdate-claim is dev-only (403 for a real guest token) and force-reverts a claiming row without waiting out the real 120s timeout (REQ-0041 E2E hook)', async () => {
+    // NOTE: this row is written ONCE, directly under devPlayer.playerId
+    // (never rewritten under a DIFFERENT playerId afterwards) --
+    // writeWarehouseItemPg's `ON CONFLICT (item_uid) DO UPDATE` clause
+    // deliberately does not update the `player_id` COLUMN (only doc/
+    // harvested_at/updated_at), matching every REAL call site's own
+    // invariant that a warehouse row's owner never changes across its
+    // life; rewriting the SAME itemUid under a second playerId (which
+    // this test used to do, by mistake) silently orphans the row from
+    // listWarehouseItemsPg's `WHERE player_id = $1` filter under its NEW
+    // playerId, even though the JSON doc's own embedded `playerId` field
+    // says otherwise -- a real, if narrow, footgun worth documenting
+    // here rather than repeating.
+    const grantId = 'wh_backdateclaim_' + Date.now();
+    scheduleStorage.writeWarehouseItem(devPlayer.playerId, grantId, {
+      itemUid: grantId, playerId: devPlayer.playerId, itemId: 'blade',
+      harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString(),
+      status: 'claimable',
+    });
+
+    // 403 for a real guest token, even a token belonging to a DIFFERENT
+    // player entirely (scheduleP1's own guest token) -- this dev-only
+    // hook never honors any real token, regardless of whose row it names.
+    const guestRes = await scheduleReq('POST', '/api/warehouse/dev/backdate-claim', scheduleP1.token, { itemUid: grantId });
+    assert.strictEqual(guestRes.status, 403, 'a real guest token must never reach this dev-only hook: ' + JSON.stringify(guestRes.body));
+
+    // Claim it (marks 'claiming') via the dev fallback caller (undefined
+    // token), then force-backdate its claimedAt -- must read as abandoned
+    // (claimable again) on the very next GET /api/warehouse, with zero
+    // real wall-clock wait.
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', undefined, { itemUid: grantId });
+    assert.strictEqual(claimRes.status, 200, JSON.stringify(claimRes.body));
+
+    const backdateRes = await scheduleReq('POST', '/api/warehouse/dev/backdate-claim', undefined, { itemUid: grantId });
+    assert.strictEqual(backdateRes.status, 200, JSON.stringify(backdateRes.body));
+
+    const listRes = await scheduleReq('GET', '/api/warehouse', undefined);
+    const found = listRes.body.items.find((i) => i.itemUid === grantId);
+    assert.ok(found, 'the row must still be present (never lost)');
+    assert.strictEqual(found.status, 'claimable', 'the row must have lazily reverted to claimable after the forced backdate');
+
+    // A row that is NOT currently 'claiming' (already claimable) is a 400
+    // -- nothing to backdate.
+    const notClaimingRes = await scheduleReq('POST', '/api/warehouse/dev/backdate-claim', undefined, { itemUid: grantId });
+    assert.strictEqual(notClaimingRes.status, 400, JSON.stringify(notClaimingRes.body));
+
+    scheduleStorage.deleteWarehouseItem(devPlayer.playerId, grantId);
   });
 
   os.homedir = realHomedir;

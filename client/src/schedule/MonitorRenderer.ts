@@ -22,7 +22,7 @@
 // small dev-grade animation, not a full VFX system.
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunEvent } from '../api';
-import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect } from './fieldGeometry';
+import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
 import { computeFootprintCells } from '../render/itemCard';
 import type { Offset } from '../engine/engine.d.ts';
 
@@ -32,6 +32,14 @@ const FIELD_W = FIELD_COLS * FIELD_CELL_PX;
 const FIELD_H = FIELD_ROWS * FIELD_CELL_PX;
 const STEP_ANIM_MS = 200; // per ray_step segment, within the 150-300ms band the task brief calls for
 const FLASH_MS = 300;
+
+/** Type guard for the RawCell ([row,col] number tuple) wire shape -- see
+ * fieldGeometry.ts's RawCell/cellIdToColRow doc for why this is the
+ * ACTUAL shape sim/combat.cjs sends for entry/at/path[] entries (BUG #4's
+ * root cause was this renderer assuming a "M9"-string shape instead). */
+function isRawCell(v: unknown): v is RawCell {
+  return Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number';
+}
 
 export interface MonitorUnitVisual {
   slotIndex: number;
@@ -168,9 +176,17 @@ export class MonitorRenderer {
     }
   }
 
-  private getOrCreateEnemyMarker(cellId: string, label: string, masked: boolean): FieldMarker {
-    const key = masked ? '?' : cellId;
-    let marker = this.enemyMarkers.get(cellId);
+  private getOrCreateEnemyMarker(cellId: string | RawCell, label: string, masked: boolean): FieldMarker {
+    // Map key must be a plain string -- a RawCell (array) has no stable
+    // value-equality as a Map key (two [row,col] arrays with the same
+    // values are different references), so this derives a string key
+    // from either shape (a string cellId is already a valid key; a
+    // RawCell is joined into one) purely for the Map lookup/insert below.
+    // Every other use of `cellId` (cellIdToXY) still gets the ORIGINAL
+    // value, which already accepts either shape (see fieldGeometry.ts).
+    const mapKey = Array.isArray(cellId) ? `${cellId[0]},${cellId[1]}` : cellId;
+    const key = masked ? '?' : mapKey;
+    let marker = this.enemyMarkers.get(mapKey);
     if (marker) return marker;
     const container = new Container();
     const graphic = new Graphics();
@@ -185,7 +201,7 @@ export class MonitorRenderer {
     container.addChild(text);
     this.enemyField.addChild(container);
     marker = { container, graphic, label: text };
-    this.enemyMarkers.set(cellId, marker);
+    this.enemyMarkers.set(mapKey, marker);
     void key;
     return marker;
   }
@@ -202,7 +218,7 @@ export class MonitorRenderer {
     if (id !== '?') this.discovered.add(id);
   }
 
-  private flashCell(cellId: string): void {
+  private flashCell(cellId: string | RawCell): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
     const flash = new Graphics();
     flash.rect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX).fill({ color: 0xffe680, alpha: 0.85 });
@@ -224,7 +240,7 @@ export class MonitorRenderer {
     this.app.ticker.add(tick);
   }
 
-  private pulseCell(cellId: string): void {
+  private pulseCell(cellId: string | RawCell): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
     const pulse = new Graphics();
     pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color: 0xff6666, alpha: 0.9 });
@@ -248,7 +264,7 @@ export class MonitorRenderer {
     this.app.ticker.add(tick);
   }
 
-  private animateStep(path: string[]): void {
+  private animateStep(path: RawCell[]): void {
     if (path.length === 0) return;
     const marker = new Graphics();
     marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color: 0x59d6d6, alpha: 0.9 });
@@ -287,46 +303,74 @@ export class MonitorRenderer {
    * happens one layer up, in Monitor.tsx, not in this renderer). */
   applyEvents(newEvents: ApiRunEvent[]): void {
     for (const ev of newEvents) {
-      switch (ev.ev) {
-        case 'ray_fire': {
-          const field = ev.field === 'enemy' ? 'enemy' : 'player';
-          const entry = typeof ev.entry === 'string' ? ev.entry : null;
-          if (field === 'enemy' && entry) this.getOrCreateEnemyMarker(entry, String(ev.src ?? '?'), ev.src === '?');
-          break;
-        }
-        case 'ray_step': {
-          const path = Array.isArray(ev.path) ? (ev.path as string[]) : [];
-          this.animateStep(path);
-          break;
-        }
-        case 'ray_bounce': {
-          const at = typeof ev.at === 'string' ? ev.at : null;
-          if (at) this.flashCell(at);
-          break;
-        }
-        case 'ray_hit': {
-          const dst = typeof ev.dst === 'string' ? ev.dst : null;
-          if (dst && dst !== '?') this.markDiscovered(dst);
-          break;
-        }
-        case 'ray_aoe': {
-          const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string }>) : [];
-          for (const h of hits) if (h.dst && h.dst !== '?') this.markDiscovered(h.dst);
-          break;
-        }
-        case 'ray_hit_all':
-        case 'reflect_damage': {
-          // No specific cell carried on these two event kinds today
-          // (ray_hit_all is a whole-field strike; reflect_damage is a
-          // status-driven reflection) -- pulse the whole enemy field
-          // center as a simple, honest "something happened" cue rather
-          // than inventing a cell this event doesn't actually carry.
-          this.pulseCell('N9');
-          break;
-        }
-        default:
-          break;
+      // BUG #4 FIX (REQ-0041): each event is processed inside its own
+      // try/catch. ROOT CAUSE this guards against (confirmed via a live
+      // repro + captured browser exception -- see fieldGeometry.ts's
+      // cellIdToColRow doc for the full mechanism): `entry`/`at`/`path[]`
+      // on ray_fire/ray_bounce/ray_step are raw [row,col] NUMBER TUPLES on
+      // the wire (sim/combat.cjs), not "M9"-style strings -- this renderer
+      // used to assume the latter unconditionally and called `.trim()` on
+      // them, throwing. Because Monitor.tsx's poll effect only advances
+      // `lastEventIndexRef` AFTER applyEvents() returns without throwing,
+      // an uncaught exception here meant the SAME stuck event got
+      // re-thrown on every subsequent ~2s poll tick FOREVER -- a
+      // permanent crash-loop that presented as the whole tab's renderer
+      // becoming unresponsive, not a single frozen frame. Even with the
+      // fieldGeometry.ts fix (which handles the specific [row,col]-tuple
+      // shape correctly now), this per-event try/catch stays as
+      // defense-in-depth: a MALFORMED or future-unknown event shape must
+      // degrade to "skip this one event" (a dropped visual, not a crash),
+      // and applyEvents() as a whole must ALWAYS finish so the caller can
+      // always advance past whatever it just processed -- never spin.
+      try {
+        this.applyOneEvent(ev);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[backpack_ragnarok] MonitorRenderer: skipping malformed run event', ev, e);
       }
+    }
+  }
+
+  private applyOneEvent(ev: ApiRunEvent): void {
+    switch (ev.ev) {
+      case 'ray_fire': {
+        const field = ev.field === 'enemy' ? 'enemy' : 'player';
+        const entry = isRawCell(ev.entry) ? ev.entry : null;
+        if (field === 'enemy' && entry) this.getOrCreateEnemyMarker(entry, String(ev.src ?? '?'), ev.src === '?');
+        break;
+      }
+      case 'ray_step': {
+        const path = Array.isArray(ev.path) ? (ev.path as unknown[]).filter(isRawCell) : [];
+        this.animateStep(path);
+        break;
+      }
+      case 'ray_bounce': {
+        const at = isRawCell(ev.at) ? ev.at : null;
+        if (at) this.flashCell(at);
+        break;
+      }
+      case 'ray_hit': {
+        const dst = typeof ev.dst === 'string' ? ev.dst : null;
+        if (dst && dst !== '?') this.markDiscovered(dst);
+        break;
+      }
+      case 'ray_aoe': {
+        const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string }>) : [];
+        for (const h of hits) if (h.dst && h.dst !== '?') this.markDiscovered(h.dst);
+        break;
+      }
+      case 'ray_hit_all':
+      case 'reflect_damage': {
+        // No specific cell carried on these two event kinds today
+        // (ray_hit_all is a whole-field strike; reflect_damage is a
+        // status-driven reflection) -- pulse the whole enemy field
+        // center as a simple, honest "something happened" cue rather
+        // than inventing a cell this event doesn't actually carry.
+        this.pulseCell('N9');
+        break;
+      }
+      default:
+        break;
     }
   }
 

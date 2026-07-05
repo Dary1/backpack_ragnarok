@@ -214,6 +214,37 @@ function resolveProfileId(): string {
  * the dev player when dev_mode is true).
  */
 export async function boot(): Promise<void> {
+  // REQ-0041 fix -- boot-sequence auth race (found while adding
+  // SlotsPanel.tsx's client-side isUnitDeployable gate, which was the
+  // first thing in this app to actually notice its symptom): this
+  // function is called UNCONDITIONALLY and SYNCHRONOUSLY at module load
+  // (main.tsx's top-level `boot()` call), which fires this function's
+  // OWN fetchMe() immediately. handleInviteRoute() below (the
+  // '#/invite/<token>' handler) ALSO calls setStoredToken()+fetchMe(),
+  // but only from initRouting(), which App.tsx only invokes inside a
+  // React useEffect -- strictly LATER than this module-level call ever
+  // could be. Landing on a fresh '#/invite/<token>' URL therefore used
+  // to ALWAYS lose this race: this function's own fetchMe() ran with NO
+  // token stored yet (resolving to the dev_mode fallback identity,
+  // since dev_mode defaults to true -- server/admin.cjs's readDevUser())
+  // before handleInviteRoute() ever got a chance to store the real
+  // token, and since this function only runs ONCE, the wrong profile
+  // (the dev fallback's, not the invited guest's own) stayed loaded for
+  // the entire session even after the URL correctly redirected to
+  // '#/backpacks' and even after handleInviteRoute()'s OWN fetchMe()
+  // resolved correctly moments later (that second resolution updates
+  // `snapshot.me`, but this function's canvas/state load had already
+  // completed against the WRONG profile id by then, and boot() never
+  // reruns). FIX: synchronously check the CURRENT hash for the invite
+  // pattern and store its token BEFORE this function's own fetchMe()
+  // call -- so the very first fetchMe() this app ever makes already
+  // carries the correct token, regardless of React effect timing.
+  // handleInviteRoute()'s own setStoredToken() call becomes a harmless
+  // no-op re-store of the identical value when it runs afterwards.
+  if (typeof location !== 'undefined') {
+    const earlyInviteMatch = INVITE_HASH_RE.exec(location.hash);
+    if (earlyInviteMatch) setStoredToken(decodeURIComponent(earlyInviteMatch[1]));
+  }
   let me: ApiMe | null = null;
   try {
     me = await fetchMe();
@@ -261,6 +292,9 @@ export async function boot(): Promise<void> {
     usedByCurrent: (uid: string) => engine.usedByCurrent(state, uid),
     usedByOthers: (uid: string) => engine.usedByOthers(state, uid),
     isUnitIndependent: (n: number) => engine.isUnitIndependent(state, n),
+    // REQ-0041 feedback 5: exposed for the same reason/parity as
+    // isUnitIndependent just above (client/e2e/*.spec.ts assertions).
+    isUnitDeployable: (n: number) => engine.isUnitDeployable(state, n),
   };
 }
 

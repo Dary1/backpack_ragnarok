@@ -21,9 +21,20 @@ import { ApiError } from '../api';
  */
 export function friendlyScheduleError(locale: Locale, error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
+  // REQ-0041: the empty-unit deploy-gate 409 carries a STRUCTURED
+  // `reason` field (server/schedule.cjs's assignSlot attaches
+  // err.reason='empty_unit', threaded through by server/api.cjs's
+  // sendScheduleError) rather than relying purely on a message substring
+  // match -- checked first/preferentially when available. Falls through
+  // to the existing substring-match convention for every other 409 this
+  // route surface can throw (unchanged).
+  if (error instanceof ApiError && error.reason === 'empty_unit') {
+    return t(locale, 'schedule.error.emptyUnit');
+  }
   if (raw.includes('not independent')) return t(locale, 'schedule.error.notIndependent');
   if (raw.includes('active schedule')) return t(locale, 'schedule.error.crossRoomOverlap');
   if (raw.includes('no space in inventory')) return t(locale, 'schedule.error.noWarehouseSpace');
+  if (raw.includes('empty unit') || raw.includes('no Backpack')) return t(locale, 'schedule.error.emptyUnit');
   return raw;
 }
 

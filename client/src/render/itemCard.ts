@@ -68,6 +68,19 @@ export interface FootprintCells {
  */
 export function computeFootprintCells(shape: Offset[], rot = 0): FootprintCells {
   const off = Engine.rotOffsets(shape, rot);
+  // Defensive guard (REQ-0041 bug #4 hardening): an EMPTY shape (e.g. a
+  // 0-BP unit's degenerate footprint, were this ever called with one --
+  // see MonitorRenderer.ts's MonitorUnitVisual.icon, currently never
+  // populated, but this function is also called from Dex/ShapeGrid
+  // paths that could plausibly hand it a malformed/empty shape) makes
+  // `Math.max(...[].map(...))` evaluate to `-Infinity` (spread of an
+  // empty array), silently producing h/w = -Infinity -- a value that
+  // then propagates into pixel math (rect widths, scale factors) as
+  // NaN/Infinity, which is exactly the kind of malformed-render-data
+  // landmine bug #4's investigation surfaced elsewhere (MonitorRenderer's
+  // string/array cellId mismatch). Degrade to a 1x1 empty footprint
+  // instead of ever producing a non-finite bounding box.
+  if (off.length === 0) return { off: [], h: 1, w: 1 };
   const h = Math.max(...off.map((o) => o[0])) + 1;
   const w = Math.max(...off.map((o) => o[1])) + 1;
   return { off, h, w };

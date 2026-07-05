@@ -173,11 +173,14 @@ const DICT = {
     'schedule.slots.queuedBadge': 'Swap queued',
     'schedule.slots.assignFailed': 'Could not assign this unit: ',
     'schedule.slots.swapFailed': 'Could not swap this unit: ',
+    'schedule.slots.emptyUnitOption': '{name} (no Backpack -- cannot deploy)',
+    'schedule.slots.emptyUnitReason': 'This preset has no Backpack items, so it cannot be deployed.',
 
     // 409 deploy-gate error mapping (errors.ts)
     'schedule.error.notIndependent': 'This preset shares an item with one of your other presets. Make it independent (no shared items) before deploying it.',
     'schedule.error.crossRoomOverlap': 'This preset already has a unit deployed in another active schedule. Wait for that run to finish, or choose a different preset.',
     'schedule.error.noWarehouseSpace': 'Your inventory is full (all 5 pages) -- the item stays in your warehouse until you free up space.',
+    'schedule.error.emptyUnit': 'This preset has no Backpack items -- it cannot be deployed (a unit with no Backpack has no HP).',
 
     // Monitor (Monitor.tsx / MonitorRenderer.ts)
     'schedule.monitor.progress': 'Progress',
@@ -210,6 +213,8 @@ const DICT = {
     'schedule.warehouse.claimedToast': 'Moved to your inventory.',
     'schedule.warehouse.claimFailed': 'Could not claim this item: ',
     'schedule.warehouse.loadFailed': 'Failed to load the warehouse: ',
+    'schedule.warehouse.claimNoSpace': 'No space in any inventory page -- the item stays in your warehouse.',
+    'schedule.warehouse.claimedOnOtherPage': 'Placed on page {page}.',
   },
   ja: {
     'nav.backpacks': 'バックパックス',
@@ -349,11 +354,14 @@ const DICT = {
     'schedule.slots.queuedBadge': '交換予約中',
     'schedule.slots.assignFailed': 'ユニットを割り当てられませんでした: ',
     'schedule.slots.swapFailed': 'ユニットを交換できませんでした: ',
+    'schedule.slots.emptyUnitOption': '{name}（バックパックがなく展開不可）',
+    'schedule.slots.emptyUnitReason': 'このプリセットにはバックパックアイテムがないため、展開できません。',
 
     // 409 deploy-gate error mapping (errors.ts)
     'schedule.error.notIndependent': 'このプリセットは他のプリセットとアイテムを共有しています。デプロイする前に、アイテムを共有しない独立した状態にしてください。',
     'schedule.error.crossRoomOverlap': 'このプリセットはすでに他のアクティブなスケジュールでユニットとしてデプロイされています。そのランが終わるのを待つか、別のプリセットを選んでください。',
     'schedule.error.noWarehouseSpace': 'インベントリが満杯です（全5ページ）。空きができるまでアイテムは倉庫に保管されます。',
+    'schedule.error.emptyUnit': 'このプリセットにはバックパックアイテムがないため展開できません（バックパックがないユニットはHPを持ちません）。',
 
     // Monitor (Monitor.tsx / MonitorRenderer.ts)
     'schedule.monitor.progress': '進行状況',
@@ -386,6 +394,8 @@ const DICT = {
     'schedule.warehouse.claimedToast': 'インベントリに移動しました。',
     'schedule.warehouse.claimFailed': 'このアイテムを受け取れませんでした: ',
     'schedule.warehouse.loadFailed': '倉庫の読み込みに失敗しました: ',
+    'schedule.warehouse.claimNoSpace': 'どのインベントリページにも空きがありません -- アイテムは倉庫に保管されたままです。',
+    'schedule.warehouse.claimedOnOtherPage': 'ページ {page} に配置しました。',
   },
 } as const;
 

@@ -439,10 +439,22 @@ function readWarehouseItemPg(playerId, itemUid) {
 }
 function writeWarehouseItemPg(playerId, itemUid, doc) {
   const { querySync } = require('./pg_sync.cjs');
+  // REQ-0041 hardening: the ON CONFLICT clause now also updates
+  // player_id (previously it did not -- only doc/harvested_at/
+  // updated_at were refreshed on conflict). Every REAL call site writes
+  // a given itemUid under the SAME playerId for its whole life (a
+  // warehouse row's owner never legitimately changes), so this was
+  // unreachable via normal app behavior, but leaving the player_id
+  // COLUMN stale relative to a freshly-written doc.playerId (had a
+  // caller ever rewritten under a different playerId) would silently
+  // orphan the row from listWarehouseItemsPg's own `WHERE player_id =
+  // $1` filter -- discovered via this REQ's own E2E-support test
+  // tooling, not a live-traffic bug, but cheap defense-in-depth to close
+  // now that it is understood.
   querySync(
     'INSERT INTO warehouse_items (item_uid, player_id, doc, harvested_at, updated_at) ' +
     'VALUES ($1, $2, $3::jsonb, $4, now()) ' +
-    'ON CONFLICT (item_uid) DO UPDATE SET doc = EXCLUDED.doc, harvested_at = EXCLUDED.harvested_at, updated_at = EXCLUDED.updated_at',
+    'ON CONFLICT (item_uid) DO UPDATE SET player_id = EXCLUDED.player_id, doc = EXCLUDED.doc, harvested_at = EXCLUDED.harvested_at, updated_at = EXCLUDED.updated_at',
     [namespacedId(itemUid), namespacedId(playerId), JSON.stringify(doc), doc.harvestedAt]
   );
   return doc;

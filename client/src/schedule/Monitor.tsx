@@ -170,8 +170,23 @@ export function Monitor({ room, locale }: MonitorProps) {
     if (!run || !rendererRef.current) return;
     const newTail = run.events.slice(lastEventIndexRef.current);
     if (newTail.length > 0) {
-      rendererRef.current.applyEvents(newTail);
-      lastEventIndexRef.current = run.events.length;
+      // BUG #4 defensive fix (REQ-0041): lastEventIndexRef MUST advance
+      // unconditionally, even if applyEvents somehow throws (it no longer
+      // should -- see MonitorRenderer.ts's own per-event try/catch -- but
+      // this call site is the SPECIFIC reason the original freeze became
+      // a PERMANENT crash-loop rather than a one-off dropped frame: this
+      // ref used to only advance AFTER a successful (non-throwing) call,
+      // so a throw here left the same stuck event range re-processed,
+      // and re-thrown, on every subsequent ~2s poll forever. Advancing in
+      // a finally block makes "skip the bad tail, keep polling forward"
+      // the guaranteed behavior regardless of what MonitorRenderer does
+      // internally -- belt-and-suspenders on top of the renderer's own
+      // fix, not a substitute for it.
+      try {
+        rendererRef.current.applyEvents(newTail);
+      } finally {
+        lastEventIndexRef.current = run.events.length;
+      }
     }
   }, [run]);
 
