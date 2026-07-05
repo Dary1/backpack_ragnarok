@@ -1738,6 +1738,54 @@ html, body {
   cursor: default;
 }
 
+/* Workshop (WorkshopPage.tsx) -- REQ-0042 */
+.workshop-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 2px;
+}
+
+.workshop-gacha-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+
+.workshop-gacha-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.workshop-gacha-cost,
+.workshop-gacha-balance {
+  color: var(--dim);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.workshop-roll-btn {
+  margin-top: 6px;
+  background: transparent;
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workshop-roll-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* Monitor */
 .schedule-monitor {
   background: var(--panel);

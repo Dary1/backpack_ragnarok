@@ -103,6 +103,12 @@ export interface BP {
   shape: Offset[];
   origin: Cell;
   linker: BPLinker;
+  /** REQ-0036 P1-A: BP max HP (Backpack-as-HP). Optional here since this
+   * type predates that field and not every synthetic/test BP literal in
+   * this codebase sets it -- mirrors the engine's own tolerant read
+   * surface (bpHpMax() defaults when absent). REQ-0042's gacha roll is
+   * the first CLIENT code path to always set it on a freshly-minted BP. */
+  hpMax?: number;
 }
 
 export type POLoc = 'grid' | 'inv';
@@ -142,10 +148,21 @@ export interface SI {
  * page use the SAME record shapes as canvas (PO.loc/cell, SI.uid/id) --
  * only SI.host may additionally take the page-local free-placement shape
  * ({page,cell}), see InvSIHost above. */
+/** TM (Transmutator) stack record -- REQ-0042. Page-scoped, stackable,
+ * always 1x1, never a canvas record (see mock-src/engine.js's TM model
+ * comment for why it structurally cannot reach canvas). */
+export interface TM {
+  uid: string;
+  id: string;
+  qty: number;
+  cell: Cell;
+}
+
 export interface InvPage {
   bps: BP[];
   pos: PO[];
   sis: SI[];
+  tms: TM[]; // REQ-0042 -- absent on a pre-REQ-0042 saved state (migrateState backfills it)
 }
 
 export interface Inventory {
@@ -358,6 +375,30 @@ export interface EngineInstance {
    * `bp`'s footprint (both from the SAME page's arrays). Container-
    * independent shape math, callable with any {bps,pos,sis}-shaped page. */
   poInBPIn: (p: PO, bp: BP) => boolean;
+
+  /** TM (Transmutator) model -- REQ-0042. tmCanPlace mirrors
+   * invCanPlaceSI's 1x1/page-bounds/BP-overlap/occupancy rule exactly,
+   * PLUS: landing on an existing TM stack of the SAME `id` is reported as
+   * a legal merge target (`mergeInto: <destination uid>`) instead of an
+   * 'occupied' rejection. */
+  tmCanPlace: (st: GameState, pg: number, uid: string, anchor: Cell, exclUids?: string[]) => PlacementCheck & { mergeInto?: string };
+  /** Mutates: places/moves/merges a TM stack. If `uid` has no existing
+   * record in page `pg` yet, `idIfNew`/`qtyIfNew` mint a fresh stack
+   * there (used by grant/reward/gacha-finalize call sites). If the
+   * destination cell holds another same-id stack, the two are merged
+   * (qty summed into the DESTINATION uid; the dragged uid's record is
+   * removed) -- `mergedInto` is set on the result when that happens. */
+  tmMove: (st: GameState, pg: number, uid: string, anchor: Cell, idIfNew?: string, qtyIfNew?: number) => { ok: boolean; why?: string; cells?: Cell[]; mergeInto?: string; mergedInto?: string };
+  /** Row-major first-fit scan for TM placement, byte-identical shape to
+   * firstFitSICell (not itself exported as firstFitSICell is, but
+   * mirrored here as firstFitTMCell). */
+  firstFitTMCell: (container: InvPage) => Cell | null;
+  /** Consumes `qty` of TM `id` from page `pg`, largest-stack-first,
+   * across every same-id stack ON THAT PAGE (page-scoped by design, see
+   * mock-src/engine.js's TM model comment for the documented judgment
+   * call). Fails cleanly ({ok:false,why:'insufficient'}) with NO
+   * mutation at all if the page's total is less than `qty`. */
+  spendTM: (st: GameState, pg: number, id: string, qty: number) => { ok: boolean; why?: string; have?: number; need?: number; spent?: number };
   /** Absolute [row,col] cells of PO `p`, page-container-independent (same
    * math as cellsOf, just not requiring the full GameState). */
   cellsOfIn: (p: PO) => Cell[];

@@ -16,6 +16,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { route: 'backpacks', key: 'nav.backpacks' },
   { route: 'schedule', key: 'nav.schedule' },
+  { route: 'workshop', key: 'nav.workshop' }, // REQ-0042
   { route: 'friends', key: 'nav.friends' },
   { route: 'dex', key: 'nav.dex' },
   { route: 'settings', key: 'nav.settings' },

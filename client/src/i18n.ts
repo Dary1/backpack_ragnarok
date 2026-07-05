@@ -27,6 +27,7 @@ const DICT = {
     // Nav (Nav.tsx)
     'nav.backpacks': 'Backpacks',
     'nav.schedule': 'Schedule',
+    'nav.workshop': 'Workshop', // REQ-0042
     'nav.friends': 'Friends',
     'nav.dex': 'Dex',
     'nav.settings': 'Settings',
@@ -219,10 +220,24 @@ const DICT = {
     'schedule.warehouse.loadFailed': 'Failed to load the warehouse: ',
     'schedule.warehouse.claimNoSpace': 'No space in any inventory page -- the item stays in your warehouse.',
     'schedule.warehouse.claimedOnOtherPage': 'Placed on page {page}.',
+
+    // Workshop (WorkshopPage.tsx) -- REQ-0042
+    'workshop.commonBpGacha': 'Common BP Gacha',
+    'workshop.cost': 'Cost: {cost} LRDST',
+    'workshop.balance': 'Balance: {balance} LRDST',
+    'workshop.rollButton': 'Roll',
+    'workshop.rolling': 'Rolling…',
+    'workshop.rolledToast': 'A new Backpack was placed!',
+    'workshop.rolledOnOtherPage': 'Placed on page {page}.',
+    'workshop.insufficientFunds': 'Insufficient LRDST balance.',
+    'workshop.noSpace': 'No space in any inventory page for the rolled Backpack.',
+    'workshop.spendFailed': 'Failed to deduct LRDST -- please try again.',
+    'workshop.rollFailed': 'Roll failed: ',
   },
   ja: {
     'nav.backpacks': 'バックパックス',
     'nav.schedule': 'スケジュール',
+    'nav.workshop': '工房',
     'nav.friends': 'フレンズ',
     'nav.dex': '図鑑',
     'nav.settings': '設定',
@@ -403,6 +418,18 @@ const DICT = {
     'schedule.warehouse.loadFailed': '倉庫の読み込みに失敗しました: ',
     'schedule.warehouse.claimNoSpace': 'どのインベントリページにも空きがありません -- アイテムは倉庫に保管されたままです。',
     'schedule.warehouse.claimedOnOtherPage': 'ページ {page} に配置しました。',
+
+    'workshop.commonBpGacha': 'コモンBPガチャ',
+    'workshop.cost': 'コスト: LRDST {cost}個',
+    'workshop.balance': '所持数: LRDST {balance}個',
+    'workshop.rollButton': 'ガチャを回す',
+    'workshop.rolling': '回しています…',
+    'workshop.rolledToast': '新しいバックパックが配置されました！',
+    'workshop.rolledOnOtherPage': 'ページ {page} に配置しました。',
+    'workshop.insufficientFunds': 'LRDSTが不足しています。',
+    'workshop.noSpace': 'ロールしたバックパックを置くスペースがどのページにもありません。',
+    'workshop.spendFailed': 'LRDSTの消費に失敗しました -- もう一度お試しください。',
+    'workshop.rollFailed': 'ガチャに失敗しました: ',
   },
 } as const;
 

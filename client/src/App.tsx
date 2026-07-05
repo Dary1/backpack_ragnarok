@@ -72,6 +72,7 @@ import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
 import { PlaceholderPage } from './PlaceholderPage';
 import { SchedulePage } from './schedule/SchedulePage';
+import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
 import { PresetTabs } from './PresetTabs';
 import { PresetTrashZone } from './PresetTrashZone';
 import { Settings } from './Settings';
@@ -173,6 +174,7 @@ function App() {
         {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} />, inventorySlot) : null}
 
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
+        {route === 'workshop' ? <WorkshopPage locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}

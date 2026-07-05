@@ -95,9 +95,9 @@ export type Locale = 'en' | 'ja';
 // it never stays the ACTIVE route in the store for more than an instant,
 // so the Route union itself does not need an 'invite' member; App.tsx
 // never has to render anything for it.
-export type Route = 'backpacks' | 'schedule' | 'friends' | 'dex' | 'settings';
+export type Route = 'backpacks' | 'schedule' | 'workshop' | 'friends' | 'dex' | 'settings';
 
-const VALID_ROUTES: Route[] = ['backpacks', 'schedule', 'friends', 'dex', 'settings'];
+const VALID_ROUTES: Route[] = ['backpacks', 'schedule', 'workshop', 'friends', 'dex', 'settings'];
 
 const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
