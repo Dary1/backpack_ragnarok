@@ -156,11 +156,82 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
 <span lang="en">Two more attempts in the same batch didn't meet the brief (full body, front-facing) and were excluded: the shoulder-spikes variant framed almost entirely out of shot, and the ice-crown variant came out as a bust/portrait instead of full body.<br/>Also tried and dropped: 3 chroma-key (color-key) background attempts — (1) a light mention of the target color, which was ignored and the original icy background came back; (2) an emphasized color placed early in the prompt, which did change the background but bled into the character's own skin/highlights; (3) an orange background (chosen as the complementary color to the creature's icy palette), which came out as a clean flat color but collapsed the character's composition into a different, off-brief design.</span>
 </span></div>
 
+<h2><span class="i18n"><span lang="ja">多様なモンスター候補(氷にこだわらず・透過テスト)</span><span lang="en">Diverse Monster Candidates (moving past ice, transparency test)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">氷の霜/靄のような半透明表現が透過処理と根本的に相性が悪いのではという指摘を受け、氷から離れて8体(ゴブリン・オーク・スケルトン・ウルフ・ジャイアントスパイダー・リザードマン・マッシュルーム・ジャイアントバット)をシンプルな名称で生成。狙い通り、不透明な意匠のモンスターは透過の縁が大幅に安定した(isnet-anime + alpha matting + マスク後処理は据え置き)。ジャイアントスパイダーのみ2回とも「孤立したキャラクター」ではなく空・光条・岩壁を含む劇的な一枚絵になってしまい、透過処理がほぼ全消去という結果になったため除外(下記参照)。画風はまだ統一しておらず、これは「多様に出して良いものを選んでもらう」ための候補出しです。</span>
+<span lang="en">On the hypothesis that ice/frost's inherently soft, misty, semi-transparent look was fundamentally at odds with clean background removal, we stepped away from ice and generated 8 simply-named monsters (goblin, orc, skeleton, wolf, giant spider, lizardman, mushroom, giant bat). As hoped, opaque-bodied designs segmented far more reliably (still isnet-anime + alpha matting + mask post-processing). Only the giant spider came back both times as a dramatic full scene (sky, light rays, rock walls) instead of an isolated character, so its background removal came back almost entirely empty and it's excluded below (see note). Style is intentionally not unified yet — this is a volume/variety pass so you can pick out the ones worth pursuing.</span>
+</span></div>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">goblin</div>
+  <img class="card-img checker" src="variety/goblin.png"/>
+  <div class="card-title-ja">ゴブリン</div>
+  <div class="card-title-en">Goblin</div>
+  <div class="card-tech">toonyou_beta6 · seed 500001</div>
+</div>
+
+<div class="card">
+  <div class="card-num">orc</div>
+  <img class="card-img checker" src="variety/orc.png"/>
+  <div class="card-title-ja">オーク</div>
+  <div class="card-title-en">Orc</div>
+  <div class="card-tech">toonyou_beta6 · seed 500002</div>
+</div>
+
+<div class="card">
+  <div class="card-num">skeleton</div>
+  <img class="card-img checker" src="variety/skeleton.png"/>
+  <div class="card-title-ja">スケルトン</div>
+  <div class="card-title-en">Skeleton</div>
+  <div class="card-tech">toonyou_beta6 · seed 500003</div>
+</div>
+
+<div class="card">
+  <div class="card-num">wolf</div>
+  <img class="card-img checker" src="variety/wolf.png"/>
+  <div class="card-title-ja">ウルフ</div>
+  <div class="card-title-en">Wolf</div>
+  <div class="card-tech">toonyou_beta6 · seed 500004</div>
+</div>
+
+<div class="card">
+  <div class="card-num">lizardman</div>
+  <img class="card-img checker" src="variety/lizardman.png"/>
+  <div class="card-title-ja">リザードマン</div>
+  <div class="card-title-en">Lizardman</div>
+  <div class="card-tech">toonyou_beta6 · seed 500006</div>
+</div>
+
+<div class="card">
+  <div class="card-num">mushroom</div>
+  <img class="card-img checker" src="variety/mushroom.png"/>
+  <div class="card-title-ja">マッシュルーム</div>
+  <div class="card-title-en">Mushroom</div>
+  <div class="card-tech">toonyou_beta6 · seed 500007</div>
+</div>
+
+<div class="card">
+  <div class="card-num">giant_bat</div>
+  <img class="card-img checker" src="variety/giant_bat.png"/>
+  <div class="card-title-ja">ジャイアントバット</div>
+  <div class="card-title-en">Giant Bat</div>
+  <div class="card-tech">toonyou_beta6 · seed 500008</div>
+</div>
+
+</div>
+
+<h2 class="section-muted"><span class="i18n"><span lang="ja">除外した候補</span><span lang="en">Dropped Candidate</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">ジャイアントスパイダー: 2回生成し、2回とも「孤立した1体」ではなく空・光条・岩壁を含む劇的な一枚絵(ヒーローショット風)になった。プロンプトで「scenery, ground, cave, rock formation, environment」等を明示的に禁止しても再現。結果、isnet-animeによる透過処理はほぼ全体を背景と判定し画像がほぼ空になった。この構図の癖はコンセプト固有(スパイダー系)の可能性があり、他のモンスターには見られなかった。</span>
+<span lang="en">Giant spider: generated twice, and both times came back as a dramatic hero-shot scene (sky, light rays, rock walls) instead of an isolated single creature, even with explicit negative-prompt bans on "scenery, ground, cave, rock formation, environment." As a result, isnet-anime segmentation classified almost the entire image as background, leaving it nearly empty after transparency processing. This composition tendency may be specific to this concept (spider-type), not seen with any of the other monsters.</span>
+</span></div>
+
 <h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
 <div class="note-box">
 <span class="i18n">
-<span lang="ja">#2方向で問題なければ、この4枚(元+3バリエーション)のうちどれを基準に近づけるか、あるいはさらに調整したい点を教えてください。決定次第、50体の本番生成に進みます。</span>
-<span lang="en">If the #2 direction looks right, let us know which of these 4 (original + 3 variations) is closest to the target — or what to adjust further. Once decided, we'll proceed to the full 50-monster production run.</span>
+<span lang="ja">2つの独立した選択が残っています: (1) 画風 — #1〜#3のスタイル候補、または#2バリエーションのうちどれを基準にするか。(2) 上の多様なモンスター候補7体のうち、良いと思うものを教えてください(複数可・全部でも構いません)。両方決まれば、選ばれた画風×選ばれたモンスター群で50体の本番生成に進みます。</span>
+<span lang="en">Two independent choices remain open: (1) art style — which of the #1-#3 candidates or #2 variations to standardize on. (2) Of the 7 diverse monster candidates above, let us know which ones you like (any number, including all of them). Once both are settled, we'll move to the full 50-monster production run using the chosen style applied to the chosen monster concepts.</span>
 </span>
 </div>
 
