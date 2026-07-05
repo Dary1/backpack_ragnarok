@@ -170,7 +170,30 @@ export function makeInvOps(engine: EngineInstance, page: number): BoardOps {
       return engine.invRotatePO(state, page, uid);
     },
     canMoveBP(state, bpId, origin) {
-      return engine.invCanPlaceBP(state, page, bpId, origin);
+      // REQ-0045 bug (a) fix: invCanPlaceBP's free-item occupancy check
+      // (invOccupancy) must exclude the BP's OWN contained POs from the
+      // collision test, exactly like invMoveBP itself already does
+      // internally (see engine.js's invMoveBP: `const inside=container.
+      // pos.filter(p=>poInBPIn(p,bp)); ... invCanPlaceBP(...,inside.map(p
+      // =>p.uid))`). Root cause: this HOVER-PREVIEW call used to omit the
+      // 4th exclUids argument entirely, so any candidate origin whose new
+      // footprint overlapped a cell the BP's OWN travelling PO currently
+      // occupies (the common case: nudging a BP with contents by only a
+      // few cells, so old/new footprints intersect) was incorrectly
+      // reported illegal (occ[cell] found the PO's own uid and treated it
+      // as "overlaps free-placed item"). Since the hover preview is what
+      // sets `drop` (see BoardRenderer.ts's onGlobalPointerMove 'bp'
+      // branch: `drop = chk.ok ? {...} : null`), a permanently-false
+      // preview meant pointerup never had a drop target to commit against
+      // -- the move silently no-op'd for that entire class of drags, even
+      // though invMoveBP's OWN legality check (used at actual commit
+      // time) would have allowed it. Fix: derive the same exclUids set
+      // here, using the already-exported poInBPIn, so the preview and the
+      // real commit check agree.
+      const container = pageContainer(state);
+      const bp = container.bps.find((b) => b.id === bpId);
+      const exclUids = bp ? container.pos.filter((p) => engine.poInBPIn(p, bp)).map((p) => p.uid) : [];
+      return engine.invCanPlaceBP(state, page, bpId, origin, exclUids);
     },
     moveBP(state, bpId, origin) {
       return engine.invMoveBP(state, page, bpId, origin);

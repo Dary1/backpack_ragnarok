@@ -264,3 +264,122 @@ test.describe('BP inventory <-> canvas transfer', () => {
     expect(alpha.origin).toEqual([1, 1]);
   });
 });
+
+// REQ-0045 bug (a): "BP cannot be moved inside the Inventory". Root cause
+// (see client/src/board/boardOps.ts's makeInvOps().canMoveBP, now fixed):
+// the HOVER-PREVIEW legality check (engine.invCanPlaceBP, called on every
+// pointermove to decide the ghost tint AND whether a drop target exists
+// at all) omitted the 4th `exclUids` argument, so it never excluded the
+// dragged BP's OWN contained POs from the free-item occupancy test
+// (invOccupancy). invMoveBP itself (the function that actually runs at
+// COMMIT time) always correctly excluded them -- so any nudge whose new
+// footprint overlapped a cell the BP's own PO currently sits on (the
+// ordinary case of dragging a covered BP a SHORT distance, not clear
+// across the board) got a permanently-illegal (red) hover preview, which
+// meant `drop` stayed null the entire drag and pointerup had nothing to
+// commit -- the move silently failed even though the real legality check
+// would have allowed it. This is a same-page inventory-only bug: the
+// canvas board's canMoveBP has no free-item occupancy concept at all
+// (POs on canvas always live inside a BP, never float free), so this
+// class of bug structurally cannot occur there.
+test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a)', () => {
+  test('nudging a BP-with-contained-PO a SHORT distance (new footprint overlaps the BP\'s OWN old footprint) succeeds', async ({ page }) => {
+    const canvas = {
+      linked: true,
+      bps: [],
+      pos: [],
+      sis: [],
+      layout: { ROWS: 8, COLS: 8 },
+      inv: {
+        pages: [
+          {
+            // 1x3 BP at origin (3,3): local cells (3,3),(3,4),(3,5).
+            // Linker sits at the BP's own (0,0) offset = (3,3), which has
+            // no PO on it (grabbable via the linker core). Its contained
+            // PO sits at (3,4) -- the BP's MIDDLE cell. Nudging the BP's
+            // origin one cell right, to (3,4), yields new cells
+            // (3,4),(3,5),(3,6): cell (3,4) is exactly where the BP's own
+            // travelling PO currently sits -- this is the overlap the old
+            // (buggy) hover-preview misreported as illegal.
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            pos: [{ uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 }],
+            sis: [], tms: [],
+          },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+        ],
+        names: ['1', '2', '3', '4', '5'],
+      },
+    };
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
+    await bootApp(page);
+    const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
+
+    // Grab the linker core at (3,3) (empty of any PO), drop one cell to
+    // the right at (3,4).
+    await drag(
+      page,
+      { x: invBox.x + cx(3), y: invBox.y + cy(3) },
+      { x: invBox.x + cx(4), y: invBox.y + cy(3) }
+    );
+
+    const result = await saveAndFetch(page);
+    const bp = result.inv.pages[0].bps.find((b: any) => b.id === 'nudge_bp');
+    expect(bp).toBeTruthy();
+    expect(bp.origin).toEqual([3, 4]); // the nudge succeeded
+    // The contained PO traveled WITH the BP by the same delta (+0,+1).
+    const po = result.inv.pages[0].pos.find((p: any) => p.uid === 'nudge_po');
+    expect(po.cell).toEqual([3, 5]);
+  });
+
+  test('a GENUINELY illegal nudge (new footprint overlaps an UNRELATED free-placed PO) is still rejected', async ({ page }) => {
+    const canvas = {
+      linked: true,
+      bps: [],
+      pos: [],
+      sis: [],
+      layout: { ROWS: 8, COLS: 8 },
+      inv: {
+        pages: [
+          {
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            pos: [
+              { uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
+              // Unrelated free PO at (3,6), NOT part of nudge_bp. Nudging
+              // nudge_bp's origin to (3,4) gives cells (3,4),(3,5),(3,6)
+              // -- (3,6) collides with this genuinely foreign PO, which
+              // must NOT be excluded (only the moving BP's OWN contents
+              // are excluded from the occupancy check).
+              { uid: 'other_po', id: 'dagger', loc: 'grid', cell: [3, 6], rot: 0 },
+            ],
+            sis: [], tms: [],
+          },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+        ],
+        names: ['1', '2', '3', '4', '5'],
+      },
+    };
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
+    await bootApp(page);
+    const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
+
+    await drag(
+      page,
+      { x: invBox.x + cx(3), y: invBox.y + cy(3) },
+      { x: invBox.x + cx(4), y: invBox.y + cy(3) }
+    );
+
+    const result = await saveAndFetch(page);
+    const bp = result.inv.pages[0].bps.find((b: any) => b.id === 'nudge_bp');
+    expect(bp.origin).toEqual([3, 3]); // rejected -- must stay put
+    const po = result.inv.pages[0].pos.find((p: any) => p.uid === 'nudge_po');
+    expect(po.cell).toEqual([3, 4]); // untouched
+    const other = result.inv.pages[0].pos.find((p: any) => p.uid === 'other_po');
+    expect(other.cell).toEqual([3, 6]); // untouched
+  });
+});
