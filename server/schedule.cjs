@@ -26,6 +26,7 @@ const path = require('path');
 const os = require('os');
 const storage = require('./storage.cjs');
 const combat = require('../sim/combat.cjs');
+const dungen = require('../sim/dungen.cjs');
 const Engine = require('../mock-src/engine.js');
 
 const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
@@ -131,17 +132,45 @@ function getScheduleContent() {
 // Public, read-only, matches /api/content's own no-auth convention (see
 // server/api.cjs's route dispatch -- this route is special-cased BEFORE
 // the schedule auth gate for exactly this reason).
+//
+// REQ-0043: rooms now create against a GENERATED dungeon (dungeonType +
+// level + optional genSeed), not just the one static pilot dungeon --
+// this payload gains a `types` list (sim/dungen.cjs's DUNGEON_TYPES:
+// 'default' generated, 'test_fixed' the hand-authored batch-002 sequence
+// verbatim) with a short i18n label + level-hint note per type, so the
+// client's create-room form can offer a real type selector instead of
+// hardcoding the two known ids. The original `dungeons` array is KEPT
+// byte-for-byte (still lists the static niflheim_depths entry) for
+// backward compat with any existing caller/E2E assertion that reads
+// `dungeons[0].id === 'niflheim_depths'` -- additive only, nothing
+// removed.
 // ---------------------------------------------------------------------
+const DUNGEON_TYPE_I18N = {
+  default: {
+    en: { name: 'Auto-Generated', note: 'Encounter count/composition scales with the room level you pick.' },
+    ja: { name: '自動生成', note: '選択したレベルに応じてエンカウント数・構成がスケールします。' },
+  },
+  test_fixed: {
+    en: { name: 'Niflheim Depths (fixed)', note: 'The hand-authored batch-002 encounter sequence, unaffected by level or seed.' },
+    ja: { name: 'ニヴルヘイムの深層（固定）', note: 'batch-002の手作りエンカウント順。レベルやシードの影響を受けません。' },
+  },
+};
+
 function listDungeonsAndFormations() {
   const { dungeonDef, formationsDoc } = getScheduleContent();
   const dungeons = [{ id: dungeonDef.id, name: dungeonDef.name, i18n: dungeonDef.i18n || {} }];
+  const types = dungen.DUNGEON_TYPES.map((id) => ({
+    id,
+    name: (DUNGEON_TYPE_I18N[id] && DUNGEON_TYPE_I18N[id].en.name) || id,
+    i18n: DUNGEON_TYPE_I18N[id] || {},
+  }));
   const formations = (formationsDoc.entries || []).map((f) => ({
     id: f.id,
     name: (f.i18n && f.i18n.en && f.i18n.en.name) || f.id,
     i18n: f.i18n || {},
     canvases: f.canvases,
   }));
-  return { dungeons, formations };
+  return { dungeons, types, formations };
 }
 
 // Reward-roll id -> real content item id resolution table. batch-002's
@@ -191,7 +220,7 @@ function genId(prefix) {
 
 // A room document's shape:
 // {
-//   id, ownerId, dungeonId, level, visibility: 'self', formationId,
+//   id, ownerId, dungeonId, dungeonType, level, genSeed, visibility: 'self', formationId,
 //   cancelPolicy: { immediate: bool },
 //   slots: [ { presetIndex: number|null } x4 ],  // golden b/d: this player's own preset per slot
 //   status: 'open' | 'active' | 'canceled',
@@ -201,25 +230,76 @@ function genId(prefix) {
 //   createdAt, updatedAt,
 //   lastRunId: string | null,
 // }
+//
+// REQ-0043: dungeonType/level/genSeed drive sim/dungen.cjs's generate()
+// at run-start time (see startRun() below) rather than every run always
+// loading the one static batch-002 dungeon.json. `dungeonId` is KEPT on
+// the room doc (backward compat with the ApiRoom client type + any
+// existing caller reading it) but is no longer the sole run-selection
+// key -- see resolveDungeonType() for the derivation/back-compat rule.
+
+// resolveDungeonType: derives the room's dungeonType from create-room
+// opts. Explicit `dungeonType` wins (validated against dungen's own
+// DUNGEON_TYPES list -- unknown value is a 400, same convention as an
+// unknown formationId silently falling back would NOT be -- a bad
+// dungeonType is a caller mistake worth surfacing, not silently
+// swallowed, since picking the WRONG generator silently would be
+// confusing). Absent an explicit dungeonType, back-compat: a
+// `dungeonId` equal to the static pilot dungeon's own id
+// ('niflheim_depths') maps to 'test_fixed' (that IS the same hand-
+// authored content dungen.generateTestFixed() returns verbatim, so this
+// preserves every existing caller's observed behavior byte-for-byte);
+// any other/absent dungeonId defaults to 'default' (the generator).
+function resolveDungeonType(dungeonType, dungeonId) {
+  if (typeof dungeonType === 'string' && dungeonType) {
+    if (!dungen.DUNGEON_TYPES.includes(dungeonType)) {
+      const err = new Error('unknown dungeonType: ' + dungeonType + ' (known: ' + dungen.DUNGEON_TYPES.join(', ') + ')');
+      err.code = 'BAD_REQUEST';
+      throw err;
+    }
+    return dungeonType;
+  }
+  const { dungeonDef } = getScheduleContent();
+  if (dungeonId === dungeonDef.id) return 'test_fixed';
+  return 'default';
+}
 
 function validateCancelPolicy(cancelPolicy) {
   if (!cancelPolicy || typeof cancelPolicy !== 'object') return { immediate: true };
   return { immediate: cancelPolicy.immediate !== false };
 }
 
+// createRoom: `opts.genSeed` (REQ-0043) is ONLY threaded through here --
+// the ACTUAL privilege gate (dev fallback / item_admin token, same
+// pattern as dev/backdate) lives in server/api.cjs's route handler,
+// which strips genSeed from the body (and 403s) BEFORE this function is
+// ever called for a non-privileged caller. This function itself has no
+// auth context, so it trusts whatever genSeed it's handed -- same
+// division of responsibility devBackdateActiveRun() already documents
+// ("Caller gating... NOT here").
 function createRoom(ownerId, opts) {
-  const { dungeonId, level, formationId, cancelPolicy } = opts || {};
+  const { dungeonId, dungeonType, level, genSeed, formationId, cancelPolicy } = opts || {};
   if (typeof dungeonId !== 'string' || !dungeonId) {
     const err = new Error('dungeonId is required'); err.code = 'BAD_REQUEST'; throw err;
   }
+  const resolvedType = resolveDungeonType(dungeonType, dungeonId);
   const lvl = Number.isFinite(level) ? Math.max(DEFAULT_LEVEL_MIN, Math.floor(level)) : DEFAULT_LEVEL_MIN;
   const fId = (typeof formationId === 'string' && combat.FORMATIONS[formationId]) ? formationId : DEFAULT_FORMATION_ID;
+  // genSeed: string or number accepted, coerced to a string (dungen.generate
+  // stringifies internally anyway); random by default (crypto, same
+  // "stored verbatim, never re-rolled" convention startRun's own combat
+  // seed already follows) so an ungated room is still fully unpredictable.
+  const seed = (genSeed !== undefined && genSeed !== null && genSeed !== '')
+    ? String(genSeed)
+    : crypto.randomBytes(16).toString('hex');
   const now = new Date().toISOString();
   const room = {
     id: genId('room'),
     ownerId,
     dungeonId,
+    dungeonType: resolvedType,
     level: lvl,
+    genSeed: seed,
     visibility: 'self', // golden c: P1-B rooms are always self-only (multi-visibility is P2)
     formationId: fId,
     cancelPolicy: validateCancelPolicy(cancelPolicy),
@@ -515,11 +595,21 @@ function startRun(room, profileCanvas) {
     const err = new Error('room is canceled'); err.code = 'CONFLICT'; throw err;
   }
   const unitSnapshots = buildUnitSnapshots(room, profileCanvas);
-  const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById } = getScheduleContent();
-  if (room.dungeonId !== dungeonDef.id) {
-    const err = new Error('unknown or unsupported dungeonId: ' + room.dungeonId); err.code = 'BAD_REQUEST'; throw err;
-  }
-  const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief)
+  const { itemDefsById, enemyDefsById, skillDefsById } = getScheduleContent();
+  // REQ-0043: the dungeon def now comes from sim/dungen.cjs's generator,
+  // keyed off the room's OWN dungeonType/level/genSeed (stored at
+  // create-room time, see createRoom()/resolveDungeonType()) -- no
+  // longer always the one static batch-002 dungeon.json. A room created
+  // before this REQ landed carries neither field (pre-existing on-disk
+  // room docs, files-mode dev data) -- resolveDungeonType()'s own
+  // back-compat rule derives a type from the legacy dungeonId, and a
+  // fresh random seed is rolled here (once) for a legacy room that never
+  // had a genSeed persisted, exactly mirroring how the run's OWN combat
+  // seed below is freshly rolled per-run rather than reused.
+  const dungeonType = room.dungeonType || resolveDungeonType(undefined, room.dungeonId);
+  const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
+  const dungeonDef = dungen.generate(dungeonType, room.level, genSeed);
+  const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
   const result = combat.runDungeon({

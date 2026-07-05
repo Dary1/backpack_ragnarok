@@ -30,39 +30,60 @@
 
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const combat = require(path.join(__dirname, 'combat.cjs'));
 
-const BATCH_DIR = path.join(__dirname, '..', 'content', 'batches', 'batch-002-dungeon-pilot');
-const DUNGEON_FIXED_PATH = path.join(BATCH_DIR, 'dungeon.json');
-const ENEMIES_PATH = path.join(BATCH_DIR, 'enemies.json');
-const ENTITIES_PATH = path.join(BATCH_DIR, 'entities.json');
+// Content root resolution: os.homedir()-based, NOT __dirname-based --
+// matches server/schedule.cjs's OWN REPO_ROOT convention exactly (see
+// that file's header: `path.join(os.homedir(), 'backpack_ragnarok')`).
+// This matters for more than style consistency: server/tests/
+// api_test.cjs (and any other test harness that fakes os.homedir() to
+// point at a synthetic fixture repo) relies on EVERY content-reading
+// module resolving paths through os.homedir() so a faked home
+// transparently redirects ALL content reads to the test fixture, not
+// just schedule.cjs's own. An __dirname-relative path here would silently
+// keep reading the REAL repo's content even while every other module
+// was redirected to a fake one -- exactly the bug this comment now
+// documents against regressing.
+function repoRoot() { return path.join(os.homedir(), 'backpack_ragnarok'); }
+function batchDir() { return path.join(repoRoot(), 'content', 'batches', 'batch-002-dungeon-pilot'); }
+function dungeonFixedPath() { return path.join(batchDir(), 'dungeon.json'); }
+function enemiesPath() { return path.join(batchDir(), 'enemies.json'); }
+function entitiesPath() { return path.join(batchDir(), 'entities.json'); }
 
 function deepCopy(x) { return JSON.parse(JSON.stringify(x)); }
 
-let fixedDungeonCache = null;
+// mtime-cached (same convention as server/schedule.cjs's own
+// getScheduleContent()) rather than a load-once-forever cache -- a
+// process that starts with one os.homedir() and later has it repointed
+// (or whose on-disk fixture file changes, e.g. content hot-reload in
+// dev) must not keep serving a stale first read forever. Each cache
+// entry is keyed by the RESOLVED path itself, so a homedir change (which
+// changes the resolved path) naturally misses the old cache entry
+// instead of needing an explicit invalidation call.
+const _fileCache = new Map(); // resolvedPath -> {mtimeMs, parsed}
+function loadJsonCached(resolvedPath) {
+  const mtimeMs = fs.statSync(resolvedPath).mtimeMs;
+  const hit = _fileCache.get(resolvedPath);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.parsed;
+  const parsed = JSON.parse(fs.readFileSync(resolvedPath, 'utf8'));
+  _fileCache.set(resolvedPath, { mtimeMs, parsed });
+  return parsed;
+}
+
 function loadFixedDungeon() {
-  if (!fixedDungeonCache) fixedDungeonCache = JSON.parse(fs.readFileSync(DUNGEON_FIXED_PATH, 'utf8'));
-  return fixedDungeonCache;
+  return loadJsonCached(dungeonFixedPath());
 }
 
-let enemyRosterCache = null;
 function loadEnemyRoster() {
-  if (!enemyRosterCache) {
-    const raw = JSON.parse(fs.readFileSync(ENEMIES_PATH, 'utf8'));
-    enemyRosterCache = raw.entries;
-  }
-  return enemyRosterCache;
+  return loadJsonCached(enemiesPath()).entries;
 }
 
-let entityTemplatesCache = null;
 function loadEntityTemplates() {
-  if (!entityTemplatesCache) {
-    const raw = JSON.parse(fs.readFileSync(ENTITIES_PATH, 'utf8'));
-    const byId = {};
-    for (const e of raw.entries) byId[e.id] = e;
-    entityTemplatesCache = byId;
-  }
-  return entityTemplatesCache;
+  const raw = loadJsonCached(entitiesPath());
+  const byId = {};
+  for (const e of raw.entries) byId[e.id] = e;
+  return byId;
 }
 
 // =====================================================================

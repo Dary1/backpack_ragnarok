@@ -9,14 +9,14 @@
 //   POST /api/admin/warehouse/grant                      (REQ-0041 feedback 1, dev grant)
 //   GET  /api/profile/:playerId/canvas
 //   PUT  /api/profile/:playerId/canvas
-//   POST   /api/schedule/rooms                          (REQ-0036 P1-B)
+//   POST   /api/schedule/rooms                          (REQ-0036 P1-B; REQ-0043: dungeonType + dev/item_admin-only genSeed)
 //   GET    /api/schedule/rooms
 //   GET    /api/schedule/rooms/:id
 //   DELETE /api/schedule/rooms/:id
 //   PUT    /api/schedule/rooms/:id/slots/:slotIndex
 //   PUT    /api/schedule/rooms/:id/swap
 //   GET    /api/schedule/rooms/:id/run
-//   GET    /api/schedule/dungeons                        (REQ-0036 P1-C, no auth)
+//   GET    /api/schedule/dungeons                        (REQ-0036 P1-C, no auth; REQ-0043: now also lists generator `types`)
 //   POST   /api/schedule/rooms/:id/dev/backdate           (REQ-0036 P1-C, dev-only)
 //   GET    /api/warehouse
 //   POST   /api/warehouse/claim
@@ -285,7 +285,11 @@ function handle(req, res) {
   if (p === '/api/schedule/dungeons' && req.method === 'GET') {
     try {
       const payload = schedule.listDungeonsAndFormations();
-      sendJSON(res, 200, { ok: true, dungeons: payload.dungeons, formations: payload.formations });
+      // REQ-0043: `types` (sim/dungen.cjs's DUNGEON_TYPES + i18n label/
+      // note) is additive -- `dungeons`/`formations` are unchanged so any
+      // existing caller reading only those two fields keeps working
+      // byte-for-byte.
+      sendJSON(res, 200, { ok: true, dungeons: payload.dungeons, types: payload.types, formations: payload.formations });
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'dungeons read failed: ' + e.message });
     }
@@ -575,6 +579,20 @@ function handle(req, res) {
     // comment and server/README.md's "E2E time-control" section.
     const devUserForGate = admin.readDevUser();
     const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
+    // REQ-0043: room-create's optional `genSeed` (sim/dungen.cjs's
+    // generator seed -- lets a caller reproduce an EXACT dungeon layout)
+    // is gated to the SAME two privileged-caller classes the rest of
+    // this codebase already uses for a dev/test-control knob: the
+    // dev_mode no-token fallback (callerIsDevFallback, computed above,
+    // same as dev/backdate) OR a real token whose resolved player carries
+    // the item_admin role (admin.isItemAdminToken(), same guard the
+    // admin item-edit/grant routes already use). A plain guest token
+    // (even a perfectly valid one, roles:[]) is REFUSED -- see the
+    // createRoom handler below, which 403s BEFORE calling
+    // schedule.createRoom() at all when body.genSeed is present and this
+    // is false, so an ungated caller can never even attempt to bias a
+    // generated dungeon's layout.
+    const callerCanSetGenSeed = callerIsDevFallback || admin.isItemAdminToken(token);
 
     // Loads (and lazily migrates, per REQ-0037's legacy-default fallback)
     // the caller's own profile canvas -- schedule routes always operate
@@ -636,6 +654,18 @@ function handle(req, res) {
           if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
           let body;
           try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+          // REQ-0043: genSeed is a privileged-only field (see
+          // callerCanSetGenSeed above) -- checked HERE, before
+          // schedule.createRoom() is ever called, so an ungated caller's
+          // genSeed can never influence room creation even transiently.
+          // `genSeed: undefined`/absent is always fine for anyone (the
+          // room just gets a random seed, schedule.createRoom()'s own
+          // default); only a PRESENT genSeed value from a non-privileged
+          // caller is refused.
+          if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
+            sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+            return;
+          }
           try {
             const room = schedule.createRoom(callerId, body);
             sendJSON(res, 200, { ok: true, room });

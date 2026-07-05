@@ -269,7 +269,7 @@ session state (REQ-0039 Bot API design-first-class requirement).
 
 | method | path | body | notes |
 |---|---|---|---|
-| POST | `/api/schedule/rooms` | `{dungeonId, level?, formationId?, cancelPolicy?:{immediate}}` | Creates a room owned by the caller. `visibility` is always `"self"` in P1-B. Returns `{ok, room}`. |
+| POST | `/api/schedule/rooms` | `{dungeonId, dungeonType?, level?, genSeed?, formationId?, cancelPolicy?:{immediate}}` | Creates a room owned by the caller. `visibility` is always `"self"` in P1-B. `dungeonType`/`genSeed` are REQ-0043 additions -- see "Dungeon auto-generation" below. Returns `{ok, room}`. |
 | GET | `/api/schedule/rooms` | — | Lists the CALLER's own rooms only. Returns `{ok, rooms:[...]}`. |
 | GET | `/api/schedule/rooms/:id` | — | Settles a due run first (see run-clock), then returns `{ok, room}`. 404 if not found or not owned by the caller. |
 | DELETE | `/api/schedule/rooms/:id` | — | Cancel (golden g). Immediate if `cancelPolicy.immediate` or no run is active; else flags `cancelRequested` (honored once the in-flight run settles). Returns `{ok, room}`. |
@@ -361,6 +361,70 @@ roll id to a real, already-live item id so warehouse claim → inventory
 placement has a genuine placeable item to work with today; any id absent
 from the table falls back to identity (used as-is), so the table becomes
 a no-op the day real batch-002 content replaces the placeholders.
+
+### Dungeon auto-generation (REQ-0043)
+
+Rooms no longer always run the one static, hand-authored
+`niflheim_depths` dungeon. `sim/dungen.cjs`'s `generate(dungeonType,
+level, seed)` produces a dungeon def in the exact shape
+`sim/combat.cjs`'s `runDungeon()` already consumed, and `startRun()`
+calls it fresh at run-start time using the room's own stored
+`dungeonType`/`level`/`genSeed` (see `server/schedule.cjs`'s
+`createRoom`/`resolveDungeonType`/`startRun`).
+
+**Two dungeonTypes** (`sim/dungen.cjs`'s `DUNGEON_TYPES`):
+- `'default'` -- procedurally generated. Pack count scales with level
+  (`packsForLevel`), pack composition/rarity drawn via the existing pack
+  grammar (`combat.packBudgetForLevel` + `combat.TUNABLES.
+  PACK_RARITY_WEIGHTS`, both previously exported but unused outside
+  tests -- this generator is their first real consumer), 0-2 traps, 0-1
+  hidden-door chain (stage1 detection + stage2 unlock), 0-1 chest, boss
+  always final and pinned. **Deterministic**: the SAME
+  (dungeonType,level,seed) triple always produces a byte-identical def
+  (proven by a `JSON.stringify` equality test in `sim/tests/run.cjs`).
+- `'test_fixed'` -- returns `content/batches/batch-002-dungeon-pilot/
+  dungeon.json` VERBATIM (deep-copied), ignoring level/seed entirely --
+  generator-independent fixed spawns, for tests/dev that want a known,
+  stable encounter sequence.
+
+**Room fields**: a room now stores `{dungeonId, dungeonType, level,
+genSeed}`. `dungeonId` is KEPT (back-compat with the `ApiRoom` client
+type / any existing caller reading it) but is no longer the sole
+run-selection key -- `resolveDungeonType()` derives a `dungeonType` from
+an explicit `opts.dungeonType` (validated against `dungen.DUNGEON_TYPES`,
+400 on an unknown value) or, absent that, back-compat-maps a `dungeonId`
+equal to the static pilot dungeon's own id (`niflheim_depths`) to
+`'test_fixed'` and anything else to `'default'`. `genSeed` defaults to a
+fresh `crypto.randomBytes(16)` value (same "stored verbatim, never
+re-rolled" convention the run's own combat seed already follows) so an
+ungated room is still fully unpredictable.
+
+**genSeed privilege gating** -- mirrors the `dev/backdate` route's own
+gate exactly (see "P1-C addendum" below): a caller may specify `genSeed`
+in the `POST /api/schedule/rooms` body ONLY if they are the `dev_mode`
+no-token fallback caller OR their resolved token carries the
+`item_admin` role (`admin.isItemAdminToken()`). Any OTHER caller sending
+a non-empty `genSeed` gets a flat `403`, checked in `api.cjs` BEFORE
+`schedule.createRoom()` is ever called -- an ungated caller's requested
+seed can never even transiently influence room creation. This is a
+test-control/dev-authoring seam (reproducing an exact dungeon layout for
+debugging or a fixed-seed regression check), not a gameplay feature --
+same framing as `dev/backdate`.
+
+**`GET /api/schedule/dungeons` gains `types`** -- additive: the response
+now also carries `types: [{id, name, i18n}]` listing `dungen.
+DUNGEON_TYPES` (currently `default`/`test_fixed`) with a short i18n
+label + level-scaling note per type, alongside the ORIGINAL `dungeons`/
+`formations` arrays (unchanged, byte-for-byte, for back-compat).
+
+**Combat seed stays independent of genSeed** -- `startRun()` still rolls
+its OWN fresh `crypto.randomBytes(16)` seed for `combat.runDungeon`'s
+`masterSeed` (the actual encounter RNG / damage rolls / reward rolls),
+completely separate from `genSeed` (which only ever seeds the LAYOUT
+generator). Two rooms created with the same `genSeed` therefore get the
+IDENTICAL generated dungeon layout (same encounter type/enemy-id
+sequence) but independently-random combat outcomes within that layout --
+verified in `server/tests/api_test.cjs`.
 
 ### P1-C addendum: client + two new routes
 
