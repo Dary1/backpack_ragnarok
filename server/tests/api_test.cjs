@@ -1331,6 +1331,144 @@ async function main() {
     scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, abandonedId); // cleanup
   });
 
+// =====================================================================
+  // REQ-0042: Workshop gacha (POST /api/workshop/gacha) tests. Uses the
+  // SAME scheduleP1/scheduleReq fixtures as the warehouse claim tests
+  // above -- a gacha roll is fundamentally the same two-phase shape
+  // (pending -> finalize-on-PUT -> lazy-revert), just against its own
+  // gacha_pending store (see schedule.cjs's startGachaRoll/
+  // finalizeGachaForCanvas doc comments) with a stricter finalize
+  // condition (uid-presence AND balance-delta, not uid-presence alone).
+  // =====================================================================
+
+  // Gives scheduleP1's CURRENTLY SAVED profile an LRDST stack of the
+  // given qty on inventory page 0 -- direct storage manipulation (same
+  // convention the claim tests above use for setting up warehouse rows),
+  // mirroring exactly what a real saved canvas with an LRDST balance
+  // looks like (page shape post-REQ-0042: {bps,pos,sis,tms}).
+  function setLrdstBalance(playerId, qty) {
+    const doc = scheduleStorage.readProfile(playerId);
+    doc.canvas.inv.pages[0].tms = [{ uid: 'lrdst_test_stack', id: 'lrdst', qty, cell: [8, 8] }];
+    scheduleStorage.writeProfile(playerId, doc.canvas);
+    return doc.canvas;
+  }
+
+  await AT('gacha: happy path -- balance 999->989 after one common_bp roll (cost 10), rolled BP uid appears in the response, finalizes on the next PUT containing both the deduction and the uid', async () => {
+    setLrdstBalance(scheduleP1.playerId, 999);
+
+    const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'common_bp' });
+    assert.strictEqual(rollRes.status, 200, 'roll must succeed: ' + JSON.stringify(rollRes.body));
+    assert.strictEqual(rollRes.body.cost, 10, 'cost echoed back is the REQ doc\'s 10x LRDST');
+    const rolled = rollRes.body.rolled;
+    assert.ok(rolled && rolled.uid, 'rolled BP definition includes a minted uid');
+    assert.ok(Array.isArray(rolled.shape) && rolled.shape.length >= 4 && rolled.shape.length <= 6, 'rolled shape has 4-6 cells: ' + JSON.stringify(rolled.shape));
+    assert.ok(rolled.linker && Array.isArray(rolled.linker.dirs) && rolled.linker.dirs.length >= 1 && rolled.linker.dirs.length <= 3, 'rolled linker has 1-3 dirs');
+    const linkerInShape = rolled.shape.some(([r, c]) => r === rolled.linker.off[0] && c === rolled.linker.off[1]);
+    assert.ok(linkerInShape, 'rolled linker cell is one of the polyomino\'s own cells');
+    assert.strictEqual(rolled.hpMax, 15 * rolled.shape.length, 'hpMax = 15 x cellCount');
+
+    // Server must NOT have deducted anything yet -- balance still 999,
+    // matching the two-phase design (client deducts + auto-saves).
+    const beforeFinalize = scheduleStorage.readProfile(scheduleP1.playerId);
+    assert.strictEqual(schedule.readLrdstBalance(beforeFinalize.canvas), 999, 'server has not deducted balance server-side yet (two-phase)');
+
+    // Simulate the CLIENT's own deduction + first-fit placement + auto-save.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.inv.pages[0].tms.find((t) => t.uid === 'lrdst_test_stack').qty -= 10; // 999 -> 989
+    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
+    assert.strictEqual(putRes.status, 200, 'auto-save PUT must succeed: ' + JSON.stringify(putRes.body));
+
+    const afterDoc = scheduleStorage.readProfile(scheduleP1.playerId);
+    assert.strictEqual(schedule.readLrdstBalance(afterDoc.canvas), 989, 'balance is 989 after the client deduction lands');
+    assert.strictEqual(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), null, 'pending roll finalized (deleted) once BOTH the uid AND the balance-delta are present in the saved canvas');
+  });
+
+  await AT('gacha: insufficient funds (balance < cost) is a 409, no pending row created', async () => {
+    setLrdstBalance(scheduleP1.playerId, 5); // below the 10x cost
+    const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'common_bp' });
+    assert.strictEqual(rollRes.status, 409, 'insufficient balance must 409: ' + JSON.stringify(rollRes.body));
+    const pending = scheduleStorage.listGachaPending(scheduleP1.playerId);
+    assert.strictEqual(pending.filter((p) => p.status === 'pending').length, 0, 'no pending row left behind by a rejected roll');
+  });
+
+  await AT('gacha: finalize requires BOTH the uid to be present AND the balance to have actually dropped -- placing the BP WITHOUT paying does not finalize', async () => {
+    setLrdstBalance(scheduleP1.playerId, 999);
+    const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'common_bp' });
+    assert.strictEqual(rollRes.status, 200);
+    const rolled = rollRes.body.rolled;
+
+    // Place the BP but do NOT deduct the LRDST cost -- an attempted
+    // "forge" of a free roll.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.inv.pages[2].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
+    assert.strictEqual(putRes.status, 200);
+
+    assert.ok(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), 'pending roll must NOT finalize -- uid present but balance never dropped');
+
+    // Now also pay -- a SECOND PUT with the deduction applied finalizes it.
+    const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc2.canvas.inv.pages[0].tms.find((t) => t.uid === 'lrdst_test_stack').qty -= 10;
+    const putRes2 = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc2.canvas);
+    assert.strictEqual(putRes2.status, 200);
+    assert.strictEqual(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), null, 'now finalizes once the balance ALSO actually dropped');
+  });
+
+  await AT('gacha: an abandoned pending roll (never finalized) lazily reverts -- the pending doc is deleted after the timeout, discovered on the next read', async () => {
+    setLrdstBalance(scheduleP1.playerId, 999);
+    const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'common_bp' });
+    assert.strictEqual(rollRes.status, 200);
+    const rolled = rollRes.body.rolled;
+    assert.ok(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), 'pending row exists right after the roll');
+
+    // Force it to look abandoned -- backdate rolledAt past the timeout
+    // (same backdate-a-timestamp convention forceRunElapsed/the abandoned-
+    // claim test above use).
+    const pendingDoc = scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid);
+    pendingDoc.rolledAt = new Date(Date.now() - schedule.GACHA_PENDING_TIMEOUT_MS - 5000).toISOString();
+    scheduleStorage.writeGachaPending(scheduleP1.playerId, rolled.uid, pendingDoc);
+
+    // Any read of the pending store (purgeExpiredGachaPending, called by
+    // finalizeGachaForCanvas/startGachaRoll) lazily deletes it.
+    schedule.purgeExpiredGachaPending(scheduleP1.playerId);
+    assert.strictEqual(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), null, 'abandoned roll is gone after the timeout -- player can roll again, no stuck pending state');
+  });
+
+  await AT('gacha: unknown kind is a 400', async () => {
+    setLrdstBalance(scheduleP1.playerId, 999);
+    const res = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'not_a_real_kind' });
+    assert.strictEqual(res.status, 400);
+  });
+
+  await AT('gacha: admin grant supports tm+qty (grantTmQty via POST /api/admin/warehouse/grant {tm,qty}) -- lands in the WAREHOUSE with a qty field, not directly in the live profile', async () => {
+    const beforeDoc = scheduleStorage.readProfile(adminGuest.playerId);
+    const res = await new Promise((resolve, reject) => {
+      const req2 = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ tm: 'lrdst', qty: 42 }), authHeaders(adminGuest.token));
+      const res2 = mockRes((b) => { let parsed = null; try { parsed = JSON.parse(b); } catch (e) {} resolve({ status: res2.statusCode, body: parsed }); });
+      try { api.handle(req2, res2); } catch (e) { reject(e); }
+    });
+    assert.strictEqual(res.status, 200, 'tm+qty grant must succeed for an item_admin: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.item.itemId, 'lrdst');
+    assert.strictEqual(res.body.item.qty, 42, 'granted warehouse row carries the qty field');
+    assert.strictEqual(res.body.item.kind, 'tm', 'granted row is tagged kind:"tm"');
+    const afterDoc = scheduleStorage.readProfile(adminGuest.playerId);
+    assert.deepStrictEqual(afterDoc, beforeDoc, 'the grant must NOT touch the live profile at all -- warehouse only, avoids dual-writer clobber');
+    const rows = schedule.listWarehouse(adminGuest.playerId);
+    const found = rows.find((r) => r.itemId === 'lrdst' && r.qty === 42);
+    assert.ok(found, 'the qty:42 lrdst row is visible via listWarehouse');
+    scheduleStorage.deleteWarehouseItem(adminGuest.playerId, found.itemUid); // cleanup
+  });
+
+  await AT('gacha: admin grant rejects an unknown tm id (400)', async () => {
+    const res = await new Promise((resolve, reject) => {
+      const req2 = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ tm: 'not_a_real_tm', qty: 5 }), authHeaders(adminGuest.token));
+      const res2 = mockRes((b) => { let parsed = null; try { parsed = JSON.parse(b); } catch (e) {} resolve({ status: res2.statusCode, body: parsed }); });
+      try { api.handle(req2, res2); } catch (e) { reject(e); }
+    });
+    assert.strictEqual(res.status, 400);
+  });
+
   await AT('schedule: pre-REQ-0041 warehouse rows with no `status` field at all are treated as claimable (migration on read)', async () => {
     const legacyId = 'claim_legacy_' + Date.now();
     scheduleStorage.writeWarehouseItem(scheduleP1.playerId, legacyId, {

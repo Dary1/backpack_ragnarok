@@ -20,6 +20,7 @@
 //   POST   /api/schedule/rooms/:id/dev/backdate           (REQ-0036 P1-C, dev-only)
 //   GET    /api/warehouse
 //   POST   /api/warehouse/claim
+//   POST   /api/workshop/gacha                        (REQ-0042)
 //
 // REQ-0037: auth is now token-based (X-Auth-Token header), resolved via
 // admin.cjs's resolveAuth()/isItemAdminToken(). See
@@ -251,6 +252,7 @@ const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/ba
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
 const WAREHOUSE_DEV_BACKDATE_CLAIM_RE = /^\/api\/warehouse\/dev\/backdate-claim$/; // REQ-0041 E2E hook, dev-only
+const WORKSHOP_GACHA_RE = /^\/api\/workshop\/gacha$/; // REQ-0042
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -388,8 +390,39 @@ function handle(req, res) {
         sendJSON(res, 400, { ok: false, error: 'invalid JSON body' });
         return;
       }
+      // REQ-0042: this route now supports a 2nd grant shape --
+      // {tm:'lrdst', qty:999} -- alongside the original {itemId:'blade'}
+      // shape, dispatching on which field is present rather than forking
+      // a new endpoint (per the REQ's own "extend it... don't fork a new
+      // endpoint if extending is clean" guidance). Both branches share
+      // the SAME auth gate above and the SAME addToWarehouse() cap/TTL
+      // chokepoint underneath (via grantTmQty for the tm branch).
+      if (typeof body.tm === 'string' && body.tm) {
+        if (!Number.isFinite(body.qty) || body.qty <= 0) {
+          sendJSON(res, 400, { ok: false, error: 'qty must be a positive number when granting a tm' });
+          return;
+        }
+        try {
+          const { tmDefsById } = schedule.getScheduleContent();
+          if (!tmDefsById || !tmDefsById[body.tm]) {
+            sendJSON(res, 400, { ok: false, error: 'unknown tm id "' + body.tm + '"' });
+            return;
+          }
+          const resolved = admin.resolveAuth(token);
+          const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
+          const result = schedule.grantTmQty(targetPlayerId, body.tm, body.qty);
+          if (!result.ok) {
+            sendJSON(res, 409, { ok: false, error: 'warehouse full' });
+            return;
+          }
+          sendJSON(res, 200, { ok: true, item: result.item });
+        } catch (e) {
+          sendJSON(res, 500, { ok: false, error: 'grant failed: ' + e.message });
+        }
+        return;
+      }
       if (typeof body.itemId !== 'string' || !body.itemId) {
-        sendJSON(res, 400, { ok: false, error: 'itemId is required' });
+        sendJSON(res, 400, { ok: false, error: 'itemId (or tm+qty) is required' });
         return;
       }
       try {
@@ -489,6 +522,11 @@ function handle(req, res) {
           // sits until its own lazy timeout reverts it, never a lost
           // profile write.
           try { schedule.finalizeClaimingItemsForCanvas(effectivePlayerId, canvas); } catch (e2) { /* best-effort, see comment above */ }
+          // REQ-0042: same best-effort finalize pass for pending gacha
+          // rolls -- see schedule.cjs's finalizeGachaForCanvas doc for
+          // why its finalize condition (uid-presence AND balance-delta)
+          // is stricter than the claim finalize above.
+          try { schedule.finalizeGachaForCanvas(effectivePlayerId, canvas); } catch (e3) { /* best-effort, see comment above */ }
           sendJSON(res, 200, doc);
         } catch (e) {
           if (e.code === 'TOO_LARGE') {
@@ -516,7 +554,8 @@ function handle(req, res) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
-    p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) || p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE);
+    p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) || p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE) ||
+    p.match(WORKSHOP_GACHA_RE);
   if (scheduleMatch) {
     const token = getAuthToken(req);
     const resolved = admin.resolveAuth(token);
@@ -803,6 +842,35 @@ function handle(req, res) {
           const { itemDefsById } = schedule.getScheduleContent();
           const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById);
           sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId });
+        } catch (e) { sendScheduleError(e); }
+      });
+      return;
+    }
+
+    // ---- POST /api/workshop/gacha {kind:'common_bp'} (REQ-0042) ----
+    // Two-phase, mirrors POST /api/warehouse/claim immediately above:
+    // this route NEVER writes the caller's profile -- it only reads the
+    // LAST-SAVED canvas (loadOwnCanvas()) to check the LRDST balance,
+    // rolls a fresh BP instance server-side (seeded RNG, see
+    // schedule.cjs's rollCommonBp), records a pending row, and returns
+    // the rolled definition. The CLIENT deducts the cost from its own
+    // LRDST stack, first-fit-places the BP, and auto-saves -- THAT PUT
+    // is what finalizes the roll (see finalizeGachaForCanvas, wired into
+    // the profile PUT handler above alongside
+    // finalizeClaimingItemsForCanvas).
+    if (p.match(WORKSHOP_GACHA_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body = {};
+        if (bodyStr) {
+          try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        }
+        const kind = typeof body.kind === 'string' ? body.kind : 'common_bp';
+        try {
+          const canvas = loadOwnCanvas();
+          const result = schedule.startGachaRoll(callerId, kind, canvas);
+          sendJSON(res, 200, { ok: true, cost: result.cost, rolled: result.rolled });
         } catch (e) { sendScheduleError(e); }
       });
       return;
