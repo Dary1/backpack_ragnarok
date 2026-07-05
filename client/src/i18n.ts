@@ -243,6 +243,10 @@ const DICT = {
     'workshop.noSpace': 'No space in any inventory page for the rolled Backpack.',
     'workshop.spendFailed': 'Failed to deduct LRDST -- please try again.',
     'workshop.rollFailed': 'Roll failed: ',
+    'workshop.rollResultTitle': 'You rolled:',
+    'workshop.rollResultDismiss': 'Dismiss',
+    'workshop.rollResultHpMax': 'Max HP',
+    'workshop.rollResultCellCount': 'Cells',
   },
   ja: {
     'nav.backpacks': 'バックパックス',
@@ -450,6 +454,10 @@ const DICT = {
     'workshop.noSpace': 'ロールしたバックパックを置くスペースがどのページにもありません。',
     'workshop.spendFailed': 'LRDSTの消費に失敗しました -- もう一度お試しください。',
     'workshop.rollFailed': 'ガチャに失敗しました: ',
+    'workshop.rollResultTitle': 'ロール結果:',
+    'workshop.rollResultDismiss': '閉じる',
+    'workshop.rollResultHpMax': '最大HP',
+    'workshop.rollResultCellCount': 'セル数',
   },
 } as const;
 

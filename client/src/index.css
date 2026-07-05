@@ -782,6 +782,19 @@ html, body {
   box-shadow: inset 0 0 0 2px var(--cyan);
 }
 
+.shape-grid-cell-linker {
+  box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 0 4px #0e0d0b;
+}
+
+.shape-grid-cell-linker::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  opacity: 0.6;
+}
+
 .dex-port-row {
   display: flex;
   align-items: center;
@@ -1416,6 +1429,86 @@ html, body {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--dim);
+}
+
+/* BpDiagram (REQ-0045 h) -- reuses ShapeGrid + the dex-diagram-* grid-wrap
+   sizing convention above, extended with a compass-arrow overlay (beam
+   directions) and hpMax/cellCount stat rows. Shown inside
+   WorkshopPage.tsx's workshop-roll-result panel after a gacha roll. */
+.bp-diagram-grid-wrap {
+  overflow: visible;
+}
+
+.bp-diagram-arrow-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.bp-diagram-arrow-shaft {
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+
+.bp-diagram-arrow-head {
+  fill: var(--cyan);
+}
+
+.bp-diagram-stats {
+  display: flex;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.bp-diagram-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bp-diagram-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+.bp-diagram-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.workshop-roll-result {
+  background: var(--panel);
+  border: 1px solid var(--cyan);
+  border-radius: 8px;
+  padding: 16px;
+  max-width: 420px;
+}
+
+.workshop-roll-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.workshop-roll-result-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.workshop-roll-result-dismiss {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
 }
 
 /* Edit mode v2 -- thumbnails, locale switcher, effect add/delete. */

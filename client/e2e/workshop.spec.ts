@@ -163,6 +163,69 @@ test.describe('Workshop gacha roll (dev player)', () => {
     });
   });
 
+  test('REQ-0045 (h): roll result diagram shows the shape grid, linker cell, one compass arrow per beam direction, and matching hpMax/cellCount', async ({ page }) => {
+    await withDevProfileBackup(async () => {
+      const seededCanvas = await seedDevLrdstBalance(page, 999);
+      const preRollBpIds = new Set<string>();
+      for (const pg of seededCanvas.inv.pages) for (const b of pg.bps) preRollBpIds.add(b.id);
+      for (const b of seededCanvas.bps || []) preRollBpIds.add(b.id);
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Workshop' }).click();
+      await expect(page.locator('[data-testid="workshop-gacha-card"]')).toBeVisible({ timeout: 10000 });
+
+      // No result panel before the first roll of this test.
+      await expect(page.locator('[data-testid="workshop-roll-result"]')).toHaveCount(0);
+
+      const rollBtn = page.locator('[data-testid="workshop-roll-btn"]');
+      await expect(rollBtn).toBeEnabled();
+      await rollBtn.click();
+
+      // The diagram appears synchronously with the roll response (does
+      // NOT wait on the toast/placement/auto-save path below it).
+      const resultPanel = page.locator('[data-testid="workshop-roll-result"]');
+      await expect(resultPanel).toBeVisible({ timeout: 10000 });
+
+      // Shape grid: at least one occupied cell rendered (REQ-0045 h
+      // "shape grid" -- ShapeGrid itself, already covered exhaustively by
+      // dex.spec.ts; here just confirm it mounted inside the result panel).
+      await expect(resultPanel.locator('.shape-grid-cell-shape').first()).toBeVisible();
+
+      // Linker cell marked: EXACTLY one cell carries the linker highlight
+      // (ShapeGrid's new linkerTile prop, REQ-0045 h).
+      await expect(resultPanel.locator('[data-testid="shape-grid-cell-linker"]')).toHaveCount(1);
+
+      // Wait for the roll to fully finalize (toast + auto-save) so the
+      // freshly-saved canvas can be read back and cross-checked against
+      // what the diagram displayed.
+      await expect(page.locator('[data-testid="workshop-toast"]')).toBeVisible({ timeout: 10000 });
+      await waitForAutoSave(page);
+      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvas = (await canvasResp.json()).canvas;
+      const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
+      const newBp = allBps.find((b: any) => !preRollBpIds.has(b.id));
+      expect(newBp).toBeTruthy();
+
+      // Beam directions as compass arrows: exactly one arrow per
+      // linker.dirs entry (REQ-0045 h) -- cross-checked against the SAME
+      // BP the server actually finalized, not just "some plausible count".
+      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.linker.dirs.length);
+
+      // hpMax + cell count: displayed values match the finalized BP's own
+      // fields exactly.
+      await expect(resultPanel.locator('[data-testid="bp-diagram-hpmax"]')).toContainText(String(newBp.hpMax));
+      await expect(resultPanel.locator('[data-testid="bp-diagram-cellcount"]')).toContainText(String(newBp.shape.length));
+      expect(newBp.shape.length).toBeGreaterThanOrEqual(4);
+      expect(newBp.shape.length).toBeLessThanOrEqual(6);
+
+      // Dismiss button removes the panel without affecting the already-
+      // placed BP (the diagram is purely informational, not a
+      // confirm/cancel gate -- the roll already happened server-side).
+      await resultPanel.locator('[data-testid="workshop-roll-result-dismiss"]').click();
+      await expect(page.locator('[data-testid="workshop-roll-result"]')).toHaveCount(0);
+      await expect(page.locator('[data-testid="workshop-gacha-balance"]')).toContainText('989');
+    });
+  });
+
   test('insufficient funds: roll button is disabled at low balance; forcing the roll via the API directly returns 409', async ({ page }) => {
     await withDevProfileBackup(async () => {
       await seedDevLrdstBalance(page, 5); // below the 10x cost

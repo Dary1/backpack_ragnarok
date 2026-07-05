@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
+import { BpDiagram } from '../dex/BpDiagram';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 
@@ -109,6 +110,13 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   const [rolling, setRolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // REQ-0045 (h): the last successfully rolled BP's full definition, kept
+  // around purely for the result diagram below -- independent of the
+  // placement/toast logic above (which runs unchanged regardless of
+  // whether the player dismisses this panel). Cleared on the NEXT roll
+  // attempt (not on dismiss-only) so a failed re-roll doesn't leave a
+  // stale diagram from the previous success on screen looking current.
+  const [rollResult, setRollResult] = useState<ApiRolledBp | null>(null);
 
   useEffect(() => {
     if (!toast) return;
@@ -122,11 +130,18 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   const handleRoll = useCallback(async () => {
     setRolling(true);
     setError(null);
+    setRollResult(null);
     try {
       // Phase 1: server verifies balance + rolls a fresh BP definition,
       // records a pending row, returns it WITHOUT deducting anything.
       const res = await rollWorkshopGacha('common_bp');
       const { cost, rolled } = res;
+      // REQ-0045 (h): reveal the rolled BP's full diagram (shape + linker
+      // + beam dirs + hpMax + cell count) as soon as the definition is
+      // known -- independent of placement succeeding/failing below (the
+      // roll itself already happened; the diagram is just showing the
+      // player what they got).
+      setRollResult(rolled);
 
       const engine = snapshot.engine;
       const state = snapshot.state;
@@ -218,6 +233,30 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
 
       {error ? <div className="schedule-error" data-testid="workshop-error">{error}</div> : null}
       {toast ? <div className="schedule-toast" data-testid="workshop-toast">{toast}</div> : null}
+
+      {rollResult ? (
+        <div className="workshop-roll-result" data-testid="workshop-roll-result">
+          <div className="workshop-roll-result-header">
+            <span className="workshop-roll-result-title">{t(locale, 'workshop.rollResultTitle')}</span>
+            <button
+              type="button"
+              className="workshop-roll-result-dismiss"
+              data-testid="workshop-roll-result-dismiss"
+              onClick={() => setRollResult(null)}
+            >
+              {t(locale, 'workshop.rollResultDismiss')}
+            </button>
+          </div>
+          <BpDiagram
+            shape={rollResult.shape}
+            linkerOff={rollResult.linker.off}
+            dirs={rollResult.linker.dirs}
+            hpMax={rollResult.hpMax}
+            cellCount={rollResult.cellCount}
+            locale={locale}
+          />
+        </div>
+      ) : null}
 
       <div className="workshop-gacha-card" data-testid="workshop-gacha-card">
         <div className="workshop-gacha-title">{t(locale, 'workshop.commonBpGacha')}</div>
