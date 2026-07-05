@@ -31,12 +31,15 @@ h2 { color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transform
 }
 .card-num { font-size: 12px; color: var(--gold); letter-spacing: 0.05em; }
 .card-img { width: 100%; border-radius: 6px; background: var(--panel2); display: block; }
+.card-img.checker { background-image: linear-gradient(45deg, #33301f 25%, transparent 25%), linear-gradient(-45deg, #33301f 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #33301f 75%), linear-gradient(-45deg, transparent 75%, #33301f 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
 .card-title-ja { font-size: 16px; font-weight: bold; }
 .card-title-en { font-size: 11px; color: var(--muted); letter-spacing: 0.02em; }
 .card-tech { font-size: 11px; color: #7ecbe8; margin-top: 2px; }
 .card-note { font-size: 12px; color: var(--muted); line-height: 1.5; }
 .dropped { border-color: #6a4030; opacity: 0.75; }
 .dropped .card-img { filter: grayscale(0.6); }
+.failed { border-color: #6a4030; opacity: 0.6; }
+.failed .card-img { filter: grayscale(0.4); }
 .section-muted { opacity: 0.9; }
 
 .i18n span[lang="en"] { display: none; }
@@ -79,7 +82,7 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
   <div class="card-title-ja">セルシェード系トゥーン</div>
   <div class="card-title-en">Cel-shaded toon</div>
   <div class="card-tech">toonyou_beta6 · dpmpp_2m karras · 30 steps + hires-fix</div>
-  <div class="card-note"><span class="i18n"><span lang="ja">太い輪郭線とフラットな塗り。初回生成では意図しない人物が写り込んだため、ネガティブプロンプトを強化して再生成した版。</span><span lang="en">Bold outlines, flat shading. First attempt included an unintended extra human character; this is a regenerated version with strengthened negative prompt to enforce a solo creature.</span></span></div>
+  <div class="card-note"><span class="i18n"><span lang="ja">太い輪郭線とフラットな塗り。初回生成では意図しない人物が写り込んだため、ネガティブプロンプトを強化して再生成した版。ユーザーが最有力候補として選択。</span><span lang="en">Bold outlines, flat shading. First attempt included an unintended extra human character; regenerated with strengthened negative prompt. Selected by the user as the leading direction.</span></span></div>
 </div>
 
 <div class="card">
@@ -104,11 +107,58 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
 </div>
 </div>
 
+<h2><span class="i18n"><span lang="ja">#2方向の追加バリエーション(透過背景)</span><span lang="en">#2 Direction — More Variations (transparent background)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">背景はU2Net(rembg)による自動セグメンテーションで透過化(緑/シアン背景のカラーキー方式は、氷モンスター自体が寒色系でキー色と衝突し破綻したため不採用)。カードの市松模様は透過部分の目安です。</span>
+<span lang="en">Backgrounds removed via U2Net (rembg) automatic segmentation (a color-key/chroma-key approach was tried first but broke down since the icy creature's own cool palette collides with green/cyan key colors). The checkered pattern on each card marks the transparent area.</span>
+</span></div>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">#2-original</div>
+  <img class="card-img checker" src="variants/02_toonyou_cel_original.png"/>
+  <div class="card-title-ja">元の#2(透過版)</div>
+  <div class="card-title-en">Original #2, transparency added</div>
+  <div class="card-tech">toonyou_beta6 · seed 887701</div>
+</div>
+
+<div class="card">
+  <div class="card-num">#2-a</div>
+  <img class="card-img checker" src="variants/02c_v1_base.png"/>
+  <div class="card-title-ja">同一プロンプト・別シード</div>
+  <div class="card-title-en">Same prompt, different seed</div>
+  <div class="card-tech">toonyou_beta6 · seed 887701 (regenerated)</div>
+</div>
+
+<div class="card">
+  <div class="card-num">#2-b</div>
+  <img class="card-img checker" src="variants/02c_v4_round_chibi.png"/>
+  <div class="card-title-ja">丸みのあるチビ体型</div>
+  <div class="card-title-en">Round, chibi-ish proportions</div>
+  <div class="card-tech">toonyou_beta6 · seed 300003</div>
+</div>
+
+<div class="card">
+  <div class="card-num">#2-c</div>
+  <img class="card-img checker" src="variants/02c_v5_battle_ready.png"/>
+  <div class="card-title-ja">戦闘態勢ポーズ</div>
+  <div class="card-title-en">Battle-ready pose</div>
+  <div class="card-tech">toonyou_beta6 · seed 400004</div>
+</div>
+
+</div>
+
+<h2 class="section-muted"><span class="i18n"><span lang="ja">失敗した試行(参考)</span><span lang="en">Failed Attempts (for reference)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">同バッチで2件、ブリーフ(全身・正面)を満たさず除外: 肩に氷の棘を足した版はフレームアウトしてほぼ写らず、氷の冠を足した版は上半身のみのポートレートになった。</span>
+<span lang="en">Two more attempts in the same batch didn't meet the brief (full body, front-facing) and were excluded: the shoulder-spikes variant framed almost entirely out of shot, and the ice-crown variant came out as a bust/portrait instead of full body.</span>
+</span></div>
+
 <h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
 <div class="note-box">
 <span class="i18n">
-<span lang="ja">この3案から採用番号(またはさらなる調整の指示)を返してください。決定したスタイルを以後50体全ての基準スタイルとして固定し、本番生成に進みます。</span>
-<span lang="en">Please return the accepted number(s) (or further adjustment instructions) from these 3 candidates. Whichever style is chosen becomes the fixed baseline style for all 50 monsters going forward.</span>
+<span lang="ja">#2方向で問題なければ、この4枚(元+3バリエーション)のうちどれを基準に近づけるか、あるいはさらに調整したい点を教えてください。決定次第、50体の本番生成に進みます。</span>
+<span lang="en">If the #2 direction looks right, let us know which of these 4 (original + 3 variations) is closest to the target — or what to adjust further. Once decided, we'll proceed to the full 50-monster production run.</span>
 </span>
 </div>
 
