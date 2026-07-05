@@ -654,6 +654,45 @@ html, body {
   font-family: monospace;
 }
 
+/* REQ-0042: TM (Transmutator) catalog strip -- display-only cards, no
+   button/hover-interactive affordance (see Dex.tsx's tmEntries() comment
+   for why TMs are not folded into the selectable dex-grid/dex-card-summary
+   above). Mirrors .dex-card/.dex-card-summary-text's layout by hand since
+   there is no <button> wrapper here. */
+.dex-tm-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.dex-tm-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+
+.dex-tm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.dex-tm-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.dex-tm-stackable {
+  color: var(--dim);
+  font-style: italic;
+}
+
 .dex-detail {
   border-top: 1px solid var(--line);
   padding: 12px 14px 16px;

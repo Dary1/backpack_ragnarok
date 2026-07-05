@@ -130,6 +130,22 @@ export interface ApiSIEntry {
   eff_ja?: string;
 }
 
+// REQ-0042: TM (Transmutator) content def -- stackable inventory-only
+// currency/crafting-material kind. No / (always 1x1, no
+// canvas role) and no  (no use-effect v1, per the REQ doc).
+export interface ApiTmEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  i18n?: ApiI18nMap;
+  short: string;
+  rarity: string;
+  icon: string;
+  stackable: boolean;
+  flavor?: string;
+  flavor_ja?: string;
+}
+
 export interface ApiTrees {
   po: Record<string, string | null>;
   socket: Record<string, string | null>;
@@ -178,6 +194,7 @@ export interface ApiVocabLists {
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
+  tms: Record<string, ApiTmEntry>; // REQ-0042
   trees: ApiTrees;
   scenario: ApiScenario;
   layout: Layout | null;

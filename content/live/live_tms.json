@@ -1,0 +1,20 @@
+{
+ "schema": "tm/1",
+ "entries": [
+  {
+   "id": "lrdst",
+   "name": "LinkerRandomDirectionShuffleTransmutator",
+   "short": "LRDST",
+   "rarity": "Common",
+   "icon": "icon-lrdst",
+   "stackable": true,
+   "flavor": "A faceted prism that hums with unstable linker energy. No effect of its own -- yet.",
+   "i18n": {
+    "ja": {
+     "name": "リンカーランダムダイレクションシャッフル変成器",
+     "flavor": "不安定なリンカーエネルギーで唸る多面体のプリズム。それ自体には効果がない -- 今のところは。"
+    }
+   }
+  }
+ ]
+}

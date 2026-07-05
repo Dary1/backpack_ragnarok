@@ -3,7 +3,7 @@
 import os
 d=os.path.dirname(os.path.abspath(__file__))
 tpl=open(os.path.join(d,'index.template.html')).read()
-sprite_path=os.path.join(d,'..','content','sprite_all_v10.svg')
+sprite_path=os.path.join(d,'..','content','sprite_all_v11.svg')
 out=tpl.replace('<!--SPRITE-->',open(sprite_path).read())
 out=out.replace('<!--DATA-->',open(os.path.join(d,'data.js')).read())
 out=out.replace('<!--ENGINE-->',open(os.path.join(d,'engine.js')).read())

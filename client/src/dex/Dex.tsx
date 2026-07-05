@@ -23,7 +23,7 @@
 // reference view needs to show. This is a read-only view; it does not
 // touch store.ts's engine/GameState at all.
 import { useMemo, useState } from 'react';
-import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
+import type { ApiContentPayload, ApiItemEntry, ApiSIEntry, ApiTmEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
@@ -41,6 +41,22 @@ function combineEntries(payload: ApiContentPayload): DexEntry[] {
   const pos: DexEntry[] = Object.values(payload.items).map((entry) => ({ id: entry.id, kind: 'po', entry }));
   const sis: DexEntry[] = Object.values(payload.sis).map((entry) => ({ id: entry.id, kind: 'si', entry }));
   return [...pos, ...sis];
+}
+
+// REQ-0042: TMs (Transmutators) are a display-only catalog addition, kept
+// DELIBERATELY separate from DexEntry/combineEntries above rather than
+// widened into a 3rd 'tm' kind -- DexDetail.tsx/ItemDetailCard.tsx both
+// narrow DexEntry to ApiItemEntry|ApiSIEntry via an isPO()-style type
+// guard (shape/sockets/part fields POs have that SIs+TMs don't), and TMs
+// have no shape at all (always 1x1, inventory-only, no canvas role per
+// the engine design -- see mock-src/engine.js's TM model), so folding
+// them into the same selectable-detail-view path would require widening
+// that guard logic for comparatively little benefit given the REQ spec
+// only asks for TMs to appear in the catalog display (display-only is
+// fine, no edit-role gating needed). TMs render as their own small,
+// non-selectable catalog strip below the main PO/SI grid instead.
+function tmEntries(payload: ApiContentPayload): ApiTmEntry[] {
+  return Object.values(payload.tms || {});
 }
 
 function nameOf(e: ApiItemEntry | ApiSIEntry): string {
@@ -73,6 +89,7 @@ export function Dex({ locale, payload }: DexProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
+  const tms = useMemo(() => tmEntries(payload), [payload]); // REQ-0042
 
   const rarities = useMemo(() => {
     const set = new Set<string>();
@@ -202,6 +219,44 @@ export function Dex({ locale, payload }: DexProps) {
         })}
         {filtered.length === 0 ? <div className="dex-empty">{t(locale, 'dex.noMatch')}</div> : null}
       </div>
+
+      {/* REQ-0042: TM (Transmutator) catalog strip -- display-only, see
+          tmEntries()'s module comment for why this is deliberately NOT
+          folded into the main selectable PO/SI dex-grid above. */}
+      {tms.length > 0 ? (
+        <div className="dex-tm-section">
+          <div className="dex-tm-section-title">{t(locale, 'dex.tmSectionTitle')}</div>
+          <div className="dex-tm-grid">
+            {tms.map((tmEntry) => {
+              const icon = iconDataUrl(tmEntry.icon);
+              return (
+                <div key={tmEntry.id} className="dex-card dex-tm-card">
+                  <span className="dex-card-shape">
+                    <ShapeGrid
+                      shape={[[0, 0]]}
+                      cellPx={20}
+                      iconUrl={icon}
+                      iconAlt={tmEntry.icon}
+                      iconDims={iconDims(tmEntry.icon)}
+                    />
+                  </span>
+                  <div className="dex-card-summary-text">
+                    <div className="dex-card-name">
+                      {locale === 'ja' ? tmEntry.name_ja || tmEntry.name : tmEntry.name}
+                    </div>
+                    <div className="dex-card-meta">
+                      <span className={`rarity r-${tmEntry.rarity}`}>{tmEntry.rarity}</span>
+                      <span className="dex-card-id">{tmEntry.id}</span>
+                      <span className="dex-card-kind">TM</span>
+                      {tmEntry.stackable ? <span className="dex-tm-stackable">{t(locale, 'dex.tmStackable')}</span> : null}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

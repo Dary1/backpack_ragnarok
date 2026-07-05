@@ -1,5 +1,5 @@
 // Sprite v7 art loader — REQ-0026 T0.1 (repackaging bug fixed, REQ-0026 follow-up).
-// content/sprite_all_v10.svg is a <symbol> sheet: SEVERAL concatenated
+// content/sprite_all_v11.svg is a <symbol> sheet: SEVERAL concatenated
 // <svg style="display:none">...</svg> root blocks (valid as a browser
 // fragment via consecutive <use> resolution -- the mock's ui.js just drops
 // the raw text into the page -- but NOT well-formed single-document XML,
@@ -44,10 +44,10 @@
 // plain Node -- see client/scripts/check_sprites.mjs.
 //
 // Import path: the SVG file is read via Vite's `?raw` loader (same
-// technique as engine/adapter.ts) directly from content/sprite_all_v10.svg,
+// technique as engine/adapter.ts) directly from content/sprite_all_v11.svg,
 // so the client always tracks whatever the current sprite sheet is with no
 // manual copy/sync step and no fork of the art pipeline.
-import spriteSheetSource from '../../../content/sprite_all_v10.svg?raw';
+import spriteSheetSource from '../../../content/sprite_all_v11.svg?raw';
 import { Texture } from 'pixi.js';
 
 const RASTER_SCALE = 2; // supersample so icons stay crisp when scaled up into grid cells
@@ -62,7 +62,7 @@ export interface SymbolInfo {
 }
 
 /**
- * Parses content/sprite_all_v10.svg's raw text into one SymbolInfo per
+ * Parses content/sprite_all_v11.svg's raw text into one SymbolInfo per
  * <symbol>, regardless of which (possibly multiple) top-level <svg> root
  * block it lives in. Pure function, no browser/DOM-global dependencies
  * beyond a DOMParser+XMLSerializer pair passed in by the caller -- this is
@@ -146,7 +146,7 @@ function rasterize(sym: SymbolInfo): Promise<HTMLCanvasElement> {
 let loadPromise: Promise<Map<string, Texture>> | null = null;
 
 /**
- * Loads content/sprite_all_v10.svg (already bundled, see the module-level
+ * Loads content/sprite_all_v11.svg (already bundled, see the module-level
  * comment) and rasterizes every <symbol> into a Pixi Texture, keyed by
  * symbol id (e.g. "icon-blade"). Cached after first call -- one Image
  * decode per icon per client session, not per render.

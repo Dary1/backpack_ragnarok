@@ -3,7 +3,7 @@
 // REQ-0024: Node API service, node:http only (no framework deps).
 // Listens on 127.0.0.1:8802. Endpoints:
 //   GET  /api/health
-//   GET  /api/content
+//   GET  /api/content (items+sis+tms, REQ-0042)
 //   GET  /api/me
 //   PUT  /api/admin/item/:id
 //   POST /api/admin/warehouse/grant                      (REQ-0041 feedback 1, dev grant)
@@ -59,6 +59,7 @@ const LIVE_DIR = path.join(CONTENT_DIR, 'live');
 const VOCAB_PATH = path.join(CONTENT_DIR, 'vocab.json');
 const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
 const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json');
+const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
 const SCENARIO_PATH = path.join(LIVE_DIR, 'scenario.json');
 const REGISTRY_PATH = path.join(CONTENT_DIR, 'registry.json');
 
@@ -110,6 +111,7 @@ function buildContentPayload() {
   const vocab = loadJSON(VOCAB_PATH);
   const items = loadJSON(ITEMS_PATH);
   const sis = loadJSON(SIS_PATH);
+  const tms = loadJSON(TMS_PATH); // REQ-0042
   const scenario = loadJSON(SCENARIO_PATH);
   // REQ-0035: batch-level provenance for the Dex's "provenance" section.
   // Optional -- an absent/unreadable registry.json degrades to `null`,
@@ -120,6 +122,7 @@ function buildContentPayload() {
 
   const itemEntries = items.entries || [];
   const siEntries = sis.entries || [];
+  const tmEntries = tms.entries || []; // REQ-0042
 
   const ITEMS = {};
   for (const e of itemEntries) {
@@ -134,6 +137,14 @@ function buildContentPayload() {
       eff_en: renderEffJoined(e.effects, 'en'),
       eff_ja: renderEffJoined(e.effects, 'ja'),
     }));
+  }
+  // REQ-0042: TM (Transmutator) defs -- no  field today (no
+  // use-effect v1, per the REQ doc), so no eff_en/eff_ja rendering is
+  // needed, but withBackCompatI18n is still applied for i18n consistency
+  // with items/sis (name_ja/flavor_ja compat fields derived from i18n.ja).
+  const TMS = {};
+  for (const e of tmEntries) {
+    TMS[e.id] = withBackCompatI18n(Object.assign({}, e));
   }
   const trees = { po: vocab.po_tags || {}, socket: vocab.socket_tags || {} };
   // REQ-0035: closed-vocabulary lists for the Dex admin edit form's
@@ -151,6 +162,7 @@ function buildContentPayload() {
   return {
     items: ITEMS,
     sis: SIS,
+    tms: TMS, // REQ-0042
     trees: trees,
     scenario: scenario,
     layout: scenario.layout || null,
@@ -164,6 +176,7 @@ function getContent() {
     vocab: statMtimeMs(VOCAB_PATH),
     items: statMtimeMs(ITEMS_PATH),
     sis: statMtimeMs(SIS_PATH),
+    tms: statMtimeMs(TMS_PATH), // REQ-0042
     scenario: statMtimeMs(SCENARIO_PATH),
     registry: statMtimeMs(REGISTRY_PATH),
   };
@@ -171,6 +184,7 @@ function getContent() {
     mtimes.vocab !== contentCache.mtimes.vocab ||
     mtimes.items !== contentCache.mtimes.items ||
     mtimes.sis !== contentCache.mtimes.sis ||
+    mtimes.tms !== contentCache.mtimes.tms || // REQ-0042
     mtimes.scenario !== contentCache.mtimes.scenario ||
     mtimes.registry !== contentCache.mtimes.registry;
   if (stale) {

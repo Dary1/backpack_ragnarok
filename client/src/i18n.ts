@@ -100,6 +100,10 @@ const DICT = {
     'dex.detail.rarity': 'rarity',
     'dex.detail.diagramLabel': 'Diagram',
 
+    // Dex TM (Transmutator) catalog strip (REQ-0042, display-only)
+    'dex.tmSectionTitle': 'Transmutators',
+    'dex.tmStackable': 'Stackable',
+
     // Dex root (DexRoot.tsx)
     'dex.loadFailed': 'Failed to load the dex: ',
     'dex.loading': 'Loading…',
@@ -282,6 +286,9 @@ const DICT = {
     'dex.detail.provenanceUnresolved': 'このアイテムに対応する来歴情報は見つかりませんでした（registry.jsonにアイテム単位の対応表がまだありません）。',
     'dex.detail.rarity': 'レアリティ',
     'dex.detail.diagramLabel': '図解',
+
+    'dex.tmSectionTitle': '変成器（トランスミューテーター）',
+    'dex.tmStackable': 'スタック可能',
 
     'dex.loadFailed': '図鑑の読み込みに失敗しました: ',
     'dex.loading': '読み込み中…',

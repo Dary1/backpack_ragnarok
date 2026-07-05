@@ -161,6 +161,18 @@ fs.writeFileSync(path.join(liveDir, 'live_sis.json'), JSON.stringify({
       effects: [{ trigger: { t: 'passive' }, verb: { t: 'buff_host', n: [2, 4], stat: 'damage' } }] },
   ],
 }));
+// REQ-0042: TM (Transmutator) content fixture -- api.cjs's
+// buildContentPayload() now unconditionally loads live_tms.json alongside
+// live_items.json/live_sis.json, so the synthetic fixture tree needs one
+// too (else GET /api/content 500s with ENOENT, exactly like it would if
+// live_items.json/live_sis.json were ever missing here).
+fs.writeFileSync(path.join(liveDir, 'live_tms.json'), JSON.stringify({
+  schema: 'tm/1',
+  entries: [
+    { id: 'lrdst', name: 'LinkerRandomDirectionShuffleTransmutator', short: 'LRDST',
+      rarity: 'Common', icon: 'icon-lrdst', stackable: true },
+  ],
+}));
 fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({
   layout: { ROWS: 6, COLS: 6 }, linked: true, bps: [], pos: [], sis: [],
 }));
