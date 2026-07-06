@@ -438,6 +438,19 @@ function listWarehouseItemsFiles(playerId) {
   }
   return out;
 }
+// clearWarehouseForPlayerFiles: bulk sibling of deleteWarehouseItemFiles
+// -- unlinks every row file in the player's warehouse dir (same
+// .json/dotfile filter listWarehouseItemsFiles uses, so it removes
+// exactly the set a list would have returned) and reports how many. The
+// (possibly now-empty) directory itself is left in place, matching
+// deleteWarehouseItemFiles' own leave-the-dir behavior.
+function clearWarehouseForPlayerFiles(playerId) {
+  const dir = warehousePlayerDir(playerId);
+  if (!fs.existsSync(dir)) return 0;
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.json') && !f.startsWith('.'));
+  for (const f of files) fs.unlinkSync(path.join(dir, f));
+  return files.length;
+}
 
 // ---- warehouse: pg backend ----
 
@@ -477,6 +490,17 @@ function listWarehouseItemsPg(playerId) {
   const res = querySync('SELECT doc FROM warehouse_items WHERE player_id = $1', [namespacedId(playerId)]);
   return res.rows.map((r) => r.doc);
 }
+// clearWarehouseForPlayerPg: bulk sibling of deleteWarehouseItemPg --
+// one DELETE scoped by the player_id column (namespaced like every other
+// pg id, so a test run's synthetic namespace can never reach the live
+// namespace's rows). RETURNING exists purely to COUNT the removed rows:
+// pg_sync's querySync only surfaces `rows` (never pg's rowCount), see
+// pg_sync_worker.cjs's `payload = { result: { rows: res.rows } }`.
+function clearWarehouseForPlayerPg(playerId) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('DELETE FROM warehouse_items WHERE player_id = $1 RETURNING item_uid', [namespacedId(playerId)]);
+  return res.rows.length;
+}
 
 // ---- warehouse: public API ----
 // Every function takes playerId explicitly (rather than deriving it from
@@ -496,6 +520,21 @@ function deleteWarehouseItem(playerId, itemUid) {
 }
 function listWarehouseItems(playerId) {
   return backendMode() === 'pg' ? listWarehouseItemsPg(playerId) : listWarehouseItemsFiles(playerId);
+}
+// clearWarehouseForPlayer (fix: e2e pg teardown): deletes EVERY
+// warehouse row belonging to `playerId` in one call, regardless of
+// status/TTL, and returns the number of rows removed. Added for the
+// dev-only E2E debris-cleanup hook (POST /api/warehouse/dev/
+// clear-debris, server/routes/schedule.cjs): the Playwright suite's
+// global setup/teardown restores backed-up FILES only, so with the live
+// API in pg mode every full E2E run left its ~55-60 granted rows behind
+// until the dev player hit the 200-row cap and the admin grant hook
+// started 409ing. Living HERE (not as a delete loop in the service)
+// keeps it a single backend-dispatch chokepoint like every other
+// warehouse accessor: both backends remove exactly the set a
+// listWarehouseItems(playerId) would have returned.
+function clearWarehouseForPlayer(playerId) {
+  return backendMode() === 'pg' ? clearWarehouseForPlayerPg(playerId) : clearWarehouseForPlayerFiles(playerId);
 }
 
 // ---- gacha pending-roll store: files backend (REQ-0042) ----
@@ -786,6 +825,7 @@ module.exports = {
   writeWarehouseItem,
   deleteWarehouseItem,
   listWarehouseItems,
+  clearWarehouseForPlayer,
   // REQ-0042: gacha pending-roll persistence
   GACHA_PENDING_DIR,
   gachaPendingPlayerDir,
