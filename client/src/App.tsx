@@ -96,6 +96,7 @@ import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
 import { SchedulePage } from './schedule/SchedulePage';
 import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
+import { MarketPage } from './market/MarketPage'; // REQ-0064
 import { PresetTabs } from './PresetTabs';
 import { PresetTrashZone } from './PresetTrashZone';
 import { Settings } from './Settings';
@@ -253,7 +254,7 @@ function App() {
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
         {route === 'workshop' ? <WorkshopPage locale={snapshot.locale} /> : null}
         {/* REQ-0069: mock-rail routes whose real pages land in later REQs. */}
-        {route === 'market' ? <PlaceholderPage titleKey="nav.market" locale={snapshot.locale} /> : null}
+        {route === 'market' ? <MarketPage locale={snapshot.locale} /> : null}
         {route === 'ragnarok' ? <PlaceholderPage titleKey="nav.ragnarok" locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
