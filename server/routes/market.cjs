@@ -12,8 +12,11 @@
 //   POST /api/market/listings              {itemUid, price:{tm,qty}}
 //   POST /api/market/listings/:id/withdraw owner-only, free
 //   POST /api/market/listings/:id/buy      atomic settle (the only burn)
-//   GET  /api/market/furnace               all-time burn total (REQ-0066
-//                                          will window it by season)
+//   GET  /api/market/furnace               seasonal burn total (REQ-0066:
+//                                          windowed from the current
+//                                          season start via the ragnarok
+//                                          registry; all-time fallback
+//                                          when no seasons file exists)
 //
 // Idempotency: POST routes accept an OPTIONAL `Idempotency-Key` header
 // (no house-wide pattern existed before this REQ -- prior mutations are
@@ -25,6 +28,7 @@ const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const market = require('../market.cjs');
+const ragnarok = require('../ragnarok.cjs'); // REQ-0066: furnace seasonal windowing
 
 const MARKET_LISTINGS_RE = /^\/api\/market\/listings$/;
 const MARKET_LISTING_WITHDRAW_RE = /^\/api\/market\/listings\/([^/]+)\/withdraw$/;
@@ -127,10 +131,20 @@ function tryMarketRoutes(req, res, url, p) {
   if (p.match(MARKET_FURNACE_RE)) {
     if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
     try {
-      // All-time until a season registry exists; REQ-0066 threads a
-      // season start into furnaceTotal(sinceMs) here.
-      const furnace = market.furnaceTotal(undefined);
-      sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, furnace });
+      // REQ-0066: seasonal windowing -- the burn total is windowed from
+      // the CURRENT season's start (content/live/seasons.json via the
+      // ragnarok facade's lazy wall-clock derivation). All-time fallback
+      // when no season registry exists / no season has started yet
+      // (season null), preserving the pre-REQ-0066 behavior
+      // byte-for-byte. An ENDED season with no successor keeps
+      // windowing from its own start (see services/ragnarok.cjs's
+      // currentSeason doc).
+      const cs = ragnarok.currentSeason();
+      const furnace = market.furnaceTotal(cs.season ? Date.parse(cs.season.startAt) : undefined);
+      sendJSON(res, 200, {
+        ok: true, dtoVersion: market.MARKET_DTO_VERSION, furnace,
+        season: cs.season ? { index: cs.season.index, name: cs.season.name } : null,
+      });
     } catch (e) { sendMarketError(e); }
     return;
   }
