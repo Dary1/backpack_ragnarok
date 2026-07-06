@@ -32,6 +32,7 @@
 // A sha256 of each pre-run file is also stashed alongside its backup so
 // an operator (or a follow-up script) can independently verify
 // restoration separately from Playwright's own run.
+import { request } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { existsSync, copyFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -65,6 +66,57 @@ export const PROFILES_DIR = join(REPO_ROOT, 'data', 'profiles');
 // over an a-priori-unknown set of files without hardcoding playerIds.
 export const GUEST_AUTH_TRACKED_FILES_PATH = '/tmp/backpack_e2e_guest_auth_tracked_files.json';
 
+// fix: e2e pg teardown -- the backup/restore net above only covers
+// FILES. The live API runs STORAGE_BACKEND=pg (server/.env), so the
+// warehouse rows this suite grants/claims for the dev player (admin
+// grant hook, run rewards, gacha) live in Postgres and survived every
+// run (~55-60 rows each) until the dev player's 200-row warehouse cap
+// turned POST /api/admin/warehouse/grant into 409 warehouse-full
+// cascades across the granting specs. Both global setup AND teardown
+// call the dev-only debris-cleanup hook (POST /api/warehouse/dev/
+// clear-debris, server/routes/schedule.cjs): setup so leftovers from a
+// crashed or pre-hook run never eat the cap, teardown so a completed
+// run leaves zero debris. The hook is gated exactly like the
+// dev/backdate hooks (callerIsDevFallback -- NO token, dev_mode:true;
+// any real guest token gets 403) and only ever clears the RESOLVED
+// caller's (= dev player's) own rows; it dispatches through
+// storage.cjs's files/pg chokepoint, so this stays correct (and green)
+// when the API runs files mode too.
+//
+// The request goes to the API service port DIRECTLY (8802) rather than
+// the tunnel baseURL: playwright.config.ts's use-the-tunnel constraint
+// exists because BROWSER pages fetch /api/* relative to the page origin
+// and only the tunnel ingress maps /api/* -> :8802 -- a server-side
+// call from this rig (which already assumes same-box via its direct
+// homedir() file access above) can hit :8802 itself and not depend on
+// Cloudflare being healthy for cleanup. No auth header is attached,
+// deliberately: the hook only honors the dev_mode NO-token fallback.
+export const API_ORIGIN = 'http://127.0.0.1:8802';
+
+export async function clearDevWarehouseDebris(phase: string): Promise<void> {
+  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  try {
+    const res = await ctx.post('/api/warehouse/dev/clear-debris');
+    const bodyText = await res.text();
+    if (res.status() === 404) {
+      // The RUNNING API predates this hook (deployed code lags the repo
+      // until backpack-api.service is restarted). Warn loudly rather
+      // than brick the whole run over a cleanup step -- the only
+      // consequence is the old debris-accumulation behavior, and it is
+      // visible in this log line.
+      console.warn(`[${phase}] POST /api/warehouse/dev/clear-debris -> 404 (running API predates the hook?) -- dev warehouse debris NOT cleared`);
+      return;
+    }
+    if (!res.ok()) {
+      throw new Error(`dev warehouse debris cleanup failed: POST ${API_ORIGIN}/api/warehouse/dev/clear-debris -> ${res.status()} ${bodyText}`);
+    }
+    const { deleted } = JSON.parse(bodyText) as { deleted: number };
+    console.log(`[${phase}] cleared dev-player warehouse rows (POST /api/warehouse/dev/clear-debris deleted=${deleted})`);
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 function sha256(path: string): string {
   if (!existsSync(path)) return '(missing)';
   return execFileSync('sha256sum', [path]).toString().trim().split(/\s+/)[0];
@@ -97,4 +149,8 @@ export default async function globalSetup(): Promise<void> {
   // an empty array equally (nothing to clean up).
   writeFileSync(GUEST_AUTH_TRACKED_FILES_PATH, '[]\n');
   console.log('[global-setup] reset guest-auth tracked-files ledger');
+  // fix: e2e pg teardown -- start the run with full 200-row warehouse
+  // cap headroom no matter what a previous (crashed, or pre-hook) run
+  // left behind. See clearDevWarehouseDebris' own doc comment above.
+  await clearDevWarehouseDebris('global-setup');
 }
