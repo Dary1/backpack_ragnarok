@@ -8,7 +8,11 @@ framework-free, dependency-free (beyond a read-only interop with
 
 ## Module layout
 
-- `sim/combat.cjs` — the entire simulator core. Organized top-to-bottom as:
+- `sim/combat.cjs` — the public FACADE (REQ-0047 (d): the implementation
+  was decomposed VERBATIM into `sim/lib/{core,rng,heap,geometry,formation,
+  status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs`,
+  acyclic; the export surface below is unchanged and the replay-determinism
+  contract is frozen by `sim/tests/goldens.cjs`). The core covers:
   tunables table, seeded RNG, event heap, ray-geometry primitives, box
   parser + formation defs, status system, compile pass (buff folding +
   field-cell placement), entry-cell selection, ray walker, field/occupancy

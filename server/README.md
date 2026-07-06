@@ -5,8 +5,12 @@ Runs alongside `backpack-web.service` (8801, static) — this service listens
 on `127.0.0.1:8802` only.
 
 ## Files
-- `api.cjs` — HTTP server (node:http only, no framework deps). Entry point
-  for the `backpack-api.service` systemd unit.
+- `api.cjs` — thin service ENTRY POINT (node:http only, no framework deps;
+  REQ-0047 (c) decomposed the old single-file implementation). Still the
+  `backpack-api.service` systemd ExecStart target, same exports. Dispatch
+  lives in `router.cjs` (load-bearing order); route bodies in
+  `routes/{public,me,admin,profile,schedule}.cjs`; content payload/cache,
+  HTTP plumbing, event humanizer and HOST/PORT/VERSION in `lib/`.
 - `storage.cjs` — THE repository module for canvas profiles. Every read/
   write of persisted profile data goes through this file. Data directory:
   `~/backpack_ragnarok/data/profiles/<id>.json` (gitignored). Writes are
@@ -33,7 +37,10 @@ on `127.0.0.1:8802` only.
   (`isItemAdminToken`), and the admin item-edit write path (validation
   against `content/vocab.json` + atomic write to `content/live/
   live_items.json`/`live_sis.json`). See "Auth" and "Admin API" below.
-- `schedule.cjs` (REQ-0036 P1-B) — the Dungeon Schedule SERVICE (rooms,
+- `schedule.cjs` (REQ-0036 P1-B; REQ-0047 (c): now a FACADE with a
+  name-for-name identical export surface over
+  `services/{core,rooms,units,runs,warehouse,gacha}.cjs`) — the Dungeon
+  Schedule SERVICE (rooms,
   runs, warehouse). Business logic module; `api.cjs` wires HTTP routes to
   it, `storage.cjs` persists its 3 new roots (rooms/runs/warehouse
   items). Solo-scope (P1): a room's 4 unit slots are always filled from
