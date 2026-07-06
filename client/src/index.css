@@ -4556,6 +4556,28 @@ html, body {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
   }
+
+  /* REQ-0075 follow-up (fixed post-deploy E2E, 2026-07-07): the MJOLNIR
+     detail two-pane/three-column rules above (the appended, later-wins
+     .dex-detail-col-* block) never re-declared a narrow-viewport
+     override, so their unconditional max-width:320px on
+     .dex-detail-col-list was silently beating the OLDER REQ-0035/0038
+     section's narrow-viewport reset below it in the cascade (this rule
+     is later in the file, same specificity, so it always won regardless
+     of viewport). Re-declared here so the MJOLNIR section is
+     self-sufficient and does not depend on the pre-MJOLNIR rule
+     surviving. dex.spec.ts's narrow/portrait test (480px) caught this:
+     list column measured 320px instead of >384px. */
+  .dex-detail-columns {
+    flex-direction: column;
+  }
+  .dex-detail-col-list,
+  .dex-detail-col-diagram,
+  .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
 }
 /* ============================================================
    REQ-0064 Market (Hearth of Barter) -- route #/market.

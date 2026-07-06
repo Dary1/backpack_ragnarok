@@ -68,11 +68,14 @@ test('empty hash renders the landing; menu deep-links; boards stay mounted (hidd
   await expect(page.locator('canvas.board-canvas').first()).toBeAttached({ timeout: 15_000 });
   await expect(page.locator('canvas.inventory-board-canvas')).toBeAttached();
 
-  // New placeholder routes resolve by deep link (default locale is EN).
+  // Ragnarok (REQ-0066) and Market (REQ-0064) rail routes resolve by deep
+  // link. Both were PlaceholderPage stubs when this test was first
+  // written; both now render their real pages (fixed post-deploy,
+  // 2026-07-07 -- this assertion was stale, not the app).
   await page.goto('/app/#/ragnarok');
-  await expect(page.locator('.placeholder-page h2')).toHaveText('Ragnarok');
+  await expect(page.locator('[data-testid="ragnarok-page"]')).toBeVisible();
   await page.goto('/app/#/market');
-  await expect(page.locator('.placeholder-page h2')).toHaveText('Market');
+  await expect(page.locator('[data-testid="market-page"]')).toBeVisible();
 
   // Back to the landing; a menu entry deep-links into a real app route.
   await page.goto('/app/#/');

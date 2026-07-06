@@ -206,7 +206,10 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
       inv: { pages: [{ bps: [bpDef('z_bp')], pos: [{ uid: 'z_po', id: 'blade', cell: [1, 1], rot: 0 }], sis: [], tms: [] }, invPage(), invPage(), invPage(), invPage()], names: ['1', '2', '3', '4', '5'] },
       presets: { active: 0, names: ['ZA', 'ZB'], store: [null, { linked: true, bps: [bpDef('z_bp')], pos: [{ uid: 'z_po', id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] }] },
     };
-    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { data: { canvas } });
+    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, {
+      headers: { 'X-Auth-Token': seller.token },
+      data: { canvas },
+    });
     expect(put.ok()).toBeTruthy();
     const devote = await page.request.post('/api/ragnarok/devotion/1', { headers: { 'X-Auth-Token': seller.token } });
     expect(devote.status()).toBe(200);

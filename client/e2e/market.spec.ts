@@ -86,7 +86,10 @@ function devBuyerCanvas(lrdst: number, invPos: Array<{ uid: string; id: string }
  * seller's own token. */
 async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: string, itemId: string, qty: number): Promise<string> {
   const canvas = devBuyerCanvas(0, [{ uid: itemUid, id: itemId }]);
-  const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { data: { canvas } });
+  const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, {
+    headers: { 'X-Auth-Token': seller.token },
+    data: { canvas },
+  });
   expect(put.ok()).toBeTruthy();
   const res = await page.request.post('/api/market/listings', {
     headers: { 'X-Auth-Token': seller.token },
