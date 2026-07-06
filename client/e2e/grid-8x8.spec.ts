@@ -26,7 +26,7 @@ test.describe('8x8 grid', () => {
   });
 
   test('canvas board and inventory board both render at 8x8 pixel dimensions', async ({ page }) => {
-    await page.goto('/app/');
+    await page.goto('/app/#/backpacks');
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
 
@@ -81,7 +81,7 @@ test.describe('8x8 grid', () => {
     const saved = (await resp.json()).canvas;
     expect(saved.bps[0].origin).toEqual([8, 7]);
 
-    await page.goto('/app/');
+    await page.goto('/app/#/backpacks');
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
     // No console/page error from rendering a BP at the far new edge.

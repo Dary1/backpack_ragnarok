@@ -19,7 +19,7 @@ test.describe('smoke', () => {
   });
 
   test('app boots and shows the live data-source badge', async ({ page }) => {
-    await page.goto('/app/');
+    await page.goto('/app/#/backpacks');
     await expect(page.locator('h1')).toHaveText('backpack_ragnarok');
     const badge = page.locator('.data-source-badge');
     await expect(badge).toHaveText('live', { timeout: 10_000 });

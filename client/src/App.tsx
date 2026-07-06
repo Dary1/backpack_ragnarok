@@ -60,6 +60,15 @@
 // STRICT ADDITIVE change to this component's existing behavior: with no
 // slot registered (the common case, including every existing E2E spec),
 // this file's rendered output is byte-identical to before.
+//
+// REQ-0069: adds the 'landing' (title) route + the MJOLNIR chrome. The
+// global nav moved OUT of Header into the fixed left rail (Nav.tsx,
+// composed directly here now); BOTH the rail and the HUD header hide on
+// the landing route, which renders the full-bleed title screen
+// (landing/LandingPage.tsx) instead. The REQ-0034 hard rule above is
+// untouched by all of this: the backpacks-view stays UNCONDITIONALLY
+// mounted on every route (including 'landing') and only ever toggles
+// .route-hidden.
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Board } from './board/Board';
@@ -70,6 +79,8 @@ import { Header } from './Header';
 import { t } from './i18n';
 import { InviteBanner } from './InviteBanner';
 import { ItemPanel } from './ItemPanel';
+import { LandingPage } from './landing/LandingPage';
+import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
 import { SchedulePage } from './schedule/SchedulePage';
 import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
@@ -117,16 +128,24 @@ function App() {
   // tab and the Backpacks page are never both the current route).
   const inventorySlot = useInventorySlot();
   const inventoryReady = snapshot.status === 'ready';
+  // REQ-0069: the app chrome (nav rail + HUD header) hides on the landing
+  // (title) route -- the landing is a full-bleed screen with its own menu.
+  // Hiding it is a plain conditional on two leaf components that own no
+  // game state and no Pixi surface; everything below (crucially the
+  // always-mounted backpacks-view) renders exactly as before.
+  const onLanding = route === 'landing';
 
   return (
-    <div className="app-shell">
-      <Header
-        source={snapshot.source}
-        locale={snapshot.locale}
-        onToggleLocale={toggleLocale}
-        autoSaveStatus={snapshot.autoSaveStatus}
-        route={route}
-      />
+    <div className={`app-shell${onLanding ? '' : ' with-rail'}`}>
+      {onLanding ? null : <Nav active={route} locale={snapshot.locale} />}
+      {onLanding ? null : (
+        <Header
+          source={snapshot.source}
+          locale={snapshot.locale}
+          onToggleLocale={toggleLocale}
+          autoSaveStatus={snapshot.autoSaveStatus}
+        />
+      )}
       <InviteBanner text={snapshot.welcomeBanner} locale={snapshot.locale} />
       <main className="app-main">
         {/* Backpacks view: ALWAYS mounted (see module comment above). Only
@@ -173,8 +192,12 @@ function App() {
             needed for the portaled copy). */}
         {inventorySlot !== null ? createPortal(<InventoryColumn locale={snapshot.locale} ready={inventoryReady} />, inventorySlot) : null}
 
+        {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} /> : null}
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
         {route === 'workshop' ? <WorkshopPage locale={snapshot.locale} /> : null}
+        {/* REQ-0069: mock-rail routes whose real pages land in later REQs. */}
+        {route === 'market' ? <PlaceholderPage titleKey="nav.market" locale={snapshot.locale} /> : null}
+        {route === 'ragnarok' ? <PlaceholderPage titleKey="nav.ragnarok" locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}

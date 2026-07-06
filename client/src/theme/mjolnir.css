@@ -1,0 +1,251 @@
+/* ============================================================
+   MJOLNIR design tokens + foundation — REQ-0069.
+
+   Ported from the design mock's shared stylesheet
+   (web/redesign/assets/ui.css, "Design System MJOLNIR mock v1" —
+   Norse dark mythic: night-iron / bone / gold filigree + Ember x
+   Frost duality). That file remains the visual source of truth the
+   page-port REQs (0070+) copy from; THIS file carries only the
+   SHARED layer the whole client sits on:
+
+     - color / rarity / font tokens (:root)
+     - named text scales + type helper classes (GoW rule: no ad-hoc sizes)
+     - panel + gold-knot ornament + rune-divider primitives
+     - button / chip / keyword / bar primitives
+     - scrollbars, motion discipline, film-grain/vignette overlays
+
+   Deliberately NOT ported here (and why):
+     - .tooltip: index.css already owns a .tooltip (the item hover
+       card, position:fixed); the mock's absolutely-positioned tooltip
+       anatomy would fight it. The page REQs restyle the real tooltip
+       in place instead.
+     - Mock page primitives (.board-stage/.grid8/.bp/.po/.port/
+       .socket/.beams/.ov/.icard/.toast/.scrim/.modal/.wheel/.mat-*):
+       those mock up DOM boards/pages that the app renders via PixiJS
+       (boards) or per-page components; each page-port REQ pulls what
+       it needs when it needs it.
+     - .hud/.rail/.page-shell chrome layout: ADAPTED (not copied) onto
+       the app's real chrome classes in index.css (.app-header /
+       .nav-rail / .app-shell.with-rail) so the E2E suite's existing
+       .nav-link/.data-source-badge selectors keep working unchanged.
+     - base element resets (html/body/img/box-sizing): index.css owns
+       the base layer; only the `a`/::selection/button-font accents are
+       ported below.
+
+   Load order: index.css @imports this file FIRST and its own :root
+   aliases the legacy palette names (--bg/--line/--text/--dim) to
+   these tokens, so every pre-REQ-0069 rule picks up the night-iron
+   palette with zero per-rule edits. --panel is defined HERE (#131820)
+   and no longer in index.css.
+
+   Web fonts (Cinzel / Cinzel Decorative / Shippori Mincho B1 /
+   Zen Kaku Gothic New / Noto Sans Runic / Yuji Syuku) are loaded via
+   Google Fonts <link> tags in client/index.html — same delivery the
+   mock pages use; all stacks below degrade to system serif/sans if
+   the fetch fails.
+   ============================================================ */
+
+:root {
+  /* 60% night-iron neutrals */
+  --void:      #0A0D12;
+  --panel:     #131820;
+  --raised:    #1B222D;
+  --border-lo: #28313E;
+  /* 30% material + text */
+  --bone:   #E9E3D3;
+  --bone-2: #A8A193;
+  --bone-3: #6B675C;
+  --leather:#3A3229;
+  --stone:  #3D434C;
+  /* 10% accents */
+  --gold:    #C9A959;
+  --gold-hi: #EBD9A4;
+  --gold-lo: #857038;
+  --ember:    #E25822;
+  --ember-hi: #FF8A3D;
+  --ember-lo: #7E2A10;
+  --ember-glow: rgba(255,138,61,.45);
+  --frost:    #6FC4DE;
+  --frost-hi: #B8E9F5;
+  --frost-lo: #1D4B60;
+  --frost-glow: rgba(140,220,245,.40);
+  --blood:   #B0413E;
+  --valid:   rgba(87,199,123,.35);
+  --invalid: rgba(209,75,68,.35);
+  /* rarity ramp */
+  --r-common:  #9AA3AE;
+  --r-uncommon:#5EA37F;
+  --r-rare:    #4E9BC8;
+  --r-epic:    #9C6BD4;
+  --r-legend:  #E3A94C;
+  --r-mythic:  #F4E9C8;
+  /* type */
+  --f-den: "Cinzel", serif;
+  --f-dj:  "Shippori Mincho B1", serif;
+  --f-ui:  "Zen Kaku Gothic New", "Noto Sans JP", sans-serif;
+  --f-rune:"Noto Sans Runic", "Segoe UI Historic", sans-serif;
+  --f-seal:"Yuji Syuku", serif;
+  /* single focus/selection glow system */
+  --focus-ring: 0 0 0 1px var(--gold), 0 0 8px rgba(201,169,89,.55);
+}
+
+/* ---------- base accents (index.css owns the element base layer) ---------- */
+a { color: var(--gold); text-decoration: none; }
+a:hover { color: var(--gold-hi); }
+::selection { background: rgba(201,169,89,.35); }
+button { font-family: var(--f-ui); }
+
+/* film grain + vignette overlays (fixed, pointer-transparent) — applied
+   per-screen by adding .grain/.vignette to a screen root (the landing
+   uses both; app pages deliberately do NOT for now — a full-viewport
+   mix-blend layer over the live WebGL boards is a compositing cost the
+   page-port REQs can opt into once measured). */
+.grain::after{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:90;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/><feColorMatrix type='saturate' values='0'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.05'/></svg>");
+  mix-blend-mode:overlay;
+}
+.vignette::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:89;
+  background:radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(4,6,9,.55) 100%);
+}
+
+/* ---------- named text scales (GoW rule: no ad-hoc sizes) ---------- */
+.t-micro { font-size:12px; letter-spacing:.02em; color:var(--bone-3); }
+.t-body  { font-size:14px; }
+.t-label { font-size:15px; font-weight:500; }
+.t-h3    { font-size:18px; font-weight:700; line-height:1.35; }
+.t-h2    { font-size:24px; font-weight:700; line-height:1.3; }
+.t-h1    { font-size:36px; line-height:1.2; }
+.t-massive{ font-size:64px; line-height:1.05; }
+.den { font-family:var(--f-den); letter-spacing:.1em; text-transform:uppercase; }
+.dj  { font-family:var(--f-dj); font-feature-settings:"palt"; }
+.dj-wide{ letter-spacing:.22em; }
+.rune{ font-family:var(--f-rune); font-weight:400; }
+.seal{ font-family:var(--f-seal); }
+.tnum{ font-feature-settings:"tnum"; font-variant-numeric:tabular-nums; }
+.gold-text{
+  background:linear-gradient(180deg, var(--gold-hi) 8%, var(--gold) 46%, var(--gold-lo) 88%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+}
+
+/* ---------- panels ---------- */
+.panel{
+  position:relative;
+  background:linear-gradient(180deg, var(--raised), var(--panel));
+  border:1px solid var(--border-lo);
+  outline:1px solid rgba(201,169,89,.18);
+  outline-offset:-4px;
+  box-shadow:inset 0 1px 0 rgba(233,227,211,.04), inset 0 -14px 30px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.45);
+  border-radius:3px;
+}
+.panel-pad{ padding:18px 20px; }
+
+/* gold knot corners (Borre-ish minimal interlace) */
+.ornate{ position:relative; }
+.ornate > .k{
+  position:absolute; width:22px; height:22px; pointer-events:none; opacity:.85;
+  background-repeat:no-repeat; background-size:22px 22px;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g fill='none' stroke='%23C9A959' stroke-width='1.4'><path d='M2 22 V7 Q2 2 7 2 H22'/><path d='M6 22 V10 Q6 6 10 6 H22'/><circle cx='6' cy='6' r='1.6' fill='%23C9A959' stroke='none'/></g></svg>");
+}
+.ornate > .k.tl{ top:3px; left:3px; }
+.ornate > .k.tr{ top:3px; right:3px; transform:rotate(90deg); }
+.ornate > .k.br{ bottom:3px; right:3px; transform:rotate(180deg); }
+.ornate > .k.bl{ bottom:3px; left:3px; transform:rotate(270deg); }
+
+/* hairline divider with a meaningful rune */
+.rune-divider{
+  display:flex; align-items:center; gap:14px; margin:14px 0;
+  color:var(--gold); opacity:.8; font-size:13px;
+}
+.rune-divider::before, .rune-divider::after{
+  content:""; flex:1; height:1px;
+  background:linear-gradient(90deg, transparent, rgba(201,169,89,.5), transparent);
+}
+
+/* ---------- buttons (5 states: idle/hover/pressed/disabled/selected) ---------- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:10px;
+  padding:10px 22px; border-radius:2px;
+  background:linear-gradient(180deg, #2A313E, #1B222D);
+  border:1px solid var(--border-lo);
+  outline:1px solid rgba(201,169,89,.28); outline-offset:-3px;
+  color:var(--bone); font-size:15px; font-weight:500; letter-spacing:.08em;
+  transition:box-shadow .14s ease-out, border-color .14s ease-out, transform .1s ease-out, color .14s;
+  user-select:none; cursor:pointer;
+}
+.btn:hover{ border-color:var(--gold-lo); color:var(--gold-hi); box-shadow:inset 0 0 18px rgba(255,138,61,.16), 0 0 8px rgba(201,169,89,.25); }
+.btn:active{ transform:translateY(1px); }
+.btn[disabled], .btn.is-disabled{
+  color:var(--bone-3); border-color:var(--border-lo); outline-color:rgba(201,169,89,.08);
+  box-shadow:none; cursor:not-allowed; filter:saturate(.4);
+}
+.btn.is-selected{ box-shadow:var(--focus-ring); color:var(--gold-hi); }
+
+.btn-forge{ /* the biggest gold CTA on a screen — one per screen */
+  background:linear-gradient(180deg, #D9B968 0%, #C9A959 45%, #8C6D1A 100%);
+  color:#14100A; border:1px solid #6E5A20; outline:1px solid rgba(255,244,214,.5);
+  font-weight:700; letter-spacing:.14em; padding:14px 34px; font-size:16px;
+  text-shadow:0 1px 0 rgba(255,244,214,.45);
+}
+.btn-forge:hover{ color:#14100A; box-shadow:0 0 22px rgba(226,169,76,.45), inset 0 0 10px rgba(255,244,214,.35); border-color:#8C6D1A; }
+.btn-ghost{ background:transparent; outline:none; border:1px solid transparent; }
+.btn-ghost:hover{ border-color:rgba(201,169,89,.4); box-shadow:none; }
+
+/* ---------- chips / tags ---------- */
+.chip{
+  display:inline-flex; align-items:center; gap:6px; padding:3px 12px;
+  border:1px solid var(--border-lo); border-radius:999px;
+  background:rgba(19,24,32,.8); font-size:12px; color:var(--bone-2); letter-spacing:.04em;
+}
+.chip.is-on{ border-color:var(--gold-lo); color:var(--gold-hi); box-shadow:inset 0 0 8px rgba(201,169,89,.15); }
+.chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--bone-3); }
+.chip.is-live .dot{ background:var(--ember-hi); box-shadow:0 0 6px var(--ember-glow); }
+
+.kw-ember{ color:var(--ember-hi); font-weight:700; }
+.kw-frost{ color:var(--frost-hi); font-weight:700; }
+.kw-gold { color:var(--gold-hi);  font-weight:700; }
+.kw-blood{ color:#E06B5F; font-weight:700; }
+.kw-link { color:#9FE0C4; font-weight:700; }
+
+/* ---------- rarity system (double-encoded: frame + word + corner gem) ---------- */
+.rar{ position:relative; border:1px solid; border-radius:3px; }
+.rar .rar-word{ font-size:11px; letter-spacing:.16em; text-transform:uppercase; }
+.rar-common   { border-color:var(--r-common);  } .rar-common  .rar-word{ color:var(--r-common); }
+.rar-uncommon { border-color:var(--r-uncommon);} .rar-uncommon .rar-word{ color:var(--r-uncommon); }
+.rar-rare     { border-color:var(--r-rare);    } .rar-rare    .rar-word{ color:var(--r-rare); }
+.rar-epic     { border-color:var(--r-epic); box-shadow:inset 0 0 14px rgba(156,107,212,.14); } .rar-epic .rar-word{ color:var(--r-epic); }
+.rar-legend   { border-color:var(--r-legend); box-shadow:inset 0 0 14px rgba(227,169,76,.18), 0 0 10px rgba(227,169,76,.28); } .rar-legend .rar-word{ color:var(--r-legend); }
+.rar-mythic   { border-color:var(--r-mythic);
+  box-shadow:0 0 10px rgba(255,138,61,.30), 0 0 20px rgba(140,220,245,.25), inset 0 0 16px rgba(244,233,200,.12); }
+.rar-mythic .rar-word{ color:var(--r-mythic); }
+/* corner gem shapes for colorblind safety */
+.gem{ position:absolute; top:-1px; right:-1px; width:14px; height:14px; display:grid; place-items:center; font-size:9px; line-height:1; }
+.rar-common   .gem::after{ content:"●"; color:var(--r-common); }
+.rar-uncommon .gem::after{ content:"▲"; color:var(--r-uncommon); }
+.rar-rare     .gem::after{ content:"◆"; color:var(--r-rare); }
+.rar-epic     .gem::after{ content:"✦"; color:var(--r-epic); }
+.rar-legend   .gem::after{ content:"★"; color:var(--r-legend); }
+.rar-mythic   .gem::after{ content:"❂"; color:var(--r-mythic); }
+
+/* ---------- bars ---------- */
+.bar{ position:relative; height:10px; background:#10141B; border:1px solid var(--border-lo); border-radius:2px; overflow:hidden; }
+.bar .fill{ height:100%; background:linear-gradient(90deg, #8E3430, #C05248); }
+.bar .fill.frost{ background:linear-gradient(90deg, #2A6A82, #6FC4DE); }
+.bar .fill.gold { background:linear-gradient(90deg, #8C6D1A, #C9A959); }
+.bar::after{ /* 25% notches */
+  content:""; position:absolute; inset:0;
+  background:repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), rgba(10,13,18,.9) calc(25% - 1px) 25%);
+  pointer-events:none;
+}
+
+/* ---------- scrollbars ---------- */
+::-webkit-scrollbar{ width:10px; height:10px; }
+::-webkit-scrollbar-track{ background:#0C1016; }
+::-webkit-scrollbar-thumb{ background:#2A313E; border-radius:5px; border:2px solid #0C1016; }
+::-webkit-scrollbar-thumb:hover{ background:var(--gold-lo); }
+
+/* ---------- motion discipline ---------- */
+@media (prefers-reduced-motion: reduce){
+  *, *::before, *::after{ animation-duration:.001s !important; transition-duration:.001s !important; }
+}
