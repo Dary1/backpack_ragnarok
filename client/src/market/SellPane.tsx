@@ -1,0 +1,278 @@
+// client/src/market/SellPane.tsx -- REQ-0064 SELL pane (手持ちから選ぶ +
+// 値を刻む / "From your hoard" + "Carve the price"). Picker over the
+// player's OWN inventory POs (state.inv.pages[].pos[]) -- the exact set
+// the server's findInventoryPO accepts (inventory POs only; board /
+// deployed / in-run items are NOT here) -- plus an integer price stepper
+// (min 1, cap 999) with a LIVE client-side receipt estimate and the
+// item's most-recent settled-price anchor (図鑑の直近刻銘). See the notes
+// doc for the "deployed items shown locked, not hidden" inference: the
+// authoritative deployed-uid set lives server-side (rooms/schedule
+// state, not loaded on this client), so an item that the server rejects
+// as deployed comes back 409 -> we lock that specific card with the
+// mock's "配備中 — 出品不可" word rather than silently reimplementing the
+// room scan here.
+import { useEffect, useMemo, useState } from 'react';
+import { createMarketListing, type ApiMarketListing, type GameData } from '../api';
+import { t } from '../i18n';
+import type { GameState } from '../engine/engine.d.ts';
+import type { Locale } from '../store';
+import { marketErrorKey } from './marketErrors';
+import { MarketThumb, burnOf, dexNoLabel, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
+
+/** One sellable inventory PO, flattened from every inventory page. */
+interface SellableItem {
+  itemUid: string;
+  itemId: string;
+}
+
+/** Collects every inventory-homed PO across all inventory pages -- the
+ * server's own "sellable = inventory PO" definition. Board/preset items
+ * (state.pos / presets.store) are deliberately excluded: those are the
+ * deployed/placed set the server refuses. */
+function collectSellable(state: GameState | null): SellableItem[] {
+  if (!state || !state.inv || !Array.isArray(state.inv.pages)) return [];
+  const out: SellableItem[] = [];
+  for (const pg of state.inv.pages) {
+    for (const po of pg.pos || []) {
+      out.push({ itemUid: po.uid, itemId: po.id });
+    }
+  }
+  return out;
+}
+
+interface SellPaneProps {
+  state: GameState | null;
+  gameData: GameData | null;
+  locale: Locale;
+  /** Every currently-known listing (browse + mine), used two ways: to
+   * find an item's recent settled-price anchor (priceHistory), and to
+   * gray out items the player has ALREADY listed (still active/suspended)
+   * so they can't double-list (server would 409 already_listed). */
+  allListings: ApiMarketListing[];
+  /** Uids the player already has an active/suspended listing for. */
+  listedUids: Set<string>;
+  onListed: () => Promise<void>;
+}
+
+export function SellPane({ state, gameData, locale, allListings, listedUids, onListed }: SellPaneProps) {
+  const sellable = useMemo(() => collectSellable(state), [state]);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const [price, setPrice] = useState<number>(1);
+  const [priceText, setPriceText] = useState<string>('1');
+  const [busy, setBusy] = useState(false);
+  const [errKey, setErrKey] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  // Uids the SERVER rejected as deployed this session -> lock them like
+  // the mock's 配備中 cards (shown, not hidden -- the mock shows WHY).
+  const [deployedUids, setDeployedUids] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = setTimeout(() => setToast(null), 4000);
+    return () => clearTimeout(id);
+  }, [toast]);
+
+  const selected = sellable.find((s) => s.itemUid === selectedUid) || null;
+  const selectedDef = selected ? (gameData?.ITEMS[selected.itemId] || null) : null;
+
+  /** The item's most recent settled price, if the DTO exposes one for
+   * this itemId anywhere in the known listings (priceHistory[0], newest
+   * first). Empty-state when never settled -- per spec, this one sub-
+   * element empty-states rather than blocking the pane. */
+  const anchor = useMemo(() => {
+    if (!selected) return null;
+    for (const l of allListings) {
+      if (l.itemId === selected.itemId && l.priceHistory && l.priceHistory.length > 0) {
+        return l.priceHistory[0].qty;
+      }
+    }
+    return null;
+  }, [selected, allListings]);
+
+  function applyPrice(v: number) {
+    const clamped = Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, Math.round(v) || MARKET_PRICE_MIN));
+    setPrice(clamped);
+    setPriceText(String(clamped));
+  }
+
+  function selectItem(uid: string) {
+    if (deployedUids.has(uid) || listedUids.has(uid)) return;
+    setSelectedUid(uid);
+    setErrKey(null);
+    // Seed the stepper from the anchor when known, else 1 (mock seeds
+    // from data-ask; we have no ask until listed, so anchor or floor).
+    const it = sellable.find((s) => s.itemUid === uid);
+    let seed = MARKET_PRICE_MIN;
+    if (it) {
+      for (const l of allListings) {
+        if (l.itemId === it.itemId && l.priceHistory && l.priceHistory.length > 0) { seed = l.priceHistory[0].qty; break; }
+      }
+    }
+    applyPrice(seed);
+  }
+
+  async function list() {
+    if (!selected) return;
+    setBusy(true);
+    setErrKey(null);
+    try {
+      await createMarketListing({ itemUid: selected.itemUid, price: { tm: 'lrdst', qty: price } });
+      setToast(t(locale, 'market.sell.listedToast'));
+      setSelectedUid(null);
+      await onListed(); // refetch mine/browse so the new listing appears + the item grays out here
+    } catch (e) {
+      const key = marketErrorKey(e);
+      if (key === 'market.err.deployed') {
+        // Lock this card like the mock's 配備中 item -- the server is the
+        // authority on deployment; reflect its answer, don't fake it.
+        setDeployedUids((prev) => new Set(prev).add(selected.itemUid));
+        setSelectedUid(null);
+      }
+      setErrKey(key);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const burn = burnOf(price);
+  const capped = price >= MARKET_PRICE_MAX;
+
+  // Eligible = at least one inventory PO not already locked/listed.
+  const anyEligible = sellable.some((s) => !deployedUids.has(s.itemUid) && !listedUids.has(s.itemUid));
+
+  if (sellable.length === 0) {
+    return (
+      <section className="market-pane" data-testid="market-pane-sell">
+        <div className="emptyblock market-empty" data-testid="market-sell-empty">
+          <svg className="efig" width="46" height="40" viewBox="0 0 46 40" aria-hidden="true">
+            <g fill="none" stroke="var(--gold-lo)" strokeWidth="1.5"><circle cx="23" cy="14" r="10" /><circle cx="14" cy="26" r="10" /><circle cx="32" cy="26" r="10" /></g>
+          </svg>
+          <div className="eja">{t(locale, 'market.sell.emptyJa')}</div>
+          <span className="en">{t(locale, 'market.sell.emptyEn')}</span>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="market-pane" data-testid="market-pane-sell">
+      <div className="sell-grid market-sell-grid">
+        {/* pick from hoard */}
+        <div className="panel ornate panel-pad market-hoard">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="row market-hoard-head">
+            <h3 className="ph3 dj">{t(locale, 'market.sell.hoardTitle')}</h3>
+            <span className="en">{t(locale, 'market.sell.hoardEn')}</span>
+          </div>
+          <div className="t-micro market-hoard-note">{t(locale, 'market.sell.hoardNote')}</div>
+          <div className="col market-hoard-list">
+            {sellable.map((s) => {
+              const def = gameData?.ITEMS[s.itemId] || null;
+              const name = def ? (locale === 'ja' ? def.name_ja || def.name : def.name) : s.itemId;
+              const locked = deployedUids.has(s.itemUid) || listedUids.has(s.itemUid);
+              const lockedReason = deployedUids.has(s.itemUid)
+                ? t(locale, 'market.sell.deployedLock')
+                : listedUids.has(s.itemUid) ? t(locale, 'market.sell.alreadyListedLock') : '';
+              const dims = def && def.shape && def.shape.length ? `${Math.max(...def.shape.map((c) => c[1])) + 1}×${Math.max(...def.shape.map((c) => c[0])) + 1}` : '';
+              return (
+                <div
+                  key={s.itemUid}
+                  className={`icard market-icard rar rar-${def?.rarity || 'common'}${s.itemUid === selectedUid ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
+                  data-testid="market-sell-item"
+                  data-item-uid={s.itemUid}
+                  data-locked={locked ? 'true' : 'false'}
+                  role="button"
+                  tabIndex={locked ? -1 : 0}
+                  onClick={() => selectItem(s.itemUid)}
+                  onKeyDown={(e) => { if (!locked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectItem(s.itemUid); } }}
+                >
+                  <span className="gem" />
+                  <MarketThumb gameData={gameData} itemId={s.itemId} cellPx={16} alt={name} />
+                  <div>
+                    <div className="nm">{name}</div>
+                    <div className="sub">PO{dims ? ` ・ ${dims}` : ''}{def && def.tags && def.tags.length ? ` ・ ${def.tags.join('/')}` : ''}{def?.rarity ? <span className={`rar-word r-${def.rarity}`}> {def.rarity.toUpperCase()}</span> : null}</div>
+                  </div>
+                  {locked
+                    ? <span className="lockword" data-testid="market-sell-lockword">{lockedReason}</span>
+                    : <span className="chip is-on selchip">{t(locale, 'market.sell.selected')}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* carve the price */}
+        <div className="panel ornate panel-pad market-carve">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="row market-carve-head">
+            <h3 className="ph3 dj">{t(locale, 'market.sell.carveTitle')}</h3>
+            <span className="en">{t(locale, 'market.sell.carveEn')}</span>
+          </div>
+
+          {selected && selectedDef ? (
+            <>
+              <div className="carve-item">
+                <span>{t(locale, 'market.sell.pieceLabel')}</span>
+                <b className="dj" data-testid="market-carve-name">{locale === 'ja' ? selectedDef.name_ja || selectedDef.name : selectedDef.name}</b>
+                <span className="chip dexno">{dexNoLabel(dexNoOf(selected.itemId, allListings))}</span>
+                <span className="t-micro" data-testid="market-carve-anchor">
+                  {anchor != null ? t(locale, 'market.sell.anchor', { n: anchor }) : t(locale, 'market.sell.anchorNone')}
+                </span>
+              </div>
+              <div className="stepper market-stepper">
+                <button type="button" className="sbtn" data-testid="market-price-down" aria-label={t(locale, 'market.sell.priceDown')} onClick={() => applyPrice(price - 1)}>−</button>
+                <span className="sval">
+                  <span className="rune">ᚠ</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    data-testid="market-price-input"
+                    aria-label={t(locale, 'market.sell.priceAria')}
+                    value={priceText}
+                    onChange={(e) => {
+                      const d = e.target.value.replace(/[^\d]/g, '');
+                      if (d === '') { setPriceText(''); return; }
+                      const n = parseInt(d, 10);
+                      setPriceText(d);
+                      setPrice(Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, n)));
+                    }}
+                    onBlur={() => applyPrice(parseInt(priceText, 10) || MARKET_PRICE_MIN)}
+                  />
+                </span>
+                <button type="button" className="sbtn" data-testid="market-price-up" aria-label={t(locale, 'market.sell.priceUp')} onClick={() => applyPrice(price + 1)}>+</button>
+                <span className="t-micro">{t(locale, 'market.sell.ceiling')}</span>
+              </div>
+              {capped ? <div className="t-micro capnote" data-testid="market-cap-note">{t(locale, 'market.sell.capReached')}</div> : null}
+              <div className="est market-est">
+                <span className="lbl">{t(locale, 'market.sell.estLabel')}</span>
+                <span data-testid="market-est-line">
+                  {t(locale, 'market.sell.estPay')} <b className="tnum" data-testid="market-est-pay">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum" data-testid="market-est-burn">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum" data-testid="market-est-get">{price - burn}</b>
+                </span>
+              </div>
+              {errKey ? <div className="schedule-error market-sell-error" data-testid="market-sell-error">{t(locale, errKey as Parameters<typeof t>[1])}</div> : null}
+              {toast ? <div className="schedule-toast market-sell-toast" data-testid="market-sell-toast">{toast}</div> : null}
+              <div className="mt16">
+                <button type="button" className="btn btn-forge" data-testid="market-list-btn" disabled={busy} onClick={() => void list()}>
+                  {busy ? t(locale, 'market.sell.listing') : t(locale, 'market.sell.listButton')}
+                </button>
+              </div>
+              <div className="t-micro sell-law">{t(locale, 'market.sell.law1')}<br />{t(locale, 'market.sell.law2')}</div>
+            </>
+          ) : (
+            <div className="t-micro market-carve-hint" data-testid="market-carve-hint">
+              {anyEligible ? t(locale, 'market.sell.pickHint') : t(locale, 'market.sell.noneEligible')}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/** Best-effort Dex No. for an inventory item id: read it off any known
+ * listing of the same item (the DTO carries dexNo). Null if none. */
+function dexNoOf(itemId: string, listings: ApiMarketListing[]): number | null {
+  for (const l of listings) if (l.itemId === itemId && l.dexNo != null) return l.dexNo;
+  return null;
+}
