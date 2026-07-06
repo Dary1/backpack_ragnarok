@@ -78,7 +78,7 @@ export type { DataSource };
 
 export type Locale = 'en' | 'ja';
 
-// REQ-0034 -- global nav route. Hash-based: '#/backpacks' (default),
+// REQ-0034 -- global nav route. Hash-based: '#/backpacks',
 // '#/schedule', '#/friends', '#/dex', '#/settings'. REQ-0037 adds
 // '#/invite/<token>', handled as a special one-shot route (see
 // routeFromHash()/handleInviteRoute() below) that immediately redirects
@@ -86,14 +86,35 @@ export type Locale = 'en' | 'ja';
 // it never stays the ACTIVE route in the store for more than an instant,
 // so the Route union itself does not need an 'invite' member; App.tsx
 // never has to render anything for it.
-export type Route = 'backpacks' | 'schedule' | 'workshop' | 'friends' | 'dex' | 'settings';
+//
+// REQ-0069 adds 'landing' (the title screen; canonical hash is the BARE
+// '#/' / empty hash, which is now the boot default instead of
+// 'backpacks') plus the 'market'/'ragnarok' placeholder routes from the
+// mock rail (their real pages land in later REQs).
+export type Route =
+  | 'landing'
+  | 'backpacks'
+  | 'schedule'
+  | 'workshop'
+  | 'friends'
+  | 'dex'
+  | 'settings'
+  | 'market'
+  | 'ragnarok';
 
-const VALID_ROUTES: Route[] = ['backpacks', 'schedule', 'workshop', 'friends', 'dex', 'settings'];
+const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok'];
 
 export const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
+// REQ-0069: the EMPTY hash ('', '#' or '#/') is the landing (title)
+// screen -- the app's boot route. Named routes keep their '#/<name>'
+// hashes, and an UNKNOWN hash still falls back to 'backpacks' (NOT the
+// landing) so a stale/mistyped deep link degrades to the main play
+// screen exactly as it did before REQ-0069. '#/landing' is accepted as
+// input too, but setRoute() always writes the canonical bare '#/'.
 export function routeFromHash(hash: string): Route {
   const raw = hash.replace(/^#\/?/, '');
+  if (raw === '') return 'landing';
   return (VALID_ROUTES as string[]).includes(raw) ? (raw as Route) : 'backpacks';
 }
 

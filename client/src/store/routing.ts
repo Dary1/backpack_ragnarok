@@ -9,7 +9,9 @@ export function setRoute(route: Route): void {
   if (route === snapshot.route) return;
   setSnapshot({ ...snapshot, route });
   if (typeof location !== 'undefined') {
-    location.hash = `#/${route}`;
+    // REQ-0069: the landing's canonical hash is the bare '#/' (empty
+    // route path), not '#/landing' -- see core.ts's routeFromHash().
+    location.hash = route === 'landing' ? '#/' : `#/${route}`;
   }
 }
 
