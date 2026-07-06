@@ -358,8 +358,26 @@ test.describe('Reward LRDST reaching warehouse', () => {
       function presetCanvas(tag: string) {
         return {
           linked: true,
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
-          pos: [{ uid: `e2e_po_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 }],
+          // Phase 0 (workshop:348) FIX: this unit must be able to WIN the
+          // run, not just survive it -- the assertion below needs a non-wipe
+          // (rewards, incl. LRDST, are intentionally zero on a wipe; see
+          // server/services/runs.cjs settleRun's `if (run.result !== 'wipe')`
+          // gate + sim/lib/dungeon.cjs). The old fixture's ONLY PO was a bare
+          // `hilt` (content id `hilt` has effects:[] -- a weapon PART, inert
+          // alone), so the party could deal ZERO damage and ALWAYS wiped
+          // regardless of hpMax; hpMax:40 merely delayed the guaranteed loss.
+          // Fix = give each unit a real, assembled weapon (blade+hilt =>
+          // `longsword`, whose blade strike effect is gated `cond:'assembled'`)
+          // plus enough hpMax to clear the fixed niflheim gauntlet (which ends
+          // in the 400-HP hrimgrimnir boss). Verified: 4x this unit vs
+          // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
+          // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
+          // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 800 }],
+          pos: [
+            { uid: `e2e_blade_${tag}`, id: 'blade', loc: 'grid', cell: [0, 1], rot: 0 },
+            { uid: `e2e_hilt_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 },
+          ],
           sis: [],
         };
       }
