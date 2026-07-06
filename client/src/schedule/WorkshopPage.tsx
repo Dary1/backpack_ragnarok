@@ -1,13 +1,23 @@
-// Workshop route (#/workshop) -- REQ-0042. Common BP gacha: costs
-// GACHA_COMMON_BP_COST_DISPLAY (10) LRDST (a stackable TM currency, see
-// mock-src/engine.js's TM model). Follows the SAME "fetch on mount,
-// loading/error states, t()" shape SchedulePage.tsx/DexRoot.tsx/
-// Settings.tsx already established for a route-level component, and
-// reuses WarehouseTab.tsx's EXACT two-phase claim/first-fit/pulse
-// pattern for the roll flow (server mints a pending roll -> THIS client
-// deducts the cost + first-fit-places the rolled BP + pulses + auto-
-// saves -> the resulting profile PUT is what finalizes the roll
-// server-side, see server/schedule.cjs's finalizeGachaForCanvas).
+// Workshop route (#/workshop) -- REQ-0042 behavior, REQ-0076 MJOLNIR
+// re-skin. Common BP gacha: costs GACHA_COMMON_BP_COST_DISPLAY (10)
+// LRDST (a stackable TM currency, see mock-src/engine.js's TM model).
+// Follows the SAME "fetch on mount, loading/error states, t()" shape
+// SchedulePage.tsx/DexRoot.tsx/Settings.tsx already established for a
+// route-level component, and reuses WarehouseTab.tsx's EXACT two-phase
+// claim/first-fit/pulse pattern for the roll flow (server mints a
+// pending roll -> THIS client deducts the cost + first-fit-places the
+// rolled BP + pulses + auto-saves -> the resulting profile PUT is what
+// finalizes the roll server-side, see server/services/runs.cjs +
+// server/services/gacha.cjs's finalize path).
+//
+// REQ-0076: markup re-skinned to web/redesign/workshop.html (Forge of
+// Fates) -- casting panel + odds panel + result MODAL wearing the
+// mjolnir.css panel/ornate/btn-forge/rune-divider primitives. The gacha
+// MECHANIC and the two-phase finalize are UNCHANGED; only chrome moved.
+// Currency naming follows REQ-0053 (Weathervane / rune) where the mock
+// shows it -- the visible label drops the raw "LRDST" string in favor of
+// the rune + the currency-item wording (same call the market port made,
+// REQ-0064); the wire/engine id stays 'lrdst' everywhere.
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
@@ -19,10 +29,27 @@ interface WorkshopPageProps {
   locale: Locale;
 }
 
-const GACHA_COMMON_BP_COST_DISPLAY = 10; // mirrors server/schedule.cjs's GACHA_COMMON_BP_COST (display only)
+const GACHA_COMMON_BP_COST_DISPLAY = 10; // mirrors server/services/gacha.cjs's GACHA_COMMON_BP_COST (display only)
 const GRID_MIN = 1;
 const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout, same bound WarehouseTab.tsx's firstFitPlace uses
 const TAB_PULSE_MS = 1600; // same constant WarehouseTab.tsx uses for its cross-page tab-pulse notification
+
+// REQ-0076: casting-odds display (mock's rules panel). These weights are
+// DISPLAY-ONLY -- the server's roll (server/services/gacha.cjs
+// rollCommonBp) is a random-walk polyomino of 4-6 cells and does NOT
+// publish per-cell-count probabilities, so no live number backs this.
+// The mock's own three rows (40/35/25) are reproduced verbatim as the
+// designed presentation of "smaller packs are more common"; documented
+// as an inference in the notes doc (UI is truth; no fabricated live
+// stat, the mock's fixed figures ARE the spec here). HP column = cells
+// x 15, which IS the real formula (hpMax = 15 * cellCount, server-side).
+const CASTING_ODDS: ReadonlyArray<{ cells: number; pct: number }> = [
+  { cells: 4, pct: 40 },
+  { cells: 5, pct: 35 },
+  { cells: 6, pct: 25 },
+];
+
+const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 
 /** Sums qty across every same-id 'lrdst' TM stack, across EVERY
  * inventory page (a display-only balance -- the actual spend at roll
@@ -43,13 +70,31 @@ function readTotalLrdstBalance(state: ReturnType<typeof useGameStore>['state']):
   return total;
 }
 
+/** Maps a linker offset [row,col] (shape-local, origin [0,0]) to the
+ * mock's coord label convention (column letter + 1-based row number,
+ * e.g. [1,1] -> "B2") -- the SAME A/B/1/2/3 axis labels the mock's
+ * result figure draws and the SAME scheme ShapeGrid's showCoords uses.
+ * Purely a readout of the real rolled linker.off; invents nothing. */
+function linkerCoordLabel(off: [number, number]): string {
+  const col = String.fromCharCode(65 + Math.max(0, off[1])); // 0->A, 1->B, ...
+  const row = Math.max(0, off[0]) + 1; // 0-based row -> 1-based label
+  return col + row;
+}
+
+/** Turns the rolled linker.dirs (0=N..7=NW, the project compass) into a
+ * human-facing string -- reads the real dirs; no fabrication. */
+function dirsLabel(dirs: number[]): string {
+  if (!dirs.length) return '—';
+  return dirs.map((d) => COMPASS_LABELS[d] ?? '?').join(' ・ ');
+}
+
 /** Briefly applies the tab-claim-pulse CSS class to the inv-tab button
  * at `pageIndex` -- byte-for-byte copy of WarehouseTab.tsx's own
  * pulseTab() helper (same DOM-query-based approach, not worth sharing
  * via an import for one small helper reused across two route-level
  * components with otherwise independent lifecycles). */
 function pulseTab(pageIndex: number): void {
-  const el = document.querySelector<HTMLElement>(`[data-tab-kind="inv"][data-tab-index="${pageIndex}"]`);
+  const el = document.querySelector<HTMLElement>('[data-tab-kind="inv"][data-tab-index="' + pageIndex + '"]');
   if (!el) return;
   el.classList.remove('tab-claim-pulse');
   void el.offsetWidth;
@@ -184,12 +229,12 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
         // No space anywhere -- per the same accepted design as the
         // warehouse claim's own "no space" case, the pending roll is
         // simply left unfinalized server-side; it lazily reverts after
-        // the timeout (see finalizeGachaForCanvas/purgeExpiredGachaPending).
-        // The LRDST was already deducted above, though -- to avoid
-        // silently losing currency for a roll that can never be placed,
-        // refund it locally before surfacing the error (no server round
-        // trip needed -- the pending roll was never finalized, so the
-        // server-side balance was never touched either).
+        // the timeout (see the gacha finalize/purge path). The LRDST was
+        // already deducted above, though -- to avoid silently losing
+        // currency for a roll that can never be placed, refund it locally
+        // before surfacing the error (no server round trip needed -- the
+        // pending roll was never finalized, so the server-side balance
+        // was never touched either).
         for (const pg of pageOrder) {
           const refund = engine.tmMove(state, pg, 'lrdst_refund_' + Date.now(), [1, 1], 'lrdst', cost);
           if (refund.ok) break;
@@ -208,7 +253,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
 
       // Let the existing debounced auto-save run naturally -- this PUT
       // is what finalizes the pending roll server-side (uid present AND
-      // balance dropped, see finalizeGachaForCanvas).
+      // balance dropped, see the gacha finalize path).
       notifyStateChanged();
 
       setToast(
@@ -229,53 +274,210 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
 
   return (
     <div className="workshop-page">
-      <h2>{t(locale, 'nav.workshop')}</h2>
+      {/* ===== hero strip (mock .pagehead + divider) ===== */}
+      <section className="workshop-pagehead">
+        <div className="workshop-pagehead-text">
+          <div className="workshop-pagehead-kicker den">{t(locale, 'workshop.pageKicker')}</div>
+          <h2 className="workshop-pagehead-title dj dj-wide">{t(locale, 'nav.workshop')}</h2>
+          <div className="workshop-pagehead-lede">{t(locale, 'workshop.pageLede')}</div>
+        </div>
+      </section>
+      <div className="rune-divider workshop-headline">{'ᛈ'}</div>
 
       {error ? <div className="schedule-error" data-testid="workshop-error">{error}</div> : null}
-      {toast ? <div className="schedule-toast" data-testid="workshop-toast">{toast}</div> : null}
+      {toast ? <div className="schedule-toast workshop-toast" data-testid="workshop-toast">{toast}</div> : null}
 
-      {rollResult ? (
-        <div className="workshop-roll-result" data-testid="workshop-roll-result">
-          <div className="workshop-roll-result-header">
-            <span className="workshop-roll-result-title">{t(locale, 'workshop.rollResultTitle')}</span>
+      {/* ===== casting colhead ===== */}
+      <div className="workshop-colhead">
+        <span className="workshop-colhead-rune rune">{'ᛈ'}</span>
+        <h3 className="workshop-colhead-title dj">{t(locale, 'workshop.castHeading')}</h3>
+        <span className="workshop-colhead-den den">{t(locale, 'workshop.castHeadingDen')}</span>
+        <span className="workshop-colhead-grow" />
+        <span className="workshop-colhead-note t-micro">{t(locale, 'workshop.castHeadingNote')}</span>
+      </div>
+
+      {/* ===== casting grid: cast panel | odds panel ===== */}
+      <section className="workshop-forge-grid">
+        {/* LEFT: cast panel */}
+        <div className="panel ornate workshop-cast" data-testid="workshop-gacha-card">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="workshop-cast-art">
+            <span className="workshop-cast-art-glyph seal">{'鋳'}</span>
+          </div>
+          <div className="workshop-cast-body">
+            <div className="workshop-cast-title dj">{t(locale, 'workshop.commonBpGacha')}</div>
+            <div className="workshop-cast-sub t-micro">{t(locale, 'workshop.castSub')}</div>
+            <div className="workshop-cast-cost">
+              <span className="workshop-cast-cost-rune rune">{'ᚠ'}</span>
+              <span className="workshop-cast-cost-val" data-testid="workshop-gacha-cost">
+                {t(locale, 'workshop.cost', { cost: GACHA_COMMON_BP_COST_DISPLAY })}
+              </span>
+              <span className="workshop-cast-cost-grow" />
+              <span className="workshop-cast-own">
+                {t(locale, 'workshop.ownedLabel')}{' '}
+                <b className="tnum" data-testid="workshop-gacha-balance">{balance}</b>
+              </span>
+            </div>
             <button
               type="button"
-              className="workshop-roll-result-dismiss"
-              data-testid="workshop-roll-result-dismiss"
-              onClick={() => setRollResult(null)}
+              className="btn btn-forge workshop-roll-btn"
+              disabled={!canAfford || rolling}
+              onClick={() => void handleRoll()}
+              data-testid="workshop-roll-btn"
             >
-              {t(locale, 'workshop.rollResultDismiss')}
+              <span className="rune">{'ᛈ'}</span> {rolling ? t(locale, 'workshop.rolling') : t(locale, 'workshop.rollButton')}
             </button>
+            <div className="workshop-cast-foot t-micro">{t(locale, 'workshop.castNoteUnique')}</div>
+            <div className="workshop-cast-foot t-micro">{t(locale, 'workshop.castNoteSupply')}</div>
           </div>
-          <BpDiagram
-            shape={rollResult.shape}
-            linkerOff={rollResult.linker.off}
-            dirs={rollResult.linker.dirs}
-            hpMax={rollResult.hpMax}
-            cellCount={rollResult.cellCount}
-            locale={locale}
-          />
+        </div>
+
+        {/* RIGHT: odds panel */}
+        <div className="panel ornate workshop-odds">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="workshop-odds-head">
+            <span className="workshop-odds-title dj">{t(locale, 'workshop.oddsHeading')}</span>
+            <span className="workshop-odds-den den">{t(locale, 'workshop.oddsHeadingDen')}</span>
+            <span className="workshop-odds-grow" />
+            <span className="t-micro">{t(locale, 'workshop.oddsHpNote')}</span>
+          </div>
+          <div className="workshop-odds-rows">
+            {CASTING_ODDS.map((o) => (
+              <div className="workshop-orow" key={o.cells}>
+                <span className="workshop-orow-lab">
+                  <b>{t(locale, 'workshop.oddsCells', { n: o.cells })}</b>
+                  <span className="t-micro">{t(locale, 'workshop.oddsHp', { hp: o.cells * 15 })}</span>
+                </span>
+                <span className="bar workshop-orow-bar">
+                  <span className="fill gold" style={{ display: 'block', height: '100%', width: o.pct + '%' }} />
+                </span>
+                <span className="workshop-orow-pct tnum">{o.pct}%</span>
+              </div>
+            ))}
+          </div>
+          <div className="rune-divider">{'ᛞ'}</div>
+          <ul className="workshop-rules">
+            <li>{t(locale, 'workshop.ruleCommon')}</li>
+            <li>{t(locale, 'workshop.ruleLinker')}</li>
+            <li>{t(locale, 'workshop.ruleTwoPhase')}</li>
+          </ul>
+        </div>
+      </section>
+
+      {/* ===== transmute / dismantle sub-row (mock-only; honest coming-soon shells) ===== */}
+      <section className="workshop-sub-grid">
+        <div className="panel ornate workshop-subp">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="workshop-subp-title">
+            <span className="workshop-subp-rune rune">{'ᛈ'}</span>
+            {t(locale, 'workshop.transmuteTitle')}
+            <span className="workshop-subp-den den">{t(locale, 'workshop.transmuteDen')}</span>
+            <span className="workshop-subp-grow" />
+            <span className="chip">{t(locale, 'workshop.soonChip')}</span>
+          </div>
+          <div className="workshop-subp-copy dj">{t(locale, 'workshop.transmuteCopy')}</div>
+          <div className="workshop-subp-note t-micro">{t(locale, 'workshop.transmuteSub')}</div>
+          <button type="button" className="btn is-disabled workshop-subp-btn" disabled>
+            <span className="rune">{'ᛈ'}</span> {t(locale, 'workshop.transmuteCta')}
+          </button>
+        </div>
+
+        <div className="panel ornate workshop-subp">
+          <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+          <div className="workshop-subp-title">
+            <span className="workshop-subp-rune rune">{'ᚠ'}</span>
+            {t(locale, 'workshop.dismantleTitle')}
+            <span className="workshop-subp-den den">{t(locale, 'workshop.dismantleDen')}</span>
+            <span className="workshop-subp-grow" />
+            <span className="chip">{t(locale, 'workshop.soonChip')}</span>
+          </div>
+          <div className="workshop-subp-copy dj">{t(locale, 'workshop.dismantleCopy')}</div>
+          <div className="workshop-subp-note t-micro">{t(locale, 'workshop.dismantleSub')}</div>
+          <button type="button" className="btn is-disabled workshop-subp-btn" disabled>
+            <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.dismantleCta')}
+          </button>
+        </div>
+      </section>
+
+      {/* ===== casting result modal ===== */}
+      {rollResult ? (
+        <div
+          className="scrim workshop-result-scrim"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setRollResult(null);
+          }}
+        >
+          <div className="modal panel ornate workshop-result" data-testid="workshop-roll-result">
+            <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+            <div className="workshop-result-head">
+              <span className="workshop-result-head-title dj">{t(locale, 'workshop.rollResultTitle')}</span>
+              <span className="workshop-result-head-den den">{t(locale, 'workshop.rollResultDen')}</span>
+              <span className="workshop-result-head-grow" />
+              <span className="workshop-result-mint t-micro tnum">{t(locale, 'workshop.rollResultMint')} {rollResult.uid}</span>
+            </div>
+            <div className="workshop-result-body">
+              {/* BP diagram -- delegates to BpDiagram/ShapeGrid (render/itemCard
+                  composition), functionally intact; chrome-only re-skin. */}
+              <div className="workshop-result-fig">
+                <BpDiagram
+                  shape={rollResult.shape}
+                  linkerOff={rollResult.linker.off}
+                  dirs={rollResult.linker.dirs}
+                  hpMax={rollResult.hpMax}
+                  cellCount={rollResult.cellCount}
+                  locale={locale}
+                />
+              </div>
+              {/* stats -- all read straight off the rolled BP; invents nothing */}
+              <div className="workshop-result-stats">
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statRarity')}</span>
+                  <span className="rar-word" style={{ color: 'var(--r-common)' }}>COMMON</span>
+                </div>
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statCells')}</span>
+                  <b className="tnum">{rollResult.cellCount}</b>
+                </div>
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statHp')}</span>
+                  <b className="tnum">HP {rollResult.hpMax}</b>
+                  <span className="t-micro">{'= ' + rollResult.cellCount + ' × 15'}</span>
+                </div>
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statLinker')}</span>
+                  <b className="tnum">{linkerCoordLabel(rollResult.linker.off)}</b>
+                  <span className="rune" style={{ color: 'var(--gold-hi)' }}>{'ᛖ'}</span>
+                </div>
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statDirs')}</span>
+                  <b>{dirsLabel(rollResult.linker.dirs)}</b>
+                </div>
+                <div className="rune-divider workshop-result-flavor-divider">{'ᛖ'}</div>
+                <div className="workshop-result-flavor dj">{t(locale, 'workshop.rollResultFlavor')}</div>
+              </div>
+            </div>
+            <div className="workshop-result-act">
+              <button
+                type="button"
+                className="btn btn-forge workshop-result-again"
+                disabled={!canAfford || rolling}
+                onClick={() => void handleRoll()}
+              >
+                <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.rollAgain', { cost: GACHA_COMMON_BP_COST_DISPLAY })}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost workshop-roll-result-dismiss"
+                data-testid="workshop-roll-result-dismiss"
+                onClick={() => setRollResult(null)}
+              >
+                {t(locale, 'workshop.rollResultDismiss')}
+              </button>
+            </div>
+            <div className="workshop-result-note t-micro">{t(locale, 'workshop.rollResultNote')}</div>
+          </div>
         </div>
       ) : null}
-
-      <div className="workshop-gacha-card" data-testid="workshop-gacha-card">
-        <div className="workshop-gacha-title">{t(locale, 'workshop.commonBpGacha')}</div>
-        <div className="workshop-gacha-cost" data-testid="workshop-gacha-cost">
-          {t(locale, 'workshop.cost', { cost: GACHA_COMMON_BP_COST_DISPLAY })}
-        </div>
-        <div className="workshop-gacha-balance" data-testid="workshop-gacha-balance">
-          {t(locale, 'workshop.balance', { balance })}
-        </div>
-        <button
-          type="button"
-          className="workshop-roll-btn"
-          disabled={!canAfford || rolling}
-          onClick={() => void handleRoll()}
-          data-testid="workshop-roll-btn"
-        >
-          {rolling ? t(locale, 'workshop.rolling') : t(locale, 'workshop.rollButton')}
-        </button>
-      </div>
     </div>
   );
 }
