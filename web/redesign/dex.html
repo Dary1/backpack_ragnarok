@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>図鑑 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 45% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:url(assets/bg_dex.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .page-shell{ position:relative; z-index:1; }
+
+  /* ---------- page header ---------- */
+  .pagehead{ display:flex; align-items:center; gap:18px; padding:16px 26px 0; }
+  .pagehead .kicker{ font-size:10.5px; color:var(--gold); letter-spacing:.34em; }
+  .pagehead h1{ margin:2px 0 0; font-size:27px; font-weight:800; letter-spacing:.24em; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+  .pagehead .lede{ margin-top:4px; font-size:12px; color:var(--bone-2); letter-spacing:.08em; }
+  .headline{ margin:10px 26px 0; }
+  .layout{ padding:14px 26px 60px; }
+
+  /* ---------- progress strip ---------- */
+  .dexstrip{ padding:14px 18px 13px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .prog{ min-width:250px; flex:1 1 250px; }
+  .prog .nums{ display:flex; align-items:baseline; gap:9px; }
+  .prog .big{ font-family:var(--f-den); font-size:36px; color:var(--gold-hi); line-height:1;
+    letter-spacing:.04em; text-shadow:0 2px 6px rgba(0,0,0,.85); }
+  .prog .of{ font-family:var(--f-den); font-size:16px; color:var(--bone-3); }
+  .prog .bar{ height:8px; margin-top:8px; }
+  .chiprows{ display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+  .chiprows .row{ gap:6px; flex-wrap:wrap; justify-content:flex-end; }
+  .fchip{ cursor:pointer; user-select:none; }
+  .chip.is-locked{ opacity:.45; cursor:not-allowed; border-style:dashed; }
+
+  /* ---------- section heads ---------- */
+  .colhead{ display:flex; align-items:baseline; gap:12px; padding:0 2px; margin:22px 0 12px; }
+  .colhead h2{ margin:0; font-size:17px; letter-spacing:.22em; font-weight:800; }
+  .colhead .den{ font-size:10px; color:var(--bone-3); letter-spacing:.3em; }
+  .colhead .rn{ color:var(--gold); font-size:15px; }
+
+  /* ---------- catalog grid ---------- */
+  .dgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(172px, 1fr)); gap:12px; }
+  .dcard{ position:relative; padding:10px 11px 11px; border-radius:3px; cursor:pointer;
+    background:linear-gradient(180deg, rgba(27,34,45,.8), rgba(16,20,27,.88));
+    transition:transform .13s ease-out, box-shadow .13s ease-out; }
+  .dcard:hover{ transform:translateY(-2px); box-shadow:0 10px 22px rgba(0,0,0,.5); }
+  .dcard.is-selected{ box-shadow:var(--focus-ring), 0 10px 22px rgba(0,0,0,.5); }
+  .dcard .no{ letter-spacing:.16em; }
+  .dthumb{ position:relative; height:96px; margin:7px 0 8px; display:grid; place-items:center; overflow:hidden;
+    background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .dthumb img{ width:100%; height:100%; object-fit:cover; }
+  .dname{ font-family:var(--f-dj); font-weight:700; font-size:14px; line-height:1.3; }
+  .dsub{ font-size:10.5px; color:var(--bone-3); letter-spacing:.06em; margin-top:1px; }
+  .dfoot{ display:flex; align-items:flex-end; gap:8px; margin-top:7px; min-height:26px; }
+  .dfoot .rar-word{ flex:1; }
+  .shp rect{ fill:rgba(111,196,222,.32); stroke:#6FC4DE; stroke-width:1; }
+  .shp rect.var{ fill:rgba(111,196,222,.08); stroke-dasharray:2.5 2.5; }
+  /* undiscovered */
+  .dcard.undis{ border-style:dashed; opacity:.72; cursor:default; }
+  .dcard.undis:hover{ transform:none; box-shadow:none; }
+  .dcard.undis .dthumb{ background:radial-gradient(circle at 50% 42%, #1A202A, #0C1016 80%); }
+  .dcard.undis .q{ font-family:var(--f-seal); font-size:38px; color:var(--bone-3); opacity:.75; }
+  .dcard.undis .dname{ color:var(--bone-3); font-weight:400; letter-spacing:.14em; }
+
+  /* ---------- detail two-pane ---------- */
+  .detail2{ display:grid; grid-template-columns:minmax(340px, 46%) 1fr; gap:14px; align-items:stretch; }
+  .dpane{ min-width:0; }
+  .phead{ display:flex; align-items:center; gap:10px; padding:12px 18px 10px;
+    border-bottom:1px solid rgba(201,169,89,.14); font-weight:800; letter-spacing:.18em; }
+  .phead .den{ font-size:9.5px; color:var(--bone-3); letter-spacing:.3em; font-weight:400; }
+  .dgm{ padding:6px 10px 0; }
+  .dgm svg{ display:block; width:100%; height:auto; }
+  .dgm text{ font-family:var(--f-ui); }
+  .dgm .lab{ font-size:13px; fill:var(--gold-hi); letter-spacing:.05em; }
+  .dgm .lab.frost{ fill:#B8E9F5; }
+  .dgm .crd{ font-size:10px; fill:var(--bone-3); }
+  .dgm .callout{ fill:none; stroke:rgba(201,169,89,.6); stroke-width:1; }
+  .dgm-note{ padding:6px 18px 14px; letter-spacing:.1em; }
+  .dinfo{ padding:16px 20px 18px; }
+  .dinfo .nm{ font-size:23px; font-weight:800; }
+  .dinfo .en{ font-family:var(--f-den); font-size:10.5px; color:var(--bone-3); letter-spacing:.32em; }
+  .stat{ display:flex; gap:10px; align-items:baseline; font-size:13.5px; padding:3px 0; }
+  .stat .ic{ width:16px; flex:none; text-align:center; color:var(--bone-3); }
+  .flavor{ color:var(--bone-3); font-style:italic; font-size:12.5px; margin-top:10px; line-height:1.8; font-family:var(--f-dj); }
+
+  /* ---------- 市場の刻銘 (REQ-0065 P1-6) — 履歴は刻銘であって相場表ではない: グラフ・傾向矢印は置かない(法ᛗ) ---------- */
+  .mkhead{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .mkhead .ttl{ font-weight:800; letter-spacing:.18em; font-size:15px; }
+  .anchlist{ margin-top:8px; }
+  .arow{ display:flex; align-items:baseline; gap:12px; padding:4px 2px;
+    border-bottom:1px solid rgba(233,227,211,.06); }
+  .arow .ad{ width:58px; flex:none; font-size:11px; color:var(--bone-3); letter-spacing:.06em; }
+  .arow .ap{ font-family:var(--f-den); font-weight:700; font-size:14px; color:var(--bone-2); letter-spacing:.03em; }
+  .arow .ap .rune{ font-family:var(--f-rune); font-weight:400; font-size:12px; color:var(--gold-lo); margin-right:5px; }
+  .arow.latest .ad{ color:var(--bone-2); }
+  .arow.latest .ap{ color:var(--bone); font-size:15.5px; } /* 強調は骨色 — 金に寄せすぎない */
+  .arow.latest .ap .rune{ color:var(--gold); }
+  .mkcap{ margin-top:10px; font-family:var(--f-dj); font-size:12.5px; color:var(--bone-2); letter-spacing:.1em; line-height:1.9; }
+  /* 目録カードの小さな刻銘マーカー */
+  .mkr{ display:inline-block; margin-left:6px; padding:0 6px; font-size:10px; line-height:1.6;
+    color:var(--gold-lo); border:1px solid rgba(133,112,56,.45); border-radius:999px; vertical-align:1px; }
+
+  @media (max-width:840px){
+    .page-shell{ padding-bottom:96px; }
+    .pagehead{ padding:14px 16px 0; }
+    .headline{ margin:10px 16px 0; }
+    .layout{ padding:12px 12px 40px; }
+    .dexstrip{ gap:12px; }
+    .chiprows{ align-items:flex-start; }
+    .chiprows .row{ justify-content:flex-start; }
+    .dgrid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+    .detail2{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav is-here" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="rune" style="color:var(--gold);font-size:17px">ᚲ</span>
+      <span class="dj" style="font-size:15px;font-weight:800;letter-spacing:.22em">図鑑</span>
+      <span class="den" style="font-size:10.5px;color:var(--bone-3);letter-spacing:.32em">CODEX</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip">収集率 57%</div>
+    <div class="chip" title="分解の積み重ねは、全アイテムの効果最低値を引き上げる">通算分解 <b class="tnum" style="color:var(--gold-hi)">312</b></div>
+  </header>
+
+  <!-- ============ page header ============ -->
+  <section class="pagehead">
+    <div>
+      <div class="kicker den">EMBERS OF KNOWLEDGE</div>
+      <h1 class="dj dj-wide">知の炉</h1>
+      <div class="lede">ᚲ の松明が形の記憶を照らす — 拾い上げたものだけが、頁になる。</div>
+    </div>
+    <div class="grow"></div>
+  </section>
+  <div class="rune-divider headline">ᚲ</div>
+
+  <main class="layout">
+    <!-- ============ progress strip ============ -->
+    <section class="panel ornate dexstrip">
+      <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+      <div class="prog">
+        <div class="nums">
+          <span class="big tnum" id="dexn">0</span>
+          <span class="of">/ 120</span>
+          <span class="dj" style="font-size:13px;letter-spacing:.2em">収集</span>
+          <span class="den" style="font-size:9.5px;color:var(--bone-3);letter-spacing:.3em">COLLECTED</span>
+        </div>
+        <div class="bar"><div class="fill gold" style="width:56.7%"></div></div>
+      </div>
+      <div class="chiprows">
+        <div class="row">
+          <span class="chip is-on fchip">すべて</span>
+          <span class="chip fchip">武具</span>
+          <span class="chip fchip">遺宝</span>
+          <span class="chip fchip">連結</span>
+          <span class="chip fchip"><span class="kw-frost">霜</span></span>
+          <span class="chip fchip"><span class="kw-ember">焔</span></span>
+          <span class="chip fchip">未発見</span>
+        </div>
+        <div class="row">
+          <span class="chip is-on">ことば: 日本語 / EN</span>
+          <span class="chip is-locked" title="編集には item_admin 権限が必要です — モックでは無効">編集 — item_admin 限定</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ catalog ============ -->
+    <div class="colhead">
+      <span class="rn rune">ᚲ</span>
+      <h2 class="dj">形の目録</h2>
+      <span class="den">CATALOG</span>
+      <span class="grow"></span>
+      <span class="t-micro">番号順 ・ 形状はポリオミノで記す</span>
+    </div>
+
+    <div class="dgrid">
+      <!-- 001 長剣 -->
+      <article class="dcard rar rar-common" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.001</span>
+        <div class="dthumb"><img src="assets/ic_sword.png" alt="長剣"></div>
+        <div class="dname">長剣</div>
+        <div class="dsub">武具/剣 ・ LONGSWORD</div>
+        <div class="dfoot">
+          <span class="rar-word">COMMON</span>
+          <svg class="shp" width="14" height="26" viewBox="0 0 14 26"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 014 塔盾 -->
+      <article class="dcard rar rar-uncommon" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.014</span><span class="mkr rune" title="市場に刻銘中">ᚠ</span>
+        <div class="dthumb"><img src="assets/ic_shield.png" alt="塔盾"></div>
+        <div class="dname">塔盾</div>
+        <div class="dsub">武具/盾 ・ TOWER SHIELD</div>
+        <div class="dfoot">
+          <span class="rar-word">UNCOMMON</span>
+          <svg class="shp" width="26" height="26" viewBox="0 0 26 26"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 021 香草の小袋 -->
+      <article class="dcard rar rar-common" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.021</span>
+        <div class="dthumb"><img src="assets/ic_pouch.png" alt="香草の小袋"></div>
+        <div class="dname">香草の小袋</div>
+        <div class="dsub">医術 ・ HERB POUCH</div>
+        <div class="dfoot">
+          <span class="rar-word">COMMON</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 022 燈火の油壷 -->
+      <article class="dcard rar rar-common" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.022</span>
+        <div class="dthumb"><img src="assets/ic_flask.png" alt="燈火の油壷"></div>
+        <div class="dname">燈火の油壷</div>
+        <div class="dsub">焔/燈 ・ LAMP OIL</div>
+        <div class="dfoot">
+          <span class="rar-word">COMMON</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 034 未発見 -->
+      <article class="dcard rar rar-common undis">
+        <span class="no t-micro tnum">No.034</span>
+        <div class="dthumb"><span class="q">?</span></div>
+        <div class="dname">― 未発見 ―</div>
+        <div class="dfoot"><span class="t-micro" style="letter-spacing:.14em">記録なし</span></div>
+      </article>
+
+      <!-- 047 未発見 -->
+      <article class="dcard rar rar-common undis">
+        <span class="no t-micro tnum">No.047</span>
+        <div class="dthumb"><span class="q">?</span></div>
+        <div class="dname">― 未発見 ―</div>
+        <div class="dfoot"><span class="t-micro" style="letter-spacing:.14em">記録なし</span></div>
+      </article>
+
+      <!-- 055 霜の釘 -->
+      <article class="dcard rar rar-uncommon" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.055</span>
+        <div class="dthumb"><img src="assets/ic_dagger.png" alt="霜の釘"></div>
+        <div class="dname">霜の釘</div>
+        <div class="dsub">武具/霜 ・ FROST SPIKE</div>
+        <div class="dfoot">
+          <span class="rar-word">UNCOMMON</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 056 霧氷の欠片 -->
+      <article class="dcard rar rar-rare" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.056</span>
+        <div class="dthumb"><img src="assets/ic_shard.png" alt="霧氷の欠片"></div>
+        <div class="dname">霧氷の欠片</div>
+        <div class="dsub">素材/霜 ・ RIME SHARD</div>
+        <div class="dfoot">
+          <span class="rar-word">RARE</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 061 氷河の断斧 (selected) -->
+      <article class="dcard rar rar-rare is-selected" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.061</span><span class="mkr rune" title="市場に刻銘中">ᚠ</span>
+        <div class="dthumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></div>
+        <div class="dname">氷河の断斧</div>
+        <div class="dsub">武具/霜 ・ GLACIER CLEAVER</div>
+        <div class="dfoot">
+          <span class="rar-word">RARE</span>
+          <svg class="shp" width="26" height="26" viewBox="0 0 26 26"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 072 未発見 -->
+      <article class="dcard rar rar-common undis">
+        <span class="no t-micro tnum">No.072</span>
+        <div class="dthumb"><span class="q">?</span></div>
+        <div class="dname">― 未発見 ―</div>
+        <div class="dfoot"><span class="t-micro" style="letter-spacing:.14em">記録なし</span></div>
+      </article>
+
+      <!-- 077 ニヴルの王冠 -->
+      <article class="dcard rar rar-legend" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.077</span>
+        <div class="dthumb"><img src="assets/ic_crown.png" alt="ニヴルの王冠"></div>
+        <div class="dname">ニヴルの王冠</div>
+        <div class="dsub">遺宝/霜 ・ CROWN OF NIFL</div>
+        <div class="dfoot">
+          <span class="rar-word">LEGENDARY</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 088 連結晶 -->
+      <article class="dcard rar rar-epic" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.088</span>
+        <div class="dthumb"><img src="assets/ic_prism.png" alt="連結晶"></div>
+        <div class="dname">連結晶</div>
+        <div class="dsub">連結 ・ LINK PRISM</div>
+        <div class="dfoot">
+          <span class="rar-word">EPIC</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 090 戦角笛 -->
+      <article class="dcard rar rar-epic" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.090</span>
+        <div class="dthumb"><img src="assets/ic_horn.png" alt="戦角笛"></div>
+        <div class="dname">戦角笛</div>
+        <div class="dsub">号令 ・ WAR HORN</div>
+        <div class="dfoot">
+          <span class="rar-word">EPIC</span>
+          <svg class="shp" width="26" height="26" viewBox="0 0 26 26"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 093 LRDST -->
+      <article class="dcard rar rar-common" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.093</span>
+        <div class="dthumb"><img src="assets/ic_lrdst.png" alt="通貨アイテム(変成石)"></div>
+        <div class="dname">通貨アイテム<span class="t-micro">(変成石)</span></div>
+        <div class="dsub">TM ・ 通貨</div>
+        <div class="dfoot">
+          <span class="rar-word">COMMON</span>
+          <svg class="shp" width="14" height="14" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 101 冒険者の背嚢 (BP) -->
+      <article class="dcard rar rar-rare" data-dex>
+        <span class="gem"></span>
+        <span class="no t-micro tnum">No.101</span>
+        <div class="dthumb"><img src="assets/ic_pack.png" alt="冒険者の背嚢"></div>
+        <div class="dname">冒険者の背嚢</div>
+        <div class="dsub">BP ・ 可変 4-6セル ・ PACK</div>
+        <div class="dfoot">
+          <span class="rar-word">RARE</span>
+          <svg class="shp" width="26" height="38" viewBox="0 0 26 38"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/><rect class="var" x="1.5" y="25.5" width="11" height="11"/><rect class="var" x="13.5" y="25.5" width="11" height="11"/></svg>
+        </div>
+      </article>
+
+      <!-- 110 未発見 -->
+      <article class="dcard rar rar-common undis">
+        <span class="no t-micro tnum">No.110</span>
+        <div class="dthumb"><span class="q">?</span></div>
+        <div class="dname">― 未発見 ―</div>
+        <div class="dfoot"><span class="t-micro" style="letter-spacing:.14em">記録なし</span></div>
+      </article>
+    </div>
+
+    <!-- ============ detail two-pane ============ -->
+    <div class="colhead">
+      <span class="rn rune">ᛁ</span>
+      <h2 class="dj">詳解</h2>
+      <span class="den">SCHEMA &amp; LORE</span>
+      <span class="grow"></span>
+      <span class="t-micro tnum">図鑑 No.061 ・ 氷河の断斧</span>
+    </div>
+
+    <section class="detail2">
+      <!-- LEFT: 図解 -->
+      <div class="panel ornate dpane" style="padding:0">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="phead"><span class="dj">図解</span><span class="den">SCHEMA</span><span class="grow"></span><span class="t-micro">セル72px換算</span></div>
+        <div class="dgm">
+          <svg viewBox="0 0 560 300" role="img" aria-label="氷河の断斧 — 2×2構造図">
+            <defs>
+              <filter id="ds" x="-20%" y="-20%" width="140%" height="140%">
+                <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000" flood-opacity=".7"/>
+              </filter>
+            </defs>
+            <ellipse cx="128" cy="150" rx="125" ry="112" fill="rgba(111,196,222,.06)"/>
+            <!-- 2×2 cell grid -->
+            <text class="crd" x="92"  y="68" text-anchor="middle">A</text>
+            <text class="crd" x="164" y="68" text-anchor="middle">B</text>
+            <text class="crd" x="46"  y="116" text-anchor="middle">1</text>
+            <text class="crd" x="46"  y="188" text-anchor="middle">2</text>
+            <rect x="57"  y="77"  width="70" height="70" fill="rgba(111,196,222,.15)" stroke="rgba(111,196,222,.55)"/>
+            <rect x="129" y="77"  width="70" height="70" fill="rgba(111,196,222,.15)" stroke="rgba(111,196,222,.55)"/>
+            <rect x="57"  y="149" width="70" height="70" fill="rgba(111,196,222,.15)" stroke="rgba(111,196,222,.55)"/>
+            <rect x="129" y="149" width="70" height="70" fill="rgba(111,196,222,.15)" stroke="rgba(111,196,222,.55)"/>
+            <!-- item plate -->
+            <image href="assets/ic_cleaver.png" x="68" y="88" width="120" height="120" opacity=".97" filter="url(#ds)"/>
+            <!-- send port on upper edge -->
+            <circle cx="128" cy="77" r="10" fill="rgba(217,185,104,.14)"/>
+            <text x="128" y="82" text-anchor="middle" font-size="15" fill="#D9B968" style="text-shadow:0 0 4px #000">◆</text>
+            <polyline class="callout" points="128,65 128,40 330,40"/>
+            <circle cx="330" cy="40" r="2" fill="var(--gold)"/>
+            <text class="lab" x="340" y="44">送信ポート: 柄(Metal)</text>
+            <!-- socket bottom-right -->
+            <circle cx="197" cy="217" r="7.5" fill="#12161D" stroke="#857038" stroke-width="1.5"/>
+            <circle cx="195" cy="215" r="2.5" fill="#3A4250"/>
+            <polyline class="callout" points="204,222 240,258 330,258"/>
+            <circle cx="330" cy="258" r="2" fill="var(--gold)"/>
+            <text class="lab frost" x="340" y="262">ソケット: 霜石のみ ᛁ</text>
+          </svg>
+        </div>
+        <div class="dgm-note t-micro">回転可 ・ 鏡映不可 — 全セルが霜の座として数えられる。</div>
+      </div>
+
+      <!-- RIGHT: 銘と効果 -->
+      <div class="panel ornate dpane dinfo">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="row" style="gap:12px;align-items:baseline;flex-wrap:wrap">
+          <span class="nm dj">氷河の断斧</span>
+          <span class="en">GLACIER CLEAVER</span>
+        </div>
+        <div class="row mt8" style="gap:8px;flex-wrap:wrap">
+          <span class="rar-word" style="color:var(--r-rare);font-size:12px">RARE</span>
+          <span class="chip">武器/斧</span>
+          <span class="chip"><span class="kw-frost">霜</span> ᛁ</span>
+          <span class="chip">2×2</span>
+        </div>
+        <div class="rune-divider">ᛁ</div>
+        <div class="stat"><span class="ic">⚔</span><span>every <b class="tnum">4.4(4.8)〜3.6s</b>: 前方射線に <b class="kw-frost">斬撃 26(22)〜34(霜)</b></span></div>
+        <div class="stat"><span class="ic">↯</span><span>貫通 <b>1(1)〜2</b> ・ 反射ごとに威力 <b class="kw-ember">+50(+40)〜+70%</b></span></div>
+        <div class="stat"><span class="ic rune">ᛖ</span><span><span class="kw-link">連結先が霜属性</span>のとき: 発動間隔 <b>-0.5(-0.4)〜-0.8s</b></span></div>
+        <div class="flavor">「凍てつく河がひと振りの斧となる。運び手は選ばれぬ — 耐えうる背だけが選ばれる。」</div>
+        <div class="rune-divider">ᛞ</div>
+        <div class="t-micro">出所: ニヴルヘイム深淵 ・ 図鑑 No.061 ・ 初収載 第参季</div>
+        <div class="stat mt8"><span class="ic rune" style="color:var(--gold)">ᚠ</span><span>分解値 <b class="kw-gold tnum">64(48)〜96</b> — 分解は最低値を鍛える</span></div>
+        <div class="t-micro mt8" style="letter-spacing:.06em">数値表記はすべて <b style="color:var(--bone)">現在最低<span style="color:var(--bone-3)">(基礎)</span>〜最大</b>。<b style="color:var(--gold-hi)">通算分解 312</b> が最低値を引き上げている。</div>
+
+        <!-- ============ 市場の刻銘 (REQ-0065 P1-6) — 錨は成立のみ。グラフ・傾向矢印は置かない(法ᛗ) ============ -->
+        <div class="rune-divider">ᚠ</div>
+        <div class="mkhead">
+          <span class="ttl dj">市場の刻銘</span>
+          <span class="den" style="font-size:9.5px;color:var(--bone-3);letter-spacing:.3em">THE MARKET ENGRAVINGS</span>
+          <span class="grow"></span>
+          <span class="chip" title="火床に並ぶこの品の言い値"><span class="rune" style="color:var(--gold)">ᚠ</span> 刻銘中 3件</span>
+        </div>
+        <div class="anchlist">
+          <!-- 直近5件の成立のみ — 言い値は載らない -->
+          <div class="arow latest"><span class="ad">本日</span><span class="ap tnum"><span class="rune">ᚠ</span>44</span><span class="t-micro" style="margin-left:auto;letter-spacing:.14em">錨 — 直近刻銘</span></div>
+          <div class="arow"><span class="ad">前日</span><span class="ap tnum"><span class="rune">ᚠ</span>46</span></div>
+          <div class="arow"><span class="ad">2日前</span><span class="ap tnum"><span class="rune">ᚠ</span>42</span></div>
+          <div class="arow"><span class="ad">4日前</span><span class="ap tnum"><span class="rune">ᚠ</span>48</span></div>
+          <div class="arow"><span class="ad">6日前</span><span class="ap tnum"><span class="rune">ᚠ</span>45</span></div>
+        </div>
+        <div class="mkcap">言い値は意見、成立は事実 — 錨は成立のみが刻む。</div>
+        <div class="en" style="letter-spacing:.14em;margin-top:3px">Asks are opinions; settlements are facts — only settlements set the anchor.</div>
+        <div class="mt16"><a class="btn btn-ghost" href="market.html">ᚠ 市場で見る</a></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* embers of the torch of knowledge */
+  initParticles(document.getElementById("pfx"), { mix:"ember", count:12 });
+
+  /* collection count-up (Cinzel numerals) */
+  countUp(document.getElementById("dexn"), 68, 1200);
+
+  /* catalog selection (visual only) */
+  document.querySelectorAll(".dcard[data-dex]").forEach(c => c.addEventListener("click", () => {
+    document.querySelectorAll(".dcard[data-dex]").forEach(x => x.classList.remove("is-selected"));
+    c.classList.add("is-selected");
+  }));
+
+  /* filter chips (visual mock) */
+  document.querySelectorAll(".fchip").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".fchip").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+  }));
+</script>
+</body>
+</html>

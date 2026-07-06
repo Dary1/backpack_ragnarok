@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>昇天 — 終季決戦 参 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  :root{ --dm-hi:#B07CE8; --dm-lo:#4A2B66; }
+  .kw-void{ color:var(--dm-hi); font-weight:700; }
+  body{ background:var(--void); min-height:100vh; }
+  .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; text-transform:uppercase; }
+
+  /* ---------- opens dark → brightens ---------- */
+  .bgart{ position:fixed; inset:0; z-index:-1;
+    background:url(assets/bg_seasonend.jpg) center/cover no-repeat;
+    filter:saturate(.8) brightness(.3); transition:filter 2.8s ease; }
+  body.lit .bgart{ filter:saturate(.92) brightness(.55); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.72), rgba(10,13,18,.34) 34%, rgba(10,13,18,.5) 64%, rgba(6,8,12,.94) 96%); }
+
+  /* aurora / bifröst band (screen blend) */
+  .aurora{ position:fixed; left:-8%; right:-8%; top:-14%; height:46vh; z-index:1;
+    pointer-events:none; mix-blend-mode:screen; filter:blur(28px);
+    opacity:0; transition:opacity 2.6s ease;
+    background:
+      radial-gradient(56% 88% at 24% 0%, rgba(108,146,164,.52), transparent 72%),
+      radial-gradient(48% 80% at 52% 0%, rgba(140,114,160,.48), transparent 72%),
+      radial-gradient(54% 84% at 78% 0%, rgba(118,156,124,.46), transparent 72%),
+      linear-gradient(180deg, rgba(176,124,232,.16), transparent 82%); }
+  body.lit .aurora{ opacity:.9; }
+
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:5; }
+  .content{ position:relative; z-index:3; }
+
+  .lbx{ position:fixed; left:0; right:0; height:9vh; background:#04060A; z-index:96; pointer-events:none; }
+  .lbx.top{ top:0; border-bottom:1px solid rgba(201,169,89,.22);
+    animation:lbxT 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  .lbx.bot{ bottom:0; border-top:1px solid rgba(201,169,89,.22);
+    animation:lbxB 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  @keyframes lbxT{ to{ transform:translateY(-103%); } }
+  @keyframes lbxB{ to{ transform:translateY(103%); } }
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+
+  .topbar{ position:fixed; top:0; left:0; right:0; z-index:60;
+    display:flex; align-items:center; gap:16px; padding:12px 20px;
+    background:linear-gradient(180deg, rgba(4,6,9,.88) 30%, transparent); }
+  .tb-back{ display:inline-flex; align-items:center; gap:8px; color:var(--bone-2); font-size:13px; letter-spacing:.14em; }
+  .tb-back:hover{ color:var(--gold-hi); }
+  .tb-title{ position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap;
+    font-family:var(--f-dj); font-weight:700; font-size:14px; letter-spacing:.3em; color:var(--bone-2); }
+  .tb-title b{ color:var(--bone); }
+  .steps-nav{ margin-left:auto; display:flex; gap:8px; }
+  .stp{ width:30px; height:30px; display:grid; place-items:center; border:1px solid var(--border-lo);
+    border-radius:2px; color:var(--bone-3); font-family:var(--f-dj); font-size:13.5px;
+    background:rgba(10,13,18,.55); transition:all .14s ease-out; }
+  .stp:hover{ color:var(--gold-hi); border-color:var(--gold-lo); }
+  .stp.is-selected{ color:var(--gold-hi); border-color:var(--gold-lo);
+    box-shadow:var(--focus-ring); background:rgba(201,169,89,.08); }
+
+  .wrap{ max-width:1040px; margin:0 auto; padding:92px 30px 40px; }
+
+  /* ---------- ascending spirits (魂の昇り) ---------- */
+  .spirits{ position:fixed; inset:0; z-index:2; pointer-events:none; overflow:hidden; }
+  .spirit{ position:absolute; top:100vh; width:var(--w,148px); padding:9px 12px 8px; border-radius:3px;
+    background:linear-gradient(170deg, rgba(244,233,200,.10), rgba(19,24,32,.66) 60%);
+    border:1px solid rgba(244,233,200,.34);
+    box-shadow:0 0 16px rgba(244,233,200,.13), inset 0 0 12px rgba(176,124,232,.07);
+    opacity:0; animation:ascend var(--dur,18s) linear var(--del,6s) infinite; }
+  .spirit .valknut{ position:absolute; top:7px; right:8px; opacity:.8; }
+  .spirit .sn{ font-family:var(--f-dj); font-weight:700; font-size:13px; letter-spacing:.08em; padding-right:18px; }
+  .spirit .sm{ margin-top:2px; font-size:9.5px; letter-spacing:.3em; color:var(--r-mythic); opacity:.8; }
+  @keyframes ascend{
+    0%{ transform:translateY(0); opacity:0; }
+    7%{ opacity:.8; }
+    72%{ opacity:.5; }
+    100%{ transform:translateY(-118vh); opacity:0; }
+  }
+
+  /* ---------- requiem sequence ---------- */
+  .req{ min-height:44vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:20px; text-align:center; padding:6vh 12px 10px; }
+  .rline{ font-family:var(--f-dj); font-weight:700; font-size:clamp(19px,2.6vw,27px);
+    letter-spacing:.3em; text-indent:.3em; color:var(--bone);
+    text-shadow:0 2px 14px rgba(0,0,0,.85);
+    opacity:0; transform:translateY(14px);
+    transition:opacity .9s ease, transform .9s ease; }
+  .rline.on{ opacity:1; transform:none; }
+  .rline.dim{ color:var(--bone-2); }
+  .rstamp{ margin-top:4px; opacity:0; transform:scale(1.8) rotate(-4deg);
+    transition:opacity .7s ease, transform .7s cubic-bezier(.2,1.4,.4,1); }
+  .rstamp.on{ opacity:1; transform:scale(1) rotate(-4deg); }
+  .rstamp b{ display:inline-block; font-family:var(--f-seal); font-weight:400;
+    font-size:clamp(42px,7vw,70px); line-height:1.2; color:var(--gold);
+    padding:8px 30px 16px; border:3px solid rgba(201,169,89,.6); border-radius:6px;
+    background:rgba(12,9,4,.32);
+    text-shadow:0 0 26px rgba(201,169,89,.5), 0 0 64px rgba(226,169,76,.25), 0 3px 8px #000;
+    box-shadow:0 0 34px rgba(201,169,89,.2), inset 0 0 24px rgba(201,169,89,.1); }
+  .rstamp .en{ display:block; margin-top:12px; }
+
+  /* ---------- eternal ranking ---------- */
+  .reveal{ opacity:0; transform:translateY(18px); transition:opacity 1s ease, transform 1s ease; }
+  .reveal.on{ opacity:1; transform:none; }
+  .tablet{ margin-top:8px; padding:20px 22px 16px;
+    background-image:linear-gradient(180deg, rgba(23,27,34,.88), rgba(12,15,20,.95)), url(assets/tex_stone.jpg); }
+  .tablet h2{ margin:0; font-family:var(--f-dj); font-size:21px; font-weight:800; letter-spacing:.24em; }
+  .rk{ width:100%; border-collapse:collapse; margin-top:10px; }
+  .rk th{ text-align:left; font-size:11px; font-weight:500; color:var(--bone-3);
+    letter-spacing:.2em; padding:4px 12px 8px; border-bottom:1px solid var(--gold-lo); }
+  .rk td{ padding:10px 12px; border-bottom:1px solid rgba(233,227,211,.06); vertical-align:middle; }
+  .rk .num{ font-family:var(--f-den); font-weight:700; font-size:17px; color:var(--bone-2); }
+  .rk .nm{ font-family:var(--f-dj); font-weight:700; font-size:15px; letter-spacing:.06em;
+    text-shadow:0 1px 0 rgba(0,0,0,.75); }
+  .rk .sc{ text-align:right; font-family:var(--f-den); font-weight:700; font-size:18px; color:var(--bone); }
+  .rk .at{ text-align:right; }
+  tr.top1 td{ background:linear-gradient(90deg, rgba(227,169,76,.15), rgba(227,169,76,.02) 60%, transparent); }
+  tr.top1 td:first-child{ border-left:3px solid #E3C169; }
+  tr.top1 .num{ font-size:26px; color:#EBD9A4; text-shadow:0 0 10px rgba(227,169,76,.45); }
+  tr.top1 .sc{ font-size:21px; color:#EBD9A4; }
+  tr.top2 td{ background:linear-gradient(90deg, rgba(199,205,214,.11), transparent 60%); }
+  tr.top2 td:first-child{ border-left:3px solid #C7CDD6; }
+  tr.top2 .num{ font-size:22px; color:#DDE2E9; }
+  tr.top3 td{ background:linear-gradient(90deg, rgba(176,131,86,.13), transparent 60%); }
+  tr.top3 td:first-child{ border-left:3px solid #B08356; }
+  tr.top3 .num{ font-size:19px; color:#CDA079; }
+  tr.gap td{ text-align:center; color:var(--bone-3); padding:5px; letter-spacing:.5em; border-bottom:none; }
+  tr.me{ box-shadow:var(--focus-ring); }
+  tr.me td{ background:rgba(201,169,89,.09); border-top:1px solid var(--gold-lo); border-bottom:1px solid var(--gold-lo); }
+  tr.me td:first-child{ border-left:3px solid var(--gold); }
+  tr.me .num{ color:var(--gold-hi); font-size:16px; }
+  tr.me .nm, tr.me .sc{ color:var(--gold-hi); }
+  .me-you{ font-family:var(--f-seal); font-size:13px; color:#14100A; background:var(--gold);
+    border-radius:2px; padding:0 5px 1px; margin-right:8px; }
+  .rk-note{ color:var(--gold-hi); letter-spacing:.06em; }
+  tr.rrow{ opacity:0; transform:translateX(-16px); transition:opacity .55s ease, transform .55s ease; }
+  tr.rrow.in{ opacity:1; transform:none; }
+  .stone-note{ margin-top:14px; text-align:center; font-family:var(--f-dj);
+    font-size:12.5px; letter-spacing:.24em; color:var(--bone-3); }
+
+  /* ---------- final CTA ---------- */
+  .ctarow{ text-align:center; padding:36px 0 0; }
+  .ctarow .sub{ margin-top:12px; letter-spacing:.16em; }
+  .foot{ text-align:center; padding:30px 0 0; letter-spacing:.24em; }
+
+  @media (prefers-reduced-motion: reduce){
+    .spirit{ animation:none !important; } /* 静止時は昇魂を出さない */
+  }
+  @media (max-width:840px){
+    .lbx{ height:5vh; }
+    .topbar{ flex-wrap:wrap; gap:8px 12px; padding:10px 14px; }
+    .tb-title{ position:static; transform:none; order:10; width:100%; text-align:center;
+      letter-spacing:.14em; font-size:12.5px; }
+    .wrap{ padding:108px 16px 40px; }
+    .req{ min-height:38vh; }
+    .rline{ letter-spacing:.16em; text-indent:.16em; }
+    .tablet{ padding:16px 12px 12px; }
+    .rk{ min-width:560px; }
+    .spirit{ --w:118px; }
+    .spirit .sn{ font-size:11.5px; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<div class="aurora"></div>
+<canvas id="pfx"></canvas>
+<div class="lbx top"></div>
+<div class="lbx bot"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="vkn" fill="none" stroke="#C9A959" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M18 2.5 L27.6 19 L8.4 19 Z"/>
+    <path d="M12.9 11.5 L22.5 28 L3.3 28 Z"/>
+    <path d="M23.1 11.5 L32.7 28 L13.5 28 Z"/>
+  </g>
+</defs></svg>
+
+<!-- ============ ASCENDING SPIRITS ============ -->
+<div class="spirits" aria-hidden="true">
+  <div class="spirit" style="left:4%;  --dur:19s; --del:5.6s"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">白樺の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:13%; --dur:23s; --del:8.4s; --w:126px"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">鴉羽の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:24%; --dur:16s; --del:6.8s"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">霧角の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:36%; --dur:21s; --del:11s; --w:132px"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">灰爪の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:46%; --dur:18s; --del:7.6s"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">焔手の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:57%; --dur:24s; --del:9.8s; --w:124px"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">蒼牙の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:66%; --dur:17s; --del:6.2s"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">黒帆の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:75%; --dur:22s; --del:12.4s; --w:130px"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">雷角の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:85%; --dur:19.5s; --del:8.9s"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">氷鎖の隊</div><div class="sm">昇天</div></div>
+  <div class="spirit" style="left:92%; --dur:20.5s; --del:10.7s; --w:122px"><svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="sn">星読みの隊</div><div class="sm">昇天</div></div>
+</div>
+
+<header class="topbar">
+  <a class="tb-back" href="ragnarok.html"><span>←</span><span class="rune" style="color:var(--gold)">ᛏ</span> 殿堂へ</a>
+  <div class="tb-title">終季決戦 — <b>第参季『狼の冬』</b></div>
+  <nav class="steps-nav" aria-label="観戦の段">
+    <a class="stp" href="season_end_ragnarok_1.html" title="封印の間">壱</a>
+    <a class="stp" href="season_end_ragnarok_2.html" title="決戦">弐</a>
+    <a class="stp is-selected" href="season_end_ragnarok_3.html" title="昇天">参</a>
+  </nav>
+</header>
+
+<div class="content">
+<main class="wrap">
+
+  <!-- ============ REQUIEM SEQUENCE ============ -->
+  <section class="req" aria-label="終幕">
+    <div class="rline" id="l1">すべての盾は砕けた</div>
+    <div class="rline dim" id="l2">されど、誰も敗れてはいない</div>
+    <div class="rstamp" id="stmp">
+      <b>栄光の戦死</b>
+      <span class="en">ACT III — GLORIOUS DEATH, NOT DEFEAT</span>
+    </div>
+  </section>
+
+  <!-- ============ ETERNAL RANKING ============ -->
+  <section class="panel ornate mat-stone tablet reveal" id="rankPanel">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <div class="row" style="gap:14px; flex-wrap:wrap">
+      <h2>永劫の序列 — 第参季 最終</h2>
+      <span class="en">THE ETERNAL ORDER — FINAL</span>
+      <span class="grow"></span>
+      <span class="chip">刻銘は消えない ・ 全季通算へ合流</span>
+    </div>
+    <div class="tscroll"><table class="rk">
+      <thead><tr>
+        <th style="width:70px">序列</th><th>隊名</th>
+        <th style="width:150px; text-align:right">討撃</th>
+        <th style="width:110px; text-align:right">昇天</th>
+      </tr></thead>
+      <tbody id="rkBody">
+        <tr class="rrow top1"><td><span class="num tnum">1</span></td>
+          <td><span class="nm">白樺の隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="5124810">0</span></td>
+          <td class="at t-micro tnum">03:41:07</td></tr>
+        <tr class="rrow top2"><td><span class="num tnum">2</span></td>
+          <td><span class="nm">霧角の隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="4566283">0</span></td>
+          <td class="at t-micro tnum">03:39:54</td></tr>
+        <tr class="rrow top3"><td><span class="num tnum">3</span></td>
+          <td><span class="nm">鴉羽の隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="4401336">0</span></td>
+          <td class="at t-micro tnum">03:38:12</td></tr>
+        <tr class="rrow"><td><span class="num tnum">4</span></td>
+          <td><span class="nm">雷角の隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="3988050">0</span></td>
+          <td class="at t-micro tnum">02:57:31</td></tr>
+        <tr class="rrow"><td><span class="num tnum">5</span></td>
+          <td><span class="nm">星読みの隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="3704512">0</span></td>
+          <td class="at t-micro tnum">03:44:26</td></tr>
+        <tr class="rrow"><td><span class="num tnum">6</span></td>
+          <td><span class="nm">黒帆の隊</span></td>
+          <td class="sc"><span class="tnum js-sc" data-v="3466208">0</span></td>
+          <td class="at t-micro tnum">02:31:48</td></tr>
+        <tr class="rrow gap"><td colspan="4">⋯</td></tr>
+        <tr class="rrow me"><td><span class="num tnum">214</span></td>
+          <td><span class="me-you">汝</span><span class="nm">焔手の隊</span>
+            <div class="t-micro" style="letter-spacing:.06em">あやきゅち の献身 — S3</div></td>
+          <td class="sc"><span class="tnum js-sc" data-v="812377">0</span>
+            <div class="t-micro rk-note">+序列 810</div></td>
+          <td class="at t-micro tnum">01:58:12</td></tr>
+      </tbody>
+    </table></div>
+    <div class="stone-note">石は忘れない — 名は全季を通じて刻まれた。</div>
+  </section>
+
+  <!-- ============ FINAL CTA ============ -->
+  <div class="ctarow reveal" id="ctaRow">
+    <div class="row" style="justify-content:center; gap:14px; flex-wrap:wrap">
+      <a class="btn btn-forge" href="index.html">新たな季へ — 誓いを立てる</a>
+      <a class="btn btn-ghost" href="ragnarok.html">殿堂へ戻る</a>
+    </div>
+    <div class="sub t-micro">第肆季の狼煙は、次の月相に上がる</div>
+  </div>
+
+  <footer class="foot t-micro">観戦モック — 実データではない</footer>
+</main>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  initParticles(document.getElementById("pfx"), { mix:"both", count:80 });
+
+  /* ---------- timed requiem → brighten → settle ---------- */
+  var T = function(fn, ms){ setTimeout(fn, ms); };
+  T(function(){ document.getElementById("l1").classList.add("on"); }, 1700);
+  T(function(){ document.getElementById("l2").classList.add("on"); }, 2900);
+  T(function(){ document.getElementById("stmp").classList.add("on"); }, 4100);
+  T(function(){ document.body.classList.add("lit"); }, 5300);
+  T(function(){ document.getElementById("rankPanel").classList.add("on"); }, 6100);
+
+  /* ranking rows: 一行ずつ滑り込み + 討撃 countUp */
+  T(function(){
+    var rows = document.querySelectorAll("#rkBody tr.rrow");
+    [].forEach.call(rows, function(tr, i){
+      setTimeout(function(){
+        tr.classList.add("in");
+        var sc = tr.querySelector(".js-sc");
+        if (sc) countUp(sc, parseInt(sc.dataset.v, 10), 900);
+      }, i * 170);
+    });
+  }, 6600);
+
+  T(function(){ document.getElementById("ctaRow").classList.add("on"); }, 8400);
+</script>
+</body>
+</html>

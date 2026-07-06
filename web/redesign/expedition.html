@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>遠征の間 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 40% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:url(assets/bg_expedition.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .wrap{ position:relative; z-index:1; }
+
+  /* ---------- page header strip ---------- */
+  .pagehead{ display:flex; align-items:center; gap:18px; padding:16px 26px 0; }
+  .pagehead .kicker{ font-size:10.5px; color:var(--gold); letter-spacing:.34em; }
+  .pagehead h1{ margin:2px 0 0; font-size:27px; font-weight:800; letter-spacing:.24em; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+  .pagehead .lede{ margin-top:4px; font-size:12px; color:var(--bone-2); letter-spacing:.08em; }
+  .pagehead .raven{ width:72px; flex:none; align-self:flex-end; opacity:.92;
+    filter:drop-shadow(0 8px 14px rgba(0,0,0,.65)); }
+  .arc{ width:240px; flex:none; }
+  .arc text{ fill:var(--bone-2); font-size:9.5px; font-family:var(--f-ui); letter-spacing:.06em; }
+  .arc .mid{ fill:var(--gold-hi); }
+  .arc .rn{ font-family:var(--f-rune); font-size:13px; fill:var(--gold); }
+  .headline{ margin:10px 26px 0; }
+  .headline::before, .headline::after{ background:linear-gradient(90deg, transparent, rgba(201,169,89,.35), transparent); }
+
+  /* ---------- 3-column layout ---------- */
+  .layout{ display:flex; flex-wrap:wrap; gap:16px; align-items:flex-start; padding:14px 26px 60px; }
+  .rooms{ width:300px; flex:none; display:flex; flex-direction:column; gap:12px; }
+  .mid{ flex:1 1 640px; min-width:min(640px, 100%); }
+  .side{ width:300px; flex:none; display:flex; flex-direction:column; gap:12px; }
+  .colhead{ display:flex; align-items:baseline; gap:10px; padding:0 2px; }
+  .colhead .den{ font-size:10.5px; color:var(--bone-3); letter-spacing:.3em; }
+
+  /* ---------- room cards ---------- */
+  .room{ padding:12px 14px 11px; }
+  .room[data-sel]{ cursor:pointer; }
+  .room.is-sel{ box-shadow:var(--focus-ring), 0 8px 24px rgba(0,0,0,.45); border-color:var(--gold-lo); }
+  .room.locked{ opacity:.55; filter:saturate(.45); }
+  .r-head{ display:flex; align-items:center; gap:10px; }
+  .emb{ width:44px; height:44px; flex:none; border-radius:50%; object-fit:cover;
+    border:1px solid var(--gold-lo);
+    background:radial-gradient(circle at 50% 40%, #232B37, #10141B 80%);
+    box-shadow:0 0 0 3px rgba(10,13,18,.85), 0 4px 10px rgba(0,0,0,.5); }
+  .emb.ph{ display:grid; place-items:center; border:1px dashed var(--border-lo);
+    color:var(--bone-3); font-size:20px; }
+  .r-name{ font-weight:800; font-size:15.5px; letter-spacing:.04em; }
+  .r-name .lv{ font-family:var(--f-den); font-size:10.5px; color:var(--gold); margin-left:8px; letter-spacing:.1em; }
+  .r-status{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .slots{ display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:9px; }
+  .slot{ display:flex; align-items:center; padding:4px 8px; border:1px solid var(--border-lo); border-radius:2px;
+    background:rgba(10,13,18,.5); font-size:11.5px; color:var(--bone-2);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .slot b{ font-family:var(--f-dj); color:var(--gold); font-weight:700; margin-right:2px; }
+  .slot.empty{ border-style:dashed; color:var(--bone-3); justify-content:center; background:rgba(10,13,18,.28); }
+  .r-foot{ display:flex; margin-top:9px; padding-top:8px; letter-spacing:.06em;
+    border-top:1px solid rgba(233,227,211,.07); }
+  .cring{ width:38px; height:38px; flex:none; }
+  .r-req{ margin-top:10px; padding:7px 10px; border:1px dashed var(--border-lo); border-radius:2px;
+    text-align:center; letter-spacing:.12em; }
+
+  /* ---------- monitor ---------- */
+  .mon-panel{ padding:0; }
+  .m-head{ display:flex; align-items:center; gap:12px; padding:12px 18px 10px;
+    border-bottom:1px solid rgba(201,169,89,.14); }
+  #mon{ display:block; width:100%; height:400px;
+    background:radial-gradient(120% 130% at 50% 18%, rgba(23,28,37,.6), rgba(10,13,18,.8)); }
+  .ctrl{ display:flex; align-items:center; gap:12px; padding:9px 14px;
+    background:linear-gradient(180deg, #262E3A 0%, #1A202A 55%, #141922 100%);
+    border-top:1px solid rgba(201,169,89,.2); border-bottom:1px solid rgba(0,0,0,.55);
+    box-shadow:inset 0 1px 0 rgba(233,227,211,.06), inset 0 -6px 12px rgba(0,0,0,.35); }
+  .rivet{ width:6px; height:6px; flex:none; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #9AA3AE, #2A313E 72%); box-shadow:0 1px 2px #000; }
+  .pbtn{ width:36px; height:30px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(180deg, #333B49, #1B222D); border:1px solid #39424F; border-radius:2px;
+    color:var(--gold-hi); font-size:13px; line-height:1;
+    box-shadow:inset 0 1px 0 rgba(233,227,211,.08), 0 2px 4px rgba(0,0,0,.5); }
+  .pbtn:hover{ border-color:var(--gold-lo); }
+  .pbtn:active{ transform:translateY(1px); }
+  .spd{ cursor:pointer; user-select:none; padding:2px 10px; }
+  .tl{ position:relative; flex:1; height:7px; background:#0C1016;
+    border:1px solid #2A313E; border-radius:2px; }
+  .tl-fill{ position:absolute; left:0; top:0; bottom:0; width:0;
+    background:linear-gradient(90deg, #6F5B26, var(--gold)); }
+  .tl .pip{ position:absolute; top:50%; width:6px; height:6px; z-index:2;
+    transform:translate(-50%,-50%) rotate(45deg);
+    background:var(--gold-hi); border:1px solid #14100A; }
+  .skip{ padding:4px 12px; font-size:12px; letter-spacing:.12em; color:var(--bone-2); flex:none; }
+
+  /* ---------- event log ---------- */
+  .log{ height:190px; overflow:hidden; padding:9px 18px 4px;
+    -webkit-mask-image:linear-gradient(180deg, #000 58%, transparent 100%);
+    mask-image:linear-gradient(180deg, #000 58%, transparent 100%); }
+  .logline{ font-size:12.5px; line-height:1.55; padding:4.5px 2px; color:var(--bone-2);
+    border-bottom:1px solid rgba(233,227,211,.055); animation:logIn .28s ease-out; }
+  .logline b{ color:var(--bone); }
+  .logline.sys{ color:var(--bone-3); }
+  .log .ts{ color:var(--gold); font-size:11px; letter-spacing:.05em; margin-right:10px; }
+  .logline.nova{ color:var(--ember-hi); text-shadow:0 0 8px rgba(255,138,61,.35); }
+  @keyframes logIn{ from{ opacity:0; transform:translateY(-4px); } }
+  .logbar{ display:flex; align-items:center; gap:6px; padding:6px 18px 13px; }
+  .lfil{ cursor:pointer; user-select:none; }
+
+  /* ---------- right column ---------- */
+  .p-title{ display:flex; align-items:center; gap:8px; font-size:13.5px; font-weight:700; letter-spacing:.12em; }
+  .p-title .den{ font-size:9.5px; color:var(--bone-3); letter-spacing:.3em; }
+  #toastbox{ min-height:60px; margin-top:10px; }
+  .toast .t-ic{ width:34px; height:34px; flex:none; display:grid; place-items:center;
+    color:var(--gold); font-size:21px; }
+  .toast img{ width:34px; height:34px; flex:none; object-fit:contain;
+    filter:drop-shadow(0 3px 5px rgba(0,0,0,.6)); }
+  .t-main{ font-size:13px; line-height:1.45; }
+  .t-sub{ font-size:10.5px; color:var(--bone-3); letter-spacing:.06em; }
+  .rw{ font-size:9.5px; font-weight:700; letter-spacing:.2em; }
+  .toast.legend{ border-color:var(--r-legend);
+    box-shadow:0 0 14px rgba(227,169,76,.28), 0 10px 26px rgba(0,0,0,.55); }
+
+  .chip.warn{ border-color:rgba(176,65,62,.6); color:#E06B5F; background:rgba(37,17,16,.55);
+    font-size:11px; padding:2px 9px; }
+  .icard.sm{ padding:7px 8px; gap:9px; cursor:default; border:1px solid rgba(40,49,62,.7); border-radius:2px; }
+  .icard.sm:hover{ transform:none; box-shadow:none; }
+  .icard.sm .thumb{ width:36px; height:36px; }
+  .icard.sm .thumb img{ width:30px; height:30px; }
+  .icard.sm .nm{ font-size:12.5px; }
+  .icard.sm .sub{ font-size:10.5px; }
+  .btn.sm{ padding:3px 11px; font-size:11px; letter-spacing:.14em; outline-offset:-2px; flex:none; }
+  .whlist{ display:flex; flex-direction:column; gap:6px; margin-top:9px; }
+
+  .slab{ padding:14px 16px 15px; }
+  .tally{ display:grid; grid-template-columns:1fr 1fr; gap:12px 8px; margin-top:12px; text-align:center; }
+  .tally .tv{ display:block; font-family:var(--f-den); font-size:30px; line-height:1.1;
+    color:var(--bone); letter-spacing:.04em; text-shadow:0 2px 4px rgba(0,0,0,.9), 0 -1px 0 rgba(233,227,211,.08); }
+  .tally .tv .pre{ font-size:16px; color:var(--bone-2); }
+  .tally .tl-lbl{ display:block; margin-top:2px; font-size:10.5px; color:var(--bone-2); letter-spacing:.32em; text-indent:.32em; }
+  .slab-cap{ margin-top:12px; text-align:center; font-family:var(--f-dj); font-size:11.5px;
+    color:var(--bone-2); letter-spacing:.2em; opacity:.9; }
+
+  /* ---------- mobile portrait ---------- */
+  @media (max-width:840px){
+    .pagehead{ flex-wrap:wrap; gap:12px; padding:14px 16px 0; }
+    .arc{ display:none; } /* 暁の弧は狭幅では隠す — 本文との重なり回避 */
+    .headline{ margin:10px 16px 0; }
+    .layout{ flex-direction:column; gap:14px; padding:12px 14px 90px; }
+    .rooms, .side{ width:100%; }
+    .mid{ min-width:0; width:100%; }
+    #mon{ height:clamp(240px,58vw,420px); }
+    .ctrl{ flex-wrap:wrap; row-gap:8px; }
+    .ctrl .tl{ flex-basis:100%; }
+    .log{ height:160px; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav is-here" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="wrap page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="rune" style="color:var(--gold);font-size:17px">ᚱ</span>
+      <span class="dj" style="font-size:15px;font-weight:800;letter-spacing:.22em">遠征の間</span>
+      <span class="den" style="font-size:10.5px;color:var(--bone-3);letter-spacing:.32em">EXPEDITION</span>
+      <span class="chip">出撃中 ×2</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip is-live"><span class="dot"></span> ムニンの報せ 2件</div>
+  </header>
+
+  <!-- ============ page header strip ============ -->
+  <section class="pagehead">
+    <div>
+      <div class="kicker den">MUNINN'S NIGHT REPORT</div>
+      <h1 class="dj dj-wide">汝が眠りし間に</h1>
+      <div class="lede">眠っている間も、遠征は進む — ムニンが仔細を持ち帰った。</div>
+    </div>
+    <img class="raven" src="assets/raven.png" alt="ムニン">
+    <div class="grow"></div>
+    <svg class="arc" viewBox="0 0 240 78" aria-label="夜間経過 22:40から06:10">
+      <path d="M24 58 A150 150 0 0 1 216 58" fill="none" stroke="rgba(233,227,211,.14)" stroke-width="2"/>
+      <defs>
+        <linearGradient id="arcg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#3D434C"/><stop offset=".55" stop-color="#857038"/><stop offset="1" stop-color="#EBD9A4"/>
+        </linearGradient>
+      </defs>
+      <path d="M24 58 A150 150 0 0 1 216 58" fill="none" stroke="url(#arcg)" stroke-width="2.4"
+        pathLength="100" stroke-dasharray="97 100" stroke-linecap="round"/>
+      <circle cx="24" cy="58" r="2.2" fill="#6B675C"/>
+      <circle cx="211" cy="54" r="3.6" fill="#EBD9A4"/>
+      <circle cx="211" cy="54" r="7" fill="none" stroke="rgba(235,217,164,.35)" stroke-width="1"/>
+      <text x="120" y="16" text-anchor="middle" class="rn">ᛞ</text>
+      <text x="24" y="73" text-anchor="middle" class="tnum">22:40</text>
+      <text x="120" y="73" text-anchor="middle" class="mid tnum">経過 07:30</text>
+      <text x="216" y="73" text-anchor="middle" class="tnum">06:10</text>
+    </svg>
+  </section>
+  <div class="rune-divider headline">ᚱ</div>
+
+  <main class="layout">
+    <!-- ============ LEFT: rooms ============ -->
+    <aside class="rooms">
+      <div class="colhead"><span class="den">ROOMS</span><span class="t-micro">遠征房 2/3 稼働</span></div>
+
+      <article class="panel ornate room is-sel" data-sel>
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="r-head">
+          <img class="emb" src="assets/emblem_frost.png" alt="">
+          <div class="grow">
+            <div class="r-name dj">ニヴルヘイム深淵<span class="lv">Lv.3</span></div>
+            <div class="t-micro">第3層 ・ <span style="color:var(--frost)">霜 <span class="rune" style="font-size:11px">ᛁ</span></span></div>
+          </div>
+        </div>
+        <div class="r-status">
+          <span class="chip is-live"><span class="dot"></span>交戦中 03:12</span>
+          <span class="grow"></span>
+          <span class="t-micro" style="color:var(--gold-hi);letter-spacing:.14em">◆ 監視中</span>
+        </div>
+        <div class="slots">
+          <span class="slot empty">壱:─空き─</span>
+          <span class="slot"><b>弐</b>:焔手の隊</span>
+          <span class="slot empty">参:─空き─</span>
+          <span class="slot empty">肆:─空き─</span>
+        </div>
+        <div class="r-foot t-micro">周回 2/3 ・ 報酬倍率 ×1.2</div>
+      </article>
+
+      <article class="panel ornate room" data-sel>
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="r-head">
+          <img class="emb" src="assets/emblem_ember.png" alt="">
+          <div class="grow">
+            <div class="r-name dj">燻る燐洞<span class="lv">Lv.1</span></div>
+            <div class="t-micro">第1層 ・ <span style="color:var(--ember-hi)">燐火</span></div>
+          </div>
+          <svg class="cring" viewBox="0 0 40 40">
+            <title>ヨルムンガンドの環 — 次戦まで 68%</title>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+              pathLength="100" stroke-dasharray="68 32" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+            <circle cx="6.4" cy="26.4" r="2.6" fill="var(--gold-hi)"/>
+            <text x="20" y="23.5" text-anchor="middle" style="font-size:9px;fill:var(--bone-2);font-family:var(--f-ui)">68%</text>
+          </svg>
+        </div>
+        <div class="r-status">
+          <span class="chip"><span class="dot" style="background:var(--frost)"></span>帰還 00:41</span>
+          <span class="grow"></span>
+          <span class="t-micro">蛇環 68% — 再挑戦準備</span>
+        </div>
+        <div class="slots">
+          <span class="slot"><b>壱</b>:空唄の隊</span>
+          <span class="slot empty">弐:─空き─</span>
+          <span class="slot empty">参:─空き─</span>
+          <span class="slot empty">肆:─空き─</span>
+        </div>
+        <div class="r-foot t-micro">周回 1/1 ・ 報酬倍率 ×1.0</div>
+      </article>
+
+      <article class="panel room locked">
+        <div class="r-head">
+          <span class="emb ph seal">?</span>
+          <div class="grow">
+            <div class="r-name dj">未踏の遺構<span class="lv">Lv.???</span></div>
+            <div class="t-micro">??? ・ 封じられた房</div>
+          </div>
+        </div>
+        <div class="r-req t-micro">隊商 Lv.15 で開放 — 現在 Lv.12</div>
+      </article>
+
+      <button class="btn" style="width:100%;letter-spacing:.16em">新しき遠征を組む +</button>
+    </aside>
+
+    <!-- ============ CENTER: monitor ============ -->
+    <section class="mid">
+      <div class="panel ornate mon-panel">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="m-head">
+          <span class="dj" style="font-size:16px;font-weight:800;letter-spacing:.14em">戦況監視</span>
+          <span style="color:var(--bone-3)">—</span>
+          <span style="font-size:13.5px;letter-spacing:.08em">ニヴルヘイム深淵・第3層</span>
+          <span class="chip is-live" style="font-family:var(--f-den);letter-spacing:.22em"><span class="dot"></span>LIVE</span>
+          <span class="grow"></span>
+          <span class="t-micro tnum" style="opacity:.75">seed 0x5A3F91C2</span>
+        </div>
+
+        <canvas id="mon"></canvas>
+
+        <div class="ctrl">
+          <span class="rivet"></span>
+          <button class="pbtn" id="pb" title="一時停止 / 再生">⏸</button>
+          <span class="chip spd is-on" data-s="1">1×</span>
+          <span class="chip spd" data-s="2">2×</span>
+          <span class="chip spd" data-s="4">4×</span>
+          <div class="tl">
+            <div class="tl-fill" id="tlf"></div>
+            <i class="pip" style="left:18%"></i>
+            <i class="pip" style="left:34%"></i>
+            <i class="pip" style="left:75%"></i>
+            <i class="pip" style="left:84%"></i>
+          </div>
+          <button class="btn btn-ghost skip" title="モック — 実装時は結末へシーク">結末まで飛ぶ ≫</button>
+          <span class="rivet"></span>
+        </div>
+
+        <div id="log" class="log"></div>
+        <div class="logbar">
+          <span class="chip is-on lfil">すべて</span>
+          <span class="chip lfil">損害</span>
+          <span class="chip lfil">戦利品</span>
+          <span class="grow"></span>
+          <span class="t-micro">ムニンの記録 ・ 直近9件</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RIGHT: spoils / warehouse / tally ============ -->
+    <aside class="side">
+      <div class="panel ornate panel-pad">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="p-title">
+          <span class="rune" style="color:var(--gold);font-size:15px">ᚷ</span>戦利品
+          <span class="den">SPOILS</span>
+          <span class="grow"></span>
+          <span class="t-micro">待機 4件</span>
+        </div>
+        <div id="toastbox"></div>
+        <div class="t-micro mt8" style="letter-spacing:.06em">ムニンが順に運び入れる — 受領は倉庫から</div>
+      </div>
+
+      <div class="panel ornate panel-pad">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="p-title">倉庫
+          <span class="tnum" style="color:var(--gold-hi)">187<span style="color:var(--bone-3);font-weight:400">/200</span></span>
+          <span class="grow"></span>
+          <span class="chip warn">⚠ 3品が期限まぎわ</span>
+        </div>
+        <div class="bar" style="height:6px;margin-top:9px"><div class="fill" style="width:93.5%"></div></div>
+        <div class="whlist">
+          <div class="icard sm">
+            <span class="thumb"><img src="assets/ic_shard.png" alt=""></span>
+            <div class="grow"><div class="nm">霧氷の欠片 <span class="t-micro">×3</span></div><div class="sub">期限まで 6日</div></div>
+            <button class="btn sm">回収</button>
+          </div>
+          <div class="icard sm">
+            <span class="thumb"><img src="assets/ic_shield.png" alt=""></span>
+            <div class="grow"><div class="nm">塔盾</div><div class="sub" style="color:#E06B5F">期限まで 2日 — 朽ちかけ</div></div>
+            <button class="btn sm">回収</button>
+          </div>
+          <div class="icard sm">
+            <span class="thumb"><img src="assets/ic_lrdst.png" alt=""></span>
+            <div class="grow"><div class="nm">通貨アイテム <span class="t-micro">×12</span></div><div class="sub">変成通貨(TM)</div></div>
+            <button class="btn sm">回収</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;gap:10px">
+          <button class="btn btn-ghost" style="flex:1;letter-spacing:.2em;padding:6px 12px">一括回収</button>
+        </div>
+        <div class="t-micro mt8" style="text-align:center;letter-spacing:.1em">収蔵は7日で朽ちる</div>
+      </div>
+
+      <div class="panel ornate mat-stone slab" style="background-image:url(assets/tex_stone.jpg)">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="p-title">戦果<span class="den">NIGHT TALLY</span></div>
+        <div class="tally">
+          <div><span class="tv tnum" id="v1">0</span><span class="tl-lbl">踏破</span></div>
+          <div><span class="tv tnum" id="v2">0</span><span class="tl-lbl">討伐</span></div>
+          <div><span class="tv tnum" id="v3">0</span><span class="tl-lbl">被弾</span></div>
+          <div><span class="tv tnum"><span class="pre">+</span><span id="v4">0</span><span class="pre">%</span></span><span class="tl-lbl">献身</span></div>
+        </div>
+        <div class="slab-cap">石に刻まれる — 帰還 06:10</div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* snow field behind the UI */
+  initParticles(document.getElementById("pfx"), { mix:"snow", count:40 });
+
+  /* ---- formation-ray battle playback ---- */
+  const mon = RayMonitor(document.getElementById("mon"), document.getElementById("log"));
+
+  const pb = document.getElementById("pb");
+  pb.addEventListener("click", () => {
+    const playing = mon.toggle();
+    pb.textContent = playing ? "⏸" : "▶";
+  });
+
+  document.querySelectorAll(".spd").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".spd").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+    mon.setSpeed(parseInt(ch.dataset.s, 10));
+  }));
+
+  const tlf = document.getElementById("tlf");
+  setInterval(() => { tlf.style.width = Math.min(100, mon.t / mon.DUR * 100) + "%"; }, 200);
+
+  /* log filters (mock) */
+  document.querySelectorAll(".lfil").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".lfil").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+  }));
+
+  /* room selection (mock) */
+  document.querySelectorAll(".room[data-sel]").forEach(r => r.addEventListener("click", () => {
+    document.querySelectorAll(".room[data-sel]").forEach(x => x.classList.remove("is-sel"));
+    r.classList.add("is-sel");
+  }));
+
+  /* ---- spoils toast queue: one visible, cycles every 4s ---- */
+  const spoils = [
+    `<div class="toast"><span class="t-ic rune">ᚠ</span><div class="t-main"><b class="kw-gold">通貨アイテム ×2</b> 獲得<div class="t-sub">変成通貨 ・ 袋へ収蔵</div></div></div>`,
+    `<div class="toast"><img src="assets/ic_shard.png" alt="霧氷の欠片"><div class="t-main"><b style="color:var(--frost-hi)">霧氷の欠片</b> ×1<div class="t-sub"><span class="rw" style="color:var(--r-rare)">RARE</span> ・ 倉庫へ収蔵</div></div></div>`,
+    `<div class="toast"><img src="assets/ic_pouch.png" alt="香草の小袋"><div class="t-main">香草の小袋 ×1<div class="t-sub"><span class="rw" style="color:var(--r-common)">COMMON</span> ・ 医術</div></div></div>`,
+    `<div class="toast legend"><span class="t-ic"><svg width="34" height="34" viewBox="0 0 34 34" fill="none" stroke="#E3A94C" stroke-width="1.5"><rect x="6.5" y="4.5" width="21" height="25" rx="1"/><path d="M11 10h12M11 15h12M11 20h6"/><circle cx="22" cy="22" r="3.6"/></svg></span><div class="t-main"><b style="color:var(--r-legend)">鞄の設計図</b><div class="t-sub"><span class="rw" style="color:var(--r-legend)">LEGENDARY</span> ・ 工房で鋳造可能</div></div></div>`
+  ];
+  const tb = document.getElementById("toastbox");
+  let ti = 0;
+  function cycleToast(){ tb.innerHTML = spoils[ti++ % spoils.length]; }
+  cycleToast();
+  setInterval(cycleToast, 4000);
+
+  /* ---- stone tally count-up ---- */
+  countUp(document.getElementById("v1"), 3, 900);
+  countUp(document.getElementById("v2"), 14, 1100);
+  countUp(document.getElementById("v3"), 178, 1400);
+  countUp(document.getElementById("v4"), 2, 800);
+</script>
+</body>
+</html>

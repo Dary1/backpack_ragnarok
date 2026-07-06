@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>倉庫 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 50% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:url(assets/bg_warehouse.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .page-shell{ position:relative; z-index:1; }
+
+  /* ---------- page header strip ---------- */
+  .pagehead{ display:flex; align-items:center; gap:18px; padding:16px 26px 0; }
+  .pagehead .kicker{ font-size:10.5px; color:var(--gold); letter-spacing:.34em; }
+  .pagehead h1{ margin:2px 0 0; font-size:27px; font-weight:800; letter-spacing:.24em; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+  .pagehead .lede{ margin-top:4px; font-size:12px; color:var(--bone-2); letter-spacing:.08em; }
+  .pagehead .raven{ width:72px; flex:none; align-self:flex-end; opacity:.92;
+    filter:drop-shadow(0 8px 14px rgba(0,0,0,.65)); }
+  .headline{ margin:10px 26px 0; }
+
+  .layout{ padding:14px 26px 60px; }
+
+  /* ---------- top strip: capacity / filters / bulk claim ---------- */
+  .topstrip{ padding:14px 18px 12px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .cap{ min-width:250px; flex:1 1 250px; }
+  .cap .caphead{ display:flex; align-items:baseline; gap:10px; }
+  .cap .caphead .den{ font-size:10px; color:var(--bone-3); letter-spacing:.3em; }
+  .cap .num{ font-family:var(--f-den); font-size:26px; color:var(--gold-hi); letter-spacing:.04em;
+    text-shadow:0 2px 6px rgba(0,0,0,.8); }
+  .cap .num .of{ font-size:14px; color:var(--bone-3); }
+  .cap .bar{ height:8px; margin-top:6px; }
+  .chip.warn{ border-color:rgba(176,65,62,.6); color:#E06B5F; background:rgba(37,17,16,.55); }
+  .filters{ display:flex; gap:6px; flex-wrap:wrap; }
+  .filters .chip{ cursor:pointer; user-select:none; }
+  .strip-note{ flex-basis:100%; margin-top:2px; letter-spacing:.1em; }
+
+  /* ---------- section heads ---------- */
+  .colhead{ display:flex; align-items:baseline; gap:12px; padding:0 2px; margin:22px 0 12px; }
+  .colhead h2{ margin:0; font-size:17px; letter-spacing:.22em; font-weight:800; }
+  .colhead .den{ font-size:10px; color:var(--bone-3); letter-spacing:.3em; }
+  .colhead .rn{ color:var(--gold); font-size:15px; }
+  .colhead.danger h2{ color:#E8A9A0; }
+  .colhead.danger .rn{ color:#E06B5F; }
+
+  /* ---------- warehouse cards ---------- */
+  .wgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(310px, 1fr)); gap:12px; }
+  .wgrid.two{ grid-template-columns:repeat(2, minmax(0,1fr)); max-width:980px; }
+  .wcard{ position:relative; display:flex; gap:13px; padding:13px 14px; align-items:center; border-radius:3px;
+    background:linear-gradient(180deg, rgba(27,34,45,.84), rgba(16,20,27,.9));
+    transition:transform .13s ease-out, box-shadow .13s ease-out; }
+  .wcard:hover{ transform:translateY(-2px); box-shadow:0 12px 24px rgba(0,0,0,.55); }
+  .wcard .thumb{ position:relative; width:64px; height:64px; flex:none; overflow:hidden;
+    background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .wcard .thumb img{ width:100%; height:100%; object-fit:cover; }
+  .wcard .qcnt{ position:absolute; right:3px; bottom:1px; font-size:11px; color:var(--gold-hi);
+    font-weight:700; text-shadow:0 1px 2px #000; }
+  .wcard .nm{ font-weight:800; font-size:15px; line-height:1.3; }
+  .wcard .sub{ font-size:11px; color:var(--bone-3); letter-spacing:.05em; margin-top:2px; }
+  .wcard .src{ margin-top:7px; }
+  .wcard .src .chip{ font-size:10.5px; padding:1px 9px; color:var(--bone-3); }
+  .wside{ display:flex; flex-direction:column; align-items:center; gap:7px; flex:none; }
+  .cring{ width:38px; height:38px; flex:none; }
+  .cring text{ font-size:9px; fill:var(--bone-2); font-family:var(--f-ui); }
+  .btn.sm{ padding:4px 14px; font-size:12px; letter-spacing:.14em; outline-offset:-2px; }
+  .ttl-red{ color:#E06B5F; font-weight:700; }
+  .is-danger{ box-shadow:inset 0 0 20px rgba(176,65,62,.15); }
+  .is-danger:hover{ box-shadow:inset 0 0 20px rgba(176,65,62,.18), 0 12px 24px rgba(0,0,0,.55); }
+  .is-danger .thumb{ border-color:rgba(176,65,62,.45); }
+
+  /* NEW badge */
+  .badge-new{ position:absolute; top:-8px; left:12px; z-index:2; padding:1px 9px; border-radius:2px;
+    font-family:var(--f-den); font-size:9px; letter-spacing:.24em; color:#14100A;
+    background:linear-gradient(180deg, #EBD9A4, #C9A959);
+    box-shadow:0 2px 6px rgba(0,0,0,.55), 0 0 10px rgba(201,169,89,.4); }
+
+  /* two-phase claim: 配置中… */
+  .placing{ border-color:rgba(87,199,123,.55) !important; color:#8FDCA9 !important;
+    background:linear-gradient(180deg, rgba(87,199,123,.12), rgba(19,24,32,.85));
+    outline-color:rgba(87,199,123,.25) !important;
+    animation:placePulse 1.6s ease-in-out infinite; cursor:wait; filter:none !important;
+    letter-spacing:.06em; white-space:nowrap; }
+  @keyframes placePulse{ 50%{ box-shadow:0 0 14px rgba(87,199,123,.35); opacity:.72; } }
+
+  /* stone shelf panel */
+  .shelf{ padding:16px 18px 18px; background-image:url(assets/tex_stone.jpg); }
+  .shelf .colhead{ margin:0 0 12px; }
+
+  /* footer lore */
+  .wfoot{ margin:34px auto 0; text-align:center; max-width:640px; }
+  .wfoot .lore{ font-family:var(--f-dj); font-size:15px; letter-spacing:.18em; color:var(--bone-2); }
+  .wfoot .t-micro{ margin-top:8px; letter-spacing:.08em; }
+
+  @media (max-width:840px){
+    .page-shell{ padding-bottom:96px; }
+    .pagehead{ padding:14px 16px 0; flex-wrap:wrap; gap:12px; }
+    .pagehead .raven{ width:56px; }
+    .headline{ margin:10px 16px 0; }
+    .layout{ padding:12px 12px 40px; }
+    .topstrip{ gap:10px; }
+    .wgrid, .wgrid.two{ grid-template-columns:1fr; }
+  }
+  @media (min-width:520px) and (max-width:840px){
+    .wgrid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav is-here" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="rune" style="color:var(--gold);font-size:17px">ᚷ</span>
+      <span class="dj" style="font-size:15px;font-weight:800;letter-spacing:.22em">倉庫</span>
+      <span class="den" style="font-size:10.5px;color:var(--bone-3);letter-spacing:.32em">WAREHOUSE</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip is-live"><span class="dot"></span> ムニン搬入 4件</div>
+  </header>
+
+  <!-- ============ page header ============ -->
+  <section class="pagehead">
+    <div>
+      <div class="kicker den">MUNINN'S HOARD</div>
+      <h1 class="dj dj-wide">宝物庫</h1>
+      <div class="lede">遠征の果実は七日を生きる — ムニンが夜ごと、石の棚へ運び入れる。</div>
+    </div>
+    <div class="grow"></div>
+    <img class="raven" src="assets/raven.png" alt="ムニン">
+  </section>
+  <div class="rune-divider headline">ᚷ</div>
+
+  <main class="layout">
+    <!-- ============ top strip ============ -->
+    <section class="panel ornate topstrip">
+      <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+      <div class="cap">
+        <div class="caphead">
+          <span class="num tnum"><span id="capn">0</span><span class="of">/200</span></span>
+          <span class="dj" style="font-size:13px;letter-spacing:.2em">収蔵</span>
+          <span class="den">CAPACITY</span>
+        </div>
+        <div class="bar"><div class="fill gold" style="width:93.5%"></div></div>
+      </div>
+      <span class="chip warn">⚠ 3品が期限まぢか</span>
+      <div class="filters">
+        <span class="chip is-on">すべて</span>
+        <span class="chip">武具</span>
+        <span class="chip"><span class="kw-frost">霜</span></span>
+        <span class="chip"><span class="kw-ember">焔</span></span>
+        <span class="chip">通貨</span>
+      </div>
+      <div class="grow"></div>
+      <button class="btn btn-forge" style="padding:11px 26px;font-size:14.5px">ᚷ 一括回収</button>
+      <div class="strip-note t-micro">収蔵は7日で朽ちる — 石棚は待ってくれない。</div>
+    </section>
+
+    <!-- ============ decaying soon ============ -->
+    <div class="colhead danger">
+      <span class="rn">⚠</span>
+      <h2 class="dj">まもなく朽ちる</h2>
+      <span class="den">DECAYING SOON</span>
+      <span class="t-micro">ヨルムンガンドの環が閉じるまでに回収せよ</span>
+    </div>
+
+    <div class="wgrid two">
+      <article class="wcard rar rar-uncommon is-danger">
+        <span class="gem"></span>
+        <span class="thumb"><img src="assets/ic_shield.png" alt="塔盾"></span>
+        <div class="grow">
+          <div class="nm dj">塔盾</div>
+          <div class="sub"><span class="rar-word">UNCOMMON</span> ・ ×1 ・ <span class="ttl-red">期限 2日</span></div>
+          <div class="src"><span class="chip">出所: ニヴルヘイム深淵</span></div>
+        </div>
+        <div class="wside">
+          <svg class="cring" viewBox="0 0 40 40">
+            <title>ヨルムンガンドの環 — 残り 28%</title>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="#D14B44" stroke-width="3"
+              pathLength="100" stroke-dasharray="28 72" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+            <circle cx="34.7" cy="22.8" r="2.6" fill="#E06B5F"/>
+            <text x="20" y="23.5" text-anchor="middle">28%</text>
+          </svg>
+          <button class="btn sm" data-claim>回収</button>
+        </div>
+      </article>
+
+      <article class="wcard rar rar-common is-danger">
+        <span class="gem"></span>
+        <span class="thumb"><img src="assets/ic_flask.png" alt="燈火の油壷"></span>
+        <div class="grow">
+          <div class="nm dj">燈火の油壷</div>
+          <div class="sub"><span class="rar-word">COMMON</span> ・ ×1 ・ <span class="ttl-red">期限 1日 — 朽ちかけ</span></div>
+          <div class="src"><span class="chip">出所: 燻る燐洞</span></div>
+        </div>
+        <div class="wside">
+          <svg class="cring" viewBox="0 0 40 40">
+            <title>ヨルムンガンドの環 — 残り 12%</title>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+            <circle cx="20" cy="20" r="15" fill="none" stroke="#D14B44" stroke-width="3"
+              pathLength="100" stroke-dasharray="12 88" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+            <circle cx="30.3" cy="9.1" r="2.6" fill="#E06B5F"/>
+            <text x="20" y="23.5" text-anchor="middle">12%</text>
+          </svg>
+          <button class="btn sm" data-claim>回収</button>
+        </div>
+      </article>
+    </div>
+
+    <!-- ============ shelves ============ -->
+    <section class="panel ornate mat-stone shelf mt24">
+      <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+      <div class="colhead">
+        <span class="rn rune">ᚷ</span>
+        <h2 class="dj">収蔵の棚</h2>
+        <span class="den">STORED SPOILS</span>
+        <span class="grow"></span>
+        <span class="t-micro">8種 187点 ・ 新着 1</span>
+      </div>
+
+      <div class="wgrid">
+        <article class="wcard rar rar-rare">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_shard.png" alt="霧氷の欠片"><span class="qcnt">×3</span></span>
+          <div class="grow">
+            <div class="nm dj">霧氷の欠片</div>
+            <div class="sub"><span class="rar-word">RARE</span> ・ ×3 ・ 期限 5日</div>
+            <div class="src"><span class="chip">出所: ニヴルヘイム深淵</span></div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 71%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="71 29" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="5.5" cy="23.7" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">71%</text>
+            </svg>
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+
+        <article class="wcard rar rar-rare">
+          <span class="badge-new">NEW</span>
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></span>
+          <div class="grow">
+            <div class="nm dj">氷河の断斧</div>
+            <div class="sub"><span class="rar-word">RARE</span> ・ ×1 ・ 期限 7日 — 今夜搬入</div>
+            <div class="src"><span class="chip">出所: ニヴルヘイム深淵</span></div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 100%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="100 0" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="20" cy="5" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">100%</text>
+            </svg>
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+
+        <!-- REQ-0065 P1-5: 市場からの搬入 — 出所(provenance)を金の刻みで示す -->
+        <article class="wcard rar rar-epic">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_prism.png" alt="連結晶"></span>
+          <div class="grow">
+            <div class="nm dj">連結晶</div>
+            <div class="sub"><span class="rar-word">EPIC</span> ・ ×1 ・ 期限 7日</div>
+            <div class="src"><span class="chip" style="color:var(--gold-hi); border-color:var(--gold-lo); box-shadow:inset 0 0 8px rgba(201,169,89,.12)">出所: 市場 — 灰狼のヴィズより</span></div>
+            <div class="t-micro" style="margin-top:4px; letter-spacing:.06em">ムニンが火床から運び入れた</div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 100%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="100 0" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="20" cy="5" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">100%</text>
+            </svg>
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+
+        <article class="wcard rar rar-common">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_lrdst.png" alt="通貨アイテム"><span class="qcnt">×12</span></span>
+          <div class="grow">
+            <div class="nm dj">通貨アイテム<span class="t-micro">(変成石)</span></div>
+            <div class="sub"><span class="rar-word">COMMON</span> ・ ×12 ・ 通貨 — 朽ちない</div>
+            <div class="src"><span class="chip">出所: 遠征報酬 まとめ</span></div>
+          </div>
+          <div class="wside">
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+
+        <article class="wcard rar rar-common">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_pouch.png" alt="香草の小袋"><span class="qcnt">×2</span></span>
+          <div class="grow">
+            <div class="nm dj">香草の小袋</div>
+            <div class="sub"><span class="rar-word">COMMON</span> ・ ×2 ・ 期限 4日</div>
+            <div class="src"><span class="chip">出所: 燻る燐洞</span></div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 57%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="57 43" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="13.6" cy="33.6" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">57%</text>
+            </svg>
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+
+        <article class="wcard rar rar-uncommon">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_dagger.png" alt="霜の釘"></span>
+          <div class="grow">
+            <div class="nm dj">霜の釘</div>
+            <div class="sub"><span class="rar-word">UNCOMMON</span> ・ ×1 ・ 期限 3日</div>
+            <div class="src"><span class="chip">出所: ニヴルヘイム深淵</span></div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 43%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="43 57" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="26.4" cy="33.6" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">43%</text>
+            </svg>
+            <button class="btn sm placing" disabled>配置中… 編成の間で確定</button>
+          </div>
+        </article>
+
+        <article class="wcard rar rar-epic">
+          <span class="gem"></span>
+          <span class="thumb"><img src="assets/ic_horn.png" alt="戦角笛"></span>
+          <div class="grow">
+            <div class="nm dj">戦角笛</div>
+            <div class="sub"><span class="rar-word">EPIC</span> ・ ×1 ・ 期限 6日</div>
+            <div class="src"><span class="chip">出所: 燻る燐洞 ・ ボス</span></div>
+          </div>
+          <div class="wside">
+            <svg class="cring" viewBox="0 0 40 40">
+              <title>残り 86%</title>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" stroke-width="3"/>
+              <circle cx="20" cy="20" r="15" fill="none" stroke="var(--gold-lo)" stroke-width="3"
+                pathLength="100" stroke-dasharray="86 14" stroke-linecap="round" transform="rotate(-90 20 20)"/>
+              <circle cx="8.4" cy="10.4" r="2.6" fill="var(--gold-hi)"/>
+              <text x="20" y="23.5" text-anchor="middle">86%</text>
+            </svg>
+            <button class="btn sm" data-claim>回収</button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ============ footer lore ============ -->
+    <footer class="wfoot">
+      <div class="rune-divider" style="max-width:320px;margin:0 auto 14px">ᛞ</div>
+      <div class="lore">「棚の奥は静かだ — 次の遠征を待つ。」</div>
+      <div class="t-micro">回収した品は在庫頁の空きへ順に自動配置される(first-fit)・ 置けない品は棚に留まり、期限は進む。</div>
+    </footer>
+  </main>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* slow snowfall drifting through the vault */
+  initParticles(document.getElementById("pfx"), { mix:"snow", count:24 });
+
+  /* capacity count-up */
+  countUp(document.getElementById("capn"), 187, 1100);
+
+  /* filter chips (visual mock) */
+  document.querySelectorAll(".filters .chip").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".filters .chip").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+  }));
+
+  /* two-phase claim: 回収 → 配置中… (確定は編成の間の自動保存) */
+  document.querySelectorAll("[data-claim]").forEach(b => b.addEventListener("click", () => {
+    b.textContent = "配置中… 編成の間で確定";
+    b.disabled = true;
+    b.classList.add("placing");
+  }));
+</script>
+</body>
+</html>

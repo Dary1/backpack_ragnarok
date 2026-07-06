@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>工房 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 55% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:url(assets/bg_workshop.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .page-shell{ position:relative; z-index:1; }
+
+  /* ---------- hero strip ---------- */
+  .pagehead{ display:flex; align-items:center; gap:18px; padding:16px 26px 0; }
+  .pagehead .kicker{ font-size:10.5px; color:var(--gold); letter-spacing:.34em; }
+  .pagehead h1{ margin:2px 0 0; font-size:27px; font-weight:800; letter-spacing:.24em; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+  .pagehead .lede{ margin-top:4px; font-size:12px; color:var(--bone-2); letter-spacing:.08em; }
+  .pagehead .emb{ width:64px; height:64px; flex:none; border-radius:50%; object-fit:cover;
+    border:1px solid var(--gold-lo);
+    box-shadow:0 0 0 3px rgba(10,13,18,.85), 0 6px 14px rgba(0,0,0,.6), 0 0 18px rgba(226,88,34,.18); }
+  .headline{ margin:10px 26px 0; }
+  .layout{ padding:14px 26px 60px; }
+
+  .colhead{ display:flex; align-items:baseline; gap:12px; padding:0 2px; margin:22px 0 12px; }
+  .colhead h2{ margin:0; font-size:17px; letter-spacing:.22em; font-weight:800; }
+  .colhead .den{ font-size:10px; color:var(--bone-3); letter-spacing:.3em; }
+  .colhead .rn{ color:var(--gold); font-size:15px; }
+
+  /* ---------- casting (main 2col) ---------- */
+  .forge-grid{ display:grid; grid-template-columns:minmax(320px, 440px) 1fr; gap:16px; align-items:stretch; }
+  .cast-art{ position:relative; height:212px; display:grid; place-items:center;
+    background:
+      radial-gradient(60% 80% at 50% 46%, rgba(201,169,89,.10), transparent 70%),
+      radial-gradient(circle at 50% 55%, #232B37 0%, #10141B 80%);
+    border-bottom:1px solid var(--border-lo); }
+  .cast-art img{ height:172px; object-fit:contain; filter:drop-shadow(0 12px 20px rgba(0,0,0,.75)); }
+  .cast-art .wm{ position:absolute; right:14px; bottom:8px; font-family:var(--f-seal);
+    font-size:30px; color:rgba(201,169,89,.22); }
+  .cast-body{ padding:14px 18px 18px; }
+  .cast-body .ttl{ font-size:19px; font-weight:800; letter-spacing:.1em; }
+  .cost{ display:flex; align-items:center; gap:11px; margin-top:12px; padding:9px 12px;
+    border:1px solid var(--border-lo); border-radius:3px; background:rgba(10,13,18,.5); }
+  .cost .cthumb{ width:34px; height:34px; flex:none; overflow:hidden; border-radius:2px;
+    border:1px solid var(--border-lo); background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%); }
+  .cost .cthumb img{ width:100%; height:100%; object-fit:cover; }
+  .cost .cval{ font-weight:800; font-size:15px; letter-spacing:.06em; }
+  .cost .own{ font-size:12px; color:var(--bone-2); }
+  .cost .own b{ font-family:var(--f-den); color:var(--gold-hi); font-size:15px; }
+  .cast-cta{ width:100%; margin-top:14px; }
+
+  /* odds panel */
+  .odds{ padding:14px 18px 16px; }
+  .orow{ display:flex; align-items:center; gap:13px; padding:9px 2px; }
+  .orow + .orow{ border-top:1px solid rgba(233,227,211,.06); }
+  .orow .oshape{ width:34px; flex:none; display:grid; place-items:center; }
+  .bshp rect{ fill:rgba(201,169,89,.22); stroke:rgba(201,169,89,.7); stroke-width:1; }
+  .orow .olab{ width:76px; flex:none; }
+  .orow .olab b{ font-size:14.5px; letter-spacing:.08em; }
+  .orow .olab .t-micro{ display:block; margin-top:1px; }
+  .orow .bar{ flex:1; height:7px; }
+  .orow .pct{ font-family:var(--f-den); font-size:16px; color:var(--gold-hi); width:52px;
+    text-align:right; flex:none; }
+  .rules{ margin-top:12px; }
+  .rules li{ font-size:11.5px; color:var(--bone-3); letter-spacing:.05em; padding:2.5px 0; list-style:none; }
+  .rules li::before{ content:"ᛞ"; font-family:var(--f-rune); color:var(--gold-lo); margin-right:9px; font-size:10px; }
+  .rules{ padding-left:2px; margin-bottom:0; }
+
+  /* ---------- sub row: 変成 / 分解 ---------- */
+  .sub-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+  .subp{ padding:14px 18px 16px; }
+  .subp .p-title{ display:flex; align-items:center; gap:9px; font-size:14px; font-weight:800; letter-spacing:.14em; }
+  .subp .p-title .den{ font-size:9.5px; color:var(--bone-3); letter-spacing:.3em; font-weight:400; }
+  .subp .p-title .rn{ color:var(--gold); font-size:15px; }
+  .subp .copy{ margin-top:8px; font-family:var(--f-dj); font-size:14.5px; letter-spacing:.08em; }
+  .icard.sm{ padding:7px 8px; gap:10px; cursor:default; border:1px solid rgba(40,49,62,.7); border-radius:2px; }
+  .icard.sm:hover{ transform:none; box-shadow:none; }
+  .icard.sm .thumb{ width:36px; height:36px; }
+  .icard.sm .nm{ font-size:12.5px; }
+  .icard.sm .sub{ font-size:10.5px; }
+  .icard.sm .val{ font-family:var(--f-den); color:var(--gold-hi); font-size:14px; flex:none; letter-spacing:.04em; }
+  .btn.sm{ padding:4px 13px; font-size:12px; letter-spacing:.14em; outline-offset:-2px; flex:none; }
+  .dislist{ display:flex; flex-direction:column; gap:7px; margin-top:11px; }
+
+  /* ---------- modal: 鋳造結果 ---------- */
+  .scrim[hidden]{ display:none; }
+  .modal{ padding:0; }
+  .mhead{ display:flex; align-items:center; gap:11px; padding:13px 20px 11px;
+    border-bottom:1px solid rgba(201,169,89,.16); }
+  .mhead .dj{ font-size:17px; font-weight:800; letter-spacing:.2em; }
+  .mhead .den{ font-size:9.5px; color:var(--bone-3); letter-spacing:.3em; }
+  .mbody{ display:grid; grid-template-columns:206px 1fr; gap:18px; padding:16px 20px 6px; }
+  .bpfig{ display:flex; flex-direction:column; align-items:center; gap:10px; padding:14px 12px;
+    background:radial-gradient(circle at 50% 40%, #1D242F, #0E1218 82%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .bpfig svg{ display:block; }
+  .bpfig text{ font-family:var(--f-ui); }
+  .bpfig .crd{ font-size:10px; fill:var(--bone-3); }
+  .rose text{ font-size:8.5px; fill:var(--bone-3); font-family:var(--f-ui); letter-spacing:.04em; }
+  .rose text.hot{ fill:var(--gold-hi); font-weight:700; }
+  .fig-cap{ font-size:10.5px; color:var(--bone-3); letter-spacing:.14em; text-align:center; }
+  .mstats .stat{ display:flex; gap:10px; align-items:baseline; font-size:13.5px; padding:4px 0; }
+  .mstats .stat .lbl{ width:64px; flex:none; color:var(--bone-2); font-size:12px; letter-spacing:.1em; }
+  .mact{ display:flex; gap:10px; flex-wrap:wrap; padding:12px 20px 8px; align-items:center; }
+  .mnote{ padding:0 20px 16px; letter-spacing:.06em; }
+  .placing{ border-color:rgba(87,199,123,.55) !important; color:#8FDCA9 !important;
+    background:linear-gradient(180deg, rgba(87,199,123,.12), rgba(19,24,32,.85)) !important;
+    outline-color:rgba(87,199,123,.25) !important; text-shadow:none !important;
+    animation:placePulse 1.6s ease-in-out infinite; cursor:wait; filter:none !important;
+    letter-spacing:.06em; white-space:nowrap; }
+  @keyframes placePulse{ 50%{ box-shadow:0 0 14px rgba(87,199,123,.35); opacity:.72; } }
+
+  @media (max-width:840px){
+    .page-shell{ padding-bottom:96px; }
+    .pagehead{ padding:14px 16px 0; }
+    .pagehead .emb{ width:52px; height:52px; }
+    .headline{ margin:10px 16px 0; }
+    .layout{ padding:12px 12px 40px; }
+    .forge-grid, .sub-grid{ grid-template-columns:1fr; }
+    .modal{ width:min(560px, 94vw); }
+    .mbody{ grid-template-columns:1fr; }
+    .bpfig{ flex-direction:row; justify-content:center; flex-wrap:wrap; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav is-here" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="rune" style="color:var(--gold);font-size:17px">ᛈ</span>
+      <span class="dj" style="font-size:15px;font-weight:800;letter-spacing:.22em">工房</span>
+      <span class="den" style="font-size:10.5px;color:var(--bone-3);letter-spacing:.32em">WORKSHOP</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip">鋳造可 ×128</div>
+  </header>
+
+  <!-- ============ hero strip ============ -->
+  <section class="pagehead">
+    <div>
+      <div class="kicker den">FORGE OF FATES</div>
+      <h1 class="dj dj-wide">工房</h1>
+      <div class="lede">ᛈ ペルスロ — 運命は杯より注がれる。鋳るたび、異なる形が生まれ落ちる。</div>
+    </div>
+    <div class="grow"></div>
+    <img class="emb" src="assets/emblem_horn3.png" alt="工房の紋">
+  </section>
+  <div class="rune-divider headline">ᛈ</div>
+
+  <main class="layout">
+    <!-- ============ 鞄鋳造 ============ -->
+    <div class="colhead">
+      <span class="rn rune">ᛈ</span>
+      <h2 class="dj">鞄鋳造</h2>
+      <span class="den">PACK CASTING</span>
+      <span class="grow"></span>
+      <span class="t-micro">Common設計図 ・ 乱歩鋳型</span>
+    </div>
+
+    <section class="forge-grid">
+      <!-- LEFT: cast -->
+      <div class="panel ornate" style="padding:0">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="cast-art">
+          <img src="assets/ic_pack.png" alt="無銘の背嚢">
+          <span class="wm">鋳</span>
+        </div>
+        <div class="cast-body">
+          <div class="ttl dj">無銘の背嚢を鋳る</div>
+          <div class="t-micro mt8" style="letter-spacing:.08em">乱歩の鋳型が、四〜六セルの器をひとつ生む。</div>
+          <div class="cost">
+            <span class="cthumb"><img src="assets/ic_lrdst.png" alt="通貨アイテム"></span>
+            <span class="cval">通貨アイテム ×10</span>
+            <span class="grow"></span>
+            <span class="own">所持 <b class="tnum" id="own">0</b></span>
+          </div>
+          <button class="btn btn-forge cast-cta" id="castBtn">ᛈ 鋳造する</button>
+          <div class="t-micro mt8" style="letter-spacing:.08em">形状は乱歩により鋳込まれる — 同じ鞄は二つとない。</div>
+          <div class="t-micro" style="letter-spacing:.08em">補給: 遠征の房で通貨アイテム 1-3、ボス撃破で 5-10。</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: odds -->
+      <div class="panel ornate odds">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="row" style="gap:10px;align-items:baseline">
+          <span class="dj" style="font-size:16px;font-weight:800;letter-spacing:.18em">鋳造の理</span>
+          <span class="den" style="font-size:9.5px;color:var(--bone-3);letter-spacing:.3em">CASTING ODDS</span>
+          <span class="grow"></span>
+          <span class="t-micro">耐久 = セル数 × 15</span>
+        </div>
+        <div class="mt16">
+          <div class="orow">
+            <span class="oshape">
+              <svg class="bshp" width="26" height="26" viewBox="0 0 26 26"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/></svg>
+            </span>
+            <span class="olab"><b>4セル</b><span class="t-micro">HP 60</span></span>
+            <span class="bar"><span class="fill gold" style="display:block;height:100%;width:40%"></span></span>
+            <span class="pct tnum">40%</span>
+          </div>
+          <div class="orow">
+            <span class="oshape">
+              <svg class="bshp" width="26" height="38" viewBox="0 0 26 38"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/><rect x="1.5" y="25.5" width="11" height="11"/></svg>
+            </span>
+            <span class="olab"><b>5セル</b><span class="t-micro">HP 75</span></span>
+            <span class="bar"><span class="fill gold" style="display:block;height:100%;width:35%"></span></span>
+            <span class="pct tnum">35%</span>
+          </div>
+          <div class="orow">
+            <span class="oshape">
+              <svg class="bshp" width="26" height="38" viewBox="0 0 26 38"><rect x="1.5" y="1.5" width="11" height="11"/><rect x="13.5" y="1.5" width="11" height="11"/><rect x="1.5" y="13.5" width="11" height="11"/><rect x="13.5" y="13.5" width="11" height="11"/><rect x="1.5" y="25.5" width="11" height="11"/><rect x="13.5" y="25.5" width="11" height="11"/></svg>
+            </span>
+            <span class="olab"><b>6セル</b><span class="t-micro">HP 90</span></span>
+            <span class="bar"><span class="fill gold" style="display:block;height:100%;width:25%"></span></span>
+            <span class="pct tnum">25%</span>
+          </div>
+        </div>
+        <div class="rune-divider">ᛞ</div>
+        <ul class="rules">
+          <li>鋳造される設計図の品位は Common のみ。</li>
+          <li>リンカー座(ᛖ)は鋳込時に1セルへ刻印される — 座は選べない。</li>
+          <li>受領は二段階 — 受け取る → 配置中… → 編成の間の自動保存で確定。</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ 変成 / 分解 ============ -->
+    <section class="sub-grid">
+      <div class="panel ornate subp">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="p-title">
+          <span class="rn rune">ᛈ</span>変成
+          <span class="den">TRANSMUTE</span>
+          <span class="grow"></span>
+          <span class="chip">近日</span>
+        </div>
+        <div class="copy">「通貨アイテムを注ぎ、鞄を鍛え直す」</div>
+        <div class="t-micro mt8" style="letter-spacing:.06em">形は保ったまま、銘と品位を注ぎ替える秘法。杯は満ちるのを待っている。</div>
+        <button class="btn mt16 is-disabled" disabled style="width:100%">ᛈ 変成する — 近日開放</button>
+      </div>
+
+      <div class="panel ornate subp">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="p-title">
+          <span class="rn rune">ᚠ</span>分解
+          <span class="den">DISMANTLE</span>
+          <span class="grow"></span>
+          <span class="t-micro">2品 待機</span>
+        </div>
+        <div class="dislist">
+          <div class="icard sm">
+            <span class="thumb"><img src="assets/ic_dagger.png" alt="霜の釘"></span>
+            <div class="grow"><div class="nm">霜の釘</div><div class="sub">UNCOMMON ・ 1×1</div></div>
+            <span class="val tnum">ᚠ 32</span>
+            <button class="btn btn-ghost sm">分解</button>
+          </div>
+          <div class="icard sm">
+            <span class="thumb"><img src="assets/ic_flask.png" alt="燈火の油壷"></span>
+            <div class="grow"><div class="nm">燈火の油壷</div><div class="sub">COMMON ・ 1×1</div></div>
+            <span class="val tnum">ᚠ 18</span>
+            <button class="btn btn-ghost sm">分解</button>
+          </div>
+        </div>
+        <div class="t-micro mt8" style="letter-spacing:.08em">分解値は図鑑にも刻まれる — 知は砕いてなお残る。</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ modal: 鋳造結果 ============ -->
+<div class="scrim" id="castModal" hidden>
+  <div class="modal panel ornate">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <div class="mhead">
+      <span class="dj">鋳造結果</span>
+      <span class="den">CASTING RESULT</span>
+      <span class="grow"></span>
+      <span class="t-micro tnum">鋳銘 0x7C21</span>
+    </div>
+    <div class="mbody">
+      <!-- BP figure -->
+      <div class="bpfig">
+        <svg width="160" height="234" viewBox="0 0 160 234" role="img" aria-label="P字ペントミノ 5セル">
+          <text class="crd" x="46"  y="11" text-anchor="middle">A</text>
+          <text class="crd" x="118" y="11" text-anchor="middle">B</text>
+          <text class="crd" x="5" y="53"  text-anchor="middle">1</text>
+          <text class="crd" x="5" y="125" text-anchor="middle">2</text>
+          <text class="crd" x="5" y="197" text-anchor="middle">3</text>
+          <!-- leather cells: A1 B1 / A2 B2 / A3 -->
+          <g fill="#3A3229" stroke="rgba(201,169,89,.55)" stroke-width="1.5">
+            <rect x="12" y="16"  width="68" height="68" rx="2"/>
+            <rect x="84" y="16"  width="68" height="68" rx="2"/>
+            <rect x="12" y="88"  width="68" height="68" rx="2"/>
+            <rect x="12" y="160" width="68" height="68" rx="2"/>
+          </g>
+          <g fill="none" stroke="rgba(233,227,211,.2)" stroke-dasharray="3 4">
+            <rect x="17" y="21"  width="58" height="58"/>
+            <rect x="89" y="21"  width="58" height="58"/>
+            <rect x="17" y="93"  width="58" height="58"/>
+            <rect x="17" y="165" width="58" height="58"/>
+          </g>
+          <!-- linker cell B2 -->
+          <rect x="84" y="88" width="68" height="68" rx="2" fill="#4A3E22" stroke="#C9A959" stroke-width="2"/>
+          <rect x="89" y="93" width="58" height="58" fill="none" stroke="rgba(235,217,164,.3)" stroke-dasharray="3 4"/>
+          <circle cx="118" cy="122" r="20" fill="rgba(201,169,89,.14)"/>
+          <text x="118" y="131" text-anchor="middle" font-size="25" fill="#EBD9A4"
+            style="font-family:var(--f-rune)">ᛖ</text>
+          <!-- rivets -->
+          <g fill="#A98D4B" stroke="#14100A" stroke-width=".6">
+            <circle cx="12" cy="16" r="2.6"/><circle cx="152" cy="16" r="2.6"/>
+            <circle cx="12" cy="228" r="2.6"/><circle cx="80" cy="228" r="2.6"/><circle cx="152" cy="156" r="2.6"/>
+          </g>
+        </svg>
+        <!-- compass rose: beam directions -->
+        <svg class="rose" width="118" height="118" viewBox="0 0 132 132" role="img" aria-label="射出方位 N と SE">
+          <circle cx="66" cy="66" r="16" fill="none" stroke="rgba(233,227,211,.16)"/>
+          <g stroke="rgba(233,227,211,.22)" stroke-width="1.2">
+            <line x1="77.3" y1="54.7" x2="95.7" y2="36.3"/>
+            <line x1="82"   y1="66"   x2="108"  y2="66"/>
+            <line x1="66"   y1="82"   x2="66"   y2="108"/>
+            <line x1="54.7" y1="77.3" x2="36.3" y2="95.7"/>
+            <line x1="50"   y1="66"   x2="24"   y2="66"/>
+            <line x1="54.7" y1="54.7" x2="36.3" y2="36.3"/>
+          </g>
+          <g stroke="#EBD9A4" stroke-width="2.4" filter="drop-shadow(0 0 3px rgba(201,169,89,.7))">
+            <line x1="66"   y1="50"   x2="66"   y2="24"/>
+            <line x1="77.3" y1="77.3" x2="95.7" y2="95.7"/>
+          </g>
+          <rect x="62.5" y="18.5" width="7" height="7" fill="#EBD9A4" transform="rotate(45 66 22)"/>
+          <rect x="94"   y="95.9" width="7" height="7" fill="#EBD9A4" transform="rotate(45 97.5 99.4)"/>
+          <circle cx="66" cy="66" r="3" fill="var(--gold)"/>
+          <text class="hot" x="66"    y="14"    text-anchor="middle">N</text>
+          <text x="104.2" y="30"   text-anchor="middle">NE</text>
+          <text x="121"   y="69.5" text-anchor="middle">E</text>
+          <text class="hot" x="106.2" y="112" text-anchor="middle">SE</text>
+          <text x="66"    y="126"  text-anchor="middle">S</text>
+          <text x="26.8"  y="112"  text-anchor="middle">SW</text>
+          <text x="11"    y="69.5" text-anchor="middle">W</text>
+          <text x="26.8"  y="30"   text-anchor="middle">NW</text>
+        </svg>
+        <div class="fig-cap">射出方位 — N ・ SE</div>
+      </div>
+
+      <!-- stats -->
+      <div class="mstats">
+        <div class="stat"><span class="lbl">銘</span><b class="dj" style="font-size:16.5px">無銘の背嚢・伍</b></div>
+        <div class="stat"><span class="lbl">品位</span><span class="rar-word" style="color:var(--r-common)">COMMON</span></div>
+        <div class="stat"><span class="lbl">セル</span><b class="tnum">5</b><span class="t-micro">P字 ・ 乱歩鋳型</span></div>
+        <div class="stat"><span class="lbl">耐久</span><b class="tnum">HP 75</b><span class="t-micro">= 5 × 15</span></div>
+        <div class="stat"><span class="lbl">連結座</span><b class="tnum">B2</b><span class="rune" style="color:var(--gold-hi)">ᛖ</span><span class="t-micro">鋳込時に刻印</span></div>
+        <div class="stat"><span class="lbl">方位</span><b>N / SE</b><span class="t-micro">連結ビームの射方</span></div>
+        <div class="rune-divider" style="margin:10px 0">ᛖ</div>
+        <div class="flavor" style="color:var(--bone-3);font-style:italic;font-size:12.5px;line-height:1.8;font-family:var(--f-dj)">「杯が傾き、革と鋲が形を得る。銘はまだ無い — 背負う者が与える。」</div>
+      </div>
+    </div>
+    <div class="mact">
+      <button class="btn btn-forge" id="acceptBtn" style="padding:12px 30px">受け取る</button>
+      <button class="btn" id="againBtn">もう一度 ᚠ10</button>
+      <button class="btn btn-ghost" id="closeBtn">閉じる</button>
+    </div>
+    <div class="mnote t-micro">受領は二段階 — 配置中… を経て、編成の間の自動保存で確定する。</div>
+  </div>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* forge embers */
+  initParticles(document.getElementById("pfx"), { mix:"ember", count:40 });
+
+  /* owned LRDST count-up */
+  countUp(document.getElementById("own"), 1284, 1200);
+
+  /* casting modal (mock) */
+  const modal = document.getElementById("castModal"), acc = document.getElementById("acceptBtn");
+  function resetAccept(){ acc.disabled = false; acc.classList.remove("placing"); acc.textContent = "受け取る"; }
+  document.getElementById("castBtn").addEventListener("click", () => { modal.hidden = false; resetAccept(); });
+  document.getElementById("againBtn").addEventListener("click", resetAccept);
+  document.getElementById("closeBtn").addEventListener("click", () => { modal.hidden = true; });
+  modal.addEventListener("click", e => { if (e.target === modal) modal.hidden = true; });
+  acc.addEventListener("click", () => {
+    acc.disabled = true; acc.classList.add("placing");
+    acc.textContent = "配置中… 編成の間で確定";
+  });
+</script>
+</body>
+</html>

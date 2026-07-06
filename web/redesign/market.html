@@ -1,0 +1,1064 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>市場 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 50% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.45;
+    background:url(assets/bg_market.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .page-shell{ position:relative; z-index:1; }
+  .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; text-transform:uppercase; }
+
+  /* ---------- page header strip ---------- */
+  .pagehead{ display:flex; align-items:center; gap:18px; padding:16px 26px 0; }
+  .pagehead .kicker{ font-size:10.5px; color:var(--gold); letter-spacing:.34em; }
+  .pagehead h1{ margin:2px 0 0; font-size:27px; font-weight:800; letter-spacing:.24em; text-shadow:0 2px 10px rgba(0,0,0,.8); }
+  .pagehead .lede{ margin-top:4px; font-size:12px; color:var(--bone-2); letter-spacing:.08em; }
+  .headline{ margin:10px 26px 0; }
+  .layout{ padding:14px 26px 60px; }
+
+  /* ---------- the three laws ---------- */
+  .laws{ display:flex; align-items:stretch; padding:16px 12px; }
+  .law{ flex:1; display:flex; gap:13px; align-items:center; padding:2px 18px; min-width:0; }
+  .law + .law{ border-left:1px solid rgba(201,169,89,.16); }
+  .law-rn{ width:40px; height:40px; flex:none; display:grid; place-items:center; border-radius:50%;
+    border:1px solid var(--gold-lo); color:var(--gold); font-size:17px;
+    background:radial-gradient(circle at 45% 38%, #2A313E, #10141B 75%);
+    box-shadow:inset 0 1px 3px #000, 0 0 10px rgba(201,169,89,.12); }
+  .law-rn.ember{ color:var(--ember-hi); border-color:rgba(226,88,34,.55);
+    box-shadow:inset 0 1px 3px #000, 0 0 12px rgba(226,88,34,.25); }
+  .law-t{ font-size:13.5px; font-weight:700; letter-spacing:.05em; line-height:1.55; }
+  .law .en{ margin-top:2px; font-size:9.5px; }
+
+  /* ---------- pane tabs ---------- */
+  .mtabs{ display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end; margin:24px 0 0; padding:0 2px;
+    border-bottom:1px solid rgba(201,169,89,.25); }
+  .mtab{ display:inline-flex; align-items:center; gap:9px; padding:9px 24px 8px; cursor:pointer; user-select:none;
+    border:1px solid var(--border-lo); border-bottom:none; border-radius:3px 3px 0 0;
+    background:linear-gradient(180deg, rgba(19,24,32,.6), rgba(10,13,18,.6));
+    color:var(--bone-2); font-size:14px; font-weight:500; letter-spacing:.16em; transition:color .13s; }
+  .mtab:hover{ color:var(--gold-hi); }
+  .mtab.is-on{ color:var(--gold-hi); border-color:var(--gold-lo);
+    background:linear-gradient(180deg, rgba(201,169,89,.13), rgba(19,24,32,.7));
+    box-shadow:inset 0 2px 0 var(--gold); }
+  .mtab .ct{ font-size:11px; padding:0 8px; border:1px solid var(--border-lo); border-radius:999px; color:var(--bone-3); }
+  .mtab.is-on .ct{ color:var(--gold-hi); border-color:var(--gold-lo); }
+
+  /* ---------- section heads ---------- */
+  .colhead{ display:flex; align-items:baseline; gap:12px; padding:0 2px; margin:20px 0 12px; flex-wrap:wrap; }
+  .colhead h2{ margin:0; font-size:17px; letter-spacing:.22em; font-weight:800; }
+  .colhead .rn{ color:var(--gold); font-size:15px; }
+  .ph3{ margin:0; font-size:16.5px; font-weight:800; letter-spacing:.22em; }
+
+  /* ---------- buy: toolbar ---------- */
+  .toolrow{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px 14px; margin-top:14px; }
+  .toolrow .chip{ cursor:pointer; user-select:none; }
+  .search{ display:flex; align-items:center; gap:9px; flex:1; min-width:210px; max-width:340px; margin-left:auto;
+    padding:7px 13px; background:rgba(10,13,18,.72); border:1px solid var(--border-lo); border-radius:2px; }
+  .search .rune{ color:var(--bone-3); font-size:14px; }
+  .search input{ flex:1; min-width:0; background:none; border:none; outline:none;
+    color:var(--bone); font-family:var(--f-ui); font-size:13px; letter-spacing:.04em; }
+  .search input::placeholder{ color:var(--bone-3); }
+  .search:focus-within{ border-color:var(--gold-lo); box-shadow:0 0 8px rgba(201,169,89,.2); }
+  .strip-note{ flex-basis:100%; letter-spacing:.1em; }
+
+  /* ---------- buy: listing cards ---------- */
+  .mgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-top:14px; }
+  .mcard{ position:relative; padding:13px 14px 12px; border-radius:3px;
+    background:linear-gradient(180deg, rgba(27,34,45,.86), rgba(16,20,27,.92));
+    transition:transform .13s ease-out, box-shadow .13s ease-out; }
+  .mcard:hover{ transform:translateY(-2px); box-shadow:0 12px 24px rgba(0,0,0,.55); }
+  .mcard .top{ display:flex; gap:13px; align-items:flex-start; }
+  .mcard .thumb{ width:64px; height:64px; flex:none; overflow:hidden;
+    background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .mcard .thumb img{ width:100%; height:100%; object-fit:cover; }
+  .mcard .nm{ font-weight:800; font-size:15px; line-height:1.3; }
+  .mcard .sub{ font-size:11px; color:var(--bone-3); letter-spacing:.05em; margin-top:3px; }
+  .dexno{ font-size:10.5px; padding:1px 9px; color:var(--gold); border-color:rgba(201,169,89,.35); }
+  .sellr{ font-size:11.5px; color:var(--bone-2); letter-spacing:.05em; }
+  .sellr .who{ color:var(--bone); font-weight:700; }
+  .mcard .sellr{ display:block; margin-top:7px; }
+  .mcard .prow{ display:flex; align-items:center; gap:12px; margin-top:11px; padding-top:10px;
+    border-top:1px solid rgba(233,227,211,.08); }
+  .price{ display:flex; align-items:baseline; gap:7px; white-space:nowrap; }
+  .price .rune{ color:var(--gold); font-size:15px; }
+  .price .pnm{ font-size:11.5px; color:var(--bone-2); letter-spacing:.06em; }
+  .price b{ font-family:var(--f-den); font-size:19px; color:var(--gold-hi); letter-spacing:.02em; }
+  .burn{ font-size:11px; color:var(--bone-3); letter-spacing:.04em; margin-top:2px; }
+  .burn .kw-ember{ font-size:11px; }
+  .btn.sm{ padding:5px 16px; font-size:12.5px; letter-spacing:.14em; outline-offset:-2px; flex:none; }
+
+  /* deployed = untradeable (専有の法) */
+  .lockchip{ position:absolute; top:-10px; left:50%; transform:translateX(-50%); z-index:3;
+    padding:2px 13px; border:1px dashed rgba(226,88,34,.65); border-radius:999px; white-space:nowrap;
+    background:rgba(24,14,10,.96); color:var(--ember-hi); font-size:10.5px; letter-spacing:.12em; }
+  .mcard.is-locked{ border-style:dashed; }
+  .mcard.is-locked:hover{ transform:none; box-shadow:none; }
+  .mcard.is-locked .top, .mcard.is-locked .prow{ filter:saturate(.4); opacity:.72; }
+
+  /* ---------- sell pane ---------- */
+  .sell-grid{ display:grid; grid-template-columns:minmax(320px, 430px) 1fr; gap:16px; align-items:start; margin-top:18px; }
+  .icard{ border-radius:3px; }
+  .icard.is-selected{ box-shadow:var(--focus-ring); }
+  .icard .selchip{ display:none; margin-left:auto; flex:none; }
+  .icard.is-selected .selchip{ display:inline-flex; }
+  .icard.is-locked{ border-style:dashed; cursor:not-allowed; }
+  .icard.is-locked:hover{ transform:none; box-shadow:none; }
+  .icard.is-locked .thumb, .icard.is-locked .nm, .icard.is-locked .sub{ filter:saturate(.4); opacity:.72; }
+  .lockword{ margin-left:auto; flex:none; font-size:10.5px; color:var(--ember-hi); letter-spacing:.08em;
+    border:1px dashed rgba(226,88,34,.55); border-radius:999px; padding:2px 11px; white-space:nowrap; }
+  .carve-item{ display:flex; align-items:center; gap:10px; margin-top:12px; font-size:13.5px; flex-wrap:wrap; }
+  .stepper{ display:flex; align-items:center; gap:10px; margin:14px 0 4px; }
+  .sbtn{ width:40px; height:40px; display:grid; place-items:center; font-size:19px; color:var(--bone-2);
+    background:linear-gradient(180deg, #2A313E, #1B222D); border:1px solid var(--border-lo); border-radius:2px; }
+  .sbtn:hover{ color:var(--gold-hi); border-color:var(--gold-lo); }
+  .sval{ min-width:132px; text-align:center; padding:7px 16px; border:1px solid var(--gold-lo); border-radius:2px;
+    background:rgba(10,13,18,.72); font-family:var(--f-den); font-weight:700; font-size:22px; color:var(--gold-hi); }
+  .sval .rune{ font-family:var(--f-rune); font-weight:400; font-size:16px; color:var(--gold); margin-right:8px; }
+  .est{ display:flex; align-items:center; gap:14px; margin-top:12px; padding:10px 14px; border-radius:2px;
+    background:rgba(10,13,18,.6); border:1px solid var(--border-lo); font-size:13px; flex-wrap:wrap; }
+  .est .lbl{ font-size:11px; color:var(--bone-3); letter-spacing:.22em; flex:none; }
+  .sell-law{ margin-top:12px; line-height:1.9; }
+
+  /* ---------- mine pane ---------- */
+  .lrow{ position:relative; display:flex; align-items:center; gap:14px; padding:10px 12px; border-radius:3px;
+    background:linear-gradient(180deg, rgba(27,34,45,.7), rgba(19,24,32,.7)); }
+  .lrow .thumb{ width:46px; height:46px; flex:none; overflow:hidden;
+    background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .lrow .thumb img{ width:100%; height:100%; object-fit:cover; }
+  .lrow .nm{ font-weight:800; font-size:14px; }
+  .lrow .sub{ font-size:11px; color:var(--bone-3); letter-spacing:.05em; margin-top:2px; }
+  .lrow .lp{ margin-left:auto; text-align:right; }
+
+  /* ---------- buy modal ---------- */
+  .mthumb{ width:64px; height:64px; flex:none; display:grid; place-items:center; overflow:hidden;
+    background:radial-gradient(circle at 50% 42%, #262E3A, #10141B 78%);
+    border:1px solid var(--border-lo); border-radius:3px; }
+  .mthumb img{ width:100%; height:100%; object-fit:cover; }
+  .bd{ width:100%; border-collapse:collapse; margin-top:16px; }
+  .bd td{ padding:9px 6px; border-bottom:1px solid rgba(233,227,211,.08); font-size:13.5px; letter-spacing:.06em; }
+  .bd td.v{ text-align:right; font-family:var(--f-den); font-weight:700; font-size:16px; white-space:nowrap; }
+  .bd td.v .rune{ font-family:var(--f-rune); font-weight:400; color:var(--gold); }
+  .bd tr.burnrw td{ color:var(--ember-hi); border-bottom-color:rgba(226,88,34,.2); }
+  .bd tr.getrw td{ color:var(--gold-hi); border-bottom:none; }
+  .mnote{ margin-top:10px; font-size:12.5px; font-style:italic; color:var(--bone-3); letter-spacing:.06em; }
+  .mdone{ font-size:14px; line-height:2.1; color:var(--bone-2); margin:14px auto 20px; max-width:380px; }
+
+  /* ---------- REQ-0065: modal width (phone reference: 94vw) ---------- */
+  .modal{ width:min(560px, 94vw); }
+
+  /* ---------- REQ-0065: DESIGN-DEMO switcher — 設計確認用の意匠。製品UIではない ---------- */
+  .demobar{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; width:max-content; max-width:100%;
+    margin:18px 0 -6px auto; padding:4px 12px;
+    border:1px dashed rgba(107,103,92,.5); border-radius:2px; }
+  .demobar .dlbl{ font-size:9.5px; color:var(--bone-3); letter-spacing:.24em; }
+  .dchip{ cursor:pointer; user-select:none; padding:1px 10px; border:1px dashed transparent; border-radius:999px;
+    font-size:11px; color:var(--bone-3); letter-spacing:.1em; transition:color .13s; }
+  .dchip:hover{ color:var(--bone-2); }
+  .dchip.is-on{ border-color:rgba(107,103,92,.75); color:var(--bone-2); background:rgba(19,24,32,.5); }
+
+  /* ---------- REQ-0065: filter chips — 横スクロール + 右フェード(単一選択は不変) ---------- */
+  .chipflow{ display:flex; align-items:center; gap:8px; flex:1 1 auto; min-width:0; overflow-x:auto;
+    padding-bottom:2px; scrollbar-width:none;
+    -webkit-mask-image:linear-gradient(90deg, #000 calc(100% - 30px), transparent);
+    mask-image:linear-gradient(90deg, #000 calc(100% - 30px), transparent); }
+  .chipflow::-webkit-scrollbar{ display:none; }
+  .chipflow .chip{ flex:none; }
+
+  /* ---------- REQ-0065: 買えない品も値は隠さない ---------- */
+  .buycol{ display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex:none; }
+  .shortnote{ white-space:nowrap; letter-spacing:.06em; }
+
+  /* ---------- REQ-0065: empty states — 静かな中央ブロック。光らせない ---------- */
+  .emptyblock{ margin:30px auto 10px; max-width:520px; padding:34px 24px 30px; text-align:center;
+    border:1px dashed rgba(107,103,92,.4); border-radius:3px; background:rgba(13,17,23,.45); }
+  .emptyblock .efig{ margin:0 auto 12px; display:block; opacity:.7; }
+  .emptyblock .eja{ font-family:var(--f-dj); font-size:15px; letter-spacing:.12em; color:var(--bone-2); line-height:2; }
+  .emptyblock .en{ display:block; margin-top:8px; letter-spacing:.16em; line-height:1.9; }
+
+  /* ---------- REQ-0065: skeleton — 熾のように静かな明滅(2.4s)。スピナー無し ---------- */
+  .skgrid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px; margin-top:18px; }
+  .skcard{ position:relative; overflow:hidden; height:150px; border-radius:3px;
+    border:1px solid var(--border-lo);
+    background:linear-gradient(180deg, rgba(27,34,45,.55), rgba(16,20,27,.62)); }
+  .skcard i{ position:absolute; border-radius:3px; background:rgba(233,227,211,.05); }
+  .skcard .s1{ top:14px; left:14px; width:64px; height:64px; }
+  .skcard .s2{ top:17px; left:92px; width:46%; height:13px; }
+  .skcard .s3{ top:40px; left:92px; width:30%; height:9px; }
+  .skcard .s4{ top:58px; left:92px; width:38%; height:9px; }
+  .skcard .s5{ bottom:18px; left:14px; width:27%; height:14px; }
+  .skcard .s6{ bottom:14px; right:14px; width:76px; height:24px; }
+  .skcard::after{ content:""; position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(100deg, transparent 32%, rgba(233,227,211,.04) 44%, rgba(233,227,211,.08) 50%, rgba(233,227,211,.04) 56%, transparent 68%);
+    transform:translateX(-60%); animation:sksweep 2.4s linear infinite; }
+  @keyframes sksweep{ to{ transform:translateX(60%); } }
+
+  /* ---------- REQ-0065: sell stepper — 最小1 / 上限ᚠ999(赤は使わない) ---------- */
+  .sval input{ width:84px; min-width:0; background:none; border:none; outline:none; text-align:center; padding:0;
+    font-family:var(--f-den); font-weight:700; font-size:22px; color:var(--gold-hi); }
+  .capnote{ letter-spacing:.1em; margin-top:4px; }
+
+  /* ---------- REQ-0065: mine pane — 状態の語彙 ---------- */
+  .stchip{ display:inline-flex; align-items:center; flex:none; padding:1px 11px; border-radius:999px; white-space:nowrap;
+    font-size:10.5px; letter-spacing:.1em; border:1px solid var(--border-lo); color:var(--bone-2); }
+  .stchip.pause{ border-style:dashed; border-color:rgba(226,88,34,.55); color:var(--ember-hi); background:rgba(24,14,10,.7); }
+  .stchip.exp{ border-style:dashed; border-color:rgba(107,103,92,.6); color:var(--bone-3); }
+  .stchip.setl{ border-color:var(--gold-lo); color:var(--gold-hi); background:rgba(201,169,89,.08); }
+  .ttlcalm{ color:var(--bone-2); } /* 期限表示はCALM: 赤・点滅・秒読みは使わない */
+  .lrow .nmrow{ display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .lrow.is-expired .thumb, .lrow.is-expired .nm, .lrow.is-expired .sub, .lrow.is-expired .lp{ opacity:.55; filter:saturate(.5); }
+  .lrow.is-settled{ background:linear-gradient(180deg, rgba(201,169,89,.10), rgba(19,24,32,.72));
+    box-shadow:inset 0 0 16px rgba(201,169,89,.07); }
+
+  /* ---------- REQ-0065: modal demo strip(設計確認用) ---------- */
+  .mdemo{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:22px; padding:5px 10px;
+    border:1px dashed rgba(107,103,92,.5); border-radius:2px; }
+
+  /* ---------- footer lore ---------- */
+  .wfoot{ margin:38px auto 0; text-align:center; max-width:640px; }
+  .wfoot .lore{ font-family:var(--f-dj); font-size:15px; letter-spacing:.18em; color:var(--bone-2); }
+  .wfoot .t-micro{ margin-top:8px; letter-spacing:.08em; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width:920px){
+    .sell-grid{ grid-template-columns:1fr; }
+  }
+  @media (max-width:840px){
+    .page-shell{ padding-bottom:96px; }
+    .pagehead{ padding:14px 16px 0; }
+    .headline{ margin:10px 16px 0; }
+    .layout{ padding:12px 12px 40px; }
+    .laws{ flex-direction:column; gap:12px; padding:14px 16px; }
+    .law{ padding:0; }
+    .law + .law{ border-left:none; border-top:1px solid rgba(201,169,89,.16); padding-top:12px; }
+    .mgrid{ grid-template-columns:1fr; }
+    .search{ max-width:none; flex-basis:100%; margin-left:0; }
+    .lrow{ flex-wrap:wrap; }
+    .lrow .lp{ margin-left:60px; text-align:left; }
+    /* REQ-0065: 縦持ちでも新要素は素直に積む */
+    .demobar{ margin-left:0; width:100%; justify-content:flex-start; }
+    .skgrid{ grid-template-columns:1fr; }
+    .stepper{ flex-wrap:wrap; }
+    .stepper .sval{ flex:1 1 150px; }
+    .lrow .nmrow{ width:100%; }
+    .lrow > .btn{ margin-left:60px; }
+  }
+  @media (min-width:520px) and (max-width:840px){
+    .mgrid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .skgrid{ grid-template-columns:repeat(2, minmax(0,1fr)); }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav is-here" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="dj" style="font-size:15px;font-weight:800;letter-spacing:.22em">市場</span>
+      <span class="den" style="font-size:10.5px;color:var(--bone-3);letter-spacing:.32em">MARKET</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip is-live"><span class="dot"></span> 出品中 2</div>
+  </header>
+
+  <!-- ============ page header ============ -->
+  <section class="pagehead">
+    <div>
+      <div class="kicker den">HEARTH OF BARTER</div>
+      <h1 class="dj dj-wide">交易の火床</h1>
+      <div class="lede">物は落ち、鞄は編まれる。出目の偏りは人が均す — 交易は、乱数への相互扶助。</div>
+    </div>
+    <div class="grow"></div>
+  </section>
+  <div class="rune-divider headline">ᚠ</div>
+
+  <main class="layout">
+    <!-- ============ the three laws ============ -->
+    <section class="panel ornate laws">
+      <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+      <div class="law">
+        <span class="law-rn"><span class="rune">ᚠ</span></span>
+        <div><div class="law-t">TMの物々交換 — 抽象通貨は存在しない</div><div class="en">Barter in kind</div></div>
+      </div>
+      <div class="law">
+        <span class="law-rn ember"><span class="rune">ᚲ</span></span>
+        <div><div class="law-t">全取引の8%は炉へ焼べられる</div><div class="en">The furnace tithe</div></div>
+      </div>
+      <div class="law">
+        <span class="law-rn"><span class="rune">ᛗ</span></span>
+        <div><div class="law-t">相場は動かぬ — 値は人が刻む</div><div class="en">No living prices</div></div>
+      </div>
+    </section>
+
+    <!-- DESIGN DEMO(REQ-0065 P1-1): 状態スイッチ — 設計確認用。アクティブなペインを 通常/骨組み/空 に差し替える -->
+    <div class="demobar t-micro" role="group" aria-label="DESIGN DEMO 状態切替">
+      <span class="dlbl den">DESIGN DEMO ・ 状態</span>
+      <span class="dchip is-on" data-demo="normal">通常</span>
+      <span class="dchip" data-demo="skeleton">骨組み</span>
+      <span class="dchip" data-demo="empty">空の火床</span>
+    </div>
+
+    <!-- ============ tabs ============ -->
+    <div class="mtabs">
+      <span class="mtab is-on" data-pane="buy">買う</span>
+      <span class="mtab" data-pane="sell">出品する</span>
+      <span class="mtab" data-pane="mine">自分の出品 <span class="ct tnum">2</span></span>
+    </div>
+
+    <!-- ============ BUY ============ -->
+    <section class="pane" id="pane-buy">
+      <div class="colhead">
+        <span class="rn rune">ᚠ</span>
+        <h2 class="dj">火床の品書き</h2>
+        <span class="en">Listings</span>
+        <span class="grow"></span>
+        <span class="t-micro" data-when-normal>9件 ・ 刻まれた値のみ — 競りは無い</span>
+      </div>
+
+      <div class="panel toolrow" data-when-normal>
+        <!-- REQ-0065 P2: チップ列は折返さず横スクロール+右フェード(単一選択は不変) -->
+        <div class="chipflow">
+          <span class="chip is-on">すべて</span>
+          <span class="chip">武具</span>
+          <span class="chip"><span class="kw-frost">霜</span></span>
+          <span class="chip"><span class="kw-ember">焔</span></span>
+          <span class="chip">連結</span>
+          <span class="chip">遺宝</span>
+        </div>
+        <label class="search"><span class="rune">ᚲ</span><input type="text" placeholder="図鑑No. か 名で探す"></label>
+        <div class="strip-note t-micro">品書きは図鑑と結ばれている — No.を打てば、その品の頁が開く。</div>
+      </div>
+
+      <!-- REQ-0065 P1-9: 売り手名は素のテキストのまま — hover挙動・title属性・リンクを意図して付けない。v1に「プロフィール」という概念が存在しないため(嘘の扉を作らない) -->
+      <div class="mgrid" data-when-normal>
+        <!-- 1 -->
+        <article class="mcard rar rar-rare">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">氷河の断斧</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.061</a></div>
+              <div class="sub">PO ・ 2×2 ・ 斧/霜 <span class="rar-word">RARE</span></div>
+              <span class="sellr">売り手: <span class="who">灰狼のヴィズ</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×46</b></div>
+              <div class="burn">支払46 → <span class="kw-ember">焼却4</span> ・ 相手受取42</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 2 -->
+        <article class="mcard rar rar-legend">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_crown.png" alt="ニヴルの王冠"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">ニヴルの王冠</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.077</a></div>
+              <div class="sub">PO ・ 1×1 ・ 遺宝/霜 <span class="rar-word">LEGENDARY</span></div>
+              <span class="sellr">売り手: <span class="who">千鞄のエイリーフ</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×120</b></div>
+              <div class="burn">支払120 → <span class="kw-ember">焼却10</span> ・ 相手受取110</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 3 -->
+        <article class="mcard rar rar-uncommon">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_dagger.png" alt="霜の釘"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">霜の釘</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.058</a></div>
+              <div class="sub">PO ・ 1×1 ・ 短刀/霜 <span class="rar-word">UNCOMMON</span></div>
+              <span class="sellr">売り手: <span class="who">霜刃のグズルーン</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×12</b></div>
+              <div class="burn">支払12 → <span class="kw-ember">焼却1</span> ・ 相手受取11</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 4 -->
+        <article class="mcard rar rar-rare">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_shard.png" alt="霧氷の欠片"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">霧氷の欠片</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.063</a></div>
+              <div class="sub">SI ・ 1×1 ・ 霜石 <span class="rar-word">RARE</span></div>
+              <span class="sellr">売り手: <span class="who">氷原のシグリズ</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×18</b></div>
+              <div class="burn">支払18 → <span class="kw-ember">焼却2</span> ・ 相手受取16</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 5 -->
+        <article class="mcard rar rar-epic">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_horn.png" alt="戦角笛"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">戦角笛</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.102</a></div>
+              <div class="sub">PO ・ 2×1 ・ 号令 <span class="rar-word">EPIC</span></div>
+              <span class="sellr">売り手: <span class="who">二角のハルヴァル</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×64</b></div>
+              <div class="burn">支払64 → <span class="kw-ember">焼却6</span> ・ 相手受取58</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 6 -->
+        <article class="mcard rar rar-epic">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_prism.png" alt="連結晶"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">連結晶</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.052</a></div>
+              <div class="sub">PO ・ 1×1 ・ 連結 <span class="rar-word">EPIC</span></div>
+              <span class="sellr">売り手: <span class="who">鴉呼びのオルヴァル</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×88</b></div>
+              <div class="burn">支払88 → <span class="kw-ember">焼却8</span> ・ 相手受取80</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 7 -->
+        <article class="mcard rar rar-uncommon">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_shield.png" alt="塔盾"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">塔盾</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.045</a></div>
+              <div class="sub">PO ・ 2×2 ・ 盾 <span class="rar-word">UNCOMMON</span></div>
+              <span class="sellr">売り手: <span class="who">静水のトルディス</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×9</b></div>
+              <div class="burn">支払9 → <span class="kw-ember">焼却1</span> ・ 相手受取8</div>
+            </div>
+            <button class="btn sm" data-buy>購入</button>
+          </div>
+        </article>
+
+        <!-- 8: ᚠ不足(REQ-0065 P1-6) — 買えない品も値と焼却は隠さない。誓いの前の透明性 -->
+        <article class="mcard rar rar-epic">
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_prism.png" alt="連結晶"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">連結晶</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.052</a></div>
+              <div class="sub">PO ・ 1×1 ・ 連結 <span class="rar-word">EPIC</span></div>
+              <span class="sellr">売り手: <span class="who">遠雷のケティル</span></span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×1,420</b></div>
+              <div class="burn">支払1,420 → <span class="kw-ember">焼却114</span> ・ 相手受取1,306</div>
+            </div>
+            <div class="buycol">
+              <button class="btn sm" disabled>購入</button>
+              <span class="t-micro shortnote">ᚠ不足(あと136)</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- 9: 専有の法 — 出撃中は取引不可 -->
+        <article class="mcard rar rar-common is-locked">
+          <span class="lockchip">出撃中につき取引不可</span>
+          <span class="gem"></span>
+          <div class="top">
+            <span class="thumb"><img src="assets/ic_pouch.png" alt="香草の小袋"></span>
+            <div class="grow">
+              <div class="row" style="gap:9px"><span class="nm dj">香草の小袋</span><a class="chip dexno" href="dex.html" title="図鑑で見る">No.012</a></div>
+              <div class="sub">PO ・ 1×1 ・ 医術 <span class="rar-word">COMMON</span></div>
+              <span class="sellr">売り手: <span class="who kw-gold">あなた</span> — 焔手の隊に配備中</span>
+            </div>
+          </div>
+          <div class="prow">
+            <div class="grow">
+              <div class="price"><span class="rune">ᚠ</span><span class="pnm">通貨アイテム</span><b class="tnum">×3</b></div>
+              <div class="burn">支払3 → <span class="kw-ember">焼却1</span> ・ 相手受取2</div>
+            </div>
+            <button class="btn sm" disabled>購入</button>
+          </div>
+        </article>
+      </div>
+
+      <!-- REQ-0065 P1-2: 空の火床(買う) -->
+      <div class="emptyblock" data-when-empty hidden>
+        <svg class="efig" width="46" height="40" viewBox="0 0 46 40" aria-hidden="true"><g fill="none" stroke="var(--gold-lo)" stroke-width="1.5"><circle cx="23" cy="14" r="10"/><circle cx="14" cy="26" r="10"/><circle cx="32" cy="26" r="10"/></g></svg>
+        <div class="eja">火床に品は無い — 誰かの遠征が実りを持ち帰るまで。</div>
+        <span class="en">The hearth stands bare — until someone's expedition returns bearing fruit.</span>
+      </div>
+    </section>
+
+    <!-- ============ SELL ============ -->
+    <section class="pane" id="pane-sell" hidden>
+      <div class="sell-grid" data-when-normal>
+        <!-- pick from hoard(REQ-0065 P1-3: 適格4 + 配備中2の混在) -->
+        <div class="panel ornate panel-pad">
+          <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+          <div class="row" style="gap:12px; flex-wrap:wrap">
+            <h3 class="ph3 dj">手持ちから選ぶ</h3>
+            <span class="en">From your hoard</span>
+          </div>
+          <div class="t-micro mb8" style="margin-top:4px">売れるのは手持ちの品のみ — 盤上・遠征中の品は選べない。</div>
+          <div class="col" style="gap:8px">
+            <div class="icard rar rar-rare is-selected" data-name="氷河の断斧" data-no="061" data-anchor="44" data-ask="46"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></span>
+              <div><div class="nm">氷河の断斧</div><div class="sub">PO ・ 2×2 ・ 斧/霜 <span class="rar-word">RARE</span></div></div>
+              <span class="chip is-on selchip">✓選択中</span>
+            </div>
+            <div class="icard rar rar-uncommon" data-name="霜の釘" data-no="058" data-anchor="12" data-ask="12"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_dagger.png" alt="霜の釘"></span>
+              <div><div class="nm">霜の釘</div><div class="sub">PO ・ 1×1 ・ 短刀/霜 <span class="rar-word">UNCOMMON</span></div></div>
+              <span class="chip is-on selchip">✓選択中</span>
+            </div>
+            <div class="icard rar rar-common is-locked"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_pouch.png" alt="香草の小袋"></span>
+              <div><div class="nm">香草の小袋</div><div class="sub">PO ・ 1×1 ・ 医術 <span class="rar-word">COMMON</span></div></div>
+              <span class="lockword">配備中 — 出品不可</span>
+            </div>
+            <div class="icard rar rar-uncommon" data-name="塔盾" data-no="045" data-anchor="9" data-ask="9"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_shield.png" alt="塔盾"></span>
+              <div><div class="nm">塔盾</div><div class="sub">PO ・ 2×2 ・ 盾 <span class="rar-word">UNCOMMON</span></div></div>
+              <span class="chip is-on selchip">✓選択中</span>
+            </div>
+            <div class="icard rar rar-rare" data-name="霧氷の欠片" data-no="063" data-anchor="18" data-ask="18"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_shard.png" alt="霧氷の欠片"></span>
+              <div><div class="nm">霧氷の欠片</div><div class="sub">SI ・ 1×1 ・ 霜石 <span class="rar-word">RARE</span></div></div>
+              <span class="chip is-on selchip">✓選択中</span>
+            </div>
+            <div class="icard rar rar-epic is-locked"><span class="gem"></span>
+              <span class="thumb"><img src="assets/ic_horn.png" alt="戦角笛"></span>
+              <div><div class="nm">戦角笛</div><div class="sub">PO ・ 2×1 ・ 号令 <span class="rar-word">EPIC</span></div></div>
+              <span class="lockword">配備中 — 出品不可</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- carve the price -->
+        <div class="panel ornate panel-pad">
+          <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+          <div class="row" style="gap:12px; flex-wrap:wrap">
+            <h3 class="ph3 dj">値を刻む</h3>
+            <span class="en">Carve the price</span>
+          </div>
+          <div class="carve-item">
+            <span>出品する品:</span><b class="dj" id="carveNm">氷河の断斧</b>
+            <a class="chip dexno" href="dex.html" title="図鑑で見る" id="carveNo">No.061</a>
+            <span class="t-micro" id="carveAnchor">図鑑の直近刻銘 ᚠ44</span>
+          </div>
+          <div class="stepper">
+            <button class="sbtn" id="sDown" title="値を下げる" aria-label="値を下げる">−</button>
+            <span class="sval"><span class="rune">ᚠ</span><input id="sPrice" type="text" inputmode="numeric" autocomplete="off" value="46" aria-label="出品価格 — 最小1・上限999の整数"></span>
+            <button class="sbtn" id="sUp" title="値を上げる" aria-label="値を上げる">+</button>
+            <span class="t-micro">上限 ᚠ999</span>
+          </div>
+          <div class="t-micro capnote" id="capNote" hidden>上限に達した</div>
+          <div class="est">
+            <span class="lbl">受取見積</span>
+            <span>支払われる額 <b class="tnum" id="estPay">46</b> → <span class="kw-ember">焼却 <b class="tnum" id="estBurn">4</b></span> ・ 汝の受取 <b class="kw-gold tnum" id="estGet">42</b></span>
+          </div>
+          <div class="mt16">
+            <button class="btn btn-forge">ᚠ 火床に並べる</button>
+          </div>
+          <div class="t-micro sell-law">
+            配備中の品は市場に出せない — 専有の法。<br>
+            図鑑に値が記される — 相場の錨は図鑑にあり。
+          </div>
+        </div>
+      </div>
+
+      <!-- REQ-0065 P1-2: 空の火床(出品) — 売れる物が無い -->
+      <div class="emptyblock" data-when-empty hidden>
+        <svg class="efig" width="46" height="40" viewBox="0 0 46 40" aria-hidden="true"><g fill="none" stroke="var(--gold-lo)" stroke-width="1.5"><circle cx="23" cy="14" r="10"/><circle cx="14" cy="26" r="10"/><circle cx="32" cy="26" r="10"/></g></svg>
+        <div class="eja">売れる物が無い — すべての品が戦支度に就いている。</div>
+        <span class="en">Nothing may be sold — every last piece stands ready for war.</span>
+        <div class="mt16"><a class="btn btn-ghost" href="canvas.html">ᛗ 編成の間へ</a></div>
+      </div>
+    </section>
+
+    <!-- ============ MY LISTINGS ============ -->
+    <section class="pane" id="pane-mine" hidden>
+      <div class="panel ornate panel-pad" style="margin-top:18px" data-when-normal>
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="row" style="gap:12px; flex-wrap:wrap">
+          <h3 class="ph3 dj">自分の出品</h3>
+          <span class="en">Your listings</span>
+          <span class="grow"></span>
+          <span class="t-micro">刻銘中 2 ・ 一時停止 1 ・ 下架 1 ・ 成立 1</span>
+        </div>
+        <div class="col" style="gap:8px; margin-top:14px">
+
+          <!-- a) 刻銘中 3日目(REQ-0065 P1-4a) — 期限の声はCALM: 赤なし・明滅なし・秒読みなし -->
+          <div class="lrow rar rar-rare"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_shard.png" alt="霧氷の欠片"></span>
+            <div>
+              <div class="nm dj">霧氷の欠片</div>
+              <div class="sub">No.063 ・ 出品3日目 ・ <span class="ttlcalm">あと4日で炉棚から下がる</span></div>
+            </div>
+            <div class="lp">
+              <div class="price"><span class="rune">ᚠ</span><b class="tnum">×18</b></div>
+              <div class="burn">成立なら <span class="kw-ember">焼却2</span> ・ 受取16</div>
+            </div>
+            <button class="btn btn-ghost sm" data-withdraw>取り下げる</button>
+          </div>
+
+          <!-- b) 刻銘中 1日目 -->
+          <div class="lrow rar rar-common"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_flask.png" alt="燈火の油壷"></span>
+            <div>
+              <div class="nm dj">燈火の油壷</div>
+              <div class="sub">No.014 ・ 出品1日目 ・ <span class="ttlcalm">あと6日で炉棚から下がる</span></div>
+            </div>
+            <div class="lp">
+              <div class="price"><span class="rune">ᚠ</span><b class="tnum">×5</b></div>
+              <div class="burn">成立なら <span class="kw-ember">焼却1</span> ・ 受取4</div>
+            </div>
+            <button class="btn btn-ghost sm" data-withdraw>取り下げる</button>
+          </div>
+
+          <!-- c) 一時停止 — 配備中(専有の法) -->
+          <div class="lrow rar rar-common"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_pouch.png" alt="香草の小袋"></span>
+            <div>
+              <div class="nmrow"><span class="nm dj">香草の小袋</span><span class="stchip pause">配備中 — 一時停止</span></div>
+              <div class="sub">No.012 ・ 配備を解けば、再び火床に並ぶ。</div>
+              <div class="sub">買い手側では「購入」が閉ざされている</div>
+            </div>
+            <div class="lp">
+              <div class="price"><span class="rune">ᚠ</span><b class="tnum">×3</b></div>
+              <div class="burn">成立なら <span class="kw-ember">焼却1</span> ・ 受取2</div>
+            </div>
+          </div>
+
+          <!-- d) 期限で下架 — 咎なし。再出品は一手 -->
+          <div class="lrow rar rar-common is-expired"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_sword.png" alt="長剣"></span>
+            <div>
+              <div class="nmrow"><span class="nm dj">長剣</span><span class="stchip exp">炉棚から下がった — 期限</span></div>
+              <div class="sub">No.001 ・ 七日を数え終えた</div>
+              <div class="sub">咎は無い。望むなら、もう一度。</div>
+            </div>
+            <div class="lp">
+              <div class="price"><span class="rune">ᚠ</span><b class="tnum">×7</b></div>
+            </div>
+            <button class="btn btn-ghost sm">再び並べる</button>
+          </div>
+
+          <!-- e) 成立(文脈参考行) — 炉が燃えた唯一の時 -->
+          <div class="lrow rar rar-rare is-settled"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></span>
+            <div>
+              <div class="nmrow"><span class="nm dj">氷河の断斧</span><span class="stchip setl">成立 — ᚠ42を受け取った(焼却4)</span></div>
+              <div class="sub">No.061 ・ 昨日成立 ・ 品は相手の倉庫へ発った</div>
+            </div>
+            <div class="lp">
+              <div class="price"><span class="rune">ᚠ</span><b class="tnum">×46</b></div>
+              <div class="burn"><span class="kw-ember">焼却4</span> ・ <span class="kw-gold">受取42</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="t-micro mt8">取り下げは咎なし — 炉が燃えるのは、成立の時だけ。</div>
+      </div>
+
+      <!-- REQ-0065 P1-2: 空の火床(自分の出品) — 刻銘なし -->
+      <div class="emptyblock" data-when-empty hidden>
+        <svg class="efig" width="46" height="40" viewBox="0 0 46 40" aria-hidden="true"><g fill="none" stroke="var(--gold-lo)" stroke-width="1.5"><circle cx="23" cy="14" r="10"/><circle cx="14" cy="26" r="10"/><circle cx="32" cy="26" r="10"/></g></svg>
+        <div class="eja">汝の刻銘はまだ無い — 値を刻むのは、いつでも汝の手。</div>
+        <span class="en">You have carved no prices yet — the chisel waits in your hand.</span>
+      </div>
+    </section>
+
+    <!-- ============ SKELETON(DESIGN DEMO: 読み込み — 熾のように静かな明滅。スピナー無し) ============ -->
+    <section class="pane" id="pane-skel" hidden aria-hidden="true">
+      <div class="skgrid">
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+        <div class="skcard"><i class="s1"></i><i class="s2"></i><i class="s3"></i><i class="s4"></i><i class="s5"></i><i class="s6"></i></div>
+      </div>
+    </section>
+
+    <!-- ============ footer lore ============ -->
+    <footer class="wfoot">
+      <div class="rune-divider" style="max-width:320px; margin:0 auto 14px">ᛞ</div>
+      <div class="lore">「良き取引は双方の焚き火を暖める。」</div>
+      <div class="t-micro">今季、炉は ᚠ<span class="tnum" id="furn">41,208</span> を焼いた — 灰に持ち主はいない。</div>
+    </footer>
+  </main>
+</div>
+
+<!-- ============ BUY MODAL(静的例: 氷河の断斧) ============ -->
+<div class="scrim" id="buyModal" style="display:none">
+  <div class="modal panel ornate" style="padding:26px 28px 24px">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+
+    <div id="mA">
+      <div class="row" style="gap:12px; flex-wrap:wrap">
+        <h3 class="ph3 dj" style="letter-spacing:.26em">購入の誓い</h3>
+        <span class="en">Seal the trade</span>
+      </div>
+      <div class="row" style="gap:14px; margin-top:16px; align-items:flex-start">
+        <span class="mthumb"><img src="assets/ic_cleaver.png" alt="氷河の断斧"></span>
+        <div>
+          <div class="dj" style="font-size:18px; font-weight:800">氷河の断斧</div>
+          <div class="t-micro" style="margin-top:2px">PO ・ 2×2 ・ 斧/霜 <span class="rar-word" style="color:var(--r-rare)">RARE</span></div>
+          <div style="margin-top:7px"><a class="chip dexno" href="dex.html">図鑑 No.061</a></div>
+        </div>
+      </div>
+      <table class="bd">
+        <tr>
+          <td>支払</td><td class="t-micro">あなたの袋から</td>
+          <td class="v"><span class="rune">ᚠ</span> 46</td>
+        </tr>
+        <tr class="burnrw">
+          <td>焼却(8%)</td><td class="t-micro" style="color:inherit">炉の取り分</td>
+          <td class="v">−<span class="rune" style="color:inherit">ᚠ</span> 4</td>
+        </tr>
+        <tr class="getrw">
+          <td>売り手受取</td><td class="t-micro" style="color:inherit">灰狼のヴィズへ</td>
+          <td class="v"><span class="rune" style="color:inherit">ᚠ</span> 42</td>
+        </tr>
+      </table>
+      <div class="mnote dj">「焼却は物価の弁 — 富は流れ、少し燃える。」</div>
+      <div class="row" style="gap:14px; margin-top:20px; flex-wrap:wrap">
+        <button class="btn btn-forge" id="mYes">ᚠ 誓って購入</button>
+        <button class="btn btn-ghost" id="mNo">やめる</button>
+        <span class="t-micro" style="margin-left:auto">支払後の残り ᚠ<b class="tnum">1,238</b></span>
+      </div>
+    </div>
+
+    <div id="mB" class="center" hidden>
+      <div class="rune-divider" style="max-width:200px; margin:4px auto 14px">ᚷ</div>
+      <div class="dj" style="font-size:22px; font-weight:800; letter-spacing:.3em; text-indent:.3em">取引成立</div>
+      <p class="mdone dj">品は倉庫へ届く — ムニンが運ぶ。<br><span class="kw-ember">焼却 ᚠ4</span> は炉へ、<span class="kw-gold">ᚠ42</span> は灰狼のヴィズへ。</p>
+      <div class="row" style="gap:12px; justify-content:center; flex-wrap:wrap">
+        <a class="btn" href="warehouse.html">ᚷ 倉庫を見る</a>
+        <button class="btn" id="mClose">閉じる</button>
+      </div>
+    </div>
+
+    <!-- REQ-0065 P1-5a: 先着負け — 一点物は早い者の誓いが立つ -->
+    <div id="mC" class="center" hidden>
+      <div class="rune-divider" style="max-width:200px; margin:4px auto 14px">ᚱ</div>
+      <div class="dj" style="font-size:22px; font-weight:800; letter-spacing:.3em; text-indent:.3em">一足遅かった</div>
+      <p class="mdone dj">品は既に旅立った — 火床の前では、迷いも値の内。</p>
+      <div class="en" style="margin:-8px auto 18px; max-width:420px; letter-spacing:.14em; line-height:1.9">The goods have already departed — before the hearth, hesitation too has its price.</div>
+      <button class="btn" data-mclose>火床へ戻る</button>
+    </div>
+
+    <!-- REQ-0065 P1-5b: 倉庫満杯 — ムニンは運べない。支払いは発生しない -->
+    <div id="mD" class="center" hidden>
+      <div class="rune-divider" style="max-width:200px; margin:4px auto 14px">ᚷ</div>
+      <div class="dj" style="font-size:22px; font-weight:800; letter-spacing:.3em; text-indent:.3em">倉庫が満ちている</div>
+      <p class="mdone dj">ムニンが運び込めない。</p>
+      <div class="t-micro" style="margin:-8px 0 18px; letter-spacing:.1em">取引は成立していない(支払い無し)</div>
+      <div class="row" style="gap:12px; justify-content:center; flex-wrap:wrap">
+        <a class="btn" href="warehouse.html">ᚷ 倉庫を整理する</a>
+        <button class="btn btn-ghost" data-mclose>火床へ戻る</button>
+      </div>
+    </div>
+
+    <!-- REQ-0065 P1-5c: ᚠ不足 — 不足額を隠さない -->
+    <div id="mE" class="center" hidden>
+      <div class="rune-divider" style="max-width:200px; margin:4px auto 14px">ᚠ</div>
+      <div class="dj" style="font-size:22px; font-weight:800; letter-spacing:.3em; text-indent:.3em"><span class="rune" style="font-size:19px">ᚠ</span>が足りない</div>
+      <p class="mdone dj">不足 <b class="tnum" style="color:var(--gold-hi)">136</b>。</p>
+      <div class="t-micro" style="margin:-8px 0 18px; letter-spacing:.1em">分解と遠征が通貨アイテムを生む</div>
+      <button class="btn" data-mclose>退く</button>
+    </div>
+
+    <!-- DESIGN DEMO(REQ-0065 P1-5): 誓いの結末を切り替える — 設計確認用 -->
+    <div class="mdemo t-micro">
+      <span style="letter-spacing:.18em">デモ:</span>
+      <span class="dchip" data-mdemo="seal">成立</span>
+      <span class="dchip" data-mdemo="race">先着負け</span>
+      <span class="dchip" data-mdemo="full">倉庫満杯</span>
+      <span class="dchip" data-mdemo="poor">ᚠ不足</span>
+    </div>
+  </div>
+</div>
+
+<!-- ============ WITHDRAW CONFIRM(REQ-0065 P2: 一行確認 — 咎なし) ============ -->
+<div class="scrim" id="wdModal" style="display:none">
+  <div class="modal panel ornate" style="padding:24px 26px 22px">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <div class="dj" style="font-size:15.5px; font-weight:800; letter-spacing:.08em; line-height:2">この刻銘を炉棚から下げるか? — 取り下げは咎なし。炉が燃えるのは、成立の時だけ。</div>
+    <div class="row" style="gap:12px; margin-top:18px; flex-wrap:wrap">
+      <button class="btn" id="wdYes">下げる</button>
+      <button class="btn btn-ghost" id="wdNo">残す</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* 火床の熾 — embers over the market */
+  initParticles(document.getElementById("pfx"), { mix:"ember", count:18 });
+
+  /* pane tabs × DESIGN-DEMO 状態(REQ-0065 P1-0/1/2) — 通常/骨組み/空 をアクティブなペインに適用 */
+  const tabs = document.querySelectorAll(".mtab");
+  let demoState = "normal"; /* normal | skeleton | empty */
+  function applyDemo(){
+    const active = document.querySelector(".mtab.is-on").dataset.pane;
+    document.getElementById("pane-skel").hidden = (demoState !== "skeleton");
+    ["buy","sell","mine"].forEach(p => {
+      const pane = document.getElementById("pane-" + p);
+      pane.hidden = (p !== active) || (demoState === "skeleton");
+      pane.querySelectorAll("[data-when-normal]").forEach(el => el.hidden = (demoState === "empty"));
+      pane.querySelectorAll("[data-when-empty]").forEach(el => el.hidden = (demoState !== "empty"));
+    });
+  }
+  tabs.forEach(t => t.addEventListener("click", () => {
+    tabs.forEach(x => x.classList.remove("is-on"));
+    t.classList.add("is-on");
+    applyDemo();
+  }));
+  document.querySelectorAll(".demobar .dchip").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".demobar .dchip").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+    demoState = ch.dataset.demo;
+    applyDemo();
+  }));
+
+  /* filter chips (visual mock — 単一選択は不変) */
+  document.querySelectorAll(".toolrow .chip").forEach(ch => ch.addEventListener("click", () => {
+    document.querySelectorAll(".toolrow .chip").forEach(x => x.classList.remove("is-on"));
+    ch.classList.add("is-on");
+  }));
+
+  /* buy modal — 誓い → 成立 / 先着負け / 倉庫満杯 / ᚠ不足(REQ-0065 P1-5) */
+  const bm = document.getElementById("buyModal");
+  const MBODY = { seal:"mB", race:"mC", full:"mD", poor:"mE" };
+  function showBody(id){
+    ["mA","mB","mC","mD","mE"].forEach(x => { document.getElementById(x).hidden = (x !== id); });
+    document.querySelectorAll("[data-mdemo]").forEach(x => x.classList.toggle("is-on", MBODY[x.dataset.mdemo] === id));
+  }
+  const openBuy = () => { showBody("mA"); bm.style.display = "grid"; };
+  const closeBuy = () => { bm.style.display = "none"; };
+  document.querySelectorAll("[data-buy]").forEach(b => b.addEventListener("click", openBuy));
+  document.getElementById("mYes").onclick = () => showBody("mB");
+  document.getElementById("mNo").onclick = closeBuy;
+  document.getElementById("mClose").onclick = closeBuy;
+  document.querySelectorAll("[data-mclose]").forEach(b => { b.onclick = closeBuy; });
+  document.querySelectorAll("[data-mdemo]").forEach(ch => ch.addEventListener("click", () => showBody(MBODY[ch.dataset.mdemo])));
+  bm.onclick = e => { if (e.target === bm) closeBuy(); };
+
+  /* sell: pick from hoard (配備中は選べない — 専有の法) — 選択で刻む対象と錨を差し替え */
+  document.querySelectorAll("#pane-sell .icard").forEach(c => c.addEventListener("click", () => {
+    if (c.classList.contains("is-locked")) return;
+    document.querySelectorAll("#pane-sell .icard").forEach(x => x.classList.remove("is-selected"));
+    c.classList.add("is-selected");
+    if (c.dataset.name){
+      document.getElementById("carveNm").textContent = c.dataset.name;
+      document.getElementById("carveNo").textContent = "No." + c.dataset.no;
+      document.getElementById("carveAnchor").textContent = "図鑑の直近刻銘 ᚠ" + c.dataset.anchor;
+      setPrice(parseInt(c.dataset.ask, 10));
+    }
+  }));
+
+  /* sell: 値の刻み(REQ-0065 P1-3) — 整数のみ・最小1・上限ᚠ999。焼却 = max(1, ceil(額×0.08)) */
+  const sPrice = document.getElementById("sPrice"), capNote = document.getElementById("capNote");
+  const PMIN = 1, PCAP = 999;
+  const burnOf = q => Math.max(1, Math.ceil(q * 0.08));
+  function setPrice(v){
+    v = Math.max(PMIN, Math.min(PCAP, Math.round(v) || PMIN));
+    sPrice.value = v;
+    const b = burnOf(v);
+    document.getElementById("estPay").textContent = v;
+    document.getElementById("estBurn").textContent = b;
+    document.getElementById("estGet").textContent = v - b;
+    capNote.hidden = (v !== PCAP); /* 上限は静かに告げる — 赤は使わない */
+  }
+  function holdRepeat(btn, d){ /* 400ms長押しで約180ms間隔の連打 */
+    let tm = null, iv = null;
+    const step = () => setPrice((parseInt(sPrice.value, 10) || PMIN) + d);
+    const stop = () => { clearTimeout(tm); clearInterval(iv); tm = iv = null; };
+    btn.addEventListener("pointerdown", e => { e.preventDefault(); step(); tm = setTimeout(() => { iv = setInterval(step, 180); }, 400); });
+    ["pointerup","pointerleave","pointercancel"].forEach(ev => btn.addEventListener(ev, stop));
+  }
+  holdRepeat(document.getElementById("sDown"), -1);
+  holdRepeat(document.getElementById("sUp"), +1);
+  sPrice.addEventListener("input", () => { /* 直接入力: 数字以外は落とし、入力中は空を許す */
+    const d = sPrice.value.replace(/[^\d]/g, "");
+    if (d === ""){ sPrice.value = ""; return; }
+    setPrice(parseInt(d, 10));
+  });
+  sPrice.addEventListener("blur", () => setPrice(parseInt(sPrice.value, 10) || PMIN));
+
+  /* mine: 取り下げ一行確認(REQ-0065 P2) — 咎なし */
+  const wd = document.getElementById("wdModal");
+  const closeWd = () => { wd.style.display = "none"; };
+  document.querySelectorAll("[data-withdraw]").forEach(b => b.addEventListener("click", () => { wd.style.display = "grid"; }));
+  document.getElementById("wdYes").onclick = closeWd;
+  document.getElementById("wdNo").onclick = closeWd;
+  wd.onclick = e => { if (e.target === wd) closeWd(); };
+
+  /* season furnace total — tnum・桁区切りはtoLocaleString・900ms以内(REQ-0065 P2) */
+  countUp(document.getElementById("furn"), 41208, 900);
+</script>
+
+<!-- ============================================================
+  EN copy registry (REQ-0065 P1-7) — 市場 / THE HEARTH OF BARTER
+  この画面に載る全ての和文ロア/マイクロコピーと、同じ声のEN対訳。
+  Every ja lore/microcopy line on this screen, with its EN counterpart in the same voice.
+  ------------------------------------------------------------
+  [page head]
+  交易の火床                                                  = The Hearth of Barter
+  物は落ち、鞄は編まれる。出目の偏りは人が均す — 交易は、乱数への相互扶助。 = Things drop; packs are woven. Crooked dice are leveled by human hands — trade is mutual aid against the random.
+  [hud]
+  通貨アイテム(TM) — 変成通貨                                  = Currency-things (TM) — the transmuting coin.
+  第参季 ・ 残り23日                                           = Third Season ・ 23 days remain.
+  出品中 2                                                    = 2 on the hearth.
+  [three laws — FROZEN]
+  TMの物々交換 — 抽象通貨は存在しない / Barter in kind          = Barter in kind — no abstract coin exists.
+  全取引の8%は炉へ焼べられる / The furnace tithe                = 8% of every trade is fed to the furnace.
+  相場は動かぬ — 値は人が刻む / No living prices                = Prices do not live — a price is carved by a hand.
+  [design demo — designer affordance, not product copy]
+  DESIGN DEMO ・ 状態 / 通常 / 骨組み / 空の火床                = DESIGN DEMO ・ state / normal / skeleton / bare hearth.
+  デモ: 成立 / 先着負け / 倉庫満杯 / ᚠ不足                      = Demo: settled / lost the race / warehouse full / short of ᚠ.
+  [buy]
+  火床の品書き / Listings                                      = The hearth's menu.
+  9件 ・ 刻まれた値のみ — 競りは無い                            = 9 listings ・ carved prices only — no contest of calls.
+  品書きは図鑑と結ばれている — No.を打てば、その品の頁が開く。      = The menu is bound to the codex — type a No. and that page opens.
+  図鑑No. か 名で探す                                          = Seek by codex No. or by name.
+  売り手:                                                     = Seller:
+  支払N → 焼却n ・ 相手受取m  [FROZEN format]                   = Pay N → n burns ・ the other side receives m.
+  出撃中につき取引不可  [FROZEN]                                = Marching to war — beyond all trade.
+  あなた — 焔手の隊に配備中                                     = You — deployed with the Emberhand company.
+  ᚠ不足(あと136)                                              = Short of ᚠ — 136 more.
+  火床に品は無い — 誰かの遠征が実りを持ち帰るまで。                = The hearth stands bare — until someone's expedition returns bearing fruit.
+  [sell]
+  手持ちから選ぶ / From your hoard                             = From your hoard.
+  売れるのは手持ちの品のみ — 盤上・遠征中の品は選べない。           = Only what rests in your hoard may be sold — nothing on the board, nothing on the march.
+  配備中 — 出品不可                                            = Deployed — it may not be listed.
+  値を刻む / Carve the price                                   = Carve the price.
+  出品する品:                                                  = The piece to be listed:
+  図鑑の直近刻銘 ᚠ44                                           = The codex's last engraving: ᚠ44.
+  上限 ᚠ999                                                   = Ceiling: ᚠ999.
+  上限に達した                                                 = The ceiling is reached.
+  受取見積                                                    = Projected receipt.
+  支払われる額 N → 焼却 n ・ 汝の受取 m                          = What is paid N → n burns ・ thou receivest m.
+  ᚠ 火床に並べる                                               = Set it on the hearth.
+  配備中の品は市場に出せない — 専有の法。                         = What is deployed cannot go to market — the Law of Possession.
+  図鑑に値が記される — 相場の錨は図鑑にあり。                      = The price is written into the codex — the anchor of worth lives there.
+  売れる物が無い — すべての品が戦支度に就いている。                = Nothing may be sold — every last piece stands ready for war.
+  ᛗ 編成の間へ                                                = To the hall of muster.
+  [mine]
+  自分の出品 / Your listings                                   = Your listings.
+  刻銘中 2 ・ 一時停止 1 ・ 下架 1 ・ 成立 1                     = 2 engraved ・ 1 paused ・ 1 lowered ・ 1 settled.
+  出品3日目 / 出品1日目                                        = Day 3 on the shelf / Day 1 on the shelf.
+  あと4日で炉棚から下がる / あと6日で炉棚から下がる                = In 4 days it steps down from the hearth-shelf / in 6 days.
+  成立なら 焼却n ・ 受取m                                       = If it settles: n burns ・ you receive m.
+  取り下げる                                                   = Withdraw.
+  配備中 — 一時停止                                            = Deployed — paused.
+  配備を解けば、再び火床に並ぶ。                                 = Release it from deployment, and it returns to the hearth.
+  買い手側では「購入」が閉ざされている                             = On the buyer's side, Purchase stays closed.
+  炉棚から下がった — 期限                                       = Stepped down from the hearth-shelf — its days ran out.
+  七日を数え終えた                                              = It counted its seven days to the end.
+  咎は無い。望むなら、もう一度。                                  = No penalty. If you wish it — once more.
+  再び並べる                                                   = Set it out again.
+  成立 — ᚠ42を受け取った(焼却4)                                 = Settled — you received ᚠ42 (4 burned).
+  昨日成立                                                     = Settled yesterday.
+  品は相手の倉庫へ発った                                         = The goods have departed for the buyer's vault.
+  取り下げは咎なし — 炉が燃えるのは、成立の時だけ。 [FROZEN]        = Withdrawal bears no penalty — the furnace burns only when a trade settles.
+  汝の刻銘はまだ無い — 値を刻むのは、いつでも汝の手。               = You have carved no prices yet — the chisel waits in your hand.
+  [withdraw confirm]
+  この刻銘を炉棚から下げるか? — 取り下げは咎なし。炉が燃えるのは、成立の時だけ。 = Lower this engraving from the hearth-shelf? — No penalty to withdraw. The furnace burns only when a trade settles.
+  下げる / 残す                                                = Lower it / Leave it.
+  [oath modal — FROZEN core]
+  購入の誓い / Seal the trade                                  = The oath of purchase.
+  支払 / あなたの袋から                                         = Pay / from your own satchel.
+  焼却(8%) / 炉の取り分                                        = Burn (8%) / the furnace's share.
+  売り手受取 / 灰狼のヴィズへ                                    = The seller receives / to Vidh the Ash-Wolf.
+  「焼却は物価の弁 — 富は流れ、少し燃える。」                      = "The burn is the valve of worth — wealth flows, and a little of it burns."
+  ᚠ 誓って購入 / やめる                                        = Swear and purchase / Step away.
+  支払後の残り ᚠ1,238                                          = After the payment there remains ᚠ1,238.
+  取引成立                                                     = The trade is sealed.
+  品は倉庫へ届く — ムニンが運ぶ。焼却ᚠ4は炉へ、ᚠ42は灰狼のヴィズへ。 = The goods will reach your vault — Muninn carries them. ᚠ4 to the furnace; ᚠ42 to Vidh the Ash-Wolf.
+  ᚷ 倉庫を見る / 閉じる                                        = See the vault / Close.
+  [oath modal — failure variants]
+  一足遅かった                                                 = A step too late.
+  品は既に旅立った — 火床の前では、迷いも値の内。                   = The goods have already departed — before the hearth, hesitation too has its price.
+  火床へ戻る                                                   = Back to the hearth.
+  倉庫が満ちている                                              = The vault is full.
+  ムニンが運び込めない。                                         = Muninn cannot carry it in.
+  取引は成立していない(支払い無し)                                = The trade did not settle (nothing was paid).
+  ᚷ 倉庫を整理する                                             = Tidy the vault.
+  ᚠが足りない                                                  = Not enough ᚠ.
+  不足 136。                                                   = Short by 136.
+  分解と遠征が通貨アイテムを生む                                  = Salvage and expeditions beget the currency-things.
+  退く                                                        = Step back.
+  [footer — FROZEN]
+  「良き取引は双方の焚き火を暖める。」                             = "A good trade warms both campfires."
+  今季、炉は ᚠ41,208 を焼いた — 灰に持ち主はいない。               = This season the furnace has burned ᚠ41,208 — ash has no owner.
+============================================================ -->
+</body>
+</html>

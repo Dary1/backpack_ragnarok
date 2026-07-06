@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>決戦 — 終季決戦 弐 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  :root{ --dm-hi:#B07CE8; --dm-lo:#4A2B66; --dm-glow:rgba(176,124,232,.38); }
+  .kw-void{ color:var(--dm-hi); font-weight:700; }
+  body{ background:var(--void); min-height:100vh; }
+  .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; text-transform:uppercase; }
+
+  .bgart{ position:fixed; inset:0; z-index:-1;
+    background:url(assets/bg_seasonend.jpg) center/cover no-repeat;
+    filter:saturate(.85) brightness(.48); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:
+      linear-gradient(180deg, rgba(10,13,18,.82), rgba(10,13,18,.34) 30%, rgba(10,13,18,.5) 62%, rgba(6,8,12,.94) 96%),
+      radial-gradient(80% 55% at 50% 30%, transparent 42%, rgba(4,6,9,.46) 100%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:4; }
+  .content{ position:relative; z-index:3; }
+
+  .lbx{ position:fixed; left:0; right:0; height:9vh; background:#04060A; z-index:96; pointer-events:none; }
+  .lbx.top{ top:0; border-bottom:1px solid rgba(201,169,89,.22);
+    animation:lbxT 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  .lbx.bot{ bottom:0; border-top:1px solid rgba(201,169,89,.22);
+    animation:lbxB 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  @keyframes lbxT{ to{ transform:translateY(-103%); } }
+  @keyframes lbxB{ to{ transform:translateY(103%); } }
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+
+  .topbar{ position:fixed; top:0; left:0; right:0; z-index:60;
+    display:flex; align-items:center; gap:16px; padding:12px 20px;
+    background:linear-gradient(180deg, rgba(4,6,9,.88) 30%, transparent); }
+  .tb-back{ display:inline-flex; align-items:center; gap:8px; color:var(--bone-2); font-size:13px; letter-spacing:.14em; }
+  .tb-back:hover{ color:var(--gold-hi); }
+  .tb-title{ position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap;
+    font-family:var(--f-dj); font-weight:700; font-size:14px; letter-spacing:.3em; color:var(--bone-2); }
+  .tb-title b{ color:var(--bone); }
+  .steps-nav{ margin-left:auto; display:flex; gap:8px; }
+  .stp{ width:30px; height:30px; display:grid; place-items:center; border:1px solid var(--border-lo);
+    border-radius:2px; color:var(--bone-3); font-family:var(--f-dj); font-size:13.5px;
+    background:rgba(10,13,18,.55); transition:all .14s ease-out; }
+  .stp:hover{ color:var(--gold-hi); border-color:var(--gold-lo); }
+  .stp.is-selected{ color:var(--gold-hi); border-color:var(--gold-lo);
+    box-shadow:var(--focus-ring); background:rgba(201,169,89,.08); }
+
+  .wrap{ max-width:1220px; margin:0 auto; padding:92px 28px 40px; }
+
+  /* ---------- header ---------- */
+  .bhead{ display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:8px 2px 4px;
+    animation:rise .8s ease-out 1.7s both; }
+  .bhead h1{ margin:0; font-family:var(--f-dj); font-weight:800; font-size:clamp(22px,2.8vw,30px);
+    letter-spacing:.24em; text-shadow:0 2px 14px rgba(0,0,0,.85); }
+  .chip.is-live .dot{ animation:pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse{ 50%{ opacity:.35; transform:scale(.75); } }
+
+  /* ---------- battle grid ---------- */
+  .battle-grid{ display:grid; grid-template-columns:1.55fr 1fr; gap:18px; align-items:start; margin-top:14px; }
+
+  /* monster rows */
+  .board{ display:flex; flex-direction:column; gap:12px; animation:rise .8s ease-out 1.9s both; }
+  .mrow{ position:relative; display:flex; gap:14px; align-items:center; padding:12px 14px;
+    border-radius:4px; border:1px solid var(--border-lo);
+    background:linear-gradient(180deg, rgba(27,34,45,.82), rgba(16,20,27,.9));
+    box-shadow:inset 0 1px 0 rgba(233,227,211,.04), 0 8px 20px rgba(0,0,0,.4);
+    transition:border-color .5s ease, box-shadow .5s ease; }
+  .mth{ position:relative; width:96px; height:96px; flex:none; border-radius:3px; overflow:hidden;
+    border:1px solid #3A2C4E; background:radial-gradient(circle at 50% 42%, #1E1826, #0B0A12 80%); }
+  .mth img{ position:relative; z-index:1; width:100%; height:100%; object-fit:contain; padding:6px;
+    filter:drop-shadow(0 5px 9px rgba(0,0,0,.65)); }
+  .mth .glow{ position:absolute; inset:0; background:radial-gradient(circle at 50% 60%, var(--sil,rgba(176,124,232,.30)), transparent 64%); filter:blur(5px); }
+  .minfo{ flex:1; min-width:0; transition:opacity .6s ease; }
+  .mtop{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .mname{ font-family:var(--f-dj); font-weight:800; font-size:17px; letter-spacing:.1em; }
+  .prov{ font-size:11px; color:var(--dm-hi); border:1px solid var(--dm-lo); border-radius:999px;
+    padding:2px 10px; background:rgba(74,43,102,.16); letter-spacing:.05em; white-space:nowrap; }
+  .prov b{ color:#E4D2FA; }
+  .mpct{ margin-left:auto; color:var(--bone-2); }
+  .hpbar{ position:relative; height:20px; margin-top:7px; border-radius:2px; overflow:hidden;
+    background:#10141B; border:1px solid var(--border-lo); box-shadow:inset 0 2px 6px rgba(0,0,0,.6); }
+  .hpbar::before{ content:""; position:absolute; inset:0; z-index:2; pointer-events:none;
+    background:repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgba(6,8,12,.85) calc(10% - 1px) 10%); }
+  .hpfill{ position:relative; height:100%; width:100%;
+    background:linear-gradient(90deg, #5E1210, #8E3430 45%, #C05248);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.14), inset 0 -5px 9px rgba(0,0,0,.4); }
+  .hpfill::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(115deg, transparent 32%, rgba(255,214,190,.20) 46%, transparent 60%);
+    background-size:220% 100%; animation:shim 2.6s linear infinite; }
+  @keyframes shim{ from{ background-position:180% 0; } to{ background-position:-80% 0; } }
+  .mrow.hit .hpfill{ filter:brightness(2.1); }
+  .mnums{ display:flex; gap:6px; justify-content:flex-end; margin-top:4px; letter-spacing:.05em; }
+  .mnums .cur{ color:var(--bone); font-weight:700; }
+
+  /* death lock */
+  .mrow.dead{ border-color:var(--gold-lo); box-shadow:inset 0 0 26px rgba(201,169,89,.08), 0 8px 20px rgba(0,0,0,.4); }
+  .mrow.dead .minfo{ opacity:.55; }
+  .mrow.dead .mth{ filter:grayscale(.7) brightness(.8); border-color:var(--gold-lo); }
+  .mrow.dead .hpfill{ background:linear-gradient(90deg, #8C6D1A, #C9A959); filter:none; }
+  .mrow.dead .hpfill::after{ animation:none; }
+  .slain{ display:none; position:absolute; right:16px; top:50%; transform:translateY(-50%);
+    align-items:center; gap:12px; z-index:5; }
+  .mrow.dead .slain{ display:flex; }
+  .stmp{ font-family:var(--f-seal); font-weight:400; font-size:30px; line-height:1; color:var(--gold-hi);
+    padding:2px 10px 7px; border:2px solid rgba(201,169,89,.65); border-radius:5px;
+    transform:rotate(-8deg); background:rgba(12,9,4,.55);
+    text-shadow:0 0 14px rgba(201,169,89,.4), 0 2px 5px #000;
+    animation:stampin .55s cubic-bezier(.2,1.5,.4,1) both; }
+  @keyframes stampin{ from{ opacity:0; transform:rotate(-14deg) scale(2.4); }
+    62%{ opacity:1; transform:rotate(-8deg) scale(.94); } to{ transform:rotate(-8deg) scale(1); } }
+  .hofb{ font-size:11.5px; color:var(--gold-hi); border:1px solid var(--gold-lo); border-radius:999px;
+    padding:3px 12px; background:rgba(201,169,89,.12); letter-spacing:.06em; white-space:nowrap;
+    animation:rise .5s ease-out .3s both; }
+
+  /* ---------- side column ---------- */
+  .sidecol{ display:flex; flex-direction:column; gap:18px; animation:rise .8s ease-out 2.1s both; }
+  .sc-h{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+  .sc-h h2{ margin:0; font-family:var(--f-dj); font-size:15.5px; font-weight:800; letter-spacing:.22em; }
+
+  .feed{ min-height:236px; }
+  .logline{ padding:5px 2px; border-bottom:1px solid rgba(233,227,211,.05);
+    font-size:12.5px; line-height:1.6; animation:toastin .28s ease-out; }
+  .logline .ts{ color:var(--bone-3); font-size:10.5px; margin-right:8px; letter-spacing:.04em; }
+  .logline.nova{ color:var(--ember-hi); }
+  .logline.goldl{ color:var(--gold-hi); }
+
+  .hrows{ display:flex; flex-direction:column; }
+  .hrow{ display:flex; align-items:center; gap:10px; padding:9px 10px 9px 12px;
+    border-left:3px solid transparent; border-bottom:1px solid rgba(233,227,211,.05);
+    will-change:transform; }
+  .hrow:nth-child(1){ border-left-color:#E3C169; background:linear-gradient(90deg, rgba(227,169,76,.15), transparent 66%); }
+  .hrow:nth-child(2){ border-left-color:#C7CDD6; background:linear-gradient(90deg, rgba(199,205,214,.10), transparent 66%); }
+  .hrow:nth-child(3){ border-left-color:#B08356; background:linear-gradient(90deg, rgba(176,131,86,.12), transparent 66%); }
+  .hrk{ font-family:var(--f-den); font-weight:700; font-size:16px; width:24px; color:var(--bone-2); text-align:center; }
+  .hrow:nth-child(1) .hrk{ color:#EBD9A4; font-size:19px; text-shadow:0 0 8px rgba(227,169,76,.45); }
+  .hrow:nth-child(2) .hrk{ color:#DDE2E9; font-size:17px; }
+  .hrow:nth-child(3) .hrk{ color:#CDA079; }
+  .hnm{ font-family:var(--f-dj); font-weight:700; font-size:14px; letter-spacing:.06em; }
+  .fix{ display:none; font-family:var(--f-seal); font-size:12px; color:#14100A; background:var(--gold);
+    border-radius:2px; padding:0 6px 1px; }
+  .hrow.is-fixed .fix{ display:inline-block; animation:rise .4s ease-out both; }
+  .hdm{ margin-left:auto; font-family:var(--f-den); font-weight:700; font-size:15px; color:var(--bone); }
+  .hdm.bump{ color:var(--gold-hi); text-shadow:0 0 10px rgba(201,169,89,.5); }
+
+  .cta-row{ text-align:center; padding:30px 0 0; animation:rise .8s ease-out 2.4s both; }
+  .foot{ text-align:center; padding:30px 0 0; letter-spacing:.24em; }
+
+  @media (prefers-reduced-motion: reduce){
+    .hpfill::after, .chip.is-live .dot{ animation:none !important; }
+  }
+  @media (max-width:1020px){
+    .battle-grid{ grid-template-columns:1fr; }
+  }
+  @media (max-width:840px){
+    .lbx{ height:5vh; }
+    .topbar{ flex-wrap:wrap; gap:8px 12px; padding:10px 14px; }
+    .tb-title{ position:static; transform:none; order:10; width:100%; text-align:center;
+      letter-spacing:.14em; font-size:12.5px; }
+    .wrap{ padding:108px 14px 40px; }
+    .mrow{ flex-wrap:wrap; }
+    .slain{ position:static; transform:none; margin-left:auto; }
+    .stmp{ font-size:24px; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+<div class="lbx top"></div>
+<div class="lbx bot"></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="vkn" fill="none" stroke="#C9A959" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M18 2.5 L27.6 19 L8.4 19 Z"/>
+    <path d="M12.9 11.5 L22.5 28 L3.3 28 Z"/>
+    <path d="M23.1 11.5 L32.7 28 L13.5 28 Z"/>
+  </g>
+</defs></svg>
+
+<header class="topbar">
+  <a class="tb-back" href="ragnarok.html"><span>←</span><span class="rune" style="color:var(--gold)">ᛏ</span> 殿堂へ</a>
+  <div class="tb-title">終季決戦 — <b>第参季『狼の冬』</b></div>
+  <nav class="steps-nav" aria-label="観戦の段">
+    <a class="stp" href="season_end_ragnarok_1.html" title="封印の間">壱</a>
+    <a class="stp is-selected" href="season_end_ragnarok_2.html" title="決戦">弐</a>
+    <a class="stp" href="season_end_ragnarok_3.html" title="昇天">参</a>
+  </nav>
+</header>
+
+<div class="content">
+<main class="wrap">
+
+  <!-- ============ HEADER ============ -->
+  <section class="bhead">
+    <h1>決戦 — 顕現せし五柱</h1>
+    <span class="en">ACT II — THE FIVE MADE MANIFEST</span>
+    <span class="grow"></span>
+    <span class="chip is-live"><span class="dot"></span> 交戦中 ・ <b class="tnum" id="clk" style="color:var(--bone)">03:12:44</b></span>
+    <span class="chip">敵残存 <b class="tnum" id="alive" style="color:var(--bone)">5</b>/5</span>
+  </section>
+
+  <div class="battle-grid">
+
+    <!-- ============ BATTLE BOARD ============ -->
+    <section class="board" aria-label="戦況">
+
+      <article class="mrow" id="mr0">
+        <div class="mth" style="--sil:rgba(111,196,222,.28)"><span class="glow"></span><img src="assets/myth_serpent.png" alt="縛鎖の大海蛇"></div>
+        <div class="minfo">
+          <div class="mtop">
+            <span class="mname">縛鎖の大海蛇</span>
+            <span class="prov">解放者: <b>Elon</b></span>
+            <span class="mpct t-micro tnum" id="pc0">100%</span>
+          </div>
+          <div class="hpbar"><div class="hpfill" id="hp0"></div></div>
+          <div class="mnums t-micro"><span class="cur tnum" id="cu0">8,420,000</span><span>/</span><span class="tnum">8,420,000</span></div>
+        </div>
+        <div class="slain"><b class="stmp">討滅</b><span class="hofb">殿堂入り: 白樺の隊</span></div>
+      </article>
+
+      <article class="mrow" id="mr1">
+        <div class="mth" style="--sil:rgba(111,196,222,.28)"><span class="glow"></span><img src="assets/myth_wyvern.png" alt="凍てつく古竜"></div>
+        <div class="minfo">
+          <div class="mtop">
+            <span class="mname">凍てつく古竜</span>
+            <span class="prov">解放者: <b>無銘の商人</b></span>
+            <span class="mpct t-micro tnum" id="pc1">100%</span>
+          </div>
+          <div class="hpbar"><div class="hpfill" id="hp1"></div></div>
+          <div class="mnums t-micro"><span class="cur tnum" id="cu1">12,800,000</span><span>/</span><span class="tnum">12,800,000</span></div>
+        </div>
+        <div class="slain"><b class="stmp">討滅</b><span class="hofb">殿堂入り</span></div>
+      </article>
+
+      <article class="mrow" id="mr2">
+        <div class="mth" style="--sil:rgba(255,138,61,.26)"><span class="glow"></span><img src="assets/myth_phoenix.png" alt="劫火の不死鳥"></div>
+        <div class="minfo">
+          <div class="mtop">
+            <span class="mname">劫火の不死鳥</span>
+            <span class="prov">解放者: <b>Elon</b></span>
+            <span class="mpct t-micro tnum" id="pc2">100%</span>
+          </div>
+          <div class="hpbar"><div class="hpfill" id="hp2"></div></div>
+          <div class="mnums t-micro"><span class="cur tnum" id="cu2">9,640,000</span><span>/</span><span class="tnum">9,640,000</span></div>
+        </div>
+        <div class="slain"><b class="stmp">討滅</b><span class="hofb">殿堂入り</span></div>
+      </article>
+
+      <article class="mrow" id="mr3">
+        <div class="mth" style="--sil:rgba(176,124,232,.30)"><span class="glow"></span><img src="assets/myth_kraken.png" alt="深淵の触腕"></div>
+        <div class="minfo">
+          <div class="mtop">
+            <span class="mname">深淵の触腕</span>
+            <span class="prov">解放者: <b>影渡りのヴァリ</b></span>
+            <span class="mpct t-micro tnum" id="pc3">100%</span>
+          </div>
+          <div class="hpbar"><div class="hpfill" id="hp3"></div></div>
+          <div class="mnums t-micro"><span class="cur tnum" id="cu3">10,900,000</span><span>/</span><span class="tnum">10,900,000</span></div>
+        </div>
+        <div class="slain"><b class="stmp">討滅</b><span class="hofb">殿堂入り</span></div>
+      </article>
+
+      <article class="mrow" id="mr4">
+        <div class="mth" style="--sil:rgba(255,138,61,.26)"><span class="glow"></span><img src="assets/myth_reddragon.png" alt="緋鱗の古王"></div>
+        <div class="minfo">
+          <div class="mtop">
+            <span class="mname">緋鱗の古王</span>
+            <span class="prov">解放者: <b>北辺の九人衆</b></span>
+            <span class="mpct t-micro tnum" id="pc4">100%</span>
+          </div>
+          <div class="hpbar"><div class="hpfill" id="hp4"></div></div>
+          <div class="mnums t-micro"><span class="cur tnum" id="cu4">15,200,000</span><span>/</span><span class="tnum">15,200,000</span></div>
+        </div>
+        <div class="slain"><b class="stmp">討滅</b><span class="hofb">殿堂入り</span></div>
+      </article>
+
+    </section>
+
+    <!-- ============ SIDE: FEED + HALL LIVE ============ -->
+    <aside class="sidecol">
+
+      <section class="panel panel-pad">
+        <div class="sc-h">
+          <h2>戦況の声</h2><span class="en">DAMAGE FEED</span>
+          <span class="grow"></span><span class="t-micro">ムニンの報せ</span>
+        </div>
+        <div class="feed" id="feed"></div>
+      </section>
+
+      <section class="panel ornate panel-pad">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="sc-h">
+          <h2>殿堂入り</h2><span class="en">HALL OF FAME — LIVE</span>
+          <span class="grow"></span>
+          <span class="chip is-live"><span class="dot"></span> 生中継</span>
+        </div>
+        <div class="hrows" id="hallRows">
+          <div class="hrow" data-p="白樺の隊"><span class="hrk tnum">1</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">白樺の隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+          <div class="hrow" data-p="鴉羽の隊"><span class="hrk tnum">2</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">鴉羽の隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+          <div class="hrow" data-p="霧角の隊"><span class="hrk tnum">3</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">霧角の隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+          <div class="hrow" data-p="雷角の隊"><span class="hrk tnum">4</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">雷角の隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+          <div class="hrow" data-p="星読みの隊"><span class="hrk tnum">5</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">星読みの隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+          <div class="hrow" data-p="焔手の隊"><span class="hrk tnum">6</span>
+            <svg class="valknut" width="16" height="14" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+            <span class="hnm">焔手の隊</span><span class="fix">確定</span><b class="hdm tnum">0</b></div>
+        </div>
+        <div class="t-micro" style="margin-top:8px; letter-spacing:.08em">柱を討ち果たした隊の戦果は<b style="color:var(--gold-hi)">確定</b>として刻まれる</div>
+      </section>
+
+    </aside>
+  </div>
+
+  <!-- ============ CTA ============ -->
+  <div class="cta-row">
+    <div class="row" style="justify-content:center; gap:14px; flex-wrap:wrap">
+      <a class="btn btn-ghost" href="season_end_ragnarok_1.html">← 壱 封印の間</a>
+      <a class="btn btn-forge" href="season_end_ragnarok_3.html">終幕を見届ける →</a>
+    </div>
+  </div>
+
+  <footer class="foot t-micro">観戦モック — 実データではない</footer>
+</main>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  initParticles(document.getElementById("pfx"), { mix:"both", count:80 });
+
+  var fmt = function(n){ return Math.max(0, Math.round(n)).toLocaleString("en-US"); };
+  var two = function(n){ return String(n).padStart(2, "0"); };
+
+  /* ---------- battle clock (交戦時間は進み続ける) ---------- */
+  var elapsed = 3*3600 + 12*60 + 44;
+  var clkEl = document.getElementById("clk");
+  function clkStr(){ return two(Math.floor(elapsed/3600)) + ":" + two(Math.floor(elapsed%3600/60)) + ":" + two(elapsed%60); }
+  setInterval(function(){ elapsed++; clkEl.textContent = clkStr(); }, 1000);
+
+  /* ---------- monsters ---------- */
+  var mons = [
+    { name:"縛鎖の大海蛇", max: 8420000, rate:0,      scripted:8,  dead:false },
+    { name:"凍てつく古竜", max:12800000, rate: 68000, scripted:0,  dead:false },
+    { name:"劫火の不死鳥", max: 9640000, rate:118000, scripted:0,  dead:false },
+    { name:"深淵の触腕",   max:10900000, rate: 92000, scripted:0,  dead:false },
+    { name:"緋鱗の古王",   max:15200000, rate: 54000, scripted:0,  dead:false }
+  ];
+  mons.forEach(function(m, i){
+    m.hp = m.max;
+    m.row = document.getElementById("mr" + i);
+    m.fill = document.getElementById("hp" + i);
+    m.cur = document.getElementById("cu" + i);
+    m.pct = document.getElementById("pc" + i);
+  });
+  var aliveEl = document.getElementById("alive");
+
+  var t = 0, last = performance.now();
+  function render(m){
+    var k = Math.max(0, m.hp / m.max);
+    m.fill.style.width = (k * 100).toFixed(2) + "%";
+    m.cur.textContent = fmt(m.hp);
+    m.pct.textContent = Math.ceil(k * 100) + "%";
+  }
+  function die0(){ /* 縛鎖の大海蛇 — 白樺の隊がとどめ (scripted ~8s) */
+    var m = mons[0];
+    m.dead = true; m.hp = 0;
+    m.row.classList.add("dead");
+    m.fill.style.width = "100%";
+    m.cur.textContent = "0"; m.pct.textContent = "討滅";
+    aliveEl.textContent = "4";
+    feedPush("<span class='kw-gold'>縛鎖の大海蛇 討滅 — とどめ: 白樺の隊</span>", "goldl");
+    fixParty("白樺の隊");
+  }
+  (function tick(now){
+    var dt = Math.min(0.06, (now - last) / 1000); last = now; t += dt;
+    mons.forEach(function(m, i){
+      if (m.dead) return;
+      if (m.scripted){ /* 時刻駆動 — 8秒ちょうどで斃れる */
+        m.hp = m.max * Math.max(0, 1 - t / m.scripted);
+        if (t >= m.scripted){ die0(); return; }
+      } else {
+        m.hp -= m.rate * dt * (0.55 + Math.random() * 0.9);
+        if (m.hp <= 0) m.hp = m.max; /* 観戦デモ: 減っては巡る */
+      }
+      render(m);
+    });
+    requestAnimationFrame(tick);
+  })(last);
+
+  /* hit-flash: 生存する柱をランダムに閃かせる */
+  (function flashLoop(){
+    var living = mons.filter(function(m){ return !m.dead; });
+    if (living.length){
+      var m = living[Math.floor(Math.random() * living.length)];
+      m.row.classList.add("hit");
+      setTimeout(function(){ m.row.classList.remove("hit"); }, 160);
+    }
+    setTimeout(flashLoop, 380 + Math.random() * 900);
+  })();
+
+  /* ---------- damage feed ---------- */
+  var feed = document.getElementById("feed");
+  var parties = ["白樺の隊","鴉羽の隊","霧角の隊","焔手の隊","雷角の隊","星読みの隊","黒帆の隊","氷鎖の隊"];
+  function feedPush(html, cls){
+    var li = document.createElement("div");
+    li.className = "logline" + (cls ? " " + cls : "");
+    li.innerHTML = "<span class='ts tnum'>" + clkStr() + "</span>" + html;
+    feed.prepend(li);
+    while (feed.children.length > 8) feed.lastChild.remove();
+  }
+  var novaK = 0;
+  function feedLine(){
+    novaK++;
+    if (novaK % 7 === 0){
+      var p0 = parties[Math.floor(Math.random() * parties.length)];
+      feedPush("<b>" + p0 + "</b> の光条 — <b>第5反射 — 全域強打!</b>", "nova");
+    } else {
+      var p = parties[Math.floor(Math.random() * parties.length)];
+      var living = mons.filter(function(m){ return !m.dead; });
+      var m = living[Math.floor(Math.random() * living.length)] || mons[4];
+      var d = 1200 + Math.floor(Math.random() * 8600);
+      var tpl = Math.random();
+      if (tpl < 0.55) feedPush("<b>" + p + "</b> が " + m.name + " に <b class='tnum'>" + fmt(d) + "</b>");
+      else if (tpl < 0.8) feedPush("<b>" + p + "</b> の光条が " + m.name + " を貫く — <b class='tnum'>" + fmt(d) + "</b>");
+      else feedPush("<b>" + p + "</b> 反射斉射 — " + m.name + " に <b class='tnum'>" + fmt(d) + "</b>");
+    }
+  }
+  feedLine();
+  setInterval(feedLine, 850);
+
+  /* ---------- hall of fame live ---------- */
+  var hallWrap = document.getElementById("hallRows");
+  var hall = [].map.call(hallWrap.children, function(el){
+    return { el: el, name: el.dataset.p, valEl: el.querySelector(".hdm"), val: 0, fixed: false };
+  });
+  var hallInit = [4120404, 3842110, 3801559, 3214006, 2988412, 2411730];
+  hall.forEach(function(h, i){
+    h.val = hallInit[i];
+    setTimeout(function(){ countUp(h.valEl, h.val, 1100); }, 400 + i * 130);
+  });
+  function renumber(){
+    [].forEach.call(hallWrap.children, function(el, i){
+      el.querySelector(".hrk").textContent = i + 1;
+    });
+  }
+  function bumpTo(h, target){
+    var from = h.val; h.val = target;
+    var t0 = performance.now(), dur = 480;
+    h.valEl.classList.add("bump");
+    (function s(tt){
+      var k = Math.min(1, (tt - t0) / dur);
+      h.valEl.textContent = fmt(from + (target - from) * k);
+      if (k < 1) requestAnimationFrame(s);
+      else setTimeout(function(){ h.valEl.classList.remove("bump"); }, 200);
+    })(t0);
+  }
+  function fixParty(name){
+    hall.forEach(function(h){
+      if (h.name === name){
+        h.fixed = true;
+        h.el.classList.add("is-fixed");
+        bumpTo(h, h.val + 262000); /* 最後のとどめ分 */
+      }
+    });
+  }
+  /* periodic bumps */
+  setTimeout(function(){
+    setInterval(function(){
+      var pool = hall.filter(function(h){ return !h.fixed; });
+      if (!pool.length) return;
+      var h = pool[Math.floor(Math.random() * pool.length)];
+      bumpTo(h, h.val + 18000 + Math.floor(Math.random() * 62000));
+    }, 1300);
+  }, 2000);
+
+  /* mid-way re-sort: 霧角の隊 が 鴉羽の隊 を抜く (t≈14s) — FLIP swap */
+  setTimeout(function(){
+    var a = hallWrap.children[1], b = hallWrap.children[2]; /* a の下の b が上がる */
+    var ha = hall.filter(function(h){ return h.el === a; })[0];
+    var hb = hall.filter(function(h){ return h.el === b; })[0];
+    bumpTo(hb, ha.val + 55400);
+    var dy = b.offsetTop - a.offsetTop;
+    a.style.transition = b.style.transition = "transform .5s cubic-bezier(.2,.8,.2,1)";
+    a.style.transform = "translateY(" + dy + "px)";
+    b.style.transform = "translateY(" + (-dy) + "px)";
+    setTimeout(function(){
+      a.style.transition = b.style.transition = "";
+      a.style.transform = b.style.transform = "";
+      hallWrap.insertBefore(b, a);
+      renumber();
+    }, 540);
+  }, 14000);
+</script>
+</body>
+</html>

@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>編成の間 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(90% 70% at 60% 0%, rgba(27,34,45,.5), transparent 60%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.5;
+    background:url(assets/bg_canvas.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.55), rgba(10,13,18,.86) 70%); }
+
+  .layout{ display:flex; flex-wrap:wrap; gap:18px; padding:16px 22px 90px; align-items:flex-start; }
+
+  /* ---------- unit tabs in hud ---------- */
+  .utab{
+    display:inline-flex; align-items:center; gap:8px; padding:6px 16px 5px;
+    border:1px solid var(--border-lo); border-bottom:none; border-radius:3px 3px 0 0;
+    color:var(--bone-2); font-size:13.5px; letter-spacing:.1em; cursor:pointer;
+    background:linear-gradient(180deg, rgba(19,24,32,.6), rgba(10,13,18,.6));
+  }
+  .utab .dj{ font-size:15px; }
+  .utab.is-on{ color:var(--gold-hi); border-color:var(--gold-lo);
+    background:linear-gradient(180deg, rgba(201,169,89,.13), rgba(19,24,32,.7));
+    box-shadow:inset 0 2px 0 var(--gold); }
+  .utab .st{ font-size:10px; color:var(--bone-3); }
+  .utab.is-on .st{ color:var(--gold); }
+
+  /* ---------- board ---------- */
+  .boardwrap{ flex:none; }
+  .stagehead{ display:flex; align-items:baseline; gap:14px; margin:0 0 10px 4px; }
+  .stagehead h2{ margin:0; font-size:21px; letter-spacing:.3em; font-weight:800; }
+  .stagehead .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; }
+  .board-stage{ --cell:64px; }
+  .gridbox{ position:relative; margin:18px 10px 6px 18px; }
+  .grid8 .cell.dead{ background:rgba(4,6,9,.55); box-shadow:inset 0 2px 6px rgba(0,0,0,.7); }
+  .grid8 .cell.dead::after{ content:"×"; display:grid; place-items:center; height:100%;
+    color:rgba(107,103,92,.28); font-size:11px; }
+
+  /* BP patches */
+  .bp{ background:linear-gradient(rgba(58,50,41,.30), rgba(30,24,18,.44)), url(assets/tex_leather.jpg) center/cover; border:2px solid rgba(201,169,89,.4); }
+  .bp::before{ /* per-cell seams */
+    content:""; position:absolute; inset:0; border-radius:4px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 63px, rgba(10,13,18,.55) 63px 64px),
+      repeating-linear-gradient(0deg,  transparent 0 63px, rgba(10,13,18,.55) 63px 64px);
+  }
+  .bp::after{ /* stitched inner border */
+    content:""; position:absolute; inset:4px; border:1px dashed rgba(233,227,211,.28); border-radius:3px; pointer-events:none;
+  }
+  .bp .rv{ position:absolute; width:7px; height:7px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #EBD9A4, #857038 70%); box-shadow:0 1px 2px #000; }
+  .bp .rv.tl{ top:-3px; left:-3px; } .bp .rv.tr{ top:-3px; right:-3px; }
+  .bp .rv.bl{ bottom:-3px; left:-3px; } .bp .rv.br{ bottom:-3px; right:-3px; }
+  .bp.tint-ochre { background:linear-gradient(rgba(178,128,52,.30), rgba(94,64,22,.42)), url(assets/tex_leather.jpg) center/cover; }
+  .bp.tint-frost { background:linear-gradient(rgba(81,128,152,.38), rgba(29,75,96,.5)), url(assets/tex_leather.jpg) center/cover; border-color:rgba(111,196,222,.5); }
+  .bp.tint-ember { background:linear-gradient(rgba(160,84,44,.34), rgba(94,42,20,.5)), url(assets/tex_leather.jpg) center/cover; border-color:rgba(226,88,34,.45); }
+
+  .po{ z-index:6; }
+  .po .lvl{ position:absolute; left:3px; top:1px; font-size:10px; color:var(--bone-2); }
+  .po.legend{ border-color:var(--r-legend); box-shadow:0 0 12px rgba(227,169,76,.35), 0 4px 10px rgba(0,0,0,.5); }
+  .po.dragging{
+    transform:rotate(-3deg) scale(1.06); opacity:.92; z-index:40; cursor:grabbing;
+    box-shadow:0 22px 40px rgba(0,0,0,.7), var(--focus-ring);
+  }
+  .po.dragging::after{ content:"R 回転"; position:absolute; bottom:-22px; left:50%; transform:translateX(-50%);
+    font-size:10px; color:var(--gold-hi); letter-spacing:.2em; white-space:nowrap; opacity:.9; }
+
+  .beams{ z-index:5; }
+  .socket-si{ position:absolute; width:12px; height:12px; border-radius:50%; z-index:8;
+    background:radial-gradient(circle at 38% 32%, #B8E9F5, #2A6A82 65%);
+    border:1px solid #B8E9F5; box-shadow:0 0 8px rgba(140,220,245,.6); }
+
+  /* pinned tooltip demo */
+  .tooltip.pinned{ left:calc(64px*6 + 34px); top:calc(64px*2 + 30px); }
+  .tooltip .tt-head{ display:flex; gap:10px; align-items:center; margin-bottom:4px; }
+  .tooltip .tt-head img{ width:40px; height:40px; object-fit:contain; }
+
+  /* board footer: presets + save */
+  .boardfoot{ display:flex; align-items:center; gap:10px; margin-top:14px; }
+  .preset{
+    padding:6px 18px; border:1px solid var(--border-lo); border-radius:2px; cursor:pointer;
+    color:var(--bone-2); font-size:13px; letter-spacing:.18em;
+    background:linear-gradient(180deg, rgba(27,34,45,.8), rgba(16,20,27,.8));
+  }
+  .preset.is-on{ color:var(--gold-hi); border-color:var(--gold-lo); box-shadow:inset 0 -2px 0 var(--gold); }
+  .preset.warn{ border-color:rgba(227,169,76,.5); color:var(--r-legend); } /* 共有アイテムあり */
+  .saved{ margin-left:auto; font-size:11px; color:var(--bone-3); letter-spacing:.12em; display:flex; gap:8px; align-items:center; }
+  .saved .dot{ width:7px; height:7px; border-radius:50%; background:#57C77B; box-shadow:0 0 6px rgba(87,199,123,.7); }
+
+  /* ---------- right: inventory ---------- */
+  .inv{ width:392px; flex:none; }
+  .inv .tabs{ display:flex; gap:6px; padding:10px 12px 0; }
+  .inv .pg{
+    width:34px; height:30px; display:grid; place-items:center; cursor:pointer;
+    color:var(--bone-3); border:1px solid var(--border-lo); border-bottom:none; border-radius:3px 3px 0 0;
+    font-family:var(--f-dj); font-size:14px;
+  }
+  .inv .pg.is-on{ color:var(--gold-hi); border-color:var(--gold-lo); background:rgba(201,169,89,.08); }
+  .inv .filters{ display:flex; gap:6px; padding:10px 12px; flex-wrap:wrap; }
+  .ilist{ display:flex; flex-direction:column; gap:8px; padding:2px 12px 12px; max-height:295px; overflow:auto; }
+
+  /* detail card */
+  .detail{ margin:12px; }
+  .detail .d-art{
+    position:relative; height:168px; display:grid; place-items:center;
+    background:
+      radial-gradient(60% 80% at 50% 46%, rgba(111,196,222,.13), transparent 70%),
+      radial-gradient(circle at 50% 55%, #232B37 0%, #10141B 80%);
+    border-bottom:1px solid var(--border-lo);
+  }
+  .detail .d-art img{ height:138px; object-fit:contain; filter:drop-shadow(0 10px 18px rgba(0,0,0,.7)); }
+  .detail .d-art .shape{ position:absolute; right:10px; top:10px; opacity:.85; }
+  .detail .d-body{ padding:12px 16px 16px; }
+  .detail .nm{ font-size:19px; font-weight:800; }
+  .stat{ display:flex; gap:10px; align-items:baseline; font-size:13.5px; padding:3px 0; }
+  .stat .ic{ width:16px; text-align:center; color:var(--bone-3); }
+  .flavor{ color:var(--bone-3); font-style:italic; font-size:12.5px; margin-top:10px; line-height:1.8; font-family:var(--f-dj); }
+  .dact{ display:flex; gap:10px; margin-top:14px; }
+
+  /* stats panel */
+  .stats .srow{ display:flex; align-items:center; gap:12px; font-size:13px; padding:4px 0; }
+  .stats .srow .lbl{ width:86px; color:var(--bone-2); letter-spacing:.08em; }
+  .stats .srow b{ font-family:var(--f-den); font-size:17px; min-width:52px; text-align:right; }
+  .stats .srow .bar{ flex:1; height:7px; }
+
+  /* embark dock */
+  .dock{
+    position:fixed; right:26px; bottom:22px; z-index:45; display:flex; align-items:center; gap:16px;
+  }
+  .dock .hint{ font-size:11px; color:var(--bone-2); text-align:right; line-height:1.7; letter-spacing:.05em; }
+
+  @media (max-width:840px){
+    .layout{ flex-wrap:wrap; padding:12px 12px 130px; gap:14px; }
+    .inv{ width:100%; }
+    .boardwrap{ max-width:calc(100vw - 24px); overflow:hidden; }
+    .hud .row{ width:100%; overflow-x:auto; padding-bottom:4px; }
+    .utab{ flex:none; white-space:nowrap; }
+    .dock{ right:12px; bottom:78px; }
+    .dock .hint{ display:none; }
+    .stagehead{ flex-wrap:wrap; gap:8px; }
+    .stagehead h2{ font-size:18px; }
+    .boardfoot{ flex-wrap:wrap; }
+    .tooltip.pinned{ display:none; } /* 盤が縮む端末ではピン留め例を隠す */
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav is-here" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="page-shell">
+  <header class="hud">
+    <div class="row" style="gap:8px">
+      <span class="utab is-on"><span class="dj">壱</span> 霧渡りの一行 <span class="st">出撃可</span></span>
+      <span class="utab"><span class="dj">弐</span> 焔手の隊 <span class="st">遠征中</span></span>
+      <span class="utab"><span class="dj">参</span> 空唄の隊 <span class="st">休息 00:41</span></span>
+      <span class="utab" style="opacity:.55"><span class="dj">肆</span> ─ <span class="st">未編成</span></span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 ・ 残り23日</div>
+    <div class="chip is-live"><span class="dot"></span> 自動保存</div>
+  </header>
+
+  <main class="layout">
+    <!-- ================= BOARD ================= -->
+    <section class="boardwrap">
+      <div class="stagehead">
+        <h2 class="dj">編成の間</h2>
+        <span class="en">CANVAS — UNIT Ⅰ</span>
+        <span class="chip" style="margin-left:6px">背嚢 3 ・ 物品 9 ・ <span class="kw-link">連結 3</span></span>
+      </div>
+
+      <div class="board-stage ornate">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+
+        <div class="gridbox">
+          <!-- coords -->
+          <div class="coord" style="top:-16px; left:0; width:512px; display:flex;">
+            <span style="width:64px;text-align:center">A</span><span style="width:64px;text-align:center">B</span><span style="width:64px;text-align:center">C</span><span style="width:64px;text-align:center">D</span><span style="width:64px;text-align:center">E</span><span style="width:64px;text-align:center">F</span><span style="width:64px;text-align:center">G</span><span style="width:64px;text-align:center">H</span>
+          </div>
+          <div class="coord" style="left:-16px; top:0; height:512px; display:flex; flex-direction:column;">
+            <span style="height:64px;display:grid;place-items:center">1</span><span style="height:64px;display:grid;place-items:center">2</span><span style="height:64px;display:grid;place-items:center">3</span><span style="height:64px;display:grid;place-items:center">4</span><span style="height:64px;display:grid;place-items:center">5</span><span style="height:64px;display:grid;place-items:center">6</span><span style="height:64px;display:grid;place-items:center">7</span><span style="height:64px;display:grid;place-items:center">8</span>
+          </div>
+
+          <div class="grid8" id="grid"></div>
+
+          <!-- ==== BP patches ==== -->
+          <div class="bp tint-ochre" style="left:0; top:0; width:256px; height:128px;">
+            <span class="rv tl"></span><span class="rv tr"></span><span class="rv bl"></span><span class="rv br"></span>
+            <div class="bp-label">斥候の背嚢 <span style="color:var(--gold)">HP 42/45</span></div>
+            <div class="bp-hp bar"><div class="fill" style="width:93%"></div></div>
+          </div>
+          <div class="bp tint-frost" style="left:256px; top:0; width:128px; height:128px;">
+            <span class="rv tl"></span><span class="rv tr"></span><span class="rv bl"></span><span class="rv br"></span>
+            <div class="bp-label">霜の行嚢 <span style="color:var(--frost)">HP 28/30</span></div>
+            <div class="bp-hp bar"><div class="fill frost" style="width:93%"></div></div>
+          </div>
+          <div class="bp tint-frost" style="left:256px; top:128px; width:64px; height:64px; border-top:none;"></div>
+          <div class="bp tint-ember" style="left:64px; top:256px; width:192px; height:128px;">
+            <span class="rv tl"></span><span class="rv tr"></span><span class="rv bl"></span><span class="rv br"></span>
+            <div class="bp-label">焔手の胴嚢 <span style="color:var(--ember-hi)">HP 60/60</span></div>
+            <div class="bp-hp bar"><div class="fill" style="width:100%; background:linear-gradient(90deg,#7E2A10,#E25822)"></div></div>
+          </div>
+
+          <!-- ==== linked-cell overlays ==== -->
+          <div class="ov linked-frost" style="left:256px; top:0; width:128px; height:128px;"></div>
+          <div class="ov linked-ember" style="left:64px; top:256px; width:192px; height:128px;"></div>
+
+          <!-- ==== beams (SVG overlay) ==== -->
+          <svg class="beams" width="512" height="512" viewBox="0 0 512 512">
+            <defs>
+              <linearGradient id="gAB" gradientUnits="userSpaceOnUse" x1="96" y1="96" x2="288" y2="96">
+                <stop offset="0" stop-color="#C9A959"/><stop offset="1" stop-color="#8CDCF5"/>
+              </linearGradient>
+              <linearGradient id="gBC" gradientUnits="userSpaceOnUse" x1="288" y1="96" x2="96" y2="288">
+                <stop offset="0" stop-color="#8CDCF5"/><stop offset="1" stop-color="#FF8A3D"/>
+              </linearGradient>
+            </defs>
+            <!-- dud ghost beam A→NE -->
+            <line class="beam ghost" x1="96" y1="96" x2="264" y2="-16" stroke="#C9A959" stroke-width="2"/>
+            <!-- A(96,96) → B(288,96) -->
+            <line class="beam live" x1="96" y1="96" x2="288" y2="96" stroke="url(#gAB)" stroke-width="3.4" filter="drop-shadow(0 0 6px rgba(140,220,245,.6))"/>
+            <!-- B(288,96) → C(96,288) diagonal -->
+            <line class="beam live" x1="288" y1="96" x2="96" y2="288" stroke="url(#gBC)" stroke-width="3.4" filter="drop-shadow(0 0 6px rgba(255,138,61,.55))"/>
+            <!-- C(96,288) → A(96,96) mutual -->
+            <line class="beam live" x1="92" y1="288" x2="92" y2="96" stroke="#C9A959" stroke-width="2.6" filter="drop-shadow(0 0 5px rgba(201,169,89,.6))"/>
+            <line class="beam live" x1="100" y1="96" x2="100" y2="288" stroke="#C9A959" stroke-width="1.4" opacity=".6"/>
+            <text class="beam-cap" x="186" y="88">ᛖ</text>
+            <text class="beam-cap" x="196" y="196">ᛖ</text>
+            <text class="beam-cap" x="78" y="196">ᛖ</text>
+          </svg>
+
+          <!-- ==== POs ==== -->
+          <!-- BP-A -->
+          <div class="po" style="left:2px; top:2px; width:60px; height:124px;"><img src="assets/ic_sword.png" alt="長剣"><span class="port" style="right:-7px; top:56px;">◆</span></div>
+          <div class="po" style="left:66px; top:2px; width:60px; height:60px;"><img src="assets/ic_pouch.png" alt="香草の小袋"><span class="port recv" style="left:-7px; top:24px;">◇</span></div>
+          <div class="po" style="left:130px; top:2px; width:60px; height:60px;"><img src="assets/ic_flask.png" alt="油壷"><span class="qty">×3</span></div>
+          <div class="po" style="left:66px; top:66px; width:60px; height:60px;"><img src="assets/ic_prism.png" alt="連結晶"></div>
+          <!-- BP-B -->
+          <div class="po" style="left:258px; top:2px; width:60px; height:60px;"><img src="assets/ic_dagger.png" alt="霜の釘"></div>
+          <div class="po" style="left:322px; top:2px; width:60px; height:60px;">
+            <img src="assets/ic_shard.png" alt="霧氷の欠片">
+            <span class="socket" style="right:-5px; bottom:-5px;"></span>
+            <span class="socket-si" style="right:-4px; bottom:-4px;" title="装着済ソケット石"></span>
+          </div>
+          <div class="po" style="left:258px; top:66px; width:60px; height:60px;"><img src="assets/ic_prism.png" alt="連結晶"></div>
+          <div class="po legend" style="left:322px; top:66px; width:60px; height:60px;"><img src="assets/ic_crown.png" alt="ニヴルの王冠"><span class="lvl">Lv3</span></div>
+          <!-- BP-C -->
+          <div class="po" style="left:66px; top:258px; width:60px; height:124px;"><img src="assets/ic_prism.png" alt="連結晶" style="height:52px"></div>
+          <div class="po" style="left:130px; top:258px; width:124px; height:124px;"><img src="assets/ic_cleaver.png" alt="氷河の断斧"><span class="port" style="left:54px; top:-7px;">◆</span></div>
+
+          <!-- ==== drag ghost demo ==== -->
+          <div class="ov valid" style="left:384px; top:320px; width:64px; height:64px;"></div>
+          <div class="ov valid" style="left:448px; top:320px; width:64px; height:64px;"></div>
+          <div class="ov invalid" style="left:384px; top:384px; width:64px; height:64px;"></div>
+          <div class="po dragging" style="left:398px; top:308px; width:118px; height:118px;"><img src="assets/ic_shield.png" alt="塔盾"></div>
+
+          <!-- ==== pinned tooltip (hover例) ==== -->
+          <div class="tooltip pinned rar rar-legend">
+            <span class="gem"></span>
+            <div class="tt-head"><img src="assets/ic_crown.png" alt="">
+              <div><div class="tt-name">ニヴルの王冠</div><div class="rar-word">LEGENDARY ・ 遺宝</div></div>
+            </div>
+            <div class="tt-tags">頭部 ・ 1×1 ・ 霜 ᛁ</div>
+            <div class="tt-stat"><span>every 6.0s:</span><b class="kw-frost">霜纏い +2</b></div>
+            <div class="tt-stat"><span>被弾時:</span><span><b class="kw-frost">凍結 1.2s</b> を付与(反射時+50%)</span></div>
+            <div class="tt-stat"><span>連結中:</span><span class="kw-link">受信側の霜効果 +34%</span></div>
+            <div class="tt-flavor">「戴く者は冬を統べ、冬に統べられる。」</div>
+            <div class="tt-sell">分解: ᚠ 120 ・ 図鑑 No.077</div>
+          </div>
+        </div>
+
+        <div class="boardfoot">
+          <span class="preset is-on">壱ノ型</span>
+          <span class="preset">弐ノ型</span>
+          <span class="preset warn" title="他プリセットと共有中の物品があります">参ノ型 ⚠</span>
+          <span class="preset">肆ノ型</span>
+          <span class="preset" style="letter-spacing:0">型を鋳る +</span>
+          <span class="saved"><span class="dot"></span>保存済み ・ 3秒前</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= INVENTORY ================= -->
+    <aside class="inv col" style="gap:12px">
+      <div class="panel ornate">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="tabs">
+          <span class="pg is-on">一</span><span class="pg">二</span><span class="pg">三</span><span class="pg">四</span><span class="pg">五</span>
+          <span class="grow"></span>
+          <span class="t-micro" style="padding:8px 4px 0">所持 47/120</span>
+        </div>
+        <div class="filters">
+          <span class="chip is-on">すべて</span><span class="chip">武具</span><span class="chip"><span class="kw-frost">霜</span></span><span class="chip"><span class="kw-ember">焔</span></span><span class="chip">連結</span><span class="chip">遺宝</span>
+        </div>
+        <div class="ilist">
+          <div class="icard rar rar-rare is-selected"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_cleaver.png" alt=""></span>
+            <div><div class="nm">氷河の断斧</div><div class="sub">PO ・ 2×2 ・ 斧/霜 <span class="rar-word">RARE</span></div></div>
+          </div>
+          <div class="icard rar rar-legend"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_crown.png" alt=""></span>
+            <div><div class="nm">ニヴルの王冠</div><div class="sub">PO ・ 1×1 ・ 遺宝/霜 <span class="rar-word">LEGENDARY</span></div></div>
+          </div>
+          <div class="icard rar rar-uncommon"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_dagger.png" alt=""></span>
+            <div><div class="nm">霜の釘</div><div class="sub">PO ・ 1×1 ・ 短刀/霜 <span class="rar-word">UNCOMMON</span></div></div>
+          </div>
+          <div class="icard rar rar-uncommon"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_shield.png" alt=""></span>
+            <div><div class="nm">塔盾</div><div class="sub">PO ・ 2×2 ・ 盾 <span class="rar-word">UNCOMMON</span></div></div>
+          </div>
+          <div class="icard rar rar-common"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_pouch.png" alt=""></span>
+            <div><div class="nm">香草の小袋</div><div class="sub">PO ・ 1×1 ・ 医術 <span class="rar-word">COMMON</span></div></div>
+          </div>
+          <div class="icard rar rar-common"><span class="gem"></span>
+            <span class="thumb"><img src="assets/ic_lrdst.png" alt=""></span>
+            <div><div class="nm">通貨アイテム(変成石)</div><div class="sub">TM ・ 1×1 ・ 通貨 <span class="rar-word">COMMON</span></div><div class="sub">×1,284</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- detail -->
+      <div class="panel ornate detail rar rar-rare" style="padding:0">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="d-art">
+          <img src="assets/ic_cleaver.png" alt="氷河の断斧">
+          <svg class="shape" width="44" height="44" viewBox="0 0 44 44">
+            <rect x="2" y="2" width="19" height="19" fill="rgba(111,196,222,.35)" stroke="#6FC4DE"/>
+            <rect x="23" y="2" width="19" height="19" fill="rgba(111,196,222,.35)" stroke="#6FC4DE"/>
+            <rect x="2" y="23" width="19" height="19" fill="rgba(111,196,222,.35)" stroke="#6FC4DE"/>
+            <rect x="23" y="23" width="19" height="19" fill="rgba(111,196,222,.35)" stroke="#6FC4DE"/>
+          </svg>
+        </div>
+        <div class="d-body">
+          <div class="row" style="gap:10px"><span class="nm dj">氷河の断斧</span><span class="rar-word">RARE ・ GLACIER CLEAVER</span></div>
+          <div class="mb8 t-micro">武器/斧 ・ 霜 ᛁ ・ 2×2 ・ 出所: ニヴルヘイム深淵</div>
+          <div class="stat"><span class="ic">⚔</span><span>every <b class="tnum">4.2s</b>: 前方射線に <b class="kw-frost">斬撃 28(霜)</b></span></div>
+          <div class="stat"><span class="ic">↯</span><span>貫通 <b>1</b> ・ 反射ごとに威力 <b class="kw-ember">+50%</b></span></div>
+          <div class="stat"><span class="ic rune">ᛖ</span><span><span class="kw-link">連結先が霜属性</span>のとき: 発動間隔 <b>-0.6s</b></span></div>
+          <div class="rune-divider">ᛁ</div>
+          <div class="stat"><span class="ic">◆</span><span>送信ポート: 柄(Metal) — <b>接続中: 連結晶</b></span></div>
+          <div class="stat"><span class="ic">◎</span><span>ソケット: 空き <b>1</b>(霜石のみ)</span></div>
+          <div class="flavor">「凍てつく河がひと振りの斧となる。運び手は選ばれぬ — 耐えうる背だけが選ばれる。」</div>
+          <div class="dact">
+            <button class="btn">盤面へ配置</button>
+            <button class="btn btn-ghost">分解 ᚠ64</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- unit stats -->
+      <div class="panel ornate panel-pad stats">
+        <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+        <div class="t-micro den mb8">UNIT Ⅰ — 戦力諸元</div>
+        <div class="srow"><span class="lbl">秒間火力</span><b class="tnum" id="dps">0</b><span class="bar"><span class="fill gold" style="display:block;height:100%;width:72%"></span></span></div>
+        <div class="srow"><span class="lbl">総耐久</span><b class="tnum" id="hp">0</b><span class="bar"><span class="fill" style="display:block;height:100%;width:64%"></span></span></div>
+        <div class="srow"><span class="lbl"><span class="kw-frost">霜</span>威力</span><b>+34%</b><span class="bar"><span class="fill frost" style="display:block;height:100%;width:34%"></span></span></div>
+        <div class="srow"><span class="lbl"><span class="kw-link">連結</span>回路</span><b>3<span class="t-micro">/4</span></b><span class="bar"><span class="fill gold" style="display:block;height:100%;width:75%"></span></span></div>
+        <div class="t-micro mt8">相互連結 ×1(斥候⇄焔手)— 回路効率 <b class="kw-gold">128%</b></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<!-- embark dock -->
+<div class="dock">
+  <div class="hint">編成完了 — 独立性検査 <b style="color:#57C77B">合格</b><br>ニヴルヘイム深淵 Lv.3 ・ 想定 08:24</div>
+  <button class="btn-forge btn" onclick="location.href='expedition.html'">ᚱ 遠征へ発つ</button>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* build 8x8 cells; mark dead space (not covered by BPs) */
+  const g = document.getElementById("grid");
+  const alive = new Set();
+  /* BP-A r1-2 c1-4 / BP-B r1-2 c5-6 + r3c5 / BP-C r5-6 c2-4 */
+  for (let r=1;r<=2;r++) for (let c=1;c<=4;c++) alive.add(r+","+c);
+  for (let r=1;r<=2;r++) for (let c=5;c<=6;c++) alive.add(r+","+c);
+  alive.add("3,5");
+  for (let r=5;r<=6;r++) for (let c=2;c<=4;c++) alive.add(r+","+c);
+  for (let r=1;r<=8;r++) for (let c=1;c<=8;c++){
+    const d=document.createElement("div");
+    d.className="cell"+(alive.has(r+","+c)?"":" dead");
+    g.appendChild(d);
+  }
+  countUp(document.getElementById("dps"), 61, 1000);
+  countUp(document.getElementById("hp"), 135, 1200);
+
+  /* mock: icard select swap */
+  document.querySelectorAll(".icard").forEach(c=>c.addEventListener("click",()=>{
+    document.querySelectorAll(".icard").forEach(x=>x.classList.remove("is-selected"));
+    c.classList.add("is-selected");
+  }));
+
+  /* responsive: scale the fixed-size board to fit narrow screens */
+  function fitBoard(){
+    const st = document.querySelector(".board-stage");
+    const wrap = document.querySelector(".boardwrap");
+    const need = 512 + 26*2 + 36; /* grid + stage padding + coords margin */
+    const avail = Math.min(wrap.clientWidth, innerWidth - 24);
+    const s = Math.min(1, (avail - 2) / need);
+    if (s < 1){
+      st.style.transform = "scale(" + s + ")";
+      st.style.transformOrigin = "top left";
+      st.style.marginBottom = -(st.offsetHeight * (1 - s)) + "px";
+    } else {
+      st.style.transform = ""; st.style.marginBottom = "";
+    }
+  }
+  addEventListener("resize", fitBoard); fitBoard();
+</script>
+</body>
+</html>

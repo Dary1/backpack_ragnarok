@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BACKPACK RAGNARÖK — Title (design mock)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Cinzel+Decorative:wght@700&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  html,body{ height:100%; }
+  .title-stage{ position:fixed; inset:0; overflow:hidden; }
+  .title-stage > .bg{
+    position:absolute; inset:-3%; width:106%; height:106%; object-fit:cover;
+    filter:saturate(.92) brightness(.94);
+    transition:transform .35s ease-out;
+  }
+  .aurora{
+    position:absolute; inset:-10%;
+    background:
+      radial-gradient(38% 26% at 24% 18%, rgba(88,214,160,.16), transparent 70%),
+      radial-gradient(46% 30% at 72% 12%, rgba(111,196,222,.13), transparent 70%);
+    filter:blur(28px); mix-blend-mode:screen;
+    animation:auroradrift 46s ease-in-out infinite alternate;
+    transition:transform .35s ease-out;
+  }
+  @keyframes auroradrift{
+    from{ transform:translateX(-2.5%) translateY(-1%) scale(1); opacity:.85; }
+    50% { opacity:1; }
+    to  { transform:translateX(2.5%) translateY(1.5%) scale(1.06); opacity:.8; }
+  }
+  #pfx{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+  .scrim{
+    position:absolute; inset:0; pointer-events:none;
+    background:
+      linear-gradient(180deg, rgba(6,8,12,.62) 0%, transparent 30%),
+      linear-gradient(0deg,   rgba(6,8,12,.78) 0%, transparent 42%),
+      radial-gradient(50% 42% at 21% 78%, rgba(6,8,12,.55), transparent 75%);
+  }
+
+  /* ---- logo ---- */
+  .logo{ position:absolute; top:7vh; left:0; right:0; text-align:center; transition:transform .35s ease-out; }
+  .logo .mark{ width:64px; height:52px; margin:0 auto 6px; opacity:.95; }
+  .logo-en{ font-size:clamp(15px,1.7vw,21px); letter-spacing:.58em; text-indent:.58em; color:var(--bone-2); font-weight:600; }
+  .logo-main{
+    margin:2px 0 0; font-family:"Cinzel Decorative", var(--f-den); font-weight:700;
+    font-size:clamp(58px, 8.6vw, 116px); line-height:1.04; letter-spacing:.06em;
+    background:linear-gradient(100deg,
+      var(--gold-lo) 0%, var(--gold) 18%, var(--gold-hi) 32%, #FFF6DA 37%, var(--gold-hi) 42%,
+      var(--gold) 58%, var(--gold-lo) 100%);
+    background-size:240% 100%;
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:glint 12s ease-in-out infinite;
+    filter:drop-shadow(0 3px 12px rgba(0,0,0,.75)) drop-shadow(0 0 26px rgba(201,169,89,.22));
+  }
+  @keyframes glint{ 0%,78%{ background-position:110% 0; } 92%,100%{ background-position:-40% 0; } }
+  .logo-under{ width:min(420px,60vw); margin:6px auto 10px; }
+  .logo-jp{ font-size:clamp(15px,1.9vw,22px); font-weight:700; letter-spacing:.5em; text-indent:.5em; color:var(--bone); opacity:.92;
+    text-shadow:0 2px 10px rgba(0,0,0,.8); }
+
+  /* ---- press-to-start ---- */
+  .press{
+    position:absolute; left:0; right:0; bottom:20vh; text-align:center; z-index:20;
+    color:var(--gold-hi); letter-spacing:.42em; text-indent:.42em; font-size:14px;
+    text-shadow:0 0 14px rgba(201,169,89,.5), 0 2px 6px #000;
+    animation:pressPulse 2.4s ease-in-out infinite;
+    cursor:pointer; user-select:none;
+  }
+  @keyframes pressPulse{ 0%,100%{ opacity:.95 } 50%{ opacity:.28 } }
+  #pressLayer{ position:absolute; inset:0; z-index:19; cursor:pointer; }
+
+  /* ---- main menu ---- */
+  .mainmenu{
+    position:absolute; left:5vw; bottom:7vh; width:min(360px, 86vw); z-index:25;
+    padding:16px 12px 12px;
+    opacity:0; transform:translateY(14px); pointer-events:none;
+    transition:opacity .5s ease-out, transform .5s ease-out;
+  }
+  .is-open .mainmenu{ opacity:1; transform:none; pointer-events:auto; }
+  .is-open .press, .is-open #pressLayer{ display:none; }
+  .mainmenu .mi{
+    display:flex; align-items:center; gap:14px;
+    padding:11px 14px; border:1px solid transparent; border-radius:2px;
+    color:var(--bone); font-size:15.5px; font-weight:500; letter-spacing:.14em;
+    cursor:pointer; transition:all .13s ease-out;
+  }
+  .mainmenu .mi .rune{ width:20px; text-align:center; color:var(--bone-3); font-size:16px; transition:color .13s; }
+  .mainmenu .mi .note{ margin-left:auto; font-size:11px; color:var(--bone-3); letter-spacing:.06em; }
+  .mainmenu .mi:hover, .mainmenu .mi.is-selected{
+    border-color:rgba(201,169,89,.45); color:var(--gold-hi);
+    background:linear-gradient(90deg, rgba(201,169,89,.10), transparent 70%);
+  }
+  .mainmenu .mi:hover .rune, .mainmenu .mi.is-selected .rune{ color:var(--gold); }
+  .mainmenu .mi.is-selected{ box-shadow:inset 2px 0 0 var(--gold); }
+  .savechip{
+    margin:2px 14px 10px 48px; padding:7px 12px; border:1px dashed rgba(201,169,89,.35); border-radius:2px;
+    font-size:11.5px; color:var(--bone-2); letter-spacing:.05em; line-height:1.7;
+  }
+  .savechip b{ color:var(--gold-hi); font-weight:700; }
+
+  /* ---- season slab ---- */
+  .season{
+    position:absolute; right:4vw; bottom:7vh; width:300px; z-index:25;
+    padding:14px 18px; text-align:center;
+    opacity:0; transform:translateY(14px); transition:opacity .6s .1s ease-out, transform .6s .1s ease-out;
+  }
+  .is-open .season{ opacity:1; transform:none; }
+  .season .s-name{ font-size:13px; color:var(--bone-2); letter-spacing:.3em; text-indent:.3em; }
+  .season .s-title{ font-size:21px; font-weight:800; letter-spacing:.18em; margin:2px 0 8px; }
+  .season .cd{ font-size:12px; color:var(--bone-3); letter-spacing:.18em; }
+  .season .cd b{ display:block; font-family:var(--f-den); font-size:26px; color:var(--gold-hi); letter-spacing:.1em; margin-top:2px;
+    text-shadow:0 0 14px rgba(201,169,89,.35); }
+  .season .wheelwrap{ display:flex; justify-content:center; margin-top:10px; }
+
+  /* ---- notice board ---- */
+  .notice{
+    position:absolute; right:4vw; bottom:calc(7vh + 218px); width:300px; z-index:25;
+    padding:10px 16px 12px; font-size:12px; line-height:1.75; color:var(--bone-2);
+    opacity:0; transition:opacity .6s .2s ease-out;
+  }
+  .is-open .notice{ opacity:1; }
+  .notice .nt{ color:var(--gold); letter-spacing:.22em; font-size:11px; margin-bottom:2px; }
+  .notice .raven-ic{ float:right; width:34px; opacity:.9; margin:-4px -4px 0 6px; }
+
+  /* corners */
+  .corner{ position:absolute; z-index:26; font-size:11px; color:rgba(168,161,147,.6); letter-spacing:.08em; }
+  .corner.bl{ left:14px; bottom:10px; }
+  .corner.br{ right:14px; bottom:10px; text-align:right; }
+  .corner.tr{ right:14px; top:12px; }
+  .langchip{ border:1px solid rgba(201,169,89,.3); border-radius:999px; padding:2px 10px; color:var(--bone-2); cursor:pointer; }
+  .langchip b{ color:var(--gold-hi); }
+
+  /* ---- mobile portrait ---- */
+  @media (max-width:720px){
+    body{ overflow-y:auto; }
+    .title-stage{ position:relative; min-height:100svh; height:auto; overflow:visible; padding-bottom:30px; }
+    .title-stage > .bg, .aurora, #pfx, .scrim{ position:fixed; inset:0; width:100%; height:100%; }
+    .title-stage > .bg{ inset:-3%; width:106%; height:106%; object-fit:cover; }
+    .logo{ position:relative; top:auto; padding-top:10vh; }
+    .logo-main{ font-size:13vw; letter-spacing:.04em; }
+    .press{ position:fixed; bottom:9vh; z-index:20; }
+    .mainmenu{ position:relative; left:auto; bottom:auto; margin:7vh auto 14px; width:min(380px,92vw); }
+    .notice{ position:relative; right:auto; bottom:auto; margin:0 auto 14px; width:min(380px,92vw); }
+    .season{ position:relative; right:auto; bottom:auto; margin:0 auto 18px; width:min(380px,92vw); }
+    .corner.bl{ display:none; }
+    .corner.br{ position:relative; right:auto; bottom:auto; display:block; text-align:center; margin:4px auto 0; }
+    .corner.tr{ top:10px; right:10px; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="title-stage" id="stage">
+  <img class="bg" src="assets/key_title.jpg" alt="" data-depth="10">
+  <div class="aurora" data-depth="20"></div>
+  <canvas id="pfx"></canvas>
+  <div class="scrim"></div>
+
+  <header class="logo" data-depth="5">
+    <!-- triple horn of Odin mark -->
+    <svg class="mark" viewBox="0 0 100 84" fill="none" stroke="#C9A959" stroke-width="3.4" stroke-linecap="round">
+      <path d="M50 12 a23 23 0 1 1 -20 34"/>
+      <path d="M69 27 a23 23 0 1 1 -33 27"/>
+      <path d="M31 27 a23 23 0 1 0 33 27"/>
+    </svg>
+    <div class="logo-en den">BACKPACK</div>
+    <h1 class="logo-main">RAGNARÖK</h1>
+    <svg class="logo-under" viewBox="0 0 420 14" fill="none" stroke="#C9A959">
+      <path d="M8 7 H176 M244 7 H412" stroke-width="1" opacity=".7"/>
+      <path d="M186 7 l12 -5 l12 5 l-12 5 z" stroke-width="1.2"/>
+      <path d="M198 7 l12 -5 l12 5 l-12 5 z" stroke-width="1.2" opacity=".65"/>
+      <circle cx="180" cy="7" r="1.6" fill="#C9A959" stroke="none"/>
+      <circle cx="240" cy="7" r="1.6" fill="#C9A959" stroke="none"/>
+    </svg>
+    <div class="logo-jp dj">バックパック・ラグナロク</div>
+  </header>
+
+  <div id="pressLayer"></div>
+  <div class="press den">— PRESS TO BEGIN / 選択して始める —</div>
+
+  <nav class="mainmenu panel ornate">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <div class="mi is-selected"><span class="rune">ᛗ</span>続きから<span class="note">前回: 編成の間</span></div>
+    <div class="savechip">第参季・42日目 — 隊商 <b>Lv.12</b> 「霧渡りの一行」<br>通貨アイテム ᚠ<b>1,284</b> ・ 遠征成功 <b>37</b> 回 ・ 図鑑 <b>68</b>/120</div>
+    <div class="mi"><span class="rune">ᚱ</span>遠征を見守る<span class="note" style="color:#FF8A3D">出撃中 ×2</span></div>
+    <div class="mi"><span class="rune">ᛏ</span>殿堂 — ラグナロク<span class="note">序列 1,024位</span></div>
+    <div class="mi"><span class="rune">ᛈ</span>設定<span class="note">音・言語・ログアウト</span></div>
+    <div class="mi" id="skipmi" title="次回からこの表題画面を飛ばし、直接『編成の間』へ入る"><span class="rune" style="font-family:var(--f-den)">≫</span>SKIP LANDING<span class="note" id="skipst">OFF</span></div>
+  </nav>
+
+  <aside class="notice panel">
+    <svg class="raven-ic" viewBox="0 0 48 40" fill="rgba(233,227,211,.75)"><path d="M38 8c-6-6-16-5-20 0l-14 15 12-4-7 12 10-6-2 11 8-10 3 12 4-26c6-1 8-3 10-6l-6-1 2-3z"/></svg>
+    <div class="nt den">MUNINN'S NOTICE ・ 告知</div>
+    ムニンが2件の戦果を持ち帰りました。<br>
+    <span class="t-micro">v0.9「氷雫の目覚め」— ニヴルヘイム深淵 開放 / 工房に鞄鋳造が追加</span>
+  </aside>
+
+  <aside class="season panel ornate">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <div class="s-name den">SEASON Ⅲ</div>
+    <div class="s-title dj">第参季 「狼の冬」</div>
+    <div class="cd">ᛃ ラグナロクまで<b class="tnum" id="cd">23日 04:12:55</b></div>
+    <div class="wheelwrap">
+      <svg class="wheel" width="86" height="86" viewBox="0 0 86 86">
+        <g transform="translate(43,43)">
+          <circle r="30" fill="none" stroke="#10141B" stroke-width="9"/>
+          <g id="wedges"></g>
+          <circle r="20" fill="none" stroke="rgba(201,169,89,.25)" stroke-width="1"/>
+          <text y="4" text-anchor="middle" style="font-size:13px;fill:#C9A959;font-family:'Noto Sans Runic'">ᛃ</text>
+        </g>
+      </svg>
+    </div>
+  </aside>
+
+  <div class="corner tr"><span class="langchip">ことば: <b>日本語</b> / EN</span></div>
+  <div class="corner bl">design mock “MJÖLNIR” v1.0 — 提案用モック(動作しない要素があります)</div>
+  <div class="corner br">backpack_ragnarok © 2026 — art: on-server ComfyUI (DreamShaper8)</div>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* SKIP LANDING: オンラインゲームの再訪者は表題を飛ばして編成へ。
+     レールの「表題」は #stay 付きで来るのでバイパスされない。 */
+  const SKIP_KEY = "br_skip_landing";
+  if (localStorage.getItem(SKIP_KEY) === "1" && location.hash !== "#stay") {
+    location.replace("canvas.html");
+  }
+  const skipmi = document.getElementById("skipmi"), skipst = document.getElementById("skipst");
+  function renderSkip(){
+    const on = localStorage.getItem(SKIP_KEY) === "1";
+    skipst.textContent = on ? "ON" : "OFF";
+    skipst.style.color = on ? "#57C77B" : "";
+  }
+  skipmi.addEventListener("click", (e)=>{
+    e.stopPropagation();
+    const on = localStorage.getItem(SKIP_KEY) === "1";
+    localStorage.setItem(SKIP_KEY, on ? "0" : "1");
+    renderSkip();
+  });
+  renderSkip();
+
+  initParticles(document.getElementById("pfx"), { mix:"both", count:64 });
+  initParallax(document.getElementById("stage"));
+
+  /* press to open menu */
+  const stage = document.getElementById("stage");
+  function open(){ stage.classList.add("is-open"); }
+  document.getElementById("pressLayer").addEventListener("click", open);
+  addEventListener("keydown", open, { once:true });
+  setTimeout(open, 6000); /* mock: auto-open so screenshots show the menu */
+
+  /* season wheel: 12 wedges, 8 done, 9th current */
+  const W = document.getElementById("wedges");
+  for (let i=0;i<12;i++){
+    const a0=(i*30-90)*Math.PI/180, a1=((i+1)*30-94)*Math.PI/180, r=30;
+    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+    p.setAttribute("d",`M ${Math.cos(a0)*r} ${Math.sin(a0)*r} A ${r} ${r} 0 0 1 ${Math.cos(a1)*r} ${Math.sin(a1)*r}`);
+    p.setAttribute("class","wedge"+(i<8?" done":i===8?" now":""));
+    W.appendChild(p);
+  }
+
+  /* countdown */
+  const t0 = Date.now() + ((23*24+4)*3600 + 12*60 + 55)*1000;
+  setInterval(()=>{
+    let s = Math.max(0,(t0-Date.now())/1000|0);
+    const d=s/86400|0; s-=d*86400; const h=s/3600|0; s-=h*3600; const m=s/60|0; s-=m*60;
+    document.getElementById("cd").textContent =
+      `${d}日 ${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
+  }, 1000);
+</script>
+</body>
+</html>

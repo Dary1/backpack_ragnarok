@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>殿堂 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  body{
+    background:
+      radial-gradient(80% 60% at 50% 0%, rgba(27,34,45,.5), transparent 62%),
+      var(--void);
+    min-height:100vh;
+  }
+  .bgart{ position:fixed; inset:0; z-index:-1; opacity:.6;
+    background:url(assets/bg_ragnarok.jpg) center/cover no-repeat; filter:saturate(.85) brightness(.6); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, rgba(10,13,18,.48), rgba(10,13,18,.88) 74%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:2; }
+  .content{ position:relative; z-index:1; }
+  body{ padding-left:86px; } /* fixedレールの分を確保(被り防止) */
+  @media (max-width:840px){ body{ padding-left:0; } }
+  .wrap{ max-width:1040px; margin:0 auto; padding:0 30px 8px; }
+  .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; text-transform:uppercase; }
+
+  /* ---------- cinema letterbox ---------- */
+  .lbx{ position:fixed; left:0; right:0; height:9vh; background:#04060A; z-index:96; pointer-events:none; }
+  .lbx.top{ top:0; border-bottom:1px solid rgba(201,169,89,.22);
+    animation:lbxT 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  .lbx.bot{ bottom:0; border-top:1px solid rgba(201,169,89,.22);
+    animation:lbxB 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  @keyframes lbxT{ to{ transform:translateY(-103%); } }
+  @keyframes lbxB{ to{ transform:translateY(103%); } }
+
+  /* ---------- hero + bifröst ---------- */
+  .hero{ position:relative; text-align:center; padding:52px 20px 6px; }
+  .hero > *{ position:relative; z-index:1; }
+  .bifrost{
+    position:absolute; z-index:0; left:50%; bottom:-70px; transform:translateX(-50%);
+    width:min(1280px,120vw); height:min(620px,58vw); pointer-events:none;
+    opacity:.14; filter:blur(18px); mix-blend-mode:screen;
+    background:radial-gradient(circle farthest-side at 50% 100%,
+      transparent 52%,
+      rgba(168,106,112,.55) 54.5%,
+      rgba(178,138,102,.55) 58%,
+      rgba(180,168,116,.52) 61.5%,
+      rgba(118,156,124,.50) 65%,
+      rgba(108,146,164,.52) 68.5%,
+      rgba(108,120,168,.52) 72%,
+      rgba(140,114,160,.52) 75.5%,
+      transparent 78%);
+  }
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+  .hero .mark{ width:56px; height:47px; margin:0 auto 8px; opacity:.95; animation:rise .8s ease-out .35s both; }
+  .hero-t{ margin:4px 0 0; font-weight:800; font-size:clamp(30px,4.2vw,44px); line-height:1.25;
+    letter-spacing:.3em; text-indent:.3em; text-shadow:0 2px 16px rgba(0,0,0,.85);
+    animation:rise .8s ease-out .5s both; }
+  .hero .en{ margin-top:8px; animation:rise .8s ease-out .65s both; }
+  .pledge{ margin:20px auto 0; max-width:640px; font-family:var(--f-dj); font-feature-settings:"palt";
+    font-size:15px; line-height:2.1; color:var(--bone-2); animation:rise .9s ease-out .8s both; }
+  .pledge cite{ display:block; margin-top:10px; font-style:normal; color:var(--bone-3);
+    font-size:12.5px; letter-spacing:.22em; }
+
+  /* ---------- season strip ---------- */
+  .season-strip{ display:flex; align-items:center; justify-content:center; gap:36px;
+    margin:32px auto 10px; animation:rise .9s ease-out 1s both; flex-wrap:wrap; }
+  .cdown{ display:flex; align-items:baseline; gap:12px; margin:4px 0 2px; }
+  .cd-lbl{ font-family:var(--f-dj); font-size:15px; letter-spacing:.24em; color:var(--bone-2); }
+  .cd-num{ font-family:var(--f-den); font-weight:700; font-size:62px; line-height:1;
+    color:var(--gold-hi); text-shadow:0 0 18px rgba(201,169,89,.30), 0 2px 6px #000; }
+  .cd-day{ font-family:var(--f-dj); font-size:20px; font-weight:700; color:var(--bone); }
+  .cd-note{ font-size:12px; color:var(--bone-3); letter-spacing:.12em; }
+
+  /* ---------- stone tablet ranking ---------- */
+  .tablet{ margin:14px 0 6px; padding:20px 22px 16px;
+    background-image:linear-gradient(180deg, rgba(23,27,34,.86), rgba(12,15,20,.94)), url(assets/tex_stone.jpg); }
+  .tablet h2{ margin:0; font-size:22px; font-weight:800; letter-spacing:.24em; }
+  .t-sep{ color:var(--bone-3); font-size:11px; }
+  .chip-myth{ border-color:rgba(244,233,200,.45); color:var(--r-mythic); }
+  .rk{ width:100%; border-collapse:collapse; margin-top:4px; }
+  .rk th{ text-align:left; font-size:11px; font-weight:500; color:var(--bone-3);
+    letter-spacing:.2em; padding:4px 12px 8px; border-bottom:1px solid var(--gold-lo); }
+  .rk td{ padding:10px 12px; border-bottom:1px solid rgba(233,227,211,.06); vertical-align:middle; }
+  .rk .num{ font-family:var(--f-den); font-weight:700; font-size:17px; color:var(--bone-2); }
+  .rk .nm{ font-family:var(--f-dj); font-weight:700; font-size:15px; letter-spacing:.06em;
+    text-shadow:0 1px 0 rgba(0,0,0,.75); }
+  .rk .ein{ text-align:right; color:var(--bone-2); }
+  .rk .sc{ text-align:right; font-family:var(--f-den); font-weight:700; font-size:18px; color:var(--bone); }
+  .rk .sg{ width:30px; height:30px; display:grid; place-items:center; border-radius:50%;
+    background:radial-gradient(circle at 50% 40%, #2A313E, #10141B 76%); border:1px solid var(--border-lo); }
+  .rk .sg img{ width:26px; height:26px; object-fit:contain; opacity:.92; }
+  .rk tbody tr:hover td{ background:rgba(233,227,211,.025); }
+  tr.top1 td{ background:linear-gradient(90deg, rgba(227,169,76,.15), rgba(227,169,76,.02) 60%, transparent); }
+  tr.top1 td:first-child{ border-left:3px solid #E3C169; }
+  tr.top1 .num{ font-size:27px; color:#EBD9A4; text-shadow:0 0 10px rgba(227,169,76,.45); }
+  tr.top1 .sc{ font-size:21px; color:#EBD9A4; }
+  tr.top2 td{ background:linear-gradient(90deg, rgba(199,205,214,.11), transparent 60%); }
+  tr.top2 td:first-child{ border-left:3px solid #C7CDD6; }
+  tr.top2 .num{ font-size:23px; color:#DDE2E9; }
+  tr.top3 td{ background:linear-gradient(90deg, rgba(176,131,86,.13), transparent 60%); }
+  tr.top3 td:first-child{ border-left:3px solid #B08356; }
+  tr.top3 .num{ font-size:20px; color:#CDA079; }
+  tr.gap td{ text-align:center; color:var(--bone-3); padding:5px; letter-spacing:.5em; border-bottom:none; }
+  tr.me{ box-shadow:var(--focus-ring); }
+  tr.me td{ background:rgba(201,169,89,.09); border-top:1px solid var(--gold-lo); border-bottom:1px solid var(--gold-lo); }
+  tr.me td:first-child{ border-left:3px solid var(--gold); }
+  tr.me .num{ color:var(--gold-hi); font-size:16px; }
+  tr.me .nm, tr.me .sc{ color:var(--gold-hi); }
+  .me-you{ font-family:var(--f-seal); font-size:13px; color:#14100A; background:var(--gold);
+    border-radius:2px; padding:0 5px 1px; margin-right:8px; }
+
+  /* ---------- devotion ---------- */
+  .dev-grid{ display:grid; grid-template-columns:400px 1fr; gap:24px; align-items:start; margin-top:14px; }
+  @media (max-width:920px){ .dev-grid{ grid-template-columns:1fr; } }
+  .ucard{ position:relative; padding:18px; border-radius:4px;
+    background:
+      radial-gradient(130% 90% at 50% 0%, rgba(244,233,200,.12), transparent 55%),
+      linear-gradient(180deg, #1E242E, #12161D); }
+  .ucard .u-head{ display:flex; gap:14px; align-items:center; padding-right:92px; }
+  .ucard .u-th{ width:52px; height:52px; flex:none; display:grid; place-items:center; border-radius:3px;
+    background:radial-gradient(circle at 50% 42%, #2A313E, #10141B 78%); border:1px solid var(--border-lo); }
+  .ucard .u-th img{ width:42px; height:42px; object-fit:contain; }
+  .ucard .u-name{ font-family:var(--f-dj); font-size:21px; font-weight:800; letter-spacing:.1em; }
+  .ucard .lv{ font-family:var(--f-den); font-size:13px; color:var(--gold-hi); margin-left:8px; }
+  .vkbox{ position:absolute; top:12px; right:12px; width:88px; text-align:center; z-index:2; }
+  .vkbox .valknut{ filter:drop-shadow(0 0 4px rgba(201,169,89,.35)); }
+  .vkbox .vk-c{ margin-top:3px; font-size:9.5px; color:var(--gold); letter-spacing:.1em; line-height:1.5; opacity:.85; }
+  .us{ display:flex; align-items:center; gap:10px; margin-top:10px; font-size:13px; }
+  .us .us-l{ width:76px; flex:none; color:var(--bone-2); letter-spacing:.06em; }
+  .us b{ font-family:var(--f-den); font-size:16px; min-width:46px; text-align:right; }
+  .us .bar{ flex:1; height:7px; }
+  .u-foot{ margin-top:12px; font-size:11px; color:var(--bone-3); letter-spacing:.06em; }
+  .dev-warn{ margin:12px 2px 0; font-family:var(--f-dj); font-size:12.5px; line-height:1.95; color:#E06B5F; }
+  .steps{ list-style:none; margin:14px 0 20px; padding:0; display:flex; flex-direction:column; gap:13px; }
+  .steps li{ display:flex; gap:12px; align-items:flex-start; }
+  .steps .no{ font-family:var(--f-dj); color:var(--gold); font-size:19px; line-height:1.25; flex:none; }
+  .steps b{ display:block; font-size:14.5px; letter-spacing:.06em; }
+  .steps .d{ display:block; font-size:12px; color:var(--bone-3); margin-top:1px; }
+  .btn-blood{ background:linear-gradient(180deg, #B0413E 0%, #8A2F28 55%, #6E2320 100%);
+    color:var(--bone); border:1px solid #451410; outline:1px solid rgba(233,227,211,.28);
+    text-shadow:0 1px 2px rgba(0,0,0,.55); }
+  .btn-blood:hover{ color:#F6EFE0; border-color:#6E2320;
+    box-shadow:0 0 20px rgba(176,65,62,.45), inset 0 0 12px rgba(255,180,160,.16); }
+
+  /* ---------- einherjar hall strip ---------- */
+  .halls{ display:flex; gap:14px; margin-top:14px; flex-wrap:wrap; }
+  .mini{ flex:1; min-width:220px; position:relative; padding:14px 16px 12px;
+    background:linear-gradient(170deg, rgba(244,233,200,.07), rgba(19,24,32,.92) 55%); }
+  .mini .valknut{ position:absolute; top:10px; right:10px; opacity:.9; }
+  .mini .m-name{ font-family:var(--f-dj); font-size:15px; font-weight:700; letter-spacing:.08em; }
+  .mini .m-ever{ margin-top:8px; font-size:10.5px; letter-spacing:.3em; color:var(--r-mythic); opacity:.8; }
+
+  /* ---------- mobile portrait ---------- */
+  @media (max-width:840px){
+    .lbx{ height:5vh; }
+    .wrap{ padding:0 16px 96px; }
+    .hero{ padding:30px 8px 4px; }
+    .hero-t{ letter-spacing:.18em; text-indent:.18em; }
+    .pledge{ margin-top:14px; font-size:13.5px; line-height:2; }
+    .season-strip{ flex-direction:column; gap:14px; margin:24px auto 8px; text-align:center; }
+    .cdown{ justify-content:center; }
+    .cd-num{ font-size:52px; }
+    .tablet{ padding:16px 12px 12px; }
+    .rk{ min-width:540px; } /* .tscroll内で横スクロール — 列は潰さない */
+    .halls{ flex-direction:column; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+<div class="lbx top"></div>
+<div class="lbx bot"></div>
+
+<!-- valknut symbol def (献身バッジ — 文脈限定使用) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="vkn" fill="none" stroke="#C9A959" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M18 2.5 L27.6 19 L8.4 19 Z"/>
+    <path d="M12.9 11.5 L22.5 28 L3.3 28 Z"/>
+    <path d="M23.1 11.5 L32.7 28 L13.5 28 Z"/>
+  </g>
+</defs></svg>
+
+<nav class="rail">
+  <div class="brand">RAGNARÖK</div>
+  <a class="nav" href="index.html#stay"><span class="rune">ᚨ</span><span class="lbl">表題</span></a>
+  <a class="nav" href="canvas.html"><span class="rune">ᛗ</span><span class="lbl">編成</span></a>
+  <a class="nav" href="expedition.html"><span class="rune">ᚱ</span><span class="lbl">遠征</span></a>
+  <a class="nav" href="warehouse.html"><span class="rune">ᚷ</span><span class="lbl">倉庫</span></a>
+  <a class="nav" href="dex.html"><span class="rune">ᚲ</span><span class="lbl">図鑑</span></a>
+  <a class="nav" href="workshop.html"><span class="rune">ᛈ</span><span class="lbl">工房</span></a>
+  <a class="nav" href="market.html"><span class="rune">ᚠ</span><span class="lbl">市場</span></a>
+  <a class="nav is-here" href="ragnarok.html"><span class="rune">ᛏ</span><span class="lbl">殿堂</span></a>
+  <div class="rail-foot t-micro">v0.9<br>mock</div>
+</nav>
+
+<div class="content page-shell">
+  <header class="hud">
+    <div class="row" style="gap:12px">
+      <span class="dj" style="font-size:16.5px; font-weight:800; letter-spacing:.26em">殿堂</span>
+      <span class="en">HALL OF RAGNARÖK</span>
+      <span class="chip"><span class="rune" style="color:var(--gold)">ᛏ</span> 序列 1,024位 ・ 族長 JARL</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="res" title="通貨アイテム(TM) — 変成通貨"><span class="rune">ᚠ</span><span class="tnum">1,284</span></div>
+    <div class="chip"><span class="rune" style="color:var(--gold)">ᛃ</span> 第参季 「狼の冬」 ・ 残り23日</div>
+  </header>
+
+  <main class="wrap">
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="bifrost"></div>
+      <svg class="mark" viewBox="0 0 100 84" fill="none" stroke="#C9A959" stroke-width="3.4" stroke-linecap="round">
+        <path d="M50 12 a23 23 0 1 1 -20 34"/>
+        <path d="M69 27 a23 23 0 1 1 -33 27"/>
+        <path d="M31 27 a23 23 0 1 0 33 27"/>
+      </svg>
+      <h1 class="hero-t dj">ラグナロクの殿堂</h1>
+      <div class="en">HALL OF RAGNARÖK</div>
+      <blockquote class="pledge">
+        「来たるラグナロクに備えよ。献身を以てエインヘリャルへと昇りし者は、ラグナロクの日、オーディンと肩を並べ、その先の戦いに臨む栄光を約束される。」
+        <cite>— ヴァルハラの誓約</cite>
+      </blockquote>
+    </section>
+
+    <!-- ============ SEASON STRIP ============ -->
+    <section class="season-strip">
+      <svg class="wheel" width="96" height="96" viewBox="0 0 86 86">
+        <g transform="translate(43,43)">
+          <circle r="30" fill="none" stroke="#10141B" stroke-width="9"/>
+          <g id="wedges"></g>
+          <circle r="20" fill="none" stroke="rgba(201,169,89,.25)" stroke-width="1"/>
+          <text y="4" text-anchor="middle" style="font-size:13px;fill:#C9A959;font-family:'Noto Sans Runic'">ᛃ</text>
+        </g>
+      </svg>
+      <div>
+        <div class="t-micro" style="letter-spacing:.26em">第参季 「狼の冬」 ・ 第九月相</div>
+        <div class="cdown">
+          <span class="cd-lbl">ラグナロクまで</span>
+          <b class="cd-num tnum">23</b>
+          <span class="cd-day">日</span>
+        </div>
+        <div class="cd-note">終季の戦いは自動で執り行われる — 汝の献身が軍勢を成す</div>
+        <div class="mt16" style="text-align:center"><a class="btn" href="season_end_ragnarok_1.html"><span class="rune" style="color:var(--gold)">ᛏ</span> 終季の決戦を観る — 封印の間(観戦モック)</a></div>
+      </div>
+    </section>
+
+    <div class="rune-divider">ᛏ</div>
+
+    <!-- ============ STONE TABLET RANKING ============ -->
+    <section class="panel ornate mat-stone tablet">
+      <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+      <div class="row" style="gap:14px; flex-wrap:wrap">
+        <h2 class="dj">永劫の序列</h2>
+        <span class="en">THE ETERNAL ORDER</span>
+        <span class="chip">全季通算 ・ 消えぬ刻銘</span>
+        <span class="grow"></span>
+        <span class="t-micro" style="letter-spacing:.14em">刻銘 12,408名 ・ 更新は毎暁</span>
+      </div>
+
+      <div class="row" style="gap:8px; margin:14px 0 14px; flex-wrap:wrap">
+        <span class="chip"><span class="rune" style="color:var(--bone-3)">ᛏ</span> 奴僕 THRALL</span>
+        <span class="t-sep">→</span>
+        <span class="chip"><span class="rune" style="color:var(--bone-3)">ᛏ</span> 自由民 KARL</span>
+        <span class="t-sep">→</span>
+        <span class="chip is-on"><span class="rune">ᛏ</span> 族長 JARL</span>
+        <span class="t-sep">→</span>
+        <span class="chip chip-myth"><span class="rune">ᛏ</span> 選定者 EINHERJAR</span>
+        <span class="t-sep">→</span>
+        <span class="chip" style="opacity:.5"><span class="rune">ᛏ</span> 神域 VALHALLA</span>
+      </div>
+
+      <div class="tscroll"><table class="rk">
+        <thead><tr>
+          <th style="width:64px">序列</th><th style="width:44px">紋</th><th>名</th>
+          <th style="width:130px; text-align:right">エインヘリャル</th>
+          <th style="width:140px; text-align:right">戦果</th>
+        </tr></thead>
+        <tbody>
+          <tr class="top1"><td><span class="num tnum">1</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">灰狼のヴィズ</span></td>
+            <td class="ein tnum">14</td><td class="sc tnum">98,410</td></tr>
+          <tr class="top2"><td><span class="num tnum">2</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">千鞄のエイリーフ</span></td>
+            <td class="ein tnum">12</td><td class="sc tnum">91,266</td></tr>
+          <tr class="top3"><td><span class="num tnum">3</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">霜刃のグズルーン</span></td>
+            <td class="ein tnum">11</td><td class="sc tnum">87,053</td></tr>
+          <tr><td><span class="num tnum">4</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">焔杖のスノッリ</span></td>
+            <td class="ein tnum">9</td><td class="sc tnum">74,912</td></tr>
+          <tr><td><span class="num tnum">5</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">鴉呼びのオルヴァル</span></td>
+            <td class="ein tnum">9</td><td class="sc tnum">71,388</td></tr>
+          <tr><td><span class="num tnum">6</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">氷原のシグリズ</span></td>
+            <td class="ein tnum">8</td><td class="sc tnum">66,204</td></tr>
+          <tr><td><span class="num tnum">7</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">二角のハルヴァル</span></td>
+            <td class="ein tnum">7</td><td class="sc tnum">61,977</td></tr>
+          <tr><td><span class="num tnum">8</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="nm">静水のトルディス</span></td>
+            <td class="ein tnum">7</td><td class="sc tnum">58,341</td></tr>
+          <tr class="gap"><td colspan="5">⋯</td></tr>
+          <tr class="me"><td><span class="num tnum">1,024</span></td>
+            <td><span class="sg"><img src="assets/emblem_horn3.png" alt=""></span></td>
+            <td><span class="me-you">汝</span><span class="nm">あやきゅち</span></td>
+            <td class="ein tnum">3</td>
+            <td class="sc"><span class="tnum" id="myScore">28,637</span>
+              <div class="t-micro" style="color:var(--gold-hi); letter-spacing:.04em">+此度の献身 +2%</div></td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <div class="rune-divider">ᚷ</div>
+
+    <!-- ============ DEVOTION CEREMONY ============ -->
+    <section>
+      <div class="row" style="gap:14px; margin-bottom:12px">
+        <h2 class="dj" style="margin:0; font-size:20px; font-weight:800; letter-spacing:.24em">献身</h2>
+        <span class="en">DEVOTION — GIVE ALL, BE REMEMBERED</span>
+      </div>
+      <div class="dev-grid">
+        <!-- left: candidate unit card -->
+        <div>
+          <div class="ucard rar rar-mythic">
+            <div class="vkbox">
+              <svg class="valknut" width="34" height="30" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+              <div class="vk-c">選ばれし者の結び目</div>
+            </div>
+            <div class="u-head">
+              <span class="u-th"><img src="assets/emblem_ember.png" alt=""></span>
+              <div>
+                <div class="u-name">焔手の隊<span class="lv">Lv.9</span></div>
+                <div class="rar-word" style="margin-top:2px">MYTHIC ・ 献身候補</div>
+              </div>
+            </div>
+            <div class="us"><span class="us-l">秒間火力</span><b class="tnum">84</b>
+              <span class="bar"><span class="fill gold" style="display:block;height:100%;width:78%"></span></span></div>
+            <div class="us"><span class="us-l">総耐久</span><b class="tnum">152</b>
+              <span class="bar"><span class="fill" style="display:block;height:100%;width:70%"></span></span></div>
+            <div class="us"><span class="us-l"><span class="kw-ember">焔</span>威力</span><b>+41%</b>
+              <span class="bar"><span style="display:block;height:100%;width:41%;background:linear-gradient(90deg,#7E2A10,#E25822)"></span></span></div>
+            <div class="us"><span class="us-l">遠征成功</span><b class="tnum">21</b>
+              <span class="t-micro" style="flex:1">敗走 3 ・ 最深 ムスペル第7層</span></div>
+            <div class="u-foot">第参季・42日目より従軍 ・ 鞄 3 ・ 物品 17 ・ 型 3</div>
+          </div>
+          <p class="dev-warn">⚠ 献身は取り消せない。全ての鞄・物品・型は失われ、名だけが永遠に刻まれる。</p>
+        </div>
+
+        <!-- right: ceremony panel -->
+        <div class="panel ornate panel-pad">
+          <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+          <div class="row" style="gap:12px">
+            <h3 class="dj" style="margin:0; font-size:18px; font-weight:800; letter-spacing:.22em">献身の儀</h3>
+            <span class="en">DEVOTION RITE</span>
+          </div>
+          <ol class="steps">
+            <li><span class="no">①</span><div><b>隊を選ぶ</b>
+              <span class="d">遠征中でない一隊のみ。鞄・物品・型は儀の間に封じられる。</span></div></li>
+            <li><span class="no">②</span><div><b>誓いを読む</b>
+              <span class="d">ヴァルハラの誓約を確かめる。喪うものの全てが示される。</span></div></li>
+            <li><span class="no">③</span><div><b>名を刻む</b>
+              <span class="d">石版に名が刻まれ、隊は選定者として季末の戦列に加わる。</span></div></li>
+          </ol>
+          <div class="row" style="gap:16px; flex-wrap:wrap">
+            <button class="btn btn-forge btn-blood" id="vowBtn">ᛏ 献身を誓う</button>
+            <span class="t-micro" style="line-height:1.7">此度の献身による序列予測 <b class="kw-gold">+2%</b><br>エインヘリャルはラグナロクの日、オーディンの側で自動参戦する</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="rune-divider">ᛗ</div>
+
+    <!-- ============ EINHERJAR HALL STRIP ============ -->
+    <section>
+      <div class="row" style="gap:14px">
+        <h3 class="dj" style="margin:0; font-size:17px; font-weight:800; letter-spacing:.22em">エインヘリャルの回廊</h3>
+        <span class="en">THE DEVOTED — EVER IN THE HALL</span>
+      </div>
+      <div class="halls">
+        <div class="mini rar rar-mythic"><span class="gem"></span>
+          <svg class="valknut" width="20" height="17" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+          <div class="m-name">白樺の隊</div>
+          <div class="t-micro">S1 ・ 戦果 <span class="tnum">12,405</span></div>
+          <div class="m-ever">永劫に在り</div>
+        </div>
+        <div class="mini rar rar-mythic"><span class="gem"></span>
+          <svg class="valknut" width="20" height="17" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+          <div class="m-name">鴉羽の隊</div>
+          <div class="t-micro">S2 ・ 戦果 <span class="tnum">8,922</span></div>
+          <div class="m-ever">永劫に在り</div>
+        </div>
+        <div class="mini rar rar-mythic"><span class="gem"></span>
+          <svg class="valknut" width="20" height="17" viewBox="0 0 36 31"><use href="#vkn"/></svg>
+          <div class="m-name">霧角の隊</div>
+          <div class="t-micro">S2 ・ 戦果 <span class="tnum">7,310</span></div>
+          <div class="m-ever">永劫に在り</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="center t-micro" style="letter-spacing:.2em; padding:34px 0 30px">
+      序列は全季を通じて残る — 石は忘れない。
+    </footer>
+  </main>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div class="scrim" id="vowModal" style="display:none">
+  <div class="modal panel ornate center" style="padding:30px 32px 26px">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+    <svg class="valknut" width="40" height="34" viewBox="0 0 36 31" style="margin:0 auto 8px; display:block"><use href="#vkn"/></svg>
+    <div class="dj" style="font-size:24px; font-weight:800; letter-spacing:.3em; text-indent:.3em">最後の問い</div>
+    <div class="en" style="margin-top:4px">THE LAST QUESTION</div>
+    <p class="dj" style="font-size:14.5px; line-height:2.1; color:var(--bone-2); margin:16px auto 22px; max-width:390px">
+      焔手の隊は全てを失い、エインヘリャルとなる。この誓いは覆らない。
+    </p>
+    <div class="row" style="justify-content:center; gap:14px">
+      <button class="btn btn-blood" id="vowYes">誓う</button>
+      <button class="btn btn-ghost" id="vowNo">退く</button>
+    </div>
+  </div>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  /* ash + snow falling together over the hall */
+  initParticles(document.getElementById("pfx"), { mix:"both", count:70 });
+
+  /* season wheel: 12 wedges, 8 done, 9th current */
+  const W = document.getElementById("wedges");
+  for (let i=0;i<12;i++){
+    const a0=(i*30-90)*Math.PI/180, a1=((i+1)*30-94)*Math.PI/180, r=30;
+    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+    p.setAttribute("d",`M ${Math.cos(a0)*r} ${Math.sin(a0)*r} A ${r} ${r} 0 0 1 ${Math.cos(a1)*r} ${Math.sin(a1)*r}`);
+    p.setAttribute("class","wedge"+(i<8?" done":i===8?" now":""));
+    W.appendChild(p);
+  }
+
+  countUp(document.getElementById("myScore"), 28637, 1400);
+
+  /* devotion confirm modal */
+  const vm=document.getElementById("vowModal"), vb=document.getElementById("vowBtn");
+  vb.onclick=()=>{ vm.style.display="grid"; };
+  document.getElementById("vowNo").onclick=()=>{ vm.style.display="none"; };
+  document.getElementById("vowYes").onclick=()=>{ vm.style.display="none"; vb.classList.add("is-disabled"); vb.textContent="ᛏ 刻銘済み — 選定者"; vb.onclick=null; };
+  vm.onclick=e=>{ if(e.target===vm) vm.style.display="none"; };
+</script>
+</body>
+</html>

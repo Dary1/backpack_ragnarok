@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>封印の間 — 終季決戦 壱 — BACKPACK RAGNARÖK (design mock)</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Shippori+Mincho+B1:wght@600;700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Noto+Sans+Runic&family=Yuji+Syuku&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+  /* ---------- page palette: 暗黒質(ダークマター) — 異界通貨 ---------- */
+  :root{ --dm-hi:#B07CE8; --dm-lo:#4A2B66; --dm-glow:rgba(176,124,232,.38); }
+  .kw-void{ color:var(--dm-hi); font-weight:700; }
+  body{ background:var(--void); min-height:100vh; }
+  .en{ font-family:var(--f-den); font-size:11px; color:var(--bone-3); letter-spacing:.3em; text-transform:uppercase; }
+
+  /* ---------- cinematic full-bleed ---------- */
+  .bgart{ position:fixed; inset:0; z-index:-1;
+    background:url(assets/bg_seasonend.jpg) center/cover no-repeat;
+    filter:saturate(.85) brightness(.5); }
+  .bgart::after{ content:""; position:absolute; inset:0;
+    background:
+      linear-gradient(180deg, rgba(10,13,18,.80), rgba(10,13,18,.28) 30%, rgba(10,13,18,.42) 60%, rgba(6,8,12,.94) 96%),
+      radial-gradient(90% 60% at 50% 26%, transparent 40%, rgba(4,6,9,.42) 100%); }
+  #pfx{ position:fixed; inset:0; width:100%; height:100%; pointer-events:none; z-index:4; }
+  .content{ position:relative; z-index:3; }
+
+  /* letterbox (ragnarok.html と同じ所作) */
+  .lbx{ position:fixed; left:0; right:0; height:9vh; background:#04060A; z-index:96; pointer-events:none; }
+  .lbx.top{ top:0; border-bottom:1px solid rgba(201,169,89,.22);
+    animation:lbxT 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  .lbx.bot{ bottom:0; border-top:1px solid rgba(201,169,89,.22);
+    animation:lbxB 1s cubic-bezier(.55,0,.15,1) 1.6s forwards; }
+  @keyframes lbxT{ to{ transform:translateY(-103%); } }
+  @keyframes lbxB{ to{ transform:translateY(103%); } }
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+
+  /* ---------- minimal top bar ---------- */
+  .topbar{ position:fixed; top:0; left:0; right:0; z-index:60;
+    display:flex; align-items:center; gap:16px; padding:12px 20px;
+    background:linear-gradient(180deg, rgba(4,6,9,.88) 30%, transparent); }
+  .tb-back{ display:inline-flex; align-items:center; gap:8px; color:var(--bone-2);
+    font-size:13px; letter-spacing:.14em; }
+  .tb-back:hover{ color:var(--gold-hi); }
+  .tb-title{ position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap;
+    font-family:var(--f-dj); font-weight:700; font-size:14px; letter-spacing:.3em; color:var(--bone-2); }
+  .tb-title b{ color:var(--bone); }
+  .steps-nav{ margin-left:auto; display:flex; gap:8px; }
+  .stp{ width:30px; height:30px; display:grid; place-items:center; border:1px solid var(--border-lo);
+    border-radius:2px; color:var(--bone-3); font-family:var(--f-dj); font-size:13.5px;
+    background:rgba(10,13,18,.55); transition:all .14s ease-out; }
+  .stp:hover{ color:var(--gold-hi); border-color:var(--gold-lo); }
+  .stp.is-selected{ color:var(--gold-hi); border-color:var(--gold-lo);
+    box-shadow:var(--focus-ring); background:rgba(201,169,89,.08); }
+
+  .wrap{ max-width:1160px; margin:0 auto; padding:96px 30px 40px; }
+
+  /* ---------- hero ---------- */
+  .hero{ text-align:center; padding:26px 12px 4px; }
+  .hero .en{ animation:rise .8s ease-out 1.7s both; }
+  .hero-t{ margin:8px 0 0; font-family:var(--f-dj); font-weight:800; line-height:1.25;
+    font-size:clamp(28px,4vw,42px); letter-spacing:.3em; text-indent:.3em;
+    text-shadow:0 2px 16px rgba(0,0,0,.85); animation:rise .8s ease-out 1.85s both; }
+  .hero-sub{ margin-top:10px; font-family:var(--f-dj); font-size:15.5px; letter-spacing:.22em;
+    color:var(--bone-2); animation:rise .8s ease-out 2s both; }
+  .hero-sub b{ color:var(--gold-hi); font-size:18px; }
+  .hero-god{ display:block; width:92px; height:92px; margin:14px auto 2px; padding:6px; border-radius:50%;
+    object-fit:contain; opacity:.95;
+    background:radial-gradient(circle at 50% 42%, rgba(201,169,89,.10), rgba(10,13,18,.66) 76%);
+    border:1px solid rgba(201,169,89,.5);
+    box-shadow:0 0 0 3px rgba(201,169,89,.13), 0 0 24px rgba(201,169,89,.18), 0 8px 18px rgba(0,0,0,.55); }
+
+  /* ---------- einherjar host wall ---------- */
+  .sec-h{ display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin:6px 2px 12px; }
+  .sec-h h2{ margin:0; font-family:var(--f-dj); font-size:19px; font-weight:800; letter-spacing:.24em; }
+  .host{ position:relative; }
+  .host-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px;
+    padding-bottom:44px;
+    -webkit-mask-image:linear-gradient(180deg,#000 44%, rgba(0,0,0,.5) 72%, transparent 97%);
+    mask-image:linear-gradient(180deg,#000 44%, rgba(0,0,0,.5) 72%, transparent 97%); }
+  .hcard{ position:relative; padding:10px 12px 9px;
+    background:linear-gradient(170deg, rgba(244,233,200,.07), rgba(19,24,32,.92) 55%);
+    animation:rise .7s ease-out both; animation-delay:calc(1.95s + var(--i)*.05s); }
+  .hcard .valknut{ position:absolute; top:8px; right:8px; opacity:.85; }
+  .hcard .hn{ font-family:var(--f-dj); font-weight:700; font-size:14px; letter-spacing:.06em; padding-right:20px; }
+  .hcard .hs{ margin-top:3px; font-size:10.5px; color:var(--bone-3); letter-spacing:.08em; }
+  .host-more{ position:absolute; left:0; right:0; bottom:6px; text-align:center; z-index:2;
+    animation:rise .8s ease-out 2.7s both; }
+
+  /* ---------- sealed mythics ---------- */
+  .chip-dm{ border-color:var(--dm-lo); color:var(--dm-hi); background:rgba(74,43,102,.18); }
+  .myths{ display:flex; gap:16px; flex-wrap:wrap; align-items:stretch; }
+  .myth{ position:relative; flex:1 1 198px; min-width:192px; max-width:280px; min-height:308px;
+    display:flex; flex-direction:column; border-radius:4px; overflow:hidden;
+    animation:rise .8s ease-out both; animation-delay:calc(2.2s + var(--i)*.12s); }
+  .myth .m-art{ position:relative; flex:1; display:grid; place-items:center; min-height:170px; }
+  .myth .m-meta{ padding:10px 14px 13px; }
+  .m-name{ font-family:var(--f-dj); font-weight:800; font-size:18px; letter-spacing:.14em; }
+  .m-sub{ margin-top:2px; font-size:11px; color:var(--bone-3); letter-spacing:.08em; line-height:1.7; }
+  .m-price{ margin-top:8px; font-size:12.5px; color:var(--bone-2); }
+  .m-price .kw-void{ font-size:14.5px; }
+  .m-down{ font-size:10.5px; color:var(--dm-hi); opacity:.85; letter-spacing:.06em; }
+  .js-price{ transition:text-shadow .3s ease; }
+  .js-price.tk{ text-shadow:0 0 14px var(--dm-glow); }
+
+  .myth.sealed{ cursor:pointer;
+    background:
+      radial-gradient(120% 80% at 50% 10%, rgba(74,43,102,.30), transparent 56%),
+      linear-gradient(180deg, #14121C, #0B0A12 72%);
+    border:1px solid #3A2C4E;
+    box-shadow:inset 0 0 44px rgba(0,0,0,.6), 0 8px 22px rgba(0,0,0,.5);
+    transition:transform .16s ease-out, box-shadow .16s ease-out, border-color .16s ease-out; }
+  .myth.sealed:hover, .myth.sealed:focus-visible{ transform:translateY(-5px); border-color:var(--dm-hi); outline:none;
+    box-shadow:0 16px 32px rgba(0,0,0,.65), 0 0 20px rgba(176,124,232,.26), inset 0 0 44px rgba(0,0,0,.6); }
+  .sealsvg{ width:150px; height:150px; opacity:.9; }
+  .fuu{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; }
+  .fuu b{ font-family:var(--f-seal); font-weight:400; font-size:58px; color:var(--gold); line-height:1;
+    padding:4px 12px 10px; border:2.5px solid rgba(201,169,89,.55); border-radius:5px;
+    transform:rotate(-7deg); background:rgba(10,8,4,.32);
+    text-shadow:0 0 18px rgba(201,169,89,.35), 0 2px 6px #000;
+    box-shadow:0 0 18px rgba(201,169,89,.12), inset 0 0 12px rgba(201,169,89,.08); }
+  .myth.sealed .m-name{ color:var(--bone-2); letter-spacing:.3em; }
+
+  .myth.freed{
+    background:linear-gradient(180deg, #14121C, #0B0A12 72%);
+    border:1px solid var(--dm-lo);
+    box-shadow:0 0 16px rgba(176,124,232,.16), inset 0 0 50px rgba(0,0,0,.55); }
+  .myth.freed .m-art{
+    background:
+      linear-gradient(180deg, rgba(10,8,14,.15), rgba(10,8,14,.82) 88%),
+      radial-gradient(90% 70% at 50% 40%, rgba(74,43,102,.5), #0B0A12 90%);
+    background-blend-mode:normal; }
+  .myth.freed .m-art .ph{ position:absolute; inset:0; z-index:1; width:100%; height:100%;
+    object-fit:contain; padding:14px 12px 8px;
+    filter:drop-shadow(0 10px 14px rgba(0,0,0,.72)) drop-shadow(0 0 16px rgba(176,124,232,.28));
+    animation:mbob 6s ease-in-out infinite; }
+  @keyframes mbob{ 50%{ transform:translateY(-6px); } }
+  .myth.freed .m-art::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(180deg, transparent 40%, rgba(8,6,12,.88)); }
+  .freed-chip{ display:inline-flex; align-items:center; gap:6px; margin-top:7px; padding:3px 12px;
+    border:1px solid var(--dm-hi); border-radius:999px; font-size:11.5px; color:var(--dm-hi);
+    background:rgba(74,43,102,.22); letter-spacing:.04em; }
+  .freed-chip b{ color:#E4D2FA; }
+
+  /* ---------- unseal modal ---------- */
+  .um{ padding:26px 30px 24px; text-align:center; }
+  .sil{ width:150px; height:132px; margin:0 auto 4px;
+    background:
+      radial-gradient(46% 52% at 50% 46%, #060409 0 58%, transparent 62%),
+      radial-gradient(70% 76% at 50% 46%, rgba(176,124,232,.42), rgba(74,43,102,.26) 52%, transparent 74%); }
+  .um-t{ font-family:var(--f-dj); font-size:23px; font-weight:800; letter-spacing:.3em; text-indent:.3em; }
+  .price-live{ margin-top:14px; display:flex; align-items:baseline; justify-content:center; gap:8px;
+    font-family:var(--f-den); font-weight:700; color:var(--dm-hi);
+    text-shadow:0 0 24px var(--dm-glow), 0 2px 8px #000; }
+  .price-live .sym{ font-size:30px; }
+  .price-live b{ font-size:52px; line-height:1; font-weight:700; }
+  .floor{ margin-top:6px; color:var(--bone-3); letter-spacing:.1em; }
+  .auct{ margin:14px auto 0; max-width:380px; font-family:var(--f-dj); font-size:13px; line-height:2;
+    color:var(--bone-2); letter-spacing:.08em; }
+  .namerow{ margin:16px auto 0; max-width:340px; padding:8px 14px;
+    border:1px dashed rgba(176,124,232,.42); border-radius:3px; font-size:13px; color:var(--bone-2); }
+  .namerow b{ color:var(--bone); letter-spacing:.1em; }
+  .btn-void{ background:linear-gradient(180deg, #6A3B8E 0%, #4A2B66 55%, #3A1F55 100%);
+    color:var(--bone); border:1px solid #2A163E; outline:1px solid rgba(199,161,255,.45);
+    font-weight:700; letter-spacing:.12em; padding:12px 26px; font-size:15px;
+    text-shadow:0 1px 2px rgba(0,0,0,.55); }
+  .btn-void:hover{ color:#F3EAFF; border-color:#6A3B8E;
+    box-shadow:0 0 22px rgba(176,124,232,.45), inset 0 0 12px rgba(199,161,255,.2); }
+  .kai{ display:inline-block; font-family:var(--f-seal); font-size:56px; line-height:1; color:var(--dm-hi);
+    padding:6px 14px 12px; border:2.5px solid rgba(176,124,232,.55); border-radius:5px;
+    transform:rotate(-6deg); text-shadow:0 0 22px var(--dm-glow), 0 2px 6px #000; margin-bottom:14px; }
+
+  .cta-row{ text-align:center; padding:34px 0 0; animation:rise .8s ease-out 2.9s both; }
+  .cta-note{ margin-top:10px; }
+  .foot{ text-align:center; padding:30px 0 0; letter-spacing:.24em; }
+
+  /* ---------- motion & mobile ---------- */
+  @media (prefers-reduced-motion: reduce){
+    .js-price{ transition:none; }
+    .myth.freed .m-art .ph{ animation:none; }
+  }
+  @media (max-width:840px){
+    .lbx{ height:5vh; }
+    .topbar{ flex-wrap:wrap; gap:8px 12px; padding:10px 14px; }
+    .tb-title{ position:static; transform:none; order:10; width:100%; text-align:center;
+      letter-spacing:.14em; font-size:12.5px; }
+    .wrap{ padding:112px 16px 40px; }
+    .hero-t{ letter-spacing:.16em; text-indent:.16em; }
+    .host-grid{ grid-template-columns:repeat(auto-fill,minmax(132px,1fr)); }
+    .myths{ flex-direction:column; }
+    .myth{ max-width:none; min-height:0; }
+    .myth .m-art{ min-height:150px; }
+  }
+</style>
+</head>
+<body class="grain vignette">
+<div class="bgart"></div>
+<canvas id="pfx"></canvas>
+<div class="lbx top"></div>
+<div class="lbx bot"></div>
+
+<!-- shared symbol defs: valknut(献身) + 封鎖環(ルーン無し — 鎖と環のみ) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <g id="vkn" fill="none" stroke="#C9A959" stroke-width="1.4" stroke-linejoin="round">
+    <path d="M18 2.5 L27.6 19 L8.4 19 Z"/>
+    <path d="M12.9 11.5 L22.5 28 L3.3 28 Z"/>
+    <path d="M23.1 11.5 L32.7 28 L13.5 28 Z"/>
+  </g>
+  <g id="sealx" fill="none">
+    <circle cx="66" cy="66" r="47" stroke="rgba(150,160,178,.45)" stroke-width="1.4"/>
+    <circle cx="66" cy="66" r="41" stroke="rgba(150,160,178,.8)" stroke-width="3"/>
+    <g stroke="rgba(158,168,184,.9)" stroke-width="2.2">
+      <ellipse cx="24" cy="24" rx="7" ry="4" transform="rotate(45 24 24)"/>
+      <circle cx="37" cy="37" r="3"/>
+      <ellipse cx="50" cy="50" rx="7" ry="4" transform="rotate(45 50 50)"/>
+      <circle cx="63" cy="63" r="3"/>
+      <ellipse cx="76" cy="76" rx="7" ry="4" transform="rotate(45 76 76)"/>
+      <circle cx="89" cy="89" r="3"/>
+      <ellipse cx="102" cy="102" rx="7" ry="4" transform="rotate(45 102 102)"/>
+      <ellipse cx="108" cy="24" rx="7" ry="4" transform="rotate(-45 108 24)"/>
+      <circle cx="95" cy="37" r="3"/>
+      <ellipse cx="82" cy="50" rx="7" ry="4" transform="rotate(-45 82 50)"/>
+      <circle cx="69" cy="63" r="3"/>
+      <ellipse cx="56" cy="76" rx="7" ry="4" transform="rotate(-45 56 76)"/>
+      <circle cx="43" cy="89" r="3"/>
+      <ellipse cx="30" cy="102" rx="7" ry="4" transform="rotate(-45 30 102)"/>
+    </g>
+  </g>
+</defs></svg>
+
+<header class="topbar">
+  <a class="tb-back" href="ragnarok.html"><span>←</span><span class="rune" style="color:var(--gold)">ᛏ</span> 殿堂へ</a>
+  <div class="tb-title">終季決戦 — <b>第参季『狼の冬』</b></div>
+  <nav class="steps-nav" aria-label="観戦の段">
+    <a class="stp is-selected" href="season_end_ragnarok_1.html" title="封印の間">壱</a>
+    <a class="stp" href="season_end_ragnarok_2.html" title="決戦">弐</a>
+    <a class="stp" href="season_end_ragnarok_3.html" title="昇天">参</a>
+  </nav>
+</header>
+
+<div class="content">
+<main class="wrap">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="en">ACT I — THE SEALED VAULT</div>
+    <img class="hero-god" src="assets/myth_odin.png" alt="オーディン">
+    <h1 class="hero-t">オーディンの軍勢、集結す</h1>
+    <div class="hero-sub">エインヘリャル <b class="tnum">12,408</b>柱が列を成す</div>
+  </section>
+
+  <div class="rune-divider">ᛏ</div>
+
+  <!-- ============ EINHERJAR HOST ============ -->
+  <section>
+    <div class="sec-h">
+      <h2>陣列</h2><span class="en">THE HOST OF ODIN</span>
+      <span class="t-micro" style="letter-spacing:.14em">献身せし者たちは自動で戦列に立つ — 布陣は運命に委ねられる</span>
+    </div>
+    <div class="host">
+      <div class="host-grid">
+        <div class="hcard rar rar-mythic" style="--i:0"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">白樺の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">12,405</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:1"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">鴉羽の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">8,922</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:2"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">霧角の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">7,310</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:3"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">焔手の隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">6,847</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:4"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">灰爪の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">6,204</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:5"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">蒼牙の隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">5,981</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:6"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">黒帆の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">5,650</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:7"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">雷角の隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">5,214</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:8"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">氷鎖の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">4,988</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:9"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">朽盾の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">4,671</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:10"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">星読みの隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">4,402</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:11"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">赤鬃の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">4,180</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:12"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">隻眼の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">3,955</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:13"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">冬雷の隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">3,721</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:14"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">潮騒の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">3,509</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:15"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">骨笛の隊</div><div class="hs">S2 ・ 戦果 <span class="tnum">3,266</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:16"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">銀鱗の隊</div><div class="hs">S3 ・ 戦果 <span class="tnum">3,048</span></div></div>
+        <div class="hcard rar rar-mythic" style="--i:17"><span class="gem"></span><svg class="valknut" width="18" height="15" viewBox="0 0 36 31"><use href="#vkn"/></svg><div class="hn">夜烏の隊</div><div class="hs">S1 ・ 戦果 <span class="tnum">2,913</span></div></div>
+      </div>
+      <div class="host-more"><span class="chip">…ほか <b class="tnum" style="color:var(--gold-hi)">12,390</b>柱</span></div>
+    </div>
+  </section>
+
+  <div class="rune-divider" style="color:var(--dm-hi)">◈</div>
+
+  <!-- ============ SEALED MYTHICS ============ -->
+  <section>
+    <div class="sec-h">
+      <h2>封印されし五柱</h2><span class="en">THE SEALED FIVE</span>
+      <span class="chip chip-dm">◈ 支払いは暗黒質のみ — 変成通貨は通じない</span>
+      <span class="grow"></span>
+      <span class="t-micro" style="letter-spacing:.1em">刻限まで <b class="tnum" id="dl" style="color:var(--bone)">06:12:09</b></span>
+    </div>
+    <p class="t-micro" style="margin:0 2px 14px; letter-spacing:.08em">
+      解封されし者は決戦にて<b class="kw-blood">敵軍</b>として顕現する — 解放者の名は決戦記録に刻まれ、戦果報告が届く。
+    </p>
+    <div class="myths">
+      <article class="myth freed" style="--i:0">
+        <div class="m-art"><img class="ph" src="assets/myth_serpent.png" alt="縛鎖の大海蛇"></div>
+        <div class="m-meta">
+          <div class="m-name">縛鎖の大海蛇</div>
+          <div class="freed-chip">解封済 — 解放者: <b>Elon</b></div>
+          <div class="m-sub">決戦にて敵軍として顕現する<br>戦果報告は解放者へ届く</div>
+        </div>
+      </article>
+      <article class="myth sealed js-open" style="--i:1" tabindex="0" role="button" aria-haspopup="dialog" aria-label="封印解除の儀を開く">
+        <div class="m-art">
+          <svg class="sealsvg" viewBox="0 0 132 132" aria-hidden="true"><use href="#sealx"/></svg>
+          <div class="fuu"><b>封</b></div>
+        </div>
+        <div class="m-meta">
+          <div class="m-name">???</div>
+          <div class="m-sub">神話級 ・ 封印中</div>
+          <div class="m-price">解封の代 <b class="kw-void">◈<span class="js-price tnum">684,000</span></b> <span class="m-down">(下降中 ▾)</span></div>
+        </div>
+      </article>
+      <article class="myth sealed js-open" style="--i:2" tabindex="0" role="button" aria-haspopup="dialog" aria-label="封印解除の儀を開く">
+        <div class="m-art">
+          <svg class="sealsvg" viewBox="0 0 132 132" aria-hidden="true"><use href="#sealx"/></svg>
+          <div class="fuu"><b>封</b></div>
+        </div>
+        <div class="m-meta">
+          <div class="m-name">???</div>
+          <div class="m-sub">神話級 ・ 封印中</div>
+          <div class="m-price">解封の代 <b class="kw-void">◈<span class="js-price tnum">684,000</span></b> <span class="m-down">(下降中 ▾)</span></div>
+        </div>
+      </article>
+      <article class="myth sealed js-open" style="--i:3" tabindex="0" role="button" aria-haspopup="dialog" aria-label="封印解除の儀を開く">
+        <div class="m-art">
+          <svg class="sealsvg" viewBox="0 0 132 132" aria-hidden="true"><use href="#sealx"/></svg>
+          <div class="fuu"><b>封</b></div>
+        </div>
+        <div class="m-meta">
+          <div class="m-name">???</div>
+          <div class="m-sub">神話級 ・ 封印中</div>
+          <div class="m-price">解封の代 <b class="kw-void">◈<span class="js-price tnum">684,000</span></b> <span class="m-down">(下降中 ▾)</span></div>
+        </div>
+      </article>
+      <article class="myth sealed js-open" style="--i:4" tabindex="0" role="button" aria-haspopup="dialog" aria-label="封印解除の儀を開く">
+        <div class="m-art">
+          <svg class="sealsvg" viewBox="0 0 132 132" aria-hidden="true"><use href="#sealx"/></svg>
+          <div class="fuu"><b>封</b></div>
+        </div>
+        <div class="m-meta">
+          <div class="m-name">???</div>
+          <div class="m-sub">神話級 ・ 封印中</div>
+          <div class="m-price">解封の代 <b class="kw-void">◈<span class="js-price tnum">684,000</span></b> <span class="m-down">(下降中 ▾)</span></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ============ CTA ============ -->
+  <div class="cta-row">
+    <a class="btn btn-forge" href="season_end_ragnarok_2.html">決戦を観る →</a>
+    <div class="cta-note t-micro" style="letter-spacing:.14em">五柱の顕現と共に、終季の戦いが始まる</div>
+  </div>
+
+  <footer class="foot t-micro">観戦モック — 実データではない</footer>
+</main>
+</div>
+
+<!-- ============ UNSEAL MODAL ============ -->
+<div class="scrim" id="unsealM" style="display:none" role="dialog" aria-modal="true" aria-label="封印解除の儀">
+  <div class="modal panel ornate um">
+    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
+
+    <div id="mRite">
+      <div class="sil" aria-hidden="true"></div>
+      <div class="um-t">封印解除の儀</div>
+      <div class="en" style="margin-top:4px">RITE OF UNSEALING</div>
+      <div class="price-live"><span class="sym">◈</span><b class="js-price tnum" id="livePrice">684,000</b></div>
+      <div class="floor t-micro">底値 ◈342,000(刻限)</div>
+      <p class="auct">「刻限に向け値は落ち続ける — 先んじる者は高く払い、名を刻む」</p>
+      <div class="namerow">解放者として刻まれる名: <b>あやきゅち</b></div>
+      <div class="row" style="justify-content:center; gap:14px; margin-top:20px; flex-wrap:wrap">
+        <button class="btn btn-void" id="payBtn">◈ 支払い、封を解く</button>
+        <button class="btn btn-ghost" id="quitBtn">退く</button>
+      </div>
+    </div>
+
+    <div id="mDone" style="display:none">
+      <span class="kai">解</span>
+      <div class="um-t" style="font-size:20px">封は解かれた</div>
+      <p class="auct" style="margin-top:10px">汝の名は決戦記録に刻まれる<br>
+        <span class="t-micro">解放者: <b style="color:var(--bone)">あやきゅち</b> ・ 支払い <b class="kw-void tnum" id="paidAmt">◈684,000</b></span></p>
+      <div class="row" style="justify-content:center; margin-top:18px">
+        <button class="btn" id="closeBtn">閉じる</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="assets/fx.js"></script>
+<script>
+  initParticles(document.getElementById("pfx"), { mix:"both", count:80 });
+
+  /* ---------- dutch auction: 値は毎秒下降 ---------- */
+  var FLOOR = 342000, STEP = 350, price = 684000;
+  var fmt = function(n){ return n.toLocaleString("en-US"); };
+  var priceEls = [].slice.call(document.querySelectorAll(".js-price"));
+  function renderPrice(flash){
+    priceEls.forEach(function(e){
+      e.textContent = fmt(price);
+      if (flash){ e.classList.add("tk"); setTimeout(function(){ e.classList.remove("tk"); }, 320); }
+    });
+  }
+  renderPrice(false);
+  setInterval(function(){
+    if (price > FLOOR){ price = Math.max(FLOOR, price - STEP); renderPrice(true); }
+  }, 1000);
+
+  /* ---------- 刻限 countdown ---------- */
+  var dl = 6*3600 + 12*60 + 9, dlEl = document.getElementById("dl");
+  var two = function(n){ return String(n).padStart(2,"0"); };
+  setInterval(function(){
+    dl = Math.max(0, dl - 1);
+    dlEl.textContent = two(Math.floor(dl/3600)) + ":" + two(Math.floor(dl%3600/60)) + ":" + two(dl%60);
+  }, 1000);
+
+  /* ---------- unseal modal (どの封印札からも開く / 開いている間も値は落ち続ける) ---------- */
+  var scrim = document.getElementById("unsealM"),
+      rite  = document.getElementById("mRite"),
+      done  = document.getElementById("mDone");
+  function openM(){ rite.style.display = ""; done.style.display = "none"; scrim.style.display = "grid"; }
+  function closeM(){ scrim.style.display = "none"; }
+  [].forEach.call(document.querySelectorAll(".js-open"), function(c){
+    c.addEventListener("click", openM);
+    c.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " "){ e.preventDefault(); openM(); }
+    });
+  });
+  document.getElementById("payBtn").onclick = function(){
+    document.getElementById("paidAmt").textContent = "◈" + fmt(price);
+    rite.style.display = "none"; done.style.display = "block";
+  };
+  document.getElementById("quitBtn").onclick = closeM;
+  document.getElementById("closeBtn").onclick = closeM;
+  scrim.addEventListener("click", function(e){ if (e.target === scrim) closeM(); });
+  document.addEventListener("keydown", function(e){ if (e.key === "Escape") closeM(); });
+</script>
+</body>
+</html>
