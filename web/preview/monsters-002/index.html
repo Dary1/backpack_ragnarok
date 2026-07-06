@@ -652,6 +652,33 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
 
 </div>
 
+<h2><span class="i18n"><span lang="ja">RPGチェックポイント + LoRAテスト(新方向)</span><span lang="en">RPG Checkpoint + LoRA Test (new direction)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">ユーザー指定により、新しいチェックポイント「RPG v5」(Anashel氏, SD1.5系, RPGキャラクター特化)と、Detail Tweaker LoRA(線・書き込み量調整, weight 0.4)+ Cel-Shaded Art Style LoRA(フラット塗り, weight 1.0)を導入して試験生成。プロンプトはユーザー指定のもの(goblin, full body, monster sprite, comic book illustration, line art, defined outlines, cell shading, 2d game art, high quality, white background, solid background)をほぼそのまま使用。結果は単発サンプルながら非常に良好: 白背景が完全にフラットでisnet-animeによる透過処理も一切のゴースト・削れなくクリーンに完了(下記市松カード参照)、線がシャープで塗りも狙い通りフラット、見切れなし。toonyou_beta6系よりも背景分離の相性が良い可能性がある。ただしn=1のため、他のモンスターコンセプトでも同様に安定するかは追加検証が必要。</span>
+<span lang="en">Per the user's request, tested a new checkpoint "RPG v5" (by Anashel, SD1.5-based, RPG-character focused) plus a Detail Tweaker LoRA (line/detail adjustment, weight 0.4) and a Cel-Shaded Art Style LoRA (flat coloring, weight 1.0). Used the user's own prompt almost verbatim (goblin, full body, monster sprite, comic book illustration, line art, defined outlines, cell shading, 2d game art, high quality, white background, solid background). Result from this single sample is very promising: the white background was perfectly flat and isnet-anime segmentation completed cleanly with no ghosting or geometry loss (see checkered card below), linework is sharp, shading reads as properly flat, no cropping. This combo may separate from the background more reliably than the toonyou_beta6 line. Still just one sample (n=1) -- needs testing across more monster concepts to confirm it holds up.</span>
+</span></div>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">goblin_rpg_test (raw)</div>
+  <img class="card-img" src="rpg_test/goblin_rpg_test.png"/>
+  <div class="card-title-ja">ゴブリン(RPG v5テスト・背景除去前)</div>
+  <div class="card-title-en">Goblin (RPG v5 test, before background removal)</div>
+  <div class="card-tech">rpg_v5.safetensors + detail_tweaker(0.4) + cel_shaded_art_style(1.0) &middot; seed 800001 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">白背景が完全にフラットで、線画もシャープ。ユーザー指定プロンプトをほぼそのまま使用。</span><span lang="en">Perfectly flat white background, sharp line art. Uses the user's specified prompt almost verbatim.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">goblin_rpg_test (transparent)</div>
+  <img class="card-img checker" src="rpg_test/goblin_rpg_test_transparent.png"/>
+  <div class="card-title-ja">ゴブリン(透過処理後)<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Goblin (after transparency processing)<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-tech">isnet-anime + alpha matting + post-process mask</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">ゴースト・削れ・背景残りなし。今回のバッチで最もクリーンな透過結果の一つ。</span><span lang="en">No ghosting, no geometry loss, no background remnants. One of the cleanest transparency results across the whole project so far.</span></span></div>
+</div>
+
+</div>
+
 <h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
 <div class="note-box">
 <span class="i18n">

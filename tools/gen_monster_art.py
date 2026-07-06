@@ -14,7 +14,10 @@ Job dict fields:
   name (required), ckpt (required), positive (required), negative (default ""),
   width (640), height (832), seed (1234), steps (30), cfg (7.0),
   sampler (dpmpp_2m), scheduler (karras),
-  hires (true), hires_scale (1.5), hires_denoise (0.5)
+  hires (true), hires_scale (1.5), hires_denoise (0.5),
+  loras (optional list of {"name": <filename in models/loras>, "strength": 1.0}
+         or separate "strength_model"/"strength_clip" -- chained onto the
+         checkpoint's MODEL/CLIP outputs in list order via LoraLoader nodes)
 
 Usage:
   python3 tools/gen_monster_art.py --config content/batches/monsters-002/jobs.json \
@@ -65,19 +68,44 @@ def build_workflow(job):
     sampler = job.get("sampler", "dpmpp_2m")
     scheduler = job.get("scheduler", "karras")
     hires = job.get("hires", True)
+    loras = job.get("loras", [])
 
     wf = {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": ["1", 1]}},
-        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": ["1", 1]}},
-        "4": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
-        "5": {
-            "class_type": "KSampler",
+    }
+
+    # Chain LoraLoader nodes onto the checkpoint's MODEL/CLIP outputs, in list
+    # order, so multiple LoRAs (e.g. a detail LoRA + a style LoRA) can stack.
+    model_ref = ["1", 0]
+    clip_ref = ["1", 1]
+    vae_ref = ["1", 2]
+    next_id = 20
+    for lora in loras:
+        nid = str(next_id)
+        strength = lora.get("strength", 1.0)
+        wf[nid] = {
+            "class_type": "LoraLoader",
             "inputs": {
-                "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0],
-                "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
-                "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
+                "model": model_ref,
+                "clip": clip_ref,
+                "lora_name": lora["name"],
+                "strength_model": lora.get("strength_model", strength),
+                "strength_clip": lora.get("strength_clip", strength),
             },
+        }
+        model_ref = [nid, 0]
+        clip_ref = [nid, 1]
+        next_id += 1
+
+    wf["2"] = {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": clip_ref}}
+    wf["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": clip_ref}}
+    wf["4"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
+    wf["5"] = {
+        "class_type": "KSampler",
+        "inputs": {
+            "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
+            "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
+            "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
         },
     }
     if hires:
@@ -91,16 +119,16 @@ def build_workflow(job):
         wf["7"] = {
             "class_type": "KSampler",
             "inputs": {
-                "model": ["1", 0], "positive": ["2", 0], "negative": ["3", 0],
+                "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
                 "latent_image": ["6", 0], "seed": seed + 1, "steps": steps, "cfg": cfg,
                 "sampler_name": sampler, "scheduler": scheduler,
                 "denoise": job.get("hires_denoise", 0.5),
             },
         }
-        wf["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["1", 2]}}
+        wf["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": vae_ref}}
         wf["9"] = {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "m2_" + job["name"]}}
     else:
-        wf["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}}
+        wf["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": vae_ref}}
         wf["7"] = {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "m2_" + job["name"]}}
     return wf
 

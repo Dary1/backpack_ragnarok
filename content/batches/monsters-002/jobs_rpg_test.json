@@ -1,0 +1,18 @@
+[
+  {
+    "name": "goblin_rpg_test",
+    "ckpt": "rpg_v5.safetensors",
+    "loras": [
+      {"name": "detail_tweaker.safetensors", "strength": 0.4},
+      {"name": "cel_shaded_art_style.safetensors", "strength": 1.0}
+    ],
+    "width": 640,
+    "height": 832,
+    "seed": 800001,
+    "steps": 30,
+    "cfg": 7.0,
+    "hires": false,
+    "positive": "goblin, full body, monster sprite, comic book illustration, line art, defined outlines, cell shading, 2d game art, high quality, white background, solid background, celshaded art style",
+    "negative": "text, watermark, signature, blurry, low quality, worst quality, normal quality, jpeg artifacts, cropped, out of frame, extra limbs, missing limbs, deformed, bad anatomy, duplicate, multiple characters, photorealistic, 3d render, gradient background, scenery, ground, floor"
+  }
+]
