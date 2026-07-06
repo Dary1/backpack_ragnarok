@@ -62,6 +62,7 @@ import {
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
+import { rarThemeClass } from '../render/uiBits';
 import type { EngineInstance, GameState } from '../engine/engine.d.ts';
 import { friendlyScheduleError, isApiErrorStatus } from './errors';
 import { localizedName } from './CreateRoomForm';
@@ -141,23 +142,9 @@ function contentEntryFor(content: ApiContentPayload | null, kind: 'po' | 'si' | 
   return content.items[itemId] ?? content.sis[itemId] ?? null;
 }
 
-/** REQ-0072: app rarity ramp (Common/Uncommon/Rare/Relic -- see
- * content/live) -> theme .rar-* frame class. Relic wears the mock's
- * LEGENDARY tone, the same mapping REQ-0070's `.rarity.r-Relic` rule
- * already established (the mock labels that tier 遺宝 = relic). Unknown/
- * unloaded rarity falls back to the common frame. */
-function rarThemeClass(rarity: string | undefined): string {
-  switch (rarity) {
-    case 'Uncommon':
-      return 'rar-uncommon';
-    case 'Rare':
-      return 'rar-rare';
-    case 'Relic':
-      return 'rar-legend';
-    default:
-      return 'rar-common';
-  }
-}
+/* REQ-0075: rarThemeClass (app ramp -> theme .rar-* frame) moved to
+   client/src/render/uiBits.ts so the Dex port reuses the SAME mapping
+   instead of a second copy -- imported above. */
 
 /** Day-aware countdown for the Warehouse's 7-day TTL. RoomCard's
  * formatCountdown is minute/second only (fine for a run's short
