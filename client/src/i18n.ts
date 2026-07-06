@@ -31,6 +31,11 @@ const DICT = {
     'nav.friends': 'Friends',
     'nav.dex': 'Dex',
     'nav.settings': 'Settings',
+    // REQ-0069: MJOLNIR chrome -- routes from the mock rail whose real
+    // pages land in later REQs, + the rail logo's accessible label.
+    'nav.market': 'Market',
+    'nav.ragnarok': 'Ragnarok',
+    'nav.logoLabel': 'Back to title',
 
     // Header (Header.tsx)
     'header.status.saved': 'saved ✓',
@@ -45,6 +50,17 @@ const DICT = {
 
     // Placeholder route (PlaceholderPage.tsx)
     'placeholder.comingSoon': 'This feature is coming soon.',
+
+    // Landing / title screen (landing/LandingPage.tsx) -- REQ-0069.
+    // EN side is authored natural English; ja mirrors the mock's copy.
+    'landing.menu.continue': 'Continue',
+    'landing.menu.continueNote': 'To the canvas',
+    'landing.menu.expeditions': 'Watch expeditions',
+    'landing.menu.hall': 'Hall — Ragnarok',
+    'landing.menu.settings': 'Settings',
+    'landing.menu.settingsNote': 'Language & logout',
+    'landing.signedInAs': 'Signed in as {name}',
+    'landing.copyright': 'backpack_ragnarok © 2026',
 
     // Invite banner (InviteBanner.tsx)
     'invite.welcome': 'Welcome, {name}!',
@@ -257,12 +273,18 @@ const DICT = {
     'workshop.rollResultCellCount': 'Cells',
   },
   ja: {
-    'nav.backpacks': 'バックパックス',
-    'nav.schedule': 'スケジュール',
+    // REQ-0069: the ja rail labels adopt the mock's vocabulary (編成/
+    // 遠征) -- they also FIT the 86px rail, which the old katakana names
+    // do not. EN labels stay as-is (the E2E suite clicks them by text).
+    'nav.backpacks': '編成',
+    'nav.schedule': '遠征',
     'nav.workshop': '工房',
     'nav.friends': 'フレンズ',
     'nav.dex': '図鑑',
     'nav.settings': '設定',
+    'nav.market': '市場',
+    'nav.ragnarok': '殿堂',
+    'nav.logoLabel': 'タイトルへ戻る',
 
     'header.status.saved': '保存済み ✓',
     'header.status.saving': '保存中…',
@@ -274,6 +296,15 @@ const DICT = {
     'app.inventoryNote': '格納中のアイテムは効果を発揮しません',
 
     'placeholder.comingSoon': 'この機能は近日公開予定です。',
+
+    'landing.menu.continue': '続きから',
+    'landing.menu.continueNote': '編成の間へ',
+    'landing.menu.expeditions': '遠征を見守る',
+    'landing.menu.hall': '殿堂 — ラグナロク',
+    'landing.menu.settings': '設定',
+    'landing.menu.settingsNote': '言語・ログアウト',
+    'landing.signedInAs': '{name} としてログイン中',
+    'landing.copyright': 'backpack_ragnarok © 2026',
 
     'invite.welcome': 'ようこそ、{name} さん！',
     'invite.dismiss': '閉じる',
