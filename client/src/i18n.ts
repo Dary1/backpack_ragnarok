@@ -252,6 +252,29 @@ const DICT = {
     'schedule.monitor.copyFailed': 'Copy failed',
     'schedule.monitor.logEmpty': 'No events yet.',
 
+    // REQ-0071: expedition (schedule) page MJOLNIR chrome (mock:
+    // web/redesign/expedition.html). ja copy follows the mock; EN is
+    // authored natural English. pageSub is EMPTY for EN on purpose --
+    // same convention as app.canvasSub (the ja title adopts the mock's
+    // hall name and shows a small latin caption under it; the EN title
+    // already IS that caption, so SchedulePage skips the empty string).
+    'schedule.pageTitle': 'Expeditions',
+    'schedule.pageSub': '',
+    'schedule.pageLede': 'Expeditions march on in real time — Muninn brings back the tale, even while you are away.',
+    'schedule.roomsDen': 'ROOMS',
+    'schedule.roomsActive': '{running}/{total} marching',
+    'schedule.createToggle': 'Forge a new expedition +',
+    'schedule.room.slotEmpty': '— empty —',
+    'schedule.room.ord1': 'I',
+    'schedule.room.ord2': 'II',
+    'schedule.room.ord3': 'III',
+    'schedule.room.ord4': 'IV',
+    'schedule.room.watching': '◆ Watching',
+    'schedule.monitor.title': 'Battle Monitor',
+    'schedule.monitor.live': 'LIVE',
+    'schedule.monitor.seed': 'seed {seed}',
+    'schedule.monitor.logCaption': 'Muninn’s record ・ {count} events',
+
     // Warehouse tab (WarehouseTab.tsx)
     'schedule.warehouse.title': 'Warehouse',
     'schedule.warehouse.cap': '{count} / {cap}',
@@ -497,6 +520,26 @@ const DICT = {
     'schedule.monitor.copied': 'コピーしました！',
     'schedule.monitor.copyFailed': 'コピーに失敗しました',
     'schedule.monitor.logEmpty': 'まだイベントがありません。',
+
+    // REQ-0071: expedition page MJOLNIR chrome -- ja copy from the mock
+    // (遠征の間; lede adapted to present tense since the app reports live,
+    // not a bundled morning report).
+    'schedule.pageTitle': '遠征の間',
+    'schedule.pageSub': 'EXPEDITION',
+    'schedule.pageLede': '眠っている間も、遠征は進む — ムニンが仔細を持ち帰る。',
+    'schedule.roomsDen': 'ROOMS',
+    'schedule.roomsActive': '遠征房 {running}/{total} 稼働',
+    'schedule.createToggle': '新しき遠征を組む ＋',
+    'schedule.room.slotEmpty': '─空き─',
+    'schedule.room.ord1': '壱',
+    'schedule.room.ord2': '弐',
+    'schedule.room.ord3': '参',
+    'schedule.room.ord4': '肆',
+    'schedule.room.watching': '◆ 監視中',
+    'schedule.monitor.title': '戦況監視',
+    'schedule.monitor.live': 'LIVE',
+    'schedule.monitor.seed': 'seed {seed}',
+    'schedule.monitor.logCaption': 'ムニンの記録 ・ 全{count}件',
 
     // Warehouse tab (WarehouseTab.tsx)
     'schedule.warehouse.title': '倉庫',

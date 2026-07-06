@@ -1792,107 +1792,321 @@ html, body {
 
 /* ---------------------------------------------------------------------
    Schedule (REQ-0036 P1-C) -- Rooms/Warehouse tabs, room cards, slots
-   panel, monitor (small + expanded Pixi view). Reuses the same palette
-   vars (--panel/--line/--dim/--cyan/--ok/--bad) and card/tab visual
-   language already established by .dex-mode-toggle / .settings-section
-   above, rather than inventing a new visual system for this feature.
+   panel, create form. REQ-0071: re-skinned to the MJOLNIR expedition
+   mock (web/redesign/expedition.html) -- page key art + pagehead strip
+   + rune divider, ornate room cards with the mock's emblem/status-chip/
+   slot-preview anatomy (RoomCard.tsx), theme-chip tabs, night-iron form
+   fields. Selector contract unchanged: .schedule-page / .schedule-tab
+   (+ -active) / .schedule-slot-error / .schedule-monitor-expand-btn /
+   .schedule-claim-btn and every data-testid keep their names (the E2E
+   suite selects on them). Omissions vs the mock are recorded in
+   docs/REQ-0071-redesign-expedition.md.
 --------------------------------------------------------------------- */
 .schedule-page {
-  flex: 1;
-  padding: 0 22px 22px;
-  max-width: 900px;
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 0 26px 60px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
 }
 
+/* full-viewport key art (mock .bgart) -- referenced from the served
+   /redesign/assets path, never bundled (404s harmlessly under the
+   proxy-less dev server, same as .canvas-bgart -- REQ-0070 note).
+   Nested inside .schedule-page, so it unmounts with the route. */
+.expedition-bgart {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/redesign/assets/bg_expedition.jpg') center / cover no-repeat;
+  opacity: 0.5;
+  filter: saturate(0.85) brightness(0.6);
+}
+
+.expedition-bgart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.55), rgba(10, 13, 18, 0.86) 70%);
+}
+
+/* pagehead strip (mock .pagehead; the raven art + night arc are omitted
+   -- no backing data, see the REQ-0071 notes doc) */
+.schedule-pagehead {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+}
+
+.schedule-pagehead-kicker {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.34em;
+}
+
+.schedule-pagehead-title {
+  margin: 2px 0 0;
+  font-size: 27px;
+  font-weight: 800;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+.schedule-pagehead-lede {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.08em;
+}
+
+.schedule-pagehead-tabs {
+  margin-left: auto;
+  padding-bottom: 4px;
+}
+
+.schedule-pagehead-divider {
+  margin: 10px 0 14px;
+}
+
+.schedule-pagehead-divider::before,
+.schedule-pagehead-divider::after {
+  background: linear-gradient(90deg, transparent, rgba(201, 169, 89, 0.35), transparent);
+}
+
+/* Rooms/Warehouse tabs -- theme chips (class names kept for the E2E
+   suite: nav-routing.spec / workshop.spec select .schedule-tab by text). */
 .schedule-tab-row {
   display: flex;
-  gap: 4px;
-  padding: 10px 0 0;
+  gap: 6px;
 }
 
 .schedule-tab {
-  background: var(--panel);
-  color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 6px 14px;
+  padding: 5px 18px;
+  border: 1px solid var(--border-lo);
+  border-radius: 999px;
+  background: rgba(19, 24, 32, 0.8);
+  color: var(--bone-2);
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
+}
+
+.schedule-tab:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
 }
 
 .schedule-tab-active {
-  background: #232019;
-  color: var(--cyan);
-  border-color: var(--cyan);
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: inset 0 0 8px rgba(201, 169, 89, 0.15);
 }
 
 .schedule-loading,
 .schedule-empty {
-  color: var(--dim);
+  color: var(--bone-3);
   font-size: 14px;
-  padding: 12px 0;
+  padding: 14px 4px;
+  letter-spacing: 0.06em;
 }
 
 .schedule-error {
-  color: var(--bad);
+  color: #e06b5f;
   font-size: 13px;
   padding: 6px 0;
 }
 
-.schedule-rooms-view,
-.schedule-rooms-list {
+.schedule-rooms-view {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
+/* mock .colhead -- den label + live room counts */
+.schedule-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.schedule-colhead-den {
+  font-size: 10.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+
+/* rooms list: responsive card grid; the EXPANDED card spans the full row
+   (.schedule-room-card-open) so the 960px monitor canvas has room. The
+   mock's separate center monitor column would require pulling the
+   Monitor OUT of its room card -- forbidden by the E2E containment
+   contract + the one-Pixi-app-per-monitor lifecycle (see
+   SchedulePage.tsx's module comment). */
+.schedule-rooms-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ---------- room card (mock .room) ---------- */
 .schedule-room-card {
-  background: #0e0d0b;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
+  padding: 12px 14px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
 }
 
-.schedule-room-card-header {
+.schedule-room-card-open {
+  grid-column: 1 / -1;
+  box-shadow: var(--focus-ring), 0 8px 24px rgba(0, 0, 0, 0.45);
+  border-color: var(--gold-lo);
+}
+
+/* canceled rooms read as inert/sealed (mock .room.locked treatment) */
+.schedule-room-status-canceled {
+  opacity: 0.55;
+  filter: saturate(0.45);
+}
+
+.schedule-room-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
   gap: 10px;
 }
 
-.schedule-room-card-title {
+/* the mock's circular emblem -- its emblem_*.png art is placeholder, so
+   the disc renders the dungeon name's own first glyph (RoomCard.tsx) */
+.schedule-room-emblem {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--gold-lo);
+  background: radial-gradient(circle at 50% 40%, #232b37, #10141b 80%);
+  box-shadow: 0 0 0 3px rgba(10, 13, 18, 0.85), 0 4px 10px rgba(0, 0, 0, 0.5);
+  color: var(--gold-hi);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.schedule-room-head-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.schedule-room-name {
+  font-weight: 800;
+  font-size: 15.5px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-room-lv {
+  font-size: 10.5px;
+  color: var(--gold);
+  margin-left: 8px;
+  letter-spacing: 0.1em;
+}
+
+.schedule-room-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.schedule-room-status-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schedule-room-grow {
+  flex: 1;
+}
+
+.schedule-room-watching {
+  color: var(--gold-hi);
+  letter-spacing: 0.14em;
+}
+
+.schedule-room-countdown {
+  color: var(--frost-hi);
+}
+
+/* status chips: label + dot color per status (double-encoded).
+   schedule-ux-improvements' intent preserved on the MJOLNIR ramp: idle
+   (needs input) = gold, running = live ember dot, cooldown = frost,
+   cancelPending = blood (still in flight), canceled = muted bone. */
+.schedule-status-badge .dot { background: var(--bone-3); }
+.schedule-status-badge-idle { color: var(--gold-hi); border-color: rgba(201, 169, 89, 0.45); }
+.schedule-status-badge-idle .dot { background: var(--gold); box-shadow: 0 0 6px rgba(201, 169, 89, 0.6); }
+.schedule-status-badge-cooldown { color: var(--frost-hi); border-color: rgba(111, 196, 222, 0.4); }
+.schedule-status-badge-cooldown .dot { background: var(--frost); box-shadow: 0 0 6px var(--frost-glow); }
+.schedule-status-badge-running { color: var(--gold-hi); border-color: var(--gold-lo); }
+.schedule-status-badge-running .dot { background: var(--ember-hi); box-shadow: 0 0 6px var(--ember-glow); }
+.schedule-status-badge-cancelPending { color: #e06b5f; border-color: rgba(176, 65, 62, 0.6); background: rgba(37, 17, 16, 0.55); }
+.schedule-status-badge-cancelPending .dot { background: var(--blood); box-shadow: 0 0 6px rgba(176, 65, 62, 0.6); }
+.schedule-status-badge-canceled { color: var(--bone-3); }
+
+/* slot-preview grid on the collapsed card (mock .slots/.slot) */
+.schedule-room-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.schedule-room-slot {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: rgba(10, 13, 18, 0.5);
+  font-size: 11.5px;
+  color: var(--bone-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-room-slot b {
+  font-family: var(--f-dj);
+  color: var(--gold);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.schedule-room-slot-empty {
+  border-style: dashed;
+  color: var(--bone-3);
+  justify-content: center;
+  background: rgba(10, 13, 18, 0.28);
+}
+
+/* footer row: room id + actions, over the mock .r-foot hairline */
+.schedule-room-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(233, 227, 211, 0.07);
 }
 
 .schedule-room-id {
-  color: var(--dim);
+  color: var(--bone-3);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
-
-.schedule-status-badge {
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* schedule-ux-improvements: idle (needs the player's input -- fill
-   slots) now gets the most visually distinct non-error color instead of
-   the most muted one; canceled (inert/historical, the vast majority of
-   a long-lived list) moves to --dim instead of sharing --bad with
-   cancelPending, which is still actually in flight. */
-.schedule-status-badge-idle { background: rgba(209, 162, 74, 0.2); color: var(--warn); }
-.schedule-status-badge-cooldown { background: rgba(89, 214, 214, 0.15); color: var(--cyan); }
-.schedule-status-badge-running { background: rgba(92, 181, 115, 0.18); color: var(--ok); }
-.schedule-status-badge-cancelPending { background: rgba(192, 80, 80, 0.15); color: var(--bad); }
-.schedule-status-badge-canceled { background: rgba(154, 145, 127, 0.14); color: var(--dim); }
 
 .schedule-room-card-actions {
   display: flex;
@@ -1903,41 +2117,64 @@ html, body {
 .schedule-cancel-btn,
 .schedule-monitor-expand-btn,
 .schedule-claim-btn {
-  background: transparent;
-  border-radius: 6px;
-  padding: 4px 10px;
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  border-radius: 2px;
+  padding: 4px 12px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: 0.08em;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
 }
 
 .schedule-expand-btn,
 .schedule-monitor-expand-btn {
-  color: var(--cyan);
-  border: 1px solid var(--cyan);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+}
+
+.schedule-expand-btn:hover,
+.schedule-monitor-expand-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: 0 0 8px rgba(201, 169, 89, 0.25);
 }
 
 .schedule-cancel-btn {
-  color: var(--bad);
-  border: 1px solid var(--bad);
+  color: #e06b5f;
+  border: 1px solid rgba(176, 65, 62, 0.6);
+}
+
+.schedule-cancel-btn:hover {
+  border-color: var(--blood);
+  box-shadow: 0 0 8px rgba(176, 65, 62, 0.3);
+}
+
+.schedule-cancel-btn:disabled,
+.schedule-expand-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
 }
 
 .schedule-claim-btn {
-  color: var(--ok);
-  border: 1px solid var(--ok);
+  color: #9fe0c4;
+  border: 1px solid rgba(94, 163, 127, 0.55);
 }
 
-.schedule-room-card-body {
-  display: flex;
-  gap: 14px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--dim);
+.schedule-claim-btn:hover {
+  border-color: var(--r-uncommon);
+  box-shadow: 0 0 8px rgba(94, 163, 127, 0.3);
+}
+
+.schedule-claim-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
 }
 
 .schedule-room-expanded {
-  margin-top: 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid rgba(201, 169, 89, 0.14);
   padding-top: 12px;
   display: flex;
   flex-direction: column;
@@ -1947,14 +2184,16 @@ html, body {
 /* Slots panel */
 .schedule-slots-title {
   margin: 0 0 8px;
-  font-size: 13px;
-  color: var(--dim);
+  font-family: var(--f-den);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.22em;
 }
 
 .schedule-slots-no-presets {
-  color: var(--bad);
+  color: #e06b5f;
   font-size: 12px;
   margin-bottom: 8px;
 }
@@ -1966,9 +2205,9 @@ html, body {
 }
 
 .schedule-slot-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: rgba(10, 13, 18, 0.5);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -1976,27 +2215,31 @@ html, body {
 }
 
 .schedule-slot-label {
-  font-size: 11px;
-  color: var(--dim);
+  font-family: var(--f-den);
+  font-size: 10px;
+  color: var(--bone-3);
   text-transform: uppercase;
+  letter-spacing: 0.18em;
 }
 
 .schedule-slot-empty {
   font-size: 11px;
-  color: var(--dim);
+  color: var(--bone-3);
 }
 
 .schedule-slot-queued-badge {
-  background: rgba(89, 214, 214, 0.15);
-  color: var(--cyan);
-  border-radius: 6px;
-  padding: 2px 6px;
+  border: 1px solid rgba(111, 196, 222, 0.4);
+  color: var(--frost-hi);
+  background: rgba(29, 75, 96, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
   font-size: 10px;
   align-self: flex-start;
+  letter-spacing: 0.06em;
 }
 
 .schedule-slot-error {
-  color: var(--bad);
+  color: #e06b5f;
   font-size: 11px;
 }
 
@@ -2010,43 +2253,42 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 12px;
   flex-wrap: wrap;
 }
 
+/* the mock's 「新しき遠征を組む ＋」 -- rides the theme .btn (added in
+   SchedulePage.tsx); this rule only sizes it */
 .schedule-create-toggle-btn {
-  background: transparent;
-  border: 1px solid var(--cyan);
-  color: var(--cyan);
-  border-radius: 6px;
-  padding: 6px 14px;
   font-size: 13px;
-  cursor: pointer;
+  padding: 8px 18px;
+  letter-spacing: 0.16em;
 }
 
 .schedule-hide-canceled-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--dim);
+  gap: 8px;
   cursor: pointer;
+  padding: 5px 14px;
+}
+
+.schedule-hide-canceled-toggle input {
+  accent-color: var(--gold);
+  margin: 0;
 }
 
 /* schedule-ux-improvements: inline cancel confirmation, replacing
    window.confirm() -- same card-adjacent placement, themed instead of a
    native browser dialog. */
 .schedule-room-cancel-confirm {
-  margin-top: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--bad);
-  border-radius: 8px;
-  background: rgba(192, 80, 80, 0.08);
+  border: 1px solid rgba(176, 65, 62, 0.6);
+  border-radius: 2px;
+  background: rgba(37, 17, 16, 0.55);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   font-size: 13px;
+  flex-wrap: wrap;
 }
 
 .schedule-room-cancel-confirm-actions {
@@ -2056,16 +2298,15 @@ html, body {
 }
 
 .schedule-create-panel {
-  background: #0e0d0b;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px 16px;
-  margin-bottom: 12px;
+  padding: 14px 16px 15px;
+  margin-bottom: 2px;
 }
 
 .schedule-create-panel h3 {
-  margin: 0 0 10px;
-  font-size: 14px;
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
 }
 
 .schedule-create-form {
@@ -2083,39 +2324,84 @@ html, body {
 }
 
 .schedule-field-label {
-  color: var(--dim);
+  font-family: var(--f-den);
+  font-size: 10px;
+  color: var(--bone-3);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.schedule-field-note {
+  max-width: 240px;
+  color: var(--bone-3);
+  font-size: 11px;
 }
 
 .schedule-select,
 .schedule-input {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  background: rgba(10, 13, 18, 0.65);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
   padding: 6px 8px;
   font-size: 13px;
+  font-family: var(--f-ui);
+}
+
+.schedule-select:focus,
+.schedule-input:focus {
+  outline: none;
+  border-color: var(--gold-lo);
+  box-shadow: var(--focus-ring);
 }
 
 .schedule-visibility-fixed {
-  color: var(--dim);
+  color: var(--bone-3);
   font-style: italic;
   padding: 6px 0;
 }
 
 .schedule-create-btn {
-  background: transparent;
-  color: var(--ok);
-  border: 1px solid var(--ok);
-  border-radius: 8px;
-  padding: 7px 16px;
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  outline: 1px solid rgba(201, 169, 89, 0.28);
+  outline-offset: -3px;
+  border-radius: 2px;
+  padding: 8px 20px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.14em;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
+}
+
+.schedule-create-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: 0 0 8px rgba(201, 169, 89, 0.25);
 }
 
 .schedule-create-btn:disabled {
   opacity: 0.5;
   cursor: default;
+  box-shadow: none;
+}
+
+/* narrow screens (mock 840px breakpoint): tighter padding (bottom
+   clears the mobile nav bar), tabs wrap under the title, slots fold
+   to 2-up. */
+@media (max-width: 840px) {
+  .schedule-page {
+    padding: 0 14px 90px;
+  }
+  .schedule-pagehead-tabs {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .schedule-slots-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 /* Workshop (WorkshopPage.tsx) -- REQ-0042 */
@@ -2166,106 +2452,392 @@ html, body {
   cursor: default;
 }
 
-/* Monitor */
+/* Monitor -- REQ-0071: the mock's .mon-panel (m-head strip / stage /
+   iron ctrl bar / log). The .schedule-monitor root wears the theme
+   .panel/.ornate (Monitor.tsx adds the corner knots); the Pixi canvas +
+   its mount/visibility lifecycle inside are untouched. */
 .schedule-monitor {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px 12px;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  overflow: hidden;
 }
 
+/* "no run yet" placeholder -- rendered WITHOUT the panel classes, so it
+   styles itself as the mock's dashed .r-req requirement box */
 .schedule-monitor-empty {
-  color: var(--dim);
+  padding: 10px 12px;
+  border: 1px dashed var(--border-lo);
+  border-radius: 2px;
+  color: var(--bone-3);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* m-head strip (mock .m-head) */
+.schedule-monitor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 9px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.14);
+  flex-wrap: wrap;
+}
+
+.schedule-monitor-head-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.schedule-monitor-head-sep {
+  color: var(--bone-3);
+}
+
+.schedule-monitor-head-room {
   font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--bone-2);
+}
+
+.schedule-monitor-live-chip {
+  letter-spacing: 0.22em;
+}
+
+.schedule-monitor-grow {
+  flex: 1;
+}
+
+.schedule-monitor-seed {
+  opacity: 0.75;
+}
+
+.schedule-monitor-small {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
 }
 
 .schedule-monitor-progress-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 12px;
 }
 
 .schedule-monitor-progress-label {
-  color: var(--dim);
+  font-family: var(--f-den);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bone-3);
   min-width: 60px;
 }
 
 .schedule-monitor-progress-bar {
+  position: relative;
   flex: 1;
-  height: 8px;
-  background: #0e0d0b;
-  border-radius: 4px;
+  height: 7px;
+  background: #0c1016;
+  border: 1px solid #2a313e;
+  border-radius: 2px;
   overflow: hidden;
 }
 
 .schedule-monitor-progress-fill {
   height: 100%;
-  background: var(--cyan);
+  background: linear-gradient(90deg, #6f5b26, var(--gold));
   transition: width 0.3s ease;
 }
 
 .schedule-monitor-progress-pct {
-  min-width: 36px;
+  min-width: 40px;
   text-align: right;
-  color: var(--text);
+  color: var(--gold-hi);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
 }
 
 .schedule-monitor-encounter,
 .schedule-monitor-telegraph {
   font-size: 12px;
-  color: var(--dim);
+  color: var(--bone-2);
+  letter-spacing: 0.04em;
+}
+
+.schedule-monitor-expand-btn {
+  align-self: flex-start;
 }
 
 .schedule-monitor-expanded {
   display: block;
+  padding: 0 16px 12px;
 }
 
 .schedule-monitor-hidden {
   display: none;
 }
 
-.schedule-monitor-canvas {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: #0e0d0b;
+.schedule-monitor-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
 }
 
+.schedule-monitor-tab-btn {
+  padding: 3px 14px;
+  border: 1px solid var(--border-lo);
+  border-radius: 999px;
+  background: rgba(19, 24, 32, 0.8);
+  color: var(--bone-2);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out;
+}
+
+.schedule-monitor-tab-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.schedule-monitor-tab-btn-active {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: inset 0 0 8px rgba(201, 169, 89, 0.15);
+}
+
+/* the dual-plane Pixi canvas is 960px wide (MonitorRenderer.ts) --
+   horizontal scroll on narrow screens instead of squashing it */
+.schedule-monitor-stage {
+  overflow-x: auto;
+  border-radius: 2px;
+}
+
+.schedule-monitor-canvas {
+  display: block;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: radial-gradient(120% 130% at 50% 18%, rgba(23, 28, 37, 0.6), rgba(10, 13, 18, 0.8));
+}
+
+/* iron control bar (mock .ctrl). Pause/speed/skip are omitted -- replay
+   pacing is the server's wall clock (REQ-0045); the bar carries the
+   real clock + timeline + per-encounter pips instead. */
+.schedule-monitor-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: linear-gradient(180deg, #262e3a 0%, #1a202a 55%, #141922 100%);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-top-color: rgba(201, 169, 89, 0.2);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(233, 227, 211, 0.06), inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+
+.schedule-monitor-rivet {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #9aa3ae, #2a313e 72%);
+  box-shadow: 0 1px 2px #000;
+}
+
+.schedule-monitor-clock {
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.schedule-monitor-timeline {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  background: #0c1016;
+  border: 1px solid #2a313e;
+  border-radius: 2px;
+}
+
+.schedule-monitor-timeline-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #6f5b26, var(--gold));
+  transition: width 0.3s ease;
+}
+
+.schedule-monitor-pip {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  z-index: 2;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--gold-hi);
+  border: 1px solid #14100a;
+}
+
+/* log pane (REQ-0045 g; REQ-0071 restyle + logbar caption) */
+.schedule-monitor-log-panel {
+  display: block;
+}
+
+.schedule-monitor-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.schedule-monitor-log-copy-btn {
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 3px 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out;
+}
+
+.schedule-monitor-log-copy-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.schedule-monitor-log-copy-status {
+  font-size: 11px;
+  color: #9fe0c4;
+}
+
+.schedule-monitor-log-copy-failed {
+  color: #e06b5f;
+}
+
+.schedule-monitor-log-text {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 9px 12px;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: rgba(10, 13, 18, 0.6);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--bone-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.schedule-monitor-logbar {
+  margin-top: 6px;
+  text-align: right;
+  letter-spacing: 0.06em;
+}
+
+/* settled summary (result banner / spoils rows / cooldown) */
 .schedule-monitor-summary {
-  border-top: 1px solid var(--line);
-  padding-top: 8px;
+  border-top: 1px solid rgba(201, 169, 89, 0.14);
+  padding: 10px 16px 12px;
   font-size: 13px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 5px;
 }
 
 .schedule-monitor-result {
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.schedule-monitor-result-victory {
+  color: var(--gold-hi);
+  text-shadow: 0 0 10px rgba(201, 169, 89, 0.35);
+}
+
+.schedule-monitor-result-wipe {
+  color: #e06b5f;
+}
+
+.schedule-monitor-result-incomplete {
+  color: var(--bone-2);
 }
 
 .schedule-monitor-rewards-none,
 .schedule-monitor-level-dropped {
-  color: var(--bad);
+  color: #e06b5f;
   font-size: 12px;
 }
 
 .schedule-monitor-rewards-title {
-  color: var(--ok);
-  font-size: 12px;
+  font-family: var(--f-den);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/* spoils rows (mock .icard.sm anatomy: thumb + name; rarity tint rides
+   the existing .rarity.r-* rules) */
+.schedule-monitor-rewards-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-monitor-reward-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: 1px solid rgba(40, 49, 62, 0.7);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.7), rgba(19, 24, 32, 0.7));
+}
+
+.schedule-monitor-reward-thumb {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+
+.schedule-monitor-reward-thumb img {
+  width: 24px;
+  height: 24px;
+}
+
+.schedule-monitor-reward-name {
+  font-size: 12.5px;
+  font-weight: 600;
 }
 
 .schedule-monitor-settled-badge {
-  color: var(--dim);
+  color: var(--bone-3);
   font-size: 11px;
+  letter-spacing: 0.12em;
 }
 
 .schedule-monitor-cooldown {
-  color: var(--dim);
-  font-size: 11px;
+  color: var(--frost-hi);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
 }
 
 /* Warehouse tab */
@@ -2426,13 +2998,18 @@ html, body {
   color: var(--warn);
 }
 
+/* REQ-0071: shared toast (warehouse claim / workshop roll) adopts the
+   night-iron + gold voice -- free shared chrome; the Warehouse tab own
+   full restyle is REQ-0072 unit. */
 .schedule-toast {
-  background: rgba(92, 181, 115, 0.15);
-  color: var(--ok);
-  border: 1px solid var(--ok);
-  border-radius: 6px;
-  padding: 6px 10px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.92), rgba(19, 24, 32, 0.92));
+  color: var(--gold-hi);
+  border: 1px solid var(--gold-lo);
+  border-radius: 2px;
+  padding: 7px 12px;
   font-size: 12px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 /* ---------------------------------------------------------------------
