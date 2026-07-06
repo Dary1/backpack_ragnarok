@@ -90,11 +90,38 @@ it is not a fork of any ported algorithm.
 SCORE (deterministic; every constant below is the complete set, tune here
 only):
 
+    MIN_CONTENT_FRAC = 0.02
     WEIGHT_SCALE = 0.35
     WEIGHT_COVERAGE = 0.50
     WEIGHT_UNIFORMITY = 0.15
 
-    if solve() (or solve_any_angle()) returns no feasible placement:
+    Feasibility gate 0 (content-size gate, checked FIRST, before solve() is
+    ever called and before any bbox-cropping of the candidate's own alpha
+    mask): content_frac = (opaque alpha>0 pixel count) / (W*H) of the
+    candidate PNG AT ITS ORIGINAL, UNCROPPED SIZE. If content_frac <
+    MIN_CONTENT_FRAC, the candidate is infeasible with reason
+    "content_too_small" and score 0.0, WITHOUT ever reaching solve(). This
+    exists because solve() operates purely on the (post-bbox-crop) SHAPE of
+    the content mask, not its absolute size relative to the source canvas:
+    a matting failure that leaves only a tiny (e.g. ~0.1%-opaque) noise
+    speck crops down to a small, often near-rectangular blob that solve()
+    then happily upscales to fill the allowed region, producing a high
+    scale_term and plausible coverage_term despite there being essentially
+    no real subject content -- observed on real data (a matting failure
+    scored 87.33/100 on ~0.1% actual opaque content before this gate
+    existed). MIN_CONTENT_FRAC = 0.02 (2% of the full candidate canvas)
+    was chosen as a conservative floor well above matting-noise-speck
+    territory (~0.1%) and comfortably below any plausible real subject
+    silhouette's on-canvas footprint. content_frac is recorded (rounded to
+    4 decimals) for EVERY candidate in scores.json regardless of outcome,
+    alongside a "reason" field (null/"ok" when feasible, an explanatory
+    string -- e.g. "content_too_small" -- when not), so this gate's effect
+    is always auditable from the output alone, not just inferable from a
+    score of 0.0.
+
+    if content_frac < MIN_CONTENT_FRAC:
+        score = 0.0  (reason: "content_too_small")
+    elif solve() (or solve_any_angle()) returns no feasible placement:
         score = 0.0
     else:
         score = 100 * (WEIGHT_SCALE * scale_term
@@ -182,9 +209,12 @@ Output scores.json:
   "items": {
     "<item_id>": {
       "candidates": [
-        {"file": ..., "feasible": true, "scale": ..., "rot": 90, "flip": false,
-         "pos": [y, x], "per_cell_coverage": [...], "terms": {"scale_term":...,
+        {"file": ..., "feasible": true, "content_frac": ..., "reason": null,
+         "scale": ..., "rot": 90, "flip": false, "pos": [y, x],
+         "per_cell_coverage": [...], "terms": {"scale_term":...,
          "coverage_term":..., "uniformity_term":...}, "score": ...},
+        {"file": ..., "feasible": false, "content_frac": 0.0031,
+         "reason": "content_too_small", "scale": null, ..., "score": 0.0},
         ...
       ],
       "winner": {"file": ..., "candidate_index": 0, "score": ...} or null
@@ -218,6 +248,17 @@ WEIGHT_COVERAGE = 0.50
 WEIGHT_UNIFORMITY = 0.15
 assert abs((WEIGHT_SCALE + WEIGHT_COVERAGE + WEIGHT_UNIFORMITY) - 1.0) < 1e-9
 
+# Feasibility gate 0 (checked before solve(), before any bbox-cropping of the
+# candidate's own alpha mask): minimum fraction of the candidate PNG's FULL,
+# ORIGINAL (uncropped) W*H canvas that must be opaque (alpha>0) for the
+# candidate to be considered at all. Below this, the candidate is scored 0.0
+# with reason "content_too_small" and solve() is never called. See the
+# "Feasibility gate 0" paragraph in this module's docstring SCORE section for
+# the full rationale (matting-failure noise specks upscaling to a deceptively
+# high score once solve() only ever sees their post-crop SHAPE, never their
+# tiny absolute size).
+MIN_CONTENT_FRAC = 0.02
+
 DEFAULT_DEFS = os.path.join(PROJECT_ROOT, "content", "live", "live_items.json")
 DEFAULT_CANDIDATES_DIR = os.path.join(
     PROJECT_ROOT, "content", "batches", "batch-003-item-icons", "candidates")
@@ -238,6 +279,26 @@ TOOL_PROVENANCE = "tool_icon_score.py -- REQ-0073, imports tool_fit_check.py (RE
 # `alpha > 0` thresholding tool_fit_check.rasterize_symbol already uses
 # internally for SVG symbols.
 # ---------------------------------------------------------------------
+def alpha_content_frac(path):
+    """RGBA PNG -> content_frac: opaque (alpha>0) pixel count / (W*H), measured
+    against the candidate's FULL, ORIGINAL, UNCROPPED canvas -- deliberately
+    computed BEFORE any bbox-cropping (i.e. NOT via load_content_alpha(),
+    which crops first via fit.crop_to_content and would make this fraction
+    meaningless -- a post-crop mask is by construction as dense as its own
+    bbox allows). Same `alpha > 0` thresholding convention as
+    load_content_alpha() / tool_fit_check.rasterize_symbol(). Used by
+    score_candidate() as the MIN_CONTENT_FRAC feasibility gate (see module
+    docstring SCORE section) to catch matting failures -- a tiny opaque noise
+    speck on an otherwise-transparent canvas crops down to a small but often
+    solid/rectangular blob that solve() can upscale to a deceptively high
+    score if only the post-crop shape is ever examined; this function is how
+    the tool sees the candidate's TRUE, pre-crop content density instead."""
+    img = Image.open(path).convert("RGBA")
+    alpha = np.array(img)[:, :, 3]
+    h, w = alpha.shape
+    return float((alpha > 0).sum()) / float(h * w)
+
+
 def load_content_alpha(path):
     """RGBA PNG -> boolean content mask, alpha>0, bbox-cropped via
     tool_fit_check.crop_to_content. NOTE on the all-transparent case:
@@ -296,10 +357,15 @@ def per_cell_coverage_fractions(allowed, cellset, mask, scale, pos):
     return coverages, full
 
 
-def score_terms(allowed, best, cellset, any_angle):
+def score_terms(allowed, best, cellset, any_angle, content_frac):
     """best: solve()/solve_any_angle() result dict (scale, mask, pos, and
-    either rot+flip or deg+flip). Returns (per_cell_coverage, terms, score,
-    placed_full_canvas_mask)."""
+    either rot+flip or deg+flip). content_frac: this candidate's pre-crop
+    content fraction (see alpha_content_frac()), threaded through purely so
+    it can be recorded on the returned result dict alongside the feasible
+    reason=None/"ok" marker -- it has already passed the MIN_CONTENT_FRAC
+    gate by the time score_terms() is ever called (score_candidate() gates
+    beforehand), so it plays no role in any of the term computations below.
+    Returns (per_cell_coverage, terms, score, placed_full_canvas_mask)."""
     H, W = allowed.shape
     oriented_mask = best["mask"]
     h, w = oriented_mask.shape
@@ -339,6 +405,8 @@ def score_terms(allowed, best, cellset, any_angle):
 
     result = dict(
         feasible=True,
+        reason=None,
+        content_frac=round(content_frac, 4),
         scale=achieved_scale,
         pos=[int(pos_centered_yx[0]), int(pos_centered_yx[1])],
         pos_first=[int(pos_first_yx[0]), int(pos_first_yx[1])],
@@ -358,9 +426,10 @@ def score_terms(allowed, best, cellset, any_angle):
     return result, oriented_mask, achieved_scale, pos_centered_yx
 
 
-def infeasible_result(reason):
+def infeasible_result(reason, content_frac=None):
     return dict(
-        feasible=False, reason=reason, scale=None, rot=None, deg=None, flip=None,
+        feasible=False, reason=reason, content_frac=content_frac,
+        scale=None, rot=None, deg=None, flip=None,
         pos=None, pos_first=None, per_cell_coverage=[],
         terms=dict(scale_term=0.0, coverage_term=0.0, uniformity_term=0.0),
         score=0.0,
@@ -371,6 +440,18 @@ def infeasible_result(reason):
 # Per-candidate scoring
 # ---------------------------------------------------------------------
 def score_candidate(path, allowed, cellset, any_angle=False):
+    # Feasibility gate 0 (MIN_CONTENT_FRAC): measured on the candidate's
+    # FULL, ORIGINAL, UNCROPPED alpha canvas, BEFORE load_content_alpha()'s
+    # internal bbox-crop -- see alpha_content_frac()'s own docstring for why
+    # a post-crop measurement would be meaningless here. Catches matting
+    # failures (e.g. a ~0.1%-opaque noise speck) that would otherwise crop
+    # down to a small, often solid/near-rectangular blob and let solve()
+    # upscale it into a deceptively high-scoring "fit" (observed on real
+    # data: 87.33/100 on ~0.1% actual content, before this gate existed).
+    content_frac = alpha_content_frac(path)
+    if content_frac < MIN_CONTENT_FRAC:
+        return infeasible_result("content_too_small", content_frac=content_frac)
+
     content = load_content_alpha(path)
     # Must check `not content.any()`, NOT `content.size == 0`: tool_fit_
     # check.crop_to_content() returns the ORIGINAL (uncropped, full-size)
@@ -379,9 +460,14 @@ def score_candidate(path, allowed, cellset, any_angle=False):
     # all-transparent candidate silently reach solve() as an all-False
     # kernel, which trivially "fits" everywhere (nothing to collide with)
     # and would misreport as a feasible, average-scoring candidate instead
-    # of the EMPTY_CONTENT case it actually is.
+    # of the EMPTY_CONTENT case it actually is. NOTE: in practice this
+    # branch is now unreachable via a fully all-transparent (content_frac
+    # == 0.0) candidate, since MIN_CONTENT_FRAC (0.02) > 0.0 means the gate
+    # above already catches that case first with reason "content_too_small"
+    # -- kept as a defensive fallback for any future gate retuning.
     if content.size == 0 or not content.any():
-        return infeasible_result("EMPTY_CONTENT (no non-transparent alpha pixels)")
+        return infeasible_result("EMPTY_CONTENT (no non-transparent alpha pixels)",
+                                  content_frac=content_frac)
 
     if any_angle:
         best = fit.solve_any_angle(allowed, content)
@@ -389,10 +475,11 @@ def score_candidate(path, allowed, cellset, any_angle=False):
         best = fit.solve(allowed, content)
 
     if best is None:
-        return infeasible_result("INFEASIBLE (solve() found no placement at any scale/orientation)")
+        return infeasible_result("INFEASIBLE (solve() found no placement at any scale/orientation)",
+                                  content_frac=content_frac)
 
     result, oriented_mask, achieved_scale, pos_centered_yx = score_terms(
-        allowed, best, cellset, any_angle)
+        allowed, best, cellset, any_angle, content_frac)
     result["_oriented_mask"] = oriented_mask
     result["_achieved_scale"] = achieved_scale
     result["_pos_centered_yx"] = pos_centered_yx
@@ -432,6 +519,8 @@ def score_item(entry, candidates_dir, pattern, render_dir=None, any_angle=False)
         out = dict(
             file=os.path.relpath(path, PROJECT_ROOT),
             feasible=r["feasible"],
+            content_frac=round(r["content_frac"], 4) if r["content_frac"] is not None else None,
+            reason=r.get("reason"),  # None (JSON null) when feasible; explanatory string otherwise
             scale=r["scale"],
             rot=r["rot"],
             deg=r["deg"],
@@ -441,8 +530,6 @@ def score_item(entry, candidates_dir, pattern, render_dir=None, any_angle=False)
             terms=r["terms"],
             score=r["score"],
         )
-        if not r["feasible"]:
-            out["reason"] = r["reason"]
         if render_path:
             out["render"] = render_path
         candidates.append(out)

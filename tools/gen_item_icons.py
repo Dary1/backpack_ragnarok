@@ -15,33 +15,66 @@ optional hires-fix), this tool is item-icon-specific per REQ-0073:
     (PIL Lanczos) to gen_render.target_px -- the final in-game icon canvas.
     The downscaled file IS the saved "raw" candidate (per REQ-0073 spec);
     the full gen_px frame is not kept.
-  - Also produces a background-removed "_alpha" version per candidate, via
-    the matte_transparent.py lineage (rembg + isnet-anime), so scoring
-    (tools/tool_icon_score.py) can run tool_fit_check.load_content-style
-    alpha analysis without a separate manual matting pass.
+  - Also produces a background-removed "_alpha" version per candidate via
+    matte_alpha() (see below), so scoring (tools/tool_icon_score.py) can run
+    tool_fit_check.load_content-style alpha analysis without a separate
+    manual matting pass.
   - Optionally biases subject placement into gen_render.mask_cells via
     ComfyUI's ConditioningSetMask (regional conditioning on the positive
     prompt only) -- best-effort placement hint, NOT a placement guarantee;
     downstream fit-scoring (tool_icon_score.py / tool_fit_check.py) remains
     mandatory regardless of masking.
 
-Why matting reuses matte_transparent.py's model choice (isnet-anime) rather
-than chroma_key.py's flat-key approach: chroma_key.py's own docstring notes
-it assumes a fairly uniform flat backdrop and explicitly flags rembg/isnet
-as the fallback for "a softer-edged style". Item icons are photoreal-styled
-(JuggernautXL) product-shot renders on a near-white backdrop that is not a
-guaranteed-pure single RGB (same caveat chroma_key.py raises for its own
-target case) and can have soft edges (metal specular falloff, fabric
-fringing) -- exactly the case matte_transparent.py's docstring says
-chroma-keying handles poorly. isnet-anime was chosen over u2net for
-monster art because u2net (general photo/human segmentation) was deleting
-real character geometry; the same generic-photo-segmentation risk applies
-here (u2net could delete real object geometry, e.g. thin blade edges,
-same failure mode as the thin ice-shard linework case). isnet-anime and
-birefnet-general were the two viable alternatives there; isnet-anime is
-reused here for consistency and because it was measurably as good as
-birefnet-general at 8x the speed. If a future item style needs a different
-matting model, change get_session()'s model name in one place.
+matte_alpha() model choice / history (post-mortem, batch-003):
+Originally this reused matte_transparent.py's model choice (isnet-anime),
+on the reasoning that item icons are photoreal-styled (JuggernautXL)
+product-shot renders on a near-white backdrop that is not guaranteed pure
+single-RGB and can have soft edges (metal specular falloff, fabric
+fringing) -- the case matte_transparent.py's own docstring says chroma-key
+handles poorly, and isnet-anime had been measurably as good as
+birefnet-general on monster art at 8x the speed. That reasoning held for
+monster art but broke for batch-003: several JuggernautXL candidates came
+out on a DARK charcoal backdrop instead of the mandated near-white (a
+generation-side inconsistency, not a matting bug per se), and isnet-anime
+-- tuned against the assumption of a bright/near-white backdrop -- then
+classified the ENTIRE frame (subject included) as background, producing
+near-empty alpha (e.g. blade_c3_s303_alpha.png came out ~0.01% opaque
+while blade_c3_s303.png is a perfectly good sword on a dark bg).
+
+matte_alpha() is now a two-strategy matte, robust to that failure mode:
+
+  1. PRIMARY -- rembg with the "birefnet-general" session (alpha_matting +
+     post_process_mask on). BiRefNet is a general salient-object detector,
+     not tuned to any particular backdrop brightness/color the way
+     isnet-anime is, so it is robust to the dark-backdrop case that broke
+     isnet-anime. This is the accuracy-over-speed tradeoff batch-003's
+     defect forced: birefnet-general is slower per image (CPU: ~5-20s vs
+     isnet-anime's sub-3s) but does not silently collapse to near-empty
+     alpha on an off-spec backdrop.
+  2. VALIDITY BAND -- opaque coverage = fraction of pixels with alpha > 8,
+     accepted if 0.02 <= coverage <= 0.90. Below 0.02 means the matte ate
+     the subject (the isnet-anime failure mode above); above 0.90 means
+     the matte kept the backdrop (matte did nothing / inverted).
+  3. FALLBACK (only if primary is out-of-band) -- border-color keying:
+     sample a thin band around all 4 image edges, take the median RGB as
+     the presumed backdrop color (whatever it actually is, bright or
+     dark), build a soft per-pixel alpha from color-distance-to-that-median
+     (smoothstep feather, not a hard cutoff, to avoid the fringing/halo a
+     hard chroma-key produces), then a small morphological opening to
+     kill speckle noise. This is deliberately NOT a fixed-color chroma-key
+     (chroma_key.py's own docstring flags that it assumes a known uniform
+     flat backdrop) -- it derives the key color per-image from the actual
+     borders, so it degrades gracefully regardless of which backdrop
+     color a given render actually landed on.
+  4. If BOTH methods are out-of-band, keep whichever result is CLOSER to
+     the band (smaller distance from the nearest band edge) and log a
+     WARN line -- there is no third fallback; a human has to look at that
+     candidate.
+
+isnet-anime remains cached and importable but is no longer used by this
+tool. get_rembg_session_birefnet() is a lazily-initialized global (session
+objects are not free to construct) so it's only loaded once and reused
+across all files in a run.
 
 ComfyUI mask injection: ConditioningSetMask takes a MASK tensor, but the
 HTTP /prompt API has no way to hand it a raw numpy array directly. Standard
@@ -59,8 +92,19 @@ Usage:
   python3 tools/gen_item_icons.py --defs tmp/req0073_stub_defs.json \
       --ids hilt --candidates 1 --outdir /tmp/smoke_test
 
+  # Re-run ONLY the matte step against already-generated raw candidates
+  # (no ComfyUI calls at all) -- e.g. after a matte_alpha() fix:
+  python3 tools/gen_item_icons.py --defs content/live/live_items.json \
+      --outdir content/batches/batch-003-item-icons/candidates \
+      --rematte-only
+  python3 tools/gen_item_icons.py --defs content/live/live_items.json \
+      --outdir content/batches/batch-003-item-icons/candidates \
+      --rematte-only --ids blade,flame_tablet
+
 Background (mandatory for anything more than a single-image smoke test --
-8GB VRAM card, sequential jobs, 20-40s/image, a full batch can run minutes):
+8GB VRAM card, sequential jobs, 20-40s/image, a full batch can run minutes;
+--rematte-only doesn't touch ComfyUI but birefnet-general on CPU is still
+~5-20s/image, so it's worth backgrounding too for a full batch):
   cd ~/backpack_ragnarok && setsid nohup .venv/bin/python tools/gen_item_icons.py \
       --defs content/live/live_items.json \
       --outdir content/batches/batch-003-item-icons/candidates \
@@ -70,6 +114,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import sys
 import time
@@ -78,14 +123,11 @@ import urllib.request
 
 import numpy as np
 from PIL import Image
+from scipy import ndimage
 
 # rembg's model download/session machinery is identical to
 # tools/matte_transparent.py -- imported (not reimplemented) per REQ-0073's
-# "study and reuse" instruction. matte_transparent.py itself has no
-# importable matte(path_in, path_out) signature we can call on in-memory
-# PIL images without a disk round-trip, so we mirror its exact call here
-# (same session/model/alpha-matting parameters) rather than shelling out to
-# it per-file. If matte_transparent.py's parameters change, update both.
+# "study and reuse" instruction.
 from rembg import remove, new_session
 
 COMFY = "http://127.0.0.1:8188"
@@ -94,14 +136,37 @@ DEFAULT_SEEDS = [101, 202, 303, 404]
 COMFY_INPUT_DIR = os.path.expanduser("~/ComfyUI/input")
 COMFY_OUTPUT_DIR = os.path.expanduser("~/ComfyUI/output")
 
-_rembg_session = None
+# Raw candidate filename pattern used by both the generation path (below)
+# and --rematte-only's directory scan: "<id>_c<k>_s<seed>.png", explicitly
+# NOT matching the paired "*_alpha.png" output.
+RAW_CANDIDATE_RE = re.compile(r"^(?P<id>.+)_c(?P<k>\d+)_s(?P<seed>\d+)\.png$")
+
+# matte_alpha() validity band: fraction of pixels with alpha > ALPHA_OPAQUE_T
+# must fall in [COVERAGE_MIN, COVERAGE_MAX] for a matte to be accepted
+# outright. Below MIN => matte ate the subject (isnet-anime-on-dark-bg
+# failure mode); above MAX => matte kept the backdrop / did nothing.
+ALPHA_OPAQUE_T = 8
+COVERAGE_MIN = 0.02
+COVERAGE_MAX = 0.90
+
+# Border-key fallback tuning.
+BORDER_BAND_PX = 6
+BORDER_KEY_FEATHER_LO = 18.0   # color distance below this -> fully transparent
+BORDER_KEY_FEATHER_HI = 40.0   # color distance above this -> fully opaque ("keep")
+BORDER_KEY_OPEN_ITER = 1       # morphological-open iterations (speckle cleanup)
+
+_rembg_session_birefnet = None
 
 
-def get_rembg_session():
-    global _rembg_session
-    if _rembg_session is None:
-        _rembg_session = new_session("isnet-anime")
-    return _rembg_session
+def get_rembg_session_birefnet():
+    """Lazily-constructed rembg session for the primary matte model
+    (birefnet-general -- see module docstring for why this replaced
+    isnet-anime as the default). Session construction loads the onnx model
+    into memory, so this is only done once and reused across all files."""
+    global _rembg_session_birefnet
+    if _rembg_session_birefnet is None:
+        _rembg_session_birefnet = new_session("birefnet-general")
+    return _rembg_session_birefnet
 
 
 # =====================================================================
@@ -251,21 +316,152 @@ def downscale_lanczos(src_path, dst_path, target_w, target_h):
     im.save(dst_path)
 
 
-def matte_alpha(src_path, dst_path):
-    """Same call shape as matte_transparent.py's matte(): rembg.remove with
-    isnet-anime session, alpha_matting on (smooth antialiased edges, no
-    halo), post_process_mask on (drops soft "ghost" partial-alpha regions)."""
-    im = Image.open(src_path)
+def _coverage(rgba_array):
+    """Fraction of pixels with alpha > ALPHA_OPAQUE_T, given an HxWx4
+    uint8 numpy array."""
+    a = rgba_array[:, :, 3]
+    return float((a > ALPHA_OPAQUE_T).sum()) / a.size
+
+
+def _in_band(coverage):
+    return COVERAGE_MIN <= coverage <= COVERAGE_MAX
+
+
+def _band_distance(coverage):
+    """0.0 if inside the validity band, else distance to the nearer edge --
+    used only to pick the "closer to band" result when BOTH methods land
+    out-of-band (step 1.d)."""
+    if coverage < COVERAGE_MIN:
+        return COVERAGE_MIN - coverage
+    if coverage > COVERAGE_MAX:
+        return coverage - COVERAGE_MAX
+    return 0.0
+
+
+def _matte_birefnet(im_rgb):
+    """PRIMARY strategy: rembg with the birefnet-general session,
+    alpha_matting + post_process_mask on. Returns an RGBA PIL Image.
+
+    birefnet-general is a general salient-object detector -- not tuned to
+    any assumed backdrop brightness the way isnet-anime is -- so it does
+    not collapse to near-empty alpha on an off-spec (e.g. dark charcoal)
+    backdrop the way isnet-anime did (see module docstring post-mortem)."""
     out = remove(
-        im,
-        session=get_rembg_session(),
+        im_rgb,
+        session=get_rembg_session_birefnet(),
         alpha_matting=True,
         alpha_matting_foreground_threshold=250,
         alpha_matting_background_threshold=5,
         alpha_matting_erode_size=5,
         post_process_mask=True,
     )
-    out.save(dst_path)
+    return out.convert("RGBA")
+
+
+def _smoothstep(x, lo, hi):
+    """Standard smoothstep, clamped: 0 below lo, 1 above hi, cubic ease
+    between -- used so the border-key fallback produces a soft feathered
+    edge rather than a hard chroma-key cutoff (which fringes/haloes)."""
+    t = np.clip((x - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+def _matte_border_key(im_rgb):
+    """FALLBACK strategy: border-color keying. Samples a thin band around
+    all 4 edges of the image, takes the median RGB as the presumed
+    backdrop color (derived from the actual image, not assumed to be any
+    particular fixed color -- this is what makes it robust to the
+    dark-vs-near-white backdrop inconsistency that broke isnet-anime),
+    builds a soft per-pixel alpha from color distance to that median via
+    smoothstep (feather band BORDER_KEY_FEATHER_LO..HI), then applies a
+    small morphological opening to remove speckle noise before returning
+    an RGBA PIL Image.
+
+    Deliberately not a fixed known-color chroma-key: chroma_key.py's own
+    docstring flags that approach as assuming a known uniform flat
+    backdrop. Sampling the median from this image's own borders lets the
+    key work regardless of which color a given render actually landed on."""
+    arr = np.array(im_rgb.convert("RGB"), dtype=np.float64)
+    h, w = arr.shape[:2]
+    b = min(BORDER_BAND_PX, h // 2, w // 2) or 1
+    border_px = np.concatenate([
+        arr[:b, :, :].reshape(-1, 3),
+        arr[-b:, :, :].reshape(-1, 3),
+        arr[:, :b, :].reshape(-1, 3),
+        arr[:, -b:, :].reshape(-1, 3),
+    ], axis=0)
+    median_color = np.median(border_px, axis=0)
+
+    dist = np.sqrt(((arr - median_color) ** 2).sum(axis=2))
+    # Far from the backdrop median -> subject -> keep (alpha 1). Close to
+    # the backdrop median -> background -> alpha 0. Feather between.
+    alpha_f = _smoothstep(dist, BORDER_KEY_FEATHER_LO, BORDER_KEY_FEATHER_HI)
+
+    # Small morphological opening (erode then dilate) on a binarized view
+    # of the soft mask to kill isolated speckle without recreating the
+    # hard-edge problem in the real feathered band -- applied as a
+    # multiplicative cleanup mask, not a replacement for alpha_f itself.
+    binary = alpha_f > 0.5
+    opened = ndimage.binary_opening(binary, iterations=BORDER_KEY_OPEN_ITER)
+    # Pixels that were "on" but got opened away are speckle -> zero them;
+    # everything else keeps its original feathered alpha value.
+    speckle = binary & ~opened
+    alpha_f[speckle] = 0.0
+
+    alpha_u8 = np.clip(alpha_f * 255.0, 0, 255).astype(np.uint8)
+    rgba = np.dstack([np.array(im_rgb.convert("RGB")), alpha_u8])
+    return Image.fromarray(rgba, mode="RGBA")
+
+
+def matte_alpha(src_path, dst_path, log_label=None):
+    """Two-strategy matte -- see module docstring for full rationale.
+
+    1. Primary: rembg birefnet-general (alpha_matting + post_process_mask
+       on) -- robust to any backdrop color/brightness.
+    2. Validity band: accept if COVERAGE_MIN <= opaque_fraction <=
+       COVERAGE_MAX.
+    3. Fallback if primary is out-of-band: border-color keying (median of
+       a thin border band, smoothstep color-distance alpha, small
+       morphological open for speckle).
+    4. If BOTH are out-of-band: keep whichever is closer to the band and
+       log a WARN -- there is no further automatic fallback.
+
+    Logs exactly one line per file: file, method used (birefnet|
+    borderkey), coverage%. log_label defaults to the basename of dst_path.
+
+    Same signature as before (src_path, dst_path) plus an optional
+    log_label kwarg -- existing callers that only pass two positional
+    args are unaffected.
+    """
+    label = log_label if log_label is not None else os.path.basename(dst_path)
+
+    im = Image.open(src_path).convert("RGB")
+
+    primary_img = _matte_birefnet(im)
+    primary_cov = _coverage(np.array(primary_img))
+
+    if _in_band(primary_cov):
+        primary_img.save(dst_path)
+        print(f"MATTE {label} method=birefnet coverage={primary_cov * 100:.2f}%", flush=True)
+        return
+
+    fallback_img = _matte_border_key(im)
+    fallback_cov = _coverage(np.array(fallback_img))
+
+    if _in_band(fallback_cov):
+        fallback_img.save(dst_path)
+        print(f"MATTE {label} method=borderkey coverage={fallback_cov * 100:.2f}%", flush=True)
+        return
+
+    # Both out-of-band: keep whichever is closer to the validity band.
+    if _band_distance(primary_cov) <= _band_distance(fallback_cov):
+        chosen_img, chosen_method, chosen_cov = primary_img, "birefnet", primary_cov
+    else:
+        chosen_img, chosen_method, chosen_cov = fallback_img, "borderkey", fallback_cov
+
+    chosen_img.save(dst_path)
+    print(f"MATTE {label} method={chosen_method} coverage={chosen_cov * 100:.2f}%", flush=True)
+    print(f"WARN {label} coverage={chosen_cov * 100:.2f}% method={chosen_method} OUT-OF-BAND", flush=True)
 
 
 def alpha_coverage_fraction(path):
@@ -311,6 +507,64 @@ def entries_with_gen_fields(entries, id_filter=None):
 
 
 # =====================================================================
+# --rematte-only path: re-run matte_alpha() over existing raw candidates
+# without touching ComfyUI at all.
+# =====================================================================
+def find_raw_candidates(outdir, id_filter=None):
+    """Scan outdir for files matching RAW_CANDIDATE_RE (raw candidates only,
+    e.g. "blade_c3_s303.png" -- explicitly excludes "*_alpha.png" via the
+    explicit endswith check below, applied before the regex match). Returns
+    a sorted list of (id, k, seed, raw_path) tuples, optionally filtered to
+    id_filter."""
+    found = []
+    for name in sorted(os.listdir(outdir)):
+        if not name.endswith(".png") or name.endswith("_alpha.png"):
+            continue
+        m = RAW_CANDIDATE_RE.match(name)
+        if not m:
+            continue
+        eid = m.group("id")
+        if id_filter is not None and eid not in id_filter:
+            continue
+        found.append((eid, int(m.group("k")), int(m.group("seed")), os.path.join(outdir, name)))
+    return found
+
+
+def run_rematte_only(outdir, id_filter=None):
+    """--rematte-only entry point: skips generation entirely. For every
+    existing raw candidate PNG in outdir (pattern <id>_c<k>_s<seed>.png,
+    NOT *_alpha.png), regenerate its paired _alpha.png via the current
+    matte_alpha(). Respects --ids filtering. Returns True if any file
+    ended up logged as OUT-OF-BAND (mirrors main()'s any_failed exit-code
+    convention, so a caller scripting this can still detect trouble via
+    exit code without parsing the log)."""
+    candidates = find_raw_candidates(outdir, id_filter)
+    if not candidates:
+        print(f"--rematte-only: no raw candidate PNGs found in {outdir} (nothing to do).", flush=True)
+        return False
+
+    print(f"--rematte-only: found {len(candidates)} raw candidate(s) in {outdir}; rematting each.", flush=True)
+    any_out_of_band = False
+    for i, (eid, k, seed, raw_path) in enumerate(candidates, start=1):
+        raw_name = os.path.basename(raw_path)
+        alpha_name = raw_name[:-4] + "_alpha.png"
+        alpha_path = os.path.join(outdir, alpha_name)
+        print(f"[{i}/{len(candidates)}] REMATTE id={eid} c={k} seed={seed} {raw_name} -> {alpha_name}", flush=True)
+        t0 = time.time()
+        try:
+            matte_alpha(raw_path, alpha_path, log_label=alpha_name)
+        except Exception as e:
+            print(f"[{i}/{len(candidates)}] FAIL (exception) {raw_name}: {e}", flush=True)
+            any_out_of_band = True
+            continue
+        dt = time.time() - t0
+        print(f"[{i}/{len(candidates)}] DONE {alpha_name} ({dt:.1f}s)", flush=True)
+
+    print("ALL DONE (--rematte-only)", flush=True)
+    return any_out_of_band
+
+
+# =====================================================================
 # Main per-item-per-seed job driver
 # =====================================================================
 def main():
@@ -326,7 +580,17 @@ def main():
     ap.add_argument("--scheduler", default="karras")
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
+    ap.add_argument("--rematte-only", action="store_true",
+                     help="skip generation entirely; regenerate _alpha.png for every existing raw "
+                          "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
     a = ap.parse_args()
+
+    if a.rematte_only:
+        # No ComfyUI, no --defs read needed for this path -- it operates
+        # purely off whatever raw candidate PNGs already exist on disk.
+        id_filter = set(a.ids.split(",")) if a.ids else None
+        any_out_of_band = run_rematte_only(a.outdir, id_filter)
+        sys.exit(1 if any_out_of_band else 0)
 
     seeds = [int(s) for s in a.seeds.split(",") if s.strip() != ""]
     if a.candidates > len(seeds):
@@ -429,7 +693,7 @@ def main():
                 # smaller target_px is faster and the final in-game asset
                 # is target_px anyway, so edge quality at that resolution is
                 # what actually matters).
-                matte_alpha(raw_path, alpha_path)
+                matte_alpha(raw_path, alpha_path, log_label=alpha_name)
 
                 dt = time.time() - t0
                 print(f"[{done_jobs}/{total_jobs}] DONE id={eid} c={k} seed={seed} -> {raw_name} ({dt:.1f}s)", flush=True)
