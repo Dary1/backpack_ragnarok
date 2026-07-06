@@ -1,0 +1,10 @@
+{
+  "name": "backpack-ragnarok",
+  "private": true,
+  "description": "Root manifest (REQ-0047): orchestration scripts only. No workspaces/hoisting -- server/ and client/ own their node_modules; sim/ and mock-src/ are dependency-free by invariant.",
+  "scripts": {
+    "test": "bash tools/ci.sh",
+    "test:quick": "SKIP_PG=1 SKIP_CLIENT=1 SKIP_E2E=1 bash tools/ci.sh",
+    "goldens:gen": "node sim/tests/goldens.cjs gen"
+  }
+}
