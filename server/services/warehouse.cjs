@@ -317,6 +317,24 @@ function devBackdateClaimedWarehouseItem(playerId, itemUid, extraSecsIntoPast) {
   return item;
 }
 
+// devClearWarehouse (fix: e2e pg teardown): bulk-deletes EVERY warehouse
+// row belonging to `playerId` (any status, expired or not) and returns
+// the number of rows removed. Exists for exactly one caller: the
+// dev-only POST /api/warehouse/dev/clear-debris route (server/routes/
+// schedule.cjs), which the Playwright suite's global setup/teardown hit
+// so E2E-granted rows stop accumulating against WAREHOUSE_CAP when the
+// live API runs STORAGE_BACKEND=pg (the suite's file backup/restore
+// safety net never covered pg rows). Delegates to storage.cjs's
+// clearWarehouseForPlayer chokepoint so files and pg behave identically.
+//
+// Caller gating (route handler, NOT here): dev_mode no-token fallback
+// caller ONLY, exactly like devBackdateClaimedWarehouseItem above -- and
+// the route always passes the RESOLVED caller's own id, never a client-
+// supplied one, so no real player's warehouse is reachable through this.
+function devClearWarehouse(playerId) {
+  return storage.clearWarehouseForPlayer(playerId);
+}
+
 
 module.exports = {
   isExpired,
@@ -329,4 +347,5 @@ module.exports = {
   claimWarehouseItem,
   finalizeClaimingItemsForCanvas,
   devBackdateClaimedWarehouseItem,
+  devClearWarehouse,
 };
