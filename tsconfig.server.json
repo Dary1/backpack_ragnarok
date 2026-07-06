@@ -22,7 +22,10 @@
     "server/services/**/*.cjs",
     "server/schedule.cjs",
     "shared/**/*.cjs",
-    "types/coded-error.d.ts"
+    "types/coded-error.d.ts",
+    "sim/lib/**/*.cjs",
+    "sim/combat.cjs",
+    "sim/dungen.cjs"
   ],
   "exclude": [
     "mock-src",
