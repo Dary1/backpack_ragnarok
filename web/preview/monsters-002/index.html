@@ -679,6 +679,87 @@ body.lang-en .i18n span[lang="ja"] { display: none; }
 
 </div>
 
+<h2><span class="i18n"><span lang="ja">RPG v5 第2弾(8体・見切れ対策)</span><span lang="en">RPG v5 Round 2 (8 monsters, anti-cropping fix)</span></span></h2>
+<div class="meta"><span class="i18n">
+<span lang="ja">前回の単発テストで指摘された「足の見切れ」を、ポジティブ/ネガティブ両方に対策を追加して修正(entire body fully visible within frame, feet fully visible / feet cut off, feet out of frame, legs cut off 等)。四足動物系(Boar・Giant Rat)には「on all fours, quadruped stance」も追加し、前セッションで検証済みの人型化対策を適用。結果: 8体中6体は狙い通りのコンセプト・見切れなしで生成、透過処理も全て綺麗に完了(生成時の背景が白背景でなかったboar/ogreも含めて)。一方、giant_snakeとmimicの2体は、コンセプト自体がRPG v5の「人物ポートレート」寄りの学習バイアスに引っ張られ、無関係な人型キャラクターになってしまった(mimicは腰上のバストアップ構図にもなった)。この2体は正直に⚠付きで記載し、再生成を検討中。</span>
+<span lang="en">Fixed the "feet get cropped" issue flagged after the single-sample test by reinforcing both the positive prompt (entire body fully visible within frame, feet fully visible) and the negative prompt (feet cut off, feet out of frame, legs cut off, etc). Also added "on all fours, quadruped stance" for the four-legged concepts (Boar, Giant Rat), applying the humanoid-drift fix validated earlier in this project. Result: 6 of 8 came out on-concept with no cropping, and transparency processing completed cleanly on all of them (including boar/ogre, whose generation backgrounds weren't white). However, giant_snake and mimic both drifted into unrelated humanoid characters, apparently pulled by RPG v5's strong "character portrait" training bias (mimic also came out as a waist-up bust crop). Both are flagged honestly below and are candidates for a re-roll.</span>
+</span></div>
+<div class="gallery">
+
+<div class="card">
+  <div class="card-num">boar_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/boar_rpg_transparent.png"/>
+  <div class="card-title-ja">ボア<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Boar</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810001 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">四足の姿勢に修正済み。生成時の背景は森だったが透過処理は綺麗に完了。</span><span lang="en">Fixed to a proper quadruped stance. Generation background was a forest scene, but transparency processing completed cleanly.</span></span></div>
+</div>
+
+<div class="card" class="dropped">
+  <div class="card-num">giant_snake_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/giant_snake_rpg_transparent.png"/>
+  <div class="card-title-ja">ジャイアントスネーク</div>
+  <div class="card-title-en">Giant Snake</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810002 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">⚠ コンセプトが外れ、蛇ではなく無関係な人型キャラクターが生成された。RPG v5のポートレート寄りの学習バイアスが強く出た例。</span><span lang="en">⚠ Concept drift — generated an unrelated humanoid character instead of a snake. Likely RPG v5's strong portrait-training bias overriding the creature concept.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">giant_rat_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/giant_rat_rpg_transparent.png"/>
+  <div class="card-title-ja">ジャイアントラット<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Giant Rat</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810003 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">四足の姿勢、見切れなし。</span><span lang="en">Proper quadruped stance, no cropping.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">cockatrice_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/cockatrice_rpg_transparent.png"/>
+  <div class="card-title-ja">コカトリス<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Cockatrice</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810004 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">二足の鳥型、翼・脚とも見切れなし。</span><span lang="en">Bipedal bird-form, wings and legs fully visible, no cropping.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">gnoll_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/gnoll_rpg_transparent.png"/>
+  <div class="card-title-ja">ノール<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Gnoll</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810005 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">見切れなし。</span><span lang="en">No cropping.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">ogre_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/ogre_rpg_transparent.png"/>
+  <div class="card-title-ja">オーガ<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Ogre</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810006 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">見切れなし。生成時の背景は暗いシーンだったが透過処理は綺麗に完了。</span><span lang="en">No cropping. Generation background was a dark scene, but transparency processing completed cleanly.</span></span></div>
+</div>
+
+<div class="card" class="dropped">
+  <div class="card-num">mimic_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/mimic_rpg_transparent.png"/>
+  <div class="card-title-ja">ミミック</div>
+  <div class="card-title-en">Mimic</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810007 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">⚠ 宝箱モンスターではなく、腰から上のバストアップの人型キャラクターになった。RPG v5の「ポートレート」学習バイアスによるものとみられる。</span><span lang="en">⚠ Not a chest-monster — came out as a waist-up bust portrait of a humanoid character instead. Likely RPG v5's "portrait" training bias.</span></span></div>
+</div>
+
+<div class="card">
+  <div class="card-num">wight_rpg</div>
+  <img class="card-img checker" src="rpg_batch2/wight_rpg_transparent.png"/>
+  <div class="card-title-ja">ワイト<span class="badge-fixed">CLEAN</span></div>
+  <div class="card-title-en">Wight</div>
+  <div class="card-tech">rpg_v5 + LoRA &middot; seed 810008 &middot; no hires</div>
+  <div class="card-note"><span class="i18n"><span lang="ja">見切れなし。</span><span lang="en">No cropping.</span></span></div>
+</div>
+
+</div>
+
 <h2><span class="i18n"><span lang="ja">次のステップ</span><span lang="en">Next Steps</span></span></h2>
 <div class="note-box">
 <span class="i18n">
