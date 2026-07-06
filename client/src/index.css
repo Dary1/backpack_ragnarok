@@ -278,12 +278,24 @@ html, body {
   flex: 1;
 }
 
+/* REQ-0070: the mock's .board-stage, applied to the app's .board-wrap so
+   both Pixi boards (canvas + inventory, incl. the inventory column's
+   Warehouse-tab portal target) sit on the same night-iron stage. Padding
+   is 14px, not the mock's 26px: at the E2E viewport (2000px, minus the
+   86px rail and the scrollbar) two 716px boards + the item panel must
+   stay side by side without wrapping -- see playwright.config.ts's
+   viewport note. The gold-knot corners come from the theme's .ornate/.k
+   (App.tsx adds them as direct children). */
 .board-wrap {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
-  display: inline-flex;
+  position: relative;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-radius: 4px;
+  padding: 14px;
+  background: radial-gradient(120% 120% at 50% 30%, #242b36 0%, #171c25 55%, #10141b 100%);
+  border: 1px solid var(--border-lo);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55), 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 .board-canvas {
@@ -303,66 +315,91 @@ html, body {
   color: var(--bad);
 }
 
+/* REQ-0070: the catalog panel wears the theme's .panel/.ornate (App.tsx
+   adds those classes + the corner knots); min-width dropped 320->300 for
+   the same E2E-viewport budget the .board-wrap note describes. */
 .item-panel {
   flex: 1;
-  min-width: 320px;
-  max-width: 420px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 12px 14px;
+  min-width: 300px;
+  max-width: 392px;
+  align-self: flex-start;
+}
+
+.item-panel-body {
+  padding: 12px 14px 14px;
 }
 
 .item-panel h2 {
-  margin: 0 0 8px;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 8px;
+  font-family: var(--f-den);
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--dim);
+  letter-spacing: 0.22em;
+  color: var(--gold);
+}
+
+.item-panel h2:first-child {
+  margin-top: 0;
+}
+
+.item-panel h2::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 169, 89, 0.5), transparent);
 }
 
 .item-list {
   list-style: none;
   margin: 0 0 16px;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
+/* (REQ-0070: rows are .icard cards now -- see the REQ-0070 section below;
+   the old dashed-divider li rules are retired.) */
 
-.item-list li {
-  padding: 4px 0;
-  border-bottom: 1px dashed var(--line);
-  cursor: default;
-}
+/* REQ-0070: rarity words adopt the theme ramp (Relic wears the mock's
+   LEGENDARY tone -- the mock labels that tier 遺宝 = relic). */
+.rarity.r-Common { color: var(--r-common); }
+.rarity.r-Uncommon { color: var(--r-uncommon); }
+.rarity.r-Rare { color: var(--r-rare); }
+.rarity.r-Relic { color: var(--r-legend); }
 
-.item-list li:last-child {
-  border-bottom: 0;
-}
-
-.rarity.r-Common { color: #9aa5ad; }
-.rarity.r-Uncommon { color: #5cb573; }
-.rarity.r-Rare { color: #6c95e0; }
-.rarity.r-Relic { color: #c07ae0; }
-
+/* REQ-0070: hover tooltip re-skinned to the mock's fixed anatomy; the
+   position:fixed + pointer-events:none mechanics are unchanged (the mock
+   .tooltip was deliberately NOT ported into the theme to avoid colliding
+   with this rule -- see theme/mjolnir.css's header). */
 .tooltip {
   position: fixed;
   pointer-events: none;
-  z-index: 10;
-  background: #0e0d0b;
-  border: 1px solid #4a4234;
-  border-radius: 8px;
-  padding: 10px 12px;
-  max-width: 300px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  z-index: 60;
+  width: 264px;
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  padding: 12px 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
   font-size: 13px;
+  line-height: 1.6;
 }
 
 .tooltip h3 {
   margin: 0 0 4px;
-  font-size: 14px;
+  font-family: var(--f-dj);
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .tooltip-meta {
-  color: var(--dim);
-  font-size: 12px;
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
 }
 
 .tooltip-eff {
@@ -388,8 +425,9 @@ html, body {
    extra rule needed for that half of the change). */
 .inventory-note {
   font-size: 11px;
-  color: var(--dim);
-  margin: 8px 0 0;
+  color: var(--bone-3);
+  letter-spacing: 0.04em;
+  margin: 8px 0 0 4px;
   text-align: left;
 }
 
@@ -403,27 +441,37 @@ html, body {
    (title + PresetTabs) and the Inventory column (title + Tabs) -- tabs
    are right-aligned in the SAME row as the label, per the task's
    verbatim UI change request. */
+/* REQ-0070: the mock's .stagehead -- title in the display serif with the
+   EN sub-caption and (canvas only) the live stats chip inline; the
+   inventory column's page tabs stay in this row, pushed right. */
 .board-column-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   flex-wrap: wrap;
+  margin: 0 0 2px 4px;
 }
 
 .board-column-title {
   margin: 0;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--dim);
+  font-family: var(--f-dj);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  color: var(--bone);
   white-space: nowrap;
+}
+
+.board-column-header .inv-tabs {
+  margin-left: auto;
+  align-self: flex-end;
 }
 
 .inv-tabs,
 .preset-tabs {
   display: flex;
-  gap: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .preset-tabs-row {
@@ -432,60 +480,89 @@ html, body {
   gap: 8px;
 }
 
-.inv-tab,
+/* REQ-0070: canvas preset tabs restyled as the mock's boardfoot .preset
+   pills; inventory page tabs as the mock's .pg page tabs. Class names,
+   DOM structure and every gesture (click / long-press rename /
+   drag-reorder / trash-drop) are unchanged -- LongPressTabs.tsx knows
+   nothing about any of this. */
 .preset-tab {
-  background: var(--panel);
-  color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 8px 8px 0 0;
-  padding: 6px 14px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.8));
+  color: var(--bone-2);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 5px 14px;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
 }
 
-.inv-tab:hover,
 .preset-tab:hover {
-  border-color: var(--cyan);
-  color: var(--text);
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
 }
 
-.inv-tab-active,
 .preset-tab-active {
-  background: #232019;
-  color: var(--cyan);
-  border-color: var(--cyan);
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  background: linear-gradient(180deg, rgba(201, 169, 89, 0.13), rgba(19, 24, 32, 0.7));
+  box-shadow: inset 0 -2px 0 var(--gold);
 }
 
-/* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
-   button in place, same box footprint, so the tab row doesn't jump. */
-.inv-tab-rename-input,
-.preset-tab-rename-input {
-  background: #0e0d0b;
-  color: var(--text);
-  border: 1px solid var(--cyan);
-  border-radius: 8px 8px 0 0;
-  padding: 6px 8px;
-  font-size: 13px;
-  font-weight: 600;
-  width: 84px;
-}
-
-.preset-add-btn {
-  background: var(--panel);
-  color: var(--dim);
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  padding: 6px 12px;
+.inv-tab {
+  background: linear-gradient(180deg, rgba(19, 24, 32, 0.6), rgba(10, 13, 18, 0.6));
+  color: var(--bone-3);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px 3px 0 0;
+  padding: 4px 12px;
+  min-width: 34px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
 
+.inv-tab:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.inv-tab-active {
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  background: rgba(201, 169, 89, 0.08);
+}
+
+/* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
+   button in place, same box footprint, so the tab row doesn't jump. */
+.inv-tab-rename-input,
+.preset-tab-rename-input {
+  background: #0c1016;
+  color: var(--bone);
+  border: 1px solid var(--gold);
+  border-radius: 2px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  width: 84px;
+}
+
+.preset-add-btn {
+  background: transparent;
+  color: var(--bone-2);
+  border: 1px dashed var(--gold-lo);
+  border-radius: 2px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .preset-add-btn:hover {
-  border-color: var(--cyan);
-  color: var(--cyan);
+  border-color: var(--gold);
+  color: var(--gold-hi);
 }
 
 /* REQ-0032 -- drag-to-reorder + preset trash-drop-zone. */
@@ -514,7 +591,7 @@ html, body {
   display: inline-block;
   width: 3px;
   align-self: stretch;
-  background: var(--cyan);
+  background: var(--gold);
   border-radius: 2px;
 }
 
@@ -530,10 +607,11 @@ html, body {
   align-items: center;
   gap: 6px;
   padding: 22px 30px;
-  background: rgba(18, 18, 18, 0.92);
-  border: 2px dashed var(--bad);
-  border-radius: 14px;
-  color: var(--bad);
+  background: rgba(16, 20, 27, 0.94);
+  border: 2px dashed var(--blood);
+  border-radius: 4px;
+  color: #e06b5f;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
   /* NOTE: intentionally NOT pointer-events:none -- document.elementFromPoint
      (LongPressTabs.tsx's drop hit-test) skips pointer-events:none elements
      entirely, which would make a drop onto this zone undetectable. This
@@ -2355,4 +2433,287 @@ html, body {
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------
+   REQ-0070 -- MJOLNIR canvas page (mock: web/redesign/canvas.html).
+   Chrome-only re-skin around the two ALWAYS-MOUNTED PixiJS boards; the
+   board interiors (cells/BPs/POs/beams/ghosts) still render in-canvas
+   exactly as before (BoardRenderer.ts), now over a transparent canvas
+   backdrop so the stage gradient beneath shows through the PAD margin.
+   Board-geometry pixel constants mirrored below: CELL=80 / PAD=38
+   (client/src/board/geom.ts; e2e/helpers.ts hardcodes the same pair). */
+
+/* Full-viewport key art behind the page (mock .bgart) -- referenced from
+   the served /redesign/assets path, never bundled (404s harmlessly under
+   the proxy-less dev server, same as the landing art -- REQ-0069 note).
+   Lives INSIDE .backpacks-view, so the route's display:none hides it;
+   z-index -1 paints it under all content but over the body backdrop. */
+.canvas-bgart {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/redesign/assets/bg_canvas.jpg') center / cover no-repeat;
+  opacity: 0.5;
+  filter: saturate(0.85) brightness(0.6);
+}
+
+.canvas-bgart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.55), rgba(10, 13, 18, 0.86) 70%);
+}
+
+/* stagehead EN sub-caption (mock .stagehead .en; ja locale only -- the
+   i18n key is empty for EN) */
+.stagehead-en {
+  font-family: var(--f-den);
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stagehead-chip {
+  white-space: nowrap;
+}
+
+/* gridbox: positioning context for the coordinate rails laid over the
+   Pixi canvas (the canvas itself already reserves the PAD margin the
+   labels sit in -- no board resize involved). */
+.board-gridbox {
+  position: relative;
+  width: max-content;
+}
+
+.board-coords {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* board drags/dblclicks pass through untouched */
+  color: var(--bone-3);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  z-index: 2;
+}
+
+.board-coords-cols {
+  position: absolute;
+  top: 12px;
+  left: 38px; /* PAD */
+  display: flex;
+}
+
+.board-coords-cols span {
+  width: 80px; /* CELL */
+  text-align: center;
+}
+
+.board-coords-rows {
+  position: absolute;
+  top: 38px; /* PAD */
+  left: 0;
+  width: 38px; /* PAD */
+  display: flex;
+  flex-direction: column;
+}
+
+.board-coords-rows span {
+  height: 80px; /* CELL */
+  display: grid;
+  place-items: center;
+}
+
+/* boardfoot: preset tabs + auto-save seal INSIDE the canvas stage
+   (mock .boardfoot). The preset tabs themselves are the same
+   LongPressTabs instance that used to sit in the title row. */
+.boardfoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.boardfoot .preset-tabs-row {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.boardfoot-saved {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--bone-3);
+  white-space: nowrap;
+}
+
+.boardfoot-saved-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bone-3);
+}
+
+.boardfoot-saved[data-save-state='saved'] .boardfoot-saved-dot {
+  background: #57c77b;
+  box-shadow: 0 0 6px rgba(87, 199, 123, 0.7);
+}
+
+.boardfoot-saved[data-save-state='saving'] .boardfoot-saved-dot {
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(201, 169, 89, 0.6);
+}
+
+.boardfoot-saved[data-save-state='offline'] .boardfoot-saved-dot {
+  background: var(--blood);
+  box-shadow: 0 0 6px rgba(176, 65, 62, 0.7);
+}
+
+/* item cards (mock .icard) -- the rarity frame/word/corner-gem triple
+   encoding comes from the theme's .rar-* / .rar-word / .gem primitives;
+   these rules add only the card layout. */
+.item-list .icard {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.7), rgba(19, 24, 32, 0.7));
+  cursor: pointer;
+  transition: box-shadow 0.13s ease-out, transform 0.13s ease-out;
+}
+
+.item-list .icard:hover {
+  transform: translateX(2px);
+  box-shadow: var(--focus-ring);
+}
+
+.item-list .icard.is-selected {
+  box-shadow: var(--focus-ring);
+}
+
+.icard-thumb {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+
+.icard-thumb img {
+  max-width: 86%;
+  max-height: 86%;
+}
+
+.icard-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.icard-nm {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.icard-sub {
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+}
+
+/* detail card (mock .detail): art altar + name/rarity/meta/effect/flavor,
+   fed by the clicked catalog card (ItemPanel.tsx). */
+.item-detail {
+  margin: 0 0 14px;
+  overflow: hidden;
+}
+
+.item-detail-art {
+  position: relative;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 80% at 50% 46%, rgba(111, 196, 222, 0.1), transparent 70%),
+    radial-gradient(circle at 50% 55%, #232b37 0%, #10141b 80%);
+  border-bottom: 1px solid var(--border-lo);
+}
+
+.item-detail-art img {
+  height: 96px;
+  max-width: 90%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7));
+}
+
+.item-detail-body {
+  padding: 10px 12px 12px;
+}
+
+.item-detail-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.item-detail-nm {
+  font-family: var(--f-dj);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.item-detail-meta {
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+
+.item-detail-eff {
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.item-detail-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  font-size: 12px;
+  margin-top: 8px;
+  line-height: 1.7;
+  font-family: var(--f-dj);
+}
+
+/* embark dock (mock .dock) -- fixed bottom-right CTA to the expedition
+   page. Inside .backpacks-view (hidden with the route). The mock's
+   readiness-hint copy has no backing data and is omitted (REQ-0070). */
+.embark-dock {
+  position: fixed;
+  right: 26px;
+  bottom: 22px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.embark-btn .rune {
+  font-size: 17px;
+}
+
+@media (max-width: 840px) {
+  .embark-dock {
+    right: 12px;
+    bottom: 78px; /* clears the bottom nav bar */
+  }
 }
