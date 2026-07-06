@@ -104,6 +104,11 @@ function fireSkillRay(opts) {
     dir, pen: attackProfile.penetration || 0, aoe: attackProfile.aoe || 0,
   });
 
+  // REQ-0078: collect DIRECT (strike/multi_strike, amount>0) hits so the
+  // encounter loop can drive reactive OnHit/OnBeenHit procs after the ray
+  // resolves. Pure strike damage only (OQ-A: DoT/reflect/0-dmg do NOT count).
+  const landedHits = [];
+
   function liveOccupantFn(cell) {
     for (const a of targetActors) {
       if (!a.alive) continue;
@@ -117,11 +122,14 @@ function fireSkillRay(opts) {
       for (const a of targetActors) {
         if (!a.alive) continue;
         const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events);
+        if (r.amount > 0) landedHits.push({ actor: a, amount: r.amount });
         hits.push({ dst: r.dstLabel, amount: r.amount });
       }
       return hits;
     }
-    return dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events);
+    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events);
+    if (r.amount > 0) landedHits.push({ actor: occ, amount: r.amount });
+    return r;
   }
   function splashFn(landing, radius, bmult, doStatuses) {
     const hits = [];
@@ -147,6 +155,7 @@ function fireSkillRay(opts) {
         const n = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]);
         applyStatus(a.statusBag, verbEff.verb.status, n);
       }
+      if (dmgAmount > 0) landedHits.push({ actor: a, amount: dmgAmount });
       hits.push({ dst: maskLabel(a.ref), amount: dmgAmount });
     }
     return hits;
@@ -162,6 +171,7 @@ function fireSkillRay(opts) {
     dealHitFn, splashFn, liveOccupantFn,
   });
   for (const e of result.events) events.push(e);
+  result.landedHits = landedHits;
   return result;
 }
 
@@ -213,12 +223,42 @@ function defaultAttackProfileFor(po) {
 // encounters evenly split the remaining 100% among themselves; the boss
 // entry's own delta is whatever closes the gap to 100 exactly.
 
+// REQ-0078: apply a reactive verb to a single target actor as a RIDER on a hit
+// that already landed (offensive OnHit/OnUnitHit): the owner's attack already
+// struck `target`; this augments that same hit. Depth-1 (never re-dispatches);
+// caller passes an isolated reactive RNG sub-stream (OQ-C / OQ-D).
+function applyReactiveVerbToTarget(verb, ownerActor, target, rng, events, trigTag) {
+  let amount = 0;
+  if (verb.t === 'strike') {
+    amount = rng.range(verb.n[0], verb.n[1]) * weaknessMultiplier(target.statusBag);
+    target.applyDamage(amount);
+    events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(target.ref), amount, hp_after: target.hp() });
+  } else if (verb.t === 'multi_strike') {
+    for (let i = 0; i < verb.hits; i++) {
+      const a = rng.range(verb.n[0], verb.n[1]) * weaknessMultiplier(target.statusBag);
+      target.applyDamage(a); amount += a;
+    }
+    events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(target.ref), amount, hp_after: target.hp() });
+  } else if (verb.t === 'apply_status' || verb.t === 'add_on_hit_status') {
+    const n = rng.range(verb.n[0], verb.n[1]);
+    applyStatus(target.statusBag, verb.status, n);
+    events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(target.ref), status: verb.status, n });
+  } else if (verb.t === 'lifesteal') {
+    const n = rng.range(verb.n[0], verb.n[1]);
+    ownerActor.heal(n);
+    events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(ownerActor.ref), heal: n });
+  }
+  // other verbs are not supported as reactive riders in Phase 1 (documented).
+  return amount;
+}
+
 module.exports = {
   effectStreamName,
   makeBPActor,
   makeEnemyActor,
   dealHitOnField,
   fireSkillRay,
+  applyReactiveVerbToTarget,
   scheduleEffect,
   effectModesOf,
   defaultAttackProfileFor,

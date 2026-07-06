@@ -7,7 +7,7 @@ const { EventHeap } = require('./heap.cjs');
 const { freshStatusBag, tickStatuses } = require('./status.cjs');
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
-const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor } = require('./skills.cjs');
+const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
 
 function runEncounter(opts) {
@@ -128,7 +128,7 @@ function runEncounter(opts) {
           // live monitor UI, not a sim-timing concern -- documented interp).
           events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (s.attackProfile.edge || ['top'])[0], fires_at: ev.t });
           const rayEvents = [];
-          fireSkillRay({
+          const fr = fireSkillRay({
             attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
             targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
             rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
@@ -137,6 +137,28 @@ function runEncounter(opts) {
           if (encounterDef.mode === 'detection' && rayEvents.some(r => r.ev === 'ray_hit' && r.dst !== '?')) {
             discoveredEntity = true;
           }
+          // REQ-0078 reactive (defensive): enemies that took a DIRECT hit fire
+          // their OnUnitBeenHit skills as a retaliation ray at the player field.
+          // Depth-1 (retaliation hits are not re-dispatched); isolated RNG keeps
+          // existing golden streams byte-identical.
+          const reactDef = [];
+          for (const lh of (fr.landedHits || [])) {
+            const ent = enemyActors.find(e => e.actor === lh.actor);
+            if (!ent || !ent.actor.alive) continue;
+            for (const sk of (ent.raw.skills || [])) {
+              if (!sk.trigger || sk.trigger.t !== 'OnUnitBeenHit') continue;
+              const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+              reactDef.push({ ev: 'reactive_proc', trigger: 'OnUnitBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
+              fireSkillRay({
+                attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react' },
+                attackProfile: ap, verbEff: sk, mode: 'battle',
+                targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+                rng, streamPrefix: 'reactive/OnUnitBeenHit/' + ent.raw.ownerId + '/' + ev.t,
+                events: reactDef, aoeStatuses: !!ap.aoe_statuses,
+              });
+            }
+          }
+          for (const re of reactDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
@@ -149,12 +171,24 @@ function runEncounter(opts) {
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: ev.t });
           const rayEvents = [];
-          fireSkillRay({
+          const fr = fireSkillRay({
             attacker, attackProfile, verbEff: s.effect, mode: 'battle',
             targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
             rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
           });
           for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          // REQ-0078 reactive (offensive rider): this monster's OnHit/OnUnitHit
+          // skills fire on each player actor its attack just directly hit
+          // (OnHit == OnUnitHit for a flat monster unit); isolated RNG.
+          const reactOff = [];
+          for (const sk of (s.raw.skills || [])) {
+            if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnUnitHit')) continue;
+            (fr.landedHits || []).forEach((lh, li) => {
+              const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + ev.t + '/' + li);
+              applyReactiveVerbToTarget(sk.verb, s.actor, lh.actor, rs, reactOff, sk.trigger.t);
+            });
+          }
+          for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }
