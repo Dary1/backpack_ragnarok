@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const Engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
-const src = fs.readFileSync(path.join(__dirname, '..', 'client', 'src', 'engine', 'engine.d.ts'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '..', 'shared', 'engine.d.ts'), 'utf8');
 
 function interfaceBody(name) {
   const start = src.indexOf('export interface ' + name + ' {');
