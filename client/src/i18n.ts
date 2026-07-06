@@ -47,6 +47,22 @@ const DICT = {
     'app.canvasTitle': 'Canvas',
     'app.inventoryTitle': 'Inventory',
     'app.inventoryNote': 'items parked here take no effect',
+    // REQ-0070: MJOLNIR canvas re-skin. The stagehead EN sub-captions are
+    // EMPTY for the EN locale on purpose (the ja titles adopt the mock's
+    // named halls -- 編成の間 -- and show a small latin caption under the
+    // mock's convention; the EN titles ARE already that caption, so
+    // rendering it twice would be noise -- App.tsx skips empty subs).
+    'app.canvasSub': '',
+    'app.inventorySub': '',
+    // Canvas-page chrome (CanvasChrome.tsx): stagehead stats chip, embark
+    // dock CTA, boardfoot auto-save seal.
+    'canvas.statBp': 'Packs',
+    'canvas.statItems': 'Items',
+    'canvas.statLinks': 'Linked',
+    'canvas.embark': 'Depart on Expedition',
+    'canvas.saveState.saved': 'Saved',
+    'canvas.saveState.saving': 'Saving…',
+    'canvas.saveState.offline': 'Offline',
 
     // Placeholder route (PlaceholderPage.tsx)
     'placeholder.comingSoon': 'This feature is coming soon.',
@@ -291,9 +307,20 @@ const DICT = {
     'header.status.offline': 'オフライン',
     'header.langToggle': '🇬🇧 EN',
 
-    'app.canvasTitle': 'キャンバス',
+    // REQ-0070: the ja canvas title adopts the mock's hall name (編成の間);
+    // EN keeps 'Canvas'.
+    'app.canvasTitle': '編成の間',
     'app.inventoryTitle': 'インベントリ',
     'app.inventoryNote': '格納中のアイテムは効果を発揮しません',
+    'app.canvasSub': 'CANVAS',
+    'app.inventorySub': 'INVENTORY',
+    'canvas.statBp': '背嚢',
+    'canvas.statItems': '物品',
+    'canvas.statLinks': '連結',
+    'canvas.embark': '遠征へ発つ',
+    'canvas.saveState.saved': '保存済み',
+    'canvas.saveState.saving': '保存中…',
+    'canvas.saveState.offline': 'オフライン',
 
     'placeholder.comingSoon': 'この機能は近日公開予定です。',
 
@@ -309,7 +336,7 @@ const DICT = {
     'invite.welcome': 'ようこそ、{name} さん！',
     'invite.dismiss': '閉じる',
 
-    'preset.add': 'プリセット＋',
+    'preset.add': '型を鋳る＋', // REQ-0070: mock boardfoot copy (EN stays 'Preset+')
 
     'itemPanel.items': 'アイテム',
     'itemPanel.socketItems': 'ソケットアイテム',
