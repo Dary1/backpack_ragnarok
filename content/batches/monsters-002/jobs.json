@@ -1,0 +1,50 @@
+[
+  {
+    "name": "01_dreamshaper_painterly",
+    "ckpt": "DreamShaper_8_pruned.safetensors",
+    "width": 640,
+    "height": 832,
+    "seed": 20260705,
+    "steps": 30,
+    "cfg": 7.0,
+    "hires": true,
+    "positive": "frost golem, a hulking creature made of packed snow and jagged ice shards, glowing pale blue cracks across its body, full body front-facing pose, plain dark background, digital painting, concept art, dramatic rim lighting, detailed texture, single creature, centered, high quality",
+    "negative": "multiple creatures, text, watermark, blurry, cropped, extra limbs, human face, cute, chibi, low detail"
+  },
+  {
+    "name": "02_toonyou_cel",
+    "ckpt": "toonyou_beta6.safetensors",
+    "width": 640,
+    "height": 832,
+    "seed": 20260705,
+    "steps": 30,
+    "cfg": 7.0,
+    "hires": true,
+    "positive": "frost golem, a stocky creature made of ice and packed snow, big simple glowing blue eyes, thick icy limbs, flat cel shading, bold clean outlines, vibrant colors, plain simple background, mobile game monster illustration, full body, front facing, centered, high quality",
+    "negative": "photorealistic, realistic skin, text, watermark, blurry, multiple characters, cropped, dark background, gore, low detail"
+  },
+  {
+    "name": "03_sdxl_detailed",
+    "ckpt": "sd_xl_base_1.0.safetensors",
+    "width": 832,
+    "height": 1216,
+    "seed": 20260705,
+    "steps": 28,
+    "cfg": 6.5,
+    "hires": false,
+    "positive": "a frost golem, massive humanoid made of glacial ice and compacted snow, intricate crystalline textures, glowing cyan energy veins, fantasy creature illustration, highly detailed, full body front view, plain dark backdrop, centered composition, high quality",
+    "negative": "blurry, low detail, text, watermark, multiple creatures, cropped, extra limbs"
+  },
+  {
+    "name": "04_dreamshaper_ink",
+    "ckpt": "DreamShaper_8_pruned.safetensors",
+    "width": 640,
+    "height": 832,
+    "seed": 20260706,
+    "steps": 30,
+    "cfg": 7.0,
+    "hires": true,
+    "positive": "frost golem creature, made of ice and snow, traditional watercolor and ink illustration style, visible brush texture, soft washes of pale blue and white, black ink outlines, full body front view, centered, plain parchment-colored background, high quality",
+    "negative": "photorealistic, 3d render, text, watermark, blurry, multiple creatures, cropped, low detail"
+  }
+]
