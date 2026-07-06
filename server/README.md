@@ -870,3 +870,104 @@ convention for `data/profiles/default.json` when it doesn't exist yet).
   B's, and cross-player profile reads 403), logout (clears the token,
   reload returns to the dev-mode/default state), and the Settings page's
   account block + REQ-0039 bot-mode placeholder block.
+
+## Market (REQ-0064)
+
+The player-to-player Market: sellers carve an integer price on an
+inventory item, buyers settle it atomically, the furnace takes its 8%
+tithe. Business rules are frozen by the design mock
+`web/redesign/market.html` (three laws + copy deck); the client screen
+is a separate unit consuming `shared/dto.ts`'s `ApiMarket*` shapes.
+
+**The three laws (mock, FROZEN):**
+1. *Barter in kind* — no abstract currency; a price is `{tm, qty}`, an
+   integer quantity of the ONE trade TM. Its engine/content id is
+   `lrdst` (`content/live/live_tms.json`'s single entry — the same id
+   `services/gacha.cjs`'s `readLrdstBalance()` sums for the Workshop).
+2. *The furnace tithe* — `burn = max(1, ceil(qty * 0.08))`,
+   byte-identical to the mock's own `burnOf` (market.html ~line 930).
+   Burns happen ONLY at settlement; listing and withdrawal are free.
+3. *No living prices* — no market maker; the Dex records the last 5
+   settled prices per item id as the only anchor (see below).
+
+**Module shape** (same pattern as the schedule stack): business logic in
+`server/services/market.cjs`, frozen facade `server/market.cjs`
+(consumers require the facade, rule 3), HTTP surface
+`server/routes/market.cjs` (wired at the tail of `router.cjs`'s
+dispatch order), persistence via `storage.cjs`'s market roots
+(`market_listings` / `market_furnace` / `market_dex_history`; files
+`data/market/*`, pg `server/migrations/004_market.sql`, full
+files+pg parity in api_test).
+
+**Routes** (all `X-Auth-Token`-gated via `resolveAuth()`, pure JSON):
+
+| Route | What |
+|---|---|
+| `GET /api/market/listings?filter=&q=` | Browse: every ACTIVE + SUSPENDED listing market-wide. `filter=mine` = caller's own listings in every state; other filter values match item tags[]/rarity case-insensitively; `q` matches a Dex No. (`61`/`No.061`) or an EN/JA name substring. |
+| `POST /api/market/listings` | `{itemUid, price:{tm:'lrdst', qty}}`, qty integer 1..999. Ownership + eligibility validated against the caller's LAST-SAVED canvas: inventory POs only, not deployed (Law of Possession), not already listed. Free. |
+| `POST /api/market/listings/:id/withdraw` | Owner-only (non-owner = 404, no-leak), free, allowed from stored-active (incl. derived-suspended). |
+| `POST /api/market/listings/:id/buy` | THE atomic settle — see below. |
+| `GET /api/market/furnace` | Burn-ledger total. All-time until a season registry exists; REQ-0066 windows it via `furnaceTotal(sinceMs)`. |
+
+**Listing lifecycle.** Stored state: `active → settled | withdrawn |
+expired` (terminal). The listed item is NOT escrowed — it stays in the
+seller's inventory. `suspended` is DERIVED lazily at read time (the
+item's uid appears in a preset assigned to any slot of a non-canceled
+room of the seller — `deployedUidSet()`, reusing `services/units.cjs`'s
+uid-set scan) and reverts by itself on undeploy; it is never persisted.
+TTL: 7 days [TUNABLE], lazily flipped to `expired` on the next read
+(`normalizeListing()`, the market's `normalizeWarehouseStatus`
+analogue). An item that vanished from the seller's inventory
+auto-withdraws the listing (`withdrawnReason:'item_gone'`) on the next
+read/buy. No scheduler anywhere — all poll-driven, house style.
+
+**Settlement (buy).** Validation first (404 unknown; 409
+`already_settled` / `not_active` / `expired` / `self_buy` / `item_gone`
+/ `suspended` / `insufficient_balance` / `warehouse_full` — the
+warehouse check runs BEFORE anything mutates: no partial settle), then
+one synchronous pass: listing→settled (the first-wins commit point —
+concurrent buys are strictly serialized by the event loop, the second
+one 409s), buyer canvas debited `qty` lrdst across stacks, seller
+canvas stripped of the item (inventory + stale preset references),
+item → buyer's warehouse as a normal claimable row
+(`sourceListingId`), proceeds `qty−burn` → seller's warehouse as a
+`kind:'tm'` row (grantTmQty shape; cap-exempt — settled proceeds are
+never dropped, unlike addToWarehouse's documented reward-overflow
+posture; a price of 1 burns whole and writes no zero-qty row), furnace
+ledger appended (append-only), Dex price history engraved (rolling
+last-5 per itemId, newest first — storage-side; full REQ-0052 card
+integration is deferred, the DTO already exposes it as
+`priceHistory`).
+
+**RULE-5 DIVERGENCE (deliberate, documented here and in
+`services/market.cjs`'s header):** settlement writes BOTH players'
+canvases server-side — the one sanctioned exception to "the client's
+auto-save PUT is the ONE profile writer". A two-player atomic exchange
+cannot be client-two-phased (the seller may be offline; the buyer's
+debit must land inside the same first-wins transaction). Client
+consequence: after a buy (or when your listing settles), re-GET your
+profile before the next auto-save PUT — a stale in-flight auto-save can
+resurrect the pre-trade canvas (REQ-0041's documented race class).
+
+**Idempotency.** No house-wide pattern existed (prior mutations are
+state-machine-idempotent); market POST routes accept an optional
+`Idempotency-Key` header, stored on the listing doc
+(`idemKey` / `settlement.idemKey` / `withdrawal.idemKey`). A replay by
+the SAME caller returns the original outcome with `replayed:true`; a
+keyless retry gets plain state-machine answers (409 `already_settled`
+etc.).
+
+**Dex numbering (v1 interpretation).** No dex-number registry exists in
+content yet; `dexNo` = 1-based position in
+`content/live/live_items.json`'s entries array (pilot-only overlay
+items get `null`). Owned by the future REQ-0052/dex unit; the client
+should consume the server-provided `dexNo` either way.
+
+**Scope notes.** v1 sells inventory POs only (every mock card is a PO,
+and the buyer-side delivery reuses the warehouse claim path, whose
+`claimWarehouseItem` validates against PO defs only); SIs/BPs are a
+later unit. No "fixed starter PO" concept exists in the codebase yet
+(grep 'starter' across engine/services is empty) — nothing to exclude
+until that ships. `MARKET_DTO_VERSION` (=1) is stamped on every
+response envelope; bump together with `shared/dto.ts`'s
+`MarketDtoVersion`.
