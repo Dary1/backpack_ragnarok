@@ -69,11 +69,23 @@
 // untouched by all of this: the backpacks-view stays UNCONDITIONALLY
 // mounted on every route (including 'landing') and only ever toggles
 // .route-hidden.
+//
+// REQ-0070: the backpacks view is re-skinned to the MJOLNIR canvas mock
+// (web/redesign/canvas.html): page key art, stagehead title rows, ornate
+// board stages around BOTH always-mounted Pixi boards, the preset tabs
+// relocated from the canvas title row into the stage's boardfoot (same
+// PresetTabs component and classes -- only the render slot moved), a
+// boardfoot auto-save seal, live board-content stats in the stagehead,
+// and the fixed embark dock (all in CanvasChrome.tsx). The REQ-0034
+// always-mounted rule above is untouched: both boards keep their Pixi
+// Applications through all of this; the new chrome is plain DOM around
+// the same <canvas> elements.
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
+import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
 import { DexRoot } from './dex/DexRoot';
 import { Header } from './Header';
 import { t } from './i18n';
@@ -96,14 +108,27 @@ import { initRouting, setLocale, useGameStore } from './store';
  * via createPortal into a WarehouseTab-registered slot, with the exact
  * same JSX either way (no behavior fork -- see module comment above). */
 function InventoryColumn({ locale, ready }: { locale: ReturnType<typeof useGameStore>['locale']; ready: boolean }) {
+  // REQ-0070: stagehead title row (ja shows the mock's EN sub-caption; the
+  // key is empty for EN, so nothing doubles up) + the ornate MJOLNIR board
+  // stage around the SAME always-mounted InventoryBoard. Structure-only
+  // restyle: Tabs/board/note keep their classes and relative order (the
+  // E2E suite selects .inv-tab / canvas.inventory-board-canvas).
+  const sub = t(locale, 'app.inventorySub');
   return (
     <div className="board-column">
       <div className="board-column-header">
         <h2 className="board-column-title">{t(locale, 'app.inventoryTitle')}</h2>
+        {sub ? <span className="stagehead-en">{sub}</span> : null}
         {ready ? <Tabs /> : null}
       </div>
-      <div className="board-wrap">
-        <InventoryBoard />
+      <div className="board-wrap board-stage ornate">
+        <i className="k tl" />
+        <i className="k tr" />
+        <i className="k br" />
+        <i className="k bl" />
+        <div className="board-gridbox">
+          <InventoryBoard />
+        </div>
       </div>
       <div className="inventory-note">{t(locale, 'app.inventoryNote')}</div>
     </div>
@@ -151,13 +176,40 @@ function App() {
         {/* Backpacks view: ALWAYS mounted (see module comment above). Only
             visibility (CSS) changes with route. */}
         <div className={`backpacks-view${route === 'backpacks' ? '' : ' route-hidden'}`}>
+          {/* REQ-0070: full-viewport key art behind the canvas page (mock
+              .bgart, served from /redesign/assets -- referenced, never
+              bundled). position:fixed, but nested INSIDE this view so the
+              route's .route-hidden (display:none on the ancestor) hides it
+              along with everything else. */}
+          <div className="canvas-bgart" aria-hidden="true" />
           <div className="board-column">
             <div className="board-column-header">
               <h2 className="board-column-title">{t(snapshot.locale, 'app.canvasTitle')}</h2>
-              {snapshot.status === 'ready' ? <PresetTabs /> : null}
+              {t(snapshot.locale, 'app.canvasSub') ? (
+                <span className="stagehead-en">{t(snapshot.locale, 'app.canvasSub')}</span>
+              ) : null}
+              <CanvasStatsChip />
             </div>
-            <div className="board-wrap board-wrap-canvas">
-              <Board />
+            {/* REQ-0070: the mock's ornate board stage. The Pixi <canvas>
+                (Board) is untouched inside -- only the chrome around it is
+                new (gold-knot corners, coordinate rails, boardfoot). The
+                preset tabs moved from the title row above into the mock's
+                boardfoot INSIDE the stage: same PresetTabs component, same
+                classes/gestures (click/long-press-rename/drag-reorder/
+                trash-drop), only the render slot changed. */}
+            <div className="board-wrap board-wrap-canvas board-stage ornate">
+              <i className="k tl" />
+              <i className="k tr" />
+              <i className="k br" />
+              <i className="k bl" />
+              <div className="board-gridbox">
+                <Board />
+                <BoardCoords />
+              </div>
+              <div className="boardfoot">
+                {snapshot.status === 'ready' ? <PresetTabs /> : null}
+                <SaveSeal locale={snapshot.locale} status={snapshot.autoSaveStatus} />
+              </div>
               {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
                   PRESET tab is being dragged (see PresetTrashZone.tsx's own
                   module comment -- inventory-tab drags never satisfy its
@@ -178,6 +230,11 @@ function App() {
           {snapshot.status === 'ready' && snapshot.gameData ? (
             <ItemPanel items={snapshot.gameData.ITEMS} siDefs={snapshot.gameData.SI_DEFS} locale={snapshot.locale} />
           ) : null}
+          {/* REQ-0070: the mock's embark dock -- fixed bottom-right CTA to
+              the real expedition page. Inside backpacks-view so
+              route-hidden hides it (fixed positioning does not escape an
+              ancestor's display:none). */}
+          <EmbarkDock locale={snapshot.locale} />
         </div>
 
         {/* REQ-0041: portal target -- when WarehouseTab.tsx has registered

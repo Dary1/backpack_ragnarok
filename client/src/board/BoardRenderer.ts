@@ -169,7 +169,14 @@ export class BoardRenderer {
     const app = new Application();
     const width = PAD * 2 + deps.layout.COLS * CELL;
     const height = PAD * 2 + deps.layout.ROWS * CELL;
-    await app.init({ canvas, width, height, background: '#121212', antialias: true });
+    // REQ-0070 (MJOLNIR re-skin): transparent canvas backdrop -- the DOM
+    // board stage's radial night-iron gradient (index.css .board-wrap)
+    // shows through the PAD margin and between draws, exactly like the
+    // mock's .board-stage. Init-option-only change: same ONE Application
+    // per board forever; nothing about the scene graph or events differs.
+    // (Cells/items keep painting their own opaque fills on top, so board
+    // content renders identically to the old flat #121212 backdrop.)
+    await app.init({ canvas, width, height, backgroundAlpha: 0, antialias: true });
     return new BoardRenderer(app, deps);
   }
 
