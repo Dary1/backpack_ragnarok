@@ -30,12 +30,33 @@
 //    outcome doc for this documented decision): the row simply reverts
 //    to claimable server-side after WAREHOUSE_CLAIM_TIMEOUT_MS if this
 //    client never manages to place it, without any extra round-trip.
+//
+// REQ-0072 (MJOLNIR re-skin; mock: web/redesign/warehouse.html):
+// presentation-only rewrite of the render tree -- the claim machinery
+// above (two-phase claim, engine first-fit, pulse/tab-pulse, auto-save
+// finalization, poll cadence, claim-all walk order) is UNCHANGED, and
+// so is every E2E-load-bearing selector (schedule-warehouse-row /
+// schedule-claim-btn-<uid> / schedule-warehouse-toast /
+// schedule-claim-all-btn / schedule-warehouse-capacity-* /
+// .schedule-slot-error / schedule-warehouse-board-slot). New chrome:
+// ornate capacity topstrip (gold bar + staged warning kept), a
+// DECAYING SOON section for rows within 48h of expiry, the stone-shelf
+// card grid (rarity-framed .wcard anatomy with per-row Joermungandr TTL
+// ring + provenance chip + NEW badge), kind-based filter chips, and the
+// footer lore. Rows are ordered soonest-to-expire within BOTH sections
+// (the REQ-0046 sort, unchanged in spirit -- the danger split is that
+// same ordering made spatial). What the mock shows with no backing
+// data (weapon/frost/ember filters, seller names, boss provenance,
+// non-decaying currency) is inferred or omitted per
+// docs/REQ-0072-redesign-warehouse.md.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   claimWarehouseItem as apiClaimWarehouseItem,
   fetchContent,
   fetchWarehouse,
   type ApiContentPayload,
+  type ApiDungeonsPayload,
+  type ApiRoom,
   type ApiWarehouseItem,
 } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
@@ -43,23 +64,51 @@ import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
 import type { EngineInstance, GameState } from '../engine/engine.d.ts';
 import { friendlyScheduleError, isApiErrorStatus } from './errors';
+import { localizedName } from './CreateRoomForm';
 import { formatCountdown } from './RoomCard';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 
 interface WarehouseTabProps {
   locale: Locale;
+  /** REQ-0072: the rooms + dungeons SchedulePage already fetches/polls
+   * for its own rooms view, passed down so a row's sourceRoomId can be
+   * resolved to a REAL dungeon display name for the provenance chip
+   * (mock 「出所: ニヴルヘイム深淵」). null until loaded -- the chip is
+   * simply omitted for rows that cannot be resolved. */
+  rooms: ApiRoom[] | null;
+  dungeons: ApiDungeonsPayload | null;
 }
+
+/** REQ-0072: market-settled rows (buyer delivery / seller TM proceeds --
+ * server/services/market.cjs's settle step) carry a `sourceListingId`
+ * the schedule-era ApiWarehouseItem predates. Typed as a client-local
+ * extension rather than an edit to shared/dto.ts: the market lane owns
+ * that file's market section and this avoids a parallel-lane conflict
+ * over one optional field (see docs/REQ-0072-redesign-warehouse.md). */
+type WarehouseRow = ApiWarehouseItem & { sourceListingId?: string | null };
 
 const WAREHOUSE_CAP = 200; // mirrors server/schedule.cjs's WAREHOUSE_CAP (display only)
 const POLL_MS = 5000;
 const GRID_MIN = 1;
 const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout (same bound the old server-side first-fit used)
 const TAB_PULSE_MS = 1600; // >= the 3-cycle CSS animation's own 0.5s*3 duration, plus margin
-const EXPIRING_SOON_MS = 86400000; // 24h -- rows closer than this get a warm expiry label (soonest-to-expire is sorted to the top)
+// REQ-0072: rows closer than this to expiry move into the mock's
+// DECAYING SOON section (its example rows read 期限 2日 / 期限 1日) and
+// wear the red TTL treatment. Supersedes the old 24h "warm label"
+// threshold -- same idea, made a section instead of a tint.
+const DECAY_SOON_MS = 2 * 86400000;
+// REQ-0072: the mock's NEW badge / 新着 count. No "seen" tracking exists
+// anywhere in the data model, so "new" is honestly derived from the
+// row's own harvestedAt: delivered within the last 24h (one Muninn
+// night, matching the mock's 「今夜搬入」 framing).
+const FRESH_MS = 86400000;
 
 function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
-  const entry = content?.items[itemId] ?? content?.sis[itemId];
+  // REQ-0072: TM ids (kind:'tm' rows, e.g. LRDST) live in content.tms,
+  // which this lookup used to miss entirely -- a TM row rendered as its
+  // raw id. Checked last, same order contentEntryFor uses.
+  const entry = content?.items[itemId] ?? content?.sis[itemId] ?? content?.tms[itemId];
   if (!entry) return itemId;
   if (locale === 'ja') return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
   return entry.name;
@@ -92,6 +141,24 @@ function contentEntryFor(content: ApiContentPayload | null, kind: 'po' | 'si' | 
   return content.items[itemId] ?? content.sis[itemId] ?? null;
 }
 
+/** REQ-0072: app rarity ramp (Common/Uncommon/Rare/Relic -- see
+ * content/live) -> theme .rar-* frame class. Relic wears the mock's
+ * LEGENDARY tone, the same mapping REQ-0070's `.rarity.r-Relic` rule
+ * already established (the mock labels that tier 遺宝 = relic). Unknown/
+ * unloaded rarity falls back to the common frame. */
+function rarThemeClass(rarity: string | undefined): string {
+  switch (rarity) {
+    case 'Uncommon':
+      return 'rar-uncommon';
+    case 'Rare':
+      return 'rar-rare';
+    case 'Relic':
+      return 'rar-legend';
+    default:
+      return 'rar-common';
+  }
+}
+
 /** Day-aware countdown for the Warehouse's 7-day TTL. RoomCard's
  * formatCountdown is minute/second only (fine for a run's short
  * countdown), so a multi-day remaining duration would render as e.g.
@@ -107,6 +174,43 @@ function formatWarehouseCountdown(ms: number): string {
   if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
   if (hours > 0) return `${hours}h ${mins}m`;
   return formatCountdown(ms);
+}
+
+/** REQ-0072: the mock's Joermungandr TTL ring (mock .cring) -- an SVG
+ * donut whose arc is the row's REMAINING share of its OWN lifetime
+ * (expiresAt - harvestedAt), so the percentage stays honest even if the
+ * server-side TTL constant ever changes: no 7-day literal is baked in
+ * here. Geometry mirrors the mock exactly: pathLength=100 dasharray arc
+ * from 12 o'clock, end-of-arc dot at (20 + 15·sin θ, 20 − 15·cos θ). */
+function TtlRing({ pct, danger, label }: { pct: number; danger: boolean; label: string }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const theta = (clamped / 100) * 2 * Math.PI;
+  const dotX = 20 + 15 * Math.sin(theta);
+  const dotY = 20 - 15 * Math.cos(theta);
+  const stroke = danger ? '#D14B44' : 'var(--gold-lo)';
+  const dot = danger ? '#E06B5F' : 'var(--gold-hi)';
+  return (
+    <svg className="schedule-warehouse-ring" viewBox="0 0 40 40" role="img" aria-label={label}>
+      <title>{label}</title>
+      <circle cx="20" cy="20" r="15" fill="none" stroke="rgba(233,227,211,.1)" strokeWidth="3" />
+      <circle
+        cx="20"
+        cy="20"
+        r="15"
+        fill="none"
+        stroke={stroke}
+        strokeWidth="3"
+        pathLength={100}
+        strokeDasharray={`${clamped} ${100 - clamped}`}
+        strokeLinecap="round"
+        transform="rotate(-90 20 20)"
+      />
+      <circle cx={dotX} cy={dotY} r="2.6" fill={dot} />
+      <text x="20" y="23.5" textAnchor="middle">
+        {Math.round(clamped)}%
+      </text>
+    </svg>
+  );
 }
 
 /** Outcome of a single-item claim, so Claim All can stop the moment the
@@ -257,9 +361,11 @@ function pulseTab(pageIndex: number): void {
   setTimeout(() => el.classList.remove('tab-claim-pulse'), TAB_PULSE_MS);
 }
 
-export function WarehouseTab({ locale }: WarehouseTabProps) {
+type WarehouseFilter = 'all' | 'spoils' | 'currency';
+
+export function WarehouseTab({ locale, rooms, dungeons }: WarehouseTabProps) {
   const snapshot = useGameStore();
-  const [items, setItems] = useState<ApiWarehouseItem[] | null>(null);
+  const [items, setItems] = useState<WarehouseRow[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
@@ -267,6 +373,12 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  // REQ-0072: kind-based display filter (mock filter chips). The mock's
+  // weapon/frost/ember chips have no backing taxonomy (see the notes
+  // doc); `kind:'tm'` vs everything else is the one REAL category split
+  // a row carries, so the honest chip set is all / spoils / currency.
+  // Display-only: claim-all still walks the FULL list.
+  const [filter, setFilter] = useState<WarehouseFilter>('all');
   const slotRef = useRef<HTMLDivElement | null>(null);
 
   // REQ-0041: claim this DOM node as the inventory column's portal
@@ -434,43 +546,205 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
     setClaimingAll(false);
   };
 
-  // Change 1: render soonest-to-expire first. `items` itself stays
-  // unchanged for length/cap math below.
+  // REQ-0072: resolves the mock's provenance chip (「出所: …」) from the
+  // ONLY origin data a row actually carries: sourceListingId (market
+  // settlement -- gold-etched chip, mock REQ-0065 P1-5 treatment) or
+  // sourceRoomId -> the player's own room -> its dungeon's display name.
+  // Dev grants (both sources null) and unresolvable rooms yield null --
+  // the chip is omitted rather than invented.
+  const provenanceFor = (row: WarehouseRow): { market: boolean; name?: string } | null => {
+    if (row.sourceListingId) return { market: true };
+    if (row.sourceRoomId) {
+      const room = rooms?.find((r) => r.id === row.sourceRoomId);
+      const entry = room ? dungeons?.dungeons.find((d) => d.id === room.dungeonId) : undefined;
+      if (entry) return { market: false, name: localizedName(locale, entry) };
+    }
+    return null;
+  };
+
+  // Render soonest-to-expire first (REQ-0046, unchanged). `items` itself
+  // stays unchanged for length/cap math below.
   const sortedItems = items ? [...items].sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt)) : null;
 
-  // Change 3: staged capacity warning. server/schedule.cjs's
-  // addToWarehouse SILENTLY DROPS new rewards once at WAREHOUSE_CAP, so
-  // 'full' is a real data-loss state, not just a styling threshold.
+  // Staged capacity warning (REQ-0046, unchanged thresholds). server/
+  // schedule.cjs's addToWarehouse SILENTLY DROPS new rewards once at
+  // WAREHOUSE_CAP, so 'full' is a real data-loss state, not just a
+  // styling threshold.
   const capRatio = (items?.length ?? 0) / WAREHOUSE_CAP;
   const capState: 'calm' | 'warning' | 'full' = capRatio >= 1 ? 'full' : capRatio >= 0.7 ? 'warning' : 'calm';
 
-  return (
-    <div className="schedule-warehouse-tab">
-      <div className="schedule-warehouse-header">
-        <div className="schedule-warehouse-header-top">
-          <h3>{t(locale, 'schedule.warehouse.title')}</h3>
-          <span className="schedule-warehouse-cap" data-testid="schedule-warehouse-cap">
-            {t(locale, 'schedule.warehouse.cap', { count: items?.length ?? 0, cap: WAREHOUSE_CAP })}
+  // REQ-0072 derived presentation: danger split + shelf tallies. All
+  // counts are computed from the UNFILTERED list (the filter chips only
+  // narrow what is shown, never what is counted or claim-all-walked).
+  const dangerCount = items ? items.filter((i) => Date.parse(i.expiresAt) - now < DECAY_SOON_MS).length : 0;
+  const kindCount = items ? new Set(items.map((i) => i.itemId)).size : 0;
+  const pieceCount = items ? items.reduce((sum, i) => sum + (i.qty ?? 1), 0) : 0;
+  const freshCount = items ? items.filter((i) => now - Date.parse(i.harvestedAt) < FRESH_MS).length : 0;
+
+  const matchesFilter = (row: WarehouseRow): boolean => {
+    if (filter === 'all') return true;
+    const isCurrency = row.kind === 'tm';
+    return filter === 'currency' ? isCurrency : !isCurrency;
+  };
+  const visibleItems = sortedItems ? sortedItems.filter(matchesFilter) : null;
+  const dangerRows = visibleItems ? visibleItems.filter((i) => Date.parse(i.expiresAt) - now < DECAY_SOON_MS) : [];
+  const shelfRows = visibleItems ? visibleItems.filter((i) => Date.parse(i.expiresAt) - now >= DECAY_SOON_MS) : [];
+
+  const capWord = t(locale, 'schedule.warehouse.capWord');
+
+  const filterChip = (key: WarehouseFilter, label: string) => (
+    <button
+      type="button"
+      className={`chip schedule-warehouse-filter-chip${filter === key ? ' is-on' : ''}`}
+      aria-pressed={filter === key}
+      onClick={() => setFilter(key)}
+      data-testid={`schedule-warehouse-filter-${key}`}
+      key={key}
+    >
+      {label}
+    </button>
+  );
+
+  // One warehouse card (mock .wcard): rarity frame + corner gem, 64px
+  // thumb (with stack count), name/sub/provenance column, and the TTL
+  // ring + claim button side rail. Shared verbatim by the DECAYING SOON
+  // grid and the stone shelf -- only the container differs.
+  const renderRow = (item: WarehouseRow) => {
+    const expiresMs = Date.parse(item.expiresAt) - now;
+    const lifetimeMs = Date.parse(item.expiresAt) - Date.parse(item.harvestedAt);
+    const ttlPct = lifetimeMs > 0 ? (expiresMs / lifetimeMs) * 100 : 0;
+    const expired = expiresMs <= 0;
+    const danger = expiresMs < DECAY_SOON_MS; // includes expired
+    const fresh = now - Date.parse(item.harvestedAt) < FRESH_MS;
+    const rowKind = item.kind === 'tm' ? 'tm' : itemKindOf(content, item.itemId);
+    const entry = contentEntryFor(content, rowKind, item.itemId);
+    const icon = entry ? iconDataUrl(entry.icon) : null;
+    const qty = item.qty ?? 1;
+    const src = provenanceFor(item);
+    const isClaiming = claimingUid === item.itemUid;
+    return (
+      <article
+        className={`schedule-warehouse-row rar ${rarThemeClass(entry?.rarity)}${danger ? ' is-danger' : ''}${rowKind === 'tm' ? ' schedule-warehouse-row-stack' : ''}`}
+        key={item.itemUid}
+        data-testid="schedule-warehouse-row"
+        data-item-uid={item.itemUid}
+        title={t(locale, 'schedule.warehouse.harvested', { time: new Date(item.harvestedAt).toLocaleString(locale) })}
+      >
+        {fresh ? (
+          <span className="schedule-warehouse-badge-new den" data-testid="schedule-warehouse-badge-new">
+            {t(locale, 'schedule.warehouse.badgeNew')}
           </span>
+        ) : null}
+        <span className="gem" aria-hidden="true" />
+        <span className="schedule-warehouse-icon-frame">
+          {icon ? <img src={icon} alt="" /> : null}
+          {qty > 1 ? <span className="schedule-warehouse-qcnt tnum">&times;{qty}</span> : null}
+        </span>
+        <div className="schedule-warehouse-row-main">
+          <div className="schedule-warehouse-item-name dj">{localizedItemName(locale, content, item.itemId)}</div>
+          <div className="schedule-warehouse-row-sub">
+            {entry ? <span className={`rar-word rarity r-${entry.rarity}`}>{entry.rarity}</span> : null}
+            {rowKind === 'tm' ? <span className="kw-gold">{t(locale, 'schedule.warehouse.currencyWord')}</span> : null}
+            <span className="tnum">&times;{qty}</span>
+            <span className={`schedule-warehouse-item-expiry${danger ? ' schedule-warehouse-item-expiry-soon' : ''}`}>
+              {expired
+                ? t(locale, 'schedule.warehouse.expired')
+                : t(locale, 'schedule.warehouse.expiresIn', { time: formatWarehouseCountdown(expiresMs) })}
+            </span>
+          </div>
+          {src ? (
+            <div className="schedule-warehouse-row-src">
+              <span
+                className={`chip schedule-warehouse-src${src.market ? ' schedule-warehouse-src-market' : ''}`}
+                data-testid="schedule-warehouse-src"
+              >
+                {src.market ? t(locale, 'schedule.warehouse.srcMarket') : t(locale, 'schedule.warehouse.srcDungeon', { name: src.name ?? '' })}
+              </span>
+              {src.market ? <div className="schedule-warehouse-src-note t-micro">{t(locale, 'schedule.warehouse.srcMarketNote')}</div> : null}
+            </div>
+          ) : null}
+          {claimErrors[item.itemUid] ? <div className="schedule-slot-error">{claimErrors[item.itemUid]}</div> : null}
+        </div>
+        <div className="schedule-warehouse-row-side">
+          <TtlRing
+            pct={ttlPct}
+            danger={danger}
+            label={t(locale, 'schedule.warehouse.ringTitle', { pct: Math.max(0, Math.round(ttlPct)) })}
+          />
           <button
             type="button"
-            className="schedule-claim-all-btn"
-            onClick={() => void handleClaimAll()}
-            disabled={claimingAll || !items || items.length === 0}
-            data-testid="schedule-claim-all-btn"
+            className={`btn schedule-claim-btn${isClaiming ? ' placing' : ''}`}
+            disabled={isClaiming}
+            onClick={() => void handleClaim(item.itemUid)}
+            data-testid={`schedule-claim-btn-${item.itemUid}`}
           >
-            {claimingAll ? t(locale, 'schedule.warehouse.claimingAll') : t(locale, 'schedule.warehouse.claimAllButton')}
+            {isClaiming ? t(locale, 'schedule.warehouse.claiming') : t(locale, 'schedule.warehouse.claimButton')}
           </button>
         </div>
-        <div className={`schedule-warehouse-capacity-bar schedule-warehouse-capacity-${capState}`} data-testid="schedule-warehouse-capacity-bar">
-          <div className="schedule-warehouse-capacity-fill" style={{ width: `${Math.min(100, capRatio * 100)}%` }} />
+      </article>
+    );
+  };
+
+  return (
+    <div className="schedule-warehouse-tab">
+      {/* mock .topstrip: capacity meter / near-expiry chip / filters /
+          bulk claim. Same staged capacity semantics as before (REQ-0046)
+          -- calm/warning/full classes and the warning-text testid are
+          load-bearing names, kept verbatim. */}
+      <section className="panel ornate schedule-warehouse-topstrip" data-testid="schedule-warehouse-topstrip">
+        <i className="k tl" />
+        <i className="k tr" />
+        <i className="k br" />
+        <i className="k bl" />
+        <div className="schedule-warehouse-capblock">
+          <div className="schedule-warehouse-caphead">
+            <span className="schedule-warehouse-cap tnum" data-testid="schedule-warehouse-cap">
+              {items?.length ?? 0}
+              <span className="schedule-warehouse-cap-of">/{WAREHOUSE_CAP}</span>
+            </span>
+            {capWord ? <span className="dj schedule-warehouse-cap-word">{capWord}</span> : null}
+            <span className="den schedule-warehouse-cap-den">{t(locale, 'schedule.warehouse.capDen')}</span>
+          </div>
+          <div
+            className={`bar schedule-warehouse-capacity-bar schedule-warehouse-capacity-${capState}`}
+            data-testid="schedule-warehouse-capacity-bar"
+          >
+            <div className="fill gold schedule-warehouse-capacity-fill" style={{ width: `${Math.min(100, capRatio * 100)}%` }} />
+          </div>
         </div>
+        {dangerCount > 0 ? (
+          <span className="chip warn schedule-warehouse-warnchip" data-testid="schedule-warehouse-warnchip">
+            ⚠ {t(locale, 'schedule.warehouse.expiryWarnChip', { count: dangerCount })}
+          </span>
+        ) : null}
+        <div className="schedule-warehouse-filters" role="group">
+          {filterChip('all', t(locale, 'schedule.warehouse.filterAll'))}
+          {filterChip('spoils', t(locale, 'schedule.warehouse.filterSpoils'))}
+          {filterChip('currency', t(locale, 'schedule.warehouse.filterCurrency'))}
+        </div>
+        <span className="schedule-warehouse-grow" />
+        <button
+          type="button"
+          className="btn btn-forge schedule-claim-all-btn"
+          onClick={() => void handleClaimAll()}
+          disabled={claimingAll || !items || items.length === 0}
+          data-testid="schedule-claim-all-btn"
+        >
+          <span className="rune" aria-hidden="true">
+            ᚷ
+          </span>{' '}
+          {claimingAll ? t(locale, 'schedule.warehouse.claimingAll') : t(locale, 'schedule.warehouse.claimAllButton')}
+        </button>
         {capState !== 'calm' ? (
-          <div className={`schedule-warehouse-capacity-warning-text ${capState}`} data-testid="schedule-warehouse-capacity-warning">
+          <div
+            className={`schedule-warehouse-capacity-warning-text ${capState}`}
+            data-testid="schedule-warehouse-capacity-warning"
+          >
             {capState === 'full' ? t(locale, 'schedule.warehouse.capFull') : t(locale, 'schedule.warehouse.capWarning')}
           </div>
         ) : null}
-      </div>
+        <div className="schedule-warehouse-strip-note t-micro">{t(locale, 'schedule.warehouse.stripNote')}</div>
+      </section>
 
       {loadError ? <div className="schedule-error">{t(locale, 'schedule.warehouse.loadFailed')}{loadError}</div> : null}
       {toast ? <div className="schedule-toast" data-testid="schedule-warehouse-toast">{toast}</div> : null}
@@ -480,54 +754,52 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
       ) : sortedItems.length === 0 ? (
         <div className="schedule-empty">{t(locale, 'schedule.warehouse.empty')}</div>
       ) : (
-        <div className="schedule-warehouse-list">
-          {sortedItems.map((item) => {
-            const expiresMs = Date.parse(item.expiresAt) - now;
-            const expired = expiresMs <= 0;
-            const expiringSoon = expiresMs > 0 && expiresMs < EXPIRING_SOON_MS;
-            const rowKind = item.kind === 'tm' ? 'tm' : itemKindOf(content, item.itemId);
-            const entry = contentEntryFor(content, rowKind, item.itemId);
-            const icon = entry ? iconDataUrl(entry.icon) : null;
-            const frameClass =
-              rowKind === 'tm'
-                ? 'schedule-warehouse-icon-frame'
-                : `schedule-warehouse-icon-frame rarity-frame-r-${entry?.rarity ?? 'Common'}`;
-            return (
+        <>
+          {/* mock DECAYING SOON strip: rows within 48h of expiry, pulled
+              out ABOVE the shelf. Same soonest-first ordering. */}
+          {dangerRows.length > 0 ? (
+            <>
               <div
-                className={`schedule-warehouse-row${rowKind === 'tm' ? ' schedule-warehouse-row-stack' : ''}`}
-                key={item.itemUid}
-                data-testid="schedule-warehouse-row"
-                data-item-uid={item.itemUid}
+                className="schedule-warehouse-colhead schedule-warehouse-colhead-danger"
+                data-testid="schedule-warehouse-danger-head"
               >
-                <div className={frameClass}>{icon ? <img src={icon} alt="" /> : null}</div>
-                <span className="schedule-warehouse-item-name">
-                  {localizedItemName(locale, content, item.itemId)}
-                  {rowKind === 'tm' ? (
-                    <span className="schedule-warehouse-item-qty">&times;{item.qty ?? 1}</span>
-                  ) : entry ? (
-                    <span className={`rarity r-${entry.rarity}`}>{entry.rarity}</span>
-                  ) : null}
-                </span>
-                <span className="schedule-warehouse-item-harvested">
-                  {t(locale, 'schedule.warehouse.harvested', { time: new Date(item.harvestedAt).toLocaleString(locale) })}
-                </span>
-                <span className={`schedule-warehouse-item-expiry${expiringSoon ? ' schedule-warehouse-item-expiry-soon' : ''}`}>
-                  {expired ? t(locale, 'schedule.warehouse.expired') : t(locale, 'schedule.warehouse.expiresIn', { time: formatWarehouseCountdown(expiresMs) })}
-                </span>
-                <button
-                  type="button"
-                  className="schedule-claim-btn"
-                  disabled={claimingUid === item.itemUid}
-                  onClick={() => void handleClaim(item.itemUid)}
-                  data-testid={`schedule-claim-btn-${item.itemUid}`}
-                >
-                  {claimingUid === item.itemUid ? t(locale, 'schedule.warehouse.claiming') : t(locale, 'schedule.warehouse.claimButton')}
-                </button>
-                {claimErrors[item.itemUid] ? <div className="schedule-slot-error">{claimErrors[item.itemUid]}</div> : null}
+                <span className="schedule-warehouse-colhead-rn">⚠</span>
+                <h3 className="dj">{t(locale, 'schedule.warehouse.dangerTitle')}</h3>
+                <span className="den schedule-warehouse-colhead-den">{t(locale, 'schedule.warehouse.dangerDen')}</span>
+                <span className="t-micro">{t(locale, 'schedule.warehouse.dangerNote')}</span>
               </div>
-            );
-          })}
-        </div>
+              <div className="schedule-warehouse-danger-grid" data-testid="schedule-warehouse-danger-grid">
+                {dangerRows.map(renderRow)}
+              </div>
+            </>
+          ) : null}
+
+          {/* mock stone shelf (.shelf .mat-stone): the stored-spoils grid
+              with the kinds/pieces/new tally in its colhead. */}
+          <section className="panel ornate schedule-warehouse-shelf" data-testid="schedule-warehouse-shelf">
+            <i className="k tl" />
+            <i className="k tr" />
+            <i className="k br" />
+            <i className="k bl" />
+            <div className="schedule-warehouse-colhead">
+              <span className="schedule-warehouse-colhead-rn rune">ᚷ</span>
+              <h3 className="dj">{t(locale, 'schedule.warehouse.shelfTitle')}</h3>
+              <span className="den schedule-warehouse-colhead-den">{t(locale, 'schedule.warehouse.shelfDen')}</span>
+              <span className="schedule-warehouse-colhead-grow" />
+              <span className="t-micro tnum" data-testid="schedule-warehouse-shelf-count">
+                {t(locale, 'schedule.warehouse.shelfCount', { kinds: kindCount, pieces: pieceCount })}
+                {freshCount > 0 ? ` ・ ${t(locale, 'schedule.warehouse.shelfFresh', { fresh: freshCount })}` : ''}
+              </span>
+            </div>
+            {shelfRows.length > 0 ? (
+              <div className="schedule-warehouse-list">{shelfRows.map(renderRow)}</div>
+            ) : (
+              <div className="schedule-empty">
+                {t(locale, dangerRows.length > 0 || filter !== 'all' ? 'schedule.warehouse.shelfFiltered' : 'schedule.warehouse.empty')}
+              </div>
+            )}
+          </section>
+        </>
       )}
 
       {/* REQ-0041: the Warehouse tab's embedded inventory board -- this
@@ -539,6 +811,16 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
           construction (it IS the same component instance/Pixi
           Application, not a reimplementation). */}
       <div className="schedule-warehouse-board-slot" ref={slotRef} data-testid="schedule-warehouse-board-slot" />
+
+      {/* mock .wfoot -- lore line + the first-fit explainer (which states
+          REAL behavior: handleClaim's placement + no-space posture). */}
+      <footer className="schedule-warehouse-foot">
+        <div className="rune-divider" aria-hidden="true">
+          ᛞ
+        </div>
+        <div className="schedule-warehouse-foot-lore">{t(locale, 'schedule.warehouse.footLore')}</div>
+        <div className="t-micro">{t(locale, 'schedule.warehouse.footNote')}</div>
+      </footer>
     </div>
   );
 }

@@ -34,6 +34,15 @@
 // is not reproducible without moving the Monitor OUT of its room card,
 // which the E2E containment contract + the one-Pixi-app-per-monitor
 // lifecycle both forbid).
+//
+// REQ-0072 (MJOLNIR warehouse; mock: web/redesign/warehouse.html): the
+// pagehead strip + key art now switch identity with the active tab --
+// the warehouse tab wears the mock's MUNINN'S HOARD kicker / 宝物庫
+// title / bg_warehouse.jpg (and the divider's ᚷ rune) while the rooms
+// view keeps the REQ-0071 expedition identity. The already-fetched
+// rooms + dungeons are passed down to WarehouseTab so a row's
+// sourceRoomId resolves to a real dungeon display name (provenance
+// chip) with no second fetch path.
 import { useCallback, useEffect, useState } from 'react';
 import {
   ApiError,
@@ -177,7 +186,11 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // available.
   const showCreatePanel = createOpen || (rooms !== null && rooms.length === 0);
 
-  const pageSub = t(locale, 'schedule.pageSub');
+  // REQ-0072: the pagehead wears the ACTIVE tab's hall identity.
+  const onWarehouse = tab === 'warehouse';
+  const pageSub = t(locale, onWarehouse ? 'schedule.warehouse.pageSub' : 'schedule.pageSub');
+  const pageTitle = t(locale, onWarehouse ? 'schedule.warehouse.pageTitle' : 'schedule.pageTitle');
+  const pageLede = t(locale, onWarehouse ? 'schedule.warehouse.pageLede' : 'schedule.pageLede');
 
   return (
     <div className="schedule-page">
@@ -185,15 +198,15 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           referenced from the served /redesign/assets path, never bundled
           (same convention as .canvas-bgart, REQ-0070). position:fixed but
           nested inside this route-owned tree, so it unmounts with it. */}
-      <div className="expedition-bgart" aria-hidden="true" />
+      <div className={onWarehouse ? 'warehouse-bgart' : 'expedition-bgart'} aria-hidden="true" />
 
       {/* REQ-0071: pagehead strip (mock .pagehead, adapted -- see module
           comment for what had no backing data and was omitted). */}
       <section className="schedule-pagehead">
         <div className="schedule-pagehead-main">
           {pageSub ? <div className="schedule-pagehead-kicker den">{pageSub}</div> : null}
-          <h1 className="schedule-pagehead-title dj dj-wide">{t(locale, 'schedule.pageTitle')}</h1>
-          <div className="schedule-pagehead-lede">{t(locale, 'schedule.pageLede')}</div>
+          <h1 className="schedule-pagehead-title dj dj-wide">{pageTitle}</h1>
+          <div className="schedule-pagehead-lede">{pageLede}</div>
         </div>
         <div className="schedule-pagehead-tabs schedule-tab-row">
           <button
@@ -213,7 +226,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         </div>
       </section>
       <div className="rune-divider schedule-pagehead-divider" aria-hidden="true">
-        ᚱ
+        {onWarehouse ? 'ᚷ' : 'ᚱ'}
       </div>
 
       {tab === 'rooms' ? (
@@ -290,7 +303,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           </div>
         </div>
       ) : (
-        <WarehouseTab locale={locale} />
+        <WarehouseTab locale={locale} rooms={rooms} dungeons={dungeons} />
       )}
     </div>
   );
