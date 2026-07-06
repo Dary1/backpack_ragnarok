@@ -350,3 +350,137 @@ export interface ApiWarehouseItem {
  * matches /api/content's own no-auth convention). Used by the
  * create-room form's dungeon/formation selects. */
 
+
+// ---- REQ-0064: Market wire shapes (server/routes/market.cjs) ----
+// Every /api/market response envelope carries `dtoVersion:
+// MARKET_DTO_VERSION` (currently 1; server/services/market.cjs owns the
+// runtime constant -- shared/dto.ts is types-only by rule). Bump the
+// literal here AND there together whenever a market wire shape changes
+// incompatibly.
+export type MarketDtoVersion = 1;
+
+/** Law 1 ("barter in kind"): a price is an integer qty of ONE TM.
+ * v1's trade TM is content id 'lrdst' (content/live/live_tms.json). */
+export interface ApiMarketPrice {
+  tm: string;
+  qty: number;
+}
+
+/** One settled-price engraving from the Dex price history (rolling
+ * last-5 per itemId, newest first). */
+export interface ApiMarketPriceHistoryEntry {
+  qty: number;
+  t: string;
+}
+
+/** One market listing, as browsed/owned. STORED states are
+ * active/settled/withdrawn/expired; 'suspended' is DERIVED at read time
+ * (the seller currently deploys the item -- Law of Possession) and
+ * reverts to 'active' on its own when the deploy ends. A suspended
+ * listing is browsable but unbuyable (buy -> 409 {reason:'suspended'}). */
+export interface ApiMarketListing {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  itemUid: string;
+  itemId: string;
+  /** Display conveniences resolved server-side; the full item def
+   * (icon/shape/effects) still comes from fetchContent()'s items map by
+   * itemId, same as every other content-aware view. */
+  itemName: string;
+  itemNameJa: string | null;
+  rarity: string | null;
+  tags: string[];
+  /** 1-based position in content/live/live_items.json (v1 dex
+   * numbering; null = not in the dex, e.g. pilot-only items). */
+  dexNo: number | null;
+  price: ApiMarketPrice;
+  /** Law 2: burn = max(1, ceil(qty * 0.08)), settlement-only. */
+  burn: number;
+  sellerReceives: number;
+  createdAt: string;
+  /** 7-day shelf life; lazily flips the listing to 'expired'. */
+  expiresAt: string;
+  state: 'active' | 'suspended' | 'settled' | 'withdrawn' | 'expired';
+  suspended: boolean;
+  priceHistory: ApiMarketPriceHistoryEntry[];
+  settledAt?: string;
+  buyerId?: string;
+  withdrawnAt?: string;
+  /** 'owner' = explicit withdrawal; 'item_gone' = auto-withdrawn when
+   * the listed item vanished from the seller's inventory. */
+  withdrawnReason?: 'owner' | 'item_gone';
+  expiredAt?: string;
+}
+
+/** GET /api/market/listings?filter=&q= -- default: every active +
+ * suspended listing market-wide; filter=mine: the caller's own listings
+ * in every state (tag/q ignored); any other filter value matches item
+ * tags[] or rarity case-insensitively; q matches a Dex No. ("61" /
+ * "No.061") or an EN/JA name substring. */
+export interface ApiMarketListingsResponse {
+  ok: true;
+  dtoVersion: MarketDtoVersion;
+  /** The market's one trade TM id (law 1) -- 'lrdst' today. */
+  tm: string;
+  listings: ApiMarketListing[];
+}
+
+/** POST /api/market/listings request body. `price.tm` must equal the
+ * market TM id; qty an integer in [1, 999]. Optional Idempotency-Key
+ * HEADER dedupes retries (replayed:true on the response). */
+export interface ApiMarketCreateListingRequest {
+  itemUid: string;
+  price: ApiMarketPrice;
+}
+
+/** POST /api/market/listings and .../:id/withdraw response. */
+export interface ApiMarketListingResponse {
+  ok: true;
+  dtoVersion: MarketDtoVersion;
+  /** true when an Idempotency-Key replay returned the ORIGINAL outcome
+   * instead of performing a new mutation. */
+  replayed: boolean;
+  listing: ApiMarketListing;
+}
+
+/** The settlement receipt (POST .../:id/buy). */
+export interface ApiMarketBuyReceipt {
+  listingId: string;
+  itemId: string;
+  buyerId: string;
+  price: ApiMarketPrice;
+  burn: number;
+  sellerReceives: number;
+  settledAt: string;
+}
+
+/** POST /api/market/listings/:id/buy response. After a 200 the item is
+ * a claimable row in the buyer's WAREHOUSE (ApiWarehouseItem with
+ * sourceListingId) and the buyer's canvas was debited SERVER-side --
+ * the client MUST re-GET its profile before its next auto-save PUT, or
+ * a stale in-flight auto-save can resurrect the pre-trade balance
+ * (REQ-0041's documented auto-save race class). Failure reasons (409):
+ * already_settled / not_active / expired / self_buy / item_gone /
+ * suspended / insufficient_balance / warehouse_full. */
+export interface ApiMarketBuyResponse {
+  ok: true;
+  dtoVersion: MarketDtoVersion;
+  replayed: boolean;
+  receipt: ApiMarketBuyReceipt;
+  listing: ApiMarketListing;
+}
+
+/** GET /api/market/furnace -- the burn ledger total. All-time until a
+ * season registry exists (REQ-0066 will window it: `since` then carries
+ * the season start instead of null). */
+export interface ApiMarketFurnaceResponse {
+  ok: true;
+  dtoVersion: MarketDtoVersion;
+  furnace: {
+    tm: string;
+    total: number;
+    count: number;
+    since: string | null;
+  };
+}
