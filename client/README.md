@@ -40,6 +40,16 @@ web service (no ingress change needed; `web/` is already served as-is).
   from content i18n (item/SI name/flavor text, served via `content/live/
   *.json`'s `i18n.ja.{name,flavor}` map, read directly by `src/dex/*`) --
   the same single `Locale` toggle (Header.tsx) drives both.
+- `src/theme/mjolnir.css` (REQ-0069) — the MJOLNIR design-token layer
+  (colors/rarity/fonts, text scales, panel/ornament/button/chip/bar
+  primitives) ported from the design mocks (`web/redesign/assets/ui.css`,
+  still the visual source of truth). `index.css` @imports it and aliases
+  the legacy palette names onto the tokens. Static redesign art is
+  referenced from the served `/redesign/assets/` path (not bundled).
+- `src/landing/` (REQ-0069) — the landing/title screen: the empty hash
+  (`#/`) boot route; the nav-rail LOGO returns to it from anywhere. Also
+  `particles.ts`, the perf-gated (and E2E-off via navigator.webdriver)
+  lifecycle-safe port of the mock fx.js ember field.
 - `src/dex/` (REQ-0035, rebuilt REQ-0038) — Item Encyclopedia (図鑑):
   `DexRoot.tsx` (data fetch + view/edit toggle), `Dex.tsx` (catalog, shape-
   mounted cards via `ShapeGrid.tsx`), `DexDetail.tsx` (two-pane detail:
