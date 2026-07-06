@@ -26,6 +26,7 @@ import {
   LIVE_SIS_BACKUP_MARKER_PATH,
   LIVE_SIS_PATH,
   PROFILE_PATH,
+  clearDevWarehouseDebris,
 } from './global-setup';
 
 function sha256(path: string): string {
@@ -125,6 +126,17 @@ export default async function globalTeardown(): Promise<void> {
   }
   try {
     cleanupGuestAuthFiles();
+  } catch (e) {
+    errors.push(e instanceof Error ? e : new Error(String(e)));
+  }
+  // fix: e2e pg teardown -- delete every warehouse row the run just
+  // left on the dev player (in pg mode those rows live in Postgres, so
+  // the file restores above never covered them; ~55-60 per full run
+  // against the 200-row cap). Same errors-collect contract as the
+  // restores: a failed cleanup is LOUD, never silently skipped. See
+  // clearDevWarehouseDebris' doc comment in global-setup.ts.
+  try {
+    await clearDevWarehouseDebris('global-teardown');
   } catch (e) {
     errors.push(e instanceof Error ? e : new Error(String(e)));
   }

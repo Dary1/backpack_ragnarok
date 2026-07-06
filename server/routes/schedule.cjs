@@ -21,6 +21,7 @@ const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/ba
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
 const WAREHOUSE_DEV_BACKDATE_CLAIM_RE = /^\/api\/warehouse\/dev\/backdate-claim$/; // REQ-0041 E2E hook, dev-only
+const WAREHOUSE_DEV_CLEAR_DEBRIS_RE = /^\/api\/warehouse\/dev\/clear-debris$/; // fix: e2e pg teardown -- E2E debris-cleanup hook, dev-only
 const WORKSHOP_GACHA_RE = /^\/api\/workshop\/gacha$/; // REQ-0042
 
 function tryScheduleRoutes(req, res, url, p) {
@@ -36,6 +37,7 @@ function tryScheduleRoutes(req, res, url, p) {
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) || p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE) ||
+    p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE) ||
     p.match(WORKSHOP_GACHA_RE);
   if (scheduleMatch) {
     const token = getAuthToken(req);
@@ -329,6 +331,38 @@ function tryScheduleRoutes(req, res, url, p) {
           sendJSON(res, 200, { ok: true, itemUid: item.itemUid, claimedAt: item.claimedAt });
         } catch (e) { sendScheduleError(e); }
       });
+      return;
+    }
+
+    // ---- POST /api/warehouse/dev/clear-debris (fix: e2e pg teardown --
+    // E2E debris-cleanup hook, dev-only) ----
+    // No body. Bulk-deletes EVERY warehouse row belonging to the CALLER
+    // -- necessarily the dev_mode fallback player, the only caller that
+    // can reach this -- and returns {ok:true, deleted:n}. Exists because
+    // the Playwright suite's global setup/teardown safety net
+    // (client/e2e/global-setup.ts) backs up + restores FILES only: with
+    // the live API in STORAGE_BACKEND=pg mode, the rows the suite
+    // grants/claims for the dev player survived every run (~55-60 each)
+    // until the 200-row cap turned POST /api/admin/warehouse/grant into
+    // 409 warehouse-full cascades. Goes through schedule.devClearWarehouse
+    // -> storage.clearWarehouseForPlayer (the files/pg chokepoint), so
+    // both backends clean identically. GATED to the dev_mode no-token
+    // fallback caller ONLY (callerIsDevFallback), exactly like
+    // dev/backdate and dev/backdate-claim above -- a real guest token,
+    // even a valid one, gets 403; and the target is always the RESOLVED
+    // caller's own warehouse (this route's shape carries no client-
+    // supplied playerId at all), so no real player's rows are reachable
+    // through it.
+    if (p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!callerIsDevFallback) {
+        sendJSON(res, 403, { ok: false, error: 'forbidden: dev/clear-debris is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+        return;
+      }
+      try {
+        const deleted = schedule.devClearWarehouse(callerId);
+        sendJSON(res, 200, { ok: true, deleted });
+      } catch (e) { sendScheduleError(e); }
       return;
     }
 
