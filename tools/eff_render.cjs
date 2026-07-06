@@ -87,9 +87,12 @@ function triggerPrefixEN(trig) {
     case 'every_secs': return 'Every ' + fmtSecs(trig.s, 'en') + 's: ';
     case 'battle_start': return 'Battle start: ';
     case 'passive': return '';
-    case 'host_on_hit': return 'On host hit: ';
-    case 'on_hit': return 'On hit: ';
-    case 'on_bp_damaged': return 'When this BP is damaged: ';
+    case 'OnHit': return 'On hit: ';
+    case 'OnPOHit': return 'On host PO hit: ';
+    case 'OnBPHierarchyHit': return 'When this BP lands a hit: ';
+    case 'OnUnitHit': return 'When this unit lands a hit: ';
+    case 'OnBPBeenHit': return 'When this BP is damaged: ';
+    case 'OnUnitBeenHit': return 'When this unit is damaged: ';
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
     default: return trig.t + ': ';
   }
@@ -173,9 +176,12 @@ function triggerPrefixJA(trig) {
     case 'every_secs': return fmtSecs(trig.s, 'ja') + '秒ごとに: ';
     case 'battle_start': return '戦闘開始時: ';
     case 'passive': return '';
-    case 'host_on_hit': return '装備先が命中した時: ';
-    case 'on_hit': return '命中時: ';
-    case 'on_bp_damaged': return 'このBPが被弾した時: ';
+    case 'OnHit': return '命中時: ';
+    case 'OnPOHit': return '装備先POが命中した時: ';
+    case 'OnBPHierarchyHit': return 'このBPが命中させた時: ';
+    case 'OnUnitHit': return '所属ユニットが命中させた時: ';
+    case 'OnBPBeenHit': return 'このBPが被弾した時: ';
+    case 'OnUnitBeenHit': return '所属ユニットが被弾した時: ';
     case 'adjacent': return '隣接する' + trig.tag + ': ';
     default: return trig.t + ': ';
   }
