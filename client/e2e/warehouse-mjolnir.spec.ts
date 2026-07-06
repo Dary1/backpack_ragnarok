@@ -91,6 +91,16 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
   test('a granted row renders as a rarity-framed shelf card (thumb, TTL ring, NEW badge, theme claim button) and claiming it on the new chrome moves it to inventory', async ({ page }) => {
     const devProfileExisted = existsSync(DEV_PROFILE_PATH);
     const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
+    // pg-aware restore: the live API runs STORAGE_BACKEND=pg, where a
+    // dev.json FILE restore is a silent no-op -- re-PUT the original
+    // canvas through the API instead (the file backup above still
+    // covers a files-mode box). Leaving the RAW fixture behind is not
+    // an option: its preset-store BPs are references the next booted
+    // client repairs into inventory pages on its first auto-save, which
+    // poisons workshop.spec's own before/after BP-diff assertions
+    // (observed: the roll test counting 10 phantom new BPs).
+    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null;
     try {
       await page.request.put('/api/profile/dev/canvas', { data: fixture });
       const grantUid = await grantHiltToDev(page);
@@ -139,6 +149,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       expect((await whRes.json()).items.some((i: any) => i.itemUid === grantUid)).toBe(false);
       await expect(row).toHaveCount(0, { timeout: 10000 });
     } finally {
+      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
       if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
@@ -147,6 +158,8 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
   test('claim-all (forge CTA) walks every row and empties the shelf into the inventory', async ({ page }) => {
     const devProfileExisted = existsSync(DEV_PROFILE_PATH);
     const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
+    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null; // pg-aware restore, see test 1
     try {
       await page.request.put('/api/profile/dev/canvas', { data: fixture });
       const uidA = await grantHiltToDev(page);
@@ -181,6 +194,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidA}"]`)).toHaveCount(0, { timeout: 10000 });
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidB}"]`)).toHaveCount(0, { timeout: 10000 });
     } finally {
+      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
       if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
@@ -189,19 +203,17 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
 
 test.describe('REQ-0072: staged capacity + decay presentation states (mocked warehouse payload)', () => {
   // A plain (token-less) boot resolves to the dev player, whose profile
-  // must exist for the boot to reach the 'live' badge -- PUT the same
-  // fixture the real-backend describe uses, and restore around each
-  // test (nothing here mutates it; the PUT itself is the intrusion).
-  let devProfileBackup: string | null = null;
-  let devProfileExisted = false;
+  // must exist for the boot to reach the 'live' badge. These tests
+  // never mutate board state (the warehouse payload is route-mocked and
+  // nothing is claimed), so the LEAST-intrusive setup is to leave the
+  // dev profile completely alone when one exists -- writing the raw
+  // schedule fixture here and "restoring" it via the dev.json FILE is a
+  // no-op under the pg backend and leaves orphaned preset references
+  // behind for the NEXT spec to trip over (see the grant describe's
+  // pg-aware-restore comment). Only a profile-less box gets the fixture.
   test.beforeEach(async ({ page }) => {
-    devProfileExisted = existsSync(DEV_PROFILE_PATH);
-    devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
-    await page.request.put('/api/profile/dev/canvas', { data: fixture });
-  });
-  test.afterEach(async () => {
-    if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
-    else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
+    const existing = await page.request.get('/api/profile/dev/canvas');
+    if (!existing.ok()) await page.request.put('/api/profile/dev/canvas', { data: fixture });
   });
 
   // Fabricated ApiWarehouseItem rows with REAL content ids so the
