@@ -27,6 +27,7 @@ import {
   LIVE_SIS_PATH,
   PROFILE_PATH,
   clearDevWarehouseDebris,
+  clearDevEinherjarRecords,
 } from './global-setup';
 
 function sha256(path: string): string {
@@ -137,6 +138,13 @@ export default async function globalTeardown(): Promise<void> {
   // clearDevWarehouseDebris' doc comment in global-setup.ts.
   try {
     await clearDevWarehouseDebris('global-teardown');
+  } catch (e) {
+    errors.push(e instanceof Error ? e : new Error(String(e)));
+  }
+  // REQ-0066: leave the dev player's hall exactly as empty as global-setup
+  // found it -- see clearDevEinherjarRecords' own doc comment.
+  try {
+    await clearDevEinherjarRecords('global-teardown');
   } catch (e) {
     errors.push(e instanceof Error ? e : new Error(String(e)));
   }

@@ -117,6 +117,38 @@ export async function clearDevWarehouseDebris(phase: string): Promise<void> {
   }
 }
 
+// REQ-0066 addition: einherjar (Hall of Ragnarok devotion) records are
+// immutable/permanent by design once a rite completes (server/services/
+// ragnarok.cjs's S3 doc block) -- there is no gameplay path that ever
+// clears one. Without this hook, ragnarok.spec.ts's own FULL RITE test
+// permanently devotes the dev player, and every LATER run's "fresh
+// player sees the empty hall" assertions (HALL STRIP, EMPTY/FIRST-
+// SEASON) fail forever from that point on -- the same debris-
+// accumulation class clearDevWarehouseDebris already handles for
+// warehouse rows. Same call convention: direct to the API service port
+// (8802), no auth header (dev_mode NO-token fallback only).
+export async function clearDevEinherjarRecords(phase: string): Promise<void> {
+  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  try {
+    const res = await ctx.post('/api/ragnarok/einherjar/dev/clear');
+    const bodyText = await res.text();
+    if (res.status() === 404) {
+      // The RUNNING API predates this hook (deployed code lags the repo
+      // until backpack-api.service is restarted) -- warn loudly rather
+      // than brick the whole run over a cleanup step.
+      console.warn(`[${phase}] POST /api/ragnarok/einherjar/dev/clear -> 404 (running API predates the hook?) -- dev einherjar records NOT cleared`);
+      return;
+    }
+    if (!res.ok()) {
+      throw new Error(`dev einherjar cleanup failed: POST ${API_ORIGIN}/api/ragnarok/einherjar/dev/clear -> ${res.status()} ${bodyText}`);
+    }
+    const { deleted } = JSON.parse(bodyText) as { deleted: number };
+    console.log(`[${phase}] cleared dev-player einherjar records (POST /api/ragnarok/einherjar/dev/clear deleted=${deleted})`);
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 function sha256(path: string): string {
   if (!existsSync(path)) return '(missing)';
   return execFileSync('sha256sum', [path]).toString().trim().split(/\s+/)[0];
@@ -153,4 +185,7 @@ export default async function globalSetup(): Promise<void> {
   // cap headroom no matter what a previous (crashed, or pre-hook) run
   // left behind. See clearDevWarehouseDebris' own doc comment above.
   await clearDevWarehouseDebris('global-setup');
+  // REQ-0066: start the run with a guaranteed-empty dev-player hall. See
+  // clearDevEinherjarRecords' own doc comment above.
+  await clearDevEinherjarRecords('global-setup');
 }

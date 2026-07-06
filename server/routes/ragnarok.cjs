@@ -33,6 +33,8 @@ const ragnarok = require('../ragnarok.cjs');
 
 const RAGNAROK_SEASON_RE = /^\/api\/ragnarok\/season$/;
 const RAGNAROK_ORDER_RE = /^\/api\/ragnarok\/order$/;
+const RAGNAROK_ORDER_DEV_FORCE_REBUILD_RE = /^\/api\/ragnarok\/order\/dev\/force-rebuild$/;
+const RAGNAROK_EINHERJAR_DEV_CLEAR_RE = /^\/api\/ragnarok\/einherjar\/dev\/clear$/;
 const RAGNAROK_EINHERJAR_RE = /^\/api\/ragnarok\/einherjar$/;
 const RAGNAROK_DEVOTION_PREVIEW_RE = /^\/api\/ragnarok\/devotion\/preview\/([^/]+)$/;
 const RAGNAROK_DEVOTION_RE = /^\/api\/ragnarok\/devotion\/([^/]+)$/;
@@ -49,7 +51,9 @@ function parsePresetIndex(seg) {
 
 function tryRagnarokRoutes(req, res, url, p) {
   const matched = p.match(RAGNAROK_SEASON_RE) || p.match(RAGNAROK_ORDER_RE)
-    || p.match(RAGNAROK_EINHERJAR_RE) || p.match(RAGNAROK_DEVOTION_PREVIEW_RE)
+    || p.match(RAGNAROK_ORDER_DEV_FORCE_REBUILD_RE)
+    || p.match(RAGNAROK_EINHERJAR_RE) || p.match(RAGNAROK_EINHERJAR_DEV_CLEAR_RE)
+    || p.match(RAGNAROK_DEVOTION_PREVIEW_RE)
     || p.match(RAGNAROK_DEVOTION_RE);
   if (!matched) return false;
 
@@ -60,6 +64,12 @@ function tryRagnarokRoutes(req, res, url, p) {
     return;
   }
   const callerId = resolved.player.playerId;
+  // REQ-0066 E2E hook gate: true only when this request resolved via the
+  // dev_mode NO-TOKEN fallback -- exact same computation and rationale
+  // as routes/schedule.cjs's callerIsDevFallback (see that file's
+  // comment); used ONLY to gate /order/dev/force-rebuild below.
+  const devUserForGate = admin.readDevUser();
+  const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
   // Optional Idempotency-Key (node:http lowercases header names) --
   // same minimal pattern routes/market.cjs introduced.
   const rawIdem = req.headers['idempotency-key'];
@@ -109,6 +119,28 @@ function tryRagnarokRoutes(req, res, url, p) {
     return;
   }
 
+  // ---- POST /api/ragnarok/order/dev/force-rebuild (REQ-0066 E2E
+  // time-control hook, mirrors schedule.cjs's dev/backdate exactly) ----
+  // Forces getOrderDoc's lazy daily-dawn cache to rebuild NOW instead of
+  // waiting for the next dawn boundary -- see services/ragnarok.cjs's
+  // devForceRebuildOrder() doc comment. GATED to the dev_mode no-token
+  // fallback caller ONLY (callerIsDevFallback, computed above); a real
+  // guest token gets 403, never 200. Test-control seam, not a gameplay
+  // feature -- it never touches any einherjar record, only the order
+  // cache's derived standings.
+  if (p.match(RAGNAROK_ORDER_DEV_FORCE_REBUILD_RE)) {
+    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!callerIsDevFallback) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: order/dev/force-rebuild is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+      return;
+    }
+    try {
+      const doc = ragnarok.devForceRebuildOrder();
+      sendJSON(res, 200, { ok: true, rebuiltAt: doc.rebuiltAt, total: doc.entries.length });
+    } catch (e) { sendRagnarokError(e); }
+    return;
+  }
+
   // ---- GET /api/ragnarok/einherjar?player= ----
   if (p.match(RAGNAROK_EINHERJAR_RE)) {
     if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
@@ -128,6 +160,30 @@ function tryRagnarokRoutes(req, res, url, p) {
         playerId,
         einherjar: ragnarok.listEinherjar(playerId),
       });
+    } catch (e) { sendRagnarokError(e); }
+    return;
+  }
+
+  // ---- POST /api/ragnarok/einherjar/dev/clear (E2E hook, mirrors
+  // /order/dev/force-rebuild + schedule.cjs's dev/backdate exactly) ----
+  // Permanently deletes every einherjar record belonging to the CALLER
+  // (always the dev fallback player here, per the gate below) -- see
+  // services/ragnarok.cjs's devClearEinherjarRecords() doc comment: hall
+  // records are immutable/permanent by design, so without this hook a
+  // dev-player devotion in one E2E run poisons "fresh player, empty hall"
+  // assertions in every later run, forever. GATED to the dev_mode
+  // no-token fallback caller ONLY (callerIsDevFallback, computed above);
+  // a real guest token gets 403, never 200. Test-control seam, not a
+  // gameplay feature.
+  if (p.match(RAGNAROK_EINHERJAR_DEV_CLEAR_RE)) {
+    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!callerIsDevFallback) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: einherjar/dev/clear is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+      return;
+    }
+    try {
+      const deleted = ragnarok.devClearEinherjarRecords(callerId);
+      sendJSON(res, 200, { ok: true, deleted });
     } catch (e) { sendRagnarokError(e); }
     return;
   }

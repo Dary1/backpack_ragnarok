@@ -139,12 +139,31 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
    * fresh canvas into the store FIRST (defusing the auto-save race), then
    * refreshes the order + hall (a new einherjar exists; the me-row's
    * einherjarCount moved -- though the ORDER standings themselves only
-   * rebuild at the next dawn, the hall list is live). Clears the stale
-   * selection/preview (the devoted preset slot is gone). */
+   * rebuild at the next dawn, the hall list is live).
+   *
+   * Deliberately does NOT clear selectedIndex/preview here (fixed
+   * post-deploy E2E, 2026-07-07 -- this WAS here, "Clears the stale
+   * selection/preview (the devoted preset slot is gone)"): this function
+   * runs INSIDE DevotionSection.confirm(), awaited BEFORE it calls
+   * setPhase('done'). DevotionSection has its own effect that resets
+   * `phase` back to 'idle' whenever `selectedIndex` changes (its "picking
+   * a new candidate starts fresh" rule) -- clearing the selection HERE
+   * raced that effect against confirm()'s own setPhase('done'), and
+   * whichever state update actually applied last won. When the reset
+   * effect won, the engraved-modal never rendered at all: FULL RITE's own
+   * e2e test caught this exact failure mode -- the hall list had already
+   * updated with the new einherjar (proving the rite + this refresh both
+   * genuinely succeeded), but the modal never appeared and the picker
+   * silently fell back to its unselected state. closeDone()
+   * (DevotionSection.tsx) already clears the selection itself, at the
+   * CORRECT time -- once the user dismisses the modal -- via
+   * onSelect(null); the selectedIndex-watching effect above
+   * (`if (selectedIndex == null) { setPreview(null); ... }`) then clears
+   * preview too, so nothing is lost by not duplicating either clear
+   * here. */
   const refreshAfterServerMutation = useCallback(async () => {
     await loadGame(); // <-- fresh canvas GET -> store field replacement (defuses the auto-save race)
     await Promise.all([loadOrder(query).catch(() => {}), loadEinherjar().catch(() => {})]);
-    if (aliveRef.current) { setSelectedIndex(null); setPreview(null); }
   }, [loadOrder, loadEinherjar, query]);
 
   // ---- HUD chip (header) values ----

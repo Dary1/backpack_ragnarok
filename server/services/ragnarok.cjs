@@ -329,6 +329,26 @@ function getOrderDoc(nowMs) {
   return { doc, rebuilt: true };
 }
 
+// devForceRebuildOrder (REQ-0066 E2E hook, mirrors services/runs.cjs's
+// devBackdateActiveRun / devBackdateClaimedWarehouseItem test-control-seam
+// shape exactly): forces an UNCONDITIONAL rebuildOrder() + cache write,
+// bypassing getOrderDoc's lastDawnMs gate entirely. Exists because S2's
+// own lazy daily-dawn rebuild (「更新は毎暁」) means a rite completed
+// *after* today's first order read is invisible to orderView's `q`
+// search (and top/around) until the NEXT dawn boundary -- by design (see
+// getOrderDoc's doc comment), but that makes "devote, then immediately
+// search for myself" impossible to assert in the E2E suite without
+// waiting out a real ~24h boundary. Gated to the dev_mode fallback
+// caller only by the route handler (routes/ragnarok.cjs), same as
+// dev/backdate; never touches any einherjar record, only the order
+// cache's own derived standings.
+function devForceRebuildOrder(nowMs) {
+  const now = nowMs != null ? nowMs : Date.now();
+  const doc = rebuildOrder(now);
+  storage.writeRagnarokOrderCache(doc);
+  return doc;
+}
+
 // unrankedMeEntry: the synthetic row for a caller with no engraving yet
 // (rank null -- the client renders "unranked"). Degenerate-empty
 // support: an empty order still answers around=me with this row.
@@ -508,6 +528,29 @@ function listEinherjar(playerId, nowMs) {
   }
   out.sort((a, b) => (a.devotedAt < b.devotedAt ? 1 : a.devotedAt > b.devotedAt ? -1 : 0));
   return out.map(einherjarDto);
+}
+
+// devClearEinherjarRecords (E2E hook, mirrors services/runs.cjs's
+// warehouse debris-clear hook shape): permanently deletes EVERY einherjar
+// record belonging to `playerId`. Exists because einherjar records are
+// immutable/permanent by design once rite.state === 'done' (this
+// module's own S3 doc block) -- there is no gameplay path that ever
+// clears one, so a dev-player devotion in one E2E run (e.g. FULL RITE)
+// otherwise poisons every later run's "fresh player sees the empty hall"
+// tests (HALL STRIP, EMPTY/FIRST-SEASON) forever, the same debris-
+// accumulation class server/README.md's warehouse-cap writeup already
+// describes for warehouse rows. Gated to the dev_mode fallback caller
+// only by the route handler (routes/ragnarok.cjs); never touches any
+// OTHER player's records (listEinherjarRecords() is filtered by
+// playerId here, same as listEinherjar()).
+function devClearEinherjarRecords(playerId) {
+  let deleted = 0;
+  for (const raw of storage.listEinherjarRecords()) {
+    if (raw.playerId !== playerId) continue;
+    storage.deleteEinherjarRecord(raw.id);
+    deleted += 1;
+  }
+  return deleted;
 }
 
 // ---------------------------------------------------------------------
@@ -948,10 +991,12 @@ module.exports = {
   rebuildOrder,
   getOrderDoc,
   orderView,
+  devForceRebuildOrder,
   // S3 einherjar records
   listEinherjar,
   einherjarDto,
   normalizeRiteRecord,
+  devClearEinherjarRecords,
   // S4 the devotion rite
   devotionBlastRadius,
   stripDestroyedUids,

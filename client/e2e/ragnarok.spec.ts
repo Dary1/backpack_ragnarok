@@ -214,6 +214,15 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
     const devote = await page.request.post('/api/ragnarok/devotion/1', { headers: { 'X-Auth-Token': seller.token } });
     expect(devote.status()).toBe(200);
 
+    // S2's Eternal Order is a lazy daily-dawn cache (services/ragnarok.cjs's
+    // getOrderDoc): a rite completed after today's first order read is
+    // invisible to `q` search until the NEXT dawn boundary, by design. Force
+    // an immediate rebuild via the dev-only hook (no X-Auth-Token -- must
+    // resolve via the dev_mode fallback, same convention as schedule.spec.ts's
+    // apiBackdate) so this freshly-devoted player is actually findable now.
+    const rebuild = await page.request.post('/api/ragnarok/order/dev/force-rebuild');
+    expect(rebuild.ok()).toBeTruthy();
+
     await gotoRagnarok(page);
 
     // Search by a substring of the player's name.
@@ -256,7 +265,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
       await cand.click();
       await expect(cand).toHaveClass(/is-locked/, { timeout: 10000 });
       await expect(cand).toHaveAttribute('data-eligible', 'false');
-      await expect(page.locator('[data-testid="ragnarok-candidate-reason-1"]')).toContainText(/deployed|従軍/);
+      await expect(page.locator('[data-testid="ragnarok-candidate-reason-1"]')).toContainText(/deployed|従軍/i);
       // The rite panel shows the ineligible reason, and NO vow button.
       await expect(page.locator('[data-testid="ragnarok-devotion-ineligible"]')).toBeVisible();
       await expect(page.locator('[data-testid="ragnarok-devotion-ineligible"]')).toHaveAttribute('data-reasons', /deployed/);
@@ -385,7 +394,12 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   });
 
   test('HALL STRIP: after a devotion, the einherjar card renders ("永劫に在り"); a fresh player sees the empty hall', async ({ page }) => {
-    // Fresh dev player -> empty hall state.
+    // Fresh dev player -> empty hall state. Einherjar records outlive a
+    // canvas reset (S3: immutable/permanent once a rite completes) -- an
+    // earlier test in this same file/run (FULL RITE) may have already
+    // devoted dev, so explicitly clear the hall too, not just the canvas.
+    const clear = await page.request.post('/api/ragnarok/einherjar/dev/clear');
+    expect(clear.ok()).toBeTruthy();
     await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
     await gotoRagnarok(page);
     await expect(page.locator('[data-testid="ragnarok-hall-empty"]')).toBeVisible();
@@ -406,6 +420,10 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   });
 
   test('EMPTY / FIRST-SEASON: a brand-new player sees unranked me-row, empty hall, and a no-eligible-unit devotion section', async ({ page }) => {
+    // See HALL STRIP's own comment just above: einherjar records outlive
+    // a canvas reset, so clear the hall explicitly too.
+    const clear = await page.request.post('/api/ragnarok/einherjar/dev/clear');
+    expect(clear.ok()).toBeTruthy();
     await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
     await gotoRagnarok(page);
 
