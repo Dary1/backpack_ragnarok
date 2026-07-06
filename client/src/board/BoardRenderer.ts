@@ -59,64 +59,15 @@ import {
   startCarry,
   subscribeCarry,
   updateCarry,
-  type BoardCommitApi,
   type BoardId,
   type CarryState,
   type DropTarget,
 } from './drag';
 import type { BoardOps } from './boardOps';
+import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_LINKER_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, socketScreenPos } from './geom';
+import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
+import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
-import { fitBoxInBounds } from '../render/itemCard';
-
-const SOCK_GLYPH: Record<string, string> = { gem: '◆', edge: '▷', coat: '●', bond: '▬' };
-// Nearest-socket search radius in board-canvas pixels — CELL is 80 in both
-// the mock and this renderer, so the mock's absolute-pixel threshold (26px)
-// ports directly with no rescaling.
-const SOCKET_SEARCH_RADIUS = 26;
-// Plain-click vs drag threshold, pixels — same as the mock's
-// `Math.hypot(dx,dy) < 5`.
-const DRAG_ARM_THRESHOLD = 5;
-// Double-click detection window, ms — Pixi's federated events do not expose
-// a native multi-click/dblclick concept the way DOM elements do, so this is
-// tracked manually: a second pointerdown on the SAME uid within this window
-// (with the first pointerdown never having armed a drag) is treated as a
-// double-click-rotate, mirroring the mock's native SVG `dblclick` listener
-// behaviorally (not mechanically).
-const DBLCLICK_WINDOW_MS = 300;
-// Reject-flash duration, ms — matches the mock's flash()'s `setTimeout(...,
-// 350)`.
-const FLASH_MS = 350;
-// REQ-0041: warehouse-claim placement pulse ("ピコンピコン") -- a
-// SUCCESS-colored (green, not reject-red) pulse on the cell(s) an
-// auto-claimed item just landed on, distinct from flash()'s reject
-// feedback. ~2s total per the REQ's "pulse for ~2 seconds" spec,
-// composed of a few discrete on/off blinks (a single fade doesn't read
-// as "pikon-pikon" -- a repeated blink does).
-const CLAIM_PULSE_TOTAL_MS = 2000;
-const CLAIM_PULSE_BLINK_MS = 330; // ~3 full on/off cycles across the 2s total
-// Inventory linker dormancy visual (REQ-0030): dimmed core alpha, vs the
-// canvas core's alpha (0.5 stroke / 0.55 fill, see render()).
-const INV_LINKER_ALPHA = 0.22;
-
-const CELL = 80;
-const PAD = 38;
-const DIR_ANGLES: Record<number, number> = {
-  0: -90,
-  1: -45,
-  2: 0,
-  3: 45,
-  4: 90,
-  5: 135,
-  6: 180,
-  7: -135,
-};
-
-function cx(c: number): number {
-  return PAD + (c - 1) * CELL + CELL / 2;
-}
-function cy(r: number): number {
-  return PAD + (r - 1) * CELL + CELL / 2;
-}
 
 export interface BoardDeps {
   engine: EngineInstance;
@@ -136,25 +87,17 @@ export interface BoardDeps {
  * (0..3, 90° CW each). Kept as a free function (not engine logic -- this is
  * pure display-geometry, same category as cx()/cy()/DIR_ANGLES above).
  */
-function mapPt(k: number, x: number, y: number, W0: number, H0: number): [number, number] {
-  const kk = k % 4;
-  if (kk === 0) return [x, y];
-  if (kk === 1) return [H0 - y, x];
-  if (kk === 2) return [W0 - x, H0 - y];
-  return [y, W0 - x];
-}
-
 export class BoardRenderer {
-  private app: Application;
-  private root = new Container();
-  private gBase = new Container();
-  private gBeams = new Container();
-  private gItems = new Container();
-  private gSock = new Container();
-  private gLinkers = new Container();
-  private gChain = new Container();
-  private gTarget = new Container();
-  private gCarry = new Container();
+  app: Application;
+  root = new Container();
+  gBase = new Container();
+  gBeams = new Container();
+  gItems = new Container();
+  gSock = new Container();
+  gLinkers = new Container();
+  gChain = new Container();
+  gTarget = new Container();
+  gCarry = new Container();
   // REQ-0042: BP move-handle badge layer -- MUST render above gItems
   // (PO art), which is the whole point of the handle (grab a BP even
   // when every one of its cells is covered by placed POs, which leaves
@@ -162,17 +105,17 @@ export class BoardRenderer {
   // above to use). Positioned right after gItems/before gSock so the
   // badge sits below socket/linker glyphs but still clearly above PO
   // art -- see the constructor's addChild order below.
-  private gBadges = new Container();
-  private deps: BoardDeps;
-  private disposed = false;
-  private lastState: GameState | null = null;
-  private unsubscribeCarry: (() => void) | null = null;
-  private unregisterBoard: (() => void) | null = null;
+  gBadges = new Container();
+  deps: BoardDeps;
+  disposed = false;
+  lastState: GameState | null = null;
+  unsubscribeCarry: (() => void) | null = null;
+  unregisterBoard: (() => void) | null = null;
   // Manual double-click bookkeeping (see DBLCLICK_WINDOW_MS above): last
   // pointerdown timestamp per uid, cleared once consumed or expired.
-  private lastPointerDown = new Map<string, number>();
-  private lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
-  private flashTimers = new Set<ReturnType<typeof setTimeout>>();
+  lastPointerDown = new Map<string, number>();
+  lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
+  flashTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -280,7 +223,7 @@ export class BoardRenderer {
     if (this.disposed) return;
     this.unregisterBoard?.();
     this.deps = { ...this.deps, ops };
-    this.unregisterBoard = registerBoard(this.boardId, this.makeCommitApi());
+    this.unregisterBoard = registerBoard(this.boardId, makeCommitApi(this));
     // A carry armed against the previous page's ops (e.g. mid-drag when
     // the page changed -- not expected via the Tabs UI per its own
     // module comment, but defensive regardless) is no longer meaningful
@@ -524,7 +467,7 @@ export class BoardRenderer {
           line.moveTo(x0 + px, y0 + py).lineTo(x1t + px, y1t + py);
           line.stroke({ color: '#59d6d6', width: 3, alpha: 0.95 });
           this.gBeams.addChild(line);
-          this.gBeams.addChild(this.arrowHead(x1t + px, y1t + py, Math.atan2(uy, ux), '#59d6d6'));
+          this.gBeams.addChild(arrowHead(this, x1t + px, y1t + py, Math.atan2(uy, ux), '#59d6d6'));
         } else {
           const dv = engine.DIRS[bm.dir];
           const vlen = Math.hypot(dv[1], dv[0]) || 1;
@@ -621,9 +564,9 @@ export class BoardRenderer {
         // x/y insets per def.stretch branch -- see fitSpriteToBox doc).
         // Box tightness presets (stretch vs non-stretch) preserved.
         if (def.stretch) {
-          BoardRenderer.fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
+          fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
         } else {
-          BoardRenderer.fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
+          fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
         }
         const inner = new Container();
         inner.eventMode = 'none'; // decorative art, see constructor note
@@ -699,7 +642,7 @@ export class BoardRenderer {
       const bladeTexture = bladeDef && textures.get(bladeDef.icon);
       if (bladeTexture) {
         const sprite = new Sprite(bladeTexture);
-        BoardRenderer.fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8);
+        fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
@@ -708,7 +651,7 @@ export class BoardRenderer {
       const hiltTexture = hiltDef && textures.get(hiltDef.icon);
       if (hiltTexture) {
         const sprite = new Sprite(hiltTexture);
-        BoardRenderer.fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8);
+        fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
@@ -821,7 +764,7 @@ export class BoardRenderer {
     // canvas board (pageSockets() never emits one, per engine.js design).
     for (const s of ops.sockets(state)) {
       if (carriedUids.has(s.host) || (s.siUid && carriedUids.has(s.siUid))) continue;
-      const pos = this.socketScreenPos(state, s, asm);
+      const pos = socketScreenPos(this, state, s, asm);
       if (!pos) continue;
       const { x, y } = pos;
       if (s.siUid) {
@@ -993,121 +936,7 @@ export class BoardRenderer {
    * no assembly currently exists, or the hosting PO isn't in THIS board's
    * container).
    */
-  private socketScreenPos(state: GameState, s: Socket, asm: Assembly | null): { x: number; y: number } | null {
-    const { engine, ops } = this.deps;
-    if (s.host === 'bond') {
-      if (!asm) return null;
-      return { x: cx(asm.hilt.cell![1]), y: PAD + (asm.hilt.cell![0] - 1) * CELL };
-    }
-    const container = ops.container(state);
-    const p = container.pos.find((z) => z.uid === s.host);
-    if (!p || p.loc !== 'grid' || !p.cell) return null;
-    const box = { x: PAD + (p.cell[1] - 1) * CELL, y: PAD + (p.cell[0] - 1) * CELL };
-    const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
-    const W0 = cw * CELL;
-    const H0 = ch * CELL;
-    const [mx, my] = mapPt(((p.rot % 4) + 4) % 4, (s.ax ?? 0) * W0, (s.ay ?? 0) * H0, W0, H0);
-    return { x: box.x + mx, y: box.y + my };
-  }
-
-  private arrowHead(x: number, y: number, angle: number, color: string): Graphics {
-    const g = new Graphics();
-    const size = 8;
-    g.moveTo(x, y);
-    g.lineTo(x - size * Math.cos(angle - Math.PI / 7), y - size * Math.sin(angle - Math.PI / 7));
-    g.lineTo(x - size * Math.cos(angle + Math.PI / 7), y - size * Math.sin(angle + Math.PI / 7));
-    g.closePath();
-    g.fill({ color });
-    return g;
-  }
-
-  // -----------------------------------------------------------------------
-  // Interaction machinery — REQ-0027 T0.2, extended REQ-0030 Phase 2 for
-  // cross-board drags. See drag.ts's module comment for the overall
-  // design: each mounted BoardRenderer registers a BoardCommitApi under
-  // its own BoardId; pointerdown/pointermove stay per-instance (Pixi-
-  // scoped: only the board currently under the pointer fires them, which
-  // is exactly the board whose legality/ghost should be shown); pointerup
-  // is handled by ONE centralized window listener (drag.ts's
-  // ensurePointerUpWired) that looks up the drop's target board and
-  // delegates the commit to it -- never duplicated per-instance, so a
-  // drag ending on board B while it started on board A is never
-  // double-committed by two independent listeners.
-  // -----------------------------------------------------------------------
-
-  /** Board-canvas-local pixel coords -> grid cell, matching the mock's
-   * `cellAt(pt)`. */
-  private cellAt(x: number, y: number): Cell {
-    return [Math.floor((y - PAD) / CELL) + 1, Math.floor((x - PAD) / CELL) + 1];
-  }
-
-  /** Converts a raw client (viewport) coordinate to board-canvas-local
-   * pixel space, accounting for CSS scaling of the canvas element -- same
-   * purpose as the mock's `svgPt(e)` (which scales by `W/rect.width`). */
-  private clientToLocal(clientX: number, clientY: number): { x: number; y: number } {
-    const rect = this.app.canvas.getBoundingClientRect();
-    const scaleX = this.app.canvas.width / (rect.width || 1) / (this.app.renderer.resolution || 1);
-    const scaleY = this.app.canvas.height / (rect.height || 1) / (this.app.renderer.resolution || 1);
-    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
-  }
-
-  /** REQ-0028 (aspect law): sizes+positions a Sprite to uniformly contain-fit
-   * its texture's OWN native aspect ratio inside a (bx, by, bw, bh) box,
-   * centered -- never stretching width/height independently. Replaces the
-   * old pattern (three call sites: placed-PO art, ghost-PO art, merged
-   * Longsword blade/hilt art) that set sprite.width/sprite.height from two
-   * DIFFERENT box-fraction formulas per axis (e.g. `W0*0.8` for width vs
-   * `H0-8` for height), which would visibly distort any icon whose native
-   * texture aspect didn't exactly match the box aspect. With v8's
-   * exact-aspect viewBoxes for all symbols, contain-fit and the old
-   * stretch-fill produce IDENTICAL pixels for placed art (box aspect ==
-   * texture aspect already) -- this is a correctness/safety fix, not a
-   * visual change, for any icon actually shipped today. */
-  private static fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: number, bh: number): void {
-    // REQ-0038 R2: delegates to the shared, framework-agnostic box-fit
-    // function (client/src/render/itemCard.ts's fitBoxInBounds) instead of
-    // duplicating the scale/center formula here -- this is now the ONLY
-    // place BoardRenderer computes that math; the Dex (ShapeGrid.tsx)
-    // calls the exact same shared function for its own icon-on-shape
-    // compositing, so both consumers stay byte-for-byte in sync by
-    // construction, not by convention.
-    const box = fitBoxInBounds(sprite.texture.width, sprite.texture.height, bx, by, bw, bh);
-    sprite.width = box.w;
-    sprite.height = box.h;
-    sprite.x = box.x;
-    sprite.y = box.y;
-  }
-
-  /** pointerdown on a PO group -- REQ-0027 T0.2 double-click vs drag
-   * disambiguation (see DBLCLICK_WINDOW_MS's module comment). Manual
-   * bookkeeping: if a second pointerdown for this uid arrives within the
-   * window AND the carry that the first pointerdown may have started never
-   * armed (i.e. it was a plain click), treat this as a double-click and
-   * call rotatePO immediately -- otherwise, start a normal drag exactly
-   * like any other pointerdown (matches the mock's own dual dblclick+
-   * pointerdown listeners coexisting on the same SVG group). Works
-   * identically on an inventory board via this.deps.ops.rotatePO
-   * (invRotatePO), REQ-0030 spec item 3: "rotate with dblclick works in
-   * inventory too". */
-  /** pointerdown on a BP's move-handle badge, an empty BP cell, or its
-   * linker core -- REQ-0045 (a2) double-click vs drag disambiguation,
-   * mirroring handlePOPointerDown's own manual dblclick-window bookkeeping
-   * exactly (Pixi has no native dblclick event). A second pointerdown for
-   * the SAME bpId within DBLCLICK_WINDOW_MS, whose first click never armed
-   * a drag, rotates the BP in place via ops.canRotateBP/rotateBP (canvas)
-   * or invCanRotateBP/invRotateBP (inventory, via BoardOps's ROTATE
-   * indirection -- see boardOps.ts). Uses lastBPPointerDown (a SEPARATE
-   * map from PO's own lastPointerDown -- see that field's doc) so a BP id
-   * and a PO uid sharing the same literal string can never cross-trigger
-   * each other's double-click. This handler is the ONE place all three
-   * BP-drag entry points (move-handle badge, empty-cell handles, linker
-   * core) route through -- POs keep their OWN separate dblclick handling
-   * (handlePOPointerDown) entirely untouched, so a click landing on a PO
-   * that happens to sit on top of a BP cell is never intercepted here
-   * (call sites only wire this handler to BP-only hit areas: the badge,
-   * empty cells with no PO, and the linker core circle, never a PO's own
-   * sprite/hit-shape). */
-  private handleBPPointerDown(e: FederatedPointerEvent, bpId: string): void {
+  handleBPPointerDown(e: FederatedPointerEvent, bpId: string): void {
     if (getCarry()) return;
     const now = performance.now();
     const last = this.lastBPPointerDown.get(bpId);
@@ -1116,14 +945,14 @@ export class BoardRenderer {
       const { ops } = this.deps;
       const r = ops.rotateBP(this.lastState!, bpId);
       if (r.ok) notifyStateChanged();
-      else this.flash(r.cells);
+      else flash(this, r.cells);
       return;
     }
     this.lastBPPointerDown.set(bpId, now);
     this.beginDrag(e, 'bp', bpId, bpId);
   }
 
-  private handlePOPointerDown(
+  handlePOPointerDown(
     e: FederatedPointerEvent,
     p: PO,
     isAssemblyPart: boolean,
@@ -1143,7 +972,7 @@ export class BoardRenderer {
       const rotateUid = isAssemblyPart && asm ? asm.blade.uid : p.uid;
       const r = this.deps.ops.rotatePO(this.lastState!, rotateUid);
       if (r.ok) notifyStateChanged();
-      else this.flash(r.cells);
+      else flash(this, r.cells);
       return;
     }
     this.lastPointerDown.set(p.uid, now);
@@ -1158,14 +987,14 @@ export class BoardRenderer {
    * in CELL space, matching the mock's startCarry() branches per kind.
    * `originBoard` is always THIS renderer's own board id -- a drag always
    * starts on the board the pointerdown fired on. */
-  private beginDrag(e: FederatedPointerEvent, kind: CarryState['kind'], uid: string, bpId?: string): void {
+  beginDrag(e: FederatedPointerEvent, kind: CarryState['kind'], uid: string, bpId?: string): void {
     if (getCarry()) return;
     const state = this.lastState;
     if (!state) return;
     const { engine, ops } = this.deps;
     const container = ops.container(state);
     const local = { x: e.global.x, y: e.global.y };
-    const cell = this.cellAt(local.x, local.y);
+    const cell = cellAt(this, local.x, local.y);
     let grabOff: [number, number] = [0, 0];
     if (kind === 'po') {
       const p = container.pos.find((z) => z.uid === uid);
@@ -1188,11 +1017,11 @@ export class BoardRenderer {
    * ('pointerup', this.onWindowPointerUp)` pre-Phase-2) -- centralizing it
    * is what makes a drag that ends on the OTHER board resolve exactly
    * once (see drag.ts module comment). */
-  private wireGlobalInteraction(): void {
+  wireGlobalInteraction(): void {
     this.app.stage.on('globalpointermove', this.onGlobalPointerMove);
     window.addEventListener('keydown', this.onWindowKeyDown);
     ensurePointerUpWired();
-    this.unregisterBoard = registerBoard(this.boardId, this.makeCommitApi());
+    this.unregisterBoard = registerBoard(this.boardId, makeCommitApi(this));
     // Re-render ghost/target layers whenever drag.ts's carry state changes
     // for reasons other than a pointermove THIS instance already handles
     // inline below (e.g. the carry being cleared by the OTHER board's
@@ -1220,347 +1049,7 @@ export class BoardRenderer {
    * not a thing the CURRENT engine surface does atomically... see inline
    * notes at each commit method below for exactly how each kind's
    * cross-board case is handled. */
-  private makeCommitApi(): BoardCommitApi {
-    return {
-      commitPO: (uid, originBoard, drop) => this.commitPODrop(uid, originBoard, drop),
-      commitAsm: (originBoard, drop) => this.commitAsmDrop(originBoard, drop),
-      commitBP: (bpId, originBoard, drop) => this.commitBPDrop(bpId, originBoard, drop),
-      commitSI: (uid, originBoard, drop) => this.commitSIDrop(uid, originBoard, drop),
-    };
-  }
-
-  /** Commits a PO drop landing on THIS board. `drop.board` is always
-   * `this.boardId` by construction (the registry only ever calls the API
-   * registered under the drop's own board id). Same-board vs cross-board
-   * is distinguished via the carry's `originBoard` -- but this board's
-   * commit only ever needs ITS OWN destination-side mutator: a PO does
-   * not carry "container membership" as a separate structural concept the
-   * way a BP does (no PO-level transfer function exists, nor is one
-   * needed) -- canvas movePO('inv') already means "leave the grid" and,
-   * conversely, invMovePO always requires a page a PO is ALREADY a member
-   * of. REQ-0030 Phase 2 extends this: a PO moving from board A to board B
-   * is handled as a two-step splice performed HERE (not a new engine
-   * function) -- remove the PO record (and any seated SI records) from
-   * board A's arrays, push them into board B's arrays with the cell
-   * translated into board B's coordinate space, THEN call board B's own
-   * movePO-equivalent to validate+place it. This mirrors EXACTLY the
-   * splice pattern engine.js's own transferBP already uses for BPs (see
-   * its module comment) -- applying that same, already-reviewed mechanic
-   * to a lone PO (no BP involved) rather than inventing a new rule. */
-  private commitPODrop(uid: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void {
-    const state = this.lastState;
-    if (!state) return;
-    const { engine, ops } = this.deps;
-    const sameBoard = boardIdEquals(originBoard, this.boardId);
-    // REQ-0033 Phase 2: cross-board PO drops are no longer a universal
-    // splice-then-movePO -- the reference model gives each of the three
-    // possible crossings its OWN distinct meaning (see engine.js's
-    // reference-model module comment / engine.d.ts's createRef/removeRef
-    // doc comments for the authoritative rules this mirrors):
-    //   inv -> canvas: REFERENCE CREATION. The PO's home (living in
-    //     state.inv.pages[originBoard.page].pos) is left completely
-    //     untouched; engine.createRef makes a NEW canvas reference at
-    //     drop.anchor, rot omitted so createRef defaults it to the home
-    //     record's own rot (matches whatever the ghost preview showed,
-    //     since the ghost read `p.rot` from the SAME origin container --
-    //     see onGlobalPointerMove's 'po' branch). createRef internally
-    //     refuses (red rule) if usedByCurrent is already true for this
-    //     uid -- deliberately NOT re-checked here client-side (the ghost
-    //     preview already gated this during the drag via
-    //     previewCrossBoardPO's own usedByCurrent guard; a stale/illegal
-    //     attempt still fails safely here, just via createRef's own
-    //     {ok:false} rather than a duplicated client-side check).
-    //   canvas -> inv: REFERENCE REMOVAL. Per spec ("drop cell
-    //     irrelevant; no placement occurs"): engine.removeRef deletes
-    //     ONLY the current preset's canvas reference; the home in
-    //     state.inv.pages is never touched, and drop.anchor/drop.type are
-    //     deliberately ignored -- no ops.movePO call follows for this
-    //     direction. removeRef always succeeds (a harmless
-    //     {ok:true,removed:false} no-op if, somehow, nothing was there to
-    //     remove), so there is no rejection path to handle here.
-    //   inv <-> inv (both boards are inventory pages, different page
-    //     indices): UNCHANGED physical home relocation -- inventory pages
-    //     hold homes, not references, so this is still a real splice
-    //     (splicePOAcrossBoardsPhysical, renamed from the old universal
-    //     splicePOAcrossBoards to make this scoping explicit) followed by
-    //     the destination page's own movePO-equivalent, exactly as
-    //     pre-REQ-0033.
-    // Same-board (sameBoard===true, including a same-page inventory drag)
-    // is completely unaffected: falls straight through to ops.movePO
-    // below, same as always.
-    if (!sameBoard) {
-      if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas') {
-        if (drop.type === 'grid') engine.createRef(state, 'po', uid, { cell: drop.anchor });
-      } else if (originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
-        engine.removeRef(state, 'po', uid);
-      } else {
-        // inv -> inv: still a physical home move.
-        this.splicePOAcrossBoardsPhysical(state, uid, originBoard, this.boardId);
-        if (drop.type === 'grid') ops.movePO(state, uid, drop.anchor);
-      }
-      this.gCarry.removeChildren();
-      this.gTarget.removeChildren();
-      notifyStateChanged();
-      return;
-    }
-    if (drop.type === 'grid') {
-      ops.movePO(state, uid, drop.anchor);
-    }
-    // drop.type==='inv' has no meaning for a PO landing ON an inventory
-    // board itself (that variant is only ever produced by canvas-mode
-    // pointermove's overlap-with-the-inventory-canvas fallback, which
-    // REQ-0030 Phase 2 no longer needs -- the inventory IS a real board
-    // now, drops on it always resolve to a concrete 'grid' anchor via
-    // invCanPlacePO -- kept in the DropTarget union only for the SI
-    // stow-with-no-cell edge case, see commitSIDrop).
-    this.gCarry.removeChildren();
-    this.gTarget.removeChildren();
-    notifyStateChanged();
-  }
-
-  private commitAsmDrop(_originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void {
-    // Assemblies are canvas-only (see render()'s `ops.isCanvas` guard on
-    // `asm`) -- an 'asm' carry can therefore only ever originate on, and
-    // land on, the canvas board (moving INTO an inventory page would
-    // require a bond-socket concept pageSockets() deliberately never
-    // emits, per engine.js's design note). this.deps.engine.moveAssembly
-    // is still the plain canvas mutator (no ops indirection needed: 'asm'
-    // never applies to an inventory BoardOps instance).
-    const state = this.lastState;
-    if (!state || !this.deps.ops.isCanvas) return;
-    if (drop.type === 'grid') this.deps.engine.moveAssembly(state, drop.anchor);
-    else this.deps.engine.moveAssembly(state, 'inv');
-    this.gCarry.removeChildren();
-    this.gTarget.removeChildren();
-    notifyStateChanged();
-  }
-
-  /** Commits a BP drop landing on THIS board. Same-board reposition uses
-   * ops.moveBP (moveBP/invMoveBP); cross-board uses engine.transferBP
-   * directly (the one engine function that already knows how to carry a
-   * BP's contents across a container boundary -- REQ-0030 Phase 1's
-   * headline addition), addressed via LocRef built from each board's
-   * BoardId (identical shape by construction, see boardOps.ts's BoardId/
-   * LocRef parity note). */
-  private commitBPDrop(bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>): void {
-    const state = this.lastState;
-    if (!state) return;
-    const { engine, ops } = this.deps;
-    if (boardIdEquals(originBoard, this.boardId)) {
-      ops.moveBP(state, bpId, drop.origin);
-    } else {
-      engine.transferBP(state, originBoard, this.boardId, bpId, drop.origin);
-    }
-    this.gCarry.removeChildren();
-    this.gTarget.removeChildren();
-    notifyStateChanged();
-  }
-
-  /** Commits an SI drop landing on THIS board: either onto a socket
-   * (ops.seatSI, same-board or cross-board alike -- seating just needs the
-   * SI to already be a member of THIS board's sis[] array, so a
-   * cross-board seat first splices the SI record across, same technique
-   * as commitPODrop) or a free cell (ops.moveSI, inventory boards only --
-   * canvas's ops.moveSI always reports failure and is never reached here
-   * since canvas never produces a 'grid'-type SI drop, see
-   * onGlobalPointerMove's 'si' branch). */
-  private commitSIDrop(uid: string, originBoard: BoardId, drop: DropTarget): void {
-    const state = this.lastState;
-    if (!state) return;
-    const { engine, ops } = this.deps;
-    const sameBoard = boardIdEquals(originBoard, this.boardId);
-    // REQ-0033 Phase 2: same three-way split as commitPODrop above (see
-    // its comment for the full rationale) -- inv->canvas creates a
-    // reference, canvas->inv removes one, inv<->inv stays a physical
-    // splice. An SI's `host` placement shape for createRef is either
-    // 'bond' / {po,si} (immediately seat the new reference onto that
-    // socket -- derived from drop.skey, which the engine's own seatSI
-    // uses in the identical '<poUid>:<siIndex>' or 'bond' string form,
-    // see mock-src/engine.js's seatSI) or the 'inv' sentinel (a bare
-    // stowed reference, not seated onto anything -- used for a 'grid' or
-    // 'inv'-type drop landing on canvas; canvas has no free-placed-SI
-    // concept of its own -- boardOps.ts's makeCanvasOps.canPlaceSI always
-    // reports NOT_SUPPORTED -- so a bare SI reference with host:'inv' is
-    // the only sensible canvas-side outcome for those drop types, and in
-    // practice 'grid'/'inv'-type SI drops targeting the canvas board are
-    // not reachable via the current drag UX, which always resolves a
-    // canvas SI drop to either a 'sock' hit or an outright illegal/no-op
-    // drop -- this branch exists for completeness/robustness, not because
-    // it is exercised today).
-    if (!sameBoard) {
-      if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas') {
-        if (drop.type === 'sock') {
-          const host = drop.skey === 'bond' ? ('bond' as const) : { po: drop.skey.slice(0, drop.skey.lastIndexOf(':')), si: Number(drop.skey.slice(drop.skey.lastIndexOf(':') + 1)) };
-          engine.createRef(state, 'si', uid, { host });
-        } else {
-          engine.createRef(state, 'si', uid, { host: 'inv' });
-        }
-      } else if (originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
-        engine.removeRef(state, 'si', uid);
-      } else {
-        // inv -> inv: still a physical home move.
-        this.spliceSIAcrossBoardsPhysical(state, uid, originBoard, this.boardId);
-        if (drop.type === 'sock') ops.seatSI(state, uid, drop.skey);
-        else if (drop.type === 'grid') ops.moveSI(state, uid, drop.anchor);
-        else if (drop.type === 'inv') ops.stowSI(state, uid);
-      }
-      this.gCarry.removeChildren();
-      this.gTarget.removeChildren();
-      notifyStateChanged();
-      return;
-    }
-    if (drop.type === 'sock') {
-      ops.seatSI(state, uid, drop.skey);
-    } else if (drop.type === 'grid') {
-      ops.moveSI(state, uid, drop.anchor);
-    } else if (drop.type === 'inv') {
-      ops.stowSI(state, uid);
-    }
-    this.gCarry.removeChildren();
-    this.gTarget.removeChildren();
-    notifyStateChanged();
-  }
-
-  /** REQ-0033 Phase 2 note: this is now ONLY the inv<->inv (page-to-page)
-   * physical home relocation path -- renamed from the pre-REQ-0033
-   * `splicePOAcrossBoards` (which used to handle EVERY cross-board
-   * crossing, including inv<->canvas) to make that scoping explicit now
-   * that inv<->canvas crossings are reference create/remove operations
-   * handled directly in commitPODrop via engine.createRef/removeRef, not
-   * this splice mechanic at all. Splices a PO record (and any SI seated
-   * on it) out of `from`'s container arrays and into `to`'s, WITHOUT yet
-   * validating/placing it -- the caller must immediately follow up with
-   * `to`'s own movePO-equivalent (which both validates AND sets
-   * p.loc/p.cell). This is the PO/SI-level analogue of engine.js's
-   * transferBP splice step, applied to inventory-page-to-page moves only
-   * (a lone PO/SI crossing PAGES has no BP-shaped "contents" to carry and
-   * no shared bounds/overlap precheck to reuse; it is a pure
-   * array-membership move, then a normal placement call owns legality
-   * exactly as it already does for a same-board move). */
-  private splicePOAcrossBoardsPhysical(state: GameState, uid: string, from: BoardId, to: BoardId): void {
-    const { engine } = this.deps;
-    const fromContainer = from.loc === 'canvas' ? state : state.inv!.pages[from.page];
-    const toContainer = to.loc === 'canvas' ? state : state.inv!.pages[to.page];
-    if (fromContainer === toContainer) return;
-    const idx = fromContainer.pos.findIndex((p) => p.uid === uid);
-    if (idx === -1) return;
-    const [p] = fromContainer.pos.splice(idx, 1);
-    toContainer.pos.push(p);
-    const siIdx: number[] = [];
-    fromContainer.sis.forEach((a, i) => {
-      if (a.host && typeof a.host === 'object' && 'po' in a.host && (a.host as { po: string }).po === uid) siIdx.push(i);
-    });
-    for (let i = siIdx.length - 1; i >= 0; i--) {
-      const [a] = fromContainer.sis.splice(siIdx[i], 1);
-      toContainer.sis.push(a);
-    }
-    if (to.loc === 'canvas') engine.unseatOrphans(state);
-  }
-
-  /** REQ-0033 Phase 2 note: same inv<->inv-only scoping as
-   * splicePOAcrossBoardsPhysical above (renamed from the pre-REQ-0033
-   * `spliceSIAcrossBoards`) -- inv<->canvas SI crossings are now reference
-   * create/remove operations handled directly in commitSIDrop. Splices a
-   * lone (not-seated-on-a-PO) SI record across PAGE containers -- same
-   * rationale as splicePOAcrossBoardsPhysical, simpler (no dependent SI
-   * records of its own to carry). */
-  private spliceSIAcrossBoardsPhysical(state: GameState, uid: string, from: BoardId, to: BoardId): void {
-    const fromContainer = from.loc === 'canvas' ? state : state.inv!.pages[from.page];
-    const toContainer = to.loc === 'canvas' ? state : state.inv!.pages[to.page];
-    if (fromContainer === toContainer) return;
-    const idx = fromContainer.sis.findIndex((a) => a.uid === uid);
-    if (idx === -1) return;
-    const [a] = fromContainer.sis.splice(idx, 1);
-    a.host = 'inv'; // land as unseated; the immediately-following ops.seatSI/moveSI call gives it a real position
-    toContainer.sis.push(a);
-  }
-  /**
-   * Cross-board PO legality preview (REQ-0030 Phase 2): temporarily
-   * splices PO `uid` (and, transitively, nothing else -- a lone PO has no
-   * BP-shaped contents) OUT of its origin container and INTO `this`
-   * board's container, runs `this.deps.ops.canPlacePO` (the REAL engine
-   * check, never a client reimplementation), then splices it back to
-   * origin before returning -- so the probe is side-effect-free from the
-   * caller's perspective (no render/notify in between, single synchronous
-   * call). This is the only way to preview "would uid fit on a board it
-   * is not yet a member of" without a dedicated cross-board engine query
-   * (Phase 1 only added one for BPs, since only BP transfer needed to
-   * carry contents) while still deferring 100% of the actual legality
-   * rule to the engine.
-   */
-  private previewCrossBoardPO(state: GameState, uid: string, originBoard: BoardId, rot: number, anchor: Cell): { ok: boolean; cells: Cell[] } {
-    // REQ-0033 Phase 2 red-rule guard: an inv -> canvas hover must show
-    // illegal/red the instant `uid` is already referenced by the CURRENT
-    // preset, REGARDLESS of geometric fit (spec item 2: "CANNOT be placed
-    // again into that same preset") -- even an empty cell must read as
-    // illegal here, since createRef itself would refuse the reference
-    // creation outright on commit. This check is cheap and read-only
-    // (engine.usedByCurrent never mutates state), so it is always safe to
-    // run first, before falling through to the existing splice/
-    // canPlacePO/unsplice geometric preview below -- that geometric path
-    // is 100% unchanged and still owns every other legality concern (an
-    // inv<->inv preview, i.e. originBoard.loc==='inv' && this.boardId is
-    // ALSO 'inv', has no red-rule concept -- that crossing stays a
-    // physical move, never a reference -- so the guard is scoped strictly
-    // to the inv->canvas direction).
-    if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas' && this.deps.engine.usedByCurrent(state, uid)) {
-      return { ok: false, cells: [] };
-    }
-    const originContainer = originBoard.loc === 'canvas' ? state : state.inv!.pages[originBoard.page];
-    const idx = originContainer.pos.findIndex((p) => p.uid === uid);
-    if (idx === -1) return { ok: false, cells: [] };
-    const [p] = originContainer.pos.splice(idx, 1);
-    const savedLoc = p.loc;
-    const savedCell = p.cell;
-    const container = this.deps.ops.container(state);
-    container.pos.push(p);
-    let result: { ok: boolean; cells: Cell[] };
-    try {
-      const chk = this.deps.ops.canPlacePO(state, uid, rot, anchor);
-      result = { ok: chk.ok, cells: chk.cells };
-    } finally {
-      container.pos.splice(container.pos.indexOf(p), 1);
-      p.loc = savedLoc;
-      p.cell = savedCell;
-      originContainer.pos.splice(idx, 0, p);
-    }
-    return result;
-  }
-
-  /** Cross-board SI legality preview -- same splice/check/unsplice
-   * technique as previewCrossBoardPO, for a lone (not-seated) SI probing
-   * either a socket (via hostOk against a socket already resolved on THIS
-   * board) or a free cell (invCanPlaceSI). SI records carry no dependents
-   * of their own, so the splice is a single-array move. */
-  private previewCrossBoardSIFreeCell(state: GameState, uid: string, originBoard: BoardId, anchor: Cell): { ok: boolean; cells: Cell[] } {
-    // REQ-0033 Phase 2 red-rule guard -- identical rationale to
-    // previewCrossBoardPO's guard above: createRef's red-rule check
-    // (usedByCurrent) is kind-agnostic, so an SI already referenced by
-    // the current preset must show illegal here too, before any
-    // geometric free-cell check runs.
-    if (originBoard.loc === 'inv' && this.boardId.loc === 'canvas' && this.deps.engine.usedByCurrent(state, uid)) {
-      return { ok: false, cells: [] };
-    }
-    const originContainer = originBoard.loc === 'canvas' ? state : state.inv!.pages[originBoard.page];
-    const idx = originContainer.sis.findIndex((a) => a.uid === uid);
-    if (idx === -1) return { ok: false, cells: [] };
-    const [a] = originContainer.sis.splice(idx, 1);
-    const savedHost = a.host;
-    const container = this.deps.ops.container(state);
-    container.sis.push(a);
-    let result: { ok: boolean; cells: Cell[] };
-    try {
-      const chk = this.deps.ops.canPlaceSI(state, uid, anchor);
-      result = { ok: chk.ok, cells: chk.cells };
-    } finally {
-      container.sis.splice(container.sis.indexOf(a), 1);
-      a.host = savedHost;
-      originContainer.sis.splice(idx, 0, a);
-    }
-    return result;
-  }
-
-  private onGlobalPointerMove = (e: FederatedPointerEvent): void => {
+  onGlobalPointerMove = (e: FederatedPointerEvent): void => {
     const carry = getCarry();
     if (!carry || !this.lastState) return;
     if (!carry.armed) {
@@ -1610,12 +1099,12 @@ export class BoardRenderer {
       this.gTarget.removeChildren();
       return;
     }
-    const local = this.clientToLocal(e.clientX, e.clientY);
+    const local = clientToLocal(this, e.clientX, e.clientY);
     this.gCarry.removeChildren();
     this.gTarget.removeChildren();
     const state = this.lastState;
     const { engine, ops } = this.deps;
-    const cell = this.cellAt(local.x, local.y);
+    const cell = cellAt(this, local.x, local.y);
     const sameBoard = boardIdEquals(carry.originBoard, this.boardId);
 
     const paint = (cells: Cell[] | undefined, ok: boolean) => {
@@ -1654,17 +1143,17 @@ export class BoardRenderer {
         // drop.anchor entirely, so the exact cell recorded here is moot).
         if (carry.originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
           drop = { type: 'grid', anchor, board: this.boardId };
-          this.paintNeutralReturn(anchor);
+          paintNeutralReturn(this, anchor);
         } else {
           const chk = sameBoard
             ? ops.canPlacePO(state, p.uid, p.rot, anchor)
-            : this.previewCrossBoardPO(state, p.uid, carry.originBoard, p.rot, anchor);
+            : previewCrossBoardPO(this, state, p.uid, carry.originBoard, p.rot, anchor);
           drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
           paint(chk.cells, chk.ok);
         }
         const def = this.deps.items[p.id];
         const { w, h } = engine.shapeInfo(p.id, p.rot);
-        this.renderGhostPO(p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
+        renderGhostPO(this, p, def, local.x - (w * CELL) / 2, local.y - (h * CELL) / 2);
       }
     } else if (carry.kind === 'asm') {
       // Assemblies are canvas-only -- a cross-board 'asm' carry never
@@ -1678,7 +1167,7 @@ export class BoardRenderer {
           const chk = engine.canPlaceAssembly(state, anchor);
           drop = chk.ok ? { type: 'grid', anchor, board: this.boardId } : null;
           paint(chk.cells, chk.ok);
-          this.renderGhostAssembly(asm, local.x, local.y);
+          renderGhostAssembly(this, asm, local.x, local.y);
         }
       }
     } else if (carry.kind === 'bp' && carry.bpId) {
@@ -1691,7 +1180,7 @@ export class BoardRenderer {
           : engine.canTransferBP(state, carry.originBoard, this.boardId, carry.bpId, origin);
         drop = chk.ok ? { type: 'bp', origin, board: this.boardId } : null;
         paint(chk.cells, chk.ok);
-        if (chk.ok && chk.cells) this.renderGhostBP(bp.color, chk.cells);
+        if (chk.ok && chk.cells) renderGhostBP(this, bp.color, chk.cells);
       }
     } else if (carry.kind === 'si') {
       const originContainer = carry.originBoard.loc === 'canvas' ? state : state.inv!.pages[carry.originBoard.page];
@@ -1708,15 +1197,15 @@ export class BoardRenderer {
         // a neutral "will return to inventory" indicator instead.
         if (carry.originBoard.loc === 'canvas' && this.boardId.loc === 'inv') {
           drop = { type: 'grid', anchor: cell, board: this.boardId };
-          this.paintNeutralReturn(cell);
+          paintNeutralReturn(this, cell);
         } else {
           const asm = ops.isCanvas ? engine.assembly(state) : null;
           let best: { s: Socket; v: { ok: boolean; why?: string } } | null = null;
           let bd = SOCKET_SEARCH_RADIUS;
           for (const s of ops.sockets(state)) {
-            const pos = this.socketScreenPos(state, s, asm);
+            const pos = socketScreenPos(this, state, s, asm);
             if (!pos) continue;
-            const v = sameBoard ? ops.hostOk(state, carry.uid, s) : this.previewCrossBoardSocket(state, carry.uid, carry.originBoard, s);
+            const v = sameBoard ? ops.hostOk(state, carry.uid, s) : previewCrossBoardSocket(this, state, carry.uid, carry.originBoard, s);
             const dist = Math.hypot(pos.x - local.x, pos.y - local.y);
             const ring = new Graphics();
             ring.circle(pos.x, pos.y, 12);
@@ -1737,7 +1226,7 @@ export class BoardRenderer {
             // for "dropped on empty canvas space".
             const freeChk = sameBoard
               ? ops.canPlaceSI(state, carry.uid, cell)
-              : this.previewCrossBoardSIFreeCell(state, carry.uid, carry.originBoard, cell);
+              : previewCrossBoardSIFreeCell(this, state, carry.uid, carry.originBoard, cell);
             if (freeChk.ok) {
               drop = { type: 'grid', anchor: cell, board: this.boardId };
               paint(freeChk.cells, true);
@@ -1768,25 +1257,7 @@ export class BoardRenderer {
    * across, runs hostOk (bound to THIS board's state/def lookup, which is
    * container-independent already -- see boardOps.ts's makeInvOps note),
    * then unsplices. Same rationale as previewCrossBoardPO. */
-  private previewCrossBoardSocket(state: GameState, uid: string, originBoard: BoardId, sock: Socket): { ok: boolean; why?: string } {
-    const originContainer = originBoard.loc === 'canvas' ? state : state.inv!.pages[originBoard.page];
-    const idx = originContainer.sis.findIndex((a) => a.uid === uid);
-    if (idx === -1) return { ok: false };
-    const [a] = originContainer.sis.splice(idx, 1);
-    const savedHost = a.host;
-    const container = this.deps.ops.container(state);
-    container.sis.push(a);
-    let result: { ok: boolean; why?: string };
-    try {
-      result = this.deps.ops.hostOk(state, uid, sock);
-    } finally {
-      container.sis.splice(container.sis.indexOf(a), 1);
-      a.host = savedHost;
-      originContainer.sis.splice(idx, 0, a);
-    }
-    return result;
-  }
-  private onWindowKeyDown = (e: KeyboardEvent): void => {
+  onWindowKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape' && getCarry()) {
       cancelCarry();
       this.gCarry.removeChildren();
@@ -1799,164 +1270,9 @@ export class BoardRenderer {
    * rotation-aware art placement as the placed-PO rendering above
    * (drawPOArt equivalent), at reduced opacity, matching the mock's
    * `opacity:.75` ghost. */
-  private renderGhostPO(p: PO, def: ItemDefMap[string] | undefined, x: number, y: number): void {
-    if (!def) return;
-    const { engine, textures } = this.deps;
-    const texture = textures.get(def.icon);
-    if (!texture) return;
-    const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
-    const W0 = cw * CELL;
-    const H0 = ch * CELL;
-    const k = ((p.rot % 4) + 4) % 4;
-    const sprite = new Sprite(texture);
-    // REQ-0028 (aspect law): uniform contain-fit box, matching the
-    // placed-PO draw path above (see fitSpriteToBox doc).
-    if (def.stretch) {
-      BoardRenderer.fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
-    } else {
-      BoardRenderer.fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
-    }
-    const inner = new Container();
-    inner.alpha = 0.75;
-    inner.addChild(sprite);
-    const { w, h } = engine.shapeInfo(p.id, p.rot);
-    if (k === 0) {
-      inner.position.set(x, y);
-    } else if (k === 1) {
-      inner.position.set(x + w * CELL, y);
-      inner.rotation = Math.PI / 2;
-    } else if (k === 2) {
-      inner.position.set(x + w * CELL, y + h * CELL);
-      inner.rotation = Math.PI;
-    } else {
-      inner.position.set(x, y + h * CELL);
-      inner.rotation = -Math.PI / 2;
-    }
-    this.gCarry.addChild(inner);
-  }
-
-  /** Ghost for the carried Blade+Hilt assembly -- fixed-size icons at
-   * offsets from the pointer, matching the mock's assembly ghost
-   * (`x:pt.x-32,y:pt.y-110,w:64,h:150` for blade, `y:pt.y+40,h:66` hilt).
-   * Canvas-only (see onGlobalPointerMove's 'asm' branch). */
-  private renderGhostAssembly(asm: Assembly, px: number, py: number): void {
-    const { items, textures } = this.deps;
-    const bladeDef = items[asm.blade.id];
-    const bladeTex = bladeDef && textures.get(bladeDef.icon);
-    if (bladeTex) {
-      const sprite = new Sprite(bladeTex);
-      sprite.x = px - 32;
-      sprite.y = py - 110;
-      sprite.width = 64;
-      sprite.height = 150;
-      sprite.alpha = 0.75;
-      this.gCarry.addChild(sprite);
-    }
-    const hiltDef = items[asm.hilt.id];
-    const hiltTex = hiltDef && textures.get(hiltDef.icon);
-    if (hiltTex) {
-      const sprite = new Sprite(hiltTex);
-      sprite.x = px - 32;
-      sprite.y = py + 40;
-      sprite.width = 64;
-      sprite.height = 66;
-      sprite.alpha = 0.75;
-      this.gCarry.addChild(sprite);
-    }
-  }
-
-  /** Ghost preview for a dragged BP -- tinted cells in the BP's own color
-   * at low alpha, matching the mock's BP-carry ghost. Shows the WHOLE BP
-   * footprint (REQ-0030 spec item 3), same on both boards and during a
-   * cross-board transfer preview (the cells are already computed in the
-   * TARGET board's coordinate space by canMoveBP/invCanPlaceBP/
-   * canTransferBP, so no extra translation is needed here). */
-  private renderGhostBP(color: string, cells: Cell[]): void {
-    for (const [r, c] of cells) {
-      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
-      const rect = new Graphics();
-      rect.roundRect(PAD + (c - 1) * CELL + 4, PAD + (r - 1) * CELL + 4, CELL - 8, CELL - 8, 6);
-      rect.fill({ color, alpha: 0.4 });
-      this.gCarry.addChild(rect);
-    }
-  }
-
-  /** REQ-0033 Phase 2: neutral "will return to inventory" hover
-   * indicator for a canvas-originated PO/SI carry hovering an inventory
-   * board -- a dim/neutral-gray tint (NOT green, NOT red) at the hovered
-   * cell, communicating "dropping anywhere here removes the canvas
-   * reference and the item stays exactly where its home already is" --
-   * there is no legality question to visualize for this direction
-   * (removeRef always succeeds, drop cell is irrelevant), so this is
-   * deliberately never colored as a pass/fail judgment the way `paint`
-   * above is for every OTHER drag direction. */
-  private paintNeutralReturn(cell: Cell): void {
-    const [r, c] = cell;
-    if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) return;
-    const rect = new Graphics();
-    rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
-    rect.fill({ color: '#8a8a8a', alpha: 0.18 });
-    rect.stroke({ color: '#8a8a8a', width: 2, alpha: 0.5 });
-    this.gTarget.addChild(rect);
-  }
-
-  /** Brief red-outline reject feedback on illegal double-click-rotate
-   * targets -- matches the mock's flash() (350ms auto-remove). */
-  private flash(cells: Cell[] | undefined): void {
-    for (const [r, c] of cells ?? []) {
-      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
-      const rect = new Graphics();
-      rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
-      rect.stroke({ color: '#c05050', width: 3 });
-      this.gTarget.addChild(rect);
-      const timer = setTimeout(() => {
-        rect.destroy();
-        this.flashTimers.delete(timer);
-      }, FLASH_MS);
-      this.flashTimers.add(timer);
-    }
-  }
-
-  /** REQ-0041 -- warehouse-claim placement pulse ("ピコンピコン"): a
-   * SUCCESS-colored (green) blinking outline over `cells` for ~2 seconds
-   * total, reusing this class's EXISTING flash-overlay mechanism
-   * (gTarget layer + this.flashTimers bookkeeping, same as the private
-   * flash() reject-feedback above) rather than inventing a new Pixi
-   * overlay approach -- per the task brief's own instruction to reuse
-   * an existing highlight/flash mechanism if the renderer already has
-   * one. PUBLIC (unlike flash()) so WarehouseTab.tsx's claim-flow code
-   * can call it directly on the renderer instance it already holds a
-   * ref to, immediately after committing the engine placement mutation
-   * (before/alongside notifyStateChanged()). Composed of repeated
-   * on/off blinks (not a single fade) to read as a distinct "received an
-   * item" cue, visually different from the reject-flash's single red
-   * outline. Safe to call on a disposed renderer (no-op) or with no
-   * cells (no-op either way).
-   */
+  // REQ-0047 (f2-3): public delegate -- implementation in ./ghosts (external
+  // callers: WarehouseTab/WorkshopPage hold a renderer instance).
   pulseCellsSuccess(cells: Cell[] | undefined): void {
-    if (this.disposed) return;
-    for (const [r, c] of cells ?? []) {
-      if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
-      const rect = new Graphics();
-      rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
-      rect.stroke({ color: '#59d68a', width: 3 });
-      rect.visible = true;
-      this.gTarget.addChild(rect);
-      let elapsed = 0;
-      let currentTimer: ReturnType<typeof setTimeout>;
-      const blink = (): void => {
-        this.flashTimers.delete(currentTimer);
-        elapsed += CLAIM_PULSE_BLINK_MS;
-        rect.visible = !rect.visible;
-        if (elapsed >= CLAIM_PULSE_TOTAL_MS) {
-          rect.destroy();
-          return;
-        }
-        currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
-        this.flashTimers.add(currentTimer);
-      };
-      currentTimer = setTimeout(blink, CLAIM_PULSE_BLINK_MS);
-      this.flashTimers.add(currentTimer);
-    }
+    pulseCellsSuccess(this, cells);
   }
 }
