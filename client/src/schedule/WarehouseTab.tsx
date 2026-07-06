@@ -40,6 +40,7 @@ import {
 } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { setInventorySlot } from '../board/inventorySlot';
+import { iconDataUrl } from '../dex/dexIcons';
 import type { EngineInstance, GameState } from '../engine/engine.d.ts';
 import { friendlyScheduleError, isApiErrorStatus } from './errors';
 import { formatCountdown } from './RoomCard';
@@ -55,6 +56,7 @@ const POLL_MS = 5000;
 const GRID_MIN = 1;
 const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout (same bound the old server-side first-fit used)
 const TAB_PULSE_MS = 1600; // >= the 3-cycle CSS animation's own 0.5s*3 duration, plus margin
+const EXPIRING_SOON_MS = 86400000; // 24h -- rows closer than this get a warm expiry label (soonest-to-expire is sorted to the top)
 
 function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
   const entry = content?.items[itemId] ?? content?.sis[itemId];
@@ -77,6 +79,39 @@ function itemKindOf(content: ApiContentPayload | null, itemId: string): 'po' | '
   if (content.sis[itemId]) return 'si';
   return 'po';
 }
+
+/** Resolves the content entry (for its rarity + icon) for a warehouse
+ * row of a given kind. TM stacks live in content.tms; plain PO/SI items
+ * live in content.items/content.sis (checked in that order, mirroring
+ * localizedItemName/itemKindOf above). Returns null when content hasn't
+ * loaded yet or the id resolves against no map (defensive -- the row
+ * simply renders without an icon/rarity in that case). */
+function contentEntryFor(content: ApiContentPayload | null, kind: 'po' | 'si' | 'tm', itemId: string): { rarity: string; icon: string } | null {
+  if (!content) return null;
+  if (kind === 'tm') return content.tms[itemId] ?? null;
+  return content.items[itemId] ?? content.sis[itemId] ?? null;
+}
+
+/** Day-aware countdown for the Warehouse's 7-day TTL. RoomCard's
+ * formatCountdown is minute/second only (fine for a run's short
+ * countdown), so a multi-day remaining duration would render as e.g.
+ * "10080m 0s" -- a real display bug for this view. Tiers down to
+ * days/hours/minutes and defers to formatCountdown for the final
+ * sub-1-hour stretch (so the last hour still reads "12m 3s" exactly as
+ * the rest of the app does). */
+function formatWarehouseCountdown(ms: number): string {
+  const totalSecs = Math.max(0, Math.ceil(ms / 1000));
+  const days = Math.floor(totalSecs / 86400);
+  const hours = Math.floor((totalSecs % 86400) / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return formatCountdown(ms);
+}
+
+/** Outcome of a single-item claim, so Claim All can stop the moment the
+ * board is genuinely full without guessing at React state timing. */
+type ClaimOutcome = 'claimed' | 'no_space' | 'error';
 
 interface PlacementResult {
   page: number;
@@ -228,6 +263,7 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
   const [content, setContent] = useState<ApiContentPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
+  const [claimingAll, setClaimingAll] = useState(false);
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -286,7 +322,7 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
     return () => clearTimeout(id);
   }, [toast]);
 
-  const handleClaim = async (itemUid: string) => {
+  const handleClaim = async (itemUid: string): Promise<ClaimOutcome> => {
     setClaimingUid(itemUid);
     setClaimErrors((prev) => ({ ...prev, [itemUid]: '' }));
     try {
@@ -328,7 +364,7 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
         // comment). Surface a toast so the user isn't left guessing.
         setToast(t(locale, 'schedule.warehouse.claimNoSpace'));
         setClaimErrors((prev) => ({ ...prev, [itemUid]: t(locale, 'schedule.warehouse.claimNoSpace') }));
-        return;
+        return 'no_space';
       }
 
       // Placement-cell pulse ("ピコンピコン") on whichever board actually
@@ -369,45 +405,114 @@ export function WarehouseTab({ locale }: WarehouseTabProps) {
           : t(locale, 'schedule.warehouse.claimedOnOtherPage', { page: placed.page + 1 })
       );
       await reload();
+      return 'claimed';
     } catch (e) {
       const message = isApiErrorStatus(e, 409)
         ? friendlyScheduleError(locale, e)
         : t(locale, 'schedule.warehouse.claimFailed') + (e instanceof Error ? e.message : String(e));
       setClaimErrors((prev) => ({ ...prev, [itemUid]: message }));
+      return 'error';
     } finally {
       setClaimingUid(null);
     }
   };
 
+  // Claim All -- a thin composition over the single-item handleClaim,
+  // walking rows soonest-to-expire first (same order the list renders)
+  // and stopping the moment the board is genuinely full (outcome
+  // 'no_space'); a single-item 'error' does NOT stop the run (other rows
+  // may still succeed). Reuses handleClaim as-is -- no reimplementation
+  // of the two-phase placement/toast/reload logic.
+  const handleClaimAll = async () => {
+    if (!items || items.length === 0) return;
+    const ordered = [...items].sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt));
+    setClaimingAll(true);
+    for (const item of ordered) {
+      const outcome = await handleClaim(item.itemUid);
+      if (outcome === 'no_space') break;
+    }
+    setClaimingAll(false);
+  };
+
+  // Change 1: render soonest-to-expire first. `items` itself stays
+  // unchanged for length/cap math below.
+  const sortedItems = items ? [...items].sort((a, b) => Date.parse(a.expiresAt) - Date.parse(b.expiresAt)) : null;
+
+  // Change 3: staged capacity warning. server/schedule.cjs's
+  // addToWarehouse SILENTLY DROPS new rewards once at WAREHOUSE_CAP, so
+  // 'full' is a real data-loss state, not just a styling threshold.
+  const capRatio = (items?.length ?? 0) / WAREHOUSE_CAP;
+  const capState: 'calm' | 'warning' | 'full' = capRatio >= 1 ? 'full' : capRatio >= 0.7 ? 'warning' : 'calm';
+
   return (
     <div className="schedule-warehouse-tab">
       <div className="schedule-warehouse-header">
-        <h3>{t(locale, 'schedule.warehouse.title')}</h3>
-        <span className="schedule-warehouse-cap" data-testid="schedule-warehouse-cap">
-          {t(locale, 'schedule.warehouse.cap', { count: items?.length ?? 0, cap: WAREHOUSE_CAP })}
-        </span>
+        <div className="schedule-warehouse-header-top">
+          <h3>{t(locale, 'schedule.warehouse.title')}</h3>
+          <span className="schedule-warehouse-cap" data-testid="schedule-warehouse-cap">
+            {t(locale, 'schedule.warehouse.cap', { count: items?.length ?? 0, cap: WAREHOUSE_CAP })}
+          </span>
+          <button
+            type="button"
+            className="schedule-claim-all-btn"
+            onClick={() => void handleClaimAll()}
+            disabled={claimingAll || !items || items.length === 0}
+            data-testid="schedule-claim-all-btn"
+          >
+            {claimingAll ? t(locale, 'schedule.warehouse.claimingAll') : t(locale, 'schedule.warehouse.claimAllButton')}
+          </button>
+        </div>
+        <div className={`schedule-warehouse-capacity-bar schedule-warehouse-capacity-${capState}`} data-testid="schedule-warehouse-capacity-bar">
+          <div className="schedule-warehouse-capacity-fill" style={{ width: `${Math.min(100, capRatio * 100)}%` }} />
+        </div>
+        {capState !== 'calm' ? (
+          <div className={`schedule-warehouse-capacity-warning-text ${capState}`} data-testid="schedule-warehouse-capacity-warning">
+            {capState === 'full' ? t(locale, 'schedule.warehouse.capFull') : t(locale, 'schedule.warehouse.capWarning')}
+          </div>
+        ) : null}
       </div>
 
       {loadError ? <div className="schedule-error">{t(locale, 'schedule.warehouse.loadFailed')}{loadError}</div> : null}
       {toast ? <div className="schedule-toast" data-testid="schedule-warehouse-toast">{toast}</div> : null}
 
-      {items === null ? (
+      {sortedItems === null ? (
         <div className="schedule-loading">{t(locale, 'schedule.loading')}</div>
-      ) : items.length === 0 ? (
+      ) : sortedItems.length === 0 ? (
         <div className="schedule-empty">{t(locale, 'schedule.warehouse.empty')}</div>
       ) : (
         <div className="schedule-warehouse-list">
-          {items.map((item) => {
+          {sortedItems.map((item) => {
             const expiresMs = Date.parse(item.expiresAt) - now;
             const expired = expiresMs <= 0;
+            const expiringSoon = expiresMs > 0 && expiresMs < EXPIRING_SOON_MS;
+            const rowKind = item.kind === 'tm' ? 'tm' : itemKindOf(content, item.itemId);
+            const entry = contentEntryFor(content, rowKind, item.itemId);
+            const icon = entry ? iconDataUrl(entry.icon) : null;
+            const frameClass =
+              rowKind === 'tm'
+                ? 'schedule-warehouse-icon-frame'
+                : `schedule-warehouse-icon-frame rarity-frame-r-${entry?.rarity ?? 'Common'}`;
             return (
-              <div className="schedule-warehouse-row" key={item.itemUid} data-testid="schedule-warehouse-row" data-item-uid={item.itemUid}>
-                <span className="schedule-warehouse-item-name">{localizedItemName(locale, content, item.itemId)}</span>
+              <div
+                className={`schedule-warehouse-row${rowKind === 'tm' ? ' schedule-warehouse-row-stack' : ''}`}
+                key={item.itemUid}
+                data-testid="schedule-warehouse-row"
+                data-item-uid={item.itemUid}
+              >
+                <div className={frameClass}>{icon ? <img src={icon} alt="" /> : null}</div>
+                <span className="schedule-warehouse-item-name">
+                  {localizedItemName(locale, content, item.itemId)}
+                  {rowKind === 'tm' ? (
+                    <span className="schedule-warehouse-item-qty">&times;{item.qty ?? 1}</span>
+                  ) : entry ? (
+                    <span className={`rarity r-${entry.rarity}`}>{entry.rarity}</span>
+                  ) : null}
+                </span>
                 <span className="schedule-warehouse-item-harvested">
                   {t(locale, 'schedule.warehouse.harvested', { time: new Date(item.harvestedAt).toLocaleString(locale) })}
                 </span>
-                <span className="schedule-warehouse-item-expiry">
-                  {expired ? t(locale, 'schedule.warehouse.expired') : t(locale, 'schedule.warehouse.expiresIn', { time: formatCountdown(expiresMs) })}
+                <span className={`schedule-warehouse-item-expiry${expiringSoon ? ' schedule-warehouse-item-expiry-soon' : ''}`}>
+                  {expired ? t(locale, 'schedule.warehouse.expired') : t(locale, 'schedule.warehouse.expiresIn', { time: formatWarehouseCountdown(expiresMs) })}
                 </span>
                 <button
                   type="button"

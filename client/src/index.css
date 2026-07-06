@@ -2111,6 +2111,112 @@ html, body {
   font-size: 12px;
 }
 
+/* schedule-ux-improvements (REQ-0046): Warehouse UX pass. Header lays
+   the title + capacity readout + Claim All out on one row, with a
+   staged capacity bar (calm/warning/full) beneath it -- 'full' is a
+   real data-loss state (server/schedule.cjs's addToWarehouse silently
+   drops new rewards at WAREHOUSE_CAP), hence the --bad treatment. */
+.schedule-warehouse-header-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.schedule-warehouse-header-top h3 {
+  margin: 0;
+  font-size: 15px;
+  margin-right: auto;
+}
+
+/* Secondary/outline button -- matches .schedule-create-toggle-btn's
+   weight (cyan outline), deliberately quieter than the per-row
+   .schedule-claim-btn (--ok) so 'Claim all' reads as the secondary
+   bulk action, not the primary per-item one. */
+.schedule-claim-all-btn {
+  background: transparent;
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.schedule-claim-all-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.schedule-warehouse-capacity-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.schedule-warehouse-capacity-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+}
+
+.schedule-warehouse-capacity-calm .schedule-warehouse-capacity-fill { background: var(--cyan); }
+.schedule-warehouse-capacity-warning .schedule-warehouse-capacity-fill { background: var(--warn); }
+.schedule-warehouse-capacity-full .schedule-warehouse-capacity-fill { background: var(--bad); }
+
+.schedule-warehouse-capacity-warning-text {
+  font-size: 12px;
+}
+.schedule-warehouse-capacity-warning-text.warning { color: var(--warn); }
+.schedule-warehouse-capacity-warning-text.full { color: var(--bad); }
+
+/* Per-row content icon in a rarity-colored frame (mirrors the Dex's
+   iconDataUrl + .rarity.r-* language). TM stack rows get a dashed frame
+   and no rarity color (a resource, not a rarity-tiered item). Rarity
+   border colors are the SAME hexes as .rarity.r-* above. */
+.schedule-warehouse-icon-frame {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--dim);
+}
+
+.schedule-warehouse-icon-frame img {
+  width: 22px;
+  height: 22px;
+}
+
+.schedule-warehouse-icon-frame.rarity-frame-r-Common { border-color: #9aa5ad; }
+.schedule-warehouse-icon-frame.rarity-frame-r-Uncommon { border-color: #5cb573; }
+.schedule-warehouse-icon-frame.rarity-frame-r-Rare { border-color: #6c95e0; }
+.schedule-warehouse-icon-frame.rarity-frame-r-Relic { border-color: #c07ae0; }
+
+.schedule-warehouse-row-stack .schedule-warehouse-icon-frame {
+  border-style: dashed;
+}
+
+.schedule-warehouse-item-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.schedule-warehouse-item-qty {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* Optional warm cue on the soonest-to-expire rows (<24h remaining),
+   which sort to the top -- makes the nearest deadline stand out. */
+.schedule-warehouse-item-expiry-soon {
+  color: var(--warn);
+}
+
 .schedule-toast {
   background: rgba(92, 181, 115, 0.15);
   color: var(--ok);
