@@ -71,3 +71,6 @@ NOT DONE:
   web/preview/monster_images_samples/ — separate monster work.
 - Score weights (.35/.50/.15) are first-pass; if humans disagree with
   rankings on the report, tune weights in a follow-up REQ, never ad hoc.
+
+## ADDENDUM (2026-07-07, session end)
+Server restore during reboot clobbered branch refs: original commits a8288ad/04101fa/8876225/6cc60d4 vanished from history (objects still in .git object store; recover with git cat-file / cherry-pick if needed). All files were re-committed from the surviving worktree afterwards — verify with git log. Foreign REQ-0077/batch-004 files (warren-ascendant, matte_defect_fix.py, build_dungeon_preview.py changes) appeared in the worktree after the restore: NOT part of REQ-0073, left untouched, uncommitted. Reconcile with whoever owns REQ-0074..0077.
