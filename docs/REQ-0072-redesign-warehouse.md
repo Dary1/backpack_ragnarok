@@ -132,6 +132,33 @@ srcDungeon srcMarket srcMarketNote currencyWord ringTitle footLore
 footNote`. Changed: `claimButton` ja 回収, `claimAllButton` ja 一括回収,
 `claimingAll` ja 一括回収中…, `claiming` 配置中…/Placing….
 
+## Gate notes (final run)
+
+- engine 97/97; server api 118/118 on BOTH backends (files + pg);
+  E2E **104 passed / 3 failed of 107** (103 old + 4 new). The 3:
+  / (the accepted REQ-0043 baseline pair)
+  and  — the latter is NOT a REQ-0072 regression:
+  it is API-only up to its failing assert (never loads the client),
+  fails identically in isolation without this branch's specs, and a raw
+  HTTP repro (create room → assign → backdate → settle) shows the run
+  ending  with  at t=0 → no
+  reward accrual by design. Deterministic on the current box; the box's
+  live content is also being edited concurrently (art session appended
+   to every live item mid-day).
+  Left for a sim/server lane to bisect.
+- E2E hygiene finding (fixed in this REQ's own spec, worth copying
+  back into older specs eventually): the suite-wide "backup/restore
+   around a dev-player test" pattern is a
+  SILENT NO-OP under  — the profile lives in
+  Postgres, so whatever doc a test PUT last simply LEAKS to the next
+  spec. If the leaked doc is the raw schedule fixture, its preset-store
+  BPs are unrepaired references that the next booted client homes into
+  inventory pages on its first auto-save — observed as
+   counting 10 phantom "new" BPs (trace-verified
+  network bodies). warehouse-mjolnir.spec.ts therefore restores the dev
+  canvas by re-PUT-ing the original doc through the API (and its
+  mocked-payload tests do not write a profile at all).
+
 ## REQ-0073/0074 heads-up (dex/workshop can reuse)
 
 - `.chip.warn` is now in index.css (mock styleguide chip variant).
