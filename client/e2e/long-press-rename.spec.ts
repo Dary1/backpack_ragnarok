@@ -16,7 +16,7 @@ const FIXTURE_PATH = new URL('./fixtures/preset-fixture.json', import.meta.url);
 async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
   await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await page.goto('/app/');
+  await page.goto('/app/#/backpacks');
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
   await page.waitForTimeout(400);
 }

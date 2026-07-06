@@ -67,7 +67,11 @@ export async function autoSaveAndFetch(page: Page): Promise<any> {
 /** Boots the app and waits for the live data-source badge, same
  * boilerplate every spec repeats. */
 export async function bootApp(page: Page): Promise<void> {
-  await page.goto('/app/');
+  // REQ-0069: '/app/' with an EMPTY hash boots the landing (title)
+  // screen, which renders no header/badge -- app-page specs boot straight
+  // into the backpacks route (the pre-REQ-0069 default) explicitly.
+  // Landing-specific coverage lives in landing.spec.ts.
+  await page.goto('/app/#/backpacks');
   await page.locator('.data-source-badge').waitFor({ state: 'visible', timeout: 10000 });
   const text = await page.locator('.data-source-badge').textContent({ timeout: 10000 });
   if (text?.trim() !== 'live') {

@@ -41,7 +41,7 @@ test('tab switching (15 clicks, 3 rounds) never hangs the page and never refetch
     if (url.includes('/api/profile')) profileReqs++;
   });
 
-  await page.goto('/app/');
+  await page.goto('/app/#/backpacks');
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
   await page.waitForTimeout(300);
 

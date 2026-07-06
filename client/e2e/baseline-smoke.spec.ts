@@ -17,7 +17,7 @@ async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
 const saveAndFetch = autoSaveAndFetch;
 
 test('app boots and shows the live data-source indicator', async ({ page }) => {
-  await page.goto('/app/');
+  await page.goto('/app/#/backpacks');
   const badge = page.locator('.data-source-badge');
   await expect(badge).toHaveText('live', { timeout: 10000 });
   await expect(badge).toHaveClass(/badge-live/);
