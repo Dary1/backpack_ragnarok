@@ -16,10 +16,30 @@
 // matches the rest of this dark theme (still just local state + two
 // buttons -- no modal library, same "no library" posture as this file's
 // own countdown formatter already has).
+//
+// REQ-0071 (MJOLNIR re-skin; mock: web/redesign/expedition.html's .room
+// cards): the card adopts the mock anatomy -- ornate panel + gold-knot
+// corners, a circular emblem (the mock's emblem_*.png images are
+// placeholder art, so the disc renders the dungeon name's own first
+// glyph instead -- honest, derived from real data), the dungeon name in
+// the display serif with an inline Lv, a status CHIP row (dot colors per
+// status, cooldown countdown as its own chip beside it, and the mock's
+// 「◆ 監視中」marker while this card is the expanded/watched one), and
+// the mock's 2x2 slot-preview grid (壱/弐/参/肆 numerals via i18n; slot
+// entries resolve presetIndex -> the player's own preset names from the
+// SAME store snapshot SlotsPanel already reads -- real data, no new
+// fetch). The mock's lap counter / reward multiplier footer (周回 2/3 ・
+// 報酬倍率 ×1.2), Jormungandr cooldown RING, and the locked/未踏 room
+// variant have no backing data and are omitted -- see
+// docs/REQ-0071-redesign-expedition.md. BEHAVIOR UNCHANGED: status
+// derivation, countdown arithmetic, cancel flow (inline confirm +
+// cancelRoom call) and every data-testid/class the E2E suite selects are
+// exactly as before.
 import { useEffect, useState } from 'react';
 import { cancelRoom as apiCancelRoom, type ApiRoom } from '../api';
-import { t } from '../i18n';
+import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
+import { useGameStore } from '../store';
 import { Monitor } from './Monitor';
 import { SlotsPanel } from './SlotsPanel';
 
@@ -30,6 +50,12 @@ interface RoomCardProps {
    * schedule.dungeonUnknown (existing key) if the id doesn't match
    * anything currently in the dungeons list. */
   dungeonName: string;
+  /** REQ-0071: resolved display name for room.dungeonType (the dungeons
+   * payload's `types` list, same localizedName() convention as
+   * dungeonName). Undefined for a legacy room without the field, or
+   * while the dungeons list hasn't loaded -- the meta line simply skips
+   * it. */
+  dungeonTypeName?: string;
   expanded: boolean;
   onToggleExpand: () => void;
   onChanged: () => void | Promise<void>;
@@ -65,6 +91,11 @@ const STATUS_KEY: Record<RoomUiStatus, 'schedule.statusIdle' | 'schedule.statusC
   canceled: 'schedule.statusCanceled',
 };
 
+// REQ-0071: the mock numbers its four slots 壱/弐/参/肆 -- localized via
+// i18n (EN uses roman numerals).
+const ORD_KEYS: readonly TranslationKey[] = ['schedule.room.ord1', 'schedule.room.ord2', 'schedule.room.ord3', 'schedule.room.ord4'];
+const UNIT_SLOTS = 4;
+
 /** Formats a millisecond duration as "Xm Ys" / "Ys" -- small, dependency-
  * free, matches this codebase's existing "no library for simple
  * countdown formatting" posture (see store.ts's welcome-banner timer for
@@ -76,7 +107,11 @@ export function formatCountdown(ms: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-export function RoomCard({ room, locale, dungeonName, expanded, onToggleExpand, onChanged }: RoomCardProps) {
+export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded, onToggleExpand, onChanged }: RoomCardProps) {
+  // REQ-0071: preset names for the slot-preview grid -- same snapshot
+  // source SlotsPanel.tsx's dropdown options already read.
+  const snapshot = useGameStore();
+  const presetNames = snapshot.state?.presets?.names ?? [];
   const [now, setNow] = useState(() => Date.now());
   const [cancelPending, setCancelPending] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -102,14 +137,73 @@ export function RoomCard({ room, locale, dungeonName, expanded, onToggleExpand, 
   };
 
   return (
-    <div className={`schedule-room-card schedule-room-status-${status}`} data-testid="schedule-room-card" data-room-id={room.id} data-room-status={status}>
-      <div className="schedule-room-card-header">
-        <div className="schedule-room-card-title">
-          <span className="schedule-room-id">{t(locale, 'schedule.roomId')} {room.id.slice(0, 12)}</span>
-          <span className={`schedule-status-badge schedule-status-badge-${status}`} data-testid="schedule-room-status-badge">
-            {t(locale, STATUS_KEY[status])}
-          </span>
+    <article
+      className={`panel ornate schedule-room-card schedule-room-status-${status}${expanded ? ' schedule-room-card-open' : ''}`}
+      data-testid="schedule-room-card"
+      data-room-id={room.id}
+      data-room-status={status}
+    >
+      <i className="k tl" />
+      <i className="k tr" />
+      <i className="k br" />
+      <i className="k bl" />
+
+      <div className="schedule-room-head">
+        {/* The mock's circular emblem art is a placeholder asset -- the
+            disc shows the dungeon name's own first glyph instead. */}
+        <span className="schedule-room-emblem dj" aria-hidden="true">
+          {dungeonName.charAt(0)}
+        </span>
+        <div className="schedule-room-head-main">
+          <div className="schedule-room-name dj">
+            <span data-testid="schedule-room-dungeon">{dungeonName}</span>
+            <span className="schedule-room-lv den">{t(locale, 'schedule.levelLine', { level: room.level })}</span>
+          </div>
+          <div className="schedule-room-meta t-micro">
+            {dungeonTypeName ? <span className="schedule-room-type">{dungeonTypeName}</span> : null}
+            <span data-testid="schedule-room-created">{createdAtLabel}</span>
+          </div>
         </div>
+      </div>
+
+      <div className="schedule-room-status-row">
+        <span className={`chip schedule-status-badge schedule-status-badge-${status}`} data-testid="schedule-room-status-badge">
+          <span className="dot" aria-hidden="true" />
+          {t(locale, STATUS_KEY[status])}
+        </span>
+        {status === 'cooldown' ? (
+          <span className="chip schedule-room-countdown tnum" data-testid="schedule-room-countdown">
+            {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs) })}
+          </span>
+        ) : null}
+        <span className="schedule-room-grow" aria-hidden="true" />
+        {expanded ? <span className="schedule-room-watching t-micro">{t(locale, 'schedule.room.watching')}</span> : null}
+      </div>
+
+      {/* REQ-0071: the mock's 2x2 slot-preview grid on the collapsed
+          card -- presetIndex resolved to the player's own preset names. */}
+      <div className="schedule-room-slots">
+        {Array.from({ length: UNIT_SLOTS }, (_, i) => {
+          const slot = room.slots[i];
+          const presetIndex = slot && slot.presetIndex != null ? slot.presetIndex : null;
+          const name = presetIndex != null ? presetNames[presetIndex] ?? `P${presetIndex + 1}` : null;
+          return (
+            <span
+              key={i}
+              className={`schedule-room-slot${name == null ? ' schedule-room-slot-empty' : ''}`}
+              data-testid={`schedule-room-slot-chip-${i}`}
+            >
+              <b>{t(locale, ORD_KEYS[i])}</b>:{name ?? t(locale, 'schedule.room.slotEmpty')}
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="schedule-room-foot">
+        <span className="schedule-room-id">
+          {t(locale, 'schedule.roomId')} {room.id.slice(0, 12)}
+        </span>
+        <span className="schedule-room-grow" aria-hidden="true" />
         <div className="schedule-room-card-actions">
           <button type="button" className="schedule-expand-btn" onClick={onToggleExpand} data-testid="schedule-room-expand-toggle">
             {expanded ? t(locale, 'schedule.collapse') : t(locale, 'schedule.expand')}
@@ -120,17 +214,6 @@ export function RoomCard({ room, locale, dungeonName, expanded, onToggleExpand, 
             </button>
           ) : null}
         </div>
-      </div>
-
-      <div className="schedule-room-card-body">
-        <span className="schedule-room-dungeon" data-testid="schedule-room-dungeon">{dungeonName}</span>
-        <span className="schedule-room-level">{t(locale, 'schedule.levelLine', { level: room.level })}</span>
-        <span className="schedule-room-created" data-testid="schedule-room-created">{createdAtLabel}</span>
-        {status === 'cooldown' ? (
-          <span className="schedule-room-countdown" data-testid="schedule-room-countdown">
-            {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs) })}
-          </span>
-        ) : null}
       </div>
 
       {confirmingCancel ? (
@@ -150,9 +233,9 @@ export function RoomCard({ room, locale, dungeonName, expanded, onToggleExpand, 
       {expanded ? (
         <div className="schedule-room-expanded">
           <SlotsPanel room={room} locale={locale} onChanged={onChanged} />
-          <Monitor room={room} locale={locale} />
+          <Monitor room={room} locale={locale} dungeonName={dungeonName} />
         </div>
       ) : null}
-    </div>
+    </article>
   );
 }

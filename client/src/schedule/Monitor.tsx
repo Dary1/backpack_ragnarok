@@ -21,6 +21,24 @@
 // recreated on every expand/collapse or every poll tick, mirroring the
 // Board/InventoryBoard "one Pixi Application forever" discipline this
 // task brief calls out explicitly.
+//
+// REQ-0071 (MJOLNIR re-skin; mock: web/redesign/expedition.html's
+// .mon-panel): chrome/framing ONLY -- the Pixi lifecycle above, the
+// poll-and-diff loop, the settled gate, and every data-testid/class the
+// E2E suite selects are untouched. New chrome, all fed by REAL run data:
+//   - m-head strip: 戦況監視 title + the room's resolved dungeon name, a
+//     LIVE chip while the run is still unsettled, and the room's genSeed
+//     (ApiRoom.genSeed -- the mock's "seed 0x..." readout, real here).
+//   - iron control bar under the Field canvas: decorative rivets, a
+//     wall-clock readout (clock.elapsedSecs / durationSecs -- the run
+//     replay is SERVER-paced, so the mock's pause/speed/skip controls
+//     have no honest backing and are omitted, see the REQ-0071 notes
+//     doc), and the mock timeline whose fill is the same progress pct
+//     the summary bar shows, with one diamond pip per encounter_start
+//     event at its own t/durationSecs position.
+//   - Log tab gains the mock's logbar caption (event count).
+//   - Reward rows render as small item cards (icon via the SAME
+//     iconDataUrl the WarehouseTab already uses + the rarity word tint).
 import { useEffect, useRef, useState } from 'react';
 import {
   fetchContent,
@@ -34,6 +52,7 @@ import {
   type ApiWarehouseItem,
 } from '../api';
 import { loadSpriteTextures } from '../board/sprites';
+import { iconDataUrl } from '../dex/dexIcons';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
@@ -102,9 +121,36 @@ function humanizeEvent(ev: ApiRunEvent): string {
   }
 }
 
+/** REQ-0071: the mock ctrl bar's wall-clock readout -- mm:ss, tabular
+ * digits via the theme's .tnum. Distinct from formatCountdown (kept
+ * as-is for countdown TEXT lines): this one is a fixed-width clock face,
+ * not a sentence fragment. */
+function formatClock(totalSecs: number): string {
+  const s = Math.max(0, Math.floor(totalSecs));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+}
+
+/** REQ-0071: icon + rarity for a reward row -- the SAME content-map
+ * resolution WarehouseTab.tsx's contentEntryFor already uses (TM stacks
+ * live in content.tms; plain PO/SI items in content.items/content.sis),
+ * degrading to "no icon, no tint" while content is still loading or for
+ * an unrecognized id. */
+function rewardVisual(content: ApiContentPayload | null, item: ApiWarehouseItem): { icon: string | null; rarity: string | null } {
+  if (!content) return { icon: null, rarity: null };
+  const entry = item.kind === 'tm' ? content.tms[item.itemId] : content.items[item.itemId] ?? content.sis[item.itemId];
+  if (!entry) return { icon: null, rarity: null };
+  return { icon: iconDataUrl(entry.icon), rarity: entry.rarity ?? null };
+}
+
 interface MonitorProps {
   room: ApiRoom;
   locale: Locale;
+  /** REQ-0071: resolved display name for room.dungeonId (RoomCard already
+   * receives it from SchedulePage's join) -- shown in the mock m-head's
+   * 「戦況監視 — <dungeon>」strip. Pure display. */
+  dungeonName: string;
 }
 
 const POLL_MS = 2000;
@@ -124,7 +170,7 @@ function telegraphSentence(locale: Locale, ev: ApiRunEvent | null): string {
   return `${skill} (${edge}, ${dir})`;
 }
 
-export function Monitor({ room, locale }: MonitorProps) {
+export function Monitor({ room, locale, dungeonName }: MonitorProps) {
   const snapshot = useGameStore();
   const [run, setRun] = useState<ApiRunView | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -367,7 +413,33 @@ export function Monitor({ room, locale }: MonitorProps) {
   const settled = run?.settled ?? false;
 
   return (
-    <div className="schedule-monitor" data-testid="schedule-monitor" data-run-id={run?.runId}>
+    <div className="panel ornate schedule-monitor" data-testid="schedule-monitor" data-run-id={run?.runId}>
+      <i className="k tl" />
+      <i className="k tr" />
+      <i className="k br" />
+      <i className="k bl" />
+
+      {/* REQ-0071: the mock's m-head strip -- title, dungeon name, LIVE
+          chip while the run's own clock says it is still going, and the
+          room's real generator seed. */}
+      <div className="schedule-monitor-head">
+        <span className="schedule-monitor-head-title dj">{t(locale, 'schedule.monitor.title')}</span>
+        <span className="schedule-monitor-head-sep" aria-hidden="true">
+          —
+        </span>
+        <span className="schedule-monitor-head-room">{dungeonName}</span>
+        {run && !settled ? (
+          <span className="chip is-live schedule-monitor-live-chip den" data-testid="schedule-monitor-live-chip">
+            <span className="dot" aria-hidden="true" />
+            {t(locale, 'schedule.monitor.live')}
+          </span>
+        ) : null}
+        <span className="schedule-monitor-grow" aria-hidden="true" />
+        {room.genSeed ? (
+          <span className="schedule-monitor-seed t-micro tnum">{t(locale, 'schedule.monitor.seed', { seed: room.genSeed })}</span>
+        ) : null}
+      </div>
+
       <div className="schedule-monitor-small">
         <div className="schedule-monitor-progress-row">
           <span className="schedule-monitor-progress-label">{t(locale, 'schedule.monitor.progress')}</span>
@@ -417,8 +489,37 @@ export function Monitor({ room, locale }: MonitorProps) {
             {t(locale, 'schedule.monitor.tabLog')}
           </button>
         </div>
-        <div className={activeTab === 'field' ? '' : 'schedule-monitor-hidden'}>
-          <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+        <div className={activeTab === 'field' ? 'schedule-monitor-field-pane' : 'schedule-monitor-hidden'}>
+          <div className="schedule-monitor-stage">
+            <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+          </div>
+          {/* REQ-0071: the mock's iron control bar. Replay pacing is the
+              SERVER's wall clock (REQ-0045), so the mock's pause/speed/
+              skip controls have no honest backing and are omitted -- the
+              bar carries the real clock readout + the timeline (same pct
+              source as the summary bar) with one pip per encounter_start
+              at its own t/durationSecs position. */}
+          <div className="schedule-monitor-ctrl">
+            <span className="schedule-monitor-rivet" aria-hidden="true" />
+            <span className="schedule-monitor-clock tnum" data-testid="schedule-monitor-clock">
+              {run ? `${formatClock(run.clock.elapsedSecs)} / ${formatClock(run.durationSecs)}` : '--:-- / --:--'}
+            </span>
+            <div className="schedule-monitor-timeline" aria-hidden="true">
+              <div className="schedule-monitor-timeline-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+              {run && run.durationSecs > 0
+                ? run.events
+                    .filter((ev) => ev.ev === 'encounter_start' && typeof ev.t === 'number')
+                    .map((ev, i) => (
+                      <i
+                        key={i}
+                        className="schedule-monitor-pip"
+                        style={{ left: `${Math.max(0, Math.min(100, ((ev.t as number) / run.durationSecs) * 100))}%` }}
+                      />
+                    ))
+                : null}
+            </div>
+            <span className="schedule-monitor-rivet" aria-hidden="true" />
+          </div>
         </div>
         <div className={activeTab === 'log' ? 'schedule-monitor-log-panel' : 'schedule-monitor-hidden'} data-testid="schedule-monitor-log-panel">
           <div className="schedule-monitor-log-actions">
@@ -452,6 +553,8 @@ export function Monitor({ room, locale }: MonitorProps) {
               ? run.events.map((ev, idx) => `${idx}: ${humanizeEvent(ev)}`).join('\n')
               : t(locale, 'schedule.monitor.logEmpty')}
           </pre>
+          {/* REQ-0071: mock logbar caption -- real event count. */}
+          <div className="schedule-monitor-logbar t-micro">{t(locale, 'schedule.monitor.logCaption', { count: run?.events.length ?? 0 })}</div>
         </div>
       </div>
 
@@ -471,7 +574,7 @@ export function Monitor({ room, locale }: MonitorProps) {
           over. */}
       {run && settled ? (
         <div className="schedule-monitor-summary" data-testid="schedule-monitor-summary">
-          <div className="schedule-monitor-result">
+          <div className={`schedule-monitor-result schedule-monitor-result-${run.result} dj`}>
             {t(
               locale,
               run.result === 'victory' ? 'schedule.monitor.resultVictory' : run.result === 'wipe' ? 'schedule.monitor.resultWipe' : 'schedule.monitor.resultIncomplete'
@@ -500,12 +603,23 @@ export function Monitor({ room, locale }: MonitorProps) {
                 <div className="schedule-monitor-rewards-none" data-testid="schedule-monitor-rewards-none">{t(locale, 'schedule.monitor.rewardsNone')}</div>
               ) : (
                 <ul className="schedule-monitor-rewards-list" data-testid="schedule-monitor-rewards-list">
-                  {rewards.map((item) => (
-                    <li className="schedule-monitor-reward-row" key={item.itemUid} data-testid="schedule-monitor-reward-row" data-item-uid={item.itemUid}>
-                      {localizedItemName(locale, content, item.itemId)}
-                      {item.kind === 'tm' && typeof item.qty === 'number' ? ` x${item.qty}` : ''}
-                    </li>
-                  ))}
+                  {rewards.map((item) => {
+                    // REQ-0071: mock spoils rows -- icon thumb + rarity-
+                    // tinted name (same content-map lookup + iconDataUrl
+                    // the WarehouseTab rows already use).
+                    const visual = rewardVisual(content, item);
+                    return (
+                      <li className="schedule-monitor-reward-row" key={item.itemUid} data-testid="schedule-monitor-reward-row" data-item-uid={item.itemUid}>
+                        <span className="schedule-monitor-reward-thumb" aria-hidden="true">
+                          {visual.icon ? <img src={visual.icon} alt="" /> : null}
+                        </span>
+                        <span className={`schedule-monitor-reward-name${visual.rarity ? ` rarity r-${visual.rarity}` : ''}`}>
+                          {localizedItemName(locale, content, item.itemId)}
+                          {item.kind === 'tm' && typeof item.qty === 'number' ? ` x${item.qty}` : ''}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </>

@@ -18,6 +18,22 @@
 // instead of a panel below it (auto-opens itself, harmlessly, whenever
 // the caller has zero rooms at all -- there's nothing else useful to
 // show yet in that case).
+//
+// REQ-0071 (MJOLNIR re-skin; mock: web/redesign/expedition.html): page
+// chrome only -- fetch/poll cadence, tab switching, create flow, and
+// every selector the E2E suite uses are unchanged. Additions: the mock's
+// full-viewport key art (bg_expedition.jpg, referenced from the served
+// /redesign/assets path like the canvas page's -- REQ-0070 convention),
+// a pagehead strip (hall title + lede; the mock's Muninn NIGHT-REPORT
+// headline, raven art and the 22:40->06:10 night arc have no backing
+// data -- no sleep-session tracking exists -- and are omitted, see
+// docs/REQ-0071-redesign-expedition.md), a rune divider, the mock rooms
+// colhead (遠征房 N/M 稼働 -- REAL counts derived from the rooms list),
+// and the rooms list is a responsive card grid in which the expanded
+// card spans the full row (the mock's 3-column master/detail geometry
+// is not reproducible without moving the Monitor OUT of its room card,
+// which the E2E containment contract + the one-Pixi-app-per-monitor
+// lifecycle both forbid).
 import { useCallback, useEffect, useState } from 'react';
 import {
   ApiError,
@@ -139,50 +155,93 @@ export function SchedulePage({ locale }: SchedulePageProps) {
     return entry ? localizedName(locale, entry) : t(locale, 'schedule.dungeonUnknown');
   }
 
+  // REQ-0071: same join for the room's dungeonType (the payload's `types`
+  // list) -- undefined (RoomCard skips the line) for a legacy room
+  // without the field or while dungeons haven't loaded.
+  function dungeonTypeNameFor(dungeonType?: string): string | undefined {
+    if (!dungeonType) return undefined;
+    const entry = dungeons?.types.find((ty) => ty.id === dungeonType);
+    return entry ? localizedName(locale, entry) : undefined;
+  }
+
   const hasRooms = rooms !== null && rooms.length > 0;
   const canceledCount = rooms ? rooms.filter((r) => r.status === 'canceled').length : 0;
   const visibleRooms = rooms ? (hideCanceled ? rooms.filter((r) => r.status !== 'canceled') : rooms) : [];
+  // REQ-0071: the mock colhead's 「遠征房 2/3 稼働」 -- real counts
+  // (running = status 'active'; total = every non-canceled room).
+  const runningCount = rooms ? rooms.filter((r) => r.status === 'active').length : 0;
+  const liveRoomCount = rooms ? rooms.filter((r) => r.status !== 'canceled').length : 0;
   // Force the create panel open whenever the caller has zero rooms --
   // nothing else useful to show, and a brand-new/fully-cleared account
   // shouldn't have to know a toggle exists just to find the only action
   // available.
   const showCreatePanel = createOpen || (rooms !== null && rooms.length === 0);
 
+  const pageSub = t(locale, 'schedule.pageSub');
+
   return (
     <div className="schedule-page">
-      <div className="schedule-tab-row">
-        <button
-          type="button"
-          className={`schedule-tab${tab === 'rooms' ? ' schedule-tab-active' : ''}`}
-          onClick={() => setTab('rooms')}
-        >
-          {t(locale, 'schedule.tabRooms')}
-        </button>
-        <button
-          type="button"
-          className={`schedule-tab${tab === 'warehouse' ? ' schedule-tab-active' : ''}`}
-          onClick={() => setTab('warehouse')}
-        >
-          {t(locale, 'schedule.tabWarehouse')}
-        </button>
+      {/* REQ-0071: full-viewport key art behind the page (mock .bgart) --
+          referenced from the served /redesign/assets path, never bundled
+          (same convention as .canvas-bgart, REQ-0070). position:fixed but
+          nested inside this route-owned tree, so it unmounts with it. */}
+      <div className="expedition-bgart" aria-hidden="true" />
+
+      {/* REQ-0071: pagehead strip (mock .pagehead, adapted -- see module
+          comment for what had no backing data and was omitted). */}
+      <section className="schedule-pagehead">
+        <div className="schedule-pagehead-main">
+          {pageSub ? <div className="schedule-pagehead-kicker den">{pageSub}</div> : null}
+          <h1 className="schedule-pagehead-title dj dj-wide">{t(locale, 'schedule.pageTitle')}</h1>
+          <div className="schedule-pagehead-lede">{t(locale, 'schedule.pageLede')}</div>
+        </div>
+        <div className="schedule-pagehead-tabs schedule-tab-row">
+          <button
+            type="button"
+            className={`schedule-tab${tab === 'rooms' ? ' schedule-tab-active' : ''}`}
+            onClick={() => setTab('rooms')}
+          >
+            {t(locale, 'schedule.tabRooms')}
+          </button>
+          <button
+            type="button"
+            className={`schedule-tab${tab === 'warehouse' ? ' schedule-tab-active' : ''}`}
+            onClick={() => setTab('warehouse')}
+          >
+            {t(locale, 'schedule.tabWarehouse')}
+          </button>
+        </div>
+      </section>
+      <div className="rune-divider schedule-pagehead-divider" aria-hidden="true">
+        ᚱ
       </div>
 
       {tab === 'rooms' ? (
         <div className="schedule-rooms-view">
           {loadError ? <div className="schedule-error">{t(locale, 'schedule.loadFailed')}{loadError}</div> : null}
 
+          {/* REQ-0071: mock rooms colhead -- den label + live counts. */}
+          <div className="schedule-colhead">
+            <span className="schedule-colhead-den den">{t(locale, 'schedule.roomsDen')}</span>
+            {rooms !== null ? (
+              <span className="schedule-colhead-count t-micro">
+                {t(locale, 'schedule.roomsActive', { running: runningCount, total: liveRoomCount })}
+              </span>
+            ) : null}
+          </div>
+
           {hasRooms ? (
             <div className="schedule-rooms-toolbar">
               <button
                 type="button"
-                className="schedule-create-toggle-btn"
+                className="btn schedule-create-toggle-btn"
                 onClick={() => setCreateOpen((o) => !o)}
                 data-testid="schedule-create-toggle"
               >
-                {showCreatePanel ? t(locale, 'schedule.collapse') : t(locale, 'schedule.createTitle')}
+                {showCreatePanel ? t(locale, 'schedule.collapse') : t(locale, 'schedule.createToggle')}
               </button>
               {canceledCount > 0 ? (
-                <label className="schedule-hide-canceled-toggle">
+                <label className="chip schedule-hide-canceled-toggle">
                   <input
                     type="checkbox"
                     checked={hideCanceled}
@@ -196,8 +255,12 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           ) : null}
 
           {showCreatePanel ? (
-            <div className="schedule-create-panel">
-              <h3>{t(locale, 'schedule.createTitle')}</h3>
+            <div className="panel ornate schedule-create-panel">
+              <i className="k tl" />
+              <i className="k tr" />
+              <i className="k br" />
+              <i className="k bl" />
+              <h3 className="dj">{t(locale, 'schedule.createTitle')}</h3>
               {createError ? <div className="schedule-error">{createError}</div> : null}
               <CreateRoomForm locale={locale} dungeons={dungeons} creating={creating} isAdmin={isAdmin} onCreate={handleCreate} />
             </div>
@@ -217,6 +280,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
                   room={room}
                   locale={locale}
                   dungeonName={dungeonNameFor(room.dungeonId)}
+                  dungeonTypeName={dungeonTypeNameFor(room.dungeonType)}
                   expanded={expandedRoomId === room.id}
                   onToggleExpand={() => setExpandedRoomId((cur) => (cur === room.id ? null : room.id))}
                   onChanged={reloadRooms}
