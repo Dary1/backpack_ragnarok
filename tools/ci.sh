@@ -15,6 +15,12 @@ echo "==== [2/7] sim replay goldens (determinism contract) ===="
 node sim/tests/goldens.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
+echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
+if [ -x node_modules/.bin/tsc ]; then
+  node_modules/.bin/tsc -p tsconfig.server.json
+else
+  echo "typescript missing -- run: npm install" >&2; exit 1
+fi
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 if [ "${SKIP_PG:-0}" != "1" ]; then

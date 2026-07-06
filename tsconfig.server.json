@@ -1,0 +1,32 @@
+{
+  "// doc": "REQ-0047 (c): machine checking for the decomposed server modules (and shared/). allowJs+checkJs+noEmit -- the runtime stays plain CJS (no build step, systemd entry unchanged). Legacy monoliths (storage/players/admin bodies) join as they are touched.",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "es2022",
+    "moduleResolution": "node16",
+    "module": "node16",
+    "strict": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": false,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ]
+  },
+  "include": [
+    "server/router.cjs",
+    "server/lib/**/*.cjs",
+    "server/routes/**/*.cjs",
+    "server/services/**/*.cjs",
+    "server/schedule.cjs",
+    "shared/**/*.cjs",
+    "types/coded-error.d.ts"
+  ],
+  "exclude": [
+    "mock-src",
+    "server/node_modules",
+    "node_modules"
+  ]
+}

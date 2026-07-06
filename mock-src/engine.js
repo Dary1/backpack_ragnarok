@@ -1,3 +1,4 @@
+// @ts-nocheck -- REQ-0047 (c): engine.js is checked/typed properly in phase (e) (JSDoc pass). Until then it is pulled into the server type program via services/core.cjs makeEngine() and would fail on pre-existing JS idioms; runtime behavior is unchanged by this comment.
 // backpack_ragnarok mock — pure engine (no DOM). Runs in browser (window.Engine) and node (module.exports).
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();

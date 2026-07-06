@@ -250,10 +250,21 @@ fs.writeFileSync(path.join(batchDir, 'entities.json'), JSON.stringify({
 }));
 
 os.homedir = () => fakeRepoHome;
-delete require.cache[require.resolve('../players.cjs')];
-delete require.cache[require.resolve('../storage.cjs')];
-delete require.cache[require.resolve('../admin.cjs')];
-delete require.cache[require.resolve('../api.cjs')];
+// REQ-0047 (c): the server is a module TREE now (api.cjs -> router.cjs ->
+// routes/* -> lib/*) -- evicting only the four legacy files would leave
+// routes/ modules holding stale (old-homedir-bound) admin/storage refs.
+// Evict every first-party server/ module (never node_modules, never this
+// test file) so a re-require rebinds the whole tree at once.
+function evictServerModuleTree() {
+  const path = require('path');
+  for (const k of Object.keys(require.cache)) {
+    if (!k.includes(path.sep + 'server' + path.sep)) continue;
+    if (k.includes('node_modules')) continue;
+    if (k.includes(path.sep + 'tests' + path.sep)) continue;
+    delete require.cache[k];
+  }
+}
+evictServerModuleTree();
 const api = require('../api.cjs');
 const admin = require('../admin.cjs');
 const playersFixture = require('../players.cjs');
@@ -2187,10 +2198,8 @@ async function main() {
     const originalMode = fs.statSync(realItemsPath).mode;
     const originalSha = crypto.createHash('sha256').update(originalBytes).digest('hex');
 
-    delete require.cache[require.resolve('../players.cjs')];
-    delete require.cache[require.resolve('../admin.cjs')];
-    delete require.cache[require.resolve('../storage.cjs')];
-    delete require.cache[require.resolve('../api.cjs')];
+    // REQ-0047 (c): rebind the WHOLE server module tree (see evictServerModuleTree).
+    evictServerModuleTree();
     const realApi = require('../api.cjs');
 
     try {

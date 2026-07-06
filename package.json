@@ -5,6 +5,11 @@
   "scripts": {
     "test": "bash tools/ci.sh",
     "test:quick": "SKIP_PG=1 SKIP_CLIENT=1 SKIP_E2E=1 bash tools/ci.sh",
-    "goldens:gen": "node sim/tests/goldens.cjs gen"
+    "goldens:gen": "node sim/tests/goldens.cjs gen",
+    "typecheck": "tsc -p tsconfig.server.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "typescript": "^6.0.3"
   }
 }
