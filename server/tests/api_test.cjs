@@ -2060,6 +2060,61 @@ async function main() {
     scheduleStorage.deleteWarehouseItem(devPlayer.playerId, grantId);
   });
 
+  await AT('schedule: POST /api/warehouse/dev/clear-debris is dev-only (403 for a real guest token) and bulk-clears ONLY the dev fallback caller\'s warehouse rows (fix: e2e pg teardown -- E2E debris-cleanup hook)', async () => {
+    // Seed two rows for the dev fallback player + one for a real guest
+    // (scheduleP1), written directly via the storage chokepoint -- same
+    // seeding technique as the backdate-claim test above. Each row is
+    // written ONCE under its final owner (see that test's NOTE on the
+    // writeWarehouseItemPg ON CONFLICT/player_id footgun).
+    const now = Date.now();
+    const mkRow = (uid, pid) => ({
+      itemUid: uid, playerId: pid, itemId: 'blade',
+      harvestedAt: new Date(now).toISOString(), expiresAt: new Date(now + 999999).toISOString(),
+      status: 'claimable',
+    });
+    const uidA = 'wh_cleardebris_a_' + now;
+    const uidB = 'wh_cleardebris_b_' + now;
+    const uidGuest = 'wh_cleardebris_guest_' + now;
+    scheduleStorage.writeWarehouseItem(devPlayer.playerId, uidA, mkRow(uidA, devPlayer.playerId));
+    scheduleStorage.writeWarehouseItem(devPlayer.playerId, uidB, mkRow(uidB, devPlayer.playerId));
+    scheduleStorage.writeWarehouseItem(scheduleP1.playerId, uidGuest, mkRow(uidGuest, scheduleP1.playerId));
+    try {
+      // 403 for a real guest token -- this dev-only hook never honors ANY
+      // real token (same callerIsDevFallback gate as dev/backdate and
+      // dev/backdate-claim above), and the guard runs before any delete.
+      const guestRes = await scheduleReq('POST', '/api/warehouse/dev/clear-debris', scheduleP1.token);
+      assert.strictEqual(guestRes.status, 403, 'a real guest token must never reach this dev-only hook: ' + JSON.stringify(guestRes.body));
+
+      // 405 for a non-POST method (same method gate shape as its siblings).
+      const getRes = await scheduleReq('GET', '/api/warehouse/dev/clear-debris', undefined);
+      assert.strictEqual(getRes.status, 405, JSON.stringify(getRes.body));
+
+      // Happy path: the dev fallback caller (no token) clears its OWN
+      // rows -- at least the two seeded here (earlier tests may have left
+      // additional dev-player rows; that is exactly the debris this hook
+      // exists to remove) -- and the very next list is empty.
+      const clearRes = await scheduleReq('POST', '/api/warehouse/dev/clear-debris', undefined);
+      assert.strictEqual(clearRes.status, 200, JSON.stringify(clearRes.body));
+      assert.ok(clearRes.body.deleted >= 2, 'both seeded dev rows must count toward deleted: ' + JSON.stringify(clearRes.body));
+      const devList = await scheduleReq('GET', '/api/warehouse', undefined);
+      assert.strictEqual(devList.body.items.length, 0, 'dev warehouse must be empty right after clear-debris: ' + JSON.stringify(devList.body.items));
+
+      // ...and NEVER the guest's row: the hook is caller-scoped (no
+      // client-suppliable playerId exists in its shape), so a real
+      // player's warehouse is untouched by a dev clear.
+      const guestList = await scheduleReq('GET', '/api/warehouse', scheduleP1.token);
+      assert.ok(guestList.body.items.find((i) => i.itemUid === uidGuest), 'the guest-owned row must survive the dev clear');
+
+      // Idempotent: clearing an already-empty warehouse is a 200 with
+      // deleted:0, never an error (setup AND teardown both call it).
+      const again = await scheduleReq('POST', '/api/warehouse/dev/clear-debris', undefined);
+      assert.strictEqual(again.status, 200, JSON.stringify(again.body));
+      assert.strictEqual(again.body.deleted, 0, JSON.stringify(again.body));
+    } finally {
+      scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, uidGuest);
+    }
+  });
+
   // =====================================================================
   // REQ-0043: dungeon auto-generation -- room dungeonType/level/genSeed,
   // genSeed privilege gating (dev fallback / item_admin only, same
