@@ -250,8 +250,6 @@ export function SellPane({ state, gameData, locale, allListings, listedUids, onL
                   {t(locale, 'market.sell.estPay')} <b className="tnum" data-testid="market-est-pay">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum" data-testid="market-est-burn">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum" data-testid="market-est-get">{price - burn}</b>
                 </span>
               </div>
-              {errKey ? <div className="schedule-error market-sell-error" data-testid="market-sell-error">{t(locale, errKey as Parameters<typeof t>[1])}</div> : null}
-              {toast ? <div className="schedule-toast market-sell-toast" data-testid="market-sell-toast">{toast}</div> : null}
               <div className="mt16">
                 <button type="button" className="btn btn-forge" data-testid="market-list-btn" disabled={busy} onClick={() => void list()}>
                   {busy ? t(locale, 'market.sell.listing') : t(locale, 'market.sell.listButton')}
@@ -264,6 +262,14 @@ export function SellPane({ state, gameData, locale, allListings, listedUids, onL
               {anyEligible ? t(locale, 'market.sell.pickHint') : t(locale, 'market.sell.noneEligible')}
             </div>
           )}
+          {/* Deliberately OUTSIDE the selected-gated block above (fixed
+              post-deploy E2E, 2026-07-07): list()'s success path clears
+              selectedUid right after setToast (so the picker resets),
+              and the 'deployed' catch branch does the same before its
+              own errKey would render -- either would otherwise hide
+              these the instant they appeared. */}
+          {errKey ? <div className="schedule-error market-sell-error" data-testid="market-sell-error">{t(locale, errKey as Parameters<typeof t>[1])}</div> : null}
+          {toast ? <div className="schedule-toast market-sell-toast" data-testid="market-sell-toast">{toast}</div> : null}
         </div>
       </div>
     </section>

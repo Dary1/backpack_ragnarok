@@ -149,6 +149,33 @@ export async function clearDevEinherjarRecords(phase: string): Promise<void> {
   }
 }
 
+// REQ-0064 addition: nothing in market.spec.ts ever withdraws the
+// listings seedSellerListing seeds (several tests never buy/withdraw
+// what they created), so every suite run permanently adds more ACTIVE
+// listings to the shared live market. Exact-count browse assertions
+// (BUY: browse renders listing cards) can only ever pass against a
+// browse view with nothing else already on the shelf -- see
+// services/market.cjs's devClearAllListings() doc comment. Same call
+// convention as clearDevWarehouseDebris/clearDevEinherjarRecords.
+export async function clearAllMarketListings(phase: string): Promise<void> {
+  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  try {
+    const res = await ctx.post('/api/market/listings/dev/clear-all');
+    const bodyText = await res.text();
+    if (res.status() === 404) {
+      console.warn(`[${phase}] POST /api/market/listings/dev/clear-all -> 404 (running API predates the hook?) -- market listings NOT cleared`);
+      return;
+    }
+    if (!res.ok()) {
+      throw new Error(`market listings cleanup failed: POST ${API_ORIGIN}/api/market/listings/dev/clear-all -> ${res.status()} ${bodyText}`);
+    }
+    const { cleared } = JSON.parse(bodyText) as { cleared: number };
+    console.log(`[${phase}] cleared active market listings (POST /api/market/listings/dev/clear-all cleared=${cleared})`);
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 function sha256(path: string): string {
   if (!existsSync(path)) return '(missing)';
   return execFileSync('sha256sum', [path]).toString().trim().split(/\s+/)[0];
@@ -188,4 +215,7 @@ export default async function globalSetup(): Promise<void> {
   // REQ-0066: start the run with a guaranteed-empty dev-player hall. See
   // clearDevEinherjarRecords' own doc comment above.
   await clearDevEinherjarRecords('global-setup');
+  // REQ-0064: start the run with an empty market browse view. See
+  // clearAllMarketListings' own doc comment above.
+  await clearAllMarketListings('global-setup');
 }

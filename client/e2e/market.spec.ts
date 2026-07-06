@@ -84,8 +84,26 @@ function devBuyerCanvas(lrdst: number, invPos: Array<{ uid: string; id: string }
 /** Seeds a seller with an inventory PO then lists it, returning the
  * created listing id. All via the real market/profile API using the
  * seller's own token. */
+// Accumulates each seller's seeded inv items ACROSS calls (keyed by
+// playerId) so a test that lists >1 item for the SAME seller (BUY:
+// browse renders listing cards seeds two) doesn't have its earlier
+// item(s) wiped by a later call's canvas PUT. Bug found by that exact
+// test on the real live suite (2026-07-07): the canvas PUT here used to
+// carry ONLY the single new item, so seedSellerListing's second call
+// for a seller overwrote the first item clean out of their inventory --
+// the server's market browse view derives a listing's live state from
+// the seller's CURRENT canvas (services/market.cjs's deriveView:
+// !findInventoryPO(...) -> autoWithdrawItemGone), so the first listing
+// silently self-withdrew as "item_gone" the moment the second PUT
+// landed, well before the test ever asserted anything. Each fresh
+// seller (mintInvite mints a new playerId every call) starts this
+// tracker empty, so single-item callers are unaffected.
+const sellerSeedInv = new Map<string, Array<{ uid: string; id: string }>>();
+
 async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: string, itemId: string, qty: number): Promise<string> {
-  const canvas = devBuyerCanvas(0, [{ uid: itemUid, id: itemId }]);
+  const invPos = [...(sellerSeedInv.get(seller.playerId) ?? []), { uid: itemUid, id: itemId }];
+  sellerSeedInv.set(seller.playerId, invPos);
+  const canvas = devBuyerCanvas(0, invPos);
   const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, {
     headers: { 'X-Auth-Token': seller.token },
     data: canvas,
@@ -281,24 +299,38 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await page.request.put('/api/profile/dev/canvas', { data: canvas });
     // Create a room + assign preset 1 to a slot -> the item is deployed.
     const room = await page.request.post('/api/schedule/rooms', { data: { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' } });
+    let roomId: string | null = null;
     if (room.ok()) {
-      const roomId = (await room.json()).room.id;
+      roomId = (await room.json()).room.id;
       await page.request.put(`/api/schedule/rooms/${roomId}/slots/0`, { data: { presetIndex: 1 } });
     }
-
-    await gotoMarket(page);
-    await page.locator('[data-testid="market-tab-sell"]').click();
-    const item = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_dep_1"]');
-    await expect(item).toBeVisible();
-    // Attempt to select+list -> server 409 deployed -> the card locks with
-    // the mock's deployed word rather than vanishing.
-    await item.click();
-    // If selectable-then-rejected: list it and observe the lock, else the
-    // card may already be locked. Either way it must END locked+visible.
-    const listBtn = page.locator('[data-testid="market-list-btn"]');
-    if (await listBtn.count()) { await listBtn.click().catch(() => {}); }
-    await expect(item).toHaveAttribute('data-locked', 'true', { timeout: 10000 });
-    await expect(item.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    try {
+      await gotoMarket(page);
+      await page.locator('[data-testid="market-tab-sell"]').click();
+      const item = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_dep_1"]');
+      await expect(item).toBeVisible();
+      // Attempt to select+list -> server 409 deployed -> the card locks
+      // with the mock's deployed word rather than vanishing.
+      await item.click();
+      // If selectable-then-rejected: list it and observe the lock, else
+      // the card may already be locked. Either way it must END
+      // locked+visible.
+      const listBtn = page.locator('[data-testid="market-list-btn"]');
+      if (await listBtn.count()) { await listBtn.click().catch(() => {}); }
+      await expect(item).toHaveAttribute('data-locked', 'true', { timeout: 10000 });
+      await expect(item.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    } finally {
+      // Fixed post-full-suite-run E2E (2026-07-07): this room's preset-1
+      // deploy assignment used to outlive the test (no cleanup at all),
+      // permanently poisoning every LATER test's "is preset 1 deployed"
+      // check for the rest of that run (ragnarok.spec.ts's BLAST
+      // MANIFEST / FULL RITE / HALL STRIP all failed downstream of this
+      // exact leftover, only in a full-suite run -- never running
+      // market.spec.ts alone, and never caught before that first
+      // full-suite pass). Same cleanup ragnarok.spec.ts's own DEVOTION
+      // PICKER test already uses.
+      if (roomId) await page.request.delete(`/api/schedule/rooms/${roomId}`).catch(() => {});
+    }
   });
 
   test('MINE: withdraw pulls a listing off the hearth (free, no burn), and the row leaves the browse', async ({ page }) => {

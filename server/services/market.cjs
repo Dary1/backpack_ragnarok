@@ -485,6 +485,35 @@ function withdrawListing(callerId, listingId, idemKey) {
   return { listing, replayed: false };
 }
 
+// devClearAllListings (E2E hook, mirrors services/ragnarok.cjs's
+// devClearEinherjarRecords shape): force-withdraws EVERY currently-active
+// listing regardless of seller (real withdrawListing is owner-only, and
+// this suite's sellers are freshly-minted random players every run, so
+// there is no single owner token that could ever clear them all).
+// Exists because nothing in market.spec.ts ever withdraws the listings
+// it seeds (seedSellerListing creates, several tests never buy/withdraw
+// what they created) -- every run of the suite permanently adds more
+// active listings to the shared live market, and the exact-count
+// assertions in tests like BUY: browse renders listing cards can only
+// ever pass against a browse view with nothing ELSE already on the
+// shelf. Same shape as autoWithdrawItemGone's mutate+persist, just
+// unconditional and market-wide rather than gated on the item being
+// gone. Gated to the dev_mode fallback caller only by the route handler
+// (routes/market.cjs).
+function devClearAllListings(nowMs) {
+  const now = nowMs != null ? nowMs : Date.now();
+  let cleared = 0;
+  for (const raw of storage.listMarketListings()) {
+    normalizeListing(raw, now);
+    if (raw.state !== 'active') continue;
+    raw.state = 'withdrawn';
+    raw.withdrawal = { t: new Date(now).toISOString(), reason: 'e2e_dev_reset', idemKey: null };
+    storage.writeMarketListing(raw.id, raw);
+    cleared += 1;
+  }
+  return cleared;
+}
+
 // stripPoFromCanvas: removes every pos[] entry with `uid` from the
 // canvas -- inventory pages, the active preset's top-level pos[], and
 // every stored preset snapshot (presets that merely REFERENCE the
@@ -715,6 +744,7 @@ module.exports = {
   listListings,
   createListing,
   withdrawListing,
+  devClearAllListings,
   buyListing,
   furnaceTotal,
   toListingDto,

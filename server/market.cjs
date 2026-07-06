@@ -24,6 +24,7 @@ module.exports = {
   listListings: market.listListings,
   createListing: market.createListing,
   withdrawListing: market.withdrawListing,
+  devClearAllListings: market.devClearAllListings,
   buyListing: market.buyListing,
   furnaceTotal: market.furnaceTotal,
   toListingDto: market.toListingDto,

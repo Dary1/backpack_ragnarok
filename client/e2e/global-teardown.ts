@@ -28,6 +28,7 @@ import {
   PROFILE_PATH,
   clearDevWarehouseDebris,
   clearDevEinherjarRecords,
+  clearAllMarketListings,
 } from './global-setup';
 
 function sha256(path: string): string {
@@ -145,6 +146,13 @@ export default async function globalTeardown(): Promise<void> {
   // found it -- see clearDevEinherjarRecords' own doc comment.
   try {
     await clearDevEinherjarRecords('global-teardown');
+  } catch (e) {
+    errors.push(e instanceof Error ? e : new Error(String(e)));
+  }
+  // REQ-0064: leave the market browse view exactly as empty as
+  // global-setup found it -- see clearAllMarketListings' own doc comment.
+  try {
+    await clearAllMarketListings('global-teardown');
   } catch (e) {
     errors.push(e instanceof Error ? e : new Error(String(e)));
   }

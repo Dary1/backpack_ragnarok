@@ -34,10 +34,11 @@ const MARKET_LISTINGS_RE = /^\/api\/market\/listings$/;
 const MARKET_LISTING_WITHDRAW_RE = /^\/api\/market\/listings\/([^/]+)\/withdraw$/;
 const MARKET_LISTING_BUY_RE = /^\/api\/market\/listings\/([^/]+)\/buy$/;
 const MARKET_FURNACE_RE = /^\/api\/market\/furnace$/;
+const MARKET_LISTINGS_DEV_CLEAR_RE = /^\/api\/market\/listings\/dev\/clear-all$/;
 
 function tryMarketRoutes(req, res, url, p) {
   const marketMatch = p.match(MARKET_LISTINGS_RE) || p.match(MARKET_LISTING_WITHDRAW_RE) ||
-    p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE);
+    p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE);
   if (!marketMatch) return false;
 
   const token = getAuthToken(req);
@@ -47,6 +48,12 @@ function tryMarketRoutes(req, res, url, p) {
     return;
   }
   const callerId = resolved.player.playerId;
+  // REQ-0066/routes-ragnarok.cjs-style E2E hook gate: true only when
+  // this request resolved via the dev_mode NO-TOKEN fallback -- same
+  // computation as routes/schedule.cjs's and routes/ragnarok.cjs's own
+  // callerIsDevFallback; used ONLY to gate /listings/dev/clear-all below.
+  const devUserForGate = admin.readDevUser();
+  const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
   // Optional Idempotency-Key (node:http lowercases header names).
   const rawIdem = req.headers['idempotency-key'];
   const idemKey = typeof rawIdem === 'string' && rawIdem ? rawIdem : undefined;
@@ -63,6 +70,28 @@ function tryMarketRoutes(req, res, url, p) {
     const body = { ok: false, error: e.message };
     if (typeof e.reason === 'string') body.reason = e.reason;
     sendJSON(res, errToStatus(e), body);
+  }
+
+  // ---- POST /api/market/listings/dev/clear-all (E2E hook, mirrors
+  // routes/ragnarok.cjs's /order/dev/force-rebuild + /einherjar/dev/clear
+  // exactly) ---- Force-withdraws EVERY active listing market-wide,
+  // regardless of seller -- see services/market.cjs's
+  // devClearAllListings() doc comment: nothing in market.spec.ts ever
+  // withdraws what it seeds, so without this hook every suite run
+  // permanently adds more active listings to the shared live market and
+  // poisons any later exact-count browse assertion. GATED to the
+  // dev_mode no-token fallback caller ONLY; a real guest token gets 403.
+  if (p.match(MARKET_LISTINGS_DEV_CLEAR_RE)) {
+    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+    if (!callerIsDevFallback) {
+      sendJSON(res, 403, { ok: false, error: 'forbidden: listings/dev/clear-all is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+      return;
+    }
+    try {
+      const cleared = market.devClearAllListings();
+      sendJSON(res, 200, { ok: true, cleared });
+    } catch (e) { sendMarketError(e); }
+    return;
   }
 
   // ---- GET/POST /api/market/listings ----
