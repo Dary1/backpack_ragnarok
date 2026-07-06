@@ -144,3 +144,30 @@ isolated sub-streams. New coverage lands only as **new** fixtures/hashes.
   (an enemy with `OnUnitBeenHit` retaliation + `OnUnitHit` proc) and
   `npm run goldens:gen` only the added hashes.
 - Vocab self-test + API vocab list green (`npm run test:quick`).
+
+
+## Implementation status -- Phase 1 landed (this branch)
+- **Vocab/content/render:** `host_on_hit`/`on_hit`/`on_bp_damaged` replaced by
+  the 6-trigger taxonomy; the 3 `OnPOHit` SIs renamed; per-owner
+  `trigger_domains`; `eff_render` EN/JA. (`content/vocab.json`,
+  `content/live/live_sis.json`, `tools/eff_render.cjs`.)
+- **Sim reactive firing (ENEMY side)** in `sim/lib/{skills,encounter}.cjs`:
+  - `OnUnitBeenHit`: on a direct hit to a monster, fires a retaliation ray at
+    the player field (attacker src tagged `...#react`) + a `reactive_proc` marker.
+  - `OnHit` / `OnUnitHit`: on a monster's direct hit landing, fires the skill's
+    verb as a RIDER on the struck target (`applyReactiveVerbToTarget`).
+  - `fireSkillRay` now returns `landedHits` (direct strike/multi_strike hits).
+- **OQ-F (reactive verb targeting) LOCKED:** offensive riders apply to the
+  struck target (`apply_status` -> status on target; `strike` -> bonus damage;
+  `lifesteal` -> heal owner). Defensive `OnUnitBeenHit` fires as a counter-ray at
+  the opposing field. Self-buff riders (`block`/`heal_bp`) are Phase 1b.
+- **Event:** `reactive_proc {trigger, verb, dst, ...}` added to the replay stream.
+- **Determinism:** existing goldens byte-identical (no existing content uses the
+  new triggers; SIs are not compiled into the sim; reactive RNG is isolated).
+- **Deferred to Phase 1b:** player-side (PO) reactive firing; `OnPOHit` (needs SI
+  compilation into the snapshot); Linker-as-effect-bearer (needs
+  `BPLinker.effects` in `shared/engine.d.ts` + compile) -- this also unblocks
+  REQ-0079.
+- **Tests:** `sim/tests/run.cjs` +3 (reactive fire, deterministic replay,
+  baseline every_secs-only emits no `reactive_proc`). Full CI green
+  (sim 63/0, goldens 12 identical, mock 97/0, check_engine_types OK, api 134/0).
