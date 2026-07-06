@@ -21,6 +21,8 @@ if [ -x node_modules/.bin/tsc ]; then
 else
   echo "typescript missing -- run: npm install" >&2; exit 1
 fi
+echo "==== [3.6/7] engine type-surface drift check ===="
+node tools/check_engine_types.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 if [ "${SKIP_PG:-0}" != "1" ]; then
