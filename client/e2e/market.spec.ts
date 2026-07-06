@@ -88,7 +88,7 @@ async function seedSellerListing(page: Page, seller: MintedPlayer, itemUid: stri
   const canvas = devBuyerCanvas(0, [{ uid: itemUid, id: itemId }]);
   const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, {
     headers: { 'X-Auth-Token': seller.token },
-    data: { canvas },
+    data: canvas,
   });
   expect(put.ok()).toBeTruthy();
   const res = await page.request.post('/api/market/listings', {
@@ -130,7 +130,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test.afterEach(async ({ page }) => {
-    if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: { canvas: origCanvas } });
+    if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
     if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
     else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     // sweep any market debris the dev buyer accrued (warehouse deliveries)
@@ -144,7 +144,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await seedSellerListing(page, seller, 'e2e_browse_2', 'frost_nail', 12);
 
     // dev buyer boots with a fat balance (so nothing is short-gated here).
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(500, []) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(500, []) });
     await gotoMarket(page);
 
     // Cards present, price + burn breakdown line rendered.
@@ -173,7 +173,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   test('BUY happy path: the oath modal settles, the balance debits server-side, and the item lands in the buyer warehouse', async ({ page }) => {
     const seller = mintInvite('MarketSellerBuy');
     await seedSellerListing(page, seller, 'e2e_buy_1', 'glacier_cleaver', 46);
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(100, []) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(100, []) });
     await gotoMarket(page);
 
     const before = await readDevLrdst(page);
@@ -204,7 +204,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
 
   test('BUY 409 self_buy: a card the buyer listed themselves is not buyable (button disabled), and a forced buy 409s', async ({ page }) => {
     // dev buyer both owns the item AND lists it -> self purchase blocked.
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(200, [{ uid: 'e2e_self_1', id: 'frost_nail' }]) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(200, [{ uid: 'e2e_self_1', id: 'frost_nail' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_self_1', price: { tm: 'lrdst', qty: 12 } } });
     expect(listRes.status()).toBe(200);
     const listingId = (await listRes.json()).listing.id;
@@ -225,7 +225,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const seller = mintInvite('MarketSellerPoor');
     await seedSellerListing(page, seller, 'e2e_poor_1', 'niflheim_crown', 120);
     // dev buyer has only 10 lrdst -> cannot afford the 120 listing.
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(10, []) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);
 
     const row = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_poor_1"]');
@@ -241,7 +241,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('SELL: an eligible inventory PO can be listed (live receipt estimate + stepper), and it then appears under Mine', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(50, [{ uid: 'e2e_sell_1', id: 'glacier_cleaver' }]) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_sell_1', id: 'glacier_cleaver' }]) });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
     await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
@@ -278,7 +278,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     // Put a copy of the item into preset store index 1's board so the
     // deploy gate sees it as deployed when that preset is assigned.
     canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_dep', name: 'BP', color: '#888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 500 }], pos: [{ uid: 'e2e_dep_1', id: 'glacier_cleaver', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas } });
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
     // Create a room + assign preset 1 to a slot -> the item is deployed.
     const room = await page.request.post('/api/schedule/rooms', { data: { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' } });
     if (room.ok()) {
@@ -302,7 +302,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('MINE: withdraw pulls a listing off the hearth (free, no burn), and the row leaves the browse', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'frost_nail' }]) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'frost_nail' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_wd_1', price: { tm: 'lrdst', qty: 8 } } });
     const listingId = (await listRes.json()).listing.id;
 
@@ -327,7 +327,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: { canvas: devBuyerCanvas(10, []) } });
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);
     const furnace = page.locator('[data-testid="market-furnace"]');
     await expect(furnace).toBeVisible();
