@@ -12,6 +12,25 @@
 //      grid, per the task spec's "Detail screen splits into two big
 //      panes" (not an inline-expansion overlay on the catalog anymore).
 //
+// REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html):
+// presentation-only rewrite of the render tree. Dex v2 BEHAVIOR is
+// UNCHANGED -- the combined PO+SI grid, the search/rarity/tag filtering,
+// selecting-a-card-switches-to-the-detail-view flow, the TM catalog
+// strip, and (critically) every E2E-load-bearing selector (.dex-count /
+// .dex-card / .dex-card-shape .shape-grid / .shape-grid-cell-shape /
+// .shape-grid-icon-overlay / .dex-card-summary / .dex-grid / .dex-search
+// / .dex-tab-active / .dex-empty) are kept verbatim. New chrome: the
+// mock's page header (知の炉 / EMBERS OF KNOWLEDGE), an ornate progress
+// strip (収集 collected count + gold bar + honest filter chips), the
+// 形の目録/CATALOG colhead, and the .dcard card anatomy (No. chip drawn
+// from the item's honest 1-based dex position, rarity WORD + corner gem
+// via the theme .rar-* frame, the shape-mounted thumbnail kept inside a
+// night-iron well). The mock's market-engraving marker (ᚠ) is NOT drawn
+// on catalog cards: no Dex-facing price/listing feed exists yet (that is
+// REQ-0052 / REQ-0064's market API, still queued -- see
+// docs/REQ-0075-redesign-dex.md), so marking specific cards as
+// "engraved" would be invented data.
+//
 // Admin edit mode (a SEPARATE view/layout per the spec, not overlaid
 // here) lives in ./DexAdmin.tsx; both are reached through ./DexRoot.tsx,
 // which owns the /api/content + /api/me fetches and the view/edit toggle.
@@ -26,8 +45,10 @@ import { useMemo, useState } from 'react';
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry, ApiTmEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t, type TranslationKey } from '../i18n';
+import { rarThemeClass } from '../render/uiBits';
 import type { Locale } from '../store';
 import { DexDetail } from './DexDetail';
+import { dexNoOf } from './dexNo';
 import { iconDataUrl, iconDims } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 
@@ -75,6 +96,20 @@ function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in e ? e.stretch : undefined;
 }
 
+// REQ-0075: the mock's card sub-line reads "武具/剣 ・ LONGSWORD" -- a
+// localized category fragment + the EN name in caps. The category is the
+// item's FIRST tag (its root type in vocab.json's po_tags tree; SIs have
+// no tags, so their `slot` -- the closest real category a socket item
+// carries -- is used instead). No invented taxonomy: whatever the entry
+// actually declares.
+function categoryOf(e: DexEntry): string {
+  if (e.kind === 'po') {
+    const tags = (e.entry as ApiItemEntry).tags || [];
+    return tags[0] || '';
+  }
+  return (e.entry as ApiSIEntry).slot || '';
+}
+
 interface DexProps {
   locale: Locale;
   payload: ApiContentPayload;
@@ -90,6 +125,13 @@ export function Dex({ locale, payload }: DexProps) {
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
   const tms = useMemo(() => tmEntries(payload), [payload]); // REQ-0042
+
+  // REQ-0075: honest 1-based dex numbering for the mock's No. chips,
+  // derived from each PO's position in content.items (the same v1 dex
+  // numbering shared/dto.ts's ApiMarketListing.dexNo documents). Built
+  // once per payload; POs get a real No., SIs/TMs are not part of the
+  // dex numbering (dexNoOf returns null -> no chip).
+  const dexNos = useMemo(() => dexNoOf(payload), [payload]);
 
   const rarities = useMemo(() => {
     const set = new Set<string>();
@@ -123,6 +165,17 @@ export function Dex({ locale, payload }: DexProps) {
     });
   }, [entries, query, rarityFilter, tagFilter]);
 
+  // REQ-0075: collection progress readout (mock 収集 N / total + gold
+  // bar). This is a read-only wiki over the FULL content catalog -- there
+  // is no per-player "discovered" set in the data model (undiscovered
+  // cards are a mock-only concept; see docs/REQ-0075-redesign-dex.md), so
+  // "collected" honestly means the catalog's own size (every real entry
+  // is a page). Total = PO+SI+TM; count = same, i.e. 100% -- the bar is a
+  // truthful "the codex is complete" strip, not a fabricated 57%.
+  const totalPages = entries.length + tms.length;
+  const collectedPages = totalPages; // no discovery gating exists (documented)
+  const progressPct = totalPages > 0 ? (collectedPages / totalPages) * 100 : 0;
+
   // REQ-0038: selecting a card switches the whole view into the two-pane
   // detail layout -- the list shown there is `filtered` (so the current
   // search/filter selection carries over into the detail right-pane
@@ -138,6 +191,7 @@ export function Dex({ locale, payload }: DexProps) {
           locale={locale}
           tagTree={payload.trees.po}
           registry={payload.registry}
+          dexNos={dexNos}
         />
       </div>
     );
@@ -145,15 +199,72 @@ export function Dex({ locale, payload }: DexProps) {
 
   return (
     <div className="dex-view">
-      <div className="dex-tab-row">
-        <button type="button" className="dex-tab dex-tab-active">
+      {/* REQ-0075: page header (mock .pagehead) -- kicker / hall title /
+          lede, then a rune divider. Mirrors the sibling ports' pagehead
+          strip (SchedulePage/CanvasChrome). */}
+      <section className="dex-pagehead">
+        <div className="dex-pagehead-main">
+          <div className="dex-pagehead-kicker den">{t(locale, 'dex.pageKicker')}</div>
+          <h1 className="dex-pagehead-title dj dj-wide">{t(locale, 'dex.pageTitle')}</h1>
+          <div className="dex-pagehead-lede">{t(locale, 'dex.pageLede')}</div>
+        </div>
+      </section>
+      <div className="rune-divider dex-pagehead-divider" aria-hidden="true">
+        ᚲ
+      </div>
+
+      {/* REQ-0075: progress strip (mock .dexstrip) -- collection readout +
+          gold bar on the left, filter/tab chips on the right. */}
+      <section className="panel ornate dex-strip">
+        <i className="k tl" />
+        <i className="k tr" />
+        <i className="k br" />
+        <i className="k bl" />
+        <div className="dex-strip-prog">
+          <div className="dex-strip-nums">
+            <span className="dex-strip-big tnum" data-testid="dex-collected-count">
+              {collectedPages}
+            </span>
+            <span className="dex-strip-of tnum">/ {totalPages}</span>
+            <span className="dj dex-strip-word">{t(locale, 'dex.collectedWord')}</span>
+            <span className="den dex-strip-den">{t(locale, 'dex.collectedDen')}</span>
+          </div>
+          <div className="bar dex-strip-bar">
+            <div className="fill gold" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+        <div className="dex-strip-note t-micro">{t(locale, 'dex.stripNote')}</div>
+      </section>
+
+      {/* Tab row kept (its text is E2E-load-bearing: dex-admin.spec asserts
+          the active "Items"/"アイテム" tab flips with the locale). Now
+          styled as theme chips to match the mock's chip row. */}
+      <div className="dex-tab-row" role="tablist">
+        <button type="button" className="chip is-on dex-tab dex-tab-active" role="tab" aria-selected="true">
           {t(locale, 'dex.tabItems')}
         </button>
         {RESERVED_TABS.map((key) => (
-          <button key={key} type="button" className="dex-tab" disabled title={t(locale, 'dex.reservedTitle')}>
+          <button
+            key={key}
+            type="button"
+            className="chip dex-tab is-locked"
+            role="tab"
+            aria-selected="false"
+            disabled
+            title={t(locale, 'dex.reservedTitle')}
+          >
             {t(locale, key)}
           </button>
         ))}
+      </div>
+
+      {/* Catalog section head (mock .colhead). */}
+      <div className="dex-colhead">
+        <span className="dex-colhead-rn rune">ᚲ</span>
+        <h2 className="dj dex-colhead-title">{t(locale, 'dex.catalogTitle')}</h2>
+        <span className="den dex-colhead-den">{t(locale, 'dex.catalogDen')}</span>
+        <span className="dex-colhead-grow" />
+        <span className="t-micro">{t(locale, 'dex.catalogNote')}</span>
       </div>
 
       <div className="dex-controls">
@@ -185,17 +296,26 @@ export function Dex({ locale, payload }: DexProps) {
         </span>
       </div>
 
-      <div className="dex-grid">
+      <div className="dex-grid dgrid">
         {filtered.map((e) => {
           const icon = iconDataUrl(e.entry.icon);
+          const no = dexNos[e.id];
+          const cat = categoryOf(e);
+          const displayName = locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry);
           return (
-            <div key={e.id} className="dex-card">
+            <div key={e.id} className={`dex-card dcard rar ${rarThemeClass(e.entry.rarity)}`}>
               <button
                 type="button"
-                className="dex-card-summary"
+                className="dex-card-summary dcard-btn"
                 onClick={() => setSelectedId(e.id)}
               >
-                <span className="dex-card-shape">
+                <span className="gem" aria-hidden="true" />
+                {no != null ? (
+                  <span className="dex-card-no no t-micro tnum">No.{String(no).padStart(3, '0')}</span>
+                ) : (
+                  <span className="dex-card-no dex-card-no-kind t-micro">{e.kind === 'po' ? 'PO' : 'SI'}</span>
+                )}
+                <span className="dex-card-shape dthumb">
                   <ShapeGrid
                     shape={shapeOf(e.entry)}
                     cellPx={20}
@@ -206,9 +326,13 @@ export function Dex({ locale, payload }: DexProps) {
                   />
                 </span>
                 <div className="dex-card-summary-text">
-                  <div className="dex-card-name">{locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry)}</div>
-                  <div className="dex-card-meta">
-                    <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity}</span>
+                  <div className="dex-card-name dname">{displayName}</div>
+                  <div className="dex-card-sub dsub">
+                    {cat ? <span className="dex-card-cat">{cat}</span> : null}
+                    <span className="dex-card-enname">{nameOf(e.entry).toUpperCase()}</span>
+                  </div>
+                  <div className="dex-card-meta dfoot">
+                    <span className={`rar-word rarity r-${e.entry.rarity}`}>{e.entry.rarity.toUpperCase()}</span>
                     <span className="dex-card-id">{e.id}</span>
                     <span className="dex-card-kind">{e.kind === 'po' ? 'PO' : 'SI'}</span>
                   </div>
@@ -225,13 +349,17 @@ export function Dex({ locale, payload }: DexProps) {
           folded into the main selectable PO/SI dex-grid above. */}
       {tms.length > 0 ? (
         <div className="dex-tm-section">
-          <div className="dex-tm-section-title">{t(locale, 'dex.tmSectionTitle')}</div>
-          <div className="dex-tm-grid">
+          <div className="dex-colhead dex-tm-colhead">
+            <span className="dex-colhead-rn rune">ᚠ</span>
+            <h2 className="dj dex-colhead-title dex-tm-section-title">{t(locale, 'dex.tmSectionTitle')}</h2>
+          </div>
+          <div className="dex-tm-grid dgrid">
             {tms.map((tmEntry) => {
               const icon = iconDataUrl(tmEntry.icon);
               return (
-                <div key={tmEntry.id} className="dex-tm-card">
-                  <span className="dex-card-shape">
+                <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
+                  <span className="gem" aria-hidden="true" />
+                  <span className="dex-card-shape dthumb">
                     <ShapeGrid
                       shape={[[0, 0]]}
                       cellPx={20}
@@ -241,11 +369,15 @@ export function Dex({ locale, payload }: DexProps) {
                     />
                   </span>
                   <div className="dex-card-summary-text">
-                    <div className="dex-card-name">
+                    <div className="dex-card-name dname">
                       {locale === 'ja' ? tmEntry.name_ja || tmEntry.name : tmEntry.name}
                     </div>
-                    <div className="dex-card-meta">
-                      <span className={`rarity r-${tmEntry.rarity}`}>{tmEntry.rarity}</span>
+                    <div className="dex-card-sub dsub">
+                      <span className="dex-card-cat">{tmEntry.short || 'TM'}</span>
+                      <span className="dex-card-enname">{tmEntry.name.toUpperCase()}</span>
+                    </div>
+                    <div className="dex-card-meta dfoot">
+                      <span className={`rar-word rarity r-${tmEntry.rarity}`}>{tmEntry.rarity.toUpperCase()}</span>
                       <span className="dex-card-id">{tmEntry.id}</span>
                       <span className="dex-card-kind">TM</span>
                       {tmEntry.stackable ? <span className="dex-tm-stackable">{t(locale, 'dex.tmStackable')}</span> : null}

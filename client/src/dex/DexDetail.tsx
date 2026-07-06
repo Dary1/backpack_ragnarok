@@ -16,9 +16,20 @@
 // wrap in source order" (list -> diagram -> info), matching what the
 // pre-R3 narrow viewport already showed (list visible above/alongside
 // the diagram+fields block, not hidden).
+//
+// REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html §詳解): the
+// three columns are now ornate panels matching the mock's two-pane
+// detail (the LIST is a slim index rail; DIAGRAM is the 図解/SCHEMA panel
+// with a phead; INFO is the 銘と効果 panel). DOM order + every
+// E2E-load-bearing selector are UNCHANGED (the wide-vs-stacked column
+// order test reads bounding boxes, and the responsive breakpoint is kept
+// at 1100px). `dexNos` is threaded through so the list rows and the info
+// panel can show the mock's No.NNN chip from the honest dex numbering
+// (see dexNo.ts).
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
+import { rarThemeClass } from '../render/uiBits';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { DexDiagram } from './DexDiagram';
@@ -34,6 +45,9 @@ interface DexDetailProps {
   locale: Locale;
   tagTree: ApiContentPayload['trees']['po'];
   registry: ApiContentPayload['registry'];
+  /** REQ-0075: honest 1-based dex numbers (dexNo.ts) for the No.NNN chips
+   * shown in the list rows + the detail header. POs only; SIs absent. */
+  dexNos: Record<string, number>;
 }
 
 function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
@@ -76,73 +90,118 @@ function ShapeMountedThumb({
   );
 }
 
-export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTree, registry }: DexDetailProps) {
+export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTree, registry, dexNos }: DexDetailProps) {
   const selected = entries.find((e) => e.id === selectedId) ?? entries[0] ?? null;
+  const selectedNo = selected ? dexNos[selected.id] : undefined;
+  const selectedName = selected
+    ? locale === 'ja'
+      ? selected.entry.name_ja || selected.entry.name
+      : selected.entry.name
+    : '';
 
   return (
-    <div className="dex-detail-columns">
-      <div className="dex-detail-col-list">
-        <ul className="dex-detail-item-list">
-          {entries.map((e) => {
-            const icon = iconDataUrl(e.entry.icon);
-            const active = e.id === selected?.id;
-            return (
-              <li key={e.id}>
-                <button
-                  type="button"
-                  className={`dex-detail-item-list-row${active ? ' dex-detail-item-list-row-active' : ''}`}
-                  onClick={() => onSelect(e.id)}
-                >
-                  <span className="dex-detail-item-list-shape">
-                    <ShapeMountedThumb
-                      shape={shapeOf(e.entry)}
-                      iconUrl={icon}
-                      iconAlt={e.entry.icon}
-                      iconId={e.entry.icon}
-                      stretch={stretchOf(e.entry)}
-                    />
-                  </span>
-                  <span className="dex-detail-item-list-text">
-                    <span className="dex-card-name">{locale === 'ja' ? e.entry.name_ja || e.entry.name : e.entry.name}</span>
-                    <span className="dex-card-meta">
-                      <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity}</span>
-                      <span className="dex-card-id">{e.id}</span>
-                    </span>
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+    <>
+      {/* REQ-0075: detail section head (mock 詳解 / SCHEMA & LORE colhead),
+          carrying the current No.NNN ・ name on the right. */}
+      <div className="dex-colhead dex-detail-colhead">
+        <span className="dex-colhead-rn rune">ᛁ</span>
+        <h2 className="dj dex-colhead-title">{t(locale, 'dex.detailTitle')}</h2>
+        <span className="den dex-colhead-den">{t(locale, 'dex.detailDen')}</span>
+        <span className="dex-colhead-grow" />
+        {selected ? (
+          <span className="t-micro tnum dex-detail-colhead-cur">
+            {selectedNo != null ? `${t(locale, 'dex.noPrefix')}${String(selectedNo).padStart(3, '0')} ・ ` : ''}
+            {selectedName}
+          </span>
+        ) : null}
       </div>
 
-      {selected ? (
-        <>
-          <div className="dex-detail-col-diagram">
-            <button type="button" className="dex-detail-back-btn" onClick={onBack}>
+      <div className="dex-detail-columns">
+        <div className="dex-detail-col-list panel ornate">
+          <i className="k tl" />
+          <i className="k tr" />
+          <i className="k br" />
+          <i className="k bl" />
+          <ul className="dex-detail-item-list">
+            {entries.map((e) => {
+              const icon = iconDataUrl(e.entry.icon);
+              const active = e.id === selected?.id;
+              const no = dexNos[e.id];
+              return (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    className={`dex-detail-item-list-row${active ? ' dex-detail-item-list-row-active' : ''}`}
+                    onClick={() => onSelect(e.id)}
+                  >
+                    <span className="dex-detail-item-list-shape">
+                      <ShapeMountedThumb
+                        shape={shapeOf(e.entry)}
+                        iconUrl={icon}
+                        iconAlt={e.entry.icon}
+                        iconId={e.entry.icon}
+                        stretch={stretchOf(e.entry)}
+                      />
+                    </span>
+                    <span className="dex-detail-item-list-text">
+                      <span className="dex-card-name dname">{locale === 'ja' ? e.entry.name_ja || e.entry.name : e.entry.name}</span>
+                      <span className="dex-card-meta">
+                        {no != null ? <span className="dex-card-no t-micro tnum">{t(locale, 'dex.noPrefix')}{String(no).padStart(3, '0')}</span> : null}
+                        <span className={`rar-word rarity r-${e.entry.rarity}`}>{e.entry.rarity.toUpperCase()}</span>
+                        <span className="dex-card-id">{e.id}</span>
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {selected ? (
+          <>
+            <div className={`dex-detail-col-diagram panel ornate rar ${rarThemeClass(selected.entry.rarity)}`}>
+              <i className="k tl" />
+              <i className="k tr" />
+              <i className="k br" />
+              <i className="k bl" />
+              <div className="dex-detail-phead">
+                <button type="button" className="dex-detail-back-btn btn btn-ghost" onClick={onBack}>
+                  {t(locale, 'dex.backToList')}
+                </button>
+                <span className="dj dex-detail-phead-title">{t(locale, 'dex.schemaTitle')}</span>
+                <span className="den dex-detail-phead-den">{t(locale, 'dex.schemaDen')}</span>
+              </div>
+              <DexDiagram
+                entry={selected.entry}
+                shape={shapeOf(selected.entry)}
+                iconUrl={iconDataUrl(selected.entry.icon)}
+                iconDims={iconDims(selected.entry.icon)}
+                iconStretch={stretchOf(selected.entry)}
+                locale={locale}
+              />
+            </div>
+            <div className={`dex-detail-col-info panel ornate rar ${rarThemeClass(selected.entry.rarity)}`}>
+              <i className="k tl" />
+              <i className="k tr" />
+              <i className="k br" />
+              <i className="k bl" />
+              <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} dexNo={selectedNo ?? null} />
+            </div>
+          </>
+        ) : (
+          <div className="dex-detail-col-info panel ornate">
+            <i className="k tl" />
+            <i className="k tr" />
+            <i className="k br" />
+            <i className="k bl" />
+            <button type="button" className="dex-detail-back-btn btn btn-ghost" onClick={onBack}>
               {t(locale, 'dex.backToList')}
             </button>
-            <DexDiagram
-              entry={selected.entry}
-              shape={shapeOf(selected.entry)}
-              iconUrl={iconDataUrl(selected.entry.icon)}
-              iconDims={iconDims(selected.entry.icon)}
-              iconStretch={stretchOf(selected.entry)}
-              locale={locale}
-            />
+            <div className="dex-empty">{t(locale, 'dex.noMatch')}</div>
           </div>
-          <div className="dex-detail-col-info">
-            <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} />
-          </div>
-        </>
-      ) : (
-        <div className="dex-detail-col-info">
-          <button type="button" className="dex-detail-back-btn" onClick={onBack}>
-            {t(locale, 'dex.backToList')}
-          </button>
-          <div className="dex-empty">{t(locale, 'dex.noMatch')}</div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </>
   );
 }

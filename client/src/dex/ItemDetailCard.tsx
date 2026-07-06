@@ -20,6 +20,25 @@
 // and are unaffected by this change, per the task spec. The raw AST
 // <details> block is also locale-neutral (opaque JSON) and unaffected.
 //
+// REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html §銘と効果 +
+// §市場の刻銘): presentation-only rewrite of the field layout to the
+// mock's info panel (name + EN caption header, rarity/tag chip row, rune
+// dividers between effect/lore/provenance blocks). The locale-only text
+// resolution below is UNCHANGED. Two additions:
+//   (a) the mock's No.NNN chip in the provenance micro-line, from the
+//       honest dex numbering passed in as `dexNo` (dexNo.ts); and
+//   (b) the mock's 市場の刻銘 (market engravings) block. That block is
+//       rendered as an EMPTY-STATE shell: no Dex-facing price/listing
+//       feed is exposed today (the market wire shapes exist in
+//       shared/dto.ts as ApiMarketPriceHistoryEntry etc., but ONLY on
+//       the /api/market listing endpoints -- REQ-0064; a per-item Dex
+//       card feed is REQ-0052, still queued). Per REQ-0075's own fallback
+//       clause ("fed by whatever the card DTO already offers; empty-state
+//       otherwise"), and since /api/content offers NOTHING market-related,
+//       the block shows the mock's anchor/listing labels with honest "—"
+//       placeholders, NOT invented numbers, and links to the market page.
+//       See docs/REQ-0075-redesign-dex.md.
+//
 // Locale text resolution prefers the formal i18n map (entry.i18n?.ja)
 // over the legacy top-level name_ja/flavor_ja mirror fields, falling
 // back to name_ja/flavor_ja if i18n.ja is absent (matches DexAdmin.tsx's
@@ -39,6 +58,10 @@ interface ItemDetailCardProps {
   locale: Locale;
   tagTree: TagTree;
   registry: ApiRegistry | null;
+  /** REQ-0075: honest 1-based dex number for this entry (dexNo.ts), or
+   * null for SIs (not in the dex numbering). Shown in the provenance
+   * micro-line's No.NNN, mirroring the mock. */
+  dexNo: number | null;
 }
 
 function isPO(e: DexEntry): e is DexEntry & { entry: ApiItemEntry } {
@@ -99,27 +122,36 @@ function resolveProvenance(registry: ApiRegistry | null, _id: string) {
   return null;
 }
 
-export function ItemDetailCard({ dexEntry, locale, tagTree, registry }: ItemDetailCardProps) {
+export function ItemDetailCard({ dexEntry, locale, tagTree, registry, dexNo }: ItemDetailCardProps) {
   const { entry } = dexEntry;
   const po = isPO(dexEntry) ? (entry as ApiItemEntry) : null;
   const provenance = resolveProvenance(registry, dexEntry.id);
   const displayName = localizedName(entry, locale);
   const displayFlavor = localizedFlavor(entry, locale);
   const displayEff = localizedEff(entry, locale);
+  const noStr = dexNo != null ? `${t(locale, 'dex.noPrefix')}${String(dexNo).padStart(3, '0')}` : null;
 
   return (
     <div className="dex-detail">
-      <div className="dex-detail-row">
-        <div className="dex-detail-field">
-          <span className="dex-detail-label">{t(locale, 'dex.detail.name')}</span> {displayName}
-        </div>
-        <div className="dex-detail-field">
+      {/* mock header: name + EN caption */}
+      <div className="dex-detail-namehead">
+        <span className="dex-detail-name dj">{displayName}</span>
+        <span className="dex-detail-enname den">{entry.name.toUpperCase()}</span>
+      </div>
+
+      {/* mock chip row: rarity word + type/tag chips */}
+      <div className="dex-detail-chiprow">
+        <span className={`rar-word rarity r-${entry.rarity}`}>{entry.rarity.toUpperCase()}</span>
+        <span className="dex-detail-field-id">
           <span className="dex-detail-label">id</span> {dexEntry.id}
-        </div>
-        <div className="dex-detail-field">
-          <span className="dex-detail-label">{t(locale, 'dex.detail.rarity')}</span>{' '}
-          <span className={`rarity r-${entry.rarity}`}>{entry.rarity}</span>
-        </div>
+        </span>
+        {po
+          ? (po.tags || []).map((tag) => (
+              <span className="chip dex-detail-tagchip" key={tag}>
+                {tag}
+              </span>
+            ))
+          : null}
       </div>
 
       {po ? (
@@ -136,6 +168,8 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry }: ItemDeta
         </div>
       ) : null}
 
+      <div className="rune-divider" aria-hidden="true">ᛁ</div>
+
       <div className="dex-detail-section">
         <h4>{t(locale, 'dex.detail.effects')}</h4>
         <div className="dex-eff-text">
@@ -151,7 +185,7 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry }: ItemDeta
 
       <div className="dex-detail-section">
         <h4>{t(locale, 'dex.detail.flavor')}</h4>
-        <div className="dex-flavor">
+        <div className="dex-flavor flavor">
           <div>{displayFlavor || '—'}</div>
         </div>
       </div>
@@ -173,6 +207,8 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry }: ItemDeta
         </div>
       ) : null}
 
+      <div className="rune-divider" aria-hidden="true">ᛞ</div>
+
       <div className="dex-detail-section">
         <h4>{t(locale, 'dex.detail.provenance')}</h4>
         {provenance ? (
@@ -186,6 +222,48 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry }: ItemDeta
         ) : (
           <div className="dex-provenance-unresolved">{t(locale, 'dex.detail.provenanceUnresolved')}</div>
         )}
+        {noStr ? <div className="dex-detail-no t-micro tnum">{noStr}</div> : null}
+      </div>
+
+      {/* ============ 市場の刻銘 / THE MARKET ENGRAVINGS (mock) ============
+          REQ-0075 EMPTY-STATE: no Dex-facing price/listing feed exists yet
+          (REQ-0052/REQ-0064). Render the mock's block shell with honest
+          "—" placeholders + a zero listing count, never invented numbers.
+          The anchor-price / listing-count LABELS from the mock are kept so
+          the block reads as a real (currently empty) section, and a link
+          to the market page is provided. See docs/REQ-0075-redesign-dex.md. */}
+      <div className="rune-divider" aria-hidden="true">ᚠ</div>
+      <div className="dex-market" data-testid="dex-market-block">
+        <div className="dex-market-head">
+          <span className="ttl dj dex-market-title">{t(locale, 'dex.market.title')}</span>
+          <span className="den dex-market-den">{t(locale, 'dex.market.den')}</span>
+          <span className="dex-colhead-grow" />
+          <span className="chip dex-market-count" data-testid="dex-market-count">
+            <span className="rune dex-market-count-rune">ᚠ</span> {t(locale, 'dex.market.listingCount', { count: 0 })}
+          </span>
+        </div>
+        <div className="dex-market-empty" data-testid="dex-market-empty">
+          <div className="dex-market-anchor-row">
+            <span className="dex-market-anchor-label t-micro">{t(locale, 'dex.market.anchorLabel')}</span>
+            <span className="dex-market-anchor-val tnum">
+              <span className="rune dex-market-anchor-rune">ᚠ</span>—
+            </span>
+          </div>
+          <div className="dex-market-empty-note t-micro">{t(locale, 'dex.market.emptyNote')}</div>
+        </div>
+        <div className="dex-market-cap">{t(locale, 'dex.market.caption')}</div>
+        <div className="den dex-market-cap-en">{t(locale, 'dex.market.captionEn')}</div>
+        <div className="dex-market-link">
+          <button
+            type="button"
+            className="btn btn-ghost dex-market-link-btn"
+            onClick={() => {
+              window.location.hash = '#/market';
+            }}
+          >
+            <span className="rune" aria-hidden="true">ᚠ</span> {t(locale, 'dex.market.viewInMarket')}
+          </button>
+        </div>
       </div>
     </div>
   );
