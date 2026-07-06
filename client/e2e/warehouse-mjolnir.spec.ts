@@ -156,8 +156,16 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidA}"]`)).toBeVisible({ timeout: 10000 });
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidB}"]`)).toBeVisible({ timeout: 10000 });
 
-      await page.locator('[data-testid="schedule-claim-all-btn"]').click();
+      const claimAllBtn = page.locator('[data-testid="schedule-claim-all-btn"]');
+      await claimAllBtn.click();
       await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toBeVisible({ timeout: 10000 });
+
+      // Wait for the WHOLE claim-all walk to finish first (the button
+      // re-enables when claimingAll clears) -- every sequential claim
+      // RESETS the 800ms auto-save debounce, so waiting the fixed
+      // debounce window from the first toast would sample the canvas
+      // BEFORE the final PUT fires (a real race, observed).
+      await expect(claimAllBtn).toBeEnabled({ timeout: 20000 });
 
       // Both rows placed (sequential two-phase claims through the same
       // handleClaim path) + finalized off the warehouse by the auto-save.
