@@ -471,16 +471,210 @@ export interface ApiMarketBuyResponse {
   listing: ApiMarketListing;
 }
 
-/** GET /api/market/furnace -- the burn ledger total. All-time until a
- * season registry exists (REQ-0066 will window it: `since` then carries
- * the season start instead of null). */
+/** GET /api/market/furnace -- the burn ledger total, windowed to the
+ * CURRENT season (REQ-0066: `since` carries the season start) with an
+ * all-time fallback (`since` null, `season` null) when no season
+ * registry exists / no season has started yet. */
 export interface ApiMarketFurnaceResponse {
   ok: true;
   dtoVersion: MarketDtoVersion;
+  /** REQ-0066: the season the window belongs to (index + ja name), or
+   * null on the all-time fallback. */
+  season?: { index: number; name: string } | null;
   furnace: {
     tm: string;
     total: number;
     count: number;
     since: string | null;
   };
+}
+
+// ---- REQ-0066: Hall of Ragnarok wire shapes (server/routes/ragnarok.cjs) ----
+// Every /api/ragnarok response envelope carries `dtoVersion:
+// RAGNAROK_DTO_VERSION` (currently 1; server/services/ragnarok.cjs owns
+// the runtime constant -- shared/dto.ts is types-only by rule). Bump the
+// literal here AND there together whenever a ragnarok wire shape
+// changes incompatibly.
+export type RagnarokDtoVersion = 1;
+
+/** One season registry entry (content/live/seasons.json, normalized).
+ * `name` is the ja display name (第N季 「狼の冬」); ragnarokAt = startAt +
+ * phasesPerSeason * phaseDays days by seed convention (stored value
+ * wins when content deliberately diverges). */
+export interface ApiRagnarokSeason {
+  index: number;
+  name: string;
+  nameEn: string | null;
+  startAt: string;
+  phaseDays: number;
+  phasesPerSeason: number;
+  ragnarokAt: string;
+}
+
+/** The lazily derived season clock (wall-clock derivation, no
+ * scheduler). `phase` is 1-based, clamped to [1, phasesPerSeason] --
+ * the mock's 12-wedge wheel marks phases 1..phase-1 done, `phase`
+ * current. `daysToRagnarok` is the countdown number (ラグナロクまで N日;
+ * ceil, so the final partial day still reads 1). `ended` = past
+ * ragnarokAt with no successor season started yet. */
+export interface ApiRagnarokSeasonClock {
+  now: string;
+  phase: number;
+  phaseDay: number;
+  daysToRagnarok: number;
+  msToRagnarok: number;
+  ended: boolean;
+}
+
+/** GET /api/ragnarok/season -- the full registry plus the current
+ * season (most recently started; null when the registry is missing/
+ * empty/entirely future -- the documented degenerate case) and its
+ * derived clock. */
+export interface ApiRagnarokSeasonResponse {
+  ok: true;
+  dtoVersion: RagnarokDtoVersion;
+  seasons: ApiRagnarokSeason[];
+  season: ApiRagnarokSeason | null;
+  derived: ApiRagnarokSeasonClock | null;
+}
+
+/** Eternal Order tiers (mock chip row). Thresholds are server tunables
+ * ([ORCH defaults] 0/500/2000/8000); VALHALLA is never assigned by the
+ * server (client-side semantics, beyond the ladder). */
+export type ApiRagnarokTier = 'THRALL' | 'KARL' | 'JARL' | 'EINHERJAR';
+
+export interface ApiRagnarokTierThreshold {
+  tier: ApiRagnarokTier;
+  min: number;
+}
+
+/** One Eternal Order row. `rank` is null ONLY on the synthetic `me`
+ * entry of a caller who has never devoted (unranked -- not in the
+ * stone). `emblem` is the placeholder asset key ('emblem_horn3') until
+ * a real emblem system ships. `score` is the all-season 戦果 total --
+ * 0 for everyone until REQ-0068's season-end battles land. */
+export interface ApiRagnarokOrderEntry {
+  playerId: string;
+  name: string;
+  emblem: string;
+  einherjarCount: number;
+  score: number;
+  rank: number | null;
+  tier: ApiRagnarokTier;
+}
+
+/** GET /api/ragnarok/order?top=&around=me&q= -- the standings, rebuilt
+ * lazily once per dawn (rebuiltAt tells you which dawn; 「更新は毎暁」--
+ * a rite completed at noon appears at the NEXT dawn). `top` = first N
+ * rows (default 10, cap 100); `around` (present iff around=me was
+ * requested) = the caller's rank window (me +/- 2, [] when unranked);
+ * `matches` (present iff q= was sent) = find-by-name hits, capped at
+ * `top`. `me` is always present. */
+export interface ApiRagnarokOrderResponse {
+  ok: true;
+  dtoVersion: RagnarokDtoVersion;
+  rebuiltAt: string;
+  total: number;
+  tiers: ApiRagnarokTierThreshold[];
+  top: ApiRagnarokOrderEntry[];
+  me: ApiRagnarokOrderEntry;
+  around?: ApiRagnarokOrderEntry[];
+  matches?: ApiRagnarokOrderEntry[];
+}
+
+/** One einherjar record (list view). The frozen snapshot canvas itself
+ * is deliberately NOT on the wire (server-side until a later unit needs
+ * it); `counts` echoes what was devoted (mock: 鞄 3 ・ 物品 17 ・ 型 3 =
+ * bps/pos/sis). `perSeason` is the 戦果 history REQ-0068 will append
+ * ({season, battles:[...]}); empty today. `bioArchive` is reserved for
+ * REQ-0060 (null until built). */
+export interface ApiRagnarokEinherjar {
+  id: string;
+  playerId: string;
+  unitName: string;
+  seasonDevoted: number | null;
+  devotedAt: string;
+  counts: { bps: number; pos: number; sis: number };
+  score: number;
+  perSeason: Array<{ season: number; battles: unknown[] }>;
+  emblems: string[];
+  bioArchive: unknown | null;
+}
+
+/** GET /api/ragnarok/einherjar?player= -- newest first. ?player=
+ * defaults to the caller; any registered player may be queried (hall
+ * records are public, same visibility as the order's name column);
+ * unknown player -> 404. */
+export interface ApiRagnarokEinherjarResponse {
+  ok: true;
+  dtoVersion: RagnarokDtoVersion;
+  playerId: string;
+  einherjar: ApiRagnarokEinherjar[];
+}
+
+/** The itemized blast radius: how many BPs/POs/SIs the rite destroys
+ * (account-wide -- inventory homes AND every other preset's shared
+ * references; REQ-0033 reference model), and which OTHER presets lose
+ * pieces (`affectedPresets`, PRE-rite indices -- the rite deletes a
+ * slot, so later indices shift left by one afterwards). */
+export interface ApiRagnarokBlast {
+  bps: number;
+  pos: number;
+  sis: number;
+  total: number;
+  affectedPresets: Array<{
+    index: number;
+    name: string;
+    lostBps: number;
+    lostPos: number;
+    lostSis: number;
+  }>;
+}
+
+/** The order projection shown on the preview (mock: 此度の献身による
+ * 序列予測): einherjarCount+1 re-ranked against the current
+ * (dawn-cached) order. `topPercentile` = ceil(projectedRank/totalAfter
+ * *100), "you would stand within the top N%". An ESTIMATE against a
+ * snapshot, not a promise. Degenerate-safe: an empty order projects
+ * rank 1 of 1 / top 100%; `currentRank` is null when unranked. */
+export interface ApiRagnarokProjection {
+  currentRank: number | null;
+  projectedRank: number;
+  totalAfter: number;
+  topPercentile: number | null;
+  einherjarCountAfter: number;
+}
+
+/** GET /api/ragnarok/devotion/preview/:presetIndex -- read-only.
+ * Ineligibility is DATA (eligible:false + reasons[]), not an error
+ * status; only an unaddressable preset 404s (no-leak: out-of-range and
+ * malformed indices are indistinguishable). Reasons vocabulary:
+ * mid_rite / last_preset / empty_unit / deployed. */
+export interface ApiRagnarokDevotionPreviewResponse {
+  ok: true;
+  dtoVersion: RagnarokDtoVersion;
+  preset: { index: number; name: string };
+  eligible: boolean;
+  reasons: Array<'mid_rite' | 'last_preset' | 'empty_unit' | 'deployed'>;
+  blast: ApiRagnarokBlast;
+  projection: ApiRagnarokProjection;
+}
+
+/** POST /api/ragnarok/devotion/:presetIndex -- THE rite, irreversible.
+ * No request body; optional Idempotency-Key header dedupes retries
+ * (replayed:true returns the ORIGINAL record without a second rite).
+ * After a 200 the caller's canvas was rewritten SERVER-side (preset
+ * slot deleted + every referenced item destroyed account-wide -- the
+ * documented rule-5 divergence, market-settlement precedent): the
+ * client MUST re-GET its profile before its next auto-save PUT, or a
+ * stale in-flight auto-save can resurrect the destroyed items
+ * (REQ-0041's documented auto-save race class). Failure statuses:
+ * 404 preset not found (no-leak); 409 {reason} with reason one of
+ * mid_rite / last_preset / empty_unit / deployed. */
+export interface ApiRagnarokDevotionResponse {
+  ok: true;
+  dtoVersion: RagnarokDtoVersion;
+  replayed: boolean;
+  einherjar: ApiRagnarokEinherjar;
+  blast: ApiRagnarokBlast;
 }

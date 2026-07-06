@@ -22,6 +22,7 @@
     "server/services/**/*.cjs",
     "server/schedule.cjs",
     "server/market.cjs",
+    "server/ragnarok.cjs",
     "shared/**/*.cjs",
     "types/coded-error.d.ts",
     "sim/lib/**/*.cjs",

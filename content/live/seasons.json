@@ -1,0 +1,15 @@
+{
+ "schema": "season/1",
+ "_doc": "REQ-0066 season registry -- seasons are CONTENT, not code (server/services/ragnarok.cjs derives the current season/phase/countdown lazily from this file; no scheduler). One entry per season: index (1-based), name (ja, the display name -- the mock renders 「狼の冬」), nameEn, startAt (ISO), phaseDays [TUNABLE], phasesPerSeason (12 -- the mock's season wheel has exactly 12 wedges), ragnarokAt (= startAt + phasesPerSeason*phaseDays days by convention; stored explicitly so content can shorten/extend a season deliberately -- the stored value wins). Season 1 seeded [ORCH]: named 狼の冬 per the design mock, phaseDays 7 => an 84-day season.",
+ "seasons": [
+  {
+   "index": 1,
+   "name": "狼の冬",
+   "nameEn": "The Wolf's Winter",
+   "startAt": "2026-07-07T00:00:00.000Z",
+   "phaseDays": 7,
+   "phasesPerSeason": 12,
+   "ragnarokAt": "2026-09-29T00:00:00.000Z"
+  }
+ ]
+}
