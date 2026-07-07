@@ -710,4 +710,10 @@ export interface ApiDexCardDto {
   // kind:'tm' only
   short?: string;
   stackable?: boolean;
+  // REQ-0063: the CALLER's own 分解値 (dismantle count) + current
+  // mechanical suppression for this id. kind:'item'|'si' only (kind:'tm'
+  // can never be dismantled); also absent when no caller could be
+  // resolved from the request (keeps the base card fully public/
+  // anonymous-safe -- see server/routes/dex.cjs's tryReadDismantleInfo).
+  dismantle?: { count: number; suppression: number };
 }

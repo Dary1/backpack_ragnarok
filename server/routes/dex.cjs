@@ -8,10 +8,10 @@
 // exactly the inputs ItemDetailCard/DexDiagram consume today, sliced per
 // entity. No HTML; the client owns presentation.
 //
-// Auth: NONE. Card content is public/non-secret, same posture as GET
-// /api/content (no X-Auth-Token gate) -- matches the REQ's "first public-
-// API-shaped surface" stance (pure JSON, token auth NOT required, no
-// CSRF, a versioned DTO via the `v` field from day one).
+// Auth: NONE required. Card content is public/non-secret, same posture
+// as GET /api/content (no X-Auth-Token gate) -- matches the REQ's "first
+// public-API-shaped surface" stance (pure JSON, token auth NOT required,
+// no CSRF, a versioned DTO via the `v` field from day one).
 //
 // 404s: unknown `kind` (not in the v1 allowlist below) and unknown `id`
 // (no matching entry in live content) are BOTH a plain 404 -- content is
@@ -29,8 +29,27 @@
 // the full instance in the request -- genuinely a separate design, not a
 // same-shape allowlist add. Flagged here rather than silently absent so
 // the gap is visible at the call site, not just in the REQ doc.
-const { sendJSON } = require('../lib/http_util.cjs');
+//
+// REQ-0063 (§1): the card OPTIONALLY carries the CALLER's own personal
+// 分解値 (dismantle count) + current mechanical suppression for this id,
+// for kind:'item'|'si' only (kind:'tm' can never be dismantled, see
+// services/dismantle.cjs's kind:'po'|'si' allowlist). This does NOT turn
+// the route auth-required: admin.resolveAuth() is attempted opportunis-
+// tically (same function every other route uses, including its dev_mode
+// no-token fallback), and the `dismantle` field is simply OMITTED --
+// never a 401 -- when it fails to resolve (missing/invalid token in a
+// non-dev_mode deployment). This keeps the base card fully public
+// (REQ-0052's own posture, unchanged for anonymous/no-context callers)
+// while the common case -- fetched from inside the logged-in app --
+// gets the personal overlay for free, via a direct in-process call into
+// the dismantle facade rather than a second HTTP round-trip (the
+// dismantle ledger route, routes/dismantle.cjs, remains the one AUTH-
+// REQUIRED, full-ledger surface for the Workshop panel).
+const { sendJSON, getAuthToken } = require('../lib/http_util.cjs');
 const { getContent } = require('../lib/content.cjs');
+const admin = require('../admin.cjs');
+const storage = require('../storage.cjs');
+const dismantle = require('../dismantle.cjs');
 
 const DEX_CARD_RE = /^\/api\/dex\/card\/([^/]+)\/([^/]+)$/;
 
@@ -40,6 +59,25 @@ const DEX_CARD_RE = /^\/api\/dex\/card\/([^/]+)\/([^/]+)$/;
 // this doubles as the v1 kind allowlist.
 const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms' };
 
+// REQ-0063: kinds the Dismantle system can ever touch (dismantleItem's
+// own kind:'po'|'si' allowlist, expressed here in dex-card kind terms --
+// 'po' instances are keyed by the same content id as dex kind 'item').
+const DISMANTLABLE_KINDS = new Set(['item', 'si']);
+
+/** REQ-0063: resolves the caller (if any) and returns their own
+ * {count, suppression} for this (kind, id), or undefined when no caller
+ * could be resolved (bad/missing token outside dev_mode) or when `kind`
+ * is not dismantlable (kind:'tm'). Never throws -- a lookup failure here
+ * must never turn a public card fetch into an error. */
+function tryReadDismantleInfo(req, kind, id) {
+  if (!DISMANTLABLE_KINDS.has(kind)) return undefined;
+  const resolved = admin.resolveAuth(getAuthToken(req));
+  if (!resolved.ok) return undefined;
+  const doc = storage.readDismantleLedger(resolved.player.playerId);
+  const count = (doc && doc.counts && doc.counts[id]) || 0;
+  return { count, suppression: dismantle.suppressionFloor(count) };
+}
+
 // Builds the render-ready DTO for one entry. `entry` is already a
 // getContent()-resolved record, i.e. it already carries eff_en/eff_ja
 // (items/sis; tms have none, no use-effect exists yet per REQ-0042) and
@@ -48,8 +86,11 @@ const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms' };
 // does no rendering of its own, only reshapes/slices fields already
 // computed once at content-load time (same mtime-cache GET /api/content
 // itself reads, via the same getContent() call -- no separate cache,
-// no double effect-rendering work).
-function buildCardDto(kind, id, entry) {
+// no double effect-rendering work). `dismantleInfo` is REQ-0063's
+// optional personal overlay (see tryReadDismantleInfo above); omitted
+// from the DTO entirely (not even `dismantle: undefined`) when absent,
+// via JSON.stringify's own undefined-key-drop behavior.
+function buildCardDto(kind, id, entry, dismantleInfo) {
   const dto = {
     v: 1,
     kind: kind,
@@ -79,6 +120,7 @@ function buildCardDto(kind, id, entry) {
     dto.short = entry.short;
     dto.stackable = entry.stackable;
   }
+  if (dismantleInfo) dto.dismantle = dismantleInfo;
   return dto;
 }
 
@@ -102,7 +144,8 @@ function tryDexRoutes(req, res, url, p) {
     sendJSON(res, 404, { ok: false, error: 'unknown ' + kind + ' id: ' + id });
     return;
   }
-  sendJSON(res, 200, { ok: true, card: buildCardDto(kind, id, entry) });
+  const dismantleInfo = tryReadDismantleInfo(req, kind, id);
+  sendJSON(res, 200, { ok: true, card: buildCardDto(kind, id, entry, dismantleInfo) });
 }
 
 module.exports = { tryDexRoutes };

@@ -120,6 +120,8 @@ const DICT = {
     'dexcard.viewFull': 'View full page →',
     'dexcard.slot': 'Slot',
     'dexcard.short': 'Short',
+    'dexcard.dismantleCount': 'Dismantled',
+    'dexcard.suppression': 'Suppression',
 
     // Dex detail (ItemDetailCard.tsx)
     'dex.detail.tags': 'Tags (hierarchy)',
@@ -759,6 +761,8 @@ const DICT = {
     'dexcard.viewFull': '詳細ページを見る →',
     'dexcard.slot': 'スロット',
     'dexcard.short': '略称',
+    'dexcard.dismantleCount': '分解値',
+    'dexcard.suppression': '抑制',
 
     'dex.detail.tags': 'タグ（階層）',
     'dex.detail.name': '名前',

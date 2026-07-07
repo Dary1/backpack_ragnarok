@@ -271,6 +271,18 @@ function DexCardContent({
               <span>{card.short}</span>
             </div>
           ) : null}
+          {card.dismantle ? (
+            <div className="dexcard-stat" data-testid="dexcard-dismantle-count">
+              <span className="dexcard-stat-k">{t(locale, 'dexcard.dismantleCount')}</span>
+              <span>{card.dismantle.count}</span>
+            </div>
+          ) : null}
+          {card.dismantle ? (
+            <div className="dexcard-stat" data-testid="dexcard-dismantle-suppression">
+              <span className="dexcard-stat-k">{t(locale, 'dexcard.suppression')}</span>
+              <span>{Math.round(card.dismantle.suppression * 100)}%</span>
+            </div>
+          ) : null}
           {eff ? (
             <div className="dexcard-eff" data-testid="dexcard-eff">
               {eff}

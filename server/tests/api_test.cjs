@@ -3695,6 +3695,55 @@ async function main() {
       assert.strictEqual(yieldRows[0].qty, 1);
     });
 
+    await AT('dismantle: REQ-0052 Dex card carries the CALLER\'s own 分解値+suppression overlay (kind:item/si only, never kind:tm, omitted for an unresolvable caller)', async () => {
+      // dismantlePlayer has dismantled 3 blades by this point in the
+      // block (happy path + cumulative + the deployed-gate's post-release
+      // dismantle above) -- reuse that state rather than engraving fresh,
+      // proving the route reads the SAME ledger dismantleItem itself wrote.
+      const bladeCount = dzDismantle.dismantleCountFor(dismantlePlayer.playerId, 'blade');
+      assert.strictEqual(bladeCount, 3);
+
+      const withToken = await dzReq('GET', '/api/dex/card/item/blade', dismantlePlayer.token);
+      assert.strictEqual(withToken.status, 200);
+      assert.ok(withToken.body.card.dismantle, 'dismantle overlay present for a resolved caller on a kind:item card');
+      assert.strictEqual(withToken.body.card.dismantle.count, bladeCount);
+      assert.ok(Math.abs(withToken.body.card.dismantle.suppression - dzDismantle.suppressionFloor(bladeCount)) < 1e-9);
+
+      // Never dismantled BY THIS PLAYER (a different player dismantled
+      // fx_dagger elsewhere in this file) -- count:0, suppression:0, but
+      // the field is still PRESENT (a resolved caller always gets an
+      // overlay for a dismantlable kind, even at the zero baseline).
+      const neverDismantled = await dzReq('GET', '/api/dex/card/item/fx_dagger', dismantlePlayer.token);
+      assert.strictEqual(neverDismantled.status, 200);
+      assert.ok(neverDismantled.body.card.dismantle);
+      assert.strictEqual(neverDismantled.body.card.dismantle.count, 0);
+      assert.strictEqual(neverDismantled.body.card.dismantle.suppression, 0);
+
+      // kind:'tm' can never be dismantled -- the overlay must never
+      // appear there, even for the exact same resolved caller.
+      const tmCard = await dzReq('GET', '/api/dex/card/tm/lrdst', dismantlePlayer.token);
+      assert.strictEqual(tmCard.status, 200);
+      assert.strictEqual(tmCard.body.card.dismantle, undefined, 'kind:tm never carries a dismantle overlay');
+
+      // No token at all -- dev_mode fallback resolves (to THIS sandbox's
+      // own isolated dev player, never the real one), so the base card
+      // fetch still succeeds AND still gets an overlay (dev player's own,
+      // freshly at count 0) -- proves the anonymous path degrades to "a
+      // resolved caller" rather than erroring, matching admin.resolveAuth's
+      // documented dev_mode contract.
+      const noToken = await dzReq('GET', '/api/dex/card/item/blade', undefined);
+      assert.strictEqual(noToken.status, 200);
+      assert.ok(noToken.body.card.dismantle, 'dev_mode no-token fallback still resolves a caller, so the overlay is present');
+
+      // A garbage (present but invalid) token is NOT the same as no
+      // token -- resolveAuth returns ok:false for it even under
+      // dev_mode, so the overlay must be omitted while the base card
+      // fetch still succeeds (this route is never auth-REQUIRED).
+      const badToken = await dzReq('GET', '/api/dex/card/item/blade', 'totally_garbage_token');
+      assert.strictEqual(badToken.status, 200, 'base card fetch never fails even with an invalid token');
+      assert.strictEqual(badToken.body.card.dismantle, undefined, 'an invalid token resolves to no caller, so no overlay -- never a 401');
+    });
+
     os.homedir = realHomedir; // leave the sandbox exactly as this block found it (real homedir active), matching the outer suite's own posture at this point in the file
   }
   // ---- REQ-0052: Dex Card API (GET /api/dex/card/:kind/:id) ----
