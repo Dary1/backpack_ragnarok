@@ -8,13 +8,13 @@
 // test, room files swept in afterAll).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
-const CLI_INVITE_PATH = join(REPO_ROOT, 'server', 'cli_invite.cjs');
+const REPO_ROOT = E2E_DATA_ROOT;
+const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 const SCHEDULE_FIXTURE_PATH = new URL('./fixtures/schedule-fixture.json', import.meta.url);
 
 interface CreatedPlayer {
@@ -31,7 +31,7 @@ function trackFileForCleanup(filePath: string, label: string): void {
 }
 
 function createGuestPlayer(name: string): CreatedPlayer {
-  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: REPO_ROOT, encoding: 'utf8' });
+  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: E2E_CODE_ROOT, env: E2E_CLI_ENV, encoding: 'utf8' });
   const playerIdMatch = /playerId:\s*(\S+)/.exec(output);
   const tokenMatch = /#\/invite\/(\S+)/.exec(output);
   if (!playerIdMatch || !tokenMatch) {
@@ -77,11 +77,12 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
   test('pagehead/colhead render; the create panel and a fresh room card wear the ornate panel anatomy (knots, chip badge, slot-preview grid, monitor placeholder)', async ({ page }) => {
     await gotoSchedule(page);
 
-    // Pagehead strip: hall title + lede + the (moved) Rooms/Warehouse
-    // tab chips; rune divider beneath.
+    // Pagehead strip: hall title + lede + rune divider. REQ-0086:
+    // Warehouse's tab chip moved out to its own route -- Schedule no
+    // longer renders any tab chips at all.
     await expect(page.locator('.schedule-pagehead-title')).toHaveText('Expeditions');
     await expect(page.locator('.schedule-pagehead-lede')).toBeVisible();
-    await expect(page.locator('.schedule-pagehead .schedule-tab', { hasText: 'Rooms' })).toBeVisible();
+    await expect(page.locator('.schedule-rooms-view')).toBeVisible();
     await expect(page.locator('.schedule-pagehead-divider')).toBeVisible();
 
     // Rooms colhead (den label; the live-count readout needs the rooms

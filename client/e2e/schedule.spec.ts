@@ -40,14 +40,14 @@
 //     999s-or-21s run to finish.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
 import { bootApp, waitForAutoSave } from './helpers';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
-const CLI_INVITE_PATH = join(REPO_ROOT, 'server', 'cli_invite.cjs');
+const REPO_ROOT = E2E_DATA_ROOT;
+const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 const SCHEDULE_FIXTURE_PATH = new URL('./fixtures/schedule-fixture.json', import.meta.url);
 
 interface CreatedPlayer {
@@ -65,7 +65,7 @@ function trackFileForCleanup(filePath: string, label: string): void {
 }
 
 function createGuestPlayer(name: string): CreatedPlayer {
-  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: REPO_ROOT, encoding: 'utf8' });
+  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: E2E_CODE_ROOT, env: E2E_CLI_ENV, encoding: 'utf8' });
   const playerIdMatch = /playerId:\s*(\S+)/.exec(output);
   const tokenMatch = /#\/invite\/(\S+)/.exec(output);
   if (!playerIdMatch || !tokenMatch) {
@@ -867,8 +867,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });
@@ -936,8 +935,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });
@@ -993,8 +991,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });

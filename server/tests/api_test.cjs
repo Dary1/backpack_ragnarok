@@ -1169,6 +1169,86 @@ async function main() {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
+  await AT('schedule: LIST endpoint (GET /api/schedule/rooms) settles a just-completed room too, not only the single-room GET (REQ-0087: expedition never departs)', async () => {
+    // Root cause (REQ-0087): the live client's Rooms view (SchedulePage.tsx)
+    // polls ONLY fetchRooms() -- GET /api/schedule/rooms, the LIST route --
+    // every ROOMS_POLL_MS tick; it never calls fetchRoom(id) (the single-
+    // room GET) in its normal render loop. Before this fix, listOwnRooms()
+    // was a bare storage filter with no settleRoomIfDue() step, so a room
+    // whose 4th (last) slot assignment JUST completed would keep reading
+    // status 'open' forever from the ONLY endpoint real users' polling ever
+    // hits -- even though every assignSlot PUT genuinely returned 200 and
+    // nothing anywhere ever surfaced an error. This test deliberately never
+    // touches the single-room GET, mirroring the live client exactly.
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique preset ' + i + '): ' + JSON.stringify(r.body));
+    }
+    const list = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    assert.strictEqual(list.status, 200);
+    const room = list.body.rooms.find((r) => r.id === roomId);
+    assert.ok(room, 'the just-created room must appear in the list response');
+    assert.strictEqual(room.status, 'active', 'the LIST endpoint alone must observe the auto-start (REQ-0087) -- a real user never calls the single-room GET');
+
+    // Cleanup: same pattern as the sibling REQ-0045(c) test above.
+    const roomRaw = scheduleStorage.readRoom(roomId);
+    forceRunElapsed(roomRaw.lastRunId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
+  await AT('schedule: LIST endpoint -- one room whose settle THROWS (stale presetIndex after its preset was deleted out from under it) must not 400 the whole list or hide the caller\'s OTHER rooms (REQ-0087 follow-up, caught live)', async () => {
+    // Live incident: right after REQ-0087's first fix deployed, the shared
+    // dev account's own preset count changed (unrelated concurrent work)
+    // AFTER a room's 4 slots had already been filled with now-out-of-range
+    // indices. settleRoomIfDue() legitimately throws in that case
+    // (startRun -> buildUnitSnapshots -> presetCanvasOf finds nothing at
+    // that index any more) -- but the FIRST version of this fix let that
+    // exception escape the whole listOwnRooms().map(), turning ONE stale
+    // room into a 400 for the caller's ENTIRE rooms list. Reproduced here
+    // by filling a room normally, then shrinking the SAME player's
+    // presets.store out from under two of its already-assigned slots
+    // (simulating a preset deleted after deployment) before ever letting
+    // anything settle it.
+    const goodCanvas = scheduleStorage.readProfile(scheduleP1.playerId).canvas;
+    let roomAId, roomBId;
+    try {
+      const roomA = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+      roomAId = roomA.body.room.id;
+      for (let i = 0; i < 4; i++) {
+        const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomAId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+        assert.strictEqual(r.status, 200, 'slot ' + i + ' assign: ' + JSON.stringify(r.body));
+      }
+      // Corrupt: truncate store to 2 entries, stranding slots 2 and 3's
+      // presetIndex references -- WITHOUT ever calling anything that would
+      // settle roomA first (no single-room GET, no list call yet).
+      const corrupted = JSON.parse(JSON.stringify(goodCanvas));
+      corrupted.presets.store = corrupted.presets.store.slice(0, 2);
+      scheduleStorage.writeProfile(scheduleP1.playerId, corrupted);
+
+      const roomB = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+      roomBId = roomB.body.room.id;
+
+      const list = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+      assert.strictEqual(list.status, 200, 'roomA\'s settle failure must not 400 the whole list: ' + JSON.stringify(list.body));
+      const gotA = list.body.rooms.find((r) => r.id === roomAId);
+      const gotB = list.body.rooms.find((r) => r.id === roomBId);
+      assert.ok(gotA, 'roomA (the one whose settle throws) must still be present, unsettled, not dropped');
+      assert.ok(gotB, 'roomB (an unrelated healthy room) must be present and unaffected by roomA\'s failure');
+      assert.strictEqual(gotB.status, 'open');
+    } finally {
+      // Cleanup ALWAYS runs (even on assertion failure) so a failure in
+      // this test can never poison scheduleP1's shared canvas/rooms for
+      // every test that runs after it in the same process.
+      scheduleStorage.writeProfile(scheduleP1.playerId, goodCanvas);
+      if (roomAId) await scheduleReq('DELETE', '/api/schedule/rooms/' + roomAId, scheduleP1.token);
+      if (roomBId) await scheduleReq('DELETE', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
+    }
+  });
+
   await AT('schedule: deploy gate -- a preset with ZERO BP is refused 409 empty_unit, and a preset with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;

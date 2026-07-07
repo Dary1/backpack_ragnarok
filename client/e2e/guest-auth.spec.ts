@@ -15,14 +15,14 @@
 // established for data/profiles/default.json.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
 import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
-const CLI_INVITE_PATH = join(REPO_ROOT, 'server', 'cli_invite.cjs');
+const REPO_ROOT = E2E_DATA_ROOT;
+const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 
 interface CreatedPlayer {
   playerId: string;
@@ -58,7 +58,7 @@ function trackFileForCleanup(filePath: string, label: string): void {
  * "absent" marker convention elsewhere in this rig). */
 function createGuestPlayer(name: string, roles: string[]): CreatedPlayer {
   const args = roles.length > 0 ? [CLI_INVITE_PATH, name, '--roles', roles.join(',')] : [CLI_INVITE_PATH, name];
-  const output = execFileSync(process.execPath, args, { cwd: REPO_ROOT, encoding: 'utf8' });
+  const output = execFileSync(process.execPath, args, { cwd: E2E_CODE_ROOT, env: E2E_CLI_ENV, encoding: 'utf8' });
   const playerIdMatch = /playerId:\s*(\S+)/.exec(output);
   const tokenMatch = /#\/invite\/(\S+)/.exec(output);
   if (!playerIdMatch || !tokenMatch) {

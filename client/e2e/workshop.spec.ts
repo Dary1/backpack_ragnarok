@@ -10,14 +10,14 @@
 // try/finally block).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
 import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
-const CLI_INVITE_PATH = join(REPO_ROOT, 'server', 'cli_invite.cjs');
+const REPO_ROOT = E2E_DATA_ROOT;
+const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
 const DEV_USER_PATH = join(REPO_ROOT, 'data', 'config', 'dev_user.json');
 
@@ -36,7 +36,7 @@ function trackFileForCleanup(filePath: string, label: string): void {
 }
 
 function createGuestPlayer(name: string): CreatedPlayer {
-  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: REPO_ROOT, encoding: 'utf8' });
+  const output = execFileSync(process.execPath, [CLI_INVITE_PATH, name], { cwd: E2E_CODE_ROOT, env: E2E_CLI_ENV, encoding: 'utf8' });
   const playerIdMatch = /playerId:\s*(\S+)/.exec(output);
   const tokenMatch = /#\/invite\/(\S+)/.exec(output);
   if (!playerIdMatch || !tokenMatch) {
@@ -317,15 +317,14 @@ test.describe('TM stack merge via repeated claims', () => {
     await withDevProfileBackup(async () => {
       await seedDevLrdstBalance(page, 0); // known-clean zero baseline before any claim
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       for (const qty of [7, 3]) {
         const grantRes = await page.request.post('/api/admin/warehouse/grant', { data: { tm: 'lrdst', qty } });
         expect(grantRes.status()).toBe(200);
         const grantedUid = (await grantRes.json()).item.itemUid;
 
-        await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+        await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
         const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantedUid}"]`);
         await expect(row).toBeVisible({ timeout: 10000 });
         await page.locator(`[data-testid="schedule-claim-btn-${grantedUid}"]`).click();
@@ -448,8 +447,7 @@ test.describe('Claim of a TM warehouse row merges into an existing stack', () =>
       const grantedUid = (await grantRes.json()).item.itemUid;
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantedUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });

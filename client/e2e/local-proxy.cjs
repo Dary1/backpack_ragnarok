@@ -18,10 +18,25 @@ const http = require('node:http');
 const PORT   = Number(process.env.E2E_PROXY_PORT  || 8803);
 const STATIC = Number(process.env.E2E_STATIC_PORT || 8801);
 const API    = Number(process.env.E2E_API_PORT    || 8802);
+const FLEET_BASE = Number(process.env.E2E_FLEET_BASE_PORT || 8810);
 const HOST   = '127.0.0.1';
 
+// REQ-0083: in parallel mode each Playwright worker tags its requests with
+// X-E2E-Worker:<index>; route that /api traffic to the worker's own isolated
+// API instance (FLEET_BASE+index). No header -> the default single API (:8802),
+// preserving REQ-0080 single-worker behavior.
+function apiPortFor(headers) {
+  const w = headers['x-e2e-worker'];
+  if (w !== undefined && w !== '') {
+    const i = Number(w);
+    if (Number.isInteger(i) && i >= 0) return FLEET_BASE + i;
+  }
+  return API;
+}
+
 const server = http.createServer((creq, cres) => {
-  const port = creq.url.startsWith('/api/') || creq.url === '/api' ? API : STATIC;
+  const isApi = creq.url.startsWith('/api/') || creq.url === '/api';
+  const port = isApi ? apiPortFor(creq.headers) : STATIC;
   const preq = http.request(
     { host: HOST, port, method: creq.method, path: creq.url,
       headers: { ...creq.headers, host: `${HOST}:${port}` } },

@@ -38,12 +38,23 @@ const GPU_ARGS = USE_GPU
      '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox']
   : [];
 
+// REQ-0083: E2E_PARALLEL=N runs the suite across N workers, each backed by its
+// OWN isolated backpack-api instance (tools/e2e_fleet.cjs, started in
+// global-setup). Each worker tags requests with X-E2E-Worker:<index> so the
+// local proxy routes /api to that worker's backend. TEST_WORKER_INDEX is set by
+// Playwright in each worker process (config is re-evaluated per worker). Unset
+// E2E_PARALLEL keeps the safe serial default against the single live API.
+const PARALLEL = Number(process.env.E2E_PARALLEL || 0);
+const WORKER_IDX = process.env.TEST_PARALLEL_INDEX; // 0..N-1 stable slot (NOT TEST_WORKER_INDEX, which increments per spawned worker and would exceed the fleet size)
+const WORKER_HEADERS: Record<string, string> =
+  PARALLEL > 0 && WORKER_IDX !== undefined ? { "X-E2E-Worker": WORKER_IDX } : {};
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   expect: { timeout: 5_000 },
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order
+  workers: PARALLEL > 0 ? PARALLEL : 1,
   retries: 0,
   reporter: [['list']],
   // REQ-0080: auto-start the local ingress proxy, but only for a localhost baseURL.
@@ -57,6 +68,7 @@ export default defineConfig({
   globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: BASE_URL,
+    extraHTTPHeaders: WORKER_HEADERS,
     headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
     launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
