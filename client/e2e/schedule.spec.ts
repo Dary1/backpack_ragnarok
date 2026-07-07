@@ -867,8 +867,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });
@@ -936,8 +935,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });
@@ -993,8 +991,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });

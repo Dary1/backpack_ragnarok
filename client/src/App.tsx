@@ -95,6 +95,7 @@ import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
 import { SchedulePage } from './schedule/SchedulePage';
+import { WarehousePage } from './warehouse/WarehousePage'; // REQ-0086
 import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
 import { MarketPage } from './market/MarketPage'; // REQ-0064
 import { RagnarokPage } from './ragnarok/RagnarokPage'; // REQ-0066
@@ -253,6 +254,7 @@ function App() {
 
         {route === 'landing' ? <LandingPage locale={snapshot.locale} me={snapshot.me} /> : null}
         {route === 'schedule' ? <SchedulePage locale={snapshot.locale} /> : null}
+        {route === 'warehouse' ? <WarehousePage locale={snapshot.locale} /> : null}
         {route === 'workshop' ? <WorkshopPage locale={snapshot.locale} /> : null}
         {/* REQ-0069: mock-rail routes whose real pages land in later REQs. */}
         {route === 'market' ? <MarketPage locale={snapshot.locale} /> : null}

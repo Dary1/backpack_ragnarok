@@ -1763,13 +1763,17 @@ html, body {
 }
 
 /* ---------------------------------------------------------------------
-   Schedule (REQ-0036 P1-C) -- Rooms/Warehouse tabs, room cards, slots
-   panel, create form. REQ-0071: re-skinned to the MJOLNIR expedition
-   mock (web/redesign/expedition.html) -- page key art + pagehead strip
-   + rune divider, ornate room cards with the mock's emblem/status-chip/
-   slot-preview anatomy (RoomCard.tsx), theme-chip tabs, night-iron form
-   fields. Selector contract unchanged: .schedule-page / .schedule-tab
-   (+ -active) / .schedule-slot-error / .schedule-monitor-expand-btn /
+   Schedule (REQ-0036 P1-C) -- Rooms, room cards, slots panel, create
+   form. REQ-0071: re-skinned to the MJOLNIR expedition mock
+   (web/redesign/expedition.html) -- page key art + pagehead strip +
+   rune divider, ornate room cards with the mock's emblem/status-chip/
+   slot-preview anatomy (RoomCard.tsx), night-iron form fields. REQ-0086:
+   Warehouse (formerly a tab sharing this page) moved to its own route +
+   client/src/warehouse/WarehousePage.tsx -- this page now renders ONLY
+   Rooms, and the .schedule-tab(-active)/.schedule-tab-row/
+   .schedule-pagehead-tabs tab-chip rules below are RETIRED (no more
+   in-page tab switch). Selector contract for what remains: .schedule-page
+   / .schedule-slot-error / .schedule-monitor-expand-btn /
    .schedule-claim-btn and every data-testid keep their names (the E2E
    suite selects on them). Omissions vs the mock are recorded in
    docs/REQ-0071-redesign-expedition.md.
@@ -1833,11 +1837,6 @@ html, body {
   letter-spacing: 0.08em;
 }
 
-.schedule-pagehead-tabs {
-  margin-left: auto;
-  padding-bottom: 4px;
-}
-
 .schedule-pagehead-divider {
   margin: 10px 0 14px;
 }
@@ -1847,35 +1846,11 @@ html, body {
   background: linear-gradient(90deg, transparent, rgba(201, 169, 89, 0.35), transparent);
 }
 
-/* Rooms/Warehouse tabs -- theme chips (class names kept for the E2E
-   suite: nav-routing.spec / workshop.spec select .schedule-tab by text). */
-.schedule-tab-row {
-  display: flex;
-  gap: 6px;
-}
-
-.schedule-tab {
-  padding: 5px 18px;
-  border: 1px solid var(--border-lo);
-  border-radius: 999px;
-  background: rgba(19, 24, 32, 0.8);
-  color: var(--bone-2);
-  font-size: 12.5px;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
-}
-
-.schedule-tab:hover {
-  border-color: var(--gold-lo);
-  color: var(--gold-hi);
-}
-
-.schedule-tab-active {
-  border-color: var(--gold-lo);
-  color: var(--gold-hi);
-  box-shadow: inset 0 0 8px rgba(201, 169, 89, 0.15);
-}
+/* REQ-0086: the .schedule-tab(-row/-active) chip rules that used to live
+   here (Rooms/Warehouse tab switch) are RETIRED -- Warehouse is its own
+   route now (WarehousePage.tsx) and Schedule has nothing left to switch
+   between. Removed rather than left dead, per this file's own "selector
+   contract" discipline (see the block comment above). */
 
 .schedule-loading,
 .schedule-empty {

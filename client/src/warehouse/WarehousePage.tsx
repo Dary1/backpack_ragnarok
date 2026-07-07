@@ -49,10 +49,37 @@
 // data (weapon/frost/ember filters, seller names, boss provenance,
 // non-decaying currency) is inferred or omitted per
 // docs/REQ-0072-redesign-warehouse.md.
+//
+// REQ-0086 (promoted to an independent top-level route): this file is a
+// direct extraction of the former client/src/schedule/WarehouseTab.tsx
+// (embedded as the #/schedule page's WAREHOUSE tab) into its own
+// `#/warehouse` route + Nav.tsx rail entry. Extraction only -- every
+// mechanism described above (two-phase claim, embedded InventoryBoard
+// portal, capacity/danger/shelf/filter/TTL-ring presentation, every
+// E2E-load-bearing selector) is UNCHANGED. What changed structurally:
+// this component now owns its own permanent pagehead/key-art/rune-
+// divider (previously SchedulePage swapped that chrome's identity
+// between Rooms and Warehouse depending on which tab was active -- see
+// SchedulePage.tsx, which keeps only the Rooms/Expedition identity now)
+// and fetches its own one-shot rooms/dungeons copy for the provenance
+// chip (previously passed down as props from SchedulePage, which no
+// longer renders this component at all).
+//
+// This supersedes REQ-0036's original golden-f placement decision
+// ("Warehouse -> inventory transfer any time (Warehouse tab inside
+// Schedule screen)") per a direct 2026-07-07 user instruction (recorded
+// as REQ-0086 on the docs FS, since docs/REQ lives there, not in this
+// repo -- see PROJECT.md). The mock (web/redesign/*.html) always showed
+// 倉庫 as its own rail entry across every page's nav, including its own
+// dedicated warehouse.html document; REQ-0069 found this and explicitly
+// deferred adding it ("the warehouse lives as a Schedule tab today").
+// REQ-0086 lands that deferred entry.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   claimWarehouseItem as apiClaimWarehouseItem,
   fetchContent,
+  fetchDungeons,
+  fetchRooms,
   fetchWarehouse,
   type ApiContentPayload,
   type ApiDungeonsPayload,
@@ -64,21 +91,14 @@ import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
 import { rarThemeClass } from '../render/uiBits';
 import type { EngineInstance, GameState } from '../engine/engine.d.ts';
-import { friendlyScheduleError, isApiErrorStatus } from './errors';
-import { localizedName } from './CreateRoomForm';
-import { formatCountdown } from './RoomCard';
+import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
+import { localizedName } from '../schedule/CreateRoomForm';
+import { formatCountdown } from '../schedule/RoomCard';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 
-interface WarehouseTabProps {
+interface WarehousePageProps {
   locale: Locale;
-  /** REQ-0072: the rooms + dungeons SchedulePage already fetches/polls
-   * for its own rooms view, passed down so a row's sourceRoomId can be
-   * resolved to a REAL dungeon display name for the provenance chip
-   * (mock 「出所: ニヴルヘイム深淵」). null until loaded -- the chip is
-   * simply omitted for rows that cannot be resolved. */
-  rooms: ApiRoom[] | null;
-  dungeons: ApiDungeonsPayload | null;
 }
 
 /** REQ-0072: market-settled rows (buyer delivery / seller TM proceeds --
@@ -350,11 +370,22 @@ function pulseTab(pageIndex: number): void {
 
 type WarehouseFilter = 'all' | 'spoils' | 'currency';
 
-export function WarehouseTab({ locale, rooms, dungeons }: WarehouseTabProps) {
+export function WarehousePage({ locale }: WarehousePageProps) {
   const snapshot = useGameStore();
   const [items, setItems] = useState<WarehouseRow[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // REQ-0086: rooms/dungeons used to arrive as props from SchedulePage
+  // (which already fetched/polled them for its own Rooms view). This is
+  // now its own top-level route with no such parent, so it fetches its
+  // own one-shot copy for the SAME purpose -- resolving a row's
+  // sourceRoomId to a real dungeon display name for the provenance chip
+  // (mock 「出所: ニヴルヘイム深淵」). No polling: a warehouse row's
+  // source room is already a settled/harvested-from room by the time it
+  // shows up here, so staleness risk is negligible (unlike the Rooms
+  // view's own live status/cooldown polling need).
+  const [rooms, setRooms] = useState<ApiRoom[] | null>(null);
+  const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
@@ -409,6 +440,31 @@ export function WarehouseTab({ locale, rooms, dungeons }: WarehouseTabProps) {
     const id = setInterval(() => void reload(), POLL_MS);
     return () => clearInterval(id);
   }, [reload]);
+
+  // REQ-0086: one-shot rooms/dungeons fetch for the provenance chip (see
+  // the state comment above) -- failures are non-fatal, same posture as
+  // every other best-effort lookup on this page (the chip is simply
+  // omitted for a row that cannot be resolved).
+  useEffect(() => {
+    let cancelled = false;
+    fetchRooms()
+      .then((res) => {
+        if (!cancelled) setRooms(res.rooms);
+      })
+      .catch(() => {
+        /* provenance chip degrades to omitted -- non-fatal */
+      });
+    fetchDungeons()
+      .then((d) => {
+        if (!cancelled) setDungeons(d);
+      })
+      .catch(() => {
+        /* provenance chip degrades to omitted -- non-fatal */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -672,8 +728,31 @@ export function WarehouseTab({ locale, rooms, dungeons }: WarehouseTabProps) {
     );
   };
 
+  const pageSub = t(locale, 'schedule.warehouse.pageSub');
+  const pageTitle = t(locale, 'schedule.warehouse.pageTitle');
+  const pageLede = t(locale, 'schedule.warehouse.pageLede');
+
   return (
-    <div className="schedule-warehouse-tab">
+    <div className="schedule-page">
+      {/* REQ-0086: full-viewport key art -- same served /redesign/assets
+          convention as the Expedition page (REQ-0071/0072). This page
+          always wears the warehouse identity now (no more swapping with
+          a sibling Rooms tab -- see SchedulePage.tsx, which keeps its
+          own permanent Expedition identity after this split). */}
+      <div className="warehouse-bgart" aria-hidden="true" />
+
+      <section className="schedule-pagehead">
+        <div className="schedule-pagehead-main">
+          {pageSub ? <div className="schedule-pagehead-kicker den">{pageSub}</div> : null}
+          <h1 className="schedule-pagehead-title dj dj-wide">{pageTitle}</h1>
+          <div className="schedule-pagehead-lede">{pageLede}</div>
+        </div>
+      </section>
+      <div className="rune-divider schedule-pagehead-divider" aria-hidden="true">
+        ᚷ
+      </div>
+
+      <div className="schedule-warehouse-tab">
       {/* mock .topstrip: capacity meter / near-expiry chip / filters /
           bulk claim. Same staged capacity semantics as before (REQ-0046)
           -- calm/warning/full classes and the warning-text testid are
@@ -808,6 +887,7 @@ export function WarehouseTab({ locale, rooms, dungeons }: WarehouseTabProps) {
         <div className="schedule-warehouse-foot-lore">{t(locale, 'schedule.warehouse.footLore')}</div>
         <div className="t-micro">{t(locale, 'schedule.warehouse.footNote')}</div>
       </footer>
+      </div>
     </div>
   );
 }

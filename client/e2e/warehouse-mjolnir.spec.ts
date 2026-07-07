@@ -36,19 +36,19 @@ const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
 const fixture = JSON.parse(readFileSync(SCHEDULE_FIXTURE_PATH, 'utf8'));
 
 async function gotoWarehouseTab(page: Page): Promise<void> {
+  // REQ-0086: Warehouse is its own top-level nav route now, not a
+  // Schedule-page tab -- navigate straight there.
   await bootApp(page);
-  await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-  await expect(page.locator('.schedule-page')).toBeVisible();
-  await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+  await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
   await expect(page.locator('[data-testid="schedule-warehouse-topstrip"]')).toBeVisible({ timeout: 10000 });
 }
 
 /** Shared MJOLNIR-chrome assertions both describes reuse: the pagehead
  * identity swap + the ornate topstrip anatomy. */
 async function expectWarehouseChrome(page: Page): Promise<void> {
-  // Pagehead switches to the vault identity when the warehouse tab is
-  // active (SchedulePage swap; rooms view keeps 'Expeditions' -- that
-  // side is asserted by schedule-mjolnir.spec.ts).
+  // REQ-0086: the vault identity is now WarehousePage's own permanent
+  // pagehead (Schedule/Expeditions keeps its own, separately asserted by
+  // schedule-mjolnir.spec.ts).
   await expect(page.locator('.schedule-pagehead-title')).toHaveText('Treasure Vault');
   await expect(page.locator('.schedule-pagehead-kicker')).toHaveText("MUNINN'S HOARD");
   await expect(page.locator('.warehouse-bgart')).toHaveCount(1);

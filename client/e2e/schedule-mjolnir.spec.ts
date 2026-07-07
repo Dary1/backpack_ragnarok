@@ -77,11 +77,12 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
   test('pagehead/colhead render; the create panel and a fresh room card wear the ornate panel anatomy (knots, chip badge, slot-preview grid, monitor placeholder)', async ({ page }) => {
     await gotoSchedule(page);
 
-    // Pagehead strip: hall title + lede + the (moved) Rooms/Warehouse
-    // tab chips; rune divider beneath.
+    // Pagehead strip: hall title + lede + rune divider. REQ-0086:
+    // Warehouse's tab chip moved out to its own route -- Schedule no
+    // longer renders any tab chips at all.
     await expect(page.locator('.schedule-pagehead-title')).toHaveText('Expeditions');
     await expect(page.locator('.schedule-pagehead-lede')).toBeVisible();
-    await expect(page.locator('.schedule-pagehead .schedule-tab', { hasText: 'Rooms' })).toBeVisible();
+    await expect(page.locator('.schedule-rooms-view')).toBeVisible();
     await expect(page.locator('.schedule-pagehead-divider')).toBeVisible();
 
     // Rooms colhead (den label; the live-count readout needs the rooms

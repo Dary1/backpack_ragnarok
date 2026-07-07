@@ -27,6 +27,7 @@ const DICT = {
     // Nav (Nav.tsx)
     'nav.backpacks': 'Backpacks',
     'nav.schedule': 'Schedule',
+    'nav.warehouse': 'Warehouse', // REQ-0086
     'nav.workshop': 'Workshop', // REQ-0042
     'nav.friends': 'Friends',
     'nav.dex': 'Dex',
@@ -193,8 +194,6 @@ const DICT = {
 
     // Schedule (Schedule.tsx / schedule/*) -- REQ-0036 P1-C
     'schedule.title': 'Dungeon Schedule',
-    'schedule.tabRooms': 'Rooms',
-    'schedule.tabWarehouse': 'Warehouse',
     'schedule.loading': 'Loading…',
     'schedule.loadFailed': 'Failed to load the schedule: ',
     'schedule.noRooms': 'No rooms yet. Create one below to get started.',
@@ -675,6 +674,7 @@ const DICT = {
     // do not. EN labels stay as-is (the E2E suite clicks them by text).
     'nav.backpacks': '編成',
     'nav.schedule': '遠征',
+    'nav.warehouse': '倉庫', // REQ-0086
     'nav.workshop': '工房',
     'nav.friends': 'フレンズ',
     'nav.dex': '図鑑',
@@ -819,8 +819,6 @@ const DICT = {
 
     // Schedule (Schedule.tsx / schedule/*) -- REQ-0036 P1-C
     'schedule.title': 'ダンジョンスケジュール',
-    'schedule.tabRooms': 'ルーム',
-    'schedule.tabWarehouse': '倉庫',
     'schedule.loading': '読み込み中…',
     'schedule.loadFailed': 'スケジュールの読み込みに失敗しました: ',
     'schedule.noRooms': 'まだルームがありません。下記から作成してください。',
