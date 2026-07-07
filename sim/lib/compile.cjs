@@ -85,7 +85,13 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
     const localCells = localCellsOfPO(p, def);
     const fieldCells = localCells.map(toField);
     const bpId = bpByLocalCellKey.get(localCells[0][0] + ',' + localCells[0][1]) || null;
-    return { uid: p.uid, id: p.id, def, localCells, fieldCells, bpId };
+    // REQ-0063: q (0..1, the per-instance quality roll -- see
+    // server/services/dismantle.cjs's rollQuality) defaults to 0 for any
+    // instance lacking the field (pre-REQ-0063 saves, or an acquisition
+    // path that doesn't mint one) -- q=0 is an exact no-op in
+    // applyQualityToEffects below, so an absent field changes nothing.
+    const q = (typeof p.q === 'number') ? p.q : 0;
+    return { uid: p.uid, id: p.id, def, localCells, fieldCells, bpId, q };
   });
 
   // ---- Buff folding (S1.4 OQ2 "fold everything") ----
@@ -106,8 +112,33 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
     return range;
   }
 
+  // applyQualityToEffects(effects, q): REQ-0063 per-instance quality
+  // roll. q in [0,1) narrows a strike/multi_strike verb's [lo,hi] range
+  // by raising ONLY the minimum, proportionally toward (never reaching,
+  // since q is generated strictly below 1 -- see rollQuality) the
+  // midpoint: [lo + q*(hi-lo), hi]. q=0 is an exact no-op (returns the
+  // original range unchanged) -- the documented default for any instance
+  // with no quality roll on record. Mirrors applyFlatBonusToEffects's
+  // shape/verb allowlist/immutability discipline exactly; the two passes
+  // are independently composable and deliberately ordered quality-first
+  // (this instance's OWN performance envelope is narrowed before
+  // combat-time buffs from other placed POs/SIs shift it by a flat
+  // amount) -- see foldBuffsForPO below, which applies this to the raw
+  // def effects before flat-bonus folding begins.
+  function applyQualityToEffects(effects, q) {
+    if (!q) return effects;
+    return effects.map(eff => {
+      const e = deepCopy(eff);
+      if (e.verb && (e.verb.t === 'strike' || e.verb.t === 'multi_strike') && Array.isArray(e.verb.n)) {
+        const lo = e.verb.n[0], hi = e.verb.n[1];
+        e.verb.n = [lo + q * (hi - lo), hi];
+      }
+      return e;
+    });
+  }
+
   function foldBuffsForPO(poEntry, rng) {
-    const effects = deepCopy(poEntry.def.effects || []);
+    const effects = applyQualityToEffects(deepCopy(poEntry.def.effects || []), poEntry.q);
     let flatBonus = 0;
     // buff_host: passive, self-only, stat must be 'damage' (OQ7 LOCKED).
     for (const eff of effects) {
