@@ -56,7 +56,7 @@ function spawnWorker() {
   // once the current Atomics.wait() has returned -- which is exactly when
   // `worker` needs to be clear for the NEXT querySync().
   w.on('error', (err) => {
-    console.error('[pg_sync] worker error (will respawn on next query):', err && err.message ? err.message : err);
+    console.error('[pg_sync] worker error (will respawn on next query):', err instanceof Error ? err.message : err);
     if (worker === w) worker = null;
   });
   w.on('exit', (code) => {
