@@ -126,7 +126,24 @@ function tryScheduleRoutes(req, res, url, p) {
     if (p.match(SCHEDULE_ROOMS_RE)) {
       if (req.method === 'GET') {
         try {
-          sendJSON(res, 200, { ok: true, rooms: schedule.listOwnRooms(callerId) });
+          // REQ-0087: settle each room the same way loadAndSettleRoom()
+          // already does for every OTHER room-touching route below. Without
+          // this, a room whose 4th (last) slot assignment just completed --
+          // or whose cooldown just cleared -- never auto-starts its next
+          // run: this list endpoint is the ONLY one the live client's Rooms
+          // view ever polls (SchedulePage.tsx's ROOMS_POLL_MS loop calls
+          // fetchRooms() exclusively, never fetchRoom(id)), so a fully and
+          // validly filled room could sit at status 'open' forever with
+          // zero error surfaced anywhere (every assignSlot PUT genuinely
+          // returned 200) -- see docs/REQ/.../REQ-0087 for the live repro.
+          // settleRoomIfDue() is a no-op passthrough for any room that
+          // isn't due (canceled / mid-run / still-cooling-down / not yet
+          // fully filled), so this stays cheap on every poll.
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = loadOwnCanvas();
+          const rooms = schedule.listOwnRooms(callerId)
+            .map((room) => schedule.settleRoomIfDue(room, canvas, itemDefsById));
+          sendJSON(res, 200, { ok: true, rooms });
         } catch (e) { sendScheduleError(e); }
         return;
       }

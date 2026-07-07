@@ -1169,6 +1169,37 @@ async function main() {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
+  await AT('schedule: LIST endpoint (GET /api/schedule/rooms) settles a just-completed room too, not only the single-room GET (REQ-0087: expedition never departs)', async () => {
+    // Root cause (REQ-0087): the live client's Rooms view (SchedulePage.tsx)
+    // polls ONLY fetchRooms() -- GET /api/schedule/rooms, the LIST route --
+    // every ROOMS_POLL_MS tick; it never calls fetchRoom(id) (the single-
+    // room GET) in its normal render loop. Before this fix, listOwnRooms()
+    // was a bare storage filter with no settleRoomIfDue() step, so a room
+    // whose 4th (last) slot assignment JUST completed would keep reading
+    // status 'open' forever from the ONLY endpoint real users' polling ever
+    // hits -- even though every assignSlot PUT genuinely returned 200 and
+    // nothing anywhere ever surfaced an error. This test deliberately never
+    // touches the single-room GET, mirroring the live client exactly.
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique preset ' + i + '): ' + JSON.stringify(r.body));
+    }
+    const list = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    assert.strictEqual(list.status, 200);
+    const room = list.body.rooms.find((r) => r.id === roomId);
+    assert.ok(room, 'the just-created room must appear in the list response');
+    assert.strictEqual(room.status, 'active', 'the LIST endpoint alone must observe the auto-start (REQ-0087) -- a real user never calls the single-room GET');
+
+    // Cleanup: same pattern as the sibling REQ-0045(c) test above.
+    const roomRaw = scheduleStorage.readRoom(roomId);
+    forceRunElapsed(roomRaw.lastRunId);
+    await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
   await AT('schedule: deploy gate -- a preset with ZERO BP is refused 409 empty_unit, and a preset with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
