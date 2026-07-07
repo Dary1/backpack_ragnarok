@@ -251,7 +251,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
       const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
       const [rr,rc]=rotateOffsetCW([localOld])[0];
       const newLocal=[rr-mr,rc-mc];
-      return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4};
+      return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4,q:p.q};
     });
     return {shape:newShape,linkerOff:newLinkerOff,dirs:newDirs,pos:newPOs};
   }
@@ -1389,7 +1389,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     if(!home||home.kind!==kind)return {ok:false,why:'no home'};
     if(kind==='po'){
       const src=home.record;
-      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot)};
+      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot),q:src.q};
       // Validate canvas placement legality (bounds/BP-containment/overlap)
       // the SAME way movePO always has -- push first (canPlacePO needs the
       // uid present in st.pos to compute its own-uid exclusion correctly,
@@ -1410,7 +1410,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     if(kind==='si'){
       const src=home.record;
-      const ref={uid:src.uid,id:src.id,host:'inv'};
+      const ref={uid:src.uid,id:src.id,host:'inv',q:src.q};
       st.sis.push(ref);
       if(placement.host&&placement.host!=='inv'){
         const skey=placement.host==='bond'?'bond':(placement.host.po+':'+placement.host.si);
@@ -2147,11 +2147,11 @@ function create(ITEMS,SI_DEFS,layout,trees){
         st.inv.pages[placedOn.pageIdx].bps.push(homeBp);
         homedBP.add(bp.id);
         for(const p of inside){
-          st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:[p.cell[0]+dr,p.cell[1]+dc],rot:p.rot});
+          st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:[p.cell[0]+dr,p.cell[1]+dc],rot:p.rot,q:p.q});
           homedPO.add(p.uid);
         }
         for(const a of insideSis){
-          st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{po:a.host.po,si:a.host.si}});
+          st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{po:a.host.po,si:a.host.si},q:a.q});
           homedSI.add(a.uid);
         }
       }
@@ -2169,7 +2169,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
           pageIdx++;
         }
         if(!placedOn)continue;
-        st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:placedOn.cell,rot:p.rot});
+        st.inv.pages[placedOn.pageIdx].pos.push({uid:p.uid,id:p.id,loc:'grid',cell:placedOn.cell,rot:p.rot,q:p.q});
         homedPO.add(p.uid);
       }
     }
@@ -2185,7 +2185,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
           pageIdx++;
         }
         if(!placedOn)continue;
-        st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{page:placedOn.pageIdx,cell:placedOn.cell}});
+        st.inv.pages[placedOn.pageIdx].sis.push({uid:a.uid,id:a.id,host:{page:placedOn.pageIdx,cell:placedOn.cell},q:a.q});
         homedSI.add(a.uid);
       }
     }
