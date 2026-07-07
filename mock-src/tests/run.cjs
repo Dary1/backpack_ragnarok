@@ -650,6 +650,52 @@ T('presets: switchPreset is a no-op (still ok:true) when already active; rejects
   ok(!bad2.ok,'negative preset index rejected');
 });
 
+T('REQ-0085: switchPreset self-heals a corrupted (stray-null) non-active slot instead of throwing',()=>{
+  const {st,E}=fresh();
+  // Simulate the wild corruption this REQ fixes: some non-active store
+  // slot is null even though it is not the active preset (should never
+  // happen via the public API -- addPreset/switchPreset/reorderPreset/
+  // deletePreset all maintain "exactly one null, at active" -- but a
+  // stray null WAS observed in a live profile with no reconstructable
+  // cause, so the engine must tolerate it defensively rather than trust
+  // the invariant blindly). Before this fix, switching into slot 2 threw
+  // `Cannot read properties of null (reading 'linked')` -- an uncaught
+  // exception inside the click handler that made the tab look like it
+  // simply did nothing, and left store[0] wrongly non-null besides.
+  st.presets.store[2]=null;
+  const r=E.switchPreset(st,2);
+  ok(r.ok,'switching into a corrupted (null) slot succeeds instead of throwing');
+  eq(st.presets.active,2,'active advanced to the requested slot');
+  ok(st.linked===true&&st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'corrupted slot self-heals to a fresh EMPTY preset (nothing to recover -- a null slot never had real content)');
+  ok(st.presets.store[2]===null,'newly-active slot (2) correctly has no store entry');
+  ok(st.presets.store[0]!==null&&Array.isArray(st.presets.store[0].bps),'previously-active slot (0) correctly holds the outgoing snapshot -- invariant restored, not just the crash avoided');
+  // and it keeps working going forward (not a one-shot patch)
+  ok(E.switchPreset(st,0).ok,'switching back out of the healed slot still works');
+  eq(st.presets.active,0);
+});
+
+T('REQ-0085: reorderPreset tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
+  const {st,E}=fresh();
+  st.presets.store[3]=null; // corrupt a slot NOT otherwise involved in the reorder below
+  const r=E.reorderPreset(st,1,4);
+  ok(r.ok,'reorderPreset does not throw with a stray null elsewhere in store[]');
+  st.presets.store.forEach((slot,i)=>{
+    if(i===st.presets.active){ok(slot===null,'active slot ('+i+') has no store entry');}
+    else {ok(slot&&Array.isArray(slot.bps)&&Array.isArray(slot.pos)&&Array.isArray(slot.sis),'slot '+i+' is a real (possibly healed) preset object, not a stray null');}
+  });
+});
+
+T('REQ-0085: deletePreset tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
+  const {st,E}=fresh();
+  st.presets.store[3]=null; // corrupt a slot NOT involved in the delete below
+  const r=E.deletePreset(st,2);
+  ok(r.ok,'deletePreset does not throw with a stray null elsewhere in store[]');
+  st.presets.store.forEach((slot,i)=>{
+    if(i===st.presets.active){ok(slot===null,'active slot ('+i+') has no store entry');}
+    else {ok(slot&&Array.isArray(slot.bps),'slot '+i+' is a real (possibly healed) preset object, not a stray null');}
+  });
+});
+
 T('presets: addPreset appends an EMPTY preset (no BPs/POs/SIs) and grows names[]',()=>{
   const {st,E}=fresh();
   const before=st.presets.store.length;
