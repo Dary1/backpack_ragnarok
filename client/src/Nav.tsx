@@ -13,12 +13,20 @@
 //
 // REQ-0069 additions: '#/market' and '#/ragnarok' render PlaceholderPage
 // until their own REQs land (the mock rail shows 市場/殿堂 pages). Entry
-// ORDER follows the mock rail (canvas/expedition/dex/workshop/market/
-// hall) with the two app-only routes (Friends, Settings) appended; the
-// mock's 倉庫 (warehouse) rail entry is NOT added — the warehouse lives
-// as a Schedule tab today (REQ-0072 owns its page-port). Rune glyphs for
-// mock-mapped entries come straight from the mock; Friends (ᚹ wunjo) and
-// Settings (ᛟ othala) have no mock counterpart and were chosen here.
+// ORDER follows the mock rail (canvas/expedition/warehouse/dex/workshop/
+// market/hall) with the two app-only routes (Friends, Settings) appended.
+// Rune glyphs for mock-mapped entries come straight from the mock;
+// Friends (ᚹ wunjo) and Settings (ᛟ othala) have no mock
+// counterpart and were chosen here.
+//
+// REQ-0086: lands the mock's 倉庫 (warehouse) rail entry that REQ-0069
+// had explicitly deferred ("the warehouse lives as a Schedule tab
+// today"; REQ-0072 only reskinned that tab in place). Rune ᚷ and rail
+// position (right after 遠征/schedule) are read straight from the mock's
+// shared rail markup (web/redesign/*.html), same as every other
+// mock-mapped entry. This supersedes REQ-0036 golden-f's original
+// "Warehouse tab inside Schedule screen" placement — see
+// client/src/warehouse/WarehousePage.tsx's module comment.
 // The landing itself has no rail entry — the logo IS the way back (the
 // mock's 表題 rail entry collapses into the logo).
 import { t, type TranslationKey } from './i18n';
@@ -35,6 +43,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { route: 'backpacks', key: 'nav.backpacks', rune: 'ᛗ' },
   { route: 'schedule', key: 'nav.schedule', rune: 'ᚱ' },
+  { route: 'warehouse', key: 'nav.warehouse', rune: 'ᚷ' }, // REQ-0086 (mock rail slot, deferred by REQ-0069)
   { route: 'dex', key: 'nav.dex', rune: 'ᚲ' },
   { route: 'workshop', key: 'nav.workshop', rune: 'ᛈ' }, // REQ-0042
   { route: 'market', key: 'nav.market', rune: 'ᚠ' }, // REQ-0069 placeholder

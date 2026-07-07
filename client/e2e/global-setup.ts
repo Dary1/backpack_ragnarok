@@ -37,8 +37,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, copyFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_DATA_ROOT } from './e2e-env';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
+const REPO_ROOT = E2E_DATA_ROOT;
 
 export const PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'default.json');
 export const BACKUP_MARKER_PATH = '/tmp/backpack_e2e_profile_backup_path.txt';
@@ -223,6 +224,15 @@ function backupOne(sourcePath: string, backupPrefix: string, markerPath: string)
 }
 
 export default async function globalSetup(): Promise<void> {
+  // REQ-0083: in parallel mode, stand up one isolated backpack-api per worker
+  // first (see tools/e2e_fleet.cjs + client/e2e/local-proxy.cjs header routing).
+  // NOTE (incomplete): guest-creating specs still shell cli_invite against the
+  // live HOME, so their guests do not land on the worker backend -- see
+  // docs REQ-0083 for the remaining harness work. Serial mode is unaffected.
+  const parallelWorkers = Number(process.env.E2E_PARALLEL || 0);
+  if (parallelWorkers > 0) {
+    execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });
+  }
   backupOne(PROFILE_PATH, 'default_profile', BACKUP_MARKER_PATH);
   backupOne(LIVE_ITEMS_PATH, 'live_items', LIVE_ITEMS_BACKUP_MARKER_PATH);
   backupOne(LIVE_SIS_PATH, 'live_sis', LIVE_SIS_BACKUP_MARKER_PATH);

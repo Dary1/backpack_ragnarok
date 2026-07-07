@@ -91,10 +91,15 @@ export type Locale = 'en' | 'ja';
 // '#/' / empty hash, which is now the boot default instead of
 // 'backpacks') plus the 'market'/'ragnarok' placeholder routes from the
 // mock rail (their real pages land in later REQs).
+//
+// REQ-0086 adds 'warehouse' -- promoted from a Schedule-page tab
+// (REQ-0036/0041/0072) to its own top-level route, landing the 倉庫
+// rail entry REQ-0069 had explicitly deferred.
 export type Route =
   | 'landing'
   | 'backpacks'
   | 'schedule'
+  | 'warehouse'
   | 'workshop'
   | 'friends'
   | 'dex'
@@ -102,7 +107,7 @@ export type Route =
   | 'market'
   | 'ragnarok';
 
-const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok'];
+const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'warehouse', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok'];
 
 export const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 

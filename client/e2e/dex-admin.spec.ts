@@ -15,13 +15,13 @@
 // doesn't run.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_DATA_ROOT } from './e2e-env';
 import { test, expect } from '@playwright/test';
 import { bootApp } from './helpers';
 
-const DEV_USER_PATH = join(homedir(), 'backpack_ragnarok', 'data', 'config', 'dev_user.json');
-const LIVE_ITEMS_PATH = join(homedir(), 'backpack_ragnarok', 'content', 'live', 'live_items.json');
+const DEV_USER_PATH = join(E2E_DATA_ROOT, 'data', 'config', 'dev_user.json');
+const LIVE_ITEMS_PATH = join(E2E_DATA_ROOT, 'content', 'live', 'live_items.json');
 
 function readDevUser(): string {
   return readFileSync(DEV_USER_PATH, 'utf8');

@@ -1770,13 +1770,35 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // content now lives at the top level like every other active preset
   // always does). A no-op (still {ok:true}) if n is already the active
   // preset.
+  //
+  // REQ-0085 defensive fix: store[n] is EXPECTED to be a real {linked,
+  // bps,pos,sis} snapshot for every n!==active (only the active slot is
+  // ever null) -- but nothing in this file proves that invariant holds
+  // for every state that reaches here, and a stray null WAS found in a
+  // non-active slot in the wild (root cause predates this fix and is not
+  // reconstructable from st alone). A null store[n] used to make this
+  // function read `incoming.linked` and THROW mid-mutation -- AFTER
+  // store[meta.active] had already been overwritten with `outgoing` but
+  // BEFORE meta.active itself advanced, i.e. a genuinely non-atomic
+  // partial write (this comment's own "atomic swap" claim was false for
+  // that case) that left store[oldActive] non-null (invariant violation)
+  // while leaving the clicked-on slot permanently stuck: every future
+  // click on it re-threw the identical exception, silently, since it
+  // surfaces as an uncaught error inside a React pointerup handler with
+  // no visible UI feedback at all ("clicking does nothing" from the
+  // user's side). Coalescing a falsy store[n] to a fresh
+  // emptyPresetSlot() makes switching into a corrupted slot self-heal
+  // (the slot becomes a real, empty preset instead of crashing) rather
+  // than requiring a data migration -- there is no content to lose by
+  // doing this: a slot that was null had no recoverable snapshot to
+  // begin with.
   function switchPreset(st,n){
     if(!st.presets)return {ok:false,why:'no presets'};
     const meta=st.presets;
     if(!(n>=0&&n<meta.store.length))return {ok:false,why:'preset index out of range'};
     if(n===meta.active)return {ok:true};
     const outgoing={linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis};
-    const incoming=meta.store[n];
+    const incoming=meta.store[n]||emptyPresetSlot();
     meta.store[meta.active]=outgoing;
     st.linked=incoming.linked;st.bps=incoming.bps;st.pos=incoming.pos;st.sis=incoming.sis;
     meta.store[n]=null;
@@ -1849,9 +1871,16 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // real snapshot substituted in (a plain {linked,bps,pos,sis} object --
   // NOT a reference to the live top-level fields, since callers below
   // reassign the top-level fields separately after the splice).
+  //
+  // REQ-0085: every non-active slot is defensively coalesced to a fresh
+  // emptyPresetSlot() if it is falsy -- the same self-heal as
+  // switchPreset's own `incoming` above, so reorderPreset/deletePreset
+  // never propagate a stray corrupted null either (left unhealed, a
+  // splice/rebuild would silently carry it through into whatever index
+  // it lands on next, including one that later becomes active).
   function materializePresets(st){
     const meta=st.presets;
-    return meta.store.map((slot,i)=>i===meta.active?{linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis}:slot);
+    return meta.store.map((slot,i)=>i===meta.active?{linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis}:(slot||emptyPresetSlot()));
   }
   // splitBackPresets(st,slots,names,active): the inverse of
   // materializePresets -- writes `slots`/`names`/`active` back into

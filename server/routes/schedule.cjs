@@ -126,7 +126,43 @@ function tryScheduleRoutes(req, res, url, p) {
     if (p.match(SCHEDULE_ROOMS_RE)) {
       if (req.method === 'GET') {
         try {
-          sendJSON(res, 200, { ok: true, rooms: schedule.listOwnRooms(callerId) });
+          // REQ-0087: settle each room the same way loadAndSettleRoom()
+          // already does for every OTHER room-touching route below. Without
+          // this, a room whose 4th (last) slot assignment just completed --
+          // or whose cooldown just cleared -- never auto-starts its next
+          // run: this list endpoint is the ONLY one the live client's Rooms
+          // view ever polls (SchedulePage.tsx's ROOMS_POLL_MS loop calls
+          // fetchRooms() exclusively, never fetchRoom(id)), so a fully and
+          // validly filled room could sit at status 'open' forever with
+          // zero error surfaced anywhere (every assignSlot PUT genuinely
+          // returned 200) -- see docs/REQ/.../REQ-0087 for the live repro.
+          // settleRoomIfDue() is a no-op passthrough for any room that
+          // isn't due (canceled / mid-run / still-cooling-down / not yet
+          // fully filled), so this stays cheap on every poll.
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = loadOwnCanvas();
+          // REQ-0087 follow-up: settleRoomIfDue() can THROW for a single
+          // room (e.g. startRun()'s buildUnitSnapshots() 400s with "preset
+          // snapshot not found" if a slot's presetIndex was assigned
+          // legitimately at the time but the referenced preset was later
+          // deleted/shrunk out from under it -- discovered live: the shared
+          // dev account's preset count changed after a room's slots were
+          // already filled, and the FIRST version of this fix let that one
+          // room's settle exception bubble out of the whole .map(), 400ing
+          // the ENTIRE rooms list for the player instead of just that one
+          // room. Every other lazy-settlement caller in this codebase
+          // already treats settle failures as best-effort/non-fatal
+          // (applyPendingSwapIfAny's own try/catch is the precedent) --
+          // matching that: a room that fails to settle is returned AS-IS
+          // (unsettled) rather than taking every other room down with it.
+          const rooms = schedule.listOwnRooms(callerId).map((room) => {
+            try {
+              return schedule.settleRoomIfDue(room, canvas, itemDefsById);
+            } catch (e) {
+              return room;
+            }
+          });
+          sendJSON(res, 200, { ok: true, rooms });
         } catch (e) { sendScheduleError(e); }
         return;
       }
