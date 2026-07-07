@@ -162,6 +162,21 @@ T('REQ-0095 reactive: player determinism (isolated reactive RNG)', () => {
   ok(combat.toJSONL(mk().events) === combat.toJSONL(mk().events), 'same seed -> identical player reactive replay');
 });
 
+T('REQ-0095 reactive: OnPOHit fires when a seated SI host PO lands a hit', () => {
+  const siDefs = {}; for (const e of JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'content', 'live', 'live_sis.json'), 'utf8')).entries) siDefs[e.id] = e;
+  const gridPos = (scenario.pos || []).filter(p => p.loc === 'grid');
+  const atkPo = gridPos.find(p => (itemDefsById[p.id].effects || []).some(f => f.trigger && f.trigger.t === 'every_secs' && f.verb.t === 'strike' && !f.cond));
+  ok(atkPo, 'scenario has an unconditioned every_secs striker PO');
+  const sc = JSON.parse(JSON.stringify(scenario));
+  sc.sis = (sc.sis || []).concat([{ uid: 'onpo_test', id: 'acc_frost', host: { po: atkPo.uid, si: 0 } }]);
+  const ed = { wall: { id: 'wall', name: 'Wall', hp: [600, 600], footprint: [14, 20], skills: ['nap'] } };
+  const sd = { nap: { trigger: { t: 'every_secs', s: [9, 9] }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'] } } };
+  const r = combat.runDungeon({ masterSeed: 'req0095-onpohit', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: 20 }] }, unitSnapshots: [sc, scenario, scenario, scenario], itemDefsById, siDefsById: siDefs, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
+  const onpo = r.events.filter(e => e.ev === 'reactive_proc' && e.trigger === 'OnPOHit');
+  ok(onpo.length > 0, 'OnPOHit fires when the seated SI host PO lands a hit');
+  eq(onpo[0].status, 'Chill', 'Frost Orb OnPOHit applies Chill to the struck target');
+});
+
 // =====================================================================
 // 2. Ray geometry
 // =====================================================================
