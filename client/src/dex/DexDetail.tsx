@@ -51,7 +51,16 @@ interface DexDetailProps {
 }
 
 function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
-  return ('shape' in entry && Array.isArray(entry.shape) ? entry.shape : []) as Cell[];
+  const shape = ('shape' in entry && Array.isArray(entry.shape) ? entry.shape : []) as Cell[];
+  // REQ-0096: SI/TM entries carry no `shape` (they don't occupy board
+  // cells -- SI uses `slot`, TM is a stackable currency) but DO still
+  // carry an icon. Without a fallback anchor cell here, ShapeGrid/
+  // DexDiagram see an empty cell set and bail to their "--" empty-state
+  // placeholder, so the icon never mounts (the catalog/detail/admin dex
+  // views all showed a bare "--" for every SI card). Fall back to a
+  // synthetic 1x1 anchor cell -- same precedent DexCardWindow.tsx already
+  // uses (`card.shape ... : [[0, 0]]`).
+  return shape.length > 0 ? shape : ([[0, 0]] as Cell[]);
 }
 
 // REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math

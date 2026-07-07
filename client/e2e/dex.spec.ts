@@ -56,6 +56,39 @@ test('dex item count matches /api/content combined PO+SI count', async ({ page }
   await expect(page.locator('.dex-card')).toHaveCount(expectedCount);
 });
 
+test('dex v2 (REQ-0096): SI catalog cards render their icon, not the shape-grid-empty "--" placeholder', async ({ page }) => {
+  // Regression test for REQ-0096: ApiSIEntry has no `shape` field (SI
+  // items occupy an equip `slot`, not board cells), and shapeOf() in
+  // Dex.tsx/DexDetail.tsx/DexAdmin.tsx used to return [] for every SI
+  // entry. ShapeGrid.tsx bails to a bare "--" placeholder whenever its
+  // combined cell set is empty, so the icon <img> never mounted for ANY
+  // SI catalog card (confirmed live on backpack-dev.qtie.jp before the
+  // fix -- Ruby Gem/Frost Orb/Whetstone/Arrowhead/Poison Coat/Guard all
+  // showed "--" while every PO card rendered its icon fine). The fix
+  // falls back to a synthetic 1x1 anchor cell ([[0, 0]]) so the icon
+  // overlay still mounts.
+  await bootApp(page);
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await expect(page.locator('.dex-root')).toBeVisible();
+
+  const contentResp = await page.request.get('/api/content');
+  const content = await contentResp.json();
+  const siIds = Object.keys(content.sis);
+  expect(siIds.length).toBeGreaterThan(0);
+
+  for (const siId of siIds) {
+    await page.locator('.dex-search').fill(siId);
+    const card = page.locator('.dex-card', { hasText: siId }).first();
+    await expect(card).toBeVisible();
+
+    await expect(card.locator('.shape-grid-empty')).toHaveCount(0);
+    const cardShape = card.locator('.dex-card-shape .shape-grid');
+    await expect(cardShape).toBeVisible();
+    await expect(cardShape.locator('.shape-grid-icon-overlay')).toHaveCount(1);
+    await expect(cardShape.locator('.shape-grid-cell-icon')).toHaveCount(1);
+  }
+});
+
 test('dex v2 R2: catalog cards render shape-mounted ACROSS THE FULL FOOTPRINT (blade 2 cells, tower_shield 4 cells), not squeezed into one cell', async ({ page }) => {
   await bootApp(page);
   await page.locator('.nav-link', { hasText: 'Dex' }).click();
