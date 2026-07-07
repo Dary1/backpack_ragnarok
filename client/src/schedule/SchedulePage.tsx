@@ -43,6 +43,17 @@
 // rooms + dungeons are passed down to WarehouseTab so a row's
 // sourceRoomId resolves to a real dungeon display name (provenance
 // chip) with no second fetch path.
+//
+// REQ-0086: the Warehouse tab described above has been PROMOTED to its
+// own top-level route + Nav.tsx rail entry (client/src/warehouse/
+// WarehousePage.tsx, an extraction of the former WarehouseTab.tsx with
+// no behavior change). This page now owns ONLY the Rooms view -- the
+// tab toggle, the onWarehouse pagehead-identity swap, and the
+// WarehouseTab embed are all removed; the pagehead permanently wears
+// the Expedition identity it used to share with the Rooms tab. This
+// supersedes REQ-0036 golden-f's original "Warehouse tab inside
+// Schedule screen" placement -- see WarehousePage.tsx's own module
+// comment for the full rationale.
 import { useCallback, useEffect, useState } from 'react';
 import {
   ApiError,
@@ -59,13 +70,10 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { CreateRoomForm, localizedName } from './CreateRoomForm';
 import { RoomCard } from './RoomCard';
-import { WarehouseTab } from './WarehouseTab';
 
 interface SchedulePageProps {
   locale: Locale;
 }
-
-type ScheduleTab = 'rooms' | 'warehouse';
 
 // Rooms list poll cadence -- generous (this list only needs to notice a
 // NEW auto-started run or a cooldown clearing; per-run event detail
@@ -74,7 +82,6 @@ type ScheduleTab = 'rooms' | 'warehouse';
 const ROOMS_POLL_MS = 4000;
 
 export function SchedulePage({ locale }: SchedulePageProps) {
-  const [tab, setTab] = useState<ScheduleTab>('rooms');
   const [rooms, setRooms] = useState<ApiRoom[] | null>(null);
   const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
   const [me, setMe] = useState<ApiMe | null>(null);
@@ -186,11 +193,9 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // available.
   const showCreatePanel = createOpen || (rooms !== null && rooms.length === 0);
 
-  // REQ-0072: the pagehead wears the ACTIVE tab's hall identity.
-  const onWarehouse = tab === 'warehouse';
-  const pageSub = t(locale, onWarehouse ? 'schedule.warehouse.pageSub' : 'schedule.pageSub');
-  const pageTitle = t(locale, onWarehouse ? 'schedule.warehouse.pageTitle' : 'schedule.pageTitle');
-  const pageLede = t(locale, onWarehouse ? 'schedule.warehouse.pageLede' : 'schedule.pageLede');
+  const pageSub = t(locale, 'schedule.pageSub');
+  const pageTitle = t(locale, 'schedule.pageTitle');
+  const pageLede = t(locale, 'schedule.pageLede');
 
   return (
     <div className="schedule-page">
@@ -198,39 +203,25 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           referenced from the served /redesign/assets path, never bundled
           (same convention as .canvas-bgart, REQ-0070). position:fixed but
           nested inside this route-owned tree, so it unmounts with it. */}
-      <div className={onWarehouse ? 'warehouse-bgart' : 'expedition-bgart'} aria-hidden="true" />
+      <div className="expedition-bgart" aria-hidden="true" />
 
       {/* REQ-0071: pagehead strip (mock .pagehead, adapted -- see module
-          comment for what had no backing data and was omitted). */}
+          comment for what had no backing data and was omitted). REQ-0086:
+          Warehouse moved to its own route (WarehousePage.tsx) with its
+          own permanent pagehead identity -- this page keeps only the
+          Expedition identity now, no more tab toggle / swap. */}
       <section className="schedule-pagehead">
         <div className="schedule-pagehead-main">
           {pageSub ? <div className="schedule-pagehead-kicker den">{pageSub}</div> : null}
           <h1 className="schedule-pagehead-title dj dj-wide">{pageTitle}</h1>
           <div className="schedule-pagehead-lede">{pageLede}</div>
         </div>
-        <div className="schedule-pagehead-tabs schedule-tab-row">
-          <button
-            type="button"
-            className={`schedule-tab${tab === 'rooms' ? ' schedule-tab-active' : ''}`}
-            onClick={() => setTab('rooms')}
-          >
-            {t(locale, 'schedule.tabRooms')}
-          </button>
-          <button
-            type="button"
-            className={`schedule-tab${tab === 'warehouse' ? ' schedule-tab-active' : ''}`}
-            onClick={() => setTab('warehouse')}
-          >
-            {t(locale, 'schedule.tabWarehouse')}
-          </button>
-        </div>
       </section>
       <div className="rune-divider schedule-pagehead-divider" aria-hidden="true">
-        {onWarehouse ? 'ᚷ' : 'ᚱ'}
+        ᚱ
       </div>
 
-      {tab === 'rooms' ? (
-        <div className="schedule-rooms-view">
+      <div className="schedule-rooms-view">
           {loadError ? <div className="schedule-error">{t(locale, 'schedule.loadFailed')}{loadError}</div> : null}
 
           {/* REQ-0071: mock rooms colhead -- den label + live counts. */}
@@ -302,9 +293,6 @@ export function SchedulePage({ locale }: SchedulePageProps) {
             )}
           </div>
         </div>
-      ) : (
-        <WarehouseTab locale={locale} rooms={rooms} dungeons={dungeons} />
-      )}
     </div>
   );
 }

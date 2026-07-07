@@ -317,15 +317,14 @@ test.describe('TM stack merge via repeated claims', () => {
     await withDevProfileBackup(async () => {
       await seedDevLrdstBalance(page, 0); // known-clean zero baseline before any claim
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       for (const qty of [7, 3]) {
         const grantRes = await page.request.post('/api/admin/warehouse/grant', { data: { tm: 'lrdst', qty } });
         expect(grantRes.status()).toBe(200);
         const grantedUid = (await grantRes.json()).item.itemUid;
 
-        await page.locator('.schedule-tab', { hasText: /Warehouse|倉庫/ }).click();
+        await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
         const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantedUid}"]`);
         await expect(row).toBeVisible({ timeout: 10000 });
         await page.locator(`[data-testid="schedule-claim-btn-${grantedUid}"]`).click();
@@ -448,8 +447,7 @@ test.describe('Claim of a TM warehouse row merges into an existing stack', () =>
       const grantedUid = (await grantRes.json()).item.itemUid;
 
       await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-      await page.locator('.schedule-tab', { hasText: /Warehouse/ }).click();
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
 
       const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantedUid}"]`);
       await expect(row).toBeVisible({ timeout: 10000 });

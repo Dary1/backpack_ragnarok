@@ -43,11 +43,19 @@ test('clicking through all 5 nav routes updates hash + active highlight + conten
       hash: '#/schedule',
       contentCheck: async () => {
         // REQ-0036 P1-C: #/schedule now renders the real SchedulePage
-        // (Rooms/Warehouse tabs) instead of the generic PlaceholderPage --
-        // assert on its own root class + the Rooms tab, which is always
-        // present regardless of whether any room has been created yet.
+        // instead of the generic PlaceholderPage. REQ-0086: Warehouse
+        // moved out to its own route (below), so this now asserts on the
+        // Rooms view directly rather than a tab chip (retired).
         await expect(page.locator('.schedule-page')).toBeVisible();
-        await expect(page.locator('.schedule-tab', { hasText: 'Rooms' })).toBeVisible();
+        await expect(page.locator('.schedule-rooms-view')).toBeVisible();
+      },
+    },
+    {
+      label: 'Warehouse',
+      hash: '#/warehouse',
+      contentCheck: async () => {
+        // REQ-0086: promoted from a Schedule-page tab to its own route.
+        await expect(page.locator('[data-testid="schedule-warehouse-topstrip"]')).toBeVisible({ timeout: 10000 });
       },
     },
     {
