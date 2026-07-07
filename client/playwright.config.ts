@@ -22,6 +22,22 @@
 // state to the real API (there is no separate test/staging profile).
 import { defineConfig, devices } from '@playwright/test';
 
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://backpack-dev.qtie.jp';
+// REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
+// reproduces the tunnel's /api-vs-static ingress split so the app's relative
+// fetches resolve, removing ~40ms/request of public-tunnel latency. The tunnel
+// stays the default -- nothing changes unless PLAYWRIGHT_BASE_URL is set.
+const USE_LOCAL_PROXY = BASE_URL.includes('127.0.0.1') || BASE_URL.includes('localhost');
+// REQ-0080: E2E_GPU=1 renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
+// NVIDIA) instead of CPU SwiftShader. Verified renderer string on llmlocal:
+// "ANGLE (NVIDIA, Vulkan 1.4.329 (NVIDIA GeForce RTX 2080), NVIDIA)". Needs the
+// full chromium in --headless=new mode (hence headless:false + the explicit flag).
+const USE_GPU = process.env.E2E_GPU === '1';
+const GPU_ARGS = USE_GPU
+  ? ['--headless=new', '--use-angle=vulkan', '--enable-gpu', '--ignore-gpu-blocklist',
+     '--enable-features=Vulkan', '--ozone-platform=headless', '--no-sandbox']
+  : [];
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -30,11 +46,19 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   reporter: [['list']],
+  // REQ-0080: auto-start the local ingress proxy, but only for a localhost baseURL.
+  webServer: USE_LOCAL_PROXY ? {
+    command: 'node e2e/local-proxy.cjs',
+    url: BASE_URL + '/app/',
+    reuseExistingServer: true,
+    timeout: 15_000,
+  } : undefined,
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
-    baseURL: 'https://backpack-dev.qtie.jp',
-    headless: true,
+    baseURL: BASE_URL,
+    headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
+    launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
     // 716px (PAD*2 + COLS*CELL = 38*2 + 8*80); at the old 1400x1000
     // viewport, two 738px-wide .board-column boxes (716 + 10px padding *
