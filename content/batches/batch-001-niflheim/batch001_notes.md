@@ -6,7 +6,7 @@ The Frost family is the "arrangement tax" element: almost nothing it does is wor
 ## Per-entry notes
 
 **rime_shard** (Gem, Common, 2 cells, domino).
-Intent: the on-ramp — a cheap adjacency Chill applier so any early weapon starts inflicting cold. Puzzle: it only pays when touching a Weapon *type*, so you must dock it against your attacker, not park it in dead space. Shape is a plain domino on purpose — the *placement* is the constraint, not the outline. Hook: feeds every amp piece below and any host_on_hit synergy.
+Intent: the on-ramp — a cheap adjacency Chill applier so any early weapon starts inflicting cold. Puzzle: it only pays when touching a Weapon *type*, so you must dock it against your attacker, not park it in dead space. Shape is a plain domino on purpose — the *placement* is the constraint, not the outline. Hook: feeds every amp piece below and any OnPOHit synergy.
 
 **frost_nail** (WeaponPart, Common, 3 cells, I-tromino).
 Intent: a lean assemble-part payoff that's inert until built into `frostpick`. Puzzle: a 3-tall vertical bar is genuinely hard to seat in a wide bag, and it carries a Metal edge socket, so you also want a Whetstone/Arrowhead line-of-sight. Shape is interesting because it's a long thin column that fights horizontal layouts. Hook: assembled-only strike + Metal edge socket ties into the existing WeaponPart/accessory loop.

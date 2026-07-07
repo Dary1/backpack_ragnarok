@@ -1,5 +1,5 @@
 {
- "version": 5,
+ "version": 6,
  "modes": ["battle", "detection", "unlock"],
  "po_tags": {
   "Weapon": null,
@@ -30,9 +30,12 @@
   "battle_start",
   "adjacent",
   "passive",
-  "host_on_hit",
-  "on_hit",
-  "on_bp_damaged"
+  "OnHit",
+  "OnPOHit",
+  "OnBPHierarchyHit",
+  "OnUnitHit",
+  "OnBPBeenHit",
+  "OnUnitBeenHit"
  ],
  "verbs": [
   "strike",
@@ -75,19 +78,16 @@
   "Relic": 24
  },
  "trigger_domains": {
-  "socket_item_only": [
-   "host_on_hit"
-  ],
-  "po_only": [
-   "adjacent",
-   "on_hit",
-   "every_secs",
-   "battle_start",
-   "on_bp_damaged"
-  ],
-  "both": [
-   "passive"
-  ]
+  "every_secs": ["PO", "EnemySkill"],
+  "battle_start": ["PO", "EnemySkill"],
+  "adjacent": ["PO"],
+  "passive": ["SI", "PO"],
+  "OnHit": ["SI", "PO", "Linker", "EnemySkill"],
+  "OnPOHit": ["SI"],
+  "OnBPHierarchyHit": ["SI", "PO", "Linker"],
+  "OnUnitHit": ["SI", "PO", "Linker", "EnemySkill"],
+  "OnBPBeenHit": ["SI", "PO", "Linker"],
+  "OnUnitBeenHit": ["SI", "PO", "Linker", "EnemySkill"]
  },
  "ranged_verb_params": {
   "strike": [
@@ -145,8 +145,8 @@
   "charm_status": "Charm status (flips enemy to your side, BH sec6) -- PvE-encounter-flipping status with no defined ally-side semantics in our engine; excluded pending a combat-side redesign."
  },
  "provenance": {
-  "on_hit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
-  "on_bp_damaged": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
+  "OnHit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
+  "OnBPBeenHit": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
   "multi_strike": "research sec5 BH 'Uses per turn... some multi-use (can be used 2 times)'",
   "buff_adjacent": "research sec4 P1 Ruby ('adjacent Weapons get +4 damage') and Amethyst/Emerald row/column beams",
   "cleanse": "research sec7/sec8 BH Healer ('pay 10g to cleanse all curses') and curse-removal economy note in sec10 pitfall 'Curses only work if removal is scarce'",

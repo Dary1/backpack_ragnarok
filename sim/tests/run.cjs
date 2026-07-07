@@ -89,6 +89,51 @@ T('determinism: different seed -> log differs', () => {
 });
 
 // =====================================================================
+// 1b. REQ-0078 reactive triggers (OnHit / OnBeenHit taxonomy)
+// =====================================================================
+const reactEnemyDefs = {
+  react_goblin: { id: 'react_goblin', name: 'React Goblin', hp: [300, 300], footprint: [1, 1], skills: ['rg_bite', 'rg_onhit_poison', 'rg_retaliate'] },
+};
+const reactSkillDefs = {
+  rg_bite: { trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [6, 6] }, attack_profile: { edge: ['top'], penetration: 4, aoe: 2 } },
+  rg_onhit_poison: { trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
+  rg_retaliate: { trigger: { t: 'OnUnitBeenHit' }, verb: { t: 'strike', n: [9, 9] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+};
+function runReact(seed, enemyDefs, skillDefs) {
+  return combat.runDungeon({
+    masterSeed: seed,
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['react_goblin'] }, deadline_secs: 30 }] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: enemyDefs, skillDefsById: skillDefs,
+    formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
+  });
+}
+T('REQ-0078 reactive: OnUnitHit rider + OnUnitBeenHit retaliation fire on a monster', () => {
+  const r = runReact('req0078-react', reactEnemyDefs, reactSkillDefs);
+  const rp = r.events.filter(e => e.ev === 'reactive_proc');
+  const onhit = rp.filter(e => e.trigger === 'OnUnitHit');
+  const beenhit = rp.filter(e => e.trigger === 'OnUnitBeenHit');
+  const retal = r.events.filter(e => e.ev === 'ray_fire' && String(e.src).indexOf('#react') >= 0);
+  ok(onhit.length > 0, 'OnUnitHit offensive rider fires when the monster lands a direct hit');
+  ok(beenhit.length > 0, 'OnUnitBeenHit fires when the monster takes a direct hit');
+  ok(retal.length > 0, 'OnUnitBeenHit produces a retaliation ray (src tagged #react)');
+  eq(onhit[0].verb, 'apply_status', 'OnUnitHit rider applies its verb');
+  eq(onhit[0].status, 'Poison', 'rider applies Poison to the struck target');
+});
+T('REQ-0078 reactive: replay deterministic under isolated reactive RNG streams', () => {
+  ok(combat.toJSONL(runReact('same', reactEnemyDefs, reactSkillDefs).events) ===
+     combat.toJSONL(runReact('same', reactEnemyDefs, reactSkillDefs).events), 'same seed -> identical reactive replay');
+});
+T('REQ-0078 reactive: pure every_secs content emits NO reactive_proc (baseline invariant)', () => {
+  const r = combat.runDungeon({
+    masterSeed: 'baseline',
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] },
+    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
+  });
+  eq(r.events.filter(e => e.ev === 'reactive_proc').length, 0, 'no reactive procs for non-reactive content');
+});
+
+// =====================================================================
 // 2. Ray geometry
 // =====================================================================
 T('ray geometry: entry projection+jitter stays within field bounds across many draws', () => {

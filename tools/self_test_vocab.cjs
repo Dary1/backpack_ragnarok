@@ -108,13 +108,13 @@ const extraPO = [
   {
     id: 'selftest_trig_on_hit', name: 'Selftest trig on_hit', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_on_hit', sockets: [],
-    effects: [{ trigger: { t: 'on_hit' }, verb: { t: 'strike', n: [2, 4] } }],
+    effects: [{ trigger: { t: 'OnHit' }, verb: { t: 'strike', n: [2, 4] } }],
     modes: ['battle'],
   },
   {
     id: 'selftest_trig_bp_damaged', name: 'Selftest trig bp_damaged', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_bp_damaged', sockets: [],
-    effects: [{ trigger: { t: 'on_bp_damaged' }, verb: { t: 'block', n: [2, 4] } }],
+    effects: [{ trigger: { t: 'OnBPBeenHit' }, verb: { t: 'block', n: [2, 4] } }],
     modes: ['battle'],
   },
   {
@@ -182,7 +182,7 @@ const siEntries = [
   {
     id: 'selftest_trig_host_on_hit', name: 'Selftest trig host_on_hit', slot: 'gem', reqTags: [],
     icon: 'icon-selftest_trig_host_on_hit', rarity: 'Common',
-    effects: [{ trigger: { t: 'host_on_hit' }, verb: { t: 'apply_status', status: vocab.statuses[0], n: [1, 2] } }],
+    effects: [{ trigger: { t: 'OnPOHit' }, verb: { t: 'apply_status', status: vocab.statuses[0], n: [1, 2] } }],
   },
 ];
 

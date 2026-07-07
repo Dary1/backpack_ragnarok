@@ -41,7 +41,7 @@
    "effects": [
     {
      "trigger": {
-      "t": "host_on_hit"
+      "t": "OnPOHit"
      },
      "verb": {
       "t": "apply_status",
@@ -133,7 +133,7 @@
    "effects": [
     {
      "trigger": {
-      "t": "host_on_hit"
+      "t": "OnPOHit"
      },
      "verb": {
       "t": "apply_status",
@@ -163,7 +163,7 @@
    "effects": [
     {
      "trigger": {
-      "t": "host_on_hit"
+      "t": "OnPOHit"
      },
      "verb": {
       "t": "block",

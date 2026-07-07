@@ -281,19 +281,19 @@ the source document's completeness.
     `{edge:['top'], penetration:0, aoe:0}`. Every hand-authored enemy
     skill in the batch-002 starter content DOES carry an explicit
     `attack_profile`, so this fallback is a defensive default only.
-17. **Player-side schedulable effects scope.** `runEncounter` schedules
-    every PO effect whose trigger is `every_secs` as the sim's
-    "auto-battle" firing mechanism (matching the spec's "auto-battle, no
-    mid-run input" framing). Reactive triggers (`on_hit`, `host_on_hit`,
-    `on_bp_damaged`, `passive`, `battle_start`) are handled either at
-    compile time (buff folding, per OQ2) or are intentionally out of this
-    pass's live-simulation scope — P1-A's task brief scopes the "S1-S8"
-    feature set around the `every_secs`-driven ray-firing loop as the
-    primary combat mechanism; reactive-trigger live firing (e.g. an
-    on-hit lifesteal proc firing off of every ray_hit) is a natural
-    extension but was not required by name in the task's test-category
-    list and is flagged here as a scope note rather than silently
-    skipped.
+17. **Reactive trigger firing (REQ-0078).** `runEncounter` still schedules
+    `every_secs` effects as the auto-battle firing mechanism and folds
+    `passive`/`adjacent` buffs at compile time. **Reactive triggers now fire**
+    for the ENEMY side per the OnHit/OnBeenHit taxonomy (`docs/REQ-0078`): after
+    each direct strike/multi_strike hit resolves, a monster's `OnUnitBeenHit`
+    skills fire a retaliation ray (attacker src tagged `#react`) and its
+    `OnHit`/`OnUnitHit` skills fire an on-hit rider on the struck target, both
+    emitting `reactive_proc` events. Firing is depth-1 (a reactive proc never
+    re-dispatches -- OQ-C), counts only direct damage (OQ-A: not DoT/reflect/
+    0-dmg), and draws from isolated `reactive/<trigger>/...` RNG sub-streams so
+    existing golden hashes stay byte-identical. Player-side (PO/SI/Linker)
+    reactive firing and `OnPOHit` are deferred to Phase 1b.
+
 18. **Weakness/Haste "n" dual-purpose (stacks + duration).** S7's table
     gives Weakness/Haste a single `n` magnitude column that serves as both
     "stacks added" and "duration = n s (refresh)". `applyStatus` uses the
