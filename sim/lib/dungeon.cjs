@@ -64,7 +64,7 @@ function packBudgetForLevel(level) {
 function runDungeon(opts) {
   const {
     masterSeed, dungeonDef, unitSnapshots, itemDefsById, enemyDefsById,
-    skillDefsById, formationId, level, participants,
+    skillDefsById, siDefsById, formationId, level, participants,
   } = opts;
   const rng = makeRng(masterSeed);
   const allEvents = [];
@@ -74,12 +74,13 @@ function runDungeon(opts) {
   // threaded through every encounter call in this run (S8.2/OQ13:
   // "attrition PERMANENT within a run").
   const unitSlots = ['unit1', 'unit2', 'unit3', 'unit4'];
-  const compiled = unitSlots.map((slot, i) => compileUnitSnapshot(unitSnapshots[i], itemDefsById, formationId, slot));
+  const compiled = unitSlots.map((slot, i) => compileUnitSnapshot(unitSnapshots[i], itemDefsById, formationId, slot, siDefsById));
   // REQ-0095: tag unit membership onto each BP/PO (lost by the flatMap) so unit-scoped
   // reactive triggers (OnUnitHit/OnUnitBeenHit) can resolve owner -> unit at runtime.
-  compiled.forEach(c => { for (const b of c.bps) b.unitSlot = c.unitSlot; for (const p of c.pos) p.unitSlot = c.unitSlot; });
+  compiled.forEach(c => { for (const b of c.bps) b.unitSlot = c.unitSlot; for (const p of c.pos) p.unitSlot = c.unitSlot; for (const x of (c.sis || [])) x.unitSlot = c.unitSlot; });
   const allBps = compiled.flatMap(c => c.bps);
   const allPos = compiled.flatMap(c => c.pos);
+  const allSis = compiled.flatMap(c => c.sis || []);
 
   const encounterList = dungeonDef.encounters;
   const deltas = computeEncounterDeltas(encounterList);
@@ -97,7 +98,7 @@ function runDungeon(opts) {
     if (progressPct >= 100) break; // already finished via a prior shortcut
 
     const encResult = runEncounter({
-      rng, encIndex: i, partyBps: allBps, partyPos: allPos, formationBox: { formationId },
+      rng, encIndex: i, partyBps: allBps, partyPos: allPos, partySis: allSis, formationBox: { formationId },
       enemyDefsById, skillDefsById, encounterDef: encDef, seedLabel: masterSeed,
     });
     for (const e of encResult.events) allEvents.push(Object.assign({ seq: seq++ }, e));

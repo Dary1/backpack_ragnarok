@@ -12,7 +12,7 @@ const { compileEnemyPack } = require('./packs.cjs');
 
 function runEncounter(opts) {
   const {
-    rng, encIndex, partyBps, partyPos, formationBox, enemyDefsById, skillDefsById,
+    rng, encIndex, partyBps, partyPos, partySis, formationBox, enemyDefsById, skillDefsById,
     encounterDef, seedLabel,
   } = opts;
   const events = [];
@@ -77,6 +77,18 @@ function runEncounter(opts) {
         for (const en of landedEnemies) {
           const rs = rng.stream('reactive/' + tt + '/' + po.uid + '/' + t + '/' + (idx++));
           applyReactiveVerbToTarget(eff.verb, owner, en, rs, outEvents, tt);
+        }
+      }
+    }
+    // REQ-0095: OnPOHit -- an SI seated in the firing PO fires when its host PO lands a hit.
+    for (const si of (partySis || [])) {
+      if (si.hostPoUid !== fpo.uid) continue;
+      for (const eff of (si.effects || [])) {
+        if (!eff.trigger || eff.trigger.t !== 'OnPOHit') continue;
+        const owner = bpActorOf(fpo.bpId);
+        for (const en of landedEnemies) {
+          const rs = rng.stream('reactive/OnPOHit/' + si.uid + '/' + t + '/' + (idx++));
+          applyReactiveVerbToTarget(eff.verb, owner, en, rs, outEvents, 'OnPOHit');
         }
       }
     }
