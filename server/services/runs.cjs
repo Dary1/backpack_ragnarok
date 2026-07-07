@@ -131,11 +131,13 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
     // distributeRewardsUniform's assignment shape is {item, owner,
     // destination} (sim/combat.cjs) -- `owner` is the participant id the
     // uniform-random draw picked (golden p: "distribution fully RANDOM").
+    const { rollQuality } = require('./dismantle.cjs');
     for (const assignment of run.rewards) {
       const itemUid = genId('wh');
       const itemId = resolveRewardItemId(assignment.item);
       const doc = {
         itemUid, playerId: assignment.owner, itemId,
+        q: rollQuality(assignment.owner, itemId), // REQ-0063: per-instance quality roll, minted once here
         harvestedAt: now, expiresAt: new Date(Date.now() + WAREHOUSE_TTL_MS).toISOString(),
         sourceRoomId: room.id, sourceRunId: run.id,
       };

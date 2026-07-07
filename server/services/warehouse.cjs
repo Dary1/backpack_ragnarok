@@ -44,12 +44,58 @@ function purgeExpiredWarehouseItems(playerId) {
   const now = Date.now();
   const items = storage.listWarehouseItems(playerId);
   const survivors = [];
+  // REQ-0063: yield grants are deferred to a SECOND pass, after this
+  // loop finishes deleting/engraving against the SNAPSHOT `items` array.
+  // REASON (a real reentrancy bug caught by this REQ's own test suite):
+  // grantTmQty() -> addToWarehouse() -> purgeExpiredWarehouseItems()
+  // (this SAME function, re-entrantly) -- calling it while still
+  // iterating `items` would have a re-entrant inner call re-read
+  // storage.listWarehouseItems() fresh from disk and ALSO see (and
+  // double-engrave/double-delete) whichever expired rows the outer loop
+  // has not reached yet. Collecting yield counts here and granting them
+  // only after this loop's deletions are ALL committed makes any
+  // re-entrant inner purge call see a warehouse with zero expired rows
+  // left, so it is a safe no-op.
+  let yieldCount = 0;
+  let anyNonTmExpired = false;
   for (const item of items) {
     if (isExpired(item, now)) {
-      storage.deleteWarehouseItem(playerId, item.itemUid);
+      if (item.kind === 'tm') {
+        // Currency has no Dex entry -- nothing to engrave. Same plain
+        // delete as before REQ-0063.
+        storage.deleteWarehouseItem(playerId, item.itemUid);
+      } else {
+        anyNonTmExpired = true;
+        storage.deleteWarehouseItem(playerId, item.itemUid);
+      }
     } else {
       survivors.push(normalizeWarehouseStatus(playerId, item, now));
     }
+  }
+  // REQ-0063 §4: the TTL "soft landing" -- expiry auto-dismantles (full
+  // engraving, 50%-chance yield) instead of vanishing with nothing.
+  // These are WAREHOUSE rows, never placed on a canvas, so there is no
+  // item-removal step (only claimed items live on a canvas) -- just the
+  // ledger credit + probabilistic yield. A SINGLE `require('./dismantle.
+  // cjs')` here (rather than one per expired item inside the loop above)
+  // is both simpler and required for correctness: yield grants are
+  // deferred to this SECOND pass, entirely AFTER the loop's deletions are
+  // committed. REASON (a real reentrancy bug caught by this REQ's own
+  // test suite): grantTmQty() -> addToWarehouse() -> THIS SAME FUNCTION,
+  // re-entrantly -- calling it while still iterating `items` would have a
+  // re-entrant inner call re-read storage.listWarehouseItems() fresh from
+  // disk and ALSO see (and double-engrave/double-delete) whichever
+  // expired rows the outer loop had not reached yet. By the time this
+  // second pass runs, zero expired rows remain, so a re-entrant inner
+  // purge call is a safe no-op.
+  if (anyNonTmExpired) {
+    const dismantle = require('./dismantle.cjs');
+    for (const item of items) {
+      if (!isExpired(item, now) || item.kind === 'tm') continue;
+      dismantle.engrave(playerId, item.itemId);
+      if (Math.random() < 0.5) yieldCount++;
+    }
+    for (let i = 0; i < yieldCount; i++) grantTmQty(playerId, dismantle.YIELD_TM_ID, dismantle.YIELD_QTY);
   }
   return survivors;
 }
@@ -87,8 +133,10 @@ function addToWarehouse(playerId, doc) {
 function grantWarehouseItem(playerId, itemId) {
   const now = new Date().toISOString();
   const itemUid = genId('wh');
+  const { rollQuality } = require('./dismantle.cjs');
   const doc = {
     itemUid, playerId, itemId,
+    q: rollQuality(playerId, itemId), // REQ-0063: per-instance quality roll, minted once here
     harvestedAt: now, expiresAt: new Date(Date.now() + WAREHOUSE_TTL_MS).toISOString(),
     sourceRoomId: null, sourceRunId: null, // dev grant -- no originating run
     status: 'claimable',
@@ -200,7 +248,7 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById) {
   item.claimedAt = new Date().toISOString();
   storage.writeWarehouseItem(playerId, itemUid, item);
 
-  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty };
+  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty, q: item.q };
 }
 
 // finalizeClaimingItemsForCanvas (REQ-0041): called by server/api.cjs's

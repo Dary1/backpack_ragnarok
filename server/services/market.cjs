@@ -607,7 +607,8 @@ function buyListing(buyerId, listingId, idemKey) {
   // Seller-side eligibility, re-derived NOW (lazy, never trusted stale).
   const sellerDoc = storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
-  if (!sellerCanvas || !findInventoryPO(sellerCanvas, listing.itemUid)) {
+  const sellerPo = sellerCanvas ? findInventoryPO(sellerCanvas, listing.itemUid) : null;
+  if (!sellerCanvas || !sellerPo) {
     autoWithdrawItemGone(listing, now);
     const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
   }
@@ -656,6 +657,7 @@ function buyListing(buyerId, listingId, idemKey) {
   // above, so addToWarehouse cannot refuse here.
   const itemRow = {
     itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
+    q: sellerPo.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
     harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
     sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
     status: 'claimable',

@@ -254,12 +254,18 @@ const WAREHOUSE_DIR = path.join(REPO_ROOT, 'data', 'warehouse');
 // semantics) -- see server/schedule.cjs's grantGachaPending() module
 // comment and server/migrations/003_gacha.sql.
 const GACHA_PENDING_DIR = path.join(REPO_ROOT, 'data', 'gacha_pending');
+// REQ-0063: dismantle ledger. One doc per player (same shape as
+// profiles/einherjar records -- a single JSON blob keyed by playerId,
+// not a per-item file the way warehouse rows are), so it rides the same
+// eager-mkdir chokepoint as every other root below.
+const DISMANTLE_DIR = path.join(REPO_ROOT, 'data', 'dismantle');
 
 function ensureScheduleDirs() {
   fs.mkdirSync(ROOMS_DIR, { recursive: true });
   fs.mkdirSync(RUNS_DIR, { recursive: true });
   fs.mkdirSync(WAREHOUSE_DIR, { recursive: true });
   fs.mkdirSync(GACHA_PENDING_DIR, { recursive: true });
+  fs.mkdirSync(DISMANTLE_DIR, { recursive: true });
 }
 ensureScheduleDirs();
 
@@ -535,6 +541,60 @@ function listWarehouseItems(playerId) {
 // listWarehouseItems(playerId) would have returned.
 function clearWarehouseForPlayer(playerId) {
   return backendMode() === 'pg' ? clearWarehouseForPlayerPg(playerId) : clearWarehouseForPlayerFiles(playerId);
+}
+
+// ---------------------------------------------------------------------
+// REQ-0063: dismantle ledger. One doc per player:
+//   { playerId, updated_at, counts: { <itemId>: <int count> } }
+// `counts` is the engraved-forever 分解値 per Dex entry (PO or SI id) --
+// see server/services/dismantle.cjs for the suppression math that reads
+// this. Same "one persistence root per concern, files+pg parity"
+// convention as every other root in this file; shape-wise this is
+// closest to readProfile/writeProfile (a single whole-doc blob keyed by
+// playerId), not warehouse's per-item-file layout, since a player has
+// exactly ONE ledger, not N.
+// ---------------------------------------------------------------------
+
+function dismantleLedgerPath(playerId) { return path.join(DISMANTLE_DIR, playerId + '.json'); }
+
+function readDismantleLedgerFiles(playerId) {
+  const p = dismantleLedgerPath(playerId);
+  if (!fs.existsSync(p)) return null;
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); }
+  catch (e) { return null; } // a corrupt ledger reads as empty rather than crashing the caller
+}
+function writeDismantleLedgerFiles(playerId, doc) {
+  fs.mkdirSync(DISMANTLE_DIR, { recursive: true });
+  const tmpName = '.' + playerId + '.' + crypto.randomBytes(6).toString('hex') + '.tmp';
+  const tmpPath = path.join(DISMANTLE_DIR, tmpName);
+  fs.writeFileSync(tmpPath, JSON.stringify(doc, null, 1), 'utf8');
+  fs.renameSync(tmpPath, dismantleLedgerPath(playerId));
+  return doc;
+}
+
+function readDismantleLedgerPg(playerId) {
+  const { querySync } = require('./pg_sync.cjs');
+  const res = querySync('SELECT doc FROM dismantle_ledger WHERE player_id = $1', [namespacedId(playerId)]);
+  return res.rows.length > 0 ? res.rows[0].doc : null;
+}
+function writeDismantleLedgerPg(playerId, doc) {
+  const { querySync } = require('./pg_sync.cjs');
+  querySync(
+    'INSERT INTO dismantle_ledger (player_id, doc, updated_at) VALUES ($1, $2::jsonb, now()) ' +
+    'ON CONFLICT (player_id) DO UPDATE SET doc = EXCLUDED.doc, updated_at = EXCLUDED.updated_at',
+    [namespacedId(playerId), JSON.stringify(doc)]
+  );
+  return doc;
+}
+
+// readDismantleLedger: returns null if the player has never dismantled
+// anything (callers treat null the same as {counts:{}} -- see
+// services/dismantle.cjs's dismantleCountFor).
+function readDismantleLedger(playerId) {
+  return backendMode() === 'pg' ? readDismantleLedgerPg(playerId) : readDismantleLedgerFiles(playerId);
+}
+function writeDismantleLedger(playerId, doc) {
+  return backendMode() === 'pg' ? writeDismantleLedgerPg(playerId, doc) : writeDismantleLedgerFiles(playerId, doc);
 }
 
 // clearRoomsForOwner (REQ-0082): bulk-deletes EVERY room owned by `ownerId`
@@ -989,6 +1049,8 @@ module.exports = {
   listWarehouseItems,
   clearWarehouseForPlayer,
   clearRoomsForOwner,
+  readDismantleLedger,
+  writeDismantleLedger,
   // REQ-0042: gacha pending-roll persistence
   GACHA_PENDING_DIR,
   gachaPendingPlayerDir,
