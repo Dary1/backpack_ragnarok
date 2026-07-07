@@ -41,13 +41,15 @@
 // normalization drops (e.g. `part`, the raw `effects` AST) that this
 // reference view needs to show. This is a read-only view; it does not
 // touch store.ts's engine/GameState at all.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry, ApiTmEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t, type TranslationKey } from '../i18n';
 import { rarThemeClass } from '../render/uiBits';
 import type { Locale } from '../store';
+import { clearDexFocusId } from '../store';
 import { DexDetail } from './DexDetail';
+import { useDexCard } from './DexCardWindow'; // REQ-0052
 import { dexNoOf } from './dexNo';
 import { iconDataUrl, iconDims } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
@@ -113,17 +115,42 @@ function categoryOf(e: DexEntry): string {
 interface DexProps {
   locale: Locale;
   payload: ApiContentPayload;
+  /** REQ-0052: pending Dex deep-link target from a '#/dex/<id>' hash
+   * (e.g. a DexCardWindow footer link) -- see DexRoot.tsx's doc. When
+   * present and it matches a real entry, this component jumps its own
+   * selectedId state straight to it (bypassing the catalog grid) on
+   * mount/change, then clears it via clearDexFocusId() so it does not
+   * keep re-forcing a jump on later, unrelated re-renders (e.g. the
+   * user then clicking "Back to list" and browsing normally). */
+  dexFocusId?: string | null;
 }
 
 const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchPresets'];
 
-export function Dex({ locale, payload }: DexProps) {
+export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const [query, setQuery] = useState('');
   const [rarityFilter, setRarityFilter] = useState<string>('');
   const [tagFilter, setTagFilter] = useState<string>('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { openCard } = useDexCard(); // REQ-0052
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
+
+  // REQ-0052: honor a pending Dex deep-link (see DexProps.dexFocusId's
+  // doc) -- jump straight to that entry's detail view once, then clear
+  // the store field so it is a true one-shot (matches the store's own
+  // welcomeBanner/dexFocusId "consume once" convention elsewhere).
+  // Guarded on the id actually existing in this payload's entries (a
+  // stale/garbage deep-link degrades to the plain catalog grid, same
+  // "unknown id -> safe fallback, never a crash" posture as
+  // routeFromHash's own unknown-route fallback).
+  useEffect(() => {
+    if (!dexFocusId) return;
+    if (entries.some((en) => en.id === dexFocusId)) {
+      setSelectedId(dexFocusId);
+    }
+    clearDexFocusId();
+  }, [dexFocusId, entries]);
   const tms = useMemo(() => tmEntries(payload), [payload]); // REQ-0042
 
   // REQ-0075: honest 1-based dex numbering for the mock's No. chips,
@@ -337,6 +364,26 @@ export function Dex({ locale, payload }: DexProps) {
                     <span className="dex-card-kind">{e.kind === 'po' ? 'PO' : 'SI'}</span>
                   </div>
                 </div>
+              </button>
+              {/* REQ-0052: Dex card subwindow preview trigger -- opens
+                  the SAME entry's card via the shared API+window
+                  (DexCardWindow.tsx) WITHOUT navigating away from the
+                  catalog grid, distinct from the button above (which
+                  still does the pre-existing onSelect -> full detail-
+                  view switch, UNCHANGED). stopPropagation so a click
+                  here never also fires the summary button underneath. */}
+              <button
+                type="button"
+                className="dex-card-preview-btn"
+                data-testid="dex-card-preview-btn"
+                aria-label={t(locale, 'dexcard.previewAria')}
+                title={t(locale, 'dexcard.previewAria')}
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  openCard(e.kind === 'po' ? 'item' : 'si', e.id);
+                }}
+              >
+                <span aria-hidden="true">i</span>
               </button>
             </div>
           );

@@ -678,3 +678,36 @@ export interface ApiRagnarokDevotionResponse {
   einherjar: ApiRagnarokEinherjar;
   blast: ApiRagnarokBlast;
 }
+
+// ---- REQ-0052: Dex Card API ----
+// Wire shape for GET /api/dex/card/:kind/:id (server/routes/dex.cjs).
+// `kind:'bp'` is NOT yet a member here -- rolled Blueprint instances have
+// no static content def to key off of (see dex.cjs's module comment);
+// only item/si/tm are servable through this id-keyed public GET today.
+export interface ApiDexCardDto {
+  v: 1;
+  kind: 'item' | 'si' | 'tm';
+  id: string;
+  name: string;
+  name_ja?: string;
+  i18n?: ApiI18nMap;
+  rarity: string;
+  icon: string;
+  flavor?: string;
+  flavor_ja?: string;
+  eff_en?: string;
+  eff_ja?: string;
+  // kind:'item' only
+  tags?: string[];
+  shape?: Array<[number, number]>;
+  sockets?: ApiSocketDef[];
+  ports?: ApiPortDef[];
+  stretch?: boolean;
+  part?: { assembles: string; role: string };
+  // kind:'si' only (also reuses `ports` above)
+  slot?: string;
+  reqTags?: string[];
+  // kind:'tm' only
+  short?: string;
+  stackable?: boolean;
+}

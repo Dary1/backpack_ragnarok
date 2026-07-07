@@ -1,8 +1,10 @@
 // client/src/store/routing.ts -- REQ-0047 (f2): hash routing + invite flow + welcome banner + logout.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
+// REQ-0052: extended with '#/dex/<id>' deep-link handling (DEX_ITEM_HASH_RE) --
+// see core.ts's module comment on DEX_ITEM_HASH_RE/dexFocusId for the design note.
 import { clearStoredToken, fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
-import { INVITE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
+import { DEX_ITEM_HASH_RE, INVITE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
 
 export function setRoute(route: Route): void {
@@ -65,6 +67,17 @@ export function clearWelcomeBanner(): void {
   setSnapshot({ ...snapshot, welcomeBanner: null });
 }
 
+/** REQ-0052: clears a consumed Dex deep-link target (see core.ts's
+ * dexFocusId doc). Dex.tsx calls this right after honoring a pending
+ * dexFocusId (jumping its OWN local selectedId state to it) so the same
+ * id does not keep re-forcing a jump on later, unrelated re-renders --
+ * mirrors clearWelcomeBanner()'s "one-shot store field, explicit
+ * consume-then-clear" shape immediately above. */
+export function clearDexFocusId(): void {
+  if (snapshot.dexFocusId === null) return;
+  setSnapshot({ ...snapshot, dexFocusId: null });
+}
+
 /** Like setRoute(), but uses history.replaceState-style semantics for the
  * hash (no back-button entry for the one-shot invite hash itself) -- the
  * invite link should not leave "#/invite/<token>" sitting in browser
@@ -93,13 +106,26 @@ function setRouteReplacingHash(route: Route): void {
  * ever tries to render an "invite" page) while the async token
  * resolution runs in the background and then replaces the hash with
  * #/backpacks for real once it resolves.
+ *
+ * REQ-0052: if the hash instead matches `#/dex/<id>` (DEX_ITEM_HASH_RE),
+ * the route resolves to 'dex' (a plain, pre-existing Route member) AND
+ * `dexFocusId` is set to the decoded id -- checked BEFORE the generic
+ * routeFromHash() fallback, same ordering rationale as the invite check
+ * (a more specific pattern must win over the plain '#/dex' match that
+ * routeFromHash's raw-segment comparison would otherwise silently lose,
+ * since routeFromHash only recognizes EXACT top-level route names and
+ * would fall back to 'backpacks' for an unrecognized 'dex/<id>' segment
+ * if this check were skipped).
  */
 export function initRouting(): () => void {
   if (typeof location !== 'undefined') {
     const inviteMatch = INVITE_HASH_RE.exec(location.hash);
+    const dexItemMatch = inviteMatch ? null : DEX_ITEM_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       setSnapshot({ ...snapshot, route: 'backpacks' });
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
+    } else if (dexItemMatch) {
+      setSnapshot({ ...snapshot, route: 'dex', dexFocusId: decodeURIComponent(dexItemMatch[1]) });
     } else {
       const initial = routeFromHash(location.hash);
       if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
@@ -110,6 +136,11 @@ export function initRouting(): () => void {
     const inviteMatch = INVITE_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
+      return;
+    }
+    const dexItemMatch = DEX_ITEM_HASH_RE.exec(location.hash);
+    if (dexItemMatch) {
+      setSnapshot({ ...snapshot, route: 'dex', dexFocusId: decodeURIComponent(dexItemMatch[1]) });
       return;
     }
     const next = routeFromHash(location.hash);

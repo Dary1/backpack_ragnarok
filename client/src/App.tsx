@@ -87,6 +87,7 @@ import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
 import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
 import { DexRoot } from './dex/DexRoot';
+import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { InviteBanner } from './InviteBanner';
@@ -163,6 +164,7 @@ function App() {
   const onLanding = route === 'landing';
 
   return (
+    <DexCardProvider locale={snapshot.locale}>
     <div className={`app-shell${onLanding ? '' : ' with-rail'}`}>
       {onLanding ? null : <Nav active={route} locale={snapshot.locale} />}
       {onLanding ? null : (
@@ -259,9 +261,10 @@ function App() {
         {route === 'ragnarok' ? <RagnarokPage locale={snapshot.locale} /> : null}
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
-        {route === 'dex' ? <DexRoot locale={snapshot.locale} /> : null}
+        {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
       </main>
     </div>
+    </DexCardProvider>
   );
 }
 

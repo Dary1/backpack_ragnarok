@@ -15,9 +15,14 @@ import { DexAdmin } from './DexAdmin';
 
 interface DexRootProps {
   locale: Locale;
+  /** REQ-0052: pending Dex deep-link target (store.ts's dexFocusId,
+   * from a '#/dex/<id>' hash -- e.g. a DexCardWindow footer link).
+   * Threaded straight through to Dex.tsx, which owns actually consuming
+   * it (jump to detail view) + clearing it. */
+  dexFocusId?: string | null;
 }
 
-export function DexRoot({ locale }: DexRootProps) {
+export function DexRoot({ locale, dexFocusId }: DexRootProps) {
   const [payload, setPayload] = useState<ApiContentPayload | null>(null);
   const [me, setMe] = useState<ApiMe | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +87,7 @@ export function DexRoot({ locale }: DexRootProps) {
       ) : editMode && isAdmin && me ? (
         <DexAdmin locale={locale} payload={payload} me={me} onSaved={reload} />
       ) : (
-        <Dex locale={locale} payload={payload} />
+        <Dex locale={locale} payload={payload} dexFocusId={dexFocusId} />
       )}
     </div>
   );

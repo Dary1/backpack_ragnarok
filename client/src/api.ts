@@ -66,8 +66,8 @@ function authHeaders(): Record<string, string> {
 // ---- wire-shape DTO types: moved to shared/dto.ts (REQ-0047 (f2)) ----
 // Imported for local use in the fetch helpers below, and re-exported so
 // every existing `import type { ... } from './api'` keeps working.
-import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem } from '../../shared/dto';
-export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem };
+import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto } from '../../shared/dto';
+export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto };
 
 
 async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -324,6 +324,18 @@ export async function putAdminItem(
     throw new ApiError(message, res.status);
   }
   return parsed as AdminPutResult;
+}
+
+// ---- REQ-0052: Dex Card API ----
+
+/** GET /api/dex/card/:kind/:id -- render-ready card DTO (server/routes/
+ * dex.cjs) for the Dex subwindow (dex/DexCardWindow.tsx) and any other
+ * card consumer. Public, no auth required (content is non-secret, same
+ * posture as fetchContent()). Throws ApiError(404) for an unknown
+ * kind/id (kind must be one of 'item'|'si'|'tm' -- 'bp' is not servable
+ * here yet, see dex.cjs's module comment). */
+export function fetchDexCard(kind: 'item' | 'si' | 'tm', id: string): Promise<{ ok: true; card: ApiDexCardDto }> {
+  return scheduleJSON(`/api/dex/card/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
 }
 
 // ---- REQ-0036 P1-C: Dungeon Schedule + Warehouse client API ----
