@@ -1611,7 +1611,7 @@ async function main() {
     assert.strictEqual(rollRes.body.cost, 10, 'cost echoed back is the REQ doc\'s 10x LRDST');
     const rolled = rollRes.body.rolled;
     assert.ok(rolled && rolled.uid, 'rolled BP definition includes a minted uid');
-    assert.ok(Array.isArray(rolled.shape) && rolled.shape.length >= 4 && rolled.shape.length <= 6, 'rolled shape has 4-6 cells: ' + JSON.stringify(rolled.shape));
+    assert.ok(Array.isArray(rolled.shape) && rolled.shape.length >= 6 && rolled.shape.length <= 8, 'rolled shape has 6-8 cells: ' + JSON.stringify(rolled.shape));
     assert.ok(rolled.linker && Array.isArray(rolled.linker.dirs) && rolled.linker.dirs.length >= 1 && rolled.linker.dirs.length <= 3, 'rolled linker has 1-3 dirs');
     const linkerInShape = rolled.shape.some(([r, c]) => r === rolled.linker.off[0] && c === rolled.linker.off[1]);
     assert.ok(linkerInShape, 'rolled linker cell is one of the polyomino\'s own cells');
