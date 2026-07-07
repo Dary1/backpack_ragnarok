@@ -134,6 +134,23 @@ async function apiClaim(page: Page, token: string, itemUid: string): Promise<any
   return { status: res.status(), body: await res.json() };
 }
 
+// REQ-0082: the schedule create panel auto-opens only when the caller has ZERO
+// rooms (SchedulePage.tsx: showCreatePanel = createOpen || rooms.length === 0).
+// A caller that already owns rooms (incl. canceled) sees it collapsed behind the
+// "Forge a new expedition +" toggle. Open it explicitly before touching the form
+// so the REQ-0043 specs are robust to accumulated rooms / run order (drift fix).
+async function openCreatePanel(page: Page): Promise<void> {
+  const typeSelect = page.locator('[data-testid="schedule-dungeon-type-select"]');
+  const toggle = page.locator('[data-testid="schedule-create-toggle"]');
+  // Wait for rooms to load and the page to settle into ONE of two states before
+  // deciding: the panel auto-opened (zero rooms) OR the toggle is present (has
+  // rooms). Without this wait we could sample while rooms is still null (neither
+  // present) and no-op, then time out because the panel never opens on its own.
+  await expect(typeSelect.or(toggle).first()).toBeVisible({ timeout: 10000 });
+  if (await typeSelect.isVisible().catch(() => false)) return;
+  await toggle.click();
+}
+
 let player: CreatedPlayer;
 let fixture: unknown;
 
@@ -288,6 +305,7 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     await page.locator('.nav-link', { hasText: 'Schedule' }).click();
     await expect(page.locator('.schedule-page')).toBeVisible();
 
+    await openCreatePanel(page);
     await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
     const typeOptions = await page.locator('[data-testid="schedule-dungeon-type-select"] option').allTextContents();
     expect(typeOptions.length).toBe(2); // default + test_fixed
@@ -326,6 +344,7 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    await openCreatePanel(page);
     await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toHaveCount(0);
   });
@@ -345,6 +364,7 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
 
     await page.goto('/app/#/schedule');
     await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
+    await openCreatePanel(page);
     await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toBeVisible({ timeout: 10000 });
 

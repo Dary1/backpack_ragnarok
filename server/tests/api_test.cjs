@@ -2116,6 +2116,46 @@ async function main() {
   });
 
   // =====================================================================
+  // REQ-0082: dev-only POST /api/schedule/rooms/dev/clear -- bulk-clears the
+  // dev fallback caller's accumulated schedule rooms (sibling of warehouse
+  // dev/clear-debris; stops the canceled-room pile-up that collapsed the
+  // schedule create panel's zero-rooms auto-open).
+  // =====================================================================
+  await AT('schedule: POST /api/schedule/rooms/dev/clear is dev-only (403 for a real guest token) and bulk-clears ONLY the dev fallback caller\'s rooms (REQ-0082)', async () => {
+    // Seed two rooms for the dev fallback player + one for a real guest,
+    // written directly via the storage chokepoint (minimal canceled docs --
+    // clearRoomsForOwner only needs {id, ownerId} to find + remove them).
+    const now = Date.now();
+    const mkRoom = (id, pid) => ({ id: id, ownerId: pid, status: 'canceled', createdAt: now, slots: [] });
+    const ridA = 'room_devclear_a_' + now;
+    const ridB = 'room_devclear_b_' + now;
+    const ridGuest = 'room_devclear_guest_' + now;
+    scheduleStorage.writeRoom(ridA, mkRoom(ridA, devPlayer.playerId));
+    scheduleStorage.writeRoom(ridB, mkRoom(ridB, devPlayer.playerId));
+    scheduleStorage.writeRoom(ridGuest, mkRoom(ridGuest, scheduleP1.playerId));
+    try {
+      const guestRes = await scheduleReq('POST', '/api/schedule/rooms/dev/clear', scheduleP1.token);
+      assert.strictEqual(guestRes.status, 403, 'a real guest token must never reach this dev-only hook: ' + JSON.stringify(guestRes.body));
+
+      const getRes = await scheduleReq('GET', '/api/schedule/rooms/dev/clear', undefined);
+      assert.strictEqual(getRes.status, 405, JSON.stringify(getRes.body));
+
+      const clearRes = await scheduleReq('POST', '/api/schedule/rooms/dev/clear', undefined);
+      assert.strictEqual(clearRes.status, 200, JSON.stringify(clearRes.body));
+      assert.ok(clearRes.body.deleted >= 2, 'both seeded dev rooms must count toward deleted: ' + JSON.stringify(clearRes.body));
+      assert.strictEqual(scheduleStorage.readRoom(ridA), null, 'dev room A must be gone after clear');
+      assert.strictEqual(scheduleStorage.readRoom(ridB), null, 'dev room B must be gone after clear');
+
+      assert.ok(scheduleStorage.readRoom(ridGuest), 'the guest-owned room must survive the dev clear (caller-scoped)');
+
+      const again = await scheduleReq('POST', '/api/schedule/rooms/dev/clear', undefined);
+      assert.strictEqual(again.status, 200, JSON.stringify(again.body));
+    } finally {
+      scheduleStorage.deleteRoom(ridGuest);
+    }
+  });
+
+  // =====================================================================
   // REQ-0043: dungeon auto-generation -- room dungeonType/level/genSeed,
   // genSeed privilege gating (dev fallback / item_admin only, same
   // pattern as dev/backdate), and fixed-seed run reproducibility.

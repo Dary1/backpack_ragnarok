@@ -22,6 +22,7 @@ const WAREHOUSE_RE = /^\/api\/warehouse$/;
 const WAREHOUSE_CLAIM_RE = /^\/api\/warehouse\/claim$/;
 const WAREHOUSE_DEV_BACKDATE_CLAIM_RE = /^\/api\/warehouse\/dev\/backdate-claim$/; // REQ-0041 E2E hook, dev-only
 const WAREHOUSE_DEV_CLEAR_DEBRIS_RE = /^\/api\/warehouse\/dev\/clear-debris$/; // fix: e2e pg teardown -- E2E debris-cleanup hook, dev-only
+const SCHEDULE_ROOMS_DEV_CLEAR_RE = /^\/api\/schedule\/rooms\/dev\/clear$/; // REQ-0082: dev-only E2E room-cleanup hook
 const WORKSHOP_GACHA_RE = /^\/api\/workshop\/gacha$/; // REQ-0042
 
 function tryScheduleRoutes(req, res, url, p) {
@@ -38,6 +39,7 @@ function tryScheduleRoutes(req, res, url, p) {
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
     p.match(WAREHOUSE_RE) || p.match(WAREHOUSE_CLAIM_RE) || p.match(WAREHOUSE_DEV_BACKDATE_CLAIM_RE) ||
     p.match(WAREHOUSE_DEV_CLEAR_DEBRIS_RE) ||
+    p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) ||
     p.match(WORKSHOP_GACHA_RE);
   if (scheduleMatch) {
     const token = getAuthToken(req);
@@ -361,6 +363,31 @@ function tryScheduleRoutes(req, res, url, p) {
       }
       try {
         const deleted = schedule.devClearWarehouse(callerId);
+        sendJSON(res, 200, { ok: true, deleted });
+      } catch (e) { sendScheduleError(e); }
+      return;
+    }
+
+    // ---- POST /api/schedule/rooms/dev/clear (REQ-0082: dev-only E2E
+    // room-cleanup hook) ----
+    // No body. Bulk-deletes EVERY room belonging to the CALLER -- always the
+    // dev_mode no-token fallback player, the only caller that can reach this --
+    // and returns {ok:true, deleted:n}. Sibling of warehouse dev/clear-debris:
+    // the Playwright suite's file backup/restore safety net never covered
+    // schedule rooms, so the dev player's canceled rooms accumulated every run
+    // (154 seen in REQ-0082) and collapsed the create panel's zero-rooms
+    // auto-open. Goes through schedule.devClearRooms -> storage.clearRoomsForOwner
+    // so files and pg clean identically. GATED to callerIsDevFallback ONLY (a
+    // real guest token, even valid, gets 403) and always targets the RESOLVED
+    // caller's own rooms (no client-supplied playerId in this route's shape).
+    if (p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      if (!callerIsDevFallback) {
+        sendJSON(res, 403, { ok: false, error: 'forbidden: rooms/dev/clear is only available to the dev_mode fallback caller (test-control seam, not a real player action)' });
+        return;
+      }
+      try {
+        const deleted = schedule.devClearRooms(callerId);
         sendJSON(res, 200, { ok: true, deleted });
       } catch (e) { sendScheduleError(e); }
       return;
