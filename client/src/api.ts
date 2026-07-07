@@ -180,6 +180,25 @@ export async function saveCanvas(profileId: string, state: GameState): Promise<A
 }
 
 /**
+ * Best-effort PUT of the profile canvas using fetch keepalive, so a save
+ * fired from a page-hide/unload handler (see store/autosave.ts's
+ * initAutoSaveLifecycle) can outlive the page. Fire-and-forget: never
+ * throws, returns nothing. Body is the bare GameState, exactly like
+ * saveCanvas(). keepalive caps total in-flight body at 64KB, matching the
+ * server's own profile size cap.
+ */
+export function saveCanvasBeacon(profileId: string, state: GameState): void {
+  try {
+    void fetch(`/api/profile/${encodeURIComponent(profileId)}/canvas`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(state),
+      keepalive: true,
+    }).catch(() => { /* best-effort */ });
+  } catch { /* best-effort */ }
+}
+
+/**
  * Converts the /api/content payload into the engine-ready GameData shape --
  * a typed port of mock-src/ui.js's gameDataFromApiContent(). Field-for-field
  * identical defaulting: eff falls back to eff_en, TREES defaults to

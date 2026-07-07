@@ -23,8 +23,23 @@
 // own pool) -- acceptable here because storage.cjs's profile reads/
 // writes are low-frequency, small-payload operations (64KB cap), not a
 // high-throughput hot path, and preserving the EXACT existing call
-// contract (so the 46-test suite and every existing caller need zero
+// contract (so the test suite and every existing caller need zero
 // changes) was the explicit REQ-0040 requirement.
+//
+// REQ-0089: crash-recovery hardening. Previously the worker thread had NO
+// 'error'/'exit' handler and its module-level reference was never
+// cleared, so a SINGLE worker crash (e.g. an unhandled pg Pool 'error' on
+// a dropped idle connection -- routine with Supabase/Supavisor; see
+// pg_sync_worker.cjs) wedged EVERY subsequent profile read/write: each
+// querySync() posted into a dead thread that never replied, blocking the
+// caller -- and the whole event loop -- for the full 15s Atomics.wait
+// timeout, on every call, until the process was manually restarted. Now:
+// (1) the worker is (re)spawned lazily and its reference dropped on
+// 'error'/'exit', so the NEXT querySync() transparently starts a fresh
+// worker; (2) a timed-out query terminates the wedged worker so it is
+// likewise respawned rather than piling further queries onto a stuck
+// thread. Together with pg_sync_worker.cjs's new pool 'error' handler, a
+// transient DB connection drop now self-heals instead of needing a restart.
 'use strict';
 const { Worker } = require('worker_threads');
 const path = require('path');
@@ -32,10 +47,27 @@ const path = require('path');
 let worker = null;
 let nextId = 1;
 
+function spawnWorker() {
+  const w = new Worker(path.join(__dirname, 'pg_sync_worker.cjs'));
+  w.unref(); // never keeps the process alive on its own
+  // Drop the reference on crash/exit so ensureWorker() respawns a healthy
+  // worker on the next call instead of posting into a dead thread forever.
+  // These handlers run on the main thread's event loop, so they only fire
+  // once the current Atomics.wait() has returned -- which is exactly when
+  // `worker` needs to be clear for the NEXT querySync().
+  w.on('error', (err) => {
+    console.error('[pg_sync] worker error (will respawn on next query):', err && err.message ? err.message : err);
+    if (worker === w) worker = null;
+  });
+  w.on('exit', (code) => {
+    if (code !== 0) console.error('[pg_sync] worker exited (code ' + code + '); will respawn on next query');
+    if (worker === w) worker = null;
+  });
+  return w;
+}
+
 function ensureWorker() {
-  if (worker) return worker;
-  worker = new Worker(path.join(__dirname, 'pg_sync_worker.cjs'));
-  worker.unref(); // never keeps the process alive on its own
+  if (!worker) worker = spawnWorker();
   return worker;
 }
 
@@ -56,6 +88,13 @@ function querySync(text, params) {
   const WAIT_MS = 15000;
   const res = Atomics.wait(status, 0, 0, WAIT_MS);
   if (res === 'timed-out') {
+    // No reply within the window: the worker is wedged (a stuck query, a
+    // lost connection, or a crash whose 'exit' we could not process while
+    // blocked here). Terminate + drop it so the NEXT querySync() spawns a
+    // fresh worker rather than piling onto a stuck thread (which,
+    // pre-REQ-0089, required a full process restart to clear).
+    if (worker === w) worker = null;
+    try { w.terminate(); } catch (e) { /* already gone */ }
     throw new Error('pg_sync: query timed out after ' + WAIT_MS + 'ms');
   }
 
@@ -79,8 +118,9 @@ function querySync(text, params) {
  * need the process to exit promptly after their last query). */
 async function closeSync() {
   if (worker) {
-    await worker.terminate();
+    const w = worker;
     worker = null;
+    await w.terminate();
   }
 }
 
