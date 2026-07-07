@@ -159,6 +159,32 @@ function runEncounter(opts) {
             }
           }
           for (const re of reactDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+
+          // REQ-0079: Linker destination triggers (offensive) -- any player
+          // BP whose Linker bears OnLinkDestinationHit fires when its beam
+          // destination (frozen at compile time; compile.cjs linkDestsByBp)
+          // is the BP that JUST dealt this direct hit. "any" scope: a multi-
+          // beam Linker fires once its destination SET contains the dealing
+          // BP. Each landed hit is an independent rider (depth-1: fired via
+          // applyReactiveVerbToTarget, which never re-dispatches; isolated
+          // RNG sub-stream keeps existing golden streams byte-identical).
+          const dealingPo = partyPos.find(p => p.uid === s.ownerUid);
+          const dealingBpId = dealingPo ? dealingPo.bpId : null;
+          if (dealingBpId) {
+            const reactLinkOff = [];
+            partyBps.forEach((linkerBp, linkerIdx) => {
+              if (!linkerBp.alive || !linkerBp.linkDests || !linkerBp.linkDests.includes(dealingBpId)) return;
+              const ownerActor = playerActors[linkerIdx];
+              for (const eff of (linkerBp.linkerEffects || [])) {
+                if (!eff.trigger || eff.trigger.t !== 'OnLinkDestinationHit') continue;
+                (fr.landedHits || []).forEach((lh, li) => {
+                  const rs = rng.stream('reactive/OnLinkDestinationHit/' + linkerBp.id + '/' + ev.t + '/' + li);
+                  applyReactiveVerbToTarget(eff.verb, ownerActor, lh.actor, rs, reactLinkOff, 'OnLinkDestinationHit');
+                });
+              }
+            });
+            for (const re of reactLinkOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          }
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
@@ -189,6 +215,36 @@ function runEncounter(opts) {
             });
           }
           for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+
+          // REQ-0079: Linker destination triggers (defensive) -- any player
+          // BP whose Linker bears OnLinkDestinationBeenHit fires when its
+          // beam destination BP is the one that JUST took this direct hit.
+          // Fires a counter-ray FROM the linker-bearing (origin) BP at the
+          // enemy field -- mirrors the OnUnitBeenHit retaliation shape
+          // above, one level removed (a third-party BP reacts, not the
+          // struck one itself). Depth-1: this fireSkillRay call's OWN
+          // landedHits are never themselves re-scanned; isolated RNG stream.
+          const reactLinkDef = [];
+          for (const lh of (fr.landedHits || [])) {
+            if (lh.actor.kind !== 'bp') continue;
+            const hitBpId = lh.actor.id;
+            for (const linkerBp of partyBps) {
+              if (!linkerBp.alive || !linkerBp.linkDests || !linkerBp.linkDests.includes(hitBpId)) continue;
+              for (const eff of (linkerBp.linkerEffects || [])) {
+                if (!eff.trigger || eff.trigger.t !== 'OnLinkDestinationBeenHit') continue;
+                const ap = eff.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+                reactLinkDef.push({ ev: 'reactive_proc', trigger: 'OnLinkDestinationBeenHit', verb: eff.verb.t, src: linkerBp.id });
+                fireSkillRay({
+                  attacker: { fieldCells: linkerBp.fieldCells, ownerId: linkerBp.id + '#linkreact' },
+                  attackProfile: ap, verbEff: eff, mode: 'battle',
+                  targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+                  rng, streamPrefix: 'reactive/OnLinkDestinationBeenHit/' + linkerBp.id + '/' + ev.t,
+                  events: reactLinkDef, aoeStatuses: !!ap.aoe_statuses,
+                });
+              }
+            }
+          }
+          for (const re of reactLinkDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }
