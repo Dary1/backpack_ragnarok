@@ -3,7 +3,7 @@
  "entries": [
   {
    "id": "lrdst",
-   "name": "LinkerRandomDirectionShuffleTransmutator",
+   "name": "weathervane",
    "short": "LRDST",
    "rarity": "Common",
    "icon": "icon-lrdst",
