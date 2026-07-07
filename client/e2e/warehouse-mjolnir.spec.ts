@@ -23,12 +23,12 @@
 //    (+ the market lane's sourceListingId) with REAL content ids
 //    ('hilt', 'lrdst') so icon/rarity resolution runs the real path.
 import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_DATA_ROOT } from './e2e-env';
 import { test, expect, type Page } from '@playwright/test';
 import { bootApp, waitForAutoSave } from './helpers';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
+const REPO_ROOT = E2E_DATA_ROOT;
 const SCHEDULE_FIXTURE_PATH = new URL('./fixtures/schedule-fixture.json', import.meta.url);
 const DEV_USER_PATH = join(REPO_ROOT, 'data', 'config', 'dev_user.json');
 const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');

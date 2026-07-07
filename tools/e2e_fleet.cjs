@@ -14,7 +14,7 @@
 // header to FLEET_BASE+index. Teardown kills ONLY the PIDs this script spawned
 // (recorded in the manifest) -- never a broad pkill, which would take down the
 // real backpack-api on :8802.
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -39,8 +39,10 @@ function buildHome(i) {
   fs.cpSync(path.join(REPO, 'content', 'live'), path.join(bp, 'content', 'live'), { recursive: true });
   const cfg = path.join(REPO, 'data', 'config');
   if (fs.existsSync(cfg)) fs.cpSync(cfg, path.join(bp, 'data', 'config'), { recursive: true });
-  const def = path.join(REPO, 'data', 'profiles', 'default.json');
-  if (fs.existsSync(def)) fs.cpSync(def, path.join(bp, 'data', 'profiles', 'default.json'));
+  // REQ-0083 F: seed the WHOLE profiles dir -- the dev player uses data/profiles/dev.json
+  // (default.json is only a legacy migration seed); copying just default.json under-seeds it.
+  const profs = path.join(REPO, 'data', 'profiles');
+  if (fs.existsSync(profs)) fs.cpSync(profs, path.join(bp, 'data', 'profiles'), { recursive: true });
   return path.join(dir, 'home');
 }
 
@@ -69,6 +71,10 @@ function killManifest() {
 
 async function start(N) {
   killManifest(); // clean any stale fleet from a crashed prior run
+  // REQ-0083 G: also reclaim stale fleet PORTS (a crashed run can leave apis bound
+  // with no manifest). Fleet range ONLY (BASE_PORT..BASE_PORT+N-1) -- NEVER live :8802.
+  const stalePorts = Array.from({ length: N }, (_, i) => (BASE_PORT + i) + '/tcp').join(' ');
+  try { spawnSync('bash', ['-c', 'fuser -k ' + stalePorts + ' 2>/dev/null']); } catch (e) {}
   fs.mkdirSync(ROOT, { recursive: true });
   const workers = [];
   for (let i = 0; i < N; i++) {

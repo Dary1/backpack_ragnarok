@@ -37,8 +37,9 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, copyFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { E2E_DATA_ROOT } from './e2e-env';
 
-const REPO_ROOT = join(homedir(), 'backpack_ragnarok');
+const REPO_ROOT = E2E_DATA_ROOT;
 
 export const PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'default.json');
 export const BACKUP_MARKER_PATH = '/tmp/backpack_e2e_profile_backup_path.txt';
