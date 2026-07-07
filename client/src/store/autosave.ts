@@ -1,19 +1,51 @@
 // client/src/store/autosave.ts -- REQ-0047 (f2): debounced auto-save (REQ-0031 Phase B) + flushAutoSave + loadGame.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
-import { fetchCanvas, saveCanvas } from '../api';
+//
+// REQ-0089: reliability hardening of the auto-save pipeline. The previous
+// implementation had three data-loss/instability gaps:
+//  1. Concurrent PUTs. A monotonically-increasing token guarded only the
+//     STATUS flag, never the WRITE ORDER: if a save took longer than the
+//     debounce and another mutation fired, TWO PUTs went in flight at once,
+//     and the server (last-writer-wins) could persist the OLDER one -- the
+//     "stale in-flight auto-save resurrects pre-trade/destroyed state" race
+//     called out verbatim in api.ts's market/ragnarok DTO docs. Fixed with
+//     a single-flight guard (`inFlight`) + a coalesced trailing save (any
+//     mutation during a PUT re-runs exactly one follow-up PUT afterwards).
+//  2. No retry. A failed PUT went to 'offline' and simply waited for the
+//     NEXT user mutation; if the user stopped interacting, the edit was
+//     silently never persisted. Fixed with an exponential-backoff retry.
+//  3. No flush on exit. An edit made within the 800ms debounce window (or
+//     a pending/failed save) was lost on reload/tab-close, because nothing
+//     flushed on page hide. Fixed with initAutoSaveLifecycle() (keepalive
+//     PUT on pagehide / visibilitychange->hidden).
+// The public contract (scheduleAutoSave/flushAutoSave/loadGame + the
+// 'saved'|'saving'|'offline' status) is unchanged; auto-save.spec.ts's
+// mutate->debounce->reload round-trip still holds.
+import { fetchCanvas, saveCanvas, saveCanvasBeacon } from '../api';
 import { cancelCarry } from '../board/drag';
 import { snapshot, setSnapshot } from './core';
 import type { StoreSnapshot } from './core';
-import { resolveProfileId } from './boot';
+import { resolveProfileId, resolveSaveProfileId, refreshMe } from './boot';
 import { notifyStateChanged } from './presets';
 
 const AUTO_SAVE_DEBOUNCE_MS = 800;
-let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
-// Monotonically-increasing token: if a NEWER debounced save has been
-// scheduled by the time an in-flight PUT resolves, that PUT's result is
-// stale and must not flip autoSaveStatus back to 'saved' out of order
-// (the newer save's own completion will do that instead).
-let autoSaveToken = 0;
+const RETRY_BASE_MS = 1000;
+const RETRY_MAX_MS = 30000;
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+// Single-flight: at most ONE profile PUT is ever in flight, so the server
+// never has to arbitrate two writes of the same profile (which, last-
+// writer-wins, could persist the older one).
+let inFlight = false;
+// A mutation has happened since the last durable save (true = there is
+// something to persist). Set on every scheduleAutoSave(); cleared only
+// once a PUT for that state has actually started.
+let dirty = false;
+let retryDelay = RETRY_BASE_MS;
+// Guards out-of-order STATUS writes only (a slow earlier attempt must not
+// flip the indicator back to 'saved' after a newer one already did).
+let statusToken = 0;
 
 function setAutoSaveStatus(status: StoreSnapshot['autoSaveStatus']): void {
   if (snapshot.autoSaveStatus === status) return;
@@ -25,40 +57,109 @@ function setAutoSaveStatus(status: StoreSnapshot['autoSaveStatus']): void {
  * (drag-drop, rotate, seat/stow, chain-link toggle, preset switch, rename,
  * ...) and after loadGame()'s own field replacement. Resets the timer on
  * every call within the debounce window, so a rapid burst of mutations
- * (e.g. several drags in quick succession) collapses into a single PUT
- * AUTO_SAVE_DEBOUNCE_MS after the last one. Never fires while a drag is
- * merely in progress: notifyStateChanged() (and therefore this function)
- * is only ever invoked at a drag's COMMIT (pointerup resolving against an
- * engine mutator), never during pointermove -- there is no separate
- * "in-progress" mutation event to guard against here. */
+ * collapses into a single PUT AUTO_SAVE_DEBOUNCE_MS after the last one.
+ * Never fires while a drag is merely in progress: notifyStateChanged() is
+ * only ever invoked at a drag's COMMIT, never during pointermove. */
 export function scheduleAutoSave(): void {
   if (!snapshot.state) return;
+  dirty = true;
   setAutoSaveStatus('saving');
-  if (autoSaveTimer !== null) clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(() => {
-    autoSaveTimer = null;
-    void flushAutoSave();
-  }, AUTO_SAVE_DEBOUNCE_MS);
+  // A fresh user mutation supersedes any pending backoff wait: reset the
+  // backoff schedule and let the debounce drive the next attempt.
+  if (retryTimer !== null) { clearTimeout(retryTimer); retryTimer = null; }
+  retryDelay = RETRY_BASE_MS;
+  if (debounceTimer !== null) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => { debounceTimer = null; void pump(); }, AUTO_SAVE_DEBOUNCE_MS);
 }
 
-/** Immediately PUTs the current live GameState (no debounce) -- used by
- * the debounce timer's expiry. Exported so tests/callers needing a
- * synchronous "save right now, don't wait for the debounce" escape hatch
- * (e.g. a future beforeunload handler) have one, though nothing in the UI
- * currently calls it directly other than the debounce timer itself.
- * REQ-0037: saves to resolveProfileId() (the authenticated player's own
- * id), not a hardcoded 'default'. */
-export async function flushAutoSave(): Promise<void> {
+/** The single writer. Runs at most one PUT at a time; if the state is
+ * still dirty when a PUT settles (a mutation arrived mid-flight, or the
+ * PUT failed), it re-runs exactly one follow-up attempt. */
+async function pump(): Promise<void> {
+  if (inFlight) return;      // the in-flight settle will re-pump if needed
+  if (!dirty) return;
   const st = snapshot.state;
   if (!st) return;
-  const myToken = ++autoSaveToken;
+  const pid = resolveSaveProfileId();
+  if (pid === null) {
+    // A guest token is stored but /api/me has not resolved yet -- we don't
+    // know this player's real profile id, and PUTting to the 'default'
+    // alias would be rejected (403) for a non-dev player, silently dropping
+    // the write. Defer: keep the change pending, (re)resolve identity, and
+    // retry shortly.
+    setAutoSaveStatus('saving');
+    void refreshMe();
+    scheduleRetry();
+    return;
+  }
+  inFlight = true;
+  dirty = false;                 // captured; mutations after this re-set it
+  const myToken = ++statusToken;
   try {
-    await saveCanvas(resolveProfileId(), st);
-    if (myToken === autoSaveToken) setAutoSaveStatus('saved');
+    await saveCanvas(pid, st);
+    retryDelay = RETRY_BASE_MS;
+    if (myToken === statusToken && !dirty) setAutoSaveStatus('saved');
   } catch (e) {
     console.warn('[backpack_ragnarok] auto-save failed:', e instanceof Error ? e.message : e);
-    if (myToken === autoSaveToken) setAutoSaveStatus('offline');
+    dirty = true;                // never lose the unsaved change
+    if (myToken === statusToken) setAutoSaveStatus('offline');
+    scheduleRetry();
+  } finally {
+    inFlight = false;
+    // Trailing save: only self-trigger if nothing else is already going to
+    // (a pending debounce coalesces a burst; a pending retry owns backoff).
+    if (dirty && debounceTimer === null && retryTimer === null) void pump();
   }
+}
+
+/** Schedules a single backoff retry (exponential, capped). No-op if one is
+ * already pending. Cleared/reset by the next user mutation. */
+function scheduleRetry(): void {
+  if (retryTimer !== null) return;
+  const delay = retryDelay;
+  retryDelay = Math.min(retryDelay * 2, RETRY_MAX_MS);
+  retryTimer = setTimeout(() => { retryTimer = null; void pump(); }, delay);
+}
+
+/** Immediately attempts a save of the current live GameState (no debounce)
+ * -- the debounce timer's expiry goes through pump() directly, but this is
+ * kept as an awaitable escape hatch for callers needing "save right now".
+ * Routes through the same single-flight pump() so it can never introduce a
+ * concurrent PUT. */
+export async function flushAutoSave(): Promise<void> {
+  if (!snapshot.state) return;
+  dirty = true;
+  if (debounceTimer !== null) { clearTimeout(debounceTimer); debounceTimer = null; }
+  await pump();
+}
+
+/** Best-effort flush when the page is being hidden/unloaded, so an edit
+ * made inside the debounce window (or a pending/failed save) survives a
+ * reload or tab-close. Uses a keepalive PUT (saveCanvasBeacon) that can
+ * outlive the page. */
+function saveOnExit(): void {
+  if (!dirty && !inFlight) return;
+  const st = snapshot.state;
+  if (!st) return;
+  const pid = resolveSaveProfileId();
+  if (pid === null) return;   // identity unknown -- nothing safe to write
+  dirty = false;
+  saveCanvasBeacon(pid, st);
+}
+
+let lifecycleWired = false;
+/** Wires page-lifecycle flushes. Call once at boot (main.tsx). pagehide
+ * covers reload/navigation/close (and the bfcache path); visibilitychange
+ * ->hidden covers mobile tab-backgrounding where pagehide/beforeunload are
+ * unreliable. Both just best-effort flush the current state. */
+export function initAutoSaveLifecycle(): void {
+  if (lifecycleWired) return;
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  lifecycleWired = true;
+  window.addEventListener('pagehide', saveOnExit);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveOnExit();
+  });
 }
 
 /**
@@ -111,5 +212,3 @@ export async function loadGame(): Promise<void> {
     console.warn('[backpack_ragnarok] canvas load failed:', e instanceof Error ? e.message : e);
   }
 }
-
-/** React hook: subscribes the calling component to the store. */

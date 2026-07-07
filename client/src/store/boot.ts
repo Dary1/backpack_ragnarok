@@ -1,13 +1,56 @@
 // client/src/store/boot.ts -- REQ-0047 (f2): boot + identity: resolveProfileId, boot(), setLocale, setActiveInvPage.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { Engine } from '../engine/adapter';
-import { fetchMe, resolveGameData, setStoredToken } from '../api';
+import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
 
 export function resolveProfileId(): string {
   return snapshot.me?.playerId ?? 'default';
+}
+
+/** Profile id to SAVE to. Unlike resolveProfileId() (used by boot/load,
+ * which run only after fetchMe has been awaited), this refuses to fall back
+ * to the 'default' alias when a guest token IS stored but /api/me has not
+ * resolved yet: PUTting a real guest's canvas to 'default' is rejected
+ * (403) by the server and would silently drop the save. Returns null in
+ * that "identity not known yet" case so the caller can defer + retry. With
+ * no token stored, 'default' is correct (the server maps it to the dev
+ * player under dev_mode). */
+export function resolveSaveProfileId(): string | null {
+  if (snapshot.me) return snapshot.me.playerId;
+  if (getStoredToken()) return null;
+  return 'default';
+}
+
+/** Re-fetches /api/me and updates snapshot.me on success (used by auto-save
+ * when it finds a stored token but no resolved identity yet). Non-fatal on
+ * failure -- leaves snapshot.me as-is; the caller retries. */
+export async function refreshMe(): Promise<void> {
+  try {
+    const me = await fetchMe();
+    if (me) setSnapshot({ ...snapshot, me });
+  } catch { /* leave me unresolved; caller retries */ }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** fetchMe with a few retries -- only worth retrying when a token IS stored
+ * (a real guest whose identity MUST resolve to their own profile before the
+ * first save, else auto-save would 403 against the 'default' alias). With
+ * no token the dev_mode fallback is deterministic and a failure is
+ * terminal. */
+async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | null> {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetchMe();
+    } catch {
+      if (!getStoredToken()) return null;
+      if (i < attempts - 1) await sleep(delayMs * (i + 1));
+    }
+  }
+  return null;
 }
 
 /** Loads content from the live API and builds the engine instance + initial
@@ -57,12 +100,7 @@ export async function boot(): Promise<void> {
     const earlyInviteMatch = INVITE_HASH_RE.exec(location.hash);
     if (earlyInviteMatch) setStoredToken(decodeURIComponent(earlyInviteMatch[1]));
   }
-  let me: ApiMe | null = null;
-  try {
-    me = await fetchMe();
-  } catch (e) {
-    me = null;
-  }
+  const me: ApiMe | null = await fetchMeWithRetry();
   if (me) setSnapshot({ ...snapshot, me });
 
   const resolved = await resolveGameData(resolveProfileId());
