@@ -22,6 +22,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { BpDiagram } from '../dex/BpDiagram';
+import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 
@@ -162,6 +163,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   // attempt (not on dismiss-only) so a failed re-roll doesn't leave a
   // stale diagram from the previous success on screen looking current.
   const [rollResult, setRollResult] = useState<ApiRolledBp | null>(null);
+  // REQ-0063: opens the real Dismantle modal (replaces the old REQ-0076
+  // "opening soon" shell for this one tile only -- Transmute stays a shell).
+  const [dismantleOpen, setDismantleOpen] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -389,11 +393,15 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             {t(locale, 'workshop.dismantleTitle')}
             <span className="workshop-subp-den den">{t(locale, 'workshop.dismantleDen')}</span>
             <span className="workshop-subp-grow" />
-            <span className="chip">{t(locale, 'workshop.soonChip')}</span>
           </div>
           <div className="workshop-subp-copy dj">{t(locale, 'workshop.dismantleCopy')}</div>
           <div className="workshop-subp-note t-micro">{t(locale, 'workshop.dismantleSub')}</div>
-          <button type="button" className="btn is-disabled workshop-subp-btn" disabled>
+          <button
+            type="button"
+            className="btn btn-forge workshop-subp-btn"
+            data-testid="workshop-dismantle-open-btn"
+            onClick={() => setDismantleOpen(true)}
+          >
             <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.dismantleCta')}
           </button>
         </div>
@@ -478,6 +486,8 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
           </div>
         </div>
       ) : null}
+
+      {dismantleOpen ? <DismantlePanel locale={locale} onClose={() => setDismantleOpen(false)} /> : null}
     </div>
   );
 }

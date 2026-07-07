@@ -5130,3 +5130,39 @@ html, body {
   color: var(--bone, #eee);
   border-color: var(--gold, #c9a959);
 }
+
+/* ============================================================
+   REQ-0063 Dismantle modal (Workshop tile -> real picker + confirm).
+   Reuses the global .market-thumb/.carve-item/.lockword/.selchip/
+   .schedule-error/.schedule-toast/.emptyblock/.chip classes verbatim
+   (all already app-global, not market-scoped). .icard itself needs its
+   OWN scoped redefinition here, same convention the Market block already
+   documents ("`.icard` is redefined scoped too" -- .item-list and
+   .market-page each own an independent one; this is the Workshop's).
+   ============================================================ */
+.workshop-dismantle-scrim{ position:fixed; inset:0; z-index:120; display:grid; place-items:center; background:rgba(6,8,11,.72); padding:20px; }
+.workshop-dismantle-modal{ width:min(820px, 94vw); max-height:92vh; overflow:auto; padding:20px 24px 22px; }
+.workshop-dismantle-head{ display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding-bottom:11px; border-bottom:1px solid rgba(201,169,89,.2); }
+.workshop-dismantle-head-title{ font-size:17px; letter-spacing:.14em; font-weight:800; }
+.workshop-dismantle-head-grow{ flex:1 1 auto; }
+.workshop-dismantle-grid{ display:grid; grid-template-columns:minmax(260px, 360px) 1fr; gap:16px; align-items:start; margin-top:16px; }
+.workshop-dismantle-hoard-note{ margin-bottom:8px; }
+.workshop-dismantle-hoard-list{ display:flex; flex-direction:column; gap:8px; max-height:52vh; overflow:auto; }
+.workshop-dismantle-modal .icard{ display:flex; align-items:center; gap:10px; position:relative; padding:10px 12px; border-radius:3px; border:1px solid var(--border-lo);
+  background:linear-gradient(180deg, rgba(27,34,45,.7), rgba(19,24,32,.7)); cursor:pointer; transition:box-shadow .13s; }
+.workshop-dismantle-modal .icard .market-thumb{ width:40px; height:40px; }
+.workshop-dismantle-modal .icard .nm{ font-weight:800; font-size:14px; }
+.workshop-dismantle-modal .icard .sub{ font-size:11px; color:var(--bone-3); letter-spacing:.05em; margin-top:2px; }
+.workshop-dismantle-modal .icard.is-selected{ box-shadow:var(--focus-ring); }
+.workshop-dismantle-modal .icard .selchip{ display:none; margin-left:auto; flex:none; }
+.workshop-dismantle-modal .icard.is-selected .selchip{ display:inline-flex; }
+.workshop-dismantle-modal .icard.is-locked{ border-style:dashed; cursor:not-allowed; }
+.workshop-dismantle-modal .icard.is-locked:hover{ box-shadow:none; }
+.workshop-dismantle-modal .icard.is-locked .market-thumb, .workshop-dismantle-modal .icard.is-locked .nm, .workshop-dismantle-modal .icard.is-locked .sub{ filter:saturate(.4); opacity:.72; }
+.workshop-dismantle-stats{ display:flex; flex-direction:column; gap:4px; margin-top:10px; }
+.workshop-dismantle-note{ margin-top:10px; line-height:1.8; }
+.workshop-dismantle-hint{ margin-top:12px; line-height:1.9; }
+.workshop-dismantle-error{ margin-top:12px; }
+.workshop-dismantle-toast{ margin-top:12px; }
+.workshop-dismantle-empty{ margin-top:16px; }
+@media (max-width:760px){ .workshop-dismantle-grid{ grid-template-columns:1fr; } }

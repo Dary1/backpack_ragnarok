@@ -558,3 +558,142 @@ test.describe('BP move handle', () => {
     });
   });
 });
+
+// REQ-0063 -- Dismantle System E2E coverage. Proves the client wiring the
+// unit/server tests can't reach: the Workshop tile opens a real modal
+// (not the old REQ-0076 "opening soon" shell), the picker lists an actual
+// inventory PO, confirming POSTs /api/dismantle and the removal survives
+// the store's loadGame() refresh (see DismantlePanel.tsx's module comment
+// on why that call is mandatory -- the same auto-save race MarketPage.tsx
+// guards against), the yield lands in the warehouse, the ledger engraves,
+// and the REQ-0052 Dex card (same session, no reload) immediately reflects
+// the new count/suppression -- proving the two features are wired to the
+// SAME live ledger, not two independent displays that happen to agree.
+//
+// SCOPE NOTE: the "deployed item is locked, not silently dismantlable"
+// gate is NOT re-proven here -- it already has thorough, fully-isolated
+// coverage in server/tests/api_test.cjs's own dismantle test block (a
+// synthetic sandboxed profile with a hand-written room, not the shared
+// live dev profile this E2E file mutates). A client-side E2E for that
+// specific gate would need to force a KNOWN-valid, non-empty active
+// preset into the shared dev profile before calling the real assignSlot
+// endpoint (empty_unit 409 otherwise) -- doable, but adds real fixture
+// risk against live, possibly-already-occupied dev-profile state for a
+// business rule that is not this file's job to re-verify. Left as a
+// deliberate scope cut rather than a fragile test.
+test.describe('REQ-0063: Dismantle panel (dev player)', () => {
+  withDevUserFixture();
+
+  /** Seeds ONE fresh 'blade' PO into the dev player's inventory page 0,
+   * preserving whatever else the canvas already holds -- same
+   * read-existing-then-append shape as seedDevLrdstBalance above. Cell
+   * [8,1] is deliberately far from every other fixture cell this file's
+   * other tests use. */
+  async function seedDevBladePo(page: Page, uid: string): Promise<any> {
+    const existingResp = await page.request.get('/api/profile/dev/canvas');
+    const canvas = existingResp.ok()
+      ? (await existingResp.json()).canvas
+      : {
+          linked: true, bps: [], pos: [], sis: [],
+          inv: {
+            pages: [
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+            ],
+            names: ['1', '2', '3', '4', '5'],
+          },
+        };
+    if (!canvas.inv) {
+      canvas.inv = {
+        pages: [
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+        ],
+        names: ['1', '2', '3', '4', '5'],
+      };
+    }
+    if (!canvas.inv.pages[0].pos) canvas.inv.pages[0].pos = [];
+    canvas.inv.pages[0].pos = canvas.inv.pages[0].pos.filter((p: any) => p.uid !== uid);
+    canvas.inv.pages[0].pos.push({ uid, id: 'blade', loc: 'grid', cell: [8, 1], rot: 0 });
+    const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    expect(putRes.status()).toBe(200);
+    return canvas;
+  }
+
+  /** Sums qty across every claimable warehouse row of the given kind+id
+   * for the dev fallback caller -- robust to whichever merge-vs-new-row
+   * shape grantTmQty happens to use internally (not this test's concern). */
+  function sumWarehouseQty(items: any[], kind: string, itemId: string): number {
+    return items.filter((i) => i.kind === kind && i.itemId === itemId).reduce((sum, i) => sum + (i.qty ?? 0), 0);
+  }
+
+  test('dismantle flow: removes the item, yields currency, engraves the ledger, and the Dex card immediately reflects the new count/suppression', async ({ page }) => {
+    await withDevProfileBackup(async () => {
+      const uid = 'e2e_dismantle_po_1';
+      await seedDevBladePo(page, uid);
+
+      const ledgerBefore = await (await page.request.get('/api/dismantle/ledger')).json();
+      const before: number = ledgerBefore.entries.find((e: any) => e.itemId === 'blade')?.dismantleCount ?? 0;
+      const whBefore = (await (await page.request.get('/api/warehouse')).json()).items;
+      const lrdstBefore = sumWarehouseQty(whBefore, 'tm', 'lrdst');
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Workshop' }).click();
+      await page.locator('[data-testid="workshop-dismantle-open-btn"]').click();
+      await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toBeVisible({ timeout: 10000 });
+
+      const row = page.locator(`[data-testid="workshop-dismantle-item"][data-item-uid="${uid}"]`);
+      await expect(row).toBeVisible();
+      await row.click();
+
+      // Preview shows the REAL pre-dismantle count for this item id
+      // (fetched from GET /api/dismantle/ledger, never a client guess).
+      await expect(page.locator('[data-testid="workshop-dismantle-count"]')).toHaveText(String(before), { timeout: 10000 });
+
+      await page.locator('[data-testid="workshop-dismantle-confirm-btn"]').click();
+      await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toBeVisible({ timeout: 10000 });
+
+      // The dismantled row disappears from the picker WITHOUT closing the
+      // modal -- proves the post-confirm loadGame() refresh actually
+      // reaches this component's own derived list (stateVersion dependency,
+      // see DismantlePanel.tsx -- state's own object reference never
+      // changes, only stateVersion bumps).
+      await expect(row).toHaveCount(0);
+
+      await page.locator('[data-testid="workshop-dismantle-close"]').click();
+      await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toHaveCount(0);
+
+      // Server-side: item gone from the canvas entirely (home record, not
+      // just visually hidden).
+      const canvasAfter = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const stillThere = canvasAfter.inv.pages.some((pg: any) => (pg.pos || []).some((p: any) => p.uid === uid));
+      expect(stillThere).toBe(false);
+
+      // Ledger engraved exactly once.
+      const ledgerAfter = await (await page.request.get('/api/dismantle/ledger')).json();
+      const afterEntry = ledgerAfter.entries.find((e: any) => e.itemId === 'blade');
+      expect(afterEntry.dismantleCount).toBe(before + 1);
+
+      // Yield landed in the warehouse.
+      const whAfter = (await (await page.request.get('/api/warehouse')).json()).items;
+      expect(sumWarehouseQty(whAfter, 'tm', 'lrdst')).toBe(lrdstBefore + 1);
+
+      // The Dex card (REQ-0052 section, REQ-0063 overlay) reflects the
+      // SAME new count/suppression immediately, in the same session --
+      // one ledger, two surfaces, never out of sync.
+      await page.locator('.nav-link', { hasText: 'Dex' }).click();
+      await page.locator('.dex-search').fill('blade');
+      await page.locator('.dex-card', { hasText: 'blade' }).first().locator('.dex-card-preview-btn').click();
+      await expect(page.locator('[data-testid="dexcard-window"]')).toBeVisible();
+      await expect(page.locator('[data-testid="dexcard-dismantle-count"]')).toContainText(String(before + 1));
+      const expectedPct = Math.round(afterEntry.suppression * 100);
+      await expect(page.locator('[data-testid="dexcard-dismantle-suppression"]')).toContainText(`${expectedPct}%`);
+    });
+  });
+});

@@ -717,3 +717,27 @@ export interface ApiDexCardDto {
   // anonymous-safe -- see server/routes/dex.cjs's tryReadDismantleInfo).
   dismantle?: { count: number; suppression: number };
 }
+
+// ---- REQ-0063: Dismantle System ----
+// Wire shapes for POST /api/dismantle and GET /api/dismantle/ledger
+// (server/routes/dismantle.cjs).
+export interface ApiDismantleYield {
+  tmId: string;
+  qty: number;
+}
+export interface ApiDismantleResponse {
+  ok: true;
+  itemId: string;
+  dismantleCount: number;
+  suppression: number;
+  yield: ApiDismantleYield;
+}
+export interface ApiDismantleLedgerEntry {
+  itemId: string;
+  dismantleCount: number;
+  suppression: number;
+}
+export interface ApiDismantleLedgerResponse {
+  ok: true;
+  entries: ApiDismantleLedgerEntry[];
+}

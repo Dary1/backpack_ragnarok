@@ -66,8 +66,8 @@ function authHeaders(): Record<string, string> {
 // ---- wire-shape DTO types: moved to shared/dto.ts (REQ-0047 (f2)) ----
 // Imported for local use in the fetch helpers below, and re-exported so
 // every existing `import type { ... } from './api'` keeps working.
-import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto } from '../../shared/dto';
-export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto };
+import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse } from '../../shared/dto';
+export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse };
 
 
 async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -336,6 +336,25 @@ export async function putAdminItem(
  * here yet, see dex.cjs's module comment). */
 export function fetchDexCard(kind: 'item' | 'si' | 'tm', id: string): Promise<{ ok: true; card: ApiDexCardDto }> {
   return scheduleJSON(`/api/dex/card/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
+}
+
+// ---- REQ-0063: Dismantle System client API ----
+// Talks to server/routes/dismantle.cjs. postDismantle removes the given
+// inventory PO/SI server-side (RULE-5 sanctioned direct-canvas removal)
+// and returns the real yield + updated ledger numbers -- callers MUST
+// follow a successful call with the store's loadGame() to pull the
+// authoritative post-removal canvas (see DismantlePanel.tsx's module
+// comment for why: same auto-save race MarketPage.tsx's buy flow guards
+// against).
+export function postDismantle(itemUid: string, kind: 'po' | 'si'): Promise<ApiDismantleResponse> {
+  return scheduleJSON('/api/dismantle', { method: 'POST', body: JSON.stringify({ itemUid, kind }) });
+}
+
+/** The caller's own full 分解値 ledger (every id ever dismantled, with
+ * its cumulative count + current suppression). Backs DismantlePanel's
+ * per-item preview numbers. */
+export function fetchDismantleLedger(): Promise<ApiDismantleLedgerResponse> {
+  return scheduleJSON('/api/dismantle/ledger');
 }
 
 // ---- REQ-0036 P1-C: Dungeon Schedule + Warehouse client API ----
