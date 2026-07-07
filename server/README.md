@@ -702,7 +702,7 @@ immediately after the rollback restart).
 mode, default) and `STORAGE_BACKEND=pg DATABASE_URL=... node
 server/tests/api_test.cjs` (pg mode) both currently pass 46/46 -- run
 both after any `storage.cjs` change. `server/package.json` has `npm
-test`/`npm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
+test`/`pnpm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
 in the environment first).
 
 ## systemd (user unit, Node v24 via nvm)
@@ -755,8 +755,8 @@ service, no ingress change. Build output goes straight to `web/app/`, which
 Build + deploy:
 ```
 cd client
-npm install     # first time only; node_modules is gitignored
-npm run build   # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
+pnpm install     # first time only; node_modules is gitignored
+pnpm run build   # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
 ```
 The build output (`web/app/`) is committed directly to the repo -- it is the
 deployed artifact. There is no separate "deploy" step beyond running the
@@ -803,18 +803,18 @@ performs 404, so every test must run against the tunnel hostname.
 
 ```
 cd client
-npm install                 # first time only (installs @playwright/test + playwright)
-npx playwright install chromium   # first time only, downloads a browser
-npm run e2e                 # runs the whole suite (playwright test)
-npx playwright test e2e/bp-transfer.spec.ts   # run one file
+pnpm install                 # first time only (installs @playwright/test + playwright)
+pnpm exec playwright install chromium   # first time only, downloads a browser
+pnpm run e2e                 # runs the whole suite (playwright test)
+pnpm exec playwright test e2e/bp-transfer.spec.ts   # run one file
 ```
 
 ### Prereqs / fallback
 
-Chromium must be installed via `npx playwright install chromium`
+Chromium must be installed via `pnpm exec playwright install chromium`
 (downloads to `~/.cache/ms-playwright/`). If chromium fails to launch due
 to missing shared libraries on a fresh box, run
-`npx playwright install-deps --dry-run` to print the exact `apt-get`
+`pnpm exec playwright install-deps --dry-run` to print the exact `apt-get`
 command needed WITHOUT running it (this box has no sudo access for the
 agent account) -- hand that command to someone who can run it with sudo,
 then retry. On THIS box chromium was already installed and launched

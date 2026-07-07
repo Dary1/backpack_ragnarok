@@ -19,7 +19,7 @@ echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
 if [ -x node_modules/.bin/tsc ]; then
   node_modules/.bin/tsc -p tsconfig.server.json
 else
-  echo "typescript missing -- run: npm install" >&2; exit 1
+  echo "typescript missing -- run: pnpm install" >&2; exit 1
 fi
 echo "==== [3.6/7] engine type-surface drift check ===="
 node tools/check_engine_types.cjs
@@ -34,7 +34,7 @@ else
 fi
 if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   echo "==== [6/7] client typecheck + build ===="
-  (cd client && npm run build)
+  (cd client && pnpm run build)
 else
   echo "==== [6/7] client typecheck + build SKIPPED ===="
 fi
@@ -45,7 +45,7 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   # box's real GPU instead of CPU SwiftShader). Both are overridable: force the
   # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
   (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
-                E2E_GPU="${E2E_GPU:-1}" npm run e2e)
+                E2E_GPU="${E2E_GPU:-1}" pnpm run e2e)
 else
   echo "==== [7/7] client e2e SKIPPED ===="
 fi
