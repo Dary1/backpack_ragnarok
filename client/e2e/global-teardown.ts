@@ -110,6 +110,10 @@ function cleanupGuestAuthFiles(): void {
 }
 
 export default async function globalTeardown(): Promise<void> {
+  // REQ-0083: tear down the per-worker API fleet (parallel mode).
+  if (Number(process.env.E2E_PARALLEL || 0) > 0) {
+    try { execFileSync('node', [process.cwd() + '/../tools/e2e_fleet.cjs', 'stop'], { stdio: 'inherit' }); } catch (e) { /* best-effort */ }
+  }
   // Restore ALL tracked files even if one throws partway -- collect
   // errors and raise after attempting every restore, so a failure
   // restoring the profile (say) never skips restoring the content files

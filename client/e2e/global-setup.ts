@@ -223,6 +223,15 @@ function backupOne(sourcePath: string, backupPrefix: string, markerPath: string)
 }
 
 export default async function globalSetup(): Promise<void> {
+  // REQ-0083: in parallel mode, stand up one isolated backpack-api per worker
+  // first (see tools/e2e_fleet.cjs + client/e2e/local-proxy.cjs header routing).
+  // NOTE (incomplete): guest-creating specs still shell cli_invite against the
+  // live HOME, so their guests do not land on the worker backend -- see
+  // docs REQ-0083 for the remaining harness work. Serial mode is unaffected.
+  const parallelWorkers = Number(process.env.E2E_PARALLEL || 0);
+  if (parallelWorkers > 0) {
+    execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });
+  }
   backupOne(PROFILE_PATH, 'default_profile', BACKUP_MARKER_PATH);
   backupOne(LIVE_ITEMS_PATH, 'live_items', LIVE_ITEMS_BACKUP_MARKER_PATH);
   backupOne(LIVE_SIS_PATH, 'live_sis', LIVE_SIS_BACKUP_MARKER_PATH);
