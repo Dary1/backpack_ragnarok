@@ -127,6 +127,31 @@ export async function clearDevWarehouseDebris(phase: string): Promise<void> {
 // accumulation class clearDevWarehouseDebris already handles for
 // warehouse rows. Same call convention: direct to the API service port
 // (8802), no auth header (dev_mode NO-token fallback only).
+// clearDevScheduleRooms (REQ-0082): sibling of clearDevWarehouseDebris --
+// bulk-clears the dev fallback player's accumulated schedule rooms (canceled
+// rooms otherwise pile up every run; 154 seen in REQ-0082, which collapsed the
+// create panel's zero-rooms auto-open and broke the REQ-0043 specs). Same
+// dev_mode NO-token fallback caller, same 404-tolerance (deployed API may lag
+// the repo until backpack-api.service restarts).
+export async function clearDevScheduleRooms(phase: string): Promise<void> {
+  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  try {
+    const res = await ctx.post('/api/schedule/rooms/dev/clear');
+    const bodyText = await res.text();
+    if (res.status() === 404) {
+      console.warn(`[${phase}] POST /api/schedule/rooms/dev/clear -> 404 (running API predates the hook?) -- dev schedule rooms NOT cleared`);
+      return;
+    }
+    if (!res.ok()) {
+      throw new Error(`dev schedule-rooms cleanup failed: POST ${API_ORIGIN}/api/schedule/rooms/dev/clear -> ${res.status()} ${bodyText}`);
+    }
+    const { deleted } = JSON.parse(bodyText) as { deleted: number };
+    console.log(`[${phase}] cleared dev-player schedule rooms (POST /api/schedule/rooms/dev/clear deleted=${deleted})`);
+  } finally {
+    await ctx.dispose();
+  }
+}
+
 export async function clearDevEinherjarRecords(phase: string): Promise<void> {
   const ctx = await request.newContext({ baseURL: API_ORIGIN });
   try {
@@ -212,6 +237,7 @@ export default async function globalSetup(): Promise<void> {
   // cap headroom no matter what a previous (crashed, or pre-hook) run
   // left behind. See clearDevWarehouseDebris' own doc comment above.
   await clearDevWarehouseDebris('global-setup');
+  await clearDevScheduleRooms('global-setup');
   // REQ-0066: start the run with a guaranteed-empty dev-player hall. See
   // clearDevEinherjarRecords' own doc comment above.
   await clearDevEinherjarRecords('global-setup');

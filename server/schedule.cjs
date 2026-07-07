@@ -72,6 +72,7 @@ module.exports = {
   claimWarehouseItem: warehouse.claimWarehouseItem,
   finalizeClaimingItemsForCanvas: warehouse.finalizeClaimingItemsForCanvas,
   cancelRoom: rooms.cancelRoom,
+  devClearRooms: rooms.devClearRooms,
   listDungeonsAndFormations: core.listDungeonsAndFormations,
   devBackdateActiveRun: runs.devBackdateActiveRun,
   WAREHOUSE_CLAIM_TIMEOUT_MS: core.WAREHOUSE_CLAIM_TIMEOUT_MS,

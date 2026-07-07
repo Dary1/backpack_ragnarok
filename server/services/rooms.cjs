@@ -135,6 +135,15 @@ function cancelRoom(room) {
 }
 
 
+// devClearRooms (REQ-0082): bulk-deletes every room owned by `callerId` through
+// the storage chokepoint. Backs the dev-only POST /api/schedule/rooms/dev/clear
+// hook (gated to the dev_mode no-token fallback caller in the route, exactly
+// like devClearWarehouse) -- the E2E dev player's canceled rooms otherwise pile
+// up every run and collapse the schedule create panel's zero-rooms auto-open.
+function devClearRooms(callerId) {
+  return storage.clearRoomsForOwner(callerId);
+}
+
 module.exports = {
   resolveDungeonType,
   validateCancelPolicy,
@@ -143,4 +152,5 @@ module.exports = {
   getOwnRoomOr404,
   listOwnRooms,
   cancelRoom,
+  devClearRooms,
 };

@@ -537,6 +537,19 @@ function clearWarehouseForPlayer(playerId) {
   return backendMode() === 'pg' ? clearWarehouseForPlayerPg(playerId) : clearWarehouseForPlayerFiles(playerId);
 }
 
+// clearRoomsForOwner (REQ-0082): bulk-deletes EVERY room owned by `ownerId`
+// through the same listRooms/deleteRoom chokepoints a single-room DELETE uses,
+// so files and pg behave identically. Backs the dev-only POST /api/schedule/
+// rooms/dev/clear hook -- the E2E dev fallback player accumulated canceled
+// rooms across runs (nothing cleared them; 154 seen in REQ-0082), which
+// collapsed the schedule create panel's zero-rooms auto-open. Caller-scoped:
+// no client-suppliable playerId, so no real player's rooms are reachable.
+function clearRoomsForOwner(ownerId) {
+  const ids = listRooms().filter((r) => r && r.ownerId === ownerId).map((r) => r.id);
+  for (const id of ids) deleteRoom(id);
+  return ids.length;
+}
+
 // ---- gacha pending-roll store: files backend (REQ-0042) ----
 // Byte-for-byte the same shape as the warehouse files backend above --
 // one JSON doc per (playerId, rollUid), atomic write, directory-per-
@@ -975,6 +988,7 @@ module.exports = {
   deleteWarehouseItem,
   listWarehouseItems,
   clearWarehouseForPlayer,
+  clearRoomsForOwner,
   // REQ-0042: gacha pending-roll persistence
   GACHA_PENDING_DIR,
   gachaPendingPlayerDir,
