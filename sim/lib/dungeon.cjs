@@ -75,6 +75,9 @@ function runDungeon(opts) {
   // "attrition PERMANENT within a run").
   const unitSlots = ['unit1', 'unit2', 'unit3', 'unit4'];
   const compiled = unitSlots.map((slot, i) => compileUnitSnapshot(unitSnapshots[i], itemDefsById, formationId, slot));
+  // REQ-0095: tag unit membership onto each BP/PO (lost by the flatMap) so unit-scoped
+  // reactive triggers (OnUnitHit/OnUnitBeenHit) can resolve owner -> unit at runtime.
+  compiled.forEach(c => { for (const b of c.bps) b.unitSlot = c.unitSlot; for (const p of c.pos) p.unitSlot = c.unitSlot; });
   const allBps = compiled.flatMap(c => c.bps);
   const allPos = compiled.flatMap(c => c.pos);
 
