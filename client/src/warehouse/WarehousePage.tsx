@@ -74,6 +74,20 @@
 // dedicated warehouse.html document; REQ-0069 found this and explicitly
 // deferred adding it ("the warehouse lives as a Schedule tab today").
 // REQ-0086 lands that deferred entry.
+//
+// REQ-0091 (claim button press feedback + double-press guard, direct
+// user instruction via https://backpack-dev.qtie.jp/app/#/warehouse):
+// additive only, no change to the two-phase claim machinery itself.
+// Pressing a row's claim button now flashes that row's OWN frame (CSS
+// schedule-claim-flash, index.css) + plays a short synthesized chime
+// (warehouse/claimSfx.ts) immediately; the moment the claim POST's
+// response is known (success or error), the flash hands off to a
+// one-shot fade-out (schedule-claim-fadeout) and is removed from the DOM
+// once that finishes. A ref-based guard (claimLockRef) closes the same-
+// row double-press race the existing disabled={isClaiming} attribute
+// alone cannot (state updates are batched/async; the ref mutates
+// immediately). New hooks only -- no selector in the contract above was
+// renamed or removed.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   claimWarehouseItem as apiClaimWarehouseItem,
@@ -96,6 +110,7 @@ import { localizedName } from '../schedule/CreateRoomForm';
 import { formatCountdown } from '../schedule/RoomCard';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { playClaimChime } from './claimSfx';
 
 interface WarehousePageProps {
   locale: Locale;
@@ -114,6 +129,11 @@ const POLL_MS = 5000;
 const GRID_MIN = 1;
 const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout (same bound the old server-side first-fit used)
 const TAB_PULSE_MS = 1600; // >= the 3-cycle CSS animation's own 0.5s*3 duration, plus margin
+// REQ-0091: how long the claim-press flash's fade-out (CSS
+// schedule-warehouse-claim-fadeout, 0.4s) is allowed to play before its
+// class is removed from the DOM -- same "duration + margin" convention
+// as TAB_PULSE_MS above.
+const FLASH_FADEOUT_MS = 450;
 // REQ-0072: rows closer than this to expiry move into the mock's
 // DECAYING SOON section (its example rows read 期限 2日 / 期限 1日) and
 // wear the red TTL treatment. Supersedes the old 24h "warm label"
@@ -388,6 +408,21 @@ export function WarehousePage({ locale }: WarehousePageProps) {
   const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
+  // REQ-0091: per-row claim press-feedback (flash while the claim POST
+  // is in flight, then a one-shot fade-out once the response is known --
+  // see handleClaim's beginClaimFadeOut). Keyed by itemUid rather than a
+  // single value like claimingUid: claim-all walks rows sequentially,
+  // but a fade-out from the PREVIOUS row can still be finishing its own
+  // timer while the NEXT row's flash starts, and the two must not stomp
+  // each other.
+  const [claimFx, setClaimFx] = useState<Record<string, 'flash' | 'fadeout'>>({});
+  // REQ-0091: synchronous re-entrancy guard for handleClaim. claimingUid
+  // (above) is React state -- batched/async -- so a second press arriving
+  // before the button's own disabled={isClaiming} attribute actually
+  // repaints could still re-enter handleClaim for the SAME row. A ref
+  // mutates immediately on the calling thread, closing that window
+  // regardless of render timing.
+  const claimLockRef = useRef<Set<string>>(new Set());
   const [claimErrors, setClaimErrors] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -477,14 +512,49 @@ export function WarehousePage({ locale }: WarehousePageProps) {
     return () => clearTimeout(id);
   }, [toast]);
 
+  // REQ-0091: clears this row's flash/fade-out effect state entirely
+  // (no key at all, not just a falsy value) once the fade-out animation
+  // has had time to finish.
+  const clearClaimFx = (itemUid: string) => {
+    setClaimFx((prev) => {
+      if (!(itemUid in prev)) return prev;
+      const next = { ...prev };
+      delete next[itemUid];
+      return next;
+    });
+  };
+
+  // REQ-0091: the moment the claim POST's response is known (success OR
+  // error -- called from both places below), stop the looping flash and
+  // hand off to the one-shot fade-out, cleaning up after it finishes.
+  const beginClaimFadeOut = (itemUid: string) => {
+    setClaimFx((prev) => ({ ...prev, [itemUid]: 'fadeout' }));
+    setTimeout(() => clearClaimFx(itemUid), FLASH_FADEOUT_MS);
+  };
+
   const handleClaim = async (itemUid: string): Promise<ClaimOutcome> => {
+    // Same-row double-press guard (see claimLockRef's doc above) -- a
+    // press already in flight for this itemUid makes this a silent
+    // no-op rather than a second concurrent claim attempt.
+    if (claimLockRef.current.has(itemUid)) return 'error';
+    claimLockRef.current.add(itemUid);
     setClaimingUid(itemUid);
     setClaimErrors((prev) => ({ ...prev, [itemUid]: '' }));
+    // Press feedback, immediately, before the network round-trip even
+    // starts: flash this row's frame and play a short chime (see
+    // warehouse/claimSfx.ts). Ends via beginClaimFadeOut once the
+    // response below is back.
+    setClaimFx((prev) => ({ ...prev, [itemUid]: 'flash' }));
+    playClaimChime();
     try {
       // Phase 1: server marks the row 'claiming' and hands back the
       // content def id -- see server/schedule.cjs's claimWarehouseItem
       // doc for the full two-phase design/bug-#3 rationale.
       const claimed = await apiClaimWarehouseItem(itemUid);
+      // REQ-0091: the server's response for THIS claim is back -- begin
+      // the flash's fade-out now, regardless of what phase 2 (engine
+      // placement/auto-save, below) still has to do.
+      beginClaimFadeOut(itemUid);
 
       const engine = snapshot.engine;
       const state = snapshot.state;
@@ -562,12 +632,18 @@ export function WarehousePage({ locale }: WarehousePageProps) {
       await reload();
       return 'claimed';
     } catch (e) {
+      // REQ-0091: covers BOTH "the claim POST itself came back as an
+      // error" and any later synchronous failure in this same try block
+      // (e.g. the defensive "inventory not ready" throw) -- either way
+      // the attempt has concluded, so the flash ends here too.
+      beginClaimFadeOut(itemUid);
       const message = isApiErrorStatus(e, 409)
         ? friendlyScheduleError(locale, e)
         : t(locale, 'schedule.warehouse.claimFailed') + (e instanceof Error ? e.message : String(e));
       setClaimErrors((prev) => ({ ...prev, [itemUid]: message }));
       return 'error';
     } finally {
+      claimLockRef.current.delete(itemUid);
       setClaimingUid(null);
     }
   };
@@ -665,9 +741,14 @@ export function WarehousePage({ locale }: WarehousePageProps) {
     const qty = item.qty ?? 1;
     const src = provenanceFor(item);
     const isClaiming = claimingUid === item.itemUid;
+    // REQ-0091: press-feedback class on the row's OWN frame -- 'flash'
+    // while the claim POST is in flight, 'fadeout' once the response is
+    // back (see handleClaim/beginClaimFadeOut); absent otherwise.
+    const fx = claimFx[item.itemUid];
+    const fxClass = fx === 'flash' ? ' schedule-claim-flash' : fx === 'fadeout' ? ' schedule-claim-fadeout' : '';
     return (
       <article
-        className={`schedule-warehouse-row rar ${rarThemeClass(entry?.rarity)}${danger ? ' is-danger' : ''}${rowKind === 'tm' ? ' schedule-warehouse-row-stack' : ''}`}
+        className={`schedule-warehouse-row rar ${rarThemeClass(entry?.rarity)}${danger ? ' is-danger' : ''}${rowKind === 'tm' ? ' schedule-warehouse-row-stack' : ''}${fxClass}`}
         key={item.itemUid}
         data-testid="schedule-warehouse-row"
         data-item-uid={item.itemUid}
