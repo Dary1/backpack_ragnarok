@@ -133,6 +133,123 @@ T('REQ-0078 reactive: pure every_secs content emits NO reactive_proc (baseline i
   eq(r.events.filter(e => e.ev === 'reactive_proc').length, 0, 'no reactive procs for non-reactive content');
 });
 
+
+// =====================================================================
+// 1c. REQ-0079 Linker destination triggers (OnLinkDestinationHit / BeenHit)
+// =====================================================================
+T('REQ-0079 compile: linkDests resolved correctly at compile time (frozen beam destination map)', () => {
+  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  const byId = {}; for (const bp of compiled.bps) byId[bp.id] = bp;
+  eq(byId.alpha.linkDests.slice().sort(), ['beta', 'gamma'], 'alpha beams reach beta (dir1) and gamma (dir4)');
+  eq(byId.beta.linkDests, ['alpha'], 'beta beams back to alpha (mutual pair)');
+  eq(byId.gamma.linkDests, ['delta'], 'gamma dir2 beam reaches delta; dir3 beam flies off-canvas (excluded)');
+  eq(byId.delta.linkDests, ['gamma'], 'delta beams back to gamma (mutual pair)');
+});
+
+T('REQ-0079 offensive: OnLinkDestinationHit fires when the destination BP lands a hit', () => {
+  const scenarioX = combat.deepCopy(scenario);
+  // alpha linker (destinations: beta, gamma) bears the offensive trigger.
+  scenarioX.bps.find(b => b.id === 'alpha').linker.effects = [
+    { trigger: { t: 'OnLinkDestinationHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
+  ];
+  // Guaranteed-offense synthetic weapon dropped into BETA own footprint.
+  scenarioX.pos.push({ uid: 'pBetaStriker', id: 'test_linkstriker', loc: 'grid', cell: [1, 5], rot: 0 });
+  const testItemDefs = Object.assign({}, itemDefsById, {
+    test_linkstriker: {
+      id: 'test_linkstriker', name: 'Test Link Striker', tags: ['Weapon'], shape: [[0, 0]], icon: 'icon-test',
+      effects: [{ trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } }],
+      modes: ['battle'],
+    },
+  });
+  const compiled = combat.compileUnitSnapshot(scenarioX, testItemDefs, 'formation1', 'unit1');
+  const result = combat.runEncounter({
+    rng: combat.makeRng('req0079-offense-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    encounterDef: { id: 'req0079-off', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 20 },
+    seedLabel: 'req0079-offense-seed',
+  });
+  const procs = result.events.filter(e => e.ev === 'reactive_proc' && e.trigger === 'OnLinkDestinationHit');
+  ok(procs.length > 0, 'alpha OnLinkDestinationHit must fire when beta (its destination) lands a hit');
+  eq(procs[0].verb, 'apply_status', 'the fired rider applies its configured verb');
+  eq(procs[0].status, 'Poison', 'rider applies Poison as configured');
+});
+
+T('REQ-0079 defensive: OnLinkDestinationBeenHit fires (any-of-multiple-destinations) exactly when a matching destination BP is actually hit -- ground-truth-checked both ways in one run', () => {
+  const scenarioX = combat.deepCopy(scenario);
+  // alpha destinations: beta, gamma ("any" scope -- REQ-0079).
+  scenarioX.bps.find(b => b.id === 'alpha').linker.effects = [
+    { trigger: { t: 'OnLinkDestinationBeenHit' }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+  ];
+  // delta destination: gamma only.
+  scenarioX.bps.find(b => b.id === 'delta').linker.effects = [
+    { trigger: { t: 'OnLinkDestinationBeenHit' }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+  ];
+  const compiled = combat.compileUnitSnapshot(scenarioX, itemDefsById, 'formation1', 'unit1');
+  const fierceEnemy = { fierce_smasher: { id: 'fierce_smasher', name: 'Fierce', hp: [400, 400], footprint: [1, 1], skills: ['fierce_smash'] } };
+  const fierceSkills = { fierce_smash: { trigger: { t: 'every_secs', s: [0.5, 0.5] }, verb: { t: 'strike', n: [4, 4] }, attack_profile: { edge: ['top'], penetration: 8, aoe: 4 } } };
+  const result = combat.runEncounter({
+    rng: combat.makeRng('req0079-defense-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: fierceEnemy, skillDefsById: fierceSkills,
+    encounterDef: { id: 'req0079-def', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['fierce_smasher'] }, deadline_secs: 40 },
+    seedLabel: 'req0079-defense-seed',
+  });
+  const byId = {}; for (const bp of compiled.bps) byId[bp.id] = bp;
+  const betaHit = byId.beta.hp < byId.beta.hpMax;
+  const gammaHit = byId.gamma.hp < byId.gamma.hpMax;
+  ok(betaHit || gammaHit, 'test setup sanity: the wide-aoe enemy must land at least one hit on beta or gamma over 40s (else this test is vacuous)');
+  const alphaProcs = result.events.filter(e => e.ev === 'reactive_proc' && e.trigger === 'OnLinkDestinationBeenHit' && e.src === 'alpha');
+  const deltaProcs = result.events.filter(e => e.ev === 'reactive_proc' && e.trigger === 'OnLinkDestinationBeenHit' && e.src === 'delta');
+  eq(alphaProcs.length > 0, betaHit || gammaHit, 'alpha (destinations beta+gamma, any scope) fires iff beta or gamma was actually hit');
+  eq(deltaProcs.length > 0, gammaHit, 'delta (destination gamma only) fires iff gamma specifically was hit -- proves destination-specific gating, not any-hit-anywhere');
+});
+
+T('REQ-0079: an unconnected linker (Beam.to === null) never fires either trigger, even though its own BP is in active combat', () => {
+  const lonelyScenario = {
+    linked: true,
+    bps: [{
+      id: 'lonely', name: 'Lonely BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1],
+      linker: {
+        off: [0, 0], dirs: [0], // dir 0 = straight up, off the top edge immediately -> to:null
+        effects: [
+          { trigger: { t: 'OnLinkDestinationHit' }, verb: { t: 'strike', n: [3, 3] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+          { trigger: { t: 'OnLinkDestinationBeenHit' }, verb: { t: 'strike', n: [3, 3] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+        ],
+      },
+      hpMax: 100,
+    }],
+    pos: [{ uid: 'pLonely', id: 'test_lonely_striker', loc: 'grid', cell: [1, 1], rot: 0 }],
+    layout: { ROWS: 8, COLS: 8 },
+    sis: [],
+  };
+  // blade requires cond:'assembled' with a hilt to fire (see live_items.json)
+  // -- irrelevant to what THIS test probes, so use a synthetic always-fires
+  // weapon instead (same pattern as the offensive test above).
+  const lonelyItemDefs = Object.assign({}, itemDefsById, {
+    test_lonely_striker: {
+      id: 'test_lonely_striker', name: 'Test Lonely Striker', tags: ['Weapon'], shape: [[0, 0]], icon: 'icon-test',
+      effects: [{ trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } }],
+      modes: ['battle'],
+    },
+  });
+  const compiled = combat.compileUnitSnapshot(lonelyScenario, lonelyItemDefs, 'formation1', 'unit1');
+  eq(compiled.bps[0].linkDests, [], 'sanity: this linker must genuinely have no destination');
+  const result = combat.runEncounter({
+    rng: combat.makeRng('req0079-lonely-seed'), encIndex: 0,
+    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    encounterDef: { id: 'req0079-lonely', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 20 },
+    seedLabel: 'req0079-lonely-seed',
+  });
+  const tookDamage = compiled.bps[0].hp < compiled.bps[0].hpMax;
+  const dealtDamage = result.events.some(e => e.ev === 'ray_fire' && e.src === 'test_lonely_striker');
+  ok(tookDamage, 'test setup sanity: lonely BP must actually take damage from the enemy over 20s');
+  ok(dealtDamage, 'test setup sanity: lonely BP own blade must actually have fired at the enemy');
+  const linkProcs = result.events.filter(e => e.ev === 'reactive_proc' && (e.trigger === 'OnLinkDestinationHit' || e.trigger === 'OnLinkDestinationBeenHit'));
+  eq(linkProcs.length, 0, 'an unconnected linker must never fire either destination trigger, despite real combat activity on its own BP');
+});
+
 // =====================================================================
 // 2. Ray geometry
 // =====================================================================
