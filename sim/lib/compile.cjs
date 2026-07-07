@@ -40,6 +40,56 @@ function localBpCells(bpDef) {
   return bpDef.shape.map(([dr, dc]) => [bpDef.origin[0] + dr, bpDef.origin[1] + dc]);
 }
 
+// REQ-0079: local re-implementation of mock-src/engine.js's linkerCell/
+// traceBeams, against the pre-compile scenario's plain bpDef literals
+// (LOCAL, pre-formation-offset coordinates) -- same replicate-the-pure-
+// shape-math-locally pattern as localBpCells/localCellsOfPO above (we do
+// NOT call engine.js, zero risk of touching its live objects). DIRS table
+// and the walk/break-on-first-hit algorithm are copied verbatim from
+// mock-src/engine.js's traceBeams so `to` resolution matches bit-for-bit;
+// `path`/`mutual` are omitted (rendering-only, unneeded by sim dispatch).
+const LINK_DIRS = { 0: [-1, 0], 1: [-1, 1], 2: [0, 1], 3: [1, 1], 4: [1, 0], 5: [1, -1], 6: [0, -1], 7: [-1, -1] };
+function localLinkerCell(bpDef) {
+  return [bpDef.origin[0] + bpDef.linker.off[0], bpDef.origin[1] + bpDef.linker.off[1]];
+}
+function localTraceBeams(bpDefs, layout) {
+  const lk = {};
+  for (const bpDef of bpDefs) {
+    const [lr, lc] = localLinkerCell(bpDef);
+    lk[lr + ',' + lc] = bpDef.id;
+  }
+  const beams = [];
+  for (const bpDef of bpDefs) {
+    for (const d of ((bpDef.linker && bpDef.linker.dirs) || [])) {
+      let [r, c] = localLinkerCell(bpDef);
+      let to = null;
+      while (true) {
+        r += LINK_DIRS[d][0]; c += LINK_DIRS[d][1];
+        if (r < 1 || r > layout.ROWS || c < 1 || c > layout.COLS) break;
+        const hit = lk[r + ',' + c];
+        if (hit) { to = hit; break; }
+      }
+      beams.push({ from: bpDef.id, dir: d, to });
+    }
+  }
+  return beams;
+}
+// Per-BP destination map derived from localTraceBeams: bpId -> deduplicated
+// array of destination BP ids across ALL of that BP's beams (excludes
+// null/off-canvas). Frozen once, at compile time (REQ-0079 "Open" note: the
+// sim snapshot is static per encounter -- no in-combat BP re-placement --
+// so a compile-time destination map cannot go stale mid-encounter).
+function linkDestsByBp(bpDefs, layout) {
+  const beams = localTraceBeams(bpDefs, layout);
+  const out = {};
+  for (const bm of beams) {
+    if (!bm.to) continue;
+    if (!out[bm.from]) out[bm.from] = [];
+    if (!out[bm.from].includes(bm.to)) out[bm.from].push(bm.to);
+  }
+  return out;
+}
+
 // compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot)
 // unitState: deep-copied {bps:[...], pos:[...], layout:{ROWS,COLS}} (shape
 // of content/live/scenario.json). itemDefsById: map id->PO def (from
@@ -48,9 +98,12 @@ function localBpCells(bpDef) {
 //
 // Returns a compiled snapshot:
 // {
-//   bps: [{id,name,hpMax,hp,localCells,fieldCells,statusBag}],
+//   bps: [{id,name,hpMax,hp,localCells,fieldCells,statusBag,linkDests,linkerEffects}],
 //   pos: [{uid,id,def,localCells,fieldCells,effects (buff-folded), bpId}],
 // }
+// (REQ-0079: linkDests = this BP's beam destination BP id(s), frozen at
+// compile time; linkerEffects = effects borne by this BP's own Linker,
+// deep-copied verbatim -- REQ-0078 Phase 1b, no buff-folding applied.)
 function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
   const st = deepCopy(unitState);
   const formation = FORMATIONS[formationId];
@@ -64,6 +117,7 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
   const rOff = box.rowMin - 1, cOff = box.colMin - 1;
   const toField = ([r, c]) => [r + rOff, c + cOff];
 
+  const linkDests = linkDestsByBp(st.bps, st.layout);
   const bps = st.bps.map(bpDef => {
     const localCells = localBpCells(bpDef);
     const fieldCells = localCells.map(toField);
@@ -72,6 +126,8 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
       id: bpDef.id, name: bpDef.name, hpMax, hp: hpMax,
       localCells, fieldCells, statusBag: freshStatusBag(),
       alive: true,
+      linkDests: linkDests[bpDef.id] || [],
+      linkerEffects: deepCopy((bpDef.linker && bpDef.linker.effects) || []),
     };
   });
   const bpByLocalCellKey = new Map();
@@ -190,5 +246,7 @@ module.exports = {
   cellsChebyshevAdjacent,
   localCellsOfPO,
   localBpCells,
+  localTraceBeams,
+  linkDestsByBp,
   compileUnitSnapshot,
 };
