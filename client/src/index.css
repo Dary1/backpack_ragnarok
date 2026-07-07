@@ -4987,3 +4987,146 @@ html, body {
   .ragnarok-cd-num { font-size: 52px; }
   .ragnarok-halls { flex-direction: column; }
 }
+
+/* ---- REQ-0052: Dex Card subwindow (dex/DexCardWindow.tsx) ----
+   Same scrim/modal visual language as the workshop casting-result modal
+   (.workshop-result-scrim/.workshop-result above) -- a fixed, centered
+   overlay using the shared `panel ornate` frame, re-themed generically
+   (not forge-specific) since this subwindow can open from ANY page. */
+.dexcard-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 8, 11, 0.72);
+  padding: 20px;
+}
+.dexcard-window {
+  position: relative;
+  width: min(420px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 0;
+}
+.dexcard-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 10px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.16);
+}
+.dexcard-name {
+  font-size: 15px;
+  font-weight: 800;
+}
+.dexcard-grow {
+  flex: 1;
+}
+.dexcard-close-btn {
+  background: none;
+  border: none;
+  color: var(--bone-3, #9aa1ad);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+}
+.dexcard-close-btn:hover {
+  color: var(--bone, #eee);
+}
+.dexcard-body {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 14px;
+  padding: 14px 16px;
+}
+.dexcard-loading,
+.dexcard-error {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 20px 16px;
+}
+.dexcard-fig {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: radial-gradient(circle at 50% 40%, #1d242f, #0e1218 82%);
+  border: 1px solid var(--border-lo, rgba(255, 255, 255, 0.08));
+  border-radius: 3px;
+  min-height: 96px;
+}
+.dexcard-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+.dexcard-stat {
+  display: flex;
+  gap: 8px;
+}
+.dexcard-stat-k {
+  color: var(--bone-3, #9aa1ad);
+  letter-spacing: 0.06em;
+}
+.dexcard-eff {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.dexcard-flavor {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--bone-3, #9aa1ad);
+  line-height: 1.5;
+}
+.dexcard-foot {
+  padding: 10px 16px 14px;
+  border-top: 1px solid rgba(201, 169, 89, 0.12);
+}
+.dexcard-fulllink {
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  color: var(--gold, #c9a959);
+}
+.dexcard-fulllink:hover {
+  text-decoration: underline;
+}
+/* Dex catalog preview trigger (Dex.tsx's per-card "i" button) -- a
+   small, secondary affordance layered onto the existing .dex-card,
+   deliberately not part of the main .dex-card-summary button (see
+   Dex.tsx's module comment on why it is a sibling control, not an
+   onClick fork inside the same button). */
+.dex-card {
+  position: relative;
+}
+.dex-card-preview-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(201, 169, 89, 0.35);
+  background: rgba(6, 8, 11, 0.55);
+  color: var(--bone-3, #9aa1ad);
+  font-size: 12px;
+  font-style: italic;
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dex-card-preview-btn:hover {
+  color: var(--bone, #eee);
+  border-color: var(--gold, #c9a959);
+}

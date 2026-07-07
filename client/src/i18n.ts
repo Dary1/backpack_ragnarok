@@ -112,6 +112,14 @@ const DICT = {
     'dex.tagAll': 'Tag: all',
     'dex.noMatch': 'No items match.',
     'dex.backToList': '← Back to list',
+    // Dex Card subwindow (dex/DexCardWindow.tsx) -- REQ-0052.
+    'dexcard.previewAria': 'Preview card',
+    'dexcard.loading': 'Loading…',
+    'dexcard.notFound': 'Could not load this card.',
+    'dexcard.close': 'Close',
+    'dexcard.viewFull': 'View full page →',
+    'dexcard.slot': 'Slot',
+    'dexcard.short': 'Short',
 
     // Dex detail (ItemDetailCard.tsx)
     'dex.detail.tags': 'Tags (hierarchy)',
@@ -743,6 +751,14 @@ const DICT = {
     'dex.tagAll': 'タグ: すべて',
     'dex.noMatch': '該当するアイテムがありません。',
     'dex.backToList': '← 一覧に戻る',
+    // Dex Card subwindow (dex/DexCardWindow.tsx) -- REQ-0052.
+    'dexcard.previewAria': 'カードをプレビュー',
+    'dexcard.loading': '読み込み中…',
+    'dexcard.notFound': 'カードを読み込めませんでした。',
+    'dexcard.close': '閉じる',
+    'dexcard.viewFull': '詳細ページを見る →',
+    'dexcard.slot': 'スロット',
+    'dexcard.short': '略称',
 
     'dex.detail.tags': 'タグ（階層）',
     'dex.detail.name': '名前',

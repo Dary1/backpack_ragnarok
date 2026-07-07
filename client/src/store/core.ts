@@ -106,6 +106,16 @@ const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'workshop', '
 
 export const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
+// REQ-0052: a Dex card subwindow's footer links to the canonical full
+// page via '#/dex/<id>' -- a deep-link hash carrying an id SEGMENT,
+// distinct from the plain '#/dex' route hash. Checked the same way
+// INVITE_HASH_RE is (see routing.ts's initRouting()/onHashChange): if
+// the CURRENT hash matches this, the route resolves to 'dex' (still a
+// plain Route member, no union widening needed) AND dexFocusId is set so
+// Dex.tsx can jump straight to that entry's detail view on load, instead
+// of the bare catalog grid.
+export const DEX_ITEM_HASH_RE = /^#\/dex\/(.+)$/;
+
 // REQ-0069: the EMPTY hash ('', '#' or '#/') is the landing (title)
 // screen -- the app's boot route. Named routes keep their '#/<name>'
 // hashes, and an UNKNOWN hash still falls back to 'backpacks' (NOT the
@@ -163,6 +173,13 @@ export interface StoreSnapshot {
    * field, auto-clears after a few seconds" pattern (no toast library in
    * this app). null when nothing should be shown. */
   presetDeleteRefused: string | null;
+  /** REQ-0052: pending Dex deep-link target id, set by initRouting()/
+   * onHashChange when the current hash matches DEX_ITEM_HASH_RE
+   * ('#/dex/<id>', e.g. a DexCardWindow footer link). Dex.tsx consumes
+   * this once (jumps straight to that entry's detail view) then calls
+   * clearDexFocusId() -- null the rest of the time, including on every
+   * plain '#/dex' navigation that carries no id segment. */
+  dexFocusId: string | null;
 }
 
 export let snapshot: StoreSnapshot = {
@@ -180,6 +197,7 @@ export let snapshot: StoreSnapshot = {
   me: null,
   welcomeBanner: null,
   presetDeleteRefused: null,
+  dexFocusId: null,
 };
 
 const listeners = new Set<() => void>();
