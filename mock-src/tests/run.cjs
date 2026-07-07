@@ -364,8 +364,13 @@ T('inventory: PO fully-inside-one-BP containment law (accept inside, reject stra
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
-  pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],linker:{off:[0,0],dirs:[]}});
+  // REQ-0092: dummy linker off:[1,0] (row 2 of each BP's own shape) is
+  // deliberately NOT [0,0] here -- this test only exercises row 1 cells
+  // ((1,1)-(1,3)), and [0,0] would put the linker cell exactly where w1
+  // is asserted to legally land, now that invCanPlaceCells enforces the
+  // linker-cell reservation (see canvas_spec.md's Linker section).
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[1,0],dirs:[]}});
+  pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],linker:{off:[1,0],dirs:[]}});
   pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
   // fully inside bpA: [1,1] covers cells (1,1)-(1,2), both inside bpA (cols 1-2) -- accept
   ok(E.invCanPlacePO(st,0,'w1',0,[1,1]).ok,'wide_po fully inside bpA should be accepted');
@@ -381,12 +386,52 @@ T('inventory: PO fully-inside-one-BP containment law (accept inside, reject stra
 function invBPFixtureSingleCellEdge(E){
   // A BP occupying only cell (1,1); a wide_po anchored at (1,1) covers (1,1)[on BP] and (1,2)[free space] --
   // must be rejected (straddles BP edge into open page space, not "fully inside").
+  // REQ-0092: off:[10,10] is a deliberately OUT-OF-SHAPE placeholder -- bpX's
+  // real shape is a single cell ([0,0] only), so there is no second cell to
+  // park an inert dummy linker on; pointing it far outside the 6x6 grid this
+  // sub-engine uses guarantees it can never coincide with (1,1)/(1,2), the
+  // only two cells this check exercises.
   const ITEMS={wide_po:{name:'Wide PO',tags:[],shape:[[0,0],[0,1]],icon:'icon-x',sockets:[]}};
-  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[{bps:[{id:'bpX',name:'BP X',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[0,0],dirs:[]}}],pos:[{uid:'w9',id:'wide_po',loc:'grid',cell:[5,5],rot:0}],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]}};
+  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[{bps:[{id:'bpX',name:'BP X',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[10,10],dirs:[]}}],pos:[{uid:'w9',id:'wide_po',loc:'grid',cell:[5,5],rot:0}],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]}};
   const E2=Engine.create(ITEMS,{},{ROWS:6,COLS:6},{po:{},socket:{}});
   const r=E2.invCanPlacePO(st,0,'w9',0,[1,1]);
   return {ok:(!r.ok&&r.why==='straddles BP edge')};
 }
+
+T('REQ-0092 inventory: invCanPlacePO rejects a page-resident BP\'s own linker cell (mirrors canvas\'s Linker-cell rule)',()=>{
+  const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
+  const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+  const st=freshState();
+  const pg=st.inv.pages[0];
+  // bpA's linker sits at local off [0,0] -- i.e. absolute cell (1,1), its
+  // own origin/top-left cell -- exactly like a real BP authored with the
+  // Linker at its first shape cell (a completely ordinary, unremarkable
+  // authoring choice; nothing here is a degenerate/edge-case shape).
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  // small_po (1x1) -- NOT wide_po -- so each anchor below tests exactly
+  // one cell, isolating the linker-cell rule from the separate BP-
+  // containment/straddle rules already covered above.
+  pg.pos.push({uid:'w1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
+  // BUG (pre-fix): invCanPlaceCells never built a linker map for inventory
+  // pages at all (unlike canPlaceCells on canvas), so a PO could land
+  // directly on the BP's own linker cell -- exactly the placement warehouse
+  // claim's client-side first-fit (firstFitPlace, WarehousePage.tsx) or a
+  // manual drag could produce. w1 anchored at [1,1] covers ONLY the linker
+  // cell.
+  const onLinker=E.invCanPlacePO(st,0,'w1',0,[1,1]);
+  ok(!onLinker.ok&&onLinker.why==='Linker cell','PO landing on a page-resident BP\'s linker cell must be rejected: '+JSON.stringify(onLinker));
+  // Sanity: the cell immediately to the right of the linker ((1,2), still
+  // fully inside bpA) remains perfectly legal -- this is a linker-specific
+  // carve-out, not a blanket "can't place inside this BP at all" regression.
+  const beside=E.invCanPlacePO(st,0,'w1',0,[1,2]);
+  ok(beside.ok,'a non-linker cell fully inside the same BP must still be legal: '+JSON.stringify(beside));
+  // invMovePO (the actual mutator firstFitPlace calls) must refuse too, and
+  // must leave w1 exactly where it started (all-or-nothing, no partial move).
+  const before=JSON.parse(JSON.stringify(pg.pos.find(p=>p.uid==='w1')));
+  const mv=E.invMovePO(st,0,'w1',[1,1]);
+  ok(!mv.ok,'invMovePO must also refuse a linker-cell destination');
+  eq(pg.pos.find(p=>p.uid==='w1'),before,'w1 unchanged after a refused move onto the linker cell');
+});
 
 T('inventory: free SI 1-cell occupancy + collision with PO/BP/SI',()=>{
   const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();

@@ -770,13 +770,40 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     return m;
   }
+  // linkerMapIn(container): same math as the canvas linkerMap() helper,
+  // parameterized over an explicit container (mirrors cellBPMapIn's own
+  // relationship to cellBPMap) -- linkerCell(bp) is already
+  // container-independent (pure function of the BP itself, same reason
+  // bpCellsIn just reuses bpCells), so this only needs to build the
+  // {cellKey:bpId} map over `container.bps` instead of `st.bps`.
+  function linkerMapIn(container){
+    const m={};
+    for(const bp of container.bps)m[key(...linkerCell(bp))]=bp.id;
+    return m;
+  }
   // invCanPlaceCells: legality of `cells` (already-translated absolute
   // [row,col] cells) within one page container. Unlike canPlaceCells
   // (canvas), landing on NO BP is legal here (free placement); landing on
   // a BP requires ALL cells in the SAME BP (containment law, still shared
   // with canvas).
+  //
+  // BUG FIX (REQ-0092): a BP's linker cell is itself an occupant of one of
+  // the BP's own cells (canvas_spec.md: "PO -- anything placed into a
+  // BP's cells: items, weapons, and the Linker"), exactly like
+  // canPlaceCells() already enforces on the canvas via its own `lk`
+  // check -- but this inventory-page twin never built the equivalent map
+  // at all, so a PO could be first-fit-placed (warehouse claim's
+  // firstFitPlace) or manually dragged directly onto a page-resident
+  // BP's linker cell, producing an invalid placement. "Linker dormancy"
+  // (see this file's linkStateInv comment, near migrateState) only
+  // concerns the BEAM/CONNECTION computations going quiet while a BP
+  // sits in a page -- it says nothing about the linker's own cell
+  // reservation, which is pure shape geometry and holds regardless of
+  // dormancy. Fixed by adding the same linkerMapIn(container)-backed
+  // check, in the same relative position canPlaceCells uses (after
+  // BP-membership is resolved, before the shared occupancy check).
   function invCanPlaceCells(container,cells,exclUids){
-    const cbp=cellBPMapIn(container),occ=invOccupancy(container,exclUids);
+    const cbp=cellBPMapIn(container),occ=invOccupancy(container,exclUids),lk=linkerMapIn(container);
     let bp=null,anyBp=false;
     for(const [r,c] of cells){
       if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells,why:'outside page'};
@@ -786,6 +813,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
         if(bp&&b!==bp)return {ok:false,cells,why:'spans two BPs'};
         bp=b;
       }
+      if(lk[key(r,c)])return {ok:false,cells,why:'Linker cell'};
       if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
     }
     if(anyBp){
