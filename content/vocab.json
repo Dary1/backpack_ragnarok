@@ -1,5 +1,5 @@
 {
- "version": 6,
+ "version": 7,
  "modes": ["battle", "detection", "unlock"],
  "po_tags": {
   "Weapon": null,
@@ -35,7 +35,9 @@
   "OnBPHierarchyHit",
   "OnUnitHit",
   "OnBPBeenHit",
-  "OnUnitBeenHit"
+  "OnUnitBeenHit",
+  "OnLinkDestinationHit",
+  "OnLinkDestinationBeenHit"
  ],
  "verbs": [
   "strike",
@@ -87,7 +89,9 @@
   "OnBPHierarchyHit": ["SI", "PO", "Linker"],
   "OnUnitHit": ["SI", "PO", "Linker", "EnemySkill"],
   "OnBPBeenHit": ["SI", "PO", "Linker"],
-  "OnUnitBeenHit": ["SI", "PO", "Linker", "EnemySkill"]
+  "OnUnitBeenHit": ["SI", "PO", "Linker", "EnemySkill"],
+  "OnLinkDestinationHit": ["Linker"],
+  "OnLinkDestinationBeenHit": ["Linker"]
  },
  "ranged_verb_params": {
   "strike": [

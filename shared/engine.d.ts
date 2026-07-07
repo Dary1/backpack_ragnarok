@@ -94,6 +94,14 @@ export type SIDefMap = Record<string, SIDef>;
 export interface BPLinker {
   off: Offset;
   dirs: number[]; // 0..7, see engine.js DIRS
+  /** REQ-0078 Phase 1b / REQ-0079: optional reactive effects borne by this
+   * Linker (e.g. OnLinkDestinationHit/OnLinkDestinationBeenHit content-
+   * authored effect literals). Deliberately untyped here -- mirrors
+   * ItemDef/SIDef, which likewise never type their content-authored
+   * `effects` array in this file (validated by content/vocab.json's
+   * trigger_domains + tools/eff_render.cjs, not by TS). Absent on every
+   * Linker predating this field, same optionality convention as BP.hpMax. */
+  effects?: any[];
 }
 
 export interface BP {

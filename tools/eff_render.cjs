@@ -93,6 +93,8 @@ function triggerPrefixEN(trig) {
     case 'OnUnitHit': return 'When this unit lands a hit: ';
     case 'OnBPBeenHit': return 'When this BP is damaged: ';
     case 'OnUnitBeenHit': return 'When this unit is damaged: ';
+    case 'OnLinkDestinationHit': return "When this link's destination BP lands a hit: ";
+    case 'OnLinkDestinationBeenHit': return "When this link's destination BP is damaged: ";
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
     default: return trig.t + ': ';
   }
@@ -182,6 +184,8 @@ function triggerPrefixJA(trig) {
     case 'OnUnitHit': return '所属ユニットが命中させた時: ';
     case 'OnBPBeenHit': return 'このBPが被弾した時: ';
     case 'OnUnitBeenHit': return '所属ユニットが被弾した時: ';
+    case 'OnLinkDestinationHit': return '連結先BPが命中させた時: ';
+    case 'OnLinkDestinationBeenHit': return '連結先BPが被弾した時: ';
     case 'adjacent': return '隣接する' + trig.tag + ': ';
     default: return trig.t + ': ';
   }
