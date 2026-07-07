@@ -2,7 +2,7 @@
 // sim/lib/packs.cjs -- REQ-0047 (d): enemy pack compilation (enemy def schema v2).
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { freshStatusBag } = require('./status.cjs');
+const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
 
 function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox) {
   // enemyFieldBox: {rowMin,colMin,rowMax,colMax} region of the enemy field
@@ -26,10 +26,16 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
       if (!sdef) throw new Error('compileEnemyPack: missing skill def ' + sid);
       return sdef;
     });
+    // REQ-0093: battle_start status_immune / bonus_vs_status fold, from
+    // this enemy's own skills list (an EnemySkill's own innate passive,
+    // e.g. bone-and-sinew undead immune to Poison).
+    const statusBag = freshStatusBag();
+    const { immuneSet, bonusVsStatus } = foldBattleStartStatusVerbs(skills);
+    statusBag._immune = immuneSet;
     return {
       id: eid + '#' + idx, defId: eid, name: def.name, hp: hpMax, hpMax,
-      footprint: [fh, fw], fieldCells, skills, statusBag: freshStatusBag(),
-      alive: true, ownerId: eid + '#' + idx,
+      footprint: [fh, fw], fieldCells, skills, statusBag,
+      alive: true, ownerId: eid + '#' + idx, bonusVsStatus,
     };
   });
   return enemies;

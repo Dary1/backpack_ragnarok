@@ -5,7 +5,7 @@
 const { deepCopy } = require('./core.cjs');
 const { makeRng } = require('./rng.cjs');
 const { parseBox, FORMATIONS } = require('./formation.cjs');
-const { freshStatusBag } = require('./status.cjs');
+const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
 
 function cellsChebyshevAdjacent(cellsA, cellsB) {
   for (const [ra, ca] of cellsA) {
@@ -93,6 +93,24 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
     const q = (typeof p.q === 'number') ? p.q : 0;
     return { uid: p.uid, id: p.id, def, localCells, fieldCells, bpId, q };
   });
+
+  // REQ-0093: battle_start status_immune / bonus_vs_status fold -- unlike
+  // buff_host/buff_self_per_tag/buff_adjacent (trigger:"passive", folded
+  // below into a flat strike/multi_strike n-range shift), these use
+  // trigger:"battle_start" and shift PER-BP STATE (an immunity Set / a
+  // bonus list checked against the LIVE target at hit time) rather than
+  // this PO's own damage range -- folded directly onto the owning BP here,
+  // once, before any combat event fires.
+  for (const bp of bps) {
+    const bpEffects = [];
+    for (const p of posRaw) {
+      if (p.bpId !== bp.id) continue;
+      for (const eff of (p.def.effects || [])) bpEffects.push(eff);
+    }
+    const { immuneSet, bonusVsStatus } = foldBattleStartStatusVerbs(bpEffects);
+    bp.statusBag._immune = immuneSet;
+    bp.bonusVsStatus = bonusVsStatus;
+  }
 
   // ---- Buff folding (S1.4 OQ2 "fold everything") ----
   // Combination formula (documented interpretation, see sim/README.md):

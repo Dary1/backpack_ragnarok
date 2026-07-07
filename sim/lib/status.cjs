@@ -16,7 +16,56 @@ const BUFF_STATUSES = new Set(['Regen', 'Spikes', 'Haste']);
 //   Spikes:{stacks}, Stun:{remain}, Weakness:{stacks,remain}, Haste:{stacks,remain} }
 function freshStatusBag() { return {}; }
 
+// =====================================================================
+// REQ-0093: status_kind resolution -- the 9-keyword closed vocab
+// (content/vocab.json "status_kinds") exposing BOTH existing engine
+// classification axes (polarity: buff/debuff, 2 buckets; mechanical:
+// STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content, with
+// zero new classification data anywhere (reuse-only, per this REQ's design
+// doc, docs/REQ/built/REQ-0093-status-kind-targeting.md).
+// =====================================================================
+const STATUS_KINDS = ['buff', 'debuff', 'dot', 'hot', 'cadence_slow', 'cadence_fast', 'onhit_reflect', 'suspend', 'dmg_reduce'];
+
+function resolveStatusKind(keyword) {
+  if (keyword === 'debuff') return new Set(DEBUFF_STATUSES);
+  if (keyword === 'buff') return new Set(BUFF_STATUSES);
+  return new Set(Object.keys(STATUS_KIND).filter(s => STATUS_KIND[s] === keyword));
+}
+
+// resolveVerbStatusSet: a status_immune/bonus_vs_status verb object carries
+// EXACTLY ONE of `status` (literal name) XOR `status_kind` (9-value
+// keyword) -- resolves either form to a concrete Set of status names.
+function resolveVerbStatusSet(verb) {
+  if (verb.status_kind) return resolveStatusKind(verb.status_kind);
+  return new Set([verb.status]);
+}
+
+// foldBattleStartStatusVerbs: scans an effects/skills list (PO effects or
+// EnemySkill skills -- both are {trigger,verb}-shaped) for battle_start
+// status_immune / bonus_vs_status entries and folds them into one
+// {immuneSet, bonusVsStatus} result. Shared by compile.cjs (per-BP, across
+// that BP's placed POs) and packs.cjs/encounter.cjs (per-enemy/entity,
+// across its own skills).
+function foldBattleStartStatusVerbs(effects) {
+  const immuneSet = new Set();
+  const bonusVsStatus = [];
+  for (const eff of (effects || [])) {
+    if (!eff || !eff.trigger || eff.trigger.t !== 'battle_start' || !eff.verb) continue;
+    if (eff.verb.t === 'status_immune') {
+      for (const s of resolveVerbStatusSet(eff.verb)) immuneSet.add(s);
+    } else if (eff.verb.t === 'bonus_vs_status') {
+      bonusVsStatus.push({ set: resolveVerbStatusSet(eff.verb), n: eff.verb.n });
+    }
+  }
+  return { immuneSet, bonusVsStatus };
+}
+
 function applyStatus(bag, name, n, ampMult) {
+  // REQ-0093: flat immunity fold (status_immune, battle_start) -- checked
+  // here, once, at the single chokepoint every apply_status/add_on_hit_status
+  // call already routes through (direct hits, splash, reactive riders,
+  // amp_status), rather than re-checking at each call site individually.
+  if (bag._immune && bag._immune.has(name)) return;
   const magnitude = (ampMult && ampMult > 0) ? n * ampMult : n;
   if (name === 'Stun') {
     // "no magnitude stack; refresh duration = n s"
@@ -136,6 +185,10 @@ module.exports = {
   STATUS_KIND,
   DEBUFF_STATUSES,
   BUFF_STATUSES,
+  STATUS_KINDS,
+  resolveStatusKind,
+  resolveVerbStatusSet,
+  foldBattleStartStatusVerbs,
   freshStatusBag,
   applyStatus,
   cleanse,

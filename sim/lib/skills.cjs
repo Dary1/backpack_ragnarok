@@ -11,6 +11,26 @@ function effectStreamName(ownerUid, effectIdx) {
   return 'effect/' + ownerUid + '/' + effectIdx;
 }
 
+// REQ-0093: bonus_vs_status -- flat additive bonus rolled FRESH per hit
+// (mirrors strike's own per-hit n roll; NOT pre-folded into a static
+// scalar at compile time like buff_host, since the condition -- target's
+// LIVE status bag -- is dynamic across the encounter) when the target
+// currently carries any status in a matching bonus's resolved Set.
+// Documented interpretation: the bonus is added AFTER weaknessMultiplier
+// is applied to the base roll (i.e. the bonus itself is not
+// weakness-scaled) -- "add the bonus before the hit is applied" (REQ-0093)
+// is read as "before applyDamage", not "before weaknessMultiplier".
+function bonusVsStatusAmount(targetBag, bonusList, rng) {
+  if (!bonusList || !bonusList.length) return 0;
+  let bonus = 0;
+  for (const b of bonusList) {
+    let matches = false;
+    for (const s of b.set) { if (targetBag[s]) { matches = true; break; } }
+    if (matches) bonus += rng.range(b.n[0], b.n[1]);
+  }
+  return bonus;
+}
+
 // Actor wrapper: unifies BP occupants (player field) and enemy occupants
 // (enemy field) behind one shape so ray-hit / status / HP logic doesn't
 // need to branch on kind everywhere. Built once per encounter from the
@@ -47,7 +67,7 @@ function makeEnemyActor(en) {
 
 // dealHitOnField: applies a skill's verb(s) to a single occupant actor
 // (S3.3). Returns {amount, hpAfter, dstLabel, isDiscovery}.
-function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events) {
+function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus) {
   if (mode === 'detection') {
     // "a hit IS the find, damage irrelevant" -- no HP change, just discovery.
     return { amount: 0, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: true };
@@ -57,6 +77,7 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events) {
   if (verb.t === 'strike') {
     let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
     hitAmt *= weaknessMultiplier(actor.statusBag);
+    hitAmt += bonusVsStatusAmount(actor.statusBag, attackerBonusVsStatus, rng); // REQ-0093
     actor.applyDamage(hitAmt);
     amount += hitAmt;
   } else if (verb.t === 'multi_strike') {
@@ -65,6 +86,9 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events) {
     for (let i = 0; i < verb.hits; i++) {
       let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
       hitAmt *= weaknessMultiplier(actor.statusBag);
+      // REQ-0093: bonus_vs_status re-checked + re-rolled per sub-hit,
+      // consistent with multi_strike's existing per-sub-hit independence.
+      hitAmt += bonusVsStatusAmount(actor.statusBag, attackerBonusVsStatus, rng);
       actor.applyDamage(hitAmt);
       amount += hitAmt;
     }
@@ -121,13 +145,13 @@ function fireSkillRay(opts) {
       const hits = [];
       for (const a of targetActors) {
         if (!a.alive) continue;
-        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events);
+        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus);
         if (r.amount > 0) landedHits.push({ actor: a, amount: r.amount });
         hits.push({ dst: r.dstLabel, amount: r.amount });
       }
       return hits;
     }
-    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events);
+    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus);
     if (r.amount > 0) landedHits.push({ actor: occ, amount: r.amount });
     return r;
   }
@@ -143,10 +167,12 @@ function fireSkillRay(opts) {
       let dmgAmount = 0;
       if (mode !== 'detection' && verbEff.verb.t === 'strike') {
         dmgAmount = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+        dmgAmount += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream); // REQ-0093
         a.applyDamage(dmgAmount);
       } else if (mode !== 'detection' && verbEff.verb.t === 'multi_strike') {
         for (let i = 0; i < verbEff.verb.hits; i++) {
-          const hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+          let hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+          hitAmt += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream);
           a.applyDamage(hitAmt);
           dmgAmount += hitAmt;
         }
@@ -256,6 +282,7 @@ module.exports = {
   effectStreamName,
   makeBPActor,
   makeEnemyActor,
+  bonusVsStatusAmount,
   dealHitOnField,
   fireSkillRay,
   applyReactiveVerbToTarget,

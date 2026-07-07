@@ -57,6 +57,14 @@ function buildEffectForVerb(verbT) {
     verb.tagKind = 'type';
     verb.tag = POTagNames[0]; // Weapon
   }
+  // REQ-0093: status_immune (flat immunity, no ranged param) / bonus_vs_status
+  // (ranged 'n' bonus, already populated above via ranged_verb_params).
+  // Default per-verb fixture uses the LITERAL `status` form; dedicated
+  // status_kind-form fixtures (one polarity + one mechanical keyword each,
+  // for both verbs) are added separately below in extraPO.
+  if (verbT === 'status_immune' || verbT === 'bonus_vs_status') {
+    verb.status = vocab.statuses[0]; // Burn
+  }
 
   // choose a trigger appropriate to the verb; buff_adjacent pairs naturally with "adjacent"
   let trigger;
@@ -64,6 +72,8 @@ function buildEffectForVerb(verbT) {
     trigger = { t: 'adjacent', tagKind: 'type', tag: POTagNames[0] };
   } else if (verbT === 'buff_self_per_tag' || verbT === 'buff_host') {
     trigger = { t: 'passive' };
+  } else if (verbT === 'status_immune' || verbT === 'bonus_vs_status') {
+    trigger = { t: 'battle_start' }; // REQ-0093: matches vocab trigger_domains.battle_start
   } else if (verbT === 'battle_start_test') {
     trigger = { t: 'battle_start' };
   } else {
@@ -121,6 +131,33 @@ const extraPO = [
     id: 'selftest_trig_battle_start', name: 'Selftest trig battle_start', tags: [POTagNames[0]],
     rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_battle_start', sockets: [],
     effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'block', n: [8, 12] } }],
+    modes: ['battle'],
+  },
+  // REQ-0093: status_kind-form fixtures -- one polarity keyword (debuff)
+  // + one mechanical keyword (dot, the one non-singleton bucket) for each
+  // of status_immune / bonus_vs_status, per this REQ's own test-coverage note.
+  {
+    id: 'selftest_status_immune_kind_debuff', name: 'Selftest status_immune kind debuff', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_status_immune_kind_debuff', sockets: [],
+    effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'status_immune', status_kind: 'debuff' } }],
+    modes: ['battle'],
+  },
+  {
+    id: 'selftest_status_immune_kind_dot', name: 'Selftest status_immune kind dot', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_status_immune_kind_dot', sockets: [],
+    effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'status_immune', status_kind: 'dot' } }],
+    modes: ['battle'],
+  },
+  {
+    id: 'selftest_bonus_vs_status_kind_debuff', name: 'Selftest bonus_vs_status kind debuff', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_bonus_vs_status_kind_debuff', sockets: [],
+    effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'bonus_vs_status', status_kind: 'debuff', n: [3, 5] } }],
+    modes: ['battle'],
+  },
+  {
+    id: 'selftest_bonus_vs_status_kind_dot', name: 'Selftest bonus_vs_status kind dot', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_bonus_vs_status_kind_dot', sockets: [],
+    effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'bonus_vs_status', status_kind: 'dot', n: [3, 5] } }],
     modes: ['battle'],
   },
 ];

@@ -1,5 +1,5 @@
 {
- "version": 6,
+ "version": 7,
  "modes": ["battle", "detection", "unlock"],
  "po_tags": {
   "Weapon": null,
@@ -53,7 +53,20 @@
   "lifesteal",
   "haste",
   "slow_enemy",
-  "bonus_vs_blocked"
+  "bonus_vs_blocked",
+  "status_immune",
+  "bonus_vs_status"
+ ],
+ "status_kinds": [
+  "buff",
+  "debuff",
+  "dot",
+  "hot",
+  "cadence_slow",
+  "cadence_fast",
+  "onhit_reflect",
+  "suspend",
+  "dmg_reduce"
  ],
  "statuses": [
   "Burn",
@@ -131,6 +144,9 @@
   ],
   "bonus_vs_blocked": [
    "n"
+  ],
+  "bonus_vs_status": [
+   "n"
   ]
  },
  "excluded_attested": {
@@ -157,6 +173,9 @@
   "bonus_vs_blocked": "research sec5 BH Block convention ('Block expires... consumed before HP') combined with BB Spikes cap-vs-hit pattern; a bonus keyed on a defended target is an extrapolated-but-attested combination of block+on_hit verb templates",
   "Stun": "research sec6 BB framework verb 'Stun'",
   "Weakness": "research sec6 BH 'Rage / Weak: each hit deals +X / -X damage' (paired-opposite status convention)",
-  "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'"
+  "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'",
+  "status_immune": "REQ-0093 (2026-07-07): flat immunity to one named vocab.statuses entry, OR to an entire status_kind class, folded at battle_start. Classic archetype fit (bone-and-sinew undead shouldn't suffer Poison; a charging brute can't be Chilled mid-rush). NOTE: this REQ adds status_immune/bonus_vs_status to the vocab independently of REQ-0077 Rev.2's own (uncommitted, as of this REQ) draft of the same two verbs -- see this REQ's file for the discrepancy; the two additions are compatible in shape.",
+  "bonus_vs_status": "REQ-0093 (2026-07-07): extends bonus_vs_blocked's precedent (a bonus keyed on the target's condition) to key on an inflicted status -- or an entire status_kind class -- instead of a block event. Lets an attacker punish a target already carrying a matching status.",
+  "status_kinds": "REQ-0093 (2026-07-07): closed 9-value keyword vocab exposing BOTH of sim/lib/status.cjs's existing engine-side classifications (polarity: buff/debuff; mechanical: STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content as a single field choice, so a content author picks exactly one axis-or-name rather than two potentially-conflicting fields. Zero new classification data -- pure reuse of STATUS_KIND/DEBUFF_STATUSES/BUFF_STATUSES, resolved at sim runtime via sim/lib/status.cjs's resolveStatusKind()."
  }
 }

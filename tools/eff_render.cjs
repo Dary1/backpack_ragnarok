@@ -51,6 +51,23 @@ function capitalize(s) {
 
 var TAG_KIND_EN = { type: 'type', element: 'element' };
 
+// REQ-0093: status_kind class phrases (EN) -- one entry per closed
+// 9-keyword vocab value (content/vocab.json "status_kinds"); singleton
+// mechanical buckets are phrased by mechanism, not by hardcoding today's
+// one member name, so phrasing stays correct if a second status is ever
+// added to that bucket.
+var STATUS_KIND_PHRASE_EN = {
+  buff: 'all buffs',
+  debuff: 'all debuffs',
+  dot: 'anything burning/poisoned',
+  hot: 'anything regenerating',
+  cadence_slow: 'anything chilled',
+  cadence_fast: 'anything hasted',
+  onhit_reflect: 'anything with Spikes',
+  suspend: 'anything stunned',
+  dmg_reduce: 'anything weakened'
+};
+
 // =========================================================================
 // English renderer
 // =========================================================================
@@ -78,6 +95,10 @@ function verbPhraseEN(verb) {
     case 'haste': return 'reduce tick interval by ' + fmtNum(verb.n, 'en');
     case 'slow_enemy': return 'slow enemy by ' + fmtNum(verb.n, 'en');
     case 'bonus_vs_blocked': return '+' + fmtNum(verb.n, 'en') + ' bonus damage vs blocked target';
+    case 'status_immune':
+      return 'immune: ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
+    case 'bonus_vs_status':
+      return '+' + fmtNum(verb.n, 'en') + ' bonus damage vs ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
     default: return verb.t;
   }
 }
@@ -141,6 +162,19 @@ var STATUS_JA = {
 var STAT_JA = { damage: 'ダメージ' };
 var TAGKIND_JA = { type: 'タイプ', element: '属性' };
 
+// REQ-0093: status_kind class phrases (JA) -- mirrors STATUS_KIND_PHRASE_EN.
+var STATUS_KIND_PHRASE_JA = {
+  buff: 'すべてのバフ',
+  debuff: 'すべての衰弱効果',
+  dot: '継続ダメージ状態（火傷・毒）',
+  hot: '再生状態',
+  cadence_slow: '氷結状態',
+  cadence_fast: '加速状態',
+  onhit_reflect: '棘（反射）状態',
+  suspend: '気絶状態',
+  dmg_reduce: '衰弱状態'
+};
+
 function statusJA(s) { return STATUS_JA[s] || s; }
 function statJA(s) { return STAT_JA[s] || s; }
 
@@ -167,6 +201,10 @@ function verbPhraseJA(verb) {
     case 'haste': return 'ティック間隔を ' + fmtNum(verb.n, 'ja') + ' 短縮';
     case 'slow_enemy': return '敵を ' + fmtNum(verb.n, 'ja') + ' 減速';
     case 'bonus_vs_blocked': return 'ブロック中の対象に追加ダメージ +' + fmtNum(verb.n, 'ja');
+    case 'status_immune':
+      return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'に免疫';
+    case 'bonus_vs_status':
+      return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'の相手に追加ダメージ +' + fmtNum(verb.n, 'ja');
     default: return verb.t;
   }
 }

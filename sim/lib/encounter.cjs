@@ -4,7 +4,7 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 const { TUNABLES } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
-const { freshStatusBag, tickStatuses } = require('./status.cjs');
+const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs } = require('./status.cjs');
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
@@ -49,10 +49,14 @@ function runEncounter(opts) {
     const centerRow = Math.floor((1 + FIELD_ROWS) / 2), centerCol = Math.floor((1 + FIELD_COLS) / 2);
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([centerRow + dr, centerCol + dc]);
+    const entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    const entityStatusBag = freshStatusBag();
+    const entityFold = foldBattleStartStatusVerbs(entitySkills); // REQ-0093
+    entityStatusBag._immune = entityFold.immuneSet;
     entity = {
       id: ed.id, name: ed.name, hp: (ed.hp || 20), hpMax: (ed.hp || 20), fieldCells,
-      statusBag: freshStatusBag(), alive: true, ownerId: ed.id,
-      masked: !!ed.masked, skills: (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean),
+      statusBag: entityStatusBag, alive: true, ownerId: ed.id,
+      masked: !!ed.masked, skills: entitySkills, bonusVsStatus: entityFold.bonusVsStatus,
     };
   }
 
@@ -119,7 +123,7 @@ function runEncounter(opts) {
       if (isPlayerSide) {
         const s = schedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
         if (s.modes.includes(encounterDef.mode)) {
-          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, partyPos, playerActors)), ownerId: s.ownerId };
+          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, partyPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, partyPos, partyBps) };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           // telegraph is derived + emitted at fire-time as an informational
           // preview line (S4.5) since this is a server-authoritative batch
@@ -150,7 +154,7 @@ function runEncounter(opts) {
               const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
               reactDef.push({ ev: 'reactive_proc', trigger: 'OnUnitBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
               fireSkillRay({
-                attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react' },
+                attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
                 attackProfile: ap, verbEff: sk, mode: 'battle',
                 targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
                 rng, streamPrefix: 'reactive/OnUnitBeenHit/' + ent.raw.ownerId + '/' + ev.t,
@@ -167,7 +171,7 @@ function runEncounter(opts) {
         const s = enemySchedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
         if (s && s.raw.alive) {
           const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-          const attacker = { fieldCells: s.raw.fieldCells, ownerId: s.ownerId };
+          const attacker = { fieldCells: s.raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: s.raw.bonusVsStatus || [] };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: ev.t });
           const rayEvents = [];
@@ -217,7 +221,7 @@ function runEncounter(opts) {
       if (entity && entity.skills.length > 0) {
         const skill = entity.skills[0];
         const attackProfile = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-        const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id };
+        const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id, bonusVsStatus: entity.bonusVsStatus || [] };
         const rayEvents = [];
         fireSkillRay({
           attacker, attackProfile, verbEff: skill, mode: 'battle',
@@ -266,10 +270,20 @@ function playerActorsInSameBpAs(ownerUid, partyPos, playerActors) {
   return bpActor ? [bpActor.fieldCells] : [];
 }
 
+// REQ-0093: looks up the owning BP's compiled bonusVsStatus list (folded
+// at compile time in compile.cjs) for a firing PO's ownerUid.
+function bonusVsStatusForOwnerUid(ownerUid, partyPos, partyBps) {
+  const po = partyPos.find(p => p.uid === ownerUid);
+  if (!po) return [];
+  const bp = partyBps.find(b => b.id === po.bpId);
+  return (bp && bp.bonusVsStatus) || [];
+}
+
 
 module.exports = {
   runEncounter,
   tickAndEmit,
   unionCells,
   playerActorsInSameBpAs,
+  bonusVsStatusForOwnerUid,
 };

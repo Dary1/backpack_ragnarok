@@ -412,6 +412,132 @@ T('status interaction: Stun does not pause DoT ticks (Burn/Poison keep ticking t
 });
 
 // =====================================================================
+// 4b. REQ-0093: status_kind targeting for status_immune / bonus_vs_status
+// =====================================================================
+T('REQ-0093 resolveStatusKind: all 9 keywords resolve to the exact expected Set', () => {
+  eq([...combat.resolveStatusKind('buff')].sort(), [...combat.BUFF_STATUSES].sort(), 'buff');
+  eq([...combat.resolveStatusKind('debuff')].sort(), [...combat.DEBUFF_STATUSES].sort(), 'debuff');
+  // dot is the one non-singleton mechanical bucket -- spot-checked exactly.
+  eq([...combat.resolveStatusKind('dot')].sort(), ['Burn', 'Poison'], 'dot must resolve to exactly {Burn, Poison}');
+  eq([...combat.resolveStatusKind('hot')], ['Regen'], 'hot');
+  eq([...combat.resolveStatusKind('cadence_slow')], ['Chill'], 'cadence_slow');
+  eq([...combat.resolveStatusKind('cadence_fast')], ['Haste'], 'cadence_fast');
+  eq([...combat.resolveStatusKind('onhit_reflect')], ['Spikes'], 'onhit_reflect');
+  eq([...combat.resolveStatusKind('suspend')], ['Stun'], 'suspend');
+  eq([...combat.resolveStatusKind('dmg_reduce')], ['Weakness'], 'dmg_reduce');
+  // every keyword covered, none silently falls through to an empty Set
+  for (const kw of combat.STATUS_KINDS) {
+    ok(combat.resolveStatusKind(kw).size > 0, 'keyword "' + kw + '" must resolve to a non-empty Set');
+  }
+});
+
+T('REQ-0093 status_immune (literal): applyStatus is suppressed at the bag._immune chokepoint, non-immune bag unaffected', () => {
+  const immuneBag = combat.freshStatusBag();
+  immuneBag._immune = new Set(['Poison']);
+  combat.applyStatus(immuneBag, 'Poison', 5);
+  ok(!immuneBag.Poison, 'immune actor must never accumulate the named status');
+
+  const plainBag = combat.freshStatusBag();
+  combat.applyStatus(plainBag, 'Poison', 5);
+  eq(plainBag.Poison.stacks, 5, 'a bag with no _immune set behaves exactly as before this REQ');
+});
+
+T('REQ-0093 status_immune (status_kind=debuff): suppresses EVERY debuff status, buffs unaffected', () => {
+  const bag = combat.freshStatusBag();
+  bag._immune = combat.resolveStatusKind('debuff');
+  combat.applyStatus(bag, 'Burn', 3);
+  combat.applyStatus(bag, 'Poison', 3);
+  combat.applyStatus(bag, 'Chill', 3);
+  combat.applyStatus(bag, 'Weakness', 3);
+  combat.applyStatus(bag, 'Stun', 3);
+  combat.applyStatus(bag, 'Regen', 3);
+  combat.applyStatus(bag, 'Haste', 3);
+  ok(!bag.Burn && !bag.Poison && !bag.Chill && !bag.Weakness && !bag.Stun, 'all 5 debuffs suppressed');
+  ok(bag.Regen && bag.Haste, 'buffs must still apply normally -- immunity to "debuff" kind does not touch buffs');
+});
+
+T('REQ-0093 bonus_vs_status (literal): strike gains the rolled bonus only when target carries the named status', () => {
+  const rng = combat.makeRng('req0093-bonus-literal').stream('t');
+  const events = [];
+  // Burn (not a dmg_reduce-kind status) keeps this test isolated from
+  // weaknessMultiplier, which is ALSO keyed off the target's own bag --
+  // using Weakness here would conflate the two mechanisms.
+  const targetWith = combat.makeEnemyActor({ id: 'e1', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: { Burn: { stacks: 1 } } });
+  const bonus = [{ set: new Set(['Burn']), n: [3, 3] }];
+  const r1 = combat.dealHitOnField(targetWith, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events, bonus);
+  eq(r1.amount, 13, 'base 10 + flat bonus 3 = 13 when target carries Burn');
+
+  const targetWithout = combat.makeEnemyActor({ id: 'e2', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {} });
+  const r2 = combat.dealHitOnField(targetWithout, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events, bonus);
+  eq(r2.amount, 10, 'no bonus when target does not carry the status');
+});
+
+T('REQ-0093 bonus_vs_status (status_kind=dot): bonus applies vs EITHER member status of the resolved kind-Set', () => {
+  const rng = combat.makeRng('req0093-bonus-kind').stream('t');
+  const events = [];
+  const bonus = [{ set: combat.resolveStatusKind('dot'), n: [5, 5] }];
+  const burning = combat.makeEnemyActor({ id: 'e3', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: { Burn: { stacks: 1 } } });
+  const poisoned = combat.makeEnemyActor({ id: 'e4', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: { Poison: { stacks: 1 } } });
+  const chilled = combat.makeEnemyActor({ id: 'e5', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: { Chill: { stacks: 1 } } });
+  eq(combat.dealHitOnField(burning, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events, bonus).amount, 15, 'Burn is in the dot kind-Set');
+  eq(combat.dealHitOnField(poisoned, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events, bonus).amount, 15, 'Poison is in the dot kind-Set');
+  eq(combat.dealHitOnField(chilled, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events, bonus).amount, 10, 'Chill (cadence_slow) is NOT in the dot kind-Set -- no bonus');
+});
+
+T('REQ-0093 bonus_vs_status: multi_strike re-checks + re-rolls the bonus independently per sub-hit', () => {
+  const rng = combat.makeRng('req0093-bonus-multi').stream('t');
+  const events = [];
+  const target = combat.makeEnemyActor({ id: 'e6', hp: 1000, hpMax: 1000, fieldCells: [[1, 1]], statusBag: { Burn: { stacks: 1 } } });
+  const bonus = [{ set: new Set(['Burn']), n: [2, 2] }];
+  const r = combat.dealHitOnField(target, { verb: { t: 'multi_strike', n: [10, 10], hits: 3 } }, 1, rng, 'battle', events, bonus);
+  eq(r.amount, 36, '3 sub-hits x (10 base + 2 bonus) = 36');
+});
+
+T('REQ-0093 compile-time fold (enemy): compileEnemyPack attaches statusBag._immune + bonusVsStatus from the enemy\'s own battle_start skills', () => {
+  const enemyDefsById = {
+    poison_immune_goblin: { id: 'poison_immune_goblin', name: 'Poison-Immune Goblin', hp: [20, 20], footprint: [1, 1], skills: ['tiny_bite', 'skill_immune_poison', 'skill_bonus_vs_weak'] },
+  };
+  const skillDefsById = {
+    tiny_bite: { trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+    skill_immune_poison: { trigger: { t: 'battle_start' }, verb: { t: 'status_immune', status: 'Poison' } },
+    skill_bonus_vs_weak: { trigger: { t: 'battle_start' }, verb: { t: 'bonus_vs_status', status: 'Weakness', n: [4, 4] } },
+  };
+  const rng = combat.makeRng('req0093-pack-fold');
+  const enemies = combat.compileEnemyPack({ enemyIds: ['poison_immune_goblin'] }, enemyDefsById, skillDefsById, rng, { rowMin: 1, colMin: 1, rowMax: 18, colMax: 26 });
+  const en = enemies[0];
+  ok(en.statusBag._immune.has('Poison'), 'compiled enemy must carry the folded immunity Set');
+  eq(en.bonusVsStatus.length, 1, 'compiled enemy must carry the folded bonus_vs_status list');
+  ok(en.bonusVsStatus[0].set.has('Weakness'), 'folded bonus entry targets Weakness');
+
+  // and the fold actually suppresses application through the real chokepoint:
+  combat.applyStatus(en.statusBag, 'Poison', 5);
+  ok(!en.statusBag.Poison, 'a compiled, genuinely immune enemy must reject Poison via applyStatus');
+});
+
+T('REQ-0093 compile-time fold (player BP): compileUnitSnapshot attaches bp.statusBag._immune + bp.bonusVsStatus from that BP\'s placed POs', () => {
+  const unitState = {
+    bps: [{ id: 'bpA', name: 'BP A', shape: [[0, 0]], origin: [1, 1], hpMax: 100 }],
+    pos: [{ uid: 'poA', id: 'itemImmune', cell: [1, 1], rot: 0, loc: 'grid' }],
+    layout: { ROWS: 8, COLS: 8 },
+  };
+  const itemDefsById = {
+    itemImmune: {
+      id: 'itemImmune', shape: [[0, 0]],
+      effects: [
+        { trigger: { t: 'battle_start' }, verb: { t: 'status_immune', status_kind: 'debuff' } },
+        { trigger: { t: 'battle_start' }, verb: { t: 'bonus_vs_status', status_kind: 'dot', n: [6, 6] } },
+      ],
+    },
+  };
+  const snap = combat.compileUnitSnapshot(unitState, itemDefsById, 'formation1', 'unit1');
+  const bp = snap.bps[0];
+  ok(bp.statusBag._immune.has('Burn') && bp.statusBag._immune.has('Stun'), 'debuff-kind immunity folded onto the owning BP covers every debuff member');
+  ok(!bp.statusBag._immune.has('Regen'), 'buff statuses must not be swept into a debuff-kind immunity');
+  eq(bp.bonusVsStatus.length, 1, 'bonus_vs_status folded onto the owning BP');
+  ok(bp.bonusVsStatus[0].set.has('Burn') && bp.bonusVsStatus[0].set.has('Poison'), 'dot-kind bonus set is {Burn, Poison}');
+});
+
+// =====================================================================
 // 5. Mode filtering
 // =====================================================================
 T('mode filtering: non-battle-mode PO does not fire during a battle encounter, no backlog on resume', () => {
