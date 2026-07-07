@@ -134,6 +134,35 @@ T('REQ-0078 reactive: pure every_secs content emits NO reactive_proc (baseline i
 });
 
 // =====================================================================
+// 1c. REQ-0095 player-side reactive triggers (OnHit taxonomy Phase 1b)
+// =====================================================================
+T('REQ-0095 reactive: player OnUnitHit rider + OnUnitBeenHit retaliation fire', () => {
+  const gridPos = (scenario.pos || []).filter(p => p.loc === 'grid');
+  let atk = null;
+  for (const p of gridPos) { const d = itemDefsById[p.id]; if (d && (d.effects || []).some(f => f.trigger && f.trigger.t === 'every_secs' && (f.verb.t === 'strike' || f.verb.t === 'multi_strike'))) { atk = p.id; break; } }
+  ok(atk, 'scenario has an attacking (every_secs strike) item');
+  const inj = JSON.parse(JSON.stringify(itemDefsById));
+  inj[atk].effects = (inj[atk].effects || []).concat([
+    { trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
+    { trigger: { t: 'OnUnitBeenHit' }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+  ]);
+  const ed = { agg: { id: 'agg', name: 'Agg', hp: [400, 400], footprint: [2, 2], skills: ['big_bite'] } };
+  const sd = { big_bite: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [8, 8] }, attack_profile: { edge: ['top'], penetration: 8, aoe: 3 } } };
+  const r = combat.runDungeon({ masterSeed: 'req0095-player', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['agg'] }, deadline_secs: 30 }] }, unitSnapshots: fourUnitSnapshots(), itemDefsById: inj, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
+  const rp = r.events.filter(e => e.ev === 'reactive_proc');
+  ok(rp.filter(e => e.trigger === 'OnUnitHit').length > 0, 'player OnUnitHit rider fires on landing a hit');
+  ok(rp.filter(e => e.trigger === 'OnUnitBeenHit').length > 0, 'player OnUnitBeenHit fires when a player BP is hit');
+  ok(r.events.some(e => e.ev === 'ray_fire' && String(e.src).indexOf('#react') >= 0), 'player OnUnitBeenHit produces a retaliation ray');
+});
+T('REQ-0095 reactive: player determinism (isolated reactive RNG)', () => {
+  const inj = JSON.parse(JSON.stringify(itemDefsById));
+  const atk = (scenario.pos || []).filter(p => p.loc === 'grid').map(p => p.id).find(id => (itemDefsById[id].effects || []).some(f => f.trigger && f.trigger.t === 'every_secs'));
+  inj[atk].effects = (inj[atk].effects || []).concat([{ trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } }]);
+  const mk = () => combat.runDungeon({ masterSeed: 'req0095-det', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] }, unitSnapshots: fourUnitSnapshots(), itemDefsById: inj, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs, formationId: 'formation1', level: 1, participants: ['pA'] });
+  ok(combat.toJSONL(mk().events) === combat.toJSONL(mk().events), 'same seed -> identical player reactive replay');
+});
+
+// =====================================================================
 // 2. Ray geometry
 // =====================================================================
 T('ray geometry: entry projection+jitter stays within field bounds across many draws', () => {
