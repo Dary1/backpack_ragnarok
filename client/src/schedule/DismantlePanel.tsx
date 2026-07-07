@@ -22,13 +22,24 @@
 // GUARD" comment): without it, this client's stale in-memory copy of the
 // dismantled item would silently resurrect it on the next unrelated
 // auto-save PUT.
+//
+// REQ-0090: the hoard list below is multi-select (hold+drag adds every
+// row the pointer passes over, Shift+Click adds one row, Ctrl+Click
+// range-selects by index -- see useListMultiSelect.ts for the exact
+// semantics and why Ctrl/Shift are swapped from the usual OS convention
+// here). Confirming with N items selected dismantles all N via N
+// sequential postDismantle calls (not a new batch endpoint -- REQ-0090's
+// own documented v1 default: these remain N independent removals, and a
+// partial failure surfaces honestly rather than claiming a false
+// atomicity guarantee).
 import { useEffect, useMemo, useState } from 'react';
-import { ApiError, fetchDismantleLedger, postDismantle, type ApiDismantleLedgerEntry, type ApiDismantleResponse } from '../api';
+import { ApiError, fetchDismantleLedger, postDismantle, type ApiDismantleLedgerEntry } from '../api';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
 import { ShapeGrid } from '../dex/ShapeGrid';
 import { t, type TranslationKey } from '../i18n';
 import { loadGame, useGameStore, type Locale } from '../store';
 import type { GameState, ItemDef, SIDef } from '../engine/engine.d.ts';
+import { useListMultiSelect } from './useListMultiSelect';
 
 interface DismantlableItem {
   itemUid: string;
@@ -74,6 +85,15 @@ interface DismantlePanelProps {
   onClose: () => void;
 }
 
+/** REQ-0090: the outcome of one confirm click, which may have dismantled
+ * more than one item -- deliberately NOT `ApiDismantleResponse` (that's
+ * one server call's own response shape); this is this panel's own local
+ * aggregate over however many of the N calls actually succeeded. */
+interface DismantleBatchResult {
+  count: number;
+  qty: number;
+}
+
 export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
   const snapshot = useGameStore();
   const gameData = snapshot.gameData;
@@ -92,10 +112,16 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const dismantlable = useMemo(() => collectDismantlable(snapshot.state), [snapshot.state, snapshot.stateVersion]);
 
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const keyOf = (it: DismantlableItem) => `${it.kind}:${it.itemUid}`;
+  // REQ-0090: multi-select interaction state over `dismantlable`'s own
+  // index order -- see useListMultiSelect.ts. Automatically drops any
+  // selected key that falls out of `dismantlable` (e.g. after a confirm's
+  // loadGame() refresh removes the just-dismantled rows).
+  const multi = useListMultiSelect(dismantlable, keyOf);
+
   const [busy, setBusy] = useState(false);
   const [errKey, setErrKey] = useState<TranslationKey | null>(null);
-  const [result, setResult] = useState<ApiDismantleResponse | null>(null);
+  const [result, setResult] = useState<DismantleBatchResult | null>(null);
   // Server-authoritative deployed set, discovered lazily from 409s --
   // never scanned client-side (same posture as SellPane's deployedUids;
   // the room/schedule state that would make this computable isn't
@@ -131,53 +157,78 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const keyOf = (it: DismantlableItem) => `${it.kind}:${it.itemUid}`;
-  const selected = dismantlable.find((it) => keyOf(it) === selectedKey) || null;
-  const selectedDef: ItemDef | SIDef | null = selected
-    ? selected.kind === 'po'
-      ? gameData?.ITEMS[selected.itemId] || null
-      : gameData?.SI_DEFS[selected.itemId] || null
+  // REQ-0090: the live, confirmable selection -- a locked (deployed-while-
+  // this-modal-was-open) row can end up inside multi.selected if it fell
+  // within a Ctrl+Click index range, since the selection model itself has
+  // no notion of "locked"; filtered back out here at every read site
+  // (rendering AND confirm) rather than teaching the generic hook about
+  // this panel's own concept of a lock.
+  const selectedItems = dismantlable.filter((it) => multi.selected.has(keyOf(it)) && !deployedKeys.has(keyOf(it)));
+  const selectedCount = selectedItems.length;
+  const singleSelected = selectedCount === 1 ? selectedItems[0] : null;
+  const singleSelectedDef: ItemDef | SIDef | null = singleSelected
+    ? singleSelected.kind === 'po'
+      ? gameData?.ITEMS[singleSelected.itemId] || null
+      : gameData?.SI_DEFS[singleSelected.itemId] || null
     : null;
-  const selectedLedger: ApiDismantleLedgerEntry = selected
-    ? ledger.get(selected.itemId) || { itemId: selected.itemId, dismantleCount: 0, suppression: 0 }
+  const singleSelectedLedger: ApiDismantleLedgerEntry = singleSelected
+    ? ledger.get(singleSelected.itemId) || { itemId: singleSelected.itemId, dismantleCount: 0, suppression: 0 }
     : { itemId: '', dismantleCount: 0, suppression: 0 };
 
-  function selectItem(it: DismantlableItem) {
-    const k = keyOf(it);
-    if (deployedKeys.has(k)) return;
-    setSelectedKey(k);
+  function onRowMouseDown(index: number, it: DismantlableItem, e: { shiftKey: boolean; ctrlKey: boolean }) {
+    if (deployedKeys.has(keyOf(it))) return;
     setErrKey(null);
     setResult(null);
+    multi.handlers.onRowMouseDown(index, e);
+  }
+
+  function onRowMouseEnter(index: number, it: DismantlableItem) {
+    if (deployedKeys.has(keyOf(it))) return;
+    multi.handlers.onRowMouseEnter(index);
   }
 
   async function confirmDismantle() {
-    if (!selected) return;
+    if (selectedItems.length === 0) return;
     setBusy(true);
     setErrKey(null);
-    try {
-      const res = await postDismantle(selected.itemUid, selected.kind);
-      setLedger((prev) => {
-        const next = new Map(prev);
-        next.set(res.itemId, { itemId: res.itemId, dismantleCount: res.dismantleCount, suppression: res.suppression });
-        return next;
-      });
-      setResult(res);
-      setSelectedKey(null);
-      await loadGame(); // authoritative post-removal canvas -- defuses the auto-save race (see module comment)
-    } catch (e) {
-      const deployed = e instanceof ApiError && e.reason === 'deployed';
-      if (deployed) {
-        setDeployedKeys((prev) => new Set(prev).add(keyOf(selected)));
-        setSelectedKey(null);
-        setErrKey('workshop.dismantle.errDeployed');
-      } else if (e instanceof ApiError && e.status === 404) {
-        setErrKey('workshop.dismantle.errNotFound');
-      } else {
-        setErrKey('workshop.dismantle.errGeneric');
+    let succeededCount = 0;
+    let succeededQty = 0;
+    let anyDeployed = false;
+    let anyNotFound = false;
+    let anyGeneric = false;
+    // N sequential calls, not a batch endpoint (REQ-0090 v1 default) --
+    // these are independent removals; a mid-batch 409/404 on one item
+    // must not abort the rest.
+    for (const it of selectedItems) {
+      try {
+        const res = await postDismantle(it.itemUid, it.kind);
+        succeededCount += 1;
+        succeededQty += res.yield.qty;
+        setLedger((prev) => {
+          const next = new Map(prev);
+          next.set(res.itemId, { itemId: res.itemId, dismantleCount: res.dismantleCount, suppression: res.suppression });
+          return next;
+        });
+      } catch (e) {
+        if (e instanceof ApiError && e.reason === 'deployed') {
+          setDeployedKeys((prev) => new Set(prev).add(keyOf(it)));
+          anyDeployed = true;
+        } else if (e instanceof ApiError && e.status === 404) {
+          anyNotFound = true;
+        } else {
+          anyGeneric = true;
+        }
       }
-    } finally {
-      setBusy(false);
     }
+    if (succeededCount > 0) {
+      setResult({ count: succeededCount, qty: succeededQty });
+    }
+    setErrKey(anyDeployed ? 'workshop.dismantle.errDeployed' : anyNotFound ? 'workshop.dismantle.errNotFound' : anyGeneric ? 'workshop.dismantle.errGeneric' : null);
+    multi.clear();
+    if (succeededCount > 0) {
+      await loadGame(); // authoritative post-removal canvas -- defuses the auto-save race (see module comment)
+    }
+    setBusy(false);
   }
 
   const anyEligible = dismantlable.some((it) => !deployedKeys.has(keyOf(it)));
@@ -219,26 +270,28 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
           <div className="workshop-dismantle-grid">
             <div className="panel ornate panel-pad workshop-dismantle-hoard">
               <div className="t-micro workshop-dismantle-hoard-note">{t(locale, 'workshop.dismantle.hoardNote')}</div>
-              <div className="col workshop-dismantle-hoard-list">
-                {dismantlable.map((it) => {
+              <div className="col workshop-dismantle-hoard-list" data-testid="workshop-dismantle-hoard-list">
+                {dismantlable.map((it, index) => {
                   const def = it.kind === 'po' ? gameData?.ITEMS[it.itemId] || null : gameData?.SI_DEFS[it.itemId] || null;
                   const name = def ? (locale === 'ja' ? def.name_ja || def.name : def.name) : it.itemId;
                   const k = keyOf(it);
                   const locked = deployedKeys.has(k);
+                  const isSel = !locked && multi.isSelected(k);
                   return (
                     <div
                       key={k}
-                      className={`icard rar rar-${def?.rarity || 'common'}${k === selectedKey ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
+                      className={`icard rar rar-${def?.rarity || 'common'}${isSel ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
                       data-testid="workshop-dismantle-item"
                       data-item-uid={it.itemUid}
                       data-locked={locked ? 'true' : 'false'}
                       role="button"
                       tabIndex={locked ? -1 : 0}
-                      onClick={() => selectItem(it)}
+                      onMouseDown={(e) => onRowMouseDown(index, it, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey })}
+                      onMouseEnter={() => onRowMouseEnter(index, it)}
                       onKeyDown={(e) => {
                         if (!locked && (e.key === 'Enter' || e.key === ' ')) {
                           e.preventDefault();
-                          selectItem(it);
+                          onRowMouseDown(index, it, { shiftKey: e.shiftKey, ctrlKey: e.ctrlKey });
                         }
                       }}
                     >
@@ -265,46 +318,70 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
             </div>
 
             <div className="panel ornate panel-pad workshop-dismantle-confirm">
-              {selected && selectedDef ? (
+              {selectedCount === 0 ? (
+                <div className="t-micro workshop-dismantle-hint" data-testid="workshop-dismantle-hint">
+                  {anyEligible ? t(locale, 'workshop.dismantle.pickHint') : t(locale, 'workshop.dismantle.noneEligible')}
+                </div>
+              ) : selectedCount === 1 && singleSelectedDef ? (
                 <>
                   <div className="carve-item">
                     <span>{t(locale, 'workshop.dismantle.pieceLabel')}</span>
                     <b className="dj" data-testid="workshop-dismantle-name">
-                      {locale === 'ja' ? selectedDef.name_ja || selectedDef.name : selectedDef.name}
+                      {locale === 'ja' ? singleSelectedDef.name_ja || singleSelectedDef.name : singleSelectedDef.name}
                     </b>
                   </div>
                   <div className="workshop-dismantle-stats t-micro">
                     <div>
                       {t(locale, 'dexcard.dismantleCount')}:{' '}
                       <b className="tnum" data-testid="workshop-dismantle-count">
-                        {selectedLedger.dismantleCount}
+                        {singleSelectedLedger.dismantleCount}
                       </b>
                     </div>
                     <div>
                       {t(locale, 'dexcard.suppression')}:{' '}
                       <b className="tnum" data-testid="workshop-dismantle-suppression">
-                        {Math.round(selectedLedger.suppression * 100)}%
+                        {Math.round(singleSelectedLedger.suppression * 100)}%
                       </b>
                     </div>
                   </div>
                   <div className="t-micro workshop-dismantle-note">{t(locale, 'workshop.dismantle.yieldNote')}</div>
-                  <div className="mt16">
-                    <button
-                      type="button"
-                      className="btn btn-forge"
-                      data-testid="workshop-dismantle-confirm-btn"
-                      disabled={busy}
-                      onClick={() => void confirmDismantle()}
-                    >
-                      <span className="rune">{'ᚠ'}</span> {busy ? t(locale, 'workshop.dismantle.dismantling') : t(locale, 'workshop.dismantle.confirmBtn')}
-                    </button>
-                  </div>
                 </>
               ) : (
-                <div className="t-micro workshop-dismantle-hint" data-testid="workshop-dismantle-hint">
-                  {anyEligible ? t(locale, 'workshop.dismantle.pickHint') : t(locale, 'workshop.dismantle.noneEligible')}
+                <div data-testid="workshop-dismantle-multi-summary">
+                  <div className="carve-item">
+                    <span>{t(locale, 'workshop.dismantle.multiPieceLabel')}</span>
+                    <b className="dj tnum" data-testid="workshop-dismantle-multi-count">
+                      {selectedCount}
+                    </b>
+                  </div>
+                  <div className="t-micro workshop-dismantle-note">{t(locale, 'workshop.dismantle.multiYieldNote')}</div>
                 </div>
               )}
+
+              {selectedCount > 0 ? (
+                <div className="t-micro workshop-dismantle-selrow" data-testid="workshop-dismantle-selected-count">
+                  {t(locale, 'workshop.dismantle.selectedCount', { count: selectedCount })}
+                  {' · '}
+                  <button type="button" className="workshop-dismantle-clear-btn" data-testid="workshop-dismantle-clear-btn" onClick={() => multi.clear()}>
+                    {t(locale, 'workshop.dismantle.clearSelection')}
+                  </button>
+                </div>
+              ) : null}
+
+              {selectedCount > 0 ? (
+                <div className="mt16">
+                  <button
+                    type="button"
+                    className="btn btn-forge"
+                    data-testid="workshop-dismantle-confirm-btn"
+                    disabled={busy}
+                    onClick={() => void confirmDismantle()}
+                  >
+                    <span className="rune">{'ᚠ'}</span> {busy ? t(locale, 'workshop.dismantle.dismantling') : t(locale, 'workshop.dismantle.confirmBtn')}
+                  </button>
+                </div>
+              ) : null}
+
               {errKey ? (
                 <div className="schedule-error workshop-dismantle-error" data-testid="workshop-dismantle-error">
                   {t(locale, errKey)}
@@ -312,7 +389,9 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
               ) : null}
               {result ? (
                 <div className="schedule-toast workshop-dismantle-toast" data-testid="workshop-dismantle-toast">
-                  {t(locale, 'workshop.dismantle.resultToast', { qty: result.yield.qty })}
+                  {result.count > 1
+                    ? t(locale, 'workshop.dismantle.resultToastMulti', { count: result.count, qty: result.qty })
+                    : t(locale, 'workshop.dismantle.resultToast', { qty: result.qty })}
                 </div>
               ) : null}
             </div>

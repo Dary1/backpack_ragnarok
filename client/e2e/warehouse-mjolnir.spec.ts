@@ -199,6 +199,73 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
   });
+
+  test('REQ-0091: claim press flashes the row + chime, blocks a rapid second press, and fades the flash out once the (real, delayed) response returns', async ({ page }) => {
+    const devProfileExisted = existsSync(DEV_PROFILE_PATH);
+    const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
+    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null; // pg-aware restore, see test 1
+    try {
+      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      const grantUid = await grantHiltToDev(page);
+
+      // Delay (never fabricate) the REAL claim response so this test has
+      // a deterministic window to observe the in-flight flash and the
+      // double-press guard before the actual server reply comes through.
+      // Also counts requests that actually reach the route, to prove a
+      // rapid second press never becomes a second network call.
+      let claimRequests = 0;
+      await page.route('**/api/warehouse/claim', async (route) => {
+        claimRequests += 1;
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        await route.continue();
+      });
+
+      await gotoWarehouseTab(page);
+      const row = page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${grantUid}"]`);
+      await expect(row).toBeVisible({ timeout: 10000 });
+      const claimBtn = page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`);
+
+      // Two native clicks dispatched back-to-back in the SAME task, i.e.
+      // before React has any chance to repaint the disabled attribute --
+      // exercises the synchronous claimLockRef guard in WarehousePage.tsx
+      // (a race the disabled={isClaiming} attribute alone cannot close,
+      // since state updates are batched/async).
+      await claimBtn.evaluate((el: HTMLButtonElement) => {
+        el.click();
+        el.click();
+      });
+
+      // In flight: the row's OWN frame is flashing (distinct from the
+      // button's .placing pulse, already covered by the test above).
+      await expect(row).toHaveClass(/schedule-claim-flash/);
+      await expect(claimBtn).toHaveClass(/placing/);
+
+      // The delayed response arrives -- flash hands off to the one-shot
+      // fade-out...
+      await expect(row).toHaveClass(/schedule-claim-fadeout/, { timeout: 3000 });
+      await expect(row).not.toHaveClass(/schedule-claim-flash/);
+      // ...and is fully removed from the DOM once that fade-out finishes
+      // (WarehousePage.tsx's FLASH_FADEOUT_MS).
+      await expect(row).not.toHaveClass(/schedule-claim-fadeout/, { timeout: 2000 });
+
+      // The rapid second press never reached the server as its own claim.
+      expect(claimRequests).toBe(1);
+
+      // Underneath the FX, the single real claim still completed
+      // normally (same finalization path the test above verifies).
+      await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toBeVisible({ timeout: 10000 });
+      await waitForAutoSave(page);
+      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvas = (await canvasResp.json()).canvas;
+      const placed = canvas.inv.pages.flatMap((p: any) => p.pos).find((p: any) => p.uid === grantUid);
+      expect(placed).toBeTruthy();
+    } finally {
+      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+      if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
+      else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
+    }
+  });
 });
 
 test.describe('REQ-0072: staged capacity + decay presentation states (mocked warehouse payload)', () => {

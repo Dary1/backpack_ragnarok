@@ -3565,6 +3565,42 @@ html, body {
   }
 }
 
+/* REQ-0091: press-feedback flash on the row's OWN frame -- distinct
+   from the claim button's .placing pulse above, which continues through
+   phase 2 (engine placement/auto-save). Fires the instant the claim
+   button is pressed (paired with a short chime, see
+   warehouse/claimSfx.ts), loops until the claim POST's response is
+   known, then swaps to the one-shot fade-out below and is removed from
+   the DOM once THAT finishes (WarehousePage.tsx's FLASH_FADEOUT_MS
+   mirrors this animation's duration + margin, same convention as
+   TAB_PULSE_MS/tab-claim-pulse elsewhere in this file). New hook, not
+   part of REQ-0072's kept selector contract above. */
+.schedule-warehouse-row.schedule-claim-flash {
+  animation: schedule-warehouse-claim-flash 0.5s ease-in-out infinite;
+}
+
+.schedule-warehouse-row.schedule-claim-fadeout {
+  animation: schedule-warehouse-claim-fadeout 0.4s ease-out forwards;
+}
+
+@keyframes schedule-warehouse-claim-flash {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(235, 217, 164, 0);
+  }
+  50% {
+    box-shadow: 0 0 26px 6px rgba(235, 217, 164, 0.85), inset 0 0 20px rgba(235, 217, 164, 0.45);
+  }
+}
+
+@keyframes schedule-warehouse-claim-fadeout {
+  0% {
+    box-shadow: 0 0 26px 6px rgba(235, 217, 164, 0.85), inset 0 0 20px rgba(235, 217, 164, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(235, 217, 164, 0);
+  }
+}
+
 /* NEW badge (mock .badge-new) -- harvested within the last 24h */
 .schedule-warehouse-badge-new {
   position: absolute;
@@ -5124,7 +5160,7 @@ html, body {
 .workshop-dismantle-hoard-note{ margin-bottom:8px; }
 .workshop-dismantle-hoard-list{ display:flex; flex-direction:column; gap:8px; max-height:52vh; overflow:auto; }
 .workshop-dismantle-modal .icard{ display:flex; align-items:center; gap:10px; position:relative; padding:10px 12px; border-radius:3px; border:1px solid var(--border-lo);
-  background:linear-gradient(180deg, rgba(27,34,45,.7), rgba(19,24,32,.7)); cursor:pointer; transition:box-shadow .13s; }
+  background:linear-gradient(180deg, rgba(27,34,45,.7), rgba(19,24,32,.7)); cursor:pointer; transition:box-shadow .13s; user-select:none; }
 .workshop-dismantle-modal .icard .market-thumb{ width:40px; height:40px; }
 .workshop-dismantle-modal .icard .nm{ font-weight:800; font-size:14px; }
 .workshop-dismantle-modal .icard .sub{ font-size:11px; color:var(--bone-3); letter-spacing:.05em; margin-top:2px; }
@@ -5141,3 +5177,11 @@ html, body {
 .workshop-dismantle-toast{ margin-top:12px; }
 .workshop-dismantle-empty{ margin-top:16px; }
 @media (max-width:760px){ .workshop-dismantle-grid{ grid-template-columns:1fr; } }
+
+/* REQ-0090: multi-select selected-count row + its inline clear-selection
+   control -- scoped to this modal only, same convention as every other
+   .workshop-dismantle-* rule in this block. */
+.workshop-dismantle-selrow{ margin-top:10px; color:var(--bone-3); }
+.workshop-dismantle-clear-btn{ background:none; border:none; padding:0; margin:0; font:inherit; color:var(--gold); cursor:pointer; text-decoration:underline; }
+.workshop-dismantle-clear-btn:hover{ color:var(--gold-hi); }
+

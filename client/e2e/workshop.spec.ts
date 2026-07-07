@@ -695,3 +695,172 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
     });
   });
 });
+
+test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
+  withDevUserFixture();
+
+  /** Sums qty across every claimable warehouse row of the given kind+id
+   * for the dev fallback caller -- same helper as the REQ-0063 describe
+   * block above, duplicated locally since these two blocks intentionally
+   * share no state (each has its own withDevUserFixture()). */
+  function sumWarehouseQty(items: any[], kind: string, itemId: string): number {
+    return items.filter((i) => i.kind === kind && i.itemId === itemId).reduce((sum, i) => sum + (i.qty ?? 0), 0);
+  }
+
+  /** REPLACES inventory page 0's entire pos[] array with exactly one
+   * fresh 'blade' PO per given uid (unlike the REQ-0063 block's own
+   * seedDevBladePo, which reads-then-appends to preserve whatever else
+   * page 0 held) -- this guarantees the seeded items are the ONLY
+   * page-0 POs, hence the first N rows collectDismantlable renders
+   * (page 0 is iterated first; a page's POs all render before that same
+   * page's SIs), so drag/range assertions can reason about exact,
+   * contiguous row indices instead of searching for wherever a shared
+   * fixture happened to leave them. Restored by withDevProfileBackup
+   * like every other test in this file. */
+  async function seedDevBladePos(page: Page, uids: string[]): Promise<any> {
+    const existingResp = await page.request.get('/api/profile/dev/canvas');
+    const canvas = existingResp.ok()
+      ? (await existingResp.json()).canvas
+      : {
+          linked: true, bps: [], pos: [], sis: [],
+          inv: {
+            pages: [
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+              { bps: [], pos: [], sis: [], tms: [] },
+            ],
+            names: ['1', '2', '3', '4', '5'],
+          },
+        };
+    if (!canvas.inv) {
+      canvas.inv = {
+        pages: [
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [], sis: [], tms: [] },
+        ],
+        names: ['1', '2', '3', '4', '5'],
+      };
+    }
+    // REQ-0090 isolation: collectDismantlable sweeps EVERY inventory
+    // page's pos+sis, and this dev fixture is SHARED with every other
+    // test in this file (BP-move-handle, gacha roll, TM merge, etc.) --
+    // clearing every page's pos/sis (bps/tms untouched, irrelevant to
+    // this panel) is the only way to guarantee this test's own items
+    // are the WHOLE dismantlable list rather than some unknown superset
+    // of it, so the drag/range assertions below can reason about exact,
+    // contiguous row indices.
+    for (const pg of canvas.inv.pages) {
+      pg.pos = [];
+      pg.sis = [];
+    }
+    canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [8, 1 + i], rot: 0 }));
+    const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    expect(putRes.status()).toBe(200);
+    return canvas;
+  }
+
+  test('drag adds rows, Shift+Click adds one, Ctrl+Click range-selects by index, plain click resets, and bulk-confirm dismantles every selected item', async ({ page }) => {
+    page.on('console', (msg) => { if (msg.type() === 'error') console.log('BROWSER CONSOLE ERROR:', msg.text()); });
+    page.on('pageerror', (err) => console.log('BROWSER PAGE ERROR:', err.message));
+    await withDevProfileBackup(async () => {
+      const uids = ['e2e_multi_po_0', 'e2e_multi_po_1', 'e2e_multi_po_2', 'e2e_multi_po_3', 'e2e_multi_po_4'];
+      await seedDevBladePos(page, uids);
+
+      const whBefore = (await (await page.request.get('/api/warehouse')).json()).items;
+      const lrdstBefore = sumWarehouseQty(whBefore, 'tm', 'lrdst');
+
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Workshop' }).click();
+      await page.locator('[data-testid="workshop-dismantle-open-btn"]').click();
+      await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toBeVisible({ timeout: 10000 });
+
+      const rows = page.locator('[data-testid="workshop-dismantle-item"]');
+      await expect(rows.first()).toBeVisible();
+      // This dev fixture is shared and may carry other ambient starter
+      // items alongside ours (observed: an auto-granted 'Sword Hilt'
+      // stack shows up sometime during boot, independent of anything
+      // this test seeds) -- rather than asserting an exact total row
+      // count, verify our 5 seeded uids occupy the first 5 rendered rows
+      // in seed order, which is what actually happens since they're
+      // written to the canvas BEFORE boot while anything else is
+      // appended after. This keeps the index-based drag/click
+      // choreography below valid regardless of what else lives in this
+      // shared fixture.
+      for (let i = 0; i < uids.length; i++) {
+        await expect(rows.nth(i)).toHaveAttribute('data-item-uid', uids[i]);
+      }
+      const row0 = rows.nth(0);
+      const row1 = rows.nth(1);
+      const row2 = rows.nth(2);
+      const row3 = rows.nth(3);
+      const row4 = rows.nth(4);
+      const selCount = page.locator('[data-testid="workshop-dismantle-selected-count"]');
+
+      // 1) Hold + drag from row0 through row2 selects exactly those 3 --
+      // nothing before, nothing after.
+      const box0 = await row0.boundingBox();
+      const box2 = await row2.boundingBox();
+      if (!box0 || !box2) throw new Error('dismantle rows did not lay out with a bounding box');
+      await drag(
+        page,
+        { x: box0.x + box0.width / 2, y: box0.y + box0.height / 2 },
+        { x: box2.x + box2.width / 2, y: box2.y + box2.height / 2 },
+        10
+      );
+      await expect(selCount).toContainText('3');
+      await expect(row0).toHaveClass(/is-selected/);
+      await expect(row1).toHaveClass(/is-selected/);
+      await expect(row2).toHaveClass(/is-selected/);
+      await expect(row3).not.toHaveClass(/is-selected/);
+      await expect(row4).not.toHaveClass(/is-selected/);
+
+      // 2) Shift+Click row3 ADDS it -- rows 0-3 selected, nothing dropped
+      // (REQ-0090's explicit spec: Shift+Click is additive, NOT the
+      // range-select -- that's Ctrl+Click here, deliberately inverted
+      // from the usual OS convention).
+      await row3.click({ modifiers: ['Shift'] });
+      await expect(selCount).toContainText('4');
+      await expect(row0).toHaveClass(/is-selected/);
+      await expect(row1).toHaveClass(/is-selected/);
+      await expect(row2).toHaveClass(/is-selected/);
+      await expect(row3).toHaveClass(/is-selected/);
+
+      // 3) A plain click collapses the selection back down to just the
+      // clicked row (row4 becomes the new anchor for the next step).
+      await row4.click();
+      await expect(selCount).toContainText('1');
+      await expect(row0).not.toHaveClass(/is-selected/);
+      await expect(row3).not.toHaveClass(/is-selected/);
+      await expect(row4).toHaveClass(/is-selected/);
+
+      // 4) Ctrl+Click row1 range-selects the inclusive index span between
+      // the current anchor (row4) and row1 -> rows 1,2,3,4 (row0 stays
+      // excluded, it's outside the [1,4] range).
+      await row1.click({ modifiers: ['Control'] });
+      await expect(selCount).toContainText('4');
+      await expect(row0).not.toHaveClass(/is-selected/);
+      await expect(row1).toHaveClass(/is-selected/);
+      await expect(row2).toHaveClass(/is-selected/);
+      await expect(row3).toHaveClass(/is-selected/);
+      await expect(row4).toHaveClass(/is-selected/);
+
+      // Bulk-confirm dismantles all 4 currently-selected items (u1-u4) in
+      // one action; u0 was never selected and must survive untouched.
+      await page.locator('[data-testid="workshop-dismantle-confirm-btn"]').click();
+      await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toContainText('4');
+
+      const canvasAfter = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const remainingUids = (canvasAfter.inv.pages[0].pos || []).map((p: any) => p.uid);
+      expect(remainingUids).toEqual([uids[0]]);
+
+      const whAfter = (await (await page.request.get('/api/warehouse')).json()).items;
+      expect(sumWarehouseQty(whAfter, 'tm', 'lrdst')).toBe(lrdstBefore + 4);
+    });
+  });
+});
