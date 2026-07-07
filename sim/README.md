@@ -281,18 +281,32 @@ the source document's completeness.
     `{edge:['top'], penetration:0, aoe:0}`. Every hand-authored enemy
     skill in the batch-002 starter content DOES carry an explicit
     `attack_profile`, so this fallback is a defensive default only.
-17. **Reactive trigger firing (REQ-0078).** `runEncounter` still schedules
-    `every_secs` effects as the auto-battle firing mechanism and folds
-    `passive`/`adjacent` buffs at compile time. **Reactive triggers now fire**
-    for the ENEMY side per the OnHit/OnBeenHit taxonomy (`docs/REQ-0078`): after
-    each direct strike/multi_strike hit resolves, a monster's `OnUnitBeenHit`
-    skills fire a retaliation ray (attacker src tagged `#react`) and its
-    `OnHit`/`OnUnitHit` skills fire an on-hit rider on the struck target, both
-    emitting `reactive_proc` events. Firing is depth-1 (a reactive proc never
-    re-dispatches -- OQ-C), counts only direct damage (OQ-A: not DoT/reflect/
-    0-dmg), and draws from isolated `reactive/<trigger>/...` RNG sub-streams so
-    existing golden hashes stay byte-identical. Player-side (PO/SI/Linker)
-    reactive firing and `OnPOHit` are deferred to Phase 1b.
+17. **Reactive trigger firing (REQ-0078 + REQ-0079).** `runEncounter` still
+    schedules `every_secs` effects as the auto-battle firing mechanism and
+    folds `passive`/`adjacent` buffs at compile time. **Reactive triggers now
+    fire** for the ENEMY side per the OnHit/OnBeenHit taxonomy (`docs/REQ-0078`):
+    after each direct strike/multi_strike hit resolves, a monster's
+    `OnUnitBeenHit` skills fire a retaliation ray (attacker src tagged
+    `#react`) and its `OnHit`/`OnUnitHit` skills fire an on-hit rider on the
+    struck target, both emitting `reactive_proc` events. Firing is depth-1 (a
+    reactive proc never re-dispatches -- OQ-C), counts only direct damage
+    (OQ-A: not DoT/reflect/0-dmg), and draws from isolated
+    `reactive/<trigger>/...` RNG sub-streams so existing golden hashes stay
+    byte-identical. **REQ-0079** additionally wires the PLAYER side, but ONLY
+    for a Linker's two destination triggers: `compileUnitSnapshot` now folds
+    each BP's Linker (`off`/`dirs`/`effects`) into the compiled snapshot as
+    `linkDests` (destination BP id(s), resolved once via a local
+    traceBeams-equivalent walk, frozen at compile time -- no in-combat BP
+    re-placement exists, so this cannot go stale) and `linkerEffects`
+    (deep-copied verbatim, no buff-folding). `OnLinkDestinationHit` fires an
+    offensive rider (mirrors the enemy OnHit/OnUnitHit rider shape) when the
+    Linker's destination BP deals a direct hit; `OnLinkDestinationBeenHit`
+    fires a counter-ray from the Linker's own (origin) BP at the enemy field
+    (mirrors the enemy OnUnitBeenHit retaliation shape) when the destination
+    BP takes one. Same depth-1/isolated-RNG discipline as the enemy side.
+    General player-side (PO/SI) reactive firing for the original 6
+    OnHit/OnBeenHit triggers, and `OnPOHit` specifically, remain deferred
+    (unblocked whenever SIs are compiled into the snapshot).
 
 18. **Weakness/Haste "n" dual-purpose (stacks + duration).** S7's table
     gives Weakness/Haste a single `n` magnitude column that serves as both
