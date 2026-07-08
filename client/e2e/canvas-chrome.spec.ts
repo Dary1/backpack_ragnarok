@@ -35,22 +35,17 @@ test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
     await expect(page.locator('.stagehead-chip')).toContainText(/\d/);
   });
 
-  test('item panel: icard catalog + click-to-select detail card; hover tooltip contract intact', async ({ page }) => {
+  test('REQ-0114: the item/SI catalog panel (ItemList) is NOT rendered on the backpacks view', async ({ page }) => {
     await bootApp(page);
-    const cards = page.locator('.item-panel .icard');
-    expect(await cards.count()).toBeGreaterThan(0);
-    // Detail card defaults to the first catalog item, then follows clicks.
-    await expect(page.locator('.item-detail')).toHaveCount(1);
-    const secondName = (await cards.nth(1).locator('.icard-nm').textContent()) ?? '';
-    expect(secondName.length).toBeGreaterThan(0);
-    await cards.nth(1).click();
-    await expect(page.locator('.item-detail .item-detail-nm')).toHaveText(secondName);
-    await expect(cards.nth(1)).toHaveClass(/is-selected/);
-    // The pre-REQ-0070 hover tooltip still appears with the same anatomy.
-    const thirdName = (await cards.nth(2).locator('.icard-nm').textContent()) ?? '';
-    await cards.nth(2).hover();
-    await expect(page.locator('.tooltip')).toHaveCount(1);
-    await expect(page.locator('.tooltip h3')).toContainText(thirdName);
+    // REQ-0114: the ItemPanel (item/SI catalog, the "ItemList") was removed
+    // from the backpacks view per user request. The two always-mounted Pixi
+    // boards (Canvas + Inventory) stay; only this third panel is gone.
+    await expect(page.locator('.item-panel')).toHaveCount(0);
+    await expect(page.locator('.item-panel .icard')).toHaveCount(0);
+    // The detail card lived only inside that panel, so it is gone too.
+    await expect(page.locator('.item-detail')).toHaveCount(0);
+    // Canvas + Inventory boards remain mounted.
+    await expect(page.locator('canvas.board-canvas')).toHaveCount(2);
   });
 
   test('embark dock navigates to the expedition page; boards survive the round trip', async ({ page }) => {
