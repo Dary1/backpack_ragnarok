@@ -249,9 +249,13 @@ function DexCardContent({
       </div>
       <div className="dexcard-body">
         <div className="dexcard-fig">
+          {/* REQ-0103: cellPx 28 -> 56. .dexcard-fig only sets min-height:96px
+              and hugs its content, so this just makes the popup card's own
+              icon bigger/more legible -- same doubling as every other Dex
+              icon display, kept on one consistent scale. */}
           <ShapeGrid
             shape={shape}
-            cellPx={28}
+            cellPx={56}
             iconUrl={icon}
             iconAlt={card.icon}
             iconDims={iconDims(card.icon)}

@@ -78,6 +78,10 @@ function alignOf(entry: ApiItemEntry | ApiSIEntry) {
 // REQ-0038 R2 to span the full footprint via the shared itemCard.ts
 // module) as the catalog grid and the edit-mode list, per the task spec's
 // "reuse this shape-mounted rendering, smaller" instruction for list rows.
+// REQ-0103: cellPx 16 -> 32 -- this row's .dex-detail-item-list-shape
+// wrapper hugs its content (no fixed well like the catalog's .dthumb), so
+// doubling cellPx just grows the row to fit a visibly bigger thumbnail,
+// same relative-size-by-shape scale as the (also-doubled) catalog grid.
 function ShapeMountedThumb({
   shape,
   iconUrl,
@@ -96,7 +100,7 @@ function ShapeMountedThumb({
   return (
     <ShapeGrid
       shape={shape}
-      cellPx={16}
+      cellPx={32}
       iconUrl={iconUrl}
       iconAlt={iconAlt}
       iconDims={iconDims(iconId)}

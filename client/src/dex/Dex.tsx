@@ -356,9 +356,20 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
                   <span className="dex-card-no dex-card-no-kind t-micro">{e.kind === 'po' ? 'PO' : 'SI'}</span>
                 )}
                 <span className="dex-card-shape dthumb">
+                  {/* REQ-0103: cellPx 20 -> 40. The .dthumb well is a fixed
+                      96px tall (index.css) regardless of the item's own
+                      shape, so at the old cellPx=20 a 1-cell item (most
+                      SIs) rendered a mere 20x20 icon in that well -- ~80%
+                      empty space, barely visible. 40px lets a 1-cell item
+                      fill ~half the well and the largest current shape
+                      (2x2, tower_shield/beast_jaw) fill nearly all of it,
+                      still on ONE shared scale so relative real-world size
+                      between cards is preserved (a 2x2 item still reads as
+                      2x a 1x1 item) -- just not independently max-fit per
+                      card (that would erase the size comparison). */}
                   <ShapeGrid
                     shape={shapeOf(e.entry)}
-                    cellPx={20}
+                    cellPx={40}
                     iconUrl={icon}
                     iconAlt={e.entry.icon}
                     iconDims={iconDims(e.entry.icon)}
@@ -421,9 +432,11 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
                 <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
                   <span className="gem" aria-hidden="true" />
                   <span className="dex-card-shape dthumb">
+                    {/* REQ-0103: matches the catalog grid's cellPx bump
+                        above -- same .dthumb well, kept in sync. */}
                     <ShapeGrid
                       shape={[[0, 0]]}
-                      cellPx={20}
+                      cellPx={40}
                       iconUrl={icon}
                       iconAlt={tmEntry.icon}
                       iconDims={iconDims(tmEntry.icon)}

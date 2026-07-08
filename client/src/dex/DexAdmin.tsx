@@ -18,7 +18,10 @@
 //      just editing existing rows' values.
 //   3. The admin list rows show a small shape-mounted thumbnail (reuses
 //      ShapeGrid, smaller cellPx, same rendering the catalog/detail list
-//      use).
+//      use). REQ-0103: cellPx 14 -> 28 (both list-view call sites below) --
+//      same keep relative size, just less tiny doubling as the catalog
+//      grid and detail list row; the .dex-admin-list-thumb wrapper hugs
+//      its content so this only grows each row, no well to overflow.
 //
 // Server-side validation (server/admin.cjs) is the actual source of
 // truth -- every rule enforced here client-side is a UX convenience
@@ -224,7 +227,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
               <span className="dex-admin-list-thumb">
                 <ShapeGrid
                 shape={shapeOf(e.entry)}
-                cellPx={14}
+                cellPx={28}
                 iconUrl={iconDataUrl(e.entry.icon)}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
@@ -331,7 +334,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
             <span className="dex-admin-list-thumb">
               <ShapeGrid
                 shape={shapeOf(e.entry)}
-                cellPx={14}
+                cellPx={28}
                 iconUrl={iconDataUrl(e.entry.icon)}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
