@@ -457,8 +457,8 @@ function tryScheduleRoutes(req, res, url, p) {
           // itemUid, which the client reuses as the new inventory
           // PO/SI's own uid) so the CLIENT can place it via the engine
           // itself, through the app's one auto-save choke point.
-          const { itemDefsById, tmDefsById } = schedule.getScheduleContent();
-          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById);
+          const { itemDefsById, tmDefsById, siDefsById } = schedule.getScheduleContent();
+          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById, siDefsById);
           // REQ-0042: echo kind/qty too (undefined for a plain PO/SI row,
           // 'tm'/a number for a TM-kind row) so the client can dispatch
           // to the correct placement path (engine PO/SI first-fit vs.
