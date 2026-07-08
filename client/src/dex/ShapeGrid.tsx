@@ -46,7 +46,7 @@
 // not a game board, per dexIcons.ts's module comment (no Pixi Application
 // here, deliberately, to avoid the Pixi-lifecycle issues documented in
 // REQ-0031/REQ-0034).
-import type { Cell } from '../engine/engine.d.ts';
+import type { Cell, IconAlign } from '../engine/engine.d.ts';
 import { computeDomIconOverlay } from '../render/itemCard';
 
 interface ShapeGridProps {
@@ -76,6 +76,8 @@ interface ShapeGridProps {
    * fraction preset BoardRenderer's placed-PO draw path uses (see
    * itemCard.ts's insetBoxFor). */
   iconStretch?: boolean;
+  /** REQ-0102: directional icon alignment within the footprint (default middle/center). */
+  iconAlign?: IconAlign;
   /** REQ-0038: labels each OCCUPIED shape cell with its own [row,col]
    * coordinate (small text in the cell's corner) -- used by the detail
    * diagram's large grid, per the task spec ("every occupied cell's
@@ -93,6 +95,7 @@ export function ShapeGrid({
   iconAlt,
   iconDims,
   iconStretch,
+  iconAlign,
   showCoords,
 }: ShapeGridProps) {
   const all = [...shape, ...(portTiles ?? []), ...(linkerTile ? [linkerTile] : [])];
@@ -132,7 +135,7 @@ export function ShapeGrid({
   const shapeMinCol = shape.length > 0 ? Math.min(...shapeCols) : minCol;
   const overlay =
     iconUrl && shape.length > 0
-      ? computeDomIconOverlay({ shape, stretch: iconStretch }, cellPx, iconDims?.width ?? 1, iconDims?.height ?? 1)
+      ? computeDomIconOverlay({ shape, stretch: iconStretch, align: iconAlign }, cellPx, iconDims?.width ?? 1, iconDims?.height ?? 1)
       : null;
   const overlayLeft = overlay ? (shapeMinCol - minCol) * cellPx : 0;
   const overlayTop = overlay ? (shapeMinRow - minRow) * cellPx : 0;

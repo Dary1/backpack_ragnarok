@@ -65,6 +65,10 @@ function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
 function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in e ? e.stretch : undefined;
 }
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(e: ApiItemEntry | ApiSIEntry) {
+  return 'align' in e ? e.align : undefined;
+}
 
 // Effect form-row shape -- a superset of every verb's optional fields, so
 // one form row component covers every verb without a separate component
@@ -225,6 +229,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}
+                iconAlign={alignOf(e.entry)}
               />
               </span>
               <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}
@@ -331,6 +336,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}
+                iconAlign={alignOf(e.entry)}
               />
             </span>
             <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}

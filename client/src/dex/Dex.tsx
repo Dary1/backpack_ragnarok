@@ -106,6 +106,10 @@ function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
 function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in e ? e.stretch : undefined;
 }
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(e: ApiItemEntry | ApiSIEntry) {
+  return 'align' in e ? e.align : undefined;
+}
 
 // REQ-0075: the mock's card sub-line reads "武具/剣 ・ LONGSWORD" -- a
 // localized category fragment + the EN name in caps. The category is the
@@ -359,6 +363,7 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
                     iconAlt={e.entry.icon}
                     iconDims={iconDims(e.entry.icon)}
                     iconStretch={stretchOf(e.entry)}
+                    iconAlign={alignOf(e.entry)}
                   />
                 </span>
                 <div className="dex-card-summary-text">

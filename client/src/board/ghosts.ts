@@ -18,9 +18,9 @@ export function renderGhostPO(self: BoardRenderer, p: PO, def: ItemDefMap[string
     // REQ-0028 (aspect law): uniform contain-fit box, matching the
     // placed-PO draw path above (see fitSpriteToBox doc).
     if (def.stretch) {
-      fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
+      fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8, def.align, { x: 0, y: 0, w: W0, h: H0 });
     } else {
-      fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
+      fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9, def.align, { x: 0, y: 0, w: W0, h: H0 });
     }
     const inner = new Container();
     inner.alpha = 0.75;

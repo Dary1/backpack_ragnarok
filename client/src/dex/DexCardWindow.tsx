@@ -256,6 +256,7 @@ function DexCardContent({
             iconAlt={card.icon}
             iconDims={iconDims(card.icon)}
             iconStretch={card.stretch}
+            iconAlign={card.align}
           />
         </div>
         <div className="dexcard-stats">

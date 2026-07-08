@@ -571,9 +571,9 @@ export class BoardRenderer {
         // x/y insets per def.stretch branch -- see fitSpriteToBox doc).
         // Box tightness presets (stretch vs non-stretch) preserved.
         if (def.stretch) {
-          fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8);
+          fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8, def.align, { x: 0, y: 0, w: W0, h: H0 });
         } else {
-          fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9);
+          fitSpriteToBox(sprite, W0 * 0.06, H0 * 0.05, W0 * 0.88, H0 * 0.9, def.align, { x: 0, y: 0, w: W0, h: H0 });
         }
         const inner = new Container();
         inner.eventMode = 'none'; // decorative art, see constructor note
@@ -649,7 +649,7 @@ export class BoardRenderer {
       const bladeTexture = bladeDef && textures.get(bladeDef.icon);
       if (bladeTexture) {
         const sprite = new Sprite(bladeTexture);
-        fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8);
+        fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8, bladeDef?.align, bx);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }
@@ -658,7 +658,7 @@ export class BoardRenderer {
       const hiltTexture = hiltDef && textures.get(hiltDef.icon);
       if (hiltTexture) {
         const sprite = new Sprite(hiltTexture);
-        fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8);
+        fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8, hiltDef?.align, hx);
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gItems.addChild(sprite);
       }

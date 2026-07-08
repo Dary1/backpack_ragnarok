@@ -75,7 +75,7 @@ function DismantleThumb({ def, alt }: { def: ItemDef | SIDef | null; alt: string
   const shape = shapeSrc && shapeSrc.length > 0 ? shapeSrc : ([[0, 0]] as Array<[number, number]>);
   return (
     <span className="market-thumb">
-      <ShapeGrid shape={shape} cellPx={40} iconUrl={icon} iconAlt={alt} iconDims={iconDims(def.icon)} iconStretch={(def as ItemDef).stretch} />
+      <ShapeGrid shape={shape} cellPx={40} iconUrl={icon} iconAlt={alt} iconDims={iconDims(def.icon)} iconStretch={(def as ItemDef).stretch} iconAlign={(def as ItemDef).align} />
     </span>
   );
 }

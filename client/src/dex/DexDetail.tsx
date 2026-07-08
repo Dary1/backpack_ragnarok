@@ -68,6 +68,10 @@ function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
 function stretchOf(entry: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in entry ? entry.stretch : undefined;
 }
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(entry: ApiItemEntry | ApiSIEntry) {
+  return 'align' in entry ? entry.align : undefined;
+}
 
 // Small helper (used only by the item-list column's rows) -- reuses
 // ShapeGrid at a small cellPx, same shape-mounted-icon rendering (fixed
@@ -80,12 +84,14 @@ function ShapeMountedThumb({
   iconAlt,
   iconId,
   stretch,
+  align,
 }: {
   shape: Cell[];
   iconUrl: string | null;
   iconAlt: string;
   iconId: string;
   stretch?: boolean;
+  align?: { v?: 'top' | 'middle' | 'bottom'; h?: 'left' | 'center' | 'right' };
 }) {
   return (
     <ShapeGrid
@@ -95,6 +101,7 @@ function ShapeMountedThumb({
       iconAlt={iconAlt}
       iconDims={iconDims(iconId)}
       iconStretch={stretch}
+      iconAlign={align}
     />
   );
 }
@@ -150,6 +157,7 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
                         iconAlt={e.entry.icon}
                         iconId={e.entry.icon}
                         stretch={stretchOf(e.entry)}
+                        align={alignOf(e.entry)}
                       />
                     </span>
                     <span className="dex-detail-item-list-text">
@@ -187,6 +195,7 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
                 iconUrl={iconDataUrl(selected.entry.icon)}
                 iconDims={iconDims(selected.entry.icon)}
                 iconStretch={stretchOf(selected.entry)}
+                iconAlign={alignOf(selected.entry)}
                 locale={locale}
               />
             </div>

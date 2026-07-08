@@ -229,6 +229,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
       flavor: e.flavor,
       flavor_ja: e.flavor_ja,
       ...(e.stretch ? { stretch: e.stretch } : {}),
+      ...(e.align ? { align: e.align } : {}),
       ...(e.ports !== undefined ? { ports: e.ports } : {}),
     };
   }

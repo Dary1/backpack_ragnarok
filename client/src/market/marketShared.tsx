@@ -60,6 +60,7 @@ export function MarketThumb({ gameData, itemId, cellPx = 22, alt }: MarketThumbP
         iconAlt={alt ?? def.icon}
         iconDims={iconDims(def.icon)}
         iconStretch={def.stretch}
+        iconAlign={def.align}
       />
     </span>
   );
