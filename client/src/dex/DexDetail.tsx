@@ -1,12 +1,14 @@
-// Detail drawer for the Dex (図鑑) — REQ-0108. The catalog grid is now the
-// single, persistent list (master); selecting a card opens THIS drawer in
-// place (Dex.tsx), holding the two panes [diagram | info] for the selected
-// entry. The former separate list rail (.dex-detail-col-list /
-// .dex-detail-item-list-row) is removed — the grid IS the list, so the two
-// can no longer diverge (the REQ-0108 fix). Composition is otherwise
-// unchanged from the REQ-0038/0075 detail: DexDiagram (図解/SCHEMA) +
-// ItemDetailCard (銘と効果). Every kept selector (.dex-detail-col-diagram /
-// .dex-detail-col-info / .dex-detail-phead / .dex-detail-back-btn /
+// Detail pane for the Dex (図鑑) — REQ-0108, now the persistent right/top
+// pane of the master/detail split (REQ-0120). Renders the two panes
+// [diagram | info] for the selected entry; Dex.tsx mounts this inside
+// .dex-md-detail beside the catalog grid (the master list). The former
+// separate list rail (.dex-detail-col-list / .dex-detail-item-list-row) was
+// removed in REQ-0108 — the grid IS the list. REQ-0120 additionally drops
+// the "back to list" button (.dex-detail-back-btn): the detail is always
+// shown (index=0 preselected), so there is nothing to collapse back to.
+// Composition is otherwise unchanged from the REQ-0038/0075 detail:
+// DexDiagram (図解/SCHEMA) + ItemDetailCard (銘と効果). Every kept selector
+// (.dex-detail-col-diagram / .dex-detail-col-info / .dex-detail-phead /
 // .dex-diagram*) is unchanged.
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
@@ -20,7 +22,6 @@ import { ItemDetailCard } from './ItemDetailCard';
 
 interface DexDetailProps {
   selected: DexEntry;
-  onBack: () => void;
   locale: Locale;
   tagTree: ApiContentPayload['trees']['po'];
   registry: ApiContentPayload['registry'];
@@ -43,7 +44,7 @@ function alignOf(entry: ApiItemEntry | ApiSIEntry) {
   return 'align' in entry ? entry.align : undefined;
 }
 
-export function DexDetail({ selected, onBack, locale, tagTree, registry, dexNo }: DexDetailProps) {
+export function DexDetail({ selected, locale, tagTree, registry, dexNo }: DexDetailProps) {
   return (
     <div className="dex-detail-drawer-panes">
       <div className={`dex-detail-col-diagram panel ornate rar ${rarThemeClass(selected.entry.rarity)}`}>
@@ -52,9 +53,6 @@ export function DexDetail({ selected, onBack, locale, tagTree, registry, dexNo }
         <i className="k br" />
         <i className="k bl" />
         <div className="dex-detail-phead">
-          <button type="button" className="dex-detail-back-btn btn btn-ghost" onClick={onBack}>
-            {t(locale, 'dex.backToList')}
-          </button>
           <span className="dj dex-detail-phead-title">{t(locale, 'dex.schemaTitle')}</span>
           <span className="den dex-detail-phead-den">{t(locale, 'dex.schemaDen')}</span>
         </div>

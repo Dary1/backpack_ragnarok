@@ -113,6 +113,9 @@ const DICT = {
     'dex.tagAll': 'Tag: all',
     'dex.noMatch': 'No items match.',
     'dex.backToList': '← Back to list',
+    // REQ-0120: master/detail empty prompt (shown only when the filter
+    // yields no matches, so no entry can be preselected).
+    'dex.detailEmpty': 'Select an item to see its details.',
     // Dex Card subwindow (dex/DexCardWindow.tsx) -- REQ-0052.
     'dexcard.previewAria': 'Preview card',
     'dexcard.loading': 'Loading…',
@@ -782,6 +785,8 @@ const DICT = {
     'dex.tagAll': 'タグ: すべて',
     'dex.noMatch': '該当するアイテムがありません。',
     'dex.backToList': '← 一覧に戻る',
+    // REQ-0120: master/detail empty prompt (filter yields no matches).
+    'dex.detailEmpty': 'アイテムを選択すると詳細が表示されます。',
     // Dex Card subwindow (dex/DexCardWindow.tsx) -- REQ-0052.
     'dexcard.previewAria': 'カードをプレビュー',
     'dexcard.loading': '読み込み中…',

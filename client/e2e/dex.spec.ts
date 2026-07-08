@@ -40,6 +40,12 @@
 //     to right, by bounding-box x-position); a narrow/portrait viewport
 //     override falls back to the stacked layout (columns full-width,
 //     vertically stacked).
+// REQ-0120 UPDATE: the Dex is now a master/detail SPLIT (persistent list +
+// detail pane), NOT the REQ-0108 inline drawer. index=0 is preselected;
+// selecting a card retargets the detail pane; there is no back-to-list
+// button and no .dex-detail-drawer. The two REQ-0120 tests below replaced
+// the former REQ-0108 drawer + narrow-stack tests, and the R2 diagram test
+// no longer clicks a (removed) back button between items.
 import { test, expect } from '@playwright/test';
 import { bootApp } from './helpers';
 
@@ -133,80 +139,76 @@ test('dex v2 R2: catalog cards render shape-mounted ACROSS THE FULL FOOTPRINT (b
   }
 });
 
-test('dex REQ-0108: selecting a card keeps the catalog grid and opens an inline [diagram|info] drawer (no separate list rail)', async ({ page }) => {
+test('dex REQ-0120: master/detail split — index=0 preselected; selecting retargets the detail pane (landscape: list left, detail right)', async ({ page }) => {
   await bootApp(page);
   await page.locator('.nav-link', { hasText: 'Dex' }).click();
   await expect(page.locator('.dex-root')).toBeVisible();
 
-  await page.locator('.dex-search').fill('blade');
-  const card = page.locator('.dex-card', { hasText: 'blade' }).first();
-  await card.locator('.dex-card-summary').click();
-
-  // The catalog GRID stays mounted/visible (master preserved) -- NOT swapped away.
+  // Master (grid) and detail pane are BOTH mounted; no view swap, and the
+  // REQ-0108 inline drawer / separate list rail are gone.
   await expect(page.locator('.dex-grid')).toBeVisible();
-  await expect(card).toBeVisible();
-  await expect(card).toHaveClass(/dex-card-selected/);
-
-  // An inline detail drawer opens with the diagram + info panes...
-  const drawer = page.locator('[data-testid="dex-detail-drawer"]');
-  await expect(drawer).toBeVisible();
-  const diagramCol = drawer.locator('.dex-detail-col-diagram');
-  const infoCol = drawer.locator('.dex-detail-col-info');
-  await expect(diagramCol).toBeVisible();
-  await expect(infoCol).toBeVisible();
-
-  // ...and the separate detail list rail no longer exists anywhere (one list only).
+  const detail = page.locator('[data-testid="dex-detail-pane"]');
+  await expect(detail).toBeVisible();
+  await expect(page.locator('[data-testid="dex-detail-drawer"]')).toHaveCount(0);
   await expect(page.locator('.dex-detail-col-list')).toHaveCount(0);
   await expect(page.locator('.dex-detail-item-list-row')).toHaveCount(0);
 
-  // Wide viewport: diagram is left of info within the drawer.
-  const diagramBox = await diagramCol.boundingBox();
-  const infoBox = await infoCol.boundingBox();
-  expect(diagramBox).not.toBeNull();
-  expect(infoBox).not.toBeNull();
-  expect(diagramBox!.x + diagramBox!.width).toBeLessThanOrEqual(infoBox!.x + 1);
+  // index=0 preselected on load: first card ringed, detail shows its id.
+  const firstCard = page.locator('.dex-card').first();
+  await expect(firstCard).toHaveClass(/dex-card-selected/);
+  await expect(page.locator('.dex-card-selected')).toHaveCount(1);
+  const firstId = ((await firstCard.locator('.dex-card-id').textContent()) || '').trim();
+  expect(firstId.length).toBeGreaterThan(0);
+  await expect(detail.locator('.dex-detail-col-info')).toContainText(firstId);
 
-  // The info pane shows the selected item's id + rendered effect text.
+  // Landscape (2000px e2e viewport): detail sits to the RIGHT of the list
+  // and is sticky.
+  const listBox = await page.locator('.dex-md-list').boundingBox();
+  const detailBox = await detail.boundingBox();
+  expect(listBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  expect(detailBox!.x).toBeGreaterThanOrEqual(listBox!.x + listBox!.width - 2);
+  expect(await detail.evaluate((el) => getComputedStyle(el).position)).toBe('sticky');
+
+  // Selecting another card retargets the SAME pane (grid stays put).
+  await page.locator('.dex-search').fill('blade');
+  const bladeCard = page.locator('.dex-card', { hasText: 'blade' }).first();
+  await bladeCard.locator('.dex-card-summary').click();
+  await expect(bladeCard).toHaveClass(/dex-card-selected/);
+  await expect(page.locator('.dex-grid')).toBeVisible();
+
+  const diagramCol = detail.locator('.dex-detail-col-diagram');
+  const infoCol = detail.locator('.dex-detail-col-info');
+  await expect(diagramCol).toBeVisible();
+  await expect(infoCol).toBeVisible();
   await expect(infoCol).toContainText('blade');
   const contentResp = await page.request.get('/api/content');
   const content = await contentResp.json();
   const bladeEffEn = content.items.blade.eff_en;
   expect(bladeEffEn).toBeTruthy();
   await expect(infoCol).toContainText(bladeEffEn);
-
-  // Collapse returns to the plain grid (drawer gone, grid still there).
-  await page.locator('.dex-detail-back-btn').click();
-  await expect(page.locator('[data-testid="dex-detail-drawer"]')).toHaveCount(0);
-  await expect(page.locator('.dex-detail-col-info')).toHaveCount(0);
-  await expect(page.locator('.dex-grid')).toBeVisible();
 });
 
-test('dex REQ-0108: narrow viewport stacks the drawer panes (diagram above info), grid preserved', async ({ page }) => {
-  await page.setViewportSize({ width: 480, height: 900 });
+test('dex REQ-0120: portrait viewport stacks the split — detail on top, list on bottom (index=0 preselected)', async ({ page }) => {
+  await page.setViewportSize({ width: 430, height: 900 });
   await bootApp(page);
   await page.locator('.nav-link', { hasText: 'Dex' }).click();
   await expect(page.locator('.dex-root')).toBeVisible();
 
-  await page.locator('.dex-search').fill('blade');
-  const card = page.locator('.dex-card', { hasText: 'blade' }).first();
-  await card.locator('.dex-card-summary').click();
-
   await expect(page.locator('.dex-grid')).toBeVisible();
+  const detail = page.locator('[data-testid="dex-detail-pane"]');
+  await expect(detail).toBeVisible();
   await expect(page.locator('.dex-detail-col-list')).toHaveCount(0);
+  await expect(page.locator('.dex-card').first()).toHaveClass(/dex-card-selected/);
 
-  const diagramCol = page.locator('.dex-detail-col-diagram');
-  const infoCol = page.locator('.dex-detail-col-info');
-  await expect(diagramCol).toBeVisible();
-  await expect(infoCol).toBeVisible();
-
-  const diagramBox = await diagramCol.boundingBox();
-  const infoBox = await infoCol.boundingBox();
-  expect(diagramBox).not.toBeNull();
-  expect(infoBox).not.toBeNull();
-  // Stacked (not side-by-side): diagram above info, each wide vs the narrow viewport.
-  expect(diagramBox!.y + diagramBox!.height).toBeLessThanOrEqual(infoBox!.y + 1);
-  expect(diagramBox!.width).toBeGreaterThan(480 * 0.8);
-  expect(infoBox!.width).toBeGreaterThan(480 * 0.8);
+  // Single column, stacked: detail is ABOVE the list, both ~full width.
+  const listBox = await page.locator('.dex-md-list').boundingBox();
+  const detailBox = await detail.boundingBox();
+  expect(listBox).not.toBeNull();
+  expect(detailBox).not.toBeNull();
+  expect(detailBox!.y + detailBox!.height).toBeLessThanOrEqual(listBox!.y + 2);
+  expect(detailBox!.width).toBeGreaterThan(430 * 0.8);
+  expect(listBox!.width).toBeGreaterThan(430 * 0.8);
 });
 
 test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (no paired EN/JA rows)', async ({ page }) => {
@@ -306,7 +308,8 @@ test('dex v2 R2: detail diagram is enlarged (~5x per-cell size vs the old 46px b
   expect(wrapBox!.height).toBeLessThanOrEqual(diagramColBox!.height + 1);
   expect(wrapBox!.width).toBeLessThanOrEqual(diagramColBox!.width + 1);
 
-  await page.locator('.dex-detail-back-btn').click();
+  // REQ-0120: no back button — searching + clicking the next card just
+  // retargets the persistent detail pane.
 
   // flame_tablet has 2 ports in live content -- the diagram must render a
   // .dex-diagram-ports section with one row per port.
@@ -330,7 +333,8 @@ test('dex v2 R2: detail diagram is enlarged (~5x per-cell size vs the old 46px b
   await expect(flameOverlay).toHaveAttribute('data-footprint-w', '1');
   await expect(flameOverlay).toHaveAttribute('data-footprint-h', '2');
 
-  await page.locator('.dex-detail-back-btn').click();
+  // REQ-0120: no back button — searching + clicking the next card just
+  // retargets the persistent detail pane.
 
   // hilt has 1 socket in live content -- the diagram must render the SVG
   // socket-marker overlay (a dot + callout line) and a matching tag-chip
