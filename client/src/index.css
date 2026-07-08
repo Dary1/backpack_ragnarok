@@ -5185,3 +5185,16 @@ html, body {
 .workshop-dismantle-clear-btn{ background:none; border:none; padding:0; margin:0; font:inherit; color:var(--gold); cursor:pointer; text-decoration:underline; }
 .workshop-dismantle-clear-btn:hover{ color:var(--gold-hi); }
 
+
+/* REQ-0099: settled-run replay transport (mock ctrl bar's play / 1x2x4x / skip). */
+.schedule-monitor-transport { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.schedule-monitor-play {
+  min-width: 26px; height: 22px; padding: 0 6px; cursor: pointer; line-height: 1;
+  background: transparent; color: #e8e0d0;
+  border: 1px solid rgba(233, 227, 211, 0.28); border-radius: 3px;
+}
+.schedule-monitor-play:hover { border-color: rgba(233, 227, 211, 0.5); }
+.schedule-monitor-speed { cursor: pointer; }
+.schedule-monitor-speed.is-on { border-color: #8cdcf5; color: #8cdcf5; }
+.schedule-monitor-skip-end { cursor: pointer; white-space: nowrap; }
+.schedule-monitor-timeline-scrub { cursor: pointer; }
