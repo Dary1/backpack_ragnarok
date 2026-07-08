@@ -133,7 +133,7 @@ ET.register_namespace("", SVG_NS)
 # =====================================================================
 
 # ---------- 1. Allowed-region mask construction (reference: build_region) ----------
-def build_region_from_layout(layout):
+def build_region_from_layout(layout, align=None):
     """layout: list of strings. '□' = fit cell, anything else = blank cell.
     Returns: allowed (bool HxW), cellset.
 
@@ -152,15 +152,20 @@ def build_region_from_layout(layout):
     def needs_pad(nr, nc):
         return (nr, nc) not in cellset
 
+    av = (align or {}).get("v")
+    ah = (align or {}).get("h")
     for r, c in cellset:
         a = np.ones((CELL, CELL), bool)
-        if needs_pad(r - 1, c):
+        # REQ-0104: a PO that declares an align on a side is meant to sit FLUSH
+        # against that edge (a seam/join side), so the no-contact PAD is
+        # intentionally NOT reserved there. Every other exposed face keeps its pad.
+        if needs_pad(r - 1, c) and av != "top":
             a[:PAD, :] = False
-        if needs_pad(r + 1, c):
+        if needs_pad(r + 1, c) and av != "bottom":
             a[-PAD:, :] = False
-        if needs_pad(r, c - 1):
+        if needs_pad(r, c - 1) and ah != "left":
             a[:, :PAD] = False
-        if needs_pad(r, c + 1):
+        if needs_pad(r, c + 1) and ah != "right":
             a[:, -PAD:] = False
         allowed[r * CELL:(r + 1) * CELL, c * CELL:(c + 1) * CELL] = a
     return allowed, cellset
@@ -335,7 +340,7 @@ def _fftconvolve_valid_numpy(a, b):
 # and implement CHECK/FIX report modes on top of the ported algorithm.
 # =====================================================================
 
-def build_region(cellset):
+def build_region(cellset, align=None):
     """cellset: set of (row, col) owned cells (0-indexed, normalized to bbox).
     Returns allowed(bool HxW) at CELL px/cell, sized to the cellset's bbox.
 
@@ -348,7 +353,7 @@ def build_region(cellset):
     for r in range(rows):
         row_chars = ['□' if (r, c) in cellset else '　' for c in range(cols)]
         layout.append(''.join(row_chars))
-    allowed, cellset_check = build_region_from_layout(layout)
+    allowed, cellset_check = build_region_from_layout(layout, align)
     assert cellset_check == cellset
     return allowed
 
@@ -525,7 +530,7 @@ def check_icon(sprite_root, entry, render_dir=None, tag=""):
         return dict(id=eid, icon=icon_id, status="SKIPPED", reason="icon symbol not found in sprite")
 
     cellset, rows, cols = shape_to_cellset(shape)
-    allowed = build_region(cellset)
+    allowed = build_region(cellset, entry.get("align"))
     H, W = allowed.shape
 
     vb_w, vb_h = viewbox[2], viewbox[3]
@@ -612,7 +617,7 @@ def fix_icon(sprite_root, entry, any_angle=False):
         return dict(id=eid, icon=icon_id, status="SKIPPED")
 
     cellset, rows, cols = shape_to_cellset(shape)
-    allowed = build_region(cellset)
+    allowed = build_region(cellset, entry.get("align"))
     H, W = allowed.shape
 
     # REQ-0029 fixer-policy guard (art_golden v3.3, binding: aspect ratio is

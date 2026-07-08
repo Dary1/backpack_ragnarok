@@ -7,7 +7,7 @@
 // deliberately, to avoid any risk of the Pixi-lifecycle issues documented
 // in REQ-0031/REQ-0034 -- so each icon is served as a standalone SVG data
 // URL directly to an <img> tag instead.
-import spriteSheetSource from '../../../content/sprite_all_v11.svg?raw';
+import spriteSheetSource from '../../../content/sprite_all_v12.svg?raw';
 import { parseSymbols, standaloneSvgString, type SymbolInfo } from '../board/sprites';
 
 let cache: Map<string, SymbolInfo> | null = null;
