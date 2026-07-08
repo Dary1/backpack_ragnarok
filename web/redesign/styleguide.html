@@ -742,10 +742,15 @@
     </div>
 
     <div class="sub">6.7 効果音テスト — SFX audition</div>
-    <p class="lead">合成音(アセット無し / Web Audio)。ホバー=冷たい鉄・霜のティック、クリック=鍛冶の一撃(鉄の芯 + 金の残響)。全サンプル共通。<b>音量注意</b> — 自動再生制限のため最初の1クリック後から鳴る。受領チャイムは §6.5 の「受領」で試聴。</p>
+    <p class="lead">クリック音は<b>実WAV(サーバ内モーダル合成・権利クリーン・DL不要)</b>から選択、ホバー音は合成のティック。全サンプル共通。<b>音量注意</b> — 自動再生制限のため最初の1クリック後から鳴る。受領チャイムは §6.5 の「受領」で試聴。</p>
     <div class="row" style="gap:10px; flex-wrap:wrap; align-items:center">
+      <span class="dlbl" style="margin:0">クリック音:</span>
+      <button class="preset is-on" data-click="latch">上品なカチッ(金の留具)</button>
+      <button class="preset" data-click="anvil">金床の一撃</button>
+    </div>
+    <div class="row" style="gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px">
       <button class="btn" data-sfx="hover">ホバー音を鳴らす</button>
-      <button class="btn" data-sfx="click">クリック音を鳴らす</button>
+      <button class="btn" data-sfx="click">クリック音を鳴らす(選択中)</button>
     </div>
   </section>
 
@@ -949,6 +954,26 @@
       return actx;
     }catch(e){ return null; }
   }
+  /* click-clip WAV assets (server-side modal synthesis, license-clean) + picker */
+  var CLIP = { latch: "assets/sfx_latch.wav", anvil: "assets/sfx_anvil.wav" };
+  var buffers = {}, clipsRequested = false, activeClick = "latch";
+  function loadClips(){
+    if (clipsRequested) return; clipsRequested = true;
+    var c = ac(); if(!c) return;
+    Object.keys(CLIP).forEach(function(k){
+      fetch(CLIP[k]).then(function(r){ return r.arrayBuffer(); })
+        .then(function(ab){ return c.decodeAudioData(ab); })
+        .then(function(buf){ buffers[k] = buf; })
+        .catch(function(){});
+    });
+  }
+  function playClip(k, vol){
+    var c = ac(); if(!c) return false; var buf = buffers[k]; if(!buf) return false;
+    var s = c.createBufferSource(); s.buffer = buf;
+    var g = c.createGain(); g.gain.value = (vol == null ? 0.5 : vol);
+    s.connect(g).connect(c.destination); s.start(); return true;
+  }
+  loadClips();
   function tone(c, freq, t0, dur, vol, type, lp){
     var o = c.createOscillator(), g = c.createGain(), last = o;
     o.type = type || "sine"; o.frequency.value = freq;
@@ -977,6 +1002,7 @@
   }
   /* click: forge strike -- noise contact + iron body + inharmonic gold ring */
   function clickSfx(){
+    if (playClip(activeClick, activeClick === "anvil" ? 0.42 : 0.6)) return;
     var c = ac(); if(!c) return; var t = c.currentTime;
     noiseHit(c, t, 0.035, 0.14, 2400, 0.7);
     tone(c, 150, t, 0.13, 0.12, "triangle", 800);
@@ -996,6 +1022,10 @@
 
   /* click: SFX on any sample (except 受領, which keeps its own claim chime) + spark on clickables */
   document.addEventListener("click", function(e){
+    loadClips();
+    var pick = e.target.closest("[data-click]");
+    if(pick){ activeClick = pick.getAttribute("data-click");
+      document.querySelectorAll("[data-click]").forEach(function(x){ x.classList.toggle("is-on", x === pick); }); }
     var sfxBtn = e.target.closest("[data-sfx]");
     if(sfxBtn){ if(sfxBtn.getAttribute("data-sfx") === "hover") hoverSfx(); else clickSfx(); }
     var s = e.target.closest(SAMPLE);
