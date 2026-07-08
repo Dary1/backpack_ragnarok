@@ -1456,6 +1456,37 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+
+// REQ-0049 run integration: attachment rewards + door shortcut flow through runDungeon.
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function cellBp(id, o) { return { id: id, name: id, shape: [[0,0]], origin: o, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
+  function dummyU(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  const it = {
+    battler:  { id: 'battler',  shape: [[0,0]], modes: ['battle'],    attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+    detector: { id: 'detector', shape: [[0,0]], modes: ['detection'], attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.4,0.4] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },
+    unlocker: { id: 'unlocker', shape: [[0,0]], modes: ['unlock'],    attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.4,0.4] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+  };
+  const en = { weak: { id: 'weak', name: 'Weak', hp: [10,10], footprint: [1,1], skills: [] } };
+  function party(ids) { return { linked: false, layout: L, sis: [], bps: [cellBp('A',[1,1]),cellBp('B',[1,3]),cellBp('C',[1,5])], pos: ids.map((id,i)=>({uid:'u'+i,id:id,loc:'grid',cell:[1,1+2*i],rot:0})) }; }
+  function run(seed, ids, encs) {
+    return combat.runDungeon({ masterSeed: seed, dungeonDef: { encounters: encs }, unitSnapshots: [party(ids), dummyU('z2'), dummyU('z3'), dummyU('z4')], itemDefsById: it, enemyDefsById: en, skillDefsById: {}, formationId: 'formation1', level: 3, participants: ['pA'] });
+  }
+  const packBoss = (atts) => ([
+    { id: 'p0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak'] }, deadline_secs: 20, attachments: atts },
+    { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['weak'] }, deadline_secs: 20 },
+  ]);
+  T('REQ-0049 run: chest opened by unlock -> reward accrues to run.rewards', () => {
+    const r = run('req49-rw-chest', ['battler','unlocker'], packBoss([{ id: 'ch', kind: 'chest', mode: 'unlock', entity: { footprint: [2,2], hp: [20,20], timeout_secs: 15 }, reward: { roll: 'reward_frostbound_cache_roll' } }]));
+    ok(r.result === 'victory', 'run won');
+    ok(r.rewards.some(a => a.item === 'reward_frostbound_cache_roll'), 'chest reward accrued into run rewards (resolvable roll id)');
+  });
+  T('REQ-0049 run: attachment door opened -> +J% shortcut event (via=attachment)', () => {
+    const r = run('req49-rw-door', ['battler','detector','unlocker'], packBoss([{ id: 'dr', kind: 'door', mode: 'detection', entity: { footprint: [2,2], hp: [20,20], timeout_secs: 15 }, reward: null }]));
+    ok(r.events.some(e => e.ev === 'shortcut' && e.via === 'attachment'), 'attachment door grants a shortcut jump');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
