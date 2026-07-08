@@ -23,6 +23,8 @@ else
 fi
 echo "==== [3.6/7] engine type-surface drift check ===="
 node tools/check_engine_types.cjs
+echo "==== [3.7/7] vocab self-test (verbs/triggers/render + range validation) ===="
+node tools/self_test_vocab.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
