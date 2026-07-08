@@ -201,6 +201,13 @@ button { font-family: var(--f-ui); }
 .chip.is-on{ border-color:var(--gold-lo); color:var(--gold-hi); box-shadow:inset 0 0 8px rgba(201,169,89,.15); }
 .chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--bone-3); }
 .chip.is-live .dot{ background:var(--ember-hi); box-shadow:0 0 6px var(--ember-glow); }
+/* REQ-0113: live heartbeat -- adopts styleguide §06 `pulse` (season_end_2).
+   Keyed to the one real live ("now-running") surface: the schedule Monitor live-run
+   chip (.chip.is-live, Monitor.tsx, shown while run && !settled). Gated by
+   main.tsx's data-motion flag, so e2e (webdriver) and reduced-motion keep a
+   static dot; the reduced-motion blanket below is the second guard. */
+:root[data-motion="on"] .chip.is-live .dot{ animation: mjolnir-live-pulse 1.5s ease-in-out infinite; }
+@keyframes mjolnir-live-pulse{ 50%{ opacity:.35; transform:scale(.75); } }
 
 .kw-ember{ color:var(--ember-hi); font-weight:700; }
 .kw-frost{ color:var(--frost-hi); font-weight:700; }
