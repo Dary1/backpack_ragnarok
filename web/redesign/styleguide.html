@@ -86,6 +86,133 @@
     .spec{ flex-wrap:wrap; gap:2px 18px; }
     .sec-h .en{ margin-left:0; }
   }
+  /* ===== §07 mobile ===== */
+  @media (max-width:840px){ .fxwrap{ grid-template-columns:1fr; } }
+
+  /* ============================================================
+     §07 MOTION & FX — live demo harness (added 2026-07-08)
+     Keyframes below are MIRRORED from their source files so every
+     specimen actually runs inside this page. Each @keyframes notes
+     its source; the source file remains the definition of record.
+     ============================================================ */
+  /* -- core (ui.css) -- */
+  @keyframes beamflow{ to{ stroke-dashoffset:-16; } }                 /* ui.css — living linker beam */
+  @keyframes toastin { from{ transform:translateY(10px); opacity:0; } } /* ui.css — toast entrance */
+  /* -- title (index.html / landing.css) -- */
+  @keyframes auroradrift{ from{ transform:translateX(-2.5%) translateY(-1%) scale(1); opacity:.85; }
+                          50%{ opacity:1; } to{ transform:translateX(2.5%) translateY(1.5%) scale(1.06); opacity:.8; } }
+  @keyframes glint{ 0%,78%{ background-position:110% 0; } 92%,100%{ background-position:-40% 0; } }
+  @keyframes pressPulse{ 0%,100%{ opacity:.95; } 50%{ opacity:.28; } }
+  /* -- expedition / market -- */
+  @keyframes logIn{ from{ opacity:0; transform:translateY(-4px); } }  /* expedition.html */
+  @keyframes sksweep{ to{ transform:translateX(60%); } }              /* market.html */
+  /* -- ritual family (ragnarok / season_end_*) -- */
+  @keyframes lbxT{ to{ transform:translateY(-103%); } }
+  @keyframes lbxB{ to{ transform:translateY(103%); } }
+  @keyframes rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+  @keyframes mbob{ 50%{ transform:translateY(-6px); } }               /* season_end_1 */
+  @keyframes pulse{ 50%{ opacity:.35; transform:scale(.75); } }       /* season_end_2 */
+  @keyframes shim{ from{ background-position:180% 0; } to{ background-position:-80% 0; } } /* season_end_2 */
+  @keyframes stampin{ from{ opacity:0; transform:rotate(-14deg) scale(2.4); }
+                      62%{ opacity:1; transform:rotate(-8deg) scale(.94); } to{ transform:rotate(-8deg) scale(1); } }
+  @keyframes ascendDemo{ 0%{ transform:translateY(0); opacity:0; } 12%{ opacity:.9; } 72%{ opacity:.5; }
+                         100%{ transform:translateY(-150px); opacity:0; } } /* season_end_3 (contained; real=-118vh) */
+  @keyframes placePulse{ 50%{ box-shadow:0 0 14px rgba(87,199,123,.35); opacity:.72; } } /* warehouse/workshop */
+  @keyframes hitflash{ 0%{ transform:scale(.3); opacity:0; } 15%{ opacity:1; } 100%{ transform:scale(2.4); opacity:0; } } /* fx.js hit (CSS echo) */
+  /* -- client (index.css) -- */
+  @keyframes cw-claim-flash{ 0%,100%{ box-shadow:0 0 0 rgba(235,217,164,0); } 50%{ box-shadow:0 0 18px 2px rgba(235,217,164,.6); } }
+  @keyframes cw-claim-fadeout{ 0%{ box-shadow:0 0 26px 6px rgba(235,217,164,.85), inset 0 0 20px rgba(235,217,164,.45); } 100%{ box-shadow:0 0 0 rgba(235,217,164,0); } }
+  @keyframes cw-tab-pulse{ 0%,100%{ box-shadow:none; background-color:transparent; } 50%{ box-shadow:0 0 0 3px #59d68a; background-color:rgba(89,214,138,.25); } }
+  @keyframes cw-refused-shake{ 0%,100%{ transform:translateX(0); } 25%{ transform:translateX(-4px); } 75%{ transform:translateX(4px); } }
+
+  /* -- gallery layout -- */
+  .fxwrap{ display:grid; grid-template-columns:repeat(auto-fill,minmax(258px,1fr)); gap:14px; margin:12px 0 4px; }
+  .fx{ position:relative; border:1px solid var(--border-lo); border-radius:4px; overflow:hidden;
+       background:linear-gradient(180deg, rgba(27,34,45,.55), rgba(16,20,27,.7)); }
+  .fx .stage{ position:relative; height:148px; display:grid; place-items:center; overflow:hidden;
+       background:radial-gradient(120% 120% at 50% 28%, #1a2029, #10141b 72%); }
+  .fx .stage canvas{ position:absolute; inset:0; width:100%; height:100%; }
+  .fx .cap{ padding:9px 12px 12px; border-top:1px solid rgba(201,169,89,.14); }
+  .fx .cap .nm{ font-family:var(--f-dj); font-weight:700; font-size:13px; color:var(--bone); line-height:1.5; }
+  .fx .cap .meta{ font-size:10.5px; color:var(--bone-3); letter-spacing:.02em; margin:3px 0 5px; line-height:1.55; }
+  .fx .cap .desc{ font-size:12px; line-height:1.7; color:var(--bone-2); }
+  .replay{ position:absolute; top:8px; right:8px; z-index:5; font-size:10px; letter-spacing:.1em;
+       padding:3px 11px; border:1px solid rgba(201,169,89,.4); border-radius:999px; color:var(--gold-hi);
+       background:rgba(10,13,18,.72); cursor:pointer; }
+  .replay:hover{ border-color:var(--gold-lo); box-shadow:0 0 8px rgba(201,169,89,.25); }
+  .fxtag{ display:inline-block; font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; padding:1px 8px;
+       border-radius:999px; border:1px solid var(--border-lo); color:var(--bone-3); margin-left:4px; vertical-align:middle; }
+  .fxtag.loop{ color:var(--frost-hi); border-color:var(--frost-lo); }
+  .fxtag.once{ color:var(--gold-hi); border-color:var(--gold-lo); }
+  .fxtag.js{ color:var(--ember-hi); border-color:var(--ember-lo); }
+
+  /* -- specimen elements -- */
+  .hitdot{ width:26px; height:26px; border-radius:50%; opacity:0;
+       background:radial-gradient(circle, #fff, #FF8A3D 42%, rgba(226,88,34,0) 70%); }
+  .fx.oneshot.play .hitdot{ animation:hitflash .7s ease-out; }
+  .riseitem{ opacity:0; padding:6px 16px; min-width:150px; text-align:center; font-family:var(--f-dj); font-weight:700;
+       border:1px solid var(--border-lo); border-radius:2px; background:rgba(19,24,32,.7); }
+  .fx.oneshot.play .riseitem{ animation:rise .7s ease-out both; }
+  .fx.oneshot.play .riseitem:nth-child(2){ animation-delay:.15s; }
+  .fx.oneshot.play .riseitem:nth-child(3){ animation-delay:.30s; }
+  .lbxstage .lbx-top,.lbxstage .lbx-bot{ position:absolute; left:0; right:0; height:42%; background:#05070b; z-index:2; }
+  .lbxstage .lbx-top{ top:0; box-shadow:inset 0 -1px 0 rgba(201,169,89,.25); }
+  .lbxstage .lbx-bot{ bottom:0; box-shadow:inset 0 1px 0 rgba(201,169,89,.25); }
+  .lbxstage .lbx-scene{ font-size:22px; font-weight:800; letter-spacing:.2em; color:var(--gold-hi); }
+  .fx.oneshot.play .lbx-top{ animation:lbxT 1s cubic-bezier(.55,0,.15,1) .3s forwards; }
+  .fx.oneshot.play .lbx-bot{ animation:lbxB 1s cubic-bezier(.55,0,.15,1) .3s forwards; }
+  .toastdemo{ animation:none; }
+  .fx.oneshot.play .toastdemo{ animation:toastin .28s ease-out; }
+  .stamp{ font-family:var(--f-seal); font-size:38px; color:#E06B5F; border:3px solid #B0413E; border-radius:8px;
+       padding:4px 16px; transform:rotate(-8deg); opacity:0; text-shadow:0 1px 3px rgba(0,0,0,.6); }
+  .fx.oneshot.play .stamp{ animation:stampin .55s cubic-bezier(.2,1.5,.4,1) both; }
+  .auroralayer{ position:absolute; inset:-20%; mix-blend-mode:screen; filter:blur(20px);
+       background:radial-gradient(38% 26% at 24% 20%, rgba(88,214,160,.30), transparent 70%),
+                  radial-gradient(46% 30% at 72% 24%, rgba(111,196,222,.24), transparent 70%);
+       animation:auroradrift 46s ease-in-out infinite alternate; }
+  .glintword{ font-family:var(--f-den); font-weight:700; font-size:30px; letter-spacing:.08em;
+       background:linear-gradient(100deg, var(--gold-lo) 0%, var(--gold) 18%, var(--gold-hi) 32%, #FFF6DA 37%,
+                  var(--gold-hi) 42%, var(--gold) 58%, var(--gold-lo) 100%);
+       background-size:240% 100%; -webkit-background-clip:text; background-clip:text; color:transparent;
+       animation:glint 12s ease-in-out infinite; }
+  .pressword{ color:var(--gold-hi); letter-spacing:.42em; text-indent:.42em; font-size:13px;
+       text-shadow:0 0 14px rgba(201,169,89,.5); animation:pressPulse 2.4s ease-in-out infinite; }
+  .bobimg{ height:96px; filter:drop-shadow(0 8px 12px rgba(0,0,0,.6)); animation:mbob 6s ease-in-out infinite; }
+  .pulsedot{ animation:pulse 1.5s ease-in-out infinite; }
+  .hpdemo{ position:relative; width:78%; height:12px; background:#10141B; border:1px solid var(--border-lo);
+       border-radius:2px; overflow:hidden; }
+  .hpdemo .hpfill{ height:100%; width:70%; background:linear-gradient(90deg,#8E3430,#C05248); }
+  .hpdemo .hpfill::after{ content:""; position:absolute; inset:0; width:70%;
+       background:linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+       background-size:220% 100%; animation:shim 2.6s linear infinite; }
+  .skrow{ position:relative; height:16px; width:80%; border-radius:3px; background:#1a212b; overflow:hidden; }
+  .skrow::after{ content:""; position:absolute; top:0; bottom:0; width:42%;
+       background:linear-gradient(90deg, transparent, rgba(233,227,211,.13), transparent);
+       transform:translateX(-60%); animation:sksweep 2.4s linear infinite; }
+  .cellpulse{ width:54px; height:54px; border-radius:4px; border:1px solid rgba(87,199,123,.6);
+       background:var(--valid); animation:placePulse 1.6s ease-in-out infinite; cursor:wait; }
+  .ascendstage .spirit{ position:absolute; bottom:6px; width:6px; height:6px; border-radius:50%; opacity:0;
+       background:radial-gradient(circle,#EBD9A4, rgba(201,169,89,0) 70%); animation:ascendDemo 6s linear infinite; }
+  .ascendstage .s1{ left:30%; animation-delay:0s; } .ascendstage .s2{ left:52%; animation-delay:2s; }
+  .ascendstage .s3{ left:70%; animation-delay:4s; } .ascendstage .s4{ left:42%; animation-delay:5s; }
+  .plx{ position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); will-change:transform; }
+  .plx.back{ font-family:var(--f-rune); font-size:66px; color:rgba(111,196,222,.22); }
+  .plx.front{ font-family:var(--f-den); font-weight:700; font-size:22px; letter-spacing:.14em; color:var(--gold-hi); }
+  .claimrow{ padding:10px 16px; border:1px solid var(--border-lo); border-radius:3px;
+       background:linear-gradient(180deg, rgba(27,34,45,.7), rgba(19,24,32,.7)); }
+  .claimrow.flashing{ animation:cw-claim-flash .5s ease-in-out infinite; }
+  .claimrow.done{ animation:cw-claim-fadeout .4s ease-out forwards; }
+  .fx.oneshot.play .tabdemo{ animation:cw-tab-pulse .5s ease-in-out 3; }
+  .fx.oneshot.play .shakedemo{ animation:cw-refused-shake .4s ease-in-out; }
+  .raylog{ font-size:11px; line-height:1.7; padding:8px 12px; max-height:126px; overflow:hidden; }
+  .raylog .logline{ animation:logIn .28s ease-out; }
+  .raylog .ts{ color:var(--bone-3); margin-right:8px; }
+  .raylog .nova{ color:var(--ember-hi); font-weight:700; }
+  .raylog .sys{ color:var(--gold-hi); }
+  .logfeed .logline{ padding:4px 2px; border-bottom:1px solid rgba(233,227,211,.06); font-size:12px; }
+  .logfeed .logline .ts{ color:var(--bone-3); margin-right:8px; }
+  /* reduced-motion preview (illustrative only; real trigger = prefers-reduced-motion) */
+  .rm-preview .fx *{ animation-duration:.001s !important; transition-duration:.001s !important; }
 </style>
 </head>
 <body class="grain vignette">
@@ -112,11 +239,12 @@
       <path d="M31 27 a23 23 0 1 0 33 27"/>
     </svg>
     <h1 class="dj">意匠体系 「MJÖLNIR」</h1>
-    <div class="en" style="margin-top:8px">BACKPACK RAGNARÖK — DESIGN SYSTEM DOCUMENT v1.0</div>
-    <div class="row" style="justify-content:center; gap:8px; margin-top:14px">
+    <div class="en" style="margin-top:8px">BACKPACK RAGNARÖK — DESIGN SYSTEM DOCUMENT v1.1</div>
+    <div class="row" style="justify-content:center; gap:8px; margin-top:14px; flex-wrap:wrap">
       <span class="chip">2026-07-06</span>
+      <span class="chip is-on">改訂 2026-07-08 — motion &amp; fx</span>
       <span class="chip">対象: 開発チーム</span>
-      <span class="chip is-on">ui.css / fx.js 準拠</span>
+      <span class="chip">ui.css / fx.js / index.css 準拠</span>
     </div>
   </header>
 
@@ -412,11 +540,18 @@
     <div class="note">上記はすべて現代の過激主義シンボルと衝突するため不使用(ADL "Hate on Display" データベース照合済 ・ 2026-07)。</div>
   </section>
 
-  <!-- ================= 7. MOTION ================= -->
+  <!-- ================= 7. MOTION & FX ================= -->
   <div class="rune-divider">ᛞ</div>
-  <section class="sec panel ornate panel-pad">
+  <section class="sec panel ornate panel-pad" id="sec-motion">
     <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
-    <div class="sec-h"><span class="no">07</span><h2 class="dj">モーション原理</h2><span class="en">Motion — glow discipline</span></div>
+    <div class="sec-h"><span class="no">07</span><h2 class="dj">モーション & エフェクト</h2><span class="en">Motion &amp; FX — live catalogue</span></div>
+    <p class="lead">
+      全画面で使う動き・発光・粒子・音を<b>実物で</b>並べ、各札に「何を・いつ・どの速さで」行うかを明記する。
+      タグの読み: <span class="fxtag loop">loop</span>=常在ループ ・ <span class="fxtag once">once</span>=一過性(右上の<b>再生</b>で再実行) ・ <span class="fxtag js">js</span>=<code>fx.js</code>等のスクリプト駆動。
+      各 <code>@keyframes</code>/関数の定義元は札の <code>src</code> に示す(この頁は実演のため定義を複製しているが、正は各元ファイル)。
+    </p>
+
+    <div class="sub">7.0 原則 — 発光の規律</div>
     <ul class="rules">
       <li><b>発光は4つの瞬間のみ</b> — ①焦点(hover/選択) ②伝説級以上の顕現 ③生存する連結ビーム ④命中の瞬間。静止テキスト・待機パネルは光らせない。</li>
       <li>外発光は blur ≤ 8px(等倍)・1要素1色。パネルは内影のみ。同時発光源は ≤ 3/画面。</li>
@@ -425,7 +560,191 @@
       <li><code>prefers-reduced-motion</code> 対応済 — ui.css共通で全アニメーション/遷移を0.001sへ短絡。粒子・視差はfx.js側で生成自体を停止。</li>
       <li><b>SKIP LANDING</b>: 表題のトグルで次回起動から編成の間へ直行(localStorage、レールの表題リンクは <code>#stay</code> でバイパス)。</li>
     </ul>
+
+    <!-- 7.1 the four sanctioned glows -->
+    <div class="sub">7.1 発光の4瞬間 — sanctioned glows</div>
+    <p class="lead">発光はこの4つの意味にのみ配給する。これ以外の待機要素は光らせない。</p>
+    <div class="fxwrap">
+      <div class="fx"><div class="stage"><button class="btn" style="pointer-events:auto">焦点 hover ▸</button></div>
+        <div class="cap"><div class="nm">① 焦点環 <code>--focus-ring</code></div>
+          <div class="meta">1px金リム + 8pxソフト金光 ・ transition .14s ease-out ・ src: ui.css</div>
+          <div class="desc">hoverと選択(<code>.is-selected</code>)でだけ点る唯一の焦点表現。上のボタンにマウスを乗せると発火する。</div></div></div>
+
+      <div class="fx"><div class="stage" style="grid-auto-flow:column; gap:12px">
+          <div class="rbox rar rar-legend" style="width:92px; padding:12px 8px 10px"><span class="gem"></span><div class="r-jp" style="font-size:13px">黄金細工</div><div class="rar-word">LEGENDARY</div></div>
+          <div class="rbox rar rar-mythic" style="width:92px; padding:12px 8px 10px"><span class="gem"></span><div class="r-jp" style="font-size:13px">ヴァルハラ</div><div class="rar-word">MYTHIC</div></div>
+        </div>
+        <div class="cap"><div class="nm">② 稀少の顕現 <code>.rar-legend / .rar-mythic</code></div>
+          <div class="meta">legend=金の内外光 ・ mythic=焔+霜の二重リム(唯一の二色発光) ・ src: ui.css</div>
+          <div class="desc">伝説級以上だけが持つ<b>常時発光</b>。epic以下は枠色のみで光らせない。稀少度は色に頼らず枠+語+角宝形の三重符号(§4)。</div></div></div>
+
+      <div class="fx"><div class="stage">
+          <svg width="220" height="88" style="overflow:visible">
+            <circle cx="26" cy="44" r="5" fill="#12161D" stroke="#857038"></circle>
+            <path class="beam live" d="M26 44 H194" stroke="#C9A959" stroke-width="3" fill="none"></path>
+            <circle cx="194" cy="44" r="5" fill="#12161D" stroke="#857038"></circle>
+            <text class="beam-cap" x="110" y="32" text-anchor="middle">ᛖ</text>
+          </svg></div>
+        <div class="cap"><div class="nm">③ 生存する連結 <code>@keyframes beamflow</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">stroke-dashoffset 0→−16 ・ 1.1s linear ∞ ・ src: ui.css (<code>.beam.live</code>)</div>
+          <div class="desc">連結が<b>生存している間だけ</b>破線が流れる。切れた連結は <code>.beam.ghost</code>(静止・半透明)で光らせない。端子記号はᛖ(信頼)。</div></div></div>
+
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><span class="hitdot"></span></div>
+        <div class="cap"><div class="nm">④ 命中の光 <code>hit flash</code> <span class="fxtag once">once</span></div>
+          <div class="meta">拡大しながら退色 ・ ~0.7s ・ 実体は canvas 描画(§7.4 RayMonitor)</div>
+          <div class="desc">命中の瞬間だけ弾ける閃光。本番は RayMonitor が canvas に描く。ここはCSSでの相似再現。</div></div></div>
+    </div>
+
+    <!-- 7.2 ambient loops -->
+    <div class="sub">7.2 常在ループ — ambient</div>
+    <p class="lead">画面に「生きた空気」を与える無限ループ。いずれも遅く・小さく・退けられる(reduced-motionで停止)。</p>
+    <div class="fxwrap">
+      <div class="fx"><div class="stage" style="background:#0b0f15"><div class="auroralayer"></div><span class="t-micro" style="z-index:2; position:relative">背景オーロラ</span></div>
+        <div class="cap"><div class="nm"><code>@keyframes auroradrift</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">±2.5%漂流 + scale 1.06 + 明滅 ・ 46s ease-in-out ∞ alternate ・ blur28 / screen ・ src: index.html · landing.css</div>
+          <div class="desc">表題背景の極光。氷河のように遅い呼吸(46s)で、静止画のキーアートに生気を与える。</div></div></div>
+
+      <div class="fx"><div class="stage"><div class="glintword">RAGNARÖK</div></div>
+        <div class="cap"><div class="nm"><code>@keyframes glint</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">background-position 110%→−40% ・ 12s ∞ ・ src: index.html · landing.css</div>
+          <div class="desc">ロゴを一筋の金の光沢が横切る。約12秒に一度だけ、そっと閃く。</div></div></div>
+
+      <div class="fx"><div class="stage"><div class="pressword">PRESS TO START</div></div>
+        <div class="cap"><div class="nm"><code>@keyframes pressPulse</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">opacity .95↔.28 ・ 2.4s ease-in-out ∞ ・ src: index.html</div>
+          <div class="desc">開始待ちの誘目。ゆっくり明滅して「押せる」を伝える。</div></div></div>
+
+      <div class="fx"><div class="stage"><img class="bobimg" src="assets/myth_phoenix.png" alt=""></div>
+        <div class="cap"><div class="nm"><code>@keyframes mbob</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">translateY −6px ・ 6s ease-in-out ∞ ・ src: season_end_1</div>
+          <div class="desc">解放された神話級の待機浮遊。最小限の上下動で「生きている」質感を出す。</div></div></div>
+
+      <div class="fx"><div class="stage"><span class="chip is-live" style="font-size:14px"><span class="dot pulsedot"></span> 稼働中</span></div>
+        <div class="cap"><div class="nm"><code>@keyframes pulse</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">scale .75 + opacity .35 ・ 1.5s ease-in-out ∞ ・ src: season_end_2</div>
+          <div class="desc">稼働・生存を示す拍動。「今まさに動いている」合図。</div></div></div>
+
+      <div class="fx"><div class="stage"><div class="hpdemo"><div class="hpfill"></div></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes shim</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">背景位置掃引(幅220%) ・ 2.6s linear ∞ ・ src: season_end_2</div>
+          <div class="desc">生存中のHPバーを流れる光沢。<code>.dead</code>で停止し「もう動かない」を示す。</div></div></div>
+
+      <div class="fx"><div class="stage" style="flex-direction:column; gap:8px; align-content:center; padding:0 22px"><div class="skrow"></div><div class="skrow" style="width:60%"></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes sksweep</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">translateX −60%→+60% ・ 2.4s linear ∞ ・ src: market.html</div>
+          <div class="desc">読み込み中プレースホルダを走る光。市場の商品カード待機に使用。</div></div></div>
+
+      <div class="fx"><div class="stage"><div class="cellpulse"></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes placePulse</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">緑内光 + opacity .72 ・ 1.6s ease-in-out ∞ ・ cursor:wait ・ src: warehouse/workshop → 移植 index.css</div>
+          <div class="desc">配置反映待ち(サーバ応答前)のセル。緑は「配置可/処理中」の意味に予約(§2)。</div></div></div>
+
+      <div class="fx"><div class="stage ascendstage"><span class="spirit s1"></span><span class="spirit s2"></span><span class="spirit s3"></span><span class="spirit s4"></span></div>
+        <div class="cap"><div class="nm"><code>@keyframes ascend</code> <span class="fxtag loop">loop</span></div>
+          <div class="meta">上昇 + 退色 ・ ~18s linear ∞(交錯) ・ src: season_end_3</div>
+          <div class="desc">終季の昇魂 — 魂が天へ立ち上る。実画面は画面高全体(−118vh)を旅する(ここは縮約表示)。</div></div></div>
+    </div>
+
+    <!-- 7.3 entrances / one-shots -->
+    <div class="sub">7.3 登場・一過性 — entrances <span class="t-micro">(右上「再生」で再実行)</span></div>
+    <div class="fxwrap">
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage" style="flex-direction:column; gap:7px; align-content:center"><div class="riseitem">序列 一位</div><div class="riseitem">序列 二位</div><div class="riseitem">序列 三位</div></div>
+        <div class="cap"><div class="nm"><code>@keyframes rise</code> — 段階登場 <span class="fxtag once">once</span></div>
+          <div class="meta">translateY 14px→0 + fade ・ ease-out ・ 遅延を段積み(.3s→2.9s) ・ src: ragnarok / season_end_*</div>
+          <div class="desc">儀式画面の入場。要素を順に立ち上げ、荘厳な「開演」の呼吸を作る。</div></div></div>
+
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage lbxstage"><div class="lbx-top"></div><div class="lbx-scene dj">終季の決戦</div><div class="lbx-bot"></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes lbxT / lbxB</code> — 幕開き <span class="fxtag once">once</span></div>
+          <div class="meta">上下の帯が退く(±103%) ・ 1s cubic-bezier(.55,0,.15,1) ・ 実遅延1.6s(demoは.3s) ・ src: ragnarok / season_end_*</div>
+          <div class="desc">シネマ用レターボックス。上下の黒帯が引き上がり/引き下がり、決戦の場面を開帳する。</div></div></div>
+
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><div class="toast toastdemo" style="max-width:230px"><span class="rune" style="color:var(--gold); font-size:16px">ᚷ</span><div><b>戦利品 — 氷河の断斧</b> <span class="rar-word" style="color:var(--r-rare)">RARE</span></div></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes toastin</code> — 通知 <span class="fxtag once">once</span></div>
+          <div class="meta">translateY 10px→0 + fade ・ .28s ease-out ・ 同時1件のみ ・ src: ui.css</div>
+          <div class="desc">単一メッセージキューの通知。下から迫り上がる。重ね表示は禁止(§7.0)。</div></div></div>
+
+      <div class="fx"><button class="replay" data-log>追加 +</button><div class="stage" style="align-items:stretch; padding:8px 12px"><div class="logfeed" id="fx-logfeed"><div class="logline"><span class="ts tnum">03</span>遠征報告 — 第3信</div><div class="logline"><span class="ts tnum">02</span>遠征報告 — 第2信</div><div class="logline"><span class="ts tnum">01</span>遠征開始</div></div></div>
+        <div class="cap"><div class="nm"><code>@keyframes logIn</code> — 記録の流入 <span class="fxtag once">once</span></div>
+          <div class="meta">translateY −4px→0 + fade ・ .28s ease-out ・ src: expedition.html</div>
+          <div class="desc">遠征報告フィードに新しい行が入る度に上から差し込まれる。「追加」で新着を発火。</div></div></div>
+
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><div class="stamp">勝利</div></div>
+        <div class="cap"><div class="nm"><code>@keyframes stampin</code> — 判定の刻印 <span class="fxtag once">once</span></div>
+          <div class="meta">rotate −14°→−8° + scale 2.4→.94→1(バネ過衝) ・ .55s cubic-bezier(.2,1.5,.4,1) ・ src: season_end_2</div>
+          <div class="desc">「勝利」「敗北」の判子演出。大きく回りながら叩き込まれ、少し行き過ぎて収まる。印章書体はYuji Syuku(§3)。</div></div></div>
+    </div>
+
+    <!-- 7.4 JS-driven fx -->
+    <div class="sub">7.4 JS駆動エフェクト — <code>assets/fx.js</code></div>
+    <div class="fxwrap">
+      <div class="fx"><div class="stage" style="background:#0b0f15"><canvas id="fx-ember"></canvas></div>
+        <div class="cap"><div class="nm"><code>initParticles({mix:'ember'})</code> <span class="fxtag js">js</span></div>
+          <div class="meta">上昇する火の粉 ・ shadowBlur6 発光 + 明滅(sin) ・ 既定46粒 ・ src: fx.js</div>
+          <div class="desc">ムスペルヘイムの残り火。焔属性画面の空気。reduced-motionでは生成自体を行わない。</div></div></div>
+
+      <div class="fx"><div class="stage" style="background:#0b0f15"><canvas id="fx-snow"></canvas></div>
+        <div class="cap"><div class="nm"><code>initParticles({mix:'snow'})</code> <span class="fxtag js">js</span></div>
+          <div class="meta">降る霜の粒 ・ 無発光・横流れ ・ src: fx.js(<code>mix:'both'</code>で焔霜交互)</div>
+          <div class="desc">ニヴルヘイムの霜。焔と対で「世界の声」を担い、役割は交換しない(§2)。</div></div></div>
+
+      <div class="fx"><button class="replay" data-count>数える</button><div class="stage"><span id="fx-count" class="tnum den gold-text" style="font-size:40px">0</span></div>
+        <div class="cap"><div class="nm"><code>countUp(el, 24680)</code> <span class="fxtag js">js</span></div>
+          <div class="meta">三次イージング(easeOutCubic) ・ 1200ms ・ 桁区切り付 ・ src: fx.js</div>
+          <div class="desc">戦果・通貨・順位の増加を数え上げで見せる。等幅数字(<code>.tnum</code>)で桁が踊らない。reduced-motionでは即最終値。</div></div></div>
+
+      <div class="fx"><div class="stage" id="fx-parallax"><div class="plx back">ᛦ</div><div class="plx front">MJÖLNIR</div></div>
+        <div class="cap"><div class="nm"><code>initParallax(root)</code> <span class="fxtag js">js</span></div>
+          <div class="meta">ポインタ追従 ・ <code>[data-depth]</code>階層で移動量を変える ・ src: fx.js</div>
+          <div class="desc">表題の奥行き演出。カード上でマウスを動かすと前後の層が視差でずれる。</div></div></div>
+
+      <div class="fx" style="grid-column:1/-1">
+        <div class="row" style="gap:8px; padding:9px 10px 0; justify-content:flex-end">
+          <button class="preset" id="ray-pause" style="letter-spacing:.06em">一時停止</button>
+          <button class="preset" id="ray-speed" style="letter-spacing:.06em">×1</button>
+        </div>
+        <div class="stage" style="height:220px; padding:6px; background:#0b0f15"><canvas id="fx-ray"></canvas></div>
+        <div id="fx-raylog" class="raylog"></div>
+        <div class="cap"><div class="nm"><code>RayMonitor(canvas, log)</code> — 編隊光条の戦闘再生 <span class="fxtag js">js</span></div>
+          <div class="meta">26×18 双陣(自陣/敵陣) ・ 光条が45°/直交で歩き境界反射(金の火花) ・ 命中で色付き閃光 ・ <b>第5反射で全域ノヴァ</b> ・ 14.5s周回 ・ src: fx.js</div>
+          <div class="desc">遠征戦闘のスクリプト再生。光条(ray)が盤面を走り、境界で反射、命中で閃光、5回反射すると全域強打(nova)が起きる。右下ログと同期。色: <span class="kw-ember">焔</span>=焔攻撃 ・ <span class="kw-frost">霜</span>=霜攻撃 ・ <span class="kw-blood">血</span>=被弾 ・ <span class="kw-gold">金</span>=撃破。速度/一時停止は上のボタン。</div></div></div>
+    </div>
+
+    <!-- 7.5 client-side effects -->
+    <div class="sub">7.5 クライアント実装のエフェクト — React app (<code>index.css</code> / TS)</div>
+    <div class="fxwrap">
+      <div class="fx"><button class="replay" data-claim>受領 ᚷ</button><div class="stage"><div class="claimrow" id="fx-claim"><span class="rune" style="color:var(--gold)">ᚷ</span> <b>氷河の断斧</b> <span class="rar-word" style="color:var(--r-rare)">RARE</span></div></div>
+        <div class="cap"><div class="nm">受領演出 <code>claim-flash → claim-fadeout</code> + <code>playClaimChime()</code> <span class="fxtag js">js+audio</span></div>
+          <div class="meta">金枠が明滅→退色 .4s ・ 同時に合成2音チャイム(A5 880→E6 1318.51Hz, sine, ~200ms) ・ src: index.css · warehouse/claimSfx.ts</div>
+          <div class="desc">倉庫の受領押下の<b>即時</b>フィードバック。視覚(退色)がサーバ応答までの橋渡し、音は押下の受理を告げる。<b>音が鳴るので音量注意。</b></div></div></div>
+
+      <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><a class="nav tabdemo" style="width:66px; border-radius:3px"><span class="rune" style="display:block; font-size:20px; color:var(--bone-3)">ᚷ</span><span class="lbl" style="display:block; font-size:11px; margin-top:3px">倉庫</span></a></div>
+        <div class="cap"><div class="nm"><code>@keyframes tab-claim-pulse</code> <span class="fxtag once">×3</span></div>
+          <div class="meta">緑リング+緑地 ・ .5s ease-in-out ×3(有限) ・ src: index.css</div>
+          <div class="desc">受領可能な報酬があるタブを3回だけ緑で拍動させ誘目。過剰にならぬよう回数を固定。</div></div></div>
+
+      <div class="fx oneshot"><button class="replay" data-replay>拒否</button><div class="stage"><span class="preset warn shakedemo">参ノ型 ⚠</span></div>
+        <div class="cap"><div class="nm"><code>@keyframes preset-delete-refused-shake</code> <span class="fxtag once">once</span></div>
+          <div class="meta">±4px 横振れ ・ .4s ease-in-out ・ src: index.css</div>
+          <div class="desc">不可の行為(共有物品を持つプリセット削除など)を短い横揺れで却下。赤を足さずに「無効」を伝える。</div></div></div>
+    </div>
+    <div class="note">
+      <b>非デモの実装メモ</b> —
+      <b>スプライト</b>: 盤面アイコンは <code>content/sprite_all_v11.svg</code> の<code>&lt;symbol&gt;</code>を2倍で個別ラスタライズ→PixiJS Texture化(<code>board/sprites.ts</code>)。DOMではなくWebGLで描く。 ・
+      <b>粒子の移植</b>: <code>landing/particles.ts</code> はfx.jsの粒子を忠実移植しつつ、SPA用にライフサイクル停止(disposer)を追加。<b>webdriver(E2E)/reduced-motion/CPU4コア未満で自動OFF</b>。 ・
+      <b>SFXの現状(要調整)</b>: mock意匠(§4)は Rare+ に<b>角笛(ギャラルホルン)</b>SFXを規定するが、現行クライアントは音声アセット未整備のため、受領時の<b>合成2音チャイム</b>で暫定代替(<code>claimSfx.ts</code>)。角笛SFXはアセット整備後に差し替え予定。
+    </div>
+
+    <!-- 7.6 reduced motion -->
+    <div class="sub">7.6 リデュースモーション — <code>prefers-reduced-motion</code></div>
+    <p class="lead">
+      OS/ブラウザで動きを減らす設定の利用者には、動きを<b>二段構え</b>で退ける。①CSS共通の <code>@media (prefers-reduced-motion: reduce)</code> が全 <code>animation</code>/<code>transition</code> を 0.001s に短絡(ui.css・mjolnir.css)。②粒子・視差・戦闘再生など<b>JS生成のもの</b>は <code>fx.js</code>/<code>particles.ts</code> が<b>生成自体を行わない</b>(rAFループを起動しない)。
+    </p>
+    <div class="row" style="gap:12px; align-items:center; margin-top:6px">
+      <button class="btn" id="rm-toggle" style="pointer-events:auto">reduced-motion を体感</button>
+      <span class="t-micro">※この頁内のCSSアニメを凍結する擬似プレビュー。実挙動はOS設定で発火し、JSエフェクトは生成ごと停止する。</span>
+    </div>
   </section>
+
 
   <!-- ================= 8. ASSETS ================= -->
   <div class="rune-divider">ᚠ</div>
@@ -474,7 +793,7 @@
   </section>
 
   <footer class="center t-micro" style="margin-top:28px; letter-spacing:.18em">
-    MJÖLNIR v1.0 — 2026-07 ・ backpack_ragnarok UIチーム ・ 石は忘れない。
+    MJÖLNIR v1.1 — 2026-07 ・ backpack_ragnarok UIチーム ・ 石は忘れない。
   </footer>
 
 </div></div>
@@ -489,6 +808,103 @@
     p.setAttribute("class","wedge"+(i<8?" done":i===8?" now":""));
     W.appendChild(p);
   }
+</script>
+
+<!-- §07 live FX: shared mock script + this page's demo wiring -->
+<script src="assets/fx.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* -- one-shot replay: restart CSS animation by toggling .play -- */
+  document.querySelectorAll("[data-replay]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var card = btn.closest(".fx");
+      card.classList.remove("play");
+      void card.offsetWidth;            /* force reflow so the animation re-runs */
+      card.classList.add("play");
+    });
+  });
+
+  /* -- 7.3 log feed: prepend a new line that fades in via logIn -- */
+  var logBtn = document.querySelector("[data-log]");
+  if (logBtn){
+    var feed = document.getElementById("fx-logfeed"), n = 3;
+    logBtn.addEventListener("click", function(){
+      n++;
+      var d = document.createElement("div");
+      d.className = "logline";
+      d.style.animation = "logIn .28s ease-out";
+      d.innerHTML = "<span class='ts tnum'>" + String(n).padStart(2,"0") + "</span>遠征報告 — 第" + n + "信";
+      feed.prepend(d);
+      while (feed.children.length > 6) feed.lastChild.remove();
+    });
+  }
+
+  /* -- 7.4 fx.js demos (guarded: fx.js no-ops under reduced-motion) -- */
+  var ember = document.getElementById("fx-ember");
+  if (ember && window.initParticles) window.initParticles(ember, { mix:"ember", count:34 });
+  var snow = document.getElementById("fx-snow");
+  if (snow && window.initParticles) window.initParticles(snow, { mix:"snow", count:34 });
+
+  var countEl = document.getElementById("fx-count"), countBtn = document.querySelector("[data-count]");
+  function runCount(){ if (window.countUp && countEl) window.countUp(countEl, 24680, 1200); }
+  if (countBtn) countBtn.addEventListener("click", runCount);
+  runCount();
+
+  var plx = document.getElementById("fx-parallax");
+  if (plx && window.initParallax) window.initParallax(plx);
+
+  var rayC = document.getElementById("fx-ray"), rayL = document.getElementById("fx-raylog");
+  if (rayC && window.RayMonitor){
+    var rm = window.RayMonitor(rayC, rayL);
+    var pauseB = document.getElementById("ray-pause");
+    if (pauseB) pauseB.addEventListener("click", function(){ pauseB.textContent = rm.toggle() ? "一時停止" : "再開"; });
+    var speeds = [1, 2, 0.5], si = 0, speedB = document.getElementById("ray-speed");
+    if (speedB) speedB.addEventListener("click", function(){
+      si = (si + 1) % speeds.length; rm.setSpeed(speeds[si]); speedB.textContent = "×" + speeds[si];
+    });
+  }
+
+  /* -- 7.5 claim chime (inline port of claimSfx.ts) + flash→fadeout -- */
+  var actx = null;
+  function playClaimChime(){
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!actx) actx = new AC();
+      if (actx.state === "suspended") actx.resume();
+      var now = actx.currentTime;
+      [[880,0,0.09],[1318.51,0.05,0.15]].forEach(function(nt){
+        var o = actx.createOscillator(), g = actx.createGain();
+        o.type = "sine"; o.frequency.value = nt[0];
+        g.gain.setValueAtTime(0.0001, now + nt[1]);
+        g.gain.exponentialRampToValueAtTime(0.2, now + nt[1] + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + nt[1] + nt[2]);
+        o.connect(g).connect(actx.destination);
+        o.start(now + nt[1]); o.stop(now + nt[1] + nt[2] + 0.02);
+      });
+    } catch (e) { /* best-effort SFX only */ }
+  }
+  var claimBtn = document.querySelector("[data-claim]"), claimRow = document.getElementById("fx-claim");
+  if (claimBtn && claimRow){
+    claimBtn.addEventListener("click", function(){
+      playClaimChime();
+      claimRow.classList.remove("done");
+      claimRow.classList.add("flashing");
+      setTimeout(function(){ claimRow.classList.remove("flashing"); claimRow.classList.add("done"); }, 650);
+    });
+  }
+
+  /* -- 7.6 reduced-motion illustrative toggle (freezes CSS anims in this section) -- */
+  var rmBtn = document.getElementById("rm-toggle"), sec = document.getElementById("sec-motion");
+  if (rmBtn && sec){
+    rmBtn.addEventListener("click", function(){
+      var on = sec.classList.toggle("rm-preview");
+      rmBtn.textContent = on ? "通常モーションに戻す" : "reduced-motion を体感";
+    });
+  }
+})();
 </script>
 </body>
 </html>
