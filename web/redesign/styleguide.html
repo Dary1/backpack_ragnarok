@@ -86,11 +86,11 @@
     .spec{ flex-wrap:wrap; gap:2px 18px; }
     .sec-h .en{ margin-left:0; }
   }
-  /* ===== §07 mobile ===== */
+  /* ===== §06 mobile ===== */
   @media (max-width:840px){ .fxwrap{ grid-template-columns:1fr; } }
 
   /* ============================================================
-     §07 MOTION & FX — live demo harness (added 2026-07-08)
+     §06 MOTION & FX — live demo harness (added 2026-07-08)
      Keyframes below are MIRRORED from their source files so every
      specimen actually runs inside this page. Each @keyframes notes
      its source; the source file remains the definition of record.
@@ -213,6 +213,24 @@
   .logfeed .logline .ts{ color:var(--bone-3); margin-right:8px; }
   /* reduced-motion preview (illustrative only; real trigger = prefers-reduced-motion) */
   .rm-preview .fx *{ animation-duration:.001s !important; transition-duration:.001s !important; }
+  /* ===== §06 iteration (2026-07-08b): button fire, live bars, wheel draw ===== */
+  /* buttons: fire a spark burst on click; drop the press bounce */
+  .btn:active{ transform:none; }
+  .btn, .preset{ position:relative; }
+  .btn, .preset, .replay{ overflow:hidden; }
+  .btn-fire{ position:absolute; width:16px; height:16px; margin:-8px 0 0 -8px; border-radius:50%;
+       pointer-events:none; z-index:6;
+       background:radial-gradient(circle, rgba(255,244,214,.95), rgba(201,169,89,.5) 45%, rgba(201,169,89,0) 72%);
+       animation:btnFire .5s ease-out forwards; }
+  @keyframes btnFire{ from{ transform:scale(.25); opacity:.9; } to{ transform:scale(9); opacity:0; } }
+  /* §04 bars: auto fill-grow (0 -> set value) + moving sheen */
+  .bar .fill{ position:relative; overflow:hidden; animation:barGrow 1.15s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes barGrow{ from{ width:0 !important; } }
+  .bar .fill::after{ content:""; position:absolute; inset:0;
+       background:linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+       background-size:220% 100%; animation:shim 2.4s linear infinite; }
+  /* season wheel: draw wedges progressively 0 -> set value */
+  @keyframes wheelDraw{ to{ stroke-dashoffset:0; } }
 </style>
 </head>
 <body class="grain vignette">
@@ -256,10 +274,10 @@
     <p class="lead">
       「MJÖLNIR」はBACKPACK RAGNARÖK全画面を貫く単一の意匠体系である — 夜鉄(night-iron)の暗面に骨白の文字を置き、金細工は枠・活性・CTAという<b class="kw-gold">「構造の声」</b>だけに配る。
       <b class="kw-ember">焔(ムスペルヘイム)</b>×<b class="kw-frost">霜(ニヴルヘイム)</b>の二元が属性・連結・戦闘という「世界の声」を担い、両者は決して役割を交換しない。
-      北欧神話は強度高く引用する — 実在のエルダー・フサルク単字、フギン&ムニン、ユグドラシル、ギャラルホルン、ヨルムンガンド、トリプルホーン — ただし全て意味と対にし、§6の禁忌を守る。
-      素材は革・鉄・石というダイエジェティックな実在物のみで組み、発光は焦点・伝説・生存ビーム・命中の4瞬間に配給する(§7)。
+      北欧神話は強度高く引用する — 実在のエルダー・フサルク単字、フギン&ムニン、ユグドラシル、ギャラルホルン、ヨルムンガンド、トリプルホーン — ただし全て意味と対にする。
+      素材は革・鉄・石というダイエジェティックな実在物のみで組み、発光は焦点・伝説・生存ビーム・命中の4瞬間に配給する(§6)。
     </p>
-    <div class="note">制作注記: すべての生成画像はサーバ内ComfyUI(DreamShaper8/rpg_v5)で制作 — 外部生成サービスは使用しない(§8)。</div>
+    <div class="note">制作注記: すべての生成画像はサーバ内ComfyUI(DreamShaper8/rpg_v5)で制作 — 外部生成サービスは使用しない(§7)。</div>
   </section>
 
   <!-- ================= 2. PALETTE ================= -->
@@ -340,7 +358,7 @@
           <td>温度のある角ゴ。フォールバックは Noto Sans JP。</td></tr>
         <tr><td>ルーン</td><td>Noto Sans Runic</td><td>400</td>
           <td class="rn">ᛏ</td>
-          <td>単字使用のみ(§5)。装飾列・連字は全面禁止(§6)。</td></tr>
+          <td>単字使用のみ(§5)。装飾列・連字は全面禁止。</td></tr>
         <tr><td>印章・スタンプ</td><td>Yuji Syuku</td><td>400</td>
           <td class="seal" style="font-size:16px">刻銘</td>
           <td>「勝利」「敗北」等の判子演出のみ。本文使用不可。</td></tr>
@@ -461,7 +479,7 @@
         </g>
       </svg>
       <div class="t-body" style="max-width:520px; color:var(--bone-2)">12月相 ・ 済=金鈍 ・ 現在=金明+発光(唯一の常時発光の例外、3px止まり)。
-        <b>ジグザグ直線スポーク12本の円盤は禁忌(§6)</b> — 必ず曲線ウェッジで描く。</div>
+        <b>ジグザグ直線スポーク12本の円盤は禁忌</b> — 必ず曲線ウェッジで描く。</div>
     </div>
   </section>
 
@@ -487,71 +505,21 @@
         <tr><td class="rn">ᚨ</td><td>Ansuz</td><td>神言</td><td>表題 ・ 告知(ムニンの報せ)</td></tr>
       </tbody>
     </table></div>
-    <div class="note">規則: <b>単字使用のみ ・ 連字禁止</b>。ルーンを2字以上並べて意匠化しない — 転写で偶発的に禁忌記号(§6)と衝突するため、装飾列は生成物も含め全て監査対象。上記12字以外のルーンはUIに出さない。</div>
-  </section>
-
-  <!-- ================= 6. MOTIF GUIDELINES ================= -->
-  <div class="rune-divider">ᛏ</div>
-  <section class="sec panel ornate panel-pad">
-    <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
-    <div class="sec-h"><span class="no">06</span><h2 class="dj">モチーフ指針</h2><span class="en">Motifs — use / context-only / never</span></div>
-
-    <div class="sub">使う</div>
-    <div class="tscroll"><table class="tb">
-      <thead><tr><th style="width:34%">モチーフ</th><th>役割</th></tr></thead>
-      <tbody>
-        <tr><td>フギン&ムニン(二羽の鴉)</td><td>報せ ・ 遠征報告 ・ 「留守の間に」枠</td></tr>
-        <tr><td>ユグドラシル(世界樹)</td><td>シーズン樹 ・ メタ進行のハブ</td></tr>
-        <tr><td>ヨルムンガンド(尾を噛む蛇)</td><td>円環プログレス ・ 読込スピナー</td></tr>
-        <tr><td>ギャラルホルン(角笛)</td><td>出撃 ・ 通知(Rare+のSFX)</td></tr>
-        <tr><td>トリプルホーン(三つ組の角杯)</td><td>ゲーム紋章 ・ プレイヤー印 — 安全な三重紋</td></tr>
-        <tr><td>ビフレスト(虹橋)</td><td>低彩度の虹の弧 — <b>儀式画面(殿堂)のみ</b></td></tr>
-        <tr><td>Borre / Urnes 組紐</td><td>枠飾り — 角と中点のみ ・ 金1–2px線 ・ 全周禁止</td></tr>
-      </tbody>
-    </table></div>
-
-    <div class="sub">文脈限定</div>
-    <div class="note" style="margin-top:0; border-color:rgba(227,169,76,.5)">
-      <b>ヴァルクヌート(三つ組の三角 — 「選ばれし者の結び目」)</b> — <b>献身バッジのみ</b>。
-      エインヘリャルのカード上、明確なゲーム文脈の中に限る。ロゴ・単独紋章・黒黄の円形パッチ化は不可。
-      オサラ・ルーンや数字符丁(下表)との併置は絶対不可。ADLは異教徒の正当使用の広さを明記しつつ人種主義オーディン派による流用例を挙げる — 文脈が決める。
-    </div>
-
-    <div class="sub">禁止</div>
-    <div class="tscroll"><table class="tb taboo">
-      <thead><tr><th>シンボル</th><th>理由(事実ベース)</th></tr></thead>
-      <tbody>
-        <tr><td>黒い太陽 / ゾンネンラート(12本ジグザグ放射の円盤)</td>
-          <td>ヴェヴェルスブルク城のSS床装飾に由来。ジグザグ12本放射のダイヤルは偶発的にも同形化する — 季節環・時計は曲線ウェッジか8分割で描く。</td></tr>
-        <tr><td>単独オサラ・ルーン ᛟ(特に足付き変形)</td>
-          <td>武装親衛隊師団章に採用され、現在は白人至上主義運動の主要記章。単独使用不可 — 本作では装飾フサルク列ごと省略。</td></tr>
-        <tr><td>連続ソウェイル(太陽ルーンのSS連字)</td>
-          <td>S音のルーンを2字隣接させると親衛隊記章と同形。本UIは当該ルーン自体を不使用とし、生成物のルーン隣接を監査する。</td></tr>
-        <tr><td>単独アルギス強調(「生命ルーン」扱い)</td>
-          <td>ナチ優生機関と現代ネオナチが生命/死のルーンとして流用。小さな防御グリフ用途も本作では不採用(盾アイコンで代替)。</td></tr>
-        <tr><td>ヴォルフスアンゲル(狼罠印)</td>
-          <td>ナチス期部隊章および現代過激派の使用でADL登録。角張ったルーン風装飾から偶発生成しやすく、装飾監査の主対象。</td></tr>
-        <tr><td>縁取りケルト十字(円内等辺十字の素形)</td>
-          <td>素形は白人至上主義の代表的記章のひとつ。装飾的な高十字とは別物だが本作に必要がなく、全面不使用。</td></tr>
-        <tr><td>数字 14 / 88 / 18 の装飾使用</td>
-          <td>過激主義の数字符丁。順位バッジ・アイテム連番・シード等の「飾り」への意図的露出を避ける(データ上の自然な出現は装飾化しない)。</td></tr>
-      </tbody>
-    </table></div>
-    <div class="note">上記はすべて現代の過激主義シンボルと衝突するため不使用(ADL "Hate on Display" データベース照合済 ・ 2026-07)。</div>
+    <div class="note">規則: <b>単字使用のみ ・ 連字禁止</b>。ルーンを2字以上並べて意匠化しない — 転写で偶発的に禁忌記号と衝突するため、装飾列は生成物も含め全て監査対象。上記12字以外のルーンはUIに出さない。</div>
   </section>
 
   <!-- ================= 7. MOTION & FX ================= -->
   <div class="rune-divider">ᛞ</div>
   <section class="sec panel ornate panel-pad" id="sec-motion">
     <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
-    <div class="sec-h"><span class="no">07</span><h2 class="dj">モーション & エフェクト</h2><span class="en">Motion &amp; FX — live catalogue</span></div>
+    <div class="sec-h"><span class="no">06</span><h2 class="dj">モーション & エフェクト</h2><span class="en">Motion &amp; FX — live catalogue</span></div>
     <p class="lead">
       全画面で使う動き・発光・粒子・音を<b>実物で</b>並べ、各札に「何を・いつ・どの速さで」行うかを明記する。
       タグの読み: <span class="fxtag loop">loop</span>=常在ループ ・ <span class="fxtag once">once</span>=一過性(右上の<b>再生</b>で再実行) ・ <span class="fxtag js">js</span>=<code>fx.js</code>等のスクリプト駆動。
       各 <code>@keyframes</code>/関数の定義元は札の <code>src</code> に示す(この頁は実演のため定義を複製しているが、正は各元ファイル)。
     </p>
 
-    <div class="sub">7.0 原則 — 発光の規律</div>
+    <div class="sub">6.0 原則 — 発光の規律</div>
     <ul class="rules">
       <li><b>発光は4つの瞬間のみ</b> — ①焦点(hover/選択) ②伝説級以上の顕現 ③生存する連結ビーム ④命中の瞬間。静止テキスト・待機パネルは光らせない。</li>
       <li>外発光は blur ≤ 8px(等倍)・1要素1色。パネルは内影のみ。同時発光源は ≤ 3/画面。</li>
@@ -562,7 +530,7 @@
     </ul>
 
     <!-- 7.1 the four sanctioned glows -->
-    <div class="sub">7.1 発光の4瞬間 — sanctioned glows</div>
+    <div class="sub">6.1 発光の4瞬間 — sanctioned glows</div>
     <p class="lead">発光はこの4つの意味にのみ配給する。これ以外の待機要素は光らせない。</p>
     <div class="fxwrap">
       <div class="fx"><div class="stage"><button class="btn" style="pointer-events:auto">焦点 hover ▸</button></div>
@@ -591,12 +559,12 @@
 
       <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><span class="hitdot"></span></div>
         <div class="cap"><div class="nm">④ 命中の光 <code>hit flash</code> <span class="fxtag once">once</span></div>
-          <div class="meta">拡大しながら退色 ・ ~0.7s ・ 実体は canvas 描画(§7.4 RayMonitor)</div>
+          <div class="meta">拡大しながら退色 ・ ~0.7s ・ 実体は canvas 描画(§6.4 RayMonitor)</div>
           <div class="desc">命中の瞬間だけ弾ける閃光。本番は RayMonitor が canvas に描く。ここはCSSでの相似再現。</div></div></div>
     </div>
 
     <!-- 7.2 ambient loops -->
-    <div class="sub">7.2 常在ループ — ambient</div>
+    <div class="sub">6.2 常在ループ — ambient</div>
     <p class="lead">画面に「生きた空気」を与える無限ループ。いずれも遅く・小さく・退けられる(reduced-motionで停止)。</p>
     <div class="fxwrap">
       <div class="fx"><div class="stage" style="background:#0b0f15"><div class="auroralayer"></div><span class="t-micro" style="z-index:2; position:relative">背景オーロラ</span></div>
@@ -646,7 +614,7 @@
     </div>
 
     <!-- 7.3 entrances / one-shots -->
-    <div class="sub">7.3 登場・一過性 — entrances <span class="t-micro">(右上「再生」で再実行)</span></div>
+    <div class="sub">6.3 登場・一過性 — entrances <span class="t-micro">(右上「再生」で再実行)</span></div>
     <div class="fxwrap">
       <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage" style="flex-direction:column; gap:7px; align-content:center"><div class="riseitem">序列 一位</div><div class="riseitem">序列 二位</div><div class="riseitem">序列 三位</div></div>
         <div class="cap"><div class="nm"><code>@keyframes rise</code> — 段階登場 <span class="fxtag once">once</span></div>
@@ -661,7 +629,7 @@
       <div class="fx oneshot play"><button class="replay" data-replay>再生</button><div class="stage"><div class="toast toastdemo" style="max-width:230px"><span class="rune" style="color:var(--gold); font-size:16px">ᚷ</span><div><b>戦利品 — 氷河の断斧</b> <span class="rar-word" style="color:var(--r-rare)">RARE</span></div></div></div>
         <div class="cap"><div class="nm"><code>@keyframes toastin</code> — 通知 <span class="fxtag once">once</span></div>
           <div class="meta">translateY 10px→0 + fade ・ .28s ease-out ・ 同時1件のみ ・ src: ui.css</div>
-          <div class="desc">単一メッセージキューの通知。下から迫り上がる。重ね表示は禁止(§7.0)。</div></div></div>
+          <div class="desc">単一メッセージキューの通知。下から迫り上がる。重ね表示は禁止(§6.0)。</div></div></div>
 
       <div class="fx"><button class="replay" data-log>追加 +</button><div class="stage" style="align-items:stretch; padding:8px 12px"><div class="logfeed" id="fx-logfeed"><div class="logline"><span class="ts tnum">03</span>遠征報告 — 第3信</div><div class="logline"><span class="ts tnum">02</span>遠征報告 — 第2信</div><div class="logline"><span class="ts tnum">01</span>遠征開始</div></div></div>
         <div class="cap"><div class="nm"><code>@keyframes logIn</code> — 記録の流入 <span class="fxtag once">once</span></div>
@@ -675,7 +643,7 @@
     </div>
 
     <!-- 7.4 JS-driven fx -->
-    <div class="sub">7.4 JS駆動エフェクト — <code>assets/fx.js</code></div>
+    <div class="sub">6.4 JS駆動エフェクト — <code>assets/fx.js</code></div>
     <div class="fxwrap">
       <div class="fx"><div class="stage" style="background:#0b0f15"><canvas id="fx-ember"></canvas></div>
         <div class="cap"><div class="nm"><code>initParticles({mix:'ember'})</code> <span class="fxtag js">js</span></div>
@@ -710,7 +678,7 @@
     </div>
 
     <!-- 7.5 client-side effects -->
-    <div class="sub">7.5 クライアント実装のエフェクト — React app (<code>index.css</code> / TS)</div>
+    <div class="sub">6.5 クライアント実装のエフェクト — React app (<code>index.css</code> / TS)</div>
     <div class="fxwrap">
       <div class="fx"><button class="replay" data-claim>受領 ᚷ</button><div class="stage"><div class="claimrow" id="fx-claim"><span class="rune" style="color:var(--gold)">ᚷ</span> <b>氷河の断斧</b> <span class="rar-word" style="color:var(--r-rare)">RARE</span></div></div>
         <div class="cap"><div class="nm">受領演出 <code>claim-flash → claim-fadeout</code> + <code>playClaimChime()</code> <span class="fxtag js">js+audio</span></div>
@@ -735,7 +703,7 @@
     </div>
 
     <!-- 7.6 reduced motion -->
-    <div class="sub">7.6 リデュースモーション — <code>prefers-reduced-motion</code></div>
+    <div class="sub">6.6 リデュースモーション — <code>prefers-reduced-motion</code></div>
     <p class="lead">
       OS/ブラウザで動きを減らす設定の利用者には、動きを<b>二段構え</b>で退ける。①CSS共通の <code>@media (prefers-reduced-motion: reduce)</code> が全 <code>animation</code>/<code>transition</code> を 0.001s に短絡(ui.css・mjolnir.css)。②粒子・視差・戦闘再生など<b>JS生成のもの</b>は <code>fx.js</code>/<code>particles.ts</code> が<b>生成自体を行わない</b>(rAFループを起動しない)。
     </p>
@@ -750,7 +718,7 @@
   <div class="rune-divider">ᚠ</div>
   <section class="sec panel ornate panel-pad">
     <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
-    <div class="sec-h"><span class="no">08</span><h2 class="dj">アセット一覧</h2><span class="en">Assets — generated on-server</span></div>
+    <div class="sec-h"><span class="no">07</span><h2 class="dj">アセット一覧</h2><span class="en">Assets — generated on-server</span></div>
     <div class="tscroll"><table class="tb">
       <thead><tr><th style="width:30%">ファイル</th><th style="width:24%">用途</th><th>生成メモ</th></tr></thead>
       <tbody>
@@ -771,14 +739,14 @@
         <tr><td><code>emblem_frost.png / emblem_ember.png</code></td><td>属性紋章</td><td>連結・属性UI ・ 隊カードの印</td></tr>
       </tbody>
     </table></div>
-    <div class="note">全工程サーバ内ComfyUIで生成。既定チェックポイントは <b>DreamShaper_8</b>(キーアートのみ <b>rpg_v5</b> と比較の上選定)。外部生成サービス不使用 ・ 生成ルーン風文字が混入した出力は§6監査の上で棄却。</div>
+    <div class="note">全工程サーバ内ComfyUIで生成。既定チェックポイントは <b>DreamShaper_8</b>(キーアートのみ <b>rpg_v5</b> と比較の上選定)。外部生成サービス不使用 ・ 生成ルーン風文字が混入した出力は監査の上で棄却。</div>
   </section>
 
   <!-- ================= 9. SCREEN LINKS ================= -->
   <div class="rune-divider">ᚱ</div>
   <section class="sec panel ornate panel-pad">
     <i class="k tl"></i><i class="k tr"></i><i class="k br"></i><i class="k bl"></i>
-    <div class="sec-h"><span class="no">09</span><h2 class="dj">画面リンク</h2><span class="en">Mock Screens</span></div>
+    <div class="sec-h"><span class="no">08</span><h2 class="dj">画面リンク</h2><span class="en">Mock Screens</span></div>
     <div class="row" style="gap:12px; flex-wrap:wrap">
       <a class="btn" href="index.html"><span class="rune" style="color:var(--gold)">ᚨ</span> 表題 — title</a>
       <a class="btn" href="canvas.html"><span class="rune" style="color:var(--gold)">ᛗ</span> 編成 — canvas</a>
@@ -799,18 +767,27 @@
 </div></div>
 
 <script>
-  /* season wheel demo: 12 wedges, 8 done, 9th current */
+  /* season wheel: draw wedges from 0 up to the set value (8 done + 1 current) */
   const W = document.getElementById("wedges");
+  let drawn = 0;
   for (let i=0;i<12;i++){
     const a0=(i*30-90)*Math.PI/180, a1=((i+1)*30-94)*Math.PI/180, r=30;
     const p=document.createElementNS("http://www.w3.org/2000/svg","path");
     p.setAttribute("d",`M ${Math.cos(a0)*r} ${Math.sin(a0)*r} A ${r} ${r} 0 0 1 ${Math.cos(a1)*r} ${Math.sin(a1)*r}`);
-    p.setAttribute("class","wedge"+(i<8?" done":i===8?" now":""));
+    const filled = i<8 ? " done" : i===8 ? " now" : "";
+    p.setAttribute("class","wedge"+filled);
+    if (filled){
+      p.setAttribute("pathLength","1");
+      p.style.strokeDasharray = "1";
+      p.style.strokeDashoffset = "1";
+      p.style.animation = "wheelDraw .5s ease-out " + (drawn*0.09).toFixed(2) + "s forwards";
+      drawn++;
+    }
     W.appendChild(p);
   }
 </script>
 
-<!-- §07 live FX: shared mock script + this page's demo wiring -->
+<!-- §06 live FX: shared mock script + this page's demo wiring -->
 <script src="assets/fx.js"></script>
 <script>
 (function(){
@@ -905,6 +882,20 @@
     });
   }
 })();
+</script>
+<script>
+/* §06 button 発動 effect: spark burst at the click point on any button */
+document.addEventListener("click", function(e){
+  var btn = e.target.closest(".btn, .replay, .preset");
+  if (!btn) return;
+  var r = btn.getBoundingClientRect();
+  var s = document.createElement("span");
+  s.className = "btn-fire";
+  s.style.left = (e.clientX - r.left) + "px";
+  s.style.top  = (e.clientY - r.top)  + "px";
+  btn.appendChild(s);
+  setTimeout(function(){ s.remove(); }, 520);
+});
 </script>
 </body>
 </html>
