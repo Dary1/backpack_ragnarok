@@ -6,11 +6,11 @@
 //      grid with the icon mounted on the anchor cell -- ShapeGrid.tsx,
 //      reused, DOM-based per dexIcons.ts's module comment), not as a
 //      bare <img> icon.
-//   2. Selecting a card no longer expands it inline -- it switches the
-//      WHOLE view into the two-pane detail layout (DexDetail.tsx: large
-//      diagram left, item list right), a distinct mode from the catalog
-//      grid, per the task spec's "Detail screen splits into two big
-//      panes" (not an inline-expansion overlay on the catalog anymore).
+//   2. Selecting a card opens its detail as an inline DRAWER below the
+//      selected card, keeping the catalog grid mounted as the single list
+//      (REQ-0108). Previously (REQ-0038) selecting swapped the WHOLE view
+//      into a separate [list | diagram | info] layout whose list rail
+//      diverged from this grid; that rail is now removed.
 //
 // REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html):
 // presentation-only rewrite of the render tree. Dex v2 BEHAVIOR is
@@ -41,7 +41,7 @@
 // normalization drops (e.g. `part`, the raw `effects` AST) that this
 // reference view needs to show. This is a read-only view; it does not
 // touch store.ts's engine/GameState at all.
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry, ApiTmEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t, type TranslationKey } from '../i18n';
@@ -216,26 +216,9 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const collectedPages = totalPages; // no discovery gating exists (documented)
   const progressPct = totalPages > 0 ? (collectedPages / totalPages) * 100 : 0;
 
-  // REQ-0038: selecting a card switches the whole view into the two-pane
-  // detail layout -- the list shown there is `filtered` (so the current
-  // search/filter selection carries over into the detail right-pane
-  // list), not the full unfiltered `entries`.
-  if (selectedId) {
-    return (
-      <div className="dex-view">
-        <DexDetail
-          entries={filtered}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onBack={() => setSelectedId(null)}
-          locale={locale}
-          tagTree={payload.trees.po}
-          registry={payload.registry}
-          dexNos={dexNos}
-        />
-      </div>
-    );
-  }
+  // REQ-0108: selection no longer swaps the whole view. The catalog grid
+  // below stays mounted (the single list); the selected card opens an
+  // inline <DexDetail> drawer in place (see the grid map's isSel branch).
 
   return (
     <div className="dex-view">
@@ -342,12 +325,15 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
           const no = dexNos[e.id];
           const cat = categoryOf(e);
           const displayName = locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry);
+          const isSel = e.id === selectedId;
           return (
-            <div key={e.id} className={`dex-card dcard rar ${rarThemeClass(e.entry.rarity)}`}>
+            <Fragment key={e.id}>
+              <div className={`dex-card dcard rar ${rarThemeClass(e.entry.rarity)}${isSel ? ' dex-card-selected' : ''}`}>
               <button
                 type="button"
                 className="dex-card-summary dcard-btn"
-                onClick={() => setSelectedId(e.id)}
+                aria-expanded={isSel}
+                onClick={() => setSelectedId(isSel ? null : e.id)}
               >
                 <span className="gem" aria-hidden="true" />
                 {no != null ? (
@@ -410,7 +396,20 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
               >
                 <span aria-hidden="true">i</span>
               </button>
-            </div>
+              </div>
+              {isSel ? (
+                <div className="dex-detail-drawer" data-testid="dex-detail-drawer">
+                  <DexDetail
+                    selected={e}
+                    onBack={() => setSelectedId(null)}
+                    locale={locale}
+                    tagTree={payload.trees.po}
+                    registry={payload.registry}
+                    dexNo={no ?? null}
+                  />
+                </div>
+              ) : null}
+            </Fragment>
           );
         })}
         {filtered.length === 0 ? <div className="dex-empty">{t(locale, 'dex.noMatch')}</div> : null}
