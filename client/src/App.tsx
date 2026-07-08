@@ -90,6 +90,7 @@ import { DexRoot } from './dex/DexRoot';
 import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
+import { FloatingItemTip } from './FloatingItemTip';
 import { InviteBanner } from './InviteBanner';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
@@ -265,6 +266,13 @@ function App() {
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
+
+        {/* REQ-0119: one global floating item-tooltip overlay. Fixed-
+            positioned and driven by board/itemTip.ts's pub-sub, so this
+            single instance serves the canvas board AND every inventory-page
+            board (including the warehouse/expedition portal reuse) with no
+            per-page wiring. */}
+        <FloatingItemTip />
       </main>
     </div>
     </DexCardProvider>

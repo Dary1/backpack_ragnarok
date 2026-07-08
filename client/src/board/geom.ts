@@ -189,3 +189,24 @@ export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: numbe
    * (call sites only wire this handler to BP-only hit areas: the badge,
    * empty cells with no PO, and the linker core circle, never a PO's own
    * sprite/hit-shape). */
+
+
+/** Inverse of clientToLocal for a board-local pixel box (REQ-0119): maps a
+ * (x,y,w,h) rect in this board's OWN local coordinate space to a viewport
+ * (client) pixel rect, accounting for the canvas's CSS scale + renderer
+ * resolution exactly as clientToLocal does, so the two round-trip. Used to
+ * anchor the floating item tooltip (an HTML overlay, FloatingItemTip.tsx)
+ * to a tapped PixiJS icon. */
+export function localBoxToClient(
+  self: BoardRenderer,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): { left: number; top: number; width: number; height: number } {
+  const rect = self.app.canvas.getBoundingClientRect();
+  const res = self.app.renderer.resolution || 1;
+  const sx = self.app.canvas.width ? (rect.width * res) / self.app.canvas.width : 1;
+  const sy = self.app.canvas.height ? (rect.height * res) / self.app.canvas.height : 1;
+  return { left: rect.left + x * sx, top: rect.top + y * sy, width: w * sx, height: h * sy };
+}

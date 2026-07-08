@@ -52,6 +52,7 @@ import type { Assembly, Cell, EngineInstance, GameState, ItemDefMap, Layout, PO,
 import {
   armCarry,
   boardIdEquals,
+  boardIdKey,
   cancelCarry,
   ensurePointerUpWired,
   getCarry,
@@ -64,10 +65,11 @@ import {
   type DropTarget,
 } from './drag';
 import type { BoardOps } from './boardOps';
-import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_LINKER_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, socketScreenPos } from './geom';
+import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_LINKER_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
+import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
 
 export interface BoardDeps {
   engine: EngineInstance;
@@ -248,6 +250,10 @@ export class BoardRenderer {
     this.unsubscribeCarry?.();
     this.unregisterBoard?.();
     window.removeEventListener('keydown', this.onWindowKeyDown);
+    // REQ-0119: drop any floating tip anchored to THIS board before its
+    // canvas detaches (a stale anchor would point at a gone element).
+    clearItemTipForBoard(boardIdKey(this.boardId));
+    this.app.stage.off('pointerup', this.onStagePointerUp);
     this.app.destroy(true, { children: true });
   }
   render(state: GameState): void {
@@ -547,6 +553,7 @@ export class BoardRenderer {
       hit.cursor = 'grab';
       const isAssemblyPart = !!(state.linked && asm && (p.uid === asm.blade.uid || p.uid === asm.hilt.uid));
       hit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, p, isAssemblyPart, asm));
+      hit.on('pointerup', () => this.handleItemTap('po', p.id, box));
       this.gItems.addChild(hit);
       for (const [r, c] of ops.cellsOf(state, p)) {
         const bg = new Graphics();
@@ -619,6 +626,14 @@ export class BoardRenderer {
       asmHit.eventMode = 'static';
       asmHit.cursor = 'grab';
       asmHit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, a.blade, true, a));
+      asmHit.on('pointerup', () =>
+        this.handleItemTap('po', a.blade.id, {
+          x: PAD + (Math.min(...a.cells.map((c) => c[1])) - 1) * CELL,
+          y: PAD + (Math.min(...a.cells.map((c) => c[0])) - 1) * CELL,
+          w: (Math.max(...a.cells.map((c) => c[1])) - Math.min(...a.cells.map((c) => c[1])) + 1) * CELL,
+          h: (Math.max(...a.cells.map((c) => c[0])) - Math.min(...a.cells.map((c) => c[0])) + 1) * CELL,
+        })
+      );
       this.gItems.addChild(asmHit);
       for (const [r, c] of a.cells) {
         const bg = new Graphics();
@@ -823,6 +838,7 @@ export class BoardRenderer {
         hitCircle.fill({ color: '#000000', alpha: 0.001 });
         g.addChild(hitCircle);
         g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
+        g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }));
         this.gSock.addChild(g);
       } else {
         const g = new Graphics();
@@ -902,6 +918,7 @@ export class BoardRenderer {
       hitRect.fill({ color: '#000000', alpha: 0.001 });
       g.addChild(hitRect);
       g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
+      g.on('pointerup', () => this.handleItemTap('si', a.id, { x: PAD + (c - 1) * CELL, y: PAD + (r - 1) * CELL, w: CELL, h: CELL }));
       this.gItems.addChild(g);
     }
 
@@ -1015,6 +1032,35 @@ export class BoardRenderer {
     }
     startCarry({ kind, uid, bpId, originBoard: this.boardId, sx: e.clientX, sy: e.clientY, grabOff });
   }
+
+  /** REQ-0119: a single-tap on an item icon floats the styleguide tooltip
+   * panel for that item (FloatingItemTip.tsx renders it; itemTip.ts is the
+   * pub-sub seam). Called from each interactive item's own Pixi 'pointerup'.
+   * A tap that ARMED a drag is a move, not a tap -- getCarry().armed is
+   * still true here (this object 'pointerup' is dispatched during PixiJS's
+   * document-capture-phase processing, BEFORE drag.ts's bubble-phase window
+   * 'pointerup' clears the carry) -- so it is filtered out. A double-tap
+   * (rotate) leaves no carry and re-floats the now-rotated item's tip
+   * idempotently: the intended immediate, non-toggle behavior (closing is
+   * via an outside/empty tap, never a re-tap). `box` is the icon footprint
+   * in this board's local pixel space; localBoxToClient maps it to the
+   * viewport for the HTML overlay. */
+  handleItemTap(kind: 'po' | 'si', id: string, box: { x: number; y: number; w: number; h: number }): void {
+    if (getCarry()?.armed) return;
+    const anchor = localBoxToClient(this, box.x, box.y, box.w, box.h);
+    showItemTip({ kind, id, anchor, boardKey: boardIdKey(this.boardId) });
+  }
+
+  /** Dismiss the floating tip when a tap lands on EMPTY board space (the
+   * stage's own hitArea, e.target === stage) rather than on an item's hit
+   * graphic. Item taps set e.target to their own hit object (and float or
+   * switch the tip via that object's 'pointerup'), so this only ever fires
+   * the CLEAR for genuinely empty taps -- the "tap outside/empty to close"
+   * dismissal (REQ-0119). */
+  onStagePointerUp = (e: FederatedPointerEvent): void => {
+    if (e.target === this.app.stage) clearItemTip();
+  };
+
   /** Wires stage-wide pointermove (arm + legality preview + ghost) and
    * window keydown (Esc cancel). Called once from the constructor. Also
    * registers this board's BoardCommitApi (drag.ts) and ensures the
@@ -1026,6 +1072,7 @@ export class BoardRenderer {
    * once (see drag.ts module comment). */
   wireGlobalInteraction(): void {
     this.app.stage.on('globalpointermove', this.onGlobalPointerMove);
+    this.app.stage.on('pointerup', this.onStagePointerUp);
     window.addEventListener('keydown', this.onWindowKeyDown);
     ensurePointerUpWired();
     this.unregisterBoard = registerBoard(this.boardId, makeCommitApi(this));

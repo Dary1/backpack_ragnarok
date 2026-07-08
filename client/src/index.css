@@ -5253,3 +5253,52 @@ html, body {
     width: 100%;
   }
 }
+
+/* ---- REQ-0119: floating item tooltip panel (single-tap on a board item
+   icon). A faithful copy of web/redesign/styleguide.html's tooltip anatomy
+   (assets/ui.css's .tooltip / .tt-*), replicated under a NEW class name:
+   the plain `.tooltip` is already taken above by ItemPanel's older desktop
+   hover tooltip (see its note), so reusing it would collide. Rendered by
+   FloatingItemTip.tsx; left/top set in JS (position:fixed, edge-flipped). */
+.item-tip {
+  position: fixed;
+  z-index: 150;
+  width: 264px;
+  max-width: min(264px, 78vw);
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--bone-2);
+  pointer-events: auto;
+}
+.item-tip-name {
+  font-family: var(--f-dj);
+  font-size: 16px;
+  font-weight: 700;
+}
+.item-tip-tags {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.item-tip-stat {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.item-tip-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  margin-top: 8px;
+  font-family: var(--f-dj);
+}
+.item-tip-sell {
+  color: var(--gold);
+  font-size: 12px;
+  margin-top: 6px;
+}
