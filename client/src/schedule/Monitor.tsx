@@ -116,6 +116,16 @@ function humanizeEvent(ev: ApiRunEvent): string {
       return `t=${t}s  pulse payload: ${ev.dst} ${ev.verb}${typeof ev.amount === 'number' ? ' ' + ev.amount : ''}`;
     case 'pulse_fizzle':
       return `t=${t}s  pulse fizzle (${ev.reason})`;
+    case 'att_reveal':
+      return `t=${t}s  ${ev.kind} found at ${cellStr(ev.at)}`;
+    case 'att_disarm':
+      return `t=${t}s  trap disarmed${ev.reward ? ` (reward: ${ev.reward})` : ''}`;
+    case 'att_open':
+      return `t=${t}s  ${ev.kind} opened${ev.shortcut ? ' -> shortcut!' : (ev.reward ? ` (reward: ${ev.reward})` : '')}`;
+    case 'att_lost':
+      return `t=${t}s  ${ev.kind} lost -- no ${ev.kind === 'trap' ? 'detection' : 'unlock'} POs deployed`;
+    case 'att_fire':
+      return `t=${t}s  trap fired (${ev.reason}) -- the price of skipping detection`;
     case 'progress':
       return `t=${t}s  progress: encounter #${ev.enc} -> ${ev.pct}%`;
     case 'shortcut':
@@ -327,6 +337,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
           units: () => MonitorUnitVisual[];
           enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
           pulseCounts: () => { linkPulses: number; payloads: number; fizzles: number; rays: number };
+          attachmentCounts: () => { reveal: number; disarm: number; open: number; lost: number; fire: number };
           applyTestEvents: (evs: ApiRunEvent[]) => void;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
@@ -339,6 +350,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
           // -- spark/payload POs -- debuts later in the Ember Pack, so the
           // client render path is verified with injected events here).
           pulseCounts: () => rendererRef.current?.getPulseVisualCounts() ?? { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 },
+          attachmentCounts: () => rendererRef.current?.getAttachmentVisualCounts() ?? { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 },
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
         };
       } catch (e) {

@@ -1423,3 +1423,46 @@ test.describe('REQ-0048: monitor renders linker pulse visuals (injected syntheti
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+test.describe('REQ-0049: monitor renders layered-encounter attachment badges (injected events)', () => {
+  test('att_reveal/att_disarm/att_open/att_lost/att_fire drive the attachment-visual counters', async ({ page }) => {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) { const r = await apiAssignSlot(page, player.token, roomId, i, i); expect(r.status).toBe(200); }
+    await expect(async () => { const view = await apiGetRoom(page, player.token, roomId); expect(view.body.room.status).toBe('active'); }).toPass({ timeout: 10000 });
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await card.locator('.schedule-monitor-expand-btn').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(async () => {
+      const ready = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { attachmentCounts?: unknown }> };
+        return typeof w.__monitorDebug?.[rid]?.attachmentCounts === 'function';
+      }, roomId);
+      expect(ready).toBe(true);
+    }).toPass({ timeout: 10000 });
+    const counts = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { applyTestEvents: (e: unknown[]) => void; attachmentCounts: () => { reveal: number; disarm: number; open: number; lost: number; fire: number } }> };
+      const d = w.__monitorDebug[rid];
+      d.applyTestEvents([
+        { t: 1, seq: 1, ev: 'att_reveal', att: 'tr1', kind: 'trap', at: [9, 14] },
+        { t: 1, seq: 2, ev: 'att_disarm', att: 'tr1', reward: 'reward_frost_shard_common' },
+        { t: 1, seq: 3, ev: 'att_open', att: 'ch1', kind: 'chest', reward: 'reward_frostbound_cache_roll' },
+        { t: 1, seq: 4, ev: 'att_lost', att: 'dr1', kind: 'door' },
+        { t: 1, seq: 5, ev: 'att_fire', att: 'tr2', kind: 'trap', reason: 'timeout' },
+      ]);
+      return d.attachmentCounts();
+    }, roomId);
+    expect(counts.reveal).toBeGreaterThanOrEqual(1);
+    expect(counts.disarm).toBeGreaterThanOrEqual(1);
+    expect(counts.open).toBeGreaterThanOrEqual(1);
+    expect(counts.lost).toBeGreaterThanOrEqual(1);
+    expect(counts.fire).toBeGreaterThanOrEqual(1);
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});

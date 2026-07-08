@@ -489,6 +489,16 @@ export class MonitorRenderer {
         this.pulseCounts.fizzles++;
         break;
       }
+      // REQ-0049: layered-encounter attachment badges on the enemy field.
+      case 'att_reveal': {
+        this.attCounts.reveal++;
+        if (isRawCell(ev.at)) this.flashCell(ev.at); // "?" -> revealed flash
+        break;
+      }
+      case 'att_disarm': { this.attCounts.disarm++; break; }
+      case 'att_open': { this.attCounts.open++; this.pulseCell('N9', 0x66d6a0); break; } // green: reward/shortcut
+      case 'att_lost': { this.attCounts.lost++; break; }
+      case 'att_fire': { this.attCounts.fire++; this.pulseCell('N9', 0xff6666); break; } // red: trap volley
       default:
         break;
     }
@@ -513,6 +523,12 @@ export class MonitorRenderer {
   private pulseCounts = { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 };
   getPulseVisualCounts(): { linkPulses: number; payloads: number; fizzles: number; rays: number } {
     return { ...this.pulseCounts };
+  }
+
+  /** REQ-0049 test seam: counts of attachment-badge visuals applied so far. */
+  private attCounts = { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 };
+  getAttachmentVisualCounts(): { reveal: number; disarm: number; open: number; lost: number; fire: number } {
+    return { ...this.attCounts };
   }
 
   getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string }> {

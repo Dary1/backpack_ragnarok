@@ -147,6 +147,8 @@ function listDungeonsAndFormations() {
     id,
     name: (DUNGEON_TYPE_I18N[id] && DUNGEON_TYPE_I18N[id].en.name) || id,
     i18n: DUNGEON_TYPE_I18N[id] || {},
+    // REQ-0049: scouting preview -- expected trap/chest/door counts at sample levels.
+    scout: { 1: dungen.scoutingReport(id, 1), 5: dungen.scoutingReport(id, 5), 10: dungen.scoutingReport(id, 10) },
   }));
   const formations = (formationsDoc.entries || []).map((f) => ({
     id: f.id,

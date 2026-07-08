@@ -363,6 +363,23 @@ function generateTestFixed(level, seed) {
   return fixed;
 }
 
+// REQ-0049: scouting report -- expected trap/chest/door counts for a
+// dungeon+level (room-create / dungeon-info hint). A fixed per-level scouting
+// seed makes the report a stable, representative preview.
+function countAttachments(def) {
+  const c = { trap: 0, chest: 0, door: 0 };
+  for (const e of def.encounters) {
+    for (const at of (e.attachments || [])) if (c[at.kind] != null) c[at.kind]++;
+    if (e.entityDef && c[e.type] != null) c[e.type]++; // rare standalone pure-room
+  }
+  return c;
+}
+function scoutingReport(dungeonType, level) {
+  const gen = GENERATORS[dungeonType];
+  if (!gen) throw new Error('scoutingReport: unknown dungeonType ' + dungeonType);
+  return countAttachments(gen(level, 'scout-' + dungeonType + '-' + level));
+}
+
 const GENERATORS = {
   default: generateDefault,
   test_fixed: generateTestFixed,
@@ -388,6 +405,7 @@ function generate(dungeonType, level, seed) {
 
 module.exports = {
   generate,
+  scoutingReport,
   DUNGEON_TYPES,
   DUNGEN_TUNABLES,
   packsForLevel,

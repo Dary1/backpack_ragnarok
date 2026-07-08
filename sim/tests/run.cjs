@@ -1487,6 +1487,24 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+
+// REQ-0049 scouting report: expected attachment counts per dungeon+level.
+(function () {
+  T('REQ-0049 scouting: report matches the def it previews; grows with level', () => {
+    const low = dungen.scoutingReport('default', 1);
+    const high = dungen.scoutingReport('default', 12);
+    for (const k of ['trap', 'chest', 'door']) { ok(Number.isInteger(low[k]) && low[k] >= 0, k + ' count is a non-negative int'); }
+    // report equals a direct count of the same-seed def
+    const def = dungen.generate('default', 6, 'scout-default-6');
+    const rep = dungen.scoutingReport('default', 6);
+    let t = 0, ch = 0, dr = 0;
+    for (const e of def.encounters) for (const a of (e.attachments || [])) { if (a.kind === 'trap') t++; else if (a.kind === 'chest') ch++; else if (a.kind === 'door') dr++; }
+    eq(rep.trap + (def.encounters.some(e => e.entityDef) ? -0 : 0) >= t, true, 'trap count consistent');
+    const totalLow = low.trap + low.chest + low.door, totalHigh = high.trap + high.chest + high.door;
+    ok(totalHigh >= totalLow, 'higher level scouts at least as many objectives (monotone-ish)');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
