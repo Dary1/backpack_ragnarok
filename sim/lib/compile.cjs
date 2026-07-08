@@ -98,7 +98,7 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot, siD
         const hit = linkerKeyToBp.get(r + ',' + c);
         if (hit) { to = hit; break; }
       }
-      if (to && to !== bpDef.id) linkEdges.push({ from: bpDef.id, to: to, dir: d });
+      if (to && to !== bpDef.id) linkEdges.push({ from: bpDef.id, to: to, dir: d, mutual: false });
     }
   }
   for (const e of linkEdges) e.mutual = linkEdges.some(o => o.from === e.to && o.to === e.from);

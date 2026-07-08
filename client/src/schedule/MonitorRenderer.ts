@@ -343,10 +343,10 @@ export class MonitorRenderer {
     this.app.ticker.add(tick);
   }
 
-  private pulseCell(cellId: string | RawCell): void {
+  private pulseCell(cellId: string | RawCell, color = 0xff6666): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
     const pulse = new Graphics();
-    pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color: 0xff6666, alpha: 0.9 });
+    pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color, alpha: 0.9 });
     pulse.eventMode = 'none';
     pulse.x = pos.x;
     pulse.y = pos.y;
@@ -367,10 +367,10 @@ export class MonitorRenderer {
     this.app.ticker.add(tick);
   }
 
-  private animateStep(path: RawCell[]): void {
+  private animateStep(path: RawCell[], color = 0x59d6d6): void {
     if (path.length === 0) return;
     const marker = new Graphics();
-    marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color: 0x59d6d6, alpha: 0.9 });
+    marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color, alpha: 0.9 });
     marker.eventMode = 'none';
     this.rayLayer.addChild(marker);
     const totalMs = STEP_ANIM_MS * Math.max(1, path.length - 1);
@@ -444,7 +444,9 @@ export class MonitorRenderer {
       }
       case 'ray_step': {
         const path = Array.isArray(ev.path) ? (ev.path as unknown[]).filter(isRawCell) : [];
-        this.animateStep(path);
+        const pulseRay = ev.cause === 'pulse';
+        if (pulseRay) this.pulseCounts.rays++;
+        this.animateStep(path, pulseRay ? 0xffd166 : 0x59d6d6);
         break;
       }
       case 'ray_bounce': {
@@ -472,6 +474,21 @@ export class MonitorRenderer {
         this.pulseCell('N9');
         break;
       }
+      // REQ-0048: linker pulse visuals -- a gold "circuit ignites" pulse per hop,
+      // gold-tinted payload rays (via ray_step cause), honest counters (test seam).
+      case 'link_pulse': {
+        this.pulseCounts.linkPulses++;
+        this.pulseCell('N9', 0xffd166);
+        break;
+      }
+      case 'pulse_payload': {
+        this.pulseCounts.payloads++;
+        break;
+      }
+      case 'pulse_fizzle': {
+        this.pulseCounts.fizzles++;
+        break;
+      }
       default:
         break;
     }
@@ -492,6 +509,12 @@ export class MonitorRenderer {
    * reverse-engineering canvas pixels" rationale as store.ts's own
    * __backpackDebug hook and getLastMountedUnits() above. Never read by
    * any production UI code path. */
+  /** REQ-0048 test seam: counts of pulse-related visuals applied so far. */
+  private pulseCounts = { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 };
+  getPulseVisualCounts(): { linkPulses: number; payloads: number; fizzles: number; rays: number } {
+    return { ...this.pulseCounts };
+  }
+
   getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string }> {
     return Array.from(this.enemyMarkers.values()).map((m) => ({
       x: m.container.x,

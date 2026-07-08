@@ -110,6 +110,12 @@ function humanizeEvent(ev: ApiRunEvent): string {
     }
     case 'reflect_damage':
       return `t=${t}s  reflect: ${ev.dst} takes ${ev.amount} reflected dmg`;
+    case 'link_pulse':
+      return `t=${t}s  link pulse: ${ev.from}→${ev.to} (hop ${ev.hop})`;
+    case 'pulse_payload':
+      return `t=${t}s  pulse payload: ${ev.dst} ${ev.verb}${typeof ev.amount === 'number' ? ' ' + ev.amount : ''}`;
+    case 'pulse_fizzle':
+      return `t=${t}s  pulse fizzle (${ev.reason})`;
     case 'progress':
       return `t=${t}s  progress: encounter #${ev.enc} -> ${ev.pct}%`;
     case 'shortcut':
