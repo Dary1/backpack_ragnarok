@@ -234,6 +234,12 @@
   /* ===== §06 iteration (2026-07-08c): hover/click SFX + universal hover & click FX ===== */
   .btn:not([disabled]):hover, .replay:hover, .preset:hover, .icard:hover, .rail a.nav:hover{ filter:brightness(1.07); }
   .icard, .rail a.nav{ position:relative; overflow:hidden; }
+  /* ===== §06 iteration (2026-07-08d): forge/frost SFX + bar test controls ===== */
+  .barrow .dlbl{ display:block; margin-bottom:3px; }
+  .barrow .bar{ flex:1; }
+  .bar .fill{ transition:width .45s cubic-bezier(.2,.7,.2,1); }
+  .barbtn{ padding:2px 9px; letter-spacing:0; font-size:12px; line-height:1.2; min-width:30px; }
+  .barpct{ width:42px; text-align:right; }
 </style>
 </head>
 <body class="grain vignette">
@@ -425,11 +431,30 @@
     <div class="note" style="margin-top:12px">MYTHIC(ヴァルハラ白金・焔霜二重リム)は<b>献身済みエインヘリャル専用</b>。通常ドロップに出さない。</div>
 
     <div class="sub">バー(25%刻みノッチ共通)</div>
-    <div class="col" style="gap:12px; max-width:340px">
-      <div><span class="dlbl">耐久(既定=血)</span><div class="bar"><div class="fill" style="width:64%"></div></div></div>
-      <div><span class="dlbl">霜 .fill.frost</span><div class="bar"><div class="fill frost" style="width:45%"></div></div></div>
-      <div><span class="dlbl">金 .fill.gold(回路・進行)</span><div class="bar"><div class="fill gold" style="width:78%"></div></div></div>
+    <div class="col" style="gap:10px; max-width:460px">
+      <div class="barrow"><span class="dlbl">耐久(既定=血)</span>
+        <div class="row" style="gap:8px; align-items:center">
+          <button class="preset barbtn" data-bar="dur" data-d="-12">▼</button>
+          <button class="preset barbtn" data-bar="dur" data-d="12">▲</button>
+          <div class="bar"><div class="fill" id="bar-dur" style="width:64%"></div></div>
+          <span class="t-micro tnum barpct" id="pct-dur">64%</span>
+        </div></div>
+      <div class="barrow"><span class="dlbl">霜 .fill.frost</span>
+        <div class="row" style="gap:8px; align-items:center">
+          <button class="preset barbtn" data-bar="frost" data-d="-12">▼</button>
+          <button class="preset barbtn" data-bar="frost" data-d="12">▲</button>
+          <div class="bar"><div class="fill frost" id="bar-frost" style="width:45%"></div></div>
+          <span class="t-micro tnum barpct" id="pct-frost">45%</span>
+        </div></div>
+      <div class="barrow"><span class="dlbl">金 .fill.gold(回路・進行)</span>
+        <div class="row" style="gap:8px; align-items:center">
+          <button class="preset barbtn" data-bar="gold" data-d="-12">▼</button>
+          <button class="preset barbtn" data-bar="gold" data-d="12">▲</button>
+          <div class="bar"><div class="fill gold" id="bar-gold" style="width:78%"></div></div>
+          <span class="t-micro tnum barpct" id="pct-gold">78%</span>
+        </div></div>
     </div>
+    <div class="t-micro" style="margin-top:6px; color:var(--bone-3)">▲▼で値を上下 — 充填アニメが動く(width transition .45s)。</div>
 
     <div class="sub">トースト(単一メッセージキュー — 同時1件)</div>
     <div class="toast" style="max-width:400px">
@@ -481,6 +506,7 @@
           <text y="4" text-anchor="middle" style="font-size:13px;fill:#C9A959;font-family:'Noto Sans Runic'">ᛃ</text>
         </g>
       </svg>
+      <button class="preset" id="wheel-redraw" style="letter-spacing:.06em">再描画 ↻</button>
       <div class="t-body" style="max-width:520px; color:var(--bone-2)">12月相 ・ 済=金鈍 ・ 現在=金明+発光(唯一の常時発光の例外、3px止まり)。
         <b>ジグザグ直線スポーク12本の円盤は禁忌</b> — 必ず曲線ウェッジで描く。</div>
     </div>
@@ -714,6 +740,13 @@
       <button class="btn" id="rm-toggle" style="pointer-events:auto">reduced-motion を体感</button>
       <span class="t-micro">※この頁内のCSSアニメを凍結する擬似プレビュー。実挙動はOS設定で発火し、JSエフェクトは生成ごと停止する。</span>
     </div>
+
+    <div class="sub">6.7 効果音テスト — SFX audition</div>
+    <p class="lead">合成音(アセット無し / Web Audio)。ホバー=冷たい鉄・霜のティック、クリック=鍛冶の一撃(鉄の芯 + 金の残響)。全サンプル共通。<b>音量注意</b> — 自動再生制限のため最初の1クリック後から鳴る。受領チャイムは §6.5 の「受領」で試聴。</p>
+    <div class="row" style="gap:10px; flex-wrap:wrap; align-items:center">
+      <button class="btn" data-sfx="hover">ホバー音を鳴らす</button>
+      <button class="btn" data-sfx="click">クリック音を鳴らす</button>
+    </div>
   </section>
 
 
@@ -770,24 +803,37 @@
 </div></div>
 
 <script>
-  /* season wheel: draw wedges from 0 up to the set value (8 done + 1 current) */
-  const W = document.getElementById("wedges");
-  let drawn = 0;
-  for (let i=0;i<12;i++){
-    const a0=(i*30-90)*Math.PI/180, a1=((i+1)*30-94)*Math.PI/180, r=30;
-    const p=document.createElementNS("http://www.w3.org/2000/svg","path");
-    p.setAttribute("d",`M ${Math.cos(a0)*r} ${Math.sin(a0)*r} A ${r} ${r} 0 0 1 ${Math.cos(a1)*r} ${Math.sin(a1)*r}`);
-    const filled = i<8 ? " done" : i===8 ? " now" : "";
-    p.setAttribute("class","wedge"+filled);
-    if (filled){
-      p.setAttribute("pathLength","1");
-      p.style.strokeDasharray = "1";
-      p.style.strokeDashoffset = "1";
-      p.style.animation = "wheelDraw .5s ease-out " + (drawn*0.09).toFixed(2) + "s forwards";
-      drawn++;
+(function(){
+  function drawWheel(){
+    var W = document.getElementById("wedges"); if(!W) return;
+    W.innerHTML = "";
+    var drawn = 0;
+    for (var i=0;i<12;i++){
+      var a0=(i*30-90)*Math.PI/180, a1=((i+1)*30-94)*Math.PI/180, r=30;
+      var p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d","M "+(Math.cos(a0)*r)+" "+(Math.sin(a0)*r)+" A "+r+" "+r+" 0 0 1 "+(Math.cos(a1)*r)+" "+(Math.sin(a1)*r));
+      var filled = i<8 ? " done" : i===8 ? " now" : "";
+      p.setAttribute("class","wedge"+filled);
+      if(filled){
+        p.setAttribute("pathLength","1"); p.style.strokeDasharray="1"; p.style.strokeDashoffset="1";
+        p.style.animation="wheelDraw .5s ease-out "+(drawn*0.09).toFixed(2)+"s forwards";
+        drawn++;
+      }
+      W.appendChild(p);
     }
-    W.appendChild(p);
   }
+  drawWheel();
+  var rb=document.getElementById("wheel-redraw"); if(rb) rb.addEventListener("click", drawWheel);
+  document.querySelectorAll(".barbtn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var key=btn.getAttribute("data-bar"), delta=parseInt(btn.getAttribute("data-d"),10);
+      var fill=document.getElementById("bar-"+key), pct=document.getElementById("pct-"+key);
+      if(!fill) return;
+      var cur=parseInt(fill.style.width,10)||0, nv=Math.max(0,Math.min(100,cur+delta));
+      fill.style.width=nv+"%"; if(pct) pct.textContent=nv+"%";
+    });
+  });
+})();
 </script>
 
 <!-- §06 live FX: shared mock script + this page's demo wiring -->
@@ -903,18 +949,42 @@
       return actx;
     }catch(e){ return null; }
   }
-  function blip(freq, dur, vol, type){
-    var c = ac(); if(!c) return; var t = c.currentTime;
-    var o = c.createOscillator(), g = c.createGain();
+  function tone(c, freq, t0, dur, vol, type, lp){
+    var o = c.createOscillator(), g = c.createGain(), last = o;
     o.type = type || "sine"; o.frequency.value = freq;
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(c.destination);
-    o.start(t); o.stop(t + dur + 0.02);
+    if (lp){ var f = c.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = lp; o.connect(f); last = f; }
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    last.connect(g).connect(c.destination);
+    o.start(t0); o.stop(t0 + dur + 0.03);
   }
-  function hoverSfx(){ blip(2100, 0.035, 0.02, "sine"); }                 /* soft high tick */
-  function clickSfx(){ blip(660, 0.05, 0.09, "triangle"); setTimeout(function(){ blip(990, 0.06, 0.05, "triangle"); }, 28); }
+  function noiseHit(c, t0, dur, vol, freq, q){
+    var n = Math.max(1, Math.floor(c.sampleRate * dur)), b = c.createBuffer(1, n, c.sampleRate), d = b.getChannelData(0);
+    for (var i = 0; i < n; i++){ d[i] = (Math.random() * 2 - 1) * (1 - i / n); }
+    var s = c.createBufferSource(); s.buffer = b;
+    var f = c.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq || 3000; f.Q.value = q || 0.8;
+    var g = c.createGain(); g.gain.value = vol;
+    s.connect(f).connect(g).connect(c.destination);
+    s.start(t0); s.stop(t0 + dur + 0.02);
+  }
+  /* hover: cold iron / frost tick -- faint + short */
+  function hoverSfx(){
+    var c = ac(); if(!c) return; var t = c.currentTime;
+    noiseHit(c, t, 0.018, 0.05, 5400, 5);
+    tone(c, 3180, t, 0.045, 0.020, "sine");
+    tone(c, 6300, t, 0.030, 0.010, "sine");
+  }
+  /* click: forge strike -- noise contact + iron body + inharmonic gold ring */
+  function clickSfx(){
+    var c = ac(); if(!c) return; var t = c.currentTime;
+    noiseHit(c, t, 0.035, 0.14, 2400, 0.7);
+    tone(c, 150, t, 0.13, 0.12, "triangle", 800);
+    var b = 274;
+    tone(c, b * 1.00, t, 0.20, 0.060, "sine", 4200);
+    tone(c, b * 2.76, t, 0.13, 0.035, "sine", 5200);
+    tone(c, b * 5.18, t, 0.08, 0.018, "sine", 6500);
+  }
 
   /* hover tick: once per element entry, time-throttled so a fast sweep never machine-guns */
   var lastHover = null, lastTick = 0;
@@ -926,8 +996,10 @@
 
   /* click: SFX on any sample (except 受領, which keeps its own claim chime) + spark on clickables */
   document.addEventListener("click", function(e){
+    var sfxBtn = e.target.closest("[data-sfx]");
+    if(sfxBtn){ if(sfxBtn.getAttribute("data-sfx") === "hover") hoverSfx(); else clickSfx(); }
     var s = e.target.closest(SAMPLE);
-    if(s && !e.target.closest("[data-claim]")) clickSfx();
+    if(s && !e.target.closest("[data-claim],[data-sfx]")) clickSfx();
     var c = e.target.closest(CLICKABLE);
     if(c){
       var r = c.getBoundingClientRect();
