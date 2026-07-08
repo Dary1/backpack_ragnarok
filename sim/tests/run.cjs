@@ -1227,6 +1227,110 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   }
 });
 
+
+// =====================================================================
+// REQ-0048: Linker Combat Effects v1 (Pulse + Resonance)
+// =====================================================================
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function bp(id, origin, dirs, off) { return { id: id, name: id, shape: [[0,0],[0,1]], origin: origin, linker: { off: off || [0,0], dirs: dirs }, hpMax: 100 }; }
+  function cellBp(id, origin, dirs) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: dirs }, hpMax: 100 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 50 }], pos: [], layout: L, sis: [] }; }
+  const linkItemDefs = {
+    spark:     { id: 'spark',     shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'pulse' } }] },
+    sparkfast: { id: 'sparkfast', shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [0.1,0.1] }, verb: { t: 'pulse' } }] },
+    payload:   { id: 'payload',   shape: [[0,0]], tags: [], modes: ['battle'], attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'on_link_pulse' }, verb: { t: 'strike', n: [5,5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } }] },
+  };
+  const wallEnemy = { wall: { id: 'wall', name: 'Wall', hp: [100000,100000], footprint: [1,1], skills: [] } };
+  function runLink(seed, unit, extraDefs, mode, deadline) {
+    return combat.runDungeon({
+      masterSeed: seed,
+      dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: mode || 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: deadline || 5 }] },
+      unitSnapshots: [unit, dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      itemDefsById: Object.assign({}, linkItemDefs, extraDefs || {}),
+      enemyDefsById: wallEnemy, skillDefsById: {}, formationId: 'formation1', level: 1, participants: ['pA'],
+    });
+  }
+  const chainUnit = { linked: true, layout: L, sis: [],
+    bps: [ bp('A', [1,1], [2], [0,1]), bp('B', [1,4], [2], [0,0]), bp('C', [1,7], [], [0,0]) ],
+    pos: [ { uid: 's1', id: 'spark',   loc: 'grid', cell: [1,1], rot: 0 },
+           { uid: 'y1', id: 'payload', loc: 'grid', cell: [1,5], rot: 0 },
+           { uid: 'y2', id: 'payload', loc: 'grid', cell: [1,8], rot: 0 } ] };
+  T('REQ-0048 pulse: chain A->B->C propagates + fires on_link_pulse payloads (cause:pulse)', () => {
+    const r = runLink('req48-chain', chainUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.from === 'A' && e.to === 'B'), 'link_pulse A->B present');
+    ok(lp.some(e => e.from === 'B' && e.to === 'C'), 'link_pulse B->C present (auto-relay w/o spark in B)');
+    const pray = r.events.filter(e => e.ev === 'ray_fire' && String(e.src).indexOf('#pulse') >= 0 && e.cause === 'pulse');
+    ok(pray.length >= 2, 'payload rays fired (B and C), tagged cause:pulse');
+  });
+  T('REQ-0048 pulse: deterministic (same seed -> byte-identical JSONL incl. new events)', () => {
+    const a = combat.toJSONL(runLink('req48-det', chainUnit).events);
+    const b = combat.toJSONL(runLink('req48-det', chainUnit).events);
+    ok(a === b, 'identical seed -> identical pulse replay');
+    ok(a.indexOf('link_pulse') >= 0, 'log actually contains pulse events');
+  });
+  const mutualUnit = { linked: true, layout: L, sis: [],
+    bps: [ bp('A', [1,1], [2], [0,1]), bp('B', [1,4], [6], [0,0]) ],
+    pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 }, { uid: 'y1', id: 'payload', loc: 'grid', cell: [1,5], rot: 0 } ] };
+  T('REQ-0048 pulse: mutual link never echoes back to origin (visited set)', () => {
+    const r = runLink('req48-mut', mutualUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.from === 'A' && e.to === 'B'), 'A->B present');
+    ok(!lp.some(e => e.to === 'A'), 'no pulse echoes back into origin A');
+  });
+  const hopUnit = { linked: true, layout: L, sis: [],
+    bps: [ cellBp('A',[1,1],[4]), cellBp('B',[2,1],[4]), cellBp('C',[3,1],[4]), cellBp('D',[4,1],[4]), cellBp('E',[5,1],[]) ],
+    pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 } ] };
+  T('REQ-0048 pulse: hop budget H=3 stops the chain (D reached, E not)', () => {
+    const r = runLink('req48-hop', hopUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.to === 'D'), 'reaches D within 3 hops');
+    ok(!lp.some(e => e.to === 'E'), 'does not reach E (beyond hop budget)');
+  });
+  T('REQ-0048 pulse: rate cap fizzles excess emissions (PULSE_CAP/sec)', () => {
+    const fastUnit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 's1', id: 'sparkfast', loc: 'grid', cell: [1,1], rot: 0 } ] };
+    const r = runLink('req48-cap', fastUnit, null, 'battle', 3);
+    ok(r.events.some(e => e.ev === 'pulse_fizzle' && e.reason === 'rate_cap'), 'excess pulses fizzle at the rate cap');
+  });
+  T('REQ-0048 pulse: mode gating -- battle-only spark does not emit in a detection encounter', () => {
+    const r = runLink('req48-mode', mutualUnit, null, 'detection', 5);
+    ok(!r.events.some(e => e.ev === 'link_pulse'), 'battle-only spark never emits in a detection encounter');
+  });
+  T('REQ-0048 pulse: pulse to a dead BP fizzles (dead_target)', () => {
+    const deadUnit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 } ] };
+    deadUnit.bps[1].hpMax = 0; // B starts dead -> arrival must fizzle
+    const r = runLink('req48-dead', deadUnit);
+    ok(r.events.some(e => e.ev === 'pulse_fizzle' && e.reason === 'dead_target' && e.to === 'B'), 'arrival at a dead BP fizzles');
+  });
+  T('REQ-0048 resonance: buff_linked folds +n per linked-tag PO; cond flags set', () => {
+    const resItems = {
+      weapon: { id: 'weapon', shape: [[0,0]], tags: ['Weapon'], modes: ['battle'], effects: [
+        { trigger: { t: 'passive' }, verb: { t: 'buff_linked', stat: 'damage', n: [10,10], tag: 'Weapon', dir: 'out' } },
+        { trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } } ] },
+      wtag: { id: 'wtag', shape: [[0,0]], tags: ['Weapon'], modes: ['battle'], effects: [] },
+    };
+    const unit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 'w1', id: 'weapon', loc: 'grid', cell: [1,1], rot: 0 },
+             { uid: 't1', id: 'wtag', loc: 'grid', cell: [1,4], rot: 0 },
+             { uid: 't2', id: 'wtag', loc: 'grid', cell: [1,5], rot: 0 } ] };
+    const c = combat.compileUnitSnapshot(unit, resItems, 'formation1', 'unit1');
+    const w = c.pos.find(p => p.uid === 'w1');
+    const strike = w.effects.find(e => e.verb && e.verb.t === 'strike');
+    eq(strike.verb.n, [21, 21], 'buff_linked adds +10 per linked Weapon PO (2) => base [1,1] -> [21,21]');
+    const a = c.bps.find(b => b.id === 'A');
+    eq(a.linkFlags.linked_out, true, 'A is linked_out');
+    eq(a.linkFlags.linked_in, false, 'A is not linked_in (one-way A->B)');
+    const bb = c.bps.find(b => b.id === 'B');
+    eq(bb.linkFlags.linked_in, true, 'B is linked_in');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

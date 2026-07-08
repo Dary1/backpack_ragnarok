@@ -4,7 +4,7 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 const { TUNABLES } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
-const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs');
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
@@ -61,6 +61,62 @@ function runEncounter(opts) {
   }
 
   function enemyActorList() { return enemyActors.map(e => e.actor).concat(entity ? [makeEnemyActor(entity)] : []); }
+
+  // ---- REQ-0048: Linker pulse propagation (Mechanism A). ----
+  const PULSE_HOP_BUDGET = TUNABLES.PULSE_HOP_BUDGET;
+  const PULSE_LATENCY = TUNABLES.PULSE_HOP_LATENCY_SECS;
+  const PULSE_CAP = TUNABLES.PULSE_CAP_PER_SEC;
+  const pulseEmitTimes = new Map(); // originBpId -> [t,...] within trailing 1s
+  function playerBpActorById(id) { return playerActors.find(a => a.id === id) || null; }
+  function schedulePulseArrive(pst, atT) {
+    heap.push({ t: atT + PULSE_LATENCY, seq: heap.nextSeq(), kind: 'pulse_arrive', origin: pst.origin, from: pst.from, to: pst.to, hop: pst.hop, visited: pst.visited });
+  }
+  // Emit one pulse from originBpId along ALL its outgoing links (fan-out).
+  // Rate-guarded per origin (PULSE_CAP/sec); excess drops with pulse_fizzle.
+  function emitPulse(originBpId, t, outEvents) {
+    const origin = playerBpActorById(originBpId);
+    if (!origin || !origin.alive) return;
+    const times = (pulseEmitTimes.get(originBpId) || []).filter(x => x > t - 1.0 + 1e-9);
+    if (times.length >= PULSE_CAP) { outEvents.push({ ev: 'pulse_fizzle', reason: 'rate_cap', origin: originBpId }); pulseEmitTimes.set(originBpId, times); return; }
+    times.push(t); pulseEmitTimes.set(originBpId, times);
+    for (const e of (origin.ref.linkOut || [])) {
+      schedulePulseArrive({ origin: originBpId, from: originBpId, to: e.to, hop: 1, visited: [originBpId] }, t);
+    }
+  }
+  // On arrival at a live BP, fire that BP's on_link_pulse payloads (mode-gated).
+  function firePulsePayloads(bpId, ev, outEvents) {
+    const host = playerBpActorById(bpId);
+    if (!host) return;
+    for (const po of partyPos) {
+      if (po.bpId !== bpId) continue;
+      (po.effects || []).forEach((eff, idx) => {
+        if (!eff.trigger || eff.trigger.t !== 'on_link_pulse') return;
+        const modes = eff.modes || (po.def && po.def.modes) || ['battle'];
+        if (!modes.includes(encounterDef.mode)) return;
+        const v = eff.verb;
+        if (v.t === 'strike' || v.t === 'multi_strike') {
+          const ap = eff.attack_profile || (po.def && po.def.attack_profile) || defaultAttackProfileFor(po);
+          const rayEvents = [];
+          fireSkillRay({
+            attacker: { fieldCells: host.fieldCells, ownerId: po.id + '#pulse', bonusVsStatus: (host.ref.bonusVsStatus || []) },
+            attackProfile: ap, verbEff: eff, mode: encounterDef.mode,
+            targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+            rng, streamPrefix: 'pulse/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t,
+            events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
+          });
+          for (const re of rayEvents) { re.cause = 'pulse'; outEvents.push(re); }
+        } else if (v.t === 'heal') {
+          const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
+          const n = rs.range(v.n[0], v.n[1]); host.heal(n);
+          outEvents.push({ ev: 'pulse_payload', dst: host.id, verb: 'heal', amount: n, hp_after: host.hp(), cause: 'pulse' });
+        } else if (v.t === 'apply_status' || v.t === 'add_on_hit_status') {
+          const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
+          const n = rs.range(v.n[0], v.n[1]); applyStatus(host.statusBag, v.status, n);
+          outEvents.push({ ev: 'apply_status', dst: host.id, status: v.status, n: n, cause: 'pulse' });
+        }
+      });
+    }
+  }
 
   // ---- REQ-0095: player-side reactive dispatch (Phase 1b) -- mirrors the enemy side. ----
   function bpActorOf(bpId) { return playerActors.find(a => a.id === bpId) || null; }
@@ -152,6 +208,18 @@ function runEncounter(opts) {
   // ---- Status tick scheduling: a lightweight periodic tick event drives
   // Burn/Poison/Regen/Chill/Stun/Weakness/Haste countdown for ALL actors
   // (S7). Scheduled at STATUS_TICK_PERIOD_SECS cadence.
+  // REQ-0048: battle_start pulse openers -- emit once at t0 (mode-gated).
+  for (const po of partyPos) {
+    for (const eff of (po.effects || [])) {
+      if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'pulse') {
+        const modes = eff.modes || (po.def && po.def.modes) || ['battle'];
+        if (!modes.includes(encounterDef.mode)) continue;
+        const pOut = [];
+        emitPulse(po.bpId, t0, pOut);
+        for (const re of pOut) events.push(Object.assign({ t: t0, seq: heap.nextSeq() }, re));
+      }
+    }
+  }
   heap.push({ t: t0 + TUNABLES.STATUS_TICK_PERIOD_SECS, seq: heap.nextSeq(), kind: 'status_tick' });
 
   const timeoutSecs = encounterDef.timeout_secs;
@@ -181,7 +249,13 @@ function runEncounter(opts) {
       const isPlayerSide = schedulable.some(s => s.ownerUid === ev.ownerUid && s.effIdx === ev.effIdx);
       if (isPlayerSide) {
         const s = schedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
-        if (s.modes.includes(encounterDef.mode)) {
+        if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
+          // REQ-0048: a "spark" (every_secs pulse) emits along the BP's links.
+          const spo = partyPos.find(p => p.uid === s.ownerUid);
+          const pOut = [];
+          if (spo) emitPulse(spo.bpId, ev.t, pOut);
+          for (const re of pOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        } else if (s.modes.includes(encounterDef.mode)) {
           const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, partyPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, partyPos, partyBps) };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           // telegraph is derived + emitted at fire-time as an informational
@@ -260,6 +334,22 @@ function runEncounter(opts) {
           for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
+      }
+    } else if (ev.kind === 'pulse_arrive') {
+      const toActor = playerBpActorById(ev.to);
+      if (!toActor || !toActor.alive) {
+        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'pulse_fizzle', reason: 'dead_target', origin: ev.origin, to: ev.to });
+      } else {
+        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'link_pulse', from: ev.from, to: ev.to, hop: ev.hop, origin: ev.origin });
+        const payloadOut = [];
+        firePulsePayloads(ev.to, ev, payloadOut);
+        for (const re of payloadOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        if (ev.hop < PULSE_HOP_BUDGET) {
+          for (const e of (toActor.ref.linkOut || [])) {
+            if (ev.visited.includes(e.to)) continue;
+            schedulePulseArrive({ origin: ev.origin, from: ev.to, to: e.to, hop: ev.hop + 1, visited: ev.visited.concat([ev.to]) }, ev.t);
+          }
+        }
       }
     }
 
