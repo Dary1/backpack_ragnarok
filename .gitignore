@@ -7,3 +7,7 @@ data/
 __pycache__/
 .env
 docs/
+
+# REQ-0106: pnpm is the only package manager -- block npm/yarn lockfiles
+package-lock.json
+yarn.lock
