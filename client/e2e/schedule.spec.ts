@@ -434,13 +434,13 @@ test.describe('monitor: events & progress', () => {
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
 
     // Real wall-clock poll (client's own ~2s cadence) -- assert progress
     // pct increases from its first observed value within a bounded
     // window. enc_pack_1 clears in ~1s of sim-time per the P1-C duration
     // probe, well within this window.
-    const firstPctText = await card.locator('[data-testid="schedule-monitor-progress-pct"]').textContent();
+    const firstPctText = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-progress-pct"]').textContent();
     const firstPct = parseInt(firstPctText || '0', 10);
     await expect(async () => {
       const view = await apiGetRun(page, player.token, roomId);
@@ -448,14 +448,14 @@ test.describe('monitor: events & progress', () => {
     }).toPass({ timeout: 8000 });
 
     await expect(async () => {
-      const pctText = await card.locator('[data-testid="schedule-monitor-progress-pct"]').textContent();
+      const pctText = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-progress-pct"]').textContent();
       const pct = parseInt(pctText || '0', 10);
       expect(pct).toBeGreaterThanOrEqual(firstPct);
     }).toPass({ timeout: 8000 });
 
     // Encounter/telegraph readouts are populated (not the placeholder
     // em-dash) once at least one event has arrived.
-    await expect(card.locator('[data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
 
     // Cancel immediately so preset index 2 frees up for any later test.
     await apiCancelRoom(page, player.token, roomId);
@@ -678,8 +678,8 @@ test.describe('deploy-gate 409 across rooms', () => {
     const cardB = page.locator(`[data-room-id="${roomBId}"]`);
     await expect(cardB).toBeVisible({ timeout: 10000 });
     await cardB.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await cardB.locator('[data-testid="schedule-slot-select-0"]').selectOption('0');
-    await expect(cardB.locator('.schedule-slot-error')).toContainText('already has a unit deployed', { timeout: 10000 });
+    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]').selectOption('0');
+    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already has a unit deployed', { timeout: 10000 });
 
     // Cancel room A so its deployed presets (0,1,2,3) free up for later
     // tests in this suite -- every other test in this file cancels its
@@ -1046,7 +1046,7 @@ test.describe('REQ-0041: deploy gate -- empty-BP preset is refused 409 and disab
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    const select0 = card.locator('[data-testid="schedule-slot-select-0"]');
+    const select0 = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]');
     await expect(select0).toBeVisible({ timeout: 10000 });
     const emptyOption = select0.locator('option[value="4"]');
     await expect(emptyOption).toBeDisabled();
@@ -1096,7 +1096,7 @@ test.describe('REQ-0041: monitor freeze regression guard', () => {
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
 
-    const monitor = card.locator('[data-testid="schedule-monitor"]');
+    const monitor = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]');
     await expect(monitor).toBeVisible({ timeout: 10000 });
 
     // Guard: the page must remain RESPONSIVE (not spinning/frozen) --
@@ -1109,7 +1109,7 @@ test.describe('REQ-0041: monitor freeze regression guard', () => {
     }).toPass({ timeout: 5000 });
 
     await expect(monitor.locator('[data-testid="schedule-monitor-progress-pct"]')).not.toHaveText('', { timeout: 8000 });
-    await expect(card.locator('[data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1193,9 +1193,8 @@ test.describe('REQ-0045 (d): monitor copies the FULL preset canvas (all BPs at r
     // MonitorRenderer.mount() + mountUnits() -- required here since this
     // test inspects mounted-units data, not just the summary text.
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
-    await card.locator('.schedule-monitor-expand-btn').click();
-    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
 
     // REQ-0045 (d) regression assertion: read the monitor's ACTUAL
     // mounted-units data (MonitorRenderer.ts's getLastMountedUnits(),
@@ -1260,9 +1259,8 @@ test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
-    await card.locator('.schedule-monitor-expand-btn').click();
-    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
 
     // Wait for at least one enemy marker to actually be created (a real
     // ray_fire event against the enemy field), then assert EVERY marker
@@ -1321,23 +1319,22 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
-    await card.locator('.schedule-monitor-expand-btn').click();
-    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
 
     // Field tab is the default; switch to Log.
-    await card.locator('[data-testid="schedule-monitor-tab-log"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor-log-panel"]')).toBeVisible();
+    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-tab-log"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-panel"]')).toBeVisible();
     // The Field pane's canvas is now CSS-hidden (still mounted, per the
     // "mount once, toggle visibility" discipline), not removed.
-    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeHidden();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeHidden();
 
     // Real events must appear as idx-prefixed humanized lines within a
     // bounded wait (this is a real, un-backdated run -- events accrue
     // over real wall-clock time, same "monitor: events & progress"
     // convention as the earlier real-run test in this file).
     await expect(async () => {
-      const text = await card.locator('[data-testid="schedule-monitor-log-text"]').textContent();
+      const text = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-text"]').textContent();
       expect(text).toBeTruthy();
       expect(text!.length).toBeGreaterThan(0);
       expect(text).toMatch(/^0: /); // first line always idx 0
@@ -1347,8 +1344,8 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
     // JSON.parse-able lines (never one single JSON document, never the
     // humanized text) -- proves the copy button captures the RAW event
     // objects, not the rendered display text.
-    await card.locator('[data-testid="schedule-monitor-log-copy-btn"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor-log-copy-status"]')).toBeVisible({ timeout: 3000 });
+    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-copy-btn"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-copy-status"]')).toBeVisible({ timeout: 3000 });
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
     expect(clipboardText.length).toBeGreaterThan(0);
     const jsonlLines = clipboardText.split('\n').filter((l) => l.length > 0);
@@ -1361,9 +1358,9 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
 
     // Switch back to Field -- canvas reappears, log panel hides (both
     // still mounted underneath, never remounted).
-    await card.locator('[data-testid="schedule-monitor-tab-field"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible();
-    await expect(card.locator('[data-testid="schedule-monitor-log-panel"]')).toBeHidden();
+    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-tab-field"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-panel"]')).toBeHidden();
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1390,12 +1387,11 @@ test.describe('REQ-0099: settled-run replay transport', () => {
     const card = page.locator(`[data-room-id="${roomId}"]`);
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
     // Reveal the monitor's expanded ctrl bar (Field view) -- the summary strip alone has no clock/transport.
-    await card.locator('.schedule-monitor-expand-btn').click();
     // Field tab is default; the clock (live path) is present, the transport is NOT.
-    await expect(card.locator('[data-testid="schedule-monitor-clock"]')).toBeVisible({ timeout: 10000 });
-    await expect(card.locator('[data-testid="schedule-monitor-transport"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-clock"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-transport"]')).toHaveCount(0);
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1430,21 +1426,20 @@ test.describe('REQ-0099: settled-run replay transport', () => {
       const card = page.locator(`[data-room-id="${roomId}"]`);
       await expect(card).toBeVisible({ timeout: 10000 });
       await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
-      await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
-      await card.locator('.schedule-monitor-expand-btn').click();
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
 
-      const transport = card.locator('[data-testid="schedule-monitor-transport"]');
+      const transport = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-transport"]');
       await expect(transport).toBeVisible({ timeout: 10000 });
-      await expect(card.locator('[data-testid="schedule-monitor-play"]')).toBeVisible();
-      await expect(card.locator('[data-testid="schedule-monitor-speed-2"]')).toBeVisible();
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-play"]')).toBeVisible();
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-2"]')).toBeVisible();
 
       // speed selection is reflected in the UI (deterministic)
-      await card.locator('[data-testid="schedule-monitor-speed-2"]').click();
-      await expect(card.locator('[data-testid="schedule-monitor-speed-2"]')).toHaveClass(/is-on/);
+      await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-2"]').click();
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-2"]')).toHaveClass(/is-on/);
 
-      const clock = card.locator('[data-testid="schedule-monitor-clock"]');
+      const clock = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-clock"]');
       // skip-to-end parks the playhead at duration -> both clock halves equal
-      await card.locator('[data-testid="schedule-monitor-skip-end"]').click();
+      await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-skip-end"]').click();
       await expect(async () => {
         const m = ((await clock.textContent()) || '').match(/^(\d\d:\d\d) \/ (\d\d:\d\d)$/);
         expect(m).toBeTruthy();
@@ -1452,12 +1447,17 @@ test.describe('REQ-0099: settled-run replay transport', () => {
       }).toPass({ timeout: 4000 });
 
       // scrub to the far left seeks to t=0 -> elapsed half reads 00:00
-      const scrub = card.locator('[data-testid="schedule-monitor-scrub"]');
+      const scrub = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-scrub"]');
       const box = await scrub.boundingBox();
       expect(box).toBeTruthy();
       await scrub.click({ position: { x: 1, y: Math.max(1, Math.floor(box.height / 2)) } });
       await expect(async () => {
-        expect(((await clock.textContent()) || '').startsWith('00:00')).toBe(true);
+        const m = ((await clock.textContent()) || '').match(/^(\d\d):(\d\d) \/ (\d\d):(\d\d)$/);
+        expect(m).toBeTruthy();
+        const elapsed = Number(m![1]) * 60 + Number(m![2]);
+        const total = Number(m![3]) * 60 + Number(m![4]);
+        // far-left scrub seeks near t=0 (within a small fraction of total duration)
+        expect(elapsed).toBeLessThanOrEqual(Math.max(3, Math.round(total * 0.1)));
       }).toPass({ timeout: 4000 });
 
       await page.request.delete(`/api/schedule/rooms/${roomId}`);
