@@ -1368,3 +1368,102 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+// REQ-0099: settled-run replay transport. The transport (play/pause,
+// 1x/2x/4x, skip-to-end, scrub) appears ONLY once a run is settled --
+// a live/unsettled run stays clock-locked with no transport. Settled
+// runs are produced via the dev/backdate hook (dev fallback player,
+// no token) exactly as the warehouse/settle tests do.
+test.describe('REQ-0099: settled-run replay transport', () => {
+  test('a LIVE (unsettled) run shows NO transport (clock-locked, unchanged)', async ({ page }) => {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) expect((await apiAssignSlot(page, player.token, roomId, i, i)).status).toBe(200);
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    // Reveal the monitor's expanded ctrl bar (Field view) -- the summary strip alone has no clock/transport.
+    await card.locator('.schedule-monitor-expand-btn').click();
+    // Field tab is default; the clock (live path) is present, the transport is NOT.
+    await expect(card.locator('[data-testid="schedule-monitor-clock"]')).toBeVisible({ timeout: 10000 });
+    await expect(card.locator('[data-testid="schedule-monitor-transport"]')).toHaveCount(0);
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('a SETTLED run shows the transport; skip-to-end parks at duration; scrub seeks to start', async ({ page }) => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfileExisted = fs.existsSync(devProfilePath);
+    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
+    try {
+      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+      const roomId = created.body.room.id;
+      for (let i = 0; i < 4; i++) {
+        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { presetIndex: i } });
+        expect(r.status()).toBe(200);
+      }
+      await expect(async () => {
+        const view = await page.request.get(`/api/schedule/rooms/${roomId}`);
+        expect((await view.json()).room.status).toBe('active');
+      }).toPass({ timeout: 10000 });
+      const bd = await page.request.post(`/api/schedule/rooms/${roomId}/dev/backdate`, { data: { extraSecsIntoPast: 5 } });
+      expect(bd.status()).toBe(200);
+      await expect(async () => {
+        const view = await page.request.get(`/api/schedule/rooms/${roomId}`);
+        expect((await view.json()).room.status).not.toBe('active');
+      }).toPass({ timeout: 10000 });
+
+      await page.goto('/app/#/schedule');
+      await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
+      const card = page.locator(`[data-room-id="${roomId}"]`);
+      await expect(card).toBeVisible({ timeout: 10000 });
+      await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+      await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+      await card.locator('.schedule-monitor-expand-btn').click();
+
+      const transport = card.locator('[data-testid="schedule-monitor-transport"]');
+      await expect(transport).toBeVisible({ timeout: 10000 });
+      await expect(card.locator('[data-testid="schedule-monitor-play"]')).toBeVisible();
+      await expect(card.locator('[data-testid="schedule-monitor-speed-2"]')).toBeVisible();
+
+      // speed selection is reflected in the UI (deterministic)
+      await card.locator('[data-testid="schedule-monitor-speed-2"]').click();
+      await expect(card.locator('[data-testid="schedule-monitor-speed-2"]')).toHaveClass(/is-on/);
+
+      const clock = card.locator('[data-testid="schedule-monitor-clock"]');
+      // skip-to-end parks the playhead at duration -> both clock halves equal
+      await card.locator('[data-testid="schedule-monitor-skip-end"]').click();
+      await expect(async () => {
+        const m = ((await clock.textContent()) || '').match(/^(\d\d:\d\d) \/ (\d\d:\d\d)$/);
+        expect(m).toBeTruthy();
+        expect(m[1]).toBe(m[2]);
+      }).toPass({ timeout: 4000 });
+
+      // scrub to the far left seeks to t=0 -> elapsed half reads 00:00
+      const scrub = card.locator('[data-testid="schedule-monitor-scrub"]');
+      const box = await scrub.boundingBox();
+      expect(box).toBeTruthy();
+      await scrub.click({ position: { x: 1, y: Math.max(1, Math.floor(box.height / 2)) } });
+      await expect(async () => {
+        expect(((await clock.textContent()) || '').startsWith('00:00')).toBe(true);
+      }).toPass({ timeout: 4000 });
+
+      await page.request.delete(`/api/schedule/rooms/${roomId}`);
+    } finally {
+      if (devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
+      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath, { force: true });
+    }
+  });
+});

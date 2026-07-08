@@ -126,6 +126,12 @@ export class MonitorRenderer {
    * canvas pixel colors -- same rationale as store.ts's own
    * __backpackDebug hook. Never read by any production UI code path. */
   private lastMountedUnits: MonitorUnitVisual[] = [];
+  /** REQ-0097 / REQ-0099: every ticker callback currently animating a
+   * transient ray/flash/pulse effect. reset() removes them all from the
+   * PIXI ticker synchronously (and purges the ray layer alongside), so an
+   * in-flight self-removing tick can never fire against an already-
+   * cleared/destroyed graphic after a retarget or a replay seek. */
+  private activeTickers = new Set<() => void>();
 
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
@@ -321,6 +327,27 @@ export class MonitorRenderer {
     if (id !== '?') this.discovered.add(id);
   }
 
+  /** Registers a self-cancelling ticker step. `step()` runs each frame
+   * and returns true once finished (removing itself). reset() can also
+   * cancel it mid-flight via activeTickers -- keeps the three transient
+   * effects below uniform AND cancellable on a retarget/replay-seek. */
+  private addTicker(step: () => boolean): void {
+    const tick = (): void => {
+      let done: boolean;
+      try {
+        done = step();
+      } catch {
+        done = true;
+      }
+      if (done) {
+        this.app.ticker.remove(tick);
+        this.activeTickers.delete(tick);
+      }
+    };
+    this.activeTickers.add(tick);
+    this.app.ticker.add(tick);
+  }
+
   private flashCell(cellId: string | RawCell): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
     const flash = new Graphics();
@@ -330,17 +357,16 @@ export class MonitorRenderer {
     flash.y = pos.y;
     this.rayLayer.addChild(flash);
     const start = performance.now();
-    const tick = (): void => {
+    this.addTicker((): boolean => {
       const elapsed = performance.now() - start;
-      const alpha = Math.max(0, 1 - elapsed / FLASH_MS);
-      flash.alpha = alpha;
+      flash.alpha = Math.max(0, 1 - elapsed / FLASH_MS);
       if (elapsed >= FLASH_MS) {
-        this.app.ticker.remove(tick);
-        this.rayLayer.removeChild(flash);
+        if (flash.parent) this.rayLayer.removeChild(flash);
         flash.destroy();
+        return true;
       }
-    };
-    this.app.ticker.add(tick);
+      return false;
+    });
   }
 
   private pulseCell(cellId: string | RawCell): void {
@@ -353,18 +379,18 @@ export class MonitorRenderer {
     pulse.scale.set(0.4);
     this.rayLayer.addChild(pulse);
     const start = performance.now();
-    const tick = (): void => {
+    this.addTicker((): boolean => {
       const elapsed = performance.now() - start;
       const frac = Math.min(1, elapsed / FLASH_MS);
       pulse.scale.set(0.4 + 0.9 * frac);
       pulse.alpha = 1 - frac;
       if (elapsed >= FLASH_MS) {
-        this.app.ticker.remove(tick);
-        this.rayLayer.removeChild(pulse);
+        if (pulse.parent) this.rayLayer.removeChild(pulse);
         pulse.destroy();
+        return true;
       }
-    };
-    this.app.ticker.add(tick);
+      return false;
+    });
   }
 
   private animateStep(path: RawCell[]): void {
@@ -380,7 +406,7 @@ export class MonitorRenderer {
       marker.x = positions[0].x;
       marker.y = positions[0].y;
     }
-    const tick = (): void => {
+    this.addTicker((): boolean => {
       const elapsed = performance.now() - start;
       const frac = Math.min(1, elapsed / totalMs);
       const idxFloat = frac * (positions.length - 1);
@@ -391,12 +417,12 @@ export class MonitorRenderer {
       marker.x = a.x + (b.x - a.x) * localFrac;
       marker.y = a.y + (b.y - a.y) * localFrac;
       if (elapsed >= totalMs) {
-        this.app.ticker.remove(tick);
-        this.rayLayer.removeChild(marker);
+        if (marker.parent) this.rayLayer.removeChild(marker);
         marker.destroy();
+        return true;
       }
-    };
-    this.app.ticker.add(tick);
+      return false;
+    });
   }
 
   /** Applies ONLY new (not-yet-rendered) events -- Monitor.tsx tracks
@@ -404,7 +430,12 @@ export class MonitorRenderer {
    * each poll (per the run-clock polling contract: each poll returns the
    * FULL events array up to elapsedSecs, not just deltas -- the diffing
    * happens one layer up, in Monitor.tsx, not in this renderer). */
-  applyEvents(newEvents: ApiRunEvent[]): void {
+  applyEvents(newEvents: ApiRunEvent[], opts?: { silent?: boolean }): void {
+    // REQ-0099: `silent` rebuilds only PERSISTENT state (enemy markers,
+    // discovered ids) with NO transient VFX -- used when a replay scrub
+    // fast-applies every event up to the sought `t` right after reset(),
+    // so a backward seek never sprays hundreds of overlapping flashes.
+    const silent = opts?.silent ?? false;
     for (const ev of newEvents) {
       // BUG #4 FIX (REQ-0041): each event is processed inside its own
       // try/catch. ROOT CAUSE this guards against (confirmed via a live
@@ -426,7 +457,7 @@ export class MonitorRenderer {
       // and applyEvents() as a whole must ALWAYS finish so the caller can
       // always advance past whatever it just processed -- never spin.
       try {
-        this.applyOneEvent(ev);
+        this.applyOneEvent(ev, silent);
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[backpack_ragnarok] MonitorRenderer: skipping malformed run event', ev, e);
@@ -434,7 +465,7 @@ export class MonitorRenderer {
     }
   }
 
-  private applyOneEvent(ev: ApiRunEvent): void {
+  private applyOneEvent(ev: ApiRunEvent, silent = false): void {
     switch (ev.ev) {
       case 'ray_fire': {
         const field = ev.field === 'enemy' ? 'enemy' : 'player';
@@ -444,12 +475,12 @@ export class MonitorRenderer {
       }
       case 'ray_step': {
         const path = Array.isArray(ev.path) ? (ev.path as unknown[]).filter(isRawCell) : [];
-        this.animateStep(path);
+        if (!silent) this.animateStep(path);
         break;
       }
       case 'ray_bounce': {
         const at = isRawCell(ev.at) ? ev.at : null;
-        if (at) this.flashCell(at);
+        if (at && !silent) this.flashCell(at);
         break;
       }
       case 'ray_hit': {
@@ -469,7 +500,7 @@ export class MonitorRenderer {
         // status-driven reflection) -- pulse the whole enemy field
         // center as a simple, honest "something happened" cue rather
         // than inventing a cell this event doesn't actually carry.
-        this.pulseCell('N9');
+        if (!silent) this.pulseCell('N9');
         break;
       }
       default:
@@ -477,27 +508,49 @@ export class MonitorRenderer {
     }
   }
 
-  /** REQ-0045 (d) regression-test seam -- see lastMountedUnits' own doc
-   * above. Returns the exact array (not a copy) mountUnits() was last
-   * called with; callers must treat it as read-only. */
+  /** REQ-0045 (d) regression-test seam -- read-only; exact array mountUnits() got. */
   getLastMountedUnits(): MonitorUnitVisual[] {
     return this.lastMountedUnits;
   }
 
-  /** REQ-0045 (f) regression-test seam: every currently-mounted enemy
-   * marker's actual PixiJS-computed local position + rendered text
-   * width, so client/e2e/*.spec.ts can assert `x + labelWidth <=
-   * FIELD_W` directly against the REAL rendered bounding box (not a
-   * hand-recomputed estimate) -- same "assert on real data instead of
-   * reverse-engineering canvas pixels" rationale as store.ts's own
-   * __backpackDebug hook and getLastMountedUnits() above. Never read by
-   * any production UI code path. */
+  /** REQ-0045 (f) regression-test seam: each enemy marker's local x + rendered label width. */
   getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string }> {
     return Array.from(this.enemyMarkers.values()).map((m) => ({
       x: m.container.x,
       labelWidth: m.label.width,
       labelText: m.label.text,
     }));
+  }
+
+  /** REQ-0097 (shared re-targetable monitor) / REQ-0099 (replay scrub): clear ALL
+   * per-run transient + discovered state back to the mounted-units baseline -- cancel
+   * every in-flight ticker animation, empty the ray layer, destroy every enemy marker,
+   * and forget every discovered id. Player-side unit visuals (mountUnits) are left
+   * untouched; retarget() re-mounts them for a different run. After reset(),
+   * getEnemyMarkerBounds() is empty, so REQ-0097's "no residual actor/pip leak across
+   * retargets" guard holds. */
+  reset(): void {
+    for (const tick of this.activeTickers) this.app.ticker.remove(tick);
+    this.activeTickers.clear();
+    while (this.rayLayer.children.length > 0) {
+      const child = this.rayLayer.getChildAt(0);
+      this.rayLayer.removeChild(child);
+      child.destroy();
+    }
+    for (const marker of this.enemyMarkers.values()) {
+      if (marker.container.parent) this.enemyField.removeChild(marker.container);
+      marker.container.destroy({ children: true });
+    }
+    this.enemyMarkers.clear();
+    this.discovered.clear();
+  }
+
+  /** REQ-0097: point this ONE shared monitor at a DIFFERENT room's run -- reset all
+   * per-run state, then re-mount the newly-selected run's player units. The caller
+   * (Monitor.tsx) resets its own event cursor so applyEvents() feeds from the top. */
+  retarget(units: MonitorUnitVisual[]): void {
+    this.reset();
+    this.mountUnits(units);
   }
 
   destroy(): void {
