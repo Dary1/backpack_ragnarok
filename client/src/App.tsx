@@ -91,7 +91,6 @@ import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { InviteBanner } from './InviteBanner';
-import { ItemPanel } from './ItemPanel';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -232,9 +231,11 @@ function App() {
               backpacks-view is itself route-hidden anyway, so there is no
               visible gap either way). */}
           {inventorySlot === null ? <InventoryColumn locale={snapshot.locale} ready={inventoryReady} /> : null}
-          {snapshot.status === 'ready' && snapshot.gameData ? (
-            <ItemPanel items={snapshot.gameData.ITEMS} siDefs={snapshot.gameData.SI_DEFS} locale={snapshot.locale} />
-          ) : null}
+          {/* REQ-0114: the ItemList (the ItemPanel item/SI catalog) is
+              intentionally NOT rendered on the backpacks view, per user
+              request. The Canvas and Inventory columns above are unchanged;
+              only this third panel is removed, and its import above is
+              dropped accordingly (noUnusedLocals). */}
           {/* REQ-0070: the mock's embark dock -- fixed bottom-right CTA to
               the real expedition page. Inside backpacks-view so
               route-hidden hides it (fixed positioning does not escape an
