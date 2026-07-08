@@ -130,11 +130,11 @@ function getDexNoById() {
 
 // findInventoryPO: locates itemUid among the seller's INVENTORY pages'
 // pos[] entries. v1 sells POs only: every listing card in the mock is a
-// PO, and the buyer-side delivery is a plain warehouse row whose claim
-// path (services/warehouse.cjs claimWarehouseItem) validates itemId
-// against itemDefsById -- which holds PO defs only (live + pilot
-// overlay, services/core.cjs getScheduleContent) -- so an SI/BP row
-// could not be claimed even if we listed it. SIs/BPs are a later unit.
+// PO, and the buyer-side delivery is a plain warehouse row claimed via
+// services/warehouse.cjs claimWarehouseItem. NOTE (REQ-0115): that claim
+// path now also accepts SI ids (itemDefsById OR siDefsById), so an SI row
+// IS claimable -- market still lists POs only as a v1 scope choice, not a
+// claim-path limitation. BP listings remain a later unit.
 // No "fixed starter PO" concept exists in the codebase today (grep for
 // 'starter' across mock-src/engine.js, shared/engine.d.ts and
 // server/services/ comes back empty), so there is no starter-item

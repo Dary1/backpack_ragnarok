@@ -223,7 +223,7 @@ function listWarehouse(playerId) {
 // reverse-direction ban, generalized here even ahead of P3 trade -- there
 // is simply no function that moves an item from a home back into a
 // warehouse row).
-function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById) {
+function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsById) {
   purgeExpiredWarehouseItems(playerId); // also normalizes/reverts stale 'claiming' rows (see normalizeWarehouseStatus above)
   const item = storage.readWarehouseItem(playerId, itemUid);
   if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
@@ -240,7 +240,14 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById) {
     const tmDef = (tmDefsById || {})[item.itemId];
     if (!tmDef) { const err = new Error('claimed item references an unknown tm id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
   } else {
-    const itemDef = itemDefsById[item.itemId];
+    // REQ-0115: a plain (non-tm) row is a PO *or* an SI -- accept an id
+    // present in EITHER itemDefsById (PO + pilot overlay) OR siDefsById
+    // (live_sis.json). Before REQ-0115 this checked itemDefsById alone, so
+    // a warehouse row carrying an SI id (e.g. the dev "Acquire to
+    // warehouse" grant of acc_gem) 400'd here as an "unknown content item
+    // id" and could never be claimed onto the canvas -- even though the
+    // client already resolves + places SIs (WarehousePage.itemKindOf).
+    const itemDef = itemDefsById[item.itemId] || (siDefsById && siDefsById[item.itemId]);
     if (!itemDef) { const err = new Error('claimed item references an unknown content item id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
   }
 

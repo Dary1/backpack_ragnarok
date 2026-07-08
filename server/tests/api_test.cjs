@@ -952,6 +952,31 @@ async function main() {
     for (const i of after) if (i.itemId === 'blade' && i.playerId === undefined) { /* no-op, shape check only */ }
   });
 
+  // REQ-0115: the dex Edit-Mode "Acquire to warehouse" bug -- granting an
+  // SI id (acc_gem, from live_sis.json) 400'd as "unknown item id" because
+  // the gate only checked itemDefsById (PO-only). Now accepts SI ids too.
+  await AT('REQ-0115 admin grant: POST /api/admin/warehouse/grant accepts an SI id (acc_gem) -- 200, claimable, listed (regression: was 400 unknown item id)', async () => {
+    const schedule2 = require('../schedule.cjs');
+    const before = schedule2.listWarehouse(adminGuest.playerId).length;
+    await new Promise((resolve, reject) => {
+      const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'acc_gem' }), authHeaders(adminGuest.token));
+      const res = mockRes((body) => {
+        try {
+          assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
+          const parsed = JSON.parse(body);
+          assert.strictEqual(parsed.ok, true);
+          assert.strictEqual(parsed.item.itemId, 'acc_gem', 'granted row carries the SI id');
+          assert.strictEqual(parsed.item.status, 'claimable');
+          resolve();
+        } catch (e) { reject(e); }
+      });
+      api.handle(req, res);
+    });
+    const after = schedule2.listWarehouse(adminGuest.playerId);
+    assert.strictEqual(after.length, before + 1, 'exactly one new SI row for the granting admin');
+    assert.ok(after.some((i) => i.itemId === 'acc_gem'), 'the granted SI id must actually be present');
+  });
+
   await AT('api: POST /api/admin/warehouse/grant succeeds with NO token at all when dev_mode is true (dev-player fallback keeps item_admin)', async () => {
     await new Promise((resolve, reject) => {
       const req = mockReq('POST', '/api/admin/warehouse/grant', JSON.stringify({ itemId: 'fx_dagger' }));
@@ -1532,6 +1557,22 @@ async function main() {
     const claimExpiredRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: expiredId });
     assert.strictEqual(claimExpiredRes.status, 404, 'an expired warehouse item must 404 on claim (lazily purged)');
     assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, expiredId), null, 'expired item must actually be deleted by the purge');
+  });
+
+  // REQ-0115: a granted SI must also be CLAIMABLE onto the canvas -- the
+  // non-tm claim branch validated against itemDefsById (PO-only), so an SI
+  // row 400'd as "unknown content item id". Now accepts SI ids too.
+  await AT('REQ-0115 claim: POST /api/warehouse/claim accepts an SI warehouse row (acc_gem) -- 200, echoes itemId, marks claiming (regression: was BAD_REQUEST unknown content item id)', async () => {
+    const scheduleSi = require('../schedule.cjs');
+    const whId = 'claim_si_test_' + Date.now();
+    scheduleSi.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'acc_gem', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(claimRes.status, 200, 'SI claim must succeed: ' + JSON.stringify(claimRes.body));
+    assert.strictEqual(claimRes.body.itemId, 'acc_gem', 'response carries the SI content id for client-side placement');
+    assert.strictEqual(claimRes.body.kind, undefined, 'a plain SI row is not kind:tm');
+    const row = scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId);
+    assert.ok(row && row.status === 'claiming', 'SI row must be marked claiming, not deleted');
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
   });
 
   await AT('schedule: two-phase claim finalization -- a profile PUT containing the claimed itemUid deletes the warehouse row; a claiming row older than the timeout lazily reverts to claimable and is claimable again', async () => {

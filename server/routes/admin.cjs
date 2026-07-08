@@ -66,10 +66,12 @@ function tryAdminRoutes(req, res, url, p) {
   // caller's own data" convention), subject to the SAME cap/TTL rules
   // every other warehouse insertion goes through (schedule.cjs's
   // addToWarehouse, via grantWarehouseItem). Validates itemId against the
-  // COMBINED item defs (schedule.getScheduleContent().itemDefsById, the
-  // same map claimWarehouseItem/settleRun already trust) before inserting
-  // -- 400 for an unknown id, never a silent insert of a dangling
-  // reference.
+  // PO defs (schedule.getScheduleContent().itemDefsById) OR the SI defs
+  // (siDefsById) -- REQ-0115 -- so both a PO and an SI (a live_sis.json
+  // entry, e.g. acc_gem) are acceptable warehouse content; the claim path
+  // (services/warehouse.cjs claimWarehouseItem) was widened to match in
+  // the same REQ. 400 only for an id that is in NEITHER map, never a
+  // silent insert of a dangling reference.
   const adminWarehouseGrantMatch = ADMIN_WAREHOUSE_GRANT_RE.exec(p);
   if (adminWarehouseGrantMatch && req.method === 'POST') {
     const token = getAuthToken(req);
@@ -129,8 +131,13 @@ function tryAdminRoutes(req, res, url, p) {
         return;
       }
       try {
-        const { itemDefsById } = schedule.getScheduleContent();
-        if (!itemDefsById[body.itemId]) {
+        // REQ-0115: accept a PO id (itemDefsById) OR an SI id (siDefsById).
+        // Before REQ-0115 this validated against itemDefsById alone (PO +
+        // pilot overlay only), so EVERY SI id (acc_gem, acc_frost, ...) was
+        // rejected here as "unknown item id" even though it is a valid
+        // live_sis.json entry -- the reported dex Edit-Mode bug.
+        const { itemDefsById, siDefsById } = schedule.getScheduleContent();
+        if (!itemDefsById[body.itemId] && !siDefsById[body.itemId]) {
           sendJSON(res, 400, { ok: false, error: 'unknown item id "' + body.itemId + '"' });
           return;
         }
