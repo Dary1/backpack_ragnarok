@@ -231,6 +231,9 @@
        background-size:220% 100%; animation:shim 2.4s linear infinite; }
   /* season wheel: draw wedges progressively 0 -> set value */
   @keyframes wheelDraw{ to{ stroke-dashoffset:0; } }
+  /* ===== §06 iteration (2026-07-08c): hover/click SFX + universal hover & click FX ===== */
+  .btn:not([disabled]):hover, .replay:hover, .preset:hover, .icard:hover, .rail a.nav:hover{ filter:brightness(1.07); }
+  .icard, .rail a.nav{ position:relative; overflow:hidden; }
 </style>
 </head>
 <body class="grain vignette">
@@ -516,7 +519,7 @@
     <p class="lead">
       全画面で使う動き・発光・粒子・音を<b>実物で</b>並べ、各札に「何を・いつ・どの速さで」行うかを明記する。
       タグの読み: <span class="fxtag loop">loop</span>=常在ループ ・ <span class="fxtag once">once</span>=一過性(右上の<b>再生</b>で再実行) ・ <span class="fxtag js">js</span>=<code>fx.js</code>等のスクリプト駆動。
-      各 <code>@keyframes</code>/関数の定義元は札の <code>src</code> に示す(この頁は実演のため定義を複製しているが、正は各元ファイル)。
+      各 <code>@keyframes</code>/関数の定義元は札の <code>src</code> に示す(この頁は実演のため定義を複製しているが、正は各元ファイル)。<br><b>本頁の全サンプルはホバー/クリックで効果音が鳴り(音量注意)、クリック可能な要素にはホバー＆クリックのFXが付く。</b>
     </p>
 
     <div class="sub">6.0 原則 — 発光の規律</div>
@@ -884,18 +887,57 @@
 })();
 </script>
 <script>
-/* §06 button 発動 effect: spark burst at the click point on any button */
-document.addEventListener("click", function(e){
-  var btn = e.target.closest(".btn, .replay, .preset");
-  if (!btn) return;
-  var r = btn.getBoundingClientRect();
-  var s = document.createElement("span");
-  s.className = "btn-fire";
-  s.style.left = (e.clientX - r.left) + "px";
-  s.style.top  = (e.clientY - r.top)  + "px";
-  btn.appendChild(s);
-  setTimeout(function(){ s.remove(); }, 520);
-});
+/* §06 interaction feedback: hover + click SFX on every sample; hover + click FX on
+   clickables. Audio is synthesized (Web Audio, no assets) and best-effort. Browser
+   autoplay policy means the AudioContext can only start after the first real gesture,
+   so a hover before any click is silent by design; every click thereafter is audible. */
+(function(){
+  var SAMPLE    = ".btn,.replay,.preset,.chip,.rbox,.icard,.toast,.tooltip,.bar,.sw,.rail a.nav";
+  var CLICKABLE = ".btn,.replay,.preset,.icard,.rail a.nav";
+  var actx = null;
+  function ac(){
+    try{
+      var A = window.AudioContext || window.webkitAudioContext; if(!A) return null;
+      if(!actx) actx = new A();
+      if(actx.state === "suspended") actx.resume();
+      return actx;
+    }catch(e){ return null; }
+  }
+  function blip(freq, dur, vol, type){
+    var c = ac(); if(!c) return; var t = c.currentTime;
+    var o = c.createOscillator(), g = c.createGain();
+    o.type = type || "sine"; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination);
+    o.start(t); o.stop(t + dur + 0.02);
+  }
+  function hoverSfx(){ blip(2100, 0.035, 0.02, "sine"); }                 /* soft high tick */
+  function clickSfx(){ blip(660, 0.05, 0.09, "triangle"); setTimeout(function(){ blip(990, 0.06, 0.05, "triangle"); }, 28); }
+
+  /* hover tick: once per element entry, time-throttled so a fast sweep never machine-guns */
+  var lastHover = null, lastTick = 0;
+  document.addEventListener("mouseover", function(e){
+    var el = e.target.closest(SAMPLE); if(!el || el === lastHover) return; lastHover = el;
+    var now = performance.now(); if(now - lastTick < 45) return; lastTick = now; hoverSfx();
+  });
+  document.addEventListener("mouseout", function(e){ if(e.target === lastHover) lastHover = null; });
+
+  /* click: SFX on any sample (except 受領, which keeps its own claim chime) + spark on clickables */
+  document.addEventListener("click", function(e){
+    var s = e.target.closest(SAMPLE);
+    if(s && !e.target.closest("[data-claim]")) clickSfx();
+    var c = e.target.closest(CLICKABLE);
+    if(c){
+      var r = c.getBoundingClientRect();
+      var sp = document.createElement("span"); sp.className = "btn-fire";
+      sp.style.left = (e.clientX - r.left) + "px";
+      sp.style.top  = (e.clientY - r.top)  + "px";
+      c.appendChild(sp); setTimeout(function(){ sp.remove(); }, 520);
+    }
+  });
+})();
 </script>
 </body>
 </html>
