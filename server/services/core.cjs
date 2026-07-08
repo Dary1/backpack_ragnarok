@@ -17,6 +17,7 @@ const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
 const CONTENT_DIR = path.join(REPO_ROOT, 'content');
 const LIVE_DIR = path.join(CONTENT_DIR, 'live');
 const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
+const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json'); // REQ-0115: SI (accessory) content defs
 const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
 const BATCH_DIR = path.join(CONTENT_DIR, 'batches', 'batch-002-dungeon-pilot');
 const DUNGEON_PATH = path.join(BATCH_DIR, 'dungeon.json');
@@ -63,6 +64,7 @@ function loadJSON(p) {
 function getScheduleContent() {
   const mtimes = {
     items: statMtimeMs(ITEMS_PATH),
+    sis: statMtimeMs(SIS_PATH), // REQ-0115
     tms: statMtimeMs(TMS_PATH), // REQ-0042
     dungeon: statMtimeMs(DUNGEON_PATH),
     enemies: statMtimeMs(ENEMIES_PATH),
@@ -74,6 +76,7 @@ function getScheduleContent() {
   if (!stale) return contentCache.payload;
 
   const liveItems = loadJSON(ITEMS_PATH);
+  const liveSis = loadJSON(SIS_PATH); // REQ-0115
   const liveTms = loadJSON(TMS_PATH); // REQ-0042
   const pilotItems = loadJSON(ITEMS_PILOT_PATH);
   const dungeonDef = loadJSON(DUNGEON_PATH);
@@ -92,6 +95,17 @@ function getScheduleContent() {
   const tmDefsById = {};
   for (const e of liveTms.entries) tmDefsById[e.id] = e;
 
+  // REQ-0115: SI (accessory) defs -- same id-keyed map shape as
+  // itemDefsById/tmDefsById above, but a DELIBERATELY SEPARATE sibling
+  // map (NOT merged into itemDefsById, which stays PO-only: the engine
+  // and settle paths treat SIs as a distinct kind -- see services/
+  // ragnarok.cjs). Consumed by the admin warehouse-grant route and by
+  // claimWarehouseItem so an SI id (a real live_sis.json entry, e.g.
+  // acc_gem) is accepted as valid warehouse content, mirroring how
+  // REQ-0042 added tmDefsById for TM ids.
+  const siDefsById = {};
+  for (const e of liveSis.entries) siDefsById[e.id] = e;
+
   const enemyDefsById = {};
   for (const e of enemies.entries) enemyDefsById[e.id] = e;
 
@@ -100,7 +114,7 @@ function getScheduleContent() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  const payload = { itemDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
+  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
 }
