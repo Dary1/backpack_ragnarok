@@ -1368,3 +1368,58 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+test.describe('REQ-0048: monitor renders linker pulse visuals (injected synthetic events)', () => {
+  test('link_pulse + cause:pulse ray + pulse_fizzle + pulse_payload drive the pulse-visual counters', async ({ page }) => {
+    // Pulse CONTENT (spark/payload POs) debuts later (Ember Pack), so the
+    // client render path is verified by injecting synthetic replay events
+    // through the monitor's own applyEvents (via the __monitorDebug seam).
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await card.locator('.schedule-monitor-expand-btn').click();
+    await expect(card.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+
+    await expect(async () => {
+      const ready = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { applyTestEvents?: unknown }> };
+        return typeof w.__monitorDebug?.[rid]?.applyTestEvents === 'function';
+      }, roomId);
+      expect(ready).toBe(true);
+    }).toPass({ timeout: 10000 });
+
+    const counts = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { applyTestEvents: (e: unknown[]) => void; pulseCounts: () => { linkPulses: number; payloads: number; fizzles: number; rays: number } }> };
+      const d = w.__monitorDebug[rid];
+      d.applyTestEvents([
+        { t: 1, seq: 1, ev: 'link_pulse', from: 'alpha', to: 'beta', hop: 1, origin: 'alpha' },
+        { t: 1, seq: 2, ev: 'ray_fire', field: 'enemy', src: 'blade#pulse', entry: [9, 14], cause: 'pulse' },
+        { t: 1, seq: 3, ev: 'ray_step', path: [[9, 14], [9, 15]], cause: 'pulse' },
+        { t: 1, seq: 4, ev: 'pulse_fizzle', reason: 'rate_cap', origin: 'alpha' },
+        { t: 1, seq: 5, ev: 'pulse_payload', dst: 'beta', verb: 'heal', amount: 5, cause: 'pulse' },
+      ]);
+      return d.pulseCounts();
+    }, roomId);
+    expect(counts.linkPulses).toBeGreaterThanOrEqual(1);
+    expect(counts.rays).toBeGreaterThanOrEqual(1);
+    expect(counts.fizzles).toBeGreaterThanOrEqual(1);
+    expect(counts.payloads).toBeGreaterThanOrEqual(1);
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});

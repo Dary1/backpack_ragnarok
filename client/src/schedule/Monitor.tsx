@@ -326,12 +326,20 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
         interface MonitorDebugEntry {
           units: () => MonitorUnitVisual[];
           enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
+          pulseCounts: () => { linkPulses: number; payloads: number; fizzles: number; rays: number };
+          applyTestEvents: (evs: ApiRunEvent[]) => void;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
         debugWin.__monitorDebug[room.id] = {
           units: () => rendererRef.current?.getLastMountedUnits() ?? [],
           enemyBounds: () => rendererRef.current?.getEnemyMarkerBounds() ?? [],
+          // REQ-0048 test seam: pulse-visual counters + a direct applyEvents
+          // hook so an e2e can drive synthetic pulse events (pulse CONTENT
+          // -- spark/payload POs -- debuts later in the Ember Pack, so the
+          // client render path is verified with injected events here).
+          pulseCounts: () => rendererRef.current?.getPulseVisualCounts() ?? { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 },
+          applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
         };
       } catch (e) {
         // Non-fatal -- the expanded view simply shows no unit
