@@ -34,9 +34,10 @@
 // restoration separately from Playwright's own run.
 import { request } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { existsSync, copyFileSync, writeFileSync } from 'node:fs';
+import { existsSync, copyFileSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { dirname, join } from 'node:path';
 import { E2E_DATA_ROOT } from './e2e-env';
 
 const REPO_ROOT = E2E_DATA_ROOT;
@@ -223,12 +224,63 @@ function backupOne(sourcePath: string, backupPrefix: string, markerPath: string)
   console.log(`[global-setup] backed up ${sourcePath} -> ${backupPath} (sha256 ${hash})`);
 }
 
+// REQ-0117: box-serialization safety net + orphaned-drift self-heal.
+// The real exclusive lock is held by tools/e2e_run.sh (fd 9, whole-run
+// lifetime, crash-safe). This in-harness probe only catches a DIRECT
+// `playwright test` that bypassed the wrapper.
+const BOX_LOCK_FILE = process.env.E2E_LOCK_FILE || join(homedir(), '.cache', 'backpack', 'e2e.box.lock');
+
+function probeBoxLock(): void {
+  if (process.env.E2E_BOX_LOCK_HELD === '1') return; // our own wrapper holds it
+  mkdirSync(dirname(BOX_LOCK_FILE), { recursive: true });
+  try {
+    // acquire + immediately release: exit 0 => the box was free
+    execFileSync('flock', ['-n', BOX_LOCK_FILE, '-c', 'true'], { stdio: 'ignore' });
+    console.warn('[global-setup] WARNING (REQ-0117): e2e was not launched via tools/e2e_run.sh, so no box lock is held. No collision now, but this run is UNPROTECTED against a concurrent run -- prefer `pnpm run e2e`.');
+  } catch {
+    throw new Error(`[global-setup] ABORT (REQ-0117): the e2e box is busy -- another run holds ${BOX_LOCK_FILE}. Starting now would collide (concurrent global-setup clears shared dev state and races the live profile/content). Re-run via \`pnpm run e2e\` (queues up to E2E_LOCK_WAIT s) or set E2E_LOCK_NONBLOCK=1 to fail fast.`);
+  }
+}
+
+function bufSha256(buf: Buffer): string {
+  return createHash('sha256').update(buf).digest('hex');
+}
+
+// If a PRIOR run crashed before global-teardown restored a tracked file, its
+// live copy is left drifted while the marker still records the pre-run
+// snapshot. Heal it BEFORE the fresh backupOne so drift is never snapshotted
+// as pristine. For git-tracked content files, only auto-restore when the
+// snapshot == git HEAD (else content moved legitimately and must not be lost).
+function recoverOrphanedDrift(target: string, markerPath: string, label: string, gitTracked: boolean): void {
+  if (!existsSync(markerPath)) return;
+  const [backupPath, recordedHash] = readFileSync(markerPath, 'utf8').trim().split('\n');
+  if (!backupPath || existsSync(backupPath + '.absent') || !existsSync(backupPath)) return;
+  if (sha256(target) === recordedHash) return; // no drift (teardown ran, or unchanged)
+  if (gitTracked) {
+    const rel = target.startsWith(REPO_ROOT + '/') ? target.slice(REPO_ROOT.length + 1) : target;
+    let headHash = '';
+    try { headHash = bufSha256(execFileSync('git', ['-C', REPO_ROOT, 'show', `HEAD:${rel}`])); } catch { headHash = ''; }
+    if (headHash !== recordedHash) {
+      console.warn(`[global-setup] ${label} drifted from its pre-run snapshot, but the snapshot != git HEAD -- NOT auto-restoring (content may have changed legitimately). If this is crash residue: git -C ${REPO_ROOT} checkout -- ${rel}`);
+      return;
+    }
+  }
+  copyFileSync(backupPath, target);
+  console.warn(`[global-setup] RECOVERED orphaned drift on ${label} (a prior run likely crashed without teardown) -- restored ${target} from ${backupPath}.`);
+}
+
 export default async function globalSetup(): Promise<void> {
   // REQ-0083: in parallel mode, stand up one isolated backpack-api per worker
   // first (see tools/e2e_fleet.cjs + client/e2e/local-proxy.cjs header routing).
   // NOTE (incomplete): guest-creating specs still shell cli_invite against the
   // live HOME, so their guests do not land on the worker backend -- see
   // docs REQ-0083 for the remaining harness work. Serial mode is unaffected.
+  // REQ-0117: fail fast if another run holds the box; then self-heal any
+  // orphaned drift from a prior crashed run BEFORE snapshotting fresh backups.
+  probeBoxLock();
+  recoverOrphanedDrift(PROFILE_PATH, BACKUP_MARKER_PATH, 'profile', false);
+  recoverOrphanedDrift(LIVE_ITEMS_PATH, LIVE_ITEMS_BACKUP_MARKER_PATH, 'content/live/live_items.json', true);
+  recoverOrphanedDrift(LIVE_SIS_PATH, LIVE_SIS_BACKUP_MARKER_PATH, 'content/live/live_sis.json', true);
   const parallelWorkers = Number(process.env.E2E_PARALLEL || 0);
   if (parallelWorkers > 0) {
     execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });

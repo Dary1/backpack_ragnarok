@@ -10,9 +10,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "check:sprites": "node scripts/check_sprites.mjs",
-    "e2e": "playwright test",
-    "e2e:failed": "playwright test --last-failed",
-    "e2e:changed": "playwright test --only-changed"
+    "e2e": "bash ../tools/e2e_run.sh",
+    "e2e:failed": "bash ../tools/e2e_run.sh --last-failed",
+    "e2e:changed": "bash ../tools/e2e_run.sh --only-changed"
   },
   "dependencies": {
     "pixi.js": "^8.19.0",
