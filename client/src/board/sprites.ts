@@ -47,7 +47,7 @@
 // technique as engine/adapter.ts) directly from content/sprite_all_v11.svg,
 // so the client always tracks whatever the current sprite sheet is with no
 // manual copy/sync step and no fork of the art pipeline.
-import spriteSheetSource from '../../../content/sprite_all_v11.svg?raw';
+import spriteSheetSource from '../../../content/sprite_all_v12.svg?raw';
 import { Texture } from 'pixi.js';
 
 const RASTER_SCALE = 2; // supersample so icons stay crisp when scaled up into grid cells
