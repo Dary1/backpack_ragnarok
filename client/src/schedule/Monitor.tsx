@@ -173,7 +173,7 @@ function telegraphSentence(locale: Locale, ev: ApiRunEvent | null): string {
 export function Monitor({ room, locale, dungeonName }: MonitorProps) {
   const snapshot = useGameStore();
   const [run, setRun] = useState<ApiRunView | null>(null);
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true); // REQ-0097: center detail pane opens the selected room's monitor expanded
   const [mountedOnce, setMountedOnce] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MonitorRenderer | null>(null);

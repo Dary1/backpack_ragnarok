@@ -69,7 +69,9 @@ import {
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { CreateRoomForm, localizedName } from './CreateRoomForm';
+import { Monitor } from './Monitor';
 import { RoomCard } from './RoomCard';
+import { SlotsPanel } from './SlotsPanel';
 
 interface SchedulePageProps {
   locale: Locale;
@@ -192,6 +194,8 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // shouldn't have to know a toggle exists just to find the only action
   // available.
   const showCreatePanel = createOpen || (rooms !== null && rooms.length === 0);
+  // REQ-0097: the room whose detail (slots + shared monitor) fills the center pane.
+  const selectedRoom = expandedRoomId ? rooms?.find((r) => r.id === expandedRoomId) ?? null : null;
 
   const pageSub = t(locale, 'schedule.pageSub');
   const pageTitle = t(locale, 'schedule.pageTitle');
@@ -221,7 +225,8 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         ᚱ
       </div>
 
-      <div className="schedule-rooms-view">
+      <div className="schedule-master-detail">
+        <div className="schedule-rooms-col" data-testid="schedule-rooms-col">
           {loadError ? <div className="schedule-error">{t(locale, 'schedule.loadFailed')}{loadError}</div> : null}
 
           {/* REQ-0071: mock rooms colhead -- den label + live counts. */}
@@ -293,6 +298,20 @@ export function SchedulePage({ locale }: SchedulePageProps) {
             )}
           </div>
         </div>
+        <div className="schedule-detail-pane" data-testid="schedule-detail-pane">
+          {selectedRoom ? (
+            <>
+              <SlotsPanel room={selectedRoom} locale={locale} onChanged={reloadRooms} />
+              <Monitor key={selectedRoom.id} room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} />
+            </>
+          ) : (
+            <div className="schedule-detail-empty" data-testid="schedule-detail-empty">{t(locale, 'schedule.detail.empty')}</div>
+          )}
+        </div>
+        <div className="schedule-spoils-col" data-testid="schedule-spoils-col">
+          <div className="schedule-spoils-col-title den">{t(locale, 'schedule.spoils.colTitle')}</div>
+        </div>
+      </div>
     </div>
   );
 }
