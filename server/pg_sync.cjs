@@ -48,7 +48,11 @@ let worker = null;
 let nextId = 1;
 
 function spawnWorker() {
-  const w = new Worker(path.join(__dirname, 'pg_sync_worker.cjs'));
+  // REQ-0094: worker script path is overridable via PG_SYNC_WORKER_PATH so
+  // server/tests/pg_sync_test.cjs can drive crash-recovery with a pg-free fake
+  // worker (the real pg-backend path is otherwise SKIP_PG-gated). Unset in prod.
+  const workerPath = process.env.PG_SYNC_WORKER_PATH || path.join(__dirname, 'pg_sync_worker.cjs');
+  const w = new Worker(workerPath);
   w.unref(); // never keeps the process alive on its own
   // Drop the reference on crash/exit so ensureWorker() respawns a healthy
   // worker on the next call instead of posting into a dead thread forever.
@@ -85,7 +89,7 @@ function querySync(text, params) {
   w.postMessage({ id, text, params, sab });
 
   // Block until the worker flips status[0] to 1 (or the wait times out).
-  const WAIT_MS = 15000;
+  const WAIT_MS = Number(process.env.PG_SYNC_WAIT_MS) || 15000; // REQ-0094: overridable so recovery tests need not wait the full production window
   const res = Atomics.wait(status, 0, 0, WAIT_MS);
   if (res === 'timed-out') {
     // No reply within the window: the worker is wedged (a stuck query, a

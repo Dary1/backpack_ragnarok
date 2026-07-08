@@ -25,6 +25,8 @@ echo "==== [3.6/7] engine type-surface drift check ===="
 node tools/check_engine_types.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
+echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
+node server/tests/pg_sync_test.cjs
 if [ "${SKIP_PG:-0}" != "1" ]; then
   echo "==== [5/7] server api tests (pg backend) ===="
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
