@@ -5303,6 +5303,83 @@ html, body {
   margin-top: 6px;
 }
 
+/* ============================================================
+   REQ-0120 - Dex master/detail SPLIT (supersedes the REQ-0108 inline
+   drawer above; those .dex-detail-drawer rules are now dead - no DOM
+   references them - and are left only to avoid churn). The catalog area
+   is split into .dex-md = [ .dex-md-list (master: colhead + controls +
+   grid + TM strip) | .dex-md-detail (persistent <DexDetail>) ].
+   Orientation-driven per the owner spec (2026-07-09):
+     - landscape - left = list / right = detail, 50 / 50. The detail pane
+       is sticky (clears the 50px sticky .app-header) and scrolls on its
+       own, so the list scrolls independently while the detail stays put.
+     - portrait  - stacked, top = detail / bottom = list (via order); the
+       detail is height-capped so the list is reachable in one screenful.
+   Dex.tsx preselects index=0, so a detail is always shown on load.
+   ============================================================ */
+.dex-md {
+  display: grid;
+  grid-template-columns: 1fr; /* refined per-orientation below */
+  gap: 16px;
+  align-items: start; /* required so the sticky detail column can travel */
+}
+.dex-md-list {
+  min-width: 0;
+}
+.dex-md-detail {
+  min-width: 0;
+}
+
+/* The detail pane holds <DexDetail>'s [diagram | info] panes. In the split
+   the detail column is ~half width, so always STACK them (diagram over
+   info) and let the column itself be the single scroll container (drop the
+   panes' own 80vh + overflow so there are no nested scrollbars). */
+.dex-md-detail .dex-detail-drawer-panes {
+  flex-direction: column;
+}
+.dex-md-detail .dex-detail-col-diagram,
+.dex-md-detail .dex-detail-col-info {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+}
+
+.dex-detail-empty {
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--bone-3);
+  border: 1px dashed rgba(233, 227, 211, 0.2);
+  border-radius: 4px;
+}
+
+@media (orientation: landscape) {
+  .dex-md {
+    grid-template-columns: 1fr 1fr; /* 50 / 50 (owner choice 2026-07-09) */
+  }
+  .dex-md-detail {
+    position: sticky;
+    top: 58px; /* clear the 50px sticky .app-header + a small gap */
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+  }
+}
+
+@media (orientation: portrait) {
+  .dex-md {
+    grid-template-columns: 1fr;
+  }
+  .dex-md-detail {
+    order: 0; /* top */
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .dex-md-list {
+    order: 1; /* bottom */
+  }
+}
+
 /* REQ-0097: schedule 3-column master/detail (rooms list | shared monitor | spoils). */
 .schedule-master-detail { display: grid; grid-template-columns: minmax(280px, 360px) 1fr minmax(200px, 300px); gap: 16px; align-items: start; }
 .schedule-rooms-col { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
