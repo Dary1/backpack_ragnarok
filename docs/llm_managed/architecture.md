@@ -1,0 +1,145 @@
+# backpack_ragnarok — Architecture & Framework Design
+
+Audience: any developer (human or agent) joining this codebase. This is
+the big-picture map; per-directory READMEs (`server/`, `sim/`, `client/`)
+carry the fine detail, and `docs/REQ-*.md` carry per-change rationale.
+Status: post REQ-0047 rework. ~31k LOC hand-written.
+
+## 1. What this is
+
+A browser game (backpack-management RPG) plus its own content pipeline,
+built solo-scale but with production discipline. One repo, one server
+box, no external CI/CD — quality is enforced by a single local gate
+(`tools/ci.sh`) and by frozen executable contracts (tests + goldens).
+
+## 2. Runtime topology
+
+```
+browser ── Cloudflare Tunnel ──> :8801  backpack-web  (static, serves web/ as-is:
+                                        /app  = committed client dist
+                                        /mock = legacy mock UI
+                                        /preview = content previews)
+                                 :8802  backpack-api  (systemd --user unit,
+                                        ExecStart: node server/api.cjs,
+                                        env from server/.env)
+                                          │
+                                          ├─ sim/ (combat simulator, in-process)
+                                          ├─ mock-src/engine.js (game engine, in-process)
+                                          └─ storage seam (STORAGE_BACKEND)
+                                               ├─ 'files' → data/*.json (dev/test default)
+                                               └─ 'pg'    → Supabase Postgres via
+                                                  Supavisor pooler 127.0.0.1:6543
+                                                  (PROD since REQ-0040; sync bridge
+                                                  = server/pg_sync.cjs Atomics worker)
+```
+
+Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
+
+## 3. The five load-bearing design rules
+
+1. **The engine is consumed AS-IS.** `mock-src/engine.js` (hand-written
+   UMD JS) is the single source of truth for game-state math. Three
+   consumers, none may fork or modify it: the client (raw-source CJS shim
+   in `client/src/engine/adapter.ts`), the sim (read-only interop — never
+   calls a mutator, deep-copies every snapshot), and the legacy mock UI.
+   Its typed surface lives in `shared/engine.d.ts` and is mechanically
+   verified against the runtime by `tools/check_engine_types.cjs`.
+2. **Combat is a deterministic pure function.** Same (snapshot, defs,
+   seed) ⇒ byte-identical replay JSONL, always. Seeded RNG with named
+   sub-streams, event heap with (t,seq) tie-break, compile-then-simulate
+   boundary. Frozen by `sim/tests/goldens.cjs` (12-case sha256 matrix) —
+   if a refactor changes any hash, the refactor is wrong.
+3. **Facades are frozen API.** `sim/combat.cjs`, `sim/dungen.cjs` and
+   `server/schedule.cjs` re-export their decomposed internals name-for-
+   name. Consumers require the facade, never `lib/`/`services/` directly.
+   Add new exports at the facade deliberately.
+4. **All persistence goes through the storage seam.** `server/storage.cjs`
+   (+ `players.cjs`) own every read/write; backend chosen by env var.
+   Both backends must pass the same api_test suite. Never touch
+   `data/` or Postgres from anywhere else.
+5. **The client's auto-save PUT is the ONE profile writer.** Server
+   routes never write a player's canvas as a side effect. Anything that
+   grants items uses the two-phase pattern (REQ-0041/0042): server flips
+   a warehouse/gacha row to pending → client places it via the engine →
+   the debounced auto-save PUT persists → the PUT handler finalizes the
+   pending row (best-effort, lazy-timeout reverts abandoned claims).
+
+## 4. Directory map
+
+| Path | What it is |
+|---|---|
+| `mock-src/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
+| `sim/` | Combat simulator. `combat.cjs`/`dungen.cjs` facades over `sim/lib/{core,rng,heap,geometry,formation,status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs` (acyclic). Dependency-free by invariant. |
+| `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule}.cjs` → business logic in `schedule.cjs` facade over `services/{core,rooms,units,runs,warehouse,gacha}.cjs`; plumbing in `lib/{content,http_util,humanize,meta}.cjs`; persistence in `storage/players/pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
+| `shared/` | Cross-package contract surface: `engine.d.ts` (engine types), `dto.ts` (30 HTTP wire-shape types), `content_validate.cjs` (admin-edit validator). Dependencies point INTO shared, never out. |
+| `client/` | Vite + React 19 + PixiJS 8 + TS. Store = module-level pub-sub (`src/store.ts` barrel over `src/store/*`), board renderer class + extracted `board/{geom,commits,ghosts}.ts`, typed API client `src/api.ts` (re-exports shared DTOs). Builds into committed `web/app/`. |
+| `content/` | Game content: `vocab.json` (closed vocabulary), `live/` (single source served by /api/content), `batches/` (authored + generated content, incl. batch-002 the sim test fixture). |
+| `tools/` | ci.sh / release.sh / check_engine_types.cjs + the Python art/content pipeline (`gen_monster_art.py`, fit checks, `eff_render.cjs` shared effect-text renderer). |
+| `web/` | The static docroot, served verbatim (committed dist model). |
+| `data/` | files-backend storage roots (gitignored). Prod uses pg. |
+| `types/`, `tsconfig.server.json` | checkJs program for server+sim+shared (`Error.code` convention typing). |
+
+## 5. Contracts & type system
+
+- **HTTP contract**: `server/tests/api_test.cjs` (102 tests, drives the
+  exported `handle()` directly; runs in files AND pg modes). Endpoint
+  shapes, status codes, auth matrices and even 400 wordings are asserted
+  — treat its assertions as the spec.
+- **Error convention**: services throw `Error` with `.code`
+  ('NOT_FOUND'|'CONFLICT'|'BAD_REQUEST'|'TOO_LARGE'), optional
+  structured `.reason`; routes map code → HTTP status.
+- **Auth**: `X-Auth-Token` header; tokens minted by `cli_invite.cjs`
+  (never regenerated); `dev_mode` no-token fallback resolves the dev
+  player and additionally gates the test-control seams (`dev/backdate*`,
+  `genSeed`). Roles: `item_admin` gates admin routes.
+- **Types**: client is strict TS; server/sim are CJS under
+  `tsc --checkJs` (no build step — the runtime bytes are the reviewed
+  bytes); the engine stays untyped JS internally but its declared surface
+  is drift-checked in CI (49 members).
+
+## 6. Quality gates & dev workflow
+
+```
+npm run test:quick   # sim + goldens + mock + typecheck + drift + api(files)  (~20s)
+npm test             # = tools/ci.sh: adds api(pg), client build, e2e (~10min, needs server/.env)
+bash tools/release.sh# full gate → rebuild dist → commit web/app if changed
+(cd client && npm run dev)  # Vite dev server against the live API
+node server/tests/api_test.cjs / sim/tests/run.cjs / mock-src/tests/run.cjs  # individually
+node sim/tests/goldens.cjs gen  # ONLY when a behavior change is intended & reviewed
+```
+Known-failing e2e (pre-existing, env-related, tracked): the two
+REQ-0043 dungeon-type-selector/seed-field tests — until fixed,
+release.sh stops at e2e; use the manual dist-commit path after
+verifying the failure set is exactly those two.
+
+## 7. Deploy & parallel work
+
+- Deployed artifact = the repo itself on the server box. Client ships as
+  committed `web/app/` (rebuild via release.sh); server code is picked up
+  by `systemctl --user restart backpack-api` (no build step).
+- The repo accepts direct pushes (`receive.denyCurrentBranch=
+  updateInstead`) BUT refuses while any collaborator has uncommitted
+  edits in the worktree (e.g. the designer working in `web/redesign/`).
+  Standard path: push to `refacting-inbox`-style plain branch → server-
+  side `git merge --ff-only <inbox>`. Never commit or checkout over a
+  collaborator's uncommitted files.
+- `server/.env` (gitignored) carries STORAGE_BACKEND/DATABASE_URL; the
+  systemd user unit loads it via EnvironmentFile.
+
+## 8. Conventions
+
+- Work items are REQ-numbered. Commits: `REQ-NNNN (x): summary`. Every
+  REQ leaves a doc in `docs/` (plan + execution log, amendments recorded
+  honestly — see REQ-0047 for the template).
+- READMEs are load-bearing documentation and updated in the same commit
+  as the change they describe.
+- No frameworks on the server, no runtime deps in sim, no workspace
+  hoisting at the root — each is a recorded decision; revisit via REQ,
+  not drive-by.
+
+## 9. Known debt (deliberate, tracked)
+
+- `BoardRenderer.render()` (~690 LOC) — left for the upcoming UI rework.
+- The 2 REQ-0043 e2e failures (dev_mode-fallback UI seams) — root-cause
+  pending; they predate REQ-0047.
+- `engine.js` (2211 LOC) is protected by rule 1, not by decomposition.
