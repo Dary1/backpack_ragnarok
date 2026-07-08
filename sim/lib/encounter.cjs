@@ -62,6 +62,128 @@ function runEncounter(opts) {
 
   function enemyActorList() { return enemyActors.map(e => e.actor).concat(entity ? [makeEnemyActor(entity)] : []); }
 
+  // ---- REQ-0049: Layered encounters -- trap/chest/door attachments run in
+  // PARALLEL with the pack on the battle clock. Additive: only active when
+  // encounterDef.attachments is present, so attachment-free content stays
+  // byte-identical (goldens). Mode-pure by construction: attachment POs
+  // (detection/unlock) resolve ONLY against attachments; battle rays only
+  // ever target enemies -> neither can touch the other's occupants.
+  const ATTACH_CAP = 2; // [TUNABLE <=2 attachments per encounter]
+  const attachments = [];
+  if (Array.isArray(encounterDef.attachments) && encounterDef.attachments.length) {
+    const occ = new Set();
+    for (const e of enemyActors) for (const c of e.raw.fieldCells) occ.add(c[0] + ',' + c[1]);
+    const freeCells = [];
+    for (let r = 1; r <= FIELD_ROWS; r++) for (let c = 1; c <= FIELD_COLS; c++) if (!occ.has(r + ',' + c)) freeCells.push([r, c]);
+    const cR = (1 + FIELD_ROWS) / 2, cC = (1 + FIELD_COLS) / 2;
+    const placeStream = rng.stream('attach/' + encIndex + '/placement');
+    const claimed = new Set();
+    const fits = (r, c, fh, fw) => {
+      for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) {
+        const rr = r + dr, cc = c + dc, k = rr + ',' + cc;
+        if (rr > FIELD_ROWS || cc > FIELD_COLS || occ.has(k) || claimed.has(k)) return false;
+      }
+      return true;
+    };
+    const takeCluster = (fh, fw, centerMost) => {
+      const anchors = freeCells.filter(([r, c]) => fits(r, c, fh, fw));
+      if (!anchors.length) return null;
+      let anchor;
+      if (centerMost) {
+        anchors.sort((a, b) => (Math.abs(a[0] - cR) + Math.abs(a[1] - cC)) - (Math.abs(b[0] - cR) + Math.abs(b[1] - cC)) || (a[0] - b[0]) || (a[1] - b[1]));
+        anchor = anchors[0];
+      } else {
+        anchor = anchors[Math.floor(placeStream.next() * anchors.length)];
+      }
+      const cells = [];
+      for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) { cells.push([anchor[0] + dr, anchor[1] + dc]); claimed.add((anchor[0] + dr) + ',' + (anchor[1] + dc)); }
+      return cells;
+    };
+    for (const adef of encounterDef.attachments.slice(0, ATTACH_CAP)) {
+      const ent = adef.entity || {};
+      const fp = ent.footprint || [1, 1];
+      const isTrap = adef.kind === 'trap';
+      const cells = takeCluster(fp[0], fp[1], !isTrap);
+      if (!cells) continue;
+      const skills = (ent.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+      const hpR = Array.isArray(ent.hp) ? ent.hp : (typeof ent.hp === 'number' ? [ent.hp, ent.hp] : null);
+      const hpVal = hpR ? Math.round(rng.stream('attach/' + encIndex + '/' + adef.id + '/hp').range(hpR[0], hpR[1])) : 0;
+      attachments.push({
+        id: adef.id, kind: adef.kind, mode: adef.mode, reward: adef.reward || null,
+        fieldCells: cells, skills, statusBag: freshStatusBag(),
+        hp: hpVal, hpMax: hpVal,
+        timeout_secs: ent.timeout_secs != null ? ent.timeout_secs : (encounterDef.deadline_secs || 30),
+        masked: isTrap, discovered: false, alive: true, settled: false,
+        stage: adef.kind === 'door' ? 1 : null, firedVolley: false,
+      });
+    }
+  }
+  const hasAtt = attachments.length > 0;
+  const attachmentRewards = [];
+  let doorShortcut = false;
+  function attFireVolley(att, t, reason) {
+    if (att.firedVolley) return; att.firedVolley = true;
+    events.push({ t, seq: heap.nextSeq(), ev: 'att_fire', att: att.id, kind: att.kind, reason });
+    const skill = att.skills[0];
+    if (skill) {
+      const ap = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+      const rayEvents = [];
+      fireSkillRay({
+        attacker: { fieldCells: att.fieldCells, ownerId: att.id + '#trap', bonusVsStatus: [] },
+        attackProfile: ap, verbEff: skill, mode: 'battle',
+        targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+        rng, streamPrefix: 'att-fire/' + encIndex + '/' + att.id + '/' + t, events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
+      });
+      for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq() }, re));
+    }
+  }
+  function resolveDetection(s, t) {
+    const targets = attachments.filter(a => a.alive && !a.settled && !a.discovered && (a.kind === 'trap' || (a.kind === 'door' && a.stage === 1)));
+    if (!targets.length) return;
+    targets.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const att = targets[0];
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'detection', entry: att.fieldCells[0].slice() });
+    att.discovered = true; att.masked = false;
+    events.push({ t, seq: heap.nextSeq(), ev: 'att_reveal', att: att.id, kind: att.kind, at: att.fieldCells[0].slice() });
+    if (att.kind === 'trap') {
+      att.settled = true; att.alive = false;
+      events.push({ t, seq: heap.nextSeq(), ev: 'att_disarm', att: att.id, reward: att.reward ? att.reward.roll : null });
+      if (att.reward) attachmentRewards.push(att.reward);
+    } else { att.stage = 2; }
+  }
+  function resolveUnlock(s, t) {
+    const targets = attachments.filter(a => a.alive && !a.settled && (a.kind === 'chest' || (a.kind === 'door' && a.stage === 2 && a.discovered)));
+    if (!targets.length) return;
+    targets.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const att = targets[0];
+    const v = s.effect.verb, ds = rng.stream('unlock/' + s.ownerUid + '/' + s.effIdx + '/' + t);
+    let amt = 0;
+    if (v.t === 'strike') amt = ds.range(v.n[0], v.n[1]);
+    else if (v.t === 'multi_strike') { for (let i = 0; i < v.hits; i++) amt += ds.range(v.n[0], v.n[1]); }
+    att.hp = Math.max(0, att.hp - amt);
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'unlock', entry: att.fieldCells[0].slice() });
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_hit', dst: att.id, amount: amt, hp_after: att.hp, mode: 'unlock' });
+    if (att.hp <= 0) {
+      att.settled = true; att.alive = false;
+      if (att.kind === 'chest') { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'chest', reward: att.reward ? att.reward.roll : null }); if (att.reward) attachmentRewards.push(att.reward); }
+      else { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'door', shortcut: true }); doorShortcut = true; }
+    }
+  }
+  function checkAttachmentTimeouts(t) {
+    for (const att of attachments) {
+      if (att.settled || !att.alive || t <= att.timeout_secs) continue;
+      if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'timeout'); att.settled = true; att.alive = false; }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+    }
+  }
+  function settleAttachmentsAtEnd(t) {
+    for (const att of attachments) {
+      if (att.settled || !att.alive) continue;
+      if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'end'); att.settled = true; att.alive = false; }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+    }
+  }
+
   // ---- REQ-0048: Linker pulse propagation (Mechanism A). ----
   const PULSE_HOP_BUDGET = TUNABLES.PULSE_HOP_BUDGET;
   const PULSE_LATENCY = TUNABLES.PULSE_HOP_LATENCY_SECS;
@@ -180,7 +302,8 @@ function runEncounter(opts) {
   // ---- Schedule initial firings (player side, filtered by encounter mode) ----
   const cadenceMultFor = () => 1.0; // cadence buffs folded at compile-time (OQ2); no per-actor Haste/Chill on POs in v1 scope.
   for (const s of schedulable) {
-    if (s.modes.includes(encounterDef.mode)) {
+    const attActive = hasAtt && s.modes.some(m => (m === 'detection' && attachments.some(a => a.kind === 'trap' || a.kind === 'door')) || (m === 'unlock' && attachments.some(a => a.kind === 'chest' || a.kind === 'door')));
+    if (s.modes.includes(encounterDef.mode) || attActive) {
       scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, t0, 1.0);
     }
     // non-matching effects: simply never scheduled while this encounter is
@@ -239,6 +362,7 @@ function runEncounter(opts) {
     guardIters++;
     const ev = heap.popMin();
     if (ev.t > deadlineSecs) break;
+    if (hasAtt) checkAttachmentTimeouts(ev.t);
 
     if (ev.kind === 'status_tick') {
       for (const a of playerActors) if (a.alive) tickAndEmit(a, ev.t, events);
@@ -299,6 +423,10 @@ function runEncounter(opts) {
           const playerOff = [];
           dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), ev.t, playerOff);
           for (const re of playerOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        } else if (hasAtt && s.modes.includes('detection')) {
+          resolveDetection(s, ev.t);
+        } else if (hasAtt && s.modes.includes('unlock')) {
+          resolveUnlock(s, ev.t);
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
@@ -354,7 +482,7 @@ function runEncounter(opts) {
     }
 
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
-      if (allEnemiesDead()) { result = 'clear'; break; }
+      if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(ev.t); result = 'clear'; break; }
       if (partyWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'trap') {
       if (discoveredEntity) { result = 'clear'; break; }
@@ -398,7 +526,7 @@ function runEncounter(opts) {
   }
 
   events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, party_bp_hp: partyBps.map(b => b.hp) });
-  return { events, result, discoveredEntity, entity };
+  return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut };
 }
 
 function tickAndEmit(actor, t, events) {

@@ -1350,6 +1350,82 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+
+// =====================================================================
+// REQ-0049: Layered encounters (trap/chest/door attachments)
+// =====================================================================
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function cellBp(id, origin) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  const items = {
+    battler:  { id: 'battler',  shape: [[0,0]], tags: [], modes: ['battle'],    attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'strike', n: [8,8] }, attack_profile: { edge: ['top'] } }] },
+    detector: { id: 'detector', shape: [[0,0]], tags: [], modes: ['detection'], attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },
+    unlocker: { id: 'unlocker', shape: [[0,0]], tags: [], modes: ['unlock'],    attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+  };
+  const enemies = { grunt: { id: 'grunt', name: 'Grunt', hp: [9999,9999], footprint: [1,1], skills: [] }, weak: { id: 'weak', name: 'Weak', hp: [4,4], footprint: [1,1], skills: [] } };
+  const skills = { trap_volley: { trigger: { t: 'every_secs', s: [99,99] }, verb: { t: 'strike', n: [5,5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } } };
+  // unit with a battle PO + a detection PO + an unlock PO (all placed in one BP)
+  function partyUnit(poIds) {
+    return { linked: false, layout: L, sis: [],
+      bps: [ cellBp('A', [1,1]), cellBp('B', [1,3]), cellBp('C', [1,5]) ],
+      pos: poIds.map((id, i) => ({ uid: 'u' + i, id: id, loc: 'grid', cell: [1, 1 + 2*i], rot: 0 })) };
+  }
+  function runAtt(seed, poIds, attachments, enemyId, deadline) {
+    return combat.runDungeon({
+      masterSeed: seed,
+      dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: [enemyId || 'grunt'] }, deadline_secs: deadline || 30, attachments: attachments }] },
+      unitSnapshots: [partyUnit(poIds), dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      itemDefsById: items, enemyDefsById: enemies, skillDefsById: skills,
+      formationId: 'formation1', level: 1, participants: ['pA'],
+    });
+  }
+  const chestAtt = (id) => ({ id: id || 'ch1', kind: 'chest', mode: 'unlock', entity: { footprint: [2,2], hp: [10,10], timeout_secs: 6 }, reward: { roll: 'reward_cache' } });
+  const trapAtt  = (id) => ({ id: id || 'tr1', kind: 'trap',  mode: 'detection', entity: { footprint: [1,1], skills: ['trap_volley'], timeout_secs: 3 }, reward: { roll: 'reward_disarm' } });
+  const doorAtt  = (id) => ({ id: id || 'dr1', kind: 'door',  mode: 'detection', entity: { footprint: [2,2], hp: [10,10], timeout_secs: 8 }, reward: { roll: 'reward_shortcut' } });
+
+  T('REQ-0049 placement: deterministic (same seed -> byte-identical JSONL incl. att events)', () => {
+    const a = combat.toJSONL(runAtt('req49-det', ['battler','unlocker'], [chestAtt()], 'weak').events);
+    const b = combat.toJSONL(runAtt('req49-det', ['battler','unlocker'], [chestAtt()], 'weak').events);
+    ok(a === b, 'identical seed -> identical attachment replay');
+    ok(a.indexOf('att_') >= 0, 'log contains attachment events');
+  });
+  T('REQ-0049 trap: detection disarms (att_reveal + att_disarm + reward)', () => {
+    const r = runAtt('req49-trap-disarm', ['battler','detector'], [trapAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_reveal' && e.att === 'tr1'), 'trap revealed by detection');
+    ok(r.events.some(e => e.ev === 'att_disarm' && e.att === 'tr1' && e.reward === 'reward_disarm'), 'trap disarmed w/ reward');
+    ok(!r.events.some(e => e.ev === 'att_fire'), 'disarmed trap never fires its volley');
+  });
+  T('REQ-0049 trap: timeout mid-battle fires the volley (reason=timeout)', () => {
+    const r = runAtt('req49-trap-to', ['battler'], [trapAtt()], 'grunt', 20); // no detector, pack survives (grunt 9999hp), trap timeout=3
+    ok(r.events.some(e => e.ev === 'att_fire' && e.att === 'tr1' && e.reason === 'timeout'), 'undiscovered trap fires at timeout');
+  });
+  T('REQ-0049 trap: pack cleared while undiscovered fires once at end (reason=end)', () => {
+    const r = runAtt('req49-trap-end', ['battler'], [trapAtt('tr1')], 'weak', 30); // weak pack dies fast (<3s), trap still unexpired+undiscovered
+    ok(r.events.some(e => e.ev === 'att_fire' && e.att === 'tr1' && e.reason === 'end'), 'stumbled-into trap fires at encounter end');
+  });
+  T('REQ-0049 chest: unlock DPS opens it (att_open chest + reward)', () => {
+    const r = runAtt('req49-chest-open', ['battler','unlocker'], [chestAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_open' && e.att === 'ch1' && e.kind === 'chest' && e.reward === 'reward_cache'), 'chest opened by unlock DPS');
+  });
+  T('REQ-0049 transparency: battle-only party never touches the chest -> lost', () => {
+    const r = runAtt('req49-chest-lost', ['battler'], [chestAtt()], 'weak', 30); // no unlocker; pack cleared; chest never damaged
+    ok(!r.events.some(e => e.ev === 'att_open'), 'battle rays cannot open the chest (mode-pure)');
+    ok(r.events.some(e => e.ev === 'att_lost' && e.att === 'ch1' && e.kind === 'chest'), 'unopened chest is lost, no penalty');
+  });
+  T('REQ-0049 door: detection then unlock -> two-stage open + shortcut', () => {
+    const r = runAtt('req49-door', ['battler','detector','unlocker'], [doorAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_reveal' && e.att === 'dr1'), 'door stage-1 detection find');
+    ok(r.events.some(e => e.ev === 'att_open' && e.att === 'dr1' && e.kind === 'door' && e.shortcut === true), 'door stage-2 unlock grants shortcut');
+  });
+  T('REQ-0049 cap: at most 2 attachments per encounter are instantiated', () => {
+    const r = runAtt('req49-cap', ['battler','detector','unlocker'], [trapAtt('a1'), chestAtt('a2'), doorAtt('a3')], 'grunt', 20);
+    const attIds = new Set(r.events.filter(e => typeof e.att === 'string').map(e => e.att));
+    ok(attIds.size <= 2, 'no more than 2 attachments resolve (cap enforced); saw ' + attIds.size);
+    ok(!attIds.has('a3'), 'the 3rd attachment (a3) was never instantiated');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
