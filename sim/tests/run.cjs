@@ -1426,6 +1426,36 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+
+// REQ-0049 dungen: trap/chest/door now generate as attachments on packs.
+(function () {
+  T('REQ-0049 dungen: trap/chest/door are pack attachments (cap<=2), no standalone chest/door encounters', () => {
+    let sawAtt = false, sawStandaloneCD = false;
+    for (const level of [1, 3, 5, 8]) for (const seed of ['a', 'b', 'c']) {
+      const def = dungen.generate('default', level, 'req49-' + level + '-' + seed);
+      for (const e of def.encounters) {
+        if (e.attachments) {
+          sawAtt = true;
+          ok(e.attachments.length <= 2, 'cap <=2 per encounter, saw ' + e.attachments.length);
+          for (const a of e.attachments) ok(['trap', 'chest', 'door'].includes(a.kind), 'valid attachment kind ' + a.kind);
+          ok(e.type === 'pack' || e.type === 'boss', 'attachments only ride battle encounters');
+        }
+        if (e.type === 'chest' || e.type === 'door') sawStandaloneCD = true;
+      }
+    }
+    ok(sawAtt, 'some generated dungeons carry attachments');
+    ok(!sawStandaloneCD, 'no standalone chest/door encounters remain (moved to attachments)');
+  });
+  T('REQ-0049 dungen: a generated def with attachments runs end-to-end and emits att_* events', () => {
+    let def = null;
+    for (const level of [5, 8]) { for (const seed of ['a', 'b', 'c', 'd', 'e']) { const d = dungen.generate('default', level, 'req49run-' + level + '-' + seed); if (d.encounters.some(e => e.attachments)) { def = d; break; } } if (def) break; }
+    ok(def, 'found a generated def carrying attachments');
+    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, unitSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
+    ok(Array.isArray(r.events) && r.events.length > 0, 'generated def with attachments runs end-to-end');
+    ok(r.events.some(e => String(e.ev).indexOf('att_') === 0), 'attachments produce att_* events in the replay');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
