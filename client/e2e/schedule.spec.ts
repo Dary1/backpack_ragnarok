@@ -1391,6 +1391,8 @@ test.describe('REQ-0099: settled-run replay transport', () => {
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    // Reveal the monitor's expanded ctrl bar (Field view) -- the summary strip alone has no clock/transport.
+    await card.locator('.schedule-monitor-expand-btn').click();
     // Field tab is default; the clock (live path) is present, the transport is NOT.
     await expect(card.locator('[data-testid="schedule-monitor-clock"]')).toBeVisible({ timeout: 10000 });
     await expect(card.locator('[data-testid="schedule-monitor-transport"]')).toHaveCount(0);
@@ -1429,6 +1431,7 @@ test.describe('REQ-0099: settled-run replay transport', () => {
       await expect(card).toBeVisible({ timeout: 10000 });
       await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
       await expect(card.locator('[data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+      await card.locator('.schedule-monitor-expand-btn').click();
 
       const transport = card.locator('[data-testid="schedule-monitor-transport"]');
       await expect(transport).toBeVisible({ timeout: 10000 });
