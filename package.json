@@ -1,5 +1,6 @@
 {
   "name": "backpack-ragnarok",
+  "packageManager": "pnpm@11.10.0",
   "private": true,
   "description": "Root manifest (REQ-0047): orchestration scripts only. No workspaces/hoisting -- server/ and client/ own their node_modules; sim/ and mock-src/ are dependency-free by invariant.",
   "scripts": {

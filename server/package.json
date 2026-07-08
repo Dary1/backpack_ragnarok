@@ -1,5 +1,6 @@
 {
   "name": "backpack-ragnarok-server",
+  "packageManager": "pnpm@11.10.0",
   "version": "1.0.0",
   "private": true,
   "description": "backpack_ragnarok server/ -- backpack-api (REQ-0024) + Postgres backend (REQ-0040)",
