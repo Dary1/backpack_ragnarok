@@ -12,7 +12,7 @@ const { compileEnemyPack } = require('./packs.cjs');
 
 function runEncounter(opts) {
   const {
-    rng, encIndex, partyBps, partyPos, formationBox, enemyDefsById, skillDefsById,
+    rng, encIndex, partyBps, partyPos, partySis, formationBox, enemyDefsById, skillDefsById,
     encounterDef, seedLabel,
   } = opts;
   const events = [];
@@ -61,6 +61,65 @@ function runEncounter(opts) {
   }
 
   function enemyActorList() { return enemyActors.map(e => e.actor).concat(entity ? [makeEnemyActor(entity)] : []); }
+
+  // ---- REQ-0095: player-side reactive dispatch (Phase 1b) -- mirrors the enemy side. ----
+  function bpActorOf(bpId) { return playerActors.find(a => a.id === bpId) || null; }
+  // Offensive riders: when player PO `firingPoUid` lands a DIRECT hit on enemies, its
+  // OnHit (self) / OnBPHierarchyHit (same BP) / OnUnitHit (same unit) effects ride each hit.
+  function dispatchPlayerOffensive(firingPoUid, landedEnemies, t, outEvents) {
+    const fpo = partyPos.find(p => p.uid === firingPoUid);
+    if (!fpo || !landedEnemies.length) return;
+    let idx = 0;
+    for (const po of partyPos) {
+      for (const eff of (po.effects || [])) {
+        const tt = eff.trigger && eff.trigger.t;
+        const match = (tt === 'OnHit' && po.uid === fpo.uid) ||
+                      (tt === 'OnBPHierarchyHit' && po.bpId === fpo.bpId) ||
+                      (tt === 'OnUnitHit' && po.unitSlot === fpo.unitSlot);
+        if (!match) continue;
+        const owner = bpActorOf(po.bpId);
+        for (const en of landedEnemies) {
+          const rs = rng.stream('reactive/' + tt + '/' + po.uid + '/' + t + '/' + (idx++));
+          applyReactiveVerbToTarget(eff.verb, owner, en, rs, outEvents, tt);
+        }
+      }
+    }
+    // REQ-0095: OnPOHit -- an SI seated in the firing PO fires when its host PO lands a hit.
+    for (const si of (partySis || [])) {
+      if (si.hostPoUid !== fpo.uid) continue;
+      for (const eff of (si.effects || [])) {
+        if (!eff.trigger || eff.trigger.t !== 'OnPOHit') continue;
+        const owner = bpActorOf(fpo.bpId);
+        for (const en of landedEnemies) {
+          const rs = rng.stream('reactive/OnPOHit/' + si.uid + '/' + t + '/' + (idx++));
+          applyReactiveVerbToTarget(eff.verb, owner, en, rs, outEvents, 'OnPOHit');
+        }
+      }
+    }
+  }
+  // Defensive: when a player BP takes a DIRECT hit, POs in that BP (OnBPBeenHit) / in that
+  // unit (OnUnitBeenHit) fire a retaliation ray at the enemy field.
+  function dispatchPlayerDefensive(hitBpActors, t, outEvents) {
+    for (const bpA of hitBpActors) {
+      const bpId = bpA.id, unit = bpA.ref && bpA.ref.unitSlot;
+      for (const po of partyPos) {
+        const inBp = po.bpId === bpId, inUnit = (unit != null && po.unitSlot === unit);
+        for (const eff of (po.effects || [])) {
+          const tt = eff.trigger && eff.trigger.t;
+          if (!((tt === 'OnBPBeenHit' && inBp) || (tt === 'OnUnitBeenHit' && inUnit))) continue;
+          const ap = eff.attack_profile || (po.def && po.def.attack_profile) || { edge: ['top'], penetration: 0, aoe: 0 };
+          outEvents.push({ ev: 'reactive_proc', trigger: tt, verb: eff.verb.t, src: po.id });
+          fireSkillRay({
+            attacker: { fieldCells: bpA.fieldCells, ownerId: po.id + '#react' },
+            attackProfile: ap, verbEff: eff, mode: 'battle',
+            targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+            rng, streamPrefix: 'reactive/' + tt + '/' + po.uid + '/' + t,
+            events: outEvents, aoeStatuses: !!ap.aoe_statuses,
+          });
+        }
+      }
+    }
+  }
 
   // ---- Schedule initial firings (player side, filtered by encounter mode) ----
   const cadenceMultFor = () => 1.0; // cadence buffs folded at compile-time (OQ2); no per-actor Haste/Chill on POs in v1 scope.
@@ -163,6 +222,9 @@ function runEncounter(opts) {
             }
           }
           for (const re of reactDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          const playerOff = [];
+          dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), ev.t, playerOff);
+          for (const re of playerOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
@@ -193,6 +255,9 @@ function runEncounter(opts) {
             });
           }
           for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          const playerDef = [];
+          dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), ev.t, playerDef);
+          for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }

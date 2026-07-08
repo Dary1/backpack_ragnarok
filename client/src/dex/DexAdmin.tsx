@@ -18,7 +18,10 @@
 //      just editing existing rows' values.
 //   3. The admin list rows show a small shape-mounted thumbnail (reuses
 //      ShapeGrid, smaller cellPx, same rendering the catalog/detail list
-//      use).
+//      use). REQ-0103: cellPx 14 -> 28 (both list-view call sites below) --
+//      same keep relative size, just less tiny doubling as the catalog
+//      grid and detail list row; the .dex-admin-list-thumb wrapper hugs
+//      its content so this only grows each row, no well to overflow.
 //
 // Server-side validation (server/admin.cjs) is the actual source of
 // truth -- every rule enforced here client-side is a UX convenience
@@ -48,13 +51,26 @@ function combineEntries(payload: ApiContentPayload): DexEntry[] {
 }
 
 function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
-  return ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+  const shape = ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+  // REQ-0096: SI/TM entries carry no `shape` (they don't occupy board
+  // cells -- SI uses `slot`, TM is a stackable currency) but DO still
+  // carry an icon. Without a fallback anchor cell here, ShapeGrid/
+  // DexDiagram see an empty cell set and bail to their "--" empty-state
+  // placeholder, so the icon never mounts (the catalog/detail/admin dex
+  // views all showed a bare "--" for every SI card). Fall back to a
+  // synthetic 1x1 anchor cell -- same precedent DexCardWindow.tsx already
+  // uses (`card.shape ... : [[0, 0]]`).
+  return shape.length > 0 ? shape : ([[0, 0]] as Cell[]);
 }
 
 // REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
 // (see ShapeGrid.tsx) -- only POs carry this field.
 function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in e ? e.stretch : undefined;
+}
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(e: ApiItemEntry | ApiSIEntry) {
+  return 'align' in e ? e.align : undefined;
 }
 
 // Effect form-row shape -- a superset of every verb's optional fields, so
@@ -211,11 +227,12 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
               <span className="dex-admin-list-thumb">
                 <ShapeGrid
                 shape={shapeOf(e.entry)}
-                cellPx={14}
+                cellPx={28}
                 iconUrl={iconDataUrl(e.entry.icon)}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}
+                iconAlign={alignOf(e.entry)}
               />
               </span>
               <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}
@@ -317,11 +334,12 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
             <span className="dex-admin-list-thumb">
               <ShapeGrid
                 shape={shapeOf(e.entry)}
-                cellPx={14}
+                cellPx={28}
                 iconUrl={iconDataUrl(e.entry.icon)}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}
+                iconAlign={alignOf(e.entry)}
               />
             </span>
             <span className={`rarity r-${e.entry.rarity}`}>{e.entry.rarity[0]}</span> {e.entry.name}{' '}

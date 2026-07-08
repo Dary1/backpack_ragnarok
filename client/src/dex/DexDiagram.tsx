@@ -48,6 +48,7 @@ interface DexDiagramProps {
   iconUrl: string | null;
   iconDims?: { width: number; height: number } | null;
   iconStretch?: boolean;
+  iconAlign?: { v?: 'top' | 'middle' | 'bottom'; h?: 'left' | 'center' | 'right' };
   locale: Locale;
 }
 
@@ -82,7 +83,7 @@ function computeBoxes(shape: Cell[], ports: Array<{ tiles: Cell[] }>) {
   return { gridBox, shapeBox };
 }
 
-export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, locale }: DexDiagramProps) {
+export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, iconAlign, locale }: DexDiagramProps) {
   const ports = (entry.ports ?? []) as Array<{ tiles: Cell[]; tag: string }>;
   const sockets = ('sockets' in entry ? entry.sockets : undefined) ?? [];
 
@@ -136,6 +137,7 @@ export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, local
           iconAlt={entry.name}
           iconDims={iconDims}
           iconStretch={iconStretch}
+          iconAlign={iconAlign}
           showCoords
         />
         {sockets.length > 0 ? (

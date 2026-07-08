@@ -89,13 +89,26 @@ function nameJaOf(e: ApiItemEntry | ApiSIEntry): string {
   return e.name_ja || '';
 }
 function shapeOf(e: ApiItemEntry | ApiSIEntry): Cell[] {
-  return ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+  const shape = ('shape' in e && Array.isArray(e.shape) ? e.shape : []) as Cell[];
+  // REQ-0096: SI/TM entries carry no `shape` (they don't occupy board
+  // cells -- SI uses `slot`, TM is a stackable currency) but DO still
+  // carry an icon. Without a fallback anchor cell here, ShapeGrid/
+  // DexDiagram see an empty cell set and bail to their "--" empty-state
+  // placeholder, so the icon never mounts (the catalog/detail/admin dex
+  // views all showed a bare "--" for every SI card). Fall back to a
+  // synthetic 1x1 anchor cell -- same precedent DexCardWindow.tsx already
+  // uses (`card.shape ... : [[0, 0]]`).
+  return shape.length > 0 ? shape : ([[0, 0]] as Cell[]);
 }
 // REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
 // (see ShapeGrid.tsx) -- only POs carry this field; SIs have no shape at
 // all so it's moot for them.
 function stretchOf(e: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in e ? e.stretch : undefined;
+}
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(e: ApiItemEntry | ApiSIEntry) {
+  return 'align' in e ? e.align : undefined;
 }
 
 // REQ-0075: the mock's card sub-line reads "武具/剣 ・ LONGSWORD" -- a
@@ -343,13 +356,25 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
                   <span className="dex-card-no dex-card-no-kind t-micro">{e.kind === 'po' ? 'PO' : 'SI'}</span>
                 )}
                 <span className="dex-card-shape dthumb">
+                  {/* REQ-0103: cellPx 20 -> 40. The .dthumb well is a fixed
+                      96px tall (index.css) regardless of the item's own
+                      shape, so at the old cellPx=20 a 1-cell item (most
+                      SIs) rendered a mere 20x20 icon in that well -- ~80%
+                      empty space, barely visible. 40px lets a 1-cell item
+                      fill ~half the well and the largest current shape
+                      (2x2, tower_shield/beast_jaw) fill nearly all of it,
+                      still on ONE shared scale so relative real-world size
+                      between cards is preserved (a 2x2 item still reads as
+                      2x a 1x1 item) -- just not independently max-fit per
+                      card (that would erase the size comparison). */}
                   <ShapeGrid
                     shape={shapeOf(e.entry)}
-                    cellPx={20}
+                    cellPx={40}
                     iconUrl={icon}
                     iconAlt={e.entry.icon}
                     iconDims={iconDims(e.entry.icon)}
                     iconStretch={stretchOf(e.entry)}
+                    iconAlign={alignOf(e.entry)}
                   />
                 </span>
                 <div className="dex-card-summary-text">
@@ -407,9 +432,11 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
                 <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
                   <span className="gem" aria-hidden="true" />
                   <span className="dex-card-shape dthumb">
+                    {/* REQ-0103: matches the catalog grid's cellPx bump
+                        above -- same .dthumb well, kept in sync. */}
                     <ShapeGrid
                       shape={[[0, 0]]}
-                      cellPx={20}
+                      cellPx={40}
                       iconUrl={icon}
                       iconAlt={tmEntry.icon}
                       iconDims={iconDims(tmEntry.icon)}

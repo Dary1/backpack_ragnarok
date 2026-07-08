@@ -157,8 +157,8 @@ test.describe('Workshop gacha roll (dev player)', () => {
       const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
       const newBp = allBps.find((b: any) => newBpIds.has(b.id));
       expect(newBp).toBeTruthy();
-      expect(newBp.shape.length).toBeGreaterThanOrEqual(4);
-      expect(newBp.shape.length).toBeLessThanOrEqual(6);
+      expect(newBp.shape.length).toBeGreaterThanOrEqual(6);
+      expect(newBp.shape.length).toBeLessThanOrEqual(8);
       expect(newBp.hpMax).toBe(15 * newBp.shape.length);
     });
   });
@@ -214,8 +214,8 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // fields exactly.
       await expect(resultPanel.locator('[data-testid="bp-diagram-hpmax"]')).toContainText(String(newBp.hpMax));
       await expect(resultPanel.locator('[data-testid="bp-diagram-cellcount"]')).toContainText(String(newBp.shape.length));
-      expect(newBp.shape.length).toBeGreaterThanOrEqual(4);
-      expect(newBp.shape.length).toBeLessThanOrEqual(6);
+      expect(newBp.shape.length).toBeGreaterThanOrEqual(6);
+      expect(newBp.shape.length).toBeLessThanOrEqual(8);
 
       // Dismiss button removes the panel without affecting the already-
       // placed BP (the diagram is purely informational, not a

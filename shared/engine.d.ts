@@ -56,6 +56,13 @@ export interface PortDef {
   tag: string;
 }
 
+export interface IconAlign {
+  /** vertical anchor of the icon within its footprint box; default 'middle' (centered). */
+  v?: 'top' | 'middle' | 'bottom';
+  /** horizontal anchor of the icon within its footprint box; default 'center'. */
+  h?: 'left' | 'center' | 'right';
+}
+
 export interface ItemDef {
   name: string;
   name_ja?: string;
@@ -70,6 +77,8 @@ export interface ItemDef {
   flavor?: string;
   flavor_ja?: string;
   stretch?: boolean;
+  /** REQ-0102: directional icon alignment within the placeable area; default middle/center. */
+  align?: IconAlign;
   ports?: PortDef[];
 }
 

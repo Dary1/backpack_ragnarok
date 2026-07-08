@@ -20,12 +20,12 @@ const { genId } = require('./core.cjs');
 // ---------------------------------------------------------------------
 const GACHA_COMMON_BP_COST = 10; // LRDST cost of one common_bp roll (REQ doc: "costs 10x LRDST")
 const GACHA_PENDING_TIMEOUT_MS = 120 * 1000; // same 120s lazy-revert window as warehouse claim
-const GACHA_MIN_CELLS = 4;
-const GACHA_MAX_CELLS = 6;
+const GACHA_MIN_CELLS = 6;
+const GACHA_MAX_CELLS = 8;
 const GACHA_HP_PER_CELL = 15; // hpMax = 15 x cellCount
 const GACHA_MIN_LINKER_DIRS = 1;
 const GACHA_MAX_LINKER_DIRS = 3;
-const GACHA_WALK_RETRY_CAP = 2000; // generous cap -- see rollPolyomino()'s own comment for why this can never realistically be hit for 4-6 cells
+const GACHA_WALK_RETRY_CAP = 2000; // generous cap -- see rollPolyomino()'s own comment for why this can never realistically be hit for 6-8 cells
 
 // Reads a player's CURRENT LRDST balance from their LAST-SAVED profile
 // canvas (the gacha roll itself never mutates the profile -- balance is
@@ -60,7 +60,7 @@ function readLrdstBalance(profileCanvas) {
 // randomly chosen existing cell happens to have ALL 4 orthogonal
 // neighbors already occupied -- capped at GACHA_WALK_RETRY_CAP total
 // attempts across the whole walk to make a hang structurally impossible;
-// in practice this cap can never bind for cellCount in [4,6] (a shape
+// in practice this cap can never bind for cellCount in [6,8] (a shape
 // that small can have at most a handful of fully-surrounded interior
 // cells, and the walk only needs `cellCount-1` successful growth steps
 // total), so hitting the cap would indicate a real bug, not a plausible

@@ -51,7 +51,16 @@ interface DexDetailProps {
 }
 
 function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
-  return ('shape' in entry && Array.isArray(entry.shape) ? entry.shape : []) as Cell[];
+  const shape = ('shape' in entry && Array.isArray(entry.shape) ? entry.shape : []) as Cell[];
+  // REQ-0096: SI/TM entries carry no `shape` (they don't occupy board
+  // cells -- SI uses `slot`, TM is a stackable currency) but DO still
+  // carry an icon. Without a fallback anchor cell here, ShapeGrid/
+  // DexDiagram see an empty cell set and bail to their "--" empty-state
+  // placeholder, so the icon never mounts (the catalog/detail/admin dex
+  // views all showed a bare "--" for every SI card). Fall back to a
+  // synthetic 1x1 anchor cell -- same precedent DexCardWindow.tsx already
+  // uses (`card.shape ... : [[0, 0]]`).
+  return shape.length > 0 ? shape : ([[0, 0]] as Cell[]);
 }
 
 // REQ-0038 R2: mirrors ItemDef.stretch for the shared itemCard.ts fit math
@@ -59,33 +68,44 @@ function shapeOf(entry: ApiItemEntry | ApiSIEntry): Cell[] {
 function stretchOf(entry: ApiItemEntry | ApiSIEntry): boolean | undefined {
   return 'stretch' in entry ? entry.stretch : undefined;
 }
+// REQ-0102: mirrors ItemDef.align (only POs carry it) for the shared fit math.
+function alignOf(entry: ApiItemEntry | ApiSIEntry) {
+  return 'align' in entry ? entry.align : undefined;
+}
 
 // Small helper (used only by the item-list column's rows) -- reuses
 // ShapeGrid at a small cellPx, same shape-mounted-icon rendering (fixed
 // REQ-0038 R2 to span the full footprint via the shared itemCard.ts
 // module) as the catalog grid and the edit-mode list, per the task spec's
 // "reuse this shape-mounted rendering, smaller" instruction for list rows.
+// REQ-0103: cellPx 16 -> 32 -- this row's .dex-detail-item-list-shape
+// wrapper hugs its content (no fixed well like the catalog's .dthumb), so
+// doubling cellPx just grows the row to fit a visibly bigger thumbnail,
+// same relative-size-by-shape scale as the (also-doubled) catalog grid.
 function ShapeMountedThumb({
   shape,
   iconUrl,
   iconAlt,
   iconId,
   stretch,
+  align,
 }: {
   shape: Cell[];
   iconUrl: string | null;
   iconAlt: string;
   iconId: string;
   stretch?: boolean;
+  align?: { v?: 'top' | 'middle' | 'bottom'; h?: 'left' | 'center' | 'right' };
 }) {
   return (
     <ShapeGrid
       shape={shape}
-      cellPx={16}
+      cellPx={32}
       iconUrl={iconUrl}
       iconAlt={iconAlt}
       iconDims={iconDims(iconId)}
       iconStretch={stretch}
+      iconAlign={align}
     />
   );
 }
@@ -141,6 +161,7 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
                         iconAlt={e.entry.icon}
                         iconId={e.entry.icon}
                         stretch={stretchOf(e.entry)}
+                        align={alignOf(e.entry)}
                       />
                     </span>
                     <span className="dex-detail-item-list-text">
@@ -178,6 +199,7 @@ export function DexDetail({ entries, selectedId, onSelect, onBack, locale, tagTr
                 iconUrl={iconDataUrl(selected.entry.icon)}
                 iconDims={iconDims(selected.entry.icon)}
                 iconStretch={stretchOf(selected.entry)}
+                iconAlign={alignOf(selected.entry)}
                 locale={locale}
               />
             </div>

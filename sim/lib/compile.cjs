@@ -51,7 +51,7 @@ function localBpCells(bpDef) {
 //   bps: [{id,name,hpMax,hp,localCells,fieldCells,statusBag}],
 //   pos: [{uid,id,def,localCells,fieldCells,effects (buff-folded), bpId}],
 // }
-function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
+function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot, siDefsById) {
   const st = deepCopy(unitState);
   const formation = FORMATIONS[formationId];
   if (!formation) throw new Error('compileUnitSnapshot: unknown formation ' + formationId);
@@ -228,7 +228,16 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot) {
     bpId: p.bpId, effects: applyFlatBonusToEffects(p._effects, p._flatBonus),
   }));
 
-  return { bps, pos, formationId, unitSlot, box };
+  // REQ-0095: compile socketed items (SIs) SEATED IN A PO ({po,si} host) so OnPOHit
+  // can fire when the host PO lands a hit. 'inv' (unseated) and 'bond' (assembly) hosts
+  // have no {po,si} host PO here and are skipped (bond resolution is a follow-up).
+  const sis = (st.sis || []).map(si => {
+    const host = si.host;
+    const hostPoUid = (host && typeof host === 'object' && host.po) ? host.po : null;
+    const def = siDefsById && siDefsById[si.id];
+    return { uid: si.uid, id: si.id, hostPoUid, effects: (def && def.effects) ? deepCopy(def.effects) : [] };
+  }).filter(x => x.hostPoUid && x.effects.length);
+  return { bps, pos, sis, formationId, unitSlot, box };
 }
 
 // =====================================================================

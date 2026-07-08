@@ -69,7 +69,7 @@ function main() {
 
   function toItemDef(e) {
     // tags[0]=former type, tags[1..]=former elements (REQ-0022 batch 3/4).
-    return { name: e.name, tags: e.tags, rarity: e.rarity, shape: e.shape, icon: e.icon, sockets: e.sockets || [], stretch: e.stretch, eff: '' };
+    return { name: e.name, tags: e.tags, rarity: e.rarity, shape: e.shape, icon: e.icon, sockets: e.sockets || [], stretch: e.stretch, align: e.align, eff: '' };
   }
   function toSIDef(e) {
     return { name: e.name, slot: e.slot, reqTags: e.reqTags || [], icon: e.icon, rarity: e.rarity, eff: '' };

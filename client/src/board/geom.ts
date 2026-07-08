@@ -1,7 +1,7 @@
 // client/src/board/geom.ts -- REQ-0047 (f2-3): board geometry + shared render constants (cell math, screen mapping, socket positions, arrowheads).
 // Moved MECHANICALLY from BoardRenderer.ts (this. -> self. receiver).
 import { Graphics, Sprite } from 'pixi.js';
-import type { Assembly, Cell, GameState, Socket } from '../engine/engine.d.ts';
+import type { Assembly, Cell, GameState, IconAlign, Socket } from '../engine/engine.d.ts';
 import { fitBoxInBounds } from '../render/itemCard';
 import type { BoardRenderer } from './BoardRenderer';
 
@@ -134,7 +134,7 @@ export function clientToLocal(self: BoardRenderer, clientX: number, clientY: num
    * stretch-fill produce IDENTICAL pixels for placed art (box aspect ==
    * texture aspect already) -- this is a correctness/safety fix, not a
    * visual change, for any icon actually shipped today. */
-export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: number, bh: number): void {
+export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: number, bh: number, align?: IconAlign, foot?: { x: number; y: number; w: number; h: number }): void {
     // REQ-0038 R2: delegates to the shared, framework-agnostic box-fit
     // function (client/src/render/itemCard.ts's fitBoxInBounds) instead of
     // duplicating the scale/center formula here -- this is now the ONLY
@@ -143,10 +143,21 @@ export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: numbe
     // compositing, so both consumers stay byte-for-byte in sync by
     // construction, not by convention.
     const box = fitBoxInBounds(sprite.texture.width, sprite.texture.height, bx, by, bw, bh);
+    // REQ-0102: optional directional alignment. Given an align + footprint
+    // box, re-anchor the (same-size) contain-fit result to that footprint
+    // edge -- translation only (aspect law). Omitted => centered, as before.
+    let px = box.x;
+    let py = box.y;
+    if (align && foot) {
+      if (align.h === 'left') px = foot.x;
+      else if (align.h === 'right') px = foot.x + foot.w - box.w;
+      if (align.v === 'top') py = foot.y;
+      else if (align.v === 'bottom') py = foot.y + foot.h - box.h;
+    }
     sprite.width = box.w;
     sprite.height = box.h;
-    sprite.x = box.x;
-    sprite.y = box.y;
+    sprite.x = px;
+    sprite.y = py;
   }
 
   /** pointerdown on a PO group -- REQ-0027 T0.2 double-click vs drag

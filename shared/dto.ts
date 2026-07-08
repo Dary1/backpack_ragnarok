@@ -49,6 +49,7 @@ export interface ApiItemEntry {
   sockets?: ApiSocketDef[];
   ports?: ApiPortDef[];
   stretch?: boolean;
+  align?: { v?: 'top' | 'middle' | 'bottom'; h?: 'left' | 'center' | 'right' };
   part?: { assembles: string; role: string };
   effects?: EffectAst[];
   flavor?: string;
@@ -703,6 +704,7 @@ export interface ApiDexCardDto {
   sockets?: ApiSocketDef[];
   ports?: ApiPortDef[];
   stretch?: boolean;
+  align?: { v?: 'top' | 'middle' | 'bottom'; h?: 'left' | 'center' | 'right' };
   part?: { assembles: string; role: string };
   // kind:'si' only (also reuses `ports` above)
   slot?: string;

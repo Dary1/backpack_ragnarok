@@ -33,7 +33,7 @@
 //    consumers keep using dexIcons.ts's existing iconDataUrl() (already an
 //    SVG data: URL, sized via a plain <img>) -- this module only tells
 //    them WHERE to put that <img> and how big to make it.
-import type { Offset } from '../engine/engine.d.ts';
+import type { IconAlign, Offset } from '../engine/engine.d.ts';
 import { Engine } from '../engine/adapter';
 
 export interface ItemCardShapeInput {
@@ -43,6 +43,8 @@ export interface ItemCardShapeInput {
    * reads off ItemDef.stretch to choose which inset-fraction branch to
    * use below. */
   stretch?: boolean;
+  /** REQ-0102: directional alignment within the footprint (default middle/center). */
+  align?: IconAlign;
 }
 
 export interface FootprintCells {
@@ -110,6 +112,25 @@ export function fitBoxInBounds(texW: number, texH: number, bx: number, by: numbe
 }
 
 /**
+ * REQ-0102: re-anchors an already-sized contain-fit box to an edge of the
+ * w0xh0 footprint per `align`, by pure translation (never rescaling -- the
+ * aspect law holds). Unset axes (or 'middle'/'center') keep the incoming
+ * centered value. A bottom-aligned part therefore sits flush at its
+ * footprint's bottom (its seam side), which is how the Longsword blade
+ * (bottom) meets the Sword hilt (top).
+ */
+export function applyAlign(box: PixelBox, align: IconAlign | undefined, w0: number, h0: number): PixelBox {
+  if (!align) return box;
+  let x = box.x;
+  let y = box.y;
+  if (align.h === 'left') x = 0;
+  else if (align.h === 'right') x = w0 - box.w;
+  if (align.v === 'top') y = 0;
+  else if (align.v === 'bottom') y = h0 - box.h;
+  return { x, y, w: box.w, h: box.h };
+}
+
+/**
  * The REQ-0028 inset-fraction box an icon is fit into within its own
  * unrotated W0xH0 footprint box, before the uniform contain-fit above is
  * applied -- same two presets BoardRenderer's placed-PO/ghost-PO draw
@@ -165,7 +186,10 @@ export function computeItemCardLayout(
   const w0 = footprint.w * cellPx;
   const h0 = footprint.h * cellPx;
   const insetPx = insetBoxFor(input.stretch, w0, h0);
-  const iconBox = fitBoxInBounds(texW, texH, insetPx.x, insetPx.y, insetPx.w, insetPx.h);
+  const centered = fitBoxInBounds(texW, texH, insetPx.x, insetPx.y, insetPx.w, insetPx.h);
+  // REQ-0102: re-anchor the (already contain-fit, correctly-sized) box to a
+  // footprint edge per `align` -- translation only, so the aspect law holds.
+  const iconBox = applyAlign(centered, input.align, w0, h0);
   return { footprint, footprintPx: { w: w0, h: h0 }, insetPx, iconBox };
 }
 
