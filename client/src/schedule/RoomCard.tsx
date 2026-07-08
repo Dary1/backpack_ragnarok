@@ -40,8 +40,6 @@ import { cancelRoom as apiCancelRoom, type ApiRoom } from '../api';
 import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
-import { Monitor } from './Monitor';
-import { SlotsPanel } from './SlotsPanel';
 
 interface RoomCardProps {
   room: ApiRoom;
@@ -230,12 +228,6 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
         </div>
       ) : null}
 
-      {expanded ? (
-        <div className="schedule-room-expanded">
-          <SlotsPanel room={room} locale={locale} onChanged={onChanged} />
-          <Monitor room={room} locale={locale} dungeonName={dungeonName} />
-        </div>
-      ) : null}
     </article>
   );
 }
