@@ -1331,6 +1331,25 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+
+// REQ-0048: engine<->sim beam parity -- sim's static link graph must match
+// engine.js traceBeams on a shared fixture (sim runtime stays engine-free;
+// only this TEST loads the engine, per REQ-0047 contract #6 + REQ-0048).
+(function () {
+  const Engine = require(path.join(REPO_ROOT, 'mock-src', 'engine.js'));
+  const Data = require(path.join(REPO_ROOT, 'mock-src', 'data.js'));
+  const norm = (edges) => edges.map(e => e.from + '>' + e.to + '@' + e.dir).sort();
+  T('REQ-0048 parity: sim linkEdges == engine.js traceBeams (established links, live fixture)', () => {
+    const E = Engine.create(Data.ITEMS, Data.SI_DEFS, Data.LAYOUT, Data.TREES);
+    const st = Data.makeState();
+    const engineEdges = E.traceBeams(st).filter(b => b.to).map(b => ({ from: b.from, to: b.to, dir: b.dir }));
+    const c = combat.compileUnitSnapshot(st, Data.ITEMS, 'formation1', 'unit1');
+    const simEdges = (c.linkEdges || []).map(e => ({ from: e.from, to: e.to, dir: e.dir }));
+    ok(engineEdges.length > 0, 'fixture must have >=1 established link (else the test is vacuous)');
+    eq(norm(simEdges), norm(engineEdges), 'sim link graph must equal engine traceBeams established links');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -35,7 +35,8 @@
   "OnBPHierarchyHit",
   "OnUnitHit",
   "OnBPBeenHit",
-  "OnUnitBeenHit"
+  "OnUnitBeenHit",
+  "on_link_pulse"
  ],
  "verbs": [
   "strike",
@@ -55,7 +56,9 @@
   "slow_enemy",
   "bonus_vs_blocked",
   "status_immune",
-  "bonus_vs_status"
+  "bonus_vs_status",
+  "pulse",
+  "buff_linked"
  ],
  "status_kinds": [
   "buff",
