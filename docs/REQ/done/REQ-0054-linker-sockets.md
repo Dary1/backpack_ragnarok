@@ -1,3 +1,10 @@
+> **SUPERSEDED — 供養 (moved to done by user ruling, 2026-07-12).**
+> The Linker entity no longer exists after the Unit pivot (REQ-0123 program).
+> The ADOPTED socket-on-linker concept and the lens SI family are RESCUED
+> into REQ-0130 (unit sockets / equipment SIs), with mechanics re-derivation
+> noted in REQ-0128. Never implemented; rests in done as a memorial, not as
+> shipped work.
+
 # REQ-0054 — Linker Sockets (Lens SIs)
 
 - **Status**: ADOPTED by user (2026-07-06) — implementation QUEUED

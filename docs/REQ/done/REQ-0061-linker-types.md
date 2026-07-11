@@ -1,3 +1,11 @@
+> **SUPERSEDED — 供養 (moved to done by user ruling, 2026-07-12).**
+> The Linker entity no longer exists after the Unit pivot (REQ-0123 program).
+> RESCUED assets: the 8-type axis + "one deviation per type" design law +
+> staging law + pack-acquisition ruling → REQ-0130 (roster seed material);
+> the deterministic law set (merge rules, counters, caps) → REQ-0128
+> (adopt-or-retire table mandated). Never implemented; rests in done as a
+> memorial, not as shipped work.
+
 # REQ-0061 — Linker Types (the factorized 8-element axis)
 
 - **Status**: ADOPTED by user (2026-07-06; staging "All Green") — implementation
