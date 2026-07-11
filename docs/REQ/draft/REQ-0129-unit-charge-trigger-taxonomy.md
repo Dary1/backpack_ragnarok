@@ -24,16 +24,15 @@ inconsistencies the content pipeline exists to prevent.
   (self / connected / connected-BP / distributed).
 - Effect AST extension for charge: charge counter, thresholds, stack effects
   — grammar + validator, mirroring the existing AST discipline.
-- **Term debts to settle here:** "クロックタワー" (thief's trigger references
-  an undefined clock-tower concept) and the princess-tower transformation
-  ("リトルプリンセスタワー → プリンセスタワー") must be defined, renamed, or
-  cut. No undefined nouns may survive into the frozen vocabulary.
+- **Resolved during drafting (user ruling, 2026-07-12):** the thief's
+  "クロックタワー" reference is a stale leftover from a deleted unit draft
+  (clock tower was a unit kind) — no definition needed; drop the reference
+  when the thief's kit is authored. Remaining check here: the princess-tower
+  transformation ("リトルプリンセスタワー → プリンセスタワー") must be
+  expressible as a charge-spend verb (form change) in the frozen grammar.
 - No content authoring; no sim implementation beyond validator support.
 
 ## Gates
 
 - Every roster-seed unit's charge behavior is expressible in the frozen
-  grammar (paper check against all 13 user-authored examples).
-- Validator rejects out-of-vocabulary triggers; self-test green
-  (REQ-0116 heritage).
-- User ratification recorded in this file.
+  grammar (paper check against all 13 user-a
