@@ -42,9 +42,8 @@ offsets), adjacency, backward-line, none. Ratified rules:
 4. Per-unit kit ratification happens per roster batch (REQ-0130), not here —
    this REQ ships the mechanics, not the kits.
 
-## Gates
+## Rescued prior art (from REQ-0061, 供養 2026-07-12)
 
-- Sim unit tests per pattern type incl. first-hit, one-sided, mutual, and
-  occlusion rule; deterministic replay unaffected for old content.
-- e2e: placement preview + established-link rendering.
-- pnpm test green; e2e via `tools/e2e_run.sh` only.
+The pulse-walk law set of REQ-0048/0061 is the deterministic baseline this
+REQ must either ADOPT for Unit Links or EXPLICITLY RETIRE, law by law —
+silence is not allowed: PULSE_CAP; visited-set; hop 
