@@ -18,6 +18,9 @@ of 2026-07-13 recorded in §0.
 | 2026-07-13 | **G3** | **REQ-0129 7/12 ruling UPHELD.** The clock tower does not exist and is not resurrected. The Thief kit may NOT use it. → the Thief now has **no charge trigger**; the user must restate it. Tracked as the still-open **G3a**. |
 | 2026-07-13 | **G7** | **Necromancer is CUT** (没). **Watcher and Squire are IN**, with kits authored by the user (§2.11, §2.12). Roster 001 = **12 units**. REQ-0130's "13 kits" gate text is wrong and is corrected by this REQ. |
 
+*(Discovered while acting on the G7 ruling: the REQ-0127 art batch is out of sync
+with the roster — see §3b. G14 opened.)*
+
 ## 1. Why this REQ exists
 
 REQ-0130's gate reads: *"Paper check: all 13 user-authored roster kits (elf …
@@ -166,6 +169,45 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
 - **G13 — Squire's block amount is unquantified.** *(OPEN)* "A small amount of
   block" needs a number. Also confirm the self-shield verb exists in the grammar
   (Princess §2.8 needs a self-shield too — likely the same verb).
+
+## 3b. URGENT — the in-flight REQ-0127 art batch is running on a STALE roster
+
+Found 2026-07-13 by inspecting `content/batches/units-001-roster/unit_defs.json`
+on branch `req-0127-unit-icon-generation` (12 entries, candidates already rendered
+on flux2; batch PAUSED, box yielded).
+
+Diffed against roster 001 as ruled today:
+
+| | |
+|---|---|
+| **In the art batch, but CUT from the roster** | `unit-necromancer` |
+| **In the roster, but NOT in the art batch** | `unit-littleprincess` |
+
+This is not cosmetic. Under the illustration-first law the **S7-accepted art set
+defines what may be authored as a def.** If REQ-0127 reaches S7 as it stands, the
+user will accept an icon for a unit that no longer exists and will have no icon for
+one that does — and REQ-0149 §5 will then be unable to author the roster it just
+ratified. **REQ-0127's batch must be corrected before its S7 review, not after.**
+
+Demanded of REQ-0127:
+1. **Drop `unit-necromancer`** from `unit_defs.json` and bin its candidates (cut by
+   the user, 2026-07-13). Do not put it to S7.
+2. **Resolve G14 (below), then render whatever G14 rules** — at minimum a
+   `unit-littleprincess` entry is missing.
+
+- **G14 — Is "Princess" one unit or two?** *(OPEN — blocks the art fix)* §2.7 Little
+  Princess's charge effect is *"becomes the Princess Tower"*; §2.8 is a unit called
+  *"Princess"*. Two readings, and they demand different art:
+  - **(a) Two units.** Little Princess and Princess are separate defs with separate
+    icons; the "Princess Tower" is a *third* thing (a form → G4). Art must add
+    `unit-littleprincess`. Roster stays 12.
+  - **(b) One unit, two forms.** Little Princess *is* the base form and "Princess
+    (Tower)" is what she charges into. Then §2.8 is not a 12th unit but a form, art
+    needs a base + a transformed sheet, and **the roster is 11**, not 12.
+
+  The existing art batch quietly assumed neither — it rendered a single
+  `unit-princess` and no little princess. **Needs a user ruling; picking one would
+  fabricate design.**
 
 ## 4. Hard dependency: illustration-first
 
