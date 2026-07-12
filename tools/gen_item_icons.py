@@ -689,6 +689,12 @@ def main():
     ap.add_argument("--scheduler", default=None)
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
+    ap.add_argument("--no-matte", action="store_true",
+                    help="GENERATION PHASE: write raw candidates only, skip the "
+                         "inline matte. Pair with a later --rematte-only run "
+                         "made with ComfyUI STOPPED. Required for big batches: "
+                         "rembg alpha_matting peaks at 12-13 GB RSS and will "
+                         "not fit alongside a resident model (REQ-0136).")
     ap.add_argument("--rematte-only", action="store_true",
                      help="skip generation entirely; regenerate _alpha.png for every existing raw "
                           "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
@@ -812,7 +818,11 @@ def main():
                 # smaller target_px is faster and the final in-game asset
                 # is target_px anyway, so edge quality at that resolution is
                 # what actually matters).
-                matte_alpha(raw_path, alpha_path, log_label=alpha_name)
+                if a.no_matte:
+                    print(f"    (matte deferred: --no-matte; run "
+                          f"--rematte-only with ComfyUI stopped)", flush=True)
+                else:
+                    matte_alpha(raw_path, alpha_path, log_label=alpha_name)
 
                 dt = time.time() - t0
                 print(f"[{done_jobs}/{total_jobs}] DONE id={eid} c={k} seed={seed} -> {raw_name} ({dt:.1f}s)", flush=True)
