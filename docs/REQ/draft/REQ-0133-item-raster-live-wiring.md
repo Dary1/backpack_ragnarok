@@ -27,3 +27,10 @@ for live.
 
 - Until this REQ, live item rendering stays SVG-sprite; batch-003 rasters
   are reference/preview assets only (web/preview/batch-003/).
+
+> [2026-07-12, REQ-0134 session] The "user decision wanted" half is resolved:
+> registry/render route = **RASTER** (unit_icon_pipeline.md §3.2, ratified
+> ALL GREEN 2026-07-12; units and items decided together). Remaining blocker:
+> REQ-0125 resolution machinery — stays in draft until 0125 lands. Also note
+> batch-003 art itself was NG'd at S7 the same day (see REQ-0109, todo);
+> wiring work is art-agnostic and unaffected.
