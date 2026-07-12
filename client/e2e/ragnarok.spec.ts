@@ -51,7 +51,7 @@ function mintInvite(name: string): MintedPlayer {
   return { playerId: playerIdMatch[1], token: tokenMatch[1], name };
 }
 
-const bpDef = (id: string) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 30 });
+const bpDef = (id: string) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 });
 const invPage = () => ({ bps: [], pos: [], sis: [], tms: [] });
 
 /** The `ragA` reference-model fixture, as a dev-player canvas. Inventory

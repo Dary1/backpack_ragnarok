@@ -208,7 +208,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // Beam directions as compass arrows: exactly one arrow per
       // unit.dirs entry (REQ-0045 h) -- cross-checked against the SAME
       // BP the server actually finalized, not just "some plausible count".
-      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.unit.dirs.length);
+      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.linker.dirs.length);
 
       // hpMax + cell count: displayed values match the finalized BP's own
       // fields exactly.
@@ -372,7 +372,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
           // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
           // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
           // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 800 }],
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 800 }],
           pos: [
             { uid: `e2e_blade_${tag}`, id: 'blade', loc: 'grid', cell: [0, 1], rot: 0 },
             { uid: `e2e_hilt_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 },
@@ -485,7 +485,7 @@ test.describe('BP move handle', () => {
       const invBpId = 'inv_covered_bp';
       const canvas = {
         linked: true,
-        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
         pos: [
           { uid: 'c_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
           { uid: 'c_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
@@ -496,7 +496,7 @@ test.describe('BP move handle', () => {
         inv: {
           pages: [
             {
-              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
               pos: [
                 { uid: 'i_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
                 { uid: 'i_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },

@@ -925,7 +925,7 @@ const SCENARIO={
     1,
     1
    ],
-   "unit": {
+   "linker": {
     "off": [
      2,
      1
@@ -970,7 +970,7 @@ const SCENARIO={
     1,
     4
    ],
-   "unit": {
+   "linker": {
     "off": [
      0,
      0
@@ -1014,7 +1014,7 @@ const SCENARIO={
     4,
     2
    ],
-   "unit": {
+   "linker": {
     "off": [
      0,
      0
@@ -1051,7 +1051,7 @@ const SCENARIO={
     4,
     5
    ],
-   "unit": {
+   "linker": {
     "off": [
      0,
      0
@@ -1268,7 +1268,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {off,h:Math.max(...off.map(o=>o[0]))+1,w:Math.max(...off.map(o=>o[1]))+1};
   };
   const bpCells=bp=>bp.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
-  const unitCell=bp=>[bp.origin[0]+bp.unit.off[0],bp.origin[1]+bp.unit.off[1]];
+  const unitCell=bp=>[bp.origin[0]+bp.linker.off[0],bp.origin[1]+bp.linker.off[1]];
   const cellBPMap=st=>{const m={};for(const bp of st.bps)for(const [r,c] of bpCells(bp))m[key(r,c)]=bp.id;return m;};
   const unitMap=st=>{const m={};for(const bp of st.bps)m[key(...unitCell(bp))]=bp.id;return m;};
   const poByUid=(st,u)=>st.pos.find(p=>p.uid===u);
@@ -1602,7 +1602,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   const DIRS={0:[-1,0],1:[-1,1],2:[0,1],3:[1,1],4:[1,0],5:[1,-1],6:[0,-1],7:[-1,-1]};
   function traceBeams(st){
     const lk=unitMap(st),beams=[];
-    for(const bp of st.bps)for(const d of bp.unit.dirs){
+    for(const bp of st.bps)for(const d of bp.linker.dirs){
       let [r,c]=unitCell(bp);const path=[];let to=null;
       while(true){
         r+=DIRS[d][0];c+=DIRS[d][1];
@@ -2176,7 +2176,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     if(kind==='bp'){
       const src=home.record;
-      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit};
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
       st.bps.push(ref);
       return {ok:true,ref};
     }
@@ -3278,7 +3278,7 @@ function renderAll(){
     const g=el('g',{cursor:'grab'},gUnits);
     el('circle',{cx:x,cy:y,r:26,fill:'#0e0d0b','fill-opacity':.55,stroke:'#59d6d6','stroke-opacity':.5},g);
     el('use',{href:'#icon-unit_core',x:x-22,y:y-22,width:44,height:44},g);
-    for(const d of bp.unit.dirs){
+    for(const d of bp.linker.dirs){
       const ang=(d*45-90)*Math.PI/180;
       el('circle',{cx:x+Math.cos(ang)*30,cy:y+Math.sin(ang)*30,r:4,fill:'#59d6d6'},g);
     }
@@ -3356,7 +3356,7 @@ function renderAll(){
   const cbp2=E.cellBPMap(state);
   document.getElementById('bpList').innerHTML=state.bps.map(b=>{
     const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
-    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Unit ['+b.unit.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Unit ['+b.linker.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
   document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
     const A=bm.from.toUpperCase();
     if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';

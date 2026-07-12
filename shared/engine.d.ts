@@ -111,7 +111,7 @@ export interface BP {
   color: string;
   shape: Offset[];
   origin: Cell;
-  unit: BPUnit;
+  linker: BPUnit;
   /** REQ-0036 P1-A: BP max HP (Backpack-as-HP). Optional here since this
    * type predates that field and not every synthetic/test BP literal in
    * this codebase sets it -- mirrors the engine's own tolerant read

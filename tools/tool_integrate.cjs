@@ -84,7 +84,7 @@ function main() {
         id: 'synth', name: 'Synthetic BP', color: '#888888',
         shape: buildFullMinusUnit(),
         origin: [1, 1],
-        unit: { off: [0, 0], dirs: [] },
+        linker: { off: [0, 0], dirs: [] },
       }],
       pos: [],
       sis: [],

@@ -68,7 +68,7 @@ test.describe('8x8 grid', () => {
           color: '#4a90d9',
           shape: [[0, 0], [0, 1]],
           origin: [8, 7], // occupies (8,7)-(8,8) -- illegal on a 6x6 grid, legal on 8x8
-          unit: { off: [0, 0], dirs: [] },
+          linker: { off: [0, 0], dirs: [] },
         },
       ],
       pos: [],

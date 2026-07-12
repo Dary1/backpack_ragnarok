@@ -123,7 +123,7 @@ function rollCommonBp(masterSeed) {
   return {
     uid,
     shape,
-    unit: { off: unitOff, dirs },
+    linker: { off: unitOff, dirs },
     hpMax,
     cellCount: shape.length,
   };

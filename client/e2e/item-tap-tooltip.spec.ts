@@ -15,7 +15,7 @@ import { test, expect } from '@playwright/test';
 import { bootApp, cx, cy, drag } from './helpers';
 
 function makeCanvas() {
-  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], unit: { off: [2, 1], dirs: [0, 2] } };
+  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], linker: { off: [2, 1], dirs: [0, 2] } };
   const canvasPos = [
     { uid: 'canvas_hilt', id: 'hilt', loc: 'grid', cell: [2, 2], rot: 0 },
     { uid: 'canvas_dagger', id: 'dagger', loc: 'grid', cell: [3, 2], rot: 0 },

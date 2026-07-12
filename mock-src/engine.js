@@ -89,7 +89,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {off,h:Math.max(...off.map(o=>o[0]))+1,w:Math.max(...off.map(o=>o[1]))+1};
   };
   const bpCells=bp=>bp.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
-  const unitCell=bp=>[bp.origin[0]+bp.unit.off[0],bp.origin[1]+bp.unit.off[1]];
+  const unitCell=bp=>[bp.origin[0]+bp.linker.off[0],bp.origin[1]+bp.linker.off[1]];
   const cellBPMap=st=>{const m={};for(const bp of st.bps)for(const [r,c] of bpCells(bp))m[key(r,c)]=bp.id;return m;};
   const unitMap=st=>{const m={};for(const bp of st.bps)m[key(...unitCell(bp))]=bp.id;return m;};
   const poByUid=(st,u)=>st.pos.find(p=>p.uid===u);
@@ -244,9 +244,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const rotatedShape=rotateOffsetCW(bp.shape);
     const mr=Math.min(...rotatedShape.map(o=>o[0])),mc=Math.min(...rotatedShape.map(o=>o[1]));
     const newShape=rotatedShape.map(([r,c])=>[r-mr,c-mc]);
-    const [lr,lc]=rotateOffsetCW([bp.unit.off])[0];
+    const [lr,lc]=rotateOffsetCW([bp.linker.off])[0];
     const newUnitOff=[lr-mr,lc-mc];
-    const newDirs=bp.unit.dirs.map(d=>(d+2)%8);
+    const newDirs=bp.linker.dirs.map(d=>(d+2)%8);
     const newPOs=containedPOs.map(p=>{
       const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
       const [rr,rc]=rotateOffsetCW([localOld])[0];
@@ -305,8 +305,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
     if(!chk.ok)return chk;
     const bp=bpById(st,bpId);
     bp.shape=chk.rotated.shape;
-    bp.unit.off=chk.rotated.unitOff;
-    bp.unit.dirs=chk.rotated.dirs;
+    bp.linker.off=chk.rotated.unitOff;
+    bp.linker.dirs=chk.rotated.dirs;
     for(const rp of chk.rotated.pos){
       const p=poByUid(st,rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -571,7 +571,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   const DIRS={0:[-1,0],1:[-1,1],2:[0,1],3:[1,1],4:[1,0],5:[1,-1],6:[0,-1],7:[-1,-1]};
   function traceBeams(st){
     const lk=unitMap(st),beams=[];
-    for(const bp of st.bps)for(const d of bp.unit.dirs){
+    for(const bp of st.bps)for(const d of bp.linker.dirs){
       let [r,c]=unitCell(bp);const path=[];let to=null;
       while(true){
         r+=DIRS[d][0];c+=DIRS[d][1];
@@ -1194,8 +1194,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const container=page(st,pg);
     const bp=container.bps.find(b=>b.id===bpId);
     bp.shape=chk.rotated.shape;
-    bp.unit.off=chk.rotated.unitOff;
-    bp.unit.dirs=chk.rotated.dirs;
+    bp.linker.off=chk.rotated.unitOff;
+    bp.linker.dirs=chk.rotated.dirs;
     for(const rp of chk.rotated.pos){
       const p=container.pos.find(z=>z.uid===rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -1432,7 +1432,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     if(kind==='bp'){
       const src=home.record;
-      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit};
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
       st.bps.push(ref);
       return {ok:true,ref};
     }

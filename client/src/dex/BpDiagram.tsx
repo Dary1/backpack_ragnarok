@@ -63,7 +63,7 @@ const ARROWHEAD_PX = 7;
 interface BpDiagramProps {
   shape: Cell[];
   /** Unit anchor offset, cell-space relative to the shape's own local
-   * origin (matches BPUnit.off / ApiRolledBp.unit.off) -- a rolled BP
+   * origin (matches BPUnit.off / ApiRolledBp.linker.off) -- a rolled BP
    * has no `origin` of its own yet (it's not placed anywhere), so the
    * diagram treats the shape's own coordinate space as the frame of
    * reference, same as ShapeGrid already does for `shape`/`portTiles`. */

@@ -132,7 +132,7 @@ function firstFitPlaceBp(
       color: '#8a8a8a',
       shape: rolled.shape,
       origin: [1, 1],
-      unit: rolled.unit,
+      linker: rolled.linker,
       hpMax: rolled.hpMax,
     });
     let found: [number, number] | null = null;
@@ -429,8 +429,8 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
               <div className="workshop-result-fig">
                 <BpDiagram
                   shape={rollResult.shape}
-                  unitOff={rollResult.unit.off}
-                  dirs={rollResult.unit.dirs}
+                  unitOff={rollResult.linker.off}
+                  dirs={rollResult.linker.dirs}
                   hpMax={rollResult.hpMax}
                   cellCount={rollResult.cellCount}
                   locale={locale}
@@ -453,12 +453,12 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 </div>
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnit')}</span>
-                  <b className="tnum">{unitCoordLabel(rollResult.unit.off)}</b>
+                  <b className="tnum">{unitCoordLabel(rollResult.linker.off)}</b>
                   <span className="rune" style={{ color: 'var(--gold-hi)' }}>{'ᛖ'}</span>
                 </div>
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statDirs')}</span>
-                  <b>{dirsLabel(rollResult.unit.dirs)}</b>
+                  <b>{dirsLabel(rollResult.linker.dirs)}</b>
                 </div>
                 <div className="rune-divider workshop-result-flavor-divider">{'ᛖ'}</div>
                 <div className="workshop-result-flavor dj">{t(locale, 'workshop.rollResultFlavor')}</div>

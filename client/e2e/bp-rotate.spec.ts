@@ -36,7 +36,7 @@ const saveAndFetch = async (page: import('@playwright/test').Page) => {
 // BOTH the canvas and inventory page 0, so the same rotation math can be
 // exercised identically on either board.
 function makeCanvas() {
-  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], unit: { off: [2, 1], dirs: [0, 2] } };
+  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], linker: { off: [2, 1], dirs: [0, 2] } };
   return {
     linked: true,
     bps: [{ id: 'canvas_l', name: 'Canvas L', color: '#4a90d9', origin: [2, 2], ...lShape }],
@@ -95,7 +95,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(bp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
-    expect(bp.unit.dirs).toEqual([2, 4]);
+    expect(bp.linker.dirs).toEqual([2, 4]);
     expect(bp.origin).toEqual([2, 2]); // origin never moves during in-place rotation
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
     expect(po.cell).toEqual([3, 2]);
@@ -118,7 +118,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const invBp = canvas.inv.pages[0].bps.find((b: any) => b.id === 'inv_l');
     expect(invBp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
-    expect(invBp.unit.dirs).toEqual([2, 4]);
+    expect(invBp.linker.dirs).toEqual([2, 4]);
     const invPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'inv_po');
     expect(invPo.cell).toEqual([3, 2]);
     expect(invPo.rot).toBe(1);
@@ -128,7 +128,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     // BP, never touched by this test) must be COMPLETELY untouched.
     const canvasBp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(canvasBp.shape).toEqual([[0, 0], [1, 0], [2, 0], [2, 1]]);
-    expect(canvasBp.unit.dirs).toEqual([0, 2]);
+    expect(canvasBp.linker.dirs).toEqual([0, 2]);
   });
 
   test('4x double-click returns the BP to its EXACT original state on both boards (identity)', async ({ page }) => {
@@ -147,8 +147,8 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     for (let i = 0; i < 4; i++) {
       const canvas = await saveAndFetch(page);
       const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
-      const unitRow = bp.origin[0] + bp.unit.off[0];
-      const unitCol = bp.origin[1] + bp.unit.off[1];
+      const unitRow = bp.origin[0] + bp.linker.off[0];
+      const unitCol = bp.origin[1] + bp.linker.off[1];
       const x = canvasBox.x + cx(unitCol);
       const y = canvasBox.y + cy(unitRow);
       await page.mouse.dblclick(x, y);
@@ -158,7 +158,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(bp.shape).toEqual([[0, 0], [1, 0], [2, 0], [2, 1]]);
-    expect(bp.unit).toEqual({ off: [2, 1], dirs: [0, 2] });
+    expect(bp.linker).toEqual({ off: [2, 1], dirs: [0, 2] });
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
     expect(po.cell).toEqual([4, 3]);
     expect(po.rot).toBe(0);
@@ -171,7 +171,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     // not the BP.
     const canvas = {
       linked: true,
-      bps: [{ id: 'simple_bp', name: 'Simple', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { off: [0, 0], dirs: [] } }],
+      bps: [{ id: 'simple_bp', name: 'Simple', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
       pos: [{ uid: 'po_on_bp', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 }],
       sis: [],
       layout: { ROWS: 8, COLS: 8 },

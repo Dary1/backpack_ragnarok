@@ -420,7 +420,7 @@ const DICT = {
     'market.chip.weapon': 'Arms',
     'market.chip.frost': 'Frost',
     'market.chip.ember': 'Ember',
-    'market.chip.unit': 'Unit',
+    'market.chip.linker': 'Unit',
     'market.chip.relic': 'Relic',
     // buy modal
     'market.buy.oathTitle': 'The oath of purchase',
@@ -1077,7 +1077,7 @@ const DICT = {
     'market.chip.weapon': '武具',
     'market.chip.frost': '霜',
     'market.chip.ember': '焔',
-    'market.chip.unit': '連結',
+    'market.chip.linker': '連結',
     'market.chip.relic': '遺宝',
     'market.buy.oathTitle': '購入の誓い',
     'market.buy.oathTitleEn': 'Seal the trade',

@@ -311,7 +311,7 @@ function renderAll(){
     const g=el('g',{cursor:'grab'},gUnits);
     el('circle',{cx:x,cy:y,r:26,fill:'#0e0d0b','fill-opacity':.55,stroke:'#59d6d6','stroke-opacity':.5},g);
     el('use',{href:'#icon-unit_core',x:x-22,y:y-22,width:44,height:44},g);
-    for(const d of bp.unit.dirs){
+    for(const d of bp.linker.dirs){
       const ang=(d*45-90)*Math.PI/180;
       el('circle',{cx:x+Math.cos(ang)*30,cy:y+Math.sin(ang)*30,r:4,fill:'#59d6d6'},g);
     }
@@ -389,7 +389,7 @@ function renderAll(){
   const cbp2=E.cellBPMap(state);
   document.getElementById('bpList').innerHTML=state.bps.map(b=>{
     const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
-    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Unit ['+b.unit.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Unit ['+b.linker.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
   document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
     const A=bm.from.toUpperCase();
     if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';

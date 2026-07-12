@@ -767,7 +767,7 @@ export class BoardRenderer {
       // canvas-only concept -- an inventory BP's unit is dormant, so no
       // dots are drawn there (REQ-0030 spec item 1: "no beams").
       if (ops.isCanvas) {
-        for (const d of bp.unit.dirs) {
+        for (const d of bp.linker.dirs) {
           const ang = (DIR_ANGLES[d] * Math.PI) / 180;
           const dot = new Graphics();
           dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);
