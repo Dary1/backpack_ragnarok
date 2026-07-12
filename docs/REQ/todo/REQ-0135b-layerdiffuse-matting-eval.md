@@ -290,3 +290,102 @@ Arm B running; phase 2 armed and chained. Nothing published yet — the
 completeness gate refuses to score or build a gallery unless every arm produced
 its full 10 candidates. REQ-0135b stays in `todo/` until the gallery exists and
 the user has given a verdict.
+
+### 2026-07-12 (exclusive run, cont.) — STOP: LayerDiffuse is inert on this ComfyUI
+
+The run was halted mid-flight. LayerDiffuse is not merely misconfigured on this
+host — **it does nothing at all**, and no arm of this spike was measuring it.
+
+#### The tell
+
+Arm B (LD, background clause kept) came back essentially solid on every subject:
+
+    blade 99.93%   hilt 100.00%   hilt 100.00%
+    dagger 99.91%  dagger 90.28%  wing 100.00%   (route A, same subjects: 11.50%)
+
+The working hypothesis was the background clause (see previous entry), so arm C
+stripped it. **Arm C's first result was 99.98% — the hypothesis was wrong.**
+That is what sent the investigation into the ComfyUI log, where the real cause
+was sitting in plain sight, 7,840 times:
+
+    WARNING: patch type not recognized lora
+             diffusion_model.input_blocks.4.1.transformer_blocks.1.attn2.to_q.weight
+             (… x7840, i.e. every LD attention weight)
+
+#### Root cause — a second, SILENT ComfyUI API drift
+
+`LayeredDiffusionApply` injects its attention weights as LoRA-style patches:
+
+    lib_layerdiffusion/utils.py :: to_lora_patch_dict()
+        patch_flat[model_key] = (patch_type, weight_list)   # patch_type == "lora"
+    layered_diffusion.py:272
+        work_model.add_patches(layer_lora_patch_dict, weight)
+
+ComfyUI core has since moved LoRA-family patches out into a weight-adapter
+subsystem (`comfy/weight_adapter/`: lora, loha, lokr, glora, oft, boft…).
+What remains in `comfy/lora.py::calculate_weight()` accepts only `diff`, `set`
+and `model_as_lora`; everything else falls through to:
+
+    comfy/lora.py:496
+        logging.warning("patch type not recognized {} {}".format(patch_type, key))
+
+So core **warns and skips**. The model is never patched. KSampler runs plain
+SDXL, the transparent VAE decoder is then handed an image that has no latent
+transparency in it, and it returns an alpha that is ~1 everywhere. No error, no
+failed job, a plausible-looking RGBA file — and a number (coverage ~100%) that
+is the only thing that gave it away.
+
+This is the second independent breakage against the same ComfyUI build, and the
+dangerous one:
+
+| | failure | visibility |
+|---|---|---|
+| `LayeredDiffusionDecodeRGBA` | AttributeError (v3 schema migration) | **loud** — 10/10 jobs failed |
+| `LayeredDiffusionApply` | patch silently dropped (LoRA patch-API rework) | **silent** — jobs "succeed" |
+
+**There is no upstream fix.** `git fetch` shows our checkout (`b4f6a9e`) is
+already at upstream HEAD, behind by 0 commits. huchenlei/ComfyUI-layerdiffuse
+has not tracked ComfyUI's patch-API rework.
+
+#### What this invalidates
+
+- REQ-0135a's acceptance ("all 8 LayeredDiffusion* nodes present in
+  `/object_info`") was never sufficient: node registration says nothing about
+  whether the node *does* anything.
+- My own smoke test (added specifically to catch that) was **also** not
+  sufficient. It asserted "exit 0 and an RGBA file appeared" — both true while
+  LD was completely inert. A liveness gate for a model patch must assert on the
+  *effect* (e.g. alpha is not ~fully opaque; or the patched model's output
+  differs from the unpatched one), not on the artifact's existence.
+- Arms B and C measured plain SDXL with a meaningless alpha. Deleted, not
+  published — they would have produced a confident, false "LayerDiffuse is
+  useless" verdict. Route A (baseline) never completed either (OOM, see below).
+
+#### Kept regardless of the decision
+
+- `tools/gen_item_icons.py --no-matte` (additive, opt-in) and the generate/matte
+  split. Route A was OOM-killed at job 2/10 **twice** (10:12:35, 14:34:36, both
+  ~12.3 GB RSS) because ComfyUI (~11 GB) and birefnet (~12 GB) cannot be
+  co-resident on this 23 GB box. Generation and matting must be separate passes
+  on this host — a real item-pipeline finding, independent of LayerDiffuse.
+- Harness hardening: liveness/RAM guards, named blockers, completeness gate.
+- `spike_defs_nobg.json` + the A/B/C gallery builder, should the technique ever
+  become runnable.
+
+#### Blocked — decision required
+
+REQ-0135b cannot proceed on the current stack. Options, none of them free:
+
+1. **Fork + port the node** — translate LD's `("lora", [...])` patches onto
+   core's weight-adapter API (or materialise them as `diff` patches). Contained
+   and probably the smallest real fix, but it means maintaining a fork of a
+   third-party checkout, which PROJECT.md currently forbids ("use them, do not
+   modify").
+2. **Pin ComfyUI to a pre-rework commit** — rejected on its face: the art
+   ComfyUI is shared and HANDS-OFF, and REQ-0127/0136/0138 all run on it.
+3. **Drop LayerDiffuse** — record a NO-GO (upstream incompatible), keep rembg
+   birefnet-general, and answer the matte-quality pain (hilt 10.99% coverage,
+   unit-hair silhouettes) some other way.
+
+Moving `todo/` -> `draft/`: the spec is ratified but is now blocked on a
+decision, which is exactly what `draft/` is for.
