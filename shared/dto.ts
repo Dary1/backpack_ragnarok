@@ -199,10 +199,10 @@ export interface ApiCancelPolicy {
   immediate: boolean;
 }
 
-/** One unit slot (golden b) -- `presetIndex` is one of the OWNER's own
- * preset indices (0-based), or null if unfilled. */
+/** One squad slot (golden b) -- `squadIndex` is one of the OWNER's own
+ * squad indices (0-based), or null if unfilled. */
 export interface ApiRoomSlot {
-  presetIndex: number | null;
+  squadIndex: number | null;
 }
 
 /** A queued swap (golden j) -- present once `PUT .../swap` is queued
@@ -210,7 +210,7 @@ export interface ApiRoomSlot {
  * is applied at the next run settle. */
 export interface ApiPendingSwap {
   slot: number;
-  presetIndex: number;
+  squadIndex: number;
   notify: boolean;
   queuedAt: string;
 }
@@ -584,7 +584,7 @@ export interface ApiRagnarokOrderResponse {
 }
 
 /** One einherjar record (list view). The frozen snapshot canvas itself
- * is deliberately NOT on the wire (server-side until a later unit needs
+ * is deliberately NOT on the wire (server-side until a later squad needs
  * it); `counts` echoes what was devoted (mock: 鞄 3 ・ 物品 17 ・ 型 3 =
  * bps/pos/sis). `perSeason` is the 戦果 history REQ-0068 will append
  * ({season, battles:[...]}); empty today. `bioArchive` is reserved for
@@ -592,7 +592,7 @@ export interface ApiRagnarokOrderResponse {
 export interface ApiRagnarokEinherjar {
   id: string;
   playerId: string;
-  unitName: string;
+  squadName: string;
   seasonDevoted: number | null;
   devotedAt: string;
   counts: { bps: number; pos: number; sis: number };
@@ -614,16 +614,16 @@ export interface ApiRagnarokEinherjarResponse {
 }
 
 /** The itemized blast radius: how many BPs/POs/SIs the rite destroys
- * (account-wide -- inventory homes AND every other preset's shared
- * references; REQ-0033 reference model), and which OTHER presets lose
- * pieces (`affectedPresets`, PRE-rite indices -- the rite deletes a
+ * (account-wide -- inventory homes AND every other squad's shared
+ * references; REQ-0033 reference model), and which OTHER squads lose
+ * pieces (`affectedSquads`, PRE-rite indices -- the rite deletes a
  * slot, so later indices shift left by one afterwards). */
 export interface ApiRagnarokBlast {
   bps: number;
   pos: number;
   sis: number;
   total: number;
-  affectedPresets: Array<{
+  affectedSquads: Array<{
     index: number;
     name: string;
     lostBps: number;
@@ -646,32 +646,32 @@ export interface ApiRagnarokProjection {
   einherjarCountAfter: number;
 }
 
-/** GET /api/ragnarok/devotion/preview/:presetIndex -- read-only.
+/** GET /api/ragnarok/devotion/preview/:squadIndex -- read-only.
  * Ineligibility is DATA (eligible:false + reasons[]), not an error
- * status; only an unaddressable preset 404s (no-leak: out-of-range and
+ * status; only an unaddressable squad 404s (no-leak: out-of-range and
  * malformed indices are indistinguishable). Reasons vocabulary:
- * mid_rite / last_preset / empty_unit / deployed. */
+ * mid_rite / last_squad / empty_squad / deployed. */
 export interface ApiRagnarokDevotionPreviewResponse {
   ok: true;
   dtoVersion: RagnarokDtoVersion;
-  preset: { index: number; name: string };
+  squad: { index: number; name: string };
   eligible: boolean;
-  reasons: Array<'mid_rite' | 'last_preset' | 'empty_unit' | 'deployed'>;
+  reasons: Array<'mid_rite' | 'last_squad' | 'empty_squad' | 'deployed'>;
   blast: ApiRagnarokBlast;
   projection: ApiRagnarokProjection;
 }
 
-/** POST /api/ragnarok/devotion/:presetIndex -- THE rite, irreversible.
+/** POST /api/ragnarok/devotion/:squadIndex -- THE rite, irreversible.
  * No request body; optional Idempotency-Key header dedupes retries
  * (replayed:true returns the ORIGINAL record without a second rite).
- * After a 200 the caller's canvas was rewritten SERVER-side (preset
+ * After a 200 the caller's canvas was rewritten SERVER-side (squad
  * slot deleted + every referenced item destroyed account-wide -- the
  * documented rule-5 divergence, market-settlement precedent): the
  * client MUST re-GET its profile before its next auto-save PUT, or a
  * stale in-flight auto-save can resurrect the destroyed items
  * (REQ-0041's documented auto-save race class). Failure statuses:
- * 404 preset not found (no-leak); 409 {reason} with reason one of
- * mid_rite / last_preset / empty_unit / deployed. */
+ * 404 squad not found (no-leak); 409 {reason} with reason one of
+ * mid_rite / last_squad / empty_squad / deployed. */
 export interface ApiRagnarokDevotionResponse {
   ok: true;
   dtoVersion: RagnarokDtoVersion;

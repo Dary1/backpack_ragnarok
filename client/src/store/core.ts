@@ -172,12 +172,12 @@ export interface StoreSnapshot {
    * Settings.tsx / InviteBanner rendering in App.tsx for the consumer). */
   welcomeBanner: string | null;
   /** REQ-0032: brief inline feedback shown when a trash-drop delete is
-   * REFUSED (dropping the last remaining preset onto the trash zone) --
-   * a short-lived message the preset-tab row can render as a shake/toast
+   * REFUSED (dropping the last remaining squad onto the trash zone) --
+   * a short-lived message the squad-tab row can render as a shake/toast
    * right next to the tabs, mirroring welcomeBanner's "plain module-store
    * field, auto-clears after a few seconds" pattern (no toast library in
    * this app). null when nothing should be shown. */
-  presetDeleteRefused: string | null;
+  squadDeleteRefused: string | null;
   /** REQ-0052: pending Dex deep-link target id, set by initRouting()/
    * onHashChange when the current hash matches DEX_ITEM_HASH_RE
    * ('#/dex/<id>', e.g. a DexCardWindow footer link). Dex.tsx consumes
@@ -201,7 +201,7 @@ export let snapshot: StoreSnapshot = {
   route: routeFromHash(typeof location !== 'undefined' ? location.hash : ''),
   me: null,
   welcomeBanner: null,
-  presetDeleteRefused: null,
+  squadDeleteRefused: null,
   dexFocusId: null,
 };
 

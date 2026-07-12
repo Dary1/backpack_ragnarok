@@ -3,7 +3,7 @@
 //
 // Sibling of board/Board.tsx: mounts a SECOND, independent PixiJS
 // Application/<canvas>, rendering the ACTIVE tab's inventory page (same
-// grid dimensions as canvas, neutral background, dimmed/dormant linkers,
+// grid dimensions as canvas, neutral background, dimmed/dormant units,
 // no beams/combos/◇/◆ -- all enforced inside BoardRenderer itself via
 // `ops.isCanvas===false`, see BoardRenderer.ts's render()).
 //

@@ -58,7 +58,7 @@ export function commitPODrop(self: BoardRenderer, uid: string, originBoard: Boar
     //     {ok:false} rather than a duplicated client-side check).
     //   canvas -> inv: REFERENCE REMOVAL. Per spec ("drop cell
     //     irrelevant; no placement occurs"): engine.removeRef deletes
-    //     ONLY the current preset's canvas reference; the home in
+    //     ONLY the current squad's canvas reference; the home in
     //     state.inv.pages is never touched, and drop.anchor/drop.type are
     //     deliberately ignored -- no ops.movePO call follows for this
     //     direction. removeRef always succeeds (a harmless
@@ -277,8 +277,8 @@ export function spliceSIAcrossBoardsPhysical(_self: BoardRenderer, state: GameSt
 export function previewCrossBoardPO(self: BoardRenderer, state: GameState, uid: string, originBoard: BoardId, rot: number, anchor: Cell): { ok: boolean; cells: Cell[] } {
     // REQ-0033 Phase 2 red-rule guard: an inv -> canvas hover must show
     // illegal/red the instant `uid` is already referenced by the CURRENT
-    // preset, REGARDLESS of geometric fit (spec item 2: "CANNOT be placed
-    // again into that same preset") -- even an empty cell must read as
+    // squad, REGARDLESS of geometric fit (spec item 2: "CANNOT be placed
+    // again into that same squad") -- even an empty cell must read as
     // illegal here, since createRef itself would refuse the reference
     // creation outright on commit. This check is cheap and read-only
     // (engine.usedByCurrent never mutates state), so it is always safe to
@@ -322,7 +322,7 @@ export function previewCrossBoardSIFreeCell(self: BoardRenderer, state: GameStat
     // REQ-0033 Phase 2 red-rule guard -- identical rationale to
     // previewCrossBoardPO's guard above: createRef's red-rule check
     // (usedByCurrent) is kind-agnostic, so an SI already referenced by
-    // the current preset must show illegal here too, before any
+    // the current squad must show illegal here too, before any
     // geometric free-cell check runs.
     if (originBoard.loc === 'inv' && self.boardId.loc === 'canvas' && self.deps.engine.usedByCurrent(state, uid)) {
       return { ok: false, cells: [] };

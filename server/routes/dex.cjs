@@ -22,7 +22,7 @@
 // v1 kinds: item, si, tm. `kind:'bp'` (rolled Blueprint INSTANCES, e.g.
 // a Workshop-gacha result, REQ-0042) is DEFERRED, not merely unwired: a
 // BP has no static content def to key off of the way an item/si/tm does
-// -- its shape/linker/hpMax are per-instance, minted at roll time and
+// -- its shape/unit/hpMax are per-instance, minted at roll time and
 // living inside a player's OWN canvas/warehouse row, never in
 // content/live/*. Serving one through an id-keyed public GET would need
 // either a different (auth'd, instance-scoped) route shape or embedding

@@ -12,7 +12,7 @@ import { ApiError } from '../api';
 
 /**
  * Resolves a human-readable, translated message for an error thrown by
- * one of the schedule/warehouse API calls (assignSlot, swapUnit,
+ * one of the schedule/warehouse API calls (assignSlot, swapSquad,
  * claimWarehouseItem, createRoom, ...). Matches the THREE known
  * server-side 409 message substrings verbatim quoted in the task brief;
  * anything else (network failure, 400/401/404/500, or a message that
@@ -21,24 +21,24 @@ import { ApiError } from '../api';
  */
 export function friendlyScheduleError(locale: Locale, error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  // REQ-0041: the empty-unit deploy-gate 409 carries a STRUCTURED
+  // REQ-0041: the empty-squad deploy-gate 409 carries a STRUCTURED
   // `reason` field (server/schedule.cjs's assignSlot attaches
-  // err.reason='empty_unit', threaded through by server/api.cjs's
+  // err.reason='empty_squad', threaded through by server/api.cjs's
   // sendScheduleError) rather than relying purely on a message substring
   // match -- checked first/preferentially when available. Falls through
   // to the existing substring-match convention for every other 409 this
   // route surface can throw (unchanged).
-  if (error instanceof ApiError && error.reason === 'empty_unit') {
-    return t(locale, 'schedule.error.emptyUnit');
+  if (error instanceof ApiError && error.reason === 'empty_squad') {
+    return t(locale, 'schedule.error.emptySquad');
   }
-  // REQ-0045 (b)+(c) deploy gate v2: the OLD isUnitIndependent-based
+  // REQ-0045 (b)+(c) deploy gate v2: the OLD isSquadIndependent-based
   // "not independent" 409 no longer exists at all (that predicate is no
   // longer part of the deploy gate -- see server/schedule.cjs's
   // deployedUidSetsForGate doc) -- assignSlot's ONLY overlap rejection
   // now carries the STRUCTURED reason 'deployed_overlap' (covers BOTH the
   // cross-room case the old 'active schedule' substring match used to
-  // catch, and the NEW same-room-duplicate-preset case bug (c) needed),
-  // checked preferentially exactly like 'empty_unit' above. The old
+  // catch, and the NEW same-room-duplicate-squad case bug (c) needed),
+  // checked preferentially exactly like 'empty_squad' above. The old
   // 'active schedule' substring fallback below is kept only as defense-
   // in-depth (harmless if e.reason is ever missing for some reason) but
   // is no longer the primary detection path.
@@ -47,7 +47,7 @@ export function friendlyScheduleError(locale: Locale, error: unknown): string {
   }
   if (raw.includes('active schedule')) return t(locale, 'schedule.error.crossRoomOverlap');
   if (raw.includes('no space in inventory')) return t(locale, 'schedule.error.noWarehouseSpace');
-  if (raw.includes('empty unit') || raw.includes('no Backpack')) return t(locale, 'schedule.error.emptyUnit');
+  if (raw.includes('empty squad') || raw.includes('no Backpack')) return t(locale, 'schedule.error.emptySquad');
   return raw;
 }
 

@@ -110,7 +110,7 @@ export class ApiError extends Error {
   readonly status?: number;
   /** REQ-0041: a structured machine-readable reason string, when the
    * server attached one (e.g. server/schedule.cjs's assignSlot sets
-   * err.reason='empty_unit' for the empty-BP deploy-gate 409, threaded
+   * err.reason='empty_squad' for the empty-BP deploy-gate 409, threaded
    * through by server/api.cjs's sendScheduleError as a `reason` field on
    * the JSON error body) -- undefined for every error body that doesn't
    * carry one (every OTHER existing 409/4xx/5xx this client surfaces).
@@ -414,26 +414,26 @@ export function cancelRoom(roomId: string): Promise<{ ok: true; room: ApiRoom }>
   return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}`, { method: 'DELETE' });
 }
 
-/** PUT /api/schedule/rooms/:id/slots/:slotIndex {presetIndex} -- assigns
- * one of the caller's OWN presets to a unit slot (golden b). Throws
+/** PUT /api/schedule/rooms/:id/slots/:slotIndex {squadIndex} -- assigns
+ * one of the caller's OWN squads to a squad slot (golden b). Throws
  * ApiError(409) on a deploy-gate violation (see errorMessageFor() in
  * schedule/errors.ts for the human-readable mapping of the 409 message). */
-export function assignSlot(roomId: string, slotIndex: number, presetIndex: number): Promise<{ ok: true; room: ApiRoom }> {
+export function assignSlot(roomId: string, slotIndex: number, squadIndex: number): Promise<{ ok: true; room: ApiRoom }> {
   return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/slots/${slotIndex}`, {
     method: 'PUT',
-    body: JSON.stringify({ presetIndex }),
+    body: JSON.stringify({ squadIndex }),
   });
 }
 
-/** PUT /api/schedule/rooms/:id/swap {slot, presetIndex} -- golden j. */
-export function swapUnit(
+/** PUT /api/schedule/rooms/:id/swap {slot, squadIndex} -- golden j. */
+export function swapSquad(
   roomId: string,
   slot: number,
-  presetIndex: number
+  squadIndex: number
 ): Promise<{ ok: true; room: ApiRoom; applied: boolean }> {
   return scheduleJSON(`/api/schedule/rooms/${encodeURIComponent(roomId)}/swap`, {
     method: 'PUT',
-    body: JSON.stringify({ slot, presetIndex }),
+    body: JSON.stringify({ slot, squadIndex }),
   });
 }
 
@@ -658,33 +658,33 @@ export function fetchRagnarokEinherjar(player?: string): Promise<ApiRagnarokEinh
   return scheduleJSON<ApiRagnarokEinherjarResponse>(`/api/ragnarok/einherjar${qs}`);
 }
 
-/** GET /api/ragnarok/devotion/preview/:presetIndex -- READ-ONLY blast
+/** GET /api/ragnarok/devotion/preview/:squadIndex -- READ-ONLY blast
  * radius + eligibility + projection for devoting one of the CALLER's own
- * presets. Ineligibility is DATA (`eligible:false` + `reasons[]`), NOT an
- * error; only an unaddressable preset (out-of-range / malformed / no
- * profile) 404s (no-leak). Reasons vocab: mid_rite / last_preset /
- * empty_unit / deployed. */
-export function fetchRagnarokDevotionPreview(presetIndex: number): Promise<ApiRagnarokDevotionPreviewResponse> {
-  return scheduleJSON<ApiRagnarokDevotionPreviewResponse>(`/api/ragnarok/devotion/preview/${encodeURIComponent(String(presetIndex))}`);
+ * squads. Ineligibility is DATA (`eligible:false` + `reasons[]`), NOT an
+ * error; only an unaddressable squad (out-of-range / malformed / no
+ * profile) 404s (no-leak). Reasons vocab: mid_rite / last_squad /
+ * empty_squad / deployed. */
+export function fetchRagnarokDevotionPreview(squadIndex: number): Promise<ApiRagnarokDevotionPreviewResponse> {
+  return scheduleJSON<ApiRagnarokDevotionPreviewResponse>(`/api/ragnarok/devotion/preview/${encodeURIComponent(String(squadIndex))}`);
 }
 
-/** POST /api/ragnarok/devotion/:presetIndex -- THE rite, IRREVERSIBLE. No
+/** POST /api/ragnarok/devotion/:squadIndex -- THE rite, IRREVERSIBLE. No
  * request body. `idemKey` (optional) is sent as the Idempotency-Key header
  * so a retried request replays the ORIGINAL outcome (replayed:true) rather
  * than performing a second rite.
  *
  * CRITICAL, per shared/dto.ts's ApiRagnarokDevotionResponse doc: after a
- * 200 the caller's canvas was rewritten SERVER-side (preset slot deleted +
+ * 200 the caller's canvas was rewritten SERVER-side (squad slot deleted +
  * every referenced item destroyed account-wide). The client MUST re-GET
  * its profile (store.loadGame()) BEFORE its next auto-save PUT, or a stale
  * in-flight auto-save can resurrect the destroyed items (the REQ-0041
  * auto-save race class). See RagnarokPage's refreshAfterServerMutation.
  *
- * Throws ApiError(404) for an unaddressable preset (no-leak) or
- * ApiError(409) with `.reason` one of mid_rite / last_preset / empty_unit
+ * Throws ApiError(404) for an unaddressable squad (no-leak) or
+ * ApiError(409) with `.reason` one of mid_rite / last_squad / empty_squad
  * / deployed. */
-export function devoteRagnarok(presetIndex: number, idemKey?: string): Promise<ApiRagnarokDevotionResponse> {
-  return scheduleJSON<ApiRagnarokDevotionResponse>(`/api/ragnarok/devotion/${encodeURIComponent(String(presetIndex))}`, {
+export function devoteRagnarok(squadIndex: number, idemKey?: string): Promise<ApiRagnarokDevotionResponse> {
+  return scheduleJSON<ApiRagnarokDevotionResponse>(`/api/ragnarok/devotion/${encodeURIComponent(String(squadIndex))}`, {
     method: 'POST',
     ...(idemKey ? { headers: { 'Idempotency-Key': idemKey } } : {}),
   });

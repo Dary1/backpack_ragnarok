@@ -30,7 +30,7 @@ test('free PO drags from inventory grid to a legal canvas BP slot, and back', as
   const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
   // p200 (hilt, free-placed, not inside any BP) sits at inv page0 cell
-  // (4,4). Drag it onto canvas BP "gamma"'s one free non-linker cell (6,3).
+  // (4,4). Drag it onto canvas BP "gamma"'s one free non-unit cell (6,3).
   await drag(
     page,
     { x: invBox.x + cx(4), y: invBox.y + cy(4) },

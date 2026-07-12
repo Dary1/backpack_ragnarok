@@ -1,17 +1,17 @@
 // REQ-0031 Phase B -- long-press rename (E2E, input emulation), both tab
-// kinds (inventory page tabs + canvas preset tabs). Shared implementation:
+// kinds (inventory page tabs + canvas squad tabs). Shared implementation:
 // client/src/LongPressTabs.tsx (~600ms pointerdown hold with no move
 // arms an inline rename input; a plain/short click still switches).
 //
-// Persistence: renames go through engine.renameInvPage/renamePreset ->
-// store.ts's renameInventoryPage/renameActivePreset -> notifyStateChanged()
+// Persistence: renames go through engine.renameInvPage/renameSquad ->
+// store.ts's renameInventoryPage/renameActiveSquad -> notifyStateChanged()
 // -> auto-save (same debounced-PUT path as every other mutation), so a
 // rename must survive a full page reload with NO manual save action.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { autoSaveAndFetch, longPress } from './helpers';
 
-const FIXTURE_PATH = new URL('./fixtures/preset-fixture.json', import.meta.url);
+const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
 async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
@@ -49,26 +49,26 @@ test.describe('long-press rename', () => {
     expect(canvas.inv.names[2]).toBe('Materials');
   });
 
-  test('preset tab: long-press renames inline, persists after reload via auto-save', async ({ page }) => {
+  test('squad tab: long-press renames inline, persists after reload via auto-save', async ({ page }) => {
     await loadFixtureAndBoot(page);
 
-    const tab = page.locator('.preset-tab').nth(0);
+    const tab = page.locator('.squad-tab').nth(0);
     const box = (await tab.boundingBox())!;
     await longPress(page, box);
 
-    const input = page.locator('.preset-tab-rename-input');
+    const input = page.locator('.squad-tab-rename-input');
     await expect(input).toHaveCount(1);
     await input.fill('Boss Loadout');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(200);
 
-    await expect(page.locator('.preset-tab').nth(0)).toHaveText('Boss Loadout');
+    await expect(page.locator('.squad-tab').nth(0)).toHaveText('Boss Loadout');
 
     await autoSaveAndFetch(page);
     await page.reload();
     await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
     await page.waitForTimeout(400);
-    await expect(page.locator('.preset-tab').nth(0)).toHaveText('Boss Loadout');
+    await expect(page.locator('.squad-tab').nth(0)).toHaveText('Boss Loadout');
 
     const canvas = await autoSaveAndFetch(page);
     expect(canvas.presets.names[0]).toBe('Boss Loadout');

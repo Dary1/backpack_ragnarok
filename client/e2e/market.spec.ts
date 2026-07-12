@@ -290,19 +290,19 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('SELL: a deployed item is shown LOCKED (not hidden) once the server rejects listing it', async ({ page }) => {
-    // Seed the dev buyer with an item AND deploy it (assign a preset with
+    // Seed the dev buyer with an item AND deploy it (assign a squad with
     // that item to an active room slot) so the server refuses to list it.
     const canvas = devBuyerCanvas(0, [{ uid: 'e2e_dep_1', id: 'tower_shield' }]);
-    // Put a copy of the item into preset store index 1's board so the
-    // deploy gate sees it as deployed when that preset is assigned.
+    // Put a copy of the item into squad store index 1's board so the
+    // deploy gate sees it as deployed when that squad is assigned.
     canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_dep', name: 'BP', color: '#888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 500 }], pos: [{ uid: 'e2e_dep_1', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
     await page.request.put('/api/profile/dev/canvas', { data: canvas });
-    // Create a room + assign preset 1 to a slot -> the item is deployed.
+    // Create a room + assign squad 1 to a slot -> the item is deployed.
     const room = await page.request.post('/api/schedule/rooms', { data: { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' } });
     let roomId: string | null = null;
     if (room.ok()) {
       roomId = (await room.json()).room.id;
-      await page.request.put(`/api/schedule/rooms/${roomId}/slots/0`, { data: { presetIndex: 1 } });
+      await page.request.put(`/api/schedule/rooms/${roomId}/slots/0`, { data: { squadIndex: 1 } });
     }
     try {
       await gotoMarket(page);
@@ -320,9 +320,9 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
       await expect(item).toHaveAttribute('data-locked', 'true', { timeout: 10000 });
       await expect(item.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
     } finally {
-      // Fixed post-full-suite-run E2E (2026-07-07): this room's preset-1
+      // Fixed post-full-suite-run E2E (2026-07-07): this room's squad-1
       // deploy assignment used to outlive the test (no cleanup at all),
-      // permanently poisoning every LATER test's "is preset 1 deployed"
+      // permanently poisoning every LATER test's "is squad 1 deployed"
       // check for the rest of that run (ragnarok.spec.ts's BLAST
       // MANIFEST / FULL RITE / HALL STRIP all failed downstream of this
       // exact leftover, only in a full-suite run -- never running

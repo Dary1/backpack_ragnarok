@@ -71,18 +71,18 @@ function readTotalLrdstBalance(state: ReturnType<typeof useGameStore>['state']):
   return total;
 }
 
-/** Maps a linker offset [row,col] (shape-local, origin [0,0]) to the
+/** Maps a unit offset [row,col] (shape-local, origin [0,0]) to the
  * mock's coord label convention (column letter + 1-based row number,
  * e.g. [1,1] -> "B2") -- the SAME A/B/1/2/3 axis labels the mock's
  * result figure draws and the SAME scheme ShapeGrid's showCoords uses.
- * Purely a readout of the real rolled linker.off; invents nothing. */
-function linkerCoordLabel(off: [number, number]): string {
+ * Purely a readout of the real rolled unit.off; invents nothing. */
+function unitCoordLabel(off: [number, number]): string {
   const col = String.fromCharCode(65 + Math.max(0, off[1])); // 0->A, 1->B, ...
   const row = Math.max(0, off[0]) + 1; // 0-based row -> 1-based label
   return col + row;
 }
 
-/** Turns the rolled linker.dirs (0=N..7=NW, the project compass) into a
+/** Turns the rolled unit.dirs (0=N..7=NW, the project compass) into a
  * human-facing string -- reads the real dirs; no fabrication. */
 function dirsLabel(dirs: number[]): string {
   if (!dirs.length) return '—';
@@ -111,7 +111,7 @@ interface BpPlacementResult {
 /** First-fit placement for a freshly-rolled BP -- same push-check-
  * rollback pattern as WarehouseTab.tsx's firstFitPlace 'po' branch, just
  * against engine.invCanPlaceBP/invMoveBP instead of invCanPlacePO/
- * invMovePO (a BP record, unlike a PO, needs shape/linker/hpMax on the
+ * invMovePO (a BP record, unlike a PO, needs shape/unit/hpMax on the
  * placeholder, not just id/loc/cell/rot). Tries `openPage` first, then
  * every other page in ascending order -- matches the same "try the
  * currently open page first" convention WarehouseTab.tsx's claim flow
@@ -185,7 +185,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
       // records a pending row, returns it WITHOUT deducting anything.
       const res = await rollWorkshopGacha('common_bp');
       const { cost, rolled } = res;
-      // REQ-0045 (h): reveal the rolled BP's full diagram (shape + linker
+      // REQ-0045 (h): reveal the rolled BP's full diagram (shape + unit
       // + beam dirs + hpMax + cell count) as soon as the definition is
       // known -- independent of placement succeeding/failing below (the
       // roll itself already happened; the diagram is just showing the
@@ -362,7 +362,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
           <div className="rune-divider">{'ᛞ'}</div>
           <ul className="workshop-rules">
             <li>{t(locale, 'workshop.ruleCommon')}</li>
-            <li>{t(locale, 'workshop.ruleLinker')}</li>
+            <li>{t(locale, 'workshop.ruleUnit')}</li>
             <li>{t(locale, 'workshop.ruleTwoPhase')}</li>
           </ul>
         </div>
@@ -429,7 +429,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
               <div className="workshop-result-fig">
                 <BpDiagram
                   shape={rollResult.shape}
-                  linkerOff={rollResult.linker.off}
+                  unitOff={rollResult.linker.off}
                   dirs={rollResult.linker.dirs}
                   hpMax={rollResult.hpMax}
                   cellCount={rollResult.cellCount}
@@ -452,8 +452,8 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                   <span className="t-micro">{'= ' + rollResult.cellCount + ' × 15'}</span>
                 </div>
                 <div className="workshop-result-stat">
-                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statLinker')}</span>
-                  <b className="tnum">{linkerCoordLabel(rollResult.linker.off)}</b>
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnit')}</span>
+                  <b className="tnum">{unitCoordLabel(rollResult.linker.off)}</b>
                   <span className="rune" style={{ color: 'var(--gold-hi)' }}>{'ᛖ'}</span>
                 </div>
                 <div className="workshop-result-stat">

@@ -1,0 +1,13 @@
+# tools/systemd/backpack-mirror.timer -- REQ-0132
+# Install: cp to ~/.config/systemd/user/ && systemctl --user enable --now backpack-mirror.timer
+[Unit]
+Description=Run backpack_ragnarok offsite mirror every 15 minutes
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/15
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

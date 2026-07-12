@@ -201,6 +201,13 @@ button { font-family: var(--f-ui); }
 .chip.is-on{ border-color:var(--gold-lo); color:var(--gold-hi); box-shadow:inset 0 0 8px rgba(201,169,89,.15); }
 .chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--bone-3); }
 .chip.is-live .dot{ background:var(--ember-hi); box-shadow:0 0 6px var(--ember-glow); }
+/* REQ-0113: live heartbeat -- adopts styleguide §06 `pulse` (season_end_2).
+   Keyed to the one real live ("now-running") surface: the schedule Monitor live-run
+   chip (.chip.is-live, Monitor.tsx, shown while run && !settled). Gated by
+   main.tsx's data-motion flag, so e2e (webdriver) and reduced-motion keep a
+   static dot; the reduced-motion blanket below is the second guard. */
+:root[data-motion="on"] .chip.is-live .dot{ animation: mjolnir-live-pulse 1.5s ease-in-out infinite; }
+@keyframes mjolnir-live-pulse{ 50%{ opacity:.35; transform:scale(.75); } }
 
 .kw-ember{ color:var(--ember-hi); font-weight:700; }
 .kw-frost{ color:var(--frost-hi); font-weight:700; }
@@ -249,3 +256,14 @@ button { font-family: var(--f-ui); }
 @media (prefers-reduced-motion: reduce){
   *, *::before, *::after{ animation-duration:.001s !important; transition-duration:.001s !important; }
 }
+
+
+/* ---------- REQ-0112: global button FX (hover glow + click inner-light) ---------- */
+.fx-glow{ filter: drop-shadow(0 0 7px var(--fx-glow, rgba(201,169,89,.5))); }
+@keyframes fxClickFlash{
+  0%{ box-shadow: inset 0 0 0 0 rgba(0,0,0,0); }
+  28%{ box-shadow: inset 0 0 22px 2px var(--fx-glow, rgba(201,169,89,.5)); }
+  100%{ box-shadow: inset 0 0 0 0 rgba(0,0,0,0); }
+}
+.fx-click{ animation: fxClickFlash .45s ease-out; }
+@media (prefers-reduced-motion: reduce){ .fx-click{ animation-duration:.001s !important; } }

@@ -11,12 +11,12 @@ function makeEmptyInventory(){
   for(let i=0;i<5;i++)pages.push({bps:[],pos:[],sis:[],tms:[]});
   return {pages,names:['1','2','3','4','5']};
 }
-function makeEmptyPresetSlot(){
+function makeEmptySquadSlot(){
   return {linked:true,bps:[],pos:[],sis:[]};
 }
-function makePresetsMeta(){
-  return {active:0,names:['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5'],
-    store:[null,makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot(),makeEmptyPresetSlot()]};
+function makeSquadsMeta(){
+  return {active:0,names:['Squad 1','Squad 2','Squad 3','Squad 4','Squad 5'],
+    store:[null,makeEmptySquadSlot(),makeEmptySquadSlot(),makeEmptySquadSlot(),makeEmptySquadSlot()]};
 }
 const LAYOUT={"ROWS":8,"COLS":8};
 const TREES={
@@ -738,7 +738,7 @@ const SCENARIO={
 function makeState(){
  const st=JSON.parse(JSON.stringify(SCENARIO));
  st.inv=makeEmptyInventory();
- st.presets=makePresetsMeta();
+ st.presets=makeSquadsMeta();
  return st;
 }
 return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};

@@ -114,9 +114,9 @@ function triggerPrefixEN(trig) {
     case 'OnHit': return 'On hit: ';
     case 'OnPOHit': return 'On host PO hit: ';
     case 'OnBPHierarchyHit': return 'When this BP lands a hit: ';
-    case 'OnUnitHit': return 'When this unit lands a hit: ';
+    case 'OnSquadHit': return 'When this squad lands a hit: ';
     case 'OnBPBeenHit': return 'When this BP is damaged: ';
-    case 'OnUnitBeenHit': return 'When this unit is damaged: ';
+    case 'OnSquadBeenHit': return 'When this squad is damaged: ';
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
     default: return trig.t + ': ';
   }
@@ -223,9 +223,9 @@ function triggerPrefixJA(trig) {
     case 'OnHit': return '命中時: ';
     case 'OnPOHit': return '装備先POが命中した時: ';
     case 'OnBPHierarchyHit': return 'このBPが命中させた時: ';
-    case 'OnUnitHit': return '所属ユニットが命中させた時: ';
+    case 'OnSquadHit': return '所属ユニットが命中させた時: ';
     case 'OnBPBeenHit': return 'このBPが被弾した時: ';
-    case 'OnUnitBeenHit': return '所属ユニットが被弾した時: ';
+    case 'OnSquadBeenHit': return '所属ユニットが被弾した時: ';
     case 'adjacent': return '隣接する' + trig.tag + ': ';
     default: return trig.t + ': ';
   }

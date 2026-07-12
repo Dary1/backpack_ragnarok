@@ -31,9 +31,9 @@ export const FLASH_MS = 350;
 // as "pikon-pikon" -- a repeated blink does).
 export const CLAIM_PULSE_TOTAL_MS = 2000;
 export const CLAIM_PULSE_BLINK_MS = 330; // ~3 full on/off cycles across the 2s total
-// Inventory linker dormancy visual (REQ-0030): dimmed core alpha, vs the
+// Inventory unit dormancy visual (REQ-0030): dimmed core alpha, vs the
 // canvas core's alpha (0.5 stroke / 0.55 fill, see render()).
-export const INV_LINKER_ALPHA = 0.22;
+export const INV_UNIT_ALPHA = 0.22;
 
 export const CELL = 80;
 export const PAD = 38;
@@ -172,7 +172,7 @@ export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: numbe
    * (invRotatePO), REQ-0030 spec item 3: "rotate with dblclick works in
    * inventory too". */
   /** pointerdown on a BP's move-handle badge, an empty BP cell, or its
-   * linker core -- REQ-0045 (a2) double-click vs drag disambiguation,
+   * unit core -- REQ-0045 (a2) double-click vs drag disambiguation,
    * mirroring handlePOPointerDown's own manual dblclick-window bookkeeping
    * exactly (Pixi has no native dblclick event). A second pointerdown for
    * the SAME bpId within DBLCLICK_WINDOW_MS, whose first click never armed
@@ -182,10 +182,31 @@ export function fitSpriteToBox(sprite: Sprite, bx: number, by: number, bw: numbe
    * map from PO's own lastPointerDown -- see that field's doc) so a BP id
    * and a PO uid sharing the same literal string can never cross-trigger
    * each other's double-click. This handler is the ONE place all three
-   * BP-drag entry points (move-handle badge, empty-cell handles, linker
+   * BP-drag entry points (move-handle badge, empty-cell handles, unit
    * core) route through -- POs keep their OWN separate dblclick handling
    * (handlePOPointerDown) entirely untouched, so a click landing on a PO
    * that happens to sit on top of a BP cell is never intercepted here
    * (call sites only wire this handler to BP-only hit areas: the badge,
-   * empty cells with no PO, and the linker core circle, never a PO's own
+   * empty cells with no PO, and the unit core circle, never a PO's own
    * sprite/hit-shape). */
+
+
+/** Inverse of clientToLocal for a board-local pixel box (REQ-0119): maps a
+ * (x,y,w,h) rect in this board's OWN local coordinate space to a viewport
+ * (client) pixel rect, accounting for the canvas's CSS scale + renderer
+ * resolution exactly as clientToLocal does, so the two round-trip. Used to
+ * anchor the floating item tooltip (an HTML overlay, FloatingItemTip.tsx)
+ * to a tapped PixiJS icon. */
+export function localBoxToClient(
+  self: BoardRenderer,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): { left: number; top: number; width: number; height: number } {
+  const rect = self.app.canvas.getBoundingClientRect();
+  const res = self.app.renderer.resolution || 1;
+  const sx = self.app.canvas.width ? (rect.width * res) / self.app.canvas.width : 1;
+  const sy = self.app.canvas.height ? (rect.height * res) / self.app.canvas.height : 1;
+  return { left: rect.left + x * sx, top: rect.top + y * sy, width: w * sx, height: h * sy };
+}

@@ -438,7 +438,7 @@ html, body {
 }
 
 /* REQ-0031 Phase B: title + tab row, shared by BOTH the Canvas column
-   (title + PresetTabs) and the Inventory column (title + Tabs) -- tabs
+   (title + SquadTabs) and the Inventory column (title + Tabs) -- tabs
    are right-aligned in the SAME row as the label, per the task's
    verbatim UI change request. */
 /* REQ-0070: the mock's .stagehead -- title in the display serif with the
@@ -468,24 +468,24 @@ html, body {
 }
 
 .inv-tabs,
-.preset-tabs {
+.squad-tabs {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.preset-tabs-row {
+.squad-tabs-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* REQ-0070: canvas preset tabs restyled as the mock's boardfoot .preset
+/* REQ-0070: canvas squad tabs restyled as the mock's boardfoot .squad
    pills; inventory page tabs as the mock's .pg page tabs. Class names,
    DOM structure and every gesture (click / long-press rename /
    drag-reorder / trash-drop) are unchanged -- LongPressTabs.tsx knows
    nothing about any of this. */
-.preset-tab {
+.squad-tab {
   background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.8));
   color: var(--bone-2);
   border: 1px solid var(--border-lo);
@@ -498,12 +498,12 @@ html, body {
   white-space: nowrap;
 }
 
-.preset-tab:hover {
+.squad-tab:hover {
   border-color: var(--gold-lo);
   color: var(--gold-hi);
 }
 
-.preset-tab-active {
+.squad-tab-active {
   color: var(--gold-hi);
   border-color: var(--gold-lo);
   background: linear-gradient(180deg, rgba(201, 169, 89, 0.13), rgba(19, 24, 32, 0.7));
@@ -537,7 +537,7 @@ html, body {
 /* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
    button in place, same box footprint, so the tab row doesn't jump. */
 .inv-tab-rename-input,
-.preset-tab-rename-input {
+.squad-tab-rename-input {
   background: #0c1016;
   color: var(--bone);
   border: 1px solid var(--gold);
@@ -548,7 +548,7 @@ html, body {
   width: 84px;
 }
 
-.preset-add-btn {
+.squad-add-btn {
   background: transparent;
   color: var(--bone-2);
   border: 1px dashed var(--gold-lo);
@@ -560,12 +560,12 @@ html, body {
   white-space: nowrap;
 }
 
-.preset-add-btn:hover {
+.squad-add-btn:hover {
   border-color: var(--gold);
   color: var(--gold-hi);
 }
 
-/* REQ-0032 -- drag-to-reorder + preset trash-drop-zone. */
+/* REQ-0032 -- drag-to-reorder + squad trash-drop-zone. */
 
 /* Canvas board's .board-wrap needs position:relative so the trash overlay
    (position:absolute) centers over exactly this box, not the page --
@@ -595,9 +595,9 @@ html, body {
   border-radius: 2px;
 }
 
-/* Trash-drop-zone overlay (PresetTrashZone.tsx) -- centered over the
-   Canvas board, visible ONLY for the duration of a preset-tab drag. */
-.preset-trash-zone {
+/* Trash-drop-zone overlay (SquadTrashZone.tsx) -- centered over the
+   Canvas board, visible ONLY for the duration of a squad-tab drag. */
+.squad-trash-zone {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -621,29 +621,29 @@ html, body {
   z-index: 20;
 }
 
-.preset-trash-zone-icon {
+.squad-trash-zone-icon {
   font-size: 34px;
   line-height: 1;
 }
 
-.preset-trash-zone-label {
+.squad-trash-zone-label {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 /* Brief inline feedback when a trash-drop delete is refused (last
-   remaining preset) -- see store.ts's presetDeleteRefused /
-   schedulePresetDeleteRefusedClear(). A short shake draws the eye without
+   remaining squad) -- see store.ts's squadDeleteRefused /
+   scheduleSquadDeleteRefusedClear(). A short shake draws the eye without
    needing a toast library. */
-.preset-delete-refused {
+.squad-delete-refused {
   font-size: 12px;
   font-weight: 600;
   color: var(--bad);
-  animation: preset-delete-refused-shake 0.4s ease-in-out;
+  animation: squad-delete-refused-shake 0.4s ease-in-out;
 }
 
-@keyframes preset-delete-refused-shake {
+@keyframes squad-delete-refused-shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
@@ -996,11 +996,11 @@ html, body {
   box-shadow: inset 0 0 0 2px var(--cyan);
 }
 
-.shape-grid-cell-linker {
+.shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 0 4px #0e0d0b;
 }
 
-.shape-grid-cell-linker::after {
+.shape-grid-cell-unit::after {
   content: '';
   position: absolute;
   inset: 6px;
@@ -2139,7 +2139,7 @@ html, body {
   letter-spacing: 0.22em;
 }
 
-.schedule-slots-no-presets {
+.schedule-slots-no-squads {
   color: #e06b5f;
   font-size: 12px;
   margin-bottom: 8px;
@@ -2738,10 +2738,10 @@ html, body {
 .workshop-result-fig .shape-grid-cell-shape {
   background: #3a3229;
 }
-.workshop-result-fig .shape-grid-cell-linker {
+.workshop-result-fig .shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px #14100a;
 }
-.workshop-result-fig .shape-grid-cell-linker::after {
+.workshop-result-fig .shape-grid-cell-unit::after {
   background: var(--gold);
   opacity: 0.55;
 }
@@ -3655,7 +3655,7 @@ html, body {
 
 /* REQ-0071: shared toast (warehouse claim / workshop roll) adopts the
    night-iron + gold voice -- free shared chrome; the Warehouse tab own
-   full restyle is REQ-0072 unit. */
+   full restyle is REQ-0072 squad. */
 .schedule-toast {
   background: linear-gradient(180deg, rgba(27, 34, 45, 0.92), rgba(19, 24, 32, 0.92));
   color: var(--gold-hi);
@@ -3666,6 +3666,14 @@ html, body {
   letter-spacing: 0.04em;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
+
+/* REQ-0113: toast entrance -- adopts styleguide §06 `toastin` (ui.css). The
+   shared single-message toast (.schedule-toast: workshop / market-sell /
+   warehouse claim / dismantle) rises + fades in once. Single-message-at-a-time already
+   holds (each page keeps one toast in state). Gated by data-motion, so e2e
+   and reduced-motion show it instantly (no entrance). */
+:root[data-motion="on"] .schedule-toast{ animation: schedule-toast-in .28s ease-out both; }
+@keyframes schedule-toast-in{ from{ transform:translateY(10px); opacity:0; } }
 
 /* ---------------------------------------------------------------------
    REQ-0070 -- MJOLNIR canvas page (mock: web/redesign/canvas.html).
@@ -3759,8 +3767,8 @@ html, body {
   place-items: center;
 }
 
-/* boardfoot: preset tabs + auto-save seal INSIDE the canvas stage
-   (mock .boardfoot). The preset tabs themselves are the same
+/* boardfoot: squad tabs + auto-save seal INSIDE the canvas stage
+   (mock .boardfoot). The squad tabs themselves are the same
    LongPressTabs instance that used to sit in the title row. */
 .boardfoot {
   display: flex;
@@ -3769,7 +3777,7 @@ html, body {
   margin-top: 12px;
 }
 
-.boardfoot .preset-tabs-row {
+.boardfoot .squad-tabs-row {
   flex: 1;
   min-width: 0;
   flex-wrap: wrap;
@@ -4815,6 +4823,20 @@ html, body {
 }
 .ragnarok-page > * { position: relative; z-index: 1; }
 
+/* REQ-0113: ceremonial entrance -- adopts styleguide §06 `rise`
+   (ragnarok / season_end_*). The Hall of Ragnarok's primary blocks rise +
+   fade in, lightly staggered, as the screen "opens" as a ceremonial reveal. The
+   fixed background art (.ragnarok-bgart) is excluded; the stagger is capped
+   (~.24s). Gated by data-motion: OFF under webdriver (e2e byte-identical)
+   and reduced-motion, where fill-mode:both would otherwise hold elements
+   hidden during their delay. */
+:root[data-motion="on"] .ragnarok-page > *:not(.ragnarok-bgart){ animation: ragnarok-rise .5s ease-out both; }
+:root[data-motion="on"] .ragnarok-page > *:nth-child(n+4){ animation-delay:.06s; }
+:root[data-motion="on"] .ragnarok-page > *:nth-child(n+6){ animation-delay:.12s; }
+:root[data-motion="on"] .ragnarok-page > *:nth-child(n+8){ animation-delay:.18s; }
+:root[data-motion="on"] .ragnarok-page > *:nth-child(n+10){ animation-delay:.24s; }
+@keyframes ragnarok-rise{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:none; } }
+
 /* ---------- hero + pledge ---------- */
 .ragnarok-hero { text-align: center; padding: 40px 20px 6px; }
 .ragnarok-hero-mark { width: 52px; height: 44px; margin: 0 auto 8px; display: block; opacity: .95; }
@@ -4917,7 +4939,7 @@ html, body {
 .ragnarok-cand-nm { font-family: var(--f-dj); font-weight: 700; font-size: 15px; flex: 1; }
 .ragnarok-cand-meta { font-size: 11px; color: var(--bone-3); }
 /* LOCKED, not hidden (REQ-0067, mirrors the market's language): an
-   ineligible unit still shows, dimmed, with its reason spelled out. */
+   ineligible squad still shows, dimmed, with its reason spelled out. */
 .ragnarok-cand.is-locked { cursor: not-allowed; opacity: .55; }
 .ragnarok-cand.is-locked:hover { border-color: var(--border-lo); }
 .ragnarok-cand-lock { font-family: var(--f-den); font-size: 10px; letter-spacing: .16em; color: var(--blood); border: 1px solid rgba(176,65,62,.5); border-radius: 2px; padding: 1px 5px; }
@@ -5185,3 +5207,188 @@ html, body {
 .workshop-dismantle-clear-btn{ background:none; border:none; padding:0; margin:0; font:inherit; color:var(--gold); cursor:pointer; text-decoration:underline; }
 .workshop-dismantle-clear-btn:hover{ color:var(--gold-hi); }
 
+
+/* REQ-0099: settled-run replay transport (mock ctrl bar's play / 1x2x4x / skip). */
+.schedule-monitor-transport { display: inline-flex; align-items: center; gap: 6px; margin-right: 8px; }
+.schedule-monitor-play {
+  min-width: 26px; height: 22px; padding: 0 6px; cursor: pointer; line-height: 1;
+  background: transparent; color: #e8e0d0;
+  border: 1px solid rgba(233, 227, 211, 0.28); border-radius: 3px;
+}
+.schedule-monitor-play:hover { border-color: rgba(233, 227, 211, 0.5); }
+.schedule-monitor-speed { cursor: pointer; }
+.schedule-monitor-speed.is-on { border-color: #8cdcf5; color: #8cdcf5; }
+.schedule-monitor-skip-end { cursor: pointer; white-space: nowrap; }
+.schedule-monitor-timeline-scrub { cursor: pointer; }
+/* ============================================================
+   REQ-0108 — Dex master/detail inline expand. The catalog grid is the
+   single list (master); selecting a .dex-card rings it and inserts a
+   full-width [diagram | info] drawer after it in the grid. The former
+   .dex-detail-col-list rail is gone; the two panes reuse the existing
+   .dex-detail-col-diagram / .dex-detail-col-info panel styles.
+   ============================================================ */
+.dex-card-selected {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.dex-detail-drawer {
+  grid-column: 1 / -1;
+  margin: 4px 0 12px;
+}
+.dex-detail-drawer-panes {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .dex-detail-drawer-panes {
+    flex-direction: column;
+  }
+  .dex-detail-drawer-panes > .dex-detail-col-diagram,
+  .dex-detail-drawer-panes > .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* ---- REQ-0119: floating item tooltip panel (single-tap on a board item
+   icon). A faithful copy of web/redesign/styleguide.html's tooltip anatomy
+   (assets/ui.css's .tooltip / .tt-*), replicated under a NEW class name:
+   the plain `.tooltip` is already taken above by ItemPanel's older desktop
+   hover tooltip (see its note), so reusing it would collide. Rendered by
+   FloatingItemTip.tsx; left/top set in JS (position:fixed, edge-flipped). */
+.item-tip {
+  position: fixed;
+  z-index: 150;
+  width: 264px;
+  max-width: min(264px, 78vw);
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--bone-2);
+  pointer-events: auto;
+}
+.item-tip-name {
+  font-family: var(--f-dj);
+  font-size: 16px;
+  font-weight: 700;
+}
+.item-tip-tags {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.item-tip-stat {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.item-tip-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  margin-top: 8px;
+  font-family: var(--f-dj);
+}
+.item-tip-sell {
+  color: var(--gold);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* ============================================================
+   REQ-0120 - Dex master/detail SPLIT (supersedes the REQ-0108 inline
+   drawer above; those .dex-detail-drawer rules are now dead - no DOM
+   references them - and are left only to avoid churn). The catalog area
+   is split into .dex-md = [ .dex-md-list (master: colhead + controls +
+   grid + TM strip) | .dex-md-detail (persistent <DexDetail>) ].
+   Orientation-driven per the owner spec (2026-07-09):
+     - landscape - left = list / right = detail, 50 / 50. The detail pane
+       is sticky (clears the 50px sticky .app-header) and scrolls on its
+       own, so the list scrolls independently while the detail stays put.
+     - portrait  - stacked, top = detail / bottom = list (via order); the
+       detail is height-capped so the list is reachable in one screenful.
+   Dex.tsx preselects index=0, so a detail is always shown on load.
+   ============================================================ */
+.dex-md {
+  display: grid;
+  grid-template-columns: 1fr; /* refined per-orientation below */
+  gap: 16px;
+  align-items: start; /* required so the sticky detail column can travel */
+}
+.dex-md-list {
+  min-width: 0;
+}
+.dex-md-detail {
+  min-width: 0;
+}
+
+/* The detail pane holds <DexDetail>'s [diagram | info] panes. In the split
+   the detail column is ~half width, so always STACK them (diagram over
+   info) and let the column itself be the single scroll container (drop the
+   panes' own 80vh + overflow so there are no nested scrollbars). */
+.dex-md-detail .dex-detail-drawer-panes {
+  flex-direction: column;
+}
+.dex-md-detail .dex-detail-col-diagram,
+.dex-md-detail .dex-detail-col-info {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+}
+
+.dex-detail-empty {
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--bone-3);
+  border: 1px dashed rgba(233, 227, 211, 0.2);
+  border-radius: 4px;
+}
+
+@media (orientation: landscape) {
+  .dex-md {
+    grid-template-columns: 1fr 1fr; /* 50 / 50 (owner choice 2026-07-09) */
+  }
+  .dex-md-detail {
+    position: sticky;
+    top: 58px; /* clear the 50px sticky .app-header + a small gap */
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+  }
+}
+
+@media (orientation: portrait) {
+  .dex-md {
+    grid-template-columns: 1fr;
+  }
+  .dex-md-detail {
+    order: 0; /* top */
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .dex-md-list {
+    order: 1; /* bottom */
+  }
+}
+
+/* REQ-0097: schedule 3-column master/detail (rooms list | shared monitor | spoils). */
+.schedule-master-detail { display: grid; grid-template-columns: minmax(280px, 360px) 1fr minmax(200px, 300px); gap: 16px; align-items: start; }
+.schedule-rooms-col { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.schedule-detail-pane { min-width: 0; position: sticky; top: 12px; }
+.schedule-detail-empty { padding: 24px; text-align: center; opacity: 0.6; border: 1px dashed rgba(233, 227, 211, 0.2); border-radius: 4px; }
+.schedule-spoils-col { min-width: 0; }
+.schedule-spoils-col-title { margin-bottom: 8px; }
+.schedule-rooms-col .schedule-room-card { cursor: pointer; }
+@media (max-width: 1000px) {
+  .schedule-master-detail { grid-template-columns: 1fr; }
+  .schedule-detail-pane { position: static; }
+}

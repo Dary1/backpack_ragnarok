@@ -6,11 +6,14 @@
 //      grid with the icon mounted on the anchor cell -- ShapeGrid.tsx,
 //      reused, DOM-based per dexIcons.ts's module comment), not as a
 //      bare <img> icon.
-//   2. Selecting a card no longer expands it inline -- it switches the
-//      WHOLE view into the two-pane detail layout (DexDetail.tsx: large
-//      diagram left, item list right), a distinct mode from the catalog
-//      grid, per the task spec's "Detail screen splits into two big
-//      panes" (not an inline-expansion overlay on the catalog anymore).
+//   2. Selecting a card fills a persistent DETAIL pane shown alongside
+//      the catalog grid -- a master/detail SPLIT (REQ-0120). Landscape
+//      splits the catalog area left=list / right=detail; portrait stacks
+//      it top=detail / bottom=list. The detail pane is sticky and scrolls
+//      independently in landscape (see index.css .dex-md*). index=0 is
+//      preselected on load, so a detail is always shown. This supersedes
+//      the REQ-0108 inline drawer (detail expanded under the clicked card)
+//      and the older REQ-0038 whole-view [list | diagram | info] swap.
 //
 // REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html):
 // presentation-only rewrite of the render tree. Dex v2 BEHAVIOR is
@@ -134,27 +137,33 @@ interface DexProps {
    * selectedId state straight to it (bypassing the catalog grid) on
    * mount/change, then clears it via clearDexFocusId() so it does not
    * keep re-forcing a jump on later, unrelated re-renders (e.g. the
-   * user then clicking "Back to list" and browsing normally). */
+   * user then clicking another card and browsing normally). */
   dexFocusId?: string | null;
 }
 
-const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchPresets'];
+const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchSquads'];
 
 export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const [query, setQuery] = useState('');
   const [rarityFilter, setRarityFilter] = useState<string>('');
   const [tagFilter, setTagFilter] = useState<string>('');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // REQ-0120: master/detail always shows a detail, so index=0 is
+  // preselected on load. Seed the selection lazily with the first combined
+  // entry so the detail pane is populated on the very first paint (no empty
+  // flash); the dexFocusId deep-link effect below still overrides it when a
+  // '#/dex/<id>' hash is pending, and the validity effect keeps it in sync
+  // with the active filter.
+  const [selectedId, setSelectedId] = useState<string | null>(() => combineEntries(payload)[0]?.id ?? null);
   const { openCard } = useDexCard(); // REQ-0052
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
 
   // REQ-0052: honor a pending Dex deep-link (see DexProps.dexFocusId's
-  // doc) -- jump straight to that entry's detail view once, then clear
-  // the store field so it is a true one-shot (matches the store's own
+  // doc) -- jump straight to that entry's detail once, then clear the
+  // store field so it is a true one-shot (matches the store's own
   // welcomeBanner/dexFocusId "consume once" convention elsewhere).
   // Guarded on the id actually existing in this payload's entries (a
-  // stale/garbage deep-link degrades to the plain catalog grid, same
+  // stale/garbage deep-link degrades to the index=0 default below, same
   // "unknown id -> safe fallback, never a crash" posture as
   // routeFromHash's own unknown-route fallback).
   useEffect(() => {
@@ -205,6 +214,20 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
     });
   }, [entries, query, rarityFilter, tagFilter]);
 
+  // REQ-0120: keep the selection valid as filters change and default to
+  // index=0 of the current result set. Functional updater so it composes
+  // with the dexFocusId effect above (a pending deep-link id -- already in
+  // `filtered`, since it exists in entries and the default filter matches
+  // everything -- is preserved rather than reset to index 0).
+  useEffect(() => {
+    setSelectedId((cur) => (cur && filtered.some((e) => e.id === cur) ? cur : filtered[0]?.id ?? null));
+  }, [filtered]);
+
+  // REQ-0120: the entry whose detail the right (landscape) / top (portrait)
+  // pane shows. Always a member of `filtered` thanks to the effect above;
+  // null only when the active filter yields no matches (empty prompt shown).
+  const selectedEntry = useMemo(() => filtered.find((e) => e.id === selectedId) ?? null, [filtered, selectedId]);
+
   // REQ-0075: collection progress readout (mock 収集 N / total + gold
   // bar). This is a read-only wiki over the FULL content catalog -- there
   // is no per-player "discovered" set in the data model (undiscovered
@@ -216,29 +239,14 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const collectedPages = totalPages; // no discovery gating exists (documented)
   const progressPct = totalPages > 0 ? (collectedPages / totalPages) * 100 : 0;
 
-  // REQ-0038: selecting a card switches the whole view into the two-pane
-  // detail layout -- the list shown there is `filtered` (so the current
-  // search/filter selection carries over into the detail right-pane
-  // list), not the full unfiltered `entries`.
-  if (selectedId) {
-    return (
-      <div className="dex-view">
-        <DexDetail
-          entries={filtered}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          onBack={() => setSelectedId(null)}
-          locale={locale}
-          tagTree={payload.trees.po}
-          registry={payload.registry}
-          dexNos={dexNos}
-        />
-      </div>
-    );
-  }
+  // REQ-0120: master/detail split. The catalog grid (master) and the
+  // persistent <DexDetail> pane sit inside .dex-md, side by side in
+  // landscape (left=list / right=detail, detail sticky + independently
+  // scrollable) or stacked in portrait (top=detail / bottom=list).
+  // Selecting a card just retargets the pane (no view swap, no drawer).
 
   return (
-    <div className="dex-view">
+    <div className="dex-view dex-md-view">
       {/* REQ-0075: page header (mock .pagehead) -- kicker / hall title /
           lede, then a rune divider. Mirrors the sibling ports' pagehead
           strip (SchedulePage/CanvasChrome). */}
@@ -298,171 +306,200 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
         ))}
       </div>
 
-      {/* Catalog section head (mock .colhead). */}
-      <div className="dex-colhead">
-        <span className="dex-colhead-rn rune">ᚲ</span>
-        <h2 className="dj dex-colhead-title">{t(locale, 'dex.catalogTitle')}</h2>
-        <span className="den dex-colhead-den">{t(locale, 'dex.catalogDen')}</span>
-        <span className="dex-colhead-grow" />
-        <span className="t-micro">{t(locale, 'dex.catalogNote')}</span>
-      </div>
-
-      <div className="dex-controls">
-        <input
-          type="text"
-          className="dex-search"
-          placeholder={t(locale, 'dex.searchPlaceholder')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <select className="dex-filter" value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)}>
-          <option value="">{t(locale, 'dex.rarityAll')}</option>
-          {rarities.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-        <select className="dex-filter" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
-          <option value="">{t(locale, 'dex.tagAll')}</option>
-          {tags.map((tag) => (
-            <option key={tag} value={tag}>
-              {tag}
-            </option>
-          ))}
-        </select>
-        <span className="dex-count">
-          {filtered.length} / {entries.length}
-        </span>
-      </div>
-
-      <div className="dex-grid dgrid">
-        {filtered.map((e) => {
-          const icon = iconDataUrl(e.entry.icon);
-          const no = dexNos[e.id];
-          const cat = categoryOf(e);
-          const displayName = locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry);
-          return (
-            <div key={e.id} className={`dex-card dcard rar ${rarThemeClass(e.entry.rarity)}`}>
-              <button
-                type="button"
-                className="dex-card-summary dcard-btn"
-                onClick={() => setSelectedId(e.id)}
-              >
-                <span className="gem" aria-hidden="true" />
-                {no != null ? (
-                  <span className="dex-card-no no t-micro tnum">No.{String(no).padStart(3, '0')}</span>
-                ) : (
-                  <span className="dex-card-no dex-card-no-kind t-micro">{e.kind === 'po' ? 'PO' : 'SI'}</span>
-                )}
-                <span className="dex-card-shape dthumb">
-                  {/* REQ-0103: cellPx 20 -> 40. The .dthumb well is a fixed
-                      96px tall (index.css) regardless of the item's own
-                      shape, so at the old cellPx=20 a 1-cell item (most
-                      SIs) rendered a mere 20x20 icon in that well -- ~80%
-                      empty space, barely visible. 40px lets a 1-cell item
-                      fill ~half the well and the largest current shape
-                      (2x2, tower_shield/beast_jaw) fill nearly all of it,
-                      still on ONE shared scale so relative real-world size
-                      between cards is preserved (a 2x2 item still reads as
-                      2x a 1x1 item) -- just not independently max-fit per
-                      card (that would erase the size comparison). */}
-                  <ShapeGrid
-                    shape={shapeOf(e.entry)}
-                    cellPx={40}
-                    iconUrl={icon}
-                    iconAlt={e.entry.icon}
-                    iconDims={iconDims(e.entry.icon)}
-                    iconStretch={stretchOf(e.entry)}
-                    iconAlign={alignOf(e.entry)}
-                  />
-                </span>
-                <div className="dex-card-summary-text">
-                  <div className="dex-card-name dname">{displayName}</div>
-                  <div className="dex-card-sub dsub">
-                    {cat ? <span className="dex-card-cat">{cat}</span> : null}
-                    <span className="dex-card-enname">{nameOf(e.entry).toUpperCase()}</span>
-                  </div>
-                  <div className="dex-card-meta dfoot">
-                    <span className={`rar-word rarity r-${e.entry.rarity}`}>{e.entry.rarity.toUpperCase()}</span>
-                    <span className="dex-card-id">{e.id}</span>
-                    <span className="dex-card-kind">{e.kind === 'po' ? 'PO' : 'SI'}</span>
-                  </div>
-                </div>
-              </button>
-              {/* REQ-0052: Dex card subwindow preview trigger -- opens
-                  the SAME entry's card via the shared API+window
-                  (DexCardWindow.tsx) WITHOUT navigating away from the
-                  catalog grid, distinct from the button above (which
-                  still does the pre-existing onSelect -> full detail-
-                  view switch, UNCHANGED). stopPropagation so a click
-                  here never also fires the summary button underneath. */}
-              <button
-                type="button"
-                className="dex-card-preview-btn"
-                data-testid="dex-card-preview-btn"
-                aria-label={t(locale, 'dexcard.previewAria')}
-                title={t(locale, 'dexcard.previewAria')}
-                onClick={(ev) => {
-                  ev.stopPropagation();
-                  openCard(e.kind === 'po' ? 'item' : 'si', e.id);
-                }}
-              >
-                <span aria-hidden="true">i</span>
-              </button>
-            </div>
-          );
-        })}
-        {filtered.length === 0 ? <div className="dex-empty">{t(locale, 'dex.noMatch')}</div> : null}
-      </div>
-
-      {/* REQ-0042: TM (Transmutator) catalog strip -- display-only, see
-          tmEntries()'s module comment for why this is deliberately NOT
-          folded into the main selectable PO/SI dex-grid above. */}
-      {tms.length > 0 ? (
-        <div className="dex-tm-section">
-          <div className="dex-colhead dex-tm-colhead">
-            <span className="dex-colhead-rn rune">ᚠ</span>
-            <h2 className="dj dex-colhead-title dex-tm-section-title">{t(locale, 'dex.tmSectionTitle')}</h2>
+      {/* REQ-0120: master/detail split container. Orientation-driven in
+          index.css: landscape = [list | detail], portrait = [detail / list]. */}
+      <div className="dex-md">
+        <div className="dex-md-list">
+          {/* Catalog section head (mock .colhead). */}
+          <div className="dex-colhead">
+            <span className="dex-colhead-rn rune">ᚲ</span>
+            <h2 className="dj dex-colhead-title">{t(locale, 'dex.catalogTitle')}</h2>
+            <span className="den dex-colhead-den">{t(locale, 'dex.catalogDen')}</span>
+            <span className="dex-colhead-grow" />
+            <span className="t-micro">{t(locale, 'dex.catalogNote')}</span>
           </div>
-          <div className="dex-tm-grid dgrid">
-            {tms.map((tmEntry) => {
-              const icon = iconDataUrl(tmEntry.icon);
+
+          <div className="dex-controls">
+            <input
+              type="text"
+              className="dex-search"
+              placeholder={t(locale, 'dex.searchPlaceholder')}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <select className="dex-filter" value={rarityFilter} onChange={(e) => setRarityFilter(e.target.value)}>
+              <option value="">{t(locale, 'dex.rarityAll')}</option>
+              {rarities.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <select className="dex-filter" value={tagFilter} onChange={(e) => setTagFilter(e.target.value)}>
+              <option value="">{t(locale, 'dex.tagAll')}</option>
+              {tags.map((tag) => (
+                <option key={tag} value={tag}>
+                  {tag}
+                </option>
+              ))}
+            </select>
+            <span className="dex-count">
+              {filtered.length} / {entries.length}
+            </span>
+          </div>
+
+          <div className="dex-grid dgrid">
+            {filtered.map((e) => {
+              const icon = iconDataUrl(e.entry.icon);
+              const no = dexNos[e.id];
+              const cat = categoryOf(e);
+              const displayName = locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry);
+              const isSel = e.id === selectedId;
               return (
-                <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
-                  <span className="gem" aria-hidden="true" />
-                  <span className="dex-card-shape dthumb">
-                    {/* REQ-0103: matches the catalog grid's cellPx bump
-                        above -- same .dthumb well, kept in sync. */}
-                    <ShapeGrid
-                      shape={[[0, 0]]}
-                      cellPx={40}
-                      iconUrl={icon}
-                      iconAlt={tmEntry.icon}
-                      iconDims={iconDims(tmEntry.icon)}
-                    />
-                  </span>
-                  <div className="dex-card-summary-text">
-                    <div className="dex-card-name dname">
-                      {locale === 'ja' ? tmEntry.name_ja || tmEntry.name : tmEntry.name}
+                <div
+                  key={e.id}
+                  className={`dex-card dcard rar ${rarThemeClass(e.entry.rarity)}${isSel ? ' dex-card-selected' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="dex-card-summary dcard-btn"
+                    aria-pressed={isSel}
+                    onClick={() => setSelectedId(e.id)}
+                  >
+                    <span className="gem" aria-hidden="true" />
+                    {no != null ? (
+                      <span className="dex-card-no no t-micro tnum">No.{String(no).padStart(3, '0')}</span>
+                    ) : (
+                      <span className="dex-card-no dex-card-no-kind t-micro">{e.kind === 'po' ? 'PO' : 'SI'}</span>
+                    )}
+                    <span className="dex-card-shape dthumb">
+                      {/* REQ-0103: cellPx 20 -> 40. The .dthumb well is a fixed
+                          96px tall (index.css) regardless of the item's own
+                          shape, so at the old cellPx=20 a 1-cell item (most
+                          SIs) rendered a mere 20x20 icon in that well -- ~80%
+                          empty space, barely visible. 40px lets a 1-cell item
+                          fill ~half the well and the largest current shape
+                          (2x2, tower_shield/beast_jaw) fill nearly all of it,
+                          still on ONE shared scale so relative real-world size
+                          between cards is preserved (a 2x2 item still reads as
+                          2x a 1x1 item) -- just not independently max-fit per
+                          card (that would erase the size comparison). */}
+                      <ShapeGrid
+                        shape={shapeOf(e.entry)}
+                        cellPx={40}
+                        iconUrl={icon}
+                        iconAlt={e.entry.icon}
+                        iconDims={iconDims(e.entry.icon)}
+                        iconStretch={stretchOf(e.entry)}
+                        iconAlign={alignOf(e.entry)}
+                      />
+                    </span>
+                    <div className="dex-card-summary-text">
+                      <div className="dex-card-name dname">{displayName}</div>
+                      <div className="dex-card-sub dsub">
+                        {cat ? <span className="dex-card-cat">{cat}</span> : null}
+                        <span className="dex-card-enname">{nameOf(e.entry).toUpperCase()}</span>
+                      </div>
+                      <div className="dex-card-meta dfoot">
+                        <span className={`rar-word rarity r-${e.entry.rarity}`}>{e.entry.rarity.toUpperCase()}</span>
+                        <span className="dex-card-id">{e.id}</span>
+                        <span className="dex-card-kind">{e.kind === 'po' ? 'PO' : 'SI'}</span>
+                      </div>
                     </div>
-                    <div className="dex-card-sub dsub">
-                      <span className="dex-card-cat">{tmEntry.short || 'TM'}</span>
-                      <span className="dex-card-enname">{tmEntry.name.toUpperCase()}</span>
-                    </div>
-                    <div className="dex-card-meta dfoot">
-                      <span className={`rar-word rarity r-${tmEntry.rarity}`}>{tmEntry.rarity.toUpperCase()}</span>
-                      <span className="dex-card-id">{tmEntry.id}</span>
-                      <span className="dex-card-kind">TM</span>
-                      {tmEntry.stackable ? <span className="dex-tm-stackable">{t(locale, 'dex.tmStackable')}</span> : null}
-                    </div>
-                  </div>
+                  </button>
+                  {/* REQ-0052: Dex card subwindow preview trigger -- opens
+                      the SAME entry's card via the shared API+window
+                      (DexCardWindow.tsx) WITHOUT changing the master/detail
+                      selection, distinct from the summary button above
+                      (which retargets the detail pane). stopPropagation so a
+                      click here never also fires the summary button. */}
+                  <button
+                    type="button"
+                    className="dex-card-preview-btn"
+                    data-testid="dex-card-preview-btn"
+                    aria-label={t(locale, 'dexcard.previewAria')}
+                    title={t(locale, 'dexcard.previewAria')}
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      openCard(e.kind === 'po' ? 'item' : 'si', e.id);
+                    }}
+                  >
+                    <span aria-hidden="true">i</span>
+                  </button>
                 </div>
               );
             })}
+            {filtered.length === 0 ? <div className="dex-empty">{t(locale, 'dex.noMatch')}</div> : null}
           </div>
+
+          {/* REQ-0042: TM (Transmutator) catalog strip -- display-only, see
+              tmEntries()'s module comment for why this is deliberately NOT
+              folded into the main selectable PO/SI dex-grid above. */}
+          {tms.length > 0 ? (
+            <div className="dex-tm-section">
+              <div className="dex-colhead dex-tm-colhead">
+                <span className="dex-colhead-rn rune">ᚠ</span>
+                <h2 className="dj dex-colhead-title dex-tm-section-title">{t(locale, 'dex.tmSectionTitle')}</h2>
+              </div>
+              <div className="dex-tm-grid dgrid">
+                {tms.map((tmEntry) => {
+                  const icon = iconDataUrl(tmEntry.icon);
+                  return (
+                    <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
+                      <span className="gem" aria-hidden="true" />
+                      <span className="dex-card-shape dthumb">
+                        {/* REQ-0103: matches the catalog grid's cellPx bump
+                            above -- same .dthumb well, kept in sync. */}
+                        <ShapeGrid
+                          shape={[[0, 0]]}
+                          cellPx={40}
+                          iconUrl={icon}
+                          iconAlt={tmEntry.icon}
+                          iconDims={iconDims(tmEntry.icon)}
+                        />
+                      </span>
+                      <div className="dex-card-summary-text">
+                        <div className="dex-card-name dname">
+                          {locale === 'ja' ? tmEntry.name_ja || tmEntry.name : tmEntry.name}
+                        </div>
+                        <div className="dex-card-sub dsub">
+                          <span className="dex-card-cat">{tmEntry.short || 'TM'}</span>
+                          <span className="dex-card-enname">{tmEntry.name.toUpperCase()}</span>
+                        </div>
+                        <div className="dex-card-meta dfoot">
+                          <span className={`rar-word rarity r-${tmEntry.rarity}`}>{tmEntry.rarity.toUpperCase()}</span>
+                          <span className="dex-card-id">{tmEntry.id}</span>
+                          <span className="dex-card-kind">TM</span>
+                          {tmEntry.stackable ? (
+                            <span className="dex-tm-stackable">{t(locale, 'dex.tmStackable')}</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
-      ) : null}
+
+        {/* REQ-0120: persistent detail pane (master/detail). Retargeted by
+            selecting a catalog card; index=0 preselected so it is populated
+            on load. Empty prompt only when the filter yields no matches. */}
+        <div className="dex-md-detail" data-testid="dex-detail-pane">
+          {selectedEntry ? (
+            <DexDetail
+              selected={selectedEntry}
+              locale={locale}
+              tagTree={payload.trees.po}
+              registry={payload.registry}
+              dexNo={dexNos[selectedEntry.id] ?? null}
+            />
+          ) : (
+            <div className="dex-detail-empty">{t(locale, 'dex.detailEmpty')}</div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

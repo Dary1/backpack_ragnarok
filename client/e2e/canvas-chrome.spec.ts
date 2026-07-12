@@ -1,8 +1,8 @@
 // REQ-0070 -- MJOLNIR canvas page chrome (E2E). Verifies the redesigned
 // #/backpacks chrome renders around the SAME two always-mounted PixiJS
 // boards, and that the relocated/re-skinned controls are wired to the
-// same behavior contracts other spec files cover in depth (preset
-// gestures: preset-switch/long-press-rename/tab-reorder-trash; board
+// same behavior contracts other spec files cover in depth (squad
+// gestures: squad-switch/long-press-rename/tab-reorder-trash; board
 // drags: baseline-smoke/grid-8x8/bp-*; auto-save: auto-save.spec) --
 // this file asserts only the NEW chrome's presence and wiring, without
 // duplicating those flows.
@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 import { bootApp } from './helpers';
 
 test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
-  test('board stages, coord rails, boardfoot presets + save seal render around live boards', async ({ page }) => {
+  test('board stages, coord rails, boardfoot squads + save seal render around live boards', async ({ page }) => {
     await bootApp(page);
     // Both Pixi boards alive, each inside an ornate MJOLNIR stage.
     await expect(page.locator('canvas.board-canvas')).toHaveCount(2);
@@ -23,10 +23,10 @@ test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
     await expect(page.locator('.board-coords-cols span')).toHaveCount(8);
     await expect(page.locator('.board-coords-rows span')).toHaveCount(8);
     await expect(page.locator('.board-coords-cols span').first()).toHaveText('A');
-    // Preset tabs live in the canvas stage's boardfoot now (same
-    // .preset-tab class contract every preset spec selects on).
-    await expect(page.locator('.board-wrap-canvas .boardfoot .preset-tab').first()).toBeVisible();
-    await expect(page.locator('.board-wrap-canvas .boardfoot .preset-add-btn')).toBeVisible();
+    // Squad tabs live in the canvas stage's boardfoot now (same
+    // .squad-tab class contract every squad spec selects on).
+    await expect(page.locator('.board-wrap-canvas .boardfoot .squad-tab').first()).toBeVisible();
+    await expect(page.locator('.board-wrap-canvas .boardfoot .squad-add-btn')).toBeVisible();
     // Boardfoot auto-save seal settles on 'saved'; the header's own
     // .auto-save-status indicator remains a separate, unique element.
     await expect(page.locator('.boardfoot-saved')).toHaveAttribute('data-save-state', 'saved');
@@ -35,22 +35,17 @@ test.describe('REQ-0070 canvas page chrome (MJOLNIR)', () => {
     await expect(page.locator('.stagehead-chip')).toContainText(/\d/);
   });
 
-  test('item panel: icard catalog + click-to-select detail card; hover tooltip contract intact', async ({ page }) => {
+  test('REQ-0114: the item/SI catalog panel (ItemList) is NOT rendered on the backpacks view', async ({ page }) => {
     await bootApp(page);
-    const cards = page.locator('.item-panel .icard');
-    expect(await cards.count()).toBeGreaterThan(0);
-    // Detail card defaults to the first catalog item, then follows clicks.
-    await expect(page.locator('.item-detail')).toHaveCount(1);
-    const secondName = (await cards.nth(1).locator('.icard-nm').textContent()) ?? '';
-    expect(secondName.length).toBeGreaterThan(0);
-    await cards.nth(1).click();
-    await expect(page.locator('.item-detail .item-detail-nm')).toHaveText(secondName);
-    await expect(cards.nth(1)).toHaveClass(/is-selected/);
-    // The pre-REQ-0070 hover tooltip still appears with the same anatomy.
-    const thirdName = (await cards.nth(2).locator('.icard-nm').textContent()) ?? '';
-    await cards.nth(2).hover();
-    await expect(page.locator('.tooltip')).toHaveCount(1);
-    await expect(page.locator('.tooltip h3')).toContainText(thirdName);
+    // REQ-0114: the ItemPanel (item/SI catalog, the "ItemList") was removed
+    // from the backpacks view per user request. The two always-mounted Pixi
+    // boards (Canvas + Inventory) stay; only this third panel is gone.
+    await expect(page.locator('.item-panel')).toHaveCount(0);
+    await expect(page.locator('.item-panel .icard')).toHaveCount(0);
+    // The detail card lived only inside that panel, so it is gone too.
+    await expect(page.locator('.item-detail')).toHaveCount(0);
+    // Canvas + Inventory boards remain mounted.
+    await expect(page.locator('canvas.board-canvas')).toHaveCount(2);
   });
 
   test('embark dock navigates to the expedition page; boards survive the round trip', async ({ page }) => {

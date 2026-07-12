@@ -12,11 +12,11 @@
 //    same block -- see .board-column-header below); "items parked here
 //    take no effect" moves BELOW the inventory board container,
 //    left-aligned (was above the tabs/board before).
-//  - Canvas: "Canvas" title block gains Preset tabs (1-5, dynamic count)
-//    right-aligned in the same row + a "Preset+" button (PresetTabs.tsx).
+//  - Canvas: "Canvas" title block gains Squad tabs (1-5, dynamic count)
+//    right-aligned in the same row + a "Squad+" button (SquadTabs.tsx).
 //
 // REQ-0034 CRITICAL constraint (hard lesson from REQ-0031 Phase A bug 2 --
-// see docs/REQ/REQ-0031-e2e-bugfix-presets-ui.md section 2 and
+// see docs/REQ/REQ-0031-e2e-bugfix-squads-ui.md section 2 and
 // docs/REQ/REQ-0034-global-navigation.md): the backpacks section (Board +
 // InventoryBoard, each its own PixiJS Application) is rendered
 // UNCONDITIONALLY below, exactly like before REQ-0034 -- it is NEVER
@@ -41,7 +41,7 @@
 // inline locale ternaries.
 //
 // REQ-0032: the Canvas column's .board-wrap gets a second modifier class
-// (.board-wrap-canvas, position:relative) so PresetTrashZone can center
+// (.board-wrap-canvas, position:relative) so SquadTrashZone can center
 // itself over exactly this box via CSS absolute positioning -- the
 // inventory column's own .board-wrap is untouched (inventory tabs never
 // show a trash zone, so there is nothing to position there).
@@ -72,9 +72,9 @@
 //
 // REQ-0070: the backpacks view is re-skinned to the MJOLNIR canvas mock
 // (web/redesign/canvas.html): page key art, stagehead title rows, ornate
-// board stages around BOTH always-mounted Pixi boards, the preset tabs
+// board stages around BOTH always-mounted Pixi boards, the squad tabs
 // relocated from the canvas title row into the stage's boardfoot (same
-// PresetTabs component and classes -- only the render slot moved), a
+// SquadTabs component and classes -- only the render slot moved), a
 // boardfoot auto-save seal, live board-content stats in the stagehead,
 // and the fixed embark dock (all in CanvasChrome.tsx). The REQ-0034
 // always-mounted rule above is untouched: both boards keep their Pixi
@@ -90,8 +90,8 @@ import { DexRoot } from './dex/DexRoot';
 import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
+import { FloatingItemTip } from './FloatingItemTip';
 import { InviteBanner } from './InviteBanner';
-import { ItemPanel } from './ItemPanel';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
 import { PlaceholderPage } from './PlaceholderPage';
@@ -100,8 +100,8 @@ import { WarehousePage } from './warehouse/WarehousePage'; // REQ-0086
 import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
 import { MarketPage } from './market/MarketPage'; // REQ-0064
 import { RagnarokPage } from './ragnarok/RagnarokPage'; // REQ-0066
-import { PresetTabs } from './PresetTabs';
-import { PresetTrashZone } from './PresetTrashZone';
+import { SquadTabs } from './SquadTabs';
+import { SquadTrashZone } from './SquadTrashZone';
 import { Settings } from './Settings';
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
@@ -198,8 +198,8 @@ function App() {
             {/* REQ-0070: the mock's ornate board stage. The Pixi <canvas>
                 (Board) is untouched inside -- only the chrome around it is
                 new (gold-knot corners, coordinate rails, boardfoot). The
-                preset tabs moved from the title row above into the mock's
-                boardfoot INSIDE the stage: same PresetTabs component, same
+                squad tabs moved from the title row above into the mock's
+                boardfoot INSIDE the stage: same SquadTabs component, same
                 classes/gestures (click/long-press-rename/drag-reorder/
                 trash-drop), only the render slot changed. */}
             <div className="board-wrap board-wrap-canvas board-stage ornate">
@@ -212,16 +212,16 @@ function App() {
                 <BoardCoords />
               </div>
               <div className="boardfoot">
-                {snapshot.status === 'ready' ? <PresetTabs /> : null}
+                {snapshot.status === 'ready' ? <SquadTabs /> : null}
                 <SaveSeal locale={snapshot.locale} status={snapshot.autoSaveStatus} />
               </div>
               {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
-                  PRESET tab is being dragged (see PresetTrashZone.tsx's own
+                  SQUAD tab is being dragged (see SquadTrashZone.tsx's own
                   module comment -- inventory-tab drags never satisfy its
-                  kind==='preset' gate). Centered over the Canvas board via
-                  CSS (.preset-trash-zone, absolutely positioned within
+                  kind==='squad' gate). Centered over the Canvas board via
+                  CSS (.squad-trash-zone, absolutely positioned within
                   this relatively-positioned .board-wrap-canvas). */}
-              <PresetTrashZone />
+              <SquadTrashZone />
             </div>
           </div>
           {/* REQ-0041: render the inventory column INLINE here only when
@@ -232,9 +232,11 @@ function App() {
               backpacks-view is itself route-hidden anyway, so there is no
               visible gap either way). */}
           {inventorySlot === null ? <InventoryColumn locale={snapshot.locale} ready={inventoryReady} /> : null}
-          {snapshot.status === 'ready' && snapshot.gameData ? (
-            <ItemPanel items={snapshot.gameData.ITEMS} siDefs={snapshot.gameData.SI_DEFS} locale={snapshot.locale} />
-          ) : null}
+          {/* REQ-0114: the ItemList (the ItemPanel item/SI catalog) is
+              intentionally NOT rendered on the backpacks view, per user
+              request. The Canvas and Inventory columns above are unchanged;
+              only this third panel is removed, and its import above is
+              dropped accordingly (noUnusedLocals). */}
           {/* REQ-0070: the mock's embark dock -- fixed bottom-right CTA to
               the real expedition page. Inside backpacks-view so
               route-hidden hides it (fixed positioning does not escape an
@@ -264,6 +266,13 @@ function App() {
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
+
+        {/* REQ-0119: one global floating item-tooltip overlay. Fixed-
+            positioned and driven by board/itemTip.ts's pub-sub, so this
+            single instance serves the canvas board AND every inventory-page
+            board (including the warehouse/expedition portal reuse) with no
+            per-page wiring. */}
+        <FloatingItemTip />
       </main>
     </div>
     </DexCardProvider>

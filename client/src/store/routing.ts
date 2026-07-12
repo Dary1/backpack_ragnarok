@@ -167,22 +167,22 @@ export function logout(): void {
 }
 
 // ---------------------------------------------------------------------
-// Preset actions (REQ-0031 Phase B). All three go through the engine's
-// preset mutators (switchPreset/addPreset/renamePreset) then
+// Squad actions (REQ-0031 Phase B). All three go through the engine's
+// squad mutators (switchSquad/addSquad/renameSquad) then
 // notifyStateChanged() -- same pattern as every board interaction commit
 // in BoardRenderer.ts -- so auto-save picks up the change exactly like
 // any other mutation, and the canvas board's existing render(state)-on-
 // stateVersion-bump subscription (Board.tsx) redraws the newly-active
-// preset's bps/pos/sis with NO Pixi Application recreation (Phase A
+// squad's bps/pos/sis with NO Pixi Application recreation (Phase A
 // lesson: canvas ops read state.bps/pos/sis directly -- see
 // boardOps.ts's makeCanvasOps container(){return state;} -- so
-// switchPreset() mutating those same top-level fields in place is
+// switchSquad() mutating those same top-level fields in place is
 // already everything Board.tsx's render() needs; there is no separate
-// per-preset BoardOps/boardId the way inventory pages have one per page,
+// per-squad BoardOps/boardId the way inventory pages have one per page,
 // so no setOps() call is needed here at all, only the state mutation +
 // notifyStateChanged() re-render every other commit already relies on).
 
-/** Switches the active preset (0-based index). Beams/connections/combos
+/** Switches the active squad (0-based index). Beams/connections/combos
  * recompute automatically on the next render() since they are always
  * derived fresh from st.bps/st.pos (traceBeams/combos take no cached
- * state) -- nothing preset-specific needs to be invalidated by hand. */
+ * state) -- nothing squad-specific needs to be invalidated by hand. */

@@ -49,7 +49,7 @@ const TUNABLES = {
   // fixed number. See sim/README.md Interpretations for this choice.
   SHORTCUT_JUMP_PCT_RANGE: [15, 25],
 
-  // S8.5: "Wipe (all BPs of all 4 Units downed): L <- max(L_min, L -
+  // S8.5: "Wipe (all BPs of all 4 Squads downed): L <- max(L_min, L -
   // failure_step); ... (all constants TUNABLE, failure_step default 1)"
   FAILURE_STEP: 1,
   LEVEL_MIN: 1,

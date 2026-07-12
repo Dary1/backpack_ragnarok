@@ -76,13 +76,13 @@ function main() {
   }
 
   const LAYOUT = { ROWS: 6, COLS: 6 };
-  // Synthetic BP: one 6x6 BP covering the whole canvas minus a linker cell at [1,1].
+  // Synthetic BP: one 6x6 BP covering the whole canvas minus a unit cell at [1,1].
   function freshState() {
     return {
       linked: true,
       bps: [{
         id: 'synth', name: 'Synthetic BP', color: '#888888',
-        shape: buildFullMinusLinker(),
+        shape: buildFullMinusUnit(),
         origin: [1, 1],
         linker: { off: [0, 0], dirs: [] },
       }],
@@ -90,11 +90,11 @@ function main() {
       sis: [],
     };
   }
-  function buildFullMinusLinker() {
-    // shape is relative to origin [1,1]; full 6x6 minus cell [0,0] (== canvas [1,1], the linker cell)
+  function buildFullMinusUnit() {
+    // shape is relative to origin [1,1]; full 6x6 minus cell [0,0] (== canvas [1,1], the unit cell)
     const cells = [];
     for (let r = 0; r < 6; r++) for (let c = 0; c < 6; c++) {
-      if (r === 0 && c === 0) continue; // linker offset [0,0] excluded
+      if (r === 0 && c === 0) continue; // unit offset [0,0] excluded
       cells.push([r, c]);
     }
     return cells;
@@ -112,7 +112,7 @@ function main() {
     report.push('PO ' + e.id + ' (' + e.name + ')');
     if (!ITEMS[e.id]) { fail(e.id, 'not found in merged ITEMS map'); continue; }
 
-    // Fresh state, place at anchor [2,1] (inside open field, away from linker at [1,1]).
+    // Fresh state, place at anchor [2,1] (inside open field, away from unit at [1,1]).
     let st = freshState();
     const uid = 'probe_po';
     st.pos.push({ uid, id: e.id, loc: 'grid', cell: [2, 1], rot: 0 });

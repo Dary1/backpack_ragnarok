@@ -8,7 +8,7 @@
 // MarketPage's EXACT race-guard mechanism (loadGame()).
 //
 // THE RACE GUARD (refreshAfterServerMutation, below): the Devotion rite
-// rewrites the caller's canvas SERVER-side (preset slot deleted + every
+// rewrites the caller's canvas SERVER-side (squad slot deleted + every
 // referenced item destroyed account-wide, directly in the DB) while this
 // client holds an in-memory canvas whose debounced auto-save (~800ms,
 // store/autosave.ts) would otherwise PUT a STALE pre-rite canvas back and
@@ -32,7 +32,7 @@ import {
 } from '../api';
 import { SeasonStrip } from './SeasonStrip';
 import { EternalOrderTable } from './EternalOrderTable';
-import { DevotionSection, type PresetCandidate } from './DevotionSection';
+import { DevotionSection, type SquadCandidate } from './DevotionSection';
 import { Valknut, fmtNum, tierLabel } from './ragnarokShared';
 
 interface RagnarokPageProps {
@@ -65,13 +65,13 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
 
-  // Candidate presets from the live store (state.presets.names). This is
+  // Candidate squads from the live store (state.presets.names). This is
   // the CLIENT's list; eligibility per candidate is resolved lazily from
   // the server preview when one is selected.
-  const candidates: PresetCandidate[] = useMemo(() => {
+  const candidates: SquadCandidate[] = useMemo(() => {
     const names = snapshot.state?.presets?.names;
     if (!names) return [];
-    return names.map((name, index) => ({ index, name: name || `Preset ${index + 1}` }));
+    return names.map((name, index) => ({ index, name: name || `Squad ${index + 1}` }));
   }, [snapshot.state?.presets?.names, snapshot.stateVersion]);
 
   const loadOrder = useCallback(async (q?: string) => {
@@ -112,7 +112,7 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
   }, [query, loadOrder]);
 
   // Fetch the preview for the selected candidate (drives manifest +
-  // projection). A 404 here means the preset is unaddressable (already
+  // projection). A 404 here means the squad is unaddressable (already
   // devoted / out of range) -- surface it as an inline error.
   useEffect(() => {
     if (selectedIndex == null) { setPreview(null); setPreviewError(null); setPreviewLoading(false); return; }
@@ -143,7 +143,7 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
    *
    * Deliberately does NOT clear selectedIndex/preview here (fixed
    * post-deploy E2E, 2026-07-07 -- this WAS here, "Clears the stale
-   * selection/preview (the devoted preset slot is gone)"): this function
+   * selection/preview (the devoted squad slot is gone)"): this function
    * runs INSIDE DevotionSection.confirm(), awaited BEFORE it calls
    * setPhase('done'). DevotionSection has its own effect that resets
    * `phase` back to 'idle' whenever `selectedIndex` changes (its "picking
@@ -257,7 +257,7 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
               <div className="ragnarok-mini rar rar-mythic" data-testid="ragnarok-hall-card" data-einherjar-id={e.id} key={e.id}>
                 <span className="gem" />
                 <Valknut size={20} className="ragnarok-valknut" />
-                <div className="ragnarok-m-name">{e.unitName}</div>
+                <div className="ragnarok-m-name">{e.squadName}</div>
                 <div className="ragnarok-m-sub">
                   {t(locale, 'ragnarok.hall.season', { season: e.seasonDevoted ?? '—' })} ・ {t(locale, 'ragnarok.hall.score')} {fmtNum(e.score)}
                 </div>

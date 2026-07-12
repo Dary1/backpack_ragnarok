@@ -26,7 +26,7 @@
 // status, cooldown countdown as its own chip beside it, and the mock's
 // 「◆ 監視中」marker while this card is the expanded/watched one), and
 // the mock's 2x2 slot-preview grid (壱/弐/参/肆 numerals via i18n; slot
-// entries resolve presetIndex -> the player's own preset names from the
+// entries resolve squadIndex -> the player's own squad names from the
 // SAME store snapshot SlotsPanel already reads -- real data, no new
 // fetch). The mock's lap counter / reward multiplier footer (周回 2/3 ・
 // 報酬倍率 ×1.2), Jormungandr cooldown RING, and the locked/未踏 room
@@ -40,8 +40,6 @@ import { cancelRoom as apiCancelRoom, type ApiRoom } from '../api';
 import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
-import { Monitor } from './Monitor';
-import { SlotsPanel } from './SlotsPanel';
 
 interface RoomCardProps {
   room: ApiRoom;
@@ -94,7 +92,7 @@ const STATUS_KEY: Record<RoomUiStatus, 'schedule.statusIdle' | 'schedule.statusC
 // REQ-0071: the mock numbers its four slots 壱/弐/参/肆 -- localized via
 // i18n (EN uses roman numerals).
 const ORD_KEYS: readonly TranslationKey[] = ['schedule.room.ord1', 'schedule.room.ord2', 'schedule.room.ord3', 'schedule.room.ord4'];
-const UNIT_SLOTS = 4;
+const SQUAD_SLOTS = 4;
 
 /** Formats a millisecond duration as "Xm Ys" / "Ys" -- small, dependency-
  * free, matches this codebase's existing "no library for simple
@@ -108,10 +106,10 @@ export function formatCountdown(ms: number): string {
 }
 
 export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded, onToggleExpand, onChanged }: RoomCardProps) {
-  // REQ-0071: preset names for the slot-preview grid -- same snapshot
+  // REQ-0071: squad names for the slot-preview grid -- same snapshot
   // source SlotsPanel.tsx's dropdown options already read.
   const snapshot = useGameStore();
-  const presetNames = snapshot.state?.presets?.names ?? [];
+  const squadNames = snapshot.state?.presets?.names ?? [];
   const [now, setNow] = useState(() => Date.now());
   const [cancelPending, setCancelPending] = useState(false);
   const [confirmingCancel, setConfirmingCancel] = useState(false);
@@ -181,12 +179,12 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
       </div>
 
       {/* REQ-0071: the mock's 2x2 slot-preview grid on the collapsed
-          card -- presetIndex resolved to the player's own preset names. */}
+          card -- squadIndex resolved to the player's own squad names. */}
       <div className="schedule-room-slots">
-        {Array.from({ length: UNIT_SLOTS }, (_, i) => {
+        {Array.from({ length: SQUAD_SLOTS }, (_, i) => {
           const slot = room.slots[i];
-          const presetIndex = slot && slot.presetIndex != null ? slot.presetIndex : null;
-          const name = presetIndex != null ? presetNames[presetIndex] ?? `P${presetIndex + 1}` : null;
+          const squadIndex = slot && slot.squadIndex != null ? slot.squadIndex : null;
+          const name = squadIndex != null ? squadNames[squadIndex] ?? `P${squadIndex + 1}` : null;
           return (
             <span
               key={i}
@@ -230,12 +228,6 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
         </div>
       ) : null}
 
-      {expanded ? (
-        <div className="schedule-room-expanded">
-          <SlotsPanel room={room} locale={locale} onChanged={onChanged} />
-          <Monitor room={room} locale={locale} dungeonName={dungeonName} />
-        </div>
-      ) : null}
     </article>
   );
 }

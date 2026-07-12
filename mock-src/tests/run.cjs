@@ -69,7 +69,7 @@ T('rotation: inventory rotate free; blocked in-place rotate fails with reason',(
   ok(!r.ok&&r.why==='Dead Space','dagger in-place rotate should fail on Dead Space, got: '+(r.why||'ok'));
 });
 
-T('PO moves: stow herb, place oil; spanning/linker/dead rejections',()=>{
+T('PO moves: stow herb, place oil; spanning/unit/dead rejections',()=>{
   const {st,E}=fresh();
   ok(E.movePO(st,'p6','inv').ok);
   ok(E.movePO(st,'p8',[5,2]).ok,'oil into gamma');
@@ -80,8 +80,8 @@ T('PO moves: stow herb, place oil; spanning/linker/dead rejections',()=>{
   ok(E.movePO(st,'p7','inv').ok,'stow jaw (frees delta cells)');
   const spans=E.movePO(st,'p8',[5,3]); // cells (5,4) delta + (5,3) gamma
   ok(!spans.ok&&spans.why==='spans two BPs','span reject: '+spans.why);
-  const onLinker=E.movePO(st,'p8',[4,2]);
-  ok(!onLinker.ok,'linker cell reject');
+  const onUnit=E.movePO(st,'p8',[4,2]);
+  ok(!onUnit.ok,'unit cell reject');
   const dead=E.movePO(st,'p8',[3,4]);
   ok(!dead.ok&&dead.why==='Dead Space','dead space reject: '+dead.why);
 });
@@ -213,7 +213,7 @@ T('hierarchy: unrelated sibling tags do not match',()=>{
 // north/south border at row2|row3) with synthetic ITEMS is used instead of
 // the shared game scenario, so each test's placement/adjacency intent is
 // self-contained and doesn't depend on (or risk colliding with) the live
-// roster's layout. No linkers needed for these checks -- linker.dirs:[].
+// roster's layout. No units needed for these checks -- unit.dirs:[].
 function portFixture(){
   const ITEMS={
     port_owner:{name:'Port Owner',tags:['Sender'],shape:[[0,0]],icon:'icon-x',sockets:[],
@@ -299,9 +299,9 @@ T('Connection Port: cross-BP still blocked even with a matching tag',()=>{
 // be a member of st.pos).
 //
 // A couple of tests need an inventory-resident BP (to test PO-on-BP
-// containment, BP transfer, and linker dormancy) -- for those, a small
+// containment, BP transfer, and unit dormancy) -- for those, a small
 // synthetic single-BP fixture (invBPFixture) is used so the fixture's BP
-// shape/linker/origin are self-contained and don't depend on the live
+// shape/unit/origin are self-contained and don't depend on the live
 // roster's specific layout.
 function invBPFixture(){
   const ITEMS={
@@ -364,11 +364,11 @@ T('inventory: PO fully-inside-one-BP containment law (accept inside, reject stra
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  // REQ-0092: dummy linker off:[1,0] (row 2 of each BP's own shape) is
+  // REQ-0092: dummy unit off:[1,0] (row 2 of each BP's own shape) is
   // deliberately NOT [0,0] here -- this test only exercises row 1 cells
-  // ((1,1)-(1,3)), and [0,0] would put the linker cell exactly where w1
+  // ((1,1)-(1,3)), and [0,0] would put the unit cell exactly where w1
   // is asserted to legally land, now that invCanPlaceCells enforces the
-  // linker-cell reservation (see canvas_spec.md's Linker section).
+  // unit-cell reservation (see canvas_spec.md's Unit section).
   pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[1,0],dirs:[]}});
   pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],linker:{off:[1,0],dirs:[]}});
   pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
@@ -388,7 +388,7 @@ function invBPFixtureSingleCellEdge(E){
   // must be rejected (straddles BP edge into open page space, not "fully inside").
   // REQ-0092: off:[10,10] is a deliberately OUT-OF-SHAPE placeholder -- bpX's
   // real shape is a single cell ([0,0] only), so there is no second cell to
-  // park an inert dummy linker on; pointing it far outside the 6x6 grid this
+  // park an inert dummy unit on; pointing it far outside the 6x6 grid this
   // sub-engine uses guarantees it can never coincide with (1,1)/(1,2), the
   // only two cells this check exercises.
   const ITEMS={wide_po:{name:'Wide PO',tags:[],shape:[[0,0],[0,1]],icon:'icon-x',sockets:[]}};
@@ -398,39 +398,39 @@ function invBPFixtureSingleCellEdge(E){
   return {ok:(!r.ok&&r.why==='straddles BP edge')};
 }
 
-T('REQ-0092 inventory: invCanPlacePO rejects a page-resident BP\'s own linker cell (mirrors canvas\'s Linker-cell rule)',()=>{
+T('REQ-0092 inventory: invCanPlacePO rejects a page-resident BP\'s own unit cell (mirrors canvas\'s Unit-cell rule)',()=>{
   const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  // bpA's linker sits at local off [0,0] -- i.e. absolute cell (1,1), its
+  // bpA's unit sits at local off [0,0] -- i.e. absolute cell (1,1), its
   // own origin/top-left cell -- exactly like a real BP authored with the
-  // Linker at its first shape cell (a completely ordinary, unremarkable
+  // Unit at its first shape cell (a completely ordinary, unremarkable
   // authoring choice; nothing here is a degenerate/edge-case shape).
   pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
   // small_po (1x1) -- NOT wide_po -- so each anchor below tests exactly
-  // one cell, isolating the linker-cell rule from the separate BP-
+  // one cell, isolating the unit-cell rule from the separate BP-
   // containment/straddle rules already covered above.
   pg.pos.push({uid:'w1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
-  // BUG (pre-fix): invCanPlaceCells never built a linker map for inventory
+  // BUG (pre-fix): invCanPlaceCells never built a unit map for inventory
   // pages at all (unlike canPlaceCells on canvas), so a PO could land
-  // directly on the BP's own linker cell -- exactly the placement warehouse
+  // directly on the BP's own unit cell -- exactly the placement warehouse
   // claim's client-side first-fit (firstFitPlace, WarehousePage.tsx) or a
-  // manual drag could produce. w1 anchored at [1,1] covers ONLY the linker
+  // manual drag could produce. w1 anchored at [1,1] covers ONLY the unit
   // cell.
-  const onLinker=E.invCanPlacePO(st,0,'w1',0,[1,1]);
-  ok(!onLinker.ok&&onLinker.why==='Linker cell','PO landing on a page-resident BP\'s linker cell must be rejected: '+JSON.stringify(onLinker));
-  // Sanity: the cell immediately to the right of the linker ((1,2), still
-  // fully inside bpA) remains perfectly legal -- this is a linker-specific
+  const onUnit=E.invCanPlacePO(st,0,'w1',0,[1,1]);
+  ok(!onUnit.ok&&onUnit.why==='Unit cell','PO landing on a page-resident BP\'s unit cell must be rejected: '+JSON.stringify(onUnit));
+  // Sanity: the cell immediately to the right of the unit ((1,2), still
+  // fully inside bpA) remains perfectly legal -- this is a unit-specific
   // carve-out, not a blanket "can't place inside this BP at all" regression.
   const beside=E.invCanPlacePO(st,0,'w1',0,[1,2]);
-  ok(beside.ok,'a non-linker cell fully inside the same BP must still be legal: '+JSON.stringify(beside));
+  ok(beside.ok,'a non-unit cell fully inside the same BP must still be legal: '+JSON.stringify(beside));
   // invMovePO (the actual mutator firstFitPlace calls) must refuse too, and
   // must leave w1 exactly where it started (all-or-nothing, no partial move).
   const before=JSON.parse(JSON.stringify(pg.pos.find(p=>p.uid==='w1')));
   const mv=E.invMovePO(st,0,'w1',[1,1]);
-  ok(!mv.ok,'invMovePO must also refuse a linker-cell destination');
-  eq(pg.pos.find(p=>p.uid==='w1'),before,'w1 unchanged after a refused move onto the linker cell');
+  ok(!mv.ok,'invMovePO must also refuse a unit-cell destination');
+  eq(pg.pos.find(p=>p.uid==='w1'),before,'w1 unchanged after a refused move onto the unit cell');
 });
 
 T('inventory: free SI 1-cell occupancy + collision with PO/BP/SI',()=>{
@@ -487,7 +487,7 @@ T('inventory: SI seat/unseat on a free-placed PO (resolved ambiguity: free-place
   eq(st.inv.pages[0].sis.find(a=>a.uid==='s1').host,{po:'p1',si:0});
 });
 
-T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT preset\'s BP reference + nested PO/SI references; home(s) untouched',()=>{
+T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT squad\'s BP reference + nested PO/SI references; home(s) untouched',()=>{
   const {st:legacy,E}=fresh();
   const migrated=E.migrateState(legacy);
   const jawEdge=E.sockets(migrated).find(s=>s.host==='p7'&&s.t==='edge');
@@ -496,7 +496,7 @@ T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT preset\'s BP referenc
   const homeJawBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'p7').record));
   const r=E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]);
   ok(r.ok,'canvas->inv transfer (reference removal) should succeed: '+JSON.stringify(r));
-  eq(migrated.bps.some(b=>b.id==='delta'),false,'delta reference removed from current preset canvas');
+  eq(migrated.bps.some(b=>b.id==='delta'),false,'delta reference removed from current squad canvas');
   eq(migrated.pos.some(p=>p.uid==='p7'),false,'jaw (p7) reference removed along with its BP');
   eq(migrated.sis.some(a=>a.uid==='a4'),false,'arrowhead reference removed (was seated on the removed jaw reference)');
   // homes MUST be completely untouched -- "drop cell irrelevant" (spec)
@@ -504,7 +504,7 @@ T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT preset\'s BP referenc
   eq(E.homeLocationOf(migrated,'p7').record,homeJawBefore,'jaw HOME untouched by reference removal');
   ok(!!E.homeLocationOf(migrated,'a4'),'arrowhead SI still has a home somewhere in inventory');
   ok(E.checkUidInvariant(migrated).ok,'invariant holds after reference removal');
-  // yellow/usage must now show delta/p7 as unused by ANY preset
+  // yellow/usage must now show delta/p7 as unused by ANY squad
   eq(E.usageOf(migrated,'delta'),[],'delta has zero references anywhere after removal');
   eq(E.usageOf(migrated,'p7'),[],'jaw has zero references anywhere after removal');
 });
@@ -512,12 +512,12 @@ T('REQ-0033 BP transfer canvas -> inv: removes the CURRENT preset\'s BP referenc
 T('REQ-0033 BP transfer inv -> canvas: creates a BP reference + nested PO/SI references at the new origin; home(s) untouched; red rule on re-reference',()=>{
   const {st:legacy,E}=fresh();
   const migrated=E.migrateState(legacy);
-  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:2},'delta',[1,1]).ok,'first remove delta\'s reference from the current preset (target page is irrelevant to a removal)');
+  ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:2},'delta',[1,1]).ok,'first remove delta\'s reference from the current squad (target page is irrelevant to a removal)');
   const homePage=E.homeLocationOf(migrated,'delta').page;
   const homeBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'delta').record));
   const r=E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'canvas'},'delta',[6,5]);
   ok(r.ok,'inv->canvas transfer (reference creation) should succeed: '+JSON.stringify(r));
-  ok(migrated.bps.some(b=>b.id==='delta'),'delta reference now back on the current preset\'s canvas');
+  ok(migrated.bps.some(b=>b.id==='delta'),'delta reference now back on the current squad\'s canvas');
   eq(migrated.bps.find(b=>b.id==='delta').origin,[6,5],'new reference uses the requested origin');
   const jawRef=migrated.pos.find(p=>p.uid==='p7');
   ok(!!jawRef,'jaw (p7) reference recreated alongside delta');
@@ -525,18 +525,18 @@ T('REQ-0033 BP transfer inv -> canvas: creates a BP reference + nested PO/SI ref
   // home must be untouched by the reference-creation (still sitting wherever migrateState first-fit it)
   eq(E.homeLocationOf(migrated,'delta').record,homeBefore,'delta HOME untouched by reference creation');
   ok(E.checkUidInvariant(migrated).ok,'invariant holds after reference creation');
-  // red rule: referencing the SAME uid into the SAME (current) preset again must fail
+  // red rule: referencing the SAME uid into the SAME (current) squad again must fail
   const dup=E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'canvas'},'delta',[1,1]);
-  ok(!dup.ok,'re-referencing delta into the preset that already references it must be rejected (red rule): '+JSON.stringify(dup));
+  ok(!dup.ok,'re-referencing delta into the squad that already references it must be rejected (red rule): '+JSON.stringify(dup));
   ok(migrated.bps.some(b=>b.id==='delta'&&JSON.stringify(b.origin)===JSON.stringify([6,5])),'rejected re-reference must not have moved/duplicated the existing one');
 });
 
 T('REQ-0033 BP transfer inv-page -> inv-page: stays a PHYSICAL home move (byte-identical to pre-REQ-0033 behavior)',()=>{
   const {st:legacy,E}=fresh();
   const migrated=E.migrateState(legacy);
-  // first pull delta's reference off the current preset's canvas, so its
+  // first pull delta's reference off the current squad's canvas, so its
   // home page is the only place it exists (page<->page is a pure home
-  // relocation and never needs to consult/alter any preset's reference).
+  // relocation and never needs to consult/alter any squad's reference).
   ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:0},'delta',[1,1]).ok);
   const homePage=E.homeLocationOf(migrated,'delta').page;
   ok(E.transferBP(migrated,{loc:'inv',page:homePage},{loc:'inv',page:3},'delta',[2,2]).ok,'page->page physical move');
@@ -553,7 +553,7 @@ function st_pagesEmptyOfBP(st,pageIdx,bpId){
   return !st.inv.pages[pageIdx].bps.some(b=>b.id===bpId);
 }
 
-T('inventory: linker dormancy -- a linker-bearing BP transferred into a page emits nothing from traceBeams',()=>{
+T('inventory: unit dormancy -- a unit-bearing BP transferred into a page emits nothing from traceBeams',()=>{
   const {st,E}=fresh();
   const beamsBefore=E.traceBeams(st);
   ok(beamsBefore.some(b=>b.from==='delta'),'sanity: delta contributes a beam while on canvas');
@@ -641,66 +641,66 @@ T('migrateState: legacy list-inventory (loc:\'inv\' POs, host:\'inv\' SIs) -> fi
 
 
 // =======================================================================
-// Preset model tests (REQ-0031 Phase B). Engine API: makePresetsMeta,
-// emptyPresetSlot, switchPreset, addPreset, renamePreset, renameInvPage,
+// Squad model tests (REQ-0031 Phase B). Engine API: makeSquadsMeta,
+// emptySquadSlot, switchSquad, addSquad, renameSquad, renameInvPage,
 // invPageNames, checkUidInvariant. All additive on top of the canvas/
 // inventory model above -- st.linked/bps/pos/sis remains the ACTIVE
-// preset's canvas exactly as before presets existed.
+// squad's canvas exactly as before squads existed.
 // =======================================================================
 
-T('presets: makeState() carries 5 presets, slot 0 active with scenario content, 1-4 empty',()=>{
+T('presets: makeState() carries 5 squads, slot 0 active with scenario content, 1-4 empty',()=>{
   const {st}=fresh();
-  ok(st.presets&&st.presets.active===0,'preset 0 active by default');
-  eq(st.presets.names,['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5']);
-  eq(st.presets.store.length,5,'5 preset slots');
+  ok(st.presets&&st.presets.active===0,'squad 0 active by default');
+  eq(st.presets.names,['Squad 1','Squad 2','Squad 3','Squad 4','Squad 5']);
+  eq(st.presets.store.length,5,'5 squad slots');
   ok(st.presets.store[0]===null,'active slot (0) has no store entry -- content lives at top level');
   for(let i=1;i<5;i++){
     const slot=st.presets.store[i];
-    ok(slot&&slot.bps.length===0&&slot.pos.length===0&&slot.sis.length===0,'preset '+i+' starts empty (no BPs -- physical items never pre-populated)');
+    ok(slot&&slot.bps.length===0&&slot.pos.length===0&&slot.sis.length===0,'squad '+i+' starts empty (no BPs -- physical items never pre-populated)');
   }
-  // sanity: preset 0's "content" IS the scenario's live canvas (bps non-empty)
-  ok(st.bps.length>0,'active preset (0) carries the real scenario BPs');
+  // sanity: squad 0's "content" IS the scenario's live canvas (bps non-empty)
+  ok(st.bps.length>0,'active squad (0) carries the real scenario BPs');
 });
 
-T('presets: switchPreset preserves BOTH configurations across a round trip',()=>{
+T('presets: switchSquad preserves BOTH configurations across a round trip',()=>{
   const {st,E}=fresh();
   const origBps=JSON.parse(JSON.stringify(st.bps));
   const origPos=JSON.parse(JSON.stringify(st.pos));
   const origSis=JSON.parse(JSON.stringify(st.sis));
   const origLinked=st.linked;
-  ok(E.switchPreset(st,1).ok,'switch to preset 1');
+  ok(E.switchSquad(st,1).ok,'switch to squad 1');
   eq(st.presets.active,1);
-  ok(st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'preset 1 (empty) now live at top level');
-  eq(st.presets.store[0],{linked:origLinked,bps:origBps,pos:origPos,sis:origSis},'preset 0 fully preserved in store[0]');
+  ok(st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'squad 1 (empty) now live at top level');
+  eq(st.presets.store[0],{linked:origLinked,bps:origBps,pos:origPos,sis:origSis},'squad 0 fully preserved in store[0]');
   ok(st.presets.store[1]===null,'newly-active slot (1) has no store entry');
-  ok(E.switchPreset(st,0).ok,'switch back to preset 0');
+  ok(E.switchSquad(st,0).ok,'switch back to squad 0');
   eq(st.presets.active,0);
-  eq(st.bps,origBps,'preset 0 bps restored exactly');
-  eq(st.pos,origPos,'preset 0 pos restored exactly');
-  eq(st.sis,origSis,'preset 0 sis restored exactly');
-  eq(st.linked,origLinked,'preset 0 linked flag restored exactly');
-  ok(st.presets.store[1].bps.length===0&&st.presets.store[1].pos.length===0,'preset 1 (still empty) correctly preserved in store[1]');
+  eq(st.bps,origBps,'squad 0 bps restored exactly');
+  eq(st.pos,origPos,'squad 0 pos restored exactly');
+  eq(st.sis,origSis,'squad 0 sis restored exactly');
+  eq(st.linked,origLinked,'squad 0 linked flag restored exactly');
+  ok(st.presets.store[1].bps.length===0&&st.presets.store[1].pos.length===0,'squad 1 (still empty) correctly preserved in store[1]');
   ok(st.presets.store[0]===null,'active slot (0, restored) has no store entry again');
 });
 
-T('presets: switchPreset is a no-op (still ok:true) when already active; rejects out-of-range',()=>{
+T('presets: switchSquad is a no-op (still ok:true) when already active; rejects out-of-range',()=>{
   const {st,E}=fresh();
   const before=JSON.stringify(st.bps);
-  ok(E.switchPreset(st,0).ok,'switching to the already-active preset succeeds trivially');
+  ok(E.switchSquad(st,0).ok,'switching to the already-active squad succeeds trivially');
   eq(st.presets.active,0);
-  eq(JSON.stringify(st.bps),before,'no mutation from a same-preset switch');
-  const bad=E.switchPreset(st,99);
-  ok(!bad.ok&&bad.why==='preset index out of range','out-of-range preset index rejected');
-  const bad2=E.switchPreset(st,-1);
-  ok(!bad2.ok,'negative preset index rejected');
+  eq(JSON.stringify(st.bps),before,'no mutation from a same-squad switch');
+  const bad=E.switchSquad(st,99);
+  ok(!bad.ok&&bad.why==='squad index out of range','out-of-range squad index rejected');
+  const bad2=E.switchSquad(st,-1);
+  ok(!bad2.ok,'negative squad index rejected');
 });
 
-T('REQ-0085: switchPreset self-heals a corrupted (stray-null) non-active slot instead of throwing',()=>{
+T('REQ-0085: switchSquad self-heals a corrupted (stray-null) non-active slot instead of throwing',()=>{
   const {st,E}=fresh();
   // Simulate the wild corruption this REQ fixes: some non-active store
-  // slot is null even though it is not the active preset (should never
-  // happen via the public API -- addPreset/switchPreset/reorderPreset/
-  // deletePreset all maintain "exactly one null, at active" -- but a
+  // slot is null even though it is not the active squad (should never
+  // happen via the public API -- addSquad/switchSquad/reorderSquad/
+  // deleteSquad all maintain "exactly one null, at active" -- but a
   // stray null WAS observed in a live profile with no reconstructable
   // cause, so the engine must tolerate it defensively rather than trust
   // the invariant blindly). Before this fix, switching into slot 2 threw
@@ -708,71 +708,71 @@ T('REQ-0085: switchPreset self-heals a corrupted (stray-null) non-active slot in
   // exception inside the click handler that made the tab look like it
   // simply did nothing, and left store[0] wrongly non-null besides.
   st.presets.store[2]=null;
-  const r=E.switchPreset(st,2);
+  const r=E.switchSquad(st,2);
   ok(r.ok,'switching into a corrupted (null) slot succeeds instead of throwing');
   eq(st.presets.active,2,'active advanced to the requested slot');
-  ok(st.linked===true&&st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'corrupted slot self-heals to a fresh EMPTY preset (nothing to recover -- a null slot never had real content)');
+  ok(st.linked===true&&st.bps.length===0&&st.pos.length===0&&st.sis.length===0,'corrupted slot self-heals to a fresh EMPTY squad (nothing to recover -- a null slot never had real content)');
   ok(st.presets.store[2]===null,'newly-active slot (2) correctly has no store entry');
   ok(st.presets.store[0]!==null&&Array.isArray(st.presets.store[0].bps),'previously-active slot (0) correctly holds the outgoing snapshot -- invariant restored, not just the crash avoided');
   // and it keeps working going forward (not a one-shot patch)
-  ok(E.switchPreset(st,0).ok,'switching back out of the healed slot still works');
+  ok(E.switchSquad(st,0).ok,'switching back out of the healed slot still works');
   eq(st.presets.active,0);
 });
 
-T('REQ-0085: reorderPreset tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
+T('REQ-0085: reorderSquad tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
   const {st,E}=fresh();
   st.presets.store[3]=null; // corrupt a slot NOT otherwise involved in the reorder below
-  const r=E.reorderPreset(st,1,4);
-  ok(r.ok,'reorderPreset does not throw with a stray null elsewhere in store[]');
+  const r=E.reorderSquad(st,1,4);
+  ok(r.ok,'reorderSquad does not throw with a stray null elsewhere in store[]');
   st.presets.store.forEach((slot,i)=>{
     if(i===st.presets.active){ok(slot===null,'active slot ('+i+') has no store entry');}
-    else {ok(slot&&Array.isArray(slot.bps)&&Array.isArray(slot.pos)&&Array.isArray(slot.sis),'slot '+i+' is a real (possibly healed) preset object, not a stray null');}
+    else {ok(slot&&Array.isArray(slot.bps)&&Array.isArray(slot.pos)&&Array.isArray(slot.sis),'slot '+i+' is a real (possibly healed) squad object, not a stray null');}
   });
 });
 
-T('REQ-0085: deletePreset tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
+T('REQ-0085: deleteSquad tolerates a stray-null non-active slot elsewhere in store[] without throwing or propagating it',()=>{
   const {st,E}=fresh();
   st.presets.store[3]=null; // corrupt a slot NOT involved in the delete below
-  const r=E.deletePreset(st,2);
-  ok(r.ok,'deletePreset does not throw with a stray null elsewhere in store[]');
+  const r=E.deleteSquad(st,2);
+  ok(r.ok,'deleteSquad does not throw with a stray null elsewhere in store[]');
   st.presets.store.forEach((slot,i)=>{
     if(i===st.presets.active){ok(slot===null,'active slot ('+i+') has no store entry');}
-    else {ok(slot&&Array.isArray(slot.bps),'slot '+i+' is a real (possibly healed) preset object, not a stray null');}
+    else {ok(slot&&Array.isArray(slot.bps),'slot '+i+' is a real (possibly healed) squad object, not a stray null');}
   });
 });
 
-T('presets: addPreset appends an EMPTY preset (no BPs/POs/SIs) and grows names[]',()=>{
+T('presets: addSquad appends an EMPTY squad (no BPs/POs/SIs) and grows names[]',()=>{
   const {st,E}=fresh();
   const before=st.presets.store.length;
-  const r=E.addPreset(st);
-  ok(r.ok&&r.index===before,'addPreset returns the new 0-based index');
+  const r=E.addSquad(st);
+  ok(r.ok&&r.index===before,'addSquad returns the new 0-based index');
   eq(st.presets.store.length,before+1);
   eq(st.presets.names.length,before+1);
-  eq(st.presets.names[before],'Preset '+(before+1),'default name "Preset N"');
+  eq(st.presets.names[before],'Squad '+(before+1),'default name "Squad N"');
   const added=st.presets.store[before];
-  ok(added.bps.length===0&&added.pos.length===0&&added.sis.length===0,'new preset starts empty');
+  ok(added.bps.length===0&&added.pos.length===0&&added.sis.length===0,'new squad starts empty');
   // custom name variant
-  const r2=E.addPreset(st,'Boss Fight');
+  const r2=E.addSquad(st,'Boss Fight');
   eq(st.presets.names[st.presets.names.length-1],'Boss Fight','custom name honored');
 });
 
-T('presets: renamePreset sets names[n] for either the active or an inactive slot',()=>{
+T('presets: renameSquad sets names[n] for either the active or an inactive slot',()=>{
   const {st,E}=fresh();
-  ok(E.renamePreset(st,0,'Main Loadout').ok,'rename the currently-active preset');
+  ok(E.renameSquad(st,0,'Main Loadout').ok,'rename the currently-active squad');
   eq(st.presets.names[0],'Main Loadout');
-  ok(E.renamePreset(st,2,'PvP Build').ok,'rename an inactive preset');
+  ok(E.renameSquad(st,2,'PvP Build').ok,'rename an inactive squad');
   eq(st.presets.names[2],'PvP Build');
-  const bad=E.renamePreset(st,99,'Nope');
-  ok(!bad.ok,'out-of-range preset rename rejected');
+  const bad=E.renameSquad(st,99,'Nope');
+  ok(!bad.ok,'out-of-range squad rename rejected');
 });
 
-T('presets: renaming survives a switchPreset (names[] independent of active/store split)',()=>{
+T('presets: renaming survives a switchSquad (names[] independent of active/store split)',()=>{
   const {st,E}=fresh();
-  E.renamePreset(st,0,'Main');
-  E.renamePreset(st,1,'Alt');
-  E.switchPreset(st,1);
-  eq(st.presets.names,['Main','Alt','Preset 3','Preset 4','Preset 5'],'names array untouched by switching which preset is active');
-  E.switchPreset(st,0);
+  E.renameSquad(st,0,'Main');
+  E.renameSquad(st,1,'Alt');
+  E.switchSquad(st,1);
+  eq(st.presets.names,['Main','Alt','Squad 3','Squad 4','Squad 5'],'names array untouched by switching which squad is active');
+  E.switchSquad(st,0);
   eq(st.presets.names[0],'Main');
   eq(st.presets.names[1],'Alt');
 });
@@ -798,21 +798,21 @@ T('inventory: renameInvPage materializes names[] defensively on a state built wi
   eq(st.inv.names[1],'2','untouched slots fall back to default "N"');
 });
 
-T('REQ-0033 uid invariant: home-duplication across inventory pages is caught; a uid shared by MULTIPLE presets is NOT a violation',()=>{
+T('REQ-0033 uid invariant: home-duplication across inventory pages is caught; a uid shared by MULTIPLE squads is NOT a violation',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   const r1=E.checkUidInvariant(migrated);
   eq(r1,{ok:true,duplicates:[]},'freshly migrated state satisfies the invariant');
   // legitimate sharing: reference alpha (and its home-contained POs,
-  // including p3/flame_tablet) into a second, currently-empty preset --
+  // including p3/flame_tablet) into a second, currently-empty squad --
   // this must NOT be flagged (it is exactly the yellow/shared case the
   // reference model exists to allow).
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'alpha (+contents) referenced into preset 1 too');
-  E.switchPreset(migrated,0);
-  ok(E.checkUidInvariant(migrated).ok,'sharing the same uid across two DIFFERENT presets is legal, not a duplicate');
-  ok(E.usageOf(migrated,'p3').length===2,'sanity: p3 (home-contained in alpha) is indeed referenced by 2 presets now');
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'alpha (+contents) referenced into squad 1 too');
+  E.switchSquad(migrated,0);
+  ok(E.checkUidInvariant(migrated).ok,'sharing the same uid across two DIFFERENT squads is legal, not a duplicate');
+  ok(E.usageOf(migrated,'p3').length===2,'sanity: p3 (home-contained in alpha) is indeed referenced by 2 squads now');
   // real violation: inject a duplicate HOME record (same uid appearing
   // twice across st.inv.pages) -- simulates a hypothetical bug where an
   // item's home got copied instead of moved.
@@ -822,124 +822,124 @@ T('REQ-0033 uid invariant: home-duplication across inventory pages is caught; a 
   ok(!r2.ok&&r2.duplicates.includes('po:'+dupHome.uid),'duplicate HOME across two inventory pages is caught: '+JSON.stringify(r2));
 });
 
-T('REQ-0033 uid invariant: a duplicate REFERENCE within the SAME preset\'s own canvas is caught',()=>{
+T('REQ-0033 uid invariant: a duplicate REFERENCE within the SAME squad\'s own canvas is caught',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   ok(E.checkUidInvariant(migrated).ok,'sanity: migrated state starts clean');
   // Inject a bogus SECOND reference to an already-referenced uid into the
-  // CURRENT preset's own canvas (bypassing createRef's red-rule gate --
+  // CURRENT squad's own canvas (bypassing createRef's red-rule gate --
   // simulates a hypothetical bug in some future call site).
   const dupRef=JSON.parse(JSON.stringify(migrated.pos.find(p=>p.uid==='p1')));
   dupRef.cell=[8,8];
   migrated.pos.push(dupRef);
   const r=E.checkUidInvariant(migrated);
-  ok(!r.ok&&r.duplicates.some(d=>d.startsWith('po:p1@preset')),'two references to the SAME uid within one preset\'s canvas is caught: '+JSON.stringify(r));
+  ok(!r.ok&&r.duplicates.some(d=>d.startsWith('po:p1@squad')),'two references to the SAME uid within one squad\'s canvas is caught: '+JSON.stringify(r));
 });
 
-T('presets: uid non-duplication invariant -- switchPreset never creates a duplicate',()=>{
+T('presets: uid non-duplication invariant -- switchSquad never creates a duplicate',()=>{
   const {st,E}=fresh();
-  E.switchPreset(st,1);
-  ok(E.checkUidInvariant(st).ok,'invariant holds after switching to an empty preset');
-  E.switchPreset(st,0);
+  E.switchSquad(st,1);
+  ok(E.checkUidInvariant(st).ok,'invariant holds after switching to an empty squad');
+  E.switchSquad(st,0);
   ok(E.checkUidInvariant(st).ok,'invariant holds after switching back');
 });
 
 
-T('migrateState: pre-preset legacy save gets 5 presets (slot 0 = its own canvas, 1-4 empty) and inv.names',()=>{
+T('migrateState: pre-squad legacy save gets 5 squads (slot 0 = its own canvas, 1-4 empty) and inv.names',()=>{
   const {st:legacy}=fresh();
   delete legacy.presets;
   delete legacy.inv.names;
   const legacyBps=JSON.parse(JSON.stringify(legacy.bps));
   const migrated=Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES).migrateState(legacy);
-  ok(migrated.presets&&migrated.presets.active===0,'migrated state has an active preset 0');
-  eq(migrated.presets.names,['Preset 1','Preset 2','Preset 3','Preset 4','Preset 5']);
+  ok(migrated.presets&&migrated.presets.active===0,'migrated state has an active squad 0');
+  eq(migrated.presets.names,['Squad 1','Squad 2','Squad 3','Squad 4','Squad 5']);
   eq(migrated.presets.store.length,5);
   ok(migrated.presets.store[0]===null,'active slot has no store entry');
-  for(let i=1;i<5;i++)ok(migrated.presets.store[i].bps.length===0,'migrated preset '+i+' is empty');
-  eq(migrated.bps,legacyBps,'the legacy canvas itself becomes preset 0 (active) content, untouched');
+  for(let i=1;i<5;i++)ok(migrated.presets.store[i].bps.length===0,'migrated squad '+i+' is empty');
+  eq(migrated.bps,legacyBps,'the legacy canvas itself becomes squad 0 (active) content, untouched');
   eq(migrated.inv.names,['1','2','3','4','5'],'inv.names materialized to defaults');
   ok(Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES).checkUidInvariant(migrated).ok,'migrated state satisfies the uid invariant');
 });
 
-T('migrateState: a state that ALREADY has presets/inv.names is left alone (idempotent)',()=>{
+T('migrateState: a state that ALREADY has squads/inv.names is left alone (idempotent)',()=>{
   const {st,E}=fresh();
-  E.renamePreset(st,0,'Custom Name');
+  E.renameSquad(st,0,'Custom Name');
   E.renameInvPage(st,0,'Custom Page');
   const migrated=E.migrateState(st);
-  eq(migrated.presets.names[0],'Custom Name','pre-existing preset name not clobbered by migration');
+  eq(migrated.presets.names[0],'Custom Name','pre-existing squad name not clobbered by migration');
   eq(migrated.inv.names[0],'Custom Page','pre-existing inv page name not clobbered by migration');
 });
 
 // =======================================================================
 // REQ-0033 reference model tests. Inventory is MASTER: every uid has
-// exactly one HOME in st.inv.pages; the active preset's canvas (st.bps/
-// pos/sis) and every inactive preset's store[i] snapshot hold REFERENCES
+// exactly one HOME in st.inv.pages; the active squad's canvas (st.bps/
+// pos/sis) and every inactive squad's store[i] snapshot hold REFERENCES
 // (byte-identical record shape to a home record -- canPlacePO/movePO/
-// cellsOf/sockets/traceBeams/combos/switchPreset all keep working
+// cellsOf/sockets/traceBeams/combos/switchSquad all keep working
 // unmodified against them). See docs/REQ/REQ-0033-inventory-reference-
 // model.md's "Engine design" section for the adopted spec this suite
 // exercises.
 // =======================================================================
 
-T('REQ-0033 red rule: placing (referencing) an item already used by the CURRENT preset is refused; allowed into a DIFFERENT preset',()=>{
+T('REQ-0033 red rule: placing (referencing) an item already used by the CURRENT squad is refused; allowed into a DIFFERENT squad',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // p3 (flame_tablet) is already referenced by the active preset (0) --
-  // referencing it again into preset 0 must fail (red rule).
-  eq(E.usedByCurrent(migrated,'p3'),true,'sanity: p3 already used by current preset');
+  // p3 (flame_tablet) is already referenced by the active squad (0) --
+  // referencing it again into squad 0 must fail (red rule).
+  eq(E.usedByCurrent(migrated,'p3'),true,'sanity: p3 already used by current squad');
   const dup=E.createRef(migrated,'po','p3',{cell:[7,7],rot:0});
-  ok(!dup.ok&&dup.why==='already referenced by current preset','re-referencing p3 into its OWN current preset is refused: '+JSON.stringify(dup));
-  // remove it from preset 0, switch to an empty preset, referencing it
-  // THERE is allowed (no red rule violation -- different preset).
+  ok(!dup.ok&&dup.why==='already referenced by current squad','re-referencing p3 into its OWN current squad is refused: '+JSON.stringify(dup));
+  // remove it from squad 0, switch to an empty squad, referencing it
+  // THERE is allowed (no red rule violation -- different squad).
   ok(E.removeRef(migrated,'po','p3').ok);
-  E.switchPreset(migrated,1);
-  // preset 1 has no BPs of its own yet -- bring alpha along so there is a
+  E.switchSquad(migrated,1);
+  // squad 1 has no BPs of its own yet -- bring alpha along so there is a
   // legal cell to drop p3 onto (canvas requires BP infrastructure).
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
   ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
   ok(E.removeRef(migrated,'po','p3').ok,'p3 arrived nested under alpha -- remove that automatic reference first');
   const r=E.createRef(migrated,'po','p3',{cell:[1,2],rot:0});
-  ok(r.ok,'referencing p3 into a DIFFERENT (currently-active) preset is allowed: '+JSON.stringify(r));
+  ok(r.ok,'referencing p3 into a DIFFERENT (currently-active) squad is allowed: '+JSON.stringify(r));
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0033 yellow data: an item referenced by an OTHER preset is flagged yellow (and canvasYellow when it also sits on the current canvas); clears when that reference is removed',()=>{
+T('REQ-0033 yellow data: an item referenced by an OTHER squad is flagged yellow (and canvasYellow when it also sits on the current canvas); clears when that reference is removed',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   let tints=E.tintSets(migrated);
-  ok(!tints.yellow.has('p3'),'p3 not yellow yet -- only referenced by the current preset so far');
-  // reference alpha (brings p1/p2/p3) into preset 1 too
-  E.switchPreset(migrated,1);
+  ok(!tints.yellow.has('p3'),'p3 not yellow yet -- only referenced by the current squad so far');
+  // reference alpha (brings p1/p2/p3) into squad 1 too
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
   ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
-  E.switchPreset(migrated,0);
+  E.switchSquad(migrated,0);
   tints=E.tintSets(migrated);
-  ok(tints.yellow.has('p3'),'p3 now used by preset 1 too -- yellow from preset 0\'s perspective');
-  ok(tints.red.has('p3'),'p3 is ALSO used by the current preset (0) -- red too (not mutually exclusive)');
+  ok(tints.yellow.has('p3'),'p3 now used by squad 1 too -- yellow from squad 0\'s perspective');
+  ok(tints.red.has('p3'),'p3 is ALSO used by the current squad (0) -- red too (not mutually exclusive)');
   ok(tints.canvasYellow.has('p3'),'p3 sits on the CURRENT canvas and is shared -- canvasYellow set too');
-  ok(!tints.yellow.has('p4'),'p4 (tower_shield, only ever in preset 0) must not be yellow');
-  // remove preset 1's reference to alpha (and its nested contents) -- yellow must clear
-  E.switchPreset(migrated,1);
+  ok(!tints.yellow.has('p4'),'p4 (tower_shield, only ever in squad 0) must not be yellow');
+  // remove squad 1's reference to alpha (and its nested contents) -- yellow must clear
+  E.switchSquad(migrated,1);
   ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:alphaPage},'alpha',[1,1]).ok);
-  E.switchPreset(migrated,0);
+  E.switchSquad(migrated,0);
   tints=E.tintSets(migrated);
-  ok(!tints.yellow.has('p3'),'p3 no longer shared once preset 1\'s reference is removed -- yellow clears');
+  ok(!tints.yellow.has('p3'),'p3 no longer shared once squad 1\'s reference is removed -- yellow clears');
   ok(!tints.canvasYellow.has('p3'),'canvasYellow clears too');
-  ok(tints.red.has('p3'),'p3 remains red (still used by the current preset itself)');
+  ok(tints.red.has('p3'),'p3 remains red (still used by the current squad itself)');
 });
 
 T('REQ-0033 canvas -> inv removes ONLY the reference; the home (and its arrangement) is completely untouched',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   const homeBefore=JSON.parse(JSON.stringify(E.homeLocationOf(migrated,'p4').record));
-  ok(E.removeRef(migrated,'po','p4').ok,'remove tower_shield\'s reference from the current preset');
-  eq(migrated.pos.some(p=>p.uid==='p4'),false,'no longer referenced by current preset canvas');
+  ok(E.removeRef(migrated,'po','p4').ok,'remove tower_shield\'s reference from the current squad');
+  eq(migrated.pos.some(p=>p.uid==='p4'),false,'no longer referenced by current squad canvas');
   eq(E.homeLocationOf(migrated,'p4').record,homeBefore,'home untouched -- same page, same cell, same rot');
-  eq(E.usageOf(migrated,'p4'),[],'p4 now used by no preset at all');
+  eq(E.usageOf(migrated,'p4'),[],'p4 now used by no squad at all');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by current preset, arrives with only the other; SIs follow their (included) PO; the excluded PO\'s own SI stays behind',()=>{
+T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by current squad, arrives with only the other; SIs follow their (included) PO; the excluded PO\'s own SI stays behind',()=>{
   // Synthetic fixture: a 2-cell "box" BP containing two 1x1 POs side by
   // side, each with a gem socket + a seated SI, PLUS a separate small
   // "parking" BP elsewhere on the same page -- lets pA hold an
@@ -966,14 +966,14 @@ T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by curre
       {uid:'sB',id:'gem_si',host:{po:'pB',si:0}},
     ],
     inv:{pages:[{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]},
-    presets:{active:0,names:['Preset 1','Preset 2'],store:[null,{linked:true,bps:[],pos:[],sis:[]}]},
+    presets:{active:0,names:['Squad 1','Squad 2'],store:[null,{linked:true,bps:[],pos:[],sis:[]}]},
   };
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const migrated=E.migrateState(st); // gives box/parking/pA/pB/sA/sB inventory homes, current canvas keeps its references
   // Remove box's reference (cascades: drops pA/pB/sA/sB references too),
   // keep parking (empty BP, no contents) referenced -- then re-reference
   // pA alone onto parking's single free cell, so pA is "already used by
-  // current preset" while pB/box are not.
+  // current squad" while pB/box are not.
   const boxPage=E.homeLocationOf(migrated,'box').page;
   ok(E.transferBP(migrated,{loc:'canvas'},{loc:'inv',page:boxPage},'box',[1,1]).ok,'remove box\'s reference (cascades: drops pA/pB/sA/sB references too)');
   eq(migrated.pos.length,0,'canvas fully cleared of box\'s former contents');
@@ -981,7 +981,7 @@ T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by curre
   ok(E.createRef(migrated,'po','pA',{cell:[5,5],rot:0}).ok,'pA independently re-referenced onto the parking BP\'s cell');
   const brs=E.bpReferenceSet(migrated,'box');
   eq(brs.pos,['pB'],'only pB (not already used) is included');
-  eq(brs.excluded,['pA'],'pA (already used by current preset) is excluded');
+  eq(brs.excluded,['pA'],'pA (already used by current squad) is excluded');
   eq(brs.sis,['sB'],'sB (seated on the INCLUDED pB) follows');
   ok(!brs.sis.includes('sA'),'sA (seated on the EXCLUDED pA) does not travel');
   // now actually perform the transfer and confirm the resulting canvas state
@@ -995,76 +995,76 @@ T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by curre
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0033 preset-owned SI seat divergence: the SAME SI uid can be seated in one preset and stowed (or seated elsewhere) in another, independently',()=>{
+T('REQ-0033 squad-owned SI seat divergence: the SAME SI uid can be seated in one squad and stowed (or seated elsewhere) in another, independently',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // a1 (ruby gem) is seated on p2 (hilt) in the current (active) preset.
-  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'sanity: a1 seated on hilt in preset 0');
+  // a1 (ruby gem) is seated on p2 (hilt) in the current (active) squad.
+  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'sanity: a1 seated on hilt in squad 0');
   // reference beta (which contains p4/tower_shield with a gem socket) into
-  // preset 1, then reference a1 there too but leave it STOWED (host:'inv')
-  // -- independent of preset 0's seating.
-  E.switchPreset(migrated,1);
+  // squad 1, then reference a1 there too but leave it STOWED (host:'inv')
+  // -- independent of squad 0's seating.
+  E.switchSquad(migrated,1);
   const betaPage=E.homeLocationOf(migrated,'beta').page;
   ok(E.transferBP(migrated,{loc:'inv',page:betaPage},{loc:'canvas'},'beta',[1,1]).ok);
   const cr=E.createRef(migrated,'si','a1',{host:'inv'});
-  ok(cr.ok,'a1 referenced into preset 1, left stowed: '+JSON.stringify(cr));
-  eq(migrated.sis.find(a=>a.uid==='a1').host,'inv','preset 1\'s OWN reference to a1 starts stowed');
-  E.switchPreset(migrated,0);
-  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'preset 0\'s reference to a1 is STILL seated on the hilt -- unaffected by preset 1\'s stowed copy');
+  ok(cr.ok,'a1 referenced into squad 1, left stowed: '+JSON.stringify(cr));
+  eq(migrated.sis.find(a=>a.uid==='a1').host,'inv','squad 1\'s OWN reference to a1 starts stowed');
+  E.switchSquad(migrated,0);
+  eq(migrated.sis.find(a=>a.uid==='a1').host,{po:'p2',si:0},'squad 0\'s reference to a1 is STILL seated on the hilt -- unaffected by squad 1\'s stowed copy');
   ok(E.checkUidInvariant(migrated).ok,'invariant holds despite the same uid having two independent seat states');
 });
 
-T('REQ-0033 isUnitIndependent: positive (no shared uids) and negative (shares a uid with another preset) cases',()=>{
+T('REQ-0033 isSquadIndependent: positive (no shared uids) and negative (shares a uid with another squad) cases',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  ok(E.isUnitIndependent(migrated,0),'preset 0 alone (no other preset references anything yet) is independent');
-  ok(E.isUnitIndependent(migrated,1),'empty preset 1 is vacuously independent');
-  // make preset 1 share alpha (+contents) with preset 0 -- both become non-independent
-  E.switchPreset(migrated,1);
+  ok(E.isSquadIndependent(migrated,0),'squad 0 alone (no other squad references anything yet) is independent');
+  ok(E.isSquadIndependent(migrated,1),'empty squad 1 is vacuously independent');
+  // make squad 1 share alpha (+contents) with squad 0 -- both become non-independent
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
   ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
-  ok(!E.isUnitIndependent(migrated,1),'preset 1 now shares alpha/p1/p2/p3 with preset 0 -- NOT independent');
-  E.switchPreset(migrated,0);
-  ok(!E.isUnitIndependent(migrated,0),'preset 0 is likewise no longer independent (symmetric sharing)');
-  // gamma/delta/p5/p6/p7 were never touched -- preset 0 still independent
-  // WITH RESPECT to those uids individually is not what isUnitIndependent
-  // reports (it is whole-preset), so instead verify a THIRD, still-
-  // untouched preset remains independent.
-  ok(E.isUnitIndependent(migrated,2),'preset 2 (never referenced anything) remains independent');
+  ok(!E.isSquadIndependent(migrated,1),'squad 1 now shares alpha/p1/p2/p3 with squad 0 -- NOT independent');
+  E.switchSquad(migrated,0);
+  ok(!E.isSquadIndependent(migrated,0),'squad 0 is likewise no longer independent (symmetric sharing)');
+  // gamma/delta/p5/p6/p7 were never touched -- squad 0 still independent
+  // WITH RESPECT to those uids individually is not what isSquadIndependent
+  // reports (it is whole-squad), so instead verify a THIRD, still-
+  // untouched squad remains independent.
+  ok(E.isSquadIndependent(migrated,2),'squad 2 (never referenced anything) remains independent');
 });
 
-T('REQ-0041 isUnitDeployable: true iff the preset canvas has >=1 BP -- a SEPARATE predicate from isUnitIndependent',()=>{
+T('REQ-0041 isSquadDeployable: true iff the squad canvas has >=1 BP -- a SEPARATE predicate from isSquadIndependent',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // Preset 0 is the freshly-migrated ACTIVE preset -- the fixture's
+  // Squad 0 is the freshly-migrated ACTIVE squad -- the fixture's
   // top-level st.bps still holds alpha/beta/gamma/delta at this point
   // (migrateState references them in place, does not move them out of
-  // the active preset's own canvas), so preset 0 has >=1 BP.
-  ok(E.isUnitDeployable(migrated,0),'preset 0 (has BPs on the active canvas) is deployable');
-  // Every OTHER preset starts completely empty post-migration (REQ-0031:
-  // "new presets start empty") -- 0 BPs, hence NOT deployable, even
-  // though (per the test immediately above) an empty preset IS vacuously
+  // the active squad's own canvas), so squad 0 has >=1 BP.
+  ok(E.isSquadDeployable(migrated,0),'squad 0 (has BPs on the active canvas) is deployable');
+  // Every OTHER squad starts completely empty post-migration (REQ-0031:
+  // "new squads start empty") -- 0 BPs, hence NOT deployable, even
+  // though (per the test immediately above) an empty squad IS vacuously
   // independent. This is the crux of "combine, don't conflate": an empty
-  // preset passes isUnitIndependent but must fail isUnitDeployable.
-  ok(!E.isUnitDeployable(migrated,1),'empty preset 1 has 0 BPs -- NOT deployable despite being vacuously independent');
-  ok(E.isUnitIndependent(migrated,1),'(sanity) preset 1 is still independent -- isUnitDeployable is a SEPARATE, additional gate');
-  // Move a BP into preset 1 via the SAME transferBP path the independence
-  // test above uses -- preset 1 should become deployable the moment it
+  // squad passes isSquadIndependent but must fail isSquadDeployable.
+  ok(!E.isSquadDeployable(migrated,1),'empty squad 1 has 0 BPs -- NOT deployable despite being vacuously independent');
+  ok(E.isSquadIndependent(migrated,1),'(sanity) squad 1 is still independent -- isSquadDeployable is a SEPARATE, additional gate');
+  // Move a BP into squad 1 via the SAME transferBP path the independence
+  // test above uses -- squad 1 should become deployable the moment it
   // has >=1 BP, regardless of independence status.
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const betaPage=E.homeLocationOf(migrated,'beta').page;
   ok(E.transferBP(migrated,{loc:'inv',page:betaPage},{loc:'canvas'},'beta',[1,1]).ok);
-  ok(E.isUnitDeployable(migrated,1),'preset 1 now has a BP (beta) -- deployable');
-  // Out-of-range / no-presets-at-all inputs must never throw.
-  ok(!E.isUnitDeployable({bps:[],pos:[],sis:[]},0),'a bare canvas-shaped object with no st.presets at all must not throw (presetCanvasOf returns null)');
+  ok(E.isSquadDeployable(migrated,1),'squad 1 now has a BP (beta) -- deployable');
+  // Out-of-range / no-squads-at-all inputs must never throw.
+  ok(!E.isSquadDeployable({bps:[],pos:[],sis:[]},0),'a bare canvas-shaped object with no st.presets at all must not throw (squadCanvasOf returns null)');
 });
 
-T('REQ-0033 checkUidInvariant: catches home-duplication and per-preset reference duplication, accepts legitimate cross-preset sharing (covered above); sanity on a totally fresh un-migrated fixture (no st.inv) never throws',()=>{
+T('REQ-0033 checkUidInvariant: catches home-duplication and per-squad reference duplication, accepts legitimate cross-squad sharing (covered above); sanity on a totally fresh un-migrated fixture (no st.inv) never throws',()=>{
   const {ITEMS,SI_DEFS,LAYOUT,TREES,freshState}=invBPFixture();
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState(); // no st.presets at all
   const r=E.checkUidInvariant(st);
-  eq(r,{ok:true,duplicates:[]},'a state with no presets/home items at all trivially satisfies the invariant');
+  eq(r,{ok:true,duplicates:[]},'a state with no squads/home items at all trivially satisfies the invariant');
 });
 
 T('REQ-0033 migrateState v3: canvas-physical scenario -> homed + referenced, arrangement byte-preserved, idempotent',()=>{
@@ -1098,16 +1098,16 @@ T('REQ-0033 migrateState v3: canvas-physical scenario -> homed + referenced, arr
   ok(E.checkUidInvariant(migratedTwice).ok);
 });
 
-T('REQ-0033 switchPreset with references: swapping which preset is active is indifferent to reference-vs-home (structural swap only, unaffected by REQ-0033)',()=>{
+T('REQ-0033 switchSquad with references: swapping which squad is active is indifferent to reference-vs-home (structural swap only, unaffected by REQ-0033)',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   const origBps=JSON.parse(JSON.stringify(migrated.bps));
   const origPos=JSON.parse(JSON.stringify(migrated.pos));
-  ok(E.switchPreset(migrated,1).ok);
-  ok(migrated.bps.length===0&&migrated.pos.length===0,'preset 1 (empty) now live -- no references at all');
-  ok(E.switchPreset(migrated,0).ok);
-  eq(migrated.bps,origBps,'preset 0\'s references restored exactly across the round trip');
-  eq(migrated.pos,origPos,'preset 0\'s PO references restored exactly');
+  ok(E.switchSquad(migrated,1).ok);
+  ok(migrated.bps.length===0&&migrated.pos.length===0,'squad 1 (empty) now live -- no references at all');
+  ok(E.switchSquad(migrated,0).ok);
+  eq(migrated.bps,origBps,'squad 0\'s references restored exactly across the round trip');
+  eq(migrated.pos,origPos,'squad 0\'s PO references restored exactly');
   // homes were never touched by any of this
   ok(E.checkUidInvariant(migrated).ok);
   for(const p of origPos)ok(!!E.homeLocationOf(migrated,p.uid),'PO '+p.uid+' still has its home after switching back and forth');
@@ -1129,38 +1129,38 @@ T('REQ-0033 inv <-> inv stays physical (no reference/exclusion logic applies to 
   ok(!!w1,'w1 (home-contained PO) travelled with its BP\'s home');
 });
 
-T('REQ-0033 linker dormancy unaffected: a linker-bearing BP still contributes nothing to traceBeams while its home sits in an inventory page, REGARDLESS of whether any preset currently references it',()=>{
+T('REQ-0033 unit dormancy unaffected: a unit-bearing BP still contributes nothing to traceBeams while its home sits in an inventory page, REGARDLESS of whether any squad currently references it',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   const beamsBefore=E.traceBeams(migrated);
   ok(beamsBefore.some(b=>b.from==='delta'),'sanity: delta contributes a beam while referenced on the current canvas');
   ok(E.removeRef(migrated,'po','p7').ok,'remove nested jaw reference first (poInBPIn needs delta\'s own reference footprint, independent check)');
-  ok(E.removeRef(migrated,'bp','delta').ok,'remove delta\'s reference entirely -- it now exists ONLY as a home, referenced by no preset');
-  eq(E.usageOf(migrated,'delta'),[],'delta is referenced by zero presets');
+  ok(E.removeRef(migrated,'bp','delta').ok,'remove delta\'s reference entirely -- it now exists ONLY as a home, referenced by no squad');
+  eq(E.usageOf(migrated,'delta'),[],'delta is referenced by zero squads');
   const beamsAfter=E.traceBeams(migrated);
-  ok(!beamsAfter.some(b=>b.from==='delta'||b.to==='delta'),'delta (home-only, unreferenced by any preset) contributes nothing to traceBeams');
+  ok(!beamsAfter.some(b=>b.from==='delta'||b.to==='delta'),'delta (home-only, unreferenced by any squad) contributes nothing to traceBeams');
   const conns=E.allConnections(migrated);
   ok(!conns.some(c=>c.from.uid==='p7'||c.to.uid==='p7'),'jaw (home-only, unreferenced) contributes no connections');
 });
 
-T('REQ-0033 perf smoke: tintSets/usageOf stay fast at PRESET_COUNT scale with the live scenario\'s item count',()=>{
+T('REQ-0033 perf smoke: tintSets/usageOf stay fast at SQUAD_COUNT scale with the live scenario\'s item count',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // reference every BP into every preset (worst case: everything shared
+  // reference every BP into every squad (worst case: everything shared
   // with everything) to maximize usageOf's scan work per uid.
   for(let i=1;i<5;i++){
-    E.switchPreset(migrated,i);
+    E.switchSquad(migrated,i);
     for(const bpId of ['alpha','beta','gamma']){
       if(E.usedByCurrent(migrated,bpId))continue;
       const home=E.homeLocationOf(migrated,bpId);
       if(home)E.transferBP(migrated,{loc:'inv',page:home.page},{loc:'canvas'},bpId,[1,1+3*i]);
     }
   }
-  E.switchPreset(migrated,0);
+  E.switchSquad(migrated,0);
   const t0=Date.now();
   for(let i=0;i<200;i++)E.tintSets(migrated);
   const elapsed=Date.now()-t0;
-  ok(elapsed<1000,'200x tintSets() over a 5-preset, multiply-shared scenario should stay well under 1s (got '+elapsed+'ms) -- confirms on-demand computation (no caching) is fast enough at this scale');
+  ok(elapsed<1000,'200x tintSets() over a 5-squad, multiply-shared scenario should stay well under 1s (got '+elapsed+'ms) -- confirms on-demand computation (no caching) is fast enough at this scale');
 });
 
 T('REQ-0033 usedByCurrent/usedByOthers as standalone predicates match usageOf exactly',()=>{
@@ -1168,15 +1168,15 @@ T('REQ-0033 usedByCurrent/usedByOthers as standalone predicates match usageOf ex
   const migrated=E.migrateState(st);
   eq(E.usedByCurrent(migrated,'p1'),true);
   eq(E.usedByOthers(migrated,'p1'),false);
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
   ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok);
-  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by preset 1 (now current)');
-  eq(E.usedByOthers(migrated,'p1'),true,'p1 ALSO used by preset 0 (an other preset)');
-  E.switchPreset(migrated,0);
-  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by preset 0 (current again)');
-  eq(E.usedByOthers(migrated,'p1'),true,'p1 also used by preset 1 (now an other)');
-  eq(E.usedByCurrent(migrated,'p4'),true,'p4 (tower_shield) only ever referenced by preset 0');
+  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by squad 1 (now current)');
+  eq(E.usedByOthers(migrated,'p1'),true,'p1 ALSO used by squad 0 (an other squad)');
+  E.switchSquad(migrated,0);
+  eq(E.usedByCurrent(migrated,'p1'),true,'p1 used by squad 0 (current again)');
+  eq(E.usedByOthers(migrated,'p1'),true,'p1 also used by squad 1 (now an other)');
+  eq(E.usedByCurrent(migrated,'p4'),true,'p4 (tower_shield) only ever referenced by squad 0');
   eq(E.usedByOthers(migrated,'p4'),false,'p4 not shared with anyone');
 });
 
@@ -1191,19 +1191,19 @@ T('REQ-0033 createRef rejects a uid with no home at all (defensive: not reachabl
 T('REQ-0033 red rule applies identically to a bare SI reference (not just POs/BPs)',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // a1 (ruby) is already referenced (seated on p2/hilt) by the current preset.
+  // a1 (ruby) is already referenced (seated on p2/hilt) by the current squad.
   eq(E.usedByCurrent(migrated,'a1'),true);
   const dup=E.createRef(migrated,'si','a1',{host:'inv'});
-  ok(!dup.ok&&dup.why==='already referenced by current preset','re-referencing a1 (an SI) into its own current preset is refused');
+  ok(!dup.ok&&dup.why==='already referenced by current squad','re-referencing a1 (an SI) into its own current squad is refused');
 });
 
-T('REQ-0033 bpReferenceSet happy path: no exclusions when the current preset does not yet use any of the BP\'s contents',()=>{
+T('REQ-0033 bpReferenceSet happy path: no exclusions when the current squad does not yet use any of the BP\'s contents',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1); // empty preset -- references none of alpha's contents yet
+  E.switchSquad(migrated,1); // empty squad -- references none of alpha's contents yet
   const brs=E.bpReferenceSet(migrated,'alpha');
   ok(brs.ok);
-  eq(brs.excluded,[],'nothing excluded -- preset 1 has no prior references at all');
+  eq(brs.excluded,[],'nothing excluded -- squad 1 has no prior references at all');
   eq(new Set(brs.pos),new Set(['p1','p2','p3']),'all 3 home-contained POs included');
 });
 
@@ -1214,94 +1214,94 @@ T('REQ-0033 tintSets on a synthetic canvas-only fixture with no st.inv/st.preset
   eq([...t.red],[]);
   eq([...t.yellow],[]);
   eq([...t.canvasYellow],[]);
-  ok(E.isUnitIndependent(st,0),'no presets at all -- vacuously independent');
+  ok(E.isSquadIndependent(st,0),'no squads at all -- vacuously independent');
 });
 
 
 // =======================================================================
-// REQ-0032: tab reorder (presets + inventory pages) and preset trash
+// REQ-0032: tab reorder (squads + inventory pages) and squad trash
 // delete. Per REQ-0033 (which landed after REQ-0032 was speced and
-// supersedes its "first-fit physical return" paragraph): presets hold
-// REFERENCES into the shared inventory, so deletePreset only ever drops
-// a preset's reference set -- inventory homes/items are NEVER touched.
+// supersedes its "first-fit physical return" paragraph): squads hold
+// REFERENCES into the shared inventory, so deleteSquad only ever drops
+// a squad's reference set -- inventory homes/items are NEVER touched.
 // =======================================================================
 
-T('REQ-0032 reorderPreset: moving a preset RIGHT across the active preset shifts active left to keep pointing at the same preset',()=>{
+T('REQ-0032 reorderSquad: moving a squad RIGHT across the active squad shifts active left to keep pointing at the same squad',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,2); // active=2 ("Preset 3")
+  E.switchSquad(migrated,2); // active=2 ("Squad 3")
   const namesBefore=migrated.presets.names.slice();
-  ok(E.reorderPreset(migrated,0,3).ok,'move preset 0 to index 3, straddling active(2)');
-  // preset 0 (name 'Preset 1') moved from before active to at/after active
-  // -> active shifts LEFT by one (2->1), still identifying "Preset 3".
-  eq(migrated.presets.active,1,'active index shifted left to keep tracking Preset 3');
-  eq(migrated.presets.names[1],namesBefore[2],'the preset at the new active index is still "Preset 3" by name');
+  ok(E.reorderSquad(migrated,0,3).ok,'move squad 0 to index 3, straddling active(2)');
+  // squad 0 (name 'Squad 1') moved from before active to at/after active
+  // -> active shifts LEFT by one (2->1), still identifying "Squad 3".
+  eq(migrated.presets.active,1,'active index shifted left to keep tracking Squad 3');
+  eq(migrated.presets.names[1],namesBefore[2],'the squad at the new active index is still "Squad 3" by name');
   // expected name order after splice(0,1)+splice(3,0,moved): [P2,P3,P4,P1,P5]
   eq(migrated.presets.names,[namesBefore[1],namesBefore[2],namesBefore[3],namesBefore[0],namesBefore[4]]);
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 reorderPreset: moving a preset LEFT across the active preset shifts active right to keep pointing at the same preset',()=>{
+T('REQ-0032 reorderSquad: moving a squad LEFT across the active squad shifts active right to keep pointing at the same squad',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1); // active=1 ("Preset 2")
+  E.switchSquad(migrated,1); // active=1 ("Squad 2")
   const namesBefore=migrated.presets.names.slice();
-  ok(E.reorderPreset(migrated,3,0).ok,'move preset 3 to index 0, straddling active(1) from the other side');
-  // preset 3 moved from AFTER active to AT/BEFORE active -> active shifts RIGHT by one (1->2).
-  eq(migrated.presets.active,2,'active index shifted right to keep tracking Preset 2');
-  eq(migrated.presets.names[2],namesBefore[1],'the preset at the new active index is still "Preset 2" by name');
+  ok(E.reorderSquad(migrated,3,0).ok,'move squad 3 to index 0, straddling active(1) from the other side');
+  // squad 3 moved from AFTER active to AT/BEFORE active -> active shifts RIGHT by one (1->2).
+  eq(migrated.presets.active,2,'active index shifted right to keep tracking Squad 2');
+  eq(migrated.presets.names[2],namesBefore[1],'the squad at the new active index is still "Squad 2" by name');
   eq(migrated.presets.names,[namesBefore[3],namesBefore[0],namesBefore[1],namesBefore[2],namesBefore[4]]);
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 reorderPreset: moving the ACTIVE preset itself -- active follows it to the destination index',()=>{
+T('REQ-0032 reorderSquad: moving the ACTIVE squad itself -- active follows it to the destination index',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // active is preset 0 by default -- give it a distinguishing rename so we can identify it post-move.
-  E.renamePreset(migrated,0,'MyActive');
-  ok(E.reorderPreset(migrated,0,3).ok,'move the active preset itself from 0 to 3');
-  eq(migrated.presets.active,3,'active follows the moved preset to its new index');
+  // active is squad 0 by default -- give it a distinguishing rename so we can identify it post-move.
+  E.renameSquad(migrated,0,'MyActive');
+  ok(E.reorderSquad(migrated,0,3).ok,'move the active squad itself from 0 to 3');
+  eq(migrated.presets.active,3,'active follows the moved squad to its new index');
   eq(migrated.presets.names[3],'MyActive');
-  // its actual canvas content (p1..p8 etc, since it was preset 0 = the live scenario) must still be the live top-level fields
-  ok(migrated.pos.some(p=>p.uid==='p3'),'the moved-and-still-active preset\'s content is still the live canvas');
+  // its actual canvas content (p1..p8 etc, since it was squad 0 = the live scenario) must still be the live top-level fields
+  ok(migrated.pos.some(p=>p.uid==='p3'),'the moved-and-still-active squad\'s content is still the live canvas');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 reorderPreset: a move entirely on ONE side of active never shifts active',()=>{
+T('REQ-0032 reorderSquad: a move entirely on ONE side of active never shifts active',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,4); // active=4, last slot
+  E.switchSquad(migrated,4); // active=4, last slot
   const namesBefore=migrated.presets.names.slice();
-  ok(E.reorderPreset(migrated,0,1).ok,'swap-ish move entirely among indices 0/1, both before active(4)');
+  ok(E.reorderSquad(migrated,0,1).ok,'swap-ish move entirely among indices 0/1, both before active(4)');
   eq(migrated.presets.active,4,'active untouched -- move never crossed it');
   eq(migrated.presets.names,[namesBefore[1],namesBefore[0],namesBefore[2],namesBefore[3],namesBefore[4]]);
 });
 
-T('REQ-0032 reorderPreset: preset content (store slot) moves as a UNIT with its name, not just the label',()=>{
+T('REQ-0032 reorderSquad: squad content (store slot) moves as a SQUAD with its name, not just the label',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 now references alpha (+ contents)');
-  E.renamePreset(migrated,1,'HasAlpha');
-  E.switchPreset(migrated,0); // preset 1's content now lives in store[1]
-  ok(E.reorderPreset(migrated,1,4).ok,'move preset 1 (HasAlpha, currently inactive) to the end');
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'squad 1 now references alpha (+ contents)');
+  E.renameSquad(migrated,1,'HasAlpha');
+  E.switchSquad(migrated,0); // squad 1's content now lives in store[1]
+  ok(E.reorderSquad(migrated,1,4).ok,'move squad 1 (HasAlpha, currently inactive) to the end');
   eq(migrated.presets.names[4],'HasAlpha');
-  ok(migrated.presets.store[4].bps.some(b=>b.id==='alpha'),'the alpha reference moved WITH its preset to slot 4, not left behind');
+  ok(migrated.presets.store[4].bps.some(b=>b.id==='alpha'),'the alpha reference moved WITH its squad to slot 4, not left behind');
   eq(migrated.presets.store[1],null===migrated.presets.store[1]?null:migrated.presets.store[1],'sanity no-op');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 reorderPreset: rejects out-of-range indices and no-ops on from===to',()=>{
+T('REQ-0032 reorderSquad: rejects out-of-range indices and no-ops on from===to',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
   const before=JSON.stringify(migrated.presets);
-  const bad1=E.reorderPreset(migrated,0,99);
+  const bad1=E.reorderSquad(migrated,0,99);
   ok(!bad1.ok,'to index out of range rejected');
-  const bad2=E.reorderPreset(migrated,-1,2);
+  const bad2=E.reorderSquad(migrated,-1,2);
   ok(!bad2.ok,'from index out of range rejected');
   eq(JSON.stringify(migrated.presets),before,'rejected calls never mutate state');
-  ok(E.reorderPreset(migrated,2,2).ok,'from===to is a no-op success');
+  ok(E.reorderSquad(migrated,2,2).ok,'from===to is a no-op success');
   eq(JSON.stringify(migrated.presets),before,'no-op leaves state byte-identical');
 });
 
@@ -1314,7 +1314,7 @@ T('REQ-0032 reorderInvPage: moving a page RIGHT across the active page (client-s
   const namesBefore=migrated.inv.names.slice();
   const activeInvPage=1; // simulate the client's activeInvPage tracking 'Bravo'
   ok(E.reorderInvPage(migrated,0,3).ok,'move page 0 to index 3, straddling activeInvPage(1)');
-  // mirror of reorderPresetIndex, applied by hand (client owns this, but we verify the same rule produces a correct result)
+  // mirror of reorderSquadIndex, applied by hand (client owns this, but we verify the same rule produces a correct result)
   const newActive=(0<activeInvPage&&3>=activeInvPage)?activeInvPage-1:activeInvPage;
   eq(newActive,0,'the mirrored index rule points at 0');
   eq(migrated.inv.names[newActive],'Bravo','page at the recomputed active index is still Bravo by name');
@@ -1377,108 +1377,108 @@ T('REQ-0032 reorderInvPage: rejects out-of-range indices and no-ops on from===to
   eq(st.inv.names.length,5,'names[] materialized to full PAGE_COUNT length even though the fixture never had one');
 });
 
-T('REQ-0032 deletePreset: deleting a NON-active preset leaves active pointing at the SAME preset (index shifts left if deleted-before)',()=>{
+T('REQ-0032 deleteSquad: deleting a NON-active squad leaves active pointing at the SAME squad (index shifts left if deleted-before)',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,2); // active=2 ("Preset 3")
+  E.switchSquad(migrated,2); // active=2 ("Squad 3")
   const activeName=migrated.presets.names[2];
-  ok(E.deletePreset(migrated,0).ok,'delete preset 0 (before active)');
+  ok(E.deleteSquad(migrated,0).ok,'delete squad 0 (before active)');
   eq(migrated.presets.names.length,4);
   eq(migrated.presets.active,1,'active shifted left by one since the deleted slot was before it');
-  eq(migrated.presets.names[1],activeName,'active index still identifies the SAME preset (Preset 3) by name');
+  eq(migrated.presets.names[1],activeName,'active index still identifies the SAME squad (Squad 3) by name');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 deletePreset: deleting the ACTIVE preset lands on the nearest remaining tab (same index if occupied)',()=>{
+T('REQ-0032 deleteSquad: deleting the ACTIVE squad lands on the nearest remaining tab (same index if occupied)',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1); // active=1 ("Preset 2"), NOT the last slot
+  E.switchSquad(migrated,1); // active=1 ("Squad 2"), NOT the last slot
   const namesBefore=migrated.presets.names.slice();
-  ok(E.deletePreset(migrated,1).ok,'delete the active preset itself');
+  ok(E.deleteSquad(migrated,1).ok,'delete the active squad itself');
   eq(migrated.presets.names.length,4);
-  eq(migrated.presets.active,1,'lands on the SAME index -- the preset that used to be at 2 (Preset 3) now occupies it');
-  eq(migrated.presets.names[1],namesBefore[2],'index 1 now shows what used to be Preset 3 (nearest remaining tab)');
+  eq(migrated.presets.active,1,'lands on the SAME index -- the squad that used to be at 2 (Squad 3) now occupies it');
+  eq(migrated.presets.names[1],namesBefore[2],'index 1 now shows what used to be Squad 3 (nearest remaining tab)');
 });
 
-T('REQ-0032 deletePreset: deleting the ACTIVE preset when it was the LAST slot falls back to the new last index',()=>{
+T('REQ-0032 deleteSquad: deleting the ACTIVE squad when it was the LAST slot falls back to the new last index',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,4); // active=4, the LAST slot
+  E.switchSquad(migrated,4); // active=4, the LAST slot
   const namesBefore=migrated.presets.names.slice();
-  ok(E.deletePreset(migrated,4).ok,'delete the active preset, which was the last slot');
+  ok(E.deleteSquad(migrated,4).ok,'delete the active squad, which was the last slot');
   eq(migrated.presets.names.length,4);
   eq(migrated.presets.active,3,'lands on the new last index (3) -- there is no slot 4 anymore');
-  eq(migrated.presets.names[3],namesBefore[3],'index 3 still shows the preset that was already there (Preset 4)');
+  eq(migrated.presets.names[3],namesBefore[3],'index 3 still shows the squad that was already there (Squad 4)');
 });
 
-T('REQ-0032 deletePreset: refuses to delete the LAST remaining preset -- state completely unchanged',()=>{
+T('REQ-0032 deleteSquad: refuses to delete the LAST remaining squad -- state completely unchanged',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  // collapse down to exactly 1 preset first
-  ok(E.deletePreset(migrated,4).ok);
-  ok(E.deletePreset(migrated,3).ok);
-  ok(E.deletePreset(migrated,2).ok);
-  ok(E.deletePreset(migrated,1).ok);
-  eq(migrated.presets.names.length,1,'sanity: down to exactly 1 preset');
+  // collapse down to exactly 1 squad first
+  ok(E.deleteSquad(migrated,4).ok);
+  ok(E.deleteSquad(migrated,3).ok);
+  ok(E.deleteSquad(migrated,2).ok);
+  ok(E.deleteSquad(migrated,1).ok);
+  eq(migrated.presets.names.length,1,'sanity: down to exactly 1 squad');
   const before=JSON.stringify(migrated.presets);
   const beforeInv=JSON.stringify(migrated.inv);
-  const r=E.deletePreset(migrated,0);
-  ok(!r.ok,'refused: cannot delete the last remaining preset');
-  eq(JSON.stringify(migrated.presets),before,'presets completely unchanged by the refused call');
+  const r=E.deleteSquad(migrated,0);
+  ok(!r.ok,'refused: cannot delete the last remaining squad');
+  eq(JSON.stringify(migrated.presets),before,'squads completely unchanged by the refused call');
   eq(JSON.stringify(migrated.inv),beforeInv,'inventory completely unchanged too');
 });
 
-T('REQ-0032 deletePreset: drops ONLY the preset\'s reference set -- inventory items/homes are COMPLETELY untouched (REQ-0033 supersedes physical first-fit-return)',()=>{
+T('REQ-0032 deleteSquad: drops ONLY the squad\'s reference set -- inventory items/homes are COMPLETELY untouched (REQ-0033 supersedes physical first-fit-return)',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 references alpha (+contents: p1,p2 -- p3 excluded, already used by preset 0)');
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'squad 1 references alpha (+contents: p1,p2 -- p3 excluded, already used by squad 0)');
   const invBefore=JSON.parse(JSON.stringify(migrated.inv));
-  ok(E.usageOf(migrated,'alpha').includes(1),'sanity: preset 1 uses alpha before delete');
-  E.switchPreset(migrated,0);
-  ok(E.deletePreset(migrated,1).ok,'delete preset 1 (non-active, holds the alpha reference)');
+  ok(E.usageOf(migrated,'alpha').includes(1),'sanity: squad 1 uses alpha before delete');
+  E.switchSquad(migrated,0);
+  ok(E.deleteSquad(migrated,1).ok,'delete squad 1 (non-active, holds the alpha reference)');
   eq(JSON.parse(JSON.stringify(migrated.inv)),invBefore,'inventory (all homes, all items, all positions) is BYTE-IDENTICAL after the delete');
-  ok(!E.usageOf(migrated,'alpha').includes(1),'alpha\'s reference from the deleted preset is simply gone (usageOf no longer includes any slot holding it, since preset 1 doesn\'t exist anymore)');
+  ok(!E.usageOf(migrated,'alpha').includes(1),'alpha\'s reference from the deleted squad is simply gone (usageOf no longer includes any slot holding it, since squad 1 doesn\'t exist anymore)');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
-T('REQ-0032 tint recompute after REORDER: a red/yellow-tinted item\'s tint state survives a reorder of unrelated presets',()=>{
+T('REQ-0032 tint recompute after REORDER: a red/yellow-tinted item\'s tint state survives a reorder of unrelated squads',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 shares alpha/p1/p2 with preset 0');
-  E.switchPreset(migrated,0);
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'squad 1 shares alpha/p1/p2 with squad 0');
+  E.switchSquad(migrated,0);
   const tintsBefore=E.tintSets(migrated);
-  ok(tintsBefore.yellow.has('p1')&&tintsBefore.yellow.has('alpha'),'sanity: p1/alpha yellow (shared with preset 1) before reorder');
-  // reorder presets 3 and 4 (both unrelated to the sharing between 0 and 1) -- must not disturb tint state at all.
-  ok(E.reorderPreset(migrated,3,4).ok);
+  ok(tintsBefore.yellow.has('p1')&&tintsBefore.yellow.has('alpha'),'sanity: p1/alpha yellow (shared with squad 1) before reorder');
+  // reorder squads 3 and 4 (both unrelated to the sharing between 0 and 1) -- must not disturb tint state at all.
+  ok(E.reorderSquad(migrated,3,4).ok);
   const tintsAfter=E.tintSets(migrated);
   eq([...tintsAfter.red].sort(),[...tintsBefore.red].sort(),'red set unchanged by an unrelated reorder');
   eq([...tintsAfter.yellow].sort(),[...tintsBefore.yellow].sort(),'yellow set unchanged by an unrelated reorder');
   ok(tintsAfter.yellow.has('p1')&&tintsAfter.yellow.has('alpha'),'p1/alpha still correctly yellow after the reorder');
 });
 
-T('REQ-0032 tint recompute after DELETE: a deleted preset\'s tint contribution disappears without affecting other presets\' tint state',()=>{
+T('REQ-0032 tint recompute after DELETE: a deleted squad\'s tint contribution disappears without affecting other squads\' tint state',()=>{
   const {st,E}=fresh();
   const migrated=E.migrateState(st);
-  E.switchPreset(migrated,1);
+  E.switchSquad(migrated,1);
   const alphaPage=E.homeLocationOf(migrated,'alpha').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'preset 1 shares alpha/p1/p2 with preset 0');
-  // also give preset 2 its own INDEPENDENT reference, unrelated to the alpha sharing, to prove it survives untouched.
-  E.switchPreset(migrated,2);
+  ok(E.transferBP(migrated,{loc:'inv',page:alphaPage},{loc:'canvas'},'alpha',[1,1]).ok,'squad 1 shares alpha/p1/p2 with squad 0');
+  // also give squad 2 its own INDEPENDENT reference, unrelated to the alpha sharing, to prove it survives untouched.
+  E.switchSquad(migrated,2);
   const deltaPage=E.homeLocationOf(migrated,'delta').page;
-  ok(E.transferBP(migrated,{loc:'inv',page:deltaPage},{loc:'canvas'},'delta',[1,1]).ok,'preset 2 independently references delta');
-  E.switchPreset(migrated,0);
-  ok(E.tintSets(migrated).yellow.has('delta'),'sanity: delta yellow too (shared between preset 0-home and preset 2 reference)');
-  ok(E.deletePreset(migrated,1).ok,'delete preset 1 -- drops the alpha/p1/p2 sharing entirely');
+  ok(E.transferBP(migrated,{loc:'inv',page:deltaPage},{loc:'canvas'},'delta',[1,1]).ok,'squad 2 independently references delta');
+  E.switchSquad(migrated,0);
+  ok(E.tintSets(migrated).yellow.has('delta'),'sanity: delta yellow too (shared between squad 0-home and squad 2 reference)');
+  ok(E.deleteSquad(migrated,1).ok,'delete squad 1 -- drops the alpha/p1/p2 sharing entirely');
   const tints=E.tintSets(migrated);
-  ok(!tints.yellow.has('p1'),'p1 no longer yellow -- its only OTHER reference (preset 1) is gone');
+  ok(!tints.yellow.has('p1'),'p1 no longer yellow -- its only OTHER reference (squad 1) is gone');
   ok(!tints.yellow.has('alpha'),'alpha no longer yellow either');
-  ok(tints.red.has('p1')&&tints.red.has('alpha'),'p1/alpha remain red -- still used by the current preset (0) itself, home untouched');
-  // delta's sharing (with the surviving preset 2, renumbered after the splice) must be unaffected.
-  ok(tints.yellow.has('delta'),'delta STILL yellow -- its sharing with the surviving preset (now at index 1 post-splice) is untouched by an unrelated preset\'s deletion');
+  ok(tints.red.has('p1')&&tints.red.has('alpha'),'p1/alpha remain red -- still used by the current squad (0) itself, home untouched');
+  // delta's sharing (with the surviving squad 2, renumbered after the splice) must be unaffected.
+  ok(tints.yellow.has('delta'),'delta STILL yellow -- its sharing with the surviving squad (now at index 1 post-splice) is untouched by an unrelated squad\'s deletion');
   ok(E.checkUidInvariant(migrated).ok);
 });
 
@@ -1677,14 +1677,14 @@ T('REQ-0042 checkUidInvariant: a TM uid and a PO uid sharing the same literal st
 // =====================================================================
 // REQ-0045 (a2): BP rotation (canRotateBP/rotateBP canvas,
 // invCanRotateBP/invRotateBP inventory). A genuine physical 90-degree-CW
-// rotation of the whole BP: shape (about its own bbox), linker cell +
+// rotation of the whole BP: shape (about its own bbox), unit cell +
 // dirs (+2 mod 8), and every contained PO's cell + rot (+1 mod 4).
 // =====================================================================
 function rotateFixtureItems(){
   return { test_po:{name:'Test PO',tags:[],shape:[[0,0]],icon:'icon-x',sockets:[]} };
 }
 
-T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center linker and one contained PO rotates correctly (cell/dir remapping)',()=>{
+T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one contained PO rotates correctly (cell/dir remapping)',()=>{
   const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
   const st={
     linked:true,
@@ -1700,10 +1700,10 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center linker and one
   // [[0,0],[1,0],[2,0],[2,1]] -> raw rotated [[0,0],[0,-1],[0,-2],[1,-2]]
   // -> min row 0, min col -2 -> renormalized [[0,2],[0,1],[0,0],[1,0]].
   eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'shape rotated 90deg CW about its own bbox');
-  // Linker off [2,1] -> raw rotated [1,-2] -> renormalized (same mr=0,mc=-2) -> [1,0].
-  eq(bp.linker.off,[1,0],'linker cell rotates WITH the shape (same renormalization delta)');
+  // Unit off [2,1] -> raw rotated [1,-2] -> renormalized (same mr=0,mc=-2) -> [1,0].
+  eq(bp.linker.off,[1,0],'unit cell rotates WITH the shape (same renormalization delta)');
   // Dirs [0,2] (N,E) -> +2 mod 8 -> [2,4] (E,S).
-  eq(bp.linker.dirs,[2,4],'linker beam directions rotate by +2 mod 8');
+  eq(bp.linker.dirs,[2,4],'unit beam directions rotate by +2 mod 8');
   eq(bp.origin,[2,2],'BP origin itself does not move during an in-place rotation');
   // The contained PO sat on the foot cell (local [2,1], absolute [4,3]);
   // after rotation the foot is now at local [1,0] -> absolute [3,2]; the
@@ -1715,7 +1715,7 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center linker and one
   ok(JSON.stringify(st)!==JSON.stringify(before),'sanity: state actually changed');
 });
 
-T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (shape, PO cell/rot, linker cell/dir) -- identity',()=>{
+T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (shape, PO cell/rot, unit cell/dir) -- identity',()=>{
   const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
   const st={
     linked:true,
@@ -1729,7 +1729,7 @@ T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (s
     ok(r.ok,'rotation '+(i+1)+' of 4 must succeed (BP has room to turn freely): '+JSON.stringify(r));
   }
   eq(st.bps[0].shape,original.bps[0].shape,'shape identical after 4x rotation');
-  eq(st.bps[0].linker,original.bps[0].linker,'linker cell+dirs identical after 4x rotation');
+  eq(st.bps[0].linker,original.bps[0].linker,'unit cell+dirs identical after 4x rotation');
   eq(st.bps[0].origin,original.bps[0].origin,'origin identical after 4x rotation');
   eq(st.pos[0].cell,original.pos[0].cell,'contained PO cell identical after 4x rotation');
   eq(st.pos[0].rot,original.pos[0].rot,'contained PO rot identical after 4x rotation (1+1+1+1=4 mod 4=0)');
@@ -1786,7 +1786,7 @@ T('REQ-0045 invRotateBP: inventory page -- same math as canvas, contained PO tra
   ok(r.ok,'inventory rotation commit succeeds');
   const bp=st.inv.pages[0].bps[0];
   eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'inventory BP shape rotates identically to the canvas math');
-  eq(bp.linker.dirs,[2,4],'inventory linker dirs rotate +2 mod 8 identically');
+  eq(bp.linker.dirs,[2,4],'inventory unit dirs rotate +2 mod 8 identically');
   const po=st.inv.pages[0].pos.find(p=>p.uid==='ip1');
   eq(po.cell,[3,2],'inventory contained PO cell remapped identically');
   eq(po.rot,1,'inventory contained PO rot advances identically');

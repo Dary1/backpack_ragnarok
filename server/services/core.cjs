@@ -1,7 +1,7 @@
 'use strict';
 // server/services/core.cjs -- REQ-0047 (c): shared foundation of the
 // schedule services, moved VERBATIM from server/schedule.cjs: tunable
-// constants (warehouse cap/TTL, unit slots, level min), content paths,
+// constants (warehouse cap/TTL, squad slots, level min), content paths,
 // the mtime-cached content loader (getScheduleContent), dungeon/formation
 // listing + i18n labels, reward-roll mapping, engine factory, id minting.
 const crypto = require('crypto');
@@ -17,6 +17,7 @@ const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
 const CONTENT_DIR = path.join(REPO_ROOT, 'content');
 const LIVE_DIR = path.join(CONTENT_DIR, 'live');
 const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
+const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json'); // REQ-0115: SI (accessory) content defs
 const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
 const BATCH_DIR = path.join(CONTENT_DIR, 'batches', 'batch-002-dungeon-pilot');
 const DUNGEON_PATH = path.join(BATCH_DIR, 'dungeon.json');
@@ -43,7 +44,7 @@ const WAREHOUSE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // golden e: "kept up to one w
 // abandoned client claim never permanently strands the item -- "no item
 // loss on crash" per the REQ's own design note.
 const WAREHOUSE_CLAIM_TIMEOUT_MS = 120 * 1000; // 120s
-const UNIT_SLOTS = ['unit1', 'unit2', 'unit3', 'unit4']; // golden b: party = 4 Units
+const SQUAD_SLOTS = ['unit1', 'unit2', 'unit3', 'unit4']; // golden b: troop = 4 Squads
 const DEFAULT_FORMATION_ID = 'formation1';
 const DEFAULT_FAILURE_STEP = 1; // golden i default, matches sim TUNABLES.FAILURE_STEP
 const DEFAULT_LEVEL_MIN = combat.TUNABLES.LEVEL_MIN;
@@ -63,6 +64,7 @@ function loadJSON(p) {
 function getScheduleContent() {
   const mtimes = {
     items: statMtimeMs(ITEMS_PATH),
+    sis: statMtimeMs(SIS_PATH), // REQ-0115
     tms: statMtimeMs(TMS_PATH), // REQ-0042
     dungeon: statMtimeMs(DUNGEON_PATH),
     enemies: statMtimeMs(ENEMIES_PATH),
@@ -74,6 +76,7 @@ function getScheduleContent() {
   if (!stale) return contentCache.payload;
 
   const liveItems = loadJSON(ITEMS_PATH);
+  const liveSis = loadJSON(SIS_PATH); // REQ-0115
   const liveTms = loadJSON(TMS_PATH); // REQ-0042
   const pilotItems = loadJSON(ITEMS_PILOT_PATH);
   const dungeonDef = loadJSON(DUNGEON_PATH);
@@ -92,6 +95,17 @@ function getScheduleContent() {
   const tmDefsById = {};
   for (const e of liveTms.entries) tmDefsById[e.id] = e;
 
+  // REQ-0115: SI (accessory) defs -- same id-keyed map shape as
+  // itemDefsById/tmDefsById above, but a DELIBERATELY SEPARATE sibling
+  // map (NOT merged into itemDefsById, which stays PO-only: the engine
+  // and settle paths treat SIs as a distinct kind -- see services/
+  // ragnarok.cjs). Consumed by the admin warehouse-grant route and by
+  // claimWarehouseItem so an SI id (a real live_sis.json entry, e.g.
+  // acc_gem) is accepted as valid warehouse content, mirroring how
+  // REQ-0042 added tmDefsById for TM ids.
+  const siDefsById = {};
+  for (const e of liveSis.entries) siDefsById[e.id] = e;
+
   const enemyDefsById = {};
   for (const e of enemies.entries) enemyDefsById[e.id] = e;
 
@@ -100,7 +114,7 @@ function getScheduleContent() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  const payload = { itemDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
+  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
 }
@@ -182,10 +196,10 @@ function resolveRewardItemId(rollId) {
 }
 
 // Engine instance factory. schedule.cjs only ever needs shapeInfo/
-// invCanPlacePO/invMovePO (warehouse claim first-fit) and isUnitDeployable
-// (empty-unit gate) -- never sockets/combos/beams -- so a minimal 8x8-
+// invCanPlacePO/invMovePO (warehouse claim first-fit) and isSquadDeployable
+// (empty-squad gate) -- never sockets/combos/beams -- so a minimal 8x8-
 // layout instance bound to the CURRENT item defs is enough. (REQ-0045:
-// isUnitIndependent is no longer part of the deploy gate -- see
+// isSquadIndependent is no longer part of the deploy gate -- see
 // deployedUidSetsForGate's doc -- but this engine instance is still used
 // for it where callers want the static display/tint concept.)
 // A fresh instance per call is cheap (no heavy setup in Engine.create)
@@ -211,10 +225,10 @@ function genId(prefix) {
 // {
 //   id, ownerId, dungeonId, dungeonType, level, genSeed, visibility: 'self', formationId,
 //   cancelPolicy: { immediate: bool },
-//   slots: [ { presetIndex: number|null } x4 ],  // golden b/d: this player's own preset per slot
+//   slots: [ { squadIndex: number|null } x4 ],  // golden b/d: this player's own squad per slot
 //   status: 'open' | 'active' | 'canceled',
 //   cancelRequested: bool,   // golden g: non-immediate cancel flag ("cancel after current run")
-//   pendingSwap: { slot, presetIndex } | null,  // golden j: queued, applies after current run
+//   pendingSwap: { slot, squadIndex } | null,  // golden j: queued, applies after current run
 //   cooldownUntil: iso string | null,
 //   createdAt, updatedAt,
 //   lastRunId: string | null,
@@ -255,7 +269,7 @@ module.exports = {
   WAREHOUSE_CAP,
   WAREHOUSE_TTL_MS,
   WAREHOUSE_CLAIM_TIMEOUT_MS,
-  UNIT_SLOTS,
+  SQUAD_SLOTS,
   DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP,
   DEFAULT_LEVEL_MIN,

@@ -19,7 +19,7 @@
       "id": "formation3",
       "i18n": { "en": { "name": "Corner Bastion" }, "ja": { "name": "隅の防塁" } },
       "canvases": { "unit1": "B2:I9", "unit2": "R2:Y9", "unit3": "F10:M17", "unit4": "N10:U17" },
-      "note": "corner units tank top diagonals"
+      "note": "corner squads tank top diagonals"
     },
     {
       "id": "formation4",

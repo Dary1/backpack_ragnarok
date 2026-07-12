@@ -46,7 +46,7 @@ for (const s of skillsRaw.entries) {
 const pilotItemDefsById = {};
 for (const e of itemsPilotRaw.entries) pilotItemDefsById[e.id] = e;
 
-function fourUnitSnapshots() { return [scenario, scenario, scenario, scenario]; }
+function fourSquadSnapshots() { return [scenario, scenario, scenario, scenario]; }
 
 // A tiny synthetic enemy/skill pack for isolated unit tests that don't
 // need the full batch-002 roster.
@@ -67,7 +67,7 @@ T('determinism: same seed -> byte-identical JSONL replay log', () => {
       { id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 },
       { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 },
     ] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
     formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
   };
   const r1 = combat.runDungeon(opts);
@@ -80,7 +80,7 @@ T('determinism: same seed -> byte-identical JSONL replay log', () => {
 T('determinism: different seed -> log differs', () => {
   const base = {
     dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }, { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
     formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
   };
   const r1 = combat.runDungeon(Object.assign({ masterSeed: 'seed-one' }, base));
@@ -96,27 +96,27 @@ const reactEnemyDefs = {
 };
 const reactSkillDefs = {
   rg_bite: { trigger: { t: 'every_secs', s: [1.0, 1.0] }, verb: { t: 'strike', n: [6, 6] }, attack_profile: { edge: ['top'], penetration: 4, aoe: 2 } },
-  rg_onhit_poison: { trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
-  rg_retaliate: { trigger: { t: 'OnUnitBeenHit' }, verb: { t: 'strike', n: [9, 9] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+  rg_onhit_poison: { trigger: { t: 'OnSquadHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
+  rg_retaliate: { trigger: { t: 'OnSquadBeenHit' }, verb: { t: 'strike', n: [9, 9] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
 };
 function runReact(seed, enemyDefs, skillDefs) {
   return combat.runDungeon({
     masterSeed: seed,
     dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['react_goblin'] }, deadline_secs: 30 }] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: enemyDefs, skillDefsById: skillDefs,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: enemyDefs, skillDefsById: skillDefs,
     formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
   });
 }
-T('REQ-0078 reactive: OnUnitHit rider + OnUnitBeenHit retaliation fire on a monster', () => {
+T('REQ-0078 reactive: OnSquadHit rider + OnSquadBeenHit retaliation fire on a monster', () => {
   const r = runReact('req0078-react', reactEnemyDefs, reactSkillDefs);
   const rp = r.events.filter(e => e.ev === 'reactive_proc');
-  const onhit = rp.filter(e => e.trigger === 'OnUnitHit');
-  const beenhit = rp.filter(e => e.trigger === 'OnUnitBeenHit');
+  const onhit = rp.filter(e => e.trigger === 'OnSquadHit');
+  const beenhit = rp.filter(e => e.trigger === 'OnSquadBeenHit');
   const retal = r.events.filter(e => e.ev === 'ray_fire' && String(e.src).indexOf('#react') >= 0);
-  ok(onhit.length > 0, 'OnUnitHit offensive rider fires when the monster lands a direct hit');
-  ok(beenhit.length > 0, 'OnUnitBeenHit fires when the monster takes a direct hit');
-  ok(retal.length > 0, 'OnUnitBeenHit produces a retaliation ray (src tagged #react)');
-  eq(onhit[0].verb, 'apply_status', 'OnUnitHit rider applies its verb');
+  ok(onhit.length > 0, 'OnSquadHit offensive rider fires when the monster lands a direct hit');
+  ok(beenhit.length > 0, 'OnSquadBeenHit fires when the monster takes a direct hit');
+  ok(retal.length > 0, 'OnSquadBeenHit produces a retaliation ray (src tagged #react)');
+  eq(onhit[0].verb, 'apply_status', 'OnSquadHit rider applies its verb');
   eq(onhit[0].status, 'Poison', 'rider applies Poison to the struck target');
 });
 T('REQ-0078 reactive: replay deterministic under isolated reactive RNG streams', () => {
@@ -127,7 +127,7 @@ T('REQ-0078 reactive: pure every_secs content emits NO reactive_proc (baseline i
   const r = combat.runDungeon({
     masterSeed: 'baseline',
     dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
     formationId: 'formation1', level: 1, participants: ['pA', 'pB'],
   });
   eq(r.events.filter(e => e.ev === 'reactive_proc').length, 0, 'no reactive procs for non-reactive content');
@@ -136,29 +136,29 @@ T('REQ-0078 reactive: pure every_secs content emits NO reactive_proc (baseline i
 // =====================================================================
 // 1c. REQ-0095 player-side reactive triggers (OnHit taxonomy Phase 1b)
 // =====================================================================
-T('REQ-0095 reactive: player OnUnitHit rider + OnUnitBeenHit retaliation fire', () => {
+T('REQ-0095 reactive: player OnSquadHit rider + OnSquadBeenHit retaliation fire', () => {
   const gridPos = (scenario.pos || []).filter(p => p.loc === 'grid');
   let atk = null;
   for (const p of gridPos) { const d = itemDefsById[p.id]; if (d && (d.effects || []).some(f => f.trigger && f.trigger.t === 'every_secs' && (f.verb.t === 'strike' || f.verb.t === 'multi_strike'))) { atk = p.id; break; } }
   ok(atk, 'scenario has an attacking (every_secs strike) item');
   const inj = JSON.parse(JSON.stringify(itemDefsById));
   inj[atk].effects = (inj[atk].effects || []).concat([
-    { trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
-    { trigger: { t: 'OnUnitBeenHit' }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+    { trigger: { t: 'OnSquadHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } },
+    { trigger: { t: 'OnSquadBeenHit' }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
   ]);
   const ed = { agg: { id: 'agg', name: 'Agg', hp: [400, 400], footprint: [2, 2], skills: ['big_bite'] } };
   const sd = { big_bite: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [8, 8] }, attack_profile: { edge: ['top'], penetration: 8, aoe: 3 } } };
-  const r = combat.runDungeon({ masterSeed: 'req0095-player', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['agg'] }, deadline_secs: 30 }] }, unitSnapshots: fourUnitSnapshots(), itemDefsById: inj, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
+  const r = combat.runDungeon({ masterSeed: 'req0095-player', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['agg'] }, deadline_secs: 30 }] }, squadSnapshots: fourSquadSnapshots(), itemDefsById: inj, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
   const rp = r.events.filter(e => e.ev === 'reactive_proc');
-  ok(rp.filter(e => e.trigger === 'OnUnitHit').length > 0, 'player OnUnitHit rider fires on landing a hit');
-  ok(rp.filter(e => e.trigger === 'OnUnitBeenHit').length > 0, 'player OnUnitBeenHit fires when a player BP is hit');
-  ok(r.events.some(e => e.ev === 'ray_fire' && String(e.src).indexOf('#react') >= 0), 'player OnUnitBeenHit produces a retaliation ray');
+  ok(rp.filter(e => e.trigger === 'OnSquadHit').length > 0, 'player OnSquadHit rider fires on landing a hit');
+  ok(rp.filter(e => e.trigger === 'OnSquadBeenHit').length > 0, 'player OnSquadBeenHit fires when a player BP is hit');
+  ok(r.events.some(e => e.ev === 'ray_fire' && String(e.src).indexOf('#react') >= 0), 'player OnSquadBeenHit produces a retaliation ray');
 });
 T('REQ-0095 reactive: player determinism (isolated reactive RNG)', () => {
   const inj = JSON.parse(JSON.stringify(itemDefsById));
   const atk = (scenario.pos || []).filter(p => p.loc === 'grid').map(p => p.id).find(id => (itemDefsById[id].effects || []).some(f => f.trigger && f.trigger.t === 'every_secs'));
-  inj[atk].effects = (inj[atk].effects || []).concat([{ trigger: { t: 'OnUnitHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } }]);
-  const mk = () => combat.runDungeon({ masterSeed: 'req0095-det', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] }, unitSnapshots: fourUnitSnapshots(), itemDefsById: inj, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs, formationId: 'formation1', level: 1, participants: ['pA'] });
+  inj[atk].effects = (inj[atk].effects || []).concat([{ trigger: { t: 'OnSquadHit' }, verb: { t: 'apply_status', status: 'Poison', n: [2, 2] } }]);
+  const mk = () => combat.runDungeon({ masterSeed: 'req0095-det', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 30 }] }, squadSnapshots: fourSquadSnapshots(), itemDefsById: inj, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs, formationId: 'formation1', level: 1, participants: ['pA'] });
   ok(combat.toJSONL(mk().events) === combat.toJSONL(mk().events), 'same seed -> identical player reactive replay');
 });
 
@@ -171,7 +171,7 @@ T('REQ-0095 reactive: OnPOHit fires when a seated SI host PO lands a hit', () =>
   sc.sis = (sc.sis || []).concat([{ uid: 'onpo_test', id: 'acc_frost', host: { po: atkPo.uid, si: 0 } }]);
   const ed = { wall: { id: 'wall', name: 'Wall', hp: [600, 600], footprint: [14, 20], skills: ['nap'] } };
   const sd = { nap: { trigger: { t: 'every_secs', s: [9, 9] }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'] } } };
-  const r = combat.runDungeon({ masterSeed: 'req0095-onpohit', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: 20 }] }, unitSnapshots: [sc, scenario, scenario, scenario], itemDefsById, siDefsById: siDefs, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
+  const r = combat.runDungeon({ masterSeed: 'req0095-onpohit', dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: 20 }] }, squadSnapshots: [sc, scenario, scenario, scenario], itemDefsById, siDefsById: siDefs, enemyDefsById: ed, skillDefsById: sd, formationId: 'formation1', level: 1, participants: ['pA'] });
   const onpo = r.events.filter(e => e.ev === 'reactive_proc' && e.trigger === 'OnPOHit');
   ok(onpo.length > 0, 'OnPOHit fires when the seated SI host PO lands a hit');
   eq(onpo[0].status, 'Chill', 'Frost Orb OnPOHit applies Chill to the struck target');
@@ -558,8 +558,8 @@ T('REQ-0093 compile-time fold (enemy): compileEnemyPack attaches statusBag._immu
   ok(!en.statusBag.Poison, 'a compiled, genuinely immune enemy must reject Poison via applyStatus');
 });
 
-T('REQ-0093 compile-time fold (player BP): compileUnitSnapshot attaches bp.statusBag._immune + bp.bonusVsStatus from that BP\'s placed POs', () => {
-  const unitState = {
+T('REQ-0093 compile-time fold (player BP): compileSquadSnapshot attaches bp.statusBag._immune + bp.bonusVsStatus from that BP\'s placed POs', () => {
+  const squadState = {
     bps: [{ id: 'bpA', name: 'BP A', shape: [[0, 0]], origin: [1, 1], hpMax: 100 }],
     pos: [{ uid: 'poA', id: 'itemImmune', cell: [1, 1], rot: 0, loc: 'grid' }],
     layout: { ROWS: 8, COLS: 8 },
@@ -573,7 +573,7 @@ T('REQ-0093 compile-time fold (player BP): compileUnitSnapshot attaches bp.statu
       ],
     },
   };
-  const snap = combat.compileUnitSnapshot(unitState, itemDefsById, 'formation1', 'unit1');
+  const snap = combat.compileSquadSnapshot(squadState, itemDefsById, 'formation1', 'unit1');
   const bp = snap.bps[0];
   ok(bp.statusBag._immune.has('Burn') && bp.statusBag._immune.has('Stun'), 'debuff-kind immunity folded onto the owning BP covers every debuff member');
   ok(!bp.statusBag._immune.has('Regen'), 'buff statuses must not be swept into a debuff-kind immunity');
@@ -593,8 +593,8 @@ T('mode filtering: non-battle-mode PO does not fire during a battle encounter, n
 
   const result = combat.runEncounter({
     rng: combat.makeRng('modefilter-seed'), encIndex: 0,
-    partyBps: combat.compileUnitSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').bps,
-    partyPos: combat.compileUnitSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').pos,
+    troopBps: combat.compileSquadSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').bps,
+    troopPos: combat.compileSquadSnapshot(scenarioWithDetOnly, itemDefs2, 'formation1', 'unit1').pos,
     formationBox: { formationId: 'formation1' },
     enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
     encounterDef: { id: 'battle-enc', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 15 },
@@ -617,10 +617,10 @@ T('trap: win path (discovery before timeout ends the encounter as clear)', () =>
   const scenarioWithSpyglass = combat.deepCopy(scenario);
   scenarioWithSpyglass.pos.push({ uid: 'pSpy', id: 'spyglass', loc: 'grid', cell: [6, 6], rot: 0 });
   const itemDefs2 = Object.assign({}, itemDefsById, { spyglass: pilotItemDefsById.spyglass });
-  const compiled = combat.compileUnitSnapshot(scenarioWithSpyglass, itemDefs2, 'formation1', 'unit1');
+  const compiled = combat.compileSquadSnapshot(scenarioWithSpyglass, itemDefs2, 'formation1', 'unit1');
   const result = combat.runEncounter({
     rng: combat.makeRng('trap-win-seed-7'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'trap-test', type: 'trap', mode: 'detection',
       entityDef: { id: 'trap_frost_deadfall', name: 'Trap', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 18, skills: ['trap_deadfall_volley'] },
@@ -631,18 +631,18 @@ T('trap: win path (discovery before timeout ends the encounter as clear)', () =>
 });
 
 T('trap: timeout path fires the volley once and ends the encounter', () => {
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
   // No detection-mode PO present at all -> guaranteed timeout (never discovered).
   const result = combat.runEncounter({
     rng: combat.makeRng('trap-timeout-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'trap-test2', type: 'trap', mode: 'detection',
       entityDef: { id: 'trap_frost_deadfall', name: 'Trap', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 1, skills: ['trap_deadfall_volley'] },
       timeout_secs: 1, deadline_secs: 1.5 },
     seedLabel: 'trap-timeout-seed',
   });
-  ok(result.result === 'timeout' || result.result === 'wipe', 'no detection PO present -> must time out (or wipe if the volley somehow killed the party, structurally legal)');
+  ok(result.result === 'timeout' || result.result === 'wipe', 'no detection PO present -> must time out (or wipe if the volley somehow killed the troop, structurally legal)');
   ok(result.events.some(e => e.ev === 'ray_fire'), 'the timeout volley should have fired at least one ray');
 });
 
@@ -650,10 +650,10 @@ T('door: win path (unlock stage clears when HP reduced to 0 before timeout)', ()
   const scenarioWithLockpick = combat.deepCopy(scenario);
   scenarioWithLockpick.pos.push({ uid: 'pLock', id: 'lockpick', loc: 'grid', cell: [6, 6], rot: 0 });
   const itemDefs2 = Object.assign({}, itemDefsById, { lockpick: pilotItemDefsById.lockpick });
-  const compiled = combat.compileUnitSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
+  const compiled = combat.compileSquadSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
   const result = combat.runEncounter({
     rng: combat.makeRng('door-win-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'door-test', type: 'door', mode: 'unlock',
       entityDef: { id: 'door_rimefast_stage2', name: 'Door', hp: 1, footprint: [2, 2], masked: false, timeout_secs: 60, skills: [] },
@@ -664,10 +664,10 @@ T('door: win path (unlock stage clears when HP reduced to 0 before timeout)', ()
 });
 
 T('door: timeout path ("keyhole breaks") when HP not reduced to 0 in time', () => {
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO present
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO present
   const result = combat.runEncounter({
     rng: combat.makeRng('door-timeout-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'door-test2', type: 'door', mode: 'unlock',
       entityDef: { id: 'door_rimefast_stage2', name: 'Door', hp: 999, footprint: [2, 2], masked: false, timeout_secs: 1, skills: [] },
@@ -681,10 +681,10 @@ T('chest: win path (HP reduced to 0 before timeout -> clear, reward-eligible)', 
   const scenarioWithLockpick = combat.deepCopy(scenario);
   scenarioWithLockpick.pos.push({ uid: 'pLock', id: 'lockpick', loc: 'grid', cell: [6, 6], rot: 0 });
   const itemDefs2 = Object.assign({}, itemDefsById, { lockpick: pilotItemDefsById.lockpick });
-  const compiled = combat.compileUnitSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
+  const compiled = combat.compileSquadSnapshot(scenarioWithLockpick, itemDefs2, 'formation1', 'unit1');
   const result = combat.runEncounter({
     rng: combat.makeRng('chest-win-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'chest-test', type: 'chest', mode: 'unlock',
       entityDef: { id: 'chest_frostbound_cache', name: 'Chest', hp: 1, footprint: [2, 2], masked: false, timeout_secs: 60, skills: [] },
@@ -695,10 +695,10 @@ T('chest: win path (HP reduced to 0 before timeout -> clear, reward-eligible)', 
 });
 
 T('chest: timeout path (lost with no penalty) when HP not reduced in time', () => {
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1'); // no unlock PO
   const result = combat.runEncounter({
     rng: combat.makeRng('chest-timeout-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: {}, skillDefsById,
     encounterDef: { id: 'chest-test2', type: 'chest', mode: 'unlock',
       entityDef: { id: 'chest_frostbound_cache', name: 'Chest', hp: 999, footprint: [2, 2], masked: false, timeout_secs: 1, skills: [] },
@@ -708,28 +708,28 @@ T('chest: timeout path (lost with no penalty) when HP not reduced in time', () =
   eq(result.result, 'timeout_lost', 'chest should be lost (no penalty) on timeout with no unlock PO present');
   const bpHpAfter = compiled.bps.reduce((s, b) => s + b.hp, 0);
   const bpHpMaxTotal = compiled.bps.reduce((s, b) => s + b.hpMax, 0);
-  eq(bpHpAfter, bpHpMaxTotal, 'no penalty means party HP must be untouched (chest has no offensive skills)');
+  eq(bpHpAfter, bpHpMaxTotal, 'no penalty means troop HP must be untouched (chest has no offensive skills)');
 });
 
 // =====================================================================
 // 7. Boss/pack battle: victory AND wipe
 // =====================================================================
-T('pack battle: victory when enemies are weak and party is strong', () => {
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+T('pack battle: victory when enemies are weak and troop is strong', () => {
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
   const weakEnemy = { weak_target: { id: 'weak_target', name: 'Weak', hp: [1, 1], footprint: [1, 1], skills: [] } };
   const result = combat.runEncounter({
     rng: combat.makeRng('pack-victory-seed'), encIndex: 0,
-    partyBps: compiled.bps, partyPos: compiled.pos, formationBox: { formationId: 'formation1' },
+    troopBps: compiled.bps, troopPos: compiled.pos, formationBox: { formationId: 'formation1' },
     enemyDefsById: weakEnemy, skillDefsById: {},
     encounterDef: { id: 'pack-vic', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak_target'] }, deadline_secs: 30 },
     seedLabel: 'pack-victory-seed',
   });
-  eq(result.result, 'clear', 'a 1-HP enemy against a full attacking party should clear quickly');
+  eq(result.result, 'clear', 'a 1-HP enemy against a full attacking troop should clear quickly');
 });
 
 T('boss/pack: wipe asserts level-down + no gain/loss', () => {
   // Construct a scenario where the enemy is overwhelmingly strong so the
-  // party wipes; assert level-down via runDungeon and that HP ends at 0
+  // troop wipes; assert level-down via runDungeon and that HP ends at 0
   // (attrition), with no rewards accrued on wipe.
   const strongEnemy = {
     overwhelm: { id: 'overwhelm', name: 'Overwhelm', hp: [500, 500], footprint: [1, 1], skills: ['overwhelm_strike'] },
@@ -740,10 +740,10 @@ T('boss/pack: wipe asserts level-down + no gain/loss', () => {
   const result = combat.runDungeon({
     masterSeed: 'wipe-seed-1',
     dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['overwhelm'] }, deadline_secs: 30 }, { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['overwhelm'] }, deadline_secs: 30 }] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: strongEnemy, skillDefsById: strongSkills,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: strongEnemy, skillDefsById: strongSkills,
     formationId: 'formation1', level: 5, participants: ['p1'],
   });
-  eq(result.result, 'wipe', 'party must wipe against an overwhelming enemy');
+  eq(result.result, 'wipe', 'troop must wipe against an overwhelming enemy');
   eq(result.level, 4, 'level should step down by FAILURE_STEP=1 (5 -> 4)');
   eq(result.rewards, [], 'no rewards should be granted on wipe');
   const totalHp = result.bps.reduce((s, b) => s + b.hp, 0);
@@ -783,7 +783,7 @@ T('attrition: BP hp persists across encounters within one run (permanent, no aut
       { id: 'e1', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['dmg_dealer'] }, deadline_secs: 3 },
       { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['dmg_dealer'] }, deadline_secs: 3 },
     ] },
-    unitSnapshots: fourUnitSnapshots(), itemDefsById, enemyDefsById: dmgEnemy, skillDefsById: dmgSkills,
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: dmgEnemy, skillDefsById: dmgSkills,
     formationId: 'formation1', level: 1, participants: ['p1'],
   });
   // The dmg_dealer never dies (1000 hp) so every encounter times out via
@@ -793,7 +793,7 @@ T('attrition: BP hp persists across encounters within one run (permanent, no aut
   // reset each encounter).
   const totalHpMax = result.bps.reduce((s, b) => s + b.hpMax, 0);
   const totalHp = result.bps.reduce((s, b) => s + b.hp, 0);
-  ok(totalHp < totalHpMax, 'accrued damage across 3 encounters should leave party below full HP (persistent attrition)');
+  ok(totalHp < totalHpMax, 'accrued damage across 3 encounters should leave troop below full HP (persistent attrition)');
   ok(totalHp >= 0, 'HP never goes negative');
 });
 
@@ -820,7 +820,7 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
   const result = combat.runDungeon({
     masterSeed: 'full-dungeon-smoke-seed-1',
     dungeonDef: dungeonRaw,
-    unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+    squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
   });
@@ -844,7 +844,7 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
   const result = combat.runDungeon({
     masterSeed: 'lrdst-reward-victory-seed-1',
     dungeonDef: dungeonRaw,
-    unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+    squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice'],
   });
@@ -916,7 +916,7 @@ T('REQ-0045 (e) guard: an instant/forced wipe classifies as result==\'wipe\' wit
   // OWN victory/wipe classification, right here, was ALWAYS correct --
   // this asserts that fact explicitly and permanently: a devastating
   // synthetic enemy (n:[9999,9999] every 0.01s) against the fixture's
-  // real party guarantees a wipe on the very FIRST encounter, well
+  // real troop guarantees a wipe on the very FIRST encounter, well
   // before the boss (the only path to 'victory') is ever reached.
   const devastatingEnemyDefs = {
     instant_kill_boss: { id: 'instant_kill_boss', name: 'Instant Kill Boss', hp: [99999, 99999], footprint: [1, 1], skills: ['instant_kill_strike'] },
@@ -932,7 +932,7 @@ T('REQ-0045 (e) guard: an instant/forced wipe classifies as result==\'wipe\' wit
     const result = combat.runDungeon({
       masterSeed: 'forced-wipe-seed-' + i,
       dungeonDef,
-      unitSnapshots: fourUnitSnapshots(),
+      squadSnapshots: fourSquadSnapshots(),
       itemDefsById, enemyDefsById: devastatingEnemyDefs, skillDefsById: devastatingSkillDefs,
       formationId: 'formation1', level: 1, participants: ['alice'],
     });
@@ -973,7 +973,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
     const r = combat.runDungeon({
       masterSeed: 'lrdst-iso-nonboss-seed-' + i,
       dungeonDef: singleNonBoss,
-      unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+      squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
       itemDefsById, enemyDefsById, skillDefsById,
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
@@ -986,7 +986,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
     const r = combat.runDungeon({
       masterSeed: 'lrdst-iso-boss-seed-' + i,
       dungeonDef: singleBoss,
-      unitSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
+      squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
       itemDefsById, enemyDefsById, skillDefsById,
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
@@ -1002,10 +1002,10 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
 T('formation defs: all 4 boxes parse to exactly 8x8, formation4 uses CORRECTED J11:Q18', () => {
   for (const fid of Object.keys(combat.FORMATIONS)) {
     const cv = combat.FORMATIONS[fid].canvases;
-    for (const unit of Object.keys(cv)) {
-      const box = combat.parseBox(cv[unit]);
-      eq(box.colMax - box.colMin + 1, 8, fid + '.' + unit + ' width');
-      eq(box.rowMax - box.rowMin + 1, 8, fid + '.' + unit + ' height');
+    for (const squad of Object.keys(cv)) {
+      const box = combat.parseBox(cv[squad]);
+      eq(box.colMax - box.colMin + 1, 8, fid + '.' + squad + ' width');
+      eq(box.rowMax - box.rowMin + 1, 8, fid + '.' + squad + ' height');
     }
   }
   eq(combat.FORMATIONS.formation4.canvases.unit4, 'J11:Q18', 'formation4 unit4 must be the CORRECTED box, not the xlsx J11:Q19 error');
@@ -1024,18 +1024,18 @@ T('engine interop invariant: combat.cjs never calls an engine mutator (no PO/BP 
   // Sanity check that the exposed `engine` object still has its mutator
   // functions present (proves we required the real module, not a stub),
   // while combat.cjs's own compile pass produces field cells WITHOUT ever
-  // invoking any of them -- verified structurally: compileUnitSnapshot's
+  // invoking any of them -- verified structurally: compileSquadSnapshot's
   // result is plain, JSON-serializable data with no shared references
   // back into engine internals.
   ok(typeof combat.engine.create === 'function', 'engine.create should be the real function');
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
   const serialized = JSON.stringify(compiled);
   ok(serialized.length > 0, 'compiled snapshot must be plain-data serializable (no engine object leakage)');
 });
 
-T('REQ-0045 (d) guard: compileUnitSnapshot copies EVERY BP on the unit, each at its own real origin -- never just bps[0] auto-placed at (0,0)', () => {
+T('REQ-0045 (d) guard: compileSquadSnapshot copies EVERY BP on the squad, each at its own real origin -- never just bps[0] auto-placed at (0,0)', () => {
   // Regression guard (not a fix -- see the REQ-0045 outcome doc): the
-  // reported bug ("only the first BP of a deployed unit is copied into
+  // reported bug ("only the first BP of a deployed squad is copied into
   // the run, auto-placed top-left") was found to be a CLIENT-side
   // display-only bug (client/src/schedule/Monitor.tsx/MonitorRenderer.ts
   // truncated to bps[0] for the monitor's visual only) -- the actual
@@ -1044,14 +1044,14 @@ T('REQ-0045 (d) guard: compileUnitSnapshot copies EVERY BP on the unit, each at 
   // ever reintroducing a bps[0]-only truncation at the SIM layer, since
   // that would be a far more serious bug than a display-only one (it
   // would mean the game's actual outcome silently ignores every BP but
-  // the first on every multi-BP unit).
+  // the first on every multi-BP squad).
   //
   // content/live/scenario.json's own top-level canvas has 4 BPs at 4
   // genuinely distinct origins (alpha@[1,1], beta@[1,4], gamma@[4,2],
-  // delta@[4,5]) -- exactly the "multiple BPs on one unit's 8x8 local
+  // delta@[4,5]) -- exactly the "multiple BPs on one squad's 8x8 local
   // canvas" shape this guards.
-  const compiled = combat.compileUnitSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
-  eq(compiled.bps.length, scenario.bps.length, 'every BP on the preset canvas must be present in the compiled snapshot, not just the first');
+  const compiled = combat.compileSquadSnapshot(scenario, itemDefsById, 'formation1', 'unit1');
+  eq(compiled.bps.length, scenario.bps.length, 'every BP on the squad canvas must be present in the compiled snapshot, not just the first');
   ok(compiled.bps.length >= 2, 'sanity: the fixture scenario must actually have multiple BPs for this guard to mean anything');
   // Cross-check EVERY bp by id: its compiled localCells must equal its
   // OWN shape offsets PLUS its OWN origin (never renormalized to (0,0),
@@ -1206,7 +1206,7 @@ T('dungen: a generated default-type def actually RUNS through combat.runDungeon 
   const result = combat.runDungeon({
     masterSeed: 'runnable-check-combat-seed',
     dungeonDef: d,
-    unitSnapshots: fourUnitSnapshots(),
+    squadSnapshots: fourSquadSnapshots(),
     itemDefsById, enemyDefsById, skillDefsById,
     formationId: 'formation1', level: 6, participants: ['alice'],
   });
@@ -1246,7 +1246,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     return combat.runDungeon({
       masterSeed: seed,
       dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: mode || 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: deadline || 5 }] },
-      unitSnapshots: [unit, dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      squadSnapshots: [unit, dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
       itemDefsById: Object.assign({}, linkItemDefs, extraDefs || {}),
       enemyDefsById: wallEnemy, skillDefsById: {}, formationId: 'formation1', level: 1, participants: ['pA'],
     });
@@ -1319,7 +1319,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
       pos: [ { uid: 'w1', id: 'weapon', loc: 'grid', cell: [1,1], rot: 0 },
              { uid: 't1', id: 'wtag', loc: 'grid', cell: [1,4], rot: 0 },
              { uid: 't2', id: 'wtag', loc: 'grid', cell: [1,5], rot: 0 } ] };
-    const c = combat.compileUnitSnapshot(unit, resItems, 'formation1', 'unit1');
+    const c = combat.compileSquadSnapshot(unit, resItems, 'formation1', 'unit1');
     const w = c.pos.find(p => p.uid === 'w1');
     const strike = w.effects.find(e => e.verb && e.verb.t === 'strike');
     eq(strike.verb.n, [21, 21], 'buff_linked adds +10 per linked Weapon PO (2) => base [1,1] -> [21,21]');
@@ -1343,7 +1343,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     const E = Engine.create(Data.ITEMS, Data.SI_DEFS, Data.LAYOUT, Data.TREES);
     const st = Data.makeState();
     const engineEdges = E.traceBeams(st).filter(b => b.to).map(b => ({ from: b.from, to: b.to, dir: b.dir }));
-    const c = combat.compileUnitSnapshot(st, Data.ITEMS, 'formation1', 'unit1');
+    const c = combat.compileSquadSnapshot(st, Data.ITEMS, 'formation1', 'unit1');
     const simEdges = (c.linkEdges || []).map(e => ({ from: e.from, to: e.to, dir: e.dir }));
     ok(engineEdges.length > 0, 'fixture must have >=1 established link (else the test is vacuous)');
     eq(norm(simEdges), norm(engineEdges), 'sim link graph must equal engine traceBeams established links');
@@ -1375,7 +1375,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     return combat.runDungeon({
       masterSeed: seed,
       dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: [enemyId || 'grunt'] }, deadline_secs: deadline || 30, attachments: attachments }] },
-      unitSnapshots: [partyUnit(poIds), dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      squadSnapshots: [partyUnit(poIds), dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
       itemDefsById: items, enemyDefsById: enemies, skillDefsById: skills,
       formationId: 'formation1', level: 1, participants: ['pA'],
     });
@@ -1450,7 +1450,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     let def = null;
     for (const level of [5, 8]) { for (const seed of ['a', 'b', 'c', 'd', 'e']) { const d = dungen.generate('default', level, 'req49run-' + level + '-' + seed); if (d.encounters.some(e => e.attachments)) { def = d; break; } } if (def) break; }
     ok(def, 'found a generated def carrying attachments');
-    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, unitSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
+    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
     ok(Array.isArray(r.events) && r.events.length > 0, 'generated def with attachments runs end-to-end');
     ok(r.events.some(e => String(e.ev).indexOf('att_') === 0), 'attachments produce att_* events in the replay');
   });
@@ -1470,7 +1470,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   const en = { weak: { id: 'weak', name: 'Weak', hp: [10,10], footprint: [1,1], skills: [] } };
   function party(ids) { return { linked: false, layout: L, sis: [], bps: [cellBp('A',[1,1]),cellBp('B',[1,3]),cellBp('C',[1,5])], pos: ids.map((id,i)=>({uid:'u'+i,id:id,loc:'grid',cell:[1,1+2*i],rot:0})) }; }
   function run(seed, ids, encs) {
-    return combat.runDungeon({ masterSeed: seed, dungeonDef: { encounters: encs }, unitSnapshots: [party(ids), dummyU('z2'), dummyU('z3'), dummyU('z4')], itemDefsById: it, enemyDefsById: en, skillDefsById: {}, formationId: 'formation1', level: 3, participants: ['pA'] });
+    return combat.runDungeon({ masterSeed: seed, dungeonDef: { encounters: encs }, squadSnapshots: [party(ids), dummyU('z2'), dummyU('z3'), dummyU('z4')], itemDefsById: it, enemyDefsById: en, skillDefsById: {}, formationId: 'formation1', level: 3, participants: ['pA'] });
   }
   const packBoss = (atts) => ([
     { id: 'p0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak'] }, deadline_secs: 20, attachments: atts },

@@ -7,8 +7,8 @@ const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
-const { WAREHOUSE_TTL_MS, UNIT_SLOTS, getScheduleContent, resolveRewardItemId, genId } = require('./core.cjs');
-const { presetCanvasOf, applyPendingSwapIfAny } = require('./units.cjs');
+const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, genId } = require('./core.cjs');
+const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { resolveDungeonType } = require('./rooms.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 
@@ -30,28 +30,28 @@ function visibleEvents(run) {
   return run.events.filter((ev) => typeof ev.t === 'number' && ev.t <= clock.elapsedSecs);
 }
 
-// Builds the unitSnapshots[4] array runDungeon expects, one per slot, by
-// reading the OWNER's own profile presets (solo scope: every slot in a
-// P1-B room belongs to the same player). A slot with no assigned preset
-// (presetIndex===null) is illegal at start time (caller must fill all 4
-// slots first, per golden b "party = 4 Units" -- a partial party cannot
+// Builds the squadSnapshots[4] array runDungeon expects, one per slot, by
+// reading the OWNER's own profile squads (solo scope: every slot in a
+// P1-B room belongs to the same player). A slot with no assigned squad
+// (squadIndex===null) is illegal at start time (caller must fill all 4
+// slots first, per golden b "troop = 4 Squads" -- a partial troop cannot
 // sortie).
-function buildUnitSnapshots(room, profileCanvas) {
+function buildSquadSnapshots(room, profileCanvas) {
   return room.slots.map((slot, i) => {
-    if (slot.presetIndex == null) {
-      const err = new Error('slot ' + i + ' (' + UNIT_SLOTS[i] + ') has no assigned unit'); err.code = 'BAD_REQUEST'; throw err;
+    if (slot.squadIndex == null) {
+      const err = new Error('slot ' + i + ' (' + SQUAD_SLOTS[i] + ') has no assigned squad'); err.code = 'BAD_REQUEST'; throw err;
     }
-    const canvas = presetCanvasOf(profileCanvas, slot.presetIndex);
-    if (!canvas) { const err = new Error('slot ' + i + ' preset snapshot not found'); err.code = 'BAD_REQUEST'; throw err; }
+    const canvas = squadCanvasOf(profileCanvas, slot.squadIndex);
+    if (!canvas) { const err = new Error('slot ' + i + ' squad snapshot not found'); err.code = 'BAD_REQUEST'; throw err; }
     return canvas;
   });
 }
 
-// startRun: golden b/j. Compiles UNIT COPIES (deep-copied snapshots,
-// taken NOW, at start -- sim/combat.cjs's own compileUnitSnapshot deep-
-// copies again internally too, so a unit edited by its owner mid-run
+// startRun: golden b/j. Compiles SQUAD COPIES (deep-copied snapshots,
+// taken NOW, at start -- sim/combat.cjs's own compileSquadSnapshot deep-
+// copies again internally too, so a squad edited by its owner mid-run
 // never affects the in-flight run; golden j "runs execute on a copy of
-// the unit"). Seed is crypto-random, generated here and STORED verbatim
+// the squad"). Seed is crypto-random, generated here and STORED verbatim
 // on the run document (never re-rolled), so the run is independently
 // re-derivable/auditable from its own record.
 function startRun(room, profileCanvas) {
@@ -61,7 +61,7 @@ function startRun(room, profileCanvas) {
   if (room.status === 'canceled') {
     const err = new Error('room is canceled'); err.code = 'CONFLICT'; throw err;
   }
-  const unitSnapshots = buildUnitSnapshots(room, profileCanvas);
+  const squadSnapshots = buildSquadSnapshots(room, profileCanvas);
   const { itemDefsById, enemyDefsById, skillDefsById } = getScheduleContent();
   // REQ-0043: the dungeon def now comes from sim/dungen.cjs's generator,
   // keyed off the room's OWN dungeonType/level/genSeed (stored at
@@ -80,7 +80,7 @@ function startRun(room, profileCanvas) {
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
   const result = combat.runDungeon({
-    masterSeed: seed, dungeonDef, unitSnapshots, itemDefsById, enemyDefsById, skillDefsById,
+    masterSeed: seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
     formationId: room.formationId, level: room.level, participants,
   });
 
@@ -231,7 +231,7 @@ function maybeAutoStartNextRun(room, profileCanvas) {
   // All 4 slots still need a live assignment (a swap could have cleared
   // one -- defensive; assignSlot never actually clears a slot today, but
   // this guards any future path that could).
-  if (room.slots.some((s) => s.presetIndex == null)) return room;
+  if (room.slots.some((s) => s.squadIndex == null)) return room;
   // startRun() returns the RUN document (its own persisted record), not
   // the room -- but it mutates `room` in place (status/lastRunId/
   // updatedAt) before persisting it via storage.writeRoom, so the SAME
@@ -276,7 +276,7 @@ module.exports = {
   computeDurationSecs,
   runClock,
   visibleEvents,
-  buildUnitSnapshots,
+  buildSquadSnapshots,
   startRun,
   settleRun,
   settleRoomIfDue,

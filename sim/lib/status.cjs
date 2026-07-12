@@ -168,14 +168,14 @@ function consumeSpikes(bag) {
 }
 
 // =====================================================================
-// Compile pass (S1.4) -- given a unit snapshot (BPs+POs+layout, shape of
+// Compile pass (S1.4) -- given a squad snapshot (BPs+POs+layout, shape of
 // scenario.json) and a chosen formation id, compute absolute field cells
 // for every BP and fold passive/battle_start buffs onto POs' effects.
 // =====================================================================
 
 // Chebyshev-adjacent check used for buff_adjacent folding: two BPs are
 // "adjacent" if any of their footprint cells are within Chebyshev
-// distance 1 of each other (on the unit's OWN local 8x8 grid, pre-offset;
+// distance 1 of each other (on the squad's OWN local 8x8 grid, pre-offset;
 // adjacency is a placement-time/local concept per the engine's own
 // `adjacent(A,B)` helper at engine.js:233 -- we re-derive a Chebyshev
 // cell-set adjacency here rather than reusing engine's mutation-coupled

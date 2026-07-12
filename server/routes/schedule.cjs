@@ -77,8 +77,8 @@ function tryScheduleRoutes(req, res, url, p) {
 
     // Loads (and lazily migrates, per REQ-0037's legacy-default fallback)
     // the caller's own profile canvas -- schedule routes always operate
-    // on the CALLER'S OWN presets/inventory (P1-B solo scope: golden b's
-    // "any number of players" collapses to "1 player, 4 units" here).
+    // on the CALLER'S OWN squads/inventory (P1-B solo scope: golden b's
+    // "any number of players" collapses to "1 player, 4 squads" here).
     function loadOwnCanvas() {
       const doc = storage.readProfile(callerId);
       return doc ? doc.canvas : null;
@@ -99,7 +99,7 @@ function tryScheduleRoutes(req, res, url, p) {
     function sendScheduleError(e) {
       // REQ-0041: thread a STRUCTURED e.reason through as a `reason`
       // field on the JSON error body, when the thrown error carries one
-      // (e.g. schedule.cjs's assignSlot sets err.reason='empty_unit' for
+      // (e.g. schedule.cjs's assignSlot sets err.reason='empty_squad' for
       // the empty-BP deploy-gate 409) -- omitted entirely (not even
       // `reason: undefined`) for every OTHER schedule error this route
       // surface throws today, none of which set e.reason, so existing
@@ -142,11 +142,11 @@ function tryScheduleRoutes(req, res, url, p) {
           const { itemDefsById } = schedule.getScheduleContent();
           const canvas = loadOwnCanvas();
           // REQ-0087 follow-up: settleRoomIfDue() can THROW for a single
-          // room (e.g. startRun()'s buildUnitSnapshots() 400s with "preset
-          // snapshot not found" if a slot's presetIndex was assigned
-          // legitimately at the time but the referenced preset was later
+          // room (e.g. startRun()'s buildSquadSnapshots() 400s with "squad
+          // snapshot not found" if a slot's squadIndex was assigned
+          // legitimately at the time but the referenced squad was later
           // deleted/shrunk out from under it -- discovered live: the shared
-          // dev account's preset count changed after a room's slots were
+          // dev account's squad count changed after a room's slots were
           // already filled, and the FIRST version of this fix let that one
           // room's settle exception bubble out of the whole .map(), 400ing
           // the ENTIRE rooms list for the player instead of just that one
@@ -231,7 +231,7 @@ function tryScheduleRoutes(req, res, url, p) {
           const room = loadAndSettleRoom(roomId);
           const { itemDefsById } = schedule.getScheduleContent();
           const canvas = requireOwnCanvas();
-          const updated = schedule.assignSlot(room, callerId, slotIndex, body.presetIndex, canvas, itemDefsById);
+          const updated = schedule.assignSlot(room, callerId, slotIndex, body.squadIndex, canvas, itemDefsById);
           sendJSON(res, 200, { ok: true, room: updated });
         } catch (e) { sendScheduleError(e); }
       });
@@ -251,7 +251,7 @@ function tryScheduleRoutes(req, res, url, p) {
           const room = loadAndSettleRoom(roomId);
           const { itemDefsById } = schedule.getScheduleContent();
           const canvas = requireOwnCanvas();
-          const result = schedule.swapUnit(room, body.slot, body.presetIndex, canvas, itemDefsById);
+          const result = schedule.swapSquad(room, body.slot, body.squadIndex, canvas, itemDefsById);
           sendJSON(res, 200, { ok: true, room: result.room, applied: result.applied });
         } catch (e) { sendScheduleError(e); }
       });
@@ -457,8 +457,8 @@ function tryScheduleRoutes(req, res, url, p) {
           // itemUid, which the client reuses as the new inventory
           // PO/SI's own uid) so the CLIENT can place it via the engine
           // itself, through the app's one auto-save choke point.
-          const { itemDefsById, tmDefsById } = schedule.getScheduleContent();
-          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById);
+          const { itemDefsById, tmDefsById, siDefsById } = schedule.getScheduleContent();
+          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById, siDefsById);
           // REQ-0042: echo kind/qty too (undefined for a plain PO/SI row,
           // 'tm'/a number for a TM-kind row) so the client can dispatch
           // to the correct placement path (engine PO/SI first-fit vs.

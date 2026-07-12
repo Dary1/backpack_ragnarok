@@ -88,7 +88,7 @@ def render_field_grid():
     return parts, w, h
 
 
-UNIT_COLORS = {
+SQUAD_COLORS = {
     "unit1": "#c9a227",
     "unit2": "#6c95e0",
     "unit3": "#5cb573",
@@ -98,20 +98,20 @@ UNIT_COLORS = {
 
 def render_formation_diagram(formation):
     parts, w, h = render_field_grid()
-    for unit_key, box in formation["canvases"].items():
+    for squad_key, box in formation["canvases"].items():
         c0, r0, c1, r1 = parse_box(box)
         x = (c0 - 1) * CELL_PX
         y = (r0 - 1) * CELL_PX
         bw = (c1 - c0 + 1) * CELL_PX
         bh = (r1 - r0 + 1) * CELL_PX
-        color = UNIT_COLORS.get(unit_key, "#9aa5ad")
+        color = SQUAD_COLORS.get(squad_key, "#9aa5ad")
         parts.append(
             f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" fill="{color}" fill-opacity="0.28" '
             f'stroke="{color}" stroke-width="2"/>'
         )
         parts.append(
             f'<text x="{x + bw/2}" y="{y + bh/2}" fill="{color}" font-size="11" font-weight="bold" '
-            f'text-anchor="middle" dominant-baseline="middle">{esc(unit_key)}</text>'
+            f'text-anchor="middle" dominant-baseline="middle">{esc(squad_key)}</text>'
         )
     svg = f'<svg class="field-diagram" viewBox="0 0 {w} {h}" width="{w}" height="{h}">' + "".join(parts) + "</svg>"
     name_ja = formation.get("i18n", {}).get("ja", {}).get("name", formation["id"])

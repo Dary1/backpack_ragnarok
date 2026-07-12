@@ -52,7 +52,7 @@ more exotic skills below read as deliberate variation, not noise.
 threat — `ice_arrow` uses `edge:["left","right"], direction:"side"` per
 ruling 7's bow-type convention (typically penetration:0). Hook: forces
 the player's formation choice to matter, since side-entry rays land on
-different units than top-entry ones (formation1's documented "side-entry
+different squads than top-entry ones (formation1's documented "side-entry
 rays hit backline first" behavior, S5.2).
 
 **rime_shaman** (common, 1x1, pack_role: support). Intent: a pure support
@@ -115,7 +115,7 @@ stage2 are modeled as two SEPARATE encounter-list entries
 doesn't yet have its own two-stage-chain orchestration primitive inside a
 single encounter call — chaining two `runEncounter` calls is a
 documented, reasonable simplification for the pilot; a real two-stage
-single-encounter object (so a party can't "walk away" between stages) is
+single-encounter object (so a troop can't "walk away" between stages) is
 left as a P1-B schedule-service concern.
 
 **chest_frostbound_cache** (unlock mode, 2x2, at enemy-field center per

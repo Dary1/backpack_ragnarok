@@ -3,9 +3,9 @@
 // Ragnarok HTTP surface. One module, same shape as routes/market.cjs:
 // every route resolves the CALLER's identity from the X-Auth-Token
 // header FIRST (admin.resolveAuth(), incl. the dev_mode no-token
-// fallback); a preset index in the URL is NEVER trusted as identity --
+// fallback); a squad index in the URL is NEVER trusted as identity --
 // it is resolved against the CALLER's own canvas only, so a foreign
-// preset is structurally unaddressable (404 no-leak). Returns false
+// squad is structurally unaddressable (404 no-leak). Returns false
 // when not matched (router then 404s).
 //
 //   GET  /api/ragnarok/season                    registry + derived
@@ -14,15 +14,15 @@
 //                                                dawn-cached (S2)
 //   GET  /api/ragnarok/einherjar?player=         devoted records (S3;
 //                                                default: the caller)
-//   GET  /api/ragnarok/devotion/preview/:presetIndex   blast radius +
+//   GET  /api/ragnarok/devotion/preview/:squadIndex   blast radius +
 //                                                eligibility+projection
-//   POST /api/ragnarok/devotion/:presetIndex     THE rite (S4;
+//   POST /api/ragnarok/devotion/:squadIndex     THE rite (S4;
 //                                                Idempotency-Key
 //                                                supported, replayed
 //                                                outcomes marked)
 //
-// 409 reason vocabulary (POST devotion): mid_rite / last_preset /
-// empty_unit / deployed -- see services/ragnarok.cjs's
+// 409 reason vocabulary (POST devotion): mid_rite / last_squad /
+// empty_squad / deployed -- see services/ragnarok.cjs's
 // riteEligibilityReasons. Auth note: /season is technically public-ish
 // content, but S5's "resolveAuth everywhere" wins -- ALL ragnarok
 // routes are token-gated uniformly (the season strip only renders
@@ -39,11 +39,11 @@ const RAGNAROK_EINHERJAR_RE = /^\/api\/ragnarok\/einherjar$/;
 const RAGNAROK_DEVOTION_PREVIEW_RE = /^\/api\/ragnarok\/devotion\/preview\/([^/]+)$/;
 const RAGNAROK_DEVOTION_RE = /^\/api\/ragnarok\/devotion\/([^/]+)$/;
 
-// parsePresetIndex: the :presetIndex URL segment. Anything that is not
-// a plain non-negative integer resolves to -1, which presetMetaOr404
+// parseSquadIndex: the :squadIndex URL segment. Anything that is not
+// a plain non-negative integer resolves to -1, which squadMetaOr404
 // then answers with the same 404 as an out-of-range index -- a
 // malformed id is indistinguishable from an unknown one (no-leak).
-function parsePresetIndex(seg) {
+function parseSquadIndex(seg) {
   const s = decodeURIComponent(seg);
   if (!/^\d+$/.test(s)) return -1;
   return parseInt(s, 10);
@@ -188,26 +188,26 @@ function tryRagnarokRoutes(req, res, url, p) {
     return;
   }
 
-  // ---- GET /api/ragnarok/devotion/preview/:presetIndex ----
+  // ---- GET /api/ragnarok/devotion/preview/:squadIndex ----
   const previewMatch = p.match(RAGNAROK_DEVOTION_PREVIEW_RE);
   if (previewMatch) {
     if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
     try {
-      const preview = ragnarok.previewDevotion(callerId, parsePresetIndex(previewMatch[1]));
+      const preview = ragnarok.previewDevotion(callerId, parseSquadIndex(previewMatch[1]));
       sendJSON(res, 200, Object.assign({ ok: true, dtoVersion: ragnarok.RAGNAROK_DTO_VERSION }, preview));
     } catch (e) { sendRagnarokError(e); }
     return;
   }
 
-  // ---- POST /api/ragnarok/devotion/:presetIndex ----
+  // ---- POST /api/ragnarok/devotion/:squadIndex ----
   const devoteMatch = p.match(RAGNAROK_DEVOTION_RE);
   if (devoteMatch) {
     if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
     try {
-      // No request body: the preset index + Idempotency-Key header are
+      // No request body: the squad index + Idempotency-Key header are
       // the entire input (the rite has no parameters -- the mock's
       // final modal is a bare 誓う/退く choice).
-      const { record, replayed } = ragnarok.devote(callerId, parsePresetIndex(devoteMatch[1]), idemKey);
+      const { record, replayed } = ragnarok.devote(callerId, parseSquadIndex(devoteMatch[1]), idemKey);
       sendJSON(res, 200, {
         ok: true,
         dtoVersion: ragnarok.RAGNAROK_DTO_VERSION,

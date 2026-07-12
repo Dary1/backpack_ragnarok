@@ -12,7 +12,7 @@ const { compileEnemyPack } = require('./packs.cjs');
 
 function runEncounter(opts) {
   const {
-    rng, encIndex, partyBps, partyPos, partySis, formationBox, enemyDefsById, skillDefsById,
+    rng, encIndex, troopBps, troopPos, troopSis, formationBox, enemyDefsById, skillDefsById,
     encounterDef, seedLabel,
   } = opts;
   const events = [];
@@ -21,14 +21,14 @@ function runEncounter(opts) {
   events.push({ t: t0, seq: heap.nextSeq(), ev: 'encounter_start', enc: encIndex, kind: encounterDef.type, seed: seedLabel, formation: formationBox.formationId });
 
   // ---- Build player-side actors (BPs already compiled + persistent HP) ----
-  const playerActors = partyBps.map(makeBPActor);
+  const playerActors = troopBps.map(makeBPActor);
   // Player-side schedulable effects: every PO's effects with an every_secs
   // trigger (host_on_hit/on_hit/passive/battle_start handled at compile
   // time or as immediate reactive hooks -- for the sim's scope here we
   // schedule every_secs-triggered verbs, which covers all of batch-002's
   // and live_items.json's damage-dealing content).
   const schedulable = [];
-  for (const po of partyPos) {
+  for (const po of troopPos) {
     (po.effects || []).forEach((eff, idx) => {
       if (eff.trigger && eff.trigger.t === 'every_secs') {
         schedulable.push({ ownerUid: po.uid, ownerId: po.id, effIdx: idx, effect: eff, modes: po.def.modes || ['battle'], attackProfile: eff.attack_profile || po.def.attack_profile || defaultAttackProfileFor(po) });
@@ -209,7 +209,7 @@ function runEncounter(opts) {
   function firePulsePayloads(bpId, ev, outEvents) {
     const host = playerBpActorById(bpId);
     if (!host) return;
-    for (const po of partyPos) {
+    for (const po of troopPos) {
       if (po.bpId !== bpId) continue;
       (po.effects || []).forEach((eff, idx) => {
         if (!eff.trigger || eff.trigger.t !== 'on_link_pulse') return;
@@ -243,17 +243,17 @@ function runEncounter(opts) {
   // ---- REQ-0095: player-side reactive dispatch (Phase 1b) -- mirrors the enemy side. ----
   function bpActorOf(bpId) { return playerActors.find(a => a.id === bpId) || null; }
   // Offensive riders: when player PO `firingPoUid` lands a DIRECT hit on enemies, its
-  // OnHit (self) / OnBPHierarchyHit (same BP) / OnUnitHit (same unit) effects ride each hit.
+  // OnHit (self) / OnBPHierarchyHit (same BP) / OnSquadHit (same squad) effects ride each hit.
   function dispatchPlayerOffensive(firingPoUid, landedEnemies, t, outEvents) {
-    const fpo = partyPos.find(p => p.uid === firingPoUid);
+    const fpo = troopPos.find(p => p.uid === firingPoUid);
     if (!fpo || !landedEnemies.length) return;
     let idx = 0;
-    for (const po of partyPos) {
+    for (const po of troopPos) {
       for (const eff of (po.effects || [])) {
         const tt = eff.trigger && eff.trigger.t;
         const match = (tt === 'OnHit' && po.uid === fpo.uid) ||
                       (tt === 'OnBPHierarchyHit' && po.bpId === fpo.bpId) ||
-                      (tt === 'OnUnitHit' && po.unitSlot === fpo.unitSlot);
+                      (tt === 'OnSquadHit' && po.squadSlot === fpo.squadSlot);
         if (!match) continue;
         const owner = bpActorOf(po.bpId);
         for (const en of landedEnemies) {
@@ -263,7 +263,7 @@ function runEncounter(opts) {
       }
     }
     // REQ-0095: OnPOHit -- an SI seated in the firing PO fires when its host PO lands a hit.
-    for (const si of (partySis || [])) {
+    for (const si of (troopSis || [])) {
       if (si.hostPoUid !== fpo.uid) continue;
       for (const eff of (si.effects || [])) {
         if (!eff.trigger || eff.trigger.t !== 'OnPOHit') continue;
@@ -276,15 +276,15 @@ function runEncounter(opts) {
     }
   }
   // Defensive: when a player BP takes a DIRECT hit, POs in that BP (OnBPBeenHit) / in that
-  // unit (OnUnitBeenHit) fire a retaliation ray at the enemy field.
+  // squad (OnSquadBeenHit) fire a retaliation ray at the enemy field.
   function dispatchPlayerDefensive(hitBpActors, t, outEvents) {
     for (const bpA of hitBpActors) {
-      const bpId = bpA.id, unit = bpA.ref && bpA.ref.unitSlot;
-      for (const po of partyPos) {
-        const inBp = po.bpId === bpId, inUnit = (unit != null && po.unitSlot === unit);
+      const bpId = bpA.id, squad = bpA.ref && bpA.ref.squadSlot;
+      for (const po of troopPos) {
+        const inBp = po.bpId === bpId, inSquad = (squad != null && po.squadSlot === squad);
         for (const eff of (po.effects || [])) {
           const tt = eff.trigger && eff.trigger.t;
-          if (!((tt === 'OnBPBeenHit' && inBp) || (tt === 'OnUnitBeenHit' && inUnit))) continue;
+          if (!((tt === 'OnBPBeenHit' && inBp) || (tt === 'OnSquadBeenHit' && inSquad))) continue;
           const ap = eff.attack_profile || (po.def && po.def.attack_profile) || { edge: ['top'], penetration: 0, aoe: 0 };
           outEvents.push({ ev: 'reactive_proc', trigger: tt, verb: eff.verb.t, src: po.id });
           fireSkillRay({
@@ -332,7 +332,7 @@ function runEncounter(opts) {
   // Burn/Poison/Regen/Chill/Stun/Weakness/Haste countdown for ALL actors
   // (S7). Scheduled at STATUS_TICK_PERIOD_SECS cadence.
   // REQ-0048: battle_start pulse openers -- emit once at t0 (mode-gated).
-  for (const po of partyPos) {
+  for (const po of troopPos) {
     for (const eff of (po.effects || [])) {
       if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'pulse') {
         const modes = eff.modes || (po.def && po.def.modes) || ['battle'];
@@ -353,7 +353,7 @@ function runEncounter(opts) {
   function allEnemiesDead() {
     return enemyActors.length > 0 && enemyActors.every(e => !e.actor.alive);
   }
-  function partyWiped() {
+  function troopWiped() {
     return playerActors.every(a => !a.alive);
   }
 
@@ -375,12 +375,12 @@ function runEncounter(opts) {
         const s = schedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
         if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
           // REQ-0048: a "spark" (every_secs pulse) emits along the BP's links.
-          const spo = partyPos.find(p => p.uid === s.ownerUid);
+          const spo = troopPos.find(p => p.uid === s.ownerUid);
           const pOut = [];
           if (spo) emitPulse(spo.bpId, ev.t, pOut);
           for (const re of pOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         } else if (s.modes.includes(encounterDef.mode)) {
-          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, partyPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, partyPos, partyBps) };
+          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps) };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           // telegraph is derived + emitted at fire-time as an informational
           // preview line (S4.5) since this is a server-authoritative batch
@@ -399,7 +399,7 @@ function runEncounter(opts) {
             discoveredEntity = true;
           }
           // REQ-0078 reactive (defensive): enemies that took a DIRECT hit fire
-          // their OnUnitBeenHit skills as a retaliation ray at the player field.
+          // their OnSquadBeenHit skills as a retaliation ray at the player field.
           // Depth-1 (retaliation hits are not re-dispatched); isolated RNG keeps
           // existing golden streams byte-identical.
           const reactDef = [];
@@ -407,14 +407,14 @@ function runEncounter(opts) {
             const ent = enemyActors.find(e => e.actor === lh.actor);
             if (!ent || !ent.actor.alive) continue;
             for (const sk of (ent.raw.skills || [])) {
-              if (!sk.trigger || sk.trigger.t !== 'OnUnitBeenHit') continue;
+              if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') continue;
               const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-              reactDef.push({ ev: 'reactive_proc', trigger: 'OnUnitBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
+              reactDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
               fireSkillRay({
                 attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
                 attackProfile: ap, verbEff: sk, mode: 'battle',
                 targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-                rng, streamPrefix: 'reactive/OnUnitBeenHit/' + ent.raw.ownerId + '/' + ev.t,
+                rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + ev.t,
                 events: reactDef, aoeStatuses: !!ap.aoe_statuses,
               });
             }
@@ -445,12 +445,12 @@ function runEncounter(opts) {
             rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
           });
           for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          // REQ-0078 reactive (offensive rider): this monster's OnHit/OnUnitHit
+          // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
           // skills fire on each player actor its attack just directly hit
-          // (OnHit == OnUnitHit for a flat monster unit); isolated RNG.
+          // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
           const reactOff = [];
           for (const sk of (s.raw.skills || [])) {
-            if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnUnitHit')) continue;
+            if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
             (fr.landedHits || []).forEach((lh, li) => {
               const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + ev.t + '/' + li);
               applyReactiveVerbToTarget(sk.verb, s.actor, lh.actor, rs, reactOff, sk.trigger.t);
@@ -483,16 +483,16 @@ function runEncounter(opts) {
 
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
       if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(ev.t); result = 'clear'; break; }
-      if (partyWiped()) { result = 'wipe'; break; }
+      if (troopWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'trap') {
       if (discoveredEntity) { result = 'clear'; break; }
-      if (partyWiped()) { result = 'wipe'; break; }
+      if (troopWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'door') {
       if (entity && !entity.alive) { result = 'clear'; break; }
-      if (partyWiped()) { result = 'wipe'; break; }
+      if (troopWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'chest') {
       if (entity && !entity.alive) { result = 'clear'; break; }
-      if (partyWiped()) { result = 'wipe'; break; }
+      if (troopWiped()) { result = 'wipe'; break; }
     }
   }
 
@@ -513,19 +513,19 @@ function runEncounter(opts) {
         });
         for (const re of rayEvents) events.push(Object.assign({ t: timeoutSecs, seq: heap.nextSeq() }, re));
       }
-      result = partyWiped() ? 'wipe' : 'timeout';
+      result = troopWiped() ? 'wipe' : 'timeout';
     } else if (encounterDef.type === 'door') {
       result = 'timeout_break'; // "keyhole breaks": forced end, no shortcut
     } else if (encounterDef.type === 'chest') {
       result = 'timeout_lost'; // chest lost, no penalty
     } else if (encounterDef.type === 'pack') {
-      result = partyWiped() ? 'wipe' : 'pressure_timeout'; // no forced win
+      result = troopWiped() ? 'wipe' : 'pressure_timeout'; // no forced win
     } else {
-      result = partyWiped() ? 'wipe' : 'timeout';
+      result = troopWiped() ? 'wipe' : 'timeout';
     }
   }
 
-  events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, party_bp_hp: partyBps.map(b => b.hp) });
+  events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, troop_bp_hp: troopBps.map(b => b.hp) });
   return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut };
 }
 
@@ -546,8 +546,8 @@ function unionCells(actorsOrCellsArrays) {
   return out.length ? out : [[9, 13]]; // fallback center-ish cell if empty
 }
 
-function playerActorsInSameBpAs(ownerUid, partyPos, playerActors) {
-  const po = partyPos.find(p => p.uid === ownerUid);
+function playerActorsInSameBpAs(ownerUid, troopPos, playerActors) {
+  const po = troopPos.find(p => p.uid === ownerUid);
   if (!po) return [];
   const bpActor = playerActors.find(a => a.id === po.bpId);
   return bpActor ? [bpActor.fieldCells] : [];
@@ -555,10 +555,10 @@ function playerActorsInSameBpAs(ownerUid, partyPos, playerActors) {
 
 // REQ-0093: looks up the owning BP's compiled bonusVsStatus list (folded
 // at compile time in compile.cjs) for a firing PO's ownerUid.
-function bonusVsStatusForOwnerUid(ownerUid, partyPos, partyBps) {
-  const po = partyPos.find(p => p.uid === ownerUid);
+function bonusVsStatusForOwnerUid(ownerUid, troopPos, troopBps) {
+  const po = troopPos.find(p => p.uid === ownerUid);
   if (!po) return [];
-  const bp = partyBps.find(b => b.id === po.bpId);
+  const bp = troopBps.find(b => b.id === po.bpId);
   return (bp && bp.bonusVsStatus) || [];
 }
 

@@ -56,7 +56,7 @@ mutator API, so combat.cjs's own logic can be verified in total isolation
 from engine.js's internal state machine). It **never** calls an engine
 mutator (`movePO`, `moveBP`, `rotatePO`, `seatSI`, `stowSI`,
 `invMovePO`, etc.) and **never** shares a mutable object reference back
-into engine state. Every unit "snapshot" handed to `compileUnitSnapshot`
+into engine state. Every squad "snapshot" handed to `compileSquadSnapshot`
 is deep-copied first (`JSON.parse(JSON.stringify(...))`), so nothing in
 this module can mutate a caller's original state object. Combat/HP/damage
 logic lives entirely in `sim/combat.cjs`; engine.js's only combat-adjacent
@@ -68,7 +68,7 @@ addition (REQ-0036 P1-A commit (a)) is the pure read-only accessor
 - **S1** Resolution model: event-driven continuous time (`EventHeap`,
   `(t,seq)` tie-break), seeded RNG with named sub-streams (`makeRng`),
   determinism guarantee (pure function of snapshot+defs+seed), compile
-  boundary (`compileUnitSnapshot` folds static topology + buffs once;
+  boundary (`compileSquadSnapshot` folds static topology + buffs once;
   `runEncounter`/`runDungeon` simulate live events), replay log
   (`toJSONL`, event objects).
 - **S2** Formation field: two independent A1:Z18 planes (`FIELD_ROWS`,
@@ -200,7 +200,7 @@ the source document's completeness.
    `status_tick` (periodic DoT/HoT/cadence-decay application),
    `reflect_damage` (Spikes), `progress` (S8.1 0-100% run progress),
    `shortcut` (S8.3 door-solve jump), `run_end` (S8 run-level summary:
-   result/final_pct/party_bp_hp/H). All additions are documented here and
+   result/final_pct/troop_bp_hp/H). All additions are documented here and
    are additive to, never in conflict with, the spec's literal fields.
 8. **Masking mechanism for "?" entities.** An entity flagged `masked:true`
    (detection targets, undiscovered hidden-door stage1 targets) has its
@@ -285,13 +285,13 @@ the source document's completeness.
     `every_secs` effects as the auto-battle firing mechanism and folds
     `passive`/`adjacent` buffs at compile time. **Reactive triggers now fire**
     for the ENEMY side per the OnHit/OnBeenHit taxonomy (`docs/REQ-0078`): after
-    each direct strike/multi_strike hit resolves, a monster's `OnUnitBeenHit`
+    each direct strike/multi_strike hit resolves, a monster's `OnSquadBeenHit`
     skills fire a retaliation ray (attacker src tagged `#react`) and its
-    `OnHit`/`OnUnitHit` skills fire an on-hit rider on the struck target, both
+    `OnHit`/`OnSquadHit` skills fire an on-hit rider on the struck target, both
     emitting `reactive_proc` events. Firing is depth-1 (a reactive proc never
     re-dispatches -- OQ-C), counts only direct damage (OQ-A: not DoT/reflect/
     0-dmg), and draws from isolated `reactive/<trigger>/...` RNG sub-streams so
-    existing golden hashes stay byte-identical. Player-side (PO/SI/Linker)
+    existing golden hashes stay byte-identical. Player-side (PO/SI/Unit)
     reactive firing and `OnPOHit` are deferred to Phase 1b.
 
 18. **Weakness/Haste "n" dual-purpose (stacks + duration).** S7's table

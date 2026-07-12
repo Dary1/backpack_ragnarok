@@ -54,7 +54,7 @@
   <span id="canvasIoStatus" style="font-size:12px;color:var(--dim)"></span>
   <button id="langBtn">🇬🇧 EN</button>
 </header>
-<div id="hint"><span class="L ja"><b>ドラッグ</b>でアイテム⇄インベントリ移動 · <b>リンカーまたは空きセルをドラッグ</b>=BPごと移動(リンクは追従再計算) · <b>ダブルクリック</b>=時計回り回転 · ソケットアイテムはソケットへドラッグ(緑=型+ソケットタグ一致) · <b>チェインボタン</b>=組立武器の一体/個別移動切替 · ◆金ノッチ=接続ポート対象タイル · Escでキャンセル</span><span class="L en"><b>Drag</b> items ⇄ Inventory · <b>Drag a Linker or empty Cell</b> = move the whole BP · <b>Double-click</b> = rotate CW · Socket Items onto sockets (green = type+socket-tags match) · <b>Chain button</b> toggles linked movement · gold ◆ notches = Connection Port target tiles · Esc cancels</span></div>
+<div id="hint"><span class="L ja"><b>ドラッグ</b>でアイテム⇄インベントリ移動 · <b>ユニットまたは空きセルをドラッグ</b>=BPごと移動(リンクは追従再計算) · <b>ダブルクリック</b>=時計回り回転 · ソケットアイテムはソケットへドラッグ(緑=型+ソケットタグ一致) · <b>チェインボタン</b>=組立武器の一体/個別移動切替 · ◆金ノッチ=接続ポート対象タイル · Escでキャンセル</span><span class="L en"><b>Drag</b> items ⇄ Inventory · <b>Drag a Unit or empty Cell</b> = move the whole BP · <b>Double-click</b> = rotate CW · Socket Items onto sockets (green = type+socket-tags match) · <b>Chain button</b> toggles linked movement · gold ◆ notches = Connection Port target tiles · Esc cancels</span></div>
 <main>
   <div id="canvasWrap"></div>
   <aside>
@@ -77,7 +77,7 @@
       <ul class="plain" id="comboList"></ul>
     </section>
     <section class="card">
-      <h2><span class="L ja">BP — 各1リンカー · ドラッグ可</span><span class="L en">BPs — 1 Linker each · draggable</span></h2>
+      <h2><span class="L ja">BP — 各1ユニット · ドラッグ可</span><span class="L en">BPs — 1 Unit each · draggable</span></h2>
       <ul class="plain" id="bpList"></ul>
     </section>
     <section class="card">
@@ -89,7 +89,7 @@
       <ul class="plain" style="font-size:12.5px;color:var(--dim)">
         <li><b>Single-cell scarcity:</b> no 1×1 filler POs. Former 1×1s are Socket Items now.</li>
         <li><b>Frozen Canvas</b>, no Gold; Transmutator is the only currency.</li>
-        <li>One Linker per BP; Linkers connect only to Linkers; POs never span BPs.</li>
+        <li>One Unit per BP; Units connect only to Units; POs never span BPs.</li>
         <li>Parts assemble flush; chain button controls linked movement; guard unseats on disassembly.</li>
         <li>Strength comes from the canvas only. BP HP (mock): cells × 5.</li>
       </ul>
