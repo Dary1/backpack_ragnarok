@@ -41,3 +41,23 @@ No skin registry/system work (REQ-0126); no edge-tile generation itself
   `web/preview/`.
 - REQ-0131 + skin pipeline S2 updated with the recipe (that update is the
   implementation of this REQ).
+
+---
+
+## WIP state (session end 2026-07-12 ~04:55; unattended completion running)
+
+- Recipe VALIDATED in first measurements: SeamlessTile (model patch,
+  tiling=enable) + CircularVAEDecode, V9, 1024px tiles. Numeric offset
+  check (wrap/interior discontinuity ratio, ~1.0 = seamless):
+  elven s101 seamless rx=1.09 ry=0.96 vs CONTROL rx=2.78 ry=3.14.
+  Remaining legs (elven s202 ctrl dup, barbarian x2 x2) finish unattended
+  (~/scratch/req_seq5.sh -> galleries to web/preview/bpskin-tiling-0138/).
+- Tooling committed here: tools/req0138_tiling.py (gen + PIL half-shift
+  offset artifacts + 2x2 sheets + seam metric -> findings.json),
+  tools/req0138_gallery.py. Custom node spinagon/ComfyUI-seamless-tiling
+  installed 2026-07-12 (provenance -> REQ-0139).
+- NEXT SESSION: after req_seq5 DONE run ~/scratch/finalize_fill.py
+  (appends full findings tables here + REQ-0131 recipe section + patches
+  backpack_skin_pipeline.md S2), commit, deploy previews, then this REQ
+  moves todo -> built (gates: zero-seam both motifs + doc updates).
+  NOTE: REQ-0131 is ON USER HOLD (2026-07-12) - its recipe append waits.
