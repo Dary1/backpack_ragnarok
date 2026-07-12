@@ -267,7 +267,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
   // entry at its own origin cell.
   useEffect(() => {
     if (!mountedOnce || !rendererRef.current || squadsMountedRef.current) return;
-    const squads = snapshot.state?.presets;
+    const squadStore = snapshot.state?.presets;
     const activeCanvas = snapshot.state;
     const itemDefs = snapshot.gameData?.ITEMS;
     if (!activeCanvas) return;
@@ -278,11 +278,11 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
       const icons: MonitorSquadVisual['icons'] = [];
       if (slot.squadIndex != null) {
         const squadCanvas =
-          squads && slot.squadIndex === squads.active
+          squadStore && slot.squadIndex === squadStore.active
             ? activeCanvas
-            : squads?.store[slot.squadIndex] ?? null;
+            : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
-          label = squads?.names[slot.squadIndex] ?? label;
+          label = squadStore?.names[slot.squadIndex] ?? label;
           for (const bp of squadCanvas.bps) {
             // Mirrors sim/combat.cjs's localBpCells: shape offsets PLUS
             // this BP's own origin -- NOT re-normalized to (0,0).
