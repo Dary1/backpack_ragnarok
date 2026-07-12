@@ -105,3 +105,36 @@ spec-level stub, not a full implementation sketch)
   for now? Recommend starting with swappable-single, since combining rosters
   raises its own design questions (id collisions, reward-table merging) not
   needed to unblock batch-004 specifically.
+
+## Outcome & gate results (2026-07-12, REQ-0122 executed)
+
+- **Design pass answers (scope item 1 + open questions):**
+  - Items precedent investigated: item content promotes by COPY (approved
+    entries appended into content/live/*.json at S8; batches stay as
+    history). Followed the same posture: **promote-by-copy** into a new
+    `content/live/dungeon/` -- the ONE live source for ALL THREE jobs the
+    old hardcode was doing (enemy roster + skills, dungeon layout/entity
+    templates/formations, pilot item overlay). Promote-by-reference
+    (pointer file) rejected: two sourcing patterns would coexist and the
+    pointer adds a mutable indirection item content does not have.
+  - Exactly-one-active-batch retained (swappable-single); combining
+    rosters stays future work per the REQ's own recommendation.
+- **Implemented** (commit 6e1db9c): tools/promote_dungeon_batch.cjs
+  (all-or-nothing byte-copy, JSON parse-validation, atomic writes,
+  registry `live_dungeon` provenance with per-file sha256; REFUSES
+  partial batches -- the batch-004 anti-downgrade guard, no --force);
+  sim/dungen.cjs liveDungeonDir() (server core consumes it -- single
+  path source, no drift); batch-002 promoted (byte-identical);
+  api_test fixture mirrors accordingly; 5 new sim tests.
+- **Gates:** sim 112/112; **goldens 12/12 byte-identical through the new
+  mechanism (the REQ's acceptance bar)**; mock 101; tsc; engine drift;
+  vocab self-test; api fs 155 + pg 155; pg_sync 4.
+- **Client/e2e:** zero client-side diff (paths are server/sim-internal);
+  client build + e2e skipped for this REQ with the box under a
+  concurrent GPU art session (REQ-0138 spike) after two freeze incidents
+  -- post-deploy smoke covers the live read paths instead
+  (/api/schedule/dungeons exercises dungeon+enemies+entities+formations
+  via core.cjs AND dungen.scoutingReport).
+- **Not done here (explicitly out of scope, unchanged):** building
+  batch-004's real dungeon.json/items.json and pouring it through the
+  pipe; registry batches[] schema rework.
