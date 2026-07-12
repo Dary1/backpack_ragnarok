@@ -12,6 +12,11 @@
 > `common_content_pipeline.md` §2 (art_golden.md abolished as a separate doc
 > by user directive, 2026-07-12). Item 4 of §3 stays as recorded.
 
+> **EXECUTION STATUS (REQ-0148 scoping pass, 2026-07-13): this pipeline has
+> NEVER been executed.** The golden is ratified and the tooling runs, but not
+> one Unit icon has ever been generated. Ratification was of the design, not of
+> a run. See `common_content_pipeline.md` §4 "S5 execution status".
+
 ## 0. What a Unit icon is
 
 - A Unit occupies exactly ONE BP cell, so every Unit icon is shape 1×1,
@@ -74,8 +79,15 @@
   start), 4 candidates, seeds 101/202/303/404, 30 steps, cfg 6.5,
   dpmpp_2m/karras, long runs via `setsid nohup`. Implementation: a thin
   `gen_unit_icons` wrapper (or a `--defs` pointing at Unit defs) over
-  `tools/gen_item_icons.py`. NOTE: route tools live on branch
-  `req-0073-item-icon-gen` until REQ-0109 merges — same caveat as items.
+  `tools/gen_item_icons.py`. **STATUS (REQ-0148, 2026-07-13): no wrapper is
+  needed and none exists — `gen_item_icons.py` already accepts `--defs`, so
+  this stage is runnable today by pointing it at a Unit defs JSON. What does
+  NOT exist is a single Unit def anywhere in the tree; authoring them is
+  REQ-0130 (schema/pipeline) + REQ-0149 (the roster kits).**
+  The old caveat "route tools live on branch `req-0073-item-icon-gen` until
+  REQ-0109 merges" is STALE: **REQ-0109 merged to master 2026-07-12**; the
+  tools are on master. ComfyUI is started by hand (REQ-0139); generation and
+  matte must be SEPARATE passes on this 23 GB box (REQ-0135b).
 - **S4 Matte.** rembg `birefnet-general` + edge-key fallback, valid band
   2–90%. Characters have finer silhouettes than items (hair, weapon tips,
   wings) — matte quality is explicitly part of the review gallery;

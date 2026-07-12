@@ -29,6 +29,12 @@ arbitrary polyominoes, implemented as an autotile set with per-tile clip
 masks.** Straight edge / outer (convex) corner / inner (concave) corner are
 already the standard autotiling tile names and stay as-is.
 
+> **EXECUTION STATUS (REQ-0148 scoping pass, 2026-07-13): this pipeline has
+> NEVER been executed — neither half.** `fill_texture` is runnable today (nodes
+> installed) and unrun; edge tiles + `clip_mask` have no tool at all (REQ-0131).
+> The golden is ratified; the pipeline is unproven. See
+> `common_content_pipeline.md` §4 "S5 execution status".
+
 ## 0. What a Backpack Skin is
 
 - A Backpack Skin themes a BP's **edge design pattern and interior fill** —
@@ -127,6 +133,17 @@ BS-G5), or all orientations are authored/derived at build time.
   circular-padding ComfyUI recipe is specified in REQ-0138; the spike
   (REQ-0131) should spend its budget on edge-tile cutting + `clip_mask`
   integrity.
+  **STATUS (REQ-0148 scoping pass, 2026-07-13):** the node pack REQ-0138 names
+  (`spinagon/ComfyUI-seamless-tiling`) **is already installed** at
+  `~/ComfyUI/custom_nodes/ComfyUI-seamless-tiling`, and
+  `JuggernautXL_RunDiffusionPhoto2_V9_Final` is present — so the `fill_texture`
+  half is **runnable today and has still never been run.**
+  The edge-tile half is worse than "risky": **this document names NO TOOL for
+  it.** Cutting master tiles out of a motif sheet and auto-tracing a `clip_mask`
+  from each tile's contour are described as things that happen, by nobody, with
+  nothing. REQ-0131 exists to prove or deny that they can happen at all; until
+  it reports, the sentence "AI-raster route generates … edge tiles" above is a
+  DESIGN INTENT, not a procedure. Do not read it as one.
 - **S3 Assembly + validation harness.** Deterministic harness composites the
   full rendering stack (§2) on the validation shape suite (1×1, I, L, T, S/Z,
   inner-corner and holed shapes) over several contrasting canvas backgrounds,

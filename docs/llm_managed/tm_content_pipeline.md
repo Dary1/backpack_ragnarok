@@ -9,6 +9,13 @@
 >
 > Every claim below was verified against source on master
 > (2026-07-12, REQ-0110); file references are authoritative if they drift.
+>
+> **TMs have NO AI image-generation stage** (restated here, REQ-0148,
+> 2026-07-13, because the omission is easy to miss): TM icons are hand-authored
+> SVG `<symbol>`s in `content/sprite_all_vN.svg` — see §3 Step 5, headed "Icon
+> (SVG sprite route — NOT the AI raster route)". Adopting the REQ-0073 raster
+> route for TMs is **not ratified**. TMs are therefore out of scope for every
+> AI-art audit and every checkpoint/matte decision.
 
 ## 0. What a TM is (and is not)
 

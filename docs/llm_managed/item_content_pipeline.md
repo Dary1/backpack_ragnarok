@@ -21,6 +21,15 @@
 > **REQ-0136 checkpoint outcome only**: REQ-0135 is settled (LayerDiffuse
 > NO-GO, matte route unchanged) and is no longer a blocker. See REQ-0109 (todo).
 
+> **EXECUTION STATUS (REQ-0148 scoping pass, 2026-07-13): this is the ONLY
+> AI-raster pipeline that has ever run end-to-end** — once, on 2026-07-09, with
+> JuggernautXL V9 (see the Verification log at the end). That run's ART was then
+> REJECTED by the user at S7 ("NG", 2026-07-12). Since then the checkpoint went
+> under re-evaluation (REQ-0136) and the matte prompt clause was reopened
+> (REQ-0147). So: the ROUTE is verified; the OUTPUT it produced was not
+> accepted. Do not cite "verified end-to-end" as evidence that this pipeline
+> currently yields acceptable art. REQ-0148 re-tests it cold.
+
 ## Prerequisites
 
 - Connected to the server. Work in worktree

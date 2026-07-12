@@ -130,6 +130,30 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
   content/live/live_sis.json content/live/scenario.json mock-src/data.js`;
   registry append; `bash tools/ci.sh` green; one commit per batch.
 
+### S5 execution status (REQ-0148 scoping pass, 2026-07-13) — BINDING
+
+A ratified golden is not an executed run. As of this date the honest state of
+every AI-raster stage is:
+
+| Pipeline | Doc | Tool the doc names | Runnable today | Ever executed E2E |
+|---|---|---|---|---|
+| Item (PO/SI) | `item_content_pipeline.md` v2.1 §5 | `tools/gen_item_icons.py` | yes | **once** — 2026-07-09 (V9). batch-003 art then REJECTED by the user at S7 |
+| Unit icons | `unit_icon_pipeline.md` §2 | `gen_item_icons.py --defs <unit defs>` | yes — the tool takes `--defs`; **no Unit def exists anywhere in the tree** | **never** |
+| BP Skin — `fill_texture` | `backpack_skin_pipeline.md` §5 S2 + REQ-0138 | ComfyUI seamless-tiling nodes — **installed** at `~/ComfyUI/custom_nodes/ComfyUI-seamless-tiling` | yes | **never** |
+| BP Skin — edge tiles + `clip_mask` | `backpack_skin_pipeline.md` §1, §5 S2–S3 | **none named** (motif-sheet cut, clip-mask autotrace) | **unknown** — REQ-0131 exists precisely to prove or deny it | **never** |
+| Monster art | **5-line stub** (REQ-0111, draft) | `tools/gen_monster_art.py` (the parent of the item tool) | tool yes, doc no | doc **never written** |
+| TM icons | `tm_content_pipeline.md` §3 Step 5 | **n/a — SVG sprite route, NOT the AI raster route** | n/a | n/a (no AI stage exists) |
+
+Standing infra facts for every row (REQ-0135b, REQ-0139):
+ComfyUI is **not a service** — start it by hand at `127.0.0.1:8188`. On this
+23 GB box ComfyUI (~11 GB with SDXL resident) and birefnet (~12 GB) **cannot be
+co-resident**; generate with `--no-matte`, stop ComfyUI, then `--rematte-only`.
+The GPU (RTX 2080, 8 GB) is shared with the user's own art sessions: check it is
+idle, wait, never evict.
+
+REQ-0148 audits these rows by cold-run. Until it reports, treat every "never
+executed" cell as an unknown, not as a yes.
+
 ## 5. Infrastructure & REQ workflow
 
 - Work happens in `~/backpack_ragnarok_worktrees/req-NNNN-slug` on branch
