@@ -1,0 +1,956 @@
+{
+  "generated": "2026-07-12T00:56:31.499706",
+  "provenance": "tool_icon_score.py -- REQ-0073, imports tool_fit_check.py (REQ-0020)",
+  "weights": {
+    "scale": 0.35,
+    "coverage": 0.5,
+    "uniformity": 0.15
+  },
+  "any_angle": false,
+  "items": {
+    "blade": {
+      "id": "blade",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/blade_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1178,
+          "reason": null,
+          "scale": 0.3919226337448559,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            29
+          ],
+          "per_cell_coverage": [
+            0.1525,
+            0.1221
+          ],
+          "terms": {
+            "scale_term": 0.9524,
+            "coverage_term": 0.1373,
+            "uniformity_term": 0.9848,
+            "reference_scale": 0.4115
+          },
+          "score": 54.97,
+          "render": "content/batches/batch-003-item-icons/fit_renders/blade_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/blade_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1418,
+          "reason": null,
+          "scale": 0.39753653444676407,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            22
+          ],
+          "per_cell_coverage": [
+            0.1881,
+            0.1521
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.1701,
+            "uniformity_term": 0.982,
+            "reference_scale": 0.4175
+          },
+          "score": 56.56,
+          "render": "content/batches/batch-003-item-icons/fit_renders/blade_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/blade_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1315,
+          "reason": null,
+          "scale": 0.38160160320641273,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            34
+          ],
+          "per_cell_coverage": [
+            0.1582,
+            0.1352
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.1467,
+            "uniformity_term": 0.9885,
+            "reference_scale": 0.4008
+          },
+          "score": 55.49,
+          "render": "content/batches/batch-003-item-icons/fit_renders/blade_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/blade_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1096,
+          "reason": null,
+          "scale": 0.38160160320641273,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            29
+          ],
+          "per_cell_coverage": [
+            0.1421,
+            0.1201
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.1311,
+            "uniformity_term": 0.989,
+            "reference_scale": 0.4008
+          },
+          "score": 54.71,
+          "render": "content/batches/batch-003-item-icons/fit_renders/blade_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/blade_c2_s202_alpha.png",
+        "candidate_index": 1,
+        "score": 56.56,
+        "selected_to": "content/batches/batch-003-item-icons/selected/blade.png"
+      }
+    },
+    "hilt": {
+      "id": "hilt",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/hilt_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1159,
+          "reason": null,
+          "scale": 0.3833288135593218,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            37
+          ],
+          "per_cell_coverage": [
+            0.1337
+          ],
+          "terms": {
+            "scale_term": 0.9047,
+            "coverage_term": 0.1337,
+            "uniformity_term": 1.0,
+            "reference_scale": 0.4237
+          },
+          "score": 53.35,
+          "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/hilt_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2491,
+          "reason": null,
+          "scale": 0.363406425702811,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            5
+          ],
+          "per_cell_coverage": [
+            0.2796
+          ],
+          "terms": {
+            "scale_term": 0.9049,
+            "coverage_term": 0.2796,
+            "uniformity_term": 1.0,
+            "reference_scale": 0.4016
+          },
+          "score": 60.65,
+          "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/hilt_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1415,
+          "reason": null,
+          "scale": 0.37083606557377036,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            36
+          ],
+          "per_cell_coverage": [
+            0.1679
+          ],
+          "terms": {
+            "scale_term": 0.9048,
+            "coverage_term": 0.1679,
+            "uniformity_term": 1.0,
+            "reference_scale": 0.4098
+          },
+          "score": 55.06,
+          "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/hilt_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1777,
+          "reason": null,
+          "scale": 0.4002778761061945,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            10,
+            5
+          ],
+          "per_cell_coverage": [
+            0.2326
+          ],
+          "terms": {
+            "scale_term": 0.9046,
+            "coverage_term": 0.2326,
+            "uniformity_term": 1.0,
+            "reference_scale": 0.4425
+          },
+          "score": 58.29,
+          "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/hilt_c2_s202_alpha.png",
+        "candidate_index": 1,
+        "score": 60.65,
+        "selected_to": "content/batches/batch-003-item-icons/selected/hilt.png"
+      }
+    },
+    "flame_tablet": {
+      "id": "flame_tablet",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.5822,
+          "reason": null,
+          "scale": 0.41759649122807,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            13
+          ],
+          "per_cell_coverage": [
+            0.6806,
+            0.6853
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.6829,
+            "uniformity_term": 0.9976,
+            "reference_scale": 0.4386
+          },
+          "score": 82.44,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.4766,
+          "reason": null,
+          "scale": 0.4185604395604394,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            18
+          ],
+          "per_cell_coverage": [
+            0.5637,
+            0.5763
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.57,
+            "uniformity_term": 0.9937,
+            "reference_scale": 0.4396
+          },
+          "score": 76.73,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.8857,
+          "reason": null,
+          "scale": 0.36632730844793693,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            6,
+            5
+          ],
+          "per_cell_coverage": [
+            0.8314,
+            0.79
+          ],
+          "terms": {
+            "scale_term": 0.9323,
+            "coverage_term": 0.8107,
+            "uniformity_term": 0.9793,
+            "reference_scale": 0.3929
+          },
+          "score": 87.86,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.7349,
+          "reason": null,
+          "scale": 0.39023606557377044,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            9
+          ],
+          "per_cell_coverage": [
+            0.7543,
+            0.7455
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.7499,
+            "uniformity_term": 0.9956,
+            "reference_scale": 0.4098
+          },
+          "score": 85.76,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c3_s303_alpha.png",
+        "candidate_index": 2,
+        "score": 87.86,
+        "selected_to": "content/batches/batch-003-item-icons/selected/flame_tablet.png"
+      }
+    },
+    "oil_flask": {
+      "id": "oil_flask",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.3538,
+          "reason": null,
+          "scale": 0.4104344827586205,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            15
+          ],
+          "per_cell_coverage": [
+            0.3764,
+            0.4903
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.4334,
+            "uniformity_term": 0.943,
+            "reference_scale": 0.431
+          },
+          "score": 69.14,
+          "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.3723,
+          "reason": null,
+          "scale": 0.40603923240938145,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            20
+          ],
+          "per_cell_coverage": [
+            0.3654,
+            0.4934
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.4294,
+            "uniformity_term": 0.936,
+            "reference_scale": 0.4264
+          },
+          "score": 68.84,
+          "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.3507,
+          "reason": null,
+          "scale": 0.4130394793926246,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            21
+          ],
+          "per_cell_coverage": [
+            0.3535,
+            0.4751
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.4143,
+            "uniformity_term": 0.9392,
+            "reference_scale": 0.4338
+          },
+          "score": 68.12,
+          "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2976,
+          "reason": null,
+          "scale": 0.45452696897374684,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            16
+          ],
+          "per_cell_coverage": [
+            0.4203,
+            0.4532
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.4367,
+            "uniformity_term": 0.9836,
+            "reference_scale": 0.4773
+          },
+          "score": 69.92,
+          "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c4_s404_alpha.png",
+        "candidate_index": 3,
+        "score": 69.92,
+        "selected_to": "content/batches/batch-003-item-icons/selected/oil_flask.png"
+      }
+    },
+    "dagger": {
+      "id": "dagger",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1354,
+          "reason": null,
+          "scale": 0.39342314049586774,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            27
+          ],
+          "per_cell_coverage": [
+            0.1793,
+            0.1398
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.1595,
+            "uniformity_term": 0.9803,
+            "reference_scale": 0.4132
+          },
+          "score": 56.0,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1456,
+          "reason": null,
+          "scale": 0.3871040650406503,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            22
+          ],
+          "per_cell_coverage": [
+            0.2027,
+            0.143
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.1729,
+            "uniformity_term": 0.9701,
+            "reference_scale": 0.4065
+          },
+          "score": 56.52,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1318,
+          "reason": null,
+          "scale": 0.3910776180698151,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            25
+          ],
+          "per_cell_coverage": [
+            0.2012,
+            0.1194
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.1603,
+            "uniformity_term": 0.9591,
+            "reference_scale": 0.4107
+          },
+          "score": 55.73,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2678,
+          "reason": null,
+          "scale": 0.37861431411530805,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            13
+          ],
+          "per_cell_coverage": [
+            0.4029,
+            0.1636
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.2833,
+            "uniformity_term": 0.8803,
+            "reference_scale": 0.3976
+          },
+          "score": 60.7,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/dagger_c4_s404_alpha.png",
+        "candidate_index": 3,
+        "score": 60.7,
+        "selected_to": "content/batches/batch-003-item-icons/selected/dagger.png"
+      }
+    },
+    "herb_pouch": {
+      "id": "herb_pouch",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.316,
+          "reason": null,
+          "scale": 0.3840258064516128,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            16
+          ],
+          "per_cell_coverage": [
+            0.1363,
+            0.5455
+          ],
+          "terms": {
+            "scale_term": 0.9524,
+            "coverage_term": 0.3409,
+            "uniformity_term": 0.7954,
+            "reference_scale": 0.4032
+          },
+          "score": 62.31,
+          "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2178,
+          "reason": null,
+          "scale": 0.4123004329004327,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            21
+          ],
+          "per_cell_coverage": [
+            0.3925,
+            0.1655
+          ],
+          "terms": {
+            "scale_term": 0.9524,
+            "coverage_term": 0.279,
+            "uniformity_term": 0.8865,
+            "reference_scale": 0.4329
+          },
+          "score": 60.58,
+          "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2771,
+          "reason": null,
+          "scale": 0.3919226337448559,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            20
+          ],
+          "per_cell_coverage": [
+            0.3966,
+            0.2283
+          ],
+          "terms": {
+            "scale_term": 0.9524,
+            "coverage_term": 0.3125,
+            "uniformity_term": 0.9159,
+            "reference_scale": 0.4115
+          },
+          "score": 62.69,
+          "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2189,
+          "reason": null,
+          "scale": 0.3854582995951416,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            25
+          ],
+          "per_cell_coverage": [
+            0.275,
+            0.2082
+          ],
+          "terms": {
+            "scale_term": 0.9521,
+            "coverage_term": 0.2416,
+            "uniformity_term": 0.9666,
+            "reference_scale": 0.4049
+          },
+          "score": 59.9,
+          "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c3_s303_alpha.png",
+        "candidate_index": 2,
+        "score": 62.69,
+        "selected_to": "content/batches/batch-003-item-icons/selected/herb_pouch.png"
+      }
+    },
+    "tower_shield": {
+      "id": "tower_shield",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.5823,
+          "reason": null,
+          "scale": 0.38240642570281114,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            33
+          ],
+          "per_cell_coverage": [
+            0.5782,
+            0.5574,
+            0.5869,
+            0.5652
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.5719,
+            "uniformity_term": 0.9886,
+            "reference_scale": 0.4016
+          },
+          "score": 76.75,
+          "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.909,
+          "reason": null,
+          "scale": 0.37202499999999983,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            5
+          ],
+          "per_cell_coverage": [
+            0.8442,
+            0.8582,
+            0.824,
+            0.8381
+          ],
+          "terms": {
+            "scale_term": 0.9524,
+            "coverage_term": 0.8411,
+            "uniformity_term": 0.9877,
+            "reference_scale": 0.3906
+          },
+          "score": 90.21,
+          "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.3012,
+          "reason": null,
+          "scale": 0.41952863436123333,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            57
+          ],
+          "per_cell_coverage": [
+            0.3722,
+            0.3667,
+            0.3559,
+            0.355
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.3624,
+            "uniformity_term": 0.9927,
+            "reference_scale": 0.4405
+          },
+          "score": 66.34,
+          "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.5236,
+          "reason": null,
+          "scale": 0.3992872117400419,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            27
+          ],
+          "per_cell_coverage": [
+            0.5851,
+            0.5653,
+            0.5681,
+            0.5334
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.563,
+            "uniformity_term": 0.9813,
+            "reference_scale": 0.4193
+          },
+          "score": 76.2,
+          "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c2_s202_alpha.png",
+        "candidate_index": 1,
+        "score": 90.21,
+        "selected_to": "content/batches/batch-003-item-icons/selected/tower_shield.png"
+      }
+    },
+    "beast_jaw": {
+      "id": "beast_jaw",
+      "status": "SCORED",
+      "cells_source": "gen_render.cells",
+      "candidates": [
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c1_s101_alpha.png",
+          "feasible": true,
+          "content_frac": 0.3365,
+          "reason": null,
+          "scale": 0.3800285714285712,
+          "rot": 180,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            25,
+            86
+          ],
+          "per_cell_coverage": [
+            0.4272,
+            0.0814,
+            0.8233
+          ],
+          "terms": {
+            "scale_term": 0.8513,
+            "coverage_term": 0.444,
+            "uniformity_term": 0.6969,
+            "reference_scale": 0.4464
+          },
+          "score": 62.45,
+          "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2854,
+          "reason": null,
+          "scale": 0.3404812227074233,
+          "rot": 180,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            39,
+            63
+          ],
+          "per_cell_coverage": [
+            0.1987,
+            0.1013,
+            0.6351
+          ],
+          "terms": {
+            "scale_term": 0.7797,
+            "coverage_term": 0.3117,
+            "uniformity_term": 0.7679,
+            "reference_scale": 0.4367
+          },
+          "score": 54.39,
+          "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2677,
+          "reason": null,
+          "scale": 0.38436296296296274,
+          "rot": 180,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            29,
+            74
+          ],
+          "per_cell_coverage": [
+            0.3093,
+            0.0964,
+            0.6861
+          ],
+          "terms": {
+            "scale_term": 0.8302,
+            "coverage_term": 0.3639,
+            "uniformity_term": 0.7562,
+            "reference_scale": 0.463
+          },
+          "score": 58.6,
+          "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2975,
+          "reason": null,
+          "scale": 0.342184549356223,
+          "rot": 180,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            36,
+            67
+          ],
+          "per_cell_coverage": [
+            0.2284,
+            0.1216,
+            0.6372
+          ],
+          "terms": {
+            "scale_term": 0.7973,
+            "coverage_term": 0.3291,
+            "uniformity_term": 0.7778,
+            "reference_scale": 0.4292
+          },
+          "score": 56.03,
+          "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c3_fit.png"
+        }
+      ],
+      "winner": {
+        "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c1_s101_alpha.png",
+        "candidate_index": 0,
+        "score": 62.45,
+        "selected_to": "content/batches/batch-003-item-icons/selected/beast_jaw.png"
+      }
+    }
+  }
+}

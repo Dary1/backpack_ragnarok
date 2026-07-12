@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/><title>batch-003 item icons preview (REQ-0073)</title>
+<style>
+:root {
+  --bg: #14110d;
+  --panel: #1d1912;
+  --panel2: #241f16;
+  --border: #3a3222;
+  --text: #e8d9b0;
+  --muted: #8a8270;
+  --gold: #c9a227;
+  --green: #5cb573;
+  --red: #d62828;
+  --blue: #7ecbe8;
+  --amber: #d69e2e;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 32px;
+  background: var(--bg); color: var(--text);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+h1 { color: var(--gold); letter-spacing: 0.06em; text-transform: uppercase; font-size: 22px;
+     border-bottom: 2px solid var(--border); padding-bottom: 12px; margin-bottom: 12px; }
+.provenance { color: var(--muted); font-size: 12px; margin-bottom: 4px; font-style: italic; }
+.meta { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+.meta b { color: var(--text); }
+
+.formula-box {
+  background: var(--panel); border: 1px solid var(--gold); border-radius: 8px;
+  padding: 14px 18px; margin-bottom: 16px;
+}
+.formula-label { font-size: 10px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 6px; }
+.formula-text { font-size: 14px; color: var(--text); margin-bottom: 10px; }
+.formula-weights { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 10px; padding: 2px 9px; border-radius: 10px; background: var(--panel2);
+  border: 1px solid var(--border); color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.chip-w { color: var(--blue); }
+.chip-feasible { color: var(--green); border-color: #2f5c3b; }
+.chip-infeasible { color: #ff8a8a; border-color: #6e2626; }
+
+.explainer {
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 14px 18px; margin-bottom: 32px; max-width: 900px;
+}
+.explainer-title { font-size: 11px; color: var(--gold); text-transform: uppercase;
+  letter-spacing: 0.05em; margin-bottom: 6px; }
+.explainer-body { font-size: 13px; line-height: 1.55; color: var(--text); }
+.explainer-body b { color: var(--gold); }
+
+.item-grid { display: flex; flex-direction: column; gap: 22px; }
+.item-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 18px;
+}
+.item-skipped { opacity: 0.7; }
+.item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 10px; }
+.item-name-block { display: flex; flex-direction: column; gap: 2px; }
+.item-name-en { font-size: 17px; font-weight: bold; color: var(--text); }
+.item-name-ja { font-size: 14px; color: var(--gold); }
+.item-id { font-size: 11px; color: var(--muted); font-family: monospace; }
+.item-skip-reason { font-size: 12px; color: var(--red); margin-top: 6px; }
+.item-winner-line { font-size: 12px; color: var(--green); margin-bottom: 10px; }
+.item-winner-line a { color: var(--blue); }
+
+.shape-grid { display: grid; gap: 2px; }
+.shape-cell { width: 22px; height: 22px; border-radius: 2px; }
+.shape-owned { background: var(--gold); border: 1px solid #5a4413; }
+.shape-empty { background: none; }
+.shape-none { font-size: 11px; color: var(--muted); font-style: italic; }
+
+.cand-row { display: flex; flex-wrap: wrap; gap: 14px; }
+.cand-card {
+  position: relative;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; width: 300px; display: flex; flex-direction: column; gap: 8px;
+}
+.cand-winner { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+.winner-badge {
+  position: absolute; top: -10px; right: 10px;
+  background: var(--gold); color: #221c15; font-size: 10px; font-weight: bold;
+  letter-spacing: 0.05em; text-transform: uppercase; padding: 3px 10px; border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.cand-head { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+.cand-idx { font-weight: bold; color: var(--text); }
+.cand-seed { font-family: monospace; }
+
+.cand-imgs { display: flex; gap: 6px; }
+.cand-img-block { flex: 1; min-width: 0; background: #100d09; border-radius: 6px; padding: 5px; text-align: center; }
+.cand-img-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 3px; }
+.cand-img-block img { max-width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--border); }
+.cand-img-checker img {
+  background-image: linear-gradient(45deg, #3a3a3a 25%, transparent 25%),
+                     linear-gradient(-45deg, #3a3a3a 25%, transparent 25%),
+                     linear-gradient(45deg, transparent 75%, #3a3a3a 75%),
+                     linear-gradient(-45deg, transparent 75%, #3a3a3a 75%);
+  background-size: 12px 12px; background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  background-color: #2a2a2a;
+}
+.cand-img-dark img { background: #0a0806; }
+.img-missing { font-size: 10px; color: var(--muted); font-style: italic; padding: 20px 4px; }
+
+.cand-score { font-size: 22px; font-weight: bold; color: var(--gold); text-align: center; }
+
+.terms-grid { display: flex; flex-direction: column; gap: 2px; }
+.term-row { display: flex; justify-content: space-between; font-size: 11px; }
+.term-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.term-val { color: var(--text); font-family: monospace; }
+.terms-infeasible { font-size: 12px; color: var(--red); text-align: center; }
+.terms-reason { font-size: 10px; color: var(--muted); font-style: italic; }
+
+.cand-orient { font-size: 11px; color: var(--blue); text-align: center; }
+
+footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--muted); }
+footer a { color: var(--blue); }
+</style></head><body>
+
+<h1>batch-003 item icons -- REQ-0073</h1>
+<div class="provenance">tools/build_batch003_report.py -- REQ-0073 batch-003 report; reads tools/tool_icon_score.py's scores.json verbatim, recomputes nothing</div>
+<div class="meta">
+  model <b>JuggernautXL_RunDiffusionPhoto2_V9_Final</b> &middot; seeds <b>101/202/303/404</b> &middot;
+  generated <b>2026-07-12 00:58:12</b> &middot; scores.json generated <b>2026-07-12T00:56:31.499706</b>
+  
+</div>
+<div class="formula-box">
+  <div class="formula-label">score formula</div>
+  <div class="formula-text">score = 100 &times; (0.35&middot;scale_term + 0.50&middot;coverage_term + 0.15&middot;uniformity_term), or 0 if infeasible</div>
+  <div class="formula-weights">
+    <span class="chip chip-w">scale &times;0.35</span>
+    <span class="chip chip-w">coverage &times;0.50</span>
+    <span class="chip chip-w">uniformity &times;0.15</span>
+  </div>
+</div>
+<div class="explainer">
+  <div class="explainer-title">how the fit tool works</div>
+  <div class="explainer-body">
+    Each candidate's alpha silhouette is searched for its best placement inside
+    the item's owned backpack cells: <b>4 rotations (0&deg;/90&deg;/180&deg;/270&deg;) &times; 2 flips</b>
+    (8 orientations total), each tried at its own
+    <b>maximum feasible scale</b>, then placed via a <b>centered-placement</b> policy
+    (closest feasible position to the allowed region's centroid). The score is
+    <b>geometry only</b> -- scale achieved, per-cell coverage, and cross-cell
+    coverage uniformity. There is deliberately <b>no aesthetic or subject-matter
+    term</b>: composition, color, and style-guide adherence are not scored here
+    (per user directive, REQ-0073 goal 3).
+  </div>
+</div>
+
+<h2 style="color: var(--gold); font-size: 16px; letter-spacing: 0.04em; text-transform: uppercase;
+     margin-top: 30px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">items (8)</h2>
+<div class="item-grid">
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Longsword Blade</div>
+      <div class="item-name-ja">ロングソードの刀身</div>
+      <div class="item-id">blade</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c2 &middot; score 56.6 &middot; adopted copy: <a href="img/selected/blade.png">blade.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/blade_c1_s101.png" alt="blade candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/blade_c1_s101_alpha.png" alt="blade candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/blade_c0_fit.png" alt="blade candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">55.0</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.137</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.985</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.19%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/blade_c2_s202.png" alt="blade candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/blade_c2_s202_alpha.png" alt="blade candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/blade_c1_fit.png" alt="blade candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">56.6</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.170</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.982</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.75%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/blade_c3_s303.png" alt="blade candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/blade_c3_s303_alpha.png" alt="blade candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/blade_c2_fit.png" alt="blade candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">55.5</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.147</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.989</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.16%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/blade_c4_s404.png" alt="blade candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/blade_c4_s404_alpha.png" alt="blade candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/blade_c3_fit.png" alt="blade candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">54.7</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.131</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.989</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.16%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Sword Hilt</div>
+      <div class="item-name-ja">剣の柄</div>
+      <div class="item-id">hilt</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(1, 22px);"><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c2 &middot; score 60.6 &middot; adopted copy: <a href="img/selected/hilt.png">hilt.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/hilt_c1_s101.png" alt="hilt candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/hilt_c1_s101_alpha.png" alt="hilt candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/hilt_c0_fit.png" alt="hilt candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">53.4</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.905</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.134</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">1.000</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.33%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/hilt_c2_s202.png" alt="hilt candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/hilt_c2_s202_alpha.png" alt="hilt candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/hilt_c1_fit.png" alt="hilt candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">60.6</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.905</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.280</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">1.000</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 36.34%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/hilt_c3_s303.png" alt="hilt candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/hilt_c3_s303_alpha.png" alt="hilt candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/hilt_c2_fit.png" alt="hilt candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">55.1</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.905</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.168</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">1.000</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 37.08%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/hilt_c4_s404.png" alt="hilt candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/hilt_c4_s404_alpha.png" alt="hilt candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/hilt_c3_fit.png" alt="hilt candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">58.3</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.905</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.233</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">1.000</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 40.03%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Flame Rune Tablet</div>
+      <div class="item-name-ja">炎のルーンタブレット</div>
+      <div class="item-id">flame_tablet</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c3 &middot; score 87.9 &middot; adopted copy: <a href="img/selected/flame_tablet.png">flame_tablet.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/flame_tablet_c1_s101.png" alt="flame_tablet candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/flame_tablet_c1_s101_alpha.png" alt="flame_tablet candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/flame_tablet_c0_fit.png" alt="flame_tablet candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">82.4</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.683</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.998</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.76%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/flame_tablet_c2_s202.png" alt="flame_tablet candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/flame_tablet_c2_s202_alpha.png" alt="flame_tablet candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/flame_tablet_c1_fit.png" alt="flame_tablet candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">76.7</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.570</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.994</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.86%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/flame_tablet_c3_s303.png" alt="flame_tablet candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/flame_tablet_c3_s303_alpha.png" alt="flame_tablet candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/flame_tablet_c2_fit.png" alt="flame_tablet candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">87.9</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.932</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.811</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.979</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 36.63%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/flame_tablet_c4_s404.png" alt="flame_tablet candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/flame_tablet_c4_s404_alpha.png" alt="flame_tablet candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/flame_tablet_c3_fit.png" alt="flame_tablet candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">85.8</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.750</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.996</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.02%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Oil Flask</div>
+      <div class="item-name-ja">油の小瓶</div>
+      <div class="item-id">oil_flask</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c4 &middot; score 69.9 &middot; adopted copy: <a href="img/selected/oil_flask.png">oil_flask.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/oil_flask_c1_s101.png" alt="oil_flask candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/oil_flask_c1_s101_alpha.png" alt="oil_flask candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/oil_flask_c0_fit.png" alt="oil_flask candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">69.1</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.433</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.943</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.04%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/oil_flask_c2_s202.png" alt="oil_flask candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/oil_flask_c2_s202_alpha.png" alt="oil_flask candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/oil_flask_c1_fit.png" alt="oil_flask candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">68.8</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.429</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.936</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 40.60%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/oil_flask_c3_s303.png" alt="oil_flask candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/oil_flask_c3_s303_alpha.png" alt="oil_flask candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/oil_flask_c2_fit.png" alt="oil_flask candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">68.1</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.414</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.939</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.30%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/oil_flask_c4_s404.png" alt="oil_flask candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/oil_flask_c4_s404_alpha.png" alt="oil_flask candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/oil_flask_c3_fit.png" alt="oil_flask candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">69.9</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.437</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.984</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 45.45%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Dagger</div>
+      <div class="item-name-ja">ダガー</div>
+      <div class="item-id">dagger</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c4 &middot; score 60.7 &middot; adopted copy: <a href="img/selected/dagger.png">dagger.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/dagger_c1_s101.png" alt="dagger candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/dagger_c1_s101_alpha.png" alt="dagger candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/dagger_c0_fit.png" alt="dagger candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">56.0</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.160</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.980</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.34%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/dagger_c2_s202.png" alt="dagger candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/dagger_c2_s202_alpha.png" alt="dagger candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/dagger_c1_fit.png" alt="dagger candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">56.5</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.173</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.970</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.71%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/dagger_c3_s303.png" alt="dagger candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/dagger_c3_s303_alpha.png" alt="dagger candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/dagger_c2_fit.png" alt="dagger candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">55.7</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.160</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.959</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.11%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/dagger_c4_s404.png" alt="dagger candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/dagger_c4_s404_alpha.png" alt="dagger candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/dagger_c3_fit.png" alt="dagger candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">60.7</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.283</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.880</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 37.86%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Herb Satchel</div>
+      <div class="item-name-ja">薬草の巾着</div>
+      <div class="item-id">herb_pouch</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(1, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c3 &middot; score 62.7 &middot; adopted copy: <a href="img/selected/herb_pouch.png">herb_pouch.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/herb_pouch_c1_s101.png" alt="herb_pouch candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/herb_pouch_c1_s101_alpha.png" alt="herb_pouch candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/herb_pouch_c0_fit.png" alt="herb_pouch candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">62.3</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.341</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.795</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.40%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/herb_pouch_c2_s202.png" alt="herb_pouch candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/herb_pouch_c2_s202_alpha.png" alt="herb_pouch candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/herb_pouch_c1_fit.png" alt="herb_pouch candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">60.6</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.279</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.886</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.23%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/herb_pouch_c3_s303.png" alt="herb_pouch candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/herb_pouch_c3_s303_alpha.png" alt="herb_pouch candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/herb_pouch_c2_fit.png" alt="herb_pouch candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">62.7</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.312</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.916</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.19%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/herb_pouch_c4_s404.png" alt="herb_pouch candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/herb_pouch_c4_s404_alpha.png" alt="herb_pouch candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/herb_pouch_c3_fit.png" alt="herb_pouch candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">59.9</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.242</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.967</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.55%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Tower Shield</div>
+      <div class="item-name-ja">タワーシールド</div>
+      <div class="item-id">tower_shield</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(2, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c2 &middot; score 90.2 &middot; adopted copy: <a href="img/selected/tower_shield.png">tower_shield.png</a></div>
+  <div class="cand-row">
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/tower_shield_c1_s101.png" alt="tower_shield candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/tower_shield_c1_s101_alpha.png" alt="tower_shield candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/tower_shield_c0_fit.png" alt="tower_shield candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">76.8</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.572</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.989</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 38.24%</div>
+</div>
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/tower_shield_c2_s202.png" alt="tower_shield candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/tower_shield_c2_s202_alpha.png" alt="tower_shield candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/tower_shield_c1_fit.png" alt="tower_shield candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">90.2</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.841</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.988</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 37.20%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/tower_shield_c3_s303.png" alt="tower_shield candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/tower_shield_c3_s303_alpha.png" alt="tower_shield candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/tower_shield_c2_fit.png" alt="tower_shield candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">66.3</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.362</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.993</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 41.95%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/tower_shield_c4_s404.png" alt="tower_shield candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/tower_shield_c4_s404_alpha.png" alt="tower_shield candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/tower_shield_c3_fit.png" alt="tower_shield candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">76.2</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.952</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.563</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.981</span></div></div>
+  <div class="cand-orient">rotate 0&deg; &middot; flip False &middot; scale 39.93%</div>
+</div>
+  </div>
+</div>
+<div class="item-card">
+  <div class="item-head">
+    <div class="item-name-block">
+      <div class="item-name-en">Beast Jaw</div>
+      <div class="item-name-ja">獣の顎</div>
+      <div class="item-id">beast_jaw</div>
+    </div>
+    <div class="shape-grid" style="grid-template-columns: repeat(2, 22px); grid-template-rows: repeat(2, 22px);"><div class="shape-cell shape-empty"></div><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div><div class="shape-cell shape-owned"></div></div>
+  </div>
+  <div class="item-winner-line">winner: candidate c1 &middot; score 62.5 &middot; adopted copy: <a href="img/selected/beast_jaw.png">beast_jaw.png</a></div>
+  <div class="cand-row">
+<div class="cand-card cand-winner">
+  <div class="winner-badge">WINNER</div>
+  <div class="cand-head">
+    <span class="cand-idx">c1</span>
+    <span class="cand-seed">seed 101</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/beast_jaw_c1_s101.png" alt="beast_jaw candidate 0 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/beast_jaw_c1_s101_alpha.png" alt="beast_jaw candidate 0 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/beast_jaw_c0_fit.png" alt="beast_jaw candidate 0 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">62.5</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.851</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.444</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.697</span></div></div>
+  <div class="cand-orient">rotate 180&deg; &middot; flip False &middot; scale 38.00%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c2</span>
+    <span class="cand-seed">seed 202</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/beast_jaw_c2_s202.png" alt="beast_jaw candidate 1 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/beast_jaw_c2_s202_alpha.png" alt="beast_jaw candidate 1 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/beast_jaw_c1_fit.png" alt="beast_jaw candidate 1 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">54.4</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.780</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.312</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.768</span></div></div>
+  <div class="cand-orient">rotate 180&deg; &middot; flip False &middot; scale 34.05%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c3</span>
+    <span class="cand-seed">seed 303</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/beast_jaw_c3_s303.png" alt="beast_jaw candidate 2 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/beast_jaw_c3_s303_alpha.png" alt="beast_jaw candidate 2 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/beast_jaw_c2_fit.png" alt="beast_jaw candidate 2 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">58.6</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.830</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.364</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.756</span></div></div>
+  <div class="cand-orient">rotate 180&deg; &middot; flip False &middot; scale 38.44%</div>
+</div>
+<div class="cand-card ">
+  
+  <div class="cand-head">
+    <span class="cand-idx">c4</span>
+    <span class="cand-seed">seed 404</span>
+    <span class="chip chip-feasible">feasible</span>
+  </div>
+  <div class="cand-imgs">
+    <div class="cand-img-block"><div class="cand-img-label">raw</div><img src="img/candidates/beast_jaw_c4_s404.png" alt="beast_jaw candidate 3 raw" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-checker"><div class="cand-img-label">alpha</div><img src="img/candidates/beast_jaw_c4_s404_alpha.png" alt="beast_jaw candidate 3 alpha" loading="lazy"/></div>
+    <div class="cand-img-block cand-img-dark"><div class="cand-img-label">fit render</div><img src="img/fit_renders/beast_jaw_c3_fit.png" alt="beast_jaw candidate 3 fit render" loading="lazy"/></div>
+  </div>
+  <div class="cand-score">56.0</div>
+  <div class="terms-grid"><div class="term-row"><span class="term-label">scale</span><span class="term-val">0.797</span></div><div class="term-row"><span class="term-label">coverage</span><span class="term-val">0.329</span></div><div class="term-row"><span class="term-label">uniformity</span><span class="term-val">0.778</span></div></div>
+  <div class="cand-orient">rotate 180&deg; &middot; flip False &middot; scale 34.22%</div>
+</div>
+  </div>
+</div>
+</div>
+
+<footer>spec: <a href="../../../docs/REQ-0073-item-icon-gen.md">../../../docs/REQ-0073-item-icon-gen.md</a></footer>
+
+</body></html>

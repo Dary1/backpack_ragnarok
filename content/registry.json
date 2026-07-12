@@ -1,3 +1,27 @@
-{"batches":[{"id":"batch-001-niflheim","date":"2026-07-02","drafted_by":"opus-4.8","icons_by":"sonnet-5.0",
- "submitted":7,"approved":6,"expected_rejects_confirmed":1,"s2_real_catches":1,
- "status":"awaiting_user_review","preview":"/preview/batch-001/"}]}
+{
+ "batches": [
+  {
+   "id": "batch-001-niflheim",
+   "date": "2026-07-02",
+   "drafted_by": "opus-4.8",
+   "icons_by": "sonnet-5.0",
+   "submitted": 7,
+   "approved": 6,
+   "expected_rejects_confirmed": 1,
+   "s2_real_catches": 1,
+   "status": "awaiting_user_review",
+   "preview": "/preview/batch-001/"
+  },
+  {
+   "id": "batch-003-item-icons",
+   "date": "2026-07-12",
+   "drafted_by": "req-0073 orchestrator sessions (recovered via REQ-0109)",
+   "icons_by": "ComfyUI JuggernautXL_RunDiffusionPhoto2_V9_Final, seeds 101/202/303/404",
+   "submitted": 8,
+   "approved": 0,
+   "status": "awaiting_user_review",
+   "preview": "/preview/batch-003/",
+   "provenance": "AI-raster route (REQ-0073); geometry-scored (tool_icon_score.py, MIN_CONTENT_FRAC gate); winners = argmax(score); re-scored 2026-07-12 after matte/gate fixes"
+  }
+ ]
+}
