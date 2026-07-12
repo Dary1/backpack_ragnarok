@@ -164,6 +164,15 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
         flatBonus += resolveScalar(eff.verb.n, rng.stream('compile/buff/' + poEntry.uid));
       }
     }
+    // REQ-0121: buff_self at battle_start -- permanent fold onto this PO's
+    // OWN damage verbs (same posture as buff_host, but self-targeted; the
+    // on_hp_below-triggered form is dynamic and handled at encounter time
+    // by hpbelow.cjs watchers, never here).
+    for (const eff of effects) {
+      if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'buff_self' && eff.verb.stat === 'damage') {
+        flatBonus += resolveScalar(eff.verb.n, rng.stream('compile/buff/' + poEntry.uid));
+      }
+    }
     // buff_self_per_tag: passive; sums contribution per OTHER qualifying-tag
     // PO in the SAME bp.
     for (const eff of effects) {
@@ -200,6 +209,24 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     const { effects, flatBonus } = foldBuffsForPO(p, rngForCompile);
     return { ...p, _effects: effects, _flatBonus: flatBonus };
   });
+
+  // REQ-0121: battle_start damage_reduction from a BP's placed POs folds
+  // onto the OWNING BP as a resolved flat scalar (bp.damageReduction) --
+  // reduces direct-hit damage that BP takes (chokepoint: skills.cjs
+  // reduceIncoming). Resolved via the same compile-time RNG pattern the
+  // buff folds use; per-BP named stream, independent of existing streams.
+  for (const bp of bps) {
+    let dr = 0;
+    for (const p of folded) {
+      if (p.bpId !== bp.id) continue;
+      for (const eff of p._effects) {
+        if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'damage_reduction') {
+          dr += resolveScalar(eff.verb.n, rngForCompile.stream('compile/dr/' + bp.id));
+        }
+      }
+    }
+    bp.damageReduction = dr;
+  }
 
   // Pass 2: buff_adjacent -- sums contribution from qualifying-tag POs in
   // Chebyshev-ADJACENT bps (on the local grid, pre-formation-offset, since

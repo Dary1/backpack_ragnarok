@@ -99,6 +99,10 @@ function verbPhraseEN(verb) {
       return 'immune: ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
     case 'bonus_vs_status':
       return '+' + fmtNum(verb.n, 'en') + ' bonus damage vs ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
+    case 'buff_self': // REQ-0121
+      return '+' + fmtNum(verb.n, 'en') + ' ' + verb.stat + ' to self';
+    case 'damage_reduction': // REQ-0121
+      return 'reduce incoming damage by ' + fmtNum(verb.n, 'en');
     default: return verb.t;
   }
 }
@@ -115,6 +119,8 @@ function triggerPrefixEN(trig) {
     case 'OnBPBeenHit': return 'When this BP is damaged: ';
     case 'OnSquadBeenHit': return 'When this squad is damaged: ';
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
+    case 'on_hp_below': // REQ-0121: hp_frac 0.5 -> "Below 50% HP (once): "
+      return 'Below ' + Math.round((trig.hp_frac || 0) * 100) + '% HP (once): ';
     default: return trig.t + ': ';
   }
 }
@@ -205,6 +211,10 @@ function verbPhraseJA(verb) {
       return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'に免疫';
     case 'bonus_vs_status':
       return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'の相手に追加ダメージ +' + fmtNum(verb.n, 'ja');
+    case 'buff_self': // REQ-0121
+      return '自身に ' + statJA(verb.stat) + ' +' + fmtNum(verb.n, 'ja');
+    case 'damage_reduction': // REQ-0121
+      return '受けるダメージを ' + fmtNum(verb.n, 'ja') + ' 軽減';
     default: return verb.t;
   }
 }
@@ -221,6 +231,8 @@ function triggerPrefixJA(trig) {
     case 'OnBPBeenHit': return 'このBPが被弾した時: ';
     case 'OnSquadBeenHit': return '所属ユニットが被弾した時: ';
     case 'adjacent': return '隣接する' + trig.tag + ': ';
+    case 'on_hp_below': // REQ-0121
+      return 'HPが' + Math.round((trig.hp_frac || 0) * 100) + '%を下回った時（一度だけ）: ';
     default: return trig.t + ': ';
   }
 }

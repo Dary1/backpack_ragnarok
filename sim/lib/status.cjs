@@ -46,18 +46,34 @@ function resolveVerbStatusSet(verb) {
 // {immuneSet, bonusVsStatus} result. Shared by compile.cjs (per-BP, across
 // that BP's placed POs) and packs.cjs/encounter.cjs (per-enemy/entity,
 // across its own skills).
+// REQ-0121: additionally collects the two battle_start-folded stat verbs
+// added by that REQ, as UNRESOLVED [lo,hi] ranges (each caller resolves
+// scalars with its own compile-time RNG stream, mirroring how buff folds
+// already resolve per caller):
+//   - damageReductionRanges: battle_start damage_reduction n-ranges
+//     (folded onto the DEFENDER as ref.damageReduction).
+//   - buffSelfRanges: battle_start buff_self (stat:'damage') n-ranges
+//     (folded onto the owner's OWN strike/multi_strike ranges).
+// on_hp_below-triggered buff_self is NOT folded here -- it is dynamic and
+// handled by hpbelow.cjs watchers at encounter time.
 function foldBattleStartStatusVerbs(effects) {
   const immuneSet = new Set();
   const bonusVsStatus = [];
+  const damageReductionRanges = [];
+  const buffSelfRanges = [];
   for (const eff of (effects || [])) {
     if (!eff || !eff.trigger || eff.trigger.t !== 'battle_start' || !eff.verb) continue;
     if (eff.verb.t === 'status_immune') {
       for (const s of resolveVerbStatusSet(eff.verb)) immuneSet.add(s);
     } else if (eff.verb.t === 'bonus_vs_status') {
       bonusVsStatus.push({ set: resolveVerbStatusSet(eff.verb), n: eff.verb.n });
+    } else if (eff.verb.t === 'damage_reduction') { // REQ-0121
+      damageReductionRanges.push(eff.verb.n);
+    } else if (eff.verb.t === 'buff_self' && eff.verb.stat === 'damage') { // REQ-0121
+      buffSelfRanges.push(eff.verb.n);
     }
   }
-  return { immuneSet, bonusVsStatus };
+  return { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges };
 }
 
 function applyStatus(bag, name, n, ampMult) {

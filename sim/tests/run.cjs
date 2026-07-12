@@ -582,6 +582,187 @@ T('REQ-0093 compile-time fold (player BP): compileSquadSnapshot attaches bp.stat
 });
 
 // =====================================================================
+// 4c. REQ-0121: buff_self / damage_reduction / on_hp_below
+// =====================================================================
+T('REQ-0121 reduceIncoming: flat subtraction, floored at zero, absent field is a no-op', () => {
+  eq(combat.reduceIncoming(10, { ref: { damageReduction: 3 } }), 7, '10 - 3 = 7');
+  eq(combat.reduceIncoming(2, { ref: { damageReduction: 10 } }), 0, 'floored at zero, never negative/healing');
+  eq(combat.reduceIncoming(5, { ref: {} }), 5, 'no damageReduction field: exact no-op (golden safety)');
+});
+
+T('REQ-0121 damage_reduction: applied per hit in dealHitOnField, per sub-hit for multi_strike, floors at zero', () => {
+  const rng = combat.makeRng('req0121-dr').stream('t');
+  const events = [];
+  const shielded = combat.makeEnemyActor({ id: 'd1', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {}, damageReduction: 3 });
+  eq(combat.dealHitOnField(shielded, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events).amount, 7, 'strike 10 - 3 = 7');
+  const multi = combat.makeEnemyActor({ id: 'd2', hp: 1000, hpMax: 1000, fieldCells: [[1, 1]], statusBag: {}, damageReduction: 4 });
+  eq(combat.dealHitOnField(multi, { verb: { t: 'multi_strike', n: [10, 10], hits: 3 } }, 1, rng, 'battle', events).amount, 18, '3 x (10 - 4) = 18: reduction per sub-hit (OQ19 separate-hit rule)');
+  const tank = combat.makeEnemyActor({ id: 'd3', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {}, damageReduction: 50 });
+  eq(combat.dealHitOnField(tank, { verb: { t: 'strike', n: [10, 10] } }, 1, rng, 'battle', events).amount, 0, 'over-reduction floors at zero');
+  eq(tank.hp(), 100, 'zero damage taken');
+});
+
+T('REQ-0121 damage_reduction: DoT status ticks are NOT reduced (blows are blunted, poison is not)', () => {
+  const en = { id: 'd4', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: combat.freshStatusBag(), damageReduction: 99 };
+  combat.applyStatus(en.statusBag, 'Burn', 3);
+  const ticks = combat.tickStatuses(en.statusBag, 1.0);
+  const burn = ticks.find(t => t.name === 'Burn');
+  ok(burn && burn.amount === 3, 'tick damage bypasses reduceIncoming by design (vocab provenance note)');
+});
+
+T('REQ-0121 compileEnemyPack: battle_start damage_reduction + buff_self fold; shared skill defs never mutated', () => {
+  const enemyDefsById2 = {
+    thick_ogre: { id: 'thick_ogre', name: 'Thick Ogre', hp: [30, 30], footprint: [1, 1], skills: ['og_smash', 'og_hide', 'og_rage'] },
+  };
+  const skillDefsById2 = {
+    og_smash: { trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [5, 5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+    og_hide: { trigger: { t: 'battle_start' }, verb: { t: 'damage_reduction', n: [4, 4] } },
+    og_rage: { trigger: { t: 'battle_start' }, verb: { t: 'buff_self', stat: 'damage', n: [3, 3] } },
+  };
+  const rng = combat.makeRng('req0121-pack-fold');
+  const enemies = combat.compileEnemyPack({ enemyIds: ['thick_ogre'] }, enemyDefsById2, skillDefsById2, rng, { rowMin: 1, colMin: 1, rowMax: 18, colMax: 26 });
+  const en = enemies[0];
+  approx(en.damageReduction, 4, 1e-9, 'battle_start damage_reduction folded to a resolved scalar');
+  const smash = en.skills.find(s => s.verb.t === 'strike');
+  eq(smash.verb.n, [8, 8], 'battle_start buff_self folded (+3) onto the enemy\'s OWN strike range');
+  eq(skillDefsById2.og_smash.verb.n, [5, 5], 'shared content def NEVER mutated (per-instance deep copy)');
+});
+
+T('REQ-0121 compileEnemyPack: an enemy with no new verbs keeps SHARED skill refs (zero golden impact)', () => {
+  const rng = combat.makeRng('req0121-shared-refs');
+  const enemies = combat.compileEnemyPack({ enemyIds: ['tiny_goblin'] }, tinyEnemyDefs, tinySkillDefs, rng, { rowMin: 1, colMin: 1, rowMax: 18, colMax: 26 });
+  ok(enemies[0].skills[0] === tinySkillDefs.tiny_bite, 'no buff_self anywhere: skills list must keep the exact shared def objects');
+  eq(enemies[0].damageReduction, 0, 'damageReduction defaults to 0');
+});
+
+T('REQ-0121 on_hp_below: strict crossing, fire-once-ever, no re-arm on heal-back (user ruling 2026-07-12)', () => {
+  const en = { id: 'e-once', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {} };
+  let fires = 0;
+  combat.registerHpBelowWatchers(en, [{ key: 'k1', frac: 0.5, onFire() { fires++; } }]);
+  const actor = combat.makeEnemyActor(en);
+  actor.applyDamage(50); // hp 50 == exactly 50%: NOT strictly below
+  eq(fires, 0, 'landing exactly ON the threshold must not fire (strict <)');
+  actor.applyDamage(1); // hp 49
+  eq(fires, 1, 'fires the instant the threshold is strictly crossed');
+  actor.applyDamage(10); // hp 39
+  eq(fires, 1, 'staying below must not re-fire');
+  actor.heal(50); // hp 89: back above
+  actor.applyDamage(50); // hp 39: re-crossed downward
+  eq(fires, 1, 'once EVER: healing back above and re-crossing does not re-arm');
+});
+
+T('REQ-0121 on_hp_below: killing blow does not fire; one hit can fire multiple thresholds in registration order', () => {
+  const en = { id: 'e-multi', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {} };
+  const fired = [];
+  combat.registerHpBelowWatchers(en, [
+    { key: 'half', frac: 0.5, onFire() { fired.push('half'); } },
+    { key: 'third', frac: 0.3, onFire() { fired.push('third'); } },
+  ]);
+  combat.makeEnemyActor(en).applyDamage(80); // hp 20: crosses 0.5 AND 0.3 at once
+  eq(fired, ['half', 'third'], 'both thresholds fire from one hit, registration order');
+
+  const en2 = { id: 'e-kill', hp: 100, hpMax: 100, fieldCells: [[1, 1]], statusBag: {} };
+  let fires2 = 0;
+  combat.registerHpBelowWatchers(en2, [{ key: 'k', frac: 0.5, onFire() { fires2++; } }]);
+  combat.makeEnemyActor(en2).applyDamage(100); // outright kill from full HP
+  eq(fires2, 0, 'no posthumous enrage on a killing blow');
+});
+
+T('REQ-0121 foldFlatBonusInPlace: shifts only strike/multi_strike n-ranges, in place, zero bonus is a no-op', () => {
+  const skills2 = [
+    { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [5, 8] } },
+    { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'apply_status', status: 'Burn', n: [2, 2] } },
+  ];
+  combat.foldFlatBonusInPlace(skills2, 4);
+  eq(skills2[0].verb.n, [9, 12], 'strike shifted');
+  eq(skills2[1].verb.n, [2, 2], 'non-damage verb untouched');
+  combat.foldFlatBonusInPlace(skills2, 0);
+  eq(skills2[0].verb.n, [9, 12], 'zero bonus is an exact no-op');
+});
+
+T('REQ-0121 integration: enemy on_hp_below buff_self enrage fires exactly once in a real run and buffs its own skill', () => {
+  const enemyDefs3 = {
+    rage_orc: { id: 'rage_orc', name: 'Rage Orc', hp: [200, 200], footprint: [1, 1], skills: ['orc_hit', 'orc_rage'] },
+  };
+  const skillDefs3 = {
+    orc_hit: { trigger: { t: 'every_secs', s: [1.5, 1.5] }, verb: { t: 'strike', n: [2, 2] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+    orc_rage: { trigger: { t: 'on_hp_below', hp_frac: 0.5 }, verb: { t: 'buff_self', stat: 'damage', n: [6, 6] } },
+  };
+  const opts = {
+    masterSeed: 'req0121-enrage',
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['rage_orc'] }, deadline_secs: 120 }] },
+    squadSnapshots: fourSquadSnapshots(), itemDefsById, enemyDefsById: enemyDefs3, skillDefsById: skillDefs3,
+    formationId: 'formation1', level: 1, participants: ['pA'],
+  };
+  const r = combat.runDungeon(opts);
+  const procs = r.events.filter(e => e.ev === 'passive_proc' && e.trigger === 'on_hp_below');
+  eq(procs.length, 1, 'enrage fires exactly once, never per-tick');
+  eq(procs[0].verb, 'buff_self', 'payload verb recorded');
+  approx(procs[0].amount, 6, 1e-9, 'resolved [6,6] buff amount');
+  approx(procs[0].frac, 0.5, 1e-9, 'threshold recorded');
+  eq(skillDefs3.orc_hit.verb.n, [2, 2], 'shared def untouched after the in-place instance fold');
+  // determinism guard: same seed, byte-identical log through the enrage path
+  const r2 = combat.runDungeon(opts);
+  ok(combat.toJSONL(r.events) === combat.toJSONL(r2.events), 'enrage path replays byte-identical');
+});
+
+T('REQ-0121 player-side compile: PO battle_start buff_self folds onto own verbs; damage_reduction folds onto owning BP', () => {
+  const squadState = {
+    bps: [{ id: 'bpA', name: 'BP A', shape: [[0, 0], [0, 1]], origin: [1, 1], hpMax: 100 }],
+    pos: [
+      { uid: 'p1', id: 'itemBuffSelf', cell: [1, 1], rot: 0, loc: 'grid' },
+      { uid: 'p2', id: 'itemHide', cell: [1, 2], rot: 0, loc: 'grid' },
+    ],
+    layout: { ROWS: 8, COLS: 8 },
+  };
+  const itemDefs3 = {
+    itemBuffSelf: {
+      id: 'itemBuffSelf', shape: [[0, 0]],
+      effects: [
+        { trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [10, 10] } },
+        { trigger: { t: 'battle_start' }, verb: { t: 'buff_self', stat: 'damage', n: [5, 5] } },
+      ],
+    },
+    itemHide: {
+      id: 'itemHide', shape: [[0, 0]],
+      effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'damage_reduction', n: [3, 3] } }],
+    },
+  };
+  const snap = combat.compileSquadSnapshot(squadState, itemDefs3, 'formation1', 'unit1');
+  const strike = snap.pos.find(p => p.uid === 'p1').effects.find(e => e.verb.t === 'strike');
+  eq(strike.verb.n, [15, 15], 'battle_start buff_self folded (+5) onto own strike (buff_host posture)');
+  approx(snap.bps[0].damageReduction, 3, 1e-9, 'battle_start damage_reduction folded onto the OWNING BP');
+});
+
+T('REQ-0121 player-side on_hp_below: a PO enrage watches its OWNING BP\'s HP (domain ruling) -- integration', () => {
+  const squadState = {
+    bps: [{ id: 'bpA', name: 'BP A', shape: [[0, 0]], origin: [1, 1], hpMax: 60 }],
+    pos: [{ uid: 'p1', id: 'itemEnrage', cell: [1, 1], rot: 0, loc: 'grid' }],
+    layout: { ROWS: 8, COLS: 8 },
+  };
+  const itemDefs4 = {
+    itemEnrage: {
+      id: 'itemEnrage', shape: [[0, 0]],
+      effects: [
+        { trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } },
+        { trigger: { t: 'on_hp_below', hp_frac: 0.9 }, verb: { t: 'buff_self', stat: 'damage', n: [7, 7] } },
+      ],
+    },
+  };
+  const r = combat.runDungeon({
+    masterSeed: 'req0121-player-enrage',
+    dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['tiny_goblin'] }, deadline_secs: 60 }] },
+    squadSnapshots: [squadState, squadState, squadState, squadState],
+    itemDefsById: itemDefs4, enemyDefsById: tinyEnemyDefs, skillDefsById: tinySkillDefs,
+    formationId: 'formation1', level: 1, participants: ['pA'],
+  });
+  const procs = r.events.filter(e => e.ev === 'passive_proc' && e.trigger === 'on_hp_below' && e.src === 'itemEnrage');
+  ok(procs.length >= 1, 'at least one squad\'s BP dropped below 90% and its PO enrage fired (goblin strikes 5s)');
+  ok(procs.length <= 4, 'at most once per squad BP (fire-once per owning BP object)');
+  for (const p of procs) approx(p.amount, 7, 1e-9, 'resolved [7,7] amount');
+});
+
+// =====================================================================
 // 5. Mode filtering
 // =====================================================================
 T('mode filtering: non-battle-mode PO does not fire during a battle encounter, no backlog on resume', () => {
