@@ -31,3 +31,5 @@ pipeline) can ship surface by surface.
 - Contain-fit uniform scaling only (`art_golden.md`: aspect inviolable). Unit
   icons are 1×1 / 1:1 by definition.
 - Related but out of scope: Backpack
+> [2026-07-12, REQ-0134] art_golden.md was abolished (user directive); its binding
+> rules live on VERBATIM in common_content_pipeline.md §2 — read them there.
