@@ -777,7 +777,13 @@ def main():
             raw_path = os.path.join(a.outdir, raw_name)
             alpha_path = os.path.join(a.outdir, alpha_name)
 
-            if not a.force and os.path.exists(raw_path) and os.path.exists(alpha_path):
+            # A candidate is already done if its RAW exists -- and, only when
+            # this run would also matte it, if its alpha exists too. Requiring
+            # the alpha unconditionally makes --no-matte resumes regenerate
+            # everything, because --no-matte never writes an alpha.
+            done_here = os.path.exists(raw_path) and (
+                a.no_matte or os.path.exists(alpha_path))
+            if not a.force and done_here:
                 print(f"[{done_jobs}/{total_jobs}] SKIP (exists) {raw_name}", flush=True)
                 continue
 
