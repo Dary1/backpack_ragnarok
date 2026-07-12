@@ -46,10 +46,17 @@ const combat = require(path.join(__dirname, 'combat.cjs'));
 // was redirected to a fake one -- exactly the bug this comment now
 // documents against regressing.
 function repoRoot() { return path.join(os.homedir(), 'backpack_ragnarok'); }
-function batchDir() { return path.join(repoRoot(), 'content', 'batches', 'batch-002-dungeon-pilot'); }
-function dungeonFixedPath() { return path.join(batchDir(), 'dungeon.json'); }
-function enemiesPath() { return path.join(batchDir(), 'enemies.json'); }
-function entitiesPath() { return path.join(batchDir(), 'entities.json'); }
+// REQ-0122: the dungeon domain is no longer hardcoded to a batch dir.
+// `content/live/dungeon/` is the ONE live source (enemy roster, skills,
+// dungeon layout, entity templates, formations, item overlay), populated
+// exclusively by tools/promote_dungeon_batch.cjs (promote-by-copy, the
+// same posture item content has: live/ is real, batches/ is history).
+// server/services/core.cjs consumes THIS function for its own paths, so
+// the two readers can never drift apart (REQ-0122 scope item 2).
+function liveDungeonDir() { return path.join(repoRoot(), 'content', 'live', 'dungeon'); }
+function dungeonFixedPath() { return path.join(liveDungeonDir(), 'dungeon.json'); }
+function enemiesPath() { return path.join(liveDungeonDir(), 'enemies.json'); }
+function entitiesPath() { return path.join(liveDungeonDir(), 'entities.json'); }
 
 function deepCopy(x) { return JSON.parse(JSON.stringify(x)); }
 
@@ -404,6 +411,7 @@ function generate(dungeonType, level, seed) {
 }
 
 module.exports = {
+  liveDungeonDir, // REQ-0122
   generate,
   scoutingReport,
   DUNGEON_TYPES,

@@ -763,6 +763,67 @@ T('REQ-0121 player-side on_hp_below: a PO enrage watches its OWNING BP\'s HP (do
 });
 
 // =====================================================================
+// 4d. REQ-0122: dynamic dungeon-domain content loading (live/dungeon)
+// =====================================================================
+const promoteTool = require(path.join(REPO_ROOT, 'tools', 'promote_dungeon_batch.cjs'));
+const crypto0122 = require('crypto');
+const os0122 = require('os');
+
+T('REQ-0122 single source: dungen.liveDungeonDir() is content/live/dungeon and feeds server core too', () => {
+  const norm = dungen.liveDungeonDir().split(path.sep).join('/');
+  ok(norm.endsWith('content/live/dungeon'), 'generator reads the promoted live dir, not a batch hardcode');
+  const core = require(path.join(REPO_ROOT, 'server', 'services', 'core.cjs'));
+  eq(core.LIVE_DUNGEON_DIR, dungen.liveDungeonDir(), 'server core and dungen share ONE path source (no drift)');
+});
+
+T('REQ-0122 lossless promotion invariant: live/dungeon byte-matches the promoted-from batch AND the registry sha256s', () => {
+  const reg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'registry.json'), 'utf8'));
+  ok(reg.live_dungeon && reg.live_dungeon.promoted_from, 'registry carries live_dungeon provenance');
+  const srcDir = path.join(REPO_ROOT, 'content', 'batches', reg.live_dungeon.promoted_from);
+  for (const f of promoteTool.REQUIRED_FILES) {
+    const live = fs.readFileSync(path.join(dungen.liveDungeonDir(), f));
+    eq(crypto0122.createHash('sha256').update(live).digest('hex'), reg.live_dungeon.files[f], f + ' sha256 matches registry provenance');
+    ok(live.equals(fs.readFileSync(path.join(srcDir, f))), f + ' is byte-identical to the promoted-from batch (lossless)');
+  }
+});
+
+T('REQ-0122 promote tool: REFUSES a partial batch (anti-downgrade guard, the batch-004 lesson)', () => {
+  const tmpSrc = fs.mkdtempSync(path.join(os0122.tmpdir(), 'req0122-partial-'));
+  fs.writeFileSync(path.join(tmpSrc, 'enemies.json'), '{"schema":"enemy/1","entries":[]}');
+  const tmpLive = fs.mkdtempSync(path.join(os0122.tmpdir(), 'req0122-live-'));
+  const tmpReg = path.join(tmpSrc, 'registry.json');
+  fs.writeFileSync(tmpReg, '{"batches":[]}');
+  let msg = '';
+  try { promoteTool.promote(tmpSrc, { liveDir: tmpLive, registryPath: tmpReg }); } catch (e) { msg = String(e.message); }
+  ok(/missing required file/.test(msg), 'partial batch must be refused, got: ' + msg);
+  eq(fs.readdirSync(tmpLive).length, 0, 'refusal writes NOTHING (all-or-nothing)');
+});
+
+T('REQ-0122 promote tool: a full batch promotes byte-identically + records provenance (isolated target)', () => {
+  const srcDir = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-pilot');
+  const tmpLive = fs.mkdtempSync(path.join(os0122.tmpdir(), 'req0122-live2-'));
+  const tmpReg = path.join(tmpLive, 'registry.json');
+  fs.writeFileSync(tmpReg, '{"batches":[]}');
+  const r = promoteTool.promote(srcDir, { liveDir: tmpLive, registryPath: tmpReg });
+  for (const f of promoteTool.REQUIRED_FILES) {
+    ok(fs.readFileSync(path.join(tmpLive, f)).equals(fs.readFileSync(path.join(srcDir, f))), f + ' copied byte-identically');
+  }
+  const reg = JSON.parse(fs.readFileSync(tmpReg, 'utf8'));
+  eq(reg.live_dungeon.promoted_from, 'batch-002-dungeon-pilot', 'provenance records the source batch');
+  eq(Object.keys(reg.live_dungeon.files).length, promoteTool.REQUIRED_FILES.length, 'per-file sha256 recorded');
+  ok(Array.isArray(reg.batches), 'existing registry content preserved');
+  eq(Object.keys(r.files).length, 6, 'promote() reports the 6 files');
+});
+
+T('REQ-0122 test_fixed generator serves the promoted live copy verbatim', () => {
+  const def = dungen.generate('test_fixed', 2, 'whatever');
+  const liveDoc = JSON.parse(fs.readFileSync(path.join(dungen.liveDungeonDir(), 'dungeon.json'), 'utf8'));
+  eq(def.id, liveDoc.id, 'same doc id');
+  eq(def.encounters.length, liveDoc.encounters.length, 'same encounter count');
+  eq(def.dungeonType, 'test_fixed', 'type echo');
+});
+
+// =====================================================================
 // 5. Mode filtering
 // =====================================================================
 T('mode filtering: non-battle-mode PO does not fire during a battle encounter, no backlog on resume', () => {
