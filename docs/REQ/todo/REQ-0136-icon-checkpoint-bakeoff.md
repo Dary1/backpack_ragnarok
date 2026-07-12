@@ -31,8 +31,12 @@ the default icon checkpoint on merit.
 
 ## Non-goals
 
-No pipeline-doc rewrite until a winner is ratified; no live writes; matting
-route comparison is REQ-0135 (run this bakeoff with the incumbent matte).
+No pipeline-doc rewrite until a winner is ratified; no live writes. **Run this
+bakeoff with the incumbent matte (rembg birefnet-general + edge-key) — that is
+now permanent, not provisional: REQ-0135b returned NO-GO on LayerDiffuse
+(2026-07-12) and the node has been removed.** The only live matte question left
+is REQ-0147 (background-clause A/B), which is a prompt change, not a route
+change, and does not gate this bakeoff.
 
 ## Gates
 

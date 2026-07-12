@@ -166,6 +166,7 @@ BS-G5), or all orientations are authored/derived at build time.
 4. *(removed — stale: BS-G5 was already ratified with v1.0, see §4.)*
 5. **`clip_mask` encoding — DECIDED: alpha channel.** PixiJS consumes
    texture masks natively (alpha-based); a color key would only add a
-   conversion step. If REQ-0135 adopts LayerDiffuse, alpha is produced at
-   generation time anyway; revisit only if that spike changes the alpha
-   source.
+   conversion step. (The old "if REQ-0135 adopts LayerDiffuse, alpha is
+   produced at generation time anyway" rider is dead: REQ-0135b is a NO-GO, so
+   alpha keeps coming from the post-hoc rembg matte. The decision above is
+   unaffected — it never depended on that rider.)
