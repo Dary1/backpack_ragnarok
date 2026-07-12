@@ -80,3 +80,22 @@ payload versioning. RNG stream labels renamed (no stored contract).
 **i18n (ja):** プリセット→スカッド, パーティ→トゥループ, リンカー→ユニット;
 `market.chip.unit` key restored (code-level key, not serialized);
 `workshop.statUnit` label ユニット.
+
+## Gate results (2026-07-12, post-deploy)
+
+- tools/ci.sh (sim, goldens, mock 101, server tsc, vocab self-test, api
+  fs+pg 155x2, client build): **GREEN** at every phase commit.
+- e2e post-deploy (full suite vs backpack-dev): **138 passed / 3 failed**;
+  retry: schedule.spec:1065 green (state pollution from the pre-deploy run
+  against old code). dex-card.spec:65 + nav-routing.spec:26 are
+  **PRE-EXISTING suite debt**: they assert `.dex-detail-columns` /
+  `.schedule-rooms-view`, classes no master component emits (they exist only
+  in index.css + unmerged Dex-R3/REQ-0120 branch commits); both fail
+  identically against pre-rename code. They go green when that work merges —
+  not a REQ-0124 regression.
+- grep gates: sources clean of retired terms outside the ledgered serialized
+  names; docs clean (REQ-0123).
+- Deployed: merged to master, dist rebuilt+committed, backpack-api /
+  backpack-web restarted, all services active. Concurrent note: REQ-0132
+  (offsite mirror) merged on top by the other orchestrator during e2e;
+  worktrees req-0123/req-0124 cleaned by its board hygiene after merge.
