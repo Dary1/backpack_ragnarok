@@ -37,8 +37,12 @@ Two ops hardenings for the art route:
 
 ## Non-goals
 
-No always-on service; no ComfyUI upgrades/plugins (REQ-0135 handles its own
-node install under its own go-ahead); no queueing system.
+No always-on service; no ComfyUI upgrades/plugins; no queueing system.
+(The old rider "REQ-0135 handles its own node install under its own go-ahead" is
+dead: REQ-0135b returned NO-GO and the ComfyUI-layerdiffuse node + its 908 MB of
+weights were removed on 2026-07-12. ComfyUI currently carries no REQ-0135
+plugin. REQ-0135a's incident log — three OOM kills, a false "seq5 DONE" against
+a dead ComfyUI, sshd down ~10 min — remains this REQ's evidence base.)
 
 ## Gates
 

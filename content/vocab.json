@@ -1,5 +1,5 @@
 {
- "version": 7,
+ "version": 8,
  "modes": ["battle", "detection", "unlock"],
  "po_tags": {
   "Weapon": null,
@@ -35,7 +35,9 @@
   "OnBPHierarchyHit",
   "OnSquadHit",
   "OnBPBeenHit",
-  "OnSquadBeenHit"
+  "OnSquadBeenHit",
+  "on_link_pulse",
+  "on_hp_below"
  ],
  "verbs": [
   "strike",
@@ -55,7 +57,11 @@
   "slow_enemy",
   "bonus_vs_blocked",
   "status_immune",
-  "bonus_vs_status"
+  "bonus_vs_status",
+  "pulse",
+  "buff_linked",
+  "buff_self",
+  "damage_reduction"
  ],
  "status_kinds": [
   "buff",
@@ -100,7 +106,9 @@
   "OnBPHierarchyHit": ["SI", "PO", "Unit"],
   "OnSquadHit": ["SI", "PO", "Unit", "EnemySkill"],
   "OnBPBeenHit": ["SI", "PO", "Unit"],
-  "OnSquadBeenHit": ["SI", "PO", "Unit", "EnemySkill"]
+  "OnSquadBeenHit": ["SI", "PO", "Unit", "EnemySkill"],
+  "on_link_pulse": ["PO"],
+  "on_hp_below": ["PO", "EnemySkill"]
  },
  "ranged_verb_params": {
   "strike": [
@@ -147,6 +155,12 @@
   ],
   "bonus_vs_status": [
    "n"
+  ],
+  "buff_self": [
+   "n"
+  ],
+  "damage_reduction": [
+   "n"
   ]
  },
  "excluded_attested": {
@@ -176,6 +190,9 @@
   "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'",
   "status_immune": "REQ-0093 (2026-07-07): flat immunity to one named vocab.statuses entry, OR to an entire status_kind class, folded at battle_start. Classic archetype fit (bone-and-sinew undead shouldn't suffer Poison; a charging brute can't be Chilled mid-rush). NOTE: this REQ adds status_immune/bonus_vs_status to the vocab independently of REQ-0077 Rev.2's own (uncommitted, as of this REQ) draft of the same two verbs -- see this REQ's file for the discrepancy; the two additions are compatible in shape.",
   "bonus_vs_status": "REQ-0093 (2026-07-07): extends bonus_vs_blocked's precedent (a bonus keyed on the target's condition) to key on an inflicted status -- or an entire status_kind class -- instead of a block event. Lets an attacker punish a target already carrying a matching status.",
-  "status_kinds": "REQ-0093 (2026-07-07): closed 9-value keyword vocab exposing BOTH of sim/lib/status.cjs's existing engine-side classifications (polarity: buff/debuff; mechanical: STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content as a single field choice, so a content author picks exactly one axis-or-name rather than two potentially-conflicting fields. Zero new classification data -- pure reuse of STATUS_KIND/DEBUFF_STATUSES/BUFF_STATUSES, resolved at sim runtime via sim/lib/status.cjs's resolveStatusKind()."
+  "status_kinds": "REQ-0093 (2026-07-07): closed 9-value keyword vocab exposing BOTH of sim/lib/status.cjs's existing engine-side classifications (polarity: buff/debuff; mechanical: STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content as a single field choice, so a content author picks exactly one axis-or-name rather than two potentially-conflicting fields. Zero new classification data -- pure reuse of STATUS_KIND/DEBUFF_STATUSES/BUFF_STATUSES, resolved at sim runtime via sim/lib/status.cjs's resolveStatusKind().",
+  "on_hp_below": "REQ-0077 Rev.2 (2026-07-07) design rationale, NOT genre-research-sourced: the classic 'enrage below X% HP' RPG monster/boss convention (orc Bloodlust, behemoth Last Stand). A state-crossing condition none of the existing event triggers can express (every_secs/battle_start are time-based; the OnHit/OnSquadHit/OnSquadBeenHit family is hit-reactive, not HP-level-reactive). Fires ONCE EVER per owner+threshold (user ruling 2026-07-12, REQ-0121: no re-arm on healing back above). Trigger param: hp_frac (0<hp_frac<1); fires when hp/hpMax first drops strictly below hp_frac while still alive. Domain ruling (user, 2026-07-09, REQ-0121): [PO, EnemySkill] -- a PO's HP referent is its OWNING BP's hp/hpMax (same object OnBPBeenHit keys off); NOT extended to SI/Unit (no HP concept of their own). NOTE: reopens combat_spec_draft.md's [LOCKED OQ2] 'dynamic buffs = minimal' default for this one case -- user-accepted in REQ-0077's review.",
+  "buff_self": "REQ-0077 Rev.2 design rationale: same shape as buff_host (stat:'damage' only, per [LOCKED OQ7]) but targets the owner itself rather than a host PO. Needed because monsters have no host PO to buff (REQ-0078 entity hierarchy: a Monster is a flat actor, no BP/PO/SI/Unit). Used at battle_start (permanent fold at pack compile, sim/lib/packs.cjs) or on_hp_below (fires once; folds onto the owner's own strike/multi_strike ranges at crossing time -- sim/lib/hpbelow.cjs). Implemented by REQ-0121.",
+  "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121."
  }
 }

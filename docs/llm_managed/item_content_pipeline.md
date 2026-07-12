@@ -17,8 +17,9 @@
 > 2026-07-09** (see "Verification log" at the end). The route was recovered
 > and merged to master by REQ-0109 (2026-07-12). NOTE: the batch-003 ART
 > outcome was rejected by the user at S7 (2026-07-12, "NG"); candidate
-> regeneration restarts on the refreshed pipeline (REQ-0135/0136 outcomes) —
-> see REQ-0109 (todo).
+> regeneration restarts on the refreshed pipeline — which now means the
+> **REQ-0136 checkpoint outcome only**: REQ-0135 is settled (LayerDiffuse
+> NO-GO, matte route unchanged) and is no longer a blocker. See REQ-0109 (todo).
 
 ## Prerequisites
 
@@ -149,8 +150,23 @@ dpmpp_2m·karras. `--rematte-only` reruns matte only.
 
 **5-4. Matte (transparency)**: rembg `birefnet-general` (cached at
 `~/.u2net/birefnet-general.onnx`) + edge-color-key fallback, valid band
-2–90%. NOTE: LayerDiffuse (generation-time alpha) is under evaluation as the
-replacement (REQ-0135); this subsection tracks its outcome.
+2–90%. **This is the route, and it is not under review.** LayerDiffuse
+(generation-time alpha) was evaluated and rejected — **REQ-0135b: NO-GO**
+(2026-07-12). The node injects raw `("lora", ...)` patches that current ComfyUI
+silently drops, so it does nothing at all; upstream is at HEAD with no fix. The
+node and its weights have been removed from the art ComfyUI. Do not go looking
+for it.
+
+> **On this host, generation and matting MUST be separate passes.** ComfyUI
+> (~11 GB RSS with SDXL resident) and birefnet (~12 GB) cannot be co-resident on
+> the 23 GB box — it OOM-kills. Use `gen_item_icons.py --no-matte` to generate,
+> stop ComfyUI, then `--rematte-only` to matte. (REQ-0135b.)
+
+The open question about this step is no longer *which model* but *what we feed
+it*: every live prompt carries `plain uniform near-white background`, which is
+the worst possible contrast condition for separating pale steel and light hair.
+That is **REQ-0147** (draft) — and it is the reason matte coverage on `hilt`
+(10.99%) and `blade` (11.50%) may be self-inflicted.
 
 **5-5. Score & select (geometry only)**:
 

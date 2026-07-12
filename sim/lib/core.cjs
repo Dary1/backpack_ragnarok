@@ -90,6 +90,12 @@ const TUNABLES = {
   // lump-sum finishing bonus.
   LRDST_DROP_NON_BOSS_RANGE: [1, 3],
   LRDST_DROP_BOSS_RANGE: [5, 10],
+
+  // REQ-0048: Linker Combat Effects v1 -- Pulse + Resonance tunables.
+  PULSE_HOP_BUDGET: 3,           // max edges one pulse traverses (spec H=3)
+  PULSE_HOP_LATENCY_SECS: 0.15,  // deterministic per-hop travel delay
+  PULSE_CAP_PER_SEC: 2,          // per-origin-linker emission rate cap
+  MUTUAL_RESONANCE_MULT: 1.5,    // mutual-pair resonance contribution multiplier
 };
 
 // =====================================================================

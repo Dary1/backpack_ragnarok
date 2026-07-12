@@ -1,0 +1,17 @@
+{
+  "comment": "S4 archetype: circuit chain (REQ-0048) -- 3 linked BPs A->B->C; spark on A, payloads on B/C. Linker geometry mirrors content/live/scenario.json's alpha->beta chain discipline.",
+  "linked": true,
+  "layout": { "ROWS": 8, "COLS": 8 },
+  "bps": [
+    { "id": "cc_a", "name": "Circuit A", "color": "#BF9000", "shape": [[0,0],[0,1],[1,0],[1,1]], "origin": [1,1], "linker": { "off": [0,1], "dirs": [4] }, "hpMax": 80 },
+    { "id": "cc_b", "name": "Circuit B", "color": "#F1C232", "shape": [[0,0],[0,1],[1,0],[1,1]], "origin": [1,4], "linker": { "off": [0,0], "dirs": [4] }, "hpMax": 80 },
+    { "id": "cc_c", "name": "Circuit C", "color": "#E8DE33", "shape": [[0,0],[0,1],[1,0],[1,1]], "origin": [1,7], "linker": { "off": [0,0], "dirs": [] }, "hpMax": 80 }
+  ],
+  "pos": [
+    { "uid": "cc1", "id": "s4_spark", "loc": "grid", "cell": [1,1], "rot": 0 },
+    { "uid": "cc2", "id": "s4_payload", "loc": "grid", "cell": [1,4], "rot": 0 },
+    { "uid": "cc3", "id": "s4_payload", "loc": "grid", "cell": [1,7], "rot": 0 },
+    { "uid": "cc4", "id": "dagger", "loc": "grid", "cell": [2,1], "rot": 0 }
+  ],
+  "sis": []
+}

@@ -1,0 +1,176 @@
+{
+  "id": "s4-default",
+  "comment": "REQ-0050 standing default matrix. Axes keep the run count bounded (~130) while covering every metric family: formation equity (B5), level curve (D2/D3/E3), utility EV (D4), circuit (A4), coverage dominance (B4). Fixed seed lists => deterministic => golden-hashable.",
+  "axes": [
+    {
+      "id": "formation-equity",
+      "boards": [
+        "dense_turtle",
+        "scout_heavy"
+      ],
+      "dungeons": [
+        {
+          "type": "default",
+          "levels": [
+            3
+          ],
+          "genSeed": "s4-gen-1"
+        }
+      ],
+      "formations": [
+        "formation1",
+        "formation2",
+        "formation3",
+        "formation4"
+      ],
+      "seeds": [
+        "fe-1",
+        "fe-2",
+        "fe-3",
+        "fe-4",
+        "fe-5"
+      ]
+    },
+    {
+      "id": "level-curve",
+      "boards": [
+        "dense_turtle"
+      ],
+      "dungeons": [
+        {
+          "type": "default",
+          "levels": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "genSeed": "s4-gen-2"
+        }
+      ],
+      "formations": [
+        "formation1"
+      ],
+      "seeds": [
+        "lc-1",
+        "lc-2",
+        "lc-3",
+        "lc-4",
+        "lc-5",
+        "lc-6",
+        "lc-7",
+        "lc-8"
+      ],
+      "levelCurve": true
+    },
+    {
+      "id": "utility-ev",
+      "boards": [
+        "scout_heavy",
+        "no_utility_control"
+      ],
+      "dungeons": [
+        {
+          "type": "default",
+          "levels": [
+            3
+          ],
+          "genSeed": "s4-gen-3"
+        }
+      ],
+      "formations": [
+        "formation1"
+      ],
+      "seeds": [
+        "ue-1",
+        "ue-2",
+        "ue-3",
+        "ue-4",
+        "ue-5",
+        "ue-6",
+        "ue-7",
+        "ue-8"
+      ]
+    },
+    {
+      "id": "circuit",
+      "boards": [
+        "circuit_chain"
+      ],
+      "delinkedVariant": true,
+      "dungeons": [
+        {
+          "type": "batch002",
+          "levels": [
+            3
+          ]
+        }
+      ],
+      "formations": [
+        "formation1"
+      ],
+      "seeds": [
+        "ci-1",
+        "ci-2",
+        "ci-3",
+        "ci-4",
+        "ci-5"
+      ]
+    },
+    {
+      "id": "coverage",
+      "boards": [
+        "dense_turtle"
+      ],
+      "coverageSeries": [
+        0.75,
+        0.5,
+        0.25
+      ],
+      "dungeons": [
+        {
+          "type": "batch002",
+          "levels": [
+            3
+          ]
+        }
+      ],
+      "formations": [
+        "formation1"
+      ],
+      "seeds": [
+        "cv-1",
+        "cv-2",
+        "cv-3",
+        "cv-4",
+        "cv-5"
+      ]
+    },
+    {
+      "id": "glass",
+      "boards": [
+        "sparse_glass"
+      ],
+      "dungeons": [
+        {
+          "type": "default",
+          "levels": [
+            3
+          ],
+          "genSeed": "s4-gen-4"
+        }
+      ],
+      "formations": [
+        "formation1"
+      ],
+      "seeds": [
+        "gl-1",
+        "gl-2",
+        "gl-3",
+        "gl-4",
+        "gl-5"
+      ]
+    }
+  ]
+}

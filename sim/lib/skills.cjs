@@ -3,6 +3,7 @@
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
 const { applyStatus, weaknessMultiplier, consumeSpikes } = require('./status.cjs');
+const { checkHpBelow } = require('./hpbelow.cjs'); // REQ-0121
 const { selectEntryCell } = require('./entry.cjs');
 const { walkRay, chebyshevDist } = require('./ray.cjs');
 const { maskLabel } = require('./replay.cjs');
@@ -46,6 +47,7 @@ function makeBPActor(bp) {
     applyDamage(amount) {
       bp.hp = Math.max(0, bp.hp - amount);
       if (bp.hp <= 0) bp.alive = false;
+      checkHpBelow(bp); // REQ-0121: on_hp_below fires the instant a threshold is crossed
     },
     heal(amount) { bp.hp = Math.min(bp.hpMax, bp.hp + amount); },
   };
@@ -60,9 +62,23 @@ function makeEnemyActor(en) {
     applyDamage(amount) {
       en.hp = Math.max(0, en.hp - amount);
       if (en.hp <= 0) en.alive = false;
+      checkHpBelow(en); // REQ-0121
     },
     heal(amount) { en.hp = Math.min(en.hpMax, en.hp + amount); },
   };
+}
+
+// REQ-0121: flat incoming-damage reduction (damage_reduction verb, folded
+// at battle_start onto the DEFENDER's ref as a resolved scalar --
+// ref.damageReduction; see packs.cjs / compile.cjs). Applied per hit /
+// per sub-hit to DIRECT hit damage only, AFTER weaknessMultiplier and
+// bonus_vs_status, floored at zero. DoT status ticks and Spikes reflect
+// are deliberately NOT reduced (vocab provenance note: a hide blunts
+// blows, not poison).
+function reduceIncoming(amount, actor) {
+  const dr = (actor.ref && actor.ref.damageReduction) || 0;
+  if (!dr) return amount;
+  return Math.max(0, amount - dr);
 }
 
 // dealHitOnField: applies a skill's verb(s) to a single occupant actor
@@ -78,6 +94,7 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
     let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
     hitAmt *= weaknessMultiplier(actor.statusBag);
     hitAmt += bonusVsStatusAmount(actor.statusBag, attackerBonusVsStatus, rng); // REQ-0093
+    hitAmt = reduceIncoming(hitAmt, actor); // REQ-0121: defender damage_reduction
     actor.applyDamage(hitAmt);
     amount += hitAmt;
   } else if (verb.t === 'multi_strike') {
@@ -89,6 +106,10 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
       // REQ-0093: bonus_vs_status re-checked + re-rolled per sub-hit,
       // consistent with multi_strike's existing per-sub-hit independence.
       hitAmt += bonusVsStatusAmount(actor.statusBag, attackerBonusVsStatus, rng);
+      // REQ-0121: reduction applies per sub-hit (each sub-hit is its own
+      // hit event per OQ19) -- the classic flat-reduction-vs-multi-hit
+      // tradeoff is intentional.
+      hitAmt = reduceIncoming(hitAmt, actor);
       actor.applyDamage(hitAmt);
       amount += hitAmt;
     }
@@ -168,11 +189,13 @@ function fireSkillRay(opts) {
       if (mode !== 'detection' && verbEff.verb.t === 'strike') {
         dmgAmount = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
         dmgAmount += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream); // REQ-0093
+        dmgAmount = reduceIncoming(dmgAmount, a); // REQ-0121
         a.applyDamage(dmgAmount);
       } else if (mode !== 'detection' && verbEff.verb.t === 'multi_strike') {
         for (let i = 0; i < verbEff.verb.hits; i++) {
           let hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
           hitAmt += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream);
+          hitAmt = reduceIncoming(hitAmt, a); // REQ-0121
           a.applyDamage(hitAmt);
           dmgAmount += hitAmt;
         }
@@ -257,11 +280,13 @@ function applyReactiveVerbToTarget(verb, ownerActor, target, rng, events, trigTa
   let amount = 0;
   if (verb.t === 'strike') {
     amount = rng.range(verb.n[0], verb.n[1]) * weaknessMultiplier(target.statusBag);
+    amount = reduceIncoming(amount, target); // REQ-0121
     target.applyDamage(amount);
     events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(target.ref), amount, hp_after: target.hp() });
   } else if (verb.t === 'multi_strike') {
     for (let i = 0; i < verb.hits; i++) {
-      const a = rng.range(verb.n[0], verb.n[1]) * weaknessMultiplier(target.statusBag);
+      let a = rng.range(verb.n[0], verb.n[1]) * weaknessMultiplier(target.statusBag);
+      a = reduceIncoming(a, target); // REQ-0121
       target.applyDamage(a); amount += a;
     }
     events.push({ ev: 'reactive_proc', trigger: trigTag, verb: verb.t, dst: maskLabel(target.ref), amount, hp_after: target.hp() });
@@ -283,6 +308,7 @@ module.exports = {
   makeBPActor,
   makeEnemyActor,
   bonusVsStatusAmount,
+  reduceIncoming, // REQ-0121
   dealHitOnField,
   fireSkillRay,
   applyReactiveVerbToTarget,

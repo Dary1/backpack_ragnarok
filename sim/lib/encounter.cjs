@@ -2,9 +2,10 @@
 // sim/lib/encounter.cjs -- REQ-0047 (d): runEncounter -- the event-driven encounter loop.
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { TUNABLES } = require('./core.cjs');
+const { TUNABLES, deepCopy } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
-const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs');
+const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
@@ -49,7 +50,10 @@ function runEncounter(opts) {
     const centerRow = Math.floor((1 + FIELD_ROWS) / 2), centerCol = Math.floor((1 + FIELD_COLS) / 2);
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([centerRow + dr, centerCol + dc]);
-    const entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    let entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    // REQ-0121: same instance-copy rule as packs.cjs -- buff_self mutates
+    // this instance's skill ranges, so never share content defs.
+    if (entitySkills.some(s => s && s.verb && s.verb.t === 'buff_self')) entitySkills = deepCopy(entitySkills);
     const entityStatusBag = freshStatusBag();
     const entityFold = foldBattleStartStatusVerbs(entitySkills); // REQ-0093
     entityStatusBag._immune = entityFold.immuneSet;
@@ -61,6 +65,251 @@ function runEncounter(opts) {
   }
 
   function enemyActorList() { return enemyActors.map(e => e.actor).concat(entity ? [makeEnemyActor(entity)] : []); }
+
+  // ---- REQ-0121: on_hp_below watcher registration ----------------------
+  // simNow tracks the encounter-local time of the event being processed so
+  // watcher fires (which happen deep inside applyDamage) can stamp honest
+  // timestamps on their passive_proc events.
+  let simNow = t0;
+  function makeHpBelowWatcher(key, skillOrEff, srcLabel, foldTargetList, streamName) {
+    const frac = skillOrEff.trigger.hp_frac;
+    const verb = skillOrEff.verb;
+    return {
+      key, frac,
+      onFire(ref) {
+        // Only buff_self (stat:'damage') is a supported on_hp_below payload
+        // in this REQ (matches batch-004's usage; other verbs would need
+        // their own fire-time semantics -- documented, not silently faked).
+        if (verb && verb.t === 'buff_self' && verb.stat === 'damage' && Array.isArray(verb.n)) {
+          const amount = rng.stream(streamName).range(verb.n[0], verb.n[1]);
+          foldFlatBonusInPlace(foldTargetList(), amount);
+          events.push({ t: simNow, seq: heap.nextSeq(), ev: 'passive_proc', trigger: 'on_hp_below', verb: verb.t, src: srcLabel, frac, amount });
+        }
+      },
+    };
+  }
+  for (const e of enemyActors) {
+    const watchers = [];
+    (e.raw.skills || []).forEach((sk, sIdx) => {
+      if (sk && sk.trigger && sk.trigger.t === 'on_hp_below') {
+        watchers.push(makeHpBelowWatcher('enemy/' + e.raw.ownerId + '/' + sIdx + '/' + sk.trigger.hp_frac, sk, e.raw.ownerId, () => e.raw.skills, 'hpbelow/' + e.raw.ownerId + '/' + sIdx));
+      }
+    });
+    if (watchers.length) registerHpBelowWatchers(e.raw, watchers);
+  }
+  if (entity) {
+    const watchers = [];
+    (entity.skills || []).forEach((sk, sIdx) => {
+      if (sk && sk.trigger && sk.trigger.t === 'on_hp_below') {
+        watchers.push(makeHpBelowWatcher('entity/' + entity.ownerId + '/' + sIdx + '/' + sk.trigger.hp_frac, sk, maskLabel(entity), () => entity.skills, 'hpbelow/' + entity.ownerId + '/' + sIdx));
+      }
+    });
+    if (watchers.length) registerHpBelowWatchers(entity, watchers);
+  }
+  // Player side (domain ruling, REQ-0121): a PO's on_hp_below watches its
+  // OWNING BP's hp/hpMax; the buff folds onto that PO's OWN damage verbs.
+  // Watcher keys are stable across encounters and fired-state lives on the
+  // persistent bp object, so "once ever" means once per RUN here (the
+  // folded mutation on po.effects persists too -- fold-once matches
+  // buff-once). Registration replaces the list each encounter; fired-state
+  // survives (see hpbelow.cjs).
+  {
+    // NOTE: bp ids can repeat across squads (runDungeon flatMaps 4 squads
+    // compiled from possibly-identical snapshots), so the owning BP is
+    // resolved by (id AND squadSlot); plain id is the fallback for direct
+    // runEncounter callers that never tagged squadSlot.
+    const watchersByBp = new Map(); // bp OBJECT -> watcher list
+    for (const po of troopPos) {
+      (po.effects || []).forEach((eff, effIdx) => {
+        if (eff && eff.trigger && eff.trigger.t === 'on_hp_below' && po.bpId) {
+          const bp = troopBps.find(b => b.id === po.bpId && (po.squadSlot == null || b.squadSlot === po.squadSlot));
+          if (!bp) return;
+          const list = watchersByBp.get(bp) || [];
+          list.push(makeHpBelowWatcher('po/' + (po.squadSlot || '') + '/' + po.uid + '/' + effIdx + '/' + eff.trigger.hp_frac, eff, po.id, () => po.effects, 'hpbelow/' + (po.squadSlot || '') + '/' + po.uid + '/' + effIdx));
+          watchersByBp.set(bp, list);
+        }
+      });
+    }
+    for (const [bp, list] of watchersByBp) registerHpBelowWatchers(bp, list);
+  }
+
+  // ---- REQ-0049: Layered encounters -- trap/chest/door attachments run in
+  // PARALLEL with the pack on the battle clock. Additive: only active when
+  // encounterDef.attachments is present, so attachment-free content stays
+  // byte-identical (goldens). Mode-pure by construction: attachment POs
+  // (detection/unlock) resolve ONLY against attachments; battle rays only
+  // ever target enemies -> neither can touch the other's occupants.
+  const ATTACH_CAP = 2; // [TUNABLE <=2 attachments per encounter]
+  const attachments = [];
+  if (Array.isArray(encounterDef.attachments) && encounterDef.attachments.length) {
+    const occ = new Set();
+    for (const e of enemyActors) for (const c of e.raw.fieldCells) occ.add(c[0] + ',' + c[1]);
+    const freeCells = [];
+    for (let r = 1; r <= FIELD_ROWS; r++) for (let c = 1; c <= FIELD_COLS; c++) if (!occ.has(r + ',' + c)) freeCells.push([r, c]);
+    const cR = (1 + FIELD_ROWS) / 2, cC = (1 + FIELD_COLS) / 2;
+    const placeStream = rng.stream('attach/' + encIndex + '/placement');
+    const claimed = new Set();
+    const fits = (r, c, fh, fw) => {
+      for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) {
+        const rr = r + dr, cc = c + dc, k = rr + ',' + cc;
+        if (rr > FIELD_ROWS || cc > FIELD_COLS || occ.has(k) || claimed.has(k)) return false;
+      }
+      return true;
+    };
+    const takeCluster = (fh, fw, centerMost) => {
+      const anchors = freeCells.filter(([r, c]) => fits(r, c, fh, fw));
+      if (!anchors.length) return null;
+      let anchor;
+      if (centerMost) {
+        anchors.sort((a, b) => (Math.abs(a[0] - cR) + Math.abs(a[1] - cC)) - (Math.abs(b[0] - cR) + Math.abs(b[1] - cC)) || (a[0] - b[0]) || (a[1] - b[1]));
+        anchor = anchors[0];
+      } else {
+        anchor = anchors[Math.floor(placeStream.next() * anchors.length)];
+      }
+      const cells = [];
+      for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) { cells.push([anchor[0] + dr, anchor[1] + dc]); claimed.add((anchor[0] + dr) + ',' + (anchor[1] + dc)); }
+      return cells;
+    };
+    for (const adef of encounterDef.attachments.slice(0, ATTACH_CAP)) {
+      const ent = adef.entity || {};
+      const fp = ent.footprint || [1, 1];
+      const isTrap = adef.kind === 'trap';
+      const cells = takeCluster(fp[0], fp[1], !isTrap);
+      if (!cells) continue;
+      const skills = (ent.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+      const hpR = Array.isArray(ent.hp) ? ent.hp : (typeof ent.hp === 'number' ? [ent.hp, ent.hp] : null);
+      const hpVal = hpR ? Math.round(rng.stream('attach/' + encIndex + '/' + adef.id + '/hp').range(hpR[0], hpR[1])) : 0;
+      attachments.push({
+        id: adef.id, kind: adef.kind, mode: adef.mode, reward: adef.reward || null,
+        fieldCells: cells, skills, statusBag: freshStatusBag(),
+        hp: hpVal, hpMax: hpVal,
+        timeout_secs: ent.timeout_secs != null ? ent.timeout_secs : (encounterDef.deadline_secs || 30),
+        masked: isTrap, discovered: false, alive: true, settled: false,
+        stage: adef.kind === 'door' ? 1 : null, firedVolley: false,
+      });
+    }
+  }
+  const hasAtt = attachments.length > 0;
+  const attachmentRewards = [];
+  let doorShortcut = false;
+  function attFireVolley(att, t, reason) {
+    if (att.firedVolley) return; att.firedVolley = true;
+    events.push({ t, seq: heap.nextSeq(), ev: 'att_fire', att: att.id, kind: att.kind, reason });
+    const skill = att.skills[0];
+    if (skill) {
+      const ap = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+      const rayEvents = [];
+      fireSkillRay({
+        attacker: { fieldCells: att.fieldCells, ownerId: att.id + '#trap', bonusVsStatus: [] },
+        attackProfile: ap, verbEff: skill, mode: 'battle',
+        targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+        rng, streamPrefix: 'att-fire/' + encIndex + '/' + att.id + '/' + t, events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
+      });
+      for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq() }, re));
+    }
+  }
+  function resolveDetection(s, t) {
+    const targets = attachments.filter(a => a.alive && !a.settled && !a.discovered && (a.kind === 'trap' || (a.kind === 'door' && a.stage === 1)));
+    if (!targets.length) return;
+    targets.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const att = targets[0];
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'detection', entry: att.fieldCells[0].slice() });
+    att.discovered = true; att.masked = false;
+    events.push({ t, seq: heap.nextSeq(), ev: 'att_reveal', att: att.id, kind: att.kind, at: att.fieldCells[0].slice() });
+    if (att.kind === 'trap') {
+      att.settled = true; att.alive = false;
+      events.push({ t, seq: heap.nextSeq(), ev: 'att_disarm', att: att.id, reward: att.reward ? att.reward.roll : null });
+      if (att.reward) attachmentRewards.push(att.reward);
+    } else { att.stage = 2; }
+  }
+  function resolveUnlock(s, t) {
+    const targets = attachments.filter(a => a.alive && !a.settled && (a.kind === 'chest' || (a.kind === 'door' && a.stage === 2 && a.discovered)));
+    if (!targets.length) return;
+    targets.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const att = targets[0];
+    const v = s.effect.verb, ds = rng.stream('unlock/' + s.ownerUid + '/' + s.effIdx + '/' + t);
+    let amt = 0;
+    if (v.t === 'strike') amt = ds.range(v.n[0], v.n[1]);
+    else if (v.t === 'multi_strike') { for (let i = 0; i < v.hits; i++) amt += ds.range(v.n[0], v.n[1]); }
+    att.hp = Math.max(0, att.hp - amt);
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'unlock', entry: att.fieldCells[0].slice() });
+    events.push({ t, seq: heap.nextSeq(), ev: 'ray_hit', dst: att.id, amount: amt, hp_after: att.hp, mode: 'unlock' });
+    if (att.hp <= 0) {
+      att.settled = true; att.alive = false;
+      if (att.kind === 'chest') { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'chest', reward: att.reward ? att.reward.roll : null }); if (att.reward) attachmentRewards.push(att.reward); }
+      else { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'door', shortcut: true }); doorShortcut = true; }
+    }
+  }
+  function checkAttachmentTimeouts(t) {
+    for (const att of attachments) {
+      if (att.settled || !att.alive || t <= att.timeout_secs) continue;
+      if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'timeout'); att.settled = true; att.alive = false; }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+    }
+  }
+  function settleAttachmentsAtEnd(t) {
+    for (const att of attachments) {
+      if (att.settled || !att.alive) continue;
+      if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'end'); att.settled = true; att.alive = false; }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+    }
+  }
+
+  // ---- REQ-0048: Linker pulse propagation (Mechanism A). ----
+  const PULSE_HOP_BUDGET = TUNABLES.PULSE_HOP_BUDGET;
+  const PULSE_LATENCY = TUNABLES.PULSE_HOP_LATENCY_SECS;
+  const PULSE_CAP = TUNABLES.PULSE_CAP_PER_SEC;
+  const pulseEmitTimes = new Map(); // originBpId -> [t,...] within trailing 1s
+  function playerBpActorById(id) { return playerActors.find(a => a.id === id) || null; }
+  function schedulePulseArrive(pst, atT) {
+    heap.push({ t: atT + PULSE_LATENCY, seq: heap.nextSeq(), kind: 'pulse_arrive', origin: pst.origin, from: pst.from, to: pst.to, hop: pst.hop, visited: pst.visited });
+  }
+  // Emit one pulse from originBpId along ALL its outgoing links (fan-out).
+  // Rate-guarded per origin (PULSE_CAP/sec); excess drops with pulse_fizzle.
+  function emitPulse(originBpId, t, outEvents) {
+    const origin = playerBpActorById(originBpId);
+    if (!origin || !origin.alive) return;
+    const times = (pulseEmitTimes.get(originBpId) || []).filter(x => x > t - 1.0 + 1e-9);
+    if (times.length >= PULSE_CAP) { outEvents.push({ ev: 'pulse_fizzle', reason: 'rate_cap', origin: originBpId }); pulseEmitTimes.set(originBpId, times); return; }
+    times.push(t); pulseEmitTimes.set(originBpId, times);
+    for (const e of (origin.ref.linkOut || [])) {
+      schedulePulseArrive({ origin: originBpId, from: originBpId, to: e.to, hop: 1, visited: [originBpId] }, t);
+    }
+  }
+  // On arrival at a live BP, fire that BP's on_link_pulse payloads (mode-gated).
+  function firePulsePayloads(bpId, ev, outEvents) {
+    const host = playerBpActorById(bpId);
+    if (!host) return;
+    for (const po of troopPos) {
+      if (po.bpId !== bpId) continue;
+      (po.effects || []).forEach((eff, idx) => {
+        if (!eff.trigger || eff.trigger.t !== 'on_link_pulse') return;
+        const modes = eff.modes || (po.def && po.def.modes) || ['battle'];
+        if (!modes.includes(encounterDef.mode)) return;
+        const v = eff.verb;
+        if (v.t === 'strike' || v.t === 'multi_strike') {
+          const ap = eff.attack_profile || (po.def && po.def.attack_profile) || defaultAttackProfileFor(po);
+          const rayEvents = [];
+          fireSkillRay({
+            attacker: { fieldCells: host.fieldCells, ownerId: po.id + '#pulse', bonusVsStatus: (host.ref.bonusVsStatus || []) },
+            attackProfile: ap, verbEff: eff, mode: encounterDef.mode,
+            targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+            rng, streamPrefix: 'pulse/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t,
+            events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
+          });
+          for (const re of rayEvents) { re.cause = 'pulse'; outEvents.push(re); }
+        } else if (v.t === 'heal') {
+          const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
+          const n = rs.range(v.n[0], v.n[1]); host.heal(n);
+          outEvents.push({ ev: 'pulse_payload', dst: host.id, verb: 'heal', amount: n, hp_after: host.hp(), cause: 'pulse' });
+        } else if (v.t === 'apply_status' || v.t === 'add_on_hit_status') {
+          const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
+          const n = rs.range(v.n[0], v.n[1]); applyStatus(host.statusBag, v.status, n);
+          outEvents.push({ ev: 'apply_status', dst: host.id, status: v.status, n: n, cause: 'pulse' });
+        }
+      });
+    }
+  }
 
   // ---- REQ-0095: player-side reactive dispatch (Phase 1b) -- mirrors the enemy side. ----
   function bpActorOf(bpId) { return playerActors.find(a => a.id === bpId) || null; }
@@ -124,7 +373,8 @@ function runEncounter(opts) {
   // ---- Schedule initial firings (player side, filtered by encounter mode) ----
   const cadenceMultFor = () => 1.0; // cadence buffs folded at compile-time (OQ2); no per-actor Haste/Chill on POs in v1 scope.
   for (const s of schedulable) {
-    if (s.modes.includes(encounterDef.mode)) {
+    const attActive = hasAtt && s.modes.some(m => (m === 'detection' && attachments.some(a => a.kind === 'trap' || a.kind === 'door')) || (m === 'unlock' && attachments.some(a => a.kind === 'chest' || a.kind === 'door')));
+    if (s.modes.includes(encounterDef.mode) || attActive) {
       scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, t0, 1.0);
     }
     // non-matching effects: simply never scheduled while this encounter is
@@ -152,6 +402,18 @@ function runEncounter(opts) {
   // ---- Status tick scheduling: a lightweight periodic tick event drives
   // Burn/Poison/Regen/Chill/Stun/Weakness/Haste countdown for ALL actors
   // (S7). Scheduled at STATUS_TICK_PERIOD_SECS cadence.
+  // REQ-0048: battle_start pulse openers -- emit once at t0 (mode-gated).
+  for (const po of troopPos) {
+    for (const eff of (po.effects || [])) {
+      if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'pulse') {
+        const modes = eff.modes || (po.def && po.def.modes) || ['battle'];
+        if (!modes.includes(encounterDef.mode)) continue;
+        const pOut = [];
+        emitPulse(po.bpId, t0, pOut);
+        for (const re of pOut) events.push(Object.assign({ t: t0, seq: heap.nextSeq() }, re));
+      }
+    }
+  }
   heap.push({ t: t0 + TUNABLES.STATUS_TICK_PERIOD_SECS, seq: heap.nextSeq(), kind: 'status_tick' });
 
   const timeoutSecs = encounterDef.timeout_secs;
@@ -171,6 +433,8 @@ function runEncounter(opts) {
     guardIters++;
     const ev = heap.popMin();
     if (ev.t > deadlineSecs) break;
+    simNow = ev.t; // REQ-0121: honest timestamps for on_hp_below fires
+    if (hasAtt) checkAttachmentTimeouts(ev.t);
 
     if (ev.kind === 'status_tick') {
       for (const a of playerActors) if (a.alive) tickAndEmit(a, ev.t, events);
@@ -181,7 +445,13 @@ function runEncounter(opts) {
       const isPlayerSide = schedulable.some(s => s.ownerUid === ev.ownerUid && s.effIdx === ev.effIdx);
       if (isPlayerSide) {
         const s = schedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
-        if (s.modes.includes(encounterDef.mode)) {
+        if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
+          // REQ-0048: a "spark" (every_secs pulse) emits along the BP's links.
+          const spo = troopPos.find(p => p.uid === s.ownerUid);
+          const pOut = [];
+          if (spo) emitPulse(spo.bpId, ev.t, pOut);
+          for (const re of pOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        } else if (s.modes.includes(encounterDef.mode)) {
           const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps) };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           // telegraph is derived + emitted at fire-time as an informational
@@ -225,6 +495,10 @@ function runEncounter(opts) {
           const playerOff = [];
           dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), ev.t, playerOff);
           for (const re of playerOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        } else if (hasAtt && s.modes.includes('detection')) {
+          resolveDetection(s, ev.t);
+        } else if (hasAtt && s.modes.includes('unlock')) {
+          resolveUnlock(s, ev.t);
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
@@ -261,10 +535,26 @@ function runEncounter(opts) {
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }
+    } else if (ev.kind === 'pulse_arrive') {
+      const toActor = playerBpActorById(ev.to);
+      if (!toActor || !toActor.alive) {
+        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'pulse_fizzle', reason: 'dead_target', origin: ev.origin, to: ev.to });
+      } else {
+        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'link_pulse', from: ev.from, to: ev.to, hop: ev.hop, origin: ev.origin });
+        const payloadOut = [];
+        firePulsePayloads(ev.to, ev, payloadOut);
+        for (const re of payloadOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+        if (ev.hop < PULSE_HOP_BUDGET) {
+          for (const e of (toActor.ref.linkOut || [])) {
+            if (ev.visited.includes(e.to)) continue;
+            schedulePulseArrive({ origin: ev.origin, from: ev.to, to: e.to, hop: ev.hop + 1, visited: ev.visited.concat([ev.to]) }, ev.t);
+          }
+        }
+      }
     }
 
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
-      if (allEnemiesDead()) { result = 'clear'; break; }
+      if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(ev.t); result = 'clear'; break; }
       if (troopWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'trap') {
       if (discoveredEntity) { result = 'clear'; break; }
@@ -284,6 +574,7 @@ function runEncounter(opts) {
       // "trap fires its skill payload ONCE (a battle-style volley on the
       // player field, rolled), then encounter ends. No disarm step."
       if (entity && entity.skills.length > 0) {
+        if (timeoutSecs != null) simNow = timeoutSecs; // REQ-0121
         const skill = entity.skills[0];
         const attackProfile = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
         const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id, bonusVsStatus: entity.bonusVsStatus || [] };
@@ -308,7 +599,7 @@ function runEncounter(opts) {
   }
 
   events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, troop_bp_hp: troopBps.map(b => b.hp) });
-  return { events, result, discoveredEntity, entity };
+  return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut };
 }
 
 function tickAndEmit(actor, t, events) {

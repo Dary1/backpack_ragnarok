@@ -33,7 +33,7 @@ import { useEffect, useRef, useState } from 'react';
 import { BoardRenderer } from './BoardRenderer';
 import { makeInvOps } from './boardOps';
 import { setInventoryRenderer } from './inventoryRenderer';
-import { loadSpriteTextures } from './sprites';
+import { loadBoardTextures } from './sprites';
 import { useGameStore } from '../store';
 
 export function InventoryBoard() {
@@ -54,7 +54,7 @@ export function InventoryBoard() {
     setReady(false);
 
     (async () => {
-      const textures = await loadSpriteTextures();
+      const textures = await loadBoardTextures();
       if (cancelled) return;
       // Bind to whatever page is currently active AT MOUNT TIME; a later
       // page change is handled by the ops-swap effect below, never by

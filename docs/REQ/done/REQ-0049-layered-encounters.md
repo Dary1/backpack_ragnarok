@@ -134,3 +134,27 @@ Gate matrix:
 Supersedes the sequential encounter model. Interactions: REQ-0048 on_link_pulse
 detection/unlock circuits work by construction; REQ-0051 Scout job; REQ-0050 D4 metrics
 now have `att_*` events to measure.
+
+## Landing & deploy (2026-07-12, user-directed done sweep)
+
+- Integration: master merged INTO the branch first (3ff0254) -- master naming canon
+  (squad/troop rename, REQ-0099 silent monitor, master-detail pane UI) + branch
+  features (pulse, attachments). Conflicts + resolutions recorded in that commit
+  message. vocab gained trigger_domains.on_link_pulse:[PO] + a self-test coverage
+  fixture (master REQ-0081 all-triggers rule postdates the branch).
+- Landed on master as merge 8325f41 (includes the stacked REQ-0048 commits --
+  REQ-0048 done-status is now truthful in code, not just on the board).
+- Gates on the integrated tree: sim 96/0, goldens 12 OK (only dungen/default keys
+  rebaselined; battle + batch-002 unchanged), engine 101/0, server tsc OK, drift OK,
+  vocab self-test GREEN, server api files 155/0, pg_sync 4/0, client tsc+build OK.
+- Deploy: fresh dist committed in-merge (web/app, CELL=80 era -- replaced the stale
+  pre-merge live dist that had been red-ing the e2e rig at PAD=22/CELL=32),
+  backpack-api restarted. Box OOM-crashed on an E2E_PARALLEL=4 run mid-sweep
+  (rebooted, services+supabase self-recovered, live profile sha-verified intact);
+  E2E_PARALLEL=2 is the safe setting on this box.
+- Full e2e post-deploy: 139/143 green incl. BOTH new REQ-0048/0049 monitor-seam
+  specs. The 4 reds are pre-existing spec/src drift owned by in-flight REQs, not
+  this one: dex-card deep-link + nav-routing .schedule-rooms-view + monitor
+  freeze-guard reference DOM classes absent from current src (REQ-0120 built /
+  REQ-0097 todo rework); warehouse-mjolnir claim cleanup PUT timed out once
+  (pg after reboot -- watch for flake).

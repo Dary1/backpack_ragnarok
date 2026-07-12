@@ -2,7 +2,7 @@
 
 **Reserved:** 2026-07-12
 **Slug:** item-raster-live-wiring
-**Blocked by:** REQ-0125 (skin/sprite resolution machinery) + a user decision
+**Blocked by:** REQ-0125a (raster route + resolution chokepoint)
 **Split from:** REQ-0109 task 5 (scoped out explicitly rather than left implicit)
 
 ## Goal
@@ -34,3 +34,11 @@ for live.
 > REQ-0125 resolution machinery — stays in draft until 0125 lands. Also note
 > batch-003 art itself was NG'd at S7 the same day (see REQ-0109, todo);
 > wiring work is art-agnostic and unaffected.
+
+> [2026-07-12, REQ-0125 split] REQ-0125 was split: **REQ-0125a**
+> (unit-icon-render-base, todo) builds the raster texture route + the single
+> resolution chokepoint + the G7 charge ring; **REQ-0125b**
+> (unit-skin-resolution, draft) keys that chain to Unit identity and waits on
+> REQ-0128s Unit model. This REQs blocker is **REQ-0125a only** — the
+> machinery it must reuse — NOT 0125b. Item rasters need the route and the
+> fallback chain; they do not need unit identity. Re-pointed accordingly.

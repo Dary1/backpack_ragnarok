@@ -75,6 +75,8 @@ var STATUS_KIND_PHRASE_EN = {
 function verbPhraseEN(verb) {
   switch (verb.t) {
     case 'strike': return 'Strike ' + fmtNum(verb.n, 'en');
+    case 'pulse': return 'emit a link pulse';
+    case 'buff_linked': return '+' + fmtNum(verb.n, 'en') + ' ' + verb.stat + ' to ' + (verb.dir || 'out') + '-linked ' + verb.tag + ' items';
     case 'multi_strike': return 'Strike ' + fmtNum(verb.n, 'en') + ' x' + verb.hits;
     case 'block': return 'Block ' + fmtNum(verb.n, 'en');
     case 'heal_bp': return 'Heal this BP ' + fmtNum(verb.n, 'en');
@@ -99,6 +101,10 @@ function verbPhraseEN(verb) {
       return 'immune: ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
     case 'bonus_vs_status':
       return '+' + fmtNum(verb.n, 'en') + ' bonus damage vs ' + (verb.status_kind ? (STATUS_KIND_PHRASE_EN[verb.status_kind] || verb.status_kind) : verb.status);
+    case 'buff_self': // REQ-0121
+      return '+' + fmtNum(verb.n, 'en') + ' ' + verb.stat + ' to self';
+    case 'damage_reduction': // REQ-0121
+      return 'reduce incoming damage by ' + fmtNum(verb.n, 'en');
     default: return verb.t;
   }
 }
@@ -106,6 +112,7 @@ function verbPhraseEN(verb) {
 function triggerPrefixEN(trig) {
   switch (trig.t) {
     case 'every_secs': return 'Every ' + fmtSecs(trig.s, 'en') + 's: ';
+    case 'on_link_pulse': return 'On link pulse: ';
     case 'battle_start': return 'Battle start: ';
     case 'passive': return '';
     case 'OnHit': return 'On hit: ';
@@ -115,6 +122,8 @@ function triggerPrefixEN(trig) {
     case 'OnBPBeenHit': return 'When this BP is damaged: ';
     case 'OnSquadBeenHit': return 'When this squad is damaged: ';
     case 'adjacent': return 'Adjacent ' + trig.tag + ': ';
+    case 'on_hp_below': // REQ-0121: hp_frac 0.5 -> "Below 50% HP (once): "
+      return 'Below ' + Math.round((trig.hp_frac || 0) * 100) + '% HP (once): ';
     default: return trig.t + ': ';
   }
 }
@@ -181,6 +190,8 @@ function statJA(s) { return STAT_JA[s] || s; }
 function verbPhraseJA(verb) {
   switch (verb.t) {
     case 'strike': return fmtNum(verb.n, 'ja') + ' ダメージ';
+    case 'pulse': return 'リンクパルスを送出';
+    case 'buff_linked': return (verb.dir || 'out') + '方向のリンク先の ' + verb.tag + ' に ' + statJA(verb.stat) + ' +' + fmtNum(verb.n, 'ja');
     case 'multi_strike': return fmtNum(verb.n, 'ja') + ' ダメージ ×' + verb.hits + '回';
     case 'block': return 'ブロック ' + fmtNum(verb.n, 'ja');
     case 'heal_bp': return 'このBPを ' + fmtNum(verb.n, 'ja') + ' 回復';
@@ -205,6 +216,10 @@ function verbPhraseJA(verb) {
       return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'に免疫';
     case 'bonus_vs_status':
       return (verb.status_kind ? (STATUS_KIND_PHRASE_JA[verb.status_kind] || verb.status_kind) : statusJA(verb.status)) + 'の相手に追加ダメージ +' + fmtNum(verb.n, 'ja');
+    case 'buff_self': // REQ-0121
+      return '自身に ' + statJA(verb.stat) + ' +' + fmtNum(verb.n, 'ja');
+    case 'damage_reduction': // REQ-0121
+      return '受けるダメージを ' + fmtNum(verb.n, 'ja') + ' 軽減';
     default: return verb.t;
   }
 }
@@ -212,6 +227,7 @@ function verbPhraseJA(verb) {
 function triggerPrefixJA(trig) {
   switch (trig.t) {
     case 'every_secs': return fmtSecs(trig.s, 'ja') + '秒ごとに: ';
+    case 'on_link_pulse': return 'リンクパルス受信時: ';
     case 'battle_start': return '戦闘開始時: ';
     case 'passive': return '';
     case 'OnHit': return '命中時: ';
@@ -221,6 +237,8 @@ function triggerPrefixJA(trig) {
     case 'OnBPBeenHit': return 'このBPが被弾した時: ';
     case 'OnSquadBeenHit': return '所属ユニットが被弾した時: ';
     case 'adjacent': return '隣接する' + trig.tag + ': ';
+    case 'on_hp_below': // REQ-0121
+      return 'HPが' + Math.round((trig.hp_frac || 0) * 100) + '%を下回った時（一度だけ）: ';
     default: return trig.t + ': ';
   }
 }

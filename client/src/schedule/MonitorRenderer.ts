@@ -369,10 +369,10 @@ export class MonitorRenderer {
     });
   }
 
-  private pulseCell(cellId: string | RawCell): void {
+  private pulseCell(cellId: string | RawCell, color = 0xff6666): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
     const pulse = new Graphics();
-    pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color: 0xff6666, alpha: 0.9 });
+    pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color, alpha: 0.9 });
     pulse.eventMode = 'none';
     pulse.x = pos.x;
     pulse.y = pos.y;
@@ -393,10 +393,10 @@ export class MonitorRenderer {
     });
   }
 
-  private animateStep(path: RawCell[]): void {
+  private animateStep(path: RawCell[], color = 0x59d6d6): void {
     if (path.length === 0) return;
     const marker = new Graphics();
-    marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color: 0x59d6d6, alpha: 0.9 });
+    marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color, alpha: 0.9 });
     marker.eventMode = 'none';
     this.rayLayer.addChild(marker);
     const totalMs = STEP_ANIM_MS * Math.max(1, path.length - 1);
@@ -475,7 +475,9 @@ export class MonitorRenderer {
       }
       case 'ray_step': {
         const path = Array.isArray(ev.path) ? (ev.path as unknown[]).filter(isRawCell) : [];
-        if (!silent) this.animateStep(path);
+        const pulseRay = ev.cause === 'pulse';
+        if (pulseRay) this.pulseCounts.rays++;
+        if (!silent) this.animateStep(path, pulseRay ? 0xffd166 : 0x59d6d6);
         break;
       }
       case 'ray_bounce': {
@@ -503,6 +505,31 @@ export class MonitorRenderer {
         if (!silent) this.pulseCell('N9');
         break;
       }
+      // REQ-0048: linker pulse visuals -- a gold "circuit ignites" pulse per hop,
+      // gold-tinted payload rays (via ray_step cause), honest counters (test seam).
+      case 'link_pulse': {
+        this.pulseCounts.linkPulses++;
+        if (!silent) this.pulseCell('N9', 0xffd166);
+        break;
+      }
+      case 'pulse_payload': {
+        this.pulseCounts.payloads++;
+        break;
+      }
+      case 'pulse_fizzle': {
+        this.pulseCounts.fizzles++;
+        break;
+      }
+      // REQ-0049: layered-encounter attachment badges on the enemy field.
+      case 'att_reveal': {
+        this.attCounts.reveal++;
+        if (isRawCell(ev.at) && !silent) this.flashCell(ev.at); // "?" -> revealed flash
+        break;
+      }
+      case 'att_disarm': { this.attCounts.disarm++; break; }
+      case 'att_open': { this.attCounts.open++; if (!silent) this.pulseCell('N9', 0x66d6a0); break; } // green: reward/shortcut
+      case 'att_lost': { this.attCounts.lost++; break; }
+      case 'att_fire': { this.attCounts.fire++; if (!silent) this.pulseCell('N9', 0xff6666); break; } // red: trap volley
       default:
         break;
     }
@@ -511,6 +538,18 @@ export class MonitorRenderer {
   /** REQ-0045 (d) regression-test seam -- read-only; exact array mountSquads() got. */
   getLastMountedSquads(): MonitorSquadVisual[] {
     return this.lastMountedSquads;
+  }
+
+  /** REQ-0048 test seam: counts of pulse-related visuals applied so far. */
+  private pulseCounts = { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 };
+  getPulseVisualCounts(): { linkPulses: number; payloads: number; fizzles: number; rays: number } {
+    return { ...this.pulseCounts };
+  }
+
+  /** REQ-0049 test seam: counts of attachment-badge visuals applied so far. */
+  private attCounts = { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 };
+  getAttachmentVisualCounts(): { reveal: number; disarm: number; open: number; lost: number; fire: number } {
+    return { ...this.attCounts };
   }
 
   /** REQ-0045 (f) regression-test seam: each enemy marker's local x + rendered label width. */

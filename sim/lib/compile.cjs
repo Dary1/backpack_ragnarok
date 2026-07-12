@@ -2,7 +2,7 @@
 // sim/lib/compile.cjs -- REQ-0047 (d): the compile pass (S1): snapshot -> folded static topology + field cells.
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { deepCopy } = require('./core.cjs');
+const { deepCopy, TUNABLES } = require('./core.cjs');
 const { makeRng } = require('./rng.cjs');
 const { parseBox, FORMATIONS } = require('./formation.cjs');
 const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
@@ -76,6 +76,40 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
   });
   const bpByLocalCellKey = new Map();
   for (const bp of bps) for (const [r, c] of bp.localCells) bpByLocalCellKey.set(r + ',' + c, bp.id);
+
+  // ---- REQ-0048: static link graph (beam first-hit scan; mirrors
+  // engine.js traceBeams on LOCAL canvas coords) + per-BP link cond flags.
+  // Links are WITHIN a unit's canvas (BP<->BP). Determinism-safe: this only
+  // affects replay when a pulse fires or a buff_linked resonance exists.
+  const LINK_DIRS = { 0: [-1, 0], 1: [-1, 1], 2: [0, 1], 3: [1, 1], 4: [1, 0], 5: [1, -1], 6: [0, -1], 7: [-1, -1] };
+  const LROWS = (squadState.layout && squadState.layout.ROWS) || 8;
+  const LCOLS = (squadState.layout && squadState.layout.COLS) || 8;
+  const linkerCellOf = (bpDef) => [bpDef.origin[0] + bpDef.linker.off[0], bpDef.origin[1] + bpDef.linker.off[1]];
+  const linkerKeyToBp = new Map();
+  for (const bpDef of st.bps) { if (!bpDef.linker) continue; const lc0 = linkerCellOf(bpDef); linkerKeyToBp.set(lc0[0] + ',' + lc0[1], bpDef.id); }
+  const linkEdges = [];
+  for (const bpDef of st.bps) {
+    if (!bpDef.linker || !Array.isArray(bpDef.linker.dirs)) continue;
+    for (const d of bpDef.linker.dirs) {
+      const start = linkerCellOf(bpDef); let r = start[0], c = start[1], to = null;
+      while (true) {
+        r += LINK_DIRS[d][0]; c += LINK_DIRS[d][1];
+        if (r < 1 || r > LROWS || c < 1 || c > LCOLS) break;
+        const hit = linkerKeyToBp.get(r + ',' + c);
+        if (hit) { to = hit; break; }
+      }
+      if (to && to !== bpDef.id) linkEdges.push({ from: bpDef.id, to: to, dir: d, mutual: false });
+    }
+  }
+  for (const e of linkEdges) e.mutual = linkEdges.some(o => o.from === e.to && o.to === e.from);
+  for (const bp of bps) {
+    bp.linkOut = linkEdges.filter(e => e.from === bp.id).map(e => ({ to: e.to, dir: e.dir, mutual: e.mutual }));
+    bp.linkFlags = {
+      linked_in: linkEdges.some(e => e.to === bp.id),
+      linked_out: bp.linkOut.length > 0,
+      mutual: linkEdges.some(e => e.mutual && (e.from === bp.id || e.to === bp.id)),
+    };
+  }
 
   // Build PO instances with local + field cells, and figure out which BP
   // each PO physically sits in (needed for buff_self_per_tag "in this BP").
@@ -164,6 +198,15 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
         flatBonus += resolveScalar(eff.verb.n, rng.stream('compile/buff/' + poEntry.uid));
       }
     }
+    // REQ-0121: buff_self at battle_start -- permanent fold onto this PO's
+    // OWN damage verbs (same posture as buff_host, but self-targeted; the
+    // on_hp_below-triggered form is dynamic and handled at encounter time
+    // by hpbelow.cjs watchers, never here).
+    for (const eff of effects) {
+      if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'buff_self' && eff.verb.stat === 'damage') {
+        flatBonus += resolveScalar(eff.verb.n, rng.stream('compile/buff/' + poEntry.uid));
+      }
+    }
     // buff_self_per_tag: passive; sums contribution per OTHER qualifying-tag
     // PO in the SAME bp.
     for (const eff of effects) {
@@ -201,6 +244,24 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     return { ...p, _effects: effects, _flatBonus: flatBonus };
   });
 
+  // REQ-0121: battle_start damage_reduction from a BP's placed POs folds
+  // onto the OWNING BP as a resolved flat scalar (bp.damageReduction) --
+  // reduces direct-hit damage that BP takes (chokepoint: skills.cjs
+  // reduceIncoming). Resolved via the same compile-time RNG pattern the
+  // buff folds use; per-BP named stream, independent of existing streams.
+  for (const bp of bps) {
+    let dr = 0;
+    for (const p of folded) {
+      if (p.bpId !== bp.id) continue;
+      for (const eff of p._effects) {
+        if (eff.trigger && eff.trigger.t === 'battle_start' && eff.verb && eff.verb.t === 'damage_reduction') {
+          dr += resolveScalar(eff.verb.n, rngForCompile.stream('compile/dr/' + bp.id));
+        }
+      }
+    }
+    bp.damageReduction = dr;
+  }
+
   // Pass 2: buff_adjacent -- sums contribution from qualifying-tag POs in
   // Chebyshev-ADJACENT bps (on the local grid, pre-formation-offset, since
   // adjacency is a placement-local concept).
@@ -223,6 +284,38 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     p._flatBonus += adjBonus;
   }
 
+  // Pass 3 (REQ-0048): buff_linked resonance -- folds like buff_adjacent but
+  // along the static link edges (direction per verb.dir: out|in|mutual).
+  // Mutual pairs multiply the contribution by MUTUAL_RESONANCE_MULT. Scoped
+  // to the hosting PO (more qualifying-tag POs in linked BPs => stronger).
+  for (const p of folded) {
+    let resBonus = 0;
+    for (const eff of p._effects) {
+      if (!(eff.trigger && eff.trigger.t === 'passive' && eff.verb && eff.verb.t === 'buff_linked' && eff.verb.stat === 'damage')) continue;
+      const tag = eff.verb.tag;
+      const dir = eff.verb.dir || 'out';
+      const perTag = resolveScalar(eff.verb.n, rngForCompile.stream('compile/buff/' + p.uid));
+      const linkedBps = new Map();
+      for (const e of linkEdges) {
+        if (dir === 'out' && e.from === p.bpId) linkedBps.set(e.to, e.mutual);
+        else if (dir === 'in' && e.to === p.bpId) linkedBps.set(e.from, e.mutual);
+        else if (dir === 'mutual' && e.mutual && (e.from === p.bpId || e.to === p.bpId)) linkedBps.set(e.from === p.bpId ? e.to : e.from, true);
+      }
+      for (const [otherBp, mutualFlag] of linkedBps) {
+        let count = 0;
+        for (const other of folded) {
+          if (other.uid === p.uid) continue;
+          if (other.bpId !== otherBp) continue;
+          if ((other.def.tags || []).includes(tag)) count++;
+        }
+        let contrib = perTag * count;
+        if (mutualFlag) contrib *= TUNABLES.MUTUAL_RESONANCE_MULT;
+        resBonus += contrib;
+      }
+    }
+    p._flatBonus += resBonus;
+  }
+
   const pos = folded.map(p => ({
     uid: p.uid, id: p.id, def: p.def, localCells: p.localCells, fieldCells: p.fieldCells,
     bpId: p.bpId, effects: applyFlatBonusToEffects(p._effects, p._flatBonus),
@@ -237,7 +330,7 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     const def = siDefsById && siDefsById[si.id];
     return { uid: si.uid, id: si.id, hostPoUid, effects: (def && def.effects) ? deepCopy(def.effects) : [] };
   }).filter(x => x.hostPoUid && x.effects.length);
-  return { bps, pos, sis, formationId, squadSlot, box };
+  return { bps, pos, sis, formationId, squadSlot, box, linkEdges };
 }
 
 // =====================================================================

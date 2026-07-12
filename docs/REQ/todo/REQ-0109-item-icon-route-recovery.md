@@ -139,9 +139,16 @@ live-rendering gap.
 - Task 3s "keep V9 (DECIDED 2026-07-09)" is **SUPERSEDED** by this NG +
   REQ-0136 (checkpoint bakeoff).
 - **Restart plan (the remaining work of this REQ):**
-  1. Wait for REQ-0136 (checkpoint winner + license gate) and REQ-0135
-     (LayerDiffuse matte verdict); REQ-0138/0139 are conveniences, not
-     blockers.
+  1. Wait for REQ-0136 (checkpoint winner + license gate). **The REQ-0135
+     half of this blocker is CLEARED (2026-07-12): REQ-0135b returned NO-GO,
+     LayerDiffuse is rejected and removed, the matte route is unchanged
+     (rembg birefnet-general + edge-key). Do not wait on it.** REQ-0138/0139
+     are conveniences, not blockers. REQ-0147 (background-clause A/B, draft) is
+     also NOT a blocker: it can only improve the matte, and its outcome is a
+     prompt edit that can be applied to a later regeneration.
+     NOTE for the regeneration itself: on this box, generate with
+     `gen_item_icons.py --no-matte`, stop ComfyUI, then `--rematte-only`.
+     ComfyUI (~11 GB) and birefnet (~12 GB) cannot be co-resident on 23 GB.
   2. Regenerate batch-003 candidates on the refreshed pipeline (NEW
      fixed-seed baseline — seeds are not portable across checkpoints),
      re-run scorer + report, redeploy the preview.

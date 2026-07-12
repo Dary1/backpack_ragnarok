@@ -1,0 +1,15 @@
+{
+  "comment": "S4 archetype: scout heavy -- detection + unlock POs dominate (REQ-0049 utility value). Battle DPS deliberately thin.",
+  "linked": false,
+  "layout": { "ROWS": 8, "COLS": 8 },
+  "bps": [
+    { "id": "sh_main", "name": "Scout Main", "color": "#44aa66", "shape": [[0,0],[0,1],[0,2],[1,0],[1,1],[1,2]], "origin": [1,1], "linker": { "off": [0,0], "dirs": [] }, "hpMax": 90 }
+  ],
+  "pos": [
+    { "uid": "sh1", "id": "spyglass", "loc": "grid", "cell": [1,1], "rot": 0 },
+    { "uid": "sh2", "id": "spyglass", "loc": "grid", "cell": [1,2], "rot": 0 },
+    { "uid": "sh3", "id": "lockpick", "loc": "grid", "cell": [1,3], "rot": 0 },
+    { "uid": "sh4", "id": "dagger", "loc": "grid", "cell": [2,1], "rot": 0 }
+  ],
+  "sis": []
+}

@@ -147,7 +147,8 @@ too; if not, catalog-only is fine — see Step 1's "mechanic owner".)
 TM icons are **SVG sprite symbols**: `icon-<id>` in the current
 `content/sprite_all_vN.svg` (`icon-lrdst` exists since v11). The REQ-0073
 AI-raster route is items-only today; adopting it for TMs is **not ratified**
-(and would follow the REQ-0135/0136 outcomes anyway). So: author the
+(and would follow the REQ-0136 checkpoint outcome anyway; REQ-0135 is settled —
+LayerDiffuse NO-GO, matte route unchanged). So: author the
 `<symbol>` into the next `content/sprite_all_vN.svg` version (the sheet is
 hand-maintained; the client imports it via
 `client/src/board/sprites.ts` + `client/src/dex/dexIcons.ts` — currently
