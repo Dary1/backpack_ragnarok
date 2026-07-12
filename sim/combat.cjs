@@ -60,6 +60,7 @@ const skills = require('./lib/skills.cjs');
 const packs = require('./lib/packs.cjs');
 const encounter = require('./lib/encounter.cjs');
 const dungeon = require('./lib/dungeon.cjs');
+const hpbelow = require('./lib/hpbelow.cjs'); // REQ-0121
 
 module.exports = {
   TUNABLES: core.TUNABLES,
@@ -103,6 +104,10 @@ module.exports = {
   dealHitOnField: skills.dealHitOnField,
   makeBPActor: skills.makeBPActor,
   makeEnemyActor: skills.makeEnemyActor,
+  reduceIncoming: skills.reduceIncoming, // REQ-0121
+  registerHpBelowWatchers: hpbelow.registerHpBelowWatchers, // REQ-0121
+  checkHpBelow: hpbelow.checkHpBelow, // REQ-0121
+  foldFlatBonusInPlace: hpbelow.foldFlatBonusInPlace, // REQ-0121
   compileEnemyPack: packs.compileEnemyPack,
   toJSONL: replay.toJSONL,
   maskLabel: replay.maskLabel,

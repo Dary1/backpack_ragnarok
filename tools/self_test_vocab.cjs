@@ -54,6 +54,7 @@ function buildEffectForVerb(verbT) {
     if (verbT === 'amp_status') { delete verb.n; verb.mult = 2; }
   }
   if (verbT === 'buff_host') verb.stat = 'damage';
+  if (verbT === 'buff_self') verb.stat = 'damage'; // REQ-0121: same OQ7 shape as buff_host
   if (verbT === 'buff_self_per_tag' || verbT === 'buff_adjacent') {
     verb.stat = 'damage';
     verb.tagKind = 'type';
@@ -76,6 +77,14 @@ function buildEffectForVerb(verbT) {
     trigger = { t: 'passive' };
   } else if (verbT === 'status_immune' || verbT === 'bonus_vs_status') {
     trigger = { t: 'battle_start' }; // REQ-0093: matches vocab trigger_domains.battle_start
+  } else if (verbT === 'buff_self') {
+    // REQ-0121: exercise the NEW on_hp_below trigger here (PO-legal per the
+    // widened trigger_domains ruling, user 2026-07-09) so the REQ-0081
+    // full-trigger-coverage gate covers it; the battle_start form shares
+    // buff_host's shape and needs no separate fixture.
+    trigger = { t: 'on_hp_below', hp_frac: 0.5 };
+  } else if (verbT === 'damage_reduction') {
+    trigger = { t: 'battle_start' }; // REQ-0121: battle_start-folded constant
   } else if (verbT === 'battle_start_test') {
     trigger = { t: 'battle_start' };
   } else {

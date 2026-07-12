@@ -122,3 +122,76 @@ modifiers, not ray-emitting effects" — none carry an `attack_profile`.
   fully independent in `packs.cjs` — recommend independent for now (enemies
   and POs have different effect-list shapes today), revisit if a third
   fold consumer appears.
+
+## Outcome & gate results (2026-07-12, REQ-0121 executed)
+
+- **Semantics rulings applied** (user, 2026-07-12 chat): on_hp_below fires
+  ONCE EVER per owner+threshold (no re-arm on heal-back); strict crossing
+  (hp/hpMax < hp_frac); no posthumous fire on a killing blow.
+- **Implemented** (commit c24d868):
+  - vocab v7 -> v8: on_hp_below trigger (domain [PO, EnemySkill] per the
+    2026-07-09 ruling), buff_self + damage_reduction verbs, ranged params,
+    provenance notes. content_validate gains the hp_frac (0,1) gate.
+  - NEW sim/lib/hpbelow.cjs (one-module-per-concern): watcher bookkeeping
+    on the actor REF (survives wrapper recreation; player BP refs persist
+    across encounters -> once-ever == once per run), checked inside
+    applyDamage (both wrappers) so DoT-tick crossings fire instantly.
+  - damage_reduction: reduceIncoming() in skills.cjs -- defender-side flat
+    subtraction, per hit / per sub-hit (OQ19), after weaknessMultiplier +
+    bonus_vs_status, floored at 0; dealHitOnField + splash + reactive
+    riders; DoT ticks and Spikes reflect deliberately NOT reduced.
+  - buff_self: enemy-side fold designed deliberately (first enemy stat-fold,
+    per this REQ's own note): compileEnemyPack deep-copies an enemy's
+    skills ONLY when it carries buff_self (shared refs otherwise -- proven
+    zero golden impact), resolves battle_start scalars via per-instance
+    named streams; on_hp_below form folds in place at crossing time
+    (schedulable entries share the same objects -> later firings buffed).
+    Player-side: battle_start buff_self joins the compile.cjs flat-bonus
+    fold (buff_host posture); PO on_hp_below watches its OWNING BP
+    (id+squadSlot resolution), folds onto that PO's own verbs.
+  - Replay: new passive_proc event {trigger:on_hp_below, verb, src, frac,
+    amount} with honest timestamps (simNow).
+  - eff_render EN/JA phrases + on_hp_below trigger prefixes; self_test_vocab
+    covers both verbs + the trigger (coverage gate 11/11).
+- **Open question resolved**: re-crossing semantics = once ever (recorded
+  in vocab provenance + hpbelow.cjs header).
+- **eff_render/batch-004 check** (scope item 5): build_dungeon_preview.py
+  has no eff_render.cjs integration on master (unchanged since REQ-0093
+  checked); its own renderer lives in the REQ-0077 stash. Only the shared
+  module was extended, as scoped.
+- **Gates**: sim 85/85 (11 new REQ-0121 tests incl. enemy + player
+  integration runs); goldens 12/12 byte-identical; mock 101; tsc; drift;
+  vocab self-test ALL GREEN; api fs 155 + pg 155; pg_sync 4; client build
+  OK. e2e: 133 passed, 8 failed = 2 documented pre-existing debt
+  (dex-card:65, nav-routing:26 -- REQ-0124/0109 carve-out) + 6 proven
+  green in isolated serial re-runs (dex-admin/landing/long-press-rename/
+  market 22/22; schedule:1065 + warehouse-mjolnir:203 2/2). Same carve-out
+  REQ-0124 and REQ-0109 merged under.
+- **Ops note**: the llmlocal box froze and was rebooted mid-verification
+  (during a GPU e2e re-run); live profile/content verified byte-identical
+  to the pre-run backups afterwards (no e2e state pollution).
+- batch-004 wiring stays out of scope (REQ-0122 owns the loading pipe).
+
+## Integration round 2 (2026-07-12, post REQ-0049/0048 master merge)
+
+- master moved mid-REQ (merge 8325f41: REQ-0049 layered encounters +
+  REQ-0048 pulse propagation, another session's done sweep). Merged
+  master into this branch (21ee1a1): vocab union kept v8 (master had NOT
+  bumped for 0048) = triggers +on_link_pulse +on_hp_below, verbs +pulse
+  +buff_linked +buff_self +damage_reduction; encounter.cjs keeps BOTH
+  same-anchor insertions (0121 watchers + 0049 attachments; one shared
+  closing brace restored by hand).
+- Integrated gates: sim 107/107 (both REQs' suites), goldens 12/12
+  (0049's refreshed hashes), mock 101, tsc, drift, vocab self-test 12/12
+  triggers / 22 verbs, api fs 155 + pg 155, pg_sync 4, client build OK.
+- e2e on the integrated tree: 132 passed, 11 failed -> ALL accounted:
+  dex-card:65 + nav-routing:26 = documented pre-existing debt
+  (REQ-0124/0109 carve-out); remaining 9 proven green in isolated serial
+  re-runs (GPU=0 pass: schedule:1065, warehouse-mjolnir:203,
+  nav-routing:108, long-press:92, market:191+223; GPU=1 pass:
+  landing:52/115/139, market:158, ragnarok:144 -- the GPU=0 landing
+  failures were SwiftShader WebGL timeouts, not regressions).
+- Ops: post-reboot the live api's pg_sync worker was wedged (query
+  timeouts; caused one e2e teardown failure + flake burst). It respawned
+  on next query per its own design; /api/warehouse/dev/clear-debris now
+  ok:true and live profile/content verified byte-identical to backups.

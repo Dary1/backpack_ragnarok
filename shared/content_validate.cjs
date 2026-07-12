@@ -54,6 +54,15 @@ function validateEffect(eff, vocab, ctx) {
       throw new Error(ctx + ': trigger.s must be a [lo,hi] range with 0 < lo <= hi');
     }
   }
+  // REQ-0121: on_hp_below carries hp_frac -- a strict fraction of hpMax,
+  // must be a finite number in the OPEN interval (0, 1). 0 could never
+  // fire (hp/hpMax < 0 is impossible for a living actor) and 1 would fire
+  // on the first scratch -- both are authoring mistakes, rejected here.
+  if (trig.t === 'on_hp_below') {
+    if (!isFiniteNum(trig.hp_frac) || trig.hp_frac <= 0 || trig.hp_frac >= 1) {
+      throw new Error(ctx + ': trigger.hp_frac must be a number in (0, 1)');
+    }
+  }
   const verb = eff.verb;
   if (!verb || typeof verb !== 'object' || typeof verb.t !== 'string') {
     throw new Error(ctx + ': effect.verb.t is required');

@@ -3,6 +3,8 @@
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
 const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { deepCopy } = require('./core.cjs'); // REQ-0121
+const { foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 
 function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox) {
   // enemyFieldBox: {rowMin,colMin,rowMax,colMax} region of the enemy field
@@ -21,21 +23,42 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([cursorRow + dr, cursorCol + dc]);
     cursorCol += fw;
-    const skills = (def.skills || []).map(sid => {
+    let skills = (def.skills || []).map(sid => {
       const sdef = skillDefsById[sid];
       if (!sdef) throw new Error('compileEnemyPack: missing skill def ' + sid);
       return sdef;
     });
+    // REQ-0121: any buff_self on this enemy (battle_start fold now, or
+    // on_hp_below fold at crossing time) mutates strike/multi_strike
+    // n-ranges of THIS INSTANCE's skills -- deep-copy the whole skills
+    // list up front so shared content defs are never touched. Enemies
+    // without buff_self keep shared refs (zero golden impact).
+    const hasBuffSelf = skills.some(s => s && s.verb && s.verb.t === 'buff_self');
+    if (hasBuffSelf) skills = deepCopy(skills);
     // REQ-0093: battle_start status_immune / bonus_vs_status fold, from
     // this enemy's own skills list (an EnemySkill's own innate passive,
     // e.g. bone-and-sinew undead immune to Poison).
     const statusBag = freshStatusBag();
-    const { immuneSet, bonusVsStatus } = foldBattleStartStatusVerbs(skills);
+    const { immuneSet, bonusVsStatus, damageReductionRanges, buffSelfRanges } = foldBattleStartStatusVerbs(skills);
     statusBag._immune = immuneSet;
+    // REQ-0121: resolve battle_start-folded scalars via a per-instance
+    // named stream (named streams are independent -- adding these pulls
+    // nothing from any existing stream, so goldens stay byte-identical
+    // for content without the new verbs).
+    let damageReduction = 0;
+    for (const n of damageReductionRanges) {
+      damageReduction += rng.stream('pack/fold/' + eid + '#' + idx).range(n[0], n[1]);
+    }
+    let buffSelfFlat = 0;
+    for (const n of buffSelfRanges) {
+      buffSelfFlat += rng.stream('pack/fold/' + eid + '#' + idx).range(n[0], n[1]);
+    }
+    if (buffSelfFlat) foldFlatBonusInPlace(skills, buffSelfFlat);
     return {
       id: eid + '#' + idx, defId: eid, name: def.name, hp: hpMax, hpMax,
       footprint: [fh, fw], fieldCells, skills, statusBag,
       alive: true, ownerId: eid + '#' + idx, bonusVsStatus,
+      damageReduction, // REQ-0121 (0 when absent -- reduceIncoming no-ops)
     };
   });
   return enemies;

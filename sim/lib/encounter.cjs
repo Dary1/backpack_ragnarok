@@ -2,9 +2,10 @@
 // sim/lib/encounter.cjs -- REQ-0047 (d): runEncounter -- the event-driven encounter loop.
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { TUNABLES } = require('./core.cjs');
+const { TUNABLES, deepCopy } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
 const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs');
+const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
@@ -49,7 +50,10 @@ function runEncounter(opts) {
     const centerRow = Math.floor((1 + FIELD_ROWS) / 2), centerCol = Math.floor((1 + FIELD_COLS) / 2);
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([centerRow + dr, centerCol + dc]);
-    const entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    let entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    // REQ-0121: same instance-copy rule as packs.cjs -- buff_self mutates
+    // this instance's skill ranges, so never share content defs.
+    if (entitySkills.some(s => s && s.verb && s.verb.t === 'buff_self')) entitySkills = deepCopy(entitySkills);
     const entityStatusBag = freshStatusBag();
     const entityFold = foldBattleStartStatusVerbs(entitySkills); // REQ-0093
     entityStatusBag._immune = entityFold.immuneSet;
@@ -61,6 +65,73 @@ function runEncounter(opts) {
   }
 
   function enemyActorList() { return enemyActors.map(e => e.actor).concat(entity ? [makeEnemyActor(entity)] : []); }
+
+  // ---- REQ-0121: on_hp_below watcher registration ----------------------
+  // simNow tracks the encounter-local time of the event being processed so
+  // watcher fires (which happen deep inside applyDamage) can stamp honest
+  // timestamps on their passive_proc events.
+  let simNow = t0;
+  function makeHpBelowWatcher(key, skillOrEff, srcLabel, foldTargetList, streamName) {
+    const frac = skillOrEff.trigger.hp_frac;
+    const verb = skillOrEff.verb;
+    return {
+      key, frac,
+      onFire(ref) {
+        // Only buff_self (stat:'damage') is a supported on_hp_below payload
+        // in this REQ (matches batch-004's usage; other verbs would need
+        // their own fire-time semantics -- documented, not silently faked).
+        if (verb && verb.t === 'buff_self' && verb.stat === 'damage' && Array.isArray(verb.n)) {
+          const amount = rng.stream(streamName).range(verb.n[0], verb.n[1]);
+          foldFlatBonusInPlace(foldTargetList(), amount);
+          events.push({ t: simNow, seq: heap.nextSeq(), ev: 'passive_proc', trigger: 'on_hp_below', verb: verb.t, src: srcLabel, frac, amount });
+        }
+      },
+    };
+  }
+  for (const e of enemyActors) {
+    const watchers = [];
+    (e.raw.skills || []).forEach((sk, sIdx) => {
+      if (sk && sk.trigger && sk.trigger.t === 'on_hp_below') {
+        watchers.push(makeHpBelowWatcher('enemy/' + e.raw.ownerId + '/' + sIdx + '/' + sk.trigger.hp_frac, sk, e.raw.ownerId, () => e.raw.skills, 'hpbelow/' + e.raw.ownerId + '/' + sIdx));
+      }
+    });
+    if (watchers.length) registerHpBelowWatchers(e.raw, watchers);
+  }
+  if (entity) {
+    const watchers = [];
+    (entity.skills || []).forEach((sk, sIdx) => {
+      if (sk && sk.trigger && sk.trigger.t === 'on_hp_below') {
+        watchers.push(makeHpBelowWatcher('entity/' + entity.ownerId + '/' + sIdx + '/' + sk.trigger.hp_frac, sk, maskLabel(entity), () => entity.skills, 'hpbelow/' + entity.ownerId + '/' + sIdx));
+      }
+    });
+    if (watchers.length) registerHpBelowWatchers(entity, watchers);
+  }
+  // Player side (domain ruling, REQ-0121): a PO's on_hp_below watches its
+  // OWNING BP's hp/hpMax; the buff folds onto that PO's OWN damage verbs.
+  // Watcher keys are stable across encounters and fired-state lives on the
+  // persistent bp object, so "once ever" means once per RUN here (the
+  // folded mutation on po.effects persists too -- fold-once matches
+  // buff-once). Registration replaces the list each encounter; fired-state
+  // survives (see hpbelow.cjs).
+  {
+    // NOTE: bp ids can repeat across squads (runDungeon flatMaps 4 squads
+    // compiled from possibly-identical snapshots), so the owning BP is
+    // resolved by (id AND squadSlot); plain id is the fallback for direct
+    // runEncounter callers that never tagged squadSlot.
+    const watchersByBp = new Map(); // bp OBJECT -> watcher list
+    for (const po of troopPos) {
+      (po.effects || []).forEach((eff, effIdx) => {
+        if (eff && eff.trigger && eff.trigger.t === 'on_hp_below' && po.bpId) {
+          const bp = troopBps.find(b => b.id === po.bpId && (po.squadSlot == null || b.squadSlot === po.squadSlot));
+          if (!bp) return;
+          const list = watchersByBp.get(bp) || [];
+          list.push(makeHpBelowWatcher('po/' + (po.squadSlot || '') + '/' + po.uid + '/' + effIdx + '/' + eff.trigger.hp_frac, eff, po.id, () => po.effects, 'hpbelow/' + (po.squadSlot || '') + '/' + po.uid + '/' + effIdx));
+          watchersByBp.set(bp, list);
+        }
+      });
+    }
+    for (const [bp, list] of watchersByBp) registerHpBelowWatchers(bp, list);
+  }
 
   // ---- REQ-0049: Layered encounters -- trap/chest/door attachments run in
   // PARALLEL with the pack on the battle clock. Additive: only active when
@@ -362,6 +433,7 @@ function runEncounter(opts) {
     guardIters++;
     const ev = heap.popMin();
     if (ev.t > deadlineSecs) break;
+    simNow = ev.t; // REQ-0121: honest timestamps for on_hp_below fires
     if (hasAtt) checkAttachmentTimeouts(ev.t);
 
     if (ev.kind === 'status_tick') {
@@ -502,6 +574,7 @@ function runEncounter(opts) {
       // "trap fires its skill payload ONCE (a battle-style volley on the
       // player field, rolled), then encounter ends. No disarm step."
       if (entity && entity.skills.length > 0) {
+        if (timeoutSecs != null) simNow = timeoutSecs; // REQ-0121
         const skill = entity.skills[0];
         const attackProfile = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
         const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id, bonusVsStatus: entity.bonusVsStatus || [] };
