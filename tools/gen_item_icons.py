@@ -580,6 +580,11 @@ def main():
     ap.add_argument("--scheduler", default="karras")
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
+    ap.add_argument("--no-matte", action="store_true",
+                    help="generate raws only, skip the rembg matte step. Pairs with "
+                         "--rematte-only: on a memory-tight box, holding ComfyUI "
+                         "(~11GB) and birefnet (~12GB) at once OOMs, so generate "
+                         "first, stop ComfyUI, then rematte. (REQ-0135b)")
     ap.add_argument("--rematte-only", action="store_true",
                      help="skip generation entirely; regenerate _alpha.png for every existing raw "
                           "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
@@ -693,7 +698,11 @@ def main():
                 # smaller target_px is faster and the final in-game asset
                 # is target_px anyway, so edge quality at that resolution is
                 # what actually matters).
-                matte_alpha(raw_path, alpha_path, log_label=alpha_name)
+                if a.no_matte:
+                    print(f"[{done_jobs}/{total_jobs}] SKIP-MATTE {alpha_name} "
+                          f"(--no-matte; rematte in a separate pass)", flush=True)
+                else:
+                    matte_alpha(raw_path, alpha_path, log_label=alpha_name)
 
                 dt = time.time() - t0
                 print(f"[{done_jobs}/{total_jobs}] DONE id={eid} c={k} seed={seed} -> {raw_name} ({dt:.1f}s)", flush=True)

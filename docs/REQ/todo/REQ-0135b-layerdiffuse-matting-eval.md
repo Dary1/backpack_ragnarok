@@ -212,3 +212,81 @@ OOM kills, a false "seq5 DONE" (its REQ-0136 dsxl/flux legs no-opped in 9
 seconds against a dead ComfyUI, so that bakeoff did not actually run), and a
 route-A kill — all in one day, all from multiple agent sessions sharing one
 un-owned ComfyUI. A single-owner queue is not cosmetic.
+
+### 2026-07-12 (exclusive run) — LD works; two blocking defects found and fixed
+
+User directive: take the box exclusively and run to completion. REQ-0127's
+`gen_unit_icons --rematte-only` was in flight — it is CPU-only (no GPU, no
+ComfyUI queue), real work, and 9 minutes from finishing, so it was **waited out,
+not killed**. ComfyUI was then started (it had been OOM-dead since 05:01:53).
+
+**The graph fix is confirmed working.** A 1-job smoke test (added precisely
+because 0135a's "nodes are registered" check proved insufficient) passed:
+`exit=0 alphas=1`, 236.3 s, VRAM peak 6482 MiB. LayerDiffuse emits RGBA through
+`LayeredDiffusionDecode -> InvertMask -> JoinImageWithAlpha`, no ComfyUI
+modification. Source confirms the wiring is exactly equivalent to the broken
+node's intent: `decode()` returns `pixel_with_alpha[..., 0]` as the MASK — i.e.
+the true opacity — and the old code's `1.0 - mask` was undone again inside
+core's join, which inverts its `alpha` input.
+
+#### Defect 1 — the spec's "A/B fairness" clause silently voids route B
+
+The smoke test's alpha came back **essentially solid**: coverage 99.93% (route A
+on the same subject: 11.50%), alpha mean 0.962, 96.6% of pixels > 0.5, corners
+(background) 0.55, centre (subject) 0.21 — not a matte at all.
+
+The cause is in the ratified spec. All five spike prompts carry
+`plain uniform near-white background` and `clean flat backdrop`, deliberately
+kept on both routes "for A/B fairness". But that clause is the one instruction
+that forecloses what this REQ exists to measure. Told to paint a near-white
+backdrop, SDXL+LayerDiffuse paints one **and marks it opaque**. There is no
+transparency to compare, and the run would have produced a confident, false
+"LayerDiffuse is useless" verdict.
+
+Fairness is not "identical prompts"; it is "each route configured the way it
+would actually ship". So a third arm was added, and the misleading one kept as
+evidence:
+
+| arm | prompt | matte |
+|---|---|---|
+| A | with bg clause | rembg birefnet-general + edge-key (production) |
+| B | with bg clause (as specced) | LayerDiffuse latent alpha |
+| C | **bg clause stripped** | LayerDiffuse latent alpha |
+
+`content/batches/req-0135-layerdiffuse-spike/spike_defs_nobg.json` +
+`tools/scratch_req0135_build_nobg_defs.py` (only the positive prompt is touched;
+`gen_negative` is byte-identical). The gallery builder now renders A/B/C and
+carries a note telling the reviewer to read B and C together — B is a
+misconfiguration, not a verdict on the technique.
+
+#### Defect 2 — route A cannot run on this box at all (reproducible OOM)
+
+Route A was OOM-killed at job 2/10 **twice**, at 10:12:35 and 14:34:36, both at
+~12.3 GB RSS (kernel `Killed process … (python)`, exit 137). Not contention,
+not bad luck — arithmetic. `gen_item_icons` mattes *in-process*, so the SDXL
+checkpoint inside ComfyUI (~11 GB RSS) and birefnet (~12 GB RSS) are resident at
+the same time on a 23 GB box.
+
+REQ-0127 had already demonstrated the escape hatch without anyone noticing: its
+`--rematte-only` pass ran birefnet at 13 GB perfectly happily **because ComfyUI
+was not running**. `--rematte-only` was half of a split that had no other half.
+
+Added `--no-matte` to `tools/gen_item_icons.py` (additive, opt-in, default off —
+every existing caller behaves byte-identically). The run is now ordered so the
+two big models are never co-resident:
+
+    1. arm C   : LayerDiffuse, no bg clause     (ComfyUI, no rembg)
+    2. route A : generation only, --no-matte    (ComfyUI, no rembg)
+    3. stop ComfyUI                             (frees ~11 GB)
+    4. route A : --rematte-only                 (rembg, no ComfyUI)
+    5. score all three arms -> A/B/C gallery
+
+This is a genuine finding for the item pipeline beyond this spike: on this
+host, generation and matting must be separate passes.
+
+#### Status
+
+Arm B running; phase 2 armed and chained. Nothing published yet — the
+completeness gate refuses to score or build a gallery unless every arm produced
+its full 10 candidates. REQ-0135b stays in `todo/` until the gallery exists and
+the user has given a verdict.
