@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+# =============================================================================
+# DEAD CODE — DO NOT RUN. REQ-0135b verdict: LayerDiffuse is a NO-GO.
+#
+# The ComfyUI-layerdiffuse node and its weights were REMOVED from the art
+# ComfyUI on 2026-07-12 (user go-ahead). This script cannot run and must not be
+# resurrected without first re-reading docs/REQ/done/REQ-0135b.
+#
+# Why it is kept: it is the exact record of how the LD graph was wired
+# (LayeredDiffusionApply -> LayeredDiffusionDecode -> InvertMask ->
+# JoinImageWithAlpha), which is the starting point IF the node is ever ported
+# onto ComfyUI's weight-adapter API. It is not a working tool.
+#
+# Why LD failed: on ComfyUI 0.26.0, LayeredDiffusionApply injects raw
+# ("lora", ...) patches; core's calculate_weight() accepts only
+# WeightAdapterBase / diff / set / model_as_lora, so all 7840 attention patches
+# are logged ("patch type not recognized lora") and SILENTLY DROPPED. The node
+# registers, the job succeeds, an RGBA file appears — and the model was never
+# patched. Upstream (b4f6a9e) is HEAD; there is no fix to pull.
+# =============================================================================
 """REQ-0135 spike: LayerDiffuse (route B) candidate generator.
 
 Same checkpoint / seeds / steps / cfg / sampler as the current production

@@ -502,8 +502,12 @@ prompt. Filed as **REQ-0147-matte-background-clause-ab** (draft/).
 ### Residue (deliberately left in place)
 
 - ComfyUI `~/ComfyUI/models/layer_model/` (908 MB) and the
-  `ComfyUI-layerdiffuse` custom node are **left installed**. They are inert and
-  harmless; ComfyUI is HANDS-OFF and their removal needs a separate go-ahead.
+  `ComfyUI-layerdiffuse` custom node were **REMOVED 2026-07-12** (separate user
+  go-ahead; ComfyUI confirmed down first, nothing else referenced either path,
+  the other six custom nodes and all other model dirs intact).
+  `tools/scratch_req0135_ld_spike.py` survives in git, banner-marked DEAD CODE:
+  it is the record of the graph wiring should the node ever be ported onto the
+  weight-adapter API, and nothing more.
 - The `diffusers==0.31.0` pin **stays, and should stay.** It is not LD residue:
   per REQ-0135a, diffusers 0.39.0 fails to import at all under this venv's
   `torch 2.4.1+cu121`. The only other consumer of diffusers in this ComfyUI is

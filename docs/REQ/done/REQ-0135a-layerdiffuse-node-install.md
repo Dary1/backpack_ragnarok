@@ -77,6 +77,7 @@ assert on the *effect*.
 
 Verdict and full evidence: **REQ-0135b — NO-GO** (upstream is at HEAD with no
 fix; forking is rejected; ComfyUI is not being pinned). The node and its 908 MB
-of weights are left installed but unused. The `diffusers==0.31.0` pin recorded
+of weights were removed from the art ComfyUI on 2026-07-12 (user go-ahead), so
+this REQ describes an install that no longer exists. The `diffusers==0.31.0` pin recorded
 above stays — it is independently correct for this venv (0.39.0 does not import
 under `torch 2.4.1+cu121`).
