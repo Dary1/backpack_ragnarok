@@ -120,7 +120,23 @@ function getScheduleContent() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
+  // REQ-0057: skillDefsById is deliberately kept MECHANICS-ONLY (it is the
+  // map handed straight to sim/lib/packs.cjs's compileEnemyPack, where
+  // REQ-0121's buff_self fold mutates the objects in place -- the fewer
+  // fields riding along in there, the smaller the blast radius). Display
+  // names for the forecast tooltip therefore live in a SIBLING map rather
+  // than being bolted onto the mechanics defs. skills.json carries flat
+  // name_en/name_ja (schema skill/1), not the live_items.json `i18n` map,
+  // so this normalises to the i18n shape every client-facing payload uses.
+  const skillNamesById = {};
+  for (const s of skills.entries) {
+    skillNamesById[s.id] = {
+      en: { name: s.name_en || s.id },
+      ja: { name: s.name_ja || s.name_en || s.id },
+    };
+  }
+
+  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
 }
