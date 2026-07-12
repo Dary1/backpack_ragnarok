@@ -69,6 +69,28 @@ additions only); `docs/user_managed/` untouched; no REQ edits beyond this file.
 - G4: art golden rule text in §2 is verbatim vs deleted file (diff-checked
   modulo headings/exceptions section).
 
-## Outcome
+## Outcome (2026-07-12 — implemented to done in one session, user pre-accepted)
 
-(appended at completion — gate results + commit hashes)
+Commits (branch req-0134-pipeline-doc-refresh):
+- 03740a0 spec (NOTE: art_golden.md deletion rode in this commit — a staged
+  git rm was picked up with the spec; message covers the integration intent)
+- 9f9feb2 reserved -> todo
+- ff918c7 doc layer refresh (common_content_pipeline.md NEW; content_pipeline.md
+  -> redirect stub; item_content_pipeline.md EN v2.1; unit_icon v1.1;
+  backpack_skin v1.1)
+- 6235c85 §2 rule bodies made byte-identical to deleted art_golden.md
+- 2ebcc34 REQ-0125 annotated (art_golden -> common §2)
+
+Gate results:
+- G1 dangling refs: common_content_pipeline.md exists; every reference
+  resolves. Remaining art_golden.md strings in living docs are the
+  abolition/resolution notes themselves plus REQ-0109/0125 (annotated;
+  covered by the §2 resolution declaration). PASS (gate reworded to intent:
+  rule CONTENT lives only in §2).
+- G2 language policy: 0 Japanese characters across the five edited
+  llm_managed docs. The two JP lines in this REQ file are the verbatim user
+  directive quote (allowed exception). PASS.
+- G3 provenance: every §3/§7/G7/BS-G5 status change carries a
+  2026-07-12 ALL GREEN / user-directive provenance line. PASS.
+- G4 verbatim carry: all 23 non-heading rule lines of art_golden.md v3.4
+  grep exactly in common_content_pipeline.md §2 (post-6235c85). PASS.
