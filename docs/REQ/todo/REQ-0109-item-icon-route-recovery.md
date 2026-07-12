@@ -122,3 +122,30 @@ live-rendering gap.
   draft/): it depends on REQ-0125's skin-resolution machinery; items stay on
   the SVG sprite for live rendering until then.
 - ComfyUI untouched (not needed: no regeneration).
+
+---
+
+## S7 verdict — batch-003 NG; restart on the refreshed pipeline (2026-07-12)
+
+- **User verdict (2026-07-12, chat): batch-003 as generated is NG** ("一回NG")
+  — https://backpack-dev.qtie.jp/preview/batch-003/ (JuggernautXL V9 route).
+  Acceptance refused → this REQ moves **built → todo** (board law: rejection
+  at acceptance is a backward move).
+- **What stays valid:** the ROUTE recovery itself is merged on master
+  (merge f3e1f32) — tools, gen_* fields, scorer tests, report builder.
+  Nothing is reverted.
+- **What is rejected:** the batch-003 ART outcome (candidates / selected /
+  report as material for live adoption).
+- Task 3s "keep V9 (DECIDED 2026-07-09)" is **SUPERSEDED** by this NG +
+  REQ-0136 (checkpoint bakeoff).
+- **Restart plan (the remaining work of this REQ):**
+  1. Wait for REQ-0136 (checkpoint winner + license gate) and REQ-0135
+     (LayerDiffuse matte verdict); REQ-0138/0139 are conveniences, not
+     blockers.
+  2. Regenerate batch-003 candidates on the refreshed pipeline (NEW
+     fixed-seed baseline — seeds are not portable across checkpoints),
+     re-run scorer + report, redeploy the preview.
+  3. S7 user review again; live/registry writes only after green (S8),
+     per common_content_pipeline.md.
+- REQ-0133 (live wiring) is unaffected machinery-wise; its route question is
+  half-resolved (raster — unit_icon_pipeline.md §3.2, ALL GREEN 2026-07-12).

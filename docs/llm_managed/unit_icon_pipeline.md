@@ -2,10 +2,15 @@
 
 > Companion to REQ-0125. Extends the REQ-0073 AI-raster route
 > (verified end-to-end 2026-07-09; see `docs/llm_managed/item_content_pipeline.md`
-> v2) to Unit character icons. Golden below ratified by the user 2026-07-12
+> v2.1) to Unit character icons. Golden below ratified by the user 2026-07-12
 > ("unit_icon_pipeline green"), including the revised G6 (skinnable identity).
 > Authoritative copy: `docs/llm_managed/unit_icon_pipeline.md` on the server.
-> Open items in §3 remain undecided and are NOT covered by the ratification.
+> v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
+> 2026-07-12 review session, user verdict ALL GREEN); G7 reserved in §1;
+> stale filename fixed (backpack_skin_pipeline_proposal.md, renamed →
+> backpack_skin_pipeline.md). `art_golden` references resolve to
+> `common_content_pipeline.md` §2 (art_golden.md abolished as a separate doc
+> by user directive, 2026-07-12). Item 4 of §3 stays as recorded.
 
 ## 0. What a Unit icon is
 
@@ -42,8 +47,14 @@
   Backpack Skins as a SET (elf unit + elven bag; barbarian unit + barbarian
   bag). Bag theming — the BP's EDGE DESIGN PATTERN, itself replaceable — is
   a separate asset class with its own pipeline: see
-  `backpack_skin_pipeline_proposal.md`. This pipeline emits portrait rasters
+  `backpack_skin_pipeline.md`. This pipeline emits portrait rasters
   only and never bakes bag art into a unit icon.
+
+- **G7 — Charge overlay language (reserved 2026-07-12).** The Unit
+  charge-state overlay is a **ring fill** (radial progress around the icon),
+  renderer-drawn per G2 and identical across all skins. Reserved here so no
+  icon bakes in ring-like framing that would collide with it; implementation
+  belongs to REQ-0125. (Ratified via 2026-07-12 review, ALL GREEN.)
 
 ## 2. Steps (delta from item pipeline v2 — everything unlisted is reused as-is)
 
@@ -82,16 +93,19 @@
   (illustration-first). Def authoring itself is a separate, future pipeline
   doc — out of scope here.
 
-## 3. Open items (decisions wanted from the user)
+## 3. Open items — Decision log (updated 2026-07-12)
 
-1. **Bust vs full-body** — recommend one bakeoff batch (pattern:
-   `monsters-002-style-bakeoff`) before freezing. My recommendation: bust,
-   for 64 px readability (G4).
-2. **Registry route** — raster (like items, recommended) vs SVG sprite
-   registry (`sprite_all_v10.svg` world). Raster keeps one pipeline and the
-   verified tooling.
-3. **Charge-state overlay language** (ring? fill? frame glow?) — renderer
-   design, belongs to REQ-0125 implementation, but the overlay vocabulary
-   could be reserved here if you want it in the golden.
-4. **Enemy side** — enemies have no backpacks (asymmetric combat, golden §4)
-   and are OUT of scope; monster art keeps its own pipeline.
+All decisions below were ratified 2026-07-12 (review session, user verdict
+ALL GREEN) unless noted.
+
+1. **Bust vs full-body — DECIDED: bust** for the 1×1 board icon (G4 64 px
+   readability wins). Full-body art of the same character is permitted as a
+   SEPARATE dex/splash asset sharing one identity (see REQ-0137
+   character-identity-lora); it is never the board icon.
+2. **Registry route — DECIDED: raster** (like items — one pipeline, the
+   verified tooling). This also resolves the route half of REQ-0133's open
+   user decision (units and items decided together).
+3. **Charge-state overlay language — DECIDED: ring fill**, reserved as G7 in
+   §1; renderer implementation stays with REQ-0125.
+4. **Enemy side** — unchanged: enemies have no backpacks (asymmetric combat,
+   golden §4) and are OUT of scope; monster art keeps its own pipeline.

@@ -7,7 +7,13 @@
 > ("all green", 2026-07-12) — BS-G5 ratified as proposed (90° rotation
 > allowed for edge tiles only, as a written art_golden exception).
 > Authoritative copy: `docs/llm_managed/backpack_skin_pipeline.md` on the
-> server. Open items in §7 remain undecided and are NOT covered.
+> server. v1.1 (2026-07-12, REQ-0134): §7 updated after the 2026-07-12
+> review session (user verdict ALL GREEN) — item 4 removed as stale (BS-G5
+> was already ratified in v1.0), item 5 DECIDED (alpha), item 3 method
+> DECIDED (REQ-0143 harness), item 1 gates specced (REQ-0144); items 1
+> (rollout scope) and 2 remain OPEN. `art_golden` references resolve to
+> `common_content_pipeline.md` §2 (art_golden.md abolished by user
+> directive, 2026-07-12).
 
 ## Terminology (user coinage → adopted standard term)
 
@@ -99,10 +105,11 @@ BS-G5), or all orientations are authored/derived at build time.
   corners and at least one holed shape) AND no fill pixel ever draws outside
   a `clip_mask` on any suite shape. Rectangle-only skins and clip leakage are
   both FAILs.
-- **BS-G5 — Rotation ruling required.** Edge tiles are pattern art, not
-  character art. Proposal: allow 90° rotation/mirroring for edge tiles ONLY,
-  as a written exception to art_golden's no-rotation rule — needs the user's
-  blessing; otherwise all orientations are authored.
+- **BS-G5 — Rotation ruling (RATIFIED 2026-07-12, v1.0).** Edge tiles are
+  pattern art, not character art: 90° rotation/mirroring is allowed for edge
+  tiles ONLY, as the written exception recorded in
+  `common_content_pipeline.md` §2 ("Ratified exceptions & scope map"). All
+  other art never rotates.
 
 ## 5. Steps
 
@@ -116,6 +123,10 @@ BS-G5), or all orientations are authored/derived at build time.
   diffusion models are weak at seamless tiling — expect a tiling-specific
   ComfyUI workflow and manual cleanup. **Highest-risk step; run a
   spike/bakeoff first** (pattern: monsters-002-style-bakeoff).
+  UPDATE 2026-07-12: `fill_texture` tiling is largely de-risked — a
+  circular-padding ComfyUI recipe is specified in REQ-0138; the spike
+  (REQ-0131) should spend its budget on edge-tile cutting + `clip_mask`
+  integrity.
 - **S3 Assembly + validation harness.** Deterministic harness composites the
   full rendering stack (§2) on the validation shape suite (1×1, I, L, T, S/Z,
   inner-corner and holed shapes) over several contrasting canvas backgrounds,
@@ -141,16 +152,20 @@ BS-G5), or all orientations are authored/derived at build time.
   S3 must be a **machine gate** (no hand review in the loop), same validator
   discipline the Nightmare Forge note mandates for forged dungeons.
 
-## 7. Open items (decisions wanted from the user)
+## 7. Open items (updated 2026-07-12 — review session, ALL GREEN)
 
-1. **UGC scope & submission gates** — friends-only vs global, and the exact
-   machine-validator set for player-submitted skins (S3 harness as the gate).
+1. **UGC scope** — submission machine gates are now specified by REQ-0144
+   (NSFW/CSAM classifier, best-effort IP screen, S3 harness as gate 0).
+   STILL OPEN: friends-only vs global rollout.
 2. **Market tradability** — are (UGC) skins tradable for Transmutators?
-3. **Border band width** (px at 256/cell) for BS-G2, plus the fill contrast
-   budget.
-4. **BS-G5 rotation ruling** — allow 90° for edge tiles, or author all
-   orientations.
-5. **`clip_mask` encoding** — alpha channel vs dedicated key color. PixiJS
-   consumes texture masks natively (alpha-based), which favors alpha; your
-   "カラー指定用" reads as color key. Recommend deciding after the S2 spike,
-   since the matting toolchain output format also weighs in.
+   STILL OPEN.
+3. **Border band width + fill contrast budget (BS-G2)** — METHOD DECIDED:
+   the numbers come from REQ-0143's automated luminance-contrast harness at
+   board scale (64 px/cell) over the validation shape suite; the final
+   values are a user ratification of that harness output.
+4. *(removed — stale: BS-G5 was already ratified with v1.0, see §4.)*
+5. **`clip_mask` encoding — DECIDED: alpha channel.** PixiJS consumes
+   texture masks natively (alpha-based); a color key would only add a
+   conversion step. If REQ-0135 adopts LayerDiffuse, alpha is produced at
+   generation time anyway; revisit only if that spike changes the alpha
+   source.
