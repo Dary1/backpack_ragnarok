@@ -119,14 +119,59 @@ BS-G5), or all orientations are authored/derived at build time.
   `fill_texture` (seamless/tileable), and (b) a MOTIF SHEET (border strip
   samples) per skin from which master edge tiles are cut and cleaned.
   `clip_mask`s are then derived from each tile's contour (auto-trace of the
-  edge art's inner boundary) with manual fixup allowed. Honest risk note:
-  diffusion models are weak at seamless tiling — expect a tiling-specific
-  ComfyUI workflow and manual cleanup. **Highest-risk step; run a
-  spike/bakeoff first** (pattern: monsters-002-style-bakeoff).
-  UPDATE 2026-07-12: `fill_texture` tiling is largely de-risked — a
-  circular-padding ComfyUI recipe is specified in REQ-0138; the spike
-  (REQ-0131) should spend its budget on edge-tile cutting + `clip_mask`
-  integrity.
+  edge art's inner boundary) with manual fixup allowed.
+
+  CORRECTED 2026-07-12 (REQ-0138, measured). The v1.0 risk note said
+  "diffusion models are weak at seamless tiling". That was wrong as stated —
+  the weakness is in the default sampler/VAE *padding*, not in the model.
+  `fill_texture` tiling is **SOLVED**, with no manual cleanup, via circular
+  padding (`spinagon/ComfyUI-seamless-tiling`):
+    - `SeamlessTile` (`tiling: enable`, `copy_model: "Make a copy"`) between
+      the checkpoint loader and the KSampler — circular Conv2d padding in the
+      UNet;
+    - `CircularVAEDecode` (`tiling: enable`) in place of `VAEDecode` — the
+      decoder pads independently, so a normal decode reintroduces the seam;
+    - both patches, or the seam survives.
+  Measured seam ratio (wrap-edge discontinuity / interior baseline; 1.0 =
+  indistinguishable from the texture): **0.83–1.09 seamless vs 2.76–3.77
+  control**, across 2 motifs × 2 seeds, zero overlap. Recipe is architectural
+  and carries to any SDXL checkpoint (re-run the offset check once on the
+  REQ-0136-ratified checkpoint; NOT valid for FLUX-family).
+  Circular padding makes a tile *joinable*, not *tileable-looking* — the
+  allover-pattern prompt discipline (no focal object, no vignette/gradient,
+  uniform density edge to edge) is still mandatory.
+
+  **EDGE TILES (REQ-0131, measured 2026-07-12): the motif-sheet route is
+  DISPROVED. Do not cut edge tiles out of a frame sheet.**
+
+  The spike asked the model for an ornate square frame with a uniform border
+  band, then cut `straight` from the top band and `outer corner` from the
+  corner. A diffusion model does not paint a uniform band — it paints a
+  decorative ARCH. The cut "straight" tile is therefore an arch, and repeating
+  an arch along an edge gives a scalloped, discontinuous ribbon. Periodicity
+  along its run is the one property a straight edge tile must have, and it is
+  exactly the property a frame sheet cannot supply. (`band_thickness()` duly
+  measured 463 px of 1024 as the "band"; the derived `clip_mask` became a blob
+  covering 41.8 % of the tile and clipped the cell away.)
+
+  **Route instead: GENERATE the edge periodic; do not cut it out.** This falls
+  straight out of the fill recipe above. A straight edge tile must repeat along
+  ONE axis — which is what circular padding delivers, already proved on this GPU
+  route:
+    - generate the straight edge as a **1-D seamless strip** (wide, short canvas,
+      e.g. 1024×256; same `SeamlessTile` + `CircularVAEDecode` recipe; prompt a
+      continuous ornamental border running left-to-right). It then tiles along
+      its run BY CONSTRUCTION, exactly as `fill_texture` tiles in 2-D. Cut any
+      cell-width piece; every piece joins.
+    - **corners are authored or derived from the ratified straight tile**, never
+      cut from a sheet. A frame sheet has no concave corner to cut at all.
+    - `clip_mask` auto-trace and the BS-G5 rotation exception are only worth
+      testing once a valid straight tile exists.
+
+  **Harness caveat.** A leakage metric alone cannot pass this step: the spike's
+  harness reported `leaking=0` on composites that were nearly EMPTY (nothing
+  drawn cannot leak). Any S3 harness must pair leakage with a **coverage** check
+  — did the fill actually render inside the silhouette?
 - **S3 Assembly + validation harness.** Deterministic harness composites the
   full rendering stack (§2) on the validation shape suite (1×1, I, L, T, S/Z,
   inner-corner and holed shapes) over several contrasting canvas backgrounds,
