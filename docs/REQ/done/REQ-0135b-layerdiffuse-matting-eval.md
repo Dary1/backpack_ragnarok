@@ -497,7 +497,7 @@ that suspicion and never produced valid data, because LD was inert throughout.
 That experiment does not need LayerDiffuse at all: route A (rembg) alone, with
 the background clause varied (near-white / mid-grey / chroma). It is cheap, it
 is GPU-light, and it may show the pain is partly self-inflicted by our own
-prompt. Filed as a separate REQ — see the matte-background-clause A/B sibling.
+prompt. Filed as **REQ-0147-matte-background-clause-ab** (draft/).
 
 ### Residue (deliberately left in place)
 
