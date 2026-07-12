@@ -39,3 +39,27 @@ route comparison is REQ-0135 (run this bakeoff with the incumbent matte).
 - Numbered gallery; user verdict selects the default checkpoint.
 - License verification recorded. Findings + winner appended here; pipeline docs
   updated as implementation of this REQ.
+
+## Cross-dependency — added 2026-07-13 by REQ-0131 (READ BEFORE THE BAKEOFF)
+
+This REQ's verdict is **not icon-local.** The Backpack Skin pipeline's only
+green result — REQ-0138's seamless `fill_texture` recipe — is built on
+`SeamlessTile` + `CircularVAEDecode`, whose Conv2d circular-padding patches are
+**SDXL UNet-specific and explicitly NOT valid for FLUX-family checkpoints**
+(REQ-0138 §"Checkpoint portability"). REQ-0131's recommended edge-tile route
+(1-D seamless strip) rests on the same two patches.
+
+Consequence: **ratifying candidate 3 (FLUX.2 klein 4B) as the default would
+invalidate both the fill recipe and the edge-tile route**, and the whole
+circular-padding approach would need re-validation on FLUX before any skin batch
+could be briefed. That cost is not currently priced into this bakeoff.
+
+Therefore the bakeoff must weigh **seamless-tiling support** alongside painterly
+quality, and the FLUX candidate must be scored with the skin-pipeline re-
+validation cost attached — or the two default checkpoints (icons vs. skins) must
+be allowed to diverge, which is itself a decision this REQ should surface rather
+than take by accident.
+
+(For the record: an earlier revision of REQ-0131 asserted that this REQ had
+already ratified flux2. It had not; that claim was false and has been struck.
+No bakeoff has been run and no winner is ratified as of 2026-07-13.)

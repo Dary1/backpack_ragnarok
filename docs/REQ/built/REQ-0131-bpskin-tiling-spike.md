@@ -167,6 +167,34 @@ backgrounds. Its leakage metric needs a companion **coverage** metric ("did the
 fill actually render inside the silhouette?") so that "nothing drawn" can never
 again be reported as "no leakage".
 
+**Measured (2026-07-13 review — re-verification of the artifacts).** The
+degeneracy is worse than the prose above admits. Of the six generated
+`clip_mask`s, **four are uniformly black** — one grey level, 0.0 % of pixels
+passing:
+
+| clip_mask | pass % | grey levels |
+|---|---|---|
+| barbarian_straight | 0.0 | 1 |
+| barbarian_outer | 0.0 | 1 |
+| barbarian_inner | 0.0 | 1 |
+| elven_inner | 0.0 | 1 |
+| elven_outer | 22.5 | 2 |
+| elven_straight | 41.8 | 2 |
+
+An all-black clip mask admits **no fill pixel anywhere**, so the barbarian motif
+rendered zero `fill_texture` on every shape over every background. The two
+non-degenerate masks are pure binary blobs (2 levels). Against masks that pass
+~0 % of their area, `leaking: 0 / 42` is not a weak pass — it is a tautology, in
+the strict sense that no configuration of the fill could have produced any other
+number. `results.json` carries exactly one field per composite (`leak_px`) and no
+coverage field, so the harness was structurally incapable of noticing.
+
+The coverage metric is therefore not a refinement: **until it exists, a green
+harness run carries no information at all**, and no skin — hand-authored or UGC —
+may be gated on this harness. Pipeline doc §6 requires every S3 gate to be a
+machine gate (UGC keeps no human in the loop), which makes this the blocking
+defect for REQ-0126's harness, not merely a footnote to this spike.
+
 ### Status
 
 - Fill route: green, via REQ-0138.
@@ -176,12 +204,44 @@ again be reported as "no leakage".
   failure is documented with concrete alternatives" → **met by the second
   branch.**
 - Gate "findings reviewed by the user before the first real skin batch is
-  briefed" → **OPEN.** No skin batch may be briefed on the frame-sheet route.
+  briefed" → **MET 2026-07-13** — the user reviewed these findings, including
+  the struck flux2 claim and the measured mask degeneracy above, and cleared the
+  merge to master. No skin batch may be briefed on the frame-sheet route.
 
-Checkpoint note: this spike ran on JuggernautXL V9, the incumbent at the time.
-REQ-0136 has since ratified **flux2**. The failure above is a *geometry* failure,
-not a checkpoint failure — a prettier frame is still not a tileable band — so
-the recommendation stands regardless. The strip re-run should use flux2.
+### Checkpoint note (CORRECTED 2026-07-13)
+
+This spike ran on JuggernautXL V9, the incumbent.
+
+**Correction.** An earlier revision of this section claimed "REQ-0136 has since
+ratified **flux2**" and directed the strip re-run to use flux2. **That claim was
+false and is struck.** REQ-0136 (icon-checkpoint-bakeoff) is still in `todo/` —
+no bakeoff has been run, no gallery produced, no winner ratified. FLUX.2 klein
+4B is merely candidate 3 of 3 in that REQ's spec. The claim was also
+self-defeating: this same file (see the RE-SCOPE section) records that the
+circular-padding recipe is **NOT valid for FLUX-family** checkpoints, so "re-run
+the strip on flux2" pointed the follow-up at a checkpoint on which its own
+recipe is documented not to work.
+
+What actually holds:
+
+- The frame-sheet failure is a **geometry** failure, not a checkpoint failure —
+  a prettier frame is still not a tileable band. The recommendation (generate a
+  1-D seamless strip; do not cut edges out of a frame) stands regardless of
+  checkpoint.
+- **The strip re-run must use an SDXL-family checkpoint** (JuggernautXL V9
+  unless and until REQ-0136 ratifies a different SDXL checkpoint). The strip
+  route depends on `SeamlessTile` + `CircularVAEDecode`, and REQ-0138 validated
+  those on SDXL only.
+
+**Cross-risk, previously unrecorded — READ BEFORE RUNNING REQ-0136.** Both
+patches are SDXL UNet-specific. If REQ-0136 ratifies flux2 (or any FLUX-family
+checkpoint) as the default, it does not merely block the strip route — it also
+**invalidates REQ-0138's `fill_texture` recipe, which is currently the only
+green result in the entire skin pipeline.** The whole circular-padding route,
+fill and edge alike, would need re-validation on FLUX before any skin batch.
+REQ-0136's checkpoint verdict is therefore not icon-local: it is a load-bearing
+dependency of the Backpack Skin pipeline, and its bakeoff should weigh
+seamless-tiling support, not painterly quality alone.
 
 Artifacts: `content/batches/bpskin-spike-0131/` (sheets/, tiles/, harness/,
 cut_report.json, harness/results.json).
