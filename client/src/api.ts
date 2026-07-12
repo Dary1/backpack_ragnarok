@@ -501,7 +501,7 @@ export function grantWarehouseItem(itemId: string): Promise<{ ok: true; item: Ap
 export interface ApiRolledBp {
   uid: string;
   shape: Array<[number, number]>;
-  linker: { off: [number, number]; dirs: number[] };
+  unit: { off: [number, number]; dirs: number[] };
   hpMax: number;
   cellCount: number;
 }

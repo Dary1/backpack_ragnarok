@@ -23,8 +23,8 @@ const GACHA_PENDING_TIMEOUT_MS = 120 * 1000; // same 120s lazy-revert window as 
 const GACHA_MIN_CELLS = 6;
 const GACHA_MAX_CELLS = 8;
 const GACHA_HP_PER_CELL = 15; // hpMax = 15 x cellCount
-const GACHA_MIN_LINKER_DIRS = 1;
-const GACHA_MAX_LINKER_DIRS = 3;
+const GACHA_MIN_UNIT_DIRS = 1;
+const GACHA_MAX_UNIT_DIRS = 3;
 const GACHA_WALK_RETRY_CAP = 2000; // generous cap -- see rollPolyomino()'s own comment for why this can never realistically be hit for 6-8 cells
 
 // Reads a player's CURRENT LRDST balance from their LAST-SAVED profile
@@ -95,8 +95,8 @@ function rollPolyomino(rngStream, minCells, maxCells) {
 }
 
 // rollCommonBp(masterSeed): the full common_bp roll -- polyomino shape,
-// linker cell (uniformly chosen FROM the polyomino's own cells, per the
-// REQ doc), 1-3 random distinct linker directions (0-7, matching
+// unit cell (uniformly chosen FROM the polyomino's own cells, per the
+// REQ doc), 1-3 random distinct unit directions (0-7, matching
 // engine.js's DIRS numeric convention), hpMax = 15 x cellCount, and a
 // freshly minted uid for the BP instance. Uses sim/combat.cjs's existing
 // makeRng() seeded-RNG helper (already required at the top of this file
@@ -107,15 +107,15 @@ function rollPolyomino(rngStream, minCells, maxCells) {
 function rollCommonBp(masterSeed) {
   const rng = combat.makeRng(masterSeed);
   const shapeStream = rng.stream('gacha/common_bp/shape');
-  const linkerStream = rng.stream('gacha/common_bp/linker');
+  const unitStream = rng.stream('gacha/common_bp/unit');
   const shape = rollPolyomino(shapeStream, GACHA_MIN_CELLS, GACHA_MAX_CELLS);
-  const linkerIdx = Math.floor(linkerStream.next() * shape.length);
-  const linkerOff = shape[linkerIdx];
-  const dirCount = GACHA_MIN_LINKER_DIRS + Math.floor(linkerStream.next() * (GACHA_MAX_LINKER_DIRS - GACHA_MIN_LINKER_DIRS + 1));
+  const unitIdx = Math.floor(unitStream.next() * shape.length);
+  const unitOff = shape[unitIdx];
+  const dirCount = GACHA_MIN_UNIT_DIRS + Math.floor(unitStream.next() * (GACHA_MAX_UNIT_DIRS - GACHA_MIN_UNIT_DIRS + 1));
   const availableDirs = [0, 1, 2, 3, 4, 5, 6, 7];
   const dirs = [];
   for (let i = 0; i < dirCount; i++) {
-    const idx = Math.floor(linkerStream.next() * availableDirs.length);
+    const idx = Math.floor(unitStream.next() * availableDirs.length);
     dirs.push(availableDirs.splice(idx, 1)[0]);
   }
   const hpMax = GACHA_HP_PER_CELL * shape.length;
@@ -123,7 +123,7 @@ function rollCommonBp(masterSeed) {
   return {
     uid,
     shape,
-    linker: { off: linkerOff, dirs },
+    unit: { off: unitOff, dirs },
     hpMax,
     cellCount: shape.length,
   };
@@ -249,8 +249,8 @@ module.exports = {
   GACHA_MIN_CELLS,
   GACHA_MAX_CELLS,
   GACHA_HP_PER_CELL,
-  GACHA_MIN_LINKER_DIRS,
-  GACHA_MAX_LINKER_DIRS,
+  GACHA_MIN_UNIT_DIRS,
+  GACHA_MAX_UNIT_DIRS,
   GACHA_WALK_RETRY_CAP,
   readLrdstBalance,
   rollPolyomino,

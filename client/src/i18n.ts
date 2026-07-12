@@ -420,7 +420,7 @@ const DICT = {
     'market.chip.weapon': 'Arms',
     'market.chip.frost': 'Frost',
     'market.chip.ember': 'Ember',
-    'market.chip.linker': 'Linker',
+    'market.chip.unit': 'Unit',
     'market.chip.relic': 'Relic',
     // buy modal
     'market.buy.oathTitle': 'The oath of purchase',
@@ -534,7 +534,7 @@ const DICT = {
     'workshop.oddsCells': '{n} cells',
     'workshop.oddsHp': 'HP {hp}',
     'workshop.ruleCommon': 'Cast blueprints are Common rarity only.',
-    'workshop.ruleLinker': 'The linker seat is stamped onto one cell at cast time -- the seat cannot be chosen.',
+    'workshop.ruleUnit': 'The unit seat is stamped onto one cell at cast time -- the seat cannot be chosen.',
     'workshop.ruleTwoPhase': 'Receipt is two-phase -- receive, placing..., finalized by the auto-save in the Backpacks hall.',
     'workshop.transmuteTitle': 'Transmute',
     'workshop.transmuteDen': 'TRANSMUTE',
@@ -578,7 +578,7 @@ const DICT = {
     'workshop.statRarity': 'Rarity',
     'workshop.statCells': 'Cells',
     'workshop.statHp': 'Durability',
-    'workshop.statLinker': 'Linker',
+    'workshop.statUnit': 'Unit',
     'workshop.statDirs': 'Beams',
     // Ragnarok / Hall of Ragnarok (client/src/ragnarok/*) -- REQ-0066.
     // Mock: web/redesign/ragnarok.html. Hero pledge is frozen verbatim
@@ -1077,7 +1077,7 @@ const DICT = {
     'market.chip.weapon': '武具',
     'market.chip.frost': '霜',
     'market.chip.ember': '焔',
-    'market.chip.linker': '連結',
+    'market.chip.unit': '連結',
     'market.chip.relic': '遺宝',
     'market.buy.oathTitle': '購入の誓い',
     'market.buy.oathTitleEn': 'Seal the trade',
@@ -1186,7 +1186,7 @@ const DICT = {
     'workshop.oddsCells': '{n}セル',
     'workshop.oddsHp': 'HP {hp}',
     'workshop.ruleCommon': '鋳造される設計図の品位は Common のみ。',
-    'workshop.ruleLinker': 'リンカー座(ᛖ)は鋳込時に1セルへ刻印される — 座は選べない。',
+    'workshop.ruleUnit': 'ユニット座(ᛖ)は鋳込時に1セルへ刻印される — 座は選べない。',
     'workshop.ruleTwoPhase': '受領は二段階 — 受け取る → 配置中… → 編成の間の自動保存で確定。',
     'workshop.transmuteTitle': '変成',
     'workshop.transmuteDen': 'TRANSMUTE',
@@ -1230,7 +1230,7 @@ const DICT = {
     'workshop.statRarity': '品位',
     'workshop.statCells': 'セル',
     'workshop.statHp': '耐久',
-    'workshop.statLinker': '連結座',
+    'workshop.statUnit': '連結座',
     'workshop.statDirs': '方位',
     // Ragnarok / 殿堂 (client/src/ragnarok/*) -- REQ-0066. Frozen strings
     // (hero pledge, season note, the 3 rite steps, the devotion warning,

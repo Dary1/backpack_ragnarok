@@ -100,7 +100,7 @@ export interface SIDef {
 export type ItemDefMap = Record<string, ItemDef>;
 export type SIDefMap = Record<string, SIDef>;
 
-export interface BPLinker {
+export interface BPUnit {
   off: Offset;
   dirs: number[]; // 0..7, see engine.js DIRS
 }
@@ -111,7 +111,7 @@ export interface BP {
   color: string;
   shape: Offset[];
   origin: Cell;
-  linker: BPLinker;
+  unit: BPUnit;
   /** REQ-0036 P1-A: BP max HP (Backpack-as-HP). Optional here since this
    * type predates that field and not every synthetic/test BP literal in
    * this codebase sets it -- mirrors the engine's own tolerant read
@@ -288,9 +288,9 @@ export interface EngineInstance {
   rotOffsets: (base: Offset[], k: number) => Offset[];
   shapeInfo: (id: string, rot: number) => ShapeInfo;
   bpCells: (bp: BP) => Cell[];
-  linkerCell: (bp: BP) => Cell;
+  unitCell: (bp: BP) => Cell;
   cellBPMap: (st: GameState) => Record<string, string>;
-  linkerMap: (st: GameState) => Record<string, string>;
+  unitMap: (st: GameState) => Record<string, string>;
   cellsOf: (st: GameState, p: PO) => Cell[];
   occupancy: (st: GameState, excl?: string[]) => Record<string, string>;
 
@@ -300,14 +300,14 @@ export interface EngineInstance {
   canMoveBP: (st: GameState, bpId: string, origin: Cell) => PlacementCheck;
   moveBP: (st: GameState, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
   /** REQ-0045 (a2): legality for rotating `bpId` 90 degrees CW IN PLACE
-   * (origin unchanged; shape/linker/contained-PO layout all rotate about
+   * (origin unchanged; shape/unit/contained-PO layout all rotate about
    * the BP's own bounding box). See mock-src/engine.js's computeRotatedBP
    * doc comment for the exact transform ([r,c]->[c,-r] + renormalize,
-   * same matrix rotOffsets uses for PO shapes; linker dirs shift +2 mod
+   * same matrix rotOffsets uses for PO shapes; unit dirs shift +2 mod
    * 8; contained PO rot advances +1 mod 4). */
   canRotateBP: (st: GameState, bpId: string) => PlacementCheck;
   /** Mutates: commits canRotateBP's candidate rotation atomically (shape,
-   * linker off+dirs, every contained PO's cell+rot) -- all-or-nothing,
+   * unit off+dirs, every contained PO's cell+rot) -- all-or-nothing,
    * same discipline as moveBP. */
   rotateBP: (st: GameState, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
   poInBP: (st: GameState, p: PO, bp: BP) => boolean;

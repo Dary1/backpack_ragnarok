@@ -3,7 +3,7 @@
 // independence). Fixture: client/e2e/fixtures/reference-model-fixture.json
 // (8x8 layout):
 //   - CANVAS (squad1, active at boot): one BP `canvas_bp1`, a 3x6
-//     rectangle at origin [1,1] (absolute rows 1-3, cols 1-6), linker at
+//     rectangle at origin [1,1] (absolute rows 1-3, cols 1-6), unit at
 //     the (1,1) corner cell. Every OTHER cell in that rectangle is free
 //     -- canvas requires BP-containment for any PO placement (canPlacePO
 //     rejects "Dead Space"), so this is the landing zone for every
@@ -16,7 +16,7 @@
 //     so scenario 3 below has somewhere legal to drop onto).
 //   - INVENTORY page0: a free-placed blade `p900` at [5,5]-[6,5] (used by
 //     scenarios 1-5, 8), and a BP `homebp` at origin [1,1] (absolute
-//     cells (1,1),(2,1),(1,2),(2,2),(3,1), linker at (3,1)) containing
+//     cells (1,1),(2,1),(1,2),(2,2),(3,1), unit at (3,1)) containing
 //     two daggers `p910` (cells (1,1)-(2,1)) and `p911` (cells
 //     (1,2)-(2,2)) -- used by scenarios 6-7's BP-exclusion coverage.
 //     homebp's CANVAS drop target (origin [5,1]) is deliberately outside
@@ -75,7 +75,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // Drop anchor (1,2): inside canvas_bp1, avoiding its (1,1) linker cell.
+    // Drop anchor (1,2): inside canvas_bp1, avoiding its (1,1) unit cell.
     await drag(
       page,
       { x: invBox.x + cx(5), y: invBox.y + cy(5) },
@@ -251,7 +251,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(await usedByCurrent(page, 'p910')).toBe(true);
     expect(await usedByCurrent(page, 'p911')).toBe(false);
 
-    // Now drag the BP itself (grab via its linker cell, home-absolute
+    // Now drag the BP itself (grab via its unit cell, home-absolute
     // [3,1]) from inventory to canvas, landing at origin [5,1] --
     // deliberately OUTSIDE canvas_bp1's [1,1]-[3,6] footprint (a
     // transferred BP does not need to land inside another BP).
@@ -297,8 +297,8 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(canvas.pos.find((p: any) => p.uid === 'p911')).toBeTruthy();
 
     // Drag it back canvas -> inventory (drop cell irrelevant, grab via
-    // its canvas linker cell -- home linker offset [2,0] from origin
-    // [5,1] puts the linker at absolute [7,1]).
+    // its canvas unit cell -- home unit offset [2,0] from origin
+    // [5,1] puts the unit at absolute [7,1]).
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(page, { x: canvasBox2.x + cx(1), y: canvasBox2.y + cy(7) }, { x: invBox2.x + cx(7), y: invBox2.y + cy(7) });

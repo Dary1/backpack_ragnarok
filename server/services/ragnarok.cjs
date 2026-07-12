@@ -422,7 +422,7 @@ function orderView(callerId, opts, nowMs) {
 //                                  // no def map: a BP reference already
 //                                  // carries its full def inline
 //                                  // ({id,name,color,shape,origin,
-//                                  // linker}, engine.js ~1204).
+//                                  // unit}, engine.js ~1204).
 //   },
 //   blast: { bps, pos, sis, total, affectedSquads }, // preview shape,
 //                                  // frozen for idempotent replays

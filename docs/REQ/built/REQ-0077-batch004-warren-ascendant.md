@@ -163,7 +163,7 @@ per-monster writeup in `notes.md`'s "Revision 2" section; summary:
   (`buff_self`, `status_immune`, `bonus_vs_status`, `damage_reduction`), all
   flagged as a vocab-growth proposal pending sign-off, same posture as the
   `art` field. 2 of the 10 new skills (green_slime, lich) needed **zero new
-  vocab** -- `OnUnitBeenHit`/`OnHit` + `apply_status`/`lifesteal` already
+  vocab** -- `OnSquadBeenHit`/`OnHit` + `apply_status`/`lifesteal` already
   existed and were already `EnemySkill`-legal, just never used by an enemy.
 - **10 new skills** (one passive/reactive add-on per monster, +1 each to
   `skills.json`/`enemies.json`, 23 -> 33 total): green_slime Corrosive Touch,
@@ -202,7 +202,7 @@ an unconditional, folded-once buff is mechanically identical to just raising
 the active skills' base damage directly, so it teaches/changes nothing.
 Correct catch. **Fix**: swapped for `goblin_cornered_snarl` (Cornered Snarl /
 窮鼠の逆襲, named for the idiom "a cornered mouse bites the cat") --
-`OnUnitBeenHit` + `strike[2,4]`, a reactive counter-strike, genuinely
+`OnSquadBeenHit` + `strike[2,4]`, a reactive counter-strike, genuinely
 event-driven and therefore not reducible to a static number tweak. No new
 vocab (3rd reactive proc in the batch, each using a different verb:
 apply_status / lifesteal / strike). The other 3 unconditional battle_start

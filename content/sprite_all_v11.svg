@@ -51,8 +51,8 @@
     <path d="M 28.5 20 L 28.5 46" fill="none" stroke="#ffffff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round"/>
   </symbol>
 
-  <!-- 12. Linker core : neutral octagonal rune disc, cyan core -->
-  <symbol id="icon-linker_core" viewBox="0 0 64 64">
+  <!-- 12. Unit core : neutral octagonal rune disc, cyan core -->
+  <symbol id="icon-unit_core" viewBox="0 0 64 64">
     <polygon points="56,42 42,56 22,56 8,42 8,22 22,8 42,8 56,22" fill="#b08340" stroke="#2b2016" stroke-width="3" stroke-linejoin="round"/>
     <circle cx="32" cy="12" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>
     <circle cx="52" cy="32" r="2.2" fill="#e9b64d" stroke="#2b2016" stroke-width="1.5"/>

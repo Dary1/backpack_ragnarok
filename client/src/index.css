@@ -996,11 +996,11 @@ html, body {
   box-shadow: inset 0 0 0 2px var(--cyan);
 }
 
-.shape-grid-cell-linker {
+.shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 0 4px #0e0d0b;
 }
 
-.shape-grid-cell-linker::after {
+.shape-grid-cell-unit::after {
   content: '';
   position: absolute;
   inset: 6px;
@@ -2738,10 +2738,10 @@ html, body {
 .workshop-result-fig .shape-grid-cell-shape {
   background: #3a3229;
 }
-.workshop-result-fig .shape-grid-cell-linker {
+.workshop-result-fig .shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px #14100a;
 }
-.workshop-result-fig .shape-grid-cell-linker::after {
+.workshop-result-fig .shape-grid-cell-unit::after {
   background: var(--gold);
   opacity: 0.55;
 }

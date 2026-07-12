@@ -95,12 +95,12 @@
   "battle_start": ["PO", "EnemySkill"],
   "adjacent": ["PO"],
   "passive": ["SI", "PO"],
-  "OnHit": ["SI", "PO", "Linker", "EnemySkill"],
+  "OnHit": ["SI", "PO", "Unit", "EnemySkill"],
   "OnPOHit": ["SI"],
-  "OnBPHierarchyHit": ["SI", "PO", "Linker"],
-  "OnSquadHit": ["SI", "PO", "Linker", "EnemySkill"],
-  "OnBPBeenHit": ["SI", "PO", "Linker"],
-  "OnSquadBeenHit": ["SI", "PO", "Linker", "EnemySkill"]
+  "OnBPHierarchyHit": ["SI", "PO", "Unit"],
+  "OnSquadHit": ["SI", "PO", "Unit", "EnemySkill"],
+  "OnBPBeenHit": ["SI", "PO", "Unit"],
+  "OnSquadBeenHit": ["SI", "PO", "Unit", "EnemySkill"]
  },
  "ranged_verb_params": {
   "strike": [
@@ -151,7 +151,7 @@
  },
  "excluded_attested": {
   "gold_pickup": "Gold-as-item (BH: coins occupy backpack space) -- our game has no shop/gold economy loop; excluded as a non-portable resource verb.",
-  "mana_conductivity": "Mana Stone conductive-path powering (BH sec4 P6) -- superseded by our own Linker connectivity mechanic; not re-added as a generic verb to avoid a duplicate system.",
+  "mana_conductivity": "Mana Stone conductive-path powering (BH sec4 P6) -- superseded by our own Unit connectivity mechanic; not re-added as a generic verb to avoid a duplicate system.",
   "energy_cost": "Energy/turn spend to use an item (BH sec5) -- we have no turn-based energy resource; combat is tick-driven, not energy-gated.",
   "stamina_cost": "Stamina cost/regen per attack (BB sec5) -- real-time stamina-gating resource, not part of our tick/BP model.",
   "shop_reroll": "Shop reroll / reserve / sell-for-half (BB/Brawl sec8) -- meta-loop economy verbs, not combat effect verbs; out of scope for the effect vocab.",

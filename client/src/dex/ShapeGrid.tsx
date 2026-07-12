@@ -52,13 +52,13 @@ import { computeDomIconOverlay } from '../render/itemCard';
 interface ShapeGridProps {
   shape: Cell[];
   portTiles?: Cell[];
-  /** REQ-0045 (h): highlights a single cell as the BP linker core (the
-   * beam-firing anchor cell, engine.linkerCell()'s own cell-space --
+  /** REQ-0045 (h): highlights a single cell as the BP unit core (the
+   * beam-firing anchor cell, engine.unitCell()'s own cell-space --
    * mirrors portTiles' "extra highlighted cell set" pattern, but always
    * exactly one cell). Independent of portTiles/isShape -- a cell can be
-   * shape+linker at once (the common case: the linker sits ON the BP's
+   * shape+unit at once (the common case: the unit sits ON the BP's
    * own footprint). */
-  linkerTile?: Cell;
+  unitTile?: Cell;
   cellPx?: number;
   /** REQ-0038, fixed R2: shape-mounted icon rendering. When provided, the
    * icon is composited as ONE overlay spanning the item's full footprint
@@ -89,7 +89,7 @@ interface ShapeGridProps {
 export function ShapeGrid({
   shape,
   portTiles,
-  linkerTile,
+  unitTile,
   cellPx = 18,
   iconUrl,
   iconAlt,
@@ -98,7 +98,7 @@ export function ShapeGrid({
   iconAlign,
   showCoords,
 }: ShapeGridProps) {
-  const all = [...shape, ...(portTiles ?? []), ...(linkerTile ? [linkerTile] : [])];
+  const all = [...shape, ...(portTiles ?? []), ...(unitTile ? [unitTile] : [])];
   if (all.length === 0) return <div className="shape-grid-empty">--</div>;
 
   const rows = all.map((c) => c[0]);
@@ -112,13 +112,13 @@ export function ShapeGrid({
 
   const shapeSet = new Set(shape.map((c) => `${c[0]},${c[1]}`));
   const portSet = new Set((portTiles ?? []).map((c) => `${c[0]},${c[1]}`));
-  const linkerKey = linkerTile ? `${linkerTile[0]},${linkerTile[1]}` : null;
+  const unitKey = unitTile ? `${unitTile[0]},${unitTile[1]}` : null;
 
-  const cells: Array<{ row: number; col: number; isShape: boolean; isPort: boolean; isLinker: boolean }> = [];
+  const cells: Array<{ row: number; col: number; isShape: boolean; isPort: boolean; isUnit: boolean }> = [];
   for (let r = minRow; r <= maxRow; r++) {
     for (let c = minCol; c <= maxCol; c++) {
       const key = `${r},${c}`;
-      cells.push({ row: r, col: c, isShape: shapeSet.has(key), isPort: portSet.has(key), isLinker: key === linkerKey });
+      cells.push({ row: r, col: c, isShape: shapeSet.has(key), isPort: portSet.has(key), isUnit: key === unitKey });
     }
   }
 
@@ -149,12 +149,12 @@ export function ShapeGrid({
         gridTemplateRows: `repeat(${nRows}, ${cellPx}px)`,
       }}
     >
-      {cells.map(({ row, col, isShape, isPort, isLinker }) => (
+      {cells.map(({ row, col, isShape, isPort, isUnit }) => (
         <div
           key={`${row},${col}`}
-          className={`shape-grid-cell${isShape ? ' shape-grid-cell-shape' : ''}${isPort ? ' shape-grid-cell-port' : ''}${isLinker ? ' shape-grid-cell-linker' : ''}`}
+          className={`shape-grid-cell${isShape ? ' shape-grid-cell-shape' : ''}${isPort ? ' shape-grid-cell-port' : ''}${isUnit ? ' shape-grid-cell-unit' : ''}`}
           title={`[${row},${col}]`}
-          data-testid={isLinker ? 'shape-grid-cell-linker' : undefined}
+          data-testid={isUnit ? 'shape-grid-cell-unit' : undefined}
         >
           {showCoords && isShape ? <span className="shape-grid-cell-coord">{row},{col}</span> : null}
         </div>

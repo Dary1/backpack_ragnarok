@@ -163,7 +163,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
     });
   });
 
-  test('REQ-0045 (h): roll result diagram shows the shape grid, linker cell, one compass arrow per beam direction, and matching hpMax/cellCount', async ({ page }) => {
+  test('REQ-0045 (h): roll result diagram shows the shape grid, unit cell, one compass arrow per beam direction, and matching hpMax/cellCount', async ({ page }) => {
     await withDevProfileBackup(async () => {
       const seededCanvas = await seedDevLrdstBalance(page, 999);
       const preRollBpIds = new Set<string>();
@@ -190,9 +190,9 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // dex.spec.ts; here just confirm it mounted inside the result panel).
       await expect(resultPanel.locator('.shape-grid-cell-shape').first()).toBeVisible();
 
-      // Linker cell marked: EXACTLY one cell carries the linker highlight
-      // (ShapeGrid's new linkerTile prop, REQ-0045 h).
-      await expect(resultPanel.locator('[data-testid="shape-grid-cell-linker"]')).toHaveCount(1);
+      // Unit cell marked: EXACTLY one cell carries the unit highlight
+      // (ShapeGrid's new unitTile prop, REQ-0045 h).
+      await expect(resultPanel.locator('[data-testid="shape-grid-cell-unit"]')).toHaveCount(1);
 
       // Wait for the roll to fully finalize (toast + auto-save) so the
       // freshly-saved canvas can be read back and cross-checked against
@@ -206,9 +206,9 @@ test.describe('Workshop gacha roll (dev player)', () => {
       expect(newBp).toBeTruthy();
 
       // Beam directions as compass arrows: exactly one arrow per
-      // linker.dirs entry (REQ-0045 h) -- cross-checked against the SAME
+      // unit.dirs entry (REQ-0045 h) -- cross-checked against the SAME
       // BP the server actually finalized, not just "some plausible count".
-      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.linker.dirs.length);
+      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.unit.dirs.length);
 
       // hpMax + cell count: displayed values match the finalized BP's own
       // fields exactly.
@@ -372,7 +372,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
           // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
           // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
           // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 800 }],
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 800 }],
           pos: [
             { uid: `e2e_blade_${tag}`, id: 'blade', loc: 'grid', cell: [0, 1], rot: 0 },
             { uid: `e2e_hilt_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 },
@@ -475,17 +475,17 @@ test.describe('BP move handle', () => {
     await withDevProfileBackup(async () => {
       // A 2x2 BP on the canvas, fully covered by 4x 1x1 POs (one per
       // cell) -- this is exactly the scenario the badge exists for
-      // (grabbing by an empty cell is impossible; the linker cell itself
-      // is also covered here, by placing the linker off-cell such that
-      // ALL 4 shape cells are covered including wherever the linker sits
-      // -- shape [[0,0],[0,1],[1,0],[1,1]], linker off [0,0] -- so the PO
-      // at [0,0] covers the linker cell too, and the empty-cell handle
+      // (grabbing by an empty cell is impossible; the unit cell itself
+      // is also covered here, by placing the unit off-cell such that
+      // ALL 4 shape cells are covered including wherever the unit sits
+      // -- shape [[0,0],[0,1],[1,0],[1,1]], unit off [0,0] -- so the PO
+      // at [0,0] covers the unit cell too, and the empty-cell handle
       // loop finds zero free cells to hand out).
       const canvasBpId = 'canvas_covered_bp';
       const invBpId = 'inv_covered_bp';
       const canvas = {
         linked: true,
-        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
         pos: [
           { uid: 'c_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
           { uid: 'c_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
@@ -496,7 +496,7 @@ test.describe('BP move handle', () => {
         inv: {
           pages: [
             {
-              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
               pos: [
                 { uid: 'i_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
                 { uid: 'i_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
@@ -533,7 +533,7 @@ test.describe('BP move handle', () => {
       expect(movedCanvasBp).toBeTruthy();
       expect(movedCanvasBp.origin).toEqual([6, 6]);
       // Contents traveled WITH the BP (badge-initiated drag uses the
-      // SAME beginDrag('bp',...) whole-BP-move path as linker-grab).
+      // SAME beginDrag('bp',...) whole-BP-move path as unit-grab).
       const movedPo = saved.pos.find((p: any) => p.uid === 'c_po_1');
       expect(movedPo.cell).toEqual([6, 6]);
 

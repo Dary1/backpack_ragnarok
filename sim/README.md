@@ -291,7 +291,7 @@ the source document's completeness.
     emitting `reactive_proc` events. Firing is depth-1 (a reactive proc never
     re-dispatches -- OQ-C), counts only direct damage (OQ-A: not DoT/reflect/
     0-dmg), and draws from isolated `reactive/<trigger>/...` RNG sub-streams so
-    existing golden hashes stay byte-identical. Player-side (PO/SI/Linker)
+    existing golden hashes stay byte-identical. Player-side (PO/SI/Unit)
     reactive firing and `OnPOHit` are deferred to Phase 1b.
 
 18. **Weakness/Haste "n" dual-purpose (stacks + duration).** S7's table

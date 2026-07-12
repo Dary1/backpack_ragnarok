@@ -169,7 +169,7 @@ fs.writeFileSync(path.join(liveDir, 'live_sis.json'), JSON.stringify({
 fs.writeFileSync(path.join(liveDir, 'live_tms.json'), JSON.stringify({
   schema: 'tm/1',
   entries: [
-    { id: 'lrdst', name: 'LinkerRandomDirectionShuffleTransmutator', short: 'LRDST',
+    { id: 'lrdst', name: 'UnitRandomDirectionShuffleTransmutator', short: 'LRDST',
       rarity: 'Common', icon: 'icon-lrdst', stackable: true },
   ],
 }));
@@ -1017,7 +1017,7 @@ async function main() {
     function squadCanvas(tag) {
       return {
         linked: true,
-        bps: [{ id: 'bp_' + tag, name: 'BP ' + tag, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+        bps: [{ id: 'bp_' + tag, name: 'BP ' + tag, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
         pos: [{ uid: 'po_' + tag, id: 'test_sword', loc: 'grid', cell: [1, 1], rot: 0 }],
         sis: [],
       };
@@ -1653,9 +1653,9 @@ async function main() {
     const rolled = rollRes.body.rolled;
     assert.ok(rolled && rolled.uid, 'rolled BP definition includes a minted uid');
     assert.ok(Array.isArray(rolled.shape) && rolled.shape.length >= 6 && rolled.shape.length <= 8, 'rolled shape has 6-8 cells: ' + JSON.stringify(rolled.shape));
-    assert.ok(rolled.linker && Array.isArray(rolled.linker.dirs) && rolled.linker.dirs.length >= 1 && rolled.linker.dirs.length <= 3, 'rolled linker has 1-3 dirs');
-    const linkerInShape = rolled.shape.some(([r, c]) => r === rolled.linker.off[0] && c === rolled.linker.off[1]);
-    assert.ok(linkerInShape, 'rolled linker cell is one of the polyomino\'s own cells');
+    assert.ok(rolled.unit && Array.isArray(rolled.unit.dirs) && rolled.unit.dirs.length >= 1 && rolled.unit.dirs.length <= 3, 'rolled unit has 1-3 dirs');
+    const unitInShape = rolled.shape.some(([r, c]) => r === rolled.unit.off[0] && c === rolled.unit.off[1]);
+    assert.ok(unitInShape, 'rolled unit cell is one of the polyomino\'s own cells');
     assert.strictEqual(rolled.hpMax, 15 * rolled.shape.length, 'hpMax = 15 x cellCount');
 
     // Server must NOT have deducted anything yet -- balance still 999,
@@ -1666,7 +1666,7 @@ async function main() {
     // Simulate the CLIENT's own deduction + first-fit placement + auto-save.
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     doc.canvas.inv.pages[0].tms.find((t) => t.uid === 'lrdst_test_stack').qty -= 10; // 999 -> 989
-    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], unit: rolled.unit, hpMax: rolled.hpMax });
     const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
     assert.strictEqual(putRes.status, 200, 'auto-save PUT must succeed: ' + JSON.stringify(putRes.body));
 
@@ -1692,7 +1692,7 @@ async function main() {
     // Place the BP but do NOT deduct the LRDST cost -- an attempted
     // "forge" of a free roll.
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
-    doc.canvas.inv.pages[2].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    doc.canvas.inv.pages[2].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], unit: rolled.unit, hpMax: rolled.hpMax });
     const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
     assert.strictEqual(putRes.status, 200);
 
@@ -1874,7 +1874,7 @@ async function main() {
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     doc.canvas.presets.store[4] = {
       linked: true,
-      bps: [{ id: 'bp_swaptarget', name: 'BP swaptarget', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+      bps: [{ id: 'bp_swaptarget', name: 'BP swaptarget', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 40 }],
       pos: [{ uid: 'po_swaptarget', id: 'test_sword', loc: 'grid', cell: [1, 1], rot: 0 }],
       sis: [],
     };
@@ -2443,7 +2443,7 @@ async function main() {
   ];
   const sellerSquad1 = {
     linked: true,
-    bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 }],
+    bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 30 }],
     pos: [
       { uid: 'mkt_susp', id: 'blade', cell: [1, 1], rot: 0 },
       { uid: 'mkt_susp2', id: 'blade', cell: [1, 2], rot: 0 },
@@ -2940,7 +2940,7 @@ async function main() {
   // shared_po (the yellow case) and also holds keep_po plus si_other
   // seated ON shared_po (host {po:...} -- exercises the surviving-SI
   // stow rule when its host PO is destroyed).
-  const bpDef = (id) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 });
+  const bpDef = (id) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { off: [0, 0], dirs: [] }, hpMax: 30 });
   const ragAInvPage = {
     bps: [bpDef('bp_dev'), bpDef('bp_other')],
     pos: [

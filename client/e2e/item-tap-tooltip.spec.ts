@@ -7,15 +7,15 @@
 // canvas board (the "spans multiple pages" requirement -- both are the same
 // BoardRenderer); and a DRAG (armed move) does NOT float a panel.
 //
-// NOTE: items are placed on BP cells that are NOT the linker cell. canvas_l's
-// linker sits at abs (4,3) and the linker core is drawn ABOVE the PO layer
-// (gLinkers after gItems), so a tap there hits the BP, not the PO (the same
+// NOTE: items are placed on BP cells that are NOT the unit cell. canvas_l's
+// unit sits at abs (4,3) and the unit core is drawn ABOVE the PO layer
+// (gUnits after gItems), so a tap there hits the BP, not the PO (the same
 // z-order bp-rotate.spec.ts relies on). The POs live at (2,2)/(3,2) instead.
 import { test, expect } from '@playwright/test';
 import { bootApp, cx, cy, drag } from './helpers';
 
 function makeCanvas() {
-  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], linker: { off: [2, 1], dirs: [0, 2] } };
+  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], unit: { off: [2, 1], dirs: [0, 2] } };
   const canvasPos = [
     { uid: 'canvas_hilt', id: 'hilt', loc: 'grid', cell: [2, 2], rot: 0 },
     { uid: 'canvas_dagger', id: 'dagger', loc: 'grid', cell: [3, 2], rot: 0 },

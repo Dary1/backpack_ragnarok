@@ -3,7 +3,7 @@
 // Engine-level rotation math (canRotateBP/rotateBP, invCanRotateBP/
 // invRotateBP) is unit-tested in mock-src/tests/run.cjs; this spec covers
 // the CLIENT interaction wiring: double-click on a BP's move-handle
-// badge, its linker core, or an empty BP cell all trigger the SAME
+// badge, its unit core, or an empty BP cell all trigger the SAME
 // rotation (client/src/board/BoardRenderer.ts's handleBPPointerDown),
 // on BOTH the canvas and inventory boards, and a PO's OWN dblclick-rotate
 // (handlePOPointerDown) is never intercepted by the BP handler even when
@@ -17,7 +17,7 @@
 // exactly like seated SIs are already independent per-squad (not
 // shared/mirrored). Rotating a BP's home in the inventory does NOT rotate
 // its canvas reference(s), and vice versa -- each is simply its own
-// {shape,linker,pos[]} record, rotated in place, with no cross-record
+// {shape,unit,pos[]} record, rotated in place, with no cross-record
 // propagation. This falls out structurally from rotateBP/invRotateBP each
 // only ever touching the ONE container (st.bps or one inv page) they were
 // called against; no test below exercises a referenced BP specifically
@@ -32,11 +32,11 @@ const saveAndFetch = async (page: import('@playwright/test').Page) => {
   return (await resp.json()).canvas;
 };
 
-// Shared fixture: an L-shaped BP (off-center linker, contained PO) on
+// Shared fixture: an L-shaped BP (off-center unit, contained PO) on
 // BOTH the canvas and inventory page 0, so the same rotation math can be
 // exercised identically on either board.
 function makeCanvas() {
-  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], linker: { off: [2, 1], dirs: [0, 2] } };
+  const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], unit: { off: [2, 1], dirs: [0, 2] } };
   return {
     linked: true,
     bps: [{ id: 'canvas_l', name: 'Canvas L', color: '#4a90d9', origin: [2, 2], ...lShape }],
@@ -77,15 +77,15 @@ function makeCanvas() {
 }
 
 test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
-  test('double-click the linker core rotates the BP on the CANVAS board (shape+linker+contained PO all remap)', async ({ page }) => {
+  test('double-click the unit core rotates the BP on the CANVAS board (shape+unit+contained PO all remap)', async ({ page }) => {
     await page.request.put('/api/profile/default/canvas', { data: makeCanvas() });
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // Linker core sits at local offset [2,1] from origin [2,2] -> absolute
+    // Unit core sits at local offset [2,1] from origin [2,2] -> absolute
     // (4,3) -- which also happens to be where canvas_po sits. Double-
     // clicking there must rotate the BP, not the PO underneath it (the
-    // linker core is drawn ABOVE the PO layer -- gLinkers is added after
+    // unit core is drawn ABOVE the PO layer -- gUnits is added after
     // gItems in the constructor's z-order -- so its hit area wins).
     const x = canvasBox.x + cx(3);
     const y = canvasBox.y + cy(4);
@@ -95,7 +95,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(bp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
-    expect(bp.linker.dirs).toEqual([2, 4]);
+    expect(bp.unit.dirs).toEqual([2, 4]);
     expect(bp.origin).toEqual([2, 2]); // origin never moves during in-place rotation
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
     expect(po.cell).toEqual([3, 2]);
@@ -118,7 +118,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const invBp = canvas.inv.pages[0].bps.find((b: any) => b.id === 'inv_l');
     expect(invBp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
-    expect(invBp.linker.dirs).toEqual([2, 4]);
+    expect(invBp.unit.dirs).toEqual([2, 4]);
     const invPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'inv_po');
     expect(invPo.cell).toEqual([3, 2]);
     expect(invPo.rot).toBe(1);
@@ -128,7 +128,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     // BP, never touched by this test) must be COMPLETELY untouched.
     const canvasBp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(canvasBp.shape).toEqual([[0, 0], [1, 0], [2, 0], [2, 1]]);
-    expect(canvasBp.linker.dirs).toEqual([0, 2]);
+    expect(canvasBp.unit.dirs).toEqual([0, 2]);
   });
 
   test('4x double-click returns the BP to its EXACT original state on both boards (identity)', async ({ page }) => {
@@ -136,10 +136,10 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // The linker cell (always a live grab/rotate hit area, see
+    // The unit cell (always a live grab/rotate hit area, see
     // BoardRenderer's `core` circle) physically relocates on every single
     // rotation, so the correct screen coordinate to double-click must be
-    // RECOMPUTED from the BP's own CURRENT linker.off + origin before each
+    // RECOMPUTED from the BP's own CURRENT unit.off + origin before each
     // of the 4 attempts, rather than assumed fixed -- re-fetching the
     // saved canvas between clicks (auto-save has already committed the
     // PREVIOUS rotation by the time each next click is issued, thanks to
@@ -147,10 +147,10 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     for (let i = 0; i < 4; i++) {
       const canvas = await saveAndFetch(page);
       const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
-      const linkerRow = bp.origin[0] + bp.linker.off[0];
-      const linkerCol = bp.origin[1] + bp.linker.off[1];
-      const x = canvasBox.x + cx(linkerCol);
-      const y = canvasBox.y + cy(linkerRow);
+      const unitRow = bp.origin[0] + bp.unit.off[0];
+      const unitCol = bp.origin[1] + bp.unit.off[1];
+      const x = canvasBox.x + cx(unitCol);
+      const y = canvasBox.y + cy(unitRow);
       await page.mouse.dblclick(x, y);
       await page.waitForTimeout(300);
     }
@@ -158,7 +158,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvas = await saveAndFetch(page);
     const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
     expect(bp.shape).toEqual([[0, 0], [1, 0], [2, 0], [2, 1]]);
-    expect(bp.linker).toEqual({ off: [2, 1], dirs: [0, 2] });
+    expect(bp.unit).toEqual({ off: [2, 1], dirs: [0, 2] });
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
     expect(po.cell).toEqual([4, 3]);
     expect(po.rot).toBe(0);
@@ -166,12 +166,12 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
 
   test('a PO sitting on a BP keeps its OWN dblclick-rotate behavior (not intercepted by the BP handler)', async ({ page }) => {
     // A simple 1-cell BP with a rotation-symmetric PO (shape [[0,0]]) NOT
-    // on the linker cell and NOT on the move-handle badge's hit area --
+    // on the unit cell and NOT on the move-handle badge's hit area --
     // dblclicking directly on the PO's own sprite must rotate the PO,
     // not the BP.
     const canvas = {
       linked: true,
-      bps: [{ id: 'simple_bp', name: 'Simple', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+      bps: [{ id: 'simple_bp', name: 'Simple', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { off: [0, 0], dirs: [] } }],
       pos: [{ uid: 'po_on_bp', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 }],
       sis: [],
       layout: { ROWS: 8, COLS: 8 },
@@ -191,7 +191,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // po_on_bp sits at local cell (3,4), NOT the linker cell (3,3) and
+    // po_on_bp sits at local cell (3,4), NOT the unit cell (3,3) and
     // NOT the BP's move-handle badge (near (3,3)'s top-left corner) --
     // dblclicking its own cell center must hit the PO's own sprite/hit
     // area first.

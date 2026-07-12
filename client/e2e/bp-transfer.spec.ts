@@ -78,7 +78,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // test_empty: 1x2 BP at inv page0 origin (1,1) -- grab via its linker
+    // test_empty: 1x2 BP at inv page0 origin (1,1) -- grab via its unit
     // core cell (1,1), drop so the origin lands on free canvas cells
     // (6,5)-(6,6).
     await drag(
@@ -105,17 +105,17 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // test_full: 2-cell BP at inv page0 origin (1,4) (cells (1,4) linker
+    // test_full: 2-cell BP at inv page0 origin (1,4) (cells (1,4) unit
     // + (1,5) free), hosting PO p100 (hilt) at (1,5) with SI a100
-    // (acc_gem) seated on its gem socket. Grab via its linker cell (1,4),
+    // (acc_gem) seated on its gem socket. Grab via its unit cell (1,4),
     // drop onto free canvas cells (6,4)-(6,5).
     //
     // REQ-0033 Phase 2 fixture note: test_full was originally a 1x1 BP
-    // whose SOLE cell was also its linker cell, with p100 sitting on that
+    // whose SOLE cell was also its unit cell, with p100 sitting on that
     // same cell. That arrangement is legal to STORE (invCanPlaceCells has
-    // no linker-cell exclusion -- only canPlacePO's CANVAS-side
+    // no unit-cell exclusion -- only canPlacePO's CANVAS-side
     // canPlaceCells does), but was never actually legal to TRANSFER onto
-    // canvas: canPlacePO always rejects a PO landing on a BP's linker
+    // canvas: canPlacePO always rejects a PO landing on a BP's unit
     // cell there. The pre-REQ-0033 physical transferBPPhysical splice
     // never caught this (it moved the PO's record directly, with no
     // canPlacePO re-validation at all) -- a latent bug that simply never
@@ -123,7 +123,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     // validate every new PO reference through the real canPlacePO, which
     // correctly rejects this arrangement now. Fixed by widening
     // test_full to 2 cells (shape [[0,0],[0,1]]) so its PO occupies the
-    // non-linker cell -- a fixture correction, not a workaround around a
+    // non-unit cell -- a fixture correction, not a workaround around a
     // client bug.
     await drag(
       page,
@@ -243,7 +243,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     // Attempt to drop test_empty onto canvas cell (1,1) -- already
-    // occupied by BP "alpha" in the fixture. Grab via linker cell (1,1).
+    // occupied by BP "alpha" in the fixture. Grab via unit cell (1,1).
     await drag(
       page,
       { x: invBox.x + cx(1), y: invBox.y + cy(1) },
@@ -294,14 +294,14 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
         pages: [
           {
             // 1x3 BP at origin (3,3): local cells (3,3),(3,4),(3,5).
-            // Linker sits at the BP's own (0,0) offset = (3,3), which has
-            // no PO on it (grabbable via the linker core). Its contained
+            // Unit sits at the BP's own (0,0) offset = (3,3), which has
+            // no PO on it (grabbable via the unit core). Its contained
             // PO sits at (3,4) -- the BP's MIDDLE cell. Nudging the BP's
             // origin one cell right, to (3,4), yields new cells
             // (3,4),(3,5),(3,6): cell (3,4) is exactly where the BP's own
             // travelling PO currently sits -- this is the overlap the old
             // (buggy) hover-preview misreported as illegal.
-            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { off: [0, 0], dirs: [] } }],
             pos: [{ uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 }],
             sis: [], tms: [],
           },
@@ -317,7 +317,7 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
     await bootApp(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
 
-    // Grab the linker core at (3,3) (empty of any PO), drop one cell to
+    // Grab the unit core at (3,3) (empty of any PO), drop one cell to
     // the right at (3,4).
     await drag(
       page,
@@ -344,7 +344,7 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
       inv: {
         pages: [
           {
-            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { off: [0, 0], dirs: [] } }],
             pos: [
               { uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
               // Unrelated free PO at (3,6), NOT part of nudge_bp. Nudging

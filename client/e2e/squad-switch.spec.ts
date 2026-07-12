@@ -45,7 +45,7 @@ test.describe('squad switch', () => {
 
     // p900 (blade, free-placed in inv page 0 at [5,5]-[6,5]) -> drag onto
     // BP alpha's free cell (1,2) (occupies (1,2)-(2,2), avoiding the
-    // linker cell at (3,2)).
+    // unit cell at (3,2)).
     await drag(
       page,
       { x: invBox.x + cx(5), y: invBox.y + cy(5) },

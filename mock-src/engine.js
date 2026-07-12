@@ -89,9 +89,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {off,h:Math.max(...off.map(o=>o[0]))+1,w:Math.max(...off.map(o=>o[1]))+1};
   };
   const bpCells=bp=>bp.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
-  const linkerCell=bp=>[bp.origin[0]+bp.linker.off[0],bp.origin[1]+bp.linker.off[1]];
+  const unitCell=bp=>[bp.origin[0]+bp.unit.off[0],bp.origin[1]+bp.unit.off[1]];
   const cellBPMap=st=>{const m={};for(const bp of st.bps)for(const [r,c] of bpCells(bp))m[key(r,c)]=bp.id;return m;};
-  const linkerMap=st=>{const m={};for(const bp of st.bps)m[key(...linkerCell(bp))]=bp.id;return m;};
+  const unitMap=st=>{const m={};for(const bp of st.bps)m[key(...unitCell(bp))]=bp.id;return m;};
   const poByUid=(st,u)=>st.pos.find(p=>p.uid===u);
   const cellsOf=(st,p)=>{
     if(p.loc!=='grid')return [];
@@ -106,7 +106,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return m;
   };
   function canPlaceCells(st,cells,exclUids){
-    const cbp=cellBPMap(st),lk=linkerMap(st),occ=occupancy(st,exclUids);
+    const cbp=cellBPMap(st),lk=unitMap(st),occ=occupancy(st,exclUids);
     let bp=null;
     for(const [r,c] of cells){
       if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells,why:'outside canvas'};
@@ -114,7 +114,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
       if(!b)return {ok:false,cells,why:'Dead Space'};
       if(bp&&b!==bp)return {ok:false,cells,why:'spans two BPs'};
       bp=b;
-      if(lk[key(r,c)])return {ok:false,cells,why:'Linker cell'};
+      if(lk[key(r,c)])return {ok:false,cells,why:'Unit cell'};
       if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
     }
     return {ok:true,cells,bp};
@@ -175,13 +175,13 @@ function create(ITEMS,SI_DEFS,layout,trees){
 
   // ---------------------------------------------------------------------
   // BP rotation (REQ-0045 a2) -- a genuine PHYSICAL 90-degree-CW rotation
-  // of the whole BP (shape + linker + every contained PO), triggered by
+  // of the whole BP (shape + unit + every contained PO), triggered by
   // double-click on the BP's move-handle badge or an empty BP cell (POs
   // keep their own existing dblclick-rotate behavior, see client-side
   // rotate.ts wiring -- this is engine-level geometry only).
   //
   // computeRotatedBP(bp, containedPOs): PURE function, no state mutation,
-  // no legality check -- returns the CANDIDATE new shape/linker/PO layout
+  // no legality check -- returns the CANDIDATE new shape/unit/PO layout
   // as if the rotation were applied, for the caller (canRotateBP/
   // invCanPlaceBP-style legality wrapper) to test before committing. Both
   // the canvas (rotateBP) and inventory (invRotateBP) paths below share
@@ -204,13 +204,13 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     rotOffsets' own renormalization step -- which keeps bp.origin
   //     meaningful as "the shape's own top-left" after rotation, exactly
   //     as it was before.
-  //   - The linker's own off:[dr,dc] cell lives in the SAME local
+  //   - The unit's own off:[dr,dc] cell lives in the SAME local
   //     coordinate space as the shape offsets (it's relative to
-  //     bp.origin too, per linkerCell()'s own `[bp.origin[0]+off[0],
+  //     bp.origin too, per unitCell()'s own `[bp.origin[0]+off[0],
   //     bp.origin[1]+off[1]]`), so it goes through the IDENTICAL
   //     transform+renormalization -- using the SAME renormalization
   //     delta the shape computed (not a separately-computed one), since
-  //     the linker's off must stay expressed against the SAME new
+  //     the unit's off must stay expressed against the SAME new
   //     origin the rotated shape now uses.
   //   - Each contained PO's own rot field increments by 1 (mod 4) --
   //     REUSING rotatePO's own "+1 mod 4" convention exactly (a PO's rot
@@ -227,7 +227,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     AROUND it), contained POs end up at
   //     origin + rotatedLocalOffset, exactly mirroring how bpCells()
   //     itself derives absolute cells from bp.origin + bp.shape offsets.
-  //   - Linker DIRS rotate by +2 (mod 8): DIRS is an 8-point compass
+  //   - Unit DIRS rotate by +2 (mod 8): DIRS is an 8-point compass
   //     (0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW, see traceBeams' own DIRS
   //     table), each step = 45 degrees. A 90-degree rotation is exactly
   //     2 such 45-degree steps, so a beam direction shifts by exactly
@@ -244,19 +244,19 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const rotatedShape=rotateOffsetCW(bp.shape);
     const mr=Math.min(...rotatedShape.map(o=>o[0])),mc=Math.min(...rotatedShape.map(o=>o[1]));
     const newShape=rotatedShape.map(([r,c])=>[r-mr,c-mc]);
-    const [lr,lc]=rotateOffsetCW([bp.linker.off])[0];
-    const newLinkerOff=[lr-mr,lc-mc];
-    const newDirs=bp.linker.dirs.map(d=>(d+2)%8);
+    const [lr,lc]=rotateOffsetCW([bp.unit.off])[0];
+    const newUnitOff=[lr-mr,lc-mc];
+    const newDirs=bp.unit.dirs.map(d=>(d+2)%8);
     const newPOs=containedPOs.map(p=>{
       const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
       const [rr,rc]=rotateOffsetCW([localOld])[0];
       const newLocal=[rr-mr,rc-mc];
       return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4,q:p.q};
     });
-    return {shape:newShape,linkerOff:newLinkerOff,dirs:newDirs,pos:newPOs};
+    return {shape:newShape,unitOff:newUnitOff,dirs:newDirs,pos:newPOs};
   }
   // canRotateBP(st,bpId): legality for rotating bpId 90 degrees CW IN
-  // PLACE on the canvas (origin unchanged, only shape/linker/contents
+  // PLACE on the canvas (origin unchanged, only shape/unit/contents
   // rotate). Uses the SAME canPlaceCells() occupancy/bounds/Dead-Space
   // check every other canvas placement query uses, fed the ROTATED
   // absolute cells instead of a translated set -- exclUids covers the BP
@@ -266,7 +266,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // long as its own rotated footprint still fits (bounds + no overlap
   // with another BP's cells, since Dead-Space is DEFINED as "outside
   // every BP's footprint" and the rotating BP's own footprint still
-  // covers its own linker-check the same way placement does).
+  // covers its own unit-check the same way placement does).
   function canRotateBP(st,bpId){
     const bp=bpById(st,bpId);
     if(!bp)return {ok:false,cells:[],why:'no such BP'};
@@ -297,7 +297,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:true,cells:newCells,rotated,inside};
   }
   // rotateBP(st,bpId): commits canRotateBP's candidate rotation -- shape,
-  // linker off+dirs, and every contained PO's cell+rot all update
+  // unit off+dirs, and every contained PO's cell+rot all update
   // atomically (either the whole rotation applies, or -- on illegality --
   // nothing changes at all, same all-or-nothing discipline moveBP uses).
   function rotateBP(st,bpId){
@@ -305,8 +305,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
     if(!chk.ok)return chk;
     const bp=bpById(st,bpId);
     bp.shape=chk.rotated.shape;
-    bp.linker.off=chk.rotated.linkerOff;
-    bp.linker.dirs=chk.rotated.dirs;
+    bp.unit.off=chk.rotated.unitOff;
+    bp.unit.dirs=chk.rotated.dirs;
     for(const rp of chk.rotated.pos){
       const p=poByUid(st,rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -570,9 +570,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
   const DIRS={0:[-1,0],1:[-1,1],2:[0,1],3:[1,1],4:[1,0],5:[1,-1],6:[0,-1],7:[-1,-1]};
   function traceBeams(st){
-    const lk=linkerMap(st),beams=[];
-    for(const bp of st.bps)for(const d of bp.linker.dirs){
-      let [r,c]=linkerCell(bp);const path=[];let to=null;
+    const lk=unitMap(st),beams=[];
+    for(const bp of st.bps)for(const d of bp.unit.dirs){
+      let [r,c]=unitCell(bp);const path=[];let to=null;
       while(true){
         r+=DIRS[d][0];c+=DIRS[d][1];
         if(r<1||r>ROWS||c<1||c>COLS)break;
@@ -770,15 +770,15 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     return m;
   }
-  // linkerMapIn(container): same math as the canvas linkerMap() helper,
+  // unitMapIn(container): same math as the canvas unitMap() helper,
   // parameterized over an explicit container (mirrors cellBPMapIn's own
-  // relationship to cellBPMap) -- linkerCell(bp) is already
+  // relationship to cellBPMap) -- unitCell(bp) is already
   // container-independent (pure function of the BP itself, same reason
   // bpCellsIn just reuses bpCells), so this only needs to build the
   // {cellKey:bpId} map over `container.bps` instead of `st.bps`.
-  function linkerMapIn(container){
+  function unitMapIn(container){
     const m={};
-    for(const bp of container.bps)m[key(...linkerCell(bp))]=bp.id;
+    for(const bp of container.bps)m[key(...unitCell(bp))]=bp.id;
     return m;
   }
   // invCanPlaceCells: legality of `cells` (already-translated absolute
@@ -787,23 +787,23 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // a BP requires ALL cells in the SAME BP (containment law, still shared
   // with canvas).
   //
-  // BUG FIX (REQ-0092): a BP's linker cell is itself an occupant of one of
+  // BUG FIX (REQ-0092): a BP's unit cell is itself an occupant of one of
   // the BP's own cells (canvas_spec.md: "PO -- anything placed into a
-  // BP's cells: items, weapons, and the Linker"), exactly like
+  // BP's cells: items, weapons, and the Unit"), exactly like
   // canPlaceCells() already enforces on the canvas via its own `lk`
   // check -- but this inventory-page twin never built the equivalent map
   // at all, so a PO could be first-fit-placed (warehouse claim's
   // firstFitPlace) or manually dragged directly onto a page-resident
-  // BP's linker cell, producing an invalid placement. "Linker dormancy"
+  // BP's unit cell, producing an invalid placement. "Unit dormancy"
   // (see this file's linkStateInv comment, near migrateState) only
   // concerns the BEAM/CONNECTION computations going quiet while a BP
-  // sits in a page -- it says nothing about the linker's own cell
+  // sits in a page -- it says nothing about the unit's own cell
   // reservation, which is pure shape geometry and holds regardless of
-  // dormancy. Fixed by adding the same linkerMapIn(container)-backed
+  // dormancy. Fixed by adding the same unitMapIn(container)-backed
   // check, in the same relative position canPlaceCells uses (after
   // BP-membership is resolved, before the shared occupancy check).
   function invCanPlaceCells(container,cells,exclUids){
-    const cbp=cellBPMapIn(container),occ=invOccupancy(container,exclUids),lk=linkerMapIn(container);
+    const cbp=cellBPMapIn(container),occ=invOccupancy(container,exclUids),lk=unitMapIn(container);
     let bp=null,anyBp=false;
     for(const [r,c] of cells){
       if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells,why:'outside page'};
@@ -813,7 +813,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
         if(bp&&b!==bp)return {ok:false,cells,why:'spans two BPs'};
         bp=b;
       }
-      if(lk[key(r,c)])return {ok:false,cells,why:'Linker cell'};
+      if(lk[key(r,c)])return {ok:false,cells,why:'Unit cell'};
       if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
     }
     if(anyBp){
@@ -1194,8 +1194,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const container=page(st,pg);
     const bp=container.bps.find(b=>b.id===bpId);
     bp.shape=chk.rotated.shape;
-    bp.linker.off=chk.rotated.linkerOff;
-    bp.linker.dirs=chk.rotated.dirs;
+    bp.unit.off=chk.rotated.unitOff;
+    bp.unit.dirs=chk.rotated.dirs;
     for(const rp of chk.rotated.pos){
       const p=container.pos.find(z=>z.uid===rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -1230,7 +1230,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // living in st.inv.pages[n].{pos,bps,sis}. A "reference" is a SEPARATE
   // record, SAME uid, SAME shape as the home record (a PO reference is
   // {uid,id,loc,cell,rot}; a BP reference is the usual {id,name,color,
-  // shape,origin,linker} object; an SI reference is {uid,id,host}) living
+  // shape,origin,unit} object; an SI reference is {uid,id,host}) living
   // in a squad's canvas -- st.{bps,pos,sis} for the ACTIVE squad, or
   // st.presets.store[i].{bps,pos,sis} for an inactive one. This is why
   // NOTHING about canPlacePO/movePO/cellsOf/sockets/traceBeams/combos/
@@ -1432,7 +1432,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     if(kind==='bp'){
       const src=home.record;
-      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit};
       st.bps.push(ref);
       return {ok:true,ref};
     }
@@ -1647,13 +1647,13 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // linkStateInv (dormancy helper): NO new traceBeams/connections variant
-  // is added for pages -- Linker dormancy (spec item 7) is enforced simply
+  // is added for pages -- Unit dormancy (spec item 7) is enforced simply
   // by traceBeams/connectionsFrom/allConnections/combos continuing to
   // iterate ONLY st.bps/st.pos (the canvas arrays), never st.inv.pages[].
   // A BP sitting in an inventory page is, structurally, not a member of
   // st.bps at all while it's there -- so it is automatically invisible to
   // every canvas-only computation with ZERO extra guard code. This is
-  // verified by an explicit test (a linker-bearing BP transferred into a
+  // verified by an explicit test (a unit-bearing BP transferred into a
   // page must contribute nothing to traceBeams()).
 
   // migrateState(oldState): accepts the LEGACY shape and returns a NEW
@@ -2247,7 +2247,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
       }
     }
   }
-  return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,linkerCell,cellBPMap,linkerMap,cellsOf,occupancy,
+  return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,unitCell,cellBPMap,unitMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.

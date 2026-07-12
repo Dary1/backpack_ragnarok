@@ -9,7 +9,7 @@
 //   1. "Barter in kind" -- there is no abstract currency. A price is an
 //      integer quantity of ONE Transmutator content item. The engine /
 //      content id of that TM is `lrdst` (content/live/live_tms.json's
-//      single entry, "LinkerRandomDirectionShuffleTransmutator"; the
+//      single entry, "UnitRandomDirectionShuffleTransmutator"; the
 //      same id server/services/gacha.cjs's readLrdstBalance() already
 //      sums for the Workshop). The mock renders it as the fehu rune;
 //      the WIRE id stays lrdst everywhere.
@@ -315,7 +315,7 @@ function toListingDto(listing, view, caches) {
 // ---------------------------------------------------------------------
 
 // matchesFilter: tag-driven, per the mock's chip row (all / weapons /
-// frost / ember / linker / relic -- chips map to content vocabulary
+// frost / ember / unit / relic -- chips map to content vocabulary
 // values client-side). A filter value matches an item def when it
 // equals (case-insensitively) any of the def's tags[] OR its rarity.
 // Empty/absent/'all' = no filter.

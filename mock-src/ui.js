@@ -94,7 +94,7 @@ const defs=el('defs',{},svg);
 const mk=(id,color)=>{const m=el('marker',{id,viewBox:'0 0 10 10',refX:8,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},defs);el('path',{d:'M0,0 L10,5 L0,10 z',fill:color},m);};
 mk('arr','#59d6d6');mk('arrDud','#6a6a6a');
 const gBase=el('g',{},svg),gBeams=el('g',{},svg),gItems=el('g',{},svg),gSock=el('g',{},svg),
-      gLinkers=el('g',{},svg),gChain=el('g',{},svg),gInvFrame=el('g',{},svg),gInv=el('g',{},svg),
+      gUnits=el('g',{},svg),gChain=el('g',{},svg),gInvFrame=el('g',{},svg),gInv=el('g',{},svg),
       gTarget=el('g',{'pointer-events':'none'},svg),gCarry=el('g',{'pointer-events':'none'},svg);
 el('rect',{x:INVX-10,y:INVY-10,width:INVW+20,height:ROWS*CELL+20,rx:10,fill:'#171512',stroke:'#3a342a','stroke-width':1.5},gInvFrame);
 el('text',{x:INVX+INVW/2,y:INVY+12,'text-anchor':'middle',fill:'#c9bd9c','font-size':13,'font-weight':'bold'},gInvFrame).textContent='INVENTORY';
@@ -182,7 +182,7 @@ let carry=null;
 function renderAll(){
   E.unseatOrphans(state);
   gBase.innerHTML='';gBeams.innerHTML='';gItems.innerHTML='';gSock.innerHTML='';
-  gLinkers.innerHTML='';gChain.innerHTML='';gInv.innerHTML='';gTarget.innerHTML='';
+  gUnits.innerHTML='';gChain.innerHTML='';gInv.innerHTML='';gTarget.innerHTML='';
   const hiddenBP=(carry&&carry.armed&&carry.kind==='bp')?carry.bpId:null;
   const cbp=E.cellBPMap(state);
   // axis labels
@@ -195,7 +195,7 @@ function renderAll(){
       fill:bp?bp.color:'#191919','fill-opacity':bp?0.26:1,stroke:bp?bp.color:'#242424','stroke-opacity':bp?0.35:1,'stroke-width':1},gBase);
   }
   const occ=E.occupancy(state);
-  const lkm=E.linkerMap(state);
+  const lkm=E.unitMap(state);
   for(const bp of state.bps){
     if(bp.id===hiddenBP)continue;
     const cells=E.bpCells(bp);
@@ -207,13 +207,13 @@ function renderAll(){
       if(occ[key(r,c)]||lkm[key(r,c)])continue;
       const hit=el('rect',{x:PAD+(c-1)*CELL,y:PAD+(r-1)*CELL,width:CELL,height:CELL,fill:'transparent',cursor:'grab'},gBase);
       hit.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
-      hover(hit,'<h3>'+bp.name+'</h3><div class="eff">Empty Cell — drag here (or the Linker) to move the whole BP with its contents.</div>');
+      hover(hit,'<h3>'+bp.name+'</h3><div class="eff">Empty Cell — drag here (or the Unit) to move the whole BP with its contents.</div>');
     }
   }
   // beams
   for(const bm of E.traceBeams(state)){
     if(bm.from===hiddenBP||bm.to===hiddenBP)continue;
-    const bp=bpById(bm.from),lc=E.linkerCell(bp);
+    const bp=bpById(bm.from),lc=E.unitCell(bp);
     let x0=cx(lc[1]),y0=cy(lc[0]),x1,y1;
     if(bm.to){
       const last=bm.path[bm.path.length-1];x1=cx(last[1]);y1=cy(last[0]);
@@ -304,14 +304,14 @@ function renderAll(){
     g.addEventListener('pointerdown',e=>e.stopPropagation());
     g.addEventListener('click',e=>{e.stopPropagation();state.linked=!state.linked;renderAll();});
   }
-  // linkers
+  // units
   for(const bp of state.bps){
     if(bp.id===hiddenBP)continue;
-    const lc=E.linkerCell(bp),x=cx(lc[1]),y=cy(lc[0]);
-    const g=el('g',{cursor:'grab'},gLinkers);
+    const lc=E.unitCell(bp),x=cx(lc[1]),y=cy(lc[0]);
+    const g=el('g',{cursor:'grab'},gUnits);
     el('circle',{cx:x,cy:y,r:26,fill:'#0e0d0b','fill-opacity':.55,stroke:'#59d6d6','stroke-opacity':.5},g);
-    el('use',{href:'#icon-linker_core',x:x-22,y:y-22,width:44,height:44},g);
-    for(const d of bp.linker.dirs){
+    el('use',{href:'#icon-unit_core',x:x-22,y:y-22,width:44,height:44},g);
+    for(const d of bp.unit.dirs){
       const ang=(d*45-90)*Math.PI/180;
       el('circle',{cx:x+Math.cos(ang)*30,cy:y+Math.sin(ang)*30,r:4,fill:'#59d6d6'},g);
     }
@@ -319,7 +319,7 @@ function renderAll(){
       const txt=E.traceBeams(state).filter(z=>z.from===bp.id).map(z=>{
         const t=z.to?('links '+z.to.toUpperCase()+(z.mutual?' (mutual)':'')):'dud — flies off the canvas';
         return COMPASS[z.dir]+' '+ARROWS[z.dir]+' → '+t;}).join('<br>');
-      return '<h3>BP Linker</h3><div class="shape">one per BP · drag to move the whole BP</div><div class="eff">'+txt+'</div>';});
+      return '<h3>BP Unit</h3><div class="shape">one per BP · drag to move the whole BP</div><div class="eff">'+txt+'</div>';});
     g.addEventListener('pointerdown',e=>startCarry(e,'bp',bp.id));
   }
   // sockets (diegetic)
@@ -389,7 +389,7 @@ function renderAll(){
   const cbp2=E.cellBPMap(state);
   document.getElementById('bpList').innerHTML=state.bps.map(b=>{
     const n=state.pos.filter(p=>p.loc==='grid'&&cbp2[key(...E.cellsOf(state,p)[0])]===b.id).length;
-    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Linker ['+b.linker.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
+    return '<li><b style="color:'+b.color+'">'+b.name+'</b> — '+E.bpCells(b).length+' cells · HP '+(E.bpCells(b).length*5)+' <span class="tag">Unit ['+b.unit.dirs.map(d=>COMPASS[d]).join(',')+']</span><span class="tag">'+n+' POs</span></li>';}).join('');
   document.getElementById('linkList').innerHTML=E.traceBeams(state).map(bm=>{
     const A=bm.from.toUpperCase();
     if(bm.to&&bm.mutual)return '<li><span class="mut">⇄ MUTUAL</span> '+A+' '+COMPASS[bm.dir]+' '+ARROWS[bm.dir]+' → '+bm.to.toUpperCase()+'</li>';
