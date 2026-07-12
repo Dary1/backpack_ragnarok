@@ -1230,7 +1230,7 @@ const DICT = {
     'workshop.statRarity': '品位',
     'workshop.statCells': 'セル',
     'workshop.statHp': '耐久',
-    'workshop.statUnit': '連結座',
+    'workshop.statUnit': 'ユニット',
     'workshop.statDirs': '方位',
     // Ragnarok / 殿堂 (client/src/ragnarok/*) -- REQ-0066. Frozen strings
     // (hero pledge, season note, the 3 rite steps, the devotion warning,
