@@ -84,3 +84,52 @@ No pipeline-doc rewrite yet; no `content/live/` writes; no checkpoint change
 - Numbered side-by-side gallery under `web/preview/` for user verdict.
 - Decision recorded here. If green: item/unit pipeline S4/S5-4 doc update
   and `gen_item_icons.py` route flag follow as the implementation.
+
+## Execution log
+
+### 2026-07-12 — re-armed (automation parked on a busy box)
+
+Session resumed REQ-0135. Precondition "quiet GPU box" was NOT met at resume
+time: the RTX 2080 was at 99% / 6.4 GB, driven by a concurrent sequencer
+`~/scratch/req_seq5.sh` (REQ-0138 tiling running -> REQ-0136 dsxl bakeoff ->
+REQ-0136 flux bakeoff -> galleries). Per the REQ-0135a incident log, running
+into that contention is what broke the first attempt. Nothing was forced onto
+the queue; the automation was re-armed to fire itself when the box goes quiet
+(user directive, 2026-07-12).
+
+**Gating bug found and fixed in `~/scratch/req0135_watch_and_run.sh`.**
+The original quiet predicate was `no req0136_bakeoff process` AND `ComfyUI
+queue empty for 120 s`. That is unsafe against the current box: `req0138_tiling.py`
+does long CPU-side seam analysis between its GPU jobs, so the queue can read
+empty for well over 120 s while a run is still in flight — the watcher would
+have started route A on top of REQ-0138 and re-created exactly the failure
+0135a documented. The predicate now also watches the owning processes:
+
+    BUSY_RE="req_seq5|req0136_bakeoff|req0138_tiling|req0137_|req0131_"
+
+plus a final re-check (`exec "$0"` back into the wait) after the 120 s quiet
+window, so a job that slips in on the last tick cannot be raced. Regex was
+self-tested against the live process table (matches seq5 + both tiling procs).
+
+**Stale state cleared** before arming: the aborted first attempt left route A
+dead at `[2/10] blade s202` (killed by the concurrent session). Removed
+`content/batches/req-0135-layerdiffuse-spike/{base,ld}/` and
+`tmp/req0135_{base,ld}.log` + both markers, so route A restarts from scratch
+on a clean slate.
+
+**Armed** (both detached, PPID 1, verified alive after session close):
+
+- `req0135_watch_and_run.sh` (PID 257662) — parked in the wait loop, correctly
+  reporting the box busy. On quiet: route A (`gen_item_icons.py`, production)
+  -> route B (`scratch_req0135_ld_spike.py`, LayerDiffuse) over the 5 spike
+  entries (blade, hilt, dagger, wing, elf_bust) x 2 candidates x seeds 101/202,
+  then marker `tmp/req0135_gen_complete`.
+- `req0135_postprocess.sh` (PID 257688) — blocked on that marker. On fire:
+  `tool_icon_score.py` on both routes -> `scores_base.json` / `scores_ld.json`
+  -> numbered gallery into `web/preview/req-0135-layerdiffuse/` -> marker
+  `tmp/req0135_post_complete`.
+
+Route B first job also pulls the ~1.5 GB LD weights from HF (allow extra time).
+
+**Next check-in:** `tmp/req0135_post_complete` present -> gallery ready for the
+user verdict gate. Until then this REQ stays in `todo/` (no work has run).
