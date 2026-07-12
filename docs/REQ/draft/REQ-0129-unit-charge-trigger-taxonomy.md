@@ -36,3 +36,29 @@ inconsistencies the content pipeline exists to prevent.
 
 - Every roster-seed unit's charge behavior is expressible in the frozen
   grammar (paper check against all 13 user-a
+
+## Incoming demands from REQ-0149 (roster 001, 2026-07-13)
+
+- **Clock tower: the 2026-07-12 ruling was UPHELD by the user on 2026-07-13.** The
+  clock tower stays deleted and is NOT resurrected as a Unit kind. Consequence: the
+  Thief kit lost its charge trigger and now has none (REQ-0149 G3a) — awaiting a
+  user restatement. No grammar work is owed for the clock tower.
+- **"Tower" is still undefined (REQ-0149 G4).** Killing the *clock* tower did not
+  kill the *word*: the Elf ("cooldown within the same tower") and Little Princess
+  ("becomes the Princess Tower") both depend on it. The princess-tower form change is
+  already on this REQ's plate as a charge-spend verb; the **definition of a tower**
+  must be settled alongside it, or the Elf cannot be authored either.
+- **Max-selector targeting (REQ-0149 G12).** The Watcher targets "the
+  longest-cooldown item inside the connected Unit's BP". The charge-target grammar
+  (self / connected / connected-BP / distributed) has no **selector over the items of
+  a BP**. Needs a ruling: extend the target grammar, or restate the kit.
+- **Cooldown-advance verb (REQ-0149 G12).** "Advance that item's cooldown slightly"
+  is a charge-spend verb this vocabulary does not have (the existing lineage is
+  cooldown *reduction* / *sharing*, per Elf / Dwarf / Thief). The amount is a user
+  number.
+- **Self-shield verb (REQ-0149 G13).** The Squire grants block to *itself*; the
+  Princess's passive grants a shield to *itself*. Likely one verb — confirm and
+  freeze it once.
+- **Uncapped stacks (REQ-0149 G6).** The Berserker's +0.1%/stack is unbounded. The
+  PULSE_CAP lineage (REQ-0061) says the frozen grammar should not permit an uncapped
+  accumulator. Either the grammar enforces a cap, or the user rules it uncapped.

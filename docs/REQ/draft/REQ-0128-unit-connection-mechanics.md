@@ -46,4 +46,23 @@ offsets), adjacency, backward-line, none. Ratified rules:
 
 The pulse-walk law set of REQ-0048/0061 is the deterministic baseline this
 REQ must either ADOPT for Unit Links or EXPLICITLY RETIRE, law by law —
-silence is not allowed: PULSE_CAP; visited-set; hop 
+silence is not allowed: PULSE_CAP; visited-set; hop
+
+## Incoming demands from REQ-0149 (roster 001, 2026-07-13)
+
+Two user-authored kits name connection shapes that the ratified vocabulary
+(bishop / rook / lance / queen / knight / adjacency / backward-line / none)
+does not contain. **This REQ must rule; REQ-0149 will not bend the kits.**
+
+- **Watcher — "left/right adjacent cell" (REQ-0149 G10).** Axis-restricted
+  adjacency. The ratified `adjacency` is generic. Either parameterise `adjacency`
+  by axis, or add a new shape value.
+- **Squire — "1 cell forward" (REQ-0149 G11).** A directed single-cell offset.
+  No forward single-cell shape exists, and — more fundamentally — **"forward" has
+  no meaning until this REQ defines a board orientation for Units.** `backward-line`
+  already smuggles the same assumption in; it has never been made explicit. Settle
+  orientation here, once, for both.
+- **Shieldmaiden / Priest have NO shape at all (REQ-0149 G1).** Both are support
+  kits phrased entirely in terms of "the connected target", so `none` is not
+  available. The ruling is the user's; this REQ supplies the vocabulary it must be
+  drawn from.
