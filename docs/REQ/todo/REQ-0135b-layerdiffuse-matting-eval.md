@@ -133,3 +133,82 @@ Route B first job also pulls the ~1.5 GB LD weights from HF (allow extra time).
 
 **Next check-in:** `tmp/req0135_post_complete` present -> gallery ready for the
 user verdict gate. Until then this REQ stays in `todo/` (no work has run).
+
+### 2026-07-12 (later) — first real run FAILED; root cause found in the LD node
+
+The arm-#1 watcher did fire (10:05:12 UTC, once the box went quiet) and ran both
+routes. Both failed. Nothing usable was produced; the results it published have
+been deleted.
+
+**Route A — OOM-killed.** `gen_item_icons.py` completed exactly one job
+(`blade c1 s101`, 336.6 s, birefnet matte coverage 11.50%) and was SIGKILLed on
+job 2/10 (`exit=137`, kernel OOM-killer, PID 990134). This is the *third* OOM on
+this box today: the 23 GB host cannot hold ComfyUI (~11 GB RSS with SDXL
+resident) plus a second heavy python (rembg/birefnet) plus whatever a concurrent
+session is running. dmesg shows repeated `Killed process … (pt_main_thread)` —
+ComfyUI itself was OOM-killed at 05:01:53, which is also why the arm-#1 watcher
+had earlier appeared to hang (see below).
+
+**Route B — 10/10 jobs failed, and the cause is a real bug, not the box.**
+Every job returned a ComfyUI execution error from node
+`LayeredDiffusionDecodeRGBA`:
+
+    AttributeError: 'JoinImageWithAlpha' object has no attribute
+                    'join_image_with_alpha'
+    custom_nodes/ComfyUI-layerdiffuse/layered_diffusion.py:132
+
+ComfyUI core has migrated `JoinImageWithAlpha` to the v3 schema API — it is now
+`io.ComfyNode` with a `@classmethod execute(cls, image, alpha)`. The old
+instance method the custom node calls no longer exists. Upstream
+ComfyUI-layerdiffuse (HEAD `b4f6a9e`) has not caught up. So REQ-0135a's
+"verified live" check (all 8 `LayeredDiffusion*` nodes present in
+`/object_info`) was necessary but **not sufficient**: the nodes register fine
+and only fail at execution time.
+
+**Fix — in our code, not in ComfyUI.** PROJECT.md holds third-party checkouts as
+infrastructure ("use them, do not modify") and the art ComfyUI as HANDS-OFF, so
+patching `layered_diffusion.py` was rejected. Instead
+`tools/scratch_req0135_ld_spike.py` now builds the RGBA tail from **core** nodes,
+which are unaffected by the Python-level API drift:
+
+    LayeredDiffusionDecode  -> (IMAGE, MASK)
+    InvertMask(mask)        -> alpha
+    JoinImageWithAlpha(image, alpha) -> RGBA -> SaveImage
+
+Equivalence is exact. The broken node computed `alpha = 1.0 - mask` and passed
+that to core's join, whose `alpha` input is itself a mask that it inverts again
+(`alpha = 1.0 - resize_mask(alpha)`), so the alpha actually emitted was just
+`mask`. `InvertMask` + `JoinImageWithAlpha` reproduces that double inversion
+node-for-node. Route B therefore stays a like-for-like A/B against route A.
+
+**Two harness bugs also fixed (both had produced false confidence):**
+
+1. *The watcher could park forever.* `qlen()` fell back to `echo 1` (= "queue
+   busy") whenever `curl` failed, so a **dead** ComfyUI was indistinguishable
+   from a busy queue. After ComfyUI was OOM-killed at 05:01:53 the watcher sat
+   waiting on a service that no longer existed, silently. The runner
+   (`~/scratch/req0135_run.sh`) now checks liveness, queue, competing processes
+   and free RAM separately, names its blocker in the log every time it changes,
+   and heartbeats — it can never park mutely again. A `MIN_AVAIL_MB=8000` guard
+   was added so it will not start a route into a box that is about to OOM.
+2. *The postprocess published a failed run.* It fired on the completion marker
+   without checking that anything had been generated, scored the single
+   surviving route-A image (`scored=1 skipped=4`), and built a "gallery" from
+   it. It now refuses to score or publish unless both routes produced all 10
+   candidates, and drops `tmp/req0135_post_incomplete` instead.
+
+The busy-process guard also had `req0131_` dropped from its regex during a
+rewrite; it was caught by a self-test before arming, but it would have started
+route A on top of REQ-0131's live generation. Restored.
+
+**State:** all false artifacts (partial `base/`, empty `ld/`, `scores_*.json`,
+`web/preview/req-0135-layerdiffuse/`) deleted. Spike script fixed. Harness
+hardened. Nothing has been re-run yet — the box is still contested (a concurrent
+session is running `req0131_spike.py`, and ComfyUI is currently down again).
+REQ-0135b stays in `todo/`: still no evaluation data, still no verdict.
+
+**Blocking on infra, and this is now REQ-0139's case in full.** Three ComfyUI
+OOM kills, a false "seq5 DONE" (its REQ-0136 dsxl/flux legs no-opped in 9
+seconds against a dead ComfyUI, so that bakeoff did not actually run), and a
+route-A kill — all in one day, all from multiple agent sessions sharing one
+un-owned ComfyUI. A single-owner queue is not cosmetic.

@@ -35,9 +35,28 @@ LD_WEIGHT = 1.0
 def build_ld_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
                       sampler, scheduler):
     """Identical graph to gen_item_icons.build_workflow() minus the optional
-    ConditioningSetMask (no spike subject uses mask_cells), plus the two
-    LayerDiffuse nodes: Apply between checkpoint and KSampler, DecodeRGBA
-    between VAEDecode and SaveImage."""
+    ConditioningSetMask (no spike subject uses mask_cells), plus LayerDiffuse:
+    Apply between checkpoint and KSampler, and a decode->join tail that emits
+    RGBA between VAEDecode and SaveImage.
+
+    NOTE (2026-07-12): we deliberately do NOT use LayeredDiffusionDecodeRGBA.
+    That node is broken against this ComfyUI build -- its decode() calls
+    JoinImageWithAlpha().join_image_with_alpha(), but ComfyUI core migrated
+    JoinImageWithAlpha to the v3 schema API (a classmethod execute() on
+    io.ComfyNode), so the old instance method no longer exists:
+        AttributeError: 'JoinImageWithAlpha' object has no attribute
+                        'join_image_with_alpha'
+    Upstream ComfyUI-layerdiffuse (HEAD b4f6a9e) has not caught up. This made
+    every route-B job fail (10/10) on the first real run, 2026-07-12.
+
+    Rather than patch the HANDS-OFF art ComfyUI tree (PROJECT.md: third-party
+    checkouts are infrastructure -- use them, do not modify), we rebuild the
+    RGBA join in the GRAPH from core nodes, which are unaffected by the
+    Python-level API drift. Equivalence is exact: the broken node computed
+    alpha = 1.0 - mask and handed that to core's join, whose "alpha" input is
+    itself a mask that it inverts again -- so the alpha actually emitted was
+    just `mask`. InvertMask + JoinImageWithAlpha reproduces that same double
+    inversion node-for-node."""
     wf = {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": G.CKPT}},
         "9": {"class_type": "LayeredDiffusionApply",
@@ -51,13 +70,16 @@ def build_ld_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
             "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
             "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0}},
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
-        "8": {"class_type": "LayeredDiffusionDecodeRGBA", "inputs": {
+        "8": {"class_type": "LayeredDiffusionDecode", "inputs": {
             "samples": ["5", 0], "images": ["6", 0],
             "sd_version": "SDXL", "sub_batch_size": 16}},
+        "10": {"class_type": "InvertMask", "inputs": {"mask": ["8", 1]}},
+        "11": {"class_type": "JoinImageWithAlpha", "inputs": {
+            "image": ["8", 0], "alpha": ["10", 0]}},
     }
     prefix = f"req0135_ld_{seed}_{int(time.time() * 1000) % 100000}"
     wf["7"] = {"class_type": "SaveImage",
-               "inputs": {"images": ["8", 0], "filename_prefix": prefix}}
+               "inputs": {"images": ["11", 0], "filename_prefix": prefix}}
     return wf, prefix
 
 
