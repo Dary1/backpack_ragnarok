@@ -39,3 +39,25 @@ route comparison is REQ-0135 (run this bakeoff with the incumbent matte).
 - Numbered gallery; user verdict selects the default checkpoint.
 - License verification recorded. Findings + winner appended here; pipeline docs
   updated as implementation of this REQ.
+
+---
+
+## WIP state (session end 2026-07-12 ~04:55; unattended completion running)
+
+- Contenders + licenses VERIFIED: DreamShaperXL Turbo v2.1 (OpenRAIL++-M,
+  HF Lykon) and FLUX.2 klein 4B distilled GGUF Q8_0 (Apache 2.0, BFL;
+  9B is non-commercial - do not confuse) downloaded byte-verified;
+  ComfyUI-GGUF installed. v9 leg 7/16 done + resume running; dsxl/flux
+  legs queued behind it via ~/scratch/req_seq5.sh (waits for v9+0138,
+  then dsxl -> flux -> galleries to web/preview/, all detached).
+- Tooling committed here: tools/req0136_bakeoff.py (sequential legs,
+  perf/VRAM stats, matte_light for unit busts - alpha_matting pymatting
+  spikes >12GB RSS on characters and OOMed the shared box: dmesg 02:42,
+  03:25 ComfyUI itself, 04:14, 04:33), tools/req0136_gallery.py,
+  content/batches/bakeoff-0136/unit_defs.json.
+- NEXT SESSION: check ~/scratch/req_seq5.log DONE; run
+  ~/scratch/finalize_fill.py (renders findings tables from runstats
+  JSONs + patches skin pipeline S2); commit artifacts; rsync
+  web/preview/bakeoff-0136 into the main checkout docroot; verify URL;
+  ASK USER VERDICT (checkpoint selection). Roster batch (REQ-0127) runs
+  only after that verdict.
