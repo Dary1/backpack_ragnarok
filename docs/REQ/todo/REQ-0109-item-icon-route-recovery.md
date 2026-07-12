@@ -1,8 +1,8 @@
 # REQ-0109 — Recover & merge the REQ-0073 AI item-icon route
 
-- **Status**: draft — spec written; model DECIDED (V9, 2026-07-09, per user); pending user ratification. Not yet cleared to implement. Move to `todo/` (git mv) once ratified.
+- **Status**: see folder (board law). Ratified via todo/ placement; executed 2026-07-12 by the integration-owner orchestrator (user delegation, 2026-07-12 chat).
 - **Date**: 2026-07-09
-- **Owner**: unassigned (user will delegate to another agent)
+- **Owner**: integration-owner orchestrator (delegated 2026-07-12)
 - **Source branch**: `req-0073-item-icon-gen` (worktree `~/backpack_ragnarok_worktrees/req-0073-item-icon-gen`), HEAD `d5f1078` as of 2026-07-09.
 
 ## Background
@@ -92,3 +92,33 @@ live-rendering gap.
 
 - Aesthetic scoring; art-style redirection; authoring NEW item content. This REQ recovers and
   merges the existing 8-item exemplar route only.
+
+## Outcome & gate results (2026-07-12)
+
+- Merged `req-0073-item-icon-gen` into `req-0109-item-icon-route-recovery`
+  (from master post-REQ-0124). Conflict resolutions: `live_items.json` kept
+  BOTH master's `align` blocks and the branch's `gen_*` fields (8/8 entries,
+  JSON-validated); `warehouse-mjolnir.spec.ts` + `web/app` dist took master
+  wholesale (branch carried stale 0072-era iterations, superseded).
+- Task 2 (WIP finalization) done: designed test patch applied
+  (sparse 20x20 bump + 2 MIN_CONTENT_FRAC gate tests);
+  `test_tool_icon_score` 10/10, `test_fit_parity` 23/23 (fresh `.venv`:
+  numpy pillow scipy cairosvg).
+- Scorer re-run: 8/8 scored, 4 candidates each with `content_frac`/`reason`;
+  winner == argmax(score) verified programmatically; `selected/` = 8 files;
+  dagger winner flipped to c4 exactly as the HANDOFF predicted.
+- Flagged matte `tower_shield_c2_s202` REVIEWED AND ACCEPTED: it is a true
+  full-square tower shield; 90.89% coverage is legitimate; matte clean.
+- Report rebuilt; link-check: 105 refs, 0 missing.
+- Registry: `batch-003-item-icons` entry added (awaiting_user_review).
+- `tools/ci.sh`: stages 1–6 GREEN (sim, goldens, mock, tsc, drift, vocab,
+  api fs 155 + pg 155, pg_sync 4, client build). e2e: 137 passed;
+  dex-card:65 + nav-routing:26 are the PRE-EXISTING suite debt documented in
+  REQ-0124's gates (assert unmerged Dex-R3 classes; not a regression);
+  schedule:1065 + warehouse-mjolnir:203 are state-pollution flakes — both
+  PASS in a clean isolated run (2 passed / 11s). Same carve-out REQ-0124
+  merged under.
+- Task 5 (live raster wiring) SPLIT OUT as its own REQ (see follow-up REQ in
+  draft/): it depends on REQ-0125's skin-resolution machinery; items stay on
+  the SVG sprite for live rendering until then.
+- ComfyUI untouched (not needed: no regeneration).
