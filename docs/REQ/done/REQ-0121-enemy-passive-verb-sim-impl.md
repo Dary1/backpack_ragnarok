@@ -171,3 +171,27 @@ modifiers, not ray-emitting effects" — none carry an `attack_profile`.
   (during a GPU e2e re-run); live profile/content verified byte-identical
   to the pre-run backups afterwards (no e2e state pollution).
 - batch-004 wiring stays out of scope (REQ-0122 owns the loading pipe).
+
+## Integration round 2 (2026-07-12, post REQ-0049/0048 master merge)
+
+- master moved mid-REQ (merge 8325f41: REQ-0049 layered encounters +
+  REQ-0048 pulse propagation, another session's done sweep). Merged
+  master into this branch (21ee1a1): vocab union kept v8 (master had NOT
+  bumped for 0048) = triggers +on_link_pulse +on_hp_below, verbs +pulse
+  +buff_linked +buff_self +damage_reduction; encounter.cjs keeps BOTH
+  same-anchor insertions (0121 watchers + 0049 attachments; one shared
+  closing brace restored by hand).
+- Integrated gates: sim 107/107 (both REQs' suites), goldens 12/12
+  (0049's refreshed hashes), mock 101, tsc, drift, vocab self-test 12/12
+  triggers / 22 verbs, api fs 155 + pg 155, pg_sync 4, client build OK.
+- e2e on the integrated tree: 132 passed, 11 failed -> ALL accounted:
+  dex-card:65 + nav-routing:26 = documented pre-existing debt
+  (REQ-0124/0109 carve-out); remaining 9 proven green in isolated serial
+  re-runs (GPU=0 pass: schedule:1065, warehouse-mjolnir:203,
+  nav-routing:108, long-press:92, market:191+223; GPU=1 pass:
+  landing:52/115/139, market:158, ragnarok:144 -- the GPU=0 landing
+  failures were SwiftShader WebGL timeouts, not regressions).
+- Ops: post-reboot the live api's pg_sync worker was wedged (query
+  timeouts; caused one e2e teardown failure + flake burst). It respawned
+  on next query per its own design; /api/warehouse/dev/clear-debris now
+  ok:true and live profile/content verified byte-identical to backups.
