@@ -131,7 +131,31 @@ from scipy import ndimage
 from rembg import remove, new_session
 
 COMFY = "http://127.0.0.1:8188"
-CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"
+
+# ---------------------------------------------------------------------------
+# Generation route. RATIFIED DEFAULT: flux2 (REQ-0136 bakeoff, user verdict
+# 2026-07-12). FLUX.2 klein 4B beat JuggernautXL V9 and DreamShaperXL Turbo on
+# every axis the bakeoff tested: brief compliance (near-white background 16/16
+# vs 5/16 and 1/16), painterly style, warm speed (10 s vs 40 s and 20 s) and
+# licence (Apache 2.0). The SDXL route stays working, for fallback and for
+# reproducing historical batches.
+ROUTE = "flux2"                  # "flux2" | "sdxl"
+
+CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"   # sdxl route
+
+FLUX = {
+    "unet": "flux-2-klein-4b-Q8_0.gguf",      # Apache 2.0, unsloth GGUF Q8_0
+    "clip": "qwen_3_4b.safetensors",
+    "vae": "flux2-vae.safetensors",
+    "steps": 4, "cfg": 1.0, "sampler": "euler",
+}
+
+# Per-route sampler defaults; the CLI's --steps/--cfg still override.
+ROUTE_DEFAULTS = {
+    "flux2": {"steps": 4, "cfg": 1.0, "sampler": "euler", "scheduler": None},
+    "sdxl": {"steps": 30, "cfg": 6.5, "sampler": "dpmpp_2m",
+             "scheduler": "karras"},
+}
 DEFAULT_SEEDS = [101, 202, 303, 404]
 COMFY_INPUT_DIR = os.path.expanduser("~/ComfyUI/input")
 COMFY_OUTPUT_DIR = os.path.expanduser("~/ComfyUI/output")
@@ -261,6 +285,86 @@ def build_cell_mask_image(mask_cells, bbox_cells, cell_px, gen_px, path_out):
 # =====================================================================
 def build_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
                     sampler, scheduler, mask_image_filename=None):
+    """Dispatch on the active ROUTE. Same (wf, prefix) contract either way."""
+    if ROUTE == "flux2":
+        return _wf_flux2(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps,
+                         cfg, sampler, mask_image_filename)
+    return _wf_sdxl(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
+                    sampler, scheduler, mask_image_filename)
+
+
+def _wf_flux2(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
+              sampler, mask_image_filename=None):
+    """FLUX.2 klein 4B distilled, GGUF. Mirrors ComfyUI's official
+    "Text to Image (Flux.2 Klein 4B Distilled)" template with UNETLoader
+    swapped for UnetLoaderGGUF. Proven by REQ-0136 (16/16 on brief).
+
+    THE NEGATIVE PROMPT IS INACTIVE HERE. Distilled klein samples at cfg 1.0,
+    where the guider applies no classifier-free guidance, and the official
+    graph feeds a ConditioningZeroOut of the POSITIVE in as the negative. A
+    caller's neg_prompt is accepted and DISCARDED -- style must be steered from
+    the POSITIVE prompt. Warned once per process on purpose: silently accepting
+    a negative that does nothing is how a style regression hides for a month.
+    """
+    if neg_prompt and not getattr(_wf_flux2, "_warned", False):
+        print("NOTE flux2 route: the negative prompt is INACTIVE at cfg 1.0 "
+              "(zeroed conditioning, official distilled graph). Steer style "
+              "from the POSITIVE prompt.", flush=True)
+        _wf_flux2._warned = True
+
+    prefix = f"gen_{seed}_{os.getpid()}"
+    wf = {
+        "1": {"class_type": "UnetLoaderGGUF",
+              "inputs": {"unet_name": FLUX["unet"]}},
+        "2": {"class_type": "CLIPLoader",
+              "inputs": {"clip_name": FLUX["clip"], "type": "flux2",
+                         "device": "default"}},
+        "3": {"class_type": "VAELoader", "inputs": {"vae_name": FLUX["vae"]}},
+        "4": {"class_type": "CLIPTextEncode",
+              "inputs": {"text": pos_prompt, "clip": ["2", 0]}},
+    }
+    positive_ref = ["4", 0]
+    if mask_image_filename:
+        # Same subject-placement bias as the SDXL route: mask the POSITIVE
+        # conditioning only. The negative is a zero-out of the UNMASKED
+        # positive -- zeroing the masked one would leave everything outside the
+        # mask unguided.
+        wf["10"] = {"class_type": "LoadImage",
+                    "inputs": {"image": mask_image_filename}}
+        wf["11"] = {"class_type": "ImageToMask",
+                    "inputs": {"image": ["10", 0], "channel": "red"}}
+        wf["12"] = {"class_type": "ConditioningSetMask",
+                    "inputs": {"conditioning": ["4", 0], "mask": ["11", 0],
+                               "strength": 1.0, "set_cond_area": "default"}}
+        positive_ref = ["12", 0]
+
+    wf["5"] = {"class_type": "ConditioningZeroOut",
+               "inputs": {"conditioning": ["4", 0]}}
+    wf["6"] = {"class_type": "EmptyFlux2LatentImage",
+               "inputs": {"width": gen_w, "height": gen_h, "batch_size": 1}}
+    wf["7"] = {"class_type": "KSamplerSelect",
+               "inputs": {"sampler_name": sampler or FLUX["sampler"]}}
+    wf["8"] = {"class_type": "Flux2Scheduler",
+               "inputs": {"steps": steps or FLUX["steps"],
+                          "width": gen_w, "height": gen_h}}
+    wf["9"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}}
+    wf["13"] = {"class_type": "CFGGuider",
+                "inputs": {"model": ["1", 0], "positive": positive_ref,
+                           "negative": ["5", 0],
+                           "cfg": cfg if cfg is not None else FLUX["cfg"]}}
+    wf["14"] = {"class_type": "SamplerCustomAdvanced",
+                "inputs": {"noise": ["9", 0], "guider": ["13", 0],
+                           "sampler": ["7", 0], "sigmas": ["8", 0],
+                           "latent_image": ["6", 0]}}
+    wf["15"] = {"class_type": "VAEDecode",
+                "inputs": {"samples": ["14", 0], "vae": ["3", 0]}}
+    wf["16"] = {"class_type": "SaveImage",
+                "inputs": {"images": ["15", 0], "filename_prefix": prefix}}
+    return wf, prefix
+
+
+def _wf_sdxl(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
+             sampler, scheduler, mask_image_filename=None):
     """Build a ComfyUI graph: ckpt -> CLIP encode (pos/neg) -> [optional
     ConditioningSetMask on positive only] -> EmptyLatentImage -> KSampler ->
     VAEDecode -> SaveImage. filename_prefix is unique per (seed) call so the
@@ -568,22 +672,37 @@ def run_rematte_only(outdir, id_filter=None):
 # Main per-item-per-seed job driver
 # =====================================================================
 def main():
+    global ROUTE
     ap = argparse.ArgumentParser(description="ComfyUI item-icon candidate generator (REQ-0073)")
     ap.add_argument("--defs", default="content/live/live_items.json")
     ap.add_argument("--ids", default=None, help="comma-separated id filter, e.g. blade,hilt")
     ap.add_argument("--outdir", default="content/batches/batch-003-item-icons/candidates")
     ap.add_argument("--candidates", type=int, default=4, help="number of candidates per item (<= len(--seeds))")
     ap.add_argument("--seeds", default="101,202,303,404")
-    ap.add_argument("--steps", type=int, default=30)
-    ap.add_argument("--cfg", type=float, default=6.5)
-    ap.add_argument("--sampler", default="dpmpp_2m")
-    ap.add_argument("--scheduler", default="karras")
+    ap.add_argument("--route", default=ROUTE, choices=("flux2", "sdxl"),
+                    help="generation route (default: the ratified flux2)")
+    # Sampler defaults are RESOLVED FROM THE ROUTE after parsing, not hardcoded
+    # here. 30 steps / cfg 6.5 are SDXL numbers.
+    ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--cfg", type=float, default=None)
+    ap.add_argument("--sampler", default=None)
+    ap.add_argument("--scheduler", default=None)
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
     ap.add_argument("--rematte-only", action="store_true",
                      help="skip generation entirely; regenerate _alpha.png for every existing raw "
                           "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
     a = ap.parse_args()
+
+    ROUTE = a.route
+    _d = ROUTE_DEFAULTS[ROUTE]
+    for _k in ("steps", "cfg", "sampler", "scheduler"):
+        if getattr(a, _k) is None:
+            setattr(a, _k, _d[_k])
+    print(f"route: {ROUTE}  steps={a.steps} cfg={a.cfg} "
+          f"sampler={a.sampler} scheduler={a.scheduler}", flush=True)
+    print(f"  unet={FLUX['unet']} clip={FLUX['clip']}" if ROUTE == "flux2"
+          else f"  ckpt={CKPT}", flush=True)
 
     if a.rematte_only:
         # No ComfyUI, no --defs read needed for this path -- it operates

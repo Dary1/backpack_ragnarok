@@ -75,13 +75,30 @@ def main():
                                  f'<div class="miss">missing</div></td>')
             rows.append(f'<tr><th>{sub} s{seed}</th>{"".join(cells)}</tr>')
 
+    # Clean perf: every contender re-measured back-to-back on a quiet,
+    # exclusive box (tools/req0136_perfprobe.py), cold model load discarded.
+    # The in-leg timings are NOT usable -- those legs were generated while the
+    # box was OOM-thrashing and sharing the GPU with a second runner.
+    probe = {}
+    pp = os.path.join(SRC, "..", "perfprobe", "perfprobe.json")
+    if os.path.exists(pp):
+        probe = json.load(open(pp)).get("results", {})
+
     heads = []
     for c in CONTENDERS:
         name, cfg, lic = META[c]
-        s = stats.get(c, {})
-        perf = (f'VRAM peak {s.get("vram_peak_mib","?")} MiB - warm '
-                f'{s.get("warm_s_per_image","?")} s/img - cold first '
-                f'{s.get("cold_first_image_s","?")} s') if s else "stats pending"
+        pr = probe.get(c, {})
+        st = stats.get(c, {})
+        if pr.get("warm_median_s"):
+            secs = pr["warm_median_s"]
+            per48 = secs * 48 / 3600.0     # a 12-unit roster batch x 4 seeds
+            perf = (f'<b class="perf">{secs:.0f} s/img</b> warm '
+                    f'(median, quiet box) &middot; VRAM peak '
+                    f'{pr.get("vram_peak_mib","?")} MiB &middot; a 48-candidate '
+                    f'roster batch = <b>{per48:.1f} h</b>')
+        else:
+            perf = (f'VRAM peak {st.get("vram_peak_mib","?")} MiB &middot; '
+                    f'clean s/img pending')
         heads.append(f"<th><b>{name}</b><br><small>{cfg}<br>{perf}<br>"
                      f"{lic}</small></th>")
 
@@ -100,6 +117,7 @@ th small{{color:#A8A193;font-weight:400}}
   margin-top:6px;display:block;image-rendering:auto}}
 .key{{color:#C9A959;font-weight:600;margin-bottom:6px}}
 .miss{{color:#E25822}}
+.perf{{color:#7FB069}}
 h1{{color:#C9A959}}
 </style>
 <h1>REQ-0136 - icon checkpoint bakeoff</h1>
@@ -108,6 +126,14 @@ incumbent matte (birefnet-general + border-key fallback). 256 px board view +
 64 px cell view per candidate (G4). Verdict by candidate key, e.g.
 <b>"dsxl-hilt-202 green"</b>, or by rule ("dsxl all green"). Click 256px
 image for the raw 1024px generation.</p>
+<p><b>What this bakeoff is for:</b> JuggernautXL V9 is photoreal-biased and is
+being prompt-corrected toward painterly output on every generation. Judge the
+STYLE first -- which column looks like the game without being argued into it --
+and read the speed line as a constraint, not as a vote.</p>
+<p><small>Perf re-measured on a quiet, exclusive box after the fact
+(<code>tools/req0136_perfprobe.py</code>): the in-leg timings were taken while
+the box was OOM-thrashing and are not comparable. Cold model load discarded;
+median of 3 warm generations at 1024x1024 on the RTX 2080 (8 GB).</small></p>
 <table>
 <tr><th>subject / seed</th>{"".join(heads)}</tr>
 {chr(10).join(rows)}

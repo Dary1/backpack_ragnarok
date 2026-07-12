@@ -126,33 +126,34 @@ class VramPoller(threading.Thread):
 
 
 def postprocess(base, tw, th, label):
-    """Matte in an ISOLATED subprocess (rembg/onnxruntime+pymatting RSS can
-    spike >10 GB -- an inline matte OOM-killed the whole leg on 2026-07-12,
-    dmesg confirmed; per-image process isolation frees that RSS every time),
-    then Lanczos-downscale 256/64 in-process (cheap)."""
+    """Matte + Lanczos 256/64. MUST run with ComfyUI DOWN (--phase matte).
+
+    ROOT CAUSE, 2026-07-12 (8 global OOM kills; box reboot 03:53; Cloudflare
+    tunnel dropped its connections at 10:12): the previous guard was
+    INVERTED. It skipped the ComfyUI /free before ITEM mattes on the theory
+    that "item matte is RAM-light" -- but items are exactly the path that
+    goes through G.matte_alpha, the ONLY matte that enables rembg
+    alpha_matting (pymatting solve, 12-13 GB RSS at 1024 px; dmesg victims
+    12.9 / 13.0 / 12.8 GB python). Characters, meanwhile, got the cheap
+    matte_light AND the /free. Precisely backwards.
+
+    With a full SDXL resident in ComfyUI (~11-18 GB RSS) the item matte's
+    13 GB overshoots the 23 GB box -> global OOM. That is why the dsxl leg
+    (full SDXL, and the leg that owned the item subjects) killed the box
+    twice, while flux (4B GGUF, ~5 GB resident) sailed through. It is NOT a
+    DreamShaperXL defect.
+
+    /free alone is NOT a fix: unload_models returns the weights to the
+    Python allocator, not to the OS (observed: ComfyUI idle for 4.5 h still
+    holding 13.8 GB RSS). The only reliable fix is to never have both
+    resident -- hence generation and matting are now separate phases, with
+    ComfyUI stopped in between.
+    """
     if not os.path.exists(base + "_alpha.png"):
-        # inline matte (rembg session cached across images). Reverted from
-        # per-image subprocess isolation 2026-07-12 once the box became
-        # exclusive: sequential legs + /free keep RSS bounded, and the
-        # per-subprocess birefnet cold load (~60-90 s/img) dominated wall
-        # time. If OOM recurs, resume re-runs the missing mattes.
-        # RAM guard: characters (hair/fur) push rembg alpha_matting's
-        # pymatting solve past 10 GB RSS; with SDXL cached in ComfyUI the
-        # 23 GB box thrashes (2 OOM events + 1 reboot on 2026-07-12).
-        # Unload ComfyUI models before every matte; next gen reloads from
-        # page cache (~30-40 s) -- safe > fast.
-        try:
-            if "unit-" not in label:
-                raise RuntimeError("skip /free: item matte is RAM-light")
-            import urllib.request as _u
-            _u.urlopen(_u.Request(
-                G.COMFY + "/free",
-                data=b'{"unload_models":true,"free_memory":true}',
-                headers={"Content-Type": "application/json"}),
-                timeout=20).read()
-            time.sleep(2)
-        except Exception as e:
-            print(f"WARN /free failed: {e}", flush=True)
+        if comfy_alive():
+            print(f"WARN {label}: ComfyUI is UP during matte -- prefer "
+                  f"--phase matte with ComfyUI stopped", flush=True)
+            free_models()
         try:
             if "unit-" in label:
                 matte_light(base + ".png", base + "_alpha.png", label)
@@ -169,6 +170,27 @@ def postprocess(base, tw, th, label):
     im.resize((tw, th), Image.LANCZOS).save(base + "_256.png")
     im.resize((64, 64), Image.LANCZOS).save(base + "_64.png")
     return True
+
+
+def comfy_alive():
+    import urllib.request as _u
+    try:
+        _u.urlopen(G.COMFY + "/system_stats", timeout=5).read()
+        return True
+    except Exception:
+        return False
+
+
+def free_models():
+    import urllib.request as _u
+    try:
+        _u.urlopen(_u.Request(
+            G.COMFY + "/free",
+            data=b'{"unload_models":true,"free_memory":true}',
+            headers={"Content-Type": "application/json"}), timeout=20).read()
+        time.sleep(2)
+    except Exception as e:
+        print(f"WARN /free failed: {e}", flush=True)
 
 
 def matte_light(src, dst, label):
@@ -227,6 +249,10 @@ def main():
                     default="hilt,tower_shield,unit-elf,unit-berserker")
     ap.add_argument("--seeds", default=",".join(str(s) for s in SEEDS))
     ap.add_argument("--force", action="store_true")
+    # gen   = ComfyUI up, raws only, NO matte  (GPU + ~11-18 GB RSS)
+    # matte = ComfyUI DOWN, matte + downscales (up to ~13 GB RSS)
+    # Never both: that overlap is what OOM-killed the box (see postprocess).
+    ap.add_argument("--phase", default="all", choices=("gen", "matte", "all"))
     args = ap.parse_args()
 
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -238,10 +264,12 @@ def main():
     seeds = [int(s) for s in args.seeds.split(",")]
     subjects = load_subjects(repo_root, args.subjects.split(","))
 
+    if args.phase == "matte" and comfy_alive():
+        print("WARN ComfyUI is UP; matte phase wants it stopped", flush=True)
+
     poller = VramPoller()
-    poller.start()
-    stats = {"contender": args.contender, "config": c, "images": [],
-             "started": time.strftime("%Y-%m-%d %H:%M:%S")}
+    if args.phase in ("gen", "all"):
+        poller.start()
 
     for e in subjects:
         w, h = e["gen_render"]["gen_px"]
@@ -249,11 +277,21 @@ def main():
         for seed in seeds:
             base = os.path.join(outdir, f'{e["id"]}_s{seed}')
             label = f'{args.contender}/{e["id"]}_s{seed}'
-            if os.path.exists(base + ".png") and not args.force:
-                # resume: raw exists; make sure postprocess is complete too
-                postprocess(base, tw, th, label)
-                print(f'SKIP {e["id"]} s{seed} (exists)', flush=True)
+            have_raw = os.path.exists(base + ".png")
+
+            if args.phase == "matte":
+                if have_raw:
+                    postprocess(base, tw, th, label)
+                else:
+                    print(f"MISS {label}: no raw to matte", flush=True)
                 continue
+
+            if have_raw and not args.force:
+                print(f'SKIP {e["id"]} s{seed} (exists)', flush=True)
+                if args.phase == "all":
+                    postprocess(base, tw, th, label)
+                continue
+
             prefix = f"bakeoff0136_{args.contender}_{e['id']}_{seed}"
             if c["kind"] == "sdxl":
                 wf = wf_sdxl(c, e["gen_prompt"], e.get("gen_negative", ""),
@@ -267,8 +305,8 @@ def main():
             if not hist or hist.get("status", {}).get("status_str") == "error":
                 msg = json.dumps(hist.get("status", {}))[:500] if hist else "timeout"
                 print(f'FAIL {e["id"]} s{seed}: {msg}', flush=True)
-                stats["images"].append({"id": e["id"], "seed": seed,
-                                        "error": msg, "secs": round(dt, 1)})
+                write_meta(base, {"id": e["id"], "seed": seed,
+                                  "error": msg, "secs": round(dt, 1)})
                 continue
             hits = sorted(glob.glob(
                 os.path.join(G.COMFY_OUTPUT_DIR, prefix + "*.png")))
@@ -276,24 +314,50 @@ def main():
                 print(f'FAIL {e["id"]} s{seed}: no output file', flush=True)
                 continue
             shutil.copy(hits[-1], base + ".png")
-            postprocess(base, tw, th, label)
-            stats["images"].append({"id": e["id"], "seed": seed,
-                                    "secs": round(dt, 1)})
+            # Sidecar FIRST: a resume must never lose a timing again. The old
+            # code only kept stats for images generated in the current run, so
+            # runstats_v9.json came out with a single image after the resume.
+            write_meta(base, {"id": e["id"], "seed": seed, "secs": round(dt, 1),
+                              "vram_mib": poller.peak})
+            if args.phase == "all":
+                postprocess(base, tw, th, label)
             print(f'OK {e["id"]} s{seed} {dt:.1f}s', flush=True)
 
     poller.stop()
-    stats["vram_peak_mib"] = poller.peak
-    done = [i["secs"] for i in stats["images"] if "error" not in i]
-    # first image of a leg pays the model load; warm = the rest
-    stats["warm_s_per_image"] = (round(sum(done[1:]) / max(len(done) - 1, 1), 1)
-                                 if len(done) > 1 else None)
+    if args.phase != "matte":
+        write_runstats(outdir, args.contender, c, subjects, seeds, poller.peak)
+
+
+def write_meta(base, d):
+    with open(base + ".meta.json", "w") as f:
+        json.dump(d, f)
+
+
+def write_runstats(outdir, contender, cfg, subjects, seeds, vram_peak):
+    """Rebuild runstats from the per-image sidecars, so resumed legs report
+    every image instead of only the ones this process happened to make."""
+    images = []
+    for e in subjects:
+        for seed in seeds:
+            m = os.path.join(outdir, f'{e["id"]}_s{seed}.meta.json')
+            if os.path.exists(m):
+                with open(m) as f:
+                    images.append(json.load(f))
+    stats = {"contender": contender, "config": cfg, "images": images,
+             "written": time.strftime("%Y-%m-%d %H:%M:%S")}
+    done = [i["secs"] for i in images if "error" not in i]
+    stats["vram_peak_mib"] = max(
+        [vram_peak] + [i.get("vram_mib", 0) or 0 for i in images])
     stats["cold_first_image_s"] = done[0] if done else None
+    stats["warm_s_per_image"] = (round(sum(done[1:]) / (len(done) - 1), 1)
+                                 if len(done) > 1 else None)
+    stats["n_images"] = len(done)
     statpath = os.path.join(os.path.dirname(outdir),
-                            f"runstats_{args.contender}.json")
+                            f"runstats_{contender}.json")
     with open(statpath, "w") as f:
         json.dump(stats, f, indent=2)
     print("STATS " + json.dumps({k: stats[k] for k in
-          ("contender", "vram_peak_mib", "warm_s_per_image",
+          ("contender", "n_images", "vram_peak_mib", "warm_s_per_image",
            "cold_first_image_s")}), flush=True)
 
 
