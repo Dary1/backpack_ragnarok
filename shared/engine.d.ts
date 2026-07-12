@@ -185,7 +185,7 @@ export interface GameState {
   pos: PO[];
   sis: SI[];
   inv?: Inventory; // absent on a legacy (pre-REQ-0030) saved state; run migrateState() before use
-  squads?: Squads; // absent on a legacy (pre-REQ-0031) saved state; run migrateState() before use
+  presets?: Squads; // legacy serialized field name (REQ-0124 ledger) -- type renamed, wire name kept // absent on a legacy (pre-REQ-0031) saved state; run migrateState() before use
 }
 
 /** One squad's canvas snapshot -- same shape as GameState's own top-level
