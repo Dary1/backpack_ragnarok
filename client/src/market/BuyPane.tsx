@@ -33,7 +33,7 @@ const CHIP_DEFS: ChipDef[] = [
   { key: 'weapon', labelKey: 'market.chip.weapon', match: 'weapon' },
   { key: 'frost', labelKey: 'market.chip.frost', match: 'frost', kw: 'frost' },
   { key: 'ember', labelKey: 'market.chip.ember', match: 'ember', kw: 'ember' },
-  { key: 'unit', labelKey: 'market.chip.linker', match: 'unit' },
+  { key: 'unit', labelKey: 'market.chip.unit', match: 'unit' },
   { key: 'relic', labelKey: 'market.chip.relic', match: 'relic' },
 ];
 
