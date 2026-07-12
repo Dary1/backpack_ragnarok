@@ -21,7 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { BoardRenderer } from './BoardRenderer';
 import { makeCanvasOps } from './boardOps';
-import { loadSpriteTextures } from './sprites';
+import { loadBoardTextures } from './sprites';
 import { useGameStore } from '../store';
 
 export function Board() {
@@ -37,7 +37,7 @@ export function Board() {
     const { engine, gameData } = snapshot;
 
     (async () => {
-      const textures = await loadSpriteTextures();
+      const textures = await loadBoardTextures();
       if (cancelled) return;
       const renderer = await BoardRenderer.mount(canvas, {
         engine,

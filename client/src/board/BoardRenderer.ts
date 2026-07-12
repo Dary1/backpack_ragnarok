@@ -67,6 +67,8 @@ import {
 import type { BoardOps } from './boardOps';
 import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
+import { resolveUnitIcon } from './unitIcon';
+import { drawChargeRing } from './chargeRing';
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -752,17 +754,57 @@ export class BoardRenderer {
       core.cursor = 'grab';
       core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
       this.gUnits.addChild(core);
-      const unitTexture = textures.get('icon-unit_core');
+      // REQ-0125a: the art in a Unit cell is no longer a string literal. It
+      // comes from THE resolver (board/unitIcon.ts), through the ratified G6
+      // skin chain: active skin -> default unit icon -> legacy glyph ->
+      // placeholder. Today no BP carries a skin or a default icon (no unit art
+      // exists -- REQ-0127 is on hold behind REQ-0136 -- and no unit IDENTITY
+      // exists to key one on -- REQ-0128 owns the Unit model, and the user's
+      // 2026-07-12 ruling was explicitly NOT to invent a unitId field here to
+      // unblock the renderer). So every BP falls through to the legacy
+      // `icon-unit_core` glyph and this board stays pixel-identical to
+      // pre-REQ-0125a. That fall-through IS the deliverable: REQ-0125b lands
+      // identity and REQ-0127 lands art as DATA, without touching this file,
+      // and REQ-0133 reuses this same chain for item rasters.
+      const icon = resolveUnitIcon(
+        {
+          // Both null until REQ-0125b (see unitIcon.ts). Written out rather
+          // than omitted so the seam is visible to the next reader.
+          skinKey: null,
+          defaultKey: null,
+        },
+        (k) => textures.has(k)
+      );
+      const unitTexture = icon.key ? textures.get(icon.key) : undefined;
       if (unitTexture) {
         const sprite = new Sprite(unitTexture);
-        sprite.width = 44;
-        sprite.height = 44;
-        sprite.x = x - 22;
-        sprite.y = y - 22;
+        // Contain-fit into the 44x44 art box via the SHARED box-fit every other
+        // icon on this board already uses (geom.fitSpriteToBox ->
+        // render/itemCard.fitBoxInBounds). The old code hard-set width/height to
+        // 44x44, which is a no-op for the 1:1 legacy glyph but would STRETCH any
+        // non-square art -- and aspect is inviolable (common_content_pipeline.md
+        // section 2). Unit icons are 1:1 by definition (unit_icon_pipeline.md
+        // section 0), so this changes nothing today; it is the path REQ-0133's
+        // non-square item rasters will come through.
+        fitSpriteToBox(sprite, x - 22, y - 22, 44, 44);
         sprite.alpha = ops.isCanvas ? 1 : INV_UNIT_ALPHA * 2;
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gUnits.addChild(sprite);
       }
+
+      // G7 charge ring (unit_icon_pipeline.md section 1). Renderer-drawn, never
+      // baked into art (G2). NULL today at every production call site: no charge
+      // data exists anywhere in the codebase (see chargeRing.ts's header for the
+      // audit -- the placement engine has no time axis at all, and sim's only
+      // `cooldown` is the ROOM re-entry timer, which is REQ-0098's ring, not a
+      // unit's; canvas units are dormant by construction anyway). So
+      // drawChargeRing() no-ops and no ring appears. The drawing itself is
+      // finished and visually verified (web/preview/unit-charge-ring/); REQ-0129
+      // changes this ONE argument from null to a real 0-1 value and it lights up.
+      const ring = new Graphics();
+      drawChargeRing(ring, x, y, null);
+      ring.eventMode = 'none'; // decorative, must not eat the BP drag handle
+      this.gUnits.addChild(ring);
       // Direction dots (which way the unit's beams would fire) are a
       // canvas-only concept -- an inventory BP's unit is dormant, so no
       // dots are drawn there (REQ-0030 spec item 1: "no beams").
