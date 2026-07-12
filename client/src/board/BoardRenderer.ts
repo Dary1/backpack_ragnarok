@@ -6,7 +6,7 @@
 // the overall composition mirror mock-src/ui.js's SVG renderAll() for
 // visual parity (same reference, not pixel-exact): grid cells tinted by BP
 // (canvas only -- see REQ-0030 note below), BP outlines + name/HP label,
-// linker cores + direction dots (canvas: full; inventory: dimmed core, no
+// unit cores + direction dots (canvas: full; inventory: dimmed core, no
 // dots/beams), beams (canvas only), placed PO art, port target ◇ marks
 // (canvas only), established-connection ◆ marks (canvas only), sockets
 // (empty + seated SI), and the chain-link toggle button (canvas only).
@@ -44,7 +44,7 @@
 // beams, combos, port ◇/◆ marks, the chain-link toggle, BP color grid
 // tint) are gated behind `this.ops.isCanvas` below -- REQ-0030 spec: the
 // inventory board is a "placement-only world" (no effects/connections/
-// combos/beams; a BP's linker is rendered but DORMANT -- dimmed, no beams,
+// combos/beams; a BP's unit is rendered but DORMANT -- dimmed, no beams,
 // no direction dots).
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { FederatedPointerEvent } from 'pixi.js';
@@ -65,7 +65,7 @@ import {
   type DropTarget,
 } from './drag';
 import type { BoardOps } from './boardOps';
-import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_LINKER_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, socketScreenPos } from './geom';
+import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
@@ -96,7 +96,7 @@ export class BoardRenderer {
   gBeams = new Container();
   gItems = new Container();
   gSock = new Container();
-  gLinkers = new Container();
+  gUnits = new Container();
   gChain = new Container();
   gTarget = new Container();
   gCarry = new Container();
@@ -105,7 +105,7 @@ export class BoardRenderer {
   // when every one of its cells is covered by placed POs, which leaves
   // no empty cell for the existing empty-cell-grab-handle mechanism
   // above to use). Positioned right after gItems/before gSock so the
-  // badge sits below socket/linker glyphs but still clearly above PO
+  // badge sits below socket/unit glyphs but still clearly above PO
   // art -- see the constructor's addChild order below.
   gBadges = new Container();
   deps: BoardDeps;
@@ -128,7 +128,7 @@ export class BoardRenderer {
       this.gItems,
       this.gBadges, // REQ-0042: above gItems (PO art), see field comment
       this.gSock,
-      this.gLinkers,
+      this.gUnits,
       this.gChain,
       this.gTarget,
       this.gCarry
@@ -155,7 +155,7 @@ export class BoardRenderer {
     // lines/arrowheads/dud marks), gTarget (drop-target tint/rings,
     // reject-flash), and gCarry (drag ghost sprites) never host a
     // listener anywhere in this file, so the whole group is marked here;
-    // gBase/gItems/gSock/gLinkers mix interactive hit objects with
+    // gBase/gItems/gSock/gUnits mix interactive hit objects with
     // decorative art and are annotated per-node at each creation site
     // below instead.
     this.gBeams.eventMode = 'none';
@@ -264,7 +264,7 @@ export class BoardRenderer {
     this.gItems.removeChildren();
     this.gBadges.removeChildren(); // REQ-0042
     this.gSock.removeChildren();
-    this.gLinkers.removeChildren();
+    this.gUnits.removeChildren();
     this.gChain.removeChildren();
     this.gTarget.removeChildren();
 
@@ -275,19 +275,19 @@ export class BoardRenderer {
     // REQ-0033 Phase 2: red/yellow usage-tint overlays (spec items 2-3).
     // Recomputed FRESH on every render() call (never cached) -- per
     // engine.js's own perf note on tintSets(), a full scan at this game's
-    // scale (PRESET_COUNT presets x a few dozen items) is comfortably
+    // scale (SQUAD_COUNT squads x a few dozen items) is comfortably
     // sub-millisecond, so there is no correctness/perf reason to memoize
     // this across renders; recomputing here guarantees it is always
-    // correct after every state mutation AND every preset switch, with no
+    // correct after every state mutation AND every squad switch, with no
     // separate invalidation bookkeeping to get wrong.
-    //   INVENTORY board: tint.red (used by the CURRENT preset) and
-    //     tint.yellow (used by at least one OTHER preset) both apply --
+    //   INVENTORY board: tint.red (used by the CURRENT squad) and
+    //     tint.yellow (used by at least one OTHER squad) both apply --
     //     red takes visual precedence when a uid is in both sets (spec's
     //     red-vs-yellow framing puts "already used here" first).
     //   CANVAS board: only tint.canvasYellow applies (uids on the canvas
-    //     right now that are ALSO shared with another preset) -- canvas
+    //     right now that are ALSO shared with another squad) -- canvas
     //     never shows red, since every canvas item is by definition used
-    //     by the current preset already (that's not useful information to
+    //     by the current squad already (that's not useful information to
     //     highlight on the canvas itself).
     // Color choice (documented here once, reused by every draw site
     // below): red 0xff3b3b @ alpha 0.20, yellow 0xffd23b @ alpha 0.20 --
@@ -302,8 +302,8 @@ export class BoardRenderer {
     /** Draws a translucent tint wash over exactly `cells` (not a bounding
      * box -- correct for L-shapes/shapes-with-holes alike, matching every
      * other per-cell drawing loop in this file) into `layer`, colored red
-     * if `uid` is in the CURRENT preset's usage set, else yellow if it is
-     * in the shared/other-presets set, else nothing. `redSet`/`yellowSet`
+     * if `uid` is in the CURRENT squad's usage set, else yellow if it is
+     * in the shared/other-squads set, else nothing. `redSet`/`yellowSet`
      * are passed explicitly (rather than this method reading `tint`
      * directly) so the SAME helper serves both boards: the inventory call
      * sites pass {red:tint.red, yellow:tint.yellow}, the canvas call
@@ -372,7 +372,7 @@ export class BoardRenderer {
 
       // REQ-0033 Phase 2: BP usage tint -- the BP's OWN footprint cells,
       // independent of whatever POs sitting on/inside it also get tinted
-      // individually below (a BP used by the current preset = red on its
+      // individually below (a BP used by the current squad = red on its
       // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
       drawTintOverlay(this.gBase, cells, bp.id, tintRedSet, tintYellowSet);
 
@@ -419,7 +419,7 @@ export class BoardRenderer {
       badgeGlyph.y = badgeY;
       badgeGlyph.eventMode = 'static';
       badgeGlyph.cursor = 'grab';
-      // SAME whole-BP-move entry point the linker-grab core (below) and
+      // SAME whole-BP-move entry point the unit-grab core (below) and
       // the empty-cell handles (further below) both call -- reused
       // verbatim, not a new drag code path.
       badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
@@ -427,17 +427,17 @@ export class BoardRenderer {
 
       // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
       // Phase 2): every BP cell that is neither occupied by a placed PO
-      // nor the linker's own cell is an invisible drag source for moving
+      // nor the unit's own cell is an invisible drag source for moving
       // the whole BP (matches the mock's `hit` rects in this exact spot in
       // its renderAll()). Works identically on an inventory page -- BP
-      // drag semantics are "grab = linker core or empty BP cell" on both
+      // drag semantics are "grab = unit core or empty BP cell" on both
       // boards per REQ-0030 spec item 3.
       const occForHandles = ops.occupancy(state);
-      const linkerMapForHandles: Record<string, string> = {};
-      for (const b of container.bps) linkerMapForHandles[engine.key(...engine.linkerCell(b))] = b.id;
+      const unitMapForHandles: Record<string, string> = {};
+      for (const b of container.bps) unitMapForHandles[engine.key(...engine.unitCell(b))] = b.id;
       for (const [r, c] of cells) {
         const ck = `${r},${c}`;
-        if (occForHandles[ck] || linkerMapForHandles[ck]) continue;
+        if (occForHandles[ck] || unitMapForHandles[ck]) continue;
         const hit = new Graphics();
         hit.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
         hit.fill({ color: '#000000', alpha: 0.001 }); // invisible but hit-testable
@@ -448,7 +448,7 @@ export class BoardRenderer {
       }
     }
 
-    // beams — CANVAS ONLY (REQ-0030 spec item 7 / Linker dormancy: "no
+    // beams — CANVAS ONLY (REQ-0030 spec item 7 / Unit dormancy: "no
     // beams" in the inventory; the engine itself never computes beams for
     // BPs sitting in an inventory page in the first place -- traceBeams
     // only ever iterates st.bps -- but this guard also skips the call
@@ -456,7 +456,7 @@ export class BoardRenderer {
     if (ops.isCanvas) {
       for (const bm of engine.traceBeams(state)) {
         const bp = bpById(bm.from);
-        const lc = engine.linkerCell(bp);
+        const lc = engine.unitCell(bp);
         const x0base = cx(lc[1]);
         const y0base = cy(lc[0]);
         if (bm.to) {
@@ -576,7 +576,7 @@ export class BoardRenderer {
         const k = ((p.rot % 4) + 4) % 4;
         // REQ-0028 (aspect law): uniform contain-fit box (was independent
         // x/y insets per def.stretch branch -- see fitSpriteToBox doc).
-        // Box tightness presets (stretch vs non-stretch) preserved.
+        // Box tightness squads (stretch vs non-stretch) preserved.
         if (def.stretch) {
           fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8, def.align, { x: 0, y: 0, w: W0, h: H0 });
         } else {
@@ -737,34 +737,34 @@ export class BoardRenderer {
       }
     }
 
-    // linkers — drawn on BOTH boards (REQ-0030 spec item 1: BP linker
+    // units — drawn on BOTH boards (REQ-0030 spec item 1: BP unit
     // cores render but DIMMED in inventory, no beams/no direction dots).
     // Still a valid BP-drag grab handle on both boards (spec item 3).
     for (const bp of container.bps) {
-      const lc = engine.linkerCell(bp);
+      const lc = engine.unitCell(bp);
       const x = cx(lc[1]);
       const y = cy(lc[0]);
       const core = new Graphics();
       core.circle(x, y, 26);
-      core.fill({ color: '#0e0d0b', alpha: ops.isCanvas ? 0.55 : INV_LINKER_ALPHA });
-      core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_LINKER_ALPHA, width: 1 });
+      core.fill({ color: '#0e0d0b', alpha: ops.isCanvas ? 0.55 : INV_UNIT_ALPHA });
+      core.stroke({ color: '#59d6d6', alpha: ops.isCanvas ? 0.5 : INV_UNIT_ALPHA, width: 1 });
       core.eventMode = 'static';
       core.cursor = 'grab';
       core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
-      this.gLinkers.addChild(core);
-      const linkerTexture = textures.get('icon-linker_core');
-      if (linkerTexture) {
-        const sprite = new Sprite(linkerTexture);
+      this.gUnits.addChild(core);
+      const unitTexture = textures.get('icon-unit_core');
+      if (unitTexture) {
+        const sprite = new Sprite(unitTexture);
         sprite.width = 44;
         sprite.height = 44;
         sprite.x = x - 22;
         sprite.y = y - 22;
-        sprite.alpha = ops.isCanvas ? 1 : INV_LINKER_ALPHA * 2;
+        sprite.alpha = ops.isCanvas ? 1 : INV_UNIT_ALPHA * 2;
         sprite.eventMode = 'none'; // decorative art, see constructor note
-        this.gLinkers.addChild(sprite);
+        this.gUnits.addChild(sprite);
       }
-      // Direction dots (which way the linker's beams would fire) are a
-      // canvas-only concept -- an inventory BP's linker is dormant, so no
+      // Direction dots (which way the unit's beams would fire) are a
+      // canvas-only concept -- an inventory BP's unit is dormant, so no
       // dots are drawn there (REQ-0030 spec item 1: "no beams").
       if (ops.isCanvas) {
         for (const d of bp.linker.dirs) {
@@ -773,7 +773,7 @@ export class BoardRenderer {
           dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);
           dot.fill({ color: '#59d6d6' });
           dot.eventMode = 'none'; // decorative, see constructor note
-          this.gLinkers.addChild(dot);
+          this.gUnits.addChild(dot);
         }
       }
     }
@@ -1007,7 +1007,7 @@ export class BoardRenderer {
   }
 
   /** Starts a carry from a Pixi pointerdown event (board-originated drag:
-   * PO, assembly, BP/linker, or a free-placed/seated SI). Computes grabOff
+   * PO, assembly, BP/unit, or a free-placed/seated SI). Computes grabOff
    * in CELL space, matching the mock's startCarry() branches per kind.
    * `originBoard` is always THIS renderer's own board id -- a drag always
    * starts on the board the pointerdown fired on. */

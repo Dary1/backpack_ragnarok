@@ -1,98 +1,98 @@
-// client/src/store/presets.ts -- REQ-0047 (f2): preset tabs + inventory pages (switch/add/rename/reorder/delete) + notifyStateChanged (THE post-mutation choke point).
+// client/src/store/squads.ts -- REQ-0047 (f2): squad tabs + inventory pages (switch/add/rename/reorder/delete) + notifyStateChanged (THE post-mutation choke point).
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { snapshot, setSnapshot } from './core';
 import { scheduleAutoSave } from './autosave';
 
-export function switchActivePreset(n: number): void {
+export function switchActiveSquad(n: number): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
-  const r = engine.switchPreset(st, n);
+  const r = engine.switchSquad(st, n);
   if (r.ok) notifyStateChanged();
 }
 
-/** Appends a brand-new EMPTY preset and immediately switches to it
- * ("Preset+ appends a preset, switches to it" -- REQ-0031 UI spec). */
-export function addNewPresetAndSwitch(name?: string): void {
+/** Appends a brand-new EMPTY squad and immediately switches to it
+ * ("Squad+ appends a squad, switches to it" -- REQ-0031 UI spec). */
+export function addNewSquadAndSwitch(name?: string): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
-  const added = engine.addPreset(st, name);
+  const added = engine.addSquad(st, name);
   if (!added.ok || added.index === undefined) return;
-  const switched = engine.switchPreset(st, added.index);
+  const switched = engine.switchSquad(st, added.index);
   if (switched.ok) notifyStateChanged();
 }
 
-/** Renames preset `n` (0-based) -- works for the active or an inactive
- * preset identically (engine.renamePreset only touches names[]). */
-export function renameActivePreset(n: number, name: string): void {
+/** Renames squad `n` (0-based) -- works for the active or an inactive
+ * squad identically (engine.renameSquad only touches names[]). */
+export function renameActiveSquad(n: number, name: string): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
-  const r = engine.renamePreset(st, n, name);
+  const r = engine.renameSquad(st, n, name);
   if (r.ok) notifyStateChanged();
 }
 
-/** REQ-0032: commits a preset drag-to-reorder (0-based from/to) through
- * engine.reorderPreset -- same "engine mutator + notifyStateChanged()"
- * pattern as every other preset action above, so auto-save picks up the
+/** REQ-0032: commits a squad drag-to-reorder (0-based from/to) through
+ * engine.reorderSquad -- same "engine mutator + notifyStateChanged()"
+ * pattern as every other squad action above, so auto-save picks up the
  * new order/active index exactly like any other mutation. The engine
- * itself recomputes `active` so it keeps identifying the SAME preset
- * across the move (see reorderPreset's own doc); this wrapper does not
+ * itself recomputes `active` so it keeps identifying the SAME squad
+ * across the move (see reorderSquad's own doc); this wrapper does not
  * need to touch anything UI-side beyond the standard re-render+autosave. */
-export function reorderActivePreset(from: number, to: number): void {
+export function reorderActiveSquad(from: number, to: number): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
-  const r = engine.reorderPreset(st, from, to);
+  const r = engine.reorderSquad(st, from, to);
   if (r.ok) notifyStateChanged();
 }
 
-/** REQ-0032: deletes preset `n` (0-based) via the preset trash-drop-zone.
- * Refusal (last remaining preset) sets `presetDeleteRefused` to a brief
- * message instead of mutating anything -- PresetTabs.tsx renders this as
- * short-lived inline feedback (see clearPresetDeleteRefused's auto-hide
+/** REQ-0032: deletes squad `n` (0-based) via the squad trash-drop-zone.
+ * Refusal (last remaining squad) sets `squadDeleteRefused` to a brief
+ * message instead of mutating anything -- SquadTabs.tsx renders this as
+ * short-lived inline feedback (see clearSquadDeleteRefused's auto-hide
  * timer below), and the tab is NOT removed, matching the spec's "show
  * brief inline feedback... do not remove the tab". A successful delete
- * drops ONLY the preset's own reference set (engine.deletePreset never
+ * drops ONLY the squad's own reference set (engine.deleteSquad never
  * touches st.inv -- see REQ-0033's reference model, which supersedes
  * REQ-0032's original physical-return paragraph) and lands `active` on
  * the engine's own nearest-remaining-tab choice. */
-export function deleteActivePresetTab(n: number): void {
+export function deleteActiveSquadTab(n: number): void {
   const st = snapshot.state;
   const engine = snapshot.engine;
   if (!st || !engine) return;
-  const r = engine.deletePreset(st, n);
+  const r = engine.deleteSquad(st, n);
   if (r.ok) {
     notifyStateChanged();
     return;
   }
-  setSnapshot({ ...snapshot, presetDeleteRefused: 'Cannot delete the last remaining preset' });
-  schedulePresetDeleteRefusedClear();
+  setSnapshot({ ...snapshot, squadDeleteRefused: 'Cannot delete the last remaining squad' });
+  scheduleSquadDeleteRefusedClear();
 }
 
-let presetDeleteRefusedTimer: ReturnType<typeof setTimeout> | null = null;
+let squadDeleteRefusedTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Auto-hides the trash-refusal message a few seconds after it appears --
  * "brief" per the REQ-0032 spec, same pattern as
  * scheduleWelcomeBannerClear() above. */
-function schedulePresetDeleteRefusedClear(delayMs = 3000): void {
-  if (presetDeleteRefusedTimer !== null) clearTimeout(presetDeleteRefusedTimer);
-  presetDeleteRefusedTimer = setTimeout(() => {
-    presetDeleteRefusedTimer = null;
-    clearPresetDeleteRefused();
+function scheduleSquadDeleteRefusedClear(delayMs = 3000): void {
+  if (squadDeleteRefusedTimer !== null) clearTimeout(squadDeleteRefusedTimer);
+  squadDeleteRefusedTimer = setTimeout(() => {
+    squadDeleteRefusedTimer = null;
+    clearSquadDeleteRefused();
   }, delayMs);
 }
 
 /** Dismisses the trash-refusal message immediately (called internally by
  * the auto-hide timer above; also safe to call from a UI close control if
  * one is ever added). */
-export function clearPresetDeleteRefused(): void {
-  if (snapshot.presetDeleteRefused === null) return;
-  setSnapshot({ ...snapshot, presetDeleteRefused: null });
+export function clearSquadDeleteRefused(): void {
+  if (snapshot.squadDeleteRefused === null) return;
+  setSnapshot({ ...snapshot, squadDeleteRefused: null });
 }
 
-/** REQ-0032: the SAME active-index adjustment rule reorderPreset's engine
+/** REQ-0032: the SAME active-index adjustment rule reorderSquad's engine
  * function applies to st.presets.active, generalized here for
  * `activeInvPage` -- which inventory tab is "currently shown" is CLIENT-
  * side UI state (see this file's own module comment / StoreSnapshot doc),
@@ -115,7 +115,7 @@ function reorderedActiveIndex(active: number, from: number, to: number): number 
  * this store's own `activeInvPage` field so the shown tab keeps tracking
  * the SAME page across the move -- the engine has no concept of "which
  * page is active" (that lives only here), so this bookkeeping step is
- * this wrapper's job alone, unlike the preset case where the engine
+ * this wrapper's job alone, unlike the squad case where the engine
  * itself owns `active`. */
 export function reorderInventoryPage(from: number, to: number): void {
   const st = snapshot.state;

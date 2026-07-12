@@ -13,7 +13,7 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { cx, cy } from './helpers';
 
-const FIXTURE_PATH = new URL('./fixtures/preset-fixture.json', import.meta.url);
+const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
 async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
   const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
@@ -71,7 +71,7 @@ test.describe('auto-save', () => {
     expect(po.cell).toEqual([1, 2]);
     // REQ-0033 Phase 2: inv -> canvas is now REFERENCE CREATION, not a
     // physical move -- the home stays in inv.pages[0], untouched, at its
-    // ORIGINAL cell [5,5] (see fixtures/preset-fixture.json), alongside
+    // ORIGINAL cell [5,5] (see fixtures/squad-fixture.json), alongside
     // the brand-new canvas reference asserted above. This auto-save round
     // trip is still exactly what it was testing (a mutation persists with
     // zero save/load clicks) -- only the specific shape of "the mutation"

@@ -1,18 +1,18 @@
 // client/src/ragnarok/DevotionSection.tsx -- REQ-0066. The Devotion rite
 // from web/redesign/ragnarok.html, in the FROZEN 3-step flow (do not
-// redesign): (1) pick a unit, (2) read the vow / blast-radius manifest,
+// redesign): (1) pick a squad, (2) read the vow / blast-radius manifest,
 // (3) the final-question modal -> engrave.
 //
-// Candidate picker: every preset is listed; an INELIGIBLE preset is shown
+// Candidate picker: every squad is listed; an INELIGIBLE squad is shown
 // LOCKED (dimmed, not hidden) with its reason spelled out -- REQ-0067
 // item 4, mirroring the market's "locked, not hidden" language. Reasons
 // come from the server preview (eligible:false + reasons[]), vocab
-// mid_rite / last_preset / empty_unit / deployed.
+// mid_rite / last_squad / empty_squad / deployed.
 //
 // The blast-radius MANIFEST (REQ-0067 item 1: "the manifest carries the
 // weight, not the last question") itemizes the FULL account-wide
 // destruction BEFORE the final vow: counts of BPs/POs/SIs destroyed +
-// which OTHER presets also lose shared pieces. This is the confirmation
+// which OTHER squads also lose shared pieces. This is the confirmation
 // UI the spec requires.
 //
 // THE RACE GUARD lives in the page (refreshAfterServerMutation, passed as
@@ -30,36 +30,36 @@ import {
 } from '../api';
 import { Valknut } from './ragnarokShared';
 
-/** A preset as the picker sees it: index + display name (from the live
+/** A squad as the picker sees it: index + display name (from the live
  * store's state.presets.names). Eligibility/blast are resolved lazily
  * from the server preview when the candidate is selected. */
-export interface PresetCandidate {
+export interface SquadCandidate {
   index: number;
   name: string;
 }
 
-type RiteReason = 'mid_rite' | 'last_preset' | 'empty_unit' | 'deployed';
+type RiteReason = 'mid_rite' | 'last_squad' | 'empty_squad' | 'deployed';
 
 function reasonLabel(locale: Locale, reason: RiteReason): string {
   return t(locale, `ragnarok.reason.${reason}` as never);
 }
 
 type RiteErrKey =
-  | 'ragnarok.err.deployed' | 'ragnarok.err.empty_unit' | 'ragnarok.err.mid_rite'
-  | 'ragnarok.err.last_preset' | 'ragnarok.err.notFound' | 'ragnarok.err.generic';
+  | 'ragnarok.err.deployed' | 'ragnarok.err.empty_squad' | 'ragnarok.err.mid_rite'
+  | 'ragnarok.err.last_squad' | 'ragnarok.err.notFound' | 'ragnarok.err.generic';
 
 function errorKeyForReason(reason: string | undefined): RiteErrKey {
   switch (reason) {
     case 'deployed': return 'ragnarok.err.deployed';
-    case 'empty_unit': return 'ragnarok.err.empty_unit';
+    case 'empty_squad': return 'ragnarok.err.empty_squad';
     case 'mid_rite': return 'ragnarok.err.mid_rite';
-    case 'last_preset': return 'ragnarok.err.last_preset';
+    case 'last_squad': return 'ragnarok.err.last_squad';
     default: return 'ragnarok.err.generic';
   }
 }
 
 /** The blast-radius manifest panel -- the itemized, account-wide
- * destruction (BP/PO/SI counts + affected OTHER presets). Rendered from
+ * destruction (BP/PO/SI counts + affected OTHER squads). Rendered from
  * the server preview's `blast`. */
 function BlastManifest({ locale, blast }: { locale: Locale; blast: ApiRagnarokBlast }) {
   return (
@@ -76,15 +76,15 @@ function BlastManifest({ locale, blast }: { locale: Locale; blast: ApiRagnarokBl
         <div className="ragnarok-blast-cell total" data-testid="ragnarok-blast-total"><div className="ragnarok-blast-n">{blast.total}</div><div className="ragnarok-blast-k">{t(locale, 'ragnarok.blast.total')}</div></div>
       </div>
       <div className="ragnarok-affected-title">{t(locale, 'ragnarok.blast.affectedTitle')}</div>
-      {blast.affectedPresets.length > 0 ? (
+      {blast.affectedSquads.length > 0 ? (
         <ul className="ragnarok-affected-list" data-testid="ragnarok-blast-affected">
-          {blast.affectedPresets.map((ap) => {
+          {blast.affectedSquads.map((ap) => {
             const parts: string[] = [];
             if (ap.lostBps) parts.push(`${ap.lostBps} ${t(locale, 'ragnarok.blast.bpsShort')}`);
             if (ap.lostPos) parts.push(`${ap.lostPos} ${t(locale, 'ragnarok.blast.posShort')}`);
             if (ap.lostSis) parts.push(`${ap.lostSis} ${t(locale, 'ragnarok.blast.sisShort')}`);
             return (
-              <li key={ap.index} data-testid="ragnarok-blast-affected-row" data-preset-index={ap.index}>
+              <li key={ap.index} data-testid="ragnarok-blast-affected-row" data-squad-index={ap.index}>
                 {t(locale, 'ragnarok.blast.affectedRow', { name: ap.name, parts: parts.join(' ・ ') })}
               </li>
             );
@@ -99,8 +99,8 @@ function BlastManifest({ locale, blast }: { locale: Locale; blast: ApiRagnarokBl
 
 interface DevotionSectionProps {
   locale: Locale;
-  /** Every preset from the live store (state.presets.names). */
-  candidates: PresetCandidate[];
+  /** Every squad from the live store (state.presets.names). */
+  candidates: SquadCandidate[];
   /** Lifted so the page can drive the me-row projection from the same
    * preview the manifest uses (single fetch, single source of truth). */
   selectedIndex: number | null;
@@ -136,7 +136,7 @@ export function DevotionSection(props: DevotionSectionProps) {
   function openFinal() {
     if (!eligible) return;
     setErrMsg(null);
-    setIdemKey(`rite-${preview?.preset.index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    setIdemKey(`rite-${preview?.squad.index}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     setPhase('final');
   }
 
@@ -146,7 +146,7 @@ export function DevotionSection(props: DevotionSectionProps) {
     setErrMsg(null);
     try {
       const res = await devoteRagnarok(selectedIndex, idemKey);
-      setDoneName(res.einherjar.unitName);
+      setDoneName(res.einherjar.squadName);
       // CRITICAL: re-GET the fresh (rewritten) canvas into the store
       // BEFORE revealing 'done', so a pending auto-save cannot PUT the
       // stale pre-rite canvas and resurrect the destroyed items. Awaited.
@@ -155,7 +155,7 @@ export function DevotionSection(props: DevotionSectionProps) {
     } catch (e) {
       const reason = e instanceof ApiError ? e.reason : undefined;
       const status = e instanceof ApiError ? e.status : undefined;
-      // 404 = the preset is gone (already devoted / shifted). Everything
+      // 404 = the squad is gone (already devoted / shifted). Everything
       // else with a 409 reason maps to its own message.
       setErrMsg(t(locale, status === 404 ? 'ragnarok.err.notFound' : errorKeyForReason(reason)));
       // The server state may have advanced (e.g. mid_rite from a
@@ -172,7 +172,7 @@ export function DevotionSection(props: DevotionSectionProps) {
     onSelect(null);
   }
 
-  const hasPresets = candidates.length > 0;
+  const hasSquads = candidates.length > 0;
 
   return (
     <section data-testid="ragnarok-devotion">
@@ -187,8 +187,8 @@ export function DevotionSection(props: DevotionSectionProps) {
           <div className="ragnarok-pick-title">{t(locale, 'ragnarok.devotion.pickTitle')}</div>
           <div className="ragnarok-pick-hint">{t(locale, 'ragnarok.devotion.pickHint')}</div>
 
-          {!hasPresets ? (
-            <div className="ragnarok-cand-reason" data-testid="ragnarok-devotion-no-presets">{t(locale, 'ragnarok.devotion.noPresets')}</div>
+          {!hasSquads ? (
+            <div className="ragnarok-cand-reason" data-testid="ragnarok-devotion-no-squads">{t(locale, 'ragnarok.devotion.noSquads')}</div>
           ) : (
             <div className="ragnarok-cand-list" data-testid="ragnarok-candidate-list">
               {candidates.map((c) => {
@@ -205,7 +205,7 @@ export function DevotionSection(props: DevotionSectionProps) {
                     type="button"
                     className={`ragnarok-cand${isSel ? ' is-on' : ''}${lockedCls}`}
                     data-testid={`ragnarok-devotion-candidate-${c.index}`}
-                    data-preset-index={c.index}
+                    data-squad-index={c.index}
                     data-selected={isSel ? 'true' : 'false'}
                     data-eligible={isSel && preview ? (preview.eligible ? 'true' : 'false') : ''}
                     onClick={() => onSelect(isSel ? null : c.index)}
@@ -226,7 +226,7 @@ export function DevotionSection(props: DevotionSectionProps) {
           )}
 
           {/* Selected candidate card (the mock's .ucard) -- shows the
-              devoted preset's identity + valknut + serving line. */}
+              devoted squad's identity + valknut + serving line. */}
           {selected ? (
             <div className="ragnarok-ucard rar rar-mythic" data-testid="ragnarok-candidate-card" style={{ marginTop: 6 }}>
               <div className="ragnarok-vkbox">
@@ -265,12 +265,12 @@ export function DevotionSection(props: DevotionSectionProps) {
           </ol>
 
           {/* No selection yet -> prompt / empty-state. If there ARE no
-              eligible presets at all, that is surfaced once the player has
+              eligible squads at all, that is surfaced once the player has
               tried a candidate (locked+reason on it) -- but we also show a
               standing hint here. */}
           {selectedIndex == null ? (
             <div className="ragnarok-pick-hint" data-testid="ragnarok-devotion-select-prompt">
-              {hasPresets ? t(locale, 'ragnarok.devotion.selectPrompt') : t(locale, 'ragnarok.devotion.noEligibleWhy')}
+              {hasSquads ? t(locale, 'ragnarok.devotion.selectPrompt') : t(locale, 'ragnarok.devotion.noEligibleWhy')}
             </div>
           ) : previewLoading ? (
             <div className="ragnarok-pick-hint" data-testid="ragnarok-preview-loading">{t(locale, 'ragnarok.loading')}</div>
@@ -325,15 +325,15 @@ export function DevotionSection(props: DevotionSectionProps) {
             <Valknut size={40} className="ragnarok-final-vk" />
             <div className="ragnarok-final-t">{t(locale, 'ragnarok.final.title')}</div>
             <div className="ragnarok-final-en">{t(locale, 'ragnarok.final.titleEn')}</div>
-            <p className="ragnarok-final-body">{t(locale, 'ragnarok.final.body', { name: preview.preset.name })}</p>
+            <p className="ragnarok-final-body">{t(locale, 'ragnarok.final.body', { name: preview.squad.name })}</p>
             <div className="ragnarok-final-manifest" data-testid="ragnarok-final-manifest-recap">
               {t(locale, 'ragnarok.final.manifestRecap', {
                 bps: preview.blast.bps,
                 pos: preview.blast.pos,
                 sis: preview.blast.sis,
                 total: preview.blast.total,
-                affected: preview.blast.affectedPresets.length > 0
-                  ? t(locale, 'ragnarok.final.manifestAffected', { n: preview.blast.affectedPresets.length })
+                affected: preview.blast.affectedSquads.length > 0
+                  ? t(locale, 'ragnarok.final.manifestAffected', { n: preview.blast.affectedSquads.length })
                   : '',
               })}
             </div>

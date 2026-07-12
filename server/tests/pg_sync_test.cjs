@@ -1,5 +1,5 @@
 // backpack_ragnarok — server/tests/pg_sync_test.cjs
-// REQ-0094 (b): DB-free unit coverage for pg_sync.cjs worker crash-recovery
+// REQ-0094 (b): DB-free squad coverage for pg_sync.cjs worker crash-recovery
 // (the logic REQ-0089 added). The pg-backend api_test that otherwise touches
 // this path is SKIP_PG-gated (needs a live Postgres), so in default/test:quick
 // runs the recovery bookkeeping had ZERO coverage. Here we swap the real worker

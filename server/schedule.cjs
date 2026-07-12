@@ -7,9 +7,9 @@
 //
 // Scope note: this module implements golden a-q (see docs/REQ/
 // REQ-0036-dungeon-schedule.md) for the SOLO room case -- a single
-// player fills all 4 unit slots of their own room (golden b: "a sortie
-// Party = 4 Units (any number of players)" -- P1-B covers the "1 player,
-// 4 units" corner of that space; multi-player joins are a P2 concern and
+// player fills all 4 squad slots of their own room (golden b: "a sortie
+// Troop = 4 Squads (any number of players)" -- P1-B covers the "1 player,
+// 4 squads" corner of that space; multi-player joins are a P2 concern and
 // intentionally not built here). golden r (warehouse-scoped trade
 // between players of the same schedule) is explicitly P3 -- not built.
 // golden c's public/friends/friends-of-friends/group visibility levels
@@ -21,13 +21,13 @@
 // against that ownerId, never trusting a client-supplied id).
 'use strict';
 // REQ-0047 (c): this file is now a FACADE. The implementation was
-// decomposed VERBATIM into server/services/{core,rooms,units,runs,
+// decomposed VERBATIM into server/services/{core,rooms,squads,runs,
 // warehouse,gacha}.cjs -- the exported surface below is name-for-name
 // identical to the pre-split module.exports, so every consumer
 // (server/routes/*, api_test, future callers) keeps working unchanged.
 'use strict';
 const core = require('./services/core.cjs');
-const units = require('./services/units.cjs');
+const squads = require('./services/squads.cjs');
 const rooms = require('./services/rooms.cjs');
 const warehouse = require('./services/warehouse.cjs');
 const runs = require('./services/runs.cjs');
@@ -36,27 +36,27 @@ const gacha = require('./services/gacha.cjs');
 module.exports = {
   WAREHOUSE_CAP: core.WAREHOUSE_CAP,
   WAREHOUSE_TTL_MS: core.WAREHOUSE_TTL_MS,
-  UNIT_SLOTS: core.UNIT_SLOTS,
+  SQUAD_SLOTS: core.SQUAD_SLOTS,
   DEFAULT_FORMATION_ID: core.DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP: core.DEFAULT_FAILURE_STEP,
   getScheduleContent: core.getScheduleContent,
   resolveRewardItemId: core.resolveRewardItemId,
   makeEngine: core.makeEngine,
-  presetCanvasOf: units.presetCanvasOf,
-  presetUidSet: units.presetUidSet,
-  isUnitIndependent: units.isUnitIndependent,
-  deployedUidSetsForGate: units.deployedUidSetsForGate,
+  squadCanvasOf: squads.squadCanvasOf,
+  squadUidSet: squads.squadUidSet,
+  isSquadIndependent: squads.isSquadIndependent,
+  deployedUidSetsForGate: squads.deployedUidSetsForGate,
   createRoom: rooms.createRoom,
   getRoomOr404: rooms.getRoomOr404,
   getOwnRoomOr404: rooms.getOwnRoomOr404,
   listOwnRooms: rooms.listOwnRooms,
-  assignSlot: units.assignSlot,
-  swapUnit: units.swapUnit,
-  applyPendingSwapIfAny: units.applyPendingSwapIfAny,
+  assignSlot: squads.assignSlot,
+  swapSquad: squads.swapSquad,
+  applyPendingSwapIfAny: squads.applyPendingSwapIfAny,
   computeDurationSecs: runs.computeDurationSecs,
   runClock: runs.runClock,
   visibleEvents: runs.visibleEvents,
-  buildUnitSnapshots: runs.buildUnitSnapshots,
+  buildSquadSnapshots: runs.buildSquadSnapshots,
   startRun: runs.startRun,
   settleRun: runs.settleRun,
   settleRoomIfDue: runs.settleRoomIfDue,

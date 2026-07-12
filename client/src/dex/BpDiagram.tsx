@@ -5,7 +5,7 @@
 // for why a separate component sits beside DexDiagram rather than
 // overloading it: DexDiagram's props are `entry: ApiItemEntry | ApiSIEntry`
 // (name/rarity/ports/sockets), none of which a rolled BP has (a BP is
-// shape+linker+hpMax, an entirely different content shape, see
+// shape+unit+hpMax, an entirely different content shape, see
 // client/src/api.ts's ApiRolledBp / server/schedule.cjs's rollCommonBp).
 // ShapeGrid itself is genuinely BP-agnostic (just shape/portTiles/cellPx),
 // so THAT'S the piece reused here, exactly as DexDiagram reuses it for
@@ -15,14 +15,14 @@
 // the two diagrams read as one consistent family rather than two
 // unrelated designs.
 //
-// Per the task spec ("shape grid + linker cell marked + beam dirs as
+// Per the task spec ("shape grid + unit cell marked + beam dirs as
 // compass arrows + hpMax + cell count"):
 //   - shape grid: ShapeGrid itself (identical component DexDiagram uses).
-//   - linker cell marked: ShapeGrid's new `linkerTile` prop (REQ-0045 h,
+//   - unit cell marked: ShapeGrid's new `unitTile` prop (REQ-0045 h,
 //     added alongside this file -- mirrors the existing `portTiles`
 //     highlight pattern, see ShapeGrid.tsx's own doc comment).
-//   - beam dirs as compass arrows: an SVG overlay drawn from the linker
-//     cell's own pixel center, one line+arrowhead per `linker.dirs`
+//   - beam dirs as compass arrows: an SVG overlay drawn from the unit
+//     cell's own pixel center, one line+arrowhead per `unit.dirs`
 //     entry, at the EXACT SAME 8-point compass angle table
 //     (client/src/board/BoardRenderer.ts's DIR_ANGLES) the live game
 //     board itself uses for its (Pixi) direction dots -- copied verbatim
@@ -41,7 +41,7 @@ import { ShapeGrid } from './ShapeGrid';
 // Verbatim copy of BoardRenderer.ts's own DIR_ANGLES table (0=N .. 7=NW,
 // clockwise, degrees, screen-space where +y is down) -- this table IS the
 // project's one compass convention; every other direction-arrow rendering
-// (the live canvas's linker dots, its traced-beam arrowheads) derives from
+// (the live canvas's unit dots, its traced-beam arrowheads) derives from
 // this exact mapping, so a diagram claiming to show "beam directions" must
 // use the identical angles or it would silently lie about which way a
 // beam actually fires in-game.
@@ -62,12 +62,12 @@ const ARROWHEAD_PX = 7;
 
 interface BpDiagramProps {
   shape: Cell[];
-  /** Linker anchor offset, cell-space relative to the shape's own local
-   * origin (matches BPLinker.off / ApiRolledBp.linker.off) -- a rolled BP
+  /** Unit anchor offset, cell-space relative to the shape's own local
+   * origin (matches BPUnit.off / ApiRolledBp.linker.off) -- a rolled BP
    * has no `origin` of its own yet (it's not placed anywhere), so the
    * diagram treats the shape's own coordinate space as the frame of
    * reference, same as ShapeGrid already does for `shape`/`portTiles`. */
-  linkerOff: Offset;
+  unitOff: Offset;
   dirs: number[];
   hpMax: number;
   cellCount: number;
@@ -75,19 +75,19 @@ interface BpDiagramProps {
 }
 
 /** Builds one SVG line+arrowhead path per direction, all anchored at the
- * linker cell's own pixel center -- same per-arrow angle math as
+ * unit cell's own pixel center -- same per-arrow angle math as
  * BoardRenderer.ts's direction-dot loop, just rendered as a longer,
  * clearly-arrowed vector instead of a small dot (a diagram's job is to
  * explain the direction, not just mark that one exists). */
 function ArrowOverlay({
-  linkerXPx,
-  linkerYPx,
+  unitXPx,
+  unitYPx,
   dirs,
   width,
   height,
 }: {
-  linkerXPx: number;
-  linkerYPx: number;
+  unitXPx: number;
+  unitYPx: number;
   dirs: number[];
   width: number;
   height: number;
@@ -104,8 +104,8 @@ function ArrowOverlay({
         const ang = (angDeg * Math.PI) / 180;
         const cos = Math.cos(ang);
         const sin = Math.sin(ang);
-        const tipX = linkerXPx + cos * ARROW_LEN_PX;
-        const tipY = linkerYPx + sin * ARROW_LEN_PX;
+        const tipX = unitXPx + cos * ARROW_LEN_PX;
+        const tipY = unitYPx + sin * ARROW_LEN_PX;
         // Arrowhead: a small triangle splayed +-2.6rad off the shaft's own
         // angle (same construction BoardRenderer.ts's arrowHead() helper
         // uses for traced-beam arrowheads, just inlined as an SVG polygon
@@ -117,7 +117,7 @@ function ArrowOverlay({
         const rightY = tipY - Math.sin(ang + splay) * ARROWHEAD_PX;
         return (
           <g key={`${d}-${i}`} className="bp-diagram-arrow" data-testid="bp-diagram-arrow" data-dir={d}>
-            <line x1={linkerXPx} y1={linkerYPx} x2={tipX} y2={tipY} className="bp-diagram-arrow-shaft" />
+            <line x1={unitXPx} y1={unitYPx} x2={tipX} y2={tipY} className="bp-diagram-arrow-shaft" />
             <polygon points={`${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`} className="bp-diagram-arrow-head" />
           </g>
         );
@@ -126,7 +126,7 @@ function ArrowOverlay({
   );
 }
 
-export function BpDiagram({ shape, linkerOff, dirs, hpMax, cellCount, locale }: BpDiagramProps) {
+export function BpDiagram({ shape, unitOff, dirs, hpMax, cellCount, locale }: BpDiagramProps) {
   if (shape.length === 0) {
     return <div className="dex-diagram-empty">--</div>;
   }
@@ -142,20 +142,20 @@ export function BpDiagram({ shape, linkerOff, dirs, hpMax, cellCount, locale }: 
   const gridWidthPx = nCols * CELL_PX;
   const gridHeightPx = nRows * CELL_PX;
 
-  // linker.off is relative to the shape's own local origin, which per
-  // engine.d.ts's BPLinker doc is [0,0] in this local (unplaced) frame --
-  // so the linker cell IS simply linkerOff itself here, same coordinate
+  // unit.off is relative to the shape's own local origin, which per
+  // engine.d.ts's BPUnit doc is [0,0] in this local (unplaced) frame --
+  // so the unit cell IS simply unitOff itself here, same coordinate
   // space as every shape/portTiles cell ShapeGrid already renders.
-  const linkerCell: Cell = [linkerOff[0], linkerOff[1]];
-  const linkerXPx = (linkerCell[1] - minCol) * CELL_PX + CELL_PX / 2;
-  const linkerYPx = (linkerCell[0] - minRow) * CELL_PX + CELL_PX / 2;
+  const unitCell: Cell = [unitOff[0], unitOff[1]];
+  const unitXPx = (unitCell[1] - minCol) * CELL_PX + CELL_PX / 2;
+  const unitYPx = (unitCell[0] - minRow) * CELL_PX + CELL_PX / 2;
 
   return (
     <div className="dex-diagram bp-diagram">
       <div className="dex-diagram-grid-wrap bp-diagram-grid-wrap" style={{ width: gridWidthPx, height: gridHeightPx }}>
-        <ShapeGrid shape={shape} linkerTile={linkerCell} cellPx={CELL_PX} showCoords />
+        <ShapeGrid shape={shape} unitTile={unitCell} cellPx={CELL_PX} showCoords />
         {dirs.length > 0 ? (
-          <ArrowOverlay linkerXPx={linkerXPx} linkerYPx={linkerYPx} dirs={dirs} width={gridWidthPx} height={gridHeightPx} />
+          <ArrowOverlay unitXPx={unitXPx} unitYPx={unitYPx} dirs={dirs} width={gridWidthPx} height={gridHeightPx} />
         ) : null}
       </div>
       <div className="bp-diagram-stats">

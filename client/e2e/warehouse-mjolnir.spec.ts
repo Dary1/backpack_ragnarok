@@ -95,7 +95,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
     // dev.json FILE restore is a silent no-op -- re-PUT the original
     // canvas through the API instead (the file backup above still
     // covers a files-mode box). Leaving the RAW fixture behind is not
-    // an option: its preset-store BPs are references the next booted
+    // an option: its squad-store BPs are references the next booted
     // client repairs into inventory pages on its first auto-save, which
     // poisons workshop.spec's own before/after BP-diff assertions
     // (observed: the roll test counting 10 phantom new BPs).
@@ -275,7 +275,7 @@ test.describe('REQ-0072: staged capacity + decay presentation states (mocked war
   // nothing is claimed), so the LEAST-intrusive setup is to leave the
   // dev profile completely alone when one exists -- writing the raw
   // schedule fixture here and "restoring" it via the dev.json FILE is a
-  // no-op under the pg backend and leaves orphaned preset references
+  // no-op under the pg backend and leaves orphaned squad references
   // behind for the NEXT spec to trip over (see the grant describe's
   // pg-aware-restore comment). Only a profile-less box gets the fixture.
   test.beforeEach(async ({ page }) => {

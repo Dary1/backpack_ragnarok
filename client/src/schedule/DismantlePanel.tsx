@@ -49,7 +49,7 @@ interface DismantlableItem {
 
 /** Every inventory-homed PO + SI across all inventory pages -- the exact
  * set the server's findInventoryItem(kind:'po'|'si') accepts. Board/
- * preset items are deliberately excluded, same as SellPane's own
+ * squad items are deliberately excluded, same as SellPane's own
  * collectSellable -- those are the deployed/placed set the server
  * refuses (409). */
 function collectDismantlable(state: GameState | null): DismantlableItem[] {

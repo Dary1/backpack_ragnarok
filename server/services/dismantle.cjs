@@ -108,7 +108,7 @@ function rollQuality(playerId, itemId) {
 // ADDITIONS go through the two-phase warehouse-grant pattern. Removing
 // an item from the CALLER'S OWN canvas, atomically, in response to the
 // caller's own explicit action (unlike market settlement's two-party
-// case, there is only one party here) is safe to do server-side for the
+// case, there is only one troop here) is safe to do server-side for the
 // SAME reason market's seller-side removal is: the write only REMOVES
 // something, never adds -- the yield (an addition) is deliberately
 // NOT written directly onto this canvas; it goes through
@@ -138,8 +138,8 @@ function findInventoryItem(canvas, itemUid, kind) {
 }
 
 // stripItemFromCanvas: removes every pos[]/sis[] entry with `uid` from
-// the canvas -- inventory pages, the active preset's top-level arrays,
-// and every stored preset snapshot. Generalized sibling of market.cjs's
+// the canvas -- inventory pages, the active squad's top-level arrays,
+// and every stored squad snapshot. Generalized sibling of market.cjs's
 // stripPoFromCanvas (not exported from that module, and PO-only there);
 // same container walk, same reasoning (a stale un-deployed reference
 // must not survive as a ghost after its home record is destroyed).

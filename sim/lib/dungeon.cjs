@@ -4,7 +4,7 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 const { TUNABLES } = require('./core.cjs');
 const { makeRng } = require('./rng.cjs');
-const { compileUnitSnapshot } = require('./compile.cjs');
+const { compileSquadSnapshot } = require('./compile.cjs');
 const { runEncounter } = require('./encounter.cjs');
 
 function computeEncounterDeltas(encounterList) {
@@ -58,26 +58,26 @@ function packBudgetForLevel(level) {
 
 // runDungeon: threads persistent BP HP through a whole dungeon's
 // encounter list (S8.2 backbone: packs + traps/doors/chests seeded in +
-// boss pinned at 100%). formationId/unitSlots select where each of the 4
-// units sits. Returns { events (all encounters concatenated + run-level
+// boss pinned at 100%). formationId/squadSlots select where each of the 4
+// squads sits. Returns { events (all encounters concatenated + run-level
 // events), finalProgressPct, result: 'victory'|'wipe', rewards, cooldownSecs, level }.
 function runDungeon(opts) {
   const {
-    masterSeed, dungeonDef, unitSnapshots, itemDefsById, enemyDefsById,
+    masterSeed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById,
     skillDefsById, siDefsById, formationId, level, participants,
   } = opts;
   const rng = makeRng(masterSeed);
   const allEvents = [];
   let seq = 0;
 
-  // Compile all 4 units once; HP persists via the SAME bps array objects
+  // Compile all 4 squads once; HP persists via the SAME bps array objects
   // threaded through every encounter call in this run (S8.2/OQ13:
   // "attrition PERMANENT within a run").
-  const unitSlots = ['unit1', 'unit2', 'unit3', 'unit4'];
-  const compiled = unitSlots.map((slot, i) => compileUnitSnapshot(unitSnapshots[i], itemDefsById, formationId, slot, siDefsById));
-  // REQ-0095: tag unit membership onto each BP/PO (lost by the flatMap) so unit-scoped
-  // reactive triggers (OnUnitHit/OnUnitBeenHit) can resolve owner -> unit at runtime.
-  compiled.forEach(c => { for (const b of c.bps) b.unitSlot = c.unitSlot; for (const p of c.pos) p.unitSlot = c.unitSlot; for (const x of (c.sis || [])) x.unitSlot = c.unitSlot; });
+  const squadSlots = ['unit1', 'unit2', 'unit3', 'unit4'];
+  const compiled = squadSlots.map((slot, i) => compileSquadSnapshot(squadSnapshots[i], itemDefsById, formationId, slot, siDefsById));
+  // REQ-0095: tag squad membership onto each BP/PO (lost by the flatMap) so squad-scoped
+  // reactive triggers (OnSquadHit/OnSquadBeenHit) can resolve owner -> squad at runtime.
+  compiled.forEach(c => { for (const b of c.bps) b.squadSlot = c.squadSlot; for (const p of c.pos) p.squadSlot = c.squadSlot; for (const x of (c.sis || [])) x.squadSlot = c.squadSlot; });
   const allBps = compiled.flatMap(c => c.bps);
   const allPos = compiled.flatMap(c => c.pos);
   const allSis = compiled.flatMap(c => c.sis || []);
@@ -98,7 +98,7 @@ function runDungeon(opts) {
     if (progressPct >= 100) break; // already finished via a prior shortcut
 
     const encResult = runEncounter({
-      rng, encIndex: i, partyBps: allBps, partyPos: allPos, partySis: allSis, formationBox: { formationId },
+      rng, encIndex: i, troopBps: allBps, troopPos: allPos, troopSis: allSis, formationBox: { formationId },
       enemyDefsById, skillDefsById, encounterDef: encDef, seedLabel: masterSeed,
     });
     for (const e of encResult.events) allEvents.push(Object.assign({ seq: seq++ }, e));
@@ -174,7 +174,7 @@ function runDungeon(opts) {
   // to [] on a wipe regardless of what was pushed during the run).
   const lrdstReward = (runResult === 'wipe') ? 0 : lrdstAccrued;
 
-  allEvents.push({ t: 0, seq: seq++, ev: 'run_end', result: runResult, final_pct: progressPct, party_bp_hp: allBps.map(b => b.hp), H });
+  allEvents.push({ t: 0, seq: seq++, ev: 'run_end', result: runResult, final_pct: progressPct, troop_bp_hp: allBps.map(b => b.hp), H });
 
   return {
     events: allEvents, finalProgressPct: progressPct, result: runResult,

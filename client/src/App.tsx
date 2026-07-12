@@ -12,11 +12,11 @@
 //    same block -- see .board-column-header below); "items parked here
 //    take no effect" moves BELOW the inventory board container,
 //    left-aligned (was above the tabs/board before).
-//  - Canvas: "Canvas" title block gains Preset tabs (1-5, dynamic count)
-//    right-aligned in the same row + a "Preset+" button (PresetTabs.tsx).
+//  - Canvas: "Canvas" title block gains Squad tabs (1-5, dynamic count)
+//    right-aligned in the same row + a "Squad+" button (SquadTabs.tsx).
 //
 // REQ-0034 CRITICAL constraint (hard lesson from REQ-0031 Phase A bug 2 --
-// see docs/REQ/REQ-0031-e2e-bugfix-presets-ui.md section 2 and
+// see docs/REQ/REQ-0031-e2e-bugfix-squads-ui.md section 2 and
 // docs/REQ/REQ-0034-global-navigation.md): the backpacks section (Board +
 // InventoryBoard, each its own PixiJS Application) is rendered
 // UNCONDITIONALLY below, exactly like before REQ-0034 -- it is NEVER
@@ -41,7 +41,7 @@
 // inline locale ternaries.
 //
 // REQ-0032: the Canvas column's .board-wrap gets a second modifier class
-// (.board-wrap-canvas, position:relative) so PresetTrashZone can center
+// (.board-wrap-canvas, position:relative) so SquadTrashZone can center
 // itself over exactly this box via CSS absolute positioning -- the
 // inventory column's own .board-wrap is untouched (inventory tabs never
 // show a trash zone, so there is nothing to position there).
@@ -72,9 +72,9 @@
 //
 // REQ-0070: the backpacks view is re-skinned to the MJOLNIR canvas mock
 // (web/redesign/canvas.html): page key art, stagehead title rows, ornate
-// board stages around BOTH always-mounted Pixi boards, the preset tabs
+// board stages around BOTH always-mounted Pixi boards, the squad tabs
 // relocated from the canvas title row into the stage's boardfoot (same
-// PresetTabs component and classes -- only the render slot moved), a
+// SquadTabs component and classes -- only the render slot moved), a
 // boardfoot auto-save seal, live board-content stats in the stagehead,
 // and the fixed embark dock (all in CanvasChrome.tsx). The REQ-0034
 // always-mounted rule above is untouched: both boards keep their Pixi
@@ -100,8 +100,8 @@ import { WarehousePage } from './warehouse/WarehousePage'; // REQ-0086
 import { WorkshopPage } from './schedule/WorkshopPage'; // REQ-0042
 import { MarketPage } from './market/MarketPage'; // REQ-0064
 import { RagnarokPage } from './ragnarok/RagnarokPage'; // REQ-0066
-import { PresetTabs } from './PresetTabs';
-import { PresetTrashZone } from './PresetTrashZone';
+import { SquadTabs } from './SquadTabs';
+import { SquadTrashZone } from './SquadTrashZone';
 import { Settings } from './Settings';
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
@@ -198,8 +198,8 @@ function App() {
             {/* REQ-0070: the mock's ornate board stage. The Pixi <canvas>
                 (Board) is untouched inside -- only the chrome around it is
                 new (gold-knot corners, coordinate rails, boardfoot). The
-                preset tabs moved from the title row above into the mock's
-                boardfoot INSIDE the stage: same PresetTabs component, same
+                squad tabs moved from the title row above into the mock's
+                boardfoot INSIDE the stage: same SquadTabs component, same
                 classes/gestures (click/long-press-rename/drag-reorder/
                 trash-drop), only the render slot changed. */}
             <div className="board-wrap board-wrap-canvas board-stage ornate">
@@ -212,16 +212,16 @@ function App() {
                 <BoardCoords />
               </div>
               <div className="boardfoot">
-                {snapshot.status === 'ready' ? <PresetTabs /> : null}
+                {snapshot.status === 'ready' ? <SquadTabs /> : null}
                 <SaveSeal locale={snapshot.locale} status={snapshot.autoSaveStatus} />
               </div>
               {/* REQ-0032: trash-drop-zone overlay, ONLY visible while a
-                  PRESET tab is being dragged (see PresetTrashZone.tsx's own
+                  SQUAD tab is being dragged (see SquadTrashZone.tsx's own
                   module comment -- inventory-tab drags never satisfy its
-                  kind==='preset' gate). Centered over the Canvas board via
-                  CSS (.preset-trash-zone, absolutely positioned within
+                  kind==='squad' gate). Centered over the Canvas board via
+                  CSS (.squad-trash-zone, absolutely positioned within
                   this relatively-positioned .board-wrap-canvas). */}
-              <PresetTrashZone />
+              <SquadTrashZone />
             </div>
           </div>
           {/* REQ-0041: render the inventory column INLINE here only when

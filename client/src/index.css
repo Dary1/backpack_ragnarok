@@ -438,7 +438,7 @@ html, body {
 }
 
 /* REQ-0031 Phase B: title + tab row, shared by BOTH the Canvas column
-   (title + PresetTabs) and the Inventory column (title + Tabs) -- tabs
+   (title + SquadTabs) and the Inventory column (title + Tabs) -- tabs
    are right-aligned in the SAME row as the label, per the task's
    verbatim UI change request. */
 /* REQ-0070: the mock's .stagehead -- title in the display serif with the
@@ -468,24 +468,24 @@ html, body {
 }
 
 .inv-tabs,
-.preset-tabs {
+.squad-tabs {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.preset-tabs-row {
+.squad-tabs-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-/* REQ-0070: canvas preset tabs restyled as the mock's boardfoot .preset
+/* REQ-0070: canvas squad tabs restyled as the mock's boardfoot .squad
    pills; inventory page tabs as the mock's .pg page tabs. Class names,
    DOM structure and every gesture (click / long-press rename /
    drag-reorder / trash-drop) are unchanged -- LongPressTabs.tsx knows
    nothing about any of this. */
-.preset-tab {
+.squad-tab {
   background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.8));
   color: var(--bone-2);
   border: 1px solid var(--border-lo);
@@ -498,12 +498,12 @@ html, body {
   white-space: nowrap;
 }
 
-.preset-tab:hover {
+.squad-tab:hover {
   border-color: var(--gold-lo);
   color: var(--gold-hi);
 }
 
-.preset-tab-active {
+.squad-tab-active {
   color: var(--gold-hi);
   border-color: var(--gold-lo);
   background: linear-gradient(180deg, rgba(201, 169, 89, 0.13), rgba(19, 24, 32, 0.7));
@@ -537,7 +537,7 @@ html, body {
 /* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
    button in place, same box footprint, so the tab row doesn't jump. */
 .inv-tab-rename-input,
-.preset-tab-rename-input {
+.squad-tab-rename-input {
   background: #0c1016;
   color: var(--bone);
   border: 1px solid var(--gold);
@@ -548,7 +548,7 @@ html, body {
   width: 84px;
 }
 
-.preset-add-btn {
+.squad-add-btn {
   background: transparent;
   color: var(--bone-2);
   border: 1px dashed var(--gold-lo);
@@ -560,12 +560,12 @@ html, body {
   white-space: nowrap;
 }
 
-.preset-add-btn:hover {
+.squad-add-btn:hover {
   border-color: var(--gold);
   color: var(--gold-hi);
 }
 
-/* REQ-0032 -- drag-to-reorder + preset trash-drop-zone. */
+/* REQ-0032 -- drag-to-reorder + squad trash-drop-zone. */
 
 /* Canvas board's .board-wrap needs position:relative so the trash overlay
    (position:absolute) centers over exactly this box, not the page --
@@ -595,9 +595,9 @@ html, body {
   border-radius: 2px;
 }
 
-/* Trash-drop-zone overlay (PresetTrashZone.tsx) -- centered over the
-   Canvas board, visible ONLY for the duration of a preset-tab drag. */
-.preset-trash-zone {
+/* Trash-drop-zone overlay (SquadTrashZone.tsx) -- centered over the
+   Canvas board, visible ONLY for the duration of a squad-tab drag. */
+.squad-trash-zone {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -621,29 +621,29 @@ html, body {
   z-index: 20;
 }
 
-.preset-trash-zone-icon {
+.squad-trash-zone-icon {
   font-size: 34px;
   line-height: 1;
 }
 
-.preset-trash-zone-label {
+.squad-trash-zone-label {
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
 }
 
 /* Brief inline feedback when a trash-drop delete is refused (last
-   remaining preset) -- see store.ts's presetDeleteRefused /
-   schedulePresetDeleteRefusedClear(). A short shake draws the eye without
+   remaining squad) -- see store.ts's squadDeleteRefused /
+   scheduleSquadDeleteRefusedClear(). A short shake draws the eye without
    needing a toast library. */
-.preset-delete-refused {
+.squad-delete-refused {
   font-size: 12px;
   font-weight: 600;
   color: var(--bad);
-  animation: preset-delete-refused-shake 0.4s ease-in-out;
+  animation: squad-delete-refused-shake 0.4s ease-in-out;
 }
 
-@keyframes preset-delete-refused-shake {
+@keyframes squad-delete-refused-shake {
   0%, 100% { transform: translateX(0); }
   25% { transform: translateX(-4px); }
   75% { transform: translateX(4px); }
@@ -996,11 +996,11 @@ html, body {
   box-shadow: inset 0 0 0 2px var(--cyan);
 }
 
-.shape-grid-cell-linker {
+.shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 0 4px #0e0d0b;
 }
 
-.shape-grid-cell-linker::after {
+.shape-grid-cell-unit::after {
   content: '';
   position: absolute;
   inset: 6px;
@@ -2139,7 +2139,7 @@ html, body {
   letter-spacing: 0.22em;
 }
 
-.schedule-slots-no-presets {
+.schedule-slots-no-squads {
   color: #e06b5f;
   font-size: 12px;
   margin-bottom: 8px;
@@ -2738,10 +2738,10 @@ html, body {
 .workshop-result-fig .shape-grid-cell-shape {
   background: #3a3229;
 }
-.workshop-result-fig .shape-grid-cell-linker {
+.workshop-result-fig .shape-grid-cell-unit {
   box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px #14100a;
 }
-.workshop-result-fig .shape-grid-cell-linker::after {
+.workshop-result-fig .shape-grid-cell-unit::after {
   background: var(--gold);
   opacity: 0.55;
 }
@@ -3655,7 +3655,7 @@ html, body {
 
 /* REQ-0071: shared toast (warehouse claim / workshop roll) adopts the
    night-iron + gold voice -- free shared chrome; the Warehouse tab own
-   full restyle is REQ-0072 unit. */
+   full restyle is REQ-0072 squad. */
 .schedule-toast {
   background: linear-gradient(180deg, rgba(27, 34, 45, 0.92), rgba(19, 24, 32, 0.92));
   color: var(--gold-hi);
@@ -3767,8 +3767,8 @@ html, body {
   place-items: center;
 }
 
-/* boardfoot: preset tabs + auto-save seal INSIDE the canvas stage
-   (mock .boardfoot). The preset tabs themselves are the same
+/* boardfoot: squad tabs + auto-save seal INSIDE the canvas stage
+   (mock .boardfoot). The squad tabs themselves are the same
    LongPressTabs instance that used to sit in the title row. */
 .boardfoot {
   display: flex;
@@ -3777,7 +3777,7 @@ html, body {
   margin-top: 12px;
 }
 
-.boardfoot .preset-tabs-row {
+.boardfoot .squad-tabs-row {
   flex: 1;
   min-width: 0;
   flex-wrap: wrap;
@@ -4939,7 +4939,7 @@ html, body {
 .ragnarok-cand-nm { font-family: var(--f-dj); font-weight: 700; font-size: 15px; flex: 1; }
 .ragnarok-cand-meta { font-size: 11px; color: var(--bone-3); }
 /* LOCKED, not hidden (REQ-0067, mirrors the market's language): an
-   ineligible unit still shows, dimmed, with its reason spelled out. */
+   ineligible squad still shows, dimmed, with its reason spelled out. */
 .ragnarok-cand.is-locked { cursor: not-allowed; opacity: .55; }
 .ragnarok-cand.is-locked:hover { border-color: var(--border-lo); }
 .ragnarok-cand-lock { font-family: var(--f-den); font-size: 10px; letter-spacing: .16em; color: var(--blood); border: 1px solid rgba(176,65,62,.5); border-radius: 2px; padding: 1px 5px; }

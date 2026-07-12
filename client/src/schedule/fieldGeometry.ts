@@ -3,7 +3,7 @@
 // two independent A1:Z18 planes (26 cols A-Z, 18 rows), one per side
 // (`field: 'player' | 'enemy'` on ray_fire). Formation defs
 // (content/batches/batch-002-dungeon-pilot/formations.json) place each of
-// the 4 unit canvases (8x8 boxes) within that same A1:Z18 space using
+// the 4 squad canvases (8x8 boxes) within that same A1:Z18 space using
 // "TopLeft:BottomRight" box strings, e.g. "F2:M9". This module is the
 // client-side mirror of sim/combat.cjs's own parseBox/colLetterToIndex --
 // re-derived here (not imported) since the client has no access to
@@ -81,9 +81,9 @@ export function cellIdToXY(cell: string | RawCell | null | undefined, cellPx: nu
 
 /** Parses a "TopLeft:BottomRight" box string (e.g. "F2:M9") into pixel
  * bounds within a field box of `cellPx` per cell -- used to draw each
- * unit's formation canvas outline/backdrop on the monitor's player-side
+ * squad's formation canvas outline/backdrop on the monitor's player-side
  * grid. Inclusive of both corners (F2:M9 is 8 cols x 8 rows, matching
- * every ratified formation def's 8x8 unit-canvas invariant). */
+ * every ratified formation def's 8x8 squad-canvas invariant). */
 export function parseBoxToPixelRect(box: string, cellPx: number): { x: number; y: number; w: number; h: number } {
   const [tl, br] = box.split(':');
   const a = cellIdToColRow(tl);

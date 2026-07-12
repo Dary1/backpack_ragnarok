@@ -266,15 +266,15 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsB
 // claimed item's on-canvas uid by REUSING the warehouse row's own
 // itemUid (see claimWarehouseItem's doc above), so this is an exact,
 // unambiguous uid-membership scan, not a fuzzy itemId-based heuristic.
-// Scans the active preset's top-level fields, every inactive preset's
+// Scans the active squad's top-level fields, every inactive squad's
 // store[] snapshot, AND every inventory page (a claimed item's HOME
 // always lands in st.inv per the reference model, REQ-0033, regardless
-// of whether any preset happens to reference it yet) -- covers a PO's
+// of whether any squad happens to reference it yet) -- covers a PO's
 // `pos[].uid`, a BP's `bps[].id`, and an SI's `sis[].uid` (a claimed
 // warehouse item is always a PO or SI in practice -- see the REQ-0041
 // outcome doc's note on why BPs are never claimable content -- but this
 // scan checks all three arrays uniformly for robustness, matching
-// engine.js's own presetUidSet()-style scans elsewhere in this file).
+// engine.js's own squadUidSet()-style scans elsewhere in this file).
 // A simple O(claiming rows + canvas items) scan -- comfortably
 // sub-millisecond at this project's scale (a handful of claiming rows, a
 // few dozen placed items per canvas), no index/cache warranted, matching
@@ -310,7 +310,7 @@ function finalizeClaimingItemsForCanvas(playerId, canvas) {
     for (const a of container.sis || []) presentUids.add(a.uid);
     for (const t of container.tms || []) { presentUids.add(t.uid); presentTmIds.add(t.id); }
   };
-  collectFrom(canvas); // active preset's top-level fields
+  collectFrom(canvas); // active squad's top-level fields
   if (canvas.presets && Array.isArray(canvas.presets.store)) {
     for (const snap of canvas.presets.store) collectFrom(snap);
   }
@@ -350,8 +350,8 @@ function finalizeClaimingItemsForCanvas(playerId, canvas) {
 // (which only have HTTP access, no direct require() of schedule.cjs) can
 // do the equivalent without waiting out a real dungeon run's full
 // durationSecs (~20s+ for the real niflheim_depths content with a
-// detection/unlock-capable unit; unboundedly longer -- e.g. 999s -- for a
-// unit that never clears a detection-mode encounter at all, per this
+// detection/unlock-capable squad; unboundedly longer -- e.g. 999s -- for a
+// squad that never clears a detection-mode encounter at all, per this
 // REQ's own P1-C measurement).
 //
 // Caller gating (server/api.cjs's route handler, NOT here): only

@@ -140,7 +140,7 @@ test.describe('per-player board isolation', () => {
     // p200 (hilt, free-placed, not inside any BP) sits at inv page0 cell
     // (4,4) in this fixture (same fixture/target cell baseline-smoke.spec.ts's
     // own known-good free-PO drag test uses). Drag it onto canvas BP
-    // "gamma"'s one free non-linker cell (6,3).
+    // "gamma"'s one free non-unit cell (6,3).
     await drag(page, { x: invBox.x + cx(4), y: invBox.y + cy(4) }, { x: canvasBox.x + cx(3), y: canvasBox.y + cy(6) });
     await waitForAutoSave(page);
 

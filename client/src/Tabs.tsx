@@ -20,11 +20,11 @@
 // REQ-0032 addition: drag-to-reorder (LongPressTabs' kind='inv' path).
 // reorderInventoryPage (store.ts) commits the reorder through
 // engine.reorderInvPage AND shifts this component's own activeInvPage
-// index via the same straddle rule reorderActivePreset's engine call
+// index via the same straddle rule reorderActiveSquad's engine call
 // applies internally -- see store.ts's reorderedActiveIndex() doc.
-// Inventory tabs NEVER pass onDeletePreset -- kind='inv' means
+// Inventory tabs NEVER pass onDeleteSquad -- kind='inv' means
 // LongPressTabs' trash-zone hit-test is unreachable for this instance
-// regardless (isOverTrashZone() short-circuits on kind!=='preset'), so
+// regardless (isOverTrashZone() short-circuits on kind!=='squad'), so
 // there is no risk of an inventory tab ever trash-deleting anything.
 import { LongPressTabs } from './LongPressTabs';
 import { renameInventoryPage, reorderInventoryPage, setActiveInvPage, useGameStore } from './store';

@@ -141,7 +141,7 @@ interface DexProps {
   dexFocusId?: string | null;
 }
 
-const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchPresets'];
+const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchSquads'];
 
 export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const [query, setQuery] = useState('');

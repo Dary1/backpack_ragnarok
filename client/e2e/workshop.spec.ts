@@ -163,7 +163,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
     });
   });
 
-  test('REQ-0045 (h): roll result diagram shows the shape grid, linker cell, one compass arrow per beam direction, and matching hpMax/cellCount', async ({ page }) => {
+  test('REQ-0045 (h): roll result diagram shows the shape grid, unit cell, one compass arrow per beam direction, and matching hpMax/cellCount', async ({ page }) => {
     await withDevProfileBackup(async () => {
       const seededCanvas = await seedDevLrdstBalance(page, 999);
       const preRollBpIds = new Set<string>();
@@ -190,9 +190,9 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // dex.spec.ts; here just confirm it mounted inside the result panel).
       await expect(resultPanel.locator('.shape-grid-cell-shape').first()).toBeVisible();
 
-      // Linker cell marked: EXACTLY one cell carries the linker highlight
-      // (ShapeGrid's new linkerTile prop, REQ-0045 h).
-      await expect(resultPanel.locator('[data-testid="shape-grid-cell-linker"]')).toHaveCount(1);
+      // Unit cell marked: EXACTLY one cell carries the unit highlight
+      // (ShapeGrid's new unitTile prop, REQ-0045 h).
+      await expect(resultPanel.locator('[data-testid="shape-grid-cell-unit"]')).toHaveCount(1);
 
       // Wait for the roll to fully finalize (toast + auto-save) so the
       // freshly-saved canvas can be read back and cross-checked against
@@ -206,7 +206,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
       expect(newBp).toBeTruthy();
 
       // Beam directions as compass arrows: exactly one arrow per
-      // linker.dirs entry (REQ-0045 h) -- cross-checked against the SAME
+      // unit.dirs entry (REQ-0045 h) -- cross-checked against the SAME
       // BP the server actually finalized, not just "some plausible count".
       await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.linker.dirs.length);
 
@@ -346,29 +346,29 @@ test.describe('Reward LRDST reaching warehouse', () => {
 
   test('a dungeon run reward deposits LRDST into the warehouse (reusing the dev backdate route to fast-forward)', async ({ page }) => {
     await withDevProfileBackup(async () => {
-      // REQ-0045 (b)+(c) deploy gate v2: presets 0-3 must be 4
-      // MUTUALLY-UNIQUE units (distinct BP/PO uids) -- a preset already
+      // REQ-0045 (b)+(c) deploy gate v2: squads 0-3 must be 4
+      // MUTUALLY-UNIQUE squads (distinct BP/PO uids) -- a squad already
       // deployed in another of this room's OWN slots is now correctly
       // refused (deployedUidSetsForGate's same-room check), so all 4
-      // slots can no longer share ONE identical preset the way this test
-      // originally did (presets.store all null + presetIndex:0 for
+      // slots can no longer share ONE identical squad the way this test
+      // originally did (squads.store all null + squadIndex:0 for
       // every slot, which resolved to the SAME top-level canvas fields
       // 4 times over -- a same-room duplicate deployment, now a 409).
-      function presetCanvas(tag: string) {
+      function squadCanvas(tag: string) {
         return {
           linked: true,
-          // Phase 0 (workshop:348) FIX: this unit must be able to WIN the
+          // Phase 0 (workshop:348) FIX: this squad must be able to WIN the
           // run, not just survive it -- the assertion below needs a non-wipe
           // (rewards, incl. LRDST, are intentionally zero on a wipe; see
           // server/services/runs.cjs settleRun's `if (run.result !== 'wipe')`
           // gate + sim/lib/dungeon.cjs). The old fixture's ONLY PO was a bare
           // `hilt` (content id `hilt` has effects:[] -- a weapon PART, inert
-          // alone), so the party could deal ZERO damage and ALWAYS wiped
+          // alone), so the troop could deal ZERO damage and ALWAYS wiped
           // regardless of hpMax; hpMax:40 merely delayed the guaranteed loss.
-          // Fix = give each unit a real, assembled weapon (blade+hilt =>
+          // Fix = give each squad a real, assembled weapon (blade+hilt =>
           // `longsword`, whose blade strike effect is gated `cond:'assembled'`)
           // plus enough hpMax to clear the fixed niflheim gauntlet (which ends
-          // in the 400-HP hrimgrimnir boss). Verified: 4x this unit vs
+          // in the 400-HP hrimgrimnir boss). Verified: 4x this squad vs
           // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
           // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
           // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
@@ -380,17 +380,17 @@ test.describe('Reward LRDST reaching warehouse', () => {
           sis: [],
         };
       }
-      const p0 = presetCanvas('p0');
+      const p0 = squadCanvas('p0');
       const canvas = {
         ...p0,
         inv: { pages: [{ bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }], names: ['1', '2', '3', '4', '5'] },
-        presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, presetCanvas('p1'), presetCanvas('p2'), presetCanvas('p3'), null] },
+        presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, squadCanvas('p1'), squadCanvas('p2'), squadCanvas('p3'), null] },
       };
       const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
       expect(putRes.status()).toBe(200);
 
       // Create a room, fill all 4 slots with 4 DIFFERENT, mutually-
-      // unique presets (0,1,2,3), which auto-starts the run once all 4
+      // unique squads (0,1,2,3), which auto-starts the run once all 4
       // are filled (matching schedule.spec.ts's own room-fill
       // convention), then backdate it to force settlement without
       // waiting real dungeon time.
@@ -404,7 +404,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
       const room = (await createRes.json()).room;
 
       for (let i = 0; i < 4; i++) {
-        const slotRes = await page.request.put(`/api/schedule/rooms/${room.id}/slots/${i}`, { data: { presetIndex: i } });
+        const slotRes = await page.request.put(`/api/schedule/rooms/${room.id}/slots/${i}`, { data: { squadIndex: i } });
         expect(slotRes.status()).toBe(200);
       }
 
@@ -475,11 +475,11 @@ test.describe('BP move handle', () => {
     await withDevProfileBackup(async () => {
       // A 2x2 BP on the canvas, fully covered by 4x 1x1 POs (one per
       // cell) -- this is exactly the scenario the badge exists for
-      // (grabbing by an empty cell is impossible; the linker cell itself
-      // is also covered here, by placing the linker off-cell such that
-      // ALL 4 shape cells are covered including wherever the linker sits
-      // -- shape [[0,0],[0,1],[1,0],[1,1]], linker off [0,0] -- so the PO
-      // at [0,0] covers the linker cell too, and the empty-cell handle
+      // (grabbing by an empty cell is impossible; the unit cell itself
+      // is also covered here, by placing the unit off-cell such that
+      // ALL 4 shape cells are covered including wherever the unit sits
+      // -- shape [[0,0],[0,1],[1,0],[1,1]], unit off [0,0] -- so the PO
+      // at [0,0] covers the unit cell too, and the empty-cell handle
       // loop finds zero free cells to hand out).
       const canvasBpId = 'canvas_covered_bp';
       const invBpId = 'inv_covered_bp';
@@ -533,7 +533,7 @@ test.describe('BP move handle', () => {
       expect(movedCanvasBp).toBeTruthy();
       expect(movedCanvasBp.origin).toEqual([6, 6]);
       // Contents traveled WITH the BP (badge-initiated drag uses the
-      // SAME beginDrag('bp',...) whole-BP-move path as linker-grab).
+      // SAME beginDrag('bp',...) whole-BP-move path as unit-grab).
       const movedPo = saved.pos.find((p: any) => p.uid === 'c_po_1');
       expect(movedPo.cell).toEqual([6, 6]);
 
@@ -558,7 +558,7 @@ test.describe('BP move handle', () => {
 });
 
 // REQ-0063 -- Dismantle System E2E coverage. Proves the client wiring the
-// unit/server tests can't reach: the Workshop tile opens a real modal
+// squad/server tests can't reach: the Workshop tile opens a real modal
 // (not the old REQ-0076 "opening soon" shell), the picker lists an actual
 // inventory PO, confirming POSTs /api/dismantle and the removal survives
 // the store's loadGame() refresh (see DismantlePanel.tsx's module comment
@@ -574,8 +574,8 @@ test.describe('BP move handle', () => {
 // synthetic sandboxed profile with a hand-written room, not the shared
 // live dev profile this E2E file mutates). A client-side E2E for that
 // specific gate would need to force a KNOWN-valid, non-empty active
-// preset into the shared dev profile before calling the real assignSlot
-// endpoint (empty_unit 409 otherwise) -- doable, but adds real fixture
+// squad into the shared dev profile before calling the real assignSlot
+// endpoint (empty_squad 409 otherwise) -- doable, but adds real fixture
 // risk against live, possibly-already-occupied dev-profile state for a
 // business rule that is not this file's job to re-verify. Left as a
 // deliberate scope cut rather than a fragile test.

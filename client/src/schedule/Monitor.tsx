@@ -57,7 +57,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
-import { MonitorRenderer, type MonitorUnitVisual } from './MonitorRenderer';
+import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
 
 /** Same item-name resolution WarehouseTab.tsx already uses (itemId ->
  * localized display name, falling back to the raw id if content hasn't
@@ -178,7 +178,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MonitorRenderer | null>(null);
   const lastEventIndexRef = useRef(0);
-  const unitsMountedRef = useRef(false);
+  const squadsMountedRef = useRef(false);
   const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
   /** REQ-0045 (g): expanded-view tab -- 'field' (the existing Pixi
@@ -244,57 +244,57 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     };
   }, [expanded, mountedOnce]);
 
-  // Mount player-side unit visuals once (formation box + full BP/PO
+  // Mount player-side squad visuals once (formation box + full BP/PO
   // canvas copy) -- these never change mid-run, so this only needs to
-  // run once after both the renderer AND the room's own preset/
+  // run once after both the renderer AND the room's own squad/
   // formation data are available.
   //
-  // REQ-0045 (d) root cause: this used to take only `presetCanvas.bps[0]`
+  // REQ-0045 (d) root cause: this used to take only `squadCanvas.bps[0]`
   // (the FIRST bp) and hand MonitorRenderer a single {bpColor,bpShape}
-  // pair, which mountUnits() then drew as if that one shape alone
+  // pair, which mountSquads() then drew as if that one shape alone
   // occupied the WHOLE formation box starting at its own local (0,0) --
-  // "only the first BP is copied, auto-placed top-left". The preset's
+  // "only the first BP is copied, auto-placed top-left". The squad's
   // OTHER BPs (and every placed PO) were silently dropped from the
-  // visual entirely. sim/combat.cjs's compileUnitSnapshot was ALWAYS
+  // visual entirely. sim/combat.cjs's compileSquadSnapshot was ALWAYS
   // correct here (its own bps.map(...) already iterates every BP, each
   // offset by its own origin -- see localBpCells) -- this was purely a
   // client-side DISPLAY bug, the actual combat simulation never had it.
-  // Fixed by copying the preset's bps/pos arrays 1:1 (same "canvas is
-  // already 8x8, no auto-repositioning" contract compileUnitSnapshot
+  // Fixed by copying the squad's bps/pos arrays 1:1 (same "canvas is
+  // already 8x8, no auto-repositioning" contract compileSquadSnapshot
   // already follows): every BP's cells are its own shape offsets PLUS
   // its own origin (mirroring sim/combat.cjs's localBpCells formula
   // exactly), and every placed (loc==='grid') PO becomes its own icon
   // entry at its own origin cell.
   useEffect(() => {
-    if (!mountedOnce || !rendererRef.current || unitsMountedRef.current) return;
-    const presets = snapshot.state?.presets;
+    if (!mountedOnce || !rendererRef.current || squadsMountedRef.current) return;
+    const squadStore = snapshot.state?.presets;
     const activeCanvas = snapshot.state;
     const itemDefs = snapshot.gameData?.ITEMS;
     if (!activeCanvas) return;
-    const units: MonitorUnitVisual[] = room.slots.map((slot, idx) => {
-      const box = `unit${idx + 1}`;
+    const squads: MonitorSquadVisual[] = room.slots.map((slot, idx) => {
+      const box = `squad${idx + 1}`;
       let label = `U${idx + 1}`;
-      const bps: MonitorUnitVisual['bps'] = [];
-      const icons: MonitorUnitVisual['icons'] = [];
-      if (slot.presetIndex != null) {
-        const presetCanvas =
-          presets && slot.presetIndex === presets.active
+      const bps: MonitorSquadVisual['bps'] = [];
+      const icons: MonitorSquadVisual['icons'] = [];
+      if (slot.squadIndex != null) {
+        const squadCanvas =
+          squadStore && slot.squadIndex === squadStore.active
             ? activeCanvas
-            : presets?.store[slot.presetIndex] ?? null;
-        if (presetCanvas?.bps?.length) {
-          label = presets?.names[slot.presetIndex] ?? label;
-          for (const bp of presetCanvas.bps) {
+            : squadStore?.store[slot.squadIndex] ?? null;
+        if (squadCanvas?.bps?.length) {
+          label = squadStore?.names[slot.squadIndex] ?? label;
+          for (const bp of squadCanvas.bps) {
             // Mirrors sim/combat.cjs's localBpCells: shape offsets PLUS
             // this BP's own origin -- NOT re-normalized to (0,0).
             const cells: [number, number][] = bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]);
             bps.push({ color: bp.color, cells });
           }
         }
-        if (presetCanvas?.pos?.length && itemDefs) {
-          for (const po of presetCanvas.pos) {
+        if (squadCanvas?.pos?.length && itemDefs) {
+          for (const po of squadCanvas.pos) {
             if (po.loc !== 'grid' || !po.cell) continue;
             const def = itemDefs[po.id];
-            if (!def) continue; // unknown/stale item id -- skip this one icon defensively, other units unaffected
+            if (!def) continue; // unknown/stale item id -- skip this one icon defensively, other squads unaffected
             icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell });
           }
         }
@@ -306,7 +306,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     // the dungeons-list formation payload (ApiFormationEntry.canvases),
     // which this component does not fetch on its own (SchedulePage/
     // CreateRoomForm already fetch it for the create form). Rather than
-    // re-fetch it again here per-room, MonitorRenderer.mountUnits()
+    // re-fetch it again here per-room, MonitorRenderer.mountSquads()
     // degrades gracefully: parseBoxToPixelRect on a plain "unit1" string
     // (no colon) yields a zero-size rect at the origin, which would draw
     // nothing useful. To keep this real (not a silent no-op), fetch the
@@ -316,28 +316,28 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
       try {
         const payload = await fetchDungeons();
         const formation = payload.formations.find((f) => f.id === room.formationId);
-        const withRealBoxes = units.map((u) => ({ ...u, box: formation?.canvases[`unit${u.slotIndex + 1}`] ?? u.box }));
-        rendererRef.current?.mountUnits(withRealBoxes);
-        unitsMountedRef.current = true;
+        const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`squad${u.slotIndex + 1}`] ?? u.box }));
+        rendererRef.current?.mountSquads(withRealBoxes);
+        squadsMountedRef.current = true;
         // REQ-0045 (d)/(f) regression-test seam: expose this room's
-        // mounted units + enemy marker bounds keyed by roomId, same
+        // mounted squads + enemy marker bounds keyed by roomId, same
         // "assert on real data instead of reverse-engineering canvas
         // pixels" rationale as store.ts's own __backpackDebug hook --
         // multiple room cards can each have their own Monitor instance
         // mounted simultaneously, so this is a roomId-keyed map, not a
         // single flat object. Never read by any production UI code path.
         interface MonitorDebugEntry {
-          units: () => MonitorUnitVisual[];
+          squads: () => MonitorSquadVisual[];
           enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
         debugWin.__monitorDebug[room.id] = {
-          units: () => rendererRef.current?.getLastMountedUnits() ?? [],
+          squads: () => rendererRef.current?.getLastMountedSquads() ?? [],
           enemyBounds: () => rendererRef.current?.getEnemyMarkerBounds() ?? [],
         };
       } catch (e) {
-        // Non-fatal -- the expanded view simply shows no unit
+        // Non-fatal -- the expanded view simply shows no squad
         // footprints if the formation lookup fails; ray animation and
         // the enemy side are unaffected.
       }

@@ -22,7 +22,7 @@
 // partial/error document -- DOMParser never throws, so nothing surfaced.
 // In practice this meant only <symbol>s living in the FIRST <svg> block
 // were ever found (icon-tower_shield, icon-whetstone, icon-frost_orb,
-// icon-poison_vial, icon-linker_core); every symbol declared in a later
+// icon-poison_vial, icon-unit_core); every symbol declared in a later
 // block (icon-blade, icon-hilt, icon-flame_tablet, icon-oil_flask2,
 // icon-dagger2, icon-herb_satchel, icon-beast_jaw, and all Frost-tier
 // icons) was invisible on the board with no console error. This exact

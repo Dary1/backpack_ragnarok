@@ -76,7 +76,7 @@ Two modes:
 
 Content mask (SVG path, default): cairosvg rasterizes each <symbol> (wrapped in a
 temporary standalone <svg> using the symbol's own viewBox) at CELL=100 px per
-shape-bbox cell unit, transparent background. Content mask = alpha channel > 0.
+shape-bbox cell squad, transparent background. Content mask = alpha channel > 0.
 For CHECK, the mask keeps its natural position (not bbox-cropped) because
 position within the viewBox matters for containment. For FIX/solve, the mask
 IS cropped to its content bounding box first (matches the reference algorithm,
@@ -789,11 +789,11 @@ def format_fix_line(r):
         return (f"ESCALATE   {r['id']:24s} icon={str(r['icon']):24s} "
                 f"rot={r['rotation_deg']} flip={r['flip']} scale={r['scale_pct']:.2f}% "
                 f"reason={r.get('reason','')}")
-    unit = "deg" if r.get("any_angle") else "deg(90-step)"
+    squad = "deg" if r.get("any_angle") else "deg(90-step)"
     pos_first = r.get("pos_first_xy", r["pos_xy"])
     pos_centered = r.get("pos_centered_xy", r["pos_xy"])
     return (f"SOLVED     {r['id']:24s} icon={str(r['icon']):24s} "
-            f"scale={r['scale_pct']:.2f}% rot={r['rotation_deg']}{unit} flip={r['flip']} "
+            f"scale={r['scale_pct']:.2f}% rot={r['rotation_deg']}{squad} flip={r['flip']} "
             f"pos_first(x,y)={pos_first} pos_centered(x,y)={pos_centered} "
             f"content_px={r['content_size_px']}")
 

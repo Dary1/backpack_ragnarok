@@ -19,8 +19,8 @@
 // E2E time-control decision (documented in full in server/README.md's
 // "E2E time-control decision" section): measured real durationSecs for
 // niflheim_depths empirically before choosing an approach.
-//   - A unit whose PO effects default to modes:['battle'] (this suite's
-//     own fixture preset uses the real 'dagger' item, no `modes` field)
+//   - A squad whose PO effects default to modes:['battle'] (this suite's
+//     own fixture squad uses the real 'dagger' item, no `modes` field)
 //     NEVER acts during the enc_trap_1 detection-mode encounter, so that
 //     encounter times out at t=999 -- durationSecs for the WHOLE run
 //     would be 999 real seconds if we waited for natural settlement.
@@ -102,8 +102,8 @@ async function apiGetRoom(page: Page, token: string, roomId: string): Promise<an
   const res = await page.request.get(`/api/schedule/rooms/${roomId}`, { headers: { 'X-Auth-Token': token } });
   return { status: res.status(), body: await res.json() };
 }
-async function apiAssignSlot(page: Page, token: string, roomId: string, slotIndex: number, presetIndex: number): Promise<any> {
-  const res = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${slotIndex}`, { headers: { 'X-Auth-Token': token }, data: { presetIndex } });
+async function apiAssignSlot(page: Page, token: string, roomId: string, slotIndex: number, squadIndex: number): Promise<any> {
+  const res = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${slotIndex}`, { headers: { 'X-Auth-Token': token }, data: { squadIndex } });
   return { status: res.status(), body: await res.json() };
 }
 async function apiCancelRoom(page: Page, token: string, roomId: string): Promise<any> {
@@ -159,7 +159,7 @@ test.beforeAll(() => {
   fixture = JSON.parse(readFileSync(SCHEDULE_FIXTURE_PATH, 'utf8'));
 });
 
-// Every test in this file needs the fixture's 4 usable presets on the
+// Every test in this file needs the fixture's 4 usable squads on the
 // player's OWN profile -- PUT it fresh before EACH test (not just
 // beforeAll), so every test is independently runnable (e.g. `npx
 // playwright test -g "warehouse receives"` in isolation) rather than
@@ -181,7 +181,7 @@ test.describe('dungeons list (no auth)', () => {
 });
 
 test.describe('create room + slots UI', () => {
-  test('create-room form creates a room; assigning all 4 slots with 4 DIFFERENT, mutually-unique presets auto-starts a run (REQ-0045 c: unique-4 must start)', async ({ page }) => {
+  test('create-room form creates a room; assigning all 4 slots with 4 DIFFERENT, mutually-unique squads auto-starts a run (REQ-0045 c: unique-4 must start)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
@@ -203,21 +203,21 @@ test.describe('create room + slots UI', () => {
     await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible();
 
     // REQ-0045 (b)+(c) deploy gate v2: fill each slot with a DIFFERENT
-    // preset (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
-    // distinct-uid presets, see schedule-fixture.json's own header
-    // comment) -- this is the "4 units with fully unique presets" case
-    // the OLD gate (isUnitIndependent-as-gate) used to incorrectly
-    // REFUSE (a preset sharing an item with some OTHER unrelated preset
+    // squad (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
+    // distinct-uid squads, see schedule-fixture.json's own header
+    // comment) -- this is the "4 squads with fully unique squads" case
+    // the OLD gate (isSquadIndependent-as-gate) used to incorrectly
+    // REFUSE (a squad sharing an item with some OTHER unrelated squad
     // elsewhere in the warehouse blocked deployment even though nothing
     // here overlaps anything actually deployed) -- the NEW deploy-
-    // overlap gate correctly allows this, since none of these 4 presets'
+    // overlap gate correctly allows this, since none of these 4 squads'
     // uid sets intersect each other OR anything deployed elsewhere.
     for (let i = 0; i < 4; i++) {
       await page.locator(`[data-testid="schedule-slot-select-${i}"]`).selectOption(String(i));
       await expect(page.locator(`[data-testid="schedule-slot-select-${i}"]`)).toHaveValue(String(i), { timeout: 10000 });
     }
 
-    // A full party auto-starts the first run (server-side
+    // A full troop auto-starts the first run (server-side
     // maybeAutoStartNextRun, fired the next time anything reads the
     // room) -- poll until status flips to 'active'.
     await expect(async () => {
@@ -228,20 +228,20 @@ test.describe('create room + slots UI', () => {
     await expect(page.locator('[data-testid="schedule-room-status-badge"]').first()).toHaveText('Running', { timeout: 10000 });
 
     // Cancel immediately (default cancelPolicy) so this room's deployed
-    // presets (0,1,2,3) do not stay "active" and block later tests' OWN
-    // use of those presets via the cross-room deploy gate -- this test's
+    // squads (0,1,2,3) do not stay "active" and block later tests' OWN
+    // use of those squads via the cross-room deploy gate -- this test's
     // own assertions are already complete at this point.
     await apiCancelRoom(page, player.token, roomId!);
   });
 
-  test('assigning the SAME presetIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicate presets must be REFUSED)', async ({ page }) => {
+  test('assigning the SAME squadIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicate squads must be REFUSED)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
 
     const first = await apiAssignSlot(page, player.token, roomId, 0, 1);
     expect(first.status).toBe(200);
-    // Same presetIndex (1) into a DIFFERENT slot of the SAME room -- the
+    // Same squadIndex (1) into a DIFFERENT slot of the SAME room -- the
     // uid set is IDENTICAL to slot 0's, so this is a same-room duplicate-
     // deployment attempt, correctly refused regardless of the room's own
     // status (it is still 'open', not yet 'active', at this point --
@@ -254,20 +254,20 @@ test.describe('create room + slots UI', () => {
     // Room never reaches 4/4 filled, so it correctly never auto-starts.
     const view = await apiGetRoom(page, player.token, roomId);
     expect(view.body.room.status).toBe('open');
-    expect(view.body.room.slots[1].presetIndex).toBeNull();
+    expect(view.body.room.slots[1].squadIndex).toBeNull();
 
     await apiCancelRoom(page, player.token, roomId);
   });
 
-  test('a preset sharing a uid with another of the caller\'s OWN presets, where that OTHER preset is NOT deployed anywhere, deploys OK (REQ-0045 b: mere cross-preset sharing must NOT block)', async ({ page }) => {
-    // Clone preset index 1's uids into preset index 4 (normally empty)
-    // -- preset 1 and preset 4 now share EVERY uid, making both "yellow"
-    // (isUnitIndependent would report false for either against the
-    // other) -- but NEITHER is deployed anywhere yet. Assigning preset 1
-    // to a room slot must succeed: the OLD gate (isUnitIndependent-as-
+  test('a squad sharing a uid with another of the caller\'s OWN squads, where that OTHER squad is NOT deployed anywhere, deploys OK (REQ-0045 b: mere cross-squad sharing must NOT block)', async ({ page }) => {
+    // Clone squad index 1's uids into squad index 4 (normally empty)
+    // -- squad 1 and squad 4 now share EVERY uid, making both "yellow"
+    // (isSquadIndependent would report false for either against the
+    // other) -- but NEITHER is deployed anywhere yet. Assigning squad 1
+    // to a room slot must succeed: the OLD gate (isSquadIndependent-as-
     // gate) would have refused this unconditionally; the NEW deploy-
-    // overlap gate only cares whether the OTHER preset's units are
-    // ACTUALLY deployed, which preset 4 is not. Uses the same GET/mutate/
+    // overlap gate only cares whether the OTHER squad's squads are
+    // ACTUALLY deployed, which squad 4 is not. Uses the same GET/mutate/
     // PUT-canvas HTTP round-trip convention as the warehouse-rewards test
     // above (this file drives everything through the real API, never
     // requires server internals directly).
@@ -407,13 +407,13 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
 
 test.describe('monitor: events & progress', () => {
   test('monitor polls a REAL run and shows growing event count + increasing progress', async ({ page }) => {
-    // Fresh room, same fixture preset in all 4 slots.
+    // Fresh room, same fixture squad in all 4 slots.
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    // Fill each slot with a DIFFERENT preset (0,1,2,3 -- the fixture's 4
-    // mutually-unique, globally-distinct-uid presets). Every test in
+    // Fill each slot with a DIFFERENT squad (0,1,2,3 -- the fixture's 4
+    // mutually-unique, globally-distinct-uid squads). Every test in
     // this file now cancels its own room immediately after use, so no
-    // preset index needs to be "reserved" against any other test.
+    // squad index needs to be "reserved" against any other test.
     for (let i = 0; i < 4; i++) {
       const r = await apiAssignSlot(page, player.token, roomId, i, i);
       expect(r.status).toBe(200);
@@ -457,7 +457,7 @@ test.describe('monitor: events & progress', () => {
     // em-dash) once at least one event has arrived.
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
 
-    // Cancel immediately so preset index 2 frees up for any later test.
+    // Cancel immediately so squad index 2 frees up for any later test.
     await apiCancelRoom(page, player.token, roomId);
   });
 });
@@ -484,9 +484,9 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
     // (confirmed 403'd for a real guest token in the test above). Real
     // niflheim_depths durationSecs is 999 (the trap encounter's
     // every_secs:[999,999] skill never fires without a detection-capable
-    // unit -- confirmed via direct sim/combat.cjs measurement, NOT the
+    // squad -- confirmed via direct sim/combat.cjs measurement, NOT the
     // ~21s figure that applies only to a detection/unlock-capable probe
-    // unit this suite's own fixture does not use) -- waiting for real
+    // squad this suite's own fixture does not use) -- waiting for real
     // settlement here would mean a 999-real-second test, which is why
     // every schedule E2E test other than the "monitor" one uses this
     // dev-only shortcut instead (see server/README.md's "E2E time-
@@ -510,7 +510,7 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {
-        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { presetIndex: i } });
+        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { squadIndex: i } });
         expect(r.status()).toBe(200);
       }
       // Auto-start fires on the next room read (lazy settlement).
@@ -525,7 +525,7 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
 
       // Only assert the reward-in-warehouse behavior on an actual
       // victory (a wipe deposits nothing, per golden i) -- this
-      // fixture's tanky (hpMax:500) units win reliably (empirically
+      // fixture's tanky (hpMax:500) squads win reliably (empirically
       // verified: 20/20 across distinct seeds during this REQ's own
       // development), but the skip guard stays as defensive belt-and-
       // suspenders rather than asserting something that should not
@@ -639,8 +639,8 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
 });
 
 test.describe('deploy-gate 409 across rooms', () => {
-  test('assigning the SAME preset to a slot in a SECOND room while the first room is ACTIVE is refused 409', async ({ page }) => {
-    // Room A: fill all 4 slots with 4 DIFFERENT, mutually-unique presets
+  test('assigning the SAME squad to a slot in a SECOND room while the first room is ACTIVE is refused 409', async ({ page }) => {
+    // Room A: fill all 4 slots with 4 DIFFERENT, mutually-unique squads
     // (0,1,2,3) -- this makes it ACTIVE (a run actually starts), which is
     // required for deployedUidSetsForGate's cross-room check to fire at
     // all (it only gates OTHER rooms whose status === 'active', not
@@ -658,10 +658,10 @@ test.describe('deploy-gate 409 across rooms', () => {
       expect(view.body.room.status).toBe('active');
     }).toPass({ timeout: 10000 });
 
-    // Room B: attempt to also deploy preset index 0 (Room A's slot 0,
-    // already active in room A) -> 409 with the "overlaps a unit already
+    // Room B: attempt to also deploy squad index 0 (Room A's slot 0,
+    // already active in room A) -> 409 with the "overlaps a squad already
     // deployed" message. This is a genuine CROSS-room overlap (the same
-    // preset's uid set is already deployed elsewhere), which remains
+    // squad's uid set is already deployed elsewhere), which remains
     // correctly refused under the new deploy-overlap gate.
     const roomB = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomBId = roomB.body.room.id;
@@ -679,9 +679,9 @@ test.describe('deploy-gate 409 across rooms', () => {
     await expect(cardB).toBeVisible({ timeout: 10000 });
     await cardB.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]').selectOption('0');
-    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already has a unit deployed', { timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already has a squad deployed', { timeout: 10000 });
 
-    // Cancel room A so its deployed presets (0,1,2,3) free up for later
+    // Cancel room A so its deployed squads (0,1,2,3) free up for later
     // tests in this suite -- every other test in this file cancels its
     // own room(s) once its assertions are complete; this one is no
     // exception (room B never got any slot filled, so canceling it too
@@ -703,7 +703,7 @@ test.describe('cancel flow', () => {
   test('non-immediate cancel policy while a run is active flags cancelRequested (badge), room only cancels once that run settles', async ({ page }) => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1', cancelPolicy: { immediate: false } });
     const roomId = created.body.room.id;
-    // Fill each slot with 4 FULLY DEDICATED presets (5,6,7,8 -- NOT
+    // Fill each slot with 4 FULLY DEDICATED squads (5,6,7,8 -- NOT
     // 0,1,2,3, which several OTHER tests in this file also deploy via
     // the natural i->i mapping): this test's whole point is to prove a
     // NON-immediate cancelPolicy only FLAGS cancelRequested while the
@@ -712,15 +712,15 @@ test.describe('cancel flow', () => {
     // hook is gated to the dev fallback caller only, confirmed 403'd for
     // a guest token by the test in the "run settles via dev/backdate
     // hook" describe block above), and niflheim_depths' real
-    // durationSecs is 999 -- so this room's 4 deployed presets stay
+    // durationSecs is 999 -- so this room's 4 deployed squads stay
     // genuinely "active" in the database for the rest of this suite's
-    // run, with no way to free them early. Presets 5-8 (bp_t5..bp_t8,
+    // run, with no way to free them early. Squads 5-8 (bp_t5..bp_t8,
     // added specifically for this test -- see schedule-fixture.json's
-    // own dedicated tail presets) are never touched by any other test in
+    // own dedicated tail squads) are never touched by any other test in
     // this file, so this permanent lock never collides with anything.
-    const presetsForThisTest = [5, 6, 7, 8];
+    const squadsForThisTest = [5, 6, 7, 8];
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomId, i, presetsForThisTest[i]);
+      const r = await apiAssignSlot(page, player.token, roomId, i, squadsForThisTest[i]);
       expect(r.status).toBe(200);
     }
     // Auto-start fires on the next room read (lazy settlement).
@@ -1025,19 +1025,19 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
   });
 });
 
-test.describe('REQ-0041: deploy gate -- empty-BP preset is refused 409 and disabled client-side', () => {
-  test('a preset with ZERO BP (fixture preset index 4, empty) cannot be selected in the slot dropdown, and a raw API assign is refused 409 empty_unit', async ({ page }) => {
+test.describe('REQ-0041: deploy gate -- empty-BP squad is refused 409 and disabled client-side', () => {
+  test('a squad with ZERO BP (fixture squad index 4, empty) cannot be selected in the slot dropdown, and a raw API assign is refused 409 empty_squad', async ({ page }) => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
 
-    // Server-side: a raw API assign of the empty preset (index 4 in the
-    // fixture, see e2e/fixtures/schedule-fixture.json's presets.store[4]
-    // === null, i.e. a fresh, BP-less preset) is refused 409 empty_unit.
+    // Server-side: a raw API assign of the empty squad (index 4 in the
+    // fixture, see e2e/fixtures/schedule-fixture.json's squads.store[4]
+    // === null, i.e. a fresh, BP-less squad) is refused 409 empty_squad.
     const res = await apiAssignSlot(page, player.token, roomId, 0, 4);
     expect(res.status).toBe(409);
-    expect(res.body.reason).toBe('empty_unit');
+    expect(res.body.reason).toBe('empty_squad');
 
-    // Client-side: the slot dropdown's OPTION for preset index 4 is
+    // Client-side: the slot dropdown's OPTION for squad index 4 is
     // disabled (pre-emptive UI gate, SlotsPanel.tsx) -- the option text
     // also carries the "cannot deploy" i18n suffix.
     await page.goto(`/app/#/invite/${player.token}`);
@@ -1052,7 +1052,7 @@ test.describe('REQ-0041: deploy gate -- empty-BP preset is refused 409 and disab
     await expect(emptyOption).toBeDisabled();
     await expect(emptyOption).toHaveText(/cannot deploy|展開不可/);
 
-    // A preset WITH a BP (index 0) remains selectable and unaffected by
+    // A squad WITH a BP (index 0) remains selectable and unaffected by
     // this gate.
     const okOption = select0.locator('option[value="0"]');
     await expect(okOption).toBeEnabled();
@@ -1062,17 +1062,17 @@ test.describe('REQ-0041: deploy gate -- empty-BP preset is refused 409 and disab
 });
 
 test.describe('REQ-0041: monitor freeze regression guard', () => {
-  test('expanding the monitor for a room with a REAL (non-empty) unit never freezes -- progress/telegraph readouts settle within a bounded timeout', async ({ page }) => {
+  test('expanding the monitor for a room with a REAL (non-empty) squad never freezes -- progress/telegraph readouts settle within a bounded timeout', async ({ page }) => {
     // This is a defensive regression guard for the historical monitor
     // freeze (bug #4): its root cause (MonitorRenderer.ts's
     // cellIdToColRow assuming a "M9"-string cell id when sim/combat.cjs
     // actually emits raw [row,col] tuples on ray_fire/ray_bounce/
     // ray_step -- see fieldGeometry.ts's cellIdToColRow doc) can no
-    // longer be triggered via an EMPTY-BP unit specifically, since the
+    // longer be triggered via an EMPTY-BP squad specifically, since the
     // server-side deploy gate now refuses to ever let one be assigned to
-    // a room slot at all (see the "empty-BP preset" test above) -- so
+    // a room slot at all (see the "empty-BP squad" test above) -- so
     // this test instead exercises the general "expand the monitor and
-    // let it run" path end-to-end with a real, deployable unit, inside a
+    // let it run" path end-to-end with a real, deployable squad, inside a
     // bounded timeout, as a standing guard against any regression of
     // either fix (fieldGeometry.ts's shape-tolerant parsing, or
     // MonitorRenderer.ts/Monitor.tsx's per-event try/catch + unconditional
@@ -1157,19 +1157,19 @@ test.afterAll(async () => {
   }
 });
 
-test.describe('REQ-0045 (d): monitor copies the FULL preset canvas (all BPs at real positions + placed POs), not just bps[0]', () => {
-  test('a 2-BP unit with 2 placed POs is mounted with BOTH BPs at their own distinct origins and BOTH POs present -- not truncated to the first BP auto-placed top-left', async ({ page }) => {
-    // Preset index 9 (bp_multi_a @ origin [1,1], bp_multi_b @ origin
+test.describe('REQ-0045 (d): monitor copies the FULL squad canvas (all BPs at real positions + placed POs), not just bps[0]', () => {
+  test('a 2-BP squad with 2 placed POs is mounted with BOTH BPs at their own distinct origins and BOTH POs present -- not truncated to the first BP auto-placed top-left', async ({ page }) => {
+    // Squad index 9 (bp_multi_a @ origin [1,1], bp_multi_b @ origin
     // [5,5], each with its own placed 'dagger' PO) -- see
-    // schedule-fixture.json's own header comment for this preset's
-    // exact shape. Slots 1-3 use presets 0,1,2 (self-contained, no
+    // schedule-fixture.json's own header comment for this squad's
+    // exact shape. Slots 1-3 use squads 0,1,2 (self-contained, no
     // permanent lock -- this test cancels its own room immediately
     // after asserting, freeing all 4 for later tests).
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    const presetsForThisTest = [9, 0, 1, 2];
+    const squadsForThisTest = [9, 0, 1, 2];
     for (let i = 0; i < 4; i++) {
-      const r = await apiAssignSlot(page, player.token, roomId, i, presetsForThisTest[i]);
+      const r = await apiAssignSlot(page, player.token, roomId, i, squadsForThisTest[i]);
       expect(r.status).toBe(200);
     }
     await expect(async () => {
@@ -1190,32 +1190,32 @@ test.describe('REQ-0045 (d): monitor copies the FULL preset canvas (all BPs at r
     // .schedule-monitor-expand-btn (no distinct testid; shares the same
     // i18n expand/collapse label text) additionally reveals the Pixi
     // CANVAS view specifically, which is what actually triggers
-    // MonitorRenderer.mount() + mountUnits() -- required here since this
-    // test inspects mounted-units data, not just the summary text.
+    // MonitorRenderer.mount() + mountSquads() -- required here since this
+    // test inspects mounted-squads data, not just the summary text.
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
 
     // REQ-0045 (d) regression assertion: read the monitor's ACTUAL
-    // mounted-units data (MonitorRenderer.ts's getLastMountedUnits(),
-    // exposed via window.__monitorDebug[roomId].units() -- same "assert on
+    // mounted-squads data (MonitorRenderer.ts's getLastMountedSquads(),
+    // exposed via window.__monitorDebug[roomId].squads() -- same "assert on
     // real data instead of reverse-engineering canvas pixels" rationale
-    // as store.ts's own __backpackDebug hook) and verify slot 0 (preset
+    // as store.ts's own __backpackDebug hook) and verify slot 0 (squad
     // 9) carries BOTH bp_multi_a's cells (relative to its own origin
     // [1,1], i.e. still starting at local (1,1), NOT renormalized to
     // (0,0)) AND bp_multi_b's cells (relative to origin [5,5]) -- proving
     // the FULL canvas was copied, not just bps[0] auto-placed top-left.
     await expect(async () => {
-      const units = await page.evaluate((rid) => {
-        const w = window as unknown as { __monitorDebug?: Record<string, { units: () => Array<{ slotIndex: number; bps: Array<{ color: string; cells: [number, number][] }>; icons: Array<{ origin: [number, number] }> }> }> };
-        return w.__monitorDebug?.[rid]?.units() ?? [];
+      const squads = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { squads: () => Array<{ slotIndex: number; bps: Array<{ color: string; cells: [number, number][] }>; icons: Array<{ origin: [number, number] }> }> }> };
+        return w.__monitorDebug?.[rid]?.squads() ?? [];
       }, roomId);
-      expect(units.length).toBe(4);
-      const unit0 = units.find((u) => u.slotIndex === 0);
-      expect(unit0).toBeTruthy();
-      expect(unit0!.bps.length).toBe(2);
-      const bpA = unit0!.bps.find((b) => b.color === '#e94d4d'); // bp_multi_a
-      const bpB = unit0!.bps.find((b) => b.color === '#4de9b6'); // bp_multi_b
+      expect(squads.length).toBe(4);
+      const squad0 = squads.find((u) => u.slotIndex === 0);
+      expect(squad0).toBeTruthy();
+      expect(squad0!.bps.length).toBe(2);
+      const bpA = squad0!.bps.find((b) => b.color === '#e94d4d'); // bp_multi_a
+      const bpB = squad0!.bps.find((b) => b.color === '#4de9b6'); // bp_multi_b
       expect(bpA).toBeTruthy();
       expect(bpB).toBeTruthy();
       // bp_multi_a: shape [[0,0],[0,1],[1,0],[1,1]] + origin [1,1] -> cells [[1,1],[1,2],[2,1],[2,2]].
@@ -1223,8 +1223,8 @@ test.describe('REQ-0045 (d): monitor copies the FULL preset canvas (all BPs at r
       // bp_multi_b: shape [[0,0],[0,1],[1,0],[1,1]] + origin [5,5] -> cells [[5,5],[5,6],[6,5],[6,6]] -- proves this BP is NOT collapsed onto bp_multi_a's origin/top-left.
       expect(bpB!.cells).toEqual(expect.arrayContaining([[5, 5], [5, 6], [6, 5], [6, 6]]));
       // Both placed POs present, each at its OWN origin (not merged/dropped).
-      expect(unit0!.icons.length).toBe(2);
-      const origins = unit0!.icons.map((ic) => ic.origin.join(','));
+      expect(squad0!.icons.length).toBe(2);
+      const origins = squad0!.icons.map((ic) => ic.origin.join(','));
       expect(origins).toEqual(expect.arrayContaining(['1,1', '5,5']));
     }).toPass({ timeout: 10000 });
 
@@ -1407,7 +1407,7 @@ test.describe('REQ-0099: settled-run replay transport', () => {
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {
-        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { presetIndex: i } });
+        const r = await page.request.put(`/api/schedule/rooms/${roomId}/slots/${i}`, { data: { squadIndex: i } });
         expect(r.status()).toBe(200);
       }
       await expect(async () => {
