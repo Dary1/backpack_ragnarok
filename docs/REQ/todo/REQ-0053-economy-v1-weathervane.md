@@ -1,3 +1,5 @@
+> [Board triage 2026-07-12, integration owner] todo -> draft: blocked on REQ-0128 geometry rulings (Weathervane shuffles a Unit beam; beam/connection semantics under re-ruling). Re-ratify numbers after 0128.
+
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
 # REQ-0053 — Economy v1: Weathervane rename + TM roster + numbers

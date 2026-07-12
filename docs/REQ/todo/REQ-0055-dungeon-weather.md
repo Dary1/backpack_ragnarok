@@ -1,3 +1,5 @@
+> [Board triage 2026-07-12, integration owner] todo -> draft: blocked on REQ-0128 geometry rulings (affixes are written in the formation-ray language; ray semantics under re-ruling).
+
 # REQ-0055 — Dungeon Weather (ray affixes)
 
 - **Status**: ADOPTED by user (2026-07-06) — implementation QUEUED

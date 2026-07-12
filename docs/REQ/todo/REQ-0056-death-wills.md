@@ -1,3 +1,5 @@
+> [Board triage 2026-07-12, integration owner] todo -> draft: blocked on REQ-0129 charge/trigger taxonomy vocab freeze (this REQ introduces new trigger vocabulary; naming must follow the frozen taxonomy).
+
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
 # REQ-0056 — Death Wills (`on_bp_destroyed`) + unit-side last breath
