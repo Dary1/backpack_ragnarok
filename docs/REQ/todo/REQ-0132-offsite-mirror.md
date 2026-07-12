@@ -60,4 +60,12 @@ the top program risk (2026-07-12 risk-analysis session).
 
 ## Gate results
 
-(filled at build)
+- bash -n: OK. shellcheck: 1 info (SC2012) accepted — tarball names are
+  generated and date-based, no hostile filenames possible.
+- systemd-analyze --user verify: clean after unit files set 644; the
+  "ExecStart not executable" warning pre-merge was expected (unit points at
+  the master copy) and re-verified clean after merge + install.
+- Live push (2026-07-12, pre-merge from branch): mirror OK — master=a44627e,
+  47 branches + tags accepted by github.com:Dary1/backpack_ragnarok.
+- Post-merge: timer enabled + service run verified (see below; last_success
+  stamp written).
