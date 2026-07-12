@@ -185,28 +185,28 @@ export interface GameState {
   pos: PO[];
   sis: SI[];
   inv?: Inventory; // absent on a legacy (pre-REQ-0030) saved state; run migrateState() before use
-  presets?: Presets; // absent on a legacy (pre-REQ-0031) saved state; run migrateState() before use
+  squads?: Squads; // absent on a legacy (pre-REQ-0031) saved state; run migrateState() before use
 }
 
-/** One preset's canvas snapshot -- same shape as GameState's own top-level
- * canvas fields (REQ-0031 Phase B). Used for every INACTIVE preset's
- * entry in Presets.store; the ACTIVE preset's content lives directly on
+/** One squad's canvas snapshot -- same shape as GameState's own top-level
+ * canvas fields (REQ-0031 Phase B). Used for every INACTIVE squad's
+ * entry in Squads.store; the ACTIVE squad's content lives directly on
  * GameState.{linked,bps,pos,sis} instead (never duplicated into store). */
-export interface PresetSlot {
+export interface SquadSlot {
   linked: boolean;
   bps: BP[];
   pos: PO[];
   sis: SI[];
 }
 
-/** st.presets (REQ-0031 Phase B): active preset index, display names (one
- * per preset, grows by 1 with every addPreset()), and store (one slot per
- * preset -- store[active] is ALWAYS null, since that preset's content
+/** st.presets (REQ-0031 Phase B): active squad index, display names (one
+ * per squad, grows by 1 with every addSquad()), and store (one slot per
+ * squad -- store[active] is ALWAYS null, since that squad's content
  * lives at the top-level GameState fields instead). */
-export interface Presets {
+export interface Squads {
   active: number;
   names: string[];
-  store: Array<PresetSlot | null>;
+  store: Array<SquadSlot | null>;
 }
 
 export interface ShapeInfo {
@@ -462,15 +462,15 @@ export interface EngineInstance {
    *     pre-REQ-0033).
    *   inv -> canvas: now REFERENCE CREATION with exclusion (spec item 4).
    *     The BP's home stays in st.inv.pages[from.page] untouched; the
-   *     CURRENT preset's canvas gets a NEW BP reference at `origin` plus
+   *     CURRENT squad's canvas gets a NEW BP reference at `origin` plus
    *     new PO/SI references for every home-contained PO NOT already
-   *     referenced by the current preset (see bpReferenceSet below) --
+   *     referenced by the current squad (see bpReferenceSet below) --
    *     already-referenced POs are EXCLUDED (left behind, per spec item
    *     4), translated to the same relative offset from the new origin
    *     their home records have from the BP's home origin.
-   *   canvas -> inv: now REFERENCE REMOVAL. Removes the CURRENT preset's
+   *   canvas -> inv: now REFERENCE REMOVAL. Removes the CURRENT squad's
    *     BP reference and every PO/SI reference it brought along (nested
-   *     content still referenced by the current preset, matched against
+   *     content still referenced by the current squad, matched against
    *     the BP reference's OWN canvas footprint, not its home one); the
    *     home record(s) are NEVER touched, and `to.page`/`origin` are
    *     IGNORED entirely ("drop cell irrelevant" -- the item already
@@ -478,9 +478,9 @@ export interface EngineInstance {
    * If `to.loc==='canvas'` (either the physical or reference-creation
    * case), also runs unseatOrphans (a transferred blade/hilt pair might
    * now (dis)qualify for the 'bond' assembly seat). canvas -> canvas is
-   * not a reachable case (a single active preset's canvas is the only
+   * not a reachable case (a single active squad's canvas is the only
    * "canvas" container that exists at a time -- moving a reference
-   * between two PRESETS is expressed as removeRef + switchPreset +
+   * between two SQUADS is expressed as removeRef + switchSquad +
    * createRef, not a single transferBP call). */
   transferBP: (st: GameState, from: LocRef, to: LocRef, bpId: string, origin: Cell) => { ok: boolean; why?: string; cells?: Cell[] };
 
@@ -492,16 +492,16 @@ export interface EngineInstance {
    * subsequent pages if page 1 fills. Un-fittable leftovers (all 5 pages
    * full) remain in their original legacy loc:'inv'/host:'inv' form --
    * never silently dropped. ALSO (REQ-0031 Phase B) materializes st.inv.names
-   * (defaults "1".."5") and st.presets (5 presets, slot 0 = whatever this
+   * (defaults "1".."5") and st.presets (5 squads, slot 0 = whatever this
    * state's own top-level canvas already is, slots 1-4 empty) if either is
-   * missing -- "migrateState handles pre-preset saves". Safe/idempotent to
+   * missing -- "migrateState handles pre-squad saves". Safe/idempotent to
    * call on an ALREADY-migrated state (no legacy entries left to migrate,
    * st.inv.names/st.presets already present -- a no-op copy).
    *
    * REQ-0033 Phase 1 v3 addition (signature UNCHANGED, chains through the
    * above v1/v2 legacy migration first, then applies one more step): any
    * uid CURRENTLY sitting PHYSICALLY on any canvas (the active top-level
-   * fields, or any preset's store[i] snapshot) -- under the pre-REQ-0033
+   * fields, or any squad's store[i] snapshot) -- under the pre-REQ-0033
    * model, necessarily its own sole copy -- is given a first-fit INVENTORY
    * home (same firstFit algorithm as the legacy step above), and the
    * canvas record is replaced in-place by a REFERENCE (same uid/cell/rot/
@@ -514,45 +514,45 @@ export interface EngineInstance {
   migrateState: (oldState: GameState) => GameState;
 
   // -----------------------------------------------------------------------
-  // Preset model (REQ-0031 Phase B). st.{linked,bps,pos,sis} remains THE
-  // ACTIVE preset's canvas -- every function above this section keeps
-  // reading/writing those same top-level fields, unaware presets exist.
+  // Squad model (REQ-0031 Phase B). st.{linked,bps,pos,sis} remains THE
+  // ACTIVE squad's canvas -- every function above this section keeps
+  // reading/writing those same top-level fields, unaware squads exist.
   // -----------------------------------------------------------------------
 
-  /** Number of presets a freshly-made state carries (5). Distinct from
-   * st.presets.store.length, which GROWS with addPreset() -- PRESET_COUNT
+  /** Number of squads a freshly-made state carries (5). Distinct from
+   * st.presets.store.length, which GROWS with addSquad() -- SQUAD_COUNT
    * is only the initial/default count. */
-  PRESET_COUNT: number;
+  SQUAD_COUNT: number;
 
   /** Fresh {active:0,names:[...],store:[...]} for `count` presets: slot 0
    * has store[0]=null (its content is supplied separately, at the
-   * top-level GameState fields), every other slot holds an empty preset
-   * snapshot (emptyPresetSlot()). */
-  makePresetsMeta: (count: number) => Presets;
+   * top-level GameState fields), every other slot holds an empty squad
+   * snapshot (emptySquadSlot()). */
+  makeSquadsMeta: (count: number) => Squads;
 
-  /** A fresh, EMPTY preset snapshot: {linked:true,bps:[],pos:[],sis:[]}.
-   * Used internally by makePresetsMeta/addPreset; exposed for callers that
-   * need a correctly-shaped empty preset without hand-rolling it. */
-  emptyPresetSlot: () => PresetSlot;
+  /** A fresh, EMPTY squad snapshot: {linked:true,bps:[],pos:[],sis:[]}.
+   * Used internally by makeSquadsMeta/addSquad; exposed for callers that
+   * need a correctly-shaped empty squad without hand-rolling it. */
+  emptySquadSlot: () => SquadSlot;
 
-  /** Atomically swaps the ACTIVE preset's top-level canvas fields
+  /** Atomically swaps the ACTIVE squad's top-level canvas fields
    * (st.linked/bps/pos/sis) with st.presets.store[n]'s snapshot; sets
    * st.presets.active=n. Both the outgoing and incoming configurations
    * are fully preserved (the outgoing canvas is written into
    * store[oldActive], never discarded). No-op (still {ok:true}) if `n` is
-   * already the active preset. Runs unseatOrphans() on the newly-active
+   * already the active squad. Runs unseatOrphans() on the newly-active
    * canvas afterward (mirrors movePO/transferBP's own post-mutation
    * cleanup). Rejects out-of-range `n`. */
-  switchPreset: (st: GameState, n: number) => { ok: boolean; why?: string };
+  switchSquad: (st: GameState, n: number) => { ok: boolean; why?: string };
 
-  /** Appends a brand-new EMPTY preset (never copies any content/uid) to
+  /** Appends a brand-new EMPTY squad (never copies any content/uid) to
    * st.presets.store, and a matching entry to st.presets.names (defaults
-   * to "Preset N", 1-based). Returns the new preset's 0-based index. */
-  addPreset: (st: GameState, name?: string) => { ok: boolean; why?: string; index?: number };
+   * to "Squad N", 1-based). Returns the new squad's 0-based index. */
+  addSquad: (st: GameState, name?: string) => { ok: boolean; why?: string; index?: number };
 
-  /** Sets preset `n`'s (0-based) display name -- works identically whether
-   * `n` is the currently-active preset or an inactive stored one. */
-  renamePreset: (st: GameState, n: number, name: string) => { ok: boolean; why?: string };
+  /** Sets squad `n`'s (0-based) display name -- works identically whether
+   * `n` is the currently-active squad or an inactive stored one. */
+  renameSquad: (st: GameState, n: number, name: string) => { ok: boolean; why?: string };
 
   /** Sets inventory page `n`'s (0-based) display name on st.inv.names.
    * Materializes st.inv.names defensively (to the PAGE_COUNT-long default)
@@ -563,38 +563,38 @@ export interface EngineInstance {
    * built without one (pure read helper -- never mutates st.inv). */
   invPageNames: (st: GameState) => string[];
 
-  /** REQ-0032: moves preset slot `from` to index `to` (both 0-based,
-   * splice-out/splice-in semantics). The preset's ENTIRE content (store
+  /** REQ-0032: moves squad slot `from` to index `to` (both 0-based,
+   * splice-out/splice-in semantics). The squad's ENTIRE content (store
    * slot, or the live top-level canvas fields if it was the active
-   * preset) and its names[] entry move together as one unit. `active`
-   * is recomputed so it keeps identifying the SAME preset it did before
-   * the move: if the moved preset (`from`) IS the active one, active
+   * squad) and its names[] entry move together as one squad. `active`
+   * is recomputed so it keeps identifying the SAME squad it did before
+   * the move: if the moved squad (`from`) IS the active one, active
    * follows it to `to`; otherwise active shifts by one slot only when
    * `from`/`to` straddle it (closing/opening a gap on one side of it),
    * and is untouched when the move is entirely on one side of active.
    * No-op (still {ok:true}) if from===to. Rejects out-of-range indices
    * (state left completely untouched on rejection). */
-  reorderPreset: (st: GameState, from: number, to: number) => { ok: boolean; why?: string };
+  reorderSquad: (st: GameState, from: number, to: number) => { ok: boolean; why?: string };
 
-  /** REQ-0032: removes preset `n` (0-based) ENTIRELY -- its reference set
+  /** REQ-0032: removes squad `n` (0-based) ENTIRELY -- its reference set
    * (store slot) and its names[] entry both vanish. Per the REQ-0033
-   * reference model, this NEVER touches st.inv: a deleted preset's
+   * reference model, this NEVER touches st.inv: a deleted squad's
    * references simply disappear; inventory homes (and every OTHER
-   * preset's own references to the same uids, if shared) are completely
+   * squad's own references to the same uids, if shared) are completely
    * untouched. Refuses (returns {ok:false}, does NOT mutate st at all)
-   * when `n` is the last remaining preset (at least 1 must always
-   * remain). If the deleted preset was the ACTIVE one, active lands on
-   * the "nearest remaining tab": the same index if a preset still
+   * when `n` is the last remaining squad (at least 1 must always
+   * remain). If the deleted squad was the ACTIVE one, active lands on
+   * the "nearest remaining tab": the same index if a squad still
    * occupies it after the splice (the next tab over slides into the
-   * gap), else the new last index. Deleting a non-active preset leaves
-   * active pointing at the same preset as before (index shifts left by
+   * gap), else the new last index. Deleting a non-active squad leaves
+   * active pointing at the same squad as before (index shifts left by
    * one only if the deleted slot was before it). */
-  deletePreset: (st: GameState, n: number) => { ok: boolean; why?: string };
+  deleteSquad: (st: GameState, n: number) => { ok: boolean; why?: string };
 
   /** REQ-0032: moves inventory page `from` to index `to` (both 0-based,
-   * same splice semantics as reorderPreset). The page's entire contents
+   * same splice semantics as reorderSquad). The page's entire contents
    * ({bps,pos,sis}) and its st.inv.names entry move together as one
-   * unit. Also rewrites any free-placed SI's embedded `host.page` field
+   * squad. Also rewrites any free-placed SI's embedded `host.page` field
    * (see migrateState's v3 step) to the item's actual NEW page index --
    * the only page-index-shaped data embedded anywhere outside the
    * st.inv.pages array position itself (every other query --
@@ -617,17 +617,17 @@ export interface EngineInstance {
    *   (a) every uid (PO/BP/SI) has a HOME AT MOST ONCE across
    *     st.inv.pages -- a uid with 2+ home records is a duplicate/
    *     collision bug.
-   *   (b) no SINGLE preset's own canvas (the active top-level fields, or
+   *   (b) no SINGLE squad's own canvas (the active top-level fields, or
    *     any inactive store[i] snapshot) references the same uid twice --
    *     two independent references to one item coexisting within ONE
-   *     preset would mean createRef's red-rule guard was bypassed
+   *     squad would mean createRef's red-rule guard was bypassed
    *     somewhere.
-   * A uid referenced by several DIFFERENT presets is explicitly NOT a
+   * A uid referenced by several DIFFERENT squads is explicitly NOT a
    * violation of either rule -- that is the intended yellow/shared case
    * (spec item 3), not a duplicate. Returns {ok:true,duplicates:[]} if
    * both hold, else {ok:false,why,duplicates:[...]} where each entry is
    * either a 'po:<uid>'/'bp:<uid>'/'si:<uid>' tag (a home appearing 2+
-   * times) or the same tag suffixed '@preset<i>' (a within-preset
+   * times) or the same tag suffixed '@squad<i>' (a within-squad
    * reference duplicate). Does not check for missing uids (an item
    * deleted outright is not this invariant's concern), only duplication. */
   checkUidInvariant: (st: GameState) => { ok: boolean; why?: string; duplicates: string[] };
@@ -635,69 +635,69 @@ export interface EngineInstance {
   // -----------------------------------------------------------------------
   // Reference model (REQ-0033 Phase 1 engine / Phase 2 client consumer).
   // "Inventory is master": every PO/BP/SI uid has exactly ONE home record,
-  // living in st.inv.pages[n].{pos,bps,sis}. A preset's own canvas (the
+  // living in st.inv.pages[n].{pos,bps,sis}. A squad's own canvas (the
   // active top-level st.{bps,pos,sis}, or an inactive st.presets.store[i]
   // snapshot) holds REFERENCES to home records -- same uid, same record
   // shape as the home, but a physically separate object living in the
-  // preset's own arrays. A uid may have at most ONE reference per preset,
+  // squad's own arrays. A uid may have at most ONE reference per squad,
   // but the SAME uid may be simultaneously referenced by several DIFFERENT
-  // presets (that is the yellow/shared case, not a violation -- see
+  // squads (that is the yellow/shared case, not a violation -- see
   // checkUidInvariant above). All queries below are deliberately
   // recomputed on demand (never cached) -- comfortably sub-millisecond at
-  // this game's scale (PRESET_COUNT presets x a few dozen items), per the
+  // this game's scale (SQUAD_COUNT squads x a few dozen items), per the
   // perf note on tintSets in mock-src/engine.js.
   // -----------------------------------------------------------------------
 
-  /** Every preset index (0-based) that currently holds a reference to
-   * `uid` -- scans the ACTIVE preset's top-level fields (st.bps/pos/sis)
-   * for st.presets.active, and every OTHER preset's store[i] snapshot for
-   * the rest. Returns [] if st.presets is missing (a pre-preset/synthetic
+  /** Every squad index (0-based) that currently holds a reference to
+   * `uid` -- scans the ACTIVE squad's top-level fields (st.bps/pos/sis)
+   * for st.presets.active, and every OTHER squad's store[i] snapshot for
+   * the rest. Returns [] if st.presets is missing (a pre-squad/synthetic
    * state) or if `uid` is referenced nowhere. This is the direct building
-   * block behind usedByCurrent/usedByOthers/tintSets/isUnitIndependent
+   * block behind usedByCurrent/usedByOthers/tintSets/isSquadIndependent
    * below -- none of them maintain their own index; they all call this. */
   usageOf: (st: GameState, uid: string) => number[];
-  /** True iff the CURRENTLY ACTIVE preset (st.presets.active) holds a
+  /** True iff the CURRENTLY ACTIVE squad (st.presets.active) holds a
    * reference to `uid` -- the direct predicate behind the red tint (spec
-   * item 2, "already used in the CURRENT preset") and the exact rule
+   * item 2, "already used in the CURRENT squad") and the exact rule
    * createRef's red-rule guard enforces (refuses to create a second
-   * reference for the current preset when this is already true). False
+   * reference for the current squad when this is already true). False
    * if st.presets is missing. */
   usedByCurrent: (st: GameState, uid: string) => boolean;
-  /** True iff at least one preset OTHER THAN the currently active one
+  /** True iff at least one squad OTHER THAN the currently active one
    * holds a reference to `uid` -- the direct predicate behind the yellow
-   * tint (spec item 3, "used by OTHER presets"). NOT mutually exclusive
-   * with usedByCurrent (a uid can be referenced by the current preset AND
-   * by another preset at the same time). False if st.presets is missing. */
+   * tint (spec item 3, "used by OTHER squads"). NOT mutually exclusive
+   * with usedByCurrent (a uid can be referenced by the current squad AND
+   * by another squad at the same time). False if st.presets is missing. */
   usedByOthers: (st: GameState, uid: string) => boolean;
   /** {red,yellow,canvasYellow} -- all Sets of uid strings, computed fresh
    * over every uid with a home in st.inv.pages[] (allHomeUids):
-   *   red: every uid referenced by the CURRENT preset (spec item 2) --
+   *   red: every uid referenced by the CURRENT squad (spec item 2) --
    *     render this INVENTORY-side as the translucent faint red overlay.
-   *   yellow: every uid used by at least one OTHER preset (spec item 3)
+   *   yellow: every uid used by at least one OTHER squad (spec item 3)
    *     -- render this INVENTORY-side as the translucent faint yellow
    *     overlay. Not mutually exclusive with red (see usedByOthers doc).
    *   canvasYellow: the subset of `red` ALSO in `yellow` -- i.e. uids
    *     sitting on the CURRENT canvas right now that are ALSO shared with
-   *     some other preset ("the same yellow indicator also shows on the
-   *     Preset(canvas) display", spec item 3). Render this CANVAS-side as
+   *     some other squad ("the same yellow indicator also shows on the
+   *     Squad(canvas) display", spec item 3). Render this CANVAS-side as
    *     the yellow overlay -- canvas never shows red (every canvas item
-   *     is, by definition, used by the current preset already). */
+   *     is, by definition, used by the current squad already). */
   tintSets: (st: GameState) => { red: Set<string>; yellow: Set<string>; canvasYellow: Set<string> };
-  /** True iff preset `n`'s referenced uids share NO uid with any OTHER
-   * preset -- "a Preset containing ZERO yellow-tinted items is an
-   * independent Unit" (spec item 5), phrased as a direct per-preset
+  /** True iff squad `n`'s referenced uids share NO uid with any OTHER
+   * squad -- "a Squad containing ZERO yellow-tinted items is an
+   * independent Squad" (spec item 5), phrased as a direct per-squad
    * predicate rather than requiring the caller to intersect tintSets()
-   * themselves. Empty presets are vacuously independent. True if
+   * themselves. Empty squads are vacuously independent. True if
    * st.presets is missing (nothing to conflict with). */
-  isUnitIndependent: (st: GameState, n: number) => boolean;
-  /** REQ-0041: true iff preset n's canvas has >=1 BP ("Backpack-as-HP --
+  isSquadIndependent: (st: GameState, n: number) => boolean;
+  /** REQ-0041: true iff squad n's canvas has >=1 BP ("Backpack-as-HP --
    * no BP = dead on arrival", feedback 5). A SEPARATE, purely structural
-   * predicate from isUnitIndependent -- callers that need both AND them
+   * predicate from isSquadIndependent -- callers that need both AND them
    * together at the call site (see server/schedule.cjs's assignSlot and
    * client/src/schedule/SlotsPanel.tsx). False if st.presets is missing
-   * (mirrors isUnitIndependent's own "vacuous" convention, but inverted:
-   * an empty/no-preset-system canvas has no BPs to deploy). */
-  isUnitDeployable: (st: GameState, n: number) => boolean;
+   * (mirrors isSquadIndependent's own "vacuous" convention, but inverted:
+   * an empty/no-squad-system canvas has no BPs to deploy). */
+  isSquadDeployable: (st: GameState, n: number) => boolean;
   /** Locates uid's ONE home record: {page,kind,record}, kind is
    * 'po'|'bp'|'si', page is the 0-based st.inv.pages[] index, record is
    * the actual PO/BP/SI object (mutating it mutates the home in place,
@@ -714,18 +714,18 @@ export interface EngineInstance {
    * never a canvas footprint. Returns {ok:false,why:'no home'} if bpUid
    * has no home or its home isn't a BP. On success:
    *   pos: home-contained PO uids NOT already referenced by the current
-   *     preset (these travel with the BP reference).
+   *     squad (these travel with the BP reference).
    *   excluded: home-contained PO uids that ARE already referenced by the
-   *     current preset (spec item 4 -- these are LEFT BEHIND, not brought
+   *     current squad (spec item 4 -- these are LEFT BEHIND, not brought
    *     along as a second reference).
    *   sis: SI uids seated on any INCLUDED (non-excluded) PO -- an
    *     excluded PO's own seated SI does NOT travel either (its home is
    *     untouched regardless; only whether a NEW reference is created for
    *     it is affected by the exclusion). */
   bpReferenceSet: (st: GameState, bpUid: string) => { ok: boolean; why?: string; bp?: string; pos?: string[]; sis?: string[]; excluded?: string[] };
-  /** Creates a REFERENCE to home item `uid` in the CURRENT preset's canvas
+  /** Creates a REFERENCE to home item `uid` in the CURRENT squad's canvas
    * (st.pos/bps/sis) -- the home record in st.inv.pages is never touched.
-   * Refuses with {ok:false,why:'already referenced by current preset'}
+   * Refuses with {ok:false,why:'already referenced by current squad'}
    * (the red rule) if usedByCurrent(st,uid) is already true, or
    * {ok:false,why:'no home'} if uid has no home record (or its home's own
    * kind doesn't match the requested `kind`). `placement` shape depends on
@@ -750,12 +750,12 @@ export interface EngineInstance {
    *     -- reference not created -- if the seat attempt itself is
    *     illegal). */
   createRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string, placement: { cell?: Cell; rot?: number; origin?: Cell; host?: 'inv' | 'bond' | { po: string; si: number } }) => { ok: boolean; why?: string; ref?: PO | BP | SI };
-  /** Removes the CURRENT preset's reference to `uid` (if any) from
+  /** Removes the CURRENT squad's reference to `uid` (if any) from
    * st.pos/bps/sis -- the home record in st.inv.pages is NEVER touched
    * (canvas -> inventory drag under the reference model: "drop cell
    * irrelevant", the item stays exactly where its home already is).
    * ALWAYS succeeds: {ok:true,removed:false} (not an error) if the
-   * current preset holds no such reference to begin with. For kind
+   * current squad holds no such reference to begin with. For kind
    * 'po', ALSO cascades to remove any SI references seated on that PO
    * reference (their own homes likewise untouched) and runs
    * unseatOrphans() afterward (mirrors every other PO-removal path's

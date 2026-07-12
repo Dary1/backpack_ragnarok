@@ -35,8 +35,8 @@ for (const s of skillsRaw.entries) {
 }
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
-const units = () => [scenario, scenario, scenario, scenario];
-const baseOpts = { unitSnapshots: units(), itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
+const squads = () => [scenario, scenario, scenario, scenario];
+const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
 
 // The golden matrix. Keys are stable identifiers; each entry produces
 // { def_sha256 (dungen cases only), jsonl_sha256, events } .

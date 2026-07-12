@@ -4,7 +4,7 @@
 // log tab, rewards) is already covered by schedule.spec.ts on the SAME
 // selectors, all of which REQ-0071 kept verbatim. Player-minting /
 // fixture / cleanup conventions copied from schedule.spec.ts (fresh
-// guest via the real operator CLI, fixture presets PUT before each
+// guest via the real operator CLI, fixture squads PUT before each
 // test, room files swept in afterAll).
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -129,13 +129,13 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
     await expect(card).toHaveClass(/schedule-room-card-open/);
     await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-monitor-empty')).toBeVisible();
 
-    // Assigning a preset fills the card's own slot-preview chip with the
-    // preset's real name (store-resolved), replacing the empty marker.
+    // Assigning a squad fills the card's own slot-preview chip with the
+    // squad's real name (store-resolved), replacing the empty marker.
     await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]').selectOption('0');
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]')).toHaveValue('0', { timeout: 10000 });
     await expect(card.locator('.schedule-room-slot-empty')).toHaveCount(3, { timeout: 10000 });
 
-    // Tidy: cancel (immediate policy default) so preset 0 frees up.
+    // Tidy: cancel (immediate policy default) so squad 0 frees up.
     await page.request.delete(`/api/schedule/rooms/${roomId}`, { headers: { 'X-Auth-Token': player.token } });
   });
 

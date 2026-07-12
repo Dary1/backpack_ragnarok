@@ -180,7 +180,7 @@ fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({
 // REQ-0036 P1-B: minimal batch-002-dungeon-pilot-SHAPED fixture content
 // (schedule.cjs's getScheduleContent() reads these exact paths). A tiny,
 // fast, deterministic dungeon: one pack encounter (a single very-weak
-// enemy so a real unit reliably wins in well under a second of sim-time,
+// enemy so a real squad reliably wins in well under a second of sim-time,
 // keeping durationSecs small) + one boss (also weak, same reason),
 // mirroring the shape of the real content/batches/batch-002-dungeon-pilot
 // fixtures exactly (same schema fields) but scaled down for test speed.
@@ -1004,17 +1004,17 @@ async function main() {
   const schedule = require('../schedule.cjs');
   const scheduleStorage = require('../storage.cjs');
 
-  // Builds a fresh, internally-independent profile canvas: 4 presets
+  // Builds a fresh, internally-independent profile canvas: 4 squads
   // (indices 0-3), each with ITS OWN uniquely-tagged BP + a placed
   // 'test_sword' PO wired to attack (every_secs strike, see the
   // live_items.json fixture above) so a real sim run reliably kills the
-  // 1hp weak_slime fixture enemy fast. Every uid across all 4 presets is
-  // globally unique (tagged by preset index) so isUnitIndependent() is
+  // 1hp weak_slime fixture enemy fast. Every uid across all 4 squads is
+  // globally unique (tagged by squad index) so isSquadIndependent() is
   // true for every one of them against each other -- tests that need an
-  // independence VIOLATION deliberately clone one preset's uids into
+  // independence VIOLATION deliberately clone one squad's uids into
   // another below.
   function makeTestCanvas() {
-    function presetCanvas(tag) {
+    function squadCanvas(tag) {
       return {
         linked: true,
         bps: [{ id: 'bp_' + tag, name: 'BP ' + tag, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
@@ -1022,7 +1022,7 @@ async function main() {
         sis: [],
       };
     }
-    const p0 = presetCanvas('t0'), p1 = presetCanvas('t1'), p2 = presetCanvas('t2'), p3 = presetCanvas('t3');
+    const p0 = squadCanvas('t0'), p1 = squadCanvas('t1'), p2 = squadCanvas('t2'), p3 = squadCanvas('t3');
     return Object.assign({}, p0, {
       layout: { ROWS: 8, COLS: 8 },
       inv: { pages: [{ bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }], names: ['1', '2', '3', '4', '5'] },
@@ -1099,47 +1099,47 @@ async function main() {
     assert.strictEqual(res.status, 401);
   });
 
-  // REQ-0045 (b)+(c): deploy gate v2 replaces isUnitIndependent-as-gate
-  // (a STATIC, warehouse-wide "does this preset share any uid with ANY
-  // OTHER preset anywhere" check -- the yellow-tint concept) with a
+  // REQ-0045 (b)+(c): deploy gate v2 replaces isSquadIndependent-as-gate
+  // (a STATIC, warehouse-wide "does this squad share any uid with ANY
+  // OTHER squad anywhere" check -- the yellow-tint concept) with a
   // DYNAMIC deployed-overlap check (deployedUidSetsForGate in
-  // server/schedule.cjs): a preset is assignable iff its uid set does
+  // server/schedule.cjs): a squad is assignable iff its uid set does
   // not intersect any uid set ACTUALLY deployed right now, either in
   // this same room's OTHER slots or in another of the caller's currently
   // ACTIVE rooms. The three tests below cover the three distinct
   // scenarios the old gate got wrong or never had to distinguish:
   //   1. yellow-but-idle (shares a uid with an undeployed sibling
-  //      preset) must now DEPLOY OK -- the old gate refused this
+  //      squad) must now DEPLOY OK -- the old gate refused this
   //      unconditionally, which was bug (b).
-  //   2. duplicate presetIndex assigned to two slots of the SAME room
+  //   2. duplicate squadIndex assigned to two slots of the SAME room
   //      must be REFUSED (identical uid sets, so trivially overlapping)
   //      -- the old gate ALLOWED this (it only ever consulted
-  //      isUnitIndependent, a warehouse-wide static property, never the
+  //      isSquadIndependent, a warehouse-wide static property, never the
   //      room's own other slots), which was one half of bug (c).
-  //   3. four mutually-unique presets filling all 4 slots of one room
+  //   3. four mutually-unique squads filling all 4 slots of one room
   //      must SUCCEED and auto-start -- the old gate refused this
   //      whenever any one of the 4 happened to share a uid with some
-  //      OTHER unrelated preset elsewhere in the warehouse (a false
-  //      positive against a preset not even being deployed), which was
-  //      the other half of bug (c). makeTestCanvas()'s presets 0-3 are
+  //      OTHER unrelated squad elsewhere in the warehouse (a false
+  //      positive against a squad not even being deployed), which was
+  //      the other half of bug (c). makeTestCanvas()'s squads 0-3 are
   //      already globally unique against each other by construction (see
   //      its own doc comment above), so fillAllSlots() below IS this
   //      scenario already -- asserted explicitly here as its own named
   //      test rather than only implicitly via the cross-room-overlap
   //      test further down.
-  await AT('schedule: deploy gate v2 -- a preset sharing a uid with another of the caller\'s OWN presets, where that OTHER preset is NOT deployed anywhere, deploys OK (REQ-0045 b)', async () => {
+  await AT('schedule: deploy gate v2 -- a squad sharing a uid with another of the caller\'s OWN squads, where that OTHER squad is NOT deployed anywhere, deploys OK (REQ-0045 b)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    // Make preset index 4 an EXACT duplicate of preset 0's uids --
-    // guaranteed uid overlap between them ("yellow") -- but preset 4 is
+    // Make squad index 4 an EXACT duplicate of squad 0's uids --
+    // guaranteed uid overlap between them ("yellow") -- but squad 4 is
     // NOT deployed anywhere (no room references it).
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
-    const preset0Snapshot = { bps: doc.canvas.bps, pos: doc.canvas.pos, sis: doc.canvas.sis };
-    doc.canvas.presets.store[4] = JSON.parse(JSON.stringify(preset0Snapshot));
+    const squad0Snapshot = { bps: doc.canvas.bps, pos: doc.canvas.pos, sis: doc.canvas.sis };
+    doc.canvas.presets.store[4] = JSON.parse(JSON.stringify(squad0Snapshot));
     scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
 
-    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
-    assert.strictEqual(res.status, 200, 'mere cross-preset uid sharing (neither side deployed) must NOT block: ' + JSON.stringify(res.body));
+    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 0 });
+    assert.strictEqual(res.status, 200, 'mere cross-squad uid sharing (neither side deployed) must NOT block: ' + JSON.stringify(res.body));
 
     // Clean up: clear the duplicate + the room.
     const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
@@ -1148,42 +1148,42 @@ async function main() {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
-  await AT('schedule: deploy gate v2 -- assigning the SAME presetIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicates must be REFUSED)', async () => {
+  await AT('schedule: deploy gate v2 -- assigning the SAME squadIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicates must be REFUSED)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    const first = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 1 });
+    const first = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 1 });
     assert.strictEqual(first.status, 200, 'slot 0 assign: ' + JSON.stringify(first.body));
 
-    // Same presetIndex (1) into a DIFFERENT slot of the SAME room -- the
+    // Same squadIndex (1) into a DIFFERENT slot of the SAME room -- the
     // uid set is IDENTICAL to slot 0's, so this is a same-room duplicate-
     // deployment attempt. This must be refused regardless of the room's
     // own status (still 'open' here, not yet 'active') --
     // deployedUidSetsForGate checks this room's OWN other slots
     // unconditionally, not just once the room has gone active.
-    const dup = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { presetIndex: 1 });
-    assert.strictEqual(dup.status, 409, 'same-room duplicate presetIndex must be 409: ' + JSON.stringify(dup.body));
+    const dup = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { squadIndex: 1 });
+    assert.strictEqual(dup.status, 409, 'same-room duplicate squadIndex must be 409: ' + JSON.stringify(dup.body));
     assert.strictEqual(dup.body.reason, 'deployed_overlap', 'the 409 body must carry a structured reason=deployed_overlap');
 
     // Room never reaches 4/4 filled, so it correctly never auto-starts.
     const view = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(view.body.room.status, 'open');
-    assert.strictEqual(view.body.room.slots[1].presetIndex, null, 'the rejected duplicate assign must not have mutated slot 1');
+    assert.strictEqual(view.body.room.slots[1].squadIndex, null, 'the rejected duplicate assign must not have mutated slot 1');
 
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
-  await AT('schedule: deploy gate v2 -- four mutually-unique presets filling all 4 slots of one room succeeds and auto-starts (REQ-0045 c: unique-4 must start)', async () => {
+  await AT('schedule: deploy gate v2 -- four mutually-unique squads filling all 4 slots of one room succeeds and auto-starts (REQ-0045 c: unique-4 must start)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    // makeTestCanvas()'s presets 0-3 are globally unique against each
+    // makeTestCanvas()'s squads 0-3 are globally unique against each
     // other (see its own doc comment above) -- filling all 4 slots with
     // them, one per slot, must succeed and auto-start a run.
     for (let i = 0; i < 4; i++) {
-      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
-      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique preset ' + i + '): ' + JSON.stringify(r.body));
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique squad ' + i + '): ' + JSON.stringify(r.body));
     }
     const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
-    assert.strictEqual(after.body.room.status, 'active', 'four mutually-unique presets must auto-start the room\'s first run');
+    assert.strictEqual(after.body.room.status, 'active', 'four mutually-unique squads must auto-start the room\'s first run');
 
     // Cleanup: settle + clear rewards so later tests start from a clean
     // slate, mirroring the cross-room-overlap test's own cleanup below.
@@ -1208,8 +1208,8 @@ async function main() {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
-      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique preset ' + i + '): ' + JSON.stringify(r.body));
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
+      assert.strictEqual(r.status, 200, 'slot ' + i + ' assign (unique squad ' + i + '): ' + JSON.stringify(r.body));
     }
     const list = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
     assert.strictEqual(list.status, 200);
@@ -1225,18 +1225,18 @@ async function main() {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
-  await AT('schedule: LIST endpoint -- one room whose settle THROWS (stale presetIndex after its preset was deleted out from under it) must not 400 the whole list or hide the caller\'s OTHER rooms (REQ-0087 follow-up, caught live)', async () => {
+  await AT('schedule: LIST endpoint -- one room whose settle THROWS (stale squadIndex after its squad was deleted out from under it) must not 400 the whole list or hide the caller\'s OTHER rooms (REQ-0087 follow-up, caught live)', async () => {
     // Live incident: right after REQ-0087's first fix deployed, the shared
-    // dev account's own preset count changed (unrelated concurrent work)
+    // dev account's own squad count changed (unrelated concurrent work)
     // AFTER a room's 4 slots had already been filled with now-out-of-range
     // indices. settleRoomIfDue() legitimately throws in that case
-    // (startRun -> buildUnitSnapshots -> presetCanvasOf finds nothing at
+    // (startRun -> buildSquadSnapshots -> squadCanvasOf finds nothing at
     // that index any more) -- but the FIRST version of this fix let that
     // exception escape the whole listOwnRooms().map(), turning ONE stale
     // room into a 400 for the caller's ENTIRE rooms list. Reproduced here
     // by filling a room normally, then shrinking the SAME player's
-    // presets.store out from under two of its already-assigned slots
-    // (simulating a preset deleted after deployment) before ever letting
+    // squads.store out from under two of its already-assigned slots
+    // (simulating a squad deleted after deployment) before ever letting
     // anything settle it.
     const goodCanvas = scheduleStorage.readProfile(scheduleP1.playerId).canvas;
     let roomAId, roomBId;
@@ -1244,11 +1244,11 @@ async function main() {
       const roomA = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
       roomAId = roomA.body.room.id;
       for (let i = 0; i < 4; i++) {
-        const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomAId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+        const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomAId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
         assert.strictEqual(r.status, 200, 'slot ' + i + ' assign: ' + JSON.stringify(r.body));
       }
       // Corrupt: truncate store to 2 entries, stranding slots 2 and 3's
-      // presetIndex references -- WITHOUT ever calling anything that would
+      // squadIndex references -- WITHOUT ever calling anything that would
       // settle roomA first (no single-room GET, no list call yet).
       const corrupted = JSON.parse(JSON.stringify(goodCanvas));
       corrupted.presets.store = corrupted.presets.store.slice(0, 2);
@@ -1274,43 +1274,43 @@ async function main() {
     }
   });
 
-  await AT('schedule: deploy gate -- a preset with ZERO BP is refused 409 empty_unit, and a preset with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
+  await AT('schedule: deploy gate -- a squad with ZERO BP is refused 409 empty_squad, and a squad with >=1 BP is unaffected (REQ-0041 feedback 5)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    // Preset index 4 starts life completely empty post-migration (REQ-0031:
-    // "new presets start empty") -- 0 BPs, so it must be refused with a
-    // STRUCTURED reason ('empty_unit'), distinct from the independence 409
-    // above (an empty preset IS vacuously independent -- see mock-src/
+    // Squad index 4 starts life completely empty post-migration (REQ-0031:
+    // "new squads start empty") -- 0 BPs, so it must be refused with a
+    // STRUCTURED reason ('empty_squad'), distinct from the independence 409
+    // above (an empty squad IS vacuously independent -- see mock-src/
     // tests/run.cjs's own "combine, don't conflate" test for this exact
     // distinction at the engine layer; this is the server-side half).
-    const emptyRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 4 });
-    assert.strictEqual(emptyRes.status, 409, 'zero-BP preset must be refused 409: ' + JSON.stringify(emptyRes.body));
-    assert.strictEqual(emptyRes.body.reason, 'empty_unit', 'the 409 body must carry a structured reason=empty_unit');
-    assert.ok(/no Backpack|empty unit/i.test(emptyRes.body.error));
+    const emptyRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 4 });
+    assert.strictEqual(emptyRes.status, 409, 'zero-BP squad must be refused 409: ' + JSON.stringify(emptyRes.body));
+    assert.strictEqual(emptyRes.body.reason, 'empty_squad', 'the 409 body must carry a structured reason=empty_squad');
+    assert.ok(/no Backpack|empty squad/i.test(emptyRes.body.error));
 
-    // Sanity: preset index 0 (the fixture's real, BP-bearing preset) is NOT
+    // Sanity: squad index 0 (the fixture's real, BP-bearing squad) is NOT
     // affected by this gate -- assigning it must still succeed 200.
-    const okRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
-    assert.strictEqual(okRes.status, 200, 'a preset WITH a BP must still be assignable: ' + JSON.stringify(okRes.body));
+    const okRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 0 });
+    assert.strictEqual(okRes.status, 200, 'a squad WITH a BP must still be assignable: ' + JSON.stringify(okRes.body));
 
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
-  await AT('schedule: deploy gate -- a preset already deployed in another of the caller\'s ACTIVE rooms is refused 409 on cross-room overlap', async () => {
-    // Room X: fill all 4 slots with presets 0-3 and start its run (-> status 'active').
+  await AT('schedule: deploy gate -- a squad already deployed in another of the caller\'s ACTIVE rooms is refused 409 on cross-room overlap', async () => {
+    // Room X: fill all 4 slots with squads 0-3 and start its run (-> status 'active').
     const roomXRes = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomXId = roomXRes.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomXId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+      const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomXId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
       assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign: ' + JSON.stringify(assignRes.body));
     }
     const roomXAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomXId, scheduleP1.token);
     assert.strictEqual(roomXAfter.body.room.status, 'active', 'room X must auto-start its first run once all 4 slots are filled');
 
-    // Room Y: try to also deploy preset 0 (already active in room X) -> 409.
+    // Room Y: try to also deploy squad 0 (already active in room X) -> 409.
     const roomYRes = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomYId = roomYRes.body.room.id;
-    const overlapRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomYId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
+    const overlapRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomYId + '/slots/0', scheduleP1.token, { squadIndex: 0 });
     assert.strictEqual(overlapRes.status, 409, 'cross-room overlap must be 409: ' + JSON.stringify(overlapRes.body));
     assert.ok(/active schedule/i.test(overlapRes.body.error));
 
@@ -1328,7 +1328,7 @@ async function main() {
   await AT('schedule: run executes and persists a replay log + summary; fixed seed -> deterministic re-simulation', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
 
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(roomAfter.body.room.status, 'active');
@@ -1342,15 +1342,15 @@ async function main() {
     assert.strictEqual(typeof runRaw.durationSecs, 'number');
 
     // Determinism: re-running combat.runDungeon with the SAME persisted
-    // seed + same unit snapshots must reproduce the identical event log
+    // seed + same squad snapshots must reproduce the identical event log
     // (sim/combat.cjs's own documented determinism guarantee, exercised
     // here through the schedule service's actual persisted seed).
     const combat = require('../../sim/combat.cjs');
     const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById } = schedule.getScheduleContent();
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
-    const unitSnapshots = fillAllSlotsSnapshotsFrom(doc.canvas);
+    const squadSnapshots = fillAllSlotsSnapshotsFrom(doc.canvas);
     const replay = combat.runDungeon({
-      masterSeed: runRaw.seed, dungeonDef, unitSnapshots, itemDefsById, enemyDefsById, skillDefsById,
+      masterSeed: runRaw.seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
       formationId: 'formation1', level: 1, participants: [scheduleP1.playerId],
     });
     // Semantic (deep-equal) comparison, not raw string equality: in pg
@@ -1362,7 +1362,7 @@ async function main() {
     // strictly stronger there; deepStrictEqual is the correct invariant
     // in BOTH backends (determinism is about the DATA, not incidental
     // key ordering introduced by a storage round-trip).
-    assert.deepStrictEqual(replay.events, runRaw.events, 'same seed + same unit snapshots must reproduce a semantically-identical replay log');
+    assert.deepStrictEqual(replay.events, runRaw.events, 'same seed + same squad snapshots must reproduce a semantically-identical replay log');
     assert.strictEqual(replay.result, runRaw.result);
 
     // GET run: run-clock fields present, events is an array (possibly
@@ -1389,7 +1389,7 @@ async function main() {
   await AT('schedule: GET .../run?format=text (REQ-0045 g) returns a plain-text, one-humanized-line-per-event mirror of the same visibleEvents() the JSON route sends -- any OTHER/absent format value still returns JSON unchanged', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(roomAfter.body.room.status, 'active');
 
@@ -1446,7 +1446,7 @@ async function main() {
     for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     const runId = roomAfter.body.room.lastRunId;
     const runRaw = scheduleStorage.readRun(runId);
@@ -1817,11 +1817,11 @@ async function main() {
     const midExpected = combat.TUNABLES.CD_MIN_SECS + (combat.TUNABLES.CD_MAX_SECS - combat.TUNABLES.CD_MIN_SECS) * 0.5;
     assert.ok(Math.abs(combat.cooldownForH(0.5) - midExpected) < 1e-9, 'linear formula must hold at H=0.5');
 
-    // Wipe level-down: build a room whose units have ZERO attack (no
+    // Wipe level-down: build a room whose squads have ZERO attack (no
     // every_secs effect) against the same weak_slime -- with no damage
     // output, the pack's own deadline_secs will elapse into a wipe.
     // (weak_slime itself has no offense with s:[5,5] cadence and 1hp, so
-    // this deliberately uses a non-attacking 'blade' preset instead of
+    // this deliberately uses a non-attacking 'blade' squad instead of
     // 'test_sword' to force a guaranteed non-clear.)
     const zeroDmgCanvas = (() => {
       const c = makeTestCanvas();
@@ -1834,10 +1834,10 @@ async function main() {
 
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP2.token, { dungeonId: 'test_dungeon', level: 3, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP2.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP2.token, { squadIndex: i });
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP2.token);
     const runRaw = scheduleStorage.readRun(roomAfter.body.room.lastRunId);
-    assert.notStrictEqual(runRaw.result, 'victory', 'a zero-damage party must not win: got ' + runRaw.result);
+    assert.notStrictEqual(runRaw.result, 'victory', 'a zero-damage troop must not win: got ' + runRaw.result);
 
     forceRunElapsed(roomAfter.body.room.lastRunId);
     const settledView = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP2.token);
@@ -1855,17 +1855,17 @@ async function main() {
 
   await AT('schedule: swap is queued (not applied) while a run is active, and applies once that run settles (golden j)', async () => {
     // REQ-0045 (b)+(c) deploy gate v2 fallout: with all 4 slots filled by
-    // 4 mutually-unique presets (0,1,2,3), swapping slot 0 to preset 1
+    // 4 mutually-unique squads (0,1,2,3), swapping slot 0 to squad 1
     // (as this test originally did) is now correctly refused by
-    // applyPendingSwapIfAny's own assignSlot call -- preset 1 is
+    // applyPendingSwapIfAny's own assignSlot call -- squad 1 is
     // SIMULTANEOUSLY still deployed live in slot 1 of this SAME room at
     // the moment the swap would apply, which the new deploy-overlap gate
     // (deployedUidSetsForGate) correctly treats as a same-room overlap,
-    // regardless of the fact that preset 1 and preset 0 share no uid
+    // regardless of the fact that squad 1 and squad 0 share no uid
     // WITH EACH OTHER (that was the old, no-longer-relevant check). This
     // is not a regression to route around -- it is the gate correctly
-    // refusing to double-deploy the same preset into two slots at once.
-    // Fixed by giving preset index 4 (normally empty/null, reserved for
+    // refusing to double-deploy the same squad into two slots at once.
+    // Fixed by giving squad index 4 (normally empty/null, reserved for
     // the empty_unit test elsewhere in this file) a REAL, uniquely-
     // tagged BP+PO here, used ONLY as the swap TARGET (never itself
     // occupying any of the room's other 3 slots), then restoring it to
@@ -1884,29 +1884,29 @@ async function main() {
       const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {
-        const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+        const assignRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
         assert.strictEqual(assignRes.status, 200, 'slot ' + i + ' assign must succeed: ' + JSON.stringify(assignRes.body));
       }
       const active = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
       assert.strictEqual(active.body.room.status, 'active', 'precondition: room has a run in flight');
 
-      const swapWhileActive = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 0, presetIndex: 4 });
+      const swapWhileActive = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 0, squadIndex: 4 });
       assert.strictEqual(swapWhileActive.status, 200);
       assert.strictEqual(swapWhileActive.body.applied, false, 'a swap requested mid-run must be QUEUED, not applied immediately');
       assert.ok(swapWhileActive.body.room.pendingSwap, 'pendingSwap must be recorded on the room');
-      assert.strictEqual(swapWhileActive.body.room.slots[0].presetIndex, 0, 'the slot itself must NOT change yet');
+      assert.strictEqual(swapWhileActive.body.room.slots[0].squadIndex, 0, 'the slot itself must NOT change yet');
 
       forceRunElapsed(active.body.room.lastRunId);
       const settled = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token); // triggers settle + pending-swap application
       assert.strictEqual(settled.body.room.pendingSwap, null, 'pendingSwap must be cleared once applied');
-      // preset 4 (the swap target) shares no uid with ANY of 0/1/2/3 and
+      // squad 4 (the swap target) shares no uid with ANY of 0/1/2/3 and
       // is not deployed anywhere else, so applying the swap is legal.
-      assert.strictEqual(settled.body.room.slots[0].presetIndex, 4, 'golden j: the swap applies AFTER the run ends');
+      assert.strictEqual(settled.body.room.slots[0].squadIndex, 4, 'golden j: the swap applies AFTER the run ends');
 
-      // Swap with NO run active applies immediately. Target preset 2 is
+      // Swap with NO run active applies immediately. Target squad 2 is
       // currently live in slot 2 of this SAME room -- correctly refused
       // now (same-room overlap), so this second assertion swaps slot 1
-      // (currently preset 1) to preset 1 itself is a no-op-shaped case;
+      // (currently squad 1) to squad 1 itself is a no-op-shaped case;
       // instead verify the "applies immediately when no run is active"
       // behavior using a legality-refusal shape: assignSlot's own
       // same-room-overlap gate applies identically whether queued or
@@ -1914,11 +1914,11 @@ async function main() {
       // NO queuing happens (immediate 200 with applied:true) when the
       // room is not active -- done by first canceling this room's
       // current run state is not an option (would delete state); instead
-      // swap slot 3 (currently preset 3) to itself, which is always
-      // legal (a preset never overlaps its own current slot -- excluded
+      // swap slot 3 (currently squad 3) to itself, which is always
+      // legal (a squad never overlaps its own current slot -- excluded
       // by assignSlot's own excludeSlotIndex) and unambiguously proves
       // the immediate-apply path.
-      const swapNow = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 3, presetIndex: 3 });
+      const swapNow = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 3, squadIndex: 3 });
       assert.strictEqual(swapNow.body.applied, true, 'a swap requested with no active run must apply immediately');
 
       await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
@@ -1938,7 +1938,7 @@ async function main() {
     // immediate: false, WITH an active run -> flagged, not canceled yet.
     const roomB = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', cancelPolicy: { immediate: false } });
     const roomBId = roomB.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomBId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomBId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
     const roomBActive = await scheduleReq('GET', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
     assert.strictEqual(roomBActive.body.room.status, 'active');
     const cancelB = await scheduleReq('DELETE', '/api/schedule/rooms/' + roomBId, scheduleP1.token);
@@ -1971,24 +1971,24 @@ async function main() {
     assert.strictEqual(res.status, 400);
   });
 
-  await AT('schedule: assigning an out-of-range slot index or an out-of-range presetIndex is a 400, not a crash', async () => {
+  await AT('schedule: assigning an out-of-range slot index or an out-of-range squadIndex is a 400, not a crash', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    const badSlot = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/99', scheduleP1.token, { presetIndex: 0 });
+    const badSlot = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/99', scheduleP1.token, { squadIndex: 0 });
     assert.strictEqual(badSlot.status, 400);
-    const badPreset = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 99 });
-    assert.strictEqual(badPreset.status, 400);
+    const badSquad = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 99 });
+    assert.strictEqual(badSquad.status, 400);
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
 
-  await AT('schedule: starting a run with an incomplete party (not all 4 slots filled) is refused, never silently runs a partial party', async () => {
+  await AT('schedule: starting a run with an incomplete troop (not all 4 slots filled) is refused, never silently runs a partial troop', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { presetIndex: 0 });
-    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { presetIndex: 1 });
+    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', scheduleP1.token, { squadIndex: 0 });
+    await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { squadIndex: 1 });
     // Only 2 of 4 slots filled -- room must stay 'open', no run started.
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
-    assert.strictEqual(roomAfter.body.room.status, 'open', 'a room with an incomplete party must never auto-start a run');
+    assert.strictEqual(roomAfter.body.room.status, 'open', 'a room with an incomplete troop must never auto-start a run');
     assert.strictEqual(roomAfter.body.room.lastRunId, null);
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
@@ -2013,7 +2013,7 @@ async function main() {
   await AT('schedule: swap on an out-of-range slot index is a 400', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
     const roomId = created.body.room.id;
-    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 99, presetIndex: 0 });
+    const res = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/swap', scheduleP1.token, { slot: 99, squadIndex: 0 });
     assert.strictEqual(res.status, 400);
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
   });
@@ -2061,7 +2061,7 @@ async function main() {
     // Room owned by ScheduleP1 (a REAL guest token, not the dev fallback).
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
-    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { presetIndex: i });
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(roomAfter.body.room.status, 'active', 'room must be running for this test to mean anything');
 
@@ -2082,14 +2082,14 @@ async function main() {
     // slots (dev player's own profile canvas was seeded by
     // ensureDevPlayer() + this suite's own admin fixtures -- but schedule
     // routes need the dev player to actually HAVE a canvas with 4 usable
-    // presets; reuse the exact same makeTestCanvas() shape scheduleP1/P2
+    // squads; reuse the exact same makeTestCanvas() shape scheduleP1/P2
     // already use, written directly to the dev player's own profile).
     scheduleStorage.writeProfile(devPlayer.playerId, makeTestCanvas());
     const devRoomRes = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     assert.strictEqual(devRoomRes.status, 200, 'dev fallback must be able to create its own room: ' + JSON.stringify(devRoomRes.body));
     const devRoomId = devRoomRes.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const slotRes = await scheduleReq('PUT', '/api/schedule/rooms/' + devRoomId + '/slots/' + i, undefined, { presetIndex: i });
+      const slotRes = await scheduleReq('PUT', '/api/schedule/rooms/' + devRoomId + '/slots/' + i, undefined, { squadIndex: i });
       assert.strictEqual(slotRes.status, 200, 'dev fallback slot ' + i + ' assign: ' + JSON.stringify(slotRes.body));
     }
     const devRoomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + devRoomId, undefined);
@@ -2350,11 +2350,11 @@ async function main() {
     assert.strictEqual(created.status, 200, JSON.stringify(created.body));
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) {
-      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, undefined, { presetIndex: i });
+      const r = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, undefined, { squadIndex: i });
       assert.strictEqual(r.status, 200, 'slot ' + i + ': ' + JSON.stringify(r.body));
     }
     const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, undefined);
-    assert.ok(after.body.room.lastRunId, 'party complete -- a run must have auto-started');
+    assert.ok(after.body.room.lastRunId, 'troop complete -- a run must have auto-started');
     const runDoc = scheduleStorage.readRun(after.body.room.lastRunId);
     // encounter_start events (one per encounter actually reached) carry
     // `kind` -- reconstruct the encounter TYPE sequence actually run and
@@ -2374,7 +2374,7 @@ async function main() {
       const created = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', dungeonType: 'default', level: 2, genSeed: 'same-seed-two-rooms', formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {
-        await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, undefined, { presetIndex: i });
+        await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, undefined, { squadIndex: i });
       }
       const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, undefined);
       const runDoc = scheduleStorage.readRun(after.body.room.lastRunId);
@@ -2418,18 +2418,18 @@ async function main() {
   const mktRich = playersFixture.createPlayer('MarketRich', []);
   const mktPoor = playersFixture.createPlayer('MarketPoor', []);
 
-  // Seller: inventory POs (page 0) + one preset (index 1) that
+  // Seller: inventory POs (page 0) + one squad (index 1) that
   // REFERENCES two of the inventory-homed items (mkt_susp / mkt_susp2 --
   // the REQ-0030 reference model: placing on a board references the
   // uid, the home stays in st.inv), used to deploy them for the
-  // suspension / Law-of-Possession tests. bps non-empty so the preset
-  // passes engine.isUnitDeployable.
+  // suspension / Law-of-Possession tests. bps non-empty so the squad
+  // passes engine.isSquadDeployable.
   function invPage(pos, tms) { return { bps: [], pos: pos || [], sis: [], tms: tms || [] }; }
-  function mkCanvas(pages, presetStore) {
+  function mkCanvas(pages, squadStore) {
     return {
       linked: true, layout: { ROWS: 8, COLS: 8 }, bps: [], pos: [], sis: [],
       inv: { pages, names: ['1', '2', '3', '4', '5'] },
-      presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: presetStore },
+      presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: squadStore },
     };
   }
   const sellerPos = [
@@ -2441,7 +2441,7 @@ async function main() {
     { uid: 'mkt_susp', id: 'blade', cell: [2, 1], rot: 0 },
     { uid: 'mkt_susp2', id: 'blade', cell: [2, 2], rot: 0 },
   ];
-  const sellerPreset1 = {
+  const sellerSquad1 = {
     linked: true,
     bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 }],
     pos: [
@@ -2452,7 +2452,7 @@ async function main() {
   };
   scheduleStorage.writeProfile(mktSeller.playerId, mkCanvas(
     [invPage(sellerPos), invPage(), invPage(), invPage(), invPage()],
-    [null, sellerPreset1, null, null, null]
+    [null, sellerSquad1, null, null, null]
   ));
   // Buyer: 140 lrdst split across two pages (40 + 100) -- exercises the
   // multi-stack debit drain. Rich: 500. Poor: 5.
@@ -2585,11 +2585,11 @@ async function main() {
     assert.strictEqual(created.status, 200);
     const suspListingId = created.body.listing.id;
 
-    // Deploy preset 1 (references mkt_susp + mkt_susp2) to a room slot.
+    // Deploy squad 1 (references mkt_susp + mkt_susp2) to a room slot.
     const room = await marketReq('POST', '/api/schedule/rooms', mktSeller.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     assert.strictEqual(room.status, 200, JSON.stringify(room.body));
     const roomId = room.body.room.id;
-    const slotRes = await marketReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', mktSeller.token, { presetIndex: 1 });
+    const slotRes = await marketReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', mktSeller.token, { squadIndex: 1 });
     assert.strictEqual(slotRes.status, 200, JSON.stringify(slotRes.body));
 
     const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
@@ -2935,8 +2935,8 @@ async function main() {
 
   // ragA: the main devotion fixture. Inventory (page 0) is MASTER
   // (REQ-0033: every uid has exactly ONE home record in st.inv.pages):
-  // homes for 2 BPs, 4 POs, 2 SIs. Preset 1 (the devotion candidate)
-  // references bp_dev + shared_po + solo_po + si_dev; preset 2 SHARES
+  // homes for 2 BPs, 4 POs, 2 SIs. Squad 1 (the devotion candidate)
+  // references bp_dev + shared_po + solo_po + si_dev; squad 2 SHARES
   // shared_po (the yellow case) and also holds keep_po plus si_other
   // seated ON shared_po (host {po:...} -- exercises the surviving-SI
   // stow rule when its host PO is destroyed).
@@ -2955,7 +2955,7 @@ async function main() {
     ],
     tms: [],
   };
-  const ragAPreset1 = {
+  const ragASquad1 = {
     linked: true,
     bps: [bpDef('bp_dev')],
     pos: [
@@ -2964,7 +2964,7 @@ async function main() {
     ],
     sis: [{ uid: 'si_dev', id: 'acc_gem', host: 'inv' }],
   };
-  const ragAPreset2 = {
+  const ragASquad2 = {
     linked: true,
     bps: [bpDef('bp_other')],
     pos: [
@@ -2975,11 +2975,11 @@ async function main() {
   };
   scheduleStorage.writeProfile(ragA.playerId, mkCanvas(
     [ragAInvPage, invPage(), invPage(), invPage(), invPage()],
-    [null, ragAPreset1, ragAPreset2]
+    [null, ragASquad1, ragASquad2]
   ));
 
-  // ragB: idempotency + empty_unit fixture (preset 1 devotable, preset
-  // 2 exists but has no BP -> empty_unit).
+  // ragB: idempotency + empty_squad fixture (squad 1 devotable, squad
+  // 2 exists but has no BP -> empty_squad).
   scheduleStorage.writeProfile(ragB.playerId, mkCanvas(
     [{
       bps: [bpDef('bp_b1')],
@@ -2992,16 +2992,16 @@ async function main() {
   ));
 
   // ragC: rite-lock (mid_rite / crash recovery) fixture -- one inventory
-  // item as recovery ground truth, two presets so last_preset can't fire.
+  // item as recovery ground truth, two squads so last_squad can't fire.
   scheduleStorage.writeProfile(ragC.playerId, mkCanvas(
     [{ bps: [bpDef('bp_c1')], pos: [{ uid: 'c_keep_po', id: 'blade', cell: [1, 1], rot: 0 }], sis: [], tms: [] },
       invPage(), invPage(), invPage(), invPage()],
     [null, { linked: true, bps: [bpDef('bp_c1')], pos: [], sis: [] }]
   ));
 
-  // ragE: active-preset devotion fixture. The ACTIVE preset (index 0,
+  // ragE: active-squad devotion fixture. The ACTIVE squad (index 0,
   // living in the top-level canvas fields -- engine.js ~1230) is the
-  // devotion candidate; stored preset 1 shares eA_po.
+  // devotion candidate; stored squad 1 shares eA_po.
   scheduleStorage.writeProfile(ragE.playerId, Object.assign(mkCanvas(
     [{
       bps: [bpDef('bp_e'), bpDef('bp_e2')],
@@ -3101,20 +3101,20 @@ async function main() {
     assert.strictEqual(ragnarok.tierOf(999999), 'EINHERJAR');
   });
 
-  await AT('ragnarok: devotion preview itemizes the blast radius (incl. shared refs + affected presets) with a degenerate-safe projection', async () => {
+  await AT('ragnarok: devotion preview itemizes the blast radius (incl. shared refs + affected squads) with a degenerate-safe projection', async () => {
     const res = await marketReq('GET', '/api/ragnarok/devotion/preview/1', ragA.token);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.dtoVersion, 1);
-    assert.deepStrictEqual(res.body.preset, { index: 1, name: 'P2' });
+    assert.deepStrictEqual(res.body.squad, { index: 1, name: 'P2' });
     assert.strictEqual(res.body.eligible, true);
     assert.deepStrictEqual(res.body.reasons, []);
     assert.strictEqual(res.body.blast.bps, 1, 'bp_dev');
     assert.strictEqual(res.body.blast.pos, 2, 'shared_po + solo_po');
     assert.strictEqual(res.body.blast.sis, 1, 'si_dev');
     assert.strictEqual(res.body.blast.total, 4);
-    assert.deepStrictEqual(res.body.blast.affectedPresets, [
+    assert.deepStrictEqual(res.body.blast.affectedSquads, [
       { index: 2, name: 'P3', lostBps: 0, lostPos: 1, lostSis: 0 },
-    ], 'preset 2 shares shared_po (yellow) and loses exactly it');
+    ], 'squad 2 shares shared_po (yellow) and loses exactly it');
     // Projection: no einherjar exist anywhere yet -> degenerate-safe rank 1 of 1.
     assert.strictEqual(res.body.projection.currentRank, null);
     assert.strictEqual(res.body.projection.projectedRank, 1);
@@ -3127,12 +3127,12 @@ async function main() {
     assert.strictEqual(canvas.inv.pages[0].pos.length, 4);
   });
 
-  await AT('ragnarok: `deployed` gate -- an open room slotting the preset (or any uid it shares) blocks the rite; releasing the room clears it', async () => {
+  await AT('ragnarok: `deployed` gate -- an open room slotting the squad (or any uid it shares) blocks the rite; releasing the room clears it', async () => {
     // White-box room doc: deployedUidSet (services/market.cjs, reused by
     // the rite gate) only reads ownerId/status/slots off listRooms().
     const roomDoc = {
       id: 'room_rag_gate', ownerId: ragA.playerId, status: 'open',
-      slots: [{ presetIndex: 1 }, { presetIndex: null }, { presetIndex: null }, { presetIndex: null }],
+      slots: [{ squadIndex: 1 }, { squadIndex: null }, { squadIndex: null }, { squadIndex: null }],
     };
     scheduleStorage.writeRoom(roomDoc.id, roomDoc);
     try {
@@ -3144,9 +3144,9 @@ async function main() {
       const post = await marketReq('POST', '/api/ragnarok/devotion/1', ragA.token);
       assert.strictEqual(post.status, 409, JSON.stringify(post.body));
       assert.strictEqual(post.body.reason, 'deployed');
-      // Sharing counts too: preset 2 shares shared_po with slotted preset 1.
+      // Sharing counts too: squad 2 shares shared_po with slotted squad 1.
       res = await marketReq('GET', '/api/ragnarok/devotion/preview/2', ragA.token);
-      assert.strictEqual(res.body.eligible, false, 'devoting preset 2 would destroy shared_po out from under deployed preset 1');
+      assert.strictEqual(res.body.eligible, false, 'devoting squad 2 would destroy shared_po out from under deployed squad 1');
       assert.deepStrictEqual(res.body.reasons, ['deployed']);
       // Canceled rooms release their uids (open/active-only gate).
       roomDoc.status = 'canceled';
@@ -3159,22 +3159,22 @@ async function main() {
     }
   });
 
-  await AT('ragnarok: POST devotion -- einherjar record engraved; every referenced uid destroyed ACCOUNT-WIDE (inventory homes + shared preset refs); preset slot deleted', async () => {
+  await AT('ragnarok: POST devotion -- einherjar record engraved; every referenced uid destroyed ACCOUNT-WIDE (inventory homes + shared squad refs); squad slot deleted', async () => {
     const res = await marketReq('POST', '/api/ragnarok/devotion/1', ragA.token, undefined, { 'idempotency-key': 'rite-A-1' });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.ok, true);
     assert.strictEqual(res.body.replayed, false);
-    assert.strictEqual(res.body.einherjar.unitName, 'P2', 'unitName = the preset display name');
+    assert.strictEqual(res.body.einherjar.squadName, 'P2', 'squadName = the squad display name');
     assert.strictEqual(res.body.einherjar.seasonDevoted, 1, 'stamped with the current season index');
     assert.deepStrictEqual(res.body.einherjar.counts, { bps: 1, pos: 2, sis: 1 });
     assert.strictEqual(res.body.einherjar.score, 0, 'no battles yet (REQ-0068) -> score 0');
     assert.deepStrictEqual(res.body.einherjar.perSeason, []);
     assert.strictEqual(res.body.einherjar.bioArchive, null, 'REQ-0060 not built -> stored empty');
     assert.strictEqual(res.body.blast.total, 4);
-    assert.deepStrictEqual(res.body.blast.affectedPresets, [{ index: 2, name: 'P3', lostBps: 0, lostPos: 1, lostSis: 0 }]);
+    assert.deepStrictEqual(res.body.blast.affectedSquads, [{ index: 2, name: 'P3', lostBps: 0, lostPos: 1, lostSis: 0 }]);
 
     const canvas = scheduleStorage.readProfile(ragA.playerId).canvas;
-    // The devoted preset slot is DELETED (engine.js deletePreset: store
+    // The devoted squad slot is DELETED (engine.js deleteSquad: store
     // slot + names[] entry both vanish; deleted index > active 0 leaves
     // active untouched).
     assert.strictEqual(canvas.presets.store.length, 2);
@@ -3185,7 +3185,7 @@ async function main() {
     assert.deepStrictEqual(pg0.bps.map((b) => b.id), ['bp_other'], 'bp_dev home destroyed');
     assert.deepStrictEqual(pg0.pos.map((p) => p.uid), ['other_po', 'keep_po'], 'shared_po + solo_po homes destroyed, unrelated homes intact');
     assert.deepStrictEqual(pg0.sis.map((a) => a.uid), ['si_other'], 'si_dev home destroyed, si_other intact');
-    // The yellow-shared preset (was index 2, now index 1) lost EXACTLY
+    // The yellow-shared squad (was index 2, now index 1) lost EXACTLY
     // the shared piece; its own material survives; its SI that sat on
     // the destroyed PO is stowed (host 'inv' -- engine.js ~388-389's
     // missing-host repair semantics).
@@ -3207,61 +3207,61 @@ async function main() {
     const list = await marketReq('GET', '/api/ragnarok/einherjar', ragA.token);
     assert.strictEqual(list.status, 200);
     assert.strictEqual(list.body.einherjar.length, 1);
-    assert.strictEqual(list.body.einherjar[0].unitName, 'P2');
+    assert.strictEqual(list.body.einherjar[0].squadName, 'P2');
   });
 
-  await AT('ragnarok: devoting the ACTIVE preset -- engine deletePreset bookkeeping (nearest tab in) + top-level strip', async () => {
+  await AT('ragnarok: devoting the ACTIVE squad -- engine deleteSquad bookkeeping (nearest tab in) + top-level strip', async () => {
     const res = await marketReq('POST', '/api/ragnarok/devotion/0', ragE.token);
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
-    assert.strictEqual(res.body.einherjar.unitName, 'P1');
+    assert.strictEqual(res.body.einherjar.squadName, 'P1');
     assert.deepStrictEqual(res.body.einherjar.counts, { bps: 1, pos: 1, sis: 0 });
     const canvas = scheduleStorage.readProfile(ragE.playerId).canvas;
-    // engine.js deletePreset's nearest-remaining-tab rule: the old
-    // store[1] slid into index 0 and is now the ACTIVE preset (its
+    // engine.js deleteSquad's nearest-remaining-tab rule: the old
+    // store[1] slid into index 0 and is now the ACTIVE squad (its
     // content lives at the top level).
     assert.strictEqual(canvas.presets.store.length, 1);
     assert.strictEqual(canvas.presets.active, 0);
-    assert.strictEqual(canvas.presets.store[0], null, 'active slot is materialized at the top level (engine.js splitBackPresets)');
+    assert.strictEqual(canvas.presets.store[0], null, 'active slot is materialized at the top level (engine.js splitBackSquads)');
     assert.deepStrictEqual(canvas.presets.names, ['P2', 'P3', 'P4', 'P5']);
     assert.deepStrictEqual(canvas.bps.map((b) => b.id), ['bp_e2']);
-    assert.deepStrictEqual(canvas.pos.map((p) => p.uid), ['eKeep_po'], 'the shared eA_po reference was stripped from the surviving preset');
+    assert.deepStrictEqual(canvas.pos.map((p) => p.uid), ['eKeep_po'], 'the shared eA_po reference was stripped from the surviving squad');
     // Homes: bp_e + eA_po destroyed; bp_e2 + eKeep_po intact.
     const pg0 = canvas.inv.pages[0];
     assert.deepStrictEqual(pg0.bps.map((b) => b.id), ['bp_e2']);
     assert.deepStrictEqual(pg0.pos.map((p) => p.uid), ['eKeep_po']);
   });
 
-  await AT('ragnarok: 409 vocabulary (last_preset / empty_unit) + 404 no-leak for out-of-range, malformed and profile-less preset ids', async () => {
-    // last_preset: ragE is down to a single preset after the test above
-    // (mirrors engine.js deletePreset's own last-refusal, ~1919).
+  await AT('ragnarok: 409 vocabulary (last_squad / empty_squad) + 404 no-leak for out-of-range, malformed and profile-less squad ids', async () => {
+    // last_squad: ragE is down to a single squad after the test above
+    // (mirrors engine.js deleteSquad's own last-refusal, ~1919).
     const last = await marketReq('POST', '/api/ragnarok/devotion/0', ragE.token);
     assert.strictEqual(last.status, 409, JSON.stringify(last.body));
-    assert.strictEqual(last.body.reason, 'last_preset');
+    assert.strictEqual(last.body.reason, 'last_squad');
     const lastPrev = await marketReq('GET', '/api/ragnarok/devotion/preview/0', ragE.token);
     assert.strictEqual(lastPrev.body.eligible, false);
-    assert.deepStrictEqual(lastPrev.body.reasons, ['last_preset']);
-    // empty_unit: ragB preset 2 has no BP (engine.isUnitDeployable false).
+    assert.deepStrictEqual(lastPrev.body.reasons, ['last_squad']);
+    // empty_squad: ragB squad 2 has no BP (engine.isSquadDeployable false).
     const empty = await marketReq('POST', '/api/ragnarok/devotion/2', ragB.token);
     assert.strictEqual(empty.status, 409);
-    assert.strictEqual(empty.body.reason, 'empty_unit');
+    assert.strictEqual(empty.body.reason, 'empty_squad');
     // 404 no-leak: out-of-range, malformed, and no-profile-at-all are
     // byte-identical plain 404s.
     for (const [who, seg] of [[ragA, '99'], [ragA, 'abc'], [ragA, '-1'], [ragD, '0']]) {
       const prev = await marketReq('GET', '/api/ragnarok/devotion/preview/' + seg, who.token);
       assert.strictEqual(prev.status, 404, seg + ' preview -> ' + prev.status);
-      assert.strictEqual(prev.body.error, 'preset not found');
+      assert.strictEqual(prev.body.error, 'squad not found');
       const post = await marketReq('POST', '/api/ragnarok/devotion/' + seg, who.token);
       assert.strictEqual(post.status, 404, seg + ' devote -> ' + post.status);
-      assert.strictEqual(post.body.error, 'preset not found');
+      assert.strictEqual(post.body.error, 'squad not found');
     }
   });
 
   await AT('ragnarok: mid_rite lock -- fresh `applying` 409s; stale one is lazily VOIDED when the cost never landed, ROLLED FORWARD when it did', async () => {
     const nowIso = new Date().toISOString();
     const mkLockRec = (id, riteT, snapPos) => ({
-      id, playerId: ragC.playerId, unitName: 'Lock ' + id, seasonDevoted: 1, devotedAt: nowIso,
+      id, playerId: ragC.playerId, squadName: 'Lock ' + id, seasonDevoted: 1, devotedAt: nowIso,
       snapshot: { canvas: { bps: [], pos: snapPos, sis: [] }, counts: { bps: 0, pos: snapPos.length, sis: 0 }, itemDefs: { pos: {}, sis: {} } },
-      blast: { bps: 0, pos: snapPos.length, sis: 0, total: snapPos.length, affectedPresets: [] },
+      blast: { bps: 0, pos: snapPos.length, sis: 0, total: snapPos.length, affectedSquads: [] },
       bioArchive: null, perSeason: [], emblems: [], idemKey: null,
       rite: { state: 'applying', t: riteT },
     });
@@ -3290,7 +3290,7 @@ async function main() {
     scheduleStorage.writeEinherjarRecord('ein_lock_landed', mkLockRec('ein_lock_landed', staleT, [{ uid: 'ghost_po', id: 'blade' }]));
     list = await marketReq('GET', '/api/ragnarok/einherjar', ragC.token);
     assert.strictEqual(list.body.einherjar.length, 1);
-    assert.strictEqual(list.body.einherjar[0].unitName, 'Lock ein_lock_landed');
+    assert.strictEqual(list.body.einherjar[0].squadName, 'Lock ein_lock_landed');
     const recovered = scheduleStorage.readEinherjarRecord('ein_lock_landed');
     assert.strictEqual(recovered.rite.state, 'done');
     assert.ok(recovered.rite.recoveredAt, 'roll-forward is stamped');
@@ -3307,7 +3307,7 @@ async function main() {
     assert.strictEqual(canvasAfterFirst.presets.store.length, 2);
     // Replay: same caller, same key -> the original outcome, nothing
     // re-destroyed (the replay short-circuits BEFORE eligibility -- the
-    // now-shifted index 1 points at a DIFFERENT preset and must not be
+    // now-shifted index 1 points at a DIFFERENT squad and must not be
     // touched).
     const replay = await marketReq('POST', '/api/ragnarok/devotion/1', ragB.token, undefined, { 'idempotency-key': 'rite-B-1' });
     assert.strictEqual(replay.status, 200, JSON.stringify(replay.body));
@@ -3329,7 +3329,7 @@ async function main() {
     assert.strictEqual(own.status, 200);
     assert.strictEqual(own.body.playerId, ragB.playerId);
     assert.strictEqual(own.body.einherjar.length, 1);
-    assert.strictEqual(own.body.einherjar[0].unitName, 'P2');
+    assert.strictEqual(own.body.einherjar[0].squadName, 'P2');
     assert.strictEqual(own.body.einherjar[0].seasonDevoted, 1);
     // Hall records are public: ragA can read ragB's corridor.
     const foreign = await marketReq('GET', '/api/ragnarok/einherjar?player=' + encodeURIComponent(ragB.playerId), ragA.token);
@@ -3345,10 +3345,10 @@ async function main() {
 
   await AT('ragnarok: the Eternal Order ranks by score desc, then einherjarCount, then name -- 戦果 folded via battleScoreOf; newest-first hall', async () => {
     const nowIso2 = new Date().toISOString();
-    const mkDoneRec = (id, playerId, unitName, devotedAt, perSeason) => ({
-      id, playerId, unitName, seasonDevoted: 1, devotedAt,
+    const mkDoneRec = (id, playerId, squadName, devotedAt, perSeason) => ({
+      id, playerId, squadName, seasonDevoted: 1, devotedAt,
       snapshot: { canvas: { bps: [], pos: [], sis: [] }, counts: { bps: 0, pos: 0, sis: 0 }, itemDefs: { pos: {}, sis: {} } },
-      blast: { bps: 0, pos: 0, sis: 0, total: 0, affectedPresets: [] },
+      blast: { bps: 0, pos: 0, sis: 0, total: 0, affectedSquads: [] },
       bioArchive: null, perSeason: perSeason || [], emblems: [], idemKey: null,
       rite: { state: 'done', t: devotedAt },
     });
@@ -3360,7 +3360,7 @@ async function main() {
       new Date(Date.now() - 1 * RAG_DAY).toISOString(), []));
     // Newest-first hall listing while we're here.
     const hall = await marketReq('GET', '/api/ragnarok/einherjar?player=' + encodeURIComponent(ragD.playerId), ragD.token);
-    assert.deepStrictEqual(hall.body.einherjar.map((e) => e.unitName), ['Delta2', 'Delta1']);
+    assert.deepStrictEqual(hall.body.einherjar.map((e) => e.squadName), ['Delta2', 'Delta1']);
     assert.strictEqual(hall.body.einherjar[1].score, 300, 'per-record 戦果 fold');
     // Force a rebuild (stale cache) and read the standings.
     scheduleStorage.writeRagnarokOrderCache({ rebuiltAt: new Date(Date.now() - 2 * RAG_DAY).toISOString(), dawnUtcHour: 20, formulaVersion: 1, entries: [] });
@@ -3597,8 +3597,8 @@ async function main() {
 
     // A bare, minimal profile: two 'blade' PO instances homed in
     // inventory page 0 (dzp1/dzp2, never referenced by the active
-    // preset -- not deployed), plus a THIRD (dzp3) that IS referenced by
-    // the active preset (index 0) so a hand-written room can deploy it.
+    // squad -- not deployed), plus a THIRD (dzp3) that IS referenced by
+    // the active squad (index 0) so a hand-written room can deploy it.
     const dismantlePlayer = dzPlayers.createPlayer('DismantlePlayer', []);
     const dzCanvas = {
       pos: [{ uid: 'dzp3', id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }],
@@ -3619,14 +3619,14 @@ async function main() {
     };
     dzStorage.writeProfile(dismantlePlayer.playerId, dzCanvas);
     // Minimal room doc, written directly (bypassing assignSlot's own
-    // "empty_unit" business-rule validation -- irrelevant to what THIS
+    // "empty_squad" business-rule validation -- irrelevant to what THIS
     // gate test is proving, which is that dismantleItem correctly
     // CONSUMES market.deployedUidSet's result, a function already fully
     // covered by the market suspension tests above). Only the fields
     // deployedUidSet itself reads are populated.
     dzStorage.writeRoom('dz_room_1', {
       id: 'dz_room_1', ownerId: dismantlePlayer.playerId, status: 'open',
-      slots: [{ presetIndex: 0 }, { presetIndex: null }, { presetIndex: null }, { presetIndex: null }],
+      slots: [{ squadIndex: 0 }, { squadIndex: null }, { squadIndex: null }, { squadIndex: null }],
     });
 
     T('dismantle: every /api/dismantle route is token-gated (401 for a garbage token)', () => {
@@ -3691,7 +3691,7 @@ async function main() {
       assert.strictEqual(r2.status, 400);
     });
 
-    await AT('dismantle: deployed gate -- an item referenced by a slotted preset in an open room cannot be dismantled (409)', async () => {
+    await AT('dismantle: deployed gate -- an item referenced by a slotted squad in an open room cannot be dismantled (409)', async () => {
       const res = await dzReq('POST', '/api/dismantle', dismantlePlayer.token, { itemUid: 'dzp3', kind: 'po' });
       assert.strictEqual(res.status, 409, JSON.stringify(res.body));
       assert.strictEqual(res.body.reason, 'deployed');

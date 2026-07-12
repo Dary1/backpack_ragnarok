@@ -1,7 +1,7 @@
 // Shared tab-row component with long-press-to-rename — REQ-0031 Phase B.
-// Used by BOTH the inventory page tabs and the canvas preset tabs (same
+// Used by BOTH the inventory page tabs and the canvas squad tabs (same
 // interaction contract for both tab kinds per the task spec: "LONG-PRESS
-// (~600ms pointerdown hold, no move) on an inventory tab or preset tab ->
+// (~600ms pointerdown hold, no move) on an inventory tab or squad tab ->
 // inline rename ... Normal click still switches (click switches on
 // pointerup before threshold)").
 //
@@ -37,8 +37,8 @@
 //     fires -> cancels the timer (exactly as before) AND, new in
 //     REQ-0032, enters DRAG mode instead of doing nothing: `dragFrom` is
 //     set to this tab's index, tabDrag.ts's shared broadcast is armed
-//     (kind:'preset'|'inv' per this instance's `kind` prop -- this is
-///    what lets App.tsx show the trash-drop-zone ONLY for preset drags),
+//     (kind:'squad'|'inv' per this instance's `kind` prop -- this is
+///    what lets App.tsx show the trash-drop-zone ONLY for squad drags),
 //     and every subsequent pointermove (listened on `window`, since the
 //     pointer can leave the originating tab's own DOM element mid-drag)
 //     recomputes which GAP between tabs the dragged tab should land in
@@ -49,12 +49,12 @@
 //     move-threshold was never crossed.
 //   - pointerup before either threshold -> plain click, switches tabs
 //     (unchanged).
-// On drop (pointerup while dragFrom is set): if a preset-kind drag was
+// On drop (pointerup while dragFrom is set): if a squad-kind drag was
 // released over the trash-drop-zone (hit-tested via
 // document.elementFromPoint against the zone's own DOM node, found by
 // data-tab-trash-zone attribute -- decoupled from this component's own
 // subtree since the zone renders elsewhere, over the Canvas board), calls
-// `onDeletePreset` instead of reordering; otherwise, if a valid
+// `onDeleteSquad` instead of reordering; otherwise, if a valid
 // destination gap was tracked, calls `onReorder(dragFrom, destIndex)`.
 // Either way, tabDrag.ts's broadcast is cleared immediately so the trash
 // overlay disappears the instant the drag ends (drop or cancel via
@@ -72,21 +72,21 @@ export interface LongPressTabsProps {
   active: number;
   onSwitch: (index: number) => void;
   onRename: (index: number, name: string) => void;
-  className: string; // e.g. 'inv-tabs' | 'preset-tabs'
-  tabClassName: string; // e.g. 'inv-tab' | 'preset-tab'
-  activeClassName: string; // e.g. 'inv-tab-active' | 'preset-tab-active'
+  className: string; // e.g. 'inv-tabs' | 'squad-tabs'
+  tabClassName: string; // e.g. 'inv-tab' | 'squad-tab'
+  activeClassName: string; // e.g. 'inv-tab-active' | 'squad-tab-active'
   /** REQ-0032: which tab kind this is -- gates the trash-drop-zone (ONLY
-   * 'preset' drags ever broadcast a trash-eligible drag state) and is
+   * 'squad' drags ever broadcast a trash-eligible drag state) and is
    * forwarded verbatim into tabDrag.ts's shared state. */
-  kind: 'preset' | 'inv';
+  kind: 'squad' | 'inv';
   /** REQ-0032: commits a drag-to-reorder (0-based from/to, same splice-out
-   * /splice-in semantics as the engine's reorderPreset/reorderInvPage). */
+   * /splice-in semantics as the engine's reorderSquad/reorderInvPage). */
   onReorder: (from: number, to: number) => void;
-  /** REQ-0032: called instead of onReorder when a PRESET tab is dropped
+  /** REQ-0032: called instead of onReorder when a SQUAD tab is dropped
    * onto the trash-drop-zone. Absent/unused for kind==='inv' (inventory
    * tabs never render a trash zone, so this path is never reachable for
    * them regardless). */
-  onDeletePreset?: (index: number) => void;
+  onDeleteSquad?: (index: number) => void;
 }
 
 export function LongPressTabs({
@@ -100,7 +100,7 @@ export function LongPressTabs({
   activeClassName,
   kind,
   onReorder,
-  onDeletePreset,
+  onDeleteSquad,
 }: LongPressTabsProps) {
   const [renaming, setRenaming] = useState<number | null>(null);
   const [draft, setDraft] = useState('');
@@ -155,7 +155,7 @@ export function LongPressTabs({
   };
 
   const isOverTrashZone = (clientX: number, clientY: number): boolean => {
-    if (kind !== 'preset') return false;
+    if (kind !== 'squad') return false;
     const el = document.elementFromPoint(clientX, clientY);
     return !!(el && el.closest(TRASH_ZONE_SELECTOR));
   };
@@ -183,7 +183,7 @@ export function LongPressTabs({
     }
     if (isOverTrashZone(e.clientX, e.clientY)) {
       endDrag();
-      if (kind === 'preset' && onDeletePreset) onDeletePreset(from);
+      if (kind === 'squad' && onDeleteSquad) onDeleteSquad(from);
       return;
     }
     const gap = gapForClientX(e.clientX);
@@ -191,7 +191,7 @@ export function LongPressTabs({
     // Translate an insertion GAP into a splice destination index: dropping
     // into gap g means "this tab should end up at index g" if g<=from, or
     // "at index g-1" if g>from (since removing `from` first shifts every
-    // later gap left by one) -- exactly the semantics reorderPreset/
+    // later gap left by one) -- exactly the semantics reorderSquad/
     // reorderInvPage's splice(from,1)+splice(to,0,item) already implement.
     const to = gap > from ? gap - 1 : gap;
     if (to !== from) onReorder(from, to);

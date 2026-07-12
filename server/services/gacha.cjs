@@ -200,7 +200,7 @@ function purgeExpiredGachaPending(playerId) {
 // (its gacha_pending doc is deleted) iff BOTH:
 //   (1) the minted BP uid (rollUid) now appears in the just-saved canvas
 //       (bps[].id, scanned the SAME way finalizeClaimingItemsForCanvas
-//       scans -- active preset + every inactive preset snapshot + every
+//       scans -- active squad + every inactive squad snapshot + every
 //       inventory page), AND
 //   (2) the player's LRDST balance in the just-saved canvas is <= the
 //       pre-roll balance MINUS the roll's cost (strictly, the client is

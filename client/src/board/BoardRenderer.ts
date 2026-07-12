@@ -275,19 +275,19 @@ export class BoardRenderer {
     // REQ-0033 Phase 2: red/yellow usage-tint overlays (spec items 2-3).
     // Recomputed FRESH on every render() call (never cached) -- per
     // engine.js's own perf note on tintSets(), a full scan at this game's
-    // scale (PRESET_COUNT presets x a few dozen items) is comfortably
+    // scale (SQUAD_COUNT squads x a few dozen items) is comfortably
     // sub-millisecond, so there is no correctness/perf reason to memoize
     // this across renders; recomputing here guarantees it is always
-    // correct after every state mutation AND every preset switch, with no
+    // correct after every state mutation AND every squad switch, with no
     // separate invalidation bookkeeping to get wrong.
-    //   INVENTORY board: tint.red (used by the CURRENT preset) and
-    //     tint.yellow (used by at least one OTHER preset) both apply --
+    //   INVENTORY board: tint.red (used by the CURRENT squad) and
+    //     tint.yellow (used by at least one OTHER squad) both apply --
     //     red takes visual precedence when a uid is in both sets (spec's
     //     red-vs-yellow framing puts "already used here" first).
     //   CANVAS board: only tint.canvasYellow applies (uids on the canvas
-    //     right now that are ALSO shared with another preset) -- canvas
+    //     right now that are ALSO shared with another squad) -- canvas
     //     never shows red, since every canvas item is by definition used
-    //     by the current preset already (that's not useful information to
+    //     by the current squad already (that's not useful information to
     //     highlight on the canvas itself).
     // Color choice (documented here once, reused by every draw site
     // below): red 0xff3b3b @ alpha 0.20, yellow 0xffd23b @ alpha 0.20 --
@@ -302,8 +302,8 @@ export class BoardRenderer {
     /** Draws a translucent tint wash over exactly `cells` (not a bounding
      * box -- correct for L-shapes/shapes-with-holes alike, matching every
      * other per-cell drawing loop in this file) into `layer`, colored red
-     * if `uid` is in the CURRENT preset's usage set, else yellow if it is
-     * in the shared/other-presets set, else nothing. `redSet`/`yellowSet`
+     * if `uid` is in the CURRENT squad's usage set, else yellow if it is
+     * in the shared/other-squads set, else nothing. `redSet`/`yellowSet`
      * are passed explicitly (rather than this method reading `tint`
      * directly) so the SAME helper serves both boards: the inventory call
      * sites pass {red:tint.red, yellow:tint.yellow}, the canvas call
@@ -372,7 +372,7 @@ export class BoardRenderer {
 
       // REQ-0033 Phase 2: BP usage tint -- the BP's OWN footprint cells,
       // independent of whatever POs sitting on/inside it also get tinted
-      // individually below (a BP used by the current preset = red on its
+      // individually below (a BP used by the current squad = red on its
       // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
       drawTintOverlay(this.gBase, cells, bp.id, tintRedSet, tintYellowSet);
 
@@ -576,7 +576,7 @@ export class BoardRenderer {
         const k = ((p.rot % 4) + 4) % 4;
         // REQ-0028 (aspect law): uniform contain-fit box (was independent
         // x/y insets per def.stretch branch -- see fitSpriteToBox doc).
-        // Box tightness presets (stretch vs non-stretch) preserved.
+        // Box tightness squads (stretch vs non-stretch) preserved.
         if (def.stretch) {
           fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8, def.align, { x: 0, y: 0, w: W0, h: H0 });
         } else {

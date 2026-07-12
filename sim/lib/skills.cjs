@@ -34,7 +34,7 @@ function bonusVsStatusAmount(targetBag, bonusList, rng) {
 // Actor wrapper: unifies BP occupants (player field) and enemy occupants
 // (enemy field) behind one shape so ray-hit / status / HP logic doesn't
 // need to branch on kind everywhere. Built once per encounter from the
-// compiled unit snapshots (player side) and the encounter's enemy pack
+// compiled squad snapshots (player side) and the encounter's enemy pack
 // (enemy side).
 function makeBPActor(bp) {
   return {
@@ -219,7 +219,7 @@ function effectModesOf(effect, ownerModes) {
 
 // =====================================================================
 // runEncounter -- drives ONE encounter (pack/trap/door/chest/boss) to
-// completion via the event-driven loop (S1.1). Mutates partyBps (array of
+// completion via the event-driven loop (S1.1). Mutates troopBps (array of
 // compiled BP objects, HP persists across encounters per S8.2/OQ13) and
 // returns { events, result, progressAwarded, rewardEligible }.
 //
@@ -250,7 +250,7 @@ function defaultAttackProfileFor(po) {
 // entry's own delta is whatever closes the gap to 100 exactly.
 
 // REQ-0078: apply a reactive verb to a single target actor as a RIDER on a hit
-// that already landed (offensive OnHit/OnUnitHit): the owner's attack already
+// that already landed (offensive OnHit/OnSquadHit): the owner's attack already
 // struck `target`; this augments that same hit. Depth-1 (never re-dispatches);
 // caller passes an isolated reactive RNG sub-stream (OQ-C / OQ-D).
 function applyReactiveVerbToTarget(verb, ownerActor, target, rng, events, trigTag) {

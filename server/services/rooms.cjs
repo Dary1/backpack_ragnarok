@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
-const { UNIT_SLOTS, DEFAULT_FORMATION_ID, DEFAULT_LEVEL_MIN, getScheduleContent, genId } = require('./core.cjs');
+const { SQUAD_SLOTS, DEFAULT_FORMATION_ID, DEFAULT_LEVEL_MIN, getScheduleContent, genId } = require('./core.cjs');
 
 function resolveDungeonType(dungeonType, dungeonId) {
   if (typeof dungeonType === 'string' && dungeonType) {
@@ -61,7 +61,7 @@ function createRoom(ownerId, opts) {
     visibility: 'self', // golden c: P1-B rooms are always self-only (multi-visibility is P2)
     formationId: fId,
     cancelPolicy: validateCancelPolicy(cancelPolicy),
-    slots: UNIT_SLOTS.map(() => ({ presetIndex: null })),
+    slots: SQUAD_SLOTS.map(() => ({ squadIndex: null })),
     status: 'open',
     cancelRequested: false,
     pendingSwap: null,
@@ -101,18 +101,18 @@ function listOwnRooms(callerId) {
 }
 
 // ---------------------------------------------------------------------
-// Deploy gate (golden d): "a preset can only be assigned if
-// isUnitIndependent AND its uids don't overlap other CURRENTLY-ACTIVE
-// schedules' deployed units of the same player" -- implemented by
+// Deploy gate (golden d): "a squad can only be assigned if
+// isSquadIndependent AND its uids don't overlap other CURRENTLY-ACTIVE
+// schedules' deployed squads of the same player" -- implemented by
 // snapshotting deployed uid sets per active room.
 // ---------------------------------------------------------------------
 
-// presetCanvasOf(profileCanvas, idx): the SAME two-line lookup
-// mock-src/engine.js's own (internal, unexported) presetCanvasOf uses --
+// squadCanvasOf(profileCanvas, idx): the SAME two-line lookup
+// mock-src/engine.js's own (internal, unexported) squadCanvasOf uses --
 // idx===active reads the top-level canvas fields directly, any other
-// index reads that preset's store[] snapshot. Plain data read, no
+// index reads that squad's store[] snapshot. Plain data read, no
 // engine call needed (documented in engine.js's own header comment: "a
-// preset's canvas" is just {bps,pos,sis} sitting at one of these two
+// squad's canvas" is just {bps,pos,sis} sitting at one of these two
 // places). Returns null if idx is out of range (caller's job to 400).
 function cancelRoom(room) {
   if (room.status === 'canceled') return room; // idempotent

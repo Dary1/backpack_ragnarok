@@ -39,12 +39,12 @@ on `127.0.0.1:8802` only.
   live_items.json`/`live_sis.json`). See "Auth" and "Admin API" below.
 - `schedule.cjs` (REQ-0036 P1-B; REQ-0047 (c): now a FACADE with a
   name-for-name identical export surface over
-  `services/{core,rooms,units,runs,warehouse,gacha}.cjs`) — the Dungeon
+  `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`) — the Dungeon
   Schedule SERVICE (rooms,
   runs, warehouse). Business logic module; `api.cjs` wires HTTP routes to
   it, `storage.cjs` persists its 3 new roots (rooms/runs/warehouse
-  items). Solo-scope (P1): a room's 4 unit slots are always filled from
-  the ROOM OWNER'S OWN presets (multi-player joins are P2). See "Dungeon
+  items). Solo-scope (P1): a room's 4 squad slots are always filled from
+  the ROOM OWNER'S OWN squads (multi-player joins are P2). See "Dungeon
   Schedule API" below for the full endpoint table + design notes.
 - `tests/api_test.cjs` — storage/registry round-trip, content endpoint
   shape, profile PUT/GET round-trip (per-player + the `default` alias),
@@ -257,7 +257,7 @@ here without a deliberate, separately-reviewed decision to do so.
 ## Dungeon Schedule API (REQ-0036 P1-B)
 
 Server-authoritative "schedule a dungeon run" service: rooms (solo scope
-— every slot is filled from the room OWNER'S OWN presets; multi-player
+— every slot is filled from the room OWNER'S OWN squads; multi-player
 joins are a P2 concern), runs (executed instantly via `sim/combat.cjs`'s
 `runDungeon`, replayed at 1× wall time — see "Run-clock design" below),
 and a per-player warehouse (200-item cap, 7-day TTL). Implements golden
@@ -280,8 +280,8 @@ session state (REQ-0039 Bot API design-first-class requirement).
 | GET | `/api/schedule/rooms` | — | Lists the CALLER's own rooms only. Returns `{ok, rooms:[...]}`. |
 | GET | `/api/schedule/rooms/:id` | — | Settles a due run first (see run-clock), then returns `{ok, room}`. 404 if not found or not owned by the caller. |
 | DELETE | `/api/schedule/rooms/:id` | — | Cancel (golden g). Immediate if `cancelPolicy.immediate` or no run is active; else flags `cancelRequested` (honored once the in-flight run settles). Returns `{ok, room}`. |
-| PUT | `/api/schedule/rooms/:id/slots/:slotIndex` | `{presetIndex}` | Assigns one of the CALLER'S OWN presets (0-based) to a unit slot (golden b). Enforces the deploy gate (golden d) — `409` on an independence violation or a cross-room active-unit overlap. |
-| PUT | `/api/schedule/rooms/:id/swap` | `{slot, presetIndex}` | Queues (or, if no run is active, immediately applies) a unit swap (golden j). Returns `{ok, room, applied:boolean}`. |
+| PUT | `/api/schedule/rooms/:id/slots/:slotIndex` | `{squadIndex}` | Assigns one of the CALLER'S OWN squads (0-based) to a squad slot (golden b). Enforces the deploy gate (golden d) — `409` on an independence violation or a cross-room active-squad overlap. |
+| PUT | `/api/schedule/rooms/:id/swap` | `{slot, squadIndex}` | Queues (or, if no run is active, immediately applies) a squad swap (golden j). Returns `{ok, room, applied:boolean}`. |
 | GET | `/api/schedule/rooms/:id/run` | — | The room's last/current run, run-clock-paced (see below): `events` only includes entries whose `t` has "arrived" in wall-clock time. Also returns the full (always-final) `result`/`rewards`/`cooldownSecs` summary plus a `settled` flag and `clock:{elapsedSecs,isSettled,pct}`. |
 | GET | `/api/warehouse` | — | Lists the caller's own warehouse items (expired rows purged first). |
 | POST | `/api/warehouse/claim` | `{itemUid}` | Moves one warehouse item into the caller's OWN inventory via first-fit engine placement (golden f). `409` if no inventory page has space (item stays in the warehouse, untouched). There is no reverse (inventory→warehouse) path anywhere in this API. |
@@ -458,7 +458,7 @@ it needs no caller identity at all. Response shape:
 **`POST /api/schedule/rooms/:id/dev/backdate`** -- a dev-only E2E
 time-control seam, added because the real `niflheim_depths` dungeon's
 measured `durationSecs` (see "E2E time-control" below) is NOT reliably
-short: with a unit that cannot act during `detection`/`unlock`-mode
+short: with a squad that cannot act during `detection`/`unlock`-mode
 encounters, a run's last event lands at `t=999` (the trap encounter's
 `every_secs:[999,999]` skill cadence never fires, so the encounter simply
 times out at that value) -- a real E2E run could otherwise need to
@@ -496,7 +496,7 @@ a 400 on a room with no run yet.
 Measured empirically (`sim/combat.cjs`'s `runDungeon` invoked directly
 against the real `content/batches/batch-002-dungeon-pilot/dungeon.json`
 + `formation1`, multiple seeds) before choosing an approach -- two
-different unit configurations were probed, and they behave very
+different squad configurations were probed, and they behave very
 differently, which is the whole reason this needed measuring instead of
 assuming:
 - The actual `client/e2e/fixtures/schedule-fixture.json` used by
@@ -512,7 +512,7 @@ assuming:
   cleared or whether the run result is victory or wipe. This was
   confirmed by direct re-measurement against the real fixture, not
   assumed.
-- A separate, hand-built unit whose PO effects explicitly opt into
+- A separate, hand-built squad whose PO effects explicitly opt into
   `modes:['battle','detection','unlock']` (with a nonzero
   `bounce_budget`) clears every encounter for real and was measured at
   `durationSecs` of **21s** across 3 seeds (`node -e` probe script, not
@@ -547,7 +547,7 @@ assuming:
   deliberately-short test dungeon) was rejected as more invasive than a
   single dev-gated timestamp-rewrite route, and pure real-time polling
   everywhere was rejected outright once the actual fixture measured at
-  999s, not the 21s figure from the unrelated hand-built probe unit.
+  999s, not the 21s figure from the unrelated hand-built probe squad.
 
 ## Content i18n (REQ-0038)
 
@@ -686,7 +686,7 @@ and passed (`deepStrictEqual` clean).
 
 **Flipping the live service to pg mode**: set `STORAGE_BACKEND=pg` and
 the real `DATABASE_URL` in `server/.env` (loaded via the systemd user
-unit's `EnvironmentFile=`, see below), then `systemctl --user restart
+squad's `EnvironmentFile=`, see below), then `systemctl --user restart
 backpack-api.service`. Verify `curl 127.0.0.1:8802/api/health`, `/api/me`,
 and a profile GET/PUT round trip.
 
@@ -705,7 +705,7 @@ both after any `storage.cjs` change. `server/package.json` has `npm
 test`/`npm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
 in the environment first).
 
-## systemd (user unit, Node v24 via nvm)
+## systemd (user squad, Node v24 via nvm)
 `~/.config/systemd/user/backpack-api.service`:
 ```
 [Service]
@@ -722,7 +722,7 @@ dependency and never reads a `.env` file directly. Enable/start:
 `systemctl --user is-active backpack-api.service` and
 `curl 127.0.0.1:8802/api/health`. **Restart after any server/*.cjs
 change, or after editing server/.env** (`systemctl --user restart
-backpack-api.service`) — the unit does not hot-reload.
+backpack-api.service`) — the squad does not hot-reload.
 
 ## Cloudflare tunnel ingress (backpack-dev, remote-managed config)
 Config lives in Cloudflare, not in a file in this repo — recorded here for
@@ -860,9 +860,9 @@ convention for `data/profiles/default.json` when it doesn't exist yet).
   restore-via-second-edit).
 - `nav-routing.spec.ts` -- REQ-0034 hash routing + the WebGL-churn
   regression guard (5 round trips away from `#/backpacks` and back).
-- `grid-8x8.spec.ts`, `preset-switch.spec.ts`, `long-press-rename.spec.ts`,
-  `auto-save.spec.ts` -- REQ-0031 Phase B coverage (8x8 grid, presets,
-  tab/preset rename, debounced auto-save).
+- `grid-8x8.spec.ts`, `squad-switch.spec.ts`, `long-press-rename.spec.ts`,
+  `auto-save.spec.ts` -- REQ-0031 Phase B coverage (8x8 grid, squads,
+  tab/squad rename, debounced auto-save).
 - `guest-auth.spec.ts` (REQ-0037) -- mints two guest players via the real
   `cli_invite.cjs` CLI; covers the `#/invite/<token>` flow (token stored,
   `/api/me` resolves, redirect + welcome banner), per-player board
@@ -877,7 +877,7 @@ The player-to-player Market: sellers carve an integer price on an
 inventory item, buyers settle it atomically, the furnace takes its 8%
 tithe. Business rules are frozen by the design mock
 `web/redesign/market.html` (three laws + copy deck); the client screen
-is a separate unit consuming `shared/dto.ts`'s `ApiMarket*` shapes.
+is a separate squad consuming `shared/dto.ts`'s `ApiMarket*` shapes.
 
 **The three laws (mock, FROZEN):**
 1. *Barter in kind* — no abstract currency; a price is `{tm, qty}`, an
@@ -912,8 +912,8 @@ files+pg parity in api_test).
 **Listing lifecycle.** Stored state: `active → settled | withdrawn |
 expired` (terminal). The listed item is NOT escrowed — it stays in the
 seller's inventory. `suspended` is DERIVED lazily at read time (the
-item's uid appears in a preset assigned to any slot of a non-canceled
-room of the seller — `deployedUidSet()`, reusing `services/units.cjs`'s
+item's uid appears in a squad assigned to any slot of a non-canceled
+room of the seller — `deployedUidSet()`, reusing `services/squads.cjs`'s
 uid-set scan) and reverts by itself on undeploy; it is never persisted.
 TTL: 7 days [TUNABLE], lazily flipped to `expired` on the next read
 (`normalizeListing()`, the market's `normalizeWarehouseStatus`
@@ -928,7 +928,7 @@ warehouse check runs BEFORE anything mutates: no partial settle), then
 one synchronous pass: listing→settled (the first-wins commit point —
 concurrent buys are strictly serialized by the event loop, the second
 one 409s), buyer canvas debited `qty` lrdst across stacks, seller
-canvas stripped of the item (inventory + stale preset references),
+canvas stripped of the item (inventory + stale squad references),
 item → buyer's warehouse as a normal claimable row
 (`sourceListingId`), proceeds `qty−burn` → seller's warehouse as a
 `kind:'tm'` row (grantTmQty shape; cap-exempt — settled proceeds are
@@ -960,13 +960,13 @@ etc.).
 **Dex numbering (v1 interpretation).** No dex-number registry exists in
 content yet; `dexNo` = 1-based position in
 `content/live/live_items.json`'s entries array (pilot-only overlay
-items get `null`). Owned by the future REQ-0052/dex unit; the client
+items get `null`). Owned by the future REQ-0052/dex squad; the client
 should consume the server-provided `dexNo` either way.
 
 **Scope notes.** v1 sells inventory POs only (every mock card is a PO,
 and the buyer-side delivery reuses the warehouse claim path, whose
 `claimWarehouseItem` validates against PO defs only); SIs/BPs are a
-later unit. No "fixed starter PO" concept exists in the codebase yet
+later squad. No "fixed starter PO" concept exists in the codebase yet
 (grep 'starter' across engine/services is empty) — nothing to exclude
 until that ships. `MARKET_DTO_VERSION` (=1) is stamped on every
 response envelope; bump together with `shared/dto.ts`'s

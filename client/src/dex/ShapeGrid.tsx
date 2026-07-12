@@ -73,7 +73,7 @@ interface ShapeGridProps {
    * native aspect). */
   iconDims?: { width: number; height: number } | null;
   /** REQ-0038 R2: mirrors ItemDef.stretch -- selects the same inset-
-   * fraction preset BoardRenderer's placed-PO draw path uses (see
+   * fraction squad BoardRenderer's placed-PO draw path uses (see
    * itemCard.ts's insetBoxFor). */
   iconStretch?: boolean;
   /** REQ-0102: directional icon alignment within the footprint (default middle/center). */

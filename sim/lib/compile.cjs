@@ -16,7 +16,7 @@ function cellsChebyshevAdjacent(cellsA, cellsB) {
   return false;
 }
 
-// Compute the absolute field cells for every PO instance in a unit
+// Compute the absolute field cells for every PO instance in a squad
 // snapshot, replicating engine.js's cellsOf/bpCells logic locally (we do
 // NOT call engine mutators; we only need the pure shape math, which is
 // simple enough to reimplement directly against plain-data state so this
@@ -40,23 +40,23 @@ function localBpCells(bpDef) {
   return bpDef.shape.map(([dr, dc]) => [bpDef.origin[0] + dr, bpDef.origin[1] + dc]);
 }
 
-// compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot)
-// unitState: deep-copied {bps:[...], pos:[...], layout:{ROWS,COLS}} (shape
+// compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot)
+// squadState: deep-copied {bps:[...], pos:[...], layout:{ROWS,COLS}} (shape
 // of content/live/scenario.json). itemDefsById: map id->PO def (from
 // live_items.json entries). formationId: one of FORMATIONS keys.
-// unitSlot: 'unit1'..'unit4' (which canvas box this unit occupies).
+// squadSlot: 'unit1'..'unit4' (which canvas box this squad occupies).
 //
 // Returns a compiled snapshot:
 // {
 //   bps: [{id,name,hpMax,hp,localCells,fieldCells,statusBag}],
 //   pos: [{uid,id,def,localCells,fieldCells,effects (buff-folded), bpId}],
 // }
-function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot, siDefsById) {
-  const st = deepCopy(unitState);
+function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, siDefsById) {
+  const st = deepCopy(squadState);
   const formation = FORMATIONS[formationId];
-  if (!formation) throw new Error('compileUnitSnapshot: unknown formation ' + formationId);
-  const boxStr = formation.canvases[unitSlot];
-  if (!boxStr) throw new Error('compileUnitSnapshot: unknown unit slot ' + unitSlot);
+  if (!formation) throw new Error('compileSquadSnapshot: unknown formation ' + formationId);
+  const boxStr = formation.canvases[squadSlot];
+  if (!boxStr) throw new Error('compileSquadSnapshot: unknown squad slot ' + squadSlot);
   const box = parseBox(boxStr);
   // Local (1-indexed, 8x8) -> shared field (A1:Z18) offset: field = local +
   // (box.rowMin-1, box.colMin-1), since local origin (1,1) maps to the
@@ -81,7 +81,7 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot, siD
   // each PO physically sits in (needed for buff_self_per_tag "in this BP").
   const posRaw = st.pos.filter(p => p.loc === 'grid').map(p => {
     const def = itemDefsById[p.id];
-    if (!def) throw new Error('compileUnitSnapshot: missing item def for ' + p.id);
+    if (!def) throw new Error('compileSquadSnapshot: missing item def for ' + p.id);
     const localCells = localCellsOfPO(p, def);
     const fieldCells = localCells.map(toField);
     const bpId = bpByLocalCellKey.get(localCells[0][0] + ',' + localCells[0][1]) || null;
@@ -237,7 +237,7 @@ function compileUnitSnapshot(unitState, itemDefsById, formationId, unitSlot, siD
     const def = siDefsById && siDefsById[si.id];
     return { uid: si.uid, id: si.id, hostPoUid, effects: (def && def.effects) ? deepCopy(def.effects) : [] };
   }).filter(x => x.hostPoUid && x.effects.length);
-  return { bps, pos, sis, formationId, unitSlot, box };
+  return { bps, pos, sis, formationId, squadSlot, box };
 }
 
 // =====================================================================
@@ -248,5 +248,5 @@ module.exports = {
   cellsChebyshevAdjacent,
   localCellsOfPO,
   localBpCells,
-  compileUnitSnapshot,
+  compileSquadSnapshot,
 };

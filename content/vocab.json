@@ -33,9 +33,9 @@
   "OnHit",
   "OnPOHit",
   "OnBPHierarchyHit",
-  "OnUnitHit",
+  "OnSquadHit",
   "OnBPBeenHit",
-  "OnUnitBeenHit"
+  "OnSquadBeenHit"
  ],
  "verbs": [
   "strike",
@@ -98,9 +98,9 @@
   "OnHit": ["SI", "PO", "Linker", "EnemySkill"],
   "OnPOHit": ["SI"],
   "OnBPHierarchyHit": ["SI", "PO", "Linker"],
-  "OnUnitHit": ["SI", "PO", "Linker", "EnemySkill"],
+  "OnSquadHit": ["SI", "PO", "Linker", "EnemySkill"],
   "OnBPBeenHit": ["SI", "PO", "Linker"],
-  "OnUnitBeenHit": ["SI", "PO", "Linker", "EnemySkill"]
+  "OnSquadBeenHit": ["SI", "PO", "Linker", "EnemySkill"]
  },
  "ranged_verb_params": {
   "strike": [

@@ -42,19 +42,19 @@ function isRawCell(v: unknown): v is RawCell {
 }
 
 /** One BP's footprint for monitor display, ALREADY positioned at its own
- * absolute canvas origin (row/col offset from the unit's local (1,1) --
+ * absolute canvas origin (row/col offset from the squad's local (1,1) --
  * NOT renormalized to (0,0) the way a single isolated BP's `shape` is).
- * REQ-0045 (d): a unit's canvas can hold MULTIPLE BPs, each at its own
+ * REQ-0045 (d): a squad's canvas can hold MULTIPLE BPs, each at its own
  * place on the shared 8x8 local grid -- see sim/combat.cjs's
- * compileUnitSnapshot/localBpCells, which already does exactly this for
+ * compileSquadSnapshot/localBpCells, which already does exactly this for
  * the actual combat simulation (bps.map(...) over EVERY bp, each cell
  * offset by its own bpDef.origin) -- this client-side visual type used
- * to carry only ONE representative {bpColor,bpShape} pair per unit
+ * to carry only ONE representative {bpColor,bpShape} pair per squad
  * (always the FIRST bp, always drawn as if `origin` were (0,0)/top-left
  * of the formation box), which is the client-only root of the "only the
  * first BP is copied, auto-placed top-left" bug; the sim itself was
  * always correct. */
-export interface MonitorUnitBP {
+export interface MonitorSquadBP {
   color: string;
   /** Absolute local-grid cells this BP occupies, i.e. shape offsets
    * already added to the BP's own origin (mirrors sim/combat.cjs's
@@ -63,31 +63,31 @@ export interface MonitorUnitBP {
 }
 
 /** One placed PO's icon, positioned at its own absolute local-grid
- * origin cell (top-left of its footprint) -- REQ-0045 (d): a unit's
+ * origin cell (top-left of its footprint) -- REQ-0045 (d): a squad's
  * canvas can hold multiple placed POs across its BPs; this used to carry
  * only one optional representative icon (never actually populated by
- * Monitor.tsx in practice), now a full list mirroring the preset's real
+ * Monitor.tsx in practice), now a full list mirroring the squad's real
  * `pos` array. */
-export interface MonitorUnitIcon {
+export interface MonitorSquadIcon {
   textureKey: string;
   shape: Offset[]; // unrotated PO footprint offsets (drawn at `rot`, matching computeFootprintCells' own rot param)
   rot: number;
   origin: Offset; // absolute local-grid top-left cell (PO.cell, 1-indexed local coords)
 }
 
-export interface MonitorUnitVisual {
+export interface MonitorSquadVisual {
   slotIndex: number;
   box: string; // "TopLeft:BottomRight", e.g. "F2:M9"
-  /** REQ-0045 (d): EVERY BP on this unit's canvas, each already
+  /** REQ-0045 (d): EVERY BP on this squad's canvas, each already
    * positioned at its own absolute origin -- a full 1:1 copy of the
-   * preset's `bps` array, not just bps[0]. */
-  bps: MonitorUnitBP[];
+   * squad's `bps` array, not just bps[0]. */
+  bps: MonitorSquadBP[];
   label: string;
-  /** REQ-0045 (d): EVERY placed PO on this unit's canvas (small-scale
+  /** REQ-0045 (d): EVERY placed PO on this squad's canvas (small-scale
    * art per the task brief -- "small-scale BP/PO art", not a full
    * per-item render), each at its own absolute origin cell. Empty array
-   * (not optional) when the preset has no placed POs. */
-  icons: MonitorUnitIcon[];
+   * (not optional) when the squad has no placed POs. */
+  icons: MonitorSquadIcon[];
 }
 
 export interface MonitorEnemyDef {
@@ -104,7 +104,7 @@ interface FieldMarker {
 
 /** Persistent Pixi scene for the monitor's expanded view. Construct once
  * (Monitor.tsx's useEffect, mount-once dependency array), call
- * mountUnits() once player-side data is known, then feed NEW (only)
+ * mountSquads() once player-side data is known, then feed NEW (only)
  * events via applyEvents() on every poll tick -- see Monitor.tsx's own
  * poll-and-diff loop for how "only the new tail" is computed before
  * calling in here. destroy() tears down the Application (called only on
@@ -119,13 +119,13 @@ export class MonitorRenderer {
   private enemyMarkers = new Map<string, FieldMarker>();
   private discovered = new Set<string>();
   private textures: Map<string, Texture>;
-  /** REQ-0045 (d) regression-test seam: the exact units array mountUnits()
-   * was last called with, exposed read-only via getLastMountedUnits() so
+  /** REQ-0045 (d) regression-test seam: the exact squads array mountSquads()
+   * was last called with, exposed read-only via getLastMountedSquads() so
    * client/e2e/*.spec.ts can assert on the full BP/PO copy (every BP's
    * cells, every placed PO's icon) instead of reverse-engineering PixiJS
    * canvas pixel colors -- same rationale as store.ts's own
    * __backpackDebug hook. Never read by any production UI code path. */
-  private lastMountedUnits: MonitorUnitVisual[] = [];
+  private lastMountedSquads: MonitorSquadVisual[] = [];
   /** REQ-0097 / REQ-0099: every ticker callback currently animating a
    * transient ray/flash/pulse effect. reset() removes them all from the
    * PIXI ticker synchronously (and purges the ray layer alongside), so an
@@ -174,19 +174,19 @@ export class MonitorRenderer {
     field.addChild(bg);
   }
 
-  /** Draws each unit's formation box + BP-colored footprint + (optional)
+  /** Draws each squad's formation box + BP-colored footprint + (optional)
    * a small representative icon, on the PLAYER side. Idempotent-ish:
-   * clears any prior unit visuals first (called once per room-open, not
-   * per poll -- formation/unit assignment doesn't change mid-run). */
-  mountUnits(units: MonitorUnitVisual[]): void {
-    this.lastMountedUnits = units;
-    // Remove any previously-drawn unit graphics (keep the backdrop, which
+   * clears any prior squad visuals first (called once per room-open, not
+   * per poll -- formation/squad assignment doesn't change mid-run). */
+  mountSquads(squads: MonitorSquadVisual[]): void {
+    this.lastMountedSquads = squads;
+    // Remove any previously-drawn squad graphics (keep the backdrop, which
     // is always this container's first child).
     while (this.playerField.children.length > 1) {
       this.playerField.removeChildAt(1);
     }
-    for (const unit of units) {
-      const rect = parseBoxToPixelRect(unit.box, FIELD_CELL_PX);
+    for (const squad of squads) {
+      const rect = parseBoxToPixelRect(squad.box, FIELD_CELL_PX);
       const cellW = rect.w / 8;
       const cellH = rect.h / 8;
 
@@ -197,11 +197,11 @@ export class MonitorRenderer {
       this.playerField.addChild(outline);
 
       // REQ-0045 (d): draw EVERY BP's footprint, each at its OWN absolute
-      // local-grid cells (unit.bps[i].cells already carries origin-
-      // adjusted offsets -- see MonitorUnitBP's own doc) -- a 1:1 visual
-      // copy of the preset's real bps array, not just bps[0] drawn as if
+      // local-grid cells (squad.bps[i].cells already carries origin-
+      // adjusted offsets -- see MonitorSquadBP's own doc) -- a 1:1 visual
+      // copy of the squad's real bps array, not just bps[0] drawn as if
       // it alone occupied the whole box from (0,0).
-      for (const bp of unit.bps) {
+      for (const bp of squad.bps) {
         const g = new Graphics();
         const colorNum = parseInt(bp.color.replace('#', ''), 16) || 0x888888;
         for (const [r, c] of bp.cells) {
@@ -211,7 +211,7 @@ export class MonitorRenderer {
         this.playerField.addChild(g);
       }
 
-      const label = new Text({ text: unit.label, style: { fill: 0xe8e0d0, fontSize: 10 } });
+      const label = new Text({ text: squad.label, style: { fill: 0xe8e0d0, fontSize: 10 } });
       label.x = rect.x + 2;
       label.y = rect.y + 2;
       label.eventMode = 'none';
@@ -219,11 +219,11 @@ export class MonitorRenderer {
 
       // REQ-0045 (d): draw EVERY placed PO's icon (small-scale art, per
       // the task brief), each at its own absolute origin cell -- a 1:1
-      // copy of the preset's real pos array, not a single "one
+      // copy of the squad's real pos array, not a single "one
       // representative" icon (which Monitor.tsx never actually populated
-      // in practice anyway -- units[].icon was always undefined before
+      // in practice anyway -- squads[].icon was always undefined before
       // this fix).
-      for (const icon of unit.icons) {
+      for (const icon of squad.icons) {
         const texture = this.textures.get(icon.textureKey);
         if (!texture) continue;
         const footprint = computeFootprintCells(icon.shape, icon.rot);
@@ -508,9 +508,9 @@ export class MonitorRenderer {
     }
   }
 
-  /** REQ-0045 (d) regression-test seam -- read-only; exact array mountUnits() got. */
-  getLastMountedUnits(): MonitorUnitVisual[] {
-    return this.lastMountedUnits;
+  /** REQ-0045 (d) regression-test seam -- read-only; exact array mountSquads() got. */
+  getLastMountedSquads(): MonitorSquadVisual[] {
+    return this.lastMountedSquads;
   }
 
   /** REQ-0045 (f) regression-test seam: each enemy marker's local x + rendered label width. */
@@ -523,9 +523,9 @@ export class MonitorRenderer {
   }
 
   /** REQ-0097 (shared re-targetable monitor) / REQ-0099 (replay scrub): clear ALL
-   * per-run transient + discovered state back to the mounted-units baseline -- cancel
+   * per-run transient + discovered state back to the mounted-squads baseline -- cancel
    * every in-flight ticker animation, empty the ray layer, destroy every enemy marker,
-   * and forget every discovered id. Player-side unit visuals (mountUnits) are left
+   * and forget every discovered id. Player-side squad visuals (mountSquads) are left
    * untouched; retarget() re-mounts them for a different run. After reset(),
    * getEnemyMarkerBounds() is empty, so REQ-0097's "no residual actor/pip leak across
    * retargets" guard holds. */
@@ -546,11 +546,11 @@ export class MonitorRenderer {
   }
 
   /** REQ-0097: point this ONE shared monitor at a DIFFERENT room's run -- reset all
-   * per-run state, then re-mount the newly-selected run's player units. The caller
+   * per-run state, then re-mount the newly-selected run's player squads. The caller
    * (Monitor.tsx) resets its own event cursor so applyEvents() feeds from the top. */
-  retarget(units: MonitorUnitVisual[]): void {
+  retarget(squads: MonitorSquadVisual[]): void {
     this.reset();
-    this.mountUnits(units);
+    this.mountSquads(squads);
   }
 
   destroy(): void {

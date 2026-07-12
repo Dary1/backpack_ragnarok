@@ -1,6 +1,6 @@
 'use strict';
 // server/services/market.cjs -- REQ-0064: the player-to-player Market
-// service (server side; the client screen is a separate, later unit that
+// service (server side; the client screen is a separate, later squad that
 // consumes the DTOs this module shapes -- see shared/dto.ts's ApiMarket*
 // types). Business rules are frozen by the design mock
 // web/redesign/market.html ("three laws" + copy deck, REQ-0065 embedded
@@ -57,7 +57,7 @@
 // synchronously on the single-threaded server (pg_sync's querySync
 // blocks too), so two concurrent buys can never interleave mid-settle:
 // the second request finds state==='settled' and 409s (first-wins).
-// CLIENT GOTCHA (for the market screen unit): after a successful buy /
+// CLIENT GOTCHA (for the market screen squad): after a successful buy /
 // after one of your listings settles, re-GET your profile before the
 // next auto-save PUT -- a stale in-flight auto-save can resurrect the
 // pre-trade canvas (the exact bug class REQ-0041 documented). Same
@@ -68,7 +68,7 @@ const os = require('os');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, getScheduleContent, genId } = require('./core.cjs');
-const { presetCanvasOf, presetUidSet } = require('./units.cjs');
+const { squadCanvasOf, squadUidSet } = require('./squads.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('./warehouse.cjs');
 
 // Same repo-root resolution convention as services/core.cjs (computed at
@@ -102,7 +102,7 @@ function burnOf(qty) {
 // ---------------------------------------------------------------------
 // Dex numbering (mock: "No.061" chips; q= search accepts a Dex No.).
 // No dex-number registry exists in content yet (REQ-0052's dex cards
-// are a later unit) -- v1 interpretation: dexNo = 1-based position of
+// are a later squad) -- v1 interpretation: dexNo = 1-based position of
 // the item's entry in content/live/live_items.json's entries array (the
 // exact order /api/content serves). Pilot-batch overlay items absent
 // from live_items.json get dexNo null ("not in the dex yet").
@@ -134,7 +134,7 @@ function getDexNoById() {
 // services/warehouse.cjs claimWarehouseItem. NOTE (REQ-0115): that claim
 // path now also accepts SI ids (itemDefsById OR siDefsById), so an SI row
 // IS claimable -- market still lists POs only as a v1 scope choice, not a
-// claim-path limitation. BP listings remain a later unit.
+// claim-path limitation. BP listings remain a later squad.
 // No "fixed starter PO" concept exists in the codebase today (grep for
 // 'starter' across mock-src/engine.js, shared/engine.d.ts and
 // server/services/ comes back empty), so there is no starter-item
@@ -165,14 +165,14 @@ function readTmBalance(canvas, tmId) {
 }
 
 // deployedUidSet: every uid the player currently has "deployed" -- i.e.
-// referenced by a preset assigned to any slot of any of their own
+// referenced by a squad assigned to any slot of any of their own
 // schedule rooms whose status is 'open' or 'active' (an 'open' room
 // with filled slots auto-starts its next run on the next poll --
-// services/runs.cjs's maybeAutoStartNextRun -- so its units are
+// services/runs.cjs's maybeAutoStartNextRun -- so its squads are
 // "standing ready for war" per the mock's own empty-state copy; only
 // 'canceled' rooms release their uids). This is the market's Law of
 // Possession gate and the lazy suspension source. Reuses services/
-// units.cjs's presetCanvasOf/presetUidSet -- the same uid-set scan the
+// squads.cjs's squadCanvasOf/squadUidSet -- the same uid-set scan the
 // deploy gate itself uses (deployedUidSetsForGate).
 function deployedUidSet(playerId, canvas) {
   const out = new Set();
@@ -181,8 +181,8 @@ function deployedUidSet(playerId, canvas) {
     if (room.ownerId !== playerId) continue;
     if (room.status !== 'open' && room.status !== 'active') continue;
     for (const slot of room.slots || []) {
-      if (slot.presetIndex == null) continue;
-      for (const uid of presetUidSet(presetCanvasOf(canvas, slot.presetIndex))) out.add(uid);
+      if (slot.squadIndex == null) continue;
+      for (const uid of squadUidSet(squadCanvasOf(canvas, slot.squadIndex))) out.add(uid);
     }
   }
   return out;
@@ -515,8 +515,8 @@ function devClearAllListings(nowMs) {
 }
 
 // stripPoFromCanvas: removes every pos[] entry with `uid` from the
-// canvas -- inventory pages, the active preset's top-level pos[], and
-// every stored preset snapshot (presets that merely REFERENCE the
+// canvas -- inventory pages, the active squad's top-level pos[], and
+// every stored squad snapshot (squads that merely REFERENCE the
 // inventory-homed item; eligibility already guarantees none of them is
 // deployed, but a stale un-deployed reference must not survive as a
 // ghost). Same containers finalizeClaimingItemsForCanvas scans.
@@ -646,7 +646,7 @@ function buyListing(buyerId, listingId, idemKey) {
   storage.writeProfile(buyerId, buyerCanvas);
 
   // (3/7) remove the item from the seller (inventory + every
-  // non-deployed preset reference).
+  // non-deployed squad reference).
   stripPoFromCanvas(sellerCanvas, listing.itemUid);
   storage.writeProfile(listing.sellerId, sellerCanvas);
 

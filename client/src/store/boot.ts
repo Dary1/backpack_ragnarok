@@ -70,7 +70,7 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
  */
 export async function boot(): Promise<void> {
   // REQ-0041 fix -- boot-sequence auth race (found while adding
-  // SlotsPanel.tsx's client-side isUnitDeployable gate, which was the
+  // SlotsPanel.tsx's client-side isSquadDeployable gate, which was the
   // first thing in this app to actually notice its symptom): this
   // function is called UNCONDITIONALLY and SYNCHRONOUSLY at module load
   // (main.tsx's top-level `boot()` call), which fires this function's
@@ -176,11 +176,11 @@ export async function boot(): Promise<void> {
   // this is a local/mock-backed dev app with no production deployment
   // concept of its own, so an always-present hook carries no real
   // exposure risk). Exposes the reference-model queries (tintSets/
-  // usageOf/isUnitIndependent/usedByCurrent) directly off the live
+  // usageOf/isSquadIndependent/usedByCurrent) directly off the live
   // `engine`/`state` closures captured here -- both are stable
   // references that the engine mutates IN PLACE (see this file's own
   // module comment), so this hook always reflects the CURRENT state with
-  // zero extra wiring, even across preset switches/board mutations/
+  // zero extra wiring, even across squad switches/board mutations/
   // reloads-within-this-boot. Exists purely so client/e2e/*.spec.ts can
   // assert on exact uid sets (`page.evaluate(() => window.__backpackDebug
   // .tintSets())`) instead of reverse-engineering PixiJS canvas pixel
@@ -190,10 +190,10 @@ export async function boot(): Promise<void> {
     usageOf: (uid: string) => engine.usageOf(state, uid),
     usedByCurrent: (uid: string) => engine.usedByCurrent(state, uid),
     usedByOthers: (uid: string) => engine.usedByOthers(state, uid),
-    isUnitIndependent: (n: number) => engine.isUnitIndependent(state, n),
+    isSquadIndependent: (n: number) => engine.isSquadIndependent(state, n),
     // REQ-0041 feedback 5: exposed for the same reason/parity as
-    // isUnitIndependent just above (client/e2e/*.spec.ts assertions).
-    isUnitDeployable: (n: number) => engine.isUnitDeployable(state, n),
+    // isSquadIndependent just above (client/e2e/*.spec.ts assertions).
+    isSquadDeployable: (n: number) => engine.isSquadDeployable(state, n),
   };
 }
 

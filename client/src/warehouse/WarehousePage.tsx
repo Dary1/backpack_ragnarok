@@ -375,7 +375,7 @@ function firstFitPlace(
  * inv-tab button at `pageIndex`, found via LongPressTabs.tsx's
  * data-tab-index attribute -- a plain DOM query rather than plumbing a
  * "pulsing page index" prop through Tabs.tsx/LongPressTabs.tsx (both
- * shared with the preset-tabs use of the same component), matching this
+ * shared with the squad-tabs use of the same component), matching this
  * REQ's overall preference for additive, minimally-invasive hooks. */
 function pulseTab(pageIndex: number): void {
   const el = document.querySelector<HTMLElement>(`[data-tab-kind="inv"][data-tab-index="${pageIndex}"]`);

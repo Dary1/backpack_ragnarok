@@ -140,7 +140,7 @@ function packsForLevel(level) {
 
 // rollCount: deterministic "0..max" roll whose probability of a higher
 // count increases with level (documented interpretation: level/(level+4)
-// chance per extra unit, i.e. asymptotically approaches max as level
+// chance per extra squad, i.e. asymptotically approaches max as level
 // grows, staying near 0 at level 1). Uses its own named sub-stream so it
 // never desyncs any other roll.
 function rollCountForLevel(rng, streamName, max, level) {

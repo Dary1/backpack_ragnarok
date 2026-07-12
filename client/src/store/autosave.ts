@@ -26,7 +26,7 @@ import { cancelCarry } from '../board/drag';
 import { snapshot, setSnapshot } from './core';
 import type { StoreSnapshot } from './core';
 import { resolveProfileId, resolveSaveProfileId, refreshMe } from './boot';
-import { notifyStateChanged } from './presets';
+import { notifyStateChanged } from './squads';
 
 const AUTO_SAVE_DEBOUNCE_MS = 800;
 const RETRY_BASE_MS = 1000;
@@ -54,7 +54,7 @@ function setAutoSaveStatus(status: StoreSnapshot['autoSaveStatus']): void {
 
 /** Debounces a background PUT of the current live GameState. Called from
  * notifyStateChanged() -- i.e. after every committed engine mutation
- * (drag-drop, rotate, seat/stow, chain-link toggle, preset switch, rename,
+ * (drag-drop, rotate, seat/stow, chain-link toggle, squad switch, rename,
  * ...) and after loadGame()'s own field replacement. Resets the timer on
  * every call within the debounce window, so a rapid burst of mutations
  * collapses into a single PUT AUTO_SAVE_DEBOUNCE_MS after the last one.

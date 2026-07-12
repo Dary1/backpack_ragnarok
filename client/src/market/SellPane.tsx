@@ -26,8 +26,8 @@ interface SellableItem {
 }
 
 /** Collects every inventory-homed PO across all inventory pages -- the
- * server's own "sellable = inventory PO" definition. Board/preset items
- * (state.pos / presets.store) are deliberately excluded: those are the
+ * server's own "sellable = inventory PO" definition. Board/squad items
+ * (state.pos / squads.store) are deliberately excluded: those are the
  * deployed/placed set the server refuses. */
 function collectSellable(state: GameState | null): SellableItem[] {
   if (!state || !state.inv || !Array.isArray(state.inv.pages)) return [];

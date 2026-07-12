@@ -164,7 +164,7 @@ function drawPOArt(p,parent,x,y){ // art only, at pixel (x,y), rotation-aware
   // REQ-0028 (aspect law): art must be contain-fit uniformly, never
   // stretched to fill independently on x/y. `stretch` items (blade/hilt)
   // historically used a tighter safe-box than other items -- that box-
-  // TIGHTNESS distinction is preserved (still two margin presets below),
+  // TIGHTNESS distinction is preserved (still two margin squads below),
   // but each box is now built with the SAME fractional inset on both axes
   // (instead of different x-fraction vs y-fraction/absolute-px formulas),
   // so the box itself never encodes a non-uniform squeeze. The <use>

@@ -7,7 +7,7 @@
 'use strict';
 function rotOffsets(base,k){
   // Defensive guard (REQ-0041 bug #4 hardening): an EMPTY `base` shape
-  // (never produced by any real content item today, but a 0-BP unit's
+  // (never produced by any real content item today, but a 0-BP squad's
   // degenerate footprint elsewhere in this REQ's investigation made clear
   // this whole family of "spread an empty array into Math.min/max" bugs
   // is a real landmine -- see client/src/render/itemCard.ts's
@@ -667,9 +667,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // reorderInvPage(st,from,to): moves inventory page `from` to index `to`
-  // (0-based, same splice-out/splice-in semantics as reorderPreset). The
+  // (0-based, same splice-out/splice-in semantics as reorderSquad). The
   // page's ENTIRE contents ({bps,pos,sis}) and its display name move
-  // together as one unit -- st.inv.pages and st.inv.names are permuted in
+  // together as one squad -- st.inv.pages and st.inv.names are permuted in
   // lockstep so page N's name always still describes page N's contents
   // after the move.
   //
@@ -695,8 +695,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // shown) is CLIENT-side UI state, not part of engine `st` -- this
   // function does not know or care which page is "active"; the client
   // (store.ts) is responsible for applying the identical index-shift rule
-  // (reorderPresetIndex's logic, generalized) to its own activeInvPage
-  // field after a successful call here, mirroring the preset active-index
+  // (reorderSquadIndex's logic, generalized) to its own activeInvPage
+  // field after a successful call here, mirroring the squad active-index
   // rule on the inventory-page axis.
   function reorderInvPage(st,from,to){
     if(!st.inv)return {ok:false,why:'no inventory'};
@@ -905,7 +905,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     engine (createRef/removeRef only dispatch 'po'|'bp'|'si', see
   //     their 'unknown kind' fallthrough), TM simply never gets a
   //     createRef/removeRef branch and never appears in st.bps/pos/sis or
-  //     any presets.store[i] snapshot -- so it structurally cannot reach
+  //     any squads.store[i] snapshot -- so it structurally cannot reach
   //     the canvas. No new "restriction check" is needed or added.
   //   - Footprint is always 1x1, and the free-cell collision rule is a
   //     byte-for-byte copy of invCanPlaceSI's free-SI rule: outside-page
@@ -1231,38 +1231,38 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // record, SAME uid, SAME shape as the home record (a PO reference is
   // {uid,id,loc,cell,rot}; a BP reference is the usual {id,name,color,
   // shape,origin,linker} object; an SI reference is {uid,id,host}) living
-  // in a preset's canvas -- st.{bps,pos,sis} for the ACTIVE preset, or
+  // in a squad's canvas -- st.{bps,pos,sis} for the ACTIVE squad, or
   // st.presets.store[i].{bps,pos,sis} for an inactive one. This is why
   // NOTHING about canPlacePO/movePO/cellsOf/sockets/traceBeams/combos/
-  // switchPreset needs to change: they only ever read/write "whichever
+  // switchSquad needs to change: they only ever read/write "whichever
   // array the record currently lives in" and were always agnostic to
   // whether that record was the sole copy of a uid or one of several.
   //
-  // A uid may have AT MOST ONE reference per preset (that preset's own
+  // A uid may have AT MOST ONE reference per squad (that squad's own
   // canvas), but the SAME uid may be simultaneously referenced by several
-  // DIFFERENT presets -- each such reference is an independent record with
-  // its own cell/rot/origin/host, so e.g. an SI can be seated in preset A
-  // and stowed in preset B at the same time ("preset owns its SI seat
+  // DIFFERENT squads -- each such reference is an independent record with
+  // its own cell/rot/origin/host, so e.g. an SI can be seated in squad A
+  // and stowed in squad B at the same time ("squad owns its SI seat
   // state after creation").
   //
-  // usageOf(st,uid): every preset index (0-based) that currently holds a
-  // reference to `uid`, scanning the ACTIVE preset's top-level fields
-  // (st.bps/pos/sis) for st.presets.active, and every OTHER preset's
+  // usageOf(st,uid): every squad index (0-based) that currently holds a
+  // reference to `uid`, scanning the ACTIVE squad's top-level fields
+  // (st.bps/pos/sis) for st.presets.active, and every OTHER squad's
   // store[i] snapshot for the rest. Deliberately recomputed on demand
   // (never cached/stored) -- REQ-0033 orchestrator direction: "prefer
-  // computing from active canvas + presets.store on demand over stored
-  // duplication" -- at this scale (PRESET_COUNT=5, a few dozen placed
-  // items) a full preset scan is microseconds; see the perf note on
+  // computing from active canvas + squads.store on demand over stored
+  // duplication" -- at this scale (SQUAD_COUNT=5, a few dozen placed
+  // items) a full squad scan is microseconds; see the perf note on
   // tintSets below for the measurement.
-  function presetCanvasOf(st,idx){
+  function squadCanvasOf(st,idx){
     return idx===st.presets.active?{bps:st.bps,pos:st.pos,sis:st.sis}:(st.presets.store[idx]||{bps:[],pos:[],sis:[]});
   }
-  function presetCount(st){return st.presets?st.presets.store.length:0;}
+  function squadCount(st){return st.presets?st.presets.store.length:0;}
   function usageOf(st,uid){
     if(!st.presets)return [];
     const out=[];
-    for(let i=0;i<presetCount(st);i++){
-      const c=presetCanvasOf(st,i);
+    for(let i=0;i<squadCount(st);i++){
+      const c=squadCanvasOf(st,i);
       const hit=c.pos.some(p=>p.uid===uid)||c.bps.some(b=>b.id===uid)||c.sis.some(a=>a.uid===uid);
       if(hit)out.push(i);
     }
@@ -1281,7 +1281,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return usageOf(st,uid).some(i=>i!==active);
   }
   // Every uid (PO/BP/SI) that currently has a HOME in the shared inventory
-  // -- the universe tintSets()/isUnitIndependent() need to scan. Canvas-
+  // -- the universe tintSets()/isSquadIndependent() need to scan. Canvas-
   // only synthetic fixtures (tests that hand-build a `st` with no st.inv at
   // all) simply produce an empty universe -- these queries then correctly
   // report empty red/yellow sets rather than throwing.
@@ -1296,23 +1296,23 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return out;
   }
   // tintSets(st): {red,yellow,canvasYellow} -- all Sets of uid strings.
-  //   red: every uid referenced by the CURRENT preset (spec item 2) --
+  //   red: every uid referenced by the CURRENT squad (spec item 2) --
   //     shown in the INVENTORY with the red "already used here" tint, and
   //     also the set the red rule (createRef) itself refuses to duplicate.
-  //   yellow: every uid used by at least one OTHER preset (spec item 3) --
+  //   yellow: every uid used by at least one OTHER squad (spec item 3) --
   //     shown in the INVENTORY with the yellow "shared elsewhere" tint.
   //     NOT mutually exclusive with red: a uid can be referenced by the
-  //     current preset AND by another preset at the same time (red wins
+  //     current squad AND by another squad at the same time (red wins
   //     visually in the inventory per spec's red-vs-yellow framing, but
   //     both booleans are exposed here -- rendering policy is a Phase 2
   //     concern, not this function's).
   //   canvasYellow: the subset of `red` that is ALSO in `yellow` -- i.e.
   //     uids sitting on the CURRENT canvas right now that are shared with
-  //     some other preset ("the same yellow indicator also shows on the
-  //     Preset(canvas) display", spec item 3).
-  // Perf: O(PRESET_COUNT x items-per-preset) per uid tested x number of
-  // home uids scanned = O(homes x presets x canvas-size), i.e. a handful
-  // of presets times a few dozen items -- comfortably sub-millisecond at
+  //     some other squad ("the same yellow indicator also shows on the
+  //     Squad(canvas) display", spec item 3).
+  // Perf: O(SQUAD_COUNT x items-per-squad) per uid tested x number of
+  // home uids scanned = O(homes x squads x canvas-size), i.e. a handful
+  // of squads times a few dozen items -- comfortably sub-millisecond at
   // this game's scale; no caching/index maintenance is warranted (measured
   // via the perf smoke test in run.cjs).
   function tintSets(st){
@@ -1328,51 +1328,51 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const canvasYellow=new Set([...red].filter(u=>yellow.has(u)));
     return {red,yellow,canvasYellow};
   }
-  // isUnitIndependent(st,n): true iff preset n's referenced uids share NO
-  // uid with any OTHER preset -- "a Preset containing ZERO yellow-tinted
-  // items is an independent Unit" (spec item 5), phrased as a direct
-  // per-preset predicate rather than requiring the caller to intersect
-  // tintSets() themselves. Empty presets are vacuously independent.
-  function isUnitIndependent(st,n){
+  // isSquadIndependent(st,n): true iff squad n's referenced uids share NO
+  // uid with any OTHER squad -- "a Squad containing ZERO yellow-tinted
+  // items is an independent Squad" (spec item 5), phrased as a direct
+  // per-squad predicate rather than requiring the caller to intersect
+  // tintSets() themselves. Empty squads are vacuously independent.
+  function isSquadIndependent(st,n){
     if(!st.presets)return true;
-    const mine=presetCanvasOf(st,n);
+    const mine=squadCanvasOf(st,n);
     const mineUids=new Set([...mine.pos.map(p=>p.uid),...mine.bps.map(b=>b.id),...mine.sis.map(a=>a.uid)]);
     if(!mineUids.size)return true;
-    for(let i=0;i<presetCount(st);i++){
+    for(let i=0;i<squadCount(st);i++){
       if(i===n)continue;
-      const other=presetCanvasOf(st,i);
+      const other=squadCanvasOf(st,i);
       for(const p of other.pos)if(mineUids.has(p.uid))return false;
       for(const b of other.bps)if(mineUids.has(b.id))return false;
       for(const a of other.sis)if(mineUids.has(a.uid))return false;
     }
     return true;
   }
-  // isUnitDeployable(st,n): REQ-0041 feedback 5 -- "presets WITHOUT any BP
-  // must NOT be deployable" (Backpack-as-HP: zero BP means the unit has no
+  // isSquadDeployable(st,n): REQ-0041 feedback 5 -- "squads WITHOUT any BP
+  // must NOT be deployable" (Backpack-as-HP: zero BP means the squad has no
   // hp pool at all, i.e. it would be "dead on arrival" the instant a run
   // started -- combat_spec_draft.md/sim/combat.cjs's totalHpMax==0 guard
-  // already treats an all-zero-BP PARTY specially; this is the single-unit
-  // precondition that keeps an individual unit from ever reaching that
-  // state in the first place). Returns true iff preset n's canvas has AT
+  // already treats an all-zero-BP TROOP specially; this is the single-squad
+  // precondition that keeps an individual squad from ever reaching that
+  // state in the first place). Returns true iff squad n's canvas has AT
   // LEast one BP (bps.length>=1) -- a PURELY STRUCTURAL check, completely
-  // independent of isUnitIndependent's uid-sharing concern: this is a
+  // independent of isSquadIndependent's uid-sharing concern: this is a
   // SEPARATE predicate on purpose (per the REQ: "combine with
-  // isUnitIndependent at call sites, keep functions separate" -- do not
-  // fold this into isUnitIndependent's own logic, and do not make
-  // isUnitIndependent imply/require it). Callers that need both
+  // isSquadIndependent at call sites, keep functions separate" -- do not
+  // fold this into isSquadIndependent's own logic, and do not make
+  // isSquadIndependent imply/require it). Callers that need both
   // conditions (e.g. the deploy gate) AND the two predicates together at
-  // the call site. Uses the SAME presetCanvasOf(st,idx) lookup
-  // isUnitIndependent/presetUidSet/tintSets already share (idx===active
+  // the call site. Uses the SAME squadCanvasOf(st,idx) lookup
+  // isSquadIndependent/squadUidSet/tintSets already share (idx===active
   // reads the top-level canvas fields; any other index reads that
-  // preset's store[] snapshot) -- no separate/duplicated canvas lookup.
-  function isUnitDeployable(st,n){
-    // Mirrors isUnitIndependent's own "no st.presets at all" guard
-    // (vacuous case) -- presetCanvasOf() itself does NOT null-check
+  // squad's store[] snapshot) -- no separate/duplicated canvas lookup.
+  function isSquadDeployable(st,n){
+    // Mirrors isSquadIndependent's own "no st.presets at all" guard
+    // (vacuous case) -- squadCanvasOf() itself does NOT null-check
     // st.presets (it directly reads st.presets.active), so this function
-    // must guard BEFORE calling it, exactly like isUnitIndependent does,
-    // rather than relying on presetCanvasOf to degrade gracefully.
+    // must guard BEFORE calling it, exactly like isSquadIndependent does,
+    // rather than relying on squadCanvasOf to degrade gracefully.
     if(!st.presets)return false;
-    const canvas=presetCanvasOf(st,n);
+    const canvas=squadCanvasOf(st,n);
     return !!(canvas&&Array.isArray(canvas.bps)&&canvas.bps.length>=1);
   }
 
@@ -1394,8 +1394,8 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // createRef(st,kind,uid,placement): creates a REFERENCE to a home item
-  // in the CURRENT preset's canvas (st.pos/bps/sis). Refuses (red rule) if
-  // the current preset already holds a reference to this uid. The home
+  // in the CURRENT squad's canvas (st.pos/bps/sis). Refuses (red rule) if
+  // the current squad already holds a reference to this uid. The home
   // record is left untouched in st.inv.pages. `placement` shape depends on
   // `kind`:
   //   'po': {cell,rot} (or 'inv' meaning "no canvas presence" -- but a
@@ -1409,10 +1409,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     not currently reachable from the client's own drag UX, but kept
   //     legal at the engine level since nothing else requires it be seated
   //     immediately).
-  // Returns {ok:false,why:'already referenced by current preset'} (the red
+  // Returns {ok:false,why:'already referenced by current squad'} (the red
   // rule) or {ok:false,why:'no home'} if uid has no home record at all.
   function createRef(st,kind,uid,placement){
-    if(usedByCurrent(st,uid))return {ok:false,why:'already referenced by current preset'};
+    if(usedByCurrent(st,uid))return {ok:false,why:'already referenced by current squad'};
     const home=homeLocationOf(st,uid);
     if(!home||home.kind!==kind)return {ok:false,why:'no home'};
     if(kind==='po'){
@@ -1450,12 +1450,12 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:false,why:'unknown kind'};
   }
 
-  // removeRef(st,kind,uid): removes the CURRENT preset's reference to uid
+  // removeRef(st,kind,uid): removes the CURRENT squad's reference to uid
   // (if any) from st.pos/bps/sis. The home record is NEVER touched -- the
   // item stays exactly where it already is in inventory (canvas->inv drag
   // under the reference model: "drop cell irrelevant", spec + engine
   // design section). A no-op {ok:true,removed:false} if the current
-  // preset holds no such reference (nothing to remove is not an error).
+  // squad holds no such reference (nothing to remove is not an error).
   function removeRef(st,kind,uid){
     if(kind==='po'){
       const idx=st.pos.findIndex(p=>p.uid===uid);
@@ -1488,12 +1488,12 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // home BP's own origin/shape in its home container) -- the home
   // placement is the only page-independent source of truth for "is this
   // PO inside this BP", since canvas references get their OWN origin
-  // (spec: "preset keeps its OWN SI seat assignments... after creation",
+  // (spec: "squad keeps its OWN SI seat assignments... after creation",
   // same principle extends to "which POs travel" being decided once, at
   // reference-creation time, from the home arrangement).
-  //   pos: home-contained POs NOT already referenced by the current preset.
+  //   pos: home-contained POs NOT already referenced by the current squad.
   //   excluded: home-contained POs that ARE already referenced by the
-  //     current preset (spec item 4 -- these are the ones left behind).
+  //     current squad (spec item 4 -- these are the ones left behind).
   //   sis: SIs seated on any INCLUDED (non-excluded) PO. An excluded PO's
   //     own seated SI does NOT travel (test: "excluded PO's SI stays") --
   //     it simply remains un-referenced by this operation (the SI's home
@@ -1521,17 +1521,17 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // Three distinct cases, dispatched on {from.loc,to.loc}:
   //   inv -> canvas: REFERENCE creation with exclusions (spec item 4).
   //     The BP's home stays in st.inv.pages[from.page] untouched; the
-  //     CURRENT preset (`to` must be {loc:'canvas'}) gets a NEW BP
+  //     CURRENT squad (`to` must be {loc:'canvas'}) gets a NEW BP
   //     reference at `origin`, plus new PO/SI references for
   //     bpReferenceSet()'s non-excluded contents (placed at the SAME
   //     relative cell offset from the new origin as their home records
   //     have from the BP's home origin -- i.e. the arrangement is
   //     preserved, just translated to the new origin, exactly like the
   //     old physical transferBP's dr/dc shift).
-  //   canvas -> inv: REFERENCE removal. Removes the CURRENT preset's BP
+  //   canvas -> inv: REFERENCE removal. Removes the CURRENT squad's BP
   //     reference and every PO/SI reference it brought along (their own
-  //     current-preset references, i.e. removeRef('po'/'si') for each
-  //     nested uid still referenced by the current preset). The home
+  //     current-squad references, i.e. removeRef('po'/'si') for each
+  //     nested uid still referenced by the current squad). The home
   //     record(s) are never touched; `to.page`/`origin` are IGNORED (spec:
   //     "drop cell irrelevant"). `from` must be {loc:'canvas'}.
   //   inv -> inv (page<->page): PHYSICAL home move, byte-identical to the
@@ -1541,10 +1541,10 @@ function create(ITEMS,SI_DEFS,layout,trees){
   //     moving a BP between two pages is still a real relocation of the
   //     one-and-only home record, same as before this REQ.
   // canvas -> canvas is not a reachable case via this function (a single
-  // active preset's canvas is the only "canvas" container that exists at
-  // a time; moving a reference from one preset to another is expressed as
-  // removeRef in the source preset + createRef in the destination preset
-  // after switchPreset, not a single transferBP call).
+  // active squad's canvas is the only "canvas" container that exists at
+  // a time; moving a reference from one squad to another is expressed as
+  // removeRef in the source squad + createRef in the destination squad
+  // after switchSquad, not a single transferBP call).
   function bpFrom(container,bpId){return container.bps.find(b=>b.id===bpId);}
   function canTransferBP(st,from,to,bpId,origin){
     if(from.loc==='inv'&&to.loc==='inv'){
@@ -1553,7 +1553,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     if(from.loc==='inv'&&to.loc==='canvas'){
       const home=homeLocationOf(st,bpId);
       if(!home||home.kind!=='bp'||home.page!==from.page)return {ok:false,why:'BP not found in source container'};
-      if(usedByCurrent(st,bpId))return {ok:false,why:'already referenced by current preset'};
+      if(usedByCurrent(st,bpId))return {ok:false,why:'already referenced by current squad'};
       const bp=home.record;
       const newCells=bp.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
       const others=new Set();
@@ -1724,80 +1724,80 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
 
   // =======================================================================
-  // Preset model (REQ-0031 Phase B).
+  // Squad model (REQ-0031 Phase B).
   //
   // ADDITIVE, on top of the canvas/inventory model above: st.{linked,bps,
-  // pos,sis} continues to be THE ACTIVE preset's canvas -- every existing
+  // pos,sis} continues to be THE ACTIVE squad's canvas -- every existing
   // canvas function (movePO, moveBP, traceBeams, combos, ...) keeps reading
-  ///writing those same top-level fields, completely unaware presets exist
+  ///writing those same top-level fields, completely unaware squads exist
   // at all. `st.presets = {active, names, store}` sits alongside:
-  //   - active: 0-based index of which preset is CURRENTLY live at the
+  //   - active: 0-based index of which squad is CURRENTLY live at the
   //     top-level st.{linked,bps,pos,sis} fields.
-  //   - names: display names, one per preset, PRESET_COUNT-long by default
-  //     ("Preset 1".."Preset 5") but grows by 1 with every addPreset().
-  //   - store: one slot per preset, PRESET_COUNT/names-length-long.
-  //     store[active] is ALWAYS null (that preset's content lives at the
+  //   - names: display names, one per squad, SQUAD_COUNT-long by default
+  //     ("Squad 1".."Squad 5") but grows by 1 with every addSquad().
+  //   - store: one slot per squad, SQUAD_COUNT/names-length-long.
+  //     store[active] is ALWAYS null (that squad's content lives at the
   //     top level, not duplicated here) -- every OTHER index holds a plain
-  //     {linked,bps,pos,sis} snapshot object for that inactive preset.
+  //     {linked,bps,pos,sis} snapshot object for that inactive squad.
   //
-  // switchPreset(st,n) is the ONLY mutator that moves content between the
+  // switchSquad(st,n) is the ONLY mutator that moves content between the
   // top level and store[]; it is atomic (both directions happen in one
   // call, never leaving a half-swapped state even if this function were
   // to throw mid-way -- it does not, since neither step can fail: n is
   // range-checked up front and the swap itself is unconditional object
   // reassignment, not a legality-gated placement).
   //
-  // Physicality (REQ-0031 preset model decision, flagged to the user): a
+  // Physicality (REQ-0031 squad model decision, flagged to the user): a
   // uid (PO or SI) lives in EXACTLY ONE place across the shared inventory
-  // (st.inv.pages[]) and every preset (the active top-level fields, plus
+  // (st.inv.pages[]) and every squad (the active top-level fields, plus
   // every inactive store[] snapshot) at all times. This falls out
-  // constructively rather than needing active enforcement: new presets
-  // ALWAYS start empty (addPreset below never copies/shares any uid), and
-  // the only way an item ever reaches a preset's canvas is by a normal
-  // drag from the shared inventory (or another preset's canvas, via the
+  // constructively rather than needing active enforcement: new squads
+  // ALWAYS start empty (addSquad below never copies/shares any uid), and
+  // the only way an item ever reaches a squad's canvas is by a normal
+  // drag from the shared inventory (or another squad's canvas, via the
   // shared inventory) using the SAME movePO/moveBP/transferBP mutators
-  // presets never bypass. checkUidInvariant() below is a read-only auditor
+  // squads never bypass. checkUidInvariant() below is a read-only auditor
   // for this invariant, used by tests (and available to any future caller
   // wanting to assert the invariant still holds after a sequence of
   // mutations) -- it is not itself part of the mutation path.
-  const PRESET_COUNT=5;
+  const SQUAD_COUNT=5;
 
-  function defaultPresetNames(n){
+  function defaultSquadNames(n){
     const out=[];
-    for(let i=0;i<n;i++)out.push('Preset '+(i+1));
+    for(let i=0;i<n;i++)out.push('Squad '+(i+1));
     return out;
   }
 
-  // emptyPresetSlot(): a fresh, EMPTY preset snapshot -- {linked:true,
+  // emptySquadSlot(): a fresh, EMPTY squad snapshot -- {linked:true,
   // bps:[],pos:[],sis:[]}, same shape as the top-level canvas fields.
-  // "New presets start empty (BPs are physical too)" (REQ-0031) -- no
-  // items/BPs are ever copied into a newly-added preset.
-  function emptyPresetSlot(){
+  // "New squads start empty (BPs are physical too)" (REQ-0031) -- no
+  // items/BPs are ever copied into a newly-added squad.
+  function emptySquadSlot(){
     return {linked:true,bps:[],pos:[],sis:[]};
   }
 
-  // makePresetsMeta(count): a fresh {active:0,names:[...],store:[...]}
-  // block for `count` presets, slot 0 (the default active one) has
+  // makeSquadsMeta(count): a fresh {active:0,names:[...],store:[...]}
+  // block for `count` squads, slot 0 (the default active one) has
   // store[0]=null (its content lives at the top level, supplied by the
   // caller -- see makeState()'s own construction), every other slot holds
-  // an empty preset snapshot.
-  function makePresetsMeta(count){
-    const names=defaultPresetNames(count);
+  // an empty squad snapshot.
+  function makeSquadsMeta(count){
+    const names=defaultSquadNames(count);
     const store=[];
-    for(let i=0;i<count;i++)store.push(i===0?null:emptyPresetSlot());
+    for(let i=0;i<count;i++)store.push(i===0?null:emptySquadSlot());
     return {active:0,names,store};
   }
 
-  // switchPreset(st,n): atomic swap of the ACTIVE preset's top-level
+  // switchSquad(st,n): atomic swap of the ACTIVE squad's top-level
   // canvas fields (st.linked/bps/pos/sis) with store[n]'s snapshot --
   // st.presets.active becomes n. Both configurations (the one being
   // switched OUT and the one being switched IN) are fully preserved: the
   // outgoing active canvas is written into store[oldActive] (never
   // discarded), and the incoming store[n] snapshot becomes the new live
-  // top-level fields (store[n] is then set to null, since that preset's
-  // content now lives at the top level like every other active preset
+  // top-level fields (store[n] is then set to null, since that squad's
+  // content now lives at the top level like every other active squad
   // always does). A no-op (still {ok:true}) if n is already the active
-  // preset.
+  // squad.
   //
   // REQ-0085 defensive fix: store[n] is EXPECTED to be a real {linked,
   // bps,pos,sis} snapshot for every n!==active (only the active slot is
@@ -1815,18 +1815,18 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // surfaces as an uncaught error inside a React pointerup handler with
   // no visible UI feedback at all ("clicking does nothing" from the
   // user's side). Coalescing a falsy store[n] to a fresh
-  // emptyPresetSlot() makes switching into a corrupted slot self-heal
-  // (the slot becomes a real, empty preset instead of crashing) rather
+  // emptySquadSlot() makes switching into a corrupted slot self-heal
+  // (the slot becomes a real, empty squad instead of crashing) rather
   // than requiring a data migration -- there is no content to lose by
   // doing this: a slot that was null had no recoverable snapshot to
   // begin with.
-  function switchPreset(st,n){
-    if(!st.presets)return {ok:false,why:'no presets'};
+  function switchSquad(st,n){
+    if(!st.presets)return {ok:false,why:'no squads'};
     const meta=st.presets;
-    if(!(n>=0&&n<meta.store.length))return {ok:false,why:'preset index out of range'};
+    if(!(n>=0&&n<meta.store.length))return {ok:false,why:'squad index out of range'};
     if(n===meta.active)return {ok:true};
     const outgoing={linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis};
-    const incoming=meta.store[n]||emptyPresetSlot();
+    const incoming=meta.store[n]||emptySquadSlot();
     meta.store[meta.active]=outgoing;
     st.linked=incoming.linked;st.bps=incoming.bps;st.pos=incoming.pos;st.sis=incoming.sis;
     meta.store[n]=null;
@@ -1835,146 +1835,146 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {ok:true};
   }
 
-  // addPreset(st,name?): appends a brand-new EMPTY preset (never copies
-  // any content/uid from anywhere -- "Preset+ appends a preset", REQ-0031)
+  // addSquad(st,name?): appends a brand-new EMPTY squad (never copies
+  // any content/uid from anywhere -- "Squad+ appends a squad", REQ-0031)
   // to st.presets.store, and a matching entry to st.presets.names
-  // (defaults to "Preset N" where N is the new 1-based slot number).
-  // Returns the new preset's 0-based index so callers (e.g. the client's
-  // "Preset+" button) can immediately switchPreset() to it.
-  function addPreset(st,name){
-    if(!st.presets)return {ok:false,why:'no presets'};
+  // (defaults to "Squad N" where N is the new 1-based slot number).
+  // Returns the new squad's 0-based index so callers (e.g. the client's
+  // "Squad+" button) can immediately switchSquad() to it.
+  function addSquad(st,name){
+    if(!st.presets)return {ok:false,why:'no squads'};
     const meta=st.presets;
     const idx=meta.store.length;
-    meta.store.push(emptyPresetSlot());
-    meta.names.push(name?String(name):('Preset '+(idx+1)));
+    meta.store.push(emptySquadSlot());
+    meta.names.push(name?String(name):('Squad '+(idx+1)));
     return {ok:true,index:idx};
   }
 
-  // renamePreset(st,n,name): sets preset n's (0-based) display name. Works
-  // for the active preset or any stored one identically (names[] is
+  // renameSquad(st,n,name): sets squad n's (0-based) display name. Works
+  // for the active squad or any stored one identically (names[] is
   // independent of which slot is currently active).
-  function renamePreset(st,n,name){
-    if(!st.presets)return {ok:false,why:'no presets'};
+  function renameSquad(st,n,name){
+    if(!st.presets)return {ok:false,why:'no squads'};
     const meta=st.presets;
-    if(!(n>=0&&n<meta.names.length))return {ok:false,why:'preset index out of range'};
+    if(!(n>=0&&n<meta.names.length))return {ok:false,why:'squad index out of range'};
     meta.names[n]=String(name);
     return {ok:true};
   }
 
   // ---------------------------------------------------------------------
-  // reorderPreset/deletePreset (REQ-0032). Both operate on the FULL
-  // logical array of preset slots -- names[] and a "materialized" store[]
+  // reorderSquad/deleteSquad (REQ-0032). Both operate on the FULL
+  // logical array of squad slots -- names[] and a "materialized" store[]
   // where the active slot's real content (which normally lives at the
   // top-level st.linked/bps/pos/sis fields, not in store[active]) is
   // substituted in for the splice/slice, then the result is re-split back
-  // into {top-level fields, store[], active} exactly like switchPreset
-  // already does. This means the preset's store/names/reference-set data
-  // always "moves as a unit" for free -- there is no separate per-index
+  // into {top-level fields, store[], active} exactly like switchSquad
+  // already does. This means the squad's store/names/reference-set data
+  // always "moves as a squad" for free -- there is no separate per-index
   // bookkeeping to keep in sync, because usageOf/tintSets/homeLocationOf
-  // etc. are ALL live scans over st.presets.store (via presetCanvasOf)
+  // etc. are ALL live scans over st.presets.store (via squadCanvasOf)
   // rather than anything cached by index; once the arrays are correctly
   // permuted, every derived query is automatically correct on the next
   // call (no invalidation step needed).
   //
   // active-index adjustment rule (shared by both reorder directions):
-  //   - if the moved slot (`from`) IS the active preset, active simply
-  //     FOLLOWS it to `to` (the same preset is still "the one that's
+  //   - if the moved slot (`from`) IS the active squad, active simply
+  //     FOLLOWS it to `to` (the same squad is still "the one that's
   //     live", just relabeled to a new position).
   //   - otherwise, active only shifts by one slot if `from` and `to`
   //     straddle it (i.e. the splice pulled the active slot's neighbors
-  //     across it): moving a preset from BEFORE active to AT/AFTER active
+  //     across it): moving a squad from BEFORE active to AT/AFTER active
   //     shifts active left by one (its old neighbors closed the gap);
-  //     moving a preset from AFTER active to AT/BEFORE active shifts
+  //     moving a squad from AFTER active to AT/BEFORE active shifts
   //     active right by one. A move entirely on one side of active (both
   //     `from` and `to` less than active, or both greater) never touches
-  //     active's index at all -- the preset active still identifies is
+  //     active's index at all -- the squad active still identifies is
   //     unaffected either way.
-  function reorderPresetIndex(active,from,to){
+  function reorderSquadIndex(active,from,to){
     if(from===active)return to;
     if(from<active&&to>=active)return active-1;
     if(from>active&&to<=active)return active+1;
     return active;
   }
-  // materializePresets(st): the logical store[] with the active slot's
+  // materializeSquads(st): the logical store[] with the active slot's
   // real snapshot substituted in (a plain {linked,bps,pos,sis} object --
   // NOT a reference to the live top-level fields, since callers below
   // reassign the top-level fields separately after the splice).
   //
   // REQ-0085: every non-active slot is defensively coalesced to a fresh
-  // emptyPresetSlot() if it is falsy -- the same self-heal as
-  // switchPreset's own `incoming` above, so reorderPreset/deletePreset
+  // emptySquadSlot() if it is falsy -- the same self-heal as
+  // switchSquad's own `incoming` above, so reorderSquad/deleteSquad
   // never propagate a stray corrupted null either (left unhealed, a
   // splice/rebuild would silently carry it through into whatever index
   // it lands on next, including one that later becomes active).
-  function materializePresets(st){
+  function materializeSquads(st){
     const meta=st.presets;
-    return meta.store.map((slot,i)=>i===meta.active?{linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis}:(slot||emptyPresetSlot()));
+    return meta.store.map((slot,i)=>i===meta.active?{linked:st.linked,bps:st.bps,pos:st.pos,sis:st.sis}:(slot||emptySquadSlot()));
   }
-  // splitBackPresets(st,slots,names,active): the inverse of
-  // materializePresets -- writes `slots`/`names`/`active` back into
+  // splitBackSquads(st,slots,names,active): the inverse of
+  // materializeSquads -- writes `slots`/`names`/`active` back into
   // st.presets/top-level fields, restoring store[active]=null and copying
   // the active slot's snapshot fields onto st.linked/bps/pos/sis (same
-  // shape switchPreset already produces).
-  function splitBackPresets(st,slots,names,active){
+  // shape switchSquad already produces).
+  function splitBackSquads(st,slots,names,active){
     const activeSlot=slots[active];
     st.linked=activeSlot.linked;st.bps=activeSlot.bps;st.pos=activeSlot.pos;st.sis=activeSlot.sis;
     const store=slots.map((slot,i)=>i===active?null:slot);
     st.presets={active,names,store};
   }
-  // reorderPreset(st,from,to): moves preset slot `from` to index `to`
+  // reorderSquad(st,from,to): moves squad slot `from` to index `to`
   // (both 0-based; `to` is the DESTINATION index in the post-move array,
   // i.e. same "splice one out, splice it back in at `to`" semantics as
   // Array.prototype.splice used twice -- NOT "insert before/after"
   // ambiguity, see the reorder tests for concrete before/after arrays).
-  // The preset's entire slot (store content + its own names[] entry)
-  // moves together as a unit. No-op (still {ok:true}) if from===to.
-  function reorderPreset(st,from,to){
-    if(!st.presets)return {ok:false,why:'no presets'};
+  // The squad's entire slot (store content + its own names[] entry)
+  // moves together as a squad. No-op (still {ok:true}) if from===to.
+  function reorderSquad(st,from,to){
+    if(!st.presets)return {ok:false,why:'no squads'};
     const meta=st.presets;
     const len=meta.store.length;
     if(!(from>=0&&from<len))return {ok:false,why:'from index out of range'};
     if(!(to>=0&&to<len))return {ok:false,why:'to index out of range'};
     if(from===to)return {ok:true};
-    const slots=materializePresets(st);
+    const slots=materializeSquads(st);
     const names=meta.names.slice();
     const [movedSlot]=slots.splice(from,1);
     slots.splice(to,0,movedSlot);
     const [movedName]=names.splice(from,1);
     names.splice(to,0,movedName);
-    const newActive=reorderPresetIndex(meta.active,from,to);
-    splitBackPresets(st,slots,names,newActive);
+    const newActive=reorderSquadIndex(meta.active,from,to);
+    splitBackSquads(st,slots,names,newActive);
     return {ok:true};
   }
 
-  // deletePreset(st,n): removes preset `n` ENTIRELY -- its reference set
+  // deleteSquad(st,n): removes squad `n` ENTIRELY -- its reference set
   // (store slot) and its names[] entry both vanish. Refuses (returns
   // {ok:false}, does NOT mutate st at all) when n is the last remaining
-  // preset (must always keep at least 1). Per REQ-0033's reference model
+  // squad (must always keep at least 1). Per REQ-0033's reference model
   // (which supersedes REQ-0032's original "first-fit physical return"
-  // paragraph -- presets hold REFERENCES into inventory, not physical
-  // copies), deleting a preset's reference set never touches st.inv: every
-  // uid the deleted preset referenced simply loses that one reference;
-  // its inventory home (and every OTHER preset's own reference to the
+  // paragraph -- squads hold REFERENCES into inventory, not physical
+  // copies), deleting a squad's reference set never touches st.inv: every
+  // uid the deleted squad referenced simply loses that one reference;
+  // its inventory home (and every OTHER squad's own reference to the
   // same uid, if shared/yellow) is completely untouched.
   //
-  // nearest-remaining-tab rule (when the ACTIVE preset is the one
+  // nearest-remaining-tab rule (when the ACTIVE squad is the one
   // deleted): prefer the SAME index in the post-splice (shorter) array if
   // one still exists there (i.e. we deleted somewhere before the end --
-  // the preset that used to be at n+1 slides into n, so landing back on
+  // the squad that used to be at n+1 slides into n, so landing back on
   // index n now shows "the next tab over", a sensible default for a
   // trash-drop gesture where the user's attention stays roughly where
   // it was); otherwise (n was the LAST slot) fall back to the new last
-  // index (post-splice length - 1). Deleting a NON-active preset leaves
-  // active pointing at the SAME preset it did before, index-shifted left
+  // index (post-splice length - 1). Deleting a NON-active squad leaves
+  // active pointing at the SAME squad it did before, index-shifted left
   // by one if the deleted slot was before it (straddle rule, same idea as
-  // reorderPresetIndex above but for a pure removal rather than a move).
-  function deletePreset(st,n){
-    if(!st.presets)return {ok:false,why:'no presets'};
+  // reorderSquadIndex above but for a pure removal rather than a move).
+  function deleteSquad(st,n){
+    if(!st.presets)return {ok:false,why:'no squads'};
     const meta=st.presets;
     const len=meta.store.length;
-    if(!(n>=0&&n<len))return {ok:false,why:'preset index out of range'};
-    if(len<=1)return {ok:false,why:'cannot delete the last remaining preset'};
-    const slots=materializePresets(st);
+    if(!(n>=0&&n<len))return {ok:false,why:'squad index out of range'};
+    if(len<=1)return {ok:false,why:'cannot delete the last remaining squad'};
+    const slots=materializeSquads(st);
     const names=meta.names.slice();
     slots.splice(n,1);
     names.splice(n,1);
@@ -1987,14 +1987,14 @@ function create(ITEMS,SI_DEFS,layout,trees){
     } else {
       newActive=meta.active;
     }
-    splitBackPresets(st,slots,names,newActive);
+    splitBackSquads(st,slots,names,newActive);
     return {ok:true};
   }
 
   // checkUidInvariant(st): read-only auditor for the "one uid, exactly one
-  // place" physicality rule (REQ-0031 preset model decision). Scans every
+  // place" physicality rule (REQ-0031 squad model decision). Scans every
   // PO/SI uid across: the shared inventory (st.inv.pages[].pos/sis), the
-  // ACTIVE preset's canvas (st.pos/st.sis), and every INACTIVE preset's
+  // ACTIVE squad's canvas (st.pos/st.sis), and every INACTIVE squad's
   // stored snapshot (st.presets.store[i].pos/sis, i!==active). Returns
   // {ok:true} if every uid appears exactly once across all of those
   // locations combined, else {ok:false,why,duplicates:[uid,...]} naming
@@ -2006,15 +2006,15 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // model invariant (replaces the REQ-0031 "uid lives in exactly one place"
   // physicality rule):
   //   - every uid (PO/BP/SI) has a HOME exactly once across st.inv.pages.
-  //   - every preset (the active top-level fields, plus every inactive
+  //   - every squad (the active top-level fields, plus every inactive
   //     store[i] snapshot) holds AT MOST ONE reference to any given uid.
   // Returns {ok:true} when both hold, else {ok:false,why,duplicates:[...]}
   // -- `duplicates` entries are 'po:<uid>'/'bp:<uid>'/'si:<uid>' tagged
   // strings (same convention as REQ-0031's checker) naming every home
   // that appears 2+ times AND every (uid) that has 2+ references within
-  // the SAME preset. A uid referenced by several DIFFERENT presets is NOT
+  // the SAME squad. A uid referenced by several DIFFERENT squads is NOT
   // a violation (that is the yellow/shared case, not a duplicate) -- only
-  // >1 reference to the same uid WITHIN one preset's own canvas counts.
+  // >1 reference to the same uid WITHIN one squad's own canvas counts.
   function checkUidInvariant(st){
     const homeSeen=new Map(); // uid -> count, across st.inv.pages only
     const bumpHome=(uid)=>homeSeen.set(uid,(homeSeen.get(uid)||0)+1);
@@ -2028,28 +2028,28 @@ function create(ITEMS,SI_DEFS,layout,trees){
         // a new, independent tag prefix -- a TM uid colliding with a
         // PO/BP/SI uid of the literal same string is NOT flagged here,
         // matching how po/bp/si already never cross-check each other's
-        // uid namespaces either). TM never appears in any preset canvas
+        // uid namespaces either). TM never appears in any squad canvas
         // (it structurally cannot reach canvas -- see the TM model
         // comment above tmCanPlace), so unlike po/bp/si there is no
-        // per-preset reference-duplication check to add for tms below.
+        // per-squad reference-duplication check to add for tms below.
         for(const tm of (pg.tms||[]))bumpHome('tm:'+tm.uid);
       }
     }
     const duplicates=[...homeSeen.entries()].filter(([,c])=>c>1).map(([uid])=>uid);
-    // per-preset reference duplication: within ONE preset's own canvas,
+    // per-squad reference duplication: within ONE squad's own canvas,
     // the same uid must never appear twice (that would mean two
-    // independent references to the same item coexisting in one preset,
+    // independent references to the same item coexisting in one squad,
     // which createRef's red-rule check is specifically designed to
     // prevent -- this audits that no OTHER code path ever violated it).
     if(st.presets){
-      for(let i=0;i<presetCount(st);i++){
-        const c=presetCanvasOf(st,i);
+      for(let i=0;i<squadCount(st);i++){
+        const c=squadCanvasOf(st,i);
         const seen=new Map();
         const bump=(tag)=>seen.set(tag,(seen.get(tag)||0)+1);
         for(const p of c.pos)bump('po:'+p.uid);
         for(const b of c.bps)bump('bp:'+b.id);
         for(const a of c.sis)bump('si:'+a.uid);
-        for(const [tag,cnt] of seen.entries())if(cnt>1)duplicates.push(tag+'@preset'+i);
+        for(const [tag,cnt] of seen.entries())if(cnt>1)duplicates.push(tag+'@squad'+i);
       }
     }
     if(duplicates.length)return {ok:false,why:'uid(s) violate the home/reference invariant',duplicates};
@@ -2060,9 +2060,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // the reference model. Chains through the EXISTING v1/v2 migration path
   // first (unchanged -- legacy loc:'inv'/host:'inv' list-membership items
   // still become spatial inventory homes exactly as before, and a
-  // pre-preset save still gets its 5-preset scaffold), THEN performs the
+  // pre-squad save still gets its 5-squad scaffold), THEN performs the
   // v3 step: any uid CURRENTLY sitting physically on a canvas (the active
-  // top-level fields OR any preset's store[i] snapshot) is, under the old
+  // top-level fields OR any squad's store[i] snapshot) is, under the old
   // model, its own sole copy -- v3 gives each such uid a first-fit
   // INVENTORY home (same firstFitCell/firstFitSICell scan already used for
   // legacy list-membership items) and REPLACES the physical canvas record
@@ -2095,7 +2095,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     // the st.inv.names defensive-backfill idiom immediately above (same
     // "if missing/malformed, fill in the empty default" shape).
     for(const pg of st.inv.pages)if(!Array.isArray(pg.tms))pg.tms=[];
-    if(!st.presets)st.presets=makePresetsMeta(PRESET_COUNT);
+    if(!st.presets)st.presets=makeSquadsMeta(SQUAD_COUNT);
     const legacyPOs=st.pos.filter(p=>p.loc==='inv');
     const legacySIs=st.sis.filter(a=>a.host==='inv');
     const migratedPOUids=new Set(),migratedSIUids=new Set();
@@ -2134,7 +2134,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // migrateCanvasToReferencesV3: MUTATES `st` in place (st is already a
   // fresh deep clone by the time migrateState calls this, via
   // migrateStateV2's own JSON round-trip -- no separate clone needed
-  // here). Walks every preset's canvas (active top-level fields, plus
+  // here). Walks every squad's canvas (active top-level fields, plus
   // every store[i] snapshot) exactly once, giving each not-yet-homed
   // canvas-resident uid a first-fit inventory home and leaving its canvas
   // record in place AS a reference (no further edit needed to the record
@@ -2144,7 +2144,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   function migrateCanvasToReferencesV3(st){
     // migrateCanvasToReferencesV3: MUTATES `st` in place (st is already a
     // fresh deep clone by the time migrateState calls this, via
-    // migrateStateV2's own JSON round-trip). Walks every preset's canvas
+    // migrateStateV2's own JSON round-trip). Walks every squad's canvas
     // (active top-level fields, plus every store[i] snapshot) exactly
     // once, giving each not-yet-homed canvas-resident uid a first-fit
     // inventory home and leaving its canvas record in place AS a
@@ -2158,7 +2158,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     // containment check (poInBPIn against the home record) would see them
     // as unrelated once migrated (the BP homed on one page, its former
     // contents homed on a totally different page/cell by an independent
-    // first-fit scan). So BPs are migrated as a UNIT with their canvas-
+    // first-fit scan). So BPs are migrated as a SQUAD with their canvas-
     // contained POs and those POs' seated SIs -- mirroring the exact
     // splice-and-shift arithmetic transferBPPhysical/the old transferBP
     // already use for a same-model page<->page move, just landing in a
@@ -2254,14 +2254,14 @@ function create(ITEMS,SI_DEFS,layout,trees){
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
           pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,poInBPIn,cellsOfIn,cellBPMapIn,
           invOccupancy,canTransferBP,transferBP,migrateState,
-          // Preset model (REQ-0031 Phase B) -- additive exports only.
-          PRESET_COUNT,makePresetsMeta,emptyPresetSlot,switchPreset,addPreset,renamePreset,
+          // Squad model (REQ-0031 Phase B) -- additive exports only.
+          SQUAD_COUNT,makeSquadsMeta,emptySquadSlot,switchSquad,addSquad,renameSquad,
           renameInvPage,invPageNames,checkUidInvariant,
           // Reference model (REQ-0033 Phase 1) -- additive exports only.
-          usageOf,usedByCurrent,usedByOthers,tintSets,isUnitIndependent,isUnitDeployable,bpReferenceSet,
+          usageOf,usedByCurrent,usedByOthers,tintSets,isSquadIndependent,isSquadDeployable,bpReferenceSet,
           createRef,removeRef,homeLocationOf,
-          // Tab reorder + preset trash-delete (REQ-0032) -- additive exports only.
-          reorderPreset,deletePreset,reorderInvPage,
+          // Tab reorder + squad trash-delete (REQ-0032) -- additive exports only.
+          reorderSquad,deleteSquad,reorderInvPage,
           // TM (Transmutator) model (REQ-0042) -- additive exports only.
           tmCanPlace,tmMove,firstFitTMCell,spendTM};
 }

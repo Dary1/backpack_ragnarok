@@ -31,7 +31,7 @@ const FORMATIONS = {
     canvases: { unit1: 'J2:Q9', unit2: 'B6:I13', unit3: 'R6:Y13', unit4: 'J10:Q17' },
   },
   formation3: {
-    id: 'formation3', note: 'corner units tank top diagonals',
+    id: 'formation3', note: 'corner squads tank top diagonals',
     canvases: { unit1: 'B2:I9', unit2: 'R2:Y9', unit3: 'F10:M17', unit4: 'N10:U17' },
   },
   formation4: {
@@ -47,16 +47,16 @@ const FORMATIONS = {
   },
 };
 
-// Sanity-check every formation box is exactly 8x8 (matches 8x8 unit canvas
+// Sanity-check every formation box is exactly 8x8 (matches 8x8 squad canvas
 // layout in scenario.json) at module load time -- fail fast on any typo.
 (function validateFormationBoxes() {
   for (const fid of Object.keys(FORMATIONS)) {
     const cv = FORMATIONS[fid].canvases;
-    for (const unit of Object.keys(cv)) {
-      const box = parseBox(cv[unit]);
+    for (const squad of Object.keys(cv)) {
+      const box = parseBox(cv[squad]);
       const w = box.colMax - box.colMin + 1, h = box.rowMax - box.rowMin + 1;
       if (w !== 8 || h !== 8) {
-        throw new Error('Formation box ' + fid + '.' + unit + ' (' + cv[unit] +
+        throw new Error('Formation box ' + fid + '.' + squad + ' (' + cv[squad] +
           ') is ' + w + 'x' + h + ', expected 8x8');
       }
     }

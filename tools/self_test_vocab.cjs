@@ -148,15 +148,15 @@ const extraPO = [
     modes: ['battle'],
   },
   {
-    id: 'selftest_trig_unit_hit', name: 'Selftest trig OnUnitHit', tags: [POTagNames[0]],
-    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_unit_hit', sockets: [],
-    effects: [{ trigger: { t: 'OnUnitHit' }, verb: { t: 'strike', n: [2, 4] } }],
+    id: 'selftest_trig_squad_hit', name: 'Selftest trig OnSquadHit', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_squad_hit', sockets: [],
+    effects: [{ trigger: { t: 'OnSquadHit' }, verb: { t: 'strike', n: [2, 4] } }],
     modes: ['battle'],
   },
   {
-    id: 'selftest_trig_unit_been_hit', name: 'Selftest trig OnUnitBeenHit', tags: [POTagNames[0]],
-    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_unit_been_hit', sockets: [],
-    effects: [{ trigger: { t: 'OnUnitBeenHit' }, verb: { t: 'block', n: [2, 4] } }],
+    id: 'selftest_trig_squad_been_hit', name: 'Selftest trig OnSquadBeenHit', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_squad_been_hit', sockets: [],
+    effects: [{ trigger: { t: 'OnSquadBeenHit' }, verb: { t: 'block', n: [2, 4] } }],
     modes: ['battle'],
   },
   // REQ-0093: status_kind-form fixtures -- one polarity keyword (debuff)
@@ -270,8 +270,8 @@ function inlineValidate(draft, vocabDef) {
   const rvp = vocabDef.ranged_verb_params || {};
   const outLines = [];
   let errors = 0;
-  const units = (draft.items || []).concat(draft.sis || []);
-  for (const entry of units) {
+  const squads = (draft.items || []).concat(draft.sis || []);
+  for (const entry of squads) {
     const expectReject = !!entry._expect_reject;
     const violations = [];
     for (const eff of (entry.effects || [])) {

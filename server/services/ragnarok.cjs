@@ -1,7 +1,7 @@
 'use strict';
 // server/services/ragnarok.cjs -- REQ-0066: the Hall of Ragnarok service
 // (server side; the client screen -- web/redesign/ragnarok.html -- is a
-// separate, later unit that consumes the DTOs this module shapes, see
+// separate, later squad that consumes the DTOs this module shapes, see
 // shared/dto.ts's ApiRagnarok* types). Four concerns live here:
 //
 //   S1 SEASON REGISTRY -- seasons are CONTENT, not code: the registry
@@ -20,14 +20,14 @@
 //      later read that dawn-day serves the cache verbatim.
 //   S3 EINHERJAR RECORDS -- one immutable record per completed Devotion
 //      rite: who devoted what, when, plus a FROZEN deep-copy snapshot of
-//      the devoted preset's resolved canvas + the content item defs it
+//      the devoted squad's resolved canvas + the content item defs it
 //      referenced at rite time (same snapshot discipline as run copies:
-//      services/runs.cjs's startRun deep-copies unit snapshots at start
+//      services/runs.cjs's startRun deep-copies squad snapshots at start
 //      so later edits never reach the in-flight run).
 //   S4 THE DEVOTION RITE (献身の儀) -- the irreversible ceremony. THE
 //      COST is the reference-model consequence (see applyDevotionToCanvas
-//      below): every physical item the devoted preset references is
-//      destroyed ACCOUNT-WIDE, and the preset slot itself is deleted.
+//      below): every physical item the devoted squad references is
+//      destroyed ACCOUNT-WIDE, and the squad slot itself is deleted.
 //      Mock copy (frozen): 「献身は取り消せない。全ての鞄・物品・型は失われ、
 //      名だけが永遠に刻まれる。」-- 鞄=BPs, 物品=POs, 型=SIs.
 //
@@ -38,11 +38,11 @@
 // (REQ-0064): an irreversible, server-authoritative state change (here:
 // account-wide item destruction) cannot be trusted to a client-side
 // save -- a client that "forgot" to destroy the items after the server
-// engraved the record would keep both the unit and the glory. So
+// engraved the record would keep both the squad and the glory. So
 // devote() writes the caller's canvas server-side, synchronously,
 // inside the rite -- and the canvas only ever LOSES material, never
 // gains (the same each-side-only-loses shape market settlement keeps).
-// CLIENT GOTCHA (for the ragnarok screen unit): after a successful
+// CLIENT GOTCHA (for the ragnarok screen squad): after a successful
 // rite, re-GET your profile before the next auto-save PUT -- a stale
 // in-flight auto-save can resurrect the destroyed items (the exact bug
 // class REQ-0041 documented, same posture as market settlement).
@@ -56,7 +56,7 @@ const os = require('os');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { getScheduleContent, makeEngine, genId } = require('./core.cjs');
-const { presetCanvasOf } = require('./units.cjs');
+const { squadCanvasOf } = require('./squads.cjs');
 const { deployedUidSet } = require('./market.cjs');
 
 // Same repo-root resolution convention as services/market.cjs's
@@ -83,7 +83,7 @@ const RAGNAROK_DAWN_UTC_HOUR = 20;
 // 戦果 (battle score) fold weights. [TUNABLE][ORCH default, PLACEHOLDER
 // awaiting USER review]: f = damage*1.0 + kills*50 + survived*100, per
 // battle. THIS IS THE ONE SHARED DEFINITION POINT for REQ-0068 (the
-// season-end battle events unit): when REQ-0068 lands, it appends
+// season-end battle events squad): when REQ-0068 lands, it appends
 // perSeason entries ({season, battles:[{damage,kills,survived}, ...]})
 // to einherjar records, and battleScoreOf() below is the only formula
 // that ever turns a battle into 戦果. No battle events exist yet, so
@@ -406,13 +406,13 @@ function orderView(callerId, opts, nowMs) {
 // APPENDS perSeason entries -- the identity/snapshot fields never
 // change):
 // {
-//   id: 'ein_<hex>', playerId, unitName, seasonDevoted: number|null,
+//   id: 'ein_<hex>', playerId, squadName, seasonDevoted: number|null,
 //   devotedAt: iso,
 //   snapshot: {
-//     canvas: { bps, pos, sis },   // DEEP COPY of the devoted preset's
+//     canvas: { bps, pos, sis },   // DEEP COPY of the devoted squad's
 //                                  // resolved canvas at rite time
-//                                  // (presetCanvasOf -- engine.js ~1230:
-//                                  // the active preset resolves to the
+//                                  // (squadCanvasOf -- engine.js ~1230:
+//                                  // the active squad resolves to the
 //                                  // top-level st.bps/pos/sis, a stored
 //                                  // one to st.presets.store[i])
 //     counts: { bps, pos, sis },
@@ -424,9 +424,9 @@ function orderView(callerId, opts, nowMs) {
 //                                  // ({id,name,color,shape,origin,
 //                                  // linker}, engine.js ~1204).
 //   },
-//   blast: { bps, pos, sis, total, affectedPresets }, // preview shape,
+//   blast: { bps, pos, sis, total, affectedSquads }, // preview shape,
 //                                  // frozen for idempotent replays
-//   bioArchive: null,              // REQ-0060 (unit bios) not built --
+//   bioArchive: null,              // REQ-0060 (squad bios) not built --
 //                                  // stored empty, field reserved
 //   perSeason: [],                 // 戦果 history; REQ-0068 appends
 //                                  // {season, battles:[...]} entries
@@ -499,7 +499,7 @@ function einherjarDto(rec) {
   return {
     id: rec.id,
     playerId: rec.playerId,
-    unitName: rec.unitName,
+    squadName: rec.squadName,
     seasonDevoted: rec.seasonDevoted != null ? rec.seasonDevoted : null,
     devotedAt: rec.devotedAt,
     counts: { bps: counts.bps || 0, pos: counts.pos || 0, sis: counts.sis || 0 },
@@ -512,9 +512,9 @@ function einherjarDto(rec) {
 
 // listEinherjar(playerId): every FINALIZED record for one player, newest
 // first. Public hall data (the order already names players, and the
-// mock's corridor shows devoted units by name/season/score) -- the DTO
+// mock's corridor shows devoted squads by name/season/score) -- the DTO
 // deliberately does NOT include the frozen snapshot canvas (record
-// internals stay server-side until a later unit needs them, e.g. the
+// internals stay server-side until a later squad needs them, e.g. the
 // REQ-0068 battle compiler). Records mid-rite ('applying', fresh) are
 // hidden until finalized.
 function listEinherjar(playerId, nowMs) {
@@ -557,19 +557,19 @@ function devClearEinherjarRecords(playerId) {
 // S4 The Devotion rite.
 // ---------------------------------------------------------------------
 
-// presetMetaOr404: resolves presetIndex against the CALLER's own canvas.
-// Out-of-range / non-integer / no-presets-at-all are all the SAME plain
+// squadMetaOr404: resolves squadIndex against the CALLER's own canvas.
+// Out-of-range / non-integer / no-squads-at-all are all the SAME plain
 // 404 (no-leak convention, mirroring services/market.cjs's
-// getOwnListingOr404 -- a preset is only ever addressable through the
-// caller's own token, so a "foreign preset" is structurally identical
+// getOwnListingOr404 -- a squad is only ever addressable through the
+// caller's own token, so a "foreign squad" is structurally identical
 // to a typo here).
-function presetMetaOr404(canvas, presetIndex) {
+function squadMetaOr404(canvas, squadIndex) {
   if (!canvas || !canvas.presets || !Array.isArray(canvas.presets.store)
-    || !Number.isInteger(presetIndex) || presetIndex < 0 || presetIndex >= canvas.presets.store.length) {
-    const err = new Error('preset not found'); err.code = 'NOT_FOUND'; throw err;
+    || !Number.isInteger(squadIndex) || squadIndex < 0 || squadIndex >= canvas.presets.store.length) {
+    const err = new Error('squad not found'); err.code = 'NOT_FOUND'; throw err;
   }
   const names = Array.isArray(canvas.presets.names) ? canvas.presets.names : [];
-  return { index: presetIndex, name: names[presetIndex] != null ? String(names[presetIndex]) : ('Preset ' + (presetIndex + 1)) };
+  return { index: squadIndex, name: names[squadIndex] != null ? String(names[squadIndex]) : ('Squad ' + (squadIndex + 1)) };
 }
 
 // devotionBlastRadius: READ-ONLY itemization of what the rite destroys.
@@ -577,33 +577,33 @@ function presetMetaOr404(canvas, presetIndex) {
 // tags homes 'po:'/'bp:'/'si:' precisely because the three uid
 // namespaces never cross-check each other -- a BP id colliding with a
 // PO uid string is legal, so destruction must never conflate kinds.
-// Counts are the devoted preset's own reference counts (engine.js
-// ~1215: "a uid may have AT MOST ONE reference per preset", so array
+// Counts are the devoted squad's own reference counts (engine.js
+// ~1215: "a uid may have AT MOST ONE reference per squad", so array
 // lengths are already per-uid counts); and since inventory is MASTER
 // (engine.js ~1201: every uid has exactly ONE home record living in
 // st.inv.pages), each counted uid is also exactly one destroyed
-// physical item. affectedPresets itemizes every OTHER preset that
+// physical item. affectedSquads itemizes every OTHER squad that
 // shares (yellow, REQ-0033) any doomed uid -- indices are PRE-rite
 // indices (the rite deletes a slot, shifting later indices left by one
-// per engine.js deletePreset's own straddle rule).
-function devotionBlastRadius(canvas, presetIndex) {
-  const devoted = presetCanvasOf(canvas, presetIndex) || { bps: [], pos: [], sis: [] };
+// per engine.js deleteSquad's own straddle rule).
+function devotionBlastRadius(canvas, squadIndex) {
+  const devoted = squadCanvasOf(canvas, squadIndex) || { bps: [], pos: [], sis: [] };
   const bps = new Set((devoted.bps || []).map((b) => b.id));
   const pos = new Set((devoted.pos || []).map((p) => p.uid));
   const sis = new Set((devoted.sis || []).map((a) => a.uid));
-  const affectedPresets = [];
+  const affectedSquads = [];
   const store = canvas && canvas.presets ? canvas.presets.store : [];
   const names = canvas && canvas.presets && Array.isArray(canvas.presets.names) ? canvas.presets.names : [];
   for (let i = 0; i < store.length; i++) {
-    if (i === presetIndex) continue;
-    const c = presetCanvasOf(canvas, i) || { bps: [], pos: [], sis: [] };
+    if (i === squadIndex) continue;
+    const c = squadCanvasOf(canvas, i) || { bps: [], pos: [], sis: [] };
     const lostBps = (c.bps || []).filter((b) => bps.has(b.id)).length;
     const lostPos = (c.pos || []).filter((p) => pos.has(p.uid)).length;
     const lostSis = (c.sis || []).filter((a) => sis.has(a.uid)).length;
     if (lostBps + lostPos + lostSis > 0) {
-      affectedPresets.push({
+      affectedSquads.push({
         index: i,
-        name: names[i] != null ? String(names[i]) : ('Preset ' + (i + 1)),
+        name: names[i] != null ? String(names[i]) : ('Squad ' + (i + 1)),
         lostBps, lostPos, lostSis,
       });
     }
@@ -611,7 +611,7 @@ function devotionBlastRadius(canvas, presetIndex) {
   return {
     uids: { bps, pos, sis },
     counts: { bps: bps.size, pos: pos.size, sis: sis.size, total: bps.size + pos.size + sis.size },
-    affectedPresets,
+    affectedSquads,
   };
 }
 
@@ -621,16 +621,16 @@ function blastDto(blast) {
     pos: blast.counts.pos,
     sis: blast.counts.sis,
     total: blast.counts.total,
-    affectedPresets: blast.affectedPresets,
+    affectedSquads: blast.affectedSquads,
   };
 }
 
 // stripDestroyedUids: the ACCOUNT-WIDE destruction pass. The engine has
 // no "destroy a physical item" operation at all -- REQ-0033's reference
 // model only ever creates/removes REFERENCES (engine.js's createRef/
-// removeRef, ~1368+), and deletePreset explicitly "never touches
-// st.inv" (engine.js ~1892: deleting a preset's reference set leaves
-// every inventory home and every other preset's references untouched)
+// removeRef, ~1368+), and deleteSquad explicitly "never touches
+// st.inv" (engine.js ~1892: deleting a squad's reference set leaves
+// every inventory home and every other squad's references untouched)
 // -- so physical destruction is necessarily this server-side pass. It
 // applies ONE uniform kind-scoped filter to every container that holds
 // item records, all of which share the {bps, pos, sis} array shape
@@ -639,9 +639,9 @@ function blastDto(blast) {
 //   - canvas.inv.pages[]      -- the HOMES (inventory is MASTER,
 //                                REQ-0033): removing these IS the
 //                                destruction
-//   - canvas.{bps,pos,sis}    -- the ACTIVE preset's references
-//   - canvas.presets.store[i] -- every stored preset's references
-//                                (yellow-shared presets lose exactly
+//   - canvas.{bps,pos,sis}    -- the ACTIVE squad's references
+//   - canvas.presets.store[i] -- every stored squad's references
+//                                (yellow-shared squads lose exactly
 //                                their doomed pieces, nothing else)
 // plus one repair rule: a SURVIVING SI record seated on a DESTROYED PO
 // is stowed (host = 'inv', the stowed sentinel -- engine.js ~1078),
@@ -662,9 +662,9 @@ function stripDestroyedUids(canvas, uids) {
       }
     }
   };
-  strip(canvas); // the active preset's top-level reference arrays
+  strip(canvas); // the active squad's top-level reference arrays
   if (canvas.presets && Array.isArray(canvas.presets.store)) {
-    for (const snap of canvas.presets.store) strip(snap); // stored presets (the active slot is null; strip guards)
+    for (const snap of canvas.presets.store) strip(snap); // stored squads (the active slot is null; strip guards)
   }
   if (canvas.inv && Array.isArray(canvas.inv.pages)) {
     for (const pg of canvas.inv.pages) strip(pg); // THE HOMES -- this is the physical destruction
@@ -674,27 +674,27 @@ function stripDestroyedUids(canvas, uids) {
 // applyDevotionToCanvas: THE COST, as a pure function over the profile
 // state (no storage I/O; engine-style in-place mutator, the same
 // mutate-st-and-return contract every engine.js mutator has). Order:
-//   1. itemize the blast radius (the devoted preset's kind-scoped uid
+//   1. itemize the blast radius (the devoted squad's kind-scoped uid
 //      sets, read before anything moves),
-//   2. delete the devoted preset slot via the ENGINE's OWN deletePreset
+//   2. delete the devoted squad slot via the ENGINE's OWN deleteSquad
 //      (engine.js ~1914 -- refs-only removal, names[] splice, active-
 //      index bookkeeping incl. the nearest-remaining-tab rule; its
-//      last-preset refusal is pre-checked by devote() as a 409 but
+//      last-squad refusal is pre-checked by devote() as a 409 but
 //      re-asserted here defensively),
 //   3. destroy every doomed uid account-wide (stripDestroyedUids).
-// The engine instance only dispatches on `st` for deletePreset (item
+// The engine instance only dispatches on `st` for deleteSquad (item
 // defs are never dereferenced by it), same "any bound instance works"
-// note as services/units.cjs's isUnitIndependent delegation.
-function applyDevotionToCanvas(engine, canvas, presetIndex) {
-  const blast = devotionBlastRadius(canvas, presetIndex);
-  const del = engine.deletePreset(canvas, presetIndex);
+// note as services/squads.cjs's isSquadIndependent delegation.
+function applyDevotionToCanvas(engine, canvas, squadIndex) {
+  const blast = devotionBlastRadius(canvas, squadIndex);
+  const del = engine.deleteSquad(canvas, squadIndex);
   if (!del.ok) {
-    // Mirrors engine.js deletePreset's own refusal ("cannot delete the
-    // last remaining preset", ~1919) -- reachable here only if devote()'s
+    // Mirrors engine.js deleteSquad's own refusal ("cannot delete the
+    // last remaining squad", ~1919) -- reachable here only if devote()'s
     // own pre-check was bypassed (direct service-call misuse).
-    const err = new Error('devotion refused: ' + (del.why || 'deletePreset failed'));
+    const err = new Error('devotion refused: ' + (del.why || 'deleteSquad failed'));
     err.code = 'CONFLICT';
-    err.reason = del.why && del.why.indexOf('last') !== -1 ? 'last_preset' : 'not_devotable';
+    err.reason = del.why && del.why.indexOf('last') !== -1 ? 'last_squad' : 'not_devotable';
     throw err;
   }
   stripDestroyedUids(canvas, blast.uids);
@@ -731,16 +731,16 @@ function deepCopy(v) {
   return v == null ? v : JSON.parse(JSON.stringify(v));
 }
 
-// buildFrozenSnapshot: the einherjar record's frozen unit -- a DEEP COPY
-// of the devoted preset's resolved canvas plus the content defs its
+// buildFrozenSnapshot: the einherjar record's frozen squad -- a DEEP COPY
+// of the devoted squad's resolved canvas plus the content defs its
 // records reference, taken NOW, before anything mutates (the same
 // copies-at-start discipline services/runs.cjs's startRun documents for
-// run unit snapshots: "deep-copied snapshots, taken NOW, at start...
-// a unit edited by its owner mid-run never affects the in-flight run").
+// run squad snapshots: "deep-copied snapshots, taken NOW, at start...
+// a squad edited by its owner mid-run never affects the in-flight run").
 // BP records carry their defs inline already (engine.js ~1204), so only
 // PO/SI ids need def capture.
-function buildFrozenSnapshot(canvas, presetIndex) {
-  const devoted = presetCanvasOf(canvas, presetIndex) || { bps: [], pos: [], sis: [] };
+function buildFrozenSnapshot(canvas, squadIndex) {
+  const devoted = squadCanvasOf(canvas, squadIndex) || { bps: [], pos: [], sis: [] };
   const snapCanvas = {
     bps: deepCopy(devoted.bps || []),
     pos: deepCopy(devoted.pos || []),
@@ -772,40 +772,40 @@ function buildFrozenSnapshot(canvas, presetIndex) {
 //   mid_rite     a fresh 'applying' record exists (a rite is in flight
 //                or just crashed; lazily recovered after
 //                RITE_LOCK_TIMEOUT_MS -- see normalizeRiteRecord)
-//   last_preset  devoting the caller's ONLY preset -- mirrors engine.js
-//                deletePreset's own last-refusal (~1919: "must always
+//   last_squad  devoting the caller's ONLY squad -- mirrors engine.js
+//                deleteSquad's own last-refusal (~1919: "must always
 //                keep at least 1") as a 409 [ORCH decision]
-//   empty_unit   the preset has no BP -- engine.isUnitDeployable
+//   empty_squad   the squad has no BP -- engine.isSquadDeployable
 //                (REQ-0041 feedback 5: zero BP = dead on arrival).
 //                Deliberate EXTENSION of the spec'd 409 set: einherjar
-//                join the season-end battle line (REQ-0068), and a unit
+//                join the season-end battle line (REQ-0068), and a squad
 //                that could never deploy must not be devotable either
 //                (also closes free einherjarCount farming via empty
-//                presets). Same reason tag assignSlot already uses.
-//   deployed     the devoted preset's uid set intersects the caller's
-//                CURRENTLY-DEPLOYED uid set (any preset assigned to a
+//                squads). Same reason tag assignSlot already uses.
+//   deployed     the devoted squad's uid set intersects the caller's
+//                CURRENTLY-DEPLOYED uid set (any squad assigned to a
 //                slot of any of their own open/active rooms --
 //                services/market.cjs's deployedUidSet, the same Law-of-
 //                Possession scan the market's listing gate uses).
-//                Intersection (not just "this preset index is slotted")
-//                on purpose: destroying a uid a DEPLOYED preset shares
+//                Intersection (not just "this squad index is slotted")
+//                on purpose: destroying a uid a DEPLOYED squad shares
 //                would gut a standing army mid-campaign. Mock step 1:
 //                「遠征中でない一隊のみ。」
-// `already_devoted` is deliberately NOT a reason: no unitName-
+// `already_devoted` is deliberately NOT a reason: no squadName-
 // uniqueness constraint exists [ORCH decision] -- every rite mints a
 // new record, and two records may share an engraving.
-function riteEligibilityReasons(callerId, canvas, presetIndex, nowMs) {
+function riteEligibilityReasons(callerId, canvas, squadIndex, nowMs) {
   const reasons = [];
   for (const raw of storage.listEinherjarRecords()) {
     if (raw.playerId !== callerId) continue;
     const rec = normalizeRiteRecord(raw, nowMs);
     if (rec && rec.rite && rec.rite.state === 'applying') { reasons.push('mid_rite'); break; }
   }
-  if (canvas.presets.store.length <= 1) reasons.push('last_preset');
+  if (canvas.presets.store.length <= 1) reasons.push('last_squad');
   const { itemDefsById } = getScheduleContent();
   const engine = makeEngine(itemDefsById);
-  if (!engine.isUnitDeployable(canvas, presetIndex)) reasons.push('empty_unit');
-  const blast = devotionBlastRadius(canvas, presetIndex);
+  if (!engine.isSquadDeployable(canvas, squadIndex)) reasons.push('empty_squad');
+  const blast = devotionBlastRadius(canvas, squadIndex);
   const deployed = deployedUidSet(callerId, canvas);
   let hit = false;
   for (const uid of blast.uids.bps) if (deployed.has(uid)) { hit = true; break; }
@@ -817,9 +817,9 @@ function riteEligibilityReasons(callerId, canvas, presetIndex, nowMs) {
 
 const RITE_409_MESSAGES = {
   mid_rite: 'a devotion rite is already in progress for this account',
-  last_preset: 'cannot devote your last remaining preset (the engine refuses to delete the last preset)',
-  empty_unit: 'empty unit: preset has no Backpack (BP) and cannot join the einherjar',
-  deployed: 'preset (or an item it shares) is deployed in an open/active schedule room -- units standing for war cannot be devoted',
+  last_squad: 'cannot devote your last remaining squad (the engine refuses to delete the last squad)',
+  empty_squad: 'empty squad: squad has no Backpack (BP) and cannot join the einherjar',
+  deployed: 'squad (or an item it shares) is deployed in an open/active schedule room -- squads standing for war cannot be devoted',
 };
 
 // projectDevotionOrder: the preview's order projection [ORCH:
@@ -828,7 +828,7 @@ const RITE_409_MESSAGES = {
 // battles), so the honest projection is: einherjarCount+1, re-ranked
 // against today's (dawn-cached) order. topPercentile = ceil(rank/total
 // *100), read as "you would stand within the top N%" -- an ESTIMATE
-// against a snapshot, never a promise (documented for the client unit;
+// against a snapshot, never a promise (documented for the client squad;
 // the mock's own "+2%" chip is this projection's display slot).
 // Degenerate-empty: an empty order projects rank 1 of 1, top 100%.
 function projectDevotionOrder(callerId, nowMs) {
@@ -854,21 +854,21 @@ function projectDevotionOrder(callerId, nowMs) {
   };
 }
 
-// previewDevotion: GET /api/ragnarok/devotion/preview/:presetIndex --
+// previewDevotion: GET /api/ragnarok/devotion/preview/:squadIndex --
 // the itemized blast radius + eligibility + order projection, all
 // READ-ONLY (a preview persists nothing; lazy rite recovery inside the
 // eligibility walk is the one converging write it can trigger).
 // Ineligibility is DATA here (eligible:false + reasons[]), not an error
 // status -- the client renders the ceremony panel with the vow button
-// disabled; only an unaddressable preset 404s.
-function previewDevotion(callerId, presetIndex, nowMs) {
+// disabled; only an unaddressable squad 404s.
+function previewDevotion(callerId, squadIndex, nowMs) {
   const now = nowMs != null ? nowMs : Date.now();
   const doc = storage.readProfile(callerId);
   const canvas = doc ? doc.canvas : null;
-  const preset = presetMetaOr404(canvas, presetIndex);
-  const { reasons, blast } = riteEligibilityReasons(callerId, canvas, presetIndex, now);
+  const squad = squadMetaOr404(canvas, squadIndex);
+  const { reasons, blast } = riteEligibilityReasons(callerId, canvas, squadIndex, now);
   return {
-    preset,
+    squad,
     eligible: reasons.length === 0,
     reasons,
     blast: blastDto(blast),
@@ -876,7 +876,7 @@ function previewDevotion(callerId, presetIndex, nowMs) {
   };
 }
 
-// devote: POST /api/ragnarok/devotion/:presetIndex -- THE rite,
+// devote: POST /api/ragnarok/devotion/:squadIndex -- THE rite,
 // irreversible. Commit ordering (crash posture documented per step; the
 // whole function is synchronous on the single-threaded server --
 // pg_sync's querySync blocks too -- so two requests can never
@@ -884,17 +884,17 @@ function previewDevotion(callerId, presetIndex, nowMs) {
 // services/market.cjs's buyListing makes):
 //   0. Idempotency-Key replay: a FINALIZED record with the same
 //      (playerId, key) returns the original outcome, no re-rite.
-//   1. Eligibility 409s (mid_rite / last_preset / empty_unit /
-//      deployed) + preset 404 (no-leak), all read-only.
+//   1. Eligibility 409s (mid_rite / last_squad / empty_squad /
+//      deployed) + squad 404 (no-leak), all read-only.
 //   2. Write the einherjar record with rite.state 'applying' -- the
 //      rite LOCK [ORCH: storage-level lock flag during the rite] and
-//      the durable frozen snapshot, captured while the unit still
+//      the durable frozen snapshot, captured while the squad still
 //      exists. CRASH HERE: profile untouched; the stale 'applying'
 //      record is lazily VOIDED (normalizeRiteRecord: every devoted uid
 //      still homed -> the cost never landed -> delete the record). The
 //      player lost nothing and no engraving stands: nothing duplicated.
 //   3. COMMIT POINT: ONE atomic profile write carrying the entire cost
-//      (preset slot deleted + every referenced uid destroyed account-
+//      (squad slot deleted + every referenced uid destroyed account-
 //      wide -- applyDevotionToCanvas). This is the rule-5 divergence
 //      write; see the module header. CRASH AFTER: cost landed, record
 //      still 'applying' -> lazily ROLLED FORWARD to 'done' (the
@@ -903,7 +903,7 @@ function previewDevotion(callerId, presetIndex, nowMs) {
 //      and the void of the record coexist with a completed engraving.
 //   4. Finalize: rite.state 'done'. The record is immutable from here
 //      (REQ-0068 will only ever APPEND perSeason entries).
-function devote(callerId, presetIndex, idemKey, nowMs) {
+function devote(callerId, squadIndex, idemKey, nowMs) {
   const now = nowMs != null ? nowMs : Date.now();
 
   // (0) Idempotency replay (finalized records only -- an 'applying'
@@ -921,8 +921,8 @@ function devote(callerId, presetIndex, idemKey, nowMs) {
   // (1) Eligibility.
   const doc = storage.readProfile(callerId);
   const canvas = doc ? doc.canvas : null;
-  const preset = presetMetaOr404(canvas, presetIndex);
-  const { reasons, engine } = riteEligibilityReasons(callerId, canvas, presetIndex, now);
+  const squad = squadMetaOr404(canvas, squadIndex);
+  const { reasons, engine } = riteEligibilityReasons(callerId, canvas, squadIndex, now);
   if (reasons.length > 0) {
     const reason = reasons[0];
     const err = new Error(RITE_409_MESSAGES[reason] || ('devotion refused: ' + reason));
@@ -932,24 +932,24 @@ function devote(callerId, presetIndex, idemKey, nowMs) {
   // (2) The record: snapshot frozen BEFORE any destruction, persisted
   // as the rite lock.
   const cs = currentSeason(now);
-  const snapshot = buildFrozenSnapshot(canvas, presetIndex);
-  const blast = devotionBlastRadius(canvas, presetIndex);
+  const snapshot = buildFrozenSnapshot(canvas, squadIndex);
+  const blast = devotionBlastRadius(canvas, squadIndex);
   const tIso = new Date(now).toISOString();
   /** @type {any} */
   const record = {
     id: genId('ein'),
     playerId: callerId,
-    // unitName = the preset's own display name (the mock engraves the
+    // squadName = the squad's own display name (the mock engraves the
     // team's existing name -- 焔手の隊; a player who wants a different
-    // engraving renames the preset first, via the normal client rename).
+    // engraving renames the squad first, via the normal client rename).
     // No uniqueness constraint [ORCH]: two rites may engrave the same
     // name as two records.
-    unitName: preset.name,
+    squadName: squad.name,
     seasonDevoted: cs.season ? cs.season.index : null,
     devotedAt: tIso,
     snapshot,
     blast: blastDto(blast),
-    bioArchive: null, // REQ-0060 (unit bios) not built yet -- reserved, stored empty
+    bioArchive: null, // REQ-0060 (squad bios) not built yet -- reserved, stored empty
     perSeason: [], // 戦果 history -- REQ-0068 appends {season, battles:[...]}
     emblems: [],
     idemKey: idemKey || null,
@@ -958,7 +958,7 @@ function devote(callerId, presetIndex, idemKey, nowMs) {
   storage.writeEinherjarRecord(record.id, record);
 
   // (3) COMMIT POINT: the cost, in one atomic profile write.
-  applyDevotionToCanvas(engine, canvas, presetIndex);
+  applyDevotionToCanvas(engine, canvas, squadIndex);
   storage.writeProfile(callerId, canvas);
 
   // (4) Finalize the record.

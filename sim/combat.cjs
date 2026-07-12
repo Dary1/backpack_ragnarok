@@ -7,8 +7,8 @@
 // cellsOf/bpCells/combos/traceBeams). It must NEVER call any engine
 // MUTATOR (movePO, moveBP, rotatePO, seatSI, stowSI, invMovePO, etc.) and
 // must NEVER share a mutable object reference back into engine state.
-// Every unit "snapshot" handed to the compiler is deep-copied first
-// (JSON.parse(JSON.stringify(...)) -- fine since scenario/unit state is
+// Every squad "snapshot" handed to the compiler is deep-copied first
+// (JSON.parse(JSON.stringify(...)) -- fine since scenario/squad state is
 // plain data with no functions/cycles) so nothing here can mutate the
 // caller's original state object, and nothing engine.js does can leak
 // mutation back out either. Combat/HP/damage logic lives ENTIRELY here;
@@ -94,7 +94,7 @@ module.exports = {
   tickStatuses: status.tickStatuses,
   consumeSpikes: status.consumeSpikes,
   deepCopy: core.deepCopy,
-  compileUnitSnapshot: compile.compileUnitSnapshot,
+  compileSquadSnapshot: compile.compileSquadSnapshot,
   cellsChebyshevAdjacent: compile.cellsChebyshevAdjacent,
   centroidRoundHalfUp: entry.centroidRoundHalfUp,
   selectEntryCell: entry.selectEntryCell,

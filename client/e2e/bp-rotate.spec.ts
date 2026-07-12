@@ -14,7 +14,7 @@
 // model (an inventory "home" BP can have multiple canvas "reference"
 // placements), rotation is a mutation of the arrangement performed
 // WHEREVER it happens -- home vs. references are INDEPENDENT rotations,
-// exactly like seated SIs are already independent per-preset (not
+// exactly like seated SIs are already independent per-squad (not
 // shared/mirrored). Rotating a BP's home in the inventory does NOT rotate
 // its canvas reference(s), and vice versa -- each is simply its own
 // {shape,linker,pos[]} record, rotated in place, with no cross-record

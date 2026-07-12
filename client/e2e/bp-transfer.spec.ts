@@ -40,7 +40,7 @@
 // removed the BP from inv.pages[0]; canvas->inv physically removed it
 // from canvas.bps). Phase 1 (mock-src/engine.js) replaced that with the
 // reference model: inv->canvas now CREATES A REFERENCE (the home stays
-// in inv.pages[0] untouched, forever, regardless of how many presets
+// in inv.pages[0] untouched, forever, regardless of how many squads
 // reference it) and canvas->inv now REMOVES A REFERENCE (the home was
 // never touched to begin with -- there is nothing to "put back", the
 // item was always sitting right there in inventory). Assertions below

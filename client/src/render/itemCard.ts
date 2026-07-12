@@ -39,7 +39,7 @@ import { Engine } from '../engine/adapter';
 export interface ItemCardShapeInput {
   /** Unrotated shape offsets, e.g. ItemDef.shape / ApiItemEntry.shape. */
   shape: Offset[];
-  /** REQ-0028 aspect-law inset preset selector -- same field BoardRenderer
+  /** REQ-0028 aspect-law inset squad selector -- same field BoardRenderer
    * reads off ItemDef.stretch to choose which inset-fraction branch to
    * use below. */
   stretch?: boolean;
@@ -71,8 +71,8 @@ export interface FootprintCells {
 export function computeFootprintCells(shape: Offset[], rot = 0): FootprintCells {
   const off = Engine.rotOffsets(shape, rot);
   // Defensive guard (REQ-0041 bug #4 hardening): an EMPTY shape (e.g. a
-  // 0-BP unit's degenerate footprint, were this ever called with one --
-  // see MonitorRenderer.ts's MonitorUnitVisual.icon, currently never
+  // 0-BP squad's degenerate footprint, were this ever called with one --
+  // see MonitorRenderer.ts's MonitorSquadVisual.icon, currently never
   // populated, but this function is also called from Dex/ShapeGrid
   // paths that could plausibly hand it a malformed/empty shape) makes
   // `Math.max(...[].map(...))` evaluate to `-Infinity` (spread of an
@@ -133,7 +133,7 @@ export function applyAlign(box: PixelBox, align: IconAlign | undefined, w0: numb
 /**
  * The REQ-0028 inset-fraction box an icon is fit into within its own
  * unrotated W0xH0 footprint box, before the uniform contain-fit above is
- * applied -- same two presets BoardRenderer's placed-PO/ghost-PO draw
+ * applied -- same two squads BoardRenderer's placed-PO/ghost-PO draw
  * paths branch on via ItemDef.stretch (def.stretch ? tight 10%/80% inset :
  * looser 6/5%..88/90% inset). Pure box arithmetic, no texture involved yet.
  */
@@ -168,7 +168,7 @@ export interface ItemCardLayout {
  * thumbnails, detail diagram) call so the placement math is written once.
  * texW/texH are the icon texture/image's OWN native pixel dimensions
  * (Pixi Texture.width/height, an <img> naturalWidth/naturalHeight, or an
- * SVG symbol's viewBox width/height -- same units fitBoxInBounds already
+ * SVG symbol's viewBox width/height -- same squads fitBoxInBounds already
  * expects). Board content ships icons whose viewBox aspect already matches
  * the shape's cell-aspect box (REQ-0028's "exact-aspect viewBoxes" note),
  * so DOM callers that haven't decoded the image yet (no natural size

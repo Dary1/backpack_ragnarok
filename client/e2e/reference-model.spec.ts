@@ -1,18 +1,18 @@
 // REQ-0033 Phase 2 -- reference model E2E coverage (client adoption of
-// Phase 1's engine work: usage tracking, red/yellow tints, unit
+// Phase 1's engine work: usage tracking, red/yellow tints, squad
 // independence). Fixture: client/e2e/fixtures/reference-model-fixture.json
 // (8x8 layout):
-//   - CANVAS (preset1, active at boot): one BP `canvas_bp1`, a 3x6
+//   - CANVAS (squad1, active at boot): one BP `canvas_bp1`, a 3x6
 //     rectangle at origin [1,1] (absolute rows 1-3, cols 1-6), linker at
 //     the (1,1) corner cell. Every OTHER cell in that rectangle is free
 //     -- canvas requires BP-containment for any PO placement (canPlacePO
 //     rejects "Dead Space"), so this is the landing zone for every
 //     canvas-side PO drop in this spec.
-//   - PRESET2 (explicit in the fixture's `presets.store[1]`, NOT the
+//   - SQUAD2 (explicit in the fixture's `squads.store[1]`, NOT the
 //     auto-materialized empty default): its OWN separate BP
-//     `canvas_bp2`, same shape/origin, so preset2 can ALSO legally host
-//     a PO reference (addPreset/migrateState never give a fresh preset
-//     any BP by default -- this fixture pre-seeds preset2 specifically
+//     `canvas_bp2`, same shape/origin, so squad2 can ALSO legally host
+//     a PO reference (addSquad/migrateState never give a fresh squad
+//     any BP by default -- this fixture pre-seeds squad2 specifically
 //     so scenario 3 below has somewhere legal to drop onto).
 //   - INVENTORY page0: a free-placed blade `p900` at [5,5]-[6,5] (used by
 //     scenarios 1-5, 8), and a BP `homebp` at origin [1,1] (absolute
@@ -23,14 +23,14 @@
 //     canvas_bp1's [1,1]-[3,6] footprint (a transferred BP does not need
 //     to land INSIDE another BP -- canTransferBP only checks bounds +
 //     no-BP-overlap for the inv->canvas case, unlike a lone PO).
-//   - No `presets` field would have let migrateState default preset2 to
-//     EMPTY (no BPs) -- explicitly seeding `presets` here is what makes
-//     scenario 3 (place the SAME blade into preset2's canvas) possible
+//   - No `squads` field would have let migrateState default squad2 to
+//     EMPTY (no BPs) -- explicitly seeding `squads` here is what makes
+//     scenario 3 (place the SAME blade into squad2's canvas) possible
 //     at all.
 //
 // Assertion strategy: per the task's hook-choice guidance, every
 // set-membership assertion below (red/yellow/canvasYellow/usageOf/
-// isUnitIndependent) goes through window.__backpackDebug (wired in
+// isSquadIndependent) goes through window.__backpackDebug (wired in
 // client/src/store.ts's boot(), see that file's REQ-0033 Phase 2 comment)
 // rather than reverse-engineering PixiJS canvas pixel colors -- exact,
 // zero-pixel-math, robust against any rendering/z-order/theme change.
@@ -62,10 +62,10 @@ async function usedByCurrent(page: Page, uid: string): Promise<boolean> {
   }, uid);
 }
 
-async function isUnitIndependent(page: Page, n: number): Promise<boolean> {
+async function isSquadIndependent(page: Page, n: number): Promise<boolean> {
   return page.evaluate((nn) => {
-    const w = window as unknown as { __backpackDebug: { isUnitIndependent: (n: number) => boolean } };
-    return w.__backpackDebug.isUnitIndependent(nn);
+    const w = window as unknown as { __backpackDebug: { isSquadIndependent: (n: number) => boolean } };
+    return w.__backpackDebug.isSquadIndependent(nn);
   }, n);
 }
 
@@ -92,14 +92,14 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(home).toBeTruthy();
     expect(home.cell).toEqual([5, 5]); // home never moved
 
-    // preset1 (index 0) is current -> p900 is red in inventory.
+    // squad1 (index 0) is current -> p900 is red in inventory.
     const tints = await tintSets(page);
     expect(tints.red).toContain('p900');
     expect(tints.yellow).not.toContain('p900');
     expect(await usedByCurrent(page, 'p900')).toBe(true);
   });
 
-  test('2. switching preset re-tints inventory yellow (used by an OTHER preset)', async ({ page }) => {
+  test('2. switching squad re-tints inventory yellow (used by an OTHER squad)', async ({ page }) => {
     await loadFixtureAndBoot(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
@@ -111,23 +111,23 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     );
     await autoSaveAndFetch(page);
 
-    await expect(page.locator('.preset-tab')).toHaveCount(5);
-    await page.locator('.preset-tab').nth(1).click();
+    await expect(page.locator('.squad-tab')).toHaveCount(5);
+    await page.locator('.squad-tab').nth(1).click();
     await page.waitForTimeout(300);
-    await expect(page.locator('.preset-tab-active')).toHaveText('Preset 2');
+    await expect(page.locator('.squad-tab-active')).toHaveText('Squad 2');
 
     const tints = await tintSets(page);
-    expect(tints.yellow).toContain('p900'); // used by preset1, which is now an OTHER preset
-    expect(tints.red).not.toContain('p900'); // NOT used by the now-current preset2
+    expect(tints.yellow).toContain('p900'); // used by squad1, which is now an OTHER squad
+    expect(tints.red).not.toContain('p900'); // NOT used by the now-current squad2
     expect(await usedByCurrent(page, 'p900')).toBe(false);
   });
 
-  test('3. same blade placed into preset2 -> canvas shows canvasYellow (shared)', async ({ page }) => {
+  test('3. same blade placed into squad2 -> canvas shows canvasYellow (shared)', async ({ page }) => {
     await loadFixtureAndBoot(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // preset1: place the blade.
+    // squad1: place the blade.
     await drag(
       page,
       { x: invBox.x + cx(5), y: invBox.y + cy(5) },
@@ -135,13 +135,13 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     );
     await autoSaveAndFetch(page);
 
-    // Switch to preset2 (has its OWN canvas_bp2, per the fixture).
-    await page.locator('.preset-tab').nth(1).click();
+    // Switch to squad2 (has its OWN canvas_bp2, per the fixture).
+    await page.locator('.squad-tab').nth(1).click();
     await page.waitForTimeout(300);
-    await expect(page.locator('.preset-tab-active')).toHaveText('Preset 2');
+    await expect(page.locator('.squad-tab-active')).toHaveText('Squad 2');
 
-    // Place the SAME blade into preset2's canvas -- allowed, since
-    // usedByCurrent is false for preset2 (only preset1 references it).
+    // Place the SAME blade into squad2's canvas -- allowed, since
+    // usedByCurrent is false for squad2 (only squad1 references it).
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(
@@ -152,32 +152,32 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
 
     const canvas = await autoSaveAndFetch(page);
     expect(canvas.presets.active).toBe(1);
-    const preset2Ref = canvas.pos.find((p: any) => p.uid === 'p900');
-    expect(preset2Ref).toBeTruthy();
-    expect(preset2Ref.cell).toEqual([1, 3]);
-    // preset1's reference (now inactive, in store[0]) must be untouched.
+    const squad2Ref = canvas.pos.find((p: any) => p.uid === 'p900');
+    expect(squad2Ref).toBeTruthy();
+    expect(squad2Ref.cell).toEqual([1, 3]);
+    // squad1's reference (now inactive, in store[0]) must be untouched.
     expect(canvas.presets.store[0].pos.find((p: any) => p.uid === 'p900')?.cell).toEqual([1, 2]);
 
     const tints = await tintSets(page);
-    expect(tints.canvasYellow).toContain('p900'); // on canvas now, shared with preset1
-    expect(await usedByCurrent(page, 'p900')).toBe(true); // preset2 itself now references it
+    expect(tints.canvasYellow).toContain('p900'); // on canvas now, shared with squad1
+    expect(await usedByCurrent(page, 'p900')).toBe(true); // squad2 itself now references it
   });
 
-  test('4. drag from preset2 canvas back to inventory removes only preset2s reference', async ({ page }) => {
+  test('4. drag from squad2 canvas back to inventory removes only squad2s reference', async ({ page }) => {
     await loadFixtureAndBoot(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     await drag(page, { x: invBox.x + cx(5), y: invBox.y + cy(5) }, { x: canvasBox.x + cx(2), y: canvasBox.y + cy(1) });
     await autoSaveAndFetch(page);
-    await page.locator('.preset-tab').nth(1).click();
+    await page.locator('.squad-tab').nth(1).click();
     await page.waitForTimeout(300);
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(page, { x: invBox2.x + cx(5), y: invBox2.y + cy(5) }, { x: canvasBox2.x + cx(3), y: canvasBox2.y + cy(1) });
     await autoSaveAndFetch(page);
 
-    // Drag the blade FROM preset2's canvas back TO inventory -- removeRef,
+    // Drag the blade FROM squad2's canvas back TO inventory -- removeRef,
     // drop cell irrelevant.
     const invBox3 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox3 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
@@ -185,29 +185,29 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
 
     let canvas = await autoSaveAndFetch(page);
     expect(canvas.presets.active).toBe(1);
-    expect(canvas.pos.some((p: any) => p.uid === 'p900')).toBe(false); // preset2 no longer references it
+    expect(canvas.pos.some((p: any) => p.uid === 'p900')).toBe(false); // squad2 no longer references it
     const home = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p900');
     expect(home).toBeTruthy();
     expect(home.cell).toEqual([5, 5]); // home untouched, same cell as always
 
-    // preset2 (current) no longer references p900 at all.
+    // squad2 (current) no longer references p900 at all.
     expect(await usedByCurrent(page, 'p900')).toBe(false);
 
-    // Switch back to preset1 -- its own reference is unaffected, and it
-    // is no longer "shared" (preset2 dropped its reference), so p900 on
-    // preset1's canvas should now read canvasYellow=false.
-    await page.locator('.preset-tab').nth(0).click();
+    // Switch back to squad1 -- its own reference is unaffected, and it
+    // is no longer "shared" (squad2 dropped its reference), so p900 on
+    // squad1's canvas should now read canvasYellow=false.
+    await page.locator('.squad-tab').nth(0).click();
     await page.waitForTimeout(300);
-    await expect(page.locator('.preset-tab-active')).toHaveText('Preset 1');
+    await expect(page.locator('.squad-tab-active')).toHaveText('Squad 1');
 
     canvas = await autoSaveAndFetch(page);
-    const preset1Ref = canvas.pos.find((p: any) => p.uid === 'p900');
-    expect(preset1Ref).toBeTruthy();
-    expect(preset1Ref.cell).toEqual([1, 2]); // preset1's own reference, unaffected throughout
+    const squad1Ref = canvas.pos.find((p: any) => p.uid === 'p900');
+    expect(squad1Ref).toBeTruthy();
+    expect(squad1Ref.cell).toEqual([1, 2]); // squad1's own reference, unaffected throughout
 
     const tints = await tintSets(page);
-    expect(tints.canvasYellow).not.toContain('p900'); // no longer shared -- preset2 dropped its ref
-    expect(tints.red).toContain('p900'); // still used by preset1 itself (current)
+    expect(tints.canvasYellow).not.toContain('p900'); // no longer shared -- squad2 dropped its ref
+    expect(tints.red).toContain('p900'); // still used by squad1 itself (current)
   });
 
   test('5. red-rule rejection: a second inv -> canvas reference attempt for the same uid is a no-op', async ({ page }) => {
@@ -227,7 +227,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     await drag(page, { x: invBox2.x + cx(5), y: invBox2.y + cy(5) }, { x: canvasBox2.x + cx(4), y: canvasBox2.y + cy(1) });
 
     const canvas = await autoSaveAndFetch(page);
-    // Exactly one reference to p900 on preset1's canvas -- no duplicate
+    // Exactly one reference to p900 on squad1's canvas -- no duplicate
     // was created, and the original reference is unchanged.
     const refs = canvas.pos.filter((p: any) => p.uid === 'p900');
     expect(refs.length).toBe(1);
@@ -236,13 +236,13 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p900')?.cell).toEqual([5, 5]);
   });
 
-  test('6. BP transfer inv -> canvas excludes a PO already referenced by the current preset', async ({ page }) => {
+  test('6. BP transfer inv -> canvas excludes a PO already referenced by the current squad', async ({ page }) => {
     await loadFixtureAndBoot(page);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     // Pre-reference p910 (one of homebp's two contained daggers) into the
-    // CURRENT preset directly (independent of the BP) -- anchor (2,4)
+    // CURRENT squad directly (independent of the BP) -- anchor (2,4)
     // inside canvas_bp1 (rows 1-3), so bpReferenceSet must exclude it
     // when the BP itself is transferred below.
     await drag(page, { x: invBox.x + cx(1), y: invBox.y + cy(1) }, { x: canvasBox.x + cx(4), y: canvasBox.y + cy(2) });
@@ -269,7 +269,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     const p911Ref = canvas.pos.find((p: any) => p.uid === 'p911');
     expect(p911Ref).toBeTruthy();
     expect(p911Ref.cell).toEqual([5, 2]);
-    // p910 was EXCLUDED (already referenced by the current preset before
+    // p910 was EXCLUDED (already referenced by the current squad before
     // this transfer) -- the BP arrived MINUS that one PO; p910's existing
     // (pre-transfer) reference at [2,4] is untouched, no second reference
     // was created for it by the BP transfer.
@@ -318,36 +318,36 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(canvas.inv.pages[0].pos.find((p: any) => p.uid === 'p911')?.cell).toEqual([1, 2]);
   });
 
-  test('8. isUnitIndependent: a preset with zero yellow-tinted items reports true', async ({ page }) => {
+  test('8. isSquadIndependent: a squad with zero yellow-tinted items reports true', async ({ page }) => {
     await loadFixtureAndBoot(page);
-    // Freshly booted, untouched fixture: preset1 (current, index 0) has
-    // only its own canvas_bp1 -- no SHARED uid with any other preset yet
+    // Freshly booted, untouched fixture: squad1 (current, index 0) has
+    // only its own canvas_bp1 -- no SHARED uid with any other squad yet
     // -- vacuously/actually independent.
-    expect(await isUnitIndependent(page, 0)).toBe(true);
+    expect(await isSquadIndependent(page, 0)).toBe(true);
 
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // Place the blade into preset1 -- still independent (nothing ELSE
+    // Place the blade into squad1 -- still independent (nothing ELSE
     // references it yet).
     await drag(page, { x: invBox.x + cx(5), y: invBox.y + cy(5) }, { x: canvasBox.x + cx(2), y: canvasBox.y + cy(1) });
     await autoSaveAndFetch(page);
-    expect(await isUnitIndependent(page, 0)).toBe(true);
+    expect(await isSquadIndependent(page, 0)).toBe(true);
 
-    // Switch to preset2 and reference the SAME blade there too -- now
-    // BOTH preset1 and preset2 share p900, so NEITHER is independent.
-    await page.locator('.preset-tab').nth(1).click();
+    // Switch to squad2 and reference the SAME blade there too -- now
+    // BOTH squad1 and squad2 share p900, so NEITHER is independent.
+    await page.locator('.squad-tab').nth(1).click();
     await page.waitForTimeout(300);
     const invBox2 = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox2 = (await page.locator('canvas.board-canvas').first().boundingBox())!;
     await drag(page, { x: invBox2.x + cx(5), y: invBox2.y + cy(5) }, { x: canvasBox2.x + cx(3), y: canvasBox2.y + cy(1) });
     await autoSaveAndFetch(page);
 
-    expect(await isUnitIndependent(page, 1)).toBe(false); // preset2 (current) shares p900 with preset1
-    expect(await isUnitIndependent(page, 0)).toBe(false); // preset1 (inactive) also shares p900 with preset2
+    expect(await isSquadIndependent(page, 1)).toBe(false); // squad2 (current) shares p900 with squad1
+    expect(await isSquadIndependent(page, 0)).toBe(false); // squad1 (inactive) also shares p900 with squad2
 
-    // preset3 (index 2), never touched, remains independent (its own
+    // squad3 (index 2), never touched, remains independent (its own
     // empty canvas -- migrateState's default -- shares nothing).
-    expect(await isUnitIndependent(page, 2)).toBe(true);
+    expect(await isSquadIndependent(page, 2)).toBe(true);
   });
 });
