@@ -1,41 +1,68 @@
-# アイテムコンテンツパイプライン — v2（PO / SI 追加手順書 ＋ 検証記録）
+# Item Content Pipeline — v2.1 (PO / SI batch procedure + verification log)
 
-> **対象**: PO（`content/live/live_items.json`, `po/2`）と SI（`content/live/live_sis.json`, `si/2`）。
-> 上から順に実行すれば 1 バッチのアイテムを追加できる。共通の原則・インフラ・REQ 運用・語彙・
-> ビルド（`tool_gen_data.cjs`）・品質ゲート（`ci.sh`）は `common_content_pipeline.md` を参照。
-> **担当**: Opus が全ステップを単独で実施。
-> **アイコン工程**は REQ-0073 由来の AI ラスタ生成ルート。**2026-07-09 に V9 で end-to-end 検証済み**
-> （末尾「検証記録」）。ルートの本体はブランチ `req-0073-item-icon-gen` にあり、master/live への
-> 復旧・マージは REQ-0109 で行う。
+> **v2.1 (2026-07-12, REQ-0134):** translated to English per the language
+> policy (user directive 2026-07-02); content identical to v2 except:
+> references updated (`art_golden.md` → `common_content_pipeline.md` §2;
+> `common_content_pipeline.md` now exists), and the route-location notes
+> updated after REQ-0109's merge to master (2026-07-12). v2 (Japanese) lives
+> in git history.
+>
+> **Scope**: PO (`content/live/live_items.json`, `po/2`) and SI
+> (`content/live/live_sis.json`, `si/2`). Executing the steps top-to-bottom
+> adds one batch of items. Shared principles, infra, REQ workflow, vocab,
+> build (`tool_gen_data.cjs`) and quality gates (`ci.sh`):
+> see `common_content_pipeline.md`.
+> **Operator**: Opus executes all steps solo.
+> **Icon stage** = the REQ-0073 AI-raster route, **verified end-to-end on V9,
+> 2026-07-09** (see "Verification log" at the end). The route was recovered
+> and merged to master by REQ-0109 (2026-07-12). NOTE: the batch-003 ART
+> outcome was rejected by the user at S7 (2026-07-12, "NG"); candidate
+> regeneration restarts on the refreshed pipeline (REQ-0135/0136 outcomes) —
+> see REQ-0109 (todo).
 
-## 前提
+## Prerequisites
 
-- サーバ接続済み。作業はワークツリー `~/backpack_ragnarok_worktrees/req-00NN-slug`、ブランチ `req-00NN-slug`。
-- 語彙は `content/vocab.json`（現 v7）に閉じる。新語彙はデザインイベント＝ユーザー承認必須。
-- 全エントリに `i18n.ja` 必須。**Step 7 が green になるまで `content/live/` に書き込まない。**
+- Connected to the server. Work in worktree
+  `~/backpack_ragnarok_worktrees/req-00NN-slug`, branch `req-00NN-slug`.
+- Vocabulary is CLOSED to `content/vocab.json` (currently v7). New vocab is a
+  design event = requires user approval.
+- Every entry requires `i18n.ja`. **Nothing is written into `content/live/`
+  until Step 7 is green.**
 
-## Step 1 — ブリーフを決める
+## Step 1 — Decide the brief
 
-テーマ／点数(8–16)／shape 配分／rarity 配分（`vocab.rarities`）／tag・socket 予算／新語彙可否（原則なし）を決め、狙いを `notes.md` 冒頭に書く。
+Theme / count (8–16) / shape distribution / rarity distribution
+(`vocab.rarities`) / tag & socket budget / new-vocab allowance (default:
+none). Write the intent at the top of `notes.md`.
 
-## Step 2 — `draft.json` を書く
+## Step 2 — Write `draft.json`
 
-場所: `content/batches/batch-NNN-slug/draft.json`、形 `{ "items": [ /*PO*/ ], "sis": [ /*SI*/ ] }`。
+Location: `content/batches/batch-NNN-slug/draft.json`, shape
+`{ "items": [ /*PO*/ ], "sis": [ /*SI*/ ] }`.
 
-**PO（po/2）**: `id` / `name` / `rarity` / `shape`（`[row,col]` の配列）/ `icon`（`"icon-<id>"`）/ `tags`（`tags[0]`=種別ルート, 以降=属性）/ `effects` / `sockets`（`[{t,tags,ax,ay}]`）/ `ports`（`[{tiles,tag}]`）/ `part`（組立系のみ）/ `flavor` / `i18n.ja` / `align` / `stretch`。
+**PO (po/2)**: `id` / `name` / `rarity` / `shape` (array of `[row,col]`) /
+`icon` (`"icon-<id>"`) / `tags` (`tags[0]` = kind root, rest = attributes) /
+`effects` / `sockets` (`[{t,tags,ax,ay}]`) / `ports` (`[{tiles,tag}]`) /
+`part` (assembly items only) / `flavor` / `i18n.ja` / `align` / `stretch`.
 
-**SI（si/2）**: `id` / `name` / `slot`（gem/edge/coat/bond）/ `reqTags` / `icon` / `rarity` / `effects` / `flavor` / `i18n.ja`（shape・sockets なし）。
+**SI (si/2)**: `id` / `name` / `slot` (gem/edge/coat/bond) / `reqTags` /
+`icon` / `rarity` / `effects` / `flavor` / `i18n.ja` (no shape/sockets).
 
-**Effect AST**: トリガ＝`vocab.triggers`（`every_secs` は `s:[lo,hi]` 秒、`adjacent` は `tagKind:"type"|"element"`＋`tag`、`battle_start`/`passive`/`OnHit` 他）、verb＝`vocab.verbs`（数値は `n:[lo,hi]`、状態は `vocab.statuses`）。例:
+**Effect AST**: trigger = `vocab.triggers` (`every_secs` takes `s:[lo,hi]`
+seconds; `adjacent` takes `tagKind:"type"|"element"` + `tag`;
+`battle_start`/`passive`/`OnHit` etc.), verb = `vocab.verbs` (numbers are
+`n:[lo,hi]`, statuses from `vocab.statuses`). Examples:
 
 ```json
 {"trigger":{"t":"every_secs","s":[1.8,2.2]},"verb":{"t":"strike","n":[22,38]}}
 {"trigger":{"t":"adjacent","tagKind":"element","tag":"Oil"},"verb":{"t":"amp_status","status":"Burn","mult":2}}
 ```
 
-## Step 3 — 静的検証（意味フィールド）
+## Step 3 — Static validation (semantic fields)
 
-`shared/content_validate.cjs`（`validateBody(body, kind, vocab)`、`kind`=`'item'|'si'`、意味フィールドのみ検査）。単体 CLI は無いので使い捨てハーネスをリポジトリ直下から実行:
+`shared/content_validate.cjs` (`validateBody(body, kind, vocab)`,
+`kind`=`'item'|'si'`, semantic fields only). There is no standalone CLI, so
+run a throwaway harness from the repo root:
 
 ```js
 // tools/scratch_validate_batch.cjs
@@ -50,9 +77,11 @@ for (const e of batch.sis  ||[]) { try{V.validateBody(pick(e,V.SI_ALLOWED_KEYS )
 console.log(bad?`FAIL ${bad}`:'S2 OK'); process.exit(bad?1:0);
 ```
 
-`node tools/scratch_validate_batch.cjs content/batches/batch-NNN-slug/draft.json`。構造フィールド（shape/ports/part/icon/align/id）は Step 4・5 で担保。加えて id/name 衝突（live 含む）を手検査。
+`node tools/scratch_validate_batch.cjs content/batches/batch-NNN-slug/draft.json`.
+Structural fields (shape/ports/part/icon/align/id) are covered by Steps 4–5.
+Additionally hand-check id/name collisions (including vs live).
 
-## Step 4 — エンジン統合チェック
+## Step 4 — Engine integration check
 
 ```
 node tools/tool_integrate.cjs content/vocab.json \
@@ -60,47 +89,70 @@ node tools/tool_integrate.cjs content/vocab.json \
   content/batches/batch-NNN-slug/draft.json
 ```
 
-配置/4 回転/socket 整合を実エンジンで検査。赤が出たら Step 2 に戻る。
+Placement / 4 rotations / socket consistency against the real engine. Any red
+→ back to Step 2.
 
-## Step 5 — アイコン生成（AI ラスタ方式・V9）
+## Step 5 — Icon generation (AI raster route, V9)
 
-> ルートの本体（ツール・`gen_*` フィールド・batch-003）はブランチ `req-0073-item-icon-gen` にある
-> （master 未マージ、REQ-0109）。**クライアント実行には `~/backpack_ragnarok/.venv/bin/python` を使う**
-> （`requests`/`PIL`/`numpy`/`scipy`/`rembg`/`onnxruntime` 導入済み。ワークツリー独自の `.venv` は現状無い）。
-> ComfyUI は常駐サービスではないので手動起動が必要（`~/ComfyUI/venv/bin/python main.py`、`127.0.0.1:8188`）。
+> The route (tools, `gen_*` fields, batch-003) lives on **master** since
+> REQ-0109's merge (2026-07-12). **Use `~/backpack_ragnarok/.venv/bin/python`
+> for the client** (`requests`/`PIL`/`numpy`/`scipy`/`rembg`/`onnxruntime`
+> installed; worktrees have no own `.venv`). ComfyUI is NOT a persistent
+> service — start it manually (`~/ComfyUI/venv/bin/python main.py`,
+> `127.0.0.1:8188`); service-ification is REQ-0139.
 
-**5-1. `gen_render` を計算（推測しない）。** `cell_px`=256、`cells`=shape の正規化コピー、`bbox_cells`=[w,h]、`target_px`=[w×256, h×256]（最終キャンバス。不定形でも常に矩形）、`gen_px`＝同アスペクト・約 1MP・両辺 64 の倍数（生成後 Lanczos で `target_px` に縮小）。**小さく生成しない**（例: 1×1 を 256px 直生成は quality が落ちる。必ず ~1MP で生成→縮小）。不定形は bbox 行を使い `mask_cells` に占有セルを入れて配置バイアス（best-effort）。
+**5-1. Compute `gen_render` (never guess).** `cell_px`=256; `cells` =
+normalized copy of the shape; `bbox_cells`=[w,h]; `target_px`=[w×256, h×256]
+(the final canvas; always rectangular even for irregular shapes); `gen_px` =
+same aspect, ~1 MP, both sides multiples of 64 (generate, then Lanczos
+downscale to `target_px`). **Never generate small** (e.g. direct 256 px for a
+1×1 loses quality; always ~1 MP → downscale). Irregular shapes use the bbox
+row and put owned cells into `mask_cells` for placement bias (best-effort).
 
-| shape (bbox w×h) | 例 | アスペクト | `target_px` (=bbox×256) | `gen_px`（約1MP・64倍数） |
+| shape (bbox w×h) | example | aspect | `target_px` (=bbox×256) | `gen_px` (~1 MP, ×64) |
 |---|---|---|---|---|
-| 1×1 | gem / reagent | 1:1 | 256×256 | **1024×1024** ✓確認済 |
-| 2×1 | 横長武器 | 2:1 | 512×256 | 1408×704 |
-| 1×2 | 刀身・縦武器 | 1:2 | 256×512 | **704×1408** ✓確認済 |
-| 3×1 | 長柄（横） | 3:1 | 768×256 | 1728×576 |
-| 1×3 | 大剣（縦） | 1:3 | 256×768 | 576×1728 |
-| 2×2 | 盾・大型・L型 | 1:1 | 512×512 | **1024×1024** ✓確認済 |
-| 3×2 | 横長大物・T/Z | 3:2 | 768×512 | 1152×768 |
-| 2×3 | 縦長大物・T/Z | 2:3 | 512×768 | 768×1152 |
-| 3×3 | 最大級 | 1:1 | 768×768 | 1024×1024 |
+| 1×1 | gem / reagent | 1:1 | 256×256 | **1024×1024** ✓verified |
+| 2×1 | wide weapon | 2:1 | 512×256 | 1408×704 |
+| 1×2 | blade / vertical weapon | 1:2 | 256×512 | **704×1408** ✓verified |
+| 3×1 | polearm (horizontal) | 3:1 | 768×256 | 1728×576 |
+| 1×3 | greatsword (vertical) | 1:3 | 256×768 | 576×1728 |
+| 2×2 | shield / large / L-shape | 1:1 | 512×512 | **1024×1024** ✓verified |
+| 3×2 | wide large / T/Z | 3:2 | 768×512 | 1152×768 |
+| 2×3 | tall large / T/Z | 2:3 | 512×768 | 768×1152 |
+| 3×3 | largest | 1:1 | 768×768 | 1024×1024 |
 
-（✓＝ブランチ実データ／本検証で確認済み。他は同式による値で `gen_item_icons.py` が自動計算。アスペクトは不可侵＝異方スケール禁止 / `art_golden.md`。）
+(✓ = confirmed with real branch data / this verification. Others are values
+from the same formula, auto-computed by `gen_item_icons.py`. Aspect is
+inviolable = no anisotropic scaling / `common_content_pipeline.md` §2.)
 
-**5-2. `gen_prompt` / `gen_negative`。** `content/batches/batch-003-item-icons/style_guide.md` のテンプレを踏襲。JuggernautXL V9 は写実バイアスが強いので **stylization トークンを前置**（painterly dark-fantasy game icon、NOT photorealistic）。マット抽出のため **near-white 背景**を指定。名前は素直に（`art_golden.md`）。
+**5-2. `gen_prompt` / `gen_negative`.** Follow the template in
+`content/batches/batch-003-item-icons/style_guide.md`. JuggernautXL V9 has a
+strong photorealism bias, so **front-load stylization tokens** (painterly
+dark-fantasy game icon, NOT photorealistic). Specify a **near-white
+background** for matting. Keep names plain (`common_content_pipeline.md` §2,
+illustration-first). NOTE: checkpoint choice is under re-evaluation
+(REQ-0136); this subsection tracks its outcome.
 
-**5-3. 生成**（ComfyUI が `127.0.0.1:8188` で稼働、checkpoint `JuggernautXL_RunDiffusionPhoto2_V9_Final`。>30s は `setsid nohup ... &` でログをポーリング）:
+**5-3. Generate** (ComfyUI at `127.0.0.1:8188`, checkpoint
+`JuggernautXL_RunDiffusionPhoto2_V9_Final`; for >30 s runs use
+`setsid nohup ... &` and poll the log):
 
 ```
-cd ~/backpack_ragnarok_worktrees/req-0073-item-icon-gen
+cd <worktree>
 setsid nohup ~/backpack_ragnarok/.venv/bin/python tools/gen_item_icons.py \
   --defs content/live/live_items.json --ids <id> \
   --outdir content/batches/<batch>/candidates > tmp/gen.log 2>&1 &
 ```
 
-既定: 4 候補 / seed 101・202・303・404 / 30 steps / cfg 6.5 / dpmpp_2m・karras。`--rematte-only` で再マットのみ。
+Defaults: 4 candidates / seeds 101·202·303·404 / 30 steps / cfg 6.5 /
+dpmpp_2m·karras. `--rematte-only` reruns matte only.
 
-**5-4. マット（透過）**: rembg `birefnet-general`（`~/.u2net/birefnet-general.onnx` にキャッシュ済み）＋ 縁色キー fallback、有効帯 2–90%。
+**5-4. Matte (transparency)**: rembg `birefnet-general` (cached at
+`~/.u2net/birefnet-general.onnx`) + edge-color-key fallback, valid band
+2–90%. NOTE: LayerDiffuse (generation-time alpha) is under evaluation as the
+replacement (REQ-0135); this subsection tracks its outcome.
 
-**5-5. スコア＆選抜（幾何のみ）**:
+**5-5. Score & select (geometry only)**:
 
 ```
 ~/backpack_ragnarok/.venv/bin/python tools/tool_icon_score.py \
@@ -111,48 +163,72 @@ setsid nohup ~/backpack_ragnarok/.venv/bin/python tools/gen_item_icons.py \
   --select-dir content/batches/<batch>/selected
 ```
 
-`tool_icon_score.py` は `tool_fit_check.py` を import。`score = 100·(0.35·scale + 0.50·coverage + 0.15·uniformity)`、`MIN_CONTENT_FRAC=0.02`、勝者＝argmax。被覆下限 **≥20%/セル**（`art_golden.md`）を満たすこと。
+`tool_icon_score.py` imports `tool_fit_check.py`.
+`score = 100·(0.35·scale + 0.50·coverage + 0.15·uniformity)`,
+`MIN_CONTENT_FRAC=0.02`, winner = argmax. The per-cell coverage floor
+**≥20%** must hold (`common_content_pipeline.md` §2).
 
-## Step 6 — プレビュー配備
+## Step 6 — Preview deploy
 
-`tools/build_batch003_report.py` を当該バッチ向けに適用 → `web/preview/batch-NNN/index.html`（自己完結・相対パス・ダークテーマ）→ `https://backpack-dev.qtie.jp/preview/batch-NNN/` を確認。
+Apply `tools/build_batch003_report.py` to the batch →
+`web/preview/batch-NNN/index.html` (self-contained, relative paths, dark
+theme) → verify `https://backpack-dev.qtie.jp/preview/batch-NNN/`.
 
-## Step 7 — ユーザーレビュー（ここで停止）
+## Step 7 — USER REVIEW (STOP here)
 
-numbered ギャラリーで entry 単位（green/fix/cut）またはルール単位で判定。**green まで live に触れない。**（`art_golden.md` の Illustration-first ＝アート承認前に stats を出さない、をここで担保。）
+Numbered gallery; verdicts per entry (green/fix/cut) or per rule. **Nothing
+touches live until green.** (This is where illustration-first —
+`common_content_pipeline.md` §2: no stats before approved art — is enforced.)
 
-## Step 8 — マージ・ビルド・登録
+## Step 8 — Merge, build, register
 
-1. 承認 entry を `content/live/live_items.json`（/`live_sis.json`）の `entries[]` に追記。
+1. Append approved entries to `content/live/live_items.json`
+   (/`live_sis.json`) `entries[]`.
 2. `node tools/tool_gen_data.cjs content/vocab.json content/live/live_items.json content/live/live_sis.json content/live/scenario.json mock-src/data.js`
-3. `content/registry.json` に id・件数・レビュー結果・provenance（起草＝opus）を追記。
-4. `bash tools/ci.sh`（必要に応じ `SKIP_PG=1`/`SKIP_CLIENT=1`/`SKIP_E2E=1`）を緑に。
-5. コミット（バッチ関連をまとめて）。巻き戻しは git 履歴で。
+3. Append id / counts / review outcome / provenance (drafting = opus) to
+   `content/registry.json`.
+4. `bash tools/ci.sh` (with `SKIP_PG=1`/`SKIP_CLIENT=1`/`SKIP_E2E=1` as
+   needed) to green.
+5. Commit (batch changes together). Rollback = git history.
 
 ---
 
-## 検証記録（2026-07-09, V9）
+## Verification log (2026-07-09, V9)
 
-REQ-0109 の一環として、アイコン生成ルートを **V9** で end-to-end スモークテストし、動作を確認した。
+As part of REQ-0109, the icon route was smoke-tested **end-to-end on V9**.
 
-**環境**
-- モデル: `JuggernautXL_RunDiffusionPhoto2_V9_Final`（導入済み。V6 は未導入だがユーザー判断で V9 採用）。
-- クライアント実行: `~/backpack_ragnarok/.venv/bin/python`（`requests`/`PIL`/`numpy`/`scipy`/`rembg`/`onnxruntime` 導入済み）。**ワークツリー `req-0073-item-icon-gen` 独自の `.venv` は存在しなかった**ため、メインチェックアウトの `.venv` を使用。
-- ComfyUI: 停止していたので手動起動（`~/ComfyUI/venv/bin/python main.py`、`127.0.0.1:8188`）。常駐サービスではない。
-- マット: `~/.u2net/birefnet-general.onnx`（972MB）キャッシュ済み → ダウンロード不要。
+**Environment**
+- Model: `JuggernautXL_RunDiffusionPhoto2_V9_Final` (installed; V6 was not
+  installed — user decided to adopt V9). NOTE 2026-07-12: superseded by the
+  batch-003 S7 NG + REQ-0136 checkpoint bakeoff.
+- Client: `~/backpack_ragnarok/.venv/bin/python` (deps installed; the
+  worktree had NO own `.venv`, so the main checkout's was used).
+- ComfyUI: was down; started manually (`~/ComfyUI/venv/bin/python main.py`,
+  `127.0.0.1:8188`). Not a persistent service.
+- Matte: `~/.u2net/birefnet-general.onnx` (972 MB) cached → no download.
 
-**実行と結果**
-- 生成: `gen_item_icons.py --ids hilt --candidates 1`（`hilt` = 1×1、`gen_px 1024×1024 → target_px 256×256`、seed 101）。
-  - 出力: `hilt_c1_s101.png`（raw, 72KB）＋ `hilt_c1_s101_alpha.png`（matte, birefnet, coverage **10.99%**）。
-  - 所要: **298.7s**（初回 SDXL ロード込み。8GB RTX 2080。warm 時は ~23s/枚）。
-- スコア: `tool_icon_score.py` → `hilt` feasible、**score 53.35**（`content_frac 0.116` / `scale 0.383` / per-cell coverage `0.134`、weights 0.35/0.50/0.15）。
-  - 生成物: `scores.json`、`fit_renders/hilt_c0_fit.png`、`selected/hilt.png`。
+**Run & results**
+- Generate: `gen_item_icons.py --ids hilt --candidates 1` (`hilt` = 1×1,
+  `gen_px 1024×1024 → target_px 256×256`, seed 101).
+  - Output: `hilt_c1_s101.png` (raw, 72 KB) + `hilt_c1_s101_alpha.png`
+    (matte, birefnet, coverage **10.99%**).
+  - Time: **298.7 s** (incl. first SDXL load; 8 GB RTX 2080; warm ~23 s/img).
+- Score: `tool_icon_score.py` → `hilt` feasible, **score 53.35**
+  (`content_frac 0.116` / `scale 0.383` / per-cell coverage `0.134`, weights
+  0.35/0.50/0.15). Artifacts: `scores.json`, `fit_renders/hilt_c0_fit.png`,
+  `selected/hilt.png`.
 
-**結論**: 生成 → マット → 幾何スコア → 選抜 が V9 で **end-to-end 動作**することを確認。ツール（`gen_item_icons.py` / `tool_icon_score.py` / `tool_fit_check.py`）はブランチ上で健在。
+**Conclusion**: generate → matte → geometry score → select works
+**end-to-end** on V9. Tools healthy.
 
-**留意点**
-- ワークツリーの `.venv` 欠落 → メイン `.venv` を使う（または worktree の venv を作り直す）。REQ-0109 の復旧項目に含める。
-- ComfyUI は手動起動が要る。初回画像は model ロードで ~5 分、以降は warm で高速。
-- `hilt` のマット被覆 10.99% は `art_golden.md` の下限 20% を下回るが、1×1 の小さな柄頭なので想定内（per-case の再描画かウェイバー。パイプライン不具合ではない）。
-- 本テストは `hilt`×1 の疎通確認のみ。フルバッチ（8 items × 4 候補）や `build_batch003_report.py` の再生成は未実施 → REQ-0109 の「WIP 仕上げ」で実施。
-- REQ-0109 の残タスク（WIP 仕上げ・master マージ・ラスタ↔live 描画配線）は本テストの対象外で、状態は変わっていない。
+**Notes**
+- Worktree `.venv` missing → use the main `.venv` (or rebuild a worktree
+  venv).
+- ComfyUI needs manual start. First image ~5 min for model load; warm is fast.
+- `hilt` matte coverage 10.99% is below the 20% floor
+  (`common_content_pipeline.md` §2) — expected for a small 1×1 pommel
+  (per-case redraw or waiver; not a pipeline defect).
+- This test was a single-item smoke check. Full batch (8 items × 4
+  candidates) and report regeneration were completed under REQ-0109
+  (see `web/preview/batch-003/`); the batch-003 ART was subsequently NG'd at
+  S7 (2026-07-12) — regeneration restarts on the refreshed pipeline.
