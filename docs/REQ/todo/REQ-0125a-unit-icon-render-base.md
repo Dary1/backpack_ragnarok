@@ -202,12 +202,33 @@ ruling 2026-07-12:** finish the drawing, do not fabricate a value
   implementation). This is the only way to look at an overlay that correctly draws
   nothing in production.
 - `oxlint`: 0 errors (34 pre-existing warnings, untouched).
-- **e2e: NOT run pre-merge, by design.** On this rig the harness proxies to the
-  LIVE services (`client/e2e/local-proxy.cjs`: `*` → backpack-web :8801, which
-  serves the MAIN checkout's `web/app/`), so a worktree branch cannot be e2e'd
-  without deploying it. e2e is therefore a POST-DEPLOY gate here — same as
-  REQ-0124's ledger. Known pre-existing suite debt (dex-card.spec:65,
-  nav-routing.spec:26) is not ours.
+- **e2e: a POST-DEPLOY gate on this rig.** The harness proxies to the LIVE
+  services (`client/e2e/local-proxy.cjs`: `*` → backpack-web :8801, which serves
+  the MAIN checkout's `web/app/`), so a worktree branch cannot be e2e'd without
+  deploying it — same constraint REQ-0124 hit. Results below.
+
+## Deploy + post-deploy e2e (2026-07-12, user GO)
+
+- Merged to master (`60073a7`, --no-ff), client dist rebuilt + committed
+  (`58f7940`), `backpack-api` / `backpack-web` restarted; api/web/tunnel all
+  **active**.
+- **e2e vs the deployed code: 140 passed / 3 failed.**
+  - `schedule.spec:1065` (REQ-0041 monitor freeze regression guard) — **GREEN on
+    retry** (serial, `--last-failed`). Not a regression. This one was checked
+    deliberately rather than waved through as "known debt": REQ-0125a changes
+    `Monitor.tsx` (`loadSpriteTextures` → `loadBoardTextures`), so a monitor
+    freeze was exactly the failure this REQ could plausibly have caused. It did
+    not — `loadBoardTextures()` is `loadSpriteTextures()` plus an empty raster
+    list, and the spec passes clean in isolation. Same state-pollution flake
+    REQ-0124's ledger recorded for this spec.
+  - `dex-card.spec:65` + `nav-routing.spec:26` — **PRE-EXISTING suite debt**,
+    unchanged. They assert `.dex-detail-columns` / `.schedule-rooms-view`, classes
+    no master component emits (they live in index.css + the unmerged Dex-R3 /
+    REQ-0120 branch commits). They fail identically against pre-REQ-0125a code and
+    go green when that work merges. Not ours — see REQ-0124's gate ledger, which
+    documents the same two.
+- **No board diff observed**, as designed: every BP still resolves to the legacy
+  glyph.
 
 **Not committed on this branch:** the `web/app/` dist churn produced by ci.sh's
 client build. Dist is rebuilt + committed at DEPLOY time on master (REQ-0124's
