@@ -1,6 +1,6 @@
 # REQ-0127 — unit-icon-generation
 
-**Status:** todo (user-cleared without further approval, 2026-07-12 chat)
+**Status:** built (S7 ALL GREEN, 2026-07-13; awaiting deploy/acceptance)
 **Reserved:** 2026-07-11
 **Slug:** unit-icon-generation
 **Reference:** `docs/llm_managed/unit_icon_pipeline.md` v1 (golden RATIFIED
@@ -108,3 +108,64 @@ so the verdict transfers. On ratification: run
 `tools/gen_unit_icons.py [--ckpt <winner>]`, score-filter (>=20%
 coverage, filter-only), gallery to `web/preview/units-001/` (256+64 px,
 numbered), STOP at S7.
+
+---
+
+## Outcome (2026-07-13) — S7 ALL GREEN, all gates green
+
+### First roster batch — DONE (scope item 4, 6, 7)
+
+The batch was un-held once REQ-0136 ratified **flux2** (FLUX.2 klein 4B Q8_0,
+steps=4, cfg=1.0, euler) and the route merged; it ran on that route, not on the
+incumbent V9 whose style ceiling this REQ deliberately refused to bake in.
+Paused at 13/48 when a REQ-0135 spike co-occupied the box (9d02339), resumed and
+completed (8930bfe).
+
+- **44 candidates** = 11 units x 4 (seeds 101/202/303/404), matted with rembg
+  `birefnet-general` + border-key fallback.
+- Gallery `web/preview/units-001/` — every candidate at 256 px AND 64 px,
+  numbered (golden G4): https://backpack-dev.qtie.jp/preview/units-001/
+- Batch notes: `content/batches/units-001-roster/notes.md`.
+
+### Roster cut — unit-necromancer (user ruling, 2026-07-13)
+
+Necromancer is cut **as a unit**, not just as art. Removed from the wrapper
+roster table (single source of truth), from the regenerated `unit_defs.json`
+(12 -> 11), and from the style guide roster table; its 4 candidates are
+deliberately not in the repo. The seed roster is **11 units**.
+
+### S7 verdict — ALL GREEN (11 of 11 accepted)
+
+Accepted seed per unit; each accepted candidate is copied to
+`content/batches/units-001-roster/selected/<id>.png` (RGBA 256x256):
+
+elf 101 · dwarf 101 · thief 303 · angel 202 · shieldmaiden 202 · priest 101 ·
+princess 303 · lightcavalry 303 · berserker 202 · watcher 202 · squire 303
+
+No unit requires a regeneration pass.
+
+### Gates
+
+| gate | result |
+| --- | --- |
+| Bakeoff ruling recorded before main batch generation | GREEN — bust ruling recorded 2026-07-12 (2558072), pipeline v1.1 §3 |
+| Every shipped candidate coverage >= 20% and correct in the 256/64 px gallery | GREEN — 44/44, **0 auto-FAIL**; coverage 35.5%–52.8% |
+| S7 stop honored: nothing enters `content/live/` | GREEN — batch stops at `selected/`; no live write |
+
+Scoring stayed FILTER-ONLY (ratified golden deviation): the user gallery verdict
+selected every winner.
+
+### Commits
+
+- 2558072 — bust ruling (gate 1); wrapper + 12-unit roster defs + style guide
+- 9d02339 — batch launch on flux2; 13 candidates; PAUSED (box contention)
+- a14d60c — resume-predicate fix (`--no-matte` regression)
+- 8930bfe — batch COMPLETE: 44 candidates, necromancer cut, gallery rebuilt
+- (this commit) — S7 record: `selected/` (11 winners) + batch notes
+
+### Follow-ups (not this REQ)
+
+- Unit def authoring (connection shape, charge, effects, `i18n.ja`) — own REQ,
+  illustration-first.
+- Client rendering of unit icons — REQ-0125.
+- Full-body dex/splash art of the same identities — REQ-0137.
