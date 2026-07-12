@@ -101,7 +101,18 @@ export function ForecastOverlay() {
   const { min, max } = view;
 
   return (
-    <div className="forecast-overlay" ref={rootRef} data-testid="forecast-overlay" aria-hidden="true">
+    <div
+      className="forecast-overlay"
+      ref={rootRef}
+      data-testid="forecast-overlay"
+      // REQ-0057 perf budget ([TUNABLE 50ms] per recompute): the fold's OWN
+      // wall-clock, stamped by pressure.ts, exposed so the e2e budget test
+      // measures the real shipped fold on the real payload rather than a
+      // re-implementation of it. Cheap (one attribute), and it makes a
+      // regression in the hot loop visible instead of merely slow.
+      data-fold-ms={view.ms.toFixed(2)}
+      aria-hidden="true"
+    >
       {view.cells.map(([fr, fc2], i) => {
         const row0 = Math.floor(i / GRID);
         const col0 = i % GRID;
