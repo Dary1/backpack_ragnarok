@@ -1,0 +1,13 @@
+{
+  "comment": "S4 archetype: sparse glass -- minimal coverage, all offense, fragile.",
+  "linked": false,
+  "layout": { "ROWS": 8, "COLS": 8 },
+  "bps": [
+    { "id": "sg_main", "name": "Glass Main", "color": "#aa4444", "shape": [[0,0],[0,1],[1,0],[1,1]], "origin": [1,1], "linker": { "off": [0,0], "dirs": [] }, "hpMax": 60 }
+  ],
+  "pos": [
+    { "uid": "sg1", "id": "dagger", "loc": "grid", "cell": [1,1], "rot": 0 },
+    { "uid": "sg2", "id": "blade", "loc": "grid", "cell": [1,2], "rot": 0 }
+  ],
+  "sis": []
+}

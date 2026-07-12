@@ -1,0 +1,23 @@
+{
+  "comment": "REQ-0050 S4 gate thresholds. Two classes: warn (report) and hard (gate fails). Every number is [TUNABLE] -- defaults from the ratified 2026-07-06 metric catalog + combat_spec section 10.",
+  "a1_dps_ceiling_class": "warn",
+  "a2_min_applies": 20,
+  "a2_runaway_growth_ratio": 3,
+  "a4_amplification_warn": 2.5,
+  "a4_pulse_cap_hit_rate_warn": 0.05,
+  "b1_min_rays": 10,
+  "b1_terminator_rate_warn": 0.3,
+  "b5_win_rate_spread_pts_warn": 15,
+  "b6_ray_abort_allowed": 0,
+  "d1_duration_bands": { "pack": [3, 60], "boss": [5, 120] },
+  "d2_on_level": 3,
+  "d2_on_level_clear_band": [0.5, 0.95],
+  "d3_min_runs": 10,
+  "d3_bimodal_extreme_frac": 0.8,
+  "d3_bimodal_mid_frac": 0.1,
+  "d4_min_chests": 5,
+  "d4_chest_lost_rate_warn": 0.4,
+  "d4_scout_reward_delta_band": [-1, 10],
+  "d6_min_wipes": 4,
+  "d6_early_wipe_rate_warn": 0.25
+}

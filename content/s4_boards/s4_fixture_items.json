@@ -1,0 +1,10 @@
+{
+  "comment": "REQ-0050: synthetic S4-only fixture items. Pulse CONTENT (spark/payload POs) debuts later (Ember Pack) -- the circuit_chain archetype board needs them NOW, so S4 carries its own defs, mirroring sim/tests/run.cjs's REQ-0048 fixtures. NEVER copy these to content/live/.",
+  "entries": [
+    { "id": "s4_spark", "name": "S4 Spark", "rarity": "Common", "shape": [[0,0]], "icon": "icon-dagger", "sockets": [], "tags": [], "modes": ["battle"],
+      "effects": [ { "trigger": { "t": "every_secs", "s": [1.0, 1.0] }, "verb": { "t": "pulse" } } ] },
+    { "id": "s4_payload", "name": "S4 Payload", "rarity": "Common", "shape": [[0,0]], "icon": "icon-dagger", "sockets": [], "tags": [], "modes": ["battle"],
+      "attack_profile": { "edge": ["top"], "penetration": 0, "aoe": 0 },
+      "effects": [ { "trigger": { "t": "on_link_pulse" }, "verb": { "t": "strike", "n": [5, 5] }, "attack_profile": { "edge": ["top"], "penetration": 0, "aoe": 0 } } ] }
+  ]
+}
