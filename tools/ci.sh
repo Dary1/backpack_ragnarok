@@ -13,6 +13,8 @@ echo "==== [1/7] sim tests ===="
 node sim/tests/run.cjs
 echo "==== [2/7] sim replay goldens (determinism contract) ===="
 node sim/tests/goldens.cjs
+echo "==== [2.5/7] S4 post-processor tests (REQ-0050) ===="
+node sim/tests/s4_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="

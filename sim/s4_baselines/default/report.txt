@@ -1,0 +1,66 @@
+S4 SIMULATE GATE REPORT -- matrix "s4-default" (131 runs)
+summary sha256: 3c1961aad1b1c9bbd8b784ecac971d433badf0b12b27f9ddbaf454998ea05b65
+
+== A. item/effect ==
+  A1 beast_jaw: dps mean 9.4677 p95 11.4098 (ceiling 15 Uncommon)
+  A1 blade: dps mean 8.581 p95 11.3533 (ceiling 12 Common)
+  A1 dagger: dps mean 17.4664 p95 21.6774 (ceiling 12 Common)
+  A1 herb_pouch: dps mean 0 p95 0 (ceiling 12 Common)
+  A2 Stun: applies 5 stacks 8.579888470470905 tickDmg 0 growth Infinity
+  A3 heal/run mean: 0 (block + overheal%: not derivable from replay v1)
+
+== B. ray geometry ==
+  B1/B3 att_trap_0#trap: rays 85 bounceMean 1.2118 terminator 0.0353 idle 0 aoeX 0 penX 0
+  B1/B3 att_trap_1#trap: rays 40 bounceMean 0.75 terminator 0 idle 0 aoeX 0 penX 0
+  B1/B3 beast_jaw: rays 266 bounceMean 4.7481 terminator 0.8947 idle 0 aoeX 0 penX 0
+  B1/B3 blade: rays 321 bounceMean 4.4829 terminator 0.891 idle 0 aoeX 0 penX 0
+  B1/B3 dagger: rays 1706 bounceMean 4.3904 terminator 0.8728 idle 0 aoeX 0 penX 0
+  B1/B3 door_rimefast_stage2: rays 326 bounceMean 0 terminator 0 idle 0 aoeX 0 penX 0
+  B1/B3 frost_gnoll: rays 3 bounceMean 2 terminator 0 idle 0 aoeX 0 penX 0
+  B1/B3 glacier_wisp: rays 21 bounceMean 1 terminator 0 idle 0 aoeX 0 penX 0
+  B1/B3 herb_pouch: rays 176 bounceMean 4.7955 terminator 0.9148 idle 0 aoeX 0 penX 0
+  B1/B3 hrimgrimnir: rays 234 bounceMean 2.9274 terminator 0.2393 idle 0 aoeX 0.0214 penX 1.2308
+  B1/B3 trap_frost_deadfall: rays 35 bounceMean 0.4 terminator 0.0571 idle 0 aoeX 0 penX 0
+  B2 player field: 440 visited cells, dead cols []
+  B2 enemy field: 468 visited cells, dead cols []
+  B4 coverage: cov75 dmgTaken 353.9226 clear 1 | cov50 dmgTaken 353.9226 clear 1 | cov25 dmgTaken 353.9226 clear 1
+  B5 formations: {"formation1":0.8025,"formation2":0.7,"formation3":0.5,"formation4":0.5} spread 30.25pt sideShare {"formation1":0.586,"formation2":0.482,"formation3":0.3914,"formation4":0.4188}
+  B6 ray aborts: 0
+
+== C. squad/troop ==
+  C1 firstBPdown mean 694.7813s, wipe mean 144.0149s, downs {"sh_main":13,"cc_b":6,"cc_a":2,"cc_c":4,"dt_main":4,"dt_side":12,"sg_main":3}
+  C2 overkill 0.0166 idleRays 0
+  C3 cascade factor mean 654.4245
+
+== D. encounter/run ==
+  D1 boss: mean 3.0839s p95 6s (n 131)
+  D1 chest: mean 22.5s p95 22.5s (n 30)
+  D1 door: mean 23.6929s p95 27.3949s (n 60)
+  D1 pack: mean 1.2533s p95 2s (n 308)
+  D1 trap: mean 999s p95 999s (n 35)
+  D2 clear by level: {"1":1,"2":1,"3":1,"4":1,"5":1}
+  D3 H: mean 0.5904 low 0.2366 mid 0.6947 high 0.0687
+  D4 utility: trapDiscovery 0 chestDone 0 chestLost 1 totals {"trap":125,"chest":40,"door":48}
+  D4 scout EV: rewardsDelta -2.6786 hDelta -0.6054 dpsForegone 0.2362
+  D5 shortcuts: 0 jumps, mean 0%
+  D6 wipes: 29 (rate 0.2214) encHist {"2":25,"3":4} early 0
+
+== E. meta/economy ==
+  E1 cycle 570.1415s items/h 16.9665 lrdst/h 60.9732 items/day 407.195 (warehouse cap 200 / 7d TTL)
+  E2 n/a-v1 (no gacha generator in sim scope; server-side gacha lands with its own REQ)
+  E3 plateau: {"L1":{"clearRate":1,"expectedRunsToClear":1,"daysPerClear":0.0016},"L2":{"clearRate":1,"expectedRunsToClear":1,"daysPerClear":0.0016},"L3":{"clearRate":1,"expectedRunsToClear":1,"daysPerClear":0.0016},"L4":{"clearRate":1,"expectedRunsToClear":1,"daysPerClear":0.0016},"L5":{"clearRate":1,"expectedRunsToClear":1,"daysPerClear":0.0016}}
+  E4 adoption: rate 0.125 in-top ["dagger"]
+
+== verdict ==
+  WARN A1 dagger: mean DPS 17.4664 > Common ceiling 12
+  WARN B1 beast_jaw: all-field terminator rate 0.8947 > 0.3
+  WARN B1 blade: all-field terminator rate 0.891 > 0.3
+  WARN B1 dagger: all-field terminator rate 0.8728 > 0.3
+  WARN B1 herb_pouch: all-field terminator rate 0.9148 > 0.3
+  WARN B5 formation win-rate spread 30.25pt > 15pt
+  WARN D1 pack: mean duration 1.2533s outside band [3,60]
+  WARN D1 boss: mean duration 3.0839s outside band [5,120]
+  WARN D2 on-level clear rate 1 outside target band [0.5,0.95]
+  WARN D4 chest lost rate 1 > 0.4
+  WARN D4 scout-vs-control reward delta -2.6786 outside band [-1,10]
+GATE: PASS (11 warn)

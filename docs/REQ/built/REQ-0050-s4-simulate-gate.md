@@ -101,3 +101,41 @@ S4 gate. Runs before any batch S7 review and after any combat-affecting REQ.
 - Matrix determinism test (same matrix ⇒ identical report hash).
 - Threshold classes behave (warn vs hard exit codes).
 - One real full-matrix run committed as the inaugural baseline report.
+
+## Gate results & outcome (2026-07-12, branch req-0050-s4-simulate-gate, base fc46a31)
+
+Commit 31aca4c. Implementation notes vs the ratified design:
+- Replay-derivable v1 limits, reported honestly in-band: A3 block/overheal not in
+  the JSONL (no block events); A1 conditional-uptime is compile-folded (static per
+  run) so "DPS given uptime" degenerates to per-instance DPS; E2 gacha audit n/a
+  (no gacha generator in sim scope); B2 jitter-J sweep deferred (TUNABLES not
+  injectable per-run yet); preview gallery (optional in spec) deferred.
+- Replay src labels do not disambiguate instances (4 squads x N copies share one
+  label): A1 normalizes to per-instance DPS via board pos counts.
+- Event times are encounter-local: metrics rebuild a cumulative run clock from
+  encounter_start/encounter_end (C1/C3/D-family depend on it).
+- D4 denominators are ATTACHMENT-scoped (standalone trap/chest/door encounters
+  resolve through encounter events, not att_*).
+
+Gates:
+- S4 unit tests: PASS 14/14 (every metric family + warn/hard classes + exit codes
+  + matrix determinism), wired into tools/ci.sh step 2.5.
+- Matrix determinism: PASS (default matrix twice -> identical summary sha256).
+- Threshold classes: PASS (hard -> exit 1, warn-only -> exit 0; subprocess-tested).
+- Inaugural baseline: committed at sim/s4_baselines/default/ (131 runs), golden
+  sha256 3c1961aa... at sim/s4_matrices/default.golden.sha256; gate verdict
+  PASS with 11 warns -- REAL findings on current content, left for balance REQs:
+  dagger per-instance DPS 17.5 > Common 12; player-skill all-field terminator
+  rates ~0.87-0.91 >> 0.3 (few live items + small packs = long bounce chains);
+  formation win-rate spread 30pt (formation3/4 weak); pack/boss mean durations
+  1.3s/3.1s below pacing bands (combat melts); on-level clear 1.0 > 0.95 band;
+  100% of attachment chests lost to fast clears + trap discovery 0 (battles end
+  before the first detection tick fires -- utility play has no time window);
+  scout-vs-control reward EV NEGATIVE (scouts wipe more, wipes forfeit rewards);
+  E1 items/day 407 vs warehouse cap 200 (pressure).
+- Full ci.sh (SKIP_PG, SKIP_E2E): CI GREEN -- sim 96/0, goldens 12 OK, s4 14/0,
+  engine 101/0, tsc OK, drift OK, vocab GREEN, server api files 155/0, pg_sync
+  4/0, client tsc+build OK (web/app byte-identical; no dist commit needed).
+  pg pass + e2e skipped: no server/client code touched by this REQ, and the box
+  is running the user'\''s concurrent art session (ComfyUI + req0138 tiling) --
+  e2e adds crash risk for zero added coverage here.
