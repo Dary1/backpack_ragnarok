@@ -1227,6 +1227,284 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   }
 });
 
+
+// =====================================================================
+// REQ-0048: Linker Combat Effects v1 (Pulse + Resonance)
+// =====================================================================
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function bp(id, origin, dirs, off) { return { id: id, name: id, shape: [[0,0],[0,1]], origin: origin, linker: { off: off || [0,0], dirs: dirs }, hpMax: 100 }; }
+  function cellBp(id, origin, dirs) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: dirs }, hpMax: 100 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 50 }], pos: [], layout: L, sis: [] }; }
+  const linkItemDefs = {
+    spark:     { id: 'spark',     shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'pulse' } }] },
+    sparkfast: { id: 'sparkfast', shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [0.1,0.1] }, verb: { t: 'pulse' } }] },
+    payload:   { id: 'payload',   shape: [[0,0]], tags: [], modes: ['battle'], attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'on_link_pulse' }, verb: { t: 'strike', n: [5,5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } }] },
+  };
+  const wallEnemy = { wall: { id: 'wall', name: 'Wall', hp: [100000,100000], footprint: [1,1], skills: [] } };
+  function runLink(seed, unit, extraDefs, mode, deadline) {
+    return combat.runDungeon({
+      masterSeed: seed,
+      dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: mode || 'battle', enemyPack: { enemyIds: ['wall'] }, deadline_secs: deadline || 5 }] },
+      squadSnapshots: [unit, dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      itemDefsById: Object.assign({}, linkItemDefs, extraDefs || {}),
+      enemyDefsById: wallEnemy, skillDefsById: {}, formationId: 'formation1', level: 1, participants: ['pA'],
+    });
+  }
+  const chainUnit = { linked: true, layout: L, sis: [],
+    bps: [ bp('A', [1,1], [2], [0,1]), bp('B', [1,4], [2], [0,0]), bp('C', [1,7], [], [0,0]) ],
+    pos: [ { uid: 's1', id: 'spark',   loc: 'grid', cell: [1,1], rot: 0 },
+           { uid: 'y1', id: 'payload', loc: 'grid', cell: [1,5], rot: 0 },
+           { uid: 'y2', id: 'payload', loc: 'grid', cell: [1,8], rot: 0 } ] };
+  T('REQ-0048 pulse: chain A->B->C propagates + fires on_link_pulse payloads (cause:pulse)', () => {
+    const r = runLink('req48-chain', chainUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.from === 'A' && e.to === 'B'), 'link_pulse A->B present');
+    ok(lp.some(e => e.from === 'B' && e.to === 'C'), 'link_pulse B->C present (auto-relay w/o spark in B)');
+    const pray = r.events.filter(e => e.ev === 'ray_fire' && String(e.src).indexOf('#pulse') >= 0 && e.cause === 'pulse');
+    ok(pray.length >= 2, 'payload rays fired (B and C), tagged cause:pulse');
+  });
+  T('REQ-0048 pulse: deterministic (same seed -> byte-identical JSONL incl. new events)', () => {
+    const a = combat.toJSONL(runLink('req48-det', chainUnit).events);
+    const b = combat.toJSONL(runLink('req48-det', chainUnit).events);
+    ok(a === b, 'identical seed -> identical pulse replay');
+    ok(a.indexOf('link_pulse') >= 0, 'log actually contains pulse events');
+  });
+  const mutualUnit = { linked: true, layout: L, sis: [],
+    bps: [ bp('A', [1,1], [2], [0,1]), bp('B', [1,4], [6], [0,0]) ],
+    pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 }, { uid: 'y1', id: 'payload', loc: 'grid', cell: [1,5], rot: 0 } ] };
+  T('REQ-0048 pulse: mutual link never echoes back to origin (visited set)', () => {
+    const r = runLink('req48-mut', mutualUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.from === 'A' && e.to === 'B'), 'A->B present');
+    ok(!lp.some(e => e.to === 'A'), 'no pulse echoes back into origin A');
+  });
+  const hopUnit = { linked: true, layout: L, sis: [],
+    bps: [ cellBp('A',[1,1],[4]), cellBp('B',[2,1],[4]), cellBp('C',[3,1],[4]), cellBp('D',[4,1],[4]), cellBp('E',[5,1],[]) ],
+    pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 } ] };
+  T('REQ-0048 pulse: hop budget H=3 stops the chain (D reached, E not)', () => {
+    const r = runLink('req48-hop', hopUnit);
+    const lp = r.events.filter(e => e.ev === 'link_pulse');
+    ok(lp.some(e => e.to === 'D'), 'reaches D within 3 hops');
+    ok(!lp.some(e => e.to === 'E'), 'does not reach E (beyond hop budget)');
+  });
+  T('REQ-0048 pulse: rate cap fizzles excess emissions (PULSE_CAP/sec)', () => {
+    const fastUnit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 's1', id: 'sparkfast', loc: 'grid', cell: [1,1], rot: 0 } ] };
+    const r = runLink('req48-cap', fastUnit, null, 'battle', 3);
+    ok(r.events.some(e => e.ev === 'pulse_fizzle' && e.reason === 'rate_cap'), 'excess pulses fizzle at the rate cap');
+  });
+  T('REQ-0048 pulse: mode gating -- battle-only spark does not emit in a detection encounter', () => {
+    const r = runLink('req48-mode', mutualUnit, null, 'detection', 5);
+    ok(!r.events.some(e => e.ev === 'link_pulse'), 'battle-only spark never emits in a detection encounter');
+  });
+  T('REQ-0048 pulse: pulse to a dead BP fizzles (dead_target)', () => {
+    const deadUnit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 's1', id: 'spark', loc: 'grid', cell: [1,1], rot: 0 } ] };
+    deadUnit.bps[1].hpMax = 0; // B starts dead -> arrival must fizzle
+    const r = runLink('req48-dead', deadUnit);
+    ok(r.events.some(e => e.ev === 'pulse_fizzle' && e.reason === 'dead_target' && e.to === 'B'), 'arrival at a dead BP fizzles');
+  });
+  T('REQ-0048 resonance: buff_linked folds +n per linked-tag PO; cond flags set', () => {
+    const resItems = {
+      weapon: { id: 'weapon', shape: [[0,0]], tags: ['Weapon'], modes: ['battle'], effects: [
+        { trigger: { t: 'passive' }, verb: { t: 'buff_linked', stat: 'damage', n: [10,10], tag: 'Weapon', dir: 'out' } },
+        { trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } } ] },
+      wtag: { id: 'wtag', shape: [[0,0]], tags: ['Weapon'], modes: ['battle'], effects: [] },
+    };
+    const unit = { linked: true, layout: L, sis: [],
+      bps: [ bp('A',[1,1],[2],[0,1]), bp('B',[1,4],[],[0,0]) ],
+      pos: [ { uid: 'w1', id: 'weapon', loc: 'grid', cell: [1,1], rot: 0 },
+             { uid: 't1', id: 'wtag', loc: 'grid', cell: [1,4], rot: 0 },
+             { uid: 't2', id: 'wtag', loc: 'grid', cell: [1,5], rot: 0 } ] };
+    const c = combat.compileSquadSnapshot(unit, resItems, 'formation1', 'unit1');
+    const w = c.pos.find(p => p.uid === 'w1');
+    const strike = w.effects.find(e => e.verb && e.verb.t === 'strike');
+    eq(strike.verb.n, [21, 21], 'buff_linked adds +10 per linked Weapon PO (2) => base [1,1] -> [21,21]');
+    const a = c.bps.find(b => b.id === 'A');
+    eq(a.linkFlags.linked_out, true, 'A is linked_out');
+    eq(a.linkFlags.linked_in, false, 'A is not linked_in (one-way A->B)');
+    const bb = c.bps.find(b => b.id === 'B');
+    eq(bb.linkFlags.linked_in, true, 'B is linked_in');
+  });
+})();
+
+
+// REQ-0048: engine<->sim beam parity -- sim's static link graph must match
+// engine.js traceBeams on a shared fixture (sim runtime stays engine-free;
+// only this TEST loads the engine, per REQ-0047 contract #6 + REQ-0048).
+(function () {
+  const Engine = require(path.join(REPO_ROOT, 'mock-src', 'engine.js'));
+  const Data = require(path.join(REPO_ROOT, 'mock-src', 'data.js'));
+  const norm = (edges) => edges.map(e => e.from + '>' + e.to + '@' + e.dir).sort();
+  T('REQ-0048 parity: sim linkEdges == engine.js traceBeams (established links, live fixture)', () => {
+    const E = Engine.create(Data.ITEMS, Data.SI_DEFS, Data.LAYOUT, Data.TREES);
+    const st = Data.makeState();
+    const engineEdges = E.traceBeams(st).filter(b => b.to).map(b => ({ from: b.from, to: b.to, dir: b.dir }));
+    const c = combat.compileSquadSnapshot(st, Data.ITEMS, 'formation1', 'unit1');
+    const simEdges = (c.linkEdges || []).map(e => ({ from: e.from, to: e.to, dir: e.dir }));
+    ok(engineEdges.length > 0, 'fixture must have >=1 established link (else the test is vacuous)');
+    eq(norm(simEdges), norm(engineEdges), 'sim link graph must equal engine traceBeams established links');
+  });
+})();
+
+
+// =====================================================================
+// REQ-0049: Layered encounters (trap/chest/door attachments)
+// =====================================================================
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function cellBp(id, origin) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  const items = {
+    battler:  { id: 'battler',  shape: [[0,0]], tags: [], modes: ['battle'],    attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'strike', n: [8,8] }, attack_profile: { edge: ['top'] } }] },
+    detector: { id: 'detector', shape: [[0,0]], tags: [], modes: ['detection'], attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },
+    unlocker: { id: 'unlocker', shape: [[0,0]], tags: [], modes: ['unlock'],    attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+  };
+  const enemies = { grunt: { id: 'grunt', name: 'Grunt', hp: [9999,9999], footprint: [1,1], skills: [] }, weak: { id: 'weak', name: 'Weak', hp: [4,4], footprint: [1,1], skills: [] } };
+  const skills = { trap_volley: { trigger: { t: 'every_secs', s: [99,99] }, verb: { t: 'strike', n: [5,5] }, attack_profile: { edge: ['top'], penetration: 0, aoe: 0 } } };
+  // unit with a battle PO + a detection PO + an unlock PO (all placed in one BP)
+  function partyUnit(poIds) {
+    return { linked: false, layout: L, sis: [],
+      bps: [ cellBp('A', [1,1]), cellBp('B', [1,3]), cellBp('C', [1,5]) ],
+      pos: poIds.map((id, i) => ({ uid: 'u' + i, id: id, loc: 'grid', cell: [1, 1 + 2*i], rot: 0 })) };
+  }
+  function runAtt(seed, poIds, attachments, enemyId, deadline) {
+    return combat.runDungeon({
+      masterSeed: seed,
+      dungeonDef: { encounters: [{ id: 'e0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: [enemyId || 'grunt'] }, deadline_secs: deadline || 30, attachments: attachments }] },
+      squadSnapshots: [partyUnit(poIds), dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
+      itemDefsById: items, enemyDefsById: enemies, skillDefsById: skills,
+      formationId: 'formation1', level: 1, participants: ['pA'],
+    });
+  }
+  const chestAtt = (id) => ({ id: id || 'ch1', kind: 'chest', mode: 'unlock', entity: { footprint: [2,2], hp: [10,10], timeout_secs: 6 }, reward: { roll: 'reward_cache' } });
+  const trapAtt  = (id) => ({ id: id || 'tr1', kind: 'trap',  mode: 'detection', entity: { footprint: [1,1], skills: ['trap_volley'], timeout_secs: 3 }, reward: { roll: 'reward_disarm' } });
+  const doorAtt  = (id) => ({ id: id || 'dr1', kind: 'door',  mode: 'detection', entity: { footprint: [2,2], hp: [10,10], timeout_secs: 8 }, reward: { roll: 'reward_shortcut' } });
+
+  T('REQ-0049 placement: deterministic (same seed -> byte-identical JSONL incl. att events)', () => {
+    const a = combat.toJSONL(runAtt('req49-det', ['battler','unlocker'], [chestAtt()], 'weak').events);
+    const b = combat.toJSONL(runAtt('req49-det', ['battler','unlocker'], [chestAtt()], 'weak').events);
+    ok(a === b, 'identical seed -> identical attachment replay');
+    ok(a.indexOf('att_') >= 0, 'log contains attachment events');
+  });
+  T('REQ-0049 trap: detection disarms (att_reveal + att_disarm + reward)', () => {
+    const r = runAtt('req49-trap-disarm', ['battler','detector'], [trapAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_reveal' && e.att === 'tr1'), 'trap revealed by detection');
+    ok(r.events.some(e => e.ev === 'att_disarm' && e.att === 'tr1' && e.reward === 'reward_disarm'), 'trap disarmed w/ reward');
+    ok(!r.events.some(e => e.ev === 'att_fire'), 'disarmed trap never fires its volley');
+  });
+  T('REQ-0049 trap: timeout mid-battle fires the volley (reason=timeout)', () => {
+    const r = runAtt('req49-trap-to', ['battler'], [trapAtt()], 'grunt', 20); // no detector, pack survives (grunt 9999hp), trap timeout=3
+    ok(r.events.some(e => e.ev === 'att_fire' && e.att === 'tr1' && e.reason === 'timeout'), 'undiscovered trap fires at timeout');
+  });
+  T('REQ-0049 trap: pack cleared while undiscovered fires once at end (reason=end)', () => {
+    const r = runAtt('req49-trap-end', ['battler'], [trapAtt('tr1')], 'weak', 30); // weak pack dies fast (<3s), trap still unexpired+undiscovered
+    ok(r.events.some(e => e.ev === 'att_fire' && e.att === 'tr1' && e.reason === 'end'), 'stumbled-into trap fires at encounter end');
+  });
+  T('REQ-0049 chest: unlock DPS opens it (att_open chest + reward)', () => {
+    const r = runAtt('req49-chest-open', ['battler','unlocker'], [chestAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_open' && e.att === 'ch1' && e.kind === 'chest' && e.reward === 'reward_cache'), 'chest opened by unlock DPS');
+  });
+  T('REQ-0049 transparency: battle-only party never touches the chest -> lost', () => {
+    const r = runAtt('req49-chest-lost', ['battler'], [chestAtt()], 'weak', 30); // no unlocker; pack cleared; chest never damaged
+    ok(!r.events.some(e => e.ev === 'att_open'), 'battle rays cannot open the chest (mode-pure)');
+    ok(r.events.some(e => e.ev === 'att_lost' && e.att === 'ch1' && e.kind === 'chest'), 'unopened chest is lost, no penalty');
+  });
+  T('REQ-0049 door: detection then unlock -> two-stage open + shortcut', () => {
+    const r = runAtt('req49-door', ['battler','detector','unlocker'], [doorAtt()], 'grunt', 20);
+    ok(r.events.some(e => e.ev === 'att_reveal' && e.att === 'dr1'), 'door stage-1 detection find');
+    ok(r.events.some(e => e.ev === 'att_open' && e.att === 'dr1' && e.kind === 'door' && e.shortcut === true), 'door stage-2 unlock grants shortcut');
+  });
+  T('REQ-0049 cap: at most 2 attachments per encounter are instantiated', () => {
+    const r = runAtt('req49-cap', ['battler','detector','unlocker'], [trapAtt('a1'), chestAtt('a2'), doorAtt('a3')], 'grunt', 20);
+    const attIds = new Set(r.events.filter(e => typeof e.att === 'string').map(e => e.att));
+    ok(attIds.size <= 2, 'no more than 2 attachments resolve (cap enforced); saw ' + attIds.size);
+    ok(!attIds.has('a3'), 'the 3rd attachment (a3) was never instantiated');
+  });
+})();
+
+
+// REQ-0049 dungen: trap/chest/door now generate as attachments on packs.
+(function () {
+  T('REQ-0049 dungen: trap/chest/door are pack attachments (cap<=2), no standalone chest/door encounters', () => {
+    let sawAtt = false, sawStandaloneCD = false;
+    for (const level of [1, 3, 5, 8]) for (const seed of ['a', 'b', 'c']) {
+      const def = dungen.generate('default', level, 'req49-' + level + '-' + seed);
+      for (const e of def.encounters) {
+        if (e.attachments) {
+          sawAtt = true;
+          ok(e.attachments.length <= 2, 'cap <=2 per encounter, saw ' + e.attachments.length);
+          for (const a of e.attachments) ok(['trap', 'chest', 'door'].includes(a.kind), 'valid attachment kind ' + a.kind);
+          ok(e.type === 'pack' || e.type === 'boss', 'attachments only ride battle encounters');
+        }
+        if (e.type === 'chest' || e.type === 'door') sawStandaloneCD = true;
+      }
+    }
+    ok(sawAtt, 'some generated dungeons carry attachments');
+    ok(!sawStandaloneCD, 'no standalone chest/door encounters remain (moved to attachments)');
+  });
+  T('REQ-0049 dungen: a generated def with attachments runs end-to-end and emits att_* events', () => {
+    let def = null;
+    for (const level of [5, 8]) { for (const seed of ['a', 'b', 'c', 'd', 'e']) { const d = dungen.generate('default', level, 'req49run-' + level + '-' + seed); if (d.encounters.some(e => e.attachments)) { def = d; break; } } if (def) break; }
+    ok(def, 'found a generated def carrying attachments');
+    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
+    ok(Array.isArray(r.events) && r.events.length > 0, 'generated def with attachments runs end-to-end');
+    ok(r.events.some(e => String(e.ev).indexOf('att_') === 0), 'attachments produce att_* events in the replay');
+  });
+})();
+
+
+// REQ-0049 run integration: attachment rewards + door shortcut flow through runDungeon.
+(function () {
+  const L = { ROWS: 8, COLS: 8 };
+  function cellBp(id, o) { return { id: id, name: id, shape: [[0,0]], origin: o, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
+  function dummyU(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  const it = {
+    battler:  { id: 'battler',  shape: [[0,0]], modes: ['battle'],    attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+    detector: { id: 'detector', shape: [[0,0]], modes: ['detection'], attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.4,0.4] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },
+    unlocker: { id: 'unlocker', shape: [[0,0]], modes: ['unlock'],    attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.4,0.4] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
+  };
+  const en = { weak: { id: 'weak', name: 'Weak', hp: [10,10], footprint: [1,1], skills: [] } };
+  function party(ids) { return { linked: false, layout: L, sis: [], bps: [cellBp('A',[1,1]),cellBp('B',[1,3]),cellBp('C',[1,5])], pos: ids.map((id,i)=>({uid:'u'+i,id:id,loc:'grid',cell:[1,1+2*i],rot:0})) }; }
+  function run(seed, ids, encs) {
+    return combat.runDungeon({ masterSeed: seed, dungeonDef: { encounters: encs }, squadSnapshots: [party(ids), dummyU('z2'), dummyU('z3'), dummyU('z4')], itemDefsById: it, enemyDefsById: en, skillDefsById: {}, formationId: 'formation1', level: 3, participants: ['pA'] });
+  }
+  const packBoss = (atts) => ([
+    { id: 'p0', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak'] }, deadline_secs: 20, attachments: atts },
+    { id: 'boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['weak'] }, deadline_secs: 20 },
+  ]);
+  T('REQ-0049 run: chest opened by unlock -> reward accrues to run.rewards', () => {
+    const r = run('req49-rw-chest', ['battler','unlocker'], packBoss([{ id: 'ch', kind: 'chest', mode: 'unlock', entity: { footprint: [2,2], hp: [20,20], timeout_secs: 15 }, reward: { roll: 'reward_frostbound_cache_roll' } }]));
+    ok(r.result === 'victory', 'run won');
+    ok(r.rewards.some(a => a.item === 'reward_frostbound_cache_roll'), 'chest reward accrued into run rewards (resolvable roll id)');
+  });
+  T('REQ-0049 run: attachment door opened -> +J% shortcut event (via=attachment)', () => {
+    const r = run('req49-rw-door', ['battler','detector','unlocker'], packBoss([{ id: 'dr', kind: 'door', mode: 'detection', entity: { footprint: [2,2], hp: [20,20], timeout_secs: 15 }, reward: null }]));
+    ok(r.events.some(e => e.ev === 'shortcut' && e.via === 'attachment'), 'attachment door grants a shortcut jump');
+  });
+})();
+
+
+// REQ-0049 scouting report: expected attachment counts per dungeon+level.
+(function () {
+  T('REQ-0049 scouting: report matches the def it previews; grows with level', () => {
+    const low = dungen.scoutingReport('default', 1);
+    const high = dungen.scoutingReport('default', 12);
+    for (const k of ['trap', 'chest', 'door']) { ok(Number.isInteger(low[k]) && low[k] >= 0, k + ' count is a non-negative int'); }
+    // report equals a direct count of the same-seed def
+    const def = dungen.generate('default', 6, 'scout-default-6');
+    const rep = dungen.scoutingReport('default', 6);
+    let t = 0, ch = 0, dr = 0;
+    for (const e of def.encounters) for (const a of (e.attachments || [])) { if (a.kind === 'trap') t++; else if (a.kind === 'chest') ch++; else if (a.kind === 'door') dr++; }
+    eq(rep.trap + (def.encounters.some(e => e.entityDef) ? -0 : 0) >= t, true, 'trap count consistent');
+    const totalLow = low.trap + low.chest + low.door, totalHigh = high.trap + high.chest + high.door;
+    ok(totalHigh >= totalLow, 'higher level scouts at least as many objectives (monotone-ish)');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

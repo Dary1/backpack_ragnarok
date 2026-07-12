@@ -131,6 +131,10 @@ const DUNGEN_TUNABLES = {
   REWARD_PACK_HIGH: 'reward_frost_shard_uncommon',
   REWARD_CHEST: 'reward_frostbound_cache_roll',
   REWARD_BOSS: 'reward_boss_relic_roll',
+
+  // REQ-0049: probability (per run) of retaining ONE detection objective as a
+  // standalone pure puzzle room (§6.2 pause-not-accumulate) instead of an attachment.
+  PURE_ROOM_P: 0.1,
 };
 
 function packsForLevel(level) {
@@ -262,133 +266,72 @@ function generateDefault(level, seed) {
   let encSeq = 0;
   function nextId(prefix) { return prefix + '_' + (encSeq++); }
 
-  // Packs, with a trap woven in after every other pack (once traps are
-  // available) and the door chain woven in around the mid-point, and
-  // the chest placed just before the boss -- fixed structural slots,
-  // seed only affects composition/rewards within each slot.
-  let trapsPlaced = 0;
-  let doorsPlaced = 0;
+  // REQ-0049: traps/chests/doors are ATTACHMENTS on pack encounters (parallel
+  // objectives on the battle clock), not standalone sequential encounters. We
+  // build an attachment pool from the rolled counts and distribute it across
+  // packs (cap <=2 per encounter, spilling onto the boss). A rare pure puzzle
+  // room (PURE_ROOM_P) keeps ONE detection objective standalone.
+  function trapAttachment() {
+    const t = entityTemplates.trap_frost_deadfall;
+    return { id: nextId('att_trap'), kind: 'trap', mode: 'detection',
+      entity: { footprint: t.footprint, skills: t.skills, timeout_secs: t.timeout_secs },
+      reward: { roll: DUNGEN_TUNABLES.REWARD_PACK_LOW } };
+  }
+  function chestAttachment() {
+    const c = entityTemplates.chest_frostbound_cache;
+    return { id: nextId('att_chest'), kind: 'chest', mode: 'unlock',
+      entity: { footprint: c.footprint, hp: [c.hp, c.hp], timeout_secs: c.timeout_secs },
+      reward: { roll: DUNGEN_TUNABLES.REWARD_CHEST } };
+  }
+  function doorAttachment() {
+    const s2 = entityTemplates.door_rimefast_stage2;
+    return { id: nextId('att_door'), kind: 'door', mode: 'detection',
+      entity: { footprint: s2.footprint, hp: [s2.hp, s2.hp], timeout_secs: s2.timeout_secs, skills: s2.skills },
+      reward: null };
+  }
+  const mkAttachment = (kind) => kind === 'trap' ? trapAttachment() : kind === 'chest' ? chestAttachment() : doorAttachment();
+
+  const pool = [];
+  for (let i = 0; i < nTraps; i++) pool.push('trap');
+  for (let i = 0; i < nDoorChains; i++) pool.push('door');
+  for (let i = 0; i < nChests; i++) pool.push('chest');
+
+  // Rare pure puzzle room: pull one trap out of the pool (if any) and emit it
+  // as a standalone detection encounter (entityDef path, retained by the sim).
+  let pureRoom = false;
+  if (pool.indexOf('trap') >= 0 && rng.stream('dungen/pureroom').next() < DUNGEN_TUNABLES.PURE_ROOM_P) {
+    pool.splice(pool.indexOf('trap'), 1);
+    pureRoom = true;
+  }
+
+  let pi = 0;
   for (let i = 0; i < nPacks; i++) {
     const enemyIds = buildPack(rng, 'dungen/pack/' + i, roster, level);
-    encounters.push({
-      id: nextId('enc_pack'),
-      type: 'pack',
-      mode: 'battle',
-      enemyPack: { enemyIds },
-      deadline_secs: 90,
-      rewardItems: [DUNGEN_TUNABLES.REWARD_PACK_LOW],
-    });
-
-    // Weave a trap in after this pack (every other pack slot) while
-    // traps remain to place.
-    if (trapsPlaced < nTraps && (i % 2 === 1)) {
-      const tmpl = entityTemplates.trap_frost_deadfall;
-      encounters.push({
-        id: nextId('enc_trap'),
-        type: 'trap',
-        mode: 'detection',
-        entityDef: {
-          id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
-          masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
-        },
-        timeout_secs: tmpl.timeout_secs,
-        deadline_secs: tmpl.timeout_secs + 0.5,
-      });
-      trapsPlaced++;
-    }
-
-    // Weave the hidden-door chain (2 stages) in around the midpoint.
-    if (doorsPlaced < nDoorChains && i === Math.floor(nPacks / 2)) {
-      const s1 = entityTemplates.door_rimefast_stage1;
-      const s2 = entityTemplates.door_rimefast_stage2;
-      encounters.push({
-        id: nextId('enc_door_stage1'),
-        type: 'door',
-        mode: 'detection',
-        entityDef: {
-          id: s1.id, name: s1.name, hp: s1.hp, footprint: s1.footprint,
-          masked: s1.masked, timeout_secs: s1.timeout_secs, skills: s1.skills,
-        },
-        timeout_secs: s1.timeout_secs,
-        deadline_secs: s1.timeout_secs + 0.5,
-      });
-      encounters.push({
-        id: nextId('enc_door_stage2'),
-        type: 'door',
-        mode: 'unlock',
-        entityDef: {
-          id: s2.id, name: s2.name, hp: s2.hp, footprint: s2.footprint,
-          masked: s2.masked, timeout_secs: s2.timeout_secs, skills: s2.skills,
-        },
-        timeout_secs: s2.timeout_secs,
-        deadline_secs: s2.timeout_secs + 0.5,
-        rewardItems: [],
-      });
-      doorsPlaced++;
-    }
+    const atts = [];
+    while (pi < pool.length && atts.length < 2) atts.push(mkAttachment(pool[pi++]));
+    const enc = { id: nextId('enc_pack'), type: 'pack', mode: 'battle', enemyPack: { enemyIds }, deadline_secs: 90, rewardItems: [DUNGEN_TUNABLES.REWARD_PACK_LOW] };
+    if (atts.length) enc.attachments = atts;
+    encounters.push(enc);
   }
 
-  // Any traps/doors that didn't fit the weave loop above (e.g. nPacks==1
-  // leaves no "every other pack" slot) get appended just before the
-  // chest/boss, so the requested count is always honored exactly.
-  while (trapsPlaced < nTraps) {
-    const tmpl = entityTemplates.trap_frost_deadfall;
+  // A rare pure puzzle room sits just before the boss (its own encounter).
+  if (pureRoom) {
+    const t = entityTemplates.trap_frost_deadfall;
     encounters.push({
-      id: nextId('enc_trap'),
-      type: 'trap',
-      mode: 'detection',
-      entityDef: {
-        id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
-        masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
-      },
-      timeout_secs: tmpl.timeout_secs,
-      deadline_secs: tmpl.timeout_secs + 0.5,
-    });
-    trapsPlaced++;
-  }
-  while (doorsPlaced < nDoorChains) {
-    const s1 = entityTemplates.door_rimefast_stage1;
-    const s2 = entityTemplates.door_rimefast_stage2;
-    encounters.push({
-      id: nextId('enc_door_stage1'), type: 'door', mode: 'detection',
-      entityDef: { id: s1.id, name: s1.name, hp: s1.hp, footprint: s1.footprint, masked: s1.masked, timeout_secs: s1.timeout_secs, skills: s1.skills },
-      timeout_secs: s1.timeout_secs, deadline_secs: s1.timeout_secs + 0.5,
-    });
-    encounters.push({
-      id: nextId('enc_door_stage2'), type: 'door', mode: 'unlock',
-      entityDef: { id: s2.id, name: s2.name, hp: s2.hp, footprint: s2.footprint, masked: s2.masked, timeout_secs: s2.timeout_secs, skills: s2.skills },
-      timeout_secs: s2.timeout_secs, deadline_secs: s2.timeout_secs + 0.5, rewardItems: [],
-    });
-    doorsPlaced++;
-  }
-
-  // Chest, just before the boss.
-  for (let i = 0; i < nChests; i++) {
-    const tmpl = entityTemplates.chest_frostbound_cache;
-    encounters.push({
-      id: nextId('enc_chest'),
-      type: 'chest',
-      mode: 'unlock',
-      entityDef: {
-        id: tmpl.id, name: tmpl.name, hp: tmpl.hp, footprint: tmpl.footprint,
-        masked: tmpl.masked, timeout_secs: tmpl.timeout_secs, skills: tmpl.skills,
-      },
-      timeout_secs: tmpl.timeout_secs,
-      deadline_secs: tmpl.timeout_secs + 0.5,
-      rewardItems: [DUNGEN_TUNABLES.REWARD_CHEST],
+      id: nextId('enc_pureroom'), type: 'trap', mode: 'detection',
+      entityDef: { id: t.id, name: t.name, hp: t.hp, footprint: t.footprint, masked: t.masked, timeout_secs: t.timeout_secs, skills: t.skills },
+      timeout_secs: t.timeout_secs, deadline_secs: t.timeout_secs + 0.5,
     });
   }
 
-  // Boss, always final, always present, always 100% pinned (S8.2).
+  // Boss, always final, always present, always 100% pinned (S8.2). Any pool
+  // overflow beyond pack capacity attaches here (still cap <=2).
   const bossId = bossIdFor(roster);
-  encounters.push({
-    id: nextId('enc_boss'),
-    type: 'boss',
-    mode: 'battle',
-    enemyPack: { enemyIds: bossId ? [bossId] : [] },
-    deadline_secs: 180,
-    rewardItems: [DUNGEN_TUNABLES.REWARD_BOSS],
-  });
+  const bossAtts = [];
+  while (pi < pool.length && bossAtts.length < 2) bossAtts.push(mkAttachment(pool[pi++]));
+  const bossEnc = { id: nextId('enc_boss'), type: 'boss', mode: 'battle', enemyPack: { enemyIds: bossId ? [bossId] : [] }, deadline_secs: 180, rewardItems: [DUNGEN_TUNABLES.REWARD_BOSS] };
+  if (bossAtts.length) bossEnc.attachments = bossAtts;
+  encounters.push(bossEnc);
 
   return {
     schema: 'dungeon/1',
@@ -420,6 +363,23 @@ function generateTestFixed(level, seed) {
   return fixed;
 }
 
+// REQ-0049: scouting report -- expected trap/chest/door counts for a
+// dungeon+level (room-create / dungeon-info hint). A fixed per-level scouting
+// seed makes the report a stable, representative preview.
+function countAttachments(def) {
+  const c = { trap: 0, chest: 0, door: 0 };
+  for (const e of def.encounters) {
+    for (const at of (e.attachments || [])) if (c[at.kind] != null) c[at.kind]++;
+    if (e.entityDef && c[e.type] != null) c[e.type]++; // rare standalone pure-room
+  }
+  return c;
+}
+function scoutingReport(dungeonType, level) {
+  const gen = GENERATORS[dungeonType];
+  if (!gen) throw new Error('scoutingReport: unknown dungeonType ' + dungeonType);
+  return countAttachments(gen(level, 'scout-' + dungeonType + '-' + level));
+}
+
 const GENERATORS = {
   default: generateDefault,
   test_fixed: generateTestFixed,
@@ -445,6 +405,7 @@ function generate(dungeonType, level, seed) {
 
 module.exports = {
   generate,
+  scoutingReport,
   DUNGEON_TYPES,
   DUNGEN_TUNABLES,
   packsForLevel,
