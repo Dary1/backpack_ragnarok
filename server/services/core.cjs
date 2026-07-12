@@ -19,12 +19,18 @@ const LIVE_DIR = path.join(CONTENT_DIR, 'live');
 const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
 const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json'); // REQ-0115: SI (accessory) content defs
 const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
-const BATCH_DIR = path.join(CONTENT_DIR, 'batches', 'batch-002-dungeon-pilot');
-const DUNGEON_PATH = path.join(BATCH_DIR, 'dungeon.json');
-const ENEMIES_PATH = path.join(BATCH_DIR, 'enemies.json');
-const SKILLS_PATH = path.join(BATCH_DIR, 'skills.json');
-const ITEMS_PILOT_PATH = path.join(BATCH_DIR, 'items.json');
-const FORMATIONS_PATH = path.join(BATCH_DIR, 'formations.json'); // REQ-0036 P1-C: GET /api/schedule/dungeons
+// REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
+// promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
+// batch dir. The path comes from sim/dungen.cjs's liveDungeonDir() so
+// this module and the generator can never drift onto different sources
+// (they read the same conceptual "active dungeon domain").
+const LIVE_DUNGEON_DIR = dungen.liveDungeonDir();
+const BATCH_DIR = LIVE_DUNGEON_DIR; // deprecated alias (pre-REQ-0122 name; no live consumer, kept for any stale script)
+const DUNGEON_PATH = path.join(LIVE_DUNGEON_DIR, 'dungeon.json');
+const ENEMIES_PATH = path.join(LIVE_DUNGEON_DIR, 'enemies.json');
+const SKILLS_PATH = path.join(LIVE_DUNGEON_DIR, 'skills.json');
+const ITEMS_PILOT_PATH = path.join(LIVE_DUNGEON_DIR, 'items.json');
+const FORMATIONS_PATH = path.join(LIVE_DUNGEON_DIR, 'formations.json'); // REQ-0036 P1-C: GET /api/schedule/dungeons
 
 // ---------------------------------------------------------------------
 // Tunables (this REQ's own; distinct from sim/combat.cjs's TUNABLES,
@@ -260,6 +266,7 @@ module.exports = {
   LIVE_DIR,
   ITEMS_PATH,
   TMS_PATH,
+  LIVE_DUNGEON_DIR, // REQ-0122
   BATCH_DIR,
   DUNGEON_PATH,
   ENEMIES_PATH,

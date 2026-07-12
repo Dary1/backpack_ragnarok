@@ -249,6 +249,15 @@ fs.writeFileSync(path.join(batchDir, 'entities.json'), JSON.stringify({
   ],
 }));
 
+// REQ-0122: the runtime reads the dungeon domain from content/live/dungeon
+// (the promoted copy), not the batch dir -- mirror the fixture batch there,
+// exactly what tools/promote_dungeon_batch.cjs does to the real repo.
+const fixtureLiveDungeonDir = path.join(contentDir, 'live', 'dungeon');
+fs.mkdirSync(fixtureLiveDungeonDir, { recursive: true });
+for (const f of ['dungeon.json', 'enemies.json', 'skills.json', 'entities.json', 'formations.json', 'items.json']) {
+  fs.copyFileSync(path.join(batchDir, f), path.join(fixtureLiveDungeonDir, f));
+}
+
 os.homedir = () => fakeRepoHome;
 // REQ-0047 (c): the server is a module TREE now (api.cjs -> router.cjs ->
 // routes/* -> lib/*) -- evicting only the four legacy files would leave

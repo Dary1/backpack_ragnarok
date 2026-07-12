@@ -23,5 +23,17 @@
    "preview": "/preview/batch-003/",
    "provenance": "AI-raster route (REQ-0073); geometry-scored (tool_icon_score.py, MIN_CONTENT_FRAC gate); winners = argmax(score); re-scored 2026-07-12 after matte/gate fixes"
   }
- ]
+ ],
+ "live_dungeon": {
+  "promoted_from": "batch-002-dungeon-pilot",
+  "date": "2026-07-12",
+  "files": {
+   "dungeon.json": "c0c8d9a8cae24ee31ae68199ce5f1dc2068201b1231370cab533eb7807d6ab0d",
+   "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
+   "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
+   "entities.json": "b62682a6df484eac4024bb00b161af0bdf6fb67254c4acaa3386e3aecca2e286",
+   "formations.json": "75ae7a099bf13b8d2f0032f5b8cccf72cdd8187df066870b2c4d302b27cc3bb5",
+   "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da"
+  }
+ }
 }
