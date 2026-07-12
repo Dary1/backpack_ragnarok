@@ -36,6 +36,7 @@
   "OnSquadHit",
   "OnBPBeenHit",
   "OnSquadBeenHit",
+  "on_link_pulse",
   "on_hp_below"
  ],
  "verbs": [
@@ -57,6 +58,8 @@
   "bonus_vs_blocked",
   "status_immune",
   "bonus_vs_status",
+  "pulse",
+  "buff_linked",
   "buff_self",
   "damage_reduction"
  ],
@@ -104,6 +107,7 @@
   "OnSquadHit": ["SI", "PO", "Unit", "EnemySkill"],
   "OnBPBeenHit": ["SI", "PO", "Unit"],
   "OnSquadBeenHit": ["SI", "PO", "Unit", "EnemySkill"],
+  "on_link_pulse": ["PO"],
   "on_hp_below": ["PO", "EnemySkill"]
  },
  "ranged_verb_params": {

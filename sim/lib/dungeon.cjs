@@ -102,6 +102,10 @@ function runDungeon(opts) {
       enemyDefsById, skillDefsById, encounterDef: encDef, seedLabel: masterSeed,
     });
     for (const e of encResult.events) allEvents.push(Object.assign({ seq: seq++ }, e));
+    // REQ-0049: attachment rewards (trap disarm / chest open) accrue like
+    // encDef.rewardItems -- into rewardsAccrued, which the run-wipe rule below
+    // forces to [] on a wipe (earned-then-wiped rewards are discarded).
+    if (Array.isArray(encResult.attachmentRewards)) { for (const rw of encResult.attachmentRewards) if (rw && rw.roll) rewardsAccrued.push(rw.roll); }
 
     if (encResult.result === 'wipe') {
       runResult = 'wipe';
@@ -132,6 +136,15 @@ function runDungeon(opts) {
         progressPct = Math.min(100, progressPct + jPct);
         allEvents.push({ t: 0, seq: seq++, ev: 'shortcut', enc: i, jump_pct: jPct, pct_after: progressPct });
         // "Skipped encounters yield NO reward" -- mark skipped indices.
+      }
+      if (encResult.doorShortcut) {
+        // REQ-0049: an attachment DOOR opened during this encounter grants the
+        // same +J% shortcut as a standalone door (S8.3), rolled from its own
+        // sub-stream so it never desyncs other rolls.
+        const jStream = rng.stream('shortcut-att/' + i);
+        const jPct = jStream.range(TUNABLES.SHORTCUT_JUMP_PCT_RANGE[0], TUNABLES.SHORTCUT_JUMP_PCT_RANGE[1]);
+        progressPct = Math.min(100, progressPct + jPct);
+        allEvents.push({ t: 0, seq: seq++, ev: 'shortcut', enc: i, jump_pct: jPct, pct_after: progressPct, via: 'attachment' });
       }
       if (encDef.type === 'boss') {
         runResult = 'victory';

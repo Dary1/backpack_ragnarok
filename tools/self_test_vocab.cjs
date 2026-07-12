@@ -144,6 +144,15 @@ const extraPO = [
     effects: [{ trigger: { t: 'battle_start' }, verb: { t: 'block', n: [8, 12] } }],
     modes: ['battle'],
   },
+  // REQ-0048: linker-pulse payload trigger -- fires when a link pulse arrives at the
+  // host BP (sim wiring: sim/lib/encounter.cjs firePulsePayloads). The fixture only
+  // proves build+render+range legality, which is what "trigger covered" means here.
+  {
+    id: 'selftest_trig_on_link_pulse', name: 'Selftest trig on_link_pulse', tags: [POTagNames[0]],
+    rarity: 'Common', shape: [[0, 0], [1, 0]], icon: 'icon-selftest_trig_on_link_pulse', sockets: [],
+    effects: [{ trigger: { t: 'on_link_pulse' }, verb: { t: 'strike', n: [2, 4] } }],
+    modes: ['battle'],
+  },
   // REQ-0081: cover the remaining REQ-0078 reactive-trigger taxonomy entries so the
   // self-test exercises ALL vocab.triggers (see the coverage assertion at the summary).
   // eff_render.cjs already renders these (REQ-0078 wired the prefixes); vocab
