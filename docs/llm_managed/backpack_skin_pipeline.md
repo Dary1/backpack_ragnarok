@@ -119,14 +119,31 @@ BS-G5), or all orientations are authored/derived at build time.
   `fill_texture` (seamless/tileable), and (b) a MOTIF SHEET (border strip
   samples) per skin from which master edge tiles are cut and cleaned.
   `clip_mask`s are then derived from each tile's contour (auto-trace of the
-  edge art's inner boundary) with manual fixup allowed. Honest risk note:
-  diffusion models are weak at seamless tiling — expect a tiling-specific
-  ComfyUI workflow and manual cleanup. **Highest-risk step; run a
-  spike/bakeoff first** (pattern: monsters-002-style-bakeoff).
-  UPDATE 2026-07-12: `fill_texture` tiling is largely de-risked — a
-  circular-padding ComfyUI recipe is specified in REQ-0138; the spike
-  (REQ-0131) should spend its budget on edge-tile cutting + `clip_mask`
-  integrity.
+  edge art's inner boundary) with manual fixup allowed.
+
+  CORRECTED 2026-07-12 (REQ-0138, measured). The v1.0 risk note said
+  "diffusion models are weak at seamless tiling". That was wrong as stated —
+  the weakness is in the default sampler/VAE *padding*, not in the model.
+  `fill_texture` tiling is **SOLVED**, with no manual cleanup, via circular
+  padding (`spinagon/ComfyUI-seamless-tiling`):
+    - `SeamlessTile` (`tiling: enable`, `copy_model: "Make a copy"`) between
+      the checkpoint loader and the KSampler — circular Conv2d padding in the
+      UNet;
+    - `CircularVAEDecode` (`tiling: enable`) in place of `VAEDecode` — the
+      decoder pads independently, so a normal decode reintroduces the seam;
+    - both patches, or the seam survives.
+  Measured seam ratio (wrap-edge discontinuity / interior baseline; 1.0 =
+  indistinguishable from the texture): **0.83–1.09 seamless vs 2.76–3.77
+  control**, across 2 motifs × 2 seeds, zero overlap. Recipe is architectural
+  and carries to any SDXL checkpoint (re-run the offset check once on the
+  REQ-0136-ratified checkpoint; NOT valid for FLUX-family).
+  Circular padding makes a tile *joinable*, not *tileable-looking* — the
+  allover-pattern prompt discipline (no focal object, no vignette/gradient,
+  uniform density edge to edge) is still mandatory.
+
+  **The remaining high risk is the rest of S2**: motif-sheet → edge-tile
+  cutting (straight / outer corner / inner corner) and `clip_mask` integrity.
+  That is where the spike (REQ-0131) spends its budget.
 - **S3 Assembly + validation harness.** Deterministic harness composites the
   full rendering stack (§2) on the validation shape suite (1×1, I, L, T, S/Z,
   inner-corner and holed shapes) over several contrasting canvas backgrounds,
