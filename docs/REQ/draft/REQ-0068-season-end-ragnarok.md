@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0068 — Season-End Ragnarok (the event: Acts I–III)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-06). REVERSE-INFERRED
@@ -47,20 +49,20 @@ dispatched; next season begins at the next moon-phase).
 
 ## §3 Act II — the battle (architecture proposal [ORCH, vetoable])
 The mock shows only: 5 global HP pools (8–15M), a damage feed, kill stamps
-(討滅 + とどめ party), live hall with 確定 locks, an hours-long clock. Internals
+(討滅 + とどめ troop), live hall with 確定 locks, an hours-long clock. Internals
 are free. Proposed **relay-raid** architecture (maximal reuse, zero new combat):
 - The host (EVERY Einherjar ever devoted, all seasons — it grows forever) is
-  ordered by seed at battle start (「布陣は運命に委ねられる」). Units fight as
-  their **frozen snapshots** (REQ-0066 §3), grouped into parties of 4 by fate
+  ordered by seed at battle start (「布陣は運命に委ねられる」). Squads fight as
+  their **frozen snapshots** (REQ-0066 §3), grouped into troops of 4 by fate
   order, on STANDARD 26×18 fields vs **aspects** of a pillar (normal-scale enemy
   stand-ins whose damage taken debits the pillar's global HP ledger).
-- Each party runs an ordinary `sim/combat.cjs` encounter sequence vs aspects
+- Each troop runs an ordinary `sim/combat.cjs` encounter sequence vs aspects
   until wiped (permanent attrition; no healing between — glorious death is the
-  design: ACT III 「すべての盾は砕けた/されど、誰も敗れてはいない」). Per-unit
+  design: ACT III 「すべての盾は砕けた/されど、誰も敗れてはいない」). Per-squad
   results: **討撃** (damage contributed), **昇天** (wall-clock time of its fall),
   kill credit if ITS encounter zeroed a pillar's ledger (→ 殿堂入り, score 確定
   immediately, per mock).
-- Whole event **instant-sims** as a batch (12k+ unit-encounters ≈ ms each —
+- Whole event **instant-sims** as a batch (12k+ squad-encounters ≈ ms each —
   embarrassingly parallel, shardable per pillar), then **replays at wall-clock
   pace over hours** via visibleEvents truncation — the REQ-0036 run-clock design
   at raid scale; no standing process; lazy settlement fires Act III exactly once.
@@ -74,28 +76,28 @@ are free. Proposed **relay-raid** architecture (maximal reuse, zero new combat):
   battle clock, 敵残存 chip. Data = polled event-log cursor (schedule-monitor
   pattern; no websockets needed at friends scale).
 - 戦況の声 damage feed (ムニンの報せ): curated event classes only (pillar hits by
-  named parties, kills, milestones — not 12k lines/sec; feed compaction rules
-  [TUNABLE]). Hall of Fame LIVE: top parties by 討撃, 確定 lock on kill credit.
+  named troops, kills, milestones — not 12k lines/sec; feed compaction rules
+  [TUNABLE]). Hall of Fame LIVE: top troops by 討撃, 確定 lock on kill credit.
 
 ## §5 Act III — results & merge
 - Requiem sequence (staged reveal per mock), final table: 序列 / 隊名 / 討撃 /
   昇天, me-row with eternal-order delta (「+序列 810」).
-- Settlement: per-unit 戦果 computed by the SHARED formula (REQ-0066 §2 [USER]),
+- Settlement: per-squad 戦果 computed by the SHARED formula (REQ-0066 §2 [USER]),
   appended to Einherjar records' perSeason history, eternal order rebuilt,
   season index advances (registry), furnace/dismantle season windows roll
   (REQ-0064 §6, REQ-0063 §5 — their deferred switches land HERE).
 - **Battle report to each liberator** (worldview promise): their pillar's story —
-  total damage dealt/received, units slain by it (count + notable names), who
+  total damage dealt/received, squads slain by it (count + notable names), who
   felled it, duration. Delivered as a permanent record page + notification.
 - Event archive: replay + boards kept **[TUNABLE: latest N seasons full replay,
-  summaries forever]** (12k-unit JSONL is large; summaries are small).
+  summaries forever]** (12k-squad JSONL is large; summaries are small).
 
 ## §6 Routes & storage (sketch)
 `GET /api/ragnarok/event` (state machine: idle|vault|battle|results),
 `GET /api/ragnarok/event/pillars` (+ live price), `POST /api/ragnarok/event/
 pillars/:id/unseal` (◈ debit, first-wins), `GET /api/ragnarok/event/board`
 (cursor), `GET /api/ragnarok/event/results`, `GET /api/ragnarok/report/:pillar`.
-Tables: event, pillars, unseal ledger, unit results, reports. files+pg parity,
+Tables: event, pillars, unseal ledger, squad results, reports. files+pg parity,
 storage.cjs chokepoint, migrations 00N.
 
 ## §7 [USER] decision list (deliberately long — undiscussed territory)

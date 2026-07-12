@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0098 — Room cooldown ring (蛇環 / 次戦まで %)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-08). Part of the
@@ -13,7 +15,7 @@
 
 Cooldown END is `ApiRoom.cooldownUntil` (exists). A progress ring needs
 `elapsed / total`. The total IS computed server-side at run end (REQ-0036 golden l:
-"cooldown scaled by all participating Units' BP HP at finish"); it is simply not
+"cooldown scaled by all participating Squads' BP HP at finish"); it is simply not
 exposed on the wire. Fix = expose the span, derive the pct client-side.
 
 ## Design

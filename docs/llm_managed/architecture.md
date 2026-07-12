@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # backpack_ragnarok — Architecture & Framework Design
 
 Audience: any developer (human or agent) joining this codebase. This is
@@ -70,7 +72,7 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 |---|---|
 | `mock-src/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
 | `sim/` | Combat simulator. `combat.cjs`/`dungen.cjs` facades over `sim/lib/{core,rng,heap,geometry,formation,status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs` (acyclic). Dependency-free by invariant. |
-| `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule}.cjs` → business logic in `schedule.cjs` facade over `services/{core,rooms,units,runs,warehouse,gacha}.cjs`; plumbing in `lib/{content,http_util,humanize,meta}.cjs`; persistence in `storage/players/pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
+| `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule}.cjs` → business logic in `schedule.cjs` facade over `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`; plumbing in `lib/{content,http_util,humanize,meta}.cjs`; persistence in `storage/players/pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
 | `shared/` | Cross-package contract surface: `engine.d.ts` (engine types), `dto.ts` (30 HTTP wire-shape types), `content_validate.cjs` (admin-edit validator). Dependencies point INTO shared, never out. |
 | `client/` | Vite + React 19 + PixiJS 8 + TS. Store = module-level pub-sub (`src/store.ts` barrel over `src/store/*`), board renderer class + extracted `board/{geom,commits,ghosts}.ts`, typed API client `src/api.ts` (re-exports shared DTOs). Builds into committed `web/app/`. |
 | `content/` | Game content: `vocab.json` (closed vocabulary), `live/` (single source served by /api/content), `batches/` (authored + generated content, incl. batch-002 the sim test fixture). |

@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Item Spec — v0.1 DRAFT — **SUPERSEDED by `canvas_spec_glossary_ground_true.md`** (2026-07-02)
 
 > Drafted per user directive: orchestrator proposes, mock GUI follows this spec.
@@ -82,7 +84,7 @@ golden §4 is a later combat-spec topic).
 ## 10. Economy hooks (not in mock scope)
 
 Acquisition: dungeon loot + Market (Transmutator). Item instances are physical and
-unique (preset exclusivity rule). No stacking.
+unique (squad exclusivity rule). No stacking.
 
 ## 11. Initial item catalog (mock roster, 11 items)
 

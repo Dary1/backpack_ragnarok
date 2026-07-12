@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0059 — Circuit Chimes (+ mobile haptics)
 
 - **Status**: ADOPTED by user (2026-07-06, 「素晴らしい」; haptics user-ordered) —
@@ -34,7 +36,7 @@
   ignition") — no extra feature needed, the monitor replay IS the player.
 
 ## Test plan
-- unit: event→note mapping table (pure function, snapshot-tested), timestamp
+- squad: event→note mapping table (pure function, snapshot-tested), timestamp
   scheduling (no frame dependence).
 - E2E: toggle on/off, no console errors headless (audio context mocked), settings
   persistence, vibrate called with expected patterns under a mocked navigator.

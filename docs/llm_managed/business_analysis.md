@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Business Analysis — "Influencers Buy the Season-End Boss" Monetization Model
 
 > Status: **analysis memo** (LLM-authored critique, requested by the user 2026-07-07).
@@ -48,7 +50,7 @@ coincidence.**
    "losing event" is done on the mythology side, pre-breaking the skeleton of the complaint
    "the boss is unfairly strong". The killed side gets a permanent ranking entry and their
    name in a famous person's report — **the victim also receives a reward**. A monetization
-   design where every party's incentives line up is rare.
+   design where every troop's incentives line up is rare.
 
 **Hidden society-side lever: oshi-katsu (fandom) culture.** Buyers need not be limited to
 individual influencers. If a fandom can **crowdfund the summoning of their oshi as the demon

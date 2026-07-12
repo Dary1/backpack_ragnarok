@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0067 — Hall of Ragnarök UI: design brief for round 2 (to the UI designer)
 
 - **Status**: ISSUED to the UI designer (2026-07-06). Companion to REQ-0066.
@@ -17,19 +19,19 @@ three-step ceremony; 最後の問い modal; hall strip cards (永劫に在り); 
 
 ## P1 — blocking states & additions
 1. **Devotion blast radius** (the big one): the vow must itemize what is lost —
-   REQ-0066 §4: destroying a unit's items removes them from EVERY preset that
+   REQ-0066 §4: destroying a squad's items removes them from EVERY squad that
    shares them (reference model). Design the loss manifest: BP/PO/SI counts, and a
-   「他の型にも波及」 list (which other presets lose pieces). This belongs BETWEEN
+   「他の型にも波及」 list (which other squads lose pieces). This belongs BETWEEN
    step ② and the final modal — the last question stays short, the manifest
    carries the weight.
 2. **First-season empty states**: eternal order before the player has any score
    (me-row with 0 / unranked?); hall strip with zero Einherjar (「未だ誰も昇って
-   いない」register); devotion section when the player has NO eligible unit
+   いない」register); devotion section when the player has NO eligible squad
    (all deployed / none exist) — with the reason shown.
 3. **Rite-in-progress + memorial**: the sealed state while the rite runs, and the
-   devoted unit's card AFTER — a memorial variant (the MYTHIC card grays to stone?
+   devoted squad's card AFTER — a memorial variant (the MYTHIC card grays to stone?
    moves to the hall?) so the moment has a visual afterlife.
-4. **Ineligibility on the picker**: units locked with reasons (遠征中 / 既に選定 /
+4. **Ineligibility on the picker**: squads locked with reasons (遠征中 / 既に選定 /
    儀の途中) — mirrors the market's 専有の法 lock language.
 5. **Tier ladder legibility**: what score reaches the next tier (a quiet
    「JARLまで あとN」 under the me-row?); VALHALLA chip semantics — decide its

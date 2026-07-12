@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0100 — Expedition spoils rail (right column preview)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-08). Part of the
@@ -6,7 +8,7 @@
   `一括回収`. Depends on REQ-0097's 3-column shell.
 - **Origin**: REQ-0071 omitted the right column because "the warehouse lives in
   this page's Warehouse TAB (REQ-0072 owns its restyle); duplicating claim flows on
-  the rooms view would fork that unit." This REQ adds a **READ-ONLY preview** (no
+  the rooms view would fork that squad." This REQ adds a **READ-ONLY preview** (no
   claim fork), so the mock's 3-column frame is honest and complete.
 
 ## Design

@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0121 — Sim implementation for `buff_self` / `damage_reduction` / `on_hp_below`
 
 > Status: **todo — ratified, cleared to implement, queued.**
@@ -84,7 +86,7 @@ modifiers, not ray-emitting effects" — none carry an `attack_profile`.
    touching too (REQ-0093 found `build_dungeon_preview.py` has NO
    `eff_render.cjs` integration on master — verify current state, this may
    have changed given how fast master is moving).
-6. **Tests**: `sim/tests/run.cjs` — unit coverage for `on_hp_below` fire-once
+6. **Tests**: `sim/tests/run.cjs` — squad coverage for `on_hp_below` fire-once
    semantics (fires exactly once per threshold crossing, not per tick;
    re-crossing upward then back down does NOT re-fire — confirm this
    against REQ-0077's "fires once on first crossing" wording, may need a

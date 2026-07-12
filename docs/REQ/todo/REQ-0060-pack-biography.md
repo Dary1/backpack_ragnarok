@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0060 — Pack Biography (+ veteran TM luck)
 
 - **Status**: ADOPTED by user (2026-07-06, 「素晴らしい」) with a user-added
@@ -46,7 +48,7 @@ Dex card "Biography" section (REQ-0052 surface), warehouse rows (age), gacha mod
 ## Test plan
 - server: settle-time bio aggregation correctness (fixtures per credit type),
   files+pg parity, migration for existing BPs (bio starts empty, born=migration).
-- unit: milestone→bio_luck curve, cap, per-TM opt-in gate.
+- squad: milestone→bio_luck curve, cap, per-TM opt-in gate.
 - E2E: Dex biography section renders, gacha "day one", warehouse age.
 - S4: E-class addition — bio_luck distribution across a simulated account age
   matrix (verify the cap keeps veteran advantage inside [TUNABLE] band).

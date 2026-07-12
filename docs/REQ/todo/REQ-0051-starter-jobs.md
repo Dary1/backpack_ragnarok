@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0051 — Starter Jobs (four fixed 5×5 linker-less BPs)
 
 - **Status**: USER-DESIGNED (2026-07-06) — implementation QUEUED. This REQ is the
@@ -10,18 +12,18 @@
   four distinct "starter jobs".
 - Each starter BP occupies one inventory page (pages 1–4).
 - Players use them while convenient, then **discard** them when outgrown.
-- Result: a solo player can field 4 units immediately, progressing regardless of any
+- Result: a solo player can field 4 squads immediately, progressing regardless of any
   other player's activity.
-- 1-unit runs remain possible but clear only low levels with matching rewards —
+- 1-squad runs remain possible but clear only low levels with matching rewards —
   the 4-job grant is the intended on-ramp, not a hard requirement.
 
 ### Ruling addendum (user, 2026-07-06 — BINDING design philosophy)
 The IDEAL endgame shape is: **one player concentrates their assets into ONE
-strongest unit and plays in a party of players.** Fielding up to 4 units solo is a
+strongest squad and plays in a troop of players.** Fielding up to 4 squads solo is a
 RELIEF measure for solo players — it must never be presented or balanced as best
 practice. Starter jobs are the relief's on-ramp; UI copy, tutorials and reward
-curves must nudge toward party play + single-unit mastery as players graduate.
-(Same ruling rejected cross-unit Formation Links: coupling units too tightly would
+curves must nudge toward troop play + single-squad mastery as players graduate.
+(Same ruling rejected cross-squad Formation Links: coupling squads too tightly would
 promote solo multi-boxing over cooperation.)
 
 ## Design
@@ -50,7 +52,7 @@ still open) block job_scout's kit.
   gacha BP and invert the power curve; authored-override capability comes with VX-1's
   `hpMax` field, already live).
 - **Grant**: once per profile, same genuine-freshness gate as the Weathervane seed
-  (REQ-0042 pattern). Four presets pre-seeded ("Job: Guard" … one job BP each,
+  (REQ-0042 pattern). Four squads pre-seeded ("Job: Guard" … one job BP each,
   centered) so the first room deploy is 4 clicks.
 - **Discard & regrant**: discard = normal BP delete; each job is **re-grantable free,
   once [TUNABLE]** via a claim endpoint — prevents new players bricking themselves;
@@ -65,7 +67,7 @@ still open) block job_scout's kit.
   (first deploy → job card; first trap survived → Scout card; first linker'd BP →
   Linker chapter). No modal-script tutorial is built or maintained.
 - Graduation prompt [ORCH, vetoable]: when a crafted/gacha BP first out-stats a job
-  BP on the same unit, surface a gentle "outgrown?" hint on the job preset tab.
+  BP on the same squad, surface a gentle "outgrown?" hint on the job squad tab.
 
 ### Dual use
 The four job canvases are committed to `content/s4_boards/` as S4 reference fixtures
@@ -73,9 +75,9 @@ The four job canvases are committed to `content/s4_boards/` as S4 reference fixt
 
 ## Test plan (gates before DONE)
 - engine: `fixed` flag refusals (move/rotate/remove/transfer), migrateState back-compat.
-- server: grant idempotency (files+pg), regrant once-then-409, preset seeding shape.
+- server: grant idempotency (files+pg), regrant once-then-409, squad seeding shape.
 - sim: none (starter BPs are ordinary content to the sim).
-- client E2E: fresh-guest first-run flow (invite → 4 job presets visible → create room
-  → deploy 4 units → run settles → claim), fixed-PO drag refusal UX, discard+regrant.
+- client E2E: fresh-guest first-run flow (invite → 4 job squads visible → create room
+  → deploy 4 squads → run settles → claim), fixed-PO drag refusal UX, discard+regrant.
 - S4: inaugural baseline includes the four job boards (REQ-0050).
 - i18n: ja names/flavors for jobs and kits.

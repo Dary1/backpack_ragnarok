@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0057 — Ray Forecast Overlay ("weather map") — priority LOW
 
 - **Status**: ADOPTED by user (2026-07-06), explicitly **low priority** and
@@ -21,7 +23,7 @@
   Alternative source: S4-B2 telemetry cache served per (dungeon, level, formation);
   choose at implementation time by cost (client walker preferred — zero server state).
 - Display: heat tint + per-cell tooltip (top contributing skills); works on both the
-  canvas editor and the formation picker (per-slot summary = which unit slot eats
+  canvas editor and the formation picker (per-slot summary = which squad slot eats
   the most). Respects "?"-masking (uses enemy DEFs, never a specific run's hidden
   placements — forecast ≠ spoiler).
 - Not a promise: forecast shows the DISTRIBUTION (jitter, packs vary); label it
@@ -29,6 +31,6 @@
 
 ## Test plan
 - parity: overlay walker vs sim `walkRay` on shared fixtures (byte-equal paths).
-- unit: distribution math (edge weights × jitter clamp), affix modifiers applied.
+- squad: distribution math (edge weights × jitter clamp), affix modifiers applied.
 - E2E: toggle renders, formation switch updates, tooltip content, perf budget
   (< [TUNABLE 50ms] per recompute).

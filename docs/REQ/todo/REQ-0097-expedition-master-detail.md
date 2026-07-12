@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0097 — Expedition master/detail rebuild (mock 3-column)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-08). BACKBONE of the
@@ -56,10 +58,10 @@ picks one; this is the main risk of the REQ:
 - **(A) Shared re-targetable renderer — ORCH-preferred.** A single Monitor Pixi
   Application mounted once in the center pane; its DATA SOURCE swaps to the
   selected room's run. `MonitorRenderer` gains `retarget(roomId, run)` that resets
-  field state and remounts units/enemies/event-cursor for the newly selected run
+  field state and remounts squads/enemies/event-cursor for the newly selected run
   (diff-render preserved). One Application total — cleanest, matches the mock's
   single monitor, lowest memory. Cost: the renderer must fully reset per-run state
-  (unit visuals, enemy markers, event cursor, "?" masks) with **no residual actor
+  (squad visuals, enemy markers, event cursor, "?" masks) with **no residual actor
   or timeline-pip leak** across retargets — add a guard on `window.__monitorDebug`.
 - **(B) Portal the active monitor — fallback.** Keep per-room Monitor instances
   (REQ-0071 lifecycle) mounted-but-hidden; React-portal the SELECTED room's canvas

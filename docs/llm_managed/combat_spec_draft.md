@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Combat Spec — v0.3-draft (for owner review)
 
 > Design-only pass. No code or server state was touched. This spec designs the
@@ -25,7 +27,7 @@
 > status semantics, run integration, S4 tuning surface.
 >
 > Binding inputs honored: auto-battle (no mid-run input); seconds with decimal `[lo,hi]`
-> ranges, no ticks; BPs have HP (units have none); party = 4 Units; run 0→100% with traps /
+> ranges, no ticks; BPs have HP (squads have none); troop = 4 Squads; run 0→100% with traps /
 > hidden doors / chests / boss resolved as combat with mode-gating; wipe = level-down +
 > cooldown, nothing lost/gained; runs on COPIES; deterministic server sim + spectate log.
 > Reference games (owner-endorsed): Loop Hero (auto-run), Slay the Spire (intent
@@ -81,9 +83,9 @@ loop:
   monotone integer assigned at schedule time. Same seed ⇒ same `seq` order ⇒ identical run.
 
 ### 1.3 Determinism guarantee
-Given `(snapshot of all 4 Units' canvases + chosen formation, encounter/enemy defs +
+Given `(snapshot of all 4 Squads' canvases + chosen formation, encounter/enemy defs +
 their skill defs, master seed)` the run is a pure function → `(outcome, event log)`.
-Snapshots come from the **COPY** of each unit (golden j). Re-running reproduces the log —
+Snapshots come from the **COPY** of each squad (golden j). Re-running reproduces the log —
 the spectate/replay contract.
 
 ### 1.4 Simulated vs pre-computed (simulation boundary)
@@ -93,9 +95,9 @@ the spectate/replay contract.
   changes mid-run, so adjacency/connection/assembled/socket facts are constant and folded
   **once** into a flat effect list (§4.1). This is the seam: combat consumes the engine's
   output; it does not re-run placement per event.
-- **Formation placement.** The 4 chosen unit canvases are mapped onto the **shared field**
+- **Formation placement.** The 4 chosen squad canvases are mapped onto the **shared field**
   (§2, §5) once; every BP acquires an absolute field cell (a `Set` of `(row,col)` in A1:Z18).
-- Per-Unit derived stats (final `strike` band after `buff_host`, `buff_self_per_tag`,
+- Per-Squad derived stats (final `strike` band after `buff_host`, `buff_self_per_tag`,
   `buff_adjacent`, Whetstone/Ruby SIs) folded where the trigger is `passive`/`battle_start`.
 - **[LOCKED OQ2] Dynamic buffs = minimal.** Fold `buff_*` at compile time; the only
   buffs allowed to recompute mid-encounter are those whose value literally cannot be known
@@ -129,11 +131,11 @@ diagonal, bounces, hits and splash.
 
 ### 2.1 Two coexisting planes
 There are **two** independent `A1:Z18` planes (26 cols A–Z × 18 rows), per ruling 2:
-- **player field** — the 4 player unit canvases (8×8 each) placed per the chosen
+- **player field** — the 4 player squad canvases (8×8 each) placed per the chosen
   **formation** (§5). Cells are occupied by **BPs** (each BP occupies its footprint cells;
   1 BP per cell max).
 - **enemy field** — the same `A1:Z18` geometry, but cells are occupied **DIRECTLY by
-  enemy units** (ruling 2/3: enemies have no BP/canvas). An enemy's `footprint` (default
+  enemy entities** (ruling 2/3: enemies have no BP/canvas). An enemy's `footprint` (default
   1×1; bosses larger, §4.4) marks the cells it occupies.
 
 A skill fired by **side X resolves on the OPPOSING plane**: player POs' rays land on the
@@ -222,7 +224,7 @@ Applies the skill's AST verbs to the occupant: `strike`/`multi_strike` → damag
 enabling per-hit status stacking); `apply_status`/`add_on_hit_status` → push stacks (§7).
 Damage is scaled by `mult(bounces)` before block/HP application (block pool absorbs first,
 §7). On the player field the occupant is a BP (Backpack-as-HP); on the enemy field it is
-an enemy unit (HP only).
+an enemy entity (HP only).
 
 ### 3.4 splash
 Every live occupant within Chebyshev radius `aoe` of `landing` takes the skill's damage
@@ -355,8 +357,8 @@ BPs suffer them (§7).
 ## 5. Formations as content (the 4 from formation.xlsx)
 
 ### 5.1 Formation defs
-A **formation** is a content def naming the 4 player unit canvases as 8×8 boxes on the
-shared field, plus their unit-slot labels. **[VX-2]**-adjacent (schema, no vocab).
+A **formation** is a content def naming the 4 player squad canvases as 8×8 boxes on the
+shared field, plus their squad-slot labels. **[VX-2]**-adjacent (schema, no vocab).
 ```jsonc
 { "id":"formation2", "i18n":{...},
   "canvases": { "unit1":"J2:Q9", "unit2":"B6:I13", "unit3":"R6:Y13", "unit4":"J10:Q17" } }
@@ -367,12 +369,12 @@ The four ratified defs (boxes/labels from formation.xlsx):
 |---|---|---|---|---|---|
 | formation1 | F2:M9 | N2:U9 | B10:I17 | R10:Y17 | standard; 2 front cover 2 back (top-entry only) |
 | formation2 | J2:Q9 | B6:I13 | R6:Y13 | J10:Q17 | unit1 tank up top; unit4 well protected |
-| formation3 | B2:I9 | R2:Y9 | F10:M17 | N10:U17 | corner units tank top diagonals |
+| formation3 | B2:I9 | R2:Y9 | F10:M17 | N10:U17 | corner squads tank top diagonals |
 | formation4 | E5 (left wing) | M5 (center-top) | U5 (right wing) | M14 (backline) | **corrected** — see §5.2 |
 
 ### 5.2 formation4 corrections (ratified fixes to the sheet errors)
-The xlsx had (a) a backline box `J11:Q19` overrunning row 18, and (b) no unit labels.
-**Ratified v0.2:** backline_center box **corrected to `J11:Q18`** (8 rows, in-bounds); unit
+The xlsx had (a) a backline box `J11:Q19` overrunning row 18, and (b) no squad labels.
+**Ratified v0.2:** backline_center box **corrected to `J11:Q18`** (8 rows, in-bounds); squad
 labels taken from the xlsx marker cells: **unit1 = left wing (E5)**, **unit2 = center-top
 (M5)**, **unit3 = right wing (U5)**, **unit4 = backline (M14)**. (The `E5/M5/U5/M14` cells
 are the box anchor labels; each box is the 8×8 region positioned from that anchor per the
@@ -380,17 +382,17 @@ sheet.) formation4's four boxes: left_wing `B2:I9`, center_top `J2:Q9`, right_wi
 `R2:Y9`, backline_center `J11:Q18`.
 
 > Note (retained from proposal, informational): formation1's side-entry rays at rows 10–17
-> hit the backline units first (inter-canvas gaps don't bounce). This is **intended
+> hit the backline squads first (inter-canvas gaps don't bounce). This is **intended
 > counterplay**, not a bug — it is why formation choice is a real decision.
 
 ### 5.3 Formation selection & slot assignment (v1 defaults)
-- **[LOCKED]** The **room creator picks the party formation** from the content list at
-  room creation (one of the 4 above). Rationale: the formation is a shared, party-level
+- **[LOCKED]** The **room creator picks the troop formation** from the content list at
+  room creation (one of the 4 above). Rationale: the formation is a shared, troop-level
   battlefield decision; centralizing it on the creator matches the room-creation flow
   (REQ-0036 golden c) and keeps the field deterministic for all 4 joiners.
-- **[LOCKED]** **Unit slot assignment = join order** (1st joiner → unit1, …), **swappable
+- **[LOCKED]** **Squad slot assignment = join order** (1st joiner → unit1, …), **swappable
   pre-start** (before the run begins). Rationale: simplest deterministic default; a
-  pre-start swap UI is cheap and lets a party optimize front/back. Both defaults are
+  pre-start swap UI is cheap and lets a troop optimize front/back. Both defaults are
   **vetoable** by the user.
 
 ---
@@ -480,7 +482,7 @@ The `Tool` `po_tags` placeholder proposed in v0.2 is **DEAD** — mode tags supe
   "goes off" as a single punishing event, not an ongoing fight.*
 - **"?" entity position is masked** in the replay/spectate log **until discovered**
   (spectator-safe events, §1.5). *Rationale: a spectator must not see the answer before the
-  party does.*
+  troop does.*
 - **Unlock entity placement:** the door/chest sits at the **enemy-field center**, footprint
   taken from its def. *Rationale: a fixed, fair, deterministic target for unlock rays.*
 
@@ -546,10 +548,10 @@ current% and the target%. Skipped encounters yield **no reward** (speed-vs-loot 
 
 ### 8.5 Wipe / level-down / cooldowns (formulas)
 All constants **[TUNABLE]**; `failure_step` default 1 (golden i).
-- **Wipe** (all BPs of all 4 Units downed): `L ← max(L_min, L − failure_step)`; nothing
+- **Wipe** (all BPs of all 4 Squads downed): `L ← max(L_min, L − failure_step)`; nothing
   lost/gained; a **wipe cooldown** applies before re-sortie.
 - **Post-run cooldown (success)** scales with **finishing BP HP** (golden l). Let
-  `H = Σ bp.hp / Σ bp.hpMax` (party HP fraction at finish, 0..1):
+  `H = Σ bp.hp / Σ bp.hpMax` (troop HP fraction at finish, 0..1):
   ```
   CD_run = CD_min + (CD_max − CD_min) × (1 − H)     [TUNABLE CD_min, CD_max]
   ```
@@ -580,7 +582,7 @@ Each is orchestrator-decided; the user may veto async.
 | MODE-1 | `timeout` = an encounter/entity-def field (`timeout_secs`), not vocab growth | a scalar per entity needs no new tag/verb |
 | MODE-2 | hidden door = two-stage `detection → unlock` chain (golden o) | reuses the two existing modes; no third door mode |
 | MODE-3 | a trap that times out UNDISCOVERED fires its skill payload once (battle-style volley), then the encounter ends (golden n「発動」) | the trap "goes off" as one punishing event, not a fight |
-| MODE-4 | the "?" entity's position is masked in the replay/spectate log until discovered | spectators must not see the answer before the party |
+| MODE-4 | the "?" entity's position is masked in the replay/spectate log until discovered | spectators must not see the answer before the troop |
 | MODE-5 | unlock entity placement = enemy-field center, footprint from its def | fixed, fair, deterministic unlock target |
 | MODE-6 | mode filtering: only POs whose `modes` include the encounter mode fire; the rest idle, their `every_secs` **pauses (does not accumulate)** | an idle utility PO shouldn't silently bank charges |
 | MODE-7 | schema: PO defs + skill defs get a `modes: ["battle"]`-style field (default `battle`); `vocab.json` gains a `modes` closed list | closes VX-3; new closed vocabulary + field |
@@ -603,7 +605,7 @@ a formation) vs reference enemy packs using the §1–3 sim and asserts bands.
 - **DPS per PO / per canvas** vs `vocab.dps_ceiling_warn` (Common 12 / Uncommon 15 /
   Rare 18 / Relic 24). Over-ceiling ⇒ warn. **Ray-aware:** effective DPS now includes
   bounce-scaling and AOE, so the sim must attribute multi-hit ray damage per fire.
-- **EHP per BP / party** = `hpMax + expected block absorbed + expected Regen`; time-to-down
+- **EHP per BP / troop** = `hpMax + expected block absorbed + expected Regen`; time-to-down
   under a reference pack, banded per defensive-piece rarity.
 - **Run-length distribution** across seeds ×N: run duration + clear-rate at a reference
   level; flag trivially-fast or unwinnable runs.

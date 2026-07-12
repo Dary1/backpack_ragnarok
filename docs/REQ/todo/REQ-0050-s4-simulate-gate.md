@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0050 — S4 Simulate Gate (tools/simulate.cjs)
 
 - **Status**: DESIGN RATIFIED by user ("all green", 2026-07-06), **assuming layered
@@ -47,15 +49,15 @@ S4 gate. Runs before any batch S7 review and after any combat-affecting REQ.
   (overcosted-skill detectors).
 - B4 sparse-vs-dense study: parametric coverage boards → damage-taken curve; hard-flag
   if minimal-coverage builds strictly dominate (consultant-review risk #4).
-- B5 formation equity: same party across the 4 formations vs reference packs — spread
+- B5 formation equity: same troop across the 4 formations vs reference packs — spread
   of win rate (warn > [TUNABLE 15pt]); side-entry damage share per formation
   (quantifies formation1's known bypass).
 - B6 ray_abort (step-budget) rate: hard-flag if > 0 outside crafted stress fixtures.
 
-**C. Unit/party**
+**C. Squad/troop**
 - C1 time-to-first-BP-down / time-to-wipe under reference packs; slot death-order
   equity per formation.
-- C2 overkill % and idle-unit % (rays with no living target).
+- C2 overkill % and idle-squad % (rays with no living target).
 - C3 post-first-BP-loss cascade factor (damage distribution shift once a BP is
   passable) — snowball watch.
 
@@ -64,7 +66,7 @@ S4 gate. Runs before any batch S7 review and after any combat-affecting REQ.
 - D2 clear-rate vs level curve per dungeon type (dungen default, multi-seed):
   target band [TUNABLE e.g. ~80% on-level / ~20% at +3]; **monotonicity** hard-check
   (level k+1 never easier than k).
-- D3 party HP fraction H vs progress %; distribution of finishing H — hard-flag a
+- D3 troop HP fraction H vs progress %; distribution of finishing H — hard-flag a
   0/1 bimodal H (it would void the linear cooldown curve, OQ15–17).
 - D4 utility EV bands: trap-discovery rate before timeout; trap end-volley damage on
   no-detection boards; chest completion vs clear-speed correlation; % chests lost to
