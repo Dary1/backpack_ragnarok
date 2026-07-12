@@ -12,6 +12,9 @@ The pipeline doc + first defs batch for Units: schema, validation chain, and
 live target — the def-side counterpart of the ratified Unit Icon pipeline
 (`docs/llm_managed/unit_icon_pipeline.md` v1).
 
+**Content:** the roster kits this pipeline must be able to express are owned by
+**REQ-0149** (unit-roster-001-kits). This REQ owns the schema and the pipeline only.
+
 ## Schema (sketch; finalized in the pipeline doc)
 
 `unit/1`: `id` / `name` / `rarity` / `icon` (`"icon-<id>"`, always 1×1) /
@@ -60,7 +63,9 @@ mandatory on every entry.
 ## Gates
 
 - Pipeline doc ratified by user before the first batch brief.
-- Paper check: all 13 user-authored roster kits (elf … squire) expressible in
-  schema + frozen grammar.
+- Paper check: all **12** roster-001 kits expressible in schema + frozen grammar.
+  The kits themselves live in **REQ-0149** (their only home) — not here, and not in
+  a chat log. Corrected from "13" by the REQ-0149 G7 ruling (2026-07-13:
+  necromancer cut; Watcher and Squire authored).
 - First batch reaches the user-review STOP with every def mapped to accepted
   art; zero live writes before green.
