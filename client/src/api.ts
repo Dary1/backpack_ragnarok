@@ -66,8 +66,8 @@ function authHeaders(): Record<string, string> {
 // ---- wire-shape DTO types: moved to shared/dto.ts (REQ-0047 (f2)) ----
 // Imported for local use in the fetch helpers below, and re-exported so
 // every existing `import type { ... } from './api'` keeps working.
-import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse } from '../../shared/dto';
-export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse };
+import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiForecastProfile, ApiForecastPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse } from '../../shared/dto';
+export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiForecastProfile, ApiForecastPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse };
 
 
 async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -389,6 +389,16 @@ export function fetchDismantleLedger(): Promise<ApiDismantleLedgerResponse> {
  * after the current run finishes" rather than right away. */
 export function fetchDungeons(): Promise<ApiDungeonsPayload> {
   return scheduleJSON<ApiDungeonsPayload>('/api/schedule/dungeons');
+}
+
+/** GET /api/schedule/forecast -- REQ-0057. The enemy attack profiles the Ray
+ * Forecast Overlay walks for a given (dungeonType, level). Public/no-auth,
+ * exactly like fetchDungeons above: this is CONTENT (enemy defs folded to ray
+ * profiles), not run state, so it is scoped to no caller and reveals no run's
+ * hidden placements. */
+export function fetchForecast(dungeonType: string, level: number): Promise<ApiForecastPayload> {
+  const qs = new URLSearchParams({ dungeonType, level: String(level) });
+  return scheduleJSON<ApiForecastPayload>('/api/schedule/forecast?' + qs.toString());
 }
 
 /** POST /api/schedule/rooms -- creates a room owned by the caller. */
