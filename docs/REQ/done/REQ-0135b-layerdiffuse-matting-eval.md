@@ -53,18 +53,23 @@ happens.
 - `tools/scratch_req0135_build_gallery.py` — numbered gallery builder
   (A raw / A matte 256 / A matte 64+4x / B 256 / B 64+4x, coverage + method
   + time + VRAM per row, checkerboard alpha, dark theme, relative paths).
-- Server-side automation on llmlocal (`~/scratch/`, NOT in git):
-  `req0135_watch_and_run.sh` (waits until no req0136_bakeoff process AND
-  ComfyUI queue empty for 120 s → route A → route B → marker
-  `tmp/req0135_gen_complete`) and `req0135_postprocess.sh` (marker →
-  scores_base.json / scores_ld.json → gallery into worktree
-  `web/preview/req-0135-layerdiffuse/` → marker `tmp/req0135_post_complete`).
-  **Disarmed 2026-07-12** (processes killed on close). Re-arm:
-  `setsid nohup ~/scratch/req0135_watch_and_run.sh > ~/scratch/req0135_watch.log 2>&1 &`
-  and same for `req0135_postprocess.sh`.
-- ComfyUI: LayerDiffuse nodes live (REQ-0135a). First route-B job also
-  downloads LD weights (~1.5 GB) — allow extra time (spike script default
-  `--timeout 1200`).
+- ~~Server-side automation on llmlocal (`~/scratch/`, NOT in git)~~ —
+  **GONE, AND DO NOT RECREATE IT. The re-arm instruction that used to sit here
+  has been deleted on purpose.** It said to launch the watcher with
+  `setsid nohup … &`, which is exactly what caused the damage this REQ is
+  famous for: the script outlived its session, started ComfyUI on its own, and
+  left it holding 12.3 GB idle on a 23 GB box until a later session found it.
+  Consequences of the whole detached-script family that day: three ComfyUI OOM
+  kills, a false "seq5 DONE" against a dead ComfyUI, and sshd down ~10 minutes.
+  The scripts (`req0135_watch_and_run.sh`, `req0135_run.sh`,
+  `req0135_exclusive.sh`, `req0135_phase2.sh`, `req0135_postprocess.sh` — five
+  generations of the same idea) were deleted 2026-07-12, and `~/scratch/` itself
+  has since been removed from the box and struck from PROJECT.md: **throwaways go
+  in `/tmp`, real artifacts go in the repo, and nothing persistent-but-untracked
+  lives in `~` any more.** If this spike is ever revived, it runs in the
+  foreground under a live session, or not at all.
+- ~~ComfyUI: LayerDiffuse nodes live (REQ-0135a)~~ — the node and its weights
+  were **removed** from the art ComfyUI on 2026-07-12. Nothing to re-arm against.
 
 ## Preconditions
 
