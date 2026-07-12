@@ -1,5 +1,5 @@
 {
-  "generated": "2026-07-06T18:25:26.866744",
+  "generated": "2026-07-12T00:56:31.499706",
   "provenance": "tool_icon_score.py -- REQ-0073, imports tool_fit_check.py (REQ-0020)",
   "weights": {
     "scale": 0.35,
@@ -16,104 +16,112 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/blade_c1_s101_alpha.png",
           "feasible": true,
-          "scale": 6.961507692307776,
+          "content_frac": 0.1178,
+          "reason": null,
+          "scale": 0.3919226337448559,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            54,
-            5
+            5,
+            29
           ],
           "per_cell_coverage": [
-            0.3702,
-            0.3578
+            0.1525,
+            0.1221
           ],
           "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.364,
-            "uniformity_term": 0.9938,
-            "reference_scale": 7.6923
+            "scale_term": 0.9524,
+            "coverage_term": 0.1373,
+            "uniformity_term": 0.9848,
+            "reference_scale": 0.4115
           },
-          "score": 64.78,
+          "score": 54.97,
           "render": "content/batches/batch-003-item-icons/fit_renders/blade_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/blade_c2_s202_alpha.png",
           "feasible": true,
-          "scale": 4.524800000000054,
-          "rot": 270,
+          "content_frac": 0.1418,
+          "reason": null,
+          "scale": 0.39753653444676407,
+          "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            49,
-            5
+            5,
+            22
           ],
           "per_cell_coverage": [
-            0.3176,
-            0.3502
+            0.1881,
+            0.1521
           ],
           "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.3339,
-            "uniformity_term": 0.9837,
-            "reference_scale": 5.0
+            "scale_term": 0.9521,
+            "coverage_term": 0.1701,
+            "uniformity_term": 0.982,
+            "reference_scale": 0.4175
           },
-          "score": 63.12,
+          "score": 56.56,
           "render": "content/batches/batch-003-item-icons/fit_renders/blade_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/blade_c3_s303_alpha.png",
           "feasible": true,
-          "scale": 45.249999999994195,
-          "rot": 270,
+          "content_frac": 0.1315,
+          "reason": null,
+          "scale": 0.38160160320641273,
+          "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            9,
-            5
+            5,
+            34
           ],
           "per_cell_coverage": [
-            0.819,
-            0.7571
+            0.1582,
+            0.1352
           ],
           "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.788,
-            "uniformity_term": 0.969,
-            "reference_scale": 50.0
+            "scale_term": 0.9521,
+            "coverage_term": 0.1467,
+            "uniformity_term": 0.9885,
+            "reference_scale": 0.4008
           },
-          "score": 85.61,
+          "score": 55.49,
           "render": "content/batches/batch-003-item-icons/fit_renders/blade_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/blade_c4_s404_alpha.png",
           "feasible": true,
-          "scale": 15.083266666666729,
+          "content_frac": 0.1096,
+          "reason": null,
+          "scale": 0.38160160320641273,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            39,
-            5
+            5,
+            29
           ],
           "per_cell_coverage": [
-            0.4473,
-            0.3716
+            0.1421,
+            0.1201
           ],
           "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.4094,
-            "uniformity_term": 0.9622,
-            "reference_scale": 16.6667
+            "scale_term": 0.9521,
+            "coverage_term": 0.1311,
+            "uniformity_term": 0.989,
+            "reference_scale": 0.4008
           },
-          "score": 66.58,
+          "score": 54.71,
           "render": "content/batches/batch-003-item-icons/fit_renders/blade_c3_fit.png"
         }
       ],
       "winner": {
-        "file": "content/batches/batch-003-item-icons/candidates/blade_c3_s303_alpha.png",
-        "candidate_index": 2,
-        "score": 85.61,
+        "file": "content/batches/batch-003-item-icons/candidates/blade_c2_s202_alpha.png",
+        "candidate_index": 1,
+        "score": 56.56,
         "selected_to": "content/batches/batch-003-item-icons/selected/blade.png"
       }
     },
@@ -125,52 +133,58 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/hilt_c1_s101_alpha.png",
           "feasible": true,
+          "content_frac": 0.1159,
+          "reason": null,
           "scale": 0.3833288135593218,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            36
+            37
           ],
           "per_cell_coverage": [
-            0.1363
+            0.1337
           ],
           "terms": {
             "scale_term": 0.9047,
-            "coverage_term": 0.1363,
+            "coverage_term": 0.1337,
             "uniformity_term": 1.0,
             "reference_scale": 0.4237
           },
-          "score": 53.48,
+          "score": 53.35,
           "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/hilt_c2_s202_alpha.png",
           "feasible": true,
-          "scale": 0.4640205128205126,
+          "content_frac": 0.2491,
+          "reason": null,
+          "scale": 0.363406425702811,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            12,
+            5,
             5
           ],
           "per_cell_coverage": [
-            0.1192
+            0.2796
           ],
           "terms": {
-            "scale_term": 0.9048,
-            "coverage_term": 0.1192,
+            "scale_term": 0.9049,
+            "coverage_term": 0.2796,
             "uniformity_term": 1.0,
-            "reference_scale": 0.5128
+            "reference_scale": 0.4016
           },
-          "score": 52.63,
+          "score": 60.65,
           "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/hilt_c3_s303_alpha.png",
           "feasible": true,
+          "content_frac": 0.1415,
+          "reason": null,
           "scale": 0.37083606557377036,
           "rot": 0,
           "deg": null,
@@ -180,45 +194,47 @@
             36
           ],
           "per_cell_coverage": [
-            0.1612
+            0.1679
           ],
           "terms": {
             "scale_term": 0.9048,
-            "coverage_term": 0.1612,
+            "coverage_term": 0.1679,
             "uniformity_term": 1.0,
             "reference_scale": 0.4098
           },
-          "score": 54.73,
+          "score": 55.06,
           "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/hilt_c4_s404_alpha.png",
           "feasible": true,
-          "scale": 1.2927714285714285,
+          "content_frac": 0.1777,
+          "reason": null,
+          "scale": 0.4002778761061945,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            26,
+            10,
             5
           ],
           "per_cell_coverage": [
-            0.0096
+            0.2326
           ],
           "terms": {
-            "scale_term": 0.9049,
-            "coverage_term": 0.0096,
+            "scale_term": 0.9046,
+            "coverage_term": 0.2326,
             "uniformity_term": 1.0,
-            "reference_scale": 1.4286
+            "reference_scale": 0.4425
           },
-          "score": 47.15,
+          "score": 58.29,
           "render": "content/batches/batch-003-item-icons/fit_renders/hilt_c3_fit.png"
         }
       ],
       "winner": {
-        "file": "content/batches/batch-003-item-icons/candidates/hilt_c3_s303_alpha.png",
-        "candidate_index": 2,
-        "score": 54.73,
+        "file": "content/batches/batch-003-item-icons/candidates/hilt_c2_s202_alpha.png",
+        "candidate_index": 1,
+        "score": 60.65,
         "selected_to": "content/batches/batch-003-item-icons/selected/hilt.png"
       }
     },
@@ -229,84 +245,113 @@
       "candidates": [
         {
           "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c1_s101_alpha.png",
-          "feasible": false,
-          "scale": null,
-          "rot": null,
-          "deg": null,
-          "flip": null,
-          "pos": null,
-          "per_cell_coverage": [],
-          "terms": {
-            "scale_term": 0.0,
-            "coverage_term": 0.0,
-            "uniformity_term": 0.0
-          },
-          "score": 0.0,
-          "reason": "EMPTY_CONTENT (no non-transparent alpha pixels)"
-        },
-        {
-          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c2_s202_alpha.png",
           "feasible": true,
-          "scale": 90.4998000000222,
+          "content_frac": 0.5822,
+          "reason": null,
+          "scale": 0.41759649122807,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
-            9,
-            5
+            5,
+            13
           ],
           "per_cell_coverage": [
-            0.819,
-            0.81
+            0.6806,
+            0.6853
           ],
           "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.8145,
-            "uniformity_term": 0.9955,
-            "reference_scale": 100.0
+            "scale_term": 0.9521,
+            "coverage_term": 0.6829,
+            "uniformity_term": 0.9976,
+            "reference_scale": 0.4386
           },
-          "score": 87.33,
+          "score": 82.44,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.4766,
+          "reason": null,
+          "scale": 0.4185604395604394,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            18
+          ],
+          "per_cell_coverage": [
+            0.5637,
+            0.5763
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.57,
+            "uniformity_term": 0.9937,
+            "reference_scale": 0.4396
+          },
+          "score": 76.73,
           "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c3_s303_alpha.png",
-          "feasible": false,
-          "scale": null,
-          "rot": null,
+          "feasible": true,
+          "content_frac": 0.8857,
+          "reason": null,
+          "scale": 0.36632730844793693,
+          "rot": 0,
           "deg": null,
-          "flip": null,
-          "pos": null,
-          "per_cell_coverage": [],
+          "flip": false,
+          "pos": [
+            6,
+            5
+          ],
+          "per_cell_coverage": [
+            0.8314,
+            0.79
+          ],
           "terms": {
-            "scale_term": 0.0,
-            "coverage_term": 0.0,
-            "uniformity_term": 0.0
+            "scale_term": 0.9323,
+            "coverage_term": 0.8107,
+            "uniformity_term": 0.9793,
+            "reference_scale": 0.3929
           },
-          "score": 0.0,
-          "reason": "EMPTY_CONTENT (no non-transparent alpha pixels)"
+          "score": 87.86,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c4_s404_alpha.png",
-          "feasible": false,
-          "scale": null,
-          "rot": null,
+          "feasible": true,
+          "content_frac": 0.7349,
+          "reason": null,
+          "scale": 0.39023606557377044,
+          "rot": 0,
           "deg": null,
-          "flip": null,
-          "pos": null,
-          "per_cell_coverage": [],
+          "flip": false,
+          "pos": [
+            5,
+            9
+          ],
+          "per_cell_coverage": [
+            0.7543,
+            0.7455
+          ],
           "terms": {
-            "scale_term": 0.0,
-            "coverage_term": 0.0,
-            "uniformity_term": 0.0
+            "scale_term": 0.9522,
+            "coverage_term": 0.7499,
+            "uniformity_term": 0.9956,
+            "reference_scale": 0.4098
           },
-          "score": 0.0,
-          "reason": "EMPTY_CONTENT (no non-transparent alpha pixels)"
+          "score": 85.76,
+          "render": "content/batches/batch-003-item-icons/fit_renders/flame_tablet_c3_fit.png"
         }
       ],
       "winner": {
-        "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c2_s202_alpha.png",
-        "candidate_index": 1,
-        "score": 87.33,
+        "file": "content/batches/batch-003-item-icons/candidates/flame_tablet_c3_s303_alpha.png",
+        "candidate_index": 2,
+        "score": 87.86,
         "selected_to": "content/batches/batch-003-item-icons/selected/flame_tablet.png"
       }
     },
@@ -318,6 +363,8 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c1_s101_alpha.png",
           "feasible": true,
+          "content_frac": 0.3538,
+          "reason": null,
           "scale": 0.4104344827586205,
           "rot": 0,
           "deg": null,
@@ -327,45 +374,49 @@
             15
           ],
           "per_cell_coverage": [
-            0.3795,
-            0.5273
+            0.3764,
+            0.4903
           ],
           "terms": {
             "scale_term": 0.9522,
-            "coverage_term": 0.4534,
-            "uniformity_term": 0.9261,
+            "coverage_term": 0.4334,
+            "uniformity_term": 0.943,
             "reference_scale": 0.431
           },
-          "score": 69.89,
+          "score": 69.14,
           "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c2_s202_alpha.png",
           "feasible": true,
+          "content_frac": 0.3723,
+          "reason": null,
           "scale": 0.40603923240938145,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            21
+            20
           ],
           "per_cell_coverage": [
-            0.3627,
-            0.4923
+            0.3654,
+            0.4934
           ],
           "terms": {
             "scale_term": 0.9522,
-            "coverage_term": 0.4275,
-            "uniformity_term": 0.9352,
+            "coverage_term": 0.4294,
+            "uniformity_term": 0.936,
             "reference_scale": 0.4264
           },
-          "score": 68.73,
+          "score": 68.84,
           "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c3_s303_alpha.png",
           "feasible": true,
+          "content_frac": 0.3507,
+          "reason": null,
           "scale": 0.4130394793926246,
           "rot": 0,
           "deg": null,
@@ -375,22 +426,24 @@
             21
           ],
           "per_cell_coverage": [
-            0.3534,
-            0.4914
+            0.3535,
+            0.4751
           ],
           "terms": {
             "scale_term": 0.9521,
-            "coverage_term": 0.4224,
-            "uniformity_term": 0.931,
+            "coverage_term": 0.4143,
+            "uniformity_term": 0.9392,
             "reference_scale": 0.4338
           },
-          "score": 68.41,
+          "score": 68.12,
           "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c4_s404_alpha.png",
           "feasible": true,
-          "scale": 0.453390476190476,
+          "content_frac": 0.2976,
+          "reason": null,
+          "scale": 0.45452696897374684,
           "rot": 0,
           "deg": null,
           "flip": false,
@@ -399,23 +452,23 @@
             16
           ],
           "per_cell_coverage": [
-            0.4349,
-            0.4523
+            0.4203,
+            0.4532
           ],
           "terms": {
-            "scale_term": 0.9521,
-            "coverage_term": 0.4436,
-            "uniformity_term": 0.9913,
-            "reference_scale": 0.4762
+            "scale_term": 0.9522,
+            "coverage_term": 0.4367,
+            "uniformity_term": 0.9836,
+            "reference_scale": 0.4773
           },
-          "score": 70.37,
+          "score": 69.92,
           "render": "content/batches/batch-003-item-icons/fit_renders/oil_flask_c3_fit.png"
         }
       ],
       "winner": {
         "file": "content/batches/batch-003-item-icons/candidates/oil_flask_c4_s404_alpha.png",
         "candidate_index": 3,
-        "score": 70.37,
+        "score": 69.92,
         "selected_to": "content/batches/batch-003-item-icons/selected/oil_flask.png"
       }
     },
@@ -427,104 +480,112 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/dagger_c1_s101_alpha.png",
           "feasible": true,
-          "scale": 2.6615764705882663,
-          "rot": 270,
-          "deg": null,
-          "flip": false,
-          "pos": [
-            49,
-            5
-          ],
-          "per_cell_coverage": [
-            0.356,
-            0.239
-          ],
-          "terms": {
-            "scale_term": 0.9049,
-            "coverage_term": 0.2975,
-            "uniformity_term": 0.9415,
-            "reference_scale": 2.9412
-          },
-          "score": 60.67,
-          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c0_fit.png"
-        },
-        {
-          "file": "content/batches/batch-003-item-icons/candidates/dagger_c2_s202_alpha.png",
-          "feasible": true,
-          "scale": 5.656200000000066,
-          "rot": 270,
-          "deg": null,
-          "flip": false,
-          "pos": [
-            48,
-            5
-          ],
-          "per_cell_coverage": [
-            0.4019,
-            0.4162
-          ],
-          "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.4091,
-            "uniformity_term": 0.9929,
-            "reference_scale": 6.25
-          },
-          "score": 67.02,
-          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c1_fit.png"
-        },
-        {
-          "file": "content/batches/batch-003-item-icons/candidates/dagger_c3_s303_alpha.png",
-          "feasible": true,
-          "scale": 9.049999999999683,
-          "rot": 0,
-          "deg": null,
-          "flip": false,
-          "pos": [
-            18,
-            5
-          ],
-          "per_cell_coverage": [
-            0.6362,
-            0.6708
-          ],
-          "terms": {
-            "scale_term": 0.905,
-            "coverage_term": 0.6535,
-            "uniformity_term": 0.9827,
-            "reference_scale": 10.0
-          },
-          "score": 79.09,
-          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c2_fit.png"
-        },
-        {
-          "file": "content/batches/batch-003-item-icons/candidates/dagger_c4_s404_alpha.png",
-          "feasible": true,
-          "scale": 0.3764569169960473,
+          "content_frac": 0.1354,
+          "reason": null,
+          "scale": 0.39342314049586774,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            9
+            27
           ],
           "per_cell_coverage": [
-            0.5563,
-            0.4742
+            0.1793,
+            0.1398
           ],
           "terms": {
-            "scale_term": 0.9524,
-            "coverage_term": 0.5152,
-            "uniformity_term": 0.9589,
-            "reference_scale": 0.3953
+            "scale_term": 0.9521,
+            "coverage_term": 0.1595,
+            "uniformity_term": 0.9803,
+            "reference_scale": 0.4132
           },
-          "score": 73.48,
+          "score": 56.0,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c0_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c2_s202_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1456,
+          "reason": null,
+          "scale": 0.3871040650406503,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            22
+          ],
+          "per_cell_coverage": [
+            0.2027,
+            0.143
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.1729,
+            "uniformity_term": 0.9701,
+            "reference_scale": 0.4065
+          },
+          "score": 56.52,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c1_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c3_s303_alpha.png",
+          "feasible": true,
+          "content_frac": 0.1318,
+          "reason": null,
+          "scale": 0.3910776180698151,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            25
+          ],
+          "per_cell_coverage": [
+            0.2012,
+            0.1194
+          ],
+          "terms": {
+            "scale_term": 0.9523,
+            "coverage_term": 0.1603,
+            "uniformity_term": 0.9591,
+            "reference_scale": 0.4107
+          },
+          "score": 55.73,
+          "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c2_fit.png"
+        },
+        {
+          "file": "content/batches/batch-003-item-icons/candidates/dagger_c4_s404_alpha.png",
+          "feasible": true,
+          "content_frac": 0.2678,
+          "reason": null,
+          "scale": 0.37861431411530805,
+          "rot": 0,
+          "deg": null,
+          "flip": false,
+          "pos": [
+            5,
+            13
+          ],
+          "per_cell_coverage": [
+            0.4029,
+            0.1636
+          ],
+          "terms": {
+            "scale_term": 0.9522,
+            "coverage_term": 0.2833,
+            "uniformity_term": 0.8803,
+            "reference_scale": 0.3976
+          },
+          "score": 60.7,
           "render": "content/batches/batch-003-item-icons/fit_renders/dagger_c3_fit.png"
         }
       ],
       "winner": {
-        "file": "content/batches/batch-003-item-icons/candidates/dagger_c3_s303_alpha.png",
-        "candidate_index": 2,
-        "score": 79.09,
+        "file": "content/batches/batch-003-item-icons/candidates/dagger_c4_s404_alpha.png",
+        "candidate_index": 3,
+        "score": 60.7,
         "selected_to": "content/batches/batch-003-item-icons/selected/dagger.png"
       }
     },
@@ -536,104 +597,112 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c1_s101_alpha.png",
           "feasible": true,
+          "content_frac": 0.316,
+          "reason": null,
           "scale": 0.3840258064516128,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            15
+            16
           ],
           "per_cell_coverage": [
-            0.1391,
-            0.5525
+            0.1363,
+            0.5455
           ],
           "terms": {
             "scale_term": 0.9524,
-            "coverage_term": 0.3458,
-            "uniformity_term": 0.7933,
+            "coverage_term": 0.3409,
+            "uniformity_term": 0.7954,
             "reference_scale": 0.4032
           },
-          "score": 62.52,
+          "score": 62.31,
           "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c2_s202_alpha.png",
           "feasible": true,
-          "scale": 0.4185604395604394,
+          "content_frac": 0.2178,
+          "reason": null,
+          "scale": 0.4123004329004327,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            23
+            21
           ],
           "per_cell_coverage": [
-            0.232,
-            0.1743
+            0.3925,
+            0.1655
           ],
           "terms": {
-            "scale_term": 0.9522,
-            "coverage_term": 0.2031,
-            "uniformity_term": 0.9711,
-            "reference_scale": 0.4396
+            "scale_term": 0.9524,
+            "coverage_term": 0.279,
+            "uniformity_term": 0.8865,
+            "reference_scale": 0.4329
           },
-          "score": 58.05,
+          "score": 60.58,
           "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c3_s303_alpha.png",
           "feasible": true,
-          "scale": 0.4429162790697672,
+          "content_frac": 0.2771,
+          "reason": null,
+          "scale": 0.3919226337448559,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            15
+            20
           ],
           "per_cell_coverage": [
-            0.3842,
-            0.2672
+            0.3966,
+            0.2283
           ],
           "terms": {
-            "scale_term": 0.9523,
-            "coverage_term": 0.3257,
-            "uniformity_term": 0.9415,
-            "reference_scale": 0.4651
+            "scale_term": 0.9524,
+            "coverage_term": 0.3125,
+            "uniformity_term": 0.9159,
+            "reference_scale": 0.4115
           },
-          "score": 63.74,
+          "score": 62.69,
           "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c4_s404_alpha.png",
           "feasible": true,
+          "content_frac": 0.2189,
+          "reason": null,
           "scale": 0.3854582995951416,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            23
+            25
           ],
           "per_cell_coverage": [
-            0.3457,
-            0.2905
+            0.275,
+            0.2082
           ],
           "terms": {
             "scale_term": 0.9521,
-            "coverage_term": 0.3181,
-            "uniformity_term": 0.9724,
+            "coverage_term": 0.2416,
+            "uniformity_term": 0.9666,
             "reference_scale": 0.4049
           },
-          "score": 63.81,
+          "score": 59.9,
           "render": "content/batches/batch-003-item-icons/fit_renders/herb_pouch_c3_fit.png"
         }
       ],
       "winner": {
-        "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c4_s404_alpha.png",
-        "candidate_index": 3,
-        "score": 63.81,
+        "file": "content/batches/batch-003-item-icons/candidates/herb_pouch_c3_s303_alpha.png",
+        "candidate_index": 2,
+        "score": 62.69,
         "selected_to": "content/batches/batch-003-item-icons/selected/herb_pouch.png"
       }
     },
@@ -645,32 +714,36 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c1_s101_alpha.png",
           "feasible": true,
-          "scale": 7.326907692307734,
+          "content_frac": 0.5823,
+          "reason": null,
+          "scale": 0.38240642570281114,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            37
+            33
           ],
           "per_cell_coverage": [
-            0.488,
-            0.5494,
-            0.4952,
-            0.4492
+            0.5782,
+            0.5574,
+            0.5869,
+            0.5652
           ],
           "terms": {
-            "scale_term": 0.9525,
-            "coverage_term": 0.4955,
-            "uniformity_term": 0.9643,
-            "reference_scale": 7.6923
+            "scale_term": 0.9522,
+            "coverage_term": 0.5719,
+            "uniformity_term": 0.9886,
+            "reference_scale": 0.4016
           },
-          "score": 72.57,
+          "score": 76.75,
           "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c2_s202_alpha.png",
           "feasible": true,
+          "content_frac": 0.909,
+          "reason": null,
           "scale": 0.37202499999999983,
           "rot": 0,
           "deg": null,
@@ -680,77 +753,81 @@
             5
           ],
           "per_cell_coverage": [
-            0.8451,
-            0.8614,
-            0.8294,
-            0.8421
+            0.8442,
+            0.8582,
+            0.824,
+            0.8381
           ],
           "terms": {
             "scale_term": 0.9524,
-            "coverage_term": 0.8445,
-            "uniformity_term": 0.9886,
+            "coverage_term": 0.8411,
+            "uniformity_term": 0.9877,
             "reference_scale": 0.3906
           },
-          "score": 90.39,
+          "score": 90.21,
           "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c3_s303_alpha.png",
           "feasible": true,
-          "scale": 0.9973204188481675,
+          "content_frac": 0.3012,
+          "reason": null,
+          "scale": 0.41952863436123333,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            63
+            57
           ],
           "per_cell_coverage": [
-            0.0113,
-            0.0005,
-            0.0,
-            0.154
+            0.3722,
+            0.3667,
+            0.3559,
+            0.355
           ],
           "terms": {
-            "scale_term": 0.9524,
-            "coverage_term": 0.0415,
-            "uniformity_term": 0.9349,
-            "reference_scale": 1.0471
+            "scale_term": 0.9523,
+            "coverage_term": 0.3624,
+            "uniformity_term": 0.9927,
+            "reference_scale": 0.4405
           },
-          "score": 49.43,
+          "score": 66.34,
           "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c4_s404_alpha.png",
           "feasible": true,
-          "scale": 12.69993333333312,
+          "content_frac": 0.5236,
+          "reason": null,
+          "scale": 0.3992872117400419,
           "rot": 0,
           "deg": null,
           "flip": false,
           "pos": [
             5,
-            10
+            27
           ],
           "per_cell_coverage": [
-            0.5366,
-            0.7593,
-            0.7664,
-            0.7743
+            0.5851,
+            0.5653,
+            0.5681,
+            0.5334
           ],
           "terms": {
-            "scale_term": 0.9525,
-            "coverage_term": 0.7091,
-            "uniformity_term": 0.9002,
-            "reference_scale": 13.3333
+            "scale_term": 0.9523,
+            "coverage_term": 0.563,
+            "uniformity_term": 0.9813,
+            "reference_scale": 0.4193
           },
-          "score": 82.3,
+          "score": 76.2,
           "render": "content/batches/batch-003-item-icons/fit_renders/tower_shield_c3_fit.png"
         }
       ],
       "winner": {
         "file": "content/batches/batch-003-item-icons/candidates/tower_shield_c2_s202_alpha.png",
         "candidate_index": 1,
-        "score": 90.39,
+        "score": 90.21,
         "selected_to": "content/batches/batch-003-item-icons/selected/tower_shield.png"
       }
     },
@@ -762,6 +839,8 @@
         {
           "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c1_s101_alpha.png",
           "feasible": true,
+          "content_frac": 0.3365,
+          "reason": null,
           "scale": 0.3800285714285712,
           "rot": 180,
           "deg": null,
@@ -771,91 +850,105 @@
             86
           ],
           "per_cell_coverage": [
-            0.4255,
-            0.0808,
-            0.8241
+            0.4272,
+            0.0814,
+            0.8233
           ],
           "terms": {
             "scale_term": 0.8513,
-            "coverage_term": 0.4435,
-            "uniformity_term": 0.6963,
+            "coverage_term": 0.444,
+            "uniformity_term": 0.6969,
             "reference_scale": 0.4464
           },
-          "score": 62.41,
+          "score": 62.45,
           "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c0_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c2_s202_alpha.png",
-          "feasible": false,
-          "scale": null,
-          "rot": null,
+          "feasible": true,
+          "content_frac": 0.2854,
+          "reason": null,
+          "scale": 0.3404812227074233,
+          "rot": 180,
           "deg": null,
-          "flip": null,
-          "pos": null,
-          "per_cell_coverage": [],
+          "flip": false,
+          "pos": [
+            39,
+            63
+          ],
+          "per_cell_coverage": [
+            0.1987,
+            0.1013,
+            0.6351
+          ],
           "terms": {
-            "scale_term": 0.0,
-            "coverage_term": 0.0,
-            "uniformity_term": 0.0
+            "scale_term": 0.7797,
+            "coverage_term": 0.3117,
+            "uniformity_term": 0.7679,
+            "reference_scale": 0.4367
           },
-          "score": 0.0,
-          "reason": "EMPTY_CONTENT (no non-transparent alpha pixels)"
+          "score": 54.39,
+          "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c1_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c3_s303_alpha.png",
           "feasible": true,
-          "scale": 0.388689719626168,
+          "content_frac": 0.2677,
+          "reason": null,
+          "scale": 0.38436296296296274,
           "rot": 180,
           "deg": null,
           "flip": false,
           "pos": [
             29,
-            73
+            74
           ],
           "per_cell_coverage": [
-            0.3071,
-            0.1019,
-            0.7018
+            0.3093,
+            0.0964,
+            0.6861
           ],
           "terms": {
-            "scale_term": 0.8318,
-            "coverage_term": 0.3703,
-            "uniformity_term": 0.7511,
-            "reference_scale": 0.4673
+            "scale_term": 0.8302,
+            "coverage_term": 0.3639,
+            "uniformity_term": 0.7562,
+            "reference_scale": 0.463
           },
-          "score": 58.89,
+          "score": 58.6,
           "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c2_fit.png"
         },
         {
           "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c4_s404_alpha.png",
           "feasible": true,
-          "scale": 0.5772606060606059,
-          "rot": 0,
+          "content_frac": 0.2975,
+          "reason": null,
+          "scale": 0.342184549356223,
+          "rot": 180,
           "deg": null,
           "flip": false,
           "pos": [
-            112,
-            5
+            36,
+            67
           ],
           "per_cell_coverage": [
-            0.0,
-            0.0061,
-            0.0056
+            0.2284,
+            0.1216,
+            0.6372
           ],
           "terms": {
-            "scale_term": 0.9525,
-            "coverage_term": 0.0039,
-            "uniformity_term": 0.9972,
-            "reference_scale": 0.6061
+            "scale_term": 0.7973,
+            "coverage_term": 0.3291,
+            "uniformity_term": 0.7778,
+            "reference_scale": 0.4292
           },
-          "score": 48.49,
+          "score": 56.03,
           "render": "content/batches/batch-003-item-icons/fit_renders/beast_jaw_c3_fit.png"
         }
       ],
       "winner": {
         "file": "content/batches/batch-003-item-icons/candidates/beast_jaw_c1_s101_alpha.png",
         "candidate_index": 0,
-        "score": 62.41,
+        "score": 62.45,
         "selected_to": "content/batches/batch-003-item-icons/selected/beast_jaw.png"
       }
     }
