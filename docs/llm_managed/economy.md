@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Economy — v1.0 (principles only)
 
 > Populated 2026-07-06 per owner approval. **Standing rule (owner directive,
@@ -9,7 +11,7 @@
 ## Identity
 
 **Items are found; Backpacks are made.**
-Instance modification (crafting) is confined to BPs — their shape, their Linker,
+Instance modification (crafting) is confined to BPs — their shape, their Unit,
 their HP. POs and SIs are immutable drops. This keeps PoE-grade crafting depth while
 leaving the closed content vocabularies untouched: the crafting canvas is the one
 object class that is already per-player instance data.

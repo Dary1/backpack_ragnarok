@@ -1,13 +1,15 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-# REQ-0051 — Starter Jobs (four fixed 5×5 linker-less BPs)
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
+# REQ-0051 — Starter Jobs (four fixed 5×5 unit-less BPs)
 
 - **Status**: USER-DESIGNED (2026-07-06) — implementation QUEUED. This REQ is the
   first docs capture of the user's plan (previously undocumented); it is the
   "right arm of the tutorial" (user's words) and the solo-play enabler.
 
 ## User spec (verbatim design, 2026-07-06)
-- Grant every new player **four 5×5 BPs WITHOUT Linkers** at profile creation.
+- Grant every new player **four 5×5 BPs WITHOUT Units** at profile creation.
 - Each comes pre-filled with **4 different fixed POs** that **cannot be moved** —
   four distinct "starter jobs".
 - Each starter BP occupies one inventory page (pages 1–4).
@@ -57,15 +59,15 @@ still open) block job_scout's kit.
 - **Discard & regrant**: discard = normal BP delete; each job is **re-grantable free,
   once [TUNABLE]** via a claim endpoint — prevents new players bricking themselves;
   further regrants refused (409).
-- **Linker-less on purpose** (user design): the first gacha BP (guest Weathervane
+- **Unit-less on purpose** (user design): the first gacha BP (guest Weathervane
   seed covers ~10 pulls) is the deliberate "circuit unlock" beat — REQ-0048's
-  mechanics stay invisible until the player holds their first linker.
+  mechanics stay invisible until the player holds their first unit.
 
 ### Tutorial integration
 - Each job gets a **Dex job card** (archetype explanation, suggested formation slot);
   tutorial text lives in Dex, opened via REQ-0052 subwindows at first-touch moments
-  (first deploy → job card; first trap survived → Scout card; first linker'd BP →
-  Linker chapter). No modal-script tutorial is built or maintained.
+  (first deploy → job card; first trap survived → Scout card; first unit'd BP →
+  Unit chapter). No modal-script tutorial is built or maintained.
 - Graduation prompt [ORCH, vetoable]: when a crafted/gacha BP first out-stats a job
   BP on the same squad, surface a gentle "outgrown?" hint on the job squad tab.
 

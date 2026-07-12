@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Business Analysis — "Influencers Buy the Season-End Boss" Monetization Model
 
 > Status: **analysis memo** (LLM-authored critique, requested by the user 2026-07-07).

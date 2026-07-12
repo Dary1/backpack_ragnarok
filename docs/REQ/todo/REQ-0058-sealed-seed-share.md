@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0058 — Sealed Seed Share (同一スケジュール共有)
 
 - **Status**: ADOPTED WITH USER REDESIGN (2026-07-06) — implementation QUEUED

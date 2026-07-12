@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Item Spec — v0.1 DRAFT — **SUPERSEDED by `canvas_spec_glossary_ground_true.md`** (2026-07-02)
 
 > Drafted per user directive: orchestrator proposes, mock GUI follows this spec.
@@ -18,8 +20,8 @@ An **Item** is a Placement Object (PO) with:
 - `effects`: list of event-verb templates (see §4)
 - No character stats exist anywhere. All power comes from placement (golden P1).
 
-The **Linker** is also a PO (1x1) but is system-provided per BP, not an inventory item
-(one per BP, glossary rule 1). Linker *types* remain on hold.
+The **Unit** is also a PO (1x1) but is system-provided per BP, not an inventory item
+(one per BP, glossary rule 1). Unit *types* remain on hold.
 
 ## 2. Tag taxonomy (2 axes)
 
@@ -35,7 +37,7 @@ item ids. Example: Whetstone buffs "adjacent Weapons", not "adjacent Short Sword
 - 1x2 / 2x1 — standard weapons, relics
 - L-tromino / 2x2 — strong armor, big relics
 - 1x3, 2x3, 3x3 — payoff weapons/engines; **require large BPs**, which cost the
-  player Linker density (One-Linker Rule). Big item = big BP = fewer Links. This is
+  player Unit density (One-Unit Rule). Big item = big BP = fewer Links. This is
   the intended central tension.
 
 ## 4. Effect templates (event-verb grammar; research convention 4)
@@ -43,7 +45,7 @@ item ids. Example: Whetstone buffs "adjacent Weapons", not "adjacent Short Sword
 `[Trigger]: [Verb] [N] [Target]`
 
 - Triggers: `Battle start` / `Every N ticks` / `On hit (this BP's Weapons)` /
-  `On this BP damaged` / `On Link pulse (reserved, Linker spec pending)`
+  `On this BP damaged` / `On Link pulse (reserved, Unit spec pending)`
 - Verbs: `Strike N` / `Block N` / `Apply N <Status>` / `Heal N` / `Gain N gold` /
   `Buff <tag> +N`
 - Scope rule: **all positional references (adjacent / row / column) are scoped to the
@@ -64,15 +66,15 @@ HP holders), not to items.
 3. **Self-stacking count**: Fang: +1 damage per other `Beast` item in this BP.
 4. Row/column and directional patterns: reserved for later waves (kept in research).
 
-## 7. BP interaction (reserved seams for the Linker spec)
+## 7. BP interaction (reserved seams for the Unit spec)
 
 - Items never affect other BPs directly. The reserved trigger `On Link pulse` and
-  verb target `linked BP` are the only planned crossing points, pending Linker design.
-- **Cover** (one BP tanking for another) remains TBD in the Linker/combat spec.
+  verb target `linked BP` are the only planned crossing points, pending Unit design.
+- **Cover** (one BP tanking for another) remains TBD in the Unit/combat spec.
 
 ## 8. Resolution order (research lesson 4: deterministic and visible)
 
-Within a tick: (1) BPs act in Linker-chain order (link senders before receivers;
+Within a tick: (1) BPs act in Unit-chain order (link senders before receivers;
 cycles broken by canvas reading order), (2) within a BP, items resolve top-left →
 bottom-right. The UI must show this order (numbered badges).
 

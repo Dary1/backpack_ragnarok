@@ -1,7 +1,9 @@
-# REQ-0056 — Death Wills (`on_bp_destroyed`) + linker-side last breath
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
+# REQ-0056 — Death Wills (`on_bp_destroyed`) + unit-side last breath
 
 - **Status**: ADOPTED by user (2026-07-06) — implementation QUEUED. User additionally
-  ordered linker-side proposals (「リンカーも提案してください」) — §3.
+  ordered unit-side proposals (「リンカーも提案してください」) — §3.
 - Origin: brainstorm batch 2 item 8. BP death is already dynamic terrain (destroyed
   BPs are passable); this REQ makes it a build moment — late-fight crescendos.
 
@@ -21,15 +23,15 @@
 | Bequeath (遺贈) | `on_bp_destroyed: pulse` — the dying BP's circuit fires one last time (charge transfer emerges once Capacitor lands) |
 | Last ward | `on_bp_destroyed: block/heal_bp [n]` targeting `linked` BPs (uses REQ-0048 link scope) |
 
-### §3 Linker-side last breath (user-ordered proposals)
+### §3 Unit-side last breath (user-ordered proposals)
 - **Recommended: `testament_lens`** (REQ-0054 lens SI): on host BP destruction, the
-  linker emits one final pulse with `hopsLeft +1`, bypassing PULSE_CAP once.
-  Composable with any future linker type; no new axis; ships with the lens family.
-- Alternative (deferred): a `Testament` linker TYPE — same behavior as an intrinsic;
-  park until the linker-type axis (factorized set, selection pending) is ratified.
+  unit emits one final pulse with `hopsLeft +1`, bypassing PULSE_CAP once.
+  Composable with any future unit type; no new axis; ships with the lens family.
+- Alternative (deferred): a `Testament` unit TYPE — same behavior as an intrinsic;
+  park until the unit-type axis (factorized set, selection pending) is ratified.
 - **[LOCKED semantics]**: death resolution order = killing hit fully applies → host
-  POs' `on_bp_destroyed` effects fire (canvas reading order) → linker last-breath
-  emission → linker goes inert (REQ-0048 death rule unchanged thereafter). All at
+  POs' `on_bp_destroyed` effects fire (canvas reading order) → unit last-breath
+  emission → unit goes inert (REQ-0048 death rule unchanged thereafter). All at
   the death event's `t`, ordered by `seq`.
 
 ### §4 Cascade guard

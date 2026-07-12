@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0053 — Economy v1: Weathervane rename + TM roster + numbers
 
 - **Status**: PARTIALLY RATIFIED (2026-07-06): economy.md population approved;
@@ -9,13 +11,13 @@
 
 ## §1 LRDST → **Weathervane** (rename, user-delegated, DECIDED)
 - User clarification (2026-07-06): LRDST = **L**inker**R**andom**D**irection**S**huffle
-  **T**ransmutator — its true function is to RANDOMLY SHUFFLE a Linker's beam
+  **T**ransmutator — its true function is to RANDOMLY SHUFFLE a Unit's beam
   directions. It is not a generic shard.
 - New codename: **Weathervane** (`weathervane`, ja 風見鶏) — an instrument that spins
   with the wind and settles pointing somewhere new; reads instantly as "reroll the
   compass". Fits the plain-name art rule and the existing tool-name register
   (Chisel/File/Resin). Runners-up recorded: Windrose, Gyre.
-- **Function (crafting use, 1×)**: apply to an owned BP with a Linker → server-seeded
+- **Function (crafting use, 1×)**: apply to an owned BP with a Unit → server-seeded
   reroll of its beam directions. [ORCH default, USER-vetoable]: direction COUNT is
   preserved, directions rerolled (bounded gambling); alternative = full reroll
   including count.
@@ -33,14 +35,14 @@
 ## §2 TM roster v1 (volatile; [USER] to bless the set)
 | id | name | function | sink shape |
 |---|---|---|---|
-| weathervane | Weathervane | reroll Linker beam directions (§1); 10× = BP gacha | gambling repeats; gacha |
-| chisel | Chisel | +1 cell to an owned BP shape (must be edge-adjacent, cap [TUNABLE 12 cells]) | cost scales with current cell count [TUNABLE curve] — big-BP hunger mirrors the One-Linker tension |
-| file | File | −1 cell from an owned BP (refused if the cell is occupied, would disconnect the shape, or would strand the Linker cell) | cheap, enables re-sculpting |
+| weathervane | Weathervane | reroll Unit beam directions (§1); 10× = BP gacha | gambling repeats; gacha |
+| chisel | Chisel | +1 cell to an owned BP shape (must be edge-adjacent, cap [TUNABLE 12 cells]) | cost scales with current cell count [TUNABLE curve] — big-BP hunger mirrors the One-Unit tension |
+| file | File | −1 cell from an owned BP (refused if the cell is occupied, would disconnect the shape, or would strand the Unit cell) | cheap, enables re-sculpting |
 | resin | Resin | +hpMax on a BP, diminishing per application, cap [TUNABLE] | long-tail permanent sink |
 - Requires `hpMax` redefinition: `hpMax = 15 × cells + resinBonus` (engine/gacha/
   schedule touch; REQ-0051's starter override uses the same authored-override seam).
-- **Tuner (move Linker cell) deliberately DEFERRED** — full linker control too early
-  would kill Weathervane's gambling value; revisit with Linker types (REQ-0048 §5.6).
+- **Tuner (move Unit cell) deliberately DEFERRED** — full unit control too early
+  would kill Weathervane's gambling value; revisit with Unit types (REQ-0048 §5.6).
 - Drop sources: chest attachments are TM-weighted (REQ-0049) [TUNABLE mix]; deeper
   levels unlock rarer TMs.
 
@@ -82,6 +84,6 @@
 ## Test plan (gates before DONE, per phase)
 - Rename: migration script dry-run parity (files+pg), sprite check 22/22 with new
   symbol, all suites green post-rename, live page 200.
-- TM ops: engine shape-edit legality (adjacency/disconnect/linker-strand refusals),
+- TM ops: engine shape-edit legality (adjacency/disconnect/unit-strand refusals),
   server op endpoints + atomicity, E2E chisel/file/resin/weathervane flows,
   determinism of seeded rerolls, S4-E2 gacha audit re-run after hpMax redefinition.

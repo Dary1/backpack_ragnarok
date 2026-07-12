@@ -1,6 +1,8 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Content Generation Pipeline — v1.0 (design, for user review)
 
-> How bulk game content (POs, Accessories, Linker types, enemies, dungeons, art)
+> How bulk game content (POs, Accessories, Unit types, enemies, dungeons, art)
 > gets designed, generated, validated, balanced, reviewed, and shipped — at a scale
 > of hundreds of entries — without the orchestrator hand-writing each one and without
 > the user having to inspect every row.
@@ -23,7 +25,7 @@
 
 ## 1. Content types in scope
 
-POs (items & parts) · Accessories · Linker types (schema reserved; design pending) ·
+POs (items & parts) · Accessories · Unit types (schema reserved; design pending) ·
 BP pieces/frames (loot shapes) · Enemies (flat tunable defs per REQ-0005) ·
 Dungeon encounter sequences · SVG icon art · Names/flavor (English).
 
@@ -39,7 +41,7 @@ Dungeon encounter sequences · SVG icon art · Names/flavor (English).
   A renderer generates the English tooltip from the AST; a parser-validator rejects
   anything the grammar can't express. (Prose in defs is flavor-only.)
 - **Schemas**: `po.schema.json`, `acc.schema.json`, `enemy.schema.json`,
-  `linker.schema.json` (reserved). POs carry shape, type, elements, rarity, sockets
+  `unit.schema.json` (reserved). POs carry shape, type, elements, rarity, sockets
   (type+tags+anchor), effects(AST), icon ref, flavor.
 - **`content/live/`** — the merged, approved truth the build consumes.
   **`content/batches/batch-NNN-slug/`** — staging: draft.json, notes.md, icons.svg,

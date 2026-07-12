@@ -1,3 +1,5 @@
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Item Systems in the Backpack-Hero Genre — A Study for backpack_ragnarok
 
 **Scope:** Backpack Hero (Jaspel, 1.0 released 2023-11-14) as the primary subject; Backpack Battles
@@ -5,7 +7,7 @@
 as a quick third data point.
 **Purpose:** extract the genre's item-system conventions and translate them into design guidance for
 backpack_ragnarok (multi-backpack canvas, backpack shapes crafted by the player, exactly one
-directional Linker per backpack, items confined to a single backpack, all power derived from
+directional Unit per backpack, items confined to a single backpack, all power derived from
 arrangement).
 
 ---
@@ -150,7 +152,7 @@ Enumerated pattern types, each with real item examples:
 - Protective Purse / Potion Belt (BB): type-specific bonuses to contained items.
 - BH pockets: certain effects target items "in other pockets" — pocket membership as a zone tag.
 
-**P6. Connectivity / path networks (flow mechanics)** ← most relevant to our Linker
+**P6. Connectivity / path networks (flow mechanics)** ← most relevant to our Unit
 - Mana Stones (BH): "This item is conductive. It must form a path to the items it powers."
 - CR-8's circuit (BH): a 3-energy orb leaves the core and physically travels through touching
   components, activating each; batteries/boosters/repeaters queue additional orbs ("hold" system).
@@ -330,7 +332,7 @@ Items apply statuses via clean verb templates: "On use, Adds N <status> to <targ
 ## 10. Design Lessons for backpack_ragnarok
 
 Our constraints: player crafts backpack *shapes*, tiles them on a canvas; exactly one directional
-Linker per backpack; items never span two backpacks; strength comes ONLY from arrangement.
+Unit per backpack; items never span two backpacks; strength comes ONLY from arrangement.
 
 1. **Make item size the primary cost axis.** Genre-proven: payoff items big, modifiers 1x1–1x2,
    curses small-but-nasty or big-but-mild. Since we have no stat upgrades, footprint and shape
@@ -343,16 +345,16 @@ Linker per backpack; items never span two backpacks; strength comes ONLY from ar
    game the player can *craft* a 1x6 backpack to be a whetstone rack. Scope all row/column/aura
    semantics to a single backpack — this makes bag-shape crafting meaningful and silently enforces
    the "items never span backpacks" rule in the player's mental model.
-4. **The Linker is CR-8's circuit + BH mana conductivity, formalized.** Both precedents prove
+4. **The Unit is CR-8's circuit + BH mana conductivity, formalized.** Both precedents prove
    flow/network mechanics work but need heavy visualization: animate a pulse traveling through the
-   Linker, highlight the powered path on hover, and adopt BH's anti-infinite failsafe (an item
+   Unit, highlight the powered path on hover, and adopt BH's anti-infinite failsafe (an item
    cannot be re-triggered by the same source in one resolution pass).
 5. **Directionality needs sided item art.** BH's Left/Right Gloves, Arrow runways, and Roof work
-   because the sprite visibly points. Our directional Linkers and any pointing items must encode
+   because the sprite visibly points. Our directional Units and any pointing items must encode
    direction in the artwork, not only in tooltip text.
 6. **Deterministic, visible resolution order.** BH's hidden comic-book order is a top community
    complaint-turned-guide. With multiple backpacks the order question doubles (order of backpacks
-   × order within a backpack). Suggest: Linker-chain order first, then top-left→bottom-right
+   × order within a backpack). Suggest: Unit-chain order first, then top-left→bottom-right
    within each backpack — and *number the items in the UI* during a preview mode.
 7. **Empty space must be a resource, not a failure state.** Arrow's runway, Keg's spawn cell, and
    balloon/heavy physics all reward leaving holes. With player-crafted backpack shapes, include
@@ -360,13 +362,13 @@ Linker per backpack; items never span two backpacks; strength comes ONLY from ar
    elegant backpack" and "big hollow backpack" are both archetypes.
 8. **Give every backpack an identity, or multi-bag becomes bookkeeping.** BH pockets show players
    fragment poorly without reasons: add per-backpack auras (BB's Fanny Pack pattern) and
-   cross-backpack effects that only the Linker can carry — the reward for splitting must be
-   explicit, and one Linker per backpack caps the graph complexity nicely.
+   cross-backpack effects that only the Unit can carry — the reward for splitting must be
+   explicit, and one Unit per backpack caps the graph complexity nicely.
 9. **Spatial crafting is the cheapest content multiplier.** BB/Brawl recipes (adjacency-combine,
    catalysts, lock-to-prevent) turn shop commons into discovery content and double as placement
    puzzles. In our constraint set, recipes should resolve within one backpack; a signature twist:
-   *Linker-powered crafting*, where a recipe needs ingredient A in the source backpack and B in
-   the Linker's target backpack.
+   *Unit-powered crafting*, where a recipe needs ingredient A in the source backpack and B in
+   the Unit's target backpack.
 10. **Keep the meta-loop boring and conventional.** 5-slot shop, cheap rerolls, reserve/lock,
     sell-for-half, occasional sales, escalating gold per round — players arrive pre-trained. Spend
     the innovation budget on arrangement, not on the economy.
@@ -377,7 +379,7 @@ Linker per backpack; items never span two backpacks; strength comes ONLY from ar
 12. **Tooltip + hover highlighting is half the game.** Minimum viable tooltip: footprint diagram,
     tags, trigger event, effect, and — most importantly — live highlighting of the affected
     cells/partners on hover (BB's blue/orange recipe lines are the single most copied UX feature
-    in the genre). For us, hovering a Linker should light the entire downstream backpack.
+    in the genre). For us, hovering a Unit should light the entire downstream backpack.
 
 ### Pitfalls observed
 - **Hidden resolution order** (BH) breeds wiki-dependence — surface it.

@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0097 — Expedition master/detail rebuild (mock 3-column)
 
 - **Status**: DRAFT (原案) — awaiting owner review (2026-07-08). BACKBONE of the

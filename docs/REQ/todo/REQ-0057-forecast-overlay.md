@@ -1,9 +1,11 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0057 — Ray Forecast Overlay ("weather map") — priority LOW
 
 - **Status**: ADOPTED by user (2026-07-06), explicitly **low priority** and
-  linker-independent — QUEUED behind the linker/encounter/economy work.
+  unit-independent — QUEUED behind the unit/encounter/economy work.
 - Origin: brainstorm batch 2 item 10; repays consultant-review weakness #2 (the
   placement↔combat legibility gap) with a tool instead of a tutorial.
 

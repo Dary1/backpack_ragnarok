@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # REQ-0121 — Sim implementation for `buff_self` / `damage_reduction` / `on_hp_below`
 
 > Status: **todo — ratified, cleared to implement, queued.**
@@ -48,7 +50,7 @@ modifiers, not ray-emitting effects" — none carry an `attack_profile`.
    `OnBPBeenHit`/`OnBPHierarchyHit` already key off), so a player item that
    fires "while this BP is below X% HP" is a direct, low-risk mechanical
    parallel to orc/behemoth's enrage, not a stretch. Do **not** extend to
-   `SI`/`Linker` — neither has an HP concept of its own to reference; this
+   `SI`/`Unit` — neither has an HP concept of its own to reference; this
    would need a host-resolution rule that doesn't exist yet, out of scope.
 2. **`sim/lib/status.cjs`** (or a new small module, matching this project's
    one-module-per-concern pattern) — no obvious existing home for
@@ -101,7 +103,7 @@ modifiers, not ray-emitting effects" — none carry an `attack_profile`.
 
 - Re-litigating [LOCKED OQ2] beyond the PO+EnemySkill domain widening above
   — user already ruled on this (2026-07-09). No further scope creep into
-  SI/Linker or other dynamic-recompute triggers.
+  SI/Unit or other dynamic-recompute triggers.
 - REQ-0122 (dynamic enemy content loading / the batch-002 hardcode) — fully
   separate concern; this REQ only makes the verbs/trigger DO something once
   fired, not change which batch's content is live.

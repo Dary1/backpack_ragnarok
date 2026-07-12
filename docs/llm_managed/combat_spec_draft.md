@@ -1,5 +1,7 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
+> [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
+
 # Combat Spec — v0.3-draft (for owner review)
 
 > Design-only pass. No code or server state was touched. This spec designs the
@@ -575,7 +577,7 @@ Each is orchestrator-decided; the user may veto async.
 | OQ5 (pen) | pen = occupied pass-throughs; reflection independent & always applies; stop at first non-penetrable | matches ratified ruling 5 |
 | OQ6 (aoe) | AOE radius in **shared-field cells** (Chebyshev) | matches ratified ruling 6 |
 | OQ7 | buff `stat` = `"damage"` only (v1) | only value in live data |
-| OQ8 | **Linker combat role DEFERRED** — links have NO combat effect in v0.2 | glossary "items first; Linker applications follow"; no balance baked on undesigned system |
+| OQ8 | **Unit combat role DEFERRED** — links have NO combat effect in v0.2 | glossary "items first; Unit applications follow"; no balance baked on undesigned system |
 | OQ9 | Spikes consumed per hit | bounds reflect DPS; matches BB pattern |
 | OQ10 | statuses symmetric (enemies inflict on BPs; BPs suffer DoTs) | ruling 10; enables enemy DoT skills |
 | OQ11 | **RESOLVED (user design)** → mode-gating uses the ratified `modes` closed vocabulary `{battle, detection, unlock}` (§6.1), not a `po_tags` entry | user ratified a third vocabulary axis; former `Tool` placeholder dead |
@@ -644,7 +646,7 @@ a formation) vs reference enemy packs using the §1–3 sim and asserts bands.
 
 - **[VX-1] BP HP field (schema — genuinely NEW).** BPs need an HP magnitude (`hpMax`,
   current `hp`). **Verified against the server:** engine BP objects carry only
-  `{id, name, shape, origin, linker}` (`mock-src/engine.js`) and no schema file defines
+  `{id, name, shape, origin, unit}` (`mock-src/engine.js`) and no schema file defines
   `hp` — there is **no existing hp field to confirm**. So OQ3's "confirm existing field"
   resolves to: **there is none; VX-1 is a real schema addition** on the BP/frame def.
   *Approval sought: sanction a BP-def `hpMax`.* (No new vocab entry.)
