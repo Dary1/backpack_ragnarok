@@ -143,7 +143,10 @@ class TestScoreOrdering(TempPngTestCase):
         sparse[0:3, -3:] = True
         sparse[-3:, 0:3] = True
         sparse[-3:, -3:] = True
-        sparse[45:55, 45:55] = True
+        # REQ-0109: 20x20 center patch (was 10x10) -- keeps this fixture
+        # above the MIN_CONTENT_FRAC=0.02 gate (content_frac 4.36%) so
+        # "full beats sparse" stays meaningful post-gate.
+        sparse[40:60, 40:60] = True
         sparse_path = self._png("sparse_blob.png", sparse)
 
         r_full = tis.score_candidate(full_path, allowed, cellset, any_angle=False)
@@ -224,6 +227,42 @@ class TestScoreItemWinnerSelection(TempPngTestCase):
         r = tis.score_item(entry, self._tmpdir, "<id>_c*_alpha.png",
                             render_dir=None, any_angle=False)
         self.assertEqual(r["status"], "SKIPPED")
+
+
+class TestMinContentFracGate(TempPngTestCase):
+    """MIN_CONTENT_FRAC feasibility gate 0 (REQ-0109 finalization of the
+    REQ-0073 WIP): content fraction is measured on the FULL, ORIGINAL,
+    UNCROPPED alpha canvas BEFORE any bbox-crop, so a matting-failure noise
+    speck can never crop down to a deceptively well-fitting blob (observed
+    on real data: 87.33/100 on ~0.1% content before the gate existed)."""
+
+    def test_tiny_speck_on_large_canvas_is_content_too_small(self):
+        # 512x512 canvas (262144 px) with a 10x10 speck (100 px):
+        # content_frac ~= 0.038% << MIN_CONTENT_FRAC (2%).
+        m = np.zeros((512, 512), bool)
+        m[250:260, 250:260] = True
+        path = self._png("speck_512.png", m)
+        cellset, _, _ = fit.shape_to_cellset([[0, 0]])
+        allowed = fit.build_region(cellset)
+        r = tis.score_candidate(path, allowed, cellset, any_angle=False)
+        self.assertFalse(r["feasible"])
+        self.assertEqual(r["score"], 0.0)
+        self.assertEqual(r["reason"], "content_too_small")
+
+    def test_content_just_above_floor_is_feasible(self):
+        # 100x100 canvas with a 10x25 rectangle: 250 px = exactly 2.5% of
+        # the canvas, just above the 2% floor -> must pass the gate and
+        # score normally.
+        m = np.zeros((100, 100), bool)
+        m[45:55, 40:65] = True
+        path = self._png("just_above_floor.png", m)
+        cellset, _, _ = fit.shape_to_cellset([[0, 0]])
+        allowed = fit.build_region(cellset)
+        r = tis.score_candidate(path, allowed, cellset, any_angle=False)
+        self.assertTrue(r["feasible"])
+        self.assertIsNone(r.get("reason"))
+        self.assertGreater(r["score"], 0.0)
+
 
 
 if __name__ == '__main__':
