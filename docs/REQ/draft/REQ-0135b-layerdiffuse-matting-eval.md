@@ -389,3 +389,132 @@ REQ-0135b cannot proceed on the current stack. Options, none of them free:
 
 Moving `todo/` -> `draft/`: the spec is ratified but is now blocked on a
 decision, which is exactly what `draft/` is for.
+
+## Decision — 2026-07-12: NO-GO (option 3, drop LayerDiffuse)
+
+**User directive, 2026-07-12, after an independent re-verification of the whole
+LayerDiffuse setup.** Of the three options above, option 3 is taken.
+
+### Re-verification (independent, read-only)
+
+The install itself is *correct* — nothing is misconfigured:
+
+- node `ComfyUI-layerdiffuse` at upstream HEAD `b4f6a9e`, tree clean;
+- `diffusers==0.31.0` pin intact and holding under `torch 2.4.1+cu121`;
+- LD weights present (`layer_xl_transparent_attn` 743 MB,
+  `vae_transparent_decoder` 208 MB);
+- all 8 `LayeredDiffusion*` nodes register in `/object_info`.
+
+And it is nevertheless **inert**, confirmed at source on ComfyUI `0.26.0`:
+
+- `layered_diffusion.py:272` calls `add_patches()` with raw `("lora", [...])`
+  tuples (built by `lib_layerdiffusion/utils.py :: to_lora_patch_dict()`);
+- core `comfy/lora.py::calculate_weight()` accepts only a
+  `weight_adapter.WeightAdapterBase` instance or the literal patch types
+  `diff` / `set` / `model_as_lora` — the LoRA family was moved out into
+  `comfy/weight_adapter/`;
+- everything else hits `comfy/lora.py:496` → `patch type not recognized`.
+  **7,840 such warnings in the last run — every LD attention weight, dropped.**
+
+So `LayeredDiffusionApply` is a no-op, KSampler runs plain SDXL, and the
+transparent decoder returns an alpha that is ~1 everywhere. No error is raised.
+
+### Rationale for NO-GO
+
+1. Upstream (huchenlei/ComfyUI-layerdiffuse) has not tracked ComfyUIs patch-API
+
+## Decision — 2026-07-12: NO-GO (option 3, drop LayerDiffuse)
+
+**User directive, 2026-07-12, after an independent re-verification of the whole
+LayerDiffuse setup.** Of the three options above, option 3 is taken.
+
+### Re-verification (independent, read-only)
+
+The install itself is *correct* — nothing is misconfigured:
+
+- node `ComfyUI-layerdiffuse` at upstream HEAD `b4f6a9e`, tree clean;
+- `diffusers==0.31.0` pin intact and holding under `torch 2.4.1+cu121`;
+- LD weights present (`layer_xl_transparent_attn` 743 MB,
+  `vae_transparent_decoder` 208 MB);
+- all 8 `LayeredDiffusion*` nodes register in `/object_info`.
+
+And it is nevertheless **inert**, confirmed at source on ComfyUI `0.26.0`:
+
+- `layered_diffusion.py:272` calls `add_patches()` with raw `("lora", [...])`
+  tuples (built by `lib_layerdiffusion/utils.py :: to_lora_patch_dict()`);
+- core `comfy/lora.py::calculate_weight()` accepts only a
+  `weight_adapter.WeightAdapterBase` instance or the literal patch types
+  `diff` / `set` / `model_as_lora` — the LoRA family was moved out into
+  `comfy/weight_adapter/`;
+- everything else hits `comfy/lora.py:496` -> `patch type not recognized`.
+  **7,840 such warnings in the last run — every LD attention weight, dropped.**
+
+So `LayeredDiffusionApply` is a no-op, KSampler runs plain SDXL, and the
+transparent decoder returns an alpha that is ~1 everywhere. No error is raised.
+
+### Rationale for NO-GO
+
+1. Upstream (huchenlei/ComfyUI-layerdiffuse) has not tracked ComfyUI's patch-API
+   rework and our checkout is already at its HEAD. There is no fix to pull.
+2. Option 1 (fork + port the patches onto the weight-adapter API) is
+   mechanically small but creates a **permanent fork-maintenance liability
+   against a moving core, on shared HANDS-OFF art infrastructure**. Not worth it
+   for a technique we have never measured a win from.
+3. Option 2 (pin ComfyUI to a pre-rework commit) was rejected on its face:
+   REQ-0127 / 0136 / 0138 and the user's own art sessions run on that ComfyUI.
+
+**Production matting stays on rembg `birefnet-general` + edge-key fallback.**
+
+### What survives this REQ (merged, independent of LayerDiffuse)
+
+- `tools/gen_item_icons.py --no-matte` (additive, opt-in, default off) and the
+  **generate-then-matte split**. Real item-pipeline finding: ComfyUI (~11 GB RSS
+  with SDXL resident) and birefnet (~12 GB) cannot be co-resident on this 23 GB
+  host — route A was OOM-killed at job 2/10 **twice** (10:12:35, 14:34:36). On
+  this box the two passes must be sequential, never concurrent.
+- The methodological lesson, which is the expensive one: **node registration is
+  not liveness, and neither is "exit 0 + an artifact appeared".** A liveness gate
+  for a model patch must assert on the *effect* (alpha is not ~fully opaque; or
+  the patched model's output differs from the unpatched one). Both weaker gates
+  passed here while LD did nothing, and nearly published a confident, false
+  "LayerDiffuse is useless" verdict.
+- The evidence base for **REQ-0139** (comfyui-service-provenance): three ComfyUI
+  OOM kills, a false "seq5 DONE" (its REQ-0136 legs no-opped in 9 s against a
+  dead ComfyUI), a killed route A, and sshd down ~10 min — all in one day, all
+  from multiple agent sessions sharing one un-owned ComfyUI.
+- `spike_defs_nobg.json` + the A/B/C gallery builder, kept should the technique
+  ever become runnable.
+
+### The original pain is NOT closed by this NO-GO
+
+The matte-quality pain that motivated REQ-0135 is untouched: `hilt` coverage
+10.99% (item pipeline), unit-hair / thin-silhouette failures (unit S4). Note that
+every spike prompt carries `plain uniform near-white background` /
+`clean flat backdrop` — **the worst possible condition for separating pale
+metallic blades and light hair with birefnet.** Arm C was built to test exactly
+that suspicion and never produced valid data, because LD was inert throughout.
+
+That experiment does not need LayerDiffuse at all: route A (rembg) alone, with
+the background clause varied (near-white / mid-grey / chroma). It is cheap, it
+is GPU-light, and it may show the pain is partly self-inflicted by our own
+prompt. Filed as a separate REQ — see the matte-background-clause A/B sibling.
+
+### Residue (deliberately left in place)
+
+- ComfyUI `~/ComfyUI/models/layer_model/` (908 MB) and the
+  `ComfyUI-layerdiffuse` custom node are **left installed**. They are inert and
+  harmless; ComfyUI is HANDS-OFF and their removal needs a separate go-ahead.
+- The `diffusers==0.31.0` pin **stays, and should stay.** It is not LD residue:
+  per REQ-0135a, diffusers 0.39.0 fails to import at all under this venv's
+  `torch 2.4.1+cu121`. The only other consumer of diffusers in this ComfyUI is
+  `ComfyUI-Frame-Interpolation`'s momo VFI model, which was therefore broken
+  before the pin and is not broken now. Reverting the pin would be a regression.
+- The orphaned ComfyUI process this REQ started (PID 1768504, 12.3 GB RSS, idle)
+  was **stopped 2026-07-12 with user go-ahead** — 8.9 GB -> 20.8 GB available.
+  Manual-start policy is restored until REQ-0139.
+
+### Status
+
+`draft/` -> `done/`. The deliverable of an evaluation REQ is its verdict, not
+code; the verdict (NO-GO) is recorded here and accepted by the user, and the one
+piece of production code it produced (`--no-matte`) is merged. Terminal.
