@@ -1,0 +1,10 @@
+# tools/systemd/backpack-mirror.service -- REQ-0132
+# Install: cp to ~/.config/systemd/user/ && systemctl --user daemon-reload
+[Unit]
+Description=backpack_ragnarok offsite mirror push (GitHub)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/backpack_ragnarok/tools/offsite_mirror.sh
