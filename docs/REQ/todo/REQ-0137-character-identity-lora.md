@@ -41,3 +41,57 @@ own the skin system); no checkpoint decision (REQ-0136).
 - User gallery verdict on identity retention.
 - Recipe reproducible end-to-end on the server GPU (or documented hosted-API
   step with license note); findings appended here.
+
+
+---
+
+## Preparation findings (2026-07-12, session batch REQ-0136/0138/0131/0127/0137)
+
+### Dataset step — edit-model selection (input to the user decision point)
+
+- **Local option now exists and is preferred by default: FLUX.2 klein 4B**
+  (Black Forest Labs). Verified 2026-07-12: **Apache 2.0** ("open weights
+  available for commercial use" — model card), unifies text-to-image AND
+  **multi-reference image editing** in one 4B checkpoint; GGUF Q8_0
+  (4.3 GB, unsloth/FLUX.2-klein-4B-GGUF, ComfyUI-GGUF loader) is installed
+  on llmlocal for the REQ-0136 bakeoff and runs on the RTX 2080 8 GB.
+  This is exactly the "FLUX-Kontext-class" slot in the Approach section —
+  license and cost are clear, and no hosted API is required.
+- The user decision point therefore narrows to: **local klein 4B (default)
+  vs a hosted Qwen-Image-Edit-class API (only if local edit quality proves
+  insufficient on the pilot)**. Edit-mode smoke test on a real icon is the
+  first pilot step (blocked, see below).
+
+### Trainer — kohya sd-scripts, SDXL LoRA on 8 GB (recipe)
+
+Feasible per current guidance (kohya-ss/sd-scripts discussions + 2026
+low-VRAM guides): `train_network.py` (SDXL), batch_size 1,
+`gradient_checkpointing`, `cache_latents` (+ cache to disk),
+`optimizer AdamW8bit` (bitsandbytes), fp16 mixed precision, fused backward
+pass (sd-scripts >= 0.9.0), `network_dim` 16–32, train res 1024 (bucket
+768–1024). Expected wall time on the RTX 2080 for a 20–40 image identity
+set: single-digit hours. Trainer install is deliberately deferred to the
+pilot (no speculative env on the box; ~scratch discipline).
+
+### Dataset recipe (to validate in the pilot)
+
+1. ONE approved unit icon (256 px master + its 1024 px raw) as reference.
+2. klein 4B edit mode, multi-reference: prompt matrix over pose (front
+   bust, 3/4 bust, profile, action), outfit variant (default, themed-set),
+   framing (bust master + full-body dex/splash) -> 16–24 candidates.
+3. Manual cull to 12–20 keepers; captions from a fixed template
+   (`<name>, <pose>, <outfit>, painterly dark-fantasy character` +
+   roster style block).
+4. LoRA train (recipe above); validate identity retention: numbered
+   gallery, 4+ poses/outfits, each at 256 px + 64 px (G4), user verdict.
+
+### Status
+
+- **Pilot BLOCKED** on the first approved unit icon (REQ-0127 S7 gallery
+  verdict; REQ-0127 main batch itself waits on the REQ-0136 checkpoint
+  verdict). No GPU work performed under this REQ yet.
+- Checkpoint interaction: if REQ-0136 ratifies a non-SDXL default (e.g.
+  klein), the LoRA target family follows the ratified UNIT checkpoint —
+  kohya supports SDXL today; FLUX-family LoRA via sd-scripts' flux branch
+  tooling would need its own feasibility pass. Recorded as an open pilot
+  question, NOT a blocker for the dataset step.
