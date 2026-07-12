@@ -141,9 +141,37 @@ BS-G5), or all orientations are authored/derived at build time.
   allover-pattern prompt discipline (no focal object, no vignette/gradient,
   uniform density edge to edge) is still mandatory.
 
-  **The remaining high risk is the rest of S2**: motif-sheet → edge-tile
-  cutting (straight / outer corner / inner corner) and `clip_mask` integrity.
-  That is where the spike (REQ-0131) spends its budget.
+  **EDGE TILES (REQ-0131, measured 2026-07-12): the motif-sheet route is
+  DISPROVED. Do not cut edge tiles out of a frame sheet.**
+
+  The spike asked the model for an ornate square frame with a uniform border
+  band, then cut `straight` from the top band and `outer corner` from the
+  corner. A diffusion model does not paint a uniform band — it paints a
+  decorative ARCH. The cut "straight" tile is therefore an arch, and repeating
+  an arch along an edge gives a scalloped, discontinuous ribbon. Periodicity
+  along its run is the one property a straight edge tile must have, and it is
+  exactly the property a frame sheet cannot supply. (`band_thickness()` duly
+  measured 463 px of 1024 as the "band"; the derived `clip_mask` became a blob
+  covering 41.8 % of the tile and clipped the cell away.)
+
+  **Route instead: GENERATE the edge periodic; do not cut it out.** This falls
+  straight out of the fill recipe above. A straight edge tile must repeat along
+  ONE axis — which is what circular padding delivers, already proved on this GPU
+  route:
+    - generate the straight edge as a **1-D seamless strip** (wide, short canvas,
+      e.g. 1024×256; same `SeamlessTile` + `CircularVAEDecode` recipe; prompt a
+      continuous ornamental border running left-to-right). It then tiles along
+      its run BY CONSTRUCTION, exactly as `fill_texture` tiles in 2-D. Cut any
+      cell-width piece; every piece joins.
+    - **corners are authored or derived from the ratified straight tile**, never
+      cut from a sheet. A frame sheet has no concave corner to cut at all.
+    - `clip_mask` auto-trace and the BS-G5 rotation exception are only worth
+      testing once a valid straight tile exists.
+
+  **Harness caveat.** A leakage metric alone cannot pass this step: the spike's
+  harness reported `leaking=0` on composites that were nearly EMPTY (nothing
+  drawn cannot leak). Any S3 harness must pair leakage with a **coverage** check
+  — did the fill actually render inside the silhouette?
 - **S3 Assembly + validation harness.** Deterministic harness composites the
   full rendering stack (§2) on the validation shape suite (1×1, I, L, T, S/Z,
   inner-corner and holed shapes) over several contrasting canvas backgrounds,
