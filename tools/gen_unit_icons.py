@@ -83,10 +83,6 @@ CONCEPTS = {
                        "shoulders draped in a dark bear pelt, iron arm ring "
                        "and a worn leather baldric, fierce battle-hardened "
                        "expression"),
-    "unit-necromancer": ("necromancer", "a gaunt necromancer with sunken "
-                         "glowing pale eyes and long ash-white hair, "
-                         "black-green robes with bone clasps and a raised "
-                         "ragged collar"),
     "unit-watcher": ("watcher", "a hooded watcher with an unreadable "
                      "shadowed face and a single faintly glowing "
                      "lantern-amulet at the throat, long grey travel cloak"),

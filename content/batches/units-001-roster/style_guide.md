@@ -53,7 +53,6 @@ downscale. Plain names for generation (common_content_pipeline §2).
 | unit-princess | a young royal princess with a modest aged-gold crown over dark braided hair, a high-collared layered court dress in muted deep blue, composed watchful expression |
 | unit-lightcavalry | a light cavalry rider with a plumed open-faced helm and a short lance over the shoulder, boiled-leather lamellar coat, wind-burned face |
 | unit-berserker | a massive scarred warrior with a wild braided red-brown beard and shaved temples, bare shoulders draped in a dark bear pelt, iron arm ring and a worn leather baldric, fierce battle-hardened expression |
-| unit-necromancer | a gaunt necromancer with sunken glowing pale eyes and long ash-white hair, black-green robes with bone clasps and a raised ragged collar |
 | unit-watcher | a hooded watcher with an unreadable shadowed face and a single faintly glowing lantern-amulet at the throat, long grey travel cloak |
 | unit-squire | a young earnest squire with cropped hair and an oversized padded gambeson, a polished kettle helm under one arm, hopeful steady gaze |
 
