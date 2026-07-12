@@ -1,4 +1,34 @@
-# REQ-0097 — Common BP gacha: +2 cells to rolled shape size
+# REQ-0074 — Common BP gacha: +2 cells to rolled shape size
+
+> **RENUMBERED 2026-07-13: REQ-0097 → REQ-0074.** This REQ and
+> `REQ-0097-expedition-master-detail` both held **0097** — two concurrent
+> orchestrator sessions claimed the number a day apart (this one 2026-07-07,
+> the expedition rebuild 2026-07-08), before the shared allocator in
+> `~/backpack_ragnarok_state/req/` was the sole source of numbers. Both had
+> already merged to `master`, so the number had to be broken by hand.
+>
+> **This REQ yielded the number** (owner ruling, 2026-07-13): it is a
+> self-contained, terminal balance tweak with **zero inbound references**,
+> whereas the expedition REQ is the backbone of the 0097–0100 series and is
+> cited by REQ-0049 / 0057 / 0098 / 0099 / 0100 / 0119 and by seven code
+> comments. `REQ-0097` now unambiguously means the expedition rebuild.
+>
+> **0074 was the board's only free number** (0073 is not free — it is the
+> real, merged item-icon-gen REQ, filed at the legacy flat path
+> `docs/REQ-0073-item-icon-gen.md` and never migrated onto the state board).
+> Reusing 0074 is a deliberate, owner-approved exception to PROJECT.md's
+> “numbers are MONOTONIC and never reused” rule; it is safe because the
+> allocator counter is at 0149 and can never re-issue 0074. Note that
+> REQ-0069 and REQ-0072 mention “0074” in passing as the old
+> workshop-redesign slot from the 0070–0074 redesign series — that slot was
+> actually built as **REQ-0076-redesign-workshop**, so those are stale
+> references to a number that never held a REQ, not to this one.
+>
+> **Git history is NOT rewritten and remains authoritative.** Everything below
+> that says `REQ-0097` — the branch `req-0097-common-bp-gacha-cell-buff`, the
+> commit `fc415bf` (“REQ-0097: Common BP gacha shape +2 cells (4-6 -> 6-8)”),
+> the worktree path — is preserved verbatim as the historical record of how
+> this REQ was actually built. Do not “fix” those names.
 
 - **Status**: BUILT (2026-07-07) — implemented on branch
   `req-0097-common-bp-gacha-cell-buff` (worktree
