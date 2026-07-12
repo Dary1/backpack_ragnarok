@@ -130,7 +130,7 @@ inviolable = no anisotropic scaling / `common_content_pipeline.md` §2.)
 strong photorealism bias, so **front-load stylization tokens** (painterly
 dark-fantasy game icon, NOT photorealistic). Specify a **near-white
 background** for matting. Keep names plain (`common_content_pipeline.md` §2,
-illustration-first). NOTE: checkpoint choice is under re-evaluation
+illustration-first). NOTE (SUPERSEDED 2026-07-12): the checkpoint re-evaluation is CLOSED -- REQ-0136 ratified flux2 (see the ratified-route section at the end of this doc). Historical note kept: checkpoint choice was under re-evaluation
 (REQ-0136); this subsection tracks its outcome.
 
 **5-3. Generate** (ComfyUI at `127.0.0.1:8188`, checkpoint
@@ -232,3 +232,56 @@ As part of REQ-0109, the icon route was smoke-tested **end-to-end on V9**.
   candidates) and report regeneration were completed under REQ-0109
   (see `web/preview/batch-003/`); the batch-003 ART was subsequently NG'd at
   S7 (2026-07-12) — regeneration restarts on the refreshed pipeline.
+
+### RATIFIED GENERATION ROUTE (REQ-0136, user verdict 2026-07-12)
+
+**Default route: `flux2` — FLUX.2 klein 4B distilled, GGUF Q8_0.**
+
+    unet    flux-2-klein-4b-Q8_0.gguf     (Apache 2.0, unsloth GGUF)
+    clip    qwen_3_4b.safetensors         (type: flux2)
+    vae     flux2-vae.safetensors
+    4 steps / cfg 1.0 / euler + Flux2Scheduler / SamplerCustomAdvanced
+
+Selected on merit over JuggernautXL V9 (incumbent) and DreamShaperXL Turbo v2.1
+in a 48-candidate bakeoff (2 items + 2 unit busts x 4 seeds x 3 checkpoints):
+
+| axis | flux2 | dsxl | v9 |
+|---|---|---|---|
+| near-white background (the brief) | **16/16** | 1/16 | 5/16 |
+| warm s/image (RTX 2080, 1024px) | **10 s** | 20 s | 40 s |
+| 48-candidate roster batch | **14.8 min** | 21.3 min | 35.5 min |
+| VRAM peak | 6842 MiB | 6388 MiB | 6516 MiB |
+| licence | **Apache 2.0** | OpenRAIL++-M | incumbent terms |
+
+The "NOT photorealistic" prompting tax is gone: FLUX obeys the painterly brief
+directly instead of being argued into it. Switching to a *different SDXL*
+checkpoint did NOT fix it -- DreamShaperXL, the nominally stylized contender,
+was the most photoreal of the three. The whole SDXL family fights this brief.
+
+**Three things that are NOT optional on this route:**
+
+1. **The negative prompt is INACTIVE.** Distilled klein samples at cfg 1.0,
+   where the guider applies no classifier-free guidance, and the official graph
+   feeds a ConditioningZeroOut of the positive in as the negative. Defs keep
+   their `gen_negative` (the sdxl route still uses it), but on flux2 it is
+   accepted and DISCARDED. **Steer style from the POSITIVE prompt.** The tool
+   prints a warning once per run so this cannot rot silently.
+
+2. **Lower seed variety.** Near-deterministic sampling means 4 seeds yield 4
+   close variants, not 4 alternatives (measured pairwise pixel delta 14.6 vs
+   41.1 for v9). The flip side: all 4 are usable, whereas v9's "variety" was
+   substantially multiple-object and cropped brief violations. Budget re-rolls
+   by changing the PROMPT, not the seed.
+
+3. **RESTART ComfyUI between routes/legs -- `/free` is not enough.** ComfyUI's
+   `unload_models` returns weights to the Python allocator, not to the OS. A
+   long-lived process that has served SDXL and then FLUX reaches ~19 GB RSS,
+   fills swap, and the box stops responding (observed 2026-07-12). Generation
+   and matting must also be separate phases (`--phase gen|matte`) with ComfyUI
+   DOWN during matte: rembg `alpha_matting` peaks at 12-13 GB RSS, which does
+   not fit alongside a resident model on the 23 GB box. Eight global OOM kills
+   on 2026-07-12 came from exactly that overlap.
+
+The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is kept
+working for fallback and for reproducing historical batches:
+`gen_item_icons.py --route sdxl`.
