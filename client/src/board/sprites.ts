@@ -48,7 +48,7 @@
 // so the client always tracks whatever the current sprite sheet is with no
 // manual copy/sync step and no fork of the art pipeline.
 import spriteSheetSource from '../../../content/sprite_all_v12.svg?raw';
-import { Texture } from 'pixi.js';
+import { Assets, Texture } from 'pixi.js';
 
 const RASTER_SCALE = 2; // supersample so icons stay crisp when scaled up into grid cells
 
@@ -166,4 +166,77 @@ export function loadSpriteTextures(): Promise<Map<string, Texture>> {
     })();
   }
   return loadPromise;
+}
+
+// ---------------------------------------------------------------------------
+// Raster route — REQ-0125a.
+//
+// Everything above this line is the SVG <symbol> route: one sprite sheet,
+// rasterized symbol by symbol into Pixi Textures. That route is not going
+// anywhere (it carries every item/SI icon on the board today), but it cannot
+// carry a Unit's character icon: the ratified pipeline emits PNG rasters
+// (unit_icon_pipeline.md §0 — 1x1 cell, 1:1 aspect, target_px 256x256; and
+// §3.2, decided 2026-07-12: registry/render route = RASTER for units AND
+// items alike).
+//
+// So the texture map gains a second producer. Callers stay agnostic: they
+// still get one `Map<string, Texture>` and still just `.get(key)`. Raster keys
+// are namespaced (`unit:<id>` — see unitIcon.ts's unitIconKey) so they can
+// never collide with the SVG route's `icon-*` symbol ids, which is what lets
+// REQ-0133 drop ITEM rasters into this same map later without a key war and
+// without a second resolver.
+//
+// Failure policy is the load-bearing part: a raster that 404s, times out, or
+// fails to decode is WARNED and SKIPPED, never thrown. Its key is then simply
+// absent from the map, so unitIcon.ts's resolver sees `has(key) === false` and
+// falls through to the next rung of the chain. That is precisely how
+// "missing art must never block rendering" is implemented — not as a try/catch
+// at the draw site, but as an absence in the map that the chain already knows
+// how to handle.
+import { unitIconRasters, type RasterEntry } from './unitIcon';
+
+async function loadRaster(entry: RasterEntry): Promise<readonly [string, Texture] | null> {
+  try {
+    const texture = await Assets.load<Texture>(entry.url);
+    // Assets.load resolves rather than rejects for some decode failures
+    // depending on the loader; a texture with no dimensions is useless and is
+    // treated as a miss, not as art.
+    if (!texture || !texture.width || !texture.height) {
+      console.warn(`sprites: raster "${entry.key}" decoded to an empty texture (${entry.url}) -- skipping`);
+      return null;
+    }
+    return [entry.key, texture] as const;
+  } catch (err) {
+    // NOT an error path for the board: the resolver falls through.
+    console.warn(`sprites: raster "${entry.key}" failed to load (${entry.url}) -- falling back`, err);
+    return null;
+  }
+}
+
+let boardLoadPromise: Promise<Map<string, Texture>> | null = null;
+
+/**
+ * THE texture map for every board surface: SVG symbols + raster icons, merged.
+ * Cached after first call (one decode per asset per session, not per render),
+ * mirroring loadSpriteTextures()'s own caching discipline.
+ *
+ * As of REQ-0125a `unitIconRasters()` returns [] — no unit art exists yet
+ * (REQ-0127 is on hold behind REQ-0136) — so this is currently the SVG map
+ * exactly, and the board renders pixel-identically to before. The route is
+ * nonetheless live, typed and exercised: the moment art lands, it is a
+ * manifest edit, not a renderer change.
+ */
+export function loadBoardTextures(): Promise<Map<string, Texture>> {
+  if (!boardLoadPromise) {
+    boardLoadPromise = (async () => {
+      const symbols = await loadSpriteTextures();
+      const rasters = await Promise.all(unitIconRasters().map(loadRaster));
+      const merged = new Map(symbols);
+      for (const hit of rasters) {
+        if (hit) merged.set(hit[0], hit[1]);
+      }
+      return merged;
+    })();
+  }
+  return boardLoadPromise;
 }

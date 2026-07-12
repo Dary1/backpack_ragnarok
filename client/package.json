@@ -10,6 +10,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "check:sprites": "node scripts/check_sprites.mjs",
+    "check:unit-icon": "node scripts/check_unit_icon.mjs",
+    "build:ring-preview": "node scripts/build_ring_preview.mjs",
     "e2e": "bash ../tools/e2e_run.sh",
     "e2e:failed": "bash ../tools/e2e_run.sh --last-failed",
     "e2e:changed": "bash ../tools/e2e_run.sh --only-changed"

@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>REQ-0125a — G7 unit charge ring</title>
+<style>
+  body { background:#14120f; color:#d8d2c6; font:14px/1.5 system-ui,sans-serif; margin:0; padding:32px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  p.sub { color:#8d8577; margin:0 0 24px; max-width:70ch; }
+  .grid { display:flex; flex-wrap:wrap; gap:20px; }
+  .cell { margin:0; background:#1b1815; border:1px solid #2b2723; border-radius:6px; padding:12px; width:160px; }
+  figcaption { margin-top:8px; font-size:12px; }
+  figcaption b { display:block; color:#e6dfd2; }
+  figcaption span { display:block; color:#8d8577; margin-top:2px; }
+  code { color:#59d6d6; }
+</style>
+<h1>REQ-0125a — G7 unit charge ring</h1>
+<p class="sub">
+  Every ring below is drawn from the arc that <code>client/src/board/chargeRing.ts</code>'s
+  <code>chargeRingArc()</code> returns — the same function the board renderer calls. No math is
+  duplicated on this page. <b>On the live board the ring is not drawn at all</b>: no charge data
+  exists anywhere in the codebase yet (the placement engine has no time axis; sim's only
+  <code>cooldown</code> is the room re-entry timer, which belongs to REQ-0098's ring), so every
+  production call site passes <code>null</code> — the first cell here. REQ-0129 supplies the real
+  value; this page is the proof the drawing is ready for it.
+</p>
+<div class="grid">
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    
+    
+  </svg>
+  <figcaption><b>charge = null</b><span>no charge concept / no data — THE PRODUCTION CASE TODAY</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    
+    
+  </svg>
+  <figcaption><b>charge = 0</b><span>idle: no ring (an empty ring on every unit is noise)</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 0 1 53.270509831248425 15.468304511145394" fill="none" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 0.05</b><span>just begun</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 0 1 74 44" fill="none" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 0.25</b></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 0 1 44 74" fill="none" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 0.50</b></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 1 1 14 44.00000000000001" fill="none" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 0.75</b></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 1 1 42.11628441412061 14.059198147151854" fill="none" stroke="#59d6d6" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 0.99</b><span>nearly ready</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 1 1 44 74 A 30 30 0 1 1 44 14" fill="none" stroke="#ffd479" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 1.00</b><span>READY (fill switches to the ready colour)</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    <circle cx="44" cy="44" r="30" fill="none" stroke="#1c2b2b" stroke-width="3"/>
+    <path d="M 44 14 A 30 30 0 1 1 44 74 A 30 30 0 1 1 44 14" fill="none" stroke="#ffd479" stroke-width="3" stroke-linecap="round"/>
+  </svg>
+  <figcaption><b>charge = 4.2</b><span>out of band → clamped to full, never throws</span></figcaption>
+</figure>
+<figure class="cell">
+  <svg viewBox="0 0 88 88" width="88" height="88">
+    <circle cx="44" cy="44" r="26" fill="#0e0d0b" stroke="#59d6d6" stroke-opacity="0.5" stroke-width="1"/>
+    <text x="44" y="48" text-anchor="middle" font-size="10" fill="#59d6d6" opacity="0.55">unit</text>
+    
+    
+  </svg>
+  <figcaption><b>charge = NaN</b><span>bad data → no ring, never throws</span></figcaption>
+</figure>
+</div>

@@ -51,7 +51,7 @@ import {
   type ApiRunView,
   type ApiWarehouseItem,
 } from '../api';
-import { loadSpriteTextures } from '../board/sprites';
+import { loadBoardTextures } from '../board/sprites';
 import { iconDataUrl } from '../dex/dexIcons';
 import { t } from '../i18n';
 import type { Locale } from '../store';
@@ -245,7 +245,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     if (!expanded || mountedOnce || !canvasRef.current) return;
     let cancelled = false;
     (async () => {
-      const textures = await loadSpriteTextures();
+      const textures = await loadBoardTextures();
       if (cancelled || !canvasRef.current) return;
       const renderer = await MonitorRenderer.mount(canvasRef.current, textures);
       if (cancelled) {
