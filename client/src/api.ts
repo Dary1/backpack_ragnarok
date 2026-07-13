@@ -720,7 +720,7 @@ export function listArtworks(): Promise<{ ok: true; artworks: ArtworkDto[] }> {
 export function createArtwork(b: Record<string, unknown>): Promise<{ ok: true; artwork: ArtworkDto }> {
   return artJson('/api/art/artworks', { method: 'POST', body: JSON.stringify(b) });
 }
-export function getArtwork(name: string): Promise<{ ok: true; artwork: ArtworkDto; renders: RenderDto[]; queueDepth: number }> {
+export function getArtwork(name: string): Promise<{ ok: true; artwork: ArtworkDto; renders: RenderDto[]; queueDepth: number; inspectDepth: number; inspections: Record<string, InspectionDto[]>; kits: KitDto[] }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name), { method: 'GET' });
 }
 export function patchArtwork(name: string, b: Record<string, unknown>): Promise<{ ok: true; artwork: ArtworkDto }> {
@@ -743,4 +743,21 @@ export function artRenderUrl(name: string, seed: number): string {
 }
 export function artAdoptedUrl(name: string): string {
   return '/api/art/' + encodeURIComponent(name);
+}
+
+// ---- REQ-0152: inspection kits ----
+export interface InspectionCheck { name: string; ok: boolean; value: unknown; threshold: string }
+export interface InspectionDto {
+  render_id: number; kit_id: string; kit_version: string;
+  verdict: 'PASS' | 'WARN' | 'FAIL';
+  metrics: Record<string, number>; checks: InspectionCheck[]; notes: string[];
+  kit_input_sha256: string | null; ran_at: string;
+  stale: boolean; current_version: string | null;
+}
+export interface KitDto { kit_id: string; kit_version: string; applies_to: string[]; blocking: boolean }
+
+/** Re-run inspection kit(s) for one render. Omit kit_id to run every kit for
+ * the kind (also the on-demand path for lazily-inspected backfilled renders). */
+export function reinspectRender(name: string, seed: number, kit_id?: string): Promise<{ ok: true; queued: string[]; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/inspect', { method: 'POST', body: JSON.stringify(kit_id ? { kit_id } : {}) });
 }
