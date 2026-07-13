@@ -372,55 +372,49 @@ def _matte_border_key(im_rgb):
     return Image.fromarray(rgba, mode="RGBA")
 
 
-def matte_alpha(src_path, dst_path, log_label=None):
-    """Two-strategy matte -- see module docstring for full rationale.
-
-    1. Primary: rembg birefnet-general (alpha_matting + post_process_mask
-       on) -- robust to any backdrop color/brightness.
-    2. Validity band: accept if COVERAGE_MIN <= opaque_fraction <=
-       COVERAGE_MAX.
-    3. Fallback if primary is out-of-band: border-color keying (median of
-       a thin border band, smoothstep color-distance alpha, small
-       morphological open for speckle).
-    4. If BOTH are out-of-band: keep whichever is closer to the band and
-       log a WARN -- there is no further automatic fallback.
-
-    Logs exactly one line per file: file, method used (birefnet|
-    borderkey), coverage%. log_label defaults to the basename of dst_path.
-
-    Same signature as before (src_path, dst_path) plus an optional
-    log_label kwarg -- existing callers that only pass two positional
-    args are unaffected.
-    """
-    label = log_label if log_label is not None else os.path.basename(dst_path)
-
-    im = Image.open(src_path).convert("RGB")
-
-    primary_img = _matte_birefnet(im)
+def matte_alpha_data(im_rgb):
+    """REQ-0152: the two-strategy matte as PURE DATA (no stdout, no file
+    write). Returns {method, image_alpha_coverage, in_band, image}. `image`
+    is the chosen RGBA PIL Image. `image_alpha_coverage` is the fraction of
+    pixels with alpha > ALPHA_OPAQUE_T (the disambiguated whole-image alpha
+    coverage). Same decision order matte_alpha() has always used:
+      1. birefnet primary; accept if in [COVERAGE_MIN, COVERAGE_MAX].
+      2. border-key fallback if primary out-of-band; accept if in-band.
+      3. both out-of-band -> keep whichever is closer to the band.
+    matte_alpha() is now a thin wrapper (file write + one-line log) over this,
+    so existing callers are unchanged; the matte.coverage_band kit consumes
+    the data form directly."""
+    primary_img = _matte_birefnet(im_rgb)
     primary_cov = _coverage(np.array(primary_img))
-
     if _in_band(primary_cov):
-        primary_img.save(dst_path)
-        print(f"MATTE {label} method=birefnet coverage={primary_cov * 100:.2f}%", flush=True)
-        return
-
-    fallback_img = _matte_border_key(im)
+        return {"method": "birefnet", "image_alpha_coverage": primary_cov,
+                "in_band": True, "image": primary_img}
+    fallback_img = _matte_border_key(im_rgb)
     fallback_cov = _coverage(np.array(fallback_img))
-
     if _in_band(fallback_cov):
-        fallback_img.save(dst_path)
-        print(f"MATTE {label} method=borderkey coverage={fallback_cov * 100:.2f}%", flush=True)
-        return
-
-    # Both out-of-band: keep whichever is closer to the validity band.
+        return {"method": "borderkey", "image_alpha_coverage": fallback_cov,
+                "in_band": True, "image": fallback_img}
     if _band_distance(primary_cov) <= _band_distance(fallback_cov):
-        chosen_img, chosen_method, chosen_cov = primary_img, "birefnet", primary_cov
-    else:
-        chosen_img, chosen_method, chosen_cov = fallback_img, "borderkey", fallback_cov
+        return {"method": "birefnet", "image_alpha_coverage": primary_cov,
+                "in_band": False, "image": primary_img}
+    return {"method": "borderkey", "image_alpha_coverage": fallback_cov,
+            "in_band": False, "image": fallback_img}
 
-    chosen_img.save(dst_path)
-    print(f"MATTE {label} method={chosen_method} coverage={chosen_cov * 100:.2f}%", flush=True)
-    print(f"WARN {label} coverage={chosen_cov * 100:.2f}% method={chosen_method} OUT-OF-BAND", flush=True)
+
+def matte_alpha(src_path, dst_path, log_label=None):
+    """Two-strategy matte -- see module docstring + matte_alpha_data() for the
+    full rationale. Thin wrapper over matte_alpha_data(): runs the matte, saves
+    the chosen RGBA to dst_path, logs exactly one MATTE line (+ a WARN line
+    when out-of-band). Signature unchanged (src_path, dst_path, optional
+    log_label), so existing callers are unaffected."""
+    label = log_label if log_label is not None else os.path.basename(dst_path)
+    im = Image.open(src_path).convert("RGB")
+    d = matte_alpha_data(im)
+    d["image"].save(dst_path)
+    cov = d["image_alpha_coverage"]
+    print(f"MATTE {label} method={d['method']} coverage={cov * 100:.2f}%", flush=True)
+    if not d["in_band"]:
+        print(f"WARN {label} coverage={cov * 100:.2f}% method={d['method']} OUT-OF-BAND", flush=True)
 
 
 def alpha_coverage_fraction(path):

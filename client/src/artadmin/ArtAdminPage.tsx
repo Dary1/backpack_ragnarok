@@ -7,9 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Locale } from '../store';
 import {
   listArtworks, createArtwork, getArtwork, patchArtwork, previewArtwork,
-  generateArtwork, adoptRenderApi, deleteRenderApi, artRenderUrl,
+  generateArtwork, adoptRenderApi, deleteRenderApi, artRenderUrl, reinspectRender,
 } from '../api';
-import type { ArtworkDto, RenderDto } from '../api';
+import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
 
 type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin';
 const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin'];
@@ -62,11 +62,70 @@ function MonsterShapeEditor({ w, h, onW, onH }: { w: number; h: number; onW: (v:
   );
 }
 
+function verdictColor(v: string): string {
+  return v === 'PASS' ? '#2e7d32' : v === 'WARN' ? '#a6791a' : '#992222';
+}
+
+function InspectDetails({ row, seed }: { row: InspectionDto; seed: number }) {
+  return (
+    <div data-testid={'kit-details-' + seed + '-' + row.kit_id}
+      style={{ background: '#111', padding: 6, marginTop: 3, fontSize: 11, fontFamily: 'monospace', maxWidth: 206 }}>
+      <div>v{row.kit_version}{row.stale ? ' (STALE)' : ''}</div>
+      <div style={{ marginTop: 3, color: '#C9A959' }}>metrics</div>
+      {Object.entries(row.metrics).map(([k, v]) => <div key={k}>{k}={String(v)}</div>)}
+      <div style={{ marginTop: 3, color: '#C9A959' }}>checks</div>
+      {row.checks.map((c, i) => <div key={i} style={{ color: c.ok ? '#7bd67b' : '#e88' }}>{c.ok ? 'ok' : 'x'} {c.name} ({String(c.value)} / {c.threshold})</div>)}
+      {row.notes.length > 0 && <div style={{ marginTop: 3, color: '#C9A959' }}>notes</div>}
+      {row.notes.map((nt, i) => <div key={i} style={{ color: '#bbb' }}>- {nt}</div>)}
+    </div>
+  );
+}
+
+function KitChips({ seed, kits, rows, expanded, onToggle, onRerun }: {
+  seed: number; kits: KitDto[]; rows: InspectionDto[];
+  expanded: Record<string, boolean>; onToggle: (key: string) => void;
+  onRerun: (seed: number, kitId?: string) => void;
+}) {
+  const byKit = new Map(rows.map((r) => [r.kit_id, r]));
+  return (
+    <div data-testid={'kits-' + seed} style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {kits.map((k) => {
+        const row = byKit.get(k.kit_id);
+        if (!row) {
+          return (
+            <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id}
+              style={{ fontSize: 11, color: '#999', border: '1px dashed #555', padding: '1px 4px', borderRadius: 3 }}>
+              {k.kit_id}: not inspected{' '}
+              <button data-testid={'run-' + seed + '-' + k.kit_id} type="button" onClick={() => onRerun(seed, k.kit_id)}>run</button>
+            </span>
+          );
+        }
+        const key = seed + '|' + k.kit_id;
+        return (
+          <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            <button data-testid={'chip-' + seed + '-' + k.kit_id} type="button" onClick={() => onToggle(key)}
+              title={k.kit_id + ' v' + row.kit_version}
+              style={{ background: verdictColor(row.verdict), color: '#fff', border: 'none', padding: '2px 6px', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}>
+              {k.kit_id} <b data-testid={'verdict-' + seed + '-' + k.kit_id}>{row.verdict}</b>
+            </button>
+            {row.stale && <span data-testid={'stale-' + seed + '-' + k.kit_id} style={{ color: '#e0a000', fontSize: 10 }}>stale</span>}
+            {row.stale && <button data-testid={'rerun-' + seed + '-' + k.kit_id} type="button" onClick={() => onRerun(seed, k.kit_id)}>re-run</button>}
+            {expanded[key] && <InspectDetails row={row} seed={seed} />}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 export function ArtAdminPage({ locale }: { locale: Locale }) {
   void locale;
   const [artworks, setArtworks] = useState<ArtworkDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [renders, setRenders] = useState<RenderDto[]>([]);
+  const [inspections, setInspections] = useState<Record<string, InspectionDto[]>>({});
+  const [kits, setKits] = useState<KitDto[]>([]);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [queueDepth, setQueueDepth] = useState<number>(0);
   const [detailAdoptedId, setDetailAdoptedId] = useState<number | null>(null);
   const [msg, setMsg] = useState<string>('');
@@ -91,7 +150,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   }, []);
 
   const loadDetail = useCallback(async (name: string) => {
-    try { const r = await getArtwork(name); setRenders(r.renders); setQueueDepth(r.queueDepth); setDetailAdoptedId(r.artwork.adopted_render_id); } catch (e) { setMsg('detail: ' + (e as Error).message); }
+    try { const r = await getArtwork(name); setRenders(r.renders); setQueueDepth(r.queueDepth); setDetailAdoptedId(r.artwork.adopted_render_id); setInspections(r.inspections || {}); setKits(r.kits || []); } catch (e) { setMsg('detail: ' + (e as Error).message); }
   }, []);
 
   useEffect(() => { void refreshList(); }, [refreshList]);
@@ -153,6 +212,12 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     if (!selected) return;
     try { await deleteRenderApi(selected, seed); setMsg('deleted seed ' + seed); await loadDetail(selected); await refreshList(); }
     catch (e) { setMsg('delete: ' + (e as Error).message); }
+  }
+
+  async function doReinspect(seed: number, kitId?: string) {
+    if (!selected) return;
+    try { const r = await reinspectRender(selected, seed, kitId); setMsg('queued ' + r.queued.length + ' kit(s) for seed ' + seed); await loadDetail(selected); }
+    catch (e) { setMsg('inspect: ' + (e as Error).message); }
   }
 
   const selArt = artworks.find((a) => a.system_name === selected) || null;
@@ -227,13 +292,19 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               {renders.map((r) => {
                 const isAdopted = adoptedId != null && r.id === adoptedId;
                 return (
-                  <div key={r.seed} data-testid={'render-' + r.seed} style={{ border: isAdopted ? '2px solid #C9A959' : '1px solid #555', padding: 6, width: 150 }}>
+                  <div key={r.seed} data-testid={'render-' + r.seed} style={{ border: isAdopted ? '2px solid #C9A959' : '1px solid #555', padding: 6, width: 224 }}>
                     <div>seed {r.seed} <span data-testid={'render-status-' + r.seed}>[{r.status}]</span>{isAdopted ? ' ADOPTED' : ''}</div>
                     {r.status === 'ok' && selected ? <img alt={'seed ' + r.seed} src={artRenderUrl(selected, r.seed)} style={{ maxWidth: 138, maxHeight: 138, background: '#000' }} /> : <div style={{ fontSize: 11, color: '#999' }}>{r.status === 'failed' ? (r.error || 'failed') : 'rendering...'}</div>}
                     <div style={{ marginTop: 4 }}>
                       <button data-testid={'adopt-' + r.seed} type="button" disabled={r.status !== 'ok' || isAdopted} onClick={() => { void doAdopt(r.seed); }}>Adopt</button>{' '}
                       <button data-testid={'delete-' + r.seed} type="button" disabled={isAdopted} onClick={() => { void doDelete(r.seed); }}>Delete</button>
                     </div>
+                    {r.status === 'ok' && kits.length > 0 && (
+                      <KitChips seed={r.seed} kits={kits} rows={inspections[String(r.id)] || []}
+                        expanded={expanded}
+                        onToggle={(key) => setExpanded((e) => ({ ...e, [key]: !e[key] }))}
+                        onRerun={(seed, kitId) => { void doReinspect(seed, kitId); }} />
+                    )}
                   </div>
                 );
               })}

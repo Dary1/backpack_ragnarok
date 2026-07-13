@@ -10,6 +10,7 @@ const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const jobs = require('../services/art_jobs.cjs');
+const kitReg = require('../services/kit_registry.cjs');
 const { exportAdopted } = require('../services/art_export.cjs');
 const { deriveSize, KINDS } = require('../services/art_sizing.cjs');
 
@@ -118,7 +119,28 @@ async function hGet(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const renders = await storage.listRenders(art.id);
-  sendJSON(res, 200, { ok: true, artwork: art, renders, queueDepth: jobs.queueDepth() });
+  // REQ-0152: latest inspection row per (render, kit) + a stale flag (kit
+  // version bumped OR the render's input hash changed since it ran).
+  const insList = await storage.listLatestInspectionsByArtwork(art.id);
+  const byRender = {};
+  for (const row of insList) {
+    const render = renders.find((r) => r.id === row.render_id);
+    const curVer = kitReg.kitVersion(row.kit_id);
+    let stale = false;
+    if (curVer && String(row.kit_version) !== String(curVer)) {
+      stale = true;
+    } else if (render && render.image_sha256) {
+      const expected = kitReg.kitInputSha256(render.image_sha256, row.kit_id, row.kit_version, art);
+      stale = row.kit_input_sha256 !== expected;
+    }
+    (byRender[row.render_id] = byRender[row.render_id] || []).push(
+      Object.assign({}, row, { stale, current_version: curVer }));
+  }
+  sendJSON(res, 200, {
+    ok: true, artwork: art, renders, queueDepth: jobs.queueDepth(),
+    inspectDepth: jobs.inspectDepth(), inspections: byRender,
+    kits: kitReg.kitsFor(art.kind),
+  });
 }
 
 async function hPatch(req, res, name) {
@@ -188,9 +210,39 @@ async function hDelete(req, res, name, seed) {
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
+async function hDevBumpKit(req, res) {
+  const b = await readJson(req);
+  if (!b.kit_id || !kitReg.kitMeta(b.kit_id)) return sendJSON(res, 400, { ok: false, error: 'unknown kit_id' });
+  kitReg.setVersionOverride(b.kit_id, b.kit_version || '2');
+  sendJSON(res, 200, { ok: true, kit_id: b.kit_id, kit_version: kitReg.kitVersion(b.kit_id) });
+}
+
 async function hDevClear(req, res) {
   const r = await storage.clearAllArtworks();
   sendJSON(res, 200, { ok: true, deleted: r.deleted });
+}
+
+// re-run inspection kits for one render. body {kit_id?} -- one kit, or all
+// kits for the kind when omitted. Advisory: enqueues, never blocks. (Also the
+// on-demand path for lazily-inspected backfilled renders, Q3.)
+async function hInspect(req, res, name, seed) {
+  const art = await storage.getArtworkByName(name);
+  if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
+  const renders = await storage.listRenders(art.id);
+  const r = renders.find((x) => x.seed === seed);
+  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  if (r.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'cannot inspect a render that is not status ok' });
+  const b = await readJson(req);
+  let toRun;
+  if (b.kit_id) {
+    const meta = kitReg.kitMeta(b.kit_id);
+    if (!meta || !meta.applies_to.includes(art.kind)) return sendJSON(res, 400, { ok: false, error: 'kit ' + b.kit_id + ' does not apply to kind ' + art.kind });
+    toRun = [b.kit_id];
+  } else {
+    toRun = kitReg.kitsFor(art.kind).map((k) => k.kit_id);
+  }
+  for (const kid of toRun) jobs.enqueueInspection({ renderId: r.id, artworkId: art.id, kitId: kid });
+  sendJSON(res, 202, { ok: true, queued: toRun, inspectDepth: jobs.inspectDepth() });
 }
 
 // ---- public serving handlers ----
@@ -223,7 +275,9 @@ const RE_PREVIEW = /^\/api\/art\/artworks\/([^/]+)\/preview$/;
 const RE_GENERATE = /^\/api\/art\/artworks\/([^/]+)\/generate$/;
 const RE_ADOPT = /^\/api\/art\/artworks\/([^/]+)\/adopt$/;
 const RE_ADMIN_RENDER = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)$/;
+const RE_INSPECT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/inspect$/;
 const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
+const RE_DEV_BUMP = /^\/api\/art\/dev\/bump-kit$/;
 const RE_PUB_META = /^\/api\/art\/([^/]+)\/meta$/;
 const RE_PUB_RENDER = /^\/api\/art\/([^/]+)\/renders\/(\d+)$/;
 const RE_PUB_ADOPTED = /^\/api\/art\/([^/]+)$/;
@@ -237,6 +291,10 @@ function tryArtRoutes(req, res, url, p) {
     if (req.method === 'POST') { run(res, hCreate(req, res)); return true; }
     sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
   }
+  if (RE_DEV_BUMP.test(p) && req.method === 'POST') {
+    if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
+    run(res, hDevBumpKit(req, res)); return true;
+  }
   if (RE_DEV_CLEAR.test(p) && req.method === 'POST') {
     if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
     run(res, hDevClear(req, res)); return true;
@@ -244,6 +302,7 @@ function tryArtRoutes(req, res, url, p) {
   if ((m = RE_PREVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hPreview(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_GENERATE.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hGenerate(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_ADOPT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hAdopt(req, res, decodeURIComponent(m[1]))); return true; }
+  if ((m = RE_INSPECT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hInspect(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ADMIN_RENDER.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDelete(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ARTWORK.exec(p))) {
     if (!requireAdmin(req, res)) return true;
