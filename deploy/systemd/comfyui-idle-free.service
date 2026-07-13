@@ -1,0 +1,19 @@
+[Unit]
+# REQ-0158. Idle VRAM watchdog for comfyui.service: after IDLE_SECONDS with an
+# empty ComfyUI queue, POST /free to unload models and hand the VRAM back to the
+# driver. Keeps the port up (no ECONNREFUSED) without parking a checkpoint in the
+# 8 GB RTX 2080 forever.
+Description=ComfyUI idle VRAM watchdog (POST /free after idle)
+After=comfyui.service
+BindsTo=comfyui.service
+
+[Service]
+Type=simple
+Environment=IDLE_SECONDS=600
+Environment=POLL_SECONDS=30
+ExecStart=/usr/bin/python3 %h/backpack_ragnarok/tools/comfyui_idle_free.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

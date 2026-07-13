@@ -1,0 +1,19 @@
+[Unit]
+# REQ-0158. ComfyUI as a long-lived user service so 127.0.0.1:8188 is always
+# LISTENing: tools/art_route.py talks to it over plain HTTP and a down ComfyUI
+# surfaces in the art admin as "<urlopen error [Errno 111] Connection refused>".
+# WorkingDirectory MUST be the ComfyUI checkout -- it resolves models/, input/,
+# output/ and custom_nodes/ relative to cwd.
+Description=ComfyUI (127.0.0.1:8188) -- backpack_ragnarok art pipeline backend
+
+[Service]
+Type=simple
+WorkingDirectory=%h/ComfyUI
+ExecStart=%h/ComfyUI/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+# A cold FLUX load can take minutes; never let systemd think that is a hang.
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target
