@@ -133,29 +133,23 @@ from rembg import remove, new_session
 COMFY = "http://127.0.0.1:8188"
 
 # ---------------------------------------------------------------------------
-# Generation route. RATIFIED DEFAULT: flux2 (REQ-0136 bakeoff, user verdict
-# 2026-07-12). FLUX.2 klein 4B beat JuggernautXL V9 and DreamShaperXL Turbo on
-# every axis the bakeoff tested: brief compliance (near-white background 16/16
-# vs 5/16 and 1/16), painterly style, warm speed (10 s vs 40 s and 20 s) and
-# licence (Apache 2.0). The SDXL route stays working, for fallback and for
-# reproducing historical batches.
-ROUTE = "flux2"                  # "flux2" | "sdxl"
+# THE ROUTE AND THE STYLE LIVE IN ONE PLACE EACH. This file used to carry its own
+# copy of the FLUX config, the sampler defaults and the flux2 graph; three other
+# tools carried the same copy. REQ-0150 collapsed all four into tools/art_route.py
+# (route + graph) and tools/art_style.py (templates + prompt weighting). Do not
+# re-declare them here.
+#
+# The SDXL route is GONE, not frozen. It was retired by user decision (REQ-0150,
+# 2026-07-13) and every SDXL-era asset is being regenerated on the new art
+# direction, so there is nothing left for it to reproduce. It is in git history.
+import art_route as ROUTE                                              # noqa: E402
+import art_style as STYLE                                             # noqa: E402
 
-CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"   # sdxl route
+FLUX = ROUTE.FLUX
+COMFY = ROUTE.COMFY
+submit = ROUTE.submit
+wait_done = ROUTE.wait_done
 
-FLUX = {
-    "unet": "flux-2-klein-4b-Q8_0.gguf",      # Apache 2.0, unsloth GGUF Q8_0
-    "clip": "qwen_3_4b.safetensors",
-    "vae": "flux2-vae.safetensors",
-    "steps": 4, "cfg": 1.0, "sampler": "euler",
-}
-
-# Per-route sampler defaults; the CLI's --steps/--cfg still override.
-ROUTE_DEFAULTS = {
-    "flux2": {"steps": 4, "cfg": 1.0, "sampler": "euler", "scheduler": None},
-    "sdxl": {"steps": 30, "cfg": 6.5, "sampler": "dpmpp_2m",
-             "scheduler": "karras"},
-}
 DEFAULT_SEEDS = [101, 202, 303, 404]
 COMFY_INPUT_DIR = os.path.expanduser("~/ComfyUI/input")
 COMFY_OUTPUT_DIR = os.path.expanduser("~/ComfyUI/output")
@@ -194,40 +188,12 @@ def get_rembg_session_birefnet():
 
 
 # =====================================================================
-# ComfyUI API plumbing (same pattern as tools/gen_monster_art.py)
+# ComfyUI API plumbing lives in tools/art_route.py. It used to be copied here,
+# and the copy carried a 300 s wait_done timeout -- which is SHORTER THAN THIS
+# BOX'S COLD LOAD (450-540 s). The copy also silently shadowed the import above,
+# so the first image of every batch timed out and the rest succeeded. Do not
+# re-add it. `submit` and `wait_done` are bound to art_route's at the top.
 # =====================================================================
-def submit(wf):
-    data = json.dumps({"prompt": wf}).encode()
-    req = urllib.request.Request(
-        COMFY + "/prompt", data=data, headers={"Content-Type": "application/json"}
-    )
-    try:
-        r = json.load(urllib.request.urlopen(req, timeout=30))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"ComfyUI /prompt rejected workflow: {e} -- {body}")
-    if "error" in r:
-        raise RuntimeError(f"ComfyUI /prompt error: {r['error']}")
-    return r["prompt_id"]
-
-
-def wait_done(pid, timeout_s=300):
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        time.sleep(2)
-        try:
-            h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
-        except Exception:
-            continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            return h[pid]
-        # ComfyUI marks failed jobs as completed=False with a status_str;
-        # detect execution errors so callers don't spin the full timeout.
-        if pid in h:
-            status = h[pid].get("status", {})
-            if status.get("status_str") == "error":
-                return h[pid]
-    return None
 
 
 def check_conditioning_set_mask_available():
@@ -284,136 +250,25 @@ def build_cell_mask_image(mask_cells, bbox_cells, cell_px, gen_px, path_out):
 # Workflow construction
 # =====================================================================
 def build_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
-                    sampler, scheduler, mask_image_filename=None):
-    """Dispatch on the active ROUTE. Same (wf, prefix) contract either way."""
-    if ROUTE == "flux2":
-        return _wf_flux2(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps,
-                         cfg, sampler, mask_image_filename)
-    return _wf_sdxl(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
-                    sampler, scheduler, mask_image_filename)
-
-
-def _wf_flux2(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
-              sampler, mask_image_filename=None):
-    """FLUX.2 klein 4B distilled, GGUF. Mirrors ComfyUI's official
-    "Text to Image (Flux.2 Klein 4B Distilled)" template with UNETLoader
-    swapped for UnetLoaderGGUF. Proven by REQ-0136 (16/16 on brief).
-
-    THE NEGATIVE PROMPT IS INACTIVE HERE. Distilled klein samples at cfg 1.0,
-    where the guider applies no classifier-free guidance, and the official
-    graph feeds a ConditioningZeroOut of the POSITIVE in as the negative. A
-    caller's neg_prompt is accepted and DISCARDED -- style must be steered from
-    the POSITIVE prompt. Warned once per process on purpose: silently accepting
-    a negative that does nothing is how a style regression hides for a month.
-    """
-    if neg_prompt and not getattr(_wf_flux2, "_warned", False):
-        print("NOTE flux2 route: the negative prompt is INACTIVE at cfg 1.0 "
-              "(zeroed conditioning, official distilled graph). Steer style "
-              "from the POSITIVE prompt.", flush=True)
-        _wf_flux2._warned = True
-
-    prefix = f"gen_{seed}_{os.getpid()}"
-    wf = {
-        "1": {"class_type": "UnetLoaderGGUF",
-              "inputs": {"unet_name": FLUX["unet"]}},
-        "2": {"class_type": "CLIPLoader",
-              "inputs": {"clip_name": FLUX["clip"], "type": "flux2",
-                         "device": "default"}},
-        "3": {"class_type": "VAELoader", "inputs": {"vae_name": FLUX["vae"]}},
-        "4": {"class_type": "CLIPTextEncode",
-              "inputs": {"text": pos_prompt, "clip": ["2", 0]}},
-    }
-    positive_ref = ["4", 0]
-    if mask_image_filename:
-        # Same subject-placement bias as the SDXL route: mask the POSITIVE
-        # conditioning only. The negative is a zero-out of the UNMASKED
-        # positive -- zeroing the masked one would leave everything outside the
-        # mask unguided.
-        wf["10"] = {"class_type": "LoadImage",
-                    "inputs": {"image": mask_image_filename}}
-        wf["11"] = {"class_type": "ImageToMask",
-                    "inputs": {"image": ["10", 0], "channel": "red"}}
-        wf["12"] = {"class_type": "ConditioningSetMask",
-                    "inputs": {"conditioning": ["4", 0], "mask": ["11", 0],
-                               "strength": 1.0, "set_cond_area": "default"}}
-        positive_ref = ["12", 0]
-
-    wf["5"] = {"class_type": "ConditioningZeroOut",
-               "inputs": {"conditioning": ["4", 0]}}
-    wf["6"] = {"class_type": "EmptyFlux2LatentImage",
-               "inputs": {"width": gen_w, "height": gen_h, "batch_size": 1}}
-    wf["7"] = {"class_type": "KSamplerSelect",
-               "inputs": {"sampler_name": sampler or FLUX["sampler"]}}
-    wf["8"] = {"class_type": "Flux2Scheduler",
-               "inputs": {"steps": steps or FLUX["steps"],
-                          "width": gen_w, "height": gen_h}}
-    wf["9"] = {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}}
-    wf["13"] = {"class_type": "CFGGuider",
-                "inputs": {"model": ["1", 0], "positive": positive_ref,
-                           "negative": ["5", 0],
-                           "cfg": cfg if cfg is not None else FLUX["cfg"]}}
-    wf["14"] = {"class_type": "SamplerCustomAdvanced",
-                "inputs": {"noise": ["9", 0], "guider": ["13", 0],
-                           "sampler": ["7", 0], "sigmas": ["8", 0],
-                           "latent_image": ["6", 0]}}
-    wf["15"] = {"class_type": "VAEDecode",
-                "inputs": {"samples": ["14", 0], "vae": ["3", 0]}}
-    wf["16"] = {"class_type": "SaveImage",
-                "inputs": {"images": ["15", 0], "filename_prefix": prefix}}
+                   sampler, scheduler=None, mask_image_filename=None):
+    """One graph, from tools/art_route.py. `neg_prompt` and `scheduler` are dead
+    SDXL-era parameters: the route has no negative (art_route refuses one) and no
+    scheduler (Flux2Scheduler derives its own sigmas). They are accepted so old
+    defs files still load, and warned about once, rather than silently honoured."""
+    if neg_prompt and not getattr(build_workflow, "_warned_neg", False):
+        print("NOTE gen_negative is DEAD on this route (distilled klein, cfg 1.0, "
+              "zeroed conditioning). It is being DISCARDED, not applied. Steer "
+              "style from gen_prompt.", flush=True)
+        build_workflow._warned_neg = True
+    prefix = "gen_%d_%d" % (seed, os.getpid())
+    wf = ROUTE.build_txt2img(
+        pos_prompt, gen_w, gen_h, seed, prefix,
+        steps=steps or ROUTE.STEPS,
+        cfg=ROUTE.CFG if cfg is None else cfg,
+        sampler=sampler or ROUTE.SAMPLER,
+        mask_image=mask_image_filename)
     return wf, prefix
 
-
-def _wf_sdxl(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
-             sampler, scheduler, mask_image_filename=None):
-    """Build a ComfyUI graph: ckpt -> CLIP encode (pos/neg) -> [optional
-    ConditioningSetMask on positive only] -> EmptyLatentImage -> KSampler ->
-    VAEDecode -> SaveImage. filename_prefix is unique per (seed) call so the
-    caller can find its own output by glob without colliding with other
-    concurrent candidates (this tool runs jobs sequentially, but the prefix
-    also protects against stale files from a previous partial run)."""
-    wf = {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": CKPT}},
-        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": pos_prompt, "clip": ["1", 1]}},
-        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_prompt, "clip": ["1", 1]}},
-        "4": {"class_type": "EmptyLatentImage", "inputs": {"width": gen_w, "height": gen_h, "batch_size": 1}},
-    }
-
-    positive_ref = ["2", 0]
-    if mask_image_filename:
-        # LoadImage the mask PNG (already written into ~/ComfyUI/input/) ->
-        # ImageToMask(red channel; grayscale PNG decodes R=G=B) -> MASK ->
-        # ConditioningSetMask applied to the POSITIVE conditioning only
-        # (subject-placement bias must not affect the negative prompt).
-        wf["10"] = {"class_type": "LoadImage", "inputs": {"image": mask_image_filename}}
-        wf["11"] = {"class_type": "ImageToMask", "inputs": {"image": ["10", 0], "channel": "red"}}
-        wf["12"] = {
-            "class_type": "ConditioningSetMask",
-            "inputs": {
-                "conditioning": ["2", 0],
-                "mask": ["11", 0],
-                "strength": 1.0,
-                "set_cond_area": "default",
-            },
-        }
-        positive_ref = ["12", 0]
-
-    wf["5"] = {
-        "class_type": "KSampler",
-        "inputs": {
-            "model": ["1", 0], "positive": positive_ref, "negative": ["3", 0],
-            "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
-            "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
-        },
-    }
-    wf["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}}
-    prefix = f"item_gen_{seed}_{int(time.time() * 1000) % 100000}"
-    wf["7"] = {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": prefix}}
-    return wf, prefix
-
-
-# =====================================================================
-# Post-processing: downscale + alpha matte
-# =====================================================================
 def downscale_lanczos(src_path, dst_path, target_w, target_h):
     im = Image.open(src_path).convert("RGB")
     im = im.resize((target_w, target_h), Image.LANCZOS)
@@ -672,21 +527,20 @@ def run_rematte_only(outdir, id_filter=None):
 # Main per-item-per-seed job driver
 # =====================================================================
 def main():
-    global ROUTE
     ap = argparse.ArgumentParser(description="ComfyUI item-icon candidate generator (REQ-0073)")
     ap.add_argument("--defs", default="content/live/live_items.json")
     ap.add_argument("--ids", default=None, help="comma-separated id filter, e.g. blade,hilt")
     ap.add_argument("--outdir", default="content/batches/batch-003-item-icons/candidates")
     ap.add_argument("--candidates", type=int, default=4, help="number of candidates per item (<= len(--seeds))")
     ap.add_argument("--seeds", default="101,202,303,404")
-    ap.add_argument("--route", default=ROUTE, choices=("flux2", "sdxl"),
-                    help="generation route (default: the ratified flux2)")
-    # Sampler defaults are RESOLVED FROM THE ROUTE after parsing, not hardcoded
-    # here. 30 steps / cfg 6.5 are SDXL numbers.
+    # Sampler defaults come from tools/art_route.py -- the user's ratified
+    # settings (euler / 30 steps / cfg 1.0). Never hardcode them here.
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--cfg", type=float, default=None)
     ap.add_argument("--sampler", default=None)
-    ap.add_argument("--scheduler", default=None)
+    ap.add_argument("--scheduler", default=None,
+                    help="DEAD. Flux2Scheduler derives its own sigmas. Accepted "
+                         "so old invocations do not crash; ignored.")
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
     ap.add_argument("--no-matte", action="store_true",
@@ -702,15 +556,19 @@ def main():
                           "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
     a = ap.parse_args()
 
-    ROUTE = a.route
-    _d = ROUTE_DEFAULTS[ROUTE]
-    for _k in ("steps", "cfg", "sampler", "scheduler"):
-        if getattr(a, _k) is None:
-            setattr(a, _k, _d[_k])
-    print(f"route: {ROUTE}  steps={a.steps} cfg={a.cfg} "
-          f"sampler={a.sampler} scheduler={a.scheduler}", flush=True)
-    print(f"  unet={FLUX['unet']} clip={FLUX['clip']}" if ROUTE == "flux2"
-          else f"  ckpt={CKPT}", flush=True)
+    if a.steps is None:
+        a.steps = ROUTE.STEPS
+    if a.cfg is None:
+        a.cfg = ROUTE.CFG
+    if a.sampler is None:
+        a.sampler = ROUTE.SAMPLER
+    if a.scheduler:
+        print("NOTE --scheduler is DEAD on this route (Flux2Scheduler derives "
+              "its own sigmas). Ignored.", flush=True)
+    print(f"route: flux2  steps={a.steps} cfg={a.cfg} sampler={a.sampler}",
+          flush=True)
+    print(f"  unet={FLUX['unet']} clip={FLUX['clip']} vae={FLUX['vae']}",
+          flush=True)
 
     if a.rematte_only:
         # No ComfyUI, no --defs read needed for this path -- it operates
@@ -750,7 +608,12 @@ def main():
 
     for entry in entries:
         eid = entry["id"]
-        pos_prompt = entry["gen_prompt"]
+        # `gen_prompt` is the SUBJECT only. The style template lives in
+        # tools/art_style.py -- one place, so a direction change is one edit and
+        # not a sweep through every defs file. `kind` selects it ("item" or
+        # "unit"; both are the Anime template today, but they are allowed to
+        # diverge without touching this tool).
+        pos_prompt = STYLE.for_kind(entry.get("kind", "item"), entry["gen_prompt"])
         neg_prompt = entry.get("gen_negative", "")
         render = entry["gen_render"]
         gen_w, gen_h = render["gen_px"][0], render["gen_px"][1]
@@ -795,7 +658,7 @@ def main():
             try:
                 wf, prefix = build_workflow(
                     pos_prompt, neg_prompt, gen_w, gen_h, seed, a.steps, a.cfg,
-                    a.sampler, a.scheduler, mask_image_filename=mask_image_filename,
+                    a.sampler, None, mask_image_filename=mask_image_filename,
                 )
                 pid = submit(wf)
                 result = wait_done(pid)
