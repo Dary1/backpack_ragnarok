@@ -105,3 +105,23 @@ landed:
 - No `content/live/` writes; no pipeline-doc rewrite until there is a verdict.
 - No new separation model, no LayerDiffuse (REQ-0135b: NO-GO). If this REQ
   loses, *then* the model question reopens.
+
+
+---
+
+## ROUTE CORRECTION — REQ-0150 (Flux2化), user decision 2026-07-13
+
+This REQ is specced on **SDXL** (JuggernautXL V9, 30 steps, cfg 6.5,
+dpmpp_2m/karras) and says "no checkpoint change (that is REQ-0136)". REQ-0136 has
+since ratified **flux2**, and the user has retired SDXL entirely (REQ-0150).
+
+Before this draft is ratified it must be **re-based onto flux2**, and the A/B is
+not a mechanical port:
+
+- **The negative prompt is INACTIVE on flux2** (distilled klein, cfg 1.0, zeroed
+  conditioning). Any arm of this A/B that leans on `gen_negative` measures
+  nothing on the live route.
+- FLUX obeys a painterly brief directly and produced **16/16** near-white
+  backgrounds in the REQ-0136 bakeoff (vs 5/16 for V9). The matte pain this REQ
+  was written to attack **may already be smaller or gone** — re-measure the
+  premise on flux2 before spending a GPU slot on the A/B at all.

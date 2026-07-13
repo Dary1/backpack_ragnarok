@@ -142,10 +142,11 @@ route)** workaround — it still applies if you deliberately run `--route sdxl`.
 *(Historical: the checkpoint re-evaluation is CLOSED — REQ-0136 ratified flux2.
 See the ratified-route section at the end of this doc.)*
 
-**5-3. Generate** (ComfyUI at `127.0.0.1:8188`; the default route is **flux2**
-— `flux-2-klein-4b-Q8_0.gguf`, 4 steps, cfg 1.0, euler — per the ratified-route
-section at the end of this doc. `--route sdxl` still selects the
-`JuggernautXL_RunDiffusionPhoto2_V9_Final` fallback. For >30 s runs use
+**5-3. Generate** (ComfyUI at `127.0.0.1:8188`; the route is **flux2** —
+`flux-2-klein-4b-Q8_0.gguf`, 4 steps, cfg 1.0, euler — per the ratified-route
+section at the end of this doc. `--route sdxl` still exists but is **FROZEN:
+historical reproduction only, not a production route** (REQ-0150, user
+2026-07-13: one route for all image generation). For >30 s runs use
 `setsid nohup ... &` and poll the log):
 
 ```

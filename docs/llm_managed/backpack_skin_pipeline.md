@@ -136,13 +136,23 @@ BS-G5), or all orientations are authored/derived at build time.
   indistinguishable from the texture): **0.83–1.09 seamless vs 2.76–3.77
   control**, across 2 motifs × 2 seeds, zero overlap. Recipe is architectural
   and carries to any SDXL checkpoint — but **NOT to the FLUX family**, and that
-  now bites: REQ-0136 ratified **flux2 (FLUX.2 klein 4B) as the icon route**
-  (user, 2026-07-12, reconfirmed 2026-07-13). So the icon route and this recipe
-  no longer share a checkpoint. Skins stay on an **SDXL** checkpoint
-  (JuggernautXL V9) until circular padding is re-solved on FLUX by other means
-  (user direction, 2026-07-13) — or until the two routes are formally allowed to
-  diverge. **That divergence is an OPEN user decision (REQ-0150); do not take it
-  by accident, and do not "fix" this by pointing the skin route at flux2.**
+  now bites.
+
+  **THIS RECIPE IS FROZEN (user decision, 2026-07-13 — REQ-0150 "Flux2化").**
+  The program moves to **one route: flux2** for all image generation; SDXL is
+  retired. Circular Conv2d padding is SDXL-UNet-specific, so this recipe — the
+  skin pipeline's only green result — **does not survive the migration** and
+  must be **re-solved on FLUX** (a FLUX-native seamless analogue, or tiling
+  repaired in post on an oversized flux2 render). That spike is a **blocking
+  gate of REQ-0150**, and its verdict must be measured against the seam ratio
+  below, not asserted.
+
+  Until that spike lands: **no skin batch may be briefed**, and the numbers below
+  stand only as the SDXL-era baseline to beat. Do NOT "fix" this by pointing the
+  skin route at flux2 with the circular patches still in the graph (they are
+  silently inert there), and do NOT quietly re-introduce SDXL — if FLUX has no
+  answer, that is a finding to bring to the user, not a licence to fork the
+  route.
   Circular padding makes a tile *joinable*, not *tileable-looking* — the
   allover-pattern prompt discipline (no focal object, no vignette/gradient,
   uniform density edge to edge) is still mandatory.

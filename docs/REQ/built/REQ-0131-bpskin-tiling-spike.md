@@ -260,3 +260,22 @@ seamless-tiling support, not painterly quality alone.
 
 Artifacts: `content/batches/bpskin-spike-0131/` (sheets/, tiles/, harness/,
 cut_report.json, harness/results.json).
+
+
+---
+
+## SUPERSEDED IN PART — REQ-0150 (Flux2化), user decision 2026-07-13
+
+This file's forward instruction "**the strip re-run must use an SDXL-family
+checkpoint**" is **no longer live.** The user has since decided: **one route,
+flux2, everywhere** — SDXL is retired as a production route (REQ-0150).
+
+What that changes here:
+
+- The strip re-run does **not** go to SDXL. It waits on REQ-0150's blocking
+  spike: re-solve seamless tiling on FLUX (a FLUX-native circular-padding
+  analogue, or post-process seam repair on an oversized flux2 render).
+- Everything else in this file stands, and stands for the reason it always did:
+  the frame-sheet route is a **geometry** failure, not a checkpoint failure. A
+  prettier frame is still not a tileable band. That verdict is checkpoint-
+  independent and survives the migration intact.
