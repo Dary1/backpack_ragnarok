@@ -51,20 +51,20 @@
 // (ragnarok_einherjar / ragnarok_order_cache; files + pg parity,
 // server/migrations/005_ragnarok.sql).
 const fs = require('fs');
-const path = require('path');
-const os = require('os');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { getScheduleContent, makeEngine, genId } = require('./core.cjs');
 const { squadCanvasOf } = require('./squads.cjs');
 const { deployedUidSet } = require('./market.cjs');
 
-// Same repo-root resolution convention as services/market.cjs's
-// ITEMS_PATH (computed at module load from os.homedir(); tests remap
-// homedir + evict the module tree, so this rebinds exactly like the
-// market's own content paths do).
-const SEASONS_PATH = path.join(os.homedir(), 'backpack_ragnarok', 'content', 'live', 'seasons.json');
-const SIS_PATH = path.join(os.homedir(), 'backpack_ragnarok', 'content', 'live', 'live_sis.json');
+// REQ-0145a (sc): resolved via the ONE content-file loader
+// (lib/content_files.cjs; CONTENT_ROOT env override honored, default
+// byte-equivalent to the old os.homedir() anchoring). Captured at module
+// load; tests remap homedir / inject CONTENT_ROOT + evict the module
+// tree, so this rebinds exactly like before.
+const { contentPath } = require('../lib/content_files.cjs');
+const SEASONS_PATH = contentPath('live', 'seasons.json');
+const SIS_PATH = contentPath('live', 'live_sis.json');
 
 // ---------------------------------------------------------------------
 // Tunables ([TUNABLE] -- ragnarok-policy level, same posture as

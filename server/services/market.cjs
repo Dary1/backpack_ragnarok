@@ -63,18 +63,19 @@
 // pre-trade canvas (the exact bug class REQ-0041 documented). Same
 // known auto-save race posture, now applying to market settlement too.
 const fs = require('fs');
-const path = require('path');
-const os = require('os');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, getScheduleContent, genId } = require('./core.cjs');
 const { squadCanvasOf, squadUidSet } = require('./squads.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('./warehouse.cjs');
 
-// Same repo-root resolution convention as services/core.cjs (computed at
-// module load from os.homedir(); tests remap homedir + evict the module
-// tree, so this rebinds exactly like core's own content paths do).
-const ITEMS_PATH = path.join(os.homedir(), 'backpack_ragnarok', 'content', 'live', 'live_items.json');
+// REQ-0145a (sc): resolved via the ONE content-file loader
+// (lib/content_files.cjs; CONTENT_ROOT env override honored, default
+// byte-equivalent to the old os.homedir() anchoring). Captured at module
+// load; tests remap homedir / inject CONTENT_ROOT + evict the module
+// tree, so this rebinds exactly like before.
+const { contentPath } = require('../lib/content_files.cjs');
+const ITEMS_PATH = contentPath('live', 'live_items.json');
 
 // ---------------------------------------------------------------------
 // Tunables ([TUNABLE] -- market-policy level, same posture as
