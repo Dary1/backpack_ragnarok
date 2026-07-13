@@ -173,7 +173,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   return (
     <div data-testid="contentadmin" style={{ padding: 16, display: 'flex', gap: 24, color: '#eee' }}>
       <div style={{ minWidth: 340 }}>
-        <h2>Content Data Registry Admin</h2>
+        <h2>Content Data Registry Admin <a data-testid="cd-artadmin-link" href="#/artadmin" style={{ fontSize: 13, fontWeight: 400 }}>Art Admin →</a></h2>{/* REQ-0156 cross-link */}
         <div data-testid="cd-msg" style={{ minHeight: 20, color: '#C9A959' }}>{msg}</div>
         <fieldset style={{ border: '1px solid #555', padding: 10 }}>
           <legend>Create content</legend>
