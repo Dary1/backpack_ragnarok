@@ -166,6 +166,10 @@ was the most photoreal of the three. The whole SDXL family fights this brief.
    not fit alongside a resident model on the 23 GB box. Eight global OOM kills
    on 2026-07-12 came from exactly that overlap.
 
-The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is kept
-working for fallback and for reproducing historical batches:
-`gen_item_icons.py --route sdxl`.
+The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is
+**FROZEN — NOT a fallback, NOT a production route.** User decision 2026-07-13
+(REQ-0150, "Flux2化"): one route for all image generation. It is kept runnable
+for exactly one purpose — **reproducing historical SDXL-era batches**:
+`gen_item_icons.py --route sdxl`. Reaching for it because flux2 is inconvenient
+is a regression, not a fallback; if flux2 cannot do something, that is a finding
+for the user, not a reason to go back.
