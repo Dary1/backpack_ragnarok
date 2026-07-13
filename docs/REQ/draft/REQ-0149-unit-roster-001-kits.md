@@ -1,9 +1,12 @@
 # REQ-0149 — Unit Roster 001 — kit design & def authoring
 
 **Status:** Draft — the roster design below is USER-AUTHORED and binding, but it
-is NOT yet authorable as defs. Blocked on REQ-0127 (S7-accepted art;
-illustration-first law), REQ-0129 (frozen charge/trigger grammar), REQ-0128
-(`connection_shape` semantics), REQ-0130 (unit/1 schema + validation chain).
+is NOT yet authorable as defs.
+~~REQ-0127 (art)~~ **CLEARED 2026-07-13** — S7 ALL GREEN, 11 icons cover all 12 kits (§3b).
+~~REQ-0128 vocabulary~~ **CLEARED** — shipped as REQ-0128a (`vocab.json` v9).
+Still blocked on: **REQ-0129** (charge/trigger grammar not frozen), **REQ-0128b**
+(`connection_shape` semantics + board orientation), **REQ-0130** (unit/1 schema +
+validation chain), and **the open gaps in §3** — which are now the critical path.
 **Reserved:** 2026-07-13
 **Slug:** unit-roster-001-kits
 **Source:** user chat, 2026-07-13 (verbatim design, reproduced in §2); rulings
@@ -182,52 +185,41 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
   block" needs a number. Also confirm the self-shield verb exists in the grammar
   (Princess §2.8 needs a self-shield too — likely the same verb).
 
-## 3b. URGENT — the in-flight REQ-0127 art batch is running on a STALE roster
+## 3b. Art / roster reconciliation — CLOSED 2026-07-13
 
-Found 2026-07-13 by inspecting `content/batches/units-001-roster/unit_defs.json`
-on branch `req-0127-unit-icon-generation` (12 entries, candidates already rendered
-on flux2; batch PAUSED, box yielded).
+Raised as URGENT earlier today: the in-flight REQ-0127 batch held 12 entries
+including `unit-necromancer` (cut) and no `unit-littleprincess`. **Both halves are
+now resolved, and the art set matches the roster exactly.**
 
-Diffed against roster 001 as ruled today:
+- **necromancer** — already cut by REQ-0127 at S7 (`unit_icon_pipeline.md`:
+  *"UPDATE 2026-07-13 (REQ-0127 S7): necromancer was CUT as a unit by the user"*).
+  Not in the accepted set.
+- **littleprincess** — no longer needed as separate art. **G14 ruling: Princess and
+  Little Princess adopt the same artwork** (provisional, *一旦*).
+
+**The arithmetic closes:**
 
 | | |
 |---|---|
-| **In the art batch, but CUT from the roster** | `unit-necromancer` |
-| **In the roster, but NOT in the art batch** | `unit-littleprincess` |
+| S7-accepted icons (REQ-0127, `built/`) | **11** — elf, dwarf, thief, angel, shieldmaiden, priest, princess, lightcavalry, berserker, watcher, squire |
+| Roster 001 units (this REQ) | **12** — the 11 above, plus **Little Princess**, which reuses the `princess` icon |
 
-This is not cosmetic. Under the illustration-first law the **S7-accepted art set
-defines what may be authored as a def.** If REQ-0127 reaches S7 as it stands, the
-user will accept an icon for a unit that no longer exists and will have no icon for
-one that does — and REQ-0149 §5 will then be unable to author the roster it just
-ratified. **REQ-0127's batch must be corrected before its S7 review, not after.**
+**Illustration-first is satisfied: every one of the 12 defs maps to an S7-accepted
+icon.** REQ-0127 is in `built/` (S7 ALL GREEN) — the art axis no longer blocks §5.
 
-Demanded of REQ-0127:
-1. **Drop `unit-necromancer`** from `unit_defs.json` and bin its candidates (cut by
-   the user, 2026-07-13). Do not put it to S7.
-2. **Resolve G14 (below), then render whatever G14 rules** — at minimum a
-   `unit-littleprincess` entry is missing.
-
-- **G14 — Is "Princess" one unit or two?** *(OPEN — blocks the art fix)* §2.7 Little
-  Princess's charge effect is *"becomes the Princess Tower"*; §2.8 is a unit called
-  *"Princess"*. Two readings, and they demand different art:
-  - **(a) Two units.** Little Princess and Princess are separate defs with separate
-    icons; the "Princess Tower" is a *third* thing (a form → G4). Art must add
-    `unit-littleprincess`. Roster stays 12.
-  - **(b) One unit, two forms.** Little Princess *is* the base form and "Princess
-    (Tower)" is what she charges into. Then §2.8 is not a 12th unit but a form, art
-    needs a base + a transformed sheet, and **the roster is 11**, not 12.
-
-  The existing art batch quietly assumed neither — it rendered a single
-  `unit-princess` and no little princess. **Needs a user ruling; picking one would
-  fabricate design.**
+**Consequence for REQ-0130 (raised, owned there):** the schema sketch says
+`icon` is `"icon-<id>"` — derived 1:1 from the unit id. **Two defs now share one
+icon, so that convention is dead.** `icon` must become a free reference, and the
+validator must not assume `icon == "icon-" + id`.
 
 ## 4. Hard dependency: illustration-first
 
 `unit_icon_pipeline.md` G1 and REQ-0130 both state the law: **a def may only be
-authored against S7-accepted art.** No Unit icon exists — the Unit icon pipeline
-has never been executed (REQ-0148 finding). So §5 **cannot start** until REQ-0127
-produces art and the user accepts it at S7. As of 2026-07-13 REQ-0127 is still in
-`todo/`; the user reports art is in flight.
+authored against S7-accepted art.**
+
+**SATISFIED 2026-07-13.** REQ-0127 reached S7 ALL GREEN and sits in `built/`: 11
+accepted Unit icons, covering all 12 roster kits (§3b). **The art axis no longer
+blocks this REQ.** What still blocks it is the *grammar* — see §3.
 
 This ordering is not bureaucracy. The roster above is a set of *mechanics*; the
 icons are the characters. Authoring the defs first would quietly make the art a

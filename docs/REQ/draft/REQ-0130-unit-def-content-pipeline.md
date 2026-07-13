@@ -17,7 +17,8 @@ live target — the def-side counterpart of the ratified Unit Icon pipeline
 
 ## Schema (sketch; finalized in the pipeline doc)
 
-`unit/1`: `id` / `name` / `rarity` / `icon` (`"icon-<id>"`, always 1×1) /
+`unit/1`: `id` / `name` / `rarity` / `icon` (**a free reference, always 1×1 — NOT
+`"icon-<id>"`**; see the note below) /
 `connection_shape` (semantics from REQ-0128) / `charge`
 (`{trigger, capacity, spend}` in the REQ-0129 grammar) / `effects` (AST) /
 `sockets` (see REQ-0054 rescue below) / `flavor` / `i18n.ja`.
@@ -69,3 +70,14 @@ mandatory on every entry.
   necromancer cut; Watcher and Squire authored).
 - First batch reaches the user-review STOP with every def mapped to accepted
   art; zero live writes before green.
+
+## Schema correction forced by REQ-0149 (2026-07-13)
+
+The sketch above originally read `icon` = `"icon-<id>"` — the icon id derived 1:1
+from the unit id. **That convention is dead.** User ruling (REQ-0149 G14): Princess
+and Little Princess **adopt the same artwork**. Two defs, one icon.
+
+So `icon` must be an explicit, free reference, and the validator **must not** assume
+`icon == "icon-" + id`. It must instead assert that the referenced icon exists in the
+S7-accepted set. Roster 001 is **12 defs served by 11 icons** — a validator built on
+the old assumption would reject the roster the user just ratified.
