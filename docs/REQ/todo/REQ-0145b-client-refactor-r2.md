@@ -311,3 +311,80 @@ first (the api.ts/i18n.ts/index.css to be split must carry the 0156 +
 0057 tails), re-run the section 5.2 ownership re-audit on the merged
 tree, and re-record the e2e baseline (the live build changed twice
 today: 0156 dist, then 0057 dist).
+
+### 2026-07-14 (final round) — (ca)(ce)(cf) + full gates; todo -> built
+
+Master (post-0156+0057) merged into the branch first (zero conflicts;
+core.cjs kept both the shared-constants require and 0057's
+skillNamesById). Fresh CI-mode baseline vs the LIVE master build
+re-recorded: 9 failed / 155 passed (artadmin:38/113/147 + artinspect:21
++ contentadmin:37 + dex-card:65 + nav-routing:26 + schedule:1065 +
+warehouse-mjolnir:203).
+
+**Commits**
+- 866199a (ca) api split: src/api/{http,content,profile,dex,dismantle,
+  schedule,warehouse,workshop,market,ragnarok,admin}.ts; api.ts = pure
+  barrel + landing-zone note. GATE: scripts/dump_module_exports.mjs
+  (new, committed) runtime surface diff before/after EMPTY
+  (EXPORT_SURFACE_IDENTICAL); helpers (authHeaders/getJSON/scheduleJSON/
+  newIdemKey/artJson/contentJson) stay out of the public surface.
+- 96ac4e2 (ce) i18n split: src/i18n/{nav,common,canvas,dex,schedule,
+  warehouse,workshop,market,ragnarok,settings}.ts; i18n.ts = merging
+  barrel, t() byte-untouched, TranslationKey type-identical; DICT now a
+  deliberate named export (gate/tooling only). GATE (key parity): old
+  flat DICT vs new merged DICT -- en 624 / ja 624 keys, sets identical
+  BOTH directions, every value byte-equal (I18N_PARITY_GREEN).
+- e79b5ed (cf-1) index.css split: 13 src/styles/*.css files, PURE byte
+  partition (no added headers); index.css = ordered import list +
+  landing-zone note. GATE: concat sha256
+  c1e0f6290de39b7e710799ebb9c63fc384540aba1b3c1f54e157ce42a3d8d63c
+  identical to the old body (CONCAT_BYTE_EQUAL); vite even emits the
+  SAME content-hashed bundle css (index-COERtP6A.css) as pre-split.
+- 22a7c64 (cf-2) dead-CSS audit: 17 zero-reference rules deleted (all
+  listed in the commit message; notable keeps: .dex-detail-drawer* --
+  substring of the live -panes class + REQ-0120's left-to-avoid-churn
+  note). Method: literal grep over client/src + client/e2e + index.html
+  + 69 harvested dynamic prefixes; delete only when EVERY class in
+  EVERY comma-part is zero-ref; zero partials found; no @media emptied.
+  No screenshot fixtures exist in the e2e suite (spec's screenshot
+  clause vacuous -- recorded).
+- 8396478 (cg) README/architecture barrel-layout docs.
+
+**Acceptance criteria check (section 7)**
+- tsc -b + oxlint green at every commit (34 warnings == post-merge
+  master baseline, none in touched files); vite build green.
+- Grep gates: api.ts 44 / i18n.ts 69 / index.css 29 lines = pure
+  barrels/import-lists; zero duplicate impls outside excluded files
+  (only schedule/Monitor.tsx keeps its excluded-file copies); zero
+  local GRID_MIN|GRID_MAX|TAB_PULSE_MS|WAREHOUSE_CAP|
+  GACHA_COMMON_BP_COST literals; largest non-excluded hand-written
+  module = dex/DexAdmin.tsx 496 LOC < ~600.
+- FULL E2E vs the worktree build (:8901, CI mode): 9 failed / 155
+  passed. Stable failure set (8) IDENTICAL to the same-day baseline;
+  the 9th differs only by which of the two documented parallel-mode
+  flakes fired (baseline: warehouse-mjolnir:203; final: workshop:634).
+  Both flake specs re-run SERIALLY against this build: 15/15 passed.
+  Failure-set-identical gate: GREEN.
+- Key-parity and concat-equality gate outputs recorded above.
+- Adoption notes for excluded-file owners delivered in lib/time.ts,
+  lib/itemContent.ts, lib/contentCache.ts (REQ-0099/0098/0100/0156).
+
+**Amendments this round**
+6. (ce) spec named an admin i18n bucket -- zero admin-prefixed keys
+   exist (0151/0155/0156 surfaces carry no i18n keys): no admin module.
+   schedule.warehouse.* keys bucket into i18n/warehouse.ts under their
+   historical names (renaming keys = behavior change, out of scope).
+7. (cf) split is 13 files, not the spec's exact indicative list --
+   partition follows the file's REAL section banners in cascade order
+   (tokens/base/chrome live inside base.css pending a future tokens
+   pass; dex-masterdetail stays separate from dex.css because it lands
+   after market/ragnarok in the cascade; mjolnir stays where it always
+   was, in theme/mjolnir.css, imported first).
+8. DICT export added to i18n.ts (parity gate + tooling; UI code still
+   goes through t()) -- additive, no consumer change.
+
+**Status: BUILT.** All phases (ca)(cb)(cc)(cd)(ce)(cf)(cg) complete,
+all gates green. NOT merged/deployed (dist rebuild happens at merge
+via release.sh; web/app restored, uncommitted). NB REQ-0145a (server
+sibling) continues on this same branch -- merge/deploy of the branch
+should coordinate with its state.
