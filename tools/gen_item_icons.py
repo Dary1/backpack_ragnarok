@@ -188,40 +188,12 @@ def get_rembg_session_birefnet():
 
 
 # =====================================================================
-# ComfyUI API plumbing (same pattern as tools/gen_monster_art.py)
+# ComfyUI API plumbing lives in tools/art_route.py. It used to be copied here,
+# and the copy carried a 300 s wait_done timeout -- which is SHORTER THAN THIS
+# BOX'S COLD LOAD (450-540 s). The copy also silently shadowed the import above,
+# so the first image of every batch timed out and the rest succeeded. Do not
+# re-add it. `submit` and `wait_done` are bound to art_route's at the top.
 # =====================================================================
-def submit(wf):
-    data = json.dumps({"prompt": wf}).encode()
-    req = urllib.request.Request(
-        COMFY + "/prompt", data=data, headers={"Content-Type": "application/json"}
-    )
-    try:
-        r = json.load(urllib.request.urlopen(req, timeout=30))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"ComfyUI /prompt rejected workflow: {e} -- {body}")
-    if "error" in r:
-        raise RuntimeError(f"ComfyUI /prompt error: {r['error']}")
-    return r["prompt_id"]
-
-
-def wait_done(pid, timeout_s=300):
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        time.sleep(2)
-        try:
-            h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
-        except Exception:
-            continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            return h[pid]
-        # ComfyUI marks failed jobs as completed=False with a status_str;
-        # detect execution errors so callers don't spin the full timeout.
-        if pid in h:
-            status = h[pid].get("status", {})
-            if status.get("status_str") == "error":
-                return h[pid]
-    return None
 
 
 def check_conditioning_set_mask_available():
@@ -636,7 +608,12 @@ def main():
 
     for entry in entries:
         eid = entry["id"]
-        pos_prompt = entry["gen_prompt"]
+        # `gen_prompt` is the SUBJECT only. The style template lives in
+        # tools/art_style.py -- one place, so a direction change is one edit and
+        # not a sweep through every defs file. `kind` selects it ("item" or
+        # "unit"; both are the Anime template today, but they are allowed to
+        # diverge without touching this tool).
+        pos_prompt = STYLE.for_kind(entry.get("kind", "item"), entry["gen_prompt"])
         neg_prompt = entry.get("gen_negative", "")
         render = entry["gen_render"]
         gen_w, gen_h = render["gen_px"][0], render["gen_px"][1]

@@ -64,10 +64,23 @@ def submit(wf):
     data = json.dumps({"prompt": wf}).encode()
     req = urllib.request.Request(COMFY + "/prompt", data=data,
                                  headers={"Content-Type": "application/json"})
-    return json.load(urllib.request.urlopen(req, timeout=30))["prompt_id"]
+    try:
+        r = json.load(urllib.request.urlopen(req, timeout=30))
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError("ComfyUI /prompt rejected the workflow: %s -- %s" % (e, body))
+    if "error" in r:
+        raise RuntimeError("ComfyUI /prompt error: %s" % r["error"])
+    return r["prompt_id"]
 
 
-def wait_done(pid, timeout_s=3600):
+def wait_done(pid, timeout_s=1800):
+    """timeout_s must clear a COLD LOAD. The first generation of a run costs
+    450-540 s on this box (FLUX.2 + the Qwen3-4B encoder do not co-reside in 8 GB,
+    so ComfyUI swaps them in from disk). A 300 s timeout -- which is what the copy
+    of this function inside gen_item_icons.py used to carry -- fails the first
+    image of every batch and then succeeds on the rest, which looks like a flaky
+    model and is actually a stopwatch."""
     t0 = time.time()
     while time.time() - t0 < timeout_s:
         time.sleep(2)
@@ -75,7 +88,14 @@ def wait_done(pid, timeout_s=3600):
             h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
         except Exception:
             continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
+        if pid not in h:
+            continue
+        st = h[pid].get("status", {})
+        if st.get("completed"):
+            return h[pid]
+        # a failed job is completed=False with status_str="error" -- return it
+        # rather than spinning out the full timeout.
+        if st.get("status_str") == "error":
             return h[pid]
     return None
 
