@@ -150,5 +150,135 @@ render cascades its inspection rows.
   button.
 
 ## Implementation log
-(to be filled by the implementing session)
+### Session 2026-07-14 (implementing engineer, worktree req-0152-artwork-inspection-kits)
+
+**Architecture**
+- Kits are pure Python functions of (render PNG bytes + declared params), living in
+  `tools/inspect_kits.py`; `tools/inspect_job.py` is the CLI boundary the Node queue spawns
+  (mirrors REQ-0151's `art_job.py`). Identity/version/routing are in ONE manifest
+  `tools/inspect_kits.json`, read by BOTH the Node side (`server/services/kit_registry.cjs`:
+  `kits_for(kind)`, current `kit_version`, `kit_input_sha256`) and the runner (stamps
+  `kit_version`). Kits reuse the existing measurement code by IMPORT, never fork:
+  `gen_bpskin.validate()`, `gen_item_icons.matte_alpha_data()`, `tool_icon_score.score_candidate()`,
+  `inspect_seam.seam_metric()`.
+- Persistence: new table `render_inspections` (migration `008_render_inspections.sql`,
+  UNIQUE(render_id,kit_id,kit_version), FK ON DELETE CASCADE). ALL access via storage.cjs
+  (`storage_art.cjs` adds the CRUD, re-exported through the `...artStore` spread -- the sole
+  chokepoint holds). A same-version re-run overwrites in place; a kit_version BUMP inserts a
+  new row (history) and the UI shows the latest per (render,kit).
+- `kit_input_sha256 = sha256(image_sha256 | kit_id | kit_version | {kind,shape,gen_w,gen_h})`,
+  computed Node-side. Because `image_sha256` IS sha256 of the stored PNG bytes, staleness is
+  checkable in the route without re-hashing the blob: stale = (stored kit_version != current)
+  OR (stored hash != recompute). A re-generated image, an edited shape, or a version bump all
+  flip it. G2 verifies the stored hash equals a fresh Node recompute.
+- Queue (`art_jobs.cjs`): the one serialized worker now drains a HIGH-priority generation
+  queue before a LOW-priority inspection queue, so CPU-only kits never delay a pending GPU job
+  ("same single-GPU-safe queue, lower priority"). A successful render auto-enqueues
+  `kits_for(kind)`. Inspection failures log-and-skip (best effort) and never wedge the pump or
+  affect generation/adoption.
+
+**Kit roster v1 (versions + thresholds; [S7] = implementer-proposed, pending user ratification)**
+- `bpskin.frame_gate` v1 -- KEPT AS-IS (flux2-native, blocking inside the recipe; can emit FAIL).
+  Normalizes `gen_bpskin.validate()`'s 5-check into the table; `coverage` -> `silhouette_coverage`.
+  Runs validate() on the render PNG unless a real recorded report is present in `params`
+  (the REQ-0151 mock stub lacks validate fields, so it re-runs).
+- `matte.coverage_band` v1 -- band 0.02..0.90 (in-band PASS, out WARN, never rejects).
+  `gen_item_icons.matte_alpha()` refactored (the spec's UPDATE REQUIRED) into
+  `matte_alpha_data()` returning `{method, image_alpha_coverage, in_band, image}`; `matte_alpha()`
+  is now a thin wrapper (file write + logs unchanged -> callers unaffected). birefnet primary,
+  border-key fallback; a provided alpha PNG is measured directly.
+- `po.cell_packing` v1 -- weights scale 0.35 / coverage 0.50 / uniformity 0.15, content gate 0.02
+  (all from `tool_icon_score`). `winner` DEMOTED to an advisory note (art_pipeline.md §7). Emits
+  `cell_content_coverage` (= mean per-cell coverage), score, scale, terms.
+- `tiling.seam` v1 -- `seam_metric` LIFTED verbatim from `tools/spikes/req0150_flux_tiling.py` into
+  the real module `tools/inspect_seam.py`. PASS band [0.83, 1.10] [S7] (from REQ-0138's ratified
+  seamless range 0.83-1.09; upper rounded 1.09->1.10 for float safety); both ratio_x/ratio_y must
+  be in band else WARN + MANDATORY half-shift eyeball note.
+- `monster.render_sanity` v1 -- AUTHORED FRESH (monsters had zero inspection). Metrics
+  `image_alpha_coverage` (non-near-white subject fraction), `white_bg_fraction`,
+  `subject_bbox_fill`. Thresholds [S7]: content 0.02..0.92, white_bg >= 0.05.
+- `si.subject_frame` v1 -- AUTHORED FRESH (cell kits cannot serve SI: no shape). Single-centered-
+  subject + margin for 256x256 SIs. Thresholds [S7]: content 0.03..0.92, largest_component >= 0.80,
+  centroid_offset <= 0.25 (of half-diagonal), margin >= 0.02.
+- Metric naming disambiguated everywhere: `image_alpha_coverage` / `cell_content_coverage` /
+  `silhouette_coverage`.
+
+**Deprecation proposal (per the user's "propose deprecation" instruction) -- NOT wired**
+- `tool_fit_check.py` (check mode) + `build_fit_report.py` are SVG-sprite-era (they inspect
+  `<symbol>`s in the sprite SVG); the flux2 route emits raster PNG + matte, never SVG symbols, so
+  their containment check cannot run on a flux2 render as-is. They are left UNTOUCHED for the
+  legacy SVG sprite and deliberately NOT wired into this admin. If PO overflow-vs-cells checking
+  is wanted later, re-express it on the raster alpha (which `po.cell_packing` already loads) as a
+  new `po.cell_overflow` v1 kit -- a separate follow-up REQ, not this one. The 14 DEPRECATED
+  (REQ-0150) tools + the `tools/spikes/` HISTORY files stay reference-only; `build_flux2_gallery.py`
+  stays the whole-batch human-review surface (not a per-render kit).
+
+**Gate results (all machine gates GREEN)**
+- [x] G1 chokepoint + migration + cascade -- `008_render_inspections.sql` applied to the Supabase
+  pg; `inspection_test.cjs` (pg) proves upsert/list ONLY via storage.cjs, same-version overwrite,
+  version-bump history + latest-wins, and cascade-on-render-delete (delete render -> 0 inspection
+  rows). 5/5.
+- [x] G2 kit purity -- `inspect_kits_test.py` runs each adopted kit twice on identical input and
+  asserts byte-identical output (4/4 purity legs); `inspection_test.cjs` asserts `kit_input_sha256`
+  is deterministic, flips on image/version/shape change, and that the STORED hash equals a fresh
+  Node recompute after the auto-run flow.
+- [x] G3 golden vectors -- `inspect_kits_test.py` 31/31: `bpskin.frame_gate` reproduces the
+  wood_frame_s202 double-FAIL (verdict FAIL, margin_worst_side 0.798, rim_luma_delta 0.6,
+  silhouette_coverage 0.865, failing checks = {margin, rim}) AND all 5 recorded PASSes from
+  `content/batches/bpskin-frames-0150/frame_report.json` (silhouette_coverage matches each);
+  `matte.coverage_band` replays blade_c1_s101_alpha -> image_alpha_coverage 0.114983 (in-band PASS);
+  `po.cell_packing` replays the recorded scores.json entry -> score 54.97, scale_term/coverage_term
+  match, per_cell_coverage [0.1525, 0.1221]; `tiling.seam` reproduces the findings.json elven-s101-
+  seamless leg -> ratio_x 1.088181734085083, ratio_y 0.985894 (PASS, in the REQ-0138 band).
+- [x] G4 e2e (mocked, no GPU) -- `client/e2e/artinspect.spec.ts` PASSES (18.3s) via the isolated
+  bringup `tools/art_inspect_e2e.sh` (HOME-namespaced pg instance of this worktree,
+  ART_ROUTE_MOCK=1, ART_KIT_MATTE_METHOD=borderkey): create po sword -> generate -> kits auto-run
+  -> chips visible (po.cell_packing PASS green, matte.coverage_band WARN amber) -> expand metrics
+  -> persist across reload -> POST dev/bump-kit -> STALE badge -> re-run -> stale cleared (new row)
+  -> ADOPT despite the WARN (advisory doctrine) -> served 200.
+- [x] G5 hygiene -- kits write NO files (pure, return data); branch diff has no new PNG or report
+  file under content/ (the recipe-internal frame_report.json REQ-0150 owns is untouched); the
+  vite build output (web/app) was reverted (deploy rebuilds).
+- [ ] S7 -- user ratifies thresholds on real renders (esp. monster.render_sanity, si.subject_frame,
+  and the tiling.seam 1.09->1.10 rounding). OPEN, not this session.
+
+**Deviations from spec (documented)**
+- Generation/kit python resolvers (`ART_JOB_PYTHON` / `ART_KIT_PYTHON`): kits need
+  numpy/scipy/rembg and the mock render needs PIL, both of which live in the box's USER
+  site-packages under the real HOME -- unreachable once HOME is remapped for e2e namespace
+  isolation. The tests/e2e point both at the project venv (`~/backpack_ragnarok/.venv`, HOME-
+  independent); production keeps `python3` (real HOME -> deps present). Default unchanged for prod.
+- `ART_KIT_MATTE_METHOD=borderkey` + a dev-only `dev/bump-kit` hook (+ an in-memory kit-version
+  override in kit_registry): test/e2e affordances only. border-key gives a fast, model-free,
+  deterministic matte for e2e; bump-kit simulates a kit_version bump so the stale-badge + re-run
+  path is exercisable through the real HTTP route + UI without editing the manifest mid-run.
+- No new PNG committed; the matte golden vector uses a recorded, committed matted PNG (provided
+  alpha), so G3 needs no birefnet model. rembg/birefnet importability is asserted by
+  `inspect_job.py mode=verify` (all deps import: numpy/scipy/PIL/skimage/rembg).
+
+**Files touched**
+- New: `server/migrations/008_render_inspections.sql`, `server/services/kit_registry.cjs`,
+  `server/tests/inspection_test.cjs`, `tools/inspect_kits.py`, `tools/inspect_seam.py`,
+  `tools/inspect_kits.json`, `tools/inspect_job.py`, `tools/tests/inspect_kits_test.py`,
+  `tools/art_inspect_e2e.sh`, `client/e2e/artinspect.spec.ts`, `client/e2e/artinspect.config.ts`.
+- Modified: `server/storage_art.cjs`, `server/services/art_jobs.cjs`, `server/routes/art.cjs`,
+  `client/src/api.ts`, `client/src/artadmin/ArtAdminPage.tsx`, `tools/gen_item_icons.py`
+  (matte_alpha_data), `tools/ci.sh`.
+- No regression: `server/tests/api_test.cjs` 155/155 (files), `artwork_test.cjs` 6/6 (pg),
+  server tsc (checkJs) green, client `tsc -b && vite build` green.
+
+**Commits (branch req-0152-artwork-inspection-kits)**
+- 649e145 migration 008 + storage chokepoint + kit registry
+- 7195d40 inspection-kit library (6 kits) + CLI runner + matte_alpha_data refactor
+- 6894608 auto-run kits at lower priority + admin API (stale flags, re-run, dev/bump-kit)
+- df94bf3 admin UI verdict chips + stale badge + re-run
+- f1d1492 gate tests (G1-G4) + ci wiring
+- (this commit) REQ log
+
+**Open (not machine gates)**
+- S7 threshold ratification on real GPU renders (monster.render_sanity, si.subject_frame, tiling
+  band rounding).
+- Deploy-time web bundle rebuild (deferred to end of chain, as REQ-0151).
+- `po.cell_overflow` (raster overflow check) remains a proposed follow-up REQ if wanted.
+
                         
