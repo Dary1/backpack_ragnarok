@@ -27,6 +27,8 @@ of 2026-07-13 recorded in §0.
 with the roster — see §3b. G14 opened.)*
 | 2026-07-13 (later) | **G14 — CLOSED by user ruling** | **Princess and Little Princess adopt the SAME artwork** (*一旦* — provisional). They remain **two units / two defs sharing one icon**. Roster 001 stays at **12 units**, served by **11 icons**. Consequence for REQ-0130: the `icon: "icon-<id>"` convention (icon id derived 1:1 from unit id) **no longer holds** — the schema must permit two defs to reference one icon. Raised on REQ-0130. |
 | 2026-07-13 (later) | **connection_shapes** | **Register the shape vocabulary (飛車 / 角 / …) as a DICTIONARY now; implementation becomes its own REQ.** Done: `content/vocab.json` v9 gains `connection_shapes` (10 entries). REQ-0128 is split per the PROJECT.md multi-phase rule → **REQ-0128a** (vocabulary, this ruling, → built) / **REQ-0128b** (mechanics + engine, stays draft). |
+| 2026-07-13 (later) | **G3a — CLOSED by user ruling** | **The Thief's charge trigger is the firing of the Unit at the other end of its link** (*"Thiefも接続元が発火する事でトリガーになっている"*). This is an **already-attested charge source** in REQ-0129 ("connected-target's trigger firing") — **no grammar extension is needed and no rule was ever broken.** The "clock tower" was only ever flavour for *a connected Unit*; it never needed a definition, and it never needed to be killed. |
+| 2026-07-13 (later) | **Board orientation** | **前方 = the battlefield cell with the LOWER Y (up).** Reconciled to the engine's `[row,col]` / row-increases-downward convention: **forward = `DIRS[0]` = N = `[-1,0]`.** Recorded in `vocab.json.orientation`. Unblocks `lance` (Light Cavalry), `backward_line`, `forward_1` (Squire). |
 
 ## 1. Why this REQ exists
 
@@ -63,12 +65,11 @@ that the ratified vocabulary does not contain (→ G10, G11).
   cooldown of an item that carries its own cooldown.
 
 ### 3. Thief — `connection_shape: knight` (chess knight)
-- **Charge trigger:** "the connected clock tower fires". **The 2026-07-13 kill of
-  this term is WITHDRAWN — it rested on a fabricated ruling (see §0).** But the noun
-  *tower* is now deleted by the user's own ruling, so the phrase still cannot stand
-  as written. The user's reading on 2026-07-13 — *"isn't the clock tower just the
-  queen move? it's simply one of the connection methods"* — is **not yet a ruling and
-  is not adopted here.** **→ G3a: the user restates the Thief's charge trigger.**
+- **Charge trigger:** **the connected Unit fires.** *(RULED 2026-07-13 — G3a closed.)*
+  The old wording named a "clock tower"; with *tower* deleted, that was only ever
+  flavour for **a Unit at the other end of the link**. This is an already-attested
+  charge source in REQ-0129 — **no grammar extension, no rule violation.** The term
+  never needed defining, and never needed killing.
 - **Charge effect:** steals cooldown from the connected Unit's cooldown-bearing
   items, and clears the cooldown on its own items.
 
@@ -138,12 +139,10 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
 - **G3 — The Thief's "clock tower".** **REVERSED 2026-07-13 — see §0.** It was not
   a ghost; the ruling that called it one was forged. Superseded by the *tower*
   deletion ruling, which strikes the phrase for a different and legitimate reason.
-- **G3a — The Thief has no charge trigger.** *(OPEN)* With *tower* deleted, the kit
-  has a charge *effect* and no *source*. **The user must restate it.** Their own
-  hypothesis — that クロックタワー meant the **queen-move connection**, "simply one of
-  the connection methods" — would make the trigger read *"the connected Unit (queen
-  connection) fires"*. **That is a plausible reading, NOT a ruling. It will not be
-  adopted until the user states it.**
+- **G3a — The Thief's charge trigger.** **CLOSED 2026-07-13:** *the connected Unit
+  fires* — an existing REQ-0129 charge source. No grammar extension needed. The whole
+  "clock tower" episode cost this project two REQs' worth of churn and produced
+  nothing but a forged ruling; the term was always a legal, ordinary trigger.
 - **G4 — "Tower".** **CLOSED 2026-07-13 by user ruling: the word is DELETED. A unit
   is a unit.** No tower entity, kind, or form exists. Consequence: the three kits
   that leaned on the noun must be restated — Elf (G5), Thief (G3a), Little Princess

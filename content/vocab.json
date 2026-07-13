@@ -239,58 +239,164 @@
     "on_hp_below": "REQ-0077 Rev.2 (2026-07-07) design rationale, NOT genre-research-sourced: the classic 'enrage below X% HP' RPG monster/boss convention (orc Bloodlust, behemoth Last Stand). A state-crossing condition none of the existing event triggers can express (every_secs/battle_start are time-based; the OnHit/OnSquadHit/OnSquadBeenHit family is hit-reactive, not HP-level-reactive). Fires ONCE EVER per owner+threshold (user ruling 2026-07-12, REQ-0121: no re-arm on healing back above). Trigger param: hp_frac (0<hp_frac<1); fires when hp/hpMax first drops strictly below hp_frac while still alive. Domain ruling (user, 2026-07-09, REQ-0121): [PO, EnemySkill] -- a PO's HP referent is its OWNING BP's hp/hpMax (same object OnBPBeenHit keys off); NOT extended to SI/Unit (no HP concept of their own). NOTE: reopens combat_spec_draft.md's [LOCKED OQ2] 'dynamic buffs = minimal' default for this one case -- user-accepted in REQ-0077's review.",
     "buff_self": "REQ-0077 Rev.2 design rationale: same shape as buff_host (stat:'damage' only, per [LOCKED OQ7]) but targets the owner itself rather than a host PO. Needed because monsters have no host PO to buff (REQ-0078 entity hierarchy: a Monster is a flat actor, no BP/PO/SI/Unit). Used at battle_start (permanent fold at pack compile, sim/lib/packs.cjs) or on_hp_below (fires once; folds onto the owner's own strike/multi_strike ranges at crossing time -- sim/lib/hpbelow.cjs). Implemented by REQ-0121.",
     "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121.",
-    "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL."
+    "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL.",
+    "orientation": "REQ-0128b (user ruling 2026-07-13): forward = lower Y = up = engine DIRS[0] (N)."
   },
   "connection_shapes": {
     "queen": {
       "ja": "クイーン",
       "kind": "ray",
-      "note": "8-direction rays. The pre-pivot Linker default."
+      "note": "8-direction rays. The pre-pivot Linker default.",
+      "dirs": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
     },
     "rook": {
       "ja": "飛車",
       "kind": "ray",
-      "note": "Orthogonal rays."
+      "note": "Orthogonal rays.",
+      "dirs": [
+        0,
+        2,
+        4,
+        6
+      ]
     },
     "bishop": {
       "ja": "角",
       "kind": "ray",
-      "note": "Diagonal rays."
+      "note": "Diagonal rays.",
+      "dirs": [
+        1,
+        3,
+        5,
+        7
+      ]
     },
     "lance": {
       "ja": "香",
       "kind": "ray",
-      "note": "Single forward ray. Depends on the board orientation REQ-0128b owes."
+      "note": "Single forward ray. Orientation RULED 2026-07-13 (user): forward = lower Y = UP = engine DIRS[0] (N).",
+      "dirs": [
+        0
+      ]
     },
     "knight": {
       "ja": "桂",
       "kind": "offset",
-      "note": "Chess-knight fixed offsets."
+      "note": "Chess-knight fixed offsets.",
+      "offsets": [
+        [
+          -2,
+          -1
+        ],
+        [
+          -2,
+          1
+        ],
+        [
+          -1,
+          -2
+        ],
+        [
+          -1,
+          2
+        ],
+        [
+          1,
+          -2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          -1
+        ],
+        [
+          2,
+          1
+        ]
+      ]
     },
     "backward_line": {
       "ja": "後方直線",
       "kind": "ray",
-      "note": "Single backward ray. Depends on the board orientation REQ-0128b owes."
+      "note": "Single backward ray. Orientation RULED 2026-07-13 (user): forward = lower Y = UP = engine DIRS[0] (N).",
+      "dirs": [
+        4
+      ]
     },
     "adjacency": {
       "ja": "隣接",
       "kind": "offset",
-      "note": "All adjacent cells."
+      "note": "Orthogonally adjacent cells. NOTE: whether adjacency is unit-cell or BP-footprint is REQ-0128b open decision 2 — the offsets here assume unit-cell.",
+      "offsets": [
+        [
+          -1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          -1
+        ]
+      ]
     },
     "adjacency_lr": {
       "ja": "左右隣接",
       "kind": "offset",
-      "note": "PROVISIONAL (REQ-0149 Watcher). Axis-restricted adjacency; may instead become a parameter on `adjacency`. REQ-0128b rules."
+      "note": "PROVISIONAL name (REQ-0149 Watcher). Axis-restricted adjacency; may instead become an axis parameter on `adjacency`. REQ-0128b rules.",
+      "offsets": [
+        [
+          0,
+          -1
+        ],
+        [
+          0,
+          1
+        ]
+      ]
     },
     "forward_1": {
       "ja": "前方1マス",
       "kind": "offset",
-      "note": "PROVISIONAL (REQ-0149 Squire). Single forward cell. UNDEFINED until REQ-0128b defines a board orientation for Units."
+      "note": "PROVISIONAL (REQ-0149 Squire). Orientation RULED 2026-07-13 (user): forward = lower Y = UP = engine DIRS[0] (N).",
+      "offsets": [
+        [
+          -1,
+          0
+        ]
+      ]
     },
     "none": {
       "ja": "接続なし",
       "kind": "none",
-      "note": "Unit forms no links."
+      "note": "Unit forms no links.",
+      "dirs": []
     }
+  },
+  "orientation": {
+    "forward": "N",
+    "forward_offset": [
+      -1,
+      0
+    ],
+    "note": "User ruling 2026-07-13: 前方 = the battlefield cell with the LOWER Y (i.e. up). Engine convention is [row, col] with row increasing DOWNWARD (engine.js), so forward = row-1 = DIRS[0] = N. This is what `lance`, `backward_line` and `forward_1` mean. Before this ruling those three shapes were undefined and `backward-line` had shipped in the ratified vocabulary carrying the assumption unexamined."
   }
 }

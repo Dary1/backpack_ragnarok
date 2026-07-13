@@ -24,21 +24,36 @@ yet resolve one.
 | `queen` | クイーン | ray | 8-direction rays. The pre-pivot Linker default. |
 | `rook` | 飛車 | ray | Orthogonal rays. |
 | `bishop` | 角 | ray | Diagonal rays. |
-| `lance` | 香 | ray | Single forward ray. **Depends on the board orientation 0128b owes.** |
+| `lance` | 香 | ray | Single forward ray → `dirs [0]` (N). |
 | `knight` | 桂 | offset | Chess-knight fixed offsets. |
-| `backward_line` | 後方直線 | ray | Single backward ray. **Same orientation dependency.** |
+| `backward_line` | 後方直線 | ray | Single backward ray → `dirs [4]` (S). |
 | `adjacency` | 隣接 | offset | All adjacent cells. |
 | `adjacency_lr` | 左右隣接 | offset | **PROVISIONAL** — REQ-0149 Watcher. May instead become an axis parameter on `adjacency`. |
-| `forward_1` | 前方1マス | offset | **PROVISIONAL** — REQ-0149 Squire. **Meaningless until 0128b defines "forward".** |
+| `forward_1` | 前方1マス | offset | **PROVISIONAL** — REQ-0149 Squire. → `offsets [[-1,0]]`. |
 | `none` | 接続なし | none | Unit forms no links. |
 
 ## What this REQ deliberately does NOT do
 
 - No engine resolution, no link-graph construction, no client overlays — **REQ-0128b**.
-- No semantics. `forward_1` and `lance` and `backward_line` all presuppose a **board
-  orientation for Units that has never been defined anywhere in this repo.** The
-  dictionary registers the *names*; 0128b owes the *meaning*. This is recorded so the
-  gap cannot be lost again.
+- No engine wiring. The dictionary now carries concrete `dirs` / `offsets` for every
+  shape, but **nothing reads them yet** — resolution, the link graph and the overlays
+  are all REQ-0128b.
+
+## Board orientation — RULED 2026-07-13 (this REQ raised it; the user settled it)
+
+The directed shapes (`lance`, `backward_line`, `forward_1`) presupposed a board
+orientation for Units that **had never been defined anywhere in this repo** —
+`backward-line` shipped in the ratified vocabulary carrying the assumption unexamined.
+
+**User ruling: 前方 = the battlefield cell with the LOWER Y — i.e. up.**
+
+Reconciled against the engine, which is `[row, col]` with **row increasing downward**
+and an 8-point compass `DIRS[0] = [-1,0] = N` (`mock-src/engine.js:571`):
+
+> **forward = row − 1 = `DIRS[0]` = N.**
+
+Recorded in `vocab.json` as a top-level `orientation` key so it cannot be lost again.
+All ten shapes now have concrete `dirs` / `offsets`.
 - No def authoring — REQ-0149 / REQ-0130.
 
 ## Gates
