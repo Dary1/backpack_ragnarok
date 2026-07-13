@@ -1119,6 +1119,25 @@ async function main() {
   await AT('schedule: invalid token is rejected with 401 on every schedule route', async () => {
     const res = await scheduleReq('GET', '/api/schedule/rooms', 'totally-bogus-token-value');
     assert.strictEqual(res.status, 401);
+    assert.ok(String(res.body.error).startsWith('unauthorized: '), '401 wording: ' + res.body.error);
+  });
+
+  // REQ-0145a (se): the combined schedule/warehouse/workshop route module
+  // splits into three files -- pin the 401 preamble (status AND wording)
+  // for the warehouse and workshop families too, one representative route
+  // each, BEFORE the split, so the extracted shared preamble
+  // (lib/route_auth.cjs) provably reproduces today's behavior for every
+  // family, not just schedule rooms.
+  await AT('warehouse: invalid token is rejected with 401 (same preamble wording)', async () => {
+    const res = await scheduleReq('GET', '/api/warehouse', 'totally-bogus-token-value');
+    assert.strictEqual(res.status, 401);
+    assert.ok(String(res.body.error).startsWith('unauthorized: '), '401 wording: ' + res.body.error);
+  });
+
+  await AT('workshop: invalid token is rejected with 401 (same preamble wording)', async () => {
+    const res = await scheduleReq('POST', '/api/workshop/gacha', 'totally-bogus-token-value', { kind: 'common_bp' });
+    assert.strictEqual(res.status, 401);
+    assert.ok(String(res.body.error).startsWith('unauthorized: '), '401 wording: ' + res.body.error);
   });
 
   // REQ-0045 (b)+(c): deploy gate v2 replaces isSquadIndependent-as-gate
