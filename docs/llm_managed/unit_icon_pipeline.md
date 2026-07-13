@@ -234,10 +234,16 @@ was the most photoreal of the three. The whole SDXL family fights this brief.
    substantially multiple-object and cropped brief violations. Budget re-rolls
    by changing the PROMPT, not the seed.
 
-3. **RESTART ComfyUI between routes/legs -- `/free` is not enough.** ComfyUI's
-   `unload_models` returns weights to the Python allocator, not to the OS. A
-   long-lived process that has served SDXL and then FLUX reaches ~19 GB RSS,
-   fills swap, and the box stops responding (observed 2026-07-12). Generation
+3. **RESTART ComfyUI between routes/legs -- the problem is HOST RSS, not VRAM.**
+   Corrected 2026-07-14 (REQ-0158): the earlier wording "`/free` is not enough"
+   was wrong about VRAM. `POST /free {"unload_models":true,"free_memory":true}`
+   DOES release VRAM, even while idle -- `set_flag()` notifies the prompt worker
+   (`execution.py:1387`), which runs `unload_all_models()` + `gc.collect()` +
+   `soft_empty_cache()` (`torch.cuda.empty_cache()`) within ~10 s (`main.py:383`).
+   What `/free` does NOT do is shrink host RSS: freed weights return to the Python
+   allocator, not to the OS. A long-lived process that has served SDXL and then
+   FLUX reaches ~19 GB RSS, fills swap, and the box stops responding (observed
+   2026-07-12) -- THAT is why crossing model families needs a process restart. Generation
    and matting must also be separate phases (`--phase gen|matte`) with ComfyUI
    DOWN during matte: rembg `alpha_matting` peaks at 12-13 GB RSS, which does
    not fit alongside a resident model on the 23 GB box. Eight global OOM kills

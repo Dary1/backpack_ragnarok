@@ -122,11 +122,38 @@ async function getContentDefByName(system_name) {
   return def;
 }
 
+/** List all content_defs, each row enriched (REQ-0157, additive) with
+ * per-def aggregates in ONE SQL round-trip: variant_count / ok_count
+ * (status='ok') / failed_check_count (machine_check.overall='FAIL') /
+ * adopted_variant_no / last_variant_at, plus has_artwork_facet -- the same
+ * cross-table read artworkFacetExists() does, folded into the query (both
+ * tables carry the namespaced system_name). The REQ-0155 row shape is
+ * preserved; everything here is added ON TOP for the admin def browser. */
 async function listContentDefs() {
   const res = await q(
-    'SELECT * FROM content_defs WHERE system_name LIKE $1 ORDER BY created_at ASC, id ASC',
+    `SELECT d.*, av.variant_no AS adopted_variant_no,
+            agg.variant_count, agg.ok_count, agg.failed_check_count, agg.last_variant_at,
+            EXISTS (SELECT 1 FROM artworks a WHERE a.system_name = d.system_name) AS has_artwork_facet
+       FROM content_defs d
+       LEFT JOIN content_variants av ON av.id = d.adopted_variant_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int                                                     AS variant_count,
+                COUNT(*) FILTER (WHERE v.status = 'ok')::int                      AS ok_count,
+                COUNT(*) FILTER (WHERE v.machine_check->>'overall' = 'FAIL')::int AS failed_check_count,
+                MAX(v.created_at)                                                 AS last_variant_at
+           FROM content_variants v WHERE v.content_id = d.id
+       ) agg ON true
+      WHERE d.system_name LIKE $1
+      ORDER BY d.created_at ASC, d.id ASC`,
     [NS_PREFIX + '%']);
-  return res.rows.map(mapDef);
+  return res.rows.map((row) => Object.assign(mapDef(row), {
+    adopted_variant_no: row.adopted_variant_no == null ? null : row.adopted_variant_no,
+    variant_count: row.variant_count || 0,
+    ok_count: row.ok_count || 0,
+    failed_check_count: row.failed_check_count || 0,
+    last_variant_at: row.last_variant_at || null,
+    has_artwork_facet: row.has_artwork_facet === true,
+  }));
 }
 
 /** Update editable content_def fields (brief, schema_ref, gen_config). The
