@@ -388,3 +388,36 @@ all gates green. NOT merged/deployed (dist rebuild happens at merge
 via release.sh; web/app restored, uncommitted). NB REQ-0145a (server
 sibling) continues on this same branch -- merge/deploy of the branch
 should coordinate with its state.
+
+
+## Merge & deploy (2026-07-14, user-directed)
+
+Landing absorbed three more concurrent master advances before the
+merge: REQ-0157 (contentadmin overhaul -- its flat-api.ts/index.css
+additions were RELOCATED per this REQ's landing zones: ContentDefDto
+aggregates + recheckVariantApi into src/api/admin.ts, contentadmin CSS
+into src/styles/contentadmin.css imported last; the first real
+exercise of the barrel design, surface-parity re-verified against the
+0157-inclusive flat file), REQ-0158 (comfyui unit; brought sustained
+box load -- one transient inspection_test integration failure under
+that load re-passed 5/5 standalone on both this branch AND master),
+and REQ-0145a's own landing (storage/services/routes split + api_test
+suites; auto-merged cleanly, our shared-constants requires surviving
+inside the rewired services; tsconfig.server.json gained
+resolveJsonModule -- caught by ci.sh step 3.5 at the deploy gate).
+
+Final deploy-tree gates: ci.sh core CI GREEN (incl. 0145a suites
+157/157 both backends, 1213-assertion parity, content 13/13 +
+contentagg 4/4 + inspection 5/5, unit-icon + link-trace checks);
+client tsc/lint/build green; SURFACE_OK vs master flat api.ts; full
+e2e 12 failed / 154 passed = the 10-member stable pre-existing set
+(identical to the same-session live-master baseline) + the two
+documented parallel flakes, 15/15 on serial re-run against the deploy
+build. Dist verified deterministic (fresh rebuild byte-reproduces the
+committed web/app).
+
+Merged to master 906a1ed (fast-forward -- the branch tip already
+contained master, so no separate merge commit; the landing summary
+lives in this record and the dist/gate commits). backpack-api
+restarted; /api/health ok; LIVE smoke serial suite (smoke / dex /
+warehouse-mjolnir / workshop / market): 35/35 passed. built -> done.
