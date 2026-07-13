@@ -127,15 +127,25 @@ from the same formula, auto-computed by `gen_item_icons.py`. Aspect is
 inviolable = no anisotropic scaling / `common_content_pipeline.md` §2.)
 
 **5-2. `gen_prompt` / `gen_negative`.** Follow the template in
-`content/batches/batch-003-item-icons/style_guide.md`. JuggernautXL V9 has a
-strong photorealism bias, so **front-load stylization tokens** (painterly
-dark-fantasy game icon, NOT photorealistic). Specify a **near-white
+`content/batches/batch-003-item-icons/style_guide.md`. Specify a **near-white
 background** for matting. Keep names plain (`common_content_pipeline.md` §2,
-illustration-first). NOTE (SUPERSEDED 2026-07-12): the checkpoint re-evaluation is CLOSED -- REQ-0136 ratified flux2 (see the ratified-route section at the end of this doc). Historical note kept: checkpoint choice was under re-evaluation
-(REQ-0136); this subsection tracks its outcome.
+illustration-first).
 
-**5-3. Generate** (ComfyUI at `127.0.0.1:8188`, checkpoint
-`JuggernautXL_RunDiffusionPhoto2_V9_Final`; for >30 s runs use
+**On the ratified `flux2` route (REQ-0136, user verdict 2026-07-12): the
+NEGATIVE PROMPT IS INACTIVE** — distilled klein samples at cfg 1.0, where no
+classifier-free guidance is applied. `gen_negative` is accepted and DISCARDED;
+**steer style from the POSITIVE prompt.** FLUX also obeys a painterly brief
+directly, so the old "NOT photorealistic" prompting tax is gone. Front-loading
+stylization tokens against a photorealism bias was a **JuggernautXL V9 (sdxl
+route)** workaround — it still applies if you deliberately run `--route sdxl`.
+
+*(Historical: the checkpoint re-evaluation is CLOSED — REQ-0136 ratified flux2.
+See the ratified-route section at the end of this doc.)*
+
+**5-3. Generate** (ComfyUI at `127.0.0.1:8188`; the default route is **flux2**
+— `flux-2-klein-4b-Q8_0.gguf`, 4 steps, cfg 1.0, euler — per the ratified-route
+section at the end of this doc. `--route sdxl` still selects the
+`JuggernautXL_RunDiffusionPhoto2_V9_Final` fallback. For >30 s runs use
 `setsid nohup ... &` and poll the log):
 
 ```
