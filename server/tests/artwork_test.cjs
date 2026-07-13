@@ -1,0 +1,160 @@
+// backpack_ragnarok -- server/tests/artwork_test.cjs
+// REQ-0151 gates G1 (chokepoint + migration + constraints), G2 (sizing law),
+// G3 (provenance). Postgres-backed: SKIPPED cleanly when DATABASE_URL is
+// unset (same SKIP_PG discipline as the pg pass of api_test.cjs). Generation
+// runs through the REAL serialized queue + art_job.py, with ART_ROUTE_MOCK=1
+// (no GPU) and a temp ART_MODEL_DIR of tiny stand-in model files so model
+// content hashes are genuine + present.
+'use strict';
+const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+if (!process.env.DATABASE_URL) { console.log('SKIP artwork_test.cjs (no DATABASE_URL)'); process.exit(0); }
+process.env.STORAGE_BACKEND = 'pg';
+process.env.ART_ROUTE_MOCK = '1';
+
+// Isolated namespace: remap homedir before requiring storage so NAMESPACE is
+// unique to this run and never collides with live/e2e artwork rows.
+const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bpk-art-test-'));
+const realHome = os.homedir;
+os.homedir = () => tmpHome;
+
+// Temp model dir with tiny stand-in files named exactly like the real models.
+const modelDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bpk-art-models-'));
+for (const f of ['flux-2-klein-4b-Q8_0.gguf', 'qwen_3_4b.safetensors', 'flux2-vae.safetensors']) {
+  fs.writeFileSync(path.join(modelDir, f), 'STANDIN-' + f);
+}
+process.env.ART_MODEL_DIR = modelDir;
+
+const storage = require('../storage.cjs');
+const jobs = require('../services/art_jobs.cjs');
+const { deriveSize } = require('../services/art_sizing.cjs');
+const REPO = path.join(__dirname, '..', '..');
+const ROUTE_CONSTS = JSON.parse(execFileSync('python3', ['-c',
+  "import sys,json;sys.path.insert(0,'tools');import art_route as R;print(json.dumps({'steps':R.STEPS,'cfg':R.CFG,'sampler':R.SAMPLER,'unet':R.FLUX['unet'],'clip':R.FLUX['clip'],'vae':R.FLUX['vae']}))"],
+  { cwd: REPO }).toString());
+
+let pass = 0, fail = 0;
+async function AT(name, fn) { try { await fn(); console.log('PASS  ' + name); pass++; } catch (e) { console.log('FAIL  ' + name + ' -- ' + (e && e.message)); fail++; } }
+function sizeOf(cells) { const m = Array.from({ length: 5 }, () => Array(5).fill(false)); cells.forEach(([r, c]) => { m[r][c] = true; }); return deriveSize('po', { mask: m }); }
+
+async function waitForRender(name, seed, ms) {
+  const deadline = Date.now() + (ms || 20000);
+  while (Date.now() < deadline) {
+    const art = await storage.getArtworkByName(name);
+    const rs = await storage.listRenders(art.id);
+    const r = rs.find((x) => x.seed === seed);
+    if (r && (r.status === 'ok' || r.status === 'failed')) return r;
+    await new Promise((res) => setTimeout(res, 150));
+  }
+  throw new Error('render seed ' + seed + ' did not finish in time');
+}
+
+function maskOf(cells) { const m = Array.from({ length: 5 }, () => Array(5).fill(false)); cells.forEach(([r, c]) => { m[r][c] = true; }); return m; }
+
+async function runG2andG1() {
+  await AT('G2 sizing law reproduces the ratified examples', async () => {
+    assert.deepStrictEqual(sizeOf([[0, 0], [1, 0], [2, 0]]), { width: 256, height: 768 });
+    assert.deepStrictEqual(sizeOf([[0, 0], [0, 1], [1, 0], [1, 1]]), { width: 512, height: 512 });
+    assert.deepStrictEqual(sizeOf([[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]]), { width: 512, height: 768 });
+    assert.deepStrictEqual(sizeOf([[0, 0], [1, 0]]), { width: 256, height: 512 });
+    assert.deepStrictEqual(deriveSize('si', null), { width: 256, height: 256 });
+    assert.deepStrictEqual(deriveSize('monster', { w: 3, h: 4 }), { width: 384, height: 512 });
+    assert.deepStrictEqual(deriveSize('monster', { w: 6, h: 4 }), { width: 768, height: 512 });
+    assert.deepStrictEqual(deriveSize('monster', { w: 10, h: 10 }), { width: 1280, height: 1280 });
+    assert.deepStrictEqual(deriveSize('unit', null), { width: 512, height: 512 });
+    assert.deepStrictEqual(deriveSize('bpskin', null), { width: 1024, height: 1024 });
+  });
+  await AT('G1 system_name is UNIQUE (duplicate refused at storage)', async () => {
+    await storage.createArtwork({ system_name: 'g1_uniq', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
+    let threw = null;
+    try { await storage.createArtwork({ system_name: 'g1_uniq', kind: 'si', shape: null, gen_width: 256, gen_height: 256 }); } catch (e) { threw = e; }
+    assert.ok(threw && threw.code === 'DUPLICATE', 'duplicate system_name refused');
+  });
+  await AT('G1 per-artwork seed = max+1, explicit seed allowed, UNIQUE(artwork,seed)', async () => {
+    const a = await storage.createArtwork({ system_name: 'g1_seed', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
+    assert.strictEqual((await storage.createRender(a.id, null, 'queued')).seed, 1);
+    assert.strictEqual((await storage.createRender(a.id, null, 'queued')).seed, 2);
+    assert.strictEqual((await storage.createRender(a.id, 5, 'queued')).seed, 5);
+    assert.strictEqual((await storage.createRender(a.id, null, 'queued')).seed, 6);
+    let dup = null;
+    try { await storage.createRender(a.id, 5, 'queued'); } catch (e) { dup = e; }
+    assert.ok(dup && dup.code === 'DUPLICATE_SEED', 'duplicate seed refused');
+  });
+  await AT('G1 adopted render undeletable in storage; non-adopted deletable; switch re-adopt', async () => {
+    const a = await storage.createArtwork({ system_name: 'g1_adopt', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
+    const r1 = await storage.createRender(a.id, null, 'queued');
+    const r2 = await storage.createRender(a.id, null, 'queued');
+    await storage.updateRenderResult(r1.id, { status: 'ok', image: Buffer.from('a'), image_sha256: 'aa', final_prompt: 'p', params: {}, error: null });
+    await storage.updateRenderResult(r2.id, { status: 'ok', image: Buffer.from('b'), image_sha256: 'bb', final_prompt: 'p', params: {}, error: null });
+    await storage.adoptRender('g1_adopt', r1.seed);
+    let refused = null;
+    try { await storage.deleteRender('g1_adopt', r1.seed); } catch (e) { refused = e; }
+    assert.ok(refused && refused.code === 'ADOPTED_UNDELETABLE', 'adopted delete refused');
+    await storage.deleteRender('g1_adopt', r2.seed);
+    const r3 = await storage.createRender(a.id, null, 'queued');
+    await storage.updateRenderResult(r3.id, { status: 'ok', image: Buffer.from('c'), image_sha256: 'cc', final_prompt: 'p', params: {}, error: null });
+    await storage.adoptRender('g1_adopt', r3.seed);
+    await storage.deleteRender('g1_adopt', r1.seed);
+  });
+}
+
+async function runG3andFlow() {
+  await AT('G3 provenance: params == art_route constants; verbatim final_prompt; model hashes present; DB image round-trips', async () => {
+    const a = await storage.createArtwork({ system_name: 'g3_sword', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0], [2, 0]]) }, gen_width: 256, gen_height: 768, main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline' });
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: false });
+    const done = await waitForRender('g3_sword', r.seed, 30000);
+    assert.strictEqual(done.status, 'ok', 'render ok: ' + done.error);
+    const p = done.params;
+    assert.strictEqual(p.steps, ROUTE_CONSTS.steps, 'steps == route');
+    assert.strictEqual(p.cfg, ROUTE_CONSTS.cfg, 'cfg == route');
+    assert.strictEqual(p.sampler, ROUTE_CONSTS.sampler, 'sampler == route');
+    assert.strictEqual(p.models.unet.file, ROUTE_CONSTS.unet);
+    assert.strictEqual(p.models.clip.file, ROUTE_CONSTS.clip);
+    assert.strictEqual(p.models.vae.file, ROUTE_CONSTS.vae);
+    for (const k of ['unet', 'clip', 'vae']) assert.ok(/^[0-9a-f]{64}$/.test(p.models[k].sha256), k + ' sha256 present');
+    assert.deepStrictEqual(p.size, { width: 256, height: 768 });
+    const prev = await jobs.runPython({ kind: 'po', main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 768, seed: done.seed, mode: 'preview' });
+    assert.strictEqual(done.final_prompt, prev.final_prompt, 'final_prompt stored verbatim');
+    const img = await storage.getRenderImageBySeed('g3_sword', done.seed);
+    assert.ok(Buffer.isBuffer(img.image) && img.image.length > 0, 'image bytes in DB');
+    const crypto = require('crypto');
+    assert.strictEqual(crypto.createHash('sha256').update(img.image).digest('hex'), done.image_sha256, 'stored image sha matches');
+  });
+  await AT('flow: generate->adopt->export fires->serve->delete rules->re-adopt switches', async () => {
+    const exportRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'bpk-art-export-'));
+    process.env.ART_EXPORT_ROOT = exportRoot;
+    const { exportAdopted } = require('../services/art_export.cjs');
+    const a = await storage.createArtwork({ system_name: 'flow_pot', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0]]) }, gen_width: 256, gen_height: 512, main_object: 'potion', prompt_template: '{main_object}, white background, bold outline' });
+    const r1 = await storage.createRender(a.id, null, 'queued'); jobs.enqueue({ renderId: r1.id, artwork: a, seed: r1.seed, tiling: false });
+    await waitForRender('flow_pot', r1.seed, 30000);
+    const r2 = await storage.createRender(a.id, null, 'queued'); jobs.enqueue({ renderId: r2.id, artwork: a, seed: r2.seed, tiling: false });
+    await waitForRender('flow_pot', r2.seed, 30000);
+    await storage.adoptRender('flow_pot', r1.seed);
+    const rec = await exportAdopted('flow_pot');
+    assert.ok(fs.existsSync(rec.path), 'exported adopted PNG exists');
+    let refused = null;
+    try { await storage.deleteRender('flow_pot', r1.seed); } catch (e) { refused = e; }
+    assert.ok(refused && refused.code === 'ADOPTED_UNDELETABLE', 'adopted delete refused mid-flow');
+    await storage.adoptRender('flow_pot', r2.seed);
+    const adopted2 = await storage.getAdoptedRender('flow_pot');
+    assert.strictEqual(adopted2.seed, r2.seed, 're-adopt switched adopted seed');
+    await exportAdopted('flow_pot');
+    await storage.deleteRender('flow_pot', r1.seed);
+  });
+}
+
+(async () => {
+  await storage.clearAllArtworks();
+  await runG2andG1();
+  await runG3andFlow();
+  await storage.clearAllArtworks();
+  await storage.closeArtPool();
+  os.homedir = realHome;
+  console.log('\nartwork_test: ' + pass + ' passed, ' + fail + ' failed');
+  process.exit(fail ? 1 : 0);
+})().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
