@@ -216,6 +216,26 @@ async function hEdit(req, res, name, variant_no) {
   } catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
+// REQ-0157: re-run the four machine checks on an EXISTING (immutable)
+// variant and persist the fresh verdict through the SAME annotation path
+// ingest uses (the DB immutability trigger permits machine_check updates;
+// the asset-of-record is untouched). Recheck usually reproduces the same
+// verdict -- its value arrives when validators/vocab evolve after ingest.
+async function recheckVariant(name, variant_no) {
+  const def = await storage.getContentDefByName(name);
+  if (!def) throw Object.assign(new Error('no such content def: ' + name), { code: 'NOT_FOUND' });
+  const variant = await storage.getVariantByNo(name, variant_no);
+  if (!variant) throw Object.assign(new Error('no variant ' + variant_no + ' for ' + name), { code: 'NOT_FOUND' });
+  let mc;
+  try { mc = runChecks(def.kind, def.schema_ref, variant.data); }
+  catch (e) { mc = { overall: 'FAIL', checks: [{ name: 'runner', ok: false, applicable: true, detail: 'checks crashed: ' + e.message }], ran_at: new Date().toISOString() }; }
+  return storage.setVariantMachineCheck(variant.id, mc);
+}
+async function hRecheck(req, res, name, variant_no) {
+  try { const updated = await recheckVariant(name, variant_no); sendJSON(res, 200, { ok: true, variant: updated }); }
+  catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
+}
+
 // Adopt exactly one variant. A machine-check FAIL is adoptable ONLY behind
 // an explicit override confirm (body.override === true). Fires export.
 async function hAdopt(req, res, name) {
@@ -268,6 +288,7 @@ const RE_DEF = /^\/api\/content\/defs\/([^/]+)$/;
 const RE_COMMISSION = /^\/api\/content\/defs\/([^/]+)\/commission$/;
 const RE_VARIANTS = /^\/api\/content\/defs\/([^/]+)\/variants$/;
 const RE_REVIEW = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)\/review$/;
+const RE_RECHECK = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)\/recheck$/; // REQ-0157
 const RE_EDIT = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)\/edit$/;
 const RE_VARIANT = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)$/;
 const RE_ADOPT = /^\/api\/content\/defs\/([^/]+)\/adopt$/;
@@ -290,6 +311,7 @@ function tryContentRoutes(req, res, url, p) {
   }
   if ((m = RE_COMMISSION.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCommission(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_REVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hReview(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  if ((m = RE_RECHECK.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hRecheck(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_EDIT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hEdit(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_VARIANT.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDeleteVariant(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_VARIANTS.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hIngestVariants(req, res, decodeURIComponent(m[1]))); return true; }
@@ -306,4 +328,4 @@ function tryContentRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryContentRoutes, _normalizeProvenance: normalizeProvenance };
+module.exports = { tryContentRoutes, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant };

@@ -54,6 +54,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   ART_KIT_PYTHON="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}" STORAGE_BACKEND=pg node server/tests/inspection_test.cjs
   echo "==== [5.3/7] content-data registry tests (pg backend, REQ-0155 G1/G2/G3 + flow) ===="
   STORAGE_BACKEND=pg node server/tests/content_test.cjs
+  echo "==== [5.35/7] content-def list aggregates + recheck (pg backend, REQ-0157) ===="
+  STORAGE_BACKEND=pg node server/tests/contentagg_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi

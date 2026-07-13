@@ -1,275 +1,371 @@
 // client/src/contentadmin/ContentAdminPage.tsx -- REQ-0155 content-data
-// registry admin. One screen for ALL adoption-verified NON-VISUAL content:
-// for each content (kind + system_name) hold N generated data variants,
-// machine-check them, record an advisory agent review, let the USER adopt
-// exactly one, and serve/export the adopted variant -- identical in shape to
-// the artwork registry (REQ-0151), reusing REQ-0152's chip UX grammar.
-// Generation is agent-session driven (Q1): "Generate N" produces a commission
-// payload; the agent session POSTs the variants back to the receiving API
-// (exercised here via the paste-and-ingest box). Auth reuses admin.cjs
-// (item_admin) via the api.ts helpers' X-Auth-Token header.
-import { useCallback, useEffect, useState } from 'react';
+// registry admin, OVERHAULED by REQ-0157 into a MJOLNIR console sharing the
+// REQ-0156 artadmin grammar (def browser | commissioning/adjudication
+// workspace). Registry semantics are UNCHANGED (REQ-0155: variant-as-record,
+// immutability, machine checks advisory-loud, FAIL adoptable only behind an
+// explicit override, export on adoption, Q1 agent-session generation, Dex
+// LINK-FIRST): this page is a commissioning + adjudication desk for LLM-
+// generated content DATA, never an automated judge.
+// Auth reuses admin.cjs (item_admin) via the api.ts helpers' X-Auth-Token
+// header. Admin surface stays EN-only (locale accepted, unused).
+//
+// This root owns ALL server state + polling (def list 10 s, selected detail
+// 5 s -- agent sessions may POST variants at any time) and the safety rails
+// (adopt confirm with FAIL-override toggle, delete confirm, edit-as-new
+// modal with JSON validity + Format, toasts + the persistent aria-live
+// cd-msg line the e2e asserts on); the panes are dumb components.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Locale } from '../store';
 import {
-  listContentDefs, createContentDef, getContentDef, commissionContent,
+  listContentDefs, getContentDef, patchContentDef, commissionContent,
   ingestVariants, reviewVariant, editVariant, adoptVariantApi, deleteVariantApi,
+  recheckVariantApi,
 } from '../api';
-import type { ContentDefDto, ContentVariantDto, MachineCheck, AgentReview, ContentCommission } from '../api';
+import type { ContentDefDto, ContentVariantDto, ContentCommission } from '../api';
+import { copyText, prettyJson } from './contentShared';
+import { DefRail } from './DefRail';
+import { CreatePanel } from './CreatePanel';
+import { Workspace } from './Workspace';
+import type { DefDraft } from './Workspace';
 
-type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def';
-const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def'];
+interface Toast { id: number; text: string; kind: 'ok' | 'err' }
+interface ConfirmState { type: 'adopt' | 'delete'; no: number }
 
-function overallColor(o: string): string { return o === 'PASS' ? '#2e7d32' : '#992222'; }
-function checkColor(ok: boolean, applicable: boolean): string { return !applicable ? '#555' : ok ? '#2e7d32' : '#992222'; }
-function reviewColor(v: string): string { return v === 'recommend' ? '#2e7d32' : v === 'concern' ? '#a6791a' : '#666'; }
-
-function prettyLines(o: unknown): string[] { return JSON.stringify(o, Object.keys(o as object).length ? undefined : undefined, 1).split('\n'); }
-
-function CheckChips({ v, expanded, onToggle }: { v: ContentVariantDto; expanded: Record<string, boolean>; onToggle: (k: string) => void }) {
-  const mc: MachineCheck = v.machine_check || { overall: 'FAIL', checks: [] };
+function ConfirmDialog({ title, okLabel, okDisabled, onOk, onCancel, children }: {
+  title: string; okLabel: string; okDisabled?: boolean;
+  onOk: () => void; onCancel: () => void; children?: ReactNode;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
   return (
-    <div data-testid={'checks-' + v.variant_no} style={{ display: 'flex', flexWrap: 'wrap', gap: 3, alignItems: 'center' }}>
-      <span data-testid={'overall-' + v.variant_no} style={{ background: overallColor(mc.overall), color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 11, fontWeight: 700 }}>{mc.overall}</span>
-      {(mc.checks || []).map((c) => {
-        const key = v.variant_no + '|' + c.name;
-        return (
-          <span key={c.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            <button type="button" data-testid={'check-' + v.variant_no + '-' + c.name} onClick={() => onToggle(key)}
-              title={c.detail}
-              style={{ background: checkColor(c.ok, c.applicable), color: '#fff', border: 'none', padding: '1px 5px', borderRadius: 3, cursor: 'pointer', fontSize: 10 }}>
-              {c.name} {!c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
-            </button>
-            {expanded[key] && <span data-testid={'check-detail-' + v.variant_no + '-' + c.name} style={{ fontSize: 10, color: '#bbb', fontFamily: 'monospace', maxWidth: 260 }}>{c.detail}</span>}
-          </span>
-        );
-      })}
+    <div className="aa-scrim" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div data-testid="confirm-dialog" className="panel panel-pad aa-confirm" role="dialog" aria-modal="true">
+        <div className="den t-h3 gold-text">{title}</div>
+        <div className="aa-confirm-body">{children}</div>
+        <div className="aa-confirm-actions">
+          <button type="button" data-testid="confirm-ok" className="btn" disabled={okDisabled === true} onClick={onOk}>{okLabel}</button>
+          <button type="button" data-testid="confirm-cancel" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function ReviewChip({ v }: { v: ContentVariantDto }) {
-  const r: AgentReview | null = v.agent_review;
-  if (!r) return <span data-testid={'review-' + v.variant_no} style={{ fontSize: 10, color: '#888' }}>no review</span>;
-  return (
-    <span data-testid={'review-' + v.variant_no} title={r.rationale}
-      style={{ background: reviewColor(r.verdict), color: '#fff', padding: '1px 6px', borderRadius: 3, fontSize: 10 }}>
-      <b data-testid={'review-verdict-' + v.variant_no}>{r.verdict}</b>: {r.rationale.slice(0, 40)}{r.rationale.length > 40 ? '…' : ''}
-    </span>
-  );
-}
-
-// Minimal line-level JSON diff between two variants' data.
-function DiffView({ a, b }: { a: ContentVariantDto; b: ContentVariantDto }) {
-  const la = prettyLines(a.data), lb = prettyLines(b.data);
-  const n = Math.max(la.length, lb.length);
-  const rows = [];
-  for (let i = 0; i < n; i++) {
-    const l = la[i] ?? '', r = lb[i] ?? '';
-    const diff = l !== r;
-    rows.push(
-      <div key={i} style={{ display: 'flex', gap: 8, background: diff ? '#2a1a1a' : 'transparent' }}>
-        <pre style={{ margin: 0, flex: 1, color: diff ? '#e88' : '#9a9', fontSize: 11 }}>{l}</pre>
-        <pre style={{ margin: 0, flex: 1, color: diff ? '#8e8' : '#9a9', fontSize: 11 }}>{r}</pre>
-      </div>
-    );
-  }
-  return <div data-testid="diff-view" style={{ background: '#111', padding: 8, maxHeight: 320, overflow: 'auto' }}>
-    <div style={{ display: 'flex', gap: 8, color: '#C9A959', fontSize: 11 }}><div style={{ flex: 1 }}>variant {a.variant_no}</div><div style={{ flex: 1 }}>variant {b.variant_no}</div></div>
-    {rows}
-  </div>;
-}
-
 export function ContentAdminPage({ locale }: { locale: Locale }) {
   void locale;
+  // registry + selection
   const [defs, setDefs] = useState<ContentDefDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [def, setDef] = useState<ContentDefDto | null>(null);
   const [variants, setVariants] = useState<ContentVariantDto[]>([]);
-  const [artworkFacet, setArtworkFacet] = useState<boolean>(false);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [msg, setMsg] = useState<string>('');
-  // create form
-  const [kind, setKind] = useState<Kind>('po_def');
-  const [systemName, setSystemName] = useState<string>('');
-  const [brief, setBrief] = useState<string>('');
-  const [schemaRef, setSchemaRef] = useState<string>('content/vocab.json');
-  // commission + ingest
-  const [genN, setGenN] = useState<number>(5);
+  const [artworkFacet, setArtworkFacet] = useState(false);
+  // def edit draft (explicit Save; baseline for the dirty indicator)
+  const [draft, setDraft] = useState<DefDraft | null>(null);
+  const [baseline, setBaseline] = useState<DefDraft | null>(null);
+  const draftFor = useRef<string | null>(null);
+  // workflow strip
+  const [genN, setGenN] = useState(5);
   const [commission, setCommission] = useState<ContentCommission | null>(null);
-  const [ingestText, setIngestText] = useState<string>('');
-  // diff
-  const [diffA, setDiffA] = useState<number | ''>('');
-  const [diffB, setDiffB] = useState<number | ''>('');
-  // review + edit per-variant drafts
-  const [reviewDraft, setReviewDraft] = useState<Record<number, { verdict: string; rationale: string }>>({});
-  const [editOpen, setEditOpen] = useState<number | null>(null);
-  const [editText, setEditText] = useState<string>('');
+  const [ingestText, setIngestText] = useState('');
+  const [ingestBusy, setIngestBusy] = useState(false);
+  // adjudication UI
+  const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
+  const [reviewDrafts, setReviewDrafts] = useState<Record<number, { verdict: string; rationale: string }>>({});
+  const [diffPicks, setDiffPicks] = useState<number[]>([]);
+  const [diffPair, setDiffPair] = useState<{ a: number; b: number } | null>(null);
+  // overlays + feedback
+  const [createOpen, setCreateOpen] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [overrideOn, setOverrideOn] = useState(false);
+  const [editFor, setEditFor] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [msg, setMsg] = useState('');
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(1);
+
+  const report = useCallback((text: string, kind: 'ok' | 'err' = 'ok') => {
+    setMsg(text);
+    const id = toastId.current++;
+    setToasts((t) => [...t, { id, text, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+  }, []);
 
   const refreshList = useCallback(async () => {
-    try { const r = await listContentDefs(); setDefs(r.defs); } catch (e) { setMsg('list: ' + (e as Error).message); }
+    try { const r = await listContentDefs(); setDefs(r.defs); }
+    catch (e) { setMsg('list: ' + (e as Error).message); }
   }, []);
-  const loadDetail = useCallback(async (name: string) => {
-    try { const r = await getContentDef(name); setDef(r.def); setVariants(r.variants); setArtworkFacet(!!r.artwork_facet); } catch (e) { setMsg('detail: ' + (e as Error).message); }
-  }, []);
-  useEffect(() => { void refreshList(); }, [refreshList]);
-  useEffect(() => { if (selected) void loadDetail(selected); }, [selected, loadDetail]);
 
-  async function doCreate() {
-    setMsg('creating...');
+  const loadDetail = useCallback(async (name: string) => {
     try {
-      const r = await createContentDef({ system_name: systemName, kind, brief, schema_ref: schemaRef });
-      setMsg('created ' + r.def.system_name);
-      await refreshList(); setSelected(r.def.system_name);
-    } catch (e) { setMsg('create failed: ' + (e as Error).message); }
+      const r = await getContentDef(name);
+      setDef(r.def);
+      setVariants(r.variants);
+      setArtworkFacet(!!r.artwork_facet);
+      if (draftFor.current !== name) {
+        draftFor.current = name;
+        const d = { brief: r.def.brief || '', schema_ref: r.def.schema_ref || '' };
+        setDraft(d); setBaseline(d);
+      }
+    } catch (e) { setMsg('detail: ' + (e as Error).message); }
+  }, []);
+
+  useEffect(() => { void refreshList(); const t = setInterval(() => { void refreshList(); }, 10000); return () => clearInterval(t); }, [refreshList]);
+  useEffect(() => {
+    if (!selected) return;
+    void loadDetail(selected);
+    const t = setInterval(() => { void loadDetail(selected); }, 5000);
+    return () => clearInterval(t);
+  }, [selected, loadDetail]);
+
+  function selectDef(name: string) {
+    setCreateOpen(false); setSelected(name);
+    setCommission(null); setIngestText(''); setExpandedChecks({}); setReviewDrafts({});
+    setDiffPicks([]); setDiffPair(null); setConfirm(null); setEditFor(null);
   }
+
+  const dirty = !!(draft && baseline && (draft.brief !== baseline.brief || draft.schema_ref !== baseline.schema_ref));
+  const adoptedVariant = def && def.adopted_variant_id != null ? variants.find((v) => v.id === def.adopted_variant_id) : undefined;
+  const adoptedNo = adoptedVariant ? adoptedVariant.variant_no : null;
+
+  async function doSave() {
+    if (!selected || !draft || !baseline) return;
+    const body: Record<string, unknown> = {};
+    if (draft.brief !== baseline.brief) body.brief = draft.brief;
+    if (draft.schema_ref !== baseline.schema_ref) body.schema_ref = draft.schema_ref;
+    try {
+      const r = await patchContentDef(selected, body);
+      setDef(r.def);
+      const d = { brief: r.def.brief || '', schema_ref: r.def.schema_ref || '' };
+      setDraft(d); setBaseline(d);
+      report('saved ' + selected);
+      await refreshList();
+    } catch (e) { report('save failed: ' + (e as Error).message, 'err'); }
+  }
+
   async function doCommission() {
     if (!selected) return;
-    try { const r = await commissionContent(selected, genN); setCommission(r.commission); setMsg('commission for ' + r.commission.count + ' variants ready -- hand to an agent session'); }
-    catch (e) { setMsg('commission: ' + (e as Error).message); }
-  }
-  async function doIngest() {
-    if (!selected) return;
-    setMsg('ingesting...');
     try {
-      const parsed = JSON.parse(ingestText);
-      const arr = Array.isArray(parsed) ? parsed : (parsed.variants || [parsed]);
-      const r = await ingestVariants(selected, arr);
-      setMsg('ingested ' + r.created.length + ' variant(s); machine checks ran');
-      setIngestText(''); await loadDetail(selected);
-    } catch (e) { setMsg('ingest: ' + (e as Error).message); }
+      const r = await commissionContent(selected, genN);
+      setCommission(r.commission);
+      report('commission for ' + r.commission.count + ' variants ready -- hand to an agent session');
+    } catch (e) { report('commission: ' + (e as Error).message, 'err'); }
   }
+
+  async function doCopyCommission() {
+    if (!commission) return;
+    const ok = await copyText(JSON.stringify(commission, null, 2));
+    report(ok ? 'commission payload copied' : 'copy failed -- select the payload text manually', ok ? 'ok' : 'err');
+  }
+
+  async function doIngest(parsed: Array<{ data: Record<string, unknown>; provenance?: Record<string, unknown> }>) {
+    if (!selected || parsed.length === 0) return;
+    setIngestBusy(true);
+    try {
+      const r = await ingestVariants(selected, parsed as Array<{ data: Record<string, unknown>; provenance: Record<string, unknown> }>);
+      report('ingested ' + r.created.length + ' variant(s); machine checks ran');
+      setIngestText('');
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('ingest: ' + (e as Error).message, 'err'); }
+    finally { setIngestBusy(false); }
+  }
+
   async function doReview(no: number) {
     if (!selected) return;
-    const d = reviewDraft[no] || { verdict: 'neutral', rationale: '' };
-    try { await reviewVariant(selected, no, { verdict: d.verdict, rationale: d.rationale, agent: 'reviewer-agent', model: 'claude-opus-4.8' }); setMsg('review recorded for variant ' + no); await loadDetail(selected); }
-    catch (e) { setMsg('review: ' + (e as Error).message); }
+    const d = reviewDrafts[no] || { verdict: 'neutral', rationale: '' };
+    try {
+      await reviewVariant(selected, no, { verdict: d.verdict, rationale: d.rationale, agent: 'reviewer-agent', model: 'claude-opus-4.8' });
+      report('review recorded for variant ' + no);
+      await loadDetail(selected);
+    } catch (e) { report('review: ' + (e as Error).message, 'err'); }
   }
-  async function doAdopt(no: number, overall: string) {
-    if (!selected) return;
-    const override = overall === 'FAIL' ? window.confirm('Variant ' + no + ' FAILED machine checks. Adopt anyway (override)?') : false;
-    if (overall === 'FAIL' && !override) { setMsg('adoption cancelled (FAIL needs override)'); return; }
-    try { const r = await adoptVariantApi(selected, no, override); setMsg('adopted variant ' + no + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported')); await loadDetail(selected); await refreshList(); }
-    catch (e) { setMsg('adopt: ' + (e as Error).message); }
-  }
-  async function doDelete(no: number) {
-    if (!selected) return;
-    try { await deleteVariantApi(selected, no); setMsg('deleted variant ' + no); await loadDetail(selected); }
-    catch (e) { setMsg('delete: ' + (e as Error).message); }
-  }
-  async function doEditSubmit(no: number) {
+
+  async function doAdopt(no: number, override: boolean) {
     if (!selected) return;
     try {
-      const data = JSON.parse(editText);
-      const r = await editVariant(selected, no, data);
-      setMsg('edit created new variant ' + r.variant.variant_no + ' (parent ' + no + ')');
-      setEditOpen(null); setEditText(''); await loadDetail(selected);
-    } catch (e) { setMsg('edit: ' + (e as Error).message); }
+      const r = await adoptVariantApi(selected, no, override);
+      report('adopted variant ' + no + (override ? ' (override)' : '')
+        + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported'),
+        r.export_error ? 'err' : 'ok');
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('adopt: ' + (e as Error).message, 'err'); }
   }
 
-  const adoptedId = def ? def.adopted_variant_id : null;
-  const va = variants.find((v) => v.variant_no === diffA);
-  const vb = variants.find((v) => v.variant_no === diffB);
+  async function doDelete(no: number) {
+    if (!selected) return;
+    try {
+      await deleteVariantApi(selected, no);
+      report('deleted variant ' + no);
+      setDiffPicks((p) => p.filter((x) => x !== no));
+      setDiffPair((d) => (d && (d.a === no || d.b === no) ? null : d));
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('delete: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doRecheck(no: number) {
+    if (!selected) return;
+    try {
+      const r = await recheckVariantApi(selected, no);
+      const overall = (r.variant.machine_check && r.variant.machine_check.overall) || '?';
+      report('rechecked variant ' + no + ': overall ' + overall);
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('recheck: ' + (e as Error).message, 'err'); }
+  }
+
+  function openEdit(no: number) {
+    const v = variants.find((x) => x.variant_no === no);
+    if (!v) return;
+    setEditFor(no);
+    setEditText(prettyJson(v.data));
+  }
+
+  async function doEditSubmit() {
+    if (!selected || editFor == null) return;
+    try {
+      const data = JSON.parse(editText) as Record<string, unknown>;
+      const r = await editVariant(selected, editFor, data);
+      report('edit created new variant ' + r.variant.variant_no + ' (parent ' + editFor + ')');
+      setEditFor(null); setEditText('');
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('edit: ' + (e as Error).message, 'err'); }
+  }
+
+  function togglePick(no: number) {
+    setDiffPicks((p) => p.includes(no) ? p.filter((x) => x !== no) : (p.length >= 2 ? [p[1], no] : [...p, no]));
+  }
+
+  // edit-modal JSON validity (gates the submit; Format pretty-prints)
+  let editError: string | null = null;
+  if (editFor != null) {
+    try { JSON.parse(editText); } catch (e) { editError = (e as Error).message; }
+  }
+
+  const confirmVariant = confirm ? variants.find((v) => v.variant_no === confirm.no) : undefined;
+  const confirmOverall = confirmVariant ? ((confirmVariant.machine_check && confirmVariant.machine_check.overall) || 'FAIL') : 'FAIL';
+  const needsOverride = confirm != null && confirm.type === 'adopt' && confirmOverall === 'FAIL';
 
   return (
-    <div data-testid="contentadmin" style={{ padding: 16, display: 'flex', gap: 24, color: '#eee' }}>
-      <div style={{ minWidth: 340 }}>
-        <h2>Content Data Registry Admin <a data-testid="cd-artadmin-link" href="#/artadmin" style={{ fontSize: 13, fontWeight: 400 }}>Art Admin →</a></h2>{/* REQ-0156 cross-link */}
-        <div data-testid="cd-msg" style={{ minHeight: 20, color: '#C9A959' }}>{msg}</div>
-        <fieldset style={{ border: '1px solid #555', padding: 10 }}>
-          <legend>Create content</legend>
-          <div><label>kind{' '}
-            <select data-testid="cd-kind" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
-              {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-            </select>
-          </label></div>
-          <div><label>system_name <input data-testid="cd-system-name" value={systemName} onChange={(e) => setSystemName(e.target.value)} /></label></div>
-          <div><label>schema_ref <input data-testid="cd-schema-ref" value={schemaRef} onChange={(e) => setSchemaRef(e.target.value)} style={{ width: 180 }} /></label></div>
-          <div>brief<br /><textarea data-testid="cd-brief" value={brief} rows={2} cols={40} onChange={(e) => setBrief(e.target.value)} /></div>
-          <button data-testid="cd-create" type="button" onClick={() => { void doCreate(); }}>Create</button>
-        </fieldset>
-        <h3>Content defs</h3>
-        <ul data-testid="cd-list" style={{ listStyle: 'none', padding: 0 }}>
-          {defs.map((d) => (
-            <li key={d.system_name}>
-              <button type="button" data-testid={'cd-select-' + d.system_name} onClick={() => setSelected(d.system_name)}
-                style={{ fontWeight: selected === d.system_name ? 'bold' : 'normal' }}>
-                {d.system_name} [{d.kind}]{d.adopted_variant_id ? ' *' : ''}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div data-testid="contentadmin" className="ca-root">
+      <header className="aa-head">
+        <span className="den t-h2 gold-text">Content Data Registry</span>
+        <a data-testid="cd-artadmin-link" className="aa-crosslink t-micro" href="#/artadmin">Art Admin &rarr;</a>
+        <div data-testid="cd-msg" aria-live="polite" className="aa-msg t-micro">{msg}</div>
+      </header>
+      <div className="ca-cols">
+        <DefRail defs={defs} selected={selected} onSelect={selectDef} onNew={() => setCreateOpen(true)} />
+        <section className="ca-center">
+          {createOpen ? (
+            <CreatePanel existing={defs} report={report}
+              onClose={() => setCreateOpen(false)}
+              onCreated={(d) => {
+                setCreateOpen(false);
+                void refreshList().then(() => selectDef(d.system_name));
+              }} />
+          ) : def && selected && draft ? (
+            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} adoptedNo={adoptedNo}
+              draft={draft} onDraft={(p) => setDraft((d) => (d ? { ...d, ...p } : d))}
+              dirty={dirty} onSave={() => { void doSave(); }}
+              genN={genN} onGenN={setGenN}
+              commission={commission} onCommission={() => { void doCommission(); }}
+              onCopyCommission={() => { void doCopyCommission(); }}
+              ingestText={ingestText} onIngestText={setIngestText}
+              ingestBusy={ingestBusy} onIngest={(vs) => { void doIngest(vs); }}
+              expandedChecks={expandedChecks}
+              onToggleCheck={(key) => setExpandedChecks((e) => ({ ...e, [key]: !e[key] }))}
+              reviewDrafts={reviewDrafts}
+              onReviewDraft={(no, d) => setReviewDrafts((s) => ({ ...s, [no]: d }))}
+              onReviewSubmit={(no) => { void doReview(no); }}
+              onAskAdopt={(no) => { setOverrideOn(false); setConfirm({ type: 'adopt', no }); }}
+              onAskDelete={(no) => setConfirm({ type: 'delete', no })}
+              onEditOpen={openEdit}
+              onRecheck={(no) => { void doRecheck(no); }}
+              diffPicks={diffPicks} onTogglePick={togglePick}
+              onDiffAdopted={(no) => { if (adoptedNo != null) setDiffPair({ a: adoptedNo, b: no }); }}
+              onOpenPickedDiff={() => { if (diffPicks.length === 2) setDiffPair({ a: diffPicks[0], b: diffPicks[1] }); }}
+              diffPair={diffPair} onCloseDiff={() => setDiffPair(null)}
+              report={report} />
+          ) : (
+            <div className="panel panel-pad aa-placeholder">
+              <div className="den t-h3">No content def selected</div>
+              <div className="t-micro">Pick one in the browser on the left, or create a new one.</div>
+            </div>
+          )}
+        </section>
       </div>
-      <div style={{ flex: 1 }}>
-        {def ? (
-          <div data-testid="cd-detail">
-            <h3>{def.system_name} [{def.kind}]{adoptedId ? ' (adopted)' : ''}</h3>
-            <div data-testid="cd-brief-view" style={{ color: '#bbb', marginBottom: 6 }}>{def.brief}</div>
-            <div style={{ marginBottom: 6, fontSize: 12 }}>
-              {artworkFacet
-                ? <span data-testid="cd-artwork-facet" style={{ color: '#2e7d32' }}>artwork facet: present -- <a data-testid="cd-dex-link" href={'#/dex/' + def.system_name} style={{ color: '#C9A959' }}>view in Dex</a></span>
-                : <span data-testid="cd-artwork-facet" style={{ color: '#888' }}>artwork facet: none (data-only entity)</span>}
+
+      {confirm && selected && confirmVariant && (
+        confirm.type === 'adopt' ? (
+          <ConfirmDialog title={'Adopt variant ' + confirm.no + '?'} okLabel="Adopt + export"
+            okDisabled={needsOverride && !overrideOn}
+            onOk={() => { const no = confirm.no; const ov = needsOverride && overrideOn; setConfirm(null); void doAdopt(no, ov); }}
+            onCancel={() => setConfirm(null)}>
+            <div className="ca-confirm-checks">
+              <span className={'ca-overall ' + (confirmOverall === 'PASS' ? 'is-pass' : 'is-fail')}>{confirmOverall}</span>
+              {((confirmVariant.machine_check && confirmVariant.machine_check.checks) || []).map((c) => (
+                <span key={c.name} className={'aa-verdict ' + (!c.applicable ? 'ca-verdict--na' : c.ok ? 'aa-verdict--pass' : 'aa-verdict--fail')}>
+                  {c.name} {!c.applicable ? 'n/a' : c.ok ? 'ok' : 'x'}
+                </span>
+              ))}
             </div>
-            <fieldset style={{ border: '1px solid #555', padding: 8, marginBottom: 8 }}>
-              <legend>Generate (agent-session driven)</legend>
-              <label>N <input data-testid="cd-gen-n" type="number" min={1} max={20} value={genN} onChange={(e) => setGenN(Number(e.target.value) || 1)} style={{ width: 48 }} /></label>{' '}
-              <button data-testid="cd-commission" type="button" onClick={() => { void doCommission(); }}>Generate N more (commission)</button>
-              {commission && <pre data-testid="cd-commission-out" style={{ background: '#111', padding: 6, fontSize: 11, whiteSpace: 'pre-wrap' }}>{commission.instructions}</pre>}
-              <div style={{ marginTop: 6 }}>Ingest variants JSON (the receiving API -- an agent session POSTs here):</div>
-              <textarea data-testid="cd-ingest-json" value={ingestText} rows={4} cols={60} placeholder='{"variants":[{"data":{...},"provenance":{"source":"llm","model":"...","prompt":"...","params":{}}}]}' onChange={(e) => setIngestText(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
-              <div><button data-testid="cd-ingest" type="button" onClick={() => { void doIngest(); }}>Ingest + run machine checks</button></div>
-            </fieldset>
-            <h4>Variants ({variants.length})</h4>
-            <table data-testid="cd-variants" style={{ borderCollapse: 'collapse', width: '100%', fontSize: 12 }}>
-              <thead><tr style={{ textAlign: 'left', color: '#C9A959' }}><th>variant_no</th><th>machine checks</th><th>agent review</th><th>source</th><th>created</th><th>actions</th></tr></thead>
-              <tbody>
-                {variants.map((v) => {
-                  const isAdopted = adoptedId != null && v.id === adoptedId;
-                  const overall = (v.machine_check && v.machine_check.overall) || 'FAIL';
-                  const draft = reviewDraft[v.variant_no] || { verdict: 'neutral', rationale: '' };
-                  return (
-                    <tr key={v.variant_no} data-testid={'variant-' + v.variant_no} style={{ borderTop: '1px solid #333', background: isAdopted ? '#1c1c10' : 'transparent' }}>
-                      <td style={{ verticalAlign: 'top' }}>{v.variant_no}{isAdopted ? <b data-testid={'variant-adopted-' + v.variant_no}> ADOPTED</b> : ''}</td>
-                      <td style={{ verticalAlign: 'top' }}><CheckChips v={v} expanded={expanded} onToggle={(k) => setExpanded((e) => ({ ...e, [k]: !e[k] }))} /></td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <ReviewChip v={v} />
-                        <div style={{ marginTop: 3 }}>
-                          <select data-testid={'review-verdict-select-' + v.variant_no} value={draft.verdict} onChange={(e) => setReviewDraft((s) => ({ ...s, [v.variant_no]: { ...draft, verdict: e.target.value } }))}>
-                            <option value="recommend">recommend</option><option value="neutral">neutral</option><option value="concern">concern</option>
-                          </select>
-                          <input data-testid={'review-rationale-' + v.variant_no} placeholder="rationale (required)" value={draft.rationale} onChange={(e) => setReviewDraft((s) => ({ ...s, [v.variant_no]: { ...draft, rationale: e.target.value } }))} style={{ width: 120 }} />
-                          <button data-testid={'review-submit-' + v.variant_no} type="button" onClick={() => { void doReview(v.variant_no); }}>save</button>
-                        </div>
-                      </td>
-                      <td data-testid={'variant-source-' + v.variant_no} style={{ verticalAlign: 'top' }}>{v.provenance.source}{v.provenance.parent_variant_id ? ' (<-' + v.provenance.parent_variant_id + ')' : ''}</td>
-                      <td style={{ verticalAlign: 'top', color: '#999' }}>{(v.created_at || '').slice(0, 19).replace('T', ' ')}</td>
-                      <td style={{ verticalAlign: 'top' }}>
-                        <button data-testid={'adopt-' + v.variant_no} type="button" disabled={isAdopted} onClick={() => { void doAdopt(v.variant_no, overall); }}>Adopt</button>{' '}
-                        <button data-testid={'delete-' + v.variant_no} type="button" disabled={isAdopted} onClick={() => { void doDelete(v.variant_no); }}>Delete</button>{' '}
-                        <button data-testid={'edit-open-' + v.variant_no} type="button" onClick={() => { setEditOpen(v.variant_no); setEditText(JSON.stringify(v.data, null, 1)); }}>Edit as new</button>
-                        {editOpen === v.variant_no && (
-                          <div>
-                            <textarea data-testid={'edit-json-' + v.variant_no} value={editText} rows={6} cols={50} onChange={(e) => setEditText(e.target.value)} style={{ fontFamily: 'monospace', fontSize: 11 }} />
-                            <div><button data-testid={'edit-submit-' + v.variant_no} type="button" onClick={() => { void doEditSubmit(v.variant_no); }}>Create edited variant</button></div>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            <h4>JSON diff between two variants</h4>
-            <div style={{ marginBottom: 6 }}>
-              <label>A <select data-testid="diff-a" value={diffA} onChange={(e) => setDiffA(e.target.value ? Number(e.target.value) : '')}>
-                <option value="">-</option>{variants.map((v) => <option key={v.variant_no} value={v.variant_no}>{v.variant_no}</option>)}
-              </select></label>{' '}
-              <label>B <select data-testid="diff-b" value={diffB} onChange={(e) => setDiffB(e.target.value ? Number(e.target.value) : '')}>
-                <option value="">-</option>{variants.map((v) => <option key={v.variant_no} value={v.variant_no}>{v.variant_no}</option>)}
-              </select></label>
+            <div className="t-micro ca-confirm-review">
+              {confirmVariant.agent_review
+                ? <span>advisory review: <b>{confirmVariant.agent_review.verdict}</b> -- {confirmVariant.agent_review.rationale}</span>
+                : <span>no advisory review recorded (never binding either way)</span>}
             </div>
-            {va && vb && <DiffView a={va} b={vb} />}
+            <div className="t-micro">This becomes THE served data for <b>{selected}</b> and fires the content/
+              export. Switchable any time; history stays.</div>
+            {needsOverride && (
+              <label className="ca-override">
+                <input type="checkbox" data-testid="adopt-override" checked={overrideOn}
+                  onChange={(e) => setOverrideOn(e.target.checked)} />
+                <span>Override FAILED machine checks: this data could not integrate -- the export may
+                  break consumers. I adopt it anyway.</span>
+              </label>
+            )}
+          </ConfirmDialog>
+        ) : (
+          <ConfirmDialog title={'Delete variant ' + confirm.no + '?'} okLabel="Delete"
+            onOk={() => { const no = confirm.no; setConfirm(null); void doDelete(no); }}
+            onCancel={() => setConfirm(null)}>
+            <div className="t-micro">Variants live ONLY in the registry DB (no backup) -- a deleted variant is
+              gone; its variant_no is never reused. The provenance recipe carries NO regeneration guarantee.</div>
+          </ConfirmDialog>
+        )
+      )}
+
+      {editFor != null && (
+        <div className="aa-scrim" onClick={(e) => { if (e.target === e.currentTarget) setEditFor(null); }}>
+          <div className="panel panel-pad ca-editor" role="dialog" aria-modal="true">
+            <div className="aa-ws-head">
+              <span className="den t-h3 gold-text">Edit variant {editFor} as a NEW variant</span>
+              <button type="button" data-testid="edit-close" className="btn btn-ghost aa-btn-xs" onClick={() => setEditFor(null)}>close</button>
+            </div>
+            <div className="t-micro">Variants are immutable: this creates a new human_edit variant with
+              parent lineage v{editFor}; the original is untouched.</div>
+            <textarea data-testid={'edit-json-' + editFor} className="aa-input aa-textarea" value={editText}
+              spellCheck={false} onChange={(e) => setEditText(e.target.value)} />
+            <div data-testid={'edit-valid-' + editFor} className={'ca-edit-valid ' + (editError ? 'is-err' : 'is-ok')}>
+              {editError ? 'invalid JSON: ' + editError : 'valid JSON'}
+            </div>
+            <div className="ca-editor-actions">
+              <button type="button" data-testid={'edit-format-' + editFor} className="btn btn-ghost aa-btn-sm"
+                disabled={!!editError}
+                onClick={() => { try { setEditText(prettyJson(JSON.parse(editText))); } catch { /* gated by disabled */ } }}>Format</button>
+              <button type="button" data-testid={'edit-submit-' + editFor} className="btn aa-btn-sm"
+                disabled={!!editError}
+                onClick={() => { void doEditSubmit(); }}>Create edited variant</button>
+            </div>
           </div>
-        ) : <div>Select or create a content def.</div>}
+        </div>
+      )}
+
+      <div className="aa-toasts" aria-hidden="true">
+        {toasts.map((t) => (
+          <div key={t.id} className={'aa-toast' + (t.kind === 'err' ? ' is-err' : '')}>{t.text}</div>
+        ))}
       </div>
     </div>
   );
