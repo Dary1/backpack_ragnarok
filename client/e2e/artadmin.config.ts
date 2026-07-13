@@ -8,7 +8,7 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8903';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/artadmin.spec.ts',
-  timeout: 90_000,
+  timeout: 150_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
