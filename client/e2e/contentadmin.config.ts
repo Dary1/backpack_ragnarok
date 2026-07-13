@@ -17,6 +17,8 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
     headless: true,
+    // REQ-0157: the workflow strip's one-click copy uses navigator.clipboard
+    permissions: ['clipboard-read', 'clipboard-write'],
     viewport: { width: 1400, height: 1000 },
     actionTimeout: 20_000,
     navigationTimeout: 25_000,
