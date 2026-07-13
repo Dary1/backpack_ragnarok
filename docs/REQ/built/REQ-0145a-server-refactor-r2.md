@@ -342,6 +342,29 @@ integrated tree (hardened dev seams + forecast + artqueue tests included).
   Wipe-collateral failures from the incident window disappeared with the
   registry recovery, as predicted.
 
+
+### Post-deploy verification (2026-07-14, user-directed merge + deploy)
+
+- Landing: final master sync 2210a51 (REQ-0157/0158 in; clean auto-merge, gates
+  re-verified: test:quick green, api_test pg 157/157 w/ 1213 parity, artwork 6/6,
+  artqueue 4/4, contentagg 4/4 -- one transient red round was self-inflicted
+  overlapping test invocations, resolved on clean rerun), then master merge
+  770e86d (house-style merge commit).
+- Deploy:  @ master 770e86d; service
+  active. NOTE: the restart also brought REQ-0157's server half (listContentDefs
+  aggregates + recheck API) live, which its own built-record was waiting on; and
+  it landed mid-run of the 0145b session's e2e (box lock held by their worktree)
+  -- any blip in that run is this restart, not their code.
+- Live smoke (all through the refactored paths): /api/health ok; /api/content
+  8 items / 6 sis / 1 tm (lib/content_files loader); /api/art/artworks 56
+  (storage facade + registry intact post-incident); /api/content/defs 22;
+  /api/schedule/dungeons 1 dungeon / 4 formations; GET /api/warehouse no-token
+  -> 200 dev-fallback (split warehouse route); POST /api/workshop/gacha bogus
+  token -> 401 "unauthorized: invalid_token" (route_auth preamble wording,
+  byte-exact).
+- Status: merged, deployed, verified -> done (user directive "マージとデプロイ",
+  2026-07-14).
+
 ### Deploy note
 
 Implementation-complete on branch `req-0145a-server-refactor-r2`; NOT merged,
