@@ -123,3 +123,176 @@ Three-pane MJOLNIR console, visual grammar shared with the REQ-0156 artadmin:
   fallback for odd contexts.
 - Recheck on immutable data usually reproduces the same verdict; its value arrives when
   validators/vocab move — cheap to keep, tested at the API level.
+
+## Implementation log
+### Session 2026-07-14 (implementing engineer, worktree req-0157-contentadmin-ux-overhaul)
+
+**Architecture decisions**
+- Server stays a SMALL additive extension (no migration, chokepoint intact).
+  `storage_content.cjs listContentDefs()` computes the per-def aggregates in
+  ONE SQL round-trip (the exact mirror of REQ-0156's listArtworks): LEFT JOIN
+  on the adopted variant for `adopted_variant_no` + LEFT JOIN LATERAL
+  count/filter aggregate (`variant_count`, `ok_count` on status='ok',
+  `failed_check_count` on machine_check->>'overall'='FAIL',
+  `last_variant_at`) + an EXISTS subquery on artworks for
+  `has_artwork_facet` -- the same cross-table read artworkFacetExists() does,
+  folded into the query (both tables carry the namespaced system_name).
+  REQ-0155 row shape preserved; every existing caller untouched.
+- `routes/content.cjs`: POST /api/content/defs/<name>/variants/<no>/recheck
+  (item_admin gate, same handler/regex style as the file). The core is
+  extracted as recheckVariant() (exported `_recheckVariant` for the test):
+  re-runs content_checks.runChecks on the immutable variant's data and
+  persists via storage.setVariantMachineCheck -- the exact annotation path
+  ingest uses, which the DB immutability trigger permits (asset-of-record
+  untouched). Missing def/variant -> NOT_FOUND -> 404.
+- Client split into components mirroring artadmin (REQ-0156):
+  `contentShared.ts` (RESERVED-name mirror + live create validation, the
+  REQ-0155 positional line-diff algorithm kept VERBATIM as diffRows(),
+  parseIngest() powering the live parse preview, copyText() with a
+  navigator.clipboard -> select-all-textarea fallback, lineage/format
+  helpers), `DefRail` (search over system_name+brief, kind chips with
+  counts, adoption filter, rows with kind chip / variant count / FAIL
+  warning dot / "vN <star>" adopted badge / artwork-facet glyph ->
+  #/artadmin), `CreatePanel` (dedicated create flow whose state is NEVER fed
+  by selection), `Workspace` (header + brief/schema_ref draft with dirty
+  chip + explicit Save + facet/Dex links, the numbered workflow strip, the
+  variant list, the diff mount), `VariantCard`, `DiffView` (side-by-side,
+  sticky header naming both variants + verdict chips). The root
+  `ContentAdminPage` owns all server state + polling (def list 10 s,
+  selected detail 5 s -- agent sessions may POST variants at any moment) and
+  the safety rails (confirm dialogs, edit modal, toasts + the persistent
+  aria-live cd-msg line). Export name + `{ locale }` signature preserved
+  (EN-only surface).
+- Workflow strip = the Q1 loop as numbered steps: (1) Commission N (default
+  from gen_config.generate_n, else the per-kind 5) -> the FULL commission
+  JSON in a payload panel with ONE-CLICK COPY; (2) Ingest textarea whose
+  live PARSE PREVIEW ("5 variants parsed, data + provenance present" /
+  first parse or shape error) GATES the Ingest button (accepts a bare
+  array, {variants:[...]} or a single {data,provenance}; flags missing
+  provenance); (3) adjudicate on the cards below (checks auto-run
+  server-side on ingest, unchanged).
+- Adopt confirm dialog replaces window.confirm: summarizes the overall +
+  four check chips + the advisory review (rationale inline); when
+  overall=FAIL the OK button stays DISABLED until the explicit
+  adopt-override toggle is set, beside the consequence warning ("data that
+  could not integrate -- the export may break consumers"). Export
+  success/warning surfaces explicitly ("+ exported" / "(export warning:
+  ...)") in the message + toast. Delete gets its own confirm (no-backup /
+  variant_no-never-reused note); edit-as-new is a modal with live JSON
+  validity indicator + Format button, submit disabled while invalid.
+- Diff: A/B picked via per-card checkboxes (artadmin compare grammar) +
+  one-click "Diff vs adopted" per card; the line-diff algorithm untouched,
+  restyled side-by-side with changed lines tinted per side.
+- CSS: marked `/* REQ-0157 contentadmin */` section appended to
+  client/src/index.css, MJOLNIR tokens only. SHARED-PRIMITIVE decision:
+  instead of physically moving rules into a third block (cascade-order
+  risk), contentadmin's markup reuses the aa-* utility classes of the
+  REQ-0156 section VERBATIM (rail/rows/filters, inputs, sm/xs buttons, form
+  fields, adopt badge, verdict pills, scrim/confirm, toasts) -- one source,
+  zero duplication -- and the REQ-0157 section holds ONLY page-specific
+  ca-* classes (layout, the 5 content-kind palette entries, workflow strip,
+  variant cards, diff, override, edit modal). The REQ-0156 section is
+  byte-untouched, so artadmin stays pixel-identical by construction; its
+  e2e was re-run green as the behavioural proof.
+
+**Gate results (all machine gates GREEN)**
+- [x] G1 build+types: client `pnpm exec tsc -b` + `pnpm run build` EXIT 0;
+  server checkJs typecheck (tsconfig.server.json) EXIT 0; content_test.cjs
+  13/13 (pg); NEW contentagg_test.cjs 4/4 (pg; wired into ci.sh as
+  [5.35/7]); api_test.cjs 155/155 (files) AND 155/155 (pg);
+  artwork_test.cjs 6/6 (pg).
+- [x] G2 e2e: client/e2e/contentadmin.spec.ts 3/3 PASSED in 11.0 s via
+  tools/content_admin_e2e.sh (TMPHOME-namespaced pg instance, ports
+  8921/8922/8923, box lock through tools/e2e_run.sh):
+  (1) create via cd-new panel -> commission (payload contains "Generate 5",
+  one-click copy -> msg 'copied') -> garbage paste shows 'parse error' with
+  Ingest DISABLED -> valid paste shows '5 variants parsed' -> ingest ->
+  5x overall PASS + all four named check chips -> review recorded ->
+  per-variant JSON viewer (+ copy) -> A/B diff via card picks -> adopt v1
+  through the confirm dialog -> serve + /meta -> one-click diff-vs-adopted
+  (header names '(adopted)') -> confirm-delete v2 -> edit modal (invalid
+  JSON flagged + submit disabled, Format pretty-prints) -> human_edit v6 ->
+  re-adopt v6 -> served variant_no 6 -> recheck v1 (msg 'rechecked variant
+  1: overall PASS');
+  (2) FAIL variant: rail FAIL dot visible; adopt dialog BLOCKS (confirm-ok
+  disabled) until adopt-override is toggled; override adoption exports and
+  the rail shows the v1 adopted badge;
+  (3) search narrows by system_name AND brief substring; kind chips +
+  adoption filters narrow the list.
+  ZERO-REGRESSION PROOF (shared CSS): tools/artadmin_e2e.sh re-run ->
+  artadmin.spec.ts 3/3 in 33.0 s.
+- [x] G3 hygiene: no variant data under content/ in the diff; no
+  PNG/lockfile/dist commits (web/ rebuilt for the e2e serves, then restored
+  via git checkout + git clean); pnpm only; `git diff master...HEAD --stat`
+  = exactly the intended 16 files (master itself moved ahead with the
+  REQ-0057 merge during this session -- merge-base diff is the honest one).
+- [ ] S7 user acceptance on the live deployed screen -- orchestrator owns
+  merge + deploy (approval carried from the 2026-07-14 chat).
+
+**e2e testid delta (spec C, documented in the same commit)**
+- PRESERVED: contentadmin, cd-msg (+ its asserted substrings 'exported'
+  etc.), cd-list, cd-select-<name>, cd-detail, cd-kind / cd-system-name /
+  cd-schema-ref / cd-brief / cd-create (now on the cd-new panel),
+  cd-gen-n, cd-commission, cd-commission-out (still contains "Generate 5"),
+  cd-ingest-json, cd-ingest, variant-<no>, variant-adopted-<no>,
+  variant-source-<no>, checks-<no>, overall-<no>, check-<no>-<name>,
+  check-detail-<no>-<name>, review-<no>, review-verdict-<no>,
+  review-verdict-select-<no>, review-rationale-<no>, review-submit-<no>,
+  adopt-<no>, delete-<no>, edit-open-<no>, edit-json-<no>,
+  edit-submit-<no>, cd-artwork-facet, cd-dex-link, cd-artadmin-link,
+  diff-view.
+- REPLACED: diff-a/diff-b number dropdowns -> per-card diff-pick-<no>
+  checkboxes + cd-diff-open (artadmin compare grammar).
+- CHANGED FLOW: adopt/delete now confirm-gated (confirm-dialog /
+  confirm-ok / confirm-cancel; FAIL adopt adds the adopt-override toggle);
+  create opens via cd-new.
+- NEW: cd-search, cd-filter-kind-<k|all>, cd-filter-adoption-<f>,
+  cd-faildot-<name>, cd-adopted-badge-<name>, cd-facet-<name>, cd-new,
+  cd-create-panel, cd-create-close, cd-create-error, cd-edit-brief,
+  cd-edit-schema-ref, cd-save, cd-dirty, cd-adopted-state,
+  cd-artadmin-goto, cd-copy-commission, cd-parse-preview, cd-diff-open,
+  diff-close, diff-adopted-<no>, json-toggle-<no>, json-view-<no>,
+  json-copy-<no>, recheck-<no>, review-rationale-full-<no>,
+  edit-valid-<no>, edit-format-<no>, edit-close.
+
+**Test evidence**
+- server/tests/contentagg_test.cjs: 4 passed / 0 failed (aggregates incl.
+  status-vs-check-count orthogonality + adopted_variant_no + facet
+  cross-read; empty-def zeros/nulls + REQ-0155 shape preservation; recheck
+  rewrites a stale synthetic FAIL to a fresh PASS with all four checks and
+  a newer ran_at while id/data_sha256/variant_no stay identical; recheck
+  NOT_FOUND for missing def/variant).
+- server/tests/content_test.cjs 13/13; api_test.cjs 155/155 (files) +
+  155/155 (pg); artwork_test.cjs 6/6.
+- e2e: contentadmin.spec.ts 3 passed (11.0 s); artadmin.spec.ts 3 passed
+  (33.0 s, regression re-run).
+
+**Commits (branch req-0157-contentadmin-ux-overhaul)**
+- 8439be8 server: listContentDefs aggregates + recheck endpoint;
+  contentagg_test 4/4 wired into ci.sh [5.35/7]
+- b6ccca4 client: MJOLNIR console overhaul (def browser / workflow strip /
+  variant cards / diff / confirm+override / edit modal / toasts)
+- ad51e1f e2e: updated spec + added coverage; clipboard permissions in the
+  isolated config
+- (this commit) REQ log
+
+**Deviations / notes**
+- `ok_count` counts variants with status='ok' (the status column), NOT
+  check-PASSes: `failed_check_count` already carries the machine-check
+  signal, and this keeps the two aggregates orthogonal -- the same
+  ok/failed grammar as REQ-0156's render counts. (The spec named both
+  fields without pinning ok_count's semantics; documented reading.)
+- The commission payload panel now renders the FULL commission JSON (not
+  just the instructions string) -- that is what the human actually carries
+  to the agent session; the instructions are embedded so the existing
+  "Generate 5" e2e assertion is unchanged.
+- contentadmin.config.ts grants clipboard-read/write so the e2e exercises
+  the primary navigator.clipboard path; the select-all fallback stays in
+  copyText() for odd/insecure contexts (spec risk note).
+- The per-card review draft controls (REQ-0155 testids) are KEPT even
+  though reviews normally arrive via the API -- removing them would break
+  the review e2e contract for no UX gain.
+- contentagg_test writes machine_check JSONB synthetically for the COUNT
+  assertions (aggregates only read persisted JSONB; the real runner is
+  covered by content_test G2 and by the recheck test, which runs the four
+  validators for real).
