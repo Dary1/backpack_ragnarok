@@ -271,11 +271,85 @@ async function setRenderStatus(render_id, status) {
   return mapRenderMeta(res.rows[0] || null);
 }
 
+// ---- render_inspections (REQ-0152 inspection kits) ----
+// One row per (render_id, kit_id, kit_version): the unified kit output
+// (verdict + metrics/checks/notes) plus kit_input_sha256 for staleness/re-run
+// detection. Cascade-deleted with the render (FK ON DELETE CASCADE, migration
+// 008). All access here, through storage.cjs -- the single chokepoint.
+
+function mapInspection(row) {
+  if (!row) return null;
+  return {
+    id: row.id, render_id: row.render_id, kit_id: row.kit_id,
+    kit_version: row.kit_version, verdict: row.verdict,
+    metrics: row.metrics, checks: row.checks, notes: row.notes,
+    kit_input_sha256: row.kit_input_sha256, ran_at: row.ran_at,
+  };
+}
+
+/** Insert (or overwrite at the same version) one inspection row. Keyed by
+ * UNIQUE(render_id, kit_id, kit_version): re-running the SAME kit_version
+ * overwrites in place (re-run button); a kit_version BUMP inserts a new row
+ * and the old version's row is retained as history. */
+async function upsertRenderInspection(row) {
+  const res = await q(
+    `INSERT INTO render_inspections
+       (render_id, kit_id, kit_version, verdict, metrics, checks, notes, kit_input_sha256, ran_at)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7::jsonb,$8, now())
+     ON CONFLICT (render_id, kit_id, kit_version)
+     DO UPDATE SET verdict = EXCLUDED.verdict, metrics = EXCLUDED.metrics,
+       checks = EXCLUDED.checks, notes = EXCLUDED.notes,
+       kit_input_sha256 = EXCLUDED.kit_input_sha256, ran_at = now()
+     RETURNING *`,
+    [row.render_id, row.kit_id, row.kit_version, row.verdict,
+     JSON.stringify(row.metrics == null ? {} : row.metrics),
+     JSON.stringify(row.checks == null ? [] : row.checks),
+     JSON.stringify(row.notes == null ? [] : row.notes),
+     row.kit_input_sha256 == null ? null : row.kit_input_sha256]);
+  return mapInspection(res.rows[0]);
+}
+
+/** Every inspection row for one render (all kits, all versions). */
+async function listRenderInspections(render_id) {
+  const res = await q(
+    'SELECT * FROM render_inspections WHERE render_id = $1 ORDER BY kit_id, kit_version',
+    [render_id]);
+  return res.rows.map(mapInspection);
+}
+
+/** The LATEST row per (render_id, kit_id) across all renders of an artwork --
+ * what the admin UI displays (older kit_versions are superseded history). */
+async function listLatestInspectionsByArtwork(artwork_id) {
+  const res = await q(
+    `SELECT DISTINCT ON (ri.render_id, ri.kit_id) ri.*
+       FROM render_inspections ri JOIN renders r ON r.id = ri.render_id
+      WHERE r.artwork_id = $1
+      ORDER BY ri.render_id, ri.kit_id, ri.ran_at DESC, ri.kit_version DESC`,
+    [artwork_id]);
+  return res.rows.map(mapInspection);
+}
+
+/** Artwork row by id (the inspection runner has the render's artwork_id). */
+async function getArtworkById(id) {
+  const res = await q('SELECT * FROM artworks WHERE id = $1', [id]);
+  return mapArtwork(res.rows[0] || null);
+}
+
+/** {image: Buffer, image_sha256} for one render by id, or null -- the
+ * inspection runner feeds the exact stored PNG bytes to the kit. */
+async function getRenderImageById(render_id) {
+  const res = await q('SELECT image, image_sha256 FROM renders WHERE id = $1', [render_id]);
+  const row = res.rows[0];
+  return row && row.image ? { image: row.image, image_sha256: row.image_sha256 } : null;
+}
+
 module.exports = {
   closeArtPool,
   createArtwork, getArtworkByName, listArtworks, updateArtwork,
   createRender, setRenderStatus, updateRenderResult, getRenderById, listRenders,
   getRenderImageBySeed, getAdoptedRender, adoptRender, deleteRender,
   clearAllArtworks,
+  upsertRenderInspection, listRenderInspections, listLatestInspectionsByArtwork,
+  getArtworkById, getRenderImageById,
   _nsName: nsName, _stripName: stripName,
 };
