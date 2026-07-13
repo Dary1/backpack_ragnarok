@@ -1,6 +1,6 @@
 # 2026-07-14 — Cowork mount silently truncates files (root cause of tail truncation)
 
-Status: measured and reproduced. Rule lives in PROJECT.md ("Where to work — NON-NEGOTIABLE");
+Status: measured and reproduced. Rule lives in PROJECT.md ("Where to edit — NON-NEGOTIABLE");
 this file is the evidence behind it.
 
 ## The environment has two filesystems
@@ -63,20 +63,38 @@ after the mount is out of the picture.
 
 ## Verified working loop
 
+The server worktree stays the one and only working copy. The sandbox only composes the patch.
+
     K=~/.ssh/backpack_ed25519; S=qtie@192.168.0.6
-    export GIT_SSH_COMMAND="ssh -i $K"
-    git clone "$S:backpack_ragnarok_worktrees/req-00NN-slug" /tmp/wt && cd /tmp/wt
-    # read/grep locally; edit by applying a diff the model emits, never a whole file
-    git apply /tmp/e.patch && git commit -qam "REQ-00NN: ..."
-    git format-patch origin/req-00NN-slug..HEAD -o /tmp/patches
-    scp -i $K /tmp/patches/*.patch $S:/tmp/
-    ssh -i $K $S "cd ~/backpack_ragnarok_worktrees/req-00NN-slug && git am /tmp/*.patch \
-      && git diff --stat HEAD~1 && bash -lc 'node --check path/to/file.js'"
+    WT=~/backpack_ragnarok_worktrees/req-00NN-slug
+
+    # 1. read straight from the server
+    ssh -i $K $S "sed -n '380,420p' $WT/path/to/file.js"
+
+    # 2. the model emits ONLY a unified diff; bash writes it to the sandbox NATIVE fs
+    cat > /tmp/fix.patch <<'PATCH'
+    --- a/path/to/file.js
+    +++ b/path/to/file.js
+    @@ -398,5 +398,5 @@
+     // context
+    -old line
+    +new line
+     // context
+    PATCH
+
+    # 3. apply INSIDE the worktree, and verify THERE
+    scp -i $K /tmp/fix.patch $S:/tmp/fix.patch
+    ssh -i $K $S "cd $WT && git apply /tmp/fix.patch && git diff --stat && \
+      bash -lc 'node --check path/to/file.js'"
+
+A `git clone` of the worktree into `/tmp` (sandbox native fs, where git fully works) is an
+OPTIONAL read cache for heavy grepping. If used, NEVER commit there: writes always go back
+to the worktree as a patch. It is a cache, not a second source of truth.
 
 Proof runs (2026-07-14): (a) 801-line file, one line replaced with a LONGER line via
-`git apply` on the server -> 801 lines, tail intact, `node --check` OK. (b) clone to `/tmp`
--> diff -> commit -> push -> server working tree correct. The same edit made with the Edit
-tool on the mount and shipped by `scp` arrived truncated.
+`git apply` in a server worktree -> 801 lines, tail intact, `node --check` OK. (b) the same
+edit made with the Edit tool on the mount and shipped by `scp` arrived truncated, short by
+exactly the number of bytes the edit added.
 
 ## Notes
 
