@@ -126,3 +126,116 @@ An art-generation console + adoption ledger (a mini-DAM):
   worker exits and the queue advances — acceptable for a dev tool, noted in the UI hint.
 - Lazy thumbnails pull full-size adopted PNGs (no downscale service); mitigated by
   loading="lazy", browser cache + ETag; acceptable on the dev LAN.
+
+## Implementation log
+### Session 2026-07-14 (implementing engineer, worktree req-0156-artadmin-ux-overhaul)
+
+**Architecture decisions**
+- Server stays a SMALL extension (no schema migration, chokepoint intact). `storage_art.cjs
+  listArtworks()` gains the per-artwork aggregates (adopted_seed / latest_ok_seed /
+  render_count / ok_count / failed_count / last_render_at) in ONE SQL round-trip: LEFT JOIN on
+  the adopted render + LEFT JOIN LATERAL count/filter aggregate per artwork. Purely additive
+  over the REQ-0151 row shape -- every existing caller (hGet, hList, tests) is untouched.
+- `art_jobs.cjs`: generation descs now carry enqueued_at (stamped in enqueue()); the pump
+  records runningDesc/runningChild/runningStartedAt. `listJobs()` snapshots running (with
+  elapsed_ms) + pending (renderId, artwork system_name, seed, enqueued_at) + inspectDepth.
+  `cancelJob(renderId)`: pending -> spliced out of genQueue + render marked failed
+  'canceled by user' (NO new status enum -- no migration); running -> desc.canceled flag +
+  SIGTERM the python child (SIGKILL fallback after 2 s, timer unref'd). runWorker gained an
+  optional onChild callback so the queue owns a kill handle; its close handler fires either
+  way, so the pump ALWAYS advances (G3). processGenJob checks desc.canceled after the worker
+  returns, so even the cancel-vs-finish race resolves to the human's verdict. Inspection jobs
+  are deliberately NOT individually cancellable (seconds of CPU, advisory); listJobs reports
+  their backlog depth only.
+- Routes: `GET /api/art/queue` + `POST /api/art/artworks/:name/renders/:seed/cancel`, both
+  item_admin-gated, same handler/regex style as the file. 'queue' added to RESERVED (the
+  public GET /api/art/<name> could otherwise never serve an artwork named "queue"); the
+  client mirrors the reserved list in its live create validation.
+- `tools/art_job.py` (REQ-0151's own worker; art_route/art_style untouched per scope) gained
+  ART_MOCK_DELAY_MS: mock-mode-only sleep so tests/e2e can hold jobs in the queue long enough
+  to observe/cancel them -- real generation takes minutes, the mock milliseconds, so without
+  the knob the cancel paths are untestable.
+- Client: ArtAdminPage split into components (artShared.ts helpers/types, RegistryRail,
+  CreatePanel, Workspace, QueuePanel, Lightbox, KitChips, ShapeEditors); the root owns all
+  server state + polling (list 10 s / detail 2 s / queue 2 s / 1 Hz elapsed tick) and the
+  safety rails (confirm dialogs, toasts + the persistent aria-live art-msg line). Export name
+  `ArtAdminPage` and the `{ locale }` prop signature preserved (EN-only surface, locale
+  accepted+unused).
+- Create flow fully separated: art-new opens a dedicated panel whose state is NEVER fed by
+  selection (kills the REQ-0151 accidental-near-duplicate-Create hazard). Live validation:
+  name regex/reserved/duplicate + po-mask-non-empty; Create disabled until valid. The e2e
+  field-testid contract (art-kind/art-system-name/po-cell-r-c/art-resolution/art-create/...)
+  lives on this panel; the WORKSPACE edit form uses art-edit-* ids + idPrefix'd shape editors
+  (edit-po-cell-...) so testids never collide across panes.
+- Lightbox is the judging tool: zoom fit/1:1/2x/4x, bg dark/white/checker, keyboard
+  prev/next/Escape, bpskin 2x2 tile + half-shift (seam runs through the middle of the view),
+  2-up compare at synced zoom/bg (picked via per-card A/B checkboxes -> art-compare), Adopt
+  from inside routed through the SAME confirm dialog (keysDisabled while a dialog is up).
+- Queue strip visible without a selection: gold .btn-forge "Generate next seed" (the one
+  forge CTA), N/seed controls, queue panel with live elapsed (server elapsed_ms + local
+  delta), cold-load hint (~8 min + "ComfyUI prompt finishes on its own" risk note), per-job
+  Cancel (queue-cancel-<renderId>; the running job gets one too -- server supports it),
+  inspect depth. art-queue keeps showing the generation queue DEPTH number (e2e contract).
+- Styling: `/* REQ-0156 artadmin */` section appended to client/src/index.css, MJOLNIR
+  tokens/primitives only. Adopted = gold border + badge; kit verdicts keep PASS/WARN/FAIL
+  semantics on the house palette (uncommon-green / legend-amber / blood-red); all REQ-0152
+  kit testids preserved verbatim. Cross-links: artadmin header -> #/contentadmin and a
+  one-line mirror link in ContentAdminPage's h2 (nothing else touched there).
+
+**Gate results (all machine gates GREEN)**
+- [x] G1 build+types: client `tsc -b && vite build` EXIT 0; server checkJs typecheck
+  (tsconfig.server.json) EXIT 0; api_test.cjs 155/155 files AND 155/155 pg;
+  artwork_test.cjs 6/6; NEW artqueue_test.cjs 4/4 (wired into ci.sh as [5.15/7]);
+  inspection_test.cjs 5/5 (queue rewrite regression-checked).
+- [x] G2 e2e: client/e2e/artadmin.spec.ts 3/3 PASSED in 27.9 s via tools/artadmin_e2e.sh
+  (HOME-remap isolation, ports 8921/8922/8923, box lock through tools/e2e_run.sh):
+  (1) create via art-new panel -> generate 3 seeds -> preview -> lightbox (open/zoom/bg/
+  keyboard-nav/Escape) -> adopt seed 1 with confirm (msg 'exported') -> API serves PNG+ETag
+  -> confirm-delete seed 2 -> re-adopt seed 3 FROM THE LIGHTBOX -> meta seed 3;
+  (2) search (system_name + main_object substrings) + kind chips + adoption filter narrow
+  the list; (3) queue 5 jobs -> cancel the last PENDING one from the queue panel -> that
+  render = failed 'canceled by user', the other 4 complete -> Retry regenerates the same
+  seed to [ok]. Retry is therefore covered end-to-end in the BROWSER (the cancel produces
+  the failed render deterministically -- no unit-test fallback needed).
+  artinspect.spec.ts (REQ-0152) updated for the changed flows (art-new + adopt confirm) and
+  re-run green via tools/art_inspect_e2e.sh: 1/1 in 19.7 s.
+- [x] G3 queue semantics (artqueue_test.cjs, real serialized queue + mock worker):
+  cancel-pending removes exactly that job (listJobs before/after asserted) and marks the
+  render failed 'canceled by user' while the neighbors complete; cancel-running kills the
+  worker fast (asserted < 6 s against an 8 s mock sleep) and the pump advances (follow-up
+  job completes); cancel of a finished job -> NOT_FOUND (404 at the route); adopted render
+  remains undeletable.
+- [x] G4 hygiene: git status clean; `git diff master` = 25 files, no PNG, no lockfile, no
+  web/app dist (rebuilt for e2e, then restored via git checkout + git clean); pnpm only.
+- [ ] S7 user acceptance on the live deployed screen -- orchestrator owns merge + deploy.
+
+**Deviations / notes**
+- 'queue' added to the RESERVED system_name words (server + client mirror). Additive
+  tightening; no existing artwork uses it (backfilled names are batch-prefixed).
+- The RUNNING job also gets a Cancel button in the queue panel (spec asked per-job Cancel on
+  pending; the server cancel-running path exists and G3 tests it, so hiding it in the UI
+  would be artificial).
+- Workspace edit-form fields use NEW art-edit-* testids (the old ids stayed on the create
+  panel, which owns the historical contract); delta documented here per spec C.
+- artadmin.config.ts timeout 90 s -> 150 s (the cancel spec deliberately holds ~1.5 s mock
+  jobs in queue).
+- tools/ci.sh [3.5/7] server typecheck needs root node_modules; the worktree runs it through
+  a gitignored node_modules symlink to the main checkout (read-only). Nothing in the main
+  checkout was modified.
+
+**Test evidence**
+- server/tests/artqueue_test.cjs: 4 passed / 0 failed (aggregates incl. empty-artwork nulls
+  + REQ-0151 row-shape preservation; cancel-pending; cancel-running incl. kill latency +
+  pump advance + NOT_FOUND; adopted-undeletable).
+- server/tests/artwork_test.cjs 6/6; server/tests/api_test.cjs 155/155 (files) + 155/155
+  (pg); server/tests/inspection_test.cjs 5/5.
+- e2e: artadmin.spec.ts 3 passed (27.9 s); artinspect.spec.ts 1 passed (19.7 s).
+
+**Commits (branch req-0156-artadmin-ux-overhaul)**
+- 0370283 server: listArtworks aggregates + queue introspection/cancel + routes +
+  ART_MOCK_DELAY_MS knob; artqueue_test 4/4 wired into ci.sh
+- 12fdaa2 client: three-pane MJOLNIR overhaul (registry browser / workspace / queue strip,
+  lightbox+compare, separated create panel, confirm dialogs, toasts); contentadmin cross-link
+- 851bdb0 e2e: updated artadmin spec + lightbox/filter/cancel/retry coverage; artinspect
+  spec follows the new flows; tools/artadmin_e2e.sh harness
+- (this commit) REQ log
