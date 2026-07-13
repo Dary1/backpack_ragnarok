@@ -172,4 +172,97 @@ v2/v1 history (af670d1, e21d2bf) with the v3 rulings applied (PO/SI split, O1–
 kits advisory). No new decisions were introduced.
 
 ## Implementation log
-(to be filled by the implementing session; per-session gate status checkboxes as in REQ-0150)
+### Session 2026-07-14 (implementing engineer, worktree req-0151-artwork-registry-admin)
+
+**Architecture decisions**
+- storage.cjs remains THE persistence chokepoint. The artwork registry's DB access lives in
+  a sibling storage-subsystem file `server/storage_art.cjs`, re-exported through storage.cjs
+  (`...artStore`) -- the same multi-file pattern pg_sync_worker.cjs already establishes. It owns a
+  dedicated ASYNC pg.Pool rather than the pg_sync bridge, because `renders.image` is a PNG BYTEA
+  blob that would overflow the sync bridge's 4 MB SharedArrayBuffer + JSON round-trip; the artwork
+  endpoints are all async HTTP handlers, so async/await pg is the correct substrate here.
+- Generation goes through THE flux2 route AS MODULES: a thin Python worker `tools/art_job.py`
+  imports `art_route`/`art_style` (no fork, no copied constants), builds the prompt via
+  art_style (kind template / fill) and the graph via `art_route.build_txt2img`, and emits
+  `route_params` read straight off the imported module. The Node serialized single-GPU queue
+  (`server/services/art_jobs.cjs`) spawns it one job at a time and merges model-file content
+  hashes (cached by path,size,mtime -- `server/services/model_hash.cjs`). No GPU this session:
+  ART_ROUTE_MOCK=1 swaps the ComfyUI submit/wait for a deterministic placeholder PNG at the exact
+  WxH, but build_txt2img is still exercised (proves the graph builds; keeps the negative-prompt
+  refusal live).
+- Sizing law (`server/services/art_sizing.cjs`) is a pure JS port of art_style.gen_size's /16-snap
+  math; read-only, reproduces every ratified example.
+- Kind -> style mapping: po/si -> item (anime), unit -> anime, monster -> concept_art_fantasy,
+  bpskin -> fill (art_style.fill_prompt). The bpskin frame-gate report is stored advisory inside
+  renders.params and never blocks adoption (ruling 9).
+
+**Gate results (all machine gates GREEN)**
+- [x] G1 chokepoint + migration + constraints -- 007_artwork.sql applied to the Supabase pg;
+  artwork_test.cjs proves system_name UNIQUE, per-artwork seed = max+1 + explicit seed +
+  UNIQUE(artwork,seed), and adopted-render-undeletable enforced IN storage.cjs (+ a DB RESTRICT
+  FK backstop) AND refused at the API. All DB access is via storage.cjs.
+- [x] G2 sizing law exact -- sword 256x768, shield 512x512, large shield 512x768, potion 256x512,
+  goblin 384x512, chimera 768x512, ancient dragon 1280x1280, si 256x256, unit 512x512,
+  bpskin 1024x1024 (10/10).
+- [x] G3 provenance -- a fresh render's params.steps/cfg/sampler == the art_route constants read at
+  run time (cross-checked against `python3 -c "import art_route"`); final_prompt stored verbatim
+  (== the preview endpoint's); unet/clip/vae FILENAMES and sha256 CONTENT HASHES present in every
+  params snapshot; the DB-resident PNG round-trips (stored image_sha256 == sha256 of the bytes).
+- [x] G4 e2e (Playwright, EXISTING harness tools/e2e_run.sh + box lock, MOCKED ComfyUI backend) --
+  client/e2e/artadmin.spec.ts PASSES (8.2s): create po sword (256x768) -> generate 3 seeds (mock)
+  -> final-prompt preview -> adopt seed1 (export fires) -> GET /api/art/<name> serves the adopted
+  PNG (200, image/png, ETag) -> delete non-adopted seed2 OK / adopted seed1 refused (button
+  disabled) -> re-adopt seed3 -> /meta reflects seed3.
+- [x] G5 hygiene -- no candidate PNG in the branch diff (candidates live ONLY in the DB; exports
+  go to ART_EXPORT_ROOT, a temp dir in tests); data/ gitignored; the generated web/app bundle is
+  not committed (deploy rebuilds).
+- [ ] S7 user acceptance on the live screen with REAL GPU generation -- NOT this session (another
+  REQ owns the GPU today); left OPEN.
+
+**Test evidence**
+- server/tests/artwork_test.cjs: 6 passed / 0 failed (G2; G1 system_name uniqueness; G1 seed
+  monotonicity + uniqueness; G1 adopted-undeletable + switch; G3 provenance; full
+  create->generate->adopt->export->serve->delete-rules->re-adopt flow). Wired into tools/ci.sh's
+  pg pass as [5.1/7].
+- server/tests/api_test.cjs: 155/155 in BOTH files and pg backends -- no regression from the
+  storage.cjs re-export.
+- client `tsc -b && vite build`: green. G4 browser spec: 1 passed (8.2s).
+
+**G4 isolated-run recipe** (does NOT touch the live services): run THIS worktree's api on a spare
+port with STORAGE_BACKEND=pg + DATABASE_URL + ART_ROUTE_MOCK=1 + ART_MODEL_DIR (a temp dir holding
+3 tiny stand-in files named exactly like the real weights) + ART_EXPORT_ROOT (temp); serve the
+built web/ statically; run client/e2e/local-proxy.cjs with E2E_STATIC_PORT/E2E_API_PORT pointed at
+them; then `PLAYWRIGHT_BASE_URL=http://127.0.0.1:<proxy> bash tools/e2e_run.sh
+--config=e2e/artadmin.config.ts`. dev_mode makes the item_admin gate accept the no-token dev
+fallback. artadmin.config.ts carries no globalSetup/webServer, so the live profile/content/api are
+never touched.
+
+**Deviations from spec (documented)**
+- Export (server/services/art_export.cjs): on every adoption it writes the adopted PNG (+ a
+  provenance record) into ART_EXPORT_ROOT (default content/art/<kind>/<system_name>.png). The
+  git-BRANCH commit of that asset + per-kind derivatives via tools/tool_integrate.cjs is gated
+  behind ART_EXPORT_GIT=1 (OFF in CI/tests, so e2e never touches git) and is the deploy (S7) wiring
+  step; the export STEP itself fires on adoption and is asserted by G4. Rationale: committing to a
+  branch during e2e would touch git.
+- render_inspections NOT created (owned by REQ-0152, per instruction). The bpskin frame-gate report
+  is kept advisory inside renders.params.
+- No Nav rail entry for #/artadmin yet (reachable by hash; skipped to avoid i18n churn this
+  session).
+
+**Remaining (NOT machine gates)**
+- Backfill (ruling 3): the import mechanism is understood, but the batch manifests under
+  content/batches/ (e.g. batch-004-item-icons-flux2/item_defs.json) record generation params and
+  MULTIPLE candidate PNGs per subject but NOT which candidate/seed was ADOPTED. Rather than
+  fabricate an adopted pick, this is flagged for the "adopted candidate per artwork" source before
+  running the import. Not a machine gate (G1-G5).
+- Deploy-time git-branch export wiring (ART_EXPORT_GIT path) + real per-kind derivatives via
+  tool_integrate.
+- S7 real-GPU acceptance.
+
+**Commits (branch req-0151-artwork-registry-admin)**
+- 028d1d1 backend: migration, storage chokepoint (async pg BYTEA), sizing law, model-hash
+  provenance, serialized job queue via art_route/art_style, adoption + export, API routes;
+  G1/G2/G3 + full-flow tests (6/6)
+- 2abcbb6 admin UI (route + page) + api client + ci.sh wiring; client tsc+vite build green
+- 52c8de6 G4 Playwright spec
+- a3346cd G4 green: adopted-highlight fix + isolated pg e2e config + corrected seed flow (8.2s)
