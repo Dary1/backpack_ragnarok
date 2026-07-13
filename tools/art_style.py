@@ -50,6 +50,52 @@ TEMPLATE_NEGATIVES_UNUSED = {
 
 KIND_TEMPLATE = {"item": "anime", "unit": "anime", "monster": "concept_art_fantasy"}
 
+# =============================================================================
+# HOW TO WRITE A SUBJECT. Measured on the full REQ-0150 regeneration, where 5 of
+# 8 items and 7 of 11 units missed on the SUBJECT while the STYLE was fine. Read
+# this before writing a defs file; it is the difference between a batch and a
+# wasted GPU hour.
+#
+# THE ANIME TEMPLATE DRIFTS MODERN. Its "shounen, seinen" tokens, handed a subject
+# with no fantasy iconography of its own, produce a contemporary anime character:
+#   "angel"           -> a blonde girl in a blazer and tie. No wings. No halo.
+#   "berserker"       -> a young man in a tank top. No beard, no fur.
+#   "hooded watcher"  -> a man in a modern HOODIE.
+#   "young squire"    -> a boy in a school uniform.
+#   "little princess" -> a schoolgirl (3 of 4).
+# The units that LANDED on a plain name (elf, thief, shieldmaiden, priest) all
+# carry fantasy iconography ABOVE THE SHOULDERS: pointed ears, a rogue's hood,
+# plate pauldrons, a cowl. => A UNIT SUBJECT MUST STATE ITS IDENTITY IN
+# FACE-AND-SHOULDER TERMS: wings, halo, crown, beard, helm, fur, cowl.
+#
+# The CONCEPT ART (FANTASY) template does NOT have this problem -- "mythological,
+# digital painterly art style" carries the fantasy signal itself. Monsters came
+# out right on bare plain names (goblin, ogre, wight, gnoll). The drift is an
+# ANIME-template property, not a model property.
+#
+# ANY NOUN IMPLYING SOMETHING OUTSIDE THE HEAD DRAGS IT INTO FRAME and widens the
+# shot out of a bust -- even with "portrait" present, which it was in every failing
+# prompt. Three kinds, all observed:
+#   KIT       "dagger", "belts and pouches", "leather armor" -> half-body
+#   STATURE   "dwarf"                -> full body 2/4 (its defining trait is bodily)
+#   RELATION  "light cavalry RIDER"  -> a HORSE, 4/4, full body
+# Where the identity is bodily, "portrait" is not enough: add "bust, head and
+# shoulders" explicitly.
+#
+# ITEM SUBJECTS: PART-OF nouns and compound nouns resolve to the wrong object.
+#   "sword hilt"      -> a WHOLE SWORD (4/4). "hilt" is not renderable alone.
+#   "longsword blade" -> a whole sword WITH a handle (4/4).
+#   "beast jaw"       -> a whole monster HEAD (4/4).
+#   "tower shield"    -> a STONE TOWER (4/4). Wrong head word of the compound.
+# There is NO NEGATIVE PROMPT on this route to say what a thing is not, so the
+# subject must say, positively, what it IS: "a detached sword blade only, a bare
+# steel blade with no handle".
+#
+# The Art Golden's "plain, simple names" rule is still right -- it is about not
+# dressing a subject in gorgeous prose. It is not a licence to hand the model a
+# bare noun it will resolve to something else.
+# =============================================================================
+
 FILL_STYLE = ("seamless repeating allover texture fill, tileable pattern, flat even "
               "lighting, uniform density edge to edge, filling the entire frame, no "
               "focal object, no single object, no border, no frame, no outline, no "
