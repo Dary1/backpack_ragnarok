@@ -54,8 +54,7 @@ const fs = require('fs');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { getScheduleContent, makeEngine, genId } = require('./core.cjs');
-const { squadCanvasOf } = require('./squads.cjs');
-const { deployedUidSet } = require('./market.cjs');
+const { squadCanvasOf, deployedUidSet } = require('./squads.cjs');
 
 // REQ-0145a (sc): resolved via the ONE content-file loader
 // (lib/content_files.cjs; CONTENT_ROOT env override honored, default

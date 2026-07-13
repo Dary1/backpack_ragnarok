@@ -66,7 +66,10 @@ const fs = require('fs');
 const storage = require('../storage.cjs');
 const players = require('../players.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, getScheduleContent, genId } = require('./core.cjs');
-const { squadCanvasOf, squadUidSet } = require('./squads.cjs');
+// REQ-0145a (sd): deployedUidSet moved to services/squads.cjs (its true
+// domain -- a squad/canvas concern, not a market one); re-exported below
+// so rule-3 consumers of the market facade keep working unchanged.
+const { deployedUidSet } = require('./squads.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('./warehouse.cjs');
 
 // REQ-0145a (sc): resolved via the ONE content-file loader
@@ -163,30 +166,6 @@ function readTmBalance(canvas, tmId) {
     }
   }
   return total;
-}
-
-// deployedUidSet: every uid the player currently has "deployed" -- i.e.
-// referenced by a squad assigned to any slot of any of their own
-// schedule rooms whose status is 'open' or 'active' (an 'open' room
-// with filled slots auto-starts its next run on the next poll --
-// services/runs.cjs's maybeAutoStartNextRun -- so its squads are
-// "standing ready for war" per the mock's own empty-state copy; only
-// 'canceled' rooms release their uids). This is the market's Law of
-// Possession gate and the lazy suspension source. Reuses services/
-// squads.cjs's squadCanvasOf/squadUidSet -- the same uid-set scan the
-// deploy gate itself uses (deployedUidSetsForGate).
-function deployedUidSet(playerId, canvas) {
-  const out = new Set();
-  if (!canvas) return out;
-  for (const room of storage.listRooms()) {
-    if (room.ownerId !== playerId) continue;
-    if (room.status !== 'open' && room.status !== 'active') continue;
-    for (const slot of room.slots || []) {
-      if (slot.squadIndex == null) continue;
-      for (const uid of squadUidSet(squadCanvasOf(canvas, slot.squadIndex))) out.add(uid);
-    }
-  }
-  return out;
 }
 
 // ---------------------------------------------------------------------
