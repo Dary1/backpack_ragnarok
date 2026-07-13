@@ -1,0 +1,237 @@
+{
+  "req": "REQ-0150 §3 parity batch",
+  "art_direction_ratified": "2026-07-13 (user, from InvokeAI CE)",
+  "route": "flux2",
+  "unet": "flux-2-klein-4b-Q8_0.gguf",
+  "clip": "qwen_3_4b.safetensors",
+  "vae": "flux2-vae.safetensors",
+  "steps": 30,
+  "cfg": 1.0,
+  "sampler": "euler",
+  "seed": 1,
+  "cell_px": 128,
+  "loras": null,
+  "invoke_templates": {
+    "anime": {
+      "positive": "{prompt} anime++, bold outline, cel-shaded coloring, shounen, seinen",
+      "negative": "(photo)+++. greyscale. solid black. painting"
+    },
+    "concept_art_fantasy": {
+      "positive": "concept artwork of a {prompt}. (digital painterly art style)++, mythological, (textured 2d dry media brushpack)++, glazed brushstrokes, otherworldly. painting+, illustration+",
+      "negative": "photo. distorted, blurry, out of focus. sketch. (cgi, 3d.)++"
+    }
+  },
+  "size_notes": {
+    "iron_sword": "user said 256x756; 756 is not a valid latent size -> 768 (= 3 cells x 256)",
+    "goblin": "user said 512x386 (landscape); confirmed a slip -> 384x512 portrait (3x4 cells)",
+    "goblin_shaman": "same correction as goblin -> 384x512"
+  },
+  "negative_prompt": "DROPPED -- inactive on distilled klein at cfg 1.0",
+  "assets": [
+    {
+      "id": "iron_sword",
+      "kind": "item",
+      "tmpl": "anime",
+      "cells": [
+        1,
+        3
+      ],
+      "px": [
+        256,
+        768
+      ],
+      "subject": "iron sword, white background, bold outline",
+      "prompt_weighted": "iron sword, white background, bold outline (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true,
+      "prompt_flattened": "iron sword, white background, bold outline anime, bold outline, cel-shaded coloring, shounen, seinen",
+      "weighting_probe": {
+        "identical": false,
+        "max_abs_diff": 255,
+        "mean_abs_diff": 38.86
+      }
+    },
+    {
+      "id": "iron_shield",
+      "kind": "item",
+      "tmpl": "anime",
+      "cells": [
+        2,
+        2
+      ],
+      "px": [
+        512,
+        512
+      ],
+      "subject": "iron shield, white background, bold outline",
+      "prompt_weighted": "iron shield, white background, bold outline (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "large_iron_shield",
+      "kind": "item",
+      "tmpl": "anime",
+      "cells": [
+        2,
+        3
+      ],
+      "px": [
+        512,
+        768
+      ],
+      "subject": "large iron shield, white background, bold outline",
+      "prompt_weighted": "large iron shield, white background, bold outline (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "healing_potion",
+      "kind": "item",
+      "tmpl": "anime",
+      "cells": [
+        1,
+        2
+      ],
+      "px": [
+        256,
+        512
+      ],
+      "subject": "healing potion, white background, bold outline",
+      "prompt_weighted": "healing potion, white background, bold outline (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "goblin",
+      "kind": "monster",
+      "tmpl": "concept_art_fantasy",
+      "cells": [
+        3,
+        4
+      ],
+      "px": [
+        384,
+        512
+      ],
+      "subject": "goblin, white background",
+      "prompt_weighted": "concept artwork of a goblin, white background. (digital painterly art style:1.21), mythological, (textured 2d dry media brushpack:1.21), glazed brushstrokes, otherworldly. (painting:1.1), (illustration:1.1)",
+      "ok": true,
+      "prompt_flattened": "concept artwork of a goblin, white background. digital painterly art style, mythological, textured 2d dry media brushpack, glazed brushstrokes, otherworldly. painting, illustration",
+      "weighting_probe": {
+        "identical": false,
+        "max_abs_diff": 255,
+        "mean_abs_diff": 8.83
+      }
+    },
+    {
+      "id": "goblin_shaman",
+      "kind": "monster",
+      "tmpl": "concept_art_fantasy",
+      "cells": [
+        3,
+        4
+      ],
+      "px": [
+        384,
+        512
+      ],
+      "subject": "goblin shaman, white background",
+      "prompt_weighted": "concept artwork of a goblin shaman, white background. (digital painterly art style:1.21), mythological, (textured 2d dry media brushpack:1.21), glazed brushstrokes, otherworldly. (painting:1.1), (illustration:1.1)",
+      "ok": true
+    },
+    {
+      "id": "chimera",
+      "kind": "monster",
+      "tmpl": "concept_art_fantasy",
+      "cells": [
+        6,
+        4
+      ],
+      "px": [
+        768,
+        512
+      ],
+      "subject": "Chimera, white background",
+      "prompt_weighted": "concept artwork of a Chimera, white background. (digital painterly art style:1.21), mythological, (textured 2d dry media brushpack:1.21), glazed brushstrokes, otherworldly. (painting:1.1), (illustration:1.1)",
+      "ok": true
+    },
+    {
+      "id": "ancient_dragon",
+      "kind": "monster",
+      "tmpl": "concept_art_fantasy",
+      "cells": [
+        10,
+        10
+      ],
+      "px": [
+        1280,
+        1280
+      ],
+      "subject": "Ancient Dragon, white background",
+      "prompt_weighted": "concept artwork of a Ancient Dragon, white background. (digital painterly art style:1.21), mythological, (textured 2d dry media brushpack:1.21), glazed brushstrokes, otherworldly. (painting:1.1), (illustration:1.1)",
+      "ok": true
+    },
+    {
+      "id": "unit_elf",
+      "kind": "unit",
+      "tmpl": "anime",
+      "cells": [
+        4,
+        4
+      ],
+      "px": [
+        512,
+        512
+      ],
+      "subject": "female elf, portrait, looking at viewer, white background",
+      "prompt_weighted": "female elf, portrait, looking at viewer, white background (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "unit_thief",
+      "kind": "unit",
+      "tmpl": "anime",
+      "cells": [
+        4,
+        4
+      ],
+      "px": [
+        512,
+        512
+      ],
+      "subject": "a female thief, portrait, looking at viewer, white background",
+      "prompt_weighted": "a female thief, portrait, looking at viewer, white background (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "unit_princess",
+      "kind": "unit",
+      "tmpl": "anime",
+      "cells": [
+        4,
+        4
+      ],
+      "px": [
+        512,
+        512
+      ],
+      "subject": "a little princess, portrait, looking at viewer, white background",
+      "prompt_weighted": "a little princess, portrait, looking at viewer, white background (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    },
+    {
+      "id": "bpskin_leather",
+      "kind": "texture",
+      "tmpl": "anime",
+      "cells": [
+        8,
+        8
+      ],
+      "px": [
+        1024,
+        1024
+      ],
+      "subject": "leather texture",
+      "tiling": true,
+      "prompt_weighted": "leather texture (anime:1.21), bold outline, cel-shaded coloring, shounen, seinen",
+      "ok": true
+    }
+  ]
+}

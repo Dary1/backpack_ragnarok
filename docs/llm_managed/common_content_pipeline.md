@@ -72,10 +72,12 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
 
 ### Ratified exceptions & scope map (2026-07-12)
 
-- **BS-G5 exception (ratified with Backpack Skin golden v1.0, 2026-07-12):**
-  backpack-skin autotile EDGE TILES only may be 90°-rotated/mirrored by the
-  renderer or build step — they are pattern art, not character art
-  (`backpack_skin_pipeline.md` §4). This is the only rotation exception.
+- **BS-G5 exception (ratified 2026-07-12) — now MOOT in practice (REQ-0150).**
+  It permitted 90° rotation/mirroring of backpack-skin autotile EDGE TILES. There
+  is no longer a tile atlas to rotate: the welt is derived per-pixel from a
+  distance transform of the polyomino, so straights, outer corners and inner
+  corners fall out with the correct orientation by construction
+  (`art_pipeline.md` §6). The exception stands on paper; nothing exercises it.
 - **Rotation scope map:** item icons — fit-fix 90°/flip allowed, but NEVER to
   resolve an aspect mismatch ("Original design is respected"); Unit icons —
   never rotated, upright forever (`unit_icon_pipeline.md` G3); skins — edge
@@ -115,11 +117,17 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
   4-rotation legality, socket seat/reject against the real engine.
 - **S4 Balance sim — RESERVED**; REQ-0050 builds it. Until then: static
   heuristic bounds at S2.
-- **S5 Art.** CANONICAL route = AI raster (ComfyUI; per-entry `gen_*` fields):
-  items `item_content_pipeline.md` §5; units `unit_icon_pipeline.md`; skins
-  `backpack_skin_pipeline.md`. The legacy SVG sprite route
-  (`content/sprite_all_v10.svg`, `icon-<id>` symbols) remains only for
-  pre-raster content; live wiring of rasters is REQ-0133. All art obeys §2.
+- **S5 Art.** See **`art_pipeline.md`** — ONE doc for ALL image generation
+  (items, units, monsters, backpack skins). Route: **flux2** (FLUX.2 klein 4B);
+  SDXL is retired and deleted. Style: the user's ratified InvokeAI-derived
+  templates. **There is no negative prompt and there are no LoRAs on this route.**
+  Generation size matches the CELL FOOTPRINT'S ASPECT RATIO (square-then-downscale
+  is retired). The per-kind docs (`item_content_pipeline.md`,
+  `unit_icon_pipeline.md`, `monster_content_pipeline.md`,
+  `backpack_skin_pipeline.md`) are SUPERSEDED on art and carry a banner saying so;
+  their schema/data content still stands. The legacy SVG sprite route
+  (`content/sprite_all_v10.svg`, `icon-<id>` symbols) remains only for pre-raster
+  content; live wiring of rasters is REQ-0133. All art obeys §2.
 - **S6 Preview deploy**: self-contained numbered gallery →
   `web/preview/<batch>/` on backpack-dev.
 - **S7 Review gate — USER STOP.** Numbered gallery; verdicts per entry
@@ -137,7 +145,13 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
   `git mv` per transition commit.
 - ComfyUI runs at `127.0.0.1:8188`, manually started (service-ification
   planned: REQ-0139); generation clients use the main checkout `.venv`
-  (`requests`/`PIL`/`numpy`/`scipy`/`rembg`/`onnxruntime`).
+  (`requests`/`PIL`/`numpy`/`scipy`/`skimage`/`rembg`/`onnxruntime`).
+- **The box is 8 GB VRAM (RTX 2080); the 23 GB is system RAM.** FLUX.2 and the
+  Qwen3-4B text encoder do not co-reside, so ComfyUI swaps them per prompt:
+  first generation of a run ~450–540 s (cold), later ones on the SAME prompt
+  2–20 s, a PROMPT CHANGE 30–170 s. **Batch by prompt, not by seed**, and never
+  judge throughput on the first image. Stop ComfyUI before any matte phase
+  (rembg peaks at 12–13 GB RSS and OOMs beside a resident model).
 - e2e only via `pnpm run e2e` / `tools/e2e_run.sh` (exclusive box lock);
   never raw playwright. Package manager is pnpm only.
 - Language policy: all docs/code/comments English; `i18n.ja` data fields and

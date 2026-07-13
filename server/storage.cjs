@@ -45,6 +45,14 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const players = require('./players.cjs');
+// REQ-0151: artwork registry lives in a sibling storage-subsystem file
+// (owns its own async pg pool for BYTEA image blobs). Re-exported below so
+// storage.cjs stays THE single persistence chokepoint every caller imports.
+const artStore = require('./storage_art.cjs');
+// REQ-0155: content-data registry lives in its own sibling storage-
+// subsystem file (async pg pool, same pattern as storage_art). Re-exported
+// below so storage.cjs stays THE single persistence chokepoint.
+const contentStore = require('./storage_content.cjs');
 
 const SCHEMA_VERSION = 1;
 const MAX_BODY_BYTES = 64 * 1024; // 64KB body size cap
@@ -1081,4 +1089,10 @@ module.exports = {
   listEinherjarRecords,
   readRagnarokOrderCache,
   writeRagnarokOrderCache,
+  // REQ-0151: artwork registry (async pg artwork/render ops; storage.cjs
+  // remains the sole chokepoint -- these come from storage_art.cjs).
+  ...artStore,
+  // REQ-0155: content-data registry (async pg content_def/variant ops;
+  // storage.cjs remains the sole chokepoint -- from storage_content.cjs).
+  ...contentStore,
 };

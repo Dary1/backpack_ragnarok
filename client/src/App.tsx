@@ -87,6 +87,8 @@ import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
 import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
 import { DexRoot } from './dex/DexRoot';
+import { ArtAdminPage } from './artadmin/ArtAdminPage'; // REQ-0151
+import { ContentAdminPage } from './contentadmin/ContentAdminPage'; // REQ-0155
 import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
@@ -269,6 +271,8 @@ function App() {
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
+        {route === 'artadmin' ? <ArtAdminPage locale={snapshot.locale} /> : null}
+        {route === 'contentadmin' ? <ContentAdminPage locale={snapshot.locale} /> : null}
 
         {/* REQ-0119: one global floating item-tooltip overlay. Fixed-
             positioned and driven by board/itemTip.ts's pub-sub, so this

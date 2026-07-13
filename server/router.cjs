@@ -23,6 +23,8 @@ const { tryMarketRoutes } = require('./routes/market.cjs'); // REQ-0064
 const { tryRagnarokRoutes } = require('./routes/ragnarok.cjs'); // REQ-0066
 const { tryDexRoutes } = require('./routes/dex.cjs'); // REQ-0052
 const { tryDismantleRoutes } = require('./routes/dismantle.cjs'); // REQ-0063
+const { tryArtRoutes } = require('./routes/art.cjs'); // REQ-0151
+const { tryContentRoutes } = require('./routes/content.cjs'); // REQ-0155
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -36,6 +38,8 @@ function handle(req, res) {
   if (tryRagnarokRoutes(req, res, url, p) !== false) return; // REQ-0066
   if (tryDexRoutes(req, res, url, p) !== false) return; // REQ-0052
   if (tryDismantleRoutes(req, res, url, p) !== false) return; // REQ-0063: /api/dismantle* collides with nothing, appended at the tail
+  if (tryArtRoutes(req, res, url, p) !== false) return; // REQ-0151: /api/art/* collides with nothing, appended at the tail
+  if (tryContentRoutes(req, res, url, p) !== false) return; // REQ-0155: /api/content/defs/* + /api/content/<name>[/meta] collide with nothing (public.cjs owns the exact /api/content payload), appended at the tail
   sendJSON(res, 404, { ok: false, error: 'not found' });
 }
 module.exports = { handle };
