@@ -1,6 +1,7 @@
 # REQ-0161 — content-check-enemy-dialect: reconcile machine checks with the enemy/1 schema dialect
 
-**Status:** built — implemented, all gates green, NOT yet merged/deployed (see Outcome).
+**Status:** built — merged to master + deployed + live-rechecked (2026-07-14, user go-ahead).
+Awaiting S7 user acceptance in the live admin; moves to `done/` on that word.
 **Requested by:** user, 2026-07-14 (chat): "REQ立ててください" for the monster-FAIL finding of
 the REQ-0157 backfill session (Session 2026-07-14c).
 **Spec authored by:** orchestrator (Fable), 2026-07-14.
@@ -134,3 +135,22 @@ adoption gating unchanged (checks stay advisory).
 
 ### S7
 User acceptance: the 7 monster rows show honest PASS (no red dots) in the live content admin.
+
+### Merge & deploy record (2026-07-14, explicit user go-ahead)
+- Merged `req-0161-content-check-enemy-dialect` → `master` **fast-forward** (`0c86d83..9b50d04`,
+  5 files, +363/−70). Deployed by restarting `backpack-api` (`systemctl --user restart
+  backpack-api`; active, `/api/content/defs` → 200). `backpack-web` / `backpack-tunnel`
+  untouched — no client code changed.
+- **Live recheck through the REQ-0157 endpoint** (`POST /api/content/defs/<name>/variants/1/recheck`),
+  all 7 monster_defs, against the deployed code:
+
+  | def | before | after | dialect | data_sha256 |
+  | --- | --- | --- | --- | --- |
+  | frost_gnoll, ice_archer, rime_shaman, frostback_bear, glacier_wisp, niflheim_stalker, hrimgrimnir | FAIL | **PASS** | `enemy/1` | **UNCHANGED** (all 7) |
+
+- **Whole-registry state after the recheck** (list endpoint aggregates): 22 defs
+  (8 po_def, 6 si_def, 7 monster_def, 1 tm_def), `ok=1` on every def and
+  **`failed_checks=0` across the entire live registry** — the red dots are gone, and the
+  po/si/tm verdicts were not disturbed (no leakage).
+- Immutability held: only `machine_check` was rewritten (the annotation path); every
+  `data_sha256` is byte-identical to what was ingested, so no asset of record moved.
