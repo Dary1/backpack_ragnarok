@@ -1,7 +1,7 @@
 # REQ-0161 — content-check-enemy-dialect: reconcile machine checks with the enemy/1 schema dialect
 
-**Status:** built — merged to master + deployed + live-rechecked (2026-07-14, user go-ahead).
-Awaiting S7 user acceptance in the live admin; moves to `done/` on that word.
+**Status:** done — merged, deployed, and ACCEPTED (S7 confirmed by the user, 2026-07-14).
+Live: the 7 monster rows show honest PASS in the content admin.
 **Requested by:** user, 2026-07-14 (chat): "REQ立ててください" for the monster-FAIL finding of
 the REQ-0157 backfill session (Session 2026-07-14c).
 **Spec authored by:** orchestrator (Fable), 2026-07-14.
