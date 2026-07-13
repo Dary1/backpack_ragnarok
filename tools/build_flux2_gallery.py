@@ -123,33 +123,41 @@ h2{font-size:15px;margin:0 0 12px;color:var(--warn);text-transform:uppercase;let
 """
 
 JS = """
-function setpx(n){
-  document.querySelectorAll('.cards').forEach(c=>c.classList.toggle('px64', n===64));
-  document.querySelectorAll('.thumb').forEach(t=>{ if(!t.classList.contains('oldt')){ t.style.width=n+'px'; t.style.height=n+'px'; }});
-  document.getElementById('b256').classList.toggle('on', n===256);
-  document.getElementById('b64').classList.toggle('on', n===64);
-}
-function setalpha(on){
-  document.querySelectorAll('img[data-raw]').forEach(i=>{
-    const a=i.dataset.alpha;
-    i.src = (on && a) ? a : i.dataset.raw;
-    i.parentElement.classList.toggle('checker', !!(on && a));
+let PX=256, ALPHA=false;
+function paint(){
+  document.querySelectorAll('img[data-r256]').forEach(i=>{
+    const a = PX===64 ? i.dataset.a64 : i.dataset.a256;
+    const r = PX===64 ? i.dataset.r64 : i.dataset.r256;
+    const use = (ALPHA && a) ? a : r;
+    if(i.getAttribute('src') !== use) i.src = use;
+    i.parentElement.classList.toggle('checker', !!(ALPHA && a));
   });
-  document.getElementById('balpha').classList.toggle('on', on);
+  document.querySelectorAll('.cards').forEach(c=>c.classList.toggle('px64', PX===64));
+  document.querySelectorAll('.thumb').forEach(t=>{
+    if(!t.classList.contains('oldt')){ t.style.width=PX+'px'; t.style.height=PX+'px'; }
+  });
+  document.getElementById('b256').classList.toggle('on', PX===256);
+  document.getElementById('b64').classList.toggle('on', PX===64);
+  document.getElementById('balpha').classList.toggle('on', ALPHA);
 }
-window.addEventListener('DOMContentLoaded',()=>{setpx(256);setalpha(false);});
+function setpx(n){ PX=n; paint(); }
+function setalpha(on){ ALPHA=on; paint(); }
+paint();
 """
 
 
 def card(n, c, relpath):
     fail = c["coverage"] is not None and c["coverage"] < COVERAGE_MIN
     cov = ("cov %.0f%%" % (100 * c["coverage"])) if c["coverage"] is not None else ""
-    alpha = relpath(c["alpha"]) if c["alpha"] else ""
+    a256 = relpath(c["alpha"], 256) if c["alpha"] else ""
+    a64 = relpath(c["alpha"], 64) if c["alpha"] else ""
     return (
         '<div class="card"><div class="thumb%s" style="width:256px;height:256px">'
-        '<img data-raw="%s" data-alpha="%s" src="%s" loading="lazy"></div>'
+        '<img data-r256="%s" data-r64="%s" data-a256="%s" data-a64="%s" '
+        'src="%s" loading="lazy"></div>'
         '<div class="k"><span class="key">%d</span> · s%d %s%s</div></div>'
-        % (" fail" if fail else "", relpath(c["raw"]), alpha, relpath(c["raw"]),
+        % (" fail" if fail else "", relpath(c["raw"], 256), relpath(c["raw"], 64),
+           a256, a64, relpath(c["raw"], 256),
            n, c["seed"], cov,
            '<span class="failtag">AUTO-FAIL &lt;20%</span>' if fail else ""))
 
@@ -162,14 +170,26 @@ def main():
     os.makedirs(img_dir, exist_ok=True)
     copied = {}
 
-    def rel(p):
+    def rel(p, px=256):
+        """Emit a PRE-RENDERED thumbnail, not the full-size original.
+
+        The first version of this served the originals (208 PNGs, up to 1280x1280,
+        41 MB) and let CSS scale them to 256 px. Chrome's renderer FROZE opening
+        the page -- 41 MB of PNG to fetch and decode before anything is visible.
+        The existing galleries (bakeoff-0136 etc.) already did this right: they
+        ship `_256.png` and `_64.png` next to the source. Same here. Alpha is
+        preserved (RGBA), so the matte toggle still shows a real matte."""
         if p is None:
             return ""
-        if p not in copied:
-            n = "%03d_%s" % (len(copied), os.path.basename(p))
-            shutil.copy(p, os.path.join(img_dir, n))
-            copied[p] = "img/" + n
-        return copied[p]
+        key = (p, px)
+        if key not in copied:
+            n = "%03d_%s_%d.png" % (len(copied), os.path.splitext(os.path.basename(p))[0], px)
+            im = Image.open(p)
+            im = im.convert("RGBA") if im.mode in ("RGBA", "LA", "P") else im.convert("RGB")
+            im.thumbnail((px, px), Image.LANCZOS)
+            im.save(os.path.join(img_dir, n), optimize=True)
+            copied[key] = "img/" + n
+        return copied[key]
 
     groups = [
         ("items", collect_icons(os.path.join(
@@ -201,7 +221,7 @@ def main():
                 cards.append(card(n, c, rel))
             oldhtml = ('<div class="old"><div class="thumb oldt" style="width:128px;'
                        'height:128px"><img src="%s" loading="lazy"></div>'
-                       '<div class="k">was (SDXL)</div></div>' % rel(old)) if old else \
+                       '<div class="k">was (SDXL)</div></div>' % rel(old, 128)) if old else \
                       '<div class="old"><div class="k" style="width:128px">no predecessor</div></div>'
             rows.append('<div class="row"><div class="name"><b>%s</b><span>%s</span>'
                         '</div>%s<div class="cards">%s</div></div>'
@@ -216,9 +236,11 @@ def main():
                           "id": os.path.basename(p)[:-14], "seed": 1,
                           "file": os.path.basename(p), "coverage": None})
             cards.append('<div class="card"><div class="thumb" style="width:256px;'
-                         'height:256px"><img data-raw="%s" data-alpha="" src="%s" '
-                         'loading="lazy"></div><div class="k"><span class="key">%d</span> · %s</div></div>'
-                         % (rel(p), rel(p), n, os.path.basename(p)[:-14]))
+                         'height:256px"><img data-r256="%s" data-r64="%s" data-a256="" '
+                         'data-a64="" src="%s" loading="lazy"></div>'
+                         '<div class="k"><span class="key">%d</span> · %s</div></div>'
+                         % (rel(p, 256), rel(p, 64), rel(p, 256), n,
+                            os.path.basename(p)[:-14]))
         body.append('<section><h2>backpack skins (%d)</h2><div class="row">'
                     '<div class="name"><b>fill + welt</b><span>composed by script</span></div>'
                     '<div class="cards">%s</div></div></section>' % (len(skins), "".join(cards)))
@@ -248,8 +270,10 @@ floor are outlined red and greyed — flagged, never silently dropped.</div></se
     with open(os.path.join(a.out, "index.json"), "w") as f:
         json.dump({"keys": index, "coverage_floor": COVERAGE_MIN}, f, indent=2)
     nfail = sum(1 for i in index if i["coverage"] is not None and i["coverage"] < COVERAGE_MIN)
-    print("gallery: %d keys, %d images, %d auto-FAIL -> %s"
-          % (len(index), len(copied), nfail, a.out))
+    total = sum(os.path.getsize(os.path.join(img_dir, f))
+                for f in os.listdir(img_dir))
+    print("gallery: %d keys, %d thumbnails, %.1f MB, %d auto-FAIL -> %s"
+          % (len(index), len(copied), total / 1e6, nfail, a.out))
 
 
 if __name__ == "__main__":
