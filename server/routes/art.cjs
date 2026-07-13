@@ -14,7 +14,9 @@ const kitReg = require('../services/kit_registry.cjs');
 const { exportAdopted } = require('../services/art_export.cjs');
 const { deriveSize, KINDS } = require('../services/art_sizing.cjs');
 
-const RESERVED = new Set(['artworks', 'dev', 'meta', 'renders']);
+// 'queue' reserved since REQ-0156: /api/art/queue is the queue endpoint, so
+// an artwork of that name could never be served through the public GET.
+const RESERVED = new Set(['artworks', 'dev', 'meta', 'renders', 'queue']);
 function isValidName(n) { return typeof n === 'string' && /^[A-Za-z0-9_]+$/.test(n) && !RESERVED.has(n); }
 
 function readJson(req) {
@@ -210,6 +212,30 @@ async function hDelete(req, res, name, seed) {
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
+// REQ-0156: queue snapshot for the admin queue panel -- the running
+// generation job (with elapsed), the pending generation jobs in order, and
+// the inspection backlog depth. Admin-gated: job metadata names artworks.
+async function hQueue(req, res) {
+  sendJSON(res, 200, Object.assign({ ok: true }, jobs.listJobs()));
+}
+
+// REQ-0156: cancel one generation job (pending: dequeued; running: worker
+// killed). The canceled render becomes status failed / 'canceled by user'
+// (no new enum -- no migration); Retry in the UI is delete + regenerate at
+// the same seed. 404s when that seed's job is neither pending nor running
+// (it already finished -- the poll will show its real status).
+async function hCancel(req, res, name, seed) {
+  const art = await storage.getArtworkByName(name);
+  if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
+  const renders = await storage.listRenders(art.id);
+  const r = renders.find((x) => x.seed === seed);
+  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  try {
+    const out = await jobs.cancelJob(r.id);
+    sendJSON(res, 200, Object.assign({ ok: true, canceled: out.canceled, renderId: r.id, seed }, { queue: jobs.listJobs() }));
+  } catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
+}
+
 async function hDevBumpKit(req, res) {
   const b = await readJson(req);
   if (!b.kit_id || !kitReg.kitMeta(b.kit_id)) return sendJSON(res, 400, { ok: false, error: 'unknown kit_id' });
@@ -276,6 +302,8 @@ const RE_GENERATE = /^\/api\/art\/artworks\/([^/]+)\/generate$/;
 const RE_ADOPT = /^\/api\/art\/artworks\/([^/]+)\/adopt$/;
 const RE_ADMIN_RENDER = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)$/;
 const RE_INSPECT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/inspect$/;
+const RE_CANCEL = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cancel$/;   // REQ-0156
+const RE_QUEUE = /^\/api\/art\/queue$/;                                        // REQ-0156
 const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
 const RE_DEV_BUMP = /^\/api\/art\/dev\/bump-kit$/;
 const RE_PUB_META = /^\/api\/art\/([^/]+)\/meta$/;
@@ -299,6 +327,8 @@ function tryArtRoutes(req, res, url, p) {
     if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
     run(res, hDevClear(req, res)); return true;
   }
+  if (RE_QUEUE.test(p) && req.method === 'GET') { if (!requireAdmin(req, res)) return true; run(res, hQueue(req, res)); return true; }
+  if ((m = RE_CANCEL.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCancel(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_PREVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hPreview(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_GENERATE.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hGenerate(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_ADOPT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hAdopt(req, res, decodeURIComponent(m[1]))); return true; }

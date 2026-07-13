@@ -25,6 +25,8 @@ test('inspection kits: generate -> chips -> persist -> stale -> re-run -> adopt 
   await expect(page.getByTestId('artadmin')).toBeVisible();
 
   // create a po sword: 3 vertical cells -> 256x768
+  // (REQ-0156: the create form lives behind the art-new panel now)
+  await page.getByTestId('art-new').click();
   await page.getByTestId('art-kind').selectOption('po');
   await page.getByTestId('po-cell-0-0').click();
   await page.getByTestId('po-cell-1-0').click();
@@ -67,7 +69,10 @@ test('inspection kits: generate -> chips -> persist -> stale -> re-run -> adopt 
   await expect(page.getByTestId('chip-1-matte.coverage_band')).toBeVisible();
 
   // adoption is possible regardless of the WARN verdict (advisory doctrine)
+  // (REQ-0156: adopt is confirm-gated now)
   await page.getByTestId('adopt-1').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await page.getByTestId('confirm-ok').click();
   await expect(page.getByTestId('render-1')).toContainText('ADOPTED');
 
   // served + meta still work after adoption
