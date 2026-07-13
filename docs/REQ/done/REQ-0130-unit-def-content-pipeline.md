@@ -64,3 +64,20 @@ mandatory on every entry.
   schema + frozen grammar.
 - First batch reaches the user-review STOP with every def mapped to accepted
   art; zero live writes before green.
+
+## Disposition (2026-07-14): SUPERSEDED by REQ-0154 — content absorbed
+
+Per the **Q1 ruling** (user, 2026-07-13), this REQ's scope — the Unit DEF-side
+pipeline (the provisional `unit/1` schema sketch, the item-mirroring validation chain,
+the proposed `content/live/live_units.json` target, and the rescued REQ-0054/0061
+material: one-socket units + the 8-type connective axis as roster seed) — has been
+**ABSORBED into REQ-0154 wave 4** and written into
+`docs/llm_managed/unit_icon_pipeline.md` **§4 (v1.2, 2026-07-14)** with attribution.
+The absorption is faithful to this REQ's **still-blocked** status: §4 records the def
+side as a **provisional design sketch**, unratified until REQ-0128 (connection_shape
+semantics) and REQ-0129 (charge/trigger grammar) settle, and notes that no live
+`unit` target or `unit` validator kind exists on master today.
+
+This REQ is therefore **closed as superseded (content absorbed)** and moved
+`draft/ → done/` in a dedicated commit (one `git mv` per commit). The unratified
+schema decisions it depended on remain owned by REQ-0128/0129.
