@@ -5,13 +5,21 @@
 Differences from the item invocation, all defaulted here:
   --defs   content/batches/units-001-roster/unit_defs.json
   --outdir content/batches/units-001-roster/candidates
-Everything else (4 candidates, seeds 101/202/303/404, 30 steps, cfg 6.5,
-dpmpp_2m/karras, birefnet matte + border-key fallback, --rematte-only)
-is inherited unchanged from gen_item_icons.py.
+Everything else (4 candidates, seeds 101/202/303/404, birefnet matte +
+border-key fallback, --rematte-only) is inherited unchanged from
+gen_item_icons.py -- INCLUDING the route and its sampler defaults. This wrapper
+hardcodes NO sampler numbers: gen_item_icons resolves steps/cfg/sampler from the
+active ROUTE (flux2: 4 steps, cfg 1.0, euler). The old "30 steps / cfg 6.5 /
+dpmpp_2m / karras" line here was SDXL's and is gone -- it was never applied by
+this wrapper, but naming it invited someone to re-apply it (REQ-0150 §1).
 
---ckpt NAME overrides the SDXL checkpoint (REQ-0136 winner slot). NOTE: if
-REQ-0136 ratifies FLUX.2 klein (non-SDXL), this wrapper does NOT cover it;
-the route port is then part of REQ-0136's implementation.
+Route: flux2, inherited. There is nothing to port -- gen_item_icons' flux2 graph
+is the one this wrapper drives (verified REQ-0150; REQ-0127's roster is flux2,
+S7 ALL GREEN).
+
+--ckpt NAME sets gen_item_icons.CKPT, which is read ONLY by the FROZEN sdxl
+route. On the production flux2 route it is inert. It is kept for historical
+reproduction (`--route sdxl --ckpt ...`) and warns when it would do nothing.
 
 `make-defs` subcommand rebuilds unit_defs.json from the style-guide roster
 concepts (kept in one place here; style_guide.md quotes the same table).
@@ -128,7 +136,15 @@ def main():
     import gen_item_icons as G
     if ckpt:
         G.CKPT = ckpt
-        print(f"checkpoint override: {ckpt}")
+        # CKPT is an sdxl-route input only. On flux2 (the default and the only
+        # production route) it is never read -- say so instead of printing a
+        # reassuring "checkpoint override" line that did nothing.
+        if "--route" in argv and argv[argv.index("--route") + 1] == "sdxl":
+            print(f"checkpoint override (FROZEN sdxl route): {ckpt}")
+        else:
+            print(f"NOTE --ckpt {ckpt} IGNORED: the flux2 route takes no "
+                  f"checkpoint (UNET+CLIP+VAE are pinned in gen_item_icons."
+                  f"FLUX). --ckpt applies only to the frozen sdxl route.")
     sys.argv = ["gen_item_icons.py"] + argv
     G.main()
 

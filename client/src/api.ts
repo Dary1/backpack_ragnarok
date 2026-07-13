@@ -689,3 +689,75 @@ export function devoteRagnarok(squadIndex: number, idemKey?: string): Promise<Ap
     ...(idemKey ? { headers: { 'Idempotency-Key': idemKey } } : {}),
   });
 }
+
+// ---- REQ-0151: artwork registry admin client ----
+export interface ArtworkDto {
+  id: number; system_name: string; kind: string; shape: unknown;
+  gen_width: number; gen_height: number; main_object: string;
+  prompt_template: string; style_override: string | null;
+  edge_padding: number | null; adopted_render_id: number | null;
+}
+export interface RenderDto {
+  id: number; seed: number; status: string; image_sha256: string | null;
+  final_prompt: string | null; params: unknown; error: string | null;
+}
+
+async function artJson<T = Record<string, unknown>>(path: string, opts: RequestInit): Promise<T> {
+  const res = await fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...authHeaders(), ...(opts.headers as Record<string, string> || {}) },
+  });
+  const body = await res.json().catch(() => ({} as Record<string, unknown>));
+  if (!res.ok || (body as { ok?: boolean }).ok === false) {
+    throw new Error(((body as { error?: string }).error) || ('HTTP ' + res.status));
+  }
+  return body as T;
+}
+
+export function listArtworks(): Promise<{ ok: true; artworks: ArtworkDto[] }> {
+  return artJson('/api/art/artworks', { method: 'GET' });
+}
+export function createArtwork(b: Record<string, unknown>): Promise<{ ok: true; artwork: ArtworkDto }> {
+  return artJson('/api/art/artworks', { method: 'POST', body: JSON.stringify(b) });
+}
+export function getArtwork(name: string): Promise<{ ok: true; artwork: ArtworkDto; renders: RenderDto[]; queueDepth: number; inspectDepth: number; inspections: Record<string, InspectionDto[]>; kits: KitDto[] }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name), { method: 'GET' });
+}
+export function patchArtwork(name: string, b: Record<string, unknown>): Promise<{ ok: true; artwork: ArtworkDto }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name), { method: 'PATCH', body: JSON.stringify(b) });
+}
+export function previewArtwork(name: string, b: Record<string, unknown>): Promise<{ ok: true; subject: string; final_prompt: string; width: number; height: number; route_params: Record<string, unknown> }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/preview', { method: 'POST', body: JSON.stringify(b) });
+}
+export function generateArtwork(name: string, b: Record<string, unknown>): Promise<{ ok: true; renders: RenderDto[]; queueDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/generate', { method: 'POST', body: JSON.stringify(b) });
+}
+export function adoptRenderApi(name: string, seed: number): Promise<{ ok: true; artwork: ArtworkDto; export: unknown; export_error: string | null }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/adopt', { method: 'POST', body: JSON.stringify({ seed }) });
+}
+export function deleteRenderApi(name: string, seed: number): Promise<{ ok: true; deleted: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed, { method: 'DELETE' });
+}
+export function artRenderUrl(name: string, seed: number): string {
+  return '/api/art/' + encodeURIComponent(name) + '/renders/' + seed;
+}
+export function artAdoptedUrl(name: string): string {
+  return '/api/art/' + encodeURIComponent(name);
+}
+
+// ---- REQ-0152: inspection kits ----
+export interface InspectionCheck { name: string; ok: boolean; value: unknown; threshold: string }
+export interface InspectionDto {
+  render_id: number; kit_id: string; kit_version: string;
+  verdict: 'PASS' | 'WARN' | 'FAIL';
+  metrics: Record<string, number>; checks: InspectionCheck[]; notes: string[];
+  kit_input_sha256: string | null; ran_at: string;
+  stale: boolean; current_version: string | null;
+}
+export interface KitDto { kit_id: string; kit_version: string; applies_to: string[]; blocking: boolean }
+
+/** Re-run inspection kit(s) for one render. Omit kit_id to run every kit for
+ * the kind (also the on-demand path for lazily-inspected backfilled renders). */
+export function reinspectRender(name: string, seed: number, kit_id?: string): Promise<{ ok: true; queued: string[]; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/inspect', { method: 'POST', body: JSON.stringify(kit_id ? { kit_id } : {}) });
+}
