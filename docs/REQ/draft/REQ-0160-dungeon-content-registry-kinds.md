@@ -1,6 +1,6 @@
 # REQ-0160 — dungeon-content-registry-kinds: bring dungeon-mode content under the content registry
 
-**Status:** draft — spec written, BLOCKED on user rulings Q1/Q2 below.
+**Status:** the folder this file sits in. No status field is kept here.
 **Requested by:** user, 2026-07-14 (chat): "REQ立ててください" for the two flagged discoveries
 of the REQ-0157 backfill session (Session 2026-07-14c).
 **Spec authored by:** orchestrator (Fable), 2026-07-14.
@@ -21,7 +21,39 @@ corpora were discovered OUTSIDE the sanctioned inventory and deliberately left u
    kind exists in the `content_kind` DB ENUM (migration 009: po_def|si_def|monster_def|
    unit_def|tm_def), so these are structurally unimportable today.
 
-## Open rulings (blocking)
+## Ruling (2026-07-14, user — closes the block)
+
+Put to the user with the options below, each backed by a MEASURED dry-run rather than a
+prediction (the two dungeon POs were run through the real four checks in-process; the 14
+skills were run through a schema_vocab simulation) — see "Evidence behind the ruling".
+
+- **Q1 = Option A.** The 2 dungeon-mode po/2 entries are imported as `po_def`s, told apart
+  by `provenance.origin_file` / `provenance.batch`. The registry stays one ledger for
+  everything; live `content/` is not touched.
+- **Q2 = yes.** A `skill_def` kind is added (ENUM migration + storage/routes + admin kind
+  chips + checks applicability) and the 14 skill/1 entries are backfilled.
+- **Q2-sub = schema_vocab APPLIES to skill_def.** Not "applicable:false everywhere": skill/1
+  carries `trigger` / `verb` / `attack_profile` at the TOP level, which is exactly the shape
+  the existing `checkEffects()` already validates. It is wired by wrapping the record as a
+  single pseudo-effect and validating it against `content/vocab.json` with domain
+  `EnemySkill` (vocab.trigger_domains legalises every_secs/on_hp_below/OnHit… for
+  EnemySkill). This is REUSE of an existing validator, not new validator authoring, so the
+  REQ's "no new validator authoring" out-of-scope line still holds.
+  `engine_types` / `gen_data` / `integrate` remain honestly `applicable:false` for skill_def
+  (no canvas placement; tool_gen_data does not consume skills).
+
+### Evidence behind the ruling (measured 2026-07-14, before the ruling was taken)
+- dungeon/items.json is byte-for-byte the SAME schema as live_items.json (po/2). The only
+  structural difference is an extra `modes` field (`["unlock"]` / `["detection"]`); the
+  dungeon entries additionally lack the gen_prompt/gen_render art-pipeline fields. The
+  backfill skipped them for an INVENTORY reason, never a technical one.
+- Both entries were run through the real `runChecks('po_def', …)`: **lockpick PASS,
+  spyglass PASS** — all four checks ok (schema_vocab / engine_types / gen_data / integrate).
+  Importing them therefore adds no red FAIL to the live admin screen.
+- All 14 skill/1 entries were run through a schema_vocab simulation (EnemySkill domain):
+  **14 ok, 0 FAIL** — every trigger/verb/status already exists in vocab.json.
+
+## Options as put to the user (historical)
 - **Q1 (dungeon items):** import the 2 dungeon-mode po/2 entries as `po_def`s?
   - Option A: import as po_def with provenance.origin_file distinguishing them (cheap, one
     tool-inventory line; the registry stays "one ledger for everything").
