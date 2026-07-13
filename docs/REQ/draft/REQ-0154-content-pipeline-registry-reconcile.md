@@ -1,6 +1,7 @@
 # REQ-0154 — content-pipeline-registry-reconcile: pipeline docs rewritten for the registry era, on a path to user_managed
 
-**State:** draft — BLOCKED on user ratification.
+**Ratified:** 2026-07-13 (user, chat) — including rulings on Q1/Q2 below. The REQ folder is
+the sole status record.
 **Requested by:** user, 2026-07-13 (chat): once the adopted-seed registry (REQ-0151/0155) becomes
 the standard, the content pipeline changes; file a REQ to update the pipeline docs with the REQ
 dependency graph included. **End goal: refine ALL content-pipeline docs to the quality where the
@@ -87,11 +88,7 @@ Multi-phase policy: keep one REQ file while all waves share a status; split
   with attribution notes, before their files are moved.
 - Freeze-then-rot: mitigated by G2/G4 and the volatile/contract split.
 
-## Open questions
-- Q1 absorb REQ-0111/0130 into waves (proposed) vs keep them as separate doc REQs executed
-  under this REQ's conventions?
-- Q2 should the spine doc live as ONE file (common_content_pipeline.md, proposed) or split
-  spine+registry-contract?
-
-## Implementation log
-(to be filled per wave)
+## Resolved questions (user rulings, 2026-07-13)
+- Q1 ABSORB BOTH: REQ-0111 and REQ-0130 content folds into the waves with attribution;
+  their files close with supersession notes (one `git mv` per commit, per board policy).
+- Q2 ONE FILE:
