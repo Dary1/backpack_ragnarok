@@ -714,3 +714,11 @@ built and committed on the branch; say the word and it goes up.
 - [x] S7 stop honored.
 - [ ] **Deploy the gallery** (needs a go-ahead — main checkout is HANDS-OFF).
 - [ ] **User verdict.** Until it lands, this REQ stays in `todo/`.
+
+## S7 verdict — 2026-07-14 (user, chat via orchestrator)
+
+The user ACCEPTED the flux2-all gallery at S7 and gave the merge go-ahead
+(REQ-0151 orchestration session). Merged to master as b4f03ef.
+Per-asset adoption decisions (incl. the hilt question and the 8 coverage-floor
+flags) move to the REQ-0151 artwork registry, where adoption is per-artwork.
+Nothing entered content/live in this REQ.
