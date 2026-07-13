@@ -1,6 +1,6 @@
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Linker (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-# Common Content Pipeline — v1.0 (2026-07-12, REQ-0134)
+# Common Content Pipeline — v1.1 (2026-07-14, REQ-0154)
 
 > The SHARED layer for all content kinds. Per-kind deltas live in:
 > `item_content_pipeline.md` (PO/SI) · `monster_content_pipeline.md` ·
@@ -9,6 +9,14 @@
 > now a redirect stub; original text in git history). Stage numbering S0–S8
 > is UNCHANGED. §2 integrates the former `art_golden.md` (abolished as a
 > separate doc by user directive, 2026-07-12).
+>
+> **Registry era (REQ-0154, 2026-07-14):** §§6–9 are the CURRENT
+> operating model — the two Postgres registries (artwork REQ-0151 / content-data
+> REQ-0155), the advisory inspection layer (REQ-0152), the PO shape recipe
+> (REQ-0153), the REQ dependency map, and the promotion path. §4’s S0–S8
+> ladder is the tool sequence those registries wrap. Registry contracts
+> (seed/variant policy, adoption, export, advisory-inspection) are stated ONCE in
+> §7; per-kind docs reference it (G2).
 
 ## 1. Principles (carried from v1.0; binding)
 
@@ -157,3 +165,195 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
 - Language policy: all docs/code/comments English; `i18n.ja` data fields and
   quoted user coinage excepted. Docs are authored on the server (worktree →
   master); the FS keeps a read mirror.
+
+## 6. Registry era — the operating model (REQ-0154)
+
+Since **REQ-0151 / 0152 / 0153 / 0155 merged (2026-07-14)** content is produced
+through **two Postgres-backed registries behind `storage.cjs`** — an **ARTWORK
+registry** (REQ-0151) and a **CONTENT-DATA registry** (REQ-0155) — plus an
+**advisory INSPECTION layer** (REQ-0152) and an **available shape-conditioning
+recipe** (REQ-0153). This section is the CURRENT operating model. §4's S0–S8
+ladder is unchanged and remains the underlying tool sequence the registries wrap
+and automate (`tool_gen_data`, `tool_integrate`, `ci.sh`, the flux2 art route).
+**Human adoption stays the only binding act (S7 doctrine); every machine or agent
+verdict is advisory and recorded with its rationale.**
+
+**Status (2026-07-14) — read every registry-era claim as "true of the MERGED
+code," not "already in production."**
+- **REQ-0150** (flux2 route) — **DONE, live.**
+- **REQ-0151** (artwork registry) — **BUILT** (merged, machine gates G1–G5 green);
+  S7 real-GPU acceptance OPEN.
+- **REQ-0152** (inspection kits) — **BUILT**; S7 threshold ratification OPEN.
+- **REQ-0153** (PO shape spike) — **BUILT**; verdict **GREEN-with-recipe**; the
+  recipe is a spec addendum and is **NOT wired into the production route** (awaits
+  a follow-up integration REQ).
+- **REQ-0155** (content-data registry) — **BUILT**; S7 real-content acceptance OPEN.
+- The admin screens are reachable by hash route only (no Nav entry yet); the web
+  bundle rebuild + API restart + the git-branch export wiring are **deferred to the
+  end of the chain**, and **no real batch has run through the registries yet**.
+
+### 6.1 Canonical target flow (user, 2026-07-13 — the operating model the docs converge on)
+
+```
+user commissions a content batch from the LLM
+  -> foreach content in batch {
+       generate 5 artwork renders            (REQ-0151 registry, flux2 route)
+       -> machine scoring                    (REQ-0152 kits; REQ-0153 shape recipe if GREEN)
+       -> separate-agent provisional adopted-seed decision   (advisory, recorded)
+       -> generate 5 content-data variants   (REQ-0155 content registry, LLM x5)
+       -> machine validity checks            (tool_gen_data / self_test_vocab /
+                                              check_engine_types / tool_integrate dry-run)
+       -> separate-agent validity review     (advisory, recorded)
+     }
+  -> batch reviewer surface
+  -> user reviews: check off / edit content / change seed-variant
+  -> ALL contents checked -> release (export via integrate into content/live)
+```
+
+### 6.2 Flow -> code map (what is built, what is future)
+
+| flow step | owner | built? |
+| --- | --- | --- |
+| generate 5 artwork renders | REQ-0151 admin `generate next N seeds` -> `art_jobs.cjs` -> `tools/art_job.py` (imports `art_route`/`art_style`) | **built** |
+| machine scoring | REQ-0152 kits auto-run on the same queue (LOW priority); REQ-0153 shape recipe | kits **built**; shape recipe **built-but-unwired** |
+| separate-agent adopted-seed decision (artwork) | future batch orchestrator | **future** (artwork has no `agent_review` column; adoption is human-only in the admin today) |
+| generate 5 content-data variants | REQ-0155 generic receiving API (agent-session driven; NO LLM key on the server) | **built** |
+| machine validity checks (data) | REQ-0155 `content_checks.cjs`: `schema_vocab` / `engine_types` / `gen_data` / `integrate` dry-run | **built** |
+| separate-agent validity review (data) | REQ-0155 `agent_review` column (Opus-class, mandatory rationale, advisory) | **built** (column + API; the loop that drives it is the orchestrator) |
+| batch reviewer surface | future batch orchestrator + reviewer REQ | **future — not yet reserved** |
+| user review / adopt / change seed-variant | REQ-0151 + REQ-0155 adoption UI | **built** |
+| release / export into content/live | `art_export.cjs` / `content_export.cjs` + `tool_integrate` (git/live-merge behind `*_EXPORT_GIT=1`) | export STEP **built**; git/live-merge is the **deploy step** |
+
+## 7. Registry contracts (single-source; per-kind docs REFERENCE, never restate)
+
+> **G2 drift-proofing:** the batch-file conventions, seed/variant policy, adoption
+> contract, export path and advisory-inspection doctrine are stated **here once**.
+> Per-kind docs (`item_content_pipeline.md`, `monster_content_pipeline.md`,
+> `unit_icon_pipeline.md`, `tm_content_pipeline.md`) point at this section and add
+> only their own deltas.
+
+### 7.1 Batch-file conventions
+Unchanged from §3: staging in `content/batches/batch-NNN-slug/`, merged truth in
+`content/live/`, the append-log `content/registry.json`. The registry era ADDS the
+DB layer below; the file-side layout is untouched, and the CLI batch pipeline
+(§4 S0–S8, the per-kind step lists) still works exactly as written.
+
+### 7.2 Seed / variant policy — the recipe-vs-asset-of-record doctrine
+- **Artwork.** Renders are keyed by **(kind, system_name, seed)**; `seed`
+  auto-increments per artwork from 1 (`max(seed)+1`; explicit seed allowed;
+  never renumbered). flux2 sampling is near-deterministic — 4 seeds are 4 CLOSE
+  variants, not 4 alternatives — so **reroll by changing the PROMPT, not the seed**
+  (`art_pipeline.md` §2).
+- **Content-data.** Variants are keyed by **(system_name, variant_no)**;
+  `variant_no` auto-increments per content and is **never renumbered**. LLMs give
+  **no seed-reproducibility** (hosted APIs are not bit-stable even at temperature 0;
+  the Anthropic API exposes no seed), so `variant_no` plays the seed's role and
+  distinct variants come from **explicit per-slot variation instructions**, not
+  seed roulette (REQ-0155 determinism ruling).
+- **Unified doctrine (REQ-0151 ruling 4 == REQ-0155 determinism ruling).** The
+  **stored bytes / JSON + its sha256 are the ASSET OF RECORD**; the seed/variant_no
+  plus params/provenance (model filenames AND content hashes for art; model/
+  prompt/params for data) are the **RECIPE — best-effort, with NO regeneration
+  guarantee.** Regeneration may differ; the stored asset always wins.
+
+### 7.3 Adoption contract (system_name -> adopted seed / adopted variant)
+- **One `system_name` = one game entity, with two facets:** its **ARTWORK**
+  (adopted render) and its **DATA** (adopted variant). The namespace is **SHARED**
+  across `artworks` and `content_defs` (REQ-0155): the same bare name is the same
+  entity in both tables; a matching row in the other table is the linked facet, not
+  a collision.
+- **Adoption is a HUMAN act** — exactly one render per artwork facet and one variant
+  per data facet, **switchable any time, history immutable**. The adopted render/
+  variant IS the live asset. **No machine or agent verdict gates adoption**
+  (advisory doctrine, §7.5); a machine-FAIL content variant is adoptable only behind
+  an explicit override confirm.
+- **Adopted-undeletable:** the adopted render/variant cannot be deleted — enforced
+  in `storage.cjs`, backstopped by a DB `RESTRICT` FK, and refused at the API layer.
+
+### 7.4 Export path (hybrid: DB source-of-truth + content/ export)
+- The **DB is the single source of truth**; on every adoption an export step ALSO
+  writes the adopted asset into `content/` via the existing integrate conventions,
+  so existing consumers keep working unchanged (REQ-0151 ruling 2).
+- **Artwork** -> `content/art/<kind>/<system_name>.png` (`ART_EXPORT_ROOT`;
+  `server/services/art_export.cjs`).
+- **Content-data** -> `content/registry_exports/` (`CONTENT_EXPORT_ROOT`;
+  `server/services/content_export.cjs`).
+- The **git-branch commit + live-file merge / per-kind derivatives** via
+  `tools/tool_integrate.cjs` is gated behind **`ART_EXPORT_GIT=1` /
+  `CONTENT_EXPORT_GIT=1`** and is the **DEPLOY (S7) wiring step** — OFF in CI/e2e.
+  The export STEP fires on adoption today; the git/live-merge half lands at deploy.
+- **Candidates never enter git** (they live ONLY in the DB); only adopted/exported
+  assets reach `content/` (REQ-0151 lesson: 185 MB of intermediate PNGs once
+  bloated history).
+
+### 7.5 Advisory-inspection doctrine
+*(Detailed in Wave 2 below; stated here as the single source.)*
+- **Every machine check and every agent review is ADVISORY and RECORDED with its
+  rationale; NONE gates adoption.** Human adoption is the only binding act. The sole
+  exception is the **bpskin FRAME-SOURCE gate**, which lives inside the generation
+  recipe (compose consumes only PASS frames) and predates the inspection layer.
+- **Artwork side** — per-kind inspection **kits** (REQ-0152) auto-run after each
+  render on the same single-GPU-safe queue at **LOW priority**; **advisory kits top
+  out at WARN (never FAIL)**; results persist in `render_inspections`; the UI shows
+  verdict chips + a stale badge + a re-run button. Kit roster, metrics and
+  thresholds live in `art_pipeline.md` §7; thresholds carry an **[S7]** flag until
+  the user ratifies them on real renders.
+- **Content-data side** — four machine validators (`schema_vocab` / `engine_types` /
+  `gen_data` / `integrate` dry-run) run on every variant, plus a **separate-agent
+  advisory review** (Opus-class default, mandatory rationale). Both recorded;
+  neither binds.
+
+## 8. REQ dependency map (G3 — current at 2026-07-14, this wave commit)
+
+```
+REQ-0150  flux2 route                         [DONE, live]
+   |
+   +--> REQ-0151  artwork registry admin      [BUILT; S7 real-GPU OPEN]
+   |        |
+   |        +--> REQ-0152  inspection kits (advisory)  [BUILT; S7 thresholds OPEN]
+   |        +--> REQ-0153  PO shape-control spike       [BUILT; GREEN-with-recipe;
+   |                        recipe NOT wired -> follow-up integration REQ]
+   |
+   +--> REQ-0155  content-data registry admin  [BUILT; S7 real-content OPEN]
+            |
+            +--> batch orchestrator + reviewer  [FUTURE REQ — not yet reserved]
+                     |
+                     +--> REQ-0154 wave 5 (batch reviewer flow doc)  [FUTURE]
+                              |
+                              +--> promotion -> docs/user_managed (user-only)  [FUTURE]
+```
+
+**Coordination (absorptions + cross-refs):**
+- **REQ-0111** (monster-content-pipeline-doc) and **REQ-0130** (unit-def-content-
+  pipeline) are **ABSORBED** into this REQ (Wave 4) with attribution and closed with
+  supersession notes (one `git mv` -> `done/` per commit, per board policy).
+- **REQ-0133** (item-raster-live-wiring, draft) — its wiring concern is now the
+  **registry export contract** (§7.4). It stays in `draft/`, still blocked on
+  REQ-0125a's resolution machinery; the "raster vs SVG" half is already ruled
+  RASTER.
+
+## 9. Promotion path & mechanics (G4 — the end goal)
+
+The end goal of REQ-0154 is to refine EVERY content-pipeline doc to **contract-grade
+quality**, after which **the USER promotes it to `docs/user_managed/` (frozen
+golden)**. Mechanics:
+
+1. **Gate.** A doc is promotable only when (a) its wave is complete, (b) it has
+   **survived one REAL BATCH unchanged**, and (c) it carries **no llm_managed-only
+   dangling cross-references** — a verbatim copy must not point at anything that
+   lives only under `docs/llm_managed/` (G4).
+2. **Stage.** Copy the doc VERBATIM to
+   `docs/llm_managed/promotion_candidates/<name>_CANDIDATE.md`, and list it
+   one-line-per-file in `user_managed_rename_suggestions.md` (the same note
+   mechanism REQ-0123 used).
+3. **Promote (user-only).** The USER moves candidates into `docs/user_managed/` and
+   commits. **No LLM ever writes `docs/user_managed/`.**
+4. **Volatile / contract split (freeze-then-rot mitigation).** Box timings, OOM
+   lore, tool flags, `[S7]` thresholds and other operational detail STAY in the
+   `llm_managed` companions; only ratified, contract-grade content goes into a
+   candidate. Frozen docs carry no volatile detail, so they do not rot.
+
+**Status (2026-07-14): NO candidates are staged.** No real batch has run through the
+registries yet, so the promotion gate (1b) is not met for any doc. Candidates are
+staged in **Wave 5**, after the batch orchestrator ships and the first real batch
+completes. The `promotion_candidates/` directory is intentionally NOT created yet.
