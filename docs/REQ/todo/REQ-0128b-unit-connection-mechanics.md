@@ -23,12 +23,12 @@ with `range: 1`. `knight` is the sole offset shape (it jumps).
 | shape | ja | dirs | range | pierce |
 |---|---|---|---|---|
 | `queen` | クイーン | `0-7` | ∞ | false |
+| `queen_2` | クイーン(射程2) | `0-7` | **2** | false |
 | `rook` | 飛車 | `0,2,4,6` | ∞ | false |
 | `bishop` | 角 | `1,3,5,7` | ∞ | false |
 | `lance` | 香 | `0` | ∞ | false |
 | `backward_line` | 後方直線 | `4` | ∞ | false |
 | `adjacency` | 隣接 | `0,2,4,6` | 1 | false |
-| `adjacency_lr` | 左右隣接 | `2,6` | 1 | false |
 | `forward_1` | 前方1マス | `0` | 1 | false |
 | `knight` | 桂 | *(jumps)* | — | true |
 | `none` | 接続なし | — | 0 | — |
@@ -73,12 +73,12 @@ with `range: 1`. `knight` is the sole offset shape (it jumps).
 
 ## Consequences flagged to other REQs
 
-- **REQ-0149 Watcher.** `adjacency_lr` is now *a range-1 E/W ray*, so the Watcher links
-  to a Unit **in the cell directly left or right of its own cell**. Its design note
-  ("just drop it beside a tall or wide odd-shaped backpack and it does its job") reads
-  more like BP-footprint adjacency. **Under this ruling it is not.** Raised in REQ-0149
-  so the user can correct the kit if that was not the intent — the kit bends, not the
-  ruling.
+- **REQ-0149 Watcher — RESOLVED 2026-07-13.** Flagged as a range-1 problem; the user
+  rerouted the kit to **`queen`, range 2**. `adjacency_lr` was removed from the
+  dictionary (orphaned).
+- **⚠ The same problem applies to the Squire (`forward_1`, range 1)** — it links only
+  if a Unit sits in the single cell directly in front. Raised in REQ-0149; **not fixed
+  by inference.**
 - **Ray occlusion reverses shipped behaviour.** Any existing content or test that
   relies on beams passing over BPs/POs will change meaning. Audit before implementing.
 

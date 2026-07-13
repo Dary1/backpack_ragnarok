@@ -31,6 +31,8 @@ with the roster — see §3b. G14 opened.)*
 | 2026-07-13 (later) | **Board orientation** | **前方 = the battlefield cell with the LOWER Y (up).** Reconciled to the engine's `[row,col]` / row-increases-downward convention: **forward = `DIRS[0]` = N = `[-1,0]`.** Recorded in `vocab.json.orientation`. Unblocks `lance` (Light Cavalry), `backward_line`, `forward_1` (Squire). |
 | 2026-07-13 (later) | **REQ-0128b decisions 1–3** | **(1) Rays do NOT pierce** (keep it parameterisable — `pierce` field). **(2) `adjacency` is not a concept — it is a ray with range 1/2/…** This collapses every shape to `{dirs, range, pierce}` and leaves `knight` as the only offset. **(3) Connections are canvas-local (Squad-scoped).** REQ-0128b is now `todo/` — all five decisions closed. |
 | 2026-07-13 | **⚠ Watcher — consequence, needs a look** | Under ruling (2), `adjacency_lr` = a **range-1 E/W ray**: the Watcher links to a Unit in the cell **directly left or right of its own cell**. Its design note — *"縦長や横長の変なバックパックの横にポンと置くだけで仕事をする"* — reads more like **BP-footprint** adjacency, which the ruling does not give. **The kit may need restating; the ruling stands.** |
+| 2026-07-13 (later) | **Watcher — RULED** | **`connection_shape: queen`, range 2** (`queen_2`). User: *"出ないとほぼ接続が不可能ですね"* — at range 1 a Unit only links when another Unit occupies the literal adjacent cell, which effectively never happens. `adjacency_lr` is now orphaned and has been REMOVED from the dictionary. |
+| 2026-07-13 | **⚠ G15 — the Squire has the same disease** | *(OPEN)* The Squire is `forward_1` = a **range-1** forward ray. It links only if a Unit sits in the single cell directly in front of it — the exact condition the user just called "nearly impossible" for the Watcher. Its design note assumes an "attacker" in front, and since links are **Unit-to-Unit**, that attacker must be a **Unit**, not a weapon PO. **Is the Squire deliberately that positional, or does it need range 2 as well?** Not fixed by inference. |
 
 ## 1. Why this REQ exists
 
@@ -113,13 +115,14 @@ that the ratified vocabulary does not contain (→ G10, G11).
 - **Charge skill:** none.
 - **Passive:** **+0.1% damage per charged stack.**
 
-### 11. Watcher (ウォッチャー / 見張り番) — `connection_shape:` **left/right adjacent cell** *(NOT IN THE REQ-0128 VOCABULARY → G10)*
+### 11. Watcher (ウォッチャー / 見張り番) — `connection_shape: queen_2` (クイーン・射程2) *(RULED 2026-07-13)*
 - **Charge trigger:** its own cooldown (elapsed time).
 - **Charge effect:** slightly advances the cooldown timer of the **longest-cooldown
   item inside the connected Unit's BP**. *("Slightly" is unquantified → G12.)*
 - **Design note (user):** a general-purpose unit that does its job just by being
   dropped beside a tall or wide odd-shaped backpack. Also serves as a **hub** for
-  wiring into other, stronger units.
+  wiring into other, stronger units. *(The hub reading is what forced the shape ruling:
+  range 1 could not deliver it. `queen` at range 2 can.)*
 
 ### 12. Squire (スクワイア / 従者) — `connection_shape:` **1 cell forward** *(NOT IN THE REQ-0128 VOCABULARY → G11)*
 - **Charge trigger:** the connected target performs an attack.
@@ -166,16 +169,11 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
 - **G9 — Nothing here is a def yet.** *(OPEN by construction)* No `rarity`, no `icon`,
   no `sockets`, no `flavor`, no `i18n.ja`, no charge `capacity` for any Unit. Those
   are authored in §5, after the blockers clear.
-- **G10 — Watcher's shape is not in the vocabulary.** *(OPEN → demand on REQ-0128)*
-  "Left/right adjacent cell" is *axis-restricted* adjacency. REQ-0128 ratified a
-  generic `adjacency`, not a horizontal-only one. Either `adjacency` is parameterised
-  by axis, or a new shape value is added. **REQ-0128 must rule; this REQ does not
-  bend the kit.**
-- **G11 — Squire's shape is not in the vocabulary.** *(OPEN → demand on REQ-0128)*
-  "1 cell forward" is a *directed, single-offset* shape. REQ-0128 has `backward-line`
-  but no forward single-cell shape, and "forward" presupposes a **board orientation**
-  that REQ-0128 has never defined for Units. **REQ-0128 must rule** on (a) the shape
-  and (b) what "forward" means on the canvas.
+- **G10 — Watcher's shape.** **CLOSED 2026-07-13: `queen`, range 2 (`queen_2`).** The
+  left/right-adjacent shape is abandoned and `adjacency_lr` deleted from the vocabulary.
+- **G11 — Squire's shape.** **CLOSED 2026-07-13:** `forward_1` = a forward ray with
+  range 1; forward = lower Y = up = `DIRS[0]`. **But see G15** — range 1 may make the
+  Squire unconnectable in practice, for the same reason the Watcher was rerouted.
 - **G12 — Watcher's effect needs a selector and a number.** *(OPEN → demand on
   REQ-0129)* "The longest-cooldown item in the connected Unit's BP" is a
   **max-selector over a BP's items** — no such targeting exists in the charge-target

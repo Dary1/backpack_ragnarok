@@ -22,12 +22,12 @@ yet resolve one.
 | key | ja | dirs | range | pierce |
 |---|---|---|---|---|
 | `queen` | クイーン | `0-7` | ∞ | false |
+| `queen_2` | クイーン(射程2) | `0-7` | **2** | false |
 | `rook` | 飛車 | `0,2,4,6` | ∞ | false |
 | `bishop` | 角 | `1,3,5,7` | ∞ | false |
 | `lance` | 香 | `0` (N/forward) | ∞ | false |
 | `backward_line` | 後方直線 | `4` (S) | ∞ | false |
 | `adjacency` | 隣接 | `0,2,4,6` | **1** | false |
-| `adjacency_lr` | 左右隣接 | `2,6` (E/W) | **1** | false |
 | `forward_1` | 前方1マス | `0` (N) | **1** | false |
 | `knight` | 桂 | *(offsets — jumps)* | — | true |
 | `none` | 接続なし | — | 0 | — |
@@ -90,3 +90,15 @@ Vocabulary registered as a dictionary, per the user's ruling, without pretending
 semantics are settled. The two provisional shapes (`adjacency_lr`, `forward_1`) exist
 because the REQ-0149 roster demands them — they are flagged as demands on 0128b rather
 than silently given a meaning.
+
+## 2026-07-13 (later) — Watcher rerouted; `adjacency_lr` removed
+
+User ruling: **the Watcher is `queen`, range 2** — *"出ないとほぼ接続が不可能ですね"*.
+Correct: at range 1 a Unit only links if another Unit sits in the literal adjacent
+cell, which almost never happens on a real board.
+
+`adjacency_lr` existed for exactly one reason — the Watcher's old left/right-adjacent
+kit. That kit is gone, so **the entry is removed, not left in the dictionary.** A
+dangling, unused term sitting in a frozen vocabulary is precisely the condition that
+produced the clock-tower incident: a later agent finds the word, cannot find a
+definition, and invents one. `queen_2` takes its place.
