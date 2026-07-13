@@ -76,7 +76,10 @@ restate here.**
   `content/art/si/<name>.png`; the adopted def variant exports via `tool_integrate`
   into `content/live/live_items.json` / `live_sis.json`. The git-branch/live-merge
   half is the deploy step (§7.4).
-- Advisory inspection kits: §7.5 (roster + thresholds in `art_pipeline.md` §8).
+- Advisory inspection kits (§7.5; roster + thresholds in `art_pipeline.md` §8):
+  a **PO** render auto-runs `matte.coverage_band` + `po.cell_packing`; an **SI**
+  render auto-runs `matte.coverage_band` + `si.subject_frame`. All advisory (top
+  out at WARN); results in `render_inspections`; never gate adoption.
 
 **Where the CLI steps map onto the registries:** Step 5 (art) is now the **artwork
 registry** — generate seeds, kits auto-run, human adopts (`art_pipeline.md`; REQ-0151).

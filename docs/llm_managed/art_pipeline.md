@@ -277,3 +277,60 @@ predecessor exists the new art is shown **next to** it — a migration is judged
 against what it replaced.
 
 **S7 is a USER STOP.** Nothing enters `content/live/` before the user rules.
+
+## 8. Registry era — the artwork registry + inspection kits (REQ-0151/0152/0153)
+
+> Cross-reference only; this section does not restate the route (§1–§4), the style
+> layer (§3) or the stop (§7). The operating model and the shared contracts live in
+> `common_content_pipeline.md` §6–§9.
+
+**The artwork registry (REQ-0151) is now the system-of-record for renders and
+adoption.** §1–§7 above describe the ROUTE and STYLE the registry drives; the
+registry stores every render (PNG bytes + sha256, seed, verbatim `final_prompt`,
+full `params` incl. model filenames AND content hashes) in Postgres behind
+`storage.cjs`, and adoption picks exactly one render per `system_name`. Seed policy,
+adoption, export: `common_content_pipeline.md` §7.2–§7.4. Generation goes through
+THE route AS MODULES — `server/services/art_jobs.cjs` (serialized single-GPU queue)
+spawns `tools/art_job.py`, which imports `art_route`/`art_style`; no fork, no
+duplicated constants.
+
+**§7 scoring is a FILTER; REQ-0152 kits are its machine layer, persisted and
+advisory.** After every successful render the kits registered for the artwork's
+kind auto-run on the same single-GPU-safe queue at **LOW priority** (CPU-only; they
+never delay a pending GPU job), and each writes one `render_inspections` row
+(migration 008, behind `storage.cjs`; `UNIQUE(render_id, kit_id, kit_version)`;
+cascades on render delete). **Advisory kits top out at WARN and NEVER gate adoption**
+(`common_content_pipeline.md` §7.5). A kit_version bump or an input change flips a
+**stale** badge; a re-run button re-executes just that kit
+(`POST /api/art/artworks/<name>/renders/<seed>/inspect`).
+
+### Kit roster v1 (REQ-0152; thresholds marked [S7] await user ratification)
+
+| kit_id | applies_to | measures | verdict rule |
+| --- | --- | --- | --- |
+| `bpskin.frame_gate` v1 | bpskin | the `gen_bpskin.validate()` 5-check (margin / silhouette_coverage / single-component / solidity / rim) | **BLOCKING** inside the recipe (can emit FAIL); compose consumes only PASS frames |
+| `matte.coverage_band` v1 | po · si · unit | `image_alpha_coverage` (whole-image α>8 fraction) | in band **0.02–0.90** → PASS, else WARN — never rejects |
+| `po.cell_packing` v1 | po | `tool_icon_score` metrics: score, scale/coverage/uniformity, `cell_content_coverage` | advisory; `winner` **demoted to a note** (scoring is a filter, §7) |
+| `tiling.seam` v1 | bpskin fills | wrap-edge/interior gradient ratio (ratio_x, ratio_y) | band **[0.83, 1.10]** [S7] → PASS, else WARN + **mandatory half-shift eyeball** (reads high on low-contrast tiles) |
+| `monster.render_sanity` v1 | monster | `image_alpha_coverage`, `white_bg_fraction`, `subject_bbox_fill` | [S7]: content 0.02–0.92, white_bg ≥ 0.05 |
+| `si.subject_frame` v1 | si | single-centered-subject + margin for 256×256 SIs | [S7]: content 0.03–0.92, largest_component ≥ 0.80, centroid_offset ≤ 0.25, margin ≥ 0.02 |
+
+**Metric naming is disambiguated everywhere** (three quantities were all once called
+"coverage"): `image_alpha_coverage` (whole-image matte band / gallery floor),
+`cell_content_coverage` (per-owned-cell packing/fit), `silhouette_coverage`
+(bpskin frame-silhouette fraction).
+
+**Deprecated, deliberately NOT wired:** `tool_fit_check.py` (check mode) +
+`build_fit_report.py` are SVG-sprite-era (they inspect `<symbol>`s), so they cannot
+run on a flux2 raster; left untouched for the legacy SVG sprite. A raster
+overflow-vs-cells check (`po.cell_overflow`) is a proposed follow-up REQ, not built.
+
+### PO shape conditioning (REQ-0153) — available recipe, not wired
+
+REQ-0153's spike verdict is **GREEN-with-recipe**: up-front silhouette control for
+non-rectangular PO shapes via **ReferenceLatent (scaffold) + SetLatentNoiseMask
+(dilated shape, D=8)** — the §4 generation size gains an OPTIONAL shape input.
+It is **NOT wired into `art_route.build_txt2img`**; the production route stays
+byte-identical. Full recipe and the per-item-toggle recommendation:
+`item_content_pipeline.md` §Shape conditioning and REQ-0153. Do not treat it as
+live until a follow-up integration REQ wires it.

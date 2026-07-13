@@ -287,7 +287,7 @@ DB layer below; the file-side layout is untouched, and the CLI batch pipeline
   bloated history).
 
 ### 7.5 Advisory-inspection doctrine
-*(Detailed in Wave 2 below; stated here as the single source.)*
+*(Single source; kit roster + thresholds detailed in `art_pipeline.md` §8.)*
 - **Every machine check and every agent review is ADVISORY and RECORDED with its
   rationale; NONE gates adoption.** Human adoption is the only binding act. The sole
   exception is the **bpskin FRAME-SOURCE gate**, which lives inside the generation
@@ -296,7 +296,7 @@ DB layer below; the file-side layout is untouched, and the CLI batch pipeline
   render on the same single-GPU-safe queue at **LOW priority**; **advisory kits top
   out at WARN (never FAIL)**; results persist in `render_inspections`; the UI shows
   verdict chips + a stale badge + a re-run button. Kit roster, metrics and
-  thresholds live in `art_pipeline.md` §7; thresholds carry an **[S7]** flag until
+  thresholds live in `art_pipeline.md` §8; thresholds carry an **[S7]** flag until
   the user ratifies them on real renders.
 - **Content-data side** — four machine validators (`schema_vocab` / `engine_types` /
   `gen_data` / `integrate` dry-run) run on every variant, plus a **separate-agent
