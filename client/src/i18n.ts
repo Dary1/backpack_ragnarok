@@ -708,6 +708,28 @@ const DICT = {
     'ragnarok.foot': 'The Order endures across every season — the stone does not forget.',
     // page-level
     'ragnarok.loading': 'Reading the stone…',
+    // REQ-0142 (link-trace diagnostics): the beam-trace panel. Plain
+    // language on purpose -- these lines exist to make an ABSENT link
+    // explainable, and a player who needed the explanation is not helped by
+    // the word "first-hit resolution". canvas_spec's own vocabulary (Unit,
+    // ray, receiver, dud) is kept; nothing else is invented.
+    'beam.title': 'Link trace',
+    'beam.summary': '{links} linked · {mutual} mutual · {duds} dud',
+    'beam.dir.0': 'N',
+    'beam.dir.1': 'NE',
+    'beam.dir.2': 'E',
+    'beam.dir.3': 'SE',
+    'beam.dir.4': 'S',
+    'beam.dir.5': 'SW',
+    'beam.dir.6': 'W',
+    'beam.dir.7': 'NW',
+    'beam.row.linked': 'Links {to}',
+    'beam.row.mutual': 'mutual',
+    // The three "why not" reasons (REQ-0142 gate).
+    'beam.row.blocked': '{blocked} is further along this ray, but {blocker} at {at} takes the first hit — a beam stops at the first Unit it meets, so {blocked} never receives it.',
+    'beam.row.noReceiver': 'No Unit stands on this ray — the beam leaves the canvas. (An intentional dud is a legitimate build.)',
+    'beam.row.dirNotInSet': 'This direction is not in the Unit\'s set — no beam is fired here.',
+    'beam.row.dirNotInSetWould': 'This direction is not in the Unit\'s set — no beam is fired here. {would} at {at} would receive one if it were.',
     'ragnarok.loadError': 'Could not read the Hall of Ragnarok: ',
   },
   ja: {
@@ -1349,6 +1371,24 @@ const DICT = {
     'ragnarok.hall.empty': 'まだ誰も回廊に立っていない。最初の献身が、ここに最初の名を記す。',
     'ragnarok.foot': '序列は全季を通じて残る — 石は忘れない。',
     'ragnarok.loading': '石を読んでいる…',
+    // REQ-0142: 平易な日本語で。連結が「なぜ起きないか」を説明するための行なので、
+    // 専門用語は canvas_spec の語彙（ユニット／光線／受信／空撃ち）に留める。
+    'beam.title': 'ビーム診断',
+    'beam.summary': '連結 {links} · 相互 {mutual} · 空撃ち {duds}',
+    'beam.dir.0': '北',
+    'beam.dir.1': '北東',
+    'beam.dir.2': '東',
+    'beam.dir.3': '南東',
+    'beam.dir.4': '南',
+    'beam.dir.5': '南西',
+    'beam.dir.6': '西',
+    'beam.dir.7': '北西',
+    'beam.row.linked': '{to} と連結',
+    'beam.row.mutual': '相互',
+    'beam.row.blocked': 'この光線上の先には {blocked} がいますが、手前の {blocker}（{at}）が最初の命中を取ります。ビームは最初に出会ったユニットで止まるため、{blocked} には届きません。',
+    'beam.row.noReceiver': 'この光線上にユニットがいません（盤外へ抜けます）。意図的な空撃ちも正当な構成です。',
+    'beam.row.dirNotInSet': 'この方向はユニットのビーム方向に含まれていません（発射されません）。',
+    'beam.row.dirNotInSetWould': 'この方向はユニットのビーム方向に含まれていません（発射されません）。有効なら {would}（{at}）が受信します。',
     'ragnarok.loadError': 'ラグナロクの殿堂を読めなかった: ',
   },
 } as const;
