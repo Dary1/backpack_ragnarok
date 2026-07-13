@@ -18,16 +18,21 @@ Metrics per render (spec):
                       imported not forked).
   cell_content_coverage  per owned cell, content px / cell px at identity.
   white_bg_purity     fraction of the non-subject background that is near-white.
-  bg_gray_frac        fraction of the non-subject background that is mid-gray
-                      (the scaffold-ghosting signal: a clean white bg is ~0).
+  bg_gray_frac        fraction of the background that is mid-gray.
+  shape_gray128_frac  fraction of the SHAPE-FOOTPRINT pixels sitting in a tight
+                      band around the 128 scaffold gray -- the scaffold-ghosting
+                      signal. Judged as an EXCESS over the Arm 0 baseline (same
+                      subjects), so a legitimately-gray subject (steel anvil)
+                      does not read as ghosting; only leftover flat scaffold does.
+  shape_luma_std      luma std inside the shape footprint (a ghost is flat -> low).
 
 Identity fit vs the fit machinery: the identity metrics rasterise the matted
 alpha onto the shape's cell grid at fit.CELL px/cell exactly like
 tool_fit_check.check_icon does (resize to WxH = cols*CELL x rows*CELL, then
 overflow = content & ~allowed). deep_overflow extends check_icon's per-cell
 interior test across the FULL bbox (owned + blank cells), so content spilling
-into a shape's empty quadrant is counted -- that is the exact failure this
-spike is trying to prevent.
+into a shape's empty quadrant is counted -- the exact failure this spike
+prevents.
 """
 import json
 import os
@@ -109,12 +114,12 @@ def bestfit(alpha_path, shape_name):
                 best_fit_reason=r.get("reason"))
 
 
-def hygiene(raw_path, alpha_path):
+def hygiene(raw_path, alpha_path, shape_name):
     raw = np.array(Image.open(raw_path).convert("RGB")).astype(np.int16)
+    hgt, wid = raw.shape[:2]
     a = np.array(Image.open(alpha_path).convert("RGBA"))[:, :, 3]
-    if a.shape != raw.shape[:2]:
-        a = np.array(Image.fromarray(a, mode="L").resize(
-            (raw.shape[1], raw.shape[0]), Image.NEAREST))
+    if a.shape != (hgt, wid):
+        a = np.array(Image.fromarray(a, mode="L").resize((wid, hgt), Image.NEAREST))
     subject = a > ALPHA_T
     bg = ~subject
     mn = raw.min(axis=2)
@@ -123,9 +128,15 @@ def hygiene(raw_path, alpha_path):
     near_white = mn > 235
     mid_gray = (luma >= 100) & (luma <= 180) & ((mx - mn) < 25)
     bg_n = int(bg.sum()) or 1
+    # shape-footprint ghost metric
+    shape_mask = SCAF.shape_mask_at_gen(SCAF.SHAPES[shape_name], (wid, hgt))
+    sh_n = int(shape_mask.sum()) or 1
+    gray128 = (luma >= 118) & (luma <= 138) & ((mx - mn) < 20)
+    shape_luma = luma[shape_mask]
     return dict(white_bg_purity=round(float((near_white & bg).sum()) / bg_n, 4),
                 bg_gray_frac=round(float((mid_gray & bg).sum()) / bg_n, 4),
-                mid_gray_frac_all=round(float(mid_gray.sum()) / mid_gray.size, 4))
+                shape_gray128_frac=round(float((gray128 & shape_mask).sum()) / sh_n, 4),
+                shape_luma_std=round(float(shape_luma.std()), 1))
 
 
 def score_all():
@@ -144,7 +155,7 @@ def score_all():
         try:
             leg.update(identity_metrics(alpha, rec["shape"]))
             leg.update(bestfit(alpha, rec["shape"]))
-            leg.update(hygiene(raw, alpha))
+            leg.update(hygiene(raw, alpha, rec["shape"]))
         except Exception as e:
             leg["error"] = str(e)[:300]
         legs.append(leg)
@@ -160,32 +171,35 @@ def arm_label(leg):
     return a
 
 
+def _med(xs):
+    xs = sorted(xs)
+    return xs[len(xs) // 2] if xs else 0.0
+
+
 def summarize(legs):
     groups = {}
     for leg in legs:
+        if leg.get("error"):
+            continue
         groups.setdefault(arm_label(leg), []).append(leg)
     summary = {}
     for name, gl in sorted(groups.items()):
-        feas = [1 if l.get("identity_feasible") else 0 for l in gl]
-        deep = [l.get("deep_overflow_px", 0) for l in gl]
-        scores = sorted(l.get("best_fit_score", 0.0) for l in gl)
-        purity = [l.get("white_bg_purity", 0.0) for l in gl]
-        gray = [l.get("bg_gray_frac", 0.0) for l in gl]
-        walls = [l.get("wall_s") for l in gl if l.get("wall_s") is not None]
-        vrams = [l.get("vram_peak_mb") for l in gl if l.get("vram_peak_mb")]
         n = len(gl)
-        med = scores[n // 2] if n else 0.0
+        feas = sum(1 for l in gl if l.get("identity_feasible"))
+        zdeep = sum(1 for l in gl if l.get("deep_overflow_px", 1) == 0)
+        scores = [l.get("best_fit_score", 0.0) for l in gl]
         summary[name] = dict(
             n=n,
-            identity_feasible_pct=round(100.0 * sum(feas) / n, 1) if n else 0.0,
-            zero_deep_pct=round(100.0 * sum(1 for d in deep if d == 0) / n, 1) if n else 0.0,
-            median_best_fit=round(med, 2),
+            identity_feasible_pct=round(100.0 * feas / n, 1) if n else 0.0,
+            zero_deep_pct=round(100.0 * zdeep / n, 1) if n else 0.0,
+            median_best_fit=round(_med(scores), 2),
             mean_best_fit=round(sum(scores) / n, 2) if n else 0.0,
-            median_white_bg_purity=round(sorted(purity)[n // 2], 3) if n else 0.0,
-            median_bg_gray_frac=round(sorted(gray)[n // 2], 4) if n else 0.0,
-            max_bg_gray_frac=round(max(gray), 4) if gray else 0.0,
-            median_wall_s=round(sorted(walls)[len(walls) // 2], 1) if walls else None,
-            max_vram_mb=max(vrams) if vrams else None,
+            median_white_bg_purity=round(_med([l.get("white_bg_purity", 0.0) for l in gl]), 3),
+            median_shape_gray128=round(_med([l.get("shape_gray128_frac", 0.0) for l in gl]), 3),
+            median_shape_luma_std=round(_med([l.get("shape_luma_std", 0.0) for l in gl]), 1),
+            median_deep_overflow_px=int(_med([l.get("deep_overflow_px", 0) for l in gl])),
+            median_wall_s=round(_med([l.get("wall_s") for l in gl if l.get("wall_s")]), 1) if any(l.get("wall_s") for l in gl) else None,
+            max_vram_mb=max([l.get("vram_peak_mb") for l in gl if l.get("vram_peak_mb")] or [0]),
         )
     return summary
 
@@ -199,22 +213,24 @@ def verdict(summary):
     for name, s in summary.items():
         if name == "0":
             continue
-        beats_base = s["median_best_fit"] > base["median_best_fit"] + 1.0
+        beats_base_fit = s["median_best_fit"] > base["median_best_fit"] + 1.0
         feasible70 = s["identity_feasible_pct"] >= 70.0
-        beats_feas = s["identity_feasible_pct"] > base["identity_feasible_pct"]
-        # ghosting: bg stays white-ish; flag if median bg gray clearly above baseline
-        ghost_ok = s["median_bg_gray_frac"] <= max(0.01, base["median_bg_gray_frac"] * 3 + 0.005)
-        is_green = feasible70 and beats_base and beats_feas and ghost_ok
+        beats_base_feas = s["identity_feasible_pct"] > base["identity_feasible_pct"]
+        # ghost EXCESS over baseline (same subjects) isolates scaffold residue
+        ghost_excess = s["median_shape_gray128"] - base["median_shape_gray128"]
+        ghost_ok = ghost_excess < 0.25
+        is_green = feasible70 and beats_base_fit and beats_base_feas and ghost_ok
         lines.append(dict(arm=name, identity_feasible_pct=s["identity_feasible_pct"],
                           median_best_fit=s["median_best_fit"],
-                          beats_baseline_fit=beats_base, feasible_ge70=feasible70,
-                          beats_baseline_feasible=beats_feas, ghost_ok=ghost_ok,
+                          ghost_excess=round(ghost_excess, 3),
+                          beats_baseline_fit=beats_base_fit, feasible_ge70=feasible70,
+                          beats_baseline_feasible=beats_base_feas, ghost_ok=ghost_ok,
                           green=is_green))
         if is_green:
             green.append(name)
     if green:
         v = "GREEN-with-recipe"
-    elif any(l["identity_feasible_pct"] >= 55 for l in lines):
+    elif any(l["identity_feasible_pct"] >= 55 and l["beats_baseline_fit"] for l in lines):
         v = "AMBER"
     else:
         v = "RED"
@@ -229,9 +245,7 @@ LABEL_H = 26
 
 
 def montage_for(legs, name, out_png, source="raw"):
-    order = {sh: i for i, (sh, _s) in enumerate(dict.fromkeys(
-        [(sh, None) for sh, _ in SP.MATRIX]))}
-    gl = [l for l in legs if arm_label(l) == name]
+    gl = [l for l in legs if arm_label(l) == name and not l.get("error")]
     gl.sort(key=lambda l: (list(SCAF.SHAPES).index(l["shape"]), l["subject"], l["seed"]))
     if not gl:
         return None
@@ -257,8 +271,7 @@ def montage_for(legs, name, out_png, source="raw"):
         ok = leg.get("identity_feasible")
         color = (32, 160, 32) if ok else (200, 40, 40)
         dr.rectangle([x0 + 1, y0 + 1, x0 + TILE - 2, y0 + TILE - 2], outline=color, width=2)
-        lab = "%s s%d" % (leg["subject"][:10], leg["seed"])
-        dr.text((x0 + 4, y0 + TILE), lab, fill=(20, 20, 20))
+        dr.text((x0 + 4, y0 + TILE), "%s s%d" % (leg["subject"][:11], leg["seed"]), fill=(20, 20, 20))
         dr.text((x0 + 4, y0 + TILE + 12),
                 "fit=%.0f dov=%d" % (leg.get("best_fit_score", 0), leg.get("deep_overflow_px", 0)),
                 fill=(80, 80, 80))
@@ -270,23 +283,25 @@ def build_gallery(legs, summary, vdict):
     os.makedirs(BATCH, exist_ok=True)
     assets = os.path.join(BATCH, "montages")
     os.makedirs(assets, exist_ok=True)
-    names = sorted({arm_label(l) for l in legs})
+    names = sorted({arm_label(l) for l in legs if not l.get("error")})
+    order = ["0", "A"] + [n for n in names if n not in ("0", "A")]
     montages = []
-    for name in names:
+    for name in order:
+        if name not in names:
+            continue
         rel = montage_for(legs, name, os.path.join(assets, "arm_%s.png" % name.replace("@", "_").replace(".", "")))
         if rel:
             montages.append((name, rel))
     rows = ""
-    order = ["0", "A"] + [n for n in names if n not in ("0", "A")]
     for name in order:
         s = summary.get(name)
         if not s:
             continue
-        rows += ("<tr><td>%s</td><td>%d</td><td>%.1f%%</td><td>%.2f</td>"
-                 "<td>%.2f</td><td>%.3f</td><td>%.4f</td><td>%s</td><td>%s</td></tr>\n"
+        rows += ("<tr><td>%s</td><td>%d</td><td>%.1f%%</td><td>%.2f</td><td>%.2f</td>"
+                 "<td>%.3f</td><td>%.3f</td><td>%.1f</td><td>%s</td><td>%s</td></tr>\n"
                  % (name, s["n"], s["identity_feasible_pct"], s["median_best_fit"],
-                    s["mean_best_fit"], s["median_white_bg_purity"], s["median_bg_gray_frac"],
-                    s["median_wall_s"], s["max_vram_mb"]))
+                    s["mean_best_fit"], s["median_white_bg_purity"], s["median_shape_gray128"],
+                    s["median_shape_luma_std"], s["median_wall_s"], s["max_vram_mb"]))
     mhtml = ""
     for name, rel in montages:
         mhtml += "<h3>Arm %s</h3><img src='%s' style='max-width:100%%'>\n" % (name, rel)
@@ -298,9 +313,11 @@ th{background:#eee}h3{margin-top:24px}.v{font-size:20px;font-weight:bold;padding
 <h1>REQ-0153 -- PO shape-control spike</h1>
 <p class=v>VERDICT: %s</p>
 <p>Green border = identity-fit feasible (zero deep_overflow). Red = deep overflow into non-owned cells.
-Tile caption: best-fit score / deep_overflow px.</p>
+Tile caption: best-fit score / deep_overflow px. shape_gray128 = flat scaffold-gray residue in the shape
+footprint (ghosting signal, judged as excess over Arm 0). shape_luma_std low = flat/ghosted.</p>
 <table><tr><th>arm</th><th>n</th><th>identity-fit feasible</th><th>median best-fit</th>
-<th>mean best-fit</th><th>white-bg purity</th><th>bg gray (ghost)</th><th>median wall s</th><th>max VRAM MB</th></tr>
+<th>mean best-fit</th><th>white-bg purity</th><th>shape gray128 (ghost)</th><th>shape luma std</th>
+<th>median wall s</th><th>max VRAM MB</th></tr>
 %s</table>
 <h2>Contact sheets (raw renders)</h2>
 %s
@@ -319,23 +336,22 @@ def main():
         unet=SP.ROUTE.FLUX["unet"], clip=SP.ROUTE.FLUX["clip"], vae=SP.ROUTE.FLUX["vae"],
         steps=SP.ROUTE.STEPS, cfg=SP.ROUTE.CFG, sampler=SP.ROUTE.SAMPLER,
         seeds=SP.SEEDS, matrix=SP.MATRIX,
-        green_criteria="identity-fit feasible (zero deep_overflow) >=70%, median best-fit beats Arm 0, no ghosting",
+        green_criteria="identity-fit feasible (zero deep_overflow) >=70%, median best-fit beats Arm 0, no scaffold ghosting (shape_gray128 excess < 0.25 over baseline)",
         n_legs=len(legs), summary=summary, verdict=vdict, legs=legs,
     )
     with open(os.path.join(BATCH, "findings.json"), "w") as f:
         json.dump(findings, f, indent=2)
     build_gallery(legs, summary, vdict)
     print("SCORED %d legs -> %s" % (len(legs), os.path.join(BATCH, "findings.json")))
-    print("VERDICT:", vdict["verdict"])
-    hdr = "%-8s %4s %10s %10s %10s %9s" % ("arm", "n", "feas%", "medFit", "wht_bg", "ghost")
-    print(hdr)
+    print("VERDICT:", vdict["verdict"], "green_arms=", vdict.get("green_arms"))
+    print("%-8s %4s %8s %8s %9s %9s" % ("arm", "n", "feas%", "medFit", "wht_bg", "ghost128"))
     for name in ["0", "A"] + [n for n in sorted(summary) if n not in ("0", "A")]:
         s = summary.get(name)
         if not s:
             continue
-        print("%-8s %4d %9.1f%% %10.2f %10.3f %9.4f"
+        print("%-8s %4d %7.1f%% %8.2f %9.3f %9.3f"
               % (name, s["n"], s["identity_feasible_pct"], s["median_best_fit"],
-                 s["median_white_bg_purity"], s["median_bg_gray_frac"]))
+                 s["median_white_bg_purity"], s["median_shape_gray128"]))
 
 
 if __name__ == "__main__":
