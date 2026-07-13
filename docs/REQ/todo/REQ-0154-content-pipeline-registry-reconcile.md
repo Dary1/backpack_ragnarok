@@ -91,4 +91,95 @@ Multi-phase policy: keep one REQ file while all waves share a status; split
 ## Resolved questions (user rulings, 2026-07-13)
 - Q1 ABSORB BOTH: REQ-0111 and REQ-0130 content folds into the waves with attribution;
   their files close with supersession notes (one `git mv` per commit, per board policy).
-- Q2 ONE FILE:
+- Q2 ONE FILE: keep ONE REQ file for all waves; split (REQ-0154a…) only if waves need
+independent statuses. Applied: this REQ is one file; waves 0–4 share the `built`
+status. (This line restores the ruling text that the source truncated at
+"- Q2 ONE FILE:"; no new decision introduced.)
+
+## Implementation log
+
+### Session 2026-07-14 (implementing writer, worktree req-0154; waves 0–4 — all upstream code MERGED)
+
+A DOCS REQ. No production code touched. All statements verified against the MERGED
+code on this branch (master merged in: REQ-0150 done + REQ-0151/0152/0153/0155 built).
+Where a capability is merged but not deployed/S7-accepted, the docs SAY SO in status
+lines rather than describing it as live.
+
+**Waves landed (one commit per wave; per-kind docs REFERENCE the spine, never restate — G2):**
+- **Wave 0** `62ed361` — spine `common_content_pipeline.md` → v1.1: new §6 (registry-era
+  operating model + the canonical target flow verbatim + flow→code map), §7 (registry
+  contracts: batch-file conv, seed/variant, adoption, export, advisory doctrine —
+  single-source), §8 (REQ dependency map, G3), §9 (promotion path & mechanics, G4).
+  §§1–5 (incl. §2 Art Golden, §4 S0–S8) preserved verbatim so existing cross-refs
+  stay valid.
+- **Wave 1** `28be28f` — `item_content_pipeline.md` → v3.0 §0: PO/SI facet split
+  (REQ-0151 ruling 8), sizing law, adoption/export → references spine §7.
+- **Wave 2** `89ead05` — advisory-inspection doctrine detail: `art_pipeline.md` §8
+  (artwork registry as system-of-record + REQ-0152 kit roster v1 + metric-naming
+  disambiguation + deprecations + REQ-0153 cross-ref); spine §7.5 → §8; item doc names
+  the PO/SI kits. `art_pipeline.md` §§0–7 (REQ-0150 content) NOT rewritten, only §8
+  appended as a reconcile/cross-reference.
+- **Wave 3** `32b13a8` — `item_content_pipeline.md` §0.1: the REQ-0153 GREEN-with-recipe
+  PO shape-conditioning recipe (Arm C @ D=8) as an AVAILABLE hand-off, production route
+  untouched, per-item-toggle recommended, post-hoc fit stays the final gate.
+- **Wave 4** `46687fb` (+ moves `4e9d840`, `36f06a1`) — content-data facets +
+  monster/unit/tm rewrites: `monster_content_pipeline.md` v1.0 (stub → full doc,
+  absorbs REQ-0111), `unit_icon_pipeline.md` v1.2 §4 (absorbs REQ-0130 def sketch,
+  provisional), `tm_content_pipeline.md` v1.1 (tm_def facet, no artwork kind);
+  REQ-0133 coordination note (item doc §0 + appended to REQ-0133, which stays draft).
+
+**Docs written/rewritten (final line counts):** common_content_pipeline.md 359 ·
+item_content_pipeline.md 436 · monster_content_pipeline.md 114 (was an ~40-line stub) ·
+unit_icon_pipeline.md 252 · tm_content_pipeline.md 211 · art_pipeline.md 336
+(§8 appended; §§0–7 untouched).
+
+**REQ-0111 / REQ-0130 disposition (Q1 ABSORB BOTH):** both read first, folded with
+attribution (monster doc / unit §4), closed with a supersession note recorded IN each
+file, then `git mv draft → done` one move per commit (`4e9d840`, `36f06a1`).
+Disposition recorded: "superseded by REQ-0154, content absorbed."
+
+**Gate results**
+- **G1 doc-vs-code (spot-verified, claim → code):**
+  - "artwork kinds are `po|si|unit|monster|bpskin`, no `tm` kind" →
+    `server/migrations/007_artwork.sql:21` `CREATE TYPE artwork_kind AS ENUM (...)`
+    (drives the tm-doc "no artwork facet" claim and the monster/unit facet claims).
+  - "content variants are immutable, keyed `UNIQUE(content_id, variant_no)`, kinds
+    `po_def|si_def|monster_def|unit_def|tm_def`" → `server/migrations/009_content_defs.sql`
+    (enum L25, UNIQUE L53, immutability trigger L88–106) + `server/storage_content.cjs`.
+  - "sizing law: si 256×256 locked; monster 128 px/cell (goblin 3×4→384×512, chimera
+    6×4→768×512, ancient dragon 10×10→1280×1280); po 256 px/cell" →
+    `server/services/art_sizing.cjs` (`deriveSize`, examples in the header comment),
+    matching REQ-0151 gate G2.
+  - "enemies are `enemy/1` defs under `content/live/dungeon/`, loaded by core.cjs; NO
+    dedicated enemy validator" → `content/live/dungeon/enemies.json` (`"schema":"enemy/1"`),
+    `server/services/core.cjs:30/89/116`, `shared/content_validate.cjs:145`
+    (`kind === 'item' ? ITEM_ALLOWED_KEYS : SI_ALLOWED_KEYS` — item|si only).
+  - "advisory inspection kits persist to `render_inspections`, re-run route, all advisory
+    except the bpskin frame gate" → `server/migrations/008_render_inspections.sql`,
+    `server/routes/art.cjs:278` (`RE_INSPECT`), REQ-0152 kit manifest `tools/inspect_kits.json`.
+  - "REQ-0153 recipe NOT wired; production route byte-identical" → `tools/art_route.py`
+    carries no reference/mask inputs (recipe is a spec addendum in REQ-0153).
+- **G2 single-source:** conventions stated once in spine §7; per-kind docs reference
+  §7.x / art_pipeline §8; no restatement. Verified anchors all resolve.
+- **G3 dependency map:** spine §8 current, marks DONE vs BUILT-S7-open vs FUTURE; the
+  map was correct at every wave commit (statuses stable across waves).
+- **G4 (adapted, no dangling refs):** every cross-reference resolves to a real section
+  (spine §§6–9/§7.1–7.5, art_pipeline §8, item §0/§0.1 "Shape conditioning"); the
+  `promotion_candidates/` directory is intentionally NOT created and nothing references
+  a file inside it. NO candidates staged (per spec: "survived one real batch unchanged"
+  is unmet — no real batch has run).
+- **S7 per wave: OPEN** (user reads each wave's docs). Final S7 = user executes the
+  promotion.
+
+**Remaining (wave 5 + promotion — future):**
+- Wave 5: the batch-reviewer flow doc, authored AFTER the batch orchestrator + reviewer
+  REQ ships (not yet reserved; mapped in spine §8).
+- Promotion: stage `*_CANDIDATE.md` copies + list them in
+  `user_managed_rename_suggestions.md` only AFTER the first real batch runs a doc through
+  unchanged; the user then moves candidates into `docs/user_managed/`. No LLM writes
+  user_managed.
+- S7 acceptance on all four upstream REQs (0151/0152/0153/0155) also remains open; the
+  docs reflect BUILT-not-live status accordingly.
+
+**This REQ:** waves 0–4 complete and green → `todo → built`. Wave 5 + promotion remain,
+so this lands in `built/`, NOT `done/`.
