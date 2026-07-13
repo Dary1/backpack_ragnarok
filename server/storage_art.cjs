@@ -96,12 +96,46 @@ async function getArtworkByName(system_name) {
   return mapArtwork(res.rows[0] || null);
 }
 
+/** REQ-0156: the registry-browser list. Each artwork row is enriched with
+ * per-artwork render aggregates so the left rail can show thumbnails,
+ * adoption badges and counts WITHOUT one detail request per artwork:
+ *   adopted_seed    seed of the adopted render (null when unadopted)
+ *   latest_ok_seed  seed of the most recently created status-ok render
+ *                   (the rail thumbnail for unadopted artworks), or null
+ *   render_count / ok_count / failed_count   int aggregates
+ *   last_render_at  timestamp of the newest render, or null
+ * One SQL round-trip (LEFT JOIN LATERAL aggregate per artwork); purely
+ * additive over the REQ-0151 row shape, so every existing caller keeps
+ * working unchanged. */
 async function listArtworks() {
   const res = await q(
-    'SELECT * FROM artworks WHERE system_name LIKE $1 ORDER BY created_at ASC, id ASC',
+    `SELECT a.*, ar.seed AS adopted_seed,
+            agg.render_count, agg.ok_count, agg.failed_count,
+            agg.last_render_at, agg.latest_ok_seed
+       FROM artworks a
+       LEFT JOIN renders ar ON ar.id = a.adopted_render_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int                                    AS render_count,
+                COUNT(*) FILTER (WHERE r.status = 'ok')::int     AS ok_count,
+                COUNT(*) FILTER (WHERE r.status = 'failed')::int AS failed_count,
+                MAX(r.created_at)                                AS last_render_at,
+                (SELECT r2.seed FROM renders r2
+                  WHERE r2.artwork_id = a.id AND r2.status = 'ok'
+                  ORDER BY r2.created_at DESC, r2.seed DESC LIMIT 1) AS latest_ok_seed
+           FROM renders r WHERE r.artwork_id = a.id
+       ) agg ON true
+      WHERE a.system_name LIKE $1
+      ORDER BY a.created_at ASC, a.id ASC`,
     [NS_PREFIX + '%']
   );
-  return res.rows.map(mapArtwork);
+  return res.rows.map((row) => Object.assign(mapArtwork(row), {
+    adopted_seed: row.adopted_seed == null ? null : row.adopted_seed,
+    latest_ok_seed: row.latest_ok_seed == null ? null : row.latest_ok_seed,
+    render_count: row.render_count || 0,
+    ok_count: row.ok_count || 0,
+    failed_count: row.failed_count || 0,
+    last_render_at: row.last_render_at || null,
+  }));
 }
 
 /** Update editable artwork fields. `patch` may include main_object,

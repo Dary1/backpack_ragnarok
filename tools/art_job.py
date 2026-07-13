@@ -43,6 +43,14 @@ def route_params(job):
 
 
 def mock_png(w, h, seed):
+    # REQ-0156: optional per-job delay so tests/e2e can hold jobs in the
+    # queue long enough to exercise the cancel paths deterministically
+    # (real generation takes minutes; the mock would otherwise finish in
+    # milliseconds and nothing would ever be observably pending/running).
+    delay_ms = int(os.environ.get("ART_MOCK_DELAY_MS", "0") or "0")
+    if delay_ms > 0:
+        import time
+        time.sleep(delay_ms / 1000.0)
     from PIL import Image, ImageDraw
     col = ((37 * (seed + 1)) % 256, (91 * (seed + 3)) % 256, (151 * (seed + 7)) % 256, 255)
     img = Image.new("RGBA", (w, h), col)
