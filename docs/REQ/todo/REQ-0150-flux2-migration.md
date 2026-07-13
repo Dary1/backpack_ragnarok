@@ -345,3 +345,113 @@ to bring SDXL back. `bpskin-tiling-0138` can be regenerated on flux2 in §3.
   judge throughput on the first image.
 - ComfyUI peaked at ~11.8 GB RSS during the spike; the box stayed responsive.
 - ComfyUI was stopped at the end of this session; the GPU is free.
+
+## Session 2026-07-13 (cont.) — §3: the art direction is RE-RATIFIED, and the parity batch
+
+### BINDING USER DECISION (2026-07-13) — new art direction
+
+The user found settings in **InvokeAI Community Edition** that produce results
+they are happy with, and ratified them as the program's art direction:
+
+| | template | prompt shape |
+| --- | --- | --- |
+| items | InvokeAI **Anime** | `<subject>, white background, bold outline` |
+| units | InvokeAI **Anime** | `<subject>, portrait, looking at viewer, white background` |
+| monsters | InvokeAI **Concept Art (Fantasy)** | `<subject>, white background` |
+
+FLUX.2 klein 4B · **no LoRAs** · euler · **steps 30** · seed 1 · flux2 VAE ·
+Qwen3-4B encoder · **generation size matched to the intended CELL FOOTPRINT**.
+
+**This SUPERSEDES the Norse dark-fantasy painterly direction**, including
+REQ-0127's ratified (S7 ALL GREEN) unit roster style. §3's table above says unit
+icons need no regeneration — **that line is now WRONG.** They do.
+
+Two settings that are NOT the old defaults and must not be "corrected" back:
+
+- **steps 30, not 4.** klein is a distilled 4-step model and the pipeline
+  defaulted to 4. The user's verdict was reached at 30. 30 it is.
+- **aspect-ratio-matched generation, not square-then-downscale.** Items are
+  generated at 256 px/cell, monsters and textures at 128 px/cell. The differing
+  scale is fine; the invariant that matters is that the ASPECT RATIO matches the
+  cell footprint at a resolution the model is happy at.
+
+### The parity batch — `tools/req0150_parity.py`, `content/batches/flux2-parity-0150/`
+
+Reproduce the user's exact 12 assets on OUR pipeline **before** betting a full
+regeneration on it. Three things could have silently diverged:
+
+**1. Prompt weighting — and a bug that would have poisoned the batch.**
+InvokeAI's templates carry its own emphasis syntax (`+` ×1.1, `++` ×1.21).
+ComfyUI does not understand it; pasted verbatim the plus signs tokenise as text.
+Converted to ComfyUI's `(text:weight)`.
+
+The first conversion regex was **wrong in a way only a printed prompt reveals**:
+it read the hyphen in `cel-shaded coloring` as a *de-emphasis* marker and emitted
+`(cel:0.909)shaded coloring`, and it left `anime++` as `(anime+:1.1)`. Every
+anime-template asset would have carried a corrupted style clause. Fixed with a
+trailing-boundary lookahead, and the trap is documented in-code.
+
+Probe (weighted vs weights-stripped, identical seed): **not identical** — mean
+abs diff **38.9** (sword), **8.8** (goblin). The weighting does real work on the
+Qwen3 encoder, and the weighted leg is visibly better: the sword fills its 1×3
+cell footprint, while the flattened one floats small in the frame. **Weighted
+adopted.**
+
+**2. The negative prompt.** Both InvokeAI templates carry one; it is inactive on
+this route (distilled klein, cfg 1.0, ConditioningZeroOut). Dropped explicitly,
+recorded in `manifest.json`, not silently carried.
+
+**3. Size snapping.** Two of the user's sizes are not valid latent sizes: sword
+`256x756` → `256x768` (= 3 cells × 256); goblin `512x386` → `384x512` (the
+landscape reading was a slip — confirmed with the user; a humanoid goblin is
+3 cells wide × 4 tall). In `manifest.json` → `size_notes`.
+
+### Result: items, monsters and units land. Two assets did not.
+
+Both were **content** problems, not pipeline problems, and both are now fixed —
+`tools/req0150_fixups.py`.
+
+**`unit_thief` → a modern uniformed police officer.** "a female thief" + the Anime
+template (shounen/seinen) produced a peaked cap, suit and tie. The subject needed
+fantasy anchoring; the template is untouched. Three variants generated
+(`unit_thief_v1..v3`), all correct fantasy rogues. Note a framing drift: adding
+"leather armor / belts / dagger" pulls the model from a **bust** (which is what
+elf and princess are) to a **half-body**. `v2` holds the bust framing closest and
+is the recommendation.
+
+**`bpskin_leather` → a leather patch, not a fill.** The Anime template's "bold
+outline" + cel-shading rendered a discrete, rounded, stitched, black-outlined
+leather *object* on white. Tiled, it produces a grid of patches with visible
+borders. **The §2 tiling recipe worked correctly — the seam was zero; the CONTENT
+was wrong.** "bold outline" is the exact opposite of what a fill needs.
+
+The user's read of this was right, and it maps onto the architecture: *"use the
+inside of the patch as the texture and the border as a frame — a second
+pipeline?"* REQ-0126 confirms the skin composes as **`fill_texture` tiled across
+the cell interiors + autotiled edge tiles**. But it also constrains the idea:
+
+- A backpack is an arbitrary **polyomino** (I, L, T, S/Z, inner-corner, holed).
+  A crop of a fixed patch cannot cover a shape whose size it does not know —
+  **the fill must genuinely tile.** So the fill gets its own wording (allover,
+  edge-to-edge, *no focal object, no border, no outline, no frame*) + `CircularVAEDecode`.
+  Regenerated: `bpskin_leather_fill_a` (seed 101) — seam ratio **0.93 / 1.00**,
+  tiles clean with no visible repeat. `..._fill_b` (seed 202) also tiles (1.07 /
+  1.27) but its creases align on the tile edges and read as a lattice at 2×2.
+  **fill_a is the pick.**
+- The border is **not one rectangular frame**: the autotiler needs straight /
+  outer-corner / inner-corner tiles. The bordered patch render is a good SOURCE
+  to slice those from. That is exactly **REQ-0146 (bpskin-edge-strip-spike)**,
+  already reserved — the user's "second pipeline" has a number waiting for it.
+
+### Gate status (updated)
+
+- [x] Route unified in code; sdxl frozen. (Docs — §4 — still open.)
+- [x] LoRA question answered (dropped; the user's direction independently
+      confirms it: **no LoRAs**).
+- [x] Seamless tiling on FLUX: GREEN (CircularVAEDecode).
+- [ ] **§3 regeneration — pipeline PROVEN on the ratified direction (12/12 assets
+      reproduced), but only the parity set. The full batches (batch-003 items, the
+      11-unit roster, monsters-001/002) are NOT yet regenerated.**
+- [ ] §4 docs — not started.
+- [ ] §5 gallery at `web/preview/flux2-all/` — not started.
+- [x] S7 stop honored: nothing written to `content/live/`.
