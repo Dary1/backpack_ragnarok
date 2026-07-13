@@ -68,6 +68,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [renders, setRenders] = useState<RenderDto[]>([]);
   const [queueDepth, setQueueDepth] = useState<number>(0);
+  const [detailAdoptedId, setDetailAdoptedId] = useState<number | null>(null);
   const [msg, setMsg] = useState<string>('');
   // create form
   const [kind, setKind] = useState<Kind>('po');
@@ -90,7 +91,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   }, []);
 
   const loadDetail = useCallback(async (name: string) => {
-    try { const r = await getArtwork(name); setRenders(r.renders); setQueueDepth(r.queueDepth); } catch (e) { setMsg('detail: ' + (e as Error).message); }
+    try { const r = await getArtwork(name); setRenders(r.renders); setQueueDepth(r.queueDepth); setDetailAdoptedId(r.artwork.adopted_render_id); } catch (e) { setMsg('detail: ' + (e as Error).message); }
   }, []);
 
   useEffect(() => { void refreshList(); }, [refreshList]);
@@ -144,18 +145,18 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
 
   async function doAdopt(seed: number) {
     if (!selected) return;
-    try { const r = await adoptRenderApi(selected, seed); setMsg('adopted seed ' + seed + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported')); await loadDetail(selected); }
+    try { const r = await adoptRenderApi(selected, seed); setMsg('adopted seed ' + seed + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported')); await loadDetail(selected); await refreshList(); }
     catch (e) { setMsg('adopt: ' + (e as Error).message); }
   }
 
   async function doDelete(seed: number) {
     if (!selected) return;
-    try { await deleteRenderApi(selected, seed); setMsg('deleted seed ' + seed); await loadDetail(selected); }
+    try { await deleteRenderApi(selected, seed); setMsg('deleted seed ' + seed); await loadDetail(selected); await refreshList(); }
     catch (e) { setMsg('delete: ' + (e as Error).message); }
   }
 
   const selArt = artworks.find((a) => a.system_name === selected) || null;
-  const adoptedId = selArt ? selArt.adopted_render_id : null;
+  const adoptedId = detailAdoptedId;
 
   return (
     <div data-testid="artadmin" style={{ padding: 16, display: 'flex', gap: 24, color: '#eee' }}>

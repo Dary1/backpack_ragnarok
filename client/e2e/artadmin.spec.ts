@@ -21,6 +21,7 @@ test('artwork admin: create -> generate -> adopt -> serve -> delete rules -> re-
   await page.goto('/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
 
+  // create a po sword: 3 vertical cells -> 256x768
   await page.getByTestId('art-kind').selectOption('po');
   await page.getByTestId('po-cell-0-0').click();
   await page.getByTestId('po-cell-1-0').click();
@@ -31,34 +32,41 @@ test('artwork admin: create -> generate -> adopt -> serve -> delete rules -> re-
   await page.getByTestId('art-create').click();
   await expect(page.getByTestId('art-editor')).toBeVisible();
 
+  // final-prompt preview shows the art_style-templated prompt
   await page.getByTestId('art-preview').click();
   await expect(page.getByTestId('art-final-prompt')).toContainText('anime');
 
+  // generate three candidate seeds (1, 2, 3), each waited to completion
   await page.getByTestId('art-gen-next').click();
   await waitStatusOk(page, 1);
   await expect(page.getByTestId('render-1').locator('img')).toBeVisible();
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 2);
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 3);
 
+  // adopt seed 1: export fires (msg says exported), delete disabled on adopted
   await page.getByTestId('adopt-1').click();
   await expect(page.getByTestId('render-1')).toContainText('ADOPTED');
   await expect(page.getByTestId('delete-1')).toBeDisabled();
   await expect(page.getByTestId('art-msg')).toContainText('exported');
 
+  // API serves the adopted image (ETag = sha256)
   const served = await request.get('/api/art/' + NAME);
   expect(served.status()).toBe(200);
   expect(served.headers()['content-type']).toContain('image/png');
   expect(served.headers()['etag']).toBeTruthy();
 
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 2);
+  // delete a NON-adopted seed (2) -> allowed
   await page.getByTestId('delete-2').click();
   await expect(page.getByTestId('render-2')).toHaveCount(0);
 
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 3);
+  // re-adopt seed 3 -> adopted switches; seed 1 now deletable
   await page.getByTestId('adopt-3').click();
   await expect(page.getByTestId('render-3')).toContainText('ADOPTED');
   await expect(page.getByTestId('delete-1')).toBeEnabled();
 
+  // meta reflects the newly adopted seed
   const meta = await request.get('/api/art/' + NAME + '/meta');
   expect(meta.status()).toBe(200);
   const body = await meta.json();
