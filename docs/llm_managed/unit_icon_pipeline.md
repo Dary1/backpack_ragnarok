@@ -75,8 +75,9 @@
 - **S3 Generate.** Same ComfyUI route as items, on the **ratified `flux2`
   route** (REQ-0136, user verdict 2026-07-12, reconfirmed 2026-07-13):
   `flux-2-klein-4b-Q8_0.gguf` at `127.0.0.1:8188` (manual start), 4 candidates,
-  seeds 101/202/303/404, **4 steps, cfg 1.0, euler**. `--route sdxl` selects the
-  V9 fallback (30 steps, cfg 6.5, dpmpp_2m/karras). Long runs via
+  seeds 101/202/303/404, **4 steps, cfg 1.0, euler**. `--route sdxl` still
+  exists but is **FROZEN — historical reproduction only, not a production route**
+  (REQ-0150, user 2026-07-13: one route, flux2). Long runs via
   `setsid nohup`; **stop ComfyUI before the matte phase** (rembg ~12 GB will not
   fit beside a resident model on the 23 GB box — use `--no-matte` then
   `--rematte-only`). Implementation: `tools/gen_unit_icons.py`, a thin wrapper
