@@ -23,6 +23,7 @@
 // lives on the SERVER (server debited), whereas the workshop roll debits
 // client-side first -- so we must pull, not just push.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePolledResource } from '../lib/usePolledResource';
 import { fetchMarketFurnace, fetchMarketListings, type ApiMarketFurnaceResponse, type ApiMarketListing } from '../api';
 import { t } from '../i18n';
 import { loadGame, useGameStore, type Locale } from '../store';
@@ -66,8 +67,6 @@ export function MarketPage({ locale }: MarketPageProps) {
   const [mine, setMine] = useState<ApiMarketListing[]>([]);
   const [furnace, setFurnace] = useState<ApiMarketFurnaceResponse['furnace'] | null>(null);
   const [furnaceSeason, setFurnaceSeason] = useState<ApiMarketFurnaceResponse['season']>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [buyTarget, setBuyTarget] = useState<ApiMarketListing | null>(null);
   // BUY search/filter state lifted here so it survives pane switches.
   const [activeChip, setActiveChip] = useState('all');
@@ -96,23 +95,16 @@ export function MarketPage({ locale }: MarketPageProps) {
     if (aliveRef.current) { setFurnace(res.furnace); setFurnaceSeason(res.season ?? null); }
   }, []);
 
-  // Initial load: browse + mine + furnace together.
-  useEffect(() => {
-    let done = false;
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        await Promise.all([loadBrowse(), loadMine(), loadFurnace()]);
-      } catch (e) {
-        if (!done && aliveRef.current) setError(t(locale, 'market.loadError') + (e instanceof Error ? e.message : String(e)));
-      } finally {
-        if (!done && aliveRef.current) setLoading(false);
-      }
-    })();
-    return () => { done = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Initial load: browse + mine + furnace together (REQ-0145b (cc):
+  // rides usePolledResource's trackLoading mode -- loading starts true,
+  // error cleared at load start, same composite Promise.all).
+  const { loading, error } = usePolledResource<void>(
+    () => Promise.all([loadBrowse(), loadMine(), loadFurnace()]).then(() => undefined),
+    {
+      trackLoading: true,
+      formatError: (e) => t(locale, 'market.loadError') + (e instanceof Error ? e.message : String(e)),
+    }
+  );
 
   // MINE pane: refetch FRESH every time it is focused/returned to, since
   // state (suspended<->active, or a buy landing as settled) changes

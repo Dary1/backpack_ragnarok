@@ -88,10 +88,9 @@
 // alone cannot (state updates are batched/async; the ref mutates
 // immediately). New hooks only -- no selector in the contract above was
 // renamed or removed.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   claimWarehouseItem as apiClaimWarehouseItem,
-  fetchContent,
   fetchDungeons,
   fetchRooms,
   fetchWarehouse,
@@ -108,6 +107,8 @@ import { contentEntryFor, itemKindOf, localizedItemName } from '../lib/itemConte
 import { firstFitOrMergeTM, firstFitPlace } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { formatWarehouseCountdown } from '../lib/time';
+import { cachedFetchContent } from '../lib/contentCache';
+import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
 import { localizedName } from '../schedule/CreateRoomForm';
 import { t } from '../i18n';
@@ -193,9 +194,17 @@ type WarehouseFilter = 'all' | 'spoils' | 'currency';
 
 export function WarehousePage({ locale }: WarehousePageProps) {
   const snapshot = useGameStore();
-  const [items, setItems] = useState<WarehouseRow[] | null>(null);
-  const [content, setContent] = useState<ApiContentPayload | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  // REQ-0145b (cc): rows / content / rooms / dungeons state machines
+  // replaced by usePolledResource -- same intervals, same mount
+  // behavior, same error posture per resource (see the hook's doc).
+  const {
+    data: items,
+    error: loadError,
+    reload,
+  } = usePolledResource<WarehouseRow[]>(() => fetchWarehouse().then((res) => res.items), { intervalMs: POLL_MS });
+  const { data: content } = usePolledResource<ApiContentPayload>(cachedFetchContent, {
+    onError: 'ignore', // item name/icon resolution degrades to raw itemId -- non-fatal
+  });
   // REQ-0086: rooms/dungeons used to arrive as props from SchedulePage
   // (which already fetched/polled them for its own Rooms view). This is
   // now its own top-level route with no such parent, so it fetches its
@@ -205,8 +214,12 @@ export function WarehousePage({ locale }: WarehousePageProps) {
   // source room is already a settled/harvested-from room by the time it
   // shows up here, so staleness risk is negligible (unlike the Rooms
   // view's own live status/cooldown polling need).
-  const [rooms, setRooms] = useState<ApiRoom[] | null>(null);
-  const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
+  const { data: rooms } = usePolledResource<ApiRoom[]>(() => fetchRooms().then((res) => res.rooms), {
+    onError: 'ignore', // provenance chip degrades to omitted -- non-fatal
+  });
+  const { data: dungeons } = usePolledResource<ApiDungeonsPayload>(fetchDungeons, {
+    onError: 'ignore', // provenance chip degrades to omitted -- non-fatal
+  });
   const [claimingUid, setClaimingUid] = useState<string | null>(null);
   const [claimingAll, setClaimingAll] = useState(false);
   // REQ-0091: per-row claim press-feedback (flash while the claim POST
@@ -245,61 +258,6 @@ export function WarehousePage({ locale }: WarehousePageProps) {
   useEffect(() => {
     setInventorySlot(slotRef.current);
     return () => setInventorySlot(null);
-  }, []);
-
-  const reload = useCallback(async () => {
-    try {
-      const res = await fetchWarehouse();
-      setItems(res.items);
-      setLoadError(null);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchContent()
-      .then((c) => {
-        if (!cancelled) setContent(c);
-      })
-      .catch(() => {
-        /* item name/icon resolution degrades to raw itemId -- non-fatal */
-      });
-    void reload();
-    return () => {
-      cancelled = true;
-    };
-  }, [reload]);
-
-  useEffect(() => {
-    const id = setInterval(() => void reload(), POLL_MS);
-    return () => clearInterval(id);
-  }, [reload]);
-
-  // REQ-0086: one-shot rooms/dungeons fetch for the provenance chip (see
-  // the state comment above) -- failures are non-fatal, same posture as
-  // every other best-effort lookup on this page (the chip is simply
-  // omitted for a row that cannot be resolved).
-  useEffect(() => {
-    let cancelled = false;
-    fetchRooms()
-      .then((res) => {
-        if (!cancelled) setRooms(res.rooms);
-      })
-      .catch(() => {
-        /* provenance chip degrades to omitted -- non-fatal */
-      });
-    fetchDungeons()
-      .then((d) => {
-        if (!cancelled) setDungeons(d);
-      })
-      .catch(() => {
-        /* provenance chip degrades to omitted -- non-fatal */
-      });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {

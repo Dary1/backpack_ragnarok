@@ -30,6 +30,7 @@
 // side regardless of what this form allows the user to type.
 import { useEffect, useMemo, useState } from 'react';
 import { grantWarehouseItem, putAdminItem, type ApiContentPayload, type ApiItemEntry, type ApiMe, type ApiSIEntry } from '../api';
+import { invalidateContentCache } from '../lib/contentCache';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
 import type { Locale } from '../store';
@@ -290,6 +291,10 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
         body.stretch = form.stretch;
       }
       await putAdminItem(selected.id, body);
+      // REQ-0145b (cc): content just changed server-side -- drop the
+      // module-level content cache BEFORE onSaved() triggers DexRoot's
+      // reload, so the reload refetches instead of replaying the memo.
+      invalidateContentCache();
       setSaveOk(true);
       onSaved();
     } catch (e) {
