@@ -1,0 +1,95 @@
+{
+  "checkpoint": "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors",
+  "tile_px": 1024,
+  "legs": [
+    {
+      "wrap_x": 22.01432228088379,
+      "wrap_y": 15.356770515441895,
+      "interior_x": 20.285781860351562,
+      "interior_y": 15.97429084777832,
+      "ratio_x": 1.0852094888687134,
+      "ratio_y": 0.9613428711891174,
+      "motif": "elven",
+      "seed": 101,
+      "leg": "seamless"
+    },
+    {
+      "wrap_x": 54.12760543823242,
+      "wrap_y": 50.39485549926758,
+      "interior_x": 19.476285934448242,
+      "interior_y": 16.071218490600586,
+      "ratio_x": 2.7791543006896973,
+      "ratio_y": 3.13572096824646,
+      "motif": "elven",
+      "seed": 101,
+      "leg": "control"
+    },
+    {
+      "wrap_x": 18.2890625,
+      "wrap_y": 16.89811134338379,
+      "interior_x": 17.046667098999023,
+      "interior_y": 15.449529647827148,
+      "ratio_x": 1.072882056236267,
+      "ratio_y": 1.0937621593475342,
+      "motif": "elven",
+      "seed": 202,
+      "leg": "seamless"
+    },
+    {
+      "wrap_x": 49.3095703125,
+      "wrap_y": 51.359375,
+      "interior_x": 17.85448455810547,
+      "interior_y": 14.590422630310059,
+      "ratio_x": 2.761747121810913,
+      "ratio_y": 3.5200746059417725,
+      "motif": "elven",
+      "seed": 202,
+      "leg": "control"
+    },
+    {
+      "wrap_x": 12.4580078125,
+      "wrap_y": 9.458333015441895,
+      "interior_x": 12.026601791381836,
+      "interior_y": 11.40044116973877,
+      "ratio_x": 1.0358710289001465,
+      "ratio_y": 0.8296462297439575,
+      "motif": "barbarian",
+      "seed": 101,
+      "leg": "seamless"
+    },
+    {
+      "wrap_x": 37.28352737426758,
+      "wrap_y": 36.68359375,
+      "interior_x": 12.065253257751465,
+      "interior_y": 11.414417266845703,
+      "ratio_x": 3.0901570320129395,
+      "ratio_y": 3.213794708251953,
+      "motif": "barbarian",
+      "seed": 101,
+      "leg": "control"
+    },
+    {
+      "wrap_x": 8.935872077941895,
+      "wrap_y": 10.994791984558105,
+      "interior_x": 8.779468536376953,
+      "interior_y": 11.117080688476562,
+      "ratio_x": 1.0178146362304688,
+      "ratio_y": 0.9889999032020569,
+      "motif": "barbarian",
+      "seed": 202,
+      "leg": "seamless"
+    },
+    {
+      "wrap_x": 33.22135543823242,
+      "wrap_y": 41.13997268676758,
+      "interior_x": 8.809049606323242,
+      "interior_y": 11.138303756713867,
+      "ratio_x": 3.771275758743286,
+      "ratio_y": 3.6935582160949707,
+      "motif": "barbarian",
+      "seed": 202,
+      "leg": "control"
+    }
+  ],
+  "started": "2026-07-12 07:15:24"
+}

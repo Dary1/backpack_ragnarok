@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# tools/art_inspect_e2e.sh -- REQ-0152 G4 isolated e2e bringup.
+#
+# Stands up an ISOLATED instance of THIS worktree's api + static web + local
+# proxy, then runs the artinspect Playwright spec through tools/e2e_run.sh
+# (box lock). Never touches the live services or the live artwork rows:
+#   - HOME is remapped to a temp dir whose backpack_ragnarok symlinks back to
+#     the worktree, so storage_art's NAMESPACE (hash of $HOME/backpack_ragnarok)
+#     is UNIQUE to this run while content/code still resolve to the worktree.
+#   - api on a spare port, STORAGE_BACKEND=pg, ART_ROUTE_MOCK=1 (no GPU),
+#     ART_KIT_MATTE_METHOD=borderkey (fast, model-free matte),
+#     ART_KIT_PYTHON=<project venv> (numpy/scipy/rembg for the kits).
+#   - artinspect.config.ts carries NO globalSetup/webServer.
+#
+# Requires DATABASE_URL in the environment (source server/.env first). Run:
+#   set -a; source ~/backpack_ragnarok/server/.env; set +a; bash tools/art_inspect_e2e.sh
+set -euo pipefail
+: "${DATABASE_URL:?source server/.env first (DATABASE_URL required)}"
+
+WT="$(cd "$(dirname "$0")/.." && pwd)"
+VENV_PY="${ART_KIT_PYTHON:-/home/qtie/backpack_ragnarok/.venv/bin/python}"
+
+APIPORT="${APIPORT:-8912}"
+STATICPORT="${STATICPORT:-8911}"
+PROXYPORT="${PROXYPORT:-8913}"
+
+TMPHOME="$(mktemp -d)"
+MODELDIR="$(mktemp -d)"
+EXPORTDIR="$(mktemp -d)"
+ln -s "$WT" "$TMPHOME/backpack_ragnarok"
+for f in flux-2-klein-4b-Q8_0.gguf qwen_3_4b.safetensors flux2-vae.safetensors; do echo standin > "$MODELDIR/$f"; done
+
+PIDS=()
+cleanup() {
+  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  rm -rf "$TMPHOME" "$MODELDIR" "$EXPORTDIR"
+}
+trap cleanup EXIT
+
+echo "[art_inspect_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
+
+HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
+  ART_ROUTE_MOCK=1 ART_MODEL_DIR="$MODELDIR" ART_EXPORT_ROOT="$EXPORTDIR" \
+  ART_JOB_PYTHON="$VENV_PY" ART_KIT_PYTHON="$VENV_PY" ART_KIT_MATTE_METHOD=borderkey \
+  node "$WT/server/api.cjs" > /tmp/req0152_e2e_api.log 2>&1 &
+PIDS+=($!)
+
+python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0152_e2e_static.log 2>&1 &
+PIDS+=($!)
+
+E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \
+  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0152_e2e_proxy.log 2>&1 &
+PIDS+=($!)
+
+# wait for the api + proxy to accept connections
+for i in $(seq 1 80); do
+  if curl -s -o /dev/null "http://127.0.0.1:$APIPORT/api/content" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+for i in $(seq 1 40); do
+  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$STATICPORT/app/" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+
+PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/artinspect.config.ts

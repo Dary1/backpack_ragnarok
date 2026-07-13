@@ -65,11 +65,19 @@ import {
   type DropTarget,
 } from './drag';
 import type { BoardOps } from './boardOps';
-import { CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, socketScreenPos } from './geom';
+import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, UNIT_CORE_RADIUS, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, pointSegDistance, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
+import { resolveUnitIcon } from './unitIcon';
+import { drawChargeRing } from './chargeRing';
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
+// REQ-0142 (link-trace diagnostics): beam hover is ephemeral INTERACTION
+// state (board/beamHover.ts, the same pub-sub shape as itemTip/carry), and
+// the trace itself is a READ-ONLY query over the engine (board/linkTrace.ts).
+// Neither touches game state -- hovering a beam can never mutate a board.
+import { clearBeamHoverForBoard, getBeamHover, setBeamHover, subscribeBeamHover } from './beamHover';
+import { traceUnit } from './linkTrace';
 
 export interface BoardDeps {
   engine: EngineInstance;
@@ -89,6 +97,28 @@ export interface BoardDeps {
  * (0..3, 90° CW each). Kept as a free function (not engine logic -- this is
  * pure display-geometry, same category as cx()/cy()/DIR_ANGLES above).
  */
+/** REQ-0142: a dashed segment (Pixi v8's Graphics has no native dash). Used
+ * for the "the beam died here" ghost: from the Unit that took the first hit
+ * to each Unit standing behind it, which therefore never hears the beam. */
+function drawDashedSegment(parent: Container, x0: number, y0: number, x1: number, y1: number, color: string): void {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const ux = dx / len;
+  const uy = dy / len;
+  const DASH = 9;
+  const GAP = 7;
+  const g = new Graphics();
+  for (let t = UNIT_CORE_RADIUS; t < len - UNIT_CORE_RADIUS; t += DASH + GAP) {
+    const e = Math.min(t + DASH, len - UNIT_CORE_RADIUS);
+    g.moveTo(x0 + ux * t, y0 + uy * t).lineTo(x0 + ux * e, y0 + uy * e);
+  }
+  g.stroke({ color, width: 2, alpha: 0.6 });
+  g.eventMode = 'none'; // decorative, see BoardRenderer's constructor note
+  parent.addChild(g);
+}
+
 export class BoardRenderer {
   app: Application;
   root = new Container();
@@ -118,6 +148,16 @@ export class BoardRenderer {
   lastPointerDown = new Map<string, number>();
   lastBPPointerDown = new Map<string, number>(); // REQ-0045 (a2): BP dblclick-rotate tracking, kept separate from PO's own map (see this field's sibling doc).
   flashTimers = new Set<ReturnType<typeof setTimeout>>();
+  // REQ-0142: link-trace hover subscription (redraw when the interrogated
+  // Unit/beam changes -- hover lives outside the game store by design, so
+  // nothing else would ever tell this board to repaint).
+  unsubscribeHover: (() => void) | null = null;
+  /** REQ-0142: every beam drawn by the last render(), in board-LOCAL pixel
+   * space, so the pointermove hover hit-test can ask "is the pointer on a
+   * beam?" against the beams that are ACTUALLY on screen rather than
+   * re-deriving their geometry (and drifting from it). Canvas board only --
+   * an inventory board draws no beams (Unit dormancy), so it stays empty. */
+  beamSegs: { from: string; dir: number; x0: number; y0: number; x1: number; y1: number }[] = [];
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -248,8 +288,14 @@ export class BoardRenderer {
     for (const t of this.flashTimers) clearTimeout(t);
     this.flashTimers.clear();
     this.unsubscribeCarry?.();
+    this.unsubscribeHover?.();
     this.unregisterBoard?.();
     window.removeEventListener('keydown', this.onWindowKeyDown);
+    // REQ-0142: drop any beam hover anchored to THIS board before its canvas
+    // detaches -- same staleness hazard (and same fix) as the item tip below.
+    this.app.canvas.removeEventListener('pointermove', this.onCanvasPointerMove);
+    this.app.canvas.removeEventListener('pointerleave', this.onCanvasPointerLeave);
+    clearBeamHoverForBoard(boardIdKey(this.boardId));
     // REQ-0119: drop any floating tip anchored to THIS board before its
     // canvas detaches (a stale anchor would point at a gone element).
     clearItemTipForBoard(boardIdKey(this.boardId));
@@ -453,7 +499,80 @@ export class BoardRenderer {
     // BPs sitting in an inventory page in the first place -- traceBeams
     // only ever iterates st.bps -- but this guard also skips the call
     // entirely for an inventory board rather than relying solely on that).
+    //
+    // REQ-0142 (link-trace diagnostics): this layer is now TRACE-AWARE.
+    //   AT REST it draws exactly what it always drew (same #59d6d6 link
+    //   lines, same grey dud line + ×, same 5px mutual-pair offset), plus
+    //   ONE always-on addition the REQ asks for: a ⇄ badge on mutually
+    //   linked pairs. canvas_spec calls mutual links "allowed, not always
+    //   optimal" and duds "intentional" -- so both are MARKED, never nagged
+    //   about (REQ-0142: "mark, don't nag").
+    //   UNDER HOVER it becomes a diagnostic instrument: the interrogated
+    //   Unit's ray fan lights up (origin ring -> traversed cells -> first-hit
+    //   receiver ring) while every unrelated beam drops to BEAM_DIM_ALPHA, so
+    //   a spaghetti board collapses to the one fan being read. Where the
+    //   first-hit rule CONSUMED a beam, a dashed ghost continues from the
+    //   receiver to each shadowed Unit -- the geometry of "blocked by X",
+    //   drawn rather than described.
+    // The PROSE ("why not", plain language, EN + ja) is not here: it lives in
+    // the HTML panel (BeamTracePanel.tsx), which reads the same linkTrace
+    // query. This layer draws only what geometry alone can honestly say.
+    this.beamSegs = [];
     if (ops.isCanvas) {
+      const hover = getBeamHover();
+      const active = hover && hover.boardKey === boardIdKey(this.boardId) ? hover : null;
+      const trace = active ? traceUnit(engine, state, layout, active.bp) : null;
+      // Which beams are "the subject": the hovered Unit's whole fan, or the
+      // single direction when a beam SEGMENT (not the core) is hovered.
+      const isSubject = (from: string, dir: number): boolean =>
+        !!trace && from === trace.bp && (active!.dir === null || active!.dir === dir);
+      const beamAlpha = (from: string, dir: number, base: number): number =>
+        !trace || isSubject(from, dir) ? base : base * BEAM_DIM_ALPHA;
+
+      // Traced-ray backdrop: origin ring, traversed cells, receiver ring.
+      // Drawn FIRST so every beam line lands on top of its own highlight.
+      if (trace) {
+        const originRing = new Graphics();
+        originRing.circle(cx(trace.cell[1]), cy(trace.cell[0]), UNIT_CORE_RADIUS + 6);
+        originRing.stroke({ color: '#9ff0f0', width: 2, alpha: 0.9 });
+        this.gBeams.addChild(originRing);
+        for (const dt of trace.dirs) {
+          if (!dt.active) continue; // an unfired direction has no ray to light up (the panel says why)
+          if (active!.dir !== null && dt.dir !== active!.dir) continue;
+          for (const [r, c] of dt.path) {
+            const cellHi = new Graphics();
+            cellHi.rect(PAD + (c - 1) * CELL, PAD + (r - 1) * CELL, CELL, CELL);
+            cellHi.fill({ color: dt.to ? '#59d6d6' : '#8a8a8a', alpha: 0.10 });
+            this.gBeams.addChild(cellHi);
+          }
+          if (dt.to && dt.firstOnRay) {
+            const rx = cx(dt.firstOnRay.cell[1]);
+            const ry = cy(dt.firstOnRay.cell[0]);
+            const hitRing = new Graphics();
+            hitRing.circle(rx, ry, UNIT_CORE_RADIUS + 6);
+            hitRing.stroke({ color: '#9ff0f0', width: 2, alpha: 0.75 });
+            this.gBeams.addChild(hitRing);
+            // "blocked by X": the beam DIED at the receiver, so every Unit
+            // further down the ray never hears it. Draw that death as a
+            // dashed ghost from the receiver to each shadowed Unit.
+            for (const shadow of dt.unitsOnRay.slice(1)) {
+              drawDashedSegment(
+                this.gBeams,
+                rx,
+                ry,
+                cx(shadow.cell[1]),
+                cy(shadow.cell[0]),
+                '#d98a4a'
+              );
+              const miss = new Graphics();
+              miss.circle(cx(shadow.cell[1]), cy(shadow.cell[0]), UNIT_CORE_RADIUS + 6);
+              miss.stroke({ color: '#d98a4a', width: 2, alpha: 0.55 });
+              this.gBeams.addChild(miss);
+            }
+          }
+        }
+      }
+
       for (const bm of engine.traceBeams(state)) {
         const bp = bpById(bm.from);
         const lc = engine.unitCell(bp);
@@ -476,11 +595,28 @@ export class BoardRenderer {
             px = -uy * 5;
             py = ux * 5;
           }
+          const subject = isSubject(bm.from, bm.dir);
           const line = new Graphics();
           line.moveTo(x0 + px, y0 + py).lineTo(x1t + px, y1t + py);
-          line.stroke({ color: '#59d6d6', width: 3, alpha: 0.95 });
+          line.stroke({ color: '#59d6d6', width: subject ? 5 : 3, alpha: beamAlpha(bm.from, bm.dir, 0.95) });
           this.gBeams.addChild(line);
           this.gBeams.addChild(arrowHead(this, x1t + px, y1t + py, Math.atan2(uy, ux), '#59d6d6'));
+          // Mutual-link badge (REQ-0142): the pair each targets the other.
+          // Drawn once per beam (so a mutual pair carries one badge on each
+          // of its two offset lines -- symmetric, like the link itself).
+          if (bm.mutual) {
+            const badge = new Text({
+              text: '⇄',
+              style: { fill: '#9ff0f0', fontSize: 15, fontWeight: 'bold' },
+            });
+            badge.anchor.set(0.5);
+            badge.x = (x0 + x1t) / 2 + px;
+            badge.y = (y0 + y1t) / 2 + py;
+            badge.alpha = beamAlpha(bm.from, bm.dir, 0.9);
+            badge.eventMode = 'none'; // decorative, see constructor note
+            this.gBeams.addChild(badge);
+          }
+          this.beamSegs.push({ from: bm.from, dir: bm.dir, x0: x0 + px, y0: y0 + py, x1: x1t + px, y1: y1t + py });
         } else {
           const dv = engine.DIRS[bm.dir];
           const vlen = Math.hypot(dv[1], dv[0]) || 1;
@@ -496,15 +632,18 @@ export class BoardRenderer {
           const y1 = y0base + uy * t;
           const x0 = x0base + ux * 28;
           const y0 = y0base + uy * 28;
+          const subject = isSubject(bm.from, bm.dir);
           const line = new Graphics();
           line.moveTo(x0, y0).lineTo(x1 + ux * 8, y1 + uy * 8);
-          line.stroke({ color: '#6a6a6a', width: 2, alpha: 0.7 });
+          line.stroke({ color: '#6a6a6a', width: subject ? 3 : 2, alpha: beamAlpha(bm.from, bm.dir, 0.7) });
           this.gBeams.addChild(line);
           const dud = new Text({ text: '×', style: { fill: '#6a6a6a', fontSize: 15 } });
           dud.anchor.set(0.5);
           dud.x = x1 + ux * 20;
           dud.y = y1 + uy * 20;
+          dud.alpha = beamAlpha(bm.from, bm.dir, 1);
           this.gBeams.addChild(dud);
+          this.beamSegs.push({ from: bm.from, dir: bm.dir, x0, y0, x1: x1 + ux * 8, y1: y1 + uy * 8 });
         }
       }
     }
@@ -752,17 +891,57 @@ export class BoardRenderer {
       core.cursor = 'grab';
       core.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
       this.gUnits.addChild(core);
-      const unitTexture = textures.get('icon-unit_core');
+      // REQ-0125a: the art in a Unit cell is no longer a string literal. It
+      // comes from THE resolver (board/unitIcon.ts), through the ratified G6
+      // skin chain: active skin -> default unit icon -> legacy glyph ->
+      // placeholder. Today no BP carries a skin or a default icon (no unit art
+      // exists -- REQ-0127 is on hold behind REQ-0136 -- and no unit IDENTITY
+      // exists to key one on -- REQ-0128 owns the Unit model, and the user's
+      // 2026-07-12 ruling was explicitly NOT to invent a unitId field here to
+      // unblock the renderer). So every BP falls through to the legacy
+      // `icon-unit_core` glyph and this board stays pixel-identical to
+      // pre-REQ-0125a. That fall-through IS the deliverable: REQ-0125b lands
+      // identity and REQ-0127 lands art as DATA, without touching this file,
+      // and REQ-0133 reuses this same chain for item rasters.
+      const icon = resolveUnitIcon(
+        {
+          // Both null until REQ-0125b (see unitIcon.ts). Written out rather
+          // than omitted so the seam is visible to the next reader.
+          skinKey: null,
+          defaultKey: null,
+        },
+        (k) => textures.has(k)
+      );
+      const unitTexture = icon.key ? textures.get(icon.key) : undefined;
       if (unitTexture) {
         const sprite = new Sprite(unitTexture);
-        sprite.width = 44;
-        sprite.height = 44;
-        sprite.x = x - 22;
-        sprite.y = y - 22;
+        // Contain-fit into the 44x44 art box via the SHARED box-fit every other
+        // icon on this board already uses (geom.fitSpriteToBox ->
+        // render/itemCard.fitBoxInBounds). The old code hard-set width/height to
+        // 44x44, which is a no-op for the 1:1 legacy glyph but would STRETCH any
+        // non-square art -- and aspect is inviolable (common_content_pipeline.md
+        // section 2). Unit icons are 1:1 by definition (unit_icon_pipeline.md
+        // section 0), so this changes nothing today; it is the path REQ-0133's
+        // non-square item rasters will come through.
+        fitSpriteToBox(sprite, x - 22, y - 22, 44, 44);
         sprite.alpha = ops.isCanvas ? 1 : INV_UNIT_ALPHA * 2;
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gUnits.addChild(sprite);
       }
+
+      // G7 charge ring (unit_icon_pipeline.md section 1). Renderer-drawn, never
+      // baked into art (G2). NULL today at every production call site: no charge
+      // data exists anywhere in the codebase (see chargeRing.ts's header for the
+      // audit -- the placement engine has no time axis at all, and sim's only
+      // `cooldown` is the ROOM re-entry timer, which is REQ-0098's ring, not a
+      // unit's; canvas units are dormant by construction anyway). So
+      // drawChargeRing() no-ops and no ring appears. The drawing itself is
+      // finished and visually verified (web/preview/unit-charge-ring/); REQ-0129
+      // changes this ONE argument from null to a real 0-1 value and it lights up.
+      const ring = new Graphics();
+      drawChargeRing(ring, x, y, null);
+      ring.eventMode = 'none'; // decorative, must not eat the BP drag handle
+      this.gUnits.addChild(ring);
       // Direction dots (which way the unit's beams would fire) are a
       // canvas-only concept -- an inventory BP's unit is dormant, so no
       // dots are drawn there (REQ-0030 spec item 1: "no beams").
@@ -1061,6 +1240,108 @@ export class BoardRenderer {
     if (e.target === this.app.stage) clearItemTip();
   };
 
+  /** REQ-0142: the pointer left this board's canvas -- nothing is being
+   * interrogated any more. (pointermove cannot report this: it simply stops
+   * firing once the pointer is gone, leaving the last hover stuck on.) */
+  onCanvasPointerLeave = (): void => {
+    clearBeamHoverForBoard(boardIdKey(this.boardId));
+  };
+
+  /** REQ-0142: hover interrogation rides a PLAIN DOM pointermove on this
+   * board's own <canvas>, NOT PixiJS's stage 'globalpointermove'.
+   *
+   * Two reasons, and both matter:
+   *   1. globalpointermove is the DRAG channel (onGlobalPointerMove below),
+   *      whose very first line returns unless a carry is in flight -- and
+   *      hover is precisely the no-carry case. Hanging hover off the same
+   *      event would have entangled two unrelated interactions in one
+   *      handler, with the drag's own semantics (and Pixi's hit-test
+   *      bookkeeping) sitting between the pointer and the answer.
+   *   2. A DOM listener on the canvas is scoped to THIS board by
+   *      construction: it fires only when the pointer is actually over this
+   *      canvas, so no cross-board coordinate confusion is even possible
+   *      (the hazard onGlobalPointerMove documents at length, since Pixi's
+   *      EventSystem listens on `document` and fires BOTH boards' stages for
+   *      every native move).
+   * Hover must also never perturb hit-testing: no Pixi interactive object is
+   * added for it, so a beam crossing a BP cell can never swallow that cell's
+   * own pointerdown (the BP drag handle). Pure read, zero interference. */
+  onCanvasPointerMove = (e: PointerEvent): void => {
+    this.updateBeamHover(e.clientX, e.clientY);
+  };
+
+  /** REQ-0142: resolve what the pointer is interrogating, and publish it.
+   *
+   * Priority is Unit core FIRST, beam segment second: a beam passing through
+   * a Unit's own cell must never out-compete that Unit (the core is the
+   * richer subject -- its whole 8-direction fan -- and it is what the player
+   * is pointing at). Both hits are computed against this board's OWN drawn
+   * geometry (unitCell + this.beamSegs, rebuilt by render()), so the hover
+   * target can never drift from the pixels.
+   *
+   * Canvas board only: an inventory page's Units are DORMANT (REQ-0030) --
+   * they fire no beams, so there is nothing there to trace.
+   */
+  updateBeamHover(clientX: number, clientY: number): void {
+    if (this.disposed || !this.lastState) return;
+    const { engine, ops } = this.deps;
+    if (!ops.isCanvas) return;
+    const boardKey = boardIdKey(this.boardId);
+    // A drag in flight is not an interrogation -- get out of the way (the
+    // same reason the item tip hides the moment a carry arms).
+    if (getCarry()) {
+      clearBeamHoverForBoard(boardKey);
+      return;
+    }
+    // globalpointermove fires on EVERY mounted board's stage for EVERY native
+    // pointermove -- including the board the pointer is not physically over
+    // (see this handler's own REQ-0031 note below). So a board must first ask
+    // whether the pointer is even on it, or the canvas board would happily
+    // publish a hover computed from a pointer sitting over the inventory.
+    const rect = this.app.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      clearBeamHoverForBoard(boardKey);
+      return;
+    }
+    const { x, y } = clientToLocal(this, clientX, clientY);
+    const container = ops.container(this.lastState);
+    for (const bp of container.bps) {
+      const lc = engine.unitCell(bp);
+      const ux = cx(lc[1]);
+      const uy = cy(lc[0]);
+      if (Math.hypot(x - ux, y - uy) <= UNIT_CORE_RADIUS) {
+        setBeamHover({
+          bp: bp.id,
+          dir: null,
+          anchor: localBoxToClient(this, ux - UNIT_CORE_RADIUS, uy - UNIT_CORE_RADIUS, UNIT_CORE_RADIUS * 2, UNIT_CORE_RADIUS * 2),
+          boardKey,
+        });
+        return;
+      }
+    }
+    let best: (typeof this.beamSegs)[number] | null = null;
+    let bestDist = BEAM_HOVER_SLOP;
+    for (const seg of this.beamSegs) {
+      const d = pointSegDistance(x, y, seg.x0, seg.y0, seg.x1, seg.y1);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = seg;
+      }
+    }
+    if (best) {
+      const mx = (best.x0 + best.x1) / 2;
+      const my = (best.y0 + best.y1) / 2;
+      setBeamHover({
+        bp: best.from,
+        dir: best.dir,
+        anchor: localBoxToClient(this, mx - 12, my - 12, 24, 24),
+        boardKey,
+      });
+      return;
+    }
+    clearBeamHoverForBoard(boardKey);
+  }
+
   /** Wires stage-wide pointermove (arm + legality preview + ghost) and
    * window keydown (Esc cancel). Called once from the constructor. Also
    * registers this board's BoardCommitApi (drag.ts) and ensures the
@@ -1074,6 +1355,20 @@ export class BoardRenderer {
     this.app.stage.on('globalpointermove', this.onGlobalPointerMove);
     this.app.stage.on('pointerup', this.onStagePointerUp);
     window.addEventListener('keydown', this.onWindowKeyDown);
+    // REQ-0142: hover interrogation (see onCanvasPointerMove for why this is
+    // a DOM listener on the canvas rather than a Pixi stage event), plus the
+    // pointer LEAVING the canvas entirely -- which pointermove cannot report,
+    // since it simply stops firing once the pointer is gone.
+    this.app.canvas.addEventListener('pointermove', this.onCanvasPointerMove);
+    this.app.canvas.addEventListener('pointerleave', this.onCanvasPointerLeave);
+    // REQ-0142: beam hover is not game state (it lives in beamHover.ts's
+    // pub-sub, exactly like drag.ts's carry), so the store will never tell
+    // this board to repaint when it changes -- subscribe and repaint here.
+    // render() is the ONLY place that reads the hover, so a repaint of the
+    // last state is a complete, correct response to any hover change.
+    this.unsubscribeHover = subscribeBeamHover(() => {
+      if (!this.disposed && this.lastState) this.render(this.lastState);
+    });
     ensurePointerUpWired();
     this.unregisterBoard = registerBoard(this.boardId, makeCommitApi(this));
     // Re-render ghost/target layers whenever drag.ts's carry state changes

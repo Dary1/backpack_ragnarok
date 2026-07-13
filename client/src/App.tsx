@@ -89,10 +89,15 @@ import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChro
 import { ForecastOverlay } from './forecast/ForecastOverlay'; // REQ-0057
 import { ForecastPanel } from './forecast/ForecastPanel'; // REQ-0057
 import { DexRoot } from './dex/DexRoot';
+import { ArtAdminPage } from './artadmin/ArtAdminPage'; // REQ-0151
+import { ContentAdminPage } from './contentadmin/ContentAdminPage'; // REQ-0155
 import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { FloatingItemTip } from './FloatingItemTip';
+// REQ-0142: the link-trace panel, mounted app-level for the same reason the
+// item tip is -- it floats over whichever board the pointer is interrogating.
+import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
@@ -279,6 +284,8 @@ function App() {
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
+        {route === 'artadmin' ? <ArtAdminPage locale={snapshot.locale} /> : null}
+        {route === 'contentadmin' ? <ContentAdminPage locale={snapshot.locale} /> : null}
 
         {/* REQ-0119: one global floating item-tooltip overlay. Fixed-
             positioned and driven by board/itemTip.ts's pub-sub, so this
@@ -286,6 +293,7 @@ function App() {
             board (including the warehouse/expedition portal reuse) with no
             per-page wiring. */}
         <FloatingItemTip />
+        <BeamTracePanel />
       </main>
     </div>
     </DexCardProvider>

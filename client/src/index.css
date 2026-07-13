@@ -5393,6 +5393,317 @@ html, body {
   .schedule-detail-pane { position: static; }
 }
 
+/* ============================================================
+   REQ-0142 - link-trace diagnostics panel (BeamTracePanel.tsx). Floats
+   beside a hovered Unit core / beam segment on the canvas board and says
+   what each of the eight beams links -- or WHY the link the player expected
+   is absent. Same floating-panel anatomy as .item-tip (REQ-0119): fixed
+   position set in JS, measured + edge-flipped, night-iron gradient + gold
+   hairline. Distinct class (not a modifier of .item-tip) because the two
+   panels can be on screen at once (a tapped item tip + a hovered beam) and
+   must never fight over one rule set.
+   pointer-events:none is deliberate and load-bearing: the panel is anchored
+   NEXT TO the thing being hovered, and a panel that could take the pointer
+   would steal the very hover that summoned it (flicker loop). Nothing in it
+   is interactive -- it is pure read-out.
+   ============================================================ */
+.beam-trace {
+  position: fixed;
+  z-index: 150;
+  width: 300px;
+  max-width: min(300px, 82vw);
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--bone-2);
+  pointer-events: none;
+}
+.beam-trace-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.beam-trace-title {
+  font-family: var(--f-dj);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bone);
+}
+.beam-trace-unit {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.beam-trace-summary {
+  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  margin: 2px 0 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+}
+.beam-trace-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+.beam-trace-row + .beam-trace-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+/* The compass chip carries the status color, so a glance down the column
+   reads the whole fan: cyan = a live link, grey = a fired-but-empty ray
+   (dud), dim = a direction this Unit does not fire at all. */
+.beam-trace-dir {
+  flex: 0 0 30px;
+  font-family: var(--f-dj);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+.beam-trace-dir--linked {
+  color: #59d6d6;
+}
+.beam-trace-dir--dud {
+  color: var(--bone-3);
+}
+.beam-trace-dir--inactive {
+  color: #4a4a4a;
+}
+.beam-trace-text {
+  flex: 1 1 auto;
+  color: var(--bone-2);
+}
+/* A blocked ray is the one row a player is usually hunting for -- give it
+   the same amber the board's dashed "the beam died here" ghost uses. */
+.beam-trace-row[data-reason='blocked'] .beam-trace-text {
+  color: #e0a86a;
+}
+.beam-trace-row[data-reason='dir-not-in-set'] .beam-trace-text,
+.beam-trace-row[data-reason='no-receiver'] .beam-trace-text {
+  color: var(--bone-3);
+}
+.beam-trace-mutual {
+  margin-left: 6px;
+  color: #9ff0f0;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   REQ-0156 artadmin -- three-pane art-generation console.
+   Registry browser (left) | selected-artwork workspace (center) |
+   generation + queue strip (right), plus lightbox/compare, confirm
+   dialogs and toasts. MJOLNIR tokens/primitives only (.panel/.btn/
+   .chip/.t-*); dense professional console: adopted = gold accent,
+   verdicts keep PASS/WARN/FAIL semantics on the house palette
+   (uncommon-green / legend-amber / blood-red).
+   ============================================================ */
+.aa-root { padding: 12px 14px; color: var(--bone); }
+.aa-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 10px; }
+.aa-crosslink { letter-spacing: 0.06em; }
+.aa-msg { flex: 1; min-height: 18px; text-align: right; color: var(--gold); }
+.aa-cols { display: grid; grid-template-columns: 320px minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
+
+/* small button variants (the stock .btn is a hero-size control) */
+.aa-btn-sm { padding: 6px 14px; font-size: 13px; }
+.aa-btn-xs { padding: 3px 10px; font-size: 12px; }
+.aa-forge { width: 100%; padding: 12px 10px; font-size: 15px; }
+
+/* shared inputs */
+.aa-input {
+  background: #10141B; border: 1px solid var(--border-lo); color: var(--bone);
+  border-radius: 2px; padding: 6px 8px; font-size: 13px; font-family: var(--f-ui);
+}
+.aa-input:focus { outline: none; box-shadow: var(--focus-ring); }
+.aa-input--num { width: 64px; }
+.aa-textarea { width: 100%; resize: vertical; font-family: ui-monospace, monospace; font-size: 12px; }
+
+/* ---- left rail: registry browser ---- */
+.aa-rail { padding: 12px; display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 130px); }
+.aa-rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aa-search { width: 100%; }
+.aa-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.aa-chipbtn { cursor: pointer; background: rgba(19, 24, 32, 0.8); }
+.aa-chipbtn:hover { border-color: var(--gold-lo); color: var(--gold-hi); }
+.aa-list { overflow-y: auto; min-height: 120px; display: flex; flex-direction: column; gap: 2px; }
+.aa-row {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  background: transparent; border: 1px solid transparent; border-radius: 2px;
+  padding: 3px 6px; cursor: pointer; color: var(--bone-2);
+}
+.aa-row:hover { background: rgba(201, 169, 89, 0.06); color: var(--bone); }
+.aa-row.is-selected { border-color: var(--gold-lo); background: rgba(201, 169, 89, 0.1); color: var(--gold-hi); }
+.aa-thumb { flex: 0 0 36px; width: 36px; height: 36px; background: #0C1016; border: 1px solid var(--border-lo); display: grid; place-items: center; overflow: hidden; }
+.aa-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.aa-thumb-ph { color: var(--bone-3); font-size: 14px; }
+.aa-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aa-row-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.aa-row-sub { display: flex; align-items: center; gap: 5px; }
+.aa-failcount { color: var(--blood); }
+.aa-kind {
+  font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+  border: 1px solid var(--border-lo); border-radius: 2px; padding: 0 4px; color: var(--bone-3);
+}
+.aa-kind--po { color: var(--r-rare); border-color: var(--r-rare); }
+.aa-kind--si { color: var(--r-uncommon); border-color: var(--r-uncommon); }
+.aa-kind--unit { color: var(--frost); border-color: var(--frost-lo); }
+.aa-kind--monster { color: var(--ember-hi); border-color: var(--ember-lo); }
+.aa-kind--bpskin { color: var(--r-epic); border-color: var(--r-epic); }
+.aa-adopt-badge {
+  font-size: 10px; letter-spacing: 0.08em; color: #14100A; background: var(--gold);
+  border-radius: 2px; padding: 1px 5px; font-weight: 700; white-space: nowrap;
+}
+.aa-group-head {
+  display: flex; align-items: center; gap: 6px; width: 100%; text-align: left;
+  background: transparent; border: none; border-top: 1px solid var(--border-lo);
+  color: var(--bone-3); padding: 5px 2px 3px; cursor: pointer; letter-spacing: 0.06em;
+}
+.aa-group-head:hover { color: var(--gold-hi); }
+.aa-group-arrow { color: var(--gold-lo); }
+.aa-empty { padding: 10px 4px; color: var(--bone-3); }
+
+/* ---- center: create panel + workspace ---- */
+.aa-placeholder { min-height: 180px; display: flex; flex-direction: column; gap: 6px; justify-content: center; align-items: center; color: var(--bone-3); }
+.aa-form { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 10px; }
+.aa-field { display: flex; flex-direction: column; gap: 3px; min-width: 180px; }
+.aa-field--wide { flex: 1 1 100%; }
+.aa-error { flex: 1 1 100%; color: var(--blood); font-size: 12px; }
+.aa-warn { color: var(--r-legend); margin-top: 4px; }
+.aa-ws { display: flex; flex-direction: column; gap: 10px; }
+.aa-ws-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.aa-dirty { border-color: var(--r-legend); color: var(--r-legend); }
+.aa-ws-actions { display: flex; gap: 8px; margin-top: 10px; }
+.aa-finalprompt {
+  background: #0C1016; border: 1px solid var(--border-lo); border-radius: 2px;
+  margin-top: 8px; padding: 8px 10px; min-height: 20px;
+  font-family: ui-monospace, monospace; font-size: 12px; color: var(--bone-2);
+  white-space: pre-wrap; word-break: break-word;
+}
+.aa-gallery-head { display: flex; align-items: center; gap: 12px; }
+.aa-gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+.aa-card {
+  width: 230px; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  background: linear-gradient(180deg, var(--raised), var(--panel));
+  border: 1px solid var(--border-lo); border-radius: 3px;
+}
+.aa-card.is-adopted { border-color: var(--gold); box-shadow: inset 0 0 10px rgba(201, 169, 89, 0.15), 0 0 8px rgba(201, 169, 89, 0.25); }
+.aa-card.is-failed { border-color: var(--ember-lo); }
+.aa-card-top { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.aa-status { font-family: ui-monospace, monospace; font-size: 12px; color: var(--bone-3); }
+.aa-status--ok { color: var(--r-uncommon); }
+.aa-status--failed { color: var(--blood); }
+.aa-status--running { color: var(--frost); }
+.aa-card-thumb {
+  display: grid; place-items: center; background: #000; border: 1px solid var(--border-lo);
+  padding: 0; cursor: zoom-in; min-height: 100px;
+}
+.aa-card-thumb img { max-width: 212px; max-height: 150px; display: block; }
+.aa-card-thumb:hover { border-color: var(--gold-lo); }
+.aa-card-failed { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }
+.aa-card-error { color: var(--blood); word-break: break-word; max-height: 72px; overflow-y: auto; }
+.aa-card-pending { color: var(--frost); padding: 14px 0; text-align: center; }
+.aa-card-actions { display: flex; align-items: center; gap: 6px; }
+.aa-pick { margin-left: auto; display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+
+/* ---- REQ-0152 kit chips on the house palette (advisory, never gates) ---- */
+.aa-kits { display: flex; flex-wrap: wrap; gap: 4px; }
+.aa-kit { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.aa-kit-none { color: var(--bone-3); border-style: dashed; }
+.aa-verdict {
+  border: 1px solid; border-radius: 999px; padding: 1px 8px; font-size: 11px;
+  cursor: pointer; background: rgba(19, 24, 32, 0.8); letter-spacing: 0.03em;
+}
+.aa-verdict--pass { color: var(--r-uncommon); border-color: var(--r-uncommon); }
+.aa-verdict--warn { color: var(--r-legend); border-color: var(--r-legend); }
+.aa-verdict--fail { color: var(--blood); border-color: var(--blood); }
+.aa-verdict:hover { box-shadow: 0 0 6px rgba(201, 169, 89, 0.3); }
+.aa-stale { color: var(--r-legend); font-size: 10px; }
+.aa-linkbtn {
+  background: none; border: none; color: var(--gold); cursor: pointer;
+  font-size: 11px; text-decoration: underline; padding: 0 2px;
+}
+.aa-linkbtn:hover { color: var(--gold-hi); }
+.aa-kit-details {
+  flex-basis: 100%; background: #0C1016; border: 1px solid var(--border-lo);
+  padding: 6px 8px; margin-top: 3px; font-size: 11px; font-family: ui-monospace, monospace;
+  color: var(--bone-2);
+}
+.aa-kit-details-h { margin-top: 4px; color: var(--gold); }
+.aa-check-ok { color: var(--r-uncommon); }
+.aa-check-bad { color: var(--blood); }
+.aa-kit-note { color: var(--bone-3); }
+
+/* ---- right strip: generation + queue ---- */
+.aa-side { display: flex; flex-direction: column; gap: 12px; }
+.aa-genbox, .aa-queuebox { display: flex; flex-direction: column; gap: 8px; }
+.aa-gen-target { min-height: 14px; color: var(--bone-3); overflow-wrap: anywhere; }
+.aa-gen-row { display: flex; align-items: center; gap: 6px; }
+.aa-qjob { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; }
+.aa-qjob-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bone-2); }
+.aa-qjob.is-running .aa-qjob-name { color: var(--bone); }
+.aa-qjob-elapsed { color: var(--frost-hi); }
+.aa-qidle { color: var(--bone-3); }
+.aa-coldload { color: var(--bone-3); border-left: 2px solid var(--frost-lo); padding-left: 8px; }
+.aa-qpending { border-top: 1px solid var(--border-lo); margin-top: 2px; padding-top: 4px; }
+.aa-inspectdepth { color: var(--bone-3); border-top: 1px solid var(--border-lo); padding-top: 6px; }
+
+/* ---- po / monster shape editors ---- */
+.aa-po-grid { display: grid; grid-template-columns: repeat(5, 26px); gap: 2px; }
+.aa-po-cell { width: 26px; height: 26px; background: #10141B; border: 1px solid var(--border-lo); cursor: pointer; padding: 0; }
+.aa-po-cell:hover { border-color: var(--gold-lo); }
+.aa-po-cell.is-on { background: var(--gold); border-color: var(--gold-hi); }
+.aa-mon-editor { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.aa-mon-editor label { display: inline-flex; align-items: center; gap: 4px; margin-right: 8px; }
+.aa-mon-grid { display: grid; gap: 1px; }
+.aa-mon-cell { width: 10px; height: 10px; background: var(--gold-lo); }
+
+/* ---- lightbox / compare (the judging tool) ---- */
+.aa-lb { position: fixed; inset: 0; z-index: 300; background: rgba(4, 6, 9, 0.92); display: flex; flex-direction: column; }
+.aa-lb-bar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border-lo);
+}
+.aa-lb-group { display: inline-flex; align-items: center; gap: 4px; }
+.aa-lb-actions { margin-left: auto; gap: 8px; }
+.aa-lb-body { flex: 1; min-height: 0; display: flex; }
+.aa-lb-body--compare { gap: 2px; }
+.aa-lb-half { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.aa-lb-caption { padding: 4px 10px; background: var(--panel); }
+.aa-lb-stage { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; }
+.aa-lb-bg--dark { background: #0A0D12; }
+.aa-lb-bg--white { background: #F2F2EE; }
+.aa-lb-bg--checker {
+  background-image:
+    linear-gradient(45deg, #3D434C 25%, transparent 25%, transparent 75%, #3D434C 75%),
+    linear-gradient(45deg, #3D434C 25%, transparent 25%, transparent 75%, #3D434C 75%);
+  background-color: #262B33; background-size: 24px 24px; background-position: 0 0, 12px 12px;
+}
+.aa-lb-img { image-rendering: auto; display: block; }
+.aa-lb-img.is-fit { max-width: 96%; max-height: 96%; object-fit: contain; }
+.aa-lb-tile { image-rendering: pixelated; background-repeat: repeat; border: 1px dashed rgba(201, 169, 89, 0.35); }
+
+/* ---- confirm dialogs + toasts ---- */
+.aa-scrim { position: fixed; inset: 0; z-index: 400; background: rgba(4, 6, 9, 0.7); display: grid; place-items: center; }
+.aa-confirm { max-width: 460px; display: flex; flex-direction: column; gap: 12px; }
+.aa-confirm-body { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.aa-confirm-img { max-width: 320px; max-height: 320px; object-fit: contain; background: #000; border: 1px solid var(--border-lo); }
+.aa-confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.aa-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 500; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.aa-toast {
+  background: linear-gradient(180deg, var(--raised), var(--panel));
+  border: 1px solid var(--gold-lo); border-radius: 2px; color: var(--bone);
+  padding: 8px 14px; font-size: 13px; max-width: 380px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.aa-toast.is-err { border-color: var(--blood); color: #E06B5F; }
+
 /* ===================================================================
    REQ-0057 -- Ray Forecast Overlay ("weather map").
 

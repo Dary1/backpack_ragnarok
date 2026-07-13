@@ -1,4 +1,39 @@
 #!/usr/bin/env python3
+# =============================================================================
+# DEPRECATED (REQ-0150, 2026-07-13). NOT part of the pipeline. Do not extend it,
+# do not copy from it, do not cite it as precedent.
+#
+# REQ-0135 scratch.
+#
+# The pipeline is now:
+#   tools/art_route.py       the ONE route (FLUX.2 klein) and the ONE graph
+#   tools/art_style.py       the ONE prompt/style layer (ratified art direction)
+#   tools/gen_item_icons.py  item + unit icons (defs-driven)
+#   tools/gen_monster_art.py monster illustrations
+#   tools/gen_bpskin.py      backpack skins: generate -> GATE -> compose
+#   tools/bpskin_compose.py  fill + welt -> skin, over any polyomino
+# Kept only so old batches can be read back. See docs/llm_managed/*_pipeline.md.
+# =============================================================================
+
+# =============================================================================
+# DEAD CODE — DO NOT RUN. REQ-0135b verdict: LayerDiffuse is a NO-GO.
+#
+# The ComfyUI-layerdiffuse node and its weights were REMOVED from the art
+# ComfyUI on 2026-07-12 (user go-ahead). This script cannot run and must not be
+# resurrected without first re-reading docs/REQ/done/REQ-0135b.
+#
+# Why it is kept: it is the exact record of how the LD graph was wired
+# (LayeredDiffusionApply -> LayeredDiffusionDecode -> InvertMask ->
+# JoinImageWithAlpha), which is the starting point IF the node is ever ported
+# onto ComfyUI's weight-adapter API. It is not a working tool.
+#
+# Why LD failed: on ComfyUI 0.26.0, LayeredDiffusionApply injects raw
+# ("lora", ...) patches; core's calculate_weight() accepts only
+# WeightAdapterBase / diff / set / model_as_lora, so all 7840 attention patches
+# are logged ("patch type not recognized lora") and SILENTLY DROPPED. The node
+# registers, the job succeeds, an RGBA file appears — and the model was never
+# patched. Upstream (b4f6a9e) is HEAD; there is no fix to pull.
+# =============================================================================
 """REQ-0135 spike: LayerDiffuse (route B) candidate generator.
 
 Same checkpoint / seeds / steps / cfg / sampler as the current production
@@ -35,9 +70,28 @@ LD_WEIGHT = 1.0
 def build_ld_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
                       sampler, scheduler):
     """Identical graph to gen_item_icons.build_workflow() minus the optional
-    ConditioningSetMask (no spike subject uses mask_cells), plus the two
-    LayerDiffuse nodes: Apply between checkpoint and KSampler, DecodeRGBA
-    between VAEDecode and SaveImage."""
+    ConditioningSetMask (no spike subject uses mask_cells), plus LayerDiffuse:
+    Apply between checkpoint and KSampler, and a decode->join tail that emits
+    RGBA between VAEDecode and SaveImage.
+
+    NOTE (2026-07-12): we deliberately do NOT use LayeredDiffusionDecodeRGBA.
+    That node is broken against this ComfyUI build -- its decode() calls
+    JoinImageWithAlpha().join_image_with_alpha(), but ComfyUI core migrated
+    JoinImageWithAlpha to the v3 schema API (a classmethod execute() on
+    io.ComfyNode), so the old instance method no longer exists:
+        AttributeError: 'JoinImageWithAlpha' object has no attribute
+                        'join_image_with_alpha'
+    Upstream ComfyUI-layerdiffuse (HEAD b4f6a9e) has not caught up. This made
+    every route-B job fail (10/10) on the first real run, 2026-07-12.
+
+    Rather than patch the HANDS-OFF art ComfyUI tree (PROJECT.md: third-party
+    checkouts are infrastructure -- use them, do not modify), we rebuild the
+    RGBA join in the GRAPH from core nodes, which are unaffected by the
+    Python-level API drift. Equivalence is exact: the broken node computed
+    alpha = 1.0 - mask and handed that to core's join, whose "alpha" input is
+    itself a mask that it inverts again -- so the alpha actually emitted was
+    just `mask`. InvertMask + JoinImageWithAlpha reproduces that same double
+    inversion node-for-node."""
     wf = {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": G.CKPT}},
         "9": {"class_type": "LayeredDiffusionApply",
@@ -51,13 +105,16 @@ def build_ld_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
             "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
             "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0}},
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
-        "8": {"class_type": "LayeredDiffusionDecodeRGBA", "inputs": {
+        "8": {"class_type": "LayeredDiffusionDecode", "inputs": {
             "samples": ["5", 0], "images": ["6", 0],
             "sd_version": "SDXL", "sub_batch_size": 16}},
+        "10": {"class_type": "InvertMask", "inputs": {"mask": ["8", 1]}},
+        "11": {"class_type": "JoinImageWithAlpha", "inputs": {
+            "image": ["8", 0], "alpha": ["10", 0]}},
     }
     prefix = f"req0135_ld_{seed}_{int(time.time() * 1000) % 100000}"
     wf["7"] = {"class_type": "SaveImage",
-               "inputs": {"images": ["8", 0], "filename_prefix": prefix}}
+               "inputs": {"images": ["11", 0], "filename_prefix": prefix}}
     return wf, prefix
 
 

@@ -1,5 +1,32 @@
-# Item Content Pipeline — v2.1 (PO / SI batch procedure + verification log)
 
+> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
+>
+> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
+> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
+> **out of date and must not be followed**. It describes the retired SDXL route
+> and/or the retired Norse dark-fantasy painterly art direction.
+>
+> The current route, style and tools are in **`art_pipeline.md`**. Two user
+> decisions (2026-07-13) supersede this file's art content:
+> **(1) one route: flux2** — SDXL is retired and its code is deleted;
+> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
+> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
+> painterly direction **including REQ-0127's ratified unit roster style**.
+>
+> > `batch-003-item-icons` was NG'd at S7 and is being regenerated on the new
+> direction. Its `gen_negative` fields are DEAD (this route has no negative) —
+> rewrite them into `gen_prompt`, do not copy them.
+>
+> The NON-art content of this file (schema, data model, review flow) still stands.
+
+# Item Content Pipeline — v3.0 (2026-07-14, REQ-0154; registry era) — PO / SI
+
+> **v3.0 (2026-07-14, REQ-0154; registry era):** §0 below makes the two
+> registries (artwork REQ-0151 / content-data REQ-0155) the operating model and
+> references the spine §7 for all shared contracts; PO/SI split stated per
+> REQ-0151 ruling 8. The CLI Steps 1–8 are kept as the underlying tool sequence.
+> Art content stays superseded by `art_pipeline.md` (banner above).
+>
 > **v2.1 (2026-07-12, REQ-0134):** translated to English per the language
 > policy (user directive 2026-07-02); content identical to v2 except:
 > references updated (`art_golden.md` → `common_content_pipeline.md` §2;
@@ -17,8 +44,100 @@
 > 2026-07-09** (see "Verification log" at the end). The route was recovered
 > and merged to master by REQ-0109 (2026-07-12). NOTE: the batch-003 ART
 > outcome was rejected by the user at S7 (2026-07-12, "NG"); candidate
-> regeneration restarts on the refreshed pipeline (REQ-0135/0136 outcomes) —
-> see REQ-0109 (todo).
+> regeneration restarts on the refreshed pipeline — which now means the
+> **REQ-0136 checkpoint outcome only**: REQ-0135 is settled (LayerDiffuse
+> NO-GO, matte route unchanged) and is no longer a blocker. See REQ-0109 (todo).
+
+## 0. Registry era — PO and SI as registry facets (REQ-0154)
+
+Items are now produced through the **two registries** described in
+`common_content_pipeline.md` §6–§9, not by hand-running the CLI steps below. The
+CLI steps (§Prerequisites … Step 8) remain **valid and are the underlying tool
+sequence** the registries wrap — read them for what each tool does; read this
+section and the spine §7 for the operating model.
+
+**PO / SI split (REQ-0151 ruling 8 — canvas_spec.md canon).** An item is one
+`system_name` with two facets:
+
+| facet | PO — Placement Object | SI — Socket Item |
+| --- | --- | --- |
+| artwork kind (`artworks.kind`) | `po` | `si` |
+| shape input (admin) | **5×5 click grid** (active cells) | **none** |
+| render resolution | **derived** from the active-cell bounding box: 256 px/cell, /16-snap (`server/services/art_sizing.cjs`) — e.g. sword 3 vertical cells → 256×768, shield 2×2 → 512×512, potion 1×2 → 256×512 | **locked 256×256** |
+| data kind (`content_defs.kind`) | `po_def` | `si_def` |
+| data schema | `po/2` (`content/live/live_items.json`): `shape`/`tags`/`effects`/`sockets`/`ports`/… (Step 2) | `si/2` (`content/live/live_sis.json`): `slot`/`reqTags`/`effects` — **no shape/sockets** |
+
+**Seed / variant, adoption, export, advisory inspection: see the spine — do NOT
+restate here.**
+- Seed vs variant, recipe-vs-asset-of-record: `common_content_pipeline.md` §7.2.
+- Adoption (one adopted render + one adopted variant per `system_name`; human-only;
+  adopted-undeletable): §7.3.
+- Export: the adopted PO/SI render exports to `content/art/po/<name>.png` /
+  `content/art/si/<name>.png`; the adopted def variant exports via `tool_integrate`
+  into `content/live/live_items.json` / `live_sis.json`. The git-branch/live-merge
+  half is the deploy step (§7.4).
+- Advisory inspection kits (§7.5; roster + thresholds in `art_pipeline.md` §8):
+  a **PO** render auto-runs `matte.coverage_band` + `po.cell_packing`; an **SI**
+  render auto-runs `matte.coverage_band` + `si.subject_frame`. All advisory (top
+  out at WARN); results in `render_inspections`; never gate adoption.
+
+- **REQ-0133 (item-raster-live-wiring, draft) coordination:** its live-render
+  wiring concern is now the **registry export contract** (§7.4) — the adopted
+  PO/SI render is what live/mock/client consume via the export. REQ-0133 stays
+  in `draft/`, still blocked on REQ-0125a’s shared resolution machinery; the
+  raster-vs-SVG half is already ruled RASTER.
+
+**Where the CLI steps map onto the registries:** Step 5 (art) is now the **artwork
+registry** — generate seeds, kits auto-run, human adopts (`art_pipeline.md`; REQ-0151).
+Step 3–4 validators (static validate / engine integrate) are now the **content-data
+registry**'s machine checks run on every variant (`schema_vocab` / `engine_types` /
+`gen_data` / `integrate` dry-run; REQ-0155). Step 8 (merge) is now the **export**
+step on adoption (§7.4). The manual steps still work unchanged for a one-off batch.
+
+
+## 0.1 Shape conditioning (REQ-0153 recipe — available on GREEN, NOT wired)
+
+REQ-0153 was a spike; its verdict is **GREEN-with-recipe**. Up-front silhouette
+control for **non-rectangular PO shapes** (L, T, …) works on the fixed Flux.2 Klein
+4B route, but the recipe is a **spec addendum handed to a follow-up integration REQ**
+— **the production route (`art_route.build_txt2img`) is untouched and byte-identical**.
+Treat this as an available option, not a live feature.
+
+**Problem it solves.** Unconditioned t2i rarely lands an awkward silhouette inside its
+cells; rerolling seeds until the shape happens to fit is futile. Measured baseline
+identity-fit on the scored matrix was **28.6 %** (a `battle axe` overflows the L
+quadrant; a `war hammer` renders a full warrior or a garbled logo banner).
+
+**Winner — Arm C @ D=8:** **ReferenceLatent (gray scaffold) + SetLatentNoiseMask
+(dilated shape, D=8, on a white-canvas latent).** Over the matrix: **100 % identity-fit
+feasible, zero deep-overflow, pure-white backgrounds, best median best-fit** — clears
+every ratified GREEN gate. The scaffold is a **mid-gray flat silhouette on white at
+gen resolution** (aspect + /16 snap, 256 px/cell), driven directly by the REQ-0151 PO
+**5×5 mask**. **Arm A** (ReferenceLatent alone, ~60 % containment) is the fallback if a
+hard mask is undesirable. **Arm B** (scaffold img2img) was **REJECTED** (ghosts the
+gray scaffold / distorts the subject).
+
+**Recipe deltas (the hand-off; do NOT apply here):**
+- `art_route.build_txt2img` gains OPTIONAL `reference_image` / `shape_mask_image` /
+  `mask_init_image`, all defaulting to `None` (route byte-identical when unused). Arm A
+  inserts `LoadImage → VAEEncode → ReferenceLatent` into the positive; Arm C also
+  replaces `EmptyFlux2LatentImage` with `VAEEncode(white canvas) → SetLatentNoiseMask(mask)`.
+- `art_style.edit_instruction(subject)` → Anime template applied to
+  `"Turn the gray shape into <subject>. Keep the silhouette exactly. white background,
+  bold outline"`.
+- `tools/spikes/req0153_shape_scaffold.py` (cell mask → scaffold + dilated hard mask)
+  becomes the production scaffold generator.
+
+**Recommendation (per REQ-0153):** use **Arm C @ D=8 when a shape MUST be respected**
+(non-rectangular PO). For shapes whose subject already fits under the aspect-sizing law
+(single-column / square footprints with an aptly-oriented subject) shape-conditioning is
+**optional** — the baseline already fills those. Because the hard lock **spends subject
+legibility** on blocky shapes (the T hammer reads as an abstract cracked-metal T),
+expose it as a **per-item toggle in the REQ-0151 admin** (already scoped there), never
+force it globally, and keep the **post-hoc numeric fit as the final gate**.
+
+**Ops cost to budget:** VRAM peaked **6.7–6.8 GB at 256/cell on the 8 GB card (no OOM)**,
+but reference-latent jobs are **~2–3× slower** than plain t2i (~76–130 s each).
 
 ## Prerequisites
 
@@ -126,15 +245,26 @@ from the same formula, auto-computed by `gen_item_icons.py`. Aspect is
 inviolable = no anisotropic scaling / `common_content_pipeline.md` §2.)
 
 **5-2. `gen_prompt` / `gen_negative`.** Follow the template in
-`content/batches/batch-003-item-icons/style_guide.md`. JuggernautXL V9 has a
-strong photorealism bias, so **front-load stylization tokens** (painterly
-dark-fantasy game icon, NOT photorealistic). Specify a **near-white
+`content/batches/batch-003-item-icons/style_guide.md`. Specify a **near-white
 background** for matting. Keep names plain (`common_content_pipeline.md` §2,
-illustration-first). NOTE: checkpoint choice is under re-evaluation
-(REQ-0136); this subsection tracks its outcome.
+illustration-first).
 
-**5-3. Generate** (ComfyUI at `127.0.0.1:8188`, checkpoint
-`JuggernautXL_RunDiffusionPhoto2_V9_Final`; for >30 s runs use
+**On the ratified `flux2` route (REQ-0136, user verdict 2026-07-12): the
+NEGATIVE PROMPT IS INACTIVE** — distilled klein samples at cfg 1.0, where no
+classifier-free guidance is applied. `gen_negative` is accepted and DISCARDED;
+**steer style from the POSITIVE prompt.** FLUX also obeys a painterly brief
+directly, so the old "NOT photorealistic" prompting tax is gone. Front-loading
+stylization tokens against a photorealism bias was a **JuggernautXL V9 (sdxl
+route)** workaround — it still applies if you deliberately run `--route sdxl`.
+
+*(Historical: the checkpoint re-evaluation is CLOSED — REQ-0136 ratified flux2.
+See the ratified-route section at the end of this doc.)*
+
+**5-3. Generate** (ComfyUI at `127.0.0.1:8188`; the route is **flux2** —
+`flux-2-klein-4b-Q8_0.gguf`, 4 steps, cfg 1.0, euler — per the ratified-route
+section at the end of this doc. `--route sdxl` still exists but is **FROZEN:
+historical reproduction only, not a production route** (REQ-0150, user
+2026-07-13: one route for all image generation). For >30 s runs use
 `setsid nohup ... &` and poll the log):
 
 ```
@@ -149,8 +279,23 @@ dpmpp_2m·karras. `--rematte-only` reruns matte only.
 
 **5-4. Matte (transparency)**: rembg `birefnet-general` (cached at
 `~/.u2net/birefnet-general.onnx`) + edge-color-key fallback, valid band
-2–90%. NOTE: LayerDiffuse (generation-time alpha) is under evaluation as the
-replacement (REQ-0135); this subsection tracks its outcome.
+2–90%. **This is the route, and it is not under review.** LayerDiffuse
+(generation-time alpha) was evaluated and rejected — **REQ-0135b: NO-GO**
+(2026-07-12). The node injects raw `("lora", ...)` patches that current ComfyUI
+silently drops, so it does nothing at all; upstream is at HEAD with no fix. The
+node and its weights have been removed from the art ComfyUI. Do not go looking
+for it.
+
+> **On this host, generation and matting MUST be separate passes.** ComfyUI
+> (~11 GB RSS with SDXL resident) and birefnet (~12 GB) cannot be co-resident on
+> the 23 GB box — it OOM-kills. Use `gen_item_icons.py --no-matte` to generate,
+> stop ComfyUI, then `--rematte-only` to matte. (REQ-0135b.)
+
+The open question about this step is no longer *which model* but *what we feed
+it*: every live prompt carries `plain uniform near-white background`, which is
+the worst possible contrast condition for separating pale steel and light hair.
+That is **REQ-0147** (draft) — and it is the reason matte coverage on `hilt`
+(10.99%) and `blade` (11.50%) may be self-inflicted.
 
 **5-5. Score & select (geometry only)**:
 
@@ -232,3 +377,60 @@ As part of REQ-0109, the icon route was smoke-tested **end-to-end on V9**.
   candidates) and report regeneration were completed under REQ-0109
   (see `web/preview/batch-003/`); the batch-003 ART was subsequently NG'd at
   S7 (2026-07-12) — regeneration restarts on the refreshed pipeline.
+
+### RATIFIED GENERATION ROUTE (REQ-0136, user verdict 2026-07-12)
+
+**Default route: `flux2` — FLUX.2 klein 4B distilled, GGUF Q8_0.**
+
+    unet    flux-2-klein-4b-Q8_0.gguf     (Apache 2.0, unsloth GGUF)
+    clip    qwen_3_4b.safetensors         (type: flux2)
+    vae     flux2-vae.safetensors
+    4 steps / cfg 1.0 / euler + Flux2Scheduler / SamplerCustomAdvanced
+
+Selected on merit over JuggernautXL V9 (incumbent) and DreamShaperXL Turbo v2.1
+in a 48-candidate bakeoff (2 items + 2 unit busts x 4 seeds x 3 checkpoints):
+
+| axis | flux2 | dsxl | v9 |
+|---|---|---|---|
+| near-white background (the brief) | **16/16** | 1/16 | 5/16 |
+| warm s/image (RTX 2080, 1024px) | **10 s** | 20 s | 40 s |
+| 48-candidate roster batch | **14.8 min** | 21.3 min | 35.5 min |
+| VRAM peak | 6842 MiB | 6388 MiB | 6516 MiB |
+| licence | **Apache 2.0** | OpenRAIL++-M | incumbent terms |
+
+The "NOT photorealistic" prompting tax is gone: FLUX obeys the painterly brief
+directly instead of being argued into it. Switching to a *different SDXL*
+checkpoint did NOT fix it -- DreamShaperXL, the nominally stylized contender,
+was the most photoreal of the three. The whole SDXL family fights this brief.
+
+**Three things that are NOT optional on this route:**
+
+1. **The negative prompt is INACTIVE.** Distilled klein samples at cfg 1.0,
+   where the guider applies no classifier-free guidance, and the official graph
+   feeds a ConditioningZeroOut of the positive in as the negative. Defs keep
+   their `gen_negative` (the sdxl route still uses it), but on flux2 it is
+   accepted and DISCARDED. **Steer style from the POSITIVE prompt.** The tool
+   prints a warning once per run so this cannot rot silently.
+
+2. **Lower seed variety.** Near-deterministic sampling means 4 seeds yield 4
+   close variants, not 4 alternatives (measured pairwise pixel delta 14.6 vs
+   41.1 for v9). The flip side: all 4 are usable, whereas v9's "variety" was
+   substantially multiple-object and cropped brief violations. Budget re-rolls
+   by changing the PROMPT, not the seed.
+
+3. **RESTART ComfyUI between routes/legs -- `/free` is not enough.** ComfyUI's
+   `unload_models` returns weights to the Python allocator, not to the OS. A
+   long-lived process that has served SDXL and then FLUX reaches ~19 GB RSS,
+   fills swap, and the box stops responding (observed 2026-07-12). Generation
+   and matting must also be separate phases (`--phase gen|matte`) with ComfyUI
+   DOWN during matte: rembg `alpha_matting` peaks at 12-13 GB RSS, which does
+   not fit alongside a resident model on the 23 GB box. Eight global OOM kills
+   on 2026-07-12 came from exactly that overlap.
+
+The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is
+**FROZEN — NOT a fallback, NOT a production route.** User decision 2026-07-13
+(REQ-0150, "Flux2化"): one route for all image generation. It is kept runnable
+for exactly one purpose — **reproducing historical SDXL-era batches**:
+`gen_item_icons.py --route sdxl`. Reaching for it because flux2 is inconvenient
+is a regression, not a fallback; if flux2 cannot do something, that is a finding
+for the user, not a reason to go back.

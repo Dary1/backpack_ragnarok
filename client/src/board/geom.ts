@@ -35,6 +35,22 @@ export const CLAIM_PULSE_BLINK_MS = 330; // ~3 full on/off cycles across the 2s 
 // canvas core's alpha (0.5 stroke / 0.55 fill, see render()).
 export const INV_UNIT_ALPHA = 0.22;
 
+// REQ-0142: the Unit core circle's radius (BoardRenderer draws it with
+// core.circle(x, y, 26)). Named here because the link-trace hover hit-test
+// needs the SAME number the core is drawn with -- a hover target that does
+// not match its own visual is a bug waiting to happen.
+export const UNIT_CORE_RADIUS = 26;
+// REQ-0142: how close (board-local px) the pointer must come to a beam
+// segment to interrogate it. Beams are 2-3px lines; a bare geometric hit
+// would be unusable, so the pick radius is generous -- but still smaller
+// than half a cell (40), so a beam crossing a cell can never out-compete
+// that cell's own Unit core.
+export const BEAM_HOVER_SLOP = 12;
+// REQ-0142: unrelated beams fade to this alpha while a Unit/beam is being
+// interrogated -- present enough to keep the board's shape readable, quiet
+// enough that the traced fan is unmistakably the subject.
+export const BEAM_DIM_ALPHA = 0.16;
+
 export const CELL = 80;
 export const PAD = 38;
 export const DIR_ANGLES: Record<number, number> = {
@@ -209,4 +225,19 @@ export function localBoxToClient(
   const sx = self.app.canvas.width ? (rect.width * res) / self.app.canvas.width : 1;
   const sy = self.app.canvas.height ? (rect.height * res) / self.app.canvas.height : 1;
   return { left: rect.left + x * sx, top: rect.top + y * sy, width: w * sx, height: h * sy };
+}
+
+/** REQ-0142: distance (board-local px) from a point to a line SEGMENT (not
+ * the infinite line) -- the beam-segment hover hit-test. Standard projection
+ * onto the segment, clamped to its endpoints; a zero-length segment
+ * degenerates to point distance. Pure math, no Pixi -- lives here with the
+ * rest of the board's display geometry. */
+export function pointSegDistance(px: number, py: number, x0: number, y0: number, x1: number, y1: number): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - x0, py - y0);
+  let t = ((px - x0) * dx + (py - y0) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
 }

@@ -1,0 +1,14 @@
+{
+  "elven": {
+    "sheet": "elven_s101.png",
+    "band_px_raw": 463,
+    "band_px_cell": 64,
+    "cell_px": 256
+  },
+  "barbarian": {
+    "sheet": "barbarian_s101.png",
+    "band_px_raw": 452,
+    "band_px_cell": 64,
+    "cell_px": 256
+  }
+}

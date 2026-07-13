@@ -54,3 +54,30 @@ TODO. The install is deployed and live on the art ComfyUI.
 Install phase complete and live. Evaluation (side-by-side, scoring,
 gallery, verdict) = REQ-0135b, cleared and waiting in `todo/`, gated on a
 quiet GPU box. Transition commits are the authoritative log (git history).
+
+## Addendum — 2026-07-12: the install is live, but the node is INERT
+
+Recorded here because this file sits in `done/` and its acceptance criterion is
+now known to be insufficient. **Do not read this REQ as "LayerDiffuse works."**
+
+The acceptance above was "`/object_info` lists all 8 `LayeredDiffusion*` nodes".
+That is true, and it means nothing. On ComfyUI `0.26.0`, `LayeredDiffusionApply`
+injects its attention weights as raw `("lora", [...])` patches, which core's
+`comfy/lora.py::calculate_weight()` no longer accepts (the LoRA family moved to
+`comfy/weight_adapter/`; only `diff` / `set` / `model_as_lora` and
+`WeightAdapterBase` instances survive). Core logs
+`patch type not recognized lora` and **silently drops every patch** — 7,840 of
+them in the last run. The model is never patched; KSampler runs plain SDXL and
+the transparent decoder emits an alpha that is ~1 everywhere. Nothing errors.
+
+**Node registration is not liveness.** Neither is "exit 0 and an RGBA file
+appeared" — a later smoke test asserted exactly that and also passed while
+LayerDiffuse was doing nothing at all. A liveness gate for a model patch must
+assert on the *effect*.
+
+Verdict and full evidence: **REQ-0135b — NO-GO** (upstream is at HEAD with no
+fix; forking is rejected; ComfyUI is not being pinned). The node and its 908 MB
+of weights were removed from the art ComfyUI on 2026-07-12 (user go-ahead), so
+this REQ describes an install that no longer exists. The `diffusers==0.31.0` pin recorded
+above stays — it is independently correct for this venv (0.39.0 does not import
+under `torch 2.4.1+cu121`).
