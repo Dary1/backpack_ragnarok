@@ -1,0 +1,179 @@
+// backpack_ragnarok -- server/services/market/views.cjs
+// REQ-0145a (sd): read models -- lazy suspension derivation, DTO
+// assembly, filter/query, the browse surface (listListings) --
+// extracted verbatim from the pre-split services/market.cjs (origin
+// lines 204-230, 232-362 @ commit 6eafed8).
+'use strict';
+const storage = require('../../storage.cjs');
+const players = require('../../players.cjs');
+const { getScheduleContent } = require('../core.cjs');
+const { deployedUidSet } = require('../squads.cjs');
+const { burnOf, getDexNoById, findInventoryPO } = require('./lib.cjs');
+const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
+
+// sellerViewContext: one seller's canvas + deployed-uid set, loaded ONCE
+// per (request, seller) -- listListings groups by seller, so a browse
+// over N listings from K sellers costs K profile reads + one
+// listRooms() scan, comfortably cheap at this project's scale (same
+// perf posture services/warehouse.cjs documents for its own full
+// scans). readProfile can only throw for an id with no registry entry;
+// sellers are always registered players, so no BAD_PROFILE_ID handling
+// is needed here.
+function sellerViewContext(sellerId) {
+  const doc = storage.readProfile(sellerId);
+  const canvas = doc ? doc.canvas : null;
+  return { canvas, deployed: deployedUidSet(sellerId, canvas) };
+}
+
+// deriveView: classifies one ALREADY-normalized listing against its
+// seller's context. Returns { state, suspended } where `state` is the
+// DTO-facing state ('suspended' overlays a stored 'active') -- or
+// mutates + persists the listing when the item is simply gone.
+function deriveView(listing, ctx, nowMs) {
+  if (listing.state !== 'active') return { state: listing.state, suspended: false };
+  if (!ctx.canvas || !findInventoryPO(ctx.canvas, listing.itemUid)) {
+    autoWithdrawItemGone(listing, nowMs);
+    return { state: 'withdrawn', suspended: false };
+  }
+  if (ctx.deployed.has(listing.itemUid)) return { state: 'suspended', suspended: true };
+  return { state: 'active', suspended: false };
+}
+
+// ---------------------------------------------------------------------
+// DTO assembly (wire shapes: shared/dto.ts ApiMarketListing et al;
+// dtoVersion MARKET_DTO_VERSION on every response envelope).
+// ---------------------------------------------------------------------
+
+function priceHistoryFor(itemId, cache) {
+  if (cache && cache.has(itemId)) return cache.get(itemId);
+  const doc = storage.readMarketDexHistory(itemId);
+  const entries = (doc && Array.isArray(doc.entries) ? doc.entries : []).map((e) => ({ qty: e.qty, t: e.t }));
+  if (cache) cache.set(itemId, entries);
+  return entries;
+}
+
+function sellerNameOf(sellerId, cache) {
+  if (cache && cache.has(sellerId)) return cache.get(sellerId);
+  const rec = players.readPlayer(sellerId);
+  const name = rec ? rec.name : sellerId;
+  if (cache) cache.set(sellerId, name);
+  return name;
+}
+
+function toListingDto(listing, view, caches) {
+  const { itemDefsById } = getScheduleContent();
+  const def = itemDefsById[listing.itemId] || null;
+  const ja = def && def.i18n && def.i18n.ja;
+  const dexNo = getDexNoById()[listing.itemId];
+  const qty = listing.price.qty;
+  const burn = burnOf(qty);
+  /** @type {any} */
+  const dto = {
+    id: listing.id,
+    sellerId: listing.sellerId,
+    sellerName: sellerNameOf(listing.sellerId, caches && caches.names),
+    itemUid: listing.itemUid,
+    itemId: listing.itemId,
+    itemName: def ? def.name : listing.itemId,
+    itemNameJa: (ja && ja.name) || (def && def.name_ja) || null,
+    rarity: def ? (def.rarity || null) : null,
+    tags: def ? (def.tags || []) : [],
+    dexNo: dexNo != null ? dexNo : null,
+    price: { tm: listing.price.tm, qty },
+    burn,
+    sellerReceives: qty - burn,
+    createdAt: listing.createdAt,
+    expiresAt: listing.expiresAt,
+    state: view.state,
+    suspended: view.suspended,
+    priceHistory: priceHistoryFor(listing.itemId, caches && caches.history),
+  };
+  if (listing.settlement) {
+    dto.settledAt = listing.settlement.t;
+    dto.buyerId = listing.settlement.buyerId;
+  }
+  if (listing.withdrawal) {
+    dto.withdrawnAt = listing.withdrawal.t;
+    dto.withdrawnReason = listing.withdrawal.reason;
+  }
+  if (listing.expiredAt) dto.expiredAt = listing.expiredAt;
+  return dto;
+}
+
+// ---------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------
+
+// matchesFilter: tag-driven, per the mock's chip row (all / weapons /
+// frost / ember / unit / relic -- chips map to content vocabulary
+// values client-side). A filter value matches an item def when it
+// equals (case-insensitively) any of the def's tags[] OR its rarity.
+// Empty/absent/'all' = no filter.
+function matchesFilter(def, filter) {
+  if (!filter || filter === 'all') return true;
+  if (!def) return false;
+  const f = String(filter).toLowerCase();
+  if ((def.tags || []).some((t) => String(t).toLowerCase() === f)) return true;
+  return typeof def.rarity === 'string' && def.rarity.toLowerCase() === f;
+}
+
+// matchesQuery: q is either a Dex No. ("61" / "061" / "No.61" -- mock
+// search placeholder: "find by Dex No. or name") or a case-insensitive
+// substring of the item's EN or JA name.
+function matchesQuery(def, dexNo, q) {
+  if (!q) return true;
+  const raw = String(q).trim();
+  const noMatch = raw.match(/^(?:no\.?\s*)?0*(\d+)$/i);
+  if (noMatch) return dexNo != null && dexNo === parseInt(noMatch[1], 10);
+  if (!def) return false;
+  const needle = raw.toLowerCase();
+  if (typeof def.name === 'string' && def.name.toLowerCase().includes(needle)) return true;
+  const ja = (def.i18n && def.i18n.ja && def.i18n.ja.name) || def.name_ja;
+  return typeof ja === 'string' && ja.toLowerCase().includes(needle);
+}
+
+// listListings(callerId, {filter, q}): the browse surface.
+//   default: every ACTIVE + SUSPENDED listing, market-wide (suspended
+//     cards stay browsable with buying closed). Settled / withdrawn /
+//     expired never appear here.
+//   filter='mine': the CALLER's own listings in EVERY state (the mock's
+//     "your listings" pane shows active/suspended/expired/settled rows)
+//     -- tag/q filtering intentionally does not apply to 'mine'.
+// Lazy normalization happens for every listing touched (TTL expiry +
+// item-gone auto-withdraw persist; suspension derived only).
+function listListings(callerId, opts) {
+  const filter = opts && opts.filter;
+  const q = opts && opts.q;
+  const now = Date.now();
+  const { itemDefsById } = getScheduleContent();
+  const dexNos = getDexNoById();
+  const caches = { history: new Map(), names: new Map(), sellers: new Map() };
+  const mine = filter === 'mine';
+  const out = [];
+  for (const raw of storage.listMarketListings()) {
+    const listing = normalizeListing(raw, now);
+    if (mine && listing.sellerId !== callerId) continue;
+    let view = { state: listing.state, suspended: false };
+    if (listing.state === 'active') {
+      let ctx = caches.sellers.get(listing.sellerId);
+      if (!ctx) { ctx = sellerViewContext(listing.sellerId); caches.sellers.set(listing.sellerId, ctx); }
+      view = deriveView(listing, ctx, now);
+    }
+    if (!mine) {
+      if (view.state !== 'active' && view.state !== 'suspended') continue;
+      const def = itemDefsById[listing.itemId];
+      if (!matchesFilter(def, filter)) continue;
+      if (!matchesQuery(def, dexNos[listing.itemId] != null ? dexNos[listing.itemId] : null, q)) continue;
+    }
+    out.push(toListingDto(listing, view, caches));
+  }
+  out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+  return out;
+}
+
+module.exports = {
+  sellerViewContext,
+  deriveView,
+  toListingDto,
+  listListings,
+};

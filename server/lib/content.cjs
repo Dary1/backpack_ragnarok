@@ -3,31 +3,26 @@
 // the mtime-checked content cache. Moved VERBATIM from server/api.cjs.
 // contentCache stays module-private; admin writes call
 // invalidateContentCache() (previously a direct `contentCache = null`).
-const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const { render } = require('../../tools/eff_render.cjs');
+// REQ-0145a (sc): all content paths resolve through the ONE content-file
+// loader (CONTENT_ROOT env override honored; default byte-equivalent to
+// the old os.homedir() anchoring). statMtimeMs/loadJSON come from the
+// loader too and are re-exported below unchanged.
+const { CONTENT_ROOT, contentPath, statMtimeMs, loadJSON } = require('./content_files.cjs');
 
-const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content');
-const LIVE_DIR = path.join(CONTENT_DIR, 'live');
-const VOCAB_PATH = path.join(CONTENT_DIR, 'vocab.json');
-const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
-const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json');
-const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
-const SCENARIO_PATH = path.join(LIVE_DIR, 'scenario.json');
-const REGISTRY_PATH = path.join(CONTENT_DIR, 'registry.json');
+const REPO_ROOT = path.dirname(CONTENT_ROOT); // kept for export-surface compatibility
+const CONTENT_DIR = CONTENT_ROOT;
+const LIVE_DIR = contentPath('live');
+const VOCAB_PATH = contentPath('vocab.json');
+const ITEMS_PATH = contentPath('live', 'live_items.json');
+const SIS_PATH = contentPath('live', 'live_sis.json');
+const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
+const SCENARIO_PATH = contentPath('live', 'scenario.json');
+const REGISTRY_PATH = contentPath('registry.json');
 
 // ---- content cache (mtime-checked; re-read only when a source file changes) ----
 let contentCache = null; // { mtimes: {vocab,items,sis,scenario}, payload }
-
-function statMtimeMs(p) {
-  try { return fs.statSync(p).mtimeMs; } catch (e) { return null; }
-}
-
-function loadJSON(p) {
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
 
 // Joins all effect renderings (in the given locale) with a single space.
 // Mirrors tools/tool_gen_data.cjs's renderEffJoined exactly, so live-served

@@ -252,12 +252,41 @@ function applyPendingSwapIfAny(room, profileCanvas, itemDefsById) {
 // ---------------------------------------------------------------------
 
 
+// REQ-0145a (sd): moved VERBATIM from services/market.cjs -- a
+// squad/canvas concern that lived in the market only because the Law of
+// Possession gate was written there first (REQ-0064). The market facade
+// still re-exports it name-for-name.
+// deployedUidSet: every uid the player currently has "deployed" -- i.e.
+// referenced by a squad assigned to any slot of any of their own
+// schedule rooms whose status is 'open' or 'active' (an 'open' room
+// with filled slots auto-starts its next run on the next poll --
+// services/runs.cjs's maybeAutoStartNextRun -- so its squads are
+// "standing ready for war" per the mock's own empty-state copy; only
+// 'canceled' rooms release their uids). This is the market's Law of
+// Possession gate and the lazy suspension source. Reuses services/
+// squads.cjs's squadCanvasOf/squadUidSet -- the same uid-set scan the
+// deploy gate itself uses (deployedUidSetsForGate).
+function deployedUidSet(playerId, canvas) {
+  const out = new Set();
+  if (!canvas) return out;
+  for (const room of storage.listRooms()) {
+    if (room.ownerId !== playerId) continue;
+    if (room.status !== 'open' && room.status !== 'active') continue;
+    for (const slot of room.slots || []) {
+      if (slot.squadIndex == null) continue;
+      for (const uid of squadUidSet(squadCanvasOf(canvas, slot.squadIndex))) out.add(uid);
+    }
+  }
+  return out;
+}
+
 module.exports = {
   squadCanvasOf,
   squadUidSet,
   isSquadIndependent,
   isSquadDeployable,
   deployedUidSetsForGate,
+  deployedUidSet,
   assignSlot,
   swapSquad,
   applyPendingSwapIfAny,
