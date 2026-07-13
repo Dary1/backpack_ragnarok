@@ -28,6 +28,18 @@ os.homedir = () => tmpHome;
 const players = require('../players.cjs');
 const storage = require('../storage.cjs');
 
+// REQ-0145a (sb): server/storage.cjs is becoming a facade over server/storage/*.
+// The homedir-remap tests below evict + re-require the storage layer to rebind
+// its homedir-derived paths/namespace; that eviction must cover the WHOLE
+// storage subtree (evicting the facade alone would leave stale entity modules
+// bound to the previous homedir in require.cache).
+function evictStorageAndPlayers() {
+  for (const m of ['../players.cjs', '../storage.cjs']) delete require.cache[require.resolve(m)];
+  for (const k of Object.keys(require.cache)) {
+    if (k.includes(path.sep + 'server' + path.sep + 'storage' + path.sep)) delete require.cache[k];
+  }
+}
+
 T('players: createPlayer generates a unique id + long random token, persists atomically', () => {
   const p = players.createPlayer('Alice', ['item_admin']);
   assert.ok(p.playerId, 'playerId present');
@@ -84,15 +96,13 @@ T('storage: oversized payload rejected before write (64KB cap)', () => {
 T('storage: readProfile returns null when no file exists yet', () => {
   const otherHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bpk-api-test2-'));
   os.homedir = () => otherHome;
-  delete require.cache[require.resolve('../players.cjs')];
-  delete require.cache[require.resolve('../storage.cjs')];
+  evictStorageAndPlayers();
   const players2 = require('../players.cjs');
   const storage2 = require('../storage.cjs');
   const p2 = players2.createPlayer('Fresh', []);
   assert.strictEqual(storage2.readProfile(p2.playerId), null);
   os.homedir = () => tmpHome;
-  delete require.cache[require.resolve('../players.cjs')];
-  delete require.cache[require.resolve('../storage.cjs')];
+  evictStorageAndPlayers();
   require('../players.cjs');
   require('../storage.cjs'); // restore module cache to the tmpHome-bound instance
 });
@@ -100,8 +110,7 @@ T('storage: readProfile returns null when no file exists yet', () => {
 T('storage: dev-player migration -- falls back to reading legacy default.json when the dev id has no profile of its own yet', () => {
   const otherHome = fs.mkdtempSync(path.join(os.tmpdir(), 'bpk-api-test3-'));
   os.homedir = () => otherHome;
-  delete require.cache[require.resolve('../players.cjs')];
-  delete require.cache[require.resolve('../storage.cjs')];
+  evictStorageAndPlayers();
   const players3 = require('../players.cjs');
   const storage3 = require('../storage.cjs');
   players3.ensureFixedPlayer('dev', 'Developer', ['item_admin']);
@@ -114,8 +123,7 @@ T('storage: dev-player migration -- falls back to reading legacy default.json wh
   // The legacy file itself must be left untouched (fallback READ, not a rename).
   assert.ok(fs.existsSync(storage3.LEGACY_DEFAULT_PATH), 'legacy default.json must still exist after the fallback read');
   os.homedir = () => tmpHome;
-  delete require.cache[require.resolve('../players.cjs')];
-  delete require.cache[require.resolve('../storage.cjs')];
+  evictStorageAndPlayers();
   require('../players.cjs');
   require('../storage.cjs');
 });
