@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# =============================================================================
+# SPIKE -- HISTORY. Its findings are recorded in
+# docs/REQ/todo/REQ-0150-flux2-migration.md and are now encoded in
+# tools/art_route.py (the tiling recipe, the sampler settings, the box timings)
+# and tools/art_style.py (the templates and the prompt-weighting conversion).
+# Kept so the numbers can be re-derived. NOT part of the pipeline.
+# =============================================================================
 """REQ-0150 §3 -- parity batch: reproduce the user's InvokeAI settings on OUR flux2 pipeline.
 
 The user (2026-07-13) found settings in InvokeAI Community Edition that give them
@@ -34,7 +41,7 @@ STOP AT S7: nothing here goes to content/live/. The user rules on the gallery.
 """
 import argparse, glob, json, os, re, shutil, sys, time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gen_item_icons as G  # noqa: E402  the ONE definition of the flux2 route
 from PIL import Image  # noqa: E402
 

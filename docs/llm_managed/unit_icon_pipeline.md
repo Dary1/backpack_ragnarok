@@ -1,3 +1,25 @@
+
+> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
+>
+> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
+> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
+> **out of date and must not be followed**. It describes the retired SDXL route
+> and/or the retired Norse dark-fantasy painterly art direction.
+>
+> The current route, style and tools are in **`art_pipeline.md`**. Two user
+> decisions (2026-07-13) supersede this file's art content:
+> **(1) one route: flux2** — SDXL is retired and its code is deleted;
+> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
+> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
+> painterly direction **including REQ-0127's ratified unit roster style**.
+>
+> > REQ-0127's roster (S7 ALL GREEN) is **superseded**: it is Norse painterly and
+> the direction is now anime. It is regenerated, not reused. Framing note: gear
+> nouns ("dagger", "belts", "leather armor") widen the shot out of a bust even
+> with `portrait` present — name the character, not the kit (`art_pipeline.md` §5).
+>
+> The NON-art content of this file (schema, data model, review flow) still stands.
+
 # Unit Icon Generation Pipeline — v1 (RATIFIED by user, 2026-07-12)
 
 > Companion to REQ-0125. Extends the REQ-0073 AI-raster route

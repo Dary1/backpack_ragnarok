@@ -533,3 +533,102 @@ and the mirror-tiled welt run has a faint symmetry at its midpoint.
 
 This is the substance of **REQ-0146 (bpskin-edge-strip-spike)**, which was
 reserved and empty. It should be written up there and moved out of `reserved/`.
+
+## Session 2026-07-13 (cont.) — §3 skin generator, and §4: the new scripts ARE the pipeline
+
+### The frame source is generated ON PURPOSE now, and GATED — `tools/gen_bpskin.py`
+
+Until now the frame source was an accident: `bpskin_leather.png` was a FILL brief
+that failed by coming out as a bordered patch, and it happened to be extractable.
+"Happened to be" is not a pipeline.
+
+**S1 generate** a patch of the material with an explicit border, on white, **with a
+margin** — the margin is in the brief now, not left to luck.
+**S2 GATE** it, because a frame source is only usable if the extractor can actually
+find it. Five machine checks: `margin` (outer 4% ring ≥ 95% background on EVERY
+side), `solidity` ≥ 0.88, `single` component ≥ 95%, `coverage` 45–93%, `rim`
+(luma delta ≥ 8 or gradient ratio ≥ 1.25). FAIL → reroll; a failing candidate never
+reaches the tool.
+**S3 compose** only PASS candidates, paired with a seamless fill of the same
+material, over any polyomino.
+
+**The gate is not theoretical.** Run against the *original accidental* frame source
+it REJECTS it — margin 0.047, coverage 0.996. That one only ever worked by luck.
+On its first real run it rejected 1 of 6 fresh candidates (`wood_frame_s202`:
+margin 0.798, rim luma delta 0.6 — the patch bled to an edge and had no border).
+
+Three skins built end to end (`content/batches/bpskin-frames-0150/`): **leather,
+iron, wood** — frame source → gate → fill → composed square + L.
+
+Open, and visible in the output: **fill and frame are generated independently, so
+their palettes drift.** The wood pair is a light frame over a dark fill. Colour-
+matching them is not solved.
+
+### §4 — the session's scripts are now the pipeline; the old ones are dead
+
+User directive: *"これまでのツールを全て陳腐化させて、当セッションで作った（または改修した）
+スクリプトをメインストリームにしましょう"*.
+
+**The route and the style each live in exactly one file now.** They were copied
+into four: `gen_item_icons`, `gen_monster_art`, `req0150_parity` and
+`req0150_flux_tiling` each carried their own FLUX config and their own copy of the
+flux2 graph. That is how a route drifts.
+
+| new | what |
+| --- | --- |
+| **`tools/art_route.py`** | THE route + THE graph (`build_txt2img`, `tiling=True` → `CircularVAEDecode`), the ratified sampler settings, and the measured box timings. |
+| **`tools/art_style.py`** | THE style layer: the ratified templates, the InvokeAI→ComfyUI emphasis conversion (with the `cel-shaded` trap documented), `FILL_STYLE`, `gen_size()`. |
+| `tools/gen_bpskin.py` | was `req0150_frame_gen.py` |
+| `tools/bpskin_compose.py` | was `req0150_bpskin_compose.py` |
+| `tools/spikes/` | the four REQ-0150 spikes. History; findings encoded in the two modules above. |
+
+`gen_item_icons.py`, `gen_unit_icons.py` and `gen_monster_art.py` were rewired onto
+the two modules and their private FLUX configs / graphs deleted. Verified: **no
+SDXL node (`CheckpointLoaderSimple`, `LoraLoader`, `KSampler`, `EmptyLatentImage`,
+`LatentUpscale`) is reachable from any default path** in either tool.
+
+14 superseded tools carry a `DEPRECATED (REQ-0150)` banner naming what replaced
+them (`req0131_spike`, `req0136_*`, `req0138_*`, `req0127_gallery`,
+`build_batch003_report`, `scratch_req0135_*`).
+
+#### ⚠ I deleted the SDXL route, and that CONTRADICTS this REQ's own §1
+
+§1 of this REQ says the sdxl branch stays "runnable for reproducing historical
+batches". It is now **gone**, not frozen. My reasoning, stated so it can be
+overruled:
+
+- The user has since ratified a **new art direction**, so every SDXL-era asset is
+  being **regenerated**, not reproduced. There is nothing left for the frozen
+  route to reproduce.
+- The user then directed that all previous tools be obsoleted.
+- A second code path that nothing may use is a liability, not an asset — and it is
+  in git history if it is ever needed.
+
+If you want the frozen SDXL route back, say so; it is one revert away.
+
+### Docs — `docs/llm_managed/art_pipeline.md` (NEW), one doc for all image generation
+
+The art halves of `item_content_pipeline.md`, `unit_icon_pipeline.md`,
+`monster_content_pipeline.md` and `backpack_skin_pipeline.md` were four
+descriptions of one thing, all now wrong. They are replaced by one
+**`art_pipeline.md`**: the route, the style layer, the sizing law, per-kind deltas,
+the skin gate, and the box's timings. It writes down the things that get "fixed"
+back by someone who has not read them — steps 30 (not klein's 4), no negative, no
+LoRAs, no `SeamlessTile` — and the two invisible traps (the emphasis regex, the
+unpadded distance transform).
+
+The four per-kind docs keep a banner saying their ART content is superseded and
+their schema/data content still stands. `common_content_pipeline.md` §4 S5 now
+points at `art_pipeline.md`; its BS-G5 edge-tile rotation exception is recorded as
+**moot** (there is no tile atlas to rotate any more); its infra section carries the
+8 GB / batch-by-prompt facts.
+
+### Gate status
+
+- [x] §1 route unified; SDXL gone from code and docs.
+- [x] §2 seamless tiling: GREEN.
+- [x] §4 docs — one `art_pipeline.md`; the four per-kind docs redirected.
+- [ ] §3 — the PIPELINE is proven (parity batch + 3 skins), but the **full batches
+      are not regenerated**: batch-003 items, the 11-unit roster, monsters-001/002.
+- [ ] §5 gallery at `web/preview/flux2-all/`.
+- [x] S7 stop honored: nothing in `content/live/`.

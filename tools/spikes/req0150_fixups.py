@@ -1,4 +1,10 @@
 #!/usr/bin/env python3
+# =============================================================================
+# SPIKE -- HISTORY. This produced a result that is now recorded in
+# docs/REQ/todo/REQ-0150-flux2-migration.md and encoded in the pipeline. It is
+# kept so the result can be re-derived, not because it is part of the pipeline.
+# The pipeline is tools/art_route.py + tools/art_style.py + tools/gen_*.py.
+# =============================================================================
 """REQ-0150 §3 fixups -- the two assets the parity batch got wrong.
 
 1. bpskin fill. The Anime template ("bold outline", cel-shading) rendered a
@@ -19,7 +25,7 @@
    template stays exactly as the user ratified it.
 """
 import glob, json, os, shutil, sys, time
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gen_item_icons as G  # noqa: E402
 import req0150_parity as P  # noqa: E402  templates + conversion, one definition
 import numpy as np  # noqa: E402

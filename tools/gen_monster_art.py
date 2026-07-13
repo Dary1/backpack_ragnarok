@@ -86,197 +86,51 @@ sys.path.insert(0, HERE)
 
 # The route lives in ONE place (REQ-0150 §1: "no tool may keep an implicit SDXL
 # default"). Model filenames and per-route sampler defaults are gen_item_icons'.
-import gen_item_icons as G  # noqa: E402
-
-COMFY = "http://127.0.0.1:8188"
-
-ROUTE = "flux2"                 # "flux2" (production) | "sdxl" (FROZEN)
+import art_route as ROUTE   # noqa: E402  the ONE route + the ONE graph
+import art_style as STYLE   # noqa: E402  the ONE prompt/style layer
 
 
-def submit(wf):
-    data = json.dumps({"prompt": wf}).encode()
-    req = urllib.request.Request(
-        COMFY + "/prompt", data=data, headers={"Content-Type": "application/json"}
-    )
-    r = json.load(urllib.request.urlopen(req, timeout=30))
-    return r["prompt_id"]
+def build_workflow(job):
+    """flux2, via tools/art_route.py. The SDXL graph (CheckpointLoaderSimple +
+    LoraLoader chain + KSampler + latent-upscale hires-fix) is GONE -- not frozen,
+    gone. The route was retired by user decision (REQ-0150) and the monsters it
+    produced are being regenerated on the new art direction, so it has nothing
+    left to reproduce. It is in git history."""
+    for dead, why in (
+        ("loras", "SDXL/SD1.5 LoRAs do not load on FLUX, and the user's ratified "
+                  "settings say NO LoRAs. The two this program used "
+                  "(detail_tweaker, cel_shaded_art_style) were generic style/detail "
+                  "boosters, not identity LoRAs -- fold the style into `positive`."),
+        ("ckpt",  "There is no checkpoint on this route; the UNET/CLIP/VAE are "
+                  "pinned in art_route.FLUX."),
+        ("negative", "The negative prompt is inactive at cfg 1.0 (zeroed "
+                     "conditioning). Fold it into `positive`."),
+        ("hires", "An SDXL workaround for sampling away from ~1MP. FLUX.2 is "
+                  "native there -- set width/height to the size you want."),
+    ):
+        if job.get(dead):
+            raise SystemExit(
+                "ERROR job '%s' sets `%s`, which does not exist on this route.\n%s"
+                % (job.get("name", "?"), dead, why))
 
-
-def wait_done(pid, timeout_s=600):
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        time.sleep(2)
-        try:
-            h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
-        except Exception:
-            continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            return h[pid]
-    return None
-
-
-def _warn_once(key, msg):
-    seen = _warn_once.__dict__.setdefault("_seen", set())
-    if key not in seen:
-        seen.add(key)
-        print(msg, flush=True)
-
-
-def build_workflow(job, steps=None, cfg=None, sampler=None):
-    if ROUTE == "flux2":
-        return _wf_flux2(job, steps, cfg, sampler)
-    return _wf_sdxl(job, steps, cfg, sampler)
-
-
-def _wf_flux2(job, steps=None, cfg=None, sampler=None):
-    """FLUX.2 klein 4B distilled, GGUF -- the same graph gen_item_icons uses
-    (UnetLoaderGGUF + CLIPLoader(flux2) + VAELoader -> CFGGuider ->
-    SamplerCustomAdvanced), sized for a portrait illustration instead of a
-    square icon. Proven by REQ-0136 (16/16 on brief) and REQ-0127 (S7 green)."""
-    if job.get("loras"):
-        raise SystemExit(
-            f"ERROR job '{job['name']}' requests loras "
-            f"{[l.get('name') for l in job['loras']]}, but the flux2 route "
-            f"cannot load SDXL/SD1.5 LoRAs (different architecture).\n"
-            f"REQ-0150 decided this deliberately: those LoRAs are generic "
-            f"style/detail boosters, not identity LoRAs, and are DROPPED -- "
-            f"their job is done by the flux2 POSITIVE prompt instead.\n"
-            f"Fix the job def: remove \"loras\" and fold the style it was "
-            f"buying into \"positive\". Do NOT reach for --route sdxl to keep "
-            f"them; that route is frozen.")
-    if job.get("negative"):
-        _warn_once("neg", "NOTE flux2 route: the negative prompt is INACTIVE "
-                          "at cfg 1.0 (zeroed conditioning, official distilled "
-                          "graph). Jobs carrying `negative` have it DISCARDED "
-                          "-- steer style from the POSITIVE prompt.")
-    if job.get("hires"):
-        _warn_once("hires", "NOTE flux2 route: `hires` is IGNORED. It was an "
-                            "SDXL workaround for rendering away from ~1MP. "
-                            "FLUX.2 is native at ~1MP+ -- set width/height to "
-                            "the size you actually want.")
-    if job.get("ckpt"):
-        _warn_once("ckpt", "NOTE flux2 route: `ckpt` is IGNORED (the flux2 "
-                           "route pins UNET+CLIP+VAE in gen_item_icons.FLUX). "
-                           "It applies only to the frozen sdxl route.")
-
-    pos = job["positive"]
-    w = job.get("width", 640)
-    h = job.get("height", 832)
-    seed = job.get("seed", 1234)
-    d = G.ROUTE_DEFAULTS["flux2"]
-    steps = steps or job.get("steps") or d["steps"]
-    cfg = cfg if cfg is not None else job.get("cfg", d["cfg"])
-    sampler = sampler or job.get("sampler") or d["sampler"]
+    subject = job["positive"]
+    if job.get("apply_template", True):
+        subject = STYLE.for_kind("monster", subject)
     prefix = "m3_" + job["name"]
-
-    wf = {
-        "1": {"class_type": "UnetLoaderGGUF",
-              "inputs": {"unet_name": G.FLUX["unet"]}},
-        "2": {"class_type": "CLIPLoader",
-              "inputs": {"clip_name": G.FLUX["clip"], "type": "flux2",
-                         "device": "default"}},
-        "3": {"class_type": "VAELoader", "inputs": {"vae_name": G.FLUX["vae"]}},
-        "4": {"class_type": "CLIPTextEncode",
-              "inputs": {"text": pos, "clip": ["2", 0]}},
-        "5": {"class_type": "ConditioningZeroOut",
-              "inputs": {"conditioning": ["4", 0]}},
-        "6": {"class_type": "EmptyFlux2LatentImage",
-              "inputs": {"width": w, "height": h, "batch_size": 1}},
-        "7": {"class_type": "KSamplerSelect",
-              "inputs": {"sampler_name": sampler}},
-        "8": {"class_type": "Flux2Scheduler",
-              "inputs": {"steps": steps, "width": w, "height": h}},
-        "9": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
-        "13": {"class_type": "CFGGuider",
-               "inputs": {"model": ["1", 0], "positive": ["4", 0],
-                          "negative": ["5", 0], "cfg": cfg}},
-        "14": {"class_type": "SamplerCustomAdvanced",
-               "inputs": {"noise": ["9", 0], "guider": ["13", 0],
-                          "sampler": ["7", 0], "sigmas": ["8", 0],
-                          "latent_image": ["6", 0]}},
-        "15": {"class_type": "VAEDecode",
-               "inputs": {"samples": ["14", 0], "vae": ["3", 0]}},
-        "16": {"class_type": "SaveImage",
-               "inputs": {"images": ["15", 0], "filename_prefix": prefix}},
-    }
-    return wf, prefix
-
-
-def _wf_sdxl(job, steps=None, cfg=None, sampler=None):
-    """FROZEN (REQ-0150). Historical reproduction of monsters-001/monsters-002
-    only -- never for new production art. Left byte-identical in behaviour to the
-    pre-REQ-0150 graph so old batches reproduce: checkpoint + LoRA chain +
-    KSampler (+ optional latent-upscale hires-fix)."""
-    ckpt = job["ckpt"]
-    pos = job["positive"]
-    neg = job.get("negative", "")
-    w = job.get("width", 640)
-    h = job.get("height", 832)
-    seed = job.get("seed", 1234)
-    d = G.ROUTE_DEFAULTS["sdxl"]
-    steps = steps or job.get("steps", 30)
-    cfg = cfg if cfg is not None else job.get("cfg", 7.0)
-    sampler = sampler or job.get("sampler", d["sampler"])
-    scheduler = job.get("scheduler", d["scheduler"])
-    hires = job.get("hires", True)
-    loras = job.get("loras", [])
-    prefix = "m2_" + job["name"]
-
-    wf = {"1": {"class_type": "CheckpointLoaderSimple",
-                "inputs": {"ckpt_name": ckpt}}}
-    model_ref, clip_ref, vae_ref = ["1", 0], ["1", 1], ["1", 2]
-    next_id = 20
-    for lora in loras:
-        nid = str(next_id)
-        strength = lora.get("strength", 1.0)
-        wf[nid] = {"class_type": "LoraLoader", "inputs": {
-            "model": model_ref, "clip": clip_ref, "lora_name": lora["name"],
-            "strength_model": lora.get("strength_model", strength),
-            "strength_clip": lora.get("strength_clip", strength)}}
-        model_ref, clip_ref = [nid, 0], [nid, 1]
-        next_id += 1
-
-    wf["2"] = {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": clip_ref}}
-    wf["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": clip_ref}}
-    wf["4"] = {"class_type": "EmptyLatentImage",
-               "inputs": {"width": w, "height": h, "batch_size": 1}}
-    wf["5"] = {"class_type": "KSampler", "inputs": {
-        "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
-        "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
-        "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0}}
-    if hires:
-        scale = job.get("hires_scale", 1.5)
-        hw, hh = (int(w * scale) // 8) * 8, (int(h * scale) // 8) * 8
-        wf["6"] = {"class_type": "LatentUpscale", "inputs": {
-            "samples": ["5", 0], "upscale_method": "nearest-exact",
-            "width": hw, "height": hh, "crop": "disabled"}}
-        wf["7"] = {"class_type": "KSampler", "inputs": {
-            "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
-            "latent_image": ["6", 0], "seed": seed + 1, "steps": steps,
-            "cfg": cfg, "sampler_name": sampler, "scheduler": scheduler,
-            "denoise": job.get("hires_denoise", 0.5)}}
-        wf["8"] = {"class_type": "VAEDecode",
-                   "inputs": {"samples": ["7", 0], "vae": vae_ref}}
-        wf["9"] = {"class_type": "SaveImage",
-                   "inputs": {"images": ["8", 0], "filename_prefix": prefix}}
-    else:
-        wf["6"] = {"class_type": "VAEDecode",
-                   "inputs": {"samples": ["5", 0], "vae": vae_ref}}
-        wf["7"] = {"class_type": "SaveImage",
-                   "inputs": {"images": ["6", 0], "filename_prefix": prefix}}
+    wf = ROUTE.build_txt2img(
+        subject, job.get("width", 384), job.get("height", 512),
+        job.get("seed", ROUTE.SEED), prefix,
+        steps=job.get("steps", ROUTE.STEPS),
+        cfg=job.get("cfg", ROUTE.CFG),
+        sampler=job.get("sampler", ROUTE.SAMPLER))
     return wf, prefix
 
 
 def main():
-    global ROUTE
     ap = argparse.ArgumentParser(
         description="ComfyUI monster illustration generator (flux2)")
     ap.add_argument("--config", required=True)
     ap.add_argument("--outdir", required=True)
-    ap.add_argument("--route", default=ROUTE, choices=("flux2", "sdxl"),
-                    help="generation route. Default and ONLY production route: "
-                         "flux2. 'sdxl' is FROZEN (REQ-0150) -- historical "
-                         "reproduction only, never for new production art.")
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--cfg", type=float, default=None)
     ap.add_argument("--sampler", default=None)
@@ -284,25 +138,11 @@ def main():
                     help="comma-separated job names; skip the rest")
     a = ap.parse_args()
 
-    ROUTE = a.route
-    if ROUTE == "sdxl":
-        print("=" * 72, flush=True)
-        print("WARNING  the 'sdxl' route is FROZEN (REQ-0150, user decision "
-              "2026-07-13).", flush=True)
-        print("         NOT a production route, NOT a fallback. Its only "
-              "sanctioned use is", flush=True)
-        print("         reproducing historical pre-flux2 batches. Do not ship "
-              "art from it, and", flush=True)
-        print("         do not use it to work around a flux2 problem -- fix "
-              "flux2 or escalate.", flush=True)
-        print("=" * 72, flush=True)
-    d = G.ROUTE_DEFAULTS[ROUTE]
-    print(f"route: {ROUTE}  steps={a.steps or d['steps']} "
-          f"cfg={a.cfg if a.cfg is not None else d['cfg']} "
-          f"sampler={a.sampler or d['sampler']}", flush=True)
-    if ROUTE == "flux2":
-        print(f"  unet={G.FLUX['unet']} clip={G.FLUX['clip']} "
-              f"vae={G.FLUX['vae']}", flush=True)
+    print("route: flux2  steps=%s cfg=%s sampler=%s" % (
+        a.steps or ROUTE.STEPS, a.cfg if a.cfg is not None else ROUTE.CFG,
+        a.sampler or ROUTE.SAMPLER), flush=True)
+    print("  unet=%s clip=%s vae=%s" % (ROUTE.FLUX["unet"], ROUTE.FLUX["clip"],
+                                        ROUTE.FLUX["vae"]), flush=True)
 
     jobs = json.load(open(a.config, encoding="utf-8"))
     if a.only:
@@ -314,12 +154,12 @@ def main():
 
     ok = fail = 0
     for job in jobs:
-        print(f"=== JOB START name={job['name']} route={ROUTE} ===", flush=True)
+        print(f"=== JOB START name={job['name']} route=flux2 ===", flush=True)
         t0 = time.time()
-        wf, prefix = build_workflow(job, a.steps, a.cfg, a.sampler)
-        pid = submit(wf)
+        wf, prefix = build_workflow(job)
+        pid = ROUTE.submit(wf)
         print(f"submitted pid={pid}", flush=True)
-        result = wait_done(pid)
+        result = ROUTE.wait_done(pid)
         if not result or result.get("status", {}).get("status_str") == "error":
             print(f"JOB TIMEOUT/FAIL name={job['name']}", flush=True)
             fail += 1

@@ -1,3 +1,24 @@
+
+> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
+>
+> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
+> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
+> **out of date and must not be followed**. It describes the retired SDXL route
+> and/or the retired Norse dark-fantasy painterly art direction.
+>
+> The current route, style and tools are in **`art_pipeline.md`**. Two user
+> decisions (2026-07-13) supersede this file's art content:
+> **(1) one route: flux2** — SDXL is retired and its code is deleted;
+> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
+> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
+> painterly direction **including REQ-0127's ratified unit roster style**.
+>
+> > `batch-003-item-icons` was NG'd at S7 and is being regenerated on the new
+> direction. Its `gen_negative` fields are DEAD (this route has no negative) —
+> rewrite them into `gen_prompt`, do not copy them.
+>
+> The NON-art content of this file (schema, data model, review flow) still stands.
+
 # Item Content Pipeline — v2.1 (PO / SI batch procedure + verification log)
 
 > **v2.1 (2026-07-12, REQ-0134):** translated to English per the language

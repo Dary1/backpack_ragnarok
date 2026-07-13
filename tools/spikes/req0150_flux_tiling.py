@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# =============================================================================
+# SPIKE -- HISTORY. Its findings are recorded in
+# docs/REQ/todo/REQ-0150-flux2-migration.md and are now encoded in
+# tools/art_route.py (the tiling recipe, the sampler settings, the box timings)
+# and tools/art_style.py (the templates and the prompt-weighting conversion).
+# Kept so the numbers can be re-derived. NOT part of the pipeline.
+# =============================================================================
 """REQ-0150 §2 -- seamless tiling on FLUX.2. BLOCKING SPIKE.
 
 REQ-0138 solved seamless fill_texture on SDXL with
@@ -45,7 +52,7 @@ import shutil
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import gen_item_icons as G  # noqa: E402  submit/wait_done/COMFY dirs/FLUX route
 import numpy as np  # noqa: E402
 from PIL import Image  # noqa: E402
