@@ -48,6 +48,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/artwork_test.cjs
   echo "==== [5.2/7] inspection kits (pg backend, REQ-0152 G1/G2 + auto-run) ===="
   ART_KIT_PYTHON="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}" STORAGE_BACKEND=pg node server/tests/inspection_test.cjs
+  echo "==== [5.3/7] content-data registry tests (pg backend, REQ-0155 G1/G2/G3 + flow) ===="
+  STORAGE_BACKEND=pg node server/tests/content_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi

@@ -106,9 +106,10 @@ export type Route =
   | 'settings'
   | 'market'
   | 'ragnarok'
-  | 'artadmin';  // REQ-0151 artwork registry admin
+  | 'artadmin'  // REQ-0151 artwork registry admin
+  | 'contentadmin';  // REQ-0155 content-data registry admin
 
-const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'warehouse', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok', 'artadmin'];
+const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'warehouse', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok', 'artadmin', 'contentadmin'];
 
 export const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
