@@ -632,3 +632,85 @@ points at `art_pipeline.md`; its BS-G5 edge-tile rotation exception is recorded 
       are not regenerated**: batch-003 items, the 11-unit roster, monsters-001/002.
 - [ ] §5 gallery at `web/preview/flux2-all/`.
 - [x] S7 stop honored: nothing in `content/live/`.
+
+## Session 2026-07-13 (cont.) — §3 COMPLETE, §5 COMPLETE
+
+### The regeneration, in two rounds
+
+| | round 1 | round 2 | final |
+| --- | --- | --- | --- |
+| items | 3/8 | +4 fixed | **7/8** (`hilt` still fails) |
+| units | 4/11 | +7 fixed | **11/11** |
+| monsters | 24/24 | — | **24/24** |
+| skins | 3 materials, gated | — | **3/3** |
+
+**The STYLE landed everywhere on the first try. What failed was the SUBJECT**, and
+it failed in three distinct, reproducible ways — now written into
+`tools/art_style.py` so the next person does not rediscover them with another two
+GPU hours. See the commit and the module header for the full statement; in brief:
+
+1. **The Anime template drifts modern.** Its `shounen, seinen` tokens, handed a
+   subject with no fantasy iconography of its own, produce a contemporary anime
+   character: `"angel"` → a blonde girl in a **blazer and tie**, no wings, no halo;
+   `"berserker"` → a young man in a tank top; `"hooded watcher"` → a man in a
+   **modern hoodie**; `"young squire"` → a boy in a school uniform. The four units
+   that *landed* on a plain name (elf, thief, shieldmaiden, priest) all carry
+   fantasy iconography **above the shoulders**. **Concept Art (Fantasy) does NOT do
+   this** — `mythological, digital painterly` carries the signal itself, which is
+   why the monsters came out right on bare nouns. **The drift is a property of the
+   ANIME template, not of FLUX.**
+2. **Any noun implying something outside the head drags it into frame** and widens
+   the shot out of a bust — *even with `portrait` present*, which it was in every
+   failing prompt. The earlier "no GEAR nouns" rule was right but **too narrow**:
+   `KIT` ("dagger") → half-body; `STATURE` ("dwarf") → full body 2/4;
+   `RELATION` ("light cavalry **rider**") → **a horse**, 4/4.
+3. **Item PART-OF nouns and compound nouns resolve to the wrong object**, and there
+   is **no negative prompt** on this route to say what a thing is not:
+   `"sword hilt"` → a whole sword; `"tower shield"` → a **stone tower**;
+   `"beast jaw"` → a whole monster head.
+
+Round 2 applied the rules and **every fix worked as predicted** — dwarf became a
+bearded blacksmith bust, angel grew wings and a halo, the cavalryman lost his
+horse, the blade lost its handle, the tower became a shield, the jaw became a bone.
+
+### `hilt` — an honest failure, escalated
+
+`"a detached sword handle only, grip and crossguard and pommel, with no blade
+attached, just the handle"` still produces **a whole sword, 4/4**. The model's
+prior that a hilt comes attached to a blade cannot be talked down without a
+negative prompt, and this route has none. It is the one asset the pipeline could
+not produce. **Your call:** accept a sword for `hilt`, re-concept the item, or
+solve it another way (a crop of a blade render is one option).
+
+### The coverage floor bites the thin weapons — a real conflict, stated
+
+**8 of 106 candidates auto-FAIL the ≥20% coverage floor** (Art Golden, binding):
+`blade` (17.7%, 14.1%), `dagger` (18.7%, 15.5%, 19.6%), `hilt` (9.4%, 17.4%,
+17.2%). They are **correct art**: a bare blade in a 1×2 cell *is* thin. The
+aspect-matched generation gives the right proportions and the floor then rejects
+them for being what they are. The floor and these items disagree, and that is a
+design question, not a bug — **accept a per-shape exemption, thicken the subjects,
+or re-shape the cells.** Flagged and greyed in the gallery, never silently dropped.
+
+### §5 — the gallery
+
+`web/preview/flux2-all/` — **106 numbered keys, 208 images, 8 auto-FAIL flagged.**
+256 px / 64 px toggle, matte-on-checkerboard toggle, and every row shows its
+**SDXL-era predecessor next to** the flux2 candidates. Self-contained.
+
+**NOT DEPLOYED.** Serving it on backpack-dev means touching the main checkout /
+live services, which PROJECT.md marks HANDS-OFF without a fresh go-ahead. It is
+built and committed on the branch; say the word and it goes up.
+
+**S7 STOP HONORED: nothing is in `content/live/`.** The verdict is yours, by key.
+
+### Gate status — FINAL
+
+- [x] §1 no production path or doc reaches SDXL. It is deleted, not frozen.
+- [x] §2 seamless tiling on FLUX: GREEN (`CircularVAEDecode`).
+- [x] §3 every SDXL-era surface regenerated: items, units, monsters, skins.
+- [x] §4 docs: one `art_pipeline.md`; the four per-kind docs redirected.
+- [x] §5 gallery built, 256+64 px, numbered, flux2 against its predecessor.
+- [x] S7 stop honored.
+- [ ] **Deploy the gallery** (needs a go-ahead — main checkout is HANDS-OFF).
+- [ ] **User verdict.** Until it lands, this REQ stays in `todo/`.
