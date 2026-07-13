@@ -119,5 +119,152 @@ shape classes), or RED (kill; keep post-hoc fit only).
 - GREEN criteria: as proposed (identity-fit ≥70%, zero deep_overflow, no ghosting).
 
 ## Implementation log
-(to be filled by the implementing session)
-                                                                           
+
+**Implemented 2026-07-14** (user cleared the GPU that day). Branch
+`req-0153-po-shape-control-spike`. The production route (`tools/art_route.py`,
+`tools/art_style.py`) was NOT modified: every arm imports them AS MODULES and adds
+its extra graph nodes only inside the spike script.
+
+### Scripts (`tools/spikes/`)
+- `req0153_shape_scaffold.py` — PO cell mask (`[[row,col],…]`, the REQ-0151 editor's
+  5×5-mask convention) → (a) mid-gray flat silhouette scaffold on white at gen
+  resolution, (b) hard mask dilated by D∈{0,8,16}, (c) white canvas, (d) soft feathered
+  mask. Cell→px geometry resurrected from commit 8876225 `build_cell_mask_image`; the
+  sizing law (aspect + /16 snap, 256 px/cell) is `art_style.gen_size()`, imported.
+- `req0153_spike.py` — Arm 0/A/B/C driver. Spike-local graphs reuse `ROUTE.FLUX`/
+  `ROUTE.STEPS`/…: Arm 0 = `ROUTE.build_txt2img` verbatim; Arm A = scaffold → VAEEncode
+  → ReferenceLatent into the positive, EmptyFlux2LatentImage latent; Arm B = scaffold
+  img2img init via SplitSigmasDenoise; Arm C = A + SetLatentNoiseMask over the dilated
+  shape on a white-canvas latent (C2 = DifferentialDiffusion + soft mask). gen and matte
+  phases; a VRAM sampler thread; batch-by-prompt ordering; single attempt per job (no
+  retry storms).
+- `req0153_score.py` — identity-fit (resize matted alpha to the cell grid; overflow &
+  deep-overflow per `tool_fit_check`), best-fit via `tool_icon_score.score_candidate`
+  (the fit machinery, imported not forked), white-bg purity, and a shape-footprint
+  scaffold-ghost metric. Writes `findings.json` + montage contact-sheets + `gallery.html`
+  + verdict.
+
+### Feasibility — the 8 GB question (RESOLVED)
+Arm A/C add the scaffold's latent tokens to the FLUX.2 DiT sequence. On the RTX 2080
+(8 GB) at the FULL 256/cell gen sizes (L 512², T 768×512, 1×3 256×768, sq 512²) VRAM
+peaked at **6.7–6.8 GB with NO OOM** across every arm — the reference-latent mechanism
+FITS. Throughput, however, is poor: reference-latent jobs cost **~76–130 s each** (the
+8 GB card swaps unet↔vae↔encoder per job) vs ~15–50 s for plain t2i; a full
+4×3×4×arms matrix is ~3 h on this box. That is an ops cost to budget for in the
+integration REQ, not a blocker.
+
+### Matrix actually scored (46 renders)
+Arms 0 (baseline t2i), A (ReferenceLatent), B (img2img, denoise 0.75 & 0.85), C
+(A + SetLatentNoiseMask, D=8). Coverage: **L-tromino (`battle axe`) complete across all
+four arms at 4 seeds** (20 renders); **T-tetromino (`war hammer`)** 0/A/C; **1×3 vertical
+(`spear`)** and **2×2 square (`round shield`)** across 0/A/B/C at 2 seeds. Seeds {1,2,3,4}
+(fixed, Q3). Full matrix in the gitignored `data/req0153/`; only the small montages +
+`findings.json` are committed.
+
+### Results (machine + S7 eyeball)
+
+| arm | n | identity-fit feasible | median best-fit | white-bg purity | ghost (shape gray128) |
+| --- | --- | --- | --- | --- | --- |
+| 0 (baseline) | 14 | **28.6 %** | 57.79 | 1.000 | 0.004 |
+| A (ReferenceLatent) | 10 | 60.0 % | 60.13 | 1.000 | 0.013 |
+| B (img2img @0.75) | 8 | 62.5 %* | 58.45 | 0.989 | 0.004 |
+| B (img2img @0.85) | 4 | 25.0 % | 56.06 | 1.000 | 0.008 |
+| **C (A + latent mask @D=8)** | 10 | **100.0 %** | **61.43** | 1.000 | 0.007 |
+
+- **Arm 0 (baseline): no up-front shape control.** Fails on the AWKWARD shapes — `battle
+  axe` overflows the L quadrant (deep-overflow); `war hammer` renders a full anime warrior
+  or a garbled "WARMMER" game-**logo** banner. It PASSES on 1×3 and 2×2, but only because
+  the ratified aspect-sizing law already gives the subject a natural fit there (a vertical
+  spear fills a tall 1×3; a shield fills a square). 28.6 % overall.
+- **Arm A (ReferenceLatent) — the mechanism WORKS.** The scaffold latent pulls the render
+  onto the cell footprint: blocky shapes (T, square) lock hard to the silhouette; elongated
+  shapes (L) follow more loosely and can still spill past the footprint. Beats baseline on
+  both feasibility (60 %) and fit (60.13), but MISSES the 70 % identity-fit gate — the
+  elongated overflow is what keeps it under 70 %.
+- **Arm B (img2img): REJECTED.** At denoise 0.75 the render is essentially the flat gray
+  scaffold with an outline (ghosting on L) or the shape distorted (the vertical spear came
+  out horizontal); at 0.85 it loses the shape (25 % feasible, below baseline). NOTE: B@0.75's
+  62.5 % "feasibility" is an ARTIFACT — a ghost reproduces the scaffold silhouette, so it
+  trivially "fits" the cells while containing no real subject; the machine ghost metric
+  under-flagged it (the denoised gray drifts out of the tight 118–138 band and birefnet
+  re-mattes it cleanly), so the S7 EYEBALL (gallery) is the authoritative reject here.
+- **Arm C (A + hard latent mask @D=8) — the WINNER.** Arm A's silhouette conditioning PLUS
+  a SetLatentNoiseMask over the dilated shape on a white-canvas latent: nothing renders
+  outside the cells, so **100 % identity-fit feasible, zero deep-overflow**, the best median
+  best-fit (61.43), and pure-white backgrounds. It is the only arm that clears every GREEN
+  gate.
+
+### Verdict: GREEN-with-recipe — **Arm C at D=8 (ReferenceLatent + SetLatentNoiseMask)**
+Over the scored matrix Arm C hits 100 % identity-fit feasible with zero deep-overflow (vs
+28.6 % baseline), a median best-fit that beats Arm 0 by a gallery-visible margin, and no
+scaffold ghosting above the eyeball threshold — all three ratified GREEN criteria. Arm A
+is the underlying mechanism and is close (60 %, beats baseline on both axes) but the hard
+latent mask is what guarantees containment on elongated shapes and clears the 70 % gate.
+Arm B is killed; the post-hoc auto-fit path is unaffected.
+
+### For the S7 eyeball
+- **Subject-fidelity vs silhouette-lock trade-off (the main aesthetic call):** the harder
+  the shape lock, the more subject legibility is spent. The T `war hammer` under A/C reads
+  as an abstract cracked-metal T, not a recognisable hammer; the square `round shield`
+  becomes a full round disc (great fill, but it drops the heater-shield character). On
+  shapes where the subject's natural aspect already matches the cells (1×3, 2×2) the
+  baseline is fine and shape-conditioning mostly buys extra cell coverage, not a rescue.
+- **Where shape control actually earns its cost:** the awkward, non-rectangular shapes
+  (L-tromino, T-tetromino) where the baseline free-composes and misses.
+- Gallery: `content/batches/req0153-shape-control/gallery.html` (montage contact-sheets;
+  green border = identity-fit feasible, tile caption = best-fit / deep-overflow px).
+
+---
+
+## Spec addendum — production recipe (for a follow-up integration REQ)
+
+GREEN mechanism: **Arm C = ReferenceLatent (scaffold) + SetLatentNoiseMask (dilated shape
+on a white-canvas latent), D=8 dilation.** Arm A (ReferenceLatent alone) is the fallback if
+a hard mask is undesirable, at the cost of ~60 % vs 100 % containment. This spike does NOT
+wire it; the deltas below are the hand-off.
+
+### `art_route.build_txt2img` — OPTIONAL new inputs (production route stays byte-identical when unused)
+Add keyword args, all defaulting to `None` so existing callers are untouched:
+`reference_image=None`, `shape_mask_image=None`, `mask_init_image=None`.
+
+- When `reference_image` is set (Arm A): insert
+  `LoadImage(reference_image) → VAEEncode(vae) → ReferenceLatent(conditioning=positive)`
+  and feed the ReferenceLatent output as the CFGGuider positive. The negative stays the
+  `ConditioningZeroOut` of the base text conditioning; `latent_image` stays
+  `EmptyFlux2LatentImage`.
+- When `shape_mask_image` + `mask_init_image` are ALSO set (Arm C): replace the
+  `EmptyFlux2LatentImage` latent with
+  `VAEEncode(mask_init_image=white canvas) → SetLatentNoiseMask(mask = LoadImage(shape_mask_image) → ImageToMask(channel=red))`.
+
+Node shape (Arm C), all other route nodes unchanged:
+```
+10 LoadImage(reference_image=scaffold)      12 ReferenceLatent(cond=[4,0], latent=[11,0])  → positive
+11 VAEEncode([10,0],[3,0])                   17 LoadImage(mask_init_image=white)
+20 LoadImage(shape_mask_image=mask_dilated)  18 VAEEncode([17,0],[3,0])
+21 ImageToMask([20,0], red)                  22 SetLatentNoiseMask([18,0],[21,0])  → latent_image
+13 CFGGuider(model=[1,0], positive=[12,0], negative=[5,0], cfg)
+```
+VRAM verified 6.7–6.8 GB peak at 256/cell on the 8 GB card (no OOM). Reference-latent jobs
+are ~2–3× slower than plain t2i — budget generation time accordingly.
+
+### `art_style` — edit-instruction prompt extension
+```
+def edit_instruction(subject):
+    # Anime template applied to a shape-edit instruction (REQ-0153).
+    return render("anime",
+        "Turn the gray shape into %s. Keep the silhouette exactly. "
+        "white background, bold outline" % subject)
+```
+
+### Scaffold builder → production module
+`tools/spikes/req0153_shape_scaffold.py` (cell mask → mid-gray silhouette + dilated hard
+mask at gen resolution) becomes the production scaffold generator, driven directly by the
+REQ-0151 PO editor's 5×5 mask. Recommended default: D=8 dilation.
+
+### Recommended default & guard
+Use **Arm C @ D=8** when a shape MUST be respected (non-rectangular PO shapes). For shapes
+whose subject already fits under the aspect-sizing law (single-column / square footprints
+with an aptly-oriented subject) shape-conditioning is optional. Because the hard lock costs
+subject legibility on blocky shapes, expose it as a per-item toggle in the REQ-0151 admin
+(as already scoped) rather than forcing it globally, and keep the post-hoc numeric fit as
+the final gate.
