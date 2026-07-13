@@ -38,7 +38,7 @@ const FORMATIONS_PATH = path.join(LIVE_DUNGEON_DIR, 'formations.json'); // REQ-0
 // policy). All [TUNABLE] / documented interpretations, called out in the
 // final report's "Interpretations" list.
 // ---------------------------------------------------------------------
-const WAREHOUSE_CAP = 200; // golden e: "max 200 items"
+const { WAREHOUSE_CAP } = require('../../shared/constants.json'); // golden e: "max 200 items" -- single source shared w/ client display mirror (REQ-0145b)
 const WAREHOUSE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // golden e: "kept up to one week"
 // REQ-0041 (P1 UX round 1): two-phase warehouse claim. A row transitions
 // claimable -> claiming (server, on POST /api/warehouse/claim) -> deleted

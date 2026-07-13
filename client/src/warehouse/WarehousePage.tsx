@@ -104,13 +104,16 @@ import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { setInventorySlot } from '../board/inventorySlot';
 import { iconDataUrl } from '../dex/dexIcons';
 import { rarThemeClass } from '../render/uiBits';
-import type { EngineInstance, GameState } from '../engine/engine.d.ts';
+import { contentEntryFor, itemKindOf, localizedItemName } from '../lib/itemContent';
+import { firstFitOrMergeTM, firstFitPlace } from '../lib/placement';
+import { pulseTab } from '../lib/tabPulse';
+import { formatWarehouseCountdown } from '../lib/time';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
 import { localizedName } from '../schedule/CreateRoomForm';
-import { formatCountdown } from '../schedule/RoomCard';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
 import { playClaimChime } from './claimSfx';
+import { WAREHOUSE_CAP } from '../../../shared/constants.json';
 
 interface WarehousePageProps {
   locale: Locale;
@@ -124,11 +127,7 @@ interface WarehousePageProps {
  * over one optional field (see docs/REQ-0072-redesign-warehouse.md). */
 type WarehouseRow = ApiWarehouseItem & { sourceListingId?: string | null };
 
-const WAREHOUSE_CAP = 200; // mirrors server/schedule.cjs's WAREHOUSE_CAP (display only)
 const POLL_MS = 5000;
-const GRID_MIN = 1;
-const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout (same bound the old server-side first-fit used)
-const TAB_PULSE_MS = 1600; // >= the 3-cycle CSS animation's own 0.5s*3 duration, plus margin
 // REQ-0091: how long the claim-press flash's fade-out (CSS
 // schedule-warehouse-claim-fadeout, 0.4s) is allowed to play before its
 // class is removed from the DOM -- same "duration + margin" convention
@@ -145,63 +144,9 @@ const DECAY_SOON_MS = 2 * 86400000;
 // night, matching the mock's 「今夜搬入」 framing).
 const FRESH_MS = 86400000;
 
-function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
-  // REQ-0072: TM ids (kind:'tm' rows, e.g. LRDST) live in content.tms,
-  // which this lookup used to miss entirely -- a TM row rendered as its
-  // raw id. Checked last, same order contentEntryFor uses.
-  const entry = content?.items[itemId] ?? content?.sis[itemId] ?? content?.tms[itemId];
-  if (!entry) return itemId;
-  if (locale === 'ja') return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
-  return entry.name;
-}
-
-/** Determines whether `itemId` is a PO (has a `shape`, lives in
- * content.items) or an SI (has a `slot`, lives in content.sis) -- the two
- * kinds a claimed warehouse item can be in practice (see server/
- * schedule.cjs's REWARD_ROLL_TO_ITEM_ID table: every resolved reward/
- * grant item id is a real live_items.json or live_sis.json entry; BPs are
- * never warehouse-claimable content in this game -- they are not defined
- * in either content file, see the REQ-0041 outcome doc's note on this).
- * Falls back to 'po' if the id is in neither map (defensive; the claim
- * response's itemId should always resolve against one of them). */
-function itemKindOf(content: ApiContentPayload | null, itemId: string): 'po' | 'si' {
-  if (!content) return 'po';
-  if (content.sis[itemId]) return 'si';
-  return 'po';
-}
-
-/** Resolves the content entry (for its rarity + icon) for a warehouse
- * row of a given kind. TM stacks live in content.tms; plain PO/SI items
- * live in content.items/content.sis (checked in that order, mirroring
- * localizedItemName/itemKindOf above). Returns null when content hasn't
- * loaded yet or the id resolves against no map (defensive -- the row
- * simply renders without an icon/rarity in that case). */
-function contentEntryFor(content: ApiContentPayload | null, kind: 'po' | 'si' | 'tm', itemId: string): { rarity: string; icon: string } | null {
-  if (!content) return null;
-  if (kind === 'tm') return content.tms[itemId] ?? null;
-  return content.items[itemId] ?? content.sis[itemId] ?? null;
-}
-
 /* REQ-0075: rarThemeClass (app ramp -> theme .rar-* frame) moved to
    client/src/render/uiBits.ts so the Dex port reuses the SAME mapping
    instead of a second copy -- imported above. */
-
-/** Day-aware countdown for the Warehouse's 7-day TTL. RoomCard's
- * formatCountdown is minute/second only (fine for a run's short
- * countdown), so a multi-day remaining duration would render as e.g.
- * "10080m 0s" -- a real display bug for this view. Tiers down to
- * days/hours/minutes and defers to formatCountdown for the final
- * sub-1-hour stretch (so the last hour still reads "12m 3s" exactly as
- * the rest of the app does). */
-function formatWarehouseCountdown(ms: number): string {
-  const totalSecs = Math.max(0, Math.ceil(ms / 1000));
-  const days = Math.floor(totalSecs / 86400);
-  const hours = Math.floor((totalSecs % 86400) / 3600);
-  const mins = Math.floor((totalSecs % 3600) / 60);
-  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
-  if (hours > 0) return `${hours}h ${mins}m`;
-  return formatCountdown(ms);
-}
 
 /** REQ-0072: the mock's Joermungandr TTL ring (mock .cring) -- an SVG
  * donut whose arc is the row's REMAINING share of its OWN lifetime
@@ -243,150 +188,6 @@ function TtlRing({ pct, danger, label }: { pct: number; danger: boolean; label: 
 /** Outcome of a single-item claim, so Claim All can stop the moment the
  * board is genuinely full without guessing at React state timing. */
 type ClaimOutcome = 'claimed' | 'no_space' | 'error';
-
-interface PlacementResult {
-  page: number;
-  cell: [number, number];
-}
-
-/**
- * REQ-0042: claiming a TM warehouse row (kind:'tm', e.g. an LRDST
- * reward/grant) merges into an EXISTING matching-id inventory stack if
- * one exists ANYWHERE on `openPage`, otherwise first-fit-CREATES a new
- * stack -- reusing engine.js's tmMove/tmCanPlace (the SAME merge-on-
- * same-id-drop logic the engine's own drag-and-drop TM handling uses,
- * see mock-src/engine.js's TM model comment for the merge/uid-survivor
- * design). Tries `openPage` first, then every other page in ascending
- * order, exactly like firstFitPlace's po/si branches -- but the SCAN
- * itself is simpler here: rather than probing every cell for a legal
- * spot, this walks the page's EXISTING tms[] stacks first (an O(stacks)
- * check, since a same-id stack merge is legal from ANY of its own
- * cells -- tmCanPlace's mergeInto branch fires the moment the anchor
- * cell matches an existing same-id stack's OWN cell) before falling back
- * to the same row-major empty-cell scan invCanPlaceSI/invCanPlacePO use
- * (via tmCanPlace, which already implements that exact 1x1/BP-overlap/
- * occupancy rule -- see commit (b)).
- */
-function firstFitOrMergeTM(
-  engine: EngineInstance,
-  state: GameState,
-  uid: string,
-  itemId: string,
-  qty: number,
-  openPage: number,
-  pageCount: number
-): PlacementResult | null {
-  const pageOrder = [openPage, ...Array.from({ length: pageCount }, (_, i) => i).filter((i) => i !== openPage)];
-  for (const pg of pageOrder) {
-    const container = state.inv!.pages[pg];
-    // Existing-stack merge check: any same-id stack on this page is a
-    // legal merge target from its OWN cell (tmCanPlace's mergeInto path).
-    const existingStack = container.tms.find((t) => t.id === itemId);
-    if (existingStack) {
-      const chk = engine.tmMove(state, pg, uid, existingStack.cell, itemId, qty);
-      if (chk.ok) return { page: pg, cell: existingStack.cell };
-    }
-    // No mergeable stack on this page -- first-fit a NEW stack via the
-    // same row-major scan firstFitPlace's po/si branches use, just
-    // against tmCanPlace/tmMove.
-    let found: [number, number] | null = null;
-    for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
-      for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
-        const chk = engine.tmCanPlace(state, pg, uid, [r, c]);
-        if (chk.ok) found = [r, c];
-      }
-    }
-    if (found) {
-      const mv = engine.tmMove(state, pg, uid, found, itemId, qty);
-      if (mv.ok) return { page: pg, cell: found };
-    }
-  }
-  return null;
-}
-
-/** Client-side first-fit placement for a claimed item -- mirrors the
- * OLD server-side claimWarehouseItem's own scan bounds/order exactly
- * (open page's own bounded 1..8 x 1..8 cell scan, matching
- * mock-src/engine.js's PAGE layout), just relocated to run against the
- * LIVE engine/state instance instead of a server-side profileCanvas
- * copy -- per REQ-0041's two-phase design, this placement now happens
- * HERE, not on the server. Tries `openPage` first, then every other
- * page in ascending index order (0..PAGE_COUNT-1, skipping `openPage`
- * since it was already tried) -- matches the REQ's own spec ("try the
- * CURRENTLY OPEN/ACTIVE inventory page first... if nothing fits, scan
- * the OTHER pages in page order").
- */
-function firstFitPlace(
-  engine: NonNullable<ReturnType<typeof useGameStore>['engine']>,
-  state: NonNullable<ReturnType<typeof useGameStore>['state']>,
-  kind: 'po' | 'si',
-  uid: string,
-  itemId: string,
-  openPage: number,
-  pageCount: number
-): PlacementResult | null {
-  const pageOrder = [openPage, ...Array.from({ length: pageCount }, (_, i) => i).filter((i) => i !== openPage)];
-  for (const pg of pageOrder) {
-    if (kind === 'po') {
-      // invCanPlacePO needs the PO record to already exist in the page
-      // (it looks up the record by uid for its shape/rot) -- push a
-      // placeholder record first, same push-check-rollback pattern the
-      // OLD server-side claimWarehouseItem used.
-      const container = state.inv!.pages[pg];
-      container.pos.push({ uid, id: itemId, loc: 'grid', cell: [1, 1], rot: 0 });
-      let found: [number, number] | null = null;
-      for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
-        for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
-          const chk = engine.invCanPlacePO(state, pg, uid, 0, [r, c]);
-          if (chk.ok) found = [r, c];
-        }
-      }
-      if (found) {
-        engine.invMovePO(state, pg, uid, found);
-        return { page: pg, cell: found };
-      }
-      container.pos.pop(); // no room on this page -- roll back, try next
-    } else {
-      // SI: invCanPlaceSI does not require a pre-existing record -- push
-      // only once a legal cell is actually found, mirroring invMoveSI's
-      // own contract (the record must exist before invMoveSI can update
-      // its host, so it is created first with a placeholder host, same
-      // idea as the PO branch, then moved into its real cell).
-      const container = state.inv!.pages[pg];
-      container.sis.push({ uid, id: itemId, host: 'inv' });
-      let found: [number, number] | null = null;
-      for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
-        for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
-          const chk = engine.invCanPlaceSI(state, pg, uid, [r, c], [uid]);
-          if (chk.ok) found = [r, c];
-        }
-      }
-      if (found) {
-        engine.invMoveSI(state, pg, uid, found);
-        return { page: pg, cell: found };
-      }
-      container.sis.pop(); // no room on this page -- roll back, try next
-    }
-  }
-  return null;
-}
-
-/** Briefly applies the tab-claim-pulse CSS class (see index.css) to the
- * inv-tab button at `pageIndex`, found via LongPressTabs.tsx's
- * data-tab-index attribute -- a plain DOM query rather than plumbing a
- * "pulsing page index" prop through Tabs.tsx/LongPressTabs.tsx (both
- * shared with the squad-tabs use of the same component), matching this
- * REQ's overall preference for additive, minimally-invasive hooks. */
-function pulseTab(pageIndex: number): void {
-  const el = document.querySelector<HTMLElement>(`[data-tab-kind="inv"][data-tab-index="${pageIndex}"]`);
-  if (!el) return;
-  el.classList.remove('tab-claim-pulse');
-  // Force a reflow so re-adding the class restarts the animation even if
-  // a previous pulse on the SAME tab hasn't finished clearing yet.
-  void el.offsetWidth;
-  el.classList.add('tab-claim-pulse');
-  setTimeout(() => el.classList.remove('tab-claim-pulse'), TAB_PULSE_MS);
-}
 
 type WarehouseFilter = 'all' | 'spoils' | 'currency';
 

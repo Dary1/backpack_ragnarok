@@ -18,7 +18,7 @@ const { genId } = require('./core.cjs');
 // saved canvas AND the player's LRDST balance having actually dropped by
 // the roll's cost -- see finalizeGachaForCanvas() below.
 // ---------------------------------------------------------------------
-const GACHA_COMMON_BP_COST = 10; // LRDST cost of one common_bp roll (REQ doc: "costs 10x LRDST")
+const { GACHA_COMMON_BP_COST } = require('../../shared/constants.json'); // LRDST cost of one common_bp roll (REQ doc: "costs 10x LRDST") -- single source shared w/ client display mirror (REQ-0145b)
 const GACHA_PENDING_TIMEOUT_MS = 120 * 1000; // same 120s lazy-revert window as warehouse claim
 const GACHA_MIN_CELLS = 6;
 const GACHA_MAX_CELLS = 8;
