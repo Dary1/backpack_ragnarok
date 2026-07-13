@@ -1,6 +1,6 @@
 # REQ-0161 — content-check-enemy-dialect: reconcile machine checks with the enemy/1 schema dialect
 
-**Status:** todo — RULED (Q1 = Option A, user, 2026-07-14). Cleared to implement.
+**Status:** built — implemented, all gates green, NOT yet merged/deployed (see Outcome).
 **Requested by:** user, 2026-07-14 (chat): "REQ立ててください" for the monster-FAIL finding of
 the REQ-0157 backfill session (Session 2026-07-14c).
 **Spec authored by:** orchestrator (Fable), 2026-07-14.
@@ -63,3 +63,74 @@ ever wanted, belongs to a separate schema-canon REQ — not here.
 - G3 hygiene: checks stay advisory (no adoption gating change); pnpm only; no schema/data
   file edits under content/ (Option A).
 - S7: user acceptance — monster rows show honest PASS in the live admin.
+
+## Outcome (2026-07-14, orchestrator — Option A as ruled)
+
+### What was done
+`server/services/content_checks.cjs` now resolves a **schema dialect** from the def's
+`schema_ref` (`content_defs.schema_ref`, which the REQ-0157 backfill copies VERBATIM from the
+source file header: `po/2` | `si/2` | `tm/1` | `enemy/1`) and hands it to both offending
+checks. The dialect table lives in the module header:
+
+| schema_ref | rarity tokens | integer-range fields |
+| --- | --- | --- |
+| `enemy/1` | lowercase form of `vocab.rarities` (`common`, `rare`, …) | `hp` — `[lo,hi]`, ints, lo≤hi |
+| DEFAULT (`po/2`, `si/2`, `tm/1`, …) | verbatim `vocab.rarities` token (`Common`, …) | none — stats are scalar |
+
+- `schema_vocab` — rarity is matched against the dialect's spelling (`rarityAllowed`).
+- `engine_types` — the dialect's declared range fields must be `[lo,hi]` int ranges
+  (`isIntRange`); every other numeric stat keeps the scalar rule engine.js consumes.
+- `runChecks` resolves the dialect once and now REPORTS it (`machine_check.dialect`), so a
+  verdict says which spelling it was judged under. Additive: no existing field changed.
+- **The dialect follows `schema_ref`, not `kind`** — a `monster_def` filed under a non-enemy
+  schema still gets the default (scalar) rules. Keying on kind would have hard-coded the
+  enemy dialect into a kind that may later hold another schema.
+- Doc canon consulted as the spec required: `docs/llm_managed/monster_content_pipeline.md` §2
+  already declares `hp` = `[lo, hi]` integer range and `rarity` = e.g. `common`. The data was
+  right; the validators were reading it in po/si's accent.
+
+**Honesty preserved (kit doctrine).** A dialect is a spelling, never an excuse: an unknown
+rarity word, a capitalized rarity inside `enemy/1` (mixed dialect), and a malformed /
+inverted / non-integer / scalar-where-ranged `hp` all still FAIL, each naming its own check.
+The enemy/1 spelling does not leak into po/si/tm.
+
+**No data, schema or sim change.** `content/` untouched (Option A); `enemy/2` not created;
+adoption gating unchanged (checks stay advisory).
+
+### Gates
+- **G1 — green.** Full `tools/ci.sh` (SKIP_E2E=1) → **CI GREEN**. sim 112/112, mock-src
+  engine 101/101, S4 14/14, forecast parity 16/16, typecheck + engine type-surface +
+  vocab self-test clean, **api_test 157/157 on BOTH backends** (files + pg; the suite is at
+  157 today, not the 155 the spec quoted), pg_sync 4/4, backfill 10/10 + 8/8,
+  **content_test 13/13**, **contentagg_test 4/4** (recheck path incl.), inspection kits,
+  client typecheck+build. E2E skipped — the default suite is REQ-0159's open repair, not
+  this REQ's surface (no client code touched).
+- **G1 — new tests: `server/tests/content_checks_dialect_test.cjs`, 11/11**, DB-free, wired
+  into `tools/ci.sh` as `[4.66/7]`. It pins: dialect resolution by schema_ref; **all 7 live
+  enemy/1 entries PASS as-shipped**; a non-vacuity assertion (the live corpus really is
+  lowercase + ranged); 5 negatives (unknown rarity word, capitalized rarity in enemy/1,
+  inverted range, non-int range, malformed/scalar hp) each naming the right check; and
+  no-leakage (po/2 still PASSes, a lowercase rarity on a po_def still FAILs, a monster_def
+  under a non-enemy schema keeps scalar hp).
+- **G2 — green (verified read-only against the LIVE registry before merge).** All 7 live
+  `monster_def` variants: stored verdict `FAIL` → fresh verdict **PASS**, `dialect=enemy/1`,
+  `integrate` still `applicable:false`, and **`data_sha256` UNCHANGED on every row** (the
+  probe never wrote; the asset of record was not touched). Deployed recheck record below.
+- **G3 — green.** Checks remain advisory (no adoption-gating change); pnpm only
+  (`--frozen-lockfile` in root/, server/, client/); zero edits under `content/`.
+
+### Commits (branch `req-0161-content-check-enemy-dialect`)
+- `f8faa49` — record the user ruling Q1 = Option A.
+- `ca3aec3` — REQ draft → todo (ruled, cleared).
+- `a949d54` — the dialect-aware checks + the 11-case dialect test + ci.sh wiring.
+
+### Follow-ups (NOT taken here, deliberately)
+- A first-class `enemy` validator kind in `shared/content_validate.cjs` (`validateBody`
+  still accepts `item | si` only) — the honest gap REQ-0111/0154 carried; own it where first
+  needed.
+- Any move toward ONE dialect everywhere (`enemy/2`) remains a separate schema-canon REQ.
+- The dialect table is the place to declare the next schema's conventions (e.g. `skill/1`
+  if skills ever become a registry kind, REQ-0160).
+
+### S7
+User acceptance: the 7 monster rows show honest PASS (no red dots) in the live content admin.
