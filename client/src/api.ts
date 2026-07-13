@@ -798,6 +798,10 @@ export interface ContentDefDto {
   id: number; system_name: string; kind: string; brief: string;
   schema_ref: string; gen_config: Record<string, unknown>;
   adopted_variant_id: number | null; artwork_facet?: boolean;
+  // REQ-0157 list aggregates (present on GET /api/content/defs rows;
+  // additive -- the detail GET keeps the plain REQ-0155 shape)
+  adopted_variant_no?: number | null; variant_count?: number; ok_count?: number;
+  failed_check_count?: number; last_variant_at?: string | null; has_artwork_facet?: boolean;
 }
 export interface MachineCheckItem { name: string; ok: boolean; applicable: boolean; detail: string; extra?: { content_live_unchanged?: boolean } }
 export interface MachineCheck { overall: 'PASS' | 'FAIL'; checks: MachineCheckItem[]; schema_ref?: string; ran_at?: string }
@@ -843,6 +847,12 @@ export function adoptVariantApi(name: string, variantNo: number, override?: bool
 }
 export function deleteVariantApi(name: string, variantNo: number): Promise<{ ok: true; deleted: number }> {
   return contentJson('/api/content/defs/' + encodeURIComponent(name) + '/variants/' + variantNo, { method: 'DELETE' });
+}
+/** REQ-0157: re-run the four machine checks on an existing (immutable)
+ * variant; the server persists the fresh machine_check annotation and
+ * returns the updated variant. */
+export function recheckVariantApi(name: string, variantNo: number): Promise<{ ok: true; variant: ContentVariantDto }> {
+  return contentJson('/api/content/defs/' + encodeURIComponent(name) + '/variants/' + variantNo + '/recheck', { method: 'POST', body: JSON.stringify({}) });
 }
 /** Public: adopted-variant metadata (provenance + checks + review) or null
  * (used by the Dex LINK-FIRST adoption-state badge; 404 => no adopted data). */
