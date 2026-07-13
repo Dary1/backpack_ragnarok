@@ -1,6 +1,7 @@
 # REQ-0151 — artwork-registry-admin: web admin for flux2 artwork generation + adopted-seed registry
 
-**State:** draft — BLOCKED on user ratification of this spec.
+**Ratified:** 2026-07-13 (user, chat) — spec v3 approved as written; the REQ folder is the sole
+status record.
 **Requested by:** user, 2026-07-13 (chat). Spec authored by orchestrator (Fable) from the user's
 field list + user rulings taken the same day. v2: user corrections round 2 (Postgres, DB-resident
 images, model-hash pinning, wait for REQ-0150 completion). v3: user rulings round 3 (O1–O3
@@ -120,5 +121,4 @@ chimera 6x4 → 768×512; ancient dragon 10x10 → 1280×1280; any si → 256×2
   `GET /api/art/<system_name>/renders/<seed>` → any candidate, for the WebUI's instant preview
   (ruling 6).
 - On adoption change, an export step writes the adopted PNG (+ matte/derivatives where the kind
-  requires them) into content/ via the existing integrate conventions (ruling 7), committed on a
-  branch — existing consumers keep workin
+  requires them) into content/ via the existing integrate conventions (ruling 7), committed
