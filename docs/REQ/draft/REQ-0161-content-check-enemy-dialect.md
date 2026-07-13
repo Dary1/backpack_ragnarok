@@ -1,6 +1,6 @@
 # REQ-0161 — content-check-enemy-dialect: reconcile machine checks with the enemy/1 schema dialect
 
-**Status:** draft — spec written, BLOCKED on the direction ruling Q1 below.
+**Status:** todo — RULED (Q1 = Option A, user, 2026-07-14). Cleared to implement.
 **Requested by:** user, 2026-07-14 (chat): "REQ立ててください" for the monster-FAIL finding of
 the REQ-0157 backfill session (Session 2026-07-14c).
 **Spec authored by:** orchestrator (Fable), 2026-07-14.
@@ -23,7 +23,13 @@ Verdict tallies (2026-07-14c): schema_vocab 15 ok / 7 fail; engine_types 15 ok /
 gen_data 22/0; integrate n/a for tm/monster. The FAILs were left standing (advisory doctrine;
 adoption unaffected) with red dots in the admin — correct behavior, noisy signal.
 
-## Open ruling (blocking)
+## Ruling (2026-07-14, user — closes the block)
+**Q1 = Option A.** The validators learn the enemy/1 dialect; live content/ is NOT edited.
+Rationale (as specced): the checks are advisory mirrors of reality, and reality is the
+game-served enemy/1 corpus. Option B (one dialect everywhere, enemy/2) is NOT taken and, if
+ever wanted, belongs to a separate schema-canon REQ — not here.
+
+## Options as put to the user (historical)
 **Q1 — which side is canon?**
 - Option A (validators learn the dialect): teach schema_vocab/engine_types the enemy/1
   conventions per-kind (kind-aware rarity casing map; `[lo,hi]` int-range acceptance for the
