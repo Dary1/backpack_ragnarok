@@ -201,3 +201,11 @@ and forecast:41 parallel-mode flakes + artadmin x3 failing IDENTICALLY
 against the live master build serially = env, 0156 gates them via its
 own tools/artadmin_e2e.sh mock harness). Post-deploy forecast.spec vs
 live: recorded below.
+
+Post-deploy verification (2026-07-14): master merge 686ca15 (merge
+commit, house style; ff was impossible -- master advanced twice during
+landing: REQ-0156 overhaul, then its ALLOW_DEV_CLEAR hardening).
+backpack-api restarted, /api/health ok; GET /api/schedule/forecast
+serving real payloads (24 seeds / 72 battles sampled on default L1);
+forecast.spec.ts vs LIVE: 8/8 passed. forecast:41 in the parallel run
+confirmed a worker boot-timing flake (serial vs live green).
