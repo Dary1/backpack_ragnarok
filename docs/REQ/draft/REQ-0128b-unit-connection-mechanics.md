@@ -1,7 +1,8 @@
-# REQ-0128 — unit-connection-mechanics
+# REQ-0128b — unit-connection-mechanics (engine + client)
 
-**Status:** draft — blocked on user ratification of the remaining geometry
-rules and per-unit kits (open decisions below)
+**Status:** draft — blocked on the open decisions below.
+**Split from:** REQ-0128 (2026-07-13). The **vocabulary half shipped as REQ-0128a**
+(`content/vocab.json` v9 `connection_shapes`). This file owns the MECHANICS only.
 **Reserved:** 2026-07-11
 **Slug:** unit-connection-mechanics
 **Ordering:** independent of the rename program (user ruling 2026-07-12:
@@ -27,7 +28,7 @@ offsets), adjacency, backward-line, none. Ratified rules:
   established-link rendering). Overlay art is data-driven (unit icon golden
   G2 — never baked into icons).
 - Content schema: `connection_shape` field on unit defs (schema only; def
-  authoring is REQ-0130 territory).
+  authoring is REQ-0130 territory). ~~Vocabulary~~ — **shipped in REQ-0128a.**
 
 ## Open decisions (need user ruling before todo)
 
@@ -39,6 +40,12 @@ offsets), adjacency, backward-line, none. Ratified rules:
    BP-footprint adjacency (the Watcher's "置くだけで仕事をする" reading)?
 3. **Field scope:** connections resolve canvas-local (within one Squad) only,
    or may they cross Squad zones on the shared battle field?
+5. **BOARD ORIENTATION — what is "forward"?** *(surfaced 2026-07-13 by REQ-0149)*
+   `lance`, `backward_line` and the new `forward_1` are all **directed** shapes, and
+   this REQ has never said which way a Unit faces. `backward-line` was in the
+   ratified vocabulary from the start and smuggled the assumption in unexamined.
+   Until orientation is defined, three of the ten registered shapes have no meaning.
+   **This blocks the Squire and the Light Cavalry.**
 4. Per-unit kit ratification happens per roster batch (REQ-0130), not here —
    this REQ ships the mechanics, not the kits.
 
