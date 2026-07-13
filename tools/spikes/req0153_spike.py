@@ -54,17 +54,18 @@ RUNLOG = os.path.join(DATA, "runlog.jsonl")
 
 # Subjects apt to each shape, from the ratified item vocabulary. 3 per shape.
 MATRIX = [
+    # interleaved by shape so any partial run covers all four shapes early
     ("l_tromino",   "battle axe"),
-    ("l_tromino",   "hooked blade"),
-    ("l_tromino",   "sickle"),
     ("t_tetromino", "war hammer"),
-    ("t_tetromino", "wooden mallet"),
-    ("t_tetromino", "anvil"),
     ("v_1x3",       "spear"),
-    ("v_1x3",       "wizard staff"),
-    ("v_1x3",       "arrow"),
     ("sq_2x2",      "round shield"),
+    ("l_tromino",   "hooked blade"),
+    ("t_tetromino", "wooden mallet"),
+    ("v_1x3",       "wizard staff"),
     ("sq_2x2",      "treasure chest"),
+    ("l_tromino",   "sickle"),
+    ("t_tetromino", "anvil"),
+    ("v_1x3",       "arrow"),
     ("sq_2x2",      "spell book"),
 ]
 SEEDS = [1, 2, 3, 4]
