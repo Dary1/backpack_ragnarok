@@ -294,3 +294,20 @@ WAREHOUSE_CAP|GACHA_COMMON_BP_COST literals anywhere in client/src.
   Decision needed from the owner/user on req-0057 (merge or retire).
 - REQ stays in todo/ until (ca)(ce)(cf) land; this log is the resume
   point (re-run the precondition audit first).
+
+### 2026-07-14 (later) — (ca)(ce)(cf) UNBLOCKED
+
+Same day, after the round above: REQ-0156 merged+deployed to master
+(sibling session; incl. a follow-up ALLOW_DEV_CLEAR hardening), and
+REQ-0057 was merged+deployed (user-directed, this session -- duplication
+check clean, gates green, live forecast.spec 8/8; see the REQ-0057 done
+file for the landing trail). Fresh precondition audit after both
+landings: ZERO unmerged branches touch api.ts / i18n.ts / index.css.
+Therefore (ca) and (ce) are cleared per section 5.2, and (cf)'s
+no-unmerged-index.css-branch precondition now holds.
+
+Before starting (ca)/(ce)/(cf): merge current master into this branch
+first (the api.ts/i18n.ts/index.css to be split must carry the 0156 +
+0057 tails), re-run the section 5.2 ownership re-audit on the merged
+tree, and re-record the e2e baseline (the live build changed twice
+today: 0156 dist, then 0057 dist).
