@@ -1,9 +1,9 @@
 # REQ-0153 — po-shape-control-spike: shape-conditioned generation for PO items on Flux.2 Klein 4B
 
-**State:** draft. The user approved the direction in chat (2026-07-13, "ナイス調査です。REQ-0153として起票お願いします")
-after reviewing the orchestrator's investigation; blocked only on ratification of this written
-spec (arms, metrics, GREEN criteria). A SPIKE: its deliverable is a verdict + recipe, not
-production wiring.
+**Ratified:** 2026-07-13 (user, chat) — direction approved on the investigation
+("ナイス調査です"), and the written spec (arms, metrics, GREEN criteria, Q1–Q3 defaults)
+approved as proposed the same day. A SPIKE: its deliverable is a verdict + recipe, not
+production wiring. The REQ folder is the sole status record.
 
 **Problem (user, 2026-07-13):** PO items with non-rectangular cell shapes (L-shapes etc.) rarely
 come out of unconditioned t2i in a silhouette that fits their cells; rerolling seeds until the
@@ -111,13 +111,13 @@ shape classes), or RED (kill; keep post-hoc fit only).
 - Monster grid shapes (monsters are loose canvases; revisit only if PO results are GREEN and
   monsters prove to need it).
 
-## Open questions
-- Q1 scaffold tone: mid-gray vs dark-gray vs colored blob (mid-gray proposed; sweep only if A
-  underperforms).
-- Q2 whether the distilled-4B GGUF we run responds to edit conditioning as well as the base
-  variant; if A fails oddly, one diagnostic leg with the fp8 base checkpoint is allowed as
-  EVIDENCE ONLY (explicitly not a route change — the route stays Klein 4B as loaded).
-- Q3 seed policy for the matrix: fixed {1,2,3,4} proposed.
+## Resolved questions (user rulings, 2026-07-13 — approved as proposed)
+- Q1 scaffold tone: mid-gray; sweep only if Arm A underperforms.
+- Q2 one diagnostic leg with the fp8 base checkpoint allowed as EVIDENCE ONLY (not a route
+  change — the route stays Klein 4B as loaded).
+- Q3 seed policy: fixed {1,2,3,4}.
+- GREEN criteria: as proposed (identity-fit ≥70%, zero deep_overflow, no ghosting).
 
 ## Implementation log
 (to be filled by the implementing session)
+                                                                           
