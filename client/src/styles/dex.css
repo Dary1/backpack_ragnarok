@@ -153,10 +153,6 @@
 .dex-colhead-grow {
   flex: 1;
 }
-.dex-detail-colhead-cur {
-  color: var(--bone-2);
-}
-
 /* ---------- controls (search + filters) ---------- */
 .dex-controls {
   display: flex;
@@ -404,13 +400,7 @@
 }
 .dex-detail-item-list-row:hover {
   background: rgba(201, 169, 89, 0.06);
-}
-.dex-detail-item-list-row-active {
-  background: rgba(201, 169, 89, 0.1);
-  color: var(--gold-hi);
-  box-shadow: inset 0 0 0 1px rgba(201, 169, 89, 0.25);
-}
-.dex-detail-item-list-row .dex-card-name {
+}.dex-detail-item-list-row .dex-card-name {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

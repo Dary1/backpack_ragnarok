@@ -355,15 +355,6 @@
   cursor: default;
   box-shadow: none;
 }
-
-.schedule-room-expanded {
-  border-top: 1px solid rgba(201, 169, 89, 0.14);
-  padding-top: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
 /* Slots panel */
 .schedule-slots-title {
   margin: 0 0 8px;
@@ -577,12 +568,7 @@
 @media (max-width: 840px) {
   .schedule-page {
     padding: 0 14px 90px;
-  }
-  .schedule-pagehead-tabs {
-    margin-left: 0;
-    flex-basis: 100%;
-  }
-  .schedule-slots-grid {
+  }  .schedule-slots-grid {
     grid-template-columns: 1fr 1fr;
   }
 }

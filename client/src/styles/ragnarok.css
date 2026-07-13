@@ -131,9 +131,7 @@
 }
 .ragnarok-cand:hover { border-color: var(--gold-lo); }
 .ragnarok-cand.is-on { border-color: var(--gold); box-shadow: var(--focus-ring); }
-.ragnarok-cand-nm { font-family: var(--f-dj); font-weight: 700; font-size: 15px; flex: 1; }
-.ragnarok-cand-meta { font-size: 11px; color: var(--bone-3); }
-/* LOCKED, not hidden (REQ-0067, mirrors the market's language): an
+.ragnarok-cand-nm { font-family: var(--f-dj); font-weight: 700; font-size: 15px; flex: 1; }/* LOCKED, not hidden (REQ-0067, mirrors the market's language): an
    ineligible squad still shows, dimmed, with its reason spelled out. */
 .ragnarok-cand.is-locked { cursor: not-allowed; opacity: .55; }
 .ragnarok-cand.is-locked:hover { border-color: var(--border-lo); }
@@ -144,10 +142,7 @@
   position: relative; padding: 18px; border-radius: 4px;
   background: radial-gradient(130% 90% at 50% 0%, rgba(244,233,200,.12), transparent 55%), linear-gradient(180deg, #1E242E, #12161D);
 }
-.ragnarok-u-head { display: flex; gap: 14px; align-items: center; padding-right: 92px; }
-.ragnarok-u-th { width: 52px; height: 52px; flex: none; display: grid; place-items: center; border-radius: 3px; background: radial-gradient(circle at 50% 42%, #2A313E, #10141B 78%); border: 1px solid var(--border-lo); }
-.ragnarok-u-th img { width: 42px; height: 42px; object-fit: contain; }
-.ragnarok-u-name { font-family: var(--f-dj); font-size: 21px; font-weight: 800; letter-spacing: .1em; }
+.ragnarok-u-head { display: flex; gap: 14px; align-items: center; padding-right: 92px; }.ragnarok-u-name { font-family: var(--f-dj); font-size: 21px; font-weight: 800; letter-spacing: .1em; }
 .ragnarok-vkbox { position: absolute; top: 12px; right: 12px; width: 88px; text-align: center; z-index: 2; }
 .ragnarok-valknut { filter: drop-shadow(0 0 4px rgba(201,169,89,.35)); }
 .ragnarok-vk-c { margin-top: 3px; font-size: 9.5px; color: var(--gold); letter-spacing: .1em; line-height: 1.5; opacity: .85; }
