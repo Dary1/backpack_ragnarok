@@ -38,7 +38,7 @@ trap cleanup EXIT
 
 echo "[content_admin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
-HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
+HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" ALLOW_DEV_CLEAR=1 \
   CONTENT_EXPORT_ROOT="$EXPORTDIR" \
   node "$WT/server/api.cjs" > /tmp/req0155_e2e_api.log 2>&1 &
 PIDS+=($!)

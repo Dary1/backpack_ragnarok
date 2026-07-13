@@ -1,159 +1,128 @@
-// client/src/artadmin/ArtAdminPage.tsx -- REQ-0151 artwork registry admin.
-// One screen: generate artwork through THE flux2 route, manage per-artwork
-// seed candidates, adopt exactly one seed as live. Resolution is READ-ONLY
-// (derived from kind+shape, mirrors server/services/art_sizing.cjs). Auth
-// reuses admin.cjs (item_admin) via the api.ts helpers' X-Auth-Token header.
-import { useCallback, useEffect, useState } from 'react';
+// client/src/artadmin/ArtAdminPage.tsx -- REQ-0151 artwork registry admin,
+// OVERHAULED by REQ-0156 into a three-pane MJOLNIR console (registry
+// browser | selected-artwork workspace | generation + queue strip).
+// Registry semantics are UNCHANGED (REQ-0151 data model / sizing law /
+// adoption rules / export; REQ-0152 kit verdicts stay advisory): this page
+// is an art-generation console + adoption ledger whose core act is HUMAN
+// visual comparison (lightbox/compare), never automated judgement.
+// Auth reuses admin.cjs (item_admin) via the api.ts helpers' X-Auth-Token
+// header. Admin surface stays EN-only (locale accepted, unused).
+//
+// This root owns ALL server state + polling (artwork list 10 s, selected
+// detail 2 s, queue 2 s) and the safety rails (adopt/delete confirm
+// dialogs, toasts + the persistent aria-live art-msg line the e2e asserts
+// on); the panes are dumb components under client/src/artadmin/.
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { Locale } from '../store';
 import {
-  listArtworks, createArtwork, getArtwork, patchArtwork, previewArtwork,
-  generateArtwork, adoptRenderApi, deleteRenderApi, artRenderUrl, reinspectRender,
+  listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
+  adoptRenderApi, deleteRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  artRenderUrl,
 } from '../api';
-import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
+import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
+import { draftFromArtwork } from './artShared';
+import type { ArtDraft, Kind } from './artShared';
+import { RegistryRail } from './RegistryRail';
+import { CreatePanel } from './CreatePanel';
+import { Workspace } from './Workspace';
+import { QueuePanel } from './QueuePanel';
+import { Lightbox } from './Lightbox';
 
-type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin';
-const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin'];
+interface Toast { id: number; text: string; kind: 'ok' | 'err' }
+interface ConfirmState { type: 'adopt' | 'delete'; seed: number }
+interface LightboxState { seed: number; compareWith: number | null }
 
-function snap16(v: number): number { return Math.max(16, Math.round(v / 16) * 16); }
-function emptyMask(): boolean[][] { return Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]); }
-
-function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number): { width: number; height: number } {
-  if (kind === 'si') return { width: 256, height: 256 };
-  if (kind === 'unit') return { width: 512, height: 512 };
-  if (kind === 'bpskin') return { width: 1024, height: 1024 };
-  if (kind === 'monster') return { width: snap16(mw * 128), height: snap16(mh * 128) };
-  let minR = 5, maxR = -1, minC = 5, maxC = -1;
-  for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) if (mask[r][c]) {
-    minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c);
-  }
-  if (maxR < 0) return { width: 0, height: 0 };
-  return { width: snap16((maxC - minC + 1) * 256), height: snap16((maxR - minR + 1) * 256) };
-}
-
-function defaultTemplate(kind: Kind): string {
-  if (kind === 'po' || kind === 'si') return '{main_object}, white background, bold outline';
-  if (kind === 'unit') return '{main_object}, portrait, looking at viewer, white background';
-  if (kind === 'monster') return '{main_object}, white background';
-  return '';
-}
-
-function PoMaskEditor({ mask, onToggle }: { mask: boolean[][]; onToggle: (r: number, c: number) => void }) {
-  return (
-    <div data-testid="po-mask" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 28px)', gap: 2 }}>
-      {mask.map((row, r) => row.map((on, c) => (
-        <button key={r + '_' + c} type="button" data-testid={'po-cell-' + r + '-' + c}
-          onClick={() => onToggle(r, c)}
-          style={{ width: 28, height: 28, background: on ? '#C9A959' : '#222', border: '1px solid #555', cursor: 'pointer' }} />
-      )))}
-    </div>
-  );
-}
-
-function MonsterShapeEditor({ w, h, onW, onH }: { w: number; h: number; onW: (v: number) => void; onH: (v: number) => void }) {
-  const cells = [];
-  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) cells.push(<div key={r + '_' + c} style={{ width: 12, height: 12, background: '#C9A959' }} />);
-  return (
-    <div>
-      <label>w <input data-testid="monster-w" type="number" min={1} max={12} value={w} onChange={(e) => onW(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} style={{ width: 48 }} /></label>
-      {' '}
-      <label>h <input data-testid="monster-h" type="number" min={1} max={12} value={h} onChange={(e) => onH(Math.max(1, Math.min(12, Number(e.target.value) || 1)))} style={{ width: 48 }} /></label>
-      <div data-testid="monster-preview" style={{ display: 'grid', gridTemplateColumns: 'repeat(' + w + ', 12px)', gap: 1, marginTop: 6 }}>{cells}</div>
-    </div>
-  );
-}
-
-function verdictColor(v: string): string {
-  return v === 'PASS' ? '#2e7d32' : v === 'WARN' ? '#a6791a' : '#992222';
-}
-
-function InspectDetails({ row, seed }: { row: InspectionDto; seed: number }) {
-  return (
-    <div data-testid={'kit-details-' + seed + '-' + row.kit_id}
-      style={{ background: '#111', padding: 6, marginTop: 3, fontSize: 11, fontFamily: 'monospace', maxWidth: 206 }}>
-      <div>v{row.kit_version}{row.stale ? ' (STALE)' : ''}</div>
-      <div style={{ marginTop: 3, color: '#C9A959' }}>metrics</div>
-      {Object.entries(row.metrics).map(([k, v]) => <div key={k}>{k}={String(v)}</div>)}
-      <div style={{ marginTop: 3, color: '#C9A959' }}>checks</div>
-      {row.checks.map((c, i) => <div key={i} style={{ color: c.ok ? '#7bd67b' : '#e88' }}>{c.ok ? 'ok' : 'x'} {c.name} ({String(c.value)} / {c.threshold})</div>)}
-      {row.notes.length > 0 && <div style={{ marginTop: 3, color: '#C9A959' }}>notes</div>}
-      {row.notes.map((nt, i) => <div key={i} style={{ color: '#bbb' }}>- {nt}</div>)}
-    </div>
-  );
-}
-
-function KitChips({ seed, kits, rows, expanded, onToggle, onRerun }: {
-  seed: number; kits: KitDto[]; rows: InspectionDto[];
-  expanded: Record<string, boolean>; onToggle: (key: string) => void;
-  onRerun: (seed: number, kitId?: string) => void;
+function ConfirmDialog({ title, confirmLabel, onOk, onCancel, children }: {
+  title: string; confirmLabel: string; onOk: () => void; onCancel: () => void; children?: ReactNode;
 }) {
-  const byKit = new Map(rows.map((r) => [r.kit_id, r]));
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onCancel(); }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
   return (
-    <div data-testid={'kits-' + seed} style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-      {kits.map((k) => {
-        const row = byKit.get(k.kit_id);
-        if (!row) {
-          return (
-            <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id}
-              style={{ fontSize: 11, color: '#999', border: '1px dashed #555', padding: '1px 4px', borderRadius: 3 }}>
-              {k.kit_id}: not inspected{' '}
-              <button data-testid={'run-' + seed + '-' + k.kit_id} type="button" onClick={() => onRerun(seed, k.kit_id)}>run</button>
-            </span>
-          );
-        }
-        const key = seed + '|' + k.kit_id;
-        return (
-          <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            <button data-testid={'chip-' + seed + '-' + k.kit_id} type="button" onClick={() => onToggle(key)}
-              title={k.kit_id + ' v' + row.kit_version}
-              style={{ background: verdictColor(row.verdict), color: '#fff', border: 'none', padding: '2px 6px', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}>
-              {k.kit_id} <b data-testid={'verdict-' + seed + '-' + k.kit_id}>{row.verdict}</b>
-            </button>
-            {row.stale && <span data-testid={'stale-' + seed + '-' + k.kit_id} style={{ color: '#e0a000', fontSize: 10 }}>stale</span>}
-            {row.stale && <button data-testid={'rerun-' + seed + '-' + k.kit_id} type="button" onClick={() => onRerun(seed, k.kit_id)}>re-run</button>}
-            {expanded[key] && <InspectDetails row={row} seed={seed} />}
-          </span>
-        );
-      })}
+    <div className="aa-scrim" onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div data-testid="confirm-dialog" className="panel panel-pad aa-confirm" role="dialog" aria-modal="true">
+        <div className="den t-h3 gold-text">{title}</div>
+        <div className="aa-confirm-body">{children}</div>
+        <div className="aa-confirm-actions">
+          <button type="button" data-testid="confirm-ok" className="btn" onClick={onOk}>{confirmLabel}</button>
+          <button type="button" data-testid="confirm-cancel" className="btn btn-ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
 
 export function ArtAdminPage({ locale }: { locale: Locale }) {
   void locale;
+  // registry + selection
   const [artworks, setArtworks] = useState<ArtworkDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  const [detailArt, setDetailArt] = useState<ArtworkDto | null>(null);
   const [renders, setRenders] = useState<RenderDto[]>([]);
   const [inspections, setInspections] = useState<Record<string, InspectionDto[]>>({});
   const [kits, setKits] = useState<KitDto[]>([]);
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [queueDepth, setQueueDepth] = useState<number>(0);
-  const [detailAdoptedId, setDetailAdoptedId] = useState<number | null>(null);
-  const [msg, setMsg] = useState<string>('');
-  // create form
-  const [kind, setKind] = useState<Kind>('po');
-  const [systemName, setSystemName] = useState<string>('');
-  const [mainObject, setMainObject] = useState<string>('');
-  const [promptTemplate, setPromptTemplate] = useState<string>(defaultTemplate('po'));
-  const [styleOverride, setStyleOverride] = useState<string>('');
-  const [edgePadding, setEdgePadding] = useState<number>(32);
-  const [mask, setMask] = useState<boolean[][]>(emptyMask());
-  const [mw, setMw] = useState<number>(3);
-  const [mh, setMh] = useState<number>(4);
-  const [finalPreview, setFinalPreview] = useState<string>('');
-  const [nSeeds, setNSeeds] = useState<number>(3);
-  const [explicitSeed, setExplicitSeed] = useState<number>(1);
+  const [adoptedId, setAdoptedId] = useState<number | null>(null);
+  const [expandedKits, setExpandedKits] = useState<Record<string, boolean>>({});
+  // edit draft (explicit Save; baseline for the dirty indicator)
+  const [draft, setDraft] = useState<ArtDraft | null>(null);
+  const [baseline, setBaseline] = useState<ArtDraft | null>(null);
+  const draftFor = useRef<string | null>(null);
+  const [finalPreview, setFinalPreview] = useState('');
+  // queue
+  const [queue, setQueue] = useState<ArtQueueDto | null>(null);
+  const [queueFetchedAt, setQueueFetchedAt] = useState(0);
+  const [nowTick, setNowTick] = useState(Date.now());
+  // overlays + feedback
+  const [createOpen, setCreateOpen] = useState(false);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+  const [comparePicks, setComparePicks] = useState<number[]>([]);
+  const [msg, setMsg] = useState('');
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(1);
 
-  const size = deriveSizeClient(kind, mask, mw, mh);
+  const report = useCallback((text: string, kind: 'ok' | 'err' = 'ok') => {
+    setMsg(text);
+    const id = toastId.current++;
+    setToasts((t) => [...t, { id, text, kind }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+  }, []);
 
   const refreshList = useCallback(async () => {
-    try { const r = await listArtworks(); setArtworks(r.artworks); } catch (e) { setMsg('list: ' + (e as Error).message); }
+    try { const r = await listArtworks(); setArtworks(r.artworks); }
+    catch (e) { setMsg('list: ' + (e as Error).message); }
   }, []);
 
   const loadDetail = useCallback(async (name: string) => {
-    try { const r = await getArtwork(name); setRenders(r.renders); setQueueDepth(r.queueDepth); setDetailAdoptedId(r.artwork.adopted_render_id); setInspections(r.inspections || {}); setKits(r.kits || []); } catch (e) { setMsg('detail: ' + (e as Error).message); }
+    try {
+      const r = await getArtwork(name);
+      setDetailArt(r.artwork);
+      setRenders(r.renders);
+      setAdoptedId(r.artwork.adopted_render_id);
+      setInspections(r.inspections || {});
+      setKits(r.kits || []);
+      if (draftFor.current !== name) {
+        draftFor.current = name;
+        const d = draftFromArtwork(r.artwork);
+        setDraft(d); setBaseline(d); setFinalPreview('');
+      }
+    } catch (e) { setMsg('detail: ' + (e as Error).message); }
   }, []);
 
-  useEffect(() => { void refreshList(); }, [refreshList]);
+  const pollQueue = useCallback(async () => {
+    try {
+      const r = await getArtQueue();
+      setQueue({ running: r.running, pending: r.pending, inspectDepth: r.inspectDepth });
+      setQueueFetchedAt(Date.now());
+    } catch (_e) { /* transient poll errors stay silent; the next tick retries */ }
+  }, []);
+
+  useEffect(() => { void refreshList(); const t = setInterval(() => { void refreshList(); }, 10000); return () => clearInterval(t); }, [refreshList]);
+  useEffect(() => { void pollQueue(); const t = setInterval(() => { void pollQueue(); }, 2000); return () => clearInterval(t); }, [pollQueue]);
+  useEffect(() => { const t = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(t); }, []);
   useEffect(() => {
     if (!selected) return;
     void loadDetail(selected);
@@ -161,156 +130,208 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     return () => clearInterval(t);
   }, [selected, loadDetail]);
 
-  function onKindChange(k: Kind) { setKind(k); setPromptTemplate(defaultTemplate(k)); }
-
-  function shapeForKind(): Record<string, unknown> | undefined {
-    if (kind === 'po') return { mask };
-    if (kind === 'monster') return { w: mw, h: mh };
-    return undefined;
-  }
-
-  async function doCreate() {
-    setMsg('creating...');
-    try {
-      const body: Record<string, unknown> = {
-        system_name: systemName, kind, main_object: mainObject,
-        prompt_template: promptTemplate, style_override: styleOverride || null,
-      };
-      const sh = shapeForKind(); if (sh) body.shape = sh;
-      if (kind === 'bpskin') body.edge_padding = edgePadding;
-      const r = await createArtwork(body);
-      setMsg('created ' + r.artwork.system_name + ' (' + r.artwork.gen_width + 'x' + r.artwork.gen_height + ')');
-      await refreshList();
-      setSelected(r.artwork.system_name);
-    } catch (e) { setMsg('create failed: ' + (e as Error).message); }
-  }
-
   async function doPreview() {
-    if (!selected) return;
-    try { const r = await previewArtwork(selected, { main_object: mainObject, prompt_template: promptTemplate, style_override: styleOverride || null }); setFinalPreview(r.final_prompt); }
-    catch (e) { setMsg('preview: ' + (e as Error).message); }
+    if (!selected || !draft) return;
+    try {
+      const r = await previewArtwork(selected, {
+        main_object: draft.main_object, prompt_template: draft.prompt_template,
+        style_override: draft.style_override || null,
+      });
+      setFinalPreview(r.final_prompt);
+    } catch (e) { setMsg('preview: ' + (e as Error).message); }
   }
 
-  async function doGenerate(kindOf: 'next' | 'n' | 'seed') {
-    if (!selected) return;
-    setMsg('queuing generation...');
+  // debounced (~700 ms) auto final-prompt preview: follows the prompt-field
+  // draft (the manual art-preview button stays for the e2e contract).
+  const mainObject = draft ? draft.main_object : null;
+  const promptTemplate = draft ? draft.prompt_template : null;
+  const styleOverride = draft ? draft.style_override : null;
+  useEffect(() => {
+    if (!selected || mainObject == null) return;
+    const t = setTimeout(() => { void doPreview(); }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, mainObject, promptTemplate, styleOverride]);
+
+  function selectArtwork(name: string) {
+    setCreateOpen(false); setSelected(name);
+    setComparePicks([]); setLightbox(null); setConfirm(null);
+  }
+
+  const dirty = !!(draft && baseline && JSON.stringify(draft) !== JSON.stringify(baseline));
+  const shapeDirty = !!(draft && baseline && detailArt && (
+    (detailArt.kind === 'po' && JSON.stringify(draft.mask) !== JSON.stringify(baseline.mask))
+    || (detailArt.kind === 'monster' && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))));
+
+  async function doSave() {
+    if (!selected || !draft || !baseline || !detailArt) return;
+    const body: Record<string, unknown> = {};
+    if (draft.main_object !== baseline.main_object) body.main_object = draft.main_object;
+    if (draft.prompt_template !== baseline.prompt_template) body.prompt_template = draft.prompt_template;
+    if (draft.style_override !== baseline.style_override) body.style_override = draft.style_override || null;
+    if (detailArt.kind === 'bpskin' && draft.edge_padding !== baseline.edge_padding) body.edge_padding = draft.edge_padding;
+    if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : { w: draft.mw, h: draft.mh };
     try {
-      const body: Record<string, unknown> = kindOf === 'next' ? { count: 1 } : kindOf === 'n' ? { count: nSeeds } : { seed: explicitSeed };
+      const r = await patchArtwork(selected, body);
+      setDetailArt(r.artwork);
+      const d = draftFromArtwork(r.artwork);
+      setDraft(d); setBaseline(d);
+      report('saved ' + selected);
+      await refreshList();
+    } catch (e) { report('save failed: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doGenerate(mode: 'next' | 'n' | 'seed', n: number, seed: number) {
+    if (!selected) return;
+    try {
+      const body = mode === 'next' ? { count: 1 } : mode === 'n' ? { count: n } : { seed };
       const r = await generateArtwork(selected, body);
-      setQueueDepth(r.queueDepth); setMsg('queued ' + r.renders.length + ' seed(s)');
+      report('queued ' + r.renders.length + ' seed(s) for ' + selected);
       await loadDetail(selected);
-    } catch (e) { setMsg('generate: ' + (e as Error).message); }
+      await pollQueue();
+    } catch (e) { report('generate: ' + (e as Error).message, 'err'); }
   }
 
   async function doAdopt(seed: number) {
     if (!selected) return;
-    try { const r = await adoptRenderApi(selected, seed); setMsg('adopted seed ' + seed + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported')); await loadDetail(selected); await refreshList(); }
-    catch (e) { setMsg('adopt: ' + (e as Error).message); }
+    try {
+      const r = await adoptRenderApi(selected, seed);
+      report('adopted seed ' + seed + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported'),
+        r.export_error ? 'err' : 'ok');
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('adopt: ' + (e as Error).message, 'err'); }
   }
 
   async function doDelete(seed: number) {
     if (!selected) return;
-    try { await deleteRenderApi(selected, seed); setMsg('deleted seed ' + seed); await loadDetail(selected); await refreshList(); }
-    catch (e) { setMsg('delete: ' + (e as Error).message); }
+    try {
+      await deleteRenderApi(selected, seed);
+      report('deleted seed ' + seed);
+      setComparePicks((p) => p.filter((s) => s !== seed));
+      setLightbox((lb) => (lb && (lb.seed === seed || lb.compareWith === seed) ? null : lb));
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('delete: ' + (e as Error).message, 'err'); }
+  }
+
+  // Retry a failed render: delete the failed row, regenerate at that exact
+  // seed (client-side composition of the two existing endpoints, per spec).
+  async function doRetry(seed: number) {
+    if (!selected) return;
+    try {
+      await deleteRenderApi(selected, seed);
+      await generateArtwork(selected, { seed });
+      report('retrying seed ' + seed);
+      await loadDetail(selected); await pollQueue();
+    } catch (e) { report('retry: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doCancel(artwork: string, seed: number) {
+    try {
+      const r = await cancelRenderApi(artwork, seed);
+      setQueue(r.queue); setQueueFetchedAt(Date.now());
+      report('canceled ' + artwork + ' seed ' + seed + ' (' + r.canceled + ')');
+      if (artwork === selected) await loadDetail(artwork);
+    } catch (e) { report('cancel: ' + (e as Error).message, 'err'); }
   }
 
   async function doReinspect(seed: number, kitId?: string) {
     if (!selected) return;
-    try { const r = await reinspectRender(selected, seed, kitId); setMsg('queued ' + r.queued.length + ' kit(s) for seed ' + seed); await loadDetail(selected); }
-    catch (e) { setMsg('inspect: ' + (e as Error).message); }
+    try {
+      const r = await reinspectRender(selected, seed, kitId);
+      report('queued ' + r.queued.length + ' kit(s) for seed ' + seed);
+      await loadDetail(selected);
+    } catch (e) { report('inspect: ' + (e as Error).message, 'err'); }
   }
 
-  const selArt = artworks.find((a) => a.system_name === selected) || null;
-  const adoptedId = detailAdoptedId;
+  function togglePick(seed: number) {
+    setComparePicks((p) => p.includes(seed) ? p.filter((s) => s !== seed) : (p.length >= 2 ? [p[1], seed] : [...p, seed]));
+  }
+
+  const okSeeds = renders.filter((r) => r.status === 'ok').map((r) => r.seed);
+  const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
+  const adoptedSeed = adoptedRender ? adoptedRender.seed : null;
+  const confirmRender = confirm ? renders.find((r) => r.seed === confirm.seed) : undefined;
 
   return (
-    <div data-testid="artadmin" style={{ padding: 16, display: 'flex', gap: 24, color: '#eee' }}>
-      <div style={{ minWidth: 380 }}>
-        <h2>Artwork Registry Admin</h2>
-        <div data-testid="art-msg" style={{ minHeight: 20, color: '#C9A959' }}>{msg}</div>
-        <fieldset style={{ border: '1px solid #555', padding: 10 }}>
-          <legend>Create artwork</legend>
-          <div>
-            <label>kind{' '}
-              <select data-testid="art-kind" value={kind} onChange={(e) => onKindChange(e.target.value as Kind)}>
-                {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-              </select>
-            </label>
-          </div>
-          <div><label>system_name <input data-testid="art-system-name" value={systemName} onChange={(e) => setSystemName(e.target.value)} /></label></div>
-          <div style={{ margin: '8px 0' }}>
-            {kind === 'po' && <PoMaskEditor mask={mask} onToggle={(r, c) => setMask((m) => m.map((row, ri) => row.map((v, ci) => (ri === r && ci === c ? !v : v))))} />}
-            {kind === 'monster' && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
-            {kind === 'si' && <span>locked 256x256 (no shape)</span>}
-            {(kind === 'unit' || kind === 'bpskin') && <span>no shape (locked size)</span>}
-          </div>
-          <div>resolution (derived, read-only): <b data-testid="art-resolution">{size.width}x{size.height}</b></div>
-          <div><label>main_object <input data-testid="art-main-object" value={mainObject} onChange={(e) => setMainObject(e.target.value)} /></label></div>
-          <div><label>style/aux prompt <input data-testid="art-style" value={styleOverride} placeholder="(default per kind)" onChange={(e) => setStyleOverride(e.target.value)} /></label></div>
-          <div>prompt template<br /><textarea data-testid="art-template" value={promptTemplate} rows={2} cols={44} onChange={(e) => setPromptTemplate(e.target.value)} /></div>
-          {kind === 'bpskin' && <div><label>edge_padding <input data-testid="art-edge" type="number" value={edgePadding} onChange={(e) => setEdgePadding(Number(e.target.value) || 0)} /></label></div>}
-          <button data-testid="art-create" type="button" onClick={() => { void doCreate(); }}>Create</button>
-        </fieldset>
-        <h3>Artworks</h3>
-        <ul data-testid="art-list" style={{ listStyle: 'none', padding: 0 }}>
-          {artworks.map((a) => (
-            <li key={a.system_name}>
-              <button type="button" data-testid={'art-select-' + a.system_name}
-                onClick={() => {
-                  setSelected(a.system_name); setKind(a.kind as Kind);
-                  setMainObject(a.main_object); setPromptTemplate(a.prompt_template);
-                  setStyleOverride(a.style_override || ''); setFinalPreview('');
-                  const sh = a.shape as { mask?: boolean[][]; w?: number; h?: number } | null;
-                  if (a.kind === 'po' && sh && sh.mask) setMask(sh.mask);
-                  if (a.kind === 'monster' && sh) { setMw(sh.w || 1); setMh(sh.h || 1); }
-                }}
-                style={{ fontWeight: selected === a.system_name ? 'bold' : 'normal' }}>
-                {a.system_name} [{a.kind}] {a.gen_width}x{a.gen_height}{a.adopted_render_id ? ' *' : ''}
-              </button>
-            </li>
-          ))}
-        </ul>
+    <div data-testid="artadmin" className="aa-root">
+      <header className="aa-head">
+        <span className="den t-h2 gold-text">Artwork Registry</span>
+        <a data-testid="art-contentadmin-link" className="aa-crosslink t-micro" href="#/contentadmin">Content Admin &rarr;</a>
+        <div data-testid="art-msg" aria-live="polite" className="aa-msg t-micro">{msg}</div>
+      </header>
+      <div className="aa-cols">
+        <RegistryRail artworks={artworks} selected={selected}
+          onSelect={selectArtwork}
+          onNew={() => { setCreateOpen(true); }} />
+        <section className="aa-center">
+          {createOpen ? (
+            <CreatePanel existing={artworks} report={report}
+              onClose={() => setCreateOpen(false)}
+              onCreated={(a) => {
+                setCreateOpen(false);
+                void refreshList().then(() => selectArtwork(a.system_name));
+              }} />
+          ) : detailArt && selected && draft ? (
+            <Workspace art={detailArt} renders={renders} kits={kits} inspections={inspections}
+              adoptedId={adoptedId} draft={draft}
+              onDraft={(patch) => setDraft((d) => (d ? { ...d, ...patch } : d))}
+              dirty={dirty} shapeDirty={shapeDirty}
+              finalPreview={finalPreview} onPreviewNow={() => { void doPreview(); }}
+              onSave={() => { void doSave(); }}
+              onAskAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
+              onAskDelete={(seed) => setConfirm({ type: 'delete', seed })}
+              onRetry={(seed) => { void doRetry(seed); }}
+              onOpenLightbox={(seed, compareWith) => setLightbox({ seed, compareWith })}
+              onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
+              expandedKits={expandedKits}
+              onToggleKit={(key) => setExpandedKits((e) => ({ ...e, [key]: !e[key] }))}
+              comparePicks={comparePicks} onTogglePick={togglePick} />
+          ) : (
+            <div className="panel panel-pad aa-placeholder">
+              <div className="den t-h3">No artwork selected</div>
+              <div className="t-micro">Pick one in the registry on the left, or create a new one.</div>
+            </div>
+          )}
+        </section>
+        <QueuePanel selected={selected} queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
+          onGenerate={(mode, n, seed) => { void doGenerate(mode, n, seed); }}
+          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }} />
       </div>
-      <div style={{ flex: 1 }}>
-        {selArt ? (
-          <div data-testid="art-editor">
-            <h3>{selArt.system_name} [{selArt.kind}] {selArt.gen_width}x{selArt.gen_height}</h3>
-            <div style={{ marginBottom: 8 }}>
-              <button data-testid="art-preview" type="button" onClick={() => { void doPreview(); }}>Preview final prompt</button>{' '}
-              <button data-testid="art-save" type="button" onClick={() => { if (selected) void patchArtwork(selected, { main_object: mainObject, prompt_template: promptTemplate, style_override: styleOverride || null }).then(() => setMsg('saved')).catch((e: Error) => setMsg('save: ' + e.message)); }}>Save edits</button>
-            </div>
-            <div data-testid="art-final-prompt" style={{ background: '#111', padding: 8, minHeight: 20, fontFamily: 'monospace', fontSize: 12 }}>{finalPreview}</div>
-            <div style={{ margin: '10px 0' }}>
-              <button data-testid="art-gen-next" type="button" onClick={() => { void doGenerate('next'); }}>Generate next seed</button>{' '}
-              <button data-testid="art-gen-n" type="button" onClick={() => { void doGenerate('n'); }}>Generate N</button>
-              <input data-testid="art-n" type="number" min={1} max={20} value={nSeeds} onChange={(e) => setNSeeds(Number(e.target.value) || 1)} style={{ width: 48 }} />{' '}
-              <button data-testid="art-gen-seed" type="button" onClick={() => { void doGenerate('seed'); }}>Generate at seed</button>
-              <input data-testid="art-seed" type="number" value={explicitSeed} onChange={(e) => setExplicitSeed(Number(e.target.value) || 1)} style={{ width: 64 }} />
-              <span style={{ marginLeft: 8 }}>queue: <b data-testid="art-queue">{queueDepth}</b></span>
-            </div>
-            <div data-testid="art-renders" style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-              {renders.map((r) => {
-                const isAdopted = adoptedId != null && r.id === adoptedId;
-                return (
-                  <div key={r.seed} data-testid={'render-' + r.seed} style={{ border: isAdopted ? '2px solid #C9A959' : '1px solid #555', padding: 6, width: 224 }}>
-                    <div>seed {r.seed} <span data-testid={'render-status-' + r.seed}>[{r.status}]</span>{isAdopted ? ' ADOPTED' : ''}</div>
-                    {r.status === 'ok' && selected ? <img alt={'seed ' + r.seed} src={artRenderUrl(selected, r.seed)} style={{ maxWidth: 138, maxHeight: 138, background: '#000' }} /> : <div style={{ fontSize: 11, color: '#999' }}>{r.status === 'failed' ? (r.error || 'failed') : 'rendering...'}</div>}
-                    <div style={{ marginTop: 4 }}>
-                      <button data-testid={'adopt-' + r.seed} type="button" disabled={r.status !== 'ok' || isAdopted} onClick={() => { void doAdopt(r.seed); }}>Adopt</button>{' '}
-                      <button data-testid={'delete-' + r.seed} type="button" disabled={isAdopted} onClick={() => { void doDelete(r.seed); }}>Delete</button>
-                    </div>
-                    {r.status === 'ok' && kits.length > 0 && (
-                      <KitChips seed={r.seed} kits={kits} rows={inspections[String(r.id)] || []}
-                        expanded={expanded}
-                        onToggle={(key) => setExpanded((e) => ({ ...e, [key]: !e[key] }))}
-                        onRerun={(seed, kitId) => { void doReinspect(seed, kitId); }} />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ) : <div>Select or create an artwork.</div>}
+
+      {lightbox && selected && detailArt && (
+        <Lightbox name={selected} kind={detailArt.kind as Kind}
+          seeds={okSeeds} initialSeed={lightbox.seed} compareWith={lightbox.compareWith}
+          adoptedSeed={adoptedSeed} keysDisabled={confirm != null}
+          onAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
+          onClose={() => setLightbox(null)} />
+      )}
+
+      {confirm && selected && (
+        confirm.type === 'adopt' ? (
+          <ConfirmDialog title={'Adopt seed ' + confirm.seed + '?'} confirmLabel="Adopt + export"
+            onOk={() => { const s = confirm.seed; setConfirm(null); void doAdopt(s); }}
+            onCancel={() => setConfirm(null)}>
+            <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.seed)} alt={'seed ' + confirm.seed} />
+            <div className="t-micro">This becomes the ONE live render of <b>{selected}</b> and is exported to
+              content/ (the git-integrate path). Switchable any time; history stays.</div>
+          </ConfirmDialog>
+        ) : (
+          <ConfirmDialog title={'Delete seed ' + confirm.seed + '?'} confirmLabel="Delete"
+            onOk={() => { const s = confirm.seed; setConfirm(null); void doDelete(s); }}
+            onCancel={() => setConfirm(null)}>
+            {confirmRender && confirmRender.status === 'ok' && (
+              <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.seed)} alt={'seed ' + confirm.seed} />
+            )}
+            <div className="t-micro">Candidates live ONLY in the registry DB (no backup) -- a deleted render
+              is gone; its recipe (seed + params) can regenerate a parameter-identical image.</div>
+          </ConfirmDialog>
+        )
+      )}
+
+      <div className="aa-toasts" aria-hidden="true">
+        {toasts.map((t) => (
+          <div key={t.id} className={'aa-toast' + (t.kind === 'err' ? ' is-err' : '')}>{t.text}</div>
+        ))}
       </div>
     </div>
   );

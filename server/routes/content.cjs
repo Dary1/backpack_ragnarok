@@ -51,6 +51,13 @@ function isDevFallback(req) {
   if (getAuthToken(req)) return false;
   return admin.resolveAuth(undefined).ok;
 }
+// Incident guard (2026-07-14): a mis-namespaced e2e run once wiped the live
+// registry through the dev clear hook. Destructive dev seams now ALSO require
+// ALLOW_DEV_CLEAR=1 in the server environment; only the isolated e2e
+// harnesses (tools/*_e2e.sh, TMPHOME-namespaced) set it. dev_mode alone is
+// no longer enough on a long-lived dev server.
+function devClearAllowed() { return process.env.ALLOW_DEV_CLEAR === '1'; }
+
 function httpForCode(code) {
   if (code === 'DUPLICATE' || code === 'DUPLICATE_VARIANT') return 409;
   if (code === 'ADOPTED_UNDELETABLE' || code === 'NEEDS_OVERRIDE' || code === 'VARIANT_IMMUTABLE') return 409;
@@ -272,7 +279,7 @@ function tryContentRoutes(req, res, url, p) {
   if (!p.startsWith('/api/content/')) return false;
   let m;
   if (RE_DEV_CLEAR.test(p) && req.method === 'POST') {
-    if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
+    if (!isDevFallback(req) || !devClearAllowed()) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook (needs dev_mode fallback + ALLOW_DEV_CLEAR=1)' }); return true; }
     run(res, hDevClear(req, res)); return true;
   }
   if (RE_DEFS.test(p)) {

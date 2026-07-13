@@ -66,8 +66,8 @@ function authHeaders(): Record<string, string> {
 // ---- wire-shape DTO types: moved to shared/dto.ts (REQ-0047 (f2)) ----
 // Imported for local use in the fetch helpers below, and re-exported so
 // every existing `import type { ... } from './api'` keeps working.
-import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse } from '../../shared/dto';
-export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse };
+import type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiForecastProfile, ApiForecastPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse } from '../../shared/dto';
+export type { ApiMarketPrice, ApiMarketPriceHistoryEntry, ApiMarketListing, ApiMarketListingsResponse, ApiMarketCreateListingRequest, ApiMarketListingResponse, ApiMarketBuyReceipt, ApiMarketBuyResponse, ApiMarketFurnaceResponse, EffectAst, ApiSocketDef, ApiPortDef, ApiI18nMap, ApiItemEntry, ApiSIEntry, ApiTmEntry, ApiTrees, ApiScenario, ApiRegistryBatch, ApiRegistry, ApiVocabLists, ApiContentPayload, ApiCanvasDoc, ApiErrorBody, ApiMe, AdminPutResult, AdminPutError, ApiCancelPolicy, ApiRoomSlot, ApiPendingSwap, ApiRoom, ApiCreateRoomBody, ApiRunEvent, ApiRunView, ApiDungeonEntry, ApiDungeonTypeEntry, ApiFormationEntry, ApiDungeonsPayload, ApiForecastProfile, ApiForecastPayload, ApiWarehouseItem, ApiDexCardDto, ApiDismantleResponse, ApiDismantleLedgerEntry, ApiDismantleLedgerResponse };
 
 
 async function scheduleJSON<T>(path: string, init?: RequestInit): Promise<T> {
@@ -391,6 +391,16 @@ export function fetchDungeons(): Promise<ApiDungeonsPayload> {
   return scheduleJSON<ApiDungeonsPayload>('/api/schedule/dungeons');
 }
 
+/** GET /api/schedule/forecast -- REQ-0057. The enemy attack profiles the Ray
+ * Forecast Overlay walks for a given (dungeonType, level). Public/no-auth,
+ * exactly like fetchDungeons above: this is CONTENT (enemy defs folded to ray
+ * profiles), not run state, so it is scoped to no caller and reveals no run's
+ * hidden placements. */
+export function fetchForecast(dungeonType: string, level: number): Promise<ApiForecastPayload> {
+  const qs = new URLSearchParams({ dungeonType, level: String(level) });
+  return scheduleJSON<ApiForecastPayload>('/api/schedule/forecast?' + qs.toString());
+}
+
 /** POST /api/schedule/rooms -- creates a room owned by the caller. */
 export function createRoom(body: ApiCreateRoomBody): Promise<{ ok: true; room: ApiRoom }> {
   return scheduleJSON('/api/schedule/rooms', { method: 'POST', body: JSON.stringify(body) });
@@ -696,6 +706,11 @@ export interface ArtworkDto {
   gen_width: number; gen_height: number; main_object: string;
   prompt_template: string; style_override: string | null;
   edge_padding: number | null; adopted_render_id: number | null;
+  // REQ-0156: per-artwork aggregates, present on listArtworks() rows only
+  // (additive server enrichment for the registry browser rail).
+  adopted_seed?: number | null; latest_ok_seed?: number | null;
+  render_count?: number; ok_count?: number; failed_count?: number;
+  last_render_at?: string | null;
 }
 export interface RenderDto {
   id: number; seed: number; status: string; image_sha256: string | null;
@@ -743,6 +758,22 @@ export function artRenderUrl(name: string, seed: number): string {
 }
 export function artAdoptedUrl(name: string): string {
   return '/api/art/' + encodeURIComponent(name);
+}
+
+// ---- REQ-0156: generation queue introspection + cancel ----
+export interface ArtQueueRunning { renderId: number; artwork: string; seed: number; started_at: number; elapsed_ms: number }
+export interface ArtQueuePending { renderId: number; artwork: string; seed: number; enqueued_at: number }
+export interface ArtQueueDto { running: ArtQueueRunning | null; pending: ArtQueuePending[]; inspectDepth: number }
+
+/** GET /api/art/queue -- running job (with elapsed) + pending generation
+ * jobs + inspection backlog depth. Polled by the admin queue panel. */
+export function getArtQueue(): Promise<{ ok: true } & ArtQueueDto> {
+  return artJson('/api/art/queue', { method: 'GET' });
+}
+/** Cancel one generation job (pending: dequeued; running: worker killed).
+ * The canceled render becomes status failed / 'canceled by user'. */
+export function cancelRenderApi(name: string, seed: number): Promise<{ ok: true; canceled: 'pending' | 'running'; renderId: number; seed: number; queue: ArtQueueDto }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cancel', { method: 'POST' });
 }
 
 // ---- REQ-0152: inspection kits ----
