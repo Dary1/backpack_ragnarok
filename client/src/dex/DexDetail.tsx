@@ -19,6 +19,7 @@ import type { DexEntry } from './Dex';
 import { DexDiagram } from './DexDiagram';
 import { iconDataUrl, iconDims } from './dexIcons';
 import { ItemDetailCard } from './ItemDetailCard';
+import { RegistryBadge } from './RegistryBadge'; // REQ-0155 LINK-FIRST
 
 interface DexDetailProps {
   selected: DexEntry;
@@ -72,6 +73,7 @@ export function DexDetail({ selected, locale, tagTree, registry, dexNo }: DexDet
         <i className="k br" />
         <i className="k bl" />
         <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} dexNo={dexNo} />
+        <RegistryBadge systemName={selected.id} />
       </div>
     </div>
   );
