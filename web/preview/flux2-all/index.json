@@ -1,0 +1,853 @@
+{
+  "keys": [
+    {
+      "key": 1,
+      "group": "items",
+      "id": "beast_jaw",
+      "seed": 101,
+      "file": "beast_jaw_c1_s101.png",
+      "coverage": 0.3628387451171875
+    },
+    {
+      "key": 2,
+      "group": "items",
+      "id": "beast_jaw",
+      "seed": 202,
+      "file": "beast_jaw_c2_s202.png",
+      "coverage": 0.4055328369140625
+    },
+    {
+      "key": 3,
+      "group": "items",
+      "id": "beast_jaw",
+      "seed": 303,
+      "file": "beast_jaw_c3_s303.png",
+      "coverage": 0.4691352844238281
+    },
+    {
+      "key": 4,
+      "group": "items",
+      "id": "beast_jaw",
+      "seed": 404,
+      "file": "beast_jaw_c4_s404.png",
+      "coverage": 0.5048027038574219
+    },
+    {
+      "key": 5,
+      "group": "items",
+      "id": "blade",
+      "seed": 101,
+      "file": "blade_c1_s101.png",
+      "coverage": 0.17746734619140625
+    },
+    {
+      "key": 6,
+      "group": "items",
+      "id": "blade",
+      "seed": 202,
+      "file": "blade_c2_s202.png",
+      "coverage": 0.14102935791015625
+    },
+    {
+      "key": 7,
+      "group": "items",
+      "id": "blade",
+      "seed": 303,
+      "file": "blade_c3_s303.png",
+      "coverage": 0.25560760498046875
+    },
+    {
+      "key": 8,
+      "group": "items",
+      "id": "blade",
+      "seed": 404,
+      "file": "blade_c4_s404.png",
+      "coverage": 0.2255401611328125
+    },
+    {
+      "key": 9,
+      "group": "items",
+      "id": "dagger",
+      "seed": 101,
+      "file": "dagger_c1_s101.png",
+      "coverage": 0.186553955078125
+    },
+    {
+      "key": 10,
+      "group": "items",
+      "id": "dagger",
+      "seed": 202,
+      "file": "dagger_c2_s202.png",
+      "coverage": 0.15525054931640625
+    },
+    {
+      "key": 11,
+      "group": "items",
+      "id": "dagger",
+      "seed": 303,
+      "file": "dagger_c3_s303.png",
+      "coverage": 0.19646453857421875
+    },
+    {
+      "key": 12,
+      "group": "items",
+      "id": "dagger",
+      "seed": 404,
+      "file": "dagger_c4_s404.png",
+      "coverage": 0.20851898193359375
+    },
+    {
+      "key": 13,
+      "group": "items",
+      "id": "flame_tablet",
+      "seed": 101,
+      "file": "flame_tablet_c1_s101.png",
+      "coverage": 0.589080810546875
+    },
+    {
+      "key": 14,
+      "group": "items",
+      "id": "flame_tablet",
+      "seed": 202,
+      "file": "flame_tablet_c2_s202.png",
+      "coverage": 0.5070571899414062
+    },
+    {
+      "key": 15,
+      "group": "items",
+      "id": "flame_tablet",
+      "seed": 303,
+      "file": "flame_tablet_c3_s303.png",
+      "coverage": 0.608673095703125
+    },
+    {
+      "key": 16,
+      "group": "items",
+      "id": "flame_tablet",
+      "seed": 404,
+      "file": "flame_tablet_c4_s404.png",
+      "coverage": 0.41533660888671875
+    },
+    {
+      "key": 17,
+      "group": "items",
+      "id": "herb_pouch",
+      "seed": 101,
+      "file": "herb_pouch_c1_s101.png",
+      "coverage": 0.602996826171875
+    },
+    {
+      "key": 18,
+      "group": "items",
+      "id": "herb_pouch",
+      "seed": 202,
+      "file": "herb_pouch_c2_s202.png",
+      "coverage": 0.5489730834960938
+    },
+    {
+      "key": 19,
+      "group": "items",
+      "id": "herb_pouch",
+      "seed": 303,
+      "file": "herb_pouch_c3_s303.png",
+      "coverage": 0.5124359130859375
+    },
+    {
+      "key": 20,
+      "group": "items",
+      "id": "herb_pouch",
+      "seed": 404,
+      "file": "herb_pouch_c4_s404.png",
+      "coverage": 0.48572540283203125
+    },
+    {
+      "key": 21,
+      "group": "items",
+      "id": "hilt",
+      "seed": 101,
+      "file": "hilt_c1_s101.png",
+      "coverage": 0.09393310546875
+    },
+    {
+      "key": 22,
+      "group": "items",
+      "id": "hilt",
+      "seed": 202,
+      "file": "hilt_c2_s202.png",
+      "coverage": 0.2549896240234375
+    },
+    {
+      "key": 23,
+      "group": "items",
+      "id": "hilt",
+      "seed": 303,
+      "file": "hilt_c3_s303.png",
+      "coverage": 0.1736602783203125
+    },
+    {
+      "key": 24,
+      "group": "items",
+      "id": "hilt",
+      "seed": 404,
+      "file": "hilt_c4_s404.png",
+      "coverage": 0.171905517578125
+    },
+    {
+      "key": 25,
+      "group": "items",
+      "id": "oil_flask",
+      "seed": 101,
+      "file": "oil_flask_c1_s101.png",
+      "coverage": 0.564056396484375
+    },
+    {
+      "key": 26,
+      "group": "items",
+      "id": "oil_flask",
+      "seed": 202,
+      "file": "oil_flask_c2_s202.png",
+      "coverage": 0.5544967651367188
+    },
+    {
+      "key": 27,
+      "group": "items",
+      "id": "oil_flask",
+      "seed": 303,
+      "file": "oil_flask_c3_s303.png",
+      "coverage": 0.46932220458984375
+    },
+    {
+      "key": 28,
+      "group": "items",
+      "id": "oil_flask",
+      "seed": 404,
+      "file": "oil_flask_c4_s404.png",
+      "coverage": 0.5146484375
+    },
+    {
+      "key": 29,
+      "group": "items",
+      "id": "tower_shield",
+      "seed": 101,
+      "file": "tower_shield_c1_s101.png",
+      "coverage": 0.696746826171875
+    },
+    {
+      "key": 30,
+      "group": "items",
+      "id": "tower_shield",
+      "seed": 202,
+      "file": "tower_shield_c2_s202.png",
+      "coverage": 0.5967597961425781
+    },
+    {
+      "key": 31,
+      "group": "items",
+      "id": "tower_shield",
+      "seed": 303,
+      "file": "tower_shield_c3_s303.png",
+      "coverage": 0.6278572082519531
+    },
+    {
+      "key": 32,
+      "group": "items",
+      "id": "tower_shield",
+      "seed": 404,
+      "file": "tower_shield_c4_s404.png",
+      "coverage": 0.7570686340332031
+    },
+    {
+      "key": 33,
+      "group": "units",
+      "id": "unit-angel",
+      "seed": 101,
+      "file": "unit-angel_c1_s101.png",
+      "coverage": 0.6881561279296875
+    },
+    {
+      "key": 34,
+      "group": "units",
+      "id": "unit-angel",
+      "seed": 202,
+      "file": "unit-angel_c2_s202.png",
+      "coverage": 0.7494049072265625
+    },
+    {
+      "key": 35,
+      "group": "units",
+      "id": "unit-angel",
+      "seed": 303,
+      "file": "unit-angel_c3_s303.png",
+      "coverage": 0.7591552734375
+    },
+    {
+      "key": 36,
+      "group": "units",
+      "id": "unit-angel",
+      "seed": 404,
+      "file": "unit-angel_c4_s404.png",
+      "coverage": 0.62066650390625
+    },
+    {
+      "key": 37,
+      "group": "units",
+      "id": "unit-berserker",
+      "seed": 101,
+      "file": "unit-berserker_c1_s101.png",
+      "coverage": 0.699371337890625
+    },
+    {
+      "key": 38,
+      "group": "units",
+      "id": "unit-berserker",
+      "seed": 202,
+      "file": "unit-berserker_c2_s202.png",
+      "coverage": 0.64788818359375
+    },
+    {
+      "key": 39,
+      "group": "units",
+      "id": "unit-berserker",
+      "seed": 303,
+      "file": "unit-berserker_c3_s303.png",
+      "coverage": 0.7158203125
+    },
+    {
+      "key": 40,
+      "group": "units",
+      "id": "unit-berserker",
+      "seed": 404,
+      "file": "unit-berserker_c4_s404.png",
+      "coverage": 0.7598876953125
+    },
+    {
+      "key": 41,
+      "group": "units",
+      "id": "unit-dwarf",
+      "seed": 101,
+      "file": "unit-dwarf_c1_s101.png",
+      "coverage": 0.71868896484375
+    },
+    {
+      "key": 42,
+      "group": "units",
+      "id": "unit-dwarf",
+      "seed": 202,
+      "file": "unit-dwarf_c2_s202.png",
+      "coverage": 0.676422119140625
+    },
+    {
+      "key": 43,
+      "group": "units",
+      "id": "unit-dwarf",
+      "seed": 303,
+      "file": "unit-dwarf_c3_s303.png",
+      "coverage": 0.702423095703125
+    },
+    {
+      "key": 44,
+      "group": "units",
+      "id": "unit-dwarf",
+      "seed": 404,
+      "file": "unit-dwarf_c4_s404.png",
+      "coverage": 0.722259521484375
+    },
+    {
+      "key": 45,
+      "group": "units",
+      "id": "unit-elf",
+      "seed": 101,
+      "file": "unit-elf_c1_s101.png",
+      "coverage": 0.5682525634765625
+    },
+    {
+      "key": 46,
+      "group": "units",
+      "id": "unit-elf",
+      "seed": 202,
+      "file": "unit-elf_c2_s202.png",
+      "coverage": 0.635498046875
+    },
+    {
+      "key": 47,
+      "group": "units",
+      "id": "unit-elf",
+      "seed": 303,
+      "file": "unit-elf_c3_s303.png",
+      "coverage": 0.5991058349609375
+    },
+    {
+      "key": 48,
+      "group": "units",
+      "id": "unit-elf",
+      "seed": 404,
+      "file": "unit-elf_c4_s404.png",
+      "coverage": 0.6343994140625
+    },
+    {
+      "key": 49,
+      "group": "units",
+      "id": "unit-lightcavalry",
+      "seed": 101,
+      "file": "unit-lightcavalry_c1_s101.png",
+      "coverage": 0.474700927734375
+    },
+    {
+      "key": 50,
+      "group": "units",
+      "id": "unit-lightcavalry",
+      "seed": 202,
+      "file": "unit-lightcavalry_c2_s202.png",
+      "coverage": 0.54766845703125
+    },
+    {
+      "key": 51,
+      "group": "units",
+      "id": "unit-lightcavalry",
+      "seed": 303,
+      "file": "unit-lightcavalry_c3_s303.png",
+      "coverage": 0.5568389892578125
+    },
+    {
+      "key": 52,
+      "group": "units",
+      "id": "unit-lightcavalry",
+      "seed": 404,
+      "file": "unit-lightcavalry_c4_s404.png",
+      "coverage": 0.5557098388671875
+    },
+    {
+      "key": 53,
+      "group": "units",
+      "id": "unit-priest",
+      "seed": 101,
+      "file": "unit-priest_c1_s101.png",
+      "coverage": 0.547821044921875
+    },
+    {
+      "key": 54,
+      "group": "units",
+      "id": "unit-priest",
+      "seed": 202,
+      "file": "unit-priest_c2_s202.png",
+      "coverage": 0.5412750244140625
+    },
+    {
+      "key": 55,
+      "group": "units",
+      "id": "unit-priest",
+      "seed": 303,
+      "file": "unit-priest_c3_s303.png",
+      "coverage": 0.6175079345703125
+    },
+    {
+      "key": 56,
+      "group": "units",
+      "id": "unit-priest",
+      "seed": 404,
+      "file": "unit-priest_c4_s404.png",
+      "coverage": 0.5738983154296875
+    },
+    {
+      "key": 57,
+      "group": "units",
+      "id": "unit-princess",
+      "seed": 101,
+      "file": "unit-princess_c1_s101.png",
+      "coverage": 0.4868011474609375
+    },
+    {
+      "key": 58,
+      "group": "units",
+      "id": "unit-princess",
+      "seed": 202,
+      "file": "unit-princess_c2_s202.png",
+      "coverage": 0.501007080078125
+    },
+    {
+      "key": 59,
+      "group": "units",
+      "id": "unit-princess",
+      "seed": 303,
+      "file": "unit-princess_c3_s303.png",
+      "coverage": 0.5281829833984375
+    },
+    {
+      "key": 60,
+      "group": "units",
+      "id": "unit-princess",
+      "seed": 404,
+      "file": "unit-princess_c4_s404.png",
+      "coverage": 0.573760986328125
+    },
+    {
+      "key": 61,
+      "group": "units",
+      "id": "unit-shieldmaiden",
+      "seed": 101,
+      "file": "unit-shieldmaiden_c1_s101.png",
+      "coverage": 0.566314697265625
+    },
+    {
+      "key": 62,
+      "group": "units",
+      "id": "unit-shieldmaiden",
+      "seed": 202,
+      "file": "unit-shieldmaiden_c2_s202.png",
+      "coverage": 0.5227813720703125
+    },
+    {
+      "key": 63,
+      "group": "units",
+      "id": "unit-shieldmaiden",
+      "seed": 303,
+      "file": "unit-shieldmaiden_c3_s303.png",
+      "coverage": 0.539398193359375
+    },
+    {
+      "key": 64,
+      "group": "units",
+      "id": "unit-shieldmaiden",
+      "seed": 404,
+      "file": "unit-shieldmaiden_c4_s404.png",
+      "coverage": 0.637603759765625
+    },
+    {
+      "key": 65,
+      "group": "units",
+      "id": "unit-squire",
+      "seed": 101,
+      "file": "unit-squire_c1_s101.png",
+      "coverage": 0.5133514404296875
+    },
+    {
+      "key": 66,
+      "group": "units",
+      "id": "unit-squire",
+      "seed": 202,
+      "file": "unit-squire_c2_s202.png",
+      "coverage": 0.5486297607421875
+    },
+    {
+      "key": 67,
+      "group": "units",
+      "id": "unit-squire",
+      "seed": 303,
+      "file": "unit-squire_c3_s303.png",
+      "coverage": 0.5542449951171875
+    },
+    {
+      "key": 68,
+      "group": "units",
+      "id": "unit-squire",
+      "seed": 404,
+      "file": "unit-squire_c4_s404.png",
+      "coverage": 0.5914154052734375
+    },
+    {
+      "key": 69,
+      "group": "units",
+      "id": "unit-thief",
+      "seed": 101,
+      "file": "unit-thief_c1_s101.png",
+      "coverage": 0.5569000244140625
+    },
+    {
+      "key": 70,
+      "group": "units",
+      "id": "unit-thief",
+      "seed": 202,
+      "file": "unit-thief_c2_s202.png",
+      "coverage": 0.61285400390625
+    },
+    {
+      "key": 71,
+      "group": "units",
+      "id": "unit-thief",
+      "seed": 303,
+      "file": "unit-thief_c3_s303.png",
+      "coverage": 0.5433197021484375
+    },
+    {
+      "key": 72,
+      "group": "units",
+      "id": "unit-thief",
+      "seed": 404,
+      "file": "unit-thief_c4_s404.png",
+      "coverage": 0.62152099609375
+    },
+    {
+      "key": 73,
+      "group": "units",
+      "id": "unit-watcher",
+      "seed": 101,
+      "file": "unit-watcher_c1_s101.png",
+      "coverage": 0.5723876953125
+    },
+    {
+      "key": 74,
+      "group": "units",
+      "id": "unit-watcher",
+      "seed": 202,
+      "file": "unit-watcher_c2_s202.png",
+      "coverage": 0.5908966064453125
+    },
+    {
+      "key": 75,
+      "group": "units",
+      "id": "unit-watcher",
+      "seed": 303,
+      "file": "unit-watcher_c3_s303.png",
+      "coverage": 0.581207275390625
+    },
+    {
+      "key": 76,
+      "group": "units",
+      "id": "unit-watcher",
+      "seed": 404,
+      "file": "unit-watcher_c4_s404.png",
+      "coverage": 0.633453369140625
+    },
+    {
+      "key": 77,
+      "group": "monsters",
+      "id": "ancient_dragon",
+      "seed": 1,
+      "file": "ancient_dragon_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 78,
+      "group": "monsters",
+      "id": "ancient_dragon",
+      "seed": 202,
+      "file": "ancient_dragon_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 79,
+      "group": "monsters",
+      "id": "boar",
+      "seed": 1,
+      "file": "boar_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 80,
+      "group": "monsters",
+      "id": "boar",
+      "seed": 202,
+      "file": "boar_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 81,
+      "group": "monsters",
+      "id": "chimera",
+      "seed": 1,
+      "file": "chimera_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 82,
+      "group": "monsters",
+      "id": "chimera",
+      "seed": 202,
+      "file": "chimera_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 83,
+      "group": "monsters",
+      "id": "cockatrice",
+      "seed": 1,
+      "file": "cockatrice_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 84,
+      "group": "monsters",
+      "id": "cockatrice",
+      "seed": 202,
+      "file": "cockatrice_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 85,
+      "group": "monsters",
+      "id": "giant_rat",
+      "seed": 1,
+      "file": "giant_rat_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 86,
+      "group": "monsters",
+      "id": "giant_rat",
+      "seed": 202,
+      "file": "giant_rat_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 87,
+      "group": "monsters",
+      "id": "giant_snake",
+      "seed": 1,
+      "file": "giant_snake_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 88,
+      "group": "monsters",
+      "id": "giant_snake",
+      "seed": 202,
+      "file": "giant_snake_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 89,
+      "group": "monsters",
+      "id": "gnoll",
+      "seed": 1,
+      "file": "gnoll_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 90,
+      "group": "monsters",
+      "id": "gnoll",
+      "seed": 202,
+      "file": "gnoll_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 91,
+      "group": "monsters",
+      "id": "goblin",
+      "seed": 1,
+      "file": "goblin_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 92,
+      "group": "monsters",
+      "id": "goblin",
+      "seed": 202,
+      "file": "goblin_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 93,
+      "group": "monsters",
+      "id": "goblin_shaman",
+      "seed": 1,
+      "file": "goblin_shaman_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 94,
+      "group": "monsters",
+      "id": "goblin_shaman",
+      "seed": 202,
+      "file": "goblin_shaman_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 95,
+      "group": "monsters",
+      "id": "mimic",
+      "seed": 1,
+      "file": "mimic_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 96,
+      "group": "monsters",
+      "id": "mimic",
+      "seed": 202,
+      "file": "mimic_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 97,
+      "group": "monsters",
+      "id": "ogre",
+      "seed": 1,
+      "file": "ogre_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 98,
+      "group": "monsters",
+      "id": "ogre",
+      "seed": 202,
+      "file": "ogre_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 99,
+      "group": "monsters",
+      "id": "wight",
+      "seed": 1,
+      "file": "wight_s1.png",
+      "coverage": null
+    },
+    {
+      "key": 100,
+      "group": "monsters",
+      "id": "wight",
+      "seed": 202,
+      "file": "wight_s202.png",
+      "coverage": null
+    },
+    {
+      "key": 101,
+      "group": "backpack skins",
+      "id": "iron_skin_",
+      "seed": 1,
+      "file": "iron_skin_L_oncanvas.png",
+      "coverage": null
+    },
+    {
+      "key": 102,
+      "group": "backpack skins",
+      "id": "iron_skin_squar",
+      "seed": 1,
+      "file": "iron_skin_square_oncanvas.png",
+      "coverage": null
+    },
+    {
+      "key": 103,
+      "group": "backpack skins",
+      "id": "leather_skin_",
+      "seed": 1,
+      "file": "leather_skin_L_oncanvas.png",
+      "coverage": null
+    },
+    {
+      "key": 104,
+      "group": "backpack skins",
+      "id": "leather_skin_squar",
+      "seed": 1,
+      "file": "leather_skin_square_oncanvas.png",
+      "coverage": null
+    },
+    {
+      "key": 105,
+      "group": "backpack skins",
+      "id": "wood_skin_",
+      "seed": 1,
+      "file": "wood_skin_L_oncanvas.png",
+      "coverage": null
+    },
+    {
+      "key": 106,
+      "group": "backpack skins",
+      "id": "wood_skin_squar",
+      "seed": 1,
+      "file": "wood_skin_square_oncanvas.png",
+      "coverage": null
+    }
+  ],
+  "coverage_floor": 0.2
+}
