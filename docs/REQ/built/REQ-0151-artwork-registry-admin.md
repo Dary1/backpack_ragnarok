@@ -250,11 +250,11 @@ never touched.
   session).
 
 **Remaining (NOT machine gates)**
-- Backfill (ruling 3): the import mechanism is understood, but the batch manifests under
-  content/batches/ (e.g. batch-004-item-icons-flux2/item_defs.json) record generation params and
-  MULTIPLE candidate PNGs per subject but NOT which candidate/seed was ADOPTED. Rather than
-  fabricate an adopted pick, this is flagged for the "adopted candidate per artwork" source before
-  running the import. Not a machine gate (G1-G5).
+- Backfill (ruling 3): DONE 2026-07-14 (follow-up session) -- see the Session 2026-07-14b block at
+  the end of this log. The earlier concern (manifests record candidates + params but not the adopted
+  pick) was resolved under the orchestrator ruling by filling the ledger with candidate-only renders
+  and adopting ONLY the 3 provably-composed bpskin frames; no adopted seed was fabricated. Not a
+  machine gate (G1-G5).
 - Deploy-time git-branch export wiring (ART_EXPORT_GIT path) + real per-kind derivatives via
   tool_integrate.
 - S7 real-GPU acceptance.
@@ -266,3 +266,70 @@ never touched.
 - 2abcbb6 admin UI (route + page) + api client + ci.sh wiring; client tsc+vite build green
 - 52c8de6 G4 Playwright spec
 - a3346cd G4 green: adopted-highlight fix + isolated pg e2e config + corrected seed flow (8.2s)
+
+### Session 2026-07-14b (follow-up: BACKFILL, ruling 3 -- completed under orchestrator ruling)
+
+Backfill was flagged "not run" by the 2026-07-14 session (the manifests record candidates + params
+but NOT which candidate was adopted, so it correctly declined to fabricate a pick). Under the
+2026-07-14 orchestrator ruling ("do not fabricate adoption, but DO fill the ledger"), the backfill
+is now COMPLETE via a re-runnable idempotent tool. The earlier "not run" flag is CLEARED.
+
+**Tooling**
+- `tools/backfill_registry.cjs` -- inventories the six flux2-era (REQ-0150) batches under
+  content/batches/ and writes one `artworks` row per subject + one `renders` row PER CANDIDATE
+  (image bytes into renders.image, seed as recorded in the manifest / candidate filename), ALL
+  through storage.cjs (opens no DB itself). Idempotent: keyed by system_name + (artwork,seed);
+  re-runs skip existing rows and only fill gaps (proven -- a 2nd run created 0/0). Backfilled
+  system_names are batch-scoped (`<batch>:<key>`) so historical candidates never collide with each
+  other or with future admin-created artworks. Params mirror the live render shape; where a manifest
+  lacks a generation param the CURRENT art_route constants are snapshotted
+  (`params.backfilled_approx=true`); model hashes are the CURRENT model-file CONTENT hashes
+  (STREAMED, so the 4+8+0.3 GB weights never load into memory) with `params.hash_backfilled=true`
+  (ruling 4). `--dry-run` prints the inventory without touching the DB.
+- `server/tests/backfill_registry_test.cjs` -- DB-free unit tests (10/10) of the deterministic
+  parts: manifest parsing -> row mapping (kind map, po/monster shape -> sizing law, candidate-seed
+  decoding) and the adoption-evidence matcher (frame_report composed-frame + byte-match). Wired into
+  tools/ci.sh as DB-free step [4.6/7].
+
+**Counts written to the live Postgres (STORAGE_BACKEND=pg, the same env the api uses)**
+- **artworks: 56   renders: 130   adopted-with-evidence: 3**
+  - flux2-parity-0150         20 artworks / 20 renders (item->po, monster, unit, texture->bpskin;
+    manifest + fixups + thief_framing; full params recorded -> backfilled_approx=false)
+  - units-002-roster-flux2    11 / 44  (unit; 4 candidates each, seeds 101/202/303/404)
+  - batch-004-item-icons-flux2 8 / 32  (po; shape mask from item_defs gen_render cells/mask_cells)
+  - monsters-003-flux2        12 / 24  (monster; shape from cells_hint; 2 seeds each, s1/s202)
+  - bpskin-frames-0150         3 / 6   (bpskin; leather/iron/wood frames, seeds 1/202)
+  - bpskin-flux2-0150          2 / 4   (bpskin; elven/barbarian tiling SPIKE, seamless leg;
+    verdict FAIL + steps=4 recorded from findings.json)
+
+**Adoption evidence policy (never invents a seed)**
+- The ONLY provable REQ-0150-era adoptions are the three composed backpack-skin frames.
+  bpskin-frames-0150/frame_report.json records `skins[].composed=true, frame=<material>_frame_s1.png`
+  -- a manifest-recorded selection (the exact frame the compose step consumed), not a guess. Those
+  three renders (leather / iron / wood, seed 1) are adopted with
+  `params.backfill_adoption_evidence = "bpskin-frames-0150/frame_report.json: skins[].composed=true,
+  frame=<file>"`.
+- A general byte-match matcher compares every candidate's sha256 against the live/adopted reference
+  set (content/live/**.png + any batch */selected/**.png; 19 PNGs indexed). It found ZERO flux2
+  matches -- consistent with REQ-0150 commit ee89739 ("S7 STOP HONORED: nothing is in
+  content/live/"): no flux2 art was ratified/integrated, so nothing else is provably adopted. The
+  other 127 renders stay candidate-only; the user adopts them in the admin.
+- No batch was skipped. bpskin-flux2-0150 is a FAILED tiling spike whose PNGs are method-legs
+  (control/vae_circ/seamless/blend/inpaint x offset/tiled), not seed candidates; it is included as 2
+  motifs x 2 seeds using the `seamless` leg as the representative per-seed output, flagged
+  `params.spike_verdict=FAIL` / `tiling_leg=seamless`, and never adopted.
+
+**Verification**
+- Storage-level query after apply: 56 backfilled artworks, 130 backfilled renders, 3 adopted with
+  frame_report evidence; every render's image_sha256 round-trips against the stored bytes; params
+  carry real content hashes (hash_source=content) + hash_backfilled=true, backfilled_approx set per
+  batch, steps 30 (route) / 4 (bpskin spike, from findings).
+- Idempotent re-run: 0 artworks / 0 renders created.
+- backfill_registry_test.cjs 10/10; artwork_test.cjs 6/6 (no regression from the added tool). G5
+  hygiene: no PNG in the branch diff -- candidates live ONLY in the DB.
+
+**Commits (branch req-0151-artwork-registry-admin)**
+- 64c060b backfill tool (ruling 3): idempotent flux2-era batch import via storage.cjs + DB-free
+  mapping/adoption-matcher tests (10/10)
+- 26517bd wire backfill mapping test into ci.sh (DB-free [4.6/7])
+- (this commit) REQ log: backfill completed -- counts, evidence policy, "not run" flag cleared
