@@ -455,3 +455,81 @@ the cell interiors + autotiled edge tiles**. But it also constrains the idea:
 - [ ] §4 docs — not started.
 - [ ] §5 gallery at `web/preview/flux2-all/` — not started.
 - [x] S7 stop honored: nothing written to `content/live/`.
+
+## Session 2026-07-13 (cont.) — the two follow-ups, both settled by test rather than opinion
+
+### "portraitで、安定しませんか？" — no. And the word was never the variable.
+
+`portrait, looking at viewer` was **already in all three** of v1/v2/v3 — and it is
+also in `elf` and `princess`, where it holds a bust perfectly. So it was not the
+missing ingredient. The hypothesis was that the **GEAR NOUNS** widen the shot:
+"dagger", "belts and pouches", "leather armor" name things that live below the
+shoulders, and the model pulls back to show them. elf and princess carry no gear
+nouns and stay busts.
+
+Tested with a falsifier (`tools/req0150_thief_framing.py`, same template, same
+seed, `portrait` kept throughout):
+
+| | prompt delta | framing |
+| --- | --- | --- |
+| `v4` | fantasy anchor only, **zero gear** | **BUST** ✓ — matches elf/princess |
+| `v5` | v4 + "bust, head and shoulders" | bust ✓ (but the model gives her a low-cut top — not wanted) |
+| `v6` | v4 **+ "leather armor"** | **widens to torso + belt** ✗ |
+
+v6 is the whole argument: one gear noun added to a working bust prompt, and the
+crop widens. **The gear nouns cause it; `portrait` is exonerated.**
+
+**PICK: `v4`** — bust, correct framing, clearly a hooded fantasy rogue.
+
+Honest cost: v4 and v5 **lose the visible leather armor** — she reads as a hooded
+figure rather than an armoured rogue. If armour must be visible, the options are
+(a) accept the wider crop for this unit, or (b) generate half-body and crop to
+bust in post. Not decided here; the user rules on it in the gallery.
+
+### The backpack skin is composed BY SCRIPT — `tools/req0150_bpskin_compose.py`
+
+The user's instruction, with a hand-edited mock-up: the seamless fill is not the
+finished asset; the finished asset is **fill + a real edge**, and the edging must
+be produced **by script**, not by hand in an image editor.
+
+Inputs — and note that the "failed" asset is now load-bearing:
+- **FILL** = `bpskin_leather_fill_a.png` (seamless, REQ-0150 §2, seam 0.93 / 1.00)
+- **FRAME** = `bpskin_leather.png` — the Anime-template render that FAILED as a
+  fill: a rounded, stitched, black-outlined leather patch. Useless as a fill,
+  exactly right as an edge source. That was the user's own read of it.
+
+Method (no hand-editing, one tunable):
+1. **Silhouette** — flood-fill the near-white background inward from the four
+   corners, so only background *connected to the border* is removed. Rounded
+   corners and the side keeper-tabs survive as alpha.
+2. **Ring** — Euclidean distance transform; `ring = silhouette AND dist <= band`.
+   That is the black keyline + the leather welt + the stitch line, and nothing
+   else. `band` is the only knob; it is swept (45/60/75/95), not guessed. **75 px
+   is the pick.**
+3. **Compose** — fill inside, welt on top, feathered 2 px.
+
+Two bugs found and fixed, both of the kind that only a rendered image reveals:
+
+- **The distance transform had no background to measure from.** The patch runs to
+  the image border, so the nearest zero pixel was the *far-away corner white* —
+  the ring materialised only at the four rounded corners and nowhere along the
+  sides. Fixed by padding the mask with background before the EDT.
+- **The welt had no direction.** The first polyomino pass tiled one `band × band`
+  swatch isotropically across the canvas; it read as a repeating chain of blobs,
+  because a welt has an orientation and a swatch does not. Fixed: cut two
+  **directional** strips (a clean run of the source's top edge, and of its left
+  edge), ordered outer → inner, and mirror-tile them along their run.
+
+**And it generalises, which is the point.** `--shape {square,L,T,holed}` composes
+the same skin over a real polyomino. scipy's *feature* transform gives, for every
+ring pixel, the nearest background pixel; the offset to it yields **depth** (which
+row of the welt strip) and **normal** (which strip). So straights, outer corners,
+inner corners and holes all fall out of the same three lines — **no tile atlas, no
+autotile lookup table, no renderer rotation.** Verified on square / L / T / holed.
+
+Remaining rough edges, stated: the corner miter is whatever the nearest-edge
+heuristic produces (it reads fine at 128 px cells but is not an authored miter),
+and the mirror-tiled welt run has a faint symmetry at its midpoint.
+
+This is the substance of **REQ-0146 (bpskin-edge-strip-spike)**, which was
+reserved and empty. It should be written up there and moved out of `reserved/`.
