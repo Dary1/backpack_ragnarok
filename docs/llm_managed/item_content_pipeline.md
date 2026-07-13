@@ -89,6 +89,50 @@ registry**'s machine checks run on every variant (`schema_vocab` / `engine_types
 step on adoption (§7.4). The manual steps still work unchanged for a one-off batch.
 
 
+## 0.1 Shape conditioning (REQ-0153 recipe — available on GREEN, NOT wired)
+
+REQ-0153 was a spike; its verdict is **GREEN-with-recipe**. Up-front silhouette
+control for **non-rectangular PO shapes** (L, T, …) works on the fixed Flux.2 Klein
+4B route, but the recipe is a **spec addendum handed to a follow-up integration REQ**
+— **the production route (`art_route.build_txt2img`) is untouched and byte-identical**.
+Treat this as an available option, not a live feature.
+
+**Problem it solves.** Unconditioned t2i rarely lands an awkward silhouette inside its
+cells; rerolling seeds until the shape happens to fit is futile. Measured baseline
+identity-fit on the scored matrix was **28.6 %** (a `battle axe` overflows the L
+quadrant; a `war hammer` renders a full warrior or a garbled logo banner).
+
+**Winner — Arm C @ D=8:** **ReferenceLatent (gray scaffold) + SetLatentNoiseMask
+(dilated shape, D=8, on a white-canvas latent).** Over the matrix: **100 % identity-fit
+feasible, zero deep-overflow, pure-white backgrounds, best median best-fit** — clears
+every ratified GREEN gate. The scaffold is a **mid-gray flat silhouette on white at
+gen resolution** (aspect + /16 snap, 256 px/cell), driven directly by the REQ-0151 PO
+**5×5 mask**. **Arm A** (ReferenceLatent alone, ~60 % containment) is the fallback if a
+hard mask is undesirable. **Arm B** (scaffold img2img) was **REJECTED** (ghosts the
+gray scaffold / distorts the subject).
+
+**Recipe deltas (the hand-off; do NOT apply here):**
+- `art_route.build_txt2img` gains OPTIONAL `reference_image` / `shape_mask_image` /
+  `mask_init_image`, all defaulting to `None` (route byte-identical when unused). Arm A
+  inserts `LoadImage → VAEEncode → ReferenceLatent` into the positive; Arm C also
+  replaces `EmptyFlux2LatentImage` with `VAEEncode(white canvas) → SetLatentNoiseMask(mask)`.
+- `art_style.edit_instruction(subject)` → Anime template applied to
+  `"Turn the gray shape into <subject>. Keep the silhouette exactly. white background,
+  bold outline"`.
+- `tools/spikes/req0153_shape_scaffold.py` (cell mask → scaffold + dilated hard mask)
+  becomes the production scaffold generator.
+
+**Recommendation (per REQ-0153):** use **Arm C @ D=8 when a shape MUST be respected**
+(non-rectangular PO). For shapes whose subject already fits under the aspect-sizing law
+(single-column / square footprints with an aptly-oriented subject) shape-conditioning is
+**optional** — the baseline already fills those. Because the hard lock **spends subject
+legibility** on blocky shapes (the T hammer reads as an abstract cracked-metal T),
+expose it as a **per-item toggle in the REQ-0151 admin** (already scoped there), never
+force it globally, and keep the **post-hoc numeric fit as the final gate**.
+
+**Ops cost to budget:** VRAM peaked **6.7–6.8 GB at 256/cell on the 8 GB card (no OOM)**,
+but reference-latent jobs are **~2–3× slower** than plain t2i (~76–130 s each).
+
 ## Prerequisites
 
 - Connected to the server. Work in worktree
