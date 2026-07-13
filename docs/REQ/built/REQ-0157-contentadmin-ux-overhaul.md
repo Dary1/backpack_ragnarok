@@ -296,3 +296,108 @@ Three-pane MJOLNIR console, visual grammar shared with the REQ-0156 artadmin:
   assertions (aggregates only read persisted JSONB; the real runner is
   covered by content_test G2 and by the recheck test, which runs the four
   validators for real).
+
+### Session 2026-07-14c (backfill, user ruling 全kind)
+
+Follow-up session under the user ruling 2026-07-14 ("全kindバックフィル" -- the mirror of
+REQ-0151's artwork ruling 3: all content in one ledger from day one): the EXISTING live game
+content is imported into the content-data registry, one def + one adopted variant_no-1 row per
+live entry, so the ledger reflects what the game actually serves. Executed via a re-runnable
+idempotent tool against the LIVE namespace (the same one holding the real artwork registry).
+
+**Tooling**
+- `tools/backfill_content_registry.cjs` -- inventories the four live corpus files and writes,
+  per entry, ONE `content_defs` row + ONE `content_variants` row (variant_no 1, the entry JSON
+  VERBATIM -- no reshaping; Postgres JSONB canonicalizes key ORDER, values proven identical),
+  then adopts it -- ALL through server/storage.cjs (contentStore re-exports; the tool opens no
+  DB itself). `--dry-run` prints the inventory without requiring storage at all.
+- `system_name` = the entry's bare `id` (shared namespace with artworks BY DESIGN: a matching
+  artwork is the art facet of the same entity, not a collision).
+- `schema_ref` = the source file's own schema header ("po/2" / "si/2" / "tm/1" / "enemy/1") --
+  the file header is the canonical schema statement for these entries; the UI's create-default
+  'content/vocab.json' is a placeholder, not canon. content_checks.loadVocab() cannot resolve
+  "po/2" as a path, so the schema_vocab check falls back to content/vocab.json and
+  machine_check.schema_ref records the vocab actually validated against, while the def keeps
+  the source-file truth (documented, intended).
+- `provenance` = `{ source:'backfill', origin_file, origin_schema, batch (only enemies.json
+  carries one: batch-002-dungeon-pilot), imported_at, note:'live asset of record imported
+  under the 2026-07-14 全kind backfill ruling; no regeneration guarantee' }`. The receiving
+  API's provenance validation (llm|human_edit only) deliberately does NOT apply -- that is a
+  routes-layer contract for new commissions; the tool goes through the storage chokepoint,
+  and 'backfill' is the honest source (same posture as the artwork backfill's params.backfill).
+- Adoption via storage.adoptVariant directly, which only sets adopted_variant_id -- the export
+  step lives in the ROUTES layer (routes/content.cjs adopt handler -> content_export), so NO
+  export fired (verified: the only file under content/registry_exports/ predates the run).
+  Intended: content/live is the SOURCE of this backfill; re-exporting it would be circular.
+- Machine checks: the REAL four checks (content_checks.runChecks) ran on every created variant
+  and persisted via storage.setVariantMachineCheck (the ingest annotation path). A FAIL never
+  blocks backfill or adoption -- these entries are live by definition.
+- `server/tests/backfill_content_registry_test.cjs` -- DB-free unit tests (8/8) of the
+  deterministic mapping (file entry -> def/variant rows, kind mapping, provenance shape incl.
+  batch-only-when-present, verbatim/no-mutation, cross-file duplicate-name refusal, INSERT-ONLY
+  skip guards, skip-list completeness). Wired into tools/ci.sh as DB-free step [4.65/7].
+
+**Counts written to the live Postgres (STORAGE_BACKEND=pg, the env the api uses)**
+- **defs: 22   variants: 22   adopted: 22** (every def adopted at variant_no 1)
+  - po_def       8  <- content/live/live_items.json (po/2)
+  - si_def       6  <- content/live/live_sis.json (si/2)
+  - tm_def       1  <- content/live/live_tms.json (tm/1)
+  - monster_def  7  <- content/live/dungeon/enemies.json (enemy/1, batch-002-dungeon-pilot)
+  - unit_def     0  <- NO unit data defs exist yet (REQ-0130 is provisional; units are not
+    per-entity data defs today) -- zero by design, recorded rather than omitted.
+
+**Machine-check verdicts (honest; the model has no WARN state -- overall is PASS|FAIL)**
+- po_def PASS 8/8, si_def PASS 6/6, tm_def PASS 1/1, monster_def FAIL 7/7.
+- Per-check (ok/fail/not-applicable): schema_vocab 15/7/0, engine_types 15/7/0,
+  gen_data 22/0/0, integrate 14/0/8 (not applicable for tm/monster -- no canvas placement).
+- The 7 monster FAILs are the validators speaking honestly about the enemy/1 dialect, not data
+  corruption: schema_vocab flags `rarity: common` (enemy/1 uses lowercase vs vocab.rarities
+  Common/Uncommon/Rare/Relic) and engine_types flags `hp must be numeric` (enemy/1 hp is a
+  [lo,hi] range array). The game serves these entries as-is; they were adopted regardless
+  (live-by-definition), with the FAIL verdicts persisted for the admin to see. Reconciling the
+  enemy/1 dialect with the check vocabulary is future validator work, not a data fix.
+
+**Mapping/skip decisions**
+- Backfilled: exactly the four files above (the sanctioned 2026-07-14 inventory: 22 defs / 22
+  variants).
+- Skipped, not per-entity content of a registry kind: content/live/dungeon/entities.json
+  (entity/1 interactables), formations.json (formation/1 encounter layouts -- composition
+  data), dungeon.json (dungeon graph/config singleton), content/live/scenario.json
+  (progression singleton, no schema header), content/live/seasons.json (season schedule
+  singleton).
+- Skipped, no registry kind exists: content/live/dungeon/skills.json (skill/1, 14 entries) --
+  "skill" is not in the content_kind ENUM; needs its own ruling + kind before it can enter the
+  ledger.
+- Flagged OPEN: content/live/dungeon/items.json (po/2, 2 entries, dungeon-mode batch) -- real
+  po-shaped live data but OUTSIDE the sanctioned inventory (the ruling names live_items.json
+  as the po_def source, 8 entries); left out rather than silently widening a live-DB write.
+  Needs a follow-up ruling.
+
+**Idempotency + safety proof (INSERT-ONLY against the live namespace)**
+- Dry-run inventory matched the sanctioned counts exactly (22/22) before any write.
+- Second real run: **0 defs / 0 variants created, 0 adoptions repaired, 22 already adopted** --
+  keyed by system_name + (content_id, variant_no); checks are re-run ONLY on rows created in
+  the same pass, so a no-op pass rewrites nothing.
+- The tool never deletes/updates pre-existing rows: the only write-to-existing seam is
+  adoption-repair on a def a PREVIOUS run of this tool provably created (brief marker +
+  variant-1 provenance.source='backfill' with matching origin_file) that is still UNADOPTED;
+  an existing adoption is never changed, and a foreign def/variant is skipped LOUDLY (0
+  foreign encountered this run).
+- Artwork registry untouched: /api/art/artworks still lists 56 artworks / 30 adopted after
+  both runs.
+
+**Verification**
+- GET /api/content/defs: 22 defs, kinds {po_def:8, si_def:6, tm_def:1, monster_def:7}, every
+  def adopted_variant_no=1, aggregates populated (variant_count=1; failed_check_count=1 for
+  exactly the 7 monsters).
+- Served-data proof: GET /api/content/<name> deep-equals the live file entry for ALL 22
+  (values identical; JSONB key order is not preserved, by design of the store).
+- /api/content/frost_gnoll/meta carries provenance.batch=batch-002-dungeon-pilot + the honest
+  FAIL detail; /api/content/blade/meta carries the full backfill provenance.
+- backfill_content_registry_test.cjs 8/8; backfill_registry_test.cjs 10/10 and server
+  typecheck (tsconfig.server.json) stay green.
+
+**Commits (branch req-0157-contentadmin-ux-overhaul)**
+- 39bd851 backfill tool + DB-free mapping/skip-rule tests (8/8) + ci.sh [4.65/7]
+- (this commit) REQ log: Session 2026-07-14c -- counts, verdict tallies, skip decisions,
+  idempotency proof

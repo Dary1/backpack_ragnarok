@@ -30,7 +30,7 @@
 // allowed to write the canvas directly while the YIELD half is not.
 const storage = require('../storage.cjs');
 const { grantTmQty } = require('./warehouse.cjs');
-const { deployedUidSet } = require('./market.cjs');
+const { deployedUidSet } = require('./squads.cjs');
 
 // ---------------------------------------------------------------------
 // §1 The ledger

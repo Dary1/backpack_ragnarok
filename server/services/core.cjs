@@ -7,18 +7,22 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
 const Engine = require('../../mock-src/engine.js');
 
 
-const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content');
-const LIVE_DIR = path.join(CONTENT_DIR, 'live');
-const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
-const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json'); // REQ-0115: SI (accessory) content defs
-const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
+// REQ-0145a (sc): content paths resolve through the ONE content-file
+// loader (lib/content_files.cjs; CONTENT_ROOT env override honored,
+// default byte-equivalent to the old os.homedir() anchoring). REPO_ROOT
+// is kept for export-surface compatibility only.
+const { CONTENT_ROOT, contentPath } = require('../lib/content_files.cjs');
+const REPO_ROOT = path.dirname(CONTENT_ROOT);
+const CONTENT_DIR = CONTENT_ROOT;
+const LIVE_DIR = contentPath('live');
+const ITEMS_PATH = contentPath('live', 'live_items.json');
+const SIS_PATH = contentPath('live', 'live_sis.json'); // REQ-0115: SI (accessory) content defs
+const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
 // REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
 // promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
 // batch dir. The path comes from sim/dungen.cjs's liveDungeonDir() so

@@ -23,12 +23,19 @@ const crypto = require('crypto');
 const { render } = require('../tools/eff_render.cjs');
 const players = require('./players.cjs');
 
+// REQ-0145a (sc): CONTENT paths resolve through the ONE content-file
+// loader (lib/content_files.cjs; CONTENT_ROOT env override honored,
+// default byte-equivalent) -- the admin item-edit WRITES must land in
+// the exact tree lib/content.cjs and the services read from. REPO_ROOT
+// stays os.homedir()-anchored: it feeds DATA paths (data/config), a
+// storage concern, not a content one.
+const { contentPath } = require('./lib/content_files.cjs');
 const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content');
-const LIVE_DIR = path.join(CONTENT_DIR, 'live');
-const VOCAB_PATH = path.join(CONTENT_DIR, 'vocab.json');
-const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
-const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json');
+const CONTENT_DIR = contentPath();
+const LIVE_DIR = contentPath('live');
+const VOCAB_PATH = contentPath('vocab.json');
+const ITEMS_PATH = contentPath('live', 'live_items.json');
+const SIS_PATH = contentPath('live', 'live_sis.json');
 
 const CONFIG_DIR = path.join(REPO_ROOT, 'data', 'config');
 const DEV_USER_PATH = path.join(CONFIG_DIR, 'dev_user.json');
