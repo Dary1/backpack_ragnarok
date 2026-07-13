@@ -104,10 +104,10 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 ## 6. Quality gates & dev workflow
 
 ```
-npm run test:quick   # sim + goldens + mock + typecheck + drift + api(files)  (~20s)
-npm test             # = tools/ci.sh: adds api(pg), client build, e2e (~10min, needs server/.env)
+pnpm run test:quick   # sim + goldens + mock + typecheck + drift + api(files)  (~20s)
+pnpm test            # = tools/ci.sh: adds api(pg), client build, e2e (~10min, needs server/.env)
 bash tools/release.sh# full gate → rebuild dist → commit web/app if changed
-(cd client && npm run dev)  # Vite dev server against the live API
+(cd client && pnpm run dev)  # Vite dev server against the live API
 node server/tests/api_test.cjs / sim/tests/run.cjs / mock-src/tests/run.cjs  # individually
 node sim/tests/goldens.cjs gen  # ONLY when a behavior change is intended & reviewed
 ```

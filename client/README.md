@@ -12,14 +12,14 @@ as-is via a thin typed adapter in `src/engine/` — never forked or rewritten.
 ## Develop
 ```
 cd client
-npm install
-npm run dev       # local dev server (Vite)
+pnpm install --frozen-lockfile
+pnpm run dev       # local dev server (Vite)
 ```
 
 ## Build + deploy
 ```
 cd client
-npm run build      # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
+pnpm run build      # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
 ```
 The build output (`web/app/`) is committed directly — it is the deployed
 artifact served at https://backpack-dev.qtie.jp/app/ by the existing static
