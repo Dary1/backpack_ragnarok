@@ -31,10 +31,14 @@ echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
 node server/tests/pg_sync_test.cjs
+echo "==== [4.6/7] artwork backfill mapping + adoption matcher (DB-free, REQ-0151) ===="
+node server/tests/backfill_registry_test.cjs
 if [ "${SKIP_PG:-0}" != "1" ]; then
   echo "==== [5/7] server api tests (pg backend) ===="
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
   STORAGE_BACKEND=pg node server/tests/api_test.cjs
+  echo "==== [5.1/7] server artwork registry tests (pg backend, REQ-0151) ===="
+  STORAGE_BACKEND=pg node server/tests/artwork_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi
