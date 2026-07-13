@@ -22,3 +22,19 @@ containing only this REQ number + a reference to `common_content_pipeline.md`.
 
 ## Out of scope
 - PO/SI (item pipeline) and TM (TM pipeline).
+
+## Disposition (2026-07-14): SUPERSEDED by REQ-0154 — content absorbed
+
+Per the **Q1 ruling** (user, 2026-07-13), this REQ's scope — the monster/enemy
+content pipeline doc (enemies as flat tunable `enemy/1` defs, dungeon encounter
+sequences, `skills.json`/`formations.json`/`dungeon.json`, monster illustration art;
+the real precedents `batch-002-dungeon-pilot` / `monsters-002` / `monsters-003-flux2`
++ `content/proposals/monsters-00N/`; and the honest "no dedicated enemy schema
+validator exists" note) — has been **ABSORBED into REQ-0154 wave 4** and written into
+`docs/llm_managed/monster_content_pipeline.md` **v1.0 (2026-07-14)** with attribution.
+The placeholder stub is replaced by a full registry-era doc that references the spine
+(`common_content_pipeline.md` §6–§9) and `art_pipeline.md`.
+
+This REQ is therefore **closed as superseded (content absorbed)** and moved
+`draft/ → done/` in a dedicated commit (one `git mv` per commit, per board policy).
+No monster-pipeline work remains under this number.

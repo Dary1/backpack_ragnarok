@@ -81,6 +81,12 @@ restate here.**
   render auto-runs `matte.coverage_band` + `si.subject_frame`. All advisory (top
   out at WARN); results in `render_inspections`; never gate adoption.
 
+- **REQ-0133 (item-raster-live-wiring, draft) coordination:** its live-render
+  wiring concern is now the **registry export contract** (§7.4) — the adopted
+  PO/SI render is what live/mock/client consume via the export. REQ-0133 stays
+  in `draft/`, still blocked on REQ-0125a’s shared resolution machinery; the
+  raster-vs-SVG half is already ruled RASTER.
+
 **Where the CLI steps map onto the registries:** Step 5 (art) is now the **artwork
 registry** — generate seeds, kits auto-run, human adopts (`art_pipeline.md`; REQ-0151).
 Step 3–4 validators (static validate / engine integrate) are now the **content-data

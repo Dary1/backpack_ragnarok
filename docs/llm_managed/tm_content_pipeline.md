@@ -1,4 +1,9 @@
-# TM Content Pipeline — v1.0 (2026-07-12, REQ-0110)
+# TM Content Pipeline — v1.1 (2026-07-14, REQ-0154)
+
+> v1.1 (REQ-0154; registry era): §0.1 adds the content-data registry facet
+> (`tm_def`) and records that TMs have NO artwork-registry kind (icons stay SVG
+> sprite). Shared contracts reference `common_content_pipeline.md` §7. v1.0 body
+> (REQ-0110) is unchanged below.
 
 > **Scope**: TM (Transmutator) content — `content/live/live_tms.json`,
 > schema `tm/1`. Executing the steps top-to-bottom adds one batch of TMs.
@@ -27,6 +32,26 @@
   separately.
 - TMs are **few by nature**. Each TM is a mechanic hook, not bulk content —
   a batch of 1–3 is normal (contrast items' 8–16).
+
+## 0.1 Registry era (REQ-0154)
+
+Shared contracts (seed/variant, adoption, export, advisory doctrine, dependency map,
+promotion) live in `common_content_pipeline.md` §6–§9. TM specifics:
+
+- **DATA facet only.** A TM is `content_defs.kind = tm_def` in the content-data
+  registry (REQ-0155). A `tm_def` variant runs the machine checks that apply:
+  `schema_vocab` + `engine_types`; **`gen_data` is not a data.js bake** (TM defs are
+  NOT baked into `mock-src/data.js` — §2), and **`integrate` is `applicable:false`**
+  (TMs have no canvas placement — `tool_integrate` has no TM path *by design*, §0).
+  The real serving proof stays the `/api/content` path (Step 4). Adoption is
+  human-only and adopted-undeletable; export via spine §7.4.
+- **NO artwork facet.** The artwork-registry kinds are `po | si | unit | monster |
+  bpskin` — **there is no `tm` kind.** TM icons remain **SVG sprite symbols**
+  (`icon-<id>` in `content/sprite_all_vN.svg`, Step 5); adopting the AI-raster /
+  artwork registry for TMs is **NOT ratified**.
+- **Honest gap (same as monster/unit):** `validateBody` has no `tm` kind
+  (`item | si` only); §3's hand-rolled script remains the static check until a code
+  REQ adds a first-class TM validator.
 
 ## 1. Data model (`tm/1`, as built)
 

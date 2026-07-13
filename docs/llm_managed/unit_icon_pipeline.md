@@ -27,7 +27,11 @@
 > v2.1) to Unit character icons. Golden below ratified by the user 2026-07-12
 > ("unit_icon_pipeline green"), including the revised G6 (skinnable identity).
 > Authoritative copy: `docs/llm_managed/unit_icon_pipeline.md` on the server.
-> v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
+> v1.2 (2026-07-14, REQ-0154; registry era): §4 added — unit artwork/data
+> registry facets + the absorbed REQ-0130 def sketch (provisional); shared
+> contracts reference `common_content_pipeline.md` §7. Art stays superseded by
+> `art_pipeline.md`.
+> > v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
 > 2026-07-12 review session, user verdict ALL GREEN); G7 reserved in §1;
 > stale filename fixed (backpack_skin_pipeline_proposal.md, renamed →
 > backpack_skin_pipeline.md). `art_golden` references resolve to
@@ -139,6 +143,56 @@ ALL GREEN) unless noted.
    §1; renderer implementation stays with REQ-0125.
 4. **Enemy side** — unchanged: enemies have no backpacks (asymmetric combat,
    golden §4) and are OUT of scope; monster art keeps its own pipeline.
+
+## 4. Registry era + Unit def pipeline (REQ-0154; absorbs REQ-0130)
+
+> **Absorbs REQ-0130** (unit-def-content-pipeline, draft; Q1 ruling 2026-07-13):
+> its schema sketch, validation chain, live target and the REQ-0054/0061 rescued
+> material are folded in here as the DEF side of this pipeline; REQ-0130 is closed
+> with a supersession note and moved to `done/`. **Honest status:** the def side is
+> still a DESIGN SKETCH — REQ-0130 was blocked on REQ-0128 (connection_shape
+> semantics) and REQ-0129 (charge/trigger grammar), both still `draft/`, and on
+> REQ-0127 art whose roster is now superseded (anime direction). Nothing below is
+> ratified schema; do not author live unit defs against it yet.
+
+### 4.1 Registry facets (shared contracts: spine §7)
+- **Artwork facet** — `artworks.kind = unit`, **locked 512×512**
+  (`server/services/art_sizing.cjs`; sizing gate G2). Upright forever (G3). The icon
+  this pipeline produces is the unit's **DEFAULT SKIN** (G6), not a hard-wired asset.
+  Inspection: `matte.coverage_band` (applies to po/si/**unit**), advisory, WARN-capped
+  (`art_pipeline.md` §8). Seed/variant, adoption, export: spine §7.2–§7.4; the adopted
+  unit render exports to `content/art/unit/<name>.png`.
+- **Data facet** — `content_defs.kind = unit_def`. Variant-as-record; a `unit_def`
+  variant runs the content-data registry machine checks (§4.3) + a separate-agent
+  advisory review. **There is no live `unit` target yet** — `content/live/live_units.json`
+  is proposed by REQ-0130 and does NOT exist on master.
+
+### 4.2 Schema sketch `unit/1` (from REQ-0130; provisional, unratified)
+`id` / `name` / `rarity` / `icon` (`"icon-<id>"`, always 1×1) / `connection_shape`
+(semantics from **REQ-0128**) / `charge` (`{trigger, capacity, spend}` in the
+**REQ-0129** grammar) / `effects` (AST) / `sockets` (ONE socket; SI seating/rejection
+machinery reused verbatim — REQ-0054 rescue) / `flavor` / `i18n.ja`.
+**Illustration-first:** a unit def may only be authored against S7-accepted art.
+
+### 4.3 Validation chain (mirrors the item pipeline)
+Static validate (unit ALLOWED_KEYS, closed vocab) → engine integrate (occupies exactly
+1 BP cell; connection-resolution smoke test) → preview gallery on backpack-dev →
+**STOP for user review**. In the registry era these become the content-data registry
+checks: `schema_vocab` / `engine_types` / `gen_data` / `integrate` on each `unit_def`
+variant. **Honest gap:** as with monsters/TMs, `validateBody` has **no `unit` kind**
+(`item | si` only); a first-class unit validator is a future code REQ once REQ-0128/0129
+freeze the connection/charge grammar. `i18n.ja` mandatory; nothing enters a live target
+before green.
+
+### 4.4 Rescued design material (REQ-0130, via REQ-0054/0061 — roster seed only)
+- **Unit sockets:** a unit def may carry ONE socket; the lens/equipment-SI family
+  customizes behavior (adopted 2026-07-06). Socket tag naming settles in REQ-0129.
+- **8-type connective axis** (delay / divider / junction / toggle / terminal /
+  amplifier / splitter / condenser) becomes **roster seed material**; rescued LAW:
+  **each connective kit = exactly ONE deviation from standard behavior.** Teaching-
+  staircase wave first; acquisition by choosing which themed BP pack to open
+  (REQ-0062 lineage). Deterministic merge/counter/cap semantics are whatever REQ-0128
+  ratifies — consume, do not re-invent.
 
 ### RATIFIED GENERATION ROUTE (REQ-0136, user verdict 2026-07-12)
 
