@@ -19,6 +19,8 @@ const { tryMeRoute } = require('./routes/me.cjs');
 const { tryAdminRoutes } = require('./routes/admin.cjs');
 const { tryProfileRoutes } = require('./routes/profile.cjs');
 const { tryScheduleRoutes } = require('./routes/schedule.cjs');
+const { tryWarehouseRoutes } = require('./routes/warehouse.cjs'); // REQ-0145a (se)
+const { tryWorkshopRoutes } = require('./routes/workshop.cjs'); // REQ-0145a (se)
 const { tryMarketRoutes } = require('./routes/market.cjs'); // REQ-0064
 const { tryRagnarokRoutes } = require('./routes/ragnarok.cjs'); // REQ-0066
 const { tryDexRoutes } = require('./routes/dex.cjs'); // REQ-0052
@@ -34,6 +36,8 @@ function handle(req, res) {
   if (tryAdminRoutes(req, res, url, p) !== false) return;
   if (tryProfileRoutes(req, res, url, p) !== false) return;
   if (tryScheduleRoutes(req, res, url, p) !== false) return;
+  if (tryWarehouseRoutes(req, res, url, p) !== false) return; // REQ-0145a (se): schedule -> warehouse -> workshop dispatch consecutively in the exact slot the combined module occupied (identical match set)
+  if (tryWorkshopRoutes(req, res, url, p) !== false) return; // REQ-0145a (se)
   if (tryMarketRoutes(req, res, url, p) !== false) return; // REQ-0064
   if (tryRagnarokRoutes(req, res, url, p) !== false) return; // REQ-0066
   if (tryDexRoutes(req, res, url, p) !== false) return; // REQ-0052
