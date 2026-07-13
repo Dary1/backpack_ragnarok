@@ -71,7 +71,8 @@
   Bust framing, roster-wide (§3 item 1). **On the ratified flux2 route the
   NEGATIVE PROMPT IS INACTIVE (cfg 1.0) — steer style from the POSITIVE.**
   Front-loading stylization tokens against a photorealism bias was a
-  JuggernautXL V9 workaround and applies only to the `sdxl` fallback route.
+  JuggernautXL V9 workaround and applies only to the FROZEN `sdxl` route
+  (historical reproduction only).
 - **S3 Generate.** Same ComfyUI route as items, on the **ratified `flux2`
   route** (REQ-0136, user verdict 2026-07-12, reconfirmed 2026-07-13):
   `flux-2-klein-4b-Q8_0.gguf` at `127.0.0.1:8188` (manual start), 4 candidates,
