@@ -59,6 +59,13 @@ function isDevFallback(req) {
   const r = admin.resolveAuth(undefined);
   return r.ok;
 }
+// Incident guard (2026-07-14): a mis-namespaced e2e run once wiped the live
+// registry through the dev clear hook. Destructive dev seams now ALSO require
+// ALLOW_DEV_CLEAR=1 in the server environment; only the isolated e2e
+// harnesses (tools/*_e2e.sh, TMPHOME-namespaced) set it. dev_mode alone is
+// no longer enough on a long-lived dev server.
+function devClearAllowed() { return process.env.ALLOW_DEV_CLEAR === '1'; }
+
 
 function httpForCode(code) {
   if (code === 'DUPLICATE' || code === 'DUPLICATE_SEED') return 409;
@@ -320,11 +327,11 @@ function tryArtRoutes(req, res, url, p) {
     sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return true;
   }
   if (RE_DEV_BUMP.test(p) && req.method === 'POST') {
-    if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
+    if (!isDevFallback(req) || !devClearAllowed()) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook (needs dev_mode fallback + ALLOW_DEV_CLEAR=1)' }); return true; }
     run(res, hDevBumpKit(req, res)); return true;
   }
   if (RE_DEV_CLEAR.test(p) && req.method === 'POST') {
-    if (!isDevFallback(req)) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook' }); return true; }
+    if (!isDevFallback(req) || !devClearAllowed()) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook (needs dev_mode fallback + ALLOW_DEV_CLEAR=1)' }); return true; }
     run(res, hDevClear(req, res)); return true;
   }
   if (RE_QUEUE.test(p) && req.method === 'GET') { if (!requireAdmin(req, res)) return true; run(res, hQueue(req, res)); return true; }

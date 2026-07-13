@@ -239,3 +239,38 @@ An art-generation console + adoption ledger (a mini-DAM):
 - 851bdb0 e2e: updated artadmin spec + lightbox/filter/cancel/retry coverage; artinspect
   spec follows the new flows; tools/artadmin_e2e.sh harness
 - (this commit) REQ log
+
+### Incident + hardening (2026-07-14, orchestrator session — post-merge)
+
+**Incident.** After the REQ-0156 merge/deploy, the live registry API returned 1 artwork
+instead of 56. Direct DB inspection showed the `artworks` table reduced to 8 e2e-junk rows
+across 8 namespaces (14 renders total); the live namespace (`88d662ca…`) contained ONLY
+`e2e_insp_sword` — the signature of an artinspect e2e run executed WITHOUT the TMPHOME
+namespace remap: its opening `POST /api/art/dev/clear-all` executed against the live
+namespace (deleting the 56 backfilled artworks / 130 renders), then the spec created its
+sword row there. Root cause: `storage_art`'s namespace derives from `os.homedir()`, so ANY
+worktree api started with the normal HOME lands in the LIVE namespace even though it looks
+like an isolated instance — the dev_mode no-token fallback then arms `clear-all`.
+
+**Recovery (complete, verified).** No user-generated rows existed to lose: the registry held
+exactly the 56/130/3 backfill of REQ-0151 session 2026-07-14b (verified by the orchestrator's
+API survey earlier the same day). All junk rows were purged (8 artworks / 14 renders / 12
+inspections across all namespaces) and `tools/backfill_registry.cjs` — idempotent by design —
+was re-run against the live namespace: **56 artworks / 130 renders / 3 adopted-with-evidence
+restored**, confirmed via the live API afterward.
+
+**Hardening (this commit).** The destructive dev seams now require BOTH the dev_mode
+no-token fallback AND `ALLOW_DEV_CLEAR=1` in the server's environment:
+- `server/routes/art.cjs`: `/api/art/dev/clear-all` + `/api/art/dev/bump-kit`
+- `server/routes/content.cjs`: `/api/content/dev/clear-all` (same trap existed for the
+  REQ-0155 content ledger)
+- The three isolated harnesses (`tools/artadmin_e2e.sh`, `tools/art_inspect_e2e.sh`,
+  `tools/content_admin_e2e.sh`) export `ALLOW_DEV_CLEAR=1` to THEIR api instance only.
+The long-lived dev services never set the flag, so a mis-namespaced run can no longer wipe
+the ledger; it gets a 403 naming the missing flag. Negative-tested against the live api
+(403) and positive-tested via the artadmin harness (e2e green).
+
+**Lesson (standing).** Never start any worktree api against the pg backend without the
+TMPHOME remap; treat `os.homedir()`-derived namespacing as a foot-gun around dev seams.
+The candidates-have-no-backup ruling (REQ-0151 ruling 6) makes `clear-all` equivalent to
+permanent deletion — env-gate every such seam the moment it is born.
