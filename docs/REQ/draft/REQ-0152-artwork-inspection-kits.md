@@ -1,6 +1,7 @@
 # REQ-0152 — artwork-inspection-kits: per-type inspection kits wired into the artwork admin
 
-**State:** draft — BLOCKED on user ratification AND on REQ-0151 implementation.
+**Ratified:** 2026-07-13 (user, chat) — including rulings on Q1–Q3 below. Queued behind
+REQ-0151 implementation; the REQ folder is the sole status record.
 **Requested by:** user, 2026-07-13 (chat): "after an image is generated, run the type-appropriate
 inspection kit, display the result on screen, and save the result to the DB as well. Investigate
 the per-type kits and their return-value mechanisms; if a kit is obsolete, propose deprecation
@@ -82,8 +83,9 @@ render cascades its inspection rows.
   report). Minimum: white-background fraction + subject-presence (non-white content fraction and
   bounding-box vs canvas), emitting `image_alpha_coverage`-style metrics. Thresholds proposed by
   the implementer, ratified by the user at S7.
-- `si.subject_frame` v1 (OPTIONAL — user may strike): single-centered-subject / margin check for
-  256×256 SIs. Cell-based kits structurally cannot serve SI (no shape). Author fresh or defer.
+- `si.subject_frame` v1 (user-ratified 2026-07-13: AUTHOR IT): single-centered-subject / margin
+  check for 256×256 SIs. Cell-based kits structurally cannot serve SI (no shape) — authored
+  fresh in this REQ; thresholds proposed by the implementer, ratified at S7.
 
 **Deprecate / do not wire (proposal, per user's "propose deprecation" instruction):**
 - `tool_fit_check.py` (check mode) + `build_fit_report.py` — SVG-sprite era: they inspect
@@ -128,7 +130,7 @@ render cascades its inspection rows.
 - G5 hygiene: no report files written outside the DB (except the recipe-internal
   frame_report.json REQ-0150 already owns); no new PNG under content/.
 - S7 user acceptance: user reviews kit output on real renders and ratifies thresholds
-  (especially `monster.render_sanity`, and strike-or-keep for `si.subject_frame`).
+  (especially `monster.render_sanity` and `si.subject_frame`).
 
 ## Risks
 - Threshold drift: kits carry thresholds measured on specific batches; the kit_version +
@@ -140,13 +142,13 @@ render cascades its inspection rows.
 - Kit runtime deps (rembg/birefnet for mattes, scipy) must be importable from the server-side
   job runner — verify in G4 setup, pin via the existing pnpm/pip conventions.
 
-## Open questions (draft blockers besides ratification)
-- Q1 `si.subject_frame`: author now or strike? (user said SI checks are not essential —
-  visual confirmation suffices)
-- Q2 `tiling.seam` for monsters: only if a monster-tiling use case exists; default = bpskin
-  fills only.
-- Q3 does the admin display historical (backfilled) renders' kit results as "not inspected"
-  or lazily run kits on backfill? Default proposal: lazy, on-demand via the re-run button.
+## Resolved questions (user rulings, 2026-07-13)
+- Q1 `si.subject_frame`: AUTHOR IT (see roster).
+- Q2 `tiling.seam` scope: bpskin fills only; monsters only if a tiling use case appears
+  (confirmed default).
+- Q3 backfilled renders: LAZY — shown as "not inspected", kits run on demand via the re-run
+  button.
 
 ## Implementation log
 (to be filled by the implementing session)
+                        
