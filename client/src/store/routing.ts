@@ -32,7 +32,7 @@ export async function handleInviteRoute(token: string): Promise<void> {
   let me: ApiMe | null = null;
   try {
     me = await fetchMe();
-  } catch (e) {
+  } catch {
     me = null;
   }
   if (me) {

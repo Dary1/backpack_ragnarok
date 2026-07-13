@@ -238,6 +238,20 @@ mode flake in the baseline run, not a regression. Failure-set-identical
 gate: GREEN for the landed phases. Dist restored after the run (web/app
 NOT committed — rebuild happens only at merge via release.sh, per §3.4).
 
+**Lint-warning triage (user request 2026-07-14)**: of the 34 baseline
+oxlint warnings, exactly one was both in-scope and behavior-safe to fix
+(store/routing.ts unused catch param -> optional catch binding; count now
+33). NOT fixed, with reasons: api.ts x6 (0156-frozen hotspot; the (ca)
+split resolves them structurally), Monitor/RoomCard/CreateRoomForm hits
+(excluded files, owned by REQ-0099/0098/0100), RagnarokPage:73
+react-hooks(exhaustive-deps) "unnecessary dependency snapshot.stateVersion"
+(FALSE POSITIVE by design: the module-level store mutates state in place,
+so stateVersion IS the recompute signal -- removing it breaks rename
+propagation), and the react(only-export-components) family (dev-only
+fast-refresh ergonomics; the "fix" is file splits / import churn in
+marketShared/ragnarokShared/DexCardWindow -- out of the frozen contract
+this round, noted as candidates for a future pass).
+
 **Grep gates (§7, landed phases)**: zero duplicate impls of
 localizedItemName / pulseTab / first-fit / clock-countdown formatting
 outside excluded files (only schedule/Monitor.tsx keeps its excluded-file
