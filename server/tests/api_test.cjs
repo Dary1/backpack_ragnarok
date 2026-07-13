@@ -267,6 +267,11 @@ for (const f of ['dungeon.json', 'enemies.json', 'skills.json', 'entities.json',
 }
 
 os.homedir = () => fakeRepoHome;
+// REQ-0145a (sc): content reads now resolve through lib/content_files.cjs,
+// whose root honors the CONTENT_ROOT env var (default = the homedir-derived
+// path). Inject it explicitly, pointed at the SAME synthetic content tree,
+// so the env seam itself is exercised on every content-driven test below.
+process.env.CONTENT_ROOT = contentDir;
 // REQ-0047 (c): the server is a module TREE now (api.cjs -> router.cjs ->
 // routes/* -> lib/*) -- evicting only the four legacy files would leave
 // routes/ modules holding stale (old-homedir-bound) admin/storage refs.
@@ -2416,6 +2421,7 @@ async function main() {
   });
 
   os.homedir = realHomedir;
+  delete process.env.CONTENT_ROOT; // REQ-0145a (sc): the real-repo admin test below must resolve REAL content again
 
 
   // =====================================================================
@@ -3591,6 +3597,7 @@ async function main() {
   // =====================================================================
   {
     os.homedir = () => fakeRepoHome;
+    process.env.CONTENT_ROOT = contentDir; // REQ-0145a (sc): re-inject alongside the homedir re-swap
     evictServerModuleTree();
     const dzApi = require('../api.cjs');
     const dzPlayers = require('../players.cjs');
@@ -3882,6 +3889,7 @@ async function main() {
       assert.strictEqual(badToken.body.card.dismantle, undefined, 'an invalid token resolves to no caller, so no overlay -- never a 401');
     });
 
+    delete process.env.CONTENT_ROOT; // REQ-0145a (sc): mirror the homedir restore below
     os.homedir = realHomedir; // leave the sandbox exactly as this block found it (real homedir active), matching the outer suite's own posture at this point in the file
   }
   // ---- REQ-0052: Dex Card API (GET /api/dex/card/:kind/:id) ----
