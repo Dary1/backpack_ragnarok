@@ -62,20 +62,26 @@
   (art_golden rule: gorgeous names do not yield better art). One style guide
   per batch. Per-Unit one-line concept — the user-authored roster (elf,
   dwarf, thief, angel, shieldmaiden, priest, princess towers, light cavalry,
-  berserker, necromancer, watcher, squire) is the seed list.
+  berserker, necromancer, watcher, squire) is the seed list. **UPDATE
+  2026-07-13 (REQ-0127 S7): necromancer was CUT as a unit by the user; the
+  shipped roster is the remaining 11.**
 - **S2 Gen fields.** `gen_render` is constant (1×1: target 256×256, gen
   1024×1024, Lanczos downscale). `gen_prompt` from a Unit style template:
-  painterly dark-fantasy CHARACTER icon, stylization tokens front-loaded
-  (JuggernautXL V9 photorealism bias), near-white background for matting,
-  NOT photorealistic. Bust vs full-body is fixed per roster, not per Unit
-  (see Open items).
-- **S3 Generate.** Same ComfyUI route: checkpoint
-  `JuggernautXL_RunDiffusionPhoto2_V9_Final` at `127.0.0.1:8188` (manual
-  start), 4 candidates, seeds 101/202/303/404, 30 steps, cfg 6.5,
-  dpmpp_2m/karras, long runs via `setsid nohup`. Implementation: a thin
-  `gen_unit_icons` wrapper (or a `--defs` pointing at Unit defs) over
-  `tools/gen_item_icons.py`. NOTE: route tools live on branch
-  `req-0073-item-icon-gen` until REQ-0109 merges — same caveat as items.
+  painterly dark-fantasy CHARACTER icon, near-white background for matting.
+  Bust framing, roster-wide (§3 item 1). **On the ratified flux2 route the
+  NEGATIVE PROMPT IS INACTIVE (cfg 1.0) — steer style from the POSITIVE.**
+  Front-loading stylization tokens against a photorealism bias was a
+  JuggernautXL V9 workaround and applies only to the `sdxl` fallback route.
+- **S3 Generate.** Same ComfyUI route as items, on the **ratified `flux2`
+  route** (REQ-0136, user verdict 2026-07-12, reconfirmed 2026-07-13):
+  `flux-2-klein-4b-Q8_0.gguf` at `127.0.0.1:8188` (manual start), 4 candidates,
+  seeds 101/202/303/404, **4 steps, cfg 1.0, euler**. `--route sdxl` selects the
+  V9 fallback (30 steps, cfg 6.5, dpmpp_2m/karras). Long runs via
+  `setsid nohup`; **stop ComfyUI before the matte phase** (rembg ~12 GB will not
+  fit beside a resident model on the 23 GB box — use `--no-matte` then
+  `--rematte-only`). Implementation: `tools/gen_unit_icons.py`, a thin wrapper
+  over `tools/gen_item_icons.py`. (The old "route tools live on branch
+  req-0073-item-icon-gen" caveat is OBSOLETE: merged via REQ-0109.)
 - **S4 Matte.** rembg `birefnet-general` + edge-key fallback, valid band
   2–90%. Characters have finer silhouettes than items (hair, weapon tips,
   wings) — matte quality is explicitly part of the review gallery;

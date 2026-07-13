@@ -212,15 +212,27 @@ defect for REQ-0126's harness, not merely a footnote to this spike.
 
 This spike ran on JuggernautXL V9, the incumbent.
 
-**Correction.** An earlier revision of this section claimed "REQ-0136 has since
-ratified **flux2**" and directed the strip re-run to use flux2. **That claim was
-false and is struck.** REQ-0136 (icon-checkpoint-bakeoff) is still in `todo/` —
-no bakeoff has been run, no gallery produced, no winner ratified. FLUX.2 klein
-4B is merely candidate 3 of 3 in that REQ's spec. The claim was also
-self-defeating: this same file (see the RE-SCOPE section) records that the
-circular-padding recipe is **NOT valid for FLUX-family** checkpoints, so "re-run
-the strip on flux2" pointed the follow-up at a checkpoint on which its own
-recipe is documented not to work.
+**Correction, and a correction OF the correction (2026-07-13).**
+
+An earlier revision claimed "REQ-0136 has since ratified **flux2**" and sent the
+strip re-run to flux2. A later revision struck that as false, asserting REQ-0136
+was still in `todo/` with no bakeoff run and no winner ratified. **That second
+assertion was itself wrong**, and is what stands corrected here:
+
+- REQ-0136's bakeoff **was** run (48 candidates, `content/batches/bakeoff-0136/`,
+  gallery `web/preview/bakeoff-0136/`) and the user **did** ratify **flux2** on
+  2026-07-12, reconfirmed 2026-07-13. REQ-0136 is in `built/`.
+- It looked unratified from master only because REQ-0136's branch was not yet
+  merged. **Lesson: a REQ's folder tells you its status on YOUR branch, not in
+  the program.** Before declaring that work never happened, check the other
+  branches — `git log --all`, `git branch --contains` — not just `ls docs/REQ/*/`.
+
+What the struck revision got RIGHT, and what still holds: **sending the strip
+re-run to flux2 would have been wrong anyway.** This same file records that the
+circular-padding recipe is **NOT valid for FLUX-family** checkpoints, so pointing
+the follow-up at flux2 would have aimed it at a checkpoint on which its own
+recipe is documented not to work. The right reason, not the wrong one, keeps the
+strip on SDXL.
 
 What actually holds:
 
@@ -228,8 +240,11 @@ What actually holds:
   a prettier frame is still not a tileable band. The recommendation (generate a
   1-D seamless strip; do not cut edges out of a frame) stands regardless of
   checkpoint.
-- **The strip re-run must use an SDXL-family checkpoint** (JuggernautXL V9
-  unless and until REQ-0136 ratifies a different SDXL checkpoint). The strip
+- **The strip re-run must use an SDXL-family checkpoint** (JuggernautXL V9) —
+  because circular padding is SDXL-UNet-specific, NOT because flux2 is unratified
+  (it is ratified, for icons). Icons and skins may therefore have to run on
+  different checkpoints; that divergence is an open user decision, and the strip
+  re-run must not be taken as having settled it. The strip
   route depends on `SeamlessTile` + `CircularVAEDecode`, and REQ-0138 validated
   those on SDXL only.
 

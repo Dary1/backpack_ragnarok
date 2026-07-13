@@ -232,16 +232,18 @@ seed variety and an inactive negative prompt (style control is
 positive-prompt-only at cfg 1.0) — neither of which the bakeoff can weigh for
 the user.
 
-### Gates
+### Gates (PRE-VERDICT SNAPSHOT — superseded by the VERDICT and the final
+Gates list below; kept as the state at the moment the user was asked)
 
 - [x] Numbered gallery, every candidate at 256 px + 64 px (G4).
 - [x] License verification recorded for all three contenders.
 - [x] VRAM + s/image recorded per contender (clean-box re-measure).
-- [ ] **User verdict selects the default checkpoint.** ← BLOCKING
-- [ ] Pipeline docs updated with the winner (implementation of this REQ).
+- [ ] **User verdict selects the default checkpoint.** ← BLOCKING *(given
+      2026-07-12: flux2)*
+- [ ] Pipeline docs updated with the winner *(done as implementation)*
 
-REQ-0127's roster batch and REQ-0137's identity pilot are both parked behind
-this verdict.
+REQ-0127's roster batch and REQ-0137's identity pilot were both parked behind
+this verdict. REQ-0127 has since shipped on flux2 (S7 ALL GREEN, 2026-07-13).
 
 
 ---
