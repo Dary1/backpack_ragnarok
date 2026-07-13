@@ -33,6 +33,8 @@ with the roster — see §3b. G14 opened.)*
 | 2026-07-13 | **⚠ Watcher — consequence, needs a look** | Under ruling (2), `adjacency_lr` = a **range-1 E/W ray**: the Watcher links to a Unit in the cell **directly left or right of its own cell**. Its design note — *"縦長や横長の変なバックパックの横にポンと置くだけで仕事をする"* — reads more like **BP-footprint** adjacency, which the ruling does not give. **The kit may need restating; the ruling stands.** |
 | 2026-07-13 (later) | **Watcher — RULED** | **`connection_shape: queen`, range 2** (`queen_2`). User: *"出ないとほぼ接続が不可能ですね"* — at range 1 a Unit only links when another Unit occupies the literal adjacent cell, which effectively never happens. `adjacency_lr` is now orphaned and has been REMOVED from the dictionary. |
 | 2026-07-13 | **⚠ G15 — the Squire has the same disease** | *(OPEN)* The Squire is `forward_1` = a **range-1** forward ray. It links only if a Unit sits in the single cell directly in front of it — the exact condition the user just called "nearly impossible" for the Watcher. Its design note assumes an "attacker" in front, and since links are **Unit-to-Unit**, that attacker must be a **Unit**, not a weapon PO. **Is the Squire deliberately that positional, or does it need range 2 as well?** Not fixed by inference. |
+| 2026-07-13 (final) | **G15 — CLOSED by user ruling** | **The Squire is `rook`, range 3** (`rook_3`). `forward_1` is orphaned and REMOVED from the dictionary. |
+| 2026-07-13 (final) | **G1 — CLOSED by AGENT INFERENCE under explicit user delegation** | User: *"残りの接続形状は、あなたの推論で決めちゃってください。後でまた修正が必要ならREQを出します。では、GO"*. **This is NOT a user ruling and is not recorded as one.** Shieldmaiden = `backward_line`; Priest = `queen`. Reasoning in §3c. The user has pre-authorised a correcting REQ; this row exists so that whoever reads it later knows a machine chose, not a person. |
 
 ## 1. Why this REQ exists
 
@@ -82,13 +84,13 @@ that the ratified vocabulary does not contain (→ G10, G11).
 - **Charge effect:** reduces its own debuffs and the connected BP's debuffs by a
   percentage.
 
-### 5. Shieldmaiden — `connection_shape: ` **(NOT GIVEN — see §3 G1)**
+### 5. Shieldmaiden — `connection_shape: backward_line` (後方直線) *(AGENT-INFERRED, see §3c)*
 - **Charge trigger:** amount of damage received.
 - **Charge skill:** immediately fires `Armor`-tagged items.
 - **Passive:** takes damage on behalf of the connected target — **but only up to
   the BP's block value.**
 
-### 6. Priest — `connection_shape: ` **(NOT GIVEN — see §3 G1)**
+### 6. Priest — `connection_shape: queen` *(AGENT-INFERRED, see §3c)*
 - **Charge trigger:** amount of damage the *connected target* received.
 - **Active:** heals the connected target's HP (distributed if there are several).
 
@@ -124,7 +126,7 @@ that the ratified vocabulary does not contain (→ G10, G11).
   wiring into other, stronger units. *(The hub reading is what forced the shape ruling:
   range 1 could not deliver it. `queen` at range 2 can.)*
 
-### 12. Squire (スクワイア / 従者) — `connection_shape:` **1 cell forward** *(NOT IN THE REQ-0128 VOCABULARY → G11)*
+### 12. Squire (スクワイア / 従者) — `connection_shape: rook_3` (飛車・射程3) *(RULED 2026-07-13)*
 - **Charge trigger:** the connected target performs an attack.
 - **Charge effect:** grants **itself** a small amount of block (shield).
   *("Small amount" is unquantified → G13.)*
@@ -135,10 +137,9 @@ that the ratified vocabulary does not contain (→ G10, G11).
 
 Raised here; **owned elsewhere**. This REQ does not invent answers.
 
-- **G1 — Two Units have no connection shape.** *(OPEN)* Shieldmaiden and Priest are
-  the only kits with no `connection_shape`. Both are *support* units whose whole kit
-  is phrased in terms of "the connected target", so the field cannot be `none`.
-  **Needs a user ruling.** (→ REQ-0128 vocabulary; ruling belongs to the user.)
+- **G1 — Shieldmaiden and Priest had no connection shape.** **CLOSED 2026-07-13 by
+  AGENT INFERENCE, under explicit user delegation.** Shieldmaiden = `backward_line`,
+  Priest = `queen`. See §3c — and note the provenance: **a machine chose these two.**
 - **G2 — Little Princess's charge capacity is literally "XX".** *(OPEN)* The
   passive-fires-N-times threshold is unspecified. **Needs a number.**
 - **G3 — The Thief's "clock tower".** **REVERSED 2026-07-13 — see §0.** It was not
@@ -171,9 +172,8 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
   are authored in §5, after the blockers clear.
 - **G10 — Watcher's shape.** **CLOSED 2026-07-13: `queen`, range 2 (`queen_2`).** The
   left/right-adjacent shape is abandoned and `adjacency_lr` deleted from the vocabulary.
-- **G11 — Squire's shape.** **CLOSED 2026-07-13:** `forward_1` = a forward ray with
-  range 1; forward = lower Y = up = `DIRS[0]`. **But see G15** — range 1 may make the
-  Squire unconnectable in practice, for the same reason the Watcher was rerouted.
+- **G11 — Squire's shape.** **CLOSED 2026-07-13: `rook_3`** (orthogonal, range 3).
+  The `forward_1` reading was abandoned as unconnectable (G15) and the term deleted.
 - **G12 — Watcher's effect needs a selector and a number.** *(OPEN → demand on
   REQ-0129)* "The longest-cooldown item in the connected Unit's BP" is a
   **max-selector over a BP's items** — no such targeting exists in the charge-target
@@ -183,6 +183,39 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
 - **G13 — Squire's block amount is unquantified.** *(OPEN)* "A small amount of
   block" needs a number. Also confirm the self-shield verb exists in the grammar
   (Princess §2.8 needs a self-shield too — likely the same verb).
+
+## 3c. G1 — the two shapes a machine chose (2026-07-13)
+
+The user delegated these explicitly (*"残りの接続形状は、あなたの推論で決めちゃってください"*)
+and pre-authorised a correcting REQ. **Recording the reasoning is the point** — an
+inference whose basis is written down can be overturned; one that is not becomes a
+clock tower.
+
+**Shieldmaiden → `backward_line`** (backward ray, unlimited)
+- Her passive is *body-blocking*: she eats damage aimed at the connected target, capped
+  by the BP's block. A body-blocker's geometry is **"I stand in front, you stand behind
+  me."** A backward ray is literally that shape.
+- It makes her the **mirror of the Light Cavalry** (`lance`, forward ray): one charges
+  forward, one guards backward. The roster gains a legible pair rather than a third
+  queen.
+- It uses a shape the **user already ratified** on 2026-07-12 and that no other kit
+  claimed — so the inference invents no vocabulary.
+- It satisfies the rescued REQ-0061 law — *each connective kit = exactly ONE deviation
+  from standard behaviour*.
+
+**Priest → `queen`** (8 directions, unlimited)
+- His active *"heals the connected target's HP (**distributed if there are several**)"*
+  is the only kit in the roster that **explicitly presumes multiple simultaneous
+  links.** A shape must supply them. `queen` yields up to 8; every other ratified shape
+  yields at most 4.
+- The "distributed" clause is therefore not flavour — it is a **requirement on the
+  shape**, and only `queen` meets it.
+- Reach is deliberately unlimited: a healer that must stand adjacent to be useful is the
+  failure the user already rejected twice today (Watcher, Squire).
+- **Risk, stated plainly:** this makes four of twelve units `queen`-family (Angel, both
+  Princesses, Priest). If that homogeneity is unwanted, the correcting REQ should
+  probably move the *Angel*, not the Priest — the Priest is the one whose kit text
+  cannot survive a narrower shape.
 
 ## 3b. Art / roster reconciliation — CLOSED 2026-07-13
 

@@ -24,11 +24,11 @@ yet resolve one.
 | `queen` | クイーン | `0-7` | ∞ | false |
 | `queen_2` | クイーン(射程2) | `0-7` | **2** | false |
 | `rook` | 飛車 | `0,2,4,6` | ∞ | false |
+| `rook_3` | 飛車(射程3) | `0,2,4,6` | **3** | false |
 | `bishop` | 角 | `1,3,5,7` | ∞ | false |
 | `lance` | 香 | `0` (N/forward) | ∞ | false |
 | `backward_line` | 後方直線 | `4` (S) | ∞ | false |
 | `adjacency` | 隣接 | `0,2,4,6` | **1** | false |
-| `forward_1` | 前方1マス | `0` (N) | **1** | false |
 | `knight` | 桂 | *(offsets — jumps)* | — | true |
 | `none` | 接続なし | — | 0 | — |
 
@@ -102,3 +102,15 @@ kit. That kit is gone, so **the entry is removed, not left in the dictionary.** 
 dangling, unused term sitting in a frozen vocabulary is precisely the condition that
 produced the clock-tower incident: a later agent finds the word, cannot find a
 definition, and invents one. `queen_2` takes its place.
+
+## 2026-07-13 (final) — Squire rerouted; `forward_1` removed
+
+User ruling: **the Squire is `rook`, range 3** (`rook_3`). `forward_1` existed only for
+the Squire's old one-cell-forward kit, so it is now an orphan and is **removed** — the
+same hygiene rule that removed `adjacency_lr`. Unused terms do not sit in a frozen
+vocabulary.
+
+**Final dictionary — 10 shapes.** `adjacency` (rook range 1) is the only entry no
+roster-001 unit uses; it is kept because the **user** ratified it on 2026-07-12, not
+because a def needs it. That provenance is recorded so nobody later "cleans it up" or
+invents a user for it.

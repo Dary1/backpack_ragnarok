@@ -1,5 +1,5 @@
 {
-  "version": 11,
+  "version": 12,
   "modes": [
     "battle",
     "detection",
@@ -239,7 +239,7 @@
     "on_hp_below": "REQ-0077 Rev.2 (2026-07-07) design rationale, NOT genre-research-sourced: the classic 'enrage below X% HP' RPG monster/boss convention (orc Bloodlust, behemoth Last Stand). A state-crossing condition none of the existing event triggers can express (every_secs/battle_start are time-based; the OnHit/OnSquadHit/OnSquadBeenHit family is hit-reactive, not HP-level-reactive). Fires ONCE EVER per owner+threshold (user ruling 2026-07-12, REQ-0121: no re-arm on healing back above). Trigger param: hp_frac (0<hp_frac<1); fires when hp/hpMax first drops strictly below hp_frac while still alive. Domain ruling (user, 2026-07-09, REQ-0121): [PO, EnemySkill] -- a PO's HP referent is its OWNING BP's hp/hpMax (same object OnBPBeenHit keys off); NOT extended to SI/Unit (no HP concept of their own). NOTE: reopens combat_spec_draft.md's [LOCKED OQ2] 'dynamic buffs = minimal' default for this one case -- user-accepted in REQ-0077's review.",
     "buff_self": "REQ-0077 Rev.2 design rationale: same shape as buff_host (stat:'damage' only, per [LOCKED OQ7]) but targets the owner itself rather than a host PO. Needed because monsters have no host PO to buff (REQ-0078 entity hierarchy: a Monster is a flat actor, no BP/PO/SI/Unit). Used at battle_start (permanent fold at pack compile, sim/lib/packs.cjs) or on_hp_below (fires once; folds onto the owner's own strike/multi_strike ranges at crossing time -- sim/lib/hpbelow.cjs). Implemented by REQ-0121.",
     "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121.",
-    "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL. | 2026-07-13: adjacency_lr REMOVED — it was added solely for the Watcher's left/right-adjacent kit, which the user replaced with queen range 2. No def references it; a dangling unused term in a frozen vocabulary is how the clock-tower incident happened. queen_2 added in its place.",
+    "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL. | 2026-07-13: adjacency_lr REMOVED — it was added solely for the Watcher's left/right-adjacent kit, which the user replaced with queen range 2. No def references it; a dangling unused term in a frozen vocabulary is how the clock-tower incident happened. queen_2 added in its place. | 2026-07-13: forward_1 REMOVED (orphaned when the Squire moved to rook range 3) — same hygiene rule that removed adjacency_lr. rook_3 added for the Squire.",
     "orientation": "REQ-0128b (user ruling 2026-07-13): forward = lower Y = up = engine DIRS[0] (N).",
     "connection_model": "REQ-0128b user rulings 2026-07-13: (1) rays do not pierce by default, keep it parameterisable; (2) adjacency = a range-limited ray, not an offset concept; (3) connections are canvas-local (Squad-scoped)."
   },
@@ -291,6 +291,19 @@
       "pierce": false,
       "note": "Orthogonal rays, unlimited."
     },
+    "rook_3": {
+      "ja": "飛車(射程3)",
+      "kind": "ray",
+      "dirs": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "range": 3,
+      "pierce": false,
+      "note": "Orthogonal rays, range 3. REQ-0149 Squire (user ruling 2026-07-13)."
+    },
     "bishop": {
       "ja": "角",
       "kind": "ray",
@@ -322,7 +335,7 @@
       ],
       "range": null,
       "pierce": false,
-      "note": "Backward ray, unlimited."
+      "note": "Backward ray, unlimited. REQ-0149 Shieldmaiden — she is the front line and guards what stands behind her. The mirror of lance (Light Cavalry)."
     },
     "adjacency": {
       "ja": "隣接",
@@ -335,17 +348,7 @@
       ],
       "range": 1,
       "pierce": false,
-      "note": "NOT a special 'adjacency' concept — a rook ray with range 1 (user ruling 2026-07-13). Diagonals excluded; see REQ-0128b if that is wrong."
-    },
-    "forward_1": {
-      "ja": "前方1マス",
-      "kind": "ray",
-      "dirs": [
-        0
-      ],
-      "range": 1,
-      "pierce": false,
-      "note": "Forward ray with range 1 (REQ-0149 Squire)."
+      "note": "Rook ray with range 1. Part of the user's ORIGINAL ratified vocabulary (2026-07-12), but NO roster-001 unit uses it — kept because the user ratified it, not because a def needs it."
     },
     "knight": {
       "ja": "桂",
