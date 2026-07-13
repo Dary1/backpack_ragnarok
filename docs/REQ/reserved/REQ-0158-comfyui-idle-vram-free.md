@@ -79,21 +79,38 @@ ever does (default off).
 ## Gates
 
 - G1 code: `python3 -m py_compile tools/comfyui_idle_free.py` -- OK.
-- G2 service up: `systemctl --user start comfyui` -> 8188 LISTEN, `GET /` 200,
-  `GET /system_stats` reports cuda:0 RTX 2080. Verified 2026-07-13 22:29 UTC.
-- G3 original bug gone: with ComfyUI up, art admin **Generate next seed** submits and
-  runs -- `/api/art/queue` shows `running: batch-004-item-icons-flux2:beast_jaw seed 405`
-  (renderId 564). No ECONNREFUSED.
-- G4 idle free: PENDING -- watch a real generate, then confirm VRAM drops ~10 min later.
+- G2 service up: `comfyui.service` active, owns 8188 (pid 3420772), `GET /` 200,
+  `GET /prompt` -> `queue_remaining: 0`, no `[ERROR]` in the boot log,
+  VRAM 124 MiB idle (no checkpoint resident). 2026-07-13 22:36 UTC.
+- G3 original bug gone: with ComfyUI up, art admin **Generate next seed** submitted and
+  ran -- `/api/art/queue` showed `running: batch-004-item-icons-flux2:beast_jaw seed 405`
+  (renderId 564), which then completed. No ECONNREFUSED.
+- G4 watchdog up: `comfyui-idle-free.service` active,
+  `[idle-free] watching http://127.0.0.1:8188 idle=600s poll=30s min_free=512MB rss_restart=off`.
+- G5 idle free end-to-end: **PENDING user acceptance** -- next real generate leaves a
+  checkpoint resident; 10 min after the queue empties the watchdog must log
+  `idle 10.x min, torch VRAM NNNN MB -> POST /free` followed by `freed: torch VRAM ~0 MB`,
+  and `nvidia-smi` must drop back to ~100 MiB.
 
-## Deployment notes / open items
+## Deployment record (2026-07-13 22:36 UTC)
 
-- Only ONE ComfyUI may own 8188. During G2 a hand-started instance (the user's, from
-  the manual start earlier that day) already held the port, and the systemd copy
-  exited with `Port 8188 is already in use` + `Could not acquire lock on
-  user/comfyui.db`. Harmless (a lock refusal, no corruption), but the manual instance
-  must be stopped before systemd takes ownership. Do not kill it mid-job.
-- `comfyui-idle-free.service` runs `%h/backpack_ragnarok/tools/comfyui_idle_free.py`
-  -- the MAIN checkout, which is HANDS-OFF. Merging this branch to master (and only
-  then enabling the watchdog unit) needs a fresh user go-ahead.
-- Linger is already on, so both units come back after a reboot.
+- Hand-started ComfyUI (pid 3342824) stopped; the systemd copy now owns the port.
+  Only ONE ComfyUI may bind 8188 -- a second one exits with `Port 8188 is already in
+  use` + `Could not acquire lock on user/comfyui.db` (a lock refusal, no corruption).
+  This is the failure mode to expect if anyone hand-starts ComfyUI while the service runs.
+- Branch rebased onto master (master had moved to a45b5c7, the REQ-0157 dist rebuild)
+  and fast-forwarded in; user go-ahead given for the main checkout + new units.
+- Units installed to `~/.config/systemd/user/` and enabled; linger is on, so both come
+  back after a reboot -- the "someone forgot to start ComfyUI" class of failure is gone.
+- ComfyUI boot takes ~40-60 s (torch + custom nodes). `TimeoutStartSec=0` keeps systemd
+  from mistaking a cold FLUX load for a hang.
+
+## Follow-ups
+
+- Watch RSS once flux2 has run a while. `/free` does not shrink it; if the process ever
+  bloats (only expected if a run crosses model families, which the flux2-only route
+  should prevent), set `RSS_RESTART_MB` in `comfyui-idle-free.service` and the watchdog
+  will restart ComfyUI while idle instead of merely unloading.
+- The art admin's "first image after a cold model load can take ~8 min" hint is now the
+  normal case after every 10-min idle window, not the exception. If that wait becomes
+  annoying in practice, raise `IDLE_SECONDS` -- it is one line in the unit.
