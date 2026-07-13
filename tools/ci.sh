@@ -35,6 +35,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   echo "==== [5/7] server api tests (pg backend) ===="
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
   STORAGE_BACKEND=pg node server/tests/api_test.cjs
+  echo "==== [5.1/7] server artwork registry tests (pg backend, REQ-0151) ===="
+  STORAGE_BACKEND=pg node server/tests/artwork_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi
