@@ -196,6 +196,7 @@ async function main() {
   });
 
   await storage.clearAllContent();
+  await storage.clearAllArtworks(); // remove the shared-namespace artwork facet row created in G1
   await storage.closeContentPool();
   await storage.closeArtPool();
   os.homedir = realHome;
