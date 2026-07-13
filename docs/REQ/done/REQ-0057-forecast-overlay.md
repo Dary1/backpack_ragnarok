@@ -191,3 +191,13 @@ forecast block; web/app generated dist -- rebuilt 3519ad3), gates re-run
 green on the synced tree, then master fast-forwarded to the branch tip.
 Deployed: dist served immediately via the static service; backpack-api
 restarted for GET /api/schedule/forecast. built -> done on this merge.
+
+2nd pre-landing sync: REQ-0156 (artadmin overhaul) merged to master
+mid-landing; master re-merged into this branch (same index.css
+both-append union + dist-regen resolution), gates re-run green
+(ci core + artqueue 4/4 + forecast parity 16/16; full e2e 154 passed,
+10 failed all accounted: 5 stable pre-existing + warehouse-mjolnir:203
+and forecast:41 parallel-mode flakes + artadmin x3 failing IDENTICALLY
+against the live master build serially = env, 0156 gates them via its
+own tools/artadmin_e2e.sh mock harness). Post-deploy forecast.spec vs
+live: recorded below.
