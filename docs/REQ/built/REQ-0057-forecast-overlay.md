@@ -177,3 +177,17 @@
   heavier there than in a real 4-squad fight. If a troop-aware editor forecast is
   wanted later, `forecastPressure` already takes a full-field `occupied` set; only
   the caller needs to change.
+
+
+## Merge & deploy (2026-07-14)
+
+User-directed merge (duplication check requested and performed in the
+REQ-0145b session): no forecast implementation existed on master (the
+only "forecast" hits are the unrelated ragnarok order-projection copy);
+REQ-0142 link-trace is complementary (your own units beams), not a
+duplicate. master was merged INTO this branch (b8c0213; conflicts:
+index.css both-append tails -- union kept, master admin block then the
+forecast block; web/app generated dist -- rebuilt 3519ad3), gates re-run
+green on the synced tree, then master fast-forwarded to the branch tip.
+Deployed: dist served immediately via the static service; backpack-api
+restarted for GET /api/schedule/forecast. built -> done on this merge.
