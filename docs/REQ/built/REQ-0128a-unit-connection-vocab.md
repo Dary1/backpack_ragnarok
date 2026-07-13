@@ -19,18 +19,39 @@ entries), plus a `provenance` entry. **Dictionary only — nothing is wired to t
 engine.** The validator can now recognise a `connection_shape` value; it cannot
 yet resolve one.
 
-| key | ja | kind | note |
-|---|---|---|---|
-| `queen` | クイーン | ray | 8-direction rays. The pre-pivot Linker default. |
-| `rook` | 飛車 | ray | Orthogonal rays. |
-| `bishop` | 角 | ray | Diagonal rays. |
-| `lance` | 香 | ray | Single forward ray → `dirs [0]` (N). |
-| `knight` | 桂 | offset | Chess-knight fixed offsets. |
-| `backward_line` | 後方直線 | ray | Single backward ray → `dirs [4]` (S). |
-| `adjacency` | 隣接 | offset | All adjacent cells. |
-| `adjacency_lr` | 左右隣接 | offset | **PROVISIONAL** — REQ-0149 Watcher. May instead become an axis parameter on `adjacency`. |
-| `forward_1` | 前方1マス | offset | **PROVISIONAL** — REQ-0149 Squire. → `offsets [[-1,0]]`. |
-| `none` | 接続なし | none | Unit forms no links. |
+| key | ja | dirs | range | pierce |
+|---|---|---|---|---|
+| `queen` | クイーン | `0-7` | ∞ | false |
+| `rook` | 飛車 | `0,2,4,6` | ∞ | false |
+| `bishop` | 角 | `1,3,5,7` | ∞ | false |
+| `lance` | 香 | `0` (N/forward) | ∞ | false |
+| `backward_line` | 後方直線 | `4` (S) | ∞ | false |
+| `adjacency` | 隣接 | `0,2,4,6` | **1** | false |
+| `adjacency_lr` | 左右隣接 | `2,6` (E/W) | **1** | false |
+| `forward_1` | 前方1マス | `0` (N) | **1** | false |
+| `knight` | 桂 | *(offsets — jumps)* | — | true |
+| `none` | 接続なし | — | 0 | — |
+
+## The shape model collapsed — user ruling 2026-07-13
+
+> *"adjacency は、隣接としてとらえるのではなく、ray の距離が1しかない、2しかないと判断してください"*
+
+**`adjacency` is not a concept. It is a ray with a range limit.** That one ruling
+deletes the entire "offset shapes" category the earlier draft invented — and with it
+the `adjacency` vs `BP-footprint-adjacency` question, the separate offset-rotation
+machinery, and two of the three "PROVISIONAL" flags.
+
+Every shape is now **`{dirs, range, pierce}`**:
+- `range`: `null` = unlimited, `N` = the ray reaches **at most N cells**.
+- `pierce`: `false` by default — **rays do NOT pass through** (user ruling). The field
+  exists from day one so a future piercing shape is a **data** change, not an engine
+  change (*"あとで貫通するものが出るかもしれません。どちらでもよいようにしておいてください"*).
+
+**`knight` is the sole survivor of the offset category** — it *jumps*, so occlusion
+cannot apply to it, and it cannot be written as `{dirs, range}`. It is marked
+`pierce: true` for exactly that reason.
+
+**Scope:** connections resolve **canvas-local** (within one Squad) — user ruling.
 
 ## What this REQ deliberately does NOT do
 
