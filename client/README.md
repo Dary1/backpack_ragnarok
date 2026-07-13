@@ -40,6 +40,21 @@ web service (no ingress change needed; `web/` is already served as-is).
   from content i18n (item/SI name/flavor text, served via `content/live/
   *.json`'s `i18n.ja.{name,flavor}` map, read directly by `src/dex/*`) --
   the same single `Locale` toggle (Header.tsx) drives both.
+- `src/api.ts` is a BARREL (REQ-0145b): implementation lives in
+  `src/api/` split by domain (http core / content / profile / dex /
+  dismantle / schedule / warehouse / workshop / market / ragnarok /
+  admin). Add new endpoints in the matching domain module, never by
+  appending to the barrel.
+- `src/i18n.ts` is a BARREL (REQ-0145b): the en/ja key groups live in
+  `src/i18n/` per-domain modules (nav / common / canvas / dex /
+  schedule / warehouse / workshop / market / ragnarok / settings),
+  merged with key-disjoint spreads; `t()` and `TranslationKey` are
+  unchanged. Add new keys in the matching module.
+- `src/index.css` is an ORDERED IMPORT LIST (REQ-0145b): rule bodies
+  live in `src/styles/*.css` (a byte partition of the old file; the
+  import order is load-bearing cascade order -- never reorder). Add new
+  rules in the matching styles file; a new page gets a new file
+  appended last.
 - `src/lib/` (REQ-0145b) — shared page-level helpers, extracted from the
   pages that used to hold private copies. `itemContent.ts` (itemId ->
   content-entry / localized-name / icon+rarity resolution), `time.ts`
