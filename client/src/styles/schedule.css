@@ -1,0 +1,589 @@
+/* ---------------------------------------------------------------------
+   Schedule (REQ-0036 P1-C) -- Rooms, room cards, slots panel, create
+   form. REQ-0071: re-skinned to the MJOLNIR expedition mock
+   (web/redesign/expedition.html) -- page key art + pagehead strip +
+   rune divider, ornate room cards with the mock's emblem/status-chip/
+   slot-preview anatomy (RoomCard.tsx), night-iron form fields. REQ-0086:
+   Warehouse (formerly a tab sharing this page) moved to its own route +
+   client/src/warehouse/WarehousePage.tsx -- this page now renders ONLY
+   Rooms, and the .schedule-tab(-active)/.schedule-tab-row/
+   .schedule-pagehead-tabs tab-chip rules below are RETIRED (no more
+   in-page tab switch). Selector contract for what remains: .schedule-page
+   / .schedule-slot-error / .schedule-monitor-expand-btn /
+   .schedule-claim-btn and every data-testid keep their names (the E2E
+   suite selects on them). Omissions vs the mock are recorded in
+   docs/REQ-0071-redesign-expedition.md.
+--------------------------------------------------------------------- */
+.schedule-page {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 0 26px 60px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* full-viewport key art (mock .bgart) -- referenced from the served
+   /redesign/assets path, never bundled (404s harmlessly under the
+   proxy-less dev server, same as .canvas-bgart -- REQ-0070 note).
+   Nested inside .schedule-page, so it unmounts with the route. */
+.expedition-bgart {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/redesign/assets/bg_expedition.jpg') center / cover no-repeat;
+  opacity: 0.5;
+  filter: saturate(0.85) brightness(0.6);
+}
+
+.expedition-bgart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.55), rgba(10, 13, 18, 0.86) 70%);
+}
+
+/* pagehead strip (mock .pagehead; the raven art + night arc are omitted
+   -- no backing data, see the REQ-0071 notes doc) */
+.schedule-pagehead {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+}
+
+.schedule-pagehead-kicker {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.34em;
+}
+
+.schedule-pagehead-title {
+  margin: 2px 0 0;
+  font-size: 27px;
+  font-weight: 800;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+.schedule-pagehead-lede {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.08em;
+}
+
+.schedule-pagehead-divider {
+  margin: 10px 0 14px;
+}
+
+.schedule-pagehead-divider::before,
+.schedule-pagehead-divider::after {
+  background: linear-gradient(90deg, transparent, rgba(201, 169, 89, 0.35), transparent);
+}
+
+/* REQ-0086: the .schedule-tab(-row/-active) chip rules that used to live
+   here (Rooms/Warehouse tab switch) are RETIRED -- Warehouse is its own
+   route now (WarehousePage.tsx) and Schedule has nothing left to switch
+   between. Removed rather than left dead, per this file's own "selector
+   contract" discipline (see the block comment above). */
+
+.schedule-loading,
+.schedule-empty {
+  color: var(--bone-3);
+  font-size: 14px;
+  padding: 14px 4px;
+  letter-spacing: 0.06em;
+}
+
+.schedule-error {
+  color: #e06b5f;
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+.schedule-rooms-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* mock .colhead -- den label + live room counts */
+.schedule-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 2px;
+}
+
+.schedule-colhead-den {
+  font-size: 10.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+
+/* rooms list: responsive card grid; the EXPANDED card spans the full row
+   (.schedule-room-card-open) so the 960px monitor canvas has room. The
+   mock's separate center monitor column would require pulling the
+   Monitor OUT of its room card -- forbidden by the E2E containment
+   contract + the one-Pixi-app-per-monitor lifecycle (see
+   SchedulePage.tsx's module comment). */
+.schedule-rooms-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+/* ---------- room card (mock .room) ---------- */
+.schedule-room-card {
+  padding: 12px 14px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.schedule-room-card-open {
+  grid-column: 1 / -1;
+  box-shadow: var(--focus-ring), 0 8px 24px rgba(0, 0, 0, 0.45);
+  border-color: var(--gold-lo);
+}
+
+/* canceled rooms read as inert/sealed (mock .room.locked treatment) */
+.schedule-room-status-canceled {
+  opacity: 0.55;
+  filter: saturate(0.45);
+}
+
+.schedule-room-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* the mock's circular emblem -- its emblem_*.png art is placeholder, so
+   the disc renders the dungeon name's own first glyph (RoomCard.tsx) */
+.schedule-room-emblem {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--gold-lo);
+  background: radial-gradient(circle at 50% 40%, #232b37, #10141b 80%);
+  box-shadow: 0 0 0 3px rgba(10, 13, 18, 0.85), 0 4px 10px rgba(0, 0, 0, 0.5);
+  color: var(--gold-hi);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.schedule-room-head-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.schedule-room-name {
+  font-weight: 800;
+  font-size: 15.5px;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.schedule-room-lv {
+  font-size: 10.5px;
+  color: var(--gold);
+  margin-left: 8px;
+  letter-spacing: 0.1em;
+}
+
+.schedule-room-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.schedule-room-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schedule-room-grow {
+  flex: 1;
+}
+
+.schedule-room-watching {
+  color: var(--gold-hi);
+  letter-spacing: 0.14em;
+}
+
+.schedule-room-countdown {
+  color: var(--frost-hi);
+}
+
+/* status chips: label + dot color per status (double-encoded).
+   schedule-ux-improvements' intent preserved on the MJOLNIR ramp: idle
+   (needs input) = gold, running = live ember dot, cooldown = frost,
+   cancelPending = blood (still in flight), canceled = muted bone. */
+.schedule-status-badge .dot { background: var(--bone-3); }
+.schedule-status-badge-idle { color: var(--gold-hi); border-color: rgba(201, 169, 89, 0.45); }
+.schedule-status-badge-idle .dot { background: var(--gold); box-shadow: 0 0 6px rgba(201, 169, 89, 0.6); }
+.schedule-status-badge-cooldown { color: var(--frost-hi); border-color: rgba(111, 196, 222, 0.4); }
+.schedule-status-badge-cooldown .dot { background: var(--frost); box-shadow: 0 0 6px var(--frost-glow); }
+.schedule-status-badge-running { color: var(--gold-hi); border-color: var(--gold-lo); }
+.schedule-status-badge-running .dot { background: var(--ember-hi); box-shadow: 0 0 6px var(--ember-glow); }
+.schedule-status-badge-cancelPending { color: #e06b5f; border-color: rgba(176, 65, 62, 0.6); background: rgba(37, 17, 16, 0.55); }
+.schedule-status-badge-cancelPending .dot { background: var(--blood); box-shadow: 0 0 6px rgba(176, 65, 62, 0.6); }
+.schedule-status-badge-canceled { color: var(--bone-3); }
+
+/* slot-preview grid on the collapsed card (mock .slots/.slot) */
+.schedule-room-slots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.schedule-room-slot {
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: rgba(10, 13, 18, 0.5);
+  font-size: 11.5px;
+  color: var(--bone-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-room-slot b {
+  font-family: var(--f-dj);
+  color: var(--gold);
+  font-weight: 700;
+  margin-right: 2px;
+}
+
+.schedule-room-slot-empty {
+  border-style: dashed;
+  color: var(--bone-3);
+  justify-content: center;
+  background: rgba(10, 13, 18, 0.28);
+}
+
+/* footer row: room id + actions, over the mock .r-foot hairline */
+.schedule-room-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(233, 227, 211, 0.07);
+}
+
+.schedule-room-id {
+  color: var(--bone-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.schedule-room-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.schedule-expand-btn,
+.schedule-cancel-btn,
+.schedule-monitor-expand-btn,
+.schedule-claim-btn {
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  border-radius: 2px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
+}
+
+.schedule-expand-btn,
+.schedule-monitor-expand-btn {
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+}
+
+.schedule-expand-btn:hover,
+.schedule-monitor-expand-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: 0 0 8px rgba(201, 169, 89, 0.25);
+}
+
+.schedule-cancel-btn {
+  color: #e06b5f;
+  border: 1px solid rgba(176, 65, 62, 0.6);
+}
+
+.schedule-cancel-btn:hover {
+  border-color: var(--blood);
+  box-shadow: 0 0 8px rgba(176, 65, 62, 0.3);
+}
+
+.schedule-cancel-btn:disabled,
+.schedule-expand-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.schedule-claim-btn {
+  color: #9fe0c4;
+  border: 1px solid rgba(94, 163, 127, 0.55);
+}
+
+.schedule-claim-btn:hover {
+  border-color: var(--r-uncommon);
+  box-shadow: 0 0 8px rgba(94, 163, 127, 0.3);
+}
+
+.schedule-claim-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+.schedule-room-expanded {
+  border-top: 1px solid rgba(201, 169, 89, 0.14);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Slots panel */
+.schedule-slots-title {
+  margin: 0 0 8px;
+  font-family: var(--f-den);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+}
+
+.schedule-slots-no-squads {
+  color: #e06b5f;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.schedule-slots-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.schedule-slot-card {
+  background: rgba(10, 13, 18, 0.5);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-slot-label {
+  font-family: var(--f-den);
+  font-size: 10px;
+  color: var(--bone-3);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+}
+
+.schedule-slot-empty {
+  font-size: 11px;
+  color: var(--bone-3);
+}
+
+.schedule-slot-queued-badge {
+  border: 1px solid rgba(111, 196, 222, 0.4);
+  color: var(--frost-hi);
+  background: rgba(29, 75, 96, 0.25);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10px;
+  align-self: flex-start;
+  letter-spacing: 0.06em;
+}
+
+.schedule-slot-error {
+  color: #e06b5f;
+  font-size: 11px;
+}
+
+/* Create-room form */
+/* schedule-ux-improvements: toolbar row pinned above the rooms list --
+   holds the create-room toggle button + the hide-canceled checkbox, so
+   both the primary action and the list's own filter state are visible
+   without scrolling past whatever the list currently contains. */
+.schedule-rooms-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* the mock's 「新しき遠征を組む ＋」 -- rides the theme .btn (added in
+   SchedulePage.tsx); this rule only sizes it */
+.schedule-create-toggle-btn {
+  font-size: 13px;
+  padding: 8px 18px;
+  letter-spacing: 0.16em;
+}
+
+.schedule-hide-canceled-toggle {
+  gap: 8px;
+  cursor: pointer;
+  padding: 5px 14px;
+}
+
+.schedule-hide-canceled-toggle input {
+  accent-color: var(--gold);
+  margin: 0;
+}
+
+/* schedule-ux-improvements: inline cancel confirmation, replacing
+   window.confirm() -- same card-adjacent placement, themed instead of a
+   native browser dialog. */
+.schedule-room-cancel-confirm {
+  padding: 10px 12px;
+  border: 1px solid rgba(176, 65, 62, 0.6);
+  border-radius: 2px;
+  background: rgba(37, 17, 16, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.schedule-room-cancel-confirm-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.schedule-create-panel {
+  padding: 14px 16px 15px;
+  margin-bottom: 2px;
+}
+
+.schedule-create-panel h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.schedule-create-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.schedule-field-label {
+  font-family: var(--f-den);
+  font-size: 10px;
+  color: var(--bone-3);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+.schedule-field-note {
+  max-width: 240px;
+  color: var(--bone-3);
+  font-size: 11px;
+}
+
+.schedule-select,
+.schedule-input {
+  background: rgba(10, 13, 18, 0.65);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: var(--f-ui);
+}
+
+.schedule-select:focus,
+.schedule-input:focus {
+  outline: none;
+  border-color: var(--gold-lo);
+  box-shadow: var(--focus-ring);
+}
+
+.schedule-visibility-fixed {
+  color: var(--bone-3);
+  font-style: italic;
+  padding: 6px 0;
+}
+
+.schedule-create-btn {
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  outline: 1px solid rgba(201, 169, 89, 0.28);
+  outline-offset: -3px;
+  border-radius: 2px;
+  padding: 8px 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out, box-shadow 0.14s ease-out;
+}
+
+.schedule-create-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: 0 0 8px rgba(201, 169, 89, 0.25);
+}
+
+.schedule-create-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* narrow screens (mock 840px breakpoint): tighter padding (bottom
+   clears the mobile nav bar), tabs wrap under the title, slots fold
+   to 2-up. */
+@media (max-width: 840px) {
+  .schedule-page {
+    padding: 0 14px 90px;
+  }
+  .schedule-pagehead-tabs {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
+  .schedule-slots-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+

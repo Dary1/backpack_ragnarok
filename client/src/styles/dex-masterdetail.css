@@ -1,0 +1,173 @@
+/* ============================================================
+   REQ-0108 — Dex master/detail inline expand. The catalog grid is the
+   single list (master); selecting a .dex-card rings it and inserts a
+   full-width [diagram | info] drawer after it in the grid. The former
+   .dex-detail-col-list rail is gone; the two panes reuse the existing
+   .dex-detail-col-diagram / .dex-detail-col-info panel styles.
+   ============================================================ */
+.dex-card-selected {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.dex-detail-drawer {
+  grid-column: 1 / -1;
+  margin: 4px 0 12px;
+}
+.dex-detail-drawer-panes {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 0;
+}
+@media (max-width: 1100px) {
+  .dex-detail-drawer-panes {
+    flex-direction: column;
+  }
+  .dex-detail-drawer-panes > .dex-detail-col-diagram,
+  .dex-detail-drawer-panes > .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+/* ---- REQ-0119: floating item tooltip panel (single-tap on a board item
+   icon). A faithful copy of web/redesign/styleguide.html's tooltip anatomy
+   (assets/ui.css's .tooltip / .tt-*), replicated under a NEW class name:
+   the plain `.tooltip` is already taken above by ItemPanel's older desktop
+   hover tooltip (see its note), so reusing it would collide. Rendered by
+   FloatingItemTip.tsx; left/top set in JS (position:fixed, edge-flipped). */
+.item-tip {
+  position: fixed;
+  z-index: 150;
+  width: 264px;
+  max-width: min(264px, 78vw);
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--bone-2);
+  pointer-events: auto;
+}
+.item-tip-name {
+  font-family: var(--f-dj);
+  font-size: 16px;
+  font-weight: 700;
+}
+.item-tip-tags {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.item-tip-stat {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.item-tip-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  margin-top: 8px;
+  font-family: var(--f-dj);
+}
+.item-tip-sell {
+  color: var(--gold);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+/* ============================================================
+   REQ-0120 - Dex master/detail SPLIT (supersedes the REQ-0108 inline
+   drawer above; those .dex-detail-drawer rules are now dead - no DOM
+   references them - and are left only to avoid churn). The catalog area
+   is split into .dex-md = [ .dex-md-list (master: colhead + controls +
+   grid + TM strip) | .dex-md-detail (persistent <DexDetail>) ].
+   Orientation-driven per the owner spec (2026-07-09):
+     - landscape - left = list / right = detail, 50 / 50. The detail pane
+       is sticky (clears the 50px sticky .app-header) and scrolls on its
+       own, so the list scrolls independently while the detail stays put.
+     - portrait  - stacked, top = detail / bottom = list (via order); the
+       detail is height-capped so the list is reachable in one screenful.
+   Dex.tsx preselects index=0, so a detail is always shown on load.
+   ============================================================ */
+.dex-md {
+  display: grid;
+  grid-template-columns: 1fr; /* refined per-orientation below */
+  gap: 16px;
+  align-items: start; /* required so the sticky detail column can travel */
+}
+.dex-md-list {
+  min-width: 0;
+}
+.dex-md-detail {
+  min-width: 0;
+}
+
+/* The detail pane holds <DexDetail>'s [diagram | info] panes. In the split
+   the detail column is ~half width, so always STACK them (diagram over
+   info) and let the column itself be the single scroll container (drop the
+   panes' own 80vh + overflow so there are no nested scrollbars). */
+.dex-md-detail .dex-detail-drawer-panes {
+  flex-direction: column;
+}
+.dex-md-detail .dex-detail-col-diagram,
+.dex-md-detail .dex-detail-col-info {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+}
+
+.dex-detail-empty {
+  padding: 28px 24px;
+  text-align: center;
+  color: var(--bone-3);
+  border: 1px dashed rgba(233, 227, 211, 0.2);
+  border-radius: 4px;
+}
+
+@media (orientation: landscape) {
+  .dex-md {
+    grid-template-columns: 1fr 1fr; /* 50 / 50 (owner choice 2026-07-09) */
+  }
+  .dex-md-detail {
+    position: sticky;
+    top: 58px; /* clear the 50px sticky .app-header + a small gap */
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+  }
+}
+
+@media (orientation: portrait) {
+  .dex-md {
+    grid-template-columns: 1fr;
+  }
+  .dex-md-detail {
+    order: 0; /* top */
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+  .dex-md-list {
+    order: 1; /* bottom */
+  }
+}
+
+/* REQ-0097: schedule 3-column master/detail (rooms list | shared monitor | spoils). */
+.schedule-master-detail { display: grid; grid-template-columns: minmax(280px, 360px) 1fr minmax(200px, 300px); gap: 16px; align-items: start; }
+.schedule-rooms-col { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.schedule-detail-pane { min-width: 0; position: sticky; top: 12px; }
+.schedule-detail-empty { padding: 24px; text-align: center; opacity: 0.6; border: 1px dashed rgba(233, 227, 211, 0.2); border-radius: 4px; }
+.schedule-spoils-col { min-width: 0; }
+.schedule-spoils-col-title { margin-bottom: 8px; }
+.schedule-rooms-col .schedule-room-card { cursor: pointer; }
+@media (max-width: 1000px) {
+  .schedule-master-detail { grid-template-columns: 1fr; }
+  .schedule-detail-pane { position: static; }
+}
+

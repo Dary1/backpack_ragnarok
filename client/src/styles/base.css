@@ -1,0 +1,1758 @@
+
+:root {
+  color-scheme: dark;
+  font: 15px/1.45 var(--f-ui);
+  /* REQ-0069: legacy palette names alias the MJOLNIR tokens so every
+     pre-existing rule picks up the night-iron palette without per-rule
+     edits. --panel itself is now defined by theme/mjolnir.css (#131820)
+     and intentionally NOT redefined here. */
+  --bg: var(--void);
+  --line: var(--border-lo);
+  --text: var(--bone);
+  --dim: var(--bone-2);
+  --cyan: #59d6d6;
+  --ok: #5cb573;
+  --bad: #c05050;
+  /* schedule-ux-improvements: dedicated "needs your input" tone for the
+     idle room status -- distinct from --bad (error/danger) and --ok
+     (success), and no longer overloading --dim so idle can be the most
+     eye-catching non-canceled state instead of the least. */
+  --warn: #d1a24a;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* REQ-0069 -- app chrome, MJOLNIR style. The header is the mock's slim
+   sticky HUD bar; the global nav (REQ-0034) moved from the header into
+   the mock's fixed left rail (.nav-rail, bottom bar under 840px). The
+   .nav-link/.nav-link-active class contract is unchanged (the E2E suite
+   selects on it); only the presentation moved from text pills to
+   rune-over-label rail entries. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.96), rgba(10, 13, 18, 0.82));
+  border-bottom: 1px solid rgba(201, 169, 89, 0.22);
+  backdrop-filter: blur(6px);
+}
+
+.app-header h1 {
+  font-family: var(--f-den);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin: 0;
+}
+
+/* the fixed left nav rail (mock: .rail) */
+.nav-rail {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 86px;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 0;
+  background: linear-gradient(180deg, #0C1016, #0A0D12);
+  border-right: 1px solid rgba(201, 169, 89, 0.18);
+  overflow-y: auto;
+}
+
+/* content clears the rail (mock: .page-shell) -- applied on every route
+   except the full-bleed landing (see App.tsx). */
+.app-shell.with-rail {
+  margin-left: 86px;
+  min-width: 0;
+}
+
+/* the LOGO above the nav entries -- returns to the landing (REQ-0069) */
+.nav-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 6px 10px;
+  margin-bottom: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.nav-logo svg {
+  width: 34px;
+  height: 28px;
+}
+
+.nav-logo-text {
+  font-family: var(--f-den);
+  color: var(--gold);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  writing-mode: vertical-rl;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.nav-logo:hover {
+  border-color: rgba(201, 169, 89, 0.35);
+  box-shadow: inset 0 0 12px rgba(201, 169, 89, 0.1);
+}
+
+.nav-link {
+  width: 66px;
+  padding: 10px 0 8px;
+  text-align: center;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--bone-2);
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.14s ease-out;
+}
+
+.nav-link .nav-rune {
+  display: block;
+  font-family: var(--f-rune);
+  font-size: 20px;
+  color: var(--bone-3);
+  transition: color 0.14s;
+}
+
+.nav-link .nav-lbl {
+  display: block;
+  font-size: 11px;
+  margin-top: 3px;
+  letter-spacing: 0.08em;
+}
+
+.nav-link:hover {
+  color: var(--gold-hi);
+  border-color: rgba(201, 169, 89, 0.3);
+}
+
+.nav-link:hover .nav-rune {
+  color: var(--gold);
+}
+
+.nav-link-active {
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  background: rgba(201, 169, 89, 0.07);
+  box-shadow: inset 0 0 12px rgba(201, 169, 89, 0.08);
+}
+
+.nav-link-active .nav-rune {
+  color: var(--gold-hi);
+  text-shadow: 0 0 8px rgba(201, 169, 89, 0.5);
+}
+
+/* mobile: the rail becomes a bottom bar (mock's 840px breakpoint). Note
+   the logo hides here (mock hides its .brand the same way) -- mobile
+   returns to the title via the browser URL for now. */
+@media (max-width: 840px) {
+  .nav-rail {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: auto;
+    height: 62px;
+    z-index: 80;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: stretch;
+    padding: 4px 4px 2px;
+    gap: 0;
+    border-right: none;
+    border-top: 1px solid rgba(201, 169, 89, 0.25);
+    background: linear-gradient(0deg, #0A0D12 62%, rgba(10, 13, 18, 0.94));
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .nav-logo { display: none; }
+  .nav-link {
+    width: auto;
+    min-width: 42px;
+    flex: 1;
+    padding: 6px 2px 4px;
+  }
+  .nav-link .nav-rune { font-size: 17px; }
+  .nav-link .nav-lbl { font-size: 10px; margin-top: 1px; letter-spacing: 0.04em; }
+  .app-shell.with-rail {
+    margin-left: 0;
+    padding-bottom: 78px;
+  }
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.data-source-badge {
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+}
+
+.badge-live {
+  background: #1c3d2e;
+  color: #5cb573;
+  border-color: #2f6b4d;
+}
+
+.badge-error {
+  background: #3d1c1c;
+  color: #e05c5c;
+  border-color: #6b2f2f;
+}
+
+.badge-pending {
+  background: #2a2620;
+  color: var(--dim);
+  border-color: var(--line);
+}
+
+.lang-toggle {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.lang-toggle:hover {
+  border-color: var(--cyan);
+}
+
+.app-main {
+  display: flex;
+  gap: 18px;
+  padding: 18px 22px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+/* REQ-0070: the mock's .board-stage, applied to the app's .board-wrap so
+   both Pixi boards (canvas + inventory, incl. the inventory column's
+   Warehouse-tab portal target) sit on the same night-iron stage. Padding
+   is 14px, not the mock's 26px: at the E2E viewport (2000px, minus the
+   86px rail and the scrollbar) two 716px boards + the item panel must
+   stay side by side without wrapping -- see playwright.config.ts's
+   viewport note. The gold-knot corners come from the theme's .ornate/.k
+   (App.tsx adds them as direct children). */
+.board-wrap {
+  position: relative;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  border-radius: 4px;
+  padding: 14px;
+  background: radial-gradient(120% 120% at 50% 30%, #242b36 0%, #171c25 55%, #10141b 100%);
+  border: 1px solid var(--border-lo);
+  box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.board-canvas {
+  display: block;
+}
+
+.board-placeholder {
+  min-width: 560px;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+}
+
+.board-error {
+  color: var(--bad);
+}
+
+/* REQ-0070: the catalog panel wears the theme's .panel/.ornate (App.tsx
+   adds those classes + the corner knots); min-width dropped 320->300 for
+   the same E2E-viewport budget the .board-wrap note describes. */
+.item-panel {
+  flex: 1;
+  min-width: 300px;
+  max-width: 392px;
+  align-self: flex-start;
+}
+
+.item-panel-body {
+  padding: 12px 14px 14px;
+}
+
+.item-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0 8px;
+  font-family: var(--f-den);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: var(--gold);
+}
+
+.item-panel h2:first-child {
+  margin-top: 0;
+}
+
+.item-panel h2::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 169, 89, 0.5), transparent);
+}
+
+.item-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+/* (REQ-0070: rows are .icard cards now -- see the REQ-0070 section below;
+   the old dashed-divider li rules are retired.) */
+
+/* REQ-0070: rarity words adopt the theme ramp (Relic wears the mock's
+   LEGENDARY tone -- the mock labels that tier 遺宝 = relic). */
+.rarity.r-Common { color: var(--r-common); }
+.rarity.r-Uncommon { color: var(--r-uncommon); }
+.rarity.r-Rare { color: var(--r-rare); }
+.rarity.r-Relic { color: var(--r-legend); }
+
+/* REQ-0070: hover tooltip re-skinned to the mock's fixed anatomy; the
+   position:fixed + pointer-events:none mechanics are unchanged (the mock
+   .tooltip was deliberately NOT ported into the theme to avoid colliding
+   with this rule -- see theme/mjolnir.css's header). */
+.tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 60;
+  width: 264px;
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  padding: 12px 14px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.tooltip h3 {
+  margin: 0 0 4px;
+  font-family: var(--f-dj);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.tooltip-meta {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.tooltip-eff {
+  margin-top: 6px;
+}
+
+/* REQ-0031 Phase B: Save/Load buttons retired (auto-save runs in the
+   background) -- .io-status/.io-btn (REQ-0027 T0.2) replaced by the
+   persistent auto-save indicator below. */
+.auto-save-status {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* REQ-0030 Phase 2: retired the old drag-source list (.inventory-panel/
+   .inventory-grid/.inventory-slot/.inventory-rarity/.inventory-label/
+   .inventory-empty) -- the inventory is a real tabbed PixiJS board now
+   (see .board-column/.inv-tabs/.inventory-board-canvas below).
+   .inventory-note is KEPT, moved BELOW the inventory board container,
+   left-aligned (REQ-0031 Phase B UI restructure -- was above the
+   tabs/board before; text-align left is the default block behavior, no
+   extra rule needed for that half of the change). */
+.inventory-note {
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.04em;
+  margin: 8px 0 0 4px;
+  text-align: left;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* REQ-0031 Phase B: title + tab row, shared by BOTH the Canvas column
+   (title + SquadTabs) and the Inventory column (title + Tabs) -- tabs
+   are right-aligned in the SAME row as the label, per the task's
+   verbatim UI change request. */
+/* REQ-0070: the mock's .stagehead -- title in the display serif with the
+   EN sub-caption and (canvas only) the live stats chip inline; the
+   inventory column's page tabs stay in this row, pushed right. */
+.board-column-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 2px 4px;
+}
+
+.board-column-title {
+  margin: 0;
+  font-family: var(--f-dj);
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  color: var(--bone);
+  white-space: nowrap;
+}
+
+.board-column-header .inv-tabs {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.inv-tabs,
+.squad-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.squad-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* REQ-0070: canvas squad tabs restyled as the mock's boardfoot .squad
+   pills; inventory page tabs as the mock's .pg page tabs. Class names,
+   DOM structure and every gesture (click / long-press rename /
+   drag-reorder / trash-drop) are unchanged -- LongPressTabs.tsx knows
+   nothing about any of this. */
+.squad-tab {
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.8));
+  color: var(--bone-2);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+.squad-tab:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.squad-tab-active {
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  background: linear-gradient(180deg, rgba(201, 169, 89, 0.13), rgba(19, 24, 32, 0.7));
+  box-shadow: inset 0 -2px 0 var(--gold);
+}
+
+.inv-tab {
+  background: linear-gradient(180deg, rgba(19, 24, 32, 0.6), rgba(10, 13, 18, 0.6));
+  color: var(--bone-3);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px 3px 0 0;
+  padding: 4px 12px;
+  min-width: 34px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.inv-tab:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.inv-tab-active {
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  background: rgba(201, 169, 89, 0.08);
+}
+
+/* Long-press rename inline input (LongPressTabs.tsx) -- replaces the tab
+   button in place, same box footprint, so the tab row doesn't jump. */
+.inv-tab-rename-input,
+.squad-tab-rename-input {
+  background: #0c1016;
+  color: var(--bone);
+  border: 1px solid var(--gold);
+  border-radius: 2px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  width: 84px;
+}
+
+.squad-add-btn {
+  background: transparent;
+  color: var(--bone-2);
+  border: 1px dashed var(--gold-lo);
+  border-radius: 2px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.squad-add-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold-hi);
+}
+
+/* REQ-0032 -- drag-to-reorder + squad trash-drop-zone. */
+
+/* Canvas board's .board-wrap needs position:relative so the trash overlay
+   (position:absolute) centers over exactly this box, not the page --
+   ONLY the canvas one gets this modifier class (App.tsx); the inventory
+   board's .board-wrap is untouched, matching "inventory tabs never show a
+   trash zone" (there is nothing to position over there anyway). */
+.board-wrap-canvas {
+  position: relative;
+}
+
+.tab-dragging {
+  opacity: 0.4;
+}
+
+/* Live insertion-gap indicator shown between tabs while dragging (see
+   LongPressTabs.tsx's dragOverGap) -- a thin highlighted sliver rendered
+   in the gap the dragged tab would land in on drop. */
+.tab-drop-gap-wrap {
+  display: contents;
+}
+
+.tab-drop-gap {
+  display: inline-block;
+  width: 3px;
+  align-self: stretch;
+  background: var(--gold);
+  border-radius: 2px;
+}
+
+/* Trash-drop-zone overlay (SquadTrashZone.tsx) -- centered over the
+   Canvas board, visible ONLY for the duration of a squad-tab drag. */
+.squad-trash-zone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 22px 30px;
+  background: rgba(16, 20, 27, 0.94);
+  border: 2px dashed var(--blood);
+  border-radius: 4px;
+  color: #e06b5f;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
+  /* NOTE: intentionally NOT pointer-events:none -- document.elementFromPoint
+     (LongPressTabs.tsx's drop hit-test) skips pointer-events:none elements
+     entirely, which would make a drop onto this zone undetectable. This
+     element is never itself a REAL event target in practice (it only
+     renders while a tab drag has already captured the pointer via
+     window-level listeners), so leaving default pointer-events is safe. */
+  z-index: 20;
+}
+
+.squad-trash-zone-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.squad-trash-zone-label {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Brief inline feedback when a trash-drop delete is refused (last
+   remaining squad) -- see store.ts's squadDeleteRefused /
+   scheduleSquadDeleteRefusedClear(). A short shake draws the eye without
+   needing a toast library. */
+.squad-delete-refused {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bad);
+  animation: squad-delete-refused-shake 0.4s ease-in-out;
+}
+
+@keyframes squad-delete-refused-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.inventory-board-canvas {
+  /* Same box treatment as the canvas board (.board-canvas is a plain
+     block already) -- no extra rule needed beyond what .board-wrap
+     already gives every board a container for. */
+}
+
+/* REQ-0041: warehouse-claim cross-page notification -- applied to a
+   SPECIFIC inv-tab button (found via [data-tab-index], see
+   LongPressTabs.tsx) when an auto-claimed item lands on a page OTHER
+   than the currently-open one. ~3 pulses per the task brief ("PULSE that
+   page's tab, a CSS keyframe animation, ~3 pulses"). */
+.tab-claim-pulse {
+  animation: tab-claim-pulse 0.5s ease-in-out 3;
+}
+
+@keyframes tab-claim-pulse {
+  0%, 100% { box-shadow: none; background-color: transparent; }
+  50% { box-shadow: 0 0 0 3px var(--good, #59d68a); background-color: rgba(89, 214, 138, 0.25); }
+}
+
+/* REQ-0041: Warehouse tab's embedded inventory column slot (the portal
+   TARGET the SAME InventoryBoard/Tabs instance renders into -- see
+   board/inventorySlot.ts's Pixi-instance decision doc). Laid out like a
+   scaled-down mirror of App.tsx's own .board-column so the embedded
+   board reads as "the same Inventory panel, just here too", not a
+   visually distinct reimplementation. */
+.schedule-warehouse-board-slot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* REQ-0034 -- backpacks view stays mounted at all times (Board's and
+   InventoryBoard's Pixi Applications must never be destroyed/recreated
+   on route switch, see App.tsx's module comment); only visibility
+   toggles via this class. */
+.backpacks-view {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.route-hidden {
+  display: none;
+}
+
+/* REQ-0034 -- placeholder pages (Schedule/Friends/Settings). */
+.placeholder-page {
+  flex: 1;
+  padding: 40px 22px;
+}
+
+.placeholder-page h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.placeholder-note {
+  color: var(--dim);
+  font-size: 14px;
+}
+
+/* REQ-0035 -- Dex (図鑑) display view. */
+.dex-view {
+  flex: 1;
+  padding: 18px 22px;
+  min-width: 0;
+}
+
+.dex-error {
+  color: var(--bad);
+}
+
+.dex-loading {
+  color: var(--dim);
+}
+
+.dex-tab-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.dex-tab {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dex-tab-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+  cursor: default;
+}
+
+.dex-tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.dex-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.dex-search {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  min-width: 240px;
+}
+
+.dex-filter {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.dex-count {
+  color: var(--dim);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.dex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.dex-empty {
+  color: var(--dim);
+  grid-column: 1 / -1;
+  padding: 20px 0;
+}
+
+.dex-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dex-card-expanded {
+  grid-column: 1 / -1;
+}
+
+.dex-card-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.dex-card-summary:hover {
+  background: #232019;
+}
+
+.dex-icon {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  image-rendering: -webkit-optimize-contrast;
+}
+
+.dex-icon-missing {
+  background: var(--line);
+  border-radius: 4px;
+}
+
+.dex-card-summary-text {
+  min-width: 0;
+}
+
+.dex-card-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dex-card-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 2px;
+}
+
+.dex-card-id {
+  font-family: monospace;
+}
+
+/* REQ-0042: TM (Transmutator) catalog strip -- display-only cards, no
+   button/hover-interactive affordance (see Dex.tsx's tmEntries() comment
+   for why TMs are not folded into the selectable dex-grid/dex-card-summary
+   above). Mirrors .dex-card/.dex-card-summary-text's layout by hand since
+   there is no <button> wrapper here. */
+.dex-tm-section {
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.dex-tm-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+
+.dex-tm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.dex-tm-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  /* Fixed 2026-07-05: used to also carry the .dex-card classname to
+     reuse its panel background/border/radius -- but that made this
+     display-only TM card indistinguishable, via a plain .dex-card
+     selector, from the real selectable PO/SI catalog cards, which broke
+     e2e/dex.spec.ts's "dex item count matches PO+SI count" assertion (it
+     legitimately scopes .dex-card to mean "the selectable catalog", and
+     TM is a genuinely separate third kind, never meant to be counted
+     there). Duplicated the panel look directly here instead of sharing
+     the classname. */
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.dex-tm-stackable {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.dex-detail {
+  border-top: 1px solid var(--line);
+  padding: 12px 14px 16px;
+  font-size: 13px;
+}
+
+.dex-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.dex-detail-label {
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 4px;
+}
+
+.dex-detail-section {
+  margin: 12px 0;
+}
+
+.dex-detail-section h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+.dex-tag-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dex-tag-root-label {
+  display: inline-block;
+  background: var(--cyan);
+  color: #0e0d0b;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  margin-right: 6px;
+  text-transform: uppercase;
+}
+
+.shape-grid {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  width: max-content;
+}
+
+.shape-grid-empty {
+  color: var(--dim);
+}
+
+.shape-grid-cell {
+  background: #14120f;
+}
+
+.shape-grid-cell-shape {
+  background: #3a5c4d;
+}
+
+.shape-grid-cell-port {
+  background: #5c4d3a;
+  box-shadow: inset 0 0 0 2px var(--cyan);
+}
+
+.shape-grid-cell-unit {
+  box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 0 4px #0e0d0b;
+}
+
+.shape-grid-cell-unit::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--cyan);
+  opacity: 0.6;
+}
+
+.dex-port-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.dex-tag-chip {
+  display: inline-block;
+  background: #232019;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  margin: 0 4px 4px 0;
+}
+
+.dex-tag-chip-dim {
+  color: var(--dim);
+}
+
+.dex-socket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.dex-socket-list li {
+  margin-bottom: 6px;
+}
+
+.dex-socket-anchor {
+  color: var(--dim);
+  font-size: 11px;
+}
+
+.dex-eff-text,
+.dex-flavor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dex-raw-ast {
+  margin-top: 8px;
+}
+
+.dex-raw-ast summary {
+  cursor: pointer;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.dex-raw-ast pre {
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 11px;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.dex-provenance {
+  font-size: 12px;
+  color: var(--text);
+}
+
+.dex-provenance-unresolved {
+  font-size: 12px;
+  color: var(--dim);
+  font-style: italic;
+}
+
+/* REQ-0035 -- admin edit mode (DexRoot/DexAdmin). */
+.dex-root {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dex-mode-toggle-row {
+  display: flex;
+  gap: 4px;
+  padding: 10px 22px 0;
+}
+
+.dex-mode-toggle {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dex-mode-toggle-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.dex-admin {
+  display: flex;
+  gap: 16px;
+  padding: 14px 22px 22px;
+  flex: 1;
+  min-height: 0;
+}
+
+.dex-admin-list {
+  width: 260px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 70vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px;
+}
+
+.dex-admin-list-item {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dex-admin-list-item:hover {
+  background: #232019;
+}
+
+.dex-admin-list-item-active {
+  background: #232019;
+  color: var(--cyan);
+}
+
+.dex-admin-form {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.dex-admin-form-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dim);
+}
+
+.dex-admin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.dex-admin-field > span {
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.dex-admin-field input[type="text"],
+.dex-admin-field input[type="number"],
+.dex-admin-field select,
+.dex-admin-field textarea {
+  background: #0e0d0b;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.dex-admin-field textarea {
+  min-height: 50px;
+  resize: vertical;
+}
+
+.dex-admin-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.dex-admin-tag-editor {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dex-admin-subfield {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.dex-admin-effect-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.dex-admin-effect-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--dim);
+}
+
+.dex-admin-effect-row select,
+.dex-admin-effect-row input {
+  background: #0e0d0b;
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+  width: 90px;
+}
+
+.dex-admin-viewonly-note {
+  font-size: 12px;
+  color: var(--dim);
+  font-style: italic;
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.dex-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dex-admin-save-btn {
+  background: var(--cyan);
+  color: #0e0d0b;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dex-admin-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dex-admin-save-ok {
+  color: var(--ok);
+  font-size: 13px;
+}
+
+.dex-admin-save-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+/* REQ-0037 -- Settings page (account block + logout) and REQ-0039 "Now"
+   (bot/API-mode placeholder). Both sections share the same card-style
+   language already used elsewhere (.dex-admin-viewonly-note's
+   background/border pattern). */
+.settings-page {
+  flex: 1;
+  padding: 40px 22px;
+  max-width: 560px;
+}
+
+.settings-page h2 {
+  margin: 0 0 18px;
+  font-size: 20px;
+}
+
+.settings-section {
+  background: #0e0d0b;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin-bottom: 18px;
+}
+
+.settings-section h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-account-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.settings-field-label {
+  color: var(--dim);
+}
+
+.settings-field-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.settings-account-error {
+  color: var(--bad);
+  font-size: 13px;
+}
+
+.settings-logout-btn {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-logout-btn:hover {
+  background: rgba(192, 80, 80, 0.12);
+}
+
+.settings-bot-placeholder p {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.settings-bot-placeholder-note {
+  color: var(--dim);
+  font-size: 12px;
+}
+
+/* REQ-0037 -- invite welcome banner. Fixed-ish placement right under the
+   header, dismissable, auto-hides after a few seconds (store.ts). */
+.invite-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1c3d2e;
+  color: #5cb573;
+  border-bottom: 1px solid #2f6b4d;
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.invite-banner-close {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+/* REQ-0038 -- Dex v2: shape-mounted catalog rendering, two-pane detail
+   diagram layout, edit-mode v2 (effect add/delete, locale-only fields,
+   thumbnails). Extended REQ-0038 feedback round 2: the icon overlay is no
+   longer positioned per-cell (that was the squeezed-into-first-cell bug --
+   see ShapeGrid.tsx's module comment) -- its box now comes entirely from
+   client/src/render/itemCard.ts's shared fit math, applied as inline
+   left/top/width/height on both the wrapper (.shape-grid-icon-overlay,
+   sized to the item's full footprint) and the <img> itself
+   (.shape-grid-cell-icon, the contain-fit box within that footprint). The
+   rules below intentionally do NOT set position/inset/width/height (that
+   would fight the computed inline styles) -- only non-geometric styling. */
+
+.shape-grid-cell {
+  position: relative;
+}
+
+.shape-grid-icon-overlay {
+  pointer-events: none;
+}
+
+.shape-grid-cell-icon {
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.shape-grid-cell-coord {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--dim);
+  pointer-events: none;
+  text-shadow: 0 0 2px #000;
+}
+
+.dex-card-shape {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Detail view layout (DexDetail.tsx) -- REQ-0038, restructured Dex
+   feedback round 3 (fix 2). WIDE screens: three flex columns in DOM
+   order [list | diagram | info], per the task spec verbatim: "the
+   ALL-ITEMS LIST on the FAR LEFT; the DETAIL PANEL sits to its right and
+   is itself split into left/right blocks: 図解(diagram) LEFT | その他情報
+   (info) RIGHT" -- list gets a narrower fixed-ish basis (thumbnails +
+   names only need to be legible, not half the screen), diagram and info
+   split the remaining width evenly. All three columns cap at 80vh with
+   overflow-y:auto (unchanged behavior from the old two-pane rule) so a
+   tall enlarged diagram or a long item list never grows the row past the
+   viewport.
+
+   NARROW/vertical (縦長) screens (viewport width below
+   DEX_DETAIL_WIDE_BREAKPOINT_PX = 1100px, chosen as a sensible cutoff
+   comfortably below the E2E rig's 2000px viewport but above typical
+   phone/tablet-portrait widths) keep the layout REQ-0038 already had:
+   stacked full-width blocks in DOM source order (list, then diagram,
+   then info) -- flex-direction:column turns the same three flex children
+   into a vertical stack with no per-child width math needed. This is the
+   "current layout is fine on narrow screens, keep it via a responsive
+   breakpoint" instruction verbatim. */
+.dex-detail-columns {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  min-height: 0;
+}
+
+.dex-detail-col-list {
+  flex: 0 1 260px;
+  min-width: 200px;
+  max-width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dex-detail-col-diagram {
+  flex: 1 1 40%;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.dex-detail-col-info {
+  flex: 1 1 40%;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  /* Narrow/vertical (縦長) fallback -- stack the three columns full-width
+     in source order (list, diagram, info), same shape the pre-R3 layout
+     showed at narrow viewports (a two-pane flex row that wraps). */
+  .dex-detail-columns {
+    flex-direction: column;
+  }
+
+  .dex-detail-col-list,
+  .dex-detail-col-diagram,
+  .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
+}
+
+.dex-detail-back-btn {
+  background: transparent;
+  color: var(--cyan);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.dex-detail-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dex-detail-item-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.dex-detail-item-list-row:hover {
+  background: #232019;
+}
+
+.dex-detail-item-list-row-active {
+  background: #232019;
+  color: var(--cyan);
+}
+
+.dex-detail-item-list-shape {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dex-detail-item-list-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Diagram (DexDiagram.tsx) -- large shape grid + port/socket overlay. */
+.dex-diagram {
+  margin-bottom: 16px;
+}
+
+.dex-diagram-empty {
+  color: var(--dim);
+}
+
+.dex-diagram-grid-wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+
+.dex-diagram-socket-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.dex-diagram-callout-line {
+  stroke: var(--cyan);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+  opacity: 0.8;
+}
+
+.dex-diagram-socket-dot {
+  fill: var(--cyan);
+  stroke: #0e0d0b;
+  stroke-width: 1.5;
+}
+
+.dex-diagram-socket-labels {
+  position: absolute;
+  top: 0;
+}
+
+.dex-diagram-socket-label {
+  position: absolute;
+  white-space: nowrap;
+}
+
+.dex-diagram-ports {
+  margin-top: 10px;
+}
+
+.dex-diagram-ports h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+/* BpDiagram (REQ-0045 h) -- reuses ShapeGrid + the dex-diagram-* grid-wrap
+   sizing convention above, extended with a compass-arrow overlay (beam
+   directions) and hpMax/cellCount stat rows. Shown inside
+   WorkshopPage.tsx's workshop-roll-result panel after a gacha roll. */
+.bp-diagram-grid-wrap {
+  overflow: visible;
+}
+
+.bp-diagram-arrow-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.bp-diagram-arrow-shaft {
+  stroke: var(--cyan);
+  stroke-width: 2;
+}
+
+.bp-diagram-arrow-head {
+  fill: var(--cyan);
+}
+
+.bp-diagram-stats {
+  display: flex;
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.bp-diagram-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bp-diagram-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--dim);
+}
+
+.bp-diagram-stat-value {
+  font-size: 15px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* .workshop-roll-result* legacy rules removed -- REQ-0076 modal styles are in the REQ-0076 block below. */
+
+/* Edit mode v2 -- thumbnails, locale switcher, effect add/delete. */
+.dex-admin-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dex-admin-list-thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dex-admin-locale-switch {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.dex-admin-locale-btn {
+  background: var(--panel);
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.dex-admin-locale-btn-active {
+  background: #232019;
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.dex-admin-effect-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.dex-admin-effect-add-btn {
+  background: transparent;
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dex-admin-effect-delete-btn {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  align-self: flex-start;
+}
+

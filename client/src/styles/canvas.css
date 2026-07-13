@@ -1,0 +1,283 @@
+/* ---------------------------------------------------------------------
+   REQ-0070 -- MJOLNIR canvas page (mock: web/redesign/canvas.html).
+   Chrome-only re-skin around the two ALWAYS-MOUNTED PixiJS boards; the
+   board interiors (cells/BPs/POs/beams/ghosts) still render in-canvas
+   exactly as before (BoardRenderer.ts), now over a transparent canvas
+   backdrop so the stage gradient beneath shows through the PAD margin.
+   Board-geometry pixel constants mirrored below: CELL=80 / PAD=38
+   (client/src/board/geom.ts; e2e/helpers.ts hardcodes the same pair). */
+
+/* Full-viewport key art behind the page (mock .bgart) -- referenced from
+   the served /redesign/assets path, never bundled (404s harmlessly under
+   the proxy-less dev server, same as the landing art -- REQ-0069 note).
+   Lives INSIDE .backpacks-view, so the route's display:none hides it;
+   z-index -1 paints it under all content but over the body backdrop. */
+.canvas-bgart {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/redesign/assets/bg_canvas.jpg') center / cover no-repeat;
+  opacity: 0.5;
+  filter: saturate(0.85) brightness(0.6);
+}
+
+.canvas-bgart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.55), rgba(10, 13, 18, 0.86) 70%);
+}
+
+/* stagehead EN sub-caption (mock .stagehead .en; ja locale only -- the
+   i18n key is empty for EN) */
+.stagehead-en {
+  font-family: var(--f-den);
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.stagehead-chip {
+  white-space: nowrap;
+}
+
+/* gridbox: positioning context for the coordinate rails laid over the
+   Pixi canvas (the canvas itself already reserves the PAD margin the
+   labels sit in -- no board resize involved). */
+.board-gridbox {
+  position: relative;
+  width: max-content;
+}
+
+.board-coords {
+  position: absolute;
+  inset: 0;
+  pointer-events: none; /* board drags/dblclicks pass through untouched */
+  color: var(--bone-3);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  z-index: 2;
+}
+
+.board-coords-cols {
+  position: absolute;
+  top: 12px;
+  left: 38px; /* PAD */
+  display: flex;
+}
+
+.board-coords-cols span {
+  width: 80px; /* CELL */
+  text-align: center;
+}
+
+.board-coords-rows {
+  position: absolute;
+  top: 38px; /* PAD */
+  left: 0;
+  width: 38px; /* PAD */
+  display: flex;
+  flex-direction: column;
+}
+
+.board-coords-rows span {
+  height: 80px; /* CELL */
+  display: grid;
+  place-items: center;
+}
+
+/* boardfoot: squad tabs + auto-save seal INSIDE the canvas stage
+   (mock .boardfoot). The squad tabs themselves are the same
+   LongPressTabs instance that used to sit in the title row. */
+.boardfoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.boardfoot .squad-tabs-row {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.boardfoot-saved {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--bone-3);
+  white-space: nowrap;
+}
+
+.boardfoot-saved-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--bone-3);
+}
+
+.boardfoot-saved[data-save-state='saved'] .boardfoot-saved-dot {
+  background: #57c77b;
+  box-shadow: 0 0 6px rgba(87, 199, 123, 0.7);
+}
+
+.boardfoot-saved[data-save-state='saving'] .boardfoot-saved-dot {
+  background: var(--gold);
+  box-shadow: 0 0 6px rgba(201, 169, 89, 0.6);
+}
+
+.boardfoot-saved[data-save-state='offline'] .boardfoot-saved-dot {
+  background: var(--blood);
+  box-shadow: 0 0 6px rgba(176, 65, 62, 0.7);
+}
+
+/* item cards (mock .icard) -- the rarity frame/word/corner-gem triple
+   encoding comes from the theme's .rar-* / .rar-word / .gem primitives;
+   these rules add only the card layout. */
+.item-list .icard {
+  display: flex;
+  gap: 10px;
+  padding: 8px 10px;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.7), rgba(19, 24, 32, 0.7));
+  cursor: pointer;
+  transition: box-shadow 0.13s ease-out, transform 0.13s ease-out;
+}
+
+.item-list .icard:hover {
+  transform: translateX(2px);
+  box-shadow: var(--focus-ring);
+}
+
+.item-list .icard.is-selected {
+  box-shadow: var(--focus-ring);
+}
+
+.icard-thumb {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+
+.icard-thumb img {
+  max-width: 86%;
+  max-height: 86%;
+}
+
+.icard-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.icard-nm {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.icard-sub {
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+}
+
+/* detail card (mock .detail): art altar + name/rarity/meta/effect/flavor,
+   fed by the clicked catalog card (ItemPanel.tsx). */
+.item-detail {
+  margin: 0 0 14px;
+  overflow: hidden;
+}
+
+.item-detail-art {
+  position: relative;
+  height: 120px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 80% at 50% 46%, rgba(111, 196, 222, 0.1), transparent 70%),
+    radial-gradient(circle at 50% 55%, #232b37 0%, #10141b 80%);
+  border-bottom: 1px solid var(--border-lo);
+}
+
+.item-detail-art img {
+  height: 96px;
+  max-width: 90%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7));
+}
+
+.item-detail-body {
+  padding: 10px 12px 12px;
+}
+
+.item-detail-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.item-detail-nm {
+  font-family: var(--f-dj);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.item-detail-meta {
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+
+.item-detail-eff {
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.item-detail-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  font-size: 12px;
+  margin-top: 8px;
+  line-height: 1.7;
+  font-family: var(--f-dj);
+}
+
+/* embark dock (mock .dock) -- fixed bottom-right CTA to the expedition
+   page. Inside .backpacks-view (hidden with the route). The mock's
+   readiness-hint copy has no backing data and is omitted (REQ-0070). */
+.embark-dock {
+  position: fixed;
+  right: 26px;
+  bottom: 22px;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.embark-btn .rune {
+  font-size: 17px;
+}
+
+@media (max-width: 840px) {
+  .embark-dock {
+    right: 12px;
+    bottom: 78px; /* clears the bottom nav bar */
+  }
+}
+
