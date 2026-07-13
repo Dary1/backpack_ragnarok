@@ -696,6 +696,11 @@ export interface ArtworkDto {
   gen_width: number; gen_height: number; main_object: string;
   prompt_template: string; style_override: string | null;
   edge_padding: number | null; adopted_render_id: number | null;
+  // REQ-0156: per-artwork aggregates, present on listArtworks() rows only
+  // (additive server enrichment for the registry browser rail).
+  adopted_seed?: number | null; latest_ok_seed?: number | null;
+  render_count?: number; ok_count?: number; failed_count?: number;
+  last_render_at?: string | null;
 }
 export interface RenderDto {
   id: number; seed: number; status: string; image_sha256: string | null;
@@ -743,6 +748,22 @@ export function artRenderUrl(name: string, seed: number): string {
 }
 export function artAdoptedUrl(name: string): string {
   return '/api/art/' + encodeURIComponent(name);
+}
+
+// ---- REQ-0156: generation queue introspection + cancel ----
+export interface ArtQueueRunning { renderId: number; artwork: string; seed: number; started_at: number; elapsed_ms: number }
+export interface ArtQueuePending { renderId: number; artwork: string; seed: number; enqueued_at: number }
+export interface ArtQueueDto { running: ArtQueueRunning | null; pending: ArtQueuePending[]; inspectDepth: number }
+
+/** GET /api/art/queue -- running job (with elapsed) + pending generation
+ * jobs + inspection backlog depth. Polled by the admin queue panel. */
+export function getArtQueue(): Promise<{ ok: true } & ArtQueueDto> {
+  return artJson('/api/art/queue', { method: 'GET' });
+}
+/** Cancel one generation job (pending: dequeued; running: worker killed).
+ * The canceled render becomes status failed / 'canceled by user'. */
+export function cancelRenderApi(name: string, seed: number): Promise<{ ok: true; canceled: 'pending' | 'running'; renderId: number; seed: number; queue: ArtQueueDto }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cancel', { method: 'POST' });
 }
 
 // ---- REQ-0152: inspection kits ----
