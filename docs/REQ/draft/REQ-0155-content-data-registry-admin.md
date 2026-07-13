@@ -1,6 +1,7 @@
 # REQ-0155 — content-data-registry-admin: variant-managed content data (non-visual) in the same WebUI
 
-**State:** draft — BLOCKED on user ratification.
+**Ratified:** 2026-07-13 (user, chat) — including rulings on Q1–Q4 below. Queued behind
+REQ-0151 implementation; the REQ folder is the sole status record.
 **Requested by:** user, 2026-07-13 (chat): extend the adoption-verification WebUI beyond items
 ("currently only items, in the Dex — make it serious and integrate so the same mechanism is
 reused"), and manage LLM-generated content DATA the way artwork seeds are managed. Artwork is
@@ -61,9 +62,11 @@ exactly one, and serve/export the adopted variant — identical in shape to the 
 - "Generate 5" produces 5 variants against `schema_ref` from `brief` + kind context (vocab v3).
   Distinct variants come from explicit variation instructions per slot (not from seed roulette —
   see determinism ruling), so the 5 are meaningfully different, not near-duplicates.
-- LLM backend is an open question (Q1): server-side API call vs the user commissioning an
-  agent session that POSTs results in. The registry only requires that variants arrive with
-  full provenance; it does not care who generated them.
+- LLM backend (Q1, user-ruled 2026-07-13): **agent-session driven** — the user commissions an
+  agent session (Cowork/Claude Code), which generates the 5 variants and POSTs them to a
+  receiving admin API (auth per admin.cjs conventions) with full provenance. NO LLM API key on
+  the server. The receiving API is generic, so a server-side backend could be added later
+  under its own REQ; none is built here.
 
 ## Machine checks (existing validators, wired per kind)
 Run automatically on every variant, results into `machine_check`:
@@ -75,8 +78,9 @@ A variant failing machine checks is adoptable ONLY behind an explicit override c
 inspection doctrine is advisory, but data that cannot integrate should be loudly marked).
 
 ## Agent review (advisory)
-A SEPARATE agent (different session; model per Q2) reads the 5 variants + machine checks and
-records `agent_review` per variant with a recommendation and rationale. It never adopts.
+A SEPARATE agent (different session; **Opus-class by default**, user-ruled Q2) reads the 5
+variants + machine checks and records `agent_review` per variant with a recommendation and a
+mandatory rationale. It never adopts.
 Displayed as chips next to the user's adoption controls — same UX grammar as REQ-0152 kit
 verdicts.
 
@@ -89,9 +93,10 @@ verdicts.
 ## UI (extends the REQ-0151 admin; integrates the Dex)
 Content tab: kind + system_name list → detail: brief, variant table (variant_no, machine-check
 chips, agent-review chip, created, source), JSON diff view between any two variants, adopt
-button, edit-as-new-variant editor, "generate 5 more". Dex (REQ-0120 master/detail) links to /
-reflects adoption state; browse stays Dex, verify+adopt lives here — components reused where
-practical (Q3), never forked.
+button, edit-as-new-variant editor, "generate N more" (N default 5, per-kind configurable —
+user-ruled Q4). Dex (REQ-0120 master/detail) integration is LINK-FIRST (user-ruled Q3):
+mutual links + adoption-state badge only; component sharing deferred to a follow-up.
+Browse stays Dex, verify+adopt lives here — never forked.
 
 ## Gates
 - G1 chokepoint + migration + constraints: immutability (UPDATE refused), adopted-undeletable,
@@ -120,12 +125,5 @@ practical (Q3), never forked.
 - Namespace collisions with artworks.system_name: shared namespace is deliberate (one entity,
   two facets) — enforced by a cross-table uniqueness check at creation.
 
-## Open questions (draft blockers)
-- Q1 LLM backend for generation: server-side API (needs a key on the server) vs
-  agent-session-driven POST (no server key, human-in-the-loop cost) — user ruling needed.
-- Q2 agent-reviewer identity: which model, and is one reviewer enough?
-- Q3 depth of Dex integration: link-only (cheap) vs shared components (more work, one UX).
-- Q4 N=5 fixed or per-kind configurable (default 5)?
-
-## Implementation log
-(to be filled by the implementing session)
+## Resolved questions (user rulings, 2026-07-13)
+- Q1 genera
