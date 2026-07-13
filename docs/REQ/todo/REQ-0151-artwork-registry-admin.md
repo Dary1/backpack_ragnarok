@@ -121,4 +121,55 @@ chimera 6x4 → 768×512; ancient dragon 10x10 → 1280×1280; any si → 256×2
   `GET /api/art/<system_name>/renders/<seed>` → any candidate, for the WebUI's instant preview
   (ruling 6).
 - On adoption change, an export step writes the adopted PNG (+ matte/derivatives where the kind
-  requires them) into content/ via the existing integrate conventions (ruling 7), committed
+  requires them) into content/ via the existing integrate conventions (ruling 7), committed on a branch — existing consumers keep working unchanged.- Candidate renders NEVER enter git (lesson: 185 MB of intermediate PNGs in history from
+  REQ-0150 batches). Only adopted/exported assets reach content/.
+
+## Backfill (ruling 3)
+Import REQ-0150-era adopted artwork: one `artworks` row + one adopted `renders` row each, params
+read from the batch manifests (`manifest.json`, `fixups.json`, `frame_report.json`, defs files),
+seed as recorded, image bytes loaded into the DB. Where a manifest lacks a param, snapshot
+current `art_route` constants and set `params.backfilled_approx = true`; model hashes recorded
+as current-file hashes with `params.hash_backfilled = true`.
+
+## UI fields (as specified by the user)
+kind selector · system_name · shape editor (po: 5x5 click grid; si: none — locked 256×256;
+monster: w×h numeric + preview grid; hidden for unit/bpskin) · resolution (read-only, derived) ·
+main_object · style/aux prompt (prefilled per kind, editable) · final-prompt preview
+(placeholder rendered — shows EXACTLY what will be submitted) · edge_padding (bpskin only) ·
+seed list with thumbnails (instant, DB-served), adopt button, delete button (disabled on the
+adopted seed) · generate next / generate N / generate at explicit seed.
+
+## Out of scope
+- Automated quality judgement beyond the recipe-internal bpskin frame gate. Adoption stays
+  human; kit integration is REQ-0152.
+- Auth beyond what admin.cjs already provides (O3: reuse confirmed).
+- Game-client rendering changes beyond consuming the export/API.
+
+## Gates
+- G1 chokepoint: all DB access via storage.cjs (pg path); migration applies cleanly; unit
+  tests — adopted-render delete refused; per-artwork seed monotonicity + uniqueness;
+  system_name uniqueness.
+- G2 sizing: derivation reproduces all ratified examples above, exactly (incl. any si → 256×256).
+- G3 provenance: a fresh render params JSON equals the art_route constants at run time;
+  final_prompt stored verbatim; unet/clip/vae filenames AND sha256 content hashes present in
+  every params snapshot.
+- G4 e2e (Playwright via the existing harness + box lock, mocked ComfyUI backend — no GPU in
+  CI): create artwork → generate → adopt → API serves it → delete non-adopted OK / adopted
+  refused → re-adopt another seed → export step fires.
+- G5 hygiene: no candidate PNG under content/ in the branch diff; data/ stays gitignored.
+- S7 user acceptance on the live screen with real GPU generation.
+
+## Risks
+- Regeneration is expected bit-identical with matching model hashes but is NOT guaranteed — the
+  DB-resident PNG + sha256 stays the asset of record (ruling 4).
+- GPU contention with the user own art sessions — the queue must be polite: no auto-retry
+  storms; jobs cancellable from the UI; UI survives >8 min cold-load latency.
+
+## Spec-integrity note (2026-07-14, orchestrator)
+The v3 edit (659b9ef) truncated this file mid-sentence, dropping everything after the export
+bullet (v2 af670d1 was itself already truncated inside Gates). This tail is restored from the
+v2/v1 history (af670d1, e21d2bf) with the v3 rulings applied (PO/SI split, O1–O3 resolved,
+kits advisory). No new decisions were introduced.
+
+## Implementation log
+(to be filled by the implementing session; per-session gate status checkboxes as in REQ-0150)
