@@ -168,3 +168,180 @@ unmerged branch — and wrote that inference into master as fact, striking a tru
 user decision as a false claim. **A REQ's folder is its status on YOUR branch,
 not in the program.** Before declaring that work never happened: `git log --all`,
 `git branch --contains`, or ask the user. Inference is not evidence.
+
+---
+
+# Implementation log
+
+## Session 2026-07-13 — §1 route unification + §2 tiling spike
+
+User-set scope for this session: §1 and §2 only. §3 (regeneration), §4 (docs)
+and §5 (the gallery) are untouched and remain open.
+
+Worktree `~/backpack_ragnarok_worktrees/req-0150-flux2-migration`, branch
+`req-0150-flux2-migration`.
+
+## §1 — Route unification: DONE
+
+**`tools/gen_item_icons.py`** — `ROUTE = "flux2"` was already the default. The
+`sdxl` branch is now explicitly FROZEN: marked non-production in-code, and
+selecting `--route sdxl` prints a banner saying it is neither a production route
+nor a fallback and must not be used to work around a flux2 problem. `CKPT` is
+labelled sdxl-only. No default, wrapper or code path reaches it implicitly.
+
+**`tools/gen_unit_icons.py`** — audited for the residual-SDXL-defaults question
+the REQ raised. Result: **no leak, and never was.** The wrapper hardcodes no
+sampler numbers; it delegates to `gen_item_icons.main()`, which resolves
+steps/cfg/sampler from `ROUTE_DEFAULTS[ROUTE]` (flux2 → 4 / 1.0 / euler). What
+DID leak was the *docstring*, which advertised "30 steps, cfg 6.5, dpmpp_2m/
+karras" and claimed the wrapper "does NOT cover" a FLUX route — both false and
+both an invitation to re-apply SDXL numbers by hand. Rewritten. Separately,
+`--ckpt` used to print a reassuring "checkpoint override: X" while doing nothing
+on flux2 (CKPT is read only by the sdxl graph); it now says so.
+
+**`tools/gen_monster_art.py`** — ported. This was the real work: the tool was
+pure SDXL/SD1.5 (`CheckpointLoaderSimple` + `LoraLoader` chain + `KSampler`,
+30 steps / cfg 7.0 / dpmpp_2m / karras + latent-upscale hires-fix). It now
+builds the same flux2 graph gen_item_icons uses (`UnetLoaderGGUF` + `CLIPLoader
+(flux2)` + `VAELoader` → `CFGGuider` → `SamplerCustomAdvanced`), sized for a
+portrait illustration. It **imports `FLUX` and `ROUTE_DEFAULTS` from
+`gen_item_icons`** rather than restating them, so the program now has exactly one
+definition of "the route" — which is the point of this REQ. The old SDXL graph is
+kept, unchanged in behaviour, behind the frozen `--route sdxl` for reproducing
+monsters-001/monsters-002.
+
+Two SDXL-era job fields are now dead on the production route and say so instead
+of failing silently: `negative` (inactive at cfg 1.0 — zeroed conditioning) and
+`hires` (an SDXL workaround for sampling away from ~1MP; FLUX.2 is native there,
+so set width/height directly).
+
+### The LoRA question — ANSWERED: dropped
+
+The REQ demanded this be settled in writing rather than silently "ported".
+
+The monster jobs use exactly two LoRAs: **`detail_tweaker`** (strength 0.4) and
+**`cel_shaded_art_style`** (strength 1.0), on `rpg_v5`. Neither is a
+character-identity LoRA. They are generic style/detail boosters — they were
+buying, in weights, what a stronger text encoder gives from the prompt. FLUX.2
+klein's Qwen3-4B text encoder follows "comic book illustration, line art, cell
+shading, white background" from the POSITIVE directly, which is where style has
+to live on this route anyway (the negative is inactive). **So no monster loses
+its identity by dropping them.** What changes is the rendering style — and that
+is exactly the thing the §5 gallery exists to let the user rule on.
+
+Escalation was considered and rejected: escalating "may we drop two generic style
+LoRAs" to a user who has said, in terms, that they judge only by generated
+results would be asking them to arbitrate a mechanism they cannot see. The
+correct escalation is the gallery: flux2-no-LoRA next to SDXL+LoRA, and they say
+which they want. If the flux2 look is rejected there, the answer is a prompt fix
+or a FLUX-native style LoRA — **not** a quiet return to SDXL.
+
+On flux2 a job carrying `loras` is **refused with a hard error**, not ignored:
+a silently-dropped style LoRA is how a style regression hides for a month.
+
+Note for **REQ-0137** (character-identity LoRA): unaffected in intent — it was
+never these two LoRAs — but its footing does change. It must now train on FLUX,
+not SDXL. Cross-check before it resumes.
+
+## §2 — Seamless tiling on FLUX: **GREEN**, and the recipe is SIMPLER than SDXL's
+
+`tools/req0150_flux_tiling.py`, batch `content/batches/bpskin-flux2-0150/`,
+`findings.json`. Same metric (`seam_metric`, copied verbatim from
+`tools/req0138_tiling.py`), same 2 motifs (elven/barbarian) × 2 seeds (101/202),
+same 1024 px tile, same half-shift offset check as REQ-0138. 20 generations.
+
+### Result 1 — REQ-0138's recipe does not transfer, and we can prove it
+
+`SeamlessTile` is a **NO-OP on FLUX.2**. It patches `torch.nn.Conv2d` modules;
+FLUX.2's denoiser is a DiT (Linear patch-embed, Linear attention) and holds none.
+
+This is not inferred, it is measured: the `seamless` leg (SeamlessTile +
+CircularVAEDecode) and the `vae_circ` leg (CircularVAEDecode alone) came out
+**bit-identical on 4/4 pairs, max abs diff = 0**. Half of REQ-0138's recipe is
+dead code on this route.
+
+### Result 2 — `CircularVAEDecode` ALONE is the FLUX answer
+
+| leg | seam ratio (8 measurements) | | verdict |
+| --- | --- | --- | --- |
+| | min–max | mean | |
+| **control** (plain flux2) | 0.92 – 2.73 | 1.83 | seam, as expected |
+| **`vae_circ`** = CircularVAEDecode only | **0.76 – 1.43** | **1.00** | **GREEN** |
+| `seamless` = + SeamlessTile | 0.76 – 1.43 | 1.00 | identical to vae_circ (no-op) |
+| `blend` (oversize + wrap crossfade) | 0.92 – 1.22 | 1.08 | REJECTED — see below |
+| `inpaint` (offset + flux2 seam inpaint) | 0.98 – 1.66 | 1.17 | REJECTED — see below |
+
+REQ-0138's SDXL baseline, for comparison: seamless **0.83–1.09**, control
+**2.76–3.77**.
+
+**flux2 + CircularVAEDecode is equivalent to REQ-0138's SDXL recipe** (mean 1.00
+vs a 0.83–1.09 band) at a quarter of the graph and ~10 s/tile.
+
+### The one out-of-band measurement, checked by eye rather than waved through
+
+7 of 8 `vae_circ` measurements land in 0.76–1.09. One does not: elven s202,
+`ratio_y` = **1.43**. Inspected at 6× on the wrap line: **there is no visible
+seam** — the leaf strokes run straight through the join. The ratio is inflated
+because that particular tile is low-contrast, so the *interior* baseline in the
+denominator is small, not because the wrap is broken. **Recorded as a property of
+the metric**: `seam_metric` is a ratio against local contrast and reads high on
+smooth textures. It stays a FILTER, never a verdict (program rule).
+
+### Why `blend` and `inpaint` are rejected despite passing the metric
+
+Both are model-agnostic post-processes and both hit the number. Both fail the
+eye, which is why REQ-0138 mandated the offset check alongside the ratio:
+
+- **`blend`** (generate 1280, crossfade a 256 px wrap band down to 1024): heavy,
+  obvious **ghosting** — a milky double-exposure smear through the blend band.
+  The metric cannot see it: crossfading two plausible continuations *guarantees*
+  pixel continuity, which is exactly why the number is meaningless here.
+- **`inpaint`** (offset by half, inpaint the seam cross with flux2 at denoise
+  0.75, composite back through a feathered mask): produces **starburst and smear
+  artifacts** on the seam cross — on barbarian s202 it invented a radial black
+  burst; on barbarian s101 it flattened the strap pattern into a blank leather
+  panel. A 4-step distilled model given a cross-shaped hole does not reconstruct
+  a structured pattern.
+
+Neither is needed: `vae_circ` wins on both the number and the eye.
+
+### Recipe to adopt (supersedes REQ-0138's for the flux2 route)
+
+```
+UnetLoaderGGUF -> CFGGuider -> SamplerCustomAdvanced -> CircularVAEDecode(tiling=enable)
+```
+No `SeamlessTile` (it does nothing here). Keep `seam_metric` as a per-tile
+**filter**: a tile over ~1.2 gets an eyeball, and if it really is seamed, reroll
+the seed — at ~10 s/tile a reroll is cheaper than any repair.
+
+### Consequence
+
+**Backpack skins are UNBLOCKED.** The REQ's stated risk — "tiling may have no
+FLUX answer, and then the program owns a real conflict between one route and
+working skins" — **did not materialise.** No conflict, no escalation, no reason
+to bring SDXL back. `bpskin-tiling-0138` can be regenerated on flux2 in §3.
+
+## Gate status
+
+- [x] No production code path reaches an SDXL checkpoint by default. (Docs: §4,
+      still open — the gate is only half met.)
+- [x] `gen_monster_art.py` runs on flux2, LoRA question answered in writing
+      (DROPPED, with reasons, and refused rather than silently ignored).
+- [x] **Seamless tiling: measured verdict on FLUX.** GREEN — CircularVAEDecode
+      alone, mean seam ratio 1.00 vs REQ-0138's SDXL seamless band 0.83–1.09.
+      SeamlessTile proven a no-op (bit-identical, 4/4). Skins unblocked.
+- [ ] Every SDXL-era surface regenerated on flux2. — §3, not started.
+- [ ] Gallery at `web/preview/flux2-all/`. — §5, not started.
+- [x] S7 stop honored: nothing written to `content/live/`.
+
+## Box notes for §3 (the long GPU session)
+
+- RTX 2080, **8 GB VRAM** (not the constraint the REQ's "23 GB box" line implies —
+  23 GB is system RAM). FLUX.2 klein Q8_0 + the Qwen3-4B text encoder do **not**
+  co-reside in 8 GB, so ComfyUI swaps them per prompt.
+- Cost of that swap, measured: **first generation of a run ≈ 460 s** (cold load).
+  Subsequent generations on the same prompt: **2–16 s**. A prompt change forces a
+  text-encoder reload: **30–100 s**. → **Batch by prompt, not by seed**, and never
+  judge throughput on the first image.
+- ComfyUI peaked at ~11.8 GB RSS during the spike; the box stayed responsive.
+- ComfyUI was stopped at the end of this session; the GPU is free.

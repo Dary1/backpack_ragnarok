@@ -133,15 +133,22 @@ from rembg import remove, new_session
 COMFY = "http://127.0.0.1:8188"
 
 # ---------------------------------------------------------------------------
-# Generation route. RATIFIED DEFAULT: flux2 (REQ-0136 bakeoff, user verdict
-# 2026-07-12). FLUX.2 klein 4B beat JuggernautXL V9 and DreamShaperXL Turbo on
-# every axis the bakeoff tested: brief compliance (near-white background 16/16
-# vs 5/16 and 1/16), painterly style, warm speed (10 s vs 40 s and 20 s) and
-# licence (Apache 2.0). The SDXL route stays working, for fallback and for
-# reproducing historical batches.
-ROUTE = "flux2"                  # "flux2" | "sdxl"
+# Generation route. THE ONLY PRODUCTION ROUTE: flux2 (REQ-0136 bakeoff, user
+# verdict 2026-07-12; REQ-0150 flux2化, user 2026-07-13). FLUX.2 klein 4B beat
+# JuggernautXL V9 and DreamShaperXL Turbo on every axis the bakeoff tested:
+# brief compliance (near-white background 16/16 vs 5/16 and 1/16), painterly
+# style, warm speed (10 s vs 40 s and 20 s) and licence (Apache 2.0).
+#
+# THE "sdxl" ROUTE IS FROZEN (REQ-0150). It is NOT a production route and NOT a
+# fallback. It stays runnable for exactly one purpose: reproducing historical
+# pre-flux2 batches. Nothing may reach it implicitly -- it is never a default,
+# no wrapper selects it, and no doc points at it except as history. Selecting it
+# takes an explicit `--route sdxl` and prints a FROZEN banner. Re-instating SDXL
+# as a production route takes an explicit, fresh user decision.
+ROUTE = "flux2"                  # "flux2" (production) | "sdxl" (FROZEN)
 
-CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"   # sdxl route
+# FROZEN -- sdxl route only. See the banner in main().
+CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"   # sdxl (FROZEN)
 
 FLUX = {
     "unet": "flux-2-klein-4b-Q8_0.gguf",      # Apache 2.0, unsloth GGUF Q8_0
@@ -680,7 +687,9 @@ def main():
     ap.add_argument("--candidates", type=int, default=4, help="number of candidates per item (<= len(--seeds))")
     ap.add_argument("--seeds", default="101,202,303,404")
     ap.add_argument("--route", default=ROUTE, choices=("flux2", "sdxl"),
-                    help="generation route (default: the ratified flux2)")
+                    help="generation route. Default and ONLY production route: "
+                         "flux2. 'sdxl' is FROZEN (REQ-0150) -- historical "
+                         "reproduction only, never for new production art.")
     # Sampler defaults are RESOLVED FROM THE ROUTE after parsing, not hardcoded
     # here. 30 steps / cfg 6.5 are SDXL numbers.
     ap.add_argument("--steps", type=int, default=None)
@@ -703,6 +712,17 @@ def main():
     a = ap.parse_args()
 
     ROUTE = a.route
+    if ROUTE == "sdxl":
+        print("=" * 72, flush=True)
+        print("WARNING  the 'sdxl' route is FROZEN (REQ-0150, user decision "
+              "2026-07-13).", flush=True)
+        print("         NOT a production route, NOT a fallback. Its only "
+              "sanctioned use is", flush=True)
+        print("         reproducing historical pre-flux2 batches. Do not ship "
+              "art from it, and", flush=True)
+        print("         do not use it to work around a flux2 problem -- fix "
+              "flux2 or escalate.", flush=True)
+        print("=" * 72, flush=True)
     _d = ROUTE_DEFAULTS[ROUTE]
     for _k in ("steps", "cfg", "sampler", "scheduler"):
         if getattr(a, _k) is None:
