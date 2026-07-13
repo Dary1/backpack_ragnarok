@@ -91,6 +91,9 @@ import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { FloatingItemTip } from './FloatingItemTip';
+// REQ-0142: the link-trace panel, mounted app-level for the same reason the
+// item tip is -- it floats over whichever board the pointer is interrogating.
+import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
@@ -273,6 +276,7 @@ function App() {
             board (including the warehouse/expedition portal reuse) with no
             per-page wiring. */}
         <FloatingItemTip />
+        <BeamTracePanel />
       </main>
     </div>
     </DexCardProvider>

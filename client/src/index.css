@@ -5392,3 +5392,106 @@ html, body {
   .schedule-master-detail { grid-template-columns: 1fr; }
   .schedule-detail-pane { position: static; }
 }
+
+/* ============================================================
+   REQ-0142 - link-trace diagnostics panel (BeamTracePanel.tsx). Floats
+   beside a hovered Unit core / beam segment on the canvas board and says
+   what each of the eight beams links -- or WHY the link the player expected
+   is absent. Same floating-panel anatomy as .item-tip (REQ-0119): fixed
+   position set in JS, measured + edge-flipped, night-iron gradient + gold
+   hairline. Distinct class (not a modifier of .item-tip) because the two
+   panels can be on screen at once (a tapped item tip + a hovered beam) and
+   must never fight over one rule set.
+   pointer-events:none is deliberate and load-bearing: the panel is anchored
+   NEXT TO the thing being hovered, and a panel that could take the pointer
+   would steal the very hover that summoned it (flicker loop). Nothing in it
+   is interactive -- it is pure read-out.
+   ============================================================ */
+.beam-trace {
+  position: fixed;
+  z-index: 150;
+  width: 300px;
+  max-width: min(300px, 82vw);
+  background: linear-gradient(180deg, #1b222d, #10141b);
+  border: 1px solid var(--gold-lo);
+  border-radius: 3px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.6);
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--bone-2);
+  pointer-events: none;
+}
+.beam-trace-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.beam-trace-title {
+  font-family: var(--f-dj);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bone);
+}
+.beam-trace-unit {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.beam-trace-summary {
+  color: var(--gold);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  margin: 2px 0 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+}
+.beam-trace-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+.beam-trace-row + .beam-trace-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+/* The compass chip carries the status color, so a glance down the column
+   reads the whole fan: cyan = a live link, grey = a fired-but-empty ray
+   (dud), dim = a direction this Unit does not fire at all. */
+.beam-trace-dir {
+  flex: 0 0 30px;
+  font-family: var(--f-dj);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-align: right;
+}
+.beam-trace-dir--linked {
+  color: #59d6d6;
+}
+.beam-trace-dir--dud {
+  color: var(--bone-3);
+}
+.beam-trace-dir--inactive {
+  color: #4a4a4a;
+}
+.beam-trace-text {
+  flex: 1 1 auto;
+  color: var(--bone-2);
+}
+/* A blocked ray is the one row a player is usually hunting for -- give it
+   the same amber the board's dashed "the beam died here" ghost uses. */
+.beam-trace-row[data-reason='blocked'] .beam-trace-text {
+  color: #e0a86a;
+}
+.beam-trace-row[data-reason='dir-not-in-set'] .beam-trace-text,
+.beam-trace-row[data-reason='no-receiver'] .beam-trace-text {
+  color: var(--bone-3);
+}
+.beam-trace-mutual {
+  margin-left: 6px;
+  color: #9ff0f0;
+  font-size: 11px;
+  white-space: nowrap;
+}

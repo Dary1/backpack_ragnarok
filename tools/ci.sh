@@ -48,6 +48,12 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # because it needs client/node_modules (vite).
   echo "==== [5.6/7] client unit-icon chain + G7 ring (REQ-0125a) ===="
   (cd client && node scripts/check_unit_icon.mjs)
+  # REQ-0142: link-trace query layer (client/src/board/linkTrace.ts) driven
+  # against the REAL engine, with canvas_spec.md's own decoded example as the
+  # golden. Pure functions, no browser, no Pixi -- same rig and the same reason
+  # as the unit-icon gate above, so it sits beside it, in front of the build.
+  echo "==== [5.7/7] client link-trace queries (REQ-0142) ===="
+  (cd client && node scripts/check_link_trace.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && npm run build)
 else
