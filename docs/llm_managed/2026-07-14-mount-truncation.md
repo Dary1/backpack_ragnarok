@@ -1,4 +1,4 @@
-# 2026-07-14 — Cowork mount silently truncates files (root cause of 末尾切れ)
+# 2026-07-14 — Cowork mount silently truncates files (root cause of tail truncation)
 
 Status: measured and reproduced. Rule lives in PROJECT.md ("Where to work — NON-NEGOTIABLE");
 this file is the evidence behind it.
@@ -12,9 +12,9 @@ this file is the evidence behind it.
   (the outputs scratch and the user folder). This is the ONLY thing Read/Write/Edit see.
   It is defective in two independent ways.
 
-Confusing the two is what produced 末尾切れ.
+Confusing the two is what produced the tail-truncation bug.
 
-## Defect 1 — stale size cache (the actual cause of 末尾切れ)
+## Defect 1 — stale size cache (the actual cause of tail truncation)
 
 bash and the Read/Write/Edit tools reach the same file by different paths. The mount caches
 a file's SIZE and never refreshes it when the Windows-side tools write to that file.
