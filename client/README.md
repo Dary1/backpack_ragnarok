@@ -40,6 +40,20 @@ web service (no ingress change needed; `web/` is already served as-is).
   from content i18n (item/SI name/flavor text, served via `content/live/
   *.json`'s `i18n.ja.{name,flavor}` map, read directly by `src/dex/*`) --
   the same single `Locale` toggle (Header.tsx) drives both.
+- `src/lib/` (REQ-0145b) — shared page-level helpers, extracted from the
+  pages that used to hold private copies. `itemContent.ts` (itemId ->
+  content-entry / localized-name / icon+rarity resolution), `time.ts`
+  (formatClock + formatWarehouseCountdown), `tabPulse.ts` (cross-page
+  inv-tab pulse), `placement.ts` (the three first-fit variants + grid
+  bounds; see its recorded gather-then-unify verdict), 
+  `usePolledResource.ts` (load-on-mount / optional poll / error/loading /
+  manual-reload hook, parameterized to each page's exact semantics),
+  `contentCache.ts` (memoized /api/content promise +
+  invalidateContentCache()). New pages import from here instead of
+  re-implementing; `shared/constants.json` (repo root) holds the numeric
+  constants shared verbatim with server services (WAREHOUSE_CAP,
+  GACHA_COMMON_BP_COST) — import it rather than hardcoding a display
+  literal.
 - `src/theme/mjolnir.css` (REQ-0069) — the MJOLNIR design-token layer
   (colors/rarity/fonts, text scales, panel/ornament/button/chip/bar
   primitives) ported from the design mocks (`web/redesign/assets/ui.css`,

@@ -181,4 +181,102 @@ known-debt list) updated in the same commits as the changes they describe.
 
 ## Execution log & amendments
 
-(to be written during implementation)
+### 2026-07-14 — (cb)(cc)(cd) + docs implemented; (ca)(ce)(cf) blocked per §5
+
+Branch `req-0145-server-client-refactor-r2`, base = master c83e5a3 (== the
+spec evidence commit; worktree was already synced).
+
+**Precondition audit (implementation start)**
+- REQ-0156 NOT merged (`git branch --no-merged master`); its branch showed
+  no api.ts/i18n.ts/index.css commits yet at audit time, but the §5
+  sequencing stands → (ca)(ce) not started this round; re-audit at 0156
+  merge.
+- (cf) precondition FAILS independently of 0156: unmerged branch
+  `req-0057-forecast-overlay` carries edits to ALL THREE hotspot files
+  (api.ts / i18n.ts / index.css). (cf) must not land until that branch
+  merges or is retired — needs an owner/user decision.
+- Baseline full-e2e failure sets recorded vs the LIVE master build:
+  - tunnel/serial (`pnpm run e2e`): 5 failed / 149 passed — artadmin:18,
+    artinspect:21, dex-card:65, nav-routing:26, schedule:1065.
+  - CI mode (local proxy :8803, E2E_PARALLEL=4, E2E_GPU=1 — the
+    tools/ci.sh mode, used as THE comparison baseline): 7 failed /
+    147 passed — the 5 above + contentadmin:37 + warehouse-mjolnir:203.
+
+**Commits (each phase gated: tsc -b clean + oxlint 34 warnings 0 errors ==
+pre-change master count, zero in new/touched files)**
+- 40a858c (cb-1) move-only co-location: client/src/lib/{itemContent,time,
+  tabPulse,placement}.ts + shared/constants.json; no consumers switched.
+- 1aa5758 (cb-2) adoption: WarehousePage/WorkshopPage import lib/ + shared
+  constants; server services/core.cjs + services/gacha.cjs switch their
+  literals to the shared require (the ratified one-line edits);
+  tsconfig.app.json gains resolveJsonModule. server api_test after this
+  commit: 155/155 files backend, 155/155 pg backend.
+- d3a20e1 (cc-1) lib/usePolledResource.ts + lib/contentCache.ts added, no
+  consumers.
+- 07185b1 (cc-2) adoption: WarehousePage (rows 5s poll + content/rooms/
+  dungeons one-shots), MarketPage + RagnarokPage (composite initial loads,
+  trackLoading mode), DexRoot (content+me); DexAdmin.save() invalidates
+  the content cache before onSaved().
+- d067f93 (cd) WarehousePage 733→476 LOC (useWarehouseData.ts data+claim
+  machine + TtlRing.tsx, verbatim extractions); DexAdmin 562→496 LOC
+  (dex/adminForm.ts: EffectRow/effectToRow/rowToEffect/defaultEffectRow/
+  numToStr); WorkshopPage (435 LOC after cb): NO further split — nothing
+  left is trivially separable (the roll flow is one coherent two-phase
+  transaction). Spec allowed exactly this call.
+- (this commit) (cg partial) client/README.md src/lib+constants section;
+  docs/llm_managed/architecture.md client row; this log.
+
+**Full e2e vs the WORKTREE build** (worktree `web/` served on :8901 per
+the REQ-0142 recipe, E2E_STATIC_PORT=8901, CI mode): **6 failed / 148
+passed** — artadmin:18, artinspect:21, contentadmin:37, dex-card:65,
+nav-routing:26, schedule:1065. Strict SUBSET of the CI-mode baseline
+(the 6 shared failures are spec-and-line identical to baseline = all
+pre-existing). The baseline-only 7th failure (warehouse-mjolnir:203, the
+REQ-0091 claim-flash timing test — exactly the refactored area) was
+re-run serially against the worktree build: 5/5 passed, twice → parallel-
+mode flake in the baseline run, not a regression. Failure-set-identical
+gate: GREEN for the landed phases. Dist restored after the run (web/app
+NOT committed — rebuild happens only at merge via release.sh, per §3.4).
+
+**Grep gates (§7, landed phases)**: zero duplicate impls of
+localizedItemName / pulseTab / first-fit / clock-countdown formatting
+outside excluded files (only schedule/Monitor.tsx keeps its excluded-file
+copies, with adoption notes for REQ-0099 in lib/time.ts +
+lib/itemContent.ts); zero local GRID_MIN|GRID_MAX|TAB_PULSE_MS|
+WAREHOUSE_CAP|GACHA_COMMON_BP_COST literals anywhere in client/src.
+
+**Amendments (spec → as-built, with reasons)**
+1. shared/constants.cjs + .d.ts → **shared/constants.json**. A CJS source
+   file cannot be imported by Vite dev/build source pipelines (only
+   node_modules CJS is converted); JSON is natively importable by BOTH
+   node require() and Vite. Same single-source, kills the same drift.
+2. (cc) adoption list pruned to measured reality @ c83e5a3: WorkshopPage
+   fetches no mount resource (store-only reads); BuyPane/SellPane fetches
+   are lifted into MarketPage; DevotionSection's preview fetch lives in
+   RagnarokPage and is selection-driven, not a mount resource.
+   DismantlePanel's modal-local ledger fetch left as-is (not in the spec
+   list). No behavior to preserve was skipped; there was simply nothing
+   to adopt at those sites.
+3. Placement gather-then-unify verdict: **NOT unified** — the three
+   first-fit variants drive different engine APIs against different
+   record shapes (PO/SI push-check-rollback vs BP placeholder vs TM
+   merge-fast-path). Kept as documented named variants in
+   lib/placement.ts; verdict recorded in its module doc per spec.
+4. contentCache invalidation wired into DexAdmin.save() (the only
+   in-scope admin content mutation). artadmin/contentadmin (0156-owned,
+   excluded) do not consume the cache today; adoption note for the 0156
+   owner lives in contentCache.ts.
+5. Excluded files untouched, as demanded: the REQ-0099/0098/0100 pointer
+   comments live in lib/time.ts + lib/itemContent.ts instead of inside
+   Monitor.tsx/RoomCard.tsx.
+
+**Status / what remains for todo→built**
+- DONE: (cb) (cc) (cd) (cg for the landed scope) + §7 grep gates + e2e
+  failure-set gate for the landed scope.
+- BLOCKED (ca)(ce): REQ-0156 must merge first (§5.2) — re-audit api.ts/
+  i18n.ts ownership then.
+- BLOCKED (cf): no-unmerged-index.css-branch precondition currently
+  violated by req-0057-forecast-overlay (and 0156 until it lands).
+  Decision needed from the owner/user on req-0057 (merge or retire).
+- REQ stays in todo/ until (ca)(ce)(cf) land; this log is the resume
+  point (re-run the precondition audit first).
