@@ -165,4 +165,188 @@ they describe.
 
 ## Execution log & amendments
 
-(to be written during implementation)
+Implemented 2026-07-14, orchestrator session (Cowork). All phases sa-sg complete;
+full `tools/ci.sh` green (see gate results below).
+
+### Branch amendment (user decision, 2026-07-14)
+
+Mid-implementation, the sibling REQ-0145b session began committing to the shared
+branch `req-0145-server-client-refactor-r2` with uncommitted server/services WIP
+in the same worktree (typecheck-breaking mid-edit state). **User decision: split
+0145a onto its own branch.** This REQ is implemented on branch
+**`req-0145a-server-refactor-r2`** (worktree
+`~/backpack_ragnarok_worktrees/req-0145a-server-refactor-r2`), based at
+`972b3b9` (= master c83e5a3 + this REQ's sa + sb-prep commits, no 0145b
+commits). The (sa)/(sb-prep) commits `fda9ffb`/`972b3b9` also exist on the
+shared 0145b branch (shared ancestry; merges will dedupe).
+
+### Precondition audits (REQ §4)
+
+- REQ-0118a: implemented as Supabase/tunnel INFRA only -- no git branch touches
+  `server/` (its REQ file documents config in `~/supabase/docker/` + Cloudflare;
+  no `server/` code). No overlap; nothing to merge first.
+- REQ-0156 branch: `git diff master...req-0156-artadmin-ux-overhaul -- server/`
+  -> empty. No overlap.
+
+### Commits (phase -> hash)
+
+| Phase | Commit | Summary |
+|---|---|---|
+| sa | `fda9ffb` | npm -> pnpm in tools/ci.sh, tools/release.sh, READMEs, architecture.md §6 |
+| sb prep | `972b3b9` | api_test storage-eviction seam widened to the storage/ subtree (no-op pre-split) |
+| sb | `f9dc6de` | storage.cjs -> storage/{lib,profiles,rooms,runs,warehouse,gacha,dismantle,market,ragnarok}.cjs behind the unchanged facade; export surface Object.keys-identical |
+| sc | `1ab20c7` | lib/content_files.cjs (CONTENT_ROOT resolver + shared helpers); rewired lib/content.cjs, market ITEMS_PATH, ragnarok SEASONS/SIS + core.cjs + admin.cjs (amendment below) |
+| sc | `49de982` | api_test injects CONTENT_ROOT at the homedir-remap seams |
+| sd | `7105d23` | deployedUidSet market -> squads (THE require-graph edit); ragnarok + dismantle imports flip; market facade keeps re-exporting |
+| sd | `6eafed8` | services/ragnarok.cjs -> services/ragnarok/{lib,seasons,einherjar,order,snapshot,devotion}.cjs behind the unchanged facade |
+| sd | `13c38ef` | services/market.cjs -> services/market/{lib,listings,views,trade,furnace}.cjs behind the unchanged facade |
+| se prep | `9d4bc89` | per-family 401 assertions pinned (warehouse + workshop; status AND wording) -- suite 155 -> 157 tests |
+| se | `46cd881` | routes/schedule.cjs -> routes/{schedule,warehouse,workshop}.cjs + lib/route_auth.cjs; router dispatches the three consecutively in the old slot |
+| sf | `d59dbbc` | api_test.cjs -> thin entry over server/tests/api/* (12 files) with executed-assertion parity gate |
+| sg | `624fe3a` | server/README.md + architecture.md §4/§5/§9 describe the new layout + CONTENT_ROOT |
+
+### Gate results
+
+- **api_test parity (sf acceptance):** executed assertions counted by the
+  harness (assert.* calls). BEFORE (monolith @ 46cd881): **1213 files / 1213
+  pg**. AFTER (split @ d59dbbc): **1213 files / 1213 pg** -- identical; tests
+  157/157 green in both backends. (155 -> 157 happened in `9d4bc89`, BEFORE the
+  splits, by design -- the added per-family 401 assertions encode pre-split
+  behavior.)
+- **Endpoint surface diff (acceptance):** route-regex table
+  (`grep "_RE = " server/routes/*.cjs | sort`) diffed before/after the (se)
+  split: **identical**. Method/status/wording edges pinned by api_test in both
+  backends.
+- **Export-surface parity:** `Object.keys()` of `storage.cjs`,
+  `services/ragnarok.cjs`, `services/market.cjs` verified byte-identical
+  before/after each split.
+- **LOC ceiling (acceptance, <~600 for hand-written server modules):** largest
+  is now `services/warehouse.cjs` at 406 LOC (untouched); the decomposed areas:
+  storage largest entity module 207 (storage/market.cjs), services largest
+  379 (ragnarok/devotion.cjs), routes largest 291 (routes/schedule.cjs).
+  Pre-REQ: storage.cjs 1098, services/ragnarok.cjs 1008, services/market.cjs
+  756, routes/schedule.cjs 505. Test SUITE files (not server modules; exempt
+  like facades): largest 705 (tests/api/ragnarok.cjs).
+- **npm grep gate (sa):** `grep -rnE "\bnpm\b|\bnpx\b" tools/ server/README.md
+  client/README.md docs/llm_managed/architecture.md | grep -v pnpm` -> zero
+  hits.
+- **os.homedir grep gate (sc) -- measured post-state (amendment below):** no
+  CONTENT-file path outside `lib/content_files.cjs` derives from
+  `os.homedir()`. Remaining code-level `os.homedir()` sites are all
+  data/registry/art concerns, each deliberate: `players.cjs`,
+  `storage/lib.cjs`, `storage_art.cjs`, `storage_content.cjs` (data roots + pg
+  namespaces), `admin.cjs` (data/config only; its CONTENT paths now resolve via
+  content_files), `tool_{export_files,migrate_to_pg,prune_pg_profiles}.cjs`
+  (ops scripts over data), `services/{art_export,content_export,model_hash,
+  art_jobs}.cjs` (art domain; each already has its own env override).
+- **Full `tools/ci.sh`** (sim goldens byte-identical, mock tests, typecheck,
+  vocab self-test, api files+pg, artwork/inspection/content pg suites, client
+  build, e2e): **GREEN** on 2026-07-14 (this worktree; log /tmp/ci_0145a.log on
+  llmlocal). `pnpm run test:quick` was green after every commit listed above.
+
+### Amendments vs the spec (all scope-internal, none touch the frozen contract)
+
+1. **Branch** -- see "Branch amendment" above (user decision).
+2. **(sc) scope extension:** the REQ named three duplicated readers; during
+   implementation `services/core.cjs` (a fourth reader, same homedir dance) and
+   `admin.cjs` (content WRITER -- its item-edit must land in the exact tree the
+   readers resolve, or a CONTENT_ROOT-overridden server would read one tree and
+   admin-edit another) were rewired onto content_files.cjs too. The literal
+   grep gate "only content_files.cjs (and storage lib)" was unachievable as
+   written (players/admin/tools/art all legitimately anchor DATA paths on
+   os.homedir); reinterpreted as "no content-file resolution outside the one
+   loader" -- measured post-state above. Residue: the dungeon domain's content
+   paths come from `sim/dungen.cjs`'s `liveDungeonDir()` (sim/ is
+   replay-frozen; recorded in architecture.md §9).
+3. **(sd):** `services/dismantle.cjs` found importing deployedUidSet from the
+   market facade -- flipped to squads alongside ragnarok (same rationale).
+   Both service splits gained a small `lib.cjs` (tunables + shared helpers),
+   mirroring the (sb) storage/lib.cjs pattern, to keep the module graphs
+   acyclic (score fold lives in einherjar.cjs: order -> einherjar, never back).
+4. **(sf):** (a) an 11th suite file `schedule_ops.cjs` -- the monolith
+   interleaves a second schedule block (status normalization, policies, P1-C,
+   dev seams, autogen) AFTER the gacha group; preserving the monolith's
+   execution order (LOAD-BEARING: later groups assert against server state
+   earlier groups created, and the homedir/module-generation epochs are
+   position-dependent) beats forcing the 10-file sketch. (b) the
+   'admin: REAL repo happy path' test stays at ragnarok.cjs's tail -- it must
+   run exactly there, under the restored REAL homedir epoch. (c) "executed
+   assertions" implemented as counted assert.* calls (1213), a strictly
+   stronger parity metric than test count (157).
+5. **(se):** the shared preamble extraction to `lib/route_auth.cjs` also
+   carries the shared error/canvas helpers (scheduleErrToStatus/
+   sendScheduleError/loadOwnCanvas/requireOwnCanvas), de-closured onto explicit
+   parameters -- they were part of the same shared closure set.
+
+### INCIDENT — live artwork-registry wipe triggered by this REQ's own ci e2e run (2026-07-13 UTC evening)
+
+**What happened.** This session's full `tools/ci.sh` run (step 7 = the whole
+Playwright suite against the LIVE services via the local ingress proxy, the
+sanctioned path) executed `artinspect.spec.ts`, whose opening
+`POST /api/art/dev/clear-all` ran against the LIVE registry namespace —
+deleting the 56 backfilled artworks / 130 renders — because (a) the plain
+full-suite run carries NO namespace remap (the live api's `storage_art`
+namespace is the homedir-derived live one), (b) the dev_mode no-token fallback
+armed the seam, and (c) the destructive dev seams had no second gate at the
+time. The concurrent REQ-0156 session detected it minutes later (live API
+returning 1 artwork), **recovered completely** (junk purge +
+`tools/backfill_registry.cjs` re-run: 56/130/3 restored, verified 58 artworks
+live afterwards incl. their new rows) and **hardened the seams**
+(`ALLOW_DEV_CLEAR=1` env gate on art+content clear-all/bump-kit, REQ-0156
+commit e350959, merged + deployed 22:03 UTC). No user-generated data existed
+in the registry; loss window was minutes; recovery is idempotent-by-design.
+
+**Attribution.** The trigger was THIS session's e2e run (and a 6-spec retry at
+22:04 UTC hit the already-hardened server, causing no further damage). The
+landmine itself predates this REQ (REQ-0151/0152/0155 dev seams + the
+REQ-0080 e2e-against-live design); any full-suite run on the box would have
+tripped it. The 0145/0156 concurrency call in this REQ's §4 was correct at the
+CODE level (zero file conflicts end-to-end) — what no spec covered was the
+shared LIVE BOX as a mutable resource. Closed now by 0156's ALLOW_DEV_CLEAR
+gate; this REQ's CONTENT_ROOT loader is the content-side sibling of the same
+isolation story. Follow-up candidate for a future REQ: default-suite
+exclusion (or auto-harnessing) of the three admin-surface specs, which are
+designed for their isolated HOME-remap harnesses
+(`tools/{artadmin,art_inspect,content_admin}_e2e.sh`).
+
+### Master sync before the final gates
+
+After the incident + the same-day REQ-0156/REQ-0057 merges, master moved to
+d387388; this branch merged it in (`faadac4`, clean auto-merge — the sequencing
+audit held: zero file conflicts with either REQ) so the final gates run on the
+integrated tree (hardened dev seams + forecast + artqueue tests included).
+
+### Final gate run (merged tree @ faadac4)
+
+- sim tests / goldens / S4 / forecast parity / mock engine / typecheck /
+  engine drift / vocab self-test: green.
+- api_test files + pg: 157/157, executed assertions 1213/1213 (parity gate).
+- pg_sync / backfill_registry / artwork / artqueue (REQ-0156) / inspection /
+  content suites: green.
+- client unit gates + typecheck + build: green.
+- e2e, full default suite vs live: 151 passed; every failure accounted, and
+  the accounting MATCHES master's own REQ-0057 merge-run record verbatim:
+  (a) artadmin / artinspect / contentadmin — post-hardening these REQUIRE
+  their isolated harnesses (the plain suite's clear-all 403s by design);
+  run on THIS tree via `tools/{artadmin,art_inspect,content_admin}_e2e.sh`,
+  each standing up an ISOLATED instance of THIS BRANCH's refactored api:
+  **3 + 1 + 1 passed, zero failed** — the strongest end-to-end proof of the
+  refactor, since the plain suite exercises only the LIVE (master) server;
+  (b) nav-routing `.schedule-rooms-view` — pre-existing stale-spec red on
+  master (REQ-0057 log reproduced it against the master bundle; reproduced
+  here solo as well); dex-card deep-link + schedule monitor-freeze — same
+  pre-existing set, both PASSED on this tree's quiet-box rerun;
+  (c) forecast:41 / warehouse-mjolnir:203 / landing:115 / guest-auth:83 /
+  dex:280 — parallel-mode flakes (REQ-0057's run hit the first two): all
+  passed on the quiet-box targeted rerun (12/13 with only nav-routing red).
+  Wipe-collateral failures from the incident window disappeared with the
+  registry recovery, as predicted.
+
+### Deploy note
+
+Implementation-complete on branch `req-0145a-server-refactor-r2`; NOT merged,
+NOT deployed (built, not done). Merge via the inbox-branch flow; deploy =
+user-coordinated `systemctl --user restart backpack-api` after full ci on the
+merge result. The worktree's `web/app/` dist was rebuilt by ci step 6 and left
+UNCOMMITTED deliberately (dist rebuild belongs to tools/release.sh at
+merge/deploy time); `git checkout -- web/app` after ci keeps the tree clean.
