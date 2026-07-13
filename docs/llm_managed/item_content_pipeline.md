@@ -19,8 +19,14 @@
 >
 > The NON-art content of this file (schema, data model, review flow) still stands.
 
-# Item Content Pipeline — v2.1 (PO / SI batch procedure + verification log)
+# Item Content Pipeline — v3.0 (2026-07-14, REQ-0154; registry era) — PO / SI
 
+> **v3.0 (2026-07-14, REQ-0154; registry era):** §0 below makes the two
+> registries (artwork REQ-0151 / content-data REQ-0155) the operating model and
+> references the spine §7 for all shared contracts; PO/SI split stated per
+> REQ-0151 ruling 8. The CLI Steps 1–8 are kept as the underlying tool sequence.
+> Art content stays superseded by `art_pipeline.md` (banner above).
+>
 > **v2.1 (2026-07-12, REQ-0134):** translated to English per the language
 > policy (user directive 2026-07-02); content identical to v2 except:
 > references updated (`art_golden.md` → `common_content_pipeline.md` §2;
@@ -41,6 +47,44 @@
 > regeneration restarts on the refreshed pipeline — which now means the
 > **REQ-0136 checkpoint outcome only**: REQ-0135 is settled (LayerDiffuse
 > NO-GO, matte route unchanged) and is no longer a blocker. See REQ-0109 (todo).
+
+## 0. Registry era — PO and SI as registry facets (REQ-0154)
+
+Items are now produced through the **two registries** described in
+`common_content_pipeline.md` §6–§9, not by hand-running the CLI steps below. The
+CLI steps (§Prerequisites … Step 8) remain **valid and are the underlying tool
+sequence** the registries wrap — read them for what each tool does; read this
+section and the spine §7 for the operating model.
+
+**PO / SI split (REQ-0151 ruling 8 — canvas_spec.md canon).** An item is one
+`system_name` with two facets:
+
+| facet | PO — Placement Object | SI — Socket Item |
+| --- | --- | --- |
+| artwork kind (`artworks.kind`) | `po` | `si` |
+| shape input (admin) | **5×5 click grid** (active cells) | **none** |
+| render resolution | **derived** from the active-cell bounding box: 256 px/cell, /16-snap (`server/services/art_sizing.cjs`) — e.g. sword 3 vertical cells → 256×768, shield 2×2 → 512×512, potion 1×2 → 256×512 | **locked 256×256** |
+| data kind (`content_defs.kind`) | `po_def` | `si_def` |
+| data schema | `po/2` (`content/live/live_items.json`): `shape`/`tags`/`effects`/`sockets`/`ports`/… (Step 2) | `si/2` (`content/live/live_sis.json`): `slot`/`reqTags`/`effects` — **no shape/sockets** |
+
+**Seed / variant, adoption, export, advisory inspection: see the spine — do NOT
+restate here.**
+- Seed vs variant, recipe-vs-asset-of-record: `common_content_pipeline.md` §7.2.
+- Adoption (one adopted render + one adopted variant per `system_name`; human-only;
+  adopted-undeletable): §7.3.
+- Export: the adopted PO/SI render exports to `content/art/po/<name>.png` /
+  `content/art/si/<name>.png`; the adopted def variant exports via `tool_integrate`
+  into `content/live/live_items.json` / `live_sis.json`. The git-branch/live-merge
+  half is the deploy step (§7.4).
+- Advisory inspection kits: §7.5 (roster + thresholds in `art_pipeline.md` §8).
+
+**Where the CLI steps map onto the registries:** Step 5 (art) is now the **artwork
+registry** — generate seeds, kits auto-run, human adopts (`art_pipeline.md`; REQ-0151).
+Step 3–4 validators (static validate / engine integrate) are now the **content-data
+registry**'s machine checks run on every variant (`schema_vocab` / `engine_types` /
+`gen_data` / `integrate` dry-run; REQ-0155). Step 8 (merge) is now the **export**
+step on adoption (§7.4). The manual steps still work unchanged for a one-off batch.
+
 
 ## Prerequisites
 
