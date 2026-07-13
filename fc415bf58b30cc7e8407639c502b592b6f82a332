@@ -1,0 +1,18 @@
+RENUMBERED: this commit's REQ is now REQ-0074, not REQ-0097.
+
+The subject line above ("REQ-0097: Common BP gacha shape +2 cells") is preserved
+as the historical record of what was actually committed on 2026-07-07. It is NOT
+a mistake and must not be "fixed" -- the commit hash is cited by REQ-0101 and
+REQ-0102 and is load-bearing.
+
+Two concurrent orchestrator sessions both claimed 0097 a day apart: this gacha
+balance tweak (07-07) and the expedition master/detail rebuild (07-08, commits
+0380033 / d95cef3). Both had already merged to master before the collision was
+noticed. Owner ruling 2026-07-13: the gacha REQ yields the number.
+
+  REQ-0097  ==> now means ONLY the expedition master/detail rebuild
+  REQ-0074  <== this commit's REQ (docs/REQ/done/REQ-0074-common-bp-gacha-cell-buff.md)
+
+History was deliberately NOT rewritten: rewriting fc415bf would have recreated
+241 commits and invalidated 71 commit-hash citations across 30 REQ files, which
+PROJECT.md treats as the authoritative log. This note is the fix instead.
