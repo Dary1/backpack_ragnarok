@@ -317,6 +317,57 @@ export interface ApiFormationEntry {
   i18n?: ApiI18nMap;
   canvases: Record<string, string>;
 }
+/** REQ-0057: ONE (enemy, skill) attack profile the Ray Forecast Overlay
+ * walks. Everything the client needs to fire that skill's ray at the player
+ * field itself -- entry projection base (the attacker's centroid on the enemy
+ * plane), the attack profile's edge/penetration/aoe, the expected damage of
+ * one firing, and how often it fires. Derived from enemy DEFs only; it can
+ * never carry a specific run's hidden placements (REQ-0057: "forecast !=
+ * spoiler"). See server/lib/forecast.cjs for the fold that produces it and
+ * shared/forecast.mjs for the walk that consumes it. */
+export interface ApiForecastProfile {
+  /** Stable id: "<enemyId>#<skillId>@<row>,<col>". */
+  key: string;
+  enemyId: string;
+  skillId: string;
+  /** The SKILL's display name. */
+  i18n?: ApiI18nMap;
+  /** The ENEMY's display name. */
+  enemyI18n?: ApiI18nMap;
+  /** Attacker centroid on the ENEMY plane (the entry projection's base). */
+  centroid: [number, number];
+  /** Expected number of THIS attacker present in a randomly drawn battle. */
+  weight: number;
+  /** attack_profile.edge -- which side(s) of the player field the ray enters from. */
+  edges: string[];
+  penetration: number;
+  aoe: number;
+  aoeStatuses?: boolean;
+  /** Expected damage of one firing at bounce multiplier 1.0 (0 for a status ray). */
+  damage: number;
+  /** Expected firings per second (1 / midpoint of the every_secs range). */
+  rate: number;
+  /** True when the verb deals no damage (apply_status / add_on_hit_status). */
+  statusOnly?: boolean;
+}
+
+/** REQ-0057: GET /api/schedule/forecast?dungeonType=&level=. */
+export interface ApiForecastPayload {
+  ok: true;
+  dungeonType: string;
+  level: number;
+  /** How many dungen seeds the profiles were marginalised over. */
+  sampleSeeds: number;
+  /** How many battle encounters that sampling produced (the weight denominator). */
+  battlesSampled: number;
+  /** The shared A1:Z18 field the rays are fired ONTO. */
+  bounds: { ROWS: number; COLS: number };
+  /** sim TUNABLES.ENTRY_JITTER_HALF_WIDTH -- the entry-jitter half-width J. */
+  jitterHalfWidth: number;
+  formations: ApiFormationEntry[];
+  profiles: ApiForecastProfile[];
+}
+
 export interface ApiDungeonsPayload {
   ok: true;
   dungeons: ApiDungeonEntry[];
