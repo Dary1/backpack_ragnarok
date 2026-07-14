@@ -3,7 +3,7 @@
 // (ownership 401/403 matrix, REQ-0037 "default" dev alias, REQ-0041/42
 // best-effort claim/gacha finalize on save). Moved VERBATIM from
 // server/api.cjs handle(). Returns false when not matched.
-const { sendJSON, readBody, getAuthToken, MAX_BODY_BYTES } = require('../lib/http_util.cjs');
+const { sendJSON, readBody, MAX_BODY_BYTES } = require('../lib/http_util.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const schedule = require('../schedule.cjs');
@@ -14,8 +14,7 @@ function tryProfileRoutes(req, res, url, p) {
   const m = PROFILE_CANVAS_RE.exec(p);
   if (m) {
     const urlPlayerId = m[1];
-    const token = getAuthToken(req);
-    const resolved = admin.resolveAuth(token);
+    const resolved = admin.resolveAuthFromRequest(req);
     if (!resolved.ok) {
       sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
       return;

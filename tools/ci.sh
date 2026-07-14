@@ -102,6 +102,12 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # rig as the two gates above, so it sits beside them in front of the build.
   echo "==== [5.8/7] client circuit-chime mapping (REQ-0059) ===="
   (cd client && node scripts/check_chime_mapping.mjs)
+  # REQ-0118c: Supabase auth wiring (session token accessor + Bearer header
+  # assembly + OAuth redirect construction + guest/discord/link dispatch),
+  # driven against the REAL modules with an injected fake supabase client.
+  # Same vite-ssrLoadModule rig as the checks above; no browser, no live auth.
+  echo "==== [5.9/7] client supabase-auth wiring (REQ-0118c) ===="
+  (cd client && node scripts/check_auth.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
 else

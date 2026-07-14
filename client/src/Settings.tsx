@@ -17,9 +17,70 @@ import { fetchMe, type ApiMe } from './api';
 import { t } from './i18n';
 import { logout, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
+import { getAuthState, subscribeAuth, signInWithDiscord, signInAsGuest, linkDiscord, signOutSupabase, type AuthState } from './auth/session'; // REQ-0118c
 
 interface SettingsProps {
   locale: Locale;
+}
+
+// REQ-0118c: Supabase sign-in block (Continue with Discord / Play as guest,
+// and, once signed in, link/upgrade or sign out). Degrades to a "not
+// configured" note when the build has no Supabase env (e.g. CI/e2e builds),
+// so the REQ-0037 invite/guest path is entirely unaffected there.
+function AuthBlock({ locale }: { locale: Locale }) {
+  const [auth, setAuth] = useState<AuthState>(() => getAuthState());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => subscribeAuth(() => setAuth(getAuthState())), []);
+  const run = async (fn: () => Promise<{ error: unknown } | void>) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fn();
+      if (r && r.error) setErr(r.error instanceof Error ? r.error.message : String(r.error));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reload = () => { if (typeof location !== 'undefined') location.reload(); };
+  return (
+    <section className="settings-section settings-signin" data-testid="settings-signin">
+      <h3>{t(locale, 'settings.signInTitle')}</h3>
+      {!auth.configured ? (
+        <p className="settings-hint" data-testid="settings-signin-unconfigured">{t(locale, 'settings.signInUnconfigured')}</p>
+      ) : auth.status === 'discord' || auth.status === 'other' ? (
+        <div className="settings-signin-body">
+          <p data-testid="settings-signin-status">{t(locale, 'settings.signedInDiscord', { name: auth.name ?? '' })}</p>
+          <button type="button" className="settings-signout-btn" data-testid="settings-signout" disabled={busy}
+            onClick={() => run(async () => { await signOutSupabase(); reload(); })}>
+            {t(locale, 'settings.signOutDiscord')}
+          </button>
+        </div>
+      ) : auth.status === 'anonymous' ? (
+        <div className="settings-signin-body">
+          <p data-testid="settings-signin-status">{t(locale, 'settings.playingAsGuest')}</p>
+          <button type="button" className="settings-link-btn" data-testid="settings-link-discord" disabled={busy}
+            onClick={() => run(() => linkDiscord())}>
+            {t(locale, 'settings.continueWithDiscord')}
+          </button>
+        </div>
+      ) : (
+        <div className="settings-signin-body">
+          <button type="button" className="settings-discord-btn" data-testid="settings-continue-discord" disabled={busy}
+            onClick={() => run(() => signInWithDiscord())}>
+            {t(locale, 'settings.continueWithDiscord')}
+          </button>
+          <button type="button" className="settings-guest-btn" data-testid="settings-play-guest" disabled={busy}
+            onClick={() => run(async () => { const r = await signInAsGuest(); if (r && r.error) return r; reload(); })}>
+            {t(locale, 'settings.playAsGuest')}
+          </button>
+        </div>
+      )}
+      {err ? <p className="settings-account-error" data-testid="settings-signin-error">{err}</p> : null}
+    </section>
+  );
 }
 
 export function Settings({ locale }: SettingsProps) {
@@ -86,6 +147,8 @@ export function Settings({ locale }: SettingsProps) {
           </div>
         )}
       </section>
+
+      <AuthBlock locale={locale} />
 
       {/* REQ-0059: Circuit Chimes + haptics controls (client-only). */}
       <section className="settings-section settings-sound" data-testid="settings-sound">

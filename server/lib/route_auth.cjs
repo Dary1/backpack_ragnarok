@@ -24,7 +24,7 @@ const storage = require('../storage.cjs');
 // sending the 401; callers must bail out on null.
 function resolveCallerOr401(req, res) {
   const token = getAuthToken(req);
-  const resolved = admin.resolveAuth(token);
+  const resolved = admin.resolveAuthFromRequest(req);
   if (!resolved.ok) {
     sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
     return null;
