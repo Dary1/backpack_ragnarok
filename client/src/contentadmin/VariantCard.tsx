@@ -15,9 +15,11 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ContentVariantDto, MachineCheck } from '../api';
 import { copyText, fmtDate, parentLabel, prettyJson, reviewClass } from './contentShared';
+import { EntityPreview } from './EntityPreview';
 
 export function VariantCard(props: {
   v: ContentVariantDto;
+  kind: string;
   all: ContentVariantDto[];
   isAdopted: boolean;
   adoptedNo: number | null;
@@ -38,7 +40,7 @@ export function VariantCard(props: {
   onDiffAdopted: (no: number) => void;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
-  const { v, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
+  const { v, kind, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
   const no = v.variant_no;
   const [jsonOpen, setJsonOpen] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
@@ -75,6 +77,8 @@ export function VariantCard(props: {
         </span>
         <span className="ca-created t-micro tnum" title={v.created_at || ''}>{fmtDate(v.created_at)}</span>
       </div>
+
+      <EntityPreview kind={kind} data={v.data} idBase={no} />
 
       <div data-testid={'checks-' + no} className="ca-checks">
         <span data-testid={'overall-' + no} className={'ca-overall ' + (overall === 'PASS' ? 'is-pass' : 'is-fail')}>{overall}</span>
