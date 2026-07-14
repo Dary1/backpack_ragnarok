@@ -87,10 +87,23 @@ function loadVocab(root, schema_ref) {
 // A word that is no rarity at all still FAILs schema_vocab, and a malformed,
 // inverted, non-integer or scalar-where-ranged field still FAILs engine_types --
 // each naming its own check. Only the two spellings above are newly accepted.
+//
+// REQ-0160 adds a THIRD dialect, skill/1 (content/live/dungeon/skills.json):
+//   * it spells its display name `name_en` / `name_ja`, not `name` + an i18n
+//     block (hence dialect.name_field), and
+//   * it declares ONE trigger+verb+attack_profile at the TOP level instead of an
+//     effects[] array.
+// Per the user ruling Q2-sub (2026-07-14), skill_def is NOT waved through with a
+// fake applicable:false everywhere: schema_vocab APPLIES to it, wired by wrapping
+// the record as a single pseudo-effect and running the SAME checkEffects() every
+// other kind gets (domain EnemySkill). engine_types / gen_data / integrate stay
+// honestly applicable:false -- skill/1 has no engine-consumed record, tool_gen_data
+// does not consume it, and it has no canvas placement.
 const DIALECTS = {
   'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
+  'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
 };
-const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [] };
+const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
 /** The dialect a variant is written in, keyed by its def's schema_ref. */
 function dialectFor(schema_ref) {
@@ -152,7 +165,11 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
   const errs = [];
   if (!data || typeof data !== 'object') return { ok: false, detail: 'data must be an object' };
   if (typeof data.id !== 'string' || !data.id) errs.push('id (non-empty string) required');
-  if (typeof data.name !== 'string' || !data.name) errs.push('name (string) required');
+  // The field THIS dialect spells the display name with (skill/1: name_en).
+  const nameField = dialect.name_field || 'name';
+  if (typeof data[nameField] !== 'string' || !data[nameField]) {
+    errs.push(nameField + ' (non-empty string) required (' + dialect.name + ' dialect)');
+  }
   if (data.rarity !== undefined && !rarityAllowed(data.rarity, vocab, dialect)) {
     errs.push('rarity not in vocab.rarities (' + dialect.name + ' dialect expects the '
       + (dialect.rarity_case === 'lower' ? 'lowercase' : 'verbatim') + ' token): ' + data.rarity);
@@ -176,6 +193,14 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     checkEffects(data.effects, vocab, kind === 'unit_def' ? 'Unit' : 'EnemySkill', errs);
   } else if (kind === 'tm_def') {
     if (data.short !== undefined && typeof data.short !== 'string') errs.push('tm_def.short must be a string');
+  } else if (kind === 'skill_def') {
+    // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
+    // pseudo-effect so the record gets the IDENTICAL vocab validation every other
+    // kind gets (verb/trigger/status must exist in vocab.json, the trigger must be
+    // legal in the domain, ranged verb params must be [lo,hi] with lo<=hi) -- this
+    // is REUSE of checkEffects, not a new validator (REQ-0160 ruling Q2-sub).
+    if (!data.trigger || !data.verb) errs.push('skill_def requires a top-level trigger and verb (skill/1)');
+    else checkEffects([{ trigger: data.trigger, verb: data.verb }], vocab, 'EnemySkill', errs);
   }
   return { ok: errs.length === 0, detail: errs.length === 0 ? 'schema/vocab valid (' + dialect.name + ' dialect)' : errs.join('; ') };
 }
@@ -198,6 +223,12 @@ function engineSurfaceSound(root) {
 function isIntPair(x) { return Array.isArray(x) && x.length === 2 && Number.isInteger(x[0]) && Number.isInteger(x[1]); }
 
 function engineTypesCheck(kind, data, root, dialect) {
+  // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
+  // is no runtime type surface for it to conform to. Recorded honestly as
+  // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
+  if (kind === 'skill_def') {
+    return { ok: true, applicable: false, detail: 'engine_types not applicable for skill_def (skill/1 declares no engine-consumed record: no shape, no slot, no stats)' };
+  }
   const surface = engineSurfaceSound(root);
   if (!surface.ok) return surface;
   const errs = [];
@@ -232,6 +263,11 @@ function engineTypesCheck(kind, data, root, dialect) {
 // ---- 3. gen_data (tool_gen_data conventions) ----------------------------
 
 function genDataCheck(kind, data, root) {
+  // tool_gen_data consumes items/sis only; it has never had a skill input.
+  // Honest applicable:false (REQ-0160 ruling Q2-sub).
+  if (kind === 'skill_def') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for skill_def (tool_gen_data does not consume skill/1)' };
+  }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');
   if (kind === 'po_def' || kind === 'si_def') {

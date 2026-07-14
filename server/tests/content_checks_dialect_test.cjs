@@ -25,6 +25,10 @@ const checks = require('../services/content_checks.cjs');
 const REPO = path.join(__dirname, '..', '..');
 const enemies = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'enemies.json'), 'utf8'));
 const liveItems = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_items.json'), 'utf8'));
+// REQ-0160: skill/1 is the THIRD dialect, and dungeon/items.json is a second po/2 corpus.
+const skills = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'skills.json'), 'utf8'));
+const dungeonItems = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'items.json'), 'utf8'));
+const SKILL_SCHEMA = skills.schema;             // 'skill/1'
 const ENEMY_SCHEMA = enemies.schema;            // 'enemy/1' -- the def's schema_ref (set by the backfill)
 const GOOD_ENEMY = enemies.entries[0];
 const GOOD_PO = liveItems.entries.find((e) => e.effects && e.effects.length);
@@ -147,5 +151,85 @@ T('G1 the dialect follows schema_ref, not kind: a monster_def declared under a n
   assert.strictEqual(r.overall, 'PASS', 'scalar hp + verbatim rarity PASS under the default dialect');
 });
 
-console.log('\n== REQ-0161 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
+// ---- REQ-0160: the skill/1 dialect + skill_def applicability ------------
+//
+// Ruling Q2-sub (user, 2026-07-14): skill_def is NOT waved through. schema_vocab
+// APPLIES to it (checkEffects reused via a single pseudo-effect, domain
+// EnemySkill); engine_types / gen_data / integrate are recorded honestly as
+// applicable:false. Same honesty doctrine as REQ-0161: a dialect is a spelling,
+// never an excuse -- a skill that names a verb the vocab does not have still FAILs.
+
+console.log('== REQ-0160 skill/1 dialect + skill_def applicability ==');
+
+T('dialect resolution: skill/1 -> skill/1 dialect (name spelled name_en); po/2 is untouched', () => {
+  assert.strictEqual(checks._dialectFor(SKILL_SCHEMA).name, 'skill/1');
+  assert.strictEqual(checks._dialectFor(SKILL_SCHEMA).name_field, 'name_en');
+  assert.strictEqual(checks._dialectFor('po/2').name, 'default', 'skill/1 must not leak into po/2');
+});
+
+T('POSITIVE: all 14 live skill/1 entries PASS with their data untouched', () => {
+  assert.strictEqual(skills.entries.length, 14, 'the live skill corpus is 14 entries');
+  for (const s of skills.entries) {
+    const r = checks.runChecks('skill_def', SKILL_SCHEMA, clone(s));
+    assert.strictEqual(r.dialect, 'skill/1');
+    assert.deepStrictEqual(failedNames(r), [], s.id + ' must PASS (failed: ' + failedNames(r).join(',') + ')');
+    assert.strictEqual(r.overall, 'PASS', s.id + ' overall PASS');
+  }
+});
+
+T('APPLICABILITY: schema_vocab RUNS on skill_def; engine_types/gen_data/integrate are honestly n/a', () => {
+  const r = checks.runChecks('skill_def', SKILL_SCHEMA, clone(skills.entries[0]));
+  const sv = checkOf(r, 'schema_vocab');
+  assert.strictEqual(sv.applicable, true, 'schema_vocab APPLIES -- the ruling refused a fake applicable:false');
+  assert.strictEqual(sv.ok, true);
+  for (const n of ['engine_types', 'gen_data', 'integrate']) {
+    assert.strictEqual(checkOf(r, n).applicable, false, n + ' is not applicable to skill/1');
+    assert.ok(/not applicable/.test(checkOf(r, n).detail), n + ' says WHY it is n/a');
+  }
+  assert.strictEqual(r.overall, 'PASS', 'PASS = the one applicable check passed (n/a checks never fake a pass)');
+});
+
+T('HONESTY: a skill naming a verb/status/trigger the vocab lacks still FAILs schema_vocab', () => {
+  const badVerb = clone(skills.entries[0]);
+  badVerb.verb = { t: 'obliterate', n: [1, 2] };
+  assert.deepStrictEqual(failedNames(checks.runChecks('skill_def', SKILL_SCHEMA, badVerb)), ['schema_vocab'],
+    'an invented verb FAILs, and it is schema_vocab that says so');
+
+  const badDomain = clone(skills.entries[0]);
+  badDomain.trigger = { t: 'adjacent' }; // vocab.trigger_domains: PO only, never EnemySkill
+  assert.deepStrictEqual(failedNames(checks.runChecks('skill_def', SKILL_SCHEMA, badDomain)), ['schema_vocab'],
+    'a trigger illegal in the EnemySkill domain FAILs');
+
+  const noName = clone(skills.entries[0]);
+  delete noName.name_en;
+  const r = checks.runChecks('skill_def', SKILL_SCHEMA, noName);
+  assert.deepStrictEqual(failedNames(r), ['schema_vocab']);
+  assert.ok(/name_en/.test(checkOf(r, 'schema_vocab').detail), 'the error names the field the DIALECT expects');
+
+  const noVerb = clone(skills.entries[0]);
+  delete noVerb.verb;
+  assert.deepStrictEqual(failedNames(checks.runChecks('skill_def', SKILL_SCHEMA, noVerb)), ['schema_vocab'],
+    'a skill with no verb at all FAILs');
+});
+
+T('NO LEAK: skill/1 name_en spelling does not leak into po/2 (a PO still needs `name`)', () => {
+  const po = clone(GOOD_PO);
+  delete po.name;
+  po.name_en = 'Longsword Blade';
+  const r = checks.runChecks('po_def', PO_SCHEMA, po);
+  assert.ok(!checkOf(r, 'schema_vocab').ok, 'po/2 keeps `name`; name_en is no substitute');
+  assert.ok(/name \(non-empty string\) required/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0160 Q1: the 2 live dungeon-mode POs PASS all four checks as po_def (the measured basis of the ruling)', () => {
+  assert.strictEqual(dungeonItems.entries.length, 2, 'the dungeon PO corpus is 2 entries');
+  assert.strictEqual(dungeonItems.schema, 'po/2', 'same schema as live_items.json -- the whole reason they are po_defs');
+  for (const it of dungeonItems.entries) {
+    const r = checks.runChecks('po_def', dungeonItems.schema, clone(it));
+    assert.deepStrictEqual(failedNames(r), [], it.id + ' must PASS (failed: ' + failedNames(r).join(',') + ')');
+    assert.strictEqual(r.overall, 'PASS', it.id + ' overall PASS -- importing it adds no red FAIL to the admin');
+  }
+});
+
+console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);
