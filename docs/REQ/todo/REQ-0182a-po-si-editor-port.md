@@ -70,4 +70,130 @@ reference; reuse adminForm.ts EffectRow grammar — already imported):
   field silently dropped is a content-corrupting bug the JSON tab would hide.
 
 ## Implementation log
-(to be filled by the implementing engineer)
+
+**Implemented by:** orchestrator (Opus 4.8) session, 2026-07-15. Branch
+`req-0182a-po-si-editor-port` (worktree of the same name), off master @ 7bf9da2.
+
+### The split (this REQ's first act)
+REQ-0182 arrived as one file holding both phases with a hard sequence binding
+("B only after A is merged"). PROJECT.md's multi-phase rule says phases that can
+hold different statuses become independent files, and these can: A is cleared,
+B is not. Split into `todo/REQ-0182a` (this) + `draft/REQ-0182b`, one move per
+commit (32f0c3f, 1148c17). B sits in `draft/` because its blocker is an
+unresolved DEPENDENCY (A unmerged), which is exactly what `draft/` denotes; no
+user decision is outstanding, so promoting it is mechanical once A merges.
+
+### What the port actually had to close
+The REQ frames Phase A as "port DexAdmin's UX". Auditing DexAdmin.tsx against
+the REQ-0173 EditModal, most of the form was ALREADY there (rarity select, root
+tag select, stretch, effect ADD/DELETE, trigger/verb/n/status dropdowns) — the
+REQ's own "reuse adminForm.ts, already imported" is why. The genuine gaps:
+
+1. **The effect grammar was incomplete, and it was losing editability.**
+   `every_secs` carries `trigger.s = [lo, hi]` and `amp_status` carries
+   `verb.mult`; DexAdmin has inputs for both, EditModal had NEITHER. adminForm's
+   `effectToRow`/`rowToEffect` round-tripped the values, so nothing was
+   corrupted — but an operator could not CHANGE a tick rate or an amp multiplier
+   in the form at all. That is a concrete reason to keep reaching for Dex Edit,
+   i.e. exactly the thing this REQ exists to remove. Both are now editable and
+   conditional on the trigger/verb that owns them.
+2. **No editing context.** DexAdmin's list thumbnails let the operator see the
+   entity; the modal showed none. Now a live `EntityPreview` rail sits beside the
+   form, fed by the SERIALIZED data — so it is live on the Form tab, equally live
+   on the JSON tab, and is literally "what Submit will create". While the JSON tab
+   holds unparseable text the rail holds the last valid render rather than
+   blanking.
+3. **Locale side-by-side, not switched** (decision below).
+4. **Tags were free-text.** Now an ancestry-labelled multi-select over trees.po.
+
+### Decisions the REQ asked for
+- **Locale: the SWITCHER wins; the side-by-side is gone.** The REQ allowed
+  keeping side-by-side "if the switcher proves worse". It is not worse: the user
+  named DexAdmin the friendlier surface and the switcher is its pattern, and the
+  preview rail now claims horizontal room that the old 2-column
+  `name(EN) | name(JA)` grid needed — keeping both would cramp precisely the
+  fields most often typed into. Cost, accepted and documented: a locale's testid
+  only exists while that locale is selected.
+- **Tags go BEYOND DexAdmin** (the REQ says "at least" parity). DexAdmin parses a
+  comma-separated string; that cannot show the po/socket hierarchy and silently
+  accepts typos as tags. The multi-select offers every trees.po tag labelled by
+  ancestry ("Weapon > WeaponPart", via dex/vocabTree's `ancestryPath`).
+
+### Two data-loss traps found and closed while porting
+Both are cases where a control that cannot REPRESENT a value silently rewrites it
+— the failure mode a "friendly form" invites and the JSON tab would hide:
+- **A tag the vocab does not know.** Legacy content can carry one; a select built
+  only from trees.po would drop it on the next unrelated edit. Unknown tags are
+  now preserved as selected options, labelled `(not in vocab)`. Same for a first
+  tag that is not a tree ROOT — the fixture's own `WeaponPart` is a child of
+  `Weapon`, so the root select would have silently blanked it. It now offers the
+  current value explicitly, mirroring the existing defensive `rarity` pattern.
+- **Tag REORDERING.** Caught by the e2e, not by review: a `<select multiple>`
+  reports its selection in DOM order, so adding one tag rewrote the whole array
+  (`[Metal, Rune]` → `[Rune, Metal]`) and would surface as a spurious diff on a
+  field the operator never touched. `patchExtraTags` now keeps each still-selected
+  tag in its existing position and appends only genuinely new ones.
+
+### Contract preservation (verified, not assumed)
+- REQ-0173 semantics untouched: submit still serializes OVER the original variant
+  (`shape`/`icon`/`part`/`sockets`/`align` pass through verbatim — asserted in the
+  new effects test and the pre-existing passthrough test, both green); Form/JSON
+  two-way sync unchanged; non-form kinds still open on JSON with the Form tab
+  disabled + note; submit gating still keyed on `editError` ALONE (the preview's
+  stricter object check deliberately does not touch it).
+- Registry semantics untouched: submit = editVariant → new human_edit variant with
+  lineage; adoption remains a separate explicit act.
+- Every REQ-0173 `edit-*` testid kept on the same control. Two documented
+  consequences: the EN/JA testid pairs are now mutually exclusive (drive
+  `edit-form-locale-en/ja-<no>`), and `edit-form-tags-<no>` is a `<select
+  multiple>` — `selectOption()`, not `fill()`. New testids:
+  `edit-form-locale-en/ja-<no>`, `edit-form-eff-secslo/secshi-<no>-<i>`,
+  `edit-form-eff-mult-<no>-<i>`, `entity-preview-edit-<no>`.
+- Read-only Dex, DexAdmin, artadmin, admin surface EN-only, ca-* CSS only: all
+  held. **Dex Edit is untouched** — deleting it is 0182b's job, and this REQ
+  deliberately does not pre-empt it.
+
+### Gates
+- **G1** — `tsc --noEmit` clean; `vite build` clean. Server tests green via
+  `tools/ci.sh` (files + pg backends): api_test, content_test 18/0,
+  contentagg_test 5/0, inspection_test 5/0, bio_test(pg) 10/0. No server code was
+  touched by this REQ (the admin.cjs 409 belongs to 0182b), so this is regression
+  cover only.
+- **G2** — full `tools/ci.sh` **GREEN**, no skips:
+  - contentadmin e2e **26/26** (22 pre-existing + the 4 new)
+  - artadmin **5/5**, artinspect **1/1** — untouched, as promised
+  - default suite **178/178**, zero failures
+  - step `[0/8]` check_e2e_ports green (3 harnesses, all derived, no collisions).
+    This REQ adds no harness and so claims no port decade.
+- **G3** — oxlint **40 warnings / 0 errors, byte-identical to master's count**;
+  none of the 40 are in the touched files (verified by grepping the report for
+  EditModal/ContentAdminPage/contentadmin.css → no hits). ca-* CSS only.
+
+**On the two dex-admin tests:** the REQ's G2 clause expects them to fail against
+*deployed* registry-first serving. Pre-merge they PASS (dex-admin 6/6 inside the
+178) and that is not a contradiction — the local harness's registry does not
+cover the live item ids those tests edit, so /api/content still serves them from
+files and Dex Edit's PUT still round-trips. The drift is a property of the
+DEPLOYED registry, so it can only appear in the post-deploy suite. Nothing here
+fixes or masks it; 0182b replaces those tests.
+
+**Build artifacts:** `web/app/assets` is tracked, but the dist rebuild is its own
+`deploy: rebuild client dist (web/app)` commit on master (see eee45a2, 262fda3,
+09abb4d), never part of a REQ's source commit. The local rebuild this branch
+needed (the e2e harness serves the BUILT bundle from `web/`, so an unbuilt fix is
+invisible to the specs — one red run was exactly this) was reverted before
+committing. Deploy rebuilds it.
+
+### Commits
+- `32f0c3f` REQ-0182 -> REQ-0182a: split off Phase A
+- `1148c17` REQ-0182b: Phase B -> draft/
+- `1303e1b` REQ-0182a: port the DexAdmin editor UX into contentadmin
+- (+ the todo -> built move that carries this log)
+
+### Status / what is NOT done
+`built`, NOT merged and NOT deployed — per PROJECT.md, `~/backpack_ragnarok` and
+the live services are hands-off without fresh user go-ahead. Awaiting user
+acceptance of the ported UX; the REQ's deploy line (merge → dist rebuild →
+restart backpack-web content → post-deploy suite → S7) is untaken.
+**0182b stays in `draft/` until 0182a is MERGED** — being `built` is not the
+trigger the split note names.
