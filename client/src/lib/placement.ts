@@ -9,7 +9,7 @@
 // API against a different record shape (firstFitPlace:
 // invCanPlacePO/invMovePO + invCanPlaceSI/invMoveSI with push-check-
 // rollback placeholders; firstFitPlaceBp: invCanPlaceBP/invMoveBP with a
-// BP placeholder needing shape/linker/hpMax; firstFitOrMergeTM:
+// BP placeholder needing shape/unit/hpMax; firstFitOrMergeTM:
 // tmCanPlace/tmMove with an existing-stack merge fast path that has no
 // analogue in the other two). They therefore STAY as documented named
 // variants sharing only the page-order convention and the grid bounds
@@ -177,11 +177,13 @@ export function firstFitPlaceBp(
     const container = state.inv!.pages[pg];
     container.bps.push({
       id: rolled.uid,
-      name: 'BP',
+      // REQ-0170: the BP is named after the Unit it carries -- because that is what
+      // the player just obtained. The BP is the inventory; the Unit is the character.
+      name: rolled.unitDef?.name ?? 'BP',
       color: '#8a8a8a',
       shape: rolled.shape,
       origin: [1, 1],
-      linker: rolled.linker,
+      unit: rolled.unit,
       hpMax: rolled.hpMax,
     });
     let found: [number, number] | null = null;

@@ -152,7 +152,14 @@ export function traceUnit(engine: EngineInstance, state: GameState, layout: Layo
   const origin = engine.unitCell(bp);
   const units = engine.unitMap(state); // cellKey -> BP id
   const beams = engine.traceBeams(state);
-  const activeDirs = new Set<number>(bp.linker.dirs);
+  // REQ-0170: the ACTIVE directions are the Unit's connection_shape, resolved
+  // through the engine's registry -- not a per-BP dirs array (that field is gone).
+  // An offset shape (knight jump) has no ray directions at all, so every one of the
+  // 8 dirs below traces as INACTIVE for it: the panel then shows the player exactly
+  // what is true -- this Unit fires no rays, and whatever stands on those lines is
+  // irrelevant to it.
+  const connShape = engine.connShapeOf(bp);
+  const activeDirs = new Set<number>(connShape && connShape.kind === 'ray' ? (connShape.dirs ?? []) : []);
 
   const dirs: DirTrace[] = [];
   const blocked: UnitTrace['blocked'] = [];
