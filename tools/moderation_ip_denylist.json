@@ -1,0 +1,21 @@
+{
+  "_comment": "REQ-0144 Gate 2 IP/logo-likeness denylist. Curated perceptual-hash (pHash: 64-bit DCT, tools/moderation_phash.py) blocklist of marks/logos UGC skins must not reproduce. A submission whose pHash is within max_hamming bits of any entry is REJECTED by Gate 2. SEED / SPARSE BY DESIGN: real operator population (brand logos, trademarked emblems) is an operational task -- this REQ ships the mechanism + a seed structure, not an exhaustive corpus. The entries below are ABSTRACT PROCEDURAL emblems (tools/moderation_fixtures.py) that resemble no real logo; they exist only to prove the mechanism and drive the gate self-test. NEVER add real infringing imagery to source control -- store operator additions as pHash values only.",
+  "version": 1,
+  "default_max_hamming": 10,
+  "entries": [
+    {
+      "id": "synthetic-seed:ip_mark_a",
+      "phash": "aa5d88f9ff098a18",
+      "source": "procedural (moderation_fixtures.ip_mark_a)",
+      "note": "abstract concentric-ring emblem; seed + self-test only",
+      "max_hamming": 10
+    },
+    {
+      "id": "synthetic-seed:ip_mark_b",
+      "phash": "91587a5f2ce16396",
+      "source": "procedural (moderation_fixtures.ip_mark_b)",
+      "note": "abstract pinwheel emblem; seed + self-test only",
+      "max_hamming": 10
+    }
+  ]
+}

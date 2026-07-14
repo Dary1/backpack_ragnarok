@@ -59,6 +59,15 @@ echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
 node server/tests/bpskin_test.cjs
 echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
 node server/tests/bpskin_migration_test.cjs
+echo "==== [4.71/7] UGC moderation verdict pipeline (DB-free, REQ-0144) ===="
+MODPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
+if [ -x "$MODPY" ] && "$MODPY" -c 'import numpy,scipy,PIL' 2>/dev/null; then
+  "$MODPY" tools/tests/moderation_gate_test.py
+else
+  echo "SKIP moderation_gate_test (needs a numpy/scipy/PIL python; set ART_KIT_PYTHON)"
+fi
+echo "==== [4.72/7] UGC moderation storage mappers/validators (DB-free, REQ-0144) ===="
+DATABASE_URL= node server/tests/moderation_test.cjs
 echo "==== [4.7/7] inspection kit golden vectors (REQ-0152, G3/G2 purity) ===="
 KITPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$KITPY" ] && "$KITPY" -c 'import numpy,scipy,rembg' 2>/dev/null; then
@@ -84,6 +93,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/bio_test.cjs
   echo "==== [5.45/7] bp-skin cosmetic-slot store parity (pg backend, REQ-0126) ===="
   STORAGE_BACKEND=pg node server/tests/bpskin_test.cjs
+  echo "==== [5.46/7] UGC moderation storage + appeal path (pg backend, REQ-0144) ===="
+  STORAGE_BACKEND=pg node server/tests/moderation_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi
