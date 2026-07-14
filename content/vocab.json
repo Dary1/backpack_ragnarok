@@ -1,5 +1,5 @@
 {
-  "version": 12,
+  "version": 13,
   "modes": [
     "battle",
     "detection",
@@ -65,7 +65,8 @@
     "pulse",
     "buff_linked",
     "buff_self",
-    "damage_reduction"
+    "damage_reduction",
+    "grant_charge"
   ],
   "status_kinds": [
     "buff",
@@ -241,7 +242,8 @@
     "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121.",
     "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL. | 2026-07-13: adjacency_lr REMOVED — it was added solely for the Watcher's left/right-adjacent kit, which the user replaced with queen range 2. No def references it; a dangling unused term in a frozen vocabulary is how the clock-tower incident happened. queen_2 added in its place. | 2026-07-13: forward_1 REMOVED (orphaned when the Squire moved to rook range 3) — same hygiene rule that removed adjacency_lr. rook_3 added for the Squire.",
     "orientation": "REQ-0128b (user ruling 2026-07-13): forward = lower Y = up = engine DIRS[0] (N).",
-    "connection_model": "REQ-0128b user rulings 2026-07-13: (1) rays do not pierce by default, keep it parameterisable; (2) adjacency = a range-limited ray, not an offset concept; (3) connections are canvas-local (Squad-scoped)."
+    "connection_model": "REQ-0128b user rulings 2026-07-13: (1) rays do not pierce by default, keep it parameterisable; (2) adjacency = a range-limited ray, not an offset concept; (3) connections are canvas-local (Squad-scoped).",
+    "grant_charge": "User ruling 2026-07-14 (REQ-0129): giving charge to a connected Unit is an EFFECT verb, not a spend mode -- the unit fires on full and its effect happens to be grant_charge -> units_connected. With pulse propagation retired, this is the only way a chain is expressed. NOT YET RENDERABLE: no unit validator kind exists, so this verb has no self-test fixture and no engine implementation."
   },
   "connection_shapes": {
     "queen": {
@@ -350,8 +352,16 @@
       "pierce": false,
       "note": "Rook ray with range 1. Part of the user's ORIGINAL ratified vocabulary (2026-07-12), but NO roster-001 unit uses it — kept because the user ratified it, not because a def needs it."
     },
-    "knight": {
-      "ja": "桂",
+    "none": {
+      "ja": "接続なし",
+      "kind": "none",
+      "dirs": [],
+      "range": 0,
+      "pierce": false,
+      "note": "Unit forms no links."
+    },
+    "chess_knight_move": {
+      "ja": "チェス・ナイトの動き",
       "kind": "offset",
       "offsets": [
         [
@@ -388,16 +398,25 @@
         ]
       ],
       "range": null,
-      "pierce": true,
-      "note": "The ONLY true offset shape — a knight jumps, so occlusion cannot apply. Not expressible as {dirs, range}."
+      "pierce": null,
+      "note": "Chess knight: 8 fixed offsets, jumps. `range` and `pierce` are INVALID on offset shapes (user ruling 2026-07-14). Renamed from `knight` on 2026-07-14: the id named a PIECE and the ja label said 桂, but the offsets were the chess set. Keima and knight are different MOVEMENTS and now carry different ids. These are movement names; they have nothing to do with unit names."
     },
-    "none": {
-      "ja": "接続なし",
-      "kind": "none",
-      "dirs": [],
-      "range": 0,
-      "pierce": false,
-      "note": "Unit forms no links."
+    "shougi_keima_move": {
+      "ja": "将棋・桂馬の動き",
+      "kind": "offset",
+      "offsets": [
+        [
+          -2,
+          -1
+        ],
+        [
+          -2,
+          1
+        ]
+      ],
+      "range": null,
+      "pierce": null,
+      "note": "Shougi keima: 2 fixed FORWARD offsets, jumps. forward = row-1 = N per the orientation ruling. RESERVED by user ruling 2026-07-14 -- registered as vocabulary; no roster-001 unit uses it and the engine may leave it unimplemented. `range` and `pierce` are INVALID on offset shapes."
     }
   },
   "orientation": {
@@ -409,10 +428,54 @@
     "note": "User ruling 2026-07-13: 前方 = the battlefield cell with the LOWER Y (i.e. up). Engine convention is [row, col] with row increasing DOWNWARD (engine.js), so forward = row-1 = DIRS[0] = N. This is what `lance`, `backward_line` and `forward_1` mean. Before this ruling those three shapes were undefined and `backward-line` had shipped in the ratified vocabulary carrying the assumption unexamined."
   },
   "connection_model": {
-    "shape": "{dirs, range, pierce}",
-    "range": "null = unlimited; N = the ray reaches AT MOST N cells",
-    "pierce": "false (default) = the ray is stopped by an occupied cell; true = it passes over and links the first Unit it finds. User ruling 2026-07-13: rays do NOT pierce unless a shape says so. The field exists from day one so that a future piercing shape is a DATA change, not an engine change.",
-    "scope": "canvas-local — connections resolve within one Squad only (user ruling 2026-07-13).",
-    "note": "adjacency is NOT a separate concept: it is a ray with range 1 (user ruling 2026-07-13). Every shape except `knight` is {dirs, range}. `knight` jumps, so it is the sole offset shape and is inherently piercing."
+    "shape": "{dirs, range, pierce} for ray shapes; {offsets} for offset shapes",
+    "range": "0 or null = unlimited (reaches the board edge); N = the ray reaches AT MOST N cells. User ruling 2026-07-14. INVALID on offset shapes.",
+    "occluder_set": "UNITS ONLY. A ray without pierce is stopped by the first Unit on it; BP and PO cells are TRANSPARENT and never block a ray. User ruling 2026-07-14 -- this closes the question REQ-0128b left explicitly open (\"what occupies a cell for the purpose of stopping a ray -- any BP/PO cell, or only Units?\").",
+    "pierce": "false (default) = the ray stops at the first Unit and links it (first-hit). true = the ray is NOT stopped and links EVERY Unit within range. User ruling 2026-07-14. INVALID on offset shapes.",
+    "scope": "canvas-local -- connections resolve within one Squad only (user ruling 2026-07-13).",
+    "propagation": "NONE. Links are a STATIC GRAPH: a Unit does not relay anything it receives. User ruling 2026-07-14 RETIRES the REQ-0048/0061 pulse-walk law set for Unit Links, law by law -- PULSE_CAP, the visited-set, the hop budget and hop latency all have no referent here. Charge is the single flow economy and charge capacity IS the rate limit. A chain is expressible ONLY as `grant_charge` -> units_connected, or as a receiver-side charge trigger (on_connected_unit_*).",
+    "note": "adjacency is NOT a separate concept: it is a ray with range 1 (user ruling 2026-07-13). Every ray shape is {dirs, range, pierce}. Offset shapes jump, so occlusion and range do not apply to them."
+  },
+  "charge": {
+    "_doc": "Unit charge grammar. FROZEN by user ruling 2026-07-14 (REQ-0129). A unit def carries `charge: {trigger, gain, capacity, spend}`. NOT YET ENFORCED: validateBody has no `unit` kind -- see `_status`.",
+    "_status": "RATIFIED, NOT IMPLEMENTED. No `unit` validator kind and no charge AST exist. The code REQ that adds them must move `charge.triggers` into the top-level `triggers` list, add `trigger_domains` entries, and add self-test fixtures -- the REQ-0081 coverage gate will then hold them honest.",
+    "spend": {
+      "fire_on_full": "At capacity, fire `effects` and reset the counter to 0. The classic active skill.",
+      "passive_per_stack": "Never consumed. A standing effect scales with the accumulated stack count (REQ-0149 Berserker: +0.1% damage per stack). WARNING: an uncapped stack is a balance hole. REQ-0149 G6 is OPEN, and it is now UNOWNED -- the PULSE_CAP lineage that used to backstop it was retired on 2026-07-14.",
+      "transform": "At capacity, the unit is replaced by another unit def (form change). REQ-0129 named this as a mandatory expressibility check (REQ-0149 Little Princess -> Princess)."
+    },
+    "spend_closed": true,
+    "gain": {
+      "count": "+1 per trigger firing (REQ-0149 Angel: the NUMBER OF TIMES damage was taken).",
+      "damage": "+the damage amount of the triggering event (REQ-0149 Shieldmaiden: the AMOUNT of damage received)."
+    },
+    "triggers": {
+      "OnHit": "An item on the unit's BP lands a hit. EXISTING trigger, reused. (REQ-0149 Elf)",
+      "OnBPBeenHit": "The unit's BP takes damage. EXISTING trigger, reused. (REQ-0149 Dwarf / Angel / Shieldmaiden / Berserker -- they differ in `gain`, not in trigger)",
+      "every_secs": "Elapsed time / cooldown. EXISTING trigger, reused. (REQ-0149 Watcher)",
+      "on_damage_dealt": "AGENT-DEFINED 2026-07-14 under the user's trigger delegation. Damage dealt by the unit's BP. (REQ-0149 Light Cavalry)",
+      "on_connected_unit_spend": "AGENT-DEFINED 2026-07-14. A Unit at the other end of a link spends its charge. (REQ-0149 Thief -- this is the charge source the G3a ruling named)",
+      "on_connected_unit_attack": "AGENT-DEFINED 2026-07-14. A connected Unit performs an attack. (REQ-0149 Squire)",
+      "on_connected_unit_bp_been_hit": "AGENT-DEFINED 2026-07-14. A connected Unit's BP takes damage. (REQ-0149 Priest / Princess)",
+      "on_own_passive_fire": "AGENT-DEFINED 2026-07-14. The unit's own passive fires. (REQ-0149 Little Princess -- capacity is still the unspecified 'XX', G2 OPEN)"
+    },
+    "triggers_closed": false,
+    "triggers_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「targetと同じく私に委任」). New charge-source triggers may be added WITHOUT a design event. Every agent-added trigger MUST be labelled AGENT-DEFINED, so that a machine's choice is never mistaken for a user ruling.",
+    "targets": {
+      "self": "USER-RATIFIED 2026-07-14.",
+      "units_connected": "Every Unit this Unit links to. USER-RATIFIED 2026-07-14; the name is the one the user chose.",
+      "bp_connected": "The BP a connected Unit sits on. AGENT-DEFINED 2026-07-14 under the delegation below. Required by REQ-0149 Angel / Dwarf / Princess / Light Cavalry / Watcher. THIS IS NOT A USER RULING.",
+      "units_connected_distributed": "The effect amount is divided across the connected Units. AGENT-DEFINED 2026-07-14 under the same delegation. Required by REQ-0149 Priest ('distributed if there are several'). THIS IS NOT A USER RULING."
+    },
+    "targets_closed": false,
+    "targets_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「後は、私に聞かないで、必要になったらあなたが定義してください」). New charge targets may be added WITHOUT a design event, under the same AGENT-DEFINED labelling rule.",
+    "effects_note": "Charge EFFECTS are ordinary `verbs` from the top-level list. The user ruling of 2026-07-14 draws the line: `spend` is WHEN/HOW the counter is consumed; `verbs` is WHAT then happens. Giving charge away is therefore an effect verb (`grant_charge`), NOT a fourth spend mode."
+  },
+  "deprecated": {
+    "_doc": "Vocabulary that is still SHIPPED and still exercised by tests, but that the design has moved past. Removal is a CODE REQ, not a docs edit -- each entry names what else must die with it.",
+    "on_link_pulse": "DEPRECATED 2026-07-14 (user ruling, REQ-0128b): Unit Links have NO propagation, so there is no pulse to fire on. STILL SHIPPED: exercised by tools/self_test_vocab.cjs:151 and content/s4_boards/s4_fixture_items.json. Removing it must remove those too and re-baseline the S4 sim gate (REQ-0050). NOT done here.",
+    "pulse": "DEPRECATED 2026-07-14 (user ruling, REQ-0128b): same. STILL SHIPPED: content/s4_boards/s4_fixture_items.json. Same removal conditions.",
+    "buff_linked": "DEPRECATED 2026-07-14: Linker-era verb. The charge grammar expresses this as an ordinary verb aimed at `units_connected`. Kept because removing a verb is a code change with a coverage gate attached.",
+    "REQ-0061 8-type connective axis": "RETIRED 2026-07-14 (user ruling, 供養): delay / divider / junction / toggle / terminal / amplifier / splitter / condenser were each a definition of what a Unit does to a PULSE PASSING THROUGH IT. With propagation retired they have no referent. They are NOT re-derived as charge verbs. Never shipped -- nothing to remove."
   }
 }
