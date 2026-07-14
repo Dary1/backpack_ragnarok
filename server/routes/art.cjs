@@ -87,6 +87,13 @@ function shapeAndSize(kind, shape) {
     const size = deriveSize('monster', shape);
     return { shape: { w: shape.w, h: shape.h }, size };
   }
+  if (kind === 'custom') {
+    // REQ-0179: custom's "shape" IS its operator-set resolution. deriveSize
+    // snaps/clamps; store the snapped size back so shape == gen_width/height.
+    if (!shape || !Number.isInteger(shape.width) || !Number.isInteger(shape.height)) throw Object.assign(new Error('custom requires shape {width,height}'), { code: 'BAD_SHAPE' });
+    const size = deriveSize('custom', shape);
+    return { shape: { width: size.width, height: size.height }, size };
+  }
   return { shape: null, size: deriveSize(kind, null) };
 }
 
@@ -116,6 +123,9 @@ function defaultsForKind(kind) {
   if (kind === 'po' || kind === 'si') return { prompt_template: '{main_object}, white background, bold outline' };
   if (kind === 'unit') return { prompt_template: '{main_object}, portrait, looking at viewer, white background' };
   if (kind === 'monster') return { prompt_template: '{main_object}, white background' };
+  // REQ-0179: custom is operator-owned -- a passthrough template so the final
+  // subject is just main_object until the operator writes their own.
+  if (kind === 'custom') return { prompt_template: '{main_object}' };
   return { prompt_template: '' };
 }
 

@@ -67,6 +67,12 @@ async function runG2andG1() {
     assert.deepStrictEqual(deriveSize('monster', { w: 10, h: 10 }), { width: 1280, height: 1280 });
     assert.deepStrictEqual(deriveSize('unit', null), { width: 512, height: 512 });
     assert.deepStrictEqual(deriveSize('bpskin', null), { width: 1024, height: 1024 });
+    // REQ-0179: custom -- operator-set resolution, /16-snapped and clamped to [16, 16384].
+    assert.deepStrictEqual(deriveSize('custom', { width: 1000, height: 700 }), { width: 1008, height: 704 });
+    assert.deepStrictEqual(deriveSize('custom', { width: 512, height: 512 }), { width: 512, height: 512 });
+    assert.deepStrictEqual(deriveSize('custom', { width: 20000, height: 16 }), { width: 16384, height: 16 });
+    assert.throws(() => deriveSize('custom', { width: 0, height: 10 }), /positive integers/);
+    assert.throws(() => deriveSize('custom', null), /positive integers/);
   });
   await AT('G1 system_name is UNIQUE (duplicate refused at storage)', async () => {
     await storage.createArtwork({ system_name: 'g1_uniq', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
@@ -159,6 +165,23 @@ async function runG3andFlow() {
     assert.strictEqual(adopted2.seed, r2.seed, 're-adopt switched adopted seed');
     await exportAdopted('flow_pot');
     await storage.deleteRender('flow_pot', r1.seed);
+  });
+  // REQ-0179 custom LAST in this function: it makes no GPU render, but calls
+  // jobs.runPython (preview) which spawns a python process OUTSIDE the pump's
+  // serialization -- running it mid-sequence steals CPU from an in-flight rembg
+  // inspection and flakes the render-timeout of the NEXT test. Kept last so it
+  // perturbs nothing that waits on a render.
+  await AT('REQ-0179 custom: operator-set resolution snapped+stored; final_prompt verbatim (no style tail)', async () => {
+    const ss = deriveSize('custom', { width: 1000, height: 700 });
+    const a = await storage.createArtwork({ system_name: 'custom_tex', kind: 'custom', shape: { width: ss.width, height: ss.height }, gen_width: ss.width, gen_height: ss.height, main_object: 'mossy stone bricks', prompt_template: '{main_object}, seamless tiling texture' });
+    assert.deepStrictEqual({ w: a.gen_width, h: a.gen_height }, { w: 1008, h: 704 }, 'stored gen size == /16-snapped');
+    // Prompt composition via preview mode (no render/inspection queue -> deterministic,
+    // no dependence on inspection-model load timing): custom appends NO per-kind style
+    // template, so the final prompt is the verbatim composed subject, and the preview
+    // echoes the operator-set snapped size.
+    const prev = await jobs.runPython({ kind: 'custom', main_object: 'mossy stone bricks', prompt_template: '{main_object}, seamless tiling texture', style_override: null, width: a.gen_width, height: a.gen_height, seed: 1, mode: 'preview' });
+    assert.strictEqual(prev.final_prompt, 'mossy stone bricks, seamless tiling texture', 'operator-owned prompt is verbatim -- no per-kind style tail');
+    assert.deepStrictEqual({ w: prev.width, h: prev.height }, { w: 1008, h: 704 }, 'preview echoes the operator-set size');
   });
 }
 

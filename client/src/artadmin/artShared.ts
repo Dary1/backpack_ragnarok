@@ -5,14 +5,19 @@
 // read-only; this copy only powers the live resolution display).
 import type { ArtworkDto } from '../api';
 
-export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin';
-export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin'];
+export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom';
+export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom'];
+
+// REQ-0179: ComfyUI flux2-latent max (mirror of art_sizing.cjs MAX_RESOLUTION).
+export const MAX_RES = 16384;
 
 // Mirror of routes/art.cjs RESERVED (path segments the public serving GET
 // owns) -- checked client-side for instant feedback; the server re-checks.
 export const RESERVED_NAMES = ['artworks', 'dev', 'meta', 'renders', 'queue'];
 
 export function snap16(v: number): number { return Math.max(16, Math.round(v / 16) * 16); }
+/** REQ-0179: clamp a /16-snapped custom dimension to ComfyUI's latent max. */
+export function clampRes(v: number): number { return Math.min(MAX_RES, v); }
 export function emptyMask(): boolean[][] { return Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]); }
 export function maskCellCount(mask: boolean[][]): number {
   let n = 0;
@@ -24,10 +29,11 @@ export function maskCellCount(mask: boolean[][]): number {
  * 256/cell, monster w*h at 128/cell, /16 snap; si 256, unit 512, bpskin
  * 1024 locked. Must reproduce the ratified examples (sword 3 vertical
  * cells -> 256x768 etc.). */
-export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number): { width: number; height: number } {
+export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number, cw = 1024, ch = 1024): { width: number; height: number } {
   if (kind === 'si') return { width: 256, height: 256 };
   if (kind === 'unit') return { width: 512, height: 512 };
   if (kind === 'bpskin') return { width: 1024, height: 1024 };
+  if (kind === 'custom') return { width: clampRes(snap16(cw)), height: clampRes(snap16(ch)) };
   if (kind === 'monster') return { width: snap16(mw * 128), height: snap16(mh * 128) };
   let minR = 5, maxR = -1, minC = 5, maxC = -1;
   for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) if (mask[r][c]) {
@@ -41,6 +47,7 @@ export function defaultTemplate(kind: Kind): string {
   if (kind === 'po' || kind === 'si') return '{main_object}, white background, bold outline';
   if (kind === 'unit') return '{main_object}, portrait, looking at viewer, white background';
   if (kind === 'monster') return '{main_object}, white background';
+  if (kind === 'custom') return '{main_object}';
   return '';
 }
 
@@ -80,10 +87,12 @@ export interface ArtDraft {
   mask: boolean[][];
   mw: number;
   mh: number;
+  cw: number;
+  ch: number;
 }
 
 export function draftFromArtwork(a: ArtworkDto): ArtDraft {
-  const sh = (a.shape || {}) as { mask?: boolean[][]; w?: number; h?: number };
+  const sh = (a.shape || {}) as { mask?: boolean[][]; w?: number; h?: number; width?: number; height?: number };
   return {
     main_object: a.main_object || '',
     prompt_template: a.prompt_template || '',
@@ -92,5 +101,7 @@ export function draftFromArtwork(a: ArtworkDto): ArtDraft {
     mask: a.kind === 'po' && sh.mask ? sh.mask.map((r) => r.slice()) : emptyMask(),
     mw: a.kind === 'monster' && sh.w ? sh.w : 3,
     mh: a.kind === 'monster' && sh.h ? sh.h : 4,
+    cw: a.kind === 'custom' && sh.width ? sh.width : (a.gen_width || 1024),
+    ch: a.kind === 'custom' && sh.height ? sh.height : (a.gen_height || 1024),
   };
 }

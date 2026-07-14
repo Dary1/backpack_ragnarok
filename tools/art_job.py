@@ -32,6 +32,12 @@ def compose_prompt(job):
     style_override = job.get("style_override")
     if style_override:
         return subject, STYLE.render(style_override, subject)
+    if kind == "custom":
+        # REQ-0179: operator-owned prompt. NO per-kind style template is appended
+        # (custom has no KIND_TO_STYLE entry, and a texture wants none of the
+        # entity kinds' style/background injection) -- the composed subject IS
+        # the final prompt. style_override above still wins when present.
+        return subject, subject
     return subject, STYLE.render(STYLE.KIND_TEMPLATE[KIND_TO_STYLE[kind]], subject)
 
 

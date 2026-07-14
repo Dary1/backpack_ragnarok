@@ -21,13 +21,21 @@
 //   goblin 3x4 -> 384x512               chimera 6x4 -> 768x512
 //   ancient dragon 10x10 -> 1280x1280   any si -> 256x256
 
-const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin'];
+const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom'];
+
+// REQ-0179: ComfyUI's flux2 latent (EmptyFlux2LatentImage) bounds -- width/height
+// min 16, max nodes.MAX_RESOLUTION, step 16 (latent = [.., height//16, width//16]).
+// A `custom` artwork's operator-SET resolution is validated against exactly these.
+const MAX_RESOLUTION = 16384;
 
 /** /16 snap, floor of 16 -- a latent cannot be 756 px tall (that is why
  * the user's 256x756 sword became 256x768). Matches art_style.gen_size. */
 function snap16(v) {
   return Math.max(16, Math.round(v / 16) * 16);
 }
+
+/** REQ-0179: clamp a /16-snapped custom dimension to ComfyUI's latent max. */
+function clampRes(v) { return Math.min(MAX_RESOLUTION, v); }
 
 /** Generation size for a cell footprint at px_per_cell. Aspect ratio is
  * the binding part; the /16 snap keeps it a legal latent size. */
@@ -84,9 +92,19 @@ function deriveSize(kind, shape) {
       return { width: 512, height: 512 };
     case 'bpskin':
       return { width: 1024, height: 1024 };
+    case 'custom': {
+      // REQ-0179: operator-SET resolution (NOT derived from a shape law). The
+      // artwork's shape carries {width,height}; each is /16-snapped and clamped
+      // to ComfyUI's [16, MAX_RESOLUTION] flux2-latent bounds.
+      const w = shape && shape.width, h = shape && shape.height;
+      if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) {
+        throw sizingError('custom shape must be {width,height} positive integers');
+      }
+      return { width: clampRes(snap16(w)), height: clampRes(snap16(h)) };
+    }
     default:
       throw sizingError('unknown kind: ' + kind);
   }
 }
 
-module.exports = { KINDS, snap16, genSize, poBoundingBox, deriveSize };
+module.exports = { KINDS, snap16, genSize, poBoundingBox, deriveSize, MAX_RESOLUTION };

@@ -52,7 +52,7 @@ function ArtworkPicker({ def, artworks, currentRef, onPick, onClear, onClose }: 
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const exactName = def.system_name;
 
-  const typeChips = matchType ? [matchType, 'all'] : ['all', 'po', 'si', 'monster', 'unit'];
+  const typeChips = matchType ? [matchType, 'custom', 'all'] : ['all', 'po', 'si', 'monster', 'unit', 'custom'];
   const q = query.trim().toLowerCase();
   const filtered = artworks.filter((a) =>
     (typeFilter === 'all' || a.kind === typeFilter)
