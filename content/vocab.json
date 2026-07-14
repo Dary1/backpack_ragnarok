@@ -1,198 +1,481 @@
 {
- "version": 8,
- "modes": ["battle", "detection", "unlock"],
- "po_tags": {
-  "Weapon": null,
-  "WeaponPart": "Weapon",
-  "Shield": null,
-  "Rune": null,
-  "Reagent": null,
-  "Relic": null,
-  "Curse": null,
-  "Flame": null,
-  "Frost": null,
-  "Oil": null,
-  "Poison": null,
-  "Beast": null,
-  "Metal": null,
-  "Wood": null
- },
- "socket_tags": {
-  "gem": null,
-  "edge": null,
-  "coat": null,
-  "bond": null,
-  "Metal": null,
-  "Bone": null
- },
- "triggers": [
-  "every_secs",
-  "battle_start",
-  "adjacent",
-  "passive",
-  "OnHit",
-  "OnPOHit",
-  "OnBPHierarchyHit",
-  "OnSquadHit",
-  "OnBPBeenHit",
-  "OnSquadBeenHit",
-  "on_link_pulse",
-  "on_hp_below"
- ],
- "verbs": [
-  "strike",
-  "multi_strike",
-  "block",
-  "heal_bp",
-  "apply_status",
-  "add_on_hit_status",
-  "amp_status",
-  "buff_host",
-  "buff_self_per_tag",
-  "buff_adjacent",
-  "cleanse",
-  "reflect_damage",
-  "lifesteal",
-  "haste",
-  "slow_enemy",
-  "bonus_vs_blocked",
-  "status_immune",
-  "bonus_vs_status",
-  "pulse",
-  "buff_linked",
-  "buff_self",
-  "damage_reduction"
- ],
- "status_kinds": [
-  "buff",
-  "debuff",
-  "dot",
-  "hot",
-  "cadence_slow",
-  "cadence_fast",
-  "onhit_reflect",
-  "suspend",
-  "dmg_reduce"
- ],
- "statuses": [
-  "Burn",
-  "Poison",
-  "Chill",
-  "Regen",
-  "Spikes",
-  "Stun",
-  "Weakness",
-  "Haste"
- ],
- "rarities": [
-  "Common",
-  "Uncommon",
-  "Rare",
-  "Relic"
- ],
- "dps_ceiling_warn": {
-  "Common": 12,
-  "Uncommon": 15,
-  "Rare": 18,
-  "Relic": 24
- },
- "trigger_domains": {
-  "every_secs": ["PO", "EnemySkill"],
-  "battle_start": ["PO", "EnemySkill"],
-  "adjacent": ["PO"],
-  "passive": ["SI", "PO"],
-  "OnHit": ["SI", "PO", "Unit", "EnemySkill"],
-  "OnPOHit": ["SI"],
-  "OnBPHierarchyHit": ["SI", "PO", "Unit"],
-  "OnSquadHit": ["SI", "PO", "Unit", "EnemySkill"],
-  "OnBPBeenHit": ["SI", "PO", "Unit"],
-  "OnSquadBeenHit": ["SI", "PO", "Unit", "EnemySkill"],
-  "on_link_pulse": ["PO"],
-  "on_hp_below": ["PO", "EnemySkill"]
- },
- "ranged_verb_params": {
-  "strike": [
-   "n"
+  "version": 13,
+  "modes": [
+    "battle",
+    "detection",
+    "unlock"
   ],
-  "multi_strike": [
-   "n"
+  "po_tags": {
+    "Weapon": null,
+    "WeaponPart": "Weapon",
+    "Shield": null,
+    "Rune": null,
+    "Reagent": null,
+    "Relic": null,
+    "Curse": null,
+    "Flame": null,
+    "Frost": null,
+    "Oil": null,
+    "Poison": null,
+    "Beast": null,
+    "Metal": null,
+    "Wood": null
+  },
+  "socket_tags": {
+    "gem": null,
+    "edge": null,
+    "coat": null,
+    "bond": null,
+    "Metal": null,
+    "Bone": null
+  },
+  "triggers": [
+    "every_secs",
+    "battle_start",
+    "adjacent",
+    "passive",
+    "OnHit",
+    "OnPOHit",
+    "OnBPHierarchyHit",
+    "OnSquadHit",
+    "OnBPBeenHit",
+    "OnSquadBeenHit",
+    "on_link_pulse",
+    "on_hp_below"
   ],
-  "block": [
-   "n"
+  "verbs": [
+    "strike",
+    "multi_strike",
+    "block",
+    "heal_bp",
+    "apply_status",
+    "add_on_hit_status",
+    "amp_status",
+    "buff_host",
+    "buff_self_per_tag",
+    "buff_adjacent",
+    "cleanse",
+    "reflect_damage",
+    "lifesteal",
+    "haste",
+    "slow_enemy",
+    "bonus_vs_blocked",
+    "status_immune",
+    "bonus_vs_status",
+    "pulse",
+    "buff_linked",
+    "buff_self",
+    "damage_reduction",
+    "grant_charge"
   ],
-  "heal_bp": [
-   "n"
+  "status_kinds": [
+    "buff",
+    "debuff",
+    "dot",
+    "hot",
+    "cadence_slow",
+    "cadence_fast",
+    "onhit_reflect",
+    "suspend",
+    "dmg_reduce"
   ],
-  "apply_status": [
-   "n"
+  "statuses": [
+    "Burn",
+    "Poison",
+    "Chill",
+    "Regen",
+    "Spikes",
+    "Stun",
+    "Weakness",
+    "Haste"
   ],
-  "add_on_hit_status": [
-   "n"
+  "rarities": [
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Relic"
   ],
-  "buff_host": [
-   "n"
-  ],
-  "buff_self_per_tag": [
-   "n"
-  ],
-  "buff_adjacent": [
-   "n"
-  ],
-  "reflect_damage": [
-   "n"
-  ],
-  "lifesteal": [
-   "n"
-  ],
-  "haste": [
-   "n"
-  ],
-  "slow_enemy": [
-   "n"
-  ],
-  "bonus_vs_blocked": [
-   "n"
-  ],
-  "bonus_vs_status": [
-   "n"
-  ],
-  "buff_self": [
-   "n"
-  ],
-  "damage_reduction": [
-   "n"
-  ]
- },
- "excluded_attested": {
-  "gold_pickup": "Gold-as-item (BH: coins occupy backpack space) -- our game has no shop/gold economy loop; excluded as a non-portable resource verb.",
-  "mana_conductivity": "Mana Stone conductive-path powering (BH sec4 P6) -- superseded by our own Unit connectivity mechanic; not re-added as a generic verb to avoid a duplicate system.",
-  "energy_cost": "Energy/turn spend to use an item (BH sec5) -- we have no turn-based energy resource; combat is tick-driven, not energy-gated.",
-  "stamina_cost": "Stamina cost/regen per attack (BB sec5) -- real-time stamina-gating resource, not part of our tick/BP model.",
-  "shop_reroll": "Shop reroll / reserve / sell-for-half (BB/Brawl sec8) -- meta-loop economy verbs, not combat effect verbs; out of scope for the effect vocab.",
-  "recipe_craft": "Adjacency-combine crafting into a new item (BB/Brawl sec4 P10, sec7) -- a content/authoring-time transform, not a runtime combat verb; would require a separate crafting-rule system.",
-  "refinery_mod": "Paid stat-mod purchase (BH Refinery, sec7) -- gold-gated meta upgrade, not a runtime effect.",
-  "accuracy_crit": "Accuracy%/miss and crit-double-damage (BB sec5) -- adds a hit/miss RNG layer our combat model doesn't have; deferred, not part of this vocab.",
-  "charm_status": "Charm status (flips enemy to your side, BH sec6) -- PvE-encounter-flipping status with no defined ally-side semantics in our engine; excluded pending a combat-side redesign."
- },
- "provenance": {
-  "OnHit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
-  "OnBPBeenHit": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
-  "multi_strike": "research sec5 BH 'Uses per turn... some multi-use (can be used 2 times)'",
-  "buff_adjacent": "research sec4 P1 Ruby ('adjacent Weapons get +4 damage') and Amethyst/Emerald row/column beams",
-  "cleanse": "research sec7/sec8 BH Healer ('pay 10g to cleanse all curses') and curse-removal economy note in sec10 pitfall 'Curses only work if removal is scarce'",
-  "reflect_damage": "research sec6 Spikes status ('attacker takes X on melee hit') and BB Spikes ('reflect 1/stack vs melee')",
-  "lifesteal": "research sec6 BB Vampirism ('heal 1/stack on melee hit, same cap') and Bloody Dagger ('heals 4 per adjacent Vampiric item')",
-  "haste": "research sec6 BH Haste status ('each block instance gives +X block') and BB Heat ('+2% speed... shift all trigger speeds')",
-  "slow_enemy": "research sec6 BH Slow status (paired opposite of Haste, 'each block instance gives -X block')",
-  "bonus_vs_blocked": "research sec5 BH Block convention ('Block expires... consumed before HP') combined with BB Spikes cap-vs-hit pattern; a bonus keyed on a defended target is an extrapolated-but-attested combination of block+on_hit verb templates",
-  "Stun": "research sec6 BB framework verb 'Stun'",
-  "Weakness": "research sec6 BH 'Rage / Weak: each hit deals +X / -X damage' (paired-opposite status convention)",
-  "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'",
-  "status_immune": "REQ-0093 (2026-07-07): flat immunity to one named vocab.statuses entry, OR to an entire status_kind class, folded at battle_start. Classic archetype fit (bone-and-sinew undead shouldn't suffer Poison; a charging brute can't be Chilled mid-rush). NOTE: this REQ adds status_immune/bonus_vs_status to the vocab independently of REQ-0077 Rev.2's own (uncommitted, as of this REQ) draft of the same two verbs -- see this REQ's file for the discrepancy; the two additions are compatible in shape.",
-  "bonus_vs_status": "REQ-0093 (2026-07-07): extends bonus_vs_blocked's precedent (a bonus keyed on the target's condition) to key on an inflicted status -- or an entire status_kind class -- instead of a block event. Lets an attacker punish a target already carrying a matching status.",
-  "status_kinds": "REQ-0093 (2026-07-07): closed 9-value keyword vocab exposing BOTH of sim/lib/status.cjs's existing engine-side classifications (polarity: buff/debuff; mechanical: STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content as a single field choice, so a content author picks exactly one axis-or-name rather than two potentially-conflicting fields. Zero new classification data -- pure reuse of STATUS_KIND/DEBUFF_STATUSES/BUFF_STATUSES, resolved at sim runtime via sim/lib/status.cjs's resolveStatusKind().",
-  "on_hp_below": "REQ-0077 Rev.2 (2026-07-07) design rationale, NOT genre-research-sourced: the classic 'enrage below X% HP' RPG monster/boss convention (orc Bloodlust, behemoth Last Stand). A state-crossing condition none of the existing event triggers can express (every_secs/battle_start are time-based; the OnHit/OnSquadHit/OnSquadBeenHit family is hit-reactive, not HP-level-reactive). Fires ONCE EVER per owner+threshold (user ruling 2026-07-12, REQ-0121: no re-arm on healing back above). Trigger param: hp_frac (0<hp_frac<1); fires when hp/hpMax first drops strictly below hp_frac while still alive. Domain ruling (user, 2026-07-09, REQ-0121): [PO, EnemySkill] -- a PO's HP referent is its OWNING BP's hp/hpMax (same object OnBPBeenHit keys off); NOT extended to SI/Unit (no HP concept of their own). NOTE: reopens combat_spec_draft.md's [LOCKED OQ2] 'dynamic buffs = minimal' default for this one case -- user-accepted in REQ-0077's review.",
-  "buff_self": "REQ-0077 Rev.2 design rationale: same shape as buff_host (stat:'damage' only, per [LOCKED OQ7]) but targets the owner itself rather than a host PO. Needed because monsters have no host PO to buff (REQ-0078 entity hierarchy: a Monster is a flat actor, no BP/PO/SI/Unit). Used at battle_start (permanent fold at pack compile, sim/lib/packs.cjs) or on_hp_below (fires once; folds onto the owner's own strike/multi_strike ranges at crossing time -- sim/lib/hpbelow.cjs). Implemented by REQ-0121.",
-  "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121."
- }
+  "dps_ceiling_warn": {
+    "Common": 12,
+    "Uncommon": 15,
+    "Rare": 18,
+    "Relic": 24
+  },
+  "trigger_domains": {
+    "every_secs": [
+      "PO",
+      "EnemySkill"
+    ],
+    "battle_start": [
+      "PO",
+      "EnemySkill"
+    ],
+    "adjacent": [
+      "PO"
+    ],
+    "passive": [
+      "SI",
+      "PO"
+    ],
+    "OnHit": [
+      "SI",
+      "PO",
+      "Unit",
+      "EnemySkill"
+    ],
+    "OnPOHit": [
+      "SI"
+    ],
+    "OnBPHierarchyHit": [
+      "SI",
+      "PO",
+      "Unit"
+    ],
+    "OnSquadHit": [
+      "SI",
+      "PO",
+      "Unit",
+      "EnemySkill"
+    ],
+    "OnBPBeenHit": [
+      "SI",
+      "PO",
+      "Unit"
+    ],
+    "OnSquadBeenHit": [
+      "SI",
+      "PO",
+      "Unit",
+      "EnemySkill"
+    ],
+    "on_link_pulse": [
+      "PO"
+    ],
+    "on_hp_below": [
+      "PO",
+      "EnemySkill"
+    ]
+  },
+  "ranged_verb_params": {
+    "strike": [
+      "n"
+    ],
+    "multi_strike": [
+      "n"
+    ],
+    "block": [
+      "n"
+    ],
+    "heal_bp": [
+      "n"
+    ],
+    "apply_status": [
+      "n"
+    ],
+    "add_on_hit_status": [
+      "n"
+    ],
+    "buff_host": [
+      "n"
+    ],
+    "buff_self_per_tag": [
+      "n"
+    ],
+    "buff_adjacent": [
+      "n"
+    ],
+    "reflect_damage": [
+      "n"
+    ],
+    "lifesteal": [
+      "n"
+    ],
+    "haste": [
+      "n"
+    ],
+    "slow_enemy": [
+      "n"
+    ],
+    "bonus_vs_blocked": [
+      "n"
+    ],
+    "bonus_vs_status": [
+      "n"
+    ],
+    "buff_self": [
+      "n"
+    ],
+    "damage_reduction": [
+      "n"
+    ]
+  },
+  "excluded_attested": {
+    "gold_pickup": "Gold-as-item (BH: coins occupy backpack space) -- our game has no shop/gold economy loop; excluded as a non-portable resource verb.",
+    "mana_conductivity": "Mana Stone conductive-path powering (BH sec4 P6) -- superseded by our own Unit connectivity mechanic; not re-added as a generic verb to avoid a duplicate system.",
+    "energy_cost": "Energy/turn spend to use an item (BH sec5) -- we have no turn-based energy resource; combat is tick-driven, not energy-gated.",
+    "stamina_cost": "Stamina cost/regen per attack (BB sec5) -- real-time stamina-gating resource, not part of our tick/BP model.",
+    "shop_reroll": "Shop reroll / reserve / sell-for-half (BB/Brawl sec8) -- meta-loop economy verbs, not combat effect verbs; out of scope for the effect vocab.",
+    "recipe_craft": "Adjacency-combine crafting into a new item (BB/Brawl sec4 P10, sec7) -- a content/authoring-time transform, not a runtime combat verb; would require a separate crafting-rule system.",
+    "refinery_mod": "Paid stat-mod purchase (BH Refinery, sec7) -- gold-gated meta upgrade, not a runtime effect.",
+    "accuracy_crit": "Accuracy%/miss and crit-double-damage (BB sec5) -- adds a hit/miss RNG layer our combat model doesn't have; deferred, not part of this vocab.",
+    "charm_status": "Charm status (flips enemy to your side, BH sec6) -- PvE-encounter-flipping status with no defined ally-side semantics in our engine; excluded pending a combat-side redesign."
+  },
+  "provenance": {
+    "OnHit": "research sec6 Backpack Battles 'On hit:' item event hook (Vampirism gain on melee hit)",
+    "OnBPBeenHit": "research sec6 BH 'When attacked' verb template (Cactus: 'When attacked, Adds 1 Spikes to self')",
+    "multi_strike": "research sec5 BH 'Uses per turn... some multi-use (can be used 2 times)'",
+    "buff_adjacent": "research sec4 P1 Ruby ('adjacent Weapons get +4 damage') and Amethyst/Emerald row/column beams",
+    "cleanse": "research sec7/sec8 BH Healer ('pay 10g to cleanse all curses') and curse-removal economy note in sec10 pitfall 'Curses only work if removal is scarce'",
+    "reflect_damage": "research sec6 Spikes status ('attacker takes X on melee hit') and BB Spikes ('reflect 1/stack vs melee')",
+    "lifesteal": "research sec6 BB Vampirism ('heal 1/stack on melee hit, same cap') and Bloody Dagger ('heals 4 per adjacent Vampiric item')",
+    "haste": "research sec6 BH Haste status ('each block instance gives +X block') and BB Heat ('+2% speed... shift all trigger speeds')",
+    "slow_enemy": "research sec6 BH Slow status (paired opposite of Haste, 'each block instance gives -X block')",
+    "bonus_vs_blocked": "research sec5 BH Block convention ('Block expires... consumed before HP') combined with BB Spikes cap-vs-hit pattern; a bonus keyed on a defended target is an extrapolated-but-attested combination of block+on_hit verb templates",
+    "Stun": "research sec6 BB framework verb 'Stun'",
+    "Weakness": "research sec6 BH 'Rage / Weak: each hit deals +X / -X damage' (paired-opposite status convention)",
+    "Haste_status": "research sec6 BH 'Haste / Slow: each block instance gives +X / -X block'",
+    "status_immune": "REQ-0093 (2026-07-07): flat immunity to one named vocab.statuses entry, OR to an entire status_kind class, folded at battle_start. Classic archetype fit (bone-and-sinew undead shouldn't suffer Poison; a charging brute can't be Chilled mid-rush). NOTE: this REQ adds status_immune/bonus_vs_status to the vocab independently of REQ-0077 Rev.2's own (uncommitted, as of this REQ) draft of the same two verbs -- see this REQ's file for the discrepancy; the two additions are compatible in shape.",
+    "bonus_vs_status": "REQ-0093 (2026-07-07): extends bonus_vs_blocked's precedent (a bonus keyed on the target's condition) to key on an inflicted status -- or an entire status_kind class -- instead of a block event. Lets an attacker punish a target already carrying a matching status.",
+    "status_kinds": "REQ-0093 (2026-07-07): closed 9-value keyword vocab exposing BOTH of sim/lib/status.cjs's existing engine-side classifications (polarity: buff/debuff; mechanical: STATUS_KIND's 7 buckets) to status_immune/bonus_vs_status content as a single field choice, so a content author picks exactly one axis-or-name rather than two potentially-conflicting fields. Zero new classification data -- pure reuse of STATUS_KIND/DEBUFF_STATUSES/BUFF_STATUSES, resolved at sim runtime via sim/lib/status.cjs's resolveStatusKind().",
+    "on_hp_below": "REQ-0077 Rev.2 (2026-07-07) design rationale, NOT genre-research-sourced: the classic 'enrage below X% HP' RPG monster/boss convention (orc Bloodlust, behemoth Last Stand). A state-crossing condition none of the existing event triggers can express (every_secs/battle_start are time-based; the OnHit/OnSquadHit/OnSquadBeenHit family is hit-reactive, not HP-level-reactive). Fires ONCE EVER per owner+threshold (user ruling 2026-07-12, REQ-0121: no re-arm on healing back above). Trigger param: hp_frac (0<hp_frac<1); fires when hp/hpMax first drops strictly below hp_frac while still alive. Domain ruling (user, 2026-07-09, REQ-0121): [PO, EnemySkill] -- a PO's HP referent is its OWNING BP's hp/hpMax (same object OnBPBeenHit keys off); NOT extended to SI/Unit (no HP concept of their own). NOTE: reopens combat_spec_draft.md's [LOCKED OQ2] 'dynamic buffs = minimal' default for this one case -- user-accepted in REQ-0077's review.",
+    "buff_self": "REQ-0077 Rev.2 design rationale: same shape as buff_host (stat:'damage' only, per [LOCKED OQ7]) but targets the owner itself rather than a host PO. Needed because monsters have no host PO to buff (REQ-0078 entity hierarchy: a Monster is a flat actor, no BP/PO/SI/Unit). Used at battle_start (permanent fold at pack compile, sim/lib/packs.cjs) or on_hp_below (fires once; folds onto the owner's own strike/multi_strike ranges at crossing time -- sim/lib/hpbelow.cjs). Implemented by REQ-0121.",
+    "damage_reduction": "REQ-0077 Rev.2 design rationale: flat incoming-damage reduction, folded at battle_start (ogre Thick Hide). Applies to DIRECT hit damage (strike/multi_strike primary, splash, reactive strike riders), per sub-hit, floored at zero, AFTER weaknessMultiplier and bonus_vs_status; deliberately does NOT reduce DoT status ticks (Burn/Poison) or Spikes reflect -- a hide blunts blows, not poison. Distinct lifecycle from weaknessMultiplier (status-bag-driven) per REQ-0121's design note: this is a battle_start-folded constant on the actor (ref.damageReduction). Implemented by REQ-0121.",
+    "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL. | 2026-07-13: adjacency_lr REMOVED — it was added solely for the Watcher's left/right-adjacent kit, which the user replaced with queen range 2. No def references it; a dangling unused term in a frozen vocabulary is how the clock-tower incident happened. queen_2 added in its place. | 2026-07-13: forward_1 REMOVED (orphaned when the Squire moved to rook range 3) — same hygiene rule that removed adjacency_lr. rook_3 added for the Squire.",
+    "orientation": "REQ-0128b (user ruling 2026-07-13): forward = lower Y = up = engine DIRS[0] (N).",
+    "connection_model": "REQ-0128b user rulings 2026-07-13: (1) rays do not pierce by default, keep it parameterisable; (2) adjacency = a range-limited ray, not an offset concept; (3) connections are canvas-local (Squad-scoped).",
+    "grant_charge": "User ruling 2026-07-14 (REQ-0129): giving charge to a connected Unit is an EFFECT verb, not a spend mode -- the unit fires on full and its effect happens to be grant_charge -> units_connected. With pulse propagation retired, this is the only way a chain is expressed. NOT YET RENDERABLE: no unit validator kind exists, so this verb has no self-test fixture and no engine implementation."
+  },
+  "connection_shapes": {
+    "queen": {
+      "ja": "クイーン",
+      "kind": "ray",
+      "dirs": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "range": null,
+      "pierce": false,
+      "note": "8-direction rays, unlimited. The pre-pivot Linker default."
+    },
+    "queen_2": {
+      "ja": "クイーン(射程2)",
+      "kind": "ray",
+      "dirs": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "range": 2,
+      "pierce": false,
+      "note": "8-direction rays, range 2. REQ-0149 Watcher (user ruling 2026-07-13: range 1 made connection nearly impossible)."
+    },
+    "rook": {
+      "ja": "飛車",
+      "kind": "ray",
+      "dirs": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "range": null,
+      "pierce": false,
+      "note": "Orthogonal rays, unlimited."
+    },
+    "rook_3": {
+      "ja": "飛車(射程3)",
+      "kind": "ray",
+      "dirs": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "range": 3,
+      "pierce": false,
+      "note": "Orthogonal rays, range 3. REQ-0149 Squire (user ruling 2026-07-13)."
+    },
+    "bishop": {
+      "ja": "角",
+      "kind": "ray",
+      "dirs": [
+        1,
+        3,
+        5,
+        7
+      ],
+      "range": null,
+      "pierce": false,
+      "note": "Diagonal rays, unlimited."
+    },
+    "lance": {
+      "ja": "香",
+      "kind": "ray",
+      "dirs": [
+        0
+      ],
+      "range": null,
+      "pierce": false,
+      "note": "Forward ray, unlimited. forward = DIRS[0] = N (orientation ruling)."
+    },
+    "backward_line": {
+      "ja": "後方直線",
+      "kind": "ray",
+      "dirs": [
+        4
+      ],
+      "range": null,
+      "pierce": false,
+      "note": "Backward ray, unlimited. REQ-0149 Shieldmaiden — she is the front line and guards what stands behind her. The mirror of lance (Light Cavalry)."
+    },
+    "adjacency": {
+      "ja": "隣接",
+      "kind": "ray",
+      "dirs": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "range": 1,
+      "pierce": false,
+      "note": "Rook ray with range 1. Part of the user's ORIGINAL ratified vocabulary (2026-07-12), but NO roster-001 unit uses it — kept because the user ratified it, not because a def needs it."
+    },
+    "none": {
+      "ja": "接続なし",
+      "kind": "none",
+      "dirs": [],
+      "range": 0,
+      "pierce": false,
+      "note": "Unit forms no links."
+    },
+    "chess_knight_move": {
+      "ja": "チェス・ナイトの動き",
+      "kind": "offset",
+      "offsets": [
+        [
+          -2,
+          -1
+        ],
+        [
+          -2,
+          1
+        ],
+        [
+          -1,
+          -2
+        ],
+        [
+          -1,
+          2
+        ],
+        [
+          1,
+          -2
+        ],
+        [
+          1,
+          2
+        ],
+        [
+          2,
+          -1
+        ],
+        [
+          2,
+          1
+        ]
+      ],
+      "range": null,
+      "pierce": null,
+      "note": "Chess knight: 8 fixed offsets, jumps. `range` and `pierce` are INVALID on offset shapes (user ruling 2026-07-14). Renamed from `knight` on 2026-07-14: the id named a PIECE and the ja label said 桂, but the offsets were the chess set. Keima and knight are different MOVEMENTS and now carry different ids. These are movement names; they have nothing to do with unit names."
+    },
+    "shougi_keima_move": {
+      "ja": "将棋・桂馬の動き",
+      "kind": "offset",
+      "offsets": [
+        [
+          -2,
+          -1
+        ],
+        [
+          -2,
+          1
+        ]
+      ],
+      "range": null,
+      "pierce": null,
+      "note": "Shougi keima: 2 fixed FORWARD offsets, jumps. forward = row-1 = N per the orientation ruling. RESERVED by user ruling 2026-07-14 -- registered as vocabulary; no roster-001 unit uses it and the engine may leave it unimplemented. `range` and `pierce` are INVALID on offset shapes."
+    }
+  },
+  "orientation": {
+    "forward": "N",
+    "forward_offset": [
+      -1,
+      0
+    ],
+    "note": "User ruling 2026-07-13: 前方 = the battlefield cell with the LOWER Y (i.e. up). Engine convention is [row, col] with row increasing DOWNWARD (engine.js), so forward = row-1 = DIRS[0] = N. This is what `lance`, `backward_line` and `forward_1` mean. Before this ruling those three shapes were undefined and `backward-line` had shipped in the ratified vocabulary carrying the assumption unexamined."
+  },
+  "connection_model": {
+    "shape": "{dirs, range, pierce} for ray shapes; {offsets} for offset shapes",
+    "range": "0 or null = unlimited (reaches the board edge); N = the ray reaches AT MOST N cells. User ruling 2026-07-14. INVALID on offset shapes.",
+    "occluder_set": "UNITS ONLY. A ray without pierce is stopped by the first Unit on it; BP and PO cells are TRANSPARENT and never block a ray. User ruling 2026-07-14 -- this closes the question REQ-0128b left explicitly open (\"what occupies a cell for the purpose of stopping a ray -- any BP/PO cell, or only Units?\").",
+    "pierce": "false (default) = the ray stops at the first Unit and links it (first-hit). true = the ray is NOT stopped and links EVERY Unit within range. User ruling 2026-07-14. INVALID on offset shapes.",
+    "scope": "canvas-local -- connections resolve within one Squad only (user ruling 2026-07-13).",
+    "propagation": "NONE. Links are a STATIC GRAPH: a Unit does not relay anything it receives. User ruling 2026-07-14 RETIRES the REQ-0048/0061 pulse-walk law set for Unit Links, law by law -- PULSE_CAP, the visited-set, the hop budget and hop latency all have no referent here. Charge is the single flow economy and charge capacity IS the rate limit. A chain is expressible ONLY as `grant_charge` -> units_connected, or as a receiver-side charge trigger (on_connected_unit_*).",
+    "note": "adjacency is NOT a separate concept: it is a ray with range 1 (user ruling 2026-07-13). Every ray shape is {dirs, range, pierce}. Offset shapes jump, so occlusion and range do not apply to them."
+  },
+  "charge": {
+    "_doc": "Unit charge grammar. FROZEN by user ruling 2026-07-14 (REQ-0129). A unit def carries `charge: {trigger, gain, capacity, spend}`. NOT YET ENFORCED: validateBody has no `unit` kind -- see `_status`.",
+    "_status": "RATIFIED, NOT IMPLEMENTED. No `unit` validator kind and no charge AST exist. The code REQ that adds them must move `charge.triggers` into the top-level `triggers` list, add `trigger_domains` entries, and add self-test fixtures -- the REQ-0081 coverage gate will then hold them honest.",
+    "spend": {
+      "fire_on_full": "At capacity, fire `effects` and reset the counter to 0. The classic active skill.",
+      "passive_per_stack": "Never consumed. A standing effect scales with the accumulated stack count (REQ-0149 Berserker: +0.1% damage per stack). WARNING: an uncapped stack is a balance hole. REQ-0149 G6 is OPEN, and it is now UNOWNED -- the PULSE_CAP lineage that used to backstop it was retired on 2026-07-14.",
+      "transform": "At capacity, the unit is replaced by another unit def (form change). REQ-0129 named this as a mandatory expressibility check (REQ-0149 Little Princess -> Princess)."
+    },
+    "spend_closed": true,
+    "gain": {
+      "count": "+1 per trigger firing (REQ-0149 Angel: the NUMBER OF TIMES damage was taken).",
+      "damage": "+the damage amount of the triggering event (REQ-0149 Shieldmaiden: the AMOUNT of damage received)."
+    },
+    "triggers": {
+      "OnHit": "An item on the unit's BP lands a hit. EXISTING trigger, reused. (REQ-0149 Elf)",
+      "OnBPBeenHit": "The unit's BP takes damage. EXISTING trigger, reused. (REQ-0149 Dwarf / Angel / Shieldmaiden / Berserker -- they differ in `gain`, not in trigger)",
+      "every_secs": "Elapsed time / cooldown. EXISTING trigger, reused. (REQ-0149 Watcher)",
+      "on_damage_dealt": "AGENT-DEFINED 2026-07-14 under the user's trigger delegation. Damage dealt by the unit's BP. (REQ-0149 Light Cavalry)",
+      "on_connected_unit_spend": "AGENT-DEFINED 2026-07-14. A Unit at the other end of a link spends its charge. (REQ-0149 Thief -- this is the charge source the G3a ruling named)",
+      "on_connected_unit_attack": "AGENT-DEFINED 2026-07-14. A connected Unit performs an attack. (REQ-0149 Squire)",
+      "on_connected_unit_bp_been_hit": "AGENT-DEFINED 2026-07-14. A connected Unit's BP takes damage. (REQ-0149 Priest / Princess)",
+      "on_own_passive_fire": "AGENT-DEFINED 2026-07-14. The unit's own passive fires. (REQ-0149 Little Princess -- capacity is still the unspecified 'XX', G2 OPEN)"
+    },
+    "triggers_closed": false,
+    "triggers_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「targetと同じく私に委任」). New charge-source triggers may be added WITHOUT a design event. Every agent-added trigger MUST be labelled AGENT-DEFINED, so that a machine's choice is never mistaken for a user ruling.",
+    "targets": {
+      "self": "USER-RATIFIED 2026-07-14.",
+      "units_connected": "Every Unit this Unit links to. USER-RATIFIED 2026-07-14; the name is the one the user chose.",
+      "bp_connected": "The BP a connected Unit sits on. AGENT-DEFINED 2026-07-14 under the delegation below. Required by REQ-0149 Angel / Dwarf / Princess / Light Cavalry / Watcher. THIS IS NOT A USER RULING.",
+      "units_connected_distributed": "The effect amount is divided across the connected Units. AGENT-DEFINED 2026-07-14 under the same delegation. Required by REQ-0149 Priest ('distributed if there are several'). THIS IS NOT A USER RULING."
+    },
+    "targets_closed": false,
+    "targets_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「後は、私に聞かないで、必要になったらあなたが定義してください」). New charge targets may be added WITHOUT a design event, under the same AGENT-DEFINED labelling rule.",
+    "effects_note": "Charge EFFECTS are ordinary `verbs` from the top-level list. The user ruling of 2026-07-14 draws the line: `spend` is WHEN/HOW the counter is consumed; `verbs` is WHAT then happens. Giving charge away is therefore an effect verb (`grant_charge`), NOT a fourth spend mode."
+  },
+  "deprecated": {
+    "_doc": "Vocabulary that is still SHIPPED and still exercised by tests, but that the design has moved past. Removal is a CODE REQ, not a docs edit -- each entry names what else must die with it.",
+    "on_link_pulse": "DEPRECATED 2026-07-14 (user ruling, REQ-0128b): Unit Links have NO propagation, so there is no pulse to fire on. STILL SHIPPED: exercised by tools/self_test_vocab.cjs:151 and content/s4_boards/s4_fixture_items.json. Removing it must remove those too and re-baseline the S4 sim gate (REQ-0050). NOT done here.",
+    "pulse": "DEPRECATED 2026-07-14 (user ruling, REQ-0128b): same. STILL SHIPPED: content/s4_boards/s4_fixture_items.json. Same removal conditions.",
+    "buff_linked": "DEPRECATED 2026-07-14: Linker-era verb. The charge grammar expresses this as an ordinary verb aimed at `units_connected`. Kept because removing a verb is a code change with a coverage gate attached.",
+    "REQ-0061 8-type connective axis": "RETIRED 2026-07-14 (user ruling, 供養): delay / divider / junction / toggle / terminal / amplifier / splitter / condenser were each a definition of what a Unit does to a PULSE PASSING THROUGH IT. With propagation retired they have no referent. They are NOT re-derived as charge verbs. Never shipped -- nothing to remove."
+  }
 }

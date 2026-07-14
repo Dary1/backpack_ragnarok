@@ -616,9 +616,42 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
         names: ['1', '2', '3', '4', '5'],
       };
     }
-    if (!canvas.inv.pages[0].pos) canvas.inv.pages[0].pos = [];
-    canvas.inv.pages[0].pos = canvas.inv.pages[0].pos.filter((p: any) => p.uid !== uid);
-    canvas.inv.pages[0].pos.push({ uid, id: 'blade', loc: 'grid', cell: [8, 1], rot: 0 });
+    // REQ-0159: clear EVERY page's pos/sis (same isolation seedDevBladePos
+    // below already does) so this blade is the ONLY dismantlable item. That is
+    // deliberate, and it is the whole point: it forces the test down the
+    // "dismantle the LAST item" path every single time.
+    //
+    // That path is what used to break -- and, because this seed previously
+    // just APPENDED to whatever the live dev profile happened to hold, the
+    // test only took it when that profile happened to be otherwise empty. So
+    // the suite's coverage of the bug was decided by live-state leftovers: it
+    // "passed" on the runs that never reached the broken path. Pinning the
+    // fixture makes the hard path the guaranteed path.
+    for (const pg of canvas.inv.pages) {
+      pg.pos = [];
+      pg.sis = [];
+    }
+    // REQ-0159 (class B -- FLAKE, root cause: this fixture seeded the item
+    // OFF-GRID). `cell` is [row, col] and the engine's page grid is
+    // ONE-indexed (mock-src/engine.js: `if (r<1||r>ROWS||c<1||c>COLS) ->
+    // 'outside page'`), so on the 8x8 inventory page the legal rows are 1..8.
+    // `blade`'s shape is [[0,0],[1,0]] -- two cells tall -- so the old anchor
+    // [8, 1] spanned rows 8 AND 9: half of it hung off the bottom of the page.
+    // The picker still LISTED it (collectDismantlable just walks
+    // inv.pages[].pos and never looks at cell), which is why the row was
+    // visible and selectable and the test usually got its click in -- but the
+    // app boots on #/backpacks, mounts the inventory board over this illegal
+    // placement, and loadGame() schedules an auto-save 800ms later
+    // (AUTO_SAVE_DEBOUNCE_MS, store/autosave.ts). When that landed BEFORE the
+    // confirm click -- which is what happens once the box is loaded, hence
+    // "only under E2E_PARALLEL" -- the item was gone from state, selectedItems
+    // was empty, and confirmDismantle() early-returned without POSTing: no
+    // toast, no error, an empty picker. That is exactly what the failure
+    // snapshot showed ("Nothing in your inventory to dismantle yet" + a
+    // completed "saved ✓"), and it is why no error message ever appeared.
+    // Anchor at a LEGAL cell (rows 1-2, col 1) so the seeded state is state
+    // the game can actually hold, and the boot auto-save is a no-op.
+    canvas.inv.pages[0].pos.push({ uid, id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 });
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;
@@ -655,7 +688,18 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
       await expect(page.locator('[data-testid="workshop-dismantle-count"]')).toHaveText(String(before), { timeout: 10000 });
 
       await page.locator('[data-testid="workshop-dismantle-confirm-btn"]').click();
+
+      // REQ-0159 regression guard: this blade is the caller's LAST (and only)
+      // dismantlable item, so the loadGame() refresh below empties the picker.
+      // The success toast must survive that. It did NOT before REQ-0159: the
+      // toast was rendered inside the `dismantlable.length > 0` branch of
+      // DismantlePanel.tsx, so emptying the list unmounted the very
+      // confirmation the dismantle had just set, and the user who destroyed
+      // their last item saw nothing at all. Assert BOTH halves -- the list
+      // really did go empty, AND the toast is still on screen -- so the guard
+      // cannot be satisfied by quietly leaving an item behind.
       await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="workshop-dismantle-empty"]')).toBeVisible();
 
       // The dismantled row disappears from the picker WITHOUT closing the
       // modal -- proves the post-confirm loadGame() refresh actually
@@ -663,6 +707,7 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
       // see DismantlePanel.tsx -- state's own object reference never
       // changes, only stateVersion bumps).
       await expect(row).toHaveCount(0);
+      await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toBeVisible();
 
       await page.locator('[data-testid="workshop-dismantle-close"]').click();
       await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toHaveCount(0);
@@ -758,7 +803,12 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
       pg.pos = [];
       pg.sis = [];
     }
-    canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [8, 1 + i], rot: 0 }));
+    // REQ-0159: same off-grid seed bug as seedDevBladePo above (anchor row 8
+    // + a 2-tall blade = rows 8..9, off the 1-indexed 8-row page). Anchor each
+    // blade at row 1 in its OWN column instead: rows 1-2 x cols 1..5, all
+    // in-bounds and mutually non-overlapping, so the five rows the drag /
+    // Shift+Click / Ctrl+Click range assertions below index into are stable.
+    canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [1, 1 + i], rot: 0 }));
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;

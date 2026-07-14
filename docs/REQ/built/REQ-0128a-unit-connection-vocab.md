@@ -1,0 +1,116 @@
+# REQ-0128a — unit-connection-shape vocabulary (dictionary)
+
+**Status:** built — `content/vocab.json` v9 carries `connection_shapes`; vocab
+self-test ALL GREEN, engine tests 101/101. Not merged/deployed.
+**Split from:** REQ-0128 (2026-07-13), per the PROJECT.md multi-phase rule.
+**Slug:** unit-connection-vocab
+
+## Why this is its own REQ
+
+User ruling, 2026-07-13: *"飛車、角等はとりあえず辞書として登録してください。
+実装はREQを作って別にしましょう。"* — register the shape names as a dictionary
+now; the mechanics ship separately. The two phases can hold different statuses,
+so they are two files. Mechanics = **REQ-0128b**.
+
+## What shipped
+
+`content/vocab.json` **v8 → v9**, new top-level key `connection_shapes` (10
+entries), plus a `provenance` entry. **Dictionary only — nothing is wired to the
+engine.** The validator can now recognise a `connection_shape` value; it cannot
+yet resolve one.
+
+| key | ja | dirs | range | pierce |
+|---|---|---|---|---|
+| `queen` | クイーン | `0-7` | ∞ | false |
+| `queen_2` | クイーン(射程2) | `0-7` | **2** | false |
+| `rook` | 飛車 | `0,2,4,6` | ∞ | false |
+| `rook_3` | 飛車(射程3) | `0,2,4,6` | **3** | false |
+| `bishop` | 角 | `1,3,5,7` | ∞ | false |
+| `lance` | 香 | `0` (N/forward) | ∞ | false |
+| `backward_line` | 後方直線 | `4` (S) | ∞ | false |
+| `adjacency` | 隣接 | `0,2,4,6` | **1** | false |
+| `knight` | 桂 | *(offsets — jumps)* | — | true |
+| `none` | 接続なし | — | 0 | — |
+
+## The shape model collapsed — user ruling 2026-07-13
+
+> *"adjacency は、隣接としてとらえるのではなく、ray の距離が1しかない、2しかないと判断してください"*
+
+**`adjacency` is not a concept. It is a ray with a range limit.** That one ruling
+deletes the entire "offset shapes" category the earlier draft invented — and with it
+the `adjacency` vs `BP-footprint-adjacency` question, the separate offset-rotation
+machinery, and two of the three "PROVISIONAL" flags.
+
+Every shape is now **`{dirs, range, pierce}`**:
+- `range`: `null` = unlimited, `N` = the ray reaches **at most N cells**.
+- `pierce`: `false` by default — **rays do NOT pass through** (user ruling). The field
+  exists from day one so a future piercing shape is a **data** change, not an engine
+  change (*"あとで貫通するものが出るかもしれません。どちらでもよいようにしておいてください"*).
+
+**`knight` is the sole survivor of the offset category** — it *jumps*, so occlusion
+cannot apply to it, and it cannot be written as `{dirs, range}`. It is marked
+`pierce: true` for exactly that reason.
+
+**Scope:** connections resolve **canvas-local** (within one Squad) — user ruling.
+
+## What this REQ deliberately does NOT do
+
+- No engine resolution, no link-graph construction, no client overlays — **REQ-0128b**.
+- No engine wiring. The dictionary now carries concrete `dirs` / `offsets` for every
+  shape, but **nothing reads them yet** — resolution, the link graph and the overlays
+  are all REQ-0128b.
+
+## Board orientation — RULED 2026-07-13 (this REQ raised it; the user settled it)
+
+The directed shapes (`lance`, `backward_line`, `forward_1`) presupposed a board
+orientation for Units that **had never been defined anywhere in this repo** —
+`backward-line` shipped in the ratified vocabulary carrying the assumption unexamined.
+
+**User ruling: 前方 = the battlefield cell with the LOWER Y — i.e. up.**
+
+Reconciled against the engine, which is `[row, col]` with **row increasing downward**
+and an 8-point compass `DIRS[0] = [-1,0] = N` (`mock-src/engine.js:571`):
+
+> **forward = row − 1 = `DIRS[0]` = N.**
+
+Recorded in `vocab.json` as a top-level `orientation` key so it cannot be lost again.
+All ten shapes now have concrete `dirs` / `offsets`.
+- No def authoring — REQ-0149 / REQ-0130.
+
+## Gates
+
+- [x] `connection_shapes` registered in `content/vocab.json` (v9).
+- [x] `node tools/self_test_vocab.cjs` — ALL GREEN, 0 failures.
+- [x] `node mock-src/tests/run.cjs` — 101 passed, 0 failed.
+- [ ] Merged to master.
+
+## Outcome
+
+Vocabulary registered as a dictionary, per the user's ruling, without pretending the
+semantics are settled. The two provisional shapes (`adjacency_lr`, `forward_1`) exist
+because the REQ-0149 roster demands them — they are flagged as demands on 0128b rather
+than silently given a meaning.
+
+## 2026-07-13 (later) — Watcher rerouted; `adjacency_lr` removed
+
+User ruling: **the Watcher is `queen`, range 2** — *"出ないとほぼ接続が不可能ですね"*.
+Correct: at range 1 a Unit only links if another Unit sits in the literal adjacent
+cell, which almost never happens on a real board.
+
+`adjacency_lr` existed for exactly one reason — the Watcher's old left/right-adjacent
+kit. That kit is gone, so **the entry is removed, not left in the dictionary.** A
+dangling, unused term sitting in a frozen vocabulary is precisely the condition that
+produced the clock-tower incident: a later agent finds the word, cannot find a
+definition, and invents one. `queen_2` takes its place.
+
+## 2026-07-13 (final) — Squire rerouted; `forward_1` removed
+
+User ruling: **the Squire is `rook`, range 3** (`rook_3`). `forward_1` existed only for
+the Squire's old one-cell-forward kit, so it is now an orphan and is **removed** — the
+same hygiene rule that removed `adjacency_lr`. Unused terms do not sit in a frozen
+vocabulary.
+
+**Final dictionary — 10 shapes.** `adjacency` (rook range 1) is the only entry no
+roster-001 unit uses; it is kept because the **user** ratified it on 2026-07-12, not
+because a def needs it. That provenance is recorded so nobody later "cleans it up" or
+invents a user for it.

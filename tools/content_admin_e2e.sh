@@ -21,9 +21,18 @@ set -euo pipefail
 
 WT="$(cd "$(dirname "$0")/.." && pwd)"
 
-APIPORT="${APIPORT:-8922}"
-STATICPORT="${STATICPORT:-8921}"
-PROXYPORT="${PROXYPORT:-8923}"
+# REQ-0159: these defaults used to be 8921/8922/8923 -- byte-identical to
+# tools/artadmin_e2e.sh's. That was harmless while each harness was only ever
+# run BY HAND, one at a time (REQ-0156/0157), but tools/ci.sh now runs all three
+# back-to-back in one step, and the second harness to claim the band could not
+# bind its ports while the first one's processes were still on their way down:
+# its proxy never came up and every spec in it died on ECONNREFUSED :8923.
+# Give this harness its own band so the three are independent by construction,
+# in ci.sh AND for anyone chaining them by hand. (art_inspect_e2e.sh already had
+# its own: 8911/8912/8913.)
+APIPORT="${APIPORT:-8932}"
+STATICPORT="${STATICPORT:-8931}"
+PROXYPORT="${PROXYPORT:-8933}"
 
 TMPHOME="$(mktemp -d)"
 EXPORTDIR="$(mktemp -d)"
