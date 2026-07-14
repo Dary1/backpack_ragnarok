@@ -156,3 +156,31 @@ oil_flask/blade; SIs: acc_whet/acc_frost).
 - Doc/close commit (append this log + git mv todo -> built): recorded in `git log` on the branch (this commit).
 
 NOT merged to master, NOT deployed — a separate integration owner handles that.
+
+---
+
+## Integration-owner merge + deploy (2026-07-14)
+
+- **Merged into master --no-ff:** merge commit `ddf6d30` (on top of the REQ-0060 merge
+  `984f191`). Auto-merged with no manual conflicts -- the only shared file with REQ-0060,
+  `server/services/gacha.cjs`, merged cleanly (this REQ's `rollPackBonuses` + `rollPackBp`
+  bonus wiring + module.exports live alongside REQ-0060's gacha-finalize born-stamp).
+- No migration in this REQ (no DB collision to resolve).
+- **Full release gate** `flock /tmp/backpack_ci.lock bash tools/release.sh`: **CI GREEN.**
+  content gate (check_units, bonus-id validation) green; api 176/0 (files+pg); admin e2e
+  4+1+21; pre-deploy full e2e **165/0** incl. `workshop.spec.ts:913` "REQ-0062: themed BP
+  pack (clockwork) -- open end-to-end". dist rebuilt + committed `6ae7051`.
+- **Deployed:** restarted backpack-api + backpack-web (systemctl --user) -- both active;
+  HTTP 200 on 8801 /app/ and 8802 /api/health.
+- **Post-deploy full e2e** (sanctioned wrapper, live): first pass 162/3 under heavy concurrent
+  box load (13.1m, ~4x slow). `workshop.spec.ts:913` PASSED (test 165, 4.4s), as did all
+  workshop/gacha specs. The 3 reds -- reference-model.spec.ts:166 & :239, schedule.spec.ts:1429
+  -- are drag/replay timing flakes UNRELATED to REQ-0062 and passed pre-deploy. Targeted serial
+  rerun on a quiet box: **3 passed (42.7s)** -> confirmed flakes. Effective post-deploy result:
+  **165/165 GREEN** incl. workshop.spec.ts:913.
+- **e2e_fleet.cjs overlay note:** the `live_packs.json` overlay entry (added on-branch for the
+  isolated parallel-worker backend) is harmless now that live_packs.json is on master; left in
+  place (no functional effect post-merge).
+- **Final master hash:** `6ae7051`.
+
+built -> done: this file moves docs/REQ/built/ -> docs/REQ/done/ in the immediately following commit.
