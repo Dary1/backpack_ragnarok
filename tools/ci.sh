@@ -129,6 +129,8 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_bpskin.mjs)
   echo "==== [5.9c/7] bp-skin S3 validation harness -- deterministic composite machine gate (REQ-0126) ===="
   (cd client && node scripts/bpskin_harness.mjs)
+  echo "==== [5.9d/7] overlay accessibility harness -- CVD sim + contrast, emits BS-G2 numbers (REQ-0143) ===="
+  (cd client && node scripts/overlay_a11y_harness.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
 else

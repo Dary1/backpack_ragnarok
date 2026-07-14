@@ -5,23 +5,14 @@ import App from './App.tsx'
 import { initButtonFx } from './theme/buttonFx'
 import { boot, initAutoSaveLifecycle } from './store'
 import { initGuideController } from './guide/guideController'
+import { initMotionPrefs } from './a11y/motionPrefs' // REQ-0143
 
-// REQ-0113: entrance/idle-motion gate. The §06 styleguide motions adopted
-// here (rise / pulse / toastin) are decorative, so enable them only when
-// motion is welcome -- mirrors landing/particles.ts discipline:
-//   - navigator.webdriver  -> OFF (Playwright/automation always sets it, so
-//     e2e stays byte-identical in behaviour: no entrance/idle motion runs).
-//   - prefers-reduced-motion -> OFF (belt-and-suspenders with mjolnir.css's
-//     blanket shortcut; here the motions simply never start).
-// Every REQ-0113 motion is CSS-scoped under :root[data-motion="on"].
-(() => {
-  const reduce =
-    (typeof navigator !== 'undefined' && navigator.webdriver === true) ||
-    (typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  if (!reduce) document.documentElement.setAttribute('data-motion', 'on');
-})();
+// REQ-0143: reduced-motion is now owned by a11y/motionPrefs. It seeds from the
+// same platform signals REQ-0113 used (navigator.webdriver -> OFF so e2e stays
+// byte-identical; prefers-reduced-motion: reduce -> reduced ON), lets an
+// explicit Settings toggle override the seed, and sets :root[data-motion="on"]
+// (REQ-0113 CSS scope) iff motion is welcome, plus :root[data-reduced-motion].
+initMotionPrefs();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
