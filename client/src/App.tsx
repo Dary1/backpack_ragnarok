@@ -86,6 +86,9 @@ import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
 import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
+import { CanvasSidePanel } from './canvas/CanvasSidePanel'; // REQ-0140
+import { CanvasSelectionOverlay } from './canvas/CanvasSelectionOverlay'; // REQ-0140
+import { CanvasEmptyState } from './canvas/CanvasEmptyState'; // REQ-0140/0141
 import { ForecastOverlay } from './forecast/ForecastOverlay'; // REQ-0057
 import { ForecastPanel } from './forecast/ForecastPanel'; // REQ-0057
 import { DexRoot } from './dex/DexRoot';
@@ -225,6 +228,12 @@ function App() {
                     "visible WHILE building"). Renders nothing when the overlay
                     is off. */}
                 <ForecastOverlay />
+                {/* REQ-0140: panel->board selection ring (DOM overlay, no
+                    BoardRenderer change) + zero-BP guidance over the board. */}
+                <CanvasSelectionOverlay />
+                {snapshot.status === 'ready' && snapshot.state && snapshot.state.bps.length === 0 ? (
+                  <CanvasEmptyState variant="zero-bp" locale={snapshot.locale} />
+                ) : null}
               </div>
               <div className="boardfoot">
                 {snapshot.status === 'ready' ? <SquadTabs /> : null}
@@ -249,7 +258,16 @@ function App() {
               .board-column -- when the Warehouse tab is open, this
               backpacks-view is itself route-hidden anyway, so there is no
               visible gap either way). */}
-          {inventorySlot === null ? <InventoryColumn locale={snapshot.locale} ready={inventoryReady} /> : null}
+          {inventorySlot === null ? (
+            <div className="canvas-legacy-inv">
+              <InventoryColumn locale={snapshot.locale} ready={inventoryReady} />
+            </div>
+          ) : null}
+          {/* REQ-0140: the MJOLNIR right-panel composition (inventory list +
+              filter chips + selected-item detail card). Additive; at the
+              compact canvas layout it replaces the wide Pixi inventory column
+              (styles/canvas.css hides .canvas-legacy-inv there). */}
+          <CanvasSidePanel locale={snapshot.locale} />
           {/* REQ-0114: the ItemList (the ItemPanel item/SI catalog) is
               intentionally NOT rendered on the backpacks view, per user
               request. The Canvas and Inventory columns above are unchanged;
