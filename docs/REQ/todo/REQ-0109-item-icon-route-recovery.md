@@ -196,3 +196,11 @@ Disposition: **stays in todo** -- the route is merged but the batch-003 ART is
 still NG, no fresh regeneration + S7 has occurred, and the remaining steps are
 content generation + user acceptance (out of autonomous-integration scope). Task 5
 live-wiring remains split to REQ-0133 (draft/).
+
+## Retirement note (2026-07-14, user ruling)
+User ruling (orchestrator session, 2026-07-14): with the content-system overhaul
+landed (registry/admin REQ-0151..0157 line), the legacy icon batches are all laid
+to rest ("supuyo/kuyou") for now — no batch-003 flux2 re-roll, no batch-004
+satisfaction claim. The recovered route itself is already merged (f3e1f32).
+Moved todo -> draft; any future item-icon batch goes through the current
+registry/content-admin pipeline instead.
