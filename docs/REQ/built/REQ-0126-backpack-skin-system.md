@@ -154,3 +154,42 @@ one programmer-art dev skin — NO real skin art (pipeline S1–S5 stays separat
 - `eda0ecc` — implementation.
 - `740159f` — merge master (re-sync, clean).
 - todo→built move — see this file's move commit.
+
+---
+
+## Wave-6 integration / deploy record (2026-07-14)
+
+Merged to master via `--no-ff` merge commit `815b1dd` (branch
+`req-0126-backpack-skin-system`, tip `fd72e57`). ZERO merge conflicts (master
+`41086eb` was fully contained in the branch; file set did not overlap REQ-0140).
+Migration numbering verified before merge: master top was `013_bp_bio.sql`, so
+`014_bp_skin.sql` landed free -- NO renumber needed.
+
+Migration handling: `server/migrations/014_bp_skin.sql` (bp_skin table) was
+already present in the live pg (idempotent `CREATE TABLE IF NOT EXISTS`);
+re-applied at deploy (NOTICE "already exists, skipping" + GRANT, 0 rows). Live
+backend is `STORAGE_BACKEND=pg`; per decision 5 a pg deployment needs NO row
+migration (a missing slot resolves to neutral). The files-only seed tool
+`tools/migrations/req0126_seed_bpskin_neutral.cjs` was run DRY-RUN against live
+`data/profiles` (BPs=7, already=0, would-seed=7, wrote nothing) to verify
+behaviour + idempotency; `--apply` was intentionally NOT run on this pg
+deployment (it would only create orphan files the pg runtime ignores).
+
+Pre-merge sanity gate GREEN: bpskin store (files + pg parity), seed-migration
+fixture, check_bpskin chain, S3 harness (golden `6b024c07...`, 48 composites),
+client `tsc -b`. Full gate `flock /tmp/backpack_ci.lock bash tools/release.sh`
+GREEN on integrated master: CI GREEN (incl. [4.68] files store, [4.69] seed
+fixture, [5.45] pg parity, [5.9b] check_bpskin, [5.9c] harness, [6] client
+build), admin e2e harnesses (artadmin 4/4, artinspect 1/1, contentadmin 21/21),
+default e2e 172/172. Dist rebuilt + committed `fa2a0e8`. Post-deploy e2e
+re-verify 172/172 (0 failed, 0 flaky). Services restarted, HTTP 200 (8801
+/app/, 8802 /api/health); `/api/content` now serves `bpskins`.
+
+Disposition: the PixiJS BoardRenderer binding + live board-render e2e remain
+DEFERRED (recorded vetoable #6; neutral = plain rendering => no visual change).
+This is a vetoable ORCH note, NOT an open user-acceptance / S7 item; the SYSTEM
+(rendering-stack modules, bpskin/1 data model, per-instance persistence, S3
+machine gate) shipped and is machine-verified. -> moved `built -> done` this
+wave. The renderer visual wiring is a known follow-up owned by a future REQ.
+
+Final master at deploy: `fa2a0e8`.
