@@ -290,3 +290,22 @@ that e2e asserts on changes, update the spec assertion in the same commit.
   follow-up: no next-run countdown on a canceled room”). data-testids unchanged;
   client has no unit specs for this line (0 client unit specs -- covered via e2e),
   so no test was added or changed.
+
+- **Post-merge gate re-run (2026-07-14)**: `master` was merged INTO
+  req-0168-schedule-ux-pass (merge commit 560699b). The ONLY conflicts were the
+  web/app dist bundles + index.html (rename/rename + content); every source,
+  doc and tool file auto-merged cleanly. Dist conflicts were resolved by
+  REBUILDING the client (pnpm run build, emptyOutDir) rather than hand-merging
+  bundles. Full re-gate on the merged head 560699b, all green:
+  - `pnpm exec tsc --noEmit` (client): PASS.
+  - `pnpm run lint` (oxlint, canonical): 0 errors, 34 pre-existing warnings.
+  - `pnpm run build`: PASS; dist deterministic (a second build left git clean),
+    committed with the merge at 560699b.
+  - server `node server/tests/api_test.cjs`: 157 passed / 0 failed (1215 assertions).
+  - e2e `pnpm run e2e` (worktree recipe: python http.server :8901 serving this
+    worktree web/, local-proxy :8903, E2E_PARALLEL=4 fleet :8910-8913 = this
+    worktree server, PLAYWRIGHT_BASE_URL=http://127.0.0.1:8903, E2E_GPU=1):
+    159 passed / 0 failed (2.9m) in a SINGLE run -- no CPU-drag flake surfaced
+    under GPU, so no targeted E2E_GPU=1 rerun was needed. Box lock acquired with
+    no queue; the orchestrator QA instance (HOME=/tmp/bp_qa, :8899/:8902) was
+    left untouched.
