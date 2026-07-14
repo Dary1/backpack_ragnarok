@@ -80,12 +80,18 @@ const SOURCES = [
   { kind: 'tm_def', file: 'content/live/live_tms.json' },
   { kind: 'monster_def', file: 'content/live/dungeon/enemies.json' },
   { kind: 'skill_def', file: 'content/live/dungeon/skills.json' },
+  // REQ-0170 shipped both of these as live content; REQ-0171 puts them in the ledger.
+  // unit_def's "zero entries by design" note (below) was true right up until the 12
+  // roster defs landed -- it is now simply false, and a backfill that skipped them
+  // would leave the pack pools pointing at units the registry has never heard of.
+  { kind: 'unit_def', file: 'content/live/live_units.json' },
+  { kind: 'gacha_pack', file: 'content/live/live_packs.json' },
 ];
 
 // unit_def: ZERO entries by design -- no unit data defs exist yet
 // (REQ-0130 is provisional; units are not per-entity data defs today).
 // Listed so the inventory states the kind honestly instead of omitting it.
-const UNIT_DEF_NOTE = 'no unit data defs exist yet (REQ-0130 provisional) -- backfill zero by design';
+const UNIT_DEF_NOTE = 'REQ-0171: unit_def is now a REAL source (content/live/live_units.json, 12 roster defs from REQ-0170) -- the old "zero by design" note is retired';
 
 // Live files deliberately NOT backfilled, with reasons. The registry's
 // content_kind ENUM is po_def|si_def|monster_def|unit_def|tm_def|skill_def
@@ -187,7 +193,7 @@ function printInventory(entries, missingFiles) {
   for (const s of SOURCES) {
     console.log('  ' + s.kind.padEnd(12) + ' ' + String(fileCounts[s.file] || 0).padStart(2) + ' entries  <- ' + s.file);
   }
-  console.log('  unit_def      0 entries  <- ' + UNIT_DEF_NOTE);
+  console.log('  note: ' + UNIT_DEF_NOTE);
   console.log('  per-kind totals: ' + Object.keys(counts).map((k) => k + '=' + counts[k]).join(' '));
   console.log('  TOTAL: ' + entries.length + ' defs / ' + entries.length + ' variants (one adopted variant_no 1 per def)');
   if (missingFiles.length) console.log('  MISSING SOURCE FILES: ' + missingFiles.join(', '));
