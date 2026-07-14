@@ -71,6 +71,24 @@ REQ for all kinds at once, not a special case for packs.
   3 live packs and the 12 live units all PASS) and the rewritten backfill inventory test.
 - Backfill verified against the live DB: `gacha_pack` = 3 / `unit_def` = 12, PASS + adopted.
 
-## Outcome
+## Outcome (2026-07-14) — BUILT, merged (`97b13f6`), deployed
 
-_(filled at close)_
+- `content_kind` ENUM extended (`016_...sql`, applied to the live DB).
+- Backfilled into the ledger: **12 `unit_def` + 3 `gacha_pack`** — all four machine checks
+  green, all adopted at v1, all exported.
+- Verified in the admin on backpack-dev: `common_bp` renders as *Common Backpack /
+  コモンバックパック*, chips `cost 10 lrdst · 6–8 cells · HP 15/cell · 12 units`, and the pool as
+  **elf w1 8.3% · dwarf w1 8.3% · …** (weight edited, percentage derived) with
+  `schema_vocab ok · engine_types ok · gen_data ok · integrate n/a`.
+- `tools/ci.sh` CI GREEN, incl. 7 new checks and the rewritten backfill inventory test.
+
+**Found in flight:** REQ-0062 (another agent) landed two themed packs (`clockwork`, `ember`)
+on the `gacha_pack/1` schema while this REQ was being built, adding a `bonus` field. Both
+backfilled and PASS; `bonus` surfaces in the preview's fallback grid (the "nothing is silently
+hidden" rule did its job without a line of new code). If `bonus` deserves a first-class
+renderer and its own machine check, that is a small follow-up — say the word.
+
+**Still true, and worth repeating:** adopting a variant does not write
+`content/live/live_packs.json`. That gap is REQ-0155's un-wired S7 step and it applies to
+EVERY kind equally; the running gacha still reads the live file. Closing it is one REQ for all
+kinds, not a special case for packs.
