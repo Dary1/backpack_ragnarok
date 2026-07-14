@@ -254,12 +254,12 @@ character"), and the live Ragnarok flow devotes a **Squad**
 
 ---
 
-## 5. formation.xlsx
+## 5. formation.xlsx — RETIRED (REQ-0166, 2026-07-14)
 
-- Sheet labels **Unit1–Unit4 → Squad1–Squad4** (positions unchanged).
-- **Fix the backline box to `J11:Q18`** (it is the origin of the row-19 error, §2.1),
-  or mark the sheet non-authoritative in favour of
-  `content/live/dungeon/formations.json`.
+User ruling: **delete it.** The sheet was the origin of the row-19 error (§2.1) and
+carried pre-pivot Unit1–Unit4 labels. `content/live/dungeon/formations.json` is the sole
+authoritative formation data (mirrored byte-for-byte by `sim/lib/formation.cjs`).
+`backpack_battle_spec.md`'s `source:` field now says so.
 
 ---
 

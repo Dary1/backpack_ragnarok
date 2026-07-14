@@ -1,6 +1,6 @@
 ```yaml
 game_system: "multi-squad backpack battler"
-source: "formation.xlsx (labels only; the AUTHORITATIVE formation data is content/live/dungeon/formations.json)"
+source: "content/live/dungeon/formations.json (authoritative; mirrored byte-for-byte by sim/lib/formation.cjs). The original formation.xlsx was RETIRED and deleted 2026-07-14 (REQ-0166): it carried the stale J11:Q19 box and pre-pivot Unit1-4 labels."
 status: "rules confirmed by designer; implemented and live in sim/ (REQ-0036/0047)"
 
 field:
@@ -89,7 +89,7 @@ formations:
       The ratified fix is J11:Q18. The four boxes now carry an explicit
       squad-to-box assignment (they were previously implied by position only).
       The sim asserts at load time that EVERY formation box is exactly 8x8.
-      formation.xlsx still carries the old J11:Q19 and is NOT authoritative.
+      The source sheet (formation.xlsx) carried the old J11:Q19 and has been deleted.
 
 resolved_items:
   - "penetration exhausted mid-flight: the ray STOPS on the hit that exhausts the budget. it does not keep bouncing. a bounce never consumes penetration."
