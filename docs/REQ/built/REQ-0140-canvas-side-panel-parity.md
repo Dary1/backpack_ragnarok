@@ -108,3 +108,29 @@ ADDITIVE React composition under `client/src/canvas/`:
 Side-by-side screenshot vs `web/redesign/canvas.html` at 1280x800 remains for
 user acceptance (deferred to the integration/UX owner; NOT merged/deployed
 here, per task scope).
+
+---
+
+## Wave-6 integration / deploy record (2026-07-14)
+
+Merged to master via `--no-ff` merge commit `0a8de96` (branch
+`req-0140-canvas-side-panel`, tip `8691fc5`). ZERO merge conflicts -- additive
+`client/src/canvas/*`; the App.tsx / canvas.css / i18n wiring did not collide
+with the concurrent REQ-0126 merge. The worktree`'s intentionally-uncommitted
+derived web/app artifacts were ignored (release.sh rebuilds dist).
+
+Full gate `flock /tmp/backpack_ci.lock bash tools/release.sh` GREEN on
+integrated master: CI GREEN, admin e2e harnesses green (artadmin 4/4,
+artinspect 1/1, contentadmin 21/21), default e2e 172/172 incl.
+`canvas-side-panel.spec.ts` 7/7. Dist rebuilt + committed `fa2a0e8`.
+Post-deploy e2e re-verify 172/172 (0 failed, 0 flaky), canvas-side-panel 7/7.
+Services restarted, HTTP 200 (8801 /app/, 8802 /api/health).
+
+Disposition: the side-by-side UX screenshot vs `web/redesign/canvas.html` at
+1280x800 is an EXPLICIT open user-acceptance item (Gates: "...for user
+acceptance"; impl note: "remains for user acceptance"). Per board law
+(built -> done only with NO open user-acceptance items) this REQ STAYS at
+`built` pending that acceptance. Feature is merged + deployed + fully e2e-green;
+the only outstanding item is the human side-by-side sign-off.
+
+Final master at deploy: `fa2a0e8`.
