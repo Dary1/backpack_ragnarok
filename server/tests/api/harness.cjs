@@ -148,6 +148,16 @@ fs.writeFileSync(path.join(liveDir, 'live_packs.json'), JSON.stringify({
   entries: [
     { id: 'common_bp', name: 'Common Backpack', cost: 10, cost_tm: 'lrdst', cells: [6, 8], hp_per_cell: 15,
       pool: [{ unit: 'test_queen', weight: 1 }, { unit: 'test_rook', weight: 1 }, { unit: 'test_loner', weight: 1 }] },
+    // REQ-0062: a themed pack exercising the bonus-slot machinery -- one guaranteed BP
+    // (tight [3,4] band) plus three bonus slots (po/si/tm) drawn from dedicated per-slot
+    // RNG sub-streams. Single-entry tables keep the assertions deterministic.
+    { id: 'test_themed', name: 'Test Themed', cost: 20, cost_tm: 'lrdst', cells: [3, 4], hp_per_cell: 10,
+      pool: [{ unit: 'test_queen', weight: 1 }],
+      bonus: [
+        { pool: 'po', table: [{ id: 'blade', weight: 1 }] },
+        { pool: 'si', table: [{ id: 'acc_gem', weight: 1 }] },
+        { pool: 'tm', table: [{ id: 'lrdst', weight: 1, qty: 3 }] },
+      ] },
   ],
 }));
 fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({

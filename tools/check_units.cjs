@@ -35,6 +35,16 @@ const load = (p) => JSON.parse(fs.readFileSync(p, 'utf8'));
 const vocab = load(path.join(CONTENT, 'vocab.json'));
 const units = load(path.join(CONTENT, 'live', 'live_units.json'));
 const packs = load(path.join(CONTENT, 'live', 'live_packs.json'));
+// REQ-0062: bonus-slot tables reference PO / SI / TM live content -- load their id
+// sets so validatePackEntry can reject a table that names content with no live def.
+const liveItems = load(path.join(CONTENT, 'live', 'live_items.json'));
+const liveSis = load(path.join(CONTENT, 'live', 'live_sis.json'));
+const liveTms = load(path.join(CONTENT, 'live', 'live_tms.json'));
+const contentIds = {
+  po: new Set((liveItems.entries || []).map((e) => e.id)),
+  si: new Set((liveSis.entries || []).map((e) => e.id)),
+  tm: new Set((liveTms.entries || []).map((e) => e.id)),
+};
 
 let failures = 0;
 const fail = (msg) => { console.error('FAIL  ' + msg); failures++; };
@@ -70,7 +80,7 @@ for (const e of (units.entries || [])) {
 
 for (const p of (packs.entries || [])) {
   try {
-    validatePackEntry(p, seen);
+    validatePackEntry(p, seen, contentIds);
   } catch (err) {
     fail(err.message);
   }
@@ -80,6 +90,7 @@ const shapes = Object.keys(vocab.connection_shapes || {});
 const used = new Set((units.entries || []).map((e) => e.connection_shape));
 console.log('units: ' + seen.size + ' defs / ' + used.size + ' distinct shapes used (of ' + shapes.length + ' in the vocabulary)');
 console.log('packs: ' + (packs.entries || []).length + ' / pool rows: ' + (packs.entries || []).reduce((n, p) => n + (p.pool || []).length, 0));
+console.log('bonus slots: ' + (packs.entries || []).reduce((n, p) => n + (p.bonus || []).length, 0) + ' (REQ-0062)');
 console.log('failures: ' + failures);
 if (failures) process.exit(1);
 console.log('ALL GREEN');

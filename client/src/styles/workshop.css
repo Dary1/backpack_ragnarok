@@ -893,3 +893,17 @@
   font-size: 16px;
   color: var(--gold-hi);
 }
+
+/* REQ-0062: themed pack catalog selector + bonus odds/bundle */
+.workshop-pack-select { margin: 0 0 1rem; }
+.workshop-pack-options { display: flex; flex-wrap: wrap; gap: .5rem; }
+.workshop-pack-option { display: flex; flex-direction: column; align-items: flex-start; gap: .15rem; padding: .5rem .75rem; min-width: 8rem; }
+.workshop-pack-option.is-active { outline: 2px solid var(--gold-hi, #d9b25b); }
+.workshop-pack-option-name { font-weight: 600; }
+.workshop-pack-option-syn { align-self: flex-start; }
+.workshop-bonus-slots { display: flex; flex-direction: column; gap: .5rem; }
+.workshop-bonus-slot-head { opacity: .8; margin-top: .25rem; }
+.workshop-bonus-none { opacity: .7; padding: .25rem 0; }
+.workshop-result-bonuses { margin-top: .5rem; border-top: 1px solid var(--rule, rgba(255,255,255,.12)); padding-top: .5rem; }
+.workshop-result-bonuses-list { display: flex; flex-wrap: wrap; gap: .5rem; }
+.workshop-result-bonus { display: inline-flex; align-items: baseline; gap: .3rem; padding: .2rem .5rem; border: 1px solid var(--rule, rgba(255,255,255,.15)); border-radius: 4px; }

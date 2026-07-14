@@ -139,6 +139,45 @@ function pickWeighted(stream, pool) {
 // The BP stores ONLY {id, off} -- the identity and the seat. Everything else about
 // the Unit (art, rarity, shape, name) is looked up in the def at read time, so a
 // content-side change reaches every BP already saved in every profile.
+// rollPackBonuses(rng, pack): REQ-0062. Rolls the pack's bonus slots (0..2) -- the
+// "synergy bundle" that rides atop the guaranteed BP. Each slot draws ONE weighted
+// entry from its own table via a DEDICATED per-slot RNG sub-stream
+// ('gacha/<pack>/bonus/<i>'), so the labels keep the guaranteed-BP streams
+// (shape/unit) and every bonus slot statistically independent yet fully reproducible
+// from the stored master seed (house RNG discipline). A drawn row yields a freshly
+// minted uid + a read-only def echo for the result modal (name/icon/rarity/i18n) --
+// the same "echo the def, persist only the id" contract rollPackBp uses for the Unit.
+// Rows whose id has no live content def are filtered out (never advertise what cannot
+// drop); a slot left empty after filtering is skipped. The two-phase finalize is
+// UNCHANGED: bonuses ride the same client-authored save as the guaranteed BP, whose
+// uid + the balance-delta remain the only finalize gate (see finalizeGachaForCanvas).
+function rollPackBonuses(rng, pack) {
+  const slots = Array.isArray(pack.bonus) ? pack.bonus : [];
+  if (!slots.length) return [];
+  const { itemDefsById, siDefsById, tmDefsById } = getScheduleContent();
+  const defMapFor = (pool) => pool === 'po' ? itemDefsById : pool === 'si' ? siDefsById : pool === 'tm' ? tmDefsById : null;
+  const out = [];
+  slots.forEach((slot, i) => {
+    const defs = defMapFor(slot.pool);
+    if (!defs) return;
+    const rows = (slot.table || []).filter((row) => row && defs[row.id]).map((row) => ({ weight: row.weight, ref: row }));
+    if (!rows.length) return;
+    const stream = rng.stream('gacha/' + pack.id + '/bonus/' + i);
+    const chosen = pickWeighted(stream, rows).ref;
+    const def = defs[chosen.id];
+    const uidPrefix = slot.pool === 'po' ? 'po' : slot.pool === 'si' ? 'si' : 'tm';
+    out.push({
+      slot: i,
+      pool: slot.pool,
+      id: chosen.id,
+      uid: genId(uidPrefix),
+      qty: Number.isInteger(chosen.qty) && chosen.qty > 0 ? chosen.qty : 1,
+      def: { id: chosen.id, name: def.name, icon: def.icon, rarity: def.rarity, i18n: def.i18n || {} },
+    });
+  });
+  return out;
+}
+
 function rollPackBp(pack, masterSeed) {
   const { unitDefsById } = getScheduleContent();
   const cells = Array.isArray(pack.cells) ? pack.cells : [GACHA_MIN_CELLS, GACHA_MAX_CELLS];
@@ -160,12 +199,16 @@ function rollPackBp(pack, masterSeed) {
 
   const hpMax = hpPerCell * shape.length;
   const uid = genId('bp');
+  // REQ-0062: the pack's bonus slots, rolled from dedicated per-slot sub-streams of
+  // the SAME master seed (see rollPackBonuses). Empty array for a pack with no bonus.
+  const bonuses = rollPackBonuses(rng, pack);
   return {
     uid,
     shape,
     unit: { id: picked.unit, off: seat },
     hpMax,
     cellCount: shape.length,
+    bonuses,
     // Echoed to the client for the result modal ONLY -- never persisted on the BP.
     // The def is the source of truth and is re-read from /api/content on every boot.
     unitDef: {
@@ -303,6 +346,7 @@ module.exports = {
   resolvePack,
   pickWeighted,
   rollPackBp,
+  rollPackBonuses,
   startGachaRoll,
   normalizeGachaPendingStatus,
   purgeExpiredGachaPending,

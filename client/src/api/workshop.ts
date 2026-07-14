@@ -13,6 +13,18 @@ import { scheduleJSON } from './http';
  * the result modal -- the def itself is re-read from /api/content on every boot,
  * so nothing here is a second source of truth. The retired `linker:{off,dirs}`
  * (rolled beams, no identity) is GONE and has no successor field. */
+/** REQ-0062: one rolled bonus-slot item, echoed alongside the guaranteed BP. `def`
+ * is a read-only echo for the result modal; only `id`/`uid`/`qty` are persisted when
+ * the client first-fit-places the bonus into inventory. */
+export interface ApiRolledBonus {
+  slot: number;
+  pool: 'po' | 'si' | 'tm';
+  id: string;
+  uid: string;
+  qty: number;
+  def?: { id: string; name: string; icon: string; rarity?: string; i18n?: { ja?: { name?: string } } };
+}
+
 export interface ApiRolledBp {
   uid: string;
   shape: Array<[number, number]>;
@@ -27,6 +39,8 @@ export interface ApiRolledBp {
     connection_shape: string;
     i18n?: { ja?: { name?: string; flavor?: string } };
   };
+  /** REQ-0062: the pack's rolled bonus-slot items (empty/absent for the Common pack). */
+  bonuses?: ApiRolledBonus[];
 }
 
 /** POST /api/workshop/gacha {kind:'common_bp'} -- REQ-0042 two-phase

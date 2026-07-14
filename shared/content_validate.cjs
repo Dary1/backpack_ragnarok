@@ -236,7 +236,7 @@ function validateUnitEntry(entry, vocab) {
  * `unitIds` is the set of ids that actually exist in live_units.json -- a pool row
  * naming a unit that does not exist is the single most dangerous thing a pack can
  * contain, because the roll would either crash or silently skip it. */
-function validatePackEntry(pack, unitIds) {
+function validatePackEntry(pack, unitIds, contentIds) {
   if (!pack || typeof pack !== 'object' || Array.isArray(pack)) throw new Error('pack entry must be an object');
   if (typeof pack.id !== 'string' || !pack.id) throw new Error('pack entry: id is required');
   const ctx = 'pack "' + pack.id + '"';
@@ -260,6 +260,39 @@ function validatePackEntry(pack, unitIds) {
     total += row.weight;
   }
   if (!(total > 0)) throw new Error(ctx + ': pool weights must sum to a positive number');
+  // REQ-0062: bonus slots (0..2). Each slot draws ONE weighted entry from its own
+  // table (a PO / SI lens / TM stack) -- the "synergy bundle" atop the guaranteed BP.
+  // The tables are TRANSPARENT ODDS (surfaced on the pack's Dex card + Workshop odds
+  // view), so this gate is what keeps a listed table honest: every id must reference
+  // REAL live content (when contentIds is supplied), or the roll advertises something
+  // that can never drop.
+  if (pack.bonus !== undefined) {
+    if (!Array.isArray(pack.bonus) || pack.bonus.length > 2) {
+      throw new Error(ctx + ': bonus must be an array of 0..2 slots');
+    }
+    const POOLS = { po: 'po', si: 'si', tm: 'tm' };
+    pack.bonus.forEach((slot, bi) => {
+      const sctx = ctx + ' bonus[' + bi + ']';
+      if (!slot || typeof slot !== 'object' || Array.isArray(slot)) throw new Error(sctx + ': must be an object');
+      if (!POOLS[slot.pool]) throw new Error(sctx + ': pool must be one of po|si|tm, got ' + JSON.stringify(slot.pool));
+      if (!Array.isArray(slot.table) || slot.table.length === 0) throw new Error(sctx + ': table must be a non-empty array');
+      let btotal = 0;
+      for (const row of slot.table) {
+        if (!row || typeof row.id !== 'string' || !row.id) throw new Error(sctx + ': every table row needs an id');
+        if (!Number.isFinite(row.weight) || row.weight <= 0) throw new Error(sctx + ': table row "' + row.id + '" needs a positive weight');
+        if (row.qty !== undefined) {
+          if (!Number.isInteger(row.qty) || row.qty <= 0) throw new Error(sctx + ': table row "' + row.id + '" qty must be a positive integer');
+          if (slot.pool !== 'tm' && row.qty !== 1) throw new Error(sctx + ': only tm rows may carry qty > 1 (po/si draw one instance)');
+        }
+        if (contentIds) {
+          const known = contentIds[slot.pool];
+          if (known && !known.has(row.id)) throw new Error(sctx + ': references ' + slot.pool + ' "' + row.id + '", which has no live content def');
+        }
+        btotal += row.weight;
+      }
+      if (!(btotal > 0)) throw new Error(sctx + ': table weights must sum to a positive number');
+    });
+  }
 }
 
 
