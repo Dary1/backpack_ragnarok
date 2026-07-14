@@ -134,12 +134,35 @@ async function hGetDef(req, res, name) {
   sendJSON(res, 200, { ok: true, def, variants, artwork_facet: def.artwork_facet });
 }
 
+// REQ-0174: validate an incoming PATCH artwork_ref field. Absent -> {skip}.
+// null -> {value:null} (clears). A non-empty string must NAME an existing
+// artwork (cross-registry read via the storage chokepoint) -> {value:name},
+// else throws BAD_ARTWORK_REF (mapped to 400). TYPE mismatch is deliberately
+// NOT blocked here: the picker filters to the matching type, but the ledger
+// stays permissive (the two registries are independent; an operator may
+// knowingly link across types).
+async function resolveArtworkRefPatch(b) {
+  if (b.artwork_ref === undefined) return { skip: true };
+  if (b.artwork_ref === null) return { value: null };
+  if (typeof b.artwork_ref === 'string' && b.artwork_ref) {
+    const art = await storage.getArtworkByName(b.artwork_ref);
+    if (!art) throw Object.assign(new Error('artwork_ref: no such artwork ' + b.artwork_ref), { code: 'BAD_ARTWORK_REF' });
+    return { value: b.artwork_ref };
+  }
+  throw Object.assign(new Error('artwork_ref must be a non-empty string or null'), { code: 'BAD_ARTWORK_REF' });
+}
+
 async function hPatchDef(req, res, name) {
   const def = await storage.getContentDefByName(name);
   if (!def) return sendJSON(res, 404, { ok: false, error: 'no such content def: ' + name });
   const b = await readJson(req);
   const patch = {};
   for (const k of ['brief', 'schema_ref', 'gen_config']) if (b[k] !== undefined) patch[k] = b[k];
+  // REQ-0174: def-level artwork reference (validated cross-registry).
+  let refPatch;
+  try { refPatch = await resolveArtworkRefPatch(b); }
+  catch (e) { return sendJSON(res, 400, { ok: false, error: e.message }); }
+  if (!refPatch.skip) patch.artwork_ref = refPatch.value;
   const updated = await storage.updateContentDef(name, patch);
   sendJSON(res, 200, { ok: true, def: updated });
 }
@@ -328,4 +351,4 @@ function tryContentRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryContentRoutes, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant };
+module.exports = { tryContentRoutes, _normalizeProvenance: normalizeProvenance, _recheckVariant: recheckVariant, _resolveArtworkRefPatch: resolveArtworkRefPatch };

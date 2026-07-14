@@ -61,6 +61,7 @@ function mapDef(row) {
     brief: row.brief,
     schema_ref: row.schema_ref,
     gen_config: row.gen_config,
+    artwork_ref: row.artwork_ref == null ? null : row.artwork_ref,
     adopted_variant_id: row.adopted_variant_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -93,6 +94,19 @@ async function artworkFacetExists(system_name) {
   return res.rowCount > 0;
 }
 
+/** REQ-0174 REF-FIRST facet resolution: the resolved artwork name for a def
+ * is its explicit artwork_ref (when that artwork row still exists) else the
+ * exact-name match (the one-name-one-entity canonical fallback) else null.
+ * Returns the BARE artwork system_name (the currency the admin/client use) or
+ * null. A ref pointing at a since-deleted artwork degrades to the exact-name
+ * match, then to none -- never an error (documented graceful degradation). */
+async function resolveArtworkFacetName(def) {
+  if (!def) return null;
+  if (def.artwork_ref && await artworkFacetExists(def.artwork_ref)) return def.artwork_ref;
+  if (await artworkFacetExists(def.system_name)) return def.system_name;
+  return null;
+}
+
 /** Create a content_def. content_defs.system_name is UNIQUE (one data facet
  * per name); a DUPLICATE surfaces as code DUPLICATE. The shared namespace
  * with artworks is deliberate (one entity, two facets), so a matching
@@ -108,6 +122,7 @@ async function createContentDef(d) {
        d.gen_config == null ? '{}' : JSON.stringify(d.gen_config)]);
     const def = mapDef(res.rows[0]);
     def.artwork_facet = await artworkFacetExists(d.system_name);
+    def.artwork_facet_name = await resolveArtworkFacetName(def);
     return def;
   } catch (e) {
     if (e.code === '23505') throw dupErr('content_def system_name already exists: ' + d.system_name, 'DUPLICATE');
@@ -118,7 +133,10 @@ async function createContentDef(d) {
 async function getContentDefByName(system_name) {
   const res = await q('SELECT * FROM content_defs WHERE system_name = $1', [nsName(system_name)]);
   const def = mapDef(res.rows[0] || null);
-  if (def) def.artwork_facet = await artworkFacetExists(system_name);
+  if (def) {
+    def.artwork_facet = await artworkFacetExists(system_name);
+    def.artwork_facet_name = await resolveArtworkFacetName(def);
+  }
   return def;
 }
 
@@ -133,7 +151,8 @@ async function listContentDefs() {
   const res = await q(
     `SELECT d.*, av.variant_no AS adopted_variant_no,
             agg.variant_count, agg.ok_count, agg.failed_check_count, agg.last_variant_at,
-            EXISTS (SELECT 1 FROM artworks a WHERE a.system_name = d.system_name) AS has_artwork_facet
+            (EXISTS (SELECT 1 FROM artworks a WHERE d.artwork_ref IS NOT NULL AND a.system_name = $2 || d.artwork_ref)
+             OR EXISTS (SELECT 1 FROM artworks a WHERE a.system_name = d.system_name)) AS has_artwork_facet
        FROM content_defs d
        LEFT JOIN content_variants av ON av.id = d.adopted_variant_id
        LEFT JOIN LATERAL (
@@ -145,7 +164,7 @@ async function listContentDefs() {
        ) agg ON true
       WHERE d.system_name LIKE $1
       ORDER BY d.created_at ASC, d.id ASC`,
-    [NS_PREFIX + '%']);
+    [NS_PREFIX + '%', NS_PREFIX]);
   return res.rows.map((row) => Object.assign(mapDef(row), {
     adopted_variant_no: row.adopted_variant_no == null ? null : row.adopted_variant_no,
     variant_count: row.variant_count || 0,
@@ -166,13 +185,22 @@ async function updateContentDef(system_name, patch) {
   if (patch.brief !== undefined) push('brief', patch.brief);
   if (patch.schema_ref !== undefined) push('schema_ref', patch.schema_ref);
   if (patch.gen_config !== undefined) push('gen_config', JSON.stringify(patch.gen_config), '::jsonb');
+  // REQ-0174: def-level artwork reference. null clears; a string sets it (the
+  // route validates existence cross-registry first). Stored as the BARE
+  // artwork system_name -- the same bare-name currency the whole admin uses.
+  if (patch.artwork_ref !== undefined) push('artwork_ref', patch.artwork_ref);
   if (sets.length === 0) return getContentDefByName(system_name);
   sets.push('updated_at = now()');
   vals.push(nsName(system_name));
   const res = await q(
     'UPDATE content_defs SET ' + sets.join(', ') + ' WHERE system_name = $' + i + ' RETURNING *',
     vals);
-  return mapDef(res.rows[0] || null);
+  const def = mapDef(res.rows[0] || null);
+  if (def) {
+    def.artwork_facet = await artworkFacetExists(system_name);
+    def.artwork_facet_name = await resolveArtworkFacetName(def);
+  }
+  return def;
 }
 
 // ---- content_variants ----
@@ -321,7 +349,7 @@ async function clearAllContent() {
 module.exports = {
   closeContentPool,
   createContentDef, getContentDefByName, listContentDefs, updateContentDef,
-  artworkFacetExists,
+  artworkFacetExists, resolveArtworkFacetName,
   createVariant, updateVariantData, setVariantMachineCheck, setVariantReview,
   getVariantByNo, getVariantById, listVariants,
   adoptVariant, deleteVariant, getAdoptedVariant, clearAllContent,

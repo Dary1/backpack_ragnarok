@@ -23,7 +23,7 @@ os.homedir = () => tmpHome;
 
 const storage = require('../storage.cjs');
 const checks = require('../services/content_checks.cjs');
-const { _normalizeProvenance } = require('../routes/content.cjs');
+const { _normalizeProvenance, _resolveArtworkRefPatch } = require('../routes/content.cjs');
 const { exportAdopted } = require('../services/content_export.cjs');
 
 const REPO = path.join(__dirname, '..', '..');
@@ -196,6 +196,61 @@ async function main() {
   });
 
   await storage.clearAllContent();
+  // ---- REQ-0174: def-level SELECTABLE artwork reference ----
+  await AT('REQ-0174 updateContentDef sets/clears artwork_ref; detail carries it + artwork_facet_name', async () => {
+    await storage.createContentDef({ system_name: 'ref_def', kind: 'po_def', brief: 'ref probe', schema_ref: 'po/2' });
+    await storage.createArtwork({ system_name: 'ref_art', kind: 'po', shape: null, gen_width: 512, gen_height: 512, main_object: 'x', prompt_template: 't' });
+    let d = await storage.updateContentDef('ref_def', { artwork_ref: 'ref_art' });
+    assert.strictEqual(d.artwork_ref, 'ref_art', 'artwork_ref set (bare)');
+    assert.strictEqual(d.artwork_facet_name, 'ref_art', 'REF-FIRST resolution -> the ref name');
+    const detail = await storage.getContentDefByName('ref_def');
+    assert.strictEqual(detail.artwork_ref, 'ref_art', 'detail carries artwork_ref');
+    assert.strictEqual(detail.artwork_facet_name, 'ref_art', 'detail exposes artwork_facet_name');
+    d = await storage.updateContentDef('ref_def', { artwork_ref: null });
+    assert.strictEqual(d.artwork_ref, null, 'null clears the ref');
+    assert.strictEqual(d.artwork_facet_name, null, 'no ref + no exact-name match -> none');
+  });
+
+  await AT('REQ-0174 ref-first precedence: an explicit ref BEATS the exact-name match', async () => {
+    await storage.createContentDef({ system_name: 'both_def', kind: 'si_def', brief: 'both', schema_ref: 'si/2' });
+    await storage.createArtwork({ system_name: 'both_def', kind: 'si', shape: null, gen_width: 512, gen_height: 512, main_object: 'x', prompt_template: 't' });
+    await storage.createArtwork({ system_name: 'other_art', kind: 'si', shape: null, gen_width: 512, gen_height: 512, main_object: 'y', prompt_template: 't' });
+    let detail = await storage.getContentDefByName('both_def');
+    assert.strictEqual(detail.artwork_facet, true, 'exact-name artwork facet present');
+    assert.strictEqual(detail.artwork_facet_name, 'both_def', 'with no ref, exact-name resolves');
+    await storage.updateContentDef('both_def', { artwork_ref: 'other_art' });
+    detail = await storage.getContentDefByName('both_def');
+    assert.strictEqual(detail.artwork_facet_name, 'other_art', 'ref beats exact-name');
+    assert.strictEqual(detail.artwork_facet, true, 'exact-name facet flag still reported (additive)');
+  });
+
+  await AT('REQ-0174 ref to a MISSING artwork degrades to exact-name then none (graceful)', async () => {
+    await storage.createContentDef({ system_name: 'dangle_def', kind: 'po_def', brief: 'dangle', schema_ref: 'po/2' });
+    await storage.updateContentDef('dangle_def', { artwork_ref: 'no_such_art' });
+    const detail = await storage.getContentDefByName('dangle_def');
+    assert.strictEqual(detail.artwork_ref, 'no_such_art', 'the soft ref is stored as-is (storage stays permissive)');
+    assert.strictEqual(detail.artwork_facet_name, null, 'unresolved ref + no exact-name -> none');
+  });
+
+  await AT('REQ-0174 listContentDefs rows carry artwork_ref + ref-first has_artwork_facet', async () => {
+    const list = await storage.listContentDefs();
+    const both = list.find((d) => d.system_name === 'both_def');
+    assert.strictEqual(both.artwork_ref, 'other_art', 'list row carries artwork_ref');
+    assert.strictEqual(both.has_artwork_facet, true, 'has_artwork_facet true via the ref');
+    const dangle = list.find((d) => d.system_name === 'dangle_def');
+    assert.strictEqual(dangle.has_artwork_facet, false, 'unresolved ref + no exact-name -> has_artwork_facet false');
+  });
+
+  await AT('REQ-0174 route validation (_resolveArtworkRefPatch): null clears, valid passes, bogus -> BAD_ARTWORK_REF (400)', async () => {
+    assert.deepStrictEqual(await _resolveArtworkRefPatch({}), { skip: true }, 'absent -> skip');
+    assert.deepStrictEqual(await _resolveArtworkRefPatch({ artwork_ref: null }), { value: null }, 'null clears');
+    assert.deepStrictEqual(await _resolveArtworkRefPatch({ artwork_ref: 'ref_art' }), { value: 'ref_art' }, 'existing artwork accepted');
+    let err = null;
+    try { await _resolveArtworkRefPatch({ artwork_ref: 'no_such_art' }); } catch (e) { err = e; }
+    assert.ok(err && err.code === 'BAD_ARTWORK_REF', 'bogus ref refused');
+    assert.ok(/no such artwork no_such_art/.test(err.message), 'error names the missing artwork');
+  });
+
   await storage.clearAllArtworks(); // remove the shared-namespace artwork facet row created in G1
   await storage.closeContentPool();
   await storage.closeArtPool();
