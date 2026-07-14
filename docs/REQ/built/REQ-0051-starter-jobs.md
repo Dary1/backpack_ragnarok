@@ -167,3 +167,16 @@ Branch: `req-0051-starter-jobs` (worktree; NOT merged, NOT deployed -- integrati
 - `744042a` merge master (REQ-0159 e2e repair + docs); client rebuild
 - `c3122d7` e2e coverage + fleet content overlay
 - `b5cf2a1` e2e local-proxy serves the worktree /app build
+
+### Final gate re-run (after re-merging current master @ dbf92e3)
+
+Master advanced during the session; re-merged it (commit `cd1e772`), which pulled in
+REQ-0172 -- the fix for the order-dependent dismantle seed (it now builds a CLEAN dev
+canvas from scratch, clearing top-level `bps/pos` too). That was exactly the earlier
+`workshop.spec.ts:667` failure, confirming it was pre-existing and NOT REQ-0051.
+
+- `flock /tmp/backpack_ci.lock bash tools/ci.sh` (SKIP_E2E) on the synced tree: **GREEN** (CI2_EXIT_0).
+- e2e (`pnpm run e2e`, PARALLEL=4): **162 passed, 0 failed** -- fully green, including all
+  three REQ-0051 tests and the now-fixed dismantle test.
+
+Merge commits: `744042a` (first sync), `cd1e772` (final sync to current master).
