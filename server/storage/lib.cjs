@@ -88,6 +88,7 @@ const GACHA_PENDING_DIR = path.join(REPO_ROOT, 'data', 'gacha_pending');
 // eager-mkdir chokepoint as every other root below.
 const DISMANTLE_DIR = path.join(REPO_ROOT, 'data', 'dismantle');
 
+const STARTER_CLAIMS_DIR = path.join(REPO_ROOT, "data", "starter_claims"); // REQ-0051: starter-unit claim ledger
 // REQ-0058: sealed-seed share roots (files backend). Same SCHEDULE_DIR
 // parent + eager-mkdir chokepoint as rooms/runs above; pg-mode isolation
 // reuses the same NAMESPACE prefix (see storage/seals.cjs).
@@ -102,6 +103,7 @@ function ensureScheduleDirs() {
   fs.mkdirSync(WAREHOUSE_DIR, { recursive: true });
   fs.mkdirSync(GACHA_PENDING_DIR, { recursive: true });
   fs.mkdirSync(DISMANTLE_DIR, { recursive: true });
+  fs.mkdirSync(STARTER_CLAIMS_DIR, { recursive: true }); // REQ-0051
   fs.mkdirSync(SEALED_SEEDS_DIR, { recursive: true }); // REQ-0058
   fs.mkdirSync(SEAL_RUNS_DIR, { recursive: true }); // REQ-0058
 }
@@ -129,6 +131,7 @@ module.exports = {
   WAREHOUSE_DIR,
   GACHA_PENDING_DIR,
   DISMANTLE_DIR,
+  STARTER_CLAIMS_DIR,
   SEALED_SEEDS_DIR,
   SEAL_RUNS_DIR,
   ensureScheduleDirs,

@@ -149,6 +149,61 @@ T('grid chemistry: Ignite fires when Flame and Oil become adjacent',()=>{
   ok(E.combos(st).some(c=>c.name==='Ignite'),'Ignite fires');
 });
 
+
+T("REQ-0051 fixed PO: movePO refuses move and stow, rotatePO refuses, record unchanged",()=>{
+  const {st,E}=fresh();
+  const tgt=st.pos.find(p=>p.loc==="grid"&&p.id!=="blade"&&p.id!=="hilt");
+  ok(tgt,"a grid PO exists to pin");
+  tgt.fixed=true;
+  const beforeCell=JSON.stringify(tgt.cell), beforeRot=tgt.rot;
+  const m1=E.movePO(st,tgt.uid,[7,7]);
+  ok(!m1.ok&&m1.why==="fixed","movePO to a cell refused: "+JSON.stringify(m1));
+  const m2=E.movePO(st,tgt.uid,"inv");
+  ok(!m2.ok&&m2.why==="fixed","movePO stow refused: "+JSON.stringify(m2));
+  const r1=E.rotatePO(st,tgt.uid);
+  ok(!r1.ok&&r1.why==="fixed","rotatePO refused: "+JSON.stringify(r1));
+  eq(JSON.stringify(tgt.cell),beforeCell,"cell unchanged after refusals");
+  eq(tgt.rot,beforeRot,"rot unchanged after refusals");
+  delete tgt.fixed;
+  const r2=E.rotatePO(st,tgt.uid);
+  ok(r2.ok||r2.why!=="fixed","without fixed, rotate is no longer refused as fixed: "+JSON.stringify(r2));
+});
+
+T("REQ-0051 fixed PO: inventory-page move/rotate refused",()=>{
+  const E=Engine.create({t:{shape:[[0,0]]}},{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[
+    {bps:[],pos:[{uid:"ifx",id:"t",loc:"grid",cell:[1,1],rot:0,fixed:true}],sis:[],tms:[]},
+    {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]}
+  ],names:["1","2","3","4","5"]}};
+  const im=E.invMovePO(st,0,"ifx",[3,3]);
+  ok(!im.ok&&im.why==="fixed","invMovePO refuses a fixed PO: "+JSON.stringify(im));
+  const ir=E.invRotatePO(st,0,"ifx");
+  ok(!ir.ok&&ir.why==="fixed","invRotatePO refuses a fixed PO: "+JSON.stringify(ir));
+});
+
+T("REQ-0051 fixed PO: migrateState preserves fixed on canvas reference, home stays unpinned",()=>{
+  const E=Engine.create({t:{shape:[[0,0]]}},{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const legacy={linked:true,
+    bps:[{id:"b",name:"B",color:"#fff",shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}}],
+    pos:[{uid:"fx",id:"t",loc:"grid",cell:[1,2],rot:0,fixed:true}],sis:[]};
+  const mig=E.migrateState(legacy);
+  const ref=mig.pos.find(p=>p.uid==="fx");
+  ok(ref&&ref.fixed===true,"canvas reference keeps fixed:true through migrateState");
+  const home=E.homeLocationOf(mig,"fx");
+  ok(home,"fixed PO received an inventory home");
+  ok(!home.record.fixed,"home record is NOT pinned (only the canvas reference is)");
+});
+
+T("REQ-0051 fixed PO: the containing squad is still discardable (deleteSquad not blocked)",()=>{
+  const {st,E}=fresh();
+  const tgt=st.pos.find(p=>p.loc==="grid"&&p.id!=="blade"&&p.id!=="hilt");
+  tgt.fixed=true;
+  const before=st.presets.names.length;
+  const r=E.deleteSquad(st,0);
+  ok(r.ok,"deleteSquad succeeds even with a fixed PO on the active canvas: "+JSON.stringify(r));
+  ok(st.presets.names.length===before-1,"squad count decreased by one");
+});
+
 // ---------------------------------------------------------------------
 // Hierarchy-walk tests (REQ-0022 batch 3/4). hasTag() is exercised directly
 // with SYNTHETIC trees (not real vocab.json data) so these tests don't

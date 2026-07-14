@@ -39,6 +39,7 @@ async function main() {
   await require('./api/ragnarok.cjs').run(h); // origin 2928-3603: ragnarok + REAL-repo admin test
   await require('./api/dismantle.cjs').run(h); // origin 3604-3913: dismantle (dz* epoch)
   await require('./api/dex.cjs').run(h); // origin 3914-4014: dex cards
+  await require('./api/starter.cjs').run(h); // REQ-0051: starter-unit claim endpoint
   h.summary();
 }
 

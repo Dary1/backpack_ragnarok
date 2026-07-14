@@ -184,12 +184,12 @@ function dismantleItem(playerId, itemUid, kind) {
   if (deployedUidSet(playerId, canvas).has(itemUid)) {
     const err = new Error('cannot dismantle: this item is currently deployed'); err.code = 'CONFLICT'; err.reason = 'deployed'; throw err;
   }
-  // Fixed-starter-job gate (§4, spec text): NO "fixed starter PO" concept
+  // Fixed-starter-unit gate (§4, spec text): NO "fixed starter PO" concept
   // exists anywhere in this codebase today (confirmed: market.cjs's own
   // findInventoryPO doc notes the identical absence for selling) -- so
   // this gate is a documented, honest no-op rather than a check against
   // a flag that cannot exist yet. Revisit together if/when REQ-0051
-  // (starter jobs) ships that concept.
+  // (starter units) ships that concept.
   const itemId = rec.id;
   stripItemFromCanvas(canvas, itemUid, kind);
   storage.writeProfile(playerId, canvas); // removal-only write -- see the RULE-5 note above

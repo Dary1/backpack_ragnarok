@@ -23,6 +23,9 @@ const PACKS_PATH = contentPath('live', 'live_packs.json'); // REQ-0170: gacha_pa
 const SCENARIO_PATH = contentPath('live', 'scenario.json');
 const REGISTRY_PATH = contentPath('registry.json');
 
+const STARTER_ITEMS_PATH = contentPath("live", "starter_items.json"); // REQ-0051
+const STARTER_UNITS_PATH = contentPath("live", "starter_units.json"); // REQ-0051
+
 // ---- content cache (mtime-checked; re-read only when a source file changes) ----
 let contentCache = null; // { mtimes: {vocab,items,sis,scenario}, payload }
 
@@ -73,6 +76,10 @@ function buildContentPayload() {
   // function).
   let registry = null;
   try { registry = loadJSON(REGISTRY_PATH); } catch (e) { registry = null; }
+  // REQ-0051: starter-unit squad definitions (the grant + regrant seed
+  // source, consumed by the client boot seed and POST /api/starter/claim).
+  let starterUnits = null;
+  try { starterUnits = loadJSON(STARTER_UNITS_PATH); } catch (e) { starterUnits = null; }
 
   const itemEntries = items.entries || [];
   const siEntries = sis.entries || [];
@@ -85,6 +92,19 @@ function buildContentPayload() {
     ITEMS[e.id] = withBackCompatI18n(Object.assign({}, e, {
       eff_en: renderEffJoined(e.effects, 'en'),
       eff_ja: renderEffJoined(e.effects, 'ja'),
+    }));
+  }
+  // REQ-0051: starter-unit kit items live in content/live/starter_items.json
+  // (isolated from live_items.json so the REQ-0160 registry count-gate and
+  // dex numbering stay untouched). Merge them into the served ITEMS map so
+  // the client engine can render/place starter POs. An absent file degrades
+  // to none (the api_test synthetic content fixture ships no starter_items).
+  let starterItemEntries = [];
+  try { starterItemEntries = loadJSON(STARTER_ITEMS_PATH).entries || []; } catch (e) { starterItemEntries = []; }
+  for (const e of starterItemEntries) {
+    ITEMS[e.id] = withBackCompatI18n(Object.assign({}, e, {
+      eff_en: renderEffJoined(e.effects, "en"),
+      eff_ja: renderEffJoined(e.effects, "ja"),
     }));
   }
   const SIS = {};
@@ -147,6 +167,7 @@ function buildContentPayload() {
     layout: scenario.layout || null,
     registry: registry,
     vocab: vocabLists,
+    starterUnits: starterUnits, // REQ-0051
   };
 }
 
