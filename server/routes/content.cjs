@@ -21,12 +21,12 @@ const storage = require('../storage.cjs');
 const { runChecks } = require('../services/content_checks.cjs');
 const { exportAdopted } = require('../services/content_export.cjs');
 
-const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def'];
+const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def'];
 const RESERVED = new Set(['defs', 'dev', 'meta']);
 // Per-kind default variant count (Q4: N default 5, per-kind configurable via
 // the def's gen_config.generate_n).
 const DEFAULT_GENERATE_N = 5;
-const KIND_DEFAULT_N = { po_def: 5, si_def: 5, monster_def: 5, unit_def: 5, tm_def: 5 };
+const KIND_DEFAULT_N = { po_def: 5, si_def: 5, monster_def: 5, unit_def: 5, tm_def: 5, skill_def: 5 };
 
 function isValidName(n) { return typeof n === 'string' && /^[A-Za-z0-9_]+$/.test(n) && !RESERVED.has(n); }
 

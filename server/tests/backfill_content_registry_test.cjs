@@ -1,6 +1,9 @@
 // backpack_ragnarok -- server/tests/backfill_content_registry_test.cjs
 // REQ-0157 follow-up (user ruling 2026-07-14: all-kind backfill of the live
-// content into the content-data registry). DB-FREE: exercises the pure,
+// content into the content-data registry), WIDENED by REQ-0160 (rulings Q1=A,
+// Q2=yes): dungeon/items.json enters as po_def (a kind with TWO source files
+// now) and dungeon/skills.json enters as the new skill_def kind. DB-FREE:
+// exercises the pure,
 // deterministic parts of tools/backfill_content_registry.cjs -- live-file
 // entry -> def/variant row mapping, kind mapping, provenance shape, and the
 // INSERT-ONLY skip rules -- against fixtures plus the committed live corpus.
@@ -18,15 +21,41 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the four live files map to the four kinds; unit_def has NO source (zero by design)', () => {
-  const kinds = bf.SOURCES.map((s) => s.kind).sort();
-  assert.deepStrictEqual(kinds, ['monster_def', 'po_def', 'si_def', 'tm_def']);
-  assert.strictEqual(bf.SOURCES.find((s) => s.kind === 'po_def').file, 'content/live/live_items.json');
-  assert.strictEqual(bf.SOURCES.find((s) => s.kind === 'si_def').file, 'content/live/live_sis.json');
-  assert.strictEqual(bf.SOURCES.find((s) => s.kind === 'tm_def').file, 'content/live/live_tms.json');
-  assert.strictEqual(bf.SOURCES.find((s) => s.kind === 'monster_def').file, 'content/live/dungeon/enemies.json');
+T('kind mapping: the six live files map to five kinds (po_def has TWO sources); unit_def has NO source (zero by design)', () => {
+  const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
+  assert.deepStrictEqual(files, [
+    'monster_def <- content/live/dungeon/enemies.json',
+    'po_def <- content/live/dungeon/items.json',      // REQ-0160 Q1 = A
+    'po_def <- content/live/live_items.json',
+    'si_def <- content/live/live_sis.json',
+    'skill_def <- content/live/dungeon/skills.json',  // REQ-0160 Q2 = yes
+    'tm_def <- content/live/live_tms.json',
+  ]);
+  assert.strictEqual(bf.SOURCES.filter((s) => s.kind === 'po_def').length, 2, 'REQ-0160: dungeon POs share the po_def kind with live_items');
   assert.ok(!bf.SOURCES.some((s) => s.kind === 'unit_def'), 'unit_def must have no source file');
   assert.ok(/REQ-0130/.test(bf.UNIT_DEF_NOTE), 'unit_def zero is documented with its reason');
+});
+
+T('kind mapping (REQ-0160): dungeon skills map to skill_def, dungeon items to po_def -- both VERBATIM, batch carried', () => {
+  const skillSrc = bf.SOURCES.find((s) => s.kind === 'skill_def');
+  const sf = { schema: 'skill/1', batch: 'batch-002-dungeon-pilot', entries: [
+    { id: 'gnoll_claw', name_en: 'Gnoll Claw', name_ja: 'ノールの爪', trigger: { t: 'every_secs', s: [1.8, 2.4] }, verb: { t: 'strike', n: [6, 11] } },
+  ] };
+  const se = bf.entriesFromFile(sf, skillSrc, IMPORTED_AT)[0];
+  assert.strictEqual(se.kind, 'skill_def');
+  assert.strictEqual(se.system_name, 'gnoll_claw');
+  assert.strictEqual(se.schema_ref, 'skill/1', 'schema_ref = the skill/1 file header (the dialect key the checks read)');
+  assert.strictEqual(se.provenance.origin_file, 'content/live/dungeon/skills.json');
+  assert.strictEqual(se.provenance.batch, 'batch-002-dungeon-pilot');
+  assert.strictEqual(se.data, sf.entries[0], 'data VERBATIM (name_en/name_ja kept as skill/1 spells them)');
+
+  const poSrc = bf.SOURCES.find((s) => s.file === 'content/live/dungeon/items.json');
+  const pf = { schema: 'po/2', batch: 'batch-002-dungeon-pilot', entries: [{ id: 'lockpick', name: 'Iron Lockpick', modes: ['unlock'] }] };
+  const pe = bf.entriesFromFile(pf, poSrc, IMPORTED_AT)[0];
+  assert.strictEqual(pe.kind, 'po_def', 'dungeon items are po_defs, not a separate kind (ruling Q1 = A)');
+  assert.strictEqual(pe.provenance.origin_file, 'content/live/dungeon/items.json',
+    'origin_file is what tells dungeon POs apart from live_items POs -- the whole basis of ruling Q1 = A');
+  assert.deepStrictEqual(pe.data.modes, ['unlock'], 'the dungeon-mode field survives VERBATIM');
 });
 
 T('entry mapping: def fields (system_name = bare id, brief, schema_ref from file header) + data VERBATIM', () => {
@@ -67,17 +96,35 @@ T('provenance batch: carried ONLY when the source file header has one (enemies.j
   assert.deepStrictEqual(e.data.hp, [30, 45], 'hp range array stays VERBATIM (honest checks may FAIL on it; backfill never reshapes)');
 });
 
-T('collectAll (real committed corpus): per-kind counts match the files, names unique, unit_def 0', () => {
+T('collectAll (real committed corpus): PER-FILE counts match each file, names unique across kinds, unit_def 0', () => {
   const { entries, missingFiles } = bf.collectAll(REPO_ROOT, IMPORTED_AT);
-  assert.deepStrictEqual(missingFiles, [], 'all four live corpus files present');
-  const counts = bf.perKindCounts(entries);
+  assert.deepStrictEqual(missingFiles, [], 'all live corpus files present');
+  const fileCounts = bf.perFileCounts(entries);
   for (const s of bf.SOURCES) {
     const n = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, s.file), 'utf8')).entries.length;
-    assert.strictEqual(counts[s.kind], n, s.kind + ' count == ' + s.file + ' entries.length');
+    assert.strictEqual(fileCounts[s.file], n, s.file + ' count == its entries.length');
   }
+  const counts = bf.perKindCounts(entries);
   assert.strictEqual(counts.unit_def, 0, 'unit_def backfills ZERO (REQ-0130 provisional)');
-  assert.strictEqual(entries.length, counts.po_def + counts.si_def + counts.tm_def + counts.monster_def);
-  assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length, 'system_names unique across all files');
+  assert.strictEqual(counts.po_def, fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json'],
+    'po_def total is the SUM of its two source files (REQ-0160) -- not either one alone');
+  assert.strictEqual(entries.length,
+    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def);
+  assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
+    'system_names unique across ALL files -- content_defs.system_name is UNIQUE across kinds');
+});
+
+T('collectAll (REQ-0160 count gate): the live corpus is exactly 22 pre-existing + 16 newly ruled-in defs', () => {
+  const { entries } = bf.collectAll(REPO_ROOT, IMPORTED_AT);
+  const c = bf.perKindCounts(entries);
+  const fc = bf.perFileCounts(entries);
+  // The 2026-07-14c run imported 22 (po 8 / si 6 / tm 1 / monster 7).
+  const preExisting = fc['content/live/live_items.json'] + c.si_def + c.tm_def + c.monster_def;
+  assert.strictEqual(preExisting, 22, 'the already-imported corpus is unchanged at 22');
+  // REQ-0160 adds exactly 2 dungeon POs + 14 skills.
+  assert.strictEqual(fc['content/live/dungeon/items.json'], 2, 'Q1 = A adds exactly 2 po_defs');
+  assert.strictEqual(c.skill_def, 14, 'Q2 = yes adds exactly 14 skill_defs');
+  assert.strictEqual(entries.length, 38, '22 + 16 = the full ruled inventory');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {
@@ -107,12 +154,22 @@ T('skip rules: foreign defs/variants are never treated as ours (INSERT-ONLY guar
 T('skip list: every non-backfilled live file is documented with a reason; no overlap with sources', () => {
   const skipped = new Map(bf.SKIPPED_FILES.map((s) => [s.file, s.reason]));
   for (const f of ['content/live/dungeon/entities.json', 'content/live/dungeon/formations.json',
-    'content/live/dungeon/dungeon.json', 'content/live/scenario.json', 'content/live/seasons.json',
-    'content/live/dungeon/skills.json', 'content/live/dungeon/items.json']) {
+    'content/live/dungeon/dungeon.json', 'content/live/scenario.json', 'content/live/seasons.json']) {
     assert.ok(skipped.has(f), f + ' documented as skipped');
     assert.ok(skipped.get(f).length > 20, f + ' has a real reason');
   }
   for (const s of bf.SOURCES) assert.ok(!skipped.has(s.file), s.file + ' must not be both source and skipped');
+});
+
+T('skip list (REQ-0160): the two ruled-IN files left the skip table for SOURCES -- no file is in both', () => {
+  const skipped = new Set(bf.SKIPPED_FILES.map((s) => s.file));
+  const sources = new Set(bf.SOURCES.map((s) => s.file));
+  for (const f of ['content/live/dungeon/skills.json', 'content/live/dungeon/items.json']) {
+    assert.ok(!skipped.has(f), f + ' is no longer skipped (ruled in on 2026-07-14)');
+    assert.ok(sources.has(f), f + ' is now a backfill source');
+  }
+  // The remaining skips are the ones ruled OUT for good: singletons + compositions.
+  assert.strictEqual(bf.SKIPPED_FILES.length, 5, 'exactly the five not-per-entity live files stay out');
 });
 
 console.log('\nbackfill_content_registry_test: ' + pass + ' passed, ' + fail + ' failed');
