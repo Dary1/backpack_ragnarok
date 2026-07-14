@@ -1195,7 +1195,7 @@ export class BoardRenderer {
     asm: Assembly | null
   ): void {
     if (getCarry()) return; // matches mock's `if(carry)return` guard (dblclick) / `if(carry||!kind)return` (startCarry)
-    // REQ-0051: a starter-job fixed PO is pinned in its BP -- it neither
+    // REQ-0051: a starter-unit fixed PO is pinned in its BP -- it neither
     // drags nor double-click-rotates (the engine refuses both). Short-circuit
     // so it never even lifts, with a brief locked-cells flash for feedback.
     if (p.fixed) { flash(this, this.deps.engine.cellsOf(this.lastState!, p)); return; }

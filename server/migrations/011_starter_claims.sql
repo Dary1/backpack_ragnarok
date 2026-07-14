@@ -1,6 +1,6 @@
 -- backpack_ragnarok -- server/migrations/011_starter_claims.sql
--- REQ-0051: schema for the starter-job claim ledger (per-player regrant
--- once-per-job gate). Mirrors 006_dismantle.sql exactly: one jsonb doc per
+-- REQ-0051: schema for the starter-unit claim ledger (per-player regrant
+-- once-per-starter-unit gate). Mirrors 006_dismantle.sql exactly: one jsonb doc per
 -- player holding the entire ledger verbatim (id + doc in, id + doc out).
 --
 -- Apply as the postgres superuser (same invocation as 001..010):

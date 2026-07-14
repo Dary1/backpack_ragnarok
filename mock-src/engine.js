@@ -137,7 +137,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   };
   function movePO(st,uid,anchor){ // anchor==='inv' stows
     const p=poByUid(st,uid);
-    // REQ-0051 starter jobs: a fixed PO is pinned in its BP -- refuse any
+    // REQ-0051 starter units: a fixed PO is pinned in its BP -- refuse any
     // move (incl. anchor==='inv' stow/unplace). The BP CONTAINING it can
     // still be discarded wholesale (deleteSquad/removeRef never call movePO).
     if(p&&p.fixed)return {ok:false,why:'fixed'};
@@ -148,7 +148,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   }
   function rotatePO(st,uid){ // dblclick CW; in place if placed
     const p=poByUid(st,uid);
-    if(p&&p.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter jobs: immovable
+    if(p&&p.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter units: immovable
     const nr=(p.rot+1)%4;
     if(p.loc==='inv'){p.rot=nr;return {ok:true};}
     const chk=canPlacePO(st,uid,nr,p.cell);
@@ -352,7 +352,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   function moveAssembly(st,anchor){ // anchor==='inv' stows both parts
     const asm=assembly(st);
     if(!asm)return {ok:false,why:'not assembled'};
-    if(asm.blade.fixed||asm.hilt.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter jobs
+    if(asm.blade.fixed||asm.hilt.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter units
     if(anchor==='inv'){
       asm.blade.loc='inv';asm.blade.cell=null;
       asm.hilt.loc='inv';asm.hilt.cell=null;
@@ -933,7 +933,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   // invRotatePO: dblclick-CW equivalent inside a page (mirrors rotatePO).
   function invRotatePO(st,pg,uid){
     const p=poByUidIn(page(st,pg),uid);
-    if(p&&p.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter jobs: immovable
+    if(p&&p.fixed)return {ok:false,why:'fixed'}; // REQ-0051 starter units: immovable
     const nr=(p.rot+1)%4;
     const chk=invCanPlacePO(st,pg,uid,nr,p.cell);
     if(!chk.ok)return chk;

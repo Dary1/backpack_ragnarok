@@ -1,8 +1,8 @@
 "use strict";
-// server/storage/starter.cjs -- REQ-0051: starter-job claim ledger.
-// One doc per player: { schemaVersion, playerId, claims:{<jobId>:n}, updated_at }
-// where n counts how many times that job has been (re)granted via the
-// POST /api/starter/claim endpoint (the initial 4-job grant is a client-side
+// server/storage/starter.cjs -- REQ-0051: starter-unit claim ledger.
+// One doc per player: { schemaVersion, playerId, claims:{<unitId>:n}, updated_at }
+// where n counts how many times that starter unit has been (re)granted via the
+// POST /api/starter/claim endpoint (the initial 4-unit grant is a client-side
 // fresh-profile boot seed, REQ-0042 pattern, and is NOT recorded here). Same
 // one-doc-per-player shape as dismantle.cjs. Root:
 // data/starter_claims/<playerId>.json | pg: starter_claims.

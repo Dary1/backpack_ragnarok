@@ -41,7 +41,7 @@ function loadDefs() {
   // batch-002 pilot items carry the only detection/unlock POs so far
   const pilotRaw = loadJSON(path.join(REPO, 'content', 'batches', 'batch-002-dungeon-pilot', 'items.json'));
   for (const e of pilotRaw.entries) if (!itemDefsById[e.id]) itemDefsById[e.id] = e;
-  // REQ-0051: starter-job kit items (the four content/s4_boards/job_*.json
+  // REQ-0051: starter-unit kit items (the four content/s4_boards/starter_*.json
   // baselines reference them). Isolated file, same overlay-if-absent rule.
   try { const stRaw = loadJSON(path.join(REPO, "content", "live", "starter_items.json")); for (const e of stRaw.entries) if (!itemDefsById[e.id]) itemDefsById[e.id] = e; } catch (e) { /* absent = no starter items */ }
   // S4 fixture items (synthetic; pulse content debuts later -- circuit boards need them NOW)

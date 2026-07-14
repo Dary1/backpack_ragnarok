@@ -88,7 +88,7 @@ const GACHA_PENDING_DIR = path.join(REPO_ROOT, 'data', 'gacha_pending');
 // eager-mkdir chokepoint as every other root below.
 const DISMANTLE_DIR = path.join(REPO_ROOT, 'data', 'dismantle');
 
-const STARTER_CLAIMS_DIR = path.join(REPO_ROOT, "data", "starter_claims"); // REQ-0051: starter-job claim ledger
+const STARTER_CLAIMS_DIR = path.join(REPO_ROOT, "data", "starter_claims"); // REQ-0051: starter-unit claim ledger
 
 function ensureScheduleDirs() {
   fs.mkdirSync(ROOMS_DIR, { recursive: true });

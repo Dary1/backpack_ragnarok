@@ -1,6 +1,6 @@
 {
  "schema": "po/2",
- "note": "REQ-0051 starter-job kit items (socketless, portless, authored-hpMax BP context). Isolated from live_items.json so the REQ-0160 registry count-gate and dex numbering are untouched; merged into the served ITEMS map by server/lib/content.cjs and server/services/core.cjs. Icons are placeholders pending the S5 icon pipeline. lockpick/spyglass are Scout-kit reuse copies of the batch-002 pilot player items.",
+ "note": "REQ-0051 starter-unit kit items (socketless, portless, authored-hpMax BP context). Isolated from live_items.json so the REQ-0160 registry count-gate and dex numbering are untouched; merged into the served ITEMS map by server/lib/content.cjs and server/services/core.cjs. Icons are placeholders pending the S5 icon pipeline. lockpick/spyglass are Scout-kit reuse copies of the batch-002 pilot player items.",
  "entries": [
   {
    "id": "iron_thorns",

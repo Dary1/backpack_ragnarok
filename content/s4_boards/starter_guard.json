@@ -1,5 +1,5 @@
 {
-  "comment": "REQ-0051 S4 baseline == the Job: Arms tutorial loadout (same artifact as content/live/starter_jobs.json). Unit-less 5x5 BP, authored hpMax 120, 4 fixed POs.",
+  "comment": "REQ-0051 S4 baseline == the Starter: Guard tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, 4 fixed POs.",
   "linked": false,
   "layout": {
     "ROWS": 8,
@@ -7,9 +7,9 @@
   },
   "bps": [
     {
-      "id": "bp_job_arms",
-      "name": "Job: Arms",
-      "color": "#7a5b5b",
+      "id": "bp_starter_guard",
+      "name": "Starter: Guard",
+      "color": "#5b6b7a",
       "shape": [
         [
           0,
@@ -128,8 +128,8 @@
   ],
   "pos": [
     {
-      "uid": "po_job_arms_0",
-      "id": "training_blade",
+      "uid": "po_starter_guard_0",
+      "id": "tower_shield",
       "loc": "grid",
       "cell": [
         2,
@@ -139,19 +139,8 @@
       "fixed": true
     },
     {
-      "uid": "po_job_arms_1",
-      "id": "hand_axe",
-      "loc": "grid",
-      "cell": [
-        2,
-        4
-      ],
-      "rot": 0,
-      "fixed": true
-    },
-    {
-      "uid": "po_job_arms_2",
-      "id": "war_pick",
+      "uid": "po_starter_guard_1",
+      "id": "bulwark",
       "loc": "grid",
       "cell": [
         2,
@@ -161,12 +150,23 @@
       "fixed": true
     },
     {
-      "uid": "po_job_arms_3",
-      "id": "sling_stone",
+      "uid": "po_starter_guard_2",
+      "id": "iron_thorns",
       "loc": "grid",
       "cell": [
-        2,
-        6
+        3,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_guard_3",
+      "id": "hide_wrap",
+      "loc": "grid",
+      "cell": [
+        4,
+        3
       ],
       "rot": 0,
       "fixed": true

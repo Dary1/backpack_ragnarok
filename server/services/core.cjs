@@ -108,7 +108,7 @@ function getScheduleContent() {
   const itemDefsById = {};
   for (const e of liveItems.entries) itemDefsById[e.id] = e;
   for (const e of pilotItems.entries) itemDefsById[e.id] = e; // pilot items overlay live (batch-002 demo modes)
-  // REQ-0051: starter-job kit items (isolated file; see server/lib/content.cjs).
+  // REQ-0051: starter-unit kit items (isolated file; see server/lib/content.cjs).
   // Overlay into the PO defs so a deployed starter squad simulates. An absent
   // file degrades to none (synthetic test fixtures ship no starter_items.json).
   let starterItems = { entries: [] };

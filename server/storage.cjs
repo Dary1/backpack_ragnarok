@@ -103,7 +103,7 @@ module.exports = {
   clearRoomsForOwner: rooms.clearRoomsForOwner,
   readDismantleLedger: dismantle.readDismantleLedger,
   writeDismantleLedger: dismantle.writeDismantleLedger,
-  // REQ-0051: starter-job claim ledger (regrant once-per-job gate)
+  // REQ-0051: starter-unit claim ledger (regrant once-per-starter-unit gate)
   STARTER_CLAIMS_DIR: lib.STARTER_CLAIMS_DIR,
   starterClaimsPath: starter.starterClaimsPath,
   readStarterClaims: starter.readStarterClaims,

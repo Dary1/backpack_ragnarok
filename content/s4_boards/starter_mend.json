@@ -1,5 +1,5 @@
 {
-  "comment": "REQ-0051 S4 baseline == the Job: Guard tutorial loadout (same artifact as content/live/starter_jobs.json). Unit-less 5x5 BP, authored hpMax 120, 4 fixed POs.",
+  "comment": "REQ-0051 S4 baseline == the Starter: Mend tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, 4 fixed POs.",
   "linked": false,
   "layout": {
     "ROWS": 8,
@@ -7,9 +7,9 @@
   },
   "bps": [
     {
-      "id": "bp_job_guard",
-      "name": "Job: Guard",
-      "color": "#5b6b7a",
+      "id": "bp_starter_mend",
+      "name": "Starter: Mend",
+      "color": "#5b7a63",
       "shape": [
         [
           0,
@@ -128,8 +128,8 @@
   ],
   "pos": [
     {
-      "uid": "po_job_guard_0",
-      "id": "tower_shield",
+      "uid": "po_starter_mend_0",
+      "id": "herb_pouch",
       "loc": "grid",
       "cell": [
         2,
@@ -139,8 +139,19 @@
       "fixed": true
     },
     {
-      "uid": "po_job_guard_1",
-      "id": "bulwark",
+      "uid": "po_starter_mend_1",
+      "id": "poultice",
+      "loc": "grid",
+      "cell": [
+        2,
+        4
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_2",
+      "id": "regen_salve",
       "loc": "grid",
       "cell": [
         2,
@@ -150,23 +161,12 @@
       "fixed": true
     },
     {
-      "uid": "po_job_guard_2",
-      "id": "iron_thorns",
+      "uid": "po_starter_mend_3",
+      "id": "cleansing_tonic",
       "loc": "grid",
       "cell": [
-        3,
-        2
-      ],
-      "rot": 0,
-      "fixed": true
-    },
-    {
-      "uid": "po_job_guard_3",
-      "id": "hide_wrap",
-      "loc": "grid",
-      "cell": [
-        4,
-        3
+        2,
+        6
       ],
       "rot": 0,
       "fixed": true

@@ -1,6 +1,6 @@
 {
- "schema": "starter_jobs/1",
- "note": "REQ-0051 four starter-job squads. Each is a unit-less 5x5 BP (authored hpMax override, no sockets/ports on its POs) pre-filled with 4 fixed (immovable) POs. Granted once at fresh-profile creation (client boot seed, REQ-0042 freshness gate) and re-grantable once per job via POST /api/starter/claim. Also the S4 baseline (content/s4_boards/job_*.json).",
+ "schema": "starter_units/1",
+ "note": "REQ-0051 four starter units. Each is a 5x5 BP (its Unit forms no links -- connection_shape none) (authored hpMax override, no sockets/ports on its POs) pre-filled with 4 fixed (immovable) POs. Granted once at fresh-profile creation (client boot seed, REQ-0042 freshness gate) and re-grantable once per starter unit via POST /api/starter/claim. Also the S4 baseline (content/s4_boards/starter_*.json).",
  "hpMax": 120,
  "bpShape": [
   [
@@ -115,13 +115,13 @@
   ],
   "dirs": []
  },
- "jobs": [
+ "units": [
   {
-   "id": "job_guard",
-   "name": "Job: Guard",
+   "id": "starter_guard",
+   "name": "Starter: Guard",
    "i18n": {
     "ja": {
-     "name": "ジョブ：ガード"
+     "name": "スターター：ガード"
     }
    },
    "color": "#5b6b7a",
@@ -161,11 +161,11 @@
    ]
   },
   {
-   "id": "job_arms",
-   "name": "Job: Arms",
+   "id": "starter_arms",
+   "name": "Starter: Arms",
    "i18n": {
     "ja": {
-     "name": "ジョブ：アームズ"
+     "name": "スターター：アームズ"
     }
    },
    "color": "#7a5b5b",
@@ -205,11 +205,11 @@
    ]
   },
   {
-   "id": "job_mend",
-   "name": "Job: Mend",
+   "id": "starter_mend",
+   "name": "Starter: Mend",
    "i18n": {
     "ja": {
-     "name": "ジョブ：メンド"
+     "name": "スターター：メンド"
     }
    },
    "color": "#5b7a63",
@@ -249,11 +249,11 @@
    ]
   },
   {
-   "id": "job_scout",
-   "name": "Job: Scout",
+   "id": "starter_scout",
+   "name": "Starter: Scout",
    "i18n": {
     "ja": {
-     "name": "ジョブ：スカウト"
+     "name": "スターター：スカウト"
     }
    },
    "color": "#6b5b7a",

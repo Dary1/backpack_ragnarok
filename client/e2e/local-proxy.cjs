@@ -18,7 +18,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 // REQ-0051: serve THIS worktree client build for /app (the e2e static
 // service otherwise serves the DEPLOYED master bundle, which lacks any
-// worktree client change -- e.g. the starter-job fresh-profile seed).
+// worktree client change -- e.g. the starter-unit fresh-profile seed).
 const WEB_APP = path.join(__dirname, "..", "..", "web", "app");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".map": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".mp3": "audio/mpeg", ".wav": "audio/wav" };
 function serveAppStatic(creq, cres) {

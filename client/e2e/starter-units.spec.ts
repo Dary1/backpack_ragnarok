@@ -7,10 +7,10 @@ import type { Page } from "@playwright/test";
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from "./global-setup";
 import { cx, cy, drag, waitForAutoSave } from "./helpers";
 
-// REQ-0051 -- starter jobs E2E. Mints fresh guest players via the real
+// REQ-0051 -- starter units E2E. Mints fresh guest players via the real
 // operator CLI (same rig as guest-auth.spec.ts), then verifies: (1) a fresh
-// profile is seeded with the four starter-job squads; (2) a fixed starter PO
-// cannot be dragged off its seeded cell; (3) a starter job squad can be
+// profile is seeded with the four starter-unit squads; (2) a fixed starter PO
+// cannot be dragged off its seeded cell; (3) a starter unit squad can be
 // discarded via the squad trash drop. The starter content is served by the
 // e2e backend via the tools/e2e_fleet.cjs overlay (this worktree only).
 
@@ -33,8 +33,8 @@ function createGuestPlayer(name: string): CreatedPlayer {
   if (!playerIdMatch || !tokenMatch) throw new Error("cli_invite output did not match expected shape:\n" + output);
   const playerId = playerIdMatch[1];
   const token = tokenMatch[1];
-  trackFileForCleanup(join(PLAYERS_DIR, playerId + ".json"), "starter-jobs guest registry (" + name + ")");
-  trackFileForCleanup(join(PROFILES_DIR, playerId + ".json"), "starter-jobs guest profile (" + name + ")");
+  trackFileForCleanup(join(PLAYERS_DIR, playerId + ".json"), "starter-units guest registry (" + name + ")");
+  trackFileForCleanup(join(PROFILES_DIR, playerId + ".json"), "starter-units guest profile (" + name + ")");
   return { playerId, token, name };
 }
 
@@ -52,16 +52,16 @@ async function getGuestCanvas(page: Page, p: CreatedPlayer): Promise<any> {
   return (await resp.json()).canvas;
 }
 
-test.describe("REQ-0051 starter jobs", () => {
-  test("1. a fresh guest profile is seeded with the four starter-job squads", async ({ page }) => {
+test.describe("REQ-0051 starter units", () => {
+  test("1. a fresh guest profile is seeded with the four starter-unit squads", async ({ page }) => {
     const g = createGuestPlayer("E2E Starter Fresh");
     await bootGuest(page, g.token);
     const tabs = page.locator(".squad-tab");
-    await expect(tabs).toHaveCount(5); // four job squads + one empty spare
-    await expect(tabs.nth(0)).toHaveText("Job: Guard");
-    await expect(tabs.nth(1)).toHaveText("Job: Arms");
-    await expect(tabs.nth(2)).toHaveText("Job: Mend");
-    await expect(tabs.nth(3)).toHaveText("Job: Scout");
+    await expect(tabs).toHaveCount(5); // four starter units + one empty spare
+    await expect(tabs.nth(0)).toHaveText("Starter: Guard");
+    await expect(tabs.nth(1)).toHaveText("Starter: Arms");
+    await expect(tabs.nth(2)).toHaveText("Starter: Mend");
+    await expect(tabs.nth(3)).toHaveText("Starter: Scout");
   });
 
   test("2. a fixed starter PO cannot be moved off its seeded cell", async ({ page }) => {
@@ -85,7 +85,7 @@ test.describe("REQ-0051 starter jobs", () => {
     expect(ts.cell).toEqual([2, 3]); // unchanged -- the pinned PO never moved
   });
 
-  test("3. a starter job squad can be discarded via the squad trash drop", async ({ page }) => {
+  test("3. a starter unit squad can be discarded via the squad trash drop", async ({ page }) => {
     const g = createGuestPlayer("E2E Starter Discard");
     await bootGuest(page, g.token);
     const tabs = page.locator(".squad-tab");
@@ -102,6 +102,6 @@ test.describe("REQ-0051 starter jobs", () => {
     await page.mouse.up();
     await page.waitForTimeout(400);
     await expect(tabs).toHaveCount(4); // Guard discarded
-    await expect(page.locator(".squad-tab", { hasText: "Job: Guard" })).toHaveCount(0);
+    await expect(page.locator(".squad-tab", { hasText: "Starter: Guard" })).toHaveCount(0);
   });
 });

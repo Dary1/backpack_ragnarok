@@ -3,10 +3,10 @@
 // is gated at the barrel (see the split-commit gate record in the REQ).
 
 export const canvasEn = {
-  // REQ-0051 starter jobs: solo 4-squad play is a RELIEF measure, not best
+  // REQ-0051 starter units: solo 4-squad play is a RELIEF measure, not best
   // practice -- nudge toward troop play + single-squad mastery (BINDING).
   "squad.starterNudge": "Fielding four squads solo is a relief for playing alone. The strongest path is to pour your assets into ONE squad and march in a troop of players.",
-  "squad.fixedLocked": "Starter-job pieces are fixed in place; discard the whole job squad once you outgrow it.",
+  "squad.fixedLocked": "Starter-unit pieces are fixed in place; discard the whole starter unit once you outgrow it.",
 
   // App shell (App.tsx)
   'app.canvasTitle': 'Canvas',
@@ -75,7 +75,7 @@ export const canvasEn = {
 
 export const canvasJa = {
   "squad.starterNudge": "4スカッドの単独運用はソロ救済策です。最強の道は、資産を1つのスカッドに集中し、仲間のトループで進むことです。",
-  "squad.fixedLocked": "スタータージョブの装備は固定されています。追い越したら、ジョブ・スカッド全体を破棄してください。",
+  "squad.fixedLocked": "スターターユニットの装備は固定されています。追い越したら、スターターユニット全体を破棄してください。",
 
   // REQ-0070: the ja canvas title adopts the mock's hall name (編成の間);
   // EN keeps 'Canvas'.

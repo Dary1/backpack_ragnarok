@@ -136,28 +136,28 @@ export interface ApiVocabLists {
   rarities: string[];
 }
 
-// REQ-0051: starter-job squad definitions (content/live/starter_jobs.json),
+// REQ-0051: starter-unit definitions (content/live/starter_units.json),
 // served on the /api/content payload. The client boot seed (fresh profile)
-// and the regrant flow build the 4 unit-less 5x5 job squads from this.
-export interface ApiStarterJobPO {
+// and the regrant flow build the 4 starter units (5x5 BPs, connection_shape none) from this.
+export interface ApiStarterUnitPO {
   id: string;
   cell: Cell;
   rot: number;
 }
-export interface ApiStarterJob {
+export interface ApiStarterUnit {
   id: string;
   name: string;
   i18n?: { ja?: { name?: string } };
   color: string;
-  pos: ApiStarterJobPO[];
+  pos: ApiStarterUnitPO[];
 }
-export interface ApiStarterJobs {
+export interface ApiStarterUnits {
   schema: string;
   hpMax: number;
   bpShape: Offset[];
   origin: Cell;
   linker: BPUnit;
-  jobs: ApiStarterJob[];
+  units: ApiStarterUnit[];
 }
 
 /** REQ-0170: a unit/1 def as served. `charge`/`effects` are absent BY DESIGN --
@@ -214,7 +214,7 @@ export interface ApiContentPayload {
   layout: Layout | null;
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
-  starterJobs?: ApiStarterJobs | null; // REQ-0051
+  starterUnits?: ApiStarterUnits | null; // REQ-0051
 }
 
 export interface ApiCanvasDoc {

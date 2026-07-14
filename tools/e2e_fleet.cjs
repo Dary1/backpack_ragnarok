@@ -42,7 +42,7 @@ function buildHome(i) {
   // the worktree are copied; nothing about the REPO copy above changes.
   {
     const wtLive = path.join(__dirname, "..", "content", "live");
-    for (const f of ["starter_items.json", "starter_jobs.json"]) {
+    for (const f of ["starter_items.json", "starter_units.json"]) {
       const src = path.join(wtLive, f);
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bp, "content", "live", f));
     }

@@ -73,28 +73,27 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
  */
 /**
  * REQ-0051: builds the fresh-profile starting GameState from the served
- * starter-job definitions (gameData.starterJobs) -- four unit-less 5x5 job
- * squads, each a BP with an authored hpMax override pre-filled with 4 fixed
- * (immovable) POs. Returns null when the payload carries no starterJobs (an
+ * starter-unit definitions (gameData.starterUnits) -- four starter units -- 5x5 BPs (Unit forms no links), each a BP with an authored hpMax override pre-filled with 4 fixed
+ * (immovable) POs. Returns null when the payload carries no starterUnits (an
  * older server), so boot() falls back to the baked demo scenario. The caller
  * runs the result through engine.migrateState(), which gives every BP+PO an
  * inventory home while preserving the canvas fixed references.
  */
-function buildStarterJobsState(gameData: GameData, locale: Locale): GameState | null {
-  const sj = gameData.starterJobs;
-  if (!sj || !Array.isArray(sj.jobs) || sj.jobs.length === 0) return null;
-  const slotFor = (job: (typeof sj.jobs)[number]): SquadSlot => {
+function buildStarterUnitsState(gameData: GameData, locale: Locale): GameState | null {
+  const su = gameData.starterUnits;
+  if (!su || !Array.isArray(su.units) || su.units.length === 0) return null;
+  const slotFor = (unit: (typeof su.units)[number]): SquadSlot => {
     const bp: BP = {
-      id: "bp_" + job.id,
-      name: job.name,
-      color: job.color,
-      shape: sj.bpShape,
-      origin: sj.origin,
-      linker: { off: sj.linker.off, dirs: sj.linker.dirs.slice() },
-      hpMax: sj.hpMax,
+      id: "bp_" + unit.id,
+      name: unit.name,
+      color: unit.color,
+      shape: su.bpShape,
+      origin: su.origin,
+      linker: { off: su.linker.off, dirs: su.linker.dirs.slice() },
+      hpMax: su.hpMax,
     };
-    const pos: PO[] = job.pos.map((pp, i) => ({
-      uid: "po_" + job.id + "_" + i,
+    const pos: PO[] = unit.pos.map((pp, i) => ({
+      uid: "po_" + unit.id + "_" + i,
       id: pp.id,
       loc: "grid" as const,
       cell: pp.cell,
@@ -103,13 +102,13 @@ function buildStarterJobsState(gameData: GameData, locale: Locale): GameState | 
     }));
     return { linked: true, bps: [bp], pos, sis: [] };
   };
-  const nameOf = (job: (typeof sj.jobs)[number]): string =>
-    (locale === "ja" && job.i18n && job.i18n.ja && job.i18n.ja.name) ? job.i18n.ja.name : job.name;
-  const jobs = sj.jobs;
-  const first = slotFor(jobs[0]);
-  const names: string[] = jobs.map(nameOf);
+  const nameOf = (unit: (typeof su.units)[number]): string =>
+    (locale === "ja" && unit.i18n && unit.i18n.ja && unit.i18n.ja.name) ? unit.i18n.ja.name : unit.name;
+  const units = su.units;
+  const first = slotFor(units[0]);
+  const names: string[] = units.map(nameOf);
   const store: Array<SquadSlot | null> = [null];
-  for (let i = 1; i < jobs.length; i++) store.push(slotFor(jobs[i]));
+  for (let i = 1; i < units.length; i++) store.push(slotFor(units[i]));
   // Pad to the engine default squad count so a fresh guest keeps one empty
   // spare squad tab (matches makeSquadsMeta shape).
   while (names.length < 5) { names.push("Squad " + (names.length + 1)); store.push({ linked: true, bps: [], pos: [], sis: [] }); }
@@ -192,18 +191,18 @@ export async function boot(): Promise<void> {
   // empty by the time this runs (a real bug, first found via E2E
   // coverage of the guest-creation-100-LRDST flow -- see this file's
   // git history for the fix).
-  // REQ-0051: a genuinely fresh profile is seeded with the four starter-job
-  // squads (Guard/Arms/Mend/Scout) -- unit-less 5x5 BPs each pre-filled with
+  // REQ-0051: a genuinely fresh profile is seeded with the four starter units
+  // (Guard/Arms/Mend/Scout) -- 5x5 BPs (connection_shape none) each pre-filled with
   // 4 fixed, immovable POs -- REPLACING the legacy demo scenario (a pre-
   // onboarding placeholder). The dev player and every e2e fixture load an
   // explicit saved canvas and never take this fresh path, so the swap is
   // scoped to real new guests. Solo 4-squad play is a RELIEF measure, not
-  // best practice (game golden "march four packs"); the job squads are the
+  // best practice (game golden "march four packs"); the starter units are the
   // on-ramp. migrateState() then homes every BP+PO while keeping the canvas
   // fixed refs, exactly like any saved board.
   if (resolved.isFreshProfile) {
-    const jobsSeed = buildStarterJobsState(gameData, snapshot.locale);
-    if (jobsSeed) state = engine.migrateState(jobsSeed);
+    const unitsSeed = buildStarterUnitsState(gameData, snapshot.locale);
+    if (unitsSeed) state = engine.migrateState(unitsSeed);
   }
   if (resolved.isFreshProfile && state.inv) {
     // Fixed 2026-07-05: this used to hardcode cell [1,1] as the seed's
