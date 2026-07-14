@@ -29,6 +29,9 @@ const { contentPath, loadJSON } = require(path.join(REPO_ROOT, 'server', 'lib', 
 const COVERED = [
   { kind: 'po_def', file: contentPath('live', 'live_items.json') },
   { kind: 'po_def', file: contentPath('live', 'dungeon', 'items.json') },
+  // 2026-07-15 ruling: starter-kit items enter the ledger (see the backfill tool's
+  // SOURCES note); lockpick/spyglass are reuse copies owned by dungeon/items.json.
+  { kind: 'po_def', file: contentPath('live', 'starter_items.json'), exclude: ['lockpick', 'spyglass'] },
   { kind: 'si_def', file: contentPath('live', 'live_sis.json') },
   { kind: 'tm_def', file: contentPath('live', 'live_tms.json') },
 ];
@@ -64,7 +67,9 @@ function collectFileEntries() {
   for (const src of COVERED) {
     let doc;
     try { doc = loadJSON(src.file); } catch (e) { continue; }
+    const excluded = new Set(src.exclude || []);
     for (const entry of (doc.entries || [])) {
+      if (excluded.has(entry.id)) continue; // documented reuse copy; original row owns the name
       if (!byName.has(entry.id)) byName.set(entry.id, { kind: src.kind, file: src.file, entry: entry });
     }
   }

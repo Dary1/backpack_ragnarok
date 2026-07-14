@@ -239,3 +239,13 @@ they should be 0 for the covered corpus; if not, investigate before restart.
   data is verbatim.
 - No client changes; no migrations; no export/integrate changes.
 
+
+### Follow-up 2026-07-15 (orchestrator): starter-items inventory widening (user ruling)
+The post-deploy source accounting exposed 12 items served via file fallback: the REQ-0051
+starter-kit corpus (content/live/starter_items.json, po/2, 14 entries), which landed after
+the sanctioned backfill inventory was fixed. User ruling 2026-07-15 ("実施どうぞ"): they
+enter the ledger. SOURCES + the parity tool's COVERED gain the file with
+['lockpick','spyglass']
+-- the two documented Scout-kit reuse copies whose names dungeon/items.json owns
+(system_name is UNIQUE). entriesFromFile enforces per-source exclusion loudly; tests updated
+(backfill 11/0, parity 3/0).

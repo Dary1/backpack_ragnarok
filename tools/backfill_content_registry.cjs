@@ -86,6 +86,13 @@ const SOURCES = [
   // would leave the pack pools pointing at units the registry has never heard of.
   { kind: 'unit_def', file: 'content/live/live_units.json' },
   { kind: 'gacha_pack', file: 'content/live/live_packs.json' },
+  // User ruling 2026-07-15 (chat, with the REQ-0178 fallback report): the REQ-0051
+  // starter-kit items (14 po/2 entries in their own file, isolated from
+  // live_items.json for the REQ-0160 count-gate) enter the ledger as po_def.
+  // lockpick/spyglass are EXCLUDED: the file's own note declares them "Scout-kit
+  // reuse copies of the batch-002 pilot player items" -- the dungeon/items.json
+  // rows are the originals and content_defs.system_name is UNIQUE.
+  { kind: 'po_def', file: 'content/live/starter_items.json', exclude: ['lockpick', 'spyglass'] },
 ];
 
 // unit_def: ZERO entries by design -- no unit data defs exist yet
@@ -119,7 +126,13 @@ function readJson(p) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
 function entriesFromFile(fileJson, source, importedAt) {
   const schema = typeof fileJson.schema === 'string' ? fileJson.schema : '';
   const batch = typeof fileJson.batch === 'string' ? fileJson.batch : null;
-  return (fileJson.entries || []).map((entry) => {
+  const excluded = new Set(source.exclude || []);
+  return (fileJson.entries || []).filter((entry) => {
+    if (!excluded.has(entry.id)) return true;
+    console.log('  EXCLUDED ' + source.kind + ' ' + entry.id + ' from ' + source.file
+      + ' (documented reuse copy; the original row owns the name)');
+    return false;
+  }).map((entry) => {
     const provenance = { source: 'backfill', origin_file: source.file, origin_schema: schema };
     if (batch) provenance.batch = batch;
     provenance.imported_at = importedAt;

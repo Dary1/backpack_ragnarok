@@ -21,19 +21,29 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the eight live files map to seven kinds (po_def has TWO sources); unit_def and gacha_pack are REAL sources now (REQ-0171)', () => {
+T('kind mapping: the nine live files map to seven kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources now (REQ-0171)', () => {
   const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
   assert.deepStrictEqual(files, [
     'gacha_pack <- content/live/live_packs.json',     // REQ-0171
     'monster_def <- content/live/dungeon/enemies.json',
     'po_def <- content/live/dungeon/items.json',      // REQ-0160 Q1 = A
     'po_def <- content/live/live_items.json',
+    'po_def <- content/live/starter_items.json',      // 2026-07-15 ruling (REQ-0178 fallback report)
     'si_def <- content/live/live_sis.json',
     'skill_def <- content/live/dungeon/skills.json',  // REQ-0160 Q2 = yes
     'tm_def <- content/live/live_tms.json',
     'unit_def <- content/live/live_units.json',       // REQ-0171 (defs shipped by REQ-0170)
   ]);
-  assert.strictEqual(bf.SOURCES.filter((s) => s.kind === 'po_def').length, 2, 'REQ-0160: dungeon POs share the po_def kind with live_items');
+  assert.strictEqual(bf.SOURCES.filter((s) => s.kind === 'po_def').length, 3, '2026-07-15: starter POs join live_items + dungeon items under po_def');
+  const starterSrc = bf.SOURCES.find((s) => s.file === 'content/live/starter_items.json');
+  assert.deepStrictEqual(starterSrc.exclude, ['lockpick', 'spyglass'],
+    'the two documented Scout-kit reuse copies must be excluded -- dungeon/items.json owns those names');
+  // exclusion is enforced by entriesFromFile (unit test below uses a synthetic doc)
+  const fake = { schema: 'po/2', entries: [{ id: 'lockpick' }, { id: 'fresh_item' }] };
+  const got = bf.entriesFromFile ? bf.entriesFromFile(fake, starterSrc, IMPORTED_AT) : null;
+  if (got) {
+    assert.deepStrictEqual(got.map((e) => e.system_name), ['fresh_item'], 'excluded ids never become entries');
+  }
   // The old assertion here was "unit_def must have NO source" -- true until REQ-0170
   // shipped the 12 roster defs. It is now the OPPOSITE assertion, and that inversion is
   // the point: a pack pool that references units the ledger has never heard of would be
@@ -108,14 +118,17 @@ T('collectAll (real committed corpus): PER-FILE counts match each file, names un
   assert.deepStrictEqual(missingFiles, [], 'all live corpus files present');
   const fileCounts = bf.perFileCounts(entries);
   for (const s of bf.SOURCES) {
-    const n = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, s.file), 'utf8')).entries.length;
-    assert.strictEqual(fileCounts[s.file], n, s.file + ' count == its entries.length');
+    const raw = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, s.file), 'utf8')).entries.length;
+    const n = raw - (s.exclude ? s.exclude.length : 0); // 2026-07-15: excluded reuse copies never count
+    assert.strictEqual(fileCounts[s.file], n, s.file + ' count == its entries.length minus exclusions');
   }
   const counts = bf.perKindCounts(entries);
   assert.strictEqual(counts.unit_def, fileCounts['content/live/live_units.json'], 'unit_def backfills its live file (REQ-0171)');
   assert.strictEqual(counts.gacha_pack, fileCounts['content/live/live_packs.json'], 'gacha_pack backfills its live file (REQ-0171)');
-  assert.strictEqual(counts.po_def, fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json'],
-    'po_def total is the SUM of its two source files (REQ-0160) -- not either one alone');
+  assert.strictEqual(counts.po_def,
+    fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json']
+      + fileCounts['content/live/starter_items.json'],
+    'po_def total is the SUM of its three source files (REQ-0160 + 2026-07-15 starter ruling)');
   assert.strictEqual(entries.length,
     counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack);
   assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
@@ -136,7 +149,9 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   // number: the roster and the pack catalog are CONTENT and are expected to grow (REQ-0062
   // added two themed packs while this REQ was in flight). The gate is that the totals
   // RECONCILE, not that they never move.
-  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack, 'the corpus is the ruled 38 plus the live units and packs');
+  // 2026-07-15 ruling adds the starter POs (their file's entries minus the 2 reuse copies).
+  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack + fc['content/live/starter_items.json'],
+    'the corpus is the ruled 38 plus the live units, packs and starter POs');
   assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
   assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
 });
