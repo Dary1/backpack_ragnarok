@@ -42,6 +42,14 @@ export function friendlyScheduleError(locale: Locale, error: unknown): string {
   // 'active schedule' substring fallback below is kept only as defense-
   // in-depth (harmless if e.reason is ever missing for some reason) but
   // is no longer the primary detection path.
+  // REQ-0168 U6: a same-room duplicate (the same squad assigned to two
+  // slots of the SAME room) carries its own reason -- a distinct, truthful
+  // message (right location, no 'wait for a run' advice) from the cross-
+  // room overlap below. Checked first (both are 409s the assign gate can
+  // throw); the cross-room case keeps 'deployed_overlap'.
+  if (error instanceof ApiError && error.reason === 'same_room_duplicate') {
+    return t(locale, 'schedule.error.sameRoomDuplicate');
+  }
   if (error instanceof ApiError && error.reason === 'deployed_overlap') {
     return t(locale, 'schedule.error.crossRoomOverlap');
   }

@@ -593,6 +593,14 @@
   border: 1px solid var(--border-lo);
   border-radius: 2px;
   background: radial-gradient(120% 130% at 50% 18%, rgba(23, 28, 37, 0.6), rgba(10, 13, 18, 0.8));
+  /* REQ-0169 M5: fit the stage to the detail pane instead of overflow-x
+     scrolling. The Pixi renderer keeps its native 960x324 BACKING
+     resolution (so internal coordinates + every e2e/debug seam are
+     unchanged); only the DISPLAY size scales down via CSS, aspect
+     preserved, capped at native so it never upscales on a wide pane. */
+  width: 100%;
+  height: auto;
+  max-width: 960px;
 }
 
 /* iron control bar (mock .ctrl). Pause/speed/skip are omitted -- replay
@@ -812,3 +820,20 @@
   letter-spacing: 0.04em;
 }
 
+
+/* REQ-0168 U11: reward-destination hint + warehouse deep-link. */
+.schedule-monitor-rewards-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--bone-3);
+}
+.schedule-monitor-rewards-hint-link {
+  color: var(--gold);
+  font-weight: 600;
+  text-decoration: underline;
+  white-space: nowrap;
+}

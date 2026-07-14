@@ -98,10 +98,13 @@ const SQUAD_SLOTS = 4;
  * free, matches this codebase's existing "no library for simple
  * countdown formatting" posture (see store.ts's welcome-banner timer for
  * the same spirit, though that one doesn't render a countdown string). */
-export function formatCountdown(ms: number): string {
+export function formatCountdown(ms: number, locale: Locale): string {
   const totalSecs = Math.max(0, Math.ceil(ms / 1000));
   const m = Math.floor(totalSecs / 60);
   const s = totalSecs % 60;
+  // REQ-0168 U13(c): JA renders its own 「3分51秒」shaped units, not the
+  // EN 「3m 51s」form -- callers thread the active locale through.
+  if (locale === 'ja') return m > 0 ? `${m}分${s}秒` : `${s}秒`;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
@@ -140,6 +143,16 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
       data-testid="schedule-room-card"
       data-room-id={room.id}
       data-room-status={status}
+      role="button"
+      tabIndex={0}
+      aria-pressed={expanded}
+      onClick={onToggleExpand}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggleExpand();
+        }
+      }}
     >
       <i className="k tl" />
       <i className="k tr" />
@@ -171,7 +184,7 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
         </span>
         {status === 'cooldown' ? (
           <span className="chip schedule-room-countdown tnum" data-testid="schedule-room-countdown">
-            {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs) })}
+            {t(locale, 'schedule.nextRunIn', { time: formatCountdown(cooldownRemainingMs, locale) })}
           </span>
         ) : null}
         <span className="schedule-room-grow" aria-hidden="true" />
@@ -203,11 +216,19 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
         </span>
         <span className="schedule-room-grow" aria-hidden="true" />
         <div className="schedule-room-card-actions">
-          <button type="button" className="schedule-expand-btn" onClick={onToggleExpand} data-testid="schedule-room-expand-toggle">
-            {expanded ? t(locale, 'schedule.collapse') : t(locale, 'schedule.expand')}
+          <button
+            type="button"
+            className="schedule-expand-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand();
+            }}
+            data-testid="schedule-room-expand-toggle"
+          >
+            {expanded ? t(locale, 'schedule.unwatch') : t(locale, 'schedule.watch')}
           </button>
           {status !== 'canceled' && !confirmingCancel ? (
-            <button type="button" className="schedule-cancel-btn" onClick={() => setConfirmingCancel(true)} disabled={cancelPending} data-testid="schedule-room-cancel-btn">
+            <button type="button" className="schedule-cancel-btn" onClick={(e) => { e.stopPropagation(); setConfirmingCancel(true); }} disabled={cancelPending} data-testid="schedule-room-cancel-btn">
               {t(locale, 'schedule.cancelButton')}
             </button>
           ) : null}
@@ -215,13 +236,13 @@ export function RoomCard({ room, locale, dungeonName, dungeonTypeName, expanded,
       </div>
 
       {confirmingCancel ? (
-        <div className="schedule-room-cancel-confirm" data-testid="schedule-room-cancel-confirm">
+        <div className="schedule-room-cancel-confirm" data-testid="schedule-room-cancel-confirm" onClick={(e) => e.stopPropagation()}>
           <span>{t(locale, 'schedule.cancelConfirm')}</span>
           <div className="schedule-room-cancel-confirm-actions">
-            <button type="button" className="schedule-cancel-btn" onClick={runCancel} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-yes">
+            <button type="button" className="schedule-cancel-btn" onClick={(e) => { e.stopPropagation(); void runCancel(); }} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-yes">
               {t(locale, 'schedule.cancelConfirmYes')}
             </button>
-            <button type="button" className="schedule-expand-btn" onClick={() => setConfirmingCancel(false)} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-no">
+            <button type="button" className="schedule-expand-btn" onClick={(e) => { e.stopPropagation(); setConfirmingCancel(false); }} disabled={cancelPending} data-testid="schedule-room-cancel-confirm-no">
               {t(locale, 'schedule.cancelConfirmNo')}
             </button>
           </div>
