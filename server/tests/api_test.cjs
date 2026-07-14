@@ -31,6 +31,7 @@ async function main() {
   await require('./api/profile.cjs').run(h); // origin 650-790: /api/profile routes
   await require('./api/admin.cjs').run(h); // origin 792-1015: /api/admin routes (item edit + grant)
   await require('./api/schedule.cjs').run(h); // origin 1016-1482: P1-B core + shared fixtures
+  await require('./api/seal.cjs').run(h); // REQ-0058: sealed seed share -- runs on the pristine fixture dungeon (before schedule_ops autogen mutates content/live/dungeon)
   await require('./api/warehouse.cjs').run(h); // origin 1483-1665: rewards/cap/two-phase claim
   await require('./api/workshop.cjs').run(h); // origin 1666-1834: gacha
   await require('./api/schedule_ops.cjs').run(h); // origin 1835-2445: normalization/policies/P1-C/dev seams/autogen

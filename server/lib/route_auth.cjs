@@ -77,6 +77,7 @@ function scheduleErrToStatus(e) {
   if (e.code === 'NOT_FOUND') return 404;
   if (e.code === 'CONFLICT') return 409;
   if (e.code === 'BAD_REQUEST') return 400;
+  if (e.code === 'FORBIDDEN') return 403; // REQ-0058: seal visibility / participant gate
   return 500;
 }
 function sendScheduleError(res, e) {

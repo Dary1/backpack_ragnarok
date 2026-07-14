@@ -23,12 +23,17 @@ function rowTitle(d: ContentDefDto): string {
 }
 
 function Row({ d, art, selected, onSelect }: { d: ContentDefDto; art: ArtworkDto | undefined; selected: boolean; onSelect: (name: string) => void }) {
-  const thumb = d.has_artwork_facet ? artworkThumbUrl(art) : null;
+  // REQ-0173 follow-up: a batch-suffix match (art present without the exact
+  // has_artwork_facet flag) lights the linkage too; links carry the
+  // artwork's REAL system_name so the artadmin deep link resolves.
+  const hasArtLink = d.has_artwork_facet || !!art;
+  const thumb = hasArtLink ? artworkThumbUrl(art) : null;
+  const artHref = '#/artadmin/' + encodeURIComponent(art ? art.system_name : d.system_name);
   return (
     <div className="ca-rowwrap">
-      {d.has_artwork_facet
-        ? <a className="ca-thumb" data-testid={'cd-thumb-' + d.system_name} href={'#/artadmin/' + d.system_name}
-            title={d.system_name + ' artwork -- open Art Admin'} onClick={(e) => e.stopPropagation()}>
+      {hasArtLink
+        ? <a className="ca-thumb" data-testid={'cd-thumb-' + d.system_name} href={artHref}
+            title={(art ? art.system_name : d.system_name) + ' artwork -- open Art Admin'} onClick={(e) => e.stopPropagation()}>
             {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="ca-thumb-ph">◇</span>}
           </a>
         : null}
@@ -53,9 +58,9 @@ function Row({ d, art, selected, onSelect }: { d: ContentDefDto; art: ArtworkDto
               v{d.adopted_variant_no != null ? d.adopted_variant_no : '?'} &#9733;</span>
           : null}
       </button>
-      {d.has_artwork_facet
-        ? <a className="ca-facet-link" data-testid={'cd-facet-' + d.system_name} href={'#/artadmin/' + d.system_name}
-            title={d.system_name + ' has an artwork facet -- open Art Admin'}>&#9670;</a>
+      {hasArtLink
+        ? <a className="ca-facet-link" data-testid={'cd-facet-' + d.system_name} href={artHref}
+            title={(art ? art.system_name : d.system_name) + ' has an artwork facet -- open Art Admin'}>&#9670;</a>
         : null}
     </div>
   );

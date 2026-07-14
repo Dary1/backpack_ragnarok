@@ -224,6 +224,19 @@ function settleRoomIfDue(room, profileCanvas, itemDefsById) {
 // room instead of auto-starting the next one).
 function maybeAutoStartNextRun(room, profileCanvas) {
   if (room.status !== 'open') return room; // already active, or canceled
+  // REQ-0058: a sealed-seed room is single-shot -- once its one run has
+  // settled, never auto-start another (each participant runs a given
+  // sealId exactly once). The FIRST run still auto-starts normally
+  // (lastRunId is still null at that point, so this guard is skipped).
+  if (room.sealId && room.lastRunId) {
+    const prev = storage.readRun(room.lastRunId);
+    if (prev && prev.settled) {
+      room.status = 'canceled';
+      room.updatedAt = new Date().toISOString();
+      storage.writeRoom(room.id, room);
+      return room;
+    }
+  }
   if (room.cancelRequested) {
     room.status = 'canceled';
     room.updatedAt = new Date().toISOString();
