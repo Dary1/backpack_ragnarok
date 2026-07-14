@@ -128,6 +128,7 @@ export interface PO {
   loc: POLoc;
   cell: Cell | null;
   rot: number; // 0..3
+  fixed?: boolean; // REQ-0051 starter jobs: a pinned, immovable PO reference (starter-job kit). Engine movePO/rotatePO/invMovePO/invRotatePO refuse it; the containing BP is still discardable wholesale.
 }
 
 /** SI host, canvas semantics: 'inv' (unseated/legacy list-stow), 'bond'
