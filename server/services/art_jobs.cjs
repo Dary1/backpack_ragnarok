@@ -107,7 +107,7 @@ async function processGenJob(desc) {
     await storage.updateRenderResult(renderId, { status: 'failed', error: res.error || 'unknown generation error' });
     return;
   }
-  const mh = hashModelFiles({ unet: res.route_params.unet, clip: res.route_params.clip, vae: res.route_params.vae });
+  const mh = await hashModelFiles({ unet: res.route_params.unet, clip: res.route_params.clip, vae: res.route_params.vae });
   const params = {
     steps: res.route_params.steps, cfg: res.route_params.cfg, sampler: res.route_params.sampler,
     seed, size: { width: res.width, height: res.height }, tiling: !!tiling,

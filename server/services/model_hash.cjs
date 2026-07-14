@@ -42,11 +42,20 @@ function sha256File(p) {
   const st = fs.statSync(p);
   const key = p + ':' + st.size + ':' + st.mtimeMs;
   const cached = hashCache.get(key);
-  if (cached) return cached;
-  const buf = fs.readFileSync(p);
-  const hex = crypto.createHash('sha256').update(buf).digest('hex');
-  hashCache.set(key, hex);
-  return hex;
+  if (cached) return Promise.resolve(cached);
+  // STREAMED, never fs.readFileSync: readFileSync refuses files > 2 GiB
+  // (ERR_FS_FILE_TOO_LARGE) and the flux2 GGUF alone is 4.3 GB, so the
+  // readFileSync version failed EVERY real generation after a successful
+  // ComfyUI render, while the mocked test env (tiny stand-in model files)
+  // stayed green. Mirrors tools/backfill_registry.cjs sha256Stream.
+  // (hotfix 2026-07-15, user-approved)
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    const s = fs.createReadStream(p);
+    s.on('error', reject);
+    s.on('data', (d) => h.update(d));
+    s.on('end', () => { const hex = h.digest('hex'); hashCache.set(key, hex); resolve(hex); });
+  });
 }
 
 /** Resolve + hash a single model filename. Returns
@@ -55,9 +64,9 @@ function sha256File(p) {
  * string) when it was not -- so a hash is ALWAYS present (gate G3) even on
  * a box without the weights, while still being honestly distinguishable
  * from a real content hash. */
-function hashOne(filename) {
+async function hashOne(filename) {
   const p = resolveModelPath(filename);
-  if (p) return { file: filename, sha256: sha256File(p), hash_source: 'content' };
+  if (p) return { file: filename, sha256: await sha256File(p), hash_source: 'content' };
   const fallback = crypto.createHash('sha256').update('missing:' + filename).digest('hex');
   return { file: filename, sha256: fallback, hash_source: 'missing_file_fallback' };
 }
@@ -65,11 +74,11 @@ function hashOne(filename) {
 /** Given the FLUX model map {unet, clip, vae} (filenames, straight from
  * art_route.FLUX at run time), return the same keys mapped to
  * {file, sha256, hash_source}. */
-function hashModelFiles(flux) {
+async function hashModelFiles(flux) {
   return {
-    unet: hashOne(flux.unet),
-    clip: hashOne(flux.clip),
-    vae: hashOne(flux.vae),
+    unet: await hashOne(flux.unet),
+    clip: await hashOne(flux.clip),
+    vae: await hashOne(flux.vae),
   };
 }
 
