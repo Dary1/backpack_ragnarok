@@ -72,4 +72,77 @@ REQ-0133 chain covers 100% of live items and the registry is the single art ledg
 - tm kind mapping is a judgment call — document it in the log.
 
 ## Implementation log
-(to be filled by the implementing engineer)
+
+### Session 2026-07-14 (implementing engineer) — SHIPPED on branch `req-0133-item-raster-live-wiring` (rides with REQ-0133)
+
+**Decisions**
+- **Sentinel seed guard** (`server/storage_art.cjs`): `createRender`'s auto-seed now
+  `COALESCE($2, (SELECT COALESCE(MAX(seed) FILTER (WHERE seed < 2147483647),0)+1 …))`.
+  Excluding the int4-max sentinel is what stops the first admin-generated render AFTER a
+  backfill from computing `2147483647+1` (int4 overflow). A backfilled artwork's next real
+  render seeds off its highest NON-sentinel seed, or 1 if the sentinel is its only render.
+- **tm → artwork kind mapping = `si`** (documented judgment call). The registry KINDS are
+  `po|si|unit|monster|bpskin` — there is no `tm` kind. A TM is a 1×1, shape-less, stackable
+  inventory icon, so `si` (shape-less, locked 256×256) is the closest existing kind. po → po
+  (shape/size derived from the item footprint via the REQ-0151 sizing law); si → si.
+- **Raster size / method**: each `icon-<id>` `<symbol>` is lifted with a faithful Node port
+  of the client's `parseSymbols`/`standaloneSvgString` (@xmldom, the exact `check_sprites.mjs`
+  pair) and rasterized to a **transparent PNG via the e2e-provisioned Playwright chromium in
+  `client/node_modules`** (no new installs) — the client's `rasterize()` path. Size: the
+  symbol's **longer viewBox edge → 256px, aspect preserved** (contain-fit; `preserveAspectRatio`
+  carried through). 256 is the item pipeline's per-cell canon; holding the sprite's native
+  aspect makes the registry render draw the SAME shape the live sprite route draws today (the
+  game contain-fits by aspect, so absolute px is not load-bearing — documented in the tool).
+- **INSERT-only + idempotent** via a pure `decideActions(state)` truth table: create artwork
+  only if absent; insert the sentinel render only if none present; adopt only if nothing is
+  adopted (never re-adopts over an explicit selection — e.g. blade → a chosen batch); set
+  `content_def.artwork_ref` only if a def exists AND its ref is NULL (never overwrites). Second
+  run = 0 writes. Foreign entries (icon with no `<symbol>`) skipped loudly. `--dry-run` prints
+  the full plan and writes nothing.
+- **Corpus**: `content/live/{live_items,live_sis,live_tms}.json` = the 8 po + 6 si + 1 tm the
+  game serves (the REQ-0157c po/si/tm files). `starter_items.json` is EXCLUDED by design — its
+  entries carry `icon-placeholder-*` ids that have no `<symbol>` in the sheet (nothing to lift).
+- content/sprite_all_v12.svg is READ, never modified.
+
+**Files**
+- `server/storage_art.cjs` (sentinel guard), `server/tests/artwork_test.cjs` (+1 pg case).
+- `tools/backfill_sprite_art.cjs` (tool), `server/tests/backfill_sprite_art_test.cjs` (tests).
+
+**Gate results**
+- **G1**: `artwork_test.cjs` (pg) **7 passed / 0 failed** (incl. the new sentinel case — insert
+  sentinel → next auto-seed = 1, not 2147483648). `backfill_sprite_art_test.cjs` **12 passed /
+  0 failed** — 8 DB-free mapping tests (parse, inventory→plan, po/si/tm kind mapping, 5×5 mask,
+  decideActions truth table, rasterSize) + 4 pg tool tests in an isolated TMPHOME namespace
+  (dry-run writes nothing / first run 15 artworks+15 renders+15 adoptions / idempotent re-run 0
+  writes / sprite-backfill provenance). content/api tests green (see REQ-0133 log). Client
+  tsc+build EXIT 0.
+- Real Playwright rasterizer proven end-to-end against an isolated namespace: 15 artworks / 15
+  renders / 15 adoptions in ~1s, all valid PNG bytes (blade 4187 B, etc.); namespace cleaned.
+  (Browsers cache: `~/.cache/ms-playwright`; under a HOME-remapped run set
+  `PLAYWRIGHT_BROWSERS_PATH` at it.)
+- **G2**: `tools/content_admin_e2e.sh` **22 passed** — its harness now seeds this backfill
+  (INSERT-only) so the REQ-0133 wiring test can prove registry-first vs sprite. `artadmin_e2e.sh`
+  **4 passed**. (Full default suite = post-deploy; see REQ-0133 log.)
+- **G3**: diff carries only tool + tests + doc (+ the REQ-0133 files); `content/sprite_all_v12.svg`
+  UNTOUCHED; no repo web/dist/lockfile churn; every test run used an isolated pg namespace (no
+  live-DB writes from this branch).
+
+**Commits**: `6cae9ec` (sentinel guard + test), `973533a` (backfill tool + tests).
+
+**Live execution (orchestrator owns this, POST-merge, against the LIVE namespace)**
+    set -a; source server/.env; set +a
+    node tools/backfill_sprite_art.cjs --dry-run   # prints the full plan, writes nothing
+    node tools/backfill_sprite_art.cjs             # applies (INSERT-only, idempotent)
+Expected on the live corpus: entities=15 artworks_created=15 renders_inserted=15 adoptions=15
+defs_linked=<# of existing po/si/tm content_defs with a NULL artwork_ref> skipped_foreign=0
+(counts reduce on re-run / where explicit selections already exist). Run the dry-run first and
+compare. Node on PATH (`export PATH=$HOME/.nvm/versions/node/v24.18.0/bin:$PATH`); Playwright
+browsers resolve from `~/.cache/ms-playwright` under the real HOME (no override needed live).
+
+**Deviations / notes**
+- Automated tool test injects a fake rasterizer (deterministic, browser-free, fast); the REAL
+  Playwright path is proven by the isolated live-shape run above + the content_admin_e2e harness
+  seed. `check_sprites.mjs` FAILs in this sandbox on a missing `.venv/bin/python` (cairosvg) —
+  PRE-EXISTING environment gap, unrelated to this REQ (our raster path uses Playwright, not the
+  cairosvg check).
+
