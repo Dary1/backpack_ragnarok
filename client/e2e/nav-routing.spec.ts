@@ -46,8 +46,17 @@ test('clicking through all 5 nav routes updates hash + active highlight + conten
         // instead of the generic PlaceholderPage. REQ-0086: Warehouse
         // moved out to its own route (below), so this now asserts on the
         // Rooms view directly rather than a tab chip (retired).
+        // REQ-0159 (class A -- SPEC DRIFT, not a regression): REQ-0097
+        // rebuilt this page as a 3-column master/detail
+        // (.schedule-master-detail > .schedule-rooms-col + detail pane)
+        // and dropped the old `.schedule-rooms-view` wrapper from
+        // SchedulePage.tsx. This line kept naming that dead wrapper, so it
+        // had been a deterministic red ever since REQ-0097 -- it was not
+        // asserting anything about the shipped UI at all. Pin the rooms
+        // column the Schedule route ACTUALLY renders now (the same
+        // data-testid SchedulePage exposes and schedule.spec.ts drives).
         await expect(page.locator('.schedule-page')).toBeVisible();
-        await expect(page.locator('.schedule-rooms-view')).toBeVisible();
+        await expect(page.locator('[data-testid="schedule-rooms-col"]')).toBeVisible();
       },
     },
     {
