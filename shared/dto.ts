@@ -156,7 +156,7 @@ export interface ApiStarterUnits {
   hpMax: number;
   bpShape: Offset[];
   origin: Cell;
-  linker: BPUnit;
+  unit: BPUnit;
   units: ApiStarterUnit[];
 }
 

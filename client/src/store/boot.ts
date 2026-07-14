@@ -89,7 +89,7 @@ function buildStarterUnitsState(gameData: GameData, locale: Locale): GameState |
       color: unit.color,
       shape: su.bpShape,
       origin: su.origin,
-      linker: { off: su.linker.off, dirs: su.linker.dirs.slice() },
+      unit: { id: su.unit.id, off: su.unit.off },
       hpMax: su.hpMax,
     };
     const pos: PO[] = unit.pos.map((pp, i) => ({

@@ -2,7 +2,7 @@
 
 > [REQ-0123 terminology update, 2026-07-12] Squad = ex-Unit (canvas owner) / ex-Preset; Troop = ex-Party; Unit = ex-Unit (character piece). Verbatim pre-rename user quotes may survive unchanged.
 
-# REQ-0051 — Starter Jobs (four fixed 5×5 unit-less BPs)
+# REQ-0051 — Starter Units -- four fixed-item starter units (5×5 BPs, connection_shape none; ex "Starter Jobs")
 
 - **Status**: USER-DESIGNED (2026-07-06) — implementation QUEUED. This REQ is the
   first docs capture of the user's plan (previously undocumented); it is the
@@ -180,3 +180,52 @@ canvas from scratch, clearing top-level `bps/pos` too). That was exactly the ear
   three REQ-0051 tests and the now-fixed dismantle test.
 
 Merge commits: `744042a` (first sync), `cd1e772` (final sync to current master).
+
+---
+
+## Naming rework -- starter jobs -> starter units (user ruling, 2026-07-14)
+
+User ruling (verbatim, JA): 「starter_jobsの意味若干変わってます。現状のシステムの文脈だと、items-fixed-prepopulated-unitという感じになると思います。」
+Follow-up (via choice): the implementation STRUCTURE (BP + 4 fixed POs, fresh-profile seed, regrant endpoint) is CORRECT; fix NAMING / model terminology only.
+
+Interpretation: after REQ-0123 (Unit = the character piece a BP carries; connection_shape none = a Unit that forms no links, NOT a BP without a Unit) and REQ-0170 (the live unit/1 registry: elf/dwarf/...), the granted onboarding entity is modelled as a starter unit -- a Unit whose BP is pre-populated with fixed (immovable) items -- NOT a job squad. The word job was a class-system term absent from the current vocabulary.
+
+### Naming mapping (old -> new) [ORCH naming, vetoable]
+| old | new |
+|---|---|
+| starter jobs (concept) | starter units |
+| job_guard / job_arms / job_mend / job_scout | starter_guard / starter_arms / starter_mend / starter_scout |
+| bp_job_* / po_job_*_N | bp_starter_* / po_starter_*_N |
+| Job: Guard ... (display) | Starter: Guard ... ; ja ジョブ：X -> スターター：X |
+| starter_jobs.json (schema starter_jobs/1) | starter_units.json (schema starter_units/1) |
+| top-level array jobs | units |
+| content/s4_boards/job_*.json | content/s4_boards/starter_*.json (bp id bp_starter_*) |
+| payload starterJobs ; GameData.starterJobs | starterUnits |
+| ApiStarterJob / ApiStarterJobPO / ApiStarterJobs | ApiStarterUnit / ApiStarterUnitPO / ApiStarterUnits |
+| STARTER_JOB_IDS ; buildStarterJobsState | STARTER_UNIT_IDS ; buildStarterUnitsState |
+| POST /api/starter/claim body {job}; resp jobs/job | body {unit}; resp units/unit |
+| client/e2e/starter-jobs.spec.ts | client/e2e/starter-units.spec.ts |
+| i18n fixedLocked Starter-job.../スタータージョブ.../ジョブ・スカッド | Starter-unit.../スターターユニット... |
+| pre-pivot unit-less 5x5 BP prose | 5x5 BP, connection_shape none |
+
+KEPT (concept-neutral, deliberately NOT renamed): endpoint path /api/starter/claim[s]; files server/routes/starter.cjs, server/storage/starter.cjs, server/tests/api/starter.cjs; table starter_claims + STARTER_CLAIMS_DIR; i18n keys squad.starterNudge and squad.fixedLocked; content/live/starter_items.json (the fixed items); the engine fixed flag. Kit item ids (tower_shield, bulwark, ...) were already generic and unchanged. The REQ doc filename and branch keep the legacy starter-jobs slug (matches the branch the integration owner merges) [vetoable].
+
+### Persisted-data safety
+The feature never shipped (built/, never on master), so NO production profile references the old content ids, the claims-ledger doc keys, or the endpoint param -- the renames need NO data migration (conservative-but-clean route: full rename, no legacy alias). The starter_claims table has no job column (the ledger is a jsonb doc keyed by the unit id), so the SQL is a renumber-only change with no column rename.
+
+### Migration renumber
+Master advanced during the run: REQ-0058 (Sealed Seed Share) landed 011_sealed_seeds.sql. This branch 011_starter_claims.sql was renumbered to 012_starter_claims.sql and current master was re-merged, so the migration dir is contiguous (...010, 011_sealed_seeds, 012_starter_claims). Re-applied to the pg test DB (idempotent CREATE IF NOT EXISTS).
+
+### REQ-0170 integration (forced by the master re-sync) [vetoable]
+REQ-0170 (merged to master during this run) made BP.unit ({id, off} keying live_units.json) MANDATORY and removed the old BP.linker/{dirs}. The starter seed was adapted so the branch builds: each starter BP now carries unit {id: berserker, off: [0,0]} -- berserker is the SOLE connection_shape:none unit in live_units.json, which preserves REQ-0051 no-synergy / power-ceiling intent (no link rays). Updated linker -> unit in: content/live/starter_units.json, the four content/s4_boards/starter_*.json, ApiStarterUnits (shared/dto.ts), and buildStarterUnitsState (client/src/store/boot.ts).
+NOTE [vetoable]: all four starters currently share the one none-shape unit (berserker); the integration owner / user should refine the starter <-> unit-registry pairing (author dedicated starter units, or map Guard/Arms/Mend/Scout to thematically-fitting none-shape units) as a follow-up. This wiring was REQUIRED to build REQ-0051 against current master and is a merge-integration stopgap, not a naming choice.
+
+### Gates (post-rework, on the re-synced tree @ current master)
+- flock /tmp/backpack_ci.lock bash tools/ci.sh (SKIP_E2E): GREEN (CI_EXIT=0). api_test 175 passed on BOTH files AND pg backends (renamed endpoint: resp units/unit, once-per-starter-unit, ids starter_guard...); mock fixed-PO tests; backfill_content_registry_test 11 passed (REQ-0160 registry count-gate untouched); content-checks; client typecheck+build.
+- e2e (client, E2E_PARALLEL=4): 163 passed, 0 failed (3.1m). All three renamed specs pass: client/e2e/starter-units.spec.ts (fresh-guest four starter-unit tabs Starter: Guard...; fixed-PO drag refusal; starter-unit discard).
+
+### Commits
+- 866e883 rename starter jobs -> starter units
+- 8933921 migration renumber 011 -> 012_starter_claims.sql
+- ed447c5 re-sync current master (REQ-0058 sealed_seeds / REQ-0173)
+- (final) REQ-0170 BP.unit adaptation + web/app rebuild + this gate record

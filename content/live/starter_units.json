@@ -108,12 +108,12 @@
   2,
   2
  ],
- "linker": {
+ "unit": {
+  "id": "berserker",
   "off": [
    0,
    0
-  ],
-  "dirs": []
+  ]
  },
  "units": [
   {

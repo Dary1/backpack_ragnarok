@@ -116,14 +116,14 @@
         2,
         2
       ],
-      "linker": {
+      "hpMax": 120,
+      "unit": {
+        "id": "berserker",
         "off": [
           0,
           0
-        ],
-        "dirs": []
-      },
-      "hpMax": 120
+        ]
+      }
     }
   ],
   "pos": [
