@@ -106,4 +106,87 @@ display-layer suffix matching:
   migration-first is safe.
 
 ## Implementation log
-(to be filled by the implementing engineer)
+
+### Session 2026-07-14 (implementing engineer, opus)
+
+Implemented scope A–E on branch `req-0174-content-artwork-ref` off master. All
+gates green. artadmin.css byte-untouched; dex/* / ArtAdminPage untouched;
+storage.cjs/storage_content.cjs remains the sole persistence seam; ca-* CSS only.
+
+**Key decisions**
+- `artwork_ref` is stored as the BARE artwork system_name (the same bare-name
+  currency the whole admin uses); no namespace prefix, no FK (soft ref across
+  two independent ledgers). Resolution/validation nsName() it internally.
+- REF-FIRST resolution lives in storage_content (`resolveArtworkFacetName`):
+  ref artwork exists → else exact-name match → none. Exposed as
+  `artwork_facet_name` on every def-shaped response; `has_artwork_facet`
+  (list rows) is now ref-first `(ref artwork EXISTS) OR (exact-name EXISTS)`.
+  REQ-0155/0157 row shape otherwise additive-only.
+- Route PATCH validation extracted to exported `_resolveArtworkRefPatch(body)`
+  so the 400 path is unit-testable; type mismatch deliberately NOT blocked
+  server-side (picker filters; ledger stays permissive) — documented in code.
+- Client resolution mirrors the server: `resolveDefArtwork(def, byName) =
+  byName[artwork_ref] ?? byName[system_name] ?? null`; `artLinkMode` →
+  'selected' | 'name match' | 'none'. buildArtworkIndex DROPPED the REQ-0173
+  batch-suffix fallback (exact-name index stays as canonical fallback + picker
+  default). Every art surface (rail thumb, header thumb, adopt-confirm thumb,
+  per-variant thumb) resolves through the def — variants carry no art of their
+  own (ruling point 3 made visible).
+
+**Testid delta** (all REQ-0155/0157/0164/0173 testids PRESERVED)
+- Reused, unchanged id, changed content: `cd-artwork-facet` no longer says
+  "linked by batch name (…)"; it now shows `<artwork name> (link: selected|
+  name match|none)` or `none (…)`. `cd-header-thumb` / `cd-artadmin-goto` /
+  `cd-dex-link` / `cd-thumb-<name>` / `cd-facet-<name>` unchanged.
+- ADDED: `cd-artwork-row`, `cd-art-pick-open`, `cd-art-picker`,
+  `cd-art-pick-close`, `cd-art-search`, `cd-art-type-<type>`, `cd-art-clear`,
+  `cd-art-picklist`, `cd-art-pick-<safe>`, `cd-variant-art-<no>`.
+- Picker row testid scheme (documented): `cd-art-pick-<system_name>` with every
+  ':' replaced by '__' (artPickTestid); all other allowed name chars
+  ([A-Za-z0-9_]) pass through unchanged. (The art API rejects ':' names, so
+  e2e-seeded names never contain ':'; the scheme covers live batch-namespaced
+  rows.)
+- e2e: the REQ-0173 suffix-mock test was REPLACED by the real picker-flow test
+  (select → ref lands, rail+header light, links target the ref name; clear →
+  none; bogus ref direct PATCH → 400 request-level). Remaining suite kept green.
+
+**Gate results**
+- G1: client `pnpm exec tsc -b` EXIT 0 (/tmp/req0174_tsc.log); `pnpm run build`
+  EXIT 0 (/tmp/req0174_build.log). Server pg: content_test 18/18
+  (13 REQ-0155/0157 + 5 REQ-0174), contentagg_test 5/5 (4 + 1 REQ-0174).
+  api_test 176/176 files backend (/tmp/req0174_api_files.log) AND pg backend
+  (/tmp/req0174_api_pg.log).
+- G2: `tools/content_admin_e2e.sh` 21/21 (/tmp/req0174_content_e2e2.log);
+  `tools/artadmin_e2e.sh` 4/4 (/tmp/req0174_artadmin_e2e.log). web/ restored
+  (git checkout -- web/ && git clean -fd web/).
+- G3: `git diff master...HEAD --stat` = only intended files (migration, storage,
+  routes, server tests, contentadmin client files, contentadmin.css, e2e spec,
+  REQ doc). No dist/lockfile/data churn; working tree clean.
+
+**Commits**
+- server: `1038680` — mig 016 + REF-FIRST facet resolution + PATCH validation + pg tests
+- client: `bcb3abc` — artwork picker + REF-FIRST resolution + e2e picker flow + ca-* CSS
+- (this log commit follows)
+
+**Deviations / notes**
+- Migration 016 was applied to the shared local supabase-db pg via the
+  documented path (`docker exec -i supabase-db psql -U postgres <
+  server/migrations/016_content_artwork_ref.sql`). This was REQUIRED for the
+  pg-backed server tests and the e2e harness (both connect to that same DB,
+  namespace-isolated; listContentDefs now references the column). The migration
+  is idempotent + additive (ADD COLUMN IF NOT EXISTS … NULL), so the
+  orchestrator re-running it on live is a safe no-op. No production
+  merge/restart/cutover was performed.
+- Ref'd-artwork-deleted degrades gracefully (ref → exact-name → none), covered
+  by a content_test case.
+
+**Expected live-deploy steps (orchestrator, post-approval)**
+1. Apply migration to the LIVE pg BEFORE the api restart (migration-first is
+   safe — the old api ignores the new column):
+   `docker exec -i supabase-db psql -U postgres < server/migrations/016_content_artwork_ref.sql`
+   (already idempotently applied to the shared dev pg; re-run = no-op).
+2. Merge `req-0174-content-artwork-ref` → master.
+3. Rebuild client dist (`pnpm --dir client run build`) and publish web/ statics.
+4. RESTART `backpack-api` (server change: storage_content.cjs + routes/content.cjs).
+5. Live verify: open contentadmin, open a def, Select artwork → confirm the
+   PATCH lands and rail/header light with the ref'd artwork; Clear → none.
