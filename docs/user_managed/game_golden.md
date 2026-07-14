@@ -21,8 +21,8 @@ combos begin.
 - **P3: Discovery is content.** The synergy space stays deep and partially hidden.
 - **P4: Co-op changes builds, not just numbers.**
 - **P5: The Unreplicable Self.** (promoted from review's "golden indicator") No two players' canvases should converge on identical builds.
-  - A Unit is the vessel; strength always derives from the pack's contents and
-    arrangement, never from the Unit alone.
+  - A Squad Canvas is the vessel; strength always derives from the units' contents
+    and arrangement, never from the Unit alone.
 
 ## 3. Core Loop [GREEN, simplified]
 - **Run-based roguelite — confirmed.**
