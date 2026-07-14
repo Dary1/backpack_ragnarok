@@ -127,10 +127,15 @@ why this can land safely. (po/si/tm are already gated MATCH by 0178's standing p
 - Warm snapshot `registryData = {po_def, si_def, tm_def, unit_def, gacha_pack, monster_def,
   skill_def}`, pg-only; **empty under the files backend** → `getScheduleContent()` returns the
   file payload unchanged (byte-identical to today; the default e2e fleet proves it).
-- Overlay applied INSIDE `getScheduleContent()` after the file maps are built, keyed by the
-  served id so the key set is unchanged. `po_def` overlays BEFORE pilot/starter (they must keep
-  winning — pilot/starter are separate files whose ids the ledger does not own; see the
-  `lockpick`/`spyglass` exclusion precedent).
+- Overlay applied INSIDE `getScheduleContent()` **LAST** — after the file maps and their
+  pilot/starter overlays are built — keyed by the served id so the key set is unchanged. The
+  registry wins over every file source, matching `lib/content.cjs`'s precedence exactly.
+  This is correct, not a hazard: `dungeon/items.json` and `starter_items.json` are THEMSELVES
+  backfilled `po_def` sources, so the ledger owns their entries too. Verified 2026-07-15: the
+  only ids present in more than one `po_def` file are `lockpick`/`spyglass` (starter ∩ dungeon)
+  and their entries are **byte-identical**, so the precedence is unobservable on today's data —
+  which is precisely why the backfill's `exclude: ['lockpick','spyglass']` is safe. If a future
+  adoption edits one, the registry SHOULD win: that is this REQ's whole purpose.
 - Cached on `(contentCache.payload, snapshot)` identity so the overlay is not rebuilt per call —
   `getScheduleContent()` is called several times per request.
 - Never throws: a registry read failure keeps the last snapshot; the game must not 500 on a DB
@@ -188,8 +193,9 @@ why this can land safely. (po/si/tm are already gated MATCH by 0178's standing p
   DRIFT=0 on live (§5) ⇒ the pg cutover is a no-op on today's data.
 - **`skill_def` reshape.** The one transform that is not verbatim. A mis-shaped overlay silently
   changes combat (`packs.cjs` folds these). Needs a direct test, not just a payload compare.
-- **`po_def` overlay order.** Registry must NOT override pilot/starter items. Test the
-  precedence explicitly.
+- **`po_def` overlay order.** Three files feed `itemDefsById` (live_items → pilot → starter)
+  and the registry overlays on top of all three. Test the precedence explicitly, including the
+  `lockpick`/`spyglass` duplicate-id pair.
 - **Mid-request snapshot swap.** A TTL refresh between two `getScheduleContent()` calls in one
   request could serve two different snapshots. Pre-existing with the mtime cache; the identity
   cache must not make it worse. Keep the snapshot swap atomic.
