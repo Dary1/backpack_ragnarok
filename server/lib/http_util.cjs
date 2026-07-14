@@ -71,4 +71,15 @@ function getAuthToken(req) {
 }
 
 
-module.exports = { sendJSON, sendText, readBody, getAuthToken, MAX_BODY_BYTES };
+// REQ-0118c: resolves a Supabase access token from the Authorization
+// header (`Authorization: Bearer <jwt>`). Scheme match is case-insensitive;
+// node:http lowercases the header name. Returns undefined when absent or
+// malformed.
+function getBearerToken(req) {
+  const raw = req.headers['authorization'];
+  if (typeof raw !== 'string') return undefined;
+  const m = /^\s*Bearer\s+(.+?)\s*$/i.exec(raw);
+  return m ? m[1] : undefined;
+}
+
+module.exports = { sendJSON, sendText, readBody, getAuthToken, getBearerToken, MAX_BODY_BYTES };

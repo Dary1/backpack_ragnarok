@@ -22,6 +22,7 @@ const os = require('os');
 const crypto = require('crypto');
 const { render } = require('../tools/eff_render.cjs');
 const players = require('./players.cjs');
+const supabaseAuth = require('./lib/supabase_auth.cjs'); // REQ-0118c
 
 // REQ-0145a (sc): CONTENT paths resolve through the ONE content-file
 // loader (lib/content_files.cjs; CONTENT_ROOT env override honored,
@@ -251,6 +252,64 @@ function applyAdminEdit(id, body) {
   return merged;
 }
 
+// REQ-0118c: request-level auth resolution that adds the Supabase JWT path
+// on TOP of REQ-0037's resolveAuth(). This is the single chokepoint every
+// authenticated route now calls (see routes/me.cjs, routes/profile.cjs,
+// lib/route_auth.cjs). Precedence:
+//   1. A VALID `Authorization: Bearer <supabase jwt>` -> the player mapped
+//      to its auth.users.id (auto-provisioned on first sight).
+//   2. Otherwise the REQ-0037 X-Auth-Token path (+ dev_mode fallback).
+// A PRESENT-but-INVALID JWT (with a configured secret) is a hard failure --
+// it is NEVER silently downgraded to the dev fallback (that would be an
+// auth bypass). A JWT present while the secret is NOT configured is ignored
+// (the whole JWT path is off), so a box without the secret is unchanged.
+
+function pickAuthName(claims) {
+  const m = (claims && claims.user_metadata) || {};
+  return m.full_name || m.name || m.user_name || m.preferred_username ||
+    (claims && claims.is_anonymous ? 'Guest' : 'Player');
+}
+
+/** Maps a VERIFIED Supabase claim set to a player, provisioning a fresh
+ * record the first time an auth.users.id is seen. Never grants roles. */
+function resolvePlayerForClaims(claims) {
+  const authId = claims && claims.sub;
+  if (!authId) return { ok: false, reason: 'invalid_jwt' };
+  let player = players.findPlayerByAuthId(authId);
+  if (!player) {
+    player = players.createAuthPlayer({
+      authId: authId,
+      name: pickAuthName(claims),
+      roles: [],
+      provider: (claims.app_metadata && claims.app_metadata.provider) || (claims.is_anonymous ? 'anonymous' : null),
+      isAnonymous: !!claims.is_anonymous,
+    });
+  }
+  return { ok: true, player: player };
+}
+
+function bearerFromRequest(req) {
+  const raw = req && req.headers && req.headers['authorization'];
+  if (typeof raw !== 'string') return undefined;
+  const m = /^\s*Bearer\s+(.+?)\s*$/i.exec(raw);
+  return m ? m[1] : undefined;
+}
+function xAuthTokenFromRequest(req) {
+  const raw = req && req.headers && req.headers['x-auth-token'];
+  return typeof raw === 'string' && raw ? raw : undefined;
+}
+
+function resolveAuthFromRequest(req) {
+  const bearer = bearerFromRequest(req);
+  if (bearer) {
+    const v = supabaseAuth.verifySupabaseJwt(bearer);
+    if (v.ok) return resolvePlayerForClaims(v.claims);
+    if (v.reason !== 'not_configured') return { ok: false, reason: 'invalid_jwt' };
+    // secret not configured -> JWT path disabled; fall through to X-Auth-Token.
+  }
+  return resolveAuth(xAuthTokenFromRequest(req));
+}
+
 module.exports = {
   DEV_USER_PATH,
   DEFAULT_DEV_USER,
@@ -263,4 +322,6 @@ module.exports = {
   findLiveEntry,
   validateBody,
   applyAdminEdit,
+  resolveAuthFromRequest,
+  resolvePlayerForClaims,
 };

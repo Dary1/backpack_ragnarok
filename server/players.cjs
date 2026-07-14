@@ -141,6 +141,63 @@ function ensureFixedPlayer(playerId, name, roles) {
   return { player: player, created: true };
 }
 
+// REQ-0118c: Supabase identity <-> player mapping. auth.users.id (the JWT
+// `sub`) is stored on the player record as `authId`; the three helpers
+// below are the ONLY readers/writers of that field. They live here -- the
+// player registry, the established identity root (sibling to storage.cjs's
+// profile root) -- rather than physically inside storage.cjs, so attaching
+// an auth identity NEVER touches data/profiles/: an invite-token or guest
+// player keeps their WHOLE profile when they link Discord. (See the REQ's
+// [vetoable] "auth->player seam" decision.)
+
+/** Resolves a player by their linked Supabase auth id (auth.users.id).
+ * Returns null if no player carries this authId. */
+function findPlayerByAuthId(authId) {
+  if (!authId) return null;
+  return listPlayers().find((p) => p.authId === authId) || null;
+}
+
+/** Attaches a Supabase auth id to an EXISTING player, preserving the
+ * player's profile. Conflicts throw (never silently reassign):
+ *   - the authId already belongs to a DIFFERENT player -> CONFLICT
+ *     (reason 'authid_taken')
+ *   - this player is already linked to a DIFFERENT authId -> CONFLICT
+ *     (reason 'already_linked')
+ * Re-linking the SAME authId this player already has is an idempotent
+ * success (returns the unchanged record). */
+function linkAuthId(playerId, authId) {
+  if (!authId) { const e = new Error('missing authId'); e.code = 'BAD_REQUEST'; throw e; }
+  const player = readPlayer(playerId);
+  if (!player) { const e = new Error('unknown player: ' + playerId); e.code = 'NOT_FOUND'; throw e; }
+  const other = findPlayerByAuthId(authId);
+  if (other && other.playerId !== playerId) {
+    const e = new Error('auth identity already linked to another player'); e.code = 'CONFLICT'; e.reason = 'authid_taken'; throw e;
+  }
+  if (player.authId && player.authId !== authId) {
+    const e = new Error('player already linked to another auth identity'); e.code = 'CONFLICT'; e.reason = 'already_linked'; throw e;
+  }
+  if (player.authId === authId) return player; // idempotent
+  return writePlayer(Object.assign({}, player, { authId: authId }));
+}
+
+/** Provisions a BRAND-NEW player for a first-seen Supabase identity
+ * (Discord or anonymous). A token is still minted so the same account can
+ * also drive the REQ-0037 bot/X-Auth-Token path. `roles` defaults to []
+ * (a social/guest login never self-grants item_admin). */
+function createAuthPlayer(opts) {
+  const player = {
+    playerId: generatePlayerId(),
+    name: opts.name || 'Player',
+    roles: Array.isArray(opts.roles) ? opts.roles : [],
+    token: generateToken(),
+    authId: opts.authId,
+    authProvider: opts.provider || null,
+    isAnonymous: !!opts.isAnonymous,
+    createdAt: new Date().toISOString(),
+  };
+  return writePlayer(player);
+}
+
 module.exports = {
   PLAYERS_DIR,
   ensurePlayersDir,
@@ -153,4 +210,7 @@ module.exports = {
   findPlayerByToken,
   createPlayer,
   ensureFixedPlayer,
+  findPlayerByAuthId,
+  linkAuthId,
+  createAuthPlayer,
 };

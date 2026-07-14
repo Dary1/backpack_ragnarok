@@ -1,17 +1,18 @@
 'use strict';
-// server/routes/me.cjs -- REQ-0047 (c): GET /api/me. Moved VERBATIM from
-// server/api.cjs handle(). Returns false when not matched.
-const { sendJSON, getAuthToken } = require('../lib/http_util.cjs');
+// server/routes/me.cjs -- REQ-0047 (c): GET /api/me. REQ-0118c: /api/me now
+// resolves through admin.resolveAuthFromRequest (Supabase JWT first, then
+// the REQ-0037 X-Auth-Token path + dev_mode fallback), and this module also
+// owns POST /api/auth/link -- attaching a verified Supabase identity to the
+// caller's EXISTING invite/guest player WITHOUT losing their profile.
+const { sendJSON, getAuthToken, getBearerToken } = require('../lib/http_util.cjs');
 const admin = require('../admin.cjs');
+const players = require('../players.cjs');
+const supabaseAuth = require('../lib/supabase_auth.cjs');
 
 function tryMeRoute(req, res, url, p) {
-  // REQ-0037: /api/me now resolves the caller via the X-Auth-Token
-  // header (falling back to the dev player when dev_mode is true and no
-  // token was sent at all). 401 for a present-but-unknown token, or an
-  // absent token with dev_mode:false.
   if (p === '/api/me' && req.method === 'GET') {
     try {
-      const resolved = admin.resolveAuth(getAuthToken(req));
+      const resolved = admin.resolveAuthFromRequest(req);
       if (!resolved.ok) {
         sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
         return;
@@ -24,6 +25,38 @@ function tryMeRoute(req, res, url, p) {
     return;
   }
 
+  // REQ-0118c: link a verified Supabase identity to the caller's EXISTING
+  // player (invite-token, or a previously-provisioned guest), so upgrading
+  // to Discord keeps the whole profile (data/profiles/ is never touched).
+  // Requires BOTH an X-Auth-Token (proves ownership of the existing player)
+  // AND Authorization: Bearer <supabase jwt> (the identity to attach).
+  // 401 if either is missing/invalid; 409 on a link conflict.
+  if (p === '/api/auth/link' && req.method === 'POST') {
+    const xToken = getAuthToken(req);
+    if (!xToken) {
+      sendJSON(res, 401, { ok: false, error: 'unauthorized: link requires an existing session token' });
+      return;
+    }
+    const existing = admin.resolveAuth(xToken);
+    if (!existing.ok) {
+      sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + existing.reason });
+      return;
+    }
+    const v = supabaseAuth.verifySupabaseJwt(getBearerToken(req));
+    if (!v.ok) {
+      sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + (v.reason || 'invalid_jwt') });
+      return;
+    }
+    try {
+      const linked = players.linkAuthId(existing.player.playerId, v.claims.sub);
+      sendJSON(res, 200, { ok: true, playerId: linked.playerId, name: linked.name, roles: linked.roles });
+    } catch (e) {
+      if (e.code === 'CONFLICT') { sendJSON(res, 409, { ok: false, error: e.message, reason: e.reason }); return; }
+      if (e.code === 'BAD_REQUEST') { sendJSON(res, 400, { ok: false, error: e.message }); return; }
+      sendJSON(res, 500, { ok: false, error: 'link failed: ' + e.message });
+    }
+    return;
+  }
 
   return false;
 }
