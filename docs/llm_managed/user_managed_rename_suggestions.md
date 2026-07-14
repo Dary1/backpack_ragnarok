@@ -227,11 +227,14 @@ four Squads at a time".
 "bind pack to pack with directional **Linkers**" → "bind pack to pack through your
 **Units'** connection rays".
 
-### 3.4 OPTIONAL — the guardrail pillar (carried over from v1, still worth adding)
+### 3.4 APPLIED — the guardrail pillar (REQ-0166, reworded by the user in REQ-0167)
 
-Under **P5**, a note the pivot session agreed on:
-> A Unit is the vessel; strength always derives from the pack's contents and
-> arrangement, never from the Unit alone.
+Shipped under **P5**, in the user's ratified wording:
+> A Squad Canvas is the vessel; strength always derives from the units' contents
+> and arrangement, never from the Unit alone.
+
+The vessel is the **Squad Canvas** — not the Unit, and not a single pack. Strength is a
+property of the whole arrangement across all of a Squad's Units and their packs.
 
 ### 3.5 VERIFIED CORRECT — do not touch
 
