@@ -131,3 +131,44 @@ rewards for "winning" a comparison.
 - `b443096` Merge branch 'master' (synced to master b53bc36)
 - `1b391a8` REQ-0058: dist rebuild (web/app)
 - `99615c6` REQ-0058: e2e -- drop pre-deploy UI-render smoke
+
+---
+
+## Merge & deploy record -- integration owner (2026-07-14)
+
+Merged, deployed, and live-verified on master. The REQ records no open
+user-acceptance / S7 gate (the [ORCH default, vetoable] design decisions above
+remain vetoable -- a later user veto would reopen the REQ per normal board flow --
+but none is an open acceptance gate), so this REQ moves **built -> done** in the
+following commit, mirroring the sibling UI REQs 0168/0100/0169.
+
+- **Merge**: git merge --no-ff of req-0058-sealed-seed-share onto master 6479b1b
+  -> merge commit **d51b1d6** (git merge-tree verified conflict-free against
+  post-0170/0168/0100/0173 master; the only auto-conflicts were the web/app dist,
+  resolved to master and rebuilt below). The two source unions were resolved in
+  the branch own master-merge (**59bf207**): client/src/i18n/schedule.ts (seal.*
+  keys UNION REQ-0168/0100 schedule keys) and client/src/schedule/SchedulePage.tsx
+  (SealPanel UNION REQ-0100 SpoilsRail, both inside schedule-spoils-col).
+- **Migration**: 011_sealed_seeds.sql kept AS-IS -- master migrations topped out
+  at 010, so 011 was already the next free number (NO renumber needed). Tracking
+  is by table existence (there is no schema_migrations table); the dev/live DB
+  already carried sealed_seeds + seal_runs with schema byte-matching the migration,
+  so the deploy needed no migration step. NOTE for a future owner: the unmerged
+  req-0051-starter-jobs branch also numbered its migration 011
+  (011_starter_claims.sql) and applied it to the dev DB -- it MUST renumber to 012
+  before its own merge. No tracking-record reconciliation is needed (no tracking
+  table); its starter_claims table already exists in the DB.
+- **Release**: flock /tmp/backpack_ci.lock bash tools/release.sh -> **CI GREEN**
+  (literal green; REQ-0159 retired the accounted-failure convention). Admin e2e
+  harnesses artadmin 4/4 + art_inspect + content_admin green; default e2e suite
+  **160 passed / 0 failed** (159 baseline + seal.spec.ts). Dist committed
+  **c1d3726**.
+- **Restart**: systemctl --user restart backpack-api backpack-web -> both active;
+  HTTP **200** on /app/ (web 8801), /api/health and /api/schedule/dungeons
+  (api 8802).
+- **Post-deploy e2e (live)**: bash tools/e2e_run.sh e2e/seal.spec.ts against the
+  live services (public-tunnel baseURL, live backpack-api) -> **1 passed**, EXIT=0
+  (seal -> share -> second player -> anti-spoiler hold -> comparison unlock;
+  duplicate-run 409; replay gate -- all green live).
+
+Final master after deploy: **c1d3726**. Services active. No unaccounted reds.
