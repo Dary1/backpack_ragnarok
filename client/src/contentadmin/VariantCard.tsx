@@ -38,6 +38,11 @@ export function VariantCard(props: {
   picked: boolean;
   onTogglePick: (no: number) => void;
   onDiffAdopted: (no: number) => void;
+  // REQ-0174: the def-resolved artwork (variants obtain art ONLY through the
+  // parent def -- the ruling's point 3 made visible). thumb URL or null (a
+  // render-less linked artwork shows the placeholder); hasArt gates the thumb.
+  hasArt: boolean;
+  artThumb: string | null;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { v, kind, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
@@ -78,7 +83,17 @@ export function VariantCard(props: {
         <span className="ca-created t-micro tnum" title={v.created_at || ''}>{fmtDate(v.created_at)}</span>
       </div>
 
-      <EntityPreview kind={kind} data={v.data} idBase={no} />
+      <div className="ca-vcard-entity">
+        {props.hasArt && (
+          <span data-testid={'cd-variant-art-' + no} className="ca-vcard-art"
+            title="artwork resolved via the parent def (variants carry no art of their own)">
+            {props.artThumb
+              ? <img src={props.artThumb} alt="" loading="lazy" />
+              : <span className="ca-vcard-art-ph">◇</span>}
+          </span>
+        )}
+        <EntityPreview kind={kind} data={v.data} idBase={no} />
+      </div>
 
       <div data-testid={'checks-' + no} className="ca-checks">
         <span data-testid={'overall-' + no} className={'ca-overall ' + (overall === 'PASS' ? 'is-pass' : 'is-fail')}>{overall}</span>

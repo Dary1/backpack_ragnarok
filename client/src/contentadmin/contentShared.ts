@@ -286,28 +286,46 @@ export function artworkThumbUrl(a: ArtworkDto | undefined | null): string | null
   return null;
 }
 
-/** REQ-0173 follow-up (display-layer name reconciliation): index artworks by
- * BOTH their exact system_name AND their batch-stripped suffix (the part
- * after the last ':'). The two live backfills named their rows differently
- * (artworks: 'batch-004-item-icons-flux2:blade'; content defs: 'blade'), so
- * exact matching lights up ZERO facets on the live data. Suffix entries
- * never shadow an exact entry, and an adopted-render artwork wins a suffix
- * collision. DISPLAY-ONLY linkage: the server's has_artwork_facet
- * (exact-match) is untouched; real name reconciliation is a future
- * registry REQ. */
+/** Index artworks by exact system_name. REQ-0174 REMOVED the REQ-0173
+ * batch-suffix fallback: art linkage is now an operator-SELECTED def-level
+ * reference (artwork_ref), so the fuzzy suffix inference is gone; the exact-
+ * name index stays as the one-name-one-entity canonical fallback and the
+ * picker's suggested default. See resolveDefArtwork / artLinkMode. */
 export function buildArtworkIndex(artworks: ArtworkDto[]): Record<string, ArtworkDto> {
   const index: Record<string, ArtworkDto> = {};
-  const exact = new Set<string>();
-  for (const a of artworks) { index[a.system_name] = a; exact.add(a.system_name); }
-  for (const a of artworks) {
-    const i = a.system_name.lastIndexOf(':');
-    if (i < 0) continue;
-    const suffix = a.system_name.slice(i + 1);
-    if (!suffix || exact.has(suffix)) continue;
-    const cur = index[suffix];
-    if (!cur || (cur.adopted_render_id == null && a.adopted_render_id != null)) index[suffix] = a;
-  }
+  for (const a of artworks) index[a.system_name] = a;
   return index;
+}
+
+/** REQ-0174: resolve a def's linked artwork by the REF-FIRST canon that
+ * mirrors the server (artwork_facet_name is the server's authority on the
+ * detail view): explicit artwork_ref -> exact system_name match -> null. */
+export function resolveDefArtwork(
+  def: { artwork_ref?: string | null; system_name: string },
+  byName: Record<string, ArtworkDto>,
+): ArtworkDto | null {
+  if (def.artwork_ref && byName[def.artwork_ref]) return byName[def.artwork_ref];
+  return byName[def.system_name] ?? null;
+}
+
+export type ArtLinkMode = 'selected' | 'name match' | 'none';
+/** How a def's art is linked: an explicit ref ('selected'), the exact-name
+ * canonical fallback ('name match'), or nothing ('none'). */
+export function artLinkMode(
+  def: { artwork_ref?: string | null; system_name: string },
+  byName: Record<string, ArtworkDto>,
+): ArtLinkMode {
+  if (def.artwork_ref && byName[def.artwork_ref]) return 'selected';
+  if (byName[def.system_name]) return 'name match';
+  return 'none';
+}
+
+/** REQ-0174: testid-safe form of an artwork system_name for picker rows.
+ * Artwork names may contain ':' on the live data (batch-namespaced rows);
+ * ':' -> '__' so `cd-art-pick-<safe>` stays a stable, selector-safe token.
+ * Every other allowed name char ([A-Za-z0-9_]) passes through unchanged. */
+export function artPickTestid(system_name: string): string {
+  return 'cd-art-pick-' + system_name.replace(/:/g, '__');
 }
 
 /** Top-level keys whose pretty-JSON value differs between two entity records

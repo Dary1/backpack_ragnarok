@@ -117,6 +117,26 @@ async function main() {
     assert.ok(e2 && e2.code === 'NOT_FOUND', 'missing def refused');
   });
 
+  await AT('REQ-0174 aggregate row carries artwork_ref + ref-first has_artwork_facet (ref beats exact-name miss)', async () => {
+    const def = await storage.createContentDef({ system_name: 'agg_ref', kind: 'po_def', brief: 'ref aggregate probe', schema_ref: 'po/2' });
+    const v1 = await storage.createVariant(def.id, { data: variantData(1), provenance: llmProv(1) });
+    await storage.setVariantMachineCheck(v1.id, fakeCheck('PASS'));
+    // an artwork whose bare name DIFFERS from the def's -> only reachable via ref
+    await storage.createArtwork({ system_name: 'agg_ref_art', kind: 'po', shape: null, gen_width: 512, gen_height: 512, main_object: 'z', prompt_template: 't' });
+    // before the ref: no exact-name artwork, so no facet
+    let row = (await storage.listContentDefs()).find((d) => d.system_name === 'agg_ref');
+    assert.strictEqual(row.has_artwork_facet, false, 'no ref + no exact-name -> no facet');
+    assert.strictEqual(row.artwork_ref, null, 'no ref yet');
+    // set the ref: the aggregate row lights up via the ref, not the name
+    await storage.updateContentDef('agg_ref', { artwork_ref: 'agg_ref_art' });
+    row = (await storage.listContentDefs()).find((d) => d.system_name === 'agg_ref');
+    assert.strictEqual(row.artwork_ref, 'agg_ref_art', 'aggregate row carries artwork_ref');
+    assert.strictEqual(row.has_artwork_facet, true, 'has_artwork_facet true via the ref');
+    // the REQ-0157 aggregates remain correct alongside the new field
+    assert.strictEqual(row.variant_count, 1, 'variant_count still correct');
+    assert.strictEqual(row.ok_count, 1, 'ok_count still correct');
+  });
+
   await storage.clearAllContent();
   await storage.clearAllArtworks(); // the shared-namespace facet row
   await storage.closeContentPool();

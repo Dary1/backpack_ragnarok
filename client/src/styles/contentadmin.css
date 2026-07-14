@@ -313,3 +313,45 @@
 .ca-ep-pool-unit { color: var(--bone); }
 .ca-ep-pool-weight { color: var(--bone-3); }
 .ca-ep-pool-pct { margin-left: auto; color: var(--gold); }
+/* ---- REQ-0174: def-level artwork reference (header row + picker overlay) ---- */
+.ca-artrow { margin-top: 6px; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ca-artrow-label { color: var(--bone-3); }
+.ca-artrow-name { color: var(--gold); font-family: ui-monospace, monospace; word-break: break-all; }
+.ca-artrow-mode { color: var(--bone-3); }
+.ca-art-pick-btn { margin-left: auto; }
+
+.ca-art-picker {
+  width: min(560px, 92vw); max-height: 82vh; display: flex; flex-direction: column;
+  gap: 8px; overflow: hidden;
+}
+.ca-art-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ca-art-picker-note { color: var(--bone-3); }
+.ca-art-typechips { flex-wrap: wrap; }
+.ca-art-picker-actions { display: flex; align-items: center; gap: 8px; }
+.ca-art-picklist { display: flex; flex-direction: column; gap: 4px; overflow: auto; min-height: 0; }
+.ca-art-pickrow {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 4px 6px; border: 1px solid var(--border-lo); border-radius: 3px;
+  background: rgba(255,255,255,0.02); color: var(--bone-2); cursor: pointer;
+}
+.ca-art-pickrow:hover { border-color: var(--gold-lo); }
+.ca-art-pickrow.is-current { border-color: var(--gold); background: rgba(214,178,102,0.10); }
+.ca-art-pickthumb {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 2px; overflow: hidden;
+  border: 1px solid var(--border-lo); display: grid; place-items: center; background: #0C1016;
+}
+.ca-art-pickthumb img { width: 100%; height: 100%; object-fit: cover; }
+.ca-art-pickname { flex: 1 1 auto; font-family: ui-monospace, monospace; word-break: break-all; }
+.ca-art-suggest { font-size: 11px; color: var(--frost); border-color: var(--frost-lo); }
+.ca-art-adopted { font-size: 11px; color: var(--r-uncommon); }
+.ca-art-currentchip { font-size: 11px; color: var(--gold); border-color: var(--gold-lo); }
+
+/* ---- REQ-0174: per-variant def-resolved artwork thumb (variants get art
+   ONLY through the parent def) ---- */
+.ca-vcard-entity { display: flex; align-items: flex-start; gap: 8px; }
+.ca-vcard-art {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 2px; overflow: hidden;
+  border: 1px solid var(--gold-lo); display: grid; place-items: center; background: #0C1016;
+}
+.ca-vcard-art img { width: 100%; height: 100%; object-fit: cover; }
+.ca-vcard-art-ph { color: var(--gold-lo); font-size: 13px; }
