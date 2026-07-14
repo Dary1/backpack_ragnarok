@@ -173,3 +173,33 @@ server/services/gacha.cjs, shared/constants.json, tools/ci.sh.
 - (this file's git mv todo->built lands as its own commit, hash recorded on merge.)
 
 NOT merged to master, NOT deployed — handed to the integration owner per task brief.
+
+---
+
+## Integration-owner merge + deploy (2026-07-14)
+
+- **Migration NUMBER collision resolved.** master already carried `012_starter_claims.sql`
+  (REQ-0051, merged earlier today). This REQ's `012_bp_bio.sql` was renumbered to
+  `013_bp_bio.sql` on the branch (commit `44ebcb6`) before merge; internal comment header
+  updated to match. The `bp_bio` table was already present in the deploy DB (columns
+  bp_uid, doc, updated_at) -- migration is idempotent (`CREATE TABLE IF NOT EXISTS` + GRANT),
+  no re-apply needed. Final sequence on master: 011_sealed_seeds, 012_starter_claims, 013_bp_bio.
+- **Merged into master --no-ff:** merge commit `984f191`. Clean, no conflicts (the renumber
+  removed the migration path collision; the gacha.cjs born-stamp hunk did not overlap REQ-0062's
+  rollPackBonuses hunks -- both features coexist in gacha.cjs).
+- **Sanity gate after 0060 merge:** server tsc (tsconfig.server.json) OK; bio_test FILES 10/0;
+  bio_test PG 10/0.
+- **Full release gate** `flock /tmp/backpack_ci.lock bash tools/release.sh`: **CI GREEN.**
+  api 176/0 (files+pg); bio_test 10/0 (files+pg); admin e2e 4+1+21; pre-deploy full e2e
+  **165/0** (incl. workshop gacha born-hook + schedule settle bio-fold). dist rebuilt +
+  committed `6ae7051`.
+- **Deployed:** restarted backpack-api + backpack-web (systemctl --user) -- both active;
+  HTTP 200 on 8801 /app/ and 8802 /api/health ({"ok":true,"version":"0.1.0"}).
+- **Post-deploy full e2e** (sanctioned wrapper, live): first pass 162/3 under heavy concurrent
+  box load (13.1m, ~4x slow). The 3 reds -- reference-model.spec.ts:166 & :239, schedule.spec.ts:1429
+  -- are drag/replay timing flakes UNRELATED to REQ-0060 (which ships no client/e2e surface) and
+  passed pre-deploy. Targeted serial rerun on a quiet box: **3 passed (42.7s)** -> confirmed flakes.
+  Effective post-deploy result: **165/165 GREEN**; live profile restored by teardown (sha256 match).
+- **Final master hash:** `6ae7051`.
+
+built -> done: this file moves docs/REQ/built/ -> docs/REQ/done/ in the immediately following commit.
