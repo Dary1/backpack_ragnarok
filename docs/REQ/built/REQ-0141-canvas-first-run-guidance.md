@@ -111,3 +111,12 @@ Wired: `client/src/{App.tsx,Settings.tsx,main.tsx,i18n.ts,index.css,store/boot.t
 
 ### Non-goals honored
 No tutorialized combat, no codex/rules-reference screen, no rebalancing.
+
+---
+
+## Wave-7 merge/deploy record (2026-07-14)
+
+- Merged to master via `--no-ff` **908890b** (branch `req-0141-first-run-guidance`, tip fe1e9fe). No conflicts; disjoint file set from REQ-0144. Client `tsc -b` sanity gate green before proceeding.
+- Full gate `flock /tmp/backpack_ci.lock bash tools/release.sh`: **CI GREEN**; dist rebuilt + committed as **5535b45** (guide now in the shipped `web/app/` bundle). Services restarted and verified active + HTTP 200 (web :8801 `/app/`, api :8802 `/api/health`).
+- Post-deploy full e2e (`pnpm run e2e`): **177 passed / 0 failed**, incl. `first-run-guide.spec.ts` **5/5** and `starter-units.spec.ts` (tour-dismissal) green. Note: the first release attempt aborted on a single `artadmin.spec.ts:113` `page.goto` 20s-timeout flake in the admin trio; an isolated rerun was 4/4, confirming a timing flake; the re-run release was fully green.
+- **Disposition: STAYS built.** The REQ Gates list an explicit unmet user-acceptance item -- "User playtest verdict green." The live fresh-guest first experience now ships the orientation tour (intended); built->done is withheld pending the user playtest verdict. Worktree retained.
