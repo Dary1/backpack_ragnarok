@@ -1,6 +1,6 @@
 # REQ-0166 — golden P5 guardrail + formation.xlsx retirement
 
-**Status:** built — applied on branch; awaiting merge.
+**Status:** done — merged to master (3a5893e) and deployed 2026-07-14 (docs-only; no service restart).
 **Reserved:** 2026-07-14
 **Slug:** golden-p5-guardrail-xlsx-retire
 **Follows:** REQ-0165 (user_managed doc audit) — the two items that REQ-0165
