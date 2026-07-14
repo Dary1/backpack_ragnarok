@@ -23,6 +23,8 @@ const LIVE_DIR = contentPath('live');
 const ITEMS_PATH = contentPath('live', 'live_items.json');
 const SIS_PATH = contentPath('live', 'live_sis.json'); // REQ-0115: SI (accessory) content defs
 const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
+const STARTER_ITEMS_PATH = contentPath("live", "starter_items.json"); // REQ-0051
+
 // REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
 // promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
 // batch dir. The path comes from sim/dungen.cjs's liveDungeonDir() so
@@ -97,6 +99,12 @@ function getScheduleContent() {
   const itemDefsById = {};
   for (const e of liveItems.entries) itemDefsById[e.id] = e;
   for (const e of pilotItems.entries) itemDefsById[e.id] = e; // pilot items overlay live (batch-002 demo modes)
+  // REQ-0051: starter-job kit items (isolated file; see server/lib/content.cjs).
+  // Overlay into the PO defs so a deployed starter squad simulates. An absent
+  // file degrades to none (synthetic test fixtures ship no starter_items.json).
+  let starterItems = { entries: [] };
+  try { starterItems = loadJSON(STARTER_ITEMS_PATH); } catch (e) { starterItems = { entries: [] }; }
+  for (const e of (starterItems.entries || [])) itemDefsById[e.id] = e;
 
   // REQ-0042: TM (Transmutator) defs, same id-keyed map shape as
   // itemDefsById above -- used by the admin grant route's tm+qty branch
