@@ -6,7 +6,13 @@
 // JSON (collapsible pretty-print + copy), diff vs adopted, A/B diff pick,
 // Adopt / Delete (both confirm-gated at the root), Edit-as-new (modal at the
 // root), Re-run checks (REQ-0157 recheck endpoint).
-import { useState } from 'react';
+// REQ-0164 additions: a transient `is-new` highlight + scroll-into-view for
+// freshly-ingested cards (C); the review DRAFT controls now hide behind a
+// per-card `review-open-<no>` toggle to de-clutter the browse case (F, the
+// REQ-0155 review-* draft testids are unchanged once opened); the recheck
+// button gets a busy state so double-clicks do not double-fire (C); and the
+// created timestamp renders LOCAL time with the raw ISO as its title (F).
+import { useEffect, useRef, useState } from 'react';
 import type { ContentVariantDto, MachineCheck } from '../api';
 import { copyText, fmtDate, parentLabel, prettyJson, reviewClass } from './contentShared';
 
@@ -15,6 +21,9 @@ export function VariantCard(props: {
   all: ContentVariantDto[];
   isAdopted: boolean;
   adoptedNo: number | null;
+  isNew: boolean;
+  shouldScroll: boolean;
+  recheckBusy: boolean;
   expandedChecks: Record<string, boolean>;
   onToggleCheck: (key: string) => void;
   reviewDraft: { verdict: string; rationale: string };
@@ -29,14 +38,25 @@ export function VariantCard(props: {
   onDiffAdopted: (no: number) => void;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
-  const { v, all, isAdopted, adoptedNo, expandedChecks, reviewDraft } = props;
+  const { v, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
   const no = v.variant_no;
   const [jsonOpen, setJsonOpen] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
   const mc: MachineCheck = v.machine_check || { overall: 'FAIL', checks: [] };
   const overall = mc.overall || 'FAIL';
   const r = v.agent_review;
   const lineage = parentLabel(v, all);
+
+  // REQ-0164 C: first freshly-ingested card scrolls into view (try-safe,
+  // browser-only; a no-op in headless Playwright). Keyed on shouldScroll so
+  // it fires once on ingest, not on every 5 s detail poll re-render.
+  useEffect(() => {
+    if (shouldScroll && cardRef.current) {
+      try { cardRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { /* headless no-op */ }
+    }
+  }, [shouldScroll]);
 
   async function doCopyJson() {
     const ok = await copyText(prettyJson(v.data));
@@ -44,15 +64,16 @@ export function VariantCard(props: {
   }
 
   return (
-    <div data-testid={'variant-' + no}
-      className={'ca-vcard' + (isAdopted ? ' is-adopted' : '') + (overall === 'FAIL' ? ' is-fail' : '')}>
+    <div ref={cardRef} data-testid={'variant-' + no}
+      className={'ca-vcard' + (isAdopted ? ' is-adopted' : '') + (overall === 'FAIL' ? ' is-fail' : '') + (isNew ? ' is-new' : '')}>
       <div className="ca-vcard-top">
         <span className="ca-vno den tnum">v{no}</span>
         {isAdopted && <b data-testid={'variant-adopted-' + no} className="aa-adopt-badge">ADOPTED</b>}
+        {isNew && <span data-testid={'variant-new-' + no} className="chip ca-newchip">new</span>}
         <span data-testid={'variant-source-' + no} className="ca-source" title={'model: ' + (v.provenance.model || '-')}>
           {v.provenance.source}{lineage ? ' ' + lineage : ''}
         </span>
-        <span className="ca-created t-micro tnum">{fmtDate(v.created_at)}</span>
+        <span className="ca-created t-micro tnum" title={v.created_at || ''}>{fmtDate(v.created_at)}</span>
       </div>
 
       <div data-testid={'checks-' + no} className="ca-checks">
@@ -73,8 +94,9 @@ export function VariantCard(props: {
           );
         })}
         <button type="button" data-testid={'recheck-' + no} className="btn btn-ghost aa-btn-xs ca-recheck"
+          disabled={recheckBusy}
           title="re-run the four machine checks (validators/vocab may have moved since ingest)"
-          onClick={() => props.onRecheck(no)}>Re-run checks</button>
+          onClick={() => props.onRecheck(no)}>{recheckBusy ? 'rechecking...' : 'Re-run checks'}</button>
       </div>
 
       <div className="ca-review">
@@ -90,17 +112,23 @@ export function VariantCard(props: {
             <b>{r.agent || 'agent'}</b> ({r.model || '?'}): {r.rationale}
           </div>
         )}
-        <span className="ca-review-draft">
-          <select data-testid={'review-verdict-select-' + no} className="aa-input ca-input-xs" value={reviewDraft.verdict}
-            onChange={(e) => props.onReviewDraft(no, { ...reviewDraft, verdict: e.target.value })}>
-            <option value="recommend">recommend</option><option value="neutral">neutral</option><option value="concern">concern</option>
-          </select>
-          <input data-testid={'review-rationale-' + no} className="aa-input ca-input-xs ca-rationale-input"
-            placeholder="rationale (required)" value={reviewDraft.rationale}
-            onChange={(e) => props.onReviewDraft(no, { ...reviewDraft, rationale: e.target.value })} />
-          <button data-testid={'review-submit-' + no} type="button" className="btn btn-ghost aa-btn-xs"
-            onClick={() => props.onReviewSubmit(no)}>save</button>
-        </span>
+        <button type="button" data-testid={'review-open-' + no} className="btn btn-ghost aa-btn-xs ca-review-toggle"
+          aria-expanded={reviewOpen} onClick={() => setReviewOpen((x) => !x)}>
+          {reviewOpen ? 'Hide review draft' : 'Add review'}
+        </button>
+        {reviewOpen && (
+          <span className="ca-review-draft">
+            <select data-testid={'review-verdict-select-' + no} className="aa-input ca-input-xs" value={reviewDraft.verdict}
+              onChange={(e) => props.onReviewDraft(no, { ...reviewDraft, verdict: e.target.value })}>
+              <option value="recommend">recommend</option><option value="neutral">neutral</option><option value="concern">concern</option>
+            </select>
+            <input data-testid={'review-rationale-' + no} className="aa-input ca-input-xs ca-rationale-input"
+              placeholder="rationale (required)" value={reviewDraft.rationale}
+              onChange={(e) => props.onReviewDraft(no, { ...reviewDraft, rationale: e.target.value })} />
+            <button data-testid={'review-submit-' + no} type="button" className="btn btn-ghost aa-btn-xs"
+              onClick={() => props.onReviewSubmit(no)}>save</button>
+          </span>
+        )}
       </div>
 
       <div className="ca-vactions">

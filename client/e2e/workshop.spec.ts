@@ -583,75 +583,48 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
   withDevUserFixture();
 
   /** Seeds ONE fresh 'blade' PO into the dev player's inventory page 0,
-   * preserving whatever else the canvas already holds -- same
-   * read-existing-then-append shape as seedDevLrdstBalance above. Cell
-   * [8,1] is deliberately far from every other fixture cell this file's
-   * other tests use. */
+   * as the ONLY dismantlable item, on a clean, self-consistent canvas.
+   * REQ-0172: this deliberately does NOT preserve what the canvas already
+   * holds (see the body) -- deriving from live state is what made this test
+   * order-dependent. */
   async function seedDevBladePo(page: Page, uid: string): Promise<any> {
-    const existingResp = await page.request.get('/api/profile/dev/canvas');
-    const canvas = existingResp.ok()
-      ? (await existingResp.json()).canvas
-      : {
-          linked: true, bps: [], pos: [], sis: [],
-          inv: {
-            pages: [
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-            ],
-            names: ['1', '2', '3', '4', '5'],
-          },
-        };
-    if (!canvas.inv) {
-      canvas.inv = {
+    // REQ-0172: build a CLEAN canvas from scratch -- do NOT derive it from
+    // whatever the dev profile currently holds.
+    //
+    // REQ-0159 derived it, cleared `inv.pages[*].pos/sis`, and pushed the blade,
+    // intending "this blade is the only dismantlable item". That produced an
+    // INCONSISTENT canvas and the test became order-dependent (green in full-file
+    // order, RED standalone). Why: the dev fixture's `p900` (a blade!) sits on the
+    // SQUAD CANVAS (`pos[].loc === 'grid'`) while its HOME lives in inventory --
+    // that is the REQ-0033 reference model, working as designed. Clearing the
+    // inventory homes while leaving the canvas reference behind left a reference
+    // with no home, so the engine correctly RESTORED p900's home on load. The
+    // picker then held TWO blades (the seeded one + p900), the dismantle removed
+    // one, and the list never went empty. In full-file order an earlier test
+    // happened to replace the whole canvas first, so p900 was gone and it passed --
+    // pure luck of ordering, which is exactly what this suite must not depend on.
+    //
+    // A canvas with references but no homes is not a state the game can hold, so
+    // the fix is to seed a state it CAN: no canvas references at all, one item in
+    // inventory, nothing to restore. That makes "the blade is the only dismantlable
+    // item" true by construction, in any order, on any box.
+    const canvas = {
+      linked: true,
+      bps: [],
+      pos: [],
+      sis: [],
+      layout: { ROWS: 8, COLS: 8 },
+      inv: {
         pages: [
-          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [{ uid, id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
         ],
         names: ['1', '2', '3', '4', '5'],
-      };
-    }
-    // REQ-0159: clear EVERY page's pos/sis (same isolation seedDevBladePos
-    // below already does) so this blade is the ONLY dismantlable item. That is
-    // deliberate, and it is the whole point: it forces the test down the
-    // "dismantle the LAST item" path every single time.
-    //
-    // That path is what used to break -- and, because this seed previously
-    // just APPENDED to whatever the live dev profile happened to hold, the
-    // test only took it when that profile happened to be otherwise empty. So
-    // the suite's coverage of the bug was decided by live-state leftovers: it
-    // "passed" on the runs that never reached the broken path. Pinning the
-    // fixture makes the hard path the guaranteed path.
-    for (const pg of canvas.inv.pages) {
-      pg.pos = [];
-      pg.sis = [];
-    }
-    // REQ-0159 (class B -- FLAKE, root cause: this fixture seeded the item
-    // OFF-GRID). `cell` is [row, col] and the engine's page grid is
-    // ONE-indexed (mock-src/engine.js: `if (r<1||r>ROWS||c<1||c>COLS) ->
-    // 'outside page'`), so on the 8x8 inventory page the legal rows are 1..8.
-    // `blade`'s shape is [[0,0],[1,0]] -- two cells tall -- so the old anchor
-    // [8, 1] spanned rows 8 AND 9: half of it hung off the bottom of the page.
-    // The picker still LISTED it (collectDismantlable just walks
-    // inv.pages[].pos and never looks at cell), which is why the row was
-    // visible and selectable and the test usually got its click in -- but the
-    // app boots on #/backpacks, mounts the inventory board over this illegal
-    // placement, and loadGame() schedules an auto-save 800ms later
-    // (AUTO_SAVE_DEBOUNCE_MS, store/autosave.ts). When that landed BEFORE the
-    // confirm click -- which is what happens once the box is loaded, hence
-    // "only under E2E_PARALLEL" -- the item was gone from state, selectedItems
-    // was empty, and confirmDismantle() early-returned without POSTing: no
-    // toast, no error, an empty picker. That is exactly what the failure
-    // snapshot showed ("Nothing in your inventory to dismantle yet" + a
-    // completed "saved ✓"), and it is why no error message ever appeared.
-    // Anchor at a LEGAL cell (rows 1-2, col 1) so the seeded state is state
-    // the game can actually hold, and the boot auto-save is a no-op.
-    canvas.inv.pages[0].pos.push({ uid, id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 });
+      },
+    };
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;
@@ -791,23 +764,28 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
         names: ['1', '2', '3', '4', '5'],
       };
     }
-    // REQ-0090 isolation: collectDismantlable sweeps EVERY inventory
-    // page's pos+sis, and this dev fixture is SHARED with every other
-    // test in this file (BP-move-handle, gacha roll, TM merge, etc.) --
-    // clearing every page's pos/sis (bps/tms untouched, irrelevant to
-    // this panel) is the only way to guarantee this test's own items
-    // are the WHOLE dismantlable list rather than some unknown superset
-    // of it, so the drag/range assertions below can reason about exact,
-    // contiguous row indices.
+    // REQ-0090 isolation: collectDismantlable sweeps EVERY inventory page's
+    // pos+sis, so this test's own items must be the WHOLE dismantlable list for
+    // its drag/range assertions to reason about exact, contiguous row indices.
+    //
+    // REQ-0172: clearing the inventory is NOT enough, and clearing it ALONE is
+    // actively wrong. The dev fixture keeps POs on the SQUAD CANVAS whose HOMES
+    // live in inventory (the REQ-0033 reference model); wiping the homes while
+    // leaving those canvas references behind makes the engine RESTORE the homes
+    // on load, and the extra rows silently shift every index this test asserts on.
+    // That is the same trap that made the single-item dismantle spec above
+    // order-dependent. Clear the canvas references too, so the five blades below
+    // really are the entire list -- in any order, on any box.
+    canvas.bps = [];
+    canvas.pos = [];
+    canvas.sis = [];
     for (const pg of canvas.inv.pages) {
       pg.pos = [];
       pg.sis = [];
     }
-    // REQ-0159: same off-grid seed bug as seedDevBladePo above (anchor row 8
-    // + a 2-tall blade = rows 8..9, off the 1-indexed 8-row page). Anchor each
-    // blade at row 1 in its OWN column instead: rows 1-2 x cols 1..5, all
-    // in-bounds and mutually non-overlapping, so the five rows the drag /
-    // Shift+Click / Ctrl+Click range assertions below index into are stable.
+    // Anchor each blade at row 1 in its OWN column: blade's shape is [[0,0],[1,0]]
+    // (2 cells tall) and the page grid is 1-indexed 8x8, so rows 1-2 x cols 1..5
+    // are all in-bounds and mutually non-overlapping.
     canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [1, 1 + i], rot: 0 }));
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);

@@ -21,18 +21,13 @@ set -euo pipefail
 
 WT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# REQ-0159: these defaults used to be 8921/8922/8923 -- byte-identical to
-# tools/artadmin_e2e.sh's. That was harmless while each harness was only ever
-# run BY HAND, one at a time (REQ-0156/0157), but tools/ci.sh now runs all three
-# back-to-back in one step, and the second harness to claim the band could not
-# bind its ports while the first one's processes were still on their way down:
-# its proxy never came up and every spec in it died on ECONNREFUSED :8923.
-# Give this harness its own band so the three are independent by construction,
-# in ci.sh AND for anyone chaining them by hand. (art_inspect_e2e.sh already had
-# its own: 8911/8912/8913.)
-APIPORT="${APIPORT:-8932}"
-STATICPORT="${STATICPORT:-8931}"
-PROXYPORT="${PROXYPORT:-8933}"
+# REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
+#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
+# so REQ-0157 owns 1570..1579 and can never collide with another REQ's harness.
+# The helper also preflights each port and aborts with ONE clear line if it is
+# busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
+# "E2E / harness port allocation".
+source "$(dirname "$0")/e2e_ports.sh" 0157
 
 TMPHOME="$(mktemp -d)"
 EXPORTDIR="$(mktemp -d)"

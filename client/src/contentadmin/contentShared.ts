@@ -3,6 +3,9 @@
 // single-file ContentAdminPage, mirroring the artadmin/artShared.ts pattern
 // of REQ-0156). Registry semantics live on the server; everything here is
 // display/validation sugar only.
+// REQ-0164 (contentadmin-ux-r2): fmtDate now renders LOCAL time (title attr
+// keeps the raw ISO), a kind-driven schema_ref default map replaces the flat
+// placeholder, and a client-side def sort helper backs the rail sort control.
 import type { ContentDefDto, ContentVariantDto } from '../api';
 
 export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def';
@@ -12,6 +15,23 @@ export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm
 // GET owns) -- checked client-side for instant feedback; the server
 // re-checks on POST.
 export const RESERVED_NAMES = ['defs', 'dev', 'meta'];
+
+// REQ-0164 G: kind -> canon schema_ref default (the backfill's origin_schema
+// truth). Single source for CreatePanel's pristine auto-swap. unit_def has no
+// canon schema yet (documented) -- keep the generic vocab placeholder.
+export const SCHEMA_REF_DEFAULTS: Record<Kind, string> = {
+  po_def: 'po/2',
+  si_def: 'si/2',
+  tm_def: 'tm/1',
+  monster_def: 'enemy/1',
+  skill_def: 'skill/1',
+  unit_def: 'content/vocab.json',
+};
+/** Canon schema_ref default for a kind (falls back to the generic vocab
+ * placeholder for any future/unknown kind). */
+export function defaultSchemaRef(kind: string): string {
+  return (SCHEMA_REF_DEFAULTS as Record<string, string>)[kind] || 'content/vocab.json';
+}
 
 /** Live create-form name validation: regex, reserved words, duplicates
  * against the loaded def list. Returns an error string or null when OK. */
@@ -25,9 +45,42 @@ export function validateNewName(name: string, existing: ContentDefDto[]): string
 
 export function prettyJson(o: unknown): string { return JSON.stringify(o, null, 2); }
 
-/** 'YYYY-MM-DD HH:MM' for variant cards / rail tooltips. */
+/** REQ-0164 F: 'YYYY-MM-DD HH:MM' in the operator's LOCAL timezone (the raw
+ * UTC ISO was -9h off for the JST desk). Pure + unit-testable; falls back to
+ * the raw slice for an unparseable value. The card/tooltip callers pass the
+ * raw ISO as the title attr, so the exact UTC instant stays inspectable. */
 export function fmtDate(iso: string | null | undefined): string {
-  return (iso || '').slice(0, 16).replace('T', ' ');
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso).slice(0, 16).replace('T', ' ');
+  const p = (n: number) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+    + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+// REQ-0164 E: client-side rail sort. 'created' keeps the server order
+// (created_at ASC == monotonic id ASC); 'name' is A->Z; 'activity' is
+// last_variant_at DESC with nulls (never-ingested defs) last.
+export type SortMode = 'created' | 'name' | 'activity';
+export const SORT_MODES: SortMode[] = ['created', 'name', 'activity'];
+export function sortDefs(defs: ContentDefDto[], mode: SortMode): ContentDefDto[] {
+  const arr = defs.slice();
+  if (mode === 'name') {
+    arr.sort((a, b) => a.system_name.localeCompare(b.system_name));
+  } else if (mode === 'activity') {
+    arr.sort((a, b) => {
+      const ta = a.last_variant_at ? Date.parse(a.last_variant_at) : NaN;
+      const tb = b.last_variant_at ? Date.parse(b.last_variant_at) : NaN;
+      const na = isNaN(ta), nb = isNaN(tb);
+      if (na && nb) return (a.id || 0) - (b.id || 0); // both never-ingested -> created order
+      if (na) return 1; // nulls last
+      if (nb) return -1;
+      return tb - ta; // most-recent activity first
+    });
+  } else {
+    arr.sort((a, b) => (a.id || 0) - (b.id || 0)); // created order (default)
+  }
+  return arr;
 }
 
 // ---- line diff (REQ-0155 algorithm kept: positional comparison of the
