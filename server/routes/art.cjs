@@ -211,6 +211,10 @@ async function hAdopt(req, res, name) {
   catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   let exportRec = null, exportError = null;
   try { exportRec = await exportAdopted(name); } catch (e) { exportError = e.message; }
+  // REQ-0133: the adopted render just changed -> recompute the /api/content
+  // registry-first art_urls map so the game + admin pick it up on the next fetch
+  // (awaited => the wiring e2e is deterministic). Non-fatal on any hiccup.
+  try { await require('../lib/content.cjs').refreshArtUrls(); } catch (e) { /* non-fatal */ }
   sendJSON(res, 200, { ok: true, artwork: art, export: exportRec, export_error: exportError });
 }
 

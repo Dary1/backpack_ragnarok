@@ -219,6 +219,18 @@ export interface ApiContentPayload {
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
   starterUnits?: ApiStarterUnits | null; // REQ-0051
+  /** REQ-0133 registry-first item art. A payload-level map from a served
+   * entity id (po/si/tm -- one-name-one-entity, globally unique) to the
+   * RESOLVED adopted-render URL (`/api/art/<artwork>.png`), following the chain
+   * def.artwork_ref adopted -> exact-name artwork adopted (computed server-side
+   * at the storage chokepoint). ADDITIVE + SPARSE: only ids that resolve to an
+   * adopted render appear; an ABSENT id means "no registry art" and the client
+   * falls back to the SVG sprite icon (the `icon` field) -- that fallback tier is
+   * the client's, not the server's. Chosen over a per-entry `art_url` because it
+   * is one small object the client reads once, keeps every existing entry shape
+   * byte-unchanged, and is empty (not per-entry noise) under the files backend
+   * where the registry is unavailable. */
+  art_urls?: Record<string, string>;
 }
 
 export interface ApiCanvasDoc {

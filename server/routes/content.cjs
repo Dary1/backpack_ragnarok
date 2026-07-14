@@ -164,6 +164,9 @@ async function hPatchDef(req, res, name) {
   catch (e) { return sendJSON(res, 400, { ok: false, error: e.message }); }
   if (!refPatch.skip) patch.artwork_ref = refPatch.value;
   const updated = await storage.updateContentDef(name, patch);
+  // REQ-0133: an artwork_ref change alters registry-first resolution -> refresh
+  // the /api/content art_urls map (awaited for e2e determinism). Non-fatal.
+  if (!refPatch.skip) { try { await require('../lib/content.cjs').refreshArtUrls(); } catch (e) { /* non-fatal */ } }
   sendJSON(res, 200, { ok: true, def: updated });
 }
 

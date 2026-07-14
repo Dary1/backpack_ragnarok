@@ -107,6 +107,43 @@ async function resolveArtworkFacetName(def) {
   return null;
 }
 
+/** REQ-0133: the GAME registry-first art resolution, computed HERE at the
+ * storage chokepoint in ONE cross-table round-trip (no client-side cross-
+ * registry join for the game path). Given a batch of bare entity ids (the
+ * served po/si/tm names), returns { id -> resolved artwork bare name } for every
+ * id that resolves to an ADOPTED render, following the ratified chain:
+ *   def.artwork_ref's adopted render  ->  exact-name artwork's adopted render
+ * An id that resolves to neither is OMITTED -- the client then falls back to the
+ * SVG sprite icon (that fallback tier is the CLIENT's, not the server's). A
+ * def.artwork_ref pointing at an artwork with no adopted render (or a since-
+ * deleted artwork) degrades to the exact-name rung, then to omission -- never an
+ * error (documented graceful degradation, same posture as resolveArtworkFacetName).
+ * The returned name is exactly what GET /api/art/<name> serves; the route layer
+ * turns it into the URL. */
+async function resolveItemArtNames(names) {
+  const uniq = Array.from(new Set((names || []).filter((n) => typeof n === 'string' && n.length > 0)));
+  if (uniq.length === 0) return {};
+  const ns = uniq.map(nsName);
+  const res = await q(
+    `WITH input(bare, nsname) AS (SELECT * FROM unnest($1::text[], $2::text[]))
+     SELECT i.bare AS bare,
+            d.artwork_ref AS ref,
+            (d.artwork_ref IS NOT NULL AND aref.adopted_render_id IS NOT NULL) AS ref_ok,
+            (aexact.adopted_render_id IS NOT NULL) AS exact_ok
+       FROM input i
+       LEFT JOIN content_defs d ON d.system_name = i.nsname
+       LEFT JOIN artworks aref   ON aref.system_name  = $3 || d.artwork_ref
+       LEFT JOIN artworks aexact ON aexact.system_name = i.nsname`,
+    [uniq, ns, NS_PREFIX]);
+  const out = {};
+  for (const row of res.rows) {
+    if (row.ref_ok) out[row.bare] = row.ref;          // rung 1: adopted render of def.artwork_ref
+    else if (row.exact_ok) out[row.bare] = row.bare;  // rung 2: adopted render of the exact-name artwork
+    // else: unresolved -> omitted (client sprite fallback)
+  }
+  return out;
+}
+
 /** Create a content_def. content_defs.system_name is UNIQUE (one data facet
  * per name); a DUPLICATE surfaces as code DUPLICATE. The shared namespace
  * with artworks is deliberate (one entity, two facets), so a matching
@@ -349,7 +386,7 @@ async function clearAllContent() {
 module.exports = {
   closeContentPool,
   createContentDef, getContentDefByName, listContentDefs, updateContentDef,
-  artworkFacetExists, resolveArtworkFacetName,
+  artworkFacetExists, resolveArtworkFacetName, resolveItemArtNames,
   createVariant, updateVariantData, setVariantMachineCheck, setVariantReview,
   getVariantByNo, getVariantById, listVariants,
   adoptVariant, deleteVariant, getAdoptedVariant, clearAllContent,

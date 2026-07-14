@@ -176,7 +176,7 @@ function buildContentPayload() {
   };
 }
 
-function getContent() {
+function ensureFilePayload() {
   const mtimes = {
     vocab: statMtimeMs(VOCAB_PATH),
     items: statMtimeMs(ITEMS_PATH),
@@ -204,6 +204,64 @@ function getContent() {
   return contentCache.payload;
 }
 
+// ---- REQ-0133: registry-first art_url resolution (warm cache) ----
+// Per served item (po/si/tm) the game needs the RESOLVED adopted-render URL
+// (chain: def.artwork_ref adopted -> exact-name adopted -> sprite fallback, the
+// last tier being the client's). Unlike the rest of the payload this is DB-
+// derived (adopted renders), not file-derived, so it can change without any
+// content file changing -- it lives in its OWN warm cache, refreshed off a TTL +
+// explicitly on adopt / artwork_ref change (refreshArtUrls). getContent()
+// attaches the CURRENT map SYNCHRONOUSLY as an additive `art_urls` field, so
+// /api/content stays one synchronous, cacheable fetch and every existing
+// (synchronous) caller/test is unaffected. Resolution itself is computed at the
+// storage chokepoint (storage.resolveItemArtNames) -- no client-side cross-
+// registry join for the game path. The registry is pg-only: under the files
+// backend (or with no DATABASE_URL) the map is empty and the client falls back
+// to the SVG sprite for every item (which, post the REQ-0177 backfill, is the
+// same pixel anyway).
+let artUrls = {};
+let artUrlsAt = 0;
+const ART_URLS_TTL_MS = 15000;
+
+async function computeArtUrls() {
+  if (process.env.STORAGE_BACKEND !== 'pg') return {}; // the artwork registry is pg-only
+  const payload = ensureFilePayload();
+  const names = [].concat(
+    Object.keys(payload.items || {}),
+    Object.keys(payload.sis || {}),
+    Object.keys(payload.tms || {})
+  );
+  const storage = require('../storage.cjs');
+  const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }
+  const map = {};
+  for (const id of Object.keys(resolved)) {
+    if (resolved[id]) map[id] = '/api/art/' + encodeURIComponent(resolved[id]) + '.png';
+  }
+  return map;
+}
+
+/** Recompute the art_urls map now. AWAITED by adopt / artwork_ref-change so the
+ * next /api/content is fresh (this is what makes the wiring e2e deterministic);
+ * also fired opportunistically (fire-and-forget) by getContent on a TTL. Never
+ * throws: a registry read failure keeps the last map (empty at worst) so
+ * /api/content never 500s on a transient DB hiccup. */
+async function refreshArtUrls() {
+  try { artUrls = await computeArtUrls(); artUrlsAt = Date.now(); }
+  catch (e) { /* keep last map; /api/content must not fail on a registry read */ }
+  return artUrls;
+}
+
+function getContent() {
+  const payload = ensureFilePayload();
+  payload.art_urls = artUrls; // additive registry-first map (see the warm-cache note above)
+  if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
+  return payload;
+}
+
+// Warm the map shortly after boot so the FIRST client already sees registry art
+// (never blocks require; a no-op under the files backend).
+setImmediate(() => { refreshArtUrls().catch(() => {}); });
+
 // ---- HTTP helpers ----
 
 function invalidateContentCache() { contentCache = null; }
@@ -211,5 +269,5 @@ function invalidateContentCache() { contentCache = null; }
 module.exports = {
   REPO_ROOT, CONTENT_DIR, LIVE_DIR, VOCAB_PATH, ITEMS_PATH, SIS_PATH, TMS_PATH, UNITS_PATH, PACKS_PATH, SCENARIO_PATH, REGISTRY_PATH,
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
-  buildContentPayload, getContent, invalidateContentCache,
+  buildContentPayload, getContent, invalidateContentCache, refreshArtUrls,
 };
