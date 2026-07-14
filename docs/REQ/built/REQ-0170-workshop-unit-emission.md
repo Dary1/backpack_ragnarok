@@ -205,3 +205,24 @@ that asserts the HAPPY path was taken, not just that the sad path did not crash.
 
 - The dev player's LRDST balance is **0** (it was 0 before this REQ too), so the Roll button
   is disabled. A grant is an operational action, not a code one — say the word.
+
+### Ordering lesson (found while verifying, 2026-07-14)
+
+**The purge must run AFTER e2e, not before.** The suite's global-setup/teardown backs up and
+restores the LIVE profile, and it seeds squads through the API — so an e2e run performed
+after the purge put unit-less BPs back into live profiles (20 BPs across 33 profiles, from
+a stale pre-REQ-0170 profile backup that teardown restored). Nothing was broken by this
+(the board's guards skip a unit-less BP rather than crashing), but it is exactly the kind of
+"the migration ran and the data came back" trap worth writing down.
+
+Re-run after e2e, verified clean: **LIVE namespace = 505 profiles / 2344 BPs / ZERO without
+a Unit.** The migration is idempotent, so re-running it is always safe.
+
+### Live acceptance (2026-07-14)
+
+Rolled on backpack-dev: **Thief** — portrait, `COMMON`, `chess_knight_move (Jump (8 cells))`,
+6 cells / HP 90, seat D2, and **Rays: —** (a knight jump has no compass ray, and the modal
+says so instead of inventing one). The BP persisted as
+`{"unit": {"id": "thief", "off": [1,3]}}`; balance 999 → 989. 999 LRDST was granted to the
+signed-in player via the REQ-0042 warehouse route (an operational action, at the user's
+request).
