@@ -57,6 +57,8 @@ const gacha = require('./storage/gacha.cjs');
 const dismantle = require('./storage/dismantle.cjs');
 const market = require('./storage/market.cjs');
 const ragnarok = require('./storage/ragnarok.cjs');
+// REQ-0058: sealed-seed + participant-run registry storage subsystem.
+const seals = require('./storage/seals.cjs');
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
 // (owns its own async pg pool for BYTEA image blobs). Re-exported below so
 // storage.cjs stays THE single persistence chokepoint every caller imports.
@@ -94,6 +96,14 @@ module.exports = {
   readRun: runs.readRun,
   writeRun: runs.writeRun,
   listRunsForRoom: runs.listRunsForRoom,
+  // REQ-0058: sealed-seed + participant-run registry persistence
+  sealPath: seals.sealPath,
+  sealRunPath: seals.sealRunPath,
+  readSeal: seals.readSeal,
+  writeSeal: seals.writeSeal,
+  readSealRun: seals.readSealRun,
+  writeSealRun: seals.writeSealRun,
+  listSealRuns: seals.listSealRuns,
   readWarehouseItem: warehouse.readWarehouseItem,
   writeWarehouseItem: warehouse.writeWarehouseItem,
   deleteWarehouseItem: warehouse.deleteWarehouseItem,

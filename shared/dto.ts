@@ -289,6 +289,13 @@ export interface ApiRoom {
   createdAt: string;
   updatedAt: string;
   lastRunId: string | null;
+  /** REQ-0058: when set, this room is a sealed-seed run -- its dungeon
+   * tuple was copied verbatim from the shared seal (this sealId) and its
+   * run is single-shot (it never auto-restarts). Absent on a normal room. */
+  sealId?: string;
+  /** REQ-0058: the seal's frozen affixes (REQ-0055), copied verbatim.
+   * Present (possibly []) only on a sealed-seed room. */
+  affixes?: string[];
 }
 
 /** POST /api/schedule/rooms body. REQ-0043: `dungeonType` selects which
@@ -305,6 +312,10 @@ export interface ApiCreateRoomBody {
   genSeed?: string;
   formationId?: string;
   cancelPolicy?: ApiCancelPolicy;
+  /** REQ-0058: join a sealed run. When present, dungeonId/dungeonType/
+   * level/genSeed are IGNORED -- the room copies the seal's frozen tuple
+   * verbatim. One room per (sealId, caller); a second attempt 409s. */
+  sealId?: string;
 }
 
 /** GET .../run's run-clock event -- opaque to the client's type system
@@ -340,6 +351,102 @@ export interface ApiRunView {
   levelAfter: number;
   H: number;
   settled: boolean;
+}
+
+/** REQ-0058: public sealed-seed metadata (genSeed deliberately withheld --
+ * the recipient never handles the raw seed; the server copies it into
+ * their room server-side). */
+export interface ApiSealMeta {
+  sealId: string;
+  createdBy: string;
+  dungeonId: string;
+  dungeonType?: 'default' | 'test_fixed';
+  level: number;
+  affixes: string[];
+  createdAt: string;
+}
+
+/** POST /api/schedule/seal response. shareToken === seal.sealId (the
+ * unguessable token a minter passes to friends). */
+export interface ApiSealMintResponse {
+  ok: true;
+  seal: ApiSealMeta;
+  shareToken: string;
+}
+
+/** GET /api/schedule/seals/:sealId response. */
+export interface ApiSealMetaResponse {
+  ok: true;
+  seal: ApiSealMeta;
+  participantCount: number;
+  youAreParticipant: boolean;
+  yourRoomId: string | null;
+}
+
+/** REQ-0058: one encounter's slice of a participant's comparison timeline. */
+export interface ApiSealEncounter {
+  enc: number;
+  kind: string;
+  startSecs: number;
+  durationSecs: number;
+  endPct: number;
+}
+
+/** REQ-0058: the comparison metrics distilled from a participant's run
+ * (clear time / finishing H / per-encounter durations / damage taken /
+ * attachments resolved). */
+export interface ApiSealTimeline {
+  result: 'victory' | 'wipe' | 'incomplete';
+  clearTimeSecs: number;
+  finishingH: number | null;
+  levelAfter: number | null;
+  finalProgressPct: number | null;
+  damageTaken: number;
+  attachmentsResolved: number;
+  encounters: ApiSealEncounter[];
+}
+
+/** REQ-0058: one participant's entry in the comparison view. */
+export interface ApiSealParticipant {
+  playerId: string;
+  isSelf: boolean;
+  roomId: string;
+  hasRun: boolean;
+  settled: boolean;
+  runId: string | null;
+  timeline: ApiSealTimeline | null;
+}
+
+/** GET /api/schedule/seals/:sealId/comparison response. Anti-spoiler:
+ * `participants` is empty (and `unlocked` false) until the caller's own
+ * run of this sealId settles; `self` is always present. */
+export interface ApiSealComparison {
+  ok: true;
+  sealId: string;
+  seal: ApiSealMeta;
+  unlocked: boolean;
+  participantCount: number;
+  self: ApiSealParticipant;
+  participants: ApiSealParticipant[];
+}
+
+/** GET /api/schedule/seals/:sealId/runs/:playerId response (seal-scoped
+ * replay -- own always readable; another participant's is gated on the
+ * caller's own settle). */
+export interface ApiSealReplay {
+  ok: true;
+  sealId: string;
+  playerId: string;
+  roomId: string;
+  runId: string;
+  result: 'victory' | 'wipe' | 'incomplete';
+  durationSecs: number;
+  finalProgressPct: number;
+  H: number;
+  levelAfter: number;
+  settled: boolean;
+  events: ApiRunEvent[];
+  timeline: ApiSealTimeline;
 }
 
 /** GET /api/schedule/dungeons's per-dungeon/-formation entries. */
