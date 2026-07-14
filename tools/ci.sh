@@ -93,6 +93,11 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # as the unit-icon gate above, so it sits beside it, in front of the build.
   echo "==== [5.7/7] client link-trace queries (REQ-0142) ===="
   (cd client && node scripts/check_link_trace.mjs)
+  # REQ-0059: circuit-chimes deterministic event->note mapping (+ prefs).
+  # Pure functions, no browser/Pixi/AudioContext -- same vite-ssrLoadModule
+  # rig as the two gates above, so it sits beside them in front of the build.
+  echo "==== [5.8/7] client circuit-chime mapping (REQ-0059) ===="
+  (cd client && node scripts/check_chime_mapping.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
 else

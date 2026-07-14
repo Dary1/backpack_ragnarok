@@ -15,6 +15,14 @@ export const settingsEn = {
   'settings.botTitle': 'API / Bot mode',
   'settings.botComingSoon': 'Coming soon',
   'settings.botNote': 'Programmatic access for bots/automation will land in a future update.',
+
+  // REQ-0059: Circuit Chimes (+ haptics) controls.
+  'settings.soundTitle': 'Sound & Haptics',
+  'settings.chimesLabel': 'Circuit chimes',
+  'settings.chimesHint': 'Play a deterministic audio signature as your circuit ignites during a run replay.',
+  'settings.hapticsLabel': 'Haptics (vibration)',
+  'settings.hapticsHint': 'Vibrate in rhythm with the pulse on supported mobile devices.',
+  'settings.volumeLabel': 'Volume',
 } as const;
 
 export const settingsJa = {
@@ -29,4 +37,12 @@ export const settingsJa = {
   'settings.botTitle': 'API・ボットモード',
   'settings.botComingSoon': '近日公開予定',
   'settings.botNote': 'ボットや自動化向けのプログラム的アクセスは今後追加予定です。',
+
+  // REQ-0059: Circuit Chimes (+ haptics) controls.
+  'settings.soundTitle': 'サウンドと振動',
+  'settings.chimesLabel': 'サーキットチャイム',
+  'settings.chimesHint': 'リプレイ中、回路の起動に合わせて決定論的なオーディオシグネチャを再生します。',
+  'settings.hapticsLabel': '振動（ハプティクス）',
+  'settings.hapticsHint': '対応するモバイル端末で、パルスのリズムに合わせて振動します。',
+  'settings.volumeLabel': '音量',
 } as const;

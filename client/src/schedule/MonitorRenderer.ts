@@ -22,6 +22,7 @@
 // small dev-grade animation, not a full VFX system.
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunEvent } from '../api';
+import type { ChimeSink } from './chimes/chimeMapping';
 import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
 import { computeFootprintCells } from '../render/itemCard';
 import type { Offset } from '../engine/engine.d.ts';
@@ -148,6 +149,10 @@ export class MonitorRenderer {
    * in-flight self-removing tick can never fire against an already-
    * cleared/destroyed graphic after a retarget or a replay seek. */
   private activeTickers = new Set<() => void>();
+  /** REQ-0059: optional chime sink -- fed every NON-silent event (the same
+   * gate the transient VFX use) so audio stays perfectly in sync with the
+   * animation. null until/unless attached (chimes unavailable). */
+  private chimeSink: ChimeSink | null = null;
 
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
@@ -181,6 +186,12 @@ export class MonitorRenderer {
       antialias: true,
     });
     return new MonitorRenderer(app, textures);
+  }
+
+  /** REQ-0059: attach (or detach with null) the chime sink fed by
+   * applyEvents. Called by Monitor.tsx right after mount. */
+  setChimeSink(sink: ChimeSink | null): void {
+    this.chimeSink = sink;
   }
 
   private drawFieldBackdrop(field: Container): void {
@@ -577,6 +588,17 @@ export class MonitorRenderer {
       } catch (e) {
         // eslint-disable-next-line no-console
         console.warn('[backpack_ragnarok] MonitorRenderer: skipping malformed run event', ev, e);
+      }
+      // REQ-0059: feed the chime engine the SAME event -- only when NOT
+      // silent (a silent apply is a scrub/catch-up rebuild: no VFX, so no
+      // audio). Wrapped on its own so an audio error can never break the
+      // visual pipeline.
+      if (!silent && this.chimeSink) {
+        try {
+          this.chimeSink.handleEvent(ev);
+        } catch {
+          // audio is best-effort
+        }
       }
     }
   }
