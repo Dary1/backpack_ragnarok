@@ -28,6 +28,7 @@ const SI_ALLOWED_KEYS = new Set([
 // exists to end.
 const UNIT_ALLOWED_KEYS = new Set([
   'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape',
+  'unit_skin', // REQ-0180: default unit_skin/1 SET key
 ]);
 
 function isFiniteNum(v) {
@@ -205,6 +206,12 @@ function validateBody(body, kind, vocab) {
     if (typeof body.connection_shape !== 'string' || !(body.connection_shape in shapes)) {
       throw new Error('unknown connection_shape "' + body.connection_shape + '" (must be a key of vocab.connection_shapes)');
     }
+  }
+  // REQ-0180: a unit's DEFAULT unit_skin/1 SET key. Optional; the cross-reference
+  // (must name a LIVE set, whose bpskin must be a LIVE def) is enforced by
+  // tools/check_units.cjs, which holds the set + bpskin lists. Here: shape only.
+  if (body.unit_skin !== undefined && (typeof body.unit_skin !== 'string' || !body.unit_skin)) {
+    throw new Error('unit_skin must be a non-empty string (a unit_skin/1 set key)');
   }
 }
 

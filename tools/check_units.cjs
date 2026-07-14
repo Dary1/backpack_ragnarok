@@ -40,6 +40,9 @@ const packs = load(path.join(CONTENT, 'live', 'live_packs.json'));
 const liveItems = load(path.join(CONTENT, 'live', 'live_items.json'));
 const liveSis = load(path.join(CONTENT, 'live', 'live_sis.json'));
 const liveTms = load(path.join(CONTENT, 'live', 'live_tms.json'));
+// REQ-0180: the unit_skin/1 SET ledger + the bpskin/1 defs its sets reference.
+const unitSkins = load(path.join(CONTENT, 'live', 'live_unit_skins.json'));
+let bpskins; try { bpskins = load(path.join(CONTENT, 'live', 'live_bpskins.json')); } catch (e) { bpskins = { entries: [] }; }
 const contentIds = {
   po: new Set((liveItems.entries || []).map((e) => e.id)),
   si: new Set((liveSis.entries || []).map((e) => e.id)),
@@ -91,6 +94,26 @@ const used = new Set((units.entries || []).map((e) => e.connection_shape));
 console.log('units: ' + seen.size + ' defs / ' + used.size + ' distinct shapes used (of ' + shapes.length + ' in the vocabulary)');
 console.log('packs: ' + (packs.entries || []).length + ' / pool rows: ' + (packs.entries || []).reduce((n, p) => n + (p.pool || []).length, 0));
 console.log('bonus slots: ' + (packs.entries || []).reduce((n, p) => n + (p.bonus || []).length, 0) + ' (REQ-0062)');
+// REQ-0180: unit_skin/1 SET ledger + cross-references (a set's bpskin must be a
+// LIVE bpskin/1 def; a unit's default set must be a LIVE set). A dangling ref is
+// exactly the silent-lie failure mode this gate exists to catch.
+if (unitSkins.kind !== 'unit_skin/1') fail('live_unit_skins.json: kind must be "unit_skin/1", got ' + JSON.stringify(unitSkins.kind));
+const bpskinIds = new Set((bpskins.entries || []).map((e) => e.id));
+const setIds = new Set();
+for (const e of (unitSkins.entries || [])) {
+  if (!e || typeof e.id !== 'string' || !e.id) { fail('unit_skin set: id is required'); continue; }
+  if (setIds.has(e.id)) fail('duplicate unit_skin set id "' + e.id + '"');
+  setIds.add(e.id);
+  if (e.kind !== 'unit_skin/1') fail('unit_skin "' + e.id + '": kind must be "unit_skin/1"');
+  if (typeof e.name !== 'string' || !e.name) fail('unit_skin "' + e.id + '": name is required');
+  if (typeof e.art_unit !== 'string' || !e.art_unit) fail('unit_skin "' + e.id + '": art_unit is required (a kind=unit artwork system_name)');
+  if (typeof e.bpskin !== 'string' || !e.bpskin) fail('unit_skin "' + e.id + '": bpskin is required (a bpskin/1 def id)');
+  else if (!bpskinIds.has(e.bpskin)) fail('unit_skin "' + e.id + '": bpskin "' + e.bpskin + '" is not a live bpskin/1 def id');
+}
+for (const e of (units.entries || [])) {
+  if (e.unit_skin !== undefined && !setIds.has(e.unit_skin)) fail('unit "' + e.id + '": unit_skin "' + e.unit_skin + '" names no live unit_skin/1 set');
+}
+console.log('unit_skins: ' + setIds.size + ' sets (all bpskin refs checked against ' + bpskinIds.size + ' bpskin defs)');
 console.log('failures: ' + failures);
 if (failures) process.exit(1);
 console.log('ALL GREEN');

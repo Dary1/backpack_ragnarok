@@ -131,6 +131,8 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_auth.mjs)
   echo "==== [5.9b/7] client bp-skin resolver/registry/composite chain (REQ-0126) ===="
   (cd client && node scripts/check_bpskin.mjs)
+  echo "==== [5.9b2/7] client unit_skin SET resolver + live cross-refs (REQ-0180) ===="
+  (cd client && node scripts/check_unit_skin.mjs)
   echo "==== [5.9c/7] bp-skin S3 validation harness -- deterministic composite machine gate (REQ-0126) ===="
   (cd client && node scripts/bpskin_harness.mjs)
   echo "==== [5.9d/7] overlay accessibility harness -- CVD sim + contrast, emits BS-G2 numbers (REQ-0143) ===="
