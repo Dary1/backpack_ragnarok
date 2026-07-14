@@ -279,3 +279,14 @@ that e2e asserts on changes, update the spec assertion in the same commit.
   - Manual EN+JA browser pass: deferred to orchestrator browser QA (this role does
     coding + automated gates only).
 
+
+- **U9 follow-up (browser QA finding, 2026-07-14)**: orchestrator browser QA
+  PASSED with one residual nit -- after canceling a room that is in cooldown, the
+  Battle Monitor summary kept ticking its “Next run available in… / 次のランまで…”
+  cooldown line, even though the room card had correctly dropped its own countdown
+  chip on cancel. Monitor.tsx now mirrors RoomCard.deriveStatus: the cooldown /
+  next-run readout is suppressed when status===‘canceled’ or cancelRequested
+  (neither state will start another run). Fix commit ff84591 (“REQ-0168 U9
+  follow-up: no next-run countdown on a canceled room”). data-testids unchanged;
+  client has no unit specs for this line (0 client unit specs -- covered via e2e),
+  so no test was added or changed.
