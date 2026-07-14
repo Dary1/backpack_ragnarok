@@ -940,7 +940,11 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
             </>
           )}
           {settled ? <div className="schedule-monitor-settled-badge">{t(locale, 'schedule.monitor.settled')}</div> : null}
-          {room.cooldownUntil && Date.parse(room.cooldownUntil) > nowMs ? (
+          {/* REQ-0168 U9 follow-up: mirror RoomCard.deriveStatus -- a
+              canceled room (status:'canceled') or one already flagged
+              cancelRequested will not start another run, so suppress the
+              cooldown / next-run readout for it. */}
+          {room.status !== 'canceled' && !room.cancelRequested && room.cooldownUntil && Date.parse(room.cooldownUntil) > nowMs ? (
             <div className="schedule-monitor-cooldown" data-testid="schedule-monitor-cooldown">
               {t(locale, 'schedule.monitor.cooldownUntil', { time: formatCountdown(Date.parse(room.cooldownUntil) - nowMs, locale) })}
             </div>
