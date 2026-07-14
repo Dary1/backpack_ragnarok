@@ -233,6 +233,9 @@ export interface ApiContentPayload {
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
   starterUnits?: ApiStarterUnits | null; // REQ-0051
+  /** REQ-0180: bpskin/1 registry passthrough (server serves it). Typed loosely;
+   * consumed by the client's loadSkinDefs. Absent under an older server. */
+  bpskins?: { entries: unknown[] };
   /** REQ-0180: the unit_skin/1 SET ledger ({entries:[...]}). Tolerant/optional,
    * same shape as bpskins; absent under an older server -> client uses no sets. */
   unit_skins?: { entries: ApiUnitSkinEntry[] };
@@ -288,6 +291,9 @@ export interface ApiMe {
   playerId: string;
   name: string;
   roles: string[];
+  /** REQ-0180: unit_skin/1 SET keys this player may use. Profile-scoped;
+   * defaults to ALL defined sets (no acquisition flow yet). */
+  unitSkins?: string[];
 }
 
 /** GET /api/me. REQ-0037: sends X-Auth-Token when a token is stored;

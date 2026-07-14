@@ -67,7 +67,11 @@ import {
 import type { BoardOps } from './boardOps';
 import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, UNIT_CORE_RADIUS, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, pointSegDistance, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
-import { resolveUnitIcon, unitIconKey } from './unitIcon';
+import { resolveUnitIcon, unitIconKey, getUnitDef, unitSkinIconKey } from './unitIcon';
+import { resolveBpSkin } from './skin/bpSkinResolve'; // REQ-0180
+import { hasBpSkinDef, getBpSkinDef } from './skin/skinRegistry'; // REQ-0180
+import { getUnitSkinDef, resolveUnitSkinKey } from './skin/unitSkinRegistry'; // REQ-0180
+import { skinTextureFor } from './skin/skinTexture'; // REQ-0180
 import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve registry-first
 import { drawChargeRing } from './chargeRing';
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
@@ -424,6 +428,31 @@ export class BoardRenderer {
     // spec item 1: "BPs drawn as on canvas").
     for (const bp of container.bps) {
       const cells = engine.bpCells(bp);
+      // REQ-0180: the BP's silhouette SKIN. Resolve the active unit_skin SET
+      // (per-placement bp.unit.skin -> UnitDef.unit_skin -> none), then its
+      // bpskin/1 def, composite the cell shape (rounded edge + interior fill) and
+      // draw it UNDER the outline/label/tint/items. Gated on an EXPLICITLY resolved
+      // set: an un-set BP draws nothing here and stays byte-identical to
+      // pre-REQ-0180 (no neutral-everywhere regression). A missing/unresolvable
+      // skin falls through silently -- never blocks the board (BS-G1/BS-G4).
+      const bpUnit0 = bp.unit;
+      const activeSkinKey = bpUnit0 ? resolveUnitSkinKey(bpUnit0.skin, getUnitDef(bpUnit0.id)?.unit_skin) : null;
+      if (activeSkinKey) {
+        const set = getUnitSkinDef(activeSkinKey);
+        const bpskin = resolveBpSkin({ unitSetSkinId: set?.bpskin }, hasBpSkinDef);
+        const skinDef = bpskin.skinId ? getBpSkinDef(bpskin.skinId) : null;
+        if (skinDef) {
+          const st = skinTextureFor(cells, skinDef, CELL);
+          if (st) {
+            const skinSprite = new Sprite(st.texture);
+            skinSprite.x = PAD + (st.c0 - st.margin - 1) * CELL;
+            skinSprite.y = PAD + (st.r0 - st.margin - 1) * CELL;
+            skinSprite.alpha = ops.isCanvas ? 1 : 0.5;
+            skinSprite.eventMode = 'none'; // decorative, see constructor note
+            this.gBase.addChild(skinSprite);
+          }
+        }
+      }
       const outline = new Graphics();
       const cellSet = new Set(cells.map(([r, c]) => `${r},${c}`));
       for (const [r, c] of cells) {
@@ -921,6 +950,10 @@ export class BoardRenderer {
       // removed every one that did. If a stale save ever produces one anyway, draw
       // the bag and skip the unit -- a degraded board beats a blank one.
       if (!bp.unit) continue;
+      // REQ-0180: the active unit_skin SET also drives the Unit-core ART rung
+      // (resolveUnitIcon.skinKey), so a skinned unit shows the set's art_unit;
+      // falls through to the legacy glyph when the raster is absent.
+      const uSkinKey = resolveUnitSkinKey(bp.unit.skin, getUnitDef(bp.unit.id)?.unit_skin);
       const lc = engine.unitCell(bp);
       const x = cx(lc[1]);
       const y = cy(lc[0]);
@@ -951,7 +984,7 @@ export class BoardRenderer {
           // unitIconKey(). A BP whose unit art failed to load (or whose unit id is
           // unknown) simply falls through the chain to the legacy glyph -- the seam
           // does its job without a single change at this draw site.
-          skinKey: null,
+          skinKey: uSkinKey ? unitSkinIconKey(uSkinKey) : null, // REQ-0180
           defaultKey: bp.unit ? unitIconKey(bp.unit.id) : null,
         },
         (k) => textures.has(k)

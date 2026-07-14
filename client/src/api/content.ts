@@ -3,8 +3,10 @@
 // resolution (extracted VERBATIM from the old flat api.ts; see api.ts,
 // now the barrel, for the module history).
 import { getJSON } from './http';
-import type { ConnShapeMap, GameState, ItemDefMap, Layout, SIDefMap, Trees, UnitDefMap } from '../engine/engine.d.ts';
+import type { ConnShapeMap, GameState, ItemDefMap, Layout, SIDefMap, Trees, UnitDefMap, UnitSkinMap } from '../engine/engine.d.ts';
 import type { ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterUnits } from '../../../shared/dto';
+import { loadSkinDefs, type BpSkinDef } from '../board/skin/skinRegistry'; // REQ-0180
+import { loadUnitSkinDefs } from '../board/skin/unitSkinRegistry'; // REQ-0180
 import { fetchCanvas } from './profile';
 
 // ---- engine-ready shape (what Engine.create(...) + makeState() consume) ----
@@ -25,6 +27,11 @@ export interface GameData {
    * (`/api/art/<artwork>.png`). Sparse; an absent id falls back to its SVG
    * sprite icon. Handed to board/itemArt.setItemArtUrls() at boot. */
   ART_URLS: Record<string, string>;
+  /** REQ-0180: bpskin/1 defs, id-keyed (loadSkinDefs of payload.bpskins). The
+   * silhouette compositor + resolveBpSkin's has() read these. */
+  SKINS: Record<string, BpSkinDef>;
+  /** REQ-0180: unit_skin/1 SET ledger, key-keyed; each pairs art_unit + bpskin. */
+  UNIT_SKINS: UnitSkinMap;
   makeState: () => GameState;
   starterUnits: ApiStarterUnits | null; // REQ-0051: fresh-profile starter-unit seed source
 }
@@ -99,6 +106,11 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
   const PACKS: Record<string, ApiPackEntry> = payload.packs ?? {};
   // REQ-0133: the server-resolved registry-first art URLs (additive, sparse).
   const ART_URLS: Record<string, string> = payload.art_urls ?? {};
+  // REQ-0180: bpskin/1 defs + unit_skin/1 SET ledger, validated + id-keyed here
+  // (same normalization seam as UNITS/ITEMS). Tolerant: an older server without
+  // these fields yields empty maps and the boards render plain.
+  const SKINS: Record<string, BpSkinDef> = loadSkinDefs(payload.bpskins ?? { entries: [] });
+  const UNIT_SKINS: UnitSkinMap = loadUnitSkinDefs(payload.unit_skins ?? { entries: [] });
 
   const scenarioForState: Partial<ApiScenario> = JSON.parse(JSON.stringify(payload.scenario ?? {}));
   delete scenarioForState.layout;
@@ -108,7 +120,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, makeState, starterUnits: payload.starterUnits ?? null };
+  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, SKINS, UNIT_SKINS, makeState, starterUnits: payload.starterUnits ?? null };
 }
 
 export type DataSource = 'live' | 'error';

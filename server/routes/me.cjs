@@ -8,6 +8,26 @@ const { sendJSON, getAuthToken, getBearerToken } = require('../lib/http_util.cjs
 const admin = require('../admin.cjs');
 const players = require('../players.cjs');
 const supabaseAuth = require('../lib/supabase_auth.cjs');
+const content = require('../lib/content.cjs'); // REQ-0180
+const storage = require('../storage.cjs'); // REQ-0180
+
+// REQ-0180: which unit_skin/1 SETS may this player choose from? Availability is
+// PROFILE-scoped, but there is NO acquisition flow yet (user 2026-07-15: no
+// funnel, all-available is fine). A profile MAY carry an optional `unit_skins`
+// allowlist; absent -> every defined set. Never throws -- a read failure
+// degrades to all-available, exactly as the client's allUnitSkinKeys() floor.
+function allUnitSkinKeys() {
+  try { const doc = content.getContent(); return ((doc.unit_skins && doc.unit_skins.entries) || []).map((e) => e && e.id).filter(Boolean); }
+  catch (e) { return []; }
+}
+function availableUnitSkins(playerId) {
+  const all = allUnitSkinKeys();
+  try {
+    const prof = storage.readProfile(playerId);
+    const allow = prof && Array.isArray(prof.unit_skins) ? prof.unit_skins : null;
+    return allow ? all.filter((k) => allow.includes(k)) : all;
+  } catch (e) { return all; }
+}
 
 function tryMeRoute(req, res, url, p) {
   if (p === '/api/me' && req.method === 'GET') {
@@ -18,7 +38,7 @@ function tryMeRoute(req, res, url, p) {
         return;
       }
       const player = resolved.player;
-      sendJSON(res, 200, { playerId: player.playerId, name: player.name, roles: player.roles });
+      sendJSON(res, 200, { playerId: player.playerId, name: player.name, roles: player.roles, unitSkins: availableUnitSkins(player.playerId) });
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'me read failed: ' + e.message });
     }

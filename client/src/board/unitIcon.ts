@@ -109,6 +109,12 @@ export function unitIconKey(unitId: string, skinId?: string | null): string {
   return skinId ? `unit:${unitId}@${skinId}` : `unit:${unitId}`;
 }
 
+/** REQ-0180: texture-map key for a unit_skin SET's Unit-core art. Namespaced
+ * `unitskin:<setKey>` so it never collides with unit:* / item:* / icon-*. */
+export function unitSkinIconKey(setKey: string): string {
+  return 'unitskin:' + setKey;
+}
+
 /** The unit/1 defs, as served by /api/content. Set ONCE at boot (store/boot.ts)
  * before any board mounts. A module-level registry rather than a parameter
  * because loadBoardTextures() is called from three independent board components
@@ -120,6 +126,12 @@ let UNIT_DEFS: UnitDefMap = {};
 /** REQ-0170. Idempotent; safe to call again on a content hot-reload. */
 export function setUnitDefs(defs: UnitDefMap | null | undefined): void {
   UNIT_DEFS = defs || {};
+}
+
+/** REQ-0180: the def for one unit id (or null). BoardRenderer reads `.unit_skin`
+ * off it to resolve a placement's DEFAULT set. */
+export function getUnitDef(id: string | null | undefined) {
+  return (id && UNIT_DEFS[id]) || null;
 }
 
 /** The public, un-authenticated adopted-artwork route (server/routes/art.cjs's

@@ -41,3 +41,12 @@ export function loadSkinDefs(doc: unknown): Record<string, BpSkinDef> {
   for (const e of entries) { if (validateSkinDef(e).ok) { const def = e as BpSkinDef; out[def.id] = def; } }
   return out;
 }
+
+// REQ-0180: module-level registry of loaded bpskin/1 defs, set once at boot
+// (store/boot.ts) before any board mounts -- the manifest discipline of
+// unitIcon.ts's UNIT_DEFS. resolveBpSkin()'s has(id) predicate + the silhouette
+// compositor read these.
+let BPSKIN_DEFS: Record<string, BpSkinDef> = {};
+export function setBpSkinDefs(defs: Record<string, BpSkinDef> | null | undefined): void { BPSKIN_DEFS = defs || {}; }
+export function getBpSkinDef(id: string | null | undefined): BpSkinDef | null { return (id && BPSKIN_DEFS[id]) || null; }
+export function hasBpSkinDef(id: string): boolean { return Object.prototype.hasOwnProperty.call(BPSKIN_DEFS, id); }

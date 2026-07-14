@@ -3,6 +3,8 @@
 import { Engine } from '../engine/adapter';
 import { setUnitDefs } from '../board/unitIcon';
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
+import { setBpSkinDefs } from '../board/skin/skinRegistry'; // REQ-0180
+import { setUnitSkinDefs } from '../board/skin/unitSkinRegistry'; // REQ-0180
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -178,6 +180,11 @@ export async function boot(): Promise<void> {
   // manifest BEFORE any board mounts, so loadBoardTextures()'s first (cached) call
   // already carries the item rasters (art arrives as DATA; the renderer is untouched).
   setItemArtUrls(gameData.ART_URLS);
+  // REQ-0180: hand the bpskin/1 defs + unit_skin/1 SET ledger to their board
+  // registries BEFORE any board mounts, so resolveBpSkin's has() and the
+  // silhouette compositor see them on the first (cached) render.
+  setBpSkinDefs(gameData.SKINS);
+  setUnitSkinDefs(gameData.UNIT_SKINS);
   let state = engine.migrateState(gameData.makeState()); // REQ-0051: reassigned by fresh-profile starter seed
 
   // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when
