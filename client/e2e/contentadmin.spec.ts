@@ -68,6 +68,36 @@ async function apiIngest(request: APIRequestContext, name: string, variants: unk
   expect(r.status()).toBe(201);
 }
 
+// REQ-0133 registry-first item-raster wiring (DOM tier). The harness
+// (tools/content_admin_e2e.sh) seeds the sprite-backfill INSERT-only, so live
+// item names (e.g. 'blade') have an ADOPTED registry render. A def whose
+// resolved artwork has an adopted render draws the REGISTRY image + labels
+// 'registry art'; a def with no artwork falls back to the SVG sprite data-URL +
+// 'sprite icon' -- the SAME chain the game board resolves. This runs FIRST
+// (workers:1, definition order) so it precedes the art-clearing tests below; it
+// clears CONTENT only, never art (which would wipe the backfill seed).
+test('REQ-0133 wiring: an adopted registry render draws from the registry URL; no artwork falls back to the sprite icon', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'blade', kind: 'po_def', brief: 'has an adopted registry render (backfill seed)', schema_ref: 'po/2' });
+  await apiIngest(request, 'blade', [variant(1)]);
+  await apiCreateDef(request, { system_name: 'e2e_wire_sprite', kind: 'po_def', brief: 'no artwork -> sprite fallback', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_wire_sprite', [variant(1)]);
+
+  // registry tier: 'blade' resolves (exact-name) to its adopted backfilled render
+  await page.goto('/app/#/contentadmin/blade');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByTestId('entity-art-source-1')).toHaveText('registry art');
+  await expect(page.getByTestId('entity-preview-1').locator('.shape-grid-cell-icon'))
+    .toHaveAttribute('src', /\/api\/art\/blade/);
+
+  // sprite tier: no artwork for this name -> the SVG sprite data-URL
+  await page.goto('/app/#/contentadmin/e2e_wire_sprite');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByTestId('entity-art-source-1')).toHaveText('sprite icon');
+  await expect(page.getByTestId('entity-preview-1').locator('.shape-grid-cell-icon'))
+    .toHaveAttribute('src', /^data:image\/svg/);
+});
+
 test('content admin: create (panel) -> commission+copy -> parse preview gates ingest -> checks -> review -> JSON view -> diff -> adopt (confirm) -> serve -> delete (confirm) -> edit modal -> re-adopt -> recheck', async ({ page, request }) => {
   await request.post('/api/content/dev/clear-all');
 

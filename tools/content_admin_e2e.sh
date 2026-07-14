@@ -21,6 +21,10 @@ set -euo pipefail
 
 WT="$(cd "$(dirname "$0")/.." && pwd)"
 
+# REQ-0133: Playwright chromium lives in the REAL home cache; the per-run HOME
+# remap below would hide it, so capture the real path now (before any remap).
+PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+
 # REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
 #   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
 # so REQ-0157 owns 1570..1579 and can never collide with another REQ's harness.
@@ -62,5 +66,12 @@ for i in $(seq 1 40); do
   if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$STATICPORT/app/" 2>/dev/null; then break; fi
   sleep 0.5
 done
+
+# REQ-0133: seed THIS isolated registry with the sprite-backfill (INSERT-only,
+# adopted renders; no GPU/python -- Playwright rasterizes the SVG symbols) so the
+# contentadmin wiring test can prove registry-first art vs the sprite fallback.
+HOME="$TMPHOME" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" PLAYWRIGHT_BROWSERS_PATH="$PW_CACHE" \
+  node "$WT/tools/backfill_sprite_art.cjs" > /tmp/req0155_e2e_backfill.log 2>&1
+echo "[content_admin_e2e] sprite backfill seeded ($(tail -1 /tmp/req0155_e2e_backfill.log))"
 
 PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/contentadmin.config.ts
