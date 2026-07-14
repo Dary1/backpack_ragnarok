@@ -1,0 +1,25 @@
+{
+  "req": "REQ-0126",
+  "shapes": [
+    "1x1",
+    "I",
+    "L",
+    "T",
+    "S",
+    "Z",
+    "inner_corner",
+    "holed"
+  ],
+  "backgrounds": [
+    "#14181f",
+    "#e8e2d0",
+    "#7a8a99"
+  ],
+  "skins": [
+    "neutral",
+    "devornate"
+  ],
+  "gridHash": "6b024c0722319cc900b7ef59dc97a2521957bd992299ba99ab8604d5b8d3e048",
+  "pass": true,
+  "failures": []
+}
