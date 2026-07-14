@@ -153,6 +153,55 @@ backend, same code path via `storage.cjs`):
 - Manual pass on backpack-dev: roll in the Workshop → a named Unit with its art and its
   connection shape appears; its rays render on the board.
 
-## 5. Outcome
+## 9. Outcome (2026-07-14) — BUILT, merged, deployed; awaiting user acceptance
 
-_(filled at close)_
+**Merged** `9fb2d81` into master; deployed to backpack-dev (backpack-api restarted; client
+bundle rebuilt into `web/app`). Follow-up fix `314cf9a` (see below).
+
+### What shipped
+
+| | |
+|---|---|
+| Engine | REQ-0128b's walker: `{dirs, range, pierce}` + offset shapes; occluder set = **Units only**; no propagation. `bp.linker` → `bp.unit {id, off}`. Rays resolve through the DEF, so a content change reaches every saved BP. |
+| Rotation | **Behaviour change:** rotating a BP no longer rotates its rays. Directions are board-absolute (`vocab.orientation`). The seat rotates; the compass does not. |
+| Content | `live_units.json` (12 kits) + `live_packs.json` (1 pack: all 12, uniform, cost 10). `unit-elf`'s lowest-seed render (101) adopted → 11 icons cover all 12 defs. |
+| Emission | `rollPackBp()`: a weighted draw from the pack's pool + the BP that is its inventory. Pack resolved from content, not hard-coded. Two-phase pending/finalize untouched. |
+| Purge | **LIVE namespace: 405 profiles, 1620 BPs, ZERO without a Unit.** Across all namespaces the apply run removed 4456 BPs / 3488 POs, unseated 159 SIs, reseeded 1554 profiles. Second run: 0 changes (idempotent). Pre-purge backup: `~/backups/profiles_pre_req0170_20260714_030000.json`. 1205 non-live test rows then pruned with the REQ-0089 tool. |
+| Gates | `tools/ci.sh` **CI GREEN** (incl. the new `check_units.cjs` step). e2e **159 passed / 0 failed**. |
+
+### Deliberately NOT shipped (and why)
+
+- **`charge` / `effects` on unit defs.** The grammar is frozen (vocab v13); the engine has
+  no charge AST. Writing the fields would be writing fiction into a live target. REQ-0149's
+  own content gaps (G2/G5/G6/G12/G13) remain the user's to close, and they are what blocks
+  the kits, not this REQ.
+- **`sockets`** — removed by user ruling; REQ-0163 owns it, unratified.
+- **The sim's `pulse` verb / `on_link_pulse`** — deprecated in vocab, still used by
+  `s4_fixture_items.json` and the self-test. Removing them re-baselines the S4 gate
+  (REQ-0050) and is its own REQ.
+
+### Agent-defined, flagged for the user
+
+- **`rarity: Common` on all 12.** The one pack that ships is the common pack. Nothing has
+  ruled on unit rarity; if rarity is meant to gate the pool, that is a design event.
+- **Uniform pool weights.** Nothing has ruled otherwise.
+- **Re-seed on purge (user-approved).** A profile left with zero BPs gets the starter
+  scenario, so it lands where a fresh profile lands rather than in a state no code path has
+  ever produced.
+- **Starter roster** (dwarf/elf/angel/lightcavalry) — four different shapes on a first boot,
+  so the player sees that rays belong to the character, not to the bag.
+
+### The bug the gates could not catch (`314cf9a`)
+
+Deployed green; every Unit still wore the legacy glyph. PixiJS picks its image decoder from
+the URL **extension**, and `/api/art/<system_name>` has none — so each portrait "decoded to
+an empty texture" and was skipped. REQ-0125a's fallback chain absorbed it exactly as
+designed: no throw, no red, no art. The route now accepts an optional `.png`, `unitArtUrl`
+appends it, `sprites.ts` names `loadParser` explicitly, and `check_unit_icon.mjs` asserts the
+extension. **The lesson worth keeping: a fallback chain that never fails loudly needs a test
+that asserts the HAPPY path was taken, not just that the sad path did not crash.**
+
+### Open for the user
+
+- The dev player's LRDST balance is **0** (it was 0 before this REQ too), so the Roll button
+  is disabled. A grant is an operational action, not a code one — say the word.
