@@ -1,4 +1,4 @@
-# REQ-0172 — E2E order-independence (dismantle panel stale-refresh) + REQ-derived harness ports
+# REQ-0172 — E2E order-independence (dismantle seed) + REQ-derived harness ports
 
 **Reserved:** 2026-07-14 · **Slug:** e2e-order-independence-and-harness-ports
 **Origin:** user directive 2026-07-14, immediately after REQ-0159 merged+deployed:
@@ -8,79 +8,89 @@ refined to REQ*10 + index) + "自動化させられたりしますかね".
 
 ## 日本語サマリ
 
-REQ-0159 のライブ検証中に2件出た。(1) **REQ-0159 が持ち込んだ回帰**: workshop の
-dismantle テストが実行順序依存になった(ファイル全体なら緑、単体 `--grep` なら赤)。
-その原因は (2) **2つ目の実クライアントバグ**: 最後の1個を分解した後、パネルが破棄済みの
-行を表示し続ける(サーバは正しく空、クライアントの picker が1行残る)。ci.sh は緑だが
-**その緑が順序依存**であり、REQ-0159 が掲げた「CI GREEN は文字通り緑」を満たしていない。
-併せて (3) ハーネスのポートを **REQ番号×10+index** で導出する規則にし、手で選ぶ余地を
-なくす(導出ヘルパ + lint + 起動前チェックで機械化)。
+REQ-0159 が持ち込んだ回帰の修正 + ポート規則の機械化。(A) workshop の dismantle テストが
+実行順序依存になっていた(ファイル全体なら緑、単体なら赤)。**当初これを「2つ目のクライアント
+バグ」と見立てたが、それは誤りだった** — パネルは正しく再描画しており、真因は REQ-0159 の
+シードが**不整合なキャンバス**を作っていたこと(在庫の home を消しながらキャンバス側の参照を
+残し、エンジンが正しく home を復元していた)。(B) ハーネスのポートを **REQ番号×10+index** で
+導出し、導出ヘルパ + lint + 起動前チェックで手選びの余地をなくす。
 
-## 1. Item A — the dismantle panel does not refresh after destroying the LAST item
+## 1. Item A — the dismantle spec was order-dependent (REQ-0159 regression) — **CLOSED**
 
-### Evidence (measured 2026-07-14, master @ ee93a2d, deployed bundle index-DxF_qldb.js)
+### The symptom
 
-Instrumented run of `workshop.spec.ts --grep "dismantle flow"`, immediately after the
-success toast appears:
+REQ-0159 left the workshop dismantle spec green in full-file order and RED standalone
+(`--grep`), at any worker count, and red in serial-live too. Pre-REQ-0159 it passed
+standalone. `tools/ci.sh` was green — but that green was **order-dependent**, which is the
+exact property REQ-0159 claimed to have retired. Owned and fixed here.
+
+### The wrong hypothesis (recorded on purpose)
+
+This REQ was originally filed asserting a **second real client bug**: "after the last item
+is destroyed the panel keeps rendering the destroyed row". **That was wrong**, and it is
+recorded here rather than quietly deleted, because it is the kind of plausible-but-false
+story that gets a healthy component "fixed" and a real defect buried.
+
+Ruled out, in order, each with evidence: a stale in-flight auto-save resurrecting the item;
+`migrateState` re-injecting a legacy `loc:'inv'` PO (it de-dupes — `st.pos = st.pos.filter(...)`);
+a broken store subscription (`useGameStore` is a textbook `useSyncExternalStore`);
+`loadGame()` erroring or early-returning (browser console captured: no warning, no pageerror);
+the served bundle (byte-identical md5 to the deployed one); worker count; and HTTP caching
+of the canvas GET (adding `cache: 'no-store'` changed nothing).
+
+### The actual mechanism (pinned)
+
+Instrumenting the panel's own render settled it — the panel refreshes **exactly as
+designed**:
 
 ```
-DBG server inv page pos counts: 0,0,0,0,0     <- server: the item IS gone (correct)
-DBG server page0 uids:                        <- empty
-DBG picker rows: 1                            <- client: still rendering the destroyed row
+DBGPANEL sv=0 items=e2e_dismantle_po_1:blade|p900:blade  topPos=p900:blade:grid
+DBGPANEL sv=1 items=p900:blade                            <- stateVersion bumped, list shrank
 ```
 
-So: `POST /api/dismantle` → 200 (4 ms). The server removes the PO. `confirmDismantle()`
-then `await loadGame()`. `loadGame()` runs with **no error and no early return** (browser
-console captured: no `canvas load failed` warning, no pageerror), and it ends in
-`notifyStateChanged()` → `setSnapshot({...snapshot, stateVersion: +1})`. `DismantlePanel`
-subscribes via `useGameStore()` = `useSyncExternalStore`, and its list is
-`useMemo(() => collectDismantlable(snapshot.state), [snapshot.state, snapshot.stateVersion])`.
+`stateVersion` 0→1 and the inventory 2→1 across the dismantle: `loadGame()` propagated
+correctly. The seed was simply producing **two** dismantlable blades where the test assumed
+one.
 
-Every link in that chain looks correct, and yet the row survives. **The mechanism is not
-yet pinned** — that is this REQ's first job, and it must be pinned before anything is
-changed. Do NOT "fix" this by forcing a re-render (a `key` bump, an extra `useEffect`, a
-poll): that hides whichever link is actually broken.
+`p900` is a blade sitting on the **squad canvas** (`pos[].loc === 'grid'`) whose **home**
+lives in inventory — the REQ-0033 reference model, working as designed. REQ-0159's seed
+cleared the inventory homes but left that canvas reference behind, leaving a reference with
+no home, so the engine correctly **restored** p900's home on load. The dismantle removed the
+seeded blade; p900 remained; the picker never went empty. In full-file order an earlier test
+happened to replace the whole canvas first, so p900 was gone and it passed — luck of
+ordering.
 
-Leads worth checking first, cheapest first:
-- Is `collectDismantlable` reading a **stale `state.inv`**? `loadGame` mutates `st.inv`
-  in place on the SAME `GameState` object. `snapshot.state` is documented as "a STABLE
-  reference for the app's whole lifetime" (DismantlePanel.tsx:100), which is exactly why
-  `stateVersion` is in the memo deps. Confirm `stateVersion` actually reaches THIS
-  component's render (log it).
-- Does `useSyncExternalStore`'s `getSnapshot`/`subscribe` in `store/core.ts` notify on
-  this particular `setSnapshot`? Confirm the component re-renders at all after loadGame.
-- `engine.migrateState(rawCanvas)` — does it return an inv that still contains the item
-  (i.e. is the client's copy re-hydrated from something stale)?
+### The fix
 
-### Why it presented as order-dependent, and why that is the real damage
+A canvas with references but no homes is not a state the game can hold, so seed a state it
+CAN: `seedDevBladePo` now builds a **clean, self-consistent canvas from scratch** instead of
+deriving one from whatever the live dev profile holds. The blade is the only dismantlable
+item BY CONSTRUCTION, in any order, on any box. `seedDevBladePos` (REQ-0090 multi-select)
+carried the identical latent trap — restored homes would silently shift the contiguous row
+indices its drag/Shift/Ctrl range assertions depend on — and is fixed the same way.
 
-REQ-0159 changed the seed to clear every inventory page so the blade is the ONLY
-dismantlable item — deliberately forcing the "dismantle the last item" path, because that
-is the path the REQ-0159 toast bug lived on. That made the path **guaranteed** instead of
-**accidental** — and it promptly walked into this second bug.
+REQ-0159's guard (the picker must really empty AND the toast must really survive) is kept
+intact. It is what caught this.
 
-- **Pre-REQ-0159** the seed APPENDED to the live dev profile, so the picker still had the
-  other dev items after the dismantle; the test only needed the one row to disappear, and
-  the panel apparently refreshes fine in that case.
-- **Post-REQ-0159** the picker must go EMPTY, and it does not.
-- In a **full-file** run something else (an unrelated later snapshot change, e.g. the
-  auto-save status flipping) happens to re-render the panel in time, so it passes.
-  Standalone (`--grep`), nothing does, so it fails.
+**No client/src change was needed.** REQ-0159's DismantlePanel toast fix stands and is live.
 
-Net: `tools/ci.sh` is green, but **that green is order-dependent** — the exact property
-REQ-0159 claimed to have retired. This is a REQ-0159 regression, owned here.
+### Result (measured on the DEPLOYED bundle, master @ ee93a2d)
 
-### Scope A
+| mode | before | after |
+|---|---|---|
+| `E2E_PARALLEL=1`, full file | fail | **10 passed** |
+| `E2E_PARALLEL=4`, standalone `--grep` | fail | **1 passed** |
+| `E2E_PARALLEL=0` (serial, live API), standalone | fail | **1 passed** |
 
-1. **Pin the mechanism** (above) with evidence, before touching code.
-2. **Fix the client** so the panel reflects the post-dismantle state unconditionally.
-   The fix must be the mechanism's, with its own test — not a re-render nudge.
-3. **The e2e test must pass STANDALONE**, not only in file order:
-   `pnpm run e2e workshop.spec.ts --grep "dismantle flow"` green on its own, at
-   `E2E_PARALLEL` = unset / 1 / 4. Order-independence is the acceptance bar, not "ci is
-   green".
-4. Keep REQ-0159's guard intact (the picker must really go empty AND the toast must
-   really survive). It is doing its job — it caught this.
+Commit: `bf1b8af`.
+
+### Lesson (the one worth keeping)
+
+Deriving a fixture from live state is not a shortcut, it is a coin flip: the suite's coverage
+gets decided by whatever debris the profile happens to hold. REQ-0159 already caught this
+once (the dismantle toast bug only reproduced when the dev profile happened to be empty) and
+then walked straight into the mirror image of it. **Fixtures must be constructed, not
+inherited.** That is the standing rule this REQ buys.
 
 ## 2. Item B — REQ-derived harness ports (user proposal, 2026-07-14)
 
