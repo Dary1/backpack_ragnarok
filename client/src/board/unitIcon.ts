@@ -126,9 +126,15 @@ export function setUnitDefs(defs: UnitDefMap | null | undefined): void {
  * RE_PUB_ADOPTED). `icon` is an artwork system_name and may contain ':' -- hence
  * the encode. A unit whose art has not been adopted 404s here, and that is a
  * NON-EVENT: the raster is skipped, `has(key)` says no, and resolveUnitIcon()
- * falls through to the legacy glyph. */
+ * falls through to the legacy glyph.
+ *
+ * The '.png' is NOT decoration and must not be "cleaned up": PixiJS's Assets loader
+ * picks its parser from the URL EXTENSION, so an extensionless image URL decodes to an
+ * empty texture and gets skipped -- the board silently keeps the legacy glyph and every
+ * unit looks identical. The server accepts the suffix and strips it. (Caught on the first
+ * deploy of REQ-0170; check_unit_icon.mjs now asserts it so it cannot regress.) */
 export function unitArtUrl(icon: string): string {
-  return '/api/art/' + encodeURIComponent(icon);
+  return '/api/art/' + encodeURIComponent(icon) + '.png';
 }
 
 /**

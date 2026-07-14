@@ -315,7 +315,13 @@ const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
 const RE_DEV_BUMP = /^\/api\/art\/dev\/bump-kit$/;
 const RE_PUB_META = /^\/api\/art\/([^/]+)\/meta$/;
 const RE_PUB_RENDER = /^\/api\/art\/([^/]+)\/renders\/(\d+)$/;
-const RE_PUB_ADOPTED = /^\/api\/art\/([^/]+)$/;
+// REQ-0170: the '.png' suffix is OPTIONAL and is stripped before the lookup. It exists
+// because PixiJS's Assets loader chooses its parser from the URL EXTENSION -- an
+// extensionless image URL loads as "an empty texture" and is silently skipped (the board
+// then falls through to the legacy glyph, which is exactly what happened on the first
+// deploy of this REQ). Serving the same bytes at a URL that ends in .png is what makes the
+// raster route work in a canvas renderer, and it costs the server one regex group.
+const RE_PUB_ADOPTED = /^\/api\/art\/([^/]+?)(?:\.png)?$/;
 
 function tryArtRoutes(req, res, url, p) {
   if (!p.startsWith('/api/art')) return false;

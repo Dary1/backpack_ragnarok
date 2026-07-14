@@ -245,3 +245,36 @@ the focus-consume effect.
 
 **Left for orchestrator:** deploy + S7 live user acceptance (REQ stays in docs/REQ/todo/).
 
+
+### Follow-up 2026-07-14 (orchestrator): display-layer artwork name reconciliation
+Live verification found the art linkage lit ZERO facets: the artwork backfill named rows
+'batch:name' (e.g. batch-004-item-icons-flux2:blade) while the content backfill used bare
+ids ('blade') -- the namespaces never intersect, so exact matching (server
+has_artwork_facet AND the client map) never fires on live data.
+Fix (client-only): contentShared.buildArtworkIndex() indexes artworks by exact name PLUS
+batch-stripped suffix (exact never shadowed; adopted-render wins suffix collisions); rail
+thumb / header thumb / facet links light on suffix matches too and carry the artwork's
+REAL namespaced system_name so the #/artadmin/<name> deep link resolves; the facet line
+says "linked by batch name (<full name>)" to keep the provenance honest. The server's
+exact-match has_artwork_facet is untouched -- TRUE name reconciliation of the two ledgers
+(one-name-one-entity canon) remains a future registry REQ needing a user ruling.
+e2e: +1 test (route-mocked namespaced artwork -- the art API itself refuses ':' names,
+which are backfill-only) => contentadmin.spec.ts 21/21; tsc -b green. Live: 8 po_defs
+(blade, hilt, dagger, ...) now show batch-004 item-icon thumbs.
+
+### Deployment record (orchestrator, 2026-07-14)
+- Merged to master 000aab1 (impl 3b96fbd/911e36b/ea8035c + state moves) then follow-up
+  92b5e4f (batch-suffix artwork linkage 83c0866); dist rebuilds 30f35ee (re-cut on
+  post-0168 master after a mid-deploy master advance) and e4a5445.
+- Static dist only; backpack-api untouched, no restart.
+- Live verification (Chrome, 2026-07-14): #/contentadmin/blade — variant card renders the
+  entity (ShapeGrid+icon, EN/JA names, rarity chip, tags, flavor, effect line, fallback
+  field chips); rail shows the batch-004 item-icon thumbnails for the 8 suffix-linked
+  po_defs; facet line reads "linked by batch name (batch-004-item-icons-flux2:blade)" with
+  the deep link carrying the real artwork name; edit modal opens on the Form tab (EN/JA
+  name+flavor, rarity select, stretch, effects) with the JSON tab intact.
+- Gate re-verification by the orchestrator: e2e 21/21 (after replacing the engineer's
+  server/node_modules SYMLINK — a PROJECT.md violation — with a real pnpm install, and
+  rebuilding web/ before the run: the harness serves the committed-tree web/app, a fresh
+  worktree pitfall worth remembering); artadmin 4/4; tsc green.
+- Status: stays in built/ awaiting S7 user acceptance on the live screen.

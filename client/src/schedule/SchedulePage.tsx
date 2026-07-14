@@ -71,6 +71,7 @@ import type { Locale } from '../store';
 import { CreateRoomForm, localizedName } from './CreateRoomForm';
 import { Monitor } from './Monitor';
 import { RoomCard } from './RoomCard';
+import { SealPanel } from './SealPanel'; // REQ-0058
 import { SlotsPanel } from './SlotsPanel';
 import { SpoilsRail } from './SpoilsRail';
 
@@ -337,6 +338,13 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         </div>
         <div className="schedule-spoils-col" data-testid="schedule-spoils-col">
           <div className="schedule-spoils-col-title den">{t(locale, 'schedule.spoils.colTitle')}</div>
+          {/* REQ-0058: Sealed Seed Share -- mint/join/compare sealed runs. */}
+          <SealPanel
+            locale={locale}
+            dungeons={dungeons}
+            onOpenRoom={(roomId) => setExpandedRoomId(roomId)}
+            onRoomsChanged={reloadRooms}
+          />
           <SpoilsRail locale={locale} refreshSignal={spoilsRefresh} />
         </div>
       </div>

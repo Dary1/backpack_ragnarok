@@ -197,7 +197,12 @@ import { unitIconRasters, type RasterEntry } from './unitIcon';
 
 async function loadRaster(entry: RasterEntry): Promise<readonly [string, Texture] | null> {
   try {
-    const texture = await Assets.load<Texture>(entry.url);
+    // loadParser is named EXPLICITLY rather than left to Pixi's extension sniffing. The
+    // URL does end in .png (see unitIcon.ts's unitArtUrl, and the comment there for why
+    // that is load-bearing), but relying on a filename to select a decoder is exactly the
+    // kind of implicit contract that breaks quietly -- and its failure mode here is not an
+    // exception, it is a blank unit.
+    const texture = await Assets.load<Texture>({ src: entry.url, loadParser: 'loadTextures' });
     // Assets.load resolves rather than rejects for some decode failures
     // depending on the loader; a texture with no dimensions is useless and is
     // treated as a miss, not as art.

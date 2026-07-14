@@ -632,3 +632,25 @@ test('rail thumb: art-facet def shows the placeholder thumb deep-linking to the 
   await expect(thumb).toHaveAttribute('href', '#/artadmin/e2e_faceted');
   await expect(page.getByTestId('cd-facet-e2e_faceted')).toHaveAttribute('href', '#/artadmin/e2e_faceted');
 });
+
+test('rail thumb: batch-suffix artwork lights the linkage and links to the REAL artwork name', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await request.post('/api/art/dev/clear-all');
+  // artworks and content defs were backfilled under DIFFERENT namespaces
+  // (art: 'batch:name', content: bare 'name'). The art API itself refuses
+  // ':' in system_name (backfill-only namespace), so the namespaced row is
+  // ROUTE-MOCKED here -- the suffix fallback under test is pure client
+  // display logic over the /api/art/artworks list.
+  await apiCreateDef(request, { system_name: 'sfx_item', kind: 'si_def', brief: 'suffix-linked art', schema_ref: 'si/2' });
+  await page.route('**/api/art/artworks', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, artworks: [{ system_name: 'e2ebatch:sfx_item', kind: 'si', main_object: 'lantern', adopted_render_id: null, adopted_seed: null, latest_ok_seed: null, render_count: 0 }] }),
+  }));
+
+  await page.goto('/app/#/contentadmin');
+  const thumb = page.getByTestId('cd-thumb-sfx_item');
+  await expect(thumb).toBeVisible({ timeout: 30000 });
+  await expect(thumb).toHaveAttribute('href', '#/artadmin/' + encodeURIComponent('e2ebatch:sfx_item'));
+  await page.getByTestId('cd-select-sfx_item').click();
+  await expect(page.getByTestId('cd-artwork-facet')).toContainText('linked by batch name (e2ebatch:sfx_item)');
+});

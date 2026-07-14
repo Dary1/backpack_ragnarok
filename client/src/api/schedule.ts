@@ -2,7 +2,17 @@
 // endpoints incl. the REQ-0057 forecast read (extracted VERBATIM from
 // the old flat api.ts).
 import { scheduleJSON } from './http';
-import type { ApiCreateRoomBody, ApiDungeonsPayload, ApiForecastPayload, ApiRoom, ApiRunView } from '../../../shared/dto';
+import type {
+  ApiCreateRoomBody,
+  ApiDungeonsPayload,
+  ApiForecastPayload,
+  ApiRoom,
+  ApiRunView,
+  ApiSealComparison,
+  ApiSealMetaResponse,
+  ApiSealMintResponse,
+  ApiSealReplay,
+} from '../../../shared/dto';
 
 // ---- REQ-0036 P1-C: Dungeon Schedule + Warehouse client API ----
 // Talks to server/api.cjs's /api/schedule/* and /api/warehouse* routes
@@ -97,4 +107,46 @@ export function devBackdateRun(roomId: string, extraSecsIntoPast?: number): Prom
     method: 'POST',
     body: JSON.stringify(extraSecsIntoPast != null ? { extraSecsIntoPast } : {}),
   });
+}
+
+// ---- REQ-0058: Sealed Seed Share client API ----
+// Talks to server/routes/schedule.cjs's /api/schedule/seal[s] routes. Same
+// conventions as every function above (ApiError on non-2xx, authHeaders()
+// via scheduleJSON, a JSDoc citing the exact server route).
+
+/** POST /api/schedule/seal -- mint a sealed schedule. The server always
+ * mints a FRESH genSeed (any caller-supplied seed is ignored), so REQ-0043's
+ * admin-only custom-seed gate is never involved. Returns the public seal
+ * meta (genSeed withheld) + the shareToken (== sealId). */
+export function sealSchedule(body: { dungeonId?: string; dungeonType?: 'default' | 'test_fixed'; level?: number; affixes?: string[] }): Promise<ApiSealMintResponse> {
+  return scheduleJSON('/api/schedule/seal', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** GET /api/schedule/seals/:sealId -- preview a seal by its share token
+ * (frozen tuple, genSeed withheld) + whether the caller has joined. */
+export function fetchSeal(sealId: string): Promise<ApiSealMetaResponse> {
+  return scheduleJSON(`/api/schedule/seals/${encodeURIComponent(sealId)}`);
+}
+
+/** POST /api/schedule/rooms {sealId} -- join a sealed run (the room copies
+ * the frozen tuple verbatim). One room per (sealId, caller); a second call
+ * throws ApiError(409, 'seal_already_joined'). */
+export function joinSealRoom(sealId: string): Promise<{ ok: true; room: ApiRoom }> {
+  const body: ApiCreateRoomBody = { dungeonId: '', sealId };
+  return scheduleJSON('/api/schedule/rooms', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** GET /api/schedule/seals/:sealId/comparison -- the anti-spoiler-gated
+ * comparison view. `unlocked` is false (and `participants` empty) until the
+ * caller's OWN run of this sealId settles; `self` is always present. Throws
+ * ApiError(403, 'seal_not_participant') for a non-participant. */
+export function fetchSealComparison(sealId: string): Promise<ApiSealComparison> {
+  return scheduleJSON(`/api/schedule/seals/${encodeURIComponent(sealId)}/comparison`);
+}
+
+/** GET /api/schedule/seals/:sealId/runs/:playerId -- seal-scoped replay.
+ * Own replay always readable; another participant's is gated on the caller's
+ * own settle (ApiError(403, 'seal_replay_locked') otherwise). */
+export function fetchSealReplay(sealId: string, playerId: string): Promise<ApiSealReplay> {
+  return scheduleJSON(`/api/schedule/seals/${encodeURIComponent(sealId)}/runs/${encodeURIComponent(playerId)}`);
 }
