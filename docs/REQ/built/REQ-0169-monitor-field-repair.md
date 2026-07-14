@@ -99,4 +99,52 @@ Same battery as REQ-0168 (tsc, eslint, build, server node --test, pnpm run e2e
 with box lock, manual browser pass of each acceptance line, EN+JA).
 
 ## Record
-- (fill at built: probe findings, chosen M2 strategy, commits, gate outputs)
+- **Status**: built (gates green) 2026-07-14. Branch req-0168-schedule-ux-pass.
+- **Commits**: d2bd6b4 (Monitor.tsx M1/M3/M4 + MonitorRenderer.ts M2/M3 +
+  workshop.css M5, co-located with the REQ-0168 detail-pane commit), 2730fc0 (dist).
+- **M1 canvas mount race**: fixed with a callback ref stored in state
+  (setCanvasEl) + mount effect keyed [expanded, mountedOnce, canvasEl], so the
+  renderer mounts the instant the canvas node enters the DOM (covers the
+  expand-before-first-run -> awaitingRun-stub -> run-appears sequence). Validated
+  by the REQ-0045(d) squads()-seam e2e (canvas mounts, 4 squads read) passing.
+- **M2 enemy label de-overlap (chosen strategy)**: dots stay at their true cells.
+  relayoutEnemyLabels() runs on every marker creation: (1) same-rawText markers
+  collapse to ONE leftmost representative label suffixed " x{count}", the rest keep
+  their dot but hide their label; (2) surviving labels are 2D lane-placed -- each
+  starts at its dot's own row and is bumped DOWN one LABEL_LANE_H (11px) at a time
+  until it clears every already-placed label (greedy bounds check), max 3 lanes,
+  else hidden (dot kept). Every label is still truncated to the field's right edge,
+  so REQ-0045(f)'s "x + labelWidth <= FIELD_W" invariant holds. Seam
+  getEnemyMarkerBounds() gained ADDITIVE hidden/lane fields (x/labelWidth/labelText
+  unchanged). Validated: REQ-0045(f) enemyBounds() e2e passes.
+- **M3 player legibility**: faint cell grid on both backdrops; formation outline
+  contrast raised (width 1.5, alpha 0.9); BP footprints fill alpha 0.72 + 1px dark
+  outline; degenerate-formation-box fallback outline + console.warn in mountSquads;
+  Monitor.tsx warns on a silent formation-join failure (found-missing + thrown).
+  REQ-0045(d) squads() seam confirms 4 squads with non-empty bps.
+- **M4 probe findings**: loadBoardTextures is ALREADY memoized module-wide
+  (boardLoadPromise) and shared with the board pages -- there is NO per-monitor
+  re-rasterization (the spec's primary named suspect is already mitigated).
+  Measured the SVG atlas cost on the box (client/node deps): 22 symbols, DOMParser
+  parse ~1.6ms + inner-markup serialize ~2.2ms (~4ms total main-thread JS) plus 22
+  small Image decodes (largely off-main-thread). isSquadDeployable is O(1) per
+  squad (bps.length) and is now computed once per render (deployableFlags memo,
+  SlotsPanel). Neither named suspect is a plausible >1s main-thread stall; the E4
+  evidence (10-30s CDP screenshot timeouts, page recovered) is most consistent
+  with a transient CDP/capture stall, not a reproducible code stall. Shipped an
+  opt-in dev longtask probe (PerformanceObserver, gated behind
+  window.__bpMonitorProbe -- inert otherwise, safe to ship per M4 step 3) so the
+  orchestrator's browser QA can confirm empirically; the live capture is deferred
+  to that QA (this role does coding + automated gates, not browser QA). Fix
+  applied = the two convictable remedies both in place: module-memoized textures
+  (confirmed) + isSquadDeployable per-render dedupe.
+- **M5 fit-to-pane**: DONE, via the low-risk CSS-scale variant (canvas
+  width:100% height:auto max-width:960 in workshop.css). The Pixi renderer keeps
+  its native 960x324 BACKING resolution, so internal coordinates and every
+  e2e/__monitorDebug seam are unchanged; only the display size scales to the pane,
+  aspect preserved, no horizontal scrollbar. Chosen over app.renderer.resize +
+  stage.scale specifically to avoid touching coordinates/seams (lower risk).
+- **Gates**: same battery as REQ-0168 (tsc PASS, oxlint 0 errors, build PASS,
+  server 157/0, e2e full suite green incl. REQ-0045(d)/(f) monitor tests that
+  exercise the M1/M2/M3 seams). Manual EN+JA browser pass deferred to orchestrator.
+
