@@ -213,4 +213,69 @@ that e2e asserts on changes, update the spec assertion in the same commit.
 - Manual browser pass of every acceptance line above, EN+JA, as a fresh guest.
 
 ## Record
-- (fill at built: commits, gate outputs, deviations)
+- **Status**: built (gates green) 2026-07-14. Branch req-0168-schedule-ux-pass.
+- **Commits**: 736cd7d (i18n copy + keys), d2bd6b4 (detail-pane components:
+  SchedulePage/RoomCard/SlotsPanel/Monitor + errors.ts + lib/time.ts +
+  WarehousePage + styles), 83ba3fb (U6 server + server tests + e2e), 2730fc0
+  (dist rebuild), a339378 (U7 cross-room e2e).
+- **Item status** (all DONE unless noted):
+  - U1 create feedback: handleCreate consumes apiCreateRoom's {ok,room} ->
+    close panel, select (watch) the new room, scroll it into view. done.
+  - U2 whole-card clickable: RoomCard role="button"+onClick+keyboard, inner
+    buttons stopPropagation; Watch/Stop watching labels (schedule.watch/
+    unwatch); detail.empty -> "Pick a room...". done.
+  - U3 noRooms copy ("...form above" / 上のフォーム). done.
+  - U4 SlotsPanel auto-start sub-line + need-squads callout
+    (testid schedule-slots-need-squads, link -> #/backpacks); awaitingRun copy. done.
+  - U5 SchedulePage stable display sort (non-canceled createdAt DESC, canceled last). done.
+  - U6 server same_room_duplicate vs deployed_overlap distinct reasons+messages;
+    client errors.ts mapping + sameRoomDuplicate/crossRoomOverlap copy. done.
+  - U7 SlotsPanel disables options deployed in another slot of THIS room or any
+    slot of another ACTIVE room, "(deployed)" suffix. done.
+  - U8 predicate parity: investigated -- see Deviation below. done (verified; no
+    predicate change needed).
+  - U9 Monitor cooldown derived from room.cooldownUntil with a 1s ticker. done.
+  - U10 localizedItemName resolves content.tms (TM reward names). done.
+  - U11 rewards-hint + #/warehouse link (testid schedule-monitor-rewards-hint). done.
+  - U12 seed span gated to isAdmin (SchedulePage threads isAdmin). done.
+  - U13 JA slots.title スカッド / squadLabel Slot|スロット / noSquads 編成;
+    formatCountdown locale-aware (RoomCard+Monitor+lib/time+WarehousePage);
+    encounter-kind + telegraph skill/edge i18n maps. done.
+  - U14 cancelConfirm copy (permanence + cancel-policy note, both locales). done.
+  - U15 monitor internal toggle -> hideField/showField keys. done.
+- **U8 finding (deviation from spec hypothesis)**: the spec's premise ("server
+  uses its own empty-squad rule; disagrees for a squad whose backpack exists but
+  carries no items") is inaccurate against the code. The server deploy gate
+  delegates to the SAME engine.isSquadDeployable predicate the client uses
+  (mock-src/engine.js: bps.length >= 1), evaluated on the last-saved profile
+  canvas; a squad WITH a backpack (bps.length>=1) is deployable on BOTH sides, so
+  the empty_squad 409 can never fire for it. The predicates are identical and
+  cannot structurally disagree on the same canvas (fixture confirms: store[4]=null
+  -> both sides read {bps:[]} -> both refuse). The live 409 was a live-vs-persisted
+  divergence: SlotsPanel reads the client's LIVE snapshot.state, the server reads
+  the last debounced auto-SAVE -- a timing artifact, not a predicate mismatch.
+  Acceptance ("a dropdown-enabled squad is never 409 empty_squad") already holds.
+  Applied: SlotsPanel computes deployability once per render (deployableFlags,
+  same predicate, deduped -- also the REQ-0169 M4 remedy). No client<->server
+  predicate change was needed or made; recorded as the honest closest alternative.
+- **U7<->U6 deviation**: U7 pre-disables a cross-room-deployed squad, so the old
+  cross-room e2e UI flow (select the squad, read the friendly 409 message) is now
+  unreachable by design. The e2e (schedule.spec.ts:665) now asserts the option is
+  disabled + "(deployed)"; the server 409 + reason are still asserted via the API,
+  and the friendly crossRoomOverlap message stays mapped in errors.ts as
+  defense-in-depth for any path bypassing the disabled option.
+- **Gates** (on the box, in the worktree):
+  - `pnpm exec tsc --noEmit` (client): PASS.
+  - `pnpm run lint` (oxlint, canonical): 0 errors, 34 pre-existing warnings.
+  - `pnpm run build`: PASS (dist committed at 2730fc0).
+  - server `node server/tests/api_test.cjs`: 157 passed / 0 failed (incl. both U6
+    reason tests -- same_room_duplicate + deployed_overlap).
+  - e2e `pnpm run e2e` (worktree recipe: E2E_STATIC_PORT=8901 serving this
+    worktree's web/, E2E_PARALLEL fleet = this worktree's server): full suite run
+    156 passed / 3 failed -- the 3 = 2 known CPU-render drag flakes
+    (bp-transfer:164, reference-model:166) + schedule:665 needing the U7 update; a
+    targeted E2E_GPU=1 rerun of those 4 spec files = 44 passed / 0 failed, all 3
+    now green. Every default-suite test passes.
+  - Manual EN+JA browser pass: deferred to orchestrator browser QA (this role does
+    coding + automated gates only).
+
