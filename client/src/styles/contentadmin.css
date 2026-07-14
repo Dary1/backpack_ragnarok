@@ -185,7 +185,34 @@
 
 /* ---- edit-as-new modal ---- */
 .ca-editor { width: min(720px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+/* REQ-0182a -- the PO/SI editor surface: full-size (the Dex editor was a
+   whole view; this modal was a 720px column), form left + live entity rail
+   right. Height is capped at the viewport and the FORM scrolls internally,
+   so the tabs and the actions row stay pinned no matter how many effect
+   rows exist. Narrow viewports drop the rail under the form. */
+.ca-editor--wide { width: min(1180px, 96vw); max-height: 92vh; }
+.ca-ed-body { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px;
+  align-items: start; min-height: 0; }
+.ca-ed-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ca-ed-rail { display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0;
+  min-width: 0; max-height: 66vh; overflow: auto; }
+.ca-ed-locale { display: flex; gap: 4px; }
+.ca-ed-loc-btn {
+  background: none; border: 1px solid var(--border-lo); color: var(--bone-3);
+  font-size: 11px; padding: 2px 10px; cursor: pointer; border-radius: 2px;
+}
+.ca-ed-loc-btn.is-on { color: var(--gold); background: #0C1016; }
+.ca-ed-flavor { min-height: 0; }
+.ca-ef-tagmulti { min-height: 76px; padding: 2px; }
+@media (max-width: 900px) {
+  .ca-ed-body { grid-template-columns: minmax(0, 1fr); }
+  .ca-ed-rail { position: static; max-height: none; }
+}
 .ca-editor .aa-textarea { min-height: 320px; }
+/* REQ-0182a: inside the sized editor the JSON textarea flexes to the body
+   instead of forcing a 320px floor + the flavor boxes stay 2-row. */
+.ca-ed-main > .aa-textarea { min-height: 46vh; }
+.ca-editor .ca-ed-flavor.aa-textarea { min-height: 0; }
 .ca-edit-valid { font-size: 12px; min-height: 16px; }
 .ca-edit-valid.is-ok { color: var(--r-uncommon); }
 .ca-edit-valid.is-err { color: var(--blood); }
@@ -281,6 +308,9 @@
 .ca-edit-tab:disabled { color: var(--bone-3); cursor: not-allowed; }
 .ca-edit-note { color: var(--bone-3); margin-left: 6px; }
 .ca-edit-form { display: flex; flex-direction: column; gap: 8px; overflow: auto; max-height: 60vh; }
+/* REQ-0182a: in the full-size editor the form gets the taller box the
+   ported DexAdmin field set needs (it is the pane that grows). */
+.ca-editor--wide .ca-edit-form { max-height: 66vh; padding-right: 4px; }
 .ca-ef-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
 .ca-ef-check { flex-direction: row; align-items: center; gap: 6px; }
 .ca-ef-tags { display: grid; grid-template-columns: 160px 1fr; gap: 8px; }

@@ -469,6 +469,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         const ev = variants.find((x) => x.variant_no === editFor);
         return ev ? (
           <EditModal no={editFor} kind={def ? def.kind : ''} original={ev.data}
+            artUrl={def ? defAdoptedArtUrl(def, artworksByName) : null}
             onClose={() => setEditFor(null)}
             onSubmit={(data) => { void doEditSubmit(data); }} />
         ) : null;
