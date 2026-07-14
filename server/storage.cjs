@@ -62,6 +62,7 @@ const ragnarok = require('./storage/ragnarok.cjs');
 const seals = require('./storage/seals.cjs');
 // REQ-0060: pack biography (per-BP-instance ledger).
 const bioStore = require('./storage/bio.cjs');
+const bpskinStore = require('./storage/bpskin_slot.cjs'); // REQ-0126: per-BP-instance cosmetic skin slot
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
 // (owns its own async pg pool for BYTEA image blobs). Re-exported below so
 // storage.cjs stays THE single persistence chokepoint every caller imports.
@@ -106,6 +107,16 @@ module.exports = {
   readBio: bioStore.readBio,
   writeBio: bioStore.writeBio,
   listBios: bioStore.listBios,
+  // REQ-0126: per-BP-instance cosmetic skin slot (storage.cjs stays THE sole
+  // persistence chokepoint -- from storage/bpskin_slot.cjs).
+  SKIN_DIR: bpskinStore.SKIN_DIR,
+  skinSlotPath: bpskinStore.skinSlotPath,
+  readSkinSlot: bpskinStore.readSkinSlot,
+  writeSkinSlot: bpskinStore.writeSkinSlot,
+  deleteSkinSlot: bpskinStore.deleteSkinSlot,
+  listSkinSlots: bpskinStore.listSkinSlots,
+  setBpSkin: bpskinStore.setBpSkin,
+  getBpSkinId: bpskinStore.getBpSkinId,
   sealPath: seals.sealPath,
   sealRunPath: seals.sealRunPath,
   readSeal: seals.readSeal,

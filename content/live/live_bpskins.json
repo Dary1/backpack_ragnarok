@@ -1,0 +1,8 @@
+{
+  "kind": "bpskin/1",
+  "note": "REQ-0126 Backpack Skin SYSTEM registry. Programmer-art dev skins prove the stack with NO real raster art: the compositor renders from palette + corner_radius/border_band. `art` raster keys are optional; when absent the renderer uses the procedural path -- missing art never blocks. Real UGC/AI skins add `art` keys later without a schema change.",
+  "entries": [
+    { "kind": "bpskin/1", "id": "neutral", "name": "Neutral", "neutral": true, "set": null, "i18n": { "ja": { "name": "ニュートラル" } }, "palette": { "canvas": "#14181f", "fill": "#2b3240", "welt": "#2b3240" }, "corner_radius": 0, "border_band": 0, "art": {} },
+    { "kind": "bpskin/1", "id": "devornate", "name": "Dev Ornate", "neutral": false, "set": "dev", "i18n": { "ja": { "name": "開発用オーネイト" } }, "palette": { "canvas": "#14181f", "fill": "#5a4632", "fill2": "#6f5740", "welt": "#c9a24b" }, "corner_radius": 12, "border_band": 7, "art": {} }
+  ]
+}

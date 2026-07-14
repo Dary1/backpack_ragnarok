@@ -19,6 +19,7 @@ const ITEMS_PATH = contentPath('live', 'live_items.json');
 const SIS_PATH = contentPath('live', 'live_sis.json');
 const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
 const UNITS_PATH = contentPath('live', 'live_units.json'); // REQ-0170: unit/1 defs
+const BPSKINS_PATH = contentPath('live', 'live_bpskins.json'); // REQ-0126: bpskin/1 cosmetic asset defs
 const PACKS_PATH = contentPath('live', 'live_packs.json'); // REQ-0170: gacha_pack/1 defs
 const SCENARIO_PATH = contentPath('live', 'scenario.json');
 const REGISTRY_PATH = contentPath('registry.json');
@@ -69,6 +70,7 @@ function buildContentPayload() {
   const tms = loadJSON(TMS_PATH); // REQ-0042
   const units = loadJSON(UNITS_PATH); // REQ-0170
   const packs = loadJSON(PACKS_PATH); // REQ-0170
+  let bpskinsDoc = null; try { bpskinsDoc = loadJSON(BPSKINS_PATH); } catch (e) { bpskinsDoc = null; } // REQ-0126
   const scenario = loadJSON(SCENARIO_PATH);
   // REQ-0035: batch-level provenance for the Dex's "provenance" section.
   // Optional -- an absent/unreadable registry.json degrades to `null`,
@@ -157,6 +159,9 @@ function buildContentPayload() {
     tms: TMS, // REQ-0042
     units: UNITS, // REQ-0170
     packs: PACKS, // REQ-0170
+    // REQ-0126: bpskin/1 registry ({entries:[...]}), the client's skin-def
+    // source (loadSkinDefs()). Absent/unreadable file -> empty registry.
+    bpskins: (bpskinsDoc && Array.isArray(bpskinsDoc.entries)) ? bpskinsDoc : { entries: [] },
     // REQ-0170/REQ-0128b: the ratified connection-shape table. Shipped WITH the
     // defs (rather than left for the client to re-derive) because the engine
     // resolves rays through it -- one table, one truth, board and sim agreeing by
@@ -178,6 +183,7 @@ function getContent() {
     sis: statMtimeMs(SIS_PATH),
     tms: statMtimeMs(TMS_PATH), // REQ-0042
     units: statMtimeMs(UNITS_PATH), // REQ-0170
+    bpskins: statMtimeMs(BPSKINS_PATH), // REQ-0126
     packs: statMtimeMs(PACKS_PATH), // REQ-0170
     scenario: statMtimeMs(SCENARIO_PATH),
     registry: statMtimeMs(REGISTRY_PATH),
@@ -188,6 +194,7 @@ function getContent() {
     mtimes.sis !== contentCache.mtimes.sis ||
     mtimes.tms !== contentCache.mtimes.tms || // REQ-0042
     mtimes.units !== contentCache.mtimes.units || // REQ-0170
+    mtimes.bpskins !== contentCache.mtimes.bpskins || // REQ-0126
     mtimes.packs !== contentCache.mtimes.packs || // REQ-0170
     mtimes.scenario !== contentCache.mtimes.scenario ||
     mtimes.registry !== contentCache.mtimes.registry;

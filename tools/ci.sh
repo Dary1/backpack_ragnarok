@@ -55,6 +55,10 @@ echo "==== [4.66/7] content-check schema dialects (DB-free, REQ-0161) ===="
 node server/tests/content_checks_dialect_test.cjs
 echo "==== [4.67/7] pack biography aggregation + veteran luck (DB-free, REQ-0060) ===="
 node server/tests/bio_test.cjs
+echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
+node server/tests/bpskin_test.cjs
+echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
+node server/tests/bpskin_migration_test.cjs
 echo "==== [4.7/7] inspection kit golden vectors (REQ-0152, G3/G2 purity) ===="
 KITPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$KITPY" ] && "$KITPY" -c 'import numpy,scipy,rembg' 2>/dev/null; then
@@ -78,6 +82,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/contentagg_test.cjs
   echo "==== [5.4/7] pack biography storage parity (pg backend, REQ-0060) ===="
   STORAGE_BACKEND=pg node server/tests/bio_test.cjs
+  echo "==== [5.45/7] bp-skin cosmetic-slot store parity (pg backend, REQ-0126) ===="
+  STORAGE_BACKEND=pg node server/tests/bpskin_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi
@@ -108,6 +114,10 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # Same vite-ssrLoadModule rig as the checks above; no browser, no live auth.
   echo "==== [5.9/7] client supabase-auth wiring (REQ-0118c) ===="
   (cd client && node scripts/check_auth.mjs)
+  echo "==== [5.9b/7] client bp-skin resolver/registry/composite chain (REQ-0126) ===="
+  (cd client && node scripts/check_bpskin.mjs)
+  echo "==== [5.9c/7] bp-skin S3 validation harness -- deterministic composite machine gate (REQ-0126) ===="
+  (cd client && node scripts/bpskin_harness.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
 else
