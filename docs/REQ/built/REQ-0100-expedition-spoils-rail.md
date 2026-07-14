@@ -86,3 +86,27 @@ GET /api/warehouse on mount + a slow refresh (~15s) + an immediate refresh when
 the expanded room's run settles (Monitor already detects settle). Capacity meter
 + pending count + 4 rows + deep-link button, testids per the Selector contract
 above. Implemented on branch req-0168-schedule-ux-pass.
+
+## Record
+- **Status**: built (gates green) 2026-07-14. Branch req-0168-schedule-ux-pass.
+- **Commits**: 736cd7d (spoils i18n keys), d2bd6b4 (SpoilsRail.tsx + SchedulePage
+  wiring + Monitor onRunSettled + schedule.css), 2730fc0 (dist).
+- Implemented per the 2026-07-14 ratification: new `client/src/schedule/
+  SpoilsRail.tsx` renders in the existing right spoils column. It owns ONE light
+  GET /api/warehouse on mount + a slow 15s refresh + an immediate refresh when the
+  watched room's run settles (Monitor.tsx gained an `onRunSettled` callback that
+  SchedulePage turns into a `refreshSignal` bump). Shows the pending count, a
+  staged capacity meter `{n}/200` (WAREHOUSE_CAP; calm/warning/full states), the 4
+  soonest-to-expire rows (TM rows INCLUDED, icon thumb + rarity-tinted name +
+  expiry chip), a deep-link button to the **#/warehouse ROUTE** (not a tab, per
+  REQ-0086), and the 7-day-TTL lore line. No inline claim; no REQ-0041 claim-path
+  fork; warehouse-page selectors untouched.
+- **Selector contract**: schedule-spoils-rail / -count / -cap / -row /
+  -claim-jump implemented (+ schedule-spoils-empty for the zero-rows state).
+- **Data-source deviation** (already noted in the ratification): the draft's
+  "reuse the warehouse rows SchedulePage already polls" is stale post-REQ-0086 --
+  the rail owns its own fetch, as above.
+- **Gates**: tsc PASS, oxlint 0 errors, build PASS (dist committed), no server
+  change (default deep-link path). e2e: the schedule specs (which now render the
+  rail on the detail page) pass in the full-suite + GPU reruns. Manual browser
+  pass deferred to orchestrator browser QA.
