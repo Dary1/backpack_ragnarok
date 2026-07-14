@@ -80,6 +80,49 @@ module.exports.run = async function run(h) {
     assert.strictEqual(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), null, 'pending roll finalized (deleted) once BOTH the uid AND the balance-delta are present in the saved canvas');
   });
 
+  await AT('gacha: REQ-0062 themed pack -- guaranteed BP PLUS bonus slots (po/si/tm) from per-pack sub-streams; bonuses echoed on the roll and stored on the pending doc; the pack Dex card exposes the transparent odds tables; finalize stays BP-uid+balance gated', async () => {
+    setLrdstBalance(scheduleP1.playerId, 999);
+    const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'test_themed' });
+    assert.strictEqual(rollRes.status, 200, 'themed roll must succeed: ' + JSON.stringify(rollRes.body));
+    assert.strictEqual(rollRes.body.cost, 20, 'themed pack cost (20) echoed');
+    const rolled = rollRes.body.rolled;
+    assert.ok(rolled && rolled.uid, 'guaranteed BP minted');
+    assert.ok(rolled.shape.length >= 3 && rolled.shape.length <= 4, 'guaranteed BP obeys the pack [3,4] cell band: ' + rolled.shape.length);
+    assert.ok(Array.isArray(rolled.bonuses) && rolled.bonuses.length === 3, 'three bonus slots resolved: ' + JSON.stringify(rolled.bonuses));
+    const byPool = {};
+    for (const b of rolled.bonuses) {
+      assert.ok(b.uid && b.uid !== rolled.uid, 'each bonus carries its own freshly minted uid');
+      assert.ok(b.def && b.def.name, 'each bonus echoes a def for the result modal');
+      byPool[b.pool] = b;
+    }
+    assert.strictEqual(byPool.po.id, 'blade', 'po bonus drawn from its table');
+    assert.strictEqual(byPool.si.id, 'acc_gem', 'si bonus drawn from its table');
+    assert.strictEqual(byPool.tm.id, 'lrdst', 'tm bonus drawn from its table');
+    assert.strictEqual(byPool.tm.qty, 3, 'tm bonus qty honored');
+    assert.strictEqual(byPool.po.qty, 1, 'po bonus qty defaults to 1');
+
+    // Determinism: the SAME stored master seed reproduces the SAME bonuses (house RNG
+    // discipline -- per-pack, per-slot labeled sub-streams).
+    const pend = scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid);
+    assert.ok(pend && Array.isArray(pend.rolled.bonuses) && pend.rolled.bonuses.length === 3, 'pending doc stores the rolled bonuses');
+    const reroll = schedule.rollPackBp(schedule.resolvePack('test_themed'), pend.seed);
+    assert.deepStrictEqual(reroll.bonuses.map((b) => b.id), rolled.bonuses.map((b) => b.id), 'bonuses are reproducible from the stored seed');
+
+    // Transparent odds: the pack Dex card lists every table with its weights.
+    const cardRes = await scheduleReq('GET', '/api/dex/card/pack/test_themed', scheduleP1.token, null);
+    assert.strictEqual(cardRes.status, 200, 'pack Dex card resolves: ' + JSON.stringify(cardRes.body));
+    assert.ok(Array.isArray(cardRes.body.card.bonus) && cardRes.body.card.bonus.length === 3, 'pack card exposes the bonus tables (transparent odds)');
+    assert.ok(Array.isArray(cardRes.body.card.pool) && cardRes.body.card.pool.length >= 1, 'pack card exposes the unit pool with weights');
+
+    // Finalize is UNCHANGED: BP uid present + balance dropped by the cost.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.inv.pages[0].tms.find((t) => t.uid === 'lrdst_test_stack').qty -= 20; // 999 -> 979
+    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Themed BP', color: '#888888', shape: rolled.shape, origin: [1, 1], unit: rolled.unit, hpMax: rolled.hpMax });
+    const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
+    assert.strictEqual(putRes.status, 200, 'auto-save PUT must succeed: ' + JSON.stringify(putRes.body));
+    assert.strictEqual(scheduleStorage.readGachaPending(scheduleP1.playerId, rolled.uid), null, 'themed pack finalizes on BP uid + balance drop (bonuses ride along, not independently gated)');
+  });
+
   await AT('gacha: insufficient funds (balance < cost) is a 409, no pending row created', async () => {
     setLrdstBalance(scheduleP1.playerId, 5); // below the 10x cost
     const rollRes = await scheduleReq('POST', '/api/workshop/gacha', scheduleP1.token, { kind: 'common_bp' });

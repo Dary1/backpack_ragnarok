@@ -906,3 +906,60 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
     });
   });
 });
+
+test.describe('REQ-0062: themed BP pack (clockwork) -- open end-to-end', () => {
+  withDevUserFixture();
+
+  test('choose the clockwork pack -> pay -> claim -> guaranteed BP + bonus item land in inventory; the odds view renders the bonus table', async ({ page }) => {
+    await withDevProfileBackup(async () => {
+      const seededCanvas = await seedDevLrdstBalance(page, 999);
+      const preBpIds = new Set<string>();
+      for (const pg of seededCanvas.inv.pages) for (const b of pg.bps) preBpIds.add(b.id);
+      const prePoUids = new Set<string>();
+      for (const pg of seededCanvas.inv.pages) for (const p of pg.pos || []) prePoUids.add(p.uid);
+      await bootApp(page);
+      await page.locator('.nav-link', { hasText: 'Workshop' }).click();
+      await expect(page.locator('[data-testid="workshop-pack-select"]')).toBeVisible({ timeout: 10000 });
+
+      // Choose the themed pack.
+      const clockwork = page.locator('[data-testid="workshop-pack-option-clockwork"]');
+      await expect(clockwork).toBeVisible();
+      await clockwork.click();
+      await expect(clockwork).toHaveAttribute('data-active', '1');
+
+      // Transparent odds: the bonus table renders in the odds view.
+      await expect(page.locator('[data-testid="workshop-bonus-odds"]')).toBeVisible();
+      await expect(page.locator('[data-testid="workshop-bonus-row"]').first()).toBeVisible();
+
+      await expect(page.locator('[data-testid="workshop-gacha-balance"]')).toContainText('999');
+      const rollBtn = page.locator('[data-testid="workshop-roll-btn"]');
+      await expect(rollBtn).toBeEnabled();
+      await rollBtn.click();
+
+      // Result modal renders the guaranteed BP + the bonus bundle.
+      const resultPanel = page.locator('[data-testid="workshop-roll-result"]');
+      await expect(resultPanel).toBeVisible({ timeout: 10000 });
+      await expect(resultPanel.locator('[data-testid="workshop-result-bonuses"]')).toBeVisible();
+      await expect(resultPanel.locator('[data-testid="workshop-result-bonus"]').first()).toBeVisible();
+
+      await expect(page.locator('[data-testid="workshop-toast"]')).toBeVisible({ timeout: 10000 });
+      await waitForAutoSave(page);
+
+      // Server-side: balance dropped by the clockwork cost (15); a fresh BP (4-5 cells)
+      // plus a fresh bonus PO (flame_tablet|oil_flask) landed in inventory.
+      const canvas = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      let totalLrdst = 0;
+      for (const pg of canvas.inv.pages) for (const tm of pg.tms || []) if (tm.id === 'lrdst') totalLrdst += tm.qty;
+      expect(totalLrdst).toBe(999 - 15);
+      const newBpIds = new Set<string>();
+      for (const pg of canvas.inv.pages) for (const b of pg.bps) if (!preBpIds.has(b.id)) newBpIds.add(b.id);
+      expect(newBpIds.size).toBe(1);
+      const allBps = canvas.inv.pages.flatMap((pg: any) => pg.bps);
+      const newBp = allBps.find((b: any) => newBpIds.has(b.id));
+      expect(newBp.shape.length).toBeGreaterThanOrEqual(4);
+      expect(newBp.shape.length).toBeLessThanOrEqual(5);
+      const newPos = canvas.inv.pages.flatMap((pg: any) => (pg.pos || [])).filter((p: any) => !prePoUids.has(p.uid));
+      expect(newPos.some((p: any) => p.id === 'flame_tablet' || p.id === 'oil_flask')).toBe(true);
+    });
+  });
+});

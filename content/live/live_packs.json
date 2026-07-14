@@ -66,6 +66,117 @@
      "name": "コモンバックパック"
     }
    }
+  },
+  {
+   "id": "clockwork",
+   "name": "Clockwork Pack",
+   "cost": 15,
+   "cost_tm": "lrdst",
+   "cells": [
+    4,
+    5
+   ],
+   "hp_per_cell": 15,
+   "pool": [
+    {
+     "unit": "watcher",
+     "weight": 2
+    },
+    {
+     "unit": "squire",
+     "weight": 2
+    },
+    {
+     "unit": "thief",
+     "weight": 1
+    }
+   ],
+   "bonus": [
+    {
+     "pool": "po",
+     "table": [
+      {
+       "id": "flame_tablet",
+       "weight": 3
+      },
+      {
+       "id": "oil_flask",
+       "weight": 2
+      }
+     ]
+    }
+   ],
+   "i18n": {
+    "ja": {
+     "name": "クロックワークパック"
+    }
+   }
+  },
+  {
+   "id": "ember",
+   "name": "Ember Pack",
+   "cost": 18,
+   "cost_tm": "lrdst",
+   "cells": [
+    6,
+    8
+   ],
+   "hp_per_cell": 15,
+   "pool": [
+    {
+     "unit": "angel",
+     "weight": 1
+    },
+    {
+     "unit": "priest",
+     "weight": 1
+    },
+    {
+     "unit": "princess",
+     "weight": 1
+    },
+    {
+     "unit": "littleprincess",
+     "weight": 1
+    }
+   ],
+   "bonus": [
+    {
+     "pool": "po",
+     "table": [
+      {
+       "id": "flame_tablet",
+       "weight": 3
+      },
+      {
+       "id": "blade",
+       "weight": 2
+      },
+      {
+       "id": "oil_flask",
+       "weight": 1
+      }
+     ]
+    },
+    {
+     "pool": "si",
+     "table": [
+      {
+       "id": "acc_whet",
+       "weight": 2
+      },
+      {
+       "id": "acc_frost",
+       "weight": 1
+      }
+     ]
+    }
+   ],
+   "i18n": {
+    "ja": {
+     "name": "エンバーパック"
+    }
+   }
   }
  ]
 }
