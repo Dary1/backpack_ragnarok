@@ -72,4 +72,22 @@ T('api: GET /api/content renders eff_en/eff_ja server-side, matching tools/eff_r
   assert.strictEqual(fxSi.eff_en, expectedEnSi, 'fx_ring: eff_en matches eff_render.cjs output');
   assert.strictEqual(fxSi.eff_ja, expectedJaSi, 'fx_ring: eff_ja matches eff_render.cjs output');
 });
+
+// REQ-0178: registry-first serving is byte-transparent under an EMPTY registry
+// tier. On BOTH backends the api_test fixture seeds NO content_defs (files
+// backend has no registry at all; the pg run's fixture namespace is empty), so
+// every served item/si/tm must be the file entry and the payload must gain NO
+// new fields (source accounting lives on the /api/content/dev/sources endpoint,
+// never in the payload). This is the spec's files-backend byte-parity contract.
+T('api: GET /api/content is byte-identical to the file payload under an empty registry (REQ-0178)', () => {
+  const req = mockReq('GET', '/api/content');
+  const res = mockRes();
+  api.handle(req, res);
+  const parsed = JSON.parse(res.body);
+  const file = require('../../lib/content.cjs').buildContentPayload();
+  assert.strictEqual(JSON.stringify(parsed.items), JSON.stringify(file.items), 'items file-sourced (no registry override)');
+  assert.strictEqual(JSON.stringify(parsed.sis), JSON.stringify(file.sis), 'sis file-sourced');
+  assert.strictEqual(JSON.stringify(parsed.tms), JSON.stringify(file.tms), 'tms file-sourced');
+  assert.strictEqual(parsed.content_sources, undefined, 'source accounting is NOT folded into the payload');
+});
 };
