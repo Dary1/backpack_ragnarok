@@ -1,6 +1,6 @@
 # REQ-0167 — P5 guardrail reword (user's ratified wording)
 
-**Status:** built — applied on branch; awaiting merge.
+**Status:** done — merged to master (8bcb864) and deployed 2026-07-14 (docs-only; no service restart).
 **Reserved:** 2026-07-14
 **Slug:** p5-guardrail-reword
 **Follows:** REQ-0166 (which shipped the orchestrator's draft wording)
