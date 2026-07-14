@@ -837,3 +837,59 @@
   text-decoration: underline;
   white-space: nowrap;
 }
+
+/* ===== REQ-0170: the roster panel (which Units this pack can cast) and the
+   result modal's Unit identity row. Both are new surfaces for a new fact --
+   a roll now yields a CHARACTER, not an anonymous bag -- and both reuse the
+   existing mjolnir panel/ornate primitives rather than inventing chrome. */
+.workshop-pool-grid {
+  grid-template-columns: 1fr;
+  margin-top: 14px;
+}
+.workshop-pool-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(122px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.workshop-pool-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.16);
+  text-align: center;
+}
+.workshop-pool-art {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+}
+.workshop-pool-name {
+  font-size: 12.5px;
+  color: var(--bone);
+}
+.workshop-pool-shape {
+  color: var(--bone-2);
+  line-height: 1.25;
+}
+.workshop-result-unit {
+  align-items: center;
+}
+.workshop-result-unit-art {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--gold-lo, var(--rule));
+}
+.workshop-result-unit-name {
+  font-size: 16px;
+  color: var(--gold-hi);
+}

@@ -51,7 +51,7 @@ function localBpCells(bpDef) {
 //   bps: [{id,name,hpMax,hp,localCells,fieldCells,statusBag}],
 //   pos: [{uid,id,def,localCells,fieldCells,effects (buff-folded), bpId}],
 // }
-function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, siDefsById) {
+function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, siDefsById, unitDefsById, connShapes) {
   const st = deepCopy(squadState);
   const formation = FORMATIONS[formationId];
   if (!formation) throw new Error('compileSquadSnapshot: unknown formation ' + formationId);
@@ -81,24 +81,52 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
   // engine.js traceBeams on LOCAL canvas coords) + per-BP link cond flags.
   // Links are WITHIN a unit's canvas (BP<->BP). Determinism-safe: this only
   // affects replay when a pulse fires or a buff_linked resonance exists.
+  // REQ-0170: the shape-driven walker, kept in LOCKSTEP with engine.js's
+  // traceBeams() (same occluder set, same range/pierce/offset semantics, same
+  // board-absolute dirs). A BP's rays come from its Unit's def
+  // (bp.unit.id -> unit/1 -> connection_shape -> vocab.connection_shapes), so the
+  // sim and the board can never disagree about who is linked to whom. With no unit
+  // registry injected, no links form -- which is exactly how every pre-REQ-0170
+  // fixture behaves, and why goldens without units stay byte-identical.
   const LINK_DIRS = { 0: [-1, 0], 1: [-1, 1], 2: [0, 1], 3: [1, 1], 4: [1, 0], 5: [1, -1], 6: [0, -1], 7: [-1, -1] };
   const LROWS = (squadState.layout && squadState.layout.ROWS) || 8;
   const LCOLS = (squadState.layout && squadState.layout.COLS) || 8;
-  const linkerCellOf = (bpDef) => [bpDef.origin[0] + bpDef.linker.off[0], bpDef.origin[1] + bpDef.linker.off[1]];
-  const linkerKeyToBp = new Map();
-  for (const bpDef of st.bps) { if (!bpDef.linker) continue; const lc0 = linkerCellOf(bpDef); linkerKeyToBp.set(lc0[0] + ',' + lc0[1], bpDef.id); }
+  const UNIT_DEFS = unitDefsById || {};
+  const CONN_SHAPES = connShapes || {};
+  const shapeOfBp = (bpDef) => {
+    const u = bpDef && bpDef.unit;
+    if (!u || !u.id) return null;
+    const def = UNIT_DEFS[u.id];
+    if (!def || !def.connection_shape) return null;
+    return CONN_SHAPES[def.connection_shape] || null;
+  };
+  const unitCellOf = (bpDef) => [bpDef.origin[0] + bpDef.unit.off[0], bpDef.origin[1] + bpDef.unit.off[1]];
+  const unitKeyToBp = new Map();
+  for (const bpDef of st.bps) { if (!bpDef.unit) continue; const lc0 = unitCellOf(bpDef); unitKeyToBp.set(lc0[0] + ',' + lc0[1], bpDef.id); }
   const linkEdges = [];
   for (const bpDef of st.bps) {
-    if (!bpDef.linker || !Array.isArray(bpDef.linker.dirs)) continue;
-    for (const d of bpDef.linker.dirs) {
-      const start = linkerCellOf(bpDef); let r = start[0], c = start[1], to = null;
-      while (true) {
+    const shp = shapeOfBp(bpDef);
+    if (!shp || shp.kind === 'none') continue;
+    if (shp.kind === 'offset') {
+      const [ur, uc] = unitCellOf(bpDef);
+      for (const [dr, dc] of (shp.offsets || [])) {
+        const r = ur + dr, c = uc + dc;
+        if (r < 1 || r > LROWS || c < 1 || c > LCOLS) continue;
+        const hit = unitKeyToBp.get(r + ',' + c);
+        if (hit && hit !== bpDef.id) linkEdges.push({ from: bpDef.id, to: hit, dir: null, mutual: false });
+      }
+      continue;
+    }
+    const range = (shp.range === 0 || shp.range == null) ? Infinity : shp.range;
+    const pierce = !!shp.pierce;
+    for (const d of (shp.dirs || [])) {
+      const start = unitCellOf(bpDef); let r = start[0], c = start[1];
+      for (let step = 1; step <= range; step++) {
         r += LINK_DIRS[d][0]; c += LINK_DIRS[d][1];
         if (r < 1 || r > LROWS || c < 1 || c > LCOLS) break;
-        const hit = linkerKeyToBp.get(r + ',' + c);
-        if (hit) { to = hit; break; }
+        const hit = unitKeyToBp.get(r + ',' + c);
+        if (hit && hit !== bpDef.id) { linkEdges.push({ from: bpDef.id, to: hit, dir: d, mutual: false }); if (!pierce) break; }
       }
-      if (to && to !== bpDef.id) linkEdges.push({ from: bpDef.id, to: to, dir: d, mutual: false });
     }
   }
   for (const e of linkEdges) e.mutual = linkEdges.some(o => o.from === e.to && o.to === e.from);

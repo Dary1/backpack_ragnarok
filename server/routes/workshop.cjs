@@ -22,9 +22,10 @@ function tryWorkshopRoutes(req, res, url, p) {
     // Two-phase, mirrors POST /api/warehouse/claim immediately above:
     // this route NEVER writes the caller's profile -- it only reads the
     // LAST-SAVED canvas (loadOwnCanvas(callerId)) to check the LRDST balance,
-    // rolls a fresh BP instance server-side (seeded RNG, see
-    // schedule.cjs's rollCommonBp), records a pending row, and returns
-    // the rolled definition. The CLIENT deducts the cost from its own
+    // rolls a fresh UNIT server-side -- a character drawn from the pack's
+    // pool, plus the BP that is its inventory (seeded RNG, see
+    // schedule.cjs's rollPackBp; REQ-0170) -- records a pending row, and
+    // returns the rolled definition. The CLIENT deducts the cost from its own
     // LRDST stack, first-fit-places the BP, and auto-saves -- THAT PUT
     // is what finalizes the roll (see finalizeGachaForCanvas, wired into
     // the profile PUT handler above alongside

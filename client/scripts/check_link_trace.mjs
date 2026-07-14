@@ -64,13 +64,33 @@ const { traceUnit, whyNotPair, rayCells, cellLabel, DIR_NAMES } = await loadLink
 // their unit cells reproduces the spec's example exactly while keeping the
 // fixture readable. (bpCells/origin still line up: a 1x1 shape at the origin.)
 const LAYOUT = { ROWS: 10, COLS: 10 };
+
+// REQ-0170: a Unit's rays come from its DEF's connection_shape, resolved through an
+// injected registry -- there is no per-BP dirs array any more. canvas_spec.md's worked
+// example is a USER-MANAGED GOLDEN and its dirs are the spec's own; so rather than
+// bend the golden onto today's roster (which would be changing the spec to fit the
+// code), this mints one synthetic unit def per dirs-set the spec uses. The example is
+// reproduced EXACTLY, and what it now proves is that the walker resolves the same
+// graph through the def indirection.
+const SHAPES = {};
+const UNITS = {};
+const shapeKeyFor = (dirs) => {
+  const key = dirs.length ? 'spec_' + dirs.join('_') : 'spec_none';
+  if (!SHAPES[key]) {
+    SHAPES[key] = dirs.length
+      ? { kind: 'ray', dirs: [...dirs], range: null, pierce: false }
+      : { kind: 'none', dirs: [] };
+    UNITS['u_' + key] = { name: key, rarity: 'Common', icon: '', connection_shape: key };
+  }
+  return 'u_' + key;
+};
 const unit = (id, name, cell, dirs) => ({
   id,
   name,
   color: '#888888',
   shape: [[0, 0]],
   origin: cell,
-  linker: { off: [0, 0], dirs },
+  unit: { id: shapeKeyFor(dirs), off: [0, 0] },
 });
 // C2=[2,3] F2=[2,6] I2=[2,9] C8=[8,3] I8=[8,9]  (+ the Pale BP, unit not drawn
 // in the draft — omitted, exactly as the spec omits it.)
@@ -86,7 +106,7 @@ const state = {
   pos: [],
   sis: [],
 };
-const engine = EngineFactory.create({}, {}, LAYOUT);
+const engine = EngineFactory.create({}, {}, LAYOUT, undefined, UNITS, SHAPES);
 
 // ---------------------------------------------------------------------------
 console.log('ray walk (rayCells)');
@@ -171,7 +191,12 @@ const beams = engine.traceBeams(state);
 let agree = true;
 for (const bp of state.bps) {
   const tr = traceUnit(engine, state, LAYOUT, bp.id);
-  for (const d of bp.linker.dirs) {
+  // REQ-0170: the fired directions are the UNIT's connection shape, read through the
+  // engine's own resolver -- the same source traceBeams() uses. Asking the engine
+  // (rather than reading a field off the BP) is the point: there is no longer any
+  // per-BP dirs array that could disagree with the def.
+  const activeDirs = engine.connShapeOf(bp)?.dirs ?? [];
+  for (const d of activeDirs) {
     const bm = beams.find((b) => b.from === bp.id && b.dir === d);
     const dt = tr.dirs[d];
     if (bm.to !== dt.to || bm.mutual !== dt.mutual || !eq(bm.path, dt.path)) agree = false;
@@ -179,7 +204,7 @@ for (const bp of state.bps) {
     if ((dt.firstOnRay?.bp ?? null) !== bm.to) agree = false;
   }
   for (let d = 0; d < 8; d++) {
-    if (!bp.linker.dirs.includes(d) && tr.dirs[d].to !== null) agree = false; // an unfired direction links nothing
+    if (!activeDirs.includes(d) && tr.dirs[d].to !== null) agree = false; // an unfired direction links nothing
   }
 }
 check('every active dir matches engine.traceBeams (to/mutual/path/first-hit)', agree);

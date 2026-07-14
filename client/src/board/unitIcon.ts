@@ -24,6 +24,7 @@
 // client/scripts/check_unit_icon.mjs against the real production code (same
 // discipline as sprites.ts's parseSymbols(), which check_sprites.mjs drives
 // with @xmldom/xmldom instead of browser globals).
+import type { UnitDefMap } from '../engine/engine.d.ts';
 
 /** The pre-REQ-0125 glyph: one SVG <symbol> in content/sprite_all_v12.svg,
  * drawn identically for every BP. Bottom-but-one rung of the chain, and --
@@ -108,19 +109,44 @@ export function unitIconKey(unitId: string, skinId?: string | null): string {
   return skinId ? `unit:${unitId}@${skinId}` : `unit:${unitId}`;
 }
 
+/** The unit/1 defs, as served by /api/content. Set ONCE at boot (store/boot.ts)
+ * before any board mounts. A module-level registry rather than a parameter
+ * because loadBoardTextures() is called from three independent board components
+ * that have no business each threading the content payload down to the texture
+ * loader -- and because REQ-0125a always described this as a manifest that later
+ * REQs would POPULATE, not a signature they would change. */
+let UNIT_DEFS: UnitDefMap = {};
+
+/** REQ-0170. Idempotent; safe to call again on a content hot-reload. */
+export function setUnitDefs(defs: UnitDefMap | null | undefined): void {
+  UNIT_DEFS = defs || {};
+}
+
+/** The public, un-authenticated adopted-artwork route (server/routes/art.cjs's
+ * RE_PUB_ADOPTED). `icon` is an artwork system_name and may contain ':' -- hence
+ * the encode. A unit whose art has not been adopted 404s here, and that is a
+ * NON-EVENT: the raster is skipped, `has(key)` says no, and resolveUnitIcon()
+ * falls through to the legacy glyph. */
+export function unitArtUrl(icon: string): string {
+  return '/api/art/' + encodeURIComponent(icon);
+}
+
 /**
  * The raster manifest for Unit icons.
  *
- * EMPTY BY DESIGN as of REQ-0125a, and that is the whole point: it is the one
- * place art gets plugged in. Returning [] means every BP resolves to the
- * legacy glyph and the board is pixel-identical to pre-REQ-0125a -- which is
- * this REQ's stated, intended end state (a seam plus a proof it falls
- * through), NOT an unfinished edge.
- *
- * REQ-0127 lands the roster PNGs; REQ-0125b lands the identity that keys them
- * (and, with REQ-0126, the active-skin selection). Neither needs to touch the
- * renderer -- they populate this list.
+ * Empty until REQ-0170: there was no unit art and, more to the point, no unit
+ * IDENTITY to key art on. Both landed together -- a BP now carries `unit.id`, and
+ * live_units.json says which artwork that id wears. So this list is now simply
+ * "every unit def that declares an icon", exactly as REQ-0125a promised: art
+ * arrives as DATA, and the renderer was never touched to receive it.
  */
 export function unitIconRasters(): RasterEntry[] {
-  return [];
+  const out: RasterEntry[] = [];
+  for (const id of Object.keys(UNIT_DEFS)) {
+    const icon = UNIT_DEFS[id]?.icon;
+    if (typeof icon === 'string' && icon.length > 0) {
+      out.push({ key: unitIconKey(id), url: unitArtUrl(icon) });
+    }
+  }
+  return out;
 }

@@ -153,7 +153,7 @@ function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDe
   if (!profileCanvas || !profileCanvas.presets || squadIndex < 0 || squadIndex >= profileCanvas.presets.store.length) {
     const err = new Error('squadIndex out of range for this player'); err.code = 'BAD_REQUEST'; throw err;
   }
-  const engine = makeEngine(itemDefsById);
+  const engine = makeEngine(itemDefsById); // REQ-0170: deploy-gate only (isSquadDeployable) -- never traces beams, so the Unit registries are deliberately not threaded here
   if (!isSquadDeployable(engine, profileCanvas, squadIndex)) {
     // REQ-0041 feedback 5: a squad with zero BP has no HP pool at all --
     // "dead on arrival" -- and must never be assignable to a room slot.

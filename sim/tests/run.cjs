@@ -1475,9 +1475,30 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
 // =====================================================================
 (function () {
   const L = { ROWS: 8, COLS: 8 };
-  function bp(id, origin, dirs, off) { return { id: id, name: id, shape: [[0,0],[0,1]], origin: origin, linker: { off: off || [0,0], dirs: dirs }, hpMax: 100 }; }
-  function cellBp(id, origin, dirs) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: dirs }, hpMax: 100 }; }
-  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 50 }], pos: [], layout: L, sis: [] }; }
+  // REQ-0170: a BP's rays are its UNIT's connection_shape, resolved through an
+  // injected registry -- so these fixtures mint one synthetic unit def per dirs-set
+  // they need, exactly as they already mint synthetic ITEM defs (linkItemDefs). This
+  // keeps every link graph below BYTE-IDENTICAL to the pre-REQ-0170 fixtures (an
+  // east-only ray stays east-only; the live vocabulary has no such shape, and
+  // bending these fixtures onto `rook` would have silently added edges and changed
+  // what the pulse tests assert). The LIVE vocabulary is exercised by the parity
+  // test at the end of this block, against the real scenario.
+  const linkUnitDefs = {};
+  const linkShapes = {};
+  function unitForDirs(dirs) {
+    const key = dirs.length ? 'ray_' + dirs.join('_') : 'no_link';
+    if (!linkShapes[key]) {
+      linkShapes[key] = dirs.length
+        ? { kind: 'ray', dirs: dirs.slice(), range: null, pierce: false }
+        : { kind: 'none', dirs: [] };
+    }
+    const uid = 'u_' + key;
+    if (!linkUnitDefs[uid]) linkUnitDefs[uid] = { name: uid, rarity: 'Common', icon: '', connection_shape: key };
+    return uid;
+  }
+  function bp(id, origin, dirs, off) { return { id: id, name: id, shape: [[0,0],[0,1]], origin: origin, unit: { id: unitForDirs(dirs), off: off || [0,0] }, hpMax: 100 }; }
+  function cellBp(id, origin, dirs) { return { id: id, name: id, shape: [[0,0]], origin: origin, unit: { id: unitForDirs(dirs), off: [0,0] }, hpMax: 100 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], unit: { id: unitForDirs([]), off: [0,0] }, hpMax: 50 }], pos: [], layout: L, sis: [] }; }
   const linkItemDefs = {
     spark:     { id: 'spark',     shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'pulse' } }] },
     sparkfast: { id: 'sparkfast', shape: [[0,0]], tags: [], modes: ['battle'], effects: [{ trigger: { t: 'every_secs', s: [0.1,0.1] }, verb: { t: 'pulse' } }] },
@@ -1491,6 +1512,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
       squadSnapshots: [unit, dummyUnit('z2'), dummyUnit('z3'), dummyUnit('z4')],
       itemDefsById: Object.assign({}, linkItemDefs, extraDefs || {}),
       enemyDefsById: wallEnemy, skillDefsById: {}, formationId: 'formation1', level: 1, participants: ['pA'],
+      unitDefsById: linkUnitDefs, connShapes: linkShapes, // REQ-0170
     });
   }
   const chainUnit = { linked: true, layout: L, sis: [],
@@ -1561,7 +1583,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
       pos: [ { uid: 'w1', id: 'weapon', loc: 'grid', cell: [1,1], rot: 0 },
              { uid: 't1', id: 'wtag', loc: 'grid', cell: [1,4], rot: 0 },
              { uid: 't2', id: 'wtag', loc: 'grid', cell: [1,5], rot: 0 } ] };
-    const c = combat.compileSquadSnapshot(unit, resItems, 'formation1', 'unit1');
+    const c = combat.compileSquadSnapshot(unit, resItems, 'formation1', 'unit1', undefined, linkUnitDefs, linkShapes); // REQ-0170: the link graph needs the Unit registry
     const w = c.pos.find(p => p.uid === 'w1');
     const strike = w.effects.find(e => e.verb && e.verb.t === 'strike');
     eq(strike.verb.n, [21, 21], 'buff_linked adds +10 per linked Weapon PO (2) => base [1,1] -> [21,21]');
@@ -1582,10 +1604,14 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   const Data = require(path.join(REPO_ROOT, 'mock-src', 'data.js'));
   const norm = (edges) => edges.map(e => e.from + '>' + e.to + '@' + e.dir).sort();
   T('REQ-0048 parity: sim linkEdges == engine.js traceBeams (established links, live fixture)', () => {
-    const E = Engine.create(Data.ITEMS, Data.SI_DEFS, Data.LAYOUT, Data.TREES);
+    // REQ-0170: the parity that matters now is that BOTH walkers resolve the SAME
+    // registry -- the live unit defs + the ratified connection_shapes. If the sim
+    // and the engine could disagree here, the board would draw rays the battle did
+    // not honour, which is the exact class of bug this test exists to catch.
+    const E = Engine.create(Data.ITEMS, Data.SI_DEFS, Data.LAYOUT, Data.TREES, Data.UNITS, Data.CONN_SHAPES);
     const st = Data.makeState();
     const engineEdges = E.traceBeams(st).filter(b => b.to).map(b => ({ from: b.from, to: b.to, dir: b.dir }));
-    const c = combat.compileSquadSnapshot(st, Data.ITEMS, 'formation1', 'unit1');
+    const c = combat.compileSquadSnapshot(st, Data.ITEMS, 'formation1', 'unit1', undefined, Data.UNITS, Data.CONN_SHAPES);
     const simEdges = (c.linkEdges || []).map(e => ({ from: e.from, to: e.to, dir: e.dir }));
     ok(engineEdges.length > 0, 'fixture must have >=1 established link (else the test is vacuous)');
     eq(norm(simEdges), norm(engineEdges), 'sim link graph must equal engine traceBeams established links');
@@ -1598,8 +1624,8 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
 // =====================================================================
 (function () {
   const L = { ROWS: 8, COLS: 8 };
-  function cellBp(id, origin) { return { id: id, name: id, shape: [[0,0]], origin: origin, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
-  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  function cellBp(id, origin) { return { id: id, name: id, shape: [[0,0]], origin: origin, unit: { id: 'berserker', off: [0,0] }, hpMax: 200 }; }
+  function dummyUnit(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], unit: { id: 'berserker', off: [0,0] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
   const items = {
     battler:  { id: 'battler',  shape: [[0,0]], tags: [], modes: ['battle'],    attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [1,1] }, verb: { t: 'strike', n: [8,8] }, attack_profile: { edge: ['top'] } }] },
     detector: { id: 'detector', shape: [[0,0]], tags: [], modes: ['detection'], attack_profile: { edge: ['top'], penetration: 0, aoe: 0 }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },
@@ -1702,8 +1728,8 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
 // REQ-0049 run integration: attachment rewards + door shortcut flow through runDungeon.
 (function () {
   const L = { ROWS: 8, COLS: 8 };
-  function cellBp(id, o) { return { id: id, name: id, shape: [[0,0]], origin: o, linker: { off: [0,0], dirs: [] }, hpMax: 200 }; }
-  function dummyU(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], linker: { off: [0,0], dirs: [] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
+  function cellBp(id, o) { return { id: id, name: id, shape: [[0,0]], origin: o, unit: { id: 'berserker', off: [0,0] }, hpMax: 200 }; }
+  function dummyU(id) { return { linked: false, bps: [{ id: id, name: id, shape: [[0,0]], origin: [1,1], unit: { id: 'berserker', off: [0,0] }, hpMax: 60 }], pos: [], layout: L, sis: [] }; }
   const it = {
     battler:  { id: 'battler',  shape: [[0,0]], modes: ['battle'],    attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.5,0.5] }, verb: { t: 'strike', n: [50,50] }, attack_profile: { edge: ['top'] } }] },
     detector: { id: 'detector', shape: [[0,0]], modes: ['detection'], attack_profile: { edge: ['top'] }, effects: [{ trigger: { t: 'every_secs', s: [0.4,0.4] }, verb: { t: 'strike', n: [1,1] }, attack_profile: { edge: ['top'] } }] },

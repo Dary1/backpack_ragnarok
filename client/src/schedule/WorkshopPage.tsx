@@ -26,7 +26,9 @@
 // shared/constants.json -- verbatim moves, zero behavior change.
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
+import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
+import { unitArtUrl } from '../board/unitIcon';
 import { firstFitPlaceBp } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
@@ -39,20 +41,19 @@ interface WorkshopPageProps {
   locale: Locale;
 }
 
-// REQ-0076: casting-odds display (mock's rules panel). These weights are
-// DISPLAY-ONLY -- the server's roll (server/services/gacha.cjs
-// rollCommonBp) is a random-walk polyomino of 4-6 cells and does NOT
-// publish per-cell-count probabilities, so no live number backs this.
-// The mock's own three rows (40/35/25) are reproduced verbatim as the
-// designed presentation of "smaller packs are more common"; documented
-// as an inference in the notes doc (UI is truth; no fabricated live
-// stat, the mock's fixed figures ARE the spec here). HP column = cells
-// x 15, which IS the real formula (hpMax = 15 * cellCount, server-side).
-const CASTING_ODDS: ReadonlyArray<{ cells: number; pct: number }> = [
-  { cells: 4, pct: 40 },
-  { cells: 5, pct: 35 },
-  { cells: 6, pct: 25 },
-];
+// REQ-0170: the casting odds are no longer a mock's fixed figures (the old
+// 40/35/25 rows were display-only, and were describing a 4-6 cell roll the server
+// stopped doing long ago). rollPolyomino() picks its cell count UNIFORMLY from the
+// pack's [min,max] range -- so the odds are knowable, exactly, from the pack def,
+// and are computed from it here. A fabricated stat is replaced by the real one.
+function castingOdds(pack: { cells?: [number, number]; hp_per_cell?: number } | undefined) {
+  const [lo, hi] = pack?.cells ?? [6, 8];
+  const hpPer = pack?.hp_per_cell ?? 15;
+  const n = Math.max(1, hi - lo + 1);
+  const rows: Array<{ cells: number; pct: number; hp: number }> = [];
+  for (let c = lo; c <= hi; c++) rows.push({ cells: c, pct: Math.round((100 / n) * 10) / 10, hp: c * hpPer });
+  return rows;
+}
 
 const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
 
@@ -86,11 +87,36 @@ function unitCoordLabel(off: [number, number]): string {
   return col + row;
 }
 
-/** Turns the rolled unit.dirs (0=N..7=NW, the project compass) into a
- * human-facing string -- reads the real dirs; no fabrication. */
-function dirsLabel(dirs: number[]): string {
-  if (!dirs.length) return '—';
-  return dirs.map((d) => COMPASS_LABELS[d] ?? '?').join(' ・ ');
+/** Turns a connection shape's ray dirs (0=N..7=NW, the project compass) into a
+ * human-facing string. An offset shape has no dirs and reads '—' -- it jumps, it
+ * does not fire along a compass line. */
+function dirsLabel(shape: ApiConnShape | undefined): string {
+  if (!shape || shape.kind !== 'ray' || !shape.dirs || !shape.dirs.length) return '—';
+  return shape.dirs.map((d) => COMPASS_LABELS[d] ?? '?').join(' ・ ');
+}
+
+/** The connection shape, named the way the vocabulary names it (ja label when the
+ * player is reading Japanese -- 飛車 / 角 / 香 are the terms the design uses), with
+ * the range/pierce facts that actually govern the walk appended. Invents nothing:
+ * every part is read off vocab.json's connection_shapes entry. */
+function shapeLabel(key: string | undefined, shape: ApiConnShape | undefined, locale: Locale): string {
+  if (!key || !shape) return '—';
+  const base = locale === 'ja' && shape.ja ? shape.ja : key;
+  if (shape.kind === 'none') return base + ' (' + t(locale, 'workshop.shapeNone') + ')';
+  if (shape.kind === 'offset') return base + ' (' + t(locale, 'workshop.shapeOffset', { n: (shape.offsets ?? []).length }) + ')';
+  const range = (shape.range === 0 || shape.range == null)
+    ? t(locale, 'workshop.shapeRangeUnlimited')
+    : t(locale, 'workshop.shapeRange', { n: shape.range });
+  return base + ' (' + range + ')';
+}
+
+/** The unit's display name in the player's locale -- i18n.ja.name when reading
+ * Japanese, the def's `name` otherwise. Same localized() convention the item panel
+ * already uses. */
+function unitName(def: ApiRolledBp['unitDef'] | undefined, locale: Locale): string {
+  if (!def) return '—';
+  if (locale === 'ja' && def.i18n?.ja?.name) return def.i18n.ja.name;
+  return def.name;
 }
 
 export function WorkshopPage({ locale }: WorkshopPageProps) {
@@ -116,7 +142,18 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   }, [toast]);
 
   const balance = readTotalLrdstBalance(snapshot.state);
-  const canAfford = balance >= GACHA_COMMON_BP_COST;
+  // REQ-0170: cost/pool/odds all come from the PACK the server rolls against, with
+  // the shared constant as the fallback for a client that booted before content
+  // arrived. A display constant that can drift from the roll is exactly the bug
+  // the old odds panel had.
+  const pack = snapshot.gameData?.PACKS?.['common_bp'];
+  const units = snapshot.gameData?.UNITS ?? {};
+  const connShapes = (snapshot.gameData?.CONN_SHAPES ?? {}) as Record<string, ApiConnShape>;
+  const cost = pack?.cost ?? GACHA_COMMON_BP_COST;
+  const odds = castingOdds(pack);
+  const canAfford = balance >= cost;
+  const rolledShapeKey = rollResult?.unitDef?.connection_shape;
+  const rolledShape = rolledShapeKey ? connShapes[rolledShapeKey] : undefined;
 
   const handleRoll = useCallback(async () => {
     setRolling(true);
@@ -256,7 +293,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             <div className="workshop-cast-cost">
               <span className="workshop-cast-cost-rune rune">{'ᚠ'}</span>
               <span className="workshop-cast-cost-val" data-testid="workshop-gacha-cost">
-                {t(locale, 'workshop.cost', { cost: GACHA_COMMON_BP_COST })}
+                {t(locale, 'workshop.cost', { cost })}
               </span>
               <span className="workshop-cast-cost-grow" />
               <span className="workshop-cast-own">
@@ -288,11 +325,11 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             <span className="t-micro">{t(locale, 'workshop.oddsHpNote')}</span>
           </div>
           <div className="workshop-odds-rows">
-            {CASTING_ODDS.map((o) => (
+            {odds.map((o) => (
               <div className="workshop-orow" key={o.cells}>
                 <span className="workshop-orow-lab">
                   <b>{t(locale, 'workshop.oddsCells', { n: o.cells })}</b>
-                  <span className="t-micro">{t(locale, 'workshop.oddsHp', { hp: o.cells * 15 })}</span>
+                  <span className="t-micro">{t(locale, 'workshop.oddsHp', { hp: o.hp })}</span>
                 </span>
                 <span className="bar workshop-orow-bar">
                   <span className="fill gold" style={{ display: 'block', height: '100%', width: o.pct + '%' }} />
@@ -309,6 +346,38 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
           </ul>
         </div>
       </section>
+
+      {/* ===== roster panel (REQ-0170): WHO this pack can cast. Read straight off
+           the pack's pool + the unit defs -- the same table the server rolls
+           against, so it can never advertise a unit that cannot drop. ===== */}
+      {pack && pack.pool?.length ? (
+        <section className="workshop-forge-grid workshop-pool-grid">
+          <div className="panel ornate workshop-pool" data-testid="workshop-pool">
+            <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
+            <div className="workshop-odds-head">
+              <span className="workshop-odds-title dj">{t(locale, 'workshop.poolHeading')}</span>
+              <span className="workshop-odds-den den">{t(locale, 'workshop.poolHeadingDen')}</span>
+              <span className="workshop-odds-grow" />
+              <span className="t-micro">{t(locale, 'workshop.poolNote')}</span>
+            </div>
+            <div className="workshop-pool-rows">
+              {pack.pool.map((row) => {
+                const def = units[row.unit];
+                if (!def) return null; // a pool entry with no live def cannot drop -- do not advertise it
+                const shp = connShapes[def.connection_shape];
+                const nm = locale === 'ja' && def.i18n?.ja?.name ? def.i18n.ja.name : def.name;
+                return (
+                  <div className="workshop-pool-cell" key={row.unit} data-testid="workshop-pool-unit" data-unit={row.unit}>
+                    <img className="workshop-pool-art" src={unitArtUrl(def.icon)} alt="" width={44} height={44} loading="lazy" />
+                    <span className="workshop-pool-name">{nm}</span>
+                    <span className="workshop-pool-shape t-micro">{shapeLabel(def.connection_shape, shp, locale)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* ===== transmute / dismantle sub-row (mock-only; honest coming-soon shells) ===== */}
       <section className="workshop-sub-grid">
@@ -371,18 +440,33 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
               <div className="workshop-result-fig">
                 <BpDiagram
                   shape={rollResult.shape}
-                  unitOff={rollResult.linker.off}
-                  dirs={rollResult.linker.dirs}
+                  unitOff={rollResult.unit.off}
+                  /* REQ-0170: the arrows are the Unit's connection shape, resolved from
+                     the served vocab table. An offset shape draws none -- see dirsLabel. */
+                  dirs={rolledShape && rolledShape.kind === 'ray' ? (rolledShape.dirs ?? []) : []}
                   hpMax={rollResult.hpMax}
                   cellCount={rollResult.cellCount}
                   locale={locale}
                 />
               </div>
-              {/* stats -- all read straight off the rolled BP; invents nothing */}
+              {/* stats -- all read straight off the rolled Unit + BP; invents nothing */}
               <div className="workshop-result-stats">
+                {rollResult.unitDef ? (
+                  <div className="workshop-result-stat workshop-result-unit" data-testid="workshop-result-unit" data-unit={rollResult.unitDef.id}>
+                    <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnitName')}</span>
+                    <img className="workshop-result-unit-art" src={unitArtUrl(rollResult.unitDef.icon)} alt="" width={56} height={56} />
+                    <b className="workshop-result-unit-name dj">{unitName(rollResult.unitDef, locale)}</b>
+                  </div>
+                ) : null}
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statRarity')}</span>
-                  <span className="rar-word" style={{ color: 'var(--r-common)' }}>COMMON</span>
+                  <span className="rar-word" style={{ color: 'var(--r-common)' }}>
+                    {(rollResult.unitDef?.rarity ?? 'Common').toUpperCase()}
+                  </span>
+                </div>
+                <div className="workshop-result-stat">
+                  <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statShape')}</span>
+                  <b data-testid="workshop-result-shape">{shapeLabel(rolledShapeKey, rolledShape, locale)}</b>
                 </div>
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statCells')}</span>
@@ -395,12 +479,12 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 </div>
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnit')}</span>
-                  <b className="tnum">{unitCoordLabel(rollResult.linker.off)}</b>
+                  <b className="tnum">{unitCoordLabel(rollResult.unit.off)}</b>
                   <span className="rune" style={{ color: 'var(--gold-hi)' }}>{'ᛖ'}</span>
                 </div>
                 <div className="workshop-result-stat">
                   <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statDirs')}</span>
-                  <b>{dirsLabel(rollResult.linker.dirs)}</b>
+                  <b>{dirsLabel(rolledShape)}</b>
                 </div>
                 <div className="rune-divider workshop-result-flavor-divider">{'ᛖ'}</div>
                 <div className="workshop-result-flavor dj">{t(locale, 'workshop.rollResultFlavor')}</div>
@@ -413,7 +497,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 disabled={!canAfford || rolling}
                 onClick={() => void handleRoll()}
               >
-                <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.rollAgain', { cost: GACHA_COMMON_BP_COST })}
+                <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.rollAgain', { cost })}
               </button>
               <button
                 type="button"

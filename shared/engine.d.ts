@@ -44,6 +44,39 @@ export interface Trees {
   socket: TagTree;
 }
 
+/** REQ-0170 / REQ-0128b: one entry of content/vocab.json's `connection_shapes`
+ * table -- the ratified geometry of a Unit's links. Ray shapes carry {dirs,
+ * range, pierce}; offset shapes carry {offsets} and MUST NOT carry range/pierce
+ * (they have no ray to walk). `range: 0 | null` = unlimited. */
+export interface ConnShapeDef {
+  kind: 'ray' | 'offset' | 'none';
+  ja?: string;
+  dirs?: number[];
+  range?: number | null;
+  pierce?: boolean;
+  offsets?: Offset[];
+  note?: string;
+}
+export type ConnShapeMap = Record<string, ConnShapeDef>;
+
+/** REQ-0170: one `unit/1` def (content/live/live_units.json). `charge` and
+ * `effects` are ABSENT ON PURPOSE -- the grammar is frozen (vocab v13) but the
+ * engine has no charge AST, and writing fields nothing evaluates would be
+ * writing fiction into a live target. `icon` is a FREE reference to an artwork
+ * system_name (two defs may share one artwork -- REQ-0149 G14), never derived
+ * from `id`. */
+export interface UnitDef {
+  name: string;
+  rarity: string;
+  icon: string;
+  connection_shape: string;
+  flavor?: string;
+  name_ja?: string;
+  flavor_ja?: string;
+  i18n?: { ja?: { name?: string; flavor?: string } };
+}
+export type UnitDefMap = Record<string, UnitDef>;
+
 export interface SocketDef {
   t: string; // socket type, e.g. "gem" | "edge" | "coat" | "bond"
   tags: string[];
@@ -100,9 +133,14 @@ export interface SIDef {
 export type ItemDefMap = Record<string, ItemDef>;
 export type SIDefMap = Record<string, SIDef>;
 
+/** REQ-0170: the Unit a BP carries. A BP and a Unit are 1:1 (glossary: "every BP
+ * carries exactly one Unit; a BP with no Unit cannot exist"), so this field is
+ * REQUIRED. `id` keys content/live/live_units.json; the Unit's rays come from its
+ * def's connection_shape, NOT from the BP -- the retired `linker.dirs` array is
+ * gone and is not replaced. `off` is the Unit's seat within the BP's own shape. */
 export interface BPUnit {
+  id: string;
   off: Offset;
-  dirs: number[]; // 0..7, see engine.js DIRS
 }
 
 export interface BP {
@@ -111,7 +149,7 @@ export interface BP {
   color: string;
   shape: Offset[];
   origin: Cell;
-  linker: BPUnit;
+  unit: BPUnit;
   /** REQ-0036 P1-A: BP max HP (Backpack-as-HP). Optional here since this
    * type predates that field and not every synthetic/test BP literal in
    * this codebase sets it -- mirrors the engine's own tolerant read
@@ -261,9 +299,16 @@ export interface Assembly {
 
 export interface Beam {
   from: string; // BP id
-  dir: number; // 0..7
+  /** 0..7 for ray shapes; null on offset shapes (knight jumps have no compass dir). */
+  dir: number | null;
+  /** Present only on offset shapes: the [dr,dc] jump this beam represents. */
+  offset?: Offset;
   path: Cell[];
-  to: string | null; // BP id, or null if it flies off canvas
+  /** First Unit linked, or null. Kept for every pre-REQ-0170 consumer. */
+  to: string | null;
+  /** REQ-0170/REQ-0128b: EVERY Unit this ray linked. Differs from [to] only when
+   * the shape pierces. */
+  tos: string[];
   mutual: boolean;
 }
 
@@ -324,6 +369,10 @@ export interface EngineInstance {
 
   combos: (st: GameState) => Combo[];
   traceBeams: (st: GameState) => Beam[];
+  /** REQ-0170: the connection shape of the Unit a BP carries, resolved through the
+   * injected registries. null = "forms no links" (no Unit, unknown unit id, or
+   * unknown shape key) -- never throws. */
+  connShapeOf: (bp: BP) => ConnShapeDef | null;
 
   connTargets: (st: GameState, p: PO) => Cell[];
   portTargets: (st: GameState, p: PO) => PortTarget[];
@@ -768,7 +817,13 @@ export interface EngineModule {
     items: ItemDefMap,
     siDefs: SIDefMap,
     layout: Layout,
-    trees?: Trees
+    trees?: Trees,
+    /** REQ-0170: the unit/1 def map (content/live/live_units.json). Optional --
+     * an engine created without it forms no Unit links and otherwise behaves
+     * identically. */
+    units?: UnitDefMap,
+    /** REQ-0170: vocab.json's connection_shapes table. Optional, same policy. */
+    shapes?: ConnShapeMap
   ) => EngineInstance;
   rotOffsets: (base: Offset[], k: number) => Offset[];
   hasTag: (tagList: string[] | undefined, targetTag: string, tree?: TagTree) => boolean;

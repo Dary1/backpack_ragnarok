@@ -80,7 +80,9 @@ module.exports = {
   GACHA_PENDING_TIMEOUT_MS: gacha.GACHA_PENDING_TIMEOUT_MS,
   readLrdstBalance: gacha.readLrdstBalance,
   rollPolyomino: gacha.rollPolyomino,
-  rollCommonBp: gacha.rollCommonBp,
+  rollPackBp: gacha.rollPackBp,        // REQ-0170 (was rollCommonBp: the pre-Unit roll)
+  resolvePack: gacha.resolvePack,      // REQ-0170
+  pickWeighted: gacha.pickWeighted,    // REQ-0170
   startGachaRoll: gacha.startGachaRoll,
   purgeExpiredGachaPending: gacha.purgeExpiredGachaPending,
   finalizeGachaForCanvas: gacha.finalizeGachaForCanvas,

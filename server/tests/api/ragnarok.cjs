@@ -83,7 +83,7 @@ module.exports.run = async function run(h) {
   // shared_po (the yellow case) and also holds keep_po plus si_other
   // seated ON shared_po (host {po:...} -- exercises the surviving-SI
   // stow rule when its host PO is destroyed).
-  const bpDef = (id) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 });
+  const bpDef = (id) => ({ id, name: 'BP ' + id, color: '#886644', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 });
   const ragAInvPage = {
     bps: [bpDef('bp_dev'), bpDef('bp_other')],
     pos: [
