@@ -59,6 +59,8 @@ const market = require('./storage/market.cjs');
 const ragnarok = require('./storage/ragnarok.cjs');
 // REQ-0058: sealed-seed + participant-run registry storage subsystem.
 const seals = require('./storage/seals.cjs');
+// REQ-0060: pack biography (per-BP-instance ledger).
+const bioStore = require('./storage/bio.cjs');
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
 // (owns its own async pg pool for BYTEA image blobs). Re-exported below so
 // storage.cjs stays THE single persistence chokepoint every caller imports.
@@ -97,6 +99,12 @@ module.exports = {
   writeRun: runs.writeRun,
   listRunsForRoom: runs.listRunsForRoom,
   // REQ-0058: sealed-seed + participant-run registry persistence
+  // REQ-0060: pack biography (per-BP-instance ledger; storage.cjs stays
+  // the sole persistence chokepoint -- from storage/bio.cjs).
+  BIO_DIR: bioStore.BIO_DIR,
+  readBio: bioStore.readBio,
+  writeBio: bioStore.writeBio,
+  listBios: bioStore.listBios,
   sealPath: seals.sealPath,
   sealRunPath: seals.sealRunPath,
   readSeal: seals.readSeal,

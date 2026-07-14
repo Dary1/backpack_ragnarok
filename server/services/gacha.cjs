@@ -286,6 +286,12 @@ function finalizeGachaForCanvas(playerId, canvas) {
     const balanceDropped = balanceNow <= (item.balanceBeforeRoll - item.cost);
     if (uidPresent && balanceDropped) {
       storage.deleteGachaPending(playerId, item.rollUid);
+      // REQ-0060: the rolled BP is now real in the player's canvas -- stamp
+      // its birth (origin: gacha) so the biography ledger has a born date.
+      try {
+        const nm = item.rolled && item.rolled.unitDef ? item.rolled.unitDef.name : undefined;
+        require('./bio.cjs').ensureBio(item.rollUid, 'gacha', nm);
+      } catch (e) { /* bio is non-critical */ }
     }
   }
 }

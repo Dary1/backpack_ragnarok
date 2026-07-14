@@ -1,4 +1,13 @@
 {
   "WAREHOUSE_CAP": 200,
-  "GACHA_COMMON_BP_COST": 10
+  "GACHA_COMMON_BP_COST": 10,
+  "BIO_LUCK_CAP": 0.1,
+  "BIO_LUCK_MILESTONES": [
+    { "field": "runsSurvived", "at": 10, "grant": 0.02 },
+    { "field": "runsSurvived", "at": 50, "grant": 0.02 },
+    { "field": "runsSurvived", "at": 200, "grant": 0.02 },
+    { "field": "bossesFelled", "at": 5, "grant": 0.02 },
+    { "field": "bossesFelled", "at": 25, "grant": 0.02 },
+    { "field": "wipesEndured", "at": 20, "grant": 0.02 }
+  ]
 }

@@ -11,6 +11,7 @@ const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, 
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { resolveDungeonType } = require('./rooms.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
+const bioService = require('./bio.cjs'); // REQ-0060
 
 function computeDurationSecs(events) {
   let maxT = 0;
@@ -103,6 +104,10 @@ function startRun(room, profileCanvas) {
     cooldownSecs: result.cooldownSecs,
     levelAfter: result.level, // wipe -> level-1 (floored); else unchanged
     H: result.H,
+    // REQ-0060: lean per-BP roster captured for settle-time biography
+    // aggregation (the run is fully simulated at start, so result.bps
+    // already carries each BP's final hp -- NO sim change).
+    bioRoster: (result.bps || []).map((b) => ({ id: b.id, hpMax: b.hpMax, hpEnd: b.hp })),
     settled: false,
   };
   storage.writeRun(runId, runDoc);
@@ -175,6 +180,13 @@ function settleRun(room, run, profileCanvas, itemDefsById) {
   room.updatedAt = now;
 
   const swapped = applyPendingSwapIfAny(room, profileCanvas, itemDefsById);
+
+  // REQ-0060: fold this settled run's own replay/settlement data into
+  // each aboard BP's biography (append-only, per-instance). Inside the
+  // apply-once section (the run.settled guard at settleRun's top) so each
+  // run contributes exactly once. Defensive -- a bio write must never
+  // break reward settlement.
+  try { bioService.applyRunBio(run); } catch (e) { /* bio is non-critical */ }
 
   run.settled = true;
   storage.writeRun(run.id, run);
