@@ -190,3 +190,23 @@ storage.cjs/storage_content.cjs remains the sole persistence seam; ca-* CSS only
 4. RESTART `backpack-api` (server change: storage_content.cjs + routes/content.cjs).
 5. Live verify: open contentadmin, open a def, Select artwork → confirm the
    PATCH lands and rail/header light with the ref'd artwork; Clear → none.
+
+### Deployment record (orchestrator, 2026-07-14)
+- Live pg migration 016 verified applied (content_defs.artwork_ref present; the engineer's
+  shared-dev-DB application covered the live namespace; idempotent re-run safe).
+- Merged to master 9d7e6e6 (impl 1038680/bcb3abc/c8608bc + state moves; contentadmin.css
+  merge conflict with REQ-0171's ca-ep-* section resolved by keeping both blocks);
+  dist rebuild committed; backpack-api RESTARTED (storage/routes change); /api/content/defs
+  200 with artwork_ref in rows.
+- Live verification (Chrome): #/contentadmin/blade — "Select artwork" opens the picker
+  (search, po-first type chips, adopted badges, clear-link); selecting
+  batch-004-item-icons-flux2:blade PATCHed the ref: header row shows the full name
+  "(link: selected)" + thumb, rail row thumb + facet glyph lit, and the v1 variant card
+  displays the def-resolved art thumb (variants obtain art ONLY via the parent def, per
+  the ruling). blade's link was left in place as the first real usage.
+- The REQ-0173 batch-suffix inference is gone from the deployed client (blade showed
+  link: none before selection, as intended).
+- User ruling recorded in this REQ's header is CONTENT-WIDE canon (registry-level art
+  reference; variants resolve through the parent def) — candidate for PROJECT.md's
+  design canon (user-managed; paste at will).
+- Status: stays in built/ awaiting S7 user acceptance.
