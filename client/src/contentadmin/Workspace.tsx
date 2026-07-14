@@ -11,8 +11,8 @@
 // header carry live PASS/FAIL adjudication tallies; freshly-ingested cards
 // get an is-new highlight + scroll-into-view; variant cards are keyed by
 // <system_name>:<variant_no> so per-card UI state never survives a def switch.
-import type { ContentDefDto, ContentVariantDto, ContentCommission } from '../api';
-import { parseIngest } from './contentShared';
+import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
+import { parseIngest, artworkThumbUrl } from './contentShared';
 import { VariantCard } from './VariantCard';
 import { DiffView } from './DiffView';
 
@@ -22,6 +22,7 @@ export function Workspace(props: {
   def: ContentDefDto;
   variants: ContentVariantDto[];
   artworkFacet: boolean;
+  artworksByName: Record<string, ArtworkDto>;
   adoptedNo: number | null;
   draft: DefDraft;
   onDraft: (patch: Partial<DefDraft>) => void;
@@ -59,6 +60,8 @@ export function Workspace(props: {
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { def, variants, adoptedNo, draft, dirty, commission, diffPicks, diffPair, flowCollapsed } = props;
+  const artHash = '#/artadmin/' + def.system_name;
+  const headerThumb = props.artworkFacet ? artworkThumbUrl(props.artworksByName[def.system_name]) : null;
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
@@ -77,11 +80,19 @@ export function Workspace(props: {
             ? <span className="aa-adopt-badge tnum" data-testid="cd-adopted-state">adopted v{adoptedNo} &middot; exported to content/</span>
             : <span className="t-micro" data-testid="cd-adopted-state">not adopted yet</span>}
           {dirty && <span data-testid="cd-dirty" className="chip aa-dirty">unsaved changes</span>}
+          {props.artworkFacet && (
+            <a data-testid="cd-header-thumb" className="ca-header-thumb" href={artHash}
+              title={'open ' + def.system_name + ' in Art Admin'}>
+              {headerThumb
+                ? <img src={headerThumb} alt="" loading="lazy" />
+                : <span className="ca-header-thumb-ph">◇</span>}
+            </a>
+          )}
         </div>
         <div className="ca-facetline t-micro">
           {props.artworkFacet
             ? <span data-testid="cd-artwork-facet" className="ca-facet-yes">artwork facet: present --{' '}
-                <a data-testid="cd-artadmin-goto" href="#/artadmin">open in Art Admin</a>{' '}&middot;{' '}
+                <a data-testid="cd-artadmin-goto" href={artHash}>open in Art Admin</a>{' '}&middot;{' '}
                 <a data-testid="cd-dex-link" href={'#/dex/' + def.system_name}>view in Dex</a></span>
             : <span data-testid="cd-artwork-facet" className="ca-facet-no">artwork facet: none (data-only entity)</span>}
         </div>
@@ -177,7 +188,7 @@ export function Workspace(props: {
       </div>
       <div data-testid="cd-variants" className="ca-vlist">
         {variants.map((v) => (
-          <VariantCard key={def.system_name + ':' + v.variant_no} v={v} all={variants}
+          <VariantCard key={def.system_name + ':' + v.variant_no} v={v} kind={def.kind} all={variants}
             isAdopted={adoptedNo === v.variant_no} adoptedNo={adoptedNo}
             isNew={props.newNos.includes(v.variant_no)} shouldScroll={props.scrollToNo === v.variant_no}
             recheckBusy={props.recheckingNos.includes(v.variant_no)}
@@ -192,7 +203,7 @@ export function Workspace(props: {
         {variants.length === 0 && <div className="aa-empty t-micro">no variants yet -- commission a batch above</div>}
       </div>
 
-      {va && vb && <DiffView a={va} b={vb} adoptedNo={adoptedNo} onClose={props.onCloseDiff} />}
+      {va && vb && <DiffView a={va} b={vb} kind={def.kind} adoptedNo={adoptedNo} onClose={props.onCloseDiff} />}
     </div>
   );
 }

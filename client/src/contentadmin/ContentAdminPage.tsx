@@ -31,14 +31,16 @@ import { useGameStore, clearContentAdminFocusName } from '../store';
 import {
   listContentDefs, getContentDef, patchContentDef, commissionContent,
   ingestVariants, reviewVariant, editVariant, adoptVariantApi, deleteVariantApi,
-  recheckVariantApi,
+  recheckVariantApi, listArtworks,
 } from '../api';
-import type { ContentDefDto, ContentVariantDto, ContentCommission } from '../api';
-import { copyText, prettyJson } from './contentShared';
+import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
+import { copyText, artworkThumbUrl } from './contentShared';
 import { DefRail } from './DefRail';
 import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
 import type { DefDraft } from './Workspace';
+import { EntityPreview } from './EntityPreview';
+import { EditModal } from './EditModal';
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
 type PendingNav = { kind: 'select'; name: string } | { kind: 'create' };
@@ -110,7 +112,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [overrideOn, setOverrideOn] = useState(false);
   const [editFor, setEditFor] = useState<number | null>(null);
-  const [editText, setEditText] = useState('');
+  const [artworks, setArtworks] = useState<ArtworkDto[]>([]);
   const [msg, setMsg] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(1);
@@ -151,6 +153,19 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   }, []);
 
   useEffect(() => { void refreshList(); const t = setInterval(() => { void refreshList(); }, 10000); return () => clearInterval(t); }, [refreshList]);
+  // REQ-0173 B: art-facet linkage. Fetch /api/art/artworks once + poll every
+  // 30 s; failures are NON-FATAL (the page is fully usable without art). Rows
+  // + header + adopt confirm map by system_name.
+  useEffect(() => {
+    let live = true;
+    const load = async () => {
+      try { const r = await listArtworks(); if (live) setArtworks(r.artworks); }
+      catch { /* non-fatal: art linkage is decorative */ }
+    };
+    void load();
+    const t = setInterval(() => { void load(); }, 30000);
+    return () => { live = false; clearInterval(t); };
+  }, []);
   useEffect(() => {
     if (!selected) return;
     void loadDetail(selected);
@@ -306,19 +321,15 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   }
 
   function openEdit(no: number) {
-    const v = variants.find((x) => x.variant_no === no);
-    if (!v) return;
     setEditFor(no);
-    setEditText(prettyJson(v.data));
   }
 
-  async function doEditSubmit() {
+  async function doEditSubmit(data: Record<string, unknown>) {
     if (!selected || editFor == null) return;
     try {
-      const data = JSON.parse(editText) as Record<string, unknown>;
       const r = await editVariant(selected, editFor, data);
       report('edit created new variant ' + r.variant.variant_no + ' (parent ' + editFor + ')');
-      setEditFor(null); setEditText('');
+      setEditFor(null);
       await loadDetail(selected); await refreshList();
     } catch (e) { report('edit: ' + (e as Error).message, 'err'); }
   }
@@ -327,16 +338,14 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
     setDiffPicks((p) => p.includes(no) ? p.filter((x) => x !== no) : (p.length >= 2 ? [p[1], no] : [...p, no]));
   }
 
-  // edit-modal JSON validity (gates the submit; Format pretty-prints)
-  let editError: string | null = null;
-  if (editFor != null) {
-    try { JSON.parse(editText); } catch (e) { editError = (e as Error).message; }
-  }
-
   const confirmVariant = confirm && (confirm.type === 'adopt' || confirm.type === 'delete')
     ? variants.find((v) => v.variant_no === confirm.no) : undefined;
   const confirmOverall = confirmVariant ? ((confirmVariant.machine_check && confirmVariant.machine_check.overall) || 'FAIL') : 'FAIL';
   const needsOverride = confirm != null && confirm.type === 'adopt' && confirmOverall === 'FAIL';
+
+  const artworksByName: Record<string, ArtworkDto> = {};
+  for (const a of artworks) artworksByName[a.system_name] = a;
+  const confirmThumb = selected && artworkFacet ? artworkThumbUrl(artworksByName[selected]) : null;
 
   return (
     <div data-testid="contentadmin" className="ca-root">
@@ -346,7 +355,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         <div data-testid="cd-msg" aria-live="polite" className="aa-msg t-micro">{msg}</div>
       </header>
       <div className="ca-cols">
-        <DefRail defs={defs} selected={selected} onSelect={requestSelect} onNew={requestCreate} listError={listError} />
+        <DefRail defs={defs} artworksByName={artworksByName} selected={selected} onSelect={requestSelect} onNew={requestCreate} listError={listError} />
         <section className="ca-center">
           {createOpen ? (
             <CreatePanel existing={defs} report={report}
@@ -356,7 +365,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
                 void refreshList().then(() => doSelectDef(d.system_name));
               }} />
           ) : def && selected && draft ? (
-            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} adoptedNo={adoptedNo}
+            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} artworksByName={artworksByName} adoptedNo={adoptedNo}
               draft={draft} onDraft={(p) => setDraft((d) => (d ? { ...d, ...p } : d))}
               dirty={dirty} onSave={() => { void doSave(); }}
               flowCollapsed={flowCollapsed} onToggleFlow={() => setFlowCollapse(!flowCollapsed)}
@@ -404,6 +413,10 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
             okDisabled={needsOverride && !overrideOn}
             onOk={() => { const no = confirm.no; const ov = needsOverride && overrideOn; setConfirm(null); void doAdopt(no, ov); }}
             onCancel={() => setConfirm(null)}>
+            <div className="ca-confirm-preview">
+              {confirmThumb ? <img className="ca-confirm-thumb" src={confirmThumb} alt="" /> : null}
+              <EntityPreview kind={def ? def.kind : ''} data={confirmVariant.data} idBase="confirm" compact />
+            </div>
             <div className="ca-confirm-checks">
               <span className={'ca-overall ' + (confirmOverall === 'PASS' ? 'is-pass' : 'is-fail')}>{confirmOverall}</span>
               {((confirmVariant.machine_check && confirmVariant.machine_check.checks) || []).map((c) => (
@@ -438,31 +451,14 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         )
       )}
 
-      {editFor != null && (
-        <div className="aa-scrim" onClick={(e) => { if (e.target === e.currentTarget) setEditFor(null); }}>
-          <div className="panel panel-pad ca-editor" role="dialog" aria-modal="true">
-            <div className="aa-ws-head">
-              <span className="den t-h3 gold-text">Edit variant {editFor} as a NEW variant</span>
-              <button type="button" data-testid="edit-close" className="btn btn-ghost aa-btn-xs" onClick={() => setEditFor(null)}>close</button>
-            </div>
-            <div className="t-micro">Variants are immutable: this creates a new human_edit variant with
-              parent lineage v{editFor}; the original is untouched.</div>
-            <textarea data-testid={'edit-json-' + editFor} className="aa-input aa-textarea" value={editText}
-              spellCheck={false} onChange={(e) => setEditText(e.target.value)} />
-            <div data-testid={'edit-valid-' + editFor} className={'ca-edit-valid ' + (editError ? 'is-err' : 'is-ok')}>
-              {editError ? 'invalid JSON: ' + editError : 'valid JSON'}
-            </div>
-            <div className="ca-editor-actions">
-              <button type="button" data-testid={'edit-format-' + editFor} className="btn btn-ghost aa-btn-sm"
-                disabled={!!editError}
-                onClick={() => { try { setEditText(prettyJson(JSON.parse(editText))); } catch { /* gated by disabled */ } }}>Format</button>
-              <button type="button" data-testid={'edit-submit-' + editFor} className="btn aa-btn-sm"
-                disabled={!!editError}
-                onClick={() => { void doEditSubmit(); }}>Create edited variant</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {editFor != null && (() => {
+        const ev = variants.find((x) => x.variant_no === editFor);
+        return ev ? (
+          <EditModal no={editFor} kind={def ? def.kind : ''} original={ev.data}
+            onClose={() => setEditFor(null)}
+            onSubmit={(data) => { void doEditSubmit(data); }} />
+        ) : null;
+      })()}
 
       <div className="aa-toasts" aria-hidden="true">
         {toasts.map((t) => (

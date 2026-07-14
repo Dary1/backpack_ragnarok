@@ -132,6 +132,15 @@ export const DEX_ITEM_HASH_RE = /^#\/dex\/(.+)$/;
 // ordering rationale as the invite/dex checks.
 export const CONTENTADMIN_HASH_RE = /^#\/contentadmin\/(.+)$/;
 
+// REQ-0173 (contentadmin-entity-rendering B): '#/artadmin/<system_name>' is
+// the artadmin deep link, an EXACT mirror of CONTENTADMIN_HASH_RE. When the
+// current hash matches, the route resolves to 'artadmin' (a plain Route
+// member, no union widening) AND artAdminFocusName is set so ArtAdminPage
+// selects that artwork once its list has loaded. Checked BEFORE the generic
+// routeFromHash() fallback (specific-before-generic), same ordering as the
+// contentadmin/dex/invite checks.
+export const ARTADMIN_HASH_RE = /^#\/artadmin\/(.+)$/;
+
 // REQ-0069: the EMPTY hash ('', '#' or '#/') is the landing (title)
 // screen -- the app's boot route. Named routes keep their '#/<name>'
 // hashes, and an UNKNOWN hash still falls back to 'backpacks' (NOT the
@@ -203,6 +212,12 @@ export interface StoreSnapshot {
    * clearContentAdminFocusName() -- null the rest of the time, including on
    * every plain '#/contentadmin' navigation that carries no name segment. */
   contentAdminFocusName: string | null;
+  /** REQ-0173 (contentadmin-entity-rendering B): pending artadmin deep-link
+   * target system_name, set by initRouting()/onHashChange when the hash
+   * matches ARTADMIN_HASH_RE ('#/artadmin/<system_name>'). ArtAdminPage
+   * consumes this once (selects that artwork) then calls
+   * clearArtAdminFocusName() -- null the rest of the time. */
+  artAdminFocusName: string | null;
 }
 
 export let snapshot: StoreSnapshot = {
@@ -222,6 +237,7 @@ export let snapshot: StoreSnapshot = {
   squadDeleteRefused: null,
   dexFocusId: null,
   contentAdminFocusName: null,
+  artAdminFocusName: null,
 };
 
 const listeners = new Set<() => void>();

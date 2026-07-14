@@ -163,8 +163,13 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
   await confirmClick(page, 'delete-2');
   await expect(page.getByTestId('variant-2')).toHaveCount(0);
 
-  // edit variant 1 as a NEW variant: modal with JSON validity + Format
+  // edit variant 1 as a NEW variant: modal with JSON validity + Format.
+  // REQ-0173: po_def now DEFAULTS to the structured Form tab once vocab loads;
+  // this leg exercises the JSON editor, so switch to it first (wait for the
+  // Form to have loaded to avoid the one-shot default-to-Form auto-switch).
   await page.getByTestId('edit-open-1').click();
+  await expect(page.getByTestId('edit-form-rarity-1')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('edit-tab-json-1').click();
   await expect(page.getByTestId('edit-json-1')).toBeVisible();
   await page.getByTestId('edit-json-1').fill('{ this is broken json');
   await expect(page.getByTestId('edit-valid-1')).toContainText('invalid JSON');
@@ -447,4 +452,183 @@ test('variant card: created renders local time with the raw ISO as its title', a
   expect(info.iso).toMatch(/T/); // raw ISO instant preserved in the title
   expect(info.text).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   expect(info.text).toBe(info.local); // rendered == LOCAL formatting of the ISO
+});
+
+// ============================================================
+// REQ-0173 (contentadmin-entity-rendering) coverage. EntityPreview renders
+// variant.data as a game entity (name/rarity/shape/fallback), the structured
+// edit form changes rarity + adds an effect while passing shape/icon through
+// verbatim, JSON-only kinds gate the Form tab, the diff carries entity headers
+// + changed-field chips, the adopt confirm carries the preview, and the rail
+// art-facet thumb renders (placeholder branch). The #/artadmin/<name> deep
+// link is covered in artadmin.spec.ts.
+// ============================================================
+
+// EntityPreview: an ingested po variant renders name + rarity + a shape grid.
+test('entity preview: po variant renders EN name, rarity chip, and a shape grid', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_ep_po', kind: 'po_def', brief: 'entity preview po', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_ep_po', [variant(1)]);
+
+  await page.goto('/app/#/contentadmin/e2e_ep_po');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  const ep = page.getByTestId('entity-preview-1');
+  await expect(ep).toBeVisible();
+  await expect(ep).toContainText('E2E Blade v1');
+  await expect(ep).toContainText('Common');
+  // the blade shape [[0,0],[1,0]] renders as a ShapeGrid (imported from Dex)
+  await expect(ep.locator('.shape-grid')).toBeVisible();
+  await expect(ep.locator('.shape-grid-cell-shape').first()).toBeVisible();
+});
+
+// EntityPreview: an si variant (no shape) still renders a shape grid via the
+// synthetic [[0,0]] anchor cell (the Dex precedent).
+test('entity preview: si variant falls back to the [[0,0]] anchor grid', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_ep_si', kind: 'si_def', brief: 'entity preview si', schema_ref: 'si/2' });
+  await apiIngest(request, 'e2e_ep_si', [{
+    data: { id: 'e2e_charm', name: 'E2E Charm', rarity: 'Uncommon', slot: 'trinket', icon: 'icon-blade', effects: [] },
+    provenance: { source: 'llm', model: 'm', model_version: '1', prompt: 'p', params: {}, seed_if_any: null },
+  }]);
+
+  await page.goto('/app/#/contentadmin/e2e_ep_si');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  const ep = page.getByTestId('entity-preview-1');
+  await expect(ep).toContainText('E2E Charm');
+  await expect(ep).toContainText('slot: trinket');
+  await expect(ep.locator('.shape-grid')).toBeVisible();
+});
+
+// EntityPreview: an unconsumed top-level field surfaces in the fallback grid.
+test('entity preview: unconsumed top-level fields appear in the fallback key:value grid', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_ep_fb', kind: 'po_def', brief: 'fallback probe', schema_ref: 'po/2' });
+  const v = JSON.parse(JSON.stringify(variant(1)));
+  v.data.mystery_field = 'do_not_hide_me';
+  await apiIngest(request, 'e2e_ep_fb', [v]);
+
+  await page.goto('/app/#/contentadmin/e2e_ep_fb');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  const fb = page.getByTestId('entity-fallback-1');
+  await expect(fb).toBeVisible();
+  await expect(fb).toContainText('mystery_field');
+  await expect(fb).toContainText('do_not_hide_me');
+});
+
+// Structured edit form: change rarity + add an effect on the Form tab; the JSON
+// tab reflects it AND preserves shape/icon verbatim; the submitted human_edit
+// variant carries the change + the passed-through fields.
+test('edit form: change rarity + add effect; JSON tab + submitted variant preserve shape/icon passthrough', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_form', kind: 'po_def', brief: 'form edit', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_form', [variant(1)]);
+
+  await page.goto('/app/#/contentadmin/e2e_form');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await page.getByTestId('edit-open-1').click();
+
+  // Form tab is the default for po_def once vocab loads
+  await expect(page.getByTestId('edit-form-rarity-1')).toBeVisible({ timeout: 20000 });
+  await page.getByTestId('edit-form-rarity-1').selectOption('Rare');
+  await page.getByTestId('edit-form-effect-add-1').click();
+
+  // JSON tab reflects the change AND keeps shape + icon verbatim
+  await page.getByTestId('edit-tab-json-1').click();
+  const json = await page.getByTestId('edit-json-1').inputValue();
+  expect(json).toContain('"rarity": "Rare"');
+  expect(json).toContain('"shape"');
+  expect(json).toContain('icon-blade');
+  const parsed = JSON.parse(json);
+  expect(parsed.effects.length).toBe(2); // original + added
+  expect(parsed.shape).toEqual([[0, 0], [1, 0]]); // passthrough, untouched
+
+  await page.getByTestId('edit-submit-1').click();
+  await expect(page.getByTestId('variant-2')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByTestId('variant-source-2')).toContainText('human_edit');
+  // the new variant's own preview shows the new rarity + still a shape grid
+  await expect(page.getByTestId('entity-preview-2')).toContainText('Rare');
+  await expect(page.getByTestId('entity-preview-2').locator('.shape-grid')).toBeVisible();
+
+  // server truth: the edited variant preserved shape + icon
+  const meta = await request.get('/api/content/defs/e2e_form');
+  const body = await meta.json();
+  const v2 = body.variants.find((x: { variant_no: number }) => x.variant_no === 2);
+  expect(v2.data.shape).toEqual([[0, 0], [1, 0]]);
+  expect(v2.data.icon).toBe('icon-blade');
+  expect(v2.data.rarity).toBe('Rare');
+});
+
+// JSON-only kinds: a monster_def variant opens on JSON with the Form tab disabled.
+test('edit form: JSON-only kind (monster_def) disables the Form tab with a note', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_mon', kind: 'monster_def', brief: 'a slime', schema_ref: 'enemy/1' });
+  await apiIngest(request, 'e2e_mon', [{
+    data: { id: 'e2e_slime', name: 'E2E Slime', rarity: 'common', hp: [10, 20], skills: ['bite'] },
+    provenance: { source: 'llm', model: 'm', model_version: '1', prompt: 'p', params: {}, seed_if_any: null },
+  }]);
+
+  await page.goto('/app/#/contentadmin/e2e_mon');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  // the entity preview renders monster fields (hp range chip + skills)
+  await expect(page.getByTestId('entity-preview-1')).toContainText('hp [10–20]');
+  await expect(page.getByTestId('entity-preview-1')).toContainText('bite');
+
+  await page.getByTestId('edit-open-1').click();
+  await expect(page.getByTestId('edit-tab-form-1')).toBeDisabled();
+  await expect(page.getByTestId('edit-json-1')).toBeVisible();
+  await expect(page.getByTestId('edit-form-note-1')).toBeVisible();
+});
+
+// Entity-level diff: side-by-side entity headers + a changed-fields summary.
+test('diff: entity headers + changed-field chips above the line diff', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_diff', kind: 'po_def', brief: 'diff probe', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_diff', [variant(1), variant(2)]);
+
+  await page.goto('/app/#/contentadmin/e2e_diff');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await page.getByTestId('diff-pick-1').check();
+  await page.getByTestId('diff-pick-2').check();
+  await page.getByTestId('cd-diff-open').click();
+
+  await expect(page.getByTestId('diff-view')).toBeVisible();
+  await expect(page.getByTestId('entity-preview-diff-a')).toBeVisible();
+  await expect(page.getByTestId('entity-preview-diff-b')).toBeVisible();
+  await expect(page.getByTestId('diff-fields-summary')).toBeVisible();
+  // the two variants differ in id/name/effects -> chips list them
+  await expect(page.getByTestId('diff-fields-summary')).toContainText('effects');
+});
+
+// Adopt confirm carries the compact entity preview (adoption is never sight-unseen).
+test('adopt confirm: the dialog shows the compact entity preview', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_adopt_ep', kind: 'po_def', brief: 'adopt preview', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_adopt_ep', [variant(1)]);
+
+  await page.goto('/app/#/contentadmin/e2e_adopt_ep');
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await page.getByTestId('adopt-1').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await expect(page.getByTestId('entity-preview-confirm')).toBeVisible();
+  await expect(page.getByTestId('entity-preview-confirm')).toContainText('E2E Blade v1');
+});
+
+// Art-facet rail thumb: a def whose system_name also exists as an artwork row
+// gets a rail thumb; with no adopted/ok render it shows the placeholder branch
+// and the thumb + facet links deep-link to #/artadmin/<name>.
+test('rail thumb: art-facet def shows the placeholder thumb deep-linking to the entity', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await request.post('/api/art/dev/clear-all');
+  // a render-less artwork row (cheap, no GPU) -> has_artwork_facet true, no thumb image
+  const ar = await request.post('/api/art/artworks', { data: { system_name: 'e2e_faceted', kind: 'si', main_object: 'amulet' } });
+  expect(ar.status()).toBe(201);
+  await apiCreateDef(request, { system_name: 'e2e_faceted', kind: 'si_def', brief: 'has an art facet', schema_ref: 'si/2' });
+
+  await page.goto('/app/#/contentadmin');
+  const thumb = page.getByTestId('cd-thumb-e2e_faceted');
+  await expect(thumb).toBeVisible({ timeout: 30000 });
+  // placeholder branch: no <img>, deep-links to the artwork entity
+  await expect(thumb.locator('img')).toHaveCount(0);
+  await expect(thumb).toHaveAttribute('href', '#/artadmin/e2e_faceted');
+  await expect(page.getByTestId('cd-facet-e2e_faceted')).toHaveAttribute('href', '#/artadmin/e2e_faceted');
 });
