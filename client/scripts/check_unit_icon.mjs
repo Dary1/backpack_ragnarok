@@ -195,4 +195,15 @@ if (failures > 0) {
   console.error(`FAIL: ${failures} assertion(s) failed.`);
   process.exit(1);
 }
+
+// REQ-0170: the raster URL MUST carry a .png extension -- PixiJS's Assets loader selects
+// its decoder from the extension, and an extensionless image URL decodes to an empty
+// texture, is skipped, and every Unit on the board silently wears the legacy glyph. This
+// is a one-line assertion guarding a failure that costs an entire deploy to notice.
+{
+  const url = unitIcon.unitArtUrl('units-002-roster-flux2:unit-elf');
+  check('unit art URL ends in .png (Pixi picks its parser from the extension)', url.endsWith('.png'));
+  check('unit art URL percent-encodes the artwork name', url.includes('%3A'));
+}
+
 console.log('PASS: unit icon resolution chain + G7 charge ring geometry.');
