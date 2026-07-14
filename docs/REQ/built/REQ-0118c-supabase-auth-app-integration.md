@@ -168,3 +168,11 @@ Final master at deploy: `4b1a544`.
 **STAYS in `built/`** -- the S7 open item (live Discord OAuth browser round-trip)
 still requires user manual verification (see "OPEN ITEM -- S7" above). NOT moved
 to `done/`.
+
+_Post-deploy re-verification (after `backpack-api`/`backpack-web` restart), sanctioned
+wrapper `pnpm run e2e` (serial box-lock): **164 passed / 1 failed** -- the single red
+was `baseline-smoke.spec.ts:27` (core REQ-0037 PO drag; unrelated to auth), which PASSED
+in the deploy-gate 4-worker run and PASSED on targeted serial rerun (`pnpm run e2e
+baseline-smoke.spec.ts:27` -> 1 passed) = confirmed drag-timing flake, not a regression.
+Auth-relevant `guest-auth.spec.ts:83` invite flow passed in BOTH runs. Effectively
+all-green; global-teardown restored profile/content (sha256 matched pre-run)._
