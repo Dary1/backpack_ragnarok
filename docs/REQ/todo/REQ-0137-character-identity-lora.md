@@ -41,3 +41,9 @@ own the skin system); no checkpoint decision (REQ-0136).
 - User gallery verdict on identity retention.
 - Recipe reproducible end-to-end on the server GPU (or documented hosted-API
   step with license note); findings appended here.
+
+## Obsolescence note (2026-07-14, user ruling)
+User ruling (orchestrator session, 2026-07-14): the LoRA route is no longer used —
+the pipeline adopted FLUX2 (REQ-0150) and the identity-LoRA approach is considered
+obsolete. Moved todo -> draft as a retirement candidate; formal retirement (or a
+FLUX2-native identity re-spec) is a future user decision.
