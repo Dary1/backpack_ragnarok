@@ -88,12 +88,22 @@ const GACHA_PENDING_DIR = path.join(REPO_ROOT, 'data', 'gacha_pending');
 // eager-mkdir chokepoint as every other root below.
 const DISMANTLE_DIR = path.join(REPO_ROOT, 'data', 'dismantle');
 
+// REQ-0058: sealed-seed share roots (files backend). Same SCHEDULE_DIR
+// parent + eager-mkdir chokepoint as rooms/runs above; pg-mode isolation
+// reuses the same NAMESPACE prefix (see storage/seals.cjs).
+//   sealed_seeds: data/schedule/sealed_seeds/<sealId>.json          | pg: sealed_seeds
+//   seal_runs:    data/schedule/seal_runs/<sealId>__<playerId>.json | pg: seal_runs
+const SEALED_SEEDS_DIR = path.join(SCHEDULE_DIR, 'sealed_seeds');
+const SEAL_RUNS_DIR = path.join(SCHEDULE_DIR, 'seal_runs');
+
 function ensureScheduleDirs() {
   fs.mkdirSync(ROOMS_DIR, { recursive: true });
   fs.mkdirSync(RUNS_DIR, { recursive: true });
   fs.mkdirSync(WAREHOUSE_DIR, { recursive: true });
   fs.mkdirSync(GACHA_PENDING_DIR, { recursive: true });
   fs.mkdirSync(DISMANTLE_DIR, { recursive: true });
+  fs.mkdirSync(SEALED_SEEDS_DIR, { recursive: true }); // REQ-0058
+  fs.mkdirSync(SEAL_RUNS_DIR, { recursive: true }); // REQ-0058
 }
 ensureScheduleDirs();
 
@@ -119,6 +129,8 @@ module.exports = {
   WAREHOUSE_DIR,
   GACHA_PENDING_DIR,
   DISMANTLE_DIR,
+  SEALED_SEEDS_DIR,
+  SEAL_RUNS_DIR,
   ensureScheduleDirs,
   atomicWriteJSON,
 };

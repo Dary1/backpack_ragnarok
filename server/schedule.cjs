@@ -32,6 +32,7 @@ const rooms = require('./services/rooms.cjs');
 const warehouse = require('./services/warehouse.cjs');
 const runs = require('./services/runs.cjs');
 const gacha = require('./services/gacha.cjs');
+const seals = require('./services/seals.cjs'); // REQ-0058
 
 module.exports = {
   WAREHOUSE_CAP: core.WAREHOUSE_CAP,
@@ -84,4 +85,11 @@ module.exports = {
   startGachaRoll: gacha.startGachaRoll,
   purgeExpiredGachaPending: gacha.purgeExpiredGachaPending,
   finalizeGachaForCanvas: gacha.finalizeGachaForCanvas,
+  // REQ-0058: sealed seed share
+  mintSeal: seals.mintSeal,
+  getSeal: seals.getSeal,
+  publicSealMeta: seals.publicSealMeta,
+  createSealRoom: seals.createSealRoom,
+  buildSealComparison: seals.buildSealComparison,
+  buildSealReplay: seals.buildSealReplay,
 };

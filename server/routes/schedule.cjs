@@ -21,12 +21,21 @@ const SCHEDULE_ROOM_SWAP_RE = /^\/api\/schedule\/rooms\/([^/]+)\/swap$/;
 const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
 const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/backdate$/; // REQ-0036 P1-C: dev-only E2E time-control hook
 const SCHEDULE_ROOMS_DEV_CLEAR_RE = /^\/api\/schedule\/rooms\/dev\/clear$/; // REQ-0082: dev-only E2E room-cleanup hook
+// REQ-0058: Sealed Seed Share routes. /seal (mint) is distinct from
+// /seals/<id> (metadata); the deeper /comparison + /runs/<playerId>
+// paths are anchored so they never collide with the generic seals/<id>.
+const SCHEDULE_SEAL_MINT_RE = /^\/api\/schedule\/seal$/;
+const SCHEDULE_SEAL_GET_RE = /^\/api\/schedule\/seals\/([^/]+)$/;
+const SCHEDULE_SEAL_COMPARE_RE = /^\/api\/schedule\/seals\/([^/]+)\/comparison$/;
+const SCHEDULE_SEAL_REPLAY_RE = /^\/api\/schedule\/seals\/([^/]+)\/runs\/([^/]+)$/;
 
 function tryScheduleRoutes(req, res, url, p) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
-    p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE);
+    p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) ||
+    p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
+    p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE);
   if (scheduleMatch) {
     const ctx = resolveCallerOr401(req, res);
     if (!ctx) return;
@@ -104,7 +113,14 @@ function tryScheduleRoutes(req, res, url, p) {
             return;
           }
           try {
-            const room = schedule.createRoom(callerId, body);
+            // REQ-0058: a body carrying a sealId joins a sealed run --
+            // the room copies the frozen tuple (dungeonType/level/genSeed/
+            // affixes) verbatim from the seal, and one room per (sealId,
+            // caller) is enforced (409 on a second attempt). A plain room
+            // create (no sealId) is unchanged.
+            const room = (body && typeof body.sealId === 'string' && body.sealId)
+              ? schedule.createSealRoom(callerId, body.sealId, body)
+              : schedule.createRoom(callerId, body);
             sendJSON(res, 200, { ok: true, room });
           } catch (e) { sendScheduleError(res, e); }
         });
@@ -281,6 +297,79 @@ function tryScheduleRoutes(req, res, url, p) {
       try {
         const deleted = schedule.devClearRooms(callerId);
         sendJSON(res, 200, { ok: true, deleted });
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ---- POST /api/schedule/seal (REQ-0058: mint a sealed schedule) ----
+    // Body: {dungeonId?, dungeonType?, level?, affixes?}. The genSeed is
+    // ALWAYS server-minted fresh here -- any caller-supplied seed is
+    // ignored, so REQ-0043's admin-only custom-seed gate is neither
+    // invoked nor bypassed (sealing never accepts a seed). Returns the
+    // public seal meta (genSeed withheld) + the shareToken (== sealId).
+    if (p.match(SCHEDULE_SEAL_MINT_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body = {};
+        if (bodyStr) { try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; } }
+        try {
+          const seal = schedule.mintSeal(callerId, body);
+          sendJSON(res, 200, { ok: true, seal: schedule.publicSealMeta(seal), shareToken: seal.sealId });
+        } catch (e) { sendScheduleError(res, e); }
+      });
+      return;
+    }
+
+    // ---- GET /api/schedule/seals/:sealId/comparison (REQ-0058) ----
+    // The anti-spoiler-gated comparison view. Caller must be a participant
+    // (403 otherwise); OTHER participants stay hidden until the caller's
+    // OWN run of this sealId settles (then unlocked:true reveals all).
+    const sealCompareMatch = p.match(SCHEDULE_SEAL_COMPARE_RE);
+    if (sealCompareMatch) {
+      const sealId = decodeURIComponent(sealCompareMatch[1]);
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const comparison = schedule.buildSealComparison(sealId, callerId);
+        sendJSON(res, 200, Object.assign({ ok: true }, comparison));
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/seals/:sealId/runs/:playerId (REQ-0058) ----
+    // Seal-scoped replay read (the comparison view's "into replays" link).
+    // Own replay always readable; another participant's replay is gated on
+    // the caller's own run having settled (same anti-spoiler gate).
+    const sealReplayMatch = p.match(SCHEDULE_SEAL_REPLAY_RE);
+    if (sealReplayMatch) {
+      const sealId = decodeURIComponent(sealReplayMatch[1]);
+      const targetPlayerId = decodeURIComponent(sealReplayMatch[2]);
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const replay = schedule.buildSealReplay(sealId, callerId, targetPlayerId);
+        sendJSON(res, 200, Object.assign({ ok: true }, replay));
+      } catch (e) { sendScheduleError(res, e); }
+      return;
+    }
+
+    // ---- GET /api/schedule/seals/:sealId (REQ-0058: seal metadata) ----
+    // Any authenticated caller who holds the share token may preview the
+    // frozen tuple (genSeed withheld) + whether they have joined already.
+    const sealGetMatch = p.match(SCHEDULE_SEAL_GET_RE);
+    if (sealGetMatch) {
+      const sealId = decodeURIComponent(sealGetMatch[1]);
+      if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      try {
+        const seal = schedule.getSeal(sealId);
+        const yourEntry = storage.readSealRun(sealId, callerId);
+        const participants = storage.listSealRuns(sealId);
+        sendJSON(res, 200, {
+          ok: true,
+          seal: schedule.publicSealMeta(seal),
+          participantCount: participants.length,
+          youAreParticipant: !!yourEntry,
+          yourRoomId: yourEntry ? yourEntry.roomId : null,
+        });
       } catch (e) { sendScheduleError(res, e); }
       return;
     }
