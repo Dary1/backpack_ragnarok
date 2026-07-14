@@ -209,7 +209,12 @@ module.exports.run = async function run(h) {
     // unconditionally, not just once the room has gone active.
     const dup = await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/1', scheduleP1.token, { squadIndex: 1 });
     assert.strictEqual(dup.status, 409, 'same-room duplicate squadIndex must be 409: ' + JSON.stringify(dup.body));
-    assert.strictEqual(dup.body.reason, 'deployed_overlap', 'the 409 body must carry a structured reason=deployed_overlap');
+    // REQ-0168 U6: a same-room duplicate now carries its OWN structured
+    // reason ('same_room_duplicate'), distinct from a cross-room overlap
+    // ('deployed_overlap'), so the client can show a truthful, location-
+    // correct message instead of the misleading cross-room one.
+    assert.strictEqual(dup.body.reason, 'same_room_duplicate', 'the 409 body must carry a structured reason=same_room_duplicate');
+    assert.ok(/another slot of this room/i.test(dup.body.error), 'same-room message names the location: ' + JSON.stringify(dup.body));
 
     // Room never reaches 4/4 filled, so it correctly never auto-starts.
     const view = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
@@ -360,6 +365,9 @@ module.exports.run = async function run(h) {
     const overlapRes = await scheduleReq('PUT', '/api/schedule/rooms/' + roomYId + '/slots/0', scheduleP1.token, { squadIndex: 0 });
     assert.strictEqual(overlapRes.status, 409, 'cross-room overlap must be 409: ' + JSON.stringify(overlapRes.body));
     assert.ok(/active schedule/i.test(overlapRes.body.error));
+    // REQ-0168 U6: cross-room overlap keeps the 'deployed_overlap' reason
+    // (distinct from the same-room duplicate's 'same_room_duplicate').
+    assert.strictEqual(overlapRes.body.reason, 'deployed_overlap', 'cross-room overlap must carry reason=deployed_overlap');
 
     // Cleanup: settle room X's run (force-elapse) so it doesn't leak into
     // later tests as still-active, then clear whatever it rewarded so

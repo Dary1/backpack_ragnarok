@@ -198,9 +198,10 @@ test.describe('create room + slots UI', () => {
     expect(roomId).toBeTruthy();
     createdRoomIds.push(roomId!);
 
-    // Expand -> SlotsPanel visible.
-    await page.locator('[data-testid="schedule-room-expand-toggle"]').first().click();
-    await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible();
+    // REQ-0168 U1: a successful create now auto-selects (watches) the new
+    // room, so the detail pane already shows its slots panel -- no expand
+    // click needed.
+    await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible({ timeout: 10000 });
 
     // REQ-0045 (b)+(c) deploy gate v2: fill each slot with a DIFFERENT
     // squad (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
@@ -249,7 +250,7 @@ test.describe('create room + slots UI', () => {
     // unconditionally, not just when the room has gone active).
     const dup = await apiAssignSlot(page, player.token, roomId, 1, 1);
     expect(dup.status).toBe(409);
-    expect(dup.body.reason).toBe('deployed_overlap');
+    expect(dup.body.reason).toBe('same_room_duplicate'); // REQ-0168 U6
 
     // Room never reaches 4/4 filled, so it correctly never auto-starts.
     const view = await apiGetRoom(page, player.token, roomId);
@@ -701,7 +702,7 @@ test.describe('deploy-gate 409 across rooms', () => {
     await expect(cardB).toBeVisible({ timeout: 10000 });
     await cardB.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]').selectOption('0');
-    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already has a squad deployed', { timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already deployed in another expedition', { timeout: 10000 }); // REQ-0168 U6 cross-room copy
 
     // Cancel room A so its deployed squads (0,1,2,3) free up for later
     // tests in this suite -- every other test in this file cancels its
