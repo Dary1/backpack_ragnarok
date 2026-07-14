@@ -37,6 +37,16 @@ function buildHome(i) {
     fs.symlinkSync(path.join(REPO, 'content', e), path.join(bp, 'content', e));
   }
   fs.cpSync(path.join(REPO, 'content', 'live'), path.join(bp, 'content', 'live'), { recursive: true });
+  // REQ-0051: overlay this worktree's starter content (not yet on master)
+  // so the e2e backend serves it. Additive + guarded -- only files present in
+  // the worktree are copied; nothing about the REPO copy above changes.
+  {
+    const wtLive = path.join(__dirname, "..", "content", "live");
+    for (const f of ["starter_items.json", "starter_jobs.json"]) {
+      const src = path.join(wtLive, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bp, "content", "live", f));
+    }
+  }
   const cfg = path.join(REPO, 'data', 'config');
   if (fs.existsSync(cfg)) fs.cpSync(cfg, path.join(bp, 'data', 'config'), { recursive: true });
   // REQ-0083 F: seed the WHOLE profiles dir -- the dev player uses data/profiles/dev.json
