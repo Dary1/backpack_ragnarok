@@ -71,6 +71,7 @@ const artStore = require('./storage_art.cjs');
 // subsystem file (async pg pool, same pattern as storage_art). Re-exported
 // below so storage.cjs stays THE single persistence chokepoint.
 const contentStore = require('./storage_content.cjs');
+const moderationStore = require('./storage_moderation.cjs'); // REQ-0144: UGC skin moderation persistence
 
 module.exports = {
   SCHEMA_VERSION: profiles.SCHEMA_VERSION,
@@ -173,4 +174,5 @@ module.exports = {
   // REQ-0155: content-data registry (async pg content_def/variant ops;
   // storage.cjs remains the sole chokepoint -- from storage_content.cjs).
   ...contentStore,
+  ...moderationStore,
 };

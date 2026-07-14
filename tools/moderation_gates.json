@@ -1,0 +1,44 @@
+{
+  "_comment": "REQ-0144 moderation-gate registry. SINGLE SOURCE of gate identity/version/thresholds and model provenance for the UGC skin moderation pipeline (tools/moderation_gate.py). Mirrors the inspect_kits.json convention. Bump a gate_version on any threshold or algorithm change. LLMs draft; scripts judge -- no LLM verdict anywhere in this pipeline.",
+  "pipeline_version": "1",
+  "gates": [
+    {
+      "gate_id": "technical.s3_harness",
+      "gate_version": "1",
+      "kind": "technical",
+      "blocking": true,
+      "reuses": "client/scripts/bpskin_harness.mjs",
+      "note": "Gate 0 = the REQ-0126 S3 machine gate (seams, clip-mask leakage, shape suite), reused AS-IS and already a standalone ci step. Per-bitmap technical validation binds to this harness once a UGC skin-def ingestion format exists (an explicit non-goal here); the pipeline records PASS/REJECT when run with --technical=run, else DELEGATED (an attestation of the committed harness golden)."
+    },
+    {
+      "gate_id": "nsfw.vit_base",
+      "gate_version": "1",
+      "kind": "content_safety",
+      "blocking": true,
+      "model": {
+        "name": "AdamCodd/vit-base-nsfw-detector",
+        "file": "onnx/model.onnx",
+        "revision": "8587de998f441aac03fdd57a85d2e4cb808c7d64",
+        "sha256": "dce8f5af8509fee39c453b78a66076ead5c97321ddcee0ddfa16f67dc8286384",
+        "runtime": "onnxruntime CPUExecutionProvider, single-threaded, sequential (deterministic)",
+        "cache_path": "~/.cache/backpack_moderation/vit-base-nsfw-detector/model.onnx",
+        "labels": { "0": "sfw", "1": "nsfw" },
+        "preprocess": { "resize": [384, 384], "resample": "bilinear", "rescale": 0.00392156862745098, "mean": [0.5, 0.5, 0.5], "std": [0.5, 0.5, 0.5], "layout": "NCHW", "channel_order": "RGB" }
+      },
+      "thresholds": { "reject_p_nsfw": 0.7, "escalate_p_nsfw": 0.3 },
+      "policy": "p_nsfw >= reject_p_nsfw -> REJECT; escalate_p_nsfw <= p_nsfw < reject_p_nsfw -> ESCALATE (human operator); p_nsfw < escalate_p_nsfw -> PASS. A classifier that cannot run = ESCALATE (fail-safe; never fail-open to PASS).",
+      "csam_note": "A local image classifier CANNOT certify the ABSENCE of CSAM. Gate 1 is an NSFW filter, not a CSAM detector. Operational policy: NSFW gate + MANDATORY human-operator escalation on every REJECT/ESCALATE, and reporting to authorities per jurisdiction on any suspected CSAM. No CSAM-specific model is trained or shipped and no CSAM material is sourced (test fixtures are benign procedural images only). This is a documented limit, not a solved problem."
+    },
+    {
+      "gate_id": "ip.phash_denylist",
+      "gate_version": "1",
+      "kind": "ip_likeness",
+      "blocking": true,
+      "denylist": "tools/moderation_ip_denylist.json",
+      "method": "64-bit DCT perceptual hash (tools/moderation_phash.py); Hamming distance <= per-entry max_hamming -> REJECT.",
+      "thresholds": { "default_max_hamming": 10 },
+      "logo_detector": "NOT SHIPPED. A general logo/brand detector needs trained weights (e.g. an ONNX YOLO-logo net); no sound torch-free local option is vetted in this stack (onnxruntime is present but there are no trustworthy logo-detection weights on hand). Recorded as a known limit; a future detector plugs in behind this same Gate-2 interface. The pHash denylist is the shipped best-effort mechanism.",
+      "limits": "pHash catches near-duplicate reproductions of denylisted marks, NOT stylistic homage, small crops, heavy recolors, or novel infringing art. Best-effort by design; the denylist is operator-curated and intentionally sparse."
+    }
+  ]
+}
