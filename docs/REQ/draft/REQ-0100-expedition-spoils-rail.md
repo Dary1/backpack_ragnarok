@@ -64,3 +64,25 @@ claim testids if inline claim is chosen. Warehouse tab selectors unchanged.
   the same path and the row leaves BOTH rail and tab); assert no second claim path
   exists.
 - `tsc -b` clean; fresh dist committed. No server change (default deep-link path).
+
+## Ratification — 2026-07-14 (user decision via orchestrator session)
+
+Scope approved by the user as part of the schedule UX batch (REQ-0168/0169).
+Decision list resolved:
+
+1. **回収 behavior**: deep-link (recommended option) — but to the **#/warehouse
+   ROUTE**, not a tab: REQ-0086 promoted the Warehouse out of this page after this
+   draft was written, so every "tab" reference above now reads "the #/warehouse
+   page". No inline claim; no claim-path fork.
+2. **Preview row count**: 4 (soonest-to-expire first, same ordering the warehouse
+   page uses).
+3. **TM/currency rows**: INCLUDED in the preview (they are warehouse rows with the
+   same TTL; hiding them would under-report the pending count).
+
+Data-source deviation from the draft body: "reuse the warehouse rows SchedulePage
+already polls" is stale for the same REQ-0086 reason — SchedulePage no longer
+fetches warehouse data at all. The rail therefore owns ONE light fetch of
+GET /api/warehouse on mount + a slow refresh (~15s) + an immediate refresh when
+the expanded room's run settles (Monitor already detects settle). Capacity meter
++ pending count + 4 rows + deep-link button, testids per the Selector contract
+above. Implemented on branch req-0168-schedule-ux-pass.
