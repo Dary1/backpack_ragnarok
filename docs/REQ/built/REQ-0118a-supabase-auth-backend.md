@@ -35,3 +35,10 @@
 - Not deployed to the app yet (client still uses REQ-0037 tokens) — see REQ-0118c.
 - Secrets never committed; `.env` + override are gitignored in the supabase checkout.
 - Future (paid stores only): Google + Sign in with Apple (App Store Guideline 4.8).
+
+## Integration pass -- 2026-07-14 (integration owner)
+
+- Master @ `c41fdee` re-certified green via `tools/release.sh` (full `tools/ci.sh` incl. pg backend; `SKIP_E2E`, e2e run separately). Fresh `vite build` == the committed dist (**"dist unchanged -- nothing to commit"**), so the live static bundle already reflects this REQ. `backpack-api` + `backpack-web` restarted 2026-07-14 00:24 UTC (both active; web/api/ingress HTTP 200).
+- Post-deploy live e2e (`http://127.0.0.1:8803`, sanctioned `pnpm run e2e`): **156 passed / 10 failed** -- the 10 are exactly the REQ-0159-accounted set (7x artadmin/artinspect/contentadmin 403-by-design; nav-routing:26 + dex-card:65 + schedule:1065). No unaccounted red.
+- **Code**: infra-only (self-hosted Supabase GoTrue + Cloudflare tunnel route auth.qtie.jp), live on the server since 2026-07-09; nothing lives in this repo, so no branch/merge/deploy applies.
+- **Disposition**: STAYS in built/ -- not user-facing until the app integration (REQ-0118c) ships and is accepted, per the standing user instruction in this file.
