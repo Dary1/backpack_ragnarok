@@ -69,6 +69,7 @@ import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, 
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
 import { resolveUnitIcon, unitIconKey } from './unitIcon';
 import { drawChargeRing } from './chargeRing';
+import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -340,15 +341,19 @@ export class BoardRenderer {
     //     by the current squad already (that's not useful information to
     //     highlight on the canvas itself).
     // Color choice (documented here once, reused by every draw site
-    // below): red 0xff3b3b @ alpha 0.20, yellow 0xffd23b @ alpha 0.20 --
+    // below): selfSquad=vermillion, otherSquad=yellow (REQ-0143 CVD-safe) --
     // chosen to read clearly as a translucent wash against this app's
     // dark (#121212 background / #191919 grid cell) theme without
     // fighting the BP-color grid tint (alpha 0.26) or an item's own dark
     // backdrop (alpha 0.22) already drawn at similar alpha levels nearby.
     const tint = engine.tintSets(state);
-    const TINT_RED = 0xff3b3b;
-    const TINT_YELLOW = 0xffd23b;
-    const TINT_ALPHA = 0.2;
+    // REQ-0143: colourblind-safe usage wash from the central overlay palette
+    // (was red 0xff3b3b / yellow 0xffd23b -- two warm hues that collapse under
+    // deuteranopia). selfSquad=vermillion, otherSquad=blue: a blue/warm split
+    // proven separable under all three CVD sims by overlay_a11y_harness.
+    const TINT_RED = OVERLAY.usage.selfSquad.color;
+    const TINT_YELLOW = OVERLAY.usage.otherSquad.color;
+    const TINT_ALPHA = OVERLAY.usage.selfSquad.alpha;
     /** Draws a translucent tint wash over exactly `cells` (not a bounding
      * box -- correct for L-shapes/shapes-with-holes alike, matching every
      * other per-cell drawing loop in this file) into `layer`, colored red
@@ -1498,8 +1503,8 @@ export class BoardRenderer {
         if (r < 1 || r > this.deps.layout.ROWS || c < 1 || c > this.deps.layout.COLS) continue;
         const rect = new Graphics();
         rect.roundRect(PAD + (c - 1) * CELL + 2, PAD + (r - 1) * CELL + 2, CELL - 4, CELL - 4, 6);
-        rect.fill({ color: ok ? '#5cb573' : '#c05050', alpha: 0.25 });
-        rect.stroke({ color: ok ? '#5cb573' : '#c05050', width: 2 });
+        rect.fill({ color: ok ? OVERLAY.dropTarget.ok.color : OVERLAY.dropTarget.bad.color, alpha: 0.25 });
+        rect.stroke({ color: ok ? OVERLAY.dropTarget.ok.color : OVERLAY.dropTarget.bad.color, width: 2 });
         this.gTarget.addChild(rect);
       }
     };
@@ -1595,7 +1600,7 @@ export class BoardRenderer {
             const dist = Math.hypot(pos.x - local.x, pos.y - local.y);
             const ring = new Graphics();
             ring.circle(pos.x, pos.y, 12);
-            ring.stroke({ color: v.ok ? '#5cb573' : '#c05050', width: 2, alpha: dist < bd ? 1 : 0.55 });
+            ring.stroke({ color: v.ok ? OVERLAY.dropTarget.ok.color : OVERLAY.dropTarget.bad.color, width: 2, alpha: dist < bd ? 1 : 0.55 });
             this.gTarget.addChild(ring);
             if (dist < bd) {
               bd = dist;

@@ -17,6 +17,7 @@ import { fetchMe, type ApiMe } from './api';
 import { t } from './i18n';
 import { logout, setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
+import { loadMotionPrefs, saveMotionPrefs, type MotionPrefs } from './a11y/motionPrefs'; // REQ-0143
 import { replayGuide } from './guide/guideController'; // REQ-0141
 import { getAuthState, subscribeAuth, signInWithDiscord, signInAsGuest, linkDiscord, signOutSupabase, type AuthState } from './auth/session'; // REQ-0118c
 
@@ -88,6 +89,7 @@ export function Settings({ locale }: SettingsProps) {
   const [me, setMe] = useState<ApiMe | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [chimePrefs, setChimePrefs] = useState<ChimePrefs>(() => loadChimePrefs());
+  const [motionPrefs, setMotionPrefs] = useState<MotionPrefs>(() => loadMotionPrefs()); // REQ-0143
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +112,16 @@ export function Settings({ locale }: SettingsProps) {
     setChimePrefs((prev) => {
       const next = { ...prev, ...patch };
       saveChimePrefs(next);
+      return next;
+    });
+  };
+
+  // REQ-0143: reduced-motion. saveMotionPrefs persists + applies the document
+  // attributes + fires the same-tab change event the renderer listens on.
+  const updateMotionPrefs = (patch: Partial<MotionPrefs>) => {
+    setMotionPrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveMotionPrefs(next);
       return next;
     });
   };
@@ -205,6 +217,27 @@ export function Settings({ locale }: SettingsProps) {
         >
           {t(locale, 'guide.settings.replay')}
         </button>
+      </section>
+
+      {/* REQ-0143: Accessibility -- reduced-motion toggle + a colourblind-safe
+          note. Reduced-motion seeds from prefers-reduced-motion and, once
+          toggled, is honoured app-wide (Ragnarok Frame slow-mo, beam anim,
+          charge pulses) via a11y/motionPrefs. */}
+      <section className="settings-section settings-a11y" data-testid="settings-a11y">
+        <h3>{t(locale, 'settings.a11yTitle')}</h3>
+        <div className="settings-field settings-toggle">
+          <label className="settings-toggle-label">
+            <input
+              type="checkbox"
+              data-testid="settings-reduced-motion-toggle"
+              checked={motionPrefs.reducedMotion}
+              onChange={(e) => updateMotionPrefs({ reducedMotion: e.target.checked })}
+            />
+            <span className="settings-field-label">{t(locale, 'settings.reducedMotionLabel')}</span>
+          </label>
+          <p className="settings-hint">{t(locale, 'settings.reducedMotionHint')}</p>
+        </div>
+        <p className="settings-hint" data-testid="settings-a11y-colorblind-note">{t(locale, 'settings.colorblindNote')}</p>
       </section>
 
       {/* REQ-0039 "Now" scope -- static bilingual placeholder only, no

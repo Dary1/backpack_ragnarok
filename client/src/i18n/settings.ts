@@ -31,6 +31,12 @@ export const settingsEn = {
   'settings.hapticsLabel': 'Haptics (vibration)',
   'settings.hapticsHint': 'Vibrate in rhythm with the pulse on supported mobile devices.',
   'settings.volumeLabel': 'Volume',
+
+  // REQ-0143: Accessibility (reduced motion + colourblind-safe note).
+  'settings.a11yTitle': 'Accessibility',
+  'settings.reducedMotionLabel': 'Reduced motion',
+  'settings.reducedMotionHint': 'Suppress the Ragnarok Frame slow-motion, beam animations and charge pulses across the app. Seeded from your system setting; toggle to override.',
+  'settings.colorblindNote': 'Gameplay overlays (team/enemy, elements, damage, charge) use a colourblind-safe palette and never rely on colour alone -- each also carries a shape or pattern cue.',
 } as const;
 
 export const settingsJa = {
@@ -61,4 +67,10 @@ export const settingsJa = {
   'settings.hapticsLabel': '振動（ハプティクス）',
   'settings.hapticsHint': '対応するモバイル端末で、パルスのリズムに合わせて振動します。',
   'settings.volumeLabel': '音量',
+
+  // REQ-0143: Accessibility (reduced motion + colourblind-safe note).
+  'settings.a11yTitle': 'アクセシビリティ',
+  'settings.reducedMotionLabel': 'モーションを減らす',
+  'settings.reducedMotionHint': 'ラグナロクフレームのスローモーション、ビームアニメーション、チャージの脈動をアプリ全体で抑制します。システム設定を初期値とし、切り替えで上書きできます。',
+  'settings.colorblindNote': 'ゲームプレイのオーバーレイ（味方・敵、属性、ダメージ、チャージ）は色覚多様性に配慮したパレットを使用し、色だけに頼りません。それぞれ形状やパターンの手がかりも備えています。',
 } as const;
