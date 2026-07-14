@@ -29,7 +29,7 @@ import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { unitArtUrl } from '../board/unitIcon';
-import { firstFitPlaceBp } from '../lib/placement';
+import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';
@@ -53,6 +53,29 @@ function castingOdds(pack: { cells?: [number, number]; hp_per_cell?: number } | 
   const rows: Array<{ cells: number; pct: number; hp: number }> = [];
   for (let c = lo; c <= hi; c++) rows.push({ cells: c, pct: Math.round((100 / n) * 10) / 10, hp: c * hpPer });
   return rows;
+}
+
+// REQ-0062: the bonus-slot odds, computed from the pack def exactly like castingOdds
+// -- every table row's chance is its weight over the slot's total, so the odds view
+// advertises the SAME numbers the server rolls with (no opaque loot box).
+function bonusOdds(pack: { bonus?: Array<{ pool: 'po' | 'si' | 'tm'; table: Array<{ id: string; weight: number; qty?: number }> }> } | undefined) {
+  const slots = pack?.bonus ?? [];
+  return slots.map((slot, i) => {
+    const total = slot.table.reduce((s, r) => s + Math.max(0, r.weight || 0), 0) || 1;
+    return {
+      idx: i,
+      pool: slot.pool,
+      rows: slot.table.map((r) => ({ id: r.id, qty: r.qty ?? 1, pct: Math.round((100 * Math.max(0, r.weight || 0) / total) * 10) / 10 })),
+    };
+  });
+}
+
+// REQ-0062: a pack's display name in the player's locale (ja i18n name when reading
+// Japanese), falling back to the pack's English name then the id.
+function packName(pack: { name?: string; i18n?: { ja?: { name?: string } } } | undefined, fallback: string, locale: Locale): string {
+  if (!pack) return fallback;
+  if (locale === 'ja' && pack.i18n?.ja?.name) return pack.i18n.ja.name;
+  return pack.name ?? fallback;
 }
 
 const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
@@ -134,6 +157,10 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   // REQ-0063: opens the real Dismantle modal (replaces the old REQ-0076
   // "opening soon" shell for this one tile only -- Transmute stays a shell).
   const [dismantleOpen, setDismantleOpen] = useState(false);
+  // REQ-0062: the themed pack the player has chosen to open. Defaults to the Common
+  // pack (the unchanged REQ-0042 default); every served catalog pack is selectable and
+  // the chosen pack drives cost, pool, odds, bonuses and the roll.
+  const [selectedPackId, setSelectedPackId] = useState<string>('common_bp');
 
   useEffect(() => {
     if (!toast) return;
@@ -146,11 +173,26 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   // the shared constant as the fallback for a client that booted before content
   // arrived. A display constant that can drift from the roll is exactly the bug
   // the old odds panel had.
-  const pack = snapshot.gameData?.PACKS?.['common_bp'];
+  const packs = snapshot.gameData?.PACKS ?? {};
+  const packIds = Object.keys(packs);
+  const effectivePackId = packs[selectedPackId] ? selectedPackId : (packIds[0] ?? 'common_bp');
+  const pack = packs[effectivePackId];
   const units = snapshot.gameData?.UNITS ?? {};
+  // REQ-0062: PO/SI defs (for naming bonus items in the odds view; the result modal
+  // uses the server's own def echo instead).
+  const itemDefs = (snapshot.gameData?.ITEMS ?? {}) as Record<string, { name?: string; i18n?: { ja?: { name?: string } } }>;
+  const siDefsMap = (snapshot.gameData?.SI_DEFS ?? {}) as Record<string, { name?: string; i18n?: { ja?: { name?: string } } }>;
   const connShapes = (snapshot.gameData?.CONN_SHAPES ?? {}) as Record<string, ApiConnShape>;
   const cost = pack?.cost ?? GACHA_COMMON_BP_COST;
   const odds = castingOdds(pack);
+  const bonusRows = bonusOdds(pack); // REQ-0062: transparent bonus-table odds
+  const bonusPoolLabel = (poolKind: 'po' | 'si' | 'tm'): string =>
+    poolKind === 'po' ? t(locale, 'workshop.bonusPoolPo') : poolKind === 'si' ? t(locale, 'workshop.bonusPoolSi') : t(locale, 'workshop.bonusPoolTm');
+  const bonusItemName = (poolKind: 'po' | 'si' | 'tm', id: string): string => {
+    const def = poolKind === 'po' ? itemDefs[id] : poolKind === 'si' ? siDefsMap[id] : undefined;
+    if (def) return (locale === 'ja' && def.i18n?.ja?.name) ? def.i18n.ja.name : (def.name ?? id);
+    return id;
+  };
   const canAfford = balance >= cost;
   const rolledShapeKey = rollResult?.unitDef?.connection_shape;
   const rolledShape = rolledShapeKey ? connShapes[rolledShapeKey] : undefined;
@@ -162,7 +204,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
     try {
       // Phase 1: server verifies balance + rolls a fresh BP definition,
       // records a pending row, returns it WITHOUT deducting anything.
-      const res = await rollWorkshopGacha('common_bp');
+      const res = await rollWorkshopGacha(effectivePackId);
       const { cost, rolled } = res;
       // REQ-0045 (h): reveal the rolled BP's full diagram (shape + unit
       // + beam dirs + hpMax + cell count) as soon as the definition is
@@ -234,6 +276,18 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
         pulseTab(placed.page);
       }
 
+      // REQ-0062: the pack's bonus slots (POs / SI lenses / TMs) ride the SAME save as
+      // the guaranteed BP -- first-fit them into inventory now, before the auto-save
+      // below finalizes the roll. Best-effort: a bonus that finds no room is simply not
+      // placed (the guaranteed BP remains the sole finalize gate, unchanged).
+      for (const b of rolled.bonuses ?? []) {
+        if (b.pool === 'tm') {
+          firstFitOrMergeTM(engine, state, b.uid, b.id, b.qty ?? 1, openPage, engine.PAGE_COUNT);
+        } else {
+          firstFitPlace(engine, state, b.pool, b.uid, b.id, openPage, engine.PAGE_COUNT);
+        }
+      }
+
       // Let the existing debounced auto-save run naturally -- this PUT
       // is what finalizes the pending roll server-side (uid present AND
       // balance dropped, see the gacha finalize path).
@@ -253,7 +307,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
     } finally {
       setRolling(false);
     }
-  }, [snapshot.engine, snapshot.state, snapshot.activeInvPage, locale]);
+  }, [snapshot.engine, snapshot.state, snapshot.activeInvPage, locale, effectivePackId]);
 
   return (
     <div className="workshop-page">
@@ -269,6 +323,40 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
 
       {error ? <div className="schedule-error" data-testid="workshop-error">{error}</div> : null}
       {toast ? <div className="schedule-toast workshop-toast" data-testid="workshop-toast">{toast}</div> : null}
+
+      {/* ===== REQ-0062: themed pack selector -- choose which pack to open ===== */}
+      {packIds.length > 0 ? (
+        <section className="workshop-pack-select" data-testid="workshop-pack-select">
+          <div className="workshop-colhead">
+            <span className="workshop-colhead-rune rune">{'\u16DC'}</span>
+            <h3 className="workshop-colhead-title dj">{t(locale, 'workshop.packSelectHeading')}</h3>
+            <span className="workshop-colhead-den den">{t(locale, 'workshop.packSelectDen')}</span>
+            <span className="workshop-colhead-grow" />
+            <span className="workshop-colhead-note t-micro">{t(locale, 'workshop.packSelectNote')}</span>
+          </div>
+          <div className="workshop-pack-options">
+            {packIds.map((pid) => {
+              const p = packs[pid];
+              const active = pid === effectivePackId;
+              return (
+                <button
+                  key={pid}
+                  type="button"
+                  className={'btn workshop-pack-option' + (active ? ' is-active' : '')}
+                  aria-pressed={active}
+                  data-testid={'workshop-pack-option-' + pid}
+                  data-active={active ? '1' : '0'}
+                  onClick={() => { setSelectedPackId(pid); setRollResult(null); setError(null); }}
+                >
+                  <span className="workshop-pack-option-name dj">{packName(p, pid, locale)}</span>
+                  <span className="workshop-pack-option-cost t-micro"><span className="rune">{'\u16A0'}</span> {t(locale, 'workshop.cost', { cost: p?.cost ?? cost })}</span>
+                  {(p?.bonus?.length ?? 0) > 0 ? <span className="workshop-pack-option-syn chip">{t(locale, 'workshop.synergyChip')}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {/* ===== casting colhead ===== */}
       <div className="workshop-colhead">
@@ -288,7 +376,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             <span className="workshop-cast-art-glyph seal">{'鋳'}</span>
           </div>
           <div className="workshop-cast-body">
-            <div className="workshop-cast-title dj">{t(locale, 'workshop.commonBpGacha')}</div>
+            <div className="workshop-cast-title dj" data-testid="workshop-cast-title">{packName(pack, t(locale, 'workshop.commonBpGacha'), locale)}</div>
             <div className="workshop-cast-sub t-micro">{t(locale, 'workshop.castSub')}</div>
             <div className="workshop-cast-cost">
               <span className="workshop-cast-cost-rune rune">{'ᚠ'}</span>
@@ -344,6 +432,37 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             <li>{t(locale, 'workshop.ruleUnit')}</li>
             <li>{t(locale, 'workshop.ruleTwoPhase')}</li>
           </ul>
+          {/* REQ-0062: transparent bonus-slot odds -- every table with its weights. */}
+          <div className="rune-divider">{'\u16DC'}</div>
+          <div className="workshop-odds-head">
+            <span className="workshop-odds-title dj">{t(locale, 'workshop.bonusHeading')}</span>
+            <span className="workshop-odds-den den">{t(locale, 'workshop.bonusHeadingDen')}</span>
+            <span className="workshop-odds-grow" />
+            <span className="t-micro">{t(locale, 'workshop.bonusNote')}</span>
+          </div>
+          {bonusRows.length === 0 ? (
+            <div className="workshop-bonus-none t-micro" data-testid="workshop-bonus-none">{t(locale, 'workshop.bonusNone')}</div>
+          ) : (
+            <div className="workshop-bonus-slots" data-testid="workshop-bonus-odds">
+              {bonusRows.map((slot) => (
+                <div className="workshop-bonus-slot" key={slot.idx} data-pool={slot.pool}>
+                  <div className="workshop-bonus-slot-head t-micro">{t(locale, 'workshop.bonusSlotLabel', { n: slot.idx + 1, pool: bonusPoolLabel(slot.pool) })}</div>
+                  {slot.rows.map((r) => (
+                    <div className="workshop-orow" key={r.id} data-testid="workshop-bonus-row" data-bonus-id={r.id}>
+                      <span className="workshop-orow-lab">
+                        <b>{bonusItemName(slot.pool, r.id)}</b>
+                        {r.qty > 1 ? <span className="t-micro">{' \u00d7' + r.qty}</span> : null}
+                      </span>
+                      <span className="bar workshop-orow-bar">
+                        <span className="fill gold" style={{ display: 'block', height: '100%', width: r.pct + '%' }} />
+                      </span>
+                      <span className="workshop-orow-pct tnum">{r.pct}%</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -489,6 +608,20 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 <div className="rune-divider workshop-result-flavor-divider">{'ᛖ'}</div>
                 <div className="workshop-result-flavor dj">{t(locale, 'workshop.rollResultFlavor')}</div>
               </div>
+              {(rollResult.bonuses?.length ?? 0) > 0 ? (
+                <div className="workshop-result-bonuses" data-testid="workshop-result-bonuses">
+                  <div className="workshop-result-bonuses-head den">{t(locale, 'workshop.resultBonusHeading')}</div>
+                  <div className="workshop-result-bonuses-list">
+                    {(rollResult.bonuses ?? []).map((b) => (
+                      <div className="workshop-result-bonus" key={b.uid} data-testid="workshop-result-bonus" data-bonus-id={b.id} data-pool={b.pool}>
+                        <b className="workshop-result-bonus-name">{b.def && locale === 'ja' && b.def.i18n?.ja?.name ? b.def.i18n.ja.name : (b.def?.name ?? b.id)}</b>
+                        {b.qty > 1 ? <span className="t-micro tnum">{' \u00d7' + b.qty}</span> : null}
+                        <span className="t-micro workshop-result-bonus-pool">{b.pool === 'po' ? t(locale, 'workshop.bonusPoolPo') : b.pool === 'si' ? t(locale, 'workshop.bonusPoolSi') : t(locale, 'workshop.bonusPoolTm')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="workshop-result-act">
               <button

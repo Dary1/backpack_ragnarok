@@ -57,7 +57,7 @@ const DEX_CARD_RE = /^\/api\/dex\/card\/([^/]+)\/([^/]+)$/;
 // content.cjs's buildContentPayload() return shape: {items, sis, tms,
 // ...}). Absent here => unknown kind => 404 (see below), not a 500 --
 // this doubles as the v1 kind allowlist.
-const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms' };
+const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms', pack: 'packs' };
 
 // REQ-0063: kinds the Dismantle system can ever touch (dismantleItem's
 // own kind:'po'|'si' allowlist, expressed here in dex-card kind terms --
@@ -119,6 +119,16 @@ function buildCardDto(kind, id, entry, dismantleInfo) {
   } else if (kind === 'tm') {
     dto.short = entry.short;
     dto.stackable = entry.stackable;
+  } else if (kind === 'pack') {
+    // REQ-0062: a pack's Dex card lists EVERY table with its weights -- transparent
+    // odds, no opaque loot box. cost/cells/hp_per_cell give the guaranteed-BP band;
+    // pool is the unit table; bonus is the 0..2 synergy-slot tables.
+    dto.cost = entry.cost;
+    dto.cost_tm = entry.cost_tm;
+    dto.cells = entry.cells;
+    dto.hp_per_cell = entry.hp_per_cell;
+    dto.pool = entry.pool;
+    dto.bonus = entry.bonus;
   }
   if (dismantleInfo) dto.dismantle = dismantleInfo;
   return dto;

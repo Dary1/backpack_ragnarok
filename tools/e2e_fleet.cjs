@@ -37,6 +37,12 @@ function buildHome(i) {
     fs.symlinkSync(path.join(REPO, 'content', e), path.join(bp, 'content', e));
   }
   fs.cpSync(path.join(REPO, 'content', 'live'), path.join(bp, 'content', 'live'), { recursive: true });
+  // REQ-0062: overlay THIS worktree's live_packs.json (themed pack catalog --
+  // clockwork/ember -- not yet on master) so the isolated e2e backend serves it,
+  // exactly like the REQ-0051 starter-content overlay just below. __dirname is the
+  // worktree's tools/, so this reads the worktree copy (with the new packs), not REPO.
+  { const _wtPacks = path.join(__dirname, '..', 'content', 'live', 'live_packs.json');
+    if (fs.existsSync(_wtPacks)) fs.copyFileSync(_wtPacks, path.join(bp, 'content', 'live', 'live_packs.json')); }
   // REQ-0051: overlay this worktree's starter content (not yet on master)
   // so the e2e backend serves it. Additive + guarded -- only files present in
   // the worktree are copied; nothing about the REPO copy above changes.

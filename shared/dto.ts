@@ -188,6 +188,10 @@ export interface ApiPackEntry {
   cells?: [number, number];
   hp_per_cell?: number;
   pool: Array<{ unit: string; weight: number }>;
+  /** REQ-0062: 0..2 bonus slots -- the synergy bundle (PO / SI lens / TM) that rides
+   * atop the guaranteed Backpack. Each slot draws one weighted entry from its own
+   * transparent-odds table (surfaced on the pack Dex card + Workshop odds view). */
+  bonus?: Array<{ pool: 'po' | 'si' | 'tm'; table: Array<{ id: string; weight: number; qty?: number }> }>;
   i18n?: { ja?: { name?: string } };
 }
 
