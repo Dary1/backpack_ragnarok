@@ -1,0 +1,354 @@
+{
+  "req": "REQ-0143",
+  "emit": {
+    "borderBand": {
+      "floor_contrast": 3,
+      "measured_min_board_px": 1.5,
+      "measured_min_px_at_256": 6,
+      "recommended_board_px": 3,
+      "recommended_px_at_256": 12,
+      "note": "min = smallest board-px band that renders a clean welt ring on all suite shapes at >=3:1 welt/fill; recommended adds 1 board-px anti-alias headroom (G4 64px rule)."
+    },
+    "fillBudget": {
+      "standard": "WCAG 1.4.11 non-text contrast",
+      "min_ratio": 3,
+      "item_dark_ref": "#0e0d0b",
+      "item_light_ref": "#f2fbff",
+      "fill_luminance_band": [
+        0.1122,
+        0.2836
+      ],
+      "per_skin": {
+        "neutral": {
+          "fill": "#2b3240",
+          "fillLuminance": 0.0316,
+          "vsItemDark": 1.5105,
+          "vsItemLight": 12.2587,
+          "inBudget": false
+        },
+        "devornate": {
+          "fill": "#5a4632",
+          "fillLuminance": 0.0678,
+          "vsItemDark": 2.1801,
+          "vsItemLight": 8.4937,
+          "inBudget": false
+        }
+      }
+    },
+    "cvd": [
+      {
+        "group": "usage",
+        "pairs": [
+          {
+            "a": "selfSquad",
+            "b": "otherSquad",
+            "cvdDeltaE": {
+              "deuteranopia": 33.8689,
+              "protanopia": 31.1856,
+              "tritanopia": 26.3304
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "hatch-diagonal",
+            "cueB": "hatch-dots",
+            "pass": true
+          }
+        ]
+      },
+      {
+        "group": "dropTarget",
+        "pairs": [
+          {
+            "a": "ok",
+            "b": "bad",
+            "cvdDeltaE": {
+              "deuteranopia": 34.7185,
+              "protanopia": 28.3397,
+              "tritanopia": 30.7139
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "ring-solid",
+            "cueB": "ring-dashed",
+            "pass": true
+          }
+        ]
+      },
+      {
+        "group": "side",
+        "pairs": [
+          {
+            "a": "team",
+            "b": "enemy",
+            "cvdDeltaE": {
+              "deuteranopia": 47.1732,
+              "protanopia": 42.0279,
+              "tritanopia": 36.0882
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": false,
+            "cueReliedOn": false,
+            "cueA": "solid",
+            "cueB": "solid",
+            "pass": true
+          }
+        ]
+      },
+      {
+        "group": "element",
+        "pairs": [
+          {
+            "a": "fire",
+            "b": "water",
+            "cvdDeltaE": {
+              "deuteranopia": 50.2178,
+              "protanopia": 45.519,
+              "tritanopia": 37.5316
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "glyph-triangle",
+            "cueB": "glyph-droplet",
+            "pass": true
+          },
+          {
+            "a": "fire",
+            "b": "nature",
+            "cvdDeltaE": {
+              "deuteranopia": 41.928,
+              "protanopia": 34.69,
+              "tritanopia": 35.6826
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "glyph-triangle",
+            "cueB": "glyph-leaf",
+            "pass": true
+          },
+          {
+            "a": "fire",
+            "b": "arc",
+            "cvdDeltaE": {
+              "deuteranopia": 20.4701,
+              "protanopia": 21.4275,
+              "tritanopia": 19.2801
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "glyph-triangle",
+            "cueB": "glyph-bolt",
+            "pass": true
+          },
+          {
+            "a": "water",
+            "b": "nature",
+            "cvdDeltaE": {
+              "deuteranopia": 8.4352,
+              "protanopia": 11.0074,
+              "tritanopia": 2.5465
+            },
+            "colorSeparableAllCvd": false,
+            "cuesDiffer": true,
+            "cueReliedOn": true,
+            "cueA": "glyph-droplet",
+            "cueB": "glyph-leaf",
+            "pass": true
+          },
+          {
+            "a": "water",
+            "b": "arc",
+            "cvdDeltaE": {
+              "deuteranopia": 31.8897,
+              "protanopia": 26.3282,
+              "tritanopia": 20.67
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "glyph-droplet",
+            "cueB": "glyph-bolt",
+            "pass": true
+          },
+          {
+            "a": "nature",
+            "b": "arc",
+            "cvdDeltaE": {
+              "deuteranopia": 24.2757,
+              "protanopia": 16.5644,
+              "tritanopia": 19.5166
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": true,
+            "cueReliedOn": false,
+            "cueA": "glyph-leaf",
+            "cueB": "glyph-bolt",
+            "pass": true
+          }
+        ]
+      },
+      {
+        "group": "damage",
+        "pairs": [
+          {
+            "a": "damaged",
+            "b": "critical",
+            "cvdDeltaE": {
+              "deuteranopia": 3.487,
+              "protanopia": 2.5582,
+              "tritanopia": 8.7484
+            },
+            "colorSeparableAllCvd": false,
+            "cuesDiffer": true,
+            "cueReliedOn": true,
+            "cueA": "crack-light",
+            "cueB": "crack-heavy",
+            "pass": true
+          }
+        ]
+      },
+      {
+        "group": "charge",
+        "pairs": [
+          {
+            "a": "fill",
+            "b": "ready",
+            "cvdDeltaE": {
+              "deuteranopia": 136.7939,
+              "protanopia": 127.904,
+              "tritanopia": 105.6569
+            },
+            "colorSeparableAllCvd": true,
+            "cuesDiffer": false,
+            "cueReliedOn": false,
+            "cueA": "arc-fill",
+            "cueB": "arc-fill",
+            "pass": true
+          }
+        ]
+      }
+    ]
+  },
+  "bandSweep": [
+    {
+      "boardPx": 0.5,
+      "px256": 2,
+      "ringOk": false,
+      "weltFillContrast": 3.7139,
+      "pass": false
+    },
+    {
+      "boardPx": 1,
+      "px256": 4,
+      "ringOk": false,
+      "weltFillContrast": 3.7139,
+      "pass": false
+    },
+    {
+      "boardPx": 1.5,
+      "px256": 6,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 2,
+      "px256": 8,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 2.5,
+      "px256": 10,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 3,
+      "px256": 12,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 3.5,
+      "px256": 14,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 4,
+      "px256": 16,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 4.5,
+      "px256": 18,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 5,
+      "px256": 20,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 5.5,
+      "px256": 22,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 6,
+      "px256": 24,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 6.5,
+      "px256": 26,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 7,
+      "px256": 28,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 7.5,
+      "px256": 30,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    },
+    {
+      "boardPx": 8,
+      "px256": 32,
+      "ringOk": true,
+      "weltFillContrast": 3.7139,
+      "pass": true
+    }
+  ],
+  "galleryHash": "a08849cf5c4d247f93c565cc4f9000e78d743e150a613f9e32d0005e51fdbb8f",
+  "numbersHash": "69b99885af9c987dfc1c56fd59e9e8c645948d873a4dcb63f1c22a8644807862",
+  "pass": true,
+  "failures": []
+}
