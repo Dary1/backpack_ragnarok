@@ -177,8 +177,11 @@ Raised here; **owned elsewhere**. This REQ does not invent answers.
   reduced by what, applied to what). **Needs the user's plain restatement**, not
   our guess.
 - **G6 — Berserker's stack has no cap.** *(OPEN)* +0.1% damage per stack, unbounded,
-  is a balance hole and an engine hazard (the REQ-0061 PULSE_CAP lineage exists for
-  exactly this). **Needs a cap** — or an explicit user ruling that it is uncapped.
+  is a balance hole and an engine hazard. ~~(the REQ-0061 PULSE_CAP lineage exists for
+  exactly this)~~ — **NO LONGER TRUE: `PULSE_CAP` was RETIRED on 2026-07-14** (REQ-0128b §9).
+  `passive_per_stack` never consumes charge, so `capacity` does not bound it either.
+  **There is now NO backstop of any kind.** **Needs a real cap** — or an explicit user
+  ruling that it is uncapped, made in full knowledge that nothing will catch it.
 - **G7 — Roster arithmetic.** **CLOSED 2026-07-13: necromancer CUT; Watcher and
   Squire authored (§2.11–12). Roster 001 = 12 units.** REQ-0130's gate text
   ("13 … kits") is corrected to 12 by this REQ.

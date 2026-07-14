@@ -85,6 +85,9 @@ with `range: 1`. `knight` is the sole offset shape (it jumps).
 
 ## Rescued prior art (from REQ-0061, 供養 2026-07-12)
 
+> **ANSWERED 2026-07-14 — see §9 below. The whole law set is RETIRED.** The demand is kept
+> verbatim because it is the demand that got answered; nothing below it is still true.
+
 The pulse-walk law set of REQ-0048/0061 is the deterministic baseline this REQ must
 either ADOPT for Unit Links or EXPLICITLY RETIRE, law by law — **silence is not
 allowed**: `PULSE_CAP`; the visited-set; the hop budget. (REQ-0149 G6 — the Berserker's
