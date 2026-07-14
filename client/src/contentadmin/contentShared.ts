@@ -255,6 +255,30 @@ export function artworkThumbUrl(a: ArtworkDto | undefined | null): string | null
   return null;
 }
 
+/** REQ-0173 follow-up (display-layer name reconciliation): index artworks by
+ * BOTH their exact system_name AND their batch-stripped suffix (the part
+ * after the last ':'). The two live backfills named their rows differently
+ * (artworks: 'batch-004-item-icons-flux2:blade'; content defs: 'blade'), so
+ * exact matching lights up ZERO facets on the live data. Suffix entries
+ * never shadow an exact entry, and an adopted-render artwork wins a suffix
+ * collision. DISPLAY-ONLY linkage: the server's has_artwork_facet
+ * (exact-match) is untouched; real name reconciliation is a future
+ * registry REQ. */
+export function buildArtworkIndex(artworks: ArtworkDto[]): Record<string, ArtworkDto> {
+  const index: Record<string, ArtworkDto> = {};
+  const exact = new Set<string>();
+  for (const a of artworks) { index[a.system_name] = a; exact.add(a.system_name); }
+  for (const a of artworks) {
+    const i = a.system_name.lastIndexOf(':');
+    if (i < 0) continue;
+    const suffix = a.system_name.slice(i + 1);
+    if (!suffix || exact.has(suffix)) continue;
+    const cur = index[suffix];
+    if (!cur || (cur.adopted_render_id == null && a.adopted_render_id != null)) index[suffix] = a;
+  }
+  return index;
+}
+
 /** Top-level keys whose pretty-JSON value differs between two entity records
  * (either side missing counts as changed) -- backs the diff changed-field
  * chips. Stable, sorted, union of both key sets. */

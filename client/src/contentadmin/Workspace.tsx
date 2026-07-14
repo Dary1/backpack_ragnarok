@@ -60,8 +60,12 @@ export function Workspace(props: {
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { def, variants, adoptedNo, draft, dirty, commission, diffPicks, diffPair, flowCollapsed } = props;
-  const artHash = '#/artadmin/' + def.system_name;
-  const headerThumb = props.artworkFacet ? artworkThumbUrl(props.artworksByName[def.system_name]) : null;
+  // REQ-0173 follow-up: batch-suffix matches light the facet too; the
+  // artadmin link carries the artwork's REAL (namespaced) system_name.
+  const art = props.artworksByName[def.system_name];
+  const hasArtLink = props.artworkFacet || !!art;
+  const artHash = '#/artadmin/' + encodeURIComponent(art ? art.system_name : def.system_name);
+  const headerThumb = hasArtLink ? artworkThumbUrl(art) : null;
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
@@ -80,7 +84,7 @@ export function Workspace(props: {
             ? <span className="aa-adopt-badge tnum" data-testid="cd-adopted-state">adopted v{adoptedNo} &middot; exported to content/</span>
             : <span className="t-micro" data-testid="cd-adopted-state">not adopted yet</span>}
           {dirty && <span data-testid="cd-dirty" className="chip aa-dirty">unsaved changes</span>}
-          {props.artworkFacet && (
+          {hasArtLink && (
             <a data-testid="cd-header-thumb" className="ca-header-thumb" href={artHash}
               title={'open ' + def.system_name + ' in Art Admin'}>
               {headerThumb
@@ -90,8 +94,9 @@ export function Workspace(props: {
           )}
         </div>
         <div className="ca-facetline t-micro">
-          {props.artworkFacet
-            ? <span data-testid="cd-artwork-facet" className="ca-facet-yes">artwork facet: present --{' '}
+          {hasArtLink
+            ? <span data-testid="cd-artwork-facet" className="ca-facet-yes">
+                artwork facet: {props.artworkFacet ? 'present' : 'linked by batch name (' + (art ? art.system_name : '') + ')'} --{' '}
                 <a data-testid="cd-artadmin-goto" href={artHash}>open in Art Admin</a>{' '}&middot;{' '}
                 <a data-testid="cd-dex-link" href={'#/dex/' + def.system_name}>view in Dex</a></span>
             : <span data-testid="cd-artwork-facet" className="ca-facet-no">artwork facet: none (data-only entity)</span>}
