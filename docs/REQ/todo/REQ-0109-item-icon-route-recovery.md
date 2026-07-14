@@ -156,3 +156,43 @@ live-rendering gap.
      per common_content_pipeline.md.
 - REQ-0133 (live wiring) is unaffected machinery-wise; its route question is
   half-resolved (raster — unit_icon_pipeline.md §3.2, ALL GREEN 2026-07-12).
+
+---
+
+## Integration-owner pass (2026-07-14) -- route CONFIRMED on master; remaining work is content-gen + S7 (stays in todo)
+
+Wave-2 integration owner reviewed this REQ against current master. Findings:
+
+- **The REQ-0073 route recovery is already on master** and intact: merge f3e1f32
+  is an ancestor of master; content/live/live_items.json carries 8/8
+  gen_prompt/gen_negative/gen_render fields; tools/gen_item_icons.py,
+  tools/tool_icon_score.py, tools/build_batch003_report.py are present;
+  content/batches/batch-003-item-icons/ is present; content/registry.json carries
+  the batch-003-item-icons entry. There is nothing to re-merge -- the
+  integration/merge half of this REQ is DONE (this matches the 2026-07-12 outcome
+  log above; the S7 NG only rejected the batch-003 ART, not the route).
+- **The REQ-0136 checkpoint blocker is CLEARED**: user VERDICT (2026-07-12) is
+  flux2 -- ADOPTED as the default route (docs/REQ/built/REQ-0136-icon-checkpoint-bakeoff.md).
+  So the "wait for REQ-0136" precondition in the restart plan above is satisfied.
+- **The batch-003 regeneration has been OVERTAKEN by REQ-0150 (flux2 migration,
+  now in done/)**: master already carries content/batches/batch-004-item-icons-flux2/
+  (candidates/ + item_defs.json, 7/8 items) produced on the flux2 pipeline (commit
+  ee89739). Restart-plan step 2 (regenerate item icons on the refreshed pipeline)
+  has therefore largely already happened -- but as a SEPARATE batch (batch-004)
+  under REQ-0150, not as a batch-003 re-roll under this REQ.
+
+Remaining work is NOT integration work and was intentionally NOT forced:
+1. Decide whether batch-004-item-icons-flux2 (REQ-0150) SATISFIES this REQ, or
+   whether a dedicated batch-003 re-roll on flux2 is still wanted. Product/user call.
+2. If a re-roll is wanted: regenerate on the flux2 pipeline (heavy ComfyUI GPU work
+   on user-owned art infra -- VRAM constraint: ComfyUI ~11GB + birefnet ~12GB
+   cannot co-reside on 23GB, so gen --no-matte, stop ComfyUI, then --rematte-only),
+   re-run scorer + report, redeploy the preview.
+3. **S7 user review is required** either way (the prior batch-003 was NG at S7;
+   live/registry adoption is S8, only after a fresh S7 green). Per board law +
+   integration-owner scope, S7 / user-eyeball work stops here.
+
+Disposition: **stays in todo** -- the route is merged but the batch-003 ART is
+still NG, no fresh regeneration + S7 has occurred, and the remaining steps are
+content generation + user acceptance (out of autonomous-integration scope). Task 5
+live-wiring remains split to REQ-0133 (draft/).
