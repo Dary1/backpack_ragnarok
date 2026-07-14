@@ -4,13 +4,13 @@
 
 Craft your own magical backpacks — not just what fills them, but their very shapes —
 and tile them together across your canvas. Slot items like puzzle pieces, then bind
-pack to pack with directional Linkers, weaving a synergy circuit that is yours alone:
+pack to pack through your Units' connection rays, weaving a synergy circuit that is yours alone:
 nothing but your arrangement decides your strength, and no guide can copy it.
 
-Every pack speaks through a single Linker. A giant pack carries an arsenal but speaks
+Every pack speaks through a single Unit. A giant pack carries an arsenal but speaks
 with one voice; a swarm of small packs chatters in chains. Find the layout where
 everything fits and links perfectly — then watch the exact moment it ignites and
-annihilates your enemies. March four packs at a time, alone or with friends, conquer
+annihilates your enemies. March a Troop of four Squads at a time, alone or with friends, conquer
 dungeons for new pieces, shapes, and relics, gamble Transmutators to reroll fate, and
 send your caravan marching even while you sleep. Let the crafting of never-before-seen
 combos begin.
