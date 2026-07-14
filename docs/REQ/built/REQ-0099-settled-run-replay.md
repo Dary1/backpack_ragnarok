@@ -161,3 +161,18 @@ replaying forward after a backward seek honestly re-chimes.
 - This pass adds only doc commits (these notes + the todo→built move). Fresh
   `web/app` dist rebuild is left to the integration/deploy owner (task scope =
   no merge, no deploy; repo convention = deploy owner rebuilds dist).
+
+---
+
+## Wave-5 integration / deploy record (2026-07-14)
+
+Merged to master via `--no-ff` merge commit `8de4953` (doc-only: `todo -> built`
+move + implementation notes; the feature itself is the historic master commit
+`74b35e8`). Wave-5 full gate `flock /tmp/backpack_ci.lock bash tools/release.sh`
+ran GREEN on the integrated master: **CI GREEN**, default e2e **165/165 passed**
+(incl. `schedule.spec.ts:1405` LIVE-run-shows-no-transport and `:1429` settled-run
+transport / skip-to-end / scrub-to-start -- both REQ-0099 specs green against the
+deployed, supabase-env-baked dist). Dist rebuilt + committed `4b1a544`. Services
+`backpack-api` / `backpack-web` restarted; HTTP 200 (8801 /app/, 8802 /api/health).
+No open user-acceptance / S7 items -> moved `built -> done` this wave.
+Final master at deploy: `4b1a544`.
