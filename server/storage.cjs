@@ -55,6 +55,7 @@ const runs = require('./storage/runs.cjs');
 const warehouse = require('./storage/warehouse.cjs');
 const gacha = require('./storage/gacha.cjs');
 const dismantle = require('./storage/dismantle.cjs');
+const starter = require('./storage/starter.cjs'); // REQ-0051
 const market = require('./storage/market.cjs');
 const ragnarok = require('./storage/ragnarok.cjs');
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
@@ -102,6 +103,11 @@ module.exports = {
   clearRoomsForOwner: rooms.clearRoomsForOwner,
   readDismantleLedger: dismantle.readDismantleLedger,
   writeDismantleLedger: dismantle.writeDismantleLedger,
+  // REQ-0051: starter-job claim ledger (regrant once-per-job gate)
+  STARTER_CLAIMS_DIR: lib.STARTER_CLAIMS_DIR,
+  starterClaimsPath: starter.starterClaimsPath,
+  readStarterClaims: starter.readStarterClaims,
+  writeStarterClaims: starter.writeStarterClaims,
   // REQ-0042: gacha pending-roll persistence
   GACHA_PENDING_DIR: lib.GACHA_PENDING_DIR,
   gachaPendingPlayerDir: gacha.gachaPendingPlayerDir,
