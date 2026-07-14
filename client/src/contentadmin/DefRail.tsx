@@ -4,21 +4,33 @@
 // chip, adopted-variant badge ("v3 *"), variant count, FAIL-check warning
 // dot, artwork-facet glyph linking to #/artadmin. Keeps the REQ-0155 e2e
 // testids: cd-list (container) and cd-select-<system_name> (row buttons).
+// REQ-0164 E: adds a client-side sort control (cd-sort-created default /
+// cd-sort-name / cd-sort-activity), an explicit list-failure panel
+// (cd-list-error) instead of a silently empty rail, and a brief snippet in
+// each row's title attr so brief-substring search hits are explicable.
 import { useState } from 'react';
 import type { ContentDefDto } from '../api';
-import { KINDS } from './contentShared';
-import type { Kind } from './contentShared';
+import { KINDS, SORT_MODES, sortDefs } from './contentShared';
+import type { Kind, SortMode } from './contentShared';
 
 type AdoptionFilter = 'all' | 'adopted' | 'unadopted';
+
+const SORT_LABELS: Record<SortMode, string> = { created: 'created', name: 'name', activity: 'activity' };
+
+function rowTitle(d: ContentDefDto): string {
+  const brief = (d.brief || '').trim();
+  return brief ? d.system_name + ' -- ' + brief.slice(0, 140) : d.system_name;
+}
 
 function Row({ d, selected, onSelect }: { d: ContentDefDto; selected: boolean; onSelect: (name: string) => void }) {
   return (
     <div className="ca-rowwrap">
       <button type="button" data-testid={'cd-select-' + d.system_name}
         className={'aa-row' + (selected ? ' is-selected' : '')}
+        title={rowTitle(d)}
         onClick={() => onSelect(d.system_name)}>
         <span className="aa-row-main">
-          <span className="aa-row-name" title={d.system_name}>{d.system_name}</span>
+          <span className="aa-row-name" title={rowTitle(d)}>{d.system_name}</span>
           <span className="aa-row-sub t-micro tnum">
             <span className={'aa-kind ca-kind--' + d.kind}>{d.kind}</span>
             {' '}{d.variant_count != null ? d.variant_count : 0}v
@@ -42,13 +54,15 @@ function Row({ d, selected, onSelect }: { d: ContentDefDto; selected: boolean; o
   );
 }
 
-export function DefRail({ defs, selected, onSelect, onNew }: {
+export function DefRail({ defs, selected, onSelect, onNew, listError }: {
   defs: ContentDefDto[]; selected: string | null;
   onSelect: (name: string) => void; onNew: () => void;
+  listError: string | null;
 }) {
   const [query, setQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<Kind | 'all'>('all');
   const [adoption, setAdoption] = useState<AdoptionFilter>('all');
+  const [sort, setSort] = useState<SortMode>('created');
 
   const q = query.trim().toLowerCase();
   const searched = defs.filter((d) =>
@@ -56,7 +70,7 @@ export function DefRail({ defs, selected, onSelect, onNew }: {
     && (adoption === 'all' || (adoption === 'adopted') === (d.adopted_variant_id != null)));
   const counts: Record<string, number> = {};
   for (const d of searched) counts[d.kind] = (counts[d.kind] || 0) + 1;
-  const visible = searched.filter((d) => kindFilter === 'all' || d.kind === kindFilter);
+  const visible = sortDefs(searched.filter((d) => kindFilter === 'all' || d.kind === kindFilter), sort);
 
   return (
     <aside className="aa-rail panel">
@@ -84,9 +98,23 @@ export function DefRail({ defs, selected, onSelect, onNew }: {
             onClick={() => setAdoption(f)}>{f}</button>
         ))}
       </div>
+      <div className="aa-filters ca-sortline">
+        <span className="t-micro ca-sortlabel">sort</span>
+        {SORT_MODES.map((m) => (
+          <button key={m} type="button" data-testid={'cd-sort-' + m}
+            className={'chip aa-chipbtn' + (sort === m ? ' is-on' : '')}
+            onClick={() => setSort(m)}>{SORT_LABELS[m]}</button>
+        ))}
+      </div>
+      {listError && visible.length === 0 ? (
+        <div data-testid="cd-list-error" className="panel panel-pad ca-list-error">
+          <div className="t-micro ca-list-error-msg">list failed: {listError}</div>
+          <div className="t-micro ca-list-error-hint">admin token required -- open via an invite link</div>
+        </div>
+      ) : null}
       <div data-testid="cd-list" className="aa-list">
         {visible.map((d) => <Row key={d.system_name} d={d} selected={selected === d.system_name} onSelect={onSelect} />)}
-        {visible.length === 0 && <div className="aa-empty t-micro">no content defs match</div>}
+        {visible.length === 0 && !listError && <div className="aa-empty t-micro">no content defs match</div>}
       </div>
     </aside>
   );

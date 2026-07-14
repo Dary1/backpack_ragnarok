@@ -9,8 +9,16 @@
 // variants; no LLM is ever called). Requires the isolated pg-backed
 // instance of THIS worktree (tools/content_admin_e2e.sh); dev_mode makes
 // the item_admin gate accept the no-token dev fallback. Run ONLY via
-// tools/e2e_run.sh (box lock) -- tools/content_admin_e2e.sh does exactly
-// that.
+// tools/content_admin_e2e.sh (box lock) -- it does exactly that.
+//
+// REQ-0164 (contentadmin-ux-r2) coverage added below: the review DRAFT
+// controls now open behind review-open-<no> (the big flow clicks it first);
+// ingest paints an is-new highlight + a cd-adjudicate-summary tally; the diff
+// closes on Esc; PLUS standalone tests for stable layout width, the
+// collapsible workflow strip, cd-msg clearing on def switch, the
+// #/contentadmin/<name> deep link + hash rewrite, the rail sort modes, the
+// rail list-error panel, per-kind schema_ref defaults, the dirty-draft guard,
+// and local-time card timestamps.
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -45,6 +53,12 @@ async function confirmClick(page: Page, testId: string) {
   await page.getByTestId('confirm-ok').click();
 }
 
+// REQ-0164 E: the rail's row order (system_names, in DOM order).
+async function railOrder(page: Page): Promise<string[]> {
+  return page.$$eval('[data-testid="cd-list"] [data-testid^="cd-select-"]',
+    (els) => els.map((e) => (e.getAttribute('data-testid') || '').replace('cd-select-', '')));
+}
+
 async function apiCreateDef(request: APIRequestContext, body: Record<string, unknown>) {
   const r = await request.post('/api/content/defs', { data: body });
   expect(r.status()).toBe(201);
@@ -68,7 +82,7 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
   await page.getByTestId('cd-create').click();
   await expect(page.getByTestId('cd-detail')).toBeVisible();
 
-  // step 1 -- commission (Q1/Q4): payload panel + ONE-CLICK COPY
+  // step 1 -- commission (Q1/Q4): payload panel + ONE-CLICK COPY (fresh def -> strip expanded)
   await page.getByTestId('cd-commission').click();
   await expect(page.getByTestId('cd-commission-out')).toContainText('Generate 5');
   await expect(page.getByTestId('cd-copy-commission')).toBeVisible();
@@ -85,6 +99,11 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
   await expect(page.getByTestId('cd-ingest')).toBeEnabled();
   await page.getByTestId('cd-ingest').click();
 
+  // REQ-0164 C: fresh cards get the transient is-new highlight + a live tally
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await expect(page.getByTestId('variant-1')).toHaveClass(/is-new/);
+  await expect(page.getByTestId('cd-adjudicate-summary')).toContainText('5 variants');
+
   // 5 variants stored, each with an overall PASS chip + all four checks
   for (let n = 1; n <= 5; n++) {
     await expect(page.getByTestId('overall-' + n)).toHaveText('PASS', { timeout: 60000 });
@@ -93,8 +112,10 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
     await expect(page.getByTestId('check-' + n + '-gen_data')).toBeVisible();
     await expect(page.getByTestId('check-' + n + '-integrate')).toBeVisible();
   }
+  await expect(page.getByTestId('cd-adjudicate-summary')).toContainText('5 PASS');
 
-  // advisory agent review on variant 1 (mandatory rationale)
+  // advisory agent review on variant 1 (REQ-0164 F: draft controls open behind review-open-<no>)
+  await page.getByTestId('review-open-1').click();
   await page.getByTestId('review-verdict-select-1').selectOption('recommend');
   await page.getByTestId('review-rationale-1').fill('cleanest range and valid sockets');
   await page.getByTestId('review-submit-1').click();
@@ -106,12 +127,13 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
   await expect(page.getByTestId('json-view-1')).toContainText('e2e_blade_v1');
   await expect(page.getByTestId('json-copy-1')).toBeVisible();
 
-  // A/B diff via card picks (grammar shared with artadmin's compare)
+  // A/B diff via card picks (grammar shared with artadmin's compare); REQ-0164 C: Esc closes it
   await page.getByTestId('diff-pick-1').check();
   await page.getByTestId('diff-pick-2').check();
   await page.getByTestId('cd-diff-open').click();
   await expect(page.getByTestId('diff-view')).toBeVisible();
-  await page.getByTestId('diff-close').click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('diff-view')).toHaveCount(0);
 
   // adopt variant 1 through the confirm dialog (PASS -> no override asked)
   await confirmClick(page, 'adopt-1');
@@ -130,11 +152,12 @@ test('content admin: create (panel) -> commission+copy -> parse preview gates in
   expect(metaBody.machine_check.overall).toBe('PASS');
   expect(metaBody.agent_review.verdict).toBe('recommend');
 
-  // REQ-0157: one-click diff vs adopted
+  // REQ-0157: one-click diff vs adopted (close via the diff-close button)
   await page.getByTestId('diff-adopted-2').click();
   await expect(page.getByTestId('diff-view')).toBeVisible();
   await expect(page.getByTestId('diff-view')).toContainText('(adopted)');
   await page.getByTestId('diff-close').click();
+  await expect(page.getByTestId('diff-view')).toHaveCount(0);
 
   // delete a NON-adopted variant (2) -> confirm -> gone (variant_no not reused)
   await confirmClick(page, 'delete-2');
@@ -236,4 +259,192 @@ test('def browser: search (name + brief) + kind/adoption filters narrow the list
   await page.getByTestId('cd-filter-adoption-unadopted').click();
   await expect(page.getByTestId('cd-select-e2e_blade')).toHaveCount(0);
   await expect(page.getByTestId('cd-select-e2e_potion')).toBeVisible();
+});
+
+// REQ-0164 A: the page holds a stable full width -- opening the commission
+// payload + a JSON panel + a diff must not push a page-level horizontal scroll
+// at the >=1280px e2e viewport (1400px).
+test('layout: no page-level horizontal scroll with payload + JSON + diff open', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_wide', kind: 'po_def', brief: 'width probe', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_wide', [variant(1), variant(2)]);
+
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-select-e2e_wide').click();
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  await page.getByTestId('cd-commission').click();
+  await expect(page.getByTestId('cd-commission-out')).toBeVisible();
+  await page.getByTestId('json-toggle-1').click();
+  await expect(page.getByTestId('json-view-1')).toBeVisible();
+  await page.getByTestId('diff-pick-1').check();
+  await page.getByTestId('diff-pick-2').check();
+  await page.getByTestId('cd-diff-open').click();
+  await expect(page.getByTestId('diff-view')).toBeVisible();
+
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+// REQ-0164 B: the workflow strip collapses by default on an adopted def with
+// variants (the common inspect case), stays expanded on a fresh/unadopted def,
+// and the header toggle flips it.
+test('workflow strip: collapsed by default on an adopted def; toggle expands; fresh def expanded', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_adopted', kind: 'po_def', brief: 'adopted def', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_adopted', [variant(1)]);
+  const adopt = await request.post('/api/content/defs/e2e_adopted/adopt', { data: { variant_no: 1 } });
+  expect(adopt.status()).toBe(200);
+  await apiCreateDef(request, { system_name: 'e2e_fresh', kind: 'si_def', brief: 'fresh def', schema_ref: 'si/2' });
+
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-select-e2e_adopted').click();
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  // adopted -> collapsed: one-line summary shows, the commission step is hidden
+  await expect(page.getByTestId('cd-flow-summary')).toBeVisible();
+  await expect(page.getByTestId('cd-commission')).toHaveCount(0);
+  // toggle expands
+  await page.getByTestId('cd-flow-toggle').click();
+  await expect(page.getByTestId('cd-commission')).toBeVisible();
+  // switching to a fresh unadopted def -> expanded by default (manual toggle reset)
+  await page.getByTestId('cd-select-e2e_fresh').click();
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  await expect(page.getByTestId('cd-commission')).toBeVisible();
+});
+
+// REQ-0164 C: cd-msg clears on def switch (no more stale-sticky messages).
+test('cd-msg clears on def switch', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_msg_a', kind: 'po_def', brief: 'a', schema_ref: 'po/2' });
+  await apiCreateDef(request, { system_name: 'e2e_msg_b', kind: 'po_def', brief: 'b', schema_ref: 'po/2' });
+
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-select-e2e_msg_a').click();
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  await page.getByTestId('cd-commission').click();
+  await expect(page.getByTestId('cd-msg')).toContainText('commission for');
+  await page.getByTestId('cd-select-e2e_msg_b').click();
+  await expect(page.getByTestId('cd-msg')).toHaveText('');
+});
+
+// REQ-0164 D: #/contentadmin/<system_name> deep link selects on load; selecting
+// a def rewrites the hash via history.replaceState.
+test('deep link: #/contentadmin/<name> selects on load; selecting rewrites the hash', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_link', kind: 'po_def', brief: 'deep link target', schema_ref: 'po/2' });
+  await apiCreateDef(request, { system_name: 'e2e_other', kind: 'si_def', brief: 'other def', schema_ref: 'si/2' });
+
+  await page.goto('/app/#/contentadmin/e2e_link');
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  await expect(page.getByTestId('cd-detail')).toContainText('e2e_link');
+  await expect(page).toHaveURL(/#\/contentadmin\/e2e_link$/);
+
+  await page.getByTestId('cd-select-e2e_other').click();
+  await expect(page.getByTestId('cd-detail')).toContainText('e2e_other');
+  await expect(page).toHaveURL(/#\/contentadmin\/e2e_other$/);
+});
+
+// REQ-0164 E: rail sort modes reorder the list client-side.
+test('rail sort: created / name / activity reorder the list', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  // creation order (id ASC): alpha_def, zeta_def, mid_def
+  await apiCreateDef(request, { system_name: 'alpha_def', kind: 'po_def', brief: 'a', schema_ref: 'po/2' });
+  await apiCreateDef(request, { system_name: 'zeta_def', kind: 'po_def', brief: 'z', schema_ref: 'po/2' });
+  await apiCreateDef(request, { system_name: 'mid_def', kind: 'po_def', brief: 'm', schema_ref: 'po/2' });
+  // only mid_def has ingest activity -> most-recent last_variant_at
+  await apiIngest(request, 'mid_def', [variant(1)]);
+
+  await page.goto('/app/#/contentadmin');
+  await expect(page.getByTestId('cd-select-mid_def')).toBeVisible();
+
+  await page.getByTestId('cd-sort-created').click();
+  expect(await railOrder(page)).toEqual(['alpha_def', 'zeta_def', 'mid_def']);
+  await page.getByTestId('cd-sort-name').click();
+  expect(await railOrder(page)).toEqual(['alpha_def', 'mid_def', 'zeta_def']);
+  await page.getByTestId('cd-sort-activity').click();
+  expect(await railOrder(page)).toEqual(['mid_def', 'alpha_def', 'zeta_def']);
+});
+
+// REQ-0164 E: a failing def list surfaces an explicit error panel instead of a
+// silently empty rail (mocked 500 -- dev_mode never fails auth in the harness).
+test('rail: list-failure shows the cd-list-error panel with the admin-token hint', async ({ page }) => {
+  await page.route('**/api/content/defs', (route) =>
+    route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'boom-token' }) }));
+
+  await page.goto('/app/#/contentadmin');
+  await expect(page.getByTestId('contentadmin')).toBeVisible();
+  await expect(page.getByTestId('cd-list-error')).toBeVisible();
+  await expect(page.getByTestId('cd-list-error')).toContainText('boom-token');
+  await expect(page.getByTestId('cd-list-error')).toContainText('admin token required');
+  await page.unroute('**/api/content/defs');
+});
+
+// REQ-0164 G: the create panel's schema_ref default follows the selected kind
+// while the field is pristine; a user-typed value wins after that.
+test('create panel: per-kind schema_ref default auto-swaps only while pristine', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-new').click();
+  await expect(page.getByTestId('cd-create-panel')).toBeVisible();
+
+  await expect(page.getByTestId('cd-schema-ref')).toHaveValue('po/2');
+  await page.getByTestId('cd-kind').selectOption('monster_def');
+  await expect(page.getByTestId('cd-schema-ref')).toHaveValue('enemy/1');
+  await page.getByTestId('cd-kind').selectOption('skill_def');
+  await expect(page.getByTestId('cd-schema-ref')).toHaveValue('skill/1');
+  // once edited, a kind switch must not overwrite the operator's value
+  await page.getByTestId('cd-schema-ref').fill('custom/ref');
+  await page.getByTestId('cd-kind').selectOption('si_def');
+  await expect(page.getByTestId('cd-schema-ref')).toHaveValue('custom/ref');
+});
+
+// REQ-0164 G: switching def with an unsaved brief/schema_ref draft raises the
+// ConfirmDialog; Cancel keeps the selection, Discard proceeds.
+test('dirty-draft guard: switching def with unsaved edits raises the discard confirm', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_dirty', kind: 'po_def', brief: 'orig brief', schema_ref: 'po/2' });
+  await apiCreateDef(request, { system_name: 'e2e_clean', kind: 'po_def', brief: 'clean brief', schema_ref: 'po/2' });
+
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-select-e2e_dirty').click();
+  await expect(page.getByTestId('cd-detail')).toBeVisible();
+  await page.getByTestId('cd-edit-brief').fill('edited but unsaved');
+  await expect(page.getByTestId('cd-dirty')).toBeVisible();
+
+  // Cancel keeps the current selection
+  await page.getByTestId('cd-select-e2e_clean').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await expect(page.getByTestId('confirm-dialog')).toContainText('Discard unsaved changes to e2e_dirty');
+  await page.getByTestId('confirm-cancel').click();
+  await expect(page.getByTestId('cd-detail')).toContainText('e2e_dirty');
+
+  // Discard proceeds to the new def
+  await page.getByTestId('cd-select-e2e_clean').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await page.getByTestId('confirm-ok').click();
+  await expect(page.getByTestId('cd-detail')).toContainText('e2e_clean');
+});
+
+// REQ-0164 F: the card timestamp renders LOCAL time (the rendered text equals
+// the local formatting of the raw-ISO title attr).
+test('variant card: created renders local time with the raw ISO as its title', async ({ page, request }) => {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: 'e2e_time', kind: 'po_def', brief: 't', schema_ref: 'po/2' });
+  await apiIngest(request, 'e2e_time', [variant(1)]);
+
+  await page.goto('/app/#/contentadmin');
+  await page.getByTestId('cd-select-e2e_time').click();
+  await expect(page.getByTestId('variant-1')).toBeVisible();
+
+  const info = await page.getByTestId('variant-1').locator('.ca-created').evaluate((el) => {
+    const iso = el.getAttribute('title') || '';
+    const d = new Date(iso);
+    const p = (n: number) => String(n).padStart(2, '0');
+    const local = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+      + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    return { text: (el.textContent || '').trim(), iso, local };
+  });
+  expect(info.iso).toMatch(/T/); // raw ISO instant preserved in the title
+  expect(info.text).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  expect(info.text).toBe(info.local); // rendered == LOCAL formatting of the ISO
 });

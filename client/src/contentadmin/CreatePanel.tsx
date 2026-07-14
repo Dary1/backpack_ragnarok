@@ -4,10 +4,13 @@
 // REQ-0156 removed from artadmin). Live validation: name regex / reserved /
 // duplicate. Keeps the REQ-0155 e2e field testids (cd-kind, cd-system-name,
 // cd-schema-ref, cd-brief, cd-create).
+// REQ-0164 G: schema_ref seeds from the kind-driven canon default map and
+// auto-swaps ONLY while the field is pristine (a user-typed value always
+// wins), so switching kind no longer strands the placeholder ref.
 import { useState } from 'react';
 import { createContentDef } from '../api';
 import type { ContentDefDto } from '../api';
-import { KINDS, validateNewName } from './contentShared';
+import { KINDS, defaultSchemaRef, validateNewName } from './contentShared';
 import type { Kind } from './contentShared';
 
 export function CreatePanel({ existing, onCreated, onClose, report }: {
@@ -18,12 +21,20 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
 }) {
   const [kind, setKind] = useState<Kind>('po_def');
   const [systemName, setSystemName] = useState('');
-  const [schemaRef, setSchemaRef] = useState('content/vocab.json');
+  const [schemaRef, setSchemaRef] = useState(defaultSchemaRef('po_def'));
+  // Pristine tracker: once the operator edits schema_ref by hand, a kind
+  // switch must NOT overwrite their value (REQ-0164 G "user-edited wins").
+  const [schemaTouched, setSchemaTouched] = useState(false);
   const [brief, setBrief] = useState('');
   const [busy, setBusy] = useState(false);
 
   const nameError = validateNewName(systemName, existing);
   const canCreate = !busy && systemName !== '' && !nameError;
+
+  function onKindChange(k: Kind) {
+    setKind(k);
+    if (!schemaTouched) setSchemaRef(defaultSchemaRef(k));
+  }
 
   async function doCreate() {
     if (!canCreate) return;
@@ -46,7 +57,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
       <div className="aa-form">
         <label className="aa-field">
           <span className="t-micro">kind</span>
-          <select data-testid="cd-kind" className="aa-input" value={kind} onChange={(e) => setKind(e.target.value as Kind)}>
+          <select data-testid="cd-kind" className="aa-input" value={kind} onChange={(e) => onKindChange(e.target.value as Kind)}>
             {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
         </label>
@@ -58,7 +69,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
         <label className="aa-field">
           <span className="t-micro">schema_ref (vocab the data must satisfy)</span>
           <input data-testid="cd-schema-ref" className="aa-input" value={schemaRef}
-            onChange={(e) => setSchemaRef(e.target.value)} />
+            onChange={(e) => { setSchemaTouched(true); setSchemaRef(e.target.value); }} />
         </label>
         <label className="aa-field aa-field--wide">
           <span className="t-micro">brief (the commission text -- what this content should be)</span>
