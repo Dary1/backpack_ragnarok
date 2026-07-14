@@ -1,0 +1,149 @@
+{
+ "schema": "unit/1",
+ "entries": [
+  {
+   "id": "elf",
+   "name": "Elf",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-elf",
+   "connection_shape": "bishop",
+   "i18n": {
+    "ja": {
+     "name": "エルフ"
+    }
+   }
+  },
+  {
+   "id": "dwarf",
+   "name": "Dwarf",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-dwarf",
+   "connection_shape": "rook",
+   "i18n": {
+    "ja": {
+     "name": "ドワーフ"
+    }
+   }
+  },
+  {
+   "id": "thief",
+   "name": "Thief",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-thief",
+   "connection_shape": "chess_knight_move",
+   "i18n": {
+    "ja": {
+     "name": "シーフ"
+    }
+   }
+  },
+  {
+   "id": "angel",
+   "name": "Angel",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-angel",
+   "connection_shape": "queen",
+   "i18n": {
+    "ja": {
+     "name": "エンジェル"
+    }
+   }
+  },
+  {
+   "id": "shieldmaiden",
+   "name": "Shieldmaiden",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-shieldmaiden",
+   "connection_shape": "backward_line",
+   "i18n": {
+    "ja": {
+     "name": "シールドメイデン"
+    }
+   }
+  },
+  {
+   "id": "priest",
+   "name": "Priest",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-priest",
+   "connection_shape": "queen",
+   "i18n": {
+    "ja": {
+     "name": "プリースト"
+    }
+   }
+  },
+  {
+   "id": "littleprincess",
+   "name": "Little Princess",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-princess",
+   "connection_shape": "queen",
+   "i18n": {
+    "ja": {
+     "name": "リトルプリンセス"
+    }
+   }
+  },
+  {
+   "id": "princess",
+   "name": "Princess",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-princess",
+   "connection_shape": "queen",
+   "i18n": {
+    "ja": {
+     "name": "プリンセス"
+    }
+   }
+  },
+  {
+   "id": "lightcavalry",
+   "name": "Light Cavalry",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-lightcavalry",
+   "connection_shape": "lance",
+   "i18n": {
+    "ja": {
+     "name": "軽騎兵"
+    }
+   }
+  },
+  {
+   "id": "berserker",
+   "name": "Berserker",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-berserker",
+   "connection_shape": "none",
+   "i18n": {
+    "ja": {
+     "name": "バーサーカー"
+    }
+   }
+  },
+  {
+   "id": "watcher",
+   "name": "Watcher",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-watcher",
+   "connection_shape": "queen_2",
+   "i18n": {
+    "ja": {
+     "name": "ウォッチャー"
+    }
+   }
+  },
+  {
+   "id": "squire",
+   "name": "Squire",
+   "rarity": "Common",
+   "icon": "units-002-roster-flux2:unit-squire",
+   "connection_shape": "rook_3",
+   "i18n": {
+    "ja": {
+     "name": "スクワイア"
+    }
+   }
+  }
+ ]
+}

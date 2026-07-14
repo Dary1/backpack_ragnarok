@@ -13,6 +13,8 @@
 function gameDataFromApiContent(payload){
   const LAYOUT=payload.layout||(payload.scenario&&payload.scenario.layout);
   if(!LAYOUT||!Number.isInteger(LAYOUT.ROWS)||!Number.isInteger(LAYOUT.COLS))throw new Error('content: missing layout');
+  const UNITS=payload.units||{};                      // REQ-0170
+  const CONN_SHAPES=payload.connection_shapes||{};    // REQ-0170
   const ITEMS={};
   for(const id in payload.items){
     const e=payload.items[id];
@@ -39,7 +41,7 @@ function gameDataFromApiContent(payload){
   const scenarioForState=JSON.parse(JSON.stringify(payload.scenario||{}));
   delete scenarioForState.layout;
   function makeState(){return JSON.parse(JSON.stringify(scenarioForState));}
-  return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
+  return {LAYOUT,ITEMS,SI_DEFS,TREES,UNITS,CONN_SHAPES,makeState};
 }
 
 // Small visible badge (REQ-0024 deliverable: "visible small badge live/baked").
@@ -73,7 +75,10 @@ async function resolveGameData(){
 async function boot(){
 const GD=await resolveGameData();
 const {LAYOUT,ITEMS,SI_DEFS,TREES}=GD;
-const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
+// REQ-0170: UNITS/CONN_SHAPES may be absent on a stale baked data.js -- the engine
+// then simply forms no links, which is the honest rendering of "this build has no
+// unit content", not a crash.
+const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES,GD.UNITS,GD.CONN_SHAPES);
 const state=GD.makeState();
 const ROWS=LAYOUT.ROWS,COLS=LAYOUT.COLS;
 const CELL=80,PAD=38,INVX=PAD+COLS*CELL+34,INVY=PAD,INVW=200,INVCOL=2,INVBOX=92;
