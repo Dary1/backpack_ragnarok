@@ -169,3 +169,13 @@ Modified: `server/storage.cjs` (re-export the moderation store), `tools/ci.sh`
 ### Still open (NOT decided here -- the user's items)
 Friends-only vs global UGC rollout (§7.1); market tradability of UGC skins
 (§7.2); ratification of this gate list before any UGC intake ships.
+
+---
+
+## Wave-7 merge/deploy record (2026-07-14)
+
+- Merged to master via `--no-ff` **80b21f3** (branch `req-0144-ugc-skin-moderation`, tip b66031c). No code conflicts. Two byte-identical untracked `web/preview/bpskins-req0126/{grid.png,verdict.json}` files (md5-matched to the committed versions) were cleared from the working tree pre-merge and restored identically by the merge. Stale dist deltas were deferred to the release rebuild.
+- Migration `015_ugc_moderation.sql`: number **015 was free** (master carried 001..014). The migration declares **no named CHECK constraints** (only inline UNIQUE/FK), so there was no constraint-name collision and nothing to renumber. Re-applied idempotently to the deploy DB (`supabase-db`); all three tables (`ugc_submissions`, `moderation_verdicts`, `moderation_overrides`) present with FK/UNIQUE/ON DELETE CASCADE and the `backpack` GRANTs.
+- **NSFW model cache verified** out-of-tree at `~/.cache/backpack_moderation/vit-base-nsfw-detector/model.onnx` (329M): sha256 `dce8f5af...8384` and revision `8587de99...` both match `tools/moderation_gates.json`. The `.venv` python carries onnxruntime 1.27.0 + numpy + PIL, so ci step **[4.71]** ran the real-model NSFW gate (not skipped).
+- Full gate `flock /tmp/backpack_ci.lock bash tools/release.sh`: **CI GREEN** incl. the new steps **[4.71]** (py NSFW pipeline), **[4.72]** (DB-free storage validators), **[5.46]** (pg storage + override/appeal path -- contract, idempotent re-record, cascade cleanup all pass); default e2e **177/0**. Dist committed **5535b45**. Services active + HTTP 200 post-restart.
+- **Disposition: STAYS built.** The REQ Gates include "Gate list ratified by the user BEFORE any UGC intake ships," restated under "Still open ... the user's items." Built->done is withheld pending the user's gate-list ratification. (The §7.1 friends-only-vs-global rollout policy also remains the user's open item, explicitly out of this REQ scope.) Worktree retained.
