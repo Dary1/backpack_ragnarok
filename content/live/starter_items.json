@@ -1,0 +1,694 @@
+{
+ "schema": "po/2",
+ "note": "REQ-0051 starter-unit kit items (socketless, portless, authored-hpMax BP context). Isolated from live_items.json so the REQ-0160 registry count-gate and dex numbering are untouched; merged into the served ITEMS map by server/lib/content.cjs and server/services/core.cjs. Icons are placeholders pending the S5 icon pipeline. lockpick/spyglass are Scout-kit reuse copies of the batch-002 pilot player items.",
+ "entries": [
+  {
+   "id": "iron_thorns",
+   "name": "Bramble Ward",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-iron_thorns",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Spikes",
+      "n": [
+       3,
+       5
+      ]
+     }
+    }
+   ],
+   "flavor": "Turns a blow back on whoever threw it.",
+   "tags": [
+    "Shield"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ブランブルウォード",
+     "flavor": "放たれた一撃を、放った者へ返す。"
+    }
+   }
+  },
+  {
+   "id": "bulwark",
+   "name": "Bulwark",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ],
+    [
+     1,
+     0
+    ],
+    [
+     1,
+     1
+    ]
+   ],
+   "icon": "icon-placeholder-bulwark",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "block",
+      "n": [
+       18,
+       30
+      ]
+     }
+    }
+   ],
+   "flavor": "A wall you can carry into the dark.",
+   "tags": [
+    "Shield"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "バルワーク",
+     "flavor": "暗がりへ運べる、壁。"
+    }
+   }
+  },
+  {
+   "id": "hide_wrap",
+   "name": "Hide Wrap",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-hide_wrap",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "damage_reduction",
+      "n": [
+       2,
+       3
+      ]
+     }
+    }
+   ],
+   "flavor": "Thick leather blunts the worst of it.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ハイドラップ",
+     "flavor": "分厚い革が、最悪の一撃を鈍らせる。"
+    }
+   }
+  },
+  {
+   "id": "training_blade",
+   "name": "Training Blade",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-training_blade",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.6,
+       2.0
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       14,
+       22
+      ]
+     }
+    }
+   ],
+   "flavor": "Dull, honest, endlessly patient.",
+   "tags": [
+    "Weapon"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "訓練用の剣",
+     "flavor": "鈍く、正直で、どこまでも辛抱強い。"
+    }
+   }
+  },
+  {
+   "id": "hand_axe",
+   "name": "Hand Axe",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-hand_axe",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.1,
+       1.4
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       9,
+       14
+      ]
+     }
+    }
+   ],
+   "flavor": "Quick chops, close work.",
+   "tags": [
+    "Weapon"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "手斧",
+     "flavor": "素早い切り込み、間合いの内。"
+    }
+   }
+  },
+  {
+   "id": "war_pick",
+   "name": "War Pick",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-war_pick",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.4,
+       2.8
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       20,
+       30
+      ]
+     }
+    }
+   ],
+   "flavor": "Slow, heavy, and final.",
+   "tags": [
+    "Weapon"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "ウォーピック",
+     "flavor": "遅く、重く、そして決定的。"
+    }
+   }
+  },
+  {
+   "id": "sling_stone",
+   "name": "Sling",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-sling_stone",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.0,
+       2.4
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       8,
+       12
+      ]
+     },
+     "attack_profile": {
+      "edge": [
+       "top"
+      ],
+      "direction": "front",
+      "penetration": 0,
+      "aoe": 0,
+      "aoe_statuses": false,
+      "bounce_budget": 2
+     }
+    }
+   ],
+   "flavor": "One stone can find more than one mark.",
+   "tags": [
+    "Weapon"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "スリング",
+     "flavor": "一つの石が、一つ以上の的を見つける。"
+    }
+   }
+  },
+  {
+   "id": "poultice",
+   "name": "Poultice",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-poultice",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       1.8,
+       2.2
+      ]
+     },
+     "verb": {
+      "t": "heal_bp",
+      "n": [
+       6,
+       10
+      ]
+     }
+    }
+   ],
+   "flavor": "Green paste, old and reliable craft.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "湿布薬",
+     "flavor": "緑の練り薬、古く頼れる手仕事。"
+    }
+   }
+  },
+  {
+   "id": "regen_salve",
+   "name": "Regenerating Salve",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-regen_salve",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Regen",
+      "n": [
+       3,
+       5
+      ]
+     }
+    }
+   ],
+   "flavor": "Mends a little with each breath.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "再生の軟膏",
+     "flavor": "一息ごとに、少しずつ繕う。"
+    }
+   }
+  },
+  {
+   "id": "cleansing_tonic",
+   "name": "Cleansing Tonic",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-cleansing_tonic",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       3.0,
+       3.5
+      ]
+     },
+     "verb": {
+      "t": "cleanse"
+     }
+    }
+   ],
+   "flavor": "Washes the poison back out.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "浄化の水薬",
+     "flavor": "毒を、また外へ洗い流す。"
+    }
+   }
+  },
+  {
+   "id": "probe_lens",
+   "name": "Probe Lens",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-probe_lens",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.0,
+       2.6
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       4,
+       7
+      ]
+     },
+     "attack_profile": {
+      "edge": [
+       "top"
+      ],
+      "direction": "front",
+      "penetration": 0,
+      "aoe": 0,
+      "aoe_statuses": false,
+      "bounce_budget": 3
+     }
+    }
+   ],
+   "flavor": "Hidden edges grow suddenly bright.",
+   "tags": [
+    "Rune",
+    "Frost"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "探査レンズ",
+     "flavor": "隠された輪郭が、不意に明るむ。"
+    }
+   },
+   "modes": [
+    "detection"
+   ]
+  },
+  {
+   "id": "skeleton_key",
+   "name": "Skeleton Key",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     1,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-skeleton_key",
+   "stretch": false,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.2,
+       2.8
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       7,
+       11
+      ]
+     }
+    }
+   ],
+   "flavor": "Every lock keeps one friend.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "万能鍵",
+     "flavor": "どんな錠前にも、味方が一つ。"
+    }
+   },
+   "modes": [
+    "unlock"
+   ]
+  },
+  {
+   "id": "lockpick",
+   "name": "Iron Lockpick",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ]
+   ],
+   "icon": "icon-placeholder-lockpick",
+   "stretch": false,
+   "sockets": [],
+   "part": {
+    "assembles": "na",
+    "role": "na"
+   },
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.0,
+       3.0
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       6,
+       10
+      ]
+     },
+     "attack_profile": {
+      "edge": [
+       "top"
+      ],
+      "direction": "front",
+      "penetration": 0,
+      "aoe": 0,
+      "aoe_statuses": false
+     }
+    }
+   ],
+   "modes": [
+    "unlock"
+   ],
+   "flavor": "Useless against flesh. Wonderful against locks.",
+   "tags": [
+    "Relic"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "鉄の錠前破り",
+     "flavor": "肉には無力。錠前には無敵。"
+    }
+   },
+   "_note": "1x1 shape justified via the same 'part' 1x1-exemption convention used by hilt/blade in live_items.json (assembles:'na' marks it as a standalone non-assembling exemption rather than a bare scarcity violator like batch-001's frost_bead)."
+  },
+  {
+   "id": "spyglass",
+   "name": "Frostglass Lens",
+   "rarity": "Common",
+   "shape": [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     1
+    ]
+   ],
+   "icon": "icon-placeholder-spyglass",
+   "stretch": true,
+   "sockets": [],
+   "effects": [
+    {
+     "trigger": {
+      "t": "every_secs",
+      "s": [
+       2.5,
+       3.5
+      ]
+     },
+     "verb": {
+      "t": "strike",
+      "n": [
+       3,
+       5
+      ]
+     },
+     "attack_profile": {
+      "edge": [
+       "top"
+      ],
+      "direction": "front",
+      "penetration": 0,
+      "aoe": 0,
+      "aoe_statuses": false,
+      "bounce_budget": 4
+     }
+    }
+   ],
+   "modes": [
+    "detection"
+   ],
+   "flavor": "Through frosted glass, hidden things grow curious edges.",
+   "tags": [
+    "Rune",
+    "Frost"
+   ],
+   "i18n": {
+    "ja": {
+     "name": "氷結レンズ",
+     "flavor": "曇った硝子越しに、隠されたものは輪郭を持ち始める。"
+    }
+   }
+  }
+ ]
+}

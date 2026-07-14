@@ -1,0 +1,296 @@
+{
+ "schema": "starter_units/1",
+ "note": "REQ-0051 four starter units. Each is a 5x5 BP (its Unit forms no links -- connection_shape none) (authored hpMax override, no sockets/ports on its POs) pre-filled with 4 fixed (immovable) POs. Granted once at fresh-profile creation (client boot seed, REQ-0042 freshness gate) and re-grantable once per starter unit via POST /api/starter/claim. Also the S4 baseline (content/s4_boards/starter_*.json).",
+ "hpMax": 120,
+ "bpShape": [
+  [
+   0,
+   0
+  ],
+  [
+   0,
+   1
+  ],
+  [
+   0,
+   2
+  ],
+  [
+   0,
+   3
+  ],
+  [
+   0,
+   4
+  ],
+  [
+   1,
+   0
+  ],
+  [
+   1,
+   1
+  ],
+  [
+   1,
+   2
+  ],
+  [
+   1,
+   3
+  ],
+  [
+   1,
+   4
+  ],
+  [
+   2,
+   0
+  ],
+  [
+   2,
+   1
+  ],
+  [
+   2,
+   2
+  ],
+  [
+   2,
+   3
+  ],
+  [
+   2,
+   4
+  ],
+  [
+   3,
+   0
+  ],
+  [
+   3,
+   1
+  ],
+  [
+   3,
+   2
+  ],
+  [
+   3,
+   3
+  ],
+  [
+   3,
+   4
+  ],
+  [
+   4,
+   0
+  ],
+  [
+   4,
+   1
+  ],
+  [
+   4,
+   2
+  ],
+  [
+   4,
+   3
+  ],
+  [
+   4,
+   4
+  ]
+ ],
+ "origin": [
+  2,
+  2
+ ],
+ "unit": {
+  "id": "berserker",
+  "off": [
+   0,
+   0
+  ]
+ },
+ "units": [
+  {
+   "id": "starter_guard",
+   "name": "Starter: Guard",
+   "i18n": {
+    "ja": {
+     "name": "スターター：ガード"
+    }
+   },
+   "color": "#5b6b7a",
+   "pos": [
+    {
+     "id": "tower_shield",
+     "cell": [
+      2,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "bulwark",
+     "cell": [
+      2,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "iron_thorns",
+     "cell": [
+      3,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hide_wrap",
+     "cell": [
+      4,
+      3
+     ],
+     "rot": 0
+    }
+   ]
+  },
+  {
+   "id": "starter_arms",
+   "name": "Starter: Arms",
+   "i18n": {
+    "ja": {
+     "name": "スターター：アームズ"
+    }
+   },
+   "color": "#7a5b5b",
+   "pos": [
+    {
+     "id": "training_blade",
+     "cell": [
+      2,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hand_axe",
+     "cell": [
+      2,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "war_pick",
+     "cell": [
+      2,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "sling_stone",
+     "cell": [
+      2,
+      6
+     ],
+     "rot": 0
+    }
+   ]
+  },
+  {
+   "id": "starter_mend",
+   "name": "Starter: Mend",
+   "i18n": {
+    "ja": {
+     "name": "スターター：メンド"
+    }
+   },
+   "color": "#5b7a63",
+   "pos": [
+    {
+     "id": "herb_pouch",
+     "cell": [
+      2,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "poultice",
+     "cell": [
+      2,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "regen_salve",
+     "cell": [
+      2,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "cleansing_tonic",
+     "cell": [
+      2,
+      6
+     ],
+     "rot": 0
+    }
+   ]
+  },
+  {
+   "id": "starter_scout",
+   "name": "Starter: Scout",
+   "i18n": {
+    "ja": {
+     "name": "スターター：スカウト"
+    }
+   },
+   "color": "#6b5b7a",
+   "pos": [
+    {
+     "id": "lockpick",
+     "cell": [
+      2,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "spyglass",
+     "cell": [
+      2,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "probe_lens",
+     "cell": [
+      2,
+      6
+     ],
+     "rot": 0
+    },
+    {
+     "id": "skeleton_key",
+     "cell": [
+      3,
+      2
+     ],
+     "rot": 0
+    }
+   ]
+  }
+ ]
+}

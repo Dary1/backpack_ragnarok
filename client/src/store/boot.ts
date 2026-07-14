@@ -6,6 +6,8 @@ import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
+import type { GameData } from "../api/content"; // REQ-0051
+import type { GameState, BP, PO, SquadSlot } from "../engine/engine.d.ts"; // REQ-0051
 
 export function resolveProfileId(): string {
   return snapshot.me?.playerId ?? 'default';
@@ -69,6 +71,50 @@ async function fetchMeWithRetry(attempts = 3, delayMs = 500): Promise<ApiMe | nu
  * 'default' alias via resolveProfileId() above (which the server maps to
  * the dev player when dev_mode is true).
  */
+/**
+ * REQ-0051: builds the fresh-profile starting GameState from the served
+ * starter-unit definitions (gameData.starterUnits) -- four starter units -- 5x5 BPs (Unit forms no links), each a BP with an authored hpMax override pre-filled with 4 fixed
+ * (immovable) POs. Returns null when the payload carries no starterUnits (an
+ * older server), so boot() falls back to the baked demo scenario. The caller
+ * runs the result through engine.migrateState(), which gives every BP+PO an
+ * inventory home while preserving the canvas fixed references.
+ */
+function buildStarterUnitsState(gameData: GameData, locale: Locale): GameState | null {
+  const su = gameData.starterUnits;
+  if (!su || !Array.isArray(su.units) || su.units.length === 0) return null;
+  const slotFor = (unit: (typeof su.units)[number]): SquadSlot => {
+    const bp: BP = {
+      id: "bp_" + unit.id,
+      name: unit.name,
+      color: unit.color,
+      shape: su.bpShape,
+      origin: su.origin,
+      unit: { id: su.unit.id, off: su.unit.off },
+      hpMax: su.hpMax,
+    };
+    const pos: PO[] = unit.pos.map((pp, i) => ({
+      uid: "po_" + unit.id + "_" + i,
+      id: pp.id,
+      loc: "grid" as const,
+      cell: pp.cell,
+      rot: pp.rot,
+      fixed: true,
+    }));
+    return { linked: true, bps: [bp], pos, sis: [] };
+  };
+  const nameOf = (unit: (typeof su.units)[number]): string =>
+    (locale === "ja" && unit.i18n && unit.i18n.ja && unit.i18n.ja.name) ? unit.i18n.ja.name : unit.name;
+  const units = su.units;
+  const first = slotFor(units[0]);
+  const names: string[] = units.map(nameOf);
+  const store: Array<SquadSlot | null> = [null];
+  for (let i = 1; i < units.length; i++) store.push(slotFor(units[i]));
+  // Pad to the engine default squad count so a fresh guest keeps one empty
+  // spare squad tab (matches makeSquadsMeta shape).
+  while (names.length < 5) { names.push("Squad " + (names.length + 1)); store.push({ linked: true, bps: [], pos: [], sis: [] }); }
+  return { linked: first.linked, bps: first.bps, pos: first.pos, sis: first.sis, presets: { active: 0, names, store } };
+}
+
 export async function boot(): Promise<void> {
   // REQ-0041 fix -- boot-sequence auth race (found while adding
   // SlotsPanel.tsx's client-side isSquadDeployable gate, which was the
@@ -118,7 +164,7 @@ export async function boot(): Promise<void> {
   // REQ-0170: hand the defs to the raster manifest BEFORE any board mounts, so
   // loadBoardTextures() has the unit art list on its first (cached) call.
   setUnitDefs(gameData.UNITS);
-  const state = engine.migrateState(gameData.makeState());
+  let state = engine.migrateState(gameData.makeState()); // REQ-0051: reassigned by fresh-profile starter seed
 
   // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when
   // resolveGameData() reported this profile as genuinely fresh (GET
@@ -145,6 +191,19 @@ export async function boot(): Promise<void> {
   // empty by the time this runs (a real bug, first found via E2E
   // coverage of the guest-creation-100-LRDST flow -- see this file's
   // git history for the fix).
+  // REQ-0051: a genuinely fresh profile is seeded with the four starter units
+  // (Guard/Arms/Mend/Scout) -- 5x5 BPs (connection_shape none) each pre-filled with
+  // 4 fixed, immovable POs -- REPLACING the legacy demo scenario (a pre-
+  // onboarding placeholder). The dev player and every e2e fixture load an
+  // explicit saved canvas and never take this fresh path, so the swap is
+  // scoped to real new guests. Solo 4-squad play is a RELIEF measure, not
+  // best practice (game golden "march four packs"); the starter units are the
+  // on-ramp. migrateState() then homes every BP+PO while keeping the canvas
+  // fixed refs, exactly like any saved board.
+  if (resolved.isFreshProfile) {
+    const unitsSeed = buildStarterUnitsState(gameData, snapshot.locale);
+    if (unitsSeed) state = engine.migrateState(unitsSeed);
+  }
   if (resolved.isFreshProfile && state.inv) {
     // Fixed 2026-07-05: this used to hardcode cell [1,1] as the seed's
     // landing spot, assuming a truly fresh page starts empty -- but

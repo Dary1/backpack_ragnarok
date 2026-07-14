@@ -5,7 +5,7 @@
 // these via import('../shared/dto') types. Types only -- no runtime code.
 // Rules: shared/ may not import from client/, server/, sim/, mock-src/
 // -- the one exception is shared/engine.d.ts (also in shared/).
-import type { GameState, Layout } from './engine.d.ts';
+import type { GameState, Layout, Cell, Offset, BPUnit } from './engine.d.ts';
 
 // ---- raw wire shapes (as served by server/api.cjs's buildContentPayload) ----
 
@@ -136,6 +136,30 @@ export interface ApiVocabLists {
   rarities: string[];
 }
 
+// REQ-0051: starter-unit definitions (content/live/starter_units.json),
+// served on the /api/content payload. The client boot seed (fresh profile)
+// and the regrant flow build the 4 starter units (5x5 BPs, connection_shape none) from this.
+export interface ApiStarterUnitPO {
+  id: string;
+  cell: Cell;
+  rot: number;
+}
+export interface ApiStarterUnit {
+  id: string;
+  name: string;
+  i18n?: { ja?: { name?: string } };
+  color: string;
+  pos: ApiStarterUnitPO[];
+}
+export interface ApiStarterUnits {
+  schema: string;
+  hpMax: number;
+  bpShape: Offset[];
+  origin: Cell;
+  unit: BPUnit;
+  units: ApiStarterUnit[];
+}
+
 /** REQ-0170: a unit/1 def as served. `charge`/`effects` are absent BY DESIGN --
  * frozen in vocab, unimplemented in the engine (see REQ-0170 section 2.3). */
 export interface ApiUnitEntry {
@@ -190,6 +214,7 @@ export interface ApiContentPayload {
   layout: Layout | null;
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
+  starterUnits?: ApiStarterUnits | null; // REQ-0051
 }
 
 export interface ApiCanvasDoc {
