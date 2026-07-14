@@ -266,6 +266,29 @@ new step's to fix properly.
 | `5cd7609` | docs — suite membership, the deployed-bundle trap, "CI GREEN means green" |
 | `0daacd4` | content_admin_e2e.sh port band 8931–8933 (collision found by the ci run) |
 
+### Post-sync re-verification (master moved during implementation)
+
+Master advanced while this REQ was in flight — REQ-0160 (skill_def kind + dungeon
+corpora), REQ-0161 (enemy dialect checks) and REQ-0162 all merged AND deployed. Merged
+master into this branch (`f5459c8`) and **re-ran every gate on the synced tree**, since
+the green above was measured on the pre-merge base and would otherwise have been a
+claim about a tree nobody is going to merge.
+
+The only conflicts were in the GENERATED bundle: master rebuilt `web/app/` for
+REQ-0160's contentadmin chip, this branch rebuilt it for the DismantlePanel fix, so the
+content-hashed filenames collided rename/rename. Resolved the only correct way for a
+build artifact — discard BOTH sides' bundles and rebuild once from the merged sources,
+so the dist carries REQ-0160 **and** REQ-0159 rather than whichever side won a
+hand-pick. No source conflicts (master touched contentadmin/server/content-checks; this
+branch touched e2e/DismantlePanel/config/ci/docs). `tools/ci.sh` auto-merged, taking
+master's REQ-0160 step alongside this branch's `[6.5/8]`.
+
+| Post-sync gate (tree `f5459c8`) | Result |
+|---|---|
+| `bash tools/ci.sh` end-to-end | **exit 0 — `CI GREEN`** |
+| ↳ `[6.5/8]` artadmin / artinspect / contentadmin harnesses | 3 / 1 / 3 passed |
+| ↳ `[7/7]` default suite | **159 passed, 0 failed, 0 flaky** |
+
 ### Outcome
 
 `todo → built`. All acceptance criteria in §5 are met: two consecutive full runs at
