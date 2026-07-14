@@ -116,3 +116,68 @@ OUT (explicit, deferred to later REQs):
   additive draw layer, gated on an EXPLICIT resolved set so un-set BPs are
   byte-identical; visual verification on backpack-dev before `built`.
 - Per-BP composite cost: bounded by board-scale shape sizes and a texture cache.
+
+---
+
+## Implementation log (2026-07-15)
+
+Built end-to-end; `tools/ci.sh` (SKIP_PG=1) GREEN incl. **178 e2e passed**.
+
+**Data / server**
+- `content/live/live_unit_skins.json` — new `unit_skin/1` SET ledger, 12 sets
+  (`<unit>_default`), each pairing the unit's existing kind=`unit` artwork
+  (`art_unit`) with the `devornate` bpskin/1 def (user pick).
+- `content/live/live_units.json` — every roster def now carries
+  `unit_skin: "<unit>_default"`.
+- `server/lib/content.cjs` — loads `live_unit_skins.json` and serves it as the
+  additive `unit_skins` payload field (mtime-tracked), beside the pre-existing
+  `bpskins`.
+- `server/routes/me.cjs` — `/api/me` now returns `unitSkins`: the profile-scoped
+  availability list, defaulting to ALL defined sets (no acquisition flow;
+  profile may carry an optional allowlist).
+
+**Types**
+- `shared/engine.d.ts` — `UnitDef.unit_skin?`, `BPUnit.skin?` (per-placement
+  override; cosmetic — sim/engine never read it, verified), `UnitSkinDef` +
+  `UnitSkinMap`.
+- `shared/dto.ts` — `ApiUnitEntry.unit_skin?`, `ApiUnitSkinEntry`,
+  `ApiContentPayload.{unit_skins,bpskins}`, `ApiMe.unitSkins?`.
+
+**Client**
+- `board/skin/unitSkinRegistry.ts` (new) — validator, loader, module registry,
+  `resolveUnitSkinKey` (placement -> def default -> null), `unitSkinIconRasters`.
+- `board/skin/skinTexture.ts` (new) — `skinTextureFor`: compositeSkin RGBA ->
+  silhouette-alpha Pixi Texture, cached by (skin id x local shape sig x cellPx).
+- `board/skin/skinRegistry.ts` — `setBpSkinDefs/getBpSkinDef/hasBpSkinDef`.
+- `board/unitIcon.ts` — `unitSkinIconKey`, `getUnitDef`.
+- `api/content.ts` — GameData `SKINS` + `UNIT_SKINS` (loadSkinDefs /
+  loadUnitSkinDefs).
+- `store/boot.ts` — `setBpSkinDefs` + `setUnitSkinDefs` before boards mount.
+- `board/sprites.ts` — merges `unitSkinIconRasters()` into the board texture map.
+- `board/BoardRenderer.ts` — resolves the active SET per BP and (a) composites
+  the silhouette skin into gBase UNDER the outline/label/tint/items on BOTH
+  boards, gated on an EXPLICIT set (un-set BPs unchanged; no regression),
+  (b) feeds the SET's art_unit into the resolveUnitIcon skinKey rung.
+
+**Gates**
+- `shared/content_validate.cjs` — `unit_skin` added to UNIT_ALLOWED_KEYS + shape
+  check. `tools/check_units.cjs` — cross-refs: every set.bpskin is a live
+  bpskin/1 def; every unit.unit_skin is a live set. `client/scripts/
+  check_unit_skin.mjs` (new, wired into ci.sh [5.9b2]) — resolver + live
+  cross-refs, ALL GREEN. Existing check_bpskin / check_unit_icon / bpskin_harness
+  still GREEN.
+- NOT run: pg-backend suite (no DATABASE_URL in worktree). Low risk — no pg
+  migration/storage-schema change; the same /api/me + content tests pass on the
+  files backend.
+
+**Visual verification**
+- `client/scripts/preview_unit_skin.mjs` renders a BEFORE/AFTER board mock via
+  the REAL compositeSkin + resolve chain + BoardRenderer placement formula:
+  `web/preview/bpskins-req0180/board_before_after.png`. AFTER shows devornate
+  (brown fill + fill2 checker + gold hatched welt + rounded corners) on all
+  three roster BPs; BEFORE shows the flat tint. In-app render path exercised
+  non-throwing across all 178 e2e specs (incl. workshop roster rolls).
+
+**Deploy note (HANDS-OFF):** the `web/app` dist rebuild + backpack-dev deploy is
+the usual separate, user-coordinated step and is NOT part of this REQ; lands here
+at `built`.
