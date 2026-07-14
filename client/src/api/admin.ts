@@ -103,6 +103,10 @@ export interface ContentDefDto {
   id: number; system_name: string; kind: string; brief: string;
   schema_ref: string; gen_config: Record<string, unknown>;
   adopted_variant_id: number | null; artwork_facet?: boolean;
+  // REQ-0174: def-level SELECTABLE artwork reference (bare artwork
+  // system_name; null = unlinked) + the server's REF-FIRST resolved name
+  // (ref artwork -> exact-name match -> null) exposed on def-shaped responses.
+  artwork_ref?: string | null; artwork_facet_name?: string | null;
   // REQ-0157 list aggregates (present on GET /api/content/defs rows;
   // additive -- the detail GET keeps the plain REQ-0155 shape)
   adopted_variant_no?: number | null; variant_count?: number; ok_count?: number;

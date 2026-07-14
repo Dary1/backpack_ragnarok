@@ -1,28 +1,135 @@
 // client/src/contentadmin/Workspace.tsx -- REQ-0157. The center workspace
 // for the SELECTED content def: header (name, kind chip, adopted state,
-// artwork-facet / Dex links), brief + schema_ref editing with dirty
+// artwork linkage + Dex links), brief + schema_ref editing with dirty
 // indicator + explicit Save, the numbered WORKFLOW STRIP that makes the Q1
 // agent-session loop legible ((1) commission payload with one-click copy ->
 // (2) paste + live parse preview gating Ingest -> (3) adjudicate), the
 // variant cards and the side-by-side diff view.
 // REQ-0164 B/C: the workflow strip is collapsible (cd-flow-toggle + a
-// one-line summary when collapsed -- the common "inspect existing content"
-// task no longer scrolls past commissioning UI); step 3 and the Variants
-// header carry live PASS/FAIL adjudication tallies; freshly-ingested cards
-// get an is-new highlight + scroll-into-view; variant cards are keyed by
+// one-line summary when collapsed); step 3 and the Variants header carry live
+// PASS/FAIL adjudication tallies; freshly-ingested cards get an is-new
+// highlight + scroll-into-view; variant cards are keyed by
 // <system_name>:<variant_no> so per-card UI state never survives a def switch.
+// REQ-0174 (content-artwork-ref): art linkage is now an operator-SELECTED
+// def-level reference. The header carries an "artwork" row (current thumb +
+// full name + link mode 'selected'|'name match'|'none') with a Select button
+// (cd-art-pick-open) opening the ARTWORK PICKER overlay (search + matching-
+// type-first list + type chips + adopted badges + exact-name suggestion +
+// cd-art-clear). Picking PATCHes artwork_ref (via onPickArtwork). Every art
+// surface -- rail, header, adopt-confirm, and the per-variant thumb -- resolves
+// through the def (variants obtain art ONLY through the parent def).
+import { useState } from 'react';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { parseIngest, artworkThumbUrl } from './contentShared';
+import { parseIngest, artworkThumbUrl, resolveDefArtwork, artLinkMode, artPickTestid } from './contentShared';
 import { VariantCard } from './VariantCard';
 import { DiffView } from './DiffView';
 
 export interface DefDraft { brief: string; schema_ref: string }
+
+// REQ-0174: kind -> the artwork kind the picker treats as "matching". The
+// entity kinds map 1:1 (po_def->po ...); tm_def/skill_def have no single art
+// kind, so their picker defaults to ALL types (a type-filter chip row).
+const MATCH_TYPE: Record<string, string> = { po_def: 'po', si_def: 'si', monster_def: 'monster', unit_def: 'unit' };
+
+/** REQ-0174 ARTWORK PICKER overlay: the 選択式 art linkage. Lists artworks of
+ * the matching type first, search-filtered, with thumbs + names + adopted
+ * badges; the exact-name suggestion is pinned on top and the current ref is
+ * highlighted. Rows are cd-art-pick-<system_name-safe> (':' -> '__'); a
+ * Clear-link action (cd-art-clear) drops the ref back to none. */
+function ArtworkPicker({ def, artworks, currentRef, onPick, onClear, onClose }: {
+  def: ContentDefDto;
+  artworks: ArtworkDto[];
+  currentRef: string | null;
+  onPick: (name: string) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  const matchType = MATCH_TYPE[def.kind]; // undefined for tm_def/skill_def
+  const [query, setQuery] = useState('');
+  // default to ALL types (matching-type rows are pinned first by the sort
+  // below); the chip row lets the operator narrow -- so same-type artworks are
+  // listed first while other types stay selectable (type mismatch is permitted).
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const exactName = def.system_name;
+
+  const typeChips = matchType ? [matchType, 'all'] : ['all', 'po', 'si', 'monster', 'unit'];
+  const q = query.trim().toLowerCase();
+  const filtered = artworks.filter((a) =>
+    (typeFilter === 'all' || a.kind === typeFilter)
+    && (!q || a.system_name.toLowerCase().includes(q)));
+  const rows = filtered.slice().sort((a, b) => {
+    // exact-name suggestion pinned first
+    const ax = a.system_name === exactName ? 0 : 1;
+    const bx = b.system_name === exactName ? 0 : 1;
+    if (ax !== bx) return ax - bx;
+    // then matching-type first (when the list mixes types)
+    if (matchType) {
+      const am = a.kind === matchType ? 0 : 1;
+      const bm = b.kind === matchType ? 0 : 1;
+      if (am !== bm) return am - bm;
+    }
+    return a.system_name.localeCompare(b.system_name);
+  });
+
+  return (
+    <div className="aa-scrim" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div data-testid="cd-art-picker" className="panel panel-pad ca-art-picker" role="dialog" aria-modal="true">
+        <div className="ca-art-picker-head">
+          <span className="den t-h3 gold-text">Link artwork to {def.system_name}</span>
+          <button type="button" data-testid="cd-art-pick-close" className="btn btn-ghost aa-btn-xs" onClick={onClose}>Close</button>
+        </div>
+        <div className="t-micro ca-art-picker-note">
+          {matchType
+            ? 'showing ' + matchType + ' artworks first (the matching type for ' + def.kind + '); other types are still selectable'
+            : def.kind + ' has no single artwork type -- filter by type below'}
+        </div>
+        <input data-testid="cd-art-search" className="aa-input aa-search" type="search"
+          placeholder="search artwork name" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <div className="aa-filters ca-art-typechips">
+          {typeChips.map((t) => (
+            <button key={t} type="button" data-testid={'cd-art-type-' + t}
+              className={'chip aa-chipbtn' + (typeFilter === t ? ' is-on' : '')}
+              onClick={() => setTypeFilter(t)}>{t}</button>
+          ))}
+        </div>
+        <div className="ca-art-picker-actions">
+          <button type="button" data-testid="cd-art-clear" className="btn btn-ghost aa-btn-sm"
+            disabled={currentRef == null} onClick={onClear}>Clear link (no artwork)</button>
+        </div>
+        <div data-testid="cd-art-picklist" className="ca-art-picklist">
+          {rows.map((a) => {
+            const thumb = artworkThumbUrl(a);
+            const isCurrent = a.system_name === currentRef;
+            const isSuggested = a.system_name === exactName;
+            return (
+              <button key={a.system_name} type="button" data-testid={artPickTestid(a.system_name)}
+                className={'ca-art-pickrow' + (isCurrent ? ' is-current' : '')}
+                onClick={() => onPick(a.system_name)}>
+                <span className="ca-art-pickthumb">
+                  {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="ca-thumb-ph">◇</span>}
+                </span>
+                <span className="ca-art-pickname">{a.system_name}</span>
+                <span className={'aa-kind ca-kind--' + a.kind}>{a.kind}</span>
+                {isSuggested ? <span className="chip ca-art-suggest">exact-name suggestion</span> : null}
+                {a.adopted_render_id != null ? <span className="chip ca-art-adopted">adopted</span> : null}
+                {isCurrent ? <span className="chip ca-art-currentchip">linked</span> : null}
+              </button>
+            );
+          })}
+          {rows.length === 0 && <div className="aa-empty t-micro">no artworks match</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function Workspace(props: {
   def: ContentDefDto;
   variants: ContentVariantDto[];
   artworkFacet: boolean;
   artworksByName: Record<string, ArtworkDto>;
+  artworks: ArtworkDto[];
+  onPickArtwork: (ref: string | null) => void;
   adoptedNo: number | null;
   draft: DefDraft;
   onDraft: (patch: Partial<DefDraft>) => void;
@@ -60,12 +167,16 @@ export function Workspace(props: {
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { def, variants, adoptedNo, draft, dirty, commission, diffPicks, diffPair, flowCollapsed } = props;
-  // REQ-0173 follow-up: batch-suffix matches light the facet too; the
-  // artadmin link carries the artwork's REAL (namespaced) system_name.
-  const art = props.artworksByName[def.system_name];
-  const hasArtLink = props.artworkFacet || !!art;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // REQ-0174: art resolves through the def (REF-FIRST: artwork_ref -> exact-
+  // name -> none). Every art surface below uses this single resolution; the
+  // artadmin link carries the resolved artwork's REAL system_name.
+  const art = resolveDefArtwork(def, props.artworksByName);
+  const linkMode = artLinkMode(def, props.artworksByName);
+  const hasArtLink = !!art;
   const artHash = '#/artadmin/' + encodeURIComponent(art ? art.system_name : def.system_name);
-  const headerThumb = hasArtLink ? artworkThumbUrl(art) : null;
+  const headerThumb = artworkThumbUrl(art);
+  const variantThumb = headerThumb; // variants share the def's resolved art
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
@@ -86,20 +197,24 @@ export function Workspace(props: {
           {dirty && <span data-testid="cd-dirty" className="chip aa-dirty">unsaved changes</span>}
           {hasArtLink && (
             <a data-testid="cd-header-thumb" className="ca-header-thumb" href={artHash}
-              title={'open ' + def.system_name + ' in Art Admin'}>
+              title={'open ' + art!.system_name + ' in Art Admin'}>
               {headerThumb
                 ? <img src={headerThumb} alt="" loading="lazy" />
                 : <span className="ca-header-thumb-ph">◇</span>}
             </a>
           )}
         </div>
-        <div className="ca-facetline t-micro">
+        <div className="ca-artrow t-micro" data-testid="cd-artwork-row">
+          <span className="ca-artrow-label">artwork:</span>
           {hasArtLink
             ? <span data-testid="cd-artwork-facet" className="ca-facet-yes">
-                artwork facet: {props.artworkFacet ? 'present' : 'linked by batch name (' + (art ? art.system_name : '') + ')'} --{' '}
+                <span className="ca-artrow-name">{art!.system_name}</span>{' '}
+                <span className="ca-artrow-mode">(link: {linkMode})</span>{' '}&middot;{' '}
                 <a data-testid="cd-artadmin-goto" href={artHash}>open in Art Admin</a>{' '}&middot;{' '}
                 <a data-testid="cd-dex-link" href={'#/dex/' + def.system_name}>view in Dex</a></span>
-            : <span data-testid="cd-artwork-facet" className="ca-facet-no">artwork facet: none (data-only entity)</span>}
+            : <span data-testid="cd-artwork-facet" className="ca-facet-no">none (no artwork linked -- link: none)</span>}
+          <button type="button" data-testid="cd-art-pick-open" className="btn aa-btn-xs ca-art-pick-btn"
+            onClick={() => setPickerOpen(true)}>Select artwork</button>
         </div>
         <div className="aa-form aa-form--edit">
           <label className="aa-field">
@@ -203,12 +318,20 @@ export function Workspace(props: {
             onAskAdopt={props.onAskAdopt} onAskDelete={props.onAskDelete}
             onEditOpen={props.onEditOpen} onRecheck={props.onRecheck}
             picked={diffPicks.includes(v.variant_no)} onTogglePick={props.onTogglePick}
-            onDiffAdopted={props.onDiffAdopted} report={props.report} />
+            onDiffAdopted={props.onDiffAdopted} hasArt={hasArtLink} artThumb={variantThumb}
+            report={props.report} />
         ))}
         {variants.length === 0 && <div className="aa-empty t-micro">no variants yet -- commission a batch above</div>}
       </div>
 
       {va && vb && <DiffView a={va} b={vb} kind={def.kind} adoptedNo={adoptedNo} onClose={props.onCloseDiff} />}
+
+      {pickerOpen && (
+        <ArtworkPicker def={def} artworks={props.artworks} currentRef={def.artwork_ref ?? null}
+          onPick={(name) => { setPickerOpen(false); props.onPickArtwork(name); }}
+          onClear={() => { setPickerOpen(false); props.onPickArtwork(null); }}
+          onClose={() => setPickerOpen(false)} />
+      )}
     </div>
   );
 }

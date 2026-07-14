@@ -34,7 +34,7 @@ import {
   recheckVariantApi, listArtworks,
 } from '../api';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { copyText, artworkThumbUrl, buildArtworkIndex } from './contentShared';
+import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork } from './contentShared';
 import { DefRail } from './DefRail';
 import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
@@ -243,6 +243,19 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('save failed: ' + (e as Error).message, 'err'); }
   }
 
+  // REQ-0174: pick (or clear) the def's SELECTABLE artwork reference. PATCHes
+  // artwork_ref (null clears), then refreshes detail + list and reports. The
+  // server validates a non-null ref names an existing artwork (else 400).
+  async function doPickArtwork(artworkRef: string | null) {
+    if (!selected) return;
+    try {
+      const r = await patchContentDef(selected, { artwork_ref: artworkRef });
+      setDef(r.def);
+      report(artworkRef ? ('linked artwork: ' + artworkRef) : 'cleared artwork link');
+      await loadDetail(selected); await refreshList();
+    } catch (e) { report('artwork link: ' + (e as Error).message, 'err'); }
+  }
+
   async function doCommission() {
     if (!selected) return;
     try {
@@ -345,7 +358,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
 
   // REQ-0173 follow-up: exact + batch-suffix index (see buildArtworkIndex).
   const artworksByName = buildArtworkIndex(artworks);
-  const confirmThumb = selected ? artworkThumbUrl(artworksByName[selected]) : null;
+  const confirmThumb = def ? artworkThumbUrl(resolveDefArtwork(def, artworksByName)) : null;
 
   return (
     <div data-testid="contentadmin" className="ca-root">
@@ -365,7 +378,8 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
                 void refreshList().then(() => doSelectDef(d.system_name));
               }} />
           ) : def && selected && draft ? (
-            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} artworksByName={artworksByName} adoptedNo={adoptedNo}
+            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} artworksByName={artworksByName}
+              artworks={artworks} onPickArtwork={(ref) => { void doPickArtwork(ref); }} adoptedNo={adoptedNo}
               draft={draft} onDraft={(p) => setDraft((d) => (d ? { ...d, ...p } : d))}
               dirty={dirty} onSave={() => { void doSave(); }}
               flowCollapsed={flowCollapsed} onToggleFlow={() => setFlowCollapse(!flowCollapsed)}

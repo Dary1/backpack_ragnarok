@@ -10,7 +10,7 @@
 // each row's title attr so brief-substring search hits are explicable.
 import { useState } from 'react';
 import type { ContentDefDto, ArtworkDto } from '../api';
-import { KINDS, SORT_MODES, sortDefs, artworkThumbUrl } from './contentShared';
+import { KINDS, SORT_MODES, sortDefs, artworkThumbUrl, resolveDefArtwork } from './contentShared';
 import type { Kind, SortMode } from './contentShared';
 
 type AdoptionFilter = 'all' | 'adopted' | 'unadopted';
@@ -22,10 +22,10 @@ function rowTitle(d: ContentDefDto): string {
   return brief ? d.system_name + ' -- ' + brief.slice(0, 140) : d.system_name;
 }
 
-function Row({ d, art, selected, onSelect }: { d: ContentDefDto; art: ArtworkDto | undefined; selected: boolean; onSelect: (name: string) => void }) {
-  // REQ-0173 follow-up: a batch-suffix match (art present without the exact
-  // has_artwork_facet flag) lights the linkage too; links carry the
-  // artwork's REAL system_name so the artadmin deep link resolves.
+function Row({ d, art, selected, onSelect }: { d: ContentDefDto; art: ArtworkDto | null; selected: boolean; onSelect: (name: string) => void }) {
+  // REQ-0174: the row thumb resolves via the def's REF-FIRST linkage
+  // (artwork_ref -> exact-name); links carry the resolved artwork's REAL
+  // system_name so the artadmin deep link points at the actual entity.
   const hasArtLink = d.has_artwork_facet || !!art;
   const thumb = hasArtLink ? artworkThumbUrl(art) : null;
   const artHref = '#/artadmin/' + encodeURIComponent(art ? art.system_name : d.system_name);
@@ -125,7 +125,7 @@ export function DefRail({ defs, artworksByName, selected, onSelect, onNew, listE
         </div>
       ) : null}
       <div data-testid="cd-list" className="aa-list">
-        {visible.map((d) => <Row key={d.system_name} d={d} art={artworksByName[d.system_name]} selected={selected === d.system_name} onSelect={onSelect} />)}
+        {visible.map((d) => <Row key={d.system_name} d={d} art={resolveDefArtwork(d, artworksByName)} selected={selected === d.system_name} onSelect={onSelect} />)}
         {visible.length === 0 && !listError && <div className="aa-empty t-micro">no content defs match</div>}
       </div>
     </aside>

@@ -633,24 +633,52 @@ test('rail thumb: art-facet def shows the placeholder thumb deep-linking to the 
   await expect(page.getByTestId('cd-facet-e2e_faceted')).toHaveAttribute('href', '#/artadmin/e2e_faceted');
 });
 
-test('rail thumb: batch-suffix artwork lights the linkage and links to the REAL artwork name', async ({ page, request }) => {
+// REQ-0174: the SELECTABLE def-level artwork reference (replaces the REQ-0173
+// batch-suffix inference test). Seeds same-type + other-type render-less
+// artworks via the art API (which REJECTS ':' in system_name -> plain names),
+// then drives the picker: same-type listed first, select links the ref (rail +
+// header light, links target the ref'd artwork's real name), clear resets to
+// none, and a bogus ref via direct PATCH is refused 400 (request-level).
+test('artwork picker: select links the def-level ref; clear resets; bogus ref -> 400', async ({ page, request }) => {
   await request.post('/api/content/dev/clear-all');
   await request.post('/api/art/dev/clear-all');
-  // artworks and content defs were backfilled under DIFFERENT namespaces
-  // (art: 'batch:name', content: bare 'name'). The art API itself refuses
-  // ':' in system_name (backfill-only namespace), so the namespaced row is
-  // ROUTE-MOCKED here -- the suffix fallback under test is pure client
-  // display logic over the /api/art/artworks list.
-  await apiCreateDef(request, { system_name: 'sfx_item', kind: 'si_def', brief: 'suffix-linked art', schema_ref: 'si/2' });
-  await page.route('**/api/art/artworks', (route) => route.fulfill({
-    status: 200, contentType: 'application/json',
-    body: JSON.stringify({ ok: true, artworks: [{ system_name: 'e2ebatch:sfx_item', kind: 'si', main_object: 'lantern', adopted_render_id: null, adopted_seed: null, latest_ok_seed: null, render_count: 0 }] }),
-  }));
+  for (const [n, k, obj] of [['pick_si_a', 'si', 'amulet'], ['pick_si_b', 'si', 'ring'], ['pick_other_c', 'unit', 'totem']]) {
+    const r = await request.post('/api/art/artworks', { data: { system_name: n, kind: k, main_object: obj } });
+    expect(r.status()).toBe(201);
+  }
+  await apiCreateDef(request, { system_name: 'pick_def', kind: 'si_def', brief: 'picker target', schema_ref: 'si/2' });
 
-  await page.goto('/app/#/contentadmin');
-  const thumb = page.getByTestId('cd-thumb-sfx_item');
-  await expect(thumb).toBeVisible({ timeout: 30000 });
-  await expect(thumb).toHaveAttribute('href', '#/artadmin/' + encodeURIComponent('e2ebatch:sfx_item'));
-  await page.getByTestId('cd-select-sfx_item').click();
-  await expect(page.getByTestId('cd-artwork-facet')).toContainText('linked by batch name (e2ebatch:sfx_item)');
+  await page.goto('/app/#/contentadmin/pick_def');
+  await expect(page.getByTestId('cd-detail')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId('cd-artwork-facet')).toContainText('none');
+
+  // open the picker: same-type (si) artworks listed first, other-type present after
+  await page.getByTestId('cd-art-pick-open').click();
+  await expect(page.getByTestId('cd-art-picker')).toBeVisible();
+  const rowNames = await page.$$eval('[data-testid="cd-art-picklist"] .ca-art-pickname',
+    (els) => els.map((e) => (e.textContent || '').trim()));
+  expect(rowNames.slice(0, 2).slice().sort()).toEqual(['pick_si_a', 'pick_si_b']);
+  expect(rowNames).toContain('pick_other_c');
+  expect(rowNames.indexOf('pick_other_c')).toBeGreaterThan(1);
+
+  // select one -> PATCH lands, picker closes, header + rail light, links target the ref name
+  await page.getByTestId('cd-art-pick-pick_si_b').click();
+  await expect(page.getByTestId('cd-art-picker')).toHaveCount(0);
+  await expect(page.getByTestId('cd-artwork-facet')).toContainText('pick_si_b');
+  await expect(page.getByTestId('cd-artwork-facet')).toContainText('selected');
+  await expect(page.getByTestId('cd-header-thumb')).toHaveAttribute('href', '#/artadmin/pick_si_b');
+  await expect(page.getByTestId('cd-artadmin-goto')).toHaveAttribute('href', '#/artadmin/pick_si_b');
+  await expect(page.getByTestId('cd-thumb-pick_def')).toHaveAttribute('href', '#/artadmin/pick_si_b');
+
+  // clear the ref -> back to none
+  await page.getByTestId('cd-art-pick-open').click();
+  await page.getByTestId('cd-art-clear').click();
+  await expect(page.getByTestId('cd-art-picker')).toHaveCount(0);
+  await expect(page.getByTestId('cd-artwork-facet')).toContainText('none');
+
+  // a bogus ref via direct PATCH is refused at the API (request-level assertion)
+  const bad = await request.patch('/api/content/defs/pick_def', { data: { artwork_ref: 'no_such_artwork_zzz' } });
+  expect(bad.status()).toBe(400);
+  const body = await bad.json();
+  expect(body.error).toContain('no such artwork');
 });
