@@ -1,7 +1,7 @@
 # REQ-0165 — user_managed doc audit (source-as-truth)
 
-**Status:** built — llm_managed deliverables written; no user_managed file touched.
-Awaiting user acceptance of the correction proposals.
+**Status:** done — merged to master (52fbdd2) and deployed 2026-07-14. Goldens corrected
+in place under a one-off user authorization; llm_managed deliverables shipped.
 **Reserved:** 2026-07-14
 **Slug:** user-managed-doc-audit
 **Precedent:** REQ-0123 (unit/squad rename, docs), REQ-0124 (rename, sources)
