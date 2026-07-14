@@ -126,3 +126,13 @@
 - `20ecf16` — feature (client-only replay audio + haptics + settings + gate).
 - `64a45ff` — merge master (d51b1d6) into the branch (clean, no conflicts).
 - (this log append + `git mv todo → built` follow as their own commits.)
+
+### Integration-owner merge + deploy (wave 3 -- 2026-07-14)
+Merged (after REQ-0051) and deployed to master by the integration owner.
+- Merge: `643b743` "Merge req-0059-circuit-chimes" (`--no-ff`, into master @ `26ada1c`).
+  Conflicts: `web/app/` dist ONLY -- rename/rename on the three hashed bundles (browserAll/index/init) plus a content conflict in `web/app/index.html`. ALL resolved to master`s dist (build artifacts; `tools/release.sh` rebuilds from source). `tools/ci.sh` auto-merged CLEANLY, carrying BOTH REQ-0159`s structure AND this REQ`s new `[5.8/7] check_chime_mapping` step. All source (Settings, `schedule/chimes/*`, MonitorRenderer, `chimes-settings.spec.ts`, `scripts/check_chime_mapping.mjs`) merged with no conflict.
+- Full gate: `flock /tmp/backpack_ci.lock bash tools/release.sh` -> CI GREEN. New `[5.8/7] client circuit-chime mapping` gate PASS. dist rebuilt + committed `239ca7b`.
+- Deploy: restarted `backpack-api` + `backpack-web` (both active); HTTP 200 on 8801 `/app/` and 8802 `/api/health`.
+- e2e (sanctioned wrapper `pnpm run e2e`, box-locked): pre-deploy 164/0 (3.1m); post-deploy 164/0 (3.0m); live public tunnel 164/0 (13.1m). `chimes-settings.spec.ts` PASS 1/1 in every run (Sound & Haptics controls exist, default sanely, persist).
+- Final master hash after deploy: `239ca7b`.
+- Client-only REQ (no server/DB change); no migration.
