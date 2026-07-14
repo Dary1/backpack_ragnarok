@@ -1,0 +1,66 @@
+/* client/src/styles/guide.css -- REQ-0141 first-run guided tour + contextual
+   hints. Non-modal: the tour container never blocks pointer events; only the
+   card / hint themselves are interactive, so the board underneath stays live. */
+.first-run-guide {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 60;
+  padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 92px);
+}
+.first-run-guide-card {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 440px;
+  background: var(--panel, #171a21);
+  color: var(--ink, #e8e6df);
+  border: 1px solid var(--gold, #c8a24a);
+  border-radius: 12px;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.55);
+  padding: 16px 18px;
+}
+.first-run-guide-progress { display: flex; gap: 6px; margin-bottom: 10px; }
+.frg-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.18); transition: background 0.2s; }
+.frg-dot.done { background: var(--gold, #c8a24a); opacity: 0.55; }
+.frg-dot.on { background: var(--gold, #c8a24a); box-shadow: 0 0 8px var(--gold, #c8a24a); }
+.first-run-guide-count { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.6; margin-bottom: 4px; }
+.first-run-guide-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+.first-run-guide-body { font-size: 13.5px; line-height: 1.5; opacity: 0.92; }
+.first-run-guide-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; gap: 12px; }
+.first-run-guide-skip { background: none; border: none; color: var(--ink, #e8e6df); opacity: 0.6; cursor: pointer; font-size: 12.5px; padding: 6px 4px; }
+.first-run-guide-skip:hover { opacity: 0.95; text-decoration: underline; }
+.first-run-guide-next { background: var(--gold, #c8a24a); color: #1a1206; border: none; border-radius: 8px; padding: 8px 20px; font-weight: 700; cursor: pointer; font-size: 13.5px; }
+.first-run-guide-next:hover { filter: brightness(1.08); }
+.first-run-guide .canvas-empty { pointer-events: none; }
+
+/* Contextual first-time hint toast. */
+.guide-hint {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 210px);
+  max-width: 420px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: var(--panel, #171a21);
+  color: var(--ink, #e8e6df);
+  border: 1px solid var(--gold, #c8a24a);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  z-index: 61;
+  pointer-events: auto;
+}
+.guide-hint-body { font-size: 12.5px; line-height: 1.45; }
+.guide-hint-dismiss { background: none; border: none; color: var(--ink, #e8e6df); opacity: 0.6; cursor: pointer; font-size: 16px; line-height: 1; padding: 0 2px; }
+.guide-hint-dismiss:hover { opacity: 1; }
+
+.settings-guide-replay { margin-top: 10px; background: var(--gold, #c8a24a); color: #1a1206; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; cursor: pointer; }
+.settings-guide-replay:hover { filter: brightness(1.08); }

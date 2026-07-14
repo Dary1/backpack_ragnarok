@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import { initButtonFx } from './theme/buttonFx'
 import { boot, initAutoSaveLifecycle } from './store'
+import { initGuideController } from './guide/guideController'
 
 // REQ-0113: entrance/idle-motion gate. The §06 styleguide motions adopted
 // here (rise / pulse / toastin) are decorative, so enable them only when
@@ -32,4 +33,5 @@ createRoot(document.getElementById('root')!).render(
 // (via useSyncExternalStore in useGameStore) once it resolves.
 boot();
 initAutoSaveLifecycle();
+initGuideController();
 initButtonFx();

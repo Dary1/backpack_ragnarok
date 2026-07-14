@@ -15,8 +15,9 @@
 import { useEffect, useState } from 'react';
 import { fetchMe, type ApiMe } from './api';
 import { t } from './i18n';
-import { logout, type Locale } from './store';
+import { logout, setRoute, type Locale } from './store';
 import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
+import { replayGuide } from './guide/guideController'; // REQ-0141
 import { getAuthState, subscribeAuth, signInWithDiscord, signInAsGuest, linkDiscord, signOutSupabase, type AuthState } from './auth/session'; // REQ-0118c
 
 interface SettingsProps {
@@ -190,6 +191,20 @@ export function Settings({ locale }: SettingsProps) {
           />
           <span className="settings-field-value" data-testid="settings-chimes-volume-value">{volumePct}%</span>
         </div>
+      </section>
+
+      {/* REQ-0141: first-run guide replay control. */}
+      <section className="settings-section settings-guide" data-testid="settings-guide">
+        <h3>{t(locale, 'guide.settings.title')}</h3>
+        <p className="settings-hint">{t(locale, 'guide.settings.desc')}</p>
+        <button
+          type="button"
+          className="settings-guide-replay"
+          data-testid="settings-guide-replay"
+          onClick={() => { replayGuide(); setRoute('backpacks'); }}
+        >
+          {t(locale, 'guide.settings.replay')}
+        </button>
       </section>
 
       {/* REQ-0039 "Now" scope -- static bilingual placeholder only, no

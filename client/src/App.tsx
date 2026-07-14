@@ -113,6 +113,8 @@ import { RagnarokPage } from './ragnarok/RagnarokPage'; // REQ-0066
 import { SquadTabs } from './SquadTabs';
 import { SquadTrashZone } from './SquadTrashZone';
 import { Settings } from './Settings';
+import { FirstRunGuide } from './guide/FirstRunGuide'; // REQ-0141
+import { ContextualHint } from './guide/ContextualHint'; // REQ-0141
 import { Tabs } from './Tabs';
 import { initRouting, setLocale, useGameStore } from './store';
 
@@ -187,6 +189,10 @@ function App() {
         />
       )}
       <InviteBanner text={snapshot.welcomeBanner} locale={snapshot.locale} />
+      {/* REQ-0141: first-run guided tour + contextual hint. Non-modal; both
+          render null unless on the canvas page with an active guide/hint. */}
+      <FirstRunGuide />
+      <ContextualHint />
       <main className="app-main">
         {/* Backpacks view: ALWAYS mounted (see module comment above). Only
             visibility (CSS) changes with route. */}

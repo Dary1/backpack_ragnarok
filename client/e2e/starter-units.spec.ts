@@ -46,6 +46,15 @@ async function bootGuest(page: Page, token: string): Promise<void> {
   await page.waitForTimeout(500);
 }
 
+// REQ-0141: a genuinely fresh guest now sees the first-run guided tour on the
+// canvas. It is non-modal, but these tests drive board/squad-tab gestures
+// directly, so dismiss it first for a deterministic surface (this is the
+// REQ-0141 skip path and leaves the starter canvas fully intact).
+async function dismissGuide(page: Page): Promise<void> {
+  const skip = page.getByTestId("guide-skip");
+  if (await skip.count()) { await skip.click(); await page.waitForTimeout(150); }
+}
+
 async function getGuestCanvas(page: Page, p: CreatedPlayer): Promise<any> {
   const resp = await page.request.get("/api/profile/" + p.playerId + "/canvas", { headers: { "X-Auth-Token": p.token } });
   if (resp.status() !== 200) return null;
@@ -56,6 +65,7 @@ test.describe("REQ-0051 starter units", () => {
   test("1. a fresh guest profile is seeded with the four starter-unit squads", async ({ page }) => {
     const g = createGuestPlayer("E2E Starter Fresh");
     await bootGuest(page, g.token);
+    await dismissGuide(page);
     const tabs = page.locator(".squad-tab");
     await expect(tabs).toHaveCount(5); // four starter units + one empty spare
     await expect(tabs.nth(0)).toHaveText("Starter: Guard");
@@ -67,6 +77,7 @@ test.describe("REQ-0051 starter units", () => {
   test("2. a fixed starter PO cannot be moved off its seeded cell", async ({ page }) => {
     const g = createGuestPlayer("E2E Starter Fixed");
     await bootGuest(page, g.token);
+    await dismissGuide(page);
     // Guard squad is active. tower_shield is a fixed PO seeded at cell [2,3].
     const boardBox = (await page.locator("canvas.board-canvas").first().boundingBox())!;
     // Try to drag the fixed PO from [2,3] to a free cell [6,5]. The board
@@ -88,6 +99,7 @@ test.describe("REQ-0051 starter units", () => {
   test("3. a starter unit squad can be discarded via the squad trash drop", async ({ page }) => {
     const g = createGuestPlayer("E2E Starter Discard");
     await bootGuest(page, g.token);
+    await dismissGuide(page);
     const tabs = page.locator(".squad-tab");
     await expect(tabs).toHaveCount(5);
     // Drag the Guard tab (index 0) onto the canvas board center = the trash zone.

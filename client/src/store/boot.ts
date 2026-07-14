@@ -7,6 +7,7 @@ import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
 import type { GameData } from "../api/content"; // REQ-0051
+import { readGuide, writeGuide, defaultGuide } from '../guide/guideModel'; // REQ-0141
 import type { GameState, BP, PO, SquadSlot } from "../engine/engine.d.ts"; // REQ-0051
 import { createSupabaseClient } from '../auth/client'; // REQ-0118c
 import { initSupabaseAuth } from '../auth/session'; // REQ-0118c
@@ -233,6 +234,17 @@ export async function boot(): Promise<void> {
       const seedUid = 'lrdst_starter_' + Math.random().toString(36).slice(2, 10);
       engine.tmMove(state, 0, seedUid, seedCell, 'lrdst', 100);
     }
+  }
+
+  // REQ-0141: seed the first-run guide. Only a GENUINELY fresh profile
+  // (isFreshProfile) starts the guided tour ('active'); a returning/dev/e2e-
+  // fixture profile is left WITHOUT a guide field entirely (its saved canvas
+  // stays byte-unchanged and it shows no tour). A returning player who already
+  // engaged the guide keeps their persisted state.guide (makeState ->
+  // migrateState preserves it), so this only writes when the field is absent.
+  // No autosave is scheduled here (parity with the starter/LRDST seeds above).
+  if (resolved.isFreshProfile && !readGuide(state)) {
+    writeGuide(state, defaultGuide('active'));
   }
 
   setSnapshot({

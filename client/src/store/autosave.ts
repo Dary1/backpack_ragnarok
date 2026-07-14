@@ -203,6 +203,10 @@ export async function loadGame(): Promise<void> {
     st.sis = canvas.sis || [];
     st.inv = canvas.inv;
     st.presets = canvas.presets;
+    // REQ-0141: restore the persisted first-run guide (client-only UI field
+    // riding in the canvas doc). Absent on a pre-REQ-0141 save -> keep boot's.
+    const savedGuide = (canvas as unknown as { guide?: unknown }).guide;
+    if (savedGuide) (st as unknown as { guide?: unknown }).guide = savedGuide;
     // NOTE: this reload just replaced state's fields FROM the server's own
     // saved copy, so there is nothing new to auto-save -- notifyStateChanged()
     // still bumps stateVersion (so the boards re-render) but the resulting
