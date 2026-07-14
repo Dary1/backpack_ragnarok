@@ -170,6 +170,8 @@ export interface ApiUnitEntry {
   /** Artwork system_name -- a FREE reference (two units may share one artwork). */
   icon: string;
   connection_shape: string;
+  /** REQ-0180: key of this unit's DEFAULT unit_skin/1 set (live_unit_skins.json). */
+  unit_skin?: string;
   flavor?: string;
   flavor_ja?: string;
   i18n?: { ja?: { name?: string; flavor?: string } };
@@ -206,6 +208,18 @@ export interface ApiConnShape {
   note?: string;
 }
 
+/** REQ-0180: one unit_skin/1 SET entry as served. A paired cosmetic set:
+ * art_unit (a kind=unit artwork system_name) + bpskin (a bpskin/1 def id).
+ * The id is an AUTHORED key, never derived. Cosmetic only (BS-G1). */
+export interface ApiUnitSkinEntry {
+  kind: 'unit_skin/1';
+  id: string;
+  name: string;
+  art_unit: string;
+  bpskin: string;
+  i18n?: { ja?: { name?: string } };
+}
+
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
@@ -219,6 +233,9 @@ export interface ApiContentPayload {
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
   starterUnits?: ApiStarterUnits | null; // REQ-0051
+  /** REQ-0180: the unit_skin/1 SET ledger ({entries:[...]}). Tolerant/optional,
+   * same shape as bpskins; absent under an older server -> client uses no sets. */
+  unit_skins?: { entries: ApiUnitSkinEntry[] };
   /** REQ-0133 registry-first item art. A payload-level map from a served
    * entity id (po/si/tm -- one-name-one-entity, globally unique) to the
    * RESOLVED adopted-render URL (`/api/art/<artwork>.png`), following the chain

@@ -70,12 +70,30 @@ export interface UnitDef {
   rarity: string;
   icon: string;
   connection_shape: string;
+  /** REQ-0180: key of this unit's DEFAULT unit_skin/1 set. Absent = no set
+   * (legacy icon + plain silhouette). */
+  unit_skin?: string;
   flavor?: string;
   name_ja?: string;
   flavor_ja?: string;
   i18n?: { ja?: { name?: string; flavor?: string } };
 }
 export type UnitDefMap = Record<string, UnitDef>;
+
+/** REQ-0180: one unit_skin/1 SET def (content/live/live_unit_skins.json). A
+ * Unit-Skin + Backpack-Skin pair under one AUTHORED key. `art_unit` is a
+ * kind=unit artwork system_name (the Unit core art); `bpskin` is a bpskin/1
+ * def id (the silhouette skin, live_bpskins.json). Cosmetic only (BS-G1):
+ * the engine/sim never read these; resolution is client-render-side. */
+export interface UnitSkinDef {
+  kind: 'unit_skin/1';
+  id: string;
+  name: string;
+  art_unit: string;
+  bpskin: string;
+  i18n?: { ja?: { name?: string } };
+}
+export type UnitSkinMap = Record<string, UnitSkinDef>;
 
 export interface SocketDef {
   t: string; // socket type, e.g. "gem" | "edge" | "coat" | "bond"
@@ -141,6 +159,10 @@ export type SIDefMap = Record<string, SIDef>;
 export interface BPUnit {
   id: string;
   off: Offset;
+  /** REQ-0180: unit_skin/1 key chosen for THIS placement; overrides the def
+   * default. Cosmetic; engine/sim never read it, and it round-trips through the
+   * persisted canvas document as part of the BP. */
+  skin?: string;
 }
 
 export interface BP {

@@ -1,0 +1,150 @@
+{
+ "kind": "unit_skin/1",
+ "note": "REQ-0180 unit_skin/1 SET ledger. Each entry is a paired set: art_unit (a kind=unit artwork system_name) + bpskin (a bpskin/1 def id). Keys are AUTHORED, never auto-derived. A UnitDef names its default set via unit_skin; a BP placement may override via bp.unit.skin. Cosmetic only (BS-G1): the engine/sim never read these.",
+ "entries": [
+  {
+   "kind": "unit_skin/1",
+   "id": "elf_default",
+   "name": "Elf — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-elf",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "エルフ（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "dwarf_default",
+   "name": "Dwarf — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-dwarf",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "ドワーフ（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "thief_default",
+   "name": "Thief — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-thief",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "シーフ（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "angel_default",
+   "name": "Angel — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-angel",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "エンジェル（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "shieldmaiden_default",
+   "name": "Shieldmaiden — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-shieldmaiden",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "シールドメイデン（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "priest_default",
+   "name": "Priest — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-priest",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "プリースト（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "littleprincess_default",
+   "name": "Little Princess — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-princess",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "リトルプリンセス（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "princess_default",
+   "name": "Princess — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-princess",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "プリンセス（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "lightcavalry_default",
+   "name": "Light Cavalry — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-lightcavalry",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "軽騎兵（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "berserker_default",
+   "name": "Berserker — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-berserker",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "バーサーカー（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "watcher_default",
+   "name": "Watcher — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-watcher",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "ウォッチャー（既定セット）"
+    }
+   }
+  },
+  {
+   "kind": "unit_skin/1",
+   "id": "squire_default",
+   "name": "Squire — Default Set",
+   "art_unit": "units-002-roster-flux2:unit-squire",
+   "bpskin": "devornate",
+   "i18n": {
+    "ja": {
+     "name": "スクワイア（既定セット）"
+    }
+   }
+  }
+ ]
+}

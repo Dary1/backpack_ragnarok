@@ -7,6 +7,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-elf",
    "connection_shape": "bishop",
+   "unit_skin": "elf_default",
    "i18n": {
     "ja": {
      "name": "エルフ"
@@ -19,6 +20,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-dwarf",
    "connection_shape": "rook",
+   "unit_skin": "dwarf_default",
    "i18n": {
     "ja": {
      "name": "ドワーフ"
@@ -31,6 +33,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-thief",
    "connection_shape": "chess_knight_move",
+   "unit_skin": "thief_default",
    "i18n": {
     "ja": {
      "name": "シーフ"
@@ -43,6 +46,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-angel",
    "connection_shape": "queen",
+   "unit_skin": "angel_default",
    "i18n": {
     "ja": {
      "name": "エンジェル"
@@ -55,6 +59,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-shieldmaiden",
    "connection_shape": "backward_line",
+   "unit_skin": "shieldmaiden_default",
    "i18n": {
     "ja": {
      "name": "シールドメイデン"
@@ -67,6 +72,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-priest",
    "connection_shape": "queen",
+   "unit_skin": "priest_default",
    "i18n": {
     "ja": {
      "name": "プリースト"
@@ -79,6 +85,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-princess",
    "connection_shape": "queen",
+   "unit_skin": "littleprincess_default",
    "i18n": {
     "ja": {
      "name": "リトルプリンセス"
@@ -91,6 +98,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-princess",
    "connection_shape": "queen",
+   "unit_skin": "princess_default",
    "i18n": {
     "ja": {
      "name": "プリンセス"
@@ -103,6 +111,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-lightcavalry",
    "connection_shape": "lance",
+   "unit_skin": "lightcavalry_default",
    "i18n": {
     "ja": {
      "name": "軽騎兵"
@@ -115,6 +124,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-berserker",
    "connection_shape": "none",
+   "unit_skin": "berserker_default",
    "i18n": {
     "ja": {
      "name": "バーサーカー"
@@ -127,6 +137,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-watcher",
    "connection_shape": "queen_2",
+   "unit_skin": "watcher_default",
    "i18n": {
     "ja": {
      "name": "ウォッチャー"
@@ -139,6 +150,7 @@
    "rarity": "Common",
    "icon": "units-002-roster-flux2:unit-squire",
    "connection_shape": "rook_3",
+   "unit_skin": "squire_default",
    "i18n": {
     "ja": {
      "name": "スクワイア"
