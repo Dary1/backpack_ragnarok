@@ -14,6 +14,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# REQ-0172: cheap + first. A harness port collision is invisible until the
+# harnesses actually run (REQ-0159 lost a whole ci cycle to one: two harnesses had
+# hand-picked the same band, and the second one's specs died on ECONNREFUSED). This
+# gate makes the "ports are derived from the REQ number" rule machine-checked, and
+# it costs milliseconds, so it goes in front of everything.
+echo "==== [0/8] e2e harness port rule (REQ-0172) ===="
+node tools/check_e2e_ports.cjs
 echo "==== [1/7] sim tests ===="
 node sim/tests/run.cjs
 echo "==== [2/7] sim replay goldens (determinism contract) ===="
