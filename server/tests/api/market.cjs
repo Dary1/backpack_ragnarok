@@ -63,7 +63,7 @@ module.exports.run = async function run(h) {
   ];
   const sellerSquad1 = {
     linked: true,
-    bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 30 }],
+    bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 }],
     pos: [
       { uid: 'mkt_susp', id: 'blade', cell: [1, 1], rot: 0 },
       { uid: 'mkt_susp2', id: 'blade', cell: [1, 2], rot: 0 },

@@ -107,7 +107,7 @@ module.exports.run = async function run(h) {
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     doc.canvas.presets.store[4] = {
       linked: true,
-      bps: [{ id: 'bp_swaptarget', name: 'BP swaptarget', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+      bps: [{ id: 'bp_swaptarget', name: 'BP swaptarget', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 40 }],
       pos: [{ uid: 'po_swaptarget', id: 'test_sword', loc: 'grid', cell: [1, 1], rot: 0 }],
       sis: [],
     };
