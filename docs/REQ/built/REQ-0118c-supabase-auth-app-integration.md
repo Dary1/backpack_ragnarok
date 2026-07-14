@@ -136,3 +136,43 @@ S7 item below is verified).
 - `e3445f8` — client: Supabase sign-in (Discord + guest) + Bearer header + linking (+ check)
 - `8c8f4f7` — merge master (re-sync before final gates)
 - _this commit_ — docs: REQ-0118c `todo → built`
+
+---
+
+## Wave-5 integration / deploy record (2026-07-14)
+
+Merged to master via `--no-ff` merge commit `6f69975`. Env wired at deploy
+(values NOT committed; both targets gitignored -- verified before writing):
+- `SUPABASE_JWT_SECRET` -> `server/.env` (from the REQ-0118a GoTrue
+  `~/supabase/docker/.env` `JWT_SECRET`); loaded by `backpack-api` via its
+  systemd `EnvironmentFile=server/.env`. Ignored by `.gitignore:8` (`.env`).
+- `VITE_SUPABASE_URL=https://auth.qtie.jp` + `VITE_SUPABASE_ANON_KEY` (from the
+  same file, key `ANON_KEY`) -> `client/.env.local`; baked into the committed dist
+  by `tools/release.sh` (Vite loads `.env.local`). Ignored by `client/.gitignore`
+  (`*.local` / `.env*.local`).
+
+Full gate `flock /tmp/backpack_ci.lock bash tools/release.sh` GREEN on the
+integrated master: **CI GREEN**; server `auth_jwt_test` 16/0 (files+pg),
+`api_test` 176/0 (no regression); client `check_auth` [5.9/7] pass; default e2e
+**165/165 passed** against the supabase-env-baked dist -- REQ-0037 guest/invite
+parity holds (`guest-auth.spec.ts:83` invite -> `/api/me` -> welcome banner
+green with env baked in). Dist rebuilt + committed `4b1a544`;
+`backpack-api` / `backpack-web` restarted; HTTP 200 (8801 /app/, 8802 /api/health).
+
+Post-deploy smoke: fabricated invalid Bearer and well-formed-but-tampered JWT
+both -> **401** on `/api/me` (proves HS256 verify is ACTIVE, i.e. the secret is
+loaded -- an unset secret would ignore the token, not reject it); no-token ->
+unchanged REQ-0037 dev identity (`{"playerId":"dev",...}`, 200).
+Final master at deploy: `4b1a544`.
+
+**STAYS in `built/`** -- the S7 open item (live Discord OAuth browser round-trip)
+still requires user manual verification (see "OPEN ITEM -- S7" above). NOT moved
+to `done/`.
+
+_Post-deploy re-verification (after `backpack-api`/`backpack-web` restart), sanctioned
+wrapper `pnpm run e2e` (serial box-lock): **164 passed / 1 failed** -- the single red
+was `baseline-smoke.spec.ts:27` (core REQ-0037 PO drag; unrelated to auth), which PASSED
+in the deploy-gate 4-worker run and PASSED on targeted serial rerun (`pnpm run e2e
+baseline-smoke.spec.ts:27` -> 1 passed) = confirmed drag-timing flake, not a regression.
+Auth-relevant `guest-auth.spec.ts:83` invite flow passed in BOTH runs. Effectively
+all-green; global-teardown restored profile/content (sha256 matched pre-run)._
