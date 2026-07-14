@@ -49,3 +49,10 @@ a dead ComfyUI, sshd down ~10 min — remains this REQ's evidence base.)
 - Service start/stop cycles cleanly with zero writes inside `~/ComfyUI`.
 - Next accepted batch's registry entries carry workflow JSON + model hash.
 - User sign-off on the service policy (on-demand only).
+
+## Obsolescence note (2026-07-14, user ruling)
+User ruling (orchestrator session, 2026-07-14): largely obsolete — ComfyUI already
+runs as a systemd --user unit (comfyui.service, plus comfyui-idle-free.service via
+REQ-0158), and art provenance now lives in the artwork registry (REQ-0151/0152 DB
+route). Moved todo -> draft as a retirement candidate; if any provenance gap remains
+vs the registry route, a narrowed re-spec is a future user decision.
