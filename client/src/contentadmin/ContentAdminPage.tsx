@@ -34,7 +34,7 @@ import {
   recheckVariantApi, listArtworks,
 } from '../api';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { copyText, artworkThumbUrl } from './contentShared';
+import { copyText, artworkThumbUrl, buildArtworkIndex } from './contentShared';
 import { DefRail } from './DefRail';
 import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
@@ -343,9 +343,9 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   const confirmOverall = confirmVariant ? ((confirmVariant.machine_check && confirmVariant.machine_check.overall) || 'FAIL') : 'FAIL';
   const needsOverride = confirm != null && confirm.type === 'adopt' && confirmOverall === 'FAIL';
 
-  const artworksByName: Record<string, ArtworkDto> = {};
-  for (const a of artworks) artworksByName[a.system_name] = a;
-  const confirmThumb = selected && artworkFacet ? artworkThumbUrl(artworksByName[selected]) : null;
+  // REQ-0173 follow-up: exact + batch-suffix index (see buildArtworkIndex).
+  const artworksByName = buildArtworkIndex(artworks);
+  const confirmThumb = selected ? artworkThumbUrl(artworksByName[selected]) : null;
 
   return (
     <div data-testid="contentadmin" className="ca-root">
