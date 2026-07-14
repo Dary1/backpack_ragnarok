@@ -311,3 +311,27 @@ servant of the spreadsheet, which is the exact inversion the golden forbids.
 ## 8. Outcome
 
 _(to be filled at close)_
+
+---
+
+## PARTIAL DELIVERY (2026-07-14, REQ-0170) — the defs are LIVE, minus the mechanics
+
+`content/live/live_units.json` now exists and carries **all 12 kits** — `id` / `name` /
+`rarity` / `icon` / `connection_shape` / `i18n.ja` — and the Workshop emits them. Every
+`connection_shape` is the value ruled or delegated in §0/§2 of this file.
+
+**`charge` and `effects` are NOT in those defs, and this REQ is still OPEN because of it.**
+The grammar is frozen (vocab v13) but the engine has no charge AST and no unit-effect
+evaluator, so writing the fields would have put fiction into a live target. The gaps that
+block them are **this REQ's own, and they are questions for the user about HIS kits**:
+
+- **G2** — Little Princess's charge capacity is literally "XX".
+- **G5** — Elf's and Dwarf's charge effects admit several readings.
+- **G6** — the Berserker's +0.1%/stack has **no cap and no backstop** (PULSE_CAP is retired;
+  `passive_per_stack` never consumes charge, so `capacity` does not bound it either).
+- **G12** — the Watcher's "advance the longest-cooldown item slightly" needs a selector the
+  charge-target grammar does not have, and a number.
+- **G13** — the Squire's "small amount of block" needs a number.
+
+`rarity: Common` on all 12 was **agent-defined** by REQ-0170 (the one pack that ships is the
+common pack). If rarity is meant to gate the pool, that is a design event.
