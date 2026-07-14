@@ -4,9 +4,26 @@
 is NOT yet authorable as defs.
 ~~REQ-0127 (art)~~ **CLEARED 2026-07-13** — S7 ALL GREEN, 11 icons cover all 12 kits (§3b).
 ~~REQ-0128 vocabulary~~ **CLEARED** — shipped as REQ-0128a (`vocab.json` v9).
-Still blocked on: **REQ-0129** (charge/trigger grammar not frozen), **REQ-0128b**
-(`connection_shape` semantics + board orientation), **REQ-0130** (unit/1 schema +
-validation chain), and **the open gaps in §3** — which are now the critical path.
+~~REQ-0129~~ **CLEARED 2026-07-14** — the charge grammar is FROZEN (`vocab.json` v13); `todo/`.
+~~REQ-0128b~~ **CLEARED 2026-07-14** — occluder set, pierce semantics and the pulse-law
+retirement all ruled; `todo/`.
+~~REQ-0130~~ **CLEARED 2026-07-14** — `unit/1` is RATIFIED in `unit_icon_pipeline.md` §4.2
+(REQ-0130 itself stays superseded in `done/`).
+
+**Every mechanics blocker is gone. What still blocks def authoring is THIS REQ's own
+content gaps — G2, G5, G6, G12, G13 — which are questions for the user about HIS kits,
+not about the grammar. They are now the whole critical path.**
+
+> **Schema changes that land on this REQ (2026-07-14):** `sockets` is **REMOVED** from
+> `unit/1` (demoted to REQ-0163, unratified) — so G9's "no `sockets`" is no longer a gap,
+> it is the ruling. And `icon` is now a **free reference**, which is exactly what G14
+> demanded.
+>
+> **⚠ G6 got WORSE, not better.** REQ-0128b named `PULSE_CAP` as the backstop for the
+> Berserker's uncapped `+0.1%/stack` — and **PULSE_CAP was retired on 2026-07-14.**
+> `passive_per_stack` never consumes charge, so `capacity` does not bound it either.
+> **Nothing in the engine will catch this.** G6 now needs a real cap from the user, and it
+> is the only gap with no safety net left underneath it.
 **Reserved:** 2026-07-13
 **Slug:** unit-roster-001-kits
 **Source:** user chat, 2026-07-13 (verbatim design, reproduced in §2); rulings
@@ -29,11 +46,12 @@ with the roster — see §3b. G14 opened.)*
 | 2026-07-13 (later) | **connection_shapes** | **Register the shape vocabulary (飛車 / 角 / …) as a DICTIONARY now; implementation becomes its own REQ.** Done: `content/vocab.json` v9 gains `connection_shapes` (10 entries). REQ-0128 is split per the PROJECT.md multi-phase rule → **REQ-0128a** (vocabulary, this ruling, → built) / **REQ-0128b** (mechanics + engine, stays draft). |
 | 2026-07-13 (later) | **G3a — CLOSED by user ruling** | **The Thief's charge trigger is the firing of the Unit at the other end of its link** (*"Thiefも接続元が発火する事でトリガーになっている"*). This is an **already-attested charge source** in REQ-0129 ("connected-target's trigger firing") — **no grammar extension is needed and no rule was ever broken.** The "clock tower" was only ever flavour for *a connected Unit*; it never needed a definition, and it never needed to be killed. |
 | 2026-07-13 (later) | **Board orientation** | **前方 = the battlefield cell with the LOWER Y (up).** Reconciled to the engine's `[row,col]` / row-increases-downward convention: **forward = `DIRS[0]` = N = `[-1,0]`.** Recorded in `vocab.json.orientation`. Unblocks `lance` (Light Cavalry), `backward_line`, `forward_1` (Squire). |
-| 2026-07-13 (later) | **REQ-0128b decisions 1–3** | **(1) Rays do NOT pierce** (keep it parameterisable — `pierce` field). **(2) `adjacency` is not a concept — it is a ray with range 1/2/…** This collapses every shape to `{dirs, range, pierce}` and leaves `knight` as the only offset. **(3) Connections are canvas-local (Squad-scoped).** REQ-0128b is now `todo/` — all five decisions closed. |
+| 2026-07-13 (later) | **REQ-0128b decisions 1–3** | **(1) Rays do NOT pierce** (keep it parameterisable — `pierce` field). **(2) `adjacency` is not a concept — it is a ray with range 1/2/…** This collapses every shape to `{dirs, range, pierce}` and leaves the knight jump as the only offset. **(3) Connections are canvas-local (Squad-scoped).** REQ-0128b is now `todo/` — all five decisions closed. |
 | 2026-07-13 | **⚠ Watcher — consequence, needs a look** | Under ruling (2), `adjacency_lr` = a **range-1 E/W ray**: the Watcher links to a Unit in the cell **directly left or right of its own cell**. Its design note — *"縦長や横長の変なバックパックの横にポンと置くだけで仕事をする"* — reads more like **BP-footprint** adjacency, which the ruling does not give. **The kit may need restating; the ruling stands.** |
 | 2026-07-13 (later) | **Watcher — RULED** | **`connection_shape: queen`, range 2** (`queen_2`). User: *"出ないとほぼ接続が不可能ですね"* — at range 1 a Unit only links when another Unit occupies the literal adjacent cell, which effectively never happens. `adjacency_lr` is now orphaned and has been REMOVED from the dictionary. |
 | 2026-07-13 | **⚠ G15 — the Squire has the same disease** | *(OPEN)* The Squire is `forward_1` = a **range-1** forward ray. It links only if a Unit sits in the single cell directly in front of it — the exact condition the user just called "nearly impossible" for the Watcher. Its design note assumes an "attacker" in front, and since links are **Unit-to-Unit**, that attacker must be a **Unit**, not a weapon PO. **Is the Squire deliberately that positional, or does it need range 2 as well?** Not fixed by inference. |
 | 2026-07-13 (final) | **G15 — CLOSED by user ruling** | **The Squire is `rook`, range 3** (`rook_3`). `forward_1` is orphaned and REMOVED from the dictionary. |
+| 2026-07-14 | **Mechanics — ALL CLEARED** | REQ-0129 charge grammar FROZEN (spend closed at 3; gain count/damage; 8 charge triggers, 5 AGENT-DEFINED; targets self + units_connected user-ratified, bp_connected + units_connected_distributed AGENT-DEFINED under delegation). REQ-0128b: occluder set = **Units only** (BP/PO transparent); `pierce` = link **every** Unit in range; **propagation RETIRED** (no PULSE_CAP / visited-set / hop budget); REQ-0061 8-type axis 供養; `knight` -> `chess_knight_move`, new `shougi_keima_move`. `unit/1` RATIFIED, `sockets` removed -> REQ-0163. Shipped as `vocab.json` **v13**. |
 | 2026-07-13 (final) | **G1 — CLOSED by AGENT INFERENCE under explicit user delegation** | User: *"残りの接続形状は、あなたの推論で決めちゃってください。後でまた修正が必要ならREQを出します。では、GO"*. **This is NOT a user ruling and is not recorded as one.** Shieldmaiden = `backward_line`; Priest = `queen`. Reasoning in §3c. The user has pre-authorised a correcting REQ; this row exists so that whoever reads it later knows a machine chose, not a person. |
 
 ## 1. Why this REQ exists
@@ -70,7 +88,7 @@ that the ratified vocabulary does not contain (→ G10, G11).
 - **Charge effect:** shares, with the connected Unit, the *already-reduced*
   cooldown of an item that carries its own cooldown.
 
-### 3. Thief — `connection_shape: knight` (chess knight)
+### 3. Thief — `connection_shape: chess_knight_move` (chess knight)
 - **Charge trigger:** **the connected Unit fires.** *(RULED 2026-07-13 — G3a closed.)*
   The old wording named a "clock tower"; with *tower* deleted, that was only ever
   flavour for **a Unit at the other end of the link**. This is an already-attested
