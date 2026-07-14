@@ -147,4 +147,101 @@ DiffView gains, ABOVE the existing line diff (kept as exact truth):
   artworks is cheap and render-less; thumb IMG assertion can use the placeholder branch).
 
 ## Implementation log
-(to be filled by the implementing engineer)
+### Session 2026-07-14 (implementing engineer, opus)
+
+**Outcome:** REQ-0173 A–D implemented CLIENT-ONLY on branch
+`req-0173-contentadmin-entity-rendering`. All gates green. Registry semantics,
+server, api-modules untouched; `client/src/dex/*` untouched (no missing export);
+`client/src/styles/artadmin.css` byte-untouched; `ArtAdminPage.tsx` gained ONLY
+the focus-consume effect.
+
+**Architecture decisions**
+- **EntityPreview** (`client/src/contentadmin/EntityPreview.tsx`): one kind-aware
+  component (po_def / si_def / tm_def / monster_def[enemy/1] / skill_def / unknown).
+  Dex reused BY IMPORT: `ShapeGrid` + `dexIcons` (iconDataUrl/iconDims) via the exact
+  DexAdmin list-thumb recipe (entityShape fallback `[[0,0]]`, cellPx 28 / 18 compact,
+  stretch/align passthrough). A per-kind `consumed` Set drives a GENERIC fallback
+  key:value grid so no top-level field is ever silently hidden; unknown kinds render
+  fallback-only. Missing icon -> ShapeGrid placeholder (no overlay), never a broken img.
+  A single `idBase` prop yields `entity-preview-<idBase>` / `entity-fallback-<idBase>`
+  so the one component serves card (`<no>`), adopt-confirm (`confirm`), and diff
+  (`diff-a`/`diff-b`).
+- **contentShared helpers**: `rarityClass` (house `.rarity.r-<R>`; normalizes enemy/1
+  LOWERCASE rarity first-letter -> class; unknown rarity = color-less, graceful),
+  `entityShape`, `jaField` (i18n.ja + legacy name_ja fallback), `effectLine`
+  (compact `trigger[lo-hi] . verb n[lo-hi] status xmult . cond/stat`, guards non-object
+  entries), `artworkThumbUrl` (mirrors artadmin RegistryRail thumbUrl verbatim),
+  `changedTopFields` (diff chips).
+- **Structured edit form** (`client/src/contentadmin/EditModal.tsx`): Form|JSON tabs.
+  `jsonText` is the SINGLE serialized truth -- form field edits push into it live, JSON
+  edits modify it directly, submit = `JSON.parse(jsonText)` (existing editVariant path).
+  `serialize()` spreads `{...original}` FIRST then overwrites name/flavor/i18n.ja/rarity/
+  effects (+tags/stretch for po), so shape/icon/align/part/sockets/ports pass through
+  VERBATIM (proven in e2e: submitted variant keeps `shape`+`icon`). adminForm reused BY
+  IMPORT (effectToRow/rowToEffect/defaultEffectRow/EffectRow). Vocab/trees via
+  `cachedFetchContent` (non-fatal -> JSON-only fallback). po_def/si_def default to Form
+  once vocab loads; monster/skill/tm/unit -- and any po/si whose effects array is not
+  all-objects -- open on JSON with the Form tab DISABLED + a note (`edit-form-note-<no>`).
+- **Art linkage** (B): ContentAdminPage fetches `/api/art/artworks` once + 30 s poll,
+  failures NON-FATAL; maps by system_name -> DefRail rail thumb (`cd-thumb-<name>`,
+  placeholder branch when no adopted/ok render), Workspace header thumb
+  (`cd-header-thumb`), adopt-confirm thumb + compact preview. Facet links (rail glyph,
+  header links, thumb) now deep-link to `#/artadmin/<system_name>`.
+- **artadmin deep link** (B): `ARTADMIN_HASH_RE` + one-shot `artAdminFocusName` in
+  store/core.ts + routing.ts as an EXACT mirror of the REQ-0164 CONTENTADMIN pattern;
+  `clearArtAdminFocusName()` in routing.ts; ArtAdminPage consumes once the list loads.
+- **DiffView** (D): compact side-by-side EntityPreviews of A|B + `diff-fields-summary`
+  changed-field chips, ABOVE the existing (verbatim) positional line diff.
+
+**Testid delta (NEW; all existing testids preserved)**
+- `entity-preview-<no>` (VariantCard, default-on), `entity-preview-confirm` (adopt
+  dialog), `entity-preview-diff-a` / `entity-preview-diff-b` (DiffView).
+- `entity-fallback-<idBase>` (generic field grid).
+- `diff-fields-summary`.
+- `cd-thumb-<name>` (rail), `cd-header-thumb` (workspace header).
+- `edit-tab-form-<no>`, `edit-tab-json-<no>`, `edit-form-note-<no>`.
+- Form fields: `edit-form-name-<no>`, `edit-form-ja-name-<no>`, `edit-form-flavor-<no>`,
+  `edit-form-ja-flavor-<no>`, `edit-form-rarity-<no>`, `edit-form-stretch-<no>`,
+  `edit-form-tag-root-<no>`, `edit-form-tags-<no>`, `edit-form-effect-add-<no>`,
+  `edit-form-eff-{trigger,verb,nlo,nhi,status,del}-<no>-<i>`.
+- Preserved verbatim on the JSON tab: `edit-json-<no>`, `edit-valid-<no>`,
+  `edit-format-<no>`, `edit-submit-<no>`, `edit-close`.
+
+**Gate results**
+- **G1**: `pnpm exec tsc -b` EXIT=0 (/tmp/req0173_tsc.log); `pnpm run build` EXIT=0,
+  built in 328 ms (/tmp/req0173_build.log).
+- **G2**: `tools/content_admin_e2e.sh` -> **20 passed (36.4 s)** (/tmp/req0173_ca_e2e2.log);
+  `tools/artadmin_e2e.sh` -> **4 passed (53.0 s)**, the original 3 intact + the new
+  deep-link test (/tmp/req0173_art_e2e.log). New contentadmin coverage: entity preview
+  name/rarity/shape (po), si anchor fallback, fallback field grid, form edit
+  (rarity + add effect -> JSON reflects -> submit -> shape/icon passthrough proven both in
+  the JSON tab and via the server detail GET), JSON-only kind gates the Form tab, diff
+  entity headers + changed-field chips, adopt-confirm preview, rail art-facet thumb
+  placeholder branch (render-less artwork seeded via POST /api/art/artworks). web/
+  restored after e2e (`git checkout -- web/ && git clean -fd web/`).
+- **G3**: `git diff master...HEAD --stat` = only intended client/ files + this REQ doc;
+  NO artadmin.css / web/ / dist / lockfile / package.json churn.
+
+**Commits**
+- `3b96fbd` -- B: artadmin `#/artadmin/<name>` deep link + ArtAdminPage consume + spec.
+- `911e36b` -- A/B/C/D: EntityPreview + art-facet thumbs + Form|JSON edit modal +
+  entity-level diff + contentadmin.spec extended.
+- (this log commit).
+
+**Deviations / notes**
+1. **Env fix (not a code change):** the worktree had ONLY client deps installed; the
+   e2e harness (`node server/api.cjs`) died with `Cannot find module 'pg'` -> every
+   create 400'd. Fixed by symlinking `<worktree>/server/node_modules` ->
+   `~/backpack_ragnarok/server/node_modules` (node_modules is gitignored, read-only use,
+   never committed; main checkout untouched). Orchestrator: any fresh worktree here needs
+   server deps present before G2.
+2. **artadmin deep link consumes WITHOUT rewriting the hash** (contentadmin rewrites via
+   history.replaceState). Chosen as the minimal/additive path the spec explicitly permits,
+   to protect the existing 3 artadmin tests. Documented in ArtAdminPage.
+3. **Pre-existing contentadmin test-1 edit leg updated** in the same commit as the
+   behavior: po_def now DEFAULTS to the Form tab, so the JSON-editor leg first waits for
+   the Form to load then clicks `edit-tab-json-1` (the `edit-json-1` testid is unchanged,
+   just tab-scoped now).
+
+**Left for orchestrator:** deploy + S7 live user acceptance (REQ stays in docs/REQ/todo/).
+
