@@ -4,6 +4,14 @@
 // constants (warehouse cap/TTL, squad slots, level min), content paths,
 // the mtime-cached content loader (getScheduleContent), dungeon/formation
 // listing + i18n labels, reward-roll mapping, engine factory, id minting.
+//
+// REQ-0176 (REQ-0178 Phase-1b): getScheduleContent() is now REGISTRY-FIRST.
+// REQ-0178 made /api/content (server/lib/content.cjs) resolve
+// registry-adopted-variant -> live-file entry, but never touched THIS module --
+// the authority path (the gacha roll, the run simulation, market, warehouse,
+// forecast). That left adoption reaching the display but not the game. The same
+// resolution chain now runs here, for every registry kind, off a warm snapshot
+// so this loader stays SYNCHRONOUS (20+ consumers call it inside request paths).
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
@@ -76,7 +84,9 @@ function loadJSON(p) {
   return JSON.parse(fs.readFileSync(p, 'utf8'));
 }
 
-function getScheduleContent() {
+// REQ-0176: the FILE tier (unchanged behaviour, mtime-cached). Kept private;
+// getScheduleContent() below is the public entry and overlays the registry.
+function ensureFilePayload() {
   const mtimes = {
     items: statMtimeMs(ITEMS_PATH),
     sis: statMtimeMs(SIS_PATH), // REQ-0115
@@ -174,6 +184,153 @@ function getScheduleContent() {
   const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
+}
+
+// ---------------------------------------------------------------------
+// REQ-0176 (REQ-0178 Phase-1b): the REGISTRY tier.
+//
+// Mirrors server/lib/content.cjs exactly: a warm snapshot refreshed off a TTL
+// + boot + explicitly on adopt/edit/delete/patch, OVERLAID SYNCHRONOUSLY so
+// getScheduleContent() never awaits (it is called deep inside the roll, the
+// sim, market and warehouse paths -- an await there would be a rewrite).
+// Resolution is computed at the storage chokepoint
+// (storage.resolveAdoptedContentData), which is already kind-generic.
+//
+// pg-only: under the files backend (or with no DATABASE_URL) the snapshot is
+// EMPTY and getScheduleContent() returns the file payload OBJECT UNCHANGED --
+// byte-identical to the pre-REQ loader. That is what keeps the default e2e
+// fleet a true no-regression baseline.
+// ---------------------------------------------------------------------
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def'];
+// kind -> the file-payload map whose key set defines what we ask the registry for.
+const REGISTRY_MAP_BY_KIND = {
+  po_def: 'itemDefsById',
+  si_def: 'siDefsById',
+  tm_def: 'tmDefsById',
+  unit_def: 'unitDefsById',
+  gacha_pack: 'packDefsById',
+  monster_def: 'enemyDefsById',
+  skill_def: 'skillDefsById',
+};
+const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
+
+function emptyRegistry() {
+  const o = {};
+  for (const k of REGISTRY_KINDS) o[k] = {};
+  return o;
+}
+let registryData = emptyRegistry(); // { kind -> { bare -> adopted DATA (raw entry) } }
+let registryAt = 0;
+
+async function computeRegistryData() {
+  if (process.env.STORAGE_BACKEND !== 'pg') return emptyRegistry(); // the content registry is pg-only
+  const fp = ensureFilePayload();
+  const storage = require('../storage.cjs');
+  const out = emptyRegistry();
+  for (const kind of REGISTRY_KINDS) {
+    const names = Object.keys(fp[REGISTRY_MAP_BY_KIND[kind]] || {});
+    out[kind] = await storage.resolveAdoptedContentData(kind, names);
+  }
+  return out;
+}
+
+/** Recompute the registry snapshot now. AWAITED by the adopt/edit/delete/patch
+ * handlers (via routes/content.cjs invalidateServedContent) so the next roll /
+ * simulation reflects the change -- the same determinism contract REQ-0178
+ * established for /api/content. Also fired opportunistically on a TTL by
+ * getScheduleContent(). Never throws: a registry read failure keeps the last
+ * snapshot (empty at worst) so the game degrades to file-served rather than
+ * 500ing on a transient DB hiccup. */
+async function refreshRegistryData() {
+  try { registryData = await computeRegistryData(); registryAt = Date.now(); }
+  catch (e) { /* keep last snapshot; the roll/sim must not fail on a registry read */ }
+  return registryData;
+}
+
+function registryIsEmpty(reg) {
+  if (!reg) return true;
+  for (const k of REGISTRY_KINDS) if (Object.keys(reg[k]).length) return false;
+  return true;
+}
+
+// skill_def is the ONE non-verbatim kind. REQ-0057 keeps skillDefsById
+// MECHANICS-ONLY (sim/lib/packs.cjs's compileEnemyPack mutates these objects in
+// place, so the fewer fields riding along the better) and puts display names in
+// the sibling skillNamesById. A registry-sourced skill MUST go through the same
+// two reshapes, or the forecast tooltip and the combat fold silently disagree.
+function skillMechanicsFrom(s) {
+  return { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
+}
+function skillNamesFrom(s) {
+  return { en: { name: s.name_en || s.id }, ja: { name: s.name_ja || s.name_en || s.id } };
+}
+
+function overlayMap(base, regEntries, transform) {
+  const out = Object.assign({}, base);
+  for (const name of Object.keys(regEntries)) out[name] = transform ? transform(regEntries[name]) : regEntries[name];
+  return out;
+}
+
+let servedCache = null; // { fp, reg, payload } -- identity-keyed on (file payload, snapshot)
+// The registry overlays LAST -- on top of every file source, including the
+// pilot (dungeon/items.json) and starter (starter_items.json) po_def overlays.
+// Those two files are THEMSELVES backfilled po_def sources, so the ledger owns
+// their entries; the only ids appearing in more than one po_def file are
+// lockpick/spyglass (starter n dungeon) and their entries are byte-identical,
+// so the precedence is unobservable on today's data. When a future adoption
+// edits one, the registry wins -- which is this REQ's entire purpose. Same
+// precedence as lib/content.cjs.
+function applyRegistryOverlay(fp) {
+  const reg = registryData;
+  if (registryIsEmpty(reg)) return fp; // byte-identical to the pre-REQ payload
+  if (servedCache && servedCache.fp === fp && servedCache.reg === reg) return servedCache.payload;
+  const payload = Object.assign({}, fp, {
+    itemDefsById: overlayMap(fp.itemDefsById, reg.po_def, null),
+    siDefsById: overlayMap(fp.siDefsById, reg.si_def, null),
+    tmDefsById: overlayMap(fp.tmDefsById, reg.tm_def, null),
+    unitDefsById: overlayMap(fp.unitDefsById, reg.unit_def, null),
+    packDefsById: overlayMap(fp.packDefsById, reg.gacha_pack, null),
+    enemyDefsById: overlayMap(fp.enemyDefsById, reg.monster_def, null),
+    skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
+    skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
+  });
+  servedCache = { fp, reg, payload };
+  return payload;
+}
+
+/** REQ-0176: the public content entry. Resolution per kind is
+ * registry adopted variant -> live-file entry -> absent. Synchronous by
+ * construction (warm snapshot; see above). */
+function getScheduleContent() {
+  const fp = ensureFilePayload();
+  if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); } // opportunistic; never awaited here
+  return applyRegistryOverlay(fp);
+}
+
+// Warm the snapshot at boot so the first roll/simulation after a restart is
+// already registry-first (mirrors lib/content.cjs's setImmediate warm).
+setImmediate(() => { refreshRegistryData().catch(() => {}); });
+
+// Per-map source accounting {registry, fallback_file, file_only_names[]} for
+// the authority path, surfaced on GET /api/content/dev/sources alongside
+// REQ-0178's display-path accounting so the two can be compared at a glance.
+function scheduleSourceAccountingFor(map, regEntries) {
+  const keys = Object.keys(map || {});
+  const reg = regEntries || {};
+  const fileOnly = keys.filter((k) => !Object.prototype.hasOwnProperty.call(reg, k)).sort();
+  return { registry: keys.length - fileOnly.length, fallback_file: fileOnly.length, file_only_names: fileOnly };
+}
+function getScheduleSources() {
+  const fp = ensureFilePayload();
+  const reg = registryData;
+  const out = {
+    backend: process.env.STORAGE_BACKEND === 'pg' ? 'pg' : 'files',
+    covered_kinds: REGISTRY_MAP_BY_KIND,
+  };
+  for (const kind of REGISTRY_KINDS) {
+    out[REGISTRY_MAP_BY_KIND[kind]] = scheduleSourceAccountingFor(fp[REGISTRY_MAP_BY_KIND[kind]], reg[kind]);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------
@@ -338,6 +495,8 @@ module.exports = {
   statMtimeMs,
   loadJSON,
   getScheduleContent,
+  refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
+  getScheduleSources, // REQ-0176: authority-path source accounting
   DUNGEON_TYPE_I18N,
   listDungeonsAndFormations,
   REWARD_ROLL_TO_ITEM_ID,

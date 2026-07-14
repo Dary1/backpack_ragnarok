@@ -264,17 +264,23 @@ async function refreshArtUrls() {
 // chokepoint (storage.resolveAdoptedContentData) -- no client-side cross-
 // registry join. The registry is pg-only: under the files backend (or with no
 // DATABASE_URL) the snapshot is EMPTY and the payload is byte-identical to the
-// pre-REQ file payload (fallback covers everything). Kinds beyond po/si/tm are
-// deliberately Phase-1b (see the REQ log): unit/pack have a second, still-file
-// consumer (the gacha roll), and monster/skill/formation are served through a
-// different module (services/core.cjs getScheduleContent), not this one.
-const REGISTRY_KIND_BY_SECTION = { items: 'po_def', sis: 'si_def', tms: 'tm_def' };
-let registryData = { po_def: {}, si_def: {}, tm_def: {} }; // { kind -> { bare -> adopted DATA (raw entry) } }
+// pre-REQ file payload (fallback covers everything).
+//
+// REQ-0176 (Phase-1b) adds units/packs here. REQ-0178 held them back because
+// they had a SECOND, still-file consumer -- the authoritative gacha roll via
+// services/core.cjs getScheduleContent() -- and feeding display from the
+// registry while the roll stayed on files would have re-introduced exactly the
+// display-vs-roll drift REQ-0170 existed to kill. REQ-0176 makes that module
+// registry-first in the SAME change, so the two now flip together and the
+// objection is retired. monster/skill are served ONLY through core.cjs (they
+// are not in this payload at all); formations is not a registry kind.
+const REGISTRY_KIND_BY_SECTION = { items: 'po_def', sis: 'si_def', tms: 'tm_def', units: 'unit_def', packs: 'gacha_pack' };
+let registryData = { po_def: {}, si_def: {}, tm_def: {}, unit_def: {}, gacha_pack: {} }; // { kind -> { bare -> adopted DATA (raw entry) } }
 let registryAt = 0;
 const REGISTRY_TTL_MS = 15000; // mirror ART_URLS_TTL_MS
 
 async function computeRegistryData() {
-  const empty = { po_def: {}, si_def: {}, tm_def: {} };
+  const empty = { po_def: {}, si_def: {}, tm_def: {}, unit_def: {}, gacha_pack: {} };
   if (process.env.STORAGE_BACKEND !== 'pg') return empty; // the content registry is pg-only
   const payload = ensureFilePayload();
   const storage = require('../storage.cjs');
@@ -282,6 +288,8 @@ async function computeRegistryData() {
     po_def: await storage.resolveAdoptedContentData('po_def', Object.keys(payload.items || {})),
     si_def: await storage.resolveAdoptedContentData('si_def', Object.keys(payload.sis || {})),
     tm_def: await storage.resolveAdoptedContentData('tm_def', Object.keys(payload.tms || {})),
+    unit_def: await storage.resolveAdoptedContentData('unit_def', Object.keys(payload.units || {})), // REQ-0176
+    gacha_pack: await storage.resolveAdoptedContentData('gacha_pack', Object.keys(payload.packs || {})), // REQ-0176
   };
 }
 
@@ -297,7 +305,9 @@ async function refreshRegistryData() {
 }
 
 function registryIsEmpty(reg) {
-  return !reg || (Object.keys(reg.po_def).length + Object.keys(reg.si_def).length + Object.keys(reg.tm_def).length) === 0;
+  if (!reg) return true;
+  return (Object.keys(reg.po_def).length + Object.keys(reg.si_def).length + Object.keys(reg.tm_def).length
+    + Object.keys(reg.unit_def).length + Object.keys(reg.gacha_pack).length) === 0; // REQ-0176
 }
 // A registry-sourced po/si entry is served through the EXACT transform the
 // file path applies (eff_en/eff_ja render + i18n back-compat), so a verbatim
@@ -325,6 +335,11 @@ function applyRegistryOverlay(filePayload) {
     items: overlaySection(filePayload.items, reg.po_def, servedEffEntry),
     sis: overlaySection(filePayload.sis, reg.si_def, servedEffEntry),
     tms: overlaySection(filePayload.tms, reg.tm_def, servedTmEntry),
+    // REQ-0176: units/packs carry no `effects` (REQ-0170 s2.3), so they take the
+    // same withBackCompatI18n-only transform the file path applies to them --
+    // servedTmEntry is exactly that, reused rather than duplicated.
+    units: overlaySection(filePayload.units, reg.unit_def, servedTmEntry),
+    packs: overlaySection(filePayload.packs, reg.gacha_pack, servedTmEntry),
   });
   servedCache = { fp: filePayload, reg: reg, payload: payload };
   return payload;
@@ -349,6 +364,8 @@ function getContentSources() {
     items: sourceAccountingFor(fp.items, reg.po_def),
     sis: sourceAccountingFor(fp.sis, reg.si_def),
     tms: sourceAccountingFor(fp.tms, reg.tm_def),
+    units: sourceAccountingFor(fp.units, reg.unit_def), // REQ-0176
+    packs: sourceAccountingFor(fp.packs, reg.gacha_pack), // REQ-0176
   };
 }
 
@@ -360,12 +377,16 @@ function logRegistryFallbackOnce() {
   if (registryFallbackLogged) return;
   registryFallbackLogged = true;
   if (process.env.STORAGE_BACKEND !== 'pg') return;
+  // REQ-0176: units/packs joined the covered set, so they must be counted here
+  // too -- a section covered by the overlay but absent from the warn line would
+  // make fallback invisible for exactly the kinds this REQ just wired up.
   const s = getContentSources();
-  const fb = s.items.fallback_file + s.sis.fallback_file + s.tms.fallback_file;
-  const reg = s.items.registry + s.sis.registry + s.tms.registry;
+  const SECTIONS = ['items', 'sis', 'tms', 'units', 'packs'];
+  const fb = SECTIONS.reduce((n, k) => n + s[k].fallback_file, 0);
+  const reg = SECTIONS.reduce((n, k) => n + s[k].registry, 0);
   if (fb > 0) {
-    console.warn('[content] REQ-0178 registry-first serving: ' + reg + ' entities from registry, ' + fb +
-      ' from file fallback (items=' + s.items.fallback_file + ' sis=' + s.sis.fallback_file + ' tms=' + s.tms.fallback_file + ')');
+    console.warn('[content] REQ-0178/0176 registry-first serving: ' + reg + ' entities from registry, ' + fb +
+      ' from file fallback (' + SECTIONS.map((k) => k + '=' + s[k].fallback_file).join(' ') + ')');
   }
 }
 
