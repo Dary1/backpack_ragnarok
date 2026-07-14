@@ -54,7 +54,7 @@ import { clearDexFocusId } from '../store';
 import { DexDetail } from './DexDetail';
 import { useDexCard } from './DexCardWindow'; // REQ-0052
 import { dexNoOf } from './dexNo';
-import { iconDataUrl, iconDims } from './dexIcons';
+import { iconDims, resolveIconUrl } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 
 export interface DexEntry {
@@ -350,7 +350,7 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
 
           <div className="dex-grid dgrid">
             {filtered.map((e) => {
-              const icon = iconDataUrl(e.entry.icon);
+              const icon = resolveIconUrl(e.entry.id, e.entry.icon).url; // REQ-0133
               const no = dexNos[e.id];
               const cat = categoryOf(e);
               const displayName = locale === 'ja' ? nameJaOf(e.entry) || nameOf(e.entry) : nameOf(e.entry);
@@ -443,7 +443,7 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
               </div>
               <div className="dex-tm-grid dgrid">
                 {tms.map((tmEntry) => {
-                  const icon = iconDataUrl(tmEntry.icon);
+                  const icon = resolveIconUrl(tmEntry.id, tmEntry.icon).url; // REQ-0133
                   return (
                     <div key={tmEntry.id} className={`dex-tm-card dcard rar ${rarThemeClass(tmEntry.rarity)}`}>
                       <span className="gem" aria-hidden="true" />

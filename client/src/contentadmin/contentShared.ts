@@ -308,6 +308,21 @@ export function resolveDefArtwork(
   return byName[def.system_name] ?? null;
 }
 
+/** REQ-0133: the def's GAME-mirrored art URL -- the ADOPTED render URL of the
+ * ref-first-resolved artwork (def.artwork_ref adopted -> exact-name adopted), or
+ * null when nothing is adopted (the game then falls back to the sprite icon).
+ * Cache-busted by the adopted seed. The GAME renders the ADOPTED render only, so
+ * an EntityPreview fed this URL shows exactly what the game shows -- and null
+ * here is precisely when it should fall back to the sprite, mirroring the chain. */
+export function defAdoptedArtUrl(
+  def: { artwork_ref?: string | null; system_name: string },
+  byName: Record<string, ArtworkDto>,
+): string | null {
+  const art = resolveDefArtwork(def, byName);
+  if (!art || art.adopted_render_id == null) return null;
+  return artAdoptedUrl(art.system_name) + '?v=' + (art.adopted_seed != null ? art.adopted_seed : 'a');
+}
+
 export type ArtLinkMode = 'selected' | 'name match' | 'none';
 /** How a def's art is linked: an explicit ref ('selected'), the exact-name
  * canonical fallback ('name match'), or nothing ('none'). */

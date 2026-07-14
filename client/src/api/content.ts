@@ -21,6 +21,10 @@ export interface GameData {
   CONN_SHAPES: ConnShapeMap;
   /** REQ-0170: the gacha packs, id-keyed. */
   PACKS: Record<string, ApiPackEntry>;
+  /** REQ-0133: registry-first item art. id -> resolved adopted-render URL
+   * (`/api/art/<artwork>.png`). Sparse; an absent id falls back to its SVG
+   * sprite icon. Handed to board/itemArt.setItemArtUrls() at boot. */
+  ART_URLS: Record<string, string>;
   makeState: () => GameState;
   starterUnits: ApiStarterUnits | null; // REQ-0051: fresh-profile starter-unit seed source
 }
@@ -93,6 +97,8 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
   const UNITS: UnitDefMap = (payload.units ?? {}) as unknown as UnitDefMap;
   const CONN_SHAPES: ConnShapeMap = (payload.connection_shapes ?? {}) as unknown as ConnShapeMap;
   const PACKS: Record<string, ApiPackEntry> = payload.packs ?? {};
+  // REQ-0133: the server-resolved registry-first art URLs (additive, sparse).
+  const ART_URLS: Record<string, string> = payload.art_urls ?? {};
 
   const scenarioForState: Partial<ApiScenario> = JSON.parse(JSON.stringify(payload.scenario ?? {}));
   delete scenarioForState.layout;
@@ -102,7 +108,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, makeState, starterUnits: payload.starterUnits ?? null };
+  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, makeState, starterUnits: payload.starterUnits ?? null };
 }
 
 export type DataSource = 'live' | 'error';

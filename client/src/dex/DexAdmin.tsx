@@ -41,7 +41,7 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { ShapeGrid } from './ShapeGrid';
-import { iconDataUrl, iconDims } from './dexIcons';
+import { iconDims, resolveIconUrl } from './dexIcons';
 
 interface DexAdminProps {
   locale: Locale;
@@ -158,7 +158,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
                 <ShapeGrid
                 shape={shapeOf(e.entry)}
                 cellPx={28}
-                iconUrl={iconDataUrl(e.entry.icon)}
+                iconUrl={resolveIconUrl(e.entry.id, e.entry.icon).url}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}
@@ -269,7 +269,7 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
               <ShapeGrid
                 shape={shapeOf(e.entry)}
                 cellPx={28}
-                iconUrl={iconDataUrl(e.entry.icon)}
+                iconUrl={resolveIconUrl(e.entry.id, e.entry.icon).url}
                 iconAlt={e.entry.icon}
                 iconDims={iconDims(e.entry.icon)}
                 iconStretch={stretchOf(e.entry)}

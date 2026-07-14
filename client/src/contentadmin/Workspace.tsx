@@ -20,7 +20,7 @@
 // through the def (variants obtain art ONLY through the parent def).
 import { useState } from 'react';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { parseIngest, artworkThumbUrl, resolveDefArtwork, artLinkMode, artPickTestid } from './contentShared';
+import { parseIngest, artworkThumbUrl, resolveDefArtwork, artLinkMode, artPickTestid, defAdoptedArtUrl } from './contentShared';
 import { VariantCard } from './VariantCard';
 import { DiffView } from './DiffView';
 
@@ -177,6 +177,9 @@ export function Workspace(props: {
   const artHash = '#/artadmin/' + encodeURIComponent(art ? art.system_name : def.system_name);
   const headerThumb = artworkThumbUrl(art);
   const variantThumb = headerThumb; // variants share the def's resolved art
+  // REQ-0133: the def's adopted registry-render URL (game-mirror) for the entity
+  // preview -- registry art wins, else the sprite icon (labelled in-preview).
+  const entityArtUrl = defAdoptedArtUrl(def, props.artworksByName);
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
@@ -319,6 +322,7 @@ export function Workspace(props: {
             onEditOpen={props.onEditOpen} onRecheck={props.onRecheck}
             picked={diffPicks.includes(v.variant_no)} onTogglePick={props.onTogglePick}
             onDiffAdopted={props.onDiffAdopted} hasArt={hasArtLink} artThumb={variantThumb}
+            entityArtUrl={entityArtUrl}
             report={props.report} />
         ))}
         {variants.length === 0 && <div className="aa-empty t-micro">no variants yet -- commission a batch above</div>}

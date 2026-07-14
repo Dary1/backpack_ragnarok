@@ -52,7 +52,7 @@ import { fetchDexCard } from '../api';
 import type { ApiDexCardDto } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
-import { iconDataUrl, iconDims } from './dexIcons';
+import { iconDims, resolveIconUrl } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 
 export type DexCardKind = 'item' | 'si' | 'tm';
@@ -226,7 +226,7 @@ function DexCardContent({
   const name = locale === 'ja' ? card.i18n?.ja?.name || card.name_ja || card.name : card.name;
   const flavor = locale === 'ja' ? card.i18n?.ja?.flavor || card.flavor_ja || card.flavor : card.flavor;
   const eff = locale === 'ja' ? card.eff_ja : card.eff_en;
-  const icon = iconDataUrl(card.icon);
+  const icon = resolveIconUrl(card.id, card.icon).url; // REQ-0133 registry-first
   const shape = card.shape && card.shape.length > 0 ? card.shape : ([[0, 0]] as Array<[number, number]>);
 
   return (

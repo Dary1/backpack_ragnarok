@@ -2,6 +2,7 @@
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { Engine } from '../engine/adapter';
 import { setUnitDefs } from '../board/unitIcon';
+import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -173,6 +174,10 @@ export async function boot(): Promise<void> {
   // REQ-0170: hand the defs to the raster manifest BEFORE any board mounts, so
   // loadBoardTextures() has the unit art list on its first (cached) call.
   setUnitDefs(gameData.UNITS);
+  // REQ-0133: hand the server-resolved registry-first item art URLs to the raster
+  // manifest BEFORE any board mounts, so loadBoardTextures()'s first (cached) call
+  // already carries the item rasters (art arrives as DATA; the renderer is untouched).
+  setItemArtUrls(gameData.ART_URLS);
   let state = engine.migrateState(gameData.makeState()); // REQ-0051: reassigned by fresh-profile starter seed
 
   // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when

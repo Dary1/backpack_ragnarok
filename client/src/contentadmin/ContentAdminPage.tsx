@@ -34,7 +34,7 @@ import {
   recheckVariantApi, listArtworks,
 } from '../api';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork } from './contentShared';
+import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork, defAdoptedArtUrl } from './contentShared';
 import { DefRail } from './DefRail';
 import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
@@ -429,7 +429,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
             onCancel={() => setConfirm(null)}>
             <div className="ca-confirm-preview">
               {confirmThumb ? <img className="ca-confirm-thumb" src={confirmThumb} alt="" /> : null}
-              <EntityPreview kind={def ? def.kind : ''} data={confirmVariant.data} idBase="confirm" compact />
+              <EntityPreview kind={def ? def.kind : ''} data={confirmVariant.data} idBase="confirm" compact artUrl={def ? defAdoptedArtUrl(def, artworksByName) : null} />
             </div>
             <div className="ca-confirm-checks">
               <span className={'ca-overall ' + (confirmOverall === 'PASS' ? 'is-pass' : 'is-fail')}>{confirmOverall}</span>

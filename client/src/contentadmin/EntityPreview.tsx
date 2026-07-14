@@ -92,15 +92,22 @@ function Tags({ data }: { data: Data }) {
   );
 }
 
-function IconGrid({ data, compact }: { data: Data; compact?: boolean }) {
+function IconGrid({ data, compact, artUrl }: { data: Data; compact?: boolean; artUrl?: string | null }) {
   const icon = typeof data.icon === 'string' ? data.icon : '';
   const cellPx = compact ? 18 : 28;
+  // REQ-0133: registry-first, exactly like the game board. When an adopted
+  // registry render exists (artUrl), draw THAT; else the SVG sprite. iconDims
+  // (the sprite's native aspect) stays the contain-fit input -- the backfilled
+  // registry raster is aspect-identical, and explicit AI art is fit into the
+  // same footprint.
+  const registry = typeof artUrl === 'string' && artUrl.length > 0;
+  const url = registry ? artUrl : (icon ? iconDataUrl(icon) : null);
   return (
     <span className="ca-ep-thumb">
       <ShapeGrid
         shape={entityShape(data)}
         cellPx={cellPx}
-        iconUrl={icon ? iconDataUrl(icon) : null}
+        iconUrl={url}
         iconAlt={icon}
         iconDims={icon ? iconDims(icon) : null}
         iconStretch={typeof data.stretch === 'boolean' ? data.stretch : undefined}
@@ -110,15 +117,33 @@ function IconGrid({ data, compact }: { data: Data; compact?: boolean }) {
   );
 }
 
-export function EntityPreview({ kind, data, idBase, compact }: {
+/** REQ-0133: labels which art tier the preview drew -- the SAME chain the game
+ * resolves (registry adopted render -> sprite icon), so the desk sees exactly
+ * what the game shows. `registry` true => an adopted registry render exists. */
+function ArtSourceLabel({ registry, idBase }: { registry: boolean; idBase: string | number }) {
+  return (
+    <span data-testid={'entity-art-source-' + idBase}
+      className={'ca-ep-artsrc ' + (registry ? 'is-registry' : 'is-sprite')}>
+      {registry ? 'registry art' : 'sprite icon'}
+    </span>
+  );
+}
+
+export function EntityPreview({ kind, data, idBase, compact, artUrl }: {
   kind: string;
   data: Data;
   idBase: string | number;
   compact?: boolean;
+  /** REQ-0133: the def's adopted registry-render URL (game-mirror), or null/
+   * absent to show the SVG sprite. Passed by VariantCard from the contentadmin's
+   * own live artwork resolution; absent on surfaces that don't resolve art
+   * (they show the sprite + label accordingly). */
+  artUrl?: string | null;
 }) {
   const testid = 'entity-preview-' + idBase;
   const fbTestid = 'entity-fallback-' + idBase;
   const cls = 'ca-ep' + (compact ? ' ca-ep--compact' : '');
+  const registryArt = typeof artUrl === 'string' && artUrl.length > 0;
 
   // ---- po_def / si_def: shape grid + names + rarity + tags + flavor + effects
   if (kind === 'po_def' || kind === 'si_def') {
@@ -130,12 +155,13 @@ export function EntityPreview({ kind, data, idBase, compact }: {
     return (
       <div data-testid={testid} className={cls}>
         <div className="ca-ep-head">
-          <IconGrid data={data} compact={compact} />
+          <IconGrid data={data} compact={compact} artUrl={artUrl} />
           <div className="ca-ep-headtext">
             <Names data={data} />
             <div className="ca-ep-chips">
               <RarityChip rarity={data.rarity} />
               {slot ? <span className="ca-ep-chip ca-ep-slot">slot: {slot}</span> : null}
+              <ArtSourceLabel registry={registryArt} idBase={idBase} />
             </div>
             {!compact ? <Tags data={data} /> : null}
           </div>
@@ -155,10 +181,10 @@ export function EntityPreview({ kind, data, idBase, compact }: {
     return (
       <div data-testid={testid} className={cls}>
         <div className="ca-ep-head">
-          <IconGrid data={data} compact={compact} />
+          <IconGrid data={data} compact={compact} artUrl={artUrl} />
           <div className="ca-ep-headtext">
             <Names data={data} />
-            <div className="ca-ep-chips"><RarityChip rarity={data.rarity} /></div>
+            <div className="ca-ep-chips"><RarityChip rarity={data.rarity} /><ArtSourceLabel registry={registryArt} idBase={idBase} /></div>
           </div>
         </div>
         {!compact ? <Flavor data={data} /> : null}

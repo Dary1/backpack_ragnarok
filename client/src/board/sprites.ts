@@ -194,6 +194,7 @@ export function loadSpriteTextures(): Promise<Map<string, Texture>> {
 // at the draw site, but as an absence in the map that the chain already knows
 // how to handle.
 import { unitIconRasters, type RasterEntry } from './unitIcon';
+import { itemIconRasters } from './itemArt'; // REQ-0133: item rasters share this same map/route
 
 async function loadRaster(entry: RasterEntry): Promise<readonly [string, Texture] | null> {
   try {
@@ -235,7 +236,9 @@ export function loadBoardTextures(): Promise<Map<string, Texture>> {
   if (!boardLoadPromise) {
     boardLoadPromise = (async () => {
       const symbols = await loadSpriteTextures();
-      const rasters = await Promise.all(unitIconRasters().map(loadRaster));
+      // REQ-0133: unit rasters AND item rasters are loaded into the ONE shared
+      // texture map (namespaced keys never collide: unit:* / item:* / icon-*).
+      const rasters = await Promise.all([...unitIconRasters(), ...itemIconRasters()].map(loadRaster));
       const merged = new Map(symbols);
       for (const hit of rasters) {
         if (hit) merged.set(hit[0], hit[1]);

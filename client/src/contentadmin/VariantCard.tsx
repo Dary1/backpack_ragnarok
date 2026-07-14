@@ -43,6 +43,9 @@ export function VariantCard(props: {
   // render-less linked artwork shows the placeholder); hasArt gates the thumb.
   hasArt: boolean;
   artThumb: string | null;
+  /** REQ-0133: the def's adopted registry-render URL (game-mirror) fed to the
+   * EntityPreview -- registry art when present, else the sprite icon. */
+  entityArtUrl?: string | null;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { v, kind, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
@@ -92,7 +95,7 @@ export function VariantCard(props: {
               : <span className="ca-vcard-art-ph">◇</span>}
           </span>
         )}
-        <EntityPreview kind={kind} data={v.data} idBase={no} />
+        <EntityPreview kind={kind} data={v.data} idBase={no} artUrl={props.entityArtUrl} />
       </div>
 
       <div data-testid={'checks-' + no} className="ca-checks">

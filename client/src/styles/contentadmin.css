@@ -219,6 +219,14 @@
 .ca-ep-chip.rarity { font-weight: 700; letter-spacing: 0.04em; }
 .ca-ep-hp { color: var(--ember-hi); border-color: var(--ember-lo); }
 .ca-ep-slot { color: var(--r-uncommon); border-color: var(--r-uncommon); }
+/* REQ-0133: the art-source label (registry adopted render vs SVG sprite icon) --
+   the SAME chain the game resolves, surfaced so the desk sees what the game shows. */
+.ca-ep-artsrc {
+  font-size: 10px; padding: 1px 6px; border-radius: 2px; letter-spacing: 0.03em;
+  border: 1px solid var(--border-lo); text-transform: uppercase;
+}
+.ca-ep-artsrc.is-registry { color: var(--r-rare); border-color: var(--r-rare); }
+.ca-ep-artsrc.is-sprite { color: var(--ink-lo); opacity: 0.75; }
 .ca-ep-tags, .ca-ep-skills { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .ca-ep-tag, .ca-ep-skill { font-size: 11px; padding: 1px 6px; }
 .ca-ep-flavor { font-size: 12px; color: var(--bone-2); font-style: italic; }

@@ -68,6 +68,7 @@ import type { BoardOps } from './boardOps';
 import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, UNIT_CORE_RADIUS, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, pointSegDistance, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
 import { resolveUnitIcon, unitIconKey } from './unitIcon';
+import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve registry-first
 import { drawChargeRing } from './chargeRing';
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
@@ -79,6 +80,18 @@ import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
 // Neither touches game state -- hovering a beam can never mutate a board.
 import { clearBeamHoverForBoard, getBeamHover, setBeamHover, subscribeBeamHover } from './beamHover';
 import { traceUnit } from './linkTrace';
+
+// REQ-0133: registry-first item texture. Resolves a cell's texture through
+// resolveItemIcon (item:<id> registry raster -> SVG sprite symbol -> nothing)
+// over the SHARED texture map -- the exact machinery the Unit cell uses. A
+// registry raster that 404'd / failed to decode is simply absent from the map,
+// so has() says no and the chain falls through to the sprite symbol; missing art
+// never blocks a draw. Contain-fit / aspect handling is unchanged at every call
+// site (fitSpriteToBox), so a non-square item raster is fitted, never stretched.
+function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string): Texture | undefined {
+  const res = resolveItemIcon(id, spriteKey, (k) => textures.has(k));
+  return res.key ? textures.get(res.key) : undefined;
+}
 
 export interface BoardDeps {
   engine: EngineInstance;
@@ -730,7 +743,7 @@ export class BoardRenderer {
       // BP-color tint but stays below the PO's own sprite art, which is
       // added to gItems next).
       drawTintOverlay(this.gItems, ops.cellsOf(state, p), p.uid, tintRedSet, tintYellowSet);
-      const texture = textures.get(def.icon);
+      const texture = itemTex(textures, p.id, def.icon);
       if (texture) {
         const sprite = new Sprite(texture);
         const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
@@ -824,7 +837,7 @@ export class BoardRenderer {
       // +0..-8 for hilt -- see fitSpriteToBox doc).
       const bx = poBox(a.blade);
       const bladeDef = items[a.blade.id];
-      const bladeTexture = bladeDef && textures.get(bladeDef.icon);
+      const bladeTexture = bladeDef && itemTex(textures, a.blade.id, bladeDef.icon);
       if (bladeTexture) {
         const sprite = new Sprite(bladeTexture);
         fitSpriteToBox(sprite, bx.x + bx.w * 0.1, bx.y + bx.h * 0.1, bx.w * 0.8, bx.h * 0.8, bladeDef?.align, bx);
@@ -833,7 +846,7 @@ export class BoardRenderer {
       }
       const hx = poBox(a.hilt);
       const hiltDef = items[a.hilt.id];
-      const hiltTexture = hiltDef && textures.get(hiltDef.icon);
+      const hiltTexture = hiltDef && itemTex(textures, a.hilt.id, hiltDef.icon);
       if (hiltTexture) {
         const sprite = new Sprite(hiltTexture);
         fitSpriteToBox(sprite, hx.x + hx.w * 0.1, hx.y + hx.h * 0.1, hx.w * 0.8, hx.h * 0.8, hiltDef?.align, hx);
@@ -1025,7 +1038,7 @@ export class BoardRenderer {
           bar.eventMode = 'none'; // decorative, see constructor note
           g.addChild(bar);
         } else if (siDef) {
-          const tex = textures.get(siDef.icon);
+          const tex = itemTex(textures, a.id, siDef.icon);
           if (tex) {
             const sprite = new Sprite(tex);
             sprite.x = x - 12;
@@ -1119,7 +1132,7 @@ export class BoardRenderer {
       // comment near `container`/`cbp` above for the color/alpha choice).
       drawTintOverlay(g, [[r, c]], a.uid, tintRedSet, tintYellowSet);
       if (siDef) {
-        const tex = textures.get(siDef.icon);
+        const tex = itemTex(textures, a.id, siDef.icon);
         if (tex) {
           const sprite = new Sprite(tex);
           sprite.x = x - 18;
@@ -1628,7 +1641,7 @@ export class BoardRenderer {
         }
         const siDef = this.deps.siDefs[a.id];
         if (siDef) {
-          const tex = this.deps.textures.get(siDef.icon);
+          const tex = itemTex(this.deps.textures, a.id, siDef.icon);
           if (tex) {
             const sprite = new Sprite(tex);
             sprite.x = local.x - 16;

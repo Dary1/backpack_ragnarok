@@ -17,7 +17,7 @@ import { rarThemeClass } from '../render/uiBits';
 import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { DexDiagram } from './DexDiagram';
-import { iconDataUrl, iconDims } from './dexIcons';
+import { iconDims, resolveIconUrl } from './dexIcons';
 import { ItemDetailCard } from './ItemDetailCard';
 import { RegistryBadge } from './RegistryBadge'; // REQ-0155 LINK-FIRST
 
@@ -60,7 +60,7 @@ export function DexDetail({ selected, locale, tagTree, registry, dexNo }: DexDet
         <DexDiagram
           entry={selected.entry}
           shape={shapeOf(selected.entry)}
-          iconUrl={iconDataUrl(selected.entry.icon)}
+          iconUrl={resolveIconUrl(selected.entry.id, selected.entry.icon).url}
           iconDims={iconDims(selected.entry.icon)}
           iconStretch={stretchOf(selected.entry)}
           iconAlign={alignOf(selected.entry)}
