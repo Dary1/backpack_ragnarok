@@ -229,3 +229,18 @@ NOTE [vetoable]: all four starters currently share the one none-shape unit (bers
 - 8933921 migration renumber 011 -> 012_starter_claims.sql
 - ed447c5 re-sync current master (REQ-0058 sealed_seeds / REQ-0173)
 - (final) REQ-0170 BP.unit adaptation + web/app rebuild + this gate record
+
+### Integration-owner merge + deploy (wave 3 -- 2026-07-14)
+Merged and deployed to master by the integration owner (user go-ahead 2026-07-14).
+- Merge: `26ada1c` "Merge req-0051-starter-jobs" (`--no-ff`, into master @ `8963278`). CLEAN -- no conflicts (the 3 master commits since the branch last synced touched only `docs/REQ/*`).
+- Post-merge sanity: server+shared `tsc -p tsconfig.server.json` OK; `server/tests/api/starter.cjs` PASS on BOTH the files and pg backends.
+- Migration `012_starter_claims.sql`: already present in the deploy DB (idempotent `CREATE TABLE IF NOT EXISTS` + GRANT); verified `to_regclass('public.starter_claims')` present -- no re-apply required.
+- Full gate: `flock /tmp/backpack_ci.lock bash tools/release.sh` -> CI GREEN. api_test 175 passed x2 backends; dist rebuilt + committed `239ca7b`.
+- Deploy: restarted `backpack-api` + `backpack-web` (both active); HTTP 200 on 8801 `/app/` and 8802 `/api/health`.
+- e2e (all via the sanctioned wrapper `pnpm run e2e`, box-locked):
+  - pre-deploy (release ci, local ingress, fresh dist): 164 passed / 0 failed (3.1m).
+  - post-deploy (restarted services, local ingress): 164 passed / 0 failed (3.0m).
+  - live public tunnel (https://backpack-dev.qtie.jp): 164 passed / 0 failed (13.1m).
+  `starter-units.spec.ts` PASS 3/3 in every run (fresh-guest four starter squads; fixed-PO drag refusal; starter-unit discard).
+- Final master hash after deploy: `239ca7b`.
+- Follow-up (NON-blocking, `[vetoable]` -- see the REQ-0170 integration note above): all four starters currently share the sole none-shape unit `berserker`; refine the starter<->unit pairing (author dedicated starter units, or map Guard/Arms/Mend/Scout to thematic none-shape units) as a follow-up. Recorded merge-integration stopgap, not a naming decision; does NOT block done.
