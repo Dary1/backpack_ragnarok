@@ -233,6 +233,27 @@ export interface ApiContentPayload {
   art_urls?: Record<string, string>;
 }
 
+// REQ-0178: per-section source accounting for registry-first /api/content
+// serving (Phase 1: po/si/tm). Reported by GET /api/content/dev/sources -- a
+// dev/meta endpoint, deliberately NOT folded into the /api/content payload so
+// the served shape stays byte-identical under an empty registry tier. `registry`
+// = entities served from an adopted registry variant; `fallback_file` = entities
+// served from the live-file entry (no adopted variant); `file_only_names` = the
+// fallback ids, so drift is observable.
+export interface ContentSourceAccounting {
+  registry: number;
+  fallback_file: number;
+  file_only_names: string[];
+}
+export interface ApiContentSourcesResponse {
+  ok: true;
+  backend: 'pg' | 'files';
+  covered_kinds: { items: 'po_def'; sis: 'si_def'; tms: 'tm_def' };
+  items: ContentSourceAccounting;
+  sis: ContentSourceAccounting;
+  tms: ContentSourceAccounting;
+}
+
 export interface ApiCanvasDoc {
   schema_version: number;
   profile_id: string;

@@ -69,6 +69,16 @@ function run(res, promise) {
   promise.catch((e) => { try { sendJSON(res, 500, { ok: false, error: 'internal: ' + ((e && e.message) || e) }); } catch (_) { /* headers sent */ } });
 }
 
+// REQ-0178: registry-first /api/content serving. After any adopt/edit/delete/
+// patch the warm registry snapshot (server/lib/content.cjs) is refreshed so the
+// next /api/content payload reflects the change. AWAITED by the mutating
+// handlers for e2e determinism (mirrors REQ-0133's refreshArtUrls). Never
+// throws: a registry read hiccup must not fail the mutation that already
+// committed.
+function invalidateServedContent() {
+  return require('../lib/content.cjs').refreshRegistryData().catch(() => {});
+}
+
 // Full-provenance validation (gate G3): every variant carries source/model/
 // prompt/params; human edits carry parent lineage. Returns a normalized
 // provenance object or throws BAD_PROVENANCE.
@@ -167,6 +177,7 @@ async function hPatchDef(req, res, name) {
   // REQ-0133: an artwork_ref change alters registry-first resolution -> refresh
   // the /api/content art_urls map (awaited for e2e determinism). Non-fatal.
   if (!refPatch.skip) { try { await require('../lib/content.cjs').refreshArtUrls(); } catch (e) { /* non-fatal */ } }
+  await invalidateServedContent(); // REQ-0178
   sendJSON(res, 200, { ok: true, def: updated });
 }
 
@@ -238,6 +249,7 @@ async function hEdit(req, res, name, variant_no) {
       { model: (b.provenance && b.provenance.model) || 'human', prompt: (b.provenance && b.provenance.prompt) || 'human_edit', params: (b.provenance && b.provenance.params) || {} },
       'human_edit', parent.id);
     const created = await ingestOne(def, b.data, prov);
+    await invalidateServedContent(); // REQ-0178
     sendJSON(res, 201, { ok: true, variant: created, parent_variant_id: parent.id, parent_variant_no: variant_no });
   } catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
@@ -278,21 +290,29 @@ async function hAdopt(req, res, name) {
   catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   let exportRec = null, exportError = null;
   try { exportRec = await exportAdopted(name); } catch (e) { exportError = e.message; }
+  await invalidateServedContent(); // REQ-0178: the served payload must follow the new adoption
   sendJSON(res, 200, { ok: true, def, adopted_variant_no: b.variant_no, override: b.override === true, export: exportRec, export_error: exportError });
 }
 
 async function hDeleteVariant(req, res, name, variant_no) {
-  try { await storage.deleteVariant(name, variant_no); sendJSON(res, 200, { ok: true, deleted: variant_no }); }
+  try { await storage.deleteVariant(name, variant_no); await invalidateServedContent(); sendJSON(res, 200, { ok: true, deleted: variant_no }); }
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
 async function hDevClear(req, res) {
   const r = await storage.clearAllContent();
+  await invalidateServedContent(); // REQ-0178: dropping all defs empties the registry tier
   sendJSON(res, 200, { ok: true, deleted: r.deleted });
 }
 
 // ---- public serving ----
 
+// REQ-0178: source-accounting dev/meta endpoint (public read, same posture as
+// /api/content). Reports per section {registry, fallback_file, file_only_names[]}
+// so file/registry drift is observable without diffing payloads by hand.
+async function hSources(req, res) {
+  sendJSON(res, 200, Object.assign({ ok: true }, require('../lib/content.cjs').getContentSources()));
+}
 async function hServeAdopted(req, res, name) {
   const a = await storage.getAdoptedVariant(name);
   if (!a) return sendJSON(res, 404, { ok: false, error: 'no adopted content for ' + name });
@@ -319,6 +339,7 @@ const RE_EDIT = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)\/edit$/;
 const RE_VARIANT = /^\/api\/content\/defs\/([^/]+)\/variants\/(\d+)$/;
 const RE_ADOPT = /^\/api\/content\/defs\/([^/]+)\/adopt$/;
 const RE_DEV_CLEAR = /^\/api\/content\/dev\/clear-all$/;
+const RE_SOURCES = /^\/api\/content\/dev\/sources$/; // REQ-0178
 const RE_PUB_META = /^\/api\/content\/([^/]+)\/meta$/;
 const RE_PUB_ADOPTED = /^\/api\/content\/([^/]+)$/;
 
@@ -329,6 +350,7 @@ function tryContentRoutes(req, res, url, p) {
     if (!isDevFallback(req) || !devClearAllowed()) { sendJSON(res, 403, { ok: false, error: 'forbidden: dev-only hook (needs dev_mode fallback + ALLOW_DEV_CLEAR=1)' }); return true; }
     run(res, hDevClear(req, res)); return true;
   }
+  if (RE_SOURCES.test(p) && req.method === 'GET') { run(res, hSources(req, res)); return true; } // REQ-0178 (public read)
   if (RE_DEFS.test(p)) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hListDefs(req, res)); return true; }

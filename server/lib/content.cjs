@@ -251,16 +251,138 @@ async function refreshArtUrls() {
   return artUrls;
 }
 
-function getContent() {
+// ---- REQ-0178: registry-first CONTENT serving (Phase 1: po/si/tm) ----
+// The data-side mirror of the REQ-0133 art_url warm cache above. For each
+// served entity of a covered kind the game needs the RESOLVED data: the
+// ADOPTED registry variant when one exists, else the live-file entry
+// (fallback). Like art_urls this is DB-derived (adopted variants), so it can
+// change with no content file changing -- it lives in its OWN warm cache,
+// refreshed off a TTL + explicitly on adopt/edit/delete/patch
+// (refreshRegistryData, awaited by those handlers for e2e determinism).
+// getContent() OVERLAYS the current snapshot SYNCHRONOUSLY, so /api/content
+// stays one synchronous fetch. Resolution is computed at the storage
+// chokepoint (storage.resolveAdoptedContentData) -- no client-side cross-
+// registry join. The registry is pg-only: under the files backend (or with no
+// DATABASE_URL) the snapshot is EMPTY and the payload is byte-identical to the
+// pre-REQ file payload (fallback covers everything). Kinds beyond po/si/tm are
+// deliberately Phase-1b (see the REQ log): unit/pack have a second, still-file
+// consumer (the gacha roll), and monster/skill/formation are served through a
+// different module (services/core.cjs getScheduleContent), not this one.
+const REGISTRY_KIND_BY_SECTION = { items: 'po_def', sis: 'si_def', tms: 'tm_def' };
+let registryData = { po_def: {}, si_def: {}, tm_def: {} }; // { kind -> { bare -> adopted DATA (raw entry) } }
+let registryAt = 0;
+const REGISTRY_TTL_MS = 15000; // mirror ART_URLS_TTL_MS
+
+async function computeRegistryData() {
+  const empty = { po_def: {}, si_def: {}, tm_def: {} };
+  if (process.env.STORAGE_BACKEND !== 'pg') return empty; // the content registry is pg-only
   const payload = ensureFilePayload();
-  payload.art_urls = artUrls; // additive registry-first map (see the warm-cache note above)
-  if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
+  const storage = require('../storage.cjs');
+  return {
+    po_def: await storage.resolveAdoptedContentData('po_def', Object.keys(payload.items || {})),
+    si_def: await storage.resolveAdoptedContentData('si_def', Object.keys(payload.sis || {})),
+    tm_def: await storage.resolveAdoptedContentData('tm_def', Object.keys(payload.tms || {})),
+  };
+}
+
+/** Recompute the registry snapshot now. AWAITED by the adopt/edit/delete/patch
+ * handlers so the next /api/content reflects the change (the wiring e2e
+ * determinism contract); also fired opportunistically on a TTL by getContent.
+ * Never throws: a registry read failure keeps the last snapshot (empty at
+ * worst) so /api/content never 500s on a transient DB hiccup. */
+async function refreshRegistryData() {
+  try { registryData = await computeRegistryData(); registryAt = Date.now(); }
+  catch (e) { /* keep last snapshot; /api/content must not fail on a registry read */ }
+  return registryData;
+}
+
+function registryIsEmpty(reg) {
+  return !reg || (Object.keys(reg.po_def).length + Object.keys(reg.si_def).length + Object.keys(reg.tm_def).length) === 0;
+}
+// A registry-sourced po/si entry is served through the EXACT transform the
+// file path applies (eff_en/eff_ja render + i18n back-compat), so a verbatim
+// backfilled variant produces byte-identical output; the data itself is
+// served verbatim (its own persisted fields untouched). Keyed by the served
+// id (the lookup name), so the payload key set is unchanged.
+function servedEffEntry(raw) {
+  return withBackCompatI18n(Object.assign({}, raw, {
+    eff_en: renderEffJoined(raw.effects, 'en'),
+    eff_ja: renderEffJoined(raw.effects, 'ja'),
+  }));
+}
+function servedTmEntry(raw) { return withBackCompatI18n(Object.assign({}, raw)); } // tms carry no effects
+function overlaySection(base, regEntries, transform) {
+  const out = Object.assign({}, base);
+  for (const name of Object.keys(regEntries)) out[name] = transform(regEntries[name]);
+  return out;
+}
+let servedCache = null; // { fp, reg, payload } -- identity-keyed on the file payload + registry snapshot
+function applyRegistryOverlay(filePayload) {
+  const reg = registryData;
+  if (registryIsEmpty(reg)) return filePayload; // byte-identical to the pre-REQ payload (files backend / empty registry)
+  if (servedCache && servedCache.fp === filePayload && servedCache.reg === reg) return servedCache.payload;
+  const payload = Object.assign({}, filePayload, {
+    items: overlaySection(filePayload.items, reg.po_def, servedEffEntry),
+    sis: overlaySection(filePayload.sis, reg.si_def, servedEffEntry),
+    tms: overlaySection(filePayload.tms, reg.tm_def, servedTmEntry),
+  });
+  servedCache = { fp: filePayload, reg: reg, payload: payload };
   return payload;
 }
 
-// Warm the map shortly after boot so the FIRST client already sees registry art
-// (never blocks require; a no-op under the files backend).
+// Per-section source accounting {registry, fallback_file, file_only_names[]}.
+// Exposed on the dev/meta endpoint (GET /api/content/dev/sources), NOT folded
+// into /api/content itself -- that keeps the served payload byte-identical to
+// today under the files backend (the spec's byte-parity contract).
+function sourceAccountingFor(section, regEntries) {
+  const keys = Object.keys(section || {});
+  const reg = regEntries || {};
+  const fileOnly = keys.filter((k) => !Object.prototype.hasOwnProperty.call(reg, k)).sort();
+  return { registry: keys.length - fileOnly.length, fallback_file: fileOnly.length, file_only_names: fileOnly };
+}
+function getContentSources() {
+  const fp = ensureFilePayload();
+  const reg = registryData;
+  return {
+    backend: process.env.STORAGE_BACKEND === 'pg' ? 'pg' : 'files',
+    covered_kinds: REGISTRY_KIND_BY_SECTION,
+    items: sourceAccountingFor(fp.items, reg.po_def),
+    sis: sourceAccountingFor(fp.sis, reg.si_def),
+    tms: sourceAccountingFor(fp.tms, reg.tm_def),
+  };
+}
+
+let registryFallbackLogged = false;
+// One warn line per boot when the serving backend falls back to a file entry
+// for any covered id (drift observability). Suppressed under the files backend,
+// where an empty registry tier is BY DESIGN (the spec) rather than drift.
+function logRegistryFallbackOnce() {
+  if (registryFallbackLogged) return;
+  registryFallbackLogged = true;
+  if (process.env.STORAGE_BACKEND !== 'pg') return;
+  const s = getContentSources();
+  const fb = s.items.fallback_file + s.sis.fallback_file + s.tms.fallback_file;
+  const reg = s.items.registry + s.sis.registry + s.tms.registry;
+  if (fb > 0) {
+    console.warn('[content] REQ-0178 registry-first serving: ' + reg + ' entities from registry, ' + fb +
+      ' from file fallback (items=' + s.items.fallback_file + ' sis=' + s.sis.fallback_file + ' tms=' + s.tms.fallback_file + ')');
+  }
+}
+
+function getContent() {
+  const filePayload = ensureFilePayload();
+  const payload = applyRegistryOverlay(filePayload); // registry-first overlay (no-op under an empty registry)
+  payload.art_urls = artUrls; // additive registry-first art map (REQ-0133; see the warm-cache note above)
+  if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
+  if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
+  return payload;
+}
+
+// Warm both maps shortly after boot so the FIRST client already sees registry
+// content + art (never blocks require; a no-op under the files backend). The
+// registry warm also emits the single boot fallback-warn line.
 setImmediate(() => { refreshArtUrls().catch(() => {}); });
+setImmediate(() => { refreshRegistryData().then(logRegistryFallbackOnce).catch(() => {}); });
 
 // ---- HTTP helpers ----
 
@@ -270,4 +392,5 @@ module.exports = {
   REPO_ROOT, CONTENT_DIR, LIVE_DIR, VOCAB_PATH, ITEMS_PATH, SIS_PATH, TMS_PATH, UNITS_PATH, PACKS_PATH, SCENARIO_PATH, REGISTRY_PATH,
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
   buildContentPayload, getContent, invalidateContentCache, refreshArtUrls,
+  refreshRegistryData, getContentSources,
 };

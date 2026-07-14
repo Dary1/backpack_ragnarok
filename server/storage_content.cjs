@@ -144,6 +144,31 @@ async function resolveItemArtNames(names) {
   return out;
 }
 
+/** REQ-0178: registry-first CONTENT serving. The data-side sibling of
+ * resolveItemArtNames -- given a batch of bare entity ids (the served po/si/tm
+ * names) and a target kind, returns { bare -> adopted variant DATA (JSONB) } for
+ * every id whose content_def has that EXACT kind AND an adopted variant. An id
+ * with no matching-kind def, or a matching def with no adopted variant, is
+ * OMITTED (the caller then serves the live-file entry -- the fallback tier). The
+ * kind filter is load-bearing: content_defs.system_name is UNIQUE across kinds,
+ * so a name adopted under a DIFFERENT kind must not leak into this section. One
+ * cross-table round-trip; the returned `data` is served VERBATIM. */
+async function resolveAdoptedContentData(kind, names) {
+  const uniq = Array.from(new Set((names || []).filter((n) => typeof n === 'string' && n.length > 0)));
+  if (uniq.length === 0) return {};
+  const ns = uniq.map(nsName);
+  const res = await q(
+    `WITH input(bare, nsname) AS (SELECT * FROM unnest($1::text[], $2::text[]))
+     SELECT i.bare AS bare, v.data AS data
+       FROM input i
+       JOIN content_defs d ON d.system_name = i.nsname AND d.kind = $3
+       JOIN content_variants v ON v.id = d.adopted_variant_id`,
+    [uniq, ns, kind]);
+  const out = {};
+  for (const row of res.rows) out[row.bare] = row.data;
+  return out;
+}
+
 /** Create a content_def. content_defs.system_name is UNIQUE (one data facet
  * per name); a DUPLICATE surfaces as code DUPLICATE. The shared namespace
  * with artworks is deliberate (one entity, two facets), so a matching
@@ -387,6 +412,7 @@ module.exports = {
   closeContentPool,
   createContentDef, getContentDefByName, listContentDefs, updateContentDef,
   artworkFacetExists, resolveArtworkFacetName, resolveItemArtNames,
+  resolveAdoptedContentData,
   createVariant, updateVariantData, setVariantMachineCheck, setVariantReview,
   getVariantByNo, getVariantById, listVariants,
   adoptVariant, deleteVariant, getAdoptedVariant, clearAllContent,
