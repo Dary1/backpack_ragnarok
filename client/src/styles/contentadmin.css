@@ -291,3 +291,25 @@
   padding: 6px 12px; border-bottom: 1px solid var(--border-lo);
 }
 .ca-diff-fieldchip { font-size: 11px; padding: 1px 8px; color: var(--frost); border-color: var(--frost-lo); }
+
+/* REQ-0171: the gacha pack's emission pool -- the one thing an operator opens a pack
+   to look at. Weight is what is EDITED (the roll consumes it); the percentage beside
+   it is derived on render, never stored. */
+.ca-ep-pool {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 4px 10px;
+  margin-top: 6px;
+}
+.ca-ep-pool-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.14);
+}
+.ca-ep-pool-unit { color: var(--bone); }
+.ca-ep-pool-weight { color: var(--bone-3); }
+.ca-ep-pool-pct { margin-left: auto; color: var(--gold); }

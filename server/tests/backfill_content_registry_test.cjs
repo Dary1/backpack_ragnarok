@@ -21,19 +21,26 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the six live files map to five kinds (po_def has TWO sources); unit_def has NO source (zero by design)', () => {
+T('kind mapping: the eight live files map to seven kinds (po_def has TWO sources); unit_def and gacha_pack are REAL sources now (REQ-0171)', () => {
   const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
   assert.deepStrictEqual(files, [
+    'gacha_pack <- content/live/live_packs.json',     // REQ-0171
     'monster_def <- content/live/dungeon/enemies.json',
     'po_def <- content/live/dungeon/items.json',      // REQ-0160 Q1 = A
     'po_def <- content/live/live_items.json',
     'si_def <- content/live/live_sis.json',
     'skill_def <- content/live/dungeon/skills.json',  // REQ-0160 Q2 = yes
     'tm_def <- content/live/live_tms.json',
+    'unit_def <- content/live/live_units.json',       // REQ-0171 (defs shipped by REQ-0170)
   ]);
   assert.strictEqual(bf.SOURCES.filter((s) => s.kind === 'po_def').length, 2, 'REQ-0160: dungeon POs share the po_def kind with live_items');
-  assert.ok(!bf.SOURCES.some((s) => s.kind === 'unit_def'), 'unit_def must have no source file');
-  assert.ok(/REQ-0130/.test(bf.UNIT_DEF_NOTE), 'unit_def zero is documented with its reason');
+  // The old assertion here was "unit_def must have NO source" -- true until REQ-0170
+  // shipped the 12 roster defs. It is now the OPPOSITE assertion, and that inversion is
+  // the point: a pack pool that references units the ledger has never heard of would be
+  // a ledger that cannot check its own references.
+  assert.ok(bf.SOURCES.some((s) => s.kind === 'unit_def'), 'unit_def now HAS a source (REQ-0171)');
+  assert.ok(bf.SOURCES.some((s) => s.kind === 'gacha_pack'), 'gacha_pack is a registry kind (REQ-0171)');
+  assert.ok(/REQ-0171/.test(bf.UNIT_DEF_NOTE), 'the retired "zero by design" note says who retired it');
 });
 
 T('kind mapping (REQ-0160): dungeon skills map to skill_def, dungeon items to po_def -- both VERBATIM, batch carried', () => {
@@ -105,16 +112,17 @@ T('collectAll (real committed corpus): PER-FILE counts match each file, names un
     assert.strictEqual(fileCounts[s.file], n, s.file + ' count == its entries.length');
   }
   const counts = bf.perKindCounts(entries);
-  assert.strictEqual(counts.unit_def, 0, 'unit_def backfills ZERO (REQ-0130 provisional)');
+  assert.strictEqual(counts.unit_def, fileCounts['content/live/live_units.json'], 'unit_def backfills its live file (REQ-0171)');
+  assert.strictEqual(counts.gacha_pack, fileCounts['content/live/live_packs.json'], 'gacha_pack backfills its live file (REQ-0171)');
   assert.strictEqual(counts.po_def, fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json'],
     'po_def total is the SUM of its two source files (REQ-0160) -- not either one alone');
   assert.strictEqual(entries.length,
-    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def);
+    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack);
   assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
     'system_names unique across ALL files -- content_defs.system_name is UNIQUE across kinds');
 });
 
-T('collectAll (REQ-0160 count gate): the live corpus is exactly 22 pre-existing + 16 newly ruled-in defs', () => {
+T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units and packs', () => {
   const { entries } = bf.collectAll(REPO_ROOT, IMPORTED_AT);
   const c = bf.perKindCounts(entries);
   const fc = bf.perFileCounts(entries);
@@ -124,7 +132,13 @@ T('collectAll (REQ-0160 count gate): the live corpus is exactly 22 pre-existing 
   // REQ-0160 adds exactly 2 dungeon POs + 14 skills.
   assert.strictEqual(fc['content/live/dungeon/items.json'], 2, 'Q1 = A adds exactly 2 po_defs');
   assert.strictEqual(c.skill_def, 14, 'Q2 = yes adds exactly 14 skill_defs');
-  assert.strictEqual(entries.length, 38, '22 + 16 = the full ruled inventory');
+  // REQ-0171 adds whatever the two live files actually hold -- deliberately NOT a frozen
+  // number: the roster and the pack catalog are CONTENT and are expected to grow (REQ-0062
+  // added two themed packs while this REQ was in flight). The gate is that the totals
+  // RECONCILE, not that they never move.
+  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack, 'the corpus is the ruled 38 plus the live units and packs');
+  assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
+  assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {

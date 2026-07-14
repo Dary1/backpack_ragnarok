@@ -231,5 +231,86 @@ T('REQ-0160 Q1: the 2 live dungeon-mode POs PASS all four checks as po_def (the 
   }
 });
 
+
+
+// =====================================================================
+// REQ-0171: gacha_pack -- the checks that make a pool trustworthy.
+//
+// A pack's closed vocabulary is not vocab.json, it is THE LIVE UNIT ROSTER. The
+// single most dangerous thing a pack can contain is a pool row naming a unit that
+// does not exist: the roll would either crash or silently drop it, and no other
+// check in the chain would ever say so. These pin that, plus the runtime field
+// types gacha.cjs actually dereferences.
+// =====================================================================
+const GOOD_PACK = {
+  id: 'test_pack',
+  name: 'Test Pack',
+  cost: 10,
+  cost_tm: 'lrdst',
+  cells: [6, 8],
+  hp_per_cell: 15,
+  pool: [{ unit: 'elf', weight: 1 }, { unit: 'dwarf', weight: 3 }],
+  i18n: { ja: { name: 'テストパック' } },
+};
+
+T('REQ-0171 gacha_pack: a well-formed pack PASSES all applicable checks', () => {
+  const r = checks.runChecks('gacha_pack', 'gacha_pack/1', clone(GOOD_PACK));
+  assert.strictEqual(r.overall, 'PASS', JSON.stringify(r.checks));
+  const integrate = r.checks.find((c) => c.name === 'integrate');
+  assert.strictEqual(integrate.applicable, false, 'a pack places nothing on a canvas -- integrate is honestly not applicable');
+  const et = r.checks.find((c) => c.name === 'engine_types');
+  assert.strictEqual(et.applicable !== false, true, 'engine_types DOES apply: gacha.cjs consumes cost/cells/hp_per_cell/pool');
+});
+
+T('REQ-0171 gacha_pack: a pool row naming a unit with NO live def FAILS (the whole point of the kind)', () => {
+  const bad = clone(GOOD_PACK);
+  bad.pool.push({ unit: 'necromancer', weight: 1 }); // cut from the roster (REQ-0149 G7)
+  const r = checks.runChecks('gacha_pack', 'gacha_pack/1', bad);
+  assert.strictEqual(r.overall, 'FAIL');
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(/necromancer/.test(sv.detail), 'the failure names the unit that does not exist: ' + sv.detail);
+});
+
+T('REQ-0171 gacha_pack: a non-positive weight FAILS (a zero-weight row can never drop, and pretending otherwise is the lie)', () => {
+  const bad = clone(GOOD_PACK);
+  bad.pool[0].weight = 0;
+  const r = checks.runChecks('gacha_pack', 'gacha_pack/1', bad);
+  assert.strictEqual(r.overall, 'FAIL');
+});
+
+T('REQ-0171 gacha_pack: cost as a STRING fails engine_types (gacha.cjs would price the roll with "10")', () => {
+  const bad = clone(GOOD_PACK);
+  bad.cost = '10';
+  const r = checks.runChecks('gacha_pack', 'gacha_pack/1', bad);
+  const et = r.checks.find((c) => c.name === 'engine_types');
+  assert.strictEqual(et.ok, false, et.detail);
+});
+
+T('REQ-0171 gacha_pack: an unknown cost_tm FAILS -- a pack priced in a currency that does not exist is unbuyable', () => {
+  const bad = clone(GOOD_PACK);
+  bad.cost_tm = 'gold';
+  const r = checks.runChecks('gacha_pack', 'gacha_pack/1', bad);
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.strictEqual(sv.ok, false, sv.detail);
+});
+
+T('REQ-0171 gacha_pack: the THREE LIVE packs pass -- the measured basis for putting them in the ledger', () => {
+  const packs = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_packs.json'), 'utf8'));
+  for (const e of packs.entries) {
+    const r = checks.runChecks('gacha_pack', 'gacha_pack/1', clone(e));
+    assert.strictEqual(r.overall, 'PASS', e.id + ': ' + JSON.stringify(r.checks.filter((c) => !c.ok)));
+  }
+  assert.ok(packs.entries.length >= 1);
+});
+
+T('REQ-0171 unit_def: the 12 LIVE roster defs pass all applicable checks', () => {
+  const units = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_units.json'), 'utf8'));
+  assert.strictEqual(units.entries.length, 12, 'roster 001 is 12 units');
+  for (const e of units.entries) {
+    const r = checks.runChecks('unit_def', 'unit/1', clone(e));
+    assert.strictEqual(r.overall, 'PASS', e.id + ': ' + JSON.stringify(r.checks.filter((c) => !c.ok)));
+  }
+});
+
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);

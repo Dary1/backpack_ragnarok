@@ -10,8 +10,8 @@ import type { ContentDefDto, ContentVariantDto, ArtworkDto } from '../api';
 import { artAdoptedUrl, artRenderUrl } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 
-export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def';
-export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def'];
+export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack';
+export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack'];
 
 // Mirror of routes/content.cjs RESERVED (path segments the public serving
 // GET owns) -- checked client-side for instant feedback; the server
@@ -27,8 +27,39 @@ export const SCHEMA_REF_DEFAULTS: Record<Kind, string> = {
   tm_def: 'tm/1',
   monster_def: 'enemy/1',
   skill_def: 'skill/1',
-  unit_def: 'content/vocab.json',
+  // REQ-0171: both of these now HAVE a canon schema (REQ-0170 shipped them as live
+  // content), so the generic vocab placeholder that unit_def used to carry is retired.
+  unit_def: 'unit/1',
+  gacha_pack: 'gacha_pack/1',
 };
+
+/** REQ-0171: one row of a gacha pack's emission pool. */
+export interface PoolRow { unit: string; weight: number }
+
+/** Reads a pack's pool defensively out of a variant's untyped `data`. A malformed row
+ * is DROPPED from the display rather than rendered as garbage -- the machine check is
+ * what fails it, and the preview's job is to show what the roll would actually do. */
+export function packPool(data: Record<string, unknown>): PoolRow[] {
+  const raw = Array.isArray(data.pool) ? (data.pool as unknown[]) : [];
+  const out: PoolRow[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const row = r as Record<string, unknown>;
+    if (typeof row.unit !== 'string') continue;
+    const w = typeof row.weight === 'number' && Number.isFinite(row.weight) ? row.weight : 0;
+    out.push({ unit: row.unit, weight: w });
+  }
+  return out;
+}
+
+/** The REAL drop chance of each pool row: weight / total weight, as a percentage.
+ * The admin edits WEIGHTS (that is what the roll consumes -- see gacha.cjs
+ * pickWeighted); the percentage is derived and shown, never stored. Storing both is how
+ * a pool starts lying about itself. Total weight 0 -> every row reads 0%. */
+export function poolChances(pool: PoolRow[]): Array<PoolRow & { pct: number }> {
+  const total = pool.reduce((n, r) => n + Math.max(0, r.weight), 0);
+  return pool.map((r) => ({ ...r, pct: total > 0 ? (Math.max(0, r.weight) / total) * 100 : 0 }));
+}
 /** Canon schema_ref default for a kind (falls back to the generic vocab
  * placeholder for any future/unknown kind). */
 export function defaultSchemaRef(kind: string): string {

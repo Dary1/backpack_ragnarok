@@ -15,7 +15,7 @@
 import { ShapeGrid } from '../dex/ShapeGrid';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
 import type { IconAlign } from '../engine/engine.d.ts';
-import { rarityClass, entityShape, jaField, effectLine } from './contentShared';
+import { rarityClass, entityShape, jaField, effectLine, packPool, poolChances } from './contentShared';
 
 type Data = Record<string, unknown>;
 
@@ -201,6 +201,50 @@ export function EntityPreview({ kind, data, idBase, compact }: {
           <Names data={data} />
         </div>
         <Effects data={data} compact={compact} />
+        <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
+      </div>
+    );
+  }
+
+  // ---- gacha_pack (gacha_pack/1): what it costs, what it can cast, and how likely
+  // REQ-0171. The pool is the whole point of the kind, so it is rendered as the table
+  // an operator actually reasons about: unit, weight, and the DERIVED percentage. The
+  // percentage is never stored -- weight is what the roll consumes (gacha.cjs's
+  // pickWeighted), and a stored percentage is a second source of truth waiting to
+  // disagree with the first.
+  if (kind === 'gacha_pack') {
+    const consumed = new Set<string>([
+      'id', 'name', 'name_ja', 'i18n', 'cost', 'cost_tm', 'cells', 'hp_per_cell', 'pool',
+    ]);
+    const rows = poolChances(packPool(data));
+    const cells = Array.isArray(data.cells) ? (data.cells as unknown[]) : null;
+    const hpPer = typeof data.hp_per_cell === 'number' ? data.hp_per_cell : null;
+    return (
+      <div data-testid={testid} className={cls}>
+        <div className="ca-ep-headtext">
+          <Names data={data} />
+          <div className="ca-ep-chips">
+            {typeof data.cost === 'number'
+              ? <span className="ca-ep-chip">cost {data.cost}{typeof data.cost_tm === 'string' ? ' ' + data.cost_tm : ''}</span>
+              : null}
+            {cells ? <span className="ca-ep-chip">{cells.map(String).join('–')} cells</span> : null}
+            {hpPer !== null ? <span className="ca-ep-chip ca-ep-hp">HP {hpPer}/cell</span> : null}
+            <span className="ca-ep-chip">{rows.length} units</span>
+          </div>
+        </div>
+        {rows.length > 0 ? (
+          <div className="ca-ep-pool" data-testid="cd-ep-pool">
+            {rows.map((r) => (
+              <span key={r.unit} className="ca-ep-pool-row" data-testid="cd-ep-pool-row" data-unit={r.unit}>
+                <b className="ca-ep-pool-unit">{r.unit}</b>
+                <span className="ca-ep-pool-weight t-micro">w {r.weight}</span>
+                <span className="ca-ep-pool-pct tnum">{r.pct.toFixed(1)}%</span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="ca-ep-muted" data-testid="cd-ep-pool-empty">(empty pool — this pack can emit nothing)</div>
+        )}
         <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
       </div>
     );

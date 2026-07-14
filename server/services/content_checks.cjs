@@ -193,6 +193,37 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     checkEffects(data.effects, vocab, kind === 'unit_def' ? 'Unit' : 'EnemySkill', errs);
   } else if (kind === 'tm_def') {
     if (data.short !== undefined && typeof data.short !== 'string') errs.push('tm_def.short must be a string');
+  } else if (kind === 'gacha_pack') {
+    // REQ-0171. A pack's closed vocabulary is not vocab.json -- it is THE LIVE UNIT
+    // ROSTER: every pool row must name a unit that actually has a def, or the roll
+    // either crashes or silently skips it. That rule already exists, executable, in
+    // shared/content_validate.cjs (validatePackEntry) -- the same function the
+    // check_units.cjs gate runs. It is REUSED here, not re-implemented: two copies of
+    // "what is a legal pack" would drift, and the drift would be invisible.
+    const { validatePackEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let unitIds;
+    try {
+      const units = loadJson(path.join(repoRoot(), 'content', 'live', 'live_units.json'));
+      unitIds = new Set((units.entries || []).map((e) => e.id));
+    } catch (e) {
+      errs.push('cannot read content/live/live_units.json to resolve the pool: ' + e.message);
+      unitIds = new Set();
+    }
+    try {
+      validatePackEntry(data, unitIds);
+    } catch (e) {
+      errs.push(e.message);
+    }
+    // The cost currency must be a real TM def -- a pack priced in a currency that does
+    // not exist is unbuyable, and nothing else in the chain would ever say so.
+    if (data.cost_tm !== undefined) {
+      try {
+        const tms = loadJson(path.join(repoRoot(), 'content', 'live', 'live_tms.json'));
+        if (!(tms.entries || []).some((e) => e.id === data.cost_tm)) {
+          errs.push('cost_tm "' + data.cost_tm + '" is not a live tm def');
+        }
+      } catch (e) { /* live_tms unreadable -- not this check's business to fail on */ }
+    }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
     // pseudo-effect so the record gets the IDENTICAL vocab validation every other
@@ -223,6 +254,22 @@ function engineSurfaceSound(root) {
 function isIntPair(x) { return Array.isArray(x) && x.length === 2 && Number.isInteger(x[0]) && Number.isInteger(x[1]); }
 
 function engineTypesCheck(kind, data, root, dialect) {
+  // REQ-0171: a gacha_pack IS consumed by runtime code (server/services/gacha.cjs
+  // rollPackBp reads cells/hp_per_cell/pool/cost), so unlike skill_def it has a real
+  // type surface and the check APPLIES. These are the exact field types that function
+  // dereferences -- a string where it wants a number is a 500 at roll time.
+  if (kind === 'gacha_pack') {
+    const errs = [];
+    if (!Number.isFinite(data.cost)) errs.push('cost must be a number (gacha.cjs reads it as the LRDST price)');
+    if (data.cells !== undefined && !isIntPair(data.cells)) errs.push('cells must be [minInt, maxInt] (rollPolyomino reads both)');
+    if (data.hp_per_cell !== undefined && !Number.isFinite(data.hp_per_cell)) errs.push('hp_per_cell must be a number (hpMax = hp_per_cell x cellCount)');
+    if (!Array.isArray(data.pool)) errs.push('pool must be an array');
+    else for (const row of data.pool) {
+      if (!row || typeof row.unit !== 'string') errs.push('every pool row needs unit (string)');
+      else if (!Number.isFinite(row.weight)) errs.push('pool row "' + row.unit + '" needs weight (number)');
+    }
+    return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what gacha.cjs rollPackBp() consumes' : errs.join('; ') };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).

@@ -1,0 +1,19 @@
+-- backpack_ragnarok -- server/migrations/016_content_kind_gacha_pack.sql
+-- REQ-0171: extend the content_kind ENUM with 'gacha_pack' so the emission pools
+-- REQ-0170 shipped as content (content/live/live_packs.json, gacha_pack/1) can
+-- enter the content registry as first-class defs and be managed from the content
+-- admin -- user instruction, 2026-07-14.
+--
+-- Registry semantics are UNCHANGED: a gacha_pack is an ordinary content_defs +
+-- content_variants pair (immutability trigger, adopted-variant FK, variant_no
+-- handle -- all inherited from 009). No new table, no new column, no new
+-- constraint. The ENUM is the only thing that was blocking gacha_pack/1 data from
+-- entering the ledger -- exactly as it was for skill_def (010).
+--
+-- Apply as the postgres superuser (same invocation as 001..010):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/016_content_kind_gacha_pack.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already exists.
+-- ALTER TYPE ... ADD VALUE cannot run inside a transaction block, hence the bare
+-- top-level statement (same reason 010 is bare).
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'gacha_pack';
