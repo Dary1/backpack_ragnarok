@@ -121,10 +121,25 @@ bash tools/release.sh# full gate → rebuild dist → commit web/app if changed
 node server/tests/api_test.cjs / sim/tests/run.cjs / mock-src/tests/run.cjs  # individually
 node sim/tests/goldens.cjs gen  # ONLY when a behavior change is intended & reviewed
 ```
-Known-failing e2e (pre-existing, env-related, tracked): the two
-REQ-0043 dungeon-type-selector/seed-field tests — until fixed,
-release.sh stops at e2e; use the manual dist-commit path after
-verifying the failure set is exactly those two.
+**CI GREEN means literally green (REQ-0159).** There is no accounted /
+remembered e2e failure set, and re-introducing one is not allowed. If
+`tools/ci.sh` prints `CI GREEN`, every gate it ran passed; if it does not, the
+run is red and something is actually wrong. (This paragraph used to list "the
+two REQ-0043 tests" as known-failing and told you to eyeball the failure set
+before shipping — those tests pass, and that convention is retired. REQ-0159
+cleared the 11 standing reds the default suite had accumulated: 3 stale specs
+still asserting on DOM that REQ-0097/0108/0120 deleted, 1 cross-test leak where
+a schedule spec left an ACTIVE room behind and 409'd its neighbours out of
+deploying, and 7 admin tests that belong to the isolated harnesses, not here.)
+
+**Suite membership.** `artadmin` / `artinspect` / `contentadmin` are
+`testIgnore`d out of the default suite (`client/playwright.config.ts`) and run
+ONLY via `tools/{artadmin,art_inspect,content_admin}_e2e.sh`, which `ci.sh`
+invokes as its own step `[6.5/8]`. They need the HOME-remap isolation, and their
+opening `dev/clear-all` is 403'd in any live-namespace run by REQ-0156's
+`ALLOW_DEV_CLEAR` gate — the hardening that closed the 2026-07-13 live-registry
+wipe. Never re-admit them to the default suite, and never open that gate to make
+them pass. Full rationale: server/README.md, "Suite membership".
 
 ## 7. Deploy & parallel work
 
@@ -154,8 +169,6 @@ verifying the failure set is exactly those two.
 ## 9. Known debt (deliberate, tracked)
 
 - `BoardRenderer.render()` (~690 LOC) — left for the upcoming UI rework.
-- The 2 REQ-0043 e2e failures (dev_mode-fallback UI seams) — root-cause
-  pending; they predate REQ-0047.
 - `engine.js` (2211 LOC) is protected by rule 1, not by decomposition.
 - `sim/dungen.cjs`'s `liveDungeonDir()` still anchors the dungeon
   content dir on `os.homedir()` (sim/ is replay-frozen, so REQ-0145a

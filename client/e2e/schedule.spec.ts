@@ -472,6 +472,28 @@ test.describe('run settles via dev/backdate hook', () => {
       data: {},
     });
     expect(res.status()).toBe(403);
+
+    // REQ-0159 (class A -- SHARED-STATE LEAK, root cause of the
+    // "monitor freeze regression guard" red at full-file ordering):
+    // filling all 4 slots above AUTO-STARTS the run, so this room goes
+    // ACTIVE and squads 0-3 become DEPLOYED. This test was the only one
+    // in the file that never cancelled its room, so from here on every
+    // later test that deploys squads 0-3 (the monitor-freeze guard does
+    // exactly that) got a 409 from the cross-room deploy gate --
+    // deployedUidSetsForGate (server/services/squads.cjs) counts every
+    // OTHER *active* room of the same owner. That 409 was CORRECT server
+    // behavior (it is the very rule the "deploy-gate 409 across rooms"
+    // test below asserts on purpose); the bug was this test leaking an
+    // active room into its neighbours. It passed solo only because there
+    // was no leak to trip over. Cancel here like every other room-
+    // creating test in this file already does -- the room's default
+    // cancelPolicy is immediate (services/rooms.cjs validateCancelPolicy),
+    // so this really does release the deployment rather than just flagging
+    // cancelRequested. NOTE: the fix belongs HERE, in the leaker; the
+    // monitor guard's own `expect(r.status).toBe(200)` is left untouched
+    // and is exactly the assertion that must keep failing if a squad is
+    // wrongly still deployed.
+    await apiCancelRoom(page, player.token, roomId);
   });
 });
 

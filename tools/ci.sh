@@ -6,6 +6,11 @@
 #   SKIP_PG=1      skip the Postgres-backend api_test pass (needs DATABASE_URL)
 #   SKIP_CLIENT=1  skip client typecheck+build
 #   SKIP_E2E=1     skip Playwright e2e (needs installed browsers + running services)
+#
+# REQ-0159: "CI GREEN" below means LITERALLY green. There is no accounted/
+# remembered failure set any more -- if this script prints CI GREEN, every gate
+# it ran passed. Do not re-introduce a "these reds are fine" convention: a red
+# is either a real defect or a stale gate, and both must be fixed, not memorized.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -84,8 +89,29 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
 else
   echo "==== [6/7] client typecheck + build SKIPPED ===="
 fi
+# REQ-0159 (class C): the admin trio (artadmin/artinspect/contentadmin) is
+# testIgnore'd out of the default suite (client/playwright.config.ts explains
+# why: they need the isolated HOME-remap harnesses, and their opening
+# dev/clear-all is 403'd by REQ-0156's ALLOW_DEV_CLEAR hardening in any
+# non-harness run). They are covered HERE instead, as an explicit step, so
+# retiring them from the default suite costs zero coverage.
+#
+# Needs BOTH a built client (the harnesses serve web/ statically) and
+# DATABASE_URL (they run STORAGE_BACKEND=pg), hence the SKIP_CLIENT/SKIP_PG/
+# SKIP_E2E guards. Each harness takes the same box lock via tools/e2e_run.sh,
+# so they queue against each other and against the default suite -- never
+# concurrent, never touching the live namespace.
+if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ]; then
+  echo "==== [6.5/8] admin e2e harnesses (artadmin + artinspect + contentadmin, REQ-0156/0152/0157) ===="
+  : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
+  bash tools/artadmin_e2e.sh
+  bash tools/art_inspect_e2e.sh
+  bash tools/content_admin_e2e.sh
+else
+  echo "==== [6.5/8] admin e2e harnesses SKIPPED ===="
+fi
 if [ "${SKIP_E2E:-0}" != "1" ]; then
-  echo "==== [7/7] client e2e ===="
+  echo "==== [7/7] client e2e (default suite -- admin trio excluded, see above) ===="
   # REQ-0080: default to the local ingress proxy (localhost, ~40x less latency
   # than the public tunnel) and GPU-accelerated rendering (ANGLE/Vulkan -> the
   # box's real GPU instead of CPU SwiftShader). Both are overridable: force the

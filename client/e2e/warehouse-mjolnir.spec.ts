@@ -226,6 +226,44 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       await expect(row).toBeVisible({ timeout: 10000 });
       const claimBtn = page.locator(`[data-testid="schedule-claim-btn-${grantUid}"]`);
 
+      // REQ-0159 (class B -- FLAKE, root cause: the test raced a 450ms
+      // transient class; the app was never at fault).
+      //
+      // The fade-out is a ONE-SHOT that lives for exactly FLASH_FADEOUT_MS
+      // = 450ms (useWarehouseData.ts's beginClaimFadeOut sets fx='fadeout'
+      // and schedules clearClaimFx 450ms later). The old assertion here was
+      // `expect(row).toHaveClass(/schedule-claim-fadeout/)` -- a POLLING
+      // check, which can only pass if a poll happens to land inside that
+      // 450ms window. Under E2E_PARALLEL=4 the polls are not that punctual:
+      // the observed failure logged 6 polls seeing `schedule-claim-flash`
+      // and the next 4 seeing the fx already cleared, i.e. it stepped clean
+      // over the window. Retrying/lengthening the timeout does NOT fix that
+      // (a longer timeout just waits longer on a class that is already
+      // gone), and neither does relaxing what we assert.
+      //
+      // So: RECORD the class transitions instead of sampling them. A
+      // MutationObserver installed BEFORE the click captures every class
+      // the row passes through, so the 450ms state cannot be missed no
+      // matter how loaded the box is. The assertions below are strictly
+      // STRONGER than the ones they replace -- they pin the actual hand-off
+      // (flash on -> fadeout on -> everything cleared) AND the exclusivity
+      // of flash vs fadeout, which the old polling pair could only ever
+      // sample two disconnected instants of.
+      await row.evaluate((el: Element) => {
+        const w = window as unknown as { __claimFxSeq?: string[]; __claimFxStop?: () => void };
+        w.__claimFxSeq = [el.className];
+        const mo = new MutationObserver(() => {
+          // Re-read from the live node each time: React re-renders this
+          // <article> in place (same node, mutated class attribute), and if
+          // it ever DID swap the node, pushing 'REMOVED' is a louder, more
+          // honest signal than a silently dead observer.
+          const seq = w.__claimFxSeq as string[];
+          seq.push(el.isConnected ? el.className : 'REMOVED');
+        });
+        mo.observe(el, { attributes: true, attributeFilter: ['class'] });
+        w.__claimFxStop = () => mo.disconnect();
+      });
+
       // Two native clicks dispatched back-to-back in the SAME task, i.e.
       // before React has any chance to repaint the disabled attribute --
       // exercises the synchronous claimLockRef guard in WarehousePage.tsx
@@ -237,17 +275,34 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       });
 
       // In flight: the row's OWN frame is flashing (distinct from the
-      // button's .placing pulse, already covered by the test above).
+      // button's .placing pulse, already covered by the test above). This
+      // one is safe to poll -- the flash LOOPS for the whole ~900ms the
+      // route handler above holds the response, so it is not a transient.
       await expect(row).toHaveClass(/schedule-claim-flash/);
       await expect(claimBtn).toHaveClass(/placing/);
 
-      // The delayed response arrives -- flash hands off to the one-shot
-      // fade-out...
-      await expect(row).toHaveClass(/schedule-claim-fadeout/, { timeout: 3000 });
-      await expect(row).not.toHaveClass(/schedule-claim-flash/);
-      // ...and is fully removed from the DOM once that fade-out finishes
-      // (WarehousePage.tsx's FLASH_FADEOUT_MS).
-      await expect(row).not.toHaveClass(/schedule-claim-fadeout/, { timeout: 2000 });
+      // Settle: the delayed response lands, the flash hands off to the
+      // one-shot fade-out, and the fx state is cleared. Poll only for the
+      // stable END state (no fx classes at all) -- never for the 450ms
+      // fade-out itself.
+      await expect(row).not.toHaveClass(/schedule-claim-flash/, { timeout: 5000 });
+      await expect(row).not.toHaveClass(/schedule-claim-fadeout/, { timeout: 5000 });
+
+      // Now assert the RECORDED path, which cannot have missed the window.
+      const fxSeq: string[] = await page.evaluate(() => {
+        const w = window as unknown as { __claimFxSeq?: string[]; __claimFxStop?: () => void };
+        w.__claimFxStop?.();
+        return w.__claimFxSeq ?? [];
+      });
+      // The row really did flash while the claim was in flight...
+      expect(fxSeq.some((c) => c.includes('schedule-claim-flash'))).toBe(true);
+      // ...and really did hand off to the one-shot fade-out when the
+      // response came back. If beginClaimFadeOut ever stopped firing, this
+      // is the assertion that catches it -- the old polling check could not
+      // distinguish "never happened" from "happened between two polls".
+      expect(fxSeq.some((c) => c.includes('schedule-claim-fadeout'))).toBe(true);
+      // The hand-off is exclusive: the two effects never coexist on the row.
+      expect(fxSeq.some((c) => c.includes('schedule-claim-flash') && c.includes('schedule-claim-fadeout'))).toBe(false);
 
       // The rapid second press never reached the server as its own claim.
       expect(claimRequests).toBe(1);

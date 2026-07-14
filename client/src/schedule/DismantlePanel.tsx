@@ -382,21 +382,42 @@ export function DismantlePanel({ locale, onClose }: DismantlePanelProps) {
                 </div>
               ) : null}
 
-              {errKey ? (
-                <div className="schedule-error workshop-dismantle-error" data-testid="workshop-dismantle-error">
-                  {t(locale, errKey)}
-                </div>
-              ) : null}
-              {result ? (
-                <div className="schedule-toast workshop-dismantle-toast" data-testid="workshop-dismantle-toast">
-                  {result.count > 1
-                    ? t(locale, 'workshop.dismantle.resultToastMulti', { count: result.count, qty: result.qty })
-                    : t(locale, 'workshop.dismantle.resultToast', { qty: result.qty })}
-                </div>
-              ) : null}
             </div>
           </div>
         )}
+
+        {/* REQ-0159: the outcome banners live OUTSIDE the
+            `dismantlable.length === 0` ternary above, NOT inside its
+            non-empty branch.
+
+            They used to sit inside it, which meant a successful dismantle
+            could unmount its OWN confirmation: confirmDismantle() sets
+            `result`, then awaits loadGame(), which drops the just-destroyed
+            item from state -- and if it was the caller's LAST dismantlable
+            item, `dismantlable` became empty, the panel flipped to the
+            empty-state branch, and the toast that had just been set was never
+            rendered at all. Dismantling your last item therefore gave you NO
+            feedback whatsoever (and the same held for `errKey`: an error on
+            the last item was silently swallowed too). The bug dated from
+            REQ-0063 and was only ever intermittent in e2e because the dev
+            fixture usually happened to have other inventory items left over,
+            which kept the list non-empty and the toast alive.
+
+            Hoisting them here makes the outcome independent of what the
+            dismantle did to the list -- which is the whole point of a
+            confirmation. */}
+        {errKey ? (
+          <div className="schedule-error workshop-dismantle-error" data-testid="workshop-dismantle-error">
+            {t(locale, errKey)}
+          </div>
+        ) : null}
+        {result ? (
+          <div className="schedule-toast workshop-dismantle-toast" data-testid="workshop-dismantle-toast">
+            {result.count > 1
+              ? t(locale, 'workshop.dismantle.resultToastMulti', { count: result.count, qty: result.qty })
+              : t(locale, 'workshop.dismantle.resultToast', { qty: result.qty })}
+          </div>
+        ) : null}
       </div>
     </div>
   );
