@@ -82,5 +82,29 @@ art-kind of its own (e.g. `gacha_pack` / bp_gacha).
   assert the readout is the snapped size and the row appears.
 - Full `tools/ci.sh` must print CI GREEN.
 
-## Gate results
-(to be filled at build)
+## Gate results (2026-07-15)
+- Migration 017 applied to dev supabase-db (PG 17.6): artwork_kind is now
+  {po, si, unit, monster, bpskin, custom}.
+- `tools/ci.sh` => CI GREEN (CI_EXIT=0). Highlights:
+  - [5.1] artwork_test (pg): 8/0 -- adds G2 custom snap (1000x700 -> 1008x704),
+    clamp (20000x16 -> 16384x16), reject (0 / non-int), and a custom preview
+    flow asserting the verbatim prompt (no per-kind style tail).
+  - [6.5] admin e2e harnesses: artadmin 5/0 (incl. new "custom kind" spec),
+    artinspect 1/0, contentadmin 22/0.
+  - [7] default client e2e suite: 178/0.
+- Implementation commit: 0402ce8.
+- Test-hygiene notes learned building this:
+  - artwork_test's custom AT calls jobs.runPython(preview), which spawns a
+    python OUTSIDE the pump's serialization. It is placed LAST in runG3andFlow
+    so it never steals CPU from an in-flight inspection during another test's
+    render wait.
+  - Run ci.sh WITHOUT a global ART_KIT_PYTHON (ci sets it inline only where
+    needed). Exporting it globally forces REAL rembg inspections into [5.1]
+    (whose kitPython() otherwise falls back to python3 via the remapped
+    os.homedir) and can flake the pre-existing flow render-timeout.
+
+## Not done here (needs user go-ahead per PROJECT.md HANDS-OFF)
+- Merge to master + deploy (backpack-api / backpack-web) -- left for user
+  acceptance; live services are HANDS-OFF without a fresh go-ahead.
+- The migration was applied to the shared DEV DB (additive, safe). Any other
+  environment must also apply server/migrations/017_artwork_kind_custom.sql.
