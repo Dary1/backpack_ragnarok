@@ -9,6 +9,7 @@
 // re-export it from RoomCard (or update its consumers) so the whole
 // time-formatting cluster lives in one place.
 import { formatCountdown } from '../schedule/RoomCard';
+import type { Locale } from '../store';
 
 /** REQ-0071: the mock ctrl bar's wall-clock readout -- mm:ss, tabular
  * digits via the theme's .tnum. Distinct from formatCountdown (kept
@@ -33,12 +34,19 @@ export function formatClock(totalSecs: number): string {
  * days/hours/minutes and defers to formatCountdown for the final
  * sub-1-hour stretch (so the last hour still reads "12m 3s" exactly as
  * the rest of the app does). */
-export function formatWarehouseCountdown(ms: number): string {
+export function formatWarehouseCountdown(ms: number, locale: Locale): string {
   const totalSecs = Math.max(0, Math.ceil(ms / 1000));
   const days = Math.floor(totalSecs / 86400);
   const hours = Math.floor((totalSecs % 86400) / 3600);
   const mins = Math.floor((totalSecs % 3600) / 60);
+  // REQ-0168 U13(c): formatCountdown is now locale-aware; thread the locale
+  // through (and localize this helper's own d/h/m suffixes in JA to match).
+  if (locale === 'ja') {
+    if (days > 0) return hours > 0 ? `${days}日${hours}時間` : `${days}日`;
+    if (hours > 0) return `${hours}時間${mins}分`;
+    return formatCountdown(ms, locale);
+  }
   if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
   if (hours > 0) return `${hours}h ${mins}m`;
-  return formatCountdown(ms);
+  return formatCountdown(ms, locale);
 }

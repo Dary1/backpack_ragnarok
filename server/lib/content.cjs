@@ -18,6 +18,8 @@ const VOCAB_PATH = contentPath('vocab.json');
 const ITEMS_PATH = contentPath('live', 'live_items.json');
 const SIS_PATH = contentPath('live', 'live_sis.json');
 const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
+const UNITS_PATH = contentPath('live', 'live_units.json'); // REQ-0170: unit/1 defs
+const PACKS_PATH = contentPath('live', 'live_packs.json'); // REQ-0170: gacha_pack/1 defs
 const SCENARIO_PATH = contentPath('live', 'scenario.json');
 const REGISTRY_PATH = contentPath('registry.json');
 
@@ -65,6 +67,8 @@ function buildContentPayload() {
   const items = loadJSON(ITEMS_PATH);
   const sis = loadJSON(SIS_PATH);
   const tms = loadJSON(TMS_PATH); // REQ-0042
+  const units = loadJSON(UNITS_PATH); // REQ-0170
+  const packs = loadJSON(PACKS_PATH); // REQ-0170
   const scenario = loadJSON(SCENARIO_PATH);
   // REQ-0035: batch-level provenance for the Dex's "provenance" section.
   // Optional -- an absent/unreadable registry.json degrades to `null`,
@@ -80,6 +84,8 @@ function buildContentPayload() {
   const itemEntries = items.entries || [];
   const siEntries = sis.entries || [];
   const tmEntries = tms.entries || []; // REQ-0042
+  const unitEntries = units.entries || []; // REQ-0170
+  const packEntries = packs.entries || []; // REQ-0170
 
   const ITEMS = {};
   for (const e of itemEntries) {
@@ -116,6 +122,22 @@ function buildContentPayload() {
   for (const e of tmEntries) {
     TMS[e.id] = withBackCompatI18n(Object.assign({}, e));
   }
+  // REQ-0170: Unit defs (unit/1). Served id-keyed, exactly like ITEMS/SIS/TMS, with
+  // the same withBackCompatI18n() treatment so name_ja is available to every client
+  // surface that already reads that field. No eff_en/eff_ja rendering: a unit def
+  // carries no `effects` (the charge grammar is frozen but the engine has no AST for
+  // it -- REQ-0170 section 2.3), and rendering an absent field would fabricate one.
+  const UNITS = {};
+  for (const e of unitEntries) {
+    UNITS[e.id] = withBackCompatI18n(Object.assign({}, e));
+  }
+  // REQ-0170: gacha packs (gacha_pack/1) -- the emission pools. Served so the client
+  // can show a pack's cost/odds from the same table the server rolls against, instead
+  // of a display constant that can silently drift from the roll.
+  const PACKS = {};
+  for (const e of packEntries) {
+    PACKS[e.id] = withBackCompatI18n(Object.assign({}, e));
+  }
   const trees = { po: vocab.po_tags || {}, socket: vocab.socket_tags || {} };
   // REQ-0035: closed-vocabulary lists for the Dex admin edit form's
   // dropdowns (trigger types, verb types, statuses, rarities). Server-side
@@ -133,6 +155,13 @@ function buildContentPayload() {
     items: ITEMS,
     sis: SIS,
     tms: TMS, // REQ-0042
+    units: UNITS, // REQ-0170
+    packs: PACKS, // REQ-0170
+    // REQ-0170/REQ-0128b: the ratified connection-shape table. Shipped WITH the
+    // defs (rather than left for the client to re-derive) because the engine
+    // resolves rays through it -- one table, one truth, board and sim agreeing by
+    // construction.
+    connection_shapes: vocab.connection_shapes || {},
     trees: trees,
     scenario: scenario,
     layout: scenario.layout || null,
@@ -148,6 +177,8 @@ function getContent() {
     items: statMtimeMs(ITEMS_PATH),
     sis: statMtimeMs(SIS_PATH),
     tms: statMtimeMs(TMS_PATH), // REQ-0042
+    units: statMtimeMs(UNITS_PATH), // REQ-0170
+    packs: statMtimeMs(PACKS_PATH), // REQ-0170
     scenario: statMtimeMs(SCENARIO_PATH),
     registry: statMtimeMs(REGISTRY_PATH),
   };
@@ -156,6 +187,8 @@ function getContent() {
     mtimes.items !== contentCache.mtimes.items ||
     mtimes.sis !== contentCache.mtimes.sis ||
     mtimes.tms !== contentCache.mtimes.tms || // REQ-0042
+    mtimes.units !== contentCache.mtimes.units || // REQ-0170
+    mtimes.packs !== contentCache.mtimes.packs || // REQ-0170
     mtimes.scenario !== contentCache.mtimes.scenario ||
     mtimes.registry !== contentCache.mtimes.registry;
   if (stale) {
@@ -169,7 +202,7 @@ function getContent() {
 function invalidateContentCache() { contentCache = null; }
 
 module.exports = {
-  REPO_ROOT, CONTENT_DIR, LIVE_DIR, VOCAB_PATH, ITEMS_PATH, SIS_PATH, TMS_PATH, SCENARIO_PATH, REGISTRY_PATH,
+  REPO_ROOT, CONTENT_DIR, LIVE_DIR, VOCAB_PATH, ITEMS_PATH, SIS_PATH, TMS_PATH, UNITS_PATH, PACKS_PATH, SCENARIO_PATH, REGISTRY_PATH,
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
   buildContentPayload, getContent, invalidateContentCache,
 };

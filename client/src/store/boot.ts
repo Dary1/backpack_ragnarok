@@ -1,6 +1,7 @@
 // client/src/store/boot.ts -- REQ-0047 (f2): boot + identity: resolveProfileId, boot(), setLocale, setActiveInvPage.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { Engine } from '../engine/adapter';
+import { setUnitDefs } from '../board/unitIcon';
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -156,8 +157,15 @@ export async function boot(): Promise<void> {
     return;
   }
   const gameData = resolved.gameData;
-  const engine = Engine.create(gameData.ITEMS, gameData.SI_DEFS, gameData.LAYOUT, gameData.TREES);
-  let state = engine.migrateState(gameData.makeState());
+  // REQ-0170: the Unit registries. Without them every BP would resolve to "no
+  // connection shape" and the board would draw no rays at all -- the engine
+  // deliberately fails soft rather than throwing, so this line is the difference
+  // between a working board and a silently link-less one.
+  const engine = Engine.create(gameData.ITEMS, gameData.SI_DEFS, gameData.LAYOUT, gameData.TREES, gameData.UNITS, gameData.CONN_SHAPES);
+  // REQ-0170: hand the defs to the raster manifest BEFORE any board mounts, so
+  // loadBoardTextures() has the unit art list on its first (cached) call.
+  setUnitDefs(gameData.UNITS);
+  let state = engine.migrateState(gameData.makeState()); // REQ-0051: reassigned by fresh-profile starter seed
 
   // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when
   // resolveGameData() reported this profile as genuinely fresh (GET

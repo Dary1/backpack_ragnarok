@@ -9,8 +9,8 @@
 // (cd-list-error) instead of a silently empty rail, and a brief snippet in
 // each row's title attr so brief-substring search hits are explicable.
 import { useState } from 'react';
-import type { ContentDefDto } from '../api';
-import { KINDS, SORT_MODES, sortDefs } from './contentShared';
+import type { ContentDefDto, ArtworkDto } from '../api';
+import { KINDS, SORT_MODES, sortDefs, artworkThumbUrl } from './contentShared';
 import type { Kind, SortMode } from './contentShared';
 
 type AdoptionFilter = 'all' | 'adopted' | 'unadopted';
@@ -22,9 +22,16 @@ function rowTitle(d: ContentDefDto): string {
   return brief ? d.system_name + ' -- ' + brief.slice(0, 140) : d.system_name;
 }
 
-function Row({ d, selected, onSelect }: { d: ContentDefDto; selected: boolean; onSelect: (name: string) => void }) {
+function Row({ d, art, selected, onSelect }: { d: ContentDefDto; art: ArtworkDto | undefined; selected: boolean; onSelect: (name: string) => void }) {
+  const thumb = d.has_artwork_facet ? artworkThumbUrl(art) : null;
   return (
     <div className="ca-rowwrap">
+      {d.has_artwork_facet
+        ? <a className="ca-thumb" data-testid={'cd-thumb-' + d.system_name} href={'#/artadmin/' + d.system_name}
+            title={d.system_name + ' artwork -- open Art Admin'} onClick={(e) => e.stopPropagation()}>
+            {thumb ? <img src={thumb} alt="" loading="lazy" /> : <span className="ca-thumb-ph">◇</span>}
+          </a>
+        : null}
       <button type="button" data-testid={'cd-select-' + d.system_name}
         className={'aa-row' + (selected ? ' is-selected' : '')}
         title={rowTitle(d)}
@@ -47,15 +54,15 @@ function Row({ d, selected, onSelect }: { d: ContentDefDto; selected: boolean; o
           : null}
       </button>
       {d.has_artwork_facet
-        ? <a className="ca-facet-link" data-testid={'cd-facet-' + d.system_name} href="#/artadmin"
+        ? <a className="ca-facet-link" data-testid={'cd-facet-' + d.system_name} href={'#/artadmin/' + d.system_name}
             title={d.system_name + ' has an artwork facet -- open Art Admin'}>&#9670;</a>
         : null}
     </div>
   );
 }
 
-export function DefRail({ defs, selected, onSelect, onNew, listError }: {
-  defs: ContentDefDto[]; selected: string | null;
+export function DefRail({ defs, artworksByName, selected, onSelect, onNew, listError }: {
+  defs: ContentDefDto[]; artworksByName: Record<string, ArtworkDto>; selected: string | null;
   onSelect: (name: string) => void; onNew: () => void;
   listError: string | null;
 }) {
@@ -113,7 +120,7 @@ export function DefRail({ defs, selected, onSelect, onNew, listError }: {
         </div>
       ) : null}
       <div data-testid="cd-list" className="aa-list">
-        {visible.map((d) => <Row key={d.system_name} d={d} selected={selected === d.system_name} onSelect={onSelect} />)}
+        {visible.map((d) => <Row key={d.system_name} d={d} art={artworksByName[d.system_name]} selected={selected === d.system_name} onSelect={onSelect} />)}
         {visible.length === 0 && !listError && <div className="aa-empty t-micro">no content defs match</div>}
       </div>
     </aside>

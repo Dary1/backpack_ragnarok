@@ -67,14 +67,19 @@ function jaFlavor(e) {
 function main() {
   const args = process.argv.slice(2);
   if (args.length < 5) {
-    console.error('Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js>');
+    console.error('Usage: node tool_gen_data.cjs <vocab> <items> <sis> <scenario.json> <out data.js> [units.json]');
     process.exit(1);
   }
-  const [vocabPath, itemsPath, sisPath, scenarioPath, outPath] = args;
+  const [vocabPath, itemsPath, sisPath, scenarioPath, outPath, unitsPath] = args;
   const vocab = loadJSON(vocabPath);
   const items = loadJSON(itemsPath);
   const sis = loadJSON(sisPath);
   const scenario = loadJSON(scenarioPath);
+  // REQ-0170: the Unit registries get baked in alongside ITEMS/SI_DEFS, because the
+  // mock and the sim resolve a BP's rays through them exactly as the live client
+  // does. `units.json` is optional so a caller that predates this REQ still works
+  // (it then bakes UNITS={} -- an honest "this build knows no units", not a crash).
+  const units = unitsPath ? loadJSON(unitsPath) : { entries: [] };
 
   const itemEntries = items.entries || [];
   const siEntries = sis.entries || [];
@@ -111,6 +116,15 @@ function main() {
     if (e.ports !== undefined) rec.ports = e.ports;
     ITEMS[e.id] = rec;
   }
+
+  // REQ-0170: UNITS -- the unit/1 defs, keyed by id. Baked whole (a unit def is
+  // small and carries no effects AST to render), so the mock's engine resolves the
+  // same connection shapes the server's does.
+  const UNITS = {};
+  for (const e of (units.entries || [])) {
+    UNITS[e.id] = Object.assign({}, e, { name_ja: jaName(e), flavor_ja: jaFlavor(e) });
+  }
+  const CONN_SHAPES = vocab.connection_shapes || {};
 
   // Build SI_DEFS map
   const SI_DEFS = {};
@@ -170,6 +184,8 @@ function main() {
     "const TREES=" + JSON.stringify({po: vocab.po_tags || {}, socket: vocab.socket_tags || {}}, null, 1) + ";\n" +
     "const ITEMS=" + JSON.stringify(ITEMS, null, 1) + ";\n" +
     "const SI_DEFS=" + JSON.stringify(SI_DEFS, null, 1) + ";\n" +
+    "const UNITS=" + JSON.stringify(UNITS, null, 1) + ";\n" +
+    "const CONN_SHAPES=" + JSON.stringify(CONN_SHAPES, null, 1) + ";\n" +
     "const SCENARIO=" + JSON.stringify(scenarioForState, null, 1) + ";\n" +
     "function makeState(){\n" +
     " const st=JSON.parse(JSON.stringify(SCENARIO));\n" +
@@ -177,11 +193,11 @@ function main() {
     " st.presets=makeSquadsMeta();\n" + // REQ-0031 Phase B: 5 squads, slot 0 = this scenario's content (implicit -- see makeSquadsMeta note above)
     " return st;\n" +
     "}\n" +
-    "return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};\n" +
+    "return {LAYOUT,ITEMS,SI_DEFS,TREES,UNITS,CONN_SHAPES,makeState};\n" +
     "});\n";
 
   fs.writeFileSync(outPath, src);
-  console.log('Wrote ' + outPath + ' — ' + Object.keys(ITEMS).length + ' items, ' + Object.keys(SI_DEFS).length + ' sis, LAYOUT=' + JSON.stringify(LAYOUT));
+  console.log('Wrote ' + outPath + ' — ' + Object.keys(ITEMS).length + ' items, ' + Object.keys(SI_DEFS).length + ' sis, ' + Object.keys(UNITS).length + ' units, LAYOUT=' + JSON.stringify(LAYOUT));
 }
 
 main();

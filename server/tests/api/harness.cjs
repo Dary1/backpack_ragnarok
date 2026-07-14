@@ -83,6 +83,16 @@ fs.writeFileSync(path.join(contentDir, 'vocab.json'), JSON.stringify({
   verbs: ['strike', 'multi_strike', 'block', 'heal_bp', 'apply_status', 'add_on_hit_status', 'amp_status', 'buff_host'],
   statuses: ['Burn', 'Poison', 'Chill', 'Regen', 'Spikes', 'Stun', 'Weakness', 'Haste'],
   rarities: ['Common', 'Uncommon', 'Rare', 'Relic'],
+  // REQ-0170: the ratified connection_shapes table (the subset the fixtures use).
+  // Shapes are what a Unit's rays ARE now, so a fixture vocab without them would
+  // make every fixture BP link-less -- and the workshop tests below assert on a
+  // rolled unit's shape.
+  connection_shapes: {
+    queen: { ja: 'クイーン', kind: 'ray', dirs: [0, 1, 2, 3, 4, 5, 6, 7], range: null, pierce: false },
+    rook: { ja: '飛車', kind: 'ray', dirs: [0, 2, 4, 6], range: null, pierce: false },
+    none: { ja: '接続なし', kind: 'none', dirs: [], range: 0, pierce: false },
+    chess_knight_move: { ja: 'チェス・ナイトの動き', kind: 'offset', offsets: [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]] },
+  },
 }));
 fs.writeFileSync(path.join(liveDir, 'live_items.json'), JSON.stringify({
   schema: 'po/2',
@@ -117,6 +127,27 @@ fs.writeFileSync(path.join(liveDir, 'live_tms.json'), JSON.stringify({
   entries: [
     { id: 'lrdst', name: 'UnitRandomDirectionShuffleTransmutator', short: 'LRDST',
       rarity: 'Common', icon: 'icon-lrdst', stackable: true },
+  ],
+}));
+// REQ-0170: unit/1 defs + the gacha pack. buildContentPayload() and
+// getScheduleContent() both load these unconditionally, exactly as they do
+// live_items/live_sis/live_tms -- so the synthetic tree needs them or every
+// content read 500s with ENOENT. The pool is deliberately three units with three
+// DIFFERENT shape kinds (ray-8 / ray-4 / offset / none), so a workshop roll test
+// can assert the rolled unit is a real def and its shape a real vocab key.
+fs.writeFileSync(path.join(liveDir, 'live_units.json'), JSON.stringify({
+  schema: 'unit/1',
+  entries: [
+    { id: 'test_queen', name: 'Test Queen', rarity: 'Common', icon: 'art:test_queen', connection_shape: 'queen', i18n: { ja: { name: 'テストクイーン' } } },
+    { id: 'test_rook', name: 'Test Rook', rarity: 'Common', icon: 'art:test_rook', connection_shape: 'rook', i18n: { ja: { name: 'テストルーク' } } },
+    { id: 'test_loner', name: 'Test Loner', rarity: 'Common', icon: 'art:test_loner', connection_shape: 'none', i18n: { ja: { name: 'テストロナー' } } },
+  ],
+}));
+fs.writeFileSync(path.join(liveDir, 'live_packs.json'), JSON.stringify({
+  schema: 'gacha_pack/1',
+  entries: [
+    { id: 'common_bp', name: 'Common Backpack', cost: 10, cost_tm: 'lrdst', cells: [6, 8], hp_per_cell: 15,
+      pool: [{ unit: 'test_queen', weight: 1 }, { unit: 'test_rook', weight: 1 }, { unit: 'test_loner', weight: 1 }] },
   ],
 }));
 fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({

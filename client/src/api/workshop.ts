@@ -4,15 +4,29 @@ import { scheduleJSON } from './http';
 
 // ---- REQ-0042: Workshop gacha ----
 
-/** A freshly-rolled common_bp gacha result -- server/schedule.cjs's
- * rollCommonBp() output shape, echoed verbatim in the POST /api/workshop/
- * gacha response. */
+/** A freshly-rolled gacha result -- server/services/gacha.cjs's rollPackBp()
+ * output shape, echoed verbatim in the POST /api/workshop/gacha response.
+ *
+ * REQ-0170: what a roll produces is a UNIT (a character from the pack's pool)
+ * plus the BP that is its inventory. `unit` is what gets PERSISTED on the BP
+ * (identity + seat, nothing else); `unitDef` is a read-only echo of the def for
+ * the result modal -- the def itself is re-read from /api/content on every boot,
+ * so nothing here is a second source of truth. The retired `linker:{off,dirs}`
+ * (rolled beams, no identity) is GONE and has no successor field. */
 export interface ApiRolledBp {
   uid: string;
   shape: Array<[number, number]>;
-  linker: { off: [number, number]; dirs: number[] };
+  unit: { id: string; off: [number, number] };
   hpMax: number;
   cellCount: number;
+  unitDef?: {
+    id: string;
+    name: string;
+    icon: string;
+    rarity: string;
+    connection_shape: string;
+    i18n?: { ja?: { name?: string; flavor?: string } };
+  };
 }
 
 /** POST /api/workshop/gacha {kind:'common_bp'} -- REQ-0042 two-phase
@@ -25,6 +39,6 @@ export interface ApiRolledBp {
  * normal auto-save (notifyStateChanged()) persist it, exactly like
  * claimWarehouseItem's own doc describes for warehouse claims. Throws
  * ApiError(409) if the balance is insufficient. */
-export function rollWorkshopGacha(kind: 'common_bp' = 'common_bp'): Promise<{ ok: true; cost: number; rolled: ApiRolledBp }> {
+export function rollWorkshopGacha(kind: string = 'common_bp'): Promise<{ ok: true; cost: number; rolled: ApiRolledBp }> {
   return scheduleJSON('/api/workshop/gacha', { method: 'POST', body: JSON.stringify({ kind }) });
 }

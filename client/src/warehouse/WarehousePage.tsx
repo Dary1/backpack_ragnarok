@@ -275,7 +275,7 @@ export function WarehousePage({ locale }: WarehousePageProps) {
             <span className={`schedule-warehouse-item-expiry${danger ? ' schedule-warehouse-item-expiry-soon' : ''}`}>
               {expired
                 ? t(locale, 'schedule.warehouse.expired')
-                : t(locale, 'schedule.warehouse.expiresIn', { time: formatWarehouseCountdown(expiresMs) })}
+                : t(locale, 'schedule.warehouse.expiresIn', { time: formatWarehouseCountdown(expiresMs, locale) })}
             </span>
           </div>
           {src ? (

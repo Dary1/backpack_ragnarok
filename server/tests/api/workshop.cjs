@@ -50,8 +50,16 @@ module.exports.run = async function run(h) {
     const rolled = rollRes.body.rolled;
     assert.ok(rolled && rolled.uid, 'rolled BP definition includes a minted uid');
     assert.ok(Array.isArray(rolled.shape) && rolled.shape.length >= 6 && rolled.shape.length <= 8, 'rolled shape has 6-8 cells: ' + JSON.stringify(rolled.shape));
-    assert.ok(rolled.linker && Array.isArray(rolled.linker.dirs) && rolled.linker.dirs.length >= 1 && rolled.linker.dirs.length <= 3, 'rolled unit has 1-3 dirs');
-    const unitInShape = rolled.shape.some(([r, c]) => r === rolled.linker.off[0] && c === rolled.linker.off[1]);
+    // REQ-0170: a roll emits a UNIT -- an identity from the pack's pool -- not an
+    // anonymous 1-3 random dirs array. Its rays come from its def's connection_shape,
+    // so what must hold here is that the id is a REAL def and its shape a REAL vocab
+    // key; a rolled dirs array is exactly the thing that no longer exists.
+    assert.ok(rolled.unit && typeof rolled.unit.id === 'string', 'rolled BP carries a unit identity');
+    assert.ok(['test_queen', 'test_rook', 'test_loner'].includes(rolled.unit.id), 'the unit is drawn from the pack pool, got: ' + rolled.unit.id);
+    assert.ok(rolled.unitDef && rolled.unitDef.id === rolled.unit.id, 'the response echoes the unit def for the result modal');
+    assert.ok(['queen', 'rook', 'none'].includes(rolled.unitDef.connection_shape), 'the def names a real connection_shape');
+    assert.strictEqual(rolled.linker, undefined, 'the retired linker field is GONE -- not renamed, not shadowed');
+    const unitInShape = rolled.shape.some(([r, c]) => r === rolled.unit.off[0] && c === rolled.unit.off[1]);
     assert.ok(unitInShape, 'rolled unit cell is one of the polyomino\'s own cells');
     assert.strictEqual(rolled.hpMax, 15 * rolled.shape.length, 'hpMax = 15 x cellCount');
 
@@ -63,7 +71,7 @@ module.exports.run = async function run(h) {
     // Simulate the CLIENT's own deduction + first-fit placement + auto-save.
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     doc.canvas.inv.pages[0].tms.find((t) => t.uid === 'lrdst_test_stack').qty -= 10; // 999 -> 989
-    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    doc.canvas.inv.pages[1].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], unit: rolled.unit, hpMax: rolled.hpMax });
     const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
     assert.strictEqual(putRes.status, 200, 'auto-save PUT must succeed: ' + JSON.stringify(putRes.body));
 
@@ -89,7 +97,7 @@ module.exports.run = async function run(h) {
     // Place the BP but do NOT deduct the LRDST cost -- an attempted
     // "forge" of a free roll.
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
-    doc.canvas.inv.pages[2].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], linker: rolled.linker, hpMax: rolled.hpMax });
+    doc.canvas.inv.pages[2].bps.push({ id: rolled.uid, name: 'Rolled BP', color: '#888888', shape: rolled.shape, origin: [1, 1], unit: rolled.unit, hpMax: rolled.hpMax });
     const putRes = await scheduleReq('PUT', '/api/profile/' + scheduleP1.playerId + '/canvas', scheduleP1.token, doc.canvas);
     assert.strictEqual(putRes.status, 200);
 

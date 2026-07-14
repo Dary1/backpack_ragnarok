@@ -72,6 +72,7 @@ import { CreateRoomForm, localizedName } from './CreateRoomForm';
 import { Monitor } from './Monitor';
 import { RoomCard } from './RoomCard';
 import { SlotsPanel } from './SlotsPanel';
+import { SpoilsRail } from './SpoilsRail';
 
 interface SchedulePageProps {
   locale: Locale;
@@ -98,6 +99,9 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // next to the toggle keeps this discoverable/reversible rather than a
   // silent filter.
   const [hideCanceled, setHideCanceled] = useState(true);
+  // REQ-0100: bumped whenever the watched room's run settles (Monitor
+  // detects settle) so the spoils rail refreshes its warehouse preview.
+  const [spoilsRefresh, setSpoilsRefresh] = useState(0);
 
   const reloadRooms = useCallback(async () => {
     try {
@@ -151,8 +155,20 @@ export function SchedulePage({ locale }: SchedulePageProps) {
       setCreating(true);
       setCreateError(null);
       try {
-        await apiCreateRoom(body);
+        // REQ-0168 U1: a successful create now gives immediate feedback --
+        // collapse the create panel, select (watch) the brand-new room so
+        // the detail pane shows its slots, and scroll its card into view.
+        // Uses apiCreateRoom's own {ok, room} return so the new id is known
+        // without guessing at list order.
+        const { room } = await apiCreateRoom(body);
+        setCreateOpen(false);
+        setExpandedRoomId(room.id);
         await reloadRooms();
+        // Best-effort: bring the new (now top-of-list, see U5 sort) card
+        // into view once it has rendered.
+        window.setTimeout(() => {
+          document.querySelector(`[data-room-id="${room.id}"]`)?.scrollIntoView({ block: 'nearest' });
+        }, 0);
       } catch (e) {
         setCreateError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e));
       } finally {
@@ -184,7 +200,18 @@ export function SchedulePage({ locale }: SchedulePageProps) {
 
   const hasRooms = rooms !== null && rooms.length > 0;
   const canceledCount = rooms ? rooms.filter((r) => r.status === 'canceled').length : 0;
-  const visibleRooms = rooms ? (hideCanceled ? rooms.filter((r) => r.status !== 'canceled') : rooms) : [];
+  // REQ-0168 U5: pure display sort -- non-canceled first (createdAt DESC),
+  // canceled last (also createdAt DESC), so a freshly created room lands at
+  // the top of the list and the order stays stable across the 4s polls
+  // (server storage order is arbitrary/append-ish).
+  const visibleRooms = (rooms ? (hideCanceled ? rooms.filter((r) => r.status !== 'canceled') : rooms) : [])
+    .slice()
+    .sort((a, b) => {
+      const aCanceled = a.status === 'canceled' ? 1 : 0;
+      const bCanceled = b.status === 'canceled' ? 1 : 0;
+      if (aCanceled !== bCanceled) return aCanceled - bCanceled;
+      return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+    });
   // REQ-0071: the mock colhead's 「遠征房 2/3 稼働」 -- real counts
   // (running = status 'active'; total = every non-canceled room).
   const runningCount = rooms ? rooms.filter((r) => r.status === 'active').length : 0;
@@ -301,8 +328,8 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         <div className="schedule-detail-pane" data-testid="schedule-detail-pane">
           {selectedRoom ? (
             <>
-              <SlotsPanel room={selectedRoom} locale={locale} onChanged={reloadRooms} />
-              <Monitor key={selectedRoom.id} room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} />
+              <SlotsPanel room={selectedRoom} locale={locale} rooms={rooms ?? []} onChanged={reloadRooms} />
+              <Monitor key={selectedRoom.id} room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
             </>
           ) : (
             <div className="schedule-detail-empty" data-testid="schedule-detail-empty">{t(locale, 'schedule.detail.empty')}</div>
@@ -310,6 +337,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         </div>
         <div className="schedule-spoils-col" data-testid="schedule-spoils-col">
           <div className="schedule-spoils-col-title den">{t(locale, 'schedule.spoils.colTitle')}</div>
+          <SpoilsRail locale={locale} refreshSignal={spoilsRefresh} />
         </div>
       </div>
     </div>

@@ -200,8 +200,8 @@ function riteEligibilityReasons(callerId, canvas, squadIndex, nowMs) {
     if (rec && rec.rite && rec.rite.state === 'applying') { reasons.push('mid_rite'); break; }
   }
   if (canvas.presets.store.length <= 1) reasons.push('last_squad');
-  const { itemDefsById } = getScheduleContent();
-  const engine = makeEngine(itemDefsById);
+  const { itemDefsById, unitDefsById, connShapes } = getScheduleContent();
+  const engine = makeEngine(itemDefsById, unitDefsById, connShapes);
   if (!engine.isSquadDeployable(canvas, squadIndex)) reasons.push('empty_squad');
   const blast = devotionBlastRadius(canvas, squadIndex);
   const deployed = deployedUidSet(callerId, canvas);

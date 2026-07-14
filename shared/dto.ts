@@ -160,10 +160,55 @@ export interface ApiStarterJobs {
   jobs: ApiStarterJob[];
 }
 
+/** REQ-0170: a unit/1 def as served. `charge`/`effects` are absent BY DESIGN --
+ * frozen in vocab, unimplemented in the engine (see REQ-0170 section 2.3). */
+export interface ApiUnitEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  rarity: string;
+  /** Artwork system_name -- a FREE reference (two units may share one artwork). */
+  icon: string;
+  connection_shape: string;
+  flavor?: string;
+  flavor_ja?: string;
+  i18n?: { ja?: { name?: string; flavor?: string } };
+}
+
+/** REQ-0170: a gacha_pack/1 def as served -- the emission pool the Workshop
+ * rolls against. Served so the client shows the SAME cost/pool the server rolls
+ * with, instead of a display constant that can drift. REQ-0171 makes these
+ * authorable in the content admin. */
+export interface ApiPackEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  cost: number;
+  cost_tm?: string;
+  cells?: [number, number];
+  hp_per_cell?: number;
+  pool: Array<{ unit: string; weight: number }>;
+  i18n?: { ja?: { name?: string } };
+}
+
+/** REQ-0170 / REQ-0128b: one entry of vocab.json's connection_shapes table. */
+export interface ApiConnShape {
+  kind: 'ray' | 'offset' | 'none';
+  ja?: string;
+  dirs?: number[];
+  range?: number | null;
+  pierce?: boolean;
+  offsets?: Array<[number, number]>;
+  note?: string;
+}
+
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
   tms: Record<string, ApiTmEntry>; // REQ-0042
+  units: Record<string, ApiUnitEntry>; // REQ-0170
+  packs: Record<string, ApiPackEntry>; // REQ-0170
+  connection_shapes: Record<string, ApiConnShape>; // REQ-0170
   trees: ApiTrees;
   scenario: ApiScenario;
   layout: Layout | null;

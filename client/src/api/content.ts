@@ -3,8 +3,8 @@
 // resolution (extracted VERBATIM from the old flat api.ts; see api.ts,
 // now the barrel, for the module history).
 import { getJSON } from './http';
-import type { GameState, ItemDefMap, Layout, SIDefMap, Trees } from '../engine/engine.d.ts';
-import type { ApiContentPayload, ApiScenario, ApiStarterJobs } from '../../../shared/dto';
+import type { ConnShapeMap, GameState, ItemDefMap, Layout, SIDefMap, Trees, UnitDefMap } from '../engine/engine.d.ts';
+import type { ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterJobs } from '../../../shared/dto';
 import { fetchCanvas } from './profile';
 
 // ---- engine-ready shape (what Engine.create(...) + makeState() consume) ----
@@ -14,6 +14,13 @@ export interface GameData {
   ITEMS: ItemDefMap;
   SI_DEFS: SIDefMap;
   TREES: Trees;
+  /** REQ-0170: the unit/1 defs. Engine.create() resolves every BP's rays through
+   * these + CONN_SHAPES, so the def -- not the BP -- is the source of truth. */
+  UNITS: UnitDefMap;
+  /** REQ-0170: vocab.json's connection_shapes table. */
+  CONN_SHAPES: ConnShapeMap;
+  /** REQ-0170: the gacha packs, id-keyed. */
+  PACKS: Record<string, ApiPackEntry>;
   makeState: () => GameState;
   starterJobs: ApiStarterJobs | null; // REQ-0051: fresh-profile job-squad seed source
 }
@@ -81,6 +88,12 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
 
   const TREES: Trees = payload.trees ?? { po: {}, socket: {} };
 
+  // REQ-0170: units + shapes + packs pass through as-is (already id-keyed by the
+  // server, and unlike items/SIs a unit def carries no effects AST to render).
+  const UNITS: UnitDefMap = (payload.units ?? {}) as unknown as UnitDefMap;
+  const CONN_SHAPES: ConnShapeMap = (payload.connection_shapes ?? {}) as unknown as ConnShapeMap;
+  const PACKS: Record<string, ApiPackEntry> = payload.packs ?? {};
+
   const scenarioForState: Partial<ApiScenario> = JSON.parse(JSON.stringify(payload.scenario ?? {}));
   delete scenarioForState.layout;
   const scenarioClone = scenarioForState as GameState;
@@ -89,7 +102,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TREES, makeState, starterJobs: payload.starterJobs ?? null };
+  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, makeState, starterJobs: payload.starterJobs ?? null };
 }
 
 export type DataSource = 'live' | 'error';

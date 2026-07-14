@@ -98,14 +98,24 @@ function isSquadDeployable(engine, canvas, squadIndex) {
 // (including any slot the caller is in the middle of assigning via a
 // prior call in the same request, though assignSlot is only ever called
 // once per HTTP request today).
-function deployedUidSetsForGate(playerId, room, profileCanvas, excludeSlotIndex) {
-  const out = new Set();
+// REQ-0168 U6: the two overlap ORIGINS are returned SEPARATELY so the
+// caller can distinguish a same-room duplicate (the same squad in two
+// slots of THIS room -> reason 'same_room_duplicate') from a genuine
+// cross-room overlap against another ACTIVE room (reason
+// 'deployed_overlap'). These are truthfully different situations for the
+// player -- one is "you picked this squad twice, right here", the other is
+// "this squad is off on a run that is still going" -- and deserve distinct
+// 409 messages, even though the underlying rule ("this uid is already
+// committed somewhere") is one and the same.
+function deployedUidSetsByOrigin(playerId, room, profileCanvas, excludeSlotIndex) {
+  const sameRoom = new Set();
+  const otherRooms = new Set();
   // (a) this room's OWN other slots, regardless of the room's own status.
   room.slots.forEach((slot, i) => {
     if (i === excludeSlotIndex) return; // the slot being assigned right now never counts against itself
     if (slot.squadIndex == null) return;
     const squadCanvas = squadCanvasOf(profileCanvas, slot.squadIndex);
-    for (const uid of squadUidSet(squadCanvas)) out.add(uid);
+    for (const uid of squadUidSet(squadCanvas)) sameRoom.add(uid);
   });
   // (b) every OTHER active room this player owns.
   const rooms = storage.listRooms();
@@ -116,9 +126,18 @@ function deployedUidSetsForGate(playerId, room, profileCanvas, excludeSlotIndex)
     for (const slot of otherRoom.slots) {
       if (slot.squadIndex == null) continue;
       const squadCanvas = squadCanvasOf(profileCanvas, slot.squadIndex);
-      for (const uid of squadUidSet(squadCanvas)) out.add(uid);
+      for (const uid of squadUidSet(squadCanvas)) otherRooms.add(uid);
     }
   }
+  return { sameRoom, otherRooms };
+}
+
+// Backward-compatible union view (unchanged callers/exports keep the same
+// "every uid deployed elsewhere" Set they always had).
+function deployedUidSetsForGate(playerId, room, profileCanvas, excludeSlotIndex) {
+  const { sameRoom, otherRooms } = deployedUidSetsByOrigin(playerId, room, profileCanvas, excludeSlotIndex);
+  const out = new Set(sameRoom);
+  for (const uid of otherRooms) out.add(uid);
   return out;
 }
 
@@ -134,7 +153,7 @@ function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDe
   if (!profileCanvas || !profileCanvas.presets || squadIndex < 0 || squadIndex >= profileCanvas.presets.store.length) {
     const err = new Error('squadIndex out of range for this player'); err.code = 'BAD_REQUEST'; throw err;
   }
-  const engine = makeEngine(itemDefsById);
+  const engine = makeEngine(itemDefsById); // REQ-0170: deploy-gate only (isSquadDeployable) -- never traces beams, so the Unit registries are deliberately not threaded here
   if (!isSquadDeployable(engine, profileCanvas, squadIndex)) {
     // REQ-0041 feedback 5: a squad with zero BP has no HP pool at all --
     // "dead on arrival" -- and must never be assignable to a room slot.
@@ -149,17 +168,19 @@ function assignSlot(room, callerId, slotIndex, squadIndex, profileCanvas, itemDe
     err.code = 'CONFLICT'; err.reason = 'empty_squad'; throw err;
   }
   const mySquadUids = squadUidSet(squadCanvasOf(profileCanvas, squadIndex));
-  const deployedElsewhere = deployedUidSetsForGate(callerId, room, profileCanvas, slotIndex);
+  const { sameRoom, otherRooms } = deployedUidSetsByOrigin(callerId, room, profileCanvas, slotIndex);
   for (const uid of mySquadUids) {
-    if (deployedElsewhere.has(uid)) {
-      // Same {code,reason} shape golden d's overlap rejection has always
-      // used -- reason is intentionally the SAME 'deployed_overlap' tag
-      // regardless of whether the overlap came from this room's own
-      // other slots (duplicate squad, bug c) or another active room
-      // (cross-room overlap, bug b's correct remaining half) -- both are
-      // the exact same underlying violation ("this uid is already
-      // deployed somewhere"), not two different error classes.
-      const err = new Error('squad overlaps a squad already deployed in an active schedule (this room\'s other slots, or another active room)');
+    // REQ-0168 U6: a same-room duplicate is checked FIRST and reported with
+    // its own reason/message (right location; no cross-room "wait for the
+    // run to finish" advice; correct grammar). A genuine cross-room overlap
+    // keeps the long-standing 'deployed_overlap' reason + an 'active
+    // schedule' message (the client maps each reason to its own i18n copy).
+    if (sameRoom.has(uid)) {
+      const err = new Error('squad is already assigned to another slot of this room (each slot needs a different squad)');
+      err.code = 'CONFLICT'; err.reason = 'same_room_duplicate'; throw err;
+    }
+    if (otherRooms.has(uid)) {
+      const err = new Error('squad overlaps a squad already deployed in another active schedule (that run is still running)');
       err.code = 'CONFLICT'; err.reason = 'deployed_overlap'; throw err;
     }
   }

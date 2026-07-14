@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-05T08:00:10.104Z
+// Generated: 2026-07-14T01:38:53.227Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -381,9 +381,9 @@ const SI_DEFS={
   "reqTags": [],
   "icon": "icon-frost_orb",
   "rarity": "Uncommon",
-  "eff": "On host hit: Apply 4–8 Chill.",
-  "eff_en": "On host hit: Apply 4–8 Chill.",
-  "eff_ja": "装備先が命中した時: 氷結 4〜8 付与。",
+  "eff": "On host PO hit: Apply 4–8 Chill.",
+  "eff_en": "On host PO hit: Apply 4–8 Chill.",
+  "eff_ja": "装備先POが命中した時: 氷結 4〜8 付与。",
   "flavor": "Cold that keeps its promises.",
   "flavor_ja": "約束を守る、冷気。"
  },
@@ -422,9 +422,9 @@ const SI_DEFS={
   "reqTags": [],
   "icon": "icon-poison_vial",
   "rarity": "Common",
-  "eff": "On host hit: Apply 2–4 Poison.",
-  "eff_en": "On host hit: Apply 2–4 Poison.",
-  "eff_ja": "装備先が命中した時: 毒 2〜4 付与。",
+  "eff": "On host PO hit: Apply 2–4 Poison.",
+  "eff_en": "On host PO hit: Apply 2–4 Poison.",
+  "eff_ja": "装備先POが命中した時: 毒 2〜4 付与。",
   "flavor": "Coat sockets exist only on Weapons.",
   "flavor_ja": "コートソケットは武器にしか存在しない。"
  },
@@ -435,11 +435,343 @@ const SI_DEFS={
   "reqTags": [],
   "icon": "icon-acc_guard",
   "rarity": "Uncommon",
-  "eff": "On host hit: Block 4–8.",
-  "eff_en": "On host hit: Block 4–8.",
-  "eff_ja": "装備先が命中した時: ブロック 4〜8。",
+  "eff": "On host PO hit: Block 4–8.",
+  "eff_en": "On host PO hit: Block 4–8.",
+  "eff_ja": "装備先POが命中した時: ブロック 4〜8。",
   "flavor": "Unseats if disassembled.",
   "flavor_ja": "分解されれば、外れ落ちる。"
+ }
+};
+const UNITS={
+ "elf": {
+  "id": "elf",
+  "name": "Elf",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-elf",
+  "connection_shape": "bishop",
+  "i18n": {
+   "ja": {
+    "name": "エルフ"
+   }
+  },
+  "name_ja": "エルフ"
+ },
+ "dwarf": {
+  "id": "dwarf",
+  "name": "Dwarf",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-dwarf",
+  "connection_shape": "rook",
+  "i18n": {
+   "ja": {
+    "name": "ドワーフ"
+   }
+  },
+  "name_ja": "ドワーフ"
+ },
+ "thief": {
+  "id": "thief",
+  "name": "Thief",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-thief",
+  "connection_shape": "chess_knight_move",
+  "i18n": {
+   "ja": {
+    "name": "シーフ"
+   }
+  },
+  "name_ja": "シーフ"
+ },
+ "angel": {
+  "id": "angel",
+  "name": "Angel",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-angel",
+  "connection_shape": "queen",
+  "i18n": {
+   "ja": {
+    "name": "エンジェル"
+   }
+  },
+  "name_ja": "エンジェル"
+ },
+ "shieldmaiden": {
+  "id": "shieldmaiden",
+  "name": "Shieldmaiden",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-shieldmaiden",
+  "connection_shape": "backward_line",
+  "i18n": {
+   "ja": {
+    "name": "シールドメイデン"
+   }
+  },
+  "name_ja": "シールドメイデン"
+ },
+ "priest": {
+  "id": "priest",
+  "name": "Priest",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-priest",
+  "connection_shape": "queen",
+  "i18n": {
+   "ja": {
+    "name": "プリースト"
+   }
+  },
+  "name_ja": "プリースト"
+ },
+ "littleprincess": {
+  "id": "littleprincess",
+  "name": "Little Princess",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-princess",
+  "connection_shape": "queen",
+  "i18n": {
+   "ja": {
+    "name": "リトルプリンセス"
+   }
+  },
+  "name_ja": "リトルプリンセス"
+ },
+ "princess": {
+  "id": "princess",
+  "name": "Princess",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-princess",
+  "connection_shape": "queen",
+  "i18n": {
+   "ja": {
+    "name": "プリンセス"
+   }
+  },
+  "name_ja": "プリンセス"
+ },
+ "lightcavalry": {
+  "id": "lightcavalry",
+  "name": "Light Cavalry",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-lightcavalry",
+  "connection_shape": "lance",
+  "i18n": {
+   "ja": {
+    "name": "軽騎兵"
+   }
+  },
+  "name_ja": "軽騎兵"
+ },
+ "berserker": {
+  "id": "berserker",
+  "name": "Berserker",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-berserker",
+  "connection_shape": "none",
+  "i18n": {
+   "ja": {
+    "name": "バーサーカー"
+   }
+  },
+  "name_ja": "バーサーカー"
+ },
+ "watcher": {
+  "id": "watcher",
+  "name": "Watcher",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-watcher",
+  "connection_shape": "queen_2",
+  "i18n": {
+   "ja": {
+    "name": "ウォッチャー"
+   }
+  },
+  "name_ja": "ウォッチャー"
+ },
+ "squire": {
+  "id": "squire",
+  "name": "Squire",
+  "rarity": "Common",
+  "icon": "units-002-roster-flux2:unit-squire",
+  "connection_shape": "rook_3",
+  "i18n": {
+   "ja": {
+    "name": "スクワイア"
+   }
+  },
+  "name_ja": "スクワイア"
+ }
+};
+const CONN_SHAPES={
+ "queen": {
+  "ja": "クイーン",
+  "kind": "ray",
+  "dirs": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7
+  ],
+  "range": null,
+  "pierce": false,
+  "note": "8-direction rays, unlimited. The pre-pivot Linker default."
+ },
+ "queen_2": {
+  "ja": "クイーン(射程2)",
+  "kind": "ray",
+  "dirs": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7
+  ],
+  "range": 2,
+  "pierce": false,
+  "note": "8-direction rays, range 2. REQ-0149 Watcher (user ruling 2026-07-13: range 1 made connection nearly impossible)."
+ },
+ "rook": {
+  "ja": "飛車",
+  "kind": "ray",
+  "dirs": [
+   0,
+   2,
+   4,
+   6
+  ],
+  "range": null,
+  "pierce": false,
+  "note": "Orthogonal rays, unlimited."
+ },
+ "rook_3": {
+  "ja": "飛車(射程3)",
+  "kind": "ray",
+  "dirs": [
+   0,
+   2,
+   4,
+   6
+  ],
+  "range": 3,
+  "pierce": false,
+  "note": "Orthogonal rays, range 3. REQ-0149 Squire (user ruling 2026-07-13)."
+ },
+ "bishop": {
+  "ja": "角",
+  "kind": "ray",
+  "dirs": [
+   1,
+   3,
+   5,
+   7
+  ],
+  "range": null,
+  "pierce": false,
+  "note": "Diagonal rays, unlimited."
+ },
+ "lance": {
+  "ja": "香",
+  "kind": "ray",
+  "dirs": [
+   0
+  ],
+  "range": null,
+  "pierce": false,
+  "note": "Forward ray, unlimited. forward = DIRS[0] = N (orientation ruling)."
+ },
+ "backward_line": {
+  "ja": "後方直線",
+  "kind": "ray",
+  "dirs": [
+   4
+  ],
+  "range": null,
+  "pierce": false,
+  "note": "Backward ray, unlimited. REQ-0149 Shieldmaiden — she is the front line and guards what stands behind her. The mirror of lance (Light Cavalry)."
+ },
+ "adjacency": {
+  "ja": "隣接",
+  "kind": "ray",
+  "dirs": [
+   0,
+   2,
+   4,
+   6
+  ],
+  "range": 1,
+  "pierce": false,
+  "note": "Rook ray with range 1. Part of the user's ORIGINAL ratified vocabulary (2026-07-12), but NO roster-001 unit uses it — kept because the user ratified it, not because a def needs it."
+ },
+ "none": {
+  "ja": "接続なし",
+  "kind": "none",
+  "dirs": [],
+  "range": 0,
+  "pierce": false,
+  "note": "Unit forms no links."
+ },
+ "chess_knight_move": {
+  "ja": "チェス・ナイトの動き",
+  "kind": "offset",
+  "offsets": [
+   [
+    -2,
+    -1
+   ],
+   [
+    -2,
+    1
+   ],
+   [
+    -1,
+    -2
+   ],
+   [
+    -1,
+    2
+   ],
+   [
+    1,
+    -2
+   ],
+   [
+    1,
+    2
+   ],
+   [
+    2,
+    -1
+   ],
+   [
+    2,
+    1
+   ]
+  ],
+  "range": null,
+  "pierce": null,
+  "note": "Chess knight: 8 fixed offsets, jumps. `range` and `pierce` are INVALID on offset shapes (user ruling 2026-07-14). Renamed from `knight` on 2026-07-14: the id named a PIECE and the ja label said 桂, but the offsets were the chess set. Keima and knight are different MOVEMENTS and now carry different ids. These are movement names; they have nothing to do with unit names."
+ },
+ "shougi_keima_move": {
+  "ja": "将棋・桂馬の動き",
+  "kind": "offset",
+  "offsets": [
+   [
+    -2,
+    -1
+   ],
+   [
+    -2,
+    1
+   ]
+  ],
+  "range": null,
+  "pierce": null,
+  "note": "Shougi keima: 2 fixed FORWARD offsets, jumps. forward = row-1 = N per the orientation ruling. RESERVED by user ruling 2026-07-14 -- registered as vocabulary; no roster-001 unit uses it and the engine may leave it unimplemented. `range` and `pierce` are INVALID on offset shapes."
  }
 };
 const SCENARIO={
@@ -479,17 +811,14 @@ const SCENARIO={
     1,
     1
    ],
-   "linker": {
+   "hpMax": 90,
+   "unit": {
+    "id": "dwarf",
     "off": [
      2,
      1
-    ],
-    "dirs": [
-     1,
-     4
     ]
-   },
-   "hpMax": 90
+   }
   },
   {
    "id": "beta",
@@ -525,16 +854,14 @@ const SCENARIO={
     1,
     4
    ],
-   "linker": {
+   "hpMax": 90,
+   "unit": {
+    "id": "elf",
     "off": [
      0,
      0
-    ],
-    "dirs": [
-     5
     ]
-   },
-   "hpMax": 90
+   }
   },
   {
    "id": "gamma",
@@ -570,17 +897,14 @@ const SCENARIO={
     4,
     2
    ],
-   "linker": {
+   "hpMax": 90,
+   "unit": {
+    "id": "angel",
     "off": [
      0,
      0
-    ],
-    "dirs": [
-     2,
-     3
     ]
-   },
-   "hpMax": 90
+   }
   },
   {
    "id": "delta",
@@ -608,16 +932,14 @@ const SCENARIO={
     4,
     5
    ],
-   "linker": {
+   "hpMax": 60,
+   "unit": {
+    "id": "lightcavalry",
     "off": [
      0,
      0
-    ],
-    "dirs": [
-     6
     ]
-   },
-   "hpMax": 60
+   }
   }
  ],
  "pos": [
@@ -741,5 +1063,5 @@ function makeState(){
  st.presets=makeSquadsMeta();
  return st;
 }
-return {LAYOUT,ITEMS,SI_DEFS,TREES,makeState};
+return {LAYOUT,ITEMS,SI_DEFS,TREES,UNITS,CONN_SHAPES,makeState};
 });

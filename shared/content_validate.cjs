@@ -20,6 +20,15 @@ const ITEM_ALLOWED_KEYS = new Set([
 const SI_ALLOWED_KEYS = new Set([
   'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'effects',
 ]);
+// REQ-0170: unit/1 (docs/llm_managed/unit_icon_pipeline.md section 4.2, RATIFIED
+// 2026-07-14). Deliberately ABSENT: `charge` and `effects` (the grammar is frozen but
+// the engine has no charge AST -- a def field nothing evaluates is fiction), and
+// `sockets` (REMOVED by user ruling; demoted to REQ-0163, unratified). Adding either
+// to this allowlist without the code that honours it is the failure mode this REQ
+// exists to end.
+const UNIT_ALLOWED_KEYS = new Set([
+  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape',
+]);
 
 function isFiniteNum(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -142,7 +151,9 @@ function validateBody(body, kind, vocab) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     throw new Error('body must be a JSON object');
   }
-  const allowed = kind === 'item' ? ITEM_ALLOWED_KEYS : SI_ALLOWED_KEYS;
+  const allowed = kind === 'item' ? ITEM_ALLOWED_KEYS
+    : kind === 'unit' ? UNIT_ALLOWED_KEYS
+    : SI_ALLOWED_KEYS;
   for (const key of Object.keys(body)) {
     if (!allowed.has(key)) {
       throw new Error('unknown field "' + key + '" is not editable via this endpoint');
@@ -185,10 +196,75 @@ function validateBody(body, kind, vocab) {
   if (body.i18n !== undefined) {
     validateI18n(body.i18n, 'i18n');
   }
+  // REQ-0170: a unit's connection_shape must be a key of the RATIFIED table. This is
+  // the closed-vocabulary rule that makes `connection_shape` mean something: an
+  // unknown key would resolve to null at walk time and the Unit would silently form
+  // no links -- a def that lies quietly instead of failing loudly.
+  if (body.connection_shape !== undefined) {
+    const shapes = vocab.connection_shapes || {};
+    if (typeof body.connection_shape !== 'string' || !(body.connection_shape in shapes)) {
+      throw new Error('unknown connection_shape "' + body.connection_shape + '" (must be a key of vocab.connection_shapes)');
+    }
+  }
+}
+
+/** REQ-0170: validates ONE whole `unit/1` entry as it appears in
+ * content/live/live_units.json -- i.e. including the fields validateBody() does not
+ * cover because an admin PUT may not edit them (`id`, `icon`). `icon` is a FREE
+ * reference to an artwork system_name: it is NOT derived from `id` (two defs share
+ * one artwork -- REQ-0149 G14), so the one thing this must never do is assert
+ * icon === 'icon-' + id. Throws on the first violation. */
+function validateUnitEntry(entry, vocab) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('unit entry must be an object');
+  if (typeof entry.id !== 'string' || !entry.id) throw new Error('unit entry: id is required');
+  const ctx = 'unit "' + entry.id + '"';
+  if (typeof entry.name !== 'string' || !entry.name) throw new Error(ctx + ': name is required');
+  if (typeof entry.icon !== 'string' || !entry.icon) throw new Error(ctx + ': icon is required (an artwork system_name; illustration-first)');
+  if (typeof entry.connection_shape !== 'string') throw new Error(ctx + ': connection_shape is required');
+  if (!entry.i18n || !entry.i18n.ja || typeof entry.i18n.ja.name !== 'string') {
+    throw new Error(ctx + ': i18n.ja.name is MANDATORY on every entry (pipeline rule)');
+  }
+  const body = {};
+  for (const k of Object.keys(entry)) {
+    if (k === 'id' || k === 'icon') continue; // not editable via the admin surface; checked above
+    body[k] = entry[k];
+  }
+  validateBody(body, 'unit', vocab);
+}
+
+/** REQ-0170: validates ONE `gacha_pack/1` entry (content/live/live_packs.json).
+ * `unitIds` is the set of ids that actually exist in live_units.json -- a pool row
+ * naming a unit that does not exist is the single most dangerous thing a pack can
+ * contain, because the roll would either crash or silently skip it. */
+function validatePackEntry(pack, unitIds) {
+  if (!pack || typeof pack !== 'object' || Array.isArray(pack)) throw new Error('pack entry must be an object');
+  if (typeof pack.id !== 'string' || !pack.id) throw new Error('pack entry: id is required');
+  const ctx = 'pack "' + pack.id + '"';
+  if (!Number.isFinite(pack.cost) || pack.cost < 0) throw new Error(ctx + ': cost must be a non-negative number');
+  if (pack.cells !== undefined) {
+    if (!Array.isArray(pack.cells) || pack.cells.length !== 2 ||
+        !Number.isInteger(pack.cells[0]) || !Number.isInteger(pack.cells[1]) ||
+        pack.cells[0] < 1 || pack.cells[1] < pack.cells[0]) {
+      throw new Error(ctx + ': cells must be [min,max] integers with 1 <= min <= max');
+    }
+  }
+  if (pack.hp_per_cell !== undefined && (!Number.isFinite(pack.hp_per_cell) || pack.hp_per_cell <= 0)) {
+    throw new Error(ctx + ': hp_per_cell must be a positive number');
+  }
+  if (!Array.isArray(pack.pool) || pack.pool.length === 0) throw new Error(ctx + ': pool must be a non-empty array');
+  let total = 0;
+  for (const row of pack.pool) {
+    if (!row || typeof row.unit !== 'string') throw new Error(ctx + ': every pool row needs a unit id');
+    if (!unitIds.has(row.unit)) throw new Error(ctx + ': pool names unit "' + row.unit + '", which has no live def');
+    if (!Number.isFinite(row.weight) || row.weight <= 0) throw new Error(ctx + ': pool row "' + row.unit + '" needs a positive weight');
+    total += row.weight;
+  }
+  if (!(total > 0)) throw new Error(ctx + ': pool weights must sum to a positive number');
 }
 
 
 module.exports = {
-  SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS,
+  SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS, UNIT_ALLOWED_KEYS,
+  validateUnitEntry, validatePackEntry,
   isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody,
 };

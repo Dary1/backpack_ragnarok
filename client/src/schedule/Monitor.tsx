@@ -53,7 +53,7 @@ import {
 } from '../api';
 import { loadBoardTextures } from '../board/sprites';
 import { iconDataUrl } from '../dex/dexIcons';
-import { t } from '../i18n';
+import { t, type TranslationKey } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
@@ -67,7 +67,10 @@ import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
  * lifecycles are independent (this component fetches content lazily,
  * only once a run actually settles, not on every mount). */
 function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
-  const entry = content?.items[itemId] ?? content?.sis[itemId];
+  // REQ-0168 U10: TM stacks (e.g. 'lrdst') live in content.tms, NOT
+  // content.items/sis -- resolve there too, else known TM rewards render
+  // as raw ids. rewardVisual() already checks content.tms; this mirrors it.
+  const entry = content?.items[itemId] ?? content?.sis[itemId] ?? content?.tms[itemId];
   if (!entry) return itemId;
   if (locale === 'ja') return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
   return entry.name;
@@ -167,6 +170,15 @@ interface MonitorProps {
    * receives it from SchedulePage's join) -- shown in the mock m-head's
    * 「戦況監視 — <dungeon>」strip. Pure display. */
   dungeonName: string;
+  /** REQ-0168 U12: same item_admin gate SchedulePage already applies to
+   * the create-form seed field -- the monitor head's raw genSeed readout
+   * is a dev detail, shown only to item_admin, never to a plain guest. */
+  isAdmin: boolean;
+  /** REQ-0100: fired once when this room's run settles, so SchedulePage's
+   * spoils rail can immediately refresh its warehouse preview (fresh loot
+   * just landed) instead of waiting its slow poll. Optional (no-op if the
+   * monitor is rendered without a rail). */
+  onRunSettled?: () => void;
 }
 
 const POLL_MS = 2000;
@@ -178,20 +190,65 @@ function latestOfType(events: ApiRunEvent[], evName: string): ApiRunEvent | null
   return null;
 }
 
+// REQ-0168 U13(d): the sim emits raw tokens for encounter kinds
+// (pack/boss/trap...) and telegraph skill/edge words. Map the known
+// vocabulary to localized display text, falling back to the raw token for
+// anything not yet in the map (a future kind never disappears -- it just
+// renders untranslated until added here).
+const KIND_KEYS: Record<string, TranslationKey> = {
+  pack: 'schedule.monitor.kind.pack',
+  boss: 'schedule.monitor.kind.boss',
+  trap: 'schedule.monitor.kind.trap',
+  chest: 'schedule.monitor.kind.chest',
+  door: 'schedule.monitor.kind.door',
+};
+const SKILL_KEYS: Record<string, TranslationKey> = {
+  strike: 'schedule.monitor.skill.strike',
+  multi_strike: 'schedule.monitor.skill.multi_strike',
+};
+const EDGE_KEYS: Record<string, TranslationKey> = {
+  top: 'schedule.monitor.edge.top',
+  bottom: 'schedule.monitor.edge.bottom',
+  left: 'schedule.monitor.edge.left',
+  right: 'schedule.monitor.edge.right',
+};
+function localizedToken(locale: Locale, map: Record<string, TranslationKey>, token: string): string {
+  const key = map[token];
+  return key ? t(locale, key) : token;
+}
+
 function telegraphSentence(locale: Locale, ev: ApiRunEvent | null): string {
   if (!ev) return t(locale, 'schedule.monitor.noTelegraphYet');
-  const skill = typeof ev.skill === 'string' ? ev.skill : '?';
-  const edge = typeof ev.edge === 'string' ? ev.edge : Array.isArray(ev.edge) ? ev.edge.join('/') : '?';
+  // REQ-0168 U13(d): localize the sim's raw skill/edge tokens (unknown
+  // tokens fall back to the raw string).
+  const skill = typeof ev.skill === 'string' ? localizedToken(locale, SKILL_KEYS, ev.skill) : '?';
+  const edge = typeof ev.edge === 'string'
+    ? localizedToken(locale, EDGE_KEYS, ev.edge)
+    : Array.isArray(ev.edge)
+      ? ev.edge.map((e) => localizedToken(locale, EDGE_KEYS, String(e))).join('/')
+      : '?';
   const dir = typeof ev.dir === 'string' || typeof ev.dir === 'number' ? String(ev.dir) : '?';
   return `${skill} (${edge}, ${dir})`;
 }
 
-export function Monitor({ room, locale, dungeonName }: MonitorProps) {
+export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: MonitorProps) {
   const snapshot = useGameStore();
+  // REQ-0168 U9: a local 1s clock so the cooldown readout counts DOWN in
+  // lockstep with RoomCard's own -- both now derive from room.cooldownUntil
+  // (refreshed by the rooms poll), instead of the monitor rendering the
+  // run's fixed cooldownSecs TOTAL once and never updating it.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const [run, setRun] = useState<ApiRunView | null>(null);
   const [expanded, setExpanded] = useState(true); // REQ-0097: center detail pane opens the selected room's monitor expanded
   const [mountedOnce, setMountedOnce] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // REQ-0169 M1: a callback ref stored in state (NOT a plain useRef) so the
+  // Pixi mount effect can react to the canvas ACTUALLY entering the DOM --
+  // see the mount effect below for the mount-race root cause + fix.
+  const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MonitorRenderer | null>(null);
   const lastEventIndexRef = useRef(0);
   const squadsMountedRef = useRef(false);
@@ -239,15 +296,26 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     };
   }, [room.id, room.lastRunId]);
 
-  // Mount the Pixi renderer ONCE, the first time this monitor is
-  // expanded -- never recreated on later expand/collapse toggles.
+  // Mount the Pixi renderer ONCE, the first time this monitor is expanded --
+  // never recreated on later expand/collapse toggles.
+  //
+  // REQ-0169 M1 root cause (mount race): when a room is expanded BEFORE its
+  // first run exists, Monitor early-returns the awaitingRun stub -- there is
+  // NO <canvas> in the tree yet. Once the run auto-starts and the full JSX
+  // (with the canvas) finally renders, an effect keyed only on
+  // [expanded, mountedOnce] never re-fires (neither dep changed), so
+  // MonitorRenderer.mount()/app.init() never runs -- the canvas stays the
+  // browser-default 300x150 and replay renders nothing without a full page
+  // reload. Fix: key on `canvasEl` (a callback-ref value stored in state),
+  // so this effect runs the exact moment the canvas node enters the DOM,
+  // whatever conditional render gated it.
   useEffect(() => {
-    if (!expanded || mountedOnce || !canvasRef.current) return;
+    if (!expanded || mountedOnce || !canvasEl) return;
     let cancelled = false;
     (async () => {
       const textures = await loadBoardTextures();
-      if (cancelled || !canvasRef.current) return;
-      const renderer = await MonitorRenderer.mount(canvasRef.current, textures);
+      if (cancelled || !canvasEl) return;
+      const renderer = await MonitorRenderer.mount(canvasEl, textures);
       if (cancelled) {
         renderer.destroy();
         return;
@@ -258,7 +326,32 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     return () => {
       cancelled = true;
     };
-  }, [expanded, mountedOnce]);
+  }, [expanded, mountedOnce, canvasEl]);
+
+  // REQ-0169 M4: opt-in dev probe. Set `window.__bpMonitorProbe = true` in
+  // the console BEFORE interacting to log every main-thread long task
+  // (>=50ms) with its duration + start time, so create-room / first-expand /
+  // first-mount freezes can be attributed. INERT unless the flag is set, so
+  // it is safe to ship (M4 step 3: gate the probe behind a dev flag).
+  useEffect(() => {
+    if (typeof PerformanceObserver === 'undefined') return;
+    if (!(window as unknown as { __bpMonitorProbe?: boolean }).__bpMonitorProbe) return;
+    let obs: PerformanceObserver | null = null;
+    try {
+      obs = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration >= 50) {
+            // eslint-disable-next-line no-console
+            console.warn(`[bp monitor probe] longtask ${Math.round(entry.duration)}ms @ ${Math.round(entry.startTime)}ms`);
+          }
+        }
+      });
+      obs.observe({ entryTypes: ['longtask'] });
+    } catch {
+      // 'longtask' unsupported in this browser -- probe no-ops.
+    }
+    return () => obs?.disconnect();
+  }, []);
 
   // Mount player-side squad visuals once (formation box + full BP/PO
   // canvas copy) -- these never change mid-run, so this only needs to
@@ -332,6 +425,14 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
       try {
         const payload = await fetchDungeons();
         const formation = payload.formations.find((f) => f.id === room.formationId);
+        // REQ-0169 M3: surface a silent join failure (formation id no longer
+        // in content, or a squad slot with no canvas box) -- MonitorRenderer
+        // draws a dim fallback outline for the degenerate box, and this warn
+        // makes the cause visible in dev instead of a blank player field.
+        if (!formation) {
+          // eslint-disable-next-line no-console
+          console.warn('[backpack_ragnarok] Monitor: formation', room.formationId, 'not found in dungeons payload -- squads will use fallback outlines');
+        }
         const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`squad${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountSquads(withRealBoxes);
         squadsMountedRef.current = true;
@@ -363,9 +464,11 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
         };
       } catch (e) {
-        // Non-fatal -- the expanded view simply shows no squad
-        // footprints if the formation lookup fails; ray animation and
-        // the enemy side are unaffected.
+        // Non-fatal -- the expanded view simply shows no squad footprints if
+        // the formation lookup fails; ray animation and the enemy side are
+        // unaffected. REQ-0169 M3: warn rather than swallow silently.
+        // eslint-disable-next-line no-console
+        console.warn('[backpack_ragnarok] Monitor: squad/formation mount failed', e);
       }
     })();
   }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.state?.presets, snapshot.gameData, room.id]);
@@ -458,6 +561,15 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
     playheadRef.current = run.durationSecs;
     setPlayheadT(run.durationSecs);
     setPlaying(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settledNow, run?.runId]);
+
+  // REQ-0100: notify the spoils rail once this room's run settles, so it can
+  // refresh the warehouse preview immediately (loot lands at settle time) --
+  // fires once per runId (independent of the Pixi renderer, so it works even
+  // when the Field pane was never mounted).
+  useEffect(() => {
+    if (settledNow && run) onRunSettled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settledNow, run?.runId]);
 
@@ -585,7 +697,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
           </span>
         ) : null}
         <span className="schedule-monitor-grow" aria-hidden="true" />
-        {room.genSeed ? (
+        {isAdmin && room.genSeed ? (
           <span className="schedule-monitor-seed t-micro tnum">{t(locale, 'schedule.monitor.seed', { seed: room.genSeed })}</span>
         ) : null}
       </div>
@@ -601,13 +713,13 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
           </span>
         </div>
         <div className="schedule-monitor-encounter" data-testid="schedule-monitor-encounter">
-          {t(locale, 'schedule.monitor.encounter')}: {encStart ? `${encStart.kind ?? encStart.enc ?? '?'}` : '—'}
+          {t(locale, 'schedule.monitor.encounter')}: {encStart ? (encStart.kind != null ? localizedToken(locale, KIND_KEYS, String(encStart.kind)) : String(encStart.enc ?? '?')) : '—'}
         </div>
         <div className="schedule-monitor-telegraph" data-testid="schedule-monitor-telegraph">
           {t(locale, 'schedule.monitor.telegraph')}: {telegraphSentence(locale, telegraph)}
         </div>
         <button type="button" className="schedule-monitor-expand-btn" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? t(locale, 'schedule.collapse') : t(locale, 'schedule.expand')}
+          {expanded ? t(locale, 'schedule.monitor.hideField') : t(locale, 'schedule.monitor.showField')}
         </button>
       </div>
 
@@ -641,7 +753,7 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
         </div>
         <div className={activeTab === 'field' ? 'schedule-monitor-field-pane' : 'schedule-monitor-hidden'}>
           <div className="schedule-monitor-stage">
-            <canvas ref={canvasRef} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+            <canvas ref={setCanvasEl} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
           </div>
           {/* REQ-0071: the mock's iron control bar. Replay pacing is the
               SERVER's wall clock (REQ-0045), so the mock's pause/speed/
@@ -815,12 +927,26 @@ export function Monitor({ room, locale, dungeonName }: MonitorProps) {
                   })}
                 </ul>
               )}
+              {/* REQ-0168 U11: tell the player where the loot went + a
+                  direct link to claim it before the 7-day TTL. */}
+              {rewards && rewards.length > 0 ? (
+                <div className="schedule-monitor-rewards-hint" data-testid="schedule-monitor-rewards-hint">
+                  <span>{t(locale, 'schedule.monitor.rewardsHint')}</span>
+                  <a className="schedule-monitor-rewards-hint-link" href="#/warehouse">
+                    {t(locale, 'schedule.monitor.rewardsHintLink')}
+                  </a>
+                </div>
+              ) : null}
             </>
           )}
           {settled ? <div className="schedule-monitor-settled-badge">{t(locale, 'schedule.monitor.settled')}</div> : null}
-          {run.cooldownSecs > 0 ? (
+          {/* REQ-0168 U9 follow-up: mirror RoomCard.deriveStatus -- a
+              canceled room (status:'canceled') or one already flagged
+              cancelRequested will not start another run, so suppress the
+              cooldown / next-run readout for it. */}
+          {room.status !== 'canceled' && !room.cancelRequested && room.cooldownUntil && Date.parse(room.cooldownUntil) > nowMs ? (
             <div className="schedule-monitor-cooldown" data-testid="schedule-monitor-cooldown">
-              {t(locale, 'schedule.monitor.cooldownUntil', { time: formatCountdown(run.cooldownSecs * 1000) })}
+              {t(locale, 'schedule.monitor.cooldownUntil', { time: formatCountdown(Date.parse(room.cooldownUntil) - nowMs, locale) })}
             </div>
           ) : null}
         </div>

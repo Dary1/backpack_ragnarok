@@ -65,6 +65,9 @@ function runDungeon(opts) {
   const {
     masterSeed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById,
     skillDefsById, siDefsById, formationId, level, participants,
+    // REQ-0170: the Unit registries. Optional -- absent means no Unit links form,
+    // which is precisely the pre-REQ-0170 behaviour of a BP with no `linker`.
+    unitDefsById, connShapes,
   } = opts;
   const rng = makeRng(masterSeed);
   const allEvents = [];
@@ -74,7 +77,7 @@ function runDungeon(opts) {
   // threaded through every encounter call in this run (S8.2/OQ13:
   // "attrition PERMANENT within a run").
   const squadSlots = ['unit1', 'unit2', 'unit3', 'unit4'];
-  const compiled = squadSlots.map((slot, i) => compileSquadSnapshot(squadSnapshots[i], itemDefsById, formationId, slot, siDefsById));
+  const compiled = squadSlots.map((slot, i) => compileSquadSnapshot(squadSnapshots[i], itemDefsById, formationId, slot, siDefsById, unitDefsById, connShapes));
   // REQ-0095: tag squad membership onto each BP/PO (lost by the flatMap) so squad-scoped
   // reactive triggers (OnSquadHit/OnSquadBeenHit) can resolve owner -> squad at runtime.
   compiled.forEach(c => { for (const b of c.bps) b.squadSlot = c.squadSlot; for (const p of c.pos) p.squadSlot = c.squadSlot; for (const x of (c.sis || [])) x.squadSlot = c.squadSlot; });

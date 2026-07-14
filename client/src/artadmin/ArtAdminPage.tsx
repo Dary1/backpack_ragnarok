@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Locale } from '../store';
+import { useGameStore, clearArtAdminFocusName } from '../store';
 import {
   listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
   adoptRenderApi, deleteRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
@@ -57,6 +58,13 @@ function ConfirmDialog({ title, confirmLabel, onOk, onCancel, children }: {
 
 export function ArtAdminPage({ locale }: { locale: Locale }) {
   void locale;
+  // REQ-0173 (contentadmin-entity-rendering B): the module store's one-shot
+  // artadmin deep-link focus name (set by initRouting when the hash is
+  // #/artadmin/<system_name>). Consumed + cleared once the artwork list has
+  // loaded. Kept MINIMAL + additive per the REQ: we consume WITHOUT rewriting
+  // the hash (contentadmin rewrites; here the simpler consume-only path avoids
+  // any risk to the existing 3 artadmin e2e tests -- documented deviation).
+  const store = useGameStore();
   // registry + selection
   const [artworks, setArtworks] = useState<ArtworkDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -129,6 +137,23 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     const t = setInterval(() => { void loadDetail(selected); }, 2000);
     return () => clearInterval(t);
   }, [selected, loadDetail]);
+
+  // REQ-0173 (contentadmin-entity-rendering B): honor + consume a pending
+  // artadmin deep-link focus name once the artwork list has loaded (unknown
+  // name -> normal page + a reported error). Mirrors ContentAdminPage's
+  // consume-once-then-clear convention.
+  useEffect(() => {
+    const focus = store.artAdminFocusName;
+    if (!focus) return;
+    if (artworks.some((a) => a.system_name === focus)) {
+      selectArtwork(focus);
+      clearArtAdminFocusName();
+    } else if (artworks.length > 0) {
+      setMsg('deep link: no artwork named "' + focus + '"');
+      clearArtAdminFocusName();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.artAdminFocusName, artworks]);
 
   async function doPreview() {
     if (!selected || !draft) return;

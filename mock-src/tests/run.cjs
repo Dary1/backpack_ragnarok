@@ -10,7 +10,7 @@ function T(name,fn){
 }
 function eq(a,b,msg){if(JSON.stringify(a)!==JSON.stringify(b))throw new Error((msg||'')+' expected '+JSON.stringify(b)+' got '+JSON.stringify(a));}
 function ok(v,msg){if(!v)throw new Error(msg||'expected truthy');}
-function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES)};}
+function fresh(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES,Data.UNITS,Data.CONN_SHAPES)};}
 
 T('initial state integrity: no overlaps, all POs legally placed',()=>{
   const {st,E}=fresh();
@@ -111,13 +111,20 @@ T('BP move: delta relocates, contents shift, beams recompute (links break/dud)',
   const {st,E}=fresh();
   let beams=E.traceBeams(st);
   ok(beams.find(b=>b.from==='gamma'&&b.dir===2).to==='delta','initial gamma→delta link');
+  // REQ-0170: delta carries the Light Cavalry -- `lance`, a SINGLE forward (N) ray.
+  // Its beam is therefore its Unit's, not a rolled dirs array, and what the ray sees
+  // is a pure function of where the bag is standing. Capture it, move the bag, and
+  // assert the recomputation.
+  const deltaBefore=beams.find(b=>b.from==='delta');
   ok(E.moveBP(st,'delta',[5,4]).ok,'delta 2x2 to origin (5,4)');
   eq(st.bps.find(b=>b.id==='delta').origin,[5,4]);
   const jaw=st.pos.find(p=>p.uid==='p7');
   eq(jaw.cell,[5,4],'jaw shifted with its BP');
   beams=E.traceBeams(st);
   eq(beams.find(b=>b.from==='gamma'&&b.dir===2).to,null,'gamma dir2 now a dud');
-  eq(beams.find(b=>b.from==='delta').to,null,'delta dir6 now a dud');
+  const deltaAfter=beams.find(b=>b.from==='delta');
+  eq(deltaAfter.dir,0,"delta's only ray is the lance's forward (N) ray -- the Unit's shape, not the BP's");
+  ok((deltaBefore?deltaBefore.to:null)!==(deltaAfter?deltaAfter.to:null),'moving the bag re-resolves what its Unit\'s ray can see (was '+JSON.stringify(deltaBefore?deltaBefore.to:null)+', now '+JSON.stringify(deltaAfter.to)+')');
 });
 
 T('BP move rejections: overlap and out-of-canvas',()=>{
@@ -283,8 +290,8 @@ function portFixture(){
     return {
       linked:true,
       bps:[
-        {id:'north',name:'North',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}},
-        {id:'south',name:'South',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[3,1],linker:{off:[0,0],dirs:[]}},
+        {id:'north',name:'North',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}},
+        {id:'south',name:'South',color:'#888',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[3,1],unit:{id:'berserker',off:[0,0]}},
       ],
       pos:[],
       sis:[],
@@ -405,7 +412,7 @@ T('inventory: free PO placement legality -- bounds, PO-PO collision, BP-overlap 
   const coll=E.invCanPlacePO(st,0,'x1',0,[3,3]);
   ok(!coll.ok&&coll.why==='occupied','PO-PO collision rejected: '+JSON.stringify(coll));
   // BP overlap: add a BP covering [5,5]-[6,6], then a free PO must not overlap it partially
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[5,5],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[5,5],unit:{id:'berserker',off:[0,0]}});
   const straddle=E.invCanPlacePO(st,0,'x1',0,[5,4]); // wide_po-like span would straddle; use x1 (1x1) landing exactly on the BP edge cell instead:
   // a 1x1 PO landing fully on the BP is actually the CONTAINMENT case (legal) -- to test "free PO must not overlap a BP"
   // we need a PO whose shape straddles being partly free and partly on the BP. Use wide_po (2 cells horizontal).
@@ -424,8 +431,8 @@ T('inventory: PO fully-inside-one-BP containment law (accept inside, reject stra
   // ((1,1)-(1,3)), and [0,0] would put the unit cell exactly where w1
   // is asserted to legally land, now that invCanPlaceCells enforces the
   // unit-cell reservation (see canvas_spec.md's Unit section).
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[1,0],dirs:[]}});
-  pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],linker:{off:[1,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[1,0]}});
+  pg.bps.push({id:'bpB',name:'BP B',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,3],unit:{id:'berserker',off:[1,0]}});
   pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
   // fully inside bpA: [1,1] covers cells (1,1)-(1,2), both inside bpA (cols 1-2) -- accept
   ok(E.invCanPlacePO(st,0,'w1',0,[1,1]).ok,'wide_po fully inside bpA should be accepted');
@@ -447,7 +454,7 @@ function invBPFixtureSingleCellEdge(E){
   // sub-engine uses guarantees it can never coincide with (1,1)/(1,2), the
   // only two cells this check exercises.
   const ITEMS={wide_po:{name:'Wide PO',tags:[],shape:[[0,0],[0,1]],icon:'icon-x',sockets:[]}};
-  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[{bps:[{id:'bpX',name:'BP X',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[10,10],dirs:[]}}],pos:[{uid:'w9',id:'wide_po',loc:'grid',cell:[5,5],rot:0}],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]}};
+  const st={linked:true,bps:[],pos:[],sis:[],inv:{pages:[{bps:[{id:'bpX',name:'BP X',color:'#fff',shape:[[0,0]],origin:[1,1],unit:{id:'berserker',off:[10,10]}}],pos:[{uid:'w9',id:'wide_po',loc:'grid',cell:[5,5],rot:0}],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]},{bps:[],pos:[],sis:[]}]}};
   const E2=Engine.create(ITEMS,{},{ROWS:6,COLS:6},{po:{},socket:{}});
   const r=E2.invCanPlacePO(st,0,'w9',0,[1,1]);
   return {ok:(!r.ok&&r.why==='straddles BP edge')};
@@ -462,7 +469,7 @@ T('REQ-0092 inventory: invCanPlacePO rejects a page-resident BP\'s own unit cell
   // own origin/top-left cell -- exactly like a real BP authored with the
   // Unit at its first shape cell (a completely ordinary, unremarkable
   // authoring choice; nothing here is a degenerate/edge-case shape).
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}});
   // small_po (1x1) -- NOT wide_po -- so each anchor below tests exactly
   // one cell, isolating the unit-cell rule from the separate BP-
   // containment/straddle rules already covered above.
@@ -493,7 +500,7 @@ T('inventory: free SI 1-cell occupancy + collision with PO/BP/SI',()=>{
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}});
   pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
   pg.sis.push({uid:'s1',id:'small_si',host:'inv'});
   pg.sis.push({uid:'s2',id:'small_si',host:{page:0,cell:[4,4]}});
@@ -519,7 +526,7 @@ T('inventory: SI seat/unseat on an inventory-BP-hosted PO',()=>{
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}});
   pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[1,1],rot:0}); // fully inside bpA, has a gem socket
   pg.sis.push({uid:'s1',id:'small_si',host:'inv'});
   const skey=E.pageSockets(st,0).find(s=>s.host==='p1').skey;
@@ -1007,8 +1014,8 @@ T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by curre
   const SI_DEFS={gem_si:{name:'Gem SI',slot:'gem',reqTags:[]}};
   const LAYOUT={ROWS:8,COLS:8};
   const TREES={po:{},socket:{}};
-  const bp={id:'box',name:'Box',color:'#fff',shape:[[0,0],[0,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}};
-  const parking={id:'parking',name:'Parking',color:'#fff',shape:[[0,0],[0,1]],origin:[5,5],linker:{off:[0,1],dirs:[]}};
+  const bp={id:'box',name:'Box',color:'#fff',shape:[[0,0],[0,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}};
+  const parking={id:'parking',name:'Parking',color:'#fff',shape:[[0,0],[0,1]],origin:[5,5],unit:{id:'berserker',off:[0,1]}};
   const st={
     linked:true,
     bps:[bp,parking],
@@ -1173,7 +1180,7 @@ T('REQ-0033 inv <-> inv stays physical (no reference/exclusion logic applies to 
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0],[0,1],[1,0],[1,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}});
   pg.pos.push({uid:'w1',id:'wide_po',loc:'grid',cell:[1,1],rot:0});
   ok(E.transferBP(st,{loc:'inv',page:0},{loc:'inv',page:2},'bpA',[3,3]).ok,'page1 -> page3, pure home move');
   eq(st.inv.pages[0].bps.length,0,'origin page empty');
@@ -1574,7 +1581,7 @@ T('REQ-0042 TM: 1x1 footprint collides with BP/PO/SI/another-id-TM exactly like 
   const E=Engine.create(ITEMS,SI_DEFS,LAYOUT,TREES);
   const st=freshState();
   const pg=st.inv.pages[0];
-  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0]],origin:[1,1],linker:{off:[0,0],dirs:[]}});
+  pg.bps.push({id:'bpA',name:'BP A',color:'#fff',shape:[[0,0]],origin:[1,1],unit:{id:'berserker',off:[0,0]}});
   pg.pos.push({uid:'p1',id:'small_po',loc:'grid',cell:[3,3],rot:0});
   pg.sis.push({uid:'s2',id:'small_si',host:{page:0,cell:[4,4]}});
   pg.tms.push({uid:'t1',id:'lrdst',qty:5,cell:[6,6]});
@@ -1740,10 +1747,10 @@ function rotateFixtureItems(){
 }
 
 T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one contained PO rotates correctly (cell/dir remapping)',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   const st={
     linked:true,
-    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],
     pos:[{uid:'p1',id:'test_po',loc:'grid',cell:[4,3],rot:0}], // sits on the shape's foot cell (local [2,1] -> absolute [4,3])
     sis:[],
   };
@@ -1756,9 +1763,9 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one c
   // -> min row 0, min col -2 -> renormalized [[0,2],[0,1],[0,0],[1,0]].
   eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'shape rotated 90deg CW about its own bbox');
   // Unit off [2,1] -> raw rotated [1,-2] -> renormalized (same mr=0,mc=-2) -> [1,0].
-  eq(bp.linker.off,[1,0],'unit cell rotates WITH the shape (same renormalization delta)');
+  eq(bp.unit.off,[1,0],'unit cell rotates WITH the shape (same renormalization delta)');
   // Dirs [0,2] (N,E) -> +2 mod 8 -> [2,4] (E,S).
-  eq(bp.linker.dirs,[2,4],'unit beam directions rotate by +2 mod 8');
+  eq(E.connShapeOf(bp).dirs,[0,1,2,3,4,5,6,7],'REQ-0170: the rays do NOT rotate with the bag -- a connection shape is the UNIT\'s, and its dirs are board-absolute (vocab.orientation). Rotating the BP moves the seat, not the compass.');
   eq(bp.origin,[2,2],'BP origin itself does not move during an in-place rotation');
   // The contained PO sat on the foot cell (local [2,1], absolute [4,3]);
   // after rotation the foot is now at local [1,0] -> absolute [3,2]; the
@@ -1771,10 +1778,10 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one c
 });
 
 T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (shape, PO cell/rot, unit cell/dir) -- identity',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   const st={
     linked:true,
-    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+    bps:[{id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],
     pos:[{uid:'p1',id:'test_po',loc:'grid',cell:[4,3],rot:0}],
     sis:[],
   };
@@ -1784,22 +1791,22 @@ T('REQ-0045 rotateBP: canvas -- 4x rotate returns to the EXACT original state (s
     ok(r.ok,'rotation '+(i+1)+' of 4 must succeed (BP has room to turn freely): '+JSON.stringify(r));
   }
   eq(st.bps[0].shape,original.bps[0].shape,'shape identical after 4x rotation');
-  eq(st.bps[0].linker,original.bps[0].linker,'unit cell+dirs identical after 4x rotation');
+  eq(st.bps[0].unit,original.bps[0].unit,'unit identity+seat identical after 4x rotation');
   eq(st.bps[0].origin,original.bps[0].origin,'origin identical after 4x rotation');
   eq(st.pos[0].cell,original.pos[0].cell,'contained PO cell identical after 4x rotation');
   eq(st.pos[0].rot,original.pos[0].rot,'contained PO rot identical after 4x rotation (1+1+1+1=4 mod 4=0)');
 });
 
 T('REQ-0045 canRotateBP: canvas -- blocked when the rotated footprint would overlap another BP; state completely unchanged on refusal',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   const st={
     linked:true,
     bps:[
-      {id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[0,0],dirs:[]}},
+      {id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'berserker',off:[0,0]}},
       // Sits exactly on a cell the rotated footprint will need (see the
       // shape-rotation test above: rotated absolute cells are origin+
       // [[0,2],[0,1],[0,0],[1,0]] = (2,4),(2,3),(2,2),(3,2)).
-      {id:'blocker',name:'B',color:'#000',shape:[[0,0]],origin:[2,4],linker:{off:[0,0],dirs:[]}},
+      {id:'blocker',name:'B',color:'#000',shape:[[0,0]],origin:[2,4],unit:{id:'berserker',off:[0,0]}},
     ],
     pos:[],sis:[],
   };
@@ -1812,13 +1819,13 @@ T('REQ-0045 canRotateBP: canvas -- blocked when the rotated footprint would over
 });
 
 T('REQ-0045 canRotateBP: canvas -- blocked when rotation would push the shape outside canvas bounds',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   // A 1x4 horizontal bar with its origin at the top-right corner: rotating
   // to vertical needs 4 rows downward, which fits (8 rows) -- instead
   // place it so the rotated vertical bar would run past row 8.
   const st={
     linked:true,
-    bps:[{id:'bar',name:'Bar',color:'#fff',shape:[[0,0],[0,1],[0,2],[0,3]],origin:[6,1],linker:{off:[0,0],dirs:[]}}],
+    bps:[{id:'bar',name:'Bar',color:'#fff',shape:[[0,0],[0,1],[0,2],[0,3]],origin:[6,1],unit:{id:'berserker',off:[0,0]}}],
     pos:[],sis:[],
   };
   const chk=E.canRotateBP(st,'bar');
@@ -1826,11 +1833,11 @@ T('REQ-0045 canRotateBP: canvas -- blocked when rotation would push the shape ou
 });
 
 T('REQ-0045 invRotateBP: inventory page -- same math as canvas, contained PO travels, free-item occupancy excludes the BP\'s OWN contents',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   const st={
     linked:true,bps:[],pos:[],sis:[],
     inv:{pages:[
-      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[2,1],dirs:[0,2]}}],
+      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],
        pos:[{uid:'ip1',id:'test_po',loc:'grid',cell:[4,3],rot:0}],sis:[],tms:[]},
       {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},
     ],names:['1','2','3','4','5']},
@@ -1841,18 +1848,18 @@ T('REQ-0045 invRotateBP: inventory page -- same math as canvas, contained PO tra
   ok(r.ok,'inventory rotation commit succeeds');
   const bp=st.inv.pages[0].bps[0];
   eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'inventory BP shape rotates identically to the canvas math');
-  eq(bp.linker.dirs,[2,4],'inventory unit dirs rotate +2 mod 8 identically');
+  eq(bp.unit.off,[1,0],'inventory unit SEAT rotates identically to the canvas path (and, per REQ-0170, its rays do not rotate at all)');
   const po=st.inv.pages[0].pos.find(p=>p.uid==='ip1');
   eq(po.cell,[3,2],'inventory contained PO cell remapped identically');
   eq(po.rot,1,'inventory contained PO rot advances identically');
 });
 
 T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-placed PO (occupancy check still applies to non-owned items)',()=>{
-  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}});
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
   const st={
     linked:true,bps:[],pos:[],sis:[],
     inv:{pages:[
-      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],linker:{off:[0,0],dirs:[]}}],
+      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'berserker',off:[0,0]}}],
        // Foreign free PO sitting exactly on a cell the rotated footprint needs (absolute (2,4), per the shape-rotation math above).
        pos:[{uid:'foreign',id:'test_po',loc:'grid',cell:[2,4],rot:0}],sis:[],tms:[]},
       {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},
@@ -1865,6 +1872,106 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
   ok(!r.ok,'commit refused too');
   eq(st,before,'state completely unchanged after a refused inventory rotation');
 });
+
+
+// =====================================================================
+// REQ-0170 / REQ-0128b: the connection-shape walker.
+//
+// The ratified model in five rules -- every one of them tested below against a
+// SYNTHETIC registry (so the test pins the WALKER, not today's roster):
+//   ray shapes walk `dirs` at most `range` cells (0/null = unlimited);
+//   the occluder set is UNITS ONLY (BP and PO cells are transparent);
+//   pierce:false links the first Unit met, pierce:true links every Unit in range;
+//   offset shapes link the Unit standing on each offset cell (no range, no pierce);
+//   `none` forms no links.
+// =====================================================================
+(function(){
+  const SHAPES={
+    east:      {kind:'ray',   dirs:[2], range:null, pierce:false},
+    east_r2:   {kind:'ray',   dirs:[2], range:2,    pierce:false},
+    east_pierce:{kind:'ray',  dirs:[2], range:null, pierce:true},
+    queen:     {kind:'ray',   dirs:[0,1,2,3,4,5,6,7], range:null, pierce:false},
+    knight:    {kind:'offset',offsets:[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]},
+    quiet:     {kind:'none',  dirs:[]},
+  };
+  const UNITS={};
+  for(const k of Object.keys(SHAPES))UNITS['u_'+k]={name:k,rarity:'Common',icon:'',connection_shape:k};
+  const ITEMS={brick:{name:'Brick',shape:[[0,0]],tags:[],rarity:'Common',icon:'icon-x',sockets:[]}};
+  const E=Engine.create(ITEMS,{},{ROWS:8,COLS:8},{po:{},socket:{}},UNITS,SHAPES);
+  // a 1x1 BP whose single cell IS the unit seat -- the cleanest possible geometry
+  const cell=(id,shape,origin)=>({id,name:id,color:'#fff',shape:[[0,0]],origin,unit:{id:'u_'+shape,off:[0,0]},hpMax:50});
+  const st=(bps,pos)=>({linked:true,bps,pos:pos||[],sis:[]});
+
+  T('REQ-0170 walker: an unlimited ray links the FIRST Unit on it and stops there',()=>{
+    const s=st([cell('A','east',[1,1]),cell('B','east',[1,4]),cell('C','east',[1,7])]);
+    const beams=E.traceBeams(s).filter(b=>b.from==='A');
+    eq(beams.length,1,'east ray = exactly one beam');
+    eq(beams[0].to,'B','A links B (nearer), not C');
+    eq(beams[0].tos,['B'],'and only B -- pierce is off');
+  });
+
+  T('REQ-0170 walker: range caps the reach (a Unit 3 cells away is out of a range-2 ray)',()=>{
+    const near=E.traceBeams(st([cell('A','east_r2',[1,1]),cell('B','east',[1,3])])).find(b=>b.from==='A');
+    eq(near.to,'B','2 cells away is INSIDE range 2');
+    const far=E.traceBeams(st([cell('A','east_r2',[1,1]),cell('B','east',[1,4])])).find(b=>b.from==='A');
+    eq(far.to,null,'3 cells away is OUT of range 2 -- the ray simply ends');
+    eq(far.path.length,2,'and it walked exactly 2 cells before ending');
+  });
+
+  T('REQ-0170 walker: pierce links EVERY Unit in range, not just the first',()=>{
+    const b=E.traceBeams(st([cell('A','east_pierce',[1,1]),cell('B','east',[1,4]),cell('C','east',[1,7])])).find(x=>x.from==='A');
+    eq(b.tos,['B','C'],'both Units on the ray are linked');
+    eq(b.to,'B','`to` stays the FIRST hit -- every pre-REQ-0170 consumer keeps working');
+  });
+
+  T('REQ-0170 walker: the occluder set is UNITS ONLY -- a BP cell and a PO do NOT stop a ray',()=>{
+    // A wide BP whose unit seat is far from the ray, plus a PO sitting ON the ray.
+    const wide={id:'W',name:'W',color:'#fff',shape:[[0,0],[0,1],[0,2]],origin:[1,3],unit:{id:'u_quiet',off:[0,2]},hpMax:50};
+    const s=st([cell('A','east',[1,1]),wide,cell('C','east',[1,7])],
+               [{uid:'po1',id:'brick',loc:'grid',cell:[1,3],rot:0}]);
+    const b=E.traceBeams(s).find(x=>x.from==='A');
+    // W's own BP cells [1,3],[1,4] and the PO on [1,3] are all ON the ray, and W's
+    // unit seat sits at [1,5]. Transparent cells mean the ray reaches the SEAT first.
+    eq(b.to,'W','the ray passes through BP cells and a PO, and stops at the first UNIT (W\'s seat)');
+  });
+
+  T('REQ-0170 walker: an offset (knight) shape links the Unit on the jump cell -- and nothing else',()=>{
+    const s=st([cell('A','knight',[3,3]),cell('B','quiet',[1,4]),cell('C','quiet',[3,6])]);
+    const beams=E.traceBeams(s).filter(b=>b.from==='A');
+    eq(beams.length,8,'one beam per legal offset (all 8 land on the 8x8 board from [3,3])');
+    const hit=beams.filter(b=>b.to);
+    eq(hit.length,1,'exactly one jump cell holds a Unit');
+    eq(hit[0].to,'B','[3,3] + [-2,1] = [1,4] -> B');
+    eq(hit[0].dir,null,'an offset link has no compass direction');
+    eq(hit[0].offset,[-2,1],'and it reports the jump it made');
+    ok(!beams.some(b=>b.to==='C'),'C is 3 cells east -- reachable by no knight offset');
+  });
+
+  T('REQ-0170 walker: offsets outside the board are dropped, never clamped',()=>{
+    const beams=E.traceBeams(st([cell('A','knight',[1,1])])).filter(b=>b.from==='A');
+    eq(beams.length,2,'from the corner only 2 of the 8 knight offsets stay on the board');
+  });
+
+  T('REQ-0170 walker: `none` forms no links at all (Berserker)',()=>{
+    const beams=E.traceBeams(st([cell('A','quiet',[1,1]),cell('B','east',[1,4])])).filter(b=>b.from==='A');
+    eq(beams.length,0,'a connection_shape of none emits no beam whatsoever');
+  });
+
+  T('REQ-0170 walker: mutual is symmetric and survives pierce',()=>{
+    const beams=E.traceBeams(st([cell('A','queen',[1,1]),cell('B','queen',[1,4])]));
+    const ab=beams.find(b=>b.from==='A'&&b.to==='B');
+    const ba=beams.find(b=>b.from==='B'&&b.to==='A');
+    ok(ab&&ab.mutual,'A->B is mutual');
+    ok(ba&&ba.mutual,'B->A is mutual');
+  });
+
+  T('REQ-0170 walker: a BP whose unit id is unknown to the registry forms no links (and does not throw)',()=>{
+    const orphan={id:'X',name:'X',color:'#fff',shape:[[0,0]],origin:[1,1],unit:{id:'u_ghost',off:[0,0]},hpMax:50};
+    const beams=E.traceBeams(st([orphan,cell('B','east',[1,4])]));
+    eq(beams.filter(b=>b.from==='X').length,0,'missing data is a non-event: no rays, no exception');
+    eq(E.connShapeOf(orphan),null,'and connShapeOf says so plainly');
+  });
+})();
 
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
