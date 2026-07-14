@@ -33,6 +33,13 @@ const FIELD_H = FIELD_ROWS * FIELD_CELL_PX;
 const STEP_ANIM_MS = 200; // per ray_step segment, within the 150-300ms band the task brief calls for
 const FLASH_MS = 300;
 
+// REQ-0169 M2: enemy label style + lane geometry (dots stay at their true
+// cells; colliding labels bump DOWN a lane, up to MAX_LABEL_LANES, then
+// hide).
+const ENEMY_LABEL_STYLE = { fill: 0xe8e0d0, fontSize: 9 };
+const LABEL_LANE_H = 11;
+const MAX_LABEL_LANES = 3;
+
 /** Type guard for the RawCell ([row,col] number tuple) wire shape -- see
  * fieldGeometry.ts's RawCell/cellIdToColRow doc for why this is the
  * ACTUAL shape sim/combat.cjs sends for entry/at/path[] entries (BUG #4's
@@ -100,6 +107,15 @@ interface FieldMarker {
   container: Container;
   graphic: Graphics;
   label: Text;
+  /** REQ-0169 M2: the un-suffixed, un-truncated label text -- the key the
+   * de-overlap pass groups duplicates by, and re-fits/suffixes from. */
+  rawText: string;
+  /** REQ-0169 M2: vertical lane the de-overlap pass placed this label in
+   * (-1 = hidden, no free lane). */
+  lane?: number;
+  /** REQ-0169 M2: true when this label is hidden (a masked/duplicate
+   * collapse, or no free lane) -- the dot is still drawn. */
+  hidden?: boolean;
 }
 
 /** Persistent Pixi scene for the monitor's expanded view. Construct once
@@ -172,6 +188,16 @@ export class MonitorRenderer {
     bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: 0x0e0d0b, alpha: 0.6 }).stroke({ color: 0x2e2a24, width: 1 });
     bg.eventMode = 'none';
     field.addChild(bg);
+    // REQ-0169 M3: a faint cell grid so positions read as a BOARD even at
+    // 18px cells (the flat backdrop gave the eye nothing to register the
+    // grid scale against -- formation outlines and BP footprints floated in
+    // a void).
+    const grid = new Graphics();
+    for (let c = 1; c < FIELD_COLS; c++) grid.moveTo(c * FIELD_CELL_PX, 0).lineTo(c * FIELD_CELL_PX, FIELD_H);
+    for (let r = 1; r < FIELD_ROWS; r++) grid.moveTo(0, r * FIELD_CELL_PX).lineTo(FIELD_W, r * FIELD_CELL_PX);
+    grid.stroke({ color: 0x3a4048, width: 1, alpha: 0.18 });
+    grid.eventMode = 'none';
+    field.addChild(grid);
   }
 
   /** Draws each squad's formation box + BP-colored footprint + (optional)
@@ -187,12 +213,32 @@ export class MonitorRenderer {
     }
     for (const squad of squads) {
       const rect = parseBoxToPixelRect(squad.box, FIELD_CELL_PX);
+      // REQ-0169 M3: a degenerate box (w/h 0) means the formation-canvas
+      // JOIN failed silently upstream (Monitor.tsx's fetchDungeons lookup
+      // returned no real 'F2:M9'-style box, so the placeholder 'squad1'
+      // string parsed to a zero-size rect). Rather than draw nothing (the
+      // old silent no-op), warn and draw a dim fallback outline offset per
+      // slot so the failure is at least VISIBLE in dev.
+      if (rect.w <= 0 || rect.h <= 0) {
+        // eslint-disable-next-line no-console
+        console.warn('[backpack_ragnarok] MonitorRenderer: squad', squad.slotIndex, 'has no real formation box (got', JSON.stringify(squad.box) + ') -- drawing a dim fallback outline');
+        const fb = new Graphics();
+        const fx = 4 + squad.slotIndex * (8 * FIELD_CELL_PX + 6);
+        fb.rect(fx, 4, 8 * FIELD_CELL_PX, 8 * FIELD_CELL_PX).stroke({ color: 0x59d6d6, width: 1, alpha: 0.35 });
+        fb.eventMode = 'none';
+        this.playerField.addChild(fb);
+        const fbLabel = new Text({ text: squad.label, style: { fill: 0xe8e0d0, fontSize: 10 } });
+        fbLabel.x = fx + 2; fbLabel.y = 6; fbLabel.eventMode = 'none';
+        this.playerField.addChild(fbLabel);
+        continue;
+      }
       const cellW = rect.w / 8;
       const cellH = rect.h / 8;
 
-      // Formation box outline (unchanged).
+      // REQ-0169 M3: raise the formation-box outline contrast (was a barely-
+      // visible alpha-0.5 hairline).
       const outline = new Graphics();
-      outline.rect(rect.x, rect.y, rect.w, rect.h).stroke({ color: 0x59d6d6, width: 1, alpha: 0.5 });
+      outline.rect(rect.x, rect.y, rect.w, rect.h).stroke({ color: 0x59d6d6, width: 1.5, alpha: 0.9 });
       outline.eventMode = 'none';
       this.playerField.addChild(outline);
 
@@ -204,8 +250,13 @@ export class MonitorRenderer {
       for (const bp of squad.bps) {
         const g = new Graphics();
         const colorNum = parseInt(bp.color.replace('#', ''), 16) || 0x888888;
+        // REQ-0169 M3: a visible fill + a 1px dark outline per cell so the
+        // 2x2 (or larger) BP footprints read as solid pieces against the
+        // dark backdrop, not faint washes.
         for (const [r, c] of bp.cells) {
-          g.rect(rect.x + c * cellW, rect.y + r * cellH, cellW, cellH).fill({ color: colorNum, alpha: 0.55 });
+          g.rect(rect.x + c * cellW, rect.y + r * cellH, cellW, cellH)
+            .fill({ color: colorNum, alpha: 0.72 })
+            .stroke({ color: 0x14100a, width: 1, alpha: 0.55 });
         }
         g.eventMode = 'none';
         this.playerField.addChild(g);
@@ -285,34 +336,99 @@ export class MonitorRenderer {
     // Every other use of `cellId` (cellIdToXY) still gets the ORIGINAL
     // value, which already accepts either shape (see fieldGeometry.ts).
     const mapKey = Array.isArray(cellId) ? `${cellId[0]},${cellId[1]}` : cellId;
-    const key = masked ? '?' : mapKey;
     let marker = this.enemyMarkers.get(mapKey);
     if (marker) return marker;
     const container = new Container();
     const graphic = new Graphics();
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
-    graphic.rect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX).fill({ color: 0xc05050, alpha: 0.55 });
+    // REQ-0169 M2: a 1px lighter outline gives the dot a defined edge so a
+    // cluster of dots reads as distinct cells even when their labels have
+    // been de-overlapped away from them.
+    graphic.rect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX).fill({ color: 0xc05050, alpha: 0.55 }).stroke({ color: 0xe8b0a0, width: 1, alpha: 0.5 });
     graphic.eventMode = 'none';
-    const textStyle = { fill: 0xe8e0d0, fontSize: 9 };
     const rawLabel = masked ? '?' : label;
-    // REQ-0045 (f): clamp to whatever horizontal space remains between
-    // this marker's own cell and the enemy field's right edge -- FIELD_W
-    // is this field's full width; pos.x is already relative to the
-    // enemy field's own local origin (see cellIdToXY/this.enemyField.x
-    // offset), so (FIELD_W - pos.x) is exactly the remaining room.
-    const maxWidth = Math.max(0, FIELD_W - pos.x);
-    const fittedLabel = this.truncateLabelToFit(rawLabel, textStyle, maxWidth);
-    const text = new Text({ text: fittedLabel, style: textStyle });
+    // REQ-0045 (f): clamp to whatever horizontal space remains between this
+    // marker's own cell and the enemy field's right edge (FIELD_W - pos.x).
+    // relayoutEnemyLabels() re-fits + lanes it below, but this keeps the
+    // invariant even before the first relayout.
+    const fittedLabel = this.truncateLabelToFit(rawLabel, ENEMY_LABEL_STYLE, Math.max(0, FIELD_W - pos.x));
+    const text = new Text({ text: fittedLabel, style: { ...ENEMY_LABEL_STYLE } });
     text.eventMode = 'none';
     container.x = pos.x;
     container.y = pos.y;
     container.addChild(graphic);
     container.addChild(text);
     this.enemyField.addChild(container);
-    marker = { container, graphic, label: text };
+    marker = { container, graphic, label: text, rawText: rawLabel, lane: 0, hidden: false };
     this.enemyMarkers.set(mapKey, marker);
-    void key;
+    // REQ-0169 M2: de-overlap ALL enemy labels whenever a new marker joins.
+    this.relayoutEnemyLabels();
     return marker;
+  }
+
+  // REQ-0169 M2: dots stay at their true cells; only the LABELS are de-
+  // conflicted. (1) Same-text markers (many masked '?' or repeated
+  // 'dagger') collapse to ONE representative label suffixed " x{count}";
+  // the rest keep their dot but hide their label. (2) The surviving labels
+  // are placed into vertical lanes: each starts at its dot's own cell row
+  // and is bumped DOWN one LABEL_LANE_H at a time until it clears every
+  // already-placed label (a simple per-frame bounds check), up to
+  // MAX_LABEL_LANES; a label with no free lane hides (dot kept). Every
+  // label is still truncated to the field's own right edge, so REQ-0045
+  // (f)'s "x + labelWidth <= FIELD_W" invariant continues to hold.
+  private relayoutEnemyLabels(): void {
+    const markers = Array.from(this.enemyMarkers.values());
+    for (const m of markers) { m.lane = 0; m.hidden = false; }
+    // (1) collapse duplicates by rawText (leftmost marker is the rep).
+    const byText = new Map<string, FieldMarker[]>();
+    for (const m of markers) {
+      const g = byText.get(m.rawText);
+      if (g) g.push(m);
+      else byText.set(m.rawText, [m]);
+    }
+    const reps: Array<{ marker: FieldMarker; shown: string }> = [];
+    for (const [txt, group] of byText) {
+      group.sort((a, b) => a.container.x - b.container.x);
+      for (let i = 1; i < group.length; i++) {
+        group[i].label.visible = false;
+        group[i].hidden = true;
+      }
+      const rep = group[0];
+      rep.label.visible = true;
+      reps.push({ marker: rep, shown: group.length > 1 ? `${txt} x${group.length}` : txt });
+    }
+    // (2) 2D lane placement: sort by row then column; bump each label down
+    //     until it clears already-placed labels, else hide it.
+    reps.sort((a, b) => (a.marker.container.y - b.marker.container.y) || (a.marker.container.x - b.marker.container.x));
+    const placed: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    const overlaps = (a: { x1: number; y1: number; x2: number; y2: number }, b: { x1: number; y1: number; x2: number; y2: number }): boolean =>
+      a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+    for (const { marker, shown } of reps) {
+      const x = marker.container.x;
+      marker.label.text = this.truncateLabelToFit(shown, ENEMY_LABEL_STYLE, Math.max(0, FIELD_W - x));
+      const w = marker.label.width;
+      const baseY = marker.container.y;
+      let placedOk = false;
+      for (let lane = 0; lane < MAX_LABEL_LANES; lane++) {
+        const y = baseY + lane * LABEL_LANE_H;
+        const box = { x1: x, y1: y, x2: x + w, y2: y + LABEL_LANE_H };
+        if (!placed.some((pl) => overlaps(pl, box))) {
+          placed.push(box);
+          marker.label.visible = true;
+          marker.label.x = 0;
+          marker.label.y = lane * LABEL_LANE_H;
+          marker.lane = lane;
+          marker.hidden = false;
+          placedOk = true;
+          break;
+        }
+      }
+      if (!placedOk) {
+        marker.label.visible = false;
+        marker.hidden = true;
+        marker.lane = -1;
+      }
+    }
   }
 
   /** Reveals a masked entity (marks it discovered client-side) once a
@@ -553,11 +669,17 @@ export class MonitorRenderer {
   }
 
   /** REQ-0045 (f) regression-test seam: each enemy marker's local x + rendered label width. */
-  getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string }> {
+  getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string; hidden: boolean; lane: number }> {
+    // REQ-0169 M2: hidden/lane are ADDITIVE (x/labelWidth/labelText keep
+    // their exact prior shape, so REQ-0045 (f)'s e2e assertion is
+    // unchanged) -- a de-overlap check asserts every VISIBLE pair is
+    // pairwise disjoint OR one is hidden.
     return Array.from(this.enemyMarkers.values()).map((m) => ({
       x: m.container.x,
       labelWidth: m.label.width,
       labelText: m.label.text,
+      hidden: !!m.hidden,
+      lane: m.lane ?? 0,
     }));
   }
 

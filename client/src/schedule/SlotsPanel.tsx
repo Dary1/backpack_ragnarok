@@ -30,12 +30,16 @@ import { useGameStore } from '../store';
 interface SlotsPanelProps {
   room: ApiRoom;
   locale: Locale;
+  /** REQ-0168 U7: the caller's full rooms list, so this panel can pre-
+   * disable a squad already committed to another slot of THIS room, or to
+   * any slot of another ACTIVE room (either can only ever 409). */
+  rooms: ApiRoom[];
   onChanged: () => void | Promise<void>;
 }
 
 const SQUAD_SLOTS = 4;
 
-export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
+export function SlotsPanel({ room, locale, rooms, onChanged }: SlotsPanelProps) {
   const snapshot = useGameStore();
   const squads = snapshot.state?.presets;
   const [pendingSlot, setPendingSlot] = useState<number | null>(null);
@@ -51,6 +55,32 @@ export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
     if (!engine || !state) return true;
     return engine.isSquadDeployable(state, idx);
   };
+
+  // REQ-0169 M4: compute each squad's deployability ONCE per render -- the
+  // dropdowns would otherwise call the engine predicate squads x slots
+  // times; this per-render memo of the synchronous engine fan-out is the
+  // second M4 freeze suspect's remedy (the first, loadBoardTextures, is
+  // already shared module-wide via boardLoadPromise, so it never re-
+  // rasterizes per monitor).
+  const deployableFlags = squadNames.map((_name, idx) => deployableByIndex(idx));
+  // REQ-0168 U4: how many of the caller's squads are deployable (>=1 BP).
+  // A run only auto-starts once 4 DIFFERENT deployable squads fill the
+  // slots, so surface how many more the player still needs to build.
+  const deployableCount = deployableFlags.reduce((acc, flag) => acc + (flag ? 1 : 0), 0);
+
+  // REQ-0168 U7: squad indices committed to any slot of another ACTIVE
+  // room -- assigning them here can only ever 409 (deployed_overlap), so
+  // pre-disable them in the dropdowns exactly like empty squads.
+  const otherActiveRoomSquads = new Set<number>();
+  for (const r of rooms) {
+    if (r.id === room.id) continue;
+    if (r.status !== 'active') continue;
+    for (const sl of r.slots) if (sl && sl.squadIndex != null) otherActiveRoomSquads.add(sl.squadIndex);
+  }
+  // A squad already sitting in a DIFFERENT slot of THIS room (a duplicate
+  // within the room -> same_room_duplicate 409).
+  const usedInAnotherSlotOfThisRoom = (idx: number, slotIndex: number): boolean =>
+    room.slots.some((sl, j) => j !== slotIndex && !!sl && sl.squadIndex === idx);
 
   const handleSelect = async (slotIndex: number, value: string) => {
     if (value === '') return;
@@ -77,7 +107,21 @@ export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
   return (
     <div className="schedule-slots-panel">
       <h4 className="schedule-slots-title">{t(locale, 'schedule.slots.title')}</h4>
+      {/* REQ-0168 U4(a): permanent explainer -- a run only auto-starts once
+          all four slots hold four DIFFERENT squads. */}
+      <div className="schedule-slots-autostart-hint">{t(locale, 'schedule.slots.autoStartHint')}</div>
       {squadNames.length === 0 ? <div className="schedule-slots-no-squads">{t(locale, 'schedule.slots.noSquads')}</div> : null}
+      {/* REQ-0168 U4(b): fewer than 4 deployable squads is otherwise a
+          silent dead-end -- point the player at the Backpacks screen with
+          the exact shortfall. */}
+      {deployableCount < 4 ? (
+        <div className="schedule-slots-need-squads" data-testid="schedule-slots-need-squads">
+          <span>{t(locale, 'schedule.slots.needSquads', { n: 4 - deployableCount })}</span>
+          <a className="schedule-slots-need-squads-link" href="#/backpacks">
+            {t(locale, 'schedule.slots.goToBackpacks')}
+          </a>
+        </div>
+      ) : null}
       <div className="schedule-slots-grid">
         {Array.from({ length: SQUAD_SLOTS }, (_, slotIndex) => {
           const slot = room.slots[slotIndex];
@@ -95,10 +139,21 @@ export function SlotsPanel({ room, locale, onChanged }: SlotsPanelProps) {
               >
                 <option value="">{t(locale, 'schedule.slots.selectSquad')}</option>
                 {squadNames.map((name, idx) => {
-                  const deployable = deployableByIndex(idx);
+                  const deployable = deployableFlags[idx];
+                  // REQ-0168 U7: a deployable squad already committed
+                  // elsewhere (another slot of this room, or any slot of
+                  // another active room) would only 409 -- pre-disable it,
+                  // labelled "(deployed)".
+                  const deployedElsewhere = deployable && (otherActiveRoomSquads.has(idx) || usedInAnotherSlotOfThisRoom(idx, slotIndex));
+                  const disabled = !deployable || deployedElsewhere;
+                  const label = !deployable
+                    ? t(locale, 'schedule.slots.emptySquadOption', { name })
+                    : deployedElsewhere
+                      ? t(locale, 'schedule.slots.deployedOption', { name })
+                      : name;
                   return (
-                    <option key={idx} value={idx} disabled={!deployable} title={deployable ? undefined : t(locale, 'schedule.slots.emptySquadReason')}>
-                      {deployable ? name : t(locale, 'schedule.slots.emptySquadOption', { name })}
+                    <option key={idx} value={idx} disabled={disabled} title={deployable ? undefined : t(locale, 'schedule.slots.emptySquadReason')}>
+                      {label}
                     </option>
                   );
                 })}
