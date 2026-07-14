@@ -14,9 +14,20 @@
 // (adopt confirm with FAIL-override toggle, delete confirm, edit-as-new
 // modal with JSON validity + Format, toasts + the persistent aria-live
 // cd-msg line the e2e asserts on); the panes are dumb components.
+//
+// REQ-0164 (contentadmin-ux-r2) additions owned here: cd-msg clears on def
+// switch + auto-fades ~8 s (the aria-live node stays mounted); a transient
+// is-new highlight + scroll-into-view for freshly-ingested cards; a per-
+// variant recheck busy guard; the collapsible workflow strip's collapse
+// state (manual toggle wins per selection, reset on def switch); the rail
+// list-failure error panel state; the dirty-draft guard (switching def or
+// opening create with unsaved brief/schema_ref raises the ConfirmDialog);
+// and the #/contentadmin/<system_name> deep link (one-shot store focus name
+// consumed here, selection rewrites the hash via history.replaceState).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Locale } from '../store';
+import { useGameStore, clearContentAdminFocusName } from '../store';
 import {
   listContentDefs, getContentDef, patchContentDef, commissionContent,
   ingestVariants, reviewVariant, editVariant, adoptVariantApi, deleteVariantApi,
@@ -30,7 +41,11 @@ import { Workspace } from './Workspace';
 import type { DefDraft } from './Workspace';
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
-interface ConfirmState { type: 'adopt' | 'delete'; no: number }
+type PendingNav = { kind: 'select'; name: string } | { kind: 'create' };
+type ConfirmState =
+  | { type: 'adopt'; no: number }
+  | { type: 'delete'; no: number }
+  | { type: 'discard'; nav: PendingNav };
 
 function ConfirmDialog({ title, okLabel, okDisabled, onOk, onCancel, children }: {
   title: string; okLabel: string; okDisabled?: boolean;
@@ -57,12 +72,17 @@ function ConfirmDialog({ title, okLabel, okDisabled, onOk, onCancel, children }:
 
 export function ContentAdminPage({ locale }: { locale: Locale }) {
   void locale;
+  // REQ-0164 D: the module store's one-shot deep-link focus name (set by
+  // initRouting when the hash is #/contentadmin/<system_name>). Read here,
+  // consumed + cleared once the def list has loaded.
+  const store = useGameStore();
   // registry + selection
   const [defs, setDefs] = useState<ContentDefDto[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [def, setDef] = useState<ContentDefDto | null>(null);
   const [variants, setVariants] = useState<ContentVariantDto[]>([]);
   const [artworkFacet, setArtworkFacet] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
   // def edit draft (explicit Save; baseline for the dirty indicator)
   const [draft, setDraft] = useState<DefDraft | null>(null);
   const [baseline, setBaseline] = useState<DefDraft | null>(null);
@@ -72,6 +92,14 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
   const [commission, setCommission] = useState<ContentCommission | null>(null);
   const [ingestText, setIngestText] = useState('');
   const [ingestBusy, setIngestBusy] = useState(false);
+  // REQ-0164 B: manual collapse override for the current selection (null =
+  // follow the derived default; reset to null on def switch).
+  const [flowCollapse, setFlowCollapse] = useState<boolean | null>(null);
+  // REQ-0164 C: freshly-ingested variant highlight + scroll target + recheck busy
+  const [newNos, setNewNos] = useState<number[]>([]);
+  const [scrollToNo, setScrollToNo] = useState<number | null>(null);
+  const [recheckingNos, setRecheckingNos] = useState<number[]>([]);
+  const newTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // adjudication UI
   const [expandedChecks, setExpandedChecks] = useState<Record<string, boolean>>({});
   const [reviewDrafts, setReviewDrafts] = useState<Record<number, { verdict: string; rationale: string }>>({});
@@ -94,9 +122,18 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
+  // REQ-0164 C: cd-msg auto-fades ~8 s after any change (the aria-live NODE
+  // stays mounted -- only its text clears -- so e2e substring assertions read
+  // right after an action are unaffected). Covers every setMsg source.
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(''), 8000);
+    return () => clearTimeout(t);
+  }, [msg]);
+
   const refreshList = useCallback(async () => {
-    try { const r = await listContentDefs(); setDefs(r.defs); }
-    catch (e) { setMsg('list: ' + (e as Error).message); }
+    try { const r = await listContentDefs(); setDefs(r.defs); setListError(null); }
+    catch (e) { const m = (e as Error).message; setMsg('list: ' + m); setListError(m); }
   }, []);
 
   const loadDetail = useCallback(async (name: string) => {
@@ -121,15 +158,60 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
     return () => clearInterval(t);
   }, [selected, loadDetail]);
 
-  function selectDef(name: string) {
-    setCreateOpen(false); setSelected(name);
+  // REQ-0164 D: honor + consume a pending deep-link focus name once the def
+  // list has loaded (unknown name -> normal page + a reported error). Mirrors
+  // the REQ-0052 dexFocusId "consume once, then clear" convention.
+  const doSelectDef = useCallback((name: string) => {
+    setCreateOpen(false); setSelected(name); setMsg('');
     setCommission(null); setIngestText(''); setExpandedChecks({}); setReviewDrafts({});
     setDiffPicks([]); setDiffPair(null); setConfirm(null); setEditFor(null);
-  }
+    setFlowCollapse(null); setNewNos([]); setScrollToNo(null); setRecheckingNos([]);
+    if (newTimer.current) { clearTimeout(newTimer.current); newTimer.current = null; }
+    if (typeof history !== 'undefined' && typeof history.replaceState === 'function' && typeof location !== 'undefined') {
+      history.replaceState(null, '', location.pathname + location.search + '#/contentadmin/' + encodeURIComponent(name));
+    }
+  }, []);
+
+  useEffect(() => {
+    const focus = store.contentAdminFocusName;
+    if (!focus) return;
+    if (defs.some((d) => d.system_name === focus)) {
+      doSelectDef(focus);
+      clearContentAdminFocusName();
+    } else if (defs.length > 0) {
+      setMsg('deep link: no content def named "' + focus + '"');
+      clearContentAdminFocusName();
+    }
+  }, [store.contentAdminFocusName, defs, doSelectDef]);
 
   const dirty = !!(draft && baseline && (draft.brief !== baseline.brief || draft.schema_ref !== baseline.schema_ref));
   const adoptedVariant = def && def.adopted_variant_id != null ? variants.find((v) => v.id === def.adopted_variant_id) : undefined;
   const adoptedNo = adoptedVariant ? adoptedVariant.variant_no : null;
+
+  // REQ-0164 B: strip collapses by default only for the common inspect case
+  // (adopted def with variants and nothing mid-commission); a manual toggle
+  // wins for the current selection until the next def switch (resets it).
+  const flowDefaultCollapsed = adoptedNo != null && variants.length >= 1 && !commission && !ingestText.trim();
+  const flowCollapsed = flowCollapse !== null ? flowCollapse : flowDefaultCollapsed;
+
+  // REQ-0164 G: dirty-draft guard. Switching def / opening create with an
+  // unsaved brief/schema_ref edit raises the ConfirmDialog; Cancel keeps the
+  // selection, Discard proceeds (resetting the draft to baseline).
+  function doOpenCreate() { setCreateOpen(true); }
+  function performNav(nav: PendingNav) {
+    if (baseline) setDraft(baseline);
+    if (nav.kind === 'create') doOpenCreate();
+    else doSelectDef(nav.name);
+  }
+  function requestSelect(name: string) {
+    if (name === selected && !createOpen) return;
+    if (dirty) setConfirm({ type: 'discard', nav: { kind: 'select', name } });
+    else doSelectDef(name);
+  }
+  function requestCreate() {
+    if (dirty) setConfirm({ type: 'discard', nav: { kind: 'create' } });
+    else doOpenCreate();
+  }
 
   async function doSave() {
     if (!selected || !draft || !baseline) return;
@@ -169,6 +251,12 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
       report('ingested ' + r.created.length + ' variant(s); machine checks ran');
       setIngestText('');
       await loadDetail(selected); await refreshList();
+      // REQ-0164 C: transient highlight + scroll the first new card into view.
+      const nos = r.created.map((c) => c.variant_no);
+      setNewNos(nos);
+      setScrollToNo(nos.length ? Math.min(...nos) : null);
+      if (newTimer.current) clearTimeout(newTimer.current);
+      newTimer.current = setTimeout(() => { setNewNos([]); setScrollToNo(null); newTimer.current = null; }, 8000);
     } catch (e) { report('ingest: ' + (e as Error).message, 'err'); }
     finally { setIngestBusy(false); }
   }
@@ -207,12 +295,14 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
 
   async function doRecheck(no: number) {
     if (!selected) return;
+    setRecheckingNos((s) => (s.includes(no) ? s : [...s, no]));
     try {
       const r = await recheckVariantApi(selected, no);
       const overall = (r.variant.machine_check && r.variant.machine_check.overall) || '?';
       report('rechecked variant ' + no + ': overall ' + overall);
       await loadDetail(selected); await refreshList();
     } catch (e) { report('recheck: ' + (e as Error).message, 'err'); }
+    finally { setRecheckingNos((s) => s.filter((x) => x !== no)); }
   }
 
   function openEdit(no: number) {
@@ -243,7 +333,8 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
     try { JSON.parse(editText); } catch (e) { editError = (e as Error).message; }
   }
 
-  const confirmVariant = confirm ? variants.find((v) => v.variant_no === confirm.no) : undefined;
+  const confirmVariant = confirm && (confirm.type === 'adopt' || confirm.type === 'delete')
+    ? variants.find((v) => v.variant_no === confirm.no) : undefined;
   const confirmOverall = confirmVariant ? ((confirmVariant.machine_check && confirmVariant.machine_check.overall) || 'FAIL') : 'FAIL';
   const needsOverride = confirm != null && confirm.type === 'adopt' && confirmOverall === 'FAIL';
 
@@ -255,24 +346,26 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         <div data-testid="cd-msg" aria-live="polite" className="aa-msg t-micro">{msg}</div>
       </header>
       <div className="ca-cols">
-        <DefRail defs={defs} selected={selected} onSelect={selectDef} onNew={() => setCreateOpen(true)} />
+        <DefRail defs={defs} selected={selected} onSelect={requestSelect} onNew={requestCreate} listError={listError} />
         <section className="ca-center">
           {createOpen ? (
             <CreatePanel existing={defs} report={report}
               onClose={() => setCreateOpen(false)}
               onCreated={(d) => {
                 setCreateOpen(false);
-                void refreshList().then(() => selectDef(d.system_name));
+                void refreshList().then(() => doSelectDef(d.system_name));
               }} />
           ) : def && selected && draft ? (
             <Workspace def={def} variants={variants} artworkFacet={artworkFacet} adoptedNo={adoptedNo}
               draft={draft} onDraft={(p) => setDraft((d) => (d ? { ...d, ...p } : d))}
               dirty={dirty} onSave={() => { void doSave(); }}
+              flowCollapsed={flowCollapsed} onToggleFlow={() => setFlowCollapse(!flowCollapsed)}
               genN={genN} onGenN={setGenN}
               commission={commission} onCommission={() => { void doCommission(); }}
               onCopyCommission={() => { void doCopyCommission(); }}
               ingestText={ingestText} onIngestText={setIngestText}
               ingestBusy={ingestBusy} onIngest={(vs) => { void doIngest(vs); }}
+              newNos={newNos} scrollToNo={scrollToNo} recheckingNos={recheckingNos}
               expandedChecks={expandedChecks}
               onToggleCheck={(key) => setExpandedChecks((e) => ({ ...e, [key]: !e[key] }))}
               reviewDrafts={reviewDrafts}
@@ -296,7 +389,16 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
         </section>
       </div>
 
-      {confirm && selected && confirmVariant && (
+      {confirm && confirm.type === 'discard' && (
+        <ConfirmDialog title={'Discard unsaved changes to ' + (selected || '') + '?'} okLabel="Discard"
+          onOk={() => { const nav = confirm.nav; setConfirm(null); performNav(nav); }}
+          onCancel={() => setConfirm(null)}>
+          <div className="t-micro">You edited the brief / schema_ref for <b>{selected}</b> but did not Save.
+            Leaving now discards those edits.</div>
+        </ConfirmDialog>
+      )}
+
+      {confirm && (confirm.type === 'adopt' || confirm.type === 'delete') && selected && confirmVariant && (
         confirm.type === 'adopt' ? (
           <ConfirmDialog title={'Adopt variant ' + confirm.no + '?'} okLabel="Adopt + export"
             okDisabled={needsOverride && !overrideOn}
