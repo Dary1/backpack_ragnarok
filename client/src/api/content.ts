@@ -4,7 +4,7 @@
 // now the barrel, for the module history).
 import { getJSON } from './http';
 import type { GameState, ItemDefMap, Layout, SIDefMap, Trees } from '../engine/engine.d.ts';
-import type { ApiContentPayload, ApiScenario } from '../../../shared/dto';
+import type { ApiContentPayload, ApiScenario, ApiStarterJobs } from '../../../shared/dto';
 import { fetchCanvas } from './profile';
 
 // ---- engine-ready shape (what Engine.create(...) + makeState() consume) ----
@@ -15,6 +15,7 @@ export interface GameData {
   SI_DEFS: SIDefMap;
   TREES: Trees;
   makeState: () => GameState;
+  starterJobs: ApiStarterJobs | null; // REQ-0051: fresh-profile job-squad seed source
 }
 
 /** GET /api/content. Throws ApiError on network failure or non-2xx. No
@@ -88,7 +89,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TREES, makeState };
+  return { LAYOUT, ITEMS, SI_DEFS, TREES, makeState, starterJobs: payload.starterJobs ?? null };
 }
 
 export type DataSource = 'live' | 'error';

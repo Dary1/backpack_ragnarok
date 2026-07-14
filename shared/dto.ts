@@ -5,7 +5,7 @@
 // these via import('../shared/dto') types. Types only -- no runtime code.
 // Rules: shared/ may not import from client/, server/, sim/, mock-src/
 // -- the one exception is shared/engine.d.ts (also in shared/).
-import type { GameState, Layout } from './engine.d.ts';
+import type { GameState, Layout, Cell, Offset, BPUnit } from './engine.d.ts';
 
 // ---- raw wire shapes (as served by server/api.cjs's buildContentPayload) ----
 
@@ -136,6 +136,30 @@ export interface ApiVocabLists {
   rarities: string[];
 }
 
+// REQ-0051: starter-job squad definitions (content/live/starter_jobs.json),
+// served on the /api/content payload. The client boot seed (fresh profile)
+// and the regrant flow build the 4 unit-less 5x5 job squads from this.
+export interface ApiStarterJobPO {
+  id: string;
+  cell: Cell;
+  rot: number;
+}
+export interface ApiStarterJob {
+  id: string;
+  name: string;
+  i18n?: { ja?: { name?: string } };
+  color: string;
+  pos: ApiStarterJobPO[];
+}
+export interface ApiStarterJobs {
+  schema: string;
+  hpMax: number;
+  bpShape: Offset[];
+  origin: Cell;
+  linker: BPUnit;
+  jobs: ApiStarterJob[];
+}
+
 export interface ApiContentPayload {
   items: Record<string, ApiItemEntry>;
   sis: Record<string, ApiSIEntry>;
@@ -145,6 +169,7 @@ export interface ApiContentPayload {
   layout: Layout | null;
   registry: ApiRegistry | null;
   vocab: ApiVocabLists;
+  starterJobs?: ApiStarterJobs | null; // REQ-0051
 }
 
 export interface ApiCanvasDoc {

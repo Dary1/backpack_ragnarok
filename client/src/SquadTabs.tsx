@@ -50,7 +50,7 @@ export function SquadTabs() {
   const active = squads.active;
 
   return (
-    <div className="squad-tabs-row">
+    <div className="squad-tabs-row" title={t(snapshot.locale, "squad.starterNudge")}>
       <LongPressTabs
         count={count}
         names={squads.names}
