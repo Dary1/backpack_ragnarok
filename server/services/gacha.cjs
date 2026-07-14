@@ -5,7 +5,7 @@
 const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
-const { genId } = require('./core.cjs');
+const { genId, getScheduleContent } = require('./core.cjs');
 
 // ---------------------------------------------------------------------
 // REQ-0042: Workshop gacha (Common BP roll). Two-phase, MIRRORS the
@@ -18,13 +18,11 @@ const { genId } = require('./core.cjs');
 // saved canvas AND the player's LRDST balance having actually dropped by
 // the roll's cost -- see finalizeGachaForCanvas() below.
 // ---------------------------------------------------------------------
-const { GACHA_COMMON_BP_COST } = require('../../shared/constants.json'); // LRDST cost of one common_bp roll (REQ doc: "costs 10x LRDST") -- single source shared w/ client display mirror (REQ-0145b)
+const { GACHA_COMMON_BP_COST } = require('../../shared/constants.json'); // LRDST cost of one common_bp roll -- the DEFAULT for a pack that omits `cost`; the pack def is authoritative (REQ-0170)
 const GACHA_PENDING_TIMEOUT_MS = 120 * 1000; // same 120s lazy-revert window as warehouse claim
-const GACHA_MIN_CELLS = 6;
-const GACHA_MAX_CELLS = 8;
-const GACHA_HP_PER_CELL = 15; // hpMax = 15 x cellCount
-const GACHA_MIN_UNIT_DIRS = 1;
-const GACHA_MAX_UNIT_DIRS = 3;
+const GACHA_MIN_CELLS = 6;   // default when a pack omits `cells`
+const GACHA_MAX_CELLS = 8;   // default when a pack omits `cells`
+const GACHA_HP_PER_CELL = 15; // default when a pack omits `hp_per_cell`; hpMax = hp_per_cell x cellCount
 const GACHA_WALK_RETRY_CAP = 2000; // generous cap -- see rollPolyomino()'s own comment for why this can never realistically be hit for 6-8 cells
 
 // Reads a player's CURRENT LRDST balance from their LAST-SAVED profile
@@ -94,38 +92,90 @@ function rollPolyomino(rngStream, minCells, maxCells) {
   return cells.map(([r, c]) => [r - minR, c - minC]);
 }
 
-// rollCommonBp(masterSeed): the full common_bp roll -- polyomino shape,
-// unit cell (uniformly chosen FROM the polyomino's own cells, per the
-// REQ doc), 1-3 random distinct unit directions (0-7, matching
-// engine.js's DIRS numeric convention), hpMax = 15 x cellCount, and a
-// freshly minted uid for the BP instance. Uses sim/combat.cjs's existing
-// makeRng() seeded-RNG helper (already required at the top of this file
-// as `combat`) rather than Math.random(), so a given masterSeed always
-// reproduces the exact same roll -- same reproducibility property every
-// other seeded roll in this codebase (dungeon runs, reward distribution)
-// already has, and the same reason: deterministic, testable, auditable.
-function rollCommonBp(masterSeed) {
-  const rng = combat.makeRng(masterSeed);
-  const shapeStream = rng.stream('gacha/common_bp/shape');
-  const unitStream = rng.stream('gacha/common_bp/unit');
-  const shape = rollPolyomino(shapeStream, GACHA_MIN_CELLS, GACHA_MAX_CELLS);
-  const unitIdx = Math.floor(unitStream.next() * shape.length);
-  const unitOff = shape[unitIdx];
-  const dirCount = GACHA_MIN_UNIT_DIRS + Math.floor(unitStream.next() * (GACHA_MAX_UNIT_DIRS - GACHA_MIN_UNIT_DIRS + 1));
-  const availableDirs = [0, 1, 2, 3, 4, 5, 6, 7];
-  const dirs = [];
-  for (let i = 0; i < dirCount; i++) {
-    const idx = Math.floor(unitStream.next() * availableDirs.length);
-    dirs.push(availableDirs.splice(idx, 1)[0]);
+// resolvePack(kind): the gacha_pack/1 def for `kind`, from content (REQ-0170).
+// A pack is DATA -- WHICH Units it can emit, at what weight, for what cost. The
+// old code hard-coded a single `if (kind !== 'common_bp')` branch; a pack is now a
+// row in content/live/live_packs.json, which is what lets REQ-0171 put a content-
+// admin screen on top of it without touching this file.
+function resolvePack(kind) {
+  const { packDefsById } = getScheduleContent();
+  const pack = packDefsById[kind];
+  if (!pack) {
+    const err = new Error('unknown gacha pack: ' + kind); err.code = 'BAD_REQUEST'; throw err;
   }
-  const hpMax = GACHA_HP_PER_CELL * shape.length;
+  return pack;
+}
+
+// pickWeighted(stream, pool): one weighted draw from a pack's pool. Weights are
+// positive numbers; the draw is a single stream.next() against the cumulative
+// total, so a given seed reproduces the exact same unit -- the same determinism
+// contract the shape roll has always had (see rollPolyomino's comment).
+function pickWeighted(stream, pool) {
+  let total = 0;
+  for (const row of pool) total += Math.max(0, Number(row.weight) || 0);
+  if (!(total > 0)) {
+    const err = new Error('gacha pack pool has no positive weight'); err.code = 'CONFLICT'; throw err;
+  }
+  let x = stream.next() * total;
+  for (const row of pool) {
+    x -= Math.max(0, Number(row.weight) || 0);
+    if (x < 0) return row;
+  }
+  return pool[pool.length - 1]; // float-rounding tail; unreachable in practice
+}
+
+// rollPackBp(pack, masterSeed): THE roll (REQ-0170). What comes out is a UNIT --
+// a character drawn from the pack's pool -- together with the BP that is its
+// inventory. The BP half (random-walk polyomino, a seat chosen uniformly from the
+// polyomino's own cells, hpMax = hp_per_cell x cellCount, a freshly minted uid) is
+// UNCHANGED from REQ-0042's common_bp roll; what changed is what sits in the seat.
+//
+// The retired model rolled `linker: {off, dirs}` -- 1-3 random compass directions,
+// an anonymous beam emitter with no identity. A Unit's rays are NOT rolled: they
+// come from its def's connection_shape (vocab v13). That is the whole point of the
+// pivot, and the reason every BP minted before this REQ is unsalvageable: no
+// migration can invent an identity that was never rolled.
+//
+// The BP stores ONLY {id, off} -- the identity and the seat. Everything else about
+// the Unit (art, rarity, shape, name) is looked up in the def at read time, so a
+// content-side change reaches every BP already saved in every profile.
+function rollPackBp(pack, masterSeed) {
+  const { unitDefsById } = getScheduleContent();
+  const cells = Array.isArray(pack.cells) ? pack.cells : [GACHA_MIN_CELLS, GACHA_MAX_CELLS];
+  const hpPerCell = Number(pack.hp_per_cell) || GACHA_HP_PER_CELL;
+  const pool = (pack.pool || []).filter((row) => row && unitDefsById[row.unit]);
+  if (!pool.length) {
+    const err = new Error('gacha pack "' + pack.id + '" has no pool entry backed by a live unit def'); err.code = 'CONFLICT'; throw err;
+  }
+
+  const rng = combat.makeRng(masterSeed);
+  const shapeStream = rng.stream('gacha/' + pack.id + '/shape');
+  const unitStream = rng.stream('gacha/' + pack.id + '/unit');
+
+  const shape = rollPolyomino(shapeStream, cells[0], cells[1]);
+  const seatIdx = Math.floor(unitStream.next() * shape.length);
+  const seat = shape[seatIdx];
+  const picked = pickWeighted(unitStream, pool);
+  const def = unitDefsById[picked.unit];
+
+  const hpMax = hpPerCell * shape.length;
   const uid = genId('bp');
   return {
     uid,
     shape,
-    linker: { off: unitOff, dirs },
+    unit: { id: picked.unit, off: seat },
     hpMax,
     cellCount: shape.length,
+    // Echoed to the client for the result modal ONLY -- never persisted on the BP.
+    // The def is the source of truth and is re-read from /api/content on every boot.
+    unitDef: {
+      id: picked.unit,
+      name: def.name,
+      icon: def.icon,
+      rarity: def.rarity,
+      connection_shape: def.connection_shape,
+      i18n: def.i18n || {},
+    },
   };
 }
 
@@ -141,16 +191,14 @@ function rollCommonBp(masterSeed) {
 // unambiguous uid-membership check here too), and returns the rolled BP
 // definition to the caller WITHOUT deducting anything server-side yet.
 function startGachaRoll(playerId, kind, profileCanvas) {
-  if (kind !== 'common_bp') {
-    const err = new Error('unknown gacha kind: ' + kind); err.code = 'BAD_REQUEST'; throw err;
-  }
-  const cost = GACHA_COMMON_BP_COST;
+  const pack = resolvePack(kind);
+  const cost = Number.isFinite(Number(pack.cost)) ? Number(pack.cost) : GACHA_COMMON_BP_COST;
   const balance = readLrdstBalance(profileCanvas);
   if (balance < cost) {
     const err = new Error('insufficient LRDST balance: have ' + balance + ', need ' + cost); err.code = 'CONFLICT'; throw err;
   }
   const seed = crypto.randomBytes(16).toString('hex');
-  const rolled = rollCommonBp(seed);
+  const rolled = rollPackBp(pack, seed);
   const now = new Date().toISOString();
   const doc = {
     rollUid: rolled.uid,
@@ -249,12 +297,12 @@ module.exports = {
   GACHA_MIN_CELLS,
   GACHA_MAX_CELLS,
   GACHA_HP_PER_CELL,
-  GACHA_MIN_UNIT_DIRS,
-  GACHA_MAX_UNIT_DIRS,
   GACHA_WALK_RETRY_CAP,
   readLrdstBalance,
   rollPolyomino,
-  rollCommonBp,
+  resolvePack,
+  pickWeighted,
+  rollPackBp,
   startGachaRoll,
   normalizeGachaPendingStatus,
   purgeExpiredGachaPending,

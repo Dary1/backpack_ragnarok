@@ -1,0 +1,71 @@
+{
+ "schema": "gacha_pack/1",
+ "entries": [
+  {
+   "id": "common_bp",
+   "name": "Common Backpack",
+   "cost": 10,
+   "cost_tm": "lrdst",
+   "cells": [
+    6,
+    8
+   ],
+   "hp_per_cell": 15,
+   "pool": [
+    {
+     "unit": "elf",
+     "weight": 1
+    },
+    {
+     "unit": "dwarf",
+     "weight": 1
+    },
+    {
+     "unit": "thief",
+     "weight": 1
+    },
+    {
+     "unit": "angel",
+     "weight": 1
+    },
+    {
+     "unit": "shieldmaiden",
+     "weight": 1
+    },
+    {
+     "unit": "priest",
+     "weight": 1
+    },
+    {
+     "unit": "littleprincess",
+     "weight": 1
+    },
+    {
+     "unit": "princess",
+     "weight": 1
+    },
+    {
+     "unit": "lightcavalry",
+     "weight": 1
+    },
+    {
+     "unit": "berserker",
+     "weight": 1
+    },
+    {
+     "unit": "watcher",
+     "weight": 1
+    },
+    {
+     "unit": "squire",
+     "weight": 1
+    }
+   ],
+   "i18n": {
+    "ja": {
+     "name": "コモンバックパック"
+    }
+   }
+  }
+ ]
+}

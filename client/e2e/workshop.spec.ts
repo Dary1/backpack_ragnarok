@@ -205,10 +205,24 @@ test.describe('Workshop gacha roll (dev player)', () => {
       const newBp = allBps.find((b: any) => !preRollBpIds.has(b.id));
       expect(newBp).toBeTruthy();
 
-      // Beam directions as compass arrows: exactly one arrow per
-      // unit.dirs entry (REQ-0045 h) -- cross-checked against the SAME
-      // BP the server actually finalized, not just "some plausible count".
-      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(newBp.linker.dirs.length);
+      // REQ-0170: the arrows are the UNIT's connection shape, not a rolled dirs
+      // array (that field no longer exists). Cross-check against the SAME BP the
+      // server finalized: the persisted unit id must be a real roster unit, and the
+      // arrow count must equal that unit's ray count from the served vocabulary --
+      // zero for an offset shape (a knight jump has no compass arrow to draw) and
+      // zero for `none`.
+      expect(newBp.unit).toBeTruthy();
+      expect(typeof newBp.unit.id).toBe('string');
+      expect(newBp.linker).toBeUndefined();
+      const content = await (await page.request.get('/api/content')).json();
+      const unitDef = content.units[newBp.unit.id];
+      expect(unitDef, 'the rolled unit id must have a live def: ' + newBp.unit.id).toBeTruthy();
+      const shape = content.connection_shapes[unitDef.connection_shape];
+      expect(shape, 'the def must name a real connection_shape: ' + unitDef.connection_shape).toBeTruthy();
+      const rayCount = shape.kind === 'ray' ? (shape.dirs ?? []).length : 0;
+      await expect(resultPanel.locator('[data-testid="bp-diagram-arrow"]')).toHaveCount(rayCount);
+      // The result modal names the unit it rolled.
+      await expect(resultPanel.locator('[data-testid="workshop-result-unit"]')).toHaveAttribute('data-unit', newBp.unit.id);
 
       // hpMax + cell count: displayed values match the finalized BP's own
       // fields exactly.
@@ -372,7 +386,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
           // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
           // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
           // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 800 }],
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { id: 'berserker', off: [0, 0] }, hpMax: 800 }],
           pos: [
             { uid: `e2e_blade_${tag}`, id: 'blade', loc: 'grid', cell: [0, 1], rot: 0 },
             { uid: `e2e_hilt_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 },
@@ -485,7 +499,7 @@ test.describe('BP move handle', () => {
       const invBpId = 'inv_covered_bp';
       const canvas = {
         linked: true,
-        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+        bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] }, hpMax: 40 }],
         pos: [
           { uid: 'c_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
           { uid: 'c_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
@@ -496,7 +510,7 @@ test.describe('BP move handle', () => {
         inv: {
           pages: [
             {
-              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], linker: { off: [0, 0], dirs: [] }, hpMax: 40 }],
+              bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] }, hpMax: 40 }],
               pos: [
                 { uid: 'i_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
                 { uid: 'i_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
@@ -583,42 +597,48 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
   withDevUserFixture();
 
   /** Seeds ONE fresh 'blade' PO into the dev player's inventory page 0,
-   * preserving whatever else the canvas already holds -- same
-   * read-existing-then-append shape as seedDevLrdstBalance above. Cell
-   * [8,1] is deliberately far from every other fixture cell this file's
-   * other tests use. */
+   * as the ONLY dismantlable item, on a clean, self-consistent canvas.
+   * REQ-0172: this deliberately does NOT preserve what the canvas already
+   * holds (see the body) -- deriving from live state is what made this test
+   * order-dependent. */
   async function seedDevBladePo(page: Page, uid: string): Promise<any> {
-    const existingResp = await page.request.get('/api/profile/dev/canvas');
-    const canvas = existingResp.ok()
-      ? (await existingResp.json()).canvas
-      : {
-          linked: true, bps: [], pos: [], sis: [],
-          inv: {
-            pages: [
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-              { bps: [], pos: [], sis: [], tms: [] },
-            ],
-            names: ['1', '2', '3', '4', '5'],
-          },
-        };
-    if (!canvas.inv) {
-      canvas.inv = {
+    // REQ-0172: build a CLEAN canvas from scratch -- do NOT derive it from
+    // whatever the dev profile currently holds.
+    //
+    // REQ-0159 derived it, cleared `inv.pages[*].pos/sis`, and pushed the blade,
+    // intending "this blade is the only dismantlable item". That produced an
+    // INCONSISTENT canvas and the test became order-dependent (green in full-file
+    // order, RED standalone). Why: the dev fixture's `p900` (a blade!) sits on the
+    // SQUAD CANVAS (`pos[].loc === 'grid'`) while its HOME lives in inventory --
+    // that is the REQ-0033 reference model, working as designed. Clearing the
+    // inventory homes while leaving the canvas reference behind left a reference
+    // with no home, so the engine correctly RESTORED p900's home on load. The
+    // picker then held TWO blades (the seeded one + p900), the dismantle removed
+    // one, and the list never went empty. In full-file order an earlier test
+    // happened to replace the whole canvas first, so p900 was gone and it passed --
+    // pure luck of ordering, which is exactly what this suite must not depend on.
+    //
+    // A canvas with references but no homes is not a state the game can hold, so
+    // the fix is to seed a state it CAN: no canvas references at all, one item in
+    // inventory, nothing to restore. That makes "the blade is the only dismantlable
+    // item" true by construction, in any order, on any box.
+    const canvas = {
+      linked: true,
+      bps: [],
+      pos: [],
+      sis: [],
+      layout: { ROWS: 8, COLS: 8 },
+      inv: {
         pages: [
-          { bps: [], pos: [], sis: [], tms: [] },
+          { bps: [], pos: [{ uid, id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
           { bps: [], pos: [], sis: [], tms: [] },
         ],
         names: ['1', '2', '3', '4', '5'],
-      };
-    }
-    if (!canvas.inv.pages[0].pos) canvas.inv.pages[0].pos = [];
-    canvas.inv.pages[0].pos = canvas.inv.pages[0].pos.filter((p: any) => p.uid !== uid);
-    canvas.inv.pages[0].pos.push({ uid, id: 'blade', loc: 'grid', cell: [8, 1], rot: 0 });
+      },
+    };
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;
@@ -655,7 +675,18 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
       await expect(page.locator('[data-testid="workshop-dismantle-count"]')).toHaveText(String(before), { timeout: 10000 });
 
       await page.locator('[data-testid="workshop-dismantle-confirm-btn"]').click();
+
+      // REQ-0159 regression guard: this blade is the caller's LAST (and only)
+      // dismantlable item, so the loadGame() refresh below empties the picker.
+      // The success toast must survive that. It did NOT before REQ-0159: the
+      // toast was rendered inside the `dismantlable.length > 0` branch of
+      // DismantlePanel.tsx, so emptying the list unmounted the very
+      // confirmation the dismantle had just set, and the user who destroyed
+      // their last item saw nothing at all. Assert BOTH halves -- the list
+      // really did go empty, AND the toast is still on screen -- so the guard
+      // cannot be satisfied by quietly leaving an item behind.
       await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="workshop-dismantle-empty"]')).toBeVisible();
 
       // The dismantled row disappears from the picker WITHOUT closing the
       // modal -- proves the post-confirm loadGame() refresh actually
@@ -663,6 +694,7 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
       // see DismantlePanel.tsx -- state's own object reference never
       // changes, only stateVersion bumps).
       await expect(row).toHaveCount(0);
+      await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toBeVisible();
 
       await page.locator('[data-testid="workshop-dismantle-close"]').click();
       await expect(page.locator('[data-testid="workshop-dismantle-modal"]')).toHaveCount(0);
@@ -746,19 +778,29 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
         names: ['1', '2', '3', '4', '5'],
       };
     }
-    // REQ-0090 isolation: collectDismantlable sweeps EVERY inventory
-    // page's pos+sis, and this dev fixture is SHARED with every other
-    // test in this file (BP-move-handle, gacha roll, TM merge, etc.) --
-    // clearing every page's pos/sis (bps/tms untouched, irrelevant to
-    // this panel) is the only way to guarantee this test's own items
-    // are the WHOLE dismantlable list rather than some unknown superset
-    // of it, so the drag/range assertions below can reason about exact,
-    // contiguous row indices.
+    // REQ-0090 isolation: collectDismantlable sweeps EVERY inventory page's
+    // pos+sis, so this test's own items must be the WHOLE dismantlable list for
+    // its drag/range assertions to reason about exact, contiguous row indices.
+    //
+    // REQ-0172: clearing the inventory is NOT enough, and clearing it ALONE is
+    // actively wrong. The dev fixture keeps POs on the SQUAD CANVAS whose HOMES
+    // live in inventory (the REQ-0033 reference model); wiping the homes while
+    // leaving those canvas references behind makes the engine RESTORE the homes
+    // on load, and the extra rows silently shift every index this test asserts on.
+    // That is the same trap that made the single-item dismantle spec above
+    // order-dependent. Clear the canvas references too, so the five blades below
+    // really are the entire list -- in any order, on any box.
+    canvas.bps = [];
+    canvas.pos = [];
+    canvas.sis = [];
     for (const pg of canvas.inv.pages) {
       pg.pos = [];
       pg.sis = [];
     }
-    canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [8, 1 + i], rot: 0 }));
+    // Anchor each blade at row 1 in its OWN column: blade's shape is [[0,0],[1,0]]
+    // (2 cells tall) and the page grid is 1-indexed 8x8, so rows 1-2 x cols 1..5
+    // are all in-bounds and mutually non-overlapping.
+    canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [1, 1 + i], rot: 0 }));
     const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;

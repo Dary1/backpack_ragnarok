@@ -902,6 +902,85 @@ convention for `data/profiles/default.json` when it doesn't exist yet).
   reload returns to the dev-mode/default state), and the Settings page's
   account block + REQ-0039 bot-mode placeholder block.
 
+### Suite membership: the default suite vs the admin harnesses (REQ-0159)
+
+There are TWO e2e surfaces, and every spec belongs to exactly one of them.
+
+**1. The default suite** -- `pnpm run e2e` (= `tools/e2e_run.sh`, = `tools/ci.sh`
+step 7). Everything under `client/e2e/*.spec.ts` EXCEPT the three admin specs.
+
+**2. The admin harnesses** -- `artadmin.spec.ts`, `artinspect.spec.ts`,
+`contentadmin.spec.ts`. These are `testIgnore`d out of the default suite by
+`client/playwright.config.ts` and are run ONLY through their own isolated
+harnesses, each with its own config:
+
+```
+set -a; source ~/backpack_ragnarok/server/.env; set +a   # DATABASE_URL
+cd client && pnpm run build                              # they serve web/ statically
+bash tools/artadmin_e2e.sh        # e2e/artadmin.config.ts     (REQ-0156)
+bash tools/art_inspect_e2e.sh     # e2e/artinspect.config.ts   (REQ-0152)
+bash tools/content_admin_e2e.sh   # e2e/contentadmin.config.ts (REQ-0157)
+```
+
+Why they CANNOT live in the default suite: each opens by calling the
+`dev/clear-all` seam to get a clean registry. Since REQ-0156, that seam is
+gated behind `ALLOW_DEV_CLEAR` -- hardening added after it wiped the LIVE
+artwork registry on 2026-07-13 (REQ-0145a's incident log). In any run that is
+not one of the harnesses above, that opening call is 403'd BY DESIGN, so these
+specs can never pass there again. The harnesses each remap `HOME` to a temp dir,
+which gives `storage_art` a NAMESPACE unique to that run -- that isolation, not
+a relaxed gate, is what makes clearing safe. **Do not "fix" a red admin spec by
+un-ignoring it or by opening `ALLOW_DEV_CLEAR` on a live-namespace run: that
+re-arms the exact incident the gate exists to prevent.**
+
+They are not lost coverage -- `tools/ci.sh` runs all three as its own explicit
+step (`[6.5/8] admin e2e harnesses`), guarded by `SKIP_E2E`/`SKIP_PG`/
+`SKIP_CLIENT`, and each takes the same box lock via `tools/e2e_run.sh`, so they
+queue against the default suite rather than racing it.
+
+### The default suite serves the DEPLOYED bundle, not your worktree's (REQ-0159)
+
+A trap worth knowing before you trust a green run on a client change.
+
+`client/e2e/local-proxy.cjs` proxies everything that is not `/api/*` to
+`E2E_STATIC_PORT`, which defaults to **8801 = backpack-web.service** — and that
+serves `~/backpack_ragnarok/web/` from the **MAIN CHECKOUT**, not from your
+worktree. (Only `/api/*` is routed to the worktree's own API / the per-worker
+fleet.) So by default the suite exercises the bundle that is currently DEPLOYED.
+
+That is the original REQ-0031 intent ("exercise the REAL deployed /app/ bundle"),
+and it is fine for server- or spec-only work. But it means **a change to
+`client/src` is NOT covered by a default-suite run**: you can edit a component,
+run the whole suite green, and have tested none of it — the old dist was served
+the entire time. Rebuilding into your worktree's `web/app/` does not help either,
+because :8801 never looks there.
+
+To gate a client change, point the static seam at your OWN tree:
+
+```
+cd client && pnpm run build                     # build into <worktree>/web/app/
+python3 -m http.server 8851 --directory "$PWD/../web" &
+E2E_STATIC_PORT=8851 PLAYWRIGHT_BASE_URL=http://127.0.0.1:8803 \
+  E2E_GPU=1 E2E_PARALLEL=4 pnpm run e2e
+```
+
+(Confirm you got it right: `curl -s http://127.0.0.1:8851/app/index.html | grep -o 'index-[^"]*\.js'`
+must differ from the same curl against :8801 once your build has changed anything.)
+
+This is exactly how REQ-0159's own client fix (`DismantlePanel.tsx`) had to be
+verified — the first two "final" runs passed the OLD bundle through and proved
+nothing about the fix.
+
+### "CI GREEN" means literally green (REQ-0159)
+
+`tools/ci.sh` printing `CI GREEN` means every gate it ran passed. There is no
+accounted/remembered failure set, and re-introducing one is not allowed. Before
+REQ-0159 the default suite carried 11 standing reds that two separate merge
+gates each had to re-derive by hand and wave through; REQ-0159 retired all of
+them at the root (3 stale specs re-pinned to the shipped UI, 1 cross-test
+active-room leak fixed, 7 admin tests moved to the harness step above). A red is
+either a real defect or a stale gate. Both get fixed. Neither gets memorized.
+
 ## Market (REQ-0064)
 
 The player-to-player Market: sellers carve an integer price on an

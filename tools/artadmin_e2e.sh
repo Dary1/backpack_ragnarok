@@ -23,9 +23,14 @@ set -euo pipefail
 WT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV_PY="${ART_KIT_PYTHON:-/home/qtie/backpack_ragnarok/.venv/bin/python}"
 
-APIPORT="${APIPORT:-8922}"
-STATICPORT="${STATICPORT:-8921}"
-PROXYPORT="${PROXYPORT:-8923}"
+# REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
+#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
+# so REQ-0156 owns 1560..1569 and can never collide with another REQ's harness.
+# The helper also preflights each port and aborts with ONE clear line if it is
+# busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
+# "E2E / harness port allocation".
+source "$(dirname "$0")/e2e_ports.sh" 0156
+
 
 TMPHOME="$(mktemp -d)"
 MODELDIR="$(mktemp -d)"

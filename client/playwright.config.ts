@@ -51,6 +51,21 @@ const WORKER_HEADERS: Record<string, string> =
 
 export default defineConfig({
   testDir: './e2e',
+  // REQ-0159 (class C): the three ADMIN specs are harness-only and must NOT
+  // be members of the default suite. They REQUIRE the isolated HOME-remap
+  // harnesses (tools/artadmin_e2e.sh, tools/art_inspect_e2e.sh,
+  // tools/content_admin_e2e.sh), each of which drives them through its OWN
+  // config (e2e/{artadmin,artinspect,contentadmin}.config.ts) against an
+  // isolated api on spare ports with a unique storage NAMESPACE.
+  //
+  // In the DEFAULT suite they can never pass again, BY DESIGN: each opens by
+  // calling the dev/clear-all seam, which REQ-0156 hardened behind
+  // ALLOW_DEV_CLEAR after that seam wiped the live registry on 2026-07-13
+  // (see REQ-0145a's incident log). Un-ignoring them here, or re-opening that
+  // gate to make them green, would re-arm exactly that incident -- the gate is
+  // untouchable. They are NOT skipped coverage: tools/ci.sh runs all three
+  // harnesses as its own explicit step (see "[6.5/8] admin e2e harnesses").
+  testIgnore: ['**/artadmin.spec.ts', '**/artinspect.spec.ts', '**/contentadmin.spec.ts'],
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order

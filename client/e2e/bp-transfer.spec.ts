@@ -301,7 +301,7 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
             // (3,4),(3,5),(3,6): cell (3,4) is exactly where the BP's own
             // travelling PO currently sits -- this is the overlap the old
             // (buggy) hover-preview misreported as illegal.
-            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] } }],
             pos: [{ uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 }],
             sis: [], tms: [],
           },
@@ -344,7 +344,7 @@ test.describe('BP move WITHIN the inventory board (same page) -- REQ-0045 bug (a
       inv: {
         pages: [
           {
-            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], linker: { off: [0, 0], dirs: [] } }],
+            bps: [{ id: 'nudge_bp', name: 'Nudge BP', color: '#4a90d9', shape: [[0, 0], [0, 1], [0, 2]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] } }],
             pos: [
               { uid: 'nudge_po', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
               // Unrelated free PO at (3,6), NOT part of nudge_bp. Nudging

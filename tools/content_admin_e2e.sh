@@ -21,9 +21,13 @@ set -euo pipefail
 
 WT="$(cd "$(dirname "$0")/.." && pwd)"
 
-APIPORT="${APIPORT:-8922}"
-STATICPORT="${STATICPORT:-8921}"
-PROXYPORT="${PROXYPORT:-8923}"
+# REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
+#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
+# so REQ-0157 owns 1570..1579 and can never collide with another REQ's harness.
+# The helper also preflights each port and aborts with ONE clear line if it is
+# busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
+# "E2E / harness port allocation".
+source "$(dirname "$0")/e2e_ports.sh" 0157
 
 TMPHOME="$(mktemp -d)"
 EXPORTDIR="$(mktemp -d)"

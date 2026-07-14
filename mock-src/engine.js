@@ -75,13 +75,24 @@ function hasTag(tagList, targetTag, tree){
   return list.some(tag=>tagsRelated(t,tag,targetTag));
 }
 
-function create(ITEMS,SI_DEFS,layout,trees){
+function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
+  // UNITS / SHAPES (REQ-0170): the Unit registries. UNITS is the unit/1 def map
+  // (id -> {connection_shape, ...}, from content/live/live_units.json); SHAPES is
+  // vocab.json's connection_shapes table (REQ-0128b: {kind,dirs,range,pierce,
+  // offsets}). Both are OPTIONAL and default to empty: an engine created without
+  // them forms no Unit links and otherwise behaves identically -- the same
+  // "missing data is a non-event, never an exception" policy the unit-icon
+  // fallback chain uses. Resolving a BP's rays through the DEF (rather than
+  // baking dirs into the BP, as the retired `linker` model did) is what makes a
+  // content-side shape change reach every BP already saved in every profile.
   // trees: optional {po:{tag:parent|null,...}, socket:{tag:parent|null,...}}.
   // Defaults to fully degenerate (empty parent-maps) -- i.e. today's actual
   // vocab.json content -- so existing call sites Engine.create(ITEMS,SI_DEFS,
   // LAYOUT) keep working unchanged with exact-match-only tag semantics.
   const poTree=(trees&&trees.po)||{};
   const socketTree=(trees&&trees.socket)||{};
+  const UNIT_DEFS=UNITS||{};
+  const CONN_SHAPES=SHAPES||{};
   const ROWS=layout.ROWS,COLS=layout.COLS;
   const key=(r,c)=>r+','+c;
   const shapeInfo=(id,rot)=>{
@@ -89,9 +100,9 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return {off,h:Math.max(...off.map(o=>o[0]))+1,w:Math.max(...off.map(o=>o[1]))+1};
   };
   const bpCells=bp=>bp.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
-  const unitCell=bp=>[bp.origin[0]+bp.linker.off[0],bp.origin[1]+bp.linker.off[1]];
+  const unitCell=bp=>[bp.origin[0]+bp.unit.off[0],bp.origin[1]+bp.unit.off[1]];
   const cellBPMap=st=>{const m={};for(const bp of st.bps)for(const [r,c] of bpCells(bp))m[key(r,c)]=bp.id;return m;};
-  const unitMap=st=>{const m={};for(const bp of st.bps)m[key(...unitCell(bp))]=bp.id;return m;};
+  const unitMap=st=>{const m={};for(const bp of st.bps){if(!bp.unit)continue;m[key(...unitCell(bp))]=bp.id;}return m;};
   const poByUid=(st,u)=>st.pos.find(p=>p.uid===u);
   const cellsOf=(st,p)=>{
     if(p.loc!=='grid')return [];
@@ -244,16 +255,21 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const rotatedShape=rotateOffsetCW(bp.shape);
     const mr=Math.min(...rotatedShape.map(o=>o[0])),mc=Math.min(...rotatedShape.map(o=>o[1]));
     const newShape=rotatedShape.map(([r,c])=>[r-mr,c-mc]);
-    const [lr,lc]=rotateOffsetCW([bp.linker.off])[0];
+    const [lr,lc]=rotateOffsetCW([bp.unit.off])[0];
     const newUnitOff=[lr-mr,lc-mc];
-    const newDirs=bp.linker.dirs.map(d=>(d+2)%8);
+    // REQ-0170: the rays do NOT rotate with the bag. A Unit's connection shape is
+    // a property of the CHARACTER, and its directions are board-absolute
+    // (vocab.orientation: forward = N = DIRS[0], a fact about the battlefield).
+    // The retired `linker` model rotated its rolled dirs by (d+2)%8 here because
+    // they belonged to the BP; a `lance` Unit now keeps pointing at the enemy no
+    // matter how its owner packs the bag.
     const newPOs=containedPOs.map(p=>{
       const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
       const [rr,rc]=rotateOffsetCW([localOld])[0];
       const newLocal=[rr-mr,rc-mc];
       return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4,q:p.q};
     });
-    return {shape:newShape,unitOff:newUnitOff,dirs:newDirs,pos:newPOs};
+    return {shape:newShape,unitOff:newUnitOff,pos:newPOs};
   }
   // canRotateBP(st,bpId): legality for rotating bpId 90 degrees CW IN
   // PLACE on the canvas (origin unchanged, only shape/unit/contents
@@ -305,8 +321,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     if(!chk.ok)return chk;
     const bp=bpById(st,bpId);
     bp.shape=chk.rotated.shape;
-    bp.linker.off=chk.rotated.unitOff;
-    bp.linker.dirs=chk.rotated.dirs;
+    bp.unit.off=chk.rotated.unitOff;
     for(const rp of chk.rotated.pos){
       const p=poByUid(st,rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -569,19 +584,79 @@ function create(ITEMS,SI_DEFS,layout,trees){
     return out;
   }
   const DIRS={0:[-1,0],1:[-1,1],2:[0,1],3:[1,1],4:[1,0],5:[1,-1],6:[0,-1],7:[-1,-1]};
+  // connShapeOf(bp): the connection shape of the Unit this BP carries, resolved
+  // through the injected registries (bp.unit.id -> unit def -> connection_shape ->
+  // vocab.connection_shapes). Returns null -- meaning "forms no links" -- for a BP
+  // with no Unit, an unknown Unit id, or an unknown shape key. Never throws.
+  function connShapeOf(bp){
+    const u=bp&&bp.unit;
+    if(!u||!u.id)return null;
+    const def=UNIT_DEFS[u.id];
+    if(!def||!def.connection_shape)return null;
+    return CONN_SHAPES[def.connection_shape]||null;
+  }
+  // traceBeams(st): every Unit link on the canvas. THE REQ-0128b model, ratified
+  // 2026-07-14 (content/vocab.json v13 connection_model):
+  //
+  //   ray shapes    walk each dir in `dirs`, at most `range` cells; range 0/null
+  //                 = unlimited (walks to the board edge).
+  //   occluder set  UNITS ONLY -- BP cells and PO cells are TRANSPARENT. A ray is
+  //                 stopped by a Unit, by its range, or by the board edge, and by
+  //                 nothing else. (This closes the question the pre-pivot walker
+  //                 never asked: it only ever saw unit cells, because `lk` is the
+  //                 unit map -- the new model makes that an explicit LAW, not an
+  //                 accident of which map was handy.)
+  //   pierce        false: link the FIRST Unit met, then stop.
+  //                 true:  link EVERY Unit within range and keep walking.
+  //   offset shapes (chess_knight_move / shougi_keima_move) link the Unit standing
+  //                 on each offset cell. `range`/`pierce` are invalid on them and
+  //                 are structurally absent here -- there is no ray to walk.
+  //   none          forms no links.
+  //
+  // There is NO propagation: a link is a static graph edge; a Unit never relays
+  // one. PULSE_CAP, the visited set and the hop budget were retired with the pulse
+  // model and are deliberately not reintroduced -- charge capacity is the only
+  // rate limit in the ratified design.
+  //
+  // Connections are canvas-local (Squad-scoped) by construction: this walks st.bps,
+  // which IS one canvas.
+  //
+  // The record keeps its established shape ({from,dir,path,to,mutual}) so every
+  // consumer (BoardRenderer, linkTrace, BeamTracePanel, sim/lib/compile.cjs) works
+  // unchanged; `tos` is ADDITIVE and lists every Unit the ray linked -- it differs
+  // from [to] only when pierce is true. `offset` is present only on offset shapes,
+  // where `dir` is null (there is no compass direction to report).
   function traceBeams(st){
     const lk=unitMap(st),beams=[];
-    for(const bp of st.bps)for(const d of bp.linker.dirs){
-      let [r,c]=unitCell(bp);const path=[];let to=null;
-      while(true){
-        r+=DIRS[d][0];c+=DIRS[d][1];
-        if(r<1||r>ROWS||c<1||c>COLS)break;
-        path.push([r,c]);
-        if(lk[key(r,c)]){to=lk[key(r,c)];break;}
+    for(const bp of st.bps){
+      const shp=connShapeOf(bp);
+      if(!shp||shp.kind==='none')continue;
+      if(shp.kind==='offset'){
+        const [ur,uc]=unitCell(bp);
+        for(const [dr,dc] of (shp.offsets||[])){
+          const r=ur+dr,c=uc+dc;
+          if(r<1||r>ROWS||c<1||c>COLS)continue;
+          const hit=lk[key(r,c)];
+          const to=(hit&&hit!==bp.id)?hit:null;
+          beams.push({from:bp.id,dir:null,offset:[dr,dc],path:[[r,c]],to,tos:to?[to]:[]});
+        }
+        continue;
       }
-      beams.push({from:bp.id,dir:d,path,to});
+      const range=(shp.range===0||shp.range==null)?Infinity:shp.range;
+      const pierce=!!shp.pierce;
+      for(const d of (shp.dirs||[])){
+        let [r,c]=unitCell(bp);const path=[];const tos=[];
+        for(let step=1;step<=range;step++){
+          r+=DIRS[d][0];c+=DIRS[d][1];
+          if(r<1||r>ROWS||c<1||c>COLS)break;
+          path.push([r,c]);
+          const hit=lk[key(r,c)];
+          if(hit&&hit!==bp.id){tos.push(hit);if(!pierce)break;}
+        }
+        beams.push({from:bp.id,dir:d,path,to:tos.length?tos[0]:null,tos});
+      }
     }
-    for(const bm of beams)bm.mutual=!!(bm.to&&beams.some(o=>o.from===bm.to&&o.to===bm.from));
+    for(const bm of beams)bm.mutual=!!(bm.to&&beams.some(o=>o.from===bm.to&&(o.tos||[]).includes(bm.from)));
     return beams;
   }
 
@@ -778,7 +853,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   // {cellKey:bpId} map over `container.bps` instead of `st.bps`.
   function unitMapIn(container){
     const m={};
-    for(const bp of container.bps)m[key(...unitCell(bp))]=bp.id;
+    for(const bp of container.bps){if(!bp.unit)continue;m[key(...unitCell(bp))]=bp.id;}
     return m;
   }
   // invCanPlaceCells: legality of `cells` (already-translated absolute
@@ -1194,8 +1269,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     const container=page(st,pg);
     const bp=container.bps.find(b=>b.id===bpId);
     bp.shape=chk.rotated.shape;
-    bp.linker.off=chk.rotated.unitOff;
-    bp.linker.dirs=chk.rotated.dirs;
+    bp.unit.off=chk.rotated.unitOff;
     for(const rp of chk.rotated.pos){
       const p=container.pos.find(z=>z.uid===rp.uid);
       p.cell=rp.cell;p.rot=rp.rot;
@@ -1432,7 +1506,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
     }
     if(kind==='bp'){
       const src=home.record;
-      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,linker:src.linker};
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit,hpMax:src.hpMax};
       st.bps.push(ref);
       return {ok:true,ref};
     }
@@ -2249,7 +2323,7 @@ function create(ITEMS,SI_DEFS,layout,trees){
   }
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,unitCell,cellBPMap,unitMap,cellsOf,occupancy,
           canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
-          sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,DIRS,key,
+          sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,connShapeOf,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
           pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,poInBPIn,cellsOfIn,cellBPMapIn,

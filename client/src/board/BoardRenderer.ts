@@ -67,7 +67,7 @@ import {
 import type { BoardOps } from './boardOps';
 import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, UNIT_CORE_RADIUS, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, pointSegDistance, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
-import { resolveUnitIcon } from './unitIcon';
+import { resolveUnitIcon, unitIconKey } from './unitIcon';
 import { drawChargeRing } from './chargeRing';
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
@@ -157,7 +157,11 @@ export class BoardRenderer {
    * beam?" against the beams that are ACTUALLY on screen rather than
    * re-deriving their geometry (and drifting from it). Canvas board only --
    * an inventory board draws no beams (Unit dormancy), so it stays empty. */
-  beamSegs: { from: string; dir: number; x0: number; y0: number; x1: number; y1: number }[] = [];
+  // REQ-0170: `dir` is null on an OFFSET-shape link (a knight jump has no compass
+  // direction). beamHover's own DirTrace already types dir as `number | null`, so
+  // the hover/highlight path needs no change -- it simply never matches a null dir
+  // against a traced direction, which is correct: there is no direction to trace.
+  beamSegs: { from: string; dir: number | null; x0: number; y0: number; x1: number; y1: number }[] = [];
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -480,7 +484,7 @@ export class BoardRenderer {
       // boards per REQ-0030 spec item 3.
       const occForHandles = ops.occupancy(state);
       const unitMapForHandles: Record<string, string> = {};
-      for (const b of container.bps) unitMapForHandles[engine.key(...engine.unitCell(b))] = b.id;
+      for (const b of container.bps) { if (!b.unit) continue; unitMapForHandles[engine.key(...engine.unitCell(b))] = b.id; } // REQ-0170: same skip-a-unitless-BP policy as engine.unitMap()
       for (const [r, c] of cells) {
         const ck = `${r},${c}`;
         if (occForHandles[ck] || unitMapForHandles[ck]) continue;
@@ -524,9 +528,9 @@ export class BoardRenderer {
       const trace = active ? traceUnit(engine, state, layout, active.bp) : null;
       // Which beams are "the subject": the hovered Unit's whole fan, or the
       // single direction when a beam SEGMENT (not the core) is hovered.
-      const isSubject = (from: string, dir: number): boolean =>
+      const isSubject = (from: string, dir: number | null): boolean =>
         !!trace && from === trace.bp && (active!.dir === null || active!.dir === dir);
-      const beamAlpha = (from: string, dir: number, base: number): number =>
+      const beamAlpha = (from: string, dir: number | null, base: number): number =>
         !trace || isSubject(from, dir) ? base : base * BEAM_DIM_ALPHA;
 
       // Traced-ray backdrop: origin ring, traversed cells, receiver ring.
@@ -617,6 +621,21 @@ export class BoardRenderer {
             this.gBeams.addChild(badge);
           }
           this.beamSegs.push({ from: bm.from, dir: bm.dir, x0: x0 + px, y0: y0 + py, x1: x1t + px, y1: y1t + py });
+        } else if (bm.dir === null) {
+          // REQ-0170: an OFFSET shape (knight jump) whose target cell holds no Unit.
+          // There is no ray to draw to the board edge -- the reach is exactly one cell
+          // and it is empty. Mark that cell as a dud and draw nothing else: a line
+          // here would draw a beam that does not exist.
+          const cell = bm.path[0];
+          if (cell) {
+            const dud = new Text({ text: '×', style: { fill: '#6a6a6a', fontSize: 15 } });
+            dud.anchor.set(0.5);
+            dud.x = cx(cell[1]);
+            dud.y = cy(cell[0]);
+            dud.alpha = beamAlpha(bm.from, bm.dir, 0.8);
+            dud.eventMode = 'none';
+            this.gBeams.addChild(dud);
+          }
         } else {
           const dv = engine.DIRS[bm.dir];
           const vlen = Math.hypot(dv[1], dv[0]) || 1;
@@ -880,6 +899,10 @@ export class BoardRenderer {
     // cores render but DIMMED in inventory, no beams/no direction dots).
     // Still a valid BP-drag grab handle on both boards (spec item 3).
     for (const bp of container.bps) {
+      // REQ-0170: a BP without a Unit cannot exist (the BP:Unit law) and the purge
+      // removed every one that did. If a stale save ever produces one anyway, draw
+      // the bag and skip the unit -- a degraded board beats a blank one.
+      if (!bp.unit) continue;
       const lc = engine.unitCell(bp);
       const x = cx(lc[1]);
       const y = cy(lc[0]);
@@ -905,10 +928,13 @@ export class BoardRenderer {
       // and REQ-0133 reuses this same chain for item rasters.
       const icon = resolveUnitIcon(
         {
-          // Both null until REQ-0125b (see unitIcon.ts). Written out rather
-          // than omitted so the seam is visible to the next reader.
+          // Skins are still REQ-0126's; identity + default art landed in REQ-0170,
+          // so `defaultKey` is now a real key: the BP's Unit id, namespaced by
+          // unitIconKey(). A BP whose unit art failed to load (or whose unit id is
+          // unknown) simply falls through the chain to the legacy glyph -- the seam
+          // does its job without a single change at this draw site.
           skinKey: null,
-          defaultKey: null,
+          defaultKey: bp.unit ? unitIconKey(bp.unit.id) : null,
         },
         (k) => textures.has(k)
       );
@@ -942,11 +968,18 @@ export class BoardRenderer {
       drawChargeRing(ring, x, y, null);
       ring.eventMode = 'none'; // decorative, must not eat the BP drag handle
       this.gUnits.addChild(ring);
-      // Direction dots (which way the unit's beams would fire) are a
-      // canvas-only concept -- an inventory BP's unit is dormant, so no
-      // dots are drawn there (REQ-0030 spec item 1: "no beams").
-      if (ops.isCanvas) {
-        for (const d of bp.linker.dirs) {
+      // Direction dots (which way the unit's rays would fire) are a canvas-only
+      // concept -- an inventory BP's unit is dormant, so no dots are drawn there
+      // (REQ-0030 spec item 1: "no beams").
+      //
+      // REQ-0170: the dirs come from the Unit's connection_shape, not from the BP.
+      // OFFSET shapes (the knight jumps) get NO dots on purpose: a jump has no
+      // compass angle, and faking one by pointing a dot at the nearest 45 degrees
+      // would tell the player something untrue. Their links still render as beams
+      // (drawn from engine.traceBeams above), which is the honest picture.
+      const connShape = ops.isCanvas ? engine.connShapeOf(bp) : null;
+      if (connShape && connShape.kind === 'ray') {
+        for (const d of (connShape.dirs ?? [])) {
           const ang = (DIR_ANGLES[d] * Math.PI) / 180;
           const dot = new Graphics();
           dot.circle(x + Math.cos(ang) * 30, y + Math.sin(ang) * 30, 4);

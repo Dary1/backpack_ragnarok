@@ -10,8 +10,13 @@
    one source, zero duplication, artadmin untouched. Only
    contentadmin-specific classes (ca-*) live here. MJOLNIR
    tokens only; PASS/FAIL keep uncommon-green / blood-red.
+   REQ-0164 (contentadmin-ux-r2): .ca-root is now a stable full-
+   width flex child (fixes the shrink-to-fit + page-scroll jump);
+   adds the collapsible workflow strip, ingest is-new highlight,
+   adjudication tallies, rail sort + list-error, review-draft
+   toggle, and the missing skill_def kind palette entry.
    ============================================================ */
-.ca-root { padding: 12px 14px; color: var(--bone); }
+.ca-root { flex: 1; min-width: 0; padding: 12px 14px; color: var(--bone); }
 .ca-cols { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
 .ca-center { min-width: 0; }
 
@@ -21,6 +26,7 @@
 .ca-kind--monster_def { color: var(--ember-hi); border-color: var(--ember-lo); }
 .ca-kind--unit_def { color: var(--frost); border-color: var(--frost-lo); }
 .ca-kind--tm_def { color: var(--r-epic); border-color: var(--r-epic); }
+.ca-kind--skill_def { color: var(--gold-hi); border-color: var(--gold-lo); }
 
 /* ---- left rail rows (inside .aa-rail/.aa-list) ---- */
 .ca-rowwrap { display: flex; align-items: center; gap: 2px; }
@@ -32,6 +38,15 @@
 .ca-facet-link { color: var(--gold); text-decoration: none; font-size: 13px; padding: 2px 4px; flex: 0 0 auto; }
 .ca-facet-link:hover { color: var(--gold-hi); }
 
+/* ---- rail sort control (REQ-0164 E) ---- */
+.ca-sortline { align-items: center; }
+.ca-sortlabel { color: var(--bone-3); margin-right: 2px; letter-spacing: 0.04em; }
+
+/* ---- rail list-failure panel (REQ-0164 E) ---- */
+.ca-list-error { border-color: var(--blood); margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+.ca-list-error-msg { color: #E06B5F; word-break: break-word; }
+.ca-list-error-hint { color: var(--bone-3); }
+
 /* ---- workspace ---- */
 .ca-ws { display: flex; flex-direction: column; gap: 10px; }
 .ca-facetline { margin-top: 6px; }
@@ -42,6 +57,15 @@
 
 /* ---- workflow strip (the Q1 loop as numbered steps) ---- */
 .ca-flow { display: flex; flex-direction: column; gap: 12px; }
+.ca-flow-head { display: flex; }
+.ca-flow-toggle {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  width: 100%; background: none; border: none; padding: 0; cursor: pointer;
+  text-align: left; color: inherit;
+}
+.ca-flow-caret { color: var(--gold); font-size: 12px; width: 12px; flex: 0 0 auto; }
+.ca-flow-summary { color: var(--bone-2); }
+.ca-flow-steps { display: flex; flex-direction: column; gap: 12px; }
 .ca-flow-note { color: var(--bone-3); font-weight: 400; letter-spacing: 0; }
 .ca-step { position: relative; display: flex; flex-direction: column; gap: 6px; padding-left: 32px; }
 .ca-stepno {
@@ -51,6 +75,7 @@
 }
 .ca-step-title { color: var(--bone-2); font-size: 13px; }
 .ca-steprow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ca-adjud-summary { color: var(--bone-2); margin-left: auto; }
 .ca-payload { border: 1px solid var(--border-lo); border-radius: 2px; background: #0C1016; }
 .ca-payload-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -67,6 +92,9 @@
 .ca-parse.is-err { color: var(--blood); }
 .ca-parse.is-idle { color: var(--bone-3); }
 
+/* ---- variants gallery header tally (REQ-0164 C) ---- */
+.ca-variants-tally { color: var(--bone-2); margin-left: 6px; }
+
 /* ---- variant cards ---- */
 .ca-vlist { display: flex; flex-direction: column; gap: 10px; }
 .ca-vcard {
@@ -76,6 +104,13 @@
 }
 .ca-vcard.is-adopted { border-color: var(--gold); box-shadow: inset 0 0 10px rgba(201, 169, 89, 0.15), 0 0 8px rgba(201, 169, 89, 0.25); }
 .ca-vcard.is-fail { border-color: var(--ember-lo); }
+/* REQ-0164 C: freshly-ingested cards get a transient frost highlight. */
+.ca-vcard.is-new { border-color: var(--frost); box-shadow: 0 0 10px rgba(122, 178, 211, 0.30); animation: ca-newpulse 1.1s ease-out; }
+@keyframes ca-newpulse {
+  0% { box-shadow: 0 0 0 2px var(--frost); }
+  100% { box-shadow: 0 0 10px rgba(122, 178, 211, 0.30); }
+}
+.ca-newchip { color: var(--frost); border-color: var(--frost-lo); }
 .ca-vcard-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ca-vno { font-size: 15px; color: var(--gold-hi); }
 .ca-source { font-size: 12px; color: var(--bone-2); font-family: ui-monospace, monospace; }
@@ -102,7 +137,8 @@
   flex-basis: 100%; background: #0C1016; border-left: 2px solid var(--gold-lo);
   padding: 6px 8px; font-size: 12px; color: var(--bone-2);
 }
-.ca-review-draft { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.ca-review-toggle { margin-left: auto; }
+.ca-review-draft { display: inline-flex; align-items: center; gap: 4px; }
 .ca-input-xs { padding: 3px 6px; font-size: 12px; }
 .ca-rationale-input { width: 180px; }
 .ca-vactions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
@@ -152,3 +188,106 @@
 .ca-edit-valid.is-ok { color: var(--r-uncommon); }
 .ca-edit-valid.is-err { color: var(--blood); }
 .ca-editor-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ============================================================
+   REQ-0173 (contentadmin-entity-rendering): entity preview,
+   art-facet thumbnails, structured edit form, entity-level diff.
+   ca-* only; house rarity (.rarity.r-<R>) + chip primitives reused.
+   ============================================================ */
+
+/* ---- EntityPreview (default-on in each VariantCard; compact elsewhere) ---- */
+.ca-ep {
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 8px 10px; border: 1px solid var(--border-lo); border-radius: 3px;
+  background: #0C1016;
+}
+.ca-ep--compact { padding: 6px 8px; gap: 5px; background: transparent; border-style: dashed; }
+.ca-ep-head { display: flex; align-items: flex-start; gap: 10px; }
+.ca-ep-thumb { flex: 0 0 auto; display: inline-flex; }
+.ca-ep-headtext { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ca-ep-names { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ca-ep-name { font-size: 14px; color: var(--bone); font-weight: 600; }
+.ca-ep-name-ja { font-size: 13px; color: var(--bone-2); }
+.ca-ep-id { font-size: 11px; color: var(--bone-3); font-family: ui-monospace, monospace; }
+.ca-ep-muted { color: var(--bone-3); }
+.ca-ep-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ca-ep-chip {
+  font-size: 11px; padding: 1px 8px; border-radius: 2px;
+  border: 1px solid var(--border-lo); background: rgba(255,255,255,0.03);
+}
+/* the rarity chip: .rarity.r-<R> from base.css sets the text color */
+.ca-ep-chip.rarity { font-weight: 700; letter-spacing: 0.04em; }
+.ca-ep-hp { color: var(--ember-hi); border-color: var(--ember-lo); }
+.ca-ep-slot { color: var(--r-uncommon); border-color: var(--r-uncommon); }
+.ca-ep-tags, .ca-ep-skills { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ca-ep-tag, .ca-ep-skill { font-size: 11px; padding: 1px 6px; }
+.ca-ep-flavor { font-size: 12px; color: var(--bone-2); font-style: italic; }
+.ca-ep-effects { display: flex; flex-direction: column; gap: 3px; }
+.ca-ep-eff-text { font-size: 12px; color: var(--bone-2); }
+.ca-ep-eff-line {
+  font-size: 11px; font-family: ui-monospace, monospace; color: var(--gold-hi);
+  background: rgba(201,169,89,0.06); border-left: 2px solid var(--gold-lo);
+  padding: 1px 6px; word-break: break-word;
+}
+.ca-ep-fallback { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+.ca-ep-field {
+  display: inline-flex; align-items: baseline; gap: 4px; max-width: 100%;
+  font-size: 11px; padding: 1px 6px; border: 1px solid var(--border-lo);
+  border-radius: 2px; background: rgba(255,255,255,0.02);
+}
+.ca-ep-field-k { color: var(--bone-3); font-family: ui-monospace, monospace; }
+.ca-ep-field-v { color: var(--bone-2); font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+
+/* ---- art-facet thumbnails (rail + header) ---- */
+.ca-thumb {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 2px; overflow: hidden;
+  border: 1px solid var(--border-lo); display: grid; place-items: center;
+  background: #0C1016; text-decoration: none;
+}
+.ca-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ca-thumb-ph, .ca-header-thumb-ph { color: var(--gold-lo); font-size: 14px; }
+.ca-header-thumb {
+  width: 44px; height: 44px; border-radius: 3px; overflow: hidden;
+  border: 1px solid var(--gold-lo); display: grid; place-items: center;
+  background: #0C1016; text-decoration: none; flex: 0 0 auto;
+}
+.ca-header-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---- adopt-confirm entity preview + thumb ---- */
+.ca-confirm-preview { display: flex; align-items: flex-start; gap: 10px; }
+.ca-confirm-thumb {
+  width: 64px; height: 64px; object-fit: cover; border-radius: 3px;
+  border: 1px solid var(--gold-lo); flex: 0 0 auto;
+}
+
+/* ---- structured edit form (Form|JSON tabs) ---- */
+.ca-edit-tabs { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border-lo); }
+.ca-edit-tab {
+  background: none; border: 1px solid transparent; border-bottom: none;
+  color: var(--bone-2); padding: 5px 12px; cursor: pointer; font-size: 13px;
+  border-radius: 3px 3px 0 0;
+}
+.ca-edit-tab.is-on { color: var(--gold); border-color: var(--border-lo); background: #0C1016; }
+.ca-edit-tab:disabled { color: var(--bone-3); cursor: not-allowed; }
+.ca-edit-note { color: var(--bone-3); margin-left: 6px; }
+.ca-edit-form { display: flex; flex-direction: column; gap: 8px; overflow: auto; max-height: 60vh; }
+.ca-ef-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.ca-ef-check { flex-direction: row; align-items: center; gap: 6px; }
+.ca-ef-tags { display: grid; grid-template-columns: 160px 1fr; gap: 8px; }
+.ca-ef-effects { display: flex; flex-direction: column; gap: 5px; }
+.ca-ef-effhead { display: flex; align-items: center; justify-content: space-between; }
+.ca-ef-effrow { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ca-ef-num { width: 66px; }
+
+/* ---- entity-level diff header (side-by-side previews + changed chips) ---- */
+.ca-diff-entities {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border-lo);
+}
+.ca-diff-entity { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ca-diff-entity-cap { letter-spacing: 0.04em; }
+.ca-diff-fields {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 6px 12px; border-bottom: 1px solid var(--border-lo);
+}
+.ca-diff-fieldchip { font-size: 11px; padding: 1px 8px; color: var(--frost); border-color: var(--frost-lo); }

@@ -32,3 +32,15 @@ Derived terms in use (proposed by orchestrator, accepted in session):
   per-file terminology-update header.
 - The 13 user-authored roster kits and future unit content are authored in
   the NEW vocabulary only.
+
+## The BP:Unit law (source-verified, REQ-0165, 2026-07-14)
+
+**A BP and a Unit are 1:1. Every BP carries exactly one Unit; a BP with no Unit cannot
+exist.** `server/services/gacha.cjs` `rollCommonBp()` unconditionally stamps
+`linker:{off,dirs}` (Unit cell drawn from the polyomino's own cells, 1–3 distinct
+directions); `workshop.ruleUnit` states the seat is stamped at mint and cannot be
+chosen; `mock-src/engine.js:92` `unitCell(bp)` dereferences `bp.linker` unconditionally.
+The Unit's cell also **rejects PO placement** (`canPlaceCells()` → `why:'Unit cell'`).
+
+`connection_shape: none` (vocab v9) = a Unit that forms **no links** — NOT a BP without
+a Unit. Any doc saying "a BP may contain one Unit or none" is wrong.

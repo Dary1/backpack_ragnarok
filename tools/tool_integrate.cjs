@@ -84,7 +84,11 @@ function main() {
         id: 'synth', name: 'Synthetic BP', color: '#888888',
         shape: buildFullMinusUnit(),
         origin: [1, 1],
-        linker: { off: [0, 0], dirs: [] },
+        // REQ-0170: a BP carries a Unit. This synthetic BP exists only for the PO
+        // fit check, so it seats a unit that forms no links (`berserker` is the
+        // roster's `connection_shape: none`) -- the geometry is what is under test
+        // here, not the connections.
+        unit: { id: 'berserker', off: [0, 0] },
       }],
       pos: [],
       sis: [],

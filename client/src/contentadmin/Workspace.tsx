@@ -5,8 +5,14 @@
 // agent-session loop legible ((1) commission payload with one-click copy ->
 // (2) paste + live parse preview gating Ingest -> (3) adjudicate), the
 // variant cards and the side-by-side diff view.
-import type { ContentDefDto, ContentVariantDto, ContentCommission } from '../api';
-import { parseIngest } from './contentShared';
+// REQ-0164 B/C: the workflow strip is collapsible (cd-flow-toggle + a
+// one-line summary when collapsed -- the common "inspect existing content"
+// task no longer scrolls past commissioning UI); step 3 and the Variants
+// header carry live PASS/FAIL adjudication tallies; freshly-ingested cards
+// get an is-new highlight + scroll-into-view; variant cards are keyed by
+// <system_name>:<variant_no> so per-card UI state never survives a def switch.
+import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
+import { parseIngest, artworkThumbUrl } from './contentShared';
 import { VariantCard } from './VariantCard';
 import { DiffView } from './DiffView';
 
@@ -16,11 +22,14 @@ export function Workspace(props: {
   def: ContentDefDto;
   variants: ContentVariantDto[];
   artworkFacet: boolean;
+  artworksByName: Record<string, ArtworkDto>;
   adoptedNo: number | null;
   draft: DefDraft;
   onDraft: (patch: Partial<DefDraft>) => void;
   dirty: boolean;
   onSave: () => void;
+  flowCollapsed: boolean;
+  onToggleFlow: () => void;
   genN: number;
   onGenN: (n: number) => void;
   commission: ContentCommission | null;
@@ -30,6 +39,9 @@ export function Workspace(props: {
   onIngestText: (t: string) => void;
   ingestBusy: boolean;
   onIngest: (variants: Array<{ data: Record<string, unknown>; provenance?: Record<string, unknown> }>) => void;
+  newNos: number[];
+  scrollToNo: number | null;
+  recheckingNos: number[];
   expandedChecks: Record<string, boolean>;
   onToggleCheck: (key: string) => void;
   reviewDrafts: Record<number, { verdict: string; rationale: string }>;
@@ -47,10 +59,16 @@ export function Workspace(props: {
   onCloseDiff: () => void;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
-  const { def, variants, adoptedNo, draft, dirty, commission, diffPicks, diffPair } = props;
+  const { def, variants, adoptedNo, draft, dirty, commission, diffPicks, diffPair, flowCollapsed } = props;
+  const artHash = '#/artadmin/' + def.system_name;
+  const headerThumb = props.artworkFacet ? artworkThumbUrl(props.artworksByName[def.system_name]) : null;
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
+  const passCount = variants.filter((v) => (v.machine_check && v.machine_check.overall) === 'PASS').length;
+  const failCount = variants.length - passCount;
+  const flowSummary = (adoptedNo != null ? 'adopted v' + adoptedNo : 'not adopted')
+    + ' · ' + variants.length + ' variant' + (variants.length === 1 ? '' : 's');
 
   return (
     <div data-testid="cd-detail" className="ca-ws">
@@ -62,11 +80,19 @@ export function Workspace(props: {
             ? <span className="aa-adopt-badge tnum" data-testid="cd-adopted-state">adopted v{adoptedNo} &middot; exported to content/</span>
             : <span className="t-micro" data-testid="cd-adopted-state">not adopted yet</span>}
           {dirty && <span data-testid="cd-dirty" className="chip aa-dirty">unsaved changes</span>}
+          {props.artworkFacet && (
+            <a data-testid="cd-header-thumb" className="ca-header-thumb" href={artHash}
+              title={'open ' + def.system_name + ' in Art Admin'}>
+              {headerThumb
+                ? <img src={headerThumb} alt="" loading="lazy" />
+                : <span className="ca-header-thumb-ph">◇</span>}
+            </a>
+          )}
         </div>
         <div className="ca-facetline t-micro">
           {props.artworkFacet
             ? <span data-testid="cd-artwork-facet" className="ca-facet-yes">artwork facet: present --{' '}
-                <a data-testid="cd-artadmin-goto" href="#/artadmin">open in Art Admin</a>{' '}&middot;{' '}
+                <a data-testid="cd-artadmin-goto" href={artHash}>open in Art Admin</a>{' '}&middot;{' '}
                 <a data-testid="cd-dex-link" href={'#/dex/' + def.system_name}>view in Dex</a></span>
             : <span data-testid="cd-artwork-facet" className="ca-facet-no">artwork facet: none (data-only entity)</span>}
         </div>
@@ -89,52 +115,71 @@ export function Workspace(props: {
       </div>
 
       <div className="panel panel-pad ca-flow">
-        <div className="den t-label gold-text">Commission workflow <span className="t-micro ca-flow-note">(agent-session driven -- no LLM key on the server)</span></div>
-        <div className="ca-step">
-          <span className="ca-stepno den">1</span>
-          <div className="ca-steprow">
-            <span className="ca-step-title">Commission</span>
-            <input data-testid="cd-gen-n" className="aa-input aa-input--num" type="number" min={1} max={20}
-              value={props.genN} onChange={(e) => props.onGenN(Number(e.target.value) || 1)} />
-            <button data-testid="cd-commission" type="button" className="btn aa-btn-sm"
-              onClick={props.onCommission}>Build commission payload</button>
-          </div>
-          {commission && (
-            <div className="ca-payload">
-              <div className="ca-payload-bar">
-                <span className="t-micro">hand this payload to an agent session; it POSTs the variants back to {commission.post_to}</span>
-                <button data-testid="cd-copy-commission" type="button" className="btn aa-btn-xs"
-                  onClick={props.onCopyCommission}>Copy payload</button>
+        <div className="ca-flow-head">
+          <button type="button" data-testid="cd-flow-toggle" className="ca-flow-toggle"
+            aria-expanded={!flowCollapsed} onClick={props.onToggleFlow}>
+            <span className="ca-flow-caret" aria-hidden="true">{flowCollapsed ? '▸' : '▾'}</span>
+            <span className="den t-label gold-text">Commission workflow</span>
+            {flowCollapsed
+              ? <span data-testid="cd-flow-summary" className="t-micro ca-flow-summary">{flowSummary}</span>
+              : <span className="t-micro ca-flow-note">(agent-session driven -- no LLM key on the server)</span>}
+          </button>
+        </div>
+        {!flowCollapsed && (
+          <div className="ca-flow-steps">
+            <div className="ca-step">
+              <span className="ca-stepno den">1</span>
+              <div className="ca-steprow">
+                <span className="ca-step-title">Commission</span>
+                <input data-testid="cd-gen-n" className="aa-input aa-input--num" type="number" min={1} max={20}
+                  value={props.genN} onChange={(e) => props.onGenN(Number(e.target.value) || 1)} />
+                <button data-testid="cd-commission" type="button" className="btn aa-btn-sm"
+                  onClick={props.onCommission}>Build commission payload</button>
               </div>
-              <pre data-testid="cd-commission-out" className="ca-pre">{JSON.stringify(commission, null, 2)}</pre>
+              {commission && (
+                <div className="ca-payload">
+                  <div className="ca-payload-bar">
+                    <span className="t-micro">hand this payload to an agent session; it POSTs the variants back to {commission.post_to}</span>
+                    <button data-testid="cd-copy-commission" type="button" className="btn aa-btn-xs"
+                      onClick={props.onCopyCommission}>Copy payload</button>
+                  </div>
+                  <pre data-testid="cd-commission-out" className="ca-pre">{JSON.stringify(commission, null, 2)}</pre>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <div className="ca-step">
-          <span className="ca-stepno den">2</span>
-          <div className="ca-steprow">
-            <span className="ca-step-title">Ingest the agent's reply (or the agent POSTs directly)</span>
+            <div className="ca-step">
+              <span className="ca-stepno den">2</span>
+              <div className="ca-steprow">
+                <span className="ca-step-title">Ingest the agent's reply (or the agent POSTs directly)</span>
+              </div>
+              <textarea data-testid="cd-ingest-json" className="aa-input aa-textarea ca-ingest" rows={5}
+                placeholder='{"variants":[{"data":{...},"provenance":{"source":"llm","model":"...","prompt":"...","params":{}}}]}'
+                value={props.ingestText} onChange={(e) => props.onIngestText(e.target.value)} />
+              <div data-testid="cd-parse-preview" className={'ca-parse is-' + parse.state}>{parse.note}</div>
+              <div>
+                <button data-testid="cd-ingest" type="button" className="btn aa-btn-sm"
+                  disabled={parse.state !== 'ok' || parse.count === 0 || props.ingestBusy}
+                  onClick={() => props.onIngest(parse.variants)}>
+                  {props.ingestBusy ? 'ingesting...' : 'Ingest + run machine checks'}
+                </button>
+              </div>
+            </div>
+            <div className="ca-step">
+              <span className="ca-stepno den">3</span>
+              <div className="ca-steprow">
+                <span className="ca-step-title">Adjudicate below: compare variants, read checks + advisory review, adopt exactly one.</span>
+                <span data-testid="cd-adjudicate-summary" className="ca-adjud-summary tnum">{variants.length} variants &middot; {passCount} PASS &middot; {failCount} FAIL</span>
+              </div>
+            </div>
           </div>
-          <textarea data-testid="cd-ingest-json" className="aa-input aa-textarea ca-ingest" rows={5}
-            placeholder='{"variants":[{"data":{...},"provenance":{"source":"llm","model":"...","prompt":"...","params":{}}}]}'
-            value={props.ingestText} onChange={(e) => props.onIngestText(e.target.value)} />
-          <div data-testid="cd-parse-preview" className={'ca-parse is-' + parse.state}>{parse.note}</div>
-          <div>
-            <button data-testid="cd-ingest" type="button" className="btn aa-btn-sm"
-              disabled={parse.state !== 'ok' || parse.count === 0 || props.ingestBusy}
-              onClick={() => props.onIngest(parse.variants)}>
-              {props.ingestBusy ? 'ingesting...' : 'Ingest + run machine checks'}
-            </button>
-          </div>
-        </div>
-        <div className="ca-step">
-          <span className="ca-stepno den">3</span>
-          <span className="ca-step-title">Adjudicate below: compare variants, read checks + advisory review, adopt exactly one.</span>
-        </div>
+        )}
       </div>
 
       <div className="aa-gallery-head">
         <span className="den t-label">Variants <span className="tnum">({variants.length})</span></span>
+        {variants.length > 0 && (
+          <span data-testid="cd-variants-tally" className="t-micro tnum ca-variants-tally">{passCount} PASS &middot; {failCount} FAIL</span>
+        )}
         {diffPicks.length === 2 && (
           <button type="button" data-testid="cd-diff-open" className="btn aa-btn-sm"
             onClick={props.onOpenPickedDiff}>Diff v{diffPicks[0]} vs v{diffPicks[1]}</button>
@@ -143,8 +188,10 @@ export function Workspace(props: {
       </div>
       <div data-testid="cd-variants" className="ca-vlist">
         {variants.map((v) => (
-          <VariantCard key={v.variant_no} v={v} all={variants}
+          <VariantCard key={def.system_name + ':' + v.variant_no} v={v} kind={def.kind} all={variants}
             isAdopted={adoptedNo === v.variant_no} adoptedNo={adoptedNo}
+            isNew={props.newNos.includes(v.variant_no)} shouldScroll={props.scrollToNo === v.variant_no}
+            recheckBusy={props.recheckingNos.includes(v.variant_no)}
             expandedChecks={props.expandedChecks} onToggleCheck={props.onToggleCheck}
             reviewDraft={props.reviewDrafts[v.variant_no] || { verdict: 'neutral', rationale: '' }}
             onReviewDraft={props.onReviewDraft} onReviewSubmit={props.onReviewSubmit}
@@ -156,7 +203,7 @@ export function Workspace(props: {
         {variants.length === 0 && <div className="aa-empty t-micro">no variants yet -- commission a batch above</div>}
       </div>
 
-      {va && vb && <DiffView a={va} b={vb} adoptedNo={adoptedNo} onClose={props.onCloseDiff} />}
+      {va && vb && <DiffView a={va} b={vb} kind={def.kind} adoptedNo={adoptedNo} onClose={props.onCloseDiff} />}
     </div>
   );
 }

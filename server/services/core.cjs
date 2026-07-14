@@ -23,6 +23,9 @@ const LIVE_DIR = contentPath('live');
 const ITEMS_PATH = contentPath('live', 'live_items.json');
 const SIS_PATH = contentPath('live', 'live_sis.json'); // REQ-0115: SI (accessory) content defs
 const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
+const UNITS_PATH = contentPath('live', 'live_units.json'); // REQ-0170: unit/1 defs (the Unit a BP carries)
+const PACKS_PATH = contentPath('live', 'live_packs.json'); // REQ-0170: gacha_pack/1 defs (what the Workshop emits)
+const VOCAB_PATH = contentPath('vocab.json'); // REQ-0170: connection_shapes lives here
 // REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
 // promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
 // batch dir. The path comes from sim/dungen.cjs's liveDungeonDir() so
@@ -76,6 +79,9 @@ function getScheduleContent() {
     items: statMtimeMs(ITEMS_PATH),
     sis: statMtimeMs(SIS_PATH), // REQ-0115
     tms: statMtimeMs(TMS_PATH), // REQ-0042
+    units: statMtimeMs(UNITS_PATH), // REQ-0170
+    packs: statMtimeMs(PACKS_PATH), // REQ-0170
+    vocab: statMtimeMs(VOCAB_PATH), // REQ-0170 (connection_shapes)
     dungeon: statMtimeMs(DUNGEON_PATH),
     enemies: statMtimeMs(ENEMIES_PATH),
     skills: statMtimeMs(SKILLS_PATH),
@@ -88,6 +94,9 @@ function getScheduleContent() {
   const liveItems = loadJSON(ITEMS_PATH);
   const liveSis = loadJSON(SIS_PATH); // REQ-0115
   const liveTms = loadJSON(TMS_PATH); // REQ-0042
+  const liveUnits = loadJSON(UNITS_PATH); // REQ-0170
+  const livePacks = loadJSON(PACKS_PATH); // REQ-0170
+  const vocab = loadJSON(VOCAB_PATH); // REQ-0170 (connection_shapes)
   const pilotItems = loadJSON(ITEMS_PILOT_PATH);
   const dungeonDef = loadJSON(DUNGEON_PATH);
   const enemies = loadJSON(ENEMIES_PATH);
@@ -116,6 +125,20 @@ function getScheduleContent() {
   const siDefsById = {};
   for (const e of liveSis.entries) siDefsById[e.id] = e;
 
+  // REQ-0170: Unit defs (unit/1) + the ratified connection_shapes table. Same
+  // id-keyed map convention as every other def map above. These two are what
+  // turn a BP's `unit.id` into rays -- the engine and the sim both resolve
+  // through them, so the board and the battle can never disagree.
+  const unitDefsById = {};
+  for (const e of (liveUnits.entries || [])) unitDefsById[e.id] = e;
+  const connShapes = vocab.connection_shapes || {};
+
+  // REQ-0170: gacha pack defs (gacha_pack/1) -- WHICH Units a pack can emit, at
+  // what weight and cost. Data, not code: REQ-0171 puts the content-admin screen
+  // on top of this table.
+  const packDefsById = {};
+  for (const e of (livePacks.entries || [])) packDefsById[e.id] = e;
+
   const enemyDefsById = {};
   for (const e of enemies.entries) enemyDefsById[e.id] = e;
 
@@ -140,7 +163,7 @@ function getScheduleContent() {
     };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
+  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
 }
@@ -231,8 +254,8 @@ function resolveRewardItemId(rollId) {
 // A fresh instance per call is cheap (no heavy setup in Engine.create)
 // and safest against itemDefsById changing between calls (content hot-
 // reload, same mtime-cache convention as api.cjs's own content path).
-function makeEngine(itemDefsById) {
-  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} });
+function makeEngine(itemDefsById, unitDefsById, connShapes) {
+  return Engine.create(itemDefsById, {}, { ROWS: 8, COLS: 8 }, { po_tags: {}, socket_tags: {} }, unitDefsById, connShapes);
 }
 
 // ---------------------------------------------------------------------
@@ -293,6 +316,9 @@ module.exports = {
   SKILLS_PATH,
   ITEMS_PILOT_PATH,
   FORMATIONS_PATH,
+  UNITS_PATH, // REQ-0170
+  PACKS_PATH, // REQ-0170
+  VOCAB_PATH, // REQ-0170
   WAREHOUSE_CAP,
   WAREHOUSE_TTL_MS,
   WAREHOUSE_CLAIM_TIMEOUT_MS,

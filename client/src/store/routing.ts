@@ -4,7 +4,7 @@
 // see core.ts's module comment on DEX_ITEM_HASH_RE/dexFocusId for the design note.
 import { clearStoredToken, fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
-import { DEX_ITEM_HASH_RE, INVITE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
+import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
 
 export function setRoute(route: Route): void {
@@ -78,6 +78,24 @@ export function clearDexFocusId(): void {
   setSnapshot({ ...snapshot, dexFocusId: null });
 }
 
+/** REQ-0164 (contentadmin-ux-r2 D): clears a consumed contentadmin deep-link
+ * target (see core.ts's contentAdminFocusName doc). ContentAdminPage calls
+ * this right after honoring a pending focus name -- mirrors clearDexFocusId's
+ * "one-shot store field, explicit consume-then-clear" shape. */
+export function clearContentAdminFocusName(): void {
+  if (snapshot.contentAdminFocusName === null) return;
+  setSnapshot({ ...snapshot, contentAdminFocusName: null });
+}
+
+/** REQ-0173 (contentadmin-entity-rendering B): clears a consumed artadmin
+ * deep-link target (see core.ts's artAdminFocusName doc). ArtAdminPage calls
+ * this right after honoring a pending focus name -- exact mirror of
+ * clearContentAdminFocusName's one-shot consume-then-clear shape. */
+export function clearArtAdminFocusName(): void {
+  if (snapshot.artAdminFocusName === null) return;
+  setSnapshot({ ...snapshot, artAdminFocusName: null });
+}
+
 /** Like setRoute(), but uses history.replaceState-style semantics for the
  * hash (no back-button entry for the one-shot invite hash itself) -- the
  * invite link should not leave "#/invite/<token>" sitting in browser
@@ -121,11 +139,17 @@ export function initRouting(): () => void {
   if (typeof location !== 'undefined') {
     const inviteMatch = INVITE_HASH_RE.exec(location.hash);
     const dexItemMatch = inviteMatch ? null : DEX_ITEM_HASH_RE.exec(location.hash);
+    const caMatch = inviteMatch || dexItemMatch ? null : CONTENTADMIN_HASH_RE.exec(location.hash);
+    const artMatch = inviteMatch || dexItemMatch || caMatch ? null : ARTADMIN_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       setSnapshot({ ...snapshot, route: 'backpacks' });
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
     } else if (dexItemMatch) {
       setSnapshot({ ...snapshot, route: 'dex', dexFocusId: decodeURIComponent(dexItemMatch[1]) });
+    } else if (caMatch) {
+      setSnapshot({ ...snapshot, route: 'contentadmin', contentAdminFocusName: decodeURIComponent(caMatch[1]) });
+    } else if (artMatch) {
+      setSnapshot({ ...snapshot, route: 'artadmin', artAdminFocusName: decodeURIComponent(artMatch[1]) });
     } else {
       const initial = routeFromHash(location.hash);
       if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
@@ -141,6 +165,16 @@ export function initRouting(): () => void {
     const dexItemMatch = DEX_ITEM_HASH_RE.exec(location.hash);
     if (dexItemMatch) {
       setSnapshot({ ...snapshot, route: 'dex', dexFocusId: decodeURIComponent(dexItemMatch[1]) });
+      return;
+    }
+    const caMatch = CONTENTADMIN_HASH_RE.exec(location.hash);
+    if (caMatch) {
+      setSnapshot({ ...snapshot, route: 'contentadmin', contentAdminFocusName: decodeURIComponent(caMatch[1]) });
+      return;
+    }
+    const artMatch = ARTADMIN_HASH_RE.exec(location.hash);
+    if (artMatch) {
+      setSnapshot({ ...snapshot, route: 'artadmin', artAdminFocusName: decodeURIComponent(artMatch[1]) });
       return;
     }
     const next = routeFromHash(location.hash);

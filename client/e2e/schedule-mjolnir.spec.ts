@@ -121,12 +121,12 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
     await expect(card.locator('[data-testid^="schedule-room-slot-chip-"]')).toHaveCount(4);
     await expect(card.locator('.schedule-room-slot-empty')).toHaveCount(4);
 
-    // Expand: slots panel + the monitor's "no run yet" placeholder (a
-    // fresh room has no lastRunId -- the mon-panel head only exists once
-    // a run does).
-    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    // REQ-0168 U1: creating a room auto-selects (watches) it -- the card is
+    // already open and the detail pane already shows the slots panel + the
+    // monitor's "no run yet" placeholder (a fresh room has no lastRunId, so
+    // the mon-panel head only exists once a run does). No expand click.
+    await expect(card).toHaveClass(/schedule-room-card-open/, { timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-0"]')).toBeVisible();
-    await expect(card).toHaveClass(/schedule-room-card-open/);
     await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-monitor-empty')).toBeVisible();
 
     // Assigning a squad fills the card's own slot-preview chip with the

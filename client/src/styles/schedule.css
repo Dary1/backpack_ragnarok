@@ -573,3 +573,141 @@
   }
 }
 
+
+/* REQ-0168 U4: slots-panel auto-start explainer + "build more squads" callout. */
+.schedule-slots-autostart-hint {
+  font-size: 12px;
+  color: var(--bone-3);
+  margin: -2px 0 8px;
+  line-height: 1.4;
+}
+.schedule-slots-need-squads {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  border: 1px solid rgba(201, 169, 89, 0.35);
+  border-radius: 3px;
+  background: rgba(201, 169, 89, 0.08);
+  font-size: 12.5px;
+}
+.schedule-slots-need-squads-link {
+  color: var(--gold);
+  font-weight: 600;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+/* REQ-0100: expedition spoils rail (right column preview). */
+.schedule-spoils-rail {
+  margin-top: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.schedule-spoils-rail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.schedule-spoils-rail-pending {
+  font-family: var(--f-den);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.schedule-spoils-rail-cap {
+  font-size: 11.5px;
+  color: var(--bone-3);
+}
+.schedule-spoils-cap-bar {
+  position: relative;
+  height: 6px;
+  border-radius: 2px;
+  background: #0c1016;
+  border: 1px solid #2a313e;
+  overflow: hidden;
+}
+.schedule-spoils-cap-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #6f5b26, var(--gold));
+  transition: width 0.3s ease;
+}
+.schedule-spoils-cap-bar.is-warning .schedule-spoils-cap-fill {
+  background: linear-gradient(90deg, #7a4a1e, var(--ember-hi, #e6913c));
+}
+.schedule-spoils-cap-bar.is-full .schedule-spoils-cap-fill {
+  background: linear-gradient(90deg, #7a2320, #e0524a);
+}
+.schedule-spoils-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.schedule-spoils-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(40, 49, 62, 0.7);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.7), rgba(19, 24, 32, 0.7));
+}
+.schedule-spoils-row-thumb {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+.schedule-spoils-row-thumb img {
+  width: 21px;
+  height: 21px;
+}
+.schedule-spoils-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-spoils-row-expiry {
+  flex: none;
+  font-size: 11px;
+  color: var(--frost-hi);
+  letter-spacing: 0.04em;
+}
+.schedule-spoils-claim-jump {
+  align-self: stretch;
+  text-align: center;
+  text-decoration: none;
+}
+.schedule-spoils-lore {
+  color: var(--bone-3);
+  opacity: 0.8;
+  font-style: italic;
+}
+.schedule-spoils-empty,
+.schedule-spoils-loading {
+  color: var(--bone-3);
+  padding: 6px 2px;
+}
+@media (max-width: 1000px) {
+  .schedule-spoils-rail { margin-top: 0; }
+}

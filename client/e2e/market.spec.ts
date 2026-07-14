@@ -295,7 +295,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const canvas = devBuyerCanvas(0, [{ uid: 'e2e_dep_1', id: 'tower_shield' }]);
     // Put a copy of the item into squad store index 1's board so the
     // deploy gate sees it as deployed when that squad is assigned.
-    canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_dep', name: 'BP', color: '#888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], linker: { off: [0, 0], dirs: [] }, hpMax: 500 }], pos: [{ uid: 'e2e_dep_1', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
+    canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_dep', name: 'BP', color: '#888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { id: 'berserker', off: [0, 0] }, hpMax: 500 }], pos: [{ uid: 'e2e_dep_1', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
     await page.request.put('/api/profile/dev/canvas', { data: canvas });
     // Create a room + assign squad 1 to a slot -> the item is deployed.
     const room = await page.request.post('/api/schedule/rooms', { data: { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' } });

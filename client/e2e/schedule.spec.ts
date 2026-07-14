@@ -198,9 +198,10 @@ test.describe('create room + slots UI', () => {
     expect(roomId).toBeTruthy();
     createdRoomIds.push(roomId!);
 
-    // Expand -> SlotsPanel visible.
-    await page.locator('[data-testid="schedule-room-expand-toggle"]').first().click();
-    await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible();
+    // REQ-0168 U1: a successful create now auto-selects (watches) the new
+    // room, so the detail pane already shows its slots panel -- no expand
+    // click needed.
+    await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible({ timeout: 10000 });
 
     // REQ-0045 (b)+(c) deploy gate v2: fill each slot with a DIFFERENT
     // squad (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
@@ -249,7 +250,7 @@ test.describe('create room + slots UI', () => {
     // unconditionally, not just when the room has gone active).
     const dup = await apiAssignSlot(page, player.token, roomId, 1, 1);
     expect(dup.status).toBe(409);
-    expect(dup.body.reason).toBe('deployed_overlap');
+    expect(dup.body.reason).toBe('same_room_duplicate'); // REQ-0168 U6
 
     // Room never reaches 4/4 filled, so it correctly never auto-starts.
     const view = await apiGetRoom(page, player.token, roomId);
@@ -472,6 +473,28 @@ test.describe('run settles via dev/backdate hook', () => {
       data: {},
     });
     expect(res.status()).toBe(403);
+
+    // REQ-0159 (class A -- SHARED-STATE LEAK, root cause of the
+    // "monitor freeze regression guard" red at full-file ordering):
+    // filling all 4 slots above AUTO-STARTS the run, so this room goes
+    // ACTIVE and squads 0-3 become DEPLOYED. This test was the only one
+    // in the file that never cancelled its room, so from here on every
+    // later test that deploys squads 0-3 (the monitor-freeze guard does
+    // exactly that) got a 409 from the cross-room deploy gate --
+    // deployedUidSetsForGate (server/services/squads.cjs) counts every
+    // OTHER *active* room of the same owner. That 409 was CORRECT server
+    // behavior (it is the very rule the "deploy-gate 409 across rooms"
+    // test below asserts on purpose); the bug was this test leaking an
+    // active room into its neighbours. It passed solo only because there
+    // was no leak to trip over. Cancel here like every other room-
+    // creating test in this file already does -- the room's default
+    // cancelPolicy is immediate (services/rooms.cjs validateCancelPolicy),
+    // so this really does release the deployment rather than just flagging
+    // cancelRequested. NOTE: the fix belongs HERE, in the leaker; the
+    // monitor guard's own `expect(r.status).toBe(200)` is left untouched
+    // and is exactly the assertion that must keep failing if a squad is
+    // wrongly still deployed.
+    await apiCancelRoom(page, player.token, roomId);
   });
 });
 
@@ -669,17 +692,24 @@ test.describe('deploy-gate 409 across rooms', () => {
     expect(overlapRes.status).toBe(409);
     expect(overlapRes.body.error).toMatch(/active schedule/i);
 
-    // Confirm the CLIENT surfaces this as the friendly, i18n'd message
-    // (not the raw server string) -- drive the same assignment through
-    // the real UI.
+    // REQ-0168 U7: the UI now PRE-DISABLES a squad already deployed in
+    // another ACTIVE room, so the player can no longer even SELECT squad 0
+    // in room B -- the option renders disabled + labelled "(deployed)". This
+    // supersedes the old "select the squad, then read the friendly 409
+    // message" UI flow: the friendly cross-room message (schedule/errors.ts
+    // -> schedule.error.crossRoomOverlap) still maps the server 409 asserted
+    // above as defense-in-depth for any path that bypasses the disabled
+    // option, and is verified in the browser QA pass; here the honest UI
+    // assertion is that the option is unreachable in the first place.
     await page.goto(`/app/#/invite/${player.token}`);
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     await page.locator('.nav-link', { hasText: 'Schedule' }).click();
     const cardB = page.locator(`[data-room-id="${roomBId}"]`);
     await expect(cardB).toBeVisible({ timeout: 10000 });
     await cardB.locator('[data-testid="schedule-room-expand-toggle"]').click();
-    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"]').selectOption('0');
-    await expect(page.locator('[data-testid="schedule-detail-pane"] .schedule-slot-error')).toContainText('already has a squad deployed', { timeout: 10000 });
+    const optionZero = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-slot-select-0"] option[value="0"]');
+    await expect(optionZero).toBeDisabled({ timeout: 10000 });
+    await expect(optionZero).toContainText('deployed');
 
     // Cancel room A so its deployed squads (0,1,2,3) free up for later
     // tests in this suite -- every other test in this file cancels its
