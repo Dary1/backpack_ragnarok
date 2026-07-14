@@ -28,3 +28,7 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# REQ-0118c: local Supabase config (never commit)
+.env.local
+.env*.local

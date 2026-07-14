@@ -6,6 +6,8 @@
 // authHeaders are module-internal to src/api/ and are deliberately NOT
 // part of the public surface).
 
+import { getAccessToken } from '../auth/session';
+
 // ---- REQ-0037: token storage ----
 
 export const TOKEN_STORAGE_KEY = 'backpack_ragnarok:auth_token';
@@ -48,8 +50,17 @@ export function clearStoredToken(): void {
  * empty object when not (so callers can always spread this into their
  * headers without an `if` at every call site). */
 export function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+  // REQ-0118c: a Supabase session (Discord or anonymous guest) sends a
+  // Bearer JWT; the server resolves it to the player via
+  // admin.resolveAuthFromRequest (the JWT takes precedence). The REQ-0037
+  // invite token is still sent when present -- both may co-exist during
+  // account linking, and the server prefers the JWT.
+  const jwt = getAccessToken();
+  if (jwt) headers['Authorization'] = 'Bearer ' + jwt;
   const token = getStoredToken();
-  return token ? { 'X-Auth-Token': token } : {};
+  if (token) headers['X-Auth-Token'] = token;
+  return headers;
 }
 
 export class ApiError extends Error {

@@ -8,6 +8,8 @@ import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
 import type { Locale } from './core';
 import type { GameData } from "../api/content"; // REQ-0051
 import type { GameState, BP, PO, SquadSlot } from "../engine/engine.d.ts"; // REQ-0051
+import { createSupabaseClient } from '../auth/client'; // REQ-0118c
+import { initSupabaseAuth } from '../auth/session'; // REQ-0118c
 
 export function resolveProfileId(): string {
   return snapshot.me?.playerId ?? 'default';
@@ -147,6 +149,12 @@ export async function boot(): Promise<void> {
     const earlyInviteMatch = INVITE_HASH_RE.exec(location.hash);
     if (earlyInviteMatch) setStoredToken(decodeURIComponent(earlyInviteMatch[1]));
   }
+  // REQ-0118c: restore any persisted Supabase session (and finish an OAuth
+  // redirect round-trip via detectSessionInUrl) BEFORE the first /api/me,
+  // so a signed-in player's very first request already carries the Bearer
+  // JWT. A no-op when Supabase is not configured (createSupabaseClient()
+  // returns null), leaving the REQ-0037 flow byte-identical.
+  await initSupabaseAuth(createSupabaseClient());
   const me: ApiMe | null = await fetchMeWithRetry();
   if (me) setSnapshot({ ...snapshot, me });
 
