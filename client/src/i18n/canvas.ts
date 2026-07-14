@@ -28,6 +28,19 @@ export const canvasEn = {
   'canvas.saveState.saved': 'Saved',
   'canvas.saveState.saving': 'Saving…',
   'canvas.saveState.offline': 'Offline',
+  // REQ-0140 (canvas-side-panel-parity): side-panel filter chips, detail
+  // card No. line, and empty-state guidance copy (SHARED with REQ-0141).
+  'canvas.filter.all': 'All',
+  'canvas.filter.weapon': 'Arms',
+  'canvas.filter.element': 'Element',
+  'canvas.filter.link': 'Link',
+  'canvas.filter.relic': 'Relic',
+  'canvas.detail.noEffect': '(no effect text)',
+  'canvas.detail.dexNo': 'No.{no}',
+  'canvas.empty.zeroBpTitle': 'Lay your first backpack',
+  'canvas.empty.zeroBpBody': 'Drag a backpack from your inventory onto the canvas to begin. Items find their effect only once seated in a pack on the board.',
+  'canvas.empty.invTitle': 'Nothing stowed here',
+  'canvas.empty.invBody': 'Items you own but have not placed appear here. Win expeditions or visit the market to gather more.',
 
   // Squad tabs (SquadTabs.tsx)
   'squad.add': 'Squad+',
@@ -91,6 +104,18 @@ export const canvasJa = {
   'canvas.saveState.saved': '保存済み',
   'canvas.saveState.saving': '保存中…',
   'canvas.saveState.offline': 'オフライン',
+  // REQ-0140 (canvas-side-panel-parity)
+  'canvas.filter.all': 'すべて',
+  'canvas.filter.weapon': '武具',
+  'canvas.filter.element': '属性',
+  'canvas.filter.link': '連結',
+  'canvas.filter.relic': '遺宝',
+  'canvas.detail.noEffect': '（効果テキストなし）',
+  'canvas.detail.dexNo': '図鑑 No.{no}',
+  'canvas.empty.zeroBpTitle': '最初の背嚢を敷く',
+  'canvas.empty.zeroBpBody': '編成はここから。インベントリから背嚢を盤面へ運びましょう。物品は盤上の背嚢に収まって初めて効果を発揮します。',
+  'canvas.empty.invTitle': 'この物品庫は空です',
+  'canvas.empty.invBody': '所持していて未配置の物品がここに並びます。遠征の戦利品や市場で集めましょう。',
 
   'squad.add': '型を鋳る＋', // REQ-0070: mock boardfoot copy (EN stays 'Squad+')
 
