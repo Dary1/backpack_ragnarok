@@ -181,3 +181,17 @@ test('queue: cancel a pending job -> failed \'canceled by user\'; rest complete;
   await waitStatusOk(page, canceledSeed);
   await expect(page.getByTestId('render-' + canceledSeed).locator('img')).toBeVisible();
 });
+
+// REQ-0173 (contentadmin-entity-rendering B): the #/artadmin/<system_name>
+// deep link selects that artwork once the registry list has loaded (mirror of
+// the contentadmin deep link). Consuming is minimal + additive; the existing
+// three tests above are untouched.
+test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  await apiCreate(request, { system_name: 'e2e_deeplink', kind: 'si', main_object: 'ruby amulet' });
+
+  await page.goto('/app/#/artadmin/e2e_deeplink');
+  await expect(page.getByTestId('artadmin')).toBeVisible();
+  await expect(page.getByTestId('art-editor')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByTestId('art-editor')).toContainText('e2e_deeplink');
+});
