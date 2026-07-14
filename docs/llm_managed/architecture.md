@@ -74,9 +74,9 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 |---|---|
 | `mock-src/engine.js` | THE game engine (rule 1). `mock-src/tests/run.cjs` = its suite. |
 | `sim/` | Combat simulator. `combat.cjs`/`dungen.cjs` facades over `sim/lib/{core,rng,heap,geometry,formation,status,compile,entry,ray,field,replay,skills,packs,encounter,dungeon}.cjs` (acyclic). Dependency-free by invariant. |
-| `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule}.cjs` → business logic in `schedule.cjs` facade over `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`; plumbing in `lib/{content,http_util,humanize,meta}.cjs`; persistence in `storage/players/pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
+| `server/` | Framework-free `node:http` API. `api.cjs` (entry) → `router.cjs` (load-bearing dispatch order) → `routes/{public,me,admin,profile,schedule,warehouse,workshop,market,ragnarok,dex,dismantle,art,content}.cjs` (REQ-0145a: the combined schedule module split into schedule/warehouse/workshop, dispatched consecutively in its old slot; shared caller preamble in `lib/route_auth.cjs`) → business logic behind name-for-name facades (rule 3): `schedule.cjs` over `services/{core,rooms,squads,runs,warehouse,gacha}.cjs`, `services/market.cjs` over `services/market/{lib,listings,views,trade,furnace}.cjs`, `services/ragnarok.cjs` over `services/ragnarok/{lib,seasons,einherjar,order,snapshot,devotion}.cjs` (`deployedUidSet` lives in `services/squads.cjs`, its true domain); plumbing in `lib/{content,content_files,http_util,humanize,meta,route_auth}.cjs`; persistence behind the `storage.cjs` facade (rule 4) over `storage/{lib,profiles,rooms,runs,warehouse,gacha,dismantle,market,ragnarok}.cjs` + `storage_art`/`storage_content` subsystems + `players.cjs`/`pg_sync`; auth in `admin.cjs`; operator CLI `cli_invite.cjs`. |
 | `shared/` | Cross-package contract surface: `engine.d.ts` (engine types), `dto.ts` (30 HTTP wire-shape types), `content_validate.cjs` (admin-edit validator). Dependencies point INTO shared, never out. |
-| `client/` | Vite + React 19 + PixiJS 8 + TS. Store = module-level pub-sub (`src/store.ts` barrel over `src/store/*`), board renderer class + extracted `board/{geom,commits,ghosts}.ts`, typed API client `src/api.ts` (re-exports shared DTOs). Builds into committed `web/app/`. |
+| `client/` | Vite + React 19 + PixiJS 8 + TS. Store = module-level pub-sub (`src/store.ts` barrel over `src/store/*`), board renderer class + extracted `board/{geom,commits,ghosts}.ts`, typed API client `src/api.ts` (barrel over `src/api/` domain modules, re-exports shared DTOs; i18n + index.css are likewise barrels over `src/i18n/` + `src/styles/` since REQ-0145b), shared page-lib `src/lib/` (item-content resolution, time formatting, tab pulse, first-fit placement variants, poll/load hook, content cache — REQ-0145b) with cross-package numeric constants in `shared/constants.json`. Builds into committed `web/app/`. |
 | `content/` | Game content: `vocab.json` (closed vocabulary), `live/` (single source served by /api/content), `batches/` (authored + generated content, incl. batch-002 the sim test fixture). |
 | `tools/` | ci.sh / release.sh / check_engine_types.cjs + the Python art/content pipeline (`gen_monster_art.py`, fit checks, `eff_render.cjs` shared effect-text renderer). |
 | `web/` | The static docroot, served verbatim (committed dist model). |
@@ -85,10 +85,13 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 
 ## 5. Contracts & type system
 
-- **HTTP contract**: `server/tests/api_test.cjs` (102 tests, drives the
-  exported `handle()` directly; runs in files AND pg modes). Endpoint
-  shapes, status codes, auth matrices and even 400 wordings are asserted
-  — treat its assertions as the spec.
+- **HTTP contract**: `server/tests/api_test.cjs` — the thin entry point
+  over `server/tests/api/*.cjs` (REQ-0145a: harness + 11 suite files,
+  run in the old monolith's own fixed order; 157 tests / 1213 executed
+  assertions per backend, tallied by the harness as a parity gate).
+  Drives the exported `handle()` directly; runs in files AND pg modes.
+  Endpoint shapes, status codes, auth matrices and even 400 wordings
+  are asserted — treat its assertions as the spec.
 - **Error convention**: services throw `Error` with `.code`
   ('NOT_FOUND'|'CONFLICT'|'BAD_REQUEST'|'TOO_LARGE'), optional
   structured `.reason`; routes map code → HTTP status.
@@ -96,6 +99,13 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
   (never regenerated); `dev_mode` no-token fallback resolves the dev
   player and additionally gates the test-control seams (`dev/backdate*`,
   `genSeed`). Roles: `item_admin` gates admin routes.
+- **Content root**: every server-side content-file path resolves through
+  `server/lib/content_files.cjs` (REQ-0145a): `CONTENT_ROOT` env
+  override, default `~/backpack_ragnarok/content` (byte-equivalent to
+  the old per-module `os.homedir()` anchoring) — a worktree-launched
+  server can point at its own tree's content. Exception: dungeon-domain
+  paths come from `sim/dungen.cjs`'s `liveDungeonDir()` (sim is frozen
+  — see §9).
 - **Types**: client is strict TS; server/sim are CJS under
   `tsc --checkJs` (no build step — the runtime bytes are the reviewed
   bytes); the engine stays untyped JS internally but its declared surface
@@ -104,10 +114,10 @@ Both ports bind 127.0.0.1 only; the tunnel is the sole ingress.
 ## 6. Quality gates & dev workflow
 
 ```
-npm run test:quick   # sim + goldens + mock + typecheck + drift + api(files)  (~20s)
-npm test             # = tools/ci.sh: adds api(pg), client build, e2e (~10min, needs server/.env)
+pnpm run test:quick   # sim + goldens + mock + typecheck + drift + api(files)  (~20s)
+pnpm test            # = tools/ci.sh: adds api(pg), client build, e2e (~10min, needs server/.env)
 bash tools/release.sh# full gate → rebuild dist → commit web/app if changed
-(cd client && npm run dev)  # Vite dev server against the live API
+(cd client && pnpm run dev)  # Vite dev server against the live API
 node server/tests/api_test.cjs / sim/tests/run.cjs / mock-src/tests/run.cjs  # individually
 node sim/tests/goldens.cjs gen  # ONLY when a behavior change is intended & reviewed
 ```
@@ -147,3 +157,7 @@ verifying the failure set is exactly those two.
 - The 2 REQ-0043 e2e failures (dev_mode-fallback UI seams) — root-cause
   pending; they predate REQ-0047.
 - `engine.js` (2211 LOC) is protected by rule 1, not by decomposition.
+- `sim/dungen.cjs`'s `liveDungeonDir()` still anchors the dungeon
+  content dir on `os.homedir()` (sim/ is replay-frozen, so REQ-0145a
+  left it): a `CONTENT_ROOT`-overridden server still reads DUNGEON
+  content from the main checkout.

@@ -1,6 +1,7 @@
 {
   "// doc": "REQ-0047 (c): machine checking for the decomposed server modules (and shared/). allowJs+checkJs+noEmit -- the runtime stays plain CJS (no build step, systemd entry unchanged). Legacy monoliths (storage/players/admin bodies) join as they are touched.",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,

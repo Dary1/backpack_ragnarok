@@ -1,170 +1,182 @@
 #!/usr/bin/env python3
 """
-gen_monster_art.py -- Simple ComfyUI txt2img illustration generator (NO 3D/rig/animation).
+gen_monster_art.py -- ComfyUI txt2img illustration generator (NO 3D/rig/animation).
 
-Replaces the old golem/slime SD+stable-fast-3d+UniRig+Blender pipeline for the
-illustration-first stage (art_golden v3.4): just checkpoint + prompt + optional
-latent-upscale hires-fix + save. Static illustrations only, matching REQ-0044's
-"art only, no stats/footprints/wiring" scope.
+Static illustrations only (art_golden v3.4 / REQ-0044 scope: art only, no
+stats/footprints/wiring). Reads a batch job-list JSON and generates one
+illustration per job via the local ComfyUI API, saving clean-named copies to
+--outdir.
 
-Reads a batch job-list JSON and generates one static illustration per job via the
-local ComfyUI API (http://127.0.0.1:8188), saving clean-named copies to --outdir.
+ROUTE (REQ-0150, user decision 2026-07-13 "一旦全て Flux2 にしましょう")
+------------------------------------------------------------------------
+This tool used to be pure SDXL/SD1.5 (CheckpointLoaderSimple + LoraLoader chain
++ KSampler, 30 steps / cfg 7.0 / dpmpp_2m / karras). It is now flux2 by default,
+on the SAME route object as gen_item_icons.py -- the model names and sampler
+defaults are imported from gen_item_icons.FLUX / .ROUTE_DEFAULTS so the program
+has exactly ONE definition of "the route".
+
+The "sdxl" route is FROZEN: still runnable via `--route sdxl` for reproducing
+historical batches (monsters-001, monsters-002), never for new production art.
+
+THE LoRA QUESTION -- ANSWERED (REQ-0150 §1)
+-------------------------------------------
+The SDXL/SD1.5 LoRAs in the historical job defs do NOT load on FLUX (different
+architecture, different loader), so the port had to decide: port them, find FLUX
+equivalents, drop them, or escalate.
+
+DROPPED. They are safe to drop because of WHAT they are. The monster jobs use
+exactly two LoRAs -- `detail_tweaker` (a generic sharpness/detail booster) and
+`cel_shaded_art_style` (a generic cel-shading style LoRA). Neither is a
+character-identity LoRA; neither encodes any monster's identity. They were
+compensating for rpg_v5/SD1.5's weak prompt adherence -- doing in weights what a
+stronger text encoder does from the prompt. FLUX.2 klein (Qwen3-4B text encoder)
+follows "cel shading, line art, flat colour, white background" from the POSITIVE
+prompt directly, which is where the style has to live on this route anyway (see
+below). So no monster loses its identity by dropping them; what changes is the
+rendering style, and that is exactly what the user is being shown in the REQ-0150
+gallery to rule on. If the flux2 look is rejected there, the answer is a prompt
+change or a FLUX-native style LoRA -- NOT a quiet return to SDXL.
+
+(Character-identity LoRA work is REQ-0137's, and it is unaffected by this: it was
+never these two LoRAs. But REQ-0137 must now train on FLUX, not SDXL.)
+
+On flux2, `job["loras"]` is REFUSED, not silently ignored -- a job that asks for
+a LoRA gets a hard error naming this decision, because a silently-dropped style
+LoRA is exactly how a style regression hides for a month.
+
+THE NEGATIVE PROMPT IS INACTIVE ON flux2
+----------------------------------------
+Distilled klein samples at cfg 1.0 with a ConditioningZeroOut of the positive as
+the negative -- `job["negative"]` does nothing. Steer style from the POSITIVE.
+A job carrying a negative is warned about, loudly, once.
+
+HIRES-FIX IS AN SDXL-ERA CONSTRUCT
+----------------------------------
+The old graph rendered small (640x832) then latent-upscaled + re-sampled, because
+SDXL degrades away from its trained ~1MP. FLUX.2 is native at ~1MP and up: set
+width/height to the size you actually want. `job["hires"]` is IGNORED on flux2
+(warned), not emulated.
 
 Job dict fields:
-  name (required), ckpt (required), positive (required), negative (default ""),
-  width (640), height (832), seed (1234), steps (30), cfg (7.0),
-  sampler (dpmpp_2m), scheduler (karras),
-  hires (true), hires_scale (1.5), hires_denoise (0.5),
-  loras (optional list of {"name": <filename in models/loras>, "strength": 1.0}
-         or separate "strength_model"/"strength_clip" -- chained onto the
-         checkpoint's MODEL/CLIP outputs in list order via LoraLoader nodes)
+  name (required), positive (required),
+  width (640), height (832), seed (1234),
+  steps/cfg/sampler (default: resolved from the ROUTE, not hardcoded here),
+  negative      -- sdxl only; INACTIVE on flux2 (warned)
+  ckpt          -- sdxl only (FROZEN route); ignored on flux2
+  loras         -- sdxl only (FROZEN route); REFUSED on flux2 (see above)
+  hires, hires_scale, hires_denoise -- sdxl only; ignored on flux2 (warned)
 
 Usage:
-  python3 tools/gen_monster_art.py --config content/batches/monsters-002/jobs.json \
-      --outdir content/proposals/monsters-002
+  python3 tools/gen_monster_art.py --config content/batches/monsters-003-flux2/jobs.json \
+      --outdir content/batches/monsters-003-flux2/candidates
+  # historical reproduction only:
+  python3 tools/gen_monster_art.py --route sdxl --config .../monsters-002/jobs.json ...
 """
 import json
 import urllib.request
 import time
 import os
+import sys
 import glob
 import shutil
 import argparse
 
-COMFY = "http://127.0.0.1:8188"
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 
-
-def submit(wf):
-    data = json.dumps({"prompt": wf}).encode()
-    req = urllib.request.Request(
-        COMFY + "/prompt", data=data, headers={"Content-Type": "application/json"}
-    )
-    r = json.load(urllib.request.urlopen(req, timeout=30))
-    return r["prompt_id"]
-
-
-def wait_done(pid, timeout_s=300):
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        time.sleep(2)
-        try:
-            h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
-        except Exception:
-            continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            return h[pid]
-    return None
+# The route lives in ONE place (REQ-0150 §1: "no tool may keep an implicit SDXL
+# default"). Model filenames and per-route sampler defaults are gen_item_icons'.
+import art_route as ROUTE   # noqa: E402  the ONE route + the ONE graph
+import art_style as STYLE   # noqa: E402  the ONE prompt/style layer
 
 
 def build_workflow(job):
-    ckpt = job["ckpt"]
-    pos = job["positive"]
-    neg = job.get("negative", "")
-    w = job.get("width", 640)
-    h = job.get("height", 832)
-    seed = job.get("seed", 1234)
-    steps = job.get("steps", 30)
-    cfg = job.get("cfg", 7.0)
-    sampler = job.get("sampler", "dpmpp_2m")
-    scheduler = job.get("scheduler", "karras")
-    hires = job.get("hires", True)
-    loras = job.get("loras", [])
+    """flux2, via tools/art_route.py. The SDXL graph (CheckpointLoaderSimple +
+    LoraLoader chain + KSampler + latent-upscale hires-fix) is GONE -- not frozen,
+    gone. The route was retired by user decision (REQ-0150) and the monsters it
+    produced are being regenerated on the new art direction, so it has nothing
+    left to reproduce. It is in git history."""
+    for dead, why in (
+        ("loras", "SDXL/SD1.5 LoRAs do not load on FLUX, and the user's ratified "
+                  "settings say NO LoRAs. The two this program used "
+                  "(detail_tweaker, cel_shaded_art_style) were generic style/detail "
+                  "boosters, not identity LoRAs -- fold the style into `positive`."),
+        ("ckpt",  "There is no checkpoint on this route; the UNET/CLIP/VAE are "
+                  "pinned in art_route.FLUX."),
+        ("negative", "The negative prompt is inactive at cfg 1.0 (zeroed "
+                     "conditioning). Fold it into `positive`."),
+        ("hires", "An SDXL workaround for sampling away from ~1MP. FLUX.2 is "
+                  "native there -- set width/height to the size you want."),
+    ):
+        if job.get(dead):
+            raise SystemExit(
+                "ERROR job '%s' sets `%s`, which does not exist on this route.\n%s"
+                % (job.get("name", "?"), dead, why))
 
-    wf = {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
-    }
-
-    # Chain LoraLoader nodes onto the checkpoint's MODEL/CLIP outputs, in list
-    # order, so multiple LoRAs (e.g. a detail LoRA + a style LoRA) can stack.
-    model_ref = ["1", 0]
-    clip_ref = ["1", 1]
-    vae_ref = ["1", 2]
-    next_id = 20
-    for lora in loras:
-        nid = str(next_id)
-        strength = lora.get("strength", 1.0)
-        wf[nid] = {
-            "class_type": "LoraLoader",
-            "inputs": {
-                "model": model_ref,
-                "clip": clip_ref,
-                "lora_name": lora["name"],
-                "strength_model": lora.get("strength_model", strength),
-                "strength_clip": lora.get("strength_clip", strength),
-            },
-        }
-        model_ref = [nid, 0]
-        clip_ref = [nid, 1]
-        next_id += 1
-
-    wf["2"] = {"class_type": "CLIPTextEncode", "inputs": {"text": pos, "clip": clip_ref}}
-    wf["3"] = {"class_type": "CLIPTextEncode", "inputs": {"text": neg, "clip": clip_ref}}
-    wf["4"] = {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}}
-    wf["5"] = {
-        "class_type": "KSampler",
-        "inputs": {
-            "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
-            "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
-            "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
-        },
-    }
-    if hires:
-        scale = job.get("hires_scale", 1.5)
-        hw, hh = (int(w * scale) // 8) * 8, (int(h * scale) // 8) * 8
-        wf["6"] = {
-            "class_type": "LatentUpscale",
-            "inputs": {"samples": ["5", 0], "upscale_method": "nearest-exact",
-                       "width": hw, "height": hh, "crop": "disabled"},
-        }
-        wf["7"] = {
-            "class_type": "KSampler",
-            "inputs": {
-                "model": model_ref, "positive": ["2", 0], "negative": ["3", 0],
-                "latent_image": ["6", 0], "seed": seed + 1, "steps": steps, "cfg": cfg,
-                "sampler_name": sampler, "scheduler": scheduler,
-                "denoise": job.get("hires_denoise", 0.5),
-            },
-        }
-        wf["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": vae_ref}}
-        wf["9"] = {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "m2_" + job["name"]}}
-    else:
-        wf["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": vae_ref}}
-        wf["7"] = {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "m2_" + job["name"]}}
-    return wf
+    subject = job["positive"]
+    if job.get("apply_template", True):
+        subject = STYLE.for_kind("monster", subject)
+    prefix = "m3_" + job["name"]
+    wf = ROUTE.build_txt2img(
+        subject, job.get("width", 384), job.get("height", 512),
+        job.get("seed", ROUTE.SEED), prefix,
+        steps=job.get("steps", ROUTE.STEPS),
+        cfg=job.get("cfg", ROUTE.CFG),
+        sampler=job.get("sampler", ROUTE.SAMPLER))
+    return wf, prefix
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Simple ComfyUI monster illustration generator")
+    ap = argparse.ArgumentParser(
+        description="ComfyUI monster illustration generator (flux2)")
     ap.add_argument("--config", required=True)
     ap.add_argument("--outdir", required=True)
+    ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--cfg", type=float, default=None)
+    ap.add_argument("--sampler", default=None)
+    ap.add_argument("--only", default=None,
+                    help="comma-separated job names; skip the rest")
     a = ap.parse_args()
 
+    print("route: flux2  steps=%s cfg=%s sampler=%s" % (
+        a.steps or ROUTE.STEPS, a.cfg if a.cfg is not None else ROUTE.CFG,
+        a.sampler or ROUTE.SAMPLER), flush=True)
+    print("  unet=%s clip=%s vae=%s" % (ROUTE.FLUX["unet"], ROUTE.FLUX["clip"],
+                                        ROUTE.FLUX["vae"]), flush=True)
+
     jobs = json.load(open(a.config, encoding="utf-8"))
+    if a.only:
+        keep = {s.strip() for s in a.only.split(",")}
+        jobs = [j for j in jobs if j["name"] in keep]
     os.makedirs(a.outdir, exist_ok=True)
     out_native = os.path.expanduser("~/ComfyUI/output")
     os.makedirs(out_native, exist_ok=True)
 
+    ok = fail = 0
     for job in jobs:
-        print(f"=== JOB START name={job['name']} ckpt={job['ckpt']} ===", flush=True)
+        print(f"=== JOB START name={job['name']} route=flux2 ===", flush=True)
         t0 = time.time()
-        wf = build_workflow(job)
-        pid = submit(wf)
+        wf, prefix = build_workflow(job)
+        pid = ROUTE.submit(wf)
         print(f"submitted pid={pid}", flush=True)
-        result = wait_done(pid)
-        if not result:
+        result = ROUTE.wait_done(pid)
+        if not result or result.get("status", {}).get("status_str") == "error":
             print(f"JOB TIMEOUT/FAIL name={job['name']}", flush=True)
+            fail += 1
             continue
-        pattern = os.path.join(out_native, f"m2_{job['name']}*.png")
-        matches = sorted(glob.glob(pattern), key=os.path.getmtime)
+        matches = sorted(glob.glob(os.path.join(out_native, prefix + "*.png")),
+                         key=os.path.getmtime)
         if not matches:
             print(f"JOB NO OUTPUT FILE name={job['name']}", flush=True)
+            fail += 1
             continue
-        src = matches[-1]
         dst = os.path.join(a.outdir, f"{job['name']}.png")
-        shutil.copy(src, dst)
-        print(f"JOB DONE name={job['name']} -> {dst} ({time.time()-t0:.1f}s)", flush=True)
+        shutil.copy(matches[-1], dst)
+        ok += 1
+        print(f"JOB DONE name={job['name']} -> {dst} "
+              f"({time.time()-t0:.1f}s)", flush=True)
 
-    print("ALL DONE", flush=True)
+    print(f"ALL DONE  ok={ok} fail={fail}", flush=True)
 
 
 if __name__ == "__main__":

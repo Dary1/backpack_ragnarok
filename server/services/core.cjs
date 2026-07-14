@@ -7,18 +7,22 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
 const Engine = require('../../mock-src/engine.js');
 
 
-const REPO_ROOT = path.join(os.homedir(), 'backpack_ragnarok');
-const CONTENT_DIR = path.join(REPO_ROOT, 'content');
-const LIVE_DIR = path.join(CONTENT_DIR, 'live');
-const ITEMS_PATH = path.join(LIVE_DIR, 'live_items.json');
-const SIS_PATH = path.join(LIVE_DIR, 'live_sis.json'); // REQ-0115: SI (accessory) content defs
-const TMS_PATH = path.join(LIVE_DIR, 'live_tms.json'); // REQ-0042: Transmutator content defs
+// REQ-0145a (sc): content paths resolve through the ONE content-file
+// loader (lib/content_files.cjs; CONTENT_ROOT env override honored,
+// default byte-equivalent to the old os.homedir() anchoring). REPO_ROOT
+// is kept for export-surface compatibility only.
+const { CONTENT_ROOT, contentPath } = require('../lib/content_files.cjs');
+const REPO_ROOT = path.dirname(CONTENT_ROOT);
+const CONTENT_DIR = CONTENT_ROOT;
+const LIVE_DIR = contentPath('live');
+const ITEMS_PATH = contentPath('live', 'live_items.json');
+const SIS_PATH = contentPath('live', 'live_sis.json'); // REQ-0115: SI (accessory) content defs
+const TMS_PATH = contentPath('live', 'live_tms.json'); // REQ-0042: Transmutator content defs
 // REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
 // promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
 // batch dir. The path comes from sim/dungen.cjs's liveDungeonDir() so
@@ -38,7 +42,7 @@ const FORMATIONS_PATH = path.join(LIVE_DUNGEON_DIR, 'formations.json'); // REQ-0
 // policy). All [TUNABLE] / documented interpretations, called out in the
 // final report's "Interpretations" list.
 // ---------------------------------------------------------------------
-const WAREHOUSE_CAP = 200; // golden e: "max 200 items"
+const { WAREHOUSE_CAP } = require('../../shared/constants.json'); // golden e: "max 200 items" -- single source shared w/ client display mirror (REQ-0145b)
 const WAREHOUSE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // golden e: "kept up to one week"
 // REQ-0041 (P1 UX round 1): two-phase warehouse claim. A row transitions
 // claimable -> claiming (server, on POST /api/warehouse/claim) -> deleted
@@ -120,7 +124,23 @@ function getScheduleContent() {
     skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, formationsDoc };
+  // REQ-0057: skillDefsById is deliberately kept MECHANICS-ONLY (it is the
+  // map handed straight to sim/lib/packs.cjs's compileEnemyPack, where
+  // REQ-0121's buff_self fold mutates the objects in place -- the fewer
+  // fields riding along in there, the smaller the blast radius). Display
+  // names for the forecast tooltip therefore live in a SIBLING map rather
+  // than being bolted onto the mechanics defs. skills.json carries flat
+  // name_en/name_ja (schema skill/1), not the live_items.json `i18n` map,
+  // so this normalises to the i18n shape every client-facing payload uses.
+  const skillNamesById = {};
+  for (const s of skills.entries) {
+    skillNamesById[s.id] = {
+      en: { name: s.name_en || s.id },
+      ja: { name: s.name_ja || s.name_en || s.id },
+    };
+  }
+
+  const payload = { itemDefsById, siDefsById, tmDefsById, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
   contentCache = { mtimes, payload };
   return payload;
 }

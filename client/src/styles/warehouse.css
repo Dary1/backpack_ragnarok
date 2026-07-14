@@ -1,0 +1,510 @@
+/* ---------------------------------------------------------------------
+   Warehouse tab -- REQ-0036 P1-C; REQ-0046 UX pass; REQ-0072: re-skinned
+   to the MJOLNIR warehouse mock (web/redesign/warehouse.html): ornate
+   capacity topstrip, DECAYING SOON split, stone-shelf card grid with
+   rarity frames + Joermungandr TTL rings, forge-gold claim-all, footer
+   lore. Selector contract kept verbatim for the E2E suite:
+   .schedule-warehouse-row / .schedule-claim-btn / .schedule-claim-all-btn
+   / .schedule-warehouse-capacity-(bar|fill|calm|warning|full) /
+   .schedule-warehouse-capacity-warning-text / .schedule-slot-error /
+   .schedule-warehouse-board-slot + every data-testid. Omissions vs the
+   mock: docs/REQ-0072-redesign-warehouse.md. */
+
+/* full-viewport key art (mock .bgart, bg_warehouse.jpg) -- shown while
+   the WAREHOUSE tab is active (SchedulePage swaps this class against
+   .expedition-bgart above); same served-/redesign/assets convention. */
+.warehouse-bgart {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: url('/redesign/assets/bg_warehouse.jpg') center / cover no-repeat;
+  opacity: 0.5;
+  filter: saturate(0.85) brightness(0.6);
+}
+
+.warehouse-bgart::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(10, 13, 18, 0.55), rgba(10, 13, 18, 0.86) 70%);
+}
+
+.schedule-warehouse-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ---------- top strip (mock .topstrip): capacity / near-expiry chip /
+   filters / bulk claim ---------- */
+.schedule-warehouse-topstrip {
+  padding: 14px 18px 12px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.schedule-warehouse-capblock {
+  min-width: 250px;
+  flex: 1 1 250px;
+}
+
+.schedule-warehouse-caphead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+/* the big gold count (mock .cap .num) -- keeps its testid element */
+.schedule-warehouse-cap {
+  font-family: var(--f-den);
+  font-size: 26px;
+  color: var(--gold-hi);
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.schedule-warehouse-cap-of {
+  font-size: 14px;
+  color: var(--bone-3);
+}
+
+.schedule-warehouse-cap-word {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+}
+
+.schedule-warehouse-cap-den {
+  font-size: 10px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+
+/* staged capacity bar -- rides the theme .bar/.fill; calm keeps the
+   mock's gold fill, warning/full escalate to ember/blood (the REQ-0046
+   "full = real data-loss" semantics, MJOLNIR-toned). State classes and
+   the fill width mechanism are unchanged. */
+.schedule-warehouse-capacity-bar {
+  height: 8px;
+  margin-top: 6px;
+}
+
+.schedule-warehouse-capacity-fill {
+  transition: width 0.3s ease;
+}
+
+.schedule-warehouse-capacity-warning .schedule-warehouse-capacity-fill {
+  background: linear-gradient(90deg, #7e2a10, #e25822);
+}
+
+.schedule-warehouse-capacity-full .schedule-warehouse-capacity-fill {
+  background: linear-gradient(90deg, #8e3430, #d14b44);
+}
+
+.schedule-warehouse-capacity-warning-text {
+  flex-basis: 100%;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.schedule-warehouse-capacity-warning-text.warning { color: var(--ember-hi); }
+.schedule-warehouse-capacity-warning-text.full { color: #e06b5f; }
+
+/* mock .chip.warn (near-expiry counter) -- ported verbatim; generic on
+   purpose (the styleguide defines it as a chip variant). */
+.chip.warn {
+  border-color: rgba(176, 65, 62, 0.6);
+  color: #e06b5f;
+  background: rgba(37, 17, 16, 0.55);
+}
+
+/* kind filter chips (all / spoils / currency -- REQ-0072, display-only) */
+.schedule-warehouse-filters {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.schedule-warehouse-filter-chip {
+  cursor: pointer;
+  user-select: none;
+  font-family: inherit;
+}
+
+.schedule-warehouse-grow {
+  flex: 1;
+}
+
+/* bulk claim = the screen's one forge-gold CTA (mock btn-forge), scaled
+   to the mock's topstrip size */
+.schedule-warehouse-topstrip .schedule-claim-all-btn {
+  padding: 11px 26px;
+  font-size: 14.5px;
+  flex: none;
+}
+
+.schedule-warehouse-strip-note {
+  flex-basis: 100%;
+  margin-top: 2px;
+  letter-spacing: 0.1em;
+}
+
+/* ---------- section heads (mock .colhead) ---------- */
+.schedule-warehouse-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 2px;
+  flex-wrap: wrap;
+}
+
+.schedule-warehouse-colhead h3 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0.22em;
+  font-weight: 800;
+}
+
+.schedule-warehouse-colhead-rn {
+  color: var(--gold);
+  font-size: 15px;
+}
+
+.schedule-warehouse-colhead-den {
+  font-size: 10px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+
+.schedule-warehouse-colhead-grow {
+  flex: 1;
+}
+
+.schedule-warehouse-colhead-danger h3 {
+  color: #e8a9a0;
+}
+
+.schedule-warehouse-colhead-danger .schedule-warehouse-colhead-rn {
+  color: #e06b5f;
+}
+
+/* ---------- card grids (mock .wgrid / .wgrid.two) ---------- */
+.schedule-warehouse-danger-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 980px;
+}
+
+.schedule-warehouse-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 12px;
+}
+
+/* stone shelf panel (mock .shelf + .mat-stone) -- texture from the
+   served redesign assets, same never-bundled convention as the bg art */
+.schedule-warehouse-shelf {
+  padding: 16px 18px 18px;
+  background-image: url('/redesign/assets/tex_stone.jpg');
+  background-color: #20242b;
+  background-blend-mode: overlay;
+  background-size: cover;
+}
+
+.schedule-warehouse-shelf .schedule-warehouse-colhead {
+  margin: 0 0 12px;
+}
+
+/* ---------- warehouse card (mock .wcard; rarity border via theme .rar) */
+.schedule-warehouse-row {
+  position: relative;
+  display: flex;
+  gap: 13px;
+  padding: 13px 14px;
+  align-items: center;
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.84), rgba(16, 20, 27, 0.9));
+  transition: transform 0.13s ease-out, box-shadow 0.13s ease-out;
+  font-size: 13px;
+}
+
+.schedule-warehouse-row:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.55);
+}
+
+.schedule-warehouse-row.is-danger {
+  box-shadow: inset 0 0 20px rgba(176, 65, 62, 0.15);
+}
+
+.schedule-warehouse-row.is-danger:hover {
+  box-shadow: inset 0 0 20px rgba(176, 65, 62, 0.18), 0 12px 24px rgba(0, 0, 0, 0.55);
+}
+
+.schedule-warehouse-row-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 64px thumb (mock .thumb) -- iconDataUrl sprite in a night-iron well */
+.schedule-warehouse-icon-frame {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+
+.schedule-warehouse-row.is-danger .schedule-warehouse-icon-frame {
+  border-color: rgba(176, 65, 62, 0.45);
+}
+
+.schedule-warehouse-icon-frame img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+/* stack count in the thumb corner (mock .qcnt) */
+.schedule-warehouse-qcnt {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 11px;
+  color: var(--gold-hi);
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+}
+
+.schedule-warehouse-item-name {
+  font-weight: 800;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+/* sub line: RARITY ・ ×n ・ 期限 -- interpuncts drawn by CSS so the
+   segments stay individually colorable */
+.schedule-warehouse-row-sub {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+  margin-top: 2px;
+}
+
+.schedule-warehouse-row-sub > * + *::before {
+  content: '・';
+  margin-right: 7px;
+  color: var(--bone-3);
+  font-weight: 400;
+}
+
+/* near-expiry TTL text (kept class name; red per the mock .ttl-red,
+   applied together with the DECAYING SOON split at <48h) */
+.schedule-warehouse-item-expiry-soon {
+  color: #e06b5f;
+  font-weight: 700;
+}
+
+/* provenance chip (mock .src); market rows wear the gold etching (mock
+   REQ-0065 P1-5 treatment) */
+.schedule-warehouse-row-src {
+  margin-top: 7px;
+}
+
+.schedule-warehouse-row-src .chip {
+  font-size: 10.5px;
+  padding: 1px 9px;
+  color: var(--bone-3);
+}
+
+.schedule-warehouse-row-src .chip.schedule-warehouse-src-market {
+  color: var(--gold-hi);
+  border-color: var(--gold-lo);
+  box-shadow: inset 0 0 8px rgba(201, 169, 89, 0.12);
+}
+
+.schedule-warehouse-src-note {
+  margin-top: 4px;
+  letter-spacing: 0.06em;
+}
+
+.schedule-warehouse-row .schedule-slot-error {
+  margin-top: 6px;
+}
+
+/* side rail: TTL ring + claim */
+.schedule-warehouse-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+.schedule-warehouse-ring {
+  width: 38px;
+  height: 38px;
+  flex: none;
+}
+
+.schedule-warehouse-ring text {
+  font-size: 9px;
+  fill: var(--bone-2);
+  font-family: var(--f-ui);
+}
+
+/* claim button = theme .btn at the mock's .sm scale (keeps the shared
+   .schedule-claim-btn green tint from the REQ-0071 block above) */
+.schedule-warehouse-row .schedule-claim-btn {
+  padding: 4px 14px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  outline-offset: -2px;
+}
+
+/* two-phase claim in flight (mock .placing -- 配置中…): green pulse on
+   the row's own button; phase 2 (engine placement + auto-save) is
+   client-side, so this state is honest "work is happening here". */
+.schedule-claim-btn.placing {
+  border-color: rgba(87, 199, 123, 0.55) !important;
+  color: #8fdca9 !important;
+  background: linear-gradient(180deg, rgba(87, 199, 123, 0.12), rgba(19, 24, 32, 0.85));
+  outline-color: rgba(87, 199, 123, 0.25) !important;
+  animation: schedule-warehouse-place-pulse 1.6s ease-in-out infinite;
+  cursor: wait;
+  filter: none !important;
+  opacity: 1;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+@keyframes schedule-warehouse-place-pulse {
+  50% {
+    box-shadow: 0 0 14px rgba(87, 199, 123, 0.35);
+    opacity: 0.72;
+  }
+}
+
+/* REQ-0091: press-feedback flash on the row's OWN frame -- distinct
+   from the claim button's .placing pulse above, which continues through
+   phase 2 (engine placement/auto-save). Fires the instant the claim
+   button is pressed (paired with a short chime, see
+   warehouse/claimSfx.ts), loops until the claim POST's response is
+   known, then swaps to the one-shot fade-out below and is removed from
+   the DOM once THAT finishes (WarehousePage.tsx's FLASH_FADEOUT_MS
+   mirrors this animation's duration + margin, same convention as
+   TAB_PULSE_MS/tab-claim-pulse elsewhere in this file). New hook, not
+   part of REQ-0072's kept selector contract above. */
+.schedule-warehouse-row.schedule-claim-flash {
+  animation: schedule-warehouse-claim-flash 0.5s ease-in-out infinite;
+}
+
+.schedule-warehouse-row.schedule-claim-fadeout {
+  animation: schedule-warehouse-claim-fadeout 0.4s ease-out forwards;
+}
+
+@keyframes schedule-warehouse-claim-flash {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(235, 217, 164, 0);
+  }
+  50% {
+    box-shadow: 0 0 26px 6px rgba(235, 217, 164, 0.85), inset 0 0 20px rgba(235, 217, 164, 0.45);
+  }
+}
+
+@keyframes schedule-warehouse-claim-fadeout {
+  0% {
+    box-shadow: 0 0 26px 6px rgba(235, 217, 164, 0.85), inset 0 0 20px rgba(235, 217, 164, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(235, 217, 164, 0);
+  }
+}
+
+/* NEW badge (mock .badge-new) -- harvested within the last 24h */
+.schedule-warehouse-badge-new {
+  position: absolute;
+  top: -8px;
+  left: 12px;
+  z-index: 2;
+  padding: 1px 9px;
+  border-radius: 2px;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: #14100a;
+  background: linear-gradient(180deg, #ebd9a4, #c9a959);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55), 0 0 10px rgba(201, 169, 89, 0.4);
+}
+
+/* ---------- footer lore (mock .wfoot) ---------- */
+.schedule-warehouse-foot {
+  margin: 26px auto 0;
+  text-align: center;
+  max-width: 640px;
+}
+
+.schedule-warehouse-foot .rune-divider {
+  max-width: 320px;
+  margin: 0 auto 14px;
+}
+
+.schedule-warehouse-foot-lore {
+  font-family: var(--f-dj);
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  color: var(--bone-2);
+}
+
+.schedule-warehouse-foot .t-micro {
+  margin-top: 8px;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 840px) {
+  .schedule-warehouse-danger-grid,
+  .schedule-warehouse-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (min-width: 520px) and (max-width: 840px) {
+  .schedule-warehouse-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* REQ-0071: shared toast (warehouse claim / workshop roll) adopts the
+   night-iron + gold voice -- free shared chrome; the Warehouse tab own
+   full restyle is REQ-0072 squad. */
+.schedule-toast {
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.92), rgba(19, 24, 32, 0.92));
+  color: var(--gold-hi);
+  border: 1px solid var(--gold-lo);
+  border-radius: 2px;
+  padding: 7px 12px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* REQ-0113: toast entrance -- adopts styleguide §06 `toastin` (ui.css). The
+   shared single-message toast (.schedule-toast: workshop / market-sell /
+   warehouse claim / dismantle) rises + fades in once. Single-message-at-a-time already
+   holds (each page keeps one toast in state). Gated by data-motion, so e2e
+   and reduced-motion show it instantly (no entrance). */
+:root[data-motion="on"] .schedule-toast{ animation: schedule-toast-in .28s ease-out both; }
+@keyframes schedule-toast-in{ from{ transform:translateY(10px); opacity:0; } }
+

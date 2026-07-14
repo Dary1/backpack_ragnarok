@@ -9,18 +9,38 @@ on `127.0.0.1:8802` only.
   REQ-0047 (c) decomposed the old single-file implementation). Still the
   `backpack-api.service` systemd ExecStart target, same exports. Dispatch
   lives in `router.cjs` (load-bearing order); route bodies in
-  `routes/{public,me,admin,profile,schedule}.cjs`; content payload/cache,
-  HTTP plumbing, event humanizer and HOST/PORT/VERSION in `lib/`.
-- `storage.cjs` — THE repository module for canvas profiles. Every read/
-  write of persisted profile data goes through this file. Data directory:
-  `~/backpack_ragnarok/data/profiles/<id>.json` (gitignored). Writes are
-  atomic (tmp file + `fs.renameSync`). Every stored document carries a
-  `schema_version` field. Body size cap: 64KB. Profile ids are now (REQ-
-  0037) "any known player id" — see `players.cjs` and "Auth" below; this
-  module answers "does this id exist as a known player", NOT "is the
-  current caller authorized to use it" (that's `api.cjs`'s job).
-  When Postgres is introduced later, only this module's internals change;
-  its exported API (`readProfile`, `writeProfile`, etc.) is the seam.
+  `routes/{public,me,admin,profile,schedule,warehouse,workshop,market,
+  ragnarok,dex,dismantle,art,content}.cjs` -- REQ-0145a (se) split the
+  combined schedule module into schedule/warehouse/workshop, dispatched
+  consecutively in its old slot, with the shared caller-resolution
+  preamble (token -> resolveAuth -> 401 + dev-fallback flag) in
+  `lib/route_auth.cjs`; content payload/cache, HTTP plumbing, event
+  humanizer and HOST/PORT/VERSION in `lib/`.
+- `storage.cjs` — THE persistence chokepoint (design rule 4). REQ-0145a
+  (sb): now a pure FACADE re-exporting `storage/{lib,profiles,rooms,
+  runs,warehouse,gacha,dismantle,market,ragnarok}.cjs` name-for-name —
+  one module per entity family, each keeping its files backend, pg
+  backend and backend-dispatching public fns adjacent; `storage/lib.cjs`
+  holds the shared plumbing (backend switch, pg namespace, data-dir
+  roots + eager mkdir, atomic JSON write). Consumers require THIS file,
+  never storage/ internals. Data roots: `~/backpack_ragnarok/data/*`
+  (gitignored; files backend); writes are atomic (tmp + `fs.renameSync`
+  / pg upsert). Profile docs carry `schema_version`; body size cap
+  64KB; profile ids are (REQ-0037) "any known player id" — this module
+  answers "does this id exist as a known player", NOT "is the current
+  caller authorized to use it" (that's the routes' job).
+- `lib/content_files.cjs` (REQ-0145a sc) — THE content-file loader: one
+  content-root resolver (`contentPath()`) + shared mtime-cache helpers.
+  Every server-side content path — `lib/content.cjs`,
+  `services/core.cjs`, `services/market/*`, `services/ragnarok/*`,
+  `admin.cjs` (whose item-edit WRITES must land in the same tree the
+  readers resolve) — goes through it. The root is the `CONTENT_ROOT`
+  env var when set, else `~/backpack_ragnarok/content` (byte-equivalent
+  to the old hand-rolled anchoring), captured at module load. So a
+  worktree-launched server can read its OWN tree's content:
+  `CONTENT_ROOT=$PWD/content node server/api.cjs`. Exception: dungeon-
+  domain paths come from `sim/dungen.cjs`'s `liveDungeonDir()` (sim is
+  frozen).
 - `players.cjs` (REQ-0037) — THE player registry module. Every read/write
   of a player record goes through this file. Data directory:
   `~/backpack_ragnarok/data/players/<playerId>.json` (gitignored). Record
@@ -58,9 +78,19 @@ on `127.0.0.1:8802` only.
   restoration runs even if an assertion above it fails), and (REQ-0036
   P1-B) the Dungeon Schedule test group (room CRUD + deploy gate, run
   execution/determinism, warehouse cap/TTL/claim, cooldown/wipe/swap/
-  cancel policies, auth isolation). Run with `node server/tests/
-  api_test.cjs` (files mode) or `STORAGE_BACKEND=pg DATABASE_URL=...
-  node server/tests/api_test.cjs` (pg mode) — both must pass.
+  cancel policies, auth isolation). REQ-0145a (sf): `api_test.cjs` is
+  now the thin ENTRY POINT over `tests/api/{harness,profile,public,
+  admin,schedule,warehouse,workshop,schedule_ops,market,ragnarok,
+  dismantle,dex}.cjs`, run in the old monolith's own top-to-bottom
+  order — order is LOAD-BEARING (later groups assert against server
+  state earlier groups created; the homedir/module-generation epochs
+  are position-dependent; suite headers carry their origin line
+  ranges). The harness counts every executed assertion and the summary
+  prints the tally — the REQ-0145a parity gate (1213 per backend at
+  the split; compare when touching the suite). Run with `node server/
+  tests/api_test.cjs` (files mode) or `STORAGE_BACKEND=pg
+  DATABASE_URL=... node server/tests/api_test.cjs` (pg mode) — both
+  must pass.
 
 ## Endpoints
 - `GET /api/health` → `{ok:true, version:"<semver>"}`
@@ -700,9 +730,10 @@ immediately after the rollback restart).
 
 **Server tests, both backends**: `node server/tests/api_test.cjs` (files
 mode, default) and `STORAGE_BACKEND=pg DATABASE_URL=... node
-server/tests/api_test.cjs` (pg mode) both currently pass 46/46 -- run
-both after any `storage.cjs` change. `server/package.json` has `npm
-test`/`npm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
+server/tests/api_test.cjs` (pg mode) both currently pass 157/157
+(executed-assertion tally 1213 -- the REQ-0145a sf parity gate) -- run
+both after any `storage.cjs`/`storage/*` change. `server/package.json` has `pnpm
+test`/`pnpm run test:pg` shortcuts (pg mode still needs `DATABASE_URL` set
 in the environment first).
 
 ## systemd (user squad, Node v24 via nvm)
@@ -755,8 +786,8 @@ service, no ingress change. Build output goes straight to `web/app/`, which
 Build + deploy:
 ```
 cd client
-npm install     # first time only; node_modules is gitignored
-npm run build   # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
+pnpm install --frozen-lockfile   # first time only; node_modules is gitignored
+pnpm run build   # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
 ```
 The build output (`web/app/`) is committed directly to the repo -- it is the
 deployed artifact. There is no separate "deploy" step beyond running the
@@ -803,18 +834,18 @@ performs 404, so every test must run against the tunnel hostname.
 
 ```
 cd client
-npm install                 # first time only (installs @playwright/test + playwright)
-npx playwright install chromium   # first time only, downloads a browser
-npm run e2e                 # runs the whole suite (playwright test)
-npx playwright test e2e/bp-transfer.spec.ts   # run one file
+pnpm install --frozen-lockfile   # first time only (installs @playwright/test + playwright)
+pnpm exec playwright install chromium   # first time only, downloads a browser
+pnpm run e2e                 # runs the whole suite (playwright test)
+pnpm exec playwright test e2e/bp-transfer.spec.ts   # run one file
 ```
 
 ### Prereqs / fallback
 
-Chromium must be installed via `npx playwright install chromium`
+Chromium must be installed via `pnpm exec playwright install chromium`
 (downloads to `~/.cache/ms-playwright/`). If chromium fails to launch due
 to missing shared libraries on a fresh box, run
-`npx playwright install-deps --dry-run` to print the exact `apt-get`
+`pnpm exec playwright install-deps --dry-run` to print the exact `apt-get`
 command needed WITHOUT running it (this box has no sudo access for the
 agent account) -- hand that command to someone who can run it with sudo,
 then retry. On THIS box chromium was already installed and launched

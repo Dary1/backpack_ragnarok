@@ -1,0 +1,814 @@
+/* ---------------------------------------------------------------------
+   REQ-0076 -- MJOLNIR Workshop page (mock: web/redesign/workshop.html,
+   "Forge of Fates"). Chrome-only re-skin of WorkshopPage.tsx: the gacha
+   mechanic + two-phase finalize are unchanged. Reuses the mjolnir.css
+   primitives (.panel/.ornate/.btn/.btn-forge/.rune-divider/.bar/.chip)
+   and the sibling pagehead+colhead recipe (SchedulePage/Dex). The BP
+   result figure delegates to BpDiagram/ShapeGrid (render/itemCard
+   composition math) untouched -- only re-toned to gold/leather below. */
+.workshop-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 2px 40px;
+}
+
+/* ---- hero strip (mock .pagehead) ---- */
+.workshop-pagehead {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 2px 0;
+}
+.workshop-pagehead-kicker {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.34em;
+}
+.workshop-pagehead-title {
+  margin: 2px 0 0;
+  font-size: 27px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.workshop-pagehead-lede {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.08em;
+}
+.workshop-headline {
+  margin: 10px 0 4px;
+}
+
+/* ---- colhead (mock .colhead) ---- */
+.workshop-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 2px;
+  margin: 18px 0 12px;
+}
+.workshop-colhead-rune {
+  color: var(--gold);
+  font-size: 15px;
+}
+.workshop-colhead-title {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0.22em;
+  font-weight: 800;
+}
+.workshop-colhead-den {
+  font-size: 10px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.workshop-colhead-grow {
+  flex: 1;
+}
+.workshop-colhead-note {
+  color: var(--bone-3);
+}
+
+/* ---- casting grid (mock .forge-grid) ---- */
+.workshop-forge-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 440px) 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+/* cast panel */
+.workshop-cast {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.workshop-cast-art {
+  position: relative;
+  height: 172px;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(60% 80% at 50% 46%, rgba(201, 169, 89, 0.1), transparent 70%),
+    radial-gradient(circle at 50% 55%, #232b37 0%, #10141b 80%);
+  border-bottom: 1px solid var(--border-lo);
+}
+.workshop-cast-art-glyph {
+  font-size: 64px;
+  color: rgba(201, 169, 89, 0.22);
+  line-height: 1;
+}
+.workshop-cast-body {
+  padding: 14px 18px 18px;
+}
+.workshop-cast-title {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+.workshop-cast-sub {
+  margin-top: 8px;
+  letter-spacing: 0.08em;
+}
+.workshop-cast-cost {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+  background: rgba(10, 13, 18, 0.5);
+}
+.workshop-cast-cost-rune {
+  color: var(--gold);
+  font-size: 18px;
+  flex: none;
+}
+.workshop-cast-cost-val {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+}
+.workshop-cast-cost-grow {
+  flex: 1;
+}
+.workshop-cast-own {
+  font-size: 12px;
+  color: var(--bone-2);
+}
+.workshop-cast-own b {
+  font-family: var(--f-den);
+  color: var(--gold-hi);
+  font-size: 15px;
+}
+.workshop-roll-btn {
+  width: 100%;
+  margin-top: 14px;
+}
+.workshop-cast-foot {
+  margin-top: 8px;
+  letter-spacing: 0.08em;
+}
+
+/* odds panel */
+.workshop-odds {
+  padding: 14px 18px 16px;
+}
+.workshop-odds-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.workshop-odds-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+.workshop-odds-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.workshop-odds-grow {
+  flex: 1;
+}
+.workshop-odds-rows {
+  margin-top: 16px;
+}
+.workshop-orow {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 9px 2px;
+}
+.workshop-orow + .workshop-orow {
+  border-top: 1px solid rgba(233, 227, 211, 0.06);
+}
+.workshop-orow-lab {
+  width: 76px;
+  flex: none;
+}
+.workshop-orow-lab b {
+  font-size: 14.5px;
+  letter-spacing: 0.08em;
+}
+.workshop-orow-lab .t-micro {
+  display: block;
+  margin-top: 1px;
+}
+.workshop-orow-bar {
+  flex: 1;
+  height: 7px;
+}
+.workshop-orow-pct {
+  font-family: var(--f-den);
+  font-size: 16px;
+  color: var(--gold-hi);
+  width: 52px;
+  text-align: right;
+  flex: none;
+}
+.workshop-rules {
+  padding-left: 2px;
+  margin: 12px 0 0;
+}
+.workshop-rules li {
+  font-size: 11.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.05em;
+  padding: 2.5px 0;
+  list-style: none;
+}
+.workshop-rules li::before {
+  content: "ᛞ";
+  font-family: var(--f-rune);
+  color: var(--gold-lo);
+  margin-right: 9px;
+  font-size: 10px;
+}
+
+/* ---- transmute / dismantle sub-row (mock .sub-grid) ---- */
+.workshop-sub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+.workshop-subp {
+  padding: 14px 18px 16px;
+}
+.workshop-subp-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+.workshop-subp-rune {
+  color: var(--gold);
+  font-size: 15px;
+}
+.workshop-subp-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+  font-weight: 400;
+}
+.workshop-subp-grow {
+  flex: 1;
+}
+.workshop-subp-copy {
+  margin-top: 8px;
+  font-size: 14.5px;
+  letter-spacing: 0.08em;
+}
+.workshop-subp-note {
+  margin-top: 8px;
+  letter-spacing: 0.06em;
+}
+.workshop-subp-btn {
+  width: 100%;
+  margin-top: 16px;
+}
+
+/* ---- casting result modal (mock .scrim/.modal) ---- */
+.workshop-result-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 8, 11, 0.72);
+  padding: 20px;
+}
+.workshop-result {
+  width: min(640px, 94vw);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 0;
+}
+.workshop-result-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px 20px 11px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.16);
+}
+.workshop-result-head-title {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+.workshop-result-head-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.workshop-result-head-grow {
+  flex: 1;
+}
+.workshop-result-mint {
+  color: var(--bone-3);
+}
+.workshop-result-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 18px;
+  padding: 16px 20px 6px;
+}
+.workshop-result-fig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px;
+  background: radial-gradient(circle at 50% 40%, #1d242f, #0e1218 82%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+.workshop-result-stats {
+  display: flex;
+  flex-direction: column;
+}
+.workshop-result-stat {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 13.5px;
+  padding: 4px 0;
+}
+.workshop-result-stat-lbl {
+  width: 64px;
+  flex: none;
+  color: var(--bone-2);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+}
+.workshop-result-flavor-divider {
+  margin: 10px 0;
+}
+.workshop-result-flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+.workshop-result-act {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px 20px 8px;
+  align-items: center;
+}
+.workshop-result-note {
+  padding: 0 20px 16px;
+  letter-spacing: 0.06em;
+}
+
+/* ---- BP figure re-tone for the workshop (gold/leather, mock .bpfig).
+   The BpDiagram / ShapeGrid DOM + testids are untouched; only the cell
+   fills and beam-arrow strokes shift from the dex frost palette to the
+   forge gold/leather within .workshop-result-fig. ---- */
+.workshop-result-fig .shape-grid {
+  background: rgba(201, 169, 89, 0.28);
+  border-color: rgba(201, 169, 89, 0.4);
+}
+.workshop-result-fig .shape-grid-cell {
+  background: #0e1218;
+}
+.workshop-result-fig .shape-grid-cell-shape {
+  background: #3a3229;
+}
+.workshop-result-fig .shape-grid-cell-unit {
+  box-shadow: inset 0 0 0 2px var(--gold), inset 0 0 0 4px #14100a;
+}
+.workshop-result-fig .shape-grid-cell-unit::after {
+  background: var(--gold);
+  opacity: 0.55;
+}
+.workshop-result-fig .shape-grid-cell-coord {
+  color: var(--bone-3);
+}
+.workshop-result-fig .bp-diagram-arrow-shaft {
+  stroke: var(--gold-hi);
+}
+.workshop-result-fig .bp-diagram-arrow-head {
+  fill: var(--gold-hi);
+}
+.workshop-result-fig .bp-diagram-stat-label {
+  color: var(--bone-3);
+}
+.workshop-result-fig .bp-diagram-stat-value {
+  color: var(--gold-hi);
+  font-family: var(--f-den);
+}
+
+@media (max-width: 840px) {
+  .workshop-forge-grid,
+  .workshop-sub-grid {
+    grid-template-columns: 1fr;
+  }
+  .workshop-result-body {
+    grid-template-columns: 1fr;
+  }
+  .workshop-result-fig {
+    flex-direction: row;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
+
+/* Monitor -- REQ-0071: the mock's .mon-panel (m-head strip / stage /
+   iron ctrl bar / log). The .schedule-monitor root wears the theme
+   .panel/.ornate (Monitor.tsx adds the corner knots); the Pixi canvas +
+   its mount/visibility lifecycle inside are untouched. */
+.schedule-monitor {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* "no run yet" placeholder -- rendered WITHOUT the panel classes, so it
+   styles itself as the mock's dashed .r-req requirement box */
+.schedule-monitor-empty {
+  padding: 10px 12px;
+  border: 1px dashed var(--border-lo);
+  border-radius: 2px;
+  color: var(--bone-3);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+/* m-head strip (mock .m-head) */
+.schedule-monitor-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 9px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.14);
+  flex-wrap: wrap;
+}
+
+.schedule-monitor-head-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.schedule-monitor-head-sep {
+  color: var(--bone-3);
+}
+
+.schedule-monitor-head-room {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  color: var(--bone-2);
+}
+
+.schedule-monitor-live-chip {
+  letter-spacing: 0.22em;
+}
+
+.schedule-monitor-grow {
+  flex: 1;
+}
+
+.schedule-monitor-seed {
+  opacity: 0.75;
+}
+
+.schedule-monitor-small {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+}
+
+.schedule-monitor-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.schedule-monitor-progress-label {
+  font-family: var(--f-den);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bone-3);
+  min-width: 60px;
+}
+
+.schedule-monitor-progress-bar {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  background: #0c1016;
+  border: 1px solid #2a313e;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.schedule-monitor-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6f5b26, var(--gold));
+  transition: width 0.3s ease;
+}
+
+.schedule-monitor-progress-pct {
+  min-width: 40px;
+  text-align: right;
+  color: var(--gold-hi);
+  font-feature-settings: 'tnum';
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule-monitor-encounter,
+.schedule-monitor-telegraph {
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.04em;
+}
+
+.schedule-monitor-expand-btn {
+  align-self: flex-start;
+}
+
+.schedule-monitor-expanded {
+  display: block;
+  padding: 0 16px 12px;
+}
+
+.schedule-monitor-hidden {
+  display: none;
+}
+
+.schedule-monitor-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.schedule-monitor-tab-btn {
+  padding: 3px 14px;
+  border: 1px solid var(--border-lo);
+  border-radius: 999px;
+  background: rgba(19, 24, 32, 0.8);
+  color: var(--bone-2);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out;
+}
+
+.schedule-monitor-tab-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.schedule-monitor-tab-btn-active {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+  box-shadow: inset 0 0 8px rgba(201, 169, 89, 0.15);
+}
+
+/* the dual-plane Pixi canvas is 960px wide (MonitorRenderer.ts) --
+   horizontal scroll on narrow screens instead of squashing it */
+.schedule-monitor-stage {
+  overflow-x: auto;
+  border-radius: 2px;
+}
+
+.schedule-monitor-canvas {
+  display: block;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: radial-gradient(120% 130% at 50% 18%, rgba(23, 28, 37, 0.6), rgba(10, 13, 18, 0.8));
+}
+
+/* iron control bar (mock .ctrl). Pause/speed/skip are omitted -- replay
+   pacing is the server's wall clock (REQ-0045); the bar carries the
+   real clock + timeline + per-encounter pips instead. */
+.schedule-monitor-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  background: linear-gradient(180deg, #262e3a 0%, #1a202a 55%, #141922 100%);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-top-color: rgba(201, 169, 89, 0.2);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(233, 227, 211, 0.06), inset 0 -6px 12px rgba(0, 0, 0, 0.35);
+}
+
+.schedule-monitor-rivet {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #9aa3ae, #2a313e 72%);
+  box-shadow: 0 1px 2px #000;
+}
+
+.schedule-monitor-clock {
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.schedule-monitor-timeline {
+  position: relative;
+  flex: 1;
+  height: 7px;
+  background: #0c1016;
+  border: 1px solid #2a313e;
+  border-radius: 2px;
+}
+
+.schedule-monitor-timeline-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #6f5b26, var(--gold));
+  transition: width 0.3s ease;
+}
+
+.schedule-monitor-pip {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  z-index: 2;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--gold-hi);
+  border: 1px solid #14100a;
+}
+
+/* log pane (REQ-0045 g; REQ-0071 restyle + logbar caption) */
+.schedule-monitor-log-panel {
+  display: block;
+}
+
+.schedule-monitor-log-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.schedule-monitor-log-copy-btn {
+  background: linear-gradient(180deg, #2a313e, #1b222d);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  padding: 3px 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color 0.14s ease-out, color 0.14s ease-out;
+}
+
+.schedule-monitor-log-copy-btn:hover {
+  border-color: var(--gold-lo);
+  color: var(--gold-hi);
+}
+
+.schedule-monitor-log-copy-status {
+  font-size: 11px;
+  color: #9fe0c4;
+}
+
+.schedule-monitor-log-copy-failed {
+  color: #e06b5f;
+}
+
+.schedule-monitor-log-text {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 9px 12px;
+  border: 1px solid var(--border-lo);
+  border-radius: 2px;
+  background: rgba(10, 13, 18, 0.6);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--bone-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.schedule-monitor-logbar {
+  margin-top: 6px;
+  text-align: right;
+  letter-spacing: 0.06em;
+}
+
+/* settled summary (result banner / spoils rows / cooldown) */
+.schedule-monitor-summary {
+  border-top: 1px solid rgba(201, 169, 89, 0.14);
+  padding: 10px 16px 12px;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.schedule-monitor-result {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.schedule-monitor-result-victory {
+  color: var(--gold-hi);
+  text-shadow: 0 0 10px rgba(201, 169, 89, 0.35);
+}
+
+.schedule-monitor-result-wipe {
+  color: #e06b5f;
+}
+
+.schedule-monitor-result-incomplete {
+  color: var(--bone-2);
+}
+
+.schedule-monitor-rewards-none,
+.schedule-monitor-level-dropped {
+  color: #e06b5f;
+  font-size: 12px;
+}
+
+.schedule-monitor-rewards-title {
+  font-family: var(--f-den);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+/* spoils rows (mock .icard.sm anatomy: thumb + name; rarity tint rides
+   the existing .rarity.r-* rules) */
+.schedule-monitor-rewards-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.schedule-monitor-reward-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border: 1px solid rgba(40, 49, 62, 0.7);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.7), rgba(19, 24, 32, 0.7));
+}
+
+.schedule-monitor-reward-thumb {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+
+.schedule-monitor-reward-thumb img {
+  width: 24px;
+  height: 24px;
+}
+
+.schedule-monitor-reward-name {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.schedule-monitor-settled-badge {
+  color: var(--bone-3);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.schedule-monitor-cooldown {
+  color: var(--frost-hi);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+}
+

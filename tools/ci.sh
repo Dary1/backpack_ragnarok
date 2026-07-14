@@ -15,13 +15,15 @@ echo "==== [2/7] sim replay goldens (determinism contract) ===="
 node sim/tests/goldens.cjs
 echo "==== [2.5/7] S4 post-processor tests (REQ-0050) ===="
 node sim/tests/s4_test.cjs
+echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
+node sim/tests/forecast_parity.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
 if [ -x node_modules/.bin/tsc ]; then
   node_modules/.bin/tsc -p tsconfig.server.json
 else
-  echo "typescript missing -- run: npm install" >&2; exit 1
+  echo "typescript missing -- run: pnpm install --frozen-lockfile" >&2; exit 1
 fi
 echo "==== [3.6/7] engine type-surface drift check ===="
 node tools/check_engine_types.cjs
@@ -31,10 +33,33 @@ echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
 node server/tests/pg_sync_test.cjs
+echo "==== [4.6/7] artwork backfill mapping + adoption matcher (DB-free, REQ-0151) ===="
+node server/tests/backfill_registry_test.cjs
+echo "==== [4.65/7] content backfill mapping + skip rules (DB-free, REQ-0157) ===="
+node server/tests/backfill_content_registry_test.cjs
+echo "==== [4.66/7] content-check schema dialects (DB-free, REQ-0161) ===="
+node server/tests/content_checks_dialect_test.cjs
+echo "==== [4.7/7] inspection kit golden vectors (REQ-0152, G3/G2 purity) ===="
+KITPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
+if [ -x "$KITPY" ] && "$KITPY" -c 'import numpy,scipy,rembg' 2>/dev/null; then
+  "$KITPY" tools/tests/inspect_kits_test.py
+else
+  echo "SKIP inspect_kits_test (needs a numpy/scipy/rembg python; set ART_KIT_PYTHON)"
+fi
 if [ "${SKIP_PG:-0}" != "1" ]; then
   echo "==== [5/7] server api tests (pg backend) ===="
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
   STORAGE_BACKEND=pg node server/tests/api_test.cjs
+  echo "==== [5.1/7] server artwork registry tests (pg backend, REQ-0151) ===="
+  STORAGE_BACKEND=pg node server/tests/artwork_test.cjs
+  echo "==== [5.15/7] artwork queue/cancel + list aggregates (pg backend, REQ-0156) ===="
+  STORAGE_BACKEND=pg node server/tests/artqueue_test.cjs
+  echo "==== [5.2/7] inspection kits (pg backend, REQ-0152 G1/G2 + auto-run) ===="
+  ART_KIT_PYTHON="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}" STORAGE_BACKEND=pg node server/tests/inspection_test.cjs
+  echo "==== [5.3/7] content-data registry tests (pg backend, REQ-0155 G1/G2/G3 + flow) ===="
+  STORAGE_BACKEND=pg node server/tests/content_test.cjs
+  echo "==== [5.35/7] content-def list aggregates + recheck (pg backend, REQ-0157) ===="
+  STORAGE_BACKEND=pg node server/tests/contentagg_test.cjs
 else
   echo "==== [5/7] server api tests (pg backend) SKIPPED ===="
 fi
@@ -48,8 +73,14 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # because it needs client/node_modules (vite).
   echo "==== [5.6/7] client unit-icon chain + G7 ring (REQ-0125a) ===="
   (cd client && node scripts/check_unit_icon.mjs)
+  # REQ-0142: link-trace query layer (client/src/board/linkTrace.ts) driven
+  # against the REAL engine, with canvas_spec.md's own decoded example as the
+  # golden. Pure functions, no browser, no Pixi -- same rig and the same reason
+  # as the unit-icon gate above, so it sits beside it, in front of the build.
+  echo "==== [5.7/7] client link-trace queries (REQ-0142) ===="
+  (cd client && node scripts/check_link_trace.mjs)
   echo "==== [6/7] client typecheck + build ===="
-  (cd client && npm run build)
+  (cd client && pnpm run build)
 else
   echo "==== [6/7] client typecheck + build SKIPPED ===="
 fi
@@ -61,7 +92,7 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
   (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
                 E2E_GPU="${E2E_GPU:-1}" \
-                E2E_PARALLEL="${E2E_PARALLEL:-4}" npm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
+                E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
 else
   echo "==== [7/7] client e2e SKIPPED ===="
 fi

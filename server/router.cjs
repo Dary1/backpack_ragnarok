@@ -19,10 +19,14 @@ const { tryMeRoute } = require('./routes/me.cjs');
 const { tryAdminRoutes } = require('./routes/admin.cjs');
 const { tryProfileRoutes } = require('./routes/profile.cjs');
 const { tryScheduleRoutes } = require('./routes/schedule.cjs');
+const { tryWarehouseRoutes } = require('./routes/warehouse.cjs'); // REQ-0145a (se)
+const { tryWorkshopRoutes } = require('./routes/workshop.cjs'); // REQ-0145a (se)
 const { tryMarketRoutes } = require('./routes/market.cjs'); // REQ-0064
 const { tryRagnarokRoutes } = require('./routes/ragnarok.cjs'); // REQ-0066
 const { tryDexRoutes } = require('./routes/dex.cjs'); // REQ-0052
 const { tryDismantleRoutes } = require('./routes/dismantle.cjs'); // REQ-0063
+const { tryArtRoutes } = require('./routes/art.cjs'); // REQ-0151
+const { tryContentRoutes } = require('./routes/content.cjs'); // REQ-0155
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -32,10 +36,14 @@ function handle(req, res) {
   if (tryAdminRoutes(req, res, url, p) !== false) return;
   if (tryProfileRoutes(req, res, url, p) !== false) return;
   if (tryScheduleRoutes(req, res, url, p) !== false) return;
+  if (tryWarehouseRoutes(req, res, url, p) !== false) return; // REQ-0145a (se): schedule -> warehouse -> workshop dispatch consecutively in the exact slot the combined module occupied (identical match set)
+  if (tryWorkshopRoutes(req, res, url, p) !== false) return; // REQ-0145a (se)
   if (tryMarketRoutes(req, res, url, p) !== false) return; // REQ-0064
   if (tryRagnarokRoutes(req, res, url, p) !== false) return; // REQ-0066
   if (tryDexRoutes(req, res, url, p) !== false) return; // REQ-0052
   if (tryDismantleRoutes(req, res, url, p) !== false) return; // REQ-0063: /api/dismantle* collides with nothing, appended at the tail
+  if (tryArtRoutes(req, res, url, p) !== false) return; // REQ-0151: /api/art/* collides with nothing, appended at the tail
+  if (tryContentRoutes(req, res, url, p) !== false) return; // REQ-0155: /api/content/defs/* + /api/content/<name>[/meta] collide with nothing (public.cjs owns the exact /api/content payload), appended at the tail
   sendJSON(res, 404, { ok: false, error: 'not found' });
 }
 module.exports = { handle };

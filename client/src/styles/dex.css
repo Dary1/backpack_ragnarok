@@ -1,0 +1,630 @@
+/* ====================================================================
+   REQ-0075 — Dex (図鑑) MJOLNIR re-skin. Mock NORMATIVE:
+   web/redesign/dex.html (+ shared tokens in client/src/theme/mjolnir.css,
+   REQ-0069). Presentation-only: appended AFTER the REQ-0035/REQ-0038 dex
+   rules above so these win for shared selectors (later-wins at equal
+   specificity) without deleting the v1 rules the admin view still leans
+   on. Mirrors the sibling ports' recipes (SchedulePage/WarehouseTab
+   pagehead + colhead + ornate panels + theme .rar-* frames).
+
+   BEHAVIOR/selector contract unchanged: .dex-view / .dex-grid / .dex-card
+   / .dex-card-summary / .dex-count / .dex-search / .dex-tab-active /
+   .dex-empty / .dex-detail-columns (+ its 1100px breakpoint) /
+   .dex-detail-col-list|-diagram|-info / .dex-detail-item-list-row /
+   .dex-diagram* / .shape-grid* stay as the E2E suite expects; these rules
+   only re-skin them.
+   ==================================================================== */
+
+/* ---------- page header (mock .pagehead) ---------- */
+.dex-view {
+  padding: 14px 26px 60px;
+}
+.dex-pagehead {
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.dex-pagehead-kicker {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.34em;
+}
+.dex-pagehead-title {
+  margin: 2px 0 0;
+  font-size: 27px;
+  font-weight: 800;
+  color: var(--bone);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.dex-pagehead-lede {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--bone-2);
+  letter-spacing: 0.08em;
+}
+.dex-pagehead-divider {
+  margin: 10px 0 14px;
+}
+
+/* ---------- progress strip (mock .dexstrip) ---------- */
+.dex-strip {
+  padding: 14px 18px 13px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.dex-strip-prog {
+  min-width: 250px;
+  flex: 1 1 250px;
+}
+.dex-strip-nums {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+.dex-strip-big {
+  font-family: var(--f-den);
+  font-size: 36px;
+  color: var(--gold-hi);
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+}
+.dex-strip-of {
+  font-family: var(--f-den);
+  font-size: 16px;
+  color: var(--bone-3);
+}
+.dex-strip-word {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+}
+.dex-strip-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.dex-strip-bar {
+  height: 8px;
+  margin-top: 8px;
+}
+.dex-strip-note {
+  flex: 1 1 200px;
+  text-align: right;
+  letter-spacing: 0.1em;
+}
+
+/* ---------- tab row -> theme chips (text stays E2E-load-bearing) ---------- */
+.dex-tab-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  border: none;
+}
+.dex-tab {
+  cursor: pointer;
+  user-select: none;
+  font-family: inherit;
+  /* neutralize the v1 .dex-tab look (tab-shaped border/radius) */
+  border-radius: 999px;
+  background: rgba(19, 24, 32, 0.8);
+}
+.dex-tab.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.dex-tab.dex-tab-active {
+  /* .chip.is-on tones already applied; keep the cursor default */
+  cursor: default;
+}
+
+/* ---------- section heads (mock .colhead) ---------- */
+.dex-colhead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 0 2px;
+  margin: 22px 0 12px;
+  flex-wrap: wrap;
+}
+.dex-colhead-rn {
+  color: var(--gold);
+  font-size: 15px;
+}
+.dex-colhead-title {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0.22em;
+  font-weight: 800;
+  color: var(--bone);
+}
+.dex-colhead-den {
+  font-size: 10px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.dex-colhead-grow {
+  flex: 1;
+}
+/* ---------- controls (search + filters) ---------- */
+.dex-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.dex-search {
+  background: rgba(16, 20, 27, 0.85);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  outline: 1px solid rgba(201, 169, 89, 0.14);
+  outline-offset: -3px;
+  border-radius: 2px;
+  padding: 8px 12px;
+  font-size: 13px;
+  min-width: 240px;
+  font-family: var(--f-ui);
+}
+.dex-search:focus {
+  outline-color: rgba(201, 169, 89, 0.5);
+  border-color: var(--gold-lo);
+}
+.dex-filter {
+  background: rgba(16, 20, 27, 0.85);
+  color: var(--bone);
+  border: 1px solid var(--border-lo);
+  outline: 1px solid rgba(201, 169, 89, 0.14);
+  outline-offset: -3px;
+  border-radius: 2px;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--f-ui);
+}
+.dex-count {
+  color: var(--bone-3);
+  font-size: 12px;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- catalog grid (mock .dgrid / .dcard) ---------- */
+.dex-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.dex-empty {
+  color: var(--bone-3);
+  grid-column: 1 / -1;
+  padding: 20px 0;
+}
+
+/* card = rarity-framed panel (mock .dcard.rar) */
+.dex-card {
+  position: relative;
+  border-radius: 3px;
+  overflow: visible;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.88));
+  transition: transform 0.13s ease-out, box-shadow 0.13s ease-out;
+}
+.dex-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.5);
+}
+.dex-card-summary {
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: var(--bone);
+  padding: 10px 11px 11px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  position: relative;
+}
+.dex-card-summary:hover {
+  background: transparent;
+}
+.dex-card-no {
+  letter-spacing: 0.16em;
+  color: var(--bone-3);
+  display: inline-block;
+}
+.dex-card-no-kind {
+  color: var(--gold-lo);
+}
+/* the shape-mounted thumbnail sits in a night-iron well (mock .dthumb) */
+.dex-card-shape.dthumb {
+  position: relative;
+  height: 96px;
+  margin: 7px 0 8px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, #262e3a, #10141b 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+}
+.dex-card-name.dname {
+  font-family: var(--f-dj);
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.3;
+  white-space: normal;
+  color: var(--bone);
+}
+.dex-card-sub.dsub {
+  font-size: 10.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.06em;
+  margin-top: 1px;
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.dex-card-sub .dex-card-cat {
+  color: var(--bone-2);
+}
+.dex-card-sub .dex-card-enname {
+  color: var(--bone-3);
+}
+/* meta line keeps id/kind for search hooks; rarity word rides the theme */
+.dex-card-meta.dfoot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 7px;
+  font-size: 10.5px;
+  color: var(--bone-3);
+  flex-wrap: wrap;
+}
+.dex-card-meta .rar-word {
+  flex: 0 0 auto;
+}
+.dex-card-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--bone-3);
+}
+.dex-card-kind {
+  color: var(--bone-3);
+}
+
+/* ---------- TM strip (mock: same .dcard anatomy, non-selectable) ---------- */
+.dex-tm-section {
+  margin-top: 22px;
+  border-top: none;
+  padding-top: 0;
+}
+.dex-tm-colhead {
+  margin: 22px 0 12px;
+}
+.dex-tm-section-title {
+  color: var(--bone);
+  text-transform: none;
+  letter-spacing: 0.22em;
+}
+.dex-tm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.dex-tm-card {
+  position: relative;
+  display: block;
+  padding: 10px 11px 11px;
+  border-radius: 3px;
+  overflow: visible;
+  background: linear-gradient(180deg, rgba(27, 34, 45, 0.8), rgba(16, 20, 27, 0.88));
+}
+.dex-tm-stackable {
+  color: var(--frost-hi);
+  font-style: normal;
+  font-size: 10px;
+}
+
+/* ---------- detail two-pane (mock .detail2) ---------- */
+.dex-detail-columns {
+  display: flex;
+  gap: 14px;
+  align-items: stretch;
+  min-height: 0;
+}
+.dex-detail-col-list {
+  flex: 0 1 260px;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 8px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 3px;
+}
+.dex-detail-col-diagram {
+  flex: 1 1 46%;
+  min-width: 0;
+  padding: 0 0 6px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 3px;
+}
+.dex-detail-col-info {
+  flex: 1 1 40%;
+  min-width: 0;
+  padding: 16px 20px 18px;
+  max-height: 80vh;
+  overflow-y: auto;
+  border-radius: 3px;
+}
+
+/* diagram-panel head (mock .phead) */
+.dex-detail-phead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px 10px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.14);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  flex-wrap: wrap;
+}
+.dex-detail-phead-title {
+  color: var(--bone);
+  font-size: 15px;
+}
+.dex-detail-phead-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+  font-weight: 400;
+}
+.dex-detail-back-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  margin: 0;
+}
+
+/* list rail rows */
+.dex-detail-item-list-row {
+  border-radius: 2px;
+  color: var(--bone);
+}
+.dex-detail-item-list-row:hover {
+  background: rgba(201, 169, 89, 0.06);
+}.dex-detail-item-list-row .dex-card-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.dex-detail-item-list-row .dex-card-meta {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+
+/* info panel: name header + chip row (mock .dinfo) */
+.dex-detail-namehead {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.dex-detail-name {
+  font-size: 23px;
+  font-weight: 800;
+  color: var(--bone);
+}
+.dex-detail-enname {
+  font-family: var(--f-den);
+  font-size: 10.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.32em;
+}
+.dex-detail-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.dex-detail-field-id {
+  font-size: 12px;
+  color: var(--bone-3);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.dex-detail-tagchip {
+  font-size: 11px;
+}
+.dex-detail .dex-detail-section h4 {
+  color: var(--gold);
+  letter-spacing: 0.18em;
+}
+.dex-detail .flavor {
+  color: var(--bone-3);
+  font-style: italic;
+  font-size: 12.5px;
+  line-height: 1.8;
+  font-family: var(--f-dj);
+}
+.dex-detail-no {
+  color: var(--bone-3);
+  margin-top: 4px;
+  letter-spacing: 0.06em;
+}
+
+/* ---------- diagram cells re-toned frost/gold (mock .dgm) ---------- */
+.dex-diagram .shape-grid {
+  background: transparent;
+  border: none;
+  gap: 0;
+}
+.dex-diagram .shape-grid-cell {
+  background: transparent;
+  border: 1px solid rgba(111, 196, 222, 0.18);
+}
+.dex-diagram .shape-grid-cell-shape {
+  background: rgba(111, 196, 222, 0.12);
+  border-color: rgba(111, 196, 222, 0.5);
+}
+.dex-diagram .shape-grid-cell-port {
+  background: rgba(217, 185, 104, 0.1);
+  box-shadow: inset 0 0 0 2px var(--gold-lo);
+}
+.dex-diagram .shape-grid-cell-coord {
+  color: var(--frost-hi);
+}
+.dex-diagram-callout-line {
+  stroke: rgba(201, 169, 89, 0.6);
+}
+.dex-diagram-socket-dot {
+  fill: rgba(184, 233, 245, 0.9);
+  stroke: var(--frost-lo);
+}
+.dex-diagram-ports h4,
+.dex-detail .dex-diagram-ports h4 {
+  color: var(--gold);
+  letter-spacing: 0.18em;
+}
+.dex-tag-chip {
+  background: rgba(19, 24, 32, 0.85);
+  border: 1px solid var(--border-lo);
+  border-radius: 999px;
+  color: var(--bone-2);
+  padding: 2px 9px;
+}
+.dex-tag-chip-dim {
+  color: var(--bone-3);
+}
+
+/* ---------- 市場の刻銘 empty-state block (mock .mkhead/.anchlist/.mkcap) --- */
+.dex-market {
+  margin-top: 4px;
+}
+.dex-market-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.dex-market-title {
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  font-size: 15px;
+  color: var(--bone);
+}
+.dex-market-den {
+  font-size: 9.5px;
+  color: var(--bone-3);
+  letter-spacing: 0.3em;
+}
+.dex-market-count {
+  font-size: 11px;
+}
+.dex-market-count-rune {
+  color: var(--gold);
+}
+.dex-market-empty {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px dashed rgba(133, 112, 56, 0.35);
+  border-radius: 3px;
+  background: rgba(16, 20, 27, 0.4);
+}
+.dex-market-anchor-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.dex-market-anchor-label {
+  color: var(--bone-3);
+  letter-spacing: 0.06em;
+}
+.dex-market-anchor-val {
+  font-family: var(--f-den);
+  font-weight: 700;
+  font-size: 15.5px;
+  color: var(--bone-3);
+  margin-left: auto;
+}
+.dex-market-anchor-rune {
+  font-family: var(--f-rune);
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--gold-lo);
+  margin-right: 5px;
+}
+.dex-market-empty-note {
+  margin-top: 6px;
+  color: var(--bone-3);
+  letter-spacing: 0.08em;
+}
+.dex-market-cap {
+  margin-top: 10px;
+  font-family: var(--f-dj);
+  font-size: 12.5px;
+  color: var(--bone-2);
+  letter-spacing: 0.1em;
+  line-height: 1.9;
+}
+.dex-market-cap-en {
+  letter-spacing: 0.14em;
+  margin-top: 3px;
+  font-size: 9.5px;
+  color: var(--bone-3);
+}
+.dex-market-link {
+  margin-top: 16px;
+}
+.dex-market-link-btn {
+  font-size: 13px;
+}
+
+/* ---------- narrow/vertical fallback (mock @media max-width:840px) ---------- */
+@media (max-width: 840px) {
+  .dex-view {
+    padding: 12px 12px 40px;
+  }
+  .dex-strip {
+    gap: 12px;
+  }
+  .dex-strip-note {
+    text-align: left;
+  }
+  .dex-grid,
+  .dex-tm-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+
+  /* REQ-0075 follow-up (fixed post-deploy E2E, 2026-07-07): the MJOLNIR
+     detail two-pane/three-column rules above (the appended, later-wins
+     .dex-detail-col-* block) never re-declared a narrow-viewport
+     override, so their unconditional max-width:320px on
+     .dex-detail-col-list was silently beating the OLDER REQ-0035/0038
+     section's narrow-viewport reset below it in the cascade (this rule
+     is later in the file, same specificity, so it always won regardless
+     of viewport). Re-declared here so the MJOLNIR section is
+     self-sufficient and does not depend on the pre-MJOLNIR rule
+     surviving. dex.spec.ts's narrow/portrait test (480px) caught this:
+     list column measured 320px instead of >384px. */
+  .dex-detail-columns {
+    flex-direction: column;
+  }
+  .dex-detail-col-list,
+  .dex-detail-col-diagram,
+  .dex-detail-col-info {
+    flex: 1 1 auto;
+    max-width: 100%;
+    width: 100%;
+  }
+}

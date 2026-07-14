@@ -12,14 +12,14 @@ as-is via a thin typed adapter in `src/engine/` — never forked or rewritten.
 ## Develop
 ```
 cd client
-npm install
-npm run dev       # local dev server (Vite)
+pnpm install --frozen-lockfile
+pnpm run dev       # local dev server (Vite)
 ```
 
 ## Build + deploy
 ```
 cd client
-npm run build      # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
+pnpm run build      # tsc -b && vite build -> outputs to ../web/app (emptyOutDir)
 ```
 The build output (`web/app/`) is committed directly — it is the deployed
 artifact served at https://backpack-dev.qtie.jp/app/ by the existing static
@@ -40,6 +40,35 @@ web service (no ingress change needed; `web/` is already served as-is).
   from content i18n (item/SI name/flavor text, served via `content/live/
   *.json`'s `i18n.ja.{name,flavor}` map, read directly by `src/dex/*`) --
   the same single `Locale` toggle (Header.tsx) drives both.
+- `src/api.ts` is a BARREL (REQ-0145b): implementation lives in
+  `src/api/` split by domain (http core / content / profile / dex /
+  dismantle / schedule / warehouse / workshop / market / ragnarok /
+  admin). Add new endpoints in the matching domain module, never by
+  appending to the barrel.
+- `src/i18n.ts` is a BARREL (REQ-0145b): the en/ja key groups live in
+  `src/i18n/` per-domain modules (nav / common / canvas / dex /
+  schedule / warehouse / workshop / market / ragnarok / settings),
+  merged with key-disjoint spreads; `t()` and `TranslationKey` are
+  unchanged. Add new keys in the matching module.
+- `src/index.css` is an ORDERED IMPORT LIST (REQ-0145b): rule bodies
+  live in `src/styles/*.css` (a byte partition of the old file; the
+  import order is load-bearing cascade order -- never reorder). Add new
+  rules in the matching styles file; a new page gets a new file
+  appended last.
+- `src/lib/` (REQ-0145b) — shared page-level helpers, extracted from the
+  pages that used to hold private copies. `itemContent.ts` (itemId ->
+  content-entry / localized-name / icon+rarity resolution), `time.ts`
+  (formatClock + formatWarehouseCountdown), `tabPulse.ts` (cross-page
+  inv-tab pulse), `placement.ts` (the three first-fit variants + grid
+  bounds; see its recorded gather-then-unify verdict), 
+  `usePolledResource.ts` (load-on-mount / optional poll / error/loading /
+  manual-reload hook, parameterized to each page's exact semantics),
+  `contentCache.ts` (memoized /api/content promise +
+  invalidateContentCache()). New pages import from here instead of
+  re-implementing; `shared/constants.json` (repo root) holds the numeric
+  constants shared verbatim with server services (WAREHOUSE_CAP,
+  GACHA_COMMON_BP_COST) — import it rather than hardcoding a display
+  literal.
 - `src/theme/mjolnir.css` (REQ-0069) — the MJOLNIR design-token layer
   (colors/rarity/fonts, text scales, panel/ornament/button/chip/bar
   primitives) ported from the design mocks (`web/redesign/assets/ui.css`,

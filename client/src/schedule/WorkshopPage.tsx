@@ -1,5 +1,6 @@
 // Workshop route (#/workshop) -- REQ-0042 behavior, REQ-0076 MJOLNIR
-// re-skin. Common BP gacha: costs GACHA_COMMON_BP_COST_DISPLAY (10)
+// re-skin. Common BP gacha: costs GACHA_COMMON_BP_COST (10, single
+// source shared/constants.json since REQ-0145b (cb))
 // LRDST (a stackable TM currency, see mock-src/engine.js's TM model).
 // Follows the SAME "fetch on mount, loading/error states, t()" shape
 // SchedulePage.tsx/DexRoot.tsx/Settings.tsx already established for a
@@ -18,22 +19,25 @@
 // shows it -- the visible label drops the raw "LRDST" string in favor of
 // the rune + the currency-item wording (same call the market port made,
 // REQ-0064); the wire/engine id stays 'lrdst' everywhere.
+//
+// REQ-0145b (cb): the helpers this file used to define locally
+// (pulseTab / firstFitPlaceBp, plus GRID_MIN/GRID_MAX/TAB_PULSE_MS and
+// the gacha-cost display mirror) moved to src/lib/ and
+// shared/constants.json -- verbatim moves, zero behavior change.
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
+import { firstFitPlaceBp } from '../lib/placement';
+import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
 import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
 
 interface WorkshopPageProps {
   locale: Locale;
 }
-
-const GACHA_COMMON_BP_COST_DISPLAY = 10; // mirrors server/services/gacha.cjs's GACHA_COMMON_BP_COST (display only)
-const GRID_MIN = 1;
-const GRID_MAX = 8; // matches every inventory page's fixed 8x8 layout, same bound WarehouseTab.tsx's firstFitPlace uses
-const TAB_PULSE_MS = 1600; // same constant WarehouseTab.tsx uses for its cross-page tab-pulse notification
 
 // REQ-0076: casting-odds display (mock's rules panel). These weights are
 // DISPLAY-ONLY -- the server's roll (server/services/gacha.cjs
@@ -89,68 +93,6 @@ function dirsLabel(dirs: number[]): string {
   return dirs.map((d) => COMPASS_LABELS[d] ?? '?').join(' ・ ');
 }
 
-/** Briefly applies the tab-claim-pulse CSS class to the inv-tab button
- * at `pageIndex` -- byte-for-byte copy of WarehouseTab.tsx's own
- * pulseTab() helper (same DOM-query-based approach, not worth sharing
- * via an import for one small helper reused across two route-level
- * components with otherwise independent lifecycles). */
-function pulseTab(pageIndex: number): void {
-  const el = document.querySelector<HTMLElement>('[data-tab-kind="inv"][data-tab-index="' + pageIndex + '"]');
-  if (!el) return;
-  el.classList.remove('tab-claim-pulse');
-  void el.offsetWidth;
-  el.classList.add('tab-claim-pulse');
-  setTimeout(() => el.classList.remove('tab-claim-pulse'), TAB_PULSE_MS);
-}
-
-interface BpPlacementResult {
-  page: number;
-  origin: [number, number];
-}
-
-/** First-fit placement for a freshly-rolled BP -- same push-check-
- * rollback pattern as WarehouseTab.tsx's firstFitPlace 'po' branch, just
- * against engine.invCanPlaceBP/invMoveBP instead of invCanPlacePO/
- * invMovePO (a BP record, unlike a PO, needs shape/unit/hpMax on the
- * placeholder, not just id/loc/cell/rot). Tries `openPage` first, then
- * every other page in ascending order -- matches the same "try the
- * currently open page first" convention WarehouseTab.tsx's claim flow
- * uses. */
-function firstFitPlaceBp(
-  engine: NonNullable<ReturnType<typeof useGameStore>['engine']>,
-  state: NonNullable<ReturnType<typeof useGameStore>['state']>,
-  rolled: ApiRolledBp,
-  openPage: number,
-  pageCount: number
-): BpPlacementResult | null {
-  const pageOrder = [openPage, ...Array.from({ length: pageCount }, (_, i) => i).filter((i) => i !== openPage)];
-  for (const pg of pageOrder) {
-    const container = state.inv!.pages[pg];
-    container.bps.push({
-      id: rolled.uid,
-      name: 'BP',
-      color: '#8a8a8a',
-      shape: rolled.shape,
-      origin: [1, 1],
-      linker: rolled.linker,
-      hpMax: rolled.hpMax,
-    });
-    let found: [number, number] | null = null;
-    for (let r = GRID_MIN; r <= GRID_MAX && !found; r++) {
-      for (let c = GRID_MIN; c <= GRID_MAX && !found; c++) {
-        const chk = engine.invCanPlaceBP(state, pg, rolled.uid, [r, c]);
-        if (chk.ok) found = [r, c];
-      }
-    }
-    if (found) {
-      engine.invMoveBP(state, pg, rolled.uid, found);
-      return { page: pg, origin: found };
-    }
-    container.bps.pop(); // no room on this page -- roll back, try next
-  }
-  return null;
-}
-
 export function WorkshopPage({ locale }: WorkshopPageProps) {
   const snapshot = useGameStore();
   const [rolling, setRolling] = useState(false);
@@ -174,7 +116,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   }, [toast]);
 
   const balance = readTotalLrdstBalance(snapshot.state);
-  const canAfford = balance >= GACHA_COMMON_BP_COST_DISPLAY;
+  const canAfford = balance >= GACHA_COMMON_BP_COST;
 
   const handleRoll = useCallback(async () => {
     setRolling(true);
@@ -314,7 +256,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             <div className="workshop-cast-cost">
               <span className="workshop-cast-cost-rune rune">{'ᚠ'}</span>
               <span className="workshop-cast-cost-val" data-testid="workshop-gacha-cost">
-                {t(locale, 'workshop.cost', { cost: GACHA_COMMON_BP_COST_DISPLAY })}
+                {t(locale, 'workshop.cost', { cost: GACHA_COMMON_BP_COST })}
               </span>
               <span className="workshop-cast-cost-grow" />
               <span className="workshop-cast-own">
@@ -471,7 +413,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 disabled={!canAfford || rolling}
                 onClick={() => void handleRoll()}
               >
-                <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.rollAgain', { cost: GACHA_COMMON_BP_COST_DISPLAY })}
+                <span className="rune">{'ᚠ'}</span> {t(locale, 'workshop.rollAgain', { cost: GACHA_COMMON_BP_COST })}
               </button>
               <button
                 type="button"

@@ -17,6 +17,7 @@
 // just 403 if they used it.
 import { useEffect, useState } from 'react';
 import type { ApiCreateRoomBody, ApiDungeonsPayload } from '../api';
+import { SlotPressureSummary } from '../forecast/SlotPressureSummary'; // REQ-0057
 import { t } from '../i18n';
 import type { Locale } from '../store';
 
@@ -157,6 +158,21 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
           ))}
         </select>
       </label>
+
+      {/* REQ-0057 (formation-picker half): "per-slot summary = which squad
+          slot eats the most". Reads the SAME three inputs the form above
+          already owns (type, level, formation), so the four bars re-rank live
+          as the player flips through formations -- before the room exists.
+          Advisory only: it renders nothing if the forecast cannot be fetched,
+          and never gates or alters submission. */}
+      {formationId ? (
+        <SlotPressureSummary
+          locale={locale}
+          dungeonType={dungeonType || 'default'}
+          level={level}
+          formationId={formationId}
+        />
+      ) : null}
 
       <div className="schedule-field">
         <span className="schedule-field-label">{t(locale, 'schedule.visibilityLabel')}</span>

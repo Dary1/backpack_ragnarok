@@ -42,3 +42,14 @@ for live.
 > REQ-0128s Unit model. This REQs blocker is **REQ-0125a only** — the
 > machinery it must reuse — NOT 0125b. Item rasters need the route and the
 > fallback chain; they do not need unit identity. Re-pointed accordingly.
+
+> [2026-07-14, REQ-0154 coordination note — appended, NOT a status change]
+> REQ-0154 (content-pipeline-registry-reconcile) recasts this REQ's live-wiring
+> concern as the **registry EXPORT contract**. With the artwork registry (REQ-0151)
+> in place, the adopted PO/SI render for a `system_name` is exported to
+> `content/art/<kind>/<name>.png` (and via `tool_integrate` at deploy) — that export
+> is what live/mock/client consume. See `docs/llm_managed/common_content_pipeline.md`
+> §7.4 (export path) and `item_content_pipeline.md` §0. This REQ remains in `draft/`
+> and is NOT moved by REQ-0154; its remaining blocker is REQ-0125a's shared
+> resolution machinery (the raster-vs-SVG decision is already RASTER). Recorded per
+> the REQ-0154 spec's coordination instruction.

@@ -1,0 +1,21 @@
+-- backpack_ragnarok -- server/migrations/010_content_kind_skill_def.sql
+-- REQ-0160: extend the content_kind ENUM with 'skill_def' so the 14 live
+-- skill/1 entries (content/live/dungeon/skills.json, batch-002-dungeon-pilot)
+-- can enter the content registry as first-class defs. User ruling Q2 = yes
+-- (2026-07-14).
+--
+-- Registry semantics are UNCHANGED: a skill_def is an ordinary content_defs +
+-- content_variants pair (immutability trigger, adopted-variant FK, variant_no
+-- handle -- all inherited from 009). No new table, no new column, no new
+-- constraint. The ENUM is the only thing that was blocking skill/1 data from
+-- entering the ledger.
+--
+-- Apply as the postgres superuser (same invocation as 001..009):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/010_content_kind_skill_def.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already exists.
+-- NOTE: ALTER TYPE ... ADD VALUE cannot run inside a transaction block, which
+-- is why this is a bare top-level statement and NOT wrapped in the DO $$ ... $$
+-- guard 009 uses -- psql autocommit gives the statement its own transaction,
+-- which is exactly what it needs.
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'skill_def';

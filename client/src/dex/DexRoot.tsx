@@ -6,8 +6,10 @@
 // /api/me fails) never sees it at all, and edit mode itself is a
 // SEPARATE layout (DexAdmin), never overlaid on the display cards (Dex),
 // per the task spec.
-import { useCallback, useEffect, useState } from 'react';
-import { fetchContent, fetchMe, type ApiContentPayload, type ApiMe } from '../api';
+import { useCallback, useState } from 'react';
+import { fetchMe, type ApiContentPayload, type ApiMe } from '../api';
+import { cachedFetchContent } from '../lib/contentCache';
+import { usePolledResource } from '../lib/usePolledResource';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { Dex } from './Dex';
@@ -23,36 +25,24 @@ interface DexRootProps {
 }
 
 export function DexRoot({ locale, dexFocusId }: DexRootProps) {
-  const [payload, setPayload] = useState<ApiContentPayload | null>(null);
-  const [me, setMe] = useState<ApiMe | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // REQ-0145b (cc): the shared /api/content + /api/me fetches now ride
+  // usePolledResource (+ the module-level content cache). Error posture
+  // preserved exactly: a content failure is surfaced (and deliberately
+  // NOT cleared by a later success -- clearErrorOnSuccess false matches
+  // the old effect, whose error state was only ever written on catch);
+  // an /api/me failure is non-fatal for the display view -- it just
+  // means the edit toggle stays hidden (treated the same as "no admin
+  // role"), hence onError 'null-data'.
+  const { data: payload, error, reload: reloadContent } = usePolledResource<ApiContentPayload>(cachedFetchContent, {
+    clearErrorOnSuccess: false,
+  });
+  const { data: me, reload: reloadMe } = usePolledResource<ApiMe>(fetchMe, { onError: 'null-data' });
   const [editMode, setEditMode] = useState(false);
-  const [refreshToken, setRefreshToken] = useState(0);
 
-  const reload = useCallback(() => setRefreshToken((n) => n + 1), []);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchContent()
-      .then((p) => {
-        if (!cancelled) setPayload(p);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      });
-    // /api/me failure is non-fatal for the display view -- it just means
-    // the edit toggle stays hidden (treated the same as "no admin role").
-    fetchMe()
-      .then((m) => {
-        if (!cancelled) setMe(m);
-      })
-      .catch(() => {
-        if (!cancelled) setMe(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshToken]);
+  const reload = useCallback(() => {
+    void reloadContent();
+    void reloadMe();
+  }, [reloadContent, reloadMe]);
 
   const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
 

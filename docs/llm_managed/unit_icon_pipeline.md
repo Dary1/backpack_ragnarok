@@ -1,3 +1,25 @@
+
+> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
+>
+> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
+> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
+> **out of date and must not be followed**. It describes the retired SDXL route
+> and/or the retired Norse dark-fantasy painterly art direction.
+>
+> The current route, style and tools are in **`art_pipeline.md`**. Two user
+> decisions (2026-07-13) supersede this file's art content:
+> **(1) one route: flux2** — SDXL is retired and its code is deleted;
+> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
+> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
+> painterly direction **including REQ-0127's ratified unit roster style**.
+>
+> > REQ-0127's roster (S7 ALL GREEN) is **superseded**: it is Norse painterly and
+> the direction is now anime. It is regenerated, not reused. Framing note: gear
+> nouns ("dagger", "belts", "leather armor") widen the shot out of a bust even
+> with `portrait` present — name the character, not the kit (`art_pipeline.md` §5).
+>
+> The NON-art content of this file (schema, data model, review flow) still stands.
+
 # Unit Icon Generation Pipeline — v1 (RATIFIED by user, 2026-07-12)
 
 > Companion to REQ-0125. Extends the REQ-0073 AI-raster route
@@ -5,7 +27,11 @@
 > v2.1) to Unit character icons. Golden below ratified by the user 2026-07-12
 > ("unit_icon_pipeline green"), including the revised G6 (skinnable identity).
 > Authoritative copy: `docs/llm_managed/unit_icon_pipeline.md` on the server.
-> v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
+> v1.2 (2026-07-14, REQ-0154; registry era): §4 added — unit artwork/data
+> registry facets + the absorbed REQ-0130 def sketch (provisional); shared
+> contracts reference `common_content_pipeline.md` §7. Art stays superseded by
+> `art_pipeline.md`.
+> > v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
 > 2026-07-12 review session, user verdict ALL GREEN); G7 reserved in §1;
 > stale filename fixed (backpack_skin_pipeline_proposal.md, renamed →
 > backpack_skin_pipeline.md). `art_golden` references resolve to
@@ -62,20 +88,28 @@
   (art_golden rule: gorgeous names do not yield better art). One style guide
   per batch. Per-Unit one-line concept — the user-authored roster (elf,
   dwarf, thief, angel, shieldmaiden, priest, princess towers, light cavalry,
-  berserker, necromancer, watcher, squire) is the seed list.
+  berserker, necromancer, watcher, squire) is the seed list. **UPDATE
+  2026-07-13 (REQ-0127 S7): necromancer was CUT as a unit by the user; the
+  shipped roster is the remaining 11.**
 - **S2 Gen fields.** `gen_render` is constant (1×1: target 256×256, gen
   1024×1024, Lanczos downscale). `gen_prompt` from a Unit style template:
-  painterly dark-fantasy CHARACTER icon, stylization tokens front-loaded
-  (JuggernautXL V9 photorealism bias), near-white background for matting,
-  NOT photorealistic. Bust vs full-body is fixed per roster, not per Unit
-  (see Open items).
-- **S3 Generate.** Same ComfyUI route: checkpoint
-  `JuggernautXL_RunDiffusionPhoto2_V9_Final` at `127.0.0.1:8188` (manual
-  start), 4 candidates, seeds 101/202/303/404, 30 steps, cfg 6.5,
-  dpmpp_2m/karras, long runs via `setsid nohup`. Implementation: a thin
-  `gen_unit_icons` wrapper (or a `--defs` pointing at Unit defs) over
-  `tools/gen_item_icons.py`. NOTE: route tools live on branch
-  `req-0073-item-icon-gen` until REQ-0109 merges — same caveat as items.
+  painterly dark-fantasy CHARACTER icon, near-white background for matting.
+  Bust framing, roster-wide (§3 item 1). **On the ratified flux2 route the
+  NEGATIVE PROMPT IS INACTIVE (cfg 1.0) — steer style from the POSITIVE.**
+  Front-loading stylization tokens against a photorealism bias was a
+  JuggernautXL V9 workaround and applies only to the FROZEN `sdxl` route
+  (historical reproduction only).
+- **S3 Generate.** Same ComfyUI route as items, on the **ratified `flux2`
+  route** (REQ-0136, user verdict 2026-07-12, reconfirmed 2026-07-13):
+  `flux-2-klein-4b-Q8_0.gguf` at `127.0.0.1:8188` (manual start), 4 candidates,
+  seeds 101/202/303/404, **4 steps, cfg 1.0, euler**. `--route sdxl` still
+  exists but is **FROZEN — historical reproduction only, not a production route**
+  (REQ-0150, user 2026-07-13: one route, flux2). Long runs via
+  `setsid nohup`; **stop ComfyUI before the matte phase** (rembg ~12 GB will not
+  fit beside a resident model on the 23 GB box — use `--no-matte` then
+  `--rematte-only`). Implementation: `tools/gen_unit_icons.py`, a thin wrapper
+  over `tools/gen_item_icons.py`. (The old "route tools live on branch
+  req-0073-item-icon-gen" caveat is OBSOLETE: merged via REQ-0109.)
 - **S4 Matte.** rembg `birefnet-general` + edge-key fallback, valid band
   2–90%. Characters have finer silhouettes than items (hair, weapon tips,
   wings) — matte quality is explicitly part of the review gallery;
@@ -109,3 +143,116 @@ ALL GREEN) unless noted.
    §1; renderer implementation stays with REQ-0125.
 4. **Enemy side** — unchanged: enemies have no backpacks (asymmetric combat,
    golden §4) and are OUT of scope; monster art keeps its own pipeline.
+
+## 4. Registry era + Unit def pipeline (REQ-0154; absorbs REQ-0130)
+
+> **Absorbs REQ-0130** (unit-def-content-pipeline, draft; Q1 ruling 2026-07-13):
+> its schema sketch, validation chain, live target and the REQ-0054/0061 rescued
+> material are folded in here as the DEF side of this pipeline; REQ-0130 is closed
+> with a supersession note and moved to `done/`. **Honest status:** the def side is
+> still a DESIGN SKETCH — REQ-0130 was blocked on REQ-0128 (connection_shape
+> semantics) and REQ-0129 (charge/trigger grammar), both still `draft/`, and on
+> REQ-0127 art whose roster is now superseded (anime direction). Nothing below is
+> ratified schema; do not author live unit defs against it yet.
+
+### 4.1 Registry facets (shared contracts: spine §7)
+- **Artwork facet** — `artworks.kind = unit`, **locked 512×512**
+  (`server/services/art_sizing.cjs`; sizing gate G2). Upright forever (G3). The icon
+  this pipeline produces is the unit's **DEFAULT SKIN** (G6), not a hard-wired asset.
+  Inspection: `matte.coverage_band` (applies to po/si/**unit**), advisory, WARN-capped
+  (`art_pipeline.md` §8). Seed/variant, adoption, export: spine §7.2–§7.4; the adopted
+  unit render exports to `content/art/unit/<name>.png`.
+- **Data facet** — `content_defs.kind = unit_def`. Variant-as-record; a `unit_def`
+  variant runs the content-data registry machine checks (§4.3) + a separate-agent
+  advisory review. **There is no live `unit` target yet** — `content/live/live_units.json`
+  is proposed by REQ-0130 and does NOT exist on master.
+
+### 4.2 Schema sketch `unit/1` (from REQ-0130; provisional, unratified)
+`id` / `name` / `rarity` / `icon` (`"icon-<id>"`, always 1×1) / `connection_shape`
+(semantics from **REQ-0128**) / `charge` (`{trigger, capacity, spend}` in the
+**REQ-0129** grammar) / `effects` (AST) / `sockets` (ONE socket; SI seating/rejection
+machinery reused verbatim — REQ-0054 rescue) / `flavor` / `i18n.ja`.
+**Illustration-first:** a unit def may only be authored against S7-accepted art.
+
+### 4.3 Validation chain (mirrors the item pipeline)
+Static validate (unit ALLOWED_KEYS, closed vocab) → engine integrate (occupies exactly
+1 BP cell; connection-resolution smoke test) → preview gallery on backpack-dev →
+**STOP for user review**. In the registry era these become the content-data registry
+checks: `schema_vocab` / `engine_types` / `gen_data` / `integrate` on each `unit_def`
+variant. **Honest gap:** as with monsters/TMs, `validateBody` has **no `unit` kind**
+(`item | si` only); a first-class unit validator is a future code REQ once REQ-0128/0129
+freeze the connection/charge grammar. `i18n.ja` mandatory; nothing enters a live target
+before green.
+
+### 4.4 Rescued design material (REQ-0130, via REQ-0054/0061 — roster seed only)
+- **Unit sockets:** a unit def may carry ONE socket; the lens/equipment-SI family
+  customizes behavior (adopted 2026-07-06). Socket tag naming settles in REQ-0129.
+- **8-type connective axis** (delay / divider / junction / toggle / terminal /
+  amplifier / splitter / condenser) becomes **roster seed material**; rescued LAW:
+  **each connective kit = exactly ONE deviation from standard behavior.** Teaching-
+  staircase wave first; acquisition by choosing which themed BP pack to open
+  (REQ-0062 lineage). Deterministic merge/counter/cap semantics are whatever REQ-0128
+  ratifies — consume, do not re-invent.
+
+### RATIFIED GENERATION ROUTE (REQ-0136, user verdict 2026-07-12)
+
+**Default route: `flux2` — FLUX.2 klein 4B distilled, GGUF Q8_0.**
+
+    unet    flux-2-klein-4b-Q8_0.gguf     (Apache 2.0, unsloth GGUF)
+    clip    qwen_3_4b.safetensors         (type: flux2)
+    vae     flux2-vae.safetensors
+    4 steps / cfg 1.0 / euler + Flux2Scheduler / SamplerCustomAdvanced
+
+Selected on merit over JuggernautXL V9 (incumbent) and DreamShaperXL Turbo v2.1
+in a 48-candidate bakeoff (2 items + 2 unit busts x 4 seeds x 3 checkpoints):
+
+| axis | flux2 | dsxl | v9 |
+|---|---|---|---|
+| near-white background (the brief) | **16/16** | 1/16 | 5/16 |
+| warm s/image (RTX 2080, 1024px) | **10 s** | 20 s | 40 s |
+| 48-candidate roster batch | **14.8 min** | 21.3 min | 35.5 min |
+| VRAM peak | 6842 MiB | 6388 MiB | 6516 MiB |
+| licence | **Apache 2.0** | OpenRAIL++-M | incumbent terms |
+
+The "NOT photorealistic" prompting tax is gone: FLUX obeys the painterly brief
+directly instead of being argued into it. Switching to a *different SDXL*
+checkpoint did NOT fix it -- DreamShaperXL, the nominally stylized contender,
+was the most photoreal of the three. The whole SDXL family fights this brief.
+
+**Three things that are NOT optional on this route:**
+
+1. **The negative prompt is INACTIVE.** Distilled klein samples at cfg 1.0,
+   where the guider applies no classifier-free guidance, and the official graph
+   feeds a ConditioningZeroOut of the positive in as the negative. Defs keep
+   their `gen_negative` (the sdxl route still uses it), but on flux2 it is
+   accepted and DISCARDED. **Steer style from the POSITIVE prompt.** The tool
+   prints a warning once per run so this cannot rot silently.
+
+2. **Lower seed variety.** Near-deterministic sampling means 4 seeds yield 4
+   close variants, not 4 alternatives (measured pairwise pixel delta 14.6 vs
+   41.1 for v9). The flip side: all 4 are usable, whereas v9's "variety" was
+   substantially multiple-object and cropped brief violations. Budget re-rolls
+   by changing the PROMPT, not the seed.
+
+3. **RESTART ComfyUI between routes/legs -- the problem is HOST RSS, not VRAM.**
+   Corrected 2026-07-14 (REQ-0158): the earlier wording "`/free` is not enough"
+   was wrong about VRAM. `POST /free {"unload_models":true,"free_memory":true}`
+   DOES release VRAM, even while idle -- `set_flag()` notifies the prompt worker
+   (`execution.py:1387`), which runs `unload_all_models()` + `gc.collect()` +
+   `soft_empty_cache()` (`torch.cuda.empty_cache()`) within ~10 s (`main.py:383`).
+   What `/free` does NOT do is shrink host RSS: freed weights return to the Python
+   allocator, not to the OS. A long-lived process that has served SDXL and then
+   FLUX reaches ~19 GB RSS, fills swap, and the box stops responding (observed
+   2026-07-12) -- THAT is why crossing model families needs a process restart. Generation
+   and matting must also be separate phases (`--phase gen|matte`) with ComfyUI
+   DOWN during matte: rembg `alpha_matting` peaks at 12-13 GB RSS, which does
+   not fit alongside a resident model on the 23 GB box. Eight global OOM kills
+   on 2026-07-12 came from exactly that overlap.
+
+The `sdxl` route (JuggernautXL V9, 30 steps, cfg 6.5, dpmpp_2m/karras) is
+**FROZEN — NOT a fallback, NOT a production route.** User decision 2026-07-13
+(REQ-0150, "Flux2化"): one route for all image generation. It is kept runnable
+for exactly one purpose — **reproducing historical SDXL-era batches**:
+`gen_item_icons.py --route sdxl`. Reaching for it because flux2 is inconvenient
+is a regression, not a fallback; if flux2 cannot do something, that is a finding
+for the user, not a reason to go back.

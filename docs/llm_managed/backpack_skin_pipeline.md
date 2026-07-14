@@ -1,3 +1,27 @@
+
+> ## ART: SUPERSEDED by `art_pipeline.md` (REQ-0150, 2026-07-13)
+>
+> Everything in this file about **image generation** — checkpoints, LoRAs, samplers,
+> steps, prompts, negative prompts, tiling, generation sizes, tool names — is
+> **out of date and must not be followed**. It describes the retired SDXL route
+> and/or the retired Norse dark-fantasy painterly art direction.
+>
+> The current route, style and tools are in **`art_pipeline.md`**. Two user
+> decisions (2026-07-13) supersede this file's art content:
+> **(1) one route: flux2** — SDXL is retired and its code is deleted;
+> **(2) a new art direction** (InvokeAI Anime / Concept Art (Fantasy) templates,
+> euler / 30 steps / cfg 1.0 / no LoRAs / no negative), which supersedes the Norse
+> painterly direction **including REQ-0127's ratified unit roster style**.
+>
+> > The SDXL `SeamlessTile` fill recipe is **dead** — `SeamlessTile` is a NO-OP on
+> FLUX (proved bit-identical, 4/4). The FLUX recipe is `CircularVAEDecode` alone.
+> Skins are now generated AND composed by script: `tools/gen_bpskin.py` +
+> `tools/bpskin_compose.py` (`art_pipeline.md` §6). The BS-G5 edge-tile rotation
+> exception is moot: the welt is derived from a distance transform, so there is
+> no tile atlas to orient.
+>
+> The NON-art content of this file (schema, data model, review flow) still stands.
+
 # Backpack Skin Generation Pipeline — v1.0 (RATIFIED by user "all green", 2026-07-12)
 
 > Split out of `unit_icon_pipeline_proposal.md` by user direction (2026-07-12).
@@ -135,8 +159,24 @@ BS-G5), or all orientations are authored/derived at build time.
   Measured seam ratio (wrap-edge discontinuity / interior baseline; 1.0 =
   indistinguishable from the texture): **0.83–1.09 seamless vs 2.76–3.77
   control**, across 2 motifs × 2 seeds, zero overlap. Recipe is architectural
-  and carries to any SDXL checkpoint (re-run the offset check once on the
-  REQ-0136-ratified checkpoint; NOT valid for FLUX-family).
+  and carries to any SDXL checkpoint — but **NOT to the FLUX family**, and that
+  now bites.
+
+  **THIS RECIPE IS FROZEN (user decision, 2026-07-13 — REQ-0150 "Flux2化").**
+  The program moves to **one route: flux2** for all image generation; SDXL is
+  retired. Circular Conv2d padding is SDXL-UNet-specific, so this recipe — the
+  skin pipeline's only green result — **does not survive the migration** and
+  must be **re-solved on FLUX** (a FLUX-native seamless analogue, or tiling
+  repaired in post on an oversized flux2 render). That spike is a **blocking
+  gate of REQ-0150**, and its verdict must be measured against the seam ratio
+  below, not asserted.
+
+  Until that spike lands: **no skin batch may be briefed**, and the numbers below
+  stand only as the SDXL-era baseline to beat. Do NOT "fix" this by pointing the
+  skin route at flux2 with the circular patches still in the graph (they are
+  silently inert there), and do NOT quietly re-introduce SDXL — if FLUX has no
+  answer, that is a finding to bring to the user, not a licence to fork the
+  route.
   Circular padding makes a tile *joinable*, not *tileable-looking* — the
   allover-pattern prompt discipline (no focal object, no vignette/gradient,
   uniform density edge to edge) is still mandatory.

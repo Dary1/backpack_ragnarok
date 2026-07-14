@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bash tools/ci.sh
-(cd client && npm run build)
+(cd client && pnpm run build)
 if git status --porcelain web/app | grep -q .; then
   git add web/app
   git commit -m "dist rebuild (web/app/) via tools/release.sh -- CI green"

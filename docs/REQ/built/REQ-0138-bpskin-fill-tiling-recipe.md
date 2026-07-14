@@ -190,3 +190,23 @@ SDXL (~11–18 GB RSS) alongside rembg's `alpha_matting` (pymatting, 12–13 GB
 RSS) does not fit the 23 GB box — that overlap caused 8 global OOM kills on
 2026-07-12. Generation and matting are now separate phases with ComfyUI
 stopped in between.
+
+
+---
+
+## SUPERSEDED — REQ-0150 (Flux2化), user decision 2026-07-13
+
+The user has moved the program to **one route: flux2**; SDXL is retired
+(REQ-0150). This REQ's recipe (`SeamlessTile` + `CircularVAEDecode`) patches
+**circular Conv2d padding into the SDXL UNet** and is architecture-specific: it
+**does not port to FLUX**.
+
+So the only green result in the skin pipeline **does not survive the migration.**
+
+- This recipe is **FROZEN**. Do not run it as production; do not point it at
+  flux2 (the patches go silently inert there and the seam comes back).
+- Seamless tiling must be **re-solved on FLUX** — a blocking gate of REQ-0150.
+- **This file's numbers are the baseline that re-solve must beat**, and they are
+  why this REQ still matters: seam ratio **0.83–1.09 seamless vs 2.76–3.77
+  control**, 2 motifs × 2 seeds, zero overlap. A FLUX recipe that cannot show
+  the same measurement is not a replacement, it is a hope.

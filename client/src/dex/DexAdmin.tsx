@@ -23,6 +23,10 @@
 //      grid and detail list row; the .dex-admin-list-thumb wrapper hugs
 //      its content so this only grows each row, no well to overflow.
 //
+// REQ-0145b (cd): the form-model helpers (EffectRow, effectToRow,
+// rowToEffect, defaultEffectRow, numToStr) moved VERBATIM to
+// ./adminForm.ts; this component keeps the UI.
+//
 // Server-side validation (server/admin.cjs) is the actual source of
 // truth -- every rule enforced here client-side is a UX convenience
 // (immediate feedback, dropdown-constrained input) and NOT a substitute
@@ -30,6 +34,8 @@
 // side regardless of what this form allows the user to type.
 import { useEffect, useMemo, useState } from 'react';
 import { grantWarehouseItem, putAdminItem, type ApiContentPayload, type ApiItemEntry, type ApiMe, type ApiSIEntry } from '../api';
+import { invalidateContentCache } from '../lib/contentCache';
+import { defaultEffectRow, effectToRow, rowToEffect, type EffectRow } from './adminForm';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
 import type { Locale } from '../store';
@@ -73,82 +79,6 @@ function alignOf(e: ApiItemEntry | ApiSIEntry) {
   return 'align' in e ? e.align : undefined;
 }
 
-// Effect form-row shape -- a superset of every verb's optional fields, so
-// one form row component covers every verb without a separate component
-// per verb type. Fields irrelevant to the selected verb/trigger are
-// simply not sent (validateBody on the server only looks at what a given
-// trigger/verb actually needs).
-interface EffectRow {
-  triggerT: string;
-  secsLo: string;
-  secsHi: string;
-  verbT: string;
-  nLo: string;
-  nHi: string;
-  status: string;
-  mult: string;
-}
-
-function numToStr(v: unknown): string {
-  return v === undefined || v === null || v === '' ? '' : String(v);
-}
-
-function effectToRow(eff: Record<string, unknown> | undefined): EffectRow {
-  const trigger = (eff?.trigger as Record<string, unknown>) || {};
-  const verb = (eff?.verb as Record<string, unknown>) || {};
-  const s = (trigger.s as unknown[]) || [];
-  const n = (verb.n as unknown[]) || [];
-  return {
-    triggerT: (trigger.t as string) || '',
-    secsLo: numToStr(s[0]),
-    secsHi: numToStr(s[1]),
-    verbT: (verb.t as string) || '',
-    nLo: numToStr(n[0]),
-    nHi: numToStr(n[1]),
-    status: (verb.status as string) || '',
-    mult: numToStr(verb.mult),
-  };
-}
-
-function rowToEffect(row: EffectRow): Record<string, unknown> {
-  const trigger: Record<string, unknown> = { t: row.triggerT };
-  if (row.triggerT === 'every_secs') {
-    trigger.s = [Number(row.secsLo), Number(row.secsHi)];
-  }
-  const verb: Record<string, unknown> = { t: row.verbT };
-  if (row.nLo !== '' && row.nHi !== '') {
-    verb.n = [Number(row.nLo), Number(row.nHi)];
-  }
-  if (['apply_status', 'add_on_hit_status', 'amp_status'].includes(row.verbT) && row.status) {
-    verb.status = row.status;
-  }
-  if (row.verbT === 'amp_status' && row.mult !== '') {
-    verb.mult = Number(row.mult);
-  }
-  return { trigger, verb };
-}
-
-/** REQ-0038: builds a new effect row with sensible defaults for the ADD
- * button's template picker -- trigger defaults to the first vocab
- * trigger, verb to the first vocab verb (both from payload.vocab, the
- * SAME closed-vocabulary lists server/admin.cjs validates against, per
- * the task's "reuse, don't invent a new list" instruction), and a
- * reasonable default numeric range (1-1) so the row is immediately
- * savable without the user having to fill in every field before their
- * first save attempt -- server-side validation still enforces every
- * rule regardless of these defaults. */
-function defaultEffectRow(vocab: ApiContentPayload['vocab']): EffectRow {
-  return {
-    triggerT: vocab.triggers[0] || 'battle_start',
-    secsLo: '1',
-    secsHi: '1',
-    verbT: vocab.verbs[0] || 'strike',
-    nLo: '1',
-    nHi: '1',
-    status: '',
-    mult: '',
-  };
-}
 
 type EditLocale = 'en' | 'ja';
 
@@ -290,6 +220,10 @@ export function DexAdmin({ locale, payload, onSaved }: DexAdminProps) {
         body.stretch = form.stretch;
       }
       await putAdminItem(selected.id, body);
+      // REQ-0145b (cc): content just changed server-side -- drop the
+      // module-level content cache BEFORE onSaved() triggers DexRoot's
+      // reload, so the reload refetches instead of replaying the memo.
+      invalidateContentCache();
       setSaveOk(true);
       onSaved();
     } catch (e) {

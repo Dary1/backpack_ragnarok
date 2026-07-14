@@ -131,7 +131,25 @@ from scipy import ndimage
 from rembg import remove, new_session
 
 COMFY = "http://127.0.0.1:8188"
-CKPT = "JuggernautXL_RunDiffusionPhoto2_V9_Final.safetensors"
+
+# ---------------------------------------------------------------------------
+# THE ROUTE AND THE STYLE LIVE IN ONE PLACE EACH. This file used to carry its own
+# copy of the FLUX config, the sampler defaults and the flux2 graph; three other
+# tools carried the same copy. REQ-0150 collapsed all four into tools/art_route.py
+# (route + graph) and tools/art_style.py (templates + prompt weighting). Do not
+# re-declare them here.
+#
+# The SDXL route is GONE, not frozen. It was retired by user decision (REQ-0150,
+# 2026-07-13) and every SDXL-era asset is being regenerated on the new art
+# direction, so there is nothing left for it to reproduce. It is in git history.
+import art_route as ROUTE                                              # noqa: E402
+import art_style as STYLE                                             # noqa: E402
+
+FLUX = ROUTE.FLUX
+COMFY = ROUTE.COMFY
+submit = ROUTE.submit
+wait_done = ROUTE.wait_done
+
 DEFAULT_SEEDS = [101, 202, 303, 404]
 COMFY_INPUT_DIR = os.path.expanduser("~/ComfyUI/input")
 COMFY_OUTPUT_DIR = os.path.expanduser("~/ComfyUI/output")
@@ -170,40 +188,12 @@ def get_rembg_session_birefnet():
 
 
 # =====================================================================
-# ComfyUI API plumbing (same pattern as tools/gen_monster_art.py)
+# ComfyUI API plumbing lives in tools/art_route.py. It used to be copied here,
+# and the copy carried a 300 s wait_done timeout -- which is SHORTER THAN THIS
+# BOX'S COLD LOAD (450-540 s). The copy also silently shadowed the import above,
+# so the first image of every batch timed out and the rest succeeded. Do not
+# re-add it. `submit` and `wait_done` are bound to art_route's at the top.
 # =====================================================================
-def submit(wf):
-    data = json.dumps({"prompt": wf}).encode()
-    req = urllib.request.Request(
-        COMFY + "/prompt", data=data, headers={"Content-Type": "application/json"}
-    )
-    try:
-        r = json.load(urllib.request.urlopen(req, timeout=30))
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"ComfyUI /prompt rejected workflow: {e} -- {body}")
-    if "error" in r:
-        raise RuntimeError(f"ComfyUI /prompt error: {r['error']}")
-    return r["prompt_id"]
-
-
-def wait_done(pid, timeout_s=300):
-    t0 = time.time()
-    while time.time() - t0 < timeout_s:
-        time.sleep(2)
-        try:
-            h = json.load(urllib.request.urlopen(COMFY + "/history/" + pid, timeout=20))
-        except Exception:
-            continue
-        if pid in h and h[pid].get("status", {}).get("completed"):
-            return h[pid]
-        # ComfyUI marks failed jobs as completed=False with a status_str;
-        # detect execution errors so callers don't spin the full timeout.
-        if pid in h:
-            status = h[pid].get("status", {})
-            if status.get("status_str") == "error":
-                return h[pid]
-    return None
 
 
 def check_conditioning_set_mask_available():
@@ -260,56 +250,25 @@ def build_cell_mask_image(mask_cells, bbox_cells, cell_px, gen_px, path_out):
 # Workflow construction
 # =====================================================================
 def build_workflow(pos_prompt, neg_prompt, gen_w, gen_h, seed, steps, cfg,
-                    sampler, scheduler, mask_image_filename=None):
-    """Build a ComfyUI graph: ckpt -> CLIP encode (pos/neg) -> [optional
-    ConditioningSetMask on positive only] -> EmptyLatentImage -> KSampler ->
-    VAEDecode -> SaveImage. filename_prefix is unique per (seed) call so the
-    caller can find its own output by glob without colliding with other
-    concurrent candidates (this tool runs jobs sequentially, but the prefix
-    also protects against stale files from a previous partial run)."""
-    wf = {
-        "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": CKPT}},
-        "2": {"class_type": "CLIPTextEncode", "inputs": {"text": pos_prompt, "clip": ["1", 1]}},
-        "3": {"class_type": "CLIPTextEncode", "inputs": {"text": neg_prompt, "clip": ["1", 1]}},
-        "4": {"class_type": "EmptyLatentImage", "inputs": {"width": gen_w, "height": gen_h, "batch_size": 1}},
-    }
-
-    positive_ref = ["2", 0]
-    if mask_image_filename:
-        # LoadImage the mask PNG (already written into ~/ComfyUI/input/) ->
-        # ImageToMask(red channel; grayscale PNG decodes R=G=B) -> MASK ->
-        # ConditioningSetMask applied to the POSITIVE conditioning only
-        # (subject-placement bias must not affect the negative prompt).
-        wf["10"] = {"class_type": "LoadImage", "inputs": {"image": mask_image_filename}}
-        wf["11"] = {"class_type": "ImageToMask", "inputs": {"image": ["10", 0], "channel": "red"}}
-        wf["12"] = {
-            "class_type": "ConditioningSetMask",
-            "inputs": {
-                "conditioning": ["2", 0],
-                "mask": ["11", 0],
-                "strength": 1.0,
-                "set_cond_area": "default",
-            },
-        }
-        positive_ref = ["12", 0]
-
-    wf["5"] = {
-        "class_type": "KSampler",
-        "inputs": {
-            "model": ["1", 0], "positive": positive_ref, "negative": ["3", 0],
-            "latent_image": ["4", 0], "seed": seed, "steps": steps, "cfg": cfg,
-            "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0,
-        },
-    }
-    wf["6"] = {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}}
-    prefix = f"item_gen_{seed}_{int(time.time() * 1000) % 100000}"
-    wf["7"] = {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": prefix}}
+                   sampler, scheduler=None, mask_image_filename=None):
+    """One graph, from tools/art_route.py. `neg_prompt` and `scheduler` are dead
+    SDXL-era parameters: the route has no negative (art_route refuses one) and no
+    scheduler (Flux2Scheduler derives its own sigmas). They are accepted so old
+    defs files still load, and warned about once, rather than silently honoured."""
+    if neg_prompt and not getattr(build_workflow, "_warned_neg", False):
+        print("NOTE gen_negative is DEAD on this route (distilled klein, cfg 1.0, "
+              "zeroed conditioning). It is being DISCARDED, not applied. Steer "
+              "style from gen_prompt.", flush=True)
+        build_workflow._warned_neg = True
+    prefix = "gen_%d_%d" % (seed, os.getpid())
+    wf = ROUTE.build_txt2img(
+        pos_prompt, gen_w, gen_h, seed, prefix,
+        steps=steps or ROUTE.STEPS,
+        cfg=ROUTE.CFG if cfg is None else cfg,
+        sampler=sampler or ROUTE.SAMPLER,
+        mask_image=mask_image_filename)
     return wf, prefix
 
-
-# =====================================================================
-# Post-processing: downscale + alpha matte
-# =====================================================================
 def downscale_lanczos(src_path, dst_path, target_w, target_h):
     im = Image.open(src_path).convert("RGB")
     im = im.resize((target_w, target_h), Image.LANCZOS)
@@ -413,55 +372,49 @@ def _matte_border_key(im_rgb):
     return Image.fromarray(rgba, mode="RGBA")
 
 
-def matte_alpha(src_path, dst_path, log_label=None):
-    """Two-strategy matte -- see module docstring for full rationale.
-
-    1. Primary: rembg birefnet-general (alpha_matting + post_process_mask
-       on) -- robust to any backdrop color/brightness.
-    2. Validity band: accept if COVERAGE_MIN <= opaque_fraction <=
-       COVERAGE_MAX.
-    3. Fallback if primary is out-of-band: border-color keying (median of
-       a thin border band, smoothstep color-distance alpha, small
-       morphological open for speckle).
-    4. If BOTH are out-of-band: keep whichever is closer to the band and
-       log a WARN -- there is no further automatic fallback.
-
-    Logs exactly one line per file: file, method used (birefnet|
-    borderkey), coverage%. log_label defaults to the basename of dst_path.
-
-    Same signature as before (src_path, dst_path) plus an optional
-    log_label kwarg -- existing callers that only pass two positional
-    args are unaffected.
-    """
-    label = log_label if log_label is not None else os.path.basename(dst_path)
-
-    im = Image.open(src_path).convert("RGB")
-
-    primary_img = _matte_birefnet(im)
+def matte_alpha_data(im_rgb):
+    """REQ-0152: the two-strategy matte as PURE DATA (no stdout, no file
+    write). Returns {method, image_alpha_coverage, in_band, image}. `image`
+    is the chosen RGBA PIL Image. `image_alpha_coverage` is the fraction of
+    pixels with alpha > ALPHA_OPAQUE_T (the disambiguated whole-image alpha
+    coverage). Same decision order matte_alpha() has always used:
+      1. birefnet primary; accept if in [COVERAGE_MIN, COVERAGE_MAX].
+      2. border-key fallback if primary out-of-band; accept if in-band.
+      3. both out-of-band -> keep whichever is closer to the band.
+    matte_alpha() is now a thin wrapper (file write + one-line log) over this,
+    so existing callers are unchanged; the matte.coverage_band kit consumes
+    the data form directly."""
+    primary_img = _matte_birefnet(im_rgb)
     primary_cov = _coverage(np.array(primary_img))
-
     if _in_band(primary_cov):
-        primary_img.save(dst_path)
-        print(f"MATTE {label} method=birefnet coverage={primary_cov * 100:.2f}%", flush=True)
-        return
-
-    fallback_img = _matte_border_key(im)
+        return {"method": "birefnet", "image_alpha_coverage": primary_cov,
+                "in_band": True, "image": primary_img}
+    fallback_img = _matte_border_key(im_rgb)
     fallback_cov = _coverage(np.array(fallback_img))
-
     if _in_band(fallback_cov):
-        fallback_img.save(dst_path)
-        print(f"MATTE {label} method=borderkey coverage={fallback_cov * 100:.2f}%", flush=True)
-        return
-
-    # Both out-of-band: keep whichever is closer to the validity band.
+        return {"method": "borderkey", "image_alpha_coverage": fallback_cov,
+                "in_band": True, "image": fallback_img}
     if _band_distance(primary_cov) <= _band_distance(fallback_cov):
-        chosen_img, chosen_method, chosen_cov = primary_img, "birefnet", primary_cov
-    else:
-        chosen_img, chosen_method, chosen_cov = fallback_img, "borderkey", fallback_cov
+        return {"method": "birefnet", "image_alpha_coverage": primary_cov,
+                "in_band": False, "image": primary_img}
+    return {"method": "borderkey", "image_alpha_coverage": fallback_cov,
+            "in_band": False, "image": fallback_img}
 
-    chosen_img.save(dst_path)
-    print(f"MATTE {label} method={chosen_method} coverage={chosen_cov * 100:.2f}%", flush=True)
-    print(f"WARN {label} coverage={chosen_cov * 100:.2f}% method={chosen_method} OUT-OF-BAND", flush=True)
+
+def matte_alpha(src_path, dst_path, log_label=None):
+    """Two-strategy matte -- see module docstring + matte_alpha_data() for the
+    full rationale. Thin wrapper over matte_alpha_data(): runs the matte, saves
+    the chosen RGBA to dst_path, logs exactly one MATTE line (+ a WARN line
+    when out-of-band). Signature unchanged (src_path, dst_path, optional
+    log_label), so existing callers are unaffected."""
+    label = log_label if log_label is not None else os.path.basename(dst_path)
+    im = Image.open(src_path).convert("RGB")
+    d = matte_alpha_data(im)
+    d["image"].save(dst_path)
+    cov = d["image_alpha_coverage"]
+    print(f"MATTE {label} method={d['method']} coverage={cov * 100:.2f}%", flush=True)
+    if not d["in_band"]:
+        print(f"WARN {label} coverage={cov * 100:.2f}% method={d['method']} OUT-OF-BAND", flush=True)
 
 
 def alpha_coverage_fraction(path):
@@ -574,21 +527,42 @@ def main():
     ap.add_argument("--outdir", default="content/batches/batch-003-item-icons/candidates")
     ap.add_argument("--candidates", type=int, default=4, help="number of candidates per item (<= len(--seeds))")
     ap.add_argument("--seeds", default="101,202,303,404")
-    ap.add_argument("--steps", type=int, default=30)
-    ap.add_argument("--cfg", type=float, default=6.5)
-    ap.add_argument("--sampler", default="dpmpp_2m")
-    ap.add_argument("--scheduler", default="karras")
+    # Sampler defaults come from tools/art_route.py -- the user's ratified
+    # settings (euler / 30 steps / cfg 1.0). Never hardcode them here.
+    ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--cfg", type=float, default=None)
+    ap.add_argument("--sampler", default=None)
+    ap.add_argument("--scheduler", default=None,
+                    help="DEAD. Flux2Scheduler derives its own sigmas. Accepted "
+                         "so old invocations do not crash; ignored.")
     ap.add_argument("--no-mask", action="store_true", help="disable ConditioningSetMask regional bias even if mask_cells is present")
     ap.add_argument("--force", action="store_true", help="regenerate even if output files already exist")
     ap.add_argument("--no-matte", action="store_true",
-                    help="generate raws only, skip the rembg matte step. Pairs with "
-                         "--rematte-only: on a memory-tight box, holding ComfyUI "
-                         "(~11GB) and birefnet (~12GB) at once OOMs, so generate "
-                         "first, stop ComfyUI, then rematte. (REQ-0135b)")
+                    help="GENERATION PHASE: write raw candidates only, skip the "
+                         "inline matte. Pair with a later --rematte-only run "
+                         "made with ComfyUI STOPPED. Required for big batches: "
+                         "rembg alpha_matting peaks at 12-13 GB RSS and will "
+                         "not fit alongside a resident model (~11 GB) on the "
+                         "23 GB box -- co-residency OOM-kills the run. "
+                         "(REQ-0135b and REQ-0136 hit this independently.)")
     ap.add_argument("--rematte-only", action="store_true",
                      help="skip generation entirely; regenerate _alpha.png for every existing raw "
                           "candidate PNG in --outdir via the current matte_alpha() (respects --ids)")
     a = ap.parse_args()
+
+    if a.steps is None:
+        a.steps = ROUTE.STEPS
+    if a.cfg is None:
+        a.cfg = ROUTE.CFG
+    if a.sampler is None:
+        a.sampler = ROUTE.SAMPLER
+    if a.scheduler:
+        print("NOTE --scheduler is DEAD on this route (Flux2Scheduler derives "
+              "its own sigmas). Ignored.", flush=True)
+    print(f"route: flux2  steps={a.steps} cfg={a.cfg} sampler={a.sampler}",
+          flush=True)
+    print(f"  unet={FLUX['unet']} clip={FLUX['clip']} vae={FLUX['vae']}",
+          flush=True)
 
     if a.rematte_only:
         # No ComfyUI, no --defs read needed for this path -- it operates
@@ -628,7 +602,12 @@ def main():
 
     for entry in entries:
         eid = entry["id"]
-        pos_prompt = entry["gen_prompt"]
+        # `gen_prompt` is the SUBJECT only. The style template lives in
+        # tools/art_style.py -- one place, so a direction change is one edit and
+        # not a sweep through every defs file. `kind` selects it ("item" or
+        # "unit"; both are the Anime template today, but they are allowed to
+        # diverge without touching this tool).
+        pos_prompt = STYLE.for_kind(entry.get("kind", "item"), entry["gen_prompt"])
         neg_prompt = entry.get("gen_negative", "")
         render = entry["gen_render"]
         gen_w, gen_h = render["gen_px"][0], render["gen_px"][1]
@@ -657,7 +636,13 @@ def main():
             raw_path = os.path.join(a.outdir, raw_name)
             alpha_path = os.path.join(a.outdir, alpha_name)
 
-            if not a.force and os.path.exists(raw_path) and os.path.exists(alpha_path):
+            # A candidate is already done if its RAW exists -- and, only when
+            # this run would also matte it, if its alpha exists too. Requiring
+            # the alpha unconditionally makes --no-matte resumes regenerate
+            # everything, because --no-matte never writes an alpha.
+            done_here = os.path.exists(raw_path) and (
+                a.no_matte or os.path.exists(alpha_path))
+            if not a.force and done_here:
                 print(f"[{done_jobs}/{total_jobs}] SKIP (exists) {raw_name}", flush=True)
                 continue
 
@@ -667,7 +652,7 @@ def main():
             try:
                 wf, prefix = build_workflow(
                     pos_prompt, neg_prompt, gen_w, gen_h, seed, a.steps, a.cfg,
-                    a.sampler, a.scheduler, mask_image_filename=mask_image_filename,
+                    a.sampler, None, mask_image_filename=mask_image_filename,
                 )
                 pid = submit(wf)
                 result = wait_done(pid)
@@ -700,7 +685,8 @@ def main():
                 # what actually matters).
                 if a.no_matte:
                     print(f"[{done_jobs}/{total_jobs}] SKIP-MATTE {alpha_name} "
-                          f"(--no-matte; rematte in a separate pass)", flush=True)
+                          f"(matte deferred: run --rematte-only with ComfyUI "
+                          f"stopped)", flush=True)
                 else:
                     matte_alpha(raw_path, alpha_path, log_label=alpha_name)
 

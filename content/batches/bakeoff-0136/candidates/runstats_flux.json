@@ -1,0 +1,119 @@
+{
+  "contender": "flux",
+  "config": {
+    "kind": "flux2",
+    "unet": "flux-2-klein-4b-Q8_0.gguf",
+    "clip": "qwen_3_4b.safetensors",
+    "vae": "flux2-vae.safetensors",
+    "steps": 4,
+    "cfg": 1.0,
+    "sampler": "euler"
+  },
+  "images": [
+    {
+      "id": "hilt",
+      "seed": 202,
+      "secs": 353.8
+    },
+    {
+      "id": "hilt",
+      "seed": 303,
+      "secs": 14.7
+    },
+    {
+      "id": "hilt",
+      "seed": 404,
+      "secs": 640.6
+    },
+    {
+      "id": "tower_shield",
+      "seed": 101,
+      "secs": 610.9
+    },
+    {
+      "id": "tower_shield",
+      "seed": 202,
+      "secs": 561.6
+    },
+    {
+      "id": "tower_shield",
+      "seed": 303,
+      "secs": 539.4
+    },
+    {
+      "id": "tower_shield",
+      "seed": 404,
+      "secs": 557.4
+    },
+    {
+      "id": "unit-elf",
+      "seed": 101,
+      "secs": 546.2
+    },
+    {
+      "id": "unit-elf",
+      "seed": 202,
+      "secs": 568.1
+    },
+    {
+      "id": "unit-elf",
+      "seed": 303,
+      "secs": 600.5
+    },
+    {
+      "id": "unit-elf",
+      "seed": 404,
+      "secs": 568.8
+    },
+    {
+      "id": "unit-berserker",
+      "seed": 101,
+      "secs": 571.2
+    },
+    {
+      "id": "unit-berserker",
+      "seed": 202,
+      "secs": 575.0
+    },
+    {
+      "id": "unit-berserker",
+      "seed": 303,
+      "secs": 571.9
+    },
+    {
+      "id": "unit-berserker",
+      "seed": 404,
+      "secs": 586.6
+    }
+  ],
+  "started": "2026-07-12 07:42:59",
+  "vram_peak_mib": 6842,
+  "cold_first_image_s": 353.8,
+  "timing_samples_s": [
+    14.7,
+    353.8,
+    395.8,
+    539.4,
+    546.2,
+    557.4,
+    561.6,
+    568.1,
+    568.8,
+    571.2,
+    571.9,
+    575.0,
+    586.6,
+    600.5,
+    610.9,
+    640.6
+  ],
+  "n_timed": 16,
+  "warm_median_s": 568.5,
+  "warm_mean_s": 516.4,
+  "warm_min_s": 14.7,
+  "warm_max_s": 640.6,
+  "cold_loads_n": 0,
+  "cold_load_s": [],
+  "naive_warm_s_per_image_DEPRECATED": 536.6,
+  "stats_note": "warm_* exclude cold model loads (>=3x median); timings are generation-only (submit..wait_done), matte excluded"
+}

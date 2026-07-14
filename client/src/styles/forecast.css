@@ -1,0 +1,301 @@
+/* ===================================================================
+   REQ-0057 -- Ray Forecast Overlay ("weather map").
+
+   The heat layer sits INSIDE .board-gridbox (position:relative), over the
+   Pixi <canvas>, on the same PAD=38 / CELL=80 grid .board-coords above
+   already hard-codes -- board/geom.ts is the source of both numbers.
+
+   pointer-events:none is LOAD-BEARING, not a nicety: the whole premise of
+   REQ-0057 is that the map is readable WHILE you build, so every board
+   gesture (PO drag, dblclick-rotate, BP move-handle, long-press) must pass
+   straight through this layer. The per-cell tooltip is therefore driven by a
+   window-level pointermove hit-test in ForecastOverlay.tsx, never by :hover.
+   =================================================================== */
+.forecast-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3; /* above .board-coords (2), below nothing interactive */
+}
+
+.forecast-cell {
+  position: absolute;
+  width: 80px;  /* CELL */
+  height: 80px; /* CELL */
+  box-sizing: border-box;
+  transition: background 120ms linear;
+}
+
+.forecast-cell-hover {
+  outline: 2px solid var(--bone-1, #e8e2d4);
+  outline-offset: -2px;
+}
+
+/* The per-cell tooltip. Anchored above the hovered cell, centered on it;
+   translate(-50%, -100%) keeps it off the cell it describes. */
+.forecast-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 8px));
+  min-width: 190px;
+  max-width: 280px;
+  padding: 8px 10px;
+  border: 1px solid var(--gold-2, #8a7440);
+  border-radius: 4px;
+  background: rgba(18, 16, 14, 0.96);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  color: var(--bone-1, #e8e2d4);
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.forecast-tip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
+  border-bottom: 1px solid rgba(138, 116, 64, 0.4);
+}
+
+.forecast-tip-cell {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--gold-1, #d8bf7a);
+}
+
+.forecast-tip-dps {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.forecast-tip-status {
+  color: var(--bone-3, #9a927f);
+  margin-bottom: 4px;
+}
+
+.forecast-tip-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.forecast-tip-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 8px;
+  align-items: baseline;
+}
+
+.forecast-tip-item.is-status {
+  color: var(--bone-3, #9a927f);
+}
+
+.forecast-tip-src {
+  grid-column: 1;
+  color: var(--bone-2, #c3bba6);
+}
+
+.forecast-tip-skill {
+  grid-column: 1;
+  font-size: 10px;
+  color: var(--bone-3, #9a927f);
+}
+
+.forecast-tip-amt {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+}
+
+/* ---- the controls strip under the canvas stage ---- */
+.forecast-panel {
+  margin-top: 10px;
+}
+
+.forecast-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.forecast-toggle {
+  padding: 5px 12px;
+  border: 1px solid var(--gold-2, #8a7440);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--bone-2, #c3bba6);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.forecast-toggle:hover {
+  border-color: var(--gold-1, #d8bf7a);
+  color: var(--bone-1, #e8e2d4);
+}
+
+.forecast-toggle.is-on {
+  background: rgba(216, 191, 122, 0.16);
+  border-color: var(--gold-1, #d8bf7a);
+  color: var(--gold-1, #d8bf7a);
+}
+
+.forecast-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.forecast-field-label {
+  font-size: 11px;
+  color: var(--bone-3, #9a927f);
+  letter-spacing: 0.04em;
+}
+
+.forecast-select,
+.forecast-input {
+  padding: 3px 6px;
+  border: 1px solid var(--line, #3a352c);
+  border-radius: 3px;
+  background: var(--panel, #1a1712);
+  color: var(--bone-1, #e8e2d4);
+  font-size: 12px;
+}
+
+.forecast-input {
+  width: 62px;
+}
+
+.forecast-status {
+  font-size: 11px;
+  color: var(--bone-3, #9a927f);
+}
+
+.forecast-status-error {
+  color: var(--bad, #d9694f);
+}
+
+.forecast-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--bone-3, #9a927f);
+}
+
+.forecast-legend-label {
+  letter-spacing: 0.06em;
+}
+
+.forecast-legend-min,
+.forecast-legend-max {
+  font-variant-numeric: tabular-nums;
+  color: var(--bone-2, #c3bba6);
+}
+
+/* The ramp mirrors pressure.ts's heatColor(): hsl 205deg (cold) -> 0deg
+   (hot). Keep the two in step -- a legend that lies about the tint is worse
+   than no legend. */
+.forecast-legend-ramp {
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--line, #3a352c);
+  background: linear-gradient(
+    to right,
+    hsla(205, 82%, 52%, 0.16),
+    hsla(103, 82%, 52%, 0.33),
+    hsla(0, 82%, 52%, 0.5)
+  );
+}
+
+.forecast-disclaimer {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--bone-3, #9a927f);
+  opacity: 0.85;
+}
+
+/* ---- the schedule page's per-slot summary (CreateRoomForm) ---- */
+.slot-pressure {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #3a352c);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.slot-pressure-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.slot-pressure-title {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--bone-2, #c3bba6);
+}
+
+.slot-pressure-unit {
+  font-size: 10px;
+  color: var(--bone-3, #9a927f);
+}
+
+.slot-pressure-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.slot-pressure-row {
+  display: grid;
+  grid-template-columns: 4.5em 5.5em 1fr 3.5em;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--bone-3, #9a927f);
+}
+
+.slot-pressure-row.is-worst .slot-pressure-name {
+  color: var(--gold-1, #d8bf7a);
+  font-weight: 600;
+}
+
+.slot-pressure-box {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.slot-pressure-bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.slot-pressure-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.slot-pressure-mean {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--bone-2, #c3bba6);
+}

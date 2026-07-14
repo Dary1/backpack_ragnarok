@@ -22,6 +22,7 @@
 // this before revealing the "engraved" success state.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Locale } from '../store';
+import { usePolledResource } from '../lib/usePolledResource';
 import { loadGame, useGameStore } from '../store';
 import { t } from '../i18n';
 import {
@@ -45,11 +46,8 @@ const SEARCH_DEBOUNCE_MS = 300;
 export function RagnarokPage({ locale }: RagnarokPageProps) {
   const snapshot = useGameStore();
 
-  const [season, setSeason] = useState<ApiRagnarokSeasonResponse | null>(null);
   const [order, setOrder] = useState<ApiRagnarokOrderResponse | null>(null);
   const [einherjar, setEinherjar] = useState<ApiRagnarokEinherjarResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Devotion candidate selection + its server preview (single source of
   // truth for BOTH the manifest and the me-row projection).
@@ -85,22 +83,20 @@ export function RagnarokPage({ locale }: RagnarokPageProps) {
     if (aliveRef.current) setEinherjar(res);
   }, []);
 
-  // Initial load: season + order + einherjar together.
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [s] = await Promise.all([fetchRagnarokSeason(), loadOrder(), loadEinherjar()]);
-        if (aliveRef.current) setSeason(s);
-      } catch (e) {
-        if (aliveRef.current) setError(t(locale, 'ragnarok.loadError') + (e instanceof Error ? e.message : String(e)));
-      } finally {
-        if (aliveRef.current) setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Initial load: season + order + einherjar together (REQ-0145b (cc):
+  // rides usePolledResource's trackLoading mode -- loading starts true,
+  // error cleared at load start, same composite Promise.all; `season`
+  // is the hook's data, untouched on failure exactly as before).
+  const { data: season, loading, error } = usePolledResource<ApiRagnarokSeasonResponse>(
+    async () => {
+      const [s] = await Promise.all([fetchRagnarokSeason(), loadOrder(), loadEinherjar()]);
+      return s;
+    },
+    {
+      trackLoading: true,
+      formatError: (e) => t(locale, 'ragnarok.loadError') + (e instanceof Error ? e.message : String(e)),
+    }
+  );
 
   // Debounced find-by-name: refetch the order with ?q= whenever the query
   // changes (skips the very first mount, handled by the initial load).

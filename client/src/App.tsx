@@ -86,11 +86,18 @@ import { Board } from './board/Board';
 import { InventoryBoard } from './board/InventoryBoard';
 import { useInventorySlot } from './board/inventorySlot';
 import { BoardCoords, CanvasStatsChip, EmbarkDock, SaveSeal } from './CanvasChrome';
+import { ForecastOverlay } from './forecast/ForecastOverlay'; // REQ-0057
+import { ForecastPanel } from './forecast/ForecastPanel'; // REQ-0057
 import { DexRoot } from './dex/DexRoot';
+import { ArtAdminPage } from './artadmin/ArtAdminPage'; // REQ-0151
+import { ContentAdminPage } from './contentadmin/ContentAdminPage'; // REQ-0155
 import { DexCardProvider } from './dex/DexCardWindow'; // REQ-0052
 import { Header } from './Header';
 import { t } from './i18n';
 import { FloatingItemTip } from './FloatingItemTip';
+// REQ-0142: the link-trace panel, mounted app-level for the same reason the
+// item tip is -- it floats over whichever board the pointer is interrogating.
+import { BeamTracePanel } from './BeamTracePanel';
 import { InviteBanner } from './InviteBanner';
 import { LandingPage } from './landing/LandingPage';
 import { Nav } from './Nav';
@@ -210,6 +217,14 @@ function App() {
               <div className="board-gridbox">
                 <Board />
                 <BoardCoords />
+                {/* REQ-0057: the ray-forecast heat layer. A pointer-events:none
+                    DOM layer over the SAME grid geometry BoardCoords already
+                    mirrors (PAD 38 / CELL 80) -- the Pixi board underneath is
+                    untouched, so every drag/dblclick/long-press keeps working
+                    while the weather map is up (which is the whole point:
+                    "visible WHILE building"). Renders nothing when the overlay
+                    is off. */}
+                <ForecastOverlay />
               </div>
               <div className="boardfoot">
                 {snapshot.status === 'ready' ? <SquadTabs /> : null}
@@ -223,6 +238,9 @@ function App() {
                   this relatively-positioned .board-wrap-canvas). */}
               <SquadTrashZone />
             </div>
+            {/* REQ-0057: the forecast's controls + legend, under the stage.
+                Renders just the toggle until the overlay is switched on. */}
+            <ForecastPanel />
           </div>
           {/* REQ-0041: render the inventory column INLINE here only when
               no slot has claimed it (see InventoryColumn's doc above) --
@@ -266,6 +284,8 @@ function App() {
         {route === 'friends' ? <PlaceholderPage titleKey="nav.friends" locale={snapshot.locale} /> : null}
         {route === 'settings' ? <Settings locale={snapshot.locale} /> : null}
         {route === 'dex' ? <DexRoot locale={snapshot.locale} dexFocusId={snapshot.dexFocusId} /> : null}
+        {route === 'artadmin' ? <ArtAdminPage locale={snapshot.locale} /> : null}
+        {route === 'contentadmin' ? <ContentAdminPage locale={snapshot.locale} /> : null}
 
         {/* REQ-0119: one global floating item-tooltip overlay. Fixed-
             positioned and driven by board/itemTip.ts's pub-sub, so this
@@ -273,6 +293,7 @@ function App() {
             board (including the warehouse/expedition portal reuse) with no
             per-page wiring. */}
         <FloatingItemTip />
+        <BeamTracePanel />
       </main>
     </div>
     </DexCardProvider>
