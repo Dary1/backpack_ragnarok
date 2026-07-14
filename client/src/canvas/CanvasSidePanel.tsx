@@ -51,7 +51,7 @@ const LINK_KEYS = ['link', 'connect', 'conduit', 'prism', 'relay', 'bond', 'é€£ç
 
 function matchesFilter(def: ItemDef, filter: Filter): boolean {
   if (filter === 'all') return true;
-  if (filter === 'relic') return def.rarity === 'Relic';
+  if (filter === 'relic') return def.rarity === 'Relic' || (def.tags || []).some((tg) => String(tg).toLowerCase() === 'relic');
   const hay = (def.tags || []).join(' ').toLowerCase();
   const keys = filter === 'weapon' ? WEAPON_KEYS : filter === 'element' ? ELEMENT_KEYS : LINK_KEYS;
   return keys.some((k) => hay.includes(k.toLowerCase()));
