@@ -146,3 +146,13 @@ browsers resolve from `~/.cache/ms-playwright` under the real HOME (no override 
   PRE-EXISTING environment gap, unrelated to this REQ (our raster path uses Playwright, not the
   cairosvg check).
 
+
+### Live run record (orchestrator, 2026-07-14)
+- Executed with the REQ-0133 deploy (see that file's deployment record for the full
+  context): dry-run plan = 15 entities (8 po + 7 si; tm carries no icon-bearing corpus
+  entry — see the implementation log's tm decision), blade planned without LINKDEF.
+- Real run: artworks_created=15, renders_inserted=15 (all seed 2147483647 = the
+  unknown-environment sentinel per the user's convention), adoptions=15, defs_linked=14
+  (blade's explicit batch-004 selection untouched), skipped_foreign=0.
+- Idempotency proven live: immediate second run = 0 writes across all counters.
+- Status: stays in built/ awaiting S7 acceptance together with REQ-0133.
