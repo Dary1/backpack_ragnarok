@@ -167,3 +167,5 @@ with box lock, manual browser pass of each acceptance line, EN+JA).
     under GPU, so no targeted E2E_GPU=1 rerun was needed. Box lock acquired with
     no queue; the orchestrator QA instance (HOME=/tmp/bp_qa, :8899/:8902) was
     left untouched.
+
+- 2026-07-14 merged to master (30b7105, --no-ff) and deployed: dist rebuilt+verified on master (tsc/build/server tests green), backpack-api restarted, live-verified on backpack-dev.qtie.jp (schedule page + spoils rail + monitor, EN/JA). Transient conflict-marker artifact seen once on live index.html during the merge window; served content re-verified clean (grep + DOM walk = 0 hits).
