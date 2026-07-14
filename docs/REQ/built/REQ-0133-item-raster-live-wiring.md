@@ -166,3 +166,22 @@ Pixi + DOM registry-first), plus the e2e harness-seed + wiring spec and these lo
   backfill, but a clean api restart after the backfill guarantees the first client sees registry art.
 - `art_urls` is empty under the files backend by design (registry is pg-only) — the client sprite
   fallback covers it (same pixel post-0177).
+
+### Deployment record (orchestrator, 2026-07-14)
+- Merged to master (merge commit after fc449f6), dist rebuilt + committed, backpack-api +
+  backpack-web restarted. /api/content 200 with additive art_urls map.
+- LIVE BACKFILL (REQ-0177 tool): dry-run plan matched the corpus exactly (15 entities:
+  8 po + 7 si; blade planned WITHOUT LINKDEF, protecting its explicit batch-004 ref);
+  real run: artworks_created=15 renders_inserted=15 (seed 2147483647 sentinel)
+  adoptions=15 defs_linked=14 skipped_foreign=0; second run 0 writes (idempotency
+  proven live). api restarted after; art_urls now carries 15 entries.
+- POST-DEPLOY default e2e suite against the live services: 176/178 passed (14.2m);
+  the 2 failures (bp-rotate identity, reference-model red-rule no-op) are board-
+  interaction timing tests that PASSED on an isolated re-run (12/12, 2.3m) — load
+  flakes of the known REQ-0159 family, not regressions. contentadmin 22/0 and
+  artadmin 4/0 already green pre-merge on the branch.
+- Visible live effect: all 15 items render from the registry (pixels identical to the
+  sprite era — the registry serves the rasterized sprite icons); blade renders its
+  explicitly selected batch-004 AI icon. The art double-management is closed: the
+  registry is the single art ledger, the sprite sheet is a fallback tier only.
+- Status: both REQs stay in built/ awaiting S7 acceptance on the live screen.
