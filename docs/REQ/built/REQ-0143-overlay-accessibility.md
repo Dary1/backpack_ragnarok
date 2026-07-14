@@ -152,3 +152,47 @@ ratification of this output** (the decision method the user ratified 2026-07-12)
 ### Commits
 - code: `b9bbb42`
 - todo→built move: this commit.
+
+---
+
+## Merge & deploy record (wave-8 integration, final -- 2026-07-14)
+
+- **Merge:** `git merge --no-ff` of `req-0143-overlay-accessibility` (tip
+  `a75912f`) into master -> merge commit **`7bf4196`**. Clean merge (ort
+  strategy), **zero conflicts** (merge-base was master HEAD `38c646d`; branch 3
+  commits ahead, master 0 ahead). Board move already carried on the branch:
+  `docs/REQ/todo/REQ-0143-*` deleted, `docs/REQ/built/REQ-0143-*` added.
+- **Release gate** (`flock /tmp/backpack_ci.lock bash tools/release.sh`, FULL --
+  `DATABASE_URL` sourced from `server/.env`, **no SKIP_PG**): CI **GREEN,
+  CI_RC=0**. This run closes the builder`'s SKIP_PG gap: the Postgres api pass
+  ([5]-[5.46], incl. REQ-0144 moderation) AND the admin harness trio ([6.5]
+  artadmin 4/4 + art_inspect + contentadmin) both ran and passed. Server code is
+  untouched, as expected -> all green. overlay a11y harness **[5.9d]** green
+  (numbersHash `69b99885...`, golden match). client typecheck + build green.
+  Default e2e suite [7]: **178 passed / 0 failed**, incl. `reduced-motion.spec.ts`.
+  Dist rebuilt + committed -> **`3b142d2`**.
+  - Note: the first release attempt aborted on a single `artadmin.spec.ts:113`
+    `page.goto` 20s-timeout flake -- a documented admin-trio timing flake (see
+    REQ-0141 wave-7 record, identical failure). Isolated serial rerun of the
+    artadmin harness: **4/4 green (58.0s)**, confirming a flake; the re-run
+    release was fully green (artadmin 4/4 again). This REQ touches no admin/server
+    code.
+- **Deploy:** `systemctl --user restart backpack-api backpack-web` -> both
+  **active**. HTTP: `8801 /app/` = **200**, `8802 /api/health` = **200**.
+- **Post-deploy full e2e** (sanctioned wrapper `pnpm run e2e`, whole-box locked,
+  `E2E_GPU=1 E2E_PARALLEL=4`, base `http://127.0.0.1:8803`): **178 passed / 0
+  failed** (3.3m), incl. `reduced-motion.spec.ts:15` (REQ-0143) green. No flakes
+  this run; global-teardown restored live profile/content state.
+- **Final master HEAD:** `3b142d2` (dist rebuild) <- `7bf4196` (merge) <-
+  `a75912f`.
+- **STAYS in `built/`:** the BS-G2 numbers (border band **12 px @256/cell**;
+  fill contrast budget **>=3:1**, implied fill-L band **[0.1122, 0.2836]**)
+  remain an EXPLICIT OPEN **user ratification** of the harness output -- not a
+  machine gate. Worktree `~/backpack_ragnarok_worktrees/req-0143-overlay-accessibility`
+  kept.
+
+### WARNING -- USER ATTENTION (open)
+- **Ratify the BS-G2 numbers**: border band **12 px @256/cell** (= 3 board px @
+  64/cell); fill contrast budget **>=3.0:1** (WCAG 1.4.11). Both current
+  programmer-art dev skins sit BELOW the fill-L band (emitted as advice, not
+  enforced). On ratification, `git mv` REQ-0143 `built/ -> done/`.
