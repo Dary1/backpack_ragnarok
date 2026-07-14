@@ -27,10 +27,16 @@
 > v2.1) to Unit character icons. Golden below ratified by the user 2026-07-12
 > ("unit_icon_pipeline green"), including the revised G6 (skinnable identity).
 > Authoritative copy: `docs/llm_managed/unit_icon_pipeline.md` on the server.
+> v1.3 (2026-07-14, REQ-0128b/0129): §4.2 **RATIFIED** — the `unit/1` schema is no
+> longer provisional. Connection semantics (occluder set = Units only; pierce = link
+> every Unit in range; NO propagation) and the charge grammar are both frozen in
+> `content/vocab.json` v13. `sockets` REMOVED from the schema → REQ-0163 (draft).
+> `icon` is a free reference — the `icon-<id>` convention is dead. Ratified ≠
+> implemented: there is still no `unit` validator kind and no live unit target.
 > v1.2 (2026-07-14, REQ-0154; registry era): §4 added — unit artwork/data
-> registry facets + the absorbed REQ-0130 def sketch (provisional); shared
-> contracts reference `common_content_pipeline.md` §7. Art stays superseded by
-> `art_pipeline.md`.
+> registry facets + the absorbed REQ-0130 def sketch (provisional at the time; see
+> v1.3); shared contracts reference `common_content_pipeline.md` §7. Art stays
+> superseded by `art_pipeline.md`.
 > > v1.1 (2026-07-12, REQ-0134): §3 items 1–3 DECIDED (ratified via the
 > 2026-07-12 review session, user verdict ALL GREEN); G7 reserved in §1;
 > stale filename fixed (backpack_skin_pipeline_proposal.md, renamed →
