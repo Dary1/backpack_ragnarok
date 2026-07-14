@@ -166,3 +166,131 @@ routing files for D only)
 
 ## Implementation log
 (to be filled by the implementing engineer)
+
+### Session 2026-07-14 (implementing engineer, opus)
+
+Client-only implementation of scope A–G. Branch `req-0164-contentadmin-ux-r2`
+off master 8436734. Changes composed off-mount and applied over SSH per the
+mount-truncation policy; every write verified server-side by md5sum / git diff.
+
+#### Architecture decisions
+- **A (layout).** `.ca-root` becomes a stable full-width flex child
+  (`flex:1; min-width:0`); grid columns unchanged (`340px minmax(0,1fr)`). Wide
+  `pre` blocks stay contained by the existing `overflow`/`min-width:0` chain —
+  no page-level horizontal scroll at ≥1280px in any state (verified by the
+  stable-width e2e).
+- **B (strip collapse).** Collapse state lives in `ContentAdminPage` as
+  `flowCollapse: boolean | null` (null = follow the derived default), reset to
+  null on every def switch. Derived default collapsed =
+  `adoptedNo != null && variants.length >= 1 && !commission && !ingestText.trim()`.
+  Manual `cd-flow-toggle` sets the concrete boolean (wins for the selection).
+  When collapsed, `Workspace` renders only the header + a one-line
+  `cd-flow-summary`; the numbered steps (and their controls) are unmounted.
+- **C (feedback).** `cd-msg` auto-fades via a single `useEffect([msg])`
+  (covers every `setMsg` source; the aria-live node stays mounted, only its
+  text clears) and is cleared explicitly in `doSelectDef`. Fresh ingest sets
+  `newNos[]` + `scrollToNo` (min new no) with an 8 s clear timer; the first new
+  `VariantCard` scrolls into view (try-safe, browser-only). `DiffView` owns its
+  own `scrollIntoView` + Esc-close handler (same grammar as `ConfirmDialog`).
+  Recheck is guarded by `recheckingNos[]` (button disabled + label swap).
+  Live PASS/FAIL tallies in step 3 (`cd-adjudicate-summary`) and the Variants
+  header (`cd-variants-tally`).
+- **D (deep link).** Mirrors the REQ-0052 dex pattern exactly:
+  `CONTENTADMIN_HASH_RE` + one-shot `contentAdminFocusName` in `store/core.ts`,
+  set by `initRouting()`/`onHashChange` (specific-before-generic, after the
+  invite/dex checks), cleared by `clearContentAdminFocusName()`.
+  `ContentAdminPage` reads the field via `useGameStore()` — **keeping the
+  `{ locale }` signature and leaving App.tsx untouched** — consumes it once the
+  def list has loaded (unknown name → reported), and rewrites the hash via
+  `history.replaceState` in `doSelectDef` (replaceState fires no hashchange, so
+  no routing loop). Bare `#/contentadmin` still works.
+- **E (rail).** `sortDefs()` pure helper: `created` = id ASC (server order),
+  `name` = localeCompare, `activity` = `last_variant_at` DESC nulls-last.
+  `cd-list-error` panel shown when a list load fails and there are no rows to
+  show; polling continues. Row `title` carries a brief snippet.
+- **F (card).** `fmtDate` renders LOCAL `YYYY-MM-DD HH:MM` (unit-testable pure
+  fn; title attr = raw ISO). `VariantCard` React keys become
+  `<system_name>:<variant_no>` so per-card UI state (jsonOpen/rationaleOpen/
+  reviewOpen) resets on def switch. Review draft controls hide behind
+  `review-open-<no>`.
+- **G (create/guard).** `SCHEMA_REF_DEFAULTS` map + `defaultSchemaRef()` single
+  source; `CreatePanel` auto-swaps schema_ref on kind change **only while
+  pristine** (`schemaTouched` tracker). Dirty-draft guard: a `ConfirmState`
+  `'discard'` variant + `performNav()` raises the existing `ConfirmDialog`
+  ("Discard unsaved changes to <name>?") on def switch / create-open with an
+  unsaved brief/schema_ref; Cancel keeps the selection. `.ca-kind--skill_def`
+  palette entry added.
+
+#### testid delta
+- **PRESERVED** (unchanged, every REQ-0157 testid): `contentadmin`,
+  `cd-artadmin-link`, `cd-msg`, `cd-list`, `cd-select-<name>`,
+  `cd-faildot-<name>`, `cd-adopted-badge-<name>`, `cd-facet-<name>`, `cd-new`,
+  `cd-search`, `cd-filter-kind-*`, `cd-filter-adoption-*`, `cd-detail`,
+  `cd-adopted-state`, `cd-dirty`, `cd-artwork-facet`, `cd-artadmin-goto`,
+  `cd-dex-link`, `cd-edit-schema-ref`, `cd-edit-brief`, `cd-save`, `cd-gen-n`,
+  `cd-commission`, `cd-commission-out`, `cd-copy-commission`, `cd-ingest-json`,
+  `cd-parse-preview`, `cd-ingest`, `cd-diff-open`, `cd-variants`,
+  `variant-<no>`, `variant-adopted-<no>`, `variant-source-<no>`, `checks-<no>`,
+  `overall-<no>`, `check-<no>-<name>`, `check-detail-<no>-<name>`,
+  `recheck-<no>`, `review-<no>`, `review-verdict-<no>`,
+  `review-rationale-full-<no>`, `review-verdict-select-<no>`,
+  `review-rationale-<no>`, `review-submit-<no>`, `adopt-<no>`, `delete-<no>`,
+  `edit-open-<no>`, `json-toggle-<no>`, `diff-adopted-<no>`, `diff-pick-<no>`,
+  `json-copy-<no>`, `json-view-<no>`, `diff-view`, `diff-close`,
+  `confirm-dialog`, `confirm-ok`, `confirm-cancel`, `adopt-override`,
+  `edit-close`, `edit-json-<no>`, `edit-valid-<no>`, `edit-format-<no>`,
+  `edit-submit-<no>`, `cd-create-panel`, `cd-create-close`, `cd-kind`,
+  `cd-system-name`, `cd-schema-ref`, `cd-brief`, `cd-create`, `cd-create-error`.
+- **NEW**: `cd-flow-toggle`, `cd-flow-summary`, `cd-adjudicate-summary`,
+  `cd-variants-tally`, `cd-sort-created`, `cd-sort-name`, `cd-sort-activity`,
+  `cd-list-error`, `review-open-<no>`, `variant-new-<no>`, and the `is-new`
+  highlight CLASS on `.ca-vcard`.
+- **CHANGED FLOW** (no testid renamed or removed):
+  * the review DRAFT controls (`review-verdict-select-<no>` /
+    `review-rationale-<no>` / `review-submit-<no>`) render only after clicking
+    `review-open-<no>` — same testids, now gated behind the per-card toggle.
+  * the workflow-strip controls (`cd-gen-n`, `cd-commission`,
+    `cd-commission-out`, `cd-copy-commission`, `cd-ingest-json`,
+    `cd-parse-preview`, `cd-ingest`, `cd-adjudicate-summary`) render only when
+    the strip is expanded; on an adopted def with variants the strip is
+    collapsed by default (click `cd-flow-toggle` to reach them). The existing
+    big e2e flow keeps a live commission payload, so its strip stays expanded
+    and needed no re-expand; new tests exercise the collapse explicitly.
+
+#### Gate results
+- **G1 types/build**: `pnpm exec tsc -b` EXIT 0; `pnpm run build` EXIT 0
+  (built in ~450–510 ms; web/ artifacts restored after, not committed).
+  Courtesy no-regression (no server diff): `node server/tests/api_test.cjs`
+  (files backend) **157 passed, 0 failed**; `STORAGE_BACKEND=pg node
+  server/tests/content_test.cjs` (isolated temp-home namespace) **13 passed,
+  0 failed**.
+- **G2 e2e**: `tools/content_admin_e2e.sh` → **12/12 passed (23.4 s)**;
+  regression `tools/artadmin_e2e.sh` → **3/3 passed (28.7 s)**. web/ rebuilt
+  before the runs, then `git checkout -- web/ && git clean -fd web/`; working
+  tree verified clean of dist artifacts.
+- **G3 hygiene**: `git diff master...HEAD --stat` = only the 12 intended files
+  (7 contentadmin components + contentadmin.css + store core/routing + e2e spec
+  + this REQ doc). `client/src/styles/artadmin.css` byte-untouched; no server/
+  /shared/api change; no App.tsx change; no lockfile/dist/PNG churn.
+
+#### Commits
+- `1d292e3` REQ-0164 D: #/contentadmin/<name> deep-link store plumbing.
+- `c5f5f96` REQ-0164 A-G: contentadmin UX r2 (console polish + e2e).
+- (this log commit).
+
+#### Deviations / notes for the orchestrator
+- **Server deps install.** The worktree had no `server/node_modules` (only
+  client was installed). Ran `pnpm install --frozen-lockfile` in `server/` so
+  `pg` resolves for the pg-backed `content_test` and the e2e API server. No
+  lockfile drift (`server/pnpm-lock.yaml` unchanged; `server/node_modules`
+  gitignored). Not a code change. `content_test.cjs` initially failed only with
+  "Cannot find module 'pg'" (env), and passed after install.
+- **Stable-width assertion** uses `scrollWidth - clientWidth <= 1` (1 px
+  sub-pixel tolerance) rather than a strict `<=`, to avoid rounding flakiness;
+  still proves no page-level horizontal scroll at the 1400 px viewport.
+- **cd-list-error** is exercised in e2e via a Playwright route-mock 500 (the
+  harness runs dev_mode, so the admin gate never fails auth) — as the spec's
+  G2 list permits.
+- **No `contentadmin.config.ts` change** was needed.
+- Merge/deploy still owned by the orchestrator (S7). The deployed web/app must
+  be rebuilt from client/ at deploy time (the branch does not commit web/).
