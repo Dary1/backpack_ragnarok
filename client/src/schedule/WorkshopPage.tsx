@@ -55,21 +55,6 @@ function castingOdds(pack: { cells?: [number, number]; hp_per_cell?: number } | 
   return rows;
 }
 
-// REQ-0062: the bonus-slot odds, computed from the pack def exactly like castingOdds
-// -- every table row's chance is its weight over the slot's total, so the odds view
-// advertises the SAME numbers the server rolls with (no opaque loot box).
-function bonusOdds(pack: { bonus?: Array<{ pool: 'po' | 'si' | 'tm'; table: Array<{ id: string; weight: number; qty?: number }> }> } | undefined) {
-  const slots = pack?.bonus ?? [];
-  return slots.map((slot, i) => {
-    const total = slot.table.reduce((s, r) => s + Math.max(0, r.weight || 0), 0) || 1;
-    return {
-      idx: i,
-      pool: slot.pool,
-      rows: slot.table.map((r) => ({ id: r.id, qty: r.qty ?? 1, pct: Math.round((100 * Math.max(0, r.weight || 0) / total) * 10) / 10 })),
-    };
-  });
-}
-
 // REQ-0062: a pack's display name in the player's locale (ja i18n name when reading
 // Japanese), falling back to the pack's English name then the id.
 function packName(pack: { name?: string; i18n?: { ja?: { name?: string } } } | undefined, fallback: string, locale: Locale): string {
@@ -178,21 +163,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   const effectivePackId = packs[selectedPackId] ? selectedPackId : (packIds[0] ?? 'common_bp');
   const pack = packs[effectivePackId];
   const units = snapshot.gameData?.UNITS ?? {};
-  // REQ-0062: PO/SI defs (for naming bonus items in the odds view; the result modal
-  // uses the server's own def echo instead).
-  const itemDefs = (snapshot.gameData?.ITEMS ?? {}) as Record<string, { name?: string; i18n?: { ja?: { name?: string } } }>;
-  const siDefsMap = (snapshot.gameData?.SI_DEFS ?? {}) as Record<string, { name?: string; i18n?: { ja?: { name?: string } } }>;
   const connShapes = (snapshot.gameData?.CONN_SHAPES ?? {}) as Record<string, ApiConnShape>;
   const cost = pack?.cost ?? GACHA_COMMON_BP_COST;
   const odds = castingOdds(pack);
-  const bonusRows = bonusOdds(pack); // REQ-0062: transparent bonus-table odds
-  const bonusPoolLabel = (poolKind: 'po' | 'si' | 'tm'): string =>
-    poolKind === 'po' ? t(locale, 'workshop.bonusPoolPo') : poolKind === 'si' ? t(locale, 'workshop.bonusPoolSi') : t(locale, 'workshop.bonusPoolTm');
-  const bonusItemName = (poolKind: 'po' | 'si' | 'tm', id: string): string => {
-    const def = poolKind === 'po' ? itemDefs[id] : poolKind === 'si' ? siDefsMap[id] : undefined;
-    if (def) return (locale === 'ja' && def.i18n?.ja?.name) ? def.i18n.ja.name : (def.name ?? id);
-    return id;
-  };
   const canAfford = balance >= cost;
   const rolledShapeKey = rollResult?.unitDef?.connection_shape;
   const rolledShape = rolledShapeKey ? connShapes[rolledShapeKey] : undefined;
@@ -338,11 +311,13 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
             {packIds.map((pid) => {
               const p = packs[pid];
               const active = pid === effectivePackId;
+              const artUrl = snapshot.gameData?.ART_URLS?.[pid]; // REQ-0181: pack tile art (fed by REQ-0179 custom-kind artwork via artwork_ref)
               return (
                 <button
                   key={pid}
                   type="button"
-                  className={'btn workshop-pack-option' + (active ? ' is-active' : '')}
+                  className={'btn workshop-pack-option' + (active ? ' is-active' : '') + (artUrl ? ' has-art' : '')}
+                  style={artUrl ? { backgroundImage: 'url("' + artUrl + '")' } : undefined}
                   aria-pressed={active}
                   data-testid={'workshop-pack-option-' + pid}
                   data-active={active ? '1' : '0'}
@@ -426,43 +401,6 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
               </div>
             ))}
           </div>
-          <div className="rune-divider">{'ᛞ'}</div>
-          <ul className="workshop-rules">
-            <li>{t(locale, 'workshop.ruleCommon')}</li>
-            <li>{t(locale, 'workshop.ruleUnit')}</li>
-            <li>{t(locale, 'workshop.ruleTwoPhase')}</li>
-          </ul>
-          {/* REQ-0062: transparent bonus-slot odds -- every table with its weights. */}
-          <div className="rune-divider">{'\u16DC'}</div>
-          <div className="workshop-odds-head">
-            <span className="workshop-odds-title dj">{t(locale, 'workshop.bonusHeading')}</span>
-            <span className="workshop-odds-den den">{t(locale, 'workshop.bonusHeadingDen')}</span>
-            <span className="workshop-odds-grow" />
-            <span className="t-micro">{t(locale, 'workshop.bonusNote')}</span>
-          </div>
-          {bonusRows.length === 0 ? (
-            <div className="workshop-bonus-none t-micro" data-testid="workshop-bonus-none">{t(locale, 'workshop.bonusNone')}</div>
-          ) : (
-            <div className="workshop-bonus-slots" data-testid="workshop-bonus-odds">
-              {bonusRows.map((slot) => (
-                <div className="workshop-bonus-slot" key={slot.idx} data-pool={slot.pool}>
-                  <div className="workshop-bonus-slot-head t-micro">{t(locale, 'workshop.bonusSlotLabel', { n: slot.idx + 1, pool: bonusPoolLabel(slot.pool) })}</div>
-                  {slot.rows.map((r) => (
-                    <div className="workshop-orow" key={r.id} data-testid="workshop-bonus-row" data-bonus-id={r.id}>
-                      <span className="workshop-orow-lab">
-                        <b>{bonusItemName(slot.pool, r.id)}</b>
-                        {r.qty > 1 ? <span className="t-micro">{' \u00d7' + r.qty}</span> : null}
-                      </span>
-                      <span className="bar workshop-orow-bar">
-                        <span className="fill gold" style={{ display: 'block', height: '100%', width: r.pct + '%' }} />
-                      </span>
-                      <span className="workshop-orow-pct tnum">{r.pct}%</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </section>
 

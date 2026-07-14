@@ -910,7 +910,7 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
 test.describe('REQ-0062: themed BP pack (clockwork) -- open end-to-end', () => {
   withDevUserFixture();
 
-  test('choose the clockwork pack -> pay -> claim -> guaranteed BP + bonus item land in inventory; the odds view renders the bonus table', async ({ page }) => {
+  test('choose the clockwork pack -> pay -> claim -> guaranteed BP + bonus item land in inventory', async ({ page }) => {
     await withDevProfileBackup(async () => {
       const seededCanvas = await seedDevLrdstBalance(page, 999);
       const preBpIds = new Set<string>();
@@ -926,10 +926,6 @@ test.describe('REQ-0062: themed BP pack (clockwork) -- open end-to-end', () => {
       await expect(clockwork).toBeVisible();
       await clockwork.click();
       await expect(clockwork).toHaveAttribute('data-active', '1');
-
-      // Transparent odds: the bonus table renders in the odds view.
-      await expect(page.locator('[data-testid="workshop-bonus-odds"]')).toBeVisible();
-      await expect(page.locator('[data-testid="workshop-bonus-row"]').first()).toBeVisible();
 
       await expect(page.locator('[data-testid="workshop-gacha-balance"]')).toContainText('999');
       const rollBtn = page.locator('[data-testid="workshop-roll-btn"]');
