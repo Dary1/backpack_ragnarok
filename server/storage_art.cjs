@@ -184,12 +184,19 @@ function mapRenderMeta(row) {
 /** Insert a fresh render row. If `seed` is null the next per-artwork seed
  * (max+1, starting at 1) is computed atomically in the same INSERT so a
  * serialized queue never has to read-then-write. Returns the render meta.
- * UNIQUE(artwork_id, seed) violations surface as code DUPLICATE_SEED. */
+ * UNIQUE(artwork_id, seed) violations surface as code DUPLICATE_SEED.
+ *
+ * REQ-0177 sentinel guard: the auto-seed MAX(seed)+1 EXCLUDES the sentinel
+ * seed 2147483647 (int4 max = "imported from an unknown environment", the
+ * seed every sprite-backfill render carries). Without the FILTER, the first
+ * auto-seeded render created AFTER a backfill would compute 2147483647+1 and
+ * overflow int4. With it, a backfilled artwork's next real render seeds off
+ * its highest NON-sentinel seed (or 1 if the sentinel is its only render). */
 async function createRender(artwork_id, seed, status) {
   try {
     const res = await q(
       `INSERT INTO renders (artwork_id, seed, status)
-       VALUES ($1, COALESCE($2, (SELECT COALESCE(MAX(seed),0)+1 FROM renders WHERE artwork_id = $1)), $3)
+       VALUES ($1, COALESCE($2, (SELECT COALESCE(MAX(seed) FILTER (WHERE seed < 2147483647),0)+1 FROM renders WHERE artwork_id = $1)), $3)
        RETURNING id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at`,
       [artwork_id, seed == null ? null : seed, status || 'queued']
     );

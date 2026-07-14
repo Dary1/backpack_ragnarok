@@ -84,6 +84,20 @@ async function runG2andG1() {
     try { await storage.createRender(a.id, 5, 'queued'); } catch (e) { dup = e; }
     assert.ok(dup && dup.code === 'DUPLICATE_SEED', 'duplicate seed refused');
   });
+  await AT('REQ-0177 sentinel seed guard: auto-seed excludes 2147483647 (no int4 overflow)', async () => {
+    const a = await storage.createArtwork({ system_name: 'g1_sentinel', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
+    // A sprite-backfill render carries the int4-max sentinel seed 2147483647
+    // ("imported from an unknown environment").
+    const sent = await storage.createRender(a.id, 2147483647, 'ok');
+    assert.strictEqual(sent.seed, 2147483647, 'sentinel render stored at int4 max');
+    // The NEXT auto-seed (seed=null) must NOT be 2147483648 (int4 overflow):
+    // MAX(seed) FILTER (seed < 2147483647) is NULL here, so COALESCE(...,0)+1 = 1.
+    const next = await storage.createRender(a.id, null, 'queued');
+    assert.strictEqual(next.seed, 1, 'auto-seed after a lone sentinel is 1, not 2147483648');
+    // With a real render present too, the auto-seed is max(non-sentinel)+1 = 2.
+    const next2 = await storage.createRender(a.id, null, 'queued');
+    assert.strictEqual(next2.seed, 2, 'auto-seed still ignores the sentinel with real renders present');
+  });
   await AT('G1 adopted render undeletable in storage; non-adopted deletable; switch re-adopt', async () => {
     const a = await storage.createArtwork({ system_name: 'g1_adopt', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
     const r1 = await storage.createRender(a.id, null, 'queued');
