@@ -242,3 +242,10 @@ checkout and the live services are HANDS-OFF without a fresh go-ahead (PROJECT.m
 (pnpm-only, `packageManager` pinned). Pre-existing; changing the shared CI entry
 point is not this REQ's business. The new [5.6/7] step deliberately calls
 `node scripts/...` directly, sidestepping the package manager entirely.
+
+## Integration pass -- 2026-07-14 (integration owner)
+
+- Master @ `c41fdee` re-certified green via `tools/release.sh` (full `tools/ci.sh` incl. pg backend; `SKIP_E2E`, e2e run separately). Fresh `vite build` == the committed dist (**"dist unchanged -- nothing to commit"**), so the live static bundle already reflects this REQ. `backpack-api` + `backpack-web` restarted 2026-07-14 00:24 UTC (both active; web/api/ingress HTTP 200).
+- Post-deploy live e2e (`http://127.0.0.1:8803`, sanctioned `pnpm run e2e`): **156 passed / 10 failed** -- the 10 are exactly the REQ-0159-accounted set (7x artadmin/artinspect/contentadmin 403-by-design; nav-routing:26 + dex-card:65 + schedule:1065). No unaccounted red.
+- **Code**: already merged to master before this pass (branch tip is an ancestor of `c41fdee`); no new merge performed. Dedicated merge `60073a7`. Client-only; NO board diff by design, pinned by ci.sh [5.6/7] (green this pass).
+- **Disposition**: STAYS in built/ -- already merged + deployed (2026-07-12 post-deploy e2e), but no explicit user-acceptance close is recorded for this render-base infra; kept in built conservatively.
