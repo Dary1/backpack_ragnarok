@@ -64,12 +64,22 @@ const path = require('path');
 
 const REPO_ROOT = path.join(__dirname, '..');
 
-// The four live corpus files -> registry kinds (content_kind ENUM).
+// The live corpus files -> registry kinds (content_kind ENUM).
+// REQ-0160 (user rulings, 2026-07-14) widened this inventory by two files that
+// the 2026-07-14c run had flagged and deliberately left out:
+//   * Q1 = A: dungeon/items.json (po/2, 2 dungeon-mode entries) enters as po_def.
+//     It is the SAME schema as live_items.json; provenance.origin_file (and its
+//     batch, batch-002-dungeon-pilot) is what tells the two corpora apart.
+//     po_def therefore has TWO source files -- the inventory prints PER FILE.
+//   * Q2 = yes: dungeon/skills.json (skill/1, 14 entries) enters as the NEW
+//     skill_def kind (server/migrations/010_content_kind_skill_def.sql).
 const SOURCES = [
   { kind: 'po_def', file: 'content/live/live_items.json' },
+  { kind: 'po_def', file: 'content/live/dungeon/items.json' },
   { kind: 'si_def', file: 'content/live/live_sis.json' },
   { kind: 'tm_def', file: 'content/live/live_tms.json' },
   { kind: 'monster_def', file: 'content/live/dungeon/enemies.json' },
+  { kind: 'skill_def', file: 'content/live/dungeon/skills.json' },
 ];
 
 // unit_def: ZERO entries by design -- no unit data defs exist yet
@@ -78,17 +88,19 @@ const SOURCES = [
 const UNIT_DEF_NOTE = 'no unit data defs exist yet (REQ-0130 provisional) -- backfill zero by design';
 
 // Live files deliberately NOT backfilled, with reasons. The registry's
-// content_kind ENUM is po_def|si_def|monster_def|unit_def|tm_def; nothing
-// else is a registry kind, and singletons/compositions are not per-entity
-// content.
+// content_kind ENUM is po_def|si_def|monster_def|unit_def|tm_def|skill_def
+// (skill_def added by REQ-0160); nothing else is a registry kind, and
+// singletons/compositions are not per-entity content.
+//
+// dungeon/skills.json and dungeon/items.json used to sit in this table as the
+// two OPEN findings of the 2026-07-14c run. Both were ruled IN by the user on
+// 2026-07-14 (REQ-0160 Q1=A, Q2=yes) and now live in SOURCES above.
 const SKIPPED_FILES = [
   { file: 'content/live/dungeon/entities.json', reason: 'entity/1 board-entity records (interactables) -- not per-entity content of a registry content_kind' },
   { file: 'content/live/dungeon/formations.json', reason: 'formation/1 encounter layouts -- composition data, not per-entity defs of a registry kind' },
   { file: 'content/live/dungeon/dungeon.json', reason: 'dungeon graph/config singleton -- not per-entity content' },
   { file: 'content/live/scenario.json', reason: 'scenario/progression singleton (no schema header) -- not per-entity content' },
   { file: 'content/live/seasons.json', reason: 'season schedule singleton -- not per-entity content' },
-  { file: 'content/live/dungeon/skills.json', reason: 'skill/1 (14 entries) -- "skill" is not a registry content_kind; needs its own ruling + kind before it can enter the ledger' },
-  { file: 'content/live/dungeon/items.json', reason: 'po/2 (2 entries, dungeon-mode batch) -- OUTSIDE the sanctioned 2026-07-14 inventory (live_items.json is the ruled po_def source, 8 entries); flagged OPEN for a follow-up ruling instead of silently widening a live-DB write' },
 ];
 
 // Marker by which a def created by this tool is recognizable on a re-run.
@@ -140,8 +152,21 @@ function collectAll(repoRoot, importedAt) {
 }
 
 function perKindCounts(entries) {
-  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0 };
+  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0, skill_def: 0 };
   for (const e of entries) counts[e.kind] = (counts[e.kind] || 0) + 1;
+  return counts;
+}
+
+/** Entries per SOURCE FILE. Since REQ-0160 a kind may have more than one source
+ * file (po_def: live_items.json + dungeon/items.json), so the inventory must
+ * count per file -- a per-kind count printed against each file would report the
+ * kind total twice and make the G2 count-match gate meaningless. */
+function perFileCounts(entries) {
+  const counts = {};
+  for (const e of entries) {
+    const f = e.provenance.origin_file;
+    counts[f] = (counts[f] || 0) + 1;
+  }
   return counts;
 }
 
@@ -157,11 +182,13 @@ function variantIsOurs(variant, entry) {
 
 function printInventory(entries, missingFiles) {
   const counts = perKindCounts(entries);
-  console.log('== live-content backfill inventory (REQ-0157 follow-up, user ruling 2026-07-14 all-kind) ==');
+  const fileCounts = perFileCounts(entries);
+  console.log('== live-content backfill inventory (REQ-0157 follow-up + REQ-0160 dungeon kinds, user rulings 2026-07-14) ==');
   for (const s of SOURCES) {
-    console.log('  ' + s.kind.padEnd(12) + ' ' + String(counts[s.kind]).padStart(2) + ' entries  <- ' + s.file);
+    console.log('  ' + s.kind.padEnd(12) + ' ' + String(fileCounts[s.file] || 0).padStart(2) + ' entries  <- ' + s.file);
   }
   console.log('  unit_def      0 entries  <- ' + UNIT_DEF_NOTE);
+  console.log('  per-kind totals: ' + Object.keys(counts).map((k) => k + '=' + counts[k]).join(' '));
   console.log('  TOTAL: ' + entries.length + ' defs / ' + entries.length + ' variants (one adopted variant_no 1 per def)');
   if (missingFiles.length) console.log('  MISSING SOURCE FILES: ' + missingFiles.join(', '));
   console.log('  skipped live files (documented, not backfilled):');
@@ -290,7 +317,7 @@ async function main() {
 
 module.exports = {
   SOURCES, SKIPPED_FILES, UNIT_DEF_NOTE, BRIEF_MARKER,
-  entriesFromFile, collectAll, perKindCounts, defIsOurs, variantIsOurs,
+  entriesFromFile, collectAll, perKindCounts, perFileCounts, defIsOurs, variantIsOurs,
 };
 
 if (require.main === module) {

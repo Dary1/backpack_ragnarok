@@ -32,6 +32,11 @@
 //      SNAPSHOT content/live (recursive sha256 manifest) before and after and
 //      assert it is byte-identical -- the "provably writes nothing / must not
 //      touch content/live" guarantee (gate G2).
+//
+// REQ-0161 (ruling Q1 = Option A, user, 2026-07-14): the checks are ADVISORY
+// MIRRORS OF REALITY, so they learn the schema dialect of the data the game
+// actually serves; live data is never bent to fit a validator. See DIALECTS
+// below for the table and the honesty guarantee.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -56,6 +61,67 @@ function loadVocab(root, schema_ref) {
     try { const v = loadJson(c); if (v && Array.isArray(v.verbs)) return { vocab: v, path: c }; } catch (_) { /* next */ }
   }
   return { vocab: null, path: null };
+}
+
+// ---- 0. schema dialects (REQ-0161) --------------------------------------
+//
+// A def's data speaks the dialect of the schema its FILE HEADER declares --
+// content_defs.schema_ref, set verbatim by the backfill from the source file
+// ('po/2' | 'si/2' | 'tm/1' | 'enemy/1'). Those dialects legitimately differ:
+// enemy/1 has always written lowercase rarity words and a [lo,hi] integer ROLL
+// RANGE for hp (docs/llm_managed/monster_content_pipeline.md section 2, the doc
+// canon), while po/si spell rarity with the capitalized vocab.json tokens and
+// keep numeric stats scalar. Checking one dialect's data against another's
+// conventions produced the 7 live monster_def FAILs of 2026-07-14c: a validator
+// mismatch, not data corruption. Ruling Q1 = Option A: the validators learn the
+// dialect, content/ is untouched.
+//
+//   schema_ref          | rarity tokens                    | integer-range fields
+//   --------------------|----------------------------------|---------------------
+//   enemy/1             | lowercase form of vocab.rarities  | hp ([lo,hi], lo<=hi)
+//                       | ('common', 'rare', ...)           |
+//   DEFAULT             | verbatim vocab.rarities token     | none (stats scalar)
+//   (po/2, si/2, tm/1)  | ('Common', 'Rare', ...)           |
+//
+// HONESTY (kit doctrine, unchanged): a dialect is a spelling, never an excuse.
+// A word that is no rarity at all still FAILs schema_vocab, and a malformed,
+// inverted, non-integer or scalar-where-ranged field still FAILs engine_types --
+// each naming its own check. Only the two spellings above are newly accepted.
+//
+// REQ-0160 adds a THIRD dialect, skill/1 (content/live/dungeon/skills.json):
+//   * it spells its display name `name_en` / `name_ja`, not `name` + an i18n
+//     block (hence dialect.name_field), and
+//   * it declares ONE trigger+verb+attack_profile at the TOP level instead of an
+//     effects[] array.
+// Per the user ruling Q2-sub (2026-07-14), skill_def is NOT waved through with a
+// fake applicable:false everywhere: schema_vocab APPLIES to it, wired by wrapping
+// the record as a single pseudo-effect and running the SAME checkEffects() every
+// other kind gets (domain EnemySkill). engine_types / gen_data / integrate stay
+// honestly applicable:false -- skill/1 has no engine-consumed record, tool_gen_data
+// does not consume it, and it has no canvas placement.
+const DIALECTS = {
+  'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
+  'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
+};
+const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
+
+/** The dialect a variant is written in, keyed by its def's schema_ref. */
+function dialectFor(schema_ref) {
+  return DIALECTS[typeof schema_ref === 'string' ? schema_ref.trim() : ''] || DEFAULT_DIALECT;
+}
+
+/** rarity token legal in this dialect? Unknown words FAIL in every dialect. */
+function rarityAllowed(rarity, vocab, dialect) {
+  if (!Array.isArray(vocab.rarities)) return true; // no rarity vocab -> nothing to check
+  if (dialect.rarity_case === 'lower') {
+    return typeof rarity === 'string' && vocab.rarities.some((r) => r.toLowerCase() === rarity);
+  }
+  return vocab.rarities.includes(rarity);
+}
+
+/** enemy/1 roll range: [lo, hi], both integers, lo <= hi. */
+function isIntRange(x) {
+  return Array.isArray(x) && x.length === 2 && Number.isInteger(x[0]) && Number.isInteger(x[1]) && x[0] <= x[1];
 }
 
 // ---- 1. schema_vocab (self_test_vocab conventions) ----------------------
@@ -94,14 +160,19 @@ function checkEffects(effects, vocab, domain, errs) {
   });
 }
 
-function schemaVocabCheck(kind, data, vocab) {
+function schemaVocabCheck(kind, data, vocab, dialect) {
   if (!vocab) return { ok: false, detail: 'vocab/schema_ref not resolvable' };
   const errs = [];
   if (!data || typeof data !== 'object') return { ok: false, detail: 'data must be an object' };
   if (typeof data.id !== 'string' || !data.id) errs.push('id (non-empty string) required');
-  if (typeof data.name !== 'string' || !data.name) errs.push('name (string) required');
-  if (data.rarity !== undefined && Array.isArray(vocab.rarities) && !vocab.rarities.includes(data.rarity)) {
-    errs.push('rarity not in vocab.rarities: ' + data.rarity);
+  // The field THIS dialect spells the display name with (skill/1: name_en).
+  const nameField = dialect.name_field || 'name';
+  if (typeof data[nameField] !== 'string' || !data[nameField]) {
+    errs.push(nameField + ' (non-empty string) required (' + dialect.name + ' dialect)');
+  }
+  if (data.rarity !== undefined && !rarityAllowed(data.rarity, vocab, dialect)) {
+    errs.push('rarity not in vocab.rarities (' + dialect.name + ' dialect expects the '
+      + (dialect.rarity_case === 'lower' ? 'lowercase' : 'verbatim') + ' token): ' + data.rarity);
   }
   if (kind === 'po_def') {
     if (!Array.isArray(data.tags) || data.tags.length === 0) errs.push('po_def requires non-empty tags[]');
@@ -122,8 +193,16 @@ function schemaVocabCheck(kind, data, vocab) {
     checkEffects(data.effects, vocab, kind === 'unit_def' ? 'Unit' : 'EnemySkill', errs);
   } else if (kind === 'tm_def') {
     if (data.short !== undefined && typeof data.short !== 'string') errs.push('tm_def.short must be a string');
+  } else if (kind === 'skill_def') {
+    // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
+    // pseudo-effect so the record gets the IDENTICAL vocab validation every other
+    // kind gets (verb/trigger/status must exist in vocab.json, the trigger must be
+    // legal in the domain, ranged verb params must be [lo,hi] with lo<=hi) -- this
+    // is REUSE of checkEffects, not a new validator (REQ-0160 ruling Q2-sub).
+    if (!data.trigger || !data.verb) errs.push('skill_def requires a top-level trigger and verb (skill/1)');
+    else checkEffects([{ trigger: data.trigger, verb: data.verb }], vocab, 'EnemySkill', errs);
   }
-  return { ok: errs.length === 0, detail: errs.length === 0 ? 'schema/vocab valid' : errs.join('; ') };
+  return { ok: errs.length === 0, detail: errs.length === 0 ? 'schema/vocab valid (' + dialect.name + ' dialect)' : errs.join('; ') };
 }
 
 // ---- 2. engine_types (check_engine_types conventions) -------------------
@@ -143,7 +222,13 @@ function engineSurfaceSound(root) {
 
 function isIntPair(x) { return Array.isArray(x) && x.length === 2 && Number.isInteger(x[0]) && Number.isInteger(x[1]); }
 
-function engineTypesCheck(kind, data, root) {
+function engineTypesCheck(kind, data, root, dialect) {
+  // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
+  // is no runtime type surface for it to conform to. Recorded honestly as
+  // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
+  if (kind === 'skill_def') {
+    return { ok: true, applicable: false, detail: 'engine_types not applicable for skill_def (skill/1 declares no engine-consumed record: no shape, no slot, no stats)' };
+  }
   const surface = engineSurfaceSound(root);
   if (!surface.ok) return surface;
   const errs = [];
@@ -159,17 +244,30 @@ function engineTypesCheck(kind, data, root) {
     if (typeof data.slot !== 'string') errs.push('slot must be a string (engine socket slot)');
     if (data.reqTags !== undefined && (!Array.isArray(data.reqTags) || !data.reqTags.every((t) => typeof t === 'string'))) errs.push('reqTags must be string[]');
   } else if (kind === 'monster_def' || kind === 'unit_def') {
-    if (data.hp !== undefined && !Number.isFinite(data.hp)) errs.push('hp must be numeric');
+    // Dialect-declared roll ranges (enemy/1 hp) must be [lo,hi] int ranges;
+    // every other numeric stat stays the scalar engine.js consumes.
+    const ranged = new Set(dialect.range_fields);
+    for (const f of dialect.range_fields) {
+      if (data[f] !== undefined && !isIntRange(data[f])) {
+        errs.push(f + ' must be a [lo,hi] integer range with lo<=hi (' + dialect.name + ' roll-range dialect)');
+      }
+    }
+    if (data.hp !== undefined && !ranged.has('hp') && !Number.isFinite(data.hp)) errs.push('hp must be numeric');
     if (data.stats !== undefined && (typeof data.stats !== 'object' || data.stats === null)) errs.push('stats must be an object');
   } else if (kind === 'tm_def') {
     if (data.stackable !== undefined && typeof data.stackable !== 'boolean') errs.push('stackable must be boolean');
   }
-  return { ok: errs.length === 0, detail: errs.length === 0 ? 'engine-type conformance OK (' + surface.detail + ')' : errs.join('; ') };
+  return { ok: errs.length === 0, detail: errs.length === 0 ? 'engine-type conformance OK (' + dialect.name + ' dialect; ' + surface.detail + ')' : errs.join('; ') };
 }
 
 // ---- 3. gen_data (tool_gen_data conventions) ----------------------------
 
 function genDataCheck(kind, data, root) {
+  // tool_gen_data consumes items/sis only; it has never had a skill input.
+  // Honest applicable:false (REQ-0160 ruling Q2-sub).
+  if (kind === 'skill_def') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for skill_def (tool_gen_data does not consume skill/1)' };
+  }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');
   if (kind === 'po_def' || kind === 'si_def') {
@@ -269,14 +367,15 @@ function integrateCheck(kind, data, root) {
 function runChecks(kind, schema_ref, data) {
   const root = repoRoot();
   const { vocab, path: vpath } = loadVocab(root, schema_ref);
+  const dialect = dialectFor(schema_ref); // REQ-0161: which spelling this def is written in
   const checks = [];
   const add = (name, r) => checks.push({ name, ok: r.ok, applicable: r.applicable !== false, detail: r.detail, extra: r.content_live_unchanged !== undefined ? { content_live_unchanged: r.content_live_unchanged } : undefined });
-  add('schema_vocab', schemaVocabCheck(kind, data, vocab));
-  add('engine_types', engineTypesCheck(kind, data, root));
+  add('schema_vocab', schemaVocabCheck(kind, data, vocab, dialect));
+  add('engine_types', engineTypesCheck(kind, data, root, dialect));
   add('gen_data', genDataCheck(kind, data, root));
   add('integrate', integrateCheck(kind, data, root));
   const overall = checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
-  return { checks, overall, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
+  return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
 
-module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest };
+module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS };

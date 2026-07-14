@@ -5,8 +5,8 @@
 // display/validation sugar only.
 import type { ContentDefDto, ContentVariantDto } from '../api';
 
-export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def';
-export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def'];
+export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def';
+export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def'];
 
 // Mirror of routes/content.cjs RESERVED (path segments the public serving
 // GET owns) -- checked client-side for instant feedback; the server
