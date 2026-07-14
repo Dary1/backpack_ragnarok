@@ -6,10 +6,17 @@
 // non-fatal" pattern DexRoot.tsx already established. Migrated to formal
 // chrome i18n (REQ-0038) -- all locale ternaries below go through
 // ./i18n.ts's t() now.
+//
+// REQ-0059: adds the Sound & Haptics block -- the client-only controls for
+// Circuit Chimes (chimes on/off, haptics on/off, volume). Prefs persist to
+// localStorage via ./schedule/chimes/chimePrefs; a mounted run Monitor's
+// ChimeEngine picks up changes live through the CHIME_PREFS_EVENT that
+// saveChimePrefs dispatches.
 import { useEffect, useState } from 'react';
 import { fetchMe, type ApiMe } from './api';
 import { t } from './i18n';
 import { logout, type Locale } from './store';
+import { loadChimePrefs, saveChimePrefs, type ChimePrefs } from './schedule/chimes/chimePrefs';
 
 interface SettingsProps {
   locale: Locale;
@@ -18,6 +25,7 @@ interface SettingsProps {
 export function Settings({ locale }: SettingsProps) {
   const [me, setMe] = useState<ApiMe | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [chimePrefs, setChimePrefs] = useState<ChimePrefs>(() => loadChimePrefs());
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +43,16 @@ export function Settings({ locale }: SettingsProps) {
       cancelled = true;
     };
   }, []);
+
+  const updateChimePrefs = (patch: Partial<ChimePrefs>) => {
+    setChimePrefs((prev) => {
+      const next = { ...prev, ...patch };
+      saveChimePrefs(next);
+      return next;
+    });
+  };
+
+  const volumePct = Math.round(chimePrefs.volume * 100);
 
   return (
     <div className="settings-page">
@@ -67,6 +85,48 @@ export function Settings({ locale }: SettingsProps) {
             {t(locale, 'settings.accountLoadError') + (error ? `: ${error}` : '')}
           </div>
         )}
+      </section>
+
+      {/* REQ-0059: Circuit Chimes + haptics controls (client-only). */}
+      <section className="settings-section settings-sound" data-testid="settings-sound">
+        <h3>{t(locale, 'settings.soundTitle')}</h3>
+        <div className="settings-field settings-toggle">
+          <label className="settings-toggle-label">
+            <input
+              type="checkbox"
+              data-testid="settings-chimes-toggle"
+              checked={chimePrefs.chimes}
+              onChange={(e) => updateChimePrefs({ chimes: e.target.checked })}
+            />
+            <span className="settings-field-label">{t(locale, 'settings.chimesLabel')}</span>
+          </label>
+          <p className="settings-hint">{t(locale, 'settings.chimesHint')}</p>
+        </div>
+        <div className="settings-field settings-toggle">
+          <label className="settings-toggle-label">
+            <input
+              type="checkbox"
+              data-testid="settings-haptics-toggle"
+              checked={chimePrefs.haptics}
+              onChange={(e) => updateChimePrefs({ haptics: e.target.checked })}
+            />
+            <span className="settings-field-label">{t(locale, 'settings.hapticsLabel')}</span>
+          </label>
+          <p className="settings-hint">{t(locale, 'settings.hapticsHint')}</p>
+        </div>
+        <div className="settings-field settings-volume">
+          <span className="settings-field-label">{t(locale, 'settings.volumeLabel')}</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            data-testid="settings-chimes-volume"
+            value={volumePct}
+            onChange={(e) => updateChimePrefs({ volume: Number(e.target.value) / 100 })}
+          />
+          <span className="settings-field-value" data-testid="settings-chimes-volume-value">{volumePct}%</span>
+        </div>
       </section>
 
       {/* REQ-0039 "Now" scope -- static bilingual placeholder only, no

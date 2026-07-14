@@ -58,6 +58,8 @@ import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
 import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
+import { ChimeEngine, type ChimeStats } from './chimes/ChimeEngine';
+import { loadChimePrefs, CHIME_PREFS_EVENT } from './chimes/chimePrefs';
 
 /** Same item-name resolution WarehouseTab.tsx already uses (itemId ->
  * localized display name, falling back to the raw id if content hasn't
@@ -250,6 +252,9 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   // see the mount effect below for the mount-race root cause + fix.
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MonitorRenderer | null>(null);
+  // REQ-0059: the client-only Circuit Chimes engine -- created alongside
+  // the Pixi renderer, fed the SAME event stream via renderer.setChimeSink.
+  const chimeEngineRef = useRef<ChimeEngine | null>(null);
   const lastEventIndexRef = useRef(0);
   const squadsMountedRef = useRef(false);
   const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
@@ -321,6 +326,11 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         return;
       }
       rendererRef.current = renderer;
+      // REQ-0059: attach the chime engine to this renderer so every
+      // NON-silent event also drives audio + haptics, in perfect sync.
+      const engine = new ChimeEngine(loadChimePrefs());
+      chimeEngineRef.current = engine;
+      renderer.setChimeSink(engine);
       setMountedOnce(true);
     })();
     return () => {
@@ -449,6 +459,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           pulseCounts: () => { linkPulses: number; payloads: number; fizzles: number; rays: number };
           attachmentCounts: () => { reveal: number; disarm: number; open: number; lost: number; fire: number };
           applyTestEvents: (evs: ApiRunEvent[]) => void;
+          chimeStats: () => ChimeStats | null;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
@@ -462,6 +473,10 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           pulseCounts: () => rendererRef.current?.getPulseVisualCounts() ?? { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 },
           attachmentCounts: () => rendererRef.current?.getAttachmentVisualCounts() ?? { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 },
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
+          // REQ-0059 test seam: the chime engine's honest processed/played/
+          // vibrated counters, so an e2e can assert events reached the audio
+          // layer without faking an audio assertion.
+          chimeStats: () => chimeEngineRef.current?.getStats() ?? null,
         };
       } catch (e) {
         // Non-fatal -- the expanded view simply shows no squad footprints if
@@ -538,6 +553,21 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
     return () => {
       rendererRef.current?.destroy();
       rendererRef.current = null;
+      chimeEngineRef.current?.dispose();
+      chimeEngineRef.current = null;
+    };
+  }, []);
+
+  // REQ-0059: keep the chime engine's prefs in sync with a live Settings
+  // change (chimes/haptics/volume) -- saveChimePrefs dispatches
+  // CHIME_PREFS_EVENT in-tab; the browser fires 'storage' cross-tab.
+  useEffect(() => {
+    const onPrefs = () => chimeEngineRef.current?.setPrefs(loadChimePrefs());
+    window.addEventListener(CHIME_PREFS_EVENT, onPrefs);
+    window.addEventListener('storage', onPrefs);
+    return () => {
+      window.removeEventListener(CHIME_PREFS_EVENT, onPrefs);
+      window.removeEventListener('storage', onPrefs);
     };
   }, []);
 
@@ -636,6 +666,9 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   const onPlayPause = useCallback(() => {
     if (!settledNow || !run) return;
     if (!playing) {
+      // REQ-0059: a click is the user gesture browsers require to start
+      // audio -- resume the (lazily-created) AudioContext here.
+      chimeEngineRef.current?.resume();
       if (playheadRef.current >= run.durationSecs) {
         rendererRef.current?.reset();
         localCursorRef.current = 0;
