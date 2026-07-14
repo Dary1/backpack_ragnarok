@@ -294,3 +294,22 @@ mount-truncation policy; every write verified server-side by md5sum / git diff.
 - **No `contentadmin.config.ts` change** was needed.
 - Merge/deploy still owned by the orchestrator (S7). The deployed web/app must
   be rebuilt from client/ at deploy time (the branch does not commit web/).
+
+### Deployment record (orchestrator, 2026-07-14)
+- Merged to master 994f0d8 (merge of req-0164-contentadmin-ux-r2, 3 impl commits
+  1d292e3 / c5f5f96 / f806baf + state moves); dist rebuild d783c47 (web/app).
+- backpack-web serves the new dist statically (no service restart needed; no server code
+  in this REQ, backpack-api untouched).
+- Live verification on https://backpack-dev.qtie.jp/app/#/contentadmin (Chrome, 2026-07-14):
+  stable full-width layout (no horizontal overflow); deep link #/contentadmin/frost_gnoll
+  selects the def and selection rewrites the hash (#/contentadmin/gnoll_claw observed);
+  workflow strip collapsed-by-default on adopted defs with summary line, toggle expands,
+  step-3 adjudicate summary + variants PASS/FAIL tally render; skill_def kind chip styled;
+  local-time timestamps (JST); review controls behind "Add review"; sort chips
+  (created/name/activity) render; cd-list-error panel PROVEN LIVE by a real incident (the
+  browser held a role-less ux-test-player guest token -> explicit forbidden panel + hint,
+  where the old UI showed a silent empty rail).
+- Incident note: that guest token 403 was pre-existing browser state, not a regression;
+  per user ruling in chat ("逆に全ての権限を付与") data/players/p_029be4bca0b5.json
+  (ux-test-player) was granted roles:["item_admin"] (the only role in the codebase).
+- Status: stays in built/ awaiting S7 user acceptance on the live screen.
