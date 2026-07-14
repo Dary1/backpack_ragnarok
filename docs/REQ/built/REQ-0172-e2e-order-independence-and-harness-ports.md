@@ -257,6 +257,28 @@ debris decide what the test actually covers. **Fixtures must be constructed, not
 contentadmin — the harness whose 3 specs died on `ECONNREFUSED :8923` when REQ-0159 first
 chained them — now comes up clean on 1570/1571/1572.
 
+### Post-sync re-verification (master moved during implementation)
+
+Master landed REQ-0164 (contentadmin UX r2 — client/src + a dist rebuild + an expanded
+contentadmin spec) while this REQ was in flight. Merged it in (`cc64530`, no conflicts —
+this REQ touches only `client/e2e/workshop.spec.ts`, `tools/*` and its own REQ file) and
+re-ran every gate on the synced tree, since the green above was measured on the pre-merge
+base.
+
+| Post-sync gate (tree `cc64530`) | Result |
+|---|---|
+| `bash tools/ci.sh` end-to-end | **exit 0 — `CI GREEN`** |
+| ↳ `[0/8]` e2e harness port rule | 3 harnesses, all derived, no collisions |
+| ↳ `[6.5/8]` artadmin / artinspect / contentadmin | **3 / 1 / 12 passed** |
+| ↳ `[7/7]` default suite | **159 passed, 0 failed, 0 flaky** |
+| dismantle spec, `E2E_PARALLEL=1` full file | 10 passed |
+| dismantle spec, `E2E_PARALLEL=4` standalone | 1 passed |
+| dismantle spec, `E2E_PARALLEL=0` (serial, live) | 1 passed |
+
+Note the contentadmin harness now runs **12** specs, not 3 — REQ-0164 expanded it. It comes
+up clean on the derived 1570/1571/1572, which is a useful independent check that the port
+rewiring holds for a harness that grew after it was rewired.
+
 ### Not done (deliberate)
 
 - **PROJECT.md is untouched** (user-owned; LLM agents may not edit it). The port rule's text
