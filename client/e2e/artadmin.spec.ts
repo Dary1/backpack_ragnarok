@@ -195,3 +195,29 @@ test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page,
   await expect(page.getByTestId('art-editor')).toBeVisible({ timeout: 30000 });
   await expect(page.getByTestId('art-editor')).toContainText('e2e_deeplink');
 });
+
+// REQ-0179: the `custom` kind -- operator-SET resolution (/16-snapped) and an
+// operator-owned prompt (no per-kind style template appended). This is the
+// texture kind linkable to no-art-kind content (e.g. gacha_pack) via contentadmin.
+test('custom kind: operator sets resolution (snapped) and the prompt is verbatim (no style tail)', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  await page.goto('/app/#/artadmin');
+  await expect(page.getByTestId('artadmin')).toBeVisible();
+  await page.getByTestId('art-new').click();
+  await page.getByTestId('art-kind').selectOption('custom');
+  // operator-set resolution: 1000x700 -> /16-snapped to 1008x704
+  await page.getByTestId('art-res-w').fill('1000');
+  await page.getByTestId('art-res-h').fill('700');
+  await expect(page.getByTestId('art-resolution')).toHaveText('1008x704');
+  await page.getByTestId('art-system-name').fill('e2e_custom_tex');
+  await page.getByTestId('art-main-object').fill('mossy stone bricks');
+  await page.getByTestId('art-create').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+  // header shows the operator-set (snapped) resolution
+  await expect(page.getByTestId('art-editor')).toContainText('1008x704');
+  // operator-owned prompt: verbatim main_object, NONE of the entity kinds' style tail
+  await page.getByTestId('art-preview').click();
+  await expect(page.getByTestId('art-final-prompt')).toContainText('mossy stone bricks');
+  await expect(page.getByTestId('art-final-prompt')).not.toContainText('anime');
+  await expect(page.getByTestId('art-final-prompt')).not.toContainText('bold outline');
+});

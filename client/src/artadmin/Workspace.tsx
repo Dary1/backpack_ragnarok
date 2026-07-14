@@ -38,7 +38,7 @@ export function Workspace(props: {
   const { art, renders, kits, inspections, adoptedId, draft, onDraft, dirty, shapeDirty,
     finalPreview, comparePicks } = props;
   const kind = art.kind as Kind;
-  const newSize = deriveSizeClient(kind, draft.mask, draft.mw, draft.mh);
+  const newSize = deriveSizeClient(kind, draft.mask, draft.mw, draft.mh, draft.cw, draft.ch);
   const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
 
   return (
@@ -86,6 +86,26 @@ export function Workspace(props: {
               {shapeDirty && renders.length > 0 && (
                 <div data-testid="art-shape-warn" className="aa-warn t-micro">
                   shape change: the {renders.length} existing render(s) keep their OLD size; only new renders use the new one
+                </div>
+              )}
+            </div>
+          )}
+          {kind === 'custom' && (
+            <div className="aa-field">
+              <span className="t-micro">resolution (snapped: <b className="tnum">{newSize.width}x{newSize.height}</b>{shapeDirty ? ' after save' : ''})</span>
+              <div className="aa-res-inputs">
+                <label className="aa-field">
+                  <span className="t-micro">width</span>
+                  <input data-testid="art-edit-res-w" className="aa-input aa-input--num" type="number" min={16} max={16384} step={16} value={draft.cw} onChange={(e) => onDraft({ cw: Number(e.target.value) || 0 })} />
+                </label>
+                <label className="aa-field">
+                  <span className="t-micro">height</span>
+                  <input data-testid="art-edit-res-h" className="aa-input aa-input--num" type="number" min={16} max={16384} step={16} value={draft.ch} onChange={(e) => onDraft({ ch: Number(e.target.value) || 0 })} />
+                </label>
+              </div>
+              {shapeDirty && renders.length > 0 && (
+                <div data-testid="art-shape-warn" className="aa-warn t-micro">
+                  resolution change: the {renders.length} existing render(s) keep their OLD size; only new renders use the new one
                 </div>
               )}
             </div>

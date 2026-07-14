@@ -1,0 +1,24 @@
+-- backpack_ragnarok -- server/migrations/017_artwork_kind_custom.sql
+-- REQ-0179: add the 'custom' artwork kind.
+--
+-- A `custom` artwork carries an operator-SET resolution (width x height) rather
+-- than one DERIVED from a shape law, and its prompt is used AS-IS (no per-kind
+-- style template is appended). It exists to be linked -- via REQ-0174's
+-- content_defs.artwork_ref -- as a plain texture to content that has no art-kind
+-- of its own (e.g. gacha_pack / bp_gacha). See docs/REQ/.../REQ-0179-custom-art-kind.md.
+--
+-- The resolution itself needs NO new column: it rides in the existing
+-- artworks.shape jsonb as {width,height} and is written to gen_width/gen_height by
+-- the create/patch path, exactly like po (mask) and monster (w,h) shapes. This
+-- migration therefore only widens the kind ENUM.
+--
+-- Apply as the postgres superuser (same invocation as 001..016):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/017_artwork_kind_custom.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS (PG 12+). NOTE: ALTER TYPE ... ADD VALUE
+-- cannot run inside a transaction block / DO $$ ... $$, so it is a bare
+-- top-level statement (not guarded by a DO block like 007's CREATE TYPE).
+-- Migration-first is safe on a live deploy: old code never emits 'custom'; new
+-- code does. New enum values inherit nothing to GRANT.
+
+ALTER TYPE artwork_kind ADD VALUE IF NOT EXISTS 'custom';

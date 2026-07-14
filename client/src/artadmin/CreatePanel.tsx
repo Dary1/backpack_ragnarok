@@ -27,11 +27,15 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
   const [mask, setMask] = useState<boolean[][]>(emptyMask());
   const [mw, setMw] = useState(3);
   const [mh, setMh] = useState(4);
+  const [cw, setCw] = useState(1024);
+  const [ch, setCh] = useState(1024);
   const [busy, setBusy] = useState(false);
 
-  const size = deriveSizeClient(kind, mask, mw, mh);
+  const size = deriveSizeClient(kind, mask, mw, mh, cw, ch);
   const nameError = validateNewName(systemName, existing);
-  const shapeError = kind === 'po' && maskCellCount(mask) === 0 ? 'click at least one cell in the 5x5 mask' : null;
+  const shapeError = kind === 'po' && maskCellCount(mask) === 0
+    ? 'click at least one cell in the 5x5 mask'
+    : kind === 'custom' && (cw < 16 || ch < 16) ? 'width and height must be at least 16' : null;
   const canCreate = !busy && systemName !== '' && !nameError && !shapeError;
 
   function onKindChange(k: Kind) { setKind(k); setPromptTemplate(defaultTemplate(k)); }
@@ -47,6 +51,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
       if (kind === 'po') body.shape = { mask };
       if (kind === 'monster') body.shape = { w: mw, h: mh };
       if (kind === 'bpskin') body.edge_padding = edgePadding;
+      if (kind === 'custom') body.shape = { width: cw, height: ch };
       const r = await createArtwork(body);
       report('created ' + r.artwork.system_name + ' (' + r.artwork.gen_width + 'x' + r.artwork.gen_height + ')', 'ok');
       onCreated(r.artwork);
@@ -79,9 +84,21 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
           {kind === 'monster' && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
           {kind === 'si' && <span className="t-micro">locked 256x256 (no shape)</span>}
           {(kind === 'unit' || kind === 'bpskin') && <span className="t-micro">no shape (locked size)</span>}
+          {kind === 'custom' && (
+            <div className="aa-res-inputs">
+              <label className="aa-field">
+                <span className="t-micro">width</span>
+                <input data-testid="art-res-w" className="aa-input aa-input--num" type="number" min={16} max={16384} step={16} value={cw} onChange={(e) => setCw(Number(e.target.value) || 0)} />
+              </label>
+              <label className="aa-field">
+                <span className="t-micro">height</span>
+                <input data-testid="art-res-h" className="aa-input aa-input--num" type="number" min={16} max={16384} step={16} value={ch} onChange={(e) => setCh(Number(e.target.value) || 0)} />
+              </label>
+            </div>
+          )}
         </div>
         <div className="aa-field">
-          <span className="t-micro">resolution (derived, read-only)</span>
+          <span className="t-micro">{kind === 'custom' ? 'resolution (snapped from inputs)' : 'resolution (derived, read-only)'}</span>
           <b data-testid="art-resolution" className="tnum">{size.width}x{size.height}</b>
         </div>
         <label className="aa-field">

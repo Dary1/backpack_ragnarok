@@ -27,6 +27,8 @@
 .ca-kind--unit_def { color: var(--frost); border-color: var(--frost-lo); }
 .ca-kind--tm_def { color: var(--r-epic); border-color: var(--r-epic); }
 .ca-kind--skill_def { color: var(--gold-hi); border-color: var(--gold-lo); }
+/* REQ-0179: custom artwork kind, shown in the artwork picker's type chips */
+.ca-kind--custom { color: var(--gold-hi); border-color: var(--gold-lo); }
 
 /* ---- left rail rows (inside .aa-rail/.aa-list) ---- */
 .ca-rowwrap { display: flex; align-items: center; gap: 2px; }

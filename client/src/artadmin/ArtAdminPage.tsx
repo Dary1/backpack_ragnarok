@@ -186,7 +186,8 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const dirty = !!(draft && baseline && JSON.stringify(draft) !== JSON.stringify(baseline));
   const shapeDirty = !!(draft && baseline && detailArt && (
     (detailArt.kind === 'po' && JSON.stringify(draft.mask) !== JSON.stringify(baseline.mask))
-    || (detailArt.kind === 'monster' && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))));
+    || (detailArt.kind === 'monster' && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))
+    || (detailArt.kind === 'custom' && (draft.cw !== baseline.cw || draft.ch !== baseline.ch))));
 
   async function doSave() {
     if (!selected || !draft || !baseline || !detailArt) return;
@@ -195,7 +196,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     if (draft.prompt_template !== baseline.prompt_template) body.prompt_template = draft.prompt_template;
     if (draft.style_override !== baseline.style_override) body.style_override = draft.style_override || null;
     if (detailArt.kind === 'bpskin' && draft.edge_padding !== baseline.edge_padding) body.edge_padding = draft.edge_padding;
-    if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : { w: draft.mw, h: draft.mh };
+    if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : detailArt.kind === 'custom' ? { width: draft.cw, height: draft.ch } : { w: draft.mw, h: draft.mh };
     try {
       const r = await patchArtwork(selected, body);
       setDetailArt(r.artwork);
