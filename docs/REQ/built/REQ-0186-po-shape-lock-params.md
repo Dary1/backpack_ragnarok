@@ -125,3 +125,38 @@ free-composes and misses". `auto` spends the legibility cost only where it buys 
 - `artwork_test.cjs` (pg): **11 passed, 0 failed** — incl. the two new REQ-0186 gates.
 - `tools/artadmin_e2e.sh`: **5 passed**. `tools/art_inspect_e2e.sh`: **1 passed**.
 - Migration 018 applied to the live DB; columns + CHECK constraints verified present.
+
+## Integration pass — 2026-07-15
+
+- **Merged to master** (`b6f7cc6`). Master moved twice mid-work (`e720e95` -> `7f03920` ->
+  `7d66310`, docs-only both times, no overlap); merged in and re-certified each time rather
+  than merging stale.
+- **Re-certified after the last master merge:** `tools/ci.sh` (SKIP_E2E) **CI GREEN**;
+  `artwork_test.cjs` **11/11**; `artadmin_e2e.sh` **5/5**; `art_inspect_e2e.sh` **1/1**.
+- **Migration 018 applied** to the live DB; both columns and both CHECK constraints verified.
+- **Client rebuilt** (this REQ does touch `client/`), committed dist == fresh build.
+- **Deployed:** `backpack-api` restarted; api/web/tunnel active, ingress + `/app/#/artadmin`
+  200.
+- **Verified LIVE:** a full-rectangle po previews `lock=off` with the plain subject; the same
+  artwork with a one-shot `{"shape_lock":"strict"}` previews `lock=strict D=8` with the edit
+  instruction, without mutating the artwork. Bad values are refused with a 400.
+
+**Defect found and fixed during this pass:** `hPreview` did not validate the lock, so a typo
+(`shape_lock: "nonsense"`) reached the worker, threw, and surfaced as an opaque
+**500 "preview failed"** — while create/patch/generate all returned a clean 400. Now
+validated at the same guard: 400 with `shape_lock must be one of auto|off|guide|strict`.
+
+**Observation for the owner — `auto` is currently a no-op on the whole live registry.**
+Every po artwork registered today (22 of them: iron_sword 1x3, iron_shield 2x2,
+large_iron_shield 2x3, healing_potion 1x2, blade/hilt/flame_tablet/oil_flask 1x2 or 1x1 ...)
+is a FULL RECTANGLE, so `auto` resolves to `off` for all of them. That is the intended,
+evidence-backed answer — REQ-0153 recorded the unconditioned baseline PASSING on exactly
+these footprints — but it is worth stating plainly: on the registry as it stands, REQ-0183's
+always-on conditioning was paying subject legibility and ~2-3x generation time on every
+render and fixing a miss that was not occurring. `strict` will start engaging the moment a
+genuinely awkward footprint (L, T, notched) is drawn, which is where REQ-0153 measured the
+baseline at 28.6%.
+
+**Disposition: STAYS in built/.** Merged, deployed, live-verified — but not yet accepted:
+no real GPU render has been eyeballed (ComfyUI was busy with another session's job
+throughout). Moving to done/ needs the owner to generate and accept.
