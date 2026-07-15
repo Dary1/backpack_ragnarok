@@ -138,3 +138,47 @@ relocation does not depend on the file being deleted.
 51-68) and renders `<DexAdmin>` at line 78. Removing both makes `me` / `isAdmin` / `reloadMe` /
 `reload` dead in that file — the deletion must carry them out too, or tsc will fail on unused
 locals.
+
+### Session 1 (cont.) — implementation landed; e2e rewrite is the remaining step
+
+**Landed (commit `0312ff2`, client tsc green, content_serving_test 9/0):**
+- `DexRoot.tsx` — toggle + DexAdmin branch removed; the `/api/me` fetch went with them (its
+  only consumer was the toggle). `DexAdmin.tsx` deleted. `api/dex.ts` — `putAdminItem` removed,
+  `fetchDexCard` (REQ-0052, unrelated) kept.
+- `server/routes/admin.cjs` — 409 + `edit_at: '#/contentadmin/<id>'`, placed AFTER the
+  item_admin gate (a role-less caller must still get 403 — `:35` asserts it — and the 409 must
+  not leak which ids are adopted). Predicate `lib/content.cjs registryServedKindFor()` reads
+  the warm snapshot: no DB round trip, and it is the same snapshot `/api/content` is served
+  from, so the refusal cannot disagree with what the operator sees.
+- `VariantCard.tsx` — grant-to-warehouse relocated onto the **adopted** variant only (the
+  adopted variant is what a grant hands you; offering it on a draft would imply the draft is
+  live). `systemName` threaded from `Workspace.tsx`.
+- Shared `dex/*` modules survive; `grantWarehouseItem` was never at risk (`api/warehouse.ts`).
+
+**CORRECTION 3 — the grant button's e2e coverage is NOT in dex-admin.spec.ts.**
+The spec says "The grant button's coverage moves with it", implying it sits with the other
+dex-admin tests. It does not: **`client/e2e/schedule.spec.ts:804-809`** drives
+`dex-mode-toggle` → `dex-admin-list-item` → `dex-admin-grant-warehouse-btn` →
+`dex-admin-grant-warehouse-message`. That spec is in the **default suite**, so the relocation
+breaks it, and no amount of editing dex-admin.spec.ts would reveal that.
+
+**The e2e work, stated exactly (measured, not assumed):**
+
+| spec | test | disposition |
+|---|---|---|
+| dex-admin | `:35` role-less → no toggle + 403 PUT | **KEEP** — still true and still a security assertion; the toggle-count-0 check now passes trivially, and the 403 must keep preceding the 409 |
+| dex-admin | `:69` edit name via form | **DELETE** — the UI is gone |
+| dex-admin | `:130` locale-only edit fields | **DELETE** — the UI is gone. (Note: this is the test the spec wrongly listed as *already failing*. It passes today precisely because the edit UI still exists; it dies by deletion, not by drift.) |
+| dex-admin | `:175` effect round trip | **DELETE** — the UI is gone |
+| dex-admin | `:286` edit-mode list thumbnails | **DELETE** — asserts edit-mode UI. Also not mentioned by the spec. |
+| dex-admin | `:259` chrome language toggle | **KEEP** — uses `.nav-link` / `.lang-toggle` only |
+| **schedule** | `:804` grant via Dex Edit | **REWRITE** — must grant via the contentadmin adopted-variant card (`grant-warehouse-<no>`) |
+
+Plus the two NEW tests the spec asks for: the Dex has no edit toggle even for item_admin, and
+the admin PUT 409s for a covered item with the redirect hint. The 409 test must run against a
+namespace **with an adopted def** — under `ci.sh`'s fleet the registry is empty, so the guard
+never fires and a green ci.sh does NOT exercise it (the same blind spot that let this bug reach
+live in the first place).
+
+**So the replacement budget is: 4 deletions + 1 KEEP-as-is + 1 rewrite in a DIFFERENT spec file
++ 2 new tests — not "three replacements".**
