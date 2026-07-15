@@ -161,3 +161,31 @@ grates in practice, the escape hatch is `shape_conditioning: false` per job, or 
 (main checkout + services are HANDS-OFF without a fresh user go-ahead). The GPU was busy
 with another session's ComfyUI job throughout this pass; per the standing GPU etiquette
 (serialize, coordinate, no retry storms) no demo render was queued against it.
+
+## Integration pass — 2026-07-15 (user go-ahead in chat: "masterへマージしてlive artadmin")
+
+- **Merged to master.** Branch re-based over the master that had moved under it
+  (`8830ace` -> `e3bc77d`, docs-only, zero overlap with this REQ's files), re-certified,
+  then fast-forwarded: master is now `e720e95`.
+- **Re-certified before the merge:** `tools/ci.sh` (SKIP_E2E) **CI GREEN** on the merged
+  branch. Earlier on the same code: `artwork_test.cjs` 9/9 (pg), `artadmin_e2e.sh` 5/5,
+  `art_inspect_e2e.sh` 1/1.
+- **No client rebuild needed:** this REQ changes 0 files under `client/`, so the committed
+  dist stays valid; `backpack-web` was left alone.
+- **Deployed:** `backpack-api` restarted 2026-07-15 00:28:54 UTC (it runs the main
+  checkout's `server/api.cjs`, so the restart is what picks this up). `backpack-api` /
+  `backpack-web` / `backpack-tunnel` all active; web 8801, api 8802, ingress and
+  `/app/#/artadmin` all HTTP 200.
+- **Verified LIVE, not just in tests** — `POST /api/art/artworks/<po>/preview` against the
+  running api returns `shape_conditioned: true` and the edit prompt
+  ("Turn the gray shape into iron sword, ... Keep the silhouette exactly."), while an `si`
+  artwork returns `shape_conditioned: false` with its plain subject. The deployed process
+  is running this code.
+- **Timing note:** another session's default e2e suite (178 passed) was holding the box
+  lock during this pass; the restart waited for it to finish rather than breaking it.
+
+**Disposition: STAYS in built/.** Merged and deployed, but NOT yet accepted: the S7 eyeball
+on real GPU renders has not happened. Throughout this pass ComfyUI was busy with another
+session's job (GPU 100%), so per the standing GPU etiquette no demo render was queued and
+no artwork was created in the LIVE registry unprompted. Moving to done/ requires the user
+generating a po in artadmin and accepting the result.
