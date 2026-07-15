@@ -156,7 +156,17 @@ the topology (a double-edged axe puts the handle at the head's vertical center
 — that is a T-object, whatever the word suggested). Evidence: the word-first
 L-order produced four renders that all fit the T footprint by translation alone.
 
-**2. Fit-feel is violation-based, not additive.** The backpack "snug fit" is
+**2. Fit-feel is violation-based, not additive.** GOLDEN aggregation rule
+(user, 2026-07-15): *"discomfort is decided by the WORST spot, not the average
+-- one cell's grave violation is not diluted by the other cells' goodness."*
+Never average violations across cells. Within a cell, violations OR-combine
+(v = 1 - prod(1 - v_i): the largest dominates, co-occurring ones compound);
+across cells, aggregate worst-dominated (max, or a high-p norm). Averaging is
+only meaningful for additive experiences; fit-feel is negative-elimination.
+Validated same day: the averaging meter ranked the user-best render 4th; the
+worst-spot meter ranked it 1st and sank the border-skimming renders to the
+bottom (tools/spikes/req0187_fit_meter.py v4, findings in REQ-0187).
+ The backpack "snug fit" is
 not a positive quantity to maximize; it is the ABSENCE of specific violations.
 A blob-like subject with no long straight part raises no expectation and may
 sit loosely without discomfort. The violations, in severity order:
