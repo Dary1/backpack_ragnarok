@@ -93,6 +93,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/contentagg_test.cjs
   echo "==== [5.36/7] registry-first content serving (pg backend, REQ-0178) ===="
   STORAGE_BACKEND=pg node server/tests/content_serving_test.cjs
+  echo "==== [5.37/7] registry-first SCHEDULE serving -- roll/sim authority path (pg backend, REQ-0176) ===="
+  STORAGE_BACKEND=pg node server/tests/schedule_serving_test.cjs
   echo "==== [5.4/7] pack biography storage parity (pg backend, REQ-0060) ===="
   STORAGE_BACKEND=pg node server/tests/bio_test.cjs
   echo "==== [5.45/7] bp-skin cosmetic-slot store parity (pg backend, REQ-0126) ===="

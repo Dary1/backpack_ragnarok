@@ -75,8 +75,18 @@ function run(res, promise) {
 // handlers for e2e determinism (mirrors REQ-0133's refreshArtUrls). Never
 // throws: a registry read hiccup must not fail the mutation that already
 // committed.
+//
+// REQ-0176 (Phase-1b): there are TWO warm snapshots -- lib/content.cjs (the
+// DISPLAY path, /api/content) and services/core.cjs (the AUTHORITY path: the
+// gacha roll, the run simulation, market, warehouse, forecast). Both refresh
+// from THIS ONE call site, on purpose: a mutation that refreshed only one would
+// leave display and roll disagreeing, which is precisely the drift REQ-0176
+// exists to kill. If a third snapshot is ever added, it belongs here too.
 function invalidateServedContent() {
-  return require('../lib/content.cjs').refreshRegistryData().catch(() => {});
+  return Promise.all([
+    require('../lib/content.cjs').refreshRegistryData(),
+    require('../services/core.cjs').refreshRegistryData(),
+  ]).catch(() => {});
 }
 
 // Full-provenance validation (gate G3): every variant carries source/model/
@@ -311,7 +321,12 @@ async function hDevClear(req, res) {
 // /api/content). Reports per section {registry, fallback_file, file_only_names[]}
 // so file/registry drift is observable without diffing payloads by hand.
 async function hSources(req, res) {
-  sendJSON(res, 200, Object.assign({ ok: true }, require('../lib/content.cjs').getContentSources()));
+  // REQ-0176: `schedule` reports the AUTHORITY path's registry/fallback split
+  // (services/core.cjs) beside REQ-0178's display-path accounting, so the two
+  // paths can be compared at a glance -- a disagreement is drift.
+  sendJSON(res, 200, Object.assign({ ok: true }, require('../lib/content.cjs').getContentSources(), {
+    schedule: require('../services/core.cjs').getScheduleSources(),
+  }));
 }
 async function hServeAdopted(req, res, name) {
   const a = await storage.getAdoptedVariant(name);
