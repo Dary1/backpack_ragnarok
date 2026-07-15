@@ -41,8 +41,12 @@ generation seeds stay below; repeated presses stack).
   s=0.9875 pos(5,5), identity 66.17 (matches the po.cell_fit kit's 66.06 by
   birefnet), output PNG 768x768.
 - Server tests + client build: see gate results below.
-- Live: repack of a real render lands at seed+100000 with provenance params
-  and kit rows. [recorded below when done]
+- Live (2026-07-15, deployed): POST repack on req0187_scythe seed 43 -> 202
+  target 100043 (queued row visible immediately); completed with
+  derived_from_seed=43, transform {scale 1.0017, rot 0, flip false, pos 5,5},
+  fit_score_identity 66.06 (exact po.cell_fit parity), fit_score_packed 69.85.
+  Priority verified: the pack jumped ahead of 5 pending generation jobs and
+  ran right after the in-flight one.
 
 ## Out of scope
 
