@@ -146,3 +146,27 @@ Consequences for this REQ's spec:
 Open: natural-orientation L test; T-tetromino subject (war hammer IS a T-object
 — expected easy case); V2 (auto's default) / V3 (guide) / V4 (UI compare loop);
 delete `req0187_*` artworks when done.
+
+## Revision-loop live run — 2026-07-15 (user + LLM, req0187_scythe)
+
+The user-designed loop (instruction -> 3 seeds -> meter -> revised instruction
+-> 3 seeds -> revised -> 4 seeds -> present all 10 with scores) executed live
+on a complex 6-cell footprint (3x3 bbox: shaft column + blade top row + a
+dipped tip cell (1,2)); auto -> strict @ D=8 on every render; po.cell_fit
+scored each render automatically in artadmin.
+
+Scores (fit / worst cell): R1 24.2, 26.3, 20.4 (tip cell missed everywhere);
+R2 (added plunge wording + thick shaft + grip) 25.9, 26.4, **66.1 best**
+(seed 43; tip cell 0.96 -> 0.00 on 42/43); R3 (added "level along the very
+top all the way to the corner") 25.8, 40.4, 25.8, 31.0 — REGRESSION: the
+model obeyed the new level clause and dropped the proven plunge (seeds 51/53:
+five cells v=0.00, tip cell v=1.00). Lessons written to S0.2 (revision
+discipline; footprint-reshape corollary). Meter-to-revision causality
+demonstrated both ways: a targeted clause fixed the measured worst cell, and
+an interfering clause un-fixed it.
+
+Deliverable state: 10 renders + po.cell_fit rows on req0187_scythe (live
+artadmin); winner by meter and eyeball candidate = seed 43. Adoption is the
+user's call. po.cell_fit kit + inspect_job stdout fix merged to master and
+deployed mid-REQ at user direction. REQ-0191 (cell-shape backdrop) filed to
+todo/. Test artworks req0187_l_axe / req0187_scythe still to delete at close.

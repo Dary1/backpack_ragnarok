@@ -222,6 +222,19 @@ ComfyUI cold start after idle-free (REQ-0158) cost ~508 s of model reload
 `renders.seed` is UNIQUE per artwork, so same-seed A/B across rounds needs
 render deletion or distinct seeds.
 
+**Revision discipline** (measured, scythe loop 2026-07-15): change ONE
+geometric constraint per round and keep every clause that measurably worked
+VERBATIM. Round 2 added "tip plunging steeply downward, reaching the middle
+height" and the tip cell went v=0.96 -> 0.00 on two renders (fit 66.1 best).
+Round 3 additionally asked the blade to run "level along the very top all the
+way to the far right corner" -- the model obeyed the level clause and DROPPED
+the plunge (two renders: five cells at v=0.00, tip cell back to v=1.00, fit
+25.8). Competing geometric clauses are not merged by the model; one wins.
+Corollary: a render failing ONLY one cell is also evidence the FOOTPRINT may
+be wrong for the archetype (those round-3 renders are ~perfect for the
+5-cell Gamma footprint without the tip-dip cell) -- reshaping the mask is
+sometimes cheaper than re-prompting (rule 4).
+
 Implementation of the loop + the new instruments is a follow-up REQ
 (REQ-0187 observes; it does not modify the route).
 
