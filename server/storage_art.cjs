@@ -63,6 +63,11 @@ function mapArtwork(row) {
     prompt_template: row.prompt_template,
     style_override: row.style_override,
     edge_padding: row.edge_padding,
+    // REQ-0186: po shape-conditioning controls. NULL = unset = the `auto`/8
+    // default resolved in art_job.py (never defaulted here -- storage records
+    // what the operator set, not what the route decides).
+    shape_lock: row.shape_lock,
+    shape_dilation_px: row.shape_dilation_px,
     adopted_render_id: row.adopted_render_id,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -76,13 +81,15 @@ async function createArtwork(a) {
   try {
     const res = await q(
       `INSERT INTO artworks
-         (system_name, kind, shape, gen_width, gen_height, main_object, prompt_template, style_override, edge_padding)
-       VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9)
+         (system_name, kind, shape, gen_width, gen_height, main_object, prompt_template, style_override, edge_padding, shape_lock, shape_dilation_px)
+       VALUES ($1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING *`,
       [nsName(a.system_name), a.kind, a.shape == null ? null : JSON.stringify(a.shape),
        a.gen_width, a.gen_height, a.main_object || '', a.prompt_template || '',
        a.style_override == null ? null : a.style_override,
-       a.edge_padding == null ? null : a.edge_padding]
+       a.edge_padding == null ? null : a.edge_padding,
+       a.shape_lock == null ? null : a.shape_lock,
+       a.shape_dilation_px == null ? null : a.shape_dilation_px]
     );
     return mapArtwork(res.rows[0]);
   } catch (e) {
@@ -150,6 +157,8 @@ async function updateArtwork(system_name, patch) {
   if (patch.prompt_template !== undefined) push('prompt_template', patch.prompt_template);
   if (patch.style_override !== undefined) push('style_override', patch.style_override);
   if (patch.edge_padding !== undefined) push('edge_padding', patch.edge_padding);
+  if (patch.shape_lock !== undefined) push('shape_lock', patch.shape_lock);
+  if (patch.shape_dilation_px !== undefined) push('shape_dilation_px', patch.shape_dilation_px);
   if (patch.shape !== undefined) push('shape', patch.shape == null ? null : JSON.stringify(patch.shape), '::jsonb');
   if (patch.gen_width !== undefined) push('gen_width', patch.gen_width);
   if (patch.gen_height !== undefined) push('gen_height', patch.gen_height);

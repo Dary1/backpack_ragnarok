@@ -136,6 +136,30 @@ def for_kind(kind, subject, weighted=True):
     return render(KIND_TEMPLATE[kind], subject, weighted)
 
 
+def edit_instruction(subject):
+    """REQ-0183: turn a subject into the REQ-0153 shape-EDIT instruction.
+
+    FLUX.2 klein unifies t2i and image editing in one architecture, so when a
+    scaffold rides along as a ReferenceLatent the prompt must read as an
+    instruction ABOUT that reference ("turn the gray shape into ..."), not as a
+    plain subject. This is the wording REQ-0153 scored GREEN with.
+
+    `subject` is the ALREADY-COMPOSED subject -- the artwork's prompt_template
+    with {main_object} substituted -- i.e. exactly what the unconditioned path
+    hands to for_kind(). The caller still wraps the result in the kind/override
+    style template, so the only thing added here is the shape directive.
+
+    DELIBERATE DEVIATION from the REQ-0153 addendum's sketch, which appended
+    "white background, bold outline" itself: on the REQ-0151 admin path the PO
+    prompt_template ALREADY owns that clause (its default is
+    "{main_object}, white background, bold outline"), so re-stating it here
+    would duplicate it in every prompt. Same tokens, stated once. The shape lock
+    is mechanical (ReferenceLatent + SetLatentNoiseMask), not prompt-order
+    dependent.
+    """
+    return "Turn the gray shape into %s. Keep the silhouette exactly." % subject
+
+
 def fill_prompt(material_clause):
     """`material_clause` must end in ', ' -- e.g. "brown leather texture, worn grain, "."""
     return material_clause + FILL_STYLE

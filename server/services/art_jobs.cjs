@@ -88,12 +88,26 @@ function jobPython() { return process.env.ART_JOB_PYTHON || 'python3'; }
 function runPython(jobSpec, onChild) { return runWorker(jobPython(), ART_JOB_PY, jobSpec, onChild); }
 
 async function processGenJob(desc) {
-  const { renderId, artwork, seed, tiling } = desc;
+  const { renderId, artwork, seed, tiling, shapeOverride } = desc;
   await storage.setRenderStatus(renderId, 'running');
   const res = await runPython({
     kind: artwork.kind, main_object: artwork.main_object,
     prompt_template: artwork.prompt_template, style_override: artwork.style_override,
     width: artwork.gen_width, height: artwork.gen_height, seed, tiling: !!tiling,
+    // REQ-0183: the artwork's shape reaches GENERATION, not just inspection.
+    // Until now a po artwork's 5x5 mask was handed to the kits that judge the
+    // finished render, but never to the route that makes it -- so the model was
+    // asked to hit a silhouette nobody had told it about, and the awkward
+    // shapes (L, T) missed. art_job.py turns the mask into the REQ-0153 Arm C
+    // scaffold + noise mask; non-po kinds ignore it.
+    shape: artwork.shape || null,
+    // REQ-0186: the artwork's stored default, unless this render carries a
+    // one-shot override (undefined = not overridden -> fall back to stored ->
+    // NULL there = art_job.py's built-in auto/8).
+    shape_lock: (shapeOverride && shapeOverride.shape_lock !== undefined)
+      ? shapeOverride.shape_lock : artwork.shape_lock,
+    shape_dilation_px: (shapeOverride && shapeOverride.shape_dilation_px !== undefined)
+      ? shapeOverride.shape_dilation_px : artwork.shape_dilation_px,
     mode: 'generate',
   }, (child) => { runningChild = child; });
   // REQ-0156: a canceled job's child was killed -- whatever the worker
@@ -115,6 +129,17 @@ async function processGenJob(desc) {
     models: { unet: mh.unet, clip: mh.clip, vae: mh.vae },
   };
   if (res.bpskin_frame_report) params.bpskin_frame_report = res.bpskin_frame_report;
+  // REQ-0183: provenance -- whether this render was shape-conditioned, and at
+  // what dilation. A render's params are the record of HOW it was made, and
+  // "was the shape enforced?" is now part of that.
+  // REQ-0186: record the RESOLVED lock (auto already collapsed to off/guide/
+  // strict), so the lightbox can tell the operator which setting produced which
+  // render -- without that, comparing two locks side by side is guesswork.
+  params.shape_lock = res.shape_lock || 'off';
+  if (res.shape_conditioned) {
+    params.shape_conditioned = true;
+    if (res.shape_dilation_px != null) params.shape_dilation_px = res.shape_dilation_px;
+  }
   await storage.updateRenderResult(renderId, {
     status: 'ok', image: Buffer.from(res.image_b64, 'base64'),
     image_sha256: res.image_sha256, final_prompt: res.final_prompt, params, error: null,

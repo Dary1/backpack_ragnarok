@@ -75,6 +75,50 @@ function httpForCode(code) {
   return 400;
 }
 
+// REQ-0186: po shape-conditioning controls. Kept OUT of artworks.shape on
+// purpose -- kit_registry.kitParams() hashes shape verbatim into the inspection
+// staleness key, so an enforcement setting living there would mark every
+// existing verdict STALE on a lock change, with neither the image nor the
+// geometry having moved.
+const SHAPE_LOCKS = ['auto', 'off', 'guide', 'strict'];
+const MAX_DILATION_PX = 16;   // mirrors tools/art_shape.py MAX_DILATION_PX + migration 018
+
+/** Validate the po lock controls off a create/patch body. Returns
+ * {shape_lock, shape_dilation_px}, each undefined when the body omits it (so a
+ * patch does not clobber a stored value) and null for a non-po kind (which has
+ * no cell shape to lock to). Throws BAD_SHAPE on a bad value rather than
+ * silently coercing -- a mis-typed lock must not quietly generate at the wrong
+ * setting for an hour of GPU. */
+function shapeLockFields(kind, b, { forCreate }) {
+  const out = {};
+  if (kind !== 'po') {
+    if (forCreate) { out.shape_lock = null; out.shape_dilation_px = null; }
+    return out;
+  }
+  if (b.shape_lock !== undefined && b.shape_lock !== null) {
+    if (!SHAPE_LOCKS.includes(b.shape_lock)) {
+      throw Object.assign(new Error('shape_lock must be one of ' + SHAPE_LOCKS.join('|')), { code: 'BAD_SHAPE' });
+    }
+    out.shape_lock = b.shape_lock;
+  } else if (forCreate) {
+    out.shape_lock = 'auto';   // REQ-0186 ratified default
+  } else if (b.shape_lock === null) {
+    out.shape_lock = null;     // explicit reset to the default
+  }
+  if (b.shape_dilation_px !== undefined && b.shape_dilation_px !== null) {
+    const d = b.shape_dilation_px;
+    if (!Number.isInteger(d) || d < 0 || d > MAX_DILATION_PX) {
+      throw Object.assign(new Error('shape_dilation_px must be an integer 0..' + MAX_DILATION_PX), { code: 'BAD_SHAPE' });
+    }
+    out.shape_dilation_px = d;
+  } else if (forCreate) {
+    out.shape_dilation_px = null;   // NULL = the built-in 8
+  } else if (b.shape_dilation_px === null) {
+    out.shape_dilation_px = null;
+  }
+  return out;
+}
+
 // Build + validate the shape for a kind, then derive its read-only size.
 function shapeAndSize(kind, shape) {
   if (kind === 'po') {
@@ -106,9 +150,12 @@ async function hCreate(req, res) {
   let ss;
   try { ss = shapeAndSize(b.kind, b.shape); } catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   const defaults = defaultsForKind(b.kind);
+  let locks;
+  try { locks = shapeLockFields(b.kind, b, { forCreate: true }); } catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   try {
     const art = await storage.createArtwork({
       system_name: b.system_name, kind: b.kind, shape: ss.shape,
+      shape_lock: locks.shape_lock, shape_dilation_px: locks.shape_dilation_px,
       gen_width: ss.size.width, gen_height: ss.size.height,
       main_object: b.main_object || '',
       prompt_template: b.prompt_template != null ? b.prompt_template : defaults.prompt_template,
@@ -168,6 +215,10 @@ async function hPatch(req, res, name) {
   const b = await readJson(req);
   const patch = {};
   for (const k of ['main_object', 'prompt_template', 'style_override', 'edge_padding']) if (b[k] !== undefined) patch[k] = b[k];
+  // REQ-0186: the operator retunes the lock here once a render has shown them
+  // the trade-off. Passing null resets the field to its built-in default.
+  try { Object.assign(patch, shapeLockFields(art.kind, b, { forCreate: false })); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   if (b.shape !== undefined) {
     try { const ss = shapeAndSize(art.kind, b.shape); patch.shape = ss.shape; patch.gen_width = ss.size.width; patch.gen_height = ss.size.height; }
     catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
@@ -180,14 +231,28 @@ async function hPreview(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
+  // REQ-0186: validate the lock HERE too. Every other path (create/patch/
+  // generate) rejects a bad value with a 400; preview used to hand it straight
+  // to the worker, which threw, and the operator got an opaque 500 "preview
+  // failed" for what is simply a typo. Same guard, same 400, same wording.
+  try { shapeLockFields(art.kind, b, { forCreate: false }); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   const merged = Object.assign({}, art, b);
   const out = await jobs.runPython({
     kind: art.kind, main_object: merged.main_object, prompt_template: merged.prompt_template,
     style_override: merged.style_override, width: art.gen_width, height: art.gen_height,
+    // REQ-0183: preview the prompt generation will REALLY run -- a
+    // shape-conditioned po is an edit instruction ("Turn the gray shape
+    // into ..."), so previewing the unconditioned wording would lie.
+    shape: merged.shape || art.shape || null,
+    // REQ-0186: preview the lock the operator is ABOUT to generate at (body
+    // override), falling back to the artwork's stored default.
+    shape_lock: b.shape_lock !== undefined ? b.shape_lock : art.shape_lock,
+    shape_dilation_px: b.shape_dilation_px !== undefined ? b.shape_dilation_px : art.shape_dilation_px,
     seed: b.seed != null ? b.seed : 1, mode: 'preview',
   });
   if (out.status !== 'ok') return sendJSON(res, 500, { ok: false, error: out.error || 'preview failed' });
-  sendJSON(res, 200, { ok: true, subject: out.subject, final_prompt: out.final_prompt, width: out.width, height: out.height, route_params: out.route_params });
+  sendJSON(res, 200, { ok: true, subject: out.subject, final_prompt: out.final_prompt, width: out.width, height: out.height, route_params: out.route_params, shape_conditioned: !!out.shape_conditioned, shape_lock: out.shape_lock, shape_dilation_px: out.shape_dilation_px });
 }
 
 async function hGenerate(req, res, name) {
@@ -195,17 +260,30 @@ async function hGenerate(req, res, name) {
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
   const tiling = art.kind === 'bpskin' ? true : !!b.tiling;
+  // REQ-0186: a ONE-SHOT lock override, same posture as `tiling` -- it steers
+  // this render only and is NOT written back to the artwork. This is the point
+  // of the feature: a conditioned render costs 76-130 s, and the trade-off is
+  // only visible once you can see it, so the operator burns the same seed at
+  // two locks, compares them in the lightbox, and only then PATCHes the winner
+  // onto the artwork as its default.
+  let ov;
+  try { ov = shapeLockFields(art.kind, b, { forCreate: false }); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
+  const shapeOverride = {
+    shape_lock: ov.shape_lock !== undefined ? ov.shape_lock : undefined,
+    shape_dilation_px: ov.shape_dilation_px !== undefined ? ov.shape_dilation_px : undefined,
+  };
   const created = [];
   try {
     if (b.seed != null) {
       const r = await storage.createRender(art.id, b.seed, 'queued');
-      jobs.enqueue({ renderId: r.id, artwork: art, seed: r.seed, tiling });
+      jobs.enqueue({ renderId: r.id, artwork: art, seed: r.seed, tiling, shapeOverride });
       created.push(r);
     } else {
       const n = Math.max(1, Math.min(20, Number(b.count) || 1));
       for (let i = 0; i < n; i++) {
         const r = await storage.createRender(art.id, null, 'queued');
-        jobs.enqueue({ renderId: r.id, artwork: art, seed: r.seed, tiling });
+        jobs.enqueue({ renderId: r.id, artwork: art, seed: r.seed, tiling, shapeOverride });
         created.push(r);
       }
     }

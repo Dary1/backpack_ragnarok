@@ -196,6 +196,10 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     if (draft.prompt_template !== baseline.prompt_template) body.prompt_template = draft.prompt_template;
     if (draft.style_override !== baseline.style_override) body.style_override = draft.style_override || null;
     if (detailArt.kind === 'bpskin' && draft.edge_padding !== baseline.edge_padding) body.edge_padding = draft.edge_padding;
+    // REQ-0186: po lock controls. Saved like any other field -- explicit Save,
+    // never a silent PATCH.
+    if (detailArt.kind === 'po' && draft.shape_lock !== baseline.shape_lock) body.shape_lock = draft.shape_lock;
+    if (detailArt.kind === 'po' && draft.shape_dilation_px !== baseline.shape_dilation_px) body.shape_dilation_px = draft.shape_dilation_px;
     if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : detailArt.kind === 'custom' ? { width: draft.cw, height: draft.ch } : { w: draft.mw, h: draft.mh };
     try {
       const r = await patchArtwork(selected, body);
@@ -207,10 +211,12 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('save failed: ' + (e as Error).message, 'err'); }
   }
 
-  async function doGenerate(mode: 'next' | 'n' | 'seed', n: number, seed: number) {
+  async function doGenerate(mode: 'next' | 'n' | 'seed', n: number, seed: number, lockOverride?: string) {
     if (!selected) return;
     try {
-      const body = mode === 'next' ? { count: 1 } : mode === 'n' ? { count: n } : { seed };
+      const body: Record<string, unknown> = mode === 'next' ? { count: 1 } : mode === 'n' ? { count: n } : { seed };
+      // REQ-0186: '' = no override -> the server falls back to the artwork's own setting.
+      if (lockOverride) body.shape_lock = lockOverride;
       const r = await generateArtwork(selected, body);
       report('queued ' + r.renders.length + ' seed(s) for ' + selected);
       await loadDetail(selected);
@@ -319,8 +325,9 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
             </div>
           )}
         </section>
-        <QueuePanel selected={selected} queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
-          onGenerate={(mode, n, seed) => { void doGenerate(mode, n, seed); }}
+        <QueuePanel selected={selected} selectedKind={detailArt ? detailArt.kind : null}
+          queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
+          onGenerate={(mode, n, seed, lockOverride) => { void doGenerate(mode, n, seed, lockOverride); }}
           onCancel={(artwork, seed) => { void doCancel(artwork, seed); }} />
       </div>
 

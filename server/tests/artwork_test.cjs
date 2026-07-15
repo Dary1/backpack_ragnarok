@@ -138,7 +138,11 @@ async function runG3andFlow() {
     assert.strictEqual(p.models.vae.file, ROUTE_CONSTS.vae);
     for (const k of ['unet', 'clip', 'vae']) assert.ok(/^[0-9a-f]{64}$/.test(p.models[k].sha256), k + ' sha256 present');
     assert.deepStrictEqual(p.size, { width: 256, height: 768 });
-    const prev = await jobs.runPython({ kind: 'po', main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 768, seed: done.seed, mode: 'preview' });
+    // REQ-0183: the preview must be handed the SAME inputs generation got --
+    // including the shape -- or it composes a different prompt and this
+    // verbatim check compares two unlike things. routes/art.cjs hPreview passes
+    // the artwork's shape for exactly this reason; mirror it here.
+    const prev = await jobs.runPython({ kind: 'po', main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 768, seed: done.seed, shape: a.shape, mode: 'preview' });
     assert.strictEqual(done.final_prompt, prev.final_prompt, 'final_prompt stored verbatim');
     const img = await storage.getRenderImageBySeed('g3_sword', done.seed);
     assert.ok(Buffer.isBuffer(img.image) && img.image.length > 0, 'image bytes in DB');
@@ -165,6 +169,79 @@ async function runG3andFlow() {
     assert.strictEqual(adopted2.seed, r2.seed, 're-adopt switched adopted seed');
     await exportAdopted('flow_pot');
     await storage.deleteRender('flow_pot', r1.seed);
+  });
+  await AT('REQ-0183 po generation is shape-conditioned: mask reaches the route; prompt is an edit instruction; provenance recorded', async () => {
+    // The L-tromino the REQ-0153 spike proved the unconditioned route misses.
+    const a = await storage.createArtwork({ system_name: 'shape_axe', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline' });
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: false });
+    const done = await waitForRender('shape_axe', r.seed, 30000);
+    assert.strictEqual(done.status, 'ok', 'render ok: ' + done.error);
+    // The shape reached GENERATION (it used to reach only the inspection kits).
+    assert.strictEqual(done.params.shape_conditioned, true, 'render recorded as shape-conditioned');
+    assert.strictEqual(done.params.shape_dilation_px, 8, 'dilation D=8 (the REQ-0153 verdict) recorded');
+    // The prompt is the REQ-0153 edit instruction, not a bare subject: klein is
+    // being asked to edit the gray scaffold riding along as a ReferenceLatent.
+    assert.ok(/^Turn the gray shape into /.test(done.final_prompt), 'prompt is a shape-edit instruction: ' + done.final_prompt);
+    assert.ok(/Keep the silhouette exactly/.test(done.final_prompt), 'prompt keeps the silhouette directive');
+    assert.ok(/battle axe/.test(done.final_prompt), 'prompt still carries the subject');
+    // Opting out returns the byte-identical unconditioned prompt.
+    const off = await jobs.runPython({ kind: 'po', main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: 'off', mode: 'preview' });
+    assert.strictEqual(off.shape_conditioned, false, 'shape_lock:off opts out (REQ-0186 replaced the shape_conditioning seam)');
+    assert.ok(!/Turn the gray shape/.test(off.final_prompt), 'opted-out prompt is the plain subject');
+    // A kind with no cell shape is untouched by any of this.
+    const si = await jobs.runPython({ kind: 'si', main_object: 'flame', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 256, seed: 1, mode: 'preview' });
+    assert.strictEqual(si.shape_conditioned, false, 'si is not shape-conditioned');
+  });
+  await AT('REQ-0186 auto lock: underfilled bbox -> strict; full rectangle -> off', async () => {
+    // L-tromino: the shape REQ-0153 measured the baseline MISSING on -> condition it.
+    const L = await storage.createArtwork({ system_name: 'lock_L', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline', shape_lock: 'auto' });
+    assert.strictEqual(L.shape_lock, 'auto', 'stored lock round-trips');
+    const rL = await storage.createRender(L.id, null, 'queued');
+    jobs.enqueue({ renderId: rL.id, artwork: L, seed: rL.seed, tiling: false });
+    const dL = await waitForRender('lock_L', rL.seed, 30000);
+    assert.strictEqual(dL.status, 'ok', 'L render ok: ' + dL.error);
+    assert.strictEqual(dL.params.shape_lock, 'strict', 'auto resolves to strict on an L');
+    assert.strictEqual(dL.params.shape_dilation_px, 8, 'default dilation recorded');
+    assert.ok(/^Turn the gray shape into /.test(dL.final_prompt), 'L gets the edit instruction');
+
+    // 2x2: REQ-0153 recorded the baseline PASSING here (the aspect law already
+    // fits it), and strict is what turns a heater shield into a plain disc.
+    const S = await storage.createArtwork({ system_name: 'lock_sq', kind: 'po', shape: { mask: maskOf([[0, 0], [0, 1], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'round shield', prompt_template: '{main_object}, white background, bold outline', shape_lock: 'auto' });
+    const rS = await storage.createRender(S.id, null, 'queued');
+    jobs.enqueue({ renderId: rS.id, artwork: S, seed: rS.seed, tiling: false });
+    const dS = await waitForRender('lock_sq', rS.seed, 30000);
+    assert.strictEqual(dS.status, 'ok', 'sq render ok: ' + dS.error);
+    assert.strictEqual(dS.params.shape_lock, 'off', 'auto resolves to off on a full rectangle');
+    assert.ok(!/Turn the gray shape/.test(dS.final_prompt), 'a full rectangle keeps the plain subject');
+  });
+  await AT('REQ-0186 explicit locks + one-shot override + validation', async () => {
+    const a = await storage.getArtworkByName('lock_sq');
+    // An explicit lock beats auto, even on a shape auto would leave alone.
+    for (const [lock, wantPrompt] of [['off', false], ['guide', true], ['strict', true]]) {
+      const p = await jobs.runPython({ kind: 'po', main_object: 'round shield', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: lock, mode: 'preview' });
+      assert.strictEqual(p.shape_lock, lock, 'explicit lock ' + lock + ' honoured over auto');
+      assert.strictEqual(/Turn the gray shape/.test(p.final_prompt), wantPrompt, lock + ' prompt shape');
+      assert.strictEqual(p.shape_conditioned, lock !== 'off', lock + ' conditioned flag');
+    }
+    // guide reports no dilation: it has no hard mask for a dilation to apply to.
+    const g = await jobs.runPython({ kind: 'po', main_object: 'round shield', prompt_template: '{main_object}', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: 'guide', mode: 'preview' });
+    assert.strictEqual(g.shape_dilation_px, undefined, 'guide carries no dilation');
+    // The one-shot override steers the render WITHOUT touching the artwork.
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: false, shapeOverride: { shape_lock: 'strict', shape_dilation_px: 16 } });
+    const d = await waitForRender('lock_sq', r.seed, 30000);
+    assert.strictEqual(d.params.shape_lock, 'strict', 'override beat the artwork default');
+    assert.strictEqual(d.params.shape_dilation_px, 16, 'override dilation used');
+    const still = await storage.getArtworkByName('lock_sq');
+    assert.strictEqual(still.shape_lock, 'auto', 'the artwork default was NOT mutated by a one-shot override');
+    // Out-of-band values are refused, not silently coerced.
+    for (const bad of [17, -1]) {
+      const p = await jobs.runPython({ kind: 'po', main_object: 'x', prompt_template: '{main_object}', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: 'strict', shape_dilation_px: bad, mode: 'preview' });
+      assert.strictEqual(p.status, 'failed', 'dilation ' + bad + ' refused');
+    }
+    const bogus = await jobs.runPython({ kind: 'po', main_object: 'x', prompt_template: '{main_object}', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: 'nonsense', mode: 'preview' });
+    assert.strictEqual(bogus.status, 'failed', 'unknown lock refused');
   });
   // REQ-0179 custom LAST in this function: it makes no GPU render, but calls
   // jobs.runPython (preview) which spawns a python process OUTSIDE the pump's

@@ -42,7 +42,7 @@
 | # | system_name | archetype | subject |
 |---|---|---|---|
 | 6 | units003_samurai | Samurai | a stern samurai warrior in a black and gold kabuto helmet with a crescent-moon crest, resolute dark eyes |
-| 7 | units003_ninja | Ninja | a masked ninja with a midnight-blue face scarf, a steel forehead protector, sharp piercing eyes |
+| 7 | units003_ninja | Ninja | a masked ninja with a midnight-blue face scarf, a smooth polished steel forehead plate, sharp piercing eyes |
 | 8 | units003_witch | Witch | a young witch with a wide-brimmed pointed black hat, wavy violet hair, mischievous amber eyes |
 | 9 | units003_paladin | Paladin | a noble paladin woman in gleaming white and gold plate with winged pauldrons, golden hair, resolute gaze |
 | 10 | units003_monk | Monk | a serene warrior monk with a shaved head, wooden prayer beads around his neck, calm meditative expression |
@@ -92,3 +92,33 @@ is a separate follow-up if the user asks.
 ## Status log
 
 - 2026-07-15: plan drafted; batch 1 generation started. (updates appended here)
+
+- 2026-07-15 (batch 1 DONE, adopted): hero s303, knight s303, wizard s303,
+  ranger s202, cleric s303. 19/20 renders ok; ranger s303 failed (ComfyUI
+  OOM-kill casualty, see below) -- 3 candidates were enough to adopt from.
+  - Pipeline bug found+fixed mid-batch: server/services/model_hash.cjs used
+    fs.readFileSync (refuses >2GiB; flux2 GGUF is 4.3GB) so EVERY real
+    registry generation failed after a successful ComfyUI render. Hotfix
+    8830ace (stream hashing, user-approved), backpack-api restarted.
+  - Incident: comfyui.service OOM-killed once during the batch (23GB box,
+    shared with a concurrent e2e run + rembg inspection backlog); systemd
+    auto-restarted it; cost one render (ranger s303) + a cold reload.
+  - Adoption picks favored: no pseudo-text (except hero s303 headband glyph
+    -- flagged to user), closed-visor knight to avoid silhouette overlap with
+    units-002 lightcavalry, explicit cross on cleric.
+
+- 2026-07-15 (SESSION CLOSE, user directive): batches 2-6 are NOT generated.
+  All 25 remaining artworks are PRE-REGISTERED in the registry
+  (kind=unit, 512x512, default unit template, subjects as tabled above with
+  one batch-1 learning applied) with ZERO renders; the user will generate
+  seeds and judge at their own timing in artadmin.
+  - Learning applied: glyph/emblem-inviting nouns risk pseudo-text (hero
+    s303 headband grew kanji-like marks) -> ninja subject now reads
+    "a smooth polished steel forehead plate". All other subjects unchanged:
+    batch 1 went 19/19 on framing (bust, no top crop) with the
+    face-and-shoulder anchoring, so the recipe stands.
+  - Verified state: 30 units003_* artworks total; 5 adopted (batch 1);
+    25 prompt-ready with render_count=0, no anomalies.
+  - Suggested generation flow per unit: 4 seeds 101/202/303/404, adopt the
+    best; expect ~30-170 s on each prompt change and 2-20 s for same-prompt
+    repeats (art_pipeline.md section 2); group by prompt.

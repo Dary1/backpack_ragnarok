@@ -6,18 +6,25 @@
 // art-queue keeps showing the generation queue DEPTH number (REQ-0151 e2e).
 import { useState } from 'react';
 import type { ArtQueueDto } from '../api';
-import { fmtElapsed } from './artShared';
+import { fmtElapsed, SHAPE_LOCKS } from './artShared';
 
-export function QueuePanel({ selected, queue, fetchedAt, nowTick, onGenerate, onCancel }: {
+export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, onGenerate, onCancel }: {
   selected: string | null;
+  selectedKind: string | null;
   queue: ArtQueueDto | null;
   fetchedAt: number;
   nowTick: number;
-  onGenerate: (mode: 'next' | 'n' | 'seed', n: number, seed: number) => void;
+  onGenerate: (mode: 'next' | 'n' | 'seed', n: number, seed: number, lockOverride: string) => void;
   onCancel: (artwork: string, seed: number, renderId: number) => void;
 }) {
   const [nSeeds, setNSeeds] = useState(3);
   const [explicitSeed, setExplicitSeed] = useState(1);
+  // REQ-0186: a ONE-SHOT lock for the next generate, never written back to the
+  // artwork ('' = use the artwork's own setting). The lock/legibility trade-off
+  // is only visible once rendered and a conditioned render costs 76-130 s, so
+  // the workflow this exists for is: same seed at two locks -> compare in the
+  // lightbox -> Save the winner as the artwork's default.
+  const [lockOverride, setLockOverride] = useState('');
 
   const running = queue ? queue.running : null;
   const pending = queue ? queue.pending : [];
@@ -30,17 +37,27 @@ export function QueuePanel({ selected, queue, fetchedAt, nowTick, onGenerate, on
       <div className="panel panel-pad aa-genbox">
         <div className="den t-label gold-text">Generate</div>
         <div className="t-micro aa-gen-target">{selected ? selected : 'select an artwork first'}</div>
+        {selectedKind === 'po' && (
+          <div className="aa-gen-row aa-gen-lock">
+            <span className="t-micro">lock (this render only)</span>
+            <select data-testid="art-gen-lock" className="aa-input" value={lockOverride}
+              onChange={(e) => setLockOverride(e.target.value)}>
+              <option value="">artwork default</option>
+              {SHAPE_LOCKS.filter((l) => l !== 'auto').map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+        )}
         <button data-testid="art-gen-next" type="button" className="btn-forge aa-forge" disabled={!selected}
-          onClick={() => onGenerate('next', nSeeds, explicitSeed)}>Generate next seed</button>
+          onClick={() => onGenerate('next', nSeeds, explicitSeed, lockOverride)}>Generate next seed</button>
         <div className="aa-gen-row">
           <button data-testid="art-gen-n" type="button" className="btn aa-btn-sm" disabled={!selected}
-            onClick={() => onGenerate('n', nSeeds, explicitSeed)}>Generate N</button>
+            onClick={() => onGenerate('n', nSeeds, explicitSeed, lockOverride)}>Generate N</button>
           <input data-testid="art-n" className="aa-input aa-input--num" type="number" min={1} max={20}
             value={nSeeds} onChange={(e) => setNSeeds(Number(e.target.value) || 1)} />
         </div>
         <div className="aa-gen-row">
           <button data-testid="art-gen-seed" type="button" className="btn aa-btn-sm" disabled={!selected}
-            onClick={() => onGenerate('seed', nSeeds, explicitSeed)}>Generate at seed</button>
+            onClick={() => onGenerate('seed', nSeeds, explicitSeed, lockOverride)}>Generate at seed</button>
           <input data-testid="art-seed" className="aa-input aa-input--num" type="number"
             value={explicitSeed} onChange={(e) => setExplicitSeed(Number(e.target.value) || 1)} />
         </div>

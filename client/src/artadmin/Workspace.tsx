@@ -7,6 +7,8 @@
 // failed-render Retry, compare picks, REQ-0152 kit chips).
 import { KitChips } from './KitChips';
 import { PoMaskEditor, MonsterShapeEditor } from './ShapeEditors';
+import { SHAPE_LOCKS, SHAPE_LOCK_HELP, MAX_DILATION_PX } from './artShared';
+import type { ShapeLock } from './artShared';
 import { deriveSizeClient } from './artShared';
 import type { ArtDraft, Kind } from './artShared';
 import { artRenderUrl } from '../api';
@@ -81,6 +83,24 @@ export function Workspace(props: {
               <span className="t-micro">shape (derived size: <b className="tnum">{newSize.width}x{newSize.height}</b>{shapeDirty ? ' after save' : ''})</span>
               {kind === 'po' && <PoMaskEditor idPrefix="edit-" mask={draft.mask}
                 onToggle={(r, c) => onDraft({ mask: draft.mask.map((row, ri) => row.map((v, ci) => (ri === r && ci === c ? !v : v))) })} />}
+              {kind === 'po' && (
+                <div className="aa-field aa-shapelock">
+                  <span className="t-micro">shape lock (how hard the render is held to these cells)</span>
+                  <select data-testid="art-edit-shape-lock" className="aa-input" value={draft.shape_lock}
+                    onChange={(e) => onDraft({ shape_lock: e.target.value as ShapeLock })}>
+                    {SHAPE_LOCKS.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                  <span data-testid="art-edit-shape-lock-help" className="t-micro aa-hint">{SHAPE_LOCK_HELP[draft.shape_lock]}</span>
+                  {draft.shape_lock === 'strict' && (
+                    <label className="aa-field">
+                      <span className="t-micro">dilation (px of slack around the cells; only 8 is score-validated)</span>
+                      <input data-testid="art-edit-shape-dilation" className="aa-input aa-input--num" type="number"
+                        min={0} max={MAX_DILATION_PX} step={1} value={draft.shape_dilation_px}
+                        onChange={(e) => onDraft({ shape_dilation_px: Number(e.target.value) || 0 })} />
+                    </label>
+                  )}
+                </div>
+              )}
               {kind === 'monster' && <MonsterShapeEditor idPrefix="edit-" w={draft.mw} h={draft.mh}
                 onW={(v) => onDraft({ mw: v })} onH={(v) => onDraft({ mh: v })} />}
               {shapeDirty && renders.length > 0 && (
