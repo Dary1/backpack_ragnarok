@@ -10,8 +10,8 @@ import type { ContentDefDto, ContentVariantDto, ArtworkDto } from '../api';
 import { artAdoptedUrl, artRenderUrl } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 
-export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack';
-export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack'];
+export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack' | 'monster_pack';
+export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack'];
 
 // Mirror of routes/content.cjs RESERVED (path segments the public serving
 // GET owns) -- checked client-side for instant feedback; the server
@@ -31,6 +31,9 @@ export const SCHEMA_REF_DEFAULTS: Record<Kind, string> = {
   // content), so the generic vocab placeholder that unit_def used to carry is retired.
   unit_def: 'unit/1',
   gacha_pack: 'gacha_pack/1',
+  // REQ-0184: a pack of MONSTERS and their layout. Not to be confused with
+  // gacha_pack above -- that is an emission pool that vends Units.
+  monster_pack: 'monster_pack/1',
 };
 
 /** REQ-0171: one row of a gacha pack's emission pool. */
@@ -353,4 +356,88 @@ export function changedTopFields(a: Record<string, unknown>, b: Record<string, u
     if (JSON.stringify(a ? a[k] : undefined) !== JSON.stringify(b ? b[k] : undefined)) out.push(k);
   }
   return out;
+}
+
+
+// ============================================================
+// REQ-0184: monster_pack/1 -- a pack is a LAYOUT of monsters on the battle
+// field. These mirror shared/content_validate.cjs (the server's ONE definition
+// of a legal layout). The client cannot require() a .cjs out of shared/, so the
+// grammar is re-expressed here for RENDERING only -- it never adjudicates. The
+// server's machine check is the authority; a client that disagreed would only
+// ever mis-DRAW a pack the server already blessed or rejected.
+// ============================================================
+
+/** The battle field is 26x18 (A1:Z18) with a margin of 1, so the PLACEABLE area
+ * is 24x16 = B2:Y17. Mirrors sim/lib/field.cjs FIELD_COLS/FIELD_ROWS. */
+export const FIELD_COLS = 26, FIELD_ROWS = 18;
+export const PLACEABLE = { colMin: 2, rowMin: 2, colMax: FIELD_COLS - 1, rowMax: FIELD_ROWS - 1 };
+
+/** "F5" -> {row:5, col:6}; null when malformed. Single-letter columns only (the
+ * field is 26 wide, so a second letter is always an authoring mistake). */
+export function parseA1(tok: unknown): { row: number; col: number } | null {
+  if (typeof tok !== 'string') return null;
+  const m = /^([A-Z])([0-9]{1,2})$/.exec(tok);
+  if (!m) return null;
+  const col = m[1].charCodeAt(0) - 64;
+  const row = parseInt(m[2], 10);
+  if (!Number.isInteger(row) || row < 1) return null;
+  return { row, col };
+}
+
+/** {row,col} -> "F5". The exact inverse of parseA1. */
+export function formatA1(row: number, col: number): string {
+  return String.fromCharCode(64 + col) + String(row);
+}
+
+/** The cells a member occupies: anchor is TOP-LEFT, footprint [fh,fw] grows
+ * down/right -- the convention compileEnemyPack has always used. DERIVED from the
+ * footprint, never stored, so a def whose footprint changes cannot start lying. */
+export function cellsFor(anchor: { row: number; col: number }, footprint: unknown): Array<[number, number]> {
+  const fp = Array.isArray(footprint) ? (footprint as number[]) : [1, 1];
+  const fh = Number.isInteger(fp[0]) && fp[0] > 0 ? fp[0] : 1;
+  const fw = Number.isInteger(fp[1]) && fp[1] > 0 ? fp[1] : 1;
+  const out: Array<[number, number]> = [];
+  for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) out.push([anchor.row + dr, anchor.col + dc]);
+  return out;
+}
+
+/** One member of a pack, as the preview needs it. */
+export interface PackMember { enemy: string; at: string; anchor: { row: number; col: number } | null }
+
+/** Reads a pack's members defensively out of a variant's untyped `data`. A row with
+ * no enemy id is DROPPED (there is nothing to draw); a row whose `at` will not parse
+ * is KEPT with anchor:null, because that is exactly the authoring mistake the operator
+ * needs to SEE -- silently hiding it would leave them staring at a board that looks
+ * fine while the machine check calls the pack broken. */
+export function packMembers(data: Record<string, unknown>): PackMember[] {
+  const raw = Array.isArray(data.members) ? (data.members as unknown[]) : [];
+  const out: PackMember[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const row = r as Record<string, unknown>;
+    if (typeof row.enemy !== 'string') continue;
+    out.push({ enemy: row.enemy, at: typeof row.at === 'string' ? row.at : '', anchor: parseA1(row.at) });
+  }
+  return out;
+}
+
+/** Is this cell inside the placeable 24x16, or is it margin? */
+export function isPlaceable(row: number, col: number): boolean {
+  return row >= PLACEABLE.rowMin && row <= PLACEABLE.rowMax && col >= PLACEABLE.colMin && col <= PLACEABLE.colMax;
+}
+
+/** Occupied cell key -> the member index that claims it, for board rendering.
+ * Later members win a contested cell in the DRAWING only; the server's overlap
+ * check is what actually fails the variant. */
+export function packOccupancy(
+  members: PackMember[],
+  footprintOf: (enemy: string) => unknown,
+): Map<string, number> {
+  const occ = new Map<string, number>();
+  members.forEach((m, i) => {
+    if (!m.anchor) return;
+    for (const [r, c] of cellsFor(m.anchor, footprintOf(m.enemy))) occ.set(r + ',' + c, i);
+  });
+  return occ;
 }

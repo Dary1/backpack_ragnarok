@@ -1777,6 +1777,64 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
   });
 })();
 
+// =====================================================================
+// REQ-0184: the geometry constants exist in THREE places -- sim/lib/field.cjs
+// (the sim's own), shared/content_validate.cjs (the validator's, which may not
+// require() out of shared/), and client/src/contentadmin/contentShared.ts (the
+// preview's mirror, which cannot require a .cjs at all). Duplication is forced
+// by those module boundaries; SILENT duplication is not. These pin them equal,
+// the same way sim/tests/forecast_parity.cjs pins the forecast's copies.
+// =====================================================================
+T('REQ-0184 parity: shared/content_validate.cjs field dims == sim/lib/field.cjs', () => {
+  const v = require('../../shared/content_validate.cjs');
+  const field = require('../lib/field.cjs');
+  eq(v.FIELD_COLS, field.FIELD_COLS, 'FIELD_COLS');
+  eq(v.FIELD_ROWS, field.FIELD_ROWS, 'FIELD_ROWS');
+});
+
+T('REQ-0184 parity: PLACEABLE is exactly the field inset by the 1-cell margin (24x16 in 26x18)', () => {
+  const v = require('../../shared/content_validate.cjs');
+  eq(v.PLACEABLE.colMin, 2, 'colMin');
+  eq(v.PLACEABLE.rowMin, 2, 'rowMin');
+  eq(v.PLACEABLE.colMax, v.FIELD_COLS - 1, 'colMax');
+  eq(v.PLACEABLE.rowMax, v.FIELD_ROWS - 1, 'rowMax');
+  eq(v.PLACEABLE.colMax - v.PLACEABLE.colMin + 1, 24, 'placeable width is 24');
+  eq(v.PLACEABLE.rowMax - v.PLACEABLE.rowMin + 1, 16, 'placeable height is 16');
+});
+
+T('REQ-0184 parity: the client mirror (contentShared.ts) declares the SAME dims', () => {
+  // Read as text: the client is TS/ESM and this is a plain node test. A literal
+  // mismatch is what we are guarding, and that is visible in the source.
+  const fs0184 = require('fs');
+  const src = fs0184.readFileSync(path.join(REPO_ROOT, 'client', 'src', 'contentadmin', 'contentShared.ts'), 'utf8');
+  const v = require('../../shared/content_validate.cjs');
+  const m = /export const FIELD_COLS = (\d+), FIELD_ROWS = (\d+);/.exec(src);
+  ok(m, 'contentShared.ts must declare FIELD_COLS/FIELD_ROWS');
+  eq(Number(m[1]), v.FIELD_COLS, 'client FIELD_COLS matches shared');
+  eq(Number(m[2]), v.FIELD_ROWS, 'client FIELD_ROWS matches shared');
+});
+
+T('REQ-0184 parseA1/formatA1 round-trip across the WHOLE field (A1..Z18)', () => {
+  const v = require('../../shared/content_validate.cjs');
+  for (let r = 1; r <= v.FIELD_ROWS; r++) {
+    for (let c = 1; c <= v.FIELD_COLS; c++) {
+      const tok = v.formatA1(r, c);
+      const back = v.parseA1(tok);
+      ok(back && back.row === r && back.col === c, 'round-trip failed at ' + tok);
+    }
+  }
+});
+
+T('REQ-0184 legacy path is untouched: a pack with no layout still cursor-fills from the box origin', () => {
+  // The contract REQ-0185 will retire -- until then dungen emits this shape on
+  // every generated dive, so it must keep compiling exactly as it always did.
+  const ed = { g: { name: 'G', hp: [5, 5], footprint: [1, 1], skills: [] }, b: { name: 'B', hp: [9, 9], footprint: [2, 2], skills: [] } };
+  const out = combat.compileEnemyPack({ enemyIds: ['g', 'b', 'g'] }, ed, {}, combat.makeRng('legacy'), { rowMin: 2, colMin: 2, rowMax: 17, colMax: 25 });
+  eq(out[0].fieldCells, [[2, 2]], 'first at the box origin');
+  eq(out[1].fieldCells, [[2, 3], [2, 4], [3, 3], [3, 4]], 'second offset by the first footprint width, 2x2');
+  eq(out[2].fieldCells, [[2, 5]], 'third offset by the second footprint width');
+});
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
