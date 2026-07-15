@@ -145,3 +145,19 @@ grates in practice, the escape hatch is `shape_conditioning: false` per job, or 
 - Re-running the REQ-0153 arm matrix; its verdict is ratified and reused as-is.
 - The dead `mask_image`/ConditioningSetMask path — documented as inert, left for its
   legacy caller, not removed.
+
+## Gate results — 2026-07-15
+
+- `tools/ci.sh` (SKIP_E2E, e2e run separately per the standing practice): **CI GREEN**.
+- `artwork_test.cjs` (pg backend): **9 passed, 0 failed**, including the new REQ-0183 gate.
+- `tools/artadmin_e2e.sh`: **5 passed** (create -> generate -> lightbox -> adopt -> serve
+  -> delete rules -> re-adopt; filters; queue cancel/retry; deep link; custom kind).
+- `tools/art_inspect_e2e.sh`: **1 passed**.
+- Dilation vs the spike's scipy disc dilation: **0 pixels differ** (L/T/1x3/2x2 x D 0/8/16).
+- Arm C graph vs the spike's own `wf_armC`: **node-for-node identical** (prompt text aside).
+- Commits: `d317d5f` (implementation), `47db34f` (reservation).
+
+**Not yet done:** the S7 eyeball on REAL GPU renders, and merge/deploy to live artadmin
+(main checkout + services are HANDS-OFF without a fresh user go-ahead). The GPU was busy
+with another session's ComfyUI job throughout this pass; per the standing GPU etiquette
+(serialize, coordinate, no retry storms) no demo render was queued against it.
