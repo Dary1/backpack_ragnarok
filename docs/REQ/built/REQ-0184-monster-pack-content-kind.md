@@ -1,7 +1,7 @@
 # REQ-0184 — monster-pack-content-kind: a pack is a LAYOUT, and it lives in the ledger
 
-**Status:** todo — ratified in chat by the user 2026-07-15 (all four rulings below). Cleared to
-implement.
+**Status:** built — implemented 2026-07-15, `tools/ci.sh` GREEN (incl. the client build). NOT yet
+merged/deployed: the migration and the backfill are deploy steps awaiting the user's go-ahead.
 **Reserved:** 2026-07-15
 **Slug:** monster-pack-content-kind
 **Requested by:** user, 2026-07-15 (chat): add a `monster_pack` kind to the Content Data
@@ -133,3 +133,69 @@ sources of truth for one fact, and a def whose `footprint` later changes would s
 - S4 verdict warns may move (`heatmap`, `formationEquity`). Pre-existing warns are recorded in
   `sim/s4_baselines/default/summary.json`; this REQ compares against them rather than treating
   any warn as new.
+
+
+## Outcome (2026-07-15) — BUILT, CI GREEN, not yet deployed
+
+**Port fidelity, proven rather than asserted.** All 34 packs in the game (the 4 ported + 30
+`dungen`-generated across L1/L3/L5/L8 x 2 seeds) shift by EXACTLY +1 row / +1 col, and each
+authored layout is byte-identical to the cursor placement under the corrected box. The port
+transcribed the arrangement; it did not redesign it. `def_sha256` is unchanged for every golden
+— the dungeon DEFINITIONS never moved, only the replay did.
+
+**A nuance the spec got slightly wrong, corrected here.** G5 said the golden diff must be "the
+uniform +1/+1 shift and nothing else". That is true of the PLACEMENT and NOT of the LOG: moving
+enemies off the margin changes their distance to the walls, so ray reflections differ and event
+counts move (e.g. dungen/default/L1/dg-22: 206 -> 226 events). That is inherent to the fix the
+user ratified, not a second change smuggled in. The placement-level proof above is the real
+acceptance test, and it is now an executable one.
+
+### What shipped
+- `018_content_kind_monster_pack.sql` (018, not 017 — the tree already had two `016_`s).
+- `shared/content_validate.cjs`: `parseA1`/`formatA1`/`cellsFor`/`validateMonsterPackEntry` —
+  ONE definition of a legal layout, imported by BOTH the machine check and `sim/lib/packs.cjs`.
+  A test pins that the checker and the placer agree cell-for-cell; if they ever diverge, the
+  admin would bless one board and the player would fight another.
+- `content/live+batches/dungeon/packs.json` + `dungeon.json` encounters naming `packId`.
+- `sim/lib/packs.cjs` layout path + the legacy cursor path locked byte-identical by test.
+- `server/lib/forecast.cjs` got the SAME box correction — otherwise the forecast would predict
+  a battle the sim never fights (the thing `forecast_parity.cjs` exists to prevent).
+- `content_checks.cjs` monster_pack dialect; 10 new dialect tests.
+- backfill source; contentadmin `KINDS` + the 26x18 board preview.
+- Parity tests pinning the geometry constants across their three forced copies.
+
+### Found in flight (worth keeping)
+- **`validateI18n`'s locale whitelist was `{ja}`, but live dungeon content has always written
+  `{en, ja}`.** Widening `SUPPORTED_LOCALES` would have silently widened what an admin PUT may
+  write for items/SIs. It is now an OPTIONAL parameter; the po/si surface is provably unchanged
+  (a test asserts it still refuses `en`). REQ-0161 doctrine, applied.
+- **`packDefsById` was already taken** — by REQ-0170's GACHA emission pools, live in the very
+  opts bag this REQ threads through. Ours is `monsterPackDefsById`. Two different things under
+  one name in one bag is a bug waiting for a careless destructure. Same collision recurred in
+  the test fixtures (`GOOD_PACK`) and was renamed the same way.
+- **`promote_dungeon_batch.cjs` resolves its live dir via `os.homedir()`**, so running it from a
+  worktree writes to the MAIN checkout (HANDS-OFF). It did; it was reverted immediately and
+  re-run with an explicit `liveDir`. Anyone promoting from a worktree must pass `liveDir`.
+  Likewise `sim/tests/run.cjs` reads the batch from the worktree but live/ from `os.homedir()`,
+  so verifying a content REQ on a branch needs `HOME` pointed at the worktree. Both are
+  pre-existing; neither is this REQ's to fix, but both cost time and should be written down.
+- `sim/tests/run.cjs` hardcoded `promote() reports the 6 files`; now derived from
+  `REQUIRED_FILES.length`, so the next file to join the domain does not re-break it.
+
+### Honest gap
+The contentadmin has no monster roster client-side (it holds the def LIST, not every def's
+adopted data), so the board **draws 1x1 anchors and says so on a chip**. An unlabelled 1x1 boss
+would be a preview that lies about the thing the kind exists to show. `EntityPreview` takes an
+optional `footprints` prop as the seam; wiring it needs a roster fetch the admin does not have
+today — a small follow-up, say the word.
+
+Also unchanged and shared with every kind: adopting a variant writes
+`content/registry_exports/`, NOT `content/live/dungeon/packs.json`. That is REQ-0155's un-wired
+S7 step, equal for all kinds; the sim still reads the live file.
+
+### Gate results
+`tools/ci.sh` **GREEN** (`SKIP_PG=1 SKIP_E2E=1`, incl. the client typecheck+build).
+sim 117 pass · goldens 12 rebaselined · S4 14 pass, GATE PASS (warn-only, no new hard fails) ·
+forecast parity 16 pass · dialect 34 pass · backfill 11 pass · server tsc clean.
+**Not run:** the PG pass and the live backfill — they touch the live DB, which is a deploy step
+(`built` = gates green, not deployed). G1/G6 close on deploy.
