@@ -231,6 +231,12 @@ async function hPreview(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
+  // REQ-0186: validate the lock HERE too. Every other path (create/patch/
+  // generate) rejects a bad value with a 400; preview used to hand it straight
+  // to the worker, which threw, and the operator got an opaque 500 "preview
+  // failed" for what is simply a typo. Same guard, same 400, same wording.
+  try { shapeLockFields(art.kind, b, { forCreate: false }); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   const merged = Object.assign({}, art, b);
   const out = await jobs.runPython({
     kind: art.kind, main_object: merged.main_object, prompt_template: merged.prompt_template,
