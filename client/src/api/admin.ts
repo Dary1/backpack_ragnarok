@@ -11,6 +11,9 @@ export interface ArtworkDto {
   gen_width: number; gen_height: number; main_object: string;
   prompt_template: string; style_override: string | null;
   edge_padding: number | null; adopted_render_id: number | null;
+  // REQ-0186: po shape-conditioning controls. null = unset = the server's
+  // auto/8 default (the client never invents a default of its own).
+  shape_lock?: string | null; shape_dilation_px?: number | null;
   // REQ-0156: per-artwork aggregates, present on listArtworks() rows only
   // (additive server enrichment for the registry browser rail).
   adopted_seed?: number | null; latest_ok_seed?: number | null;

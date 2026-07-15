@@ -88,7 +88,7 @@ function jobPython() { return process.env.ART_JOB_PYTHON || 'python3'; }
 function runPython(jobSpec, onChild) { return runWorker(jobPython(), ART_JOB_PY, jobSpec, onChild); }
 
 async function processGenJob(desc) {
-  const { renderId, artwork, seed, tiling } = desc;
+  const { renderId, artwork, seed, tiling, shapeOverride } = desc;
   await storage.setRenderStatus(renderId, 'running');
   const res = await runPython({
     kind: artwork.kind, main_object: artwork.main_object,
@@ -101,6 +101,13 @@ async function processGenJob(desc) {
     // shapes (L, T) missed. art_job.py turns the mask into the REQ-0153 Arm C
     // scaffold + noise mask; non-po kinds ignore it.
     shape: artwork.shape || null,
+    // REQ-0186: the artwork's stored default, unless this render carries a
+    // one-shot override (undefined = not overridden -> fall back to stored ->
+    // NULL there = art_job.py's built-in auto/8).
+    shape_lock: (shapeOverride && shapeOverride.shape_lock !== undefined)
+      ? shapeOverride.shape_lock : artwork.shape_lock,
+    shape_dilation_px: (shapeOverride && shapeOverride.shape_dilation_px !== undefined)
+      ? shapeOverride.shape_dilation_px : artwork.shape_dilation_px,
     mode: 'generate',
   }, (child) => { runningChild = child; });
   // REQ-0156: a canceled job's child was killed -- whatever the worker
@@ -125,9 +132,13 @@ async function processGenJob(desc) {
   // REQ-0183: provenance -- whether this render was shape-conditioned, and at
   // what dilation. A render's params are the record of HOW it was made, and
   // "was the shape enforced?" is now part of that.
+  // REQ-0186: record the RESOLVED lock (auto already collapsed to off/guide/
+  // strict), so the lightbox can tell the operator which setting produced which
+  // render -- without that, comparing two locks side by side is guesswork.
+  params.shape_lock = res.shape_lock || 'off';
   if (res.shape_conditioned) {
     params.shape_conditioned = true;
-    params.shape_dilation_px = res.shape_dilation_px;
+    if (res.shape_dilation_px != null) params.shape_dilation_px = res.shape_dilation_px;
   }
   await storage.updateRenderResult(renderId, {
     status: 'ok', image: Buffer.from(res.image_b64, 'base64'),

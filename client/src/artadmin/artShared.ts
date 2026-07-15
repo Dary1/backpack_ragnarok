@@ -79,11 +79,26 @@ export function fmtElapsed(ms: number): string {
 
 /** The editable-field draft the center workspace works on (explicit Save;
  * never silently PATCHed). Shape drafts ride along for po/monster. */
+/** REQ-0186: the po shape-conditioning locks, weakest -> strongest. The blurbs
+ * are REQ-0153's MEASURED numbers, not adjectives: the operator is choosing
+ * between arms that were actually scored. */
+export const SHAPE_LOCKS = ['auto', 'off', 'guide', 'strict'] as const;
+export type ShapeLock = typeof SHAPE_LOCKS[number];
+export const SHAPE_LOCK_HELP: Record<ShapeLock, string> = {
+  auto: 'default - strict on a shape that does not fill its box (L, T), off on one that does (1x3, 2x2)',
+  off: 'no shape conditioning; the subject composes freely (28% fit)',
+  guide: 'scaffold guides composition, no hard edge; may spill past the cells (60% fit)',
+  strict: 'nothing renders outside the cells (100% fit), at some subject legibility',
+};
+export const MAX_DILATION_PX = 16;
+
 export interface ArtDraft {
   main_object: string;
   prompt_template: string;
   style_override: string;
   edge_padding: number;
+  shape_lock: ShapeLock;
+  shape_dilation_px: number;
   mask: boolean[][];
   mw: number;
   mh: number;
@@ -98,6 +113,8 @@ export function draftFromArtwork(a: ArtworkDto): ArtDraft {
     prompt_template: a.prompt_template || '',
     style_override: a.style_override || '',
     edge_padding: a.edge_padding != null ? a.edge_padding : 32,
+    shape_lock: (a.shape_lock as ShapeLock) || 'auto',
+    shape_dilation_px: a.shape_dilation_px != null ? a.shape_dilation_px : 8,
     mask: a.kind === 'po' && sh.mask ? sh.mask.map((r) => r.slice()) : emptyMask(),
     mw: a.kind === 'monster' && sh.w ? sh.w : 3,
     mh: a.kind === 'monster' && sh.h ? sh.h : 4,

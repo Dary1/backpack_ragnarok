@@ -53,6 +53,13 @@ GRAY = 128                # REQ-0153 Q1 ruling: mid-gray scaffold tone
 WHITE = 255
 BLACK = 0
 DEFAULT_DILATION_PX = 8   # REQ-0153 verdict: Arm C @ D=8
+# REQ-0186: the operator may tune the slack, but only inside the band REQ-0153
+# actually built masks for ({0, 8, 16}). NOTE only D=8 was ever SCORED for image
+# quality -- the sweep's other legs were rendered, not judged -- so 0 and 16 are
+# "supported and bounded", not "validated". Beyond 16 is unexplored, and at 256
+# px/cell a big enough D dissolves the shape into its own bounding box, which is
+# just `off` with extra steps.
+MAX_DILATION_PX = 16
 
 
 def mask_to_cells(mask):
@@ -83,6 +90,44 @@ def bbox_cells(cells):
     rows = max(rs) - r0 + 1
     cols = max(cs) - c0 + 1
     return rows, cols, [[r - r0, c - c0] for r, c in cells]
+
+
+SHAPE_LOCKS = ('auto', 'off', 'guide', 'strict')
+DEFAULT_SHAPE_LOCK = 'auto'
+
+
+def fills_bounding_box(mask):
+    """True when every cell of the mask's bounding box is owned (a full
+    rectangle: 1x3, 2x2, 3x2 ...), False when the shape is 'awkward' -- an
+    L, a T, anything with a notch.
+
+    This is the whole basis of the `auto` lock, and it is REQ-0153's own
+    finding rather than a guess. That spike measured the UNCONDITIONED route
+    passing on 1x3 and 2x2 -- "only because the ratified aspect-sizing law
+    already gives the subject a natural fit there (a vertical spear fills a
+    tall 1x3; a shield fills a square)" -- and missing on L-tromino and
+    T-tetromino, which is exactly where it recorded shape control "actually
+    earns its cost". A rectangle IS the bounding box the aspect law sizes to;
+    an underfilled bbox is not.
+    """
+    rows, cols, cells = bbox_cells(mask_to_cells(mask))
+    return len(cells) == rows * cols
+
+
+def resolve_lock(lock, mask):
+    """The effective mechanism for a (lock, shape) pair: 'off' | 'guide' | 'strict'.
+
+    `auto` (the default) spends the legibility cost only where REQ-0153 showed
+    it buys containment: strict on an underfilled bbox, off on a full rectangle
+    whose subject the aspect law already fits.
+    """
+    lock = lock or DEFAULT_SHAPE_LOCK
+    if lock not in SHAPE_LOCKS:
+        raise ValueError('unknown shape_lock: %r (expected one of %s)'
+                         % (lock, ', '.join(SHAPE_LOCKS)))
+    if lock != 'auto':
+        return lock
+    return 'off' if fills_bounding_box(mask) else 'strict'
 
 
 def gen_size_for_mask(mask, px_per_cell=PX_PER_CELL):

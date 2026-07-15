@@ -16,21 +16,44 @@ KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster
 
 
 def po_shape_mask(job):
-    """The PO 5x5 mask when this job should be SHAPE-CONDITIONED, else None.
+    """The PO 5x5 mask, when this job has one at all. Else None.
 
     REQ-0183. A po artwork's shape.mask is the operator's own 5x5 cell drawing
     from the REQ-0151 editor; it is what the icon must end up fitting, so it is
-    also the right conditioning input (REQ-0153's verdict). Any other kind, an
-    absent/empty mask, or an explicit shape_conditioning=false opts out and the
-    graph stays byte-identical to the unconditioned route.
+    also the right conditioning input (REQ-0153's verdict). Any other kind, or
+    an absent/empty mask, has no shape to condition on.
+
+    Whether that mask is USED, and how hard, is resolve_lock()'s call -- not
+    this function's.
     """
     if job.get("kind") != "po":
-        return None
-    if job.get("shape_conditioning") is False:
         return None
     shape = job.get("shape") or {}
     mask = shape.get("mask") if isinstance(shape, dict) else None
     return mask or None
+
+
+def shape_settings(job):
+    """REQ-0186: (mask, effective_lock, dilation_px) for this job.
+
+    effective_lock is already resolved through `auto`, so it is one of
+    'off' | 'guide' | 'strict' and callers need no further branching. Returns
+    (None, 'off', 0) when there is no shape to work with.
+
+    Precedence: the job's own shape_lock / shape_dilation_px (a one-shot
+    override from the generate request) over the artwork's stored default over
+    the built-in auto/8. The route only ever sees the resolved answer.
+    """
+    mask = po_shape_mask(job)
+    if not mask:
+        return None, "off", 0
+    lock = SHAPE.resolve_lock(job.get("shape_lock"), mask)
+    d = job.get("shape_dilation_px")
+    d = SHAPE.DEFAULT_DILATION_PX if d is None else int(d)
+    if d < 0 or d > SHAPE.MAX_DILATION_PX:
+        raise ValueError("shape_dilation_px out of range: %r (0..%d)"
+                         % (d, SHAPE.MAX_DILATION_PX))
+    return mask, lock, d
 
 
 def shape_tag(mask, w, h):
@@ -63,7 +86,10 @@ def compose_prompt(job):
     # subject -- it is what the admin UI and the render record display; only the
     # prompt handed to the model gains the shape directive.
     prompt_subject = subject
-    if po_shape_mask(job):
+    if shape_settings(job)[1] != "off":
+        # Both `guide` and `strict` hand the model a scaffold as a
+        # ReferenceLatent, so both must address it as an edit. `off` sends no
+        # scaffold, so it keeps the plain subject.
         prompt_subject = STYLE.edit_instruction(subject)
     style_override = job.get("style_override")
     if style_override:
@@ -126,12 +152,12 @@ def main():
     h = int(job.get("height", 256))
     tiling = bool(job.get("tiling", False))
     subject, final_prompt = compose_prompt(job)
-    mask = po_shape_mask(job)
+    mask, lock, d_px = shape_settings(job)
     out = {"status": "ok", "subject": subject, "final_prompt": final_prompt,
            "width": w, "height": h, "seed": seed, "route_params": route_params(job),
-           "shape_conditioned": bool(mask)}
-    if mask:
-        out["shape_dilation_px"] = SHAPE.DEFAULT_DILATION_PX
+           "shape_conditioned": lock != "off", "shape_lock": lock}
+    if lock == "strict":
+        out["shape_dilation_px"] = d_px
     if mode == "preview":
         # Prompt only: no scaffold is written. Preview must stay cheap and free
         # of side effects, but it still REPORTS shape_conditioned + the edit
@@ -142,9 +168,16 @@ def main():
     # at the job's OWN (w, h) -- the size art_sizing.cjs derived from this very
     # mask -- and laid out proportionally, so scaffold and canvas always register.
     shape_inputs = {}
-    if mask:
-        shape_inputs = SHAPE.prepare_inputs(mask, (w, h), ROUTE.COMFY_INPUT_DIR,
-                                            shape_tag(mask, w, h))
+    if lock != "off":
+        trio = SHAPE.prepare_inputs(mask, (w, h), ROUTE.COMFY_INPUT_DIR,
+                                    shape_tag(mask, w, h), d_px=d_px)
+        if lock == "guide":
+            # REQ-0153 Arm A: the scaffold conditions the composition, but no
+            # hard mask -- the render MAY spill past the cells (~60% contained
+            # vs strict's 100%). The mask/init images are simply not passed.
+            shape_inputs = {"reference_image": trio["reference_image"]}
+        else:
+            shape_inputs = trio
     ROUTE.build_txt2img(final_prompt, w, h, seed=seed, tiling=tiling, prefix="req0151",
                         **shape_inputs)
     mock = os.environ.get("ART_ROUTE_MOCK") == "1" or job.get("mock")
