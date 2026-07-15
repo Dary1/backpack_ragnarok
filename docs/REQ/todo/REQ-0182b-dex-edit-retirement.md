@@ -6,11 +6,22 @@ multi-phase rule the two phases were split into independent files once they coul
 different statuses: **0182a** (the port) and **0182b** (this file). Git history of the
 original file is the log of the split.
 
-**State: `draft/` — NOT cleared to implement.** The blocking dependency is the sequence
-binding the user ratified: the friendly editor must be PORTED before Dex Edit is
-DELETED, so the UX is preserved rather than lost. **Move this file `draft/ → todo/`
-only once REQ-0182a is MERGED** (not merely built). That merge is the whole gate; no
-further user decision is pending.
+**State: `todo/` — cleared to implement (promoted 2026-07-15).** The blocking
+dependency is discharged: REQ-0182a MERGED to master as 17bd440 and deployed
+(dist 60742c2, backpack-web restarted 02:31 UTC), so the friendly editor now
+exists on the registry path and Dex Edit can be deleted without losing its UX.
+
+**Correction for the implementer, from 0182a's evidence:** this spec says "the two
+dex-admin file-edit tests". There are in fact **THREE** that fail against deployed
+registry-first serving — `dex-admin.spec.ts:69` (edit an item name via the form),
+`:130` (REQ-0038 locale-only edit fields) and `:175` (effect add/delete round trip).
+0182a reproduced this directly by pointing the default suite at the LIVE api
+(bare `pnpm run e2e`, which bypasses ci.sh's isolated-backend fleet): all three fail,
+because live `blade`/`dagger`/`tower_shield` ARE adopted po_defs, so /api/content is
+registry-first for them and Dex Edit's file writes never reach the payload. Under
+`ci.sh` they pass — the fleet's namespaces have no adopted defs, so serving falls
+back to files. Budget for three replacements, not two, and note that a green ci.sh
+does NOT exercise the drift.
 
 **Ratified:** 2026-07-15 (user, chat): "dex editモードは、jsonを編集する現在の画面より、
 人間にとってはユーザーフレンドリーです。これらのUIだけを移植してきて、jsonを簡易に編集する
