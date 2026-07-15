@@ -87,11 +87,43 @@ def mask_to_cells(mask):
     return [[r, c] for r in range(len(mask)) for c in range(len(mask[r])) if mask[r][c]]
 
 
+# v5 (user refinement, 2026-07-15): the expectation point of a cell is NOT its
+# geometric center. A face shared with an adjacent owned cell is covered by
+# CONTINUITY (the neighbor\'s mass reads as the same object crossing the
+# boundary); an EXPOSED face is where the eye actually checks "does the item
+# reach its wall". So the distance-field origin shifts 10% of a cell AWAY from
+# connections, i.e. toward the sum of the exposed faces\' outward normals.
+# Opposite exposed faces cancel (a cross\'s center cell -- all four connected --
+# shifts zero; an L\'s tip cell shifts toward the tip).
+CENTER_SHIFT_FRAC = 0.10
 _yy, _xx = np.mgrid[0:C, 0:C]
-_DIST = np.sqrt((_yy - (C - 1) / 2.0) ** 2 + (_xx - (C - 1) / 2.0) ** 2) / (C / 2.0)
+_DIST_CACHE = {}
+
+
+def _dist_field(shift_yx):
+    key = (round(shift_yx[0], 1), round(shift_yx[1], 1))
+    if key not in _DIST_CACHE:
+        cy = (C - 1) / 2.0 + shift_yx[0]
+        cx = (C - 1) / 2.0 + shift_yx[1]
+        _DIST_CACHE[key] = np.sqrt((_yy - cy) ** 2 + (_xx - cx) ** 2) / (C / 2.0)
+    return _DIST_CACHE[key]
+
+
+def cell_shifts(cellset):
+    """Per owned cell: 0.1*C x (sum of outward unit normals of exposed faces)."""
+    shifts = {}
+    for (r, c) in cellset:
+        dy = dx = 0.0
+        for (dr, dc) in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            if (r + dr, c + dc) not in cellset:
+                dy += dr
+                dx += dc
+        shifts[(r, c)] = (CENTER_SHIFT_FRAC * C * dy, CENTER_SHIFT_FRAC * C * dx)
+    return shifts
 
 
 def cell_stats(content, cellset):
+    shifts = cell_shifts(cellset)
     out = {}
     for (r, cc) in sorted(cellset):
         cell = content[r * C:(r + 1) * C, cc * C:(cc + 1) * C]
@@ -100,7 +132,7 @@ def cell_stats(content, cellset):
         if n == 0:
             out[key] = {"fill": 0.0, "median_d": None, "min_d": None}
             continue
-        d = _DIST[cell]
+        d = _dist_field(shifts[(r, cc)])[cell]
         out[key] = {"fill": round(n / float(C * C), 4),
                     "median_d": round(float(np.median(d)), 3),
                     "min_d": round(float(d.min()), 3)}
