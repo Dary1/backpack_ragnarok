@@ -106,3 +106,19 @@ is a separate follow-up if the user asks.
   - Adoption picks favored: no pseudo-text (except hero s303 headband glyph
     -- flagged to user), closed-visor knight to avoid silhouette overlap with
     units-002 lightcavalry, explicit cross on cleric.
+
+- 2026-07-15 (SESSION CLOSE, user directive): batches 2-6 are NOT generated.
+  All 25 remaining artworks are PRE-REGISTERED in the registry
+  (kind=unit, 512x512, default unit template, subjects as tabled above with
+  one batch-1 learning applied) with ZERO renders; the user will generate
+  seeds and judge at their own timing in artadmin.
+  - Learning applied: glyph/emblem-inviting nouns risk pseudo-text (hero
+    s303 headband grew kanji-like marks) -> ninja subject now reads
+    "a smooth polished steel forehead plate". All other subjects unchanged:
+    batch 1 went 19/19 on framing (bust, no top crop) with the
+    face-and-shoulder anchoring, so the recipe stands.
+  - Verified state: 30 units003_* artworks total; 5 adopted (batch 1);
+    25 prompt-ready with render_count=0, no anomalies.
+  - Suggested generation flow per unit: 4 seeds 101/202/303/404, adopt the
+    best; expect ~30-170 s on each prompt change and 2-20 s for same-prompt
+    repeats (art_pipeline.md section 2); group by prompt.
