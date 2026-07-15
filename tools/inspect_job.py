@@ -95,11 +95,23 @@ def do_verify():
 def main():
     job = json.load(sys.stdin)
     mode = job.get("mode", "inspect")
-    if mode == "registry":
-        print(json.dumps(do_registry())); return
-    if mode == "verify":
-        print(json.dumps(do_verify())); return
-    print(json.dumps(do_inspect(job)))
+    # Matting libraries (pymatting ichol) print PERFORMANCE WARNINGs to
+    # STDOUT, which corrupts the one-JSON-result contract with the Node
+    # runner (observed live 2026-07-15: matte.coverage_band and po.cell_fit
+    # rows dying as "bad output (code 0): PERFORMANCE WARNING"). Route ALL
+    # in-run stdout to stderr; only the final JSON touches the real stdout.
+    real_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        if mode == "registry":
+            out = do_registry()
+        elif mode == "verify":
+            out = do_verify()
+        else:
+            out = do_inspect(job)
+    finally:
+        sys.stdout = real_stdout
+    print(json.dumps(out))
 
 
 if __name__ == "__main__":
