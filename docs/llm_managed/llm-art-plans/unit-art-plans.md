@@ -42,7 +42,7 @@
 | # | system_name | archetype | subject |
 |---|---|---|---|
 | 6 | units003_samurai | Samurai | a stern samurai warrior in a black and gold kabuto helmet with a crescent-moon crest, resolute dark eyes |
-| 7 | units003_ninja | Ninja | a masked ninja with a midnight-blue face scarf, a steel forehead protector, sharp piercing eyes |
+| 7 | units003_ninja | Ninja | a masked ninja with a midnight-blue face scarf, a smooth polished steel forehead plate, sharp piercing eyes |
 | 8 | units003_witch | Witch | a young witch with a wide-brimmed pointed black hat, wavy violet hair, mischievous amber eyes |
 | 9 | units003_paladin | Paladin | a noble paladin woman in gleaming white and gold plate with winged pauldrons, golden hair, resolute gaze |
 | 10 | units003_monk | Monk | a serene warrior monk with a shaved head, wooden prayer beads around his neck, calm meditative expression |
