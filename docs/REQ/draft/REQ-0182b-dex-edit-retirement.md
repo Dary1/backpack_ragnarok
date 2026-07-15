@@ -1,42 +1,32 @@
-# REQ-0182 — po-si-editor-port-dex-edit-retirement: port the DexAdmin editor UX into contentadmin, THEN retire Dex Edit
+# REQ-0182b — dex-edit-retirement: retire Dex Edit, once the PO/SI editor has landed
+
+**Split note:** this file is Phase B of the original REQ-0182
+(`po-si-editor-port-dex-edit-retirement`, ratified 2026-07-15). Per PROJECT.md's
+multi-phase rule the two phases were split into independent files once they could hold
+different statuses: **0182a** (the port) and **0182b** (this file). Git history of the
+original file is the log of the split.
+
+**State: `draft/` — NOT cleared to implement.** The blocking dependency is the sequence
+binding the user ratified: the friendly editor must be PORTED before Dex Edit is
+DELETED, so the UX is preserved rather than lost. **Move this file `draft/ → todo/`
+only once REQ-0182a is MERGED** (not merely built). That merge is the whole gate; no
+further user decision is pending.
 
 **Ratified:** 2026-07-15 (user, chat): "dex editモードは、jsonを編集する現在の画面より、
 人間にとってはユーザーフレンドリーです。これらのUIだけを移植してきて、jsonを簡易に編集する
 為のpo editor si editorとして活かせませんか？ その上で削除するなら私も理解できます" —
-i.e. Phase A ports the friendly editor, Phase B removes Dex Edit. Cleared to implement
-(sequence binding: A must land before B).
+i.e. Phase A ports the friendly editor, Phase B removes Dex Edit.
 **Requested by:** user, 2026-07-15 (chat). Spec authored by orchestrator (Fable).
 
-## Why now (the forcing incident)
+## Why (the forcing incident)
 REQ-0178 made /api/content registry-first for po/si/tm. Dex Edit writes live FILES via
 PUT /api/admin/item/:id, so its saves (a) no longer appear in the served payload for
 registry-covered items and (b) create parity DRIFT (observed live 2026-07-15: the
 post-deploy suite's dex-admin tests failed exactly this way and left a stray
 `dagger.stretch` field in live_items.json, restored by hand). Dex Edit is now actively
-harmful — but its FORM UX is better than contentadmin's edit modal, and the user wants
-that UX preserved by porting, not lost by deletion.
+harmful. 0182a preserved its UX; this REQ removes the harmful surface.
 
-## Phase A — the PO/SI editor (port the DexAdmin UX into contentadmin)
-Upgrade the edit-as-new modal (REQ-0173 EditModal) into a full-size PO/SI editor whose
-form affordances are AT LEAST DexAdmin parity (client/src/dex/DexAdmin.tsx is the
-reference; reuse adminForm.ts EffectRow grammar — already imported):
-- Layout: full-height editor surface (modal may stay, but sized like the Dex editor,
-  entity preview beside the form — the operator sees the shape/icon/art context while
-  editing, which DexAdmin's list thumbnails provided).
-- Locale handling: EN/JA switcher for name/flavor (DexAdmin's "never both at once" is
-  the friendlier pattern per the user; keep the current side-by-side only if the
-  switcher proves worse — decide and document).
-- rarity select from vocab.rarities; tags multi-select from trees.po with ancestry
-  labels (DexAdmin's tagOptions/rootTagOptions logic); stretch checkbox (po only);
-  effects: template ADD (defaultEffectRow(vocab)), per-row DELETE, per-row
-  trigger/verb/param dropdowns constrained by vocab (DexAdmin's exact row grammar).
-- The JSON tab stays (advanced escape hatch, two-way sync, passthrough-preserving
-  serialization over the original variant data — REQ-0173 semantics unchanged).
-- Registry semantics unchanged: submit = editVariant → NEW human_edit variant with
-  lineage; adoption stays the explicit separate act.
-- Testids: keep every edit-* testid; new form controls get documented testids.
-
-## Phase B — Dex Edit retirement (only after A is merged)
+## Scope — Dex Edit retirement (only after 0182a is merged)
 - Remove the Dex Edit toggle + DexAdmin component from the Dex (read-only Dex, its
   catalog/detail/diagrams, RegistryBadge: untouched).
 - Relocate the dev "grant to warehouse" button into the contentadmin variant card
@@ -54,12 +44,13 @@ reference; reuse adminForm.ts EffectRow grammar — already imported):
 
 ## Contract preservation
 - Read-only Dex untouched; dex/* modules stay importable (ShapeGrid/adminForm/dexIcons
-  are shared dependencies now); registry semantics untouched; artadmin untouched;
-  admin surface EN-only; ca-* CSS only.
+  are shared dependencies of the contentadmin editor 0182a built — deleting DexAdmin.tsx
+  must not take them with it); registry semantics untouched; artadmin untouched; admin
+  surface EN-only; ca-* CSS only.
 
 ## Out of scope
-- Shape/align/part form editing (JSON tab covers them); monster/skill/tm/unit form
-  editors (fallback JSON tab as today); removing the sprite fallback; PROJECT.md.
+- Everything 0182a already did (the editor port itself); removing the sprite fallback;
+  PROJECT.md.
 
 ## Gates
 - G1 client tsc+build; server tests green (api_test both backends — the 409 change
@@ -75,6 +66,8 @@ reference; reuse adminForm.ts EffectRow grammar — already imported):
 - The grant flow depends on dev_mode/roles — keep gating identical when relocated.
 - 409ing the admin PUT may break an unknown caller: grep tools/ + mock-src/ first;
   the log must list every caller found and its disposition.
+- Deleting DexAdmin.tsx must not delete the shared dex/* modules the 0182a editor now
+  imports. Typecheck catches it; do not "clean up" adminForm.ts along with the UI.
 
 ## Implementation log
 (to be filled by the implementing engineer)
