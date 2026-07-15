@@ -92,3 +92,17 @@ is a separate follow-up if the user asks.
 ## Status log
 
 - 2026-07-15: plan drafted; batch 1 generation started. (updates appended here)
+
+- 2026-07-15 (batch 1 DONE, adopted): hero s303, knight s303, wizard s303,
+  ranger s202, cleric s303. 19/20 renders ok; ranger s303 failed (ComfyUI
+  OOM-kill casualty, see below) -- 3 candidates were enough to adopt from.
+  - Pipeline bug found+fixed mid-batch: server/services/model_hash.cjs used
+    fs.readFileSync (refuses >2GiB; flux2 GGUF is 4.3GB) so EVERY real
+    registry generation failed after a successful ComfyUI render. Hotfix
+    8830ace (stream hashing, user-approved), backpack-api restarted.
+  - Incident: comfyui.service OOM-killed once during the batch (23GB box,
+    shared with a concurrent e2e run + rembg inspection backlog); systemd
+    auto-restarted it; cost one render (ranger s303) + a cold reload.
+  - Adoption picks favored: no pseudo-text (except hero s303 headband glyph
+    -- flagged to user), closed-visor knight to avoid silhouette overlap with
+    units-002 lightcavalry, explicit cross on cleric.
