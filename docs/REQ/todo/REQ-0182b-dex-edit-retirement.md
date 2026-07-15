@@ -82,3 +82,59 @@ harmful. 0182a preserved its UX; this REQ removes the harmful surface.
 
 ## Implementation log
 (to be filled by the implementing engineer)
+
+## Implementation log
+
+### Session 1 — investigation + spec corrections (2026-07-15, opus orchestrator)
+
+**Claimed after REQ-0176 (this REQ closes the window 0176 opened.)** 0176 made the AUTHORITY
+path registry-first, which took Dex Edit from HALF-inert (invisible in the Dex, but still
+effective on the SIMULATION via the file) to FULLY inert for registry-covered po/si. 0182a had
+already ported the friendly editor, so nothing is lost by removing the route now.
+
+**CORRECTION 1 — it is TWO failing tests, not three. The spec's "budget for three
+replacements, not two" instruction is wrong.**
+
+The spec's implementer note claims `dex-admin.spec.ts:69`, `:130` and `:175` fail against
+deployed registry-first serving. Measured TWICE against the live api on a QUIET box:
+
+| test | spec says | measured |
+|---|---|---|
+| `:69` edit name -> confirm in dex UI + /api/content | fails | **fails (2/2)** — real |
+| `:175` effect round trip -> live file BYTE-IDENTICAL | fails | **fails (2/2)** — real |
+| `:130` REQ-0038 locale-only edit fields | **fails** | **PASSES (2/2)** |
+| `:35` edit toggle hidden for a role-less user (403) | not mentioned | failed 1 of 2 (29.5s, first test of the run) — **cold-start flake** |
+
+`:130` asserts that the locale switcher shows only one locale's inputs. It is a **pure UI
+assertion with no persistence check**, so registry-first serving cannot fail it — there is no
+mechanism. 0182a most likely saw it red as **collateral**: it runs after `:69`, and `:69`'s
+failure path leaves `dagger` un-restored. Budget **two** replacements. `:35` is a flake and must
+not be "fixed" by this REQ.
+
+(Confirmed the spec's premise is otherwise right: `blade`, `dagger` and `tower_shield` are all
+`kind=po_def adopted=YES` on live, so /api/content is registry-first for them.)
+
+**CORRECTION 2 — the caller list. The spec worries about the wrong file.**
+
+The spec says "check remaining callers (dex-admin e2e, any tools) first and document what stays".
+Full grep of `client/src`, `client/e2e`, `server`, `tools`, `mock-src`, `sim`:
+
+| caller | disposition |
+|---|---|
+| `client/src/api/dex.ts:13` (`putAdminItem`) | the Dex Edit call itself — goes with DexAdmin |
+| `client/e2e/dex-admin.spec.ts:57,120` | the two file-edit tests — REPLACED per spec |
+| **`server/tests/api/ragnarok.cjs:662`** | **a server test PUTs `/api/admin/item/dagger`. NOT mentioned anywhere in the spec.** api_test runs BOTH backends and must stay green — this caller needs an explicit disposition, not a surprise. |
+| `client/e2e/global-setup.ts:15` | **NOT a caller.** The spec's own "Why" section and the risk list imply the e2e harness writes through this route; global-setup only *mentions* it in a comment explaining why it backs up `content/live/*.json`. It backs files up; it does not PUT. |
+
+**Shared `dex/*` modules that MUST survive deleting `DexAdmin.tsx`** (the spec's stated risk,
+now enumerated — 0182a's editor imports them):
+`../dex/adminForm` (effectToRow, rowToEffect, defaultEffectRow, EffectRow) and `../dex/vocabTree`
+(ancestryPath) from `contentadmin/EditModal.tsx`; `../dex/ShapeGrid` (ShapeGrid) and
+`../dex/dexIcons` (iconDataUrl, iconDims) from `contentadmin/EntityPreview.tsx`.
+`grantWarehouseItem` lives in `client/src/api/warehouse.ts`, NOT in `api/dex.ts`, so the grant
+relocation does not depend on the file being deleted.
+
+**Where the toggle lives:** `client/src/dex/DexRoot.tsx` owns it (the `isAdmin` block, lines
+51-68) and renders `<DexAdmin>` at line 78. Removing both makes `me` / `isAdmin` / `reloadMe` /
+`reload` dead in that file — the deletion must carry them out too, or tsc will fail on unused
+locals.
