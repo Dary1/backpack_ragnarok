@@ -138,7 +138,11 @@ async function runG3andFlow() {
     assert.strictEqual(p.models.vae.file, ROUTE_CONSTS.vae);
     for (const k of ['unet', 'clip', 'vae']) assert.ok(/^[0-9a-f]{64}$/.test(p.models[k].sha256), k + ' sha256 present');
     assert.deepStrictEqual(p.size, { width: 256, height: 768 });
-    const prev = await jobs.runPython({ kind: 'po', main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 768, seed: done.seed, mode: 'preview' });
+    // REQ-0183: the preview must be handed the SAME inputs generation got --
+    // including the shape -- or it composes a different prompt and this
+    // verbatim check compares two unlike things. routes/art.cjs hPreview passes
+    // the artwork's shape for exactly this reason; mirror it here.
+    const prev = await jobs.runPython({ kind: 'po', main_object: 'iron sword', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 768, seed: done.seed, shape: a.shape, mode: 'preview' });
     assert.strictEqual(done.final_prompt, prev.final_prompt, 'final_prompt stored verbatim');
     const img = await storage.getRenderImageBySeed('g3_sword', done.seed);
     assert.ok(Buffer.isBuffer(img.image) && img.image.length > 0, 'image bytes in DB');
@@ -165,6 +169,29 @@ async function runG3andFlow() {
     assert.strictEqual(adopted2.seed, r2.seed, 're-adopt switched adopted seed');
     await exportAdopted('flow_pot');
     await storage.deleteRender('flow_pot', r1.seed);
+  });
+  await AT('REQ-0183 po generation is shape-conditioned: mask reaches the route; prompt is an edit instruction; provenance recorded', async () => {
+    // The L-tromino the REQ-0153 spike proved the unconditioned route misses.
+    const a = await storage.createArtwork({ system_name: 'shape_axe', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline' });
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: false });
+    const done = await waitForRender('shape_axe', r.seed, 30000);
+    assert.strictEqual(done.status, 'ok', 'render ok: ' + done.error);
+    // The shape reached GENERATION (it used to reach only the inspection kits).
+    assert.strictEqual(done.params.shape_conditioned, true, 'render recorded as shape-conditioned');
+    assert.strictEqual(done.params.shape_dilation_px, 8, 'dilation D=8 (the REQ-0153 verdict) recorded');
+    // The prompt is the REQ-0153 edit instruction, not a bare subject: klein is
+    // being asked to edit the gray scaffold riding along as a ReferenceLatent.
+    assert.ok(/^Turn the gray shape into /.test(done.final_prompt), 'prompt is a shape-edit instruction: ' + done.final_prompt);
+    assert.ok(/Keep the silhouette exactly/.test(done.final_prompt), 'prompt keeps the silhouette directive');
+    assert.ok(/battle axe/.test(done.final_prompt), 'prompt still carries the subject');
+    // Opting out returns the byte-identical unconditioned prompt.
+    const off = await jobs.runPython({ kind: 'po', main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_conditioning: false, mode: 'preview' });
+    assert.strictEqual(off.shape_conditioned, false, 'shape_conditioning:false opts out');
+    assert.ok(!/Turn the gray shape/.test(off.final_prompt), 'opted-out prompt is the plain subject');
+    // A kind with no cell shape is untouched by any of this.
+    const si = await jobs.runPython({ kind: 'si', main_object: 'flame', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 256, seed: 1, mode: 'preview' });
+    assert.strictEqual(si.shape_conditioned, false, 'si is not shape-conditioned');
   });
   // REQ-0179 custom LAST in this function: it makes no GPU render, but calls
   // jobs.runPython (preview) which spawns a python process OUTSIDE the pump's

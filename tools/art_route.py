@@ -101,7 +101,8 @@ def wait_done(pid, timeout_s=1800):
 
 
 def build_txt2img(prompt, w, h, seed=SEED, prefix="gen", *, steps=STEPS, cfg=CFG,
-                  sampler=SAMPLER, tiling=False, mask_image=None, negative=None):
+                  sampler=SAMPLER, tiling=False, mask_image=None, negative=None,
+                  reference_image=None, shape_mask_image=None, mask_init_image=None):
     """The ONLY graph. ComfyUI's official Flux.2-klein-distilled template with
     UNETLoader swapped for UnetLoaderGGUF.
 
@@ -110,6 +111,27 @@ def build_txt2img(prompt, w, h, seed=SEED, prefix="gen", *, steps=STEPS, cfg=CFG
                      bias. The negative is a zero-out of the UNMASKED positive;
                      zeroing the masked one would leave everything outside the
                      mask unguided.
+                     INEFFECTIVE ON THIS ROUTE, and kept only for the legacy
+                     gen_item_icons.py caller: REQ-0153 established that
+                     ConditioningSetMask rides SDXL cross-attention and does not
+                     port to FLUX.2's DiT joint attention. For real shape control
+                     use reference_image. Mutually exclusive with it (shared nodes).
+    reference_image / shape_mask_image / mask_init_image
+                  -> SHAPE CONDITIONING (REQ-0183, wiring the REQ-0153 GREEN recipe).
+                     reference_image alone is REQ-0153 "Arm A": the image is
+                     VAE-encoded and chained into the POSITIVE as a ReferenceLatent.
+                     This is the mechanism klein natively supports -- FLUX.2 unifies
+                     t2i and image editing in ONE architecture, so these very weights
+                     accept a reference image with no adapter, no ControlNet, no LoRA.
+                     Add shape_mask_image + mask_init_image for "Arm C": the init
+                     latent becomes mask_init_image under a SetLatentNoiseMask of
+                     shape_mask_image, so nothing renders outside the masked region.
+                     Arm C @ D=8 is the ratified PO default -- 100% identity-fit
+                     feasible with zero deep-overflow, against 28.6% unconditioned.
+                     All three default None, leaving the graph byte-identical to the
+                     unconditioned route for every existing caller.
+                     Cost: reference-latent jobs run ~2-3x slower than plain t2i on
+                     the 8 GB card (measured 6.7-6.8 GB peak, no OOM).
     negative      -> REFUSED. It is inactive at cfg 1.0 and accepting it silently
                      is how a style regression hides for a month.
     """
@@ -119,6 +141,20 @@ def build_txt2img(prompt, w, h, seed=SEED, prefix="gen", *, steps=STEPS, cfg=CFG
             "negative -- distilled klein samples at cfg 1.0 and the graph zeroes "
             "the conditioning, so it would be silently discarded. Fold what you "
             "wanted into the POSITIVE prompt instead.")
+    if mask_image and reference_image:
+        raise ValueError(
+            "build_txt2img: mask_image and reference_image are mutually exclusive "
+            "-- they occupy the same graph nodes. mask_image's ConditioningSetMask "
+            "is a no-op on FLUX.2 anyway (REQ-0153); pass reference_image alone.")
+    if (shape_mask_image or mask_init_image) and not reference_image:
+        raise ValueError(
+            "build_txt2img: shape_mask_image/mask_init_image require reference_image. "
+            "The REQ-0153 Arm C recipe masks the init latent that the scaffold's "
+            "ReferenceLatent conditions; masking alone was never an arm.")
+    if bool(shape_mask_image) != bool(mask_init_image):
+        raise ValueError(
+            "build_txt2img: shape_mask_image and mask_init_image must be passed "
+            "together -- the noise mask needs the latent it masks.")
 
     wf = {
         "1": {"class_type": "UnetLoaderGGUF", "inputs": {"unet_name": FLUX["unet"]}},
@@ -135,6 +171,7 @@ def build_txt2img(prompt, w, h, seed=SEED, prefix="gen", *, steps=STEPS, cfg=CFG
         "9": {"class_type": "RandomNoise", "inputs": {"noise_seed": seed}},
     }
     positive = ["4", 0]
+    latent_image = ["6", 0]
     if mask_image:
         wf["10"] = {"class_type": "LoadImage", "inputs": {"image": mask_image}}
         wf["11"] = {"class_type": "ImageToMask",
@@ -143,12 +180,32 @@ def build_txt2img(prompt, w, h, seed=SEED, prefix="gen", *, steps=STEPS, cfg=CFG
                     "inputs": {"conditioning": ["4", 0], "mask": ["11", 0],
                                "strength": 1.0, "set_cond_area": "default"}}
         positive = ["12", 0]
+    if reference_image:
+        # REQ-0153 Arm A: scaffold -> VAEEncode -> ReferenceLatent into the positive.
+        wf["10"] = {"class_type": "LoadImage", "inputs": {"image": reference_image}}
+        wf["11"] = {"class_type": "VAEEncode",
+                    "inputs": {"pixels": ["10", 0], "vae": ["3", 0]}}
+        wf["12"] = {"class_type": "ReferenceLatent",
+                    "inputs": {"conditioning": ["4", 0], "latent": ["11", 0]}}
+        positive = ["12", 0]
+    if shape_mask_image:
+        # REQ-0153 Arm C: sample into a white canvas under a hard noise mask, so
+        # nothing can render outside the (dilated) owned cells.
+        wf["17"] = {"class_type": "LoadImage", "inputs": {"image": mask_init_image}}
+        wf["18"] = {"class_type": "VAEEncode",
+                    "inputs": {"pixels": ["17", 0], "vae": ["3", 0]}}
+        wf["20"] = {"class_type": "LoadImage", "inputs": {"image": shape_mask_image}}
+        wf["21"] = {"class_type": "ImageToMask",
+                    "inputs": {"image": ["20", 0], "channel": "red"}}
+        wf["22"] = {"class_type": "SetLatentNoiseMask",
+                    "inputs": {"samples": ["18", 0], "mask": ["21", 0]}}
+        latent_image = ["22", 0]
     wf["13"] = {"class_type": "CFGGuider",
                 "inputs": {"model": ["1", 0], "positive": positive,
                            "negative": ["5", 0], "cfg": cfg}}
     wf["14"] = {"class_type": "SamplerCustomAdvanced",
                 "inputs": {"noise": ["9", 0], "guider": ["13", 0], "sampler": ["7", 0],
-                           "sigmas": ["8", 0], "latent_image": ["6", 0]}}
+                           "sigmas": ["8", 0], "latent_image": latent_image}}
     wf["15"] = ({"class_type": "CircularVAEDecode",
                  "inputs": {"samples": ["14", 0], "vae": ["3", 0], "tiling": "enable"}}
                 if tiling else

@@ -94,6 +94,13 @@ async function processGenJob(desc) {
     kind: artwork.kind, main_object: artwork.main_object,
     prompt_template: artwork.prompt_template, style_override: artwork.style_override,
     width: artwork.gen_width, height: artwork.gen_height, seed, tiling: !!tiling,
+    // REQ-0183: the artwork's shape reaches GENERATION, not just inspection.
+    // Until now a po artwork's 5x5 mask was handed to the kits that judge the
+    // finished render, but never to the route that makes it -- so the model was
+    // asked to hit a silhouette nobody had told it about, and the awkward
+    // shapes (L, T) missed. art_job.py turns the mask into the REQ-0153 Arm C
+    // scaffold + noise mask; non-po kinds ignore it.
+    shape: artwork.shape || null,
     mode: 'generate',
   }, (child) => { runningChild = child; });
   // REQ-0156: a canceled job's child was killed -- whatever the worker
@@ -115,6 +122,13 @@ async function processGenJob(desc) {
     models: { unet: mh.unet, clip: mh.clip, vae: mh.vae },
   };
   if (res.bpskin_frame_report) params.bpskin_frame_report = res.bpskin_frame_report;
+  // REQ-0183: provenance -- whether this render was shape-conditioned, and at
+  // what dilation. A render's params are the record of HOW it was made, and
+  // "was the shape enforced?" is now part of that.
+  if (res.shape_conditioned) {
+    params.shape_conditioned = true;
+    params.shape_dilation_px = res.shape_dilation_px;
+  }
   await storage.updateRenderResult(renderId, {
     status: 'ok', image: Buffer.from(res.image_b64, 'base64'),
     image_sha256: res.image_sha256, final_prompt: res.final_prompt, params, error: null,

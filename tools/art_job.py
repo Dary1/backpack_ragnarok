@@ -11,7 +11,35 @@ import sys, os, json, io, base64, hashlib, glob
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_route as ROUTE
 import art_style as STYLE
+import art_shape as SHAPE
 KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster"}
+
+
+def po_shape_mask(job):
+    """The PO 5x5 mask when this job should be SHAPE-CONDITIONED, else None.
+
+    REQ-0183. A po artwork's shape.mask is the operator's own 5x5 cell drawing
+    from the REQ-0151 editor; it is what the icon must end up fitting, so it is
+    also the right conditioning input (REQ-0153's verdict). Any other kind, an
+    absent/empty mask, or an explicit shape_conditioning=false opts out and the
+    graph stays byte-identical to the unconditioned route.
+    """
+    if job.get("kind") != "po":
+        return None
+    if job.get("shape_conditioning") is False:
+        return None
+    shape = job.get("shape") or {}
+    mask = shape.get("mask") if isinstance(shape, dict) else None
+    return mask or None
+
+
+def shape_tag(mask, w, h):
+    """Stable per-(shape,size) id for the scaffold files written into ComfyUI's
+    input dir. Content-addressed, so repeat renders of the same artwork reuse
+    the same three PNGs instead of littering, and two artworks can never read
+    each other's scaffold."""
+    key = json.dumps({"mask": mask, "w": w, "h": h}, sort_keys=True).encode()
+    return hashlib.sha256(key).hexdigest()[:12]
 
 
 def compose_prompt(job):
@@ -29,16 +57,24 @@ def compose_prompt(job):
         if clause and not clause.endswith(","):
             clause += ","
         return subject, STYLE.fill_prompt((clause + " ") if clause else "")
+    # REQ-0183: a shape-conditioned po render carries a gray scaffold as a
+    # ReferenceLatent, so the prompt must read as an EDIT of that reference
+    # rather than a bare subject. `subject` itself stays the plain composed
+    # subject -- it is what the admin UI and the render record display; only the
+    # prompt handed to the model gains the shape directive.
+    prompt_subject = subject
+    if po_shape_mask(job):
+        prompt_subject = STYLE.edit_instruction(subject)
     style_override = job.get("style_override")
     if style_override:
-        return subject, STYLE.render(style_override, subject)
+        return subject, STYLE.render(style_override, prompt_subject)
     if kind == "custom":
         # REQ-0179: operator-owned prompt. NO per-kind style template is appended
         # (custom has no KIND_TO_STYLE entry, and a texture wants none of the
         # entity kinds' style/background injection) -- the composed subject IS
         # the final prompt. style_override above still wins when present.
         return subject, subject
-    return subject, STYLE.render(STYLE.KIND_TEMPLATE[KIND_TO_STYLE[kind]], subject)
+    return subject, STYLE.render(STYLE.KIND_TEMPLATE[KIND_TO_STYLE[kind]], prompt_subject)
 
 
 def route_params(job):
@@ -68,8 +104,9 @@ def mock_png(w, h, seed):
     return buf.getvalue()
 
 
-def real_generate(final_prompt, w, h, seed, tiling, prefix):
-    wf = ROUTE.build_txt2img(final_prompt, w, h, seed=seed, tiling=tiling, prefix=prefix)
+def real_generate(final_prompt, w, h, seed, tiling, prefix, shape_inputs=None):
+    wf = ROUTE.build_txt2img(final_prompt, w, h, seed=seed, tiling=tiling, prefix=prefix,
+                             **(shape_inputs or {}))
     pid = ROUTE.submit(wf)
     if ROUTE.wait_done(pid) is None:
         raise RuntimeError("ComfyUI timed out")
@@ -89,14 +126,29 @@ def main():
     h = int(job.get("height", 256))
     tiling = bool(job.get("tiling", False))
     subject, final_prompt = compose_prompt(job)
+    mask = po_shape_mask(job)
     out = {"status": "ok", "subject": subject, "final_prompt": final_prompt,
-           "width": w, "height": h, "seed": seed, "route_params": route_params(job)}
+           "width": w, "height": h, "seed": seed, "route_params": route_params(job),
+           "shape_conditioned": bool(mask)}
+    if mask:
+        out["shape_dilation_px"] = SHAPE.DEFAULT_DILATION_PX
     if mode == "preview":
+        # Prompt only: no scaffold is written. Preview must stay cheap and free
+        # of side effects, but it still REPORTS shape_conditioned + the edit
+        # prompt, so the operator sees what generate will actually run.
         print(json.dumps(out))
         return
-    ROUTE.build_txt2img(final_prompt, w, h, seed=seed, tiling=tiling, prefix="req0151")
+    # REQ-0183: render the scaffold/mask/init trio the Arm C graph loads. Built
+    # at the job's OWN (w, h) -- the size art_sizing.cjs derived from this very
+    # mask -- and laid out proportionally, so scaffold and canvas always register.
+    shape_inputs = {}
+    if mask:
+        shape_inputs = SHAPE.prepare_inputs(mask, (w, h), ROUTE.COMFY_INPUT_DIR,
+                                            shape_tag(mask, w, h))
+    ROUTE.build_txt2img(final_prompt, w, h, seed=seed, tiling=tiling, prefix="req0151",
+                        **shape_inputs)
     mock = os.environ.get("ART_ROUTE_MOCK") == "1" or job.get("mock")
-    png = mock_png(w, h, seed) if mock else real_generate(final_prompt, w, h, seed, tiling, "req0151_" + str(seed))
+    png = mock_png(w, h, seed) if mock else real_generate(final_prompt, w, h, seed, tiling, "req0151_" + str(seed), shape_inputs)
     if job["kind"] == "bpskin":
         out["bpskin_frame_report"] = {"mocked": True, "PASS": True,
             "checks": {"margin": True, "solidity": True, "single": True,

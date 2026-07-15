@@ -184,10 +184,14 @@ async function hPreview(req, res, name) {
   const out = await jobs.runPython({
     kind: art.kind, main_object: merged.main_object, prompt_template: merged.prompt_template,
     style_override: merged.style_override, width: art.gen_width, height: art.gen_height,
+    // REQ-0183: preview the prompt generation will REALLY run -- a
+    // shape-conditioned po is an edit instruction ("Turn the gray shape
+    // into ..."), so previewing the unconditioned wording would lie.
+    shape: merged.shape || art.shape || null,
     seed: b.seed != null ? b.seed : 1, mode: 'preview',
   });
   if (out.status !== 'ok') return sendJSON(res, 500, { ok: false, error: out.error || 'preview failed' });
-  sendJSON(res, 200, { ok: true, subject: out.subject, final_prompt: out.final_prompt, width: out.width, height: out.height, route_params: out.route_params });
+  sendJSON(res, 200, { ok: true, subject: out.subject, final_prompt: out.final_prompt, width: out.width, height: out.height, route_params: out.route_params, shape_conditioned: !!out.shape_conditioned });
 }
 
 async function hGenerate(req, res, name) {
