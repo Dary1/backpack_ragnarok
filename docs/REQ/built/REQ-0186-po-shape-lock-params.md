@@ -160,3 +160,19 @@ baseline at 28.6%.
 **Disposition: STAYS in built/.** Merged, deployed, live-verified — but not yet accepted:
 no real GPU render has been eyeballed (ComfyUI was busy with another session's job
 throughout). Moving to done/ needs the owner to generate and accept.
+
+## Acceptance — 2026-07-15
+**Accepted by the user in chat ("doneでOKです"), with the S7 eyeball deliberately delegated
+to a separate job: REQ-0187-po-shape-conditioning-s7-verification (`todo/`).**
+
+Recorded plainly so history is not misread: this REQ reached `done/` on API-level evidence
+(CI GREEN, artwork_test 11/11, artadmin e2e 5/5, live previews showing `auto` -> `off` on a
+full rectangle and a one-shot `strict` override returning the edit prompt at D=8, bad values
+refused with a 400) and on REQ-0153's inherited spike measurements. **No real GPU render
+produced by this code has been looked at.**
+
+That gap is sharpest for THIS REQ's central claim. `auto`'s default rests on REQ-0153's
+finding that the unconditioned baseline already fits a full rectangle while `strict`
+flattens a heater shield into a plain disc — a claim about PICTURES, adopted here without
+seeing one. REQ-0187 V2 tests exactly that, and if the 2x2 at `off` does not visibly beat
+`strict` on subject character, `auto`'s default is wrong and this REQ needs revisiting.
