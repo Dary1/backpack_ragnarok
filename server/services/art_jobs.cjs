@@ -58,6 +58,7 @@ let runningChild = null;       // spawned python child of the in-flight job
 let runningStartedAt = 0;      // Date.now() when the in-flight job started
 const genQueue = [];           // GPU generation jobs (high priority)
 const inspectQueue = [];       // CPU inspection jobs (low priority)
+const packQueue = [];          // REQ-0192 repack jobs (user-initiated: highest waiting priority)
 
 /** Run a Python worker (script), feeding jobSpec on stdin and parsing ONE
  * JSON result from stdout. Resolves to {status:'failed',error} rather than
@@ -187,15 +188,17 @@ async function processInspectJob(desc) {
 
 function pump() {
   if (running) return;
-  // GPU generation jobs ALWAYS jump ahead of CPU inspection jobs.
-  let desc = genQueue.shift();
-  let type = 'generate';
+  // Priority: user-initiated repacks first (REQ-0192), then GPU generation,
+  // then CPU inspection. Generation still always jumps ahead of inspections.
+  let desc = packQueue.shift();
+  let type = 'pack';
+  if (!desc) { desc = genQueue.shift(); type = 'generate'; }
   if (!desc) { desc = inspectQueue.shift(); type = 'inspect'; }
   if (!desc) return;
   running = true; runningType = type; runningDesc = desc;
   runningChild = null; runningStartedAt = Date.now();
   const job = type === 'generate' ? processGenJob(desc)
-    : desc.__pack ? processPackJob(desc) : processInspectJob(desc);
+    : type === 'pack' ? processPackJob(desc) : processInspectJob(desc);
   job
     .catch(async (e) => {
       if (type === 'generate') {
@@ -224,9 +227,11 @@ function enqueue(desc) { desc.enqueued_at = Date.now(); genQueue.push(desc); pum
 function enqueueInspection(desc) { inspectQueue.push(desc); pump(); }
 
 /** REQ-0192: enqueue a repack job {renderId (TARGET row, already created
- * status 'queued'), artworkId, sourceRenderId}. Runs at inspection priority
- * (CPU + a short matte; generation always jumps ahead). */
-function enqueuePack(desc) { desc.__pack = true; inspectQueue.push(desc); pump(); }
+ * status 'queued'), artworkId, sourceRenderId}. Repack is a USER-INITIATED
+ * interactive action, so it runs AHEAD of pending generation jobs (a large
+ * fire-and-forget batch must not starve a button press for hours); it still
+ * waits for the in-flight job. Cost is ~10-30 s of CPU + a short matte. */
+function enqueuePack(desc) { desc.__pack = true; packQueue.push(desc); pump(); }
 
 /** REQ-0192: run ONE repack -- matte the SOURCE render, search the best
  * feasible placement (tools/pack_job.py -> tool_cell_fit), and complete the
@@ -271,8 +276,13 @@ async function processPackJob(desc) {
 
 /** GPU generation queue depth (waiting + the one in flight) for the UI. */
 function queueDepth() { return genQueue.length + (running && runningType === 'generate' ? 1 : 0); }
-/** CPU inspection queue depth (waiting + in flight). */
-function inspectDepth() { return inspectQueue.length + (running && runningType === 'inspect' ? 1 : 0); }
+/** CPU inspection queue depth (waiting + in flight); REQ-0192 repacks are
+ * counted here too -- to the UI badge they are the same kind of background
+ * CPU work, just higher priority. */
+function inspectDepth() {
+  return inspectQueue.length + packQueue.length +
+    (running && (runningType === 'inspect' || runningType === 'pack') ? 1 : 0);
+}
 
 /** REQ-0156: queue snapshot for GET /api/art/queue -- the running generation
  * job (with elapsed), every pending generation job in order, and the
