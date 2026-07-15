@@ -81,5 +81,47 @@ and `monster_content_pipeline.md`.
 
 ## Status log
 
-- 2026-07-15: Plan authored; awaiting user review of the roster. Batches will be
-  generated 5 at a time with a STOP for user review after each.
+- 2026-07-15: Plan authored; user approved roster (B1 start authorized).
+- 2026-07-15: Hit a latent pipeline bug: model_hash.cjs sha256File used
+  fs.readFileSync, which refuses files > 2 GiB, so EVERY real API-path
+  generation failed on the 4.3 GB flux2 GGUF. Reported; fixed by the user
+  (another session) with a streamed hash. Two api restarts wiped the
+  in-memory job queue mid-batch; orphaned renders were deleted and re-queued.
+- 2026-07-15: B1 generated (3 seeds each; bone_dragon 6 seeds) and ADOPTED:
+  slime s2, skeleton_warrior s1, werewolf s1, griffin s2, bone_dragon s2.
+  All exported to content/art/monster/<name>.png.
+- 2026-07-15: Per user instruction, B2-B10 (45 artworks) were CREATED with
+  refined prompts only -- NO generation, NO adoption. The user will generate
+  seeds at their own timing and judge. Prompts in the DB are authoritative;
+  the roster table above reflects the original plan wording, while created
+  artworks add the framing clauses below where relevant.
+
+## Learnings from B1 (visual review of 21 renders)
+
+1. Edge clipping is the top failure for WIDE subjects: griffin (6x4, wings
+   raised) clipped 2/3 seeds at top/left; bone_dragon clipped 2/6 at right.
+   Portrait humanoids and compact blobs almost never clip. Mitigation applied
+   to B2-B10 prompts: append "entire creature/wingspan fully inside the
+   frame" (variants: "all legs/heads/tentacles ...") on wide, winged,
+   sprawling, or long-weapon subjects.
+2. Painter-signature artifacts: the Concept Art (Fantasy) template sometimes
+   paints a fake artist signature, mostly on large canvases (bone_dragon 3/6
+   seeds, slime 1/3, skeleton_warrior 1/3). No negative prompt exists on
+   flux2-klein, so the only remedy is seed rerolls; treat a signature as a
+   reroll trigger during review.
+3. Weapon tips are extremities too: a sword tip grazed the left edge on
+   skeleton_warrior s2 (0.4% edge contact). Prefer "holding/resting" over
+   "swinging" for big weapons, keeping them close to the body.
+4. Style consistency holds without style_override; "full body" reliably
+   yields whole-creature compositions on white background.
+5. Numeric edge check (border-pixel non-white fraction, threshold <235 luma)
+   catches clipping objectively and cheaply; run it before eyeballing.
+
+## Handoff state (session end, 2026-07-15)
+
+- 50/50 artworks exist in the registry (plain [A-Za-z0-9_]+ names, no batch
+  prefix; the API rejects ':' so registry-era monsters are unprefixed).
+- Adopted (5): slime, skeleton_warrior, werewolf, griffin, bone_dragon.
+- Ready-to-generate (45): B2-B10 rows above; each has kind=monster, shape,
+  and a tuned main_object; prompt_template is the kind default. Generate via
+  the artadmin UI or POST /api/art/artworks/<name>/generate {"count":N}.
