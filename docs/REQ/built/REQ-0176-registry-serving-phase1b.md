@@ -323,3 +323,51 @@ read, so drift now changes the game, not just the Dex.
 `content_export.cjs:61` and `art_export.cjs:44` — both report `process.env.*_EXPORT_GIT === '1'`
 while neither module contains any git code. Real, but it belongs to the export path REQ-0178
 Phase 3 retires; fixing it here would be scope creep into a doomed module.
+
+### Deploy (orchestrator, 2026-07-15 01:57 UTC)
+
+**Pre-cutover parity (live, all 7 kinds):** `ok:true` MATCH=65 DRIFT=0 MISSING-IN-REGISTRY=0
+UNADOPTED=0. The gate tripped once before this (DRIFT=1, `po_def dagger.stretch`) and the
+deploy was correctly HALTED: root-caused to the `req-0182a` worktree's e2e running against
+live at that moment (playwright worker 01:29:37 vs `live_items.json` mtime 01:29:37.028 —
+the legacy Dex Edit PUT, i.e. the exact incident REQ-0182 exists to stop). Their teardown
+restored the file; no hand-repair was needed. Waiting rather than hand-editing a live file
+under someone else's running test was the right call.
+
+**Base refresh.** REQ-0183/0186/0187 landed while this branch was in gates (fork 8830ace →
+master 7d3332b). Merged master in (ac7b47d, zero conflicts — all art-side) and re-ran the FULL
+gate set: a green from a stale base is not a green. tsc 0; api_test files 177/0 + pg 177/0;
+content_test 18/0; contentagg 5/0; content_serving 7/0; schedule_serving 13/0; artwork_test
+11/0; parity_test 3/0; client build green; contentadmin 22/22; artadmin 5/5; FULL default
+suite 178 passed.
+
+**Merge + restart.** master `356da9a`; `backpack-api` restarted 01:57:05, active. No migrations,
+no dist rebuild (no client changes).
+
+**Live verification — `GET /api/content/dev/sources` (backend `pg`):**
+
+| path | sections | fallback |
+|---|---|---|
+| DISPLAY (0178+0176) | items=22 sis=6 tms=1 **units=12 packs=3** | **0** |
+| AUTHORITY (0176, NEW `schedule` block) | itemDefs=22 siDefs=6 tmDefs=1 unitDefs=12 packDefs=3 **enemyDefs=7 skillDefs=14** | **0** |
+
+Both paths registry-served with zero fallback, and their counts AGREE — which is the built-in
+drift check. `enemyDefsById`/`skillDefsById` had no registry tier at all before this REQ. No
+boot fallback-warn line, correct at fallback=0.
+
+**Post-deploy suite (live pg):** first run 174 passed / 4 failed. Re-running the 4 on a QUIET
+box: **22 passed / 2 failed**. `bp-transfer.spec`, `dex-card.spec` and `dex.spec` (both SI
+tests) PASS — they were casualties of box contention with the concurrent `req-0182a` run, not
+this REQ. The 2 real failures are **`dex-admin.spec.ts:69` and `:175`** — the two Dex-Edit
+file-round-trip tests that REQ-0182 already documents as failing against registry-first serving.
+They are **pre-existing since REQ-0178's deploy and owned by REQ-0182b** (draft); this REQ does
+not touch `/api/content` items, which 0178 had already made registry-first.
+
+**Concurrency note for the next reader.** `req-0182a` merged (`17bd440`) ~70s after this REQ
+(`356da9a`), while this REQ's post-deploy suite was running. It touches only
+`client/src/contentadmin/*` + its spec — no `server/`, no `web/` assets — so the running API is
+current with master and the two changes do not interact. Two agents deploying to one box inside
+two minutes is how a stray file edit or a stomped dev-player fixture becomes a mystery; the
+lesson is that the post-deploy suite is only trustworthy on a quiet box.
+
+**Status: `built/` — merged and deployed and live-verified, awaiting user acceptance (S7).**
