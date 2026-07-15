@@ -106,3 +106,43 @@ REQ it implies (e.g. change auto's rule, re-word the lock descriptions, or rever
 ## Out of scope
 - Monster/si/unit shapes; any new arm or mechanism; re-running REQ-0153's spike matrix.
 - Changing defaults — that is the follow-up REQ this one may recommend.
+
+## Session log — 2026-07-15 (S7 eyeball in progress; user in the loop)
+
+Route sanity (V1 partial; production route; test artwork `req0187_l_axe` id 2062,
+L-tromino, created via the admin API):
+- create/preview/generate resolve `auto -> strict @ D=8`; `params.shape_lock`
+  records the resolved lock; containment REPRODUCES: `deep_overflow_px = 0`,
+  `identity_feasible = true` on the scored strict render (REQ-0153 machinery:
+  birefnet matte -> identity metrics, run one-off in /tmp).
+- Ops (V5 partial): warm strict render 40-130 s, VRAM ~6.7 GB, no OOM. ComfyUI
+  cold start (REQ-0158 idle-free) paid ~508 s of model reload inside an 880 s
+  first-render wall.
+
+**Headline S7 finding: containment is NOT fit.** Seed 1 (default template)
+passed every V1 gate (deep_overflow 0) yet composed the axe DIAGONALLY across
+the L's bounding box (per-cell coverage 0.53/0.09/0.17) — unusable in the
+backpack grid. User-articulated and verified across seeds 11-14 (orientation
+prompt) and 21-24 (anatomy prompt): fit-feel is violation-based; axis-alignment
+is promptable (0/1 -> 7/8 across rounds); the L/T distinction is ATTACHMENT
+TOPOLOGY (a symmetric-headed axe is a T-object — round 1's four renders all fit
+the T by translation alone); mask ORIENTATION must match the subject's natural
+pose (the axe's native L is notch-bottom-right, not the notch-top-right L this
+REQ ordered). Full doctrine: `item_content_pipeline.md` §0.2 (written this
+session, user directive: edit existing docs, no new files).
+
+Consequences for this REQ's spec:
+- V1-V3 GREEN criteria are necessary-but-insufficient; the honest verdict must
+  weigh the §0.2 violations, not identity-fit alone.
+- Deliverable changed by user ruling (chat, 2026-07-15): NO preview gallery —
+  renders are reviewed in the live artadmin (`req0187_l_axe`). Findings land
+  here + §0.2.
+- Proposed follow-up (user design): instrument-driven revision loop —
+  instruction -> 3 seeds -> structured findings -> revised instruction -> ... ->
+  present ~10 renders + findings as artwork variations. Instruments as
+  OPTIMIZERS, not gates. Constraint: `renders.seed` UNIQUE per artwork, so
+  same-seed A/B across rounds needs render deletion or distinct seeds.
+
+Open: natural-orientation L test; T-tetromino subject (war hammer IS a T-object
+— expected easy case); V2 (auto's default) / V3 (guide) / V4 (UI compare loop);
+delete `req0187_*` artworks when done.
