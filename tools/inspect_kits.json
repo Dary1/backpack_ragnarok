@@ -1,11 +1,63 @@
 {
   "_comment": "REQ-0152 inspection-kit registry. SINGLE SOURCE of kit identity/routing/version, read by BOTH the Node queue (server/services/art_jobs.cjs -> kits_for(kind), current kit_version for staleness) AND the Python runner (tools/inspect_job.py stamps kit_version onto every output). Bump kit_version on any threshold or algorithm change (drives the UI stale badge). blocking is true ONLY for bpskin.frame_gate, and it is enforced ONLY inside the generation recipe (compose consumes PASS frames); as an inspection here every kit is advisory and never gates adoption.",
   "kits": [
-    { "kit_id": "bpskin.frame_gate",     "kit_version": "1", "applies_to": ["bpskin"],        "blocking": true },
-    { "kit_id": "matte.coverage_band",   "kit_version": "1", "applies_to": ["po", "si", "unit"], "blocking": false },
-    { "kit_id": "po.cell_packing",       "kit_version": "1", "applies_to": ["po"],            "blocking": false },
-    { "kit_id": "tiling.seam",           "kit_version": "1", "applies_to": ["bpskin"],        "blocking": false },
-    { "kit_id": "monster.render_sanity", "kit_version": "1", "applies_to": ["monster"],       "blocking": false },
-    { "kit_id": "si.subject_frame",      "kit_version": "1", "applies_to": ["si"],            "blocking": false }
+    {
+      "kit_id": "bpskin.frame_gate",
+      "kit_version": "1",
+      "applies_to": [
+        "bpskin"
+      ],
+      "blocking": true
+    },
+    {
+      "kit_id": "matte.coverage_band",
+      "kit_version": "1",
+      "applies_to": [
+        "po",
+        "si",
+        "unit"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "po.cell_packing",
+      "kit_version": "1",
+      "applies_to": [
+        "po"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "po.cell_fit",
+      "kit_version": "1",
+      "applies_to": [
+        "po"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "tiling.seam",
+      "kit_version": "1",
+      "applies_to": [
+        "bpskin"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "monster.render_sanity",
+      "kit_version": "1",
+      "applies_to": [
+        "monster"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "si.subject_frame",
+      "kit_version": "1",
+      "applies_to": [
+        "si"
+      ],
+      "blocking": false
+    }
   ]
 }
