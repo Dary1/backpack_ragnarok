@@ -191,10 +191,10 @@ no artwork was created in the LIVE registry unprompted. Moving to done/ requires
 generating a po in artadmin and accepting the result.
 
 ## Acceptance — 2026-07-15
-**Accepted by the user in chat (doneでOKです), with the S7 eyeball deliberately delegated
+**Accepted by the user in chat ("doneでOKです"), with the S7 eyeball deliberately delegated
 to a separate job: REQ-0187-po-shape-conditioning-s7-verification (todo/).**
 
-Recorded plainly so history is not misread: this REQ reached  on API-level evidence
+Recorded plainly so history is not misread: this REQ reached `done/` on API-level evidence
 (CI GREEN, artwork_test, artadmin e2e, live preview returning the edit prompt and the
 conditioned flags) and on REQ-0153's inherited spike measurements. **No real GPU render
 produced by this code has been looked at** — the GPU was busy with another session's job
