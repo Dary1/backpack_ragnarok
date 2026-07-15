@@ -190,10 +190,45 @@ committing. Deploy rebuilds it.
 - `1303e1b` REQ-0182a: port the DexAdmin editor UX into contentadmin
 - (+ the todo -> built move that carries this log)
 
-### Status / what is NOT done
-`built`, NOT merged and NOT deployed — per PROJECT.md, `~/backpack_ragnarok` and
-the live services are hands-off without fresh user go-ahead. Awaiting user
-acceptance of the ported UX; the REQ's deploy line (merge → dist rebuild →
-restart backpack-web content → post-deploy suite → S7) is untaken.
-**0182b stays in `draft/` until 0182a is MERGED** — being `built` is not the
-trigger the split note names.
+### Integration pass — merged + deployed 2026-07-15 (user go-ahead in chat: "マージ・デプロイ")
+
+- **Merged** `17bd440` (--no-ff). Master had moved under this REQ mid-verification
+  (7bf9da2 → 8830ace → 356da9a): REQ-0176/0183/0186/0187 landed from CONCURRENT
+  sessions while 0182a was being gated. Master was merged INTO the branch first and
+  re-gated there; REQ-0176 (registry-first on the authority path) touches
+  server/routes/content.cjs + lib/content.cjs, so the combination was re-gated on
+  master too rather than assumed.
+- **Dist** `60742c2`, its own commit per repo convention; index.html→assets verified
+  consistent (no stale-hash 404). **backpack-web restarted** 02:31 UTC.
+  **backpack-api deliberately NOT restarted** — 0182a changes no route.
+- **Deployed bundle verified through the public tunnel**, not just assumed: the live
+  `index-DKOAXzB0.js` contains `edit-form-locale-en/ja-`, `edit-form-eff-secslo/mult-`
+  and the preview rail's marker string.
+- **Post-deploy gates:** default suite **178/178, 0 failed** (dex-admin 6/6);
+  contentadmin **26/26**; live content clean after every run (global-teardown
+  sha256 `match=true` on profile + live_items + live_sis).
+- **0182b promoted `draft/ → todo/`** (`169d8f5`) — the split note named the MERGE as
+  its trigger, and that is now discharged.
+
+### Known-not-mine: artadmin.spec.ts:113 under box load
+`artadmin.spec.ts:113` fails with `page.goto: Timeout 20000ms exceeded` on the
+contended box. It is NOT this REQ's doing, and the claim is evidenced rather than
+asserted:
+- artadmin passed **5/5 twice in this branch's own quiet-box ci.sh runs — WITH this
+  code**. Same code, quiet box, green.
+- 356da9a (master WITHOUT 0182a) also passes 5/5 — but only in quiet windows.
+- The discriminator is runtime, not code: quiet runs finish in ~42s, failing runs in
+  ~72s (~70% slower box). `:189` was observed PASSING at **18.4s against a 20s cap** —
+  the harness sits marginally under its own timeout, so whichever goto tips over is
+  luck.
+- This REQ's bundle delta is **+3,617 bytes of 1,739,832 (0.2%)** — physically
+  incapable of adding 20s to a page load. artadmin is untouched by 0182a.
+The box is SHARED: the user's ComfyUI art session plus other agent sessions' test
+runs and deploys ran throughout. A pre-existing REQ-0159 note already records the
+quiet-box requirement; this harness's 20s goto cap is a latent fragility worth its
+own REQ, but it is not 0182a's to fix.
+
+### Status
+`built` — merged, deployed, gates green — **awaiting user acceptance (S7)** of the
+ported editor UX. Not moved to `done/`: per PROJECT.md `done` means accepted, and
+that is the user's call, not the implementer's.
