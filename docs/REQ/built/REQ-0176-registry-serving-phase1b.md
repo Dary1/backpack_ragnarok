@@ -370,4 +370,14 @@ current with master and the two changes do not interact. Two agents deploying to
 two minutes is how a stray file edit or a stomped dev-player fixture becomes a mystery; the
 lesson is that the post-deploy suite is only trustworthy on a quiet box.
 
-**Status: `built/` — merged and deployed and live-verified, awaiting user acceptance (S7).**
+**Status: `done/` — merged, deployed, live-verified, and ACCEPTED by the user (2026-07-15,
+chat: "done and continue").**
+
+**Accepted with one open consequence, surfaced before the deploy and acknowledged:** Dex Edit is
+now fully inert for registry-covered po/si. Before this REQ it was HALF-inert (invisible in the
+Dex, but still effective on the SIMULATION via the file); now the registry wins everywhere, so
+the legacy `PUT /api/admin/item/:id` changes nothing an operator can observe. That is the correct
+end state (one writer: the ledger), and REQ-0182a has already ported the friendly editor into
+contentadmin — but the window stays open until **REQ-0182b** retires the route. The two
+`dex-admin.spec.ts` failures (`:69`, `:175`) are the machine-visible face of that window, and are
+0182b's to close.
