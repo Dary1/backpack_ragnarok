@@ -29,6 +29,7 @@
 // This runner NEVER opens the DB: it reads/writes renders + render_inspections
 // ONLY through storage.cjs.
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -38,6 +39,7 @@ const kitReg = require('./kit_registry.cjs');
 
 const ART_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'art_job.py');
 const INSPECT_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'inspect_job.py');
+const PACK_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'pack_job.py');  // REQ-0192
 
 // Kit python: kits need numpy/scipy/rembg/skimage, which the generation
 // python3 (mock: PIL only) may lack. Resolve ART_KIT_PYTHON, else the project
@@ -192,11 +194,16 @@ function pump() {
   if (!desc) return;
   running = true; runningType = type; runningDesc = desc;
   runningChild = null; runningStartedAt = Date.now();
-  const job = type === 'generate' ? processGenJob(desc) : processInspectJob(desc);
+  const job = type === 'generate' ? processGenJob(desc)
+    : desc.__pack ? processPackJob(desc) : processInspectJob(desc);
   job
     .catch(async (e) => {
       if (type === 'generate') {
         const error = desc.canceled ? 'canceled by user' : String((e && e.message) || e);
+        try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
+      } else if (desc.__pack) {
+        const error = 'repack: ' + String((e && e.message) || e);
+        console.error('[art_jobs] ' + error);
         try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
       } else {
         console.error('[art_jobs] inspect job threw: ' + String((e && e.message) || e));
@@ -215,6 +222,52 @@ function enqueue(desc) { desc.enqueued_at = Date.now(); genQueue.push(desc); pum
 
 /** Enqueue a lower-priority inspection job {renderId, artworkId, kitId}. */
 function enqueueInspection(desc) { inspectQueue.push(desc); pump(); }
+
+/** REQ-0192: enqueue a repack job {renderId (TARGET row, already created
+ * status 'queued'), artworkId, sourceRenderId}. Runs at inspection priority
+ * (CPU + a short matte; generation always jumps ahead). */
+function enqueuePack(desc) { desc.__pack = true; inspectQueue.push(desc); pump(); }
+
+/** REQ-0192: run ONE repack -- matte the SOURCE render, search the best
+ * feasible placement (tools/pack_job.py -> tool_cell_fit), and complete the
+ * pre-created TARGET render row with the packed image. Full provenance goes
+ * into params (derived_from_seed + exact transform + both fit scores), the
+ * REQ-0186 posture: the lightbox must be able to say what made this image.
+ * On any failure the target row goes status 'failed' (deletable in the UI). */
+async function processPackJob(desc) {
+  const { renderId, artworkId, sourceRenderId } = desc;
+  const fail = async (error) => {
+    try { await storage.updateRenderResult(renderId, { status: 'failed', error }); }
+    catch (_) { /* best effort */ }
+  };
+  const artwork = await storage.getArtworkById(artworkId);
+  const srcRender = await storage.getRenderById(sourceRenderId);
+  const src = await storage.getRenderImageById(sourceRenderId);
+  if (!artwork || !srcRender || !src || !src.image) { await fail('repack: source render/image missing'); return; }
+  const res = await runWorker(kitPython(), PACK_JOB_PY, {
+    png_b64: src.image.toString('base64'), shape: artwork.shape,
+  });
+  if (res.status !== 'ok') { await fail('repack: ' + (res.error || 'pack job failed')); return; }
+  const image = Buffer.from(res.png_b64, 'base64');
+  const sha = crypto.createHash('sha256').update(image).digest('hex');
+  await storage.updateRenderResult(renderId, {
+    status: 'ok', image, image_sha256: sha,
+    final_prompt: srcRender.final_prompt || null,
+    params: {
+      derived: 'packed_placement',
+      derived_from_seed: srcRender.seed,
+      tool: 'tools/pack_job.py v1 (REQ-0192)',
+      transform: res.transform,
+      fit_score_identity: res.identity_score,
+      fit_score_packed: res.packed_score,
+    },
+    error: null,
+  });
+  // The packed render is a first-class candidate: same advisory kits.
+  for (const k of kitReg.kitsFor(artwork.kind)) {
+    enqueueInspection({ renderId, artworkId: artwork.id, kitId: k.kit_id });
+  }
+}
 
 /** GPU generation queue depth (waiting + the one in flight) for the UI. */
 function queueDepth() { return genQueue.length + (running && runningType === 'generate' ? 1 : 0); }
@@ -279,4 +332,4 @@ async function cancelJob(renderId) {
   throw e;
 }
 
-module.exports = { enqueue, enqueueInspection, queueDepth, inspectDepth, runPython, listJobs, cancelJob };
+module.exports = { enqueue, enqueueInspection, enqueuePack, queueDepth, inspectDepth, runPython, listJobs, cancelJob };

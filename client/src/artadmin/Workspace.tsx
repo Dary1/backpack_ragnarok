@@ -30,6 +30,7 @@ export function Workspace(props: {
   onAskAdopt: (seed: number) => void;
   onAskDelete: (seed: number) => void;
   onRetry: (seed: number) => void;
+  onRepack: (seed: number) => void;
   onOpenLightbox: (seed: number, compareWith: number | null) => void;
   onRerunKit: (seed: number, kitId?: string) => void;
   expandedKits: Record<string, boolean>;
@@ -183,6 +184,11 @@ export function Workspace(props: {
                 <button data-testid={'delete-' + r.seed} type="button" className="btn btn-ghost aa-btn-xs"
                   disabled={isAdopted}
                   onClick={() => props.onAskDelete(r.seed)}>Delete</button>
+                {kind === 'po' && r.status === 'ok' && (
+                  <button data-testid={'repack-' + r.seed} type="button" className="btn btn-ghost aa-btn-xs"
+                    title="derive a best-placement variant at seed+100000 (REQ-0192)"
+                    onClick={() => props.onRepack(r.seed)}>Repack</button>
+                )}
                 {r.status === 'ok' && (
                   <label className="aa-pick t-micro">
                     <input type="checkbox" data-testid={'pick-' + r.seed} checked={picked}
