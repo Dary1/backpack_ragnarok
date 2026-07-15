@@ -210,4 +210,116 @@ split stays available if `monster_def`/`skill_def` (the dungeon seam) later need
 independently of `unit_def`/`gacha_pack` (the roll seam).
 
 ## Implementation log
-(to be filled by the implementing engineer)
+
+### Session 1 — rewrite + implementation (2026-07-15, opus orchestrator)
+
+**Why this session did not implement the REQ it was handed.** The task was "do REQ176".
+REQ-0176 sat in `draft/` — not cleared. Reading it against the source showed its premise had
+been overtaken by REQ-0178 the same day it was raised (§1). Three rulings were taken from the
+user on the REQ's original terms, then WITHDRAWN once the supersession surfaced: they were
+answers to a question that no longer existed. The user ruled the rewrite (Phase-1b, number
+preserved) and cleared it to implement. Recorded because the withdrawn rulings are the kind of
+thing a later reader would otherwise re-litigate.
+
+**Investigation (binding map, done before coding).** See §4. The load-bearing find: REQ-0178
+converted the DISPLAY module (`lib/content.cjs`) and never touched the AUTHORITY module
+(`services/core.cjs` — zero registry references, confirmed by grep + `git log`). With 35
+adopted `po_def` variants already live, `/api/content` was serving registry data while
+`runs.cjs` simulated from the file. DRIFT=0 kept it harmless; the next adoption would not have.
+That is why scope became "all 7 kinds in the second module", not "the 4 kinds 0178 skipped" —
+the mechanism is one snapshot either way, and stopping at 4 would have left the worse gap live.
+
+**Implementation.**
+- `services/core.cjs`: `getScheduleContent()` split into `ensureFilePayload()` (the untouched
+  mtime-cached file tier) + a synchronous registry overlay. Warm snapshot (TTL 15s + boot
+  `setImmediate` + explicit `refreshRegistryData()`), pg-only, never throws — a registry read
+  failure keeps the last snapshot rather than 500ing the roll. Under the files backend the
+  snapshot is empty and the file payload OBJECT is returned unchanged (identity, asserted).
+  Identity-cached on `(filePayload, snapshot)` because the loader is called several times per
+  request.
+- Precedence: the registry overlays LAST, over every file source including the pilot/starter
+  `po_def` overlays — both are themselves backfilled `po_def` sources, so the ledger owns their
+  entries. The first spec draft had this backwards; corrected in c85a95e after checking the
+  real data (the only multi-file ids are `lockpick`/`spyglass`, byte-identical, so the
+  precedence is unobservable today — but a future adoption SHOULD win).
+- `skill_def` is the one non-verbatim kind: registry data goes through the same mechanics-only
+  (REQ-0057) and name reshapes as the file path, or the forecast tooltip and the combat fold
+  disagree.
+- `routes/content.cjs`: `invalidateServedContent()` now refreshes BOTH snapshots from one call
+  site (`Promise.all`). A mutation refreshing only one would leave display and roll
+  disagreeing — the exact drift this REQ kills.
+- `lib/content.cjs`: `units`/`packs` join `REGISTRY_KIND_BY_SECTION` in the SAME change, which
+  is what retires REQ-0178's stated reason for holding them back (display and roll now flip
+  together — REQ-0170 parity preserved, asserted by a test).
+- Parity tool: `COVERED` gains the 4 kinds; the banner now names its kinds off `COVERED` itself
+  so it can never advertise coverage it does not check.
+
+**Tests validated by mutation, not by passing.** `schedule_serving_test.cjs` (13, pg). With the
+overlay disabled (pre-REQ behaviour) **8 of 13 FAIL**, including the headline
+(`adopting a retuned gacha_pack changes what resolvePack() ROLLS`); the 5 that still pass are
+the file-tier/fallback/negative cases, correctly insensitive. The first draft of the `skill_def`
+mechanics test passed under the mutant — it asserted only the key set, which the FILE path also
+satisfies — so it now plants a marker inside `attack_profile` to prove the combat fold reads the
+ADOPTED variant. Rig note: this module anchors dungeon paths on `os.homedir()` (not
+CONTENT_ROOT), so the temp home is SYMLINKED at the worktree — NAMESPACE hashes the homedir
+string (isolated rows) while paths resolve through the link to the real corpus.
+
+**Gate results.**
+- **G1 (green):** `tsc -p tsconfig.server.json` exit 0. `api_test` files 177/0 (1371
+  assertions) and pg 177/0 (1371) — the byte-parity contract holds. `content_test` 18/0,
+  `contentagg_test` 5/0, `content_serving_test` 7/0, NEW `schedule_serving_test` 13/0,
+  `verify_content_registry_parity_test` 3/0. Client `pnpm run build` green (untouched; `web/`
+  build churn restored via `git checkout -- web/ && git clean -fd web/`).
+- **G2 (green):** `check_e2e_ports` (ci [0/8]) — 3 harnesses, no collisions. Parity tool on the
+  LIVE corpus, all 7 kinds: **MATCH=65 DRIFT=0 MISSING-IN-REGISTRY=0 UNADOPTED=0**, `--json`
+  `ok:true`. `content_admin_e2e.sh` 22 passed (36.8s). `artadmin_e2e.sh` 5 passed (43.3s).
+  FULL default suite: see below.
+- **G3 (clean):** diff limited to `server/{services/core,lib/content,routes/content}.cjs`,
+  `server/tests/schedule_serving_test.cjs`, `tools/{verify_content_registry_parity.cjs,ci.sh}`,
+  `docs/`. No client src changes; no migrations; no `shared/dto.ts` change (the new accounting
+  rides the existing dev/meta endpoint).
+
+**Cutover safety — verified directly, not inferred.** The live drift probe (§5) compares the
+FILES to the LEDGER; that is one step removed from the actual claim. So the claim was checked at
+the chokepoint itself: an independent read-only script ran `getScheduleContent()` against the
+LIVE registry + LIVE content with the snapshot empty (== the old file-only behaviour), then
+refreshed and re-read, and deep-compared every served map:
+
+| map | entries | registry-served | result |
+|---|---|---|---|
+| `itemDefsById` | 22 | 22 | SAME |
+| `siDefsById` | 6 | 6 | SAME |
+| `tmDefsById` | 1 | 1 | SAME |
+| `unitDefsById` | 12 | 12 | SAME |
+| `packDefsById` | 3 | 3 | SAME |
+| `enemyDefsById` | 7 | 7 | SAME |
+| `skillDefsById` | 14 | 14 | SAME |
+| `skillNamesById` | 14 | (via skill_def) | SAME |
+
+Key sets unchanged, zero entities changed, 65 now served from the registry (matching parity
+MATCH=65). Flipping the authority path changes NOTHING the game serves today — it changes what
+the NEXT adoption does. That is the entire point of the REQ, and the reason it can land.
+
+**For the deploy (orchestrator) — pre-cutover check (read-only), from the checkout that serves
+live content:**
+```
+set -a; . server/.env; set +a
+STORAGE_BACKEND=pg node tools/verify_content_registry_parity.cjs          # human
+STORAGE_BACKEND=pg node tools/verify_content_registry_parity.cjs --json   # machine gate
+```
+MUST be MATCH across all 7 kinds. DRIFT ⇒ a post-backfill file edit: STOP and surface to the
+user; do NOT restart into it, because after this REQ the registry is what the ROLL and the SIM
+read, so drift now changes the game, not just the Dex.
+
+**Orchestrator must-know before merge/restart:**
+- After restart the boot warm fires `refreshRegistryData()` in BOTH modules. The one boot warn
+  line now counts units/packs too.
+- `GET /api/content/dev/sources` gains a `schedule` block — the authority path's registry/
+  fallback split beside the display path's. **The two should agree; a disagreement is drift.**
+- No client changes, no migrations, no export/integrate changes.
+- REQ-0182 (Dex Edit retirement) is untouched and still owns `PUT /api/admin/item/:id`.
+
+**Deliberately not fixed (recorded, not actioned):** the `git_committed` lie in
+`content_export.cjs:61` and `art_export.cjs:44` — both report `process.env.*_EXPORT_GIT === '1'`
+while neither module contains any git code. Real, but it belongs to the export path REQ-0178
+Phase 3 retires; fixing it here would be scope creep into a doomed module.
