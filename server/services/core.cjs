@@ -38,6 +38,8 @@ const BATCH_DIR = LIVE_DUNGEON_DIR; // deprecated alias (pre-REQ-0122 name; no l
 const DUNGEON_PATH = path.join(LIVE_DUNGEON_DIR, 'dungeon.json');
 const ENEMIES_PATH = path.join(LIVE_DUNGEON_DIR, 'enemies.json');
 const SKILLS_PATH = path.join(LIVE_DUNGEON_DIR, 'skills.json');
+// REQ-0184: monster_pack/1 defs. dungeon.json's encounters name packs from here.
+const MONSTER_PACKS_PATH = path.join(LIVE_DUNGEON_DIR, 'packs.json');
 const ITEMS_PILOT_PATH = path.join(LIVE_DUNGEON_DIR, 'items.json');
 const FORMATIONS_PATH = path.join(LIVE_DUNGEON_DIR, 'formations.json'); // REQ-0036 P1-C: GET /api/schedule/dungeons
 
@@ -87,6 +89,7 @@ function getScheduleContent() {
     dungeon: statMtimeMs(DUNGEON_PATH),
     enemies: statMtimeMs(ENEMIES_PATH),
     skills: statMtimeMs(SKILLS_PATH),
+    monsterPacks: statMtimeMs(MONSTER_PACKS_PATH), // REQ-0184
     pilotItems: statMtimeMs(ITEMS_PILOT_PATH),
     formations: statMtimeMs(FORMATIONS_PATH), // REQ-0036 P1-C
   };
@@ -103,6 +106,7 @@ function getScheduleContent() {
   const dungeonDef = loadJSON(DUNGEON_PATH);
   const enemies = loadJSON(ENEMIES_PATH);
   const skills = loadJSON(SKILLS_PATH);
+  const monsterPacks = loadJSON(MONSTER_PACKS_PATH); // REQ-0184: monster_pack/1
   const formationsDoc = loadJSON(FORMATIONS_PATH); // REQ-0036 P1-C
 
   const itemDefsById = {};
@@ -149,6 +153,10 @@ function getScheduleContent() {
 
   const enemyDefsById = {};
   for (const e of enemies.entries) enemyDefsById[e.id] = e;
+  // REQ-0184: monster_pack defs by id. Named monsterPackDefsById, NOT packDefsById --
+  // that name belongs to REQ-0170's gacha emission pools, already in this payload.
+  const monsterPackDefsById = {};
+  for (const e of (monsterPacks.entries || [])) monsterPackDefsById[e.id] = e;
 
   const skillDefsById = {};
   for (const s of skills.entries) {
@@ -171,7 +179,7 @@ function getScheduleContent() {
     };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc };
+  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
   contentCache = { mtimes, payload };
   return payload;
 }

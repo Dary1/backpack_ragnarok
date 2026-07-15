@@ -1,0 +1,25 @@
+-- backpack_ragnarok -- server/migrations/018_content_kind_monster_pack.sql
+-- REQ-0184: extend the content_kind ENUM with 'monster_pack' so a pack of
+-- monsters -- WHICH monsters and, newly, WHERE each one stands -- can enter
+-- the content registry as a first-class def and be managed from the content
+-- admin. User instruction, 2026-07-15.
+--
+-- Registry semantics are UNCHANGED: a monster_pack is an ordinary
+-- content_defs + content_variants pair (immutability trigger,
+-- adopted-variant FK, variant_no handle -- all inherited from 009). No new
+-- table, no new column, no new constraint. The ENUM is the only thing
+-- blocking monster_pack/1 data from entering the ledger -- exactly as it was
+-- for skill_def (010) and gacha_pack (016).
+--
+-- NOTE ON THE NUMBER: the tree already carries TWO 016_ files
+-- (016_content_artwork_ref.sql and 016_content_kind_gacha_pack.sql, landed
+-- concurrently by REQ-0174/0171) plus 017_artwork_kind_custom.sql. 018 is
+-- the next free number, not 017.
+--
+-- Apply as the postgres superuser (same invocation as 001..017):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/018_content_kind_monster_pack.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already
+-- exists. ALTER TYPE ... ADD VALUE cannot run inside a transaction block,
+-- hence the bare top-level statement (the same reason 010 and 016 are bare).
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'monster_pack';

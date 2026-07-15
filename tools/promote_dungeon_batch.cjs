@@ -32,6 +32,7 @@ const crypto = require('crypto');
 const REQUIRED_FILES = [
   'dungeon.json',
   'enemies.json',
+  'packs.json', // REQ-0184: monster_pack/1 -- dungeon.json names packs from it, so a promotion without it ships a dungeon whose encounters cannot resolve
   'skills.json',
   'entities.json',
   'formations.json',

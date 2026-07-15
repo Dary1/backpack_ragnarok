@@ -36,6 +36,10 @@ const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json
 const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
 const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
 const itemsPilotRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'items.json'), 'utf8'));
+// REQ-0184: monster_pack/1 -- batch-002's dungeon.json names its packs from here.
+const packsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'packs.json'), 'utf8'));
+const monsterPackDefsById = {};
+for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
 
 const enemyDefsById = {};
 for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
@@ -812,7 +816,7 @@ T('REQ-0122 promote tool: a full batch promotes byte-identically + records prove
   eq(reg.live_dungeon.promoted_from, 'batch-002-dungeon-pilot', 'provenance records the source batch');
   eq(Object.keys(reg.live_dungeon.files).length, promoteTool.REQUIRED_FILES.length, 'per-file sha256 recorded');
   ok(Array.isArray(reg.batches), 'existing registry content preserved');
-  eq(Object.keys(r.files).length, 6, 'promote() reports the 6 files');
+  eq(Object.keys(r.files).length, promoteTool.REQUIRED_FILES.length, 'promote() reports every required file'); // REQ-0184: derived, not hardcoded -- packs.json made the old literal 6 wrong
 });
 
 T('REQ-0122 test_fixed generator serves the promoted live copy verbatim', () => {
@@ -1061,7 +1065,7 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
 
   const result = combat.runDungeon({
     masterSeed: 'full-dungeon-smoke-seed-1',
-    dungeonDef: dungeonRaw,
+    dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
@@ -1085,7 +1089,7 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
   const scenarioWithPilotItems = combat.deepCopy(scenario);
   const result = combat.runDungeon({
     masterSeed: 'lrdst-reward-victory-seed-1',
-    dungeonDef: dungeonRaw,
+    dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice'],
@@ -1216,7 +1220,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-nonboss-seed-' + i,
       dungeonDef: singleNonBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById,
+      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realNonBoss names its pack by id
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result !== 'wipe') {
@@ -1229,7 +1233,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-boss-seed-' + i,
       dungeonDef: singleBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById,
+      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realBoss names its pack by id
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result === 'victory') {

@@ -63,7 +63,7 @@ function startRun(room, profileCanvas) {
     const err = new Error('room is canceled'); err.code = 'CONFLICT'; throw err;
   }
   const squadSnapshots = buildSquadSnapshots(room, profileCanvas);
-  const { itemDefsById, enemyDefsById, skillDefsById, unitDefsById, connShapes } = getScheduleContent();
+  const { itemDefsById, enemyDefsById, skillDefsById, unitDefsById, connShapes, monsterPackDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById
   // REQ-0043: the dungeon def now comes from sim/dungen.cjs's generator,
   // keyed off the room's OWN dungeonType/level/genSeed (stored at
   // create-room time, see createRoom()/resolveDungeonType()) -- no
@@ -82,6 +82,7 @@ function startRun(room, profileCanvas) {
 
   const result = combat.runDungeon({
     masterSeed: seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
+    monsterPackDefsById, // REQ-0184: resolves an encounter's packId -> its monster_pack def
     formationId: room.formationId, level: room.level, participants,
     // REQ-0170: without these the sim would see every BP as unlinked -- the board
     // would draw rays the battle did not honour.

@@ -401,11 +401,11 @@ module.exports.run = async function run(h) {
     // (sim/combat.cjs's own documented determinism guarantee, exercised
     // here through the schedule service's actual persisted seed).
     const combat = require('../../../sim/combat.cjs');
-    const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById } = schedule.getScheduleContent();
+    const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById, monsterPackDefsById } = schedule.getScheduleContent(); // REQ-0184
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     const squadSnapshots = fillAllSlotsSnapshotsFrom(doc.canvas);
     const replay = combat.runDungeon({
-      masterSeed: runRaw.seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
+      masterSeed: runRaw.seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById,
       formationId: 'formation1', level: 1, participants: [scheduleP1.playerId],
     });
     // Semantic (deep-equal) comparison, not raw string equality: in pg

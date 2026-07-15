@@ -68,6 +68,11 @@ function runDungeon(opts) {
     // REQ-0170: the Unit registries. Optional -- absent means no Unit links form,
     // which is precisely the pre-REQ-0170 behaviour of a BP with no `linker`.
     unitDefsById, connShapes,
+    // REQ-0184: monster_pack defs by id. Optional -- absent means no encounter in
+    // this dungeon may name a pack by packId (the inline enemyIds spelling still
+    // works), which is exactly the pre-REQ-0184 behaviour. Deliberately NOT named
+    // `packDefsById`: that is REQ-0170's GACHA pack registry, a different thing.
+    monsterPackDefsById,
   } = opts;
   const rng = makeRng(masterSeed);
   const allEvents = [];
@@ -102,7 +107,7 @@ function runDungeon(opts) {
 
     const encResult = runEncounter({
       rng, encIndex: i, troopBps: allBps, troopPos: allPos, troopSis: allSis, formationBox: { formationId },
-      enemyDefsById, skillDefsById, encounterDef: encDef, seedLabel: masterSeed,
+      enemyDefsById, skillDefsById, monsterPackDefsById, encounterDef: encDef, seedLabel: masterSeed,
     });
     for (const e of encResult.events) allEvents.push(Object.assign({ seq: seq++ }, e));
     // REQ-0049: attachment rewards (trap disarm / chest open) accrue like
