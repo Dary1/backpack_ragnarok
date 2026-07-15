@@ -348,10 +348,69 @@ def kit_si_subject_frame(ctx):
             "checks": checks, "notes": notes}
 
 
+# =====================================================================
+# po.cell_fit -- REQ-0187 fit meter (tool_cell_fit.py, imported not forked).
+# Per-cell painted-pixel distance stats from SHIFTED expectation centers,
+# worst-spot (never averaged) aggregation -- the user-validated v5 model.
+# Advisory: WARN when the worst cell violates hard or content spills deep;
+# never gates adoption (art_pipeline.md S7).
+# =====================================================================
+def kit_po_cell_fit(ctx):
+    import gen_item_icons as GI
+    import tool_cell_fit as CF
+    import tool_fit_check as fit
+    cells = _cells_from_shape(ctx.get("shape"))
+    if not cells:
+        return {"verdict": "WARN", "metrics": {}, "checks": [],
+                "notes": ["po.cell_fit: no shape cells on this artwork; cannot score."]}
+    cellset, rows, cols = fit.shape_to_cellset(cells)
+    src = ctx.get("alpha_path") or ctx["png_path"]
+    arr = np.array(_load_rgba(src))
+    if _has_real_alpha(arr):
+        alpha = Image.fromarray(arr[:, :, 3], "L")
+        method = "provided"
+    else:
+        rgb = Image.open(ctx["png_path"]).convert("RGB")
+        if os.environ.get("ART_KIT_MATTE_METHOD", "auto") == "borderkey":
+            img = GI._matte_border_key(rgb)
+            method = "borderkey"
+        else:
+            img = GI.matte_alpha_data(rgb)["image"]
+            method = "matted"
+        alpha = Image.fromarray(np.array(img)[:, :, 3], "L")
+    content = CF.content_from_alpha(alpha, rows, cols)
+    r = CF.score_content(content, cellset, rows, cols)
+    worst_key = max(r["cell_detail"], key=lambda k: r["cell_detail"][k]["v"]) \
+        if r["cell_detail"] else None
+    worst = r["cell_detail"][worst_key]["v"] if worst_key else 1.0
+    metrics = _round_metrics({
+        "fit_score": r["score"],
+        "worst_cell_violation": worst,
+        "v_cells": r["violations"]["cells"],
+        "v_deep": r["violations"]["deep"],
+        "deep_overflow_px": r["deep_overflow_px"],
+    })
+    checks = [
+        {"name": "no_deep_overflow", "ok": r["deep_overflow_px"] == 0,
+         "value": r["deep_overflow_px"], "threshold": "== 0"},
+        {"name": "worst_cell_ok", "ok": worst <= 0.5, "value": round(worst, 3),
+         "threshold": "<= 0.5 [S7]"},
+    ]
+    notes = ["REQ-0187 fit meter v5 (matte=" + method + "): shifted expectation "
+             "centers (10% toward exposed faces), worst-spot aggregation (GOLDEN: "
+             "discomfort is the worst cell, never the average). Per-cell v: "
+             + ", ".join("%s=%.2f" % (k, v["v"]) for k, v in sorted(r["cell_detail"].items()))
+             + ". Advisory: scores rank and steer regeneration; the human adopts."]
+    ok = all(c["ok"] for c in checks)
+    return {"verdict": "PASS" if ok else "WARN", "metrics": metrics,
+            "checks": checks, "notes": notes}
+
+
 KITS = {
     "bpskin.frame_gate": kit_bpskin_frame_gate,
     "matte.coverage_band": kit_matte_coverage_band,
     "po.cell_packing": kit_po_cell_packing,
+    "po.cell_fit": kit_po_cell_fit,
     "tiling.seam": kit_tiling_seam,
     "monster.render_sanity": kit_monster_render_sanity,
     "si.subject_frame": kit_si_subject_frame,

@@ -95,13 +95,13 @@ registry**'s machine checks run on every variant (`schema_vocab` / `engine_types
 step on adoption (§7.4). The manual steps still work unchanged for a one-off batch.
 
 
-## 0.1 Shape conditioning (REQ-0153 recipe — available on GREEN, NOT wired)
+## 0.1 Shape conditioning (REQ-0153 recipe — LIVE since REQ-0183/0186)
 
 REQ-0153 was a spike; its verdict is **GREEN-with-recipe**. Up-front silhouette
 control for **non-rectangular PO shapes** (L, T, …) works on the fixed Flux.2 Klein
 4B route, but the recipe is a **spec addendum handed to a follow-up integration REQ**
 — **the production route (`art_route.build_txt2img`) is untouched and byte-identical**.
-Treat this as an available option, not a live feature.
+**Status 2026-07-15: LIVE.** REQ-0183 wired Arm C @ D=8 into the production route; REQ-0186 exposed it as po params **`shape_lock`** (`off|guide|strict|auto`, default `auto` = strict only when the shape underfills its bounding box) and **`shape_dilation_px`** (0-16, default 8), plus a one-shot generate override that never mutates the artwork. The historical spike spec below is preserved as-is; the authoring rules the lock does NOT cover are §0.2.
 
 **Problem it solves.** Unconditioned t2i rarely lands an awkward silhouette inside its
 cells; rerolling seeds until the shape happens to fit is futile. Measured baseline
@@ -138,6 +138,92 @@ force it globally, and keep the **post-hoc numeric fit as the final gate**.
 
 **Ops cost to budget:** VRAM peaked **6.7–6.8 GB at 256/cell on the 8 GB card (no OOM)**,
 but reference-latent jobs are **~2–3× slower** than plain t2i (~76–130 s each).
+
+## 0.2 Shape & prompt authoring doctrine (REQ-0187 S7 findings, 2026-07-15)
+
+REQ-0183/0186 made the lock live; REQ-0187's eyeball of real production renders
+found the lock is **necessary but not sufficient**. Containment held on every
+strict render (deep_overflow_px = 0) while the composition was still unusable.
+These rules bind the AUTHORING step (choosing the mask + writing the prompt);
+no lock rescues a violation of them after the fact. They were articulated by
+the user against renders `req0187_l_axe` seeds 1 / 11-14 / 21-24 and verified
+in-session.
+
+**1. Imagine first.** Visualize the CONCRETE item, mentally axis-align it, and
+only then derive mask and prompt — both from that one mental image. Never pick
+a shape from a word association ("an axe is L-ish"): the concrete image decides
+the topology (a double-edged axe puts the handle at the head's vertical center
+— that is a T-object, whatever the word suggested). Evidence: the word-first
+L-order produced four renders that all fit the T footprint by translation alone.
+
+**2. Fit-feel is violation-based, not additive.** GOLDEN aggregation rule
+(user, 2026-07-15): *"discomfort is decided by the WORST spot, not the average
+-- one cell's grave violation is not diluted by the other cells' goodness."*
+Never average violations across cells. Within a cell, violations OR-combine
+(v = 1 - prod(1 - v_i): the largest dominates, co-occurring ones compound);
+across cells, aggregate worst-dominated (max, or a high-p norm). Averaging is
+only meaningful for additive experiences; fit-feel is negative-elimination.
+Validated same day: the averaging meter ranked the user-best render 4th; the
+worst-spot meter ranked it 1st and sank the border-skimming renders to the
+bottom (tools/spikes/req0187_fit_meter.py v4, findings in REQ-0187).
+ The backpack "snug fit" is
+not a positive quantity to maximize; it is the ABSENCE of specific violations.
+A blob-like subject with no long straight part raises no expectation and may
+sit loosely without discomfort. The violations, in severity order:
+- **Misaligned long part.** A long straight part (>= ~1 cell) that is not
+  parallel to a grid axis. Sensitivity is highest for SMALL deviations of LONG
+  parts (a handle at 10 degrees hurts more than a short edge at 30).
+  Promptable: orientation wording took axis-alignment from 0/1 to 7/8 renders.
+- **Border-skimming (center-line rule).** A part owns a cell only when it runs
+  near the cell row/column CENTER-LINE. Content skimming a cell border is owned
+  by no cell and the "fits" reading collapses. Metric shape: per-owned-cell
+  centroid distance from cell center; medial-axis deviation from the row
+  center-line.
+- **Empty owned cells.** deep_overflow catches spill-OUT; nothing catches a
+  near-empty owned cell (seed 1 passed containment at per-cell coverage
+  0.53/0.09/0.17, composed diagonally). Low per-cell coverage on a tool-like
+  subject is a re-generation signal.
+- **Spill into unowned cells** — the existing deep_overflow gate (works).
+
+**3. Topology-prompt consistency.** The footprint is the subject's part-
+skeleton. L = TERMINAL attachment (arm meets bar at an end); T = MEDIAL
+(arm meets bar mid-span). The prompt must state the attachment anatomy
+("handle extending from the base of the head"), not just pose. Subjects whose
+archetype already matches the footprint are far cheaper than fighting the
+archetype (a war hammer / double-bit axe IS a T-object; a boot IS an L).
+
+**4. Mask orientation is part of authoring.** In-game rotation makes all
+orientations of a footprint equivalent in play, so CHOOSE the orientation that
+matches the subject's natural axis-aligned pose. The axe's native L has its
+notch at the BOTTOM-right (vertical handle, head atop, blade projecting
+sideways); ordering the notch-top-right L forced the handle onto the row
+boundary (a center-line violation) in every round-2 render, because axe
+anatomy runs the handle through the head's centered eye.
+
+**5. Aspect ratio is generation-owned.** The model's natural aspect is optimal;
+anisotropic stretch degrades visibly past small corrections (user-verified on a
+hand-fitted render). A misfit is a re-generation signal, never a transform fix.
+
+**6. Legibility drift.** Pose words are taken literally ("blade upright" drifts
+a battle axe into a spearhead). Re-anchor the archetype with anatomy words
+(single-edged, bearded) alongside pose words.
+
+**7. Instruments are optimizers, not gates** (extends the §7 "score filters,
+human adopts" posture). Kits should emit STRUCTURED findings an LLM can act on
+— per-cell coverage, centroid offset from cell center, long-part angle — not
+just a scalar. Proposed revision loop (user design, this session):
+instruction -> 3 seeds -> instruments -> revised instruction -> 3 seeds ->
+instruments -> revised -> 4 seeds -> present all ~10 renders WITH findings as
+artwork variations; the user may adopt from any round. The target is YIELD
+(the problem is 1-in-10 usable at scale, not the existence of rejects).
+Constraints measured: warm strict render 40-130 s / no OOM at ~6.7 GB;
+ComfyUI cold start after idle-free (REQ-0158) cost ~508 s of model reload
+(880 s first-render wall) — run a loop warm, never judge on the first render;
+`renders.seed` is UNIQUE per artwork, so same-seed A/B across rounds needs
+render deletion or distinct seeds.
+
+Implementation of the loop + the new instruments is a follow-up REQ
+(REQ-0187 observes; it does not modify the route).
 
 ## Prerequisites
 
