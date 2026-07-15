@@ -190,6 +190,55 @@
     linear-gradient(45deg, #3D434C 25%, transparent 25%, transparent 75%, #3D434C 75%);
   background-color: #262B33; background-size: 24px 24px; background-position: 0 0, 12px 12px;
 }
+/* ---- REQ-0191: the cell-shape backdrop (po only) ----
+ * The render is composited over its own footprint so "does the subject sit in
+ * its cells" is answerable by eye. mix-blend-mode:multiply keys the stored
+ * WHITE background away against the tint (and leaves a real-alpha PNG alone),
+ * which is why every tint here is PALE -- multiply darkens, so a dark cell
+ * would swallow the subject. `isolation: isolate` keeps that blend INSIDE the
+ * stage: without it the render would multiply with the lightbox scrim behind
+ * it and go muddy. The tints sit under the render and the grid lines over it
+ * (border-skimming is only readable when the line crosses the pixels).
+ */
+.aa-cb { position: relative; display: block; isolation: isolate; line-height: 0; }
+.aa-cb-layer { position: absolute; inset: 0; display: grid; }
+.aa-cb-render { position: relative; z-index: 1; width: 100%; height: 100%; }
+.aa-cb-render img, .aa-cb-render .aa-lb-img {
+  width: 100%; height: 100%; display: block; object-fit: contain;
+  max-width: none; max-height: none;
+}
+/* multiply ONLY for a render stored on white (CellBackdrop's alphaProbe).
+ * A real-alpha render keys itself and is composited plainly -- multiplying it
+ * would cost the subject ~25% of its blue, i.e. a warm cast on exactly the
+ * pixels being judged. */
+.aa-cb.is-keyed .aa-cb-render img, .aa-cb.is-keyed .aa-cb-render .aa-lb-img { mix-blend-mode: multiply; }
+.aa-cb-lines { z-index: 2; pointer-events: none; }
+/* unowned bbox cells: a light checker, the "this is not yours" reading the
+ * user's own GIMP mockups used. Light, again, for multiply's sake. */
+.aa-cb-cell.is-unowned {
+  background-color: #E9E7E1;
+  background-image:
+    linear-gradient(45deg, #D2CFC6 25%, transparent 25%, transparent 75%, #D2CFC6 75%),
+    linear-gradient(45deg, #D2CFC6 25%, transparent 25%, transparent 75%, #D2CFC6 75%);
+  background-size: 16px 16px; background-position: 0 0, 8px 8px;
+}
+/* owned cells are tinted inline on the po.cell_fit violation ramp (pale gold
+ * -> pale blood); this is only the fallback before that lands. */
+.aa-cb-cell.is-owned { background: #F6E9C0; }
+.aa-cb-line { border: 1px solid rgba(58, 46, 20, 0.5); }
+.aa-cb-line.is-worst { border: 2px solid var(--blood, #8E2F2A); }
+.aa-cb-score {
+  position: absolute; z-index: 3; right: 3px; bottom: 3px; line-height: 1.4;
+  padding: 0 5px; font-size: 11px; border-radius: 2px;
+  background: rgba(4, 6, 9, 0.78); color: var(--bone, #E8E4D9);
+  border: 1px solid var(--gold-lo, #6E5A24); pointer-events: none;
+}
+.aa-cb-score.is-hot { border-color: var(--blood, #8E2F2A); color: #F1AEA6; }
+/* thumb variant: the card's img cap becomes the STAGE's cap, so the backdrop
+ * and the pixels shrink together (aspect-ratio does the rest). */
+.aa-cb--thumb { max-width: 212px; max-height: 150px; }
+.aa-cb--thumb .aa-cb-score { font-size: 9px; padding: 0 3px; }
+
 .aa-lb-img { image-rendering: auto; display: block; }
 .aa-lb-img.is-fit { max-width: 96%; max-height: 96%; object-fit: contain; }
 .aa-lb-tile { image-rendering: pixelated; background-repeat: repeat; border: 1px dashed rgba(201, 169, 89, 0.35); }

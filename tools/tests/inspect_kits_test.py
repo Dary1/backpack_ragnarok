@@ -11,9 +11,18 @@ Each adopted kit REPLAYS a recorded, committed artifact bit-for-bit:
   tiling.seam        -- one recorded findings.json leg (elven s101 seamless).
 Plus purity: each kit run twice on the same input yields identical output.
 
+REQ-0191 adds one CONTRACT check that is not a golden replay: po.cell_fit's
+per-cell v numbers are published only inside its prose note, and the artadmin
+cell backdrop (client/src/artadmin/CellBackdrop.tsx parseCellV) reads them
+from there to tint the cells. That makes the note's wording a real interface.
+The check below re-parses the note with the CLIENT'S OWN REGEX and demands the
+numbers come back -- so rewording the note fails here, loudly, instead of
+silently emptying the overlay on screen.
+
 Run under the project venv (numpy/scipy/rembg/skimage/PIL):
   ~/backpack_ragnarok/.venv/bin/python tools/tests/inspect_kits_test.py"""
 import os
+import re
 import sys
 import json
 
@@ -105,11 +114,37 @@ check("tiling.seam in REQ-0138 band -> PASS", s["verdict"] == "PASS", s["verdict
 check("tiling.seam carries mandatory half-shift eyeball note",
       any("half-shift" in n for n in s["notes"]))
 
+# ---- REQ-0191 contract: po.cell_fit's note is the backdrop's wire format ----
+# The artadmin cell backdrop tints each owned cell by its violation v. Those
+# v's exist ONLY in this note (promoting them to metrics would bump kit_version
+# and mark every stored inspection row stale), so the note IS an interface --
+# pinned here with the exact regex the client uses, against the exact key form
+# the client indexes by (bbox-normalized "(row,col)", shape_to_cellset's
+# normalization). Keep the numbers in the note, or update BOTH sides.
+CLIENT_CELL_V_RE = re.compile(r"\((\d+),\s*(\d+)\)\s*=\s*([0-9]*\.?[0-9]+)")
+f = run("po.cell_fit", {"kind": "po", "png_path": blade_alpha,
+                        "shape": [[0, 0], [1, 0]], "params": {}})
+parsed = {m[0] + "," + m[1]: float(m[2])
+          for m in CLIENT_CELL_V_RE.findall(" ".join(f["notes"]))}
+check("po.cell_fit note carries a per-cell v the client regex can read",
+      len(parsed) == 2, "parsed=%s from %s" % (parsed, f["notes"]))
+check("po.cell_fit note keys are the BBOX-NORMALIZED cells the client indexes",
+      set(parsed) == {"0,0", "1,0"}, str(set(parsed)))
+check("po.cell_fit fit_score + worst_cell_violation stay NUMERIC metrics",
+      isinstance(f["metrics"].get("fit_score"), (int, float))
+      and isinstance(f["metrics"].get("worst_cell_violation"), (int, float)),
+      str(f["metrics"]))
+check("po.cell_fit worst_cell_violation == max parsed per-cell v (the "
+      "backdrop's worst-cell tint and the metric agree)",
+      approx(max(parsed.values()), f["metrics"]["worst_cell_violation"], 1e-2),
+      "note=%s metric=%s" % (max(parsed.values()), f["metrics"]["worst_cell_violation"]))
+
 # ---- G2 purity: same input -> same output (all four adopted kits) ----
 for kid, ctx in [
     ("bpskin.frame_gate", {"kind": "bpskin", "png_path": FRAME_DIR + "/leather_frame_s1.png", "params": {}}),
     ("matte.coverage_band", {"kind": "po", "png_path": blade_alpha, "params": {}}),
     ("po.cell_packing", {"kind": "po", "png_path": blade_alpha, "shape": [[0, 0], [1, 0]], "params": {}}),
+    ("po.cell_fit", {"kind": "po", "png_path": blade_alpha, "shape": [[0, 0], [1, 0]], "params": {}}),
     ("tiling.seam", {"kind": "bpskin", "png_path": B + "/bpskin-flux2-0150/elven_s101_seamless.png"}),
 ]:
     a = json.dumps(run(kid, ctx), sort_keys=True)
