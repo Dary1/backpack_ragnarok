@@ -229,6 +229,6 @@ quiet-box requirement; this harness's 20s goto cap is a latent fragility worth i
 own REQ, but it is not 0182a's to fix.
 
 ### Status
-`built` — merged, deployed, gates green — **awaiting user acceptance (S7)** of the
-ported editor UX. Not moved to `done/`: per PROJECT.md `done` means accepted, and
-that is the user's call, not the implementer's.
+`done` — merged, deployed, and **ACCEPTED by the user 2026-07-15** (chat, after
+reviewing the live editor: "ありがとう。結果見ました。done"). Terminal; treat as history.
+REQ-0182b (Dex Edit retirement) was cleared by 0182a's merge and proceeds separately.
