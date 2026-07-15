@@ -160,3 +160,88 @@ def content_from_alpha(alpha_img, rows, cols):
     from PIL import Image
     im = alpha_img.resize((cols * C, rows * C), Image.BILINEAR)
     return np.array(im) > ALPHA_T
+
+
+# ---------------------------------------------------------------------------
+# Packing search (REQ-0192; promoted from tools/spikes/req0187_fit_meter.py).
+# Feasible placements only (content wholly inside build_region's allowed
+# area), so clipping is impossible and the no-contact pad is respected by
+# construction. 4x90-degree rotations + flips are grid-legal (the game itself
+# rotates items in the backpack). The placement objective is score_content's
+# cell-center statistic (worst-spot aggregation), NOT region-centroid
+# proximity -- that is the whole point vs tool_fit_check.centered_position.
+# ---------------------------------------------------------------------------
+PACK_SCALE_STEPS = (1.0, 0.95, 0.9, 0.85, 0.8, 0.75)   # fractions of each orientation's max scale
+
+
+def feasible_positions(allowed, kern):
+    """All zero-overlap top-left positions -- the reference find_placement()
+    conv, enumerating every match instead of argwhere(...)[0] (the
+    centered_position() pattern)."""
+    kh, kw = kern.shape
+    H, W = allowed.shape
+    if kh > H or kw > W:
+        return np.empty((0, 2), dtype=int)
+    blocked = (~allowed).astype(np.float32)
+    try:
+        from scipy.signal import fftconvolve
+        conv = fftconvolve(blocked, kern[::-1, ::-1].astype(np.float32), mode="valid")
+    except Exception:
+        conv = fit._fftconvolve_valid_numpy(blocked.astype(np.float64),
+                                            kern[::-1, ::-1].astype(np.float64))
+    return np.argwhere(conv < 0.5)
+
+
+def pack_search(content, cellset, rows, cols):
+    """Best (scale, rot, flip, pos) by cell-fit score over feasible placements.
+    Returns {result, scale, rot, flip, pos, kern_shape} or None."""
+    allowed = fit.build_region(cellset)
+    cropped = fit.crop_to_content(content)
+    best = None
+    for flipv in (False, True):
+        m0 = cropped[:, ::-1] if flipv else cropped
+        for k in (0, 1, 2, 3):
+            m = np.rot90(m0, k)
+            r = fit.max_scale(allowed, m)
+            if r is None:
+                continue
+            smax = r[0]
+            for frac in PACK_SCALE_STEPS:
+                s = smax * frac
+                kern = fit.scaled(m, s)
+                pos_all = feasible_positions(allowed, kern)
+                if len(pos_all) == 0:
+                    continue
+                sub = pos_all[::max(1, len(pos_all) // 400)]
+                for (y, x) in sub:
+                    H, W = allowed.shape
+                    canvas = np.zeros((H, W), dtype=bool)
+                    canvas[y:y + kern.shape[0], x:x + kern.shape[1]] = kern
+                    sc = score_content(canvas, cellset, rows, cols, with_overflow=False)
+                    if best is None or sc["score"] > best["result"]["score"]:
+                        best = {"result": sc, "scale": float(s), "rot": k * 90,
+                                "flip": bool(flipv), "pos": (int(y), int(x)),
+                                "kern_shape": kern.shape}
+    return best
+
+
+def apply_pack(rgba, content, best, rows, cols, gen_cell=256):
+    """Apply (flip, rot, scale, pos) to a gen-resolution RGBA; returns the
+    packed image composited on white (RGB PIL Image, rows x cols cells at
+    gen_cell px/cell)."""
+    from PIL import Image
+    ys, xs = np.nonzero(content)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    F = gen_cell / float(C)
+    piece = rgba.crop((int(x0 * F), int(y0 * F), int(np.ceil(x1 * F)), int(np.ceil(y1 * F))))
+    if best["flip"]:
+        piece = piece.transpose(Image.FLIP_LEFT_RIGHT)
+    for _ in range(best["rot"] // 90):
+        piece = piece.transpose(Image.ROTATE_90)
+    kh, kw = best["kern_shape"]
+    piece = piece.resize((max(1, int(round(kw * F))), max(1, int(round(kh * F)))), Image.LANCZOS)
+    canvas = Image.new("RGBA", (cols * gen_cell, rows * gen_cell), (0, 0, 0, 0))
+    canvas.paste(piece, (int(best["pos"][1] * F), int(best["pos"][0] * F)), piece)
+    white = Image.new("RGB", canvas.size, (255, 255, 255))
+    white.paste(canvas, (0, 0), canvas)
+    return white
