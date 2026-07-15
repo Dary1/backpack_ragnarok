@@ -140,10 +140,11 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
    * own live artwork resolution; absent on surfaces that don't resolve art
    * (they show the sprite + label accordingly). */
   artUrl?: string | null;
-  /** REQ-0184 (monster_pack): enemy id -> footprint [fh,fw], so the board can draw
-   * each member at its REAL size. Optional: absent means the board draws 1x1
-   * anchors and says so on a chip -- an unlabelled 1x1 boss would be a preview
-   * that lies. */
+  /** REQ-0184 (monster_pack): enemy id -> footprint [fh,fw], resolved from each
+   * monster's LINKED ARTWORK (artworks.shape {w,h} is the cell grid). Members
+   * absent from the map are drawn 1x1 AND labelled as guesses -- an unlabelled
+   * 1x1 boss would be a preview that lies about the very thing this kind exists
+   * to show. Built by contentShared buildMemberFootprints(). */
   footprints?: Record<string, unknown> | null;
 }) {
   const testid = 'entity-preview-' + idBase;
@@ -298,8 +299,13 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
   if (kind === 'monster_pack') {
     const consumed = new Set<string>(['id', 'name', 'name_ja', 'i18n', 'members', 'note']);
     const members = packMembers(data);
+    // REQ-0184: a member's footprint comes from its monster's LINKED ARTWORK
+    // (artworks.shape {w,h} IS the cell grid -- art_sizing.cjs). Resolution is
+    // PER MEMBER, not all-or-nothing: a pack can mix monsters that have art with
+    // monsters that do not, and the board says exactly which ones it had to guess.
     const fpOf = (enemy: string): unknown => (footprints && footprints[enemy]) || [1, 1];
-    const resolved = !!footprints;
+    const unresolved = members.filter((m) => !(footprints && footprints[m.enemy]));
+    const resolvedCount = members.length - unresolved.length;
     // cell key -> member index. Later members win the DRAW; the server's overlap
     // check is what actually fails the variant.
     const occ = new Map<string, number>();
@@ -336,7 +342,15 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
             <span className="ca-ep-chip">{members.length} monster{members.length === 1 ? '' : 's'}</span>
             <span className="ca-ep-chip">field {FIELD_COLS}x{FIELD_ROWS}</span>
             <span className="ca-ep-chip">placeable {formatA1(PLACEABLE.rowMin, PLACEABLE.colMin)}:{formatA1(PLACEABLE.rowMax, PLACEABLE.colMax)}</span>
-            {!resolved ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-fp-unresolved">footprints unresolved — anchors drawn 1x1</span> : null}
+            {resolvedCount > 0
+              ? <span className="ca-ep-chip" data-testid="cd-ep-fp-from-art">{resolvedCount}/{members.length} footprint{resolvedCount === 1 ? '' : 's'} from art</span>
+              : null}
+            {unresolved.length > 0
+              ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-fp-unresolved"
+                  title={'no linked artwork: ' + Array.from(new Set(unresolved.map((m) => m.enemy))).join(', ')}>
+                  {unresolved.length} drawn 1x1 (no art)
+                </span>
+              : null}
             {outside.length > 0 ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-board-outside">{outside.length} outside the placeable area</span> : null}
             {bad.length > 0 ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-board-badat">{bad.length} malformed anchor</span> : null}
           </div>
@@ -347,6 +361,9 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
             <span key={i} className="ca-ep-member" data-testid="cd-ep-member" data-enemy={m.enemy}>
               <b className="ca-ep-member-id">{m.enemy}</b>
               <span className={'ca-ep-member-at tnum' + (m.anchor ? '' : ' is-bad')}>{m.at || '(no at)'}</span>
+              {footprints && footprints[m.enemy]
+                ? <span className="ca-ep-member-fp t-micro">{(footprints[m.enemy] as number[])[1]}x{(footprints[m.enemy] as number[])[0]}</span>
+                : <span className="ca-ep-member-fp t-micro is-guess" title="no linked artwork -- drawn 1x1">1x1?</span>}
             </span>
           ))}
         </div>

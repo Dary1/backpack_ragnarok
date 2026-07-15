@@ -164,7 +164,8 @@ acceptance test, and it is now an executable one.
 - `server/lib/forecast.cjs` got the SAME box correction — otherwise the forecast would predict
   a battle the sim never fights (the thing `forecast_parity.cjs` exists to prevent).
 - `content_checks.cjs` monster_pack dialect; 10 new dialect tests.
-- backfill source; contentadmin `KINDS` + the 26x18 board preview.
+- backfill source; contentadmin `KINDS` + the 26x18 board preview, with member footprints
+  resolved from each monster's linked artwork (see below) and `check_pack_board.mjs` as its gate.
 - Parity tests pinning the geometry constants across their three forced copies.
 
 ### Found in flight (worth keeping)
@@ -185,12 +186,57 @@ acceptance test, and it is now an executable one.
 - `sim/tests/run.cjs` hardcoded `promote() reports the 6 files`; now derived from
   `REQUIRED_FILES.length`, so the next file to join the domain does not re-break it.
 
-### Honest gap
-The contentadmin has no monster roster client-side (it holds the def LIST, not every def's
-adopted data), so the board **draws 1x1 anchors and says so on a chip**. An unlabelled 1x1 boss
-would be a preview that lies about the thing the kind exists to show. `EntityPreview` takes an
-optional `footprints` prop as the seam; wiring it needs a roster fetch the admin does not have
-today — a small follow-up, say the word.
+### Footprints come from the ART (user instruction, 2026-07-15)
+
+The first cut drew every member 1x1 and called it an honest gap. The user corrected it: *「関連
+しているartに形状がありますよ。それを引っ張ってくるようにしてください」* — and they were right.
+`artworks.shape` for a monster IS its cell grid: `server/services/art_sizing.cjs` — *"monster ->
+w x h grid (each 1..12) at 128 px/cell"*, with its own ratified examples (goblin 3x4 -> 384x512,
+chimera 6x4 -> 768x512, ancient dragon 10x10 -> 1280x1280). `ArtworkDto.shape` is already on the
+`listArtworks()` rows the contentadmin already polls, so the data was in the room the whole time.
+
+Resolution reuses **REQ-0174's ref-first canon verbatim** (`resolveDefArtwork`: explicit
+`artwork_ref` -> exact `system_name` match), so the board resolves art the same way every other
+contentadmin surface does — one canon, not a second guess. Per MEMBER, not all-or-nothing: a
+pack may mix monsters that have art with monsters that do not, and the board reports exactly
+which ones it had to guess (`N/M footprints from art` + `K drawn 1x1 (no art)`, and a `1x1?`
+mark on the member chip itself). An unresolved footprint is still never invented.
+
+**MIND THE TRANSPOSE.** Artwork shape is `{w,h}` = {width,height}; enemy/1 `footprint` is
+`[fh,fw]` = [height,width]. The board crosses that boundary on every member, and a square
+example proves nothing. `client/scripts/check_pack_board.mjs` (CI `[5.75/7]`) pins it against
+art_sizing's OWN non-square examples: `{w:3,h:4}` -> `[4,3]`, a member at B2 occupying B2:**D5**
+and not F3.
+
+### Honest gap — the two rosters do not meet yet
+
+**None of the 4 ported packs resolve a single footprint today**, because the batch-002 roster has
+**zero artwork rows**. The two rosters are currently disjoint:
+
+| | monsters | has enemy/1 `footprint` | has artwork `shape` |
+|---|---|---|---|
+| batch-002 (what the packs field) | 7 (`frost_gnoll`…`hrimgrimnir`) | yes ([1,1]…[3,3]) | **no** |
+| the art registry | 66 (`basilisk`, `bone_dragon`, …) | **no** | yes ({w,h}, 1..12) |
+
+So the mechanism is wired, tested and correct, and on the batch-002 packs the board still draws
+1x1 and says so — not because the code cannot resolve, but because the art does not exist. It
+will light up for any pack built from the art roster.
+
+### Ruling needed: one fact, two sources
+
+A monster's size in cells is now written in **two places** — enemy/1 `footprint` and artwork
+`shape` — and they are not derived from each other. Today nothing can disagree (the rosters are
+disjoint), but the moment one monster has both, **the board would draw the art's size while the
+sim places by the def's footprint**: the admin blesses one board, the player fights another.
+That is the exact failure this REQ spent its whole budget eliminating between the checker and
+the placer, reappearing one layer up. Options, for a follow-up REQ:
+1. **Art is authoritative** — enemy/1 `footprint` is derived from `artworks.shape` at backfill/
+   promote time; the def stops carrying an independent copy.
+2. **Def is authoritative** — the artwork's shape is set from the def; art generation reads it.
+3. **Neither; make them reconcile** — a machine check FAILs a monster whose def footprint and
+   artwork shape disagree, so the duplication stays but can never drift silently.
+Recommend (3) as the immediate guard (cheap, catches drift the day it appears) plus (1) as the
+real fix. Not decided here — it needs the user's ruling and it is not this REQ's scope.
 
 Also unchanged and shared with every kind: adopting a variant writes
 `content/registry_exports/`, NOT `content/live/dungeon/packs.json`. That is REQ-0155's un-wired

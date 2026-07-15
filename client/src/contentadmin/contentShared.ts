@@ -441,3 +441,47 @@ export function packOccupancy(
   });
   return occ;
 }
+
+
+/** REQ-0184: a monster artwork's `shape` IS its cell footprint. server/services/
+ * art_sizing.cjs: "monster -> w x h grid (each 1..12) at 128 px/cell" (its own
+ * ratified examples: goblin 3x4 -> 384x512, chimera 6x4 -> 768x512, ancient dragon
+ * 10x10 -> 1280x1280). So the art registry already knows how many cells a monster
+ * covers, and the pack board can draw a member at its true size.
+ *
+ * NOTE THE TRANSPOSE. Artwork shape is {w,h} = {width,height}; enemy/1 `footprint`
+ * is [fh,fw] = [height,width] -- the order sim/lib/packs.cjs and cellsFor() use.
+ * Returning [h,w] is therefore correct and NOT a typo: get it backwards and a 6x4
+ * chimera silently draws as 4x6. A test pins this. */
+export function footprintFromArtShape(shape: unknown): [number, number] | null {
+  if (!shape || typeof shape !== 'object' || Array.isArray(shape)) return null;
+  const sh = shape as Record<string, unknown>;
+  const w = sh.w, h = sh.h;
+  if (!Number.isInteger(w) || !Number.isInteger(h)) return null;
+  if ((w as number) < 1 || (h as number) < 1) return null;
+  return [h as number, w as number]; // {w,h} -> [fh,fw]
+}
+
+/** Resolve each pack member's footprint from the MONSTER'S OWN linked artwork.
+ * The lookup reuses REQ-0174's ref-first canon verbatim (`resolveDefArtwork`:
+ * explicit artwork_ref -> exact system_name match), so the board resolves art the
+ * same way every other contentadmin surface does -- one canon, not a second guess.
+ *
+ * A member whose monster has no def, no artwork, or an artwork with no usable
+ * shape is simply ABSENT from the map: the caller draws it 1x1 and says so. An
+ * unresolved footprint is reported, never invented. */
+export function buildMemberFootprints(
+  members: PackMember[],
+  defs: ContentDefDto[],
+  byName: Record<string, ArtworkDto>,
+): Record<string, [number, number]> {
+  const out: Record<string, [number, number]> = {};
+  for (const m of members) {
+    if (out[m.enemy]) continue;
+    const def = defs.find((d) => d.system_name === m.enemy && d.kind === 'monster_def');
+    const art = def ? resolveDefArtwork(def, byName) : (byName[m.enemy] ?? null);
+    const fp = art ? footprintFromArtShape(art.shape) : null;
+    if (fp) out[m.enemy] = fp;
+  }
+  return out;
+}
