@@ -1,4 +1,4 @@
--- backpack_ragnarok -- server/migrations/018_content_kind_monster_pack.sql
+-- backpack_ragnarok -- server/migrations/019_content_kind_monster_pack.sql
 -- REQ-0184: extend the content_kind ENUM with 'monster_pack' so a pack of
 -- monsters -- WHICH monsters and, newly, WHERE each one stands -- can enter
 -- the content registry as a first-class def and be managed from the content
@@ -11,13 +11,18 @@
 -- blocking monster_pack/1 data from entering the ledger -- exactly as it was
 -- for skill_def (010) and gacha_pack (016).
 --
--- NOTE ON THE NUMBER: the tree already carries TWO 016_ files
--- (016_content_artwork_ref.sql and 016_content_kind_gacha_pack.sql, landed
--- concurrently by REQ-0174/0171) plus 017_artwork_kind_custom.sql. 018 is
--- the next free number, not 017.
+-- NOTE ON THE NUMBER: migration numbers here are claimed by hand and DO collide
+-- when REQs land concurrently -- the tree already carries TWO 016_ files
+-- (016_content_artwork_ref.sql and 016_content_kind_gacha_pack.sql, from
+-- REQ-0174/0171). This file was written as 018 and renumbered to 019 when
+-- REQ-0186 merged 018_artwork_shape_lock.sql to master while this REQ was in
+-- flight. Both are additive and independent, so the collision was cosmetic --
+-- but a duplicate number is a trap for whoever next reads the dir in order, so
+-- it was not left in place. If this collides again on merge, renumber again;
+-- nothing depends on the digits but the reading order.
 --
--- Apply as the postgres superuser (same invocation as 001..017):
---   docker exec -i supabase-db psql -U postgres < server/migrations/018_content_kind_monster_pack.sql
+-- Apply as the postgres superuser (same invocation as 001..018):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/019_content_kind_monster_pack.sql
 --
 -- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already
 -- exists. ALTER TYPE ... ADD VALUE cannot run inside a transaction block,

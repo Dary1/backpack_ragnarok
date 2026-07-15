@@ -81,9 +81,10 @@ sources of truth for one fact, and a def whose `footprint` later changes would s
 
 ## Ships
 
-- **`server/migrations/018_content_kind_monster_pack.sql`** — `content_kind` ENUM += `monster_pack`
-  (`ADD VALUE IF NOT EXISTS`, bare top-level statement — the 010/016 precedent). Note the tree
-  has TWO `016_` files already; this takes 018.
+- **`server/migrations/019_content_kind_monster_pack.sql`** — `content_kind` ENUM += `monster_pack`
+  (`ADD VALUE IF NOT EXISTS`, bare top-level statement — the 010/016 precedent). Started as 018;
+  renumbered to 019 when REQ-0186 landed `018_artwork_shape_lock.sql` on master mid-flight.
+  Migration numbers are hand-claimed and DO collide (the tree already carries two `016_`s).
 - **`shared/content_validate.cjs`** — `parseA1`/`cellsFor` + `validateMonsterPackEntry()`: A1
   parse, bounds B2:Y17, footprint-aware OVERLAP detection, every `enemy` must resolve to a live
   enemy def. ONE executable definition of "a legal pack layout", reused by both the machine
@@ -151,7 +152,9 @@ user ratified, not a second change smuggled in. The placement-level proof above 
 acceptance test, and it is now an executable one.
 
 ### What shipped
-- `018_content_kind_monster_pack.sql` (018, not 017 — the tree already had two `016_`s).
+- `019_content_kind_monster_pack.sql` — written as 018 (the tree already had two `016_`s), then
+  renumbered when REQ-0186 took 018 on master mid-flight. Migration numbers are hand-claimed and
+  collide; if it clashes again on merge, renumber again — nothing depends on the digits.
 - `shared/content_validate.cjs`: `parseA1`/`formatA1`/`cellsFor`/`validateMonsterPackEntry` —
   ONE definition of a legal layout, imported by BOTH the machine check and `sim/lib/packs.cjs`.
   A test pins that the checker and the placer agree cell-for-cell; if they ever diverge, the
