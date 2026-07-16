@@ -1,5 +1,5 @@
 {
-  "version": 13,
+  "version": 14,
   "modes": [
     "battle",
     "detection",
@@ -66,7 +66,10 @@
     "buff_linked",
     "buff_self",
     "damage_reduction",
-    "grant_charge"
+    "grant_charge",
+    "advance_cooldown",
+    "fire_items",
+    "grant_shield"
   ],
   "status_kinds": [
     "buff",
@@ -207,6 +210,12 @@
     ],
     "damage_reduction": [
       "n"
+    ],
+    "advance_cooldown": [
+      "n"
+    ],
+    "grant_shield": [
+      "n"
     ]
   },
   "excluded_attested": {
@@ -243,7 +252,10 @@
     "connection_shapes": "REQ-0128 (2026-07-12 user decision: per-unit connection shapes replace always-queen beams; ray types keep the first-hit rule). Registered as a DICTIONARY ONLY on 2026-07-13 by user ruling — implementation deferred to REQ-0128b. adjacency_lr and forward_1 are demanded by the REQ-0149 roster (Watcher, Squire) and are PROVISIONAL. | 2026-07-13: adjacency_lr REMOVED — it was added solely for the Watcher's left/right-adjacent kit, which the user replaced with queen range 2. No def references it; a dangling unused term in a frozen vocabulary is how the clock-tower incident happened. queen_2 added in its place. | 2026-07-13: forward_1 REMOVED (orphaned when the Squire moved to rook range 3) — same hygiene rule that removed adjacency_lr. rook_3 added for the Squire.",
     "orientation": "REQ-0128b (user ruling 2026-07-13): forward = lower Y = up = engine DIRS[0] (N).",
     "connection_model": "REQ-0128b user rulings 2026-07-13: (1) rays do not pierce by default, keep it parameterisable; (2) adjacency = a range-limited ray, not an offset concept; (3) connections are canvas-local (Squad-scoped).",
-    "grant_charge": "User ruling 2026-07-14 (REQ-0129): giving charge to a connected Unit is an EFFECT verb, not a spend mode -- the unit fires on full and its effect happens to be grant_charge -> units_connected. With pulse propagation retired, this is the only way a chain is expressed. NOT YET RENDERABLE: no unit validator kind exists, so this verb has no self-test fixture and no engine implementation."
+    "grant_charge": "User ruling 2026-07-14 (REQ-0129): giving charge to a connected Unit is an EFFECT verb, not a spend mode -- the unit fires on full and its effect happens to be grant_charge -> units_connected. With pulse propagation retired, this is the only way a chain is expressed. NOT YET RENDERABLE: no unit validator kind exists, so this verb has no self-test fixture and no engine implementation.",
+    "advance_cooldown": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the user delegation 「適当に決めておいてください。数値は全て範囲で。(ハスクラ)」 (2026-07-16). Reduces the remaining cooldown of the target's cooldown-bearing item(s) by `n`, a [lo,hi] range that rolls per instance (ハスクラ), so they become ready sooner. Freezes the effect verb the cooldown kits need: Elf & Dwarf (G5, advance a connected BP's item cooldowns -> bp_connected), Watcher (G12, advance the single longest-cooldown item -> bp_connected_max_cooldown_item), Thief (G3a, advance/clear its own items -> self). NOT YET ENGINE-IMPLEMENTED and no unit-context fixture (no `unit` validator kind / no charge AST) -- same status as grant_charge; it renders via eff_render in the generic verb self-test only. THIS IS NOT A USER RULING.",
+    "fire_items": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Immediately fires (triggers the effect of) the target's items carrying tag `tag`. Freezes the effect verb Shieldmaiden (fire Armor items -> self) and Light Cavalry (fire Weapon items -> self + bp_connected) need. This goes beyond the clarifying question's named gaps (G5/G12/G13) to the two remaining kits whose charge effect was otherwise inexpressible; flagged in the impl-log and overturnable. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING.",
+    "grant_shield": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Grants a shield of amount `n`, a [lo,hi] range that rolls per instance; a def may instead scale it as a fraction of the granter's own block (Princess: 'half its own'). ONE verb SHARED by Squire (G13, self a small block -> self) and Princess (connected BP a shield = a fraction of its own -> bp_connected; and the passive damage->self-shield -> self). Decision: Squire and Princess share grant_shield. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING."
   },
   "connection_shapes": {
     "queen": {
@@ -439,9 +451,10 @@
   "charge": {
     "_doc": "Unit charge grammar. FROZEN by user ruling 2026-07-14 (REQ-0129). A unit def carries `charge: {trigger, gain, capacity, spend}`. NOT YET ENFORCED: validateBody has no `unit` kind -- see `_status`.",
     "_status": "RATIFIED, NOT IMPLEMENTED. No `unit` validator kind and no charge AST exist. The code REQ that adds them must move `charge.triggers` into the top-level `triggers` list, add `trigger_domains` entries, and add self-test fixtures -- the REQ-0081 coverage gate will then hold them honest.",
+    "_status_v14": "v14 (2026-07-16, REQ-0129 impl-log) adds the AGENT-DEFINED charge-EFFECT verbs (advance_cooldown, fire_items, grant_shield) to the top-level `verbs` list -- renderable and self-tested like grant_charge, but NOT engine-implemented and with no unit-context fixture; the max-selector target bp_connected_max_cooldown_item to charge.targets; and the capacity-as-cap semantics for passive_per_stack. Placement honesty is unchanged from v13: charge.triggers stay OUT of the top-level `triggers` list (the REQ-0081 coverage gate demands a fixture and no `unit` validator kind exists). The code REQ that adds the `unit` validator kind and the charge AST implements all of this and moves charge.triggers into `triggers`.",
     "spend": {
       "fire_on_full": "At capacity, fire `effects` and reset the counter to 0. The classic active skill.",
-      "passive_per_stack": "Never consumed. A standing effect scales with the accumulated stack count (REQ-0149 Berserker: +0.1% damage per stack). WARNING: an uncapped stack is a balance hole. REQ-0149 G6 is OPEN, and it is now UNOWNED -- the PULSE_CAP lineage that used to backstop it was retired on 2026-07-14.",
+      "passive_per_stack": "Never consumed. A standing effect scales with the accumulated stack count (REQ-0149 Berserker: +0.1% damage per stack). CAP (AGENT-DEFINED 2026-07-16, REQ-0129 impl-log, under the delegation): for passive_per_stack, `capacity` is the STACK CAP -- the maximum number of stacks that can accumulate; trigger firings past it do not raise the effect further. This closes REQ-0149 G6 with no new field and no new spend mode -- `capacity`, already in the charge block, now bounds passive_per_stack. The Berserker's cap is a per-instance range (ハスクラ); the range is in the REQ-0129 settlement table, not here. THIS IS NOT A USER RULING.",
       "transform": "At capacity, the unit is replaced by another unit def (form change). REQ-0129 named this as a mandatory expressibility check (REQ-0149 Little Princess -> Princess)."
     },
     "spend_closed": true,
@@ -465,11 +478,19 @@
       "self": "USER-RATIFIED 2026-07-14.",
       "units_connected": "Every Unit this Unit links to. USER-RATIFIED 2026-07-14; the name is the one the user chose.",
       "bp_connected": "The BP a connected Unit sits on. AGENT-DEFINED 2026-07-14 under the delegation below. Required by REQ-0149 Angel / Dwarf / Princess / Light Cavalry / Watcher. THIS IS NOT A USER RULING.",
-      "units_connected_distributed": "The effect amount is divided across the connected Units. AGENT-DEFINED 2026-07-14 under the same delegation. Required by REQ-0149 Priest ('distributed if there are several'). THIS IS NOT A USER RULING."
+      "units_connected_distributed": "The effect amount is divided across the connected Units. AGENT-DEFINED 2026-07-14 under the same delegation. Required by REQ-0149 Priest ('distributed if there are several'). THIS IS NOT A USER RULING.",
+      "bp_connected_max_cooldown_item": "AGENT-DEFINED 2026-07-16 under the targets delegation (targets_growth, user 2026-07-14 「後は、私に聞かないで、必要になったらあなたが定義してください」). The single cooldown-bearing item with the LONGEST remaining cooldown on a connected Unit's BP -- a max-selector that resolves `bp_connected` down to one item. Required by REQ-0149 Watcher (G12), whose charge effect advances that item's cooldown. THIS IS NOT A USER RULING."
     },
     "targets_closed": false,
     "targets_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「後は、私に聞かないで、必要になったらあなたが定義してください」). New charge targets may be added WITHOUT a design event, under the same AGENT-DEFINED labelling rule.",
-    "effects_note": "Charge EFFECTS are ordinary `verbs` from the top-level list. The user ruling of 2026-07-14 draws the line: `spend` is WHEN/HOW the counter is consumed; `verbs` is WHAT then happens. Giving charge away is therefore an effect verb (`grant_charge`), NOT a fourth spend mode."
+    "effects_note": "Charge EFFECTS are ordinary `verbs` from the top-level list. The user ruling of 2026-07-14 draws the line: `spend` is WHEN/HOW the counter is consumed; `verbs` is WHAT then happens. Giving charge away is therefore an effect verb (`grant_charge`), NOT a fourth spend mode.",
+    "effect_verbs": {
+      "_doc": "AGENT-DEFINED charge-effect verbs frozen 2026-07-16 (REQ-0129 impl-log) under the delegation 「適当に決めておいてください。数値は全て範囲で。(ハスクラ)」. They live in the top-level `verbs` list (renderable, self-tested) like grant_charge; they are NOT YET engine-implemented (no `unit` validator kind / no charge AST). Numbers are per-instance ranges (ハスクラ); the specific ranges are in the REQ-0129 settlement table, not here (vocab is grammar, not content).",
+      "advance_cooldown": "Elf (G5), Dwarf (G5), Thief (G3a), Watcher (G12).",
+      "fire_items": "Shieldmaiden, Light Cavalry.",
+      "grant_shield": "Squire (G13), Princess.",
+      "reused_from_v13": "cleanse (Angel), heal_bp (Priest -> units_connected_distributed), buff_self (Berserker, passive_per_stack), transform-spend (Little Princess)."
+    }
   },
   "deprecated": {
     "_doc": "Vocabulary that is still SHIPPED and still exercised by tests, but that the design has moved past. Removal is a CODE REQ, not a docs edit -- each entry names what else must die with it.",
