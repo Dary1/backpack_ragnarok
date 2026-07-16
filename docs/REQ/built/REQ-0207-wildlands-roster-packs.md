@@ -288,3 +288,6 @@ deploy-invariant and touch ONLY *_test.cjs / goldens.cjs / run.cjs -- `git diff 
 shows NO engine / sim-lib / dungen / vocab / content_checks / live-content file. Review commits
 `5c0840f` (sim lineage) and `670f302` (server count guards) if a narrower scope is preferred; note
 ci.sh is red without them (they are not optional for G4).
+
+## Deploy record (2026-07-17, orchestrator)
+First promote backed out: monster_def werewolf collided with units003 unit_def werewolf across the kind-unique system_name (backfill guard FATAL, working as designed). alpha_werewolf rename merged; promote take 2 + backfill green: monster_def 15->27, skill_def 30->50, monster_pack 7->10, all PASS/adopted. artwork_ref PATCHed: boar, giant_snake, alpha_werewolf (backfill resets artwork_ref on ingest -- boar/giant_snake needed a re-patch AFTER backfill; sequence note for future deploys: backfill FIRST, then PATCH refs). Non-adopted monster_def strays (3x foreign-ns frost_gnoll, ext_gnoll_art) are pre-existing e2e residue, not this REQ. Awaiting S7.
