@@ -47,6 +47,19 @@ const skillDefsById = {};
 for (const s of skillsRaw.entries) {
   skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }
+
+// REQ-0207 (found-in-flight): the dungen generator samples the LIVE roster
+// (dungen.liveDungeonDir() = content/live/dungeon), which SINCE the batch-005 additive
+// deploy (commit dc80295) holds batch-002 + batch-005 (and any later additive batch).
+// Tests that GENERATE a def and then run/inspect it must resolve enemy ids against that
+// SAME live roster, not batch-002 alone -- else compileEnemyPack throws "missing enemy
+// def zombie". Test-only fixture; NO dungen/engine change. (REQ-0203 deploy debt.)
+const liveEnemiesRaw0207 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'dungeon', 'enemies.json'), 'utf8'));
+const liveSkillsRaw0207 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'dungeon', 'skills.json'), 'utf8'));
+const liveEnemyDefsById = {};
+for (const e of liveEnemiesRaw0207.entries) liveEnemyDefsById[e.id] = e;
+const liveSkillDefsById = {};
+for (const s of liveSkillsRaw0207.entries) liveSkillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 const pilotItemDefsById = {};
 for (const e of itemsPilotRaw.entries) pilotItemDefsById[e.id] = e;
 
@@ -780,14 +793,36 @@ T('REQ-0122 single source: dungen.liveDungeonDir() is content/live/dungeon and f
   eq(core.LIVE_DUNGEON_DIR, dungen.liveDungeonDir(), 'server core and dungen share ONE path source (no drift)');
 });
 
-T('REQ-0122 lossless promotion invariant: live/dungeon byte-matches the promoted-from batch AND the registry sha256s', () => {
+T('REQ-0122 lossless promotion invariant: live/dungeon is losslessly traceable to its promoted sources (wholesale base + additive layers)', () => {
+  // REQ-0207 (found-in-flight): additive promotion (REQ-0203) splices new entries into the
+  // enemies/skills/packs live files AFTER the wholesale base, so those three no longer
+  // byte-match a single promoted_from batch once an additive layer has been deployed. The
+  // lossless invariant is upgraded to be additive-AWARE (test-only; no promote/engine
+  // change): the 4 wholesale files still byte-match batch-002 + their recorded sha256,
+  // while the 3 additive files must decompose exactly into base ++ each recorded additive
+  // layer's ids, keep the base bytes verbatim at the head, and carry the LAST layer's sha.
   const reg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'registry.json'), 'utf8'));
   ok(reg.live_dungeon && reg.live_dungeon.promoted_from, 'registry carries live_dungeon provenance');
   const srcDir = path.join(REPO_ROOT, 'content', 'batches', reg.live_dungeon.promoted_from);
+  const layers = Array.isArray(reg.live_dungeon_additive) ? reg.live_dungeon_additive : [];
+  const ADD = promoteTool.ADDITIVE_FILES;
   for (const f of promoteTool.REQUIRED_FILES) {
     const live = fs.readFileSync(path.join(dungen.liveDungeonDir(), f));
-    eq(crypto0122.createHash('sha256').update(live).digest('hex'), reg.live_dungeon.files[f], f + ' sha256 matches registry provenance');
-    ok(live.equals(fs.readFileSync(path.join(srcDir, f))), f + ' is byte-identical to the promoted-from batch (lossless)');
+    const isAdditive = ADD.includes(f) && layers.length > 0;
+    if (!isAdditive) {
+      eq(crypto0122.createHash('sha256').update(live).digest('hex'), reg.live_dungeon.files[f], f + ' sha256 matches registry provenance');
+      ok(live.equals(fs.readFileSync(path.join(srcDir, f))), f + ' is byte-identical to the promoted-from batch (lossless)');
+    } else {
+      const last = layers[layers.length - 1];
+      eq(crypto0122.createHash('sha256').update(live).digest('hex'), last.files[f], f + ' sha256 matches the LAST additive layer provenance');
+      const baseText = fs.readFileSync(path.join(srcDir, f), 'utf8');
+      let expected = JSON.parse(baseText).entries.map((e) => e.id);
+      for (const layer of layers) expected = expected.concat(layer.added[f] || []);
+      eq(JSON.parse(live.toString('utf8')).entries.map((e) => e.id), expected, f + ' entries == wholesale base ++ additive layers (nothing snuck in)');
+      const arrClose = baseText.lastIndexOf(']');
+      let ip = arrClose; while (ip > 0 && /\s/.test(baseText[ip - 1])) ip--;
+      ok(live.toString('utf8').startsWith(baseText.slice(0, ip)), f + ' wholesale base bytes preserved verbatim at the head (byte-preserving splice)');
+    }
   }
 });
 
@@ -1453,20 +1488,20 @@ T('dungen: a generated default-type def actually RUNS through combat.runDungeon 
     masterSeed: 'runnable-check-combat-seed',
     dungeonDef: d,
     squadSnapshots: fourSquadSnapshots(),
-    itemDefsById, enemyDefsById, skillDefsById,
+    itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById,
     formationId: 'formation1', level: 6, participants: ['alice'],
   });
   ok(result.result === 'victory' || result.result === 'wipe' || result.result === 'incomplete', 'runDungeon must return a recognized result for a generated def');
   ok(Array.isArray(result.events) && result.events.length > 0, 'runDungeon must produce events for a generated def');
 });
 
-T('dungen: a generated def only ever references enemy ids that exist in the batch-002 roster (compileEnemyPack never throws missing-def)', () => {
+T('dungen: a generated def only ever references enemy ids that exist in the LIVE roster (batch-002 + deployed additive batches; compileEnemyPack never throws missing-def)', () => {
   for (let i = 0; i < 20; i++) {
     const d = dungen.generate('default', (i % 20) + 1, 'roster-check-' + i);
     for (const e of d.encounters) {
       if (e.enemyPack) {
         for (const eid of e.enemyPack.enemyIds) {
-          ok(!!enemyDefsById[eid], 'generated encounter references unknown enemy id ' + eid);
+          ok(!!liveEnemyDefsById[eid], 'generated encounter references unknown enemy id ' + eid);
         }
       }
     }
@@ -1722,7 +1757,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     let def = null;
     for (const level of [5, 8]) { for (const seed of ['a', 'b', 'c', 'd', 'e']) { const d = dungen.generate('default', level, 'req49run-' + level + '-' + seed); if (d.encounters.some(e => e.attachments)) { def = d; break; } } if (def) break; }
     ok(def, 'found a generated def carrying attachments');
-    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
+    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
     ok(Array.isArray(r.events) && r.events.length > 0, 'generated def with attachments runs end-to-end');
     ok(r.events.some(e => String(e.ev).indexOf('att_') === 0), 'attachments produce att_* events in the replay');
   });
