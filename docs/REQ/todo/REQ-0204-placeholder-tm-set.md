@@ -63,3 +63,34 @@ lone unlabeled rune, and a currency-for-currency listing becomes possible.
 - `pnpm -C client run build` green (bundles the new sprite symbols).
 - api-boot verification: GET /api/content serves tms with 5 entries.
 - market e2e regression (17 -> updated) green under the fleet's 5-TM content.
+
+## Chosen ids/names (placeholder, per directive)
+| id | EN name | short | icon | ja name | silhouette/palette |
+|----|---------|-------|------|---------|--------------------|
+| ember_coin | emberdisc | EMBR | icon-ember_coin | 残り火のディスク | coin, ember/brass |
+| frost_shard | rimeshard | FRST | icon-frost_shard | 霜のかけら | crystal shard, frost/cyan |
+| verdant_drop | dewbead | VRDT | icon-verdant_drop | 露の雫 | droplet, verdant/green |
+| void_star | voidmote | VOID | icon-void_star | 虚空の星屑 | 5-point star, void/purple |
+
+## Gate results (2026-07-17)
+- Implementation commit: 8cdf553 (content/live/live_tms.json, content/sprite_all_v12.svg,
+  tools/e2e_fleet.cjs, client/e2e/market.spec.ts).
+- served payload: buildContentPayload() (CONTENT_ROOT=worktree) serves tms=5 in
+  registry order [lrdst, ember_coin, frost_shard, verdant_drop, void_star]; every
+  entry carries name/short/icon/rarity/stackable + name_ja/flavor_ja (i18n.ja).
+- sprite: client parseSymbols() (real @xmldom path) resolves 26 symbols incl. the
+  4 new icon-<id>; each new symbol is individually well-formed XML.
+- content gates GREEN: check_units (ALL GREEN), verify_content_registry_parity
+  (DB-free, 3/0), content_checks_dialect (34/0).
+- server api_test (files backend): 185 passed, 0 failed (harness uses its own
+  lrdst+gilt content fixture -> unaffected by the live content change, as predicted).
+- client build (tsc -b + vite): GREEN -- bundles the new sprite symbols.
+- market e2e regression + its 5-TM test updates: run at the combined final gate
+  (see REQ-0205 doc / final gate log) under the fleet's overlaid 5-TM content.
+- PRE-EXISTING (not this REQ): `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` stops at
+  step [1] sim tests -- 113 passed, 4 failed, ALL about the enemies.json roster
+  (REQ-0122 enemies.json sha256 vs registry provenance; dungen references to
+  enemy ids zombie/ghost missing from the batch-002 roster). Reproduced UNCHANGED
+  on pristine branch HEAD with this REQ's working-tree changes stashed -> inherited
+  from the branch base, orthogonal to TMs/sprites. Left untouched (out of scope;
+  same "reproduced on pristine base = pre-existing" disposition as REQ-0194).
