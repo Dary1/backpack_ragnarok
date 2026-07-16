@@ -75,3 +75,25 @@ locale flip on the active Items tab. New surfaces add .dex-unit-card /
 - server: api tests (+ new monsters/monster_skills assertions on GET /api/content)
 - client: pnpm lint; pnpm build (tsc -b + vite)
 - e2e: dex specs (+ new units/monsters tab tests) via tools/e2e_run.sh
+
+## Gate results (2026-07-17)
+- server api tests: 186 passed, 0 failed (includes the new REQ-0208
+  monsters/monster_skills assertion; 1509 assertions, sf parity gate).
+- client lint: 0 errors (46 pre-existing warnings, none in REQ-0208 files).
+- client build (tsc -b + vite): OK.
+- e2e targeted (dex.spec / dex-card.spec / dex-admin.spec), CI-canonical env
+  (PLAYWRIGHT_BASE_URL=127.0.0.1:8803, E2E_GPU=1, E2E_PARALLEL=4):
+  18 passed, 1 skipped (the pg-only dex-admin 409 guard), 0 failed --
+  includes the 3 new REQ-0208 tests.
+- e2e FULL default suite, same env: 187 passed, 1 skipped, 0 failed (3.6m).
+- NOTE: a first targeted run against the default PUBLIC tunnel baseURL
+  failed the 3 new tests -- expected, not a regression: that target serves
+  the DEPLOYED master bundle/api, which predates this branch. The local
+  proxy + fleet (the ci.sh [7/7] invocation) serves THIS worktree's build
+  and api, and is the meaningful pre-merge gate.
+
+## Status
+Implementation commit 74d0762 on branch req-0208-dex-unit-monster-kinds.
+Built, NOT merged/deployed -- deploy needs the usual coordination on the
+main checkout + backpack-api/backpack-web restart (HANDS-OFF without user
+go-ahead).
