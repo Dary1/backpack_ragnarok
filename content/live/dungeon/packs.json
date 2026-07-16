@@ -43,6 +43,103 @@
         { "enemy": "hrimgrimnir", "at": "B2" }
       ],
       "note": "was enc_boss enemyIds [hrimgrimnir]; ported A1 -> B2. footprint [3,3] occupies B2:D4."
+    },
+    {
+      "id": "pack_grave_shamble",
+      "name": "Grave Shamble",
+      "i18n": {
+        "en": {
+          "name": "Grave Shamble"
+        },
+        "ja": {
+          "name": "墓場の彷徨"
+        }
+      },
+      "members": [
+        {
+          "enemy": "zombie",
+          "at": "B2"
+        },
+        {
+          "enemy": "zombie",
+          "at": "B7"
+        },
+        {
+          "enemy": "mummy",
+          "at": "B12"
+        },
+        {
+          "enemy": "ghost",
+          "at": "F4"
+        }
+      ],
+      "note": "Weakness appliers (festering grasp, mummy's curse) soften the squad while a lifesteal ghost sustains the shambling front."
+    },
+    {
+      "id": "pack_grave_legion",
+      "name": "Grave Legion",
+      "i18n": {
+        "en": {
+          "name": "Grave Legion"
+        },
+        "ja": {
+          "name": "墓場の軍団"
+        }
+      },
+      "members": [
+        {
+          "enemy": "skeleton_warrior",
+          "at": "B3"
+        },
+        {
+          "enemy": "wight",
+          "at": "B9"
+        },
+        {
+          "enemy": "zombie",
+          "at": "B13"
+        },
+        {
+          "enemy": "necromancer",
+          "at": "G6"
+        },
+        {
+          "enemy": "ghost",
+          "at": "G11"
+        }
+      ],
+      "note": "The full Weakness engine: zombie/necromancer APPLY Weakness, skeleton & wight CONVERT it x1.5 (bone_cleaver/grave_blade), while life_drain + dark_mending SUSTAIN the line."
+    },
+    {
+      "id": "pack_bone_court",
+      "name": "Bone Court",
+      "i18n": {
+        "en": {
+          "name": "Bone Court"
+        },
+        "ja": {
+          "name": "骸骨の王廷"
+        }
+      },
+      "members": [
+        {
+          "enemy": "bone_dragon",
+          "at": "B4"
+        },
+        {
+          "enemy": "lich",
+          "at": "N6"
+        },
+        {
+          "enemy": "ghost",
+          "at": "N12"
+        },
+        {
+          "enemy": "necromancer",
+          "at": "S8"
+        }
+      ],
+      "note": "Boss court: the bone dragon's roar and the necromancer stack Weakness while the lich blasts/stuns and dark_mending keeps the throne standing."
     }
   ]
 }

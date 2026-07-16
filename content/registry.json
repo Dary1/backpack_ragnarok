@@ -36,5 +36,51 @@
    "formations.json": "75ae7a099bf13b8d2f0032f5b8cccf72cdd8187df066870b2c4d302b27cc3bb5",
    "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da"
   }
- }
+ },
+ "live_dungeon_additive": [
+  {
+   "promoted_from": "batch-005-grave-legion",
+   "date": "2026-07-16",
+   "added": {
+    "enemies.json": [
+     "zombie",
+     "ghost",
+     "mummy",
+     "skeleton_warrior",
+     "wight",
+     "necromancer",
+     "lich",
+     "bone_dragon"
+    ],
+    "skills.json": [
+     "rotting_claw",
+     "festering_grasp",
+     "spectral_touch",
+     "haunting_chill",
+     "bandage_lash",
+     "mummys_curse",
+     "bone_cleaver",
+     "shield_jab",
+     "grave_blade",
+     "life_drain",
+     "dark_mending",
+     "enfeebling_bolt",
+     "soul_blast",
+     "paralyzing_dread",
+     "bone_breath",
+     "necrotic_roar"
+    ],
+    "packs.json": [
+     "pack_grave_shamble",
+     "pack_grave_legion",
+     "pack_bone_court"
+    ]
+   },
+   "files": {
+    "enemies.json": "6c0388da74c6d3b6f3cb255e7dc85a85465b0964ff10a5038e35a7331eca447f",
+    "skills.json": "d9a40d30cce4dd506561bc4225e1513f427a168f2a91f65f88a96261e8108684",
+    "packs.json": "fd40c893a7d659a486548cac1b4c60882ab891e146a55fe28013d0b6681e83fa"
+   }
+  }
+ ]
 }

@@ -116,6 +116,518 @@
       "attack_profile": { "edge": ["top"], "direction": "front", "penetration": 0, "aoe": 0, "aoe_statuses": false },
       "modes": ["unlock"],
       "note": "Door's stage2 (unlock-stage) entity skill; only fires-back-relevant if the door entity itself is given an offensive skill. Included for completeness/symmetry (S4.7 OQ10: statuses/damage symmetric)."
+    },
+    {
+      "id": "rotting_claw",
+      "name_en": "Rotting Claw",
+      "name_ja": "腐り爪",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.4,
+          3
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          5,
+          9
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "festering_grasp",
+      "name_en": "Festering Grasp",
+      "name_ja": "膿み掴み",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.5,
+          4.5
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "spectral_touch",
+      "name_en": "Spectral Touch",
+      "name_ja": "霊気の接触",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.4
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          6,
+          10
+        ],
+        "frac": 0.5
+      },
+      "attack_profile": {
+        "edge": [
+          "left",
+          "right"
+        ],
+        "direction": "side",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "haunting_chill",
+      "name_en": "Haunting Chill",
+      "name_ja": "祟りの冷気",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "left",
+          "right"
+        ],
+        "direction": "side",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ],
+      "note": "REQ-0203 deviation: given aoe:1 so the authored aoe_statuses actually spreads Chill (aoe_statuses is inert at aoe:0). Ray typing stays side/pen0."
+    },
+    {
+      "id": "bandage_lash",
+      "name_en": "Bandage Lash",
+      "name_ja": "包帯の鞭",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.4
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          9,
+          15
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "mummys_curse",
+      "name_en": "Mummy's Curse",
+      "name_ja": "ミイラの呪い",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.2,
+          5.2
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bone_cleaver",
+      "name_en": "Bone Cleaver",
+      "name_ja": "骨断ち",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.2,
+          2.8
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Weakness",
+        "n": [
+          10,
+          16
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "shield_jab",
+      "name_en": "Shield Jab",
+      "name_ja": "盾突き",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          4,
+          7
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "grave_blade",
+      "name_en": "Grave Blade",
+      "name_ja": "墓場の刃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.4,
+          3
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Weakness",
+        "n": [
+          12,
+          20
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "life_drain",
+      "name_en": "Life Drain",
+      "name_ja": "生命吸収",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.6,
+          4.4
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          8,
+          12
+        ],
+        "frac": 0.6
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "dark_mending",
+      "name_en": "Dark Mending",
+      "name_ja": "闇の縫合",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4,
+          5
+        ]
+      },
+      "verb": {
+        "t": "heal_ally",
+        "n": [
+          8,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ],
+      "note": "REQ-0203: support skill -- NO ray at the player field (the executor intercepts heal_ally before ray firing and heals the lowest-HP living ally). attack_profile carries an empty edge to honestly declare it projects no ray."
+    },
+    {
+      "id": "enfeebling_bolt",
+      "name_en": "Enfeebling Bolt",
+      "name_ja": "衰弱の矢",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "soul_blast",
+      "name_en": "Soul Blast",
+      "name_ja": "魂の爆撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          14,
+          22
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 1,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "paralyzing_dread",
+      "name_en": "Paralyzing Dread",
+      "name_ja": "麻痺の戦慄",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5,
+          6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "bone_breath",
+      "name_en": "Bone Breath",
+      "name_ja": "骨のブレス",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.4,
+          4.2
+        ]
+      },
+      "verb": {
+        "t": "multi_strike",
+        "n": [
+          8,
+          14
+        ],
+        "hits": 3
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 2,
+        "aoe": 2,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ],
+      "note": "REQ-0203: multi_strike n=[8,14] per hit x hits:3 (each sub-hit is a separate on-hit event, per OQ19). Numbers agent-scaled to a boss under the design's 'scale to a boss' delegation; front/pen2/aoe2 breath."
+    },
+    {
+      "id": "necrotic_roar",
+      "name_en": "Necrotic Roar",
+      "name_ja": "屍毒の咆哮",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5.5,
+          6.5
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          4,
+          6
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 2,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
     }
   ]
 }
