@@ -1,7 +1,8 @@
-# Item Art Plans — items-005 roster (40 PO + 8 SI)
+# Item Art Plans — items-005 roster (40 PO + 20 SI)
 
 > LLM-managed working plan (user directive, 2026-07-15). Goal: +40 NEW PO and
-> +8 NEW SI artworks, generated via the artwork-registry pipeline (artadmin /
+> +20 NEW SI artworks (8 on 2026-07-15, +12 on 2026-07-16, user directive),
+> generated via the artwork-registry pipeline (artadmin /
 > REQ-0151 route: server queue -> art_job.py -> art_route/art_style, flux2,
 > Anime template), each left in ADOPTED state as a candidate. Final in-game
 > adoption is the user's call; this roster is decision support.
@@ -31,7 +32,7 @@
   [A-Za-z0-9_]+). Seeds 101/202/303/404 (4 candidates each); best seed
   adopted right after generation (user directive: end state = adopted);
   the user can switch seed / NG / reroll at every review stop. Losers kept.
-- Cadence: 10 batches x ~5 items (8 PO batches, 2 SI batches); STOP after
+- Cadence: 12 batches x 5 items (8 PO batches, 4 SI batches); STOP after
   each batch for user review in artadmin
   (https://backpack-dev.qtie.jp/app/#/artadmin).
 
@@ -132,7 +133,7 @@ Complex total: 20/40 (axe, hammer, halberd, crossbow, scythe, boomerang,
 flail, boot, mana crystal, fishing rod, grappling hook, horseshoe, horn,
 anvil, doll, chain, trident, banner, pickaxe, shuriken).
 
-## SI roster (8) — kind=si, 256x256, two per slot
+## SI roster (20) — kind=si, 256x256, five per slot
 
 ### Batch 9 — SI part 1
 | # | system_name | slot | item | subject |
@@ -149,6 +150,26 @@ anvil, doll, chain, trident, banner, pickaxe, shuriken).
 | 46 | sis005_frost_rime | coat | Frost Rime | a small glass jar of pale blue frost salve topped with ice crystals, centered |
 | 47 | sis005_leather_grip | bond | Leather Grip | a coiled roll of brown leather grip strap with a buckle, centered |
 | 48 | sis005_silver_chain | bond | Silver Chain | three interlocked polished silver chain links, centered |
+| 49 | sis005_sapphire_gem | gem | Sapphire | a sparkling cut sapphire gemstone, deep blue, faceted, centered |
+| 50 | sis005_thunder_core | gem | Thunder Core | a round golden gemstone with a small lightning bolt crackling inside, centered |
+
+### Batch 11 — SI part 3 (added 2026-07-16, user directive)
+| # | system_name | slot | item | subject |
+|---|---|---|---|---|
+| 51 | sis005_moon_pearl | gem | Moon Pearl | a large round white pearl glowing with pale silver moonlight, centered |
+| 52 | sis005_dragon_claw | edge | Dragon Claw | a large curved crimson dragon claw with a sharp ivory tip, centered |
+| 53 | sis005_bone_spike | edge | Bone Spike | a sharp white spike carved from beast bone, with a chipped surface, centered |
+| 54 | sis005_iron_caltrop | edge | Iron Caltrop | a small black iron caltrop with four sharp spikes, one spike pointing up, centered |
+| 55 | sis005_venom_flask | coat | Venom Flask | a small round glass flask of bubbling purple poison with a skull emblem, centered |
+
+### Batch 12 — SI part 4 (added 2026-07-16, user directive)
+| # | system_name | slot | item | subject |
+|---|---|---|---|---|
+| 56 | sis005_holy_water | coat | Holy Water | a small round glass flask of glowing golden holy water with a cross-shaped cork stopper, centered |
+| 57 | sis005_tar_pot | coat | Tar Pot | a small clay pot filled with thick black sticky tar dripping over its rim, centered |
+| 58 | sis005_golden_thread | bond | Golden Thread | a wooden spool wound with glowing golden thread, centered |
+| 59 | sis005_hemp_rope | bond | Hemp Rope | a coiled ring of thick brown hemp rope tied with a knot, centered |
+| 60 | sis005_iron_rivet | bond | Iron Rivet | a cluster of three polished iron rivets with round dome heads, centered |
 
 Design notes: no name collisions with live content (blade/hilt/flame_tablet/
 oil_flask/dagger/herb_pouch/tower_shield/beast_jaw, acc_*); SI slots follow
@@ -173,3 +194,7 @@ flags them at review.
 ## Status log
 
 - 2026-07-15: plan drafted; awaiting user plan review before batch 1.
+- 2026-07-16: +12 SI added (#49-60, user directive: 20 SI total, 5 per
+  socket_tag slot); all 20 SI registered via POST /api/art/artworks
+  (kind=si, 256x256, default template, no style_override). Seed generation
+  NOT run (user directive) — renders pending user go-ahead.
