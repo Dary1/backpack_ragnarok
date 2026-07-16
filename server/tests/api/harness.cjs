@@ -127,6 +127,10 @@ fs.writeFileSync(path.join(liveDir, 'live_tms.json'), JSON.stringify({
   entries: [
     { id: 'lrdst', name: 'UnitRandomDirectionShuffleTransmutator', short: 'LRDST',
       rarity: 'Common', icon: 'icon-lrdst', stackable: true },
+    // REQ-0195b: a SECOND TM so currency-for-currency (tm-for-tm) trades
+    // are testable (same_tm forbids pricing a TM in itself, so a single
+    // live TM can never settle a tm listing).
+    { id: 'gilt', name: 'Gilt', short: 'GILT', rarity: 'Common', icon: 'icon-gilt', stackable: true },
   ],
 }));
 // REQ-0170: unit/1 defs + the gacha pack. buildContentPayload() and

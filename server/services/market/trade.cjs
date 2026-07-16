@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, findInventoryPO, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
+const { burnOf, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // stripPoFromCanvas: removes every pos[] entry with `uid` from the
@@ -19,8 +19,54 @@ const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 // ghost). Same containers finalizeClaimingItemsForCanvas scans.
 function stripPoFromCanvas(canvas, uid) {
   const strip = (container) => {
-    if (container && Array.isArray(container.pos)) {
+    if (!container) return;
+    if (Array.isArray(container.pos)) {
       container.pos = container.pos.filter((p) => p.uid !== uid);
+    }
+    // REQ-0195c: a SURVIVING SI seated on the SOLD PO is re-homed to 'inv'
+    // (the stowed sentinel) rather than keeping an orphaned host ref --
+    // mirrors devotion.cjs stripDestroyedUids + engine unseatOrphans.
+    if (Array.isArray(container.sis)) {
+      for (const a of container.sis) {
+        if (a.host && typeof a.host === 'object' && a.host.po === uid) a.host = 'inv';
+      }
+    }
+  };
+  strip(canvas);
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) strip(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) strip(pg);
+  }
+}
+
+// stripSiFromCanvas (REQ-0195c): removes every sis[] entry with `uid`
+// from the canvas -- inventory pages (the SI home), the active squad's
+// top-level sis[], and every stored squad snapshot. Same containers as
+// stripPoFromCanvas / finalizeClaimingItemsForCanvas.
+function stripSiFromCanvas(canvas, uid) {
+  const strip = (container) => {
+    if (container && Array.isArray(container.sis)) {
+      container.sis = container.sis.filter((a) => a.uid !== uid);
+    }
+  };
+  strip(canvas);
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) strip(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) strip(pg);
+  }
+}
+
+// stripBpFromCanvas (REQ-0195d): removes every bps[] entry with `id`
+// (a BP keys on `id`) from the canvas -- inventory pages, the active
+// squad's top-level bps[], and every stored squad snapshot.
+function stripBpFromCanvas(canvas, uid) {
+  const strip = (container) => {
+    if (container && Array.isArray(container.bps)) {
+      container.bps = container.bps.filter((b) => b.id !== uid);
     }
   };
   strip(canvas);
@@ -102,15 +148,37 @@ function buyListing(buyerId, listingId, idemKey) {
   }
 
   // Seller-side eligibility, re-derived NOW (lazy, never trusted stale).
+  const kind = listing.kind || 'po';
   const sellerDoc = storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
-  const sellerPo = sellerCanvas ? findInventoryPO(sellerCanvas, listing.itemUid) : null;
-  if (!sellerCanvas || !sellerPo) {
-    autoWithdrawItemGone(listing, now);
-    const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
-  }
-  if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
-    const err = new Error('listing suspended: the seller currently deploys this item (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+  let sellerInst = null;
+  let sellerBp = null;
+  if (kind === 'tm') {
+    // REQ-0195b: tm stock is the live balance; a shortfall is a
+    // (reversible) SUSPENSION re-check, never an item-gone auto-withdraw.
+    const stock = sellerCanvas ? readTmBalance(sellerCanvas, listing.itemId) : 0;
+    if (stock < listing.tmQty) {
+      const err = new Error('listing suspended: the seller holds ' + stock + ' ' + String(listing.itemId).toUpperCase() + ', needs ' + listing.tmQty); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
+  } else if (kind === 'unit') {
+    const b = sellerCanvas ? findInventoryBP(sellerCanvas, listing.itemUid) : null;
+    if (!sellerCanvas || !b) {
+      autoWithdrawItemGone(listing, now);
+      const err = new Error('the listed unit no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
+    }
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
+      const err = new Error('listing suspended: the seller currently deploys this unit (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
+    sellerBp = b.bp;
+  } else {
+    sellerInst = sellerCanvas ? (kind === 'si' ? findInventorySI(sellerCanvas, listing.itemUid) : findInventoryPO(sellerCanvas, listing.itemUid)) : null;
+    if (!sellerCanvas || !sellerInst) {
+      autoWithdrawItemGone(listing, now);
+      const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
+    }
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
+      const err = new Error('listing suspended: the seller currently deploys this item (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
   }
 
   // Buyer-side funds + capacity, all BEFORE the commit point.
@@ -135,16 +203,32 @@ function buyListing(buyerId, listingId, idemKey) {
   // synchronous, so "concurrent" requests are strictly serialized by
   // the event loop -- there is no interleaving window at all).
   listing.state = 'settled';
-  listing.settlement = { buyerId, t: tIso, burn, sellerReceives, idemKey: idemKey || null };
+  // REQ-0195e: FREEZE the roll-fulfillment fraction onto the settlement
+  // record NOW, while the seller instance still lives (it is stripped in
+  // step 3/7 below). po/si -> the instance q; unit -> bp.roll?.pct (the
+  // REQ-0196 container) else null; tm -> null. toListingDto reads this
+  // frozen value for a settled listing so MinePane history stays honest.
+  const rollPctFrozen = kind === 'tm' ? null
+    : kind === 'unit' ? (sellerBp && sellerBp.roll && typeof sellerBp.roll.pct === 'number' ? sellerBp.roll.pct : null)
+    : (sellerInst && typeof sellerInst.q === 'number' ? sellerInst.q : null);
+  listing.settlement = { buyerId, t: tIso, burn, sellerReceives, idemKey: idemKey || null, rollPct: rollPctFrozen };
   storage.writeMarketListing(listing.id, listing);
 
   // (2/7) debit buyer -- value leaves the economy first.
   debitTmFromCanvas(buyerCanvas, listing.price.tm, qty);
   storage.writeProfile(buyerId, buyerCanvas);
 
-  // (3/7) remove the item from the seller (inventory + every
-  // non-deployed squad reference).
-  stripPoFromCanvas(sellerCanvas, listing.itemUid);
+  // (3/7) remove the sold value from the seller (kind-branched: strip the
+  // PO instance everywhere, or debit tmQty off the seller's TM stacks).
+  if (kind === 'tm') {
+    debitTmFromCanvas(sellerCanvas, listing.itemId, listing.tmQty);
+  } else if (kind === 'si') {
+    stripSiFromCanvas(sellerCanvas, listing.itemUid);
+  } else if (kind === 'unit') {
+    stripBpFromCanvas(sellerCanvas, listing.itemUid);
+  } else {
+    stripPoFromCanvas(sellerCanvas, listing.itemUid); // also re-homes SIs seated on the sold PO (REQ-0195c)
+  }
   storage.writeProfile(listing.sellerId, sellerCanvas);
 
   // (4/7) deliver the item to the buyer's WAREHOUSE as a normal
@@ -152,13 +236,32 @@ function buyListing(buyerId, listingId, idemKey) {
   // warehouse claim, exactly like a dungeon reward. Fresh uid
   // (grantWarehouseItem convention); cap was pre-checked synchronously
   // above, so addToWarehouse cannot refuse here.
-  const itemRow = {
-    itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
-    q: sellerPo.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
-    harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
-    sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
-    status: 'claimable',
-  };
+  // A bought TM arrives as a kind:'tm' stack row (grantTmQty shape, merged
+  // on claim via firstFitOrMergeTM); a PO/SI as a plain row carrying its q.
+  const itemRow = kind === 'tm'
+    ? {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId, qty: listing.tmQty,
+        kind: 'tm',
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      }
+    : kind === 'unit'
+    ? {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
+        kind: 'bp',
+        bp: JSON.parse(JSON.stringify(sellerBp)), // REQ-0195d: full BP instance, verbatim (never re-rolled)
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      }
+    : {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
+        q: sellerInst.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      };
   const delivered = addToWarehouse(buyerId, itemRow);
   if (!delivered.ok) throw new Error('market settle: buyer warehouse refused delivery after pre-check (' + delivered.reason + ') -- this is a bug');
 
@@ -192,7 +295,7 @@ function buyListing(buyerId, listingId, idemKey) {
   // now; the full REQ-0052 dex-card integration consumes this same root
   // later.
   const hist = storage.readMarketDexHistory(listing.itemId) || { itemId: listing.itemId, entries: [] };
-  hist.entries.unshift({ qty, t: tIso, listingId: listing.id });
+  hist.entries.unshift({ qty, tm: listing.price.tm, t: tIso, listingId: listing.id });
   hist.entries = hist.entries.slice(0, DEX_PRICE_HISTORY_MAX);
   storage.writeMarketDexHistory(listing.itemId, hist);
 

@@ -325,12 +325,16 @@ cascades on render delete). **Advisory kits top out at WARN and NEVER gate adopt
 run on a flux2 raster; left untouched for the legacy SVG sprite. A raster
 overflow-vs-cells check (`po.cell_overflow`) is a proposed follow-up REQ, not built.
 
-### PO shape conditioning (REQ-0153) — available recipe, not wired
+### PO shape conditioning (REQ-0153 recipe; LIVE since REQ-0183/0186)
 
-REQ-0153's spike verdict is **GREEN-with-recipe**: up-front silhouette control for
+REQ-0153's spike verdict was **GREEN-with-recipe**: up-front silhouette control for
 non-rectangular PO shapes via **ReferenceLatent (scaffold) + SetLatentNoiseMask
-(dilated shape, D=8)** — the §4 generation size gains an OPTIONAL shape input.
-It is **NOT wired into `art_route.build_txt2img`**; the production route stays
-byte-identical. Full recipe and the per-item-toggle recommendation:
-`item_content_pipeline.md` §Shape conditioning and REQ-0153. Do not treat it as
-live until a follow-up integration REQ wires it.
+(dilated shape, D=8)**. REQ-0183 wired it into the production route; REQ-0186
+exposed it as po params **`shape_lock`** (`off|guide|strict|auto`, default `auto` =
+strict only when the shape underfills its bounding box) and **`shape_dilation_px`**
+(0-16, default 8), with a one-shot generate override that never mutates the
+artwork. Full status + recipe: `item_content_pipeline.md` §0.1. **REQ-0187's S7
+eyeball found the lock necessary but NOT sufficient** — containment passes while
+the composition still breaks the backpack "snug fit"; the binding authoring rules
+(imagine-first, topology-prompt consistency, center-line rule, violation-based
+fit, instruments-as-optimizer loop) are `item_content_pipeline.md` §0.2.

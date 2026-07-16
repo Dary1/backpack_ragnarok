@@ -58,6 +58,12 @@ export function generateArtwork(name: string, b: Record<string, unknown>): Promi
 export function adoptRenderApi(name: string, seed: number): Promise<{ ok: true; artwork: ArtworkDto; export: unknown; export_error: string | null }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/adopt', { method: 'POST', body: JSON.stringify({ seed }) });
 }
+// REQ-0192: manual repack -- derive a best-placement variant of an OK render
+// as a NEW render at source seed + 100000 (bumped by another 100000 while
+// taken). The job runs at inspection priority; poll the artwork detail.
+export function repackRenderApi(name: string, seed: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/repack', { method: 'POST', body: JSON.stringify({}) });
+}
 export function deleteRenderApi(name: string, seed: number): Promise<{ ok: true; deleted: number }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed, { method: 'DELETE' });
 }

@@ -73,6 +73,10 @@ export const dexEn = {
   'dex.detailDen': 'SCHEMA & LORE',
   'dex.schemaTitle': 'Schema',
   'dex.schemaDen': 'SCHEMA',
+  // REQ-0194: lore section head (the info column's own head, paired
+  // with the schema head inside the unified detail panel).
+  'dex.loreTitle': 'Lore & Effects',
+  'dex.loreDen': 'LORE & EFFECTS',
   'dex.noPrefix': 'No.',
   'dex.market.title': 'Market Engravings',
   'dex.market.den': 'THE MARKET ENGRAVINGS',
@@ -173,6 +177,9 @@ export const dexJa = {
   'dex.detailDen': 'SCHEMA & LORE',
   'dex.schemaTitle': '図解',
   'dex.schemaDen': 'SCHEMA',
+  // REQ-0194: lore section head.
+  'dex.loreTitle': '銘と効果',
+  'dex.loreDen': 'LORE & EFFECTS',
   'dex.noPrefix': 'No.',
   'dex.market.title': '市場の刻銘',
   'dex.market.den': 'THE MARKET ENGRAVINGS',
