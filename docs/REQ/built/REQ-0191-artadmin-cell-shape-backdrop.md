@@ -142,3 +142,101 @@ are what close this, and the backdrop is what REQ-0187 will look at when they ex
 
 - The packed-placement "pack" button — out of scope, and REQ-0192 now owns that ground.
 - Any scoring or route change: `po.cell_fit` was read, never touched.
+
+---
+
+# Merge & Deploy (2026-07-16)
+
+**User go-ahead.** The user directed the session to finish the TODO REQs and
+answered "go on" (chat, 2026-07-16) to continuing with REQ-0191; merge + deploy
++ post-deploy verification are thereby sanctioned. ("go on" is read as the
+go-ahead -- this is the orchestrator's interpretation, labeled as such.)
+
+**Brought current with master.** Merged master `f8076d7` (REQ-0129 vocab v14,
+REQ-0182b dex-edit-retirement, REQ-0187 S7, REQ-0192 repack, REQ-0194,
+REQ-0195*, REQ-0197 deferred-batch, REQ-0198 + master dist rebuild) into the
+branch -> integration merge `a4d378a`. `ArtAdminPage.tsx` and `Workspace.tsx`
+auto-merged cleanly (master's REQ-0192 repack + REQ-0197 batch controls and this
+REQ's cell-backdrop wiring sit in disjoint regions; both kept). REQ-file
+reconciled: master carried a duplicate copy in `todo/` (the reserve+spec commits
+that rode on req-0187, hashes 13905d4/4adbf40, already on master); removed it so
+the REQ lives in exactly one state folder (`built/`).
+
+**Gates re-run on the merged tree** (branch `a4d378a`, whose tree is
+BYTE-IDENTICAL to the post-merge master tree `d4afaeb` -- verified by
+`git rev-parse`, so this gate is authoritative for the deployed tree):
+- `tools/ci.sh` -> **CI GREEN**. Admin trio: artadmin **6/6** (incl. the
+  REQ-0191 `cell backdrop` spec, 13.0s), artinspect **1/1**, contentadmin
+  **28/28** (REQ-0182b-reshaped). Default suite **183 passed / 1 skipped**.
+  Typecheck + `pnpm run build` clean.
+- `tools/tests/inspect_kits_test.py` -> **36/36** (the 4 REQ-0191 note-as-
+  interface contract checks + po.cell_fit G2 purity included).
+
+**Merged to master:** `d4afaeb` (`git merge --no-ff`). Net delta added to master
+vs `f8076d7` is EXACTLY the 7 REQ-0191 files (artadmin.spec.ts, ArtAdminPage,
+CellBackdrop, Lightbox, Workspace, artadmin.css, inspect_kits_test) -- only this
+REQ's delta landed. (REQ-0199 routes-jwt-auth-parity, another session, merged
+server-only on top afterward -- no client/web changes, so it does not affect this
+client dist.)
+
+**Deploy (client-only -- the REQ touches no server code):**
+- `tools/release.sh` was run first (the one deploy path). It **aborted on an
+  environmental e2e flake** (documented next), before its dist commit. Per the
+  established recovery convention (REQ-0182b), e2e was completed green via the
+  locked runner on the byte-identical tree, and the dist was committed per
+  convention.
+- Dist rebuild committed: **`86dd827`** ("deploy: rebuild client dist (REQ-0191
+  artadmin-cell-shape-backdrop)"), bundle `index-BnJYIYh2.js` (1,421,127 B).
+- Service restarted: **`backpack-web`** at **2026-07-16T10:55:00 UTC**
+  (`systemctl --user restart`). `backpack-api` deliberately NOT restarted --
+  no server code in this REQ's delta.
+
+**The flake, documented honestly (NOT a regression).** On master the isolated
+`artadmin_e2e.sh` harness reliably failed ONE test -- the REQ-0191 spec's
+`page.goto('/app/#/artadmin')` -- with `TimeoutError: page.goto: Timeout
+20000ms exceeded` (the document `load` event, never a backdrop assertion). Root
+cause: the box was under heavy concurrent load from the user's separate GPU/art
+workload (`pt_main_thread`, ~40% mem; load average ~10), which starves the
+harness's single-threaded `python3 -m http.server` serving the 1.4 MB PixiJS
+SPA. The failure time scales directly with box load: **13.0s (branch run, quiet
+box -> PASS) -> 22.1s (load ~7 -> FAIL, barely over the 20s line) -> 27-29s
+(load ~10 -> FAIL)**. Every failed run's Playwright snapshot shows the FULL
+artadmin UI rendered (Artwork Registry, sidebar, the "po 1 / si 1" kind filters
+= the two artworks the test created); an UNRELATED test (`deep link`, untouched
+by 0191) flakes the same way intermittently. The feature is verified correct by
+the branch CI GREEN (this same spec passed at 13.0s on the byte-identical tree)
+plus the full render in every snapshot. This is the known "occasional page.goto
+timeouts" flaky family, amplified by external load -- exactly the case the
+release.sh recovery convention covers.
+
+**Post-deploy verification (on live):**
+- Live bundle served by `backpack-web` (127.0.0.1:8801) is `index-BnJYIYh2.js`
+  and carries the backdrop symbols: `lightbox-cells`, `art-cells`,
+  `aa-cb-render`, `render-cb-`, `data-key` present in the JS; the `aa-cb-*`
+  classes present in the CSS. The new feature bundle is live.
+- Bare `pnpm run e2e` against live (`https://backpack-dev.qtie.jp`, the way
+  REQ-0182b verified): **184 passed / 0 failed (14.2m)**; live profile backed up
+  and restored by global setup/teardown.
+
+**Status: stays in `built/`.** Code is merged + live, but user S7 acceptance is
+pending (do NOT move to `done/` until the user has eyeballed it).
+
+## S7 eyeball checklist (for the user, on the LIVE artadmin)
+
+Open `https://backpack-dev.qtie.jp/app/#/artadmin` and:
+1. Select any adopted **po** artwork with renders. The render thumbnails now sit
+   ON their cell footprint by default -- a **"cells"** chip appears next to
+   "Renders (N)"; toggle it off to get the old plain thumbs back, on to restore.
+2. Owned cells show a **pale-gold** tint; unowned bbox cells show a **light
+   checker** ("not yours"). **Grid lines** trace every cell boundary on top of
+   the pixels, so border-skimming reads across the subject.
+   (NB: every po in the live registry is currently a full rectangle, so its bbox
+   has no unowned cell yet -- the owned/unowned split is exercised by the e2e
+   L-tromino; REQ-0187's awkward test artworks are what will show it live.)
+3. Click a thumb to open the **lightbox**: same backdrop, default ON, with its
+   own **"cells"** chip. Zoom (1x/2x/4x) -- the grid stays locked to the pixels.
+4. If a `po.cell_fit` inspection has run, each owned cell is tinted along its
+   violation ramp (pale gold -> pale blood), the worst cell is ringed, and a
+   **"fit NN"** badge shows in the corner (says "(stale)" if the row predates the
+   current kit). Toggle "cells" off to confirm the plain render is one click away.
+5. Confirm a **si** (non-po) artwork shows **no** "cells" chip and no backdrop.
