@@ -140,6 +140,103 @@
         }
       ],
       "note": "Boss court: the bone dragon's roar and the necromancer stack Weakness while the lich blasts/stuns and dark_mending keeps the throne standing."
+    },
+    {
+      "id": "pack_wild_hunt",
+      "name": "Wild Hunt",
+      "i18n": {
+        "en": {
+          "name": "Wild Hunt"
+        },
+        "ja": {
+          "name": "野生の狩人"
+        }
+      },
+      "members": [
+        {
+          "enemy": "werewolf",
+          "at": "B6"
+        },
+        {
+          "enemy": "dire_wolf",
+          "at": "G2"
+        },
+        {
+          "enemy": "boar",
+          "at": "G12"
+        },
+        {
+          "enemy": "giant_bat",
+          "at": "M7"
+        }
+      ],
+      "note": "Lifesteal tempo: fast melee (werewolf rending/feral, dire_wolf, boar tusk) sustains through damage via feral_bite while the giant bat's blood_drain feeds from the flank."
+    },
+    {
+      "id": "pack_venom_nest",
+      "name": "Venom Nest",
+      "i18n": {
+        "en": {
+          "name": "Venom Nest"
+        },
+        "ja": {
+          "name": "毒の巣"
+        }
+      },
+      "members": [
+        {
+          "enemy": "basilisk",
+          "at": "B7"
+        },
+        {
+          "enemy": "giant_spider",
+          "at": "I3"
+        },
+        {
+          "enemy": "giant_scorpion",
+          "at": "I12"
+        },
+        {
+          "enemy": "giant_snake",
+          "at": "N7"
+        }
+      ],
+      "note": "Poison engine: giant_spider (venom_bite) and giant_snake (venom_spit) stack Poison, then giant_scorpion (stinger) and basilisk (toxic_maw) cash it in via bonus_vs_status x1.5."
+    },
+    {
+      "id": "pack_demon_gate",
+      "name": "Demon Gate",
+      "i18n": {
+        "en": {
+          "name": "Demon Gate"
+        },
+        "ja": {
+          "name": "魔界の門"
+        }
+      },
+      "members": [
+        {
+          "enemy": "demon_lord",
+          "at": "B5"
+        },
+        {
+          "enemy": "gargoyle",
+          "at": "K3"
+        },
+        {
+          "enemy": "dullahan",
+          "at": "K12"
+        },
+        {
+          "enemy": "imp",
+          "at": "P6"
+        },
+        {
+          "enemy": "imp",
+          "at": "P11"
+        }
+      ],
+      "note": "Burn engine: the imps (fire_dart) and demon_lord (dominion_of_flame) set the squad alight, then gargoyle (molten_talons) converts Burn x1.5 while dullahan anchors the gate."
     }
   ]
 }
