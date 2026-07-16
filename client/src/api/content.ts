@@ -4,7 +4,7 @@
 // now the barrel, for the module history).
 import { getJSON } from './http';
 import type { ConnShapeMap, GameState, ItemDefMap, Layout, SIDefMap, Trees, UnitDefMap } from '../engine/engine.d.ts';
-import type { ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterUnits } from '../../../shared/dto';
+import type { ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterUnits, ApiTmEntry } from '../../../shared/dto';
 import { fetchCanvas } from './profile';
 
 // ---- engine-ready shape (what Engine.create(...) + makeState() consume) ----
@@ -13,6 +13,10 @@ export interface GameData {
   LAYOUT: Layout;
   ITEMS: ItemDefMap;
   SI_DEFS: SIDefMap;
+  /** REQ-0195a: the live TM (Transmutator) content defs, id-keyed --
+   * the market reads a def's `short` to label a price's currency once
+   * more than one TM is live. Passthrough of /api/content's `tms` map. */
+  TMS: Record<string, ApiTmEntry>;
   TREES: Trees;
   /** REQ-0170: the unit/1 defs. Engine.create() resolves every BP's rays through
    * these + CONN_SHAPES, so the def -- not the BP -- is the source of truth. */
@@ -95,6 +99,8 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
   // REQ-0170: units + shapes + packs pass through as-is (already id-keyed by the
   // server, and unlike items/SIs a unit def carries no effects AST to render).
   const UNITS: UnitDefMap = (payload.units ?? {}) as unknown as UnitDefMap;
+  // REQ-0195a: TM defs pass through as-is (id-keyed, display-only here).
+  const TMS: Record<string, ApiTmEntry> = payload.tms ?? {};
   const CONN_SHAPES: ConnShapeMap = (payload.connection_shapes ?? {}) as unknown as ConnShapeMap;
   const PACKS: Record<string, ApiPackEntry> = payload.packs ?? {};
   // REQ-0133: the server-resolved registry-first art URLs (additive, sparse).
@@ -108,7 +114,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, makeState, starterUnits: payload.starterUnits ?? null };
+  return { LAYOUT, ITEMS, SI_DEFS, TMS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, makeState, starterUnits: payload.starterUnits ?? null };
 }
 
 export type DataSource = 'live' | 'error';

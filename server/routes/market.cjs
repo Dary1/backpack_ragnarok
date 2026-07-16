@@ -102,7 +102,7 @@ function tryMarketRoutes(req, res, url, p) {
           filter: url.searchParams.get('filter') || undefined,
           q: url.searchParams.get('q') || undefined,
         });
-        sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, tm: market.MARKET_TM_ID, listings });
+        sendJSON(res, 200, { ok: true, dtoVersion: market.MARKET_DTO_VERSION, tms: market.liveTmIds(), listings });
       } catch (e) { sendMarketError(e); }
       return;
     }
@@ -171,7 +171,8 @@ function tryMarketRoutes(req, res, url, p) {
       const cs = ragnarok.currentSeason();
       const furnace = market.furnaceTotal(cs.season ? Date.parse(cs.season.startAt) : undefined);
       sendJSON(res, 200, {
-        ok: true, dtoVersion: market.MARKET_DTO_VERSION, furnace,
+        ok: true, dtoVersion: market.MARKET_DTO_VERSION,
+        furnace: { totals: furnace.totals, since: furnace.since },
         season: cs.season ? { index: cs.season.index, name: cs.season.name } : null,
       });
     } catch (e) { sendMarketError(e); }

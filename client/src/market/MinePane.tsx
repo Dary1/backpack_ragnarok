@@ -11,7 +11,7 @@ import { withdrawMarketListing, type ApiMarketListing, type GameData } from '../
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
-import { MarketThumb, dexNoLabel } from './marketShared';
+import { RollBar, MarketThumb, PriceTag, dexNoLabel } from './marketShared';
 
 /** Whole-days since an ISO timestamp, 1-based for display ("day 1" the
  * moment it is listed) to match the mock's 出品N日目. */
@@ -34,10 +34,14 @@ interface MinePaneProps {
   listings: ApiMarketListing[];
   gameData: GameData | null;
   locale: Locale;
+  /** REQ-0195a: live TM registry ids -- the row price shows the TM short
+   * label once more than one TM is live. */
+  tms: string[];
   onWithdrawn: () => Promise<void>;
 }
 
-export function MinePane({ listings, gameData, locale, onWithdrawn }: MinePaneProps) {
+export function MinePane({ listings, gameData, locale, tms, onWithdrawn }: MinePaneProps) {
+  const multiTm = tms.length > 1;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [errKey, setErrKey] = useState<string | null>(null);
   const now = Date.now();
@@ -96,7 +100,7 @@ export function MinePane({ listings, gameData, locale, onWithdrawn }: MinePanePr
                 data-state={l.state}
               >
                 <span className="gem" />
-                <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={16} alt={name} />
+                <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={16} alt={name} kind={l.kind} />
                 <div>
                   <div className="nmrow">
                     <span className="nm dj">{name}</span>
@@ -114,9 +118,10 @@ export function MinePane({ listings, gameData, locale, onWithdrawn }: MinePanePr
                     {isExpired ? t(locale, 'market.mine.expiredSub') : null}
                     {isWithdrawn ? t(locale, 'market.mine.withdrawnSub') : null}
                   </div>
+                  <RollBar kind={l.kind} rollPct={l.rollPct} locale={locale} />
                 </div>
                 <div className="lp">
-                  <div className="price"><span className="rune">ᚠ</span><b className="tnum">×{l.price.qty}</b></div>
+                  <div className="price"><PriceTag gameData={gameData} tm={l.price.tm} multi={multiTm} /><b className="tnum">×{l.price.qty}</b></div>
                   {isSettled
                     ? <div className="burn"><span className="kw-ember">{t(locale, 'market.mine.burnN', { n: l.burn })}</span> ・ <span className="kw-gold">{t(locale, 'market.mine.getN', { n: l.sellerReceives })}</span></div>
                     : (isActive || isSuspended)

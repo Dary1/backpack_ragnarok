@@ -203,3 +203,19 @@
   .market-stepper{ flex-wrap:wrap; }
 }
 @media (min-width:520px) and (max-width:840px){ .market-grid{ grid-template-columns:repeat(2, minmax(0,1fr)); } }
+
+/* ---- REQ-0195e: the roll-fulfillment bar (min=0% .. max=100%). A slim
+   gold fill labeled with the % (rollPct*100); a unit with no measured
+   roll (REQ-0196 container empty) shows the "unmeasured" badge instead of
+   a 0% bar (user ruling 2026-07-16); tm listings render nothing. ---- */
+.market-rollbar{ position:relative; height:11px; margin-top:5px; border-radius:999px;
+  background:rgba(10,13,18,.72); border:1px solid var(--border-lo); overflow:hidden; }
+.market-rollbar-fill{ position:absolute; left:0; top:0; bottom:0; border-radius:999px;
+  background:linear-gradient(90deg, rgba(201,169,89,.5), var(--gold)); box-shadow:0 0 8px rgba(201,169,89,.25); }
+.market-rollbar-label{ position:absolute; right:6px; top:50%; transform:translateY(-50%);
+  font-family:var(--f-den); font-size:9px; letter-spacing:.08em; color:var(--bone); text-shadow:0 1px 2px #000; }
+.market-rollbadge{ display:inline-block; margin-top:5px; padding:1px 8px; border-radius:999px;
+  font-size:10px; letter-spacing:.1em; color:var(--bone-3); border:1px solid var(--border-lo);
+  background:rgba(10,13,18,.5); text-transform:uppercase; }
+.lrow .market-rollbar, .lrow .market-rollbadge{ max-width:180px; }
+.market-modal-item .market-rollbar{ max-width:220px; }
