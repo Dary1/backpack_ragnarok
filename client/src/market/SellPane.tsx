@@ -36,11 +36,18 @@ interface SellableItem {
  * server's own "sellable = inventory PO" definition. Board/squad items
  * (state.pos / squads.store) are deliberately excluded: those are the
  * deployed/placed set the server refuses. */
-function collectSellable(state: GameState | null, gameData: GameData | null, kind: 'po' | 'si'): SellableItem[] {
+function collectSellable(state: GameState | null, gameData: GameData | null, kind: 'po' | 'si' | 'unit'): SellableItem[] {
   if (!state || !state.inv || !Array.isArray(state.inv.pages)) return [];
   const out: SellableItem[] = [];
   for (const pg of state.inv.pages) {
-    if (kind === 'si') {
+    if (kind === 'unit') {
+      for (const b of pg.bps || []) {
+        const bb = b as { id: string; name?: string; unit?: { id: string } };
+        const unitId = bb.unit?.id ?? '';
+        const d = (gameData?.UNITS?.[unitId] ?? null) as { name?: string; rarity?: string } | null;
+        out.push({ itemUid: bb.id, itemId: unitId || bb.id, name: (d?.name ?? bb.name) ?? bb.id, nameJa: '', rarity: d?.rarity ?? '', dims: '', tags: [] });
+      }
+    } else if (kind === 'si') {
       for (const a of pg.sis || []) {
         const d = gameData?.SI_DEFS?.[a.id] ?? null;
         out.push({ itemUid: a.uid, itemId: a.id, name: d?.name ?? a.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims: '', tags: [] });
@@ -74,8 +81,8 @@ interface SellPaneProps {
 }
 
 export function SellPane({ state, gameData, locale, tms, allListings, listedUids, onListed }: SellPaneProps) {
-  const [sellKind, setSellKind] = useState<'po' | 'si' | 'tm'>('po');
-  const sellable = useMemo(() => collectSellable(state, gameData, sellKind === 'si' ? 'si' : 'po'), [state, gameData, sellKind]);
+  const [sellKind, setSellKind] = useState<'po' | 'si' | 'unit' | 'tm'>('po');
+  const sellable = useMemo(() => collectSellable(state, gameData, sellKind === 'tm' ? 'po' : sellKind), [state, gameData, sellKind]);
   const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(1);
@@ -153,7 +160,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     setBusy(true);
     setErrKey(null);
     try {
-      await createMarketListing({ kind: sellKind === 'si' ? 'si' : 'po', itemUid: selected.itemUid, price: { tm: priceTm, qty: price } });
+      await createMarketListing({ kind: sellKind === 'tm' ? 'po' : sellKind, itemUid: selected.itemUid, price: { tm: priceTm, qty: price } });
       setToast(t(locale, 'market.sell.listedToast'));
       setSelectedUid(null);
       await onListed(); // refetch mine/browse so the new listing appears + the item grays out here
@@ -197,6 +204,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     <div className="mtabs market-sell-kindtabs" data-testid="market-sell-kindtabs">
       <span className={`mtab${sellKind === 'po' ? ' is-on' : ''}`} data-testid="market-sell-kind-po" role="button" tabIndex={0} onClick={() => setSellKind('po')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('po'); } }}>{t(locale, 'market.sell.kindPo')}</span>
       <span className={`mtab${sellKind === 'si' ? ' is-on' : ''}`} data-testid="market-sell-kind-si" role="button" tabIndex={0} onClick={() => setSellKind('si')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('si'); } }}>{t(locale, 'market.sell.kindSi')}</span>
+      <span className={`mtab${sellKind === 'unit' ? ' is-on' : ''}`} data-testid="market-sell-kind-unit" role="button" tabIndex={0} onClick={() => setSellKind('unit')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('unit'); } }}>{t(locale, 'market.sell.kindUnit')}</span>
       <span className={`mtab${sellKind === 'tm' ? ' is-on' : ''}`} data-testid="market-sell-kind-tm" role="button" tabIndex={0} onClick={() => setSellKind('tm')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('tm'); } }}>{t(locale, 'market.sell.kindTm')}</span>
     </div>
   );

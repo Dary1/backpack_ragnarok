@@ -22,7 +22,8 @@ import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { t } from '../i18n';
 import { cachedFetchContent } from '../lib/contentCache';
 import { itemKindOf } from '../lib/itemContent';
-import { firstFitOrMergeTM, firstFitPlace } from '../lib/placement';
+import type { ApiRolledBp } from '../api';
+import { firstFitOrMergeTM, firstFitPlace, firstFitPlaceBp, type BpPlacementResult, type PlacementResult } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
@@ -169,11 +170,20 @@ export function useWarehouseData(locale: Locale) {
       // new stack (see firstFitOrMergeTM's own doc above) -- rather than
       // firstFitPlace's plain po/si first-fit (which has no merge
       // concept at all).
-      const kind = claimed.kind === 'tm' ? 'tm' : itemKindOf(content, claimed.itemId);
+      const kind = claimed.kind === 'tm' ? 'tm' : claimed.kind === 'bp' ? 'bp' : itemKindOf(content, claimed.itemId);
       const openPage = snapshot.activeInvPage;
-      const placed = kind === 'tm'
+      // REQ-0195d: a bought unit (BP) row places via firstFitPlaceBp (the
+      // Workshop's own claim path), reconstructing an ApiRolledBp from the
+      // verbatim payload; the remaining instance fields are merged back below.
+      const bpPayload = claimed.bp;
+      const rolled: ApiRolledBp | null = kind === 'bp' && bpPayload
+        ? { uid: claimed.itemUid, shape: bpPayload.shape, unit: bpPayload.unit, hpMax: bpPayload.hpMax, cellCount: bpPayload.cellCount ?? bpPayload.shape.length, bonuses: bpPayload.bonuses as ApiRolledBp['bonuses'] }
+        : null;
+      const placed: PlacementResult | BpPlacementResult | null = kind === 'tm'
         ? firstFitOrMergeTM(engine, state, claimed.itemUid, claimed.itemId, claimed.qty ?? 1, openPage, engine.PAGE_COUNT)
-        : firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
+        : kind === 'bp'
+          ? (rolled ? firstFitPlaceBp(engine, state, rolled, openPage, engine.PAGE_COUNT) : null)
+          : firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
 
       if (!placed) {
         // No space anywhere -- per the REQ's own accepted design, leave
@@ -192,8 +202,25 @@ export function useWarehouseData(locale: Locale) {
       // renderer this tab's embedded board IS (see board/
       // inventoryRenderer.ts's doc for why a module-level accessor is
       // the seam here, per the REQ-0041 Pixi-instance reuse decision).
+      // REQ-0195d: firstFitPlaceBp sets only id/name/color/shape/origin/
+      // unit/hpMax -- restore the rest of the verbatim BP instance so the
+      // bought unit stays byte-faithful (never re-rolled).
+      if (kind === 'bp' && bpPayload) {
+        const placedBp = state.inv.pages[(placed as BpPlacementResult).page].bps.find((b) => b.id === claimed.itemUid) as Record<string, unknown> | undefined;
+        if (placedBp) {
+          if (bpPayload.name != null) placedBp.name = bpPayload.name;
+          if (bpPayload.color != null) placedBp.color = bpPayload.color;
+          if (bpPayload.cellCount != null) placedBp.cellCount = bpPayload.cellCount;
+          if (bpPayload.bonuses != null) placedBp.bonuses = bpPayload.bonuses;
+          if (bpPayload.roll != null) placedBp.roll = bpPayload.roll;
+        }
+      }
       const renderer = getInventoryRenderer();
-      const cells = kind === 'po' ? engine.cellsOfIn(state.inv.pages[placed.page].pos.find((p) => p.uid === claimed.itemUid)!) : [placed.cell];
+      const cells = kind === 'po'
+        ? engine.cellsOfIn(state.inv.pages[placed.page].pos.find((p) => p.uid === claimed.itemUid)!)
+        : kind === 'bp'
+          ? engine.bpCells({ shape: (rolled as ApiRolledBp).shape, origin: (placed as BpPlacementResult).origin } as Parameters<typeof engine.bpCells>[0])
+          : [(placed as PlacementResult).cell];
       // (kind 'si' and 'tm' both fall through to the [placed.cell]
       // branch above -- both are always exactly 1x1, same as an SI.)
       // Only pulse if the placement landed on the CURRENTLY-DISPLAYED

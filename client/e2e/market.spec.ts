@@ -395,6 +395,36 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_si_1' && l.kind === 'si')).toBeTruthy();
   });
 
+  test('BROWSE+BUY: a unit (BP) listing is visible with kind:unit and buying delivers a kind:bp warehouse row carrying the verbatim payload (REQ-0195d)', async ({ page }) => {
+    // Discover a live unit id from the content payload (content-agnostic).
+    const content = await (await page.request.get('/api/content')).json();
+    const unitId = Object.keys((content.units ?? {}) as Record<string, unknown>)[0];
+    test.skip(!unitId, 'no unit content available in this environment');
+    // A seller lists an EMPTY inventory BP (nothing homed within its footprint).
+    const seller = mintInvite('unit-seller');
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].bps = [{ id: 'e2e_unit_1', name: 'BP', color: '#888', shape: [[0, 0], [0, 1]], origin: [3, 3], unit: { id: unitId, off: [0, 0] }, hpMax: 42, cellCount: 2, bonuses: [] }] as never;
+    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { headers: { 'X-Auth-Token': seller.token }, data: canvas });
+    expect(put.ok()).toBeTruthy();
+    const listRes = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'unit', itemUid: 'e2e_unit_1', price: { tm: 'lrdst', qty: 11 } } });
+    expect(listRes.status()).toBe(200);
+    const created = await listRes.json();
+    expect(created.listing.kind).toBe('unit');
+    expect(created.listing.itemId).toBe(unitId);
+    // Visible in the browse with kind:unit.
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_unit_1' && l.kind === 'unit')).toBeTruthy();
+    // The dev buyer (funded) buys it -> a kind:bp warehouse row with the verbatim BP payload.
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, []) });
+    const buyRes = await page.request.post(`/api/market/listings/${created.listing.id}/buy`);
+    expect(buyRes.status()).toBe(200);
+    const wh = await (await page.request.get('/api/warehouse')).json();
+    const row = (wh.items as Array<{ kind?: string; bp?: { unit?: { id?: string }; hpMax?: number }; sourceListingId?: string }>).find((it) => it.sourceListingId === created.listing.id);
+    expect(row?.kind).toBe('bp');
+    expect(row?.bp?.unit?.id).toBe(unitId);
+    expect(row?.bp?.hpMax).toBe(42);
+  });
+
   test('SELL: the tm (currency) tab reflects the single-live-TM reality -- lrdst held, no other currency to price in; same_tm is 400 (REQ-0195b)', async ({ page }) => {
     // API: pricing a TM in itself -> 400 {reason:'same_tm'} (user ruling).
     const sameTm = await page.request.post('/api/market/listings', { data: { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } } });
