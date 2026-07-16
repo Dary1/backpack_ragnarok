@@ -17,7 +17,7 @@ import { t } from '../i18n';
 import type { GameState } from '../engine/engine.d.ts';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
-import { MarketThumb, burnOf, dexNoLabel, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
+import { MarketThumb, PriceTag, burnOf, dexNoLabel, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
 
 /** One sellable inventory instance (PO or SI), with display fields
  * precomputed off the right def map so the picker/carve never touch the
@@ -44,8 +44,12 @@ function collectSellable(state: GameState | null, gameData: GameData | null, kin
       for (const b of pg.bps || []) {
         const bb = b as { id: string; name?: string; unit?: { id: string } };
         const unitId = bb.unit?.id ?? '';
+        // F3: a BP with no unit id has nothing to list as kind:unit (the
+        // server 400s on a unit listing without a unit) -- skip it rather
+        // than offer a card that can only fail on list.
+        if (!unitId) continue;
         const d = (gameData?.UNITS?.[unitId] ?? null) as { name?: string; rarity?: string } | null;
-        out.push({ itemUid: bb.id, itemId: unitId || bb.id, name: (d?.name ?? bb.name) ?? bb.id, nameJa: '', rarity: d?.rarity ?? '', dims: '', tags: [] });
+        out.push({ itemUid: bb.id, itemId: unitId, name: (d?.name ?? bb.name) ?? bb.id, nameJa: '', rarity: d?.rarity ?? '', dims: '', tags: [] });
       }
     } else if (kind === 'si') {
       for (const a of pg.sis || []) {
@@ -84,6 +88,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   const [sellKind, setSellKind] = useState<'po' | 'si' | 'unit' | 'tm'>('po');
   const sellable = useMemo(() => collectSellable(state, gameData, sellKind === 'tm' ? 'po' : sellKind), [state, gameData, sellKind]);
   const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
+  const multiTm = tms.length > 1; // REQ-0195a: with >1 live TM, prices carry the TM's short label (a lone rune would be ambiguous).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(1);
   const [priceText, setPriceText] = useState<string>('1');
@@ -193,6 +198,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
       await createMarketListing({ kind: 'tm', itemId: soldTm, tmQty, price: { tm: tmPriceTm, qty: price } });
       setToast(t(locale, 'market.sell.listedToast'));
       setSoldTm(null);
+      setTmQty(1); // F4: reset the tm sell form after a successful listing (mirrors the po path clearing its selection).
       await onListed();
     } catch (e) {
       setErrKey(marketErrorKey(e));
@@ -260,11 +266,11 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
               </div>
               <div className="stepper market-stepper">
                 <button type="button" className="sbtn" data-testid="market-tmprice-down" aria-label={t(locale, 'market.sell.priceDown')} onClick={() => applyPrice(price - 1)}>−</button>
-                <span className="sval"><span className="rune">ᚠ</span><b className="tnum" data-testid="market-tmprice-val">{price}</b></span>
+                <span className="sval"><PriceTag gameData={gameData} tm={tmPriceTm ?? priceTm} multi={multiTm} /><b className="tnum" data-testid="market-tmprice-val">{price}</b></span>
                 <button type="button" className="sbtn" data-testid="market-tmprice-up" aria-label={t(locale, 'market.sell.priceUp')} onClick={() => applyPrice(price + 1)}>+</button>
               </div>
               <div className="est market-est">
-                <span data-testid="market-tm-est-line">{t(locale, 'market.sell.estPay')} <b className="tnum">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum">{price - burn}</b></span>
+                <span data-testid="market-tm-est-line">{t(locale, 'market.sell.estPay')} <b className="tnum">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum">{price - burn}</b>{multiTm ? <>{' '}<PriceTag gameData={gameData} tm={tmPriceTm ?? priceTm} multi /></> : null}</span>
               </div>
               <div className="mt16">
                 <button type="button" className="btn btn-forge" data-testid="market-tm-list-btn" disabled={busy} onClick={() => void listTm()}>
@@ -364,7 +370,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
               <div className="stepper market-stepper">
                 <button type="button" className="sbtn" data-testid="market-price-down" aria-label={t(locale, 'market.sell.priceDown')} onClick={() => applyPrice(price - 1)}>−</button>
                 <span className="sval">
-                  <span className="rune">ᚠ</span>
+                  <PriceTag gameData={gameData} tm={priceTm} multi={multiTm} />
                   <input
                     type="text"
                     inputMode="numeric"
@@ -389,7 +395,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
               <div className="est market-est">
                 <span className="lbl">{t(locale, 'market.sell.estLabel')}</span>
                 <span data-testid="market-est-line">
-                  {t(locale, 'market.sell.estPay')} <b className="tnum" data-testid="market-est-pay">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum" data-testid="market-est-burn">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum" data-testid="market-est-get">{price - burn}</b>
+                  {t(locale, 'market.sell.estPay')} <b className="tnum" data-testid="market-est-pay">{price}</b> → <span className="kw-ember">{t(locale, 'market.sell.estBurn')} <b className="tnum" data-testid="market-est-burn">{burn}</b></span> ・ {t(locale, 'market.sell.estGet')} <b className="kw-gold tnum" data-testid="market-est-get">{price - burn}</b>{multiTm ? <>{' '}<PriceTag gameData={gameData} tm={priceTm} multi /></> : null}
                 </span>
               </div>
               <div className="mt16">

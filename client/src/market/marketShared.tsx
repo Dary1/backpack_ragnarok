@@ -24,6 +24,31 @@ export function burnOf(qty: number): number {
 export const MARKET_PRICE_MIN = 1;
 export const MARKET_PRICE_MAX = 999;
 
+/** REQ-0195a: the short label for a TM id -- the content tms def's `short`
+ * (e.g. 'LRDST'), falling back to the id upper-cased when that def is not
+ * in the loaded content map. */
+export function tmShortLabel(gameData: GameData | null, tm: string): string {
+  const short = gameData?.TMS?.[tm]?.short;
+  return typeof short === 'string' && short ? short : tm.toUpperCase();
+}
+
+/** REQ-0195a: the price currency indicator. Renders the classic fehu rune
+ * (ᚠ) for the mock look, and -- WHEN more than one TM is live -- ALWAYS
+ * follows it with the price TM's short label, because a lone rune is
+ * ambiguous once prices can be carved in different TMs (the whole point of
+ * REQ-0195a). With exactly one live TM the output is byte-for-byte today's
+ * lone rune (mock look + existing e2e stay stable). Dropped in wherever a
+ * bare `ᚠ` price glyph appeared before. */
+export function PriceTag({ gameData, tm, multi }: { gameData: GameData | null; tm: string; multi: boolean }) {
+  if (!multi) return <span className="rune">ᚠ</span>;
+  return (
+    <>
+      <span className="rune">ᚠ</span>
+      <span className="market-price-tm" data-testid="market-price-tm">{tmShortLabel(gameData, tm)}</span>
+    </>
+  );
+}
+
 /** The item def (icon/shape/rarity/tags) for a listing's content itemId,
  * resolved off the store's already-loaded /api/content map -- exactly the
  * "the full item def still comes from fetchContent()'s items map by

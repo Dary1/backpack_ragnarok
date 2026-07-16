@@ -192,6 +192,7 @@ export function MarketPage({ locale }: MarketPageProps) {
               listings={browse}
               gameData={snapshot.gameData}
               locale={locale}
+              tms={marketTms}
               balanceOf={balanceOf}
               myPlayerId={myPlayerId}
               activeChip={activeChip}
@@ -217,6 +218,7 @@ export function MarketPage({ locale }: MarketPageProps) {
               listings={mine}
               gameData={snapshot.gameData}
               locale={locale}
+              tms={marketTms}
               onWithdrawn={refreshAfterServerMutation}
             />
           ) : null}
@@ -239,6 +241,7 @@ export function MarketPage({ locale }: MarketPageProps) {
           listing={buyTarget}
           gameData={snapshot.gameData}
           locale={locale}
+          tms={marketTms}
           balance={balanceOf(buyTarget.price.tm)}
           onSettled={refreshAfterServerMutation}
           onClose={() => setBuyTarget(null)}

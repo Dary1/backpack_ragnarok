@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import type { ApiMarketListing, GameData } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
-import { RollBar, MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
+import { RollBar, MarketThumb, PriceTag, dexNoLabel, listingKindLine } from './marketShared';
 
 /** The chip vocabulary. TAG chips carry a `match` value compared
  * (lowercased) against each listing's tags[]/rarity, and KIND chips
@@ -79,6 +79,9 @@ interface BuyPaneProps {
   listings: ApiMarketListing[];
   gameData: GameData | null;
   locale: Locale;
+  /** REQ-0195a: the live TM registry ids -- the card price shows the TM's
+   * short label once MORE THAN ONE is live (a lone rune is ambiguous). */
+  tms: string[];
   /** REQ-0195a: spendable balance for a given TM id -- buy affordability
    * is checked per listing against its OWN price.tm. */
   balanceOf: (tm: string) => number;
@@ -90,7 +93,8 @@ interface BuyPaneProps {
   onBuy: (listing: ApiMarketListing) => void;
 }
 
-export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, activeChip, query, onChipChange, onQueryChange, onBuy }: BuyPaneProps) {
+export function BuyPane({ listings, gameData, locale, tms, balanceOf, myPlayerId, activeChip, query, onChipChange, onQueryChange, onBuy }: BuyPaneProps) {
+  const multiTm = tms.length > 1;
   // Content-bound chips: keep only those whose value is present in some
   // live listing (plus 'all'), so the row reflects the real hearth.
   const visibleChips = useMemo(() => {
@@ -190,7 +194,7 @@ export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, act
                 </div>
                 <div className="prow">
                   <div className="grow">
-                    <div className="price"><span className="rune">ᚠ</span><span className="pnm">{t(locale, 'market.currencyName')}</span><b className="tnum">×{l.price.qty}</b></div>
+                    <div className="price"><PriceTag gameData={gameData} tm={l.price.tm} multi={multiTm} /><span className="pnm">{t(locale, 'market.currencyName')}</span><b className="tnum">×{l.price.qty}</b></div>
                     <div className="burn">{t(locale, 'market.burnLine', { pay: l.price.qty, burn: l.burn, get: l.sellerReceives })}</div>
                   </div>
                   {buyable ? (
