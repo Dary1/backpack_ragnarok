@@ -49,6 +49,8 @@ export function VariantCard(props: {
   /** REQ-0182b: the def's system_name = the served item id. The grant-to-
    * warehouse button (relocated here from the retired Dex Edit form) posts it. */
   systemName?: string;
+  /** REQ-0184 (monster_pack): member footprints resolved from linked art. */
+  entityFootprints?: Record<string, unknown> | null;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { v, kind, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
@@ -120,7 +122,7 @@ export function VariantCard(props: {
               : <span className="ca-vcard-art-ph">◇</span>}
           </span>
         )}
-        <EntityPreview kind={kind} data={v.data} idBase={no} artUrl={props.entityArtUrl} />
+        <EntityPreview kind={kind} data={v.data} idBase={no} artUrl={props.entityArtUrl} footprints={props.entityFootprints} />
       </div>
 
       <div data-testid={'checks-' + no} className="ca-checks">

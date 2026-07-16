@@ -395,3 +395,46 @@
 }
 .ca-vcard-art img { width: 100%; height: 100%; object-fit: cover; }
 .ca-vcard-art-ph { color: var(--gold-lo); font-size: 13px; }
+
+/* ---- REQ-0184: monster_pack board ------------------------------------
+   A pack is a LAYOUT, so it is drawn as the field it is fought on: 26x18,
+   with the 24x16 placeable area (B2:Y17) solid and the 1-cell margin dimmed
+   OUTSIDE it. An occupied margin cell is drawn `is-illegal` in the warn
+   colour -- that is precisely the pre-REQ-0184 state (every pack stood at
+   A1) and it should be impossible to look at without noticing. */
+.ca-ep-board {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  margin: 6px 0;
+  background: var(--surface-2, #1a1a1a);
+  border: 1px solid var(--line, #333);
+  border-radius: 4px;
+  line-height: 0;
+}
+.ca-ep-brow { display: flex; gap: 1px; }
+.ca-ep-bcell {
+  width: 10px; height: 10px;
+  background: var(--surface-3, #262626);
+  border-radius: 1px;
+}
+.ca-ep-bcell.is-margin { background: transparent; box-shadow: inset 0 0 0 1px var(--line, #2a2a2a); }
+.ca-ep-bcell.is-occ { background: var(--accent, #6ea8fe); }
+.ca-ep-bcell.is-occ.is-illegal { background: var(--warn, #e0a030); }
+.ca-ep-members { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.ca-ep-member {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 1px 6px;
+  background: var(--surface-2, #1a1a1a);
+  border: 1px solid var(--line, #333);
+  border-radius: 10px;
+}
+.ca-ep-member-id { font-size: 11px; }
+.ca-ep-member-at { font-size: 10px; opacity: 0.75; }
+.ca-ep-member-at.is-bad { color: var(--warn, #e0a030); opacity: 1; }
+.ca-ep-chip--warn { color: var(--warn, #e0a030); border-color: var(--warn, #e0a030); }
+
+/* REQ-0184: a member's footprint, and whether it was RESOLVED from art or guessed. */
+.ca-ep-member-fp { font-size: 10px; opacity: 0.6; }
+.ca-ep-member-fp.is-guess { color: var(--warn, #e0a030); opacity: 1; }

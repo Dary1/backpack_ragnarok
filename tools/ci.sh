@@ -120,6 +120,13 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # as the unit-icon gate above, so it sits beside it, in front of the build.
   echo "==== [5.7/7] client link-trace queries (REQ-0142) ===="
   (cd client && node scripts/check_link_trace.mjs)
+  # REQ-0184: the monster_pack board's footprint resolution. A monster's cell size
+  # lives in TWO vocabularies -- enemy/1 footprint [fh,fw] (what the sim places by)
+  # and artwork shape {w,h} (what the art is generated at) -- and the board crosses
+  # that transpose on every member. Pure functions, no browser: same vite rig and
+  # the same reason as the two gates above, so it sits beside them.
+  echo "==== [5.75/7] client monster_pack board footprints (REQ-0184) ===="
+  (cd client && node scripts/check_pack_board.mjs)
   # REQ-0059: circuit-chimes deterministic event->note mapping (+ prefs).
   # Pure functions, no browser/Pixi/AudioContext -- same vite-ssrLoadModule
   # rig as the two gates above, so it sits beside them in front of the build.

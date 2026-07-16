@@ -15,7 +15,8 @@
 import { ShapeGrid } from '../dex/ShapeGrid';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
 import type { IconAlign } from '../engine/engine.d.ts';
-import { rarityClass, entityShape, jaField, effectLine, packPool, poolChances } from './contentShared';
+import { rarityClass, entityShape, jaField, effectLine, packPool, poolChances,
+  packMembers, cellsFor, formatA1, isPlaceable, FIELD_COLS, FIELD_ROWS, PLACEABLE } from './contentShared';
 
 type Data = Record<string, unknown>;
 
@@ -129,7 +130,7 @@ function ArtSourceLabel({ registry, idBase }: { registry: boolean; idBase: strin
   );
 }
 
-export function EntityPreview({ kind, data, idBase, compact, artUrl }: {
+export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints }: {
   kind: string;
   data: Data;
   idBase: string | number;
@@ -139,6 +140,12 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl }: {
    * own live artwork resolution; absent on surfaces that don't resolve art
    * (they show the sprite + label accordingly). */
   artUrl?: string | null;
+  /** REQ-0184 (monster_pack): enemy id -> footprint [fh,fw], resolved from each
+   * monster's LINKED ARTWORK (artworks.shape {w,h} is the cell grid). Members
+   * absent from the map are drawn 1x1 AND labelled as guesses -- an unlabelled
+   * 1x1 boss would be a preview that lies about the very thing this kind exists
+   * to show. Built by contentShared buildMemberFootprints(). */
+  footprints?: Record<string, unknown> | null;
 }) {
   const testid = 'entity-preview-' + idBase;
   const fbTestid = 'entity-fallback-' + idBase;
@@ -271,6 +278,95 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl }: {
         ) : (
           <div className="ca-ep-muted" data-testid="cd-ep-pool-empty">(empty pool — this pack can emit nothing)</div>
         )}
+        <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
+      </div>
+    );
+  }
+
+  // ---- monster_pack (monster_pack/1): the pack AS A BOARD
+  // REQ-0184. WHERE each monster stands is the whole point of the kind, so a pack
+  // is rendered as the 26x18 field it is fought on, with the 24x16 placeable area
+  // (B2:Y17) marked and the 1-cell margin visibly outside it. This is the surface
+  // that makes the pre-REQ-0184 bug obvious at a glance: a pack sitting on the
+  // margin reads as monsters standing in the gutter.
+  //
+  // HONEST LIMIT: a member's occupied cells derive from its enemy def's footprint,
+  // and the contentadmin does not hold the monster roster client-side (it has the
+  // def LIST, not every def's adopted data). Rather than draw a 3x3 boss as a
+  // single cell and let the desk believe it, the board draws anchors at 1x1 and
+  // SAYS so. `footprints` lets any caller that can resolve them get the true
+  // shape. See the REQ's "Honest gap".
+  if (kind === 'monster_pack') {
+    const consumed = new Set<string>(['id', 'name', 'name_ja', 'i18n', 'members', 'note']);
+    const members = packMembers(data);
+    // REQ-0184: a member's footprint comes from its monster's LINKED ARTWORK
+    // (artworks.shape {w,h} IS the cell grid -- art_sizing.cjs). Resolution is
+    // PER MEMBER, not all-or-nothing: a pack can mix monsters that have art with
+    // monsters that do not, and the board says exactly which ones it had to guess.
+    const fpOf = (enemy: string): unknown => (footprints && footprints[enemy]) || [1, 1];
+    const unresolved = members.filter((m) => !(footprints && footprints[m.enemy]));
+    const resolvedCount = members.length - unresolved.length;
+    // cell key -> member index. Later members win the DRAW; the server's overlap
+    // check is what actually fails the variant.
+    const occ = new Map<string, number>();
+    for (let i = 0; i < members.length; i++) {
+      const m = members[i];
+      if (!m.anchor) continue;
+      for (const [r, c] of cellsFor(m.anchor, fpOf(m.enemy))) occ.set(r + ',' + c, i);
+    }
+    const bad = members.filter((m) => !m.anchor);
+    const outside = members.filter((m) => m.anchor && !isPlaceable(m.anchor.row, m.anchor.col));
+    const rows = [];
+    for (let r = 1; r <= FIELD_ROWS; r++) {
+      const cs = [];
+      for (let c = 1; c <= FIELD_COLS; c++) {
+        const who = occ.get(r + ',' + c);
+        const inArea = isPlaceable(r, c);
+        const cls2 = 'ca-ep-bcell'
+          + (inArea ? '' : ' is-margin')
+          + (who !== undefined ? ' is-occ' : '')
+          + (who !== undefined && !inArea ? ' is-illegal' : '');
+        cs.push(
+          <span key={c} className={cls2} data-testid={who !== undefined ? 'cd-ep-board-occ' : undefined}
+            data-cell={formatA1(r, c)} data-enemy={who !== undefined ? members[who].enemy : undefined}
+            title={who !== undefined ? members[who].enemy + ' @ ' + members[who].at : formatA1(r, c)} />,
+        );
+      }
+      rows.push(<div key={r} className="ca-ep-brow">{cs}</div>);
+    }
+    return (
+      <div data-testid={testid} className={cls}>
+        <div className="ca-ep-headtext">
+          <Names data={data} />
+          <div className="ca-ep-chips">
+            <span className="ca-ep-chip">{members.length} monster{members.length === 1 ? '' : 's'}</span>
+            <span className="ca-ep-chip">field {FIELD_COLS}x{FIELD_ROWS}</span>
+            <span className="ca-ep-chip">placeable {formatA1(PLACEABLE.rowMin, PLACEABLE.colMin)}:{formatA1(PLACEABLE.rowMax, PLACEABLE.colMax)}</span>
+            {resolvedCount > 0
+              ? <span className="ca-ep-chip" data-testid="cd-ep-fp-from-art">{resolvedCount}/{members.length} footprint{resolvedCount === 1 ? '' : 's'} from art</span>
+              : null}
+            {unresolved.length > 0
+              ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-fp-unresolved"
+                  title={'no linked artwork: ' + Array.from(new Set(unresolved.map((m) => m.enemy))).join(', ')}>
+                  {unresolved.length} drawn 1x1 (no art)
+                </span>
+              : null}
+            {outside.length > 0 ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-board-outside">{outside.length} outside the placeable area</span> : null}
+            {bad.length > 0 ? <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-board-badat">{bad.length} malformed anchor</span> : null}
+          </div>
+        </div>
+        <div className="ca-ep-board" data-testid="cd-ep-board">{rows}</div>
+        <div className="ca-ep-members" data-testid="cd-ep-members">
+          {members.map((m, i) => (
+            <span key={i} className="ca-ep-member" data-testid="cd-ep-member" data-enemy={m.enemy}>
+              <b className="ca-ep-member-id">{m.enemy}</b>
+              <span className={'ca-ep-member-at tnum' + (m.anchor ? '' : ' is-bad')}>{m.at || '(no at)'}</span>
+              {footprints && footprints[m.enemy]
+                ? <span className="ca-ep-member-fp t-micro">{(footprints[m.enemy] as number[])[1]}x{(footprints[m.enemy] as number[])[0]}</span>
+                : <span className="ca-ep-member-fp t-micro is-guess" title="no linked artwork -- drawn 1x1">1x1?</span>}
+            </span>
+          ))}
+        </div>
         <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
       </div>
     );

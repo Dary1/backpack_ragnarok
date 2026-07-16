@@ -32,6 +32,12 @@ const SKILL_SCHEMA = skills.schema;             // 'skill/1'
 const ENEMY_SCHEMA = enemies.schema;            // 'enemy/1' -- the def's schema_ref (set by the backfill)
 const GOOD_ENEMY = enemies.entries[0];
 const GOOD_PO = liveItems.entries.find((e) => e.effects && e.effects.length);
+// REQ-0184: monster_pack/1 is the FOURTH dialect -- a composition of monsters and
+// WHERE each stands. Its rules are geometry + references, not vocab words.
+const monsterPacks = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'packs.json'), 'utf8'));
+const PACK_SCHEMA = monsterPacks.schema;        // 'monster_pack/1'
+const GOOD_MPACK = monsterPacks.entries[0]; // NOT GOOD_PACK -- that is REQ-0171's GACHA pack fixture below
+const mpackClone = () => JSON.parse(JSON.stringify(GOOD_MPACK));
 const PO_SCHEMA = liveItems.schema;             // 'po/2'
 
 let pass = 0, fail = 0;
@@ -310,6 +316,115 @@ T('REQ-0171 unit_def: the 12 LIVE roster defs pass all applicable checks', () =>
     const r = checks.runChecks('unit_def', 'unit/1', clone(e));
     assert.strictEqual(r.overall, 'PASS', e.id + ': ' + JSON.stringify(r.checks.filter((c) => !c.ok)));
   }
+});
+
+// =====================================================================
+// REQ-0184 gate G2: the monster_pack/1 machine checks.
+//
+// A pack's closed vocabulary is the LIVE MONSTER ROSTER plus the field's own
+// geometry, and BOTH rules are the ones sim/lib/packs.cjs actually places from
+// (shared/content_validate.cjs validateMonsterPackEntry, reused not re-copied).
+// So these tests pin something sharper than "the checker is strict": they pin
+// that the checker and the PLACER agree. A layout the admin blesses is a layout
+// the sim will honour, cell for cell.
+// =====================================================================
+
+T('REQ-0184 positive: every live monster_pack/1 entry PASSes with its data untouched', () => {
+  for (const pack of monsterPacks.entries) {
+    const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
+    assert.strictEqual(r.overall, 'PASS', pack.id + ' must PASS, got ' + r.overall + ': ' + JSON.stringify(r.checks));
+  }
+});
+
+T('REQ-0184 honesty: an anchor in the MARGIN fails schema_vocab BY NAME (the bug this REQ found)', () => {
+  const p = mpackClone();
+  p.members[0].at = 'A1'; // exactly where every pack stood before this REQ
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  assert.strictEqual(r.overall, 'FAIL', 'a margin anchor must FAIL');
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(!sv.ok, 'schema_vocab is the check that must own this');
+  assert.ok(/outside the placeable area B2:Y17/.test(sv.detail), 'the error must name the placeable area, got: ' + sv.detail);
+});
+
+T('REQ-0184 honesty: a footprint that OVERRUNS the edge fails, not just the anchor', () => {
+  const p = mpackClone();
+  p.members = [{ enemy: 'frostback_bear', at: 'Y17' }]; // anchor is legal; its 2x2 is not
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  assert.strictEqual(r.overall, 'FAIL', 'an overrunning footprint must FAIL');
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(/outside the placeable area/.test(sv.detail), 'must name the bound, got: ' + sv.detail);
+});
+
+T('REQ-0184 honesty: two members on one cell FAIL, and the error names BOTH', () => {
+  const p = mpackClone();
+  p.members = [{ enemy: 'frostback_bear', at: 'B2' }, { enemy: 'frost_gnoll', at: 'C3' }]; // inside the bear 2x2
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  assert.strictEqual(r.overall, 'FAIL', 'overlap must FAIL');
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(/overlaps/.test(sv.detail), 'must say overlaps: ' + sv.detail);
+  assert.ok(/frostback_bear/.test(sv.detail) && /frost_gnoll/.test(sv.detail), 'must name BOTH sides: ' + sv.detail);
+});
+
+T('REQ-0184 honesty: a member naming a monster with no live def FAILs by name', () => {
+  const p = mpackClone();
+  p.members[0].enemy = 'no_such_monster';
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  assert.strictEqual(r.overall, 'FAIL', 'a dangling monster reference must FAIL');
+  const sv = r.checks.find((c) => c.name === 'schema_vocab');
+  assert.ok(/no_such_monster/.test(sv.detail) && /no live def/.test(sv.detail), 'must name it: ' + sv.detail);
+});
+
+T('REQ-0184 honesty: a malformed A1 token FAILs (never silently parsed)', () => {
+  for (const bad of ['AA1', 'B0', '5', 'b2', '']) {
+    const p = mpackClone();
+    p.members[0].at = bad;
+    const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+    assert.strictEqual(r.overall, 'FAIL', JSON.stringify(bad) + ' must FAIL');
+  }
+});
+
+T('REQ-0184 engine_types APPLIES to monster_pack (packs.cjs really dereferences the layout)', () => {
+  const p = mpackClone();
+  p.members[0].at = 42; // a number where the placer calls parseA1
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, p);
+  const et = r.checks.find((c) => c.name === 'engine_types');
+  assert.notStrictEqual(et.applicable, false, 'engine_types must APPLY to monster_pack, unlike skill_def');
+  assert.ok(!et.ok, 'a non-string `at` must fail engine_types');
+});
+
+T('REQ-0184 honesty: gen_data/integrate are applicable:false for monster_pack, not a free PASS', () => {
+  const r = checks.runChecks('monster_pack', PACK_SCHEMA, mpackClone());
+  for (const name of ['gen_data', 'integrate']) {
+    const c = r.checks.find((x) => x.name === name);
+    assert.strictEqual(c.applicable, false, name + ' must be recorded as not-applicable, not as a green PASS');
+  }
+});
+
+T('REQ-0184 the CHECKER and the PLACER agree: blessed layout == where the sim puts them', () => {
+  // The whole point of reusing validateMonsterPackEntry. If these two ever
+  // disagree, the admin blesses one board and the player fights another.
+  const combat = require('../../sim/combat.cjs');
+  const { compileEnemyPack } = require('../../sim/lib/packs.cjs');
+  const v = require('../../shared/content_validate.cjs');
+  const enemyDefs = {};
+  for (const e of enemies.entries) enemyDefs[e.id] = e;
+  const skillDefs = {};
+  for (const sk of skills.entries) skillDefs[sk.id] = { trigger: sk.trigger, verb: sk.verb, attack_profile: sk.attack_profile, modes: sk.modes };
+  for (const pack of monsterPacks.entries) {
+    const r = checks.runChecks('monster_pack', PACK_SCHEMA, pack);
+    assert.strictEqual(r.overall, 'PASS', pack.id + ' precondition');
+    const compiled = compileEnemyPack(pack, enemyDefs, skillDefs, combat.makeRng('agree'), { rowMin: 2, colMin: 2, rowMax: 17, colMax: 25 });
+    pack.members.forEach((m, i) => {
+      const expected = v.cellsFor(v.parseA1(m.at), enemyDefs[m.enemy].footprint || [1, 1]);
+      assert.deepStrictEqual(compiled[i].fieldCells, expected,
+        pack.id + ' member ' + i + ' (' + m.enemy + '@' + m.at + '): the sim placed it somewhere the validator did not bless');
+    });
+  }
+});
+
+T('REQ-0184 the monster_pack dialect does NOT leak: po/si keep their own rules', () => {
+  const r = checks.runChecks('po_def', PO_SCHEMA, GOOD_PO);
+  assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the monster_pack dialect landed');
 });
 
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');

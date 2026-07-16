@@ -186,8 +186,19 @@ fs.mkdirSync(batchDir, { recursive: true });
 fs.writeFileSync(path.join(batchDir, 'dungeon.json'), JSON.stringify({
   schema: 'dungeon/1', id: 'test_dungeon', name: 'Test Dungeon',
   encounters: [
-    { id: 'enc_pack_1', type: 'pack', mode: 'battle', enemyPack: { enemyIds: ['weak_slime'] }, deadline_secs: 30, rewardItems: ['blade'] },
-    { id: 'enc_boss', type: 'boss', mode: 'battle', enemyPack: { enemyIds: ['weak_slime'] }, deadline_secs: 30, rewardItems: ['fx_dagger'] },
+    // REQ-0184: the fixture names its packs by id, exactly as the real dungeon.json
+    // does -- so the api fixtures exercise the packId resolution path rather than
+    // quietly staying on the legacy inline spelling the real content no longer uses.
+    { id: 'enc_pack_1', type: 'pack', mode: 'battle', enemyPack: { packId: 'pack_test_slime' }, deadline_secs: 30, rewardItems: ['blade'] },
+    { id: 'enc_boss', type: 'boss', mode: 'battle', enemyPack: { packId: 'pack_test_boss' }, deadline_secs: 30, rewardItems: ['fx_dagger'] },
+  ],
+}));
+// REQ-0184: monster_pack/1 -- anchors inside the placeable area B2:Y17.
+fs.writeFileSync(path.join(batchDir, 'packs.json'), JSON.stringify({
+  schema: 'monster_pack/1',
+  entries: [
+    { id: 'pack_test_slime', name: 'Test Slime Pack', members: [{ enemy: 'weak_slime', at: 'B2' }] },
+    { id: 'pack_test_boss', name: 'Test Boss Pack', members: [{ enemy: 'weak_slime', at: 'B2' }] },
   ],
 }));
 fs.writeFileSync(path.join(batchDir, 'enemies.json'), JSON.stringify({
@@ -245,7 +256,7 @@ fs.writeFileSync(path.join(batchDir, 'entities.json'), JSON.stringify({
 // exactly what tools/promote_dungeon_batch.cjs does to the real repo.
 const fixtureLiveDungeonDir = path.join(contentDir, 'live', 'dungeon');
 fs.mkdirSync(fixtureLiveDungeonDir, { recursive: true });
-for (const f of ['dungeon.json', 'enemies.json', 'skills.json', 'entities.json', 'formations.json', 'items.json']) {
+for (const f of ['dungeon.json', 'enemies.json', 'packs.json', 'skills.json', 'entities.json', 'formations.json', 'items.json']) { // REQ-0184: packs.json
   fs.copyFileSync(path.join(batchDir, f), path.join(fixtureLiveDungeonDir, f));
 }
 

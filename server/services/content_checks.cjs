@@ -99,9 +99,15 @@ function loadVocab(root, schema_ref) {
 // other kind gets (domain EnemySkill). engine_types / gen_data / integrate stay
 // honestly applicable:false -- skill/1 has no engine-consumed record, tool_gen_data
 // does not consume it, and it has no canvas placement.
+// REQ-0184 adds a FOURTH dialect, monster_pack/1 (content/live/dungeon/packs.json):
+// a pack carries no rarity and no stats of its own -- it is a composition of
+// monsters and WHERE each one stands. It spells its display name `name` (the
+// default), so only its own reference/geometry rules are new; those live in
+// shared/content_validate.cjs, not here.
 const DIALECTS = {
   'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
   'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
+  'monster_pack/1': { name: 'monster_pack/1', rarity_case: 'exact', range_fields: [] },
 };
 const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
@@ -224,6 +230,30 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
         }
       } catch (e) { /* live_tms unreadable -- not this check's business to fail on */ }
     }
+  } else if (kind === 'monster_pack') {
+    // REQ-0184. A pack's closed vocabulary is not vocab.json -- it is THE LIVE
+    // MONSTER ROSTER plus the field's own geometry. Both rules already exist,
+    // executable, in shared/content_validate.cjs (validateMonsterPackEntry), which
+    // is the SAME function sim/lib/packs.cjs places from. It is REUSED here, not
+    // re-implemented: two copies of "what is a legal pack layout" would drift, and
+    // a drift between the checker and the placer is the worst kind -- the admin
+    // would bless a layout the sim then puts somewhere else. (The REQ-0171 lesson,
+    // applied to geometry.)
+    const { validateMonsterPackEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let enemyDefs;
+    try {
+      const enemies = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'enemies.json'));
+      enemyDefs = {};
+      for (const e of (enemies.entries || [])) enemyDefs[e.id] = e;
+    } catch (e) {
+      errs.push('cannot read content/live/dungeon/enemies.json to resolve the members: ' + e.message);
+      enemyDefs = {};
+    }
+    try {
+      validateMonsterPackEntry(data, enemyDefs);
+    } catch (e) {
+      errs.push(e.message);
+    }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
     // pseudo-effect so the record gets the IDENTICAL vocab validation every other
@@ -270,6 +300,21 @@ function engineTypesCheck(kind, data, root, dialect) {
     }
     return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what gacha.cjs rollPackBp() consumes' : errs.join('; ') };
   }
+  // REQ-0184: a monster_pack IS consumed by runtime code (sim/lib/packs.cjs
+  // packMembers reads members[].enemy and members[].at), so like gacha_pack -- and
+  // unlike skill_def -- it has a real type surface and the check APPLIES. These are
+  // the exact field types that function dereferences; a member with no `at` is a
+  // crash inside the placer, not a content nit.
+  if (kind === 'monster_pack') {
+    const errs = [];
+    if (!Array.isArray(data.members)) errs.push('members must be an array (packMembers maps over it)');
+    else data.members.forEach((m, i) => {
+      if (!m || typeof m !== 'object') { errs.push('members[' + i + '] must be an object'); return; }
+      if (typeof m.enemy !== 'string') errs.push('members[' + i + '].enemy must be a string (indexes enemyDefsById)');
+      if (typeof m.at !== 'string') errs.push('members[' + i + '].at must be an A1 string like "F5" (parseA1 reads it)');
+    });
+    return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/lib/packs.cjs packMembers() consumes' : errs.join('; ') };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
@@ -314,6 +359,11 @@ function genDataCheck(kind, data, root) {
   // Honest applicable:false (REQ-0160 ruling Q2-sub).
   if (kind === 'skill_def') {
     return { ok: true, applicable: false, detail: 'gen_data not applicable for skill_def (tool_gen_data does not consume skill/1)' };
+  }
+  // REQ-0184: same honesty for monster_pack -- tool_gen_data has never consumed a
+  // pack composition, and a free PASS here would be a lie dressed as a green chip.
+  if (kind === 'monster_pack') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for monster_pack (tool_gen_data does not consume monster_pack/1)' };
   }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');

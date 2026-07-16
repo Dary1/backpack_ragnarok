@@ -27,6 +27,10 @@ const BATCH_DIR = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-
 const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json'), 'utf8'));
 const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
 const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
+// REQ-0184: monster_pack/1 defs -- dungeon.json's encounters name packs from here.
+const packsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'packs.json'), 'utf8'));
+const monsterPackDefsById = {};
+for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
 const enemyDefsById = {};
 for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
 const skillDefsById = {};
@@ -36,7 +40,7 @@ for (const s of skillsRaw.entries) {
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const squads = () => [scenario, scenario, scenario, scenario];
-const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
+const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
 
 // The golden matrix. Keys are stable identifiers; each entry produces
 // { def_sha256 (dungen cases only), jsonl_sha256, events } .

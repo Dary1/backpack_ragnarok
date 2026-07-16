@@ -34,7 +34,8 @@ import {
   recheckVariantApi, listArtworks,
 } from '../api';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork, defAdoptedArtUrl } from './contentShared';
+import { copyText, artworkThumbUrl, buildArtworkIndex, resolveDefArtwork, defAdoptedArtUrl,
+  buildMemberFootprints, packMembers } from './contentShared'; // REQ-0184
 import { DefRail } from './DefRail';
 import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
@@ -378,7 +379,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
                 void refreshList().then(() => doSelectDef(d.system_name));
               }} />
           ) : def && selected && draft ? (
-            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} artworksByName={artworksByName}
+            <Workspace def={def} variants={variants} artworkFacet={artworkFacet} artworksByName={artworksByName} defs={defs}
               artworks={artworks} onPickArtwork={(ref) => { void doPickArtwork(ref); }} adoptedNo={adoptedNo}
               draft={draft} onDraft={(p) => setDraft((d) => (d ? { ...d, ...p } : d))}
               dirty={dirty} onSave={() => { void doSave(); }}
@@ -429,7 +430,7 @@ export function ContentAdminPage({ locale }: { locale: Locale }) {
             onCancel={() => setConfirm(null)}>
             <div className="ca-confirm-preview">
               {confirmThumb ? <img className="ca-confirm-thumb" src={confirmThumb} alt="" /> : null}
-              <EntityPreview kind={def ? def.kind : ''} data={confirmVariant.data} idBase="confirm" compact artUrl={def ? defAdoptedArtUrl(def, artworksByName) : null} />
+              <EntityPreview kind={def ? def.kind : ''} data={confirmVariant.data} idBase="confirm" compact artUrl={def ? defAdoptedArtUrl(def, artworksByName) : null} footprints={def && def.kind === 'monster_pack' ? buildMemberFootprints(packMembers(confirmVariant.data as Record<string, unknown>), defs, artworksByName) : null} />
             </div>
             <div className="ca-confirm-checks">
               <span className={'ca-overall ' + (confirmOverall === 'PASS' ? 'is-pass' : 'is-fail')}>{confirmOverall}</span>

@@ -21,11 +21,12 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the nine live files map to seven kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources now (REQ-0171)', () => {
+T('kind mapping: the ten live files map to eight kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources (REQ-0171); monster_pack is one too (REQ-0184)', () => {
   const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
   assert.deepStrictEqual(files, [
     'gacha_pack <- content/live/live_packs.json',     // REQ-0171
     'monster_def <- content/live/dungeon/enemies.json',
+    'monster_pack <- content/live/dungeon/packs.json', // REQ-0184 -- a pack of MONSTERS + their layout; unrelated to gacha_pack above
     'po_def <- content/live/dungeon/items.json',      // REQ-0160 Q1 = A
     'po_def <- content/live/live_items.json',
     'po_def <- content/live/starter_items.json',      // 2026-07-15 ruling (REQ-0178 fallback report)
@@ -125,17 +126,18 @@ T('collectAll (real committed corpus): PER-FILE counts match each file, names un
   const counts = bf.perKindCounts(entries);
   assert.strictEqual(counts.unit_def, fileCounts['content/live/live_units.json'], 'unit_def backfills its live file (REQ-0171)');
   assert.strictEqual(counts.gacha_pack, fileCounts['content/live/live_packs.json'], 'gacha_pack backfills its live file (REQ-0171)');
+  assert.strictEqual(counts.monster_pack, fileCounts['content/live/dungeon/packs.json'], 'monster_pack backfills its live file (REQ-0184)');
   assert.strictEqual(counts.po_def,
     fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json']
       + fileCounts['content/live/starter_items.json'],
     'po_def total is the SUM of its three source files (REQ-0160 + 2026-07-15 starter ruling)');
   assert.strictEqual(entries.length,
-    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack);
+    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack + counts.monster_pack);
   assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
     'system_names unique across ALL files -- content_defs.system_name is UNIQUE across kinds');
 });
 
-T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units and packs', () => {
+T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units and packs + the REQ-0184 monster packs', () => {
   const { entries } = bf.collectAll(REPO_ROOT, IMPORTED_AT);
   const c = bf.perKindCounts(entries);
   const fc = bf.perFileCounts(entries);
@@ -150,10 +152,13 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   // added two themed packs while this REQ was in flight). The gate is that the totals
   // RECONCILE, not that they never move.
   // 2026-07-15 ruling adds the starter POs (their file's entries minus the 2 reuse copies).
-  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack + fc['content/live/starter_items.json'],
-    'the corpus is the ruled 38 plus the live units, packs and starter POs');
+  // REQ-0184 adds the monster packs on the same doctrine: the pack catalog is CONTENT
+  // and may grow, so the gate is that the totals RECONCILE, not that they never move.
+  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack + c.monster_pack + fc['content/live/starter_items.json'],
+    'the corpus is the ruled 38 plus the live units, gacha packs, monster packs and starter POs');
   assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
   assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
+  assert.strictEqual(c.monster_pack, 4, 'REQ-0184 ports batch-002 four packs (3 pack encounters + the boss)');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {

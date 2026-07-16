@@ -15,6 +15,12 @@ function runEncounter(opts) {
   const {
     rng, encIndex, troopBps, troopPos, troopSis, formationBox, enemyDefsById, skillDefsById,
     encounterDef, seedLabel,
+    // REQ-0184: monster_pack defs by id, for encounters that name one via packId.
+    // NOT `packDefsById` -- that name is already taken, by REQ-0170's GACHA pack
+    // registry (server/services/core.cjs getScheduleContent). Two different things
+    // called `packDefsById` in one opts bag is a bug waiting for a careless
+    // destructure to feed emission pools to the monster placer.
+    monsterPackDefsById,
   } = opts;
   const events = [];
   const heap = new EventHeap();
@@ -40,8 +46,23 @@ function runEncounter(opts) {
   // ---- Build enemy-side actors ----
   let enemyActors = [];
   if (encounterDef.enemyPack) {
-    const enemyFieldBox = { rowMin: 1, colMin: 1, rowMax: FIELD_ROWS, colMax: FIELD_COLS };
-    enemyActors = compileEnemyPack(encounterDef.enemyPack, enemyDefsById, skillDefsById, rng, enemyFieldBox).map(en => ({ raw: en, actor: makeEnemyActor(en) }));
+    // REQ-0184: the PLACEABLE area is B2:Y17 (24x16) -- the 26x18 field carries a
+    // margin of 1, the same box formations.json draws player canvases in. This box
+    // used to be {1,1,18,26}, the WHOLE plane, so every enemy in the game stood ON
+    // the margin (frost_gnoll at A1). The user ruled 2026-07-15 that 24x16 is canon
+    // and the margin-riding was the bug; correcting it moves the goldens by a
+    // uniform +1 row / +1 col, and by nothing else.
+    const enemyFieldBox = { rowMin: 2, colMin: 2, rowMax: FIELD_ROWS - 1, colMax: FIELD_COLS - 1 };
+    // REQ-0184: an encounter may name a monster_pack def by id instead of inlining
+    // enemyIds. The packId spelling is what REQ-0185 (dungeons as pre-generated
+    // content) builds on; the inline spelling is what dungen.cjs still emits.
+    let packDef = encounterDef.enemyPack;
+    if (packDef.packId) {
+      const resolved = monsterPackDefsById && monsterPackDefsById[packDef.packId];
+      if (!resolved) throw new Error('runEncounter: encounter ' + encounterDef.id + ' names monster_pack "' + packDef.packId + '", which has no def');
+      packDef = resolved;
+    }
+    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox).map(en => ({ raw: en, actor: makeEnemyActor(en) }));
   }
   let entity = null; // trap/door/chest "?" entity
   if (encounterDef.entityDef) {
