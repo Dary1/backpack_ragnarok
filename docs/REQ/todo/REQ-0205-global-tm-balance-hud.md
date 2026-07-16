@@ -50,3 +50,23 @@ multi-currency, so a persistent held-balance readout is now genuinely useful.
 ## Gates
 - pnpm -C client run build (tsc -b + vite) GREEN.
 - market.spec.ts (holds the HUD test) green at the combined final gate.
+
+## Host component
+The HUD is hosted in **client/src/Header.tsx** (the app-wide slim HUD bar), mounted
+between the `<h1>` title and `.header-controls`. App.tsx renders Header on every
+non-landing route, so one mount covers canvas/#market/#schedule/#warehouse/#workshop/
+#dex/... . It self-subscribes via useGameStore() (CanvasStatsChip chrome pattern).
+
+## Gate results (2026-07-17)
+- Implementation commit: c40551d (TmHud.tsx, Header.tsx, i18n/common.ts,
+  styles/base.css, e2e/market.spec.ts HUD test).
+- client build (tsc -b + vite): GREEN (typechecks TmHud + Header + the new
+  hud.tmAria key).
+- i18n EN/JA parity: common.ts 16/16 keys, no mismatch (hud.tmAria on both sides).
+- market e2e (holds the HUD test + the REQ-0204 5-TM updates): 18 passed
+  (43.3s), 0 failed. Test 18 (HUD REQ-0205) asserts the lrdst chip shows x20 on
+  #/market AND persists after routing to #/schedule (proving app-wide chrome).
+  Test 11 (WIRE tms[]) + test 15 (currency-sell multi-TM) pass under the fleet's
+  overlaid 5-TM content, confirming the REQ-0204 fleet overlay works.
+- global-teardown restored the dev profile + content/live (sha256 match=true) --
+  no live-state pollution from the run.
