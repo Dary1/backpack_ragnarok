@@ -660,61 +660,39 @@ module.exports.run = async function run(h) {
 
       // REQ-0182b: the admin PUT now REFUSES (409) any id the registry SERVES
       // (an adopted po/si of a covered kind), pointing the operator to the
-      // content admin instead of writing content/live/*.json behind the
-      // ledger. Whether 'dagger' is registry-served depends on the backend +
-      // namespace THIS run uses: under the files backend (or an empty pg
-      // namespace) the registry is empty and the legacy file-write path still
-      // applies (200 + persist + self-restore); under pg with an adopted
-      // 'dagger' the route 409s BEFORE touching the file. Warm the snapshot
-      // first so the branch is deterministic, then assert whichever behaviour
-      // matches the current registry state -- either way this exercises the
-      // REQ-0182b contract and stays green on BOTH backends.
-      const contentLib = require('../../lib/content.cjs');
-      await contentLib.refreshRegistryData();
-      const servedKind = contentLib.registryServedKindFor('dagger');
+      // content admin instead of writing content/live/*.json behind the ledger.
+      // Whether 'dagger' is registry-served here depends on the backend and on
+      // the warm snapshot: under the files backend (or an empty pg namespace)
+      // the legacy file-write path still applies (200 + persist + self-restore);
+      // under pg with an adopted 'dagger' the route 409s BEFORE touching the
+      // file. REACT to whichever the route returns -- deliberately do NOT pre-warm
+      // the shared registry snapshot from a test (that mutates lib/content.cjs
+      // module state other groups share and widens a warm-timing race) -- so this
+      // exercises the REQ-0182b contract and stays green on BOTH backends without
+      // polluting later groups.
+      let putStatus = 0, putBody = '';
+      await new Promise((resolve, reject) => {
+        const req = mockReq(
+          'PUT',
+          '/api/admin/item/dagger',
+          JSON.stringify({ name: originalName + ' (test-edit)' }),
+          authHeaders(realDevPlayer.token)
+        );
+        const res = mockRes((body) => { putStatus = res.statusCode; putBody = body; resolve(); });
+        realApi.handle(req, res);
+      });
 
-      if (servedKind) {
-        // Registry-served: the PUT must refuse with 409 + the redirect hint,
-        // and leave the live file byte-identical (no write happened).
-        await new Promise((resolve, reject) => {
-          const req = mockReq(
-            'PUT',
-            '/api/admin/item/dagger',
-            JSON.stringify({ name: originalName + ' (test-edit)' }),
-            authHeaders(realDevPlayer.token)
-          );
-          const res = mockRes((body) => {
-            try {
-              assert.strictEqual(res.statusCode, 409, 'registry-served dagger must 409, got ' + res.statusCode + ': ' + body);
-              const parsed = JSON.parse(body);
-              assert.strictEqual(parsed.registry_kind, servedKind, 'registry_kind must echo the served kind');
-              assert.strictEqual(parsed.edit_at, '#/contentadmin/dagger', 'must redirect to the content admin');
-              resolve();
-            } catch (e) { reject(e); }
-          });
-          realApi.handle(req, res);
-        });
+      if (putStatus === 409) {
+        // Registry-served: the refusal carries the #/contentadmin redirect hint
+        // and the live file must be byte-identical (no write happened).
+        const parsed = JSON.parse(putBody);
+        assert.strictEqual(parsed.registry_kind, 'po_def', 'dagger is a po_def');
+        assert.strictEqual(parsed.edit_at, '#/contentadmin/dagger', 'must redirect to the content admin');
         const afterBytes = fs.readFileSync(realItemsPath);
         assert.strictEqual(afterBytes.toString('utf8'), originalBytes.toString('utf8'), 'a refused (409) edit must not change the live file');
       } else {
         // Not registry-served: the legacy file-write path still applies.
-        await new Promise((resolve, reject) => {
-          const req = mockReq(
-            'PUT',
-            '/api/admin/item/dagger',
-            JSON.stringify({ name: originalName + ' (test-edit)' }),
-            authHeaders(realDevPlayer.token)
-          );
-          const res = mockRes((body) => {
-            try {
-              assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
-              resolve();
-            } catch (e) { reject(e); }
-          });
-          realApi.handle(req, res);
-        });
-
-        // Verify the real file actually changed.
+        assert.strictEqual(putStatus, 200, 'expected 200 or 409, got ' + putStatus + ': ' + putBody);
         const changedBytes = fs.readFileSync(realItemsPath);
         assert.notStrictEqual(changedBytes.toString('utf8'), originalBytes.toString('utf8'), 'file must have changed after the edit');
         const reread = JSON.parse(changedBytes.toString('utf8'));
