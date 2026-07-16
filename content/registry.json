@@ -22,6 +22,25 @@
    "status": "awaiting_user_review",
    "preview": "/preview/batch-003/",
    "provenance": "AI-raster route (REQ-0073); geometry-scored (tool_icon_score.py, MIN_CONTENT_FRAC gate); winners = argmax(score); re-scored 2026-07-12 after matte/gate fixes"
+  },
+  {
+   "id": "batch-units003-roster",
+   "date": "2026-07-17",
+   "drafted_by": "REQ-0201 S1 kit design (claude-opus-4-8) under user delegations 2026-07-14/16; orchestrator-adopted per 2026-07-16 delegation",
+   "icons_by": "artadmin flux2 route (FLUX.2 klein 4B), 4 seeds/unit via art_jobs queue; plaguedoctor re-prompted (beak mask)",
+   "submitted": 30,
+   "approved": 30,
+   "status": "adopted_live",
+   "provenance": "content-data registry (REQ-0155): 30 unit_def variants machine-check PASS + separate-agent advisory reviews (claude-opus-4-8) recorded; charge kits validated by REQ-0200 validateCharge + units003_acceptance 30/30; reviewer amendments: darkknight pct, werewolf pct, shaman grant_charge n, adjacency->queen_2, rarity canonicalization"
+  },
+  {
+   "id": "batch-units003-packs",
+   "date": "2026-07-17",
+   "drafted_by": "REQ-0202 pack design (orchestrator-ratified from Opus S1 round)",
+   "submitted": 4,
+   "approved": 4,
+   "status": "adopted_live",
+   "provenance": "gacha_pack registry rows (REQ-0171 conventions): pestilence/sanctuary/warband/royal_court; rarity-scaled weights 6/3/2/1; machine-check PASS (validatePackEntry vs live roster); advisory reviews recorded; all 30 units003 units covered by >=1 pack"
   }
  ],
  "live_dungeon": {
