@@ -11,3 +11,16 @@
 
 ## Status log
 - 2026-07-16 split from REQ-0195 while in todo/.
+- 2026-07-16 implemented + committed (083682a). Server: ApiMarketListing +=
+  rollPct (number|null, DTO-derived); views.cjs rollPctOf (po/si -> instance q
+  per REQ-0063; unit -> bp.roll?.pct per the REQ-0196 container else null; tm ->
+  null) wired into toListingDto; trade.cjs freezes rollPct onto the settlement
+  record at the commit point (MinePane settled-row honesty). Client: marketShared
+  RollBar (0-100% gold fill + % label; unit null -> 未測定 badge, never a 0% bar;
+  tm -> nothing) wired into BuyPane/MinePane/BuyModal; i18n roll.unmeasured/
+  roll.title EN+JA; market.css styles. Gates: server api_test 182 passed / 0
+  failed (files backend, incl. the new rollPct derivation + freeze suite); server
+  tsc (tsconfig.server.json) clean; client tsc -b + vite build clean. e2e: po bar
+  % == seeded q (50%) + unit unmeasured badge authored (content-agnostic) -- not
+  executed here (default e2e targets the LIVE services owned by the main checkout;
+  same posture as phases a-d). todo -> built.
