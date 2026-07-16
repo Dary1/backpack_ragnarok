@@ -143,10 +143,10 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   const fc = bf.perFileCounts(entries);
   // The 2026-07-14c run imported 22 (po 8 / si 6 / tm 1 / monster 7).
   const preExisting = fc['content/live/live_items.json'] + c.si_def + c.tm_def + c.monster_def;
-  assert.strictEqual(preExisting, 22, 'the already-imported corpus is unchanged at 22');
+  assert.ok(preExisting >= 22, 'the already-imported corpus never shrinks below its original 22 (REQ-0207: backfill is INSERT-ONLY; monster/tm counts GROW with deploys)');
   // REQ-0160 adds exactly 2 dungeon POs + 14 skills.
   assert.strictEqual(fc['content/live/dungeon/items.json'], 2, 'Q1 = A adds exactly 2 po_defs');
-  assert.strictEqual(c.skill_def, 14, 'Q2 = yes adds exactly 14 skill_defs');
+  assert.ok(c.skill_def >= 14, 'Q2 = yes added 14 skill_defs at REQ-0160; the skill corpus GROWS with later additive deploys (REQ-0207: batch-005 +16)');
   // REQ-0171 adds whatever the two live files actually hold -- deliberately NOT a frozen
   // number: the roster and the pack catalog are CONTENT and are expected to grow (REQ-0062
   // added two themed packs while this REQ was in flight). The gate is that the totals
@@ -154,11 +154,13 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   // 2026-07-15 ruling adds the starter POs (their file's entries minus the 2 reuse copies).
   // REQ-0184 adds the monster packs on the same doctrine: the pack catalog is CONTENT
   // and may grow, so the gate is that the totals RECONCILE, not that they never move.
-  assert.strictEqual(entries.length, 38 + c.unit_def + c.gacha_pack + c.monster_pack + fc['content/live/starter_items.json'],
-    'the corpus is the ruled 38 plus the live units, gacha packs, monster packs and starter POs');
+  assert.strictEqual(entries.length,
+    fc['content/live/live_items.json'] + fc['content/live/dungeon/items.json'] + c.si_def + c.tm_def + c.monster_def + c.skill_def
+      + c.unit_def + c.gacha_pack + c.monster_pack + fc['content/live/starter_items.json'],
+    'the corpus RECONCILES across every source kind (REQ-0207: the ruled base -- monster/skill/tm -- GROWS with deploys, so it is summed dynamically, not frozen at 38)');
   assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
   assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
-  assert.strictEqual(c.monster_pack, 4, 'REQ-0184 ports batch-002 four packs (3 pack encounters + the boss)');
+  assert.ok(c.monster_pack >= 4, 'REQ-0184 ported batch-002 four packs; the pack catalog GROWS with additive deploys (REQ-0207: batch-005 +3)');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {
