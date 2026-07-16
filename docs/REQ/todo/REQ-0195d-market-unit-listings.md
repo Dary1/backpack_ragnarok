@@ -12,3 +12,16 @@
 
 ## Status log
 - 2026-07-16 split from REQ-0195 while in todo/.
+- 2026-07-16 implemented + committed. Server (20ea324): kind:unit listings
+  (findInventoryBP eligibility, EMPTY-only bpHasContents -> 409 not_empty,
+  unit.id validation, deployed->suspended, gone->auto-withdraw), settle strips
+  the bps[] entry + delivers a kind:bp warehouse row with the verbatim BP
+  payload (never re-rolled), claimWarehouseItem validates payload.unit.id and
+  returns it. Client (ab44199): SellPane Units tab, MarketThumb unit icon,
+  warehouse claim places kind:bp via firstFitPlaceBp (+ verbatim-field
+  restore), i18n kindUnit EN/JA. Gates: server api_test 181 passed / 0 failed
+  (files backend, incl. the new unit BP suite); server tsc (tsconfig.server.json)
+  clean; client tsc -b + vite build clean. e2e: unit browse+buy authored
+  (content-agnostic, discovers a live unit id) -- not executed here (the default
+  e2e suite targets the LIVE services owned by the main checkout; same posture
+  as phases a-c). todo -> built.
