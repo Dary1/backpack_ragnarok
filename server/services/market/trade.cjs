@@ -7,7 +7,7 @@
 const storage = require('../../storage.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
-const { deployedUidSet } = require('../squads.cjs');
+const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const { burnOf, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
@@ -166,8 +166,10 @@ function buyListing(buyerId, listingId, idemKey) {
       autoWithdrawItemGone(listing, now);
       const err = new Error('the listed unit no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
     }
-    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
-      const err = new Error('listing suspended: the seller currently deploys this unit (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid) || referencedUidSet(sellerCanvas).has(listing.itemUid)) {
+      // REQ-0198 (C): deployed OR otherwise board-/preset-referenced -> the
+      // listing is SUSPENDED (unbuyable), reversibly -- same law as deploy.
+      const err = new Error('listing suspended: the seller currently has this unit in use (deployed or placed)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
     }
     sellerBp = b.bp;
   } else {
@@ -176,8 +178,10 @@ function buyListing(buyerId, listingId, idemKey) {
       autoWithdrawItemGone(listing, now);
       const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
     }
-    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
-      const err = new Error('listing suspended: the seller currently deploys this item (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid) || referencedUidSet(sellerCanvas).has(listing.itemUid)) {
+      // REQ-0198 (C): deployed OR otherwise board-/preset-referenced -> the
+      // listing is SUSPENDED (unbuyable), reversibly -- same law as deploy.
+      const err = new Error('listing suspended: the seller currently has this item in use (deployed or placed)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
     }
   }
 
