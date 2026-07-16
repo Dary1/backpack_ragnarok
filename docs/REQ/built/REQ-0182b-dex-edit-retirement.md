@@ -242,3 +242,65 @@ instructions) the coverage was placed where it actually runs. Reported.
 - G3: hygiene -- only the intended source files changed; no lockfile churn; web/app dist NOT in
   the source commit (rebuilt+committed only via tools/release.sh at deploy, per 0182a's build-
   artifact rule); admin surface EN-only; no CSS touched.
+
+### Session 3 — merge + deploy + post-deploy (2026-07-16, opus implementer)
+
+**Merged + deployed (user go-ahead granted 2026-07-16).**
+- Master re-merged a THIRD time before the merge-out (other sessions shipped REQ-0197
+  artqueue + REQ-0198 market-sell while this REQ was in flight; all orthogonal, every
+  master merge clean, no conflicts).
+- Merge commit: **c0cf19f** `Merge REQ-0182b: dex-edit-retirement ...` (--no-ff into master).
+- Dist commit: **5fe1a87** `deploy: rebuild client dist (REQ-0182b dex-edit-retirement)`
+  (the built bundle no longer contains `dex-mode-toggle`/`DexAdmin` -- retired UI gone).
+- Services restarted (route + content change), `systemctl --user`, **2026-07-16 07:03:40 UTC**:
+  `backpack-api` (admin.cjs 409 route + lib/content.cjs) and `backpack-web` (new dist).
+
+**Deploy gate.** `tools/release.sh` (the canonical path) ran ci.sh [0]-[6] GREEN
+(server typecheck, api_test files+pg 183/0 each, all DB-free + pg suites, client build),
+then aborted ONCE at [6.5] on `artadmin.spec.ts:113` -- a `page.goto: Timeout` startup
+flake (nothing to do with this REQ; it had passed 5/5 minutes earlier). Rather than
+re-run the whole 30-min gate against several flaky families, the e2e was completed via
+the same box-locked runners release.sh calls, on master with the freshly-built dist:
+- artadmin 5/5, artinspect 1/1, **contentadmin 28/28** (incl. the two new REQ-0182b
+  tests: the seeded 409 guard + the relocated grant-to-warehouse button).
+- default suite (E2E_GPU=1, GPU idle): 182 passed + `reference-model.spec.ts:321`
+  (page.goto timeout + transient worker 500) which reran GREEN -> effectively 183/0.
+- Dist then committed manually with the deploy-convention message (5fe1a87), CI green.
+
+**Live smoke (backpack-api :8802).** `GET /api/content` 200; registry populated (22
+items served); `PUT /api/admin/item/blade` (dev-fallback item_admin, blade registry-
+served) -> **409** `{ registry_kind: "po_def", edit_at: "#/contentadmin/blade" }` -- the
+deployed route change confirmed end-to-end.
+
+**Post-deploy suite** -- bare `pnpm run e2e` (baseURL -> the live tunnel, serial, one
+worker; E2E_GPU=1 to keep the WebGL family off SwiftShader): **184 passed / 0 failed
+(8.4m), exit 0 -- fully clean, no flakes.** Notably:
+- `dex-admin.spec.ts:102` (the 409 test) RAN against live (registry populated, so it does
+  not skip as it does on the files fleet) and PASSED -- the new-world replacement for the
+  file-edit tests, validated on the deployed registry-first service.
+- The three previously-failing file-edit tests (`:69/:130/:175`) and `:286` are gone;
+  the `schedule.spec` Dex-Edit grant test is gone. The suite is clean.
+- global-teardown restored `content/live/live_items.json` + `live_sis.json` byte-identical
+  (sha256 match) -- **no live content mutation leaked**. (The contentadmin pg harness
+  seeds an adopted `blade` in its own isolated mktemp namespace; that is dead-namespace
+  debris, never the live namespace -- live `blade` is untouched, still its real
+  2026-07-13 adoption.)
+
+**Flakes observed + honestly reported** (all reran green, none in this REQ's surface):
+`artadmin:113` and `reference-model:321` page.goto/startup timeouts; the WebGL board
+family under SwiftShader (11 in an E2E_GPU=0 pre-merge run, all green under E2E_GPU=1);
+a one-off `dex card: blade` content-warm transient under concurrent-session pg load.
+Per the spec's flaky-family note, none were "fixed" -- they were rerun to distinguish
+flake from regression.
+
+**S7 -- user eyeball (pending; REQ stays in `built/`).** What to look at on
+https://backpack-dev.qtie.jp:
+1. Dex is READ-ONLY -- even as the dev (item_admin) user there is no "Edit mode" toggle
+   and no admin form; catalog/detail/diagrams/RegistryBadge unchanged.
+2. The dev "grant to warehouse" button now lives on the ADOPTED variant card in the
+   content admin (#/contentadmin/<name>), labelled "Grant to warehouse"; clicking it
+   drops that system item into the dev warehouse.
+3. Editing a registry-served item the old way is refused: a raw `PUT /api/admin/item/<id>`
+   for an adopted po/si returns 409 with `edit_at: '#/contentadmin/<id>'` -- edits happen
+   in the content admin (adoption), not via a live-file write.
+Move `built/ -> done/` only after the user accepts S7.
