@@ -475,4 +475,199 @@ function runChecks(kind, schema_ref, data) {
   return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
 
-module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS };
+// ===========================================================================
+// REQ-0188 -- art-authoritative cell-geometry DRIFT GUARD.
+//
+// Doctrine (REQ-0029 continued, REQ-0188 ruling 1): a thing's cell geometry is
+// OWNED by its artwork. A monster_def/po_def whose def-side geometry disagrees
+// with its LINKED artwork's shape is DRIFT -- the guard FAILs it, naming BOTH
+// sides in BOTH spellings so the transposition class of bug (REQ-0029, [row,col]
+// read as [col,row]) cannot hide. The def->artwork link reuses REQ-0174's
+// ref-first canon (artwork_ref -> exact system_name -> none); the resolution
+// itself is done by the caller and the resolved artwork passed IN, so this stays
+// DB-free and unit-testable against fixtures.
+//
+// THREE spellings of ONE fact, and every conversion crosses the transpose:
+//   monster artwork : {w, h}             (width, height)
+//   enemy/1 def     : footprint [fh, fw] (HEIGHT, width)   <- the TRANSPOSE
+//   po artwork      : {mask: 5x5 bool}   ([row][col])
+//   po/2 def        : shape [[r, c]...]  ([row][col])
+// Everything below compares NORMALIZED CELL-SETS (translated to the bounding-box
+// top-left), so a footprint and an art shape agree iff they cover the same cells
+// -- order-, offset- and spelling-independent.
+// ===========================================================================
+
+/** Normalized cell-set "r,c" of a list of [row,col] offsets, translated so the
+ * bounding-box top-left is (0,0). null for an empty/invalid list. */
+function _normCellSet(cells) {
+  if (!Array.isArray(cells) || cells.length === 0) return null;
+  const cs = cells.filter((c) => Array.isArray(c) && c.length >= 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]));
+  if (cs.length === 0) return null;
+  const minR = Math.min.apply(null, cs.map((c) => c[0]));
+  const minC = Math.min.apply(null, cs.map((c) => c[1]));
+  return new Set(cs.map((c) => (c[0] - minR) + ',' + (c[1] - minC)));
+}
+
+function _setEq(a, b) { return !!a && !!b && a.size === b.size && [...a].every((x) => b.has(x)); }
+
+/** Cells of a rows x cols filled rectangle (top-left origin). */
+function _rectCells(rows, cols) {
+  const out = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push([r, c]);
+  return out;
+}
+
+/** Active cells [[r,c]...] of a po artwork 5x5 boolean mask ([row][col]). */
+function _maskCells(mask) {
+  if (!Array.isArray(mask)) return null;
+  const out = [];
+  for (let r = 0; r < mask.length; r++) {
+    const row = mask[r] || [];
+    for (let c = 0; c < row.length; c++) if (row[c]) out.push([r, c]);
+  }
+  return out;
+}
+
+/** The DEF-side geometry of a monster_def/po_def as {cells:Set, spell:string}.
+ * null when the kind carries no cell geometry or the field is missing/malformed. */
+function defGeometry(kind, data) {
+  if (!data || typeof data !== 'object') return null;
+  if (kind === 'monster_def') {
+    const fp = data.footprint;
+    if (!isIntPair(fp) || fp[0] < 1 || fp[1] < 1) return null;
+    return { cells: _normCellSet(_rectCells(fp[0], fp[1])), spell: 'footprint [fh,fw]=' + JSON.stringify(fp) };
+  }
+  if (kind === 'po_def') {
+    const cells = _normCellSet(data.shape);
+    if (!cells) return null;
+    return { cells, spell: 'shape [[r,c]...]=' + JSON.stringify(data.shape) };
+  }
+  return null;
+}
+
+/** The ARTWORK-side geometry (THE AUTHORITY) as {cells:Set, spell:string}.
+ * monster art shape is {w,h}; po art shape is {mask}. null when the artwork has
+ * no usable cell geometry (si/unit/etc.), i.e. nothing to be authoritative WITH. */
+function artworkGeometry(kind, artwork) {
+  if (!artwork || !artwork.shape || typeof artwork.shape !== 'object') return null;
+  const sh = artwork.shape;
+  if (kind === 'monster_def') {
+    const w = sh.w, h = sh.h;
+    if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) return null;
+    // TRANSPOSE: monster art {w,h} owns the footprint [fh,fw] = [h,w].
+    return { cells: _normCellSet(_rectCells(h, w)), spell: 'artwork {w,h}=' + JSON.stringify({ w, h }) + ' (=> footprint [' + h + ',' + w + '])' };
+  }
+  if (kind === 'po_def') {
+    const cells = _maskCells(sh.mask);
+    const set = _normCellSet(cells);
+    if (!set) return null;
+    return { cells: set, spell: 'artwork mask [row][col], active cells ' + JSON.stringify(cells) };
+  }
+  return null;
+}
+
+/** REQ-0188 DRIFT GUARD (the guard proper). Compare a monster_def/po_def's own
+ * cell geometry with its LINKED artwork's shape (the authority). Returns a
+ * machine-check-shaped result { name:'artwork_geometry', ok, applicable, detail }:
+ *   applicable:false  kind carries no cell geometry, OR there is no linked
+ *                     artwork with a usable shape (nothing to be authoritative
+ *                     WITH -- an HONEST n/a, never a free PASS; REQ-0160 posture);
+ *   ok:true           def geometry == artwork geometry (cell-sets equal);
+ *   ok:false          DRIFT -- detail names BOTH sides in BOTH spellings.
+ * `artwork` is the already-resolved artwork row (ref-first, REQ-0174 canon) or
+ * null. Kept DB-free: the caller resolves and passes the artwork in. */
+function checkArtworkGeometry(kind, data, artwork) {
+  if (kind !== 'monster_def' && kind !== 'po_def') {
+    return { name: 'artwork_geometry', ok: true, applicable: false, detail: 'artwork_geometry n/a for ' + kind + ' (no cell geometry to own)' };
+  }
+  const art = artworkGeometry(kind, artwork);
+  if (!art) {
+    return { name: 'artwork_geometry', ok: true, applicable: false, detail: 'artwork_geometry n/a: no linked artwork with a usable shape (art is authoritative but has no row here yet -- REQ-0188 seed coverage)' };
+  }
+  const def = defGeometry(kind, data);
+  if (!def) {
+    const side = kind === 'monster_def' ? 'footprint' : 'shape';
+    return { name: 'artwork_geometry', ok: false, applicable: true, detail: 'GEOMETRY DRIFT: ' + kind + ' has a linked ' + art.spell + ' but no readable ' + side + ' of its own' };
+  }
+  const ok = _setEq(def.cells, art.cells);
+  const detail = ok
+    ? 'def geometry agrees with the authoritative artwork (' + def.spell + ' == ' + art.spell + ')'
+    : 'GEOMETRY DRIFT: def ' + def.spell + ' disagrees with the authoritative ' + art.spell + ' -- the ART is the authority (REQ-0029/REQ-0188); regenerate the def side (tools/derive_def_geometry.cjs)';
+  return { name: 'artwork_geometry', ok, applicable: true, detail };
+}
+
+// The live content the sim actually serves; every monster_def / po_def in it is
+// swept. NOT hardcoded to the batch-002 roster: batch-005 (REQ-0203) monsters
+// land in enemies.json and are covered automatically once merged.
+const ART_GEOM_CORPUS = [
+  { kind: 'monster_def', file: 'content/live/dungeon/enemies.json' },
+  { kind: 'po_def', file: 'content/live/live_items.json' },
+  { kind: 'po_def', file: 'content/live/dungeon/items.json' },
+  { kind: 'po_def', file: 'content/live/starter_items.json' },
+];
+
+/** REQ-0188 LIVE SWEEP. Walk the served content, resolve each entity's linked
+ * artwork REF-FIRST (REQ-0174 canon via storage.resolveArtworkFacetName ->
+ * exact-name fallback), and run checkArtworkGeometry. READ-ONLY. Not part of the
+ * four per-variant machine checks (those stay DB-free); this is the corpus-wide
+ * guard for the deploy/CI dry-run. deps = { storage, root, log }. Returns
+ * { agree, disagree, notApplicable, results }. */
+async function sweepArtworkGeometry(deps) {
+  deps = deps || {};
+  const root = deps.root || repoRoot();
+  const storage = deps.storage;
+  if (!storage) throw new Error('sweepArtworkGeometry requires deps.storage (STORAGE_BACKEND=pg)');
+  const log = deps.log || function () {};
+  const results = [];
+  const seen = new Set();
+  for (const src of ART_GEOM_CORPUS) {
+    let entries;
+    try { entries = (loadJson(path.join(root, src.file)).entries) || []; } catch (_) { entries = []; }
+    for (const entry of entries) {
+      const key = src.kind + ':' + entry.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const def = await storage.getContentDefByName(entry.id);
+      let artName = def ? await storage.resolveArtworkFacetName(def) : null;
+      if (!artName) { const a = await storage.getArtworkByName(entry.id); if (a) artName = entry.id; }
+      const artwork = artName ? await storage.getArtworkByName(artName) : null;
+      const r = checkArtworkGeometry(src.kind, entry, artwork);
+      results.push({ id: entry.id, kind: src.kind, file: src.file, artwork: artName, ok: r.ok, applicable: r.applicable, detail: r.detail });
+      const tag = r.applicable ? (r.ok ? 'AGREE   ' : 'DISAGREE') : 'n/a     ';
+      log(tag + ' ' + src.kind + ' ' + entry.id + (artName ? ' -> ' + artName : '') + '  ' + r.detail);
+    }
+  }
+  const agree = results.filter((r) => r.applicable && r.ok).length;
+  const disagree = results.filter((r) => r.applicable && !r.ok).length;
+  const notApplicable = results.filter((r) => !r.applicable).length;
+  log('--- artwork_geometry sweep: agree=' + agree + ' disagree=' + disagree + ' n/a=' + notApplicable + ' (total ' + results.length + ')');
+  return { agree, disagree, notApplicable, results };
+}
+
+
+// REQ-0188 CLI: run the live artwork_geometry drift sweep READ-ONLY against the
+// artwork registry. Exit 0 when clean, 1 on any disagreement, 2 on missing DB.
+// DATABASE_URL (STORAGE_BACKEND=pg) required; source server/.env first.
+if (require.main === module) {
+  (async () => {
+    const root = repoRoot();
+    process.env.STORAGE_BACKEND = 'pg';
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL required (STORAGE_BACKEND=pg; source server/.env). The REQ-0188 drift guard reads the artwork registry READ-ONLY.');
+      process.exit(2);
+    }
+    const storage = require(path.join(root, 'server', 'storage.cjs'));
+    let res;
+    try {
+      res = await sweepArtworkGeometry({ storage, root, log: (...a) => console.log(...a) });
+    } finally {
+      if (storage.closeArtPool) await storage.closeArtPool();
+      if (storage.closeContentPool) await storage.closeContentPool();
+    }
+    process.exit(res.disagree === 0 ? 0 : 1);
+  })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
+}
+
+module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
+  checkArtworkGeometry, defGeometry, artworkGeometry, sweepArtworkGeometry, ART_GEOM_CORPUS,
+  _normCellSet, _maskCells, _rectCells, _setEq };

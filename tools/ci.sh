@@ -57,6 +57,8 @@ echo "==== [4.655/7] content registry parity classifier (DB-free, REQ-0178) ====
 DATABASE_URL= node server/tests/verify_content_registry_parity_test.cjs
 echo "==== [4.66/7] content-check schema dialects (DB-free, REQ-0161) ===="
 node server/tests/content_checks_dialect_test.cjs
+echo "==== [4.665/7] art-authoritative cell geometry: drift guard + seed<->derive transpose (DB-free, REQ-0188) ===="
+node server/tests/content_checks_geometry_test.cjs
 echo "==== [4.67/7] pack biography aggregation + veteran luck (DB-free, REQ-0060) ===="
 node server/tests/bio_test.cjs
 echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
@@ -93,6 +95,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/content_test.cjs
   echo "==== [5.35/7] content-def list aggregates + recheck (pg backend, REQ-0157) ===="
   STORAGE_BACKEND=pg node server/tests/contentagg_test.cjs
+  echo "==== [5.355/7] art-authoritative seed + derive no-op (pg backend, isolated ns, REQ-0188) ===="
+  STORAGE_BACKEND=pg node server/tests/seed_derive_pg_test.cjs
   echo "==== [5.36/7] registry-first content serving (pg backend, REQ-0178) ===="
   STORAGE_BACKEND=pg node server/tests/content_serving_test.cjs
   echo "==== [5.37/7] registry-first SCHEDULE serving -- roll/sim authority path (pg backend, REQ-0176) ===="

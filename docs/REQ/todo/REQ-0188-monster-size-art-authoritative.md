@@ -125,3 +125,109 @@ owning B2:**D5**, not F3).
 - Commissioning real monster art (user-owned, HANDS-OFF per PROJECT.md).
 - `si`/`unit`/`bpskin` (locked-size artworks, no shape to be authoritative about).
 - REQ-0185 (dungeons as content).
+
+## Implementation log
+
+### Session 2026-07-17 (implementing engineer, opus) — branch `req-0188-monster-size-art-authoritative`
+
+Implemented the guard + the two tools + fixtures; `tools/ci.sh` GREEN. NOT deployed.
+Commits (this branch):
+- `7812770` — art-authoritative cell-geometry drift guard in `server/services/content_checks.cjs`
+- `65b9c57` — `tools/seed_artwork_from_def.cjs` + `tools/derive_def_geometry.cjs`
+- `4e7921b` — DB-free geometry gate + isolated-ns seed/derive pg test; wire `tools/ci.sh`
+
+**Key design decisions**
+- **The guard is a SEPARATE exported check + corpus sweep, NOT a 5th entry in the four
+  per-variant machine checks.** `runChecks`' `[schema_vocab, engine_types, gen_data,
+  integrate]` contract (asserted verbatim by content_test/contentagg_test and rendered by
+  the contentadmin e2e) is left byte-untouched, and the machine checks stay DB-free.
+  `checkArtworkGeometry(kind, data, artwork)` returns a machine-check-shaped result
+  (`{name:'artwork_geometry', ok, applicable, detail}`), so "FAILs naming both sides" is
+  honoured in the same vocabulary; `sweepArtworkGeometry()` + a `require.main` CLI apply it
+  across the served corpus and exit 1 on drift. The artwork is resolved by the caller
+  (ref-first, REQ-0174 `resolveArtworkFacetName` → exact-name fallback) and passed in, so
+  the pure check is fixture-testable.
+- **Comparison is by NORMALIZED CELL-SET** (translate to bbox top-left), so a footprint and
+  an art shape agree iff they cover the same cells — order-, offset- and spelling-independent.
+- **Seed = ROWS ONLY, no renders.** The `seed=2147483647` unknown-environment sentinel is a
+  RENDER convention (REQ-0177), owned by the sprite backfill where an actual image is
+  imported. The image-less monsters get a shape-only artwork row (adopted_render_id NULL,
+  like most of the 66 existing monster artworks); inventing a render would be the dishonesty
+  REQ-0160 refuses. `main_object` = the def's name, `prompt_template` = '' (monsters/POs carry
+  no `gen_prompt`).
+- **Seed is already-covered-aware, not just row-exists-aware.** It skips any entity that
+  already RESOLVES to an artwork ref-first (explicit `artwork_ref` OR an exact-name row), so a
+  re-run is a pure no-op and an operator's explicit link is never doubled with a stray row.
+- **Derive rewrites exactly what the guard flags.** Agreeing entities are byte-untouched (the
+  file is not even opened for writing), so the mirror is a no-op BY CONSTRUCTION → empty diff.
+  When it does reconcile drift it does a surgical, formatting-preserving in-place replace of
+  just that one geometry field. Safe-by-default: `--check` (report-only); `--write` is the
+  deploy step.
+- **The transpose is the whole risk** and every conversion is pinned NON-SQUARE across all
+  four spellings (see G4). REQ-0184's `footprintFromArtShape` ({w,h}→[h,w]) is the same canon,
+  mirrored here for the def side; `maskFromShape` is REUSED from `backfill_sprite_art.cjs`
+  (one copy of "shape→5×5 mask", per the REQ-0171 don't-drift lesson).
+
+**Gate results**
+- **G1 drift guard** — GREEN by fixtures (`content_checks_geometry_test.cjs`, ci step 4.665):
+  agrees on sync, FAILs on drift naming BOTH sides in BOTH spellings, honest `applicable:false`
+  when there is no linked artwork. **Live sweep (read-only, `node server/services/content_checks.cjs`):
+  agree=8, n/a=19, disagree=2** — the guard is PROVEN correct on live data: the 8 REQ-0177
+  live_items POs all AGREE; the 2 disagreements are found-in-flight (below), i.e. the guard
+  catching real drift, not a code defect.
+- **G2 seed** — `seed_derive_pg_test.cjs` (isolated TMPHOME namespace, ci step 5.355): creates
+  every missing row from def geometry, ZERO renders, SKIPs covered/ref-linked entities, second
+  run is a pure no-op. Live `--dry-run` preview: `scanned=29 created=19 skipped_covered=10`
+  (8 live_items + frost_gnoll[ref] + lockpick[ref]).
+- **G3 mirror** — no-op BY CONSTRUCTION: (a) fixtures prove seed↔derive are inverses across
+  non-square shapes; (b) pg test proves derive finds ZERO drift end-to-end after a clean seed;
+  (c) live `derive --check`: the 8 already-agreeing POs are UNCHANGED (the spec's literal G3:
+  "empty diff for all 8 already-agreeing POs" holds) — only the 2 in-flight-linked entities
+  would change.
+- **G4 transpose** — 24 fixtures, every one NON-SQUARE, all four spellings ({w,h}, [fh,fw],
+  {mask [row][col]}, [[r,c]]); the transposed spelling must FAIL. In ci (step 4.665).
+- **G5 ci** — `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` → **CI GREEN** (log `/tmp/req0188_ci.log`).
+  Root worktree deps were missing tsc → provisioned with `pnpm install --frozen-lockfile`
+  (lockfile UNCHANGED; only added the already-pinned typescript/@types/node). The client build
+  regenerated `web/` dist — restored (`git checkout -- web/ && git clean -fd web/`), no dist
+  churn committed. Sim replay goldens unmoved (no sim/content bytes changed; derive never run
+  in `--write`).
+- **S7** — pending user acceptance.
+
+**FOUND-IN-FLIGHT (important — the shared live DB drifted after the 2026-07-15 dry-run)**
+The parallel art/monster-pack workstream has, since this spec was ratified, set two
+`content_defs.artwork_ref` links whose geometry disagrees with the def:
+1. `frost_gnoll` footprint `[1,1]` → `monsters-003-flux2:gnoll` (monster art `{w:3,h:4}`,
+   ADOPTED). Art-authoritative ⇒ footprint should be `[4,3]`.
+2. `lockpick` shape `[[0,0]]` → `items005_dungeon_key` (po art, 2-cell mask, NOT adopted).
+The guard correctly FLAGs both. So a literal "0 disagreements on today's live content" (G1)
+and "empty full diff" (G3) cannot hold on the mutating shared DB right now — these are the
+guard working, and they are reconciled by the deploy-time derive/seed run. **This REQ is left
+in `todo/`** (not promoted to `built/`) precisely because promoting it would assert the live
+content is clean when it is not; the built/-move is handed to the orchestrator once the two
+in-flight links are reconciled or accepted. batch-005 (REQ-0203) monsters are covered
+automatically — the corpus reads `enemies.json`, no roster is hardcoded.
+
+**Deviations from the spec letter**
+- Guard NOT wired into the four machine checks (see design decision #1) — "FAILs" honoured via
+  the check-result shape + the sweep's exit code. Zero blast radius on existing tests/e2e.
+- The spec's "16 POs" is the RAW inventory count; `lockpick`/`spyglass` appear in BOTH
+  `dungeon/items.json` and `starter_items.json`, so the seed dedups to 22 unique POs (+7
+  monsters = 29 unique planned). One artwork row per unique id (system_name is one-name-one-entity).
+- Seed writes ROWS ONLY (no `artwork_ref`); exact-name resolution links a seeded row. If the
+  orchestrator wants an explicit `artwork_ref` set too, that is a one-line follow-up.
+
+**Deploy steps (orchestrator, post-merge, against the LIVE namespace — NOT run here)**
+1. **Reconcile the 2 in-flight drifts (decision required).** Either accept the links and let
+   step 3 rewrite the def geometry (note: `frost_gnoll` `[1,1]→[4,3]` is a GAMEPLAY footprint
+   change — a 1-cell monster becomes 4×3 — and needs user/parent sign-off), or clear the
+   experimental link(s) first.
+2. **Seed the coverage rows** (INSERT-only, idempotent, no renders):
+   `set -a; source server/.env; set +a`
+   `node tools/seed_artwork_from_def.cjs --dry-run`  (preview; today: created=19 skipped_covered=10)
+   `node tools/seed_artwork_from_def.cjs`
+3. **Regenerate the def-side mirror from art:**
+   `node tools/derive_def_geometry.cjs`          (--check: report what would change)
+   `node tools/derive_def_geometry.cjs --write`  (rewrite footprint/shape; review + commit the diff)
+4. **Verify the guard is clean:** `node server/services/content_checks.cjs` → exit 0 (0 disagreements).
+   After this, REQ-0184's board can trust `footprint` again (def == art, provably).
