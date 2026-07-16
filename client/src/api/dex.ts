@@ -1,33 +1,15 @@
-// client/src/api/dex.ts -- REQ-0145b (ca): Dex-facing endpoints -- the
-// REQ-0035/0038 admin item-edit PUT (DexAdmin's save) and the REQ-0052
-// dex card DTO fetch (extracted VERBATIM from the old flat api.ts).
-import { authHeaders, scheduleJSON, ApiError } from './http';
-import type { AdminPutError, AdminPutResult, ApiDexCardDto } from '../../../shared/dto';
-
-// ---- REQ-0035: admin item-edit endpoint (DexAdmin save path) ----
-
-export async function putAdminItem(
-  id: string,
-  body: Record<string, unknown>
-): Promise<AdminPutResult> {
-  const res = await fetch(`/api/admin/item/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json', ...authHeaders() },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  let parsed: AdminPutResult | AdminPutError | null = null;
-  try {
-    parsed = JSON.parse(text) as AdminPutResult | AdminPutError;
-  } catch (e) {
-    parsed = null;
-  }
-  if (!res.ok) {
-    const message = parsed && 'error' in parsed && parsed.error ? parsed.error : `HTTP ${res.status}`;
-    throw new ApiError(message, res.status);
-  }
-  return parsed as AdminPutResult;
-}
+// client/src/api/dex.ts -- REQ-0145b (ca): Dex-facing endpoints.
+//
+// REQ-0182b removed `putAdminItem` (the REQ-0035/0038 admin item-edit PUT that
+// DexAdmin saved through). Content is edited through the ledger now — the
+// contentadmin PO/SI editor (REQ-0182a) — because a live-file write no longer
+// reaches the served payload, the gacha roll or the simulation for any adopted
+// entity. The server-side route still exists and 409s such an id
+// (server/routes/admin.cjs); nothing in the client calls it.
+//
+// The REQ-0052 dex card DTO fetch below is unrelated and stays.
+import { scheduleJSON } from './http';
+import type { ApiDexCardDto } from '../../../shared/dto';
 
 // ---- REQ-0052: Dex Card API ----
 

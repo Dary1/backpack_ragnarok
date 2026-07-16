@@ -313,6 +313,7 @@ export function Workspace(props: {
         {variants.map((v) => (
           <VariantCard key={def.system_name + ':' + v.variant_no} v={v} kind={def.kind} all={variants}
             isAdopted={adoptedNo === v.variant_no} adoptedNo={adoptedNo}
+            systemName={def.system_name}
             isNew={props.newNos.includes(v.variant_no)} shouldScroll={props.scrollToNo === v.variant_no}
             recheckBusy={props.recheckingNos.includes(v.variant_no)}
             expandedChecks={props.expandedChecks} onToggleCheck={props.onToggleCheck}
