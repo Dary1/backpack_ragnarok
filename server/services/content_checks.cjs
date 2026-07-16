@@ -197,6 +197,27 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     // Roster/dungeon defs: skills/effects when present are validated against
     // the same verb/trigger vocab (EnemySkill/Unit domains).
     checkEffects(data.effects, vocab, kind === 'unit_def' ? 'Unit' : 'EnemySkill', errs);
+    // REQ-0201: deepen the unit_def dialect. A registry unit VARIANT carries the
+    // FULL unit/1 entry (id + icon + i18n + connection_shape + charge), so run the
+    // SAME executable validator the check_units live gate runs
+    // (shared/content_validate.cjs validateUnitEntry) at INGEST time -- the charge
+    // block is machine-checked HERE, not only at the check_units live gate. Guard on
+    // data.id: only the full variant carries the whole entry; a partial def record
+    // (no id) is left to the base id-required check above, not forced through
+    // validateUnitEntry's icon/connection_shape/i18n rules.
+    // COUPLING RESOLVED (integration-units003: 0200 -> 0201 merged): validateUnitEntry
+    // now KNOWS the `charge` grammar -- REQ-0200 landed it into content_validate.cjs
+    // (UNIT_ALLOWED_KEYS += 'charge' + validateCharge). A charge-bearing variant is no
+    // longer an unknown field: a legal charge block deep-validates, and an illegal one
+    // (unknown trigger / bad capacity / illegal spend) is caught HERE by the charge AST.
+    if (kind === 'unit_def' && data && typeof data.id === 'string' && data.id) {
+      try {
+        const { validateUnitEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+        validateUnitEntry(data, vocab);
+      } catch (e) {
+        errs.push(e.message);
+      }
+    }
   } else if (kind === 'tm_def') {
     if (data.short !== undefined && typeof data.short !== 'string') errs.push('tm_def.short must be a string');
   } else if (kind === 'gacha_pack') {
