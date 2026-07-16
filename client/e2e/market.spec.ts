@@ -443,7 +443,9 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect(created.listing.kind).toBe('po');
     const browse = await (await page.request.get('/api/market/listings')).json();
     expect(browse.dtoVersion).toBe(2);
-    expect(browse.tms).toEqual(['lrdst']);
+    // REQ-0204: 4 placeholder TMs joined lrdst in the live registry (appended
+    // after it, so lrdst stays index 0 / the default price TM).
+    expect(browse.tms).toEqual(['lrdst', 'ember_coin', 'frost_shard', 'verdant_drop', 'void_star']);
     expect(browse.tm).toBeUndefined();
   });
 
@@ -531,14 +533,15 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect(row?.bp?.hpMax).toBe(42);
   });
 
-  test('SELL: the tm (currency) tab reflects the single-live-TM reality -- lrdst held, no other currency to price in; same_tm is 400 (REQ-0195b)', async ({ page }) => {
+  test('SELL: the tm (currency) tab reflects the multi-live-TM reality -- lrdst held, priced in another live currency; same_tm is 400 (REQ-0195b, REQ-0204)', async ({ page }) => {
     // API: pricing a TM in itself -> 400 {reason:'same_tm'} (user ruling).
     const sameTm = await page.request.post('/api/market/listings', { data: { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } } });
     expect(sameTm.status()).toBe(400);
     expect((await sameTm.json()).reason).toBe('same_tm');
-    // UI: the dev player holds lrdst; the currency sell tab lets them pick it
-    // but shows the dormant 'no other currency to price in' state, because
-    // lrdst is the only live TM (a 2nd live TM would enable a real listing).
+    // UI: REQ-0204 added 4 more live TMs, so the dev player (holding lrdst) can
+    // now pick lrdst to sell AND price it in another live currency -- the
+    // previously-dormant 'no other currency to price in' state is gone; the real
+    // price-TM selector + list button take its place.
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
@@ -547,7 +550,12 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const lrdstItem = page.locator('[data-testid="market-sell-tm-item"][data-tm-id="lrdst"]');
     await expect(lrdstItem).toBeVisible();
     await lrdstItem.click();
-    await expect(page.locator('[data-testid="market-sell-tm-noprice"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-sell-tm-noprice"]')).toHaveCount(0);
+    const priceSel = page.locator('[data-testid="market-tm-pricetm"]');
+    await expect(priceSel).toBeVisible();
+    // price-TM options exclude lrdst (the TM being sold) -> the 4 REQ-0204 TMs.
+    await expect(priceSel.locator('option')).toHaveCount(4);
+    await expect(page.locator('[data-testid="market-tm-list-btn"]')).toBeVisible();
   });
 
   test('ROLL BAR: a po card shows a % bar equal to the seeded instance q, and a unit card with no roll container shows the unmeasured badge (REQ-0195e)', async ({ page }) => {
@@ -598,5 +606,24 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const total = await furnaceTotalOf(page);
     await expect(furnace).toContainText(total.toLocaleString());
     await expect(page.locator('.market-foot .lore')).toBeVisible();
+  });
+
+  // REQ-0205: the global held-TM balance HUD lives in the app-wide header,
+  // so it must surface a held currency on the market page AND persist when the
+  // player routes elsewhere (proving it is global chrome, not a market widget).
+  // Content-agnostic: lrdst is the guaranteed live TM on every content set.
+  test('HUD REQ-0205: the global held-TM strip shows a chip with the held qty, on the market page AND after routing away', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    await expect(page.locator('[data-testid="tm-hud"]')).toBeVisible();
+    const chip = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText('LRDST'); // the def's short label
+    await expect(chip).toContainText('\u00d720');   // the summed held qty (x20)
+    // Route away to Schedule -> the same chip is still in the header.
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const chipAfter = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');
+    await expect(chipAfter).toBeVisible();
+    await expect(chipAfter).toContainText('\u00d720');
   });
 });

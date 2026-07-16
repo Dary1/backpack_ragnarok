@@ -43,6 +43,13 @@ function buildHome(i) {
   // worktree's tools/, so this reads the worktree copy (with the new packs), not REPO.
   { const _wtPacks = path.join(__dirname, '..', 'content', 'live', 'live_packs.json');
     if (fs.existsSync(_wtPacks)) fs.copyFileSync(_wtPacks, path.join(bp, 'content', 'live', 'live_packs.json')); }
+  // REQ-0204: overlay THIS worktree's live_tms.json (the 4 placeholder TM
+  // currencies -- ember/frost/verdant/void -- not yet on master) onto the isolated
+  // e2e backend's content/live, so the market regression exercises the real 5-TM
+  // registry instead of master's lrdst-only fixture. Same overlay idiom + guard as
+  // the REQ-0062 live_packs.json copy just above.
+  { const _wtTms = path.join(__dirname, '..', 'content', 'live', 'live_tms.json');
+    if (fs.existsSync(_wtTms)) fs.copyFileSync(_wtTms, path.join(bp, 'content', 'live', 'live_tms.json')); }
   // REQ-0051: overlay this worktree's starter content (not yet on master)
   // so the e2e backend serves it. Additive + guarded -- only files present in
   // the worktree are copied; nothing about the REPO copy above changes.
