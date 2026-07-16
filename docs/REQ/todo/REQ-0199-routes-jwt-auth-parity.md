@@ -5,6 +5,22 @@
 - 2026-07-16 reserved -> todo: user-reported LIVE defect (a Supabase-JWT-only
   player cannot sell on the market -- every sell 404s). Root cause diagnosed by
   code inspection + live repro; cleared to implement immediately.
+- 2026-07-16 implemented + tests (commit b8d9057): market/ragnarok/dismantle/bio/dex
+  now resolve the caller via admin.resolveAuthFromRequest(req); market/ragnarok keep
+  `const token = getAuthToken(req)` SOLELY for callerIsDevFallback (formula preserved
+  verbatim); dismantle/bio/dex dropped the now-unused getAuthToken import.
+- 2026-07-16 gates GREEN:
+  - server api_test.cjs (files backend): 185 passed, 0 failed (executed assertions 1500).
+    Both new REQ-0199 gates PASS (market createListing + dismantle, JWT-only caller).
+  - server/tests/auth_jwt_test.cjs (standalone, files): 16 passed, 0 failed.
+  - SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh -> CI GREEN (typecheck + all files-backend
+    suites + client typecheck/build).
+  - client market e2e: 17 passed / 17 (EXIT=0). The Playwright global-teardown drove
+    the no-token dev-fallback hooks (POST /api/market/listings/dev/clear-all cleared=0;
+    POST /api/ragnarok/einherjar/dev/clear deleted=0), proving the preserved
+    callerIsDevFallback invariant did NOT regress the e2e's dev-fallback proxy path.
+  - web/app build artifacts reverted (git checkout -- web/app); tree left clean.
+- 2026-07-16 todo -> built.
 
 ## Problem
 User report (2026-07-16): a Supabase-JWT-authenticated player (Authorization:
