@@ -47,3 +47,11 @@ effects + flavor text.
 ## Gates (results appended when run)
 - client: pnpm lint; pnpm build (tsc -b + vite)
 - e2e: pnpm run e2e (box-locked full suite)
+
+## Gate results (2026-07-16)
+- client lint: 0 errors; client build: OK.
+- e2e targeted (dex.spec/dex-card.spec/dex-admin.spec): 16 passed; 2 failed = dex-admin
+  persistence tests, reproduced UNCHANGED on pristine master (pre-existing environment
+  issue, unrelated to this REQ; evidence /tmp/e2e_baseline_admin.log).
+- e2e full suite: all dex/dex-card/REQ-0120/locale tests green in-run; the user waived
+  waiting for full completion and directed immediate merge+deploy (2026-07-16).
