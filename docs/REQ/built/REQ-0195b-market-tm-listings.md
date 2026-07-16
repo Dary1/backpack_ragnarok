@@ -11,3 +11,10 @@
 
 ## Status log
 - 2026-07-16 split from REQ-0195 while in todo/.
+- 2026-07-16 implemented + committed (b42cd95). Gates: server api_test 179
+  passed / 0 failed (files backend, incl. the new tm suite); client tsc -b +
+  server tsc + vite build clean. Added fixture TM 'gilt' so a real tm-for-tm
+  settle is testable. NOTE: a full tm-for-tm BUY e2e is impossible against the
+  LIVE single-TM content (only lrdst is minted; same_tm forbids self-pricing),
+  so the e2e asserts the tm tab's dormant single-TM state + same_tm 400 instead;
+  it unblocks automatically once a 2nd TM is minted. todo -> built.
