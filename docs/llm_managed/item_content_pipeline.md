@@ -238,6 +238,24 @@ sometimes cheaper than re-prompting (rule 4).
 Implementation of the loop + the new instruments is a follow-up REQ
 (REQ-0187 observes; it does not modify the route).
 
+**S7 eyeball outcome (2026-07-16, REQ-0187 GPU verification).** Real production renders
+confirmed rules 1-4 and refined the lock economics:
+- **Mask orientation (rule 4) CONFIRMED.** The battle axe's natural L (notch bottom-right)
+  scored median fit 68.3 / 3-of-3 PASS vs the ordered notch-top-right L at 39.1 / 2-of-9;
+  the wrong orientation forces the handle onto the row center-line on almost every render.
+- **T-objects fit by translation (rules 1,3) CONFIRMED.** A war hammer (medial handle->head
+  attachment) fills the T footprint with no coaxing (best render 95.89).
+- **CORRECTION to the "strict = plain disc" economics.** REQ-0183/0186 framed the hard lock
+  as spending subject legibility ("the 2x2 round shield becomes a plain disc"). The real
+  renders do NOT support this: on the 2x2, strict OUT-FIT off (median 81.3 vs 71.8) AND kept
+  full character (boss, riveted rim, planks, weathering). What the lock changes is the
+  SILHOUETTE (a free heater/kite outline -> a bbox-filling round one), not the detail; and
+  off's full-rectangle outline is prompt-dependent and can underfill the cell. So `auto`->`off`
+  on a full rectangle trades silhouette shape (and a few points of fill), not character-for-
+  blank -- it is a per-item operator judgement (compare via the one-shot override), not a
+  rule justified by a "plain disc" that does not actually occur. A follow-up REQ should
+  re-word the lock economics in S0.1 / REQ-0186 (REQ-0187 observes only, changes no default).
+
 ## Prerequisites
 
 - Connected to the server. Work in worktree
