@@ -18,3 +18,15 @@
   LIVE single-TM content (only lrdst is minted; same_tm forbids self-pricing),
   so the e2e asserts the tm tab's dormant single-TM state + same_tm 400 instead;
   it unblocks automatically once a 2nd TM is minted. todo -> built.
+- 2026-07-16 (orchestrator review) market e2e EXECUTED against the isolated
+  worktree fleet -- 14/14 passed (the original 13 + a new content-bound
+  kind-chips case for review fix F1); tools/ci.sh SKIP_PG=1 SKIP_E2E=1 => CI
+  GREEN; server api_test 183 passed / 0 failed (files backend). This CORRECTS
+  the earlier "e2e authored but not executed / would hit the LIVE services"
+  note(s) above: tools/e2e_fleet.cjs spawns THIS worktree's server/api.cjs under
+  isolated /tmp homes and the local-proxy serves THIS worktree's web/app build,
+  so the specs run the worktree code, not live services.
+- 2026-07-16 (orchestrator review) review-fix commits this session: 80b774c
+  (F1 browse filter/query resolve defs per kind + kind chips), 1207134 (F2/F3/F4
+  PriceTag currency label + skip unit-less BPs + reset tm sell form), ec4c86b
+  (F5 stale envelope docs -> v2 tms[]), 8744310 (F1 kind-chips e2e).
