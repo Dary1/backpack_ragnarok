@@ -29,6 +29,8 @@ echo "==== [2.5/7] S4 post-processor tests (REQ-0050) ===="
 node sim/tests/s4_test.cjs
 echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
 node sim/tests/forecast_parity.cjs
+echo "==== [2.7/7] REQ-0203 grave-legion gates (dialect / sim verbs / transpose / packs / additive promote) ===="
+node sim/tests/req0203_grave_legion_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
@@ -127,6 +129,8 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # the same reason as the two gates above, so it sits beside them.
   echo "==== [5.75/7] client monster_pack board footprints (REQ-0184) ===="
   (cd client && node scripts/check_pack_board.mjs)
+  echo "==== [5.76/7] client monster_pack board -- batch-005 grave-legion resolves footprints from art (REQ-0203) ===="
+  (cd client && node scripts/check_pack_board_grave_legion.mjs)
   # REQ-0059: circuit-chimes deterministic event->note mapping (+ prefs).
   # Pure functions, no browser/Pixi/AudioContext -- same vite-ssrLoadModule
   # rig as the two gates above, so it sits beside them in front of the build.
