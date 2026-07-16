@@ -130,7 +130,7 @@ module.exports.run = async function run(h) {
     const res = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_sell_1', price: { tm: 'lrdst', qty: 46 } });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.ok, true);
-    assert.strictEqual(res.body.dtoVersion, 1);
+    assert.strictEqual(res.body.dtoVersion, 2);
     assert.strictEqual(res.body.replayed, false);
     const l = res.body.listing;
     assert.strictEqual(l.state, 'active');
@@ -179,8 +179,8 @@ module.exports.run = async function run(h) {
 
     const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
     assert.strictEqual(browse.status, 200);
-    assert.strictEqual(browse.body.dtoVersion, 1);
-    assert.strictEqual(browse.body.tm, 'lrdst');
+    assert.strictEqual(browse.body.dtoVersion, 2);
+    assert.deepStrictEqual([...browse.body.tms].sort(), ['gilt', 'lrdst'], 'envelope carries the live TM registry ids (dtoVersion 2)');
     assert.strictEqual(browse.body.listings.length, 2, 'both active listings visible to another player');
     assert.ok(browse.body.listings.every((x) => x.sellerName === 'MarketSeller'));
 
@@ -246,7 +246,7 @@ module.exports.run = async function run(h) {
 
     const buy = await marketReq('POST', '/api/market/listings/' + mktListing1Id + '/buy', mktBuyer.token);
     assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
-    assert.strictEqual(buy.body.dtoVersion, 1);
+    assert.strictEqual(buy.body.dtoVersion, 2);
     assert.deepStrictEqual(
       { qty: buy.body.receipt.price.qty, burn: buy.body.receipt.burn, sellerReceives: buy.body.receipt.sellerReceives },
       { qty: 46, burn: 4, sellerReceives: 42 },
@@ -284,7 +284,7 @@ module.exports.run = async function run(h) {
     // Furnace + dex history.
     const furnace = await marketReq('GET', '/api/market/furnace', mktBuyer.token);
     assert.strictEqual(furnace.status, 200);
-    assert.deepStrictEqual(furnace.body.furnace, { tm: 'lrdst', total: 4, count: 1, since: null });
+    assert.deepStrictEqual(furnace.body.furnace, { totals: [{ tm: 'lrdst', total: 4, count: 1 }], since: null });
     const hist = scheduleStorage.readMarketDexHistory('blade');
     assert.strictEqual(hist.entries.length, 1);
     assert.strictEqual(hist.entries[0].qty, 46);
@@ -297,7 +297,7 @@ module.exports.run = async function run(h) {
     const settledRow = mine2.body.listings.find((x) => x.id === mktListing1Id);
     assert.strictEqual(settledRow.state, 'settled');
     assert.strictEqual(settledRow.buyerId, mktBuyer.playerId);
-    assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, t: hist.entries[0].t }], 'DTO exposes the engraved history');
+    assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, tm: 'lrdst', t: hist.entries[0].t }], 'DTO exposes the engraved history (with its price TM)');
   });
 
   await AT('market: concurrent buys -- first wins, second 409 already_settled; self-buy 409; insufficient balance 409 leaves everything untouched', async () => {
@@ -459,7 +459,7 @@ module.exports.run = async function run(h) {
     const res = await marketReq('GET', '/api/market/furnace', mktPoor.token);
     assert.strictEqual(res.status, 200);
     // Settles so far: 46 (burn 4) + 12 (burn 1) + 13 (burn 2) = 7 over 3 trades.
-    assert.deepStrictEqual(res.body.furnace, { tm: 'lrdst', total: 7, count: 3, since: null });
+    assert.deepStrictEqual(res.body.furnace, { totals: [{ tm: 'lrdst', total: 7, count: 3 }], since: null });
     // The windowing hook already works (REQ-0066 will pass a season start).
     const windowed = market.furnaceTotal(Date.now() + 1000);
     assert.deepStrictEqual({ total: windowed.total, count: windowed.count }, { total: 0, count: 0 }, 'a future window excludes everything');
@@ -487,6 +487,294 @@ module.exports.run = async function run(h) {
     const hist = scheduleStorage.readMarketDexHistory('blade');
     assert.deepStrictEqual(hist.entries.map((e) => e.qty), [6, 5, 4, 3, 2], 'rolling window, newest first');
     assert.strictEqual(mktBalance(mktBuyer.playerId), 69 - 21, 'buyer paid 1+2+..+6');
+  });
+
+  await AT('market: unit (BP) listing -- EMPTY-only (not_empty 409 when a PO sits in the footprint), settle strips the BP + delivers a kind:bp row with the verbatim payload; claim validates unit.id (REQ-0195d)', async () => {
+    const uSeller = playersFixture.createPlayer('MarketUnitSeller', []);
+    const uBuyer = playersFixture.createPlayer('MarketUnitBuyer', []);
+    const emptyBp = { id: 'u_bp_empty', name: 'BP1', color: '#888', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 2, bonuses: [] };
+    const fullBp = { id: 'u_bp_full', name: 'BP2', color: '#888', shape: [[0, 0], [0, 1]], origin: [4, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 2 };
+    const p0 = { bps: [emptyBp, fullBp], pos: [{ uid: 'u_nested_po', id: 'blade', cell: [4, 1], rot: 0 }], sis: [], tms: [] };
+    scheduleStorage.writeProfile(uSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(uBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'u_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // not_empty: a PO sits on fullBp's footprint [4,1] -> 409.
+    const notEmpty = await marketReq('POST', '/api/market/listings', uSeller.token, { kind: 'unit', itemUid: 'u_bp_full', price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(notEmpty.status, 409, JSON.stringify(notEmpty.body));
+    assert.strictEqual(notEmpty.body.reason, 'not_empty');
+    // The empty BP lists fine (kind:unit, itemId = the unit content id).
+    const created = await marketReq('POST', '/api/market/listings', uSeller.token, { kind: 'unit', itemUid: 'u_bp_empty', price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.listing.kind, 'unit');
+    assert.strictEqual(created.body.listing.itemId, 'test_loner');
+    assert.strictEqual(created.body.listing.itemUid, 'u_bp_empty');
+    const uId = created.body.listing.id;
+    // Settle: buyer gets a kind:bp row with the verbatim payload; seller loses the BP.
+    const buy = await marketReq('POST', '/api/market/listings/' + uId + '/buy', uBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterU = scheduleStorage.readProfile(uSeller.playerId).canvas;
+    assert.ok(!afterU.inv.pages[0].bps.some((b) => b.id === 'u_bp_empty'), 'sold BP stripped');
+    assert.ok(afterU.inv.pages[0].bps.some((b) => b.id === 'u_bp_full'), 'the other BP stays');
+    const row = schedule.listWarehouse(uBuyer.playerId).find((w) => w.sourceListingId === uId);
+    assert.ok(row, 'buyer got a delivery row');
+    assert.strictEqual(row.kind, 'bp');
+    assert.strictEqual(row.itemId, 'test_loner');
+    assert.ok(row.bp, 'the row carries the bp payload');
+    assert.deepStrictEqual(row.bp.shape, [[0, 0], [0, 1]], 'payload shape verbatim');
+    assert.strictEqual(row.bp.unit.id, 'test_loner', 'payload unit verbatim');
+    assert.strictEqual(row.bp.hpMax, 30, 'payload hpMax verbatim');
+    // Claim validates unit.id against unitDefsById and returns the payload.
+    const claim = await marketReq('POST', '/api/warehouse/claim', uBuyer.token, { itemUid: row.itemUid });
+    assert.strictEqual(claim.status, 200, JSON.stringify(claim.body));
+    assert.strictEqual(claim.body.kind, 'bp');
+    assert.ok(claim.body.bp, 'claim returns the payload');
+    assert.strictEqual(claim.body.bp.unit.id, 'test_loner');
+  });
+
+  await AT('market: si listing -- create/settle delivers a plain SI row (q copied, no kind); PO-sale re-homes socketed SIs to host:inv (REQ-0195c)', async () => {
+    const siSeller = playersFixture.createPlayer('MarketSiSeller', []);
+    const siBuyer = playersFixture.createPlayer('MarketSiBuyer', []);
+    const p0 = { bps: [], pos: [{ uid: 'si_po_host', id: 'blade', cell: [1, 1], rot: 0 }], sis: [
+      { uid: 'si_loose', id: 'acc_gem', host: 'inv', q: 0.42 },
+      { uid: 'si_seated', id: 'fx_ring', host: { po: 'si_po_host', si: 0 }, q: 0.77 },
+    ], tms: [] };
+    scheduleStorage.writeProfile(siSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(siBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'si_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // Create an SI listing for the loose gem.
+    const created = await marketReq('POST', '/api/market/listings', siSeller.token, { kind: 'si', itemUid: 'si_loose', price: { tm: 'lrdst', qty: 10 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.listing.kind, 'si');
+    assert.strictEqual(created.body.listing.itemId, 'acc_gem');
+    assert.strictEqual(created.body.listing.itemUid, 'si_loose');
+    const siListingId = created.body.listing.id;
+    const browse = await marketReq('GET', '/api/market/listings', siBuyer.token);
+    assert.ok(browse.body.listings.some((x) => x.id === siListingId && x.kind === 'si'), 'si listing browsable');
+    // Settle: seller loses the SI; buyer gets a PLAIN row (q copied, no kind).
+    const buy = await marketReq('POST', '/api/market/listings/' + siListingId + '/buy', siBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterSi = scheduleStorage.readProfile(siSeller.playerId).canvas;
+    assert.ok(!afterSi.inv.pages[0].sis.some((a) => a.uid === 'si_loose'), 'sold SI stripped from inventory');
+    const row = schedule.listWarehouse(siBuyer.playerId).find((w) => w.sourceListingId === siListingId);
+    assert.ok(row, 'buyer got a delivery row');
+    assert.strictEqual(row.itemId, 'acc_gem');
+    assert.strictEqual(row.kind, undefined, 'plain SI row (claim validates via siDefsById), not a tm row');
+    assert.strictEqual(row.q, 0.42, 'the SI instance q travels, never re-rolled');
+    // Sell the PO host -> the seated SI (fx_ring) re-homes to host:inv.
+    const poCreate = await marketReq('POST', '/api/market/listings', siSeller.token, { kind: 'po', itemUid: 'si_po_host', price: { tm: 'lrdst', qty: 8 } });
+    assert.strictEqual(poCreate.status, 200, JSON.stringify(poCreate.body));
+    const poBuy = await marketReq('POST', '/api/market/listings/' + poCreate.body.listing.id + '/buy', siBuyer.token);
+    assert.strictEqual(poBuy.status, 200, JSON.stringify(poBuy.body));
+    const afterPo = scheduleStorage.readProfile(siSeller.playerId).canvas;
+    assert.ok(!afterPo.inv.pages[0].pos.some((p) => p.uid === 'si_po_host'), 'sold PO stripped');
+    const seated = afterPo.inv.pages[0].sis.find((a) => a.uid === 'si_seated');
+    assert.ok(seated, 'the seated SI survives (it was not sold)');
+    assert.strictEqual(seated.host, 'inv', 'the seated SI re-homed to inv -- no orphaned host ref');
+  });
+
+  await AT('market: tm listing (currency-for-currency) -- same_tm 400, tmQty/itemId validation, derived suspension on low balance, settle debits+delivers a kind:tm row, insufficient-stock 409', async () => {
+    const tmSeller = playersFixture.createPlayer('MarketTmSeller', []);
+    const tmBuyer = playersFixture.createPlayer('MarketTmBuyer', []);
+    scheduleStorage.writeProfile(tmSeller.playerId, mkCanvas(
+      [invPage([], [{ uid: 'gilt_s1', id: 'gilt', qty: 50, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    scheduleStorage.writeProfile(tmBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'lrdst_b1', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // same_tm: pricing a TM in itself -> 400 {reason:'same_tm'}.
+    const sameTm = await marketReq('POST', '/api/market/listings', tmSeller.token, { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(sameTm.status, 400, JSON.stringify(sameTm.body));
+    assert.strictEqual(sameTm.body.reason, 'same_tm');
+    // tmQty out of [1,999] and a non-TM itemId -> 400.
+    for (const badQty of [0, 1000, 2.5]) {
+      const bad = await marketReq('POST', '/api/market/listings', tmSeller.token, { kind: 'tm', itemId: 'gilt', tmQty: badQty, price: { tm: 'lrdst', qty: 5 } });
+      assert.strictEqual(bad.status, 400, 'tmQty ' + badQty + ' -> 400: ' + JSON.stringify(bad.body));
+    }
+    const badItem = await marketReq('POST', '/api/market/listings', tmSeller.token, { kind: 'tm', itemId: 'blade', tmQty: 5, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(badItem.status, 400, 'itemId must be a live TM: ' + JSON.stringify(badItem.body));
+    // Create: sell 10 gilt priced in 20 lrdst.
+    const created = await marketReq('POST', '/api/market/listings', tmSeller.token, { kind: 'tm', itemId: 'gilt', tmQty: 10, price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    const l = created.body.listing;
+    assert.strictEqual(l.kind, 'tm');
+    assert.strictEqual(l.itemUid, null, 'tm listings carry a null itemUid');
+    assert.strictEqual(l.tmQty, 10);
+    assert.deepStrictEqual(l.price, { tm: 'lrdst', qty: 20 });
+    assert.strictEqual(l.burn, 2, '20 -> burn 2');
+    assert.strictEqual(l.state, 'active', 'seller holds 50 gilt >= 10');
+    const tmListingId = l.id;
+    // A second listing for 100 gilt (> 50 balance) derives SUSPENDED.
+    const suspCreate = await marketReq('POST', '/api/market/listings', tmSeller.token, { kind: 'tm', itemId: 'gilt', tmQty: 100, price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(suspCreate.status, 200, JSON.stringify(suspCreate.body));
+    const suspId = suspCreate.body.listing.id;
+    const browseSusp = await marketReq('GET', '/api/market/listings', tmBuyer.token);
+    const suspRow = browseSusp.body.listings.find((x) => x.id === suspId);
+    assert.ok(suspRow, 'suspended tm listing stays browsable');
+    assert.strictEqual(suspRow.state, 'suspended');
+    assert.strictEqual(suspRow.suspended, true);
+    assert.strictEqual(suspRow.tmQty, 100);
+    // Buying the suspended (insufficient-stock) one -> 409 suspended.
+    const buySusp = await marketReq('POST', '/api/market/listings/' + suspId + '/buy', tmBuyer.token);
+    assert.strictEqual(buySusp.status, 409);
+    assert.strictEqual(buySusp.body.reason, 'suspended');
+    // Settle the valid one: buyer pays 20 lrdst (burn 2 -> seller 18),
+    // buyer receives a kind:tm gilt row qty 10, seller loses 10 gilt.
+    const buy = await marketReq('POST', '/api/market/listings/' + tmListingId + '/buy', tmBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    assert.strictEqual(buy.body.listing.state, 'settled');
+    assert.deepStrictEqual({ burn: buy.body.receipt.burn, get: buy.body.receipt.sellerReceives }, { burn: 2, get: 18 });
+    assert.strictEqual(mktBalance(tmBuyer.playerId), 80, 'buyer paid 20 lrdst');
+    assert.strictEqual(market.readTmBalance(scheduleStorage.readProfile(tmSeller.playerId).canvas, 'gilt'), 40, 'seller lost 10 gilt');
+    const delivered = schedule.listWarehouse(tmBuyer.playerId).find((w) => w.sourceListingId === tmListingId);
+    assert.ok(delivered, 'buyer got a delivery row');
+    assert.strictEqual(delivered.kind, 'tm');
+    assert.strictEqual(delivered.itemId, 'gilt');
+    assert.strictEqual(delivered.qty, 10);
+    const proceeds = schedule.listWarehouse(tmSeller.playerId).find((w) => w.sourceListingId === tmListingId);
+    assert.strictEqual(proceeds.kind, 'tm');
+    assert.strictEqual(proceeds.itemId, 'lrdst');
+    assert.strictEqual(proceeds.qty, 18);
+  });
+
+  await AT('market: rollPct DTO derivation -- po/si carry the live instance q, unit carries bp.roll?.pct else null (unmeasured), tm null; a settled listing freezes the value (REQ-0195e)', async () => {
+    const rSeller = playersFixture.createPlayer('MarketRollSeller', []);
+    const rBuyer = playersFixture.createPlayer('MarketRollBuyer', []);
+    const bpMeasured = { id: 'r_bp_measured', name: 'BPm', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1, roll: { pct: 0.7 } };
+    const bpUnmeasured = { id: 'r_bp_unmeasured', name: 'BPu', color: '#888', shape: [[0, 0]], origin: [3, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1 };
+    const p0 = {
+      bps: [bpMeasured, bpUnmeasured],
+      pos: [{ uid: 'r_po', id: 'blade', cell: [5, 1], rot: 0, q: 0.42 }],
+      sis: [{ uid: 'r_si', id: 'acc_gem', host: 'inv', q: 0.61 }],
+      tms: [{ uid: 'r_tm', id: 'lrdst', qty: 50, cell: [8, 1] }],
+    };
+    scheduleStorage.writeProfile(rSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(rBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'r_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // po/si -> the live instance q (REQ-0063).
+    const poL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'po', itemUid: 'r_po', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(poL.status, 200, JSON.stringify(poL.body));
+    assert.strictEqual(poL.body.listing.rollPct, 0.42, 'po rollPct = the instance q');
+    const siL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'si', itemUid: 'r_si', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(siL.status, 200, JSON.stringify(siL.body));
+    assert.strictEqual(siL.body.listing.rollPct, 0.61, 'si rollPct = the instance q');
+    // unit -> bp.roll?.pct (REQ-0196 container) else null (unmeasured).
+    const uMeas = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'unit', itemUid: 'r_bp_measured', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(uMeas.status, 200, JSON.stringify(uMeas.body));
+    assert.strictEqual(uMeas.body.listing.rollPct, 0.7, 'unit rollPct = bp.roll.pct');
+    const uUnmeas = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'unit', itemUid: 'r_bp_unmeasured', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(uUnmeas.status, 200, JSON.stringify(uUnmeas.body));
+    assert.strictEqual(uUnmeas.body.listing.rollPct, null, 'unit without a roll container -> null (unmeasured, never a 0% bar)');
+    // tm -> always null.
+    const tmL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'gilt', qty: 5 } });
+    assert.strictEqual(tmL.status, 200, JSON.stringify(tmL.body));
+    assert.strictEqual(tmL.body.listing.rollPct, null, 'tm rollPct is always null');
+    // A DIFFERENT caller browsing derives the same live values.
+    const browse = await marketReq('GET', '/api/market/listings', rBuyer.token);
+    assert.strictEqual(browse.body.listings.find((x) => x.itemUid === 'r_po').rollPct, 0.42, 'browse DTO derives po rollPct too');
+    // Settle the po; the seller mine view keeps the FROZEN rollPct even
+    // after the instance has left their canvas (MinePane honesty).
+    const buy = await marketReq('POST', '/api/market/listings/' + poL.body.listing.id + '/buy', rBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterSeller = scheduleStorage.readProfile(rSeller.playerId).canvas;
+    assert.ok(!afterSeller.inv.pages[0].pos.some((p) => p.uid === 'r_po'), 'sold po stripped from the seller');
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', rSeller.token);
+    const settledRow = mine.body.listings.find((x) => x.id === poL.body.listing.id);
+    assert.strictEqual(settledRow.state, 'settled');
+    assert.strictEqual(settledRow.rollPct, 0.42, 'settled listing keeps rollPct FROZEN at settle time');
+  });
+
+
+  await AT('market: kind field defaults to po on create + legacy listings normalize to po; envelope carries tms[] (live TM registry); non-registry price.tm 400s', async () => {
+    const kSeller = playersFixture.createPlayer('MarketKindSeller', []);
+    scheduleStorage.writeProfile(kSeller.playerId, mkCanvas(
+      [invPage([{ uid: 'mkt_kind_1', id: 'blade', cell: [1, 1], rot: 0 }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    const created = await marketReq('POST', '/api/market/listings', kSeller.token, { itemUid: 'mkt_kind_1', price: { tm: 'lrdst', qty: 10 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.dtoVersion, 2);
+    assert.strictEqual(created.body.listing.kind, 'po', 'a created PO listing carries kind:po');
+    const id = created.body.listing.id;
+    // Legacy doc lacking `kind` -> normalizes to po at read (they can only be POs).
+    const raw = scheduleStorage.readMarketListing(id);
+    delete raw.kind;
+    scheduleStorage.writeMarketListing(id, raw);
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', kSeller.token);
+    assert.strictEqual(mine.body.listings.find((x) => x.id === id).kind, 'po', 'legacy listing (no kind) reads as po');
+    // Envelope: tms[] is the live TM registry; the scalar tm is gone.
+    const browse = await marketReq('GET', '/api/market/listings', kSeller.token);
+    assert.deepStrictEqual([...browse.body.tms].sort(), ['gilt', 'lrdst'], 'envelope carries the live TM registry ids');
+    assert.strictEqual(browse.body.tm, undefined, 'the scalar tm envelope field is gone at dtoVersion 2');
+    // price.tm must be a live registry id.
+    const badTm = await marketReq('POST', '/api/market/listings', kSeller.token, { itemUid: 'mkt_kind_1', price: { tm: 'not_a_tm', qty: 5 } });
+    assert.strictEqual(badTm.status, 400, 'price.tm must be a live TM registry id: ' + JSON.stringify(badTm.body));
+    // Unsupported kind (phase a lists POs only) 400s.
+    const badKind = await marketReq('POST', '/api/market/listings', kSeller.token, { kind: 'tm', itemUid: 'mkt_kind_1', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(badKind.status, 400, 'unsupported kind 400s in phase a: ' + JSON.stringify(badKind.body));
+  });
+
+  await AT('market: browse resolves defs per kind -- name query matches si/unit listings; filter=unit/tm select by listing KIND (review fix F1)', async () => {
+    const c = schedule.getScheduleContent();
+    const siName = c.siDefsById.acc_gem.name;        // 'Gem'
+    const unitName = c.unitDefsById.test_loner.name;  // 'Test Loner'
+    const f1Seller = playersFixture.createPlayer('MarketF1Seller', []);
+    const f1Bp = { id: 'f1_bp', name: 'F1 BP', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1 };
+    const p0 = {
+      bps: [f1Bp],
+      pos: [{ uid: 'f1_po', id: 'blade', cell: [3, 1], rot: 0 }],
+      sis: [{ uid: 'f1_si', id: 'acc_gem', host: 'inv', q: 0.5 }],
+      tms: [{ uid: 'f1_tm', id: 'gilt', qty: 50, cell: [8, 1] }],
+    };
+    scheduleStorage.writeProfile(f1Seller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+
+    // One live listing of each kind (all stay active -- the seller holds
+    // enough gilt so the tm listing is not suspended).
+    const poL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'po', itemUid: 'f1_po', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(poL.status, 200, JSON.stringify(poL.body));
+    const siL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'si', itemUid: 'f1_si', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(siL.status, 200, JSON.stringify(siL.body));
+    const uL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'unit', itemUid: 'f1_bp', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(uL.status, 200, JSON.stringify(uL.body));
+    const tmL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'tm', itemId: 'gilt', tmQty: 5, price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(tmL.status, 200, JSON.stringify(tmL.body));
+
+    // (F1) a NAME query now resolves the def per kind -> an si listing
+    // matches by its OWN def name (matchesQuery was blind to it before).
+    const bySi = await marketReq('GET', '/api/market/listings?q=' + encodeURIComponent(siName), mktBuyer.token);
+    assert.strictEqual(bySi.status, 200, JSON.stringify(bySi.body));
+    assert.ok(bySi.body.listings.some((x) => x.id === siL.body.listing.id), 'si listing matches by name (was blind pre-fix)');
+    const needleSi = siName.toLowerCase();
+    assert.ok(bySi.body.listings.every((x) => x.itemName.toLowerCase().includes(needleSi) || (x.itemNameJa || '').toLowerCase().includes(needleSi)), 'name query still returns only name-matching listings');
+
+    // (F1) a unit listing matches by its unit def name too.
+    const byUnit = await marketReq('GET', '/api/market/listings?q=' + encodeURIComponent(unitName), mktBuyer.token);
+    assert.ok(byUnit.body.listings.some((x) => x.id === uL.body.listing.id), 'unit listing matches by its unit def name');
+
+    // (F1) filter by listing KIND: unit returns only unit-kind listings.
+    const fUnit = await marketReq('GET', '/api/market/listings?filter=unit', mktBuyer.token);
+    assert.ok(fUnit.body.listings.length >= 1 && fUnit.body.listings.every((x) => x.kind === 'unit'), 'filter=unit -> only unit listings');
+    assert.ok(fUnit.body.listings.some((x) => x.id === uL.body.listing.id), 'the unit listing is among filter=unit results');
+
+    // (F1) filter=tm returns only tm-kind listings (token is case-insensitive).
+    const fTm = await marketReq('GET', '/api/market/listings?filter=TM', mktBuyer.token);
+    assert.ok(fTm.body.listings.length >= 1 && fTm.body.listings.every((x) => x.kind === 'tm'), 'filter=TM (case-insensitive) -> only tm listings');
+    assert.ok(fTm.body.listings.some((x) => x.id === tmL.body.listing.id), 'the tm listing is among filter=tm results');
+
+    // (F1) existing tag behavior intact: the weapon tag chip still hits
+    // POs (and only po defs carry tags), and filter=po selects only POs.
+    const fWeapon = await marketReq('GET', '/api/market/listings?filter=weapon', mktBuyer.token);
+    assert.ok(fWeapon.body.listings.some((x) => x.id === poL.body.listing.id), 'blade (Weapon) still matches the weapon tag chip');
+    assert.ok(fWeapon.body.listings.every((x) => (x.kind || 'po') === 'po'), 'the weapon tag chip only ever hits po defs');
+    const fPo = await marketReq('GET', '/api/market/listings?filter=po', mktBuyer.token);
+    assert.ok(fPo.body.listings.length >= 1 && fPo.body.listings.every((x) => (x.kind || 'po') === 'po'), 'filter=po -> only po listings');
   });
 
   await AT('market: every /api/market route is token-gated (401 for a garbage token)', async () => {
