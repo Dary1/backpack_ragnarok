@@ -1,15 +1,24 @@
-// Detail pane for the Dex (図鑑) — REQ-0108, now the persistent right/top
-// pane of the master/detail split (REQ-0120). Renders the two panes
-// [diagram | info] for the selected entry; Dex.tsx mounts this inside
-// .dex-md-detail beside the catalog grid (the master list). The former
-// separate list rail (.dex-detail-col-list / .dex-detail-item-list-row) was
-// removed in REQ-0108 — the grid IS the list. REQ-0120 additionally drops
-// the "back to list" button (.dex-detail-back-btn): the detail is always
-// shown (index=0 preselected), so there is nothing to collapse back to.
-// Composition is otherwise unchanged from the REQ-0038/0075 detail:
-// DexDiagram (図解/SCHEMA) + ItemDetailCard (銘と効果). Every kept selector
-// (.dex-detail-col-diagram / .dex-detail-col-info / .dex-detail-phead /
-// .dex-diagram*) is unchanged.
+// Detail pane for the Dex (図鑑) — REQ-0108, persistent right/top pane of
+// the master/detail split (REQ-0120), unified REQ-0194.
+//
+// REQ-0194 (dex detail pane overhaul): the former TWO stacked ornate
+// panels ([Schema panel] + [info panel], each with its own rarity frame
+// and corner brackets, the first never naming the item it diagrams) are
+// merged into ONE rarity-framed plate:
+//
+//   [ masthead  — No. chip + localized name + EN caption + rarity word
+//                 + kind/slot chip + id + type chips              ]
+//   [ section   — 図解 / SCHEMA   (.dex-detail-col-diagram)        ]
+//   [ divider ᛁ                                                    ]
+//   [ section   — 銘と効果 / LORE & EFFECTS (.dex-detail-col-info)  ]
+//
+// The identity row (name/rarity/id chips) used to live INSIDE
+// ItemDetailCard (i.e. inside the second panel, below the diagram of the
+// very item it names); it is hoisted here so both sections visibly hang
+// off one identity. The E2E-load-bearing section classes
+// (.dex-detail-col-diagram / .dex-detail-col-info / .dex-detail-phead)
+// are kept — they are now sections of the single panel instead of
+// standalone panels. See docs/REQ/*/REQ-0194-dex-detail-overhaul.md.
 import type { ApiContentPayload, ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
@@ -18,7 +27,7 @@ import type { Locale } from '../store';
 import type { DexEntry } from './Dex';
 import { DexDiagram } from './DexDiagram';
 import { iconDims, resolveIconUrl } from './dexIcons';
-import { ItemDetailCard } from './ItemDetailCard';
+import { ItemDetailCard, localizedName } from './ItemDetailCard';
 import { RegistryBadge } from './RegistryBadge'; // REQ-0155 LINK-FIRST
 
 interface DexDetailProps {
@@ -45,36 +54,87 @@ function alignOf(entry: ApiItemEntry | ApiSIEntry) {
   return 'align' in entry ? entry.align : undefined;
 }
 
+/** REQ-0194: shared section head for the schema/lore sections. The den
+ * caption (EN smallcaps) is HIDDEN when it is just the title uppercased —
+ * the EN locale used to render a redundant "Schema / SCHEMA"; the JA
+ * locale keeps its 図解 / SCHEMA pairing. */
+function SectionHead({ rune, title, den }: { rune: string; title: string; den: string }) {
+  const showDen = den.trim().toUpperCase() !== title.trim().toUpperCase();
+  return (
+    <div className="dex-detail-phead">
+      <span className="dex-detail-phead-rn rune" aria-hidden="true">
+        {rune}
+      </span>
+      <span className="dj dex-detail-phead-title">{title}</span>
+      {showDen ? <span className="den dex-detail-phead-den">{den}</span> : null}
+    </div>
+  );
+}
+
 export function DexDetail({ selected, locale, tagTree, registry, dexNo }: DexDetailProps) {
+  const entry = selected.entry;
+  const displayName = localizedName(entry, locale);
+  const noStr = dexNo != null ? `${t(locale, 'dex.noPrefix')}${String(dexNo).padStart(3, '0')}` : null;
+  // SIs carry no dex number; their closest real category is their slot
+  // (same source categoryOf() in Dex.tsx already uses for the catalog
+  // cards) — shown on the kind chip, not invented taxonomy.
+  const slot = selected.kind === 'si' ? (entry as ApiSIEntry).slot || null : null;
+  const tags = selected.kind === 'po' ? (entry as ApiItemEntry).tags || [] : [];
+
   return (
     <div className="dex-detail-drawer-panes">
-      <div className={`dex-detail-col-diagram panel ornate rar ${rarThemeClass(selected.entry.rarity)}`}>
+      <article className={`dex-detail-panel panel ornate rar ${rarThemeClass(entry.rarity)}`}>
         <i className="k tl" />
         <i className="k tr" />
         <i className="k br" />
         <i className="k bl" />
-        <div className="dex-detail-phead">
-          <span className="dj dex-detail-phead-title">{t(locale, 'dex.schemaTitle')}</span>
-          <span className="den dex-detail-phead-den">{t(locale, 'dex.schemaDen')}</span>
+
+        {/* REQ-0194 masthead — the ONE identity both sections hang off. */}
+        <header className="dex-detail-masthead">
+          <div className="dex-detail-namehead">
+            {noStr ? <span className="dex-detail-masthead-no den tnum">{noStr}</span> : null}
+            <h3 className="dex-detail-name dj">{displayName}</h3>
+            <span className="dex-detail-enname den">{entry.name.toUpperCase()}</span>
+          </div>
+          <div className="dex-detail-chiprow">
+            <span className={`rar-word rarity r-${entry.rarity}`}>{entry.rarity.toUpperCase()}</span>
+            <span className="chip dex-detail-kindchip">
+              {selected.kind === 'po' ? 'PO' : slot ? `SI ・ ${slot}` : 'SI'}
+            </span>
+            <span className="dex-detail-field-id">
+              <span className="dex-detail-label">id</span> {selected.id}
+            </span>
+            {tags.map((tag) => (
+              <span className="chip dex-detail-tagchip" key={tag}>
+                {tag}
+              </span>
+            ))}
+          </div>
+        </header>
+
+        <section className="dex-detail-col-diagram">
+          <SectionHead rune="ᛟ" title={t(locale, 'dex.schemaTitle')} den={t(locale, 'dex.schemaDen')} />
+          <DexDiagram
+            entry={entry}
+            shape={shapeOf(entry)}
+            iconUrl={resolveIconUrl(entry.id, entry.icon).url}
+            iconDims={iconDims(entry.icon)}
+            iconStretch={stretchOf(entry)}
+            iconAlign={alignOf(entry)}
+            locale={locale}
+          />
+        </section>
+
+        <div className="rune-divider dex-detail-section-divider" aria-hidden="true">
+          ᛁ
         </div>
-        <DexDiagram
-          entry={selected.entry}
-          shape={shapeOf(selected.entry)}
-          iconUrl={resolveIconUrl(selected.entry.id, selected.entry.icon).url}
-          iconDims={iconDims(selected.entry.icon)}
-          iconStretch={stretchOf(selected.entry)}
-          iconAlign={alignOf(selected.entry)}
-          locale={locale}
-        />
-      </div>
-      <div className={`dex-detail-col-info panel ornate rar ${rarThemeClass(selected.entry.rarity)}`}>
-        <i className="k tl" />
-        <i className="k tr" />
-        <i className="k br" />
-        <i className="k bl" />
-        <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} dexNo={dexNo} />
-        <RegistryBadge systemName={selected.id} />
-      </div>
+
+        <section className="dex-detail-col-info">
+          <SectionHead rune="ᛗ" title={t(locale, 'dex.loreTitle')} den={t(locale, 'dex.loreDen')} />
+          <ItemDetailCard dexEntry={selected} locale={locale} tagTree={tagTree} registry={registry} dexNo={dexNo} />
+          <RegistryBadge systemName={selected.id} />
+        </section>
+      </article>
     </div>
   );
 }
