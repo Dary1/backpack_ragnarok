@@ -77,7 +77,10 @@ export function artAdoptedUrl(name: string): string {
 // ---- REQ-0156: generation queue introspection + cancel ----
 export interface ArtQueueRunning { renderId: number; artwork: string; seed: number; started_at: number; elapsed_ms: number }
 export interface ArtQueuePending { renderId: number; artwork: string; seed: number; enqueued_at: number }
-export interface ArtQueueDto { running: ArtQueueRunning | null; pending: ArtQueuePending[]; inspectDepth: number }
+// REQ-0197: held/heldPending -- the deferred-batch gate. Held jobs wait for
+// an explicit Execute batch (or hold-off) and are listed apart from live
+// pending so the panel can label them.
+export interface ArtQueueDto { running: ArtQueueRunning | null; pending: ArtQueuePending[]; heldPending: ArtQueuePending[]; held: boolean; inspectDepth: number }
 
 /** GET /api/art/queue -- running job (with elapsed) + pending generation
  * jobs + inspection backlog depth. Polled by the admin queue panel. */
@@ -88,6 +91,19 @@ export function getArtQueue(): Promise<{ ok: true } & ArtQueueDto> {
  * The canceled render becomes status failed / 'canceled by user'. */
 export function cancelRenderApi(name: string, seed: number): Promise<{ ok: true; canceled: 'pending' | 'running'; renderId: number; seed: number; queue: ArtQueueDto }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cancel', { method: 'POST' });
+}
+
+// ---- REQ-0197: deferred-batch queue controls ----
+/** POST /api/art/queue/hold -- gate newly queued generation jobs behind an
+ * explicit Execute batch (held=true), or resume auto-run (held=false,
+ * releasing everything currently held). */
+export function setArtQueueHold(held: boolean): Promise<{ ok: true } & ArtQueueDto> {
+  return artJson('/api/art/queue/hold', { method: 'POST', body: JSON.stringify({ held }) });
+}
+/** POST /api/art/queue/execute -- release every held job, grouped so
+ * same-prompt jobs run back to back (text-encoder conditioning reuse). */
+export function executeArtQueueBatch(): Promise<{ ok: true; released: number } & ArtQueueDto> {
+  return artJson('/api/art/queue/execute', { method: 'POST' });
 }
 
 // ---- REQ-0152: inspection kits ----

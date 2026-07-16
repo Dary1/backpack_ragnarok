@@ -19,6 +19,7 @@ import { useGameStore, clearArtAdminFocusName } from '../store';
 import {
   listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
   adoptRenderApi, deleteRenderApi, repackRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  setArtQueueHold, executeArtQueueBatch,
   artRenderUrl,
 } from '../api';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
@@ -276,6 +277,25 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('cancel: ' + (e as Error).message, 'err'); }
   }
 
+  // REQ-0197: deferred-batch controls -- hold gates newly queued generation
+  // jobs; Execute batch releases everything held, grouped so same-prompt
+  // jobs run back to back (no per-item text-encoder swap).
+  async function doHold(next: boolean) {
+    try {
+      const r = await setArtQueueHold(next);
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report(next ? 'queue hold ON: jobs wait for Execute batch' : 'queue hold OFF: queue resumed');
+    } catch (e) { report('hold: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doExecuteBatch() {
+    try {
+      const r = await executeArtQueueBatch();
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report('executing batch: ' + r.released + ' job(s) released');
+    } catch (e) { report('execute: ' + (e as Error).message, 'err'); }
+  }
+
   async function doReinspect(seed: number, kitId?: string) {
     if (!selected) return;
     try {
@@ -339,7 +359,9 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
         <QueuePanel selected={selected} selectedKind={detailArt ? detailArt.kind : null}
           queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
           onGenerate={(mode, n, seed, lockOverride) => { void doGenerate(mode, n, seed, lockOverride); }}
-          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }} />
+          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }}
+          onHold={(h) => { void doHold(h); }}
+          onExecute={() => { void doExecuteBatch(); }} />
       </div>
 
       {lightbox && selected && detailArt && (
