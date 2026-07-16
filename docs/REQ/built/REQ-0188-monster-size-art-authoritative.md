@@ -234,3 +234,6 @@ automatically — the corpus reads `enemies.json`, no roster is hardcoded.
 
 ## Deploy record (2026-07-17, orchestrator, partial)
 Merged to master (guard + tools + gates; CI GREEN). Seed run live: created=19, re-run no-op (G2 closed live). derive --check: 2 drifts (frost_gnoll [1,1]->[4,3] from monsters-003-flux2:gnoll -- a REAL gameplay footprint change that would overlap enc_pack_1 neighbors and needs pack re-composition + user sign-off; lockpick [[0,0]]->2 cells from unadopted items005_dungeon_key link). derive --write NOT run; stays todo pending the user ruling on those two.
+
+## Ruling + closure (2026-07-17, user)
+User ruled on the two drifts: (1) frost_gnoll -- UNLINK now; the real fix is the deliberate re-composition, reserved as REQ-0206. (2) lockpick -- UNLINK (experimental items005_dungeon_key link cleared). Both artwork_refs cleared via contentadmin PATCH; derive --check now reports drifting=0 across all 37 scanned defs, and derive --write is a proven no-op. Guard live, seed live (19 rows, re-run no-op), mirror no-op: every gate closed on the live namespace.
