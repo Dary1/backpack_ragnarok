@@ -1,0 +1,315 @@
+{
+  "schema": "enemy/1",
+  "batch": "batch-006-wildlands",
+  "note": "REQ-0207. A wildlands beast/vermin/demon roster DESIGNED FROM adopted artworks. Every footprint is the linked artwork's shape {w,h} TRANSPOSED to [fh,fw]=[h,w] (REQ-0029 transpose canon; verified read-only against artworks.shape 2026-07-17). rarity uses the enemy/1 lowercase dialect (relic for the boss follows REQ-0203's precedent); every pack_role here (line/support/anchor/boss) is already attested, so no role mapping was needed. artwork_ref is a DB-column deploy concern (like batch-005 wight), not an enemies.json field: 10 ids match their artwork by exact name; boar's art is 'monsters-003-flux2:boar' and giant_snake's is 'monsters-003-flux2:giant_snake', so those two content_defs get an explicit artwork_ref set at deploy.",
+  "entries": [
+    {
+      "id": "werewolf",
+      "name": "Werewolf",
+      "hp": [
+        95,
+        125
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "rending_claws",
+        "feral_bite"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Werewolf"
+        },
+        "ja": {
+          "name": "ワーウルフ"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "dire_wolf",
+      "name": "Dire Wolf",
+      "hp": [
+        80,
+        105
+      ],
+      "footprint": [
+        4,
+        5
+      ],
+      "skills": [
+        "savage_bite",
+        "harrying_snap"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Dire Wolf"
+        },
+        "ja": {
+          "name": "ダイアウルフ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "boar",
+      "name": "Wild Boar",
+      "hp": [
+        70,
+        95
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "tusk_charge"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Wild Boar"
+        },
+        "ja": {
+          "name": "ワイルドボア"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_bat",
+      "name": "Giant Bat",
+      "hp": [
+        45,
+        60
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "blood_drain"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Bat"
+        },
+        "ja": {
+          "name": "ジャイアントバット"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "support"
+    },
+    {
+      "id": "giant_spider",
+      "name": "Giant Spider",
+      "hp": [
+        60,
+        80
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "venom_bite"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Spider"
+        },
+        "ja": {
+          "name": "ジャイアントスパイダー"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_scorpion",
+      "name": "Giant Scorpion",
+      "hp": [
+        75,
+        100
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "stinger",
+        "pincer_grip"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Scorpion"
+        },
+        "ja": {
+          "name": "ジャイアントスコーピオン"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_snake",
+      "name": "Giant Snake",
+      "hp": [
+        85,
+        110
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "constrict",
+        "venom_spit"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Snake"
+        },
+        "ja": {
+          "name": "ジャイアントスネーク"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "basilisk",
+      "name": "Basilisk",
+      "hp": [
+        130,
+        170
+      ],
+      "footprint": [
+        4,
+        6
+      ],
+      "skills": [
+        "petrifying_gaze",
+        "toxic_maw"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Basilisk"
+        },
+        "ja": {
+          "name": "バジリスク"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "imp",
+      "name": "Imp",
+      "hp": [
+        40,
+        55
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "fire_dart",
+        "impish_drain"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Imp"
+        },
+        "ja": {
+          "name": "インプ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "support"
+    },
+    {
+      "id": "gargoyle",
+      "name": "Gargoyle",
+      "hp": [
+        90,
+        120
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "molten_talons"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Gargoyle"
+        },
+        "ja": {
+          "name": "ガーゴイル"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "dullahan",
+      "name": "Dullahan",
+      "hp": [
+        120,
+        155
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "headless_charge",
+        "doom_toll"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Dullahan"
+        },
+        "ja": {
+          "name": "デュラハン"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "demon_lord",
+      "name": "Demon Lord",
+      "hp": [
+        500,
+        700
+      ],
+      "footprint": [
+        8,
+        8
+      ],
+      "skills": [
+        "hellfire_wave",
+        "dominion_of_flame"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Demon Lord"
+        },
+        "ja": {
+          "name": "デーモンロード"
+        }
+      },
+      "rarity": "relic",
+      "pack_role": "boss"
+    }
+  ]
+}
