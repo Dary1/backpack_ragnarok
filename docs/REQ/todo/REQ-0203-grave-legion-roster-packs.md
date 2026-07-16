@@ -158,3 +158,113 @@ anchor is mis-derived here, fix it MINIMALLY preserving the intent and record th
 - Dungeon/encounter wiring (REQ-0185), batch-002 re-composition, art generation/adoption
   (orchestrator-owned, queue-based only), REQ-0188's guard/seed/mirror tools (in flight on its
   own branch — do NOT duplicate them here).
+
+---
+
+## Implementation & Results (2026-07-17)
+
+**Built = all gates G1-G5 GREEN in the worktree; NOT deployed.** G6 (promote/backfill)
+and S7 (user acceptance) are pending. Live counts confirmed READ-ONLY before starting:
+monster_def=7, skill_def=14, monster_pack=4 (the promised 7/14/4 baseline).
+
+### Commits (branch `req-0203-grave-legion-roster-packs`)
+- `a9a2a1c` add heal_ally verb to vocab + eff_render (EN/JA)
+- `c542276` enemy-verb executor -- lifesteal, bonus_vs_status (active), heal_ally (deterministic, rng-disciplined)
+- `7accf0a` forecast parity -- lifesteal/bonus_vs_status count as incoming damage in both forecast copies
+- `722398d` batch-005-grave-legion content -- 8 enemies, 16 skills, 3 packs (footprints = art shape transposed)
+- `6068d6c` promote_dungeon_batch --additive mode (byte-preserving entry merge, id-collision refusal, provenance)
+- `e5f9457` gates -- G1/G2/G4/packs/additive suite, G3 forecast parity, G5 board resolution; wired into ci.sh
+
+### Gate results
+- **G1 dialect** -- PASS. `sim/tests/req0203_grave_legion_test.cjs`: every batch-005 enemy
+  (monster_def/enemy/1) and skill (skill_def/skill/1) PASSes `runChecks`; an unknown verb
+  (`necrotic_smite`) and an out-of-vocab status (`Doom`) each FAIL by name; batch-005 ids are
+  disjoint from the live corpus and unique within the batch. NOTE (found-in-flight): the
+  skill/1 dialect needed **no code change** -- `checkEffects` already admits any vocab verb and
+  fails an unknown one by name, so adding `heal_ally` to vocab.json (verbs + ranged_verb_params)
+  was sufficient; `lifesteal`/`bonus_vs_status` were already in vocab.
+- **G2 sim** -- PASS. Same file: `dealHitOnField` lifesteal (strike n, heal SELF by frac of
+  damage dealt; heals nobody with no self actor), bonus_vs_status (x mult ONLY when the target
+  carries the status), `selectHealAllyTarget` (lowest-HP living ally, never self unless alone),
+  a synthetic heal_ally integration (no ray, event fires, targets an ally), a pinned real-content
+  run exercising all three verbs, and DETERMINISM (two same-seed runs byte-identical). All RNG via
+  named streams; zero `Math.random`.
+- **G3 parity** -- PASS. `sim/tests/forecast_parity.cjs` (18/18): `expectedDamagePerFire` byte-
+  agrees across the forced-copy pair server/lib/forecast.cjs <-> shared/forecast.mjs for
+  strike/multi_strike/lifesteal/bonus_vs_status/heal_ally; lifesteal & bonus_vs_status fold to the
+  BASE n midpoint, heal_ally folds to 0 (enemy-side). DAMAGE_VERBS classification pinned (lifesteal
+  + bonus_vs_status counted; heal_ally never). Found-in-flight: `mock-src/engine.js` executes NO
+  enemy skills (grep-verified), so it is not a forced-copy site.
+- **G4 transpose** -- PASS. Footprints authored as artwork `shape {w,h}` TRANSPOSED to `[h,w]`,
+  verified READ-ONLY against `artworks.shape` (2026-07-17): zombie/ghost/mummy/skeleton_warrior/
+  wight/necromancer 3x4 -> [4,3]; lich 4x5 -> [5,4]; bone_dragon 10x10 -> [10,10]. Non-square pins
+  for [4,3] and [5,4] assert the axis, not just equality (catch the REQ-0029 flip).
+- **G5 ci.sh** -- GREEN (`SKIP_PG=1 SKIP_E2E=1`), including the client typecheck+build and the two
+  new steps `[2.7]` (req0203 suite, 15/15) and `[5.76]` (board resolution). Determinism goldens
+  intact (`goldens OK (12 cases)`) and `sim/tests/run.cjs` still 117/117 -- **no golden moved,
+  nothing leaked.** Board (contentadmin, ZERO code change) verified via
+  `client/scripts/check_pack_board_grave_legion.mjs`: every batch-005 pack member resolves its
+  footprint from art and it EQUALS the sim's authored footprint (the two rosters meet); `wight`
+  resolves only once its content_def carries the deploy artwork_ref.
+
+### Design deviations (with reasons)
+- **pack_role**: the spec's skirmish/bruiser/elite are NOT attested (dungen understands only
+  line/support/anchor/boss; unknown roles silently fall back to `line`). Mapped to the nearest
+  attested value (REQ-0160: no lookalike lie): ghost skirmish->`line`; skeleton_warrior bruiser
+  ->`anchor`; wight & lich elite->`anchor`; zombie/mummy `line`; necromancer `support`;
+  bone_dragon `boss`. Placement is authored explicitly (`members[].at`), so pack_role only matters
+  if dungen ever samples the roster (out of scope).
+- **rarity**: vocab.json has no `boss` rarity; highest tier is `Relic`. bone_dragon uses `relic`
+  (enemy/1 lowercase dialect), as the spec's "top vocab rarity" instructs.
+- **bonus_vs_status (active vs folded)**: vocab's `bonus_vs_status` already exists as a
+  *battle_start-FOLDED additive* rider (packs.cjs foldBattleStartStatusVerbs). The spec's enemy
+  intent is an *active per-skill multiplier* strike. Implemented as a distinct branch in
+  `dealHitOnField` keyed on the active every_secs verb (weakness mult first, then x`mult` if the
+  target carries the status, then damage_reduction) -- the nearest HONEST semantic, documented in
+  code; it never touches the folded path (batch-005 uses no battle_start bonus_vs_status).
+- **heal_ally (no ray)**: a support verb with no incoming ray. The executor intercepts it in the
+  enemy skill-fire branch BEFORE any ray is fired; its skill's attack_profile carries an empty
+  `edge` to honestly declare "projects no ray". Excluded from the incoming-pressure forecast.
+- **haunting_chill aoe**: given `aoe:1` so its authored `aoe_statuses` actually spreads Chill
+  (aoe_statuses is inert at aoe:0). Ray typing stays side/pen0.
+- **bone_breath**: `multi_strike n=[8,14] x hits:3`, front/pen2/aoe2 -- numbers agent-scaled to a
+  boss under the design's "scale to a boss" delegation.
+- **artwork_ref**: enemies.json carries NO artwork_ref field (byte-shape-identical to batch-002;
+  batch-002's frost_gnoll ref lives only in the DB column). 7 ids resolve to their art by exact
+  name; `wight`'s art is `monsters-003-flux2:wight`, so its content_def needs an explicit
+  artwork_ref set at deploy -- exactly the frost_gnoll -> monsters-003-flux2:gnoll precedent.
+
+### Found-in-flight
+- **Promotion would WIPE batch-002.** `promote_dungeon_batch.cjs` byte-copies 7 files WHOLESALE
+  and requires all 7; promoting batch-005 (which ships 3) would refuse, and a naive replace would
+  delete batch-002 + REQ-0184. Added `promoteAdditive` (`--additive`): a byte-PRESERVING splice
+  that appends entries to the live enemies/skills/packs, refuses id collisions, records provenance
+  under `registry.live_dungeon_additive`, and never touches the other 4 live files. The wholesale
+  `promote()` is untouched (its REQ-0122/0184 tests stay green).
+- **Worktree trap honored**: every promote/test call passes an explicit `liveDir`/`registryPath`;
+  the MAIN checkout was never written. Root deps were unprovisioned -- installed with
+  `pnpm install --frozen-lockfile` (no lockfile change).
+
+### Deploy commands the orchestrator must run POST-MERGE (G6)
+Run from the MAIN checkout `~/backpack_ragnarok` after merge to master. Explicit liveDir avoids
+the worktree trap:
+```
+# 1. Additive promotion (batch-002 + REQ-0184 survive byte-for-byte)
+cd ~/backpack_ragnarok && node -e "require('./tools/promote_dungeon_batch.cjs').promoteAdditive('content/batches/batch-005-grave-legion',{liveDir:process.env.HOME+'/backpack_ragnarok/content/live/dungeon',registryPath:process.env.HOME+'/backpack_ragnarok/content/registry.json'})"
+
+# 2. Backfill the registry (pg env the api uses)
+set -a; . ~/backpack_ragnarok/server/.env; set +a
+cd ~/backpack_ragnarok && node tools/backfill_content_registry.cjs --dry-run   # inventory
+cd ~/backpack_ragnarok && node tools/backfill_content_registry.cjs             # apply
+
+# 3. Set wight's artwork_ref (its art is namespaced; matches the frost_gnoll precedent)
+#    via updateContentDef / the contentadmin PATCH:
+cd ~/backpack_ragnarok && node -e "(async()=>{await require('./server/storage_content.cjs').updateContentDef('wight',{artwork_ref:'monsters-003-flux2:wight'});process.exit(0)})()"
+
+# 4. Rebuild + commit the client dist (vocab.json is bundled into the client; the heal_ally
+#    verb must reach the built app) -- the "deploy: rebuild client dist" pattern:
+cd ~/backpack_ragnarok/client && pnpm run build
+```
+Expected after backfill: **monster_def 7->15, skill_def 14->30, monster_pack 4->7**, all PASS,
+all adopted; the contentadmin pack board resolves every batch-005 member footprint from art
+(bone_dragon 10x10, lich 5x4, the rest 4x3), wight included.
