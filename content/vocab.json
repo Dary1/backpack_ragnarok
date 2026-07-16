@@ -1,5 +1,5 @@
 {
-  "version": 14,
+  "version": 15,
   "modes": [
     "battle",
     "detection",
@@ -41,7 +41,15 @@
     "OnBPBeenHit",
     "OnSquadBeenHit",
     "on_link_pulse",
-    "on_hp_below"
+    "on_hp_below",
+    "on_damage_dealt",
+    "on_connected_unit_spend",
+    "on_connected_unit_attack",
+    "on_connected_unit_bp_been_hit",
+    "on_own_passive_fire",
+    "on_heal_done",
+    "on_status_applied",
+    "on_kill"
   ],
   "verbs": [
     "strike",
@@ -69,7 +77,8 @@
     "grant_charge",
     "advance_cooldown",
     "fire_items",
-    "grant_shield"
+    "grant_shield",
+    "grant_lifesteal"
   ],
   "status_kinds": [
     "buff",
@@ -107,7 +116,8 @@
   "trigger_domains": {
     "every_secs": [
       "PO",
-      "EnemySkill"
+      "EnemySkill",
+      "Unit"
     ],
     "battle_start": [
       "PO",
@@ -157,6 +167,30 @@
     "on_hp_below": [
       "PO",
       "EnemySkill"
+    ],
+    "on_damage_dealt": [
+      "Unit"
+    ],
+    "on_connected_unit_spend": [
+      "Unit"
+    ],
+    "on_connected_unit_attack": [
+      "Unit"
+    ],
+    "on_connected_unit_bp_been_hit": [
+      "Unit"
+    ],
+    "on_own_passive_fire": [
+      "Unit"
+    ],
+    "on_heal_done": [
+      "Unit"
+    ],
+    "on_status_applied": [
+      "Unit"
+    ],
+    "on_kill": [
+      "Unit"
     ]
   },
   "ranged_verb_params": {
@@ -255,7 +289,8 @@
     "grant_charge": "User ruling 2026-07-14 (REQ-0129): giving charge to a connected Unit is an EFFECT verb, not a spend mode -- the unit fires on full and its effect happens to be grant_charge -> units_connected. With pulse propagation retired, this is the only way a chain is expressed. NOT YET RENDERABLE: no unit validator kind exists, so this verb has no self-test fixture and no engine implementation.",
     "advance_cooldown": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the user delegation 「適当に決めておいてください。数値は全て範囲で。(ハスクラ)」 (2026-07-16). Reduces the remaining cooldown of the target's cooldown-bearing item(s) by `n`, a [lo,hi] range that rolls per instance (ハスクラ), so they become ready sooner. Freezes the effect verb the cooldown kits need: Elf & Dwarf (G5, advance a connected BP's item cooldowns -> bp_connected), Watcher (G12, advance the single longest-cooldown item -> bp_connected_max_cooldown_item), Thief (G3a, advance/clear its own items -> self). NOT YET ENGINE-IMPLEMENTED and no unit-context fixture (no `unit` validator kind / no charge AST) -- same status as grant_charge; it renders via eff_render in the generic verb self-test only. THIS IS NOT A USER RULING.",
     "fire_items": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Immediately fires (triggers the effect of) the target's items carrying tag `tag`. Freezes the effect verb Shieldmaiden (fire Armor items -> self) and Light Cavalry (fire Weapon items -> self + bp_connected) need. This goes beyond the clarifying question's named gaps (G5/G12/G13) to the two remaining kits whose charge effect was otherwise inexpressible; flagged in the impl-log and overturnable. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING.",
-    "grant_shield": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Grants a shield of amount `n`, a [lo,hi] range that rolls per instance; a def may instead scale it as a fraction of the granter's own block (Princess: 'half its own'). ONE verb SHARED by Squire (G13, self a small block -> self) and Princess (connected BP a shield = a fraction of its own -> bp_connected; and the passive damage->self-shield -> self). Decision: Squire and Princess share grant_shield. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING."
+    "grant_shield": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Grants a shield of amount `n`, a [lo,hi] range that rolls per instance; a def may instead scale it as a fraction of the granter's own block (Princess: 'half its own'). ONE verb SHARED by Squire (G13, self a small block -> self) and Princess (connected BP a shield = a fraction of its own -> bp_connected; and the passive damage->self-shield -> self). Decision: Squire and Princess share grant_shield. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING.",
+    "grant_lifesteal": "AGENT-DEFINED 2026-07-16 (REQ-0201 kit sheet). Attach lifesteal to the target Unit's items for dur_s seconds: pct of damage their items deal returns as healing to that Unit's BP. Params: pct [lo,hi], dur_s [lo,hi]. Added to the top-level verbs list + engine-grounded by REQ-0200 (vocab v15) under the user verb delegation 2026-07-16 (「必要な動詞はじゃんじゃんあなたの意思で追加して」). THIS IS NOT A USER RULING."
   },
   "connection_shapes": {
     "queen": {
@@ -449,8 +484,8 @@
     "note": "adjacency is NOT a separate concept: it is a ray with range 1 (user ruling 2026-07-13). Every ray shape is {dirs, range, pierce}. Offset shapes jump, so occlusion and range do not apply to them."
   },
   "charge": {
-    "_doc": "Unit charge grammar. FROZEN by user ruling 2026-07-14 (REQ-0129). A unit def carries `charge: {trigger, gain, capacity, spend}`. NOT YET ENFORCED: validateBody has no `unit` kind -- see `_status`.",
-    "_status": "RATIFIED, NOT IMPLEMENTED. No `unit` validator kind and no charge AST exist. The code REQ that adds them must move `charge.triggers` into the top-level `triggers` list, add `trigger_domains` entries, and add self-test fixtures -- the REQ-0081 coverage gate will then hold them honest.",
+    "_doc": "Unit charge grammar. FROZEN by user ruling 2026-07-14 (REQ-0129). A unit def carries `charge: {trigger, gain, capacity, spend, effects|transform_to}`. ENFORCED as of v15 (REQ-0200): shared/content_validate.cjs has a `unit` validator kind and a validateCharge() AST validator; the runtime lives in sim/lib/unit_charge.cjs; eff_render renders the block.",
+    "_status": "RATIFIED AND IMPLEMENTED (REQ-0200, vocab v15, 2026-07-16). The `unit` validator kind and the charge AST now EXIST -- this is the code REQ the v13/v14 _status named. Delivered: UNIT_ALLOWED_KEYS += 'charge' and validateCharge() in shared/content_validate.cjs (wired into validateBody('unit')/validateUnitEntry); the charge runtime in sim/lib/unit_charge.cjs (per-instance counter, gain count/damage, capacity ranges via the resolveRolledRange seam, the three spend modes, the six targets, verb groundings, cascade safety); renderCharge() in tools/eff_render.cjs. charge.triggers are moved into the top-level `triggers` list and each is covered by a self_test_vocab.cjs charge fixture, so the REQ-0081 coverage gate now holds them honest.",
     "_status_v14": "v14 (2026-07-16, REQ-0129 impl-log) adds the AGENT-DEFINED charge-EFFECT verbs (advance_cooldown, fire_items, grant_shield) to the top-level `verbs` list -- renderable and self-tested like grant_charge, but NOT engine-implemented and with no unit-context fixture; the max-selector target bp_connected_max_cooldown_item to charge.targets; and the capacity-as-cap semantics for passive_per_stack. Placement honesty is unchanged from v13: charge.triggers stay OUT of the top-level `triggers` list (the REQ-0081 coverage gate demands a fixture and no `unit` validator kind exists). The code REQ that adds the `unit` validator kind and the charge AST implements all of this and moves charge.triggers into `triggers`.",
     "spend": {
       "fire_on_full": "At capacity, fire `effects` and reset the counter to 0. The classic active skill.",
@@ -470,7 +505,10 @@
       "on_connected_unit_spend": "AGENT-DEFINED 2026-07-14. A Unit at the other end of a link spends its charge. (REQ-0149 Thief -- this is the charge source the G3a ruling named)",
       "on_connected_unit_attack": "AGENT-DEFINED 2026-07-14. A connected Unit performs an attack. (REQ-0149 Squire)",
       "on_connected_unit_bp_been_hit": "AGENT-DEFINED 2026-07-14. A connected Unit's BP takes damage. (REQ-0149 Priest / Princess)",
-      "on_own_passive_fire": "AGENT-DEFINED 2026-07-14. The unit's own passive fires. (REQ-0149 Little Princess -- capacity is still the unspecified 'XX', G2 OPEN)"
+      "on_own_passive_fire": "AGENT-DEFINED 2026-07-14. The unit's own passive fires. (REQ-0149 Little Princess -- capacity is still the unspecified 'XX', G2 OPEN)",
+      "on_heal_done": "AGENT-DEFINED 2026-07-16. Fires each time an item on this Unit's BP resolves a heal. Loop invariant: on_heal_done charge effects must not themselves heal (reviewer-held rule, REQ-0201).",
+      "on_status_applied": "AGENT-DEFINED 2026-07-16. Fires each time an item on this Unit's BP applies a status to an enemy (incl. add_on_hit_status landing).",
+      "on_kill": "AGENT-DEFINED 2026-07-16. Fires once per enemy destroyed by an attack originating from this Unit's BP (one event per death, never per-hit)."
     },
     "triggers_closed": false,
     "triggers_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「targetと同じく私に委任」). New charge-source triggers may be added WITHOUT a design event. Every agent-added trigger MUST be labelled AGENT-DEFINED, so that a machine's choice is never mistaken for a user ruling.",
@@ -479,7 +517,8 @@
       "units_connected": "Every Unit this Unit links to. USER-RATIFIED 2026-07-14; the name is the one the user chose.",
       "bp_connected": "The BP a connected Unit sits on. AGENT-DEFINED 2026-07-14 under the delegation below. Required by REQ-0149 Angel / Dwarf / Princess / Light Cavalry / Watcher. THIS IS NOT A USER RULING.",
       "units_connected_distributed": "The effect amount is divided across the connected Units. AGENT-DEFINED 2026-07-14 under the same delegation. Required by REQ-0149 Priest ('distributed if there are several'). THIS IS NOT A USER RULING.",
-      "bp_connected_max_cooldown_item": "AGENT-DEFINED 2026-07-16 under the targets delegation (targets_growth, user 2026-07-14 「後は、私に聞かないで、必要になったらあなたが定義してください」). The single cooldown-bearing item with the LONGEST remaining cooldown on a connected Unit's BP -- a max-selector that resolves `bp_connected` down to one item. Required by REQ-0149 Watcher (G12), whose charge effect advances that item's cooldown. THIS IS NOT A USER RULING."
+      "bp_connected_max_cooldown_item": "AGENT-DEFINED 2026-07-16 under the targets delegation (targets_growth, user 2026-07-14 「後は、私に聞かないで、必要になったらあなたが定義してください」). The single cooldown-bearing item with the LONGEST remaining cooldown on a connected Unit's BP -- a max-selector that resolves `bp_connected` down to one item. Required by REQ-0149 Watcher (G12), whose charge effect advances that item's cooldown. THIS IS NOT A USER RULING.",
+      "bp_connected_lowest_hp": "AGENT-DEFINED 2026-07-16. The BP of the linked Unit with the lowest current HP (ties: nearest link, then lowest cell index). Added under the targets delegation (targets_growth, user 2026-07-14). Implemented by REQ-0200 (vocab v15)."
     },
     "targets_closed": false,
     "targets_growth": "DELEGATED to the agent by user ruling 2026-07-14 (verbatim: 「後は、私に聞かないで、必要になったらあなたが定義してください」). New charge targets may be added WITHOUT a design event, under the same AGENT-DEFINED labelling rule.",
@@ -490,7 +529,8 @@
       "fire_items": "Shieldmaiden, Light Cavalry.",
       "grant_shield": "Squire (G13), Princess.",
       "reused_from_v13": "cleanse (Angel), heal_bp (Priest -> units_connected_distributed), buff_self (Berserker, passive_per_stack), transform-spend (Little Princess)."
-    }
+    },
+    "_status_v15": "v15 (2026-07-16, REQ-0200 impl-log): (a) the 8 charge triggers move into the top-level `triggers` registry (on_damage_dealt / on_connected_unit_spend / on_connected_unit_attack / on_connected_unit_bp_been_hit / on_own_passive_fire were charge-only in v14; OnHit / OnBPBeenHit / every_secs were already there) and gain trigger_domains ['Unit'] entries; (b) three NEW charge triggers are AGENT-DEFINED under the triggers delegation (2026-07-14): on_heal_done, on_status_applied, on_kill; (c) grant_lifesteal joins the top-level `verbs` list (AGENT-DEFINED under the user verb delegation 2026-07-16 「必要な動詞はじゃんじゃんあなたの意思で追加して」); (d) charge.targets gains bp_connected_lowest_hp (AGENT-DEFINED under the targets delegation). All new entries are AGENT-DEFINED, never a user ruling. In UNIT CHARGE context these verbs carry `pct` (percent-point [lo,hi]) where their PO form carries `n`, and multi_strike.hits is a [lo,hi] range; bonus_vs_status may carry status \"any\"; fire_items.tag is an optional po_tag filter -- see validateCharge()."
   },
   "deprecated": {
     "_doc": "Vocabulary that is still SHIPPED and still exercised by tests, but that the design has moved past. Removal is a CODE REQ, not a docs edit -- each entry names what else must die with it.",

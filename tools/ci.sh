@@ -29,6 +29,8 @@ echo "==== [2.5/7] S4 post-processor tests (REQ-0050) ===="
 node sim/tests/s4_test.cjs
 echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
 node sim/tests/forecast_parity.cjs
+echo "==== [2.7/7] unit charge runtime (REQ-0200) ===="
+node sim/tests/unit_charge_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
@@ -43,6 +45,8 @@ echo "==== [3.7/7] vocab self-test (verbs/triggers/render + range validation) ==
 node tools/self_test_vocab.cjs
 echo "==== [3.8/7] unit + gacha-pack content gate (REQ-0170) ===="
 node tools/check_units.cjs
+echo "==== [3.9/7] units003 charge acceptance corpus (REQ-0200) ===="
+node tools/units003_acceptance.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
