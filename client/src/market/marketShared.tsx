@@ -53,6 +53,15 @@ export function MarketThumb({ gameData, itemId, cellPx = 22, alt, kind }: Market
   if (kind === 'tm') {
     return <span className="market-thumb market-thumb-tm" aria-hidden="true"><span className="rune">ᚠ</span></span>;
   }
+  if (kind === 'si') {
+    const sdef = gameData?.SI_DEFS?.[itemId] ?? null;
+    if (!sdef) return <span className="market-thumb market-thumb-empty" aria-hidden="true" />;
+    return (
+      <span className="market-thumb">
+        <ShapeGrid shape={[[0, 0]]} cellPx={cellPx} iconUrl={iconDataUrl(sdef.icon)} iconAlt={alt ?? sdef.icon} iconDims={iconDims(sdef.icon)} />
+      </span>
+    );
+  }
   const def = itemDefFor(gameData, itemId);
   if (!def) return <span className="market-thumb market-thumb-empty" aria-hidden="true" />;
   const icon = iconDataUrl(def.icon);

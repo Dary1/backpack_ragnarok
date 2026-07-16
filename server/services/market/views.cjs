@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const players = require('../../players.cjs');
 const { getScheduleContent } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, getDexNoById, findInventoryPO, readTmBalance, MARKET_TM_ID } = require('./lib.cjs');
+const { burnOf, getDexNoById, findInventoryPO, findInventorySI, readTmBalance, MARKET_TM_ID } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // sellerViewContext: one seller's canvas + deployed-uid set, loaded ONCE
@@ -39,7 +39,8 @@ function deriveView(listing, ctx, nowMs) {
     if (stock < listing.tmQty) return { state: 'suspended', suspended: true };
     return { state: 'active', suspended: false };
   }
-  if (!ctx.canvas || !findInventoryPO(ctx.canvas, listing.itemUid)) {
+  const found = ctx.canvas ? (kind === 'si' ? findInventorySI(ctx.canvas, listing.itemUid) : findInventoryPO(ctx.canvas, listing.itemUid)) : null;
+  if (!found) {
     autoWithdrawItemGone(listing, nowMs);
     return { state: 'withdrawn', suspended: false };
   }
@@ -71,9 +72,11 @@ function sellerNameOf(sellerId, cache) {
 function toListingDto(listing, view, caches) {
   const kind = listing.kind || 'po';
   const content = getScheduleContent();
-  const def = kind === 'tm' ? (content.tmDefsById[listing.itemId] || null) : (content.itemDefsById[listing.itemId] || null);
+  const def = kind === 'tm' ? (content.tmDefsById[listing.itemId] || null)
+    : kind === 'si' ? (content.siDefsById[listing.itemId] || null)
+    : (content.itemDefsById[listing.itemId] || null);
   const ja = def && def.i18n && def.i18n.ja;
-  const dexNo = kind === 'tm' ? null : getDexNoById()[listing.itemId];
+  const dexNo = (kind === 'tm' || kind === 'si') ? null : getDexNoById()[listing.itemId];
   const qty = listing.price.qty;
   const burn = burnOf(qty);
   /** @type {any} */

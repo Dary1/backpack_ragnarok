@@ -379,6 +379,22 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect(browse.tm).toBeUndefined();
   });
 
+  test('BROWSE: an SI listing is visible in the browse with kind:si (REQ-0195c)', async ({ page }) => {
+    // Discover a live SI id from the content payload (content-agnostic).
+    const content = await (await page.request.get('/api/content')).json();
+    const siId = Object.keys((content.sis ?? {}) as Record<string, unknown>)[0];
+    test.skip(!siId, 'no SI content available in this environment');
+    // Seed the dev player with one loose inventory SI, then list it.
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].sis = [{ uid: 'e2e_si_1', id: siId, host: 'inv', q: 0.5 }] as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const listRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_si_1', price: { tm: 'lrdst', qty: 7 } } });
+    expect(listRes.status()).toBe(200);
+    expect((await listRes.json()).listing.kind).toBe('si');
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_si_1' && l.kind === 'si')).toBeTruthy();
+  });
+
   test('SELL: the tm (currency) tab reflects the single-live-TM reality -- lrdst held, no other currency to price in; same_tm is 400 (REQ-0195b)', async ({ page }) => {
     // API: pricing a TM in itself -> 400 {reason:'same_tm'} (user ruling).
     const sameTm = await page.request.post('/api/market/listings', { data: { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } } });

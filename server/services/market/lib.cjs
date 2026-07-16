@@ -89,6 +89,20 @@ function findInventoryPO(canvas, itemUid) {
   return null;
 }
 
+// findInventorySI (REQ-0195c): locates itemUid among the seller's
+// INVENTORY pages' sis[] entries (socketed-in-inventory included -- any
+// sis[] record in an inventory page is eligible, whatever its host). The
+// SI analogue of findInventoryPO; the instance carries its own q.
+function findInventorySI(canvas, itemUid) {
+  if (!canvas || !canvas.inv || !Array.isArray(canvas.inv.pages)) return null;
+  for (const pg of canvas.inv.pages) {
+    for (const a of (pg && pg.sis) || []) {
+      if (a.uid === itemUid) return a;
+    }
+  }
+  return null;
+}
+
 // readTmBalance: sums qty across every same-id TM stack in the canvas's
 // inventory pages. Generalized (tmId parameter) from services/
 // gacha.cjs's readLrdstBalance() -- same "read the last-saved canvas"
@@ -133,6 +147,7 @@ module.exports = {
   burnOf,
   getDexNoById,
   findInventoryPO,
+  findInventorySI,
   readTmBalance,
   liveTmIds,
   isLiveTm,

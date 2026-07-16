@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, findInventoryPO, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
+const { burnOf, findInventoryPO, findInventorySI, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // stripPoFromCanvas: removes every pos[] entry with `uid` from the
@@ -19,8 +19,36 @@ const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 // ghost). Same containers finalizeClaimingItemsForCanvas scans.
 function stripPoFromCanvas(canvas, uid) {
   const strip = (container) => {
-    if (container && Array.isArray(container.pos)) {
+    if (!container) return;
+    if (Array.isArray(container.pos)) {
       container.pos = container.pos.filter((p) => p.uid !== uid);
+    }
+    // REQ-0195c: a SURVIVING SI seated on the SOLD PO is re-homed to 'inv'
+    // (the stowed sentinel) rather than keeping an orphaned host ref --
+    // mirrors devotion.cjs stripDestroyedUids + engine unseatOrphans.
+    if (Array.isArray(container.sis)) {
+      for (const a of container.sis) {
+        if (a.host && typeof a.host === 'object' && a.host.po === uid) a.host = 'inv';
+      }
+    }
+  };
+  strip(canvas);
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) strip(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) strip(pg);
+  }
+}
+
+// stripSiFromCanvas (REQ-0195c): removes every sis[] entry with `uid`
+// from the canvas -- inventory pages (the SI home), the active squad's
+// top-level sis[], and every stored squad snapshot. Same containers as
+// stripPoFromCanvas / finalizeClaimingItemsForCanvas.
+function stripSiFromCanvas(canvas, uid) {
+  const strip = (container) => {
+    if (container && Array.isArray(container.sis)) {
+      container.sis = container.sis.filter((a) => a.uid !== uid);
     }
   };
   strip(canvas);
@@ -105,7 +133,7 @@ function buyListing(buyerId, listingId, idemKey) {
   const kind = listing.kind || 'po';
   const sellerDoc = storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
-  let sellerPo = null;
+  let sellerInst = null;
   if (kind === 'tm') {
     // REQ-0195b: tm stock is the live balance; a shortfall is a
     // (reversible) SUSPENSION re-check, never an item-gone auto-withdraw.
@@ -114,8 +142,8 @@ function buyListing(buyerId, listingId, idemKey) {
       const err = new Error('listing suspended: the seller holds ' + stock + ' ' + String(listing.itemId).toUpperCase() + ', needs ' + listing.tmQty); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
     }
   } else {
-    sellerPo = sellerCanvas ? findInventoryPO(sellerCanvas, listing.itemUid) : null;
-    if (!sellerCanvas || !sellerPo) {
+    sellerInst = sellerCanvas ? (kind === 'si' ? findInventorySI(sellerCanvas, listing.itemUid) : findInventoryPO(sellerCanvas, listing.itemUid)) : null;
+    if (!sellerCanvas || !sellerInst) {
       autoWithdrawItemGone(listing, now);
       const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
     }
@@ -157,8 +185,10 @@ function buyListing(buyerId, listingId, idemKey) {
   // PO instance everywhere, or debit tmQty off the seller's TM stacks).
   if (kind === 'tm') {
     debitTmFromCanvas(sellerCanvas, listing.itemId, listing.tmQty);
+  } else if (kind === 'si') {
+    stripSiFromCanvas(sellerCanvas, listing.itemUid);
   } else {
-    stripPoFromCanvas(sellerCanvas, listing.itemUid);
+    stripPoFromCanvas(sellerCanvas, listing.itemUid); // also re-homes SIs seated on the sold PO (REQ-0195c)
   }
   storage.writeProfile(listing.sellerId, sellerCanvas);
 
@@ -179,7 +209,7 @@ function buyListing(buyerId, listingId, idemKey) {
       }
     : {
         itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
-        q: sellerPo.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
+        q: sellerInst.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
         harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
         sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
         status: 'claimable',

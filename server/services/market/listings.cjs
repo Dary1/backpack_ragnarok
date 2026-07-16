@@ -8,7 +8,7 @@ const { getScheduleContent, genId } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
 const {
   MARKET_TM_ID, MARKET_PRICE_MIN, MARKET_PRICE_MAX, MARKET_LISTING_TTL_MS,
-  findInventoryPO, isLiveTm,
+  findInventoryPO, findInventorySI, isLiveTm,
 } = require('./lib.cjs');
 
 // ---------------------------------------------------------------------
@@ -81,7 +81,7 @@ function createListing(sellerId, body, canvas, idemKey) {
   // tm listings (currency-for-currency) have no itemUid and branch before
   // the PO-specific inventory checks; si/unit arrive in REQ-0195c-d.
   const kind = (body && typeof body.kind === 'string' && body.kind) ? body.kind : 'po';
-  if (kind !== 'po' && kind !== 'tm') {
+  if (kind !== 'po' && kind !== 'tm' && kind !== 'si') {
     const err = new Error('unsupported listing kind: ' + kind); err.code = 'BAD_REQUEST'; throw err;
   }
   const price = body && body.price;
@@ -92,17 +92,18 @@ function createListing(sellerId, body, canvas, idemKey) {
     const err = new Error('price.qty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
   }
   if (kind === 'tm') return createTmListing(sellerId, body, price, idemKey);
-  // ---- kind === 'po' (inventory PO path) ----
+  // ---- kind 'po' | 'si' (inventory instance path) ----
   if (typeof body.itemUid !== 'string' || !body.itemUid) {
     const err = new Error('itemUid is required'); err.code = 'BAD_REQUEST'; throw err;
   }
-  const entry = findInventoryPO(canvas, body.itemUid);
+  const { itemDefsById, siDefsById } = getScheduleContent();
+  const entry = kind === 'si' ? findInventorySI(canvas, body.itemUid) : findInventoryPO(canvas, body.itemUid);
   if (!entry) {
     const err = new Error('item not found in your inventory'); err.code = 'NOT_FOUND'; throw err;
   }
-  const { itemDefsById } = getScheduleContent();
-  if (!itemDefsById[entry.id]) {
-    const err = new Error('item references an unknown content item id: ' + entry.id); err.code = 'BAD_REQUEST'; throw err;
+  const defOk = kind === 'si' ? !!siDefsById[entry.id] : !!itemDefsById[entry.id];
+  if (!defOk) {
+    const err = new Error('item references an unknown content id: ' + entry.id); err.code = 'BAD_REQUEST'; throw err;
   }
   if (deployedUidSet(sellerId, canvas).has(body.itemUid)) {
     const err = new Error('deployed items cannot go to market (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'deployed'; throw err;
@@ -117,7 +118,7 @@ function createListing(sellerId, body, canvas, idemKey) {
   const listing = {
     id: genId('mkt'),
     sellerId,
-    kind: 'po',
+    kind,
     itemUid: body.itemUid,
     itemId: entry.id,
     price: { tm: price.tm, qty: price.qty },

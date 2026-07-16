@@ -21,6 +21,7 @@ module.exports = {
   liveTmIds: market.liveTmIds,
   isLiveTm: market.isLiveTm,
   findInventoryPO: market.findInventoryPO,
+  findInventorySI: market.findInventorySI,
   deployedUidSet: market.deployedUidSet,
   normalizeListing: market.normalizeListing,
   listListings: market.listListings,

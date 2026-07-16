@@ -92,6 +92,7 @@ module.exports = {
   liveTmIds: lib.liveTmIds,
   isLiveTm: lib.isLiveTm,
   findInventoryPO: lib.findInventoryPO,
+  findInventorySI: lib.findInventorySI,
   deployedUidSet,
   normalizeListing: listings.normalizeListing,
   listListings: views.listListings,

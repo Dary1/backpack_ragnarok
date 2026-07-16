@@ -19,22 +19,38 @@ import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
 import { MarketThumb, burnOf, dexNoLabel, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
 
-/** One sellable inventory PO, flattened from every inventory page. */
+/** One sellable inventory instance (PO or SI), with display fields
+ * precomputed off the right def map so the picker/carve never touch the
+ * ItemDef|SIDef union directly. */
 interface SellableItem {
   itemUid: string;
   itemId: string;
+  name: string;
+  nameJa: string;
+  rarity: string;
+  dims: string;
+  tags: string[];
 }
 
 /** Collects every inventory-homed PO across all inventory pages -- the
  * server's own "sellable = inventory PO" definition. Board/squad items
  * (state.pos / squads.store) are deliberately excluded: those are the
  * deployed/placed set the server refuses. */
-function collectSellable(state: GameState | null): SellableItem[] {
+function collectSellable(state: GameState | null, gameData: GameData | null, kind: 'po' | 'si'): SellableItem[] {
   if (!state || !state.inv || !Array.isArray(state.inv.pages)) return [];
   const out: SellableItem[] = [];
   for (const pg of state.inv.pages) {
-    for (const po of pg.pos || []) {
-      out.push({ itemUid: po.uid, itemId: po.id });
+    if (kind === 'si') {
+      for (const a of pg.sis || []) {
+        const d = gameData?.SI_DEFS?.[a.id] ?? null;
+        out.push({ itemUid: a.uid, itemId: a.id, name: d?.name ?? a.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims: '', tags: [] });
+      }
+    } else {
+      for (const po of pg.pos || []) {
+        const d = gameData?.ITEMS[po.id] ?? null;
+        const dims = d?.shape?.length ? `${Math.max(...d.shape.map((c) => c[1])) + 1}×${Math.max(...d.shape.map((c) => c[0])) + 1}` : '';
+        out.push({ itemUid: po.uid, itemId: po.id, name: d?.name ?? po.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims, tags: d?.tags ?? [] });
+      }
     }
   }
   return out;
@@ -58,7 +74,8 @@ interface SellPaneProps {
 }
 
 export function SellPane({ state, gameData, locale, tms, allListings, listedUids, onListed }: SellPaneProps) {
-  const sellable = useMemo(() => collectSellable(state), [state]);
+  const [sellKind, setSellKind] = useState<'po' | 'si' | 'tm'>('po');
+  const sellable = useMemo(() => collectSellable(state, gameData, sellKind === 'si' ? 'si' : 'po'), [state, gameData, sellKind]);
   const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(1);
@@ -70,7 +87,6 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   // the mock's 配備中 cards (shown, not hidden -- the mock shows WHY).
   const [deployedUids, setDeployedUids] = useState<Set<string>>(new Set());
   // REQ-0195b: tm (currency-for-currency) sell tab state.
-  const [sellKind, setSellKind] = useState<'po' | 'tm'>('po');
   const [soldTm, setSoldTm] = useState<string | null>(null);
   const [tmQty, setTmQty] = useState<number>(1);
   const [tmPriceTm, setTmPriceTm] = useState<string | null>(null);
@@ -95,7 +111,6 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   }, [soldTm, tms, tmPriceTm]);
 
   const selected = sellable.find((s) => s.itemUid === selectedUid) || null;
-  const selectedDef = selected ? (gameData?.ITEMS[selected.itemId] || null) : null;
 
   /** The item's most recent settled price, if the DTO exposes one for
    * this itemId anywhere in the known listings (priceHistory[0], newest
@@ -138,7 +153,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     setBusy(true);
     setErrKey(null);
     try {
-      await createMarketListing({ itemUid: selected.itemUid, price: { tm: priceTm, qty: price } });
+      await createMarketListing({ kind: sellKind === 'si' ? 'si' : 'po', itemUid: selected.itemUid, price: { tm: priceTm, qty: price } });
       setToast(t(locale, 'market.sell.listedToast'));
       setSelectedUid(null);
       await onListed(); // refetch mine/browse so the new listing appears + the item grays out here
@@ -181,6 +196,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   const kindTabs = (
     <div className="mtabs market-sell-kindtabs" data-testid="market-sell-kindtabs">
       <span className={`mtab${sellKind === 'po' ? ' is-on' : ''}`} data-testid="market-sell-kind-po" role="button" tabIndex={0} onClick={() => setSellKind('po')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('po'); } }}>{t(locale, 'market.sell.kindPo')}</span>
+      <span className={`mtab${sellKind === 'si' ? ' is-on' : ''}`} data-testid="market-sell-kind-si" role="button" tabIndex={0} onClick={() => setSellKind('si')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('si'); } }}>{t(locale, 'market.sell.kindSi')}</span>
       <span className={`mtab${sellKind === 'tm' ? ' is-on' : ''}`} data-testid="market-sell-kind-tm" role="button" tabIndex={0} onClick={() => setSellKind('tm')} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSellKind('tm'); } }}>{t(locale, 'market.sell.kindTm')}</span>
     </div>
   );
@@ -256,7 +272,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
     </div>
   );
 
-  if (sellKind === 'po' && sellable.length === 0) {
+  if (sellKind !== 'tm' && sellable.length === 0) {
     return (
       <section className="market-pane" data-testid="market-pane-sell">
         {kindTabs}
@@ -286,17 +302,16 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
           <div className="t-micro market-hoard-note">{t(locale, 'market.sell.hoardNote')}</div>
           <div className="col market-hoard-list">
             {sellable.map((s) => {
-              const def = gameData?.ITEMS[s.itemId] || null;
-              const name = def ? (locale === 'ja' ? def.name_ja || def.name : def.name) : s.itemId;
+              const name = locale === 'ja' ? (s.nameJa || s.name) : s.name;
               const locked = deployedUids.has(s.itemUid) || listedUids.has(s.itemUid);
               const lockedReason = deployedUids.has(s.itemUid)
                 ? t(locale, 'market.sell.deployedLock')
                 : listedUids.has(s.itemUid) ? t(locale, 'market.sell.alreadyListedLock') : '';
-              const dims = def && def.shape && def.shape.length ? `${Math.max(...def.shape.map((c) => c[1])) + 1}×${Math.max(...def.shape.map((c) => c[0])) + 1}` : '';
+              const dims = s.dims;
               return (
                 <div
                   key={s.itemUid}
-                  className={`icard market-icard rar rar-${def?.rarity || 'common'}${s.itemUid === selectedUid ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
+                  className={`icard market-icard rar rar-${s.rarity || 'common'}${s.itemUid === selectedUid ? ' is-selected' : ''}${locked ? ' is-locked' : ''}`}
                   data-testid="market-sell-item"
                   data-item-uid={s.itemUid}
                   data-locked={locked ? 'true' : 'false'}
@@ -306,10 +321,10 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
                   onKeyDown={(e) => { if (!locked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); selectItem(s.itemUid); } }}
                 >
                   <span className="gem" />
-                  <MarketThumb gameData={gameData} itemId={s.itemId} cellPx={16} alt={name} />
+                  <MarketThumb gameData={gameData} itemId={s.itemId} cellPx={16} alt={name} kind={sellKind} />
                   <div>
                     <div className="nm">{name}</div>
-                    <div className="sub">PO{dims ? ` ・ ${dims}` : ''}{def && def.tags && def.tags.length ? ` ・ ${def.tags.join('/')}` : ''}{def?.rarity ? <span className={`rar-word r-${def.rarity}`}> {def.rarity.toUpperCase()}</span> : null}</div>
+                    <div className="sub">{sellKind.toUpperCase()}{dims ? ` ・ ${dims}` : ''}{s.tags.length ? ` ・ ${s.tags.join('/')}` : ''}{s.rarity ? <span className={`rar-word r-${s.rarity}`}> {s.rarity.toUpperCase()}</span> : null}</div>
                   </div>
                   {locked
                     ? <span className="lockword" data-testid="market-sell-lockword">{lockedReason}</span>
@@ -328,11 +343,11 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
             <span className="en">{t(locale, 'market.sell.carveEn')}</span>
           </div>
 
-          {selected && selectedDef ? (
+          {selected ? (
             <>
               <div className="carve-item">
                 <span>{t(locale, 'market.sell.pieceLabel')}</span>
-                <b className="dj" data-testid="market-carve-name">{locale === 'ja' ? selectedDef.name_ja || selectedDef.name : selectedDef.name}</b>
+                <b className="dj" data-testid="market-carve-name">{locale === 'ja' ? selected.nameJa || selected.name : selected.name}</b>
                 <span className="chip dexno">{dexNoLabel(dexNoOf(selected.itemId, allListings))}</span>
                 <span className="t-micro" data-testid="market-carve-anchor">
                   {anchor != null ? t(locale, 'market.sell.anchor', { n: anchor }) : t(locale, 'market.sell.anchorNone')}

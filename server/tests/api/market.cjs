@@ -489,6 +489,49 @@ module.exports.run = async function run(h) {
     assert.strictEqual(mktBalance(mktBuyer.playerId), 69 - 21, 'buyer paid 1+2+..+6');
   });
 
+  await AT('market: si listing -- create/settle delivers a plain SI row (q copied, no kind); PO-sale re-homes socketed SIs to host:inv (REQ-0195c)', async () => {
+    const siSeller = playersFixture.createPlayer('MarketSiSeller', []);
+    const siBuyer = playersFixture.createPlayer('MarketSiBuyer', []);
+    const p0 = { bps: [], pos: [{ uid: 'si_po_host', id: 'blade', cell: [1, 1], rot: 0 }], sis: [
+      { uid: 'si_loose', id: 'acc_gem', host: 'inv', q: 0.42 },
+      { uid: 'si_seated', id: 'fx_ring', host: { po: 'si_po_host', si: 0 }, q: 0.77 },
+    ], tms: [] };
+    scheduleStorage.writeProfile(siSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(siBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'si_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // Create an SI listing for the loose gem.
+    const created = await marketReq('POST', '/api/market/listings', siSeller.token, { kind: 'si', itemUid: 'si_loose', price: { tm: 'lrdst', qty: 10 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.listing.kind, 'si');
+    assert.strictEqual(created.body.listing.itemId, 'acc_gem');
+    assert.strictEqual(created.body.listing.itemUid, 'si_loose');
+    const siListingId = created.body.listing.id;
+    const browse = await marketReq('GET', '/api/market/listings', siBuyer.token);
+    assert.ok(browse.body.listings.some((x) => x.id === siListingId && x.kind === 'si'), 'si listing browsable');
+    // Settle: seller loses the SI; buyer gets a PLAIN row (q copied, no kind).
+    const buy = await marketReq('POST', '/api/market/listings/' + siListingId + '/buy', siBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterSi = scheduleStorage.readProfile(siSeller.playerId).canvas;
+    assert.ok(!afterSi.inv.pages[0].sis.some((a) => a.uid === 'si_loose'), 'sold SI stripped from inventory');
+    const row = schedule.listWarehouse(siBuyer.playerId).find((w) => w.sourceListingId === siListingId);
+    assert.ok(row, 'buyer got a delivery row');
+    assert.strictEqual(row.itemId, 'acc_gem');
+    assert.strictEqual(row.kind, undefined, 'plain SI row (claim validates via siDefsById), not a tm row');
+    assert.strictEqual(row.q, 0.42, 'the SI instance q travels, never re-rolled');
+    // Sell the PO host -> the seated SI (fx_ring) re-homes to host:inv.
+    const poCreate = await marketReq('POST', '/api/market/listings', siSeller.token, { kind: 'po', itemUid: 'si_po_host', price: { tm: 'lrdst', qty: 8 } });
+    assert.strictEqual(poCreate.status, 200, JSON.stringify(poCreate.body));
+    const poBuy = await marketReq('POST', '/api/market/listings/' + poCreate.body.listing.id + '/buy', siBuyer.token);
+    assert.strictEqual(poBuy.status, 200, JSON.stringify(poBuy.body));
+    const afterPo = scheduleStorage.readProfile(siSeller.playerId).canvas;
+    assert.ok(!afterPo.inv.pages[0].pos.some((p) => p.uid === 'si_po_host'), 'sold PO stripped');
+    const seated = afterPo.inv.pages[0].sis.find((a) => a.uid === 'si_seated');
+    assert.ok(seated, 'the seated SI survives (it was not sold)');
+    assert.strictEqual(seated.host, 'inv', 'the seated SI re-homed to inv -- no orphaned host ref');
+  });
+
   await AT('market: tm listing (currency-for-currency) -- same_tm 400, tmQty/itemId validation, derived suspension on low balance, settle debits+delivers a kind:tm row, insufficient-stock 409', async () => {
     const tmSeller = playersFixture.createPlayer('MarketTmSeller', []);
     const tmBuyer = playersFixture.createPlayer('MarketTmBuyer', []);
