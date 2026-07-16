@@ -489,6 +489,50 @@ module.exports.run = async function run(h) {
     assert.strictEqual(mktBalance(mktBuyer.playerId), 69 - 21, 'buyer paid 1+2+..+6');
   });
 
+  await AT('market: unit (BP) listing -- EMPTY-only (not_empty 409 when a PO sits in the footprint), settle strips the BP + delivers a kind:bp row with the verbatim payload; claim validates unit.id (REQ-0195d)', async () => {
+    const uSeller = playersFixture.createPlayer('MarketUnitSeller', []);
+    const uBuyer = playersFixture.createPlayer('MarketUnitBuyer', []);
+    const emptyBp = { id: 'u_bp_empty', name: 'BP1', color: '#888', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 2, bonuses: [] };
+    const fullBp = { id: 'u_bp_full', name: 'BP2', color: '#888', shape: [[0, 0], [0, 1]], origin: [4, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 2 };
+    const p0 = { bps: [emptyBp, fullBp], pos: [{ uid: 'u_nested_po', id: 'blade', cell: [4, 1], rot: 0 }], sis: [], tms: [] };
+    scheduleStorage.writeProfile(uSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(uBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'u_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // not_empty: a PO sits on fullBp's footprint [4,1] -> 409.
+    const notEmpty = await marketReq('POST', '/api/market/listings', uSeller.token, { kind: 'unit', itemUid: 'u_bp_full', price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(notEmpty.status, 409, JSON.stringify(notEmpty.body));
+    assert.strictEqual(notEmpty.body.reason, 'not_empty');
+    // The empty BP lists fine (kind:unit, itemId = the unit content id).
+    const created = await marketReq('POST', '/api/market/listings', uSeller.token, { kind: 'unit', itemUid: 'u_bp_empty', price: { tm: 'lrdst', qty: 20 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.listing.kind, 'unit');
+    assert.strictEqual(created.body.listing.itemId, 'test_loner');
+    assert.strictEqual(created.body.listing.itemUid, 'u_bp_empty');
+    const uId = created.body.listing.id;
+    // Settle: buyer gets a kind:bp row with the verbatim payload; seller loses the BP.
+    const buy = await marketReq('POST', '/api/market/listings/' + uId + '/buy', uBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterU = scheduleStorage.readProfile(uSeller.playerId).canvas;
+    assert.ok(!afterU.inv.pages[0].bps.some((b) => b.id === 'u_bp_empty'), 'sold BP stripped');
+    assert.ok(afterU.inv.pages[0].bps.some((b) => b.id === 'u_bp_full'), 'the other BP stays');
+    const row = schedule.listWarehouse(uBuyer.playerId).find((w) => w.sourceListingId === uId);
+    assert.ok(row, 'buyer got a delivery row');
+    assert.strictEqual(row.kind, 'bp');
+    assert.strictEqual(row.itemId, 'test_loner');
+    assert.ok(row.bp, 'the row carries the bp payload');
+    assert.deepStrictEqual(row.bp.shape, [[0, 0], [0, 1]], 'payload shape verbatim');
+    assert.strictEqual(row.bp.unit.id, 'test_loner', 'payload unit verbatim');
+    assert.strictEqual(row.bp.hpMax, 30, 'payload hpMax verbatim');
+    // Claim validates unit.id against unitDefsById and returns the payload.
+    const claim = await marketReq('POST', '/api/warehouse/claim', uBuyer.token, { itemUid: row.itemUid });
+    assert.strictEqual(claim.status, 200, JSON.stringify(claim.body));
+    assert.strictEqual(claim.body.kind, 'bp');
+    assert.ok(claim.body.bp, 'claim returns the payload');
+    assert.strictEqual(claim.body.bp.unit.id, 'test_loner');
+  });
+
   await AT('market: si listing -- create/settle delivers a plain SI row (q copied, no kind); PO-sale re-homes socketed SIs to host:inv (REQ-0195c)', async () => {
     const siSeller = playersFixture.createPlayer('MarketSiSeller', []);
     const siBuyer = playersFixture.createPlayer('MarketSiBuyer', []);

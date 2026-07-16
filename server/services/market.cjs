@@ -93,6 +93,7 @@ module.exports = {
   isLiveTm: lib.isLiveTm,
   findInventoryPO: lib.findInventoryPO,
   findInventorySI: lib.findInventorySI,
+  findInventoryBP: lib.findInventoryBP,
   deployedUidSet,
   normalizeListing: listings.normalizeListing,
   listListings: views.listListings,

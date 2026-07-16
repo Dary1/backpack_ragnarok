@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, findInventoryPO, findInventorySI, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
+const { burnOf, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // stripPoFromCanvas: removes every pos[] entry with `uid` from the
@@ -49,6 +49,24 @@ function stripSiFromCanvas(canvas, uid) {
   const strip = (container) => {
     if (container && Array.isArray(container.sis)) {
       container.sis = container.sis.filter((a) => a.uid !== uid);
+    }
+  };
+  strip(canvas);
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) strip(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) strip(pg);
+  }
+}
+
+// stripBpFromCanvas (REQ-0195d): removes every bps[] entry with `id`
+// (a BP keys on `id`) from the canvas -- inventory pages, the active
+// squad's top-level bps[], and every stored squad snapshot.
+function stripBpFromCanvas(canvas, uid) {
+  const strip = (container) => {
+    if (container && Array.isArray(container.bps)) {
+      container.bps = container.bps.filter((b) => b.id !== uid);
     }
   };
   strip(canvas);
@@ -134,6 +152,7 @@ function buyListing(buyerId, listingId, idemKey) {
   const sellerDoc = storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
   let sellerInst = null;
+  let sellerBp = null;
   if (kind === 'tm') {
     // REQ-0195b: tm stock is the live balance; a shortfall is a
     // (reversible) SUSPENSION re-check, never an item-gone auto-withdraw.
@@ -141,6 +160,16 @@ function buyListing(buyerId, listingId, idemKey) {
     if (stock < listing.tmQty) {
       const err = new Error('listing suspended: the seller holds ' + stock + ' ' + String(listing.itemId).toUpperCase() + ', needs ' + listing.tmQty); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
     }
+  } else if (kind === 'unit') {
+    const b = sellerCanvas ? findInventoryBP(sellerCanvas, listing.itemUid) : null;
+    if (!sellerCanvas || !b) {
+      autoWithdrawItemGone(listing, now);
+      const err = new Error('the listed unit no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
+    }
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
+      const err = new Error('listing suspended: the seller currently deploys this unit (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
+    sellerBp = b.bp;
   } else {
     sellerInst = sellerCanvas ? (kind === 'si' ? findInventorySI(sellerCanvas, listing.itemUid) : findInventoryPO(sellerCanvas, listing.itemUid)) : null;
     if (!sellerCanvas || !sellerInst) {
@@ -187,6 +216,8 @@ function buyListing(buyerId, listingId, idemKey) {
     debitTmFromCanvas(sellerCanvas, listing.itemId, listing.tmQty);
   } else if (kind === 'si') {
     stripSiFromCanvas(sellerCanvas, listing.itemUid);
+  } else if (kind === 'unit') {
+    stripBpFromCanvas(sellerCanvas, listing.itemUid);
   } else {
     stripPoFromCanvas(sellerCanvas, listing.itemUid); // also re-homes SIs seated on the sold PO (REQ-0195c)
   }
@@ -203,6 +234,15 @@ function buyListing(buyerId, listingId, idemKey) {
     ? {
         itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId, qty: listing.tmQty,
         kind: 'tm',
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      }
+    : kind === 'unit'
+    ? {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
+        kind: 'bp',
+        bp: JSON.parse(JSON.stringify(sellerBp)), // REQ-0195d: full BP instance, verbatim (never re-rolled)
         harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
         sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
         status: 'claimable',

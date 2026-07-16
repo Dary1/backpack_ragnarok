@@ -595,6 +595,25 @@ export interface ApiDungeonsPayload {
  * fetchContent()'s items map for name/icon (see WarehouseTab.tsx --
  * reuses the SAME item lookup every other content-aware view already
  * uses, no second item-lookup path). */
+/** REQ-0195d: the full BP (unit) instance payload carried on a kind:'bp'
+ * warehouse row (a bought unit). Delivered verbatim from the seller's
+ * canvas BP and placed via lib/placement firstFitPlaceBp on claim; never
+ * re-rolled. Extra verbatim fields (name/color/cellCount/bonuses/roll)
+ * are merged onto the placed BP by the claim path. */
+export interface ApiWarehouseBp {
+  shape: Array<[number, number]>;
+  unit: { id: string; off: [number, number] };
+  hpMax: number;
+  cellCount?: number;
+  bonuses?: unknown[];
+  name?: string;
+  color?: string;
+  origin?: [number, number];
+  /** REQ-0196 roll container, when minted; carried verbatim. */
+  roll?: { pct: number };
+  id?: string;
+}
+
 export interface ApiWarehouseItem {
   itemUid: string;
   playerId: string;
@@ -603,9 +622,11 @@ export interface ApiWarehouseItem {
   expiresAt: string;
   sourceRoomId: string;
   sourceRunId: string;
-  /** REQ-0042: present (and 'tm') for a TM (Transmutator)-kind row, e.g.
-   * an LRDST reward/grant -- absent for a plain PO/SI row. */
-  kind?: 'tm';
+  /** REQ-0042/0195d: 'tm' for a TM-stack row, 'bp' for a bought unit
+   * (BP) row -- absent for a plain PO/SI row. */
+  kind?: 'tm' | 'bp';
+  /** REQ-0195d: for kind:'bp' rows -- the verbatim BP instance payload. */
+  bp?: ApiWarehouseBp;
   /** REQ-0042: TM-kind rows carry a stack quantity. Absent for a plain
    * PO/SI row (those are always singular). */
   qty?: number;

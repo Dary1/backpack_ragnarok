@@ -103,6 +103,40 @@ function findInventorySI(canvas, itemUid) {
   return null;
 }
 
+// findInventoryBP (REQ-0195d): locates a BP by its instance uid among
+// the seller's INVENTORY pages' bps[] (a canvas BP keys on `id`, not
+// `uid`). Returns { bp, page } so the caller can run the empty-check on
+// the BP's home page; null when not found.
+function findInventoryBP(canvas, uid) {
+  if (!canvas || !canvas.inv || !Array.isArray(canvas.inv.pages)) return null;
+  for (const pg of canvas.inv.pages) {
+    for (const b of (pg && pg.bps) || []) {
+      if (b.id === uid) return { bp: b, page: pg };
+    }
+  }
+  return null;
+}
+
+// bpHasContents (REQ-0195d): true iff any PO/SI on the BP's home page
+// sits within the BP's footprint (origin + shape cells) -- the NOT-EMPTY
+// signal (nested content does not travel with a sold BP). An SI socketed
+// on such a PO is transitively inside, so testing PO anchors +
+// directly-placed SIs against the footprint cells is sufficient.
+function bpHasContents(page, bp) {
+  const origin = Array.isArray(bp && bp.origin) ? bp.origin : [1, 1];
+  const fp = new Set();
+  for (const off of (bp && bp.shape) || []) {
+    if (Array.isArray(off)) fp.add((origin[0] + off[0]) + ':' + (origin[1] + off[1]));
+  }
+  if (fp.size === 0) return false;
+  const key = (cell) => (Array.isArray(cell) ? cell[0] + ':' + cell[1] : null);
+  for (const p of (page && page.pos) || []) if (fp.has(key(p.cell))) return true;
+  for (const a of (page && page.sis) || []) {
+    if (a.host && typeof a.host === 'object' && a.host.cell != null && fp.has(key(a.host.cell))) return true;
+  }
+  return false;
+}
+
 // readTmBalance: sums qty across every same-id TM stack in the canvas's
 // inventory pages. Generalized (tmId parameter) from services/
 // gacha.cjs's readLrdstBalance() -- same "read the last-saved canvas"
@@ -148,6 +182,8 @@ module.exports = {
   getDexNoById,
   findInventoryPO,
   findInventorySI,
+  findInventoryBP,
+  bpHasContents,
   readTmBalance,
   liveTmIds,
   isLiveTm,

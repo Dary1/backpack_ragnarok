@@ -8,7 +8,7 @@ const { getScheduleContent, genId } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
 const {
   MARKET_TM_ID, MARKET_PRICE_MIN, MARKET_PRICE_MAX, MARKET_LISTING_TTL_MS,
-  findInventoryPO, findInventorySI, isLiveTm,
+  findInventoryPO, findInventorySI, findInventoryBP, bpHasContents, isLiveTm,
 } = require('./lib.cjs');
 
 // ---------------------------------------------------------------------
@@ -81,7 +81,7 @@ function createListing(sellerId, body, canvas, idemKey) {
   // tm listings (currency-for-currency) have no itemUid and branch before
   // the PO-specific inventory checks; si/unit arrive in REQ-0195c-d.
   const kind = (body && typeof body.kind === 'string' && body.kind) ? body.kind : 'po';
-  if (kind !== 'po' && kind !== 'tm' && kind !== 'si') {
+  if (kind !== 'po' && kind !== 'tm' && kind !== 'si' && kind !== 'unit') {
     const err = new Error('unsupported listing kind: ' + kind); err.code = 'BAD_REQUEST'; throw err;
   }
   const price = body && body.price;
@@ -92,10 +92,11 @@ function createListing(sellerId, body, canvas, idemKey) {
     const err = new Error('price.qty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
   }
   if (kind === 'tm') return createTmListing(sellerId, body, price, idemKey);
-  // ---- kind 'po' | 'si' (inventory instance path) ----
+  // ---- kind 'po' | 'si' | 'unit' (inventory instance path; all have itemUid) ----
   if (typeof body.itemUid !== 'string' || !body.itemUid) {
     const err = new Error('itemUid is required'); err.code = 'BAD_REQUEST'; throw err;
   }
+  if (kind === 'unit') return createUnitListing(sellerId, body, price, canvas, idemKey);
   const { itemDefsById, siDefsById } = getScheduleContent();
   const entry = kind === 'si' ? findInventorySI(canvas, body.itemUid) : findInventoryPO(canvas, body.itemUid);
   if (!entry) {
@@ -163,6 +164,46 @@ function createTmListing(sellerId, body, price, idemKey) {
     expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),
     state: 'active',
     idemKey: idemKey || null,
+  };
+  storage.writeMarketListing(listing.id, listing);
+  return { listing, replayed: false };
+}
+
+// createUnitListing (REQ-0195d): list an EMPTY inventory BP (unit). No
+// nested pos[]/sis[] may sit in the BP's footprint (nested content does
+// not travel -> 409 {reason:'not_empty'}); the BP's unit.id must be a
+// live unit def; deployed -> 409 {reason:'deployed'}; one live listing
+// per BP uid (already_listed).
+function createUnitListing(sellerId, body, price, canvas, idemKey) {
+  const found = findInventoryBP(canvas, body.itemUid);
+  if (!found) {
+    const err = new Error('unit (BP) not found in your inventory'); err.code = 'NOT_FOUND'; throw err;
+  }
+  const { bp, page } = found;
+  const { unitDefsById } = getScheduleContent();
+  const unitId = bp.unit && bp.unit.id;
+  if (!unitId || !unitDefsById[unitId]) {
+    const err = new Error('BP references an unknown unit id: ' + unitId); err.code = 'BAD_REQUEST'; throw err;
+  }
+  if (bpHasContents(page, bp)) {
+    const err = new Error('the BP is not empty -- nested items do not travel; empty it first'); err.code = 'CONFLICT'; err.reason = 'not_empty'; throw err;
+  }
+  if (deployedUidSet(sellerId, canvas).has(body.itemUid)) {
+    const err = new Error('deployed units cannot go to market (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'deployed'; throw err;
+  }
+  const now = Date.now();
+  for (const raw of storage.listMarketListings()) {
+    if (raw.sellerId !== sellerId || raw.itemUid !== body.itemUid) continue;
+    if (normalizeListing(raw, now).state === 'active') {
+      const err = new Error('this unit is already listed'); err.code = 'CONFLICT'; err.reason = 'already_listed'; throw err;
+    }
+  }
+  const listing = {
+    id: genId('mkt'), sellerId, kind: 'unit', itemUid: body.itemUid, itemId: unitId,
+    price: { tm: price.tm, qty: price.qty },
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),
+    state: 'active', idemKey: idemKey || null,
   };
   storage.writeMarketListing(listing.id, listing);
   return { listing, replayed: false };
