@@ -6,7 +6,7 @@
 // cache is module-private in lib/content.cjs now). Returns false when
 // not matched.
 const { sendJSON, readBody, getAuthToken, MAX_BODY_BYTES } = require('../lib/http_util.cjs');
-const { invalidateContentCache } = require('../lib/content.cjs');
+const { invalidateContentCache, registryServedKindFor } = require('../lib/content.cjs');
 const admin = require('../admin.cjs');
 const schedule = require('../schedule.cjs');
 
@@ -20,6 +20,29 @@ function tryAdminRoutes(req, res, url, p) {
     const token = getAuthToken(req);
     if (!admin.isItemAdminToken(token)) {
       sendJSON(res, 403, { ok: false, error: 'forbidden: missing/invalid token or not an item_admin' });
+      return;
+    }
+    // REQ-0182b: this route writes content/live/*.json directly, bypassing the
+    // ledger. For an id the registry SERVES (an adopted variant of a covered
+    // kind) that write reaches nothing -- REQ-0178 made the display registry-
+    // first and REQ-0176 made the roll and the simulation registry-first too --
+    // so a 200 here would be a lie: the operator would see "saved" and the game
+    // would not change. Worse, it leaves the live file diverged from the ledger,
+    // which is the parity DRIFT this route has already caused on live twice
+    // (a stray `dagger.stretch`, restored by hand both times).
+    //
+    // Refuse with a pointer to where the edit DOES reach the game. Deliberately
+    // AFTER the item_admin gate: a role-less caller must still get 403, never a
+    // 409 that would leak which ids are adopted. Kept as a 409 (not 410): the
+    // route is alive and still correct for content the registry does not serve.
+    const servedKind = registryServedKindFor(itemId);
+    if (servedKind) {
+      sendJSON(res, 409, {
+        ok: false,
+        error: 'this entity is registry-served (' + servedKind + '); edit it in the content admin, where adoption is what changes the game',
+        registry_kind: servedKind,
+        edit_at: '#/contentadmin/' + itemId,
+      });
       return;
     }
     readBody(req, (err, bodyStr) => {

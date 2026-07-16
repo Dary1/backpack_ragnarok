@@ -369,6 +369,22 @@ function getContentSources() {
   };
 }
 
+// REQ-0182b: is `id` currently SERVED from the registry -- i.e. does it have an
+// adopted variant of a covered kind? The legacy Dex-Edit PUT writes live FILES;
+// for such an id that write can no longer be observed anywhere (REQ-0178 took the
+// display, REQ-0176 took the roll and the sim), so the route must refuse rather
+// than silently succeed. Answered from the WARM SNAPSHOT: no DB round trip, and
+// it is the same snapshot /api/content is served from, so the refusal can never
+// disagree with what the operator is looking at. Returns the kind or null.
+// po/si only, because applyAdminEdit only ever covered live_items/live_sis.
+function registryServedKindFor(id) {
+  const reg = registryData;
+  if (!reg || !id) return null;
+  if (reg.po_def && Object.prototype.hasOwnProperty.call(reg.po_def, id)) return 'po_def';
+  if (reg.si_def && Object.prototype.hasOwnProperty.call(reg.si_def, id)) return 'si_def';
+  return null;
+}
+
 let registryFallbackLogged = false;
 // One warn line per boot when the serving backend falls back to a file entry
 // for any covered id (drift observability). Suppressed under the files backend,
@@ -414,4 +430,5 @@ module.exports = {
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
   buildContentPayload, getContent, invalidateContentCache, refreshArtUrls,
   refreshRegistryData, getContentSources,
+  registryServedKindFor, // REQ-0182b
 };

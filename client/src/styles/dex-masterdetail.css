@@ -80,6 +80,24 @@
   font-size: 12px;
   margin-top: 6px;
 }
+/* REQ-0198 (B): the compact "sell this" action on the tap tooltip -- the
+   market SELL entry point for a stowed inventory instance. */
+.item-tip-sell-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--gold-lo);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--gold);
+  font-family: var(--f-dj);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.item-tip-sell-btn:hover {
+  background: color-mix(in srgb, var(--gold) 22%, transparent);
+}
 
 /* ============================================================
    REQ-0120 - Dex master/detail SPLIT (supersedes the REQ-0108 inline

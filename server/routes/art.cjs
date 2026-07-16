@@ -306,6 +306,32 @@ async function hAdopt(req, res, name) {
   sendJSON(res, 200, { ok: true, artwork: art, export: exportRec, export_error: exportError });
 }
 
+// REQ-0192: manual repack -- derive a best-placement variant of an OK render
+// (matte -> tool_cell_fit pack search -> transformed image) as a NEW render
+// at source seed + 100000, bumping by another 100000 while that seed is
+// taken (user convention: seeds >= 100000 are derived; repeated presses
+// stack without colliding; generation seeds stay below 100000). po only --
+// packing needs a cell footprint. The job runs at inspection priority; the
+// target row is created up front (status 'queued') so the UI shows it
+// immediately, and carries full provenance in params on completion.
+async function hRepack(req, res, name, seed) {
+  const art = await storage.getArtworkByName(name);
+  if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
+  if (art.kind !== 'po') return sendJSON(res, 400, { ok: false, error: 'repack applies to po artworks only' });
+  const renders = await storage.listRenders(art.id);
+  const src = renders.find((r) => Number(r.seed) === seed);
+  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  if (src.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'repack needs an ok render (status: ' + src.status + ')' });
+  const taken = new Set(renders.map((r) => Number(r.seed)));
+  let target = seed + 100000;
+  while (taken.has(target)) target += 100000;
+  let row;
+  try { row = await storage.createRender(art.id, target, 'queued'); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
+  jobs.enqueuePack({ renderId: row.id, artworkId: art.id, sourceRenderId: src.id });
+  return sendJSON(res, 202, { ok: true, render: row, source_seed: seed, inspectDepth: jobs.inspectDepth() });
+}
+
 async function hDelete(req, res, name, seed) {
   try { await storage.deleteRender(name, seed); sendJSON(res, 200, { ok: true, deleted: seed }); }
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
@@ -316,6 +342,21 @@ async function hDelete(req, res, name, seed) {
 // the inspection backlog depth. Admin-gated: job metadata names artworks.
 async function hQueue(req, res) {
   sendJSON(res, 200, Object.assign({ ok: true }, jobs.listJobs()));
+}
+
+// REQ-0197: deferred-batch queue controls. POST hold {held:bool} gates newly
+// enqueued generation jobs behind an explicit execute; POST execute releases
+// the held set, sorted so same-prompt jobs run back to back. Admin-gated
+// like the rest of the queue panel.
+async function hQueueHold(req, res) {
+  const b = await readJson(req);
+  if (typeof b.held !== 'boolean') return sendJSON(res, 400, { ok: false, error: 'body must carry held: true|false' });
+  sendJSON(res, 200, Object.assign({ ok: true }, jobs.setHold(b.held)));
+}
+
+async function hQueueExecute(req, res) {
+  const out = jobs.executeBatch();
+  sendJSON(res, 200, Object.assign({ ok: true, released: out.released }, jobs.listJobs()));
 }
 
 // REQ-0156: cancel one generation job (pending: dequeued; running: worker
@@ -401,8 +442,11 @@ const RE_GENERATE = /^\/api\/art\/artworks\/([^/]+)\/generate$/;
 const RE_ADOPT = /^\/api\/art\/artworks\/([^/]+)\/adopt$/;
 const RE_ADMIN_RENDER = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)$/;
 const RE_INSPECT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/inspect$/;
+const RE_REPACK = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/repack$/;   // REQ-0192
 const RE_CANCEL = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cancel$/;   // REQ-0156
 const RE_QUEUE = /^\/api\/art\/queue$/;                                        // REQ-0156
+const RE_QUEUE_HOLD = /^\/api\/art\/queue\/hold$/;                             // REQ-0197
+const RE_QUEUE_EXECUTE = /^\/api\/art\/queue\/execute$/;                       // REQ-0197
 const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
 const RE_DEV_BUMP = /^\/api\/art\/dev\/bump-kit$/;
 const RE_PUB_META = /^\/api\/art\/([^/]+)\/meta$/;
@@ -433,11 +477,14 @@ function tryArtRoutes(req, res, url, p) {
     run(res, hDevClear(req, res)); return true;
   }
   if (RE_QUEUE.test(p) && req.method === 'GET') { if (!requireAdmin(req, res)) return true; run(res, hQueue(req, res)); return true; }
+  if (RE_QUEUE_HOLD.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueHold(req, res)); return true; }
+  if (RE_QUEUE_EXECUTE.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueExecute(req, res)); return true; }
   if ((m = RE_CANCEL.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCancel(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_PREVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hPreview(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_GENERATE.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hGenerate(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_ADOPT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hAdopt(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_INSPECT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hInspect(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  if ((m = RE_REPACK.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hRepack(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ADMIN_RENDER.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDelete(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ARTWORK.exec(p))) {
     if (!requireAdmin(req, res)) return true;

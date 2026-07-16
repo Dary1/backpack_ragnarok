@@ -146,3 +146,122 @@ Consequences for this REQ's spec:
 Open: natural-orientation L test; T-tetromino subject (war hammer IS a T-object
 — expected easy case); V2 (auto's default) / V3 (guide) / V4 (UI compare loop);
 delete `req0187_*` artworks when done.
+
+## Revision-loop live run — 2026-07-15 (user + LLM, req0187_scythe)
+
+The user-designed loop (instruction -> 3 seeds -> meter -> revised instruction
+-> 3 seeds -> revised -> 4 seeds -> present all 10 with scores) executed live
+on a complex 6-cell footprint (3x3 bbox: shaft column + blade top row + a
+dipped tip cell (1,2)); auto -> strict @ D=8 on every render; po.cell_fit
+scored each render automatically in artadmin.
+
+Scores (fit / worst cell): R1 24.2, 26.3, 20.4 (tip cell missed everywhere);
+R2 (added plunge wording + thick shaft + grip) 25.9, 26.4, **66.1 best**
+(seed 43; tip cell 0.96 -> 0.00 on 42/43); R3 (added "level along the very
+top all the way to the corner") 25.8, 40.4, 25.8, 31.0 — REGRESSION: the
+model obeyed the new level clause and dropped the proven plunge (seeds 51/53:
+five cells v=0.00, tip cell v=1.00). Lessons written to S0.2 (revision
+discipline; footprint-reshape corollary). Meter-to-revision causality
+demonstrated both ways: a targeted clause fixed the measured worst cell, and
+an interfering clause un-fixed it.
+
+Deliverable state: 10 renders + po.cell_fit rows on req0187_scythe (live
+artadmin); winner by meter and eyeball candidate = seed 43. Adoption is the
+user's call. po.cell_fit kit + inspect_job stdout fix merged to master and
+deployed mid-REQ at user direction. REQ-0191 (cell-shape backdrop) filed to
+todo/. Test artworks req0187_l_axe / req0187_scythe still to delete at close.
+
+## S7 verdict — 2026-07-16 (GPU eyeball completed)
+
+**User GPU go-ahead GRANTED 2026-07-16.** ComfyUI queue empty; a single serialized
+render stream, no retry storms, no co-resident matting (GPU etiquette honored). 19 renders
+on the LIVE production route (auto default + one-shot lock overrides), each scored by the
+production `po.cell_fit` meter (fit-meter v5, auto-run in artadmin). The wrong-orientation
+`req0187_l_axe` (prior session) was re-scored with `po.cell_fit` as the mask-orientation
+baseline. Every render was eyeballed (raw generation) in addition to the meter, per the
+standing "containment is not fit" caution.
+
+Evidence: `content/batches/req0187-shape-conditioning/` — `findings.json` + 6 illustrative
+renders (committed, small). Full 19-render matrix + all cell_fit scores in gitignored
+`data/req0187/`. Test artworks: `req0187_l_axe_nat` (natural-orientation L, notch
+bottom-right), `req0187_t_hammer` (T-tetromino), `req0187_round_shield` (2x2).
+
+Fit table (`po.cell_fit`; PASS = worst_cell_violation ≤ 0.5 [S7]; deep = deep_overflow_px):
+
+| test | lock | n | median fit | median worst | PASS | max deep |
+| --- | --- | --- | --- | --- | --- | --- |
+| natural-L (notch BR) | strict | 3 | 68.3 | 0.38 | 3/3 | 0 |
+| natural-L (notch BR) | off | 2 | 32.5 | 0.70 | 1/2 | 123 |
+| natural-L (notch BR) | guide | 3 | 53.4 | 0.54 | 1/3 | 0 |
+| **wrong-orient L (notch TR)** | strict | 9 | 39.1 | 0.71 | 2/9 | 0 |
+| T-hammer | strict | 3 | 67.5 | 0.35 | 2/3 | 0 |
+| T-hammer | off | 2 | 50.2 | 0.57 | 1/2 | 0 |
+| round shield 2×2 | off | 3 | 71.8 | 0.32 | 3/3 | 0 |
+| round shield 2×2 | strict | 3 | 81.3 | 0.21 | 3/3 | 0 |
+
+**Per-V verdicts** (grading weighs §0.2 violations, not identity-fit alone):
+
+- **V1 — strict fits the cells: GREEN.** Natural-L strict 3/3 PASS (median fit 68.3),
+  T-hammer strict 2/3 PASS (median 67.5; seed 603 = 95.89, worst 0.0 — near-perfect T).
+  Containment reproduced on the production route on 6/6 conditioned renders
+  (deep_overflow_px = 0), and the composition is usable on a clear majority (5/6 PASS).
+  The seed-1 "containment-not-fit" failure is now both caught (worst-cell gate) and
+  avoided (correct mask orientation).
+
+- **Mask-orientation (Open item): GREEN — confirms §0.2 rule 4.** Natural orientation
+  (notch bottom-right): median fit 68.3, 3/3 PASS, median worst 0.38. Wrong orientation
+  (notch top-right): median fit 39.1, 2/9 PASS, median worst 0.71. Correct orientation
+  nearly doubles median fit and lifts PASS from 22% → 100%: the notch-top-right mask forced
+  the axe handle onto the row center-line on almost every render, exactly as §0.2 predicted.
+
+- **T-tetromino (Open item): GREEN — "T-objects fit by translation".** The war hammer (a
+  genuine T-object, medial handle→head attachment) fills the T footprint by translation
+  (603 = 95.89, 601 = 67.5). Heads read a touch abstract but legible as hammers.
+
+- **V2 — auto's default earns it: AMBER.** The awkward-shape half HOLDS (L strict 68.3 vs
+  off 32.5, off seed 511 = 4.88 with 123 px spill; T strict 67.5 vs off 50.2 — strict
+  rescues awkward footprints). The **2×2 shield half REFUTES REQ-0186's stated rationale**:
+  strict median fit **81.3 (3/3 PASS) BEAT** off median 71.8, and strict did **not** flatten
+  the shield "into a plain disc" — it produced a characterful ROUND shield (boss, riveted
+  rim, plank texture, weathering) that fills the square, while off produced dynamic HEATER
+  shields that leave the square's corners emptier (the ~9-pt fit gap). REQ-0186's V2 GREEN
+  criterion ("off keeps character strict LOSES, at no fit cost") fails on both clauses.
+  auto→off is not catastrophic — off renders are attractive and more dynamic — but its
+  documented justification is inaccurate, and off's full-rectangle silhouette is
+  prompt-dependent (a detailed prompt drove off to a heater outline that underfills the cell).
+
+- **V3 — guide is honestly described: GREEN.** Guide on the natural-L: median fit 53.4,
+  1/3 PASS, high variance (20.96 diagonal / 53.42 centered / 94.86 lucky) — between off
+  (32.5) and strict (68.3), matching the docs ("containment ~60%, not legibility"). Guide
+  does NOT reliably read better than strict (1/3 vs 3/3 PASS; its floor is a diagonal
+  legibility failure). One lucky render beat strict, but that is the lottery guide is
+  documented to be. Lock descriptions are honest.
+
+- **V4 — the compare workflow: GREEN (API-level).** Exercised the exact endpoints the
+  artadmin UI calls: the shield was generated at `off` (701–703) and `strict` (711–713) via
+  the one-shot generate override; `params.shape_lock` records off vs strict (attributable);
+  the artwork default stayed `auto` through both overrides (override did not mutate). PATCH
+  `{shape_lock:"strict"}` changed the artwork default; existing render params were untouched.
+  Not driven through a browser (cannot) — the operator's one-click lightbox compare + Save
+  remains to eyeball in the live artadmin.
+
+- **V5 — ops: GREEN.** No OOM across 19 renders. VRAM peak observed ~5.5 GB (768×512
+  conditioned) — LOWER than REQ-0153's 6.7–6.8 GB, because the production route runs matting
+  as a separate CPU inspection job (not co-resident on the GPU as the spike did). Cold-start
+  first render ~700–880 s wall (~508 s model reload after REQ-0158 idle-free); warm
+  conditioned 512×512 ~60–150 s, 768×512 ~180 s, plain off 512 ~90–120 s. (768×512 at ~180 s
+  is above REQ-0153's 76–130 s envelope — expected for the larger canvas, not a regression.)
+
+**Overall: GREEN on V1 / V3 / V4 / V5 + mask-orientation + T-hammer; AMBER on V2.**
+
+**Recommended follow-up REQ** (observation only — this REQ changes no defaults): correct the
+lock/`auto` wording in REQ-0186 / `item_content_pipeline.md` §0.1 — `strict` does NOT
+"flatten the shield into a plain disc"; on the 2×2 it out-fit `off` (81.3 vs 71.8) while
+keeping character — and reconsider the `auto`→`off` premise for full rectangles: `off`'s
+bbox fill is prompt-dependent and can underfill, so "off on every full rectangle" is a
+per-item judgement best left to the operator via the (now verified working) override, not
+sold on a picture-level claim the pictures do not support.
+
+**Cleanup:** all `req0187_*` test artworks deleted from the live registry after evidence was
+preserved — `req0187_l_axe` (2062), `req0187_l_axe_nat` (2764), `req0187_t_hammer` (2765),
+`req0187_round_shield` (2766), `req0187_scythe` (2238).
