@@ -64,6 +64,14 @@ export function adoptRenderApi(name: string, seed: number): Promise<{ ok: true; 
 export function repackRenderApi(name: string, seed: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/repack', { method: 'POST', body: JSON.stringify({}) });
 }
+// REQ-0193: manual background cutout -- derive a TRANSPARENT (background
+// removed) copy of an OK render as a NEW render at source seed + 100000
+// (bumped by another 100000 while taken), the same derived-seed convention as
+// repack. Kind-agnostic: any ok render of any artwork kind qualifies. The
+// matte is rembg birefnet-general server-side; poll the artwork detail.
+export function cutoutRenderApi(name: string, seed: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cutout', { method: 'POST', body: JSON.stringify({}) });
+}
 export function deleteRenderApi(name: string, seed: number): Promise<{ ok: true; deleted: number }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed, { method: 'DELETE' });
 }

@@ -227,8 +227,13 @@ def pack_search(content, cellset, rows, cols):
 
 def apply_pack(rgba, content, best, rows, cols, gen_cell=256):
     """Apply (flip, rot, scale, pos) to a gen-resolution RGBA; returns the
-    packed image composited on white (RGB PIL Image, rows x cols cells at
-    gen_cell px/cell)."""
+    packed image as a TRANSPARENT RGBA PIL Image (rows x cols cells at
+    gen_cell px/cell).
+
+    REQ-0193: the trailing white composite was dropped -- a repack now carries
+    the cutout its own matte already produced (user directive: repack must cut
+    the background out automatically). The alpha here is the matte pack_job
+    fed in, so no second matte runs."""
     from PIL import Image
     ys, xs = np.nonzero(content)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
@@ -242,6 +247,4 @@ def apply_pack(rgba, content, best, rows, cols, gen_cell=256):
     piece = piece.resize((max(1, int(round(kw * F))), max(1, int(round(kh * F)))), Image.LANCZOS)
     canvas = Image.new("RGBA", (cols * gen_cell, rows * gen_cell), (0, 0, 0, 0))
     canvas.paste(piece, (int(best["pos"][1] * F), int(best["pos"][0] * F)), piece)
-    white = Image.new("RGB", canvas.size, (255, 255, 255))
-    white.paste(canvas, (0, 0), canvas)
-    return white
+    return canvas

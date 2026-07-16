@@ -40,6 +40,7 @@ const kitReg = require('./kit_registry.cjs');
 const ART_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'art_job.py');
 const INSPECT_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'inspect_job.py');
 const PACK_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'pack_job.py');  // REQ-0192
+const CUTOUT_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'cutout_job.py');  // REQ-0193
 
 // Kit python: kits need numpy/scipy/rembg/skimage, which the generation
 // python3 (mock: PIL only) may lack. Resolve ART_KIT_PYTHON, else the project
@@ -58,7 +59,10 @@ let runningChild = null;       // spawned python child of the in-flight job
 let runningStartedAt = 0;      // Date.now() when the in-flight job started
 const genQueue = [];           // GPU generation jobs (high priority)
 const inspectQueue = [];       // CPU inspection jobs (low priority)
-const packQueue = [];          // REQ-0192 repack jobs (user-initiated: highest waiting priority)
+// REQ-0192 repacks + REQ-0193 cutouts: user-initiated derived-render jobs.
+// One band -- both are a button press waiting on a short CPU matte, so both
+// take the same highest-waiting priority; processing splits on desc.__cutout.
+const packQueue = [];
 
 /** Run a Python worker (script), feeding jobSpec on stdin and parsing ONE
  * JSON result from stdout. Resolves to {status:'failed',error} rather than
@@ -188,8 +192,9 @@ async function processInspectJob(desc) {
 
 function pump() {
   if (running) return;
-  // Priority: user-initiated repacks first (REQ-0192), then GPU generation,
-  // then CPU inspection. Generation still always jumps ahead of inspections.
+  // Priority: user-initiated derived-render jobs first (REQ-0192 repack,
+  // REQ-0193 cutout), then GPU generation, then CPU inspection. Generation
+  // still always jumps ahead of inspections.
   let desc = packQueue.shift();
   let type = 'pack';
   if (!desc) { desc = genQueue.shift(); type = 'generate'; }
@@ -198,14 +203,15 @@ function pump() {
   running = true; runningType = type; runningDesc = desc;
   runningChild = null; runningStartedAt = Date.now();
   const job = type === 'generate' ? processGenJob(desc)
-    : type === 'pack' ? processPackJob(desc) : processInspectJob(desc);
+    : type === 'pack' ? (desc.__cutout ? processCutoutJob(desc) : processPackJob(desc))
+      : processInspectJob(desc);
   job
     .catch(async (e) => {
       if (type === 'generate') {
         const error = desc.canceled ? 'canceled by user' : String((e && e.message) || e);
         try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
       } else if (desc.__pack) {
-        const error = 'repack: ' + String((e && e.message) || e);
+        const error = (desc.__cutout ? 'cutout: ' : 'repack: ') + String((e && e.message) || e);
         console.error('[art_jobs] ' + error);
         try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
       } else {
@@ -232,6 +238,54 @@ function enqueueInspection(desc) { inspectQueue.push(desc); pump(); }
  * fire-and-forget batch must not starve a button press for hours); it still
  * waits for the in-flight job. Cost is ~10-30 s of CPU + a short matte. */
 function enqueuePack(desc) { desc.__pack = true; packQueue.push(desc); pump(); }
+
+/** REQ-0193: enqueue a background-cutout job {renderId (TARGET row, already
+ * created status 'queued'), artworkId, sourceRenderId}. Shares the repack
+ * priority band: also a user-initiated button press, also a short CPU matte.
+ * Kind-agnostic -- unlike repack there is no shape requirement, so ANY ok
+ * render of ANY artwork kind can be cut out. */
+function enqueueCutout(desc) { desc.__pack = true; desc.__cutout = true; packQueue.push(desc); pump(); }
+
+/** REQ-0193: run ONE cutout -- matte the SOURCE render (tools/cutout_job.py
+ * -> gen_item_icons.matte_alpha_data, rembg birefnet-general + border-key
+ * fallback; the library is imported, never re-implemented) and complete the
+ * pre-created TARGET row with the TRANSPARENT RGBA PNG. Same pixel grid as
+ * the source: a cutout is its source minus the background, nothing else, so
+ * the two stay directly comparable. Provenance goes into params (REQ-0186
+ * attributability). On any failure the target row goes status 'failed'
+ * (deletable in the UI). */
+async function processCutoutJob(desc) {
+  const { renderId, artworkId, sourceRenderId } = desc;
+  const fail = async (error) => {
+    try { await storage.updateRenderResult(renderId, { status: 'failed', error }); }
+    catch (_) { /* best effort */ }
+  };
+  const artwork = await storage.getArtworkById(artworkId);
+  const srcRender = await storage.getRenderById(sourceRenderId);
+  const src = await storage.getRenderImageById(sourceRenderId);
+  if (!artwork || !srcRender || !src || !src.image) { await fail('cutout: source render/image missing'); return; }
+  const res = await runWorker(kitPython(), CUTOUT_JOB_PY, { png_b64: src.image.toString('base64') });
+  if (res.status !== 'ok') { await fail('cutout: ' + (res.error || 'cutout job failed')); return; }
+  const image = Buffer.from(res.png_b64, 'base64');
+  const sha = crypto.createHash('sha256').update(image).digest('hex');
+  await storage.updateRenderResult(renderId, {
+    status: 'ok', image, image_sha256: sha,
+    final_prompt: srcRender.final_prompt || null,
+    params: {
+      derived: 'background_cutout',
+      derived_from_seed: srcRender.seed,
+      tool: 'tools/cutout_job.py v1 (REQ-0193)',
+      matte_method: res.method,
+      image_alpha_coverage: res.image_alpha_coverage,
+    },
+    error: null,
+  });
+  // The cutout is a first-class candidate: same advisory kits. They read its
+  // real alpha (_has_real_alpha -> method 'provided'), so nothing re-mattes.
+  for (const k of kitReg.kitsFor(artwork.kind)) {
+    enqueueInspection({ renderId, artworkId: artwork.id, kitId: k.kit_id });
+  }
+}
 
 /** REQ-0192: run ONE repack -- matte the SOURCE render, search the best
  * feasible placement (tools/pack_job.py -> tool_cell_fit), and complete the
@@ -276,9 +330,9 @@ async function processPackJob(desc) {
 
 /** GPU generation queue depth (waiting + the one in flight) for the UI. */
 function queueDepth() { return genQueue.length + (running && runningType === 'generate' ? 1 : 0); }
-/** CPU inspection queue depth (waiting + in flight); REQ-0192 repacks are
- * counted here too -- to the UI badge they are the same kind of background
- * CPU work, just higher priority. */
+/** CPU inspection queue depth (waiting + in flight); REQ-0192 repacks and
+ * REQ-0193 cutouts are counted here too -- to the UI badge they are the same
+ * kind of background CPU work, just higher priority. */
 function inspectDepth() {
   return inspectQueue.length + packQueue.length +
     (running && (runningType === 'inspect' || runningType === 'pack') ? 1 : 0);
@@ -342,4 +396,4 @@ async function cancelJob(renderId) {
   throw e;
 }
 
-module.exports = { enqueue, enqueueInspection, enqueuePack, queueDepth, inspectDepth, runPython, listJobs, cancelJob };
+module.exports = { enqueue, enqueueInspection, enqueuePack, enqueueCutout, queueDepth, inspectDepth, runPython, listJobs, cancelJob };

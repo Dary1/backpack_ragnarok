@@ -83,14 +83,31 @@ a behaviour change to REQ-0192's stored image, ratified above.
 
 ## Verification
 
-- `cutout_job.py` smoke (borderkey + real birefnet) on a po and a non-po
-  render; assert the output PNG has a genuine alpha channel (`min(alpha) <
-  250`) and a plausible `image_alpha_coverage`.
+**NEVER run a matte outside the queue.** `art_jobs.cjs` `pump()` is single-
+flight (`if (running) return;`) and that flag is the ONLY thing keeping
+birefnet (~12 GB RSS) off the back of an in-flight ComfyUI generation (~11 GB)
+on a 23 GB box. A standalone `python tools/cutout_job.py` with the real model
+bypasses that interlock. It cost this REQ a full OOM lockout of llmlocal on
+2026-07-16 (55 oom-kills in the boot log; no SSH, no console login, recovered
+only by SysRq s-u-b). Evidence:
+`docs/llm_managed/2026-07-16-queue-bypass-oom.md`. So the real-model path is
+verified through the API and nowhere else:
+
+- **borderkey standalone smoke** — `ART_KIT_MATTE_METHOD=borderkey`, the pure-
+  numpy model-free path. Safe to run directly (no model, no RAM spike) and it
+  exercises every line this REQ owns: PNG round-trip, genuine alpha
+  (`min(alpha) < 250`), plausible `image_alpha_coverage`, the empty-cutout
+  guard, the `provided`-alpha short-circuit.
+- **real birefnet ONLY via the API** — `POST /api/art/artworks/:name/renders/
+  :seed/cutout`, which routes through `enqueueCutout()` -> `pump()` and is
+  serialised against generation. This is also the production path, so it is
+  the more faithful test regardless of the RAM argument.
 - Repack parity: after the `apply_pack` change, a repacked render is RGBA and
   its `po.cell_fit` score is unchanged (the fit meter reads alpha, and the
-  white composite was never part of the measurement).
+  white composite was never part of the measurement). Also via the API.
 - Server tests + client build + `artadmin_e2e.sh` (chip renders for every
-  kind; run -> 202 -> queued row; cutout-of-a-cutout offers no run).
+  kind; run -> 202 -> queued row; cutout-of-a-cutout offers no run). e2e stays
+  model-free via `ART_KIT_MATTE_METHOD=borderkey`.
 - Live check on backpack-dev: run the chip on a real render, open the derived
   seed in the lightbox, confirm the background is actually gone.
 - Gate results and commit hashes land here before this file moves to `built/`.

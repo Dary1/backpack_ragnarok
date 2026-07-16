@@ -31,6 +31,7 @@ export function Workspace(props: {
   onAskDelete: (seed: number) => void;
   onRetry: (seed: number) => void;
   onRepack: (seed: number) => void;
+  onCutout: (seed: number) => void;  // REQ-0193
   onOpenLightbox: (seed: number, compareWith: number | null) => void;
   onRerunKit: (seed: number, kitId?: string) => void;
   expandedKits: Record<string, boolean>;
@@ -196,10 +197,15 @@ export function Workspace(props: {
                   </label>
                 )}
               </div>
-              {r.status === 'ok' && kits.length > 0 && (
+{/* REQ-0193: the chip row now also carries the kind-agnostic cutout
+                  chip, so it renders for an ok render even when the kind has
+                  no kits at all (kits.length === 0). */}
+              {r.status === 'ok' && (
                 <KitChips seed={r.seed} kits={kits} rows={inspections[String(r.id)] || []}
+                  renders={renders}
                   expanded={props.expandedKits} onToggle={props.onToggleKit}
-                  onRerun={(seed, kitId) => props.onRerunKit(seed, kitId)} />
+                  onRerun={(seed, kitId) => props.onRerunKit(seed, kitId)}
+                  onCutout={(seed) => props.onCutout(seed)} />
               )}
             </div>
           );

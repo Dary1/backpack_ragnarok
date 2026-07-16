@@ -121,6 +121,8 @@
 .aa-kits { display: flex; flex-wrap: wrap; gap: 4px; }
 .aa-kit { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .aa-kit-none { color: var(--bone-3); border-style: dashed; }
+/* REQ-0193: the derived-seed pointer on a cut render's cutout chip. */
+.aa-cutout-seed { color: var(--gold); }
 .aa-verdict {
   border: 1px solid; border-radius: 999px; padding: 1px 8px; font-size: 11px;
   cursor: pointer; background: rgba(19, 24, 32, 0.8); letter-spacing: 0.03em;

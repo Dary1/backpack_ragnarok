@@ -332,6 +332,36 @@ async function hRepack(req, res, name, seed) {
   return sendJSON(res, 202, { ok: true, render: row, source_seed: seed, inspectDepth: jobs.inspectDepth() });
 }
 
+// REQ-0193: manual background cutout -- derive a TRANSPARENT (background
+// removed) copy of an OK render as a NEW render at source seed + 100000,
+// bumping by another 100000 while that seed is taken (same derived-seed
+// convention as repack, REQ-0192). Unlike repack this is KIND-AGNOSTIC: the
+// matte needs no cell footprint, so any artwork kind qualifies ("あらゆるart
+// がいつでも背景抜きできるように"). Refuses a source that is itself a cutout --
+// re-matting a transparent image reads as an empty subject, and the copy
+// would be pixel-identical anyway. Job runs at the repack priority; the
+// target row is created up front (status 'queued') so the UI shows it
+// immediately, and carries full provenance in params on completion.
+async function hCutout(req, res, name, seed) {
+  const art = await storage.getArtworkByName(name);
+  if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
+  const renders = await storage.listRenders(art.id);
+  const src = renders.find((r) => Number(r.seed) === seed);
+  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  if (src.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'cutout needs an ok render (status: ' + src.status + ')' });
+  if (src.params && src.params.derived === 'background_cutout') {
+    return sendJSON(res, 400, { ok: false, error: 'render ' + seed + ' is already a background cutout' });
+  }
+  const taken = new Set(renders.map((r) => Number(r.seed)));
+  let target = seed + 100000;
+  while (taken.has(target)) target += 100000;
+  let row;
+  try { row = await storage.createRender(art.id, target, 'queued'); }
+  catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
+  jobs.enqueueCutout({ renderId: row.id, artworkId: art.id, sourceRenderId: src.id });
+  return sendJSON(res, 202, { ok: true, render: row, source_seed: seed, inspectDepth: jobs.inspectDepth() });
+}
+
 async function hDelete(req, res, name, seed) {
   try { await storage.deleteRender(name, seed); sendJSON(res, 200, { ok: true, deleted: seed }); }
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
@@ -428,6 +458,7 @@ const RE_ADOPT = /^\/api\/art\/artworks\/([^/]+)\/adopt$/;
 const RE_ADMIN_RENDER = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)$/;
 const RE_INSPECT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/inspect$/;
 const RE_REPACK = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/repack$/;   // REQ-0192
+const RE_CUTOUT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cutout$/;   // REQ-0193
 const RE_CANCEL = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cancel$/;   // REQ-0156
 const RE_QUEUE = /^\/api\/art\/queue$/;                                        // REQ-0156
 const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
@@ -466,6 +497,7 @@ function tryArtRoutes(req, res, url, p) {
   if ((m = RE_ADOPT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hAdopt(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_INSPECT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hInspect(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_REPACK.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hRepack(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  if ((m = RE_CUTOUT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCutout(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ADMIN_RENDER.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDelete(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_ARTWORK.exec(p))) {
     if (!requireAdmin(req, res)) return true;

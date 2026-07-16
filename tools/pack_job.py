@@ -11,7 +11,8 @@ Pipeline: matte (gen_item_icons two-strategy; ART_KIT_MATTE_METHOD=borderkey
 forces the model-free path for tests) -> cell grid content -> identity score
 (tool_cell_fit v5: shifted centers, worst-spot aggregation) -> pack_search
 (feasible placements only: containment + pad guaranteed, 4x90 rotations +
-flips) -> apply_pack -> white-composited PNG at gen resolution.
+flips) -> apply_pack -> TRANSPARENT RGBA PNG at gen resolution (REQ-0193: the white composite was dropped -- a repack carries the
+cutout its matte already produced).
 
 Same stdout hygiene as inspect_job.py: matting libraries print PERFORMANCE
 WARNINGs to stdout, so all in-run stdout routes to stderr and only the final

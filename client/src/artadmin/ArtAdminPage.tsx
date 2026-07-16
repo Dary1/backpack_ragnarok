@@ -18,7 +18,7 @@ import type { Locale } from '../store';
 import { useGameStore, clearArtAdminFocusName } from '../store';
 import {
   listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
-  adoptRenderApi, deleteRenderApi, repackRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  adoptRenderApi, deleteRenderApi, repackRenderApi, cutoutRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
   artRenderUrl,
 } from '../api';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
@@ -267,6 +267,17 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('repack: ' + (e as Error).message, 'err'); }
   }
 
+  // REQ-0193: cutout -- queue a background-removed derived render at
+  // seed+100000. Available for every kind, unlike repack.
+  async function doCutout(seed: number) {
+    if (!selected) return;
+    try {
+      const r = await cutoutRenderApi(selected, seed);
+      report('cutout queued: seed ' + seed + ' -> ' + r.render.seed);
+      await loadDetail(selected);
+    } catch (e) { report('cutout: ' + (e as Error).message, 'err'); }
+  }
+
   async function doCancel(artwork: string, seed: number) {
     try {
       const r = await cancelRenderApi(artwork, seed);
@@ -324,6 +335,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               onAskDelete={(seed) => setConfirm({ type: 'delete', seed })}
               onRetry={(seed) => { void doRetry(seed); }}
               onRepack={(seed) => { void doRepack(seed); }}
+              onCutout={(seed) => { void doCutout(seed); }}
               onOpenLightbox={(seed, compareWith) => setLightbox({ seed, compareWith })}
               onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
               expandedKits={expandedKits}
