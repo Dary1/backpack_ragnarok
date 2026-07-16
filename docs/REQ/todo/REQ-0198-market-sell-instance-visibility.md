@@ -100,4 +100,34 @@ board/preset snapshots), so `deployed` is checked FIRST and keeps its own reason
   #/market?sell= deep-link preselect. All market e2e pass.
 - CI: SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh green.
 
-## Gate results (appended when run)
+## Gate results (2026-07-16)
+- server api tests (files backend): 183 passed, 0 failed -- includes the
+  restructured market-group in-use/suspension test.
+- SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh: CI GREEN (client typecheck+build OK;
+  every DB-free gate green; pg pass SKIPPED per the toggle).
+- client build (tsc -b && vite build): OK.
+- e2e client/e2e/market.spec.ts (fleet server + web/app build of this
+  worktree, PLAYWRIGHT_BASE_URL=http://127.0.0.1:8803): 17 passed, 0 failed
+  (14 existing + 3 new REQ-0198: referenced-lock/in_use 409, data-roll-pct
+  picker card, #/market?sell= deep-link preselect).
+- web/app reverted (git checkout -- web/app + git clean) so the tree is clean.
+
+## Commits
+- e2c24aa docs(REQ-0198): write full spec
+- c2b30d6 docs(REQ-0198): reserved -> todo
+- 9672aec REQ-0198(C) server: referencedUidSet eligibility gate (in_use) + referenced-suspension
+- 707482d REQ-0198(A/B/C) client: sell-side roll bars, in-use lock, inventory sell entry point
+- ca2227c REQ-0198 e2e: referenced-lock + in_use 409, data-roll-pct, deep-link preselect
+- (this status log + todo->built follow)
+
+## Entry-point surface chosen
+client/src/FloatingItemTip.tsx (the REQ-0119 single-tap tooltip). It is the
+ONE per-instance inspection surface a player actually taps to inspect a
+specific stowed inventory instance -- it already floats on tapping an item
+icon on an inventory-page board and reads that instance's name/rarity/tags/
+effect/dismantle count. ItemPanel.tsx is a read-only DEF catalog (no instance
+uid, so it cannot target a specific instance), and the warehouse views inspect
+UNCLAIMED rows, not stowed inventory instances. The action is shown ONLY for a
+po/si instance that is stowed AND not referenced/deployed (C's eligibility),
+so a placed/in-use item never offers it.
+
