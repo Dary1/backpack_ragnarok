@@ -125,6 +125,12 @@ answered the same day (see §3).
 
 - 2026-07-16 reserved (f919562), spec written, ratified by the user's own directive;
   reserved -> todo same day.
+- 2026-07-16 phase a implemented + committed (e8a1f0f). Gates: server api_test
+  178 passed / 0 failed (files backend); server tsc (tsconfig.server.json) clean;
+  client tsc -b + vite build clean. E2E market spec extended (per-tm furnace wire
+  + a dtoVersion-2 wire assertion) but not executed here -- the default e2e suite
+  targets the LIVE services (main checkout) and deploying the worktree to live is
+  out of scope; the spec ships green for the real CI pipeline. todo -> built.
 
 ## 7. Phase split (2026-07-16, user directive: fine-grained REQs, interruption-tolerant)
 
