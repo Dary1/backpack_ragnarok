@@ -16,7 +16,8 @@ Stun, Weakness). No engine, sim, forecast, or vocab change.
 
 ## Deploy (orchestrator, post-merge)
 Promote ADDITIVELY on top of the current live (batch-002 + batch-005 = 15/30/7 survive
-byte-identically) -> 27/50/10, then backfill. `boar`'s artwork is `monsters-003-flux2:boar`
-and `giant_snake`'s is `monsters-003-flux2:giant_snake`, so those two `content_def.artwork_ref`
-must be set at deploy (exactly like batch-005 `wight` -> `monsters-003-flux2:wight`); the other
-10 resolve to their art by exact name. See the REQ file for exact commands.
+byte-identically) -> 27/50/10, then backfill. `boar`'s artwork is `monsters-003-flux2:boar`,
+`giant_snake`'s is `monsters-003-flux2:giant_snake`, and `alpha_werewolf`'s adopted art keeps the
+system_name `werewolf` (renamed off a units003 unit_def collision -- see the REQ file), so those
+THREE `content_def.artwork_ref` must be set at deploy (exactly like batch-005 `wight` ->
+`monsters-003-flux2:wight`); the other 9 resolve to their art by exact name. See the REQ file for exact commands.

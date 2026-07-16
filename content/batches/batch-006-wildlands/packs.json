@@ -16,7 +16,7 @@
       },
       "members": [
         {
-          "enemy": "werewolf",
+          "enemy": "alpha_werewolf",
           "at": "B6"
         },
         {
@@ -32,7 +32,7 @@
           "at": "M7"
         }
       ],
-      "note": "Lifesteal tempo: fast melee (werewolf rending/feral, dire_wolf, boar tusk) sustains through damage via feral_bite while the giant bat's blood_drain feeds from the flank."
+      "note": "Lifesteal tempo: fast melee (alpha_werewolf rending/feral, dire_wolf, boar tusk) sustains through damage via feral_bite while the giant bat's blood_drain feeds from the flank."
     },
     {
       "id": "pack_venom_nest",

@@ -31,7 +31,7 @@ artworks table READ-ONLY before authoring; the values below were read 2026-07-17
 
 | id | artwork (system_name) | shape | footprint | hp | rarity | pack_role | ja |
 |---|---|---|---|---|---|---|---|
-| `werewolf` | `werewolf` (adopted) | 4x4 | [4,4] | [95,125] | uncommon | anchor | ワーウルフ |
+| `alpha_werewolf` | `werewolf` (adopted) | 4x4 | [4,4] | [95,125] | uncommon | anchor | アルファワーウルフ |
 | `dire_wolf` | `dire_wolf` | 5x4 | [4,5] | [80,105] | common | line | ダイアウルフ |
 | `boar` | `monsters-003-flux2:boar` (adopted) | 4x3 | [3,4] | [70,95] | common | line | ワイルドボア |
 | `giant_bat` | `giant_bat` | 4x3 | [3,4] | [45,60] | common | support | ジャイアントバット |
@@ -44,9 +44,10 @@ artworks table READ-ONLY before authoring; the values below were read 2026-07-17
 | `dullahan` | `dullahan` | 4x4 | [4,4] | [120,155] | rare | anchor | デュラハン |
 | `demon_lord` | `demon_lord` | 8x8 | [8,8] | [500,700] | relic | boss | デーモンロード |
 
-- `boar` / `giant_snake` arts live under the `monsters-003-flux2:` namespace → like batch-005's
-  wight, their enemies.json entries carry NO artwork_ref; the content_def gets an artwork_ref
-  PATCH at deploy (orchestrator). All other ids match their artwork system_name exactly.
+- `boar` / `giant_snake` arts live under the `monsters-003-flux2:` namespace, and `alpha_werewolf`'s
+  adopted art keeps the pre-rename system_name `werewolf` (see the rename note in Implementation) →
+  like batch-005's wight, those THREE enemies.json entries carry NO artwork_ref; each content_def
+  gets an artwork_ref PATCH at deploy (orchestrator). All other ids match their artwork system_name exactly.
 - 9 of 12 artworks are mid-generation on the GPU queue right now. Nothing in your gates
   depends on the IMAGE — only on `artworks.shape`, which exists for all 12. DO NOT touch the
   art queue.
@@ -59,8 +60,8 @@ Same dialect and scale as batch-005. multi_strike param semantics: follow whatev
 
 | id | ja | owner | trigger | verb | profile |
 |---|---|---|---|---|---|
-| `rending_claws` | 引き裂く爪 | werewolf | [2.4,3.0] | multi_strike n[4,7] x3 | front pen0 |
-| `feral_bite` | 獣の牙 | werewolf | [3.6,4.4] | lifesteal n[8,12] frac 0.5 | front pen0 |
+| `rending_claws` | 引き裂く爪 | alpha_werewolf | [2.4,3.0] | multi_strike n[4,7] x3 | front pen0 |
+| `feral_bite` | 獣の牙 | alpha_werewolf | [3.6,4.4] | lifesteal n[8,12] frac 0.5 | front pen0 |
 | `savage_bite` | 凶暴な咬みつき | dire_wolf | [2.2,2.8] | strike [9,14] | front pen0 |
 | `harrying_snap` | 追い立ての牙 | dire_wolf | [3.8,4.6] | apply_status Weakness [1,3] | front pen0 |
 | `tusk_charge` | 牙の突進 | boar | [3.2,4.0] | strike [12,18] | front pen1 |
@@ -89,7 +90,7 @@ anchors minimally preserving intent and record any fix.
 
 | pack | ja | members (enemy @ anchor → derived cells) |
 |---|---|---|
-| `pack_wild_hunt` | 野生の狩人 | werewolf@B6→B6:E9 · dire_wolf@G2→G2:K5 · boar@G12→G12:J14 · giant_bat@M7→M7:P9 |
+| `pack_wild_hunt` | 野生の狩人 | alpha_werewolf@B6→B6:E9 · dire_wolf@G2→G2:K5 · boar@G12→G12:J14 · giant_bat@M7→M7:P9 |
 | `pack_venom_nest` | 毒の巣 | basilisk@B7→B7:G10 · giant_spider@I3→I3:L5 · giant_scorpion@I12→I12:L14 · giant_snake@N7→N7:Q10 |
 | `pack_demon_gate` | 魔界の門 | demon_lord@B5→B5:I12 · gargoyle@K3→K3:N6 · dullahan@K12→K12:N15 · imp@P6→P6:R9 · imp@P11→P11:R14 |
 
@@ -115,7 +116,7 @@ anchors minimally preserving intent and record any fix.
 - G5 goldens unmoved; engine delta provably zero (`git diff --stat` shows no sim/engine file).
 - G6 (deploy, post-merge, orchestrator): promoteAdditive; backfill; expected counts
   monster_def 15→27, skill_def 30→50, monster_pack 7→10, all PASS/adopted; artwork_ref PATCH
-  for `boar`/`giant_snake`; board verified live.
+  for `boar`/`giant_snake`/`alpha_werewolf`; board verified live.
 - S7 user acceptance.
 
 ## Out of scope
@@ -169,8 +170,8 @@ the spec table EXACTLY (footprint = [h,w]).
   dungeon files untouched, id collision refused. Reuses `promoteAdditive` AS-IS.
 - **Board footprint-resolution gate** -- PASS. `check_pack_board_wildlands.mjs` drives the REAL
   contentadmin module (`contentShared.ts`, ZERO code change) over all 3 packs: every member's
-  board footprint == the sim's authored footprint; `boar`/`giant_snake` do NOT resolve by name
-  alone (art is namespaced) but DO resolve once their content_def carries the deploy artwork_ref.
+  board footprint == the sim's authored footprint; `boar`/`giant_snake`/`alpha_werewolf` do NOT resolve by name
+  alone (art namespaced, or renamed off a cross-kind collision) but DO resolve once their content_def carries the deploy artwork_ref.
 
 ### Design deviations (from the spec)
 - **pack_role**: every value the spec used (line/support/anchor/boss) is already attested, so
@@ -178,8 +179,9 @@ the spec table EXACTLY (footprint = [h,w]).
 - **rarity**: `relic` for demon_lord (enemy/1 lowercase dialect), following REQ-0203's precedent
   for the boss tier (vocab has no `boss` rarity).
 - **artwork_ref**: enemies.json carries NO artwork_ref field (byte-shape like batch-002/005).
-  10 ids resolve by exact name; `boar` -> `monsters-003-flux2:boar` and `giant_snake` ->
-  `monsters-003-flux2:giant_snake` get an explicit artwork_ref at deploy (the wight precedent).
+  9 ids resolve by exact name; `boar` -> `monsters-003-flux2:boar`, `giant_snake` ->
+  `monsters-003-flux2:giant_snake`, and `alpha_werewolf` -> `werewolf` (art keeps its pre-rename
+  name after the cross-kind collision rename) get an explicit artwork_ref at deploy (the wight precedent).
 - **multi_strike** (rending_claws): `n=[4,7] x hits:3`, per the REQ-0203 bone_breath semantics.
 - No numbers were changed from the spec -- every trigger/verb/profile is transcribed verbatim.
 
@@ -228,6 +230,36 @@ EXIT=0, "CI GREEN". Highlights: `sim/tests/run.cjs` 117/0, goldens OK (12 cases,
 byte-unchanged), `req0203` 15/15, **`req0207` 12/12**, dialect 34/0, unit_deep 6/0, backfill 11/0,
 all client checks incl. **`check_pack_board_wildlands` all assertions pass**, client build OK.
 
+### Post-build rename: `werewolf` -> `alpha_werewolf` (deploy-time cross-kind collision)
+
+A deploy-time collision surfaced when the orchestrator tried to promote batch-006: this batch's
+`monster_def` id `werewolf` collides with the units003 `unit_def` id `werewolf` (deployed to the
+live registry by a parallel REQ-0201 session, `content/live/live_units.json`). `content_defs.system_name`
+is **UNIQUE ACROSS KINDS**, so `tools/backfill_content_registry.cjs` (collectAll) correctly FATALs
+("duplicate system_name across live files: werewolf (... vs monster_def) -- content_defs.system_name
+is UNIQUE across kinds"). The orchestrator backed the batch-006 promote out of live; this branch
+renames on the REQ-0207 side:
+- monster id `werewolf` -> `alpha_werewolf`; en name `Werewolf` -> `Alpha Werewolf`; ja `ワーウルフ`
+  -> `アルファワーウルフ`; `pack_wild_hunt` member `enemy: werewolf` -> `alpha_werewolf`; the two
+  skill owners (`rending_claws`, `feral_bite`) re-pointed; gate ART_SHAPES / board REFS updated.
+- The **artwork is unchanged**: its registry `system_name` stays `werewolf` (adopted). Because the
+  content_def id no longer equals the art name, `alpha_werewolf` no longer resolves art by exact name
+  and JOINS the deploy-time `artwork_ref` PATCH list (`artwork_ref: 'werewolf'`) -- exactly the
+  wight / boar / giant_snake precedent. Net at deploy: 3 refs (boar, giant_snake, alpha_werewolf),
+  9 resolve by exact name.
+- Everything else about the entry is byte-identical: footprint [4,4] (from artwork `werewolf`'s 4x4
+  shape transposed), hp [95,125], skills rending_claws/feral_bite, rarity uncommon, pack_role anchor,
+  layout `alpha_werewolf@B6 -> B6:E9`.
+
+**Cross-kind lesson (found-in-flight).** The original G1 uniqueness gate checked batch-006 ids against
+the live + batch-005 **monster/skill** kinds ONLY, NOT against `unit_def` / `po_def` / `si_def` /
+`tm_def` / `gacha_pack`. Since `system_name` uniqueness is CROSS-KIND, that gate could not have caught
+the `werewolf` unit_def clash pre-merge -- it only surfaced at the deploy backfill FATAL. Fixed:
+`sim/tests/req0207_wildlands_test.cjs` now sweeps every batch id against ALL live content kinds (the
+same source-file set `backfill_content_registry.cjs` reads: live_items / dungeon/items / live_sis /
+live_tms / live_units / live_packs / starter_items), so the next batch catches a cross-kind collision
+at gate time instead of at deploy.
+
 ### Deploy commands the orchestrator must run POST-MERGE (G6)
 From the MAIN checkout `~/backpack_ragnarok` after merge (explicit liveDir avoids the worktree trap):
 ```
@@ -237,13 +269,16 @@ cd ~/backpack_ragnarok && node -e "require('./tools/promote_dungeon_batch.cjs').
 set -a; . ~/backpack_ragnarok/server/.env; set +a
 cd ~/backpack_ragnarok && node tools/backfill_content_registry.cjs --dry-run   # inventory
 cd ~/backpack_ragnarok && node tools/backfill_content_registry.cjs             # apply
-# 3. Set boar/giant_snake artwork_ref (their art is namespaced -- the frost_gnoll/wight precedent)
-cd ~/backpack_ragnarok && node -e "(async()=>{const s=require('./server/storage_content.cjs');await s.updateContentDef('boar',{artwork_ref:'monsters-003-flux2:boar'});await s.updateContentDef('giant_snake',{artwork_ref:'monsters-003-flux2:giant_snake'});process.exit(0)})()"
+# 3. Set boar/giant_snake/alpha_werewolf artwork_ref (art system_name != content_def id -- the wight precedent)
+#    boar/giant_snake: art is namespaced (monsters-003-flux2:*). alpha_werewolf: renamed off the
+#    units003 unit_def 'werewolf' cross-kind collision, but its ADOPTED art keeps system_name
+#    'werewolf', so it no longer resolves by exact name and needs the ref too.
+cd ~/backpack_ragnarok && node -e "(async()=>{const s=require('./server/storage_content.cjs');await s.updateContentDef('boar',{artwork_ref:'monsters-003-flux2:boar'});await s.updateContentDef('giant_snake',{artwork_ref:'monsters-003-flux2:giant_snake'});await s.updateContentDef('alpha_werewolf',{artwork_ref:'werewolf'});process.exit(0)})()"
 # 4. Rebuild client dist if any bundled data changed (none here -- vocab unchanged)
 ```
 Expected after backfill: **monster_def 15->27, skill_def 30->50, monster_pack 7->10**, all
 PASS/adopted; the contentadmin pack board resolves every batch-006 member footprint from art
-(basilisk 4x6, demon_lord 8x8, the rest), boar/giant_snake via their artwork_ref.
+(basilisk 4x6, demon_lord 8x8, the rest), boar/giant_snake/alpha_werewolf via their artwork_ref.
 
 ### Note to the orchestrator
 Beyond REQ-0207's own content, this branch also carries TEST-ONLY repairs of PRE-EXISTING deploy
