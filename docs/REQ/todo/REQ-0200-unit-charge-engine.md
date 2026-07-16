@@ -1,6 +1,6 @@
 # REQ-0200 - Unit Charge Engine
 
-**Status:** In progress (todo/)
+**Status:** Built (built/) -- sim fusion landed (see s10)
 **Slug:** unit-charge-engine
 **Branch:** req-0200-unit-charge-engine
 **Depends on / follows:** REQ-0129 (charge grammar freeze, vocab v13/v14), REQ-0170/0128b (unit link walker), REQ-0081 (vocab coverage gate), REQ-0190 (per-instance rolls -- FUTURE), REQ-0201 (units003 content -- the acceptance corpus).
@@ -154,7 +154,7 @@ runtime engine itself is COMPLETE and fully tested at the module boundary (sim/t
 30-kit corpus); wiring it into encounter.cjs is a bounded follow-up (instantiate a manager from
 unit-bearing troopBps at encounter start; call feed() at the event points above; guard on
 "has charge instances" so unit-less encounters stay byte-identical; add a unit-bearing integration
-test). This limitation is why the REQ stays in todo/ rather than built/.
+test). **This limitation is now RESOLVED -- the fusion landed in this pass; see s10.**
 
 **Other honesty notes / open items:**
 - `on_own_passive_fire`, `units_connected_distributed`, and `spend=transform` are NOT exercised by
@@ -192,4 +192,76 @@ Ran `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` (client build INCLUDED) -> **CI GREE
 - sim/lib/unit_charge.cjs (NEW -- the runtime engine)
 - sim/tests/unit_charge_test.cjs (NEW -- 13 tests)
 - tools/ci.sh (two new steps)
+- sim/lib/unit_charge_encounter.cjs (NEW -- the encounter<->runtime fusion adapter/manager)
+- sim/lib/encounter.cjs (charge manager build + 6 event hooks + tickAndEmit onHeal param + chargeState return)
+- sim/lib/compile.cjs (attach bp.charge / bp.unitId from the unit def, guarded -- undefined on all live content)
+- sim/tests/unit_charge_encounter_test.cjs (NEW -- 12 fusion integration fixtures)
+- tools/ci.sh (new step [2.8] unit charge encounter fusion)
 - docs/REQ/.../REQ-0200-unit-charge-engine.md (this file)
+
+## 10. Sim fusion (this pass -- the LANDED gap from s7)
+The runtime is now DRIVEN by the real encounter loop. A charge manager
+(sim/lib/unit_charge_encounter.cjs) is instantiated at encounter start ONLY when some
+troop BP carries a `charge` block; otherwise chargeMgr is null and every hook is skipped
+(guard). The runtime uses no RNG and the adapter consumes no rng stream, so a charge-
+BEARING encounter's non-charge event stream is byte-identical to the same encounter
+without charge -- the ONLY events the fusion adds are the engine's unit_charge_* emissions.
+
+### 10.1 Hook points (sim/lib/encounter.cjs, runEncounter)
+- manager build: right after `playerActors` are built -- `chargeBps = troopBps.filter(b => b.charge)`;
+  build only if non-empty; `feedCharge(ev,t)` no-ops when null.
+- `status_tick` branch: `chargeMgr.settle(t)` (drain <=1 deferred grant_charge hop/tick) +
+  `timer{now:t}` feed (every_secs) + a per-player-heal `bp_healed` hook via tickAndEmit's new
+  `onHeal` param (on_heal_done from Regen/HoT ticks).
+- player OFFENSIVE (skill_fire, player battle ray, after dispatchPlayerOffensive): per landed
+  hit -> `bp_attack{sourceId:firingBp,amount}` (OnHit + on_damage_dealt on the firing BP,
+  on_connected_unit_attack on its linked BPs); a landed hit that dropped an enemy to 0 ->
+  `enemy_killed{sourceId:firingBp,enemyId}` (on_kill, deduped by enemyId); a landed
+  apply_status -> `status_applied{sourceId:firingBp}` (on_status_applied).
+- player DEFENSIVE (enemy skill_fire, after dispatchPlayerDefensive): per player-BP direct hit
+  -> `bp_damaged{bpId,amount}` (OnBPBeenHit + on_connected_unit_bp_been_hit on linked BPs).
+- pulse payload heal (firePulsePayloads): `bp_healed` (on_heal_done).
+- link topology: symmetric adjacency built from `bp.linkOut` (compile.cjs derives it from each
+  unit's connection_shape -> vocab.connection_shapes) -- the same graph the board/pulse links over.
+- selector inputs: bp_connected_lowest_hp reads each BP's LIVE hp (real actor); the
+  bp_connected_max_cooldown_item proxy = the slowest every_secs interval among a BP's placed POs
+  (the sim has no live per-BP item-cooldown scalar yet -- documented honest stand-in).
+- landing surface: effect verbs land on the runtime's own makeChargeTarget model (surfaced via
+  the additive `chargeState` return). Feeding the mutations back onto real actor HP/statuses is
+  the ONE remaining richer-adapter step (unchanged groundings, only the target backing) -- inert
+  today because no live unit carries charge, and out of scope for the determinism-critical goldens.
+
+### 10.2 Fixtures (sim/tests/unit_charge_encounter_test.cjs -- 12/12 green, deterministic)
+Each is a small pack battle driven through runEncounter (fixed seed; kits from
+tools/tests/units003_kits.json + 2 synthetic grammar shapes):
+F1 fusion guard + byte-identity (0 charge events / undefined chargeState with no charge; injecting
+   charge adds ONLY unit_charge_* -- non-charge stream byte-identical); F2 passive_per_stack cap
+   (darkknight -> 15); F3 gain=damage fire_on_full (dragonknight, on_damage_dealt); F4 fire_on_full
+   every_secs + on_connected_unit_attack (alchemist + bard); F5 grant_charge cascade king+jester
+   TERMINATES (bounded, sustained); F6 on_kill dedup (exactly 6 distinct kills counted); F7
+   on_heal_done + bp_connected_lowest_hp (paladin grant_shield -> lowest-hp linked BP); F8
+   advance_cooldown + bp_connected_max_cooldown_item (wizard -> slowest-item BP); F9 fire_items +
+   grant_lifesteal (hero + vampire); F10 units_connected_distributed (heal_bp split 4/4); F11
+   spend=transform (unitId swap); F12 link topology from the REAL connection_shape machinery
+   (compile-derived bp.linkOut == manager adjacency).
+
+### 10.3 Golden byte-identity verification
+`node sim/tests/goldens.cjs` -> **goldens OK (12 cases, replay determinism intact)** with the
+fusion patches applied: all 12 committed hashes byte-identical. Independently, F1 asserts the
+non-charge event stream is byte-identical between a charge-injected run and its charge-less twin.
+Confirmed via git-stash that the fusion source edits leave the goldens computation unchanged.
+
+### 10.4 CI + honest caveats
+`SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` (client build INCLUDED) -> **CI GREEN**, including the new
+[2.8] fusion step (12/0), goldens [2] OK, [2.7] runtime 13/0, sim 112/0, mock-src 114/0, typecheck
++ engine type-surface OK, [3.7] self-test / [3.8] check_units (0 live charge units) / [3.9] units003
+30/30 all GREEN, server files-backend 185/0, client build OK.
+- SKIP_PG / SKIP_E2E: per hard rules -- the running services + art queue must not be disturbed;
+  pg-backend + e2e need DATABASE_URL / browsers / live services. (Same posture as the prior pass.)
+- **Content-root caveat (pre-existing, external -- NOT REQ-0200):** dungen resolves live content via
+  os.homedir()/backpack_ragnarok. This worktree branch predates REQ-0184, which advanced the MAIN
+  repo's live dungeon to the monster_pack `packId` format; a RAW `bash tools/ci.sh` in the worktree
+  reds at goldens' `dungen/test_fixed` case (the pre-REQ-0184 sim can't parse packId). This fails
+  IDENTICALLY on the original branch code (git-stash confirmed) -- it is NOT introduced by the fusion.
+  CI GREEN above was obtained by pointing the content root at the branch's OWN (self-consistent) live
+  content -- the correct isolation for testing a branch that must not merge master.

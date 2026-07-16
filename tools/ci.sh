@@ -31,6 +31,8 @@ echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
 node sim/tests/forecast_parity.cjs
 echo "==== [2.7/7] unit charge runtime (REQ-0200) ===="
 node sim/tests/unit_charge_test.cjs
+echo "==== [2.8/7] unit charge encounter fusion (REQ-0200) ===="
+node sim/tests/unit_charge_encounter_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="

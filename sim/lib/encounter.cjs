@@ -10,6 +10,7 @@ const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
+const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
 
 function runEncounter(opts) {
   const {
@@ -23,6 +24,19 @@ function runEncounter(opts) {
 
   // ---- Build player-side actors (BPs already compiled + persistent HP) ----
   const playerActors = troopBps.map(makeBPActor);
+
+  // ---- REQ-0200: unit charge manager. Guarded -- built ONLY when some troop BP
+  // carries a `charge` block. No live unit does yet, so chargeMgr stays null on all
+  // current content: every hook below is skipped and the event stream / goldens stay
+  // byte-identical. The runtime uses no RNG and this adapter consumes no rng stream,
+  // so even a charge-BEARING encounter's non-charge events are byte-identical to the
+  // same encounter without charge -- the only added events are unit_charge_*.
+  const chargeBps = troopBps.filter(b => b && b.charge);
+  const chargeClock = { now: t0 };
+  const chargeMgr = chargeBps.length
+    ? createEncounterChargeManager({ chargeBps, troopBps, troopPos, playerActors, events, heap, clock: chargeClock })
+    : null;
+  function feedCharge(ev, t) { if (chargeMgr) chargeMgr.feed(ev, t); }
   // Player-side schedulable effects: every PO's effects with an every_secs
   // trigger (host_on_hit/on_hit/passive/battle_start handled at compile
   // time or as immediate reactive hooks -- for the sim's scope here we
@@ -302,6 +316,7 @@ function runEncounter(opts) {
           const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
           const n = rs.range(v.n[0], v.n[1]); host.heal(n);
           outEvents.push({ ev: 'pulse_payload', dst: host.id, verb: 'heal', amount: n, hp_after: host.hp(), cause: 'pulse' });
+          if (chargeMgr) feedCharge({ type: 'bp_healed', bpId: host.id }, ev.t); // REQ-0200: on_heal_done
         } else if (v.t === 'apply_status' || v.t === 'add_on_hit_status') {
           const rs = rng.stream('pulse-payload/' + ev.origin + '/' + bpId + '/h' + ev.hop + '/' + po.uid + '/' + idx + '/' + ev.t);
           const n = rs.range(v.n[0], v.n[1]); applyStatus(host.statusBag, v.status, n);
@@ -437,9 +452,12 @@ function runEncounter(opts) {
     if (hasAtt) checkAttachmentTimeouts(ev.t);
 
     if (ev.kind === 'status_tick') {
-      for (const a of playerActors) if (a.alive) tickAndEmit(a, ev.t, events);
+      if (chargeMgr) chargeMgr.settle(ev.t); // REQ-0200: drain one deferred grant_charge hop (cascade rule: <=1/tick)
+      const healHook = chargeMgr ? (id => feedCharge({ type: 'bp_healed', bpId: id }, ev.t)) : null; // REQ-0200: on_heal_done
+      for (const a of playerActors) if (a.alive) tickAndEmit(a, ev.t, events, healHook);
       for (const e of enemyActors) if (e.actor.alive) tickAndEmit(e.actor, ev.t, events);
       if (entity && entity.alive) tickAndEmit(makeEnemyActor(entity), ev.t, events);
+      if (chargeMgr) feedCharge({ type: 'timer', now: ev.t }, ev.t); // REQ-0200: every_secs charge triggers
       heap.push({ t: ev.t + TUNABLES.STATUS_TICK_PERIOD_SECS, seq: heap.nextSeq(), kind: 'status_tick' });
     } else if (ev.kind === 'skill_fire') {
       const isPlayerSide = schedulable.some(s => s.ownerUid === ev.ownerUid && s.effIdx === ev.effIdx);
@@ -495,6 +513,21 @@ function runEncounter(opts) {
           const playerOff = [];
           dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), ev.t, playerOff);
           for (const re of playerOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          if (chargeMgr) {
+            // REQ-0200: this player PO's landed hits feed the charge runtime -- OnHit +
+            // on_damage_dealt on the firing BP, on_connected_unit_attack on its linked
+            // BPs; enemy deaths feed on_kill (deduped by enemyId); a landed status
+            // application feeds on_status_applied.
+            const firePo = troopPos.find(p => p.uid === s.ownerUid);
+            const fireBp = firePo && firePo.bpId;
+            if (fireBp) {
+              for (const lh of (fr.landedHits || [])) {
+                feedCharge({ type: 'bp_attack', sourceId: fireBp, amount: lh.amount }, ev.t);
+                if (lh.actor && lh.actor.kind === 'enemy' && !lh.actor.alive) feedCharge({ type: 'enemy_killed', sourceId: fireBp, enemyId: lh.actor.id }, ev.t);
+              }
+              if (rayEvents.some(re => re.ev === 'apply_status')) feedCharge({ type: 'status_applied', sourceId: fireBp }, ev.t);
+            }
+          }
         } else if (hasAtt && s.modes.includes('detection')) {
           resolveDetection(s, ev.t);
         } else if (hasAtt && s.modes.includes('unlock')) {
@@ -532,6 +565,13 @@ function runEncounter(opts) {
           const playerDef = [];
           dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), ev.t, playerDef);
           for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+          if (chargeMgr) {
+            // REQ-0200: a player BP taking a direct enemy hit feeds OnBPBeenHit on that
+            // BP + on_connected_unit_bp_been_hit on its linked BPs.
+            for (const lh of (fr.landedHits || [])) {
+              if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, ev.t);
+            }
+          }
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }
@@ -599,14 +639,14 @@ function runEncounter(opts) {
   }
 
   events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, troop_bp_hp: troopBps.map(b => b.hp) });
-  return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut };
+  return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut, chargeState: chargeMgr ? chargeMgr.summary() : undefined };
 }
 
-function tickAndEmit(actor, t, events) {
+function tickAndEmit(actor, t, events, onHeal) {
   const ticks = tickStatuses(actor.statusBag, TUNABLES.STATUS_TICK_PERIOD_SECS);
   for (const tk of ticks) {
     if (tk.kind === 'damage') { actor.applyDamage(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); }
-    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); }
+    else if (tk.kind === 'heal') { actor.heal(tk.amount); events.push({ t, ev: 'status_tick', dst: maskLabel(actor.ref), status: tk.name, amount: tk.amount, hp_after: actor.hp() }); if (onHeal) onHeal(actor.id); } // REQ-0200: on_heal_done
   }
 }
 
