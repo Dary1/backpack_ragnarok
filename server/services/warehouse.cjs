@@ -223,7 +223,7 @@ function listWarehouse(playerId) {
 // reverse-direction ban, generalized here even ahead of P3 trade -- there
 // is simply no function that moves an item from a home back into a
 // warehouse row).
-function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsById) {
+function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsById, unitDefsById) {
   purgeExpiredWarehouseItems(playerId); // also normalizes/reverts stale 'claiming' rows (see normalizeWarehouseStatus above)
   const item = storage.readWarehouseItem(playerId, itemUid);
   if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
@@ -239,6 +239,12 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsB
   if (item.kind === 'tm') {
     const tmDef = (tmDefsById || {})[item.itemId];
     if (!tmDef) { const err = new Error('claimed item references an unknown tm id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
+  } else if (item.kind === 'bp') {
+    // REQ-0195d: a bought unit (BP) row -- validate the carried instance's
+    // unit.id against unitDefsById and return the payload for the client to
+    // place via firstFitPlaceBp (the Workshop's own claim path).
+    const unitId = item.bp && item.bp.unit && item.bp.unit.id;
+    if (!unitId || !(unitDefsById || {})[unitId]) { const err = new Error('claimed BP references an unknown unit id: ' + unitId); err.code = 'BAD_REQUEST'; throw err; }
   } else {
     // REQ-0115: a plain (non-tm) row is a PO *or* an SI -- accept an id
     // present in EITHER itemDefsById (PO + pilot overlay) OR siDefsById
@@ -255,7 +261,7 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsB
   item.claimedAt = new Date().toISOString();
   storage.writeWarehouseItem(playerId, itemUid, item);
 
-  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty, q: item.q };
+  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty, q: item.q, bp: item.bp };
 }
 
 // finalizeClaimingItemsForCanvas (REQ-0041): called by server/api.cjs's

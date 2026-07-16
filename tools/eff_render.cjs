@@ -105,6 +105,12 @@ function verbPhraseEN(verb) {
       return '+' + fmtNum(verb.n, 'en') + ' ' + verb.stat + ' to self';
     case 'damage_reduction': // REQ-0121
       return 'reduce incoming damage by ' + fmtNum(verb.n, 'en');
+    case 'advance_cooldown': // REQ-0129 (AGENT-DEFINED unit charge effect; renders here, not yet engine-wired)
+      return 'advance cooldown by ' + fmtNum(verb.n, 'en');
+    case 'fire_items': // REQ-0129 (AGENT-DEFINED)
+      return 'immediately fire ' + (verb.tag ? verb.tag + ' ' : '') + 'items';
+    case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
+      return 'grant ' + fmtNum(verb.n, 'en') + ' shield';
     default: return verb.t;
   }
 }
@@ -220,6 +226,12 @@ function verbPhraseJA(verb) {
       return '自身に ' + statJA(verb.stat) + ' +' + fmtNum(verb.n, 'ja');
     case 'damage_reduction': // REQ-0121
       return '受けるダメージを ' + fmtNum(verb.n, 'ja') + ' 軽減';
+    case 'advance_cooldown': // REQ-0129 (AGENT-DEFINED unit charge effect)
+      return 'クールダウンを ' + fmtNum(verb.n, 'ja') + ' 進める';
+    case 'fire_items': // REQ-0129 (AGENT-DEFINED)
+      return (verb.tag ? verb.tag + ' ' : '') + 'アイテムを即時発動';
+    case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
+      return 'シールドを ' + fmtNum(verb.n, 'ja') + ' 付与';
     default: return verb.t;
   }
 }

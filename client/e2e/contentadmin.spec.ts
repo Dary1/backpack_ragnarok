@@ -712,3 +712,219 @@ test('artwork picker: select links the def-level ref; clear resets; bogus ref ->
   const body = await bad.json();
   expect(body.error).toContain('no such artwork');
 });
+
+// ---------------------------------------------------------------------------
+// REQ-0182a (po-si-editor-port): the edit modal is now the full PO/SI EDITOR.
+// These cover the four things the port added over REQ-0173's modal -- the
+// locale switcher, the completed effect-row grammar (secs/mult), the ancestry
+// -labelled tag multi-select, and the live preview rail -- plus the invariant
+// that binds them: whatever the ported controls do, the serialized JSON stays
+// the single truth and every untouched field still passes through verbatim.
+// ---------------------------------------------------------------------------
+
+// Opens the editor on variant 1 of a fresh po_def and waits for the Form tab.
+async function openEditor(page: Page, request: APIRequestContext, name: string) {
+  await request.post('/api/content/dev/clear-all');
+  await apiCreateDef(request, { system_name: name, kind: 'po_def', brief: 'editor port', schema_ref: 'po/2' });
+  await apiIngest(request, name, [variant(1)]);
+  await page.goto('/app/#/contentadmin/' + name);
+  await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
+  await page.getByTestId('edit-open-1').click();
+  await expect(page.getByTestId('edit-form-rarity-1')).toBeVisible({ timeout: 20000 });
+}
+
+// The serialized truth, read off the JSON tab (and switched back to Form).
+async function readJson(page: Page): Promise<Record<string, any>> {
+  await page.getByTestId('edit-tab-json-1').click();
+  const raw = await page.getByTestId('edit-json-1').inputValue();
+  return JSON.parse(raw);
+}
+
+test('editor: EN/JA locale switcher mounts one locale at a time and both reach the JSON', async ({ page, request }) => {
+  await openEditor(page, request, 'e2e_ed_loc');
+
+  // opens on EN: the EN pair is mounted, the JA pair is NOT (never both at once)
+  await expect(page.getByTestId('edit-form-name-1')).toBeVisible();
+  await expect(page.getByTestId('edit-form-flavor-1')).toBeVisible();
+  await expect(page.getByTestId('edit-form-ja-name-1')).toHaveCount(0);
+  await expect(page.getByTestId('edit-form-ja-flavor-1')).toHaveCount(0);
+  await page.getByTestId('edit-form-name-1').fill('Ported EN');
+
+  // switch to JA: the swap is exact, in both directions
+  await page.getByTestId('edit-form-locale-ja-1').click();
+  await expect(page.getByTestId('edit-form-ja-name-1')).toBeVisible();
+  await expect(page.getByTestId('edit-form-ja-flavor-1')).toBeVisible();
+  await expect(page.getByTestId('edit-form-name-1')).toHaveCount(0);
+  await expect(page.getByTestId('edit-form-flavor-1')).toHaveCount(0);
+  await page.getByTestId('edit-form-ja-name-1').fill('移植JA');
+  await page.getByTestId('edit-form-ja-flavor-1').fill('日本語フレーバー');
+
+  // the EN edit was not lost by the round trip through JA
+  await page.getByTestId('edit-form-locale-en-1').click();
+  await expect(page.getByTestId('edit-form-name-1')).toHaveValue('Ported EN');
+
+  // both locales land in the serialized truth, JA under i18n.ja
+  const json = await readJson(page);
+  expect(json.name).toBe('Ported EN');
+  expect(json.i18n.ja.name).toBe('移植JA');
+  expect(json.i18n.ja.flavor).toBe('日本語フレーバー');
+
+  // ...and survive submit onto a real human_edit variant
+  await page.getByTestId('edit-submit-1').click();
+  await expect(page.getByTestId('variant-2')).toBeVisible({ timeout: 60000 });
+  const meta = await request.get('/api/content/defs/e2e_ed_loc');
+  const v2 = (await meta.json()).variants.find((x: { variant_no: number }) => x.variant_no === 2);
+  expect(v2.data.name).toBe('Ported EN');
+  expect(v2.data.i18n.ja.name).toBe('移植JA');
+});
+
+test('editor: every_secs secs + amp_status mult are editable, not just round-tripped', async ({ page, request }) => {
+  await openEditor(page, request, 'e2e_ed_eff');
+
+  // the fixture effect is every_secs -> the secs inputs mount, carrying the AST's
+  // s[lo,hi]. Before REQ-0182a there was no input at all for these.
+  await expect(page.getByTestId('edit-form-eff-secslo-1-0')).toHaveValue('1.8');
+  await expect(page.getByTestId('edit-form-eff-secshi-1-0')).toHaveValue('2.2');
+  await page.getByTestId('edit-form-eff-secslo-1-0').fill('3.5');
+  await page.getByTestId('edit-form-eff-secshi-1-0').fill('4.5');
+
+  // secs are trigger-conditional: a non-every_secs trigger drops the inputs
+  await page.getByTestId('edit-form-eff-trigger-1-0').selectOption('battle_start');
+  await expect(page.getByTestId('edit-form-eff-secslo-1-0')).toHaveCount(0);
+  await page.getByTestId('edit-form-eff-trigger-1-0').selectOption('every_secs');
+  await expect(page.getByTestId('edit-form-eff-secslo-1-0')).toHaveValue('3.5');
+
+  // mult is verb-conditional: only amp_status carries it (and it brings status too)
+  await expect(page.getByTestId('edit-form-eff-mult-1-0')).toHaveCount(0);
+  await page.getByTestId('edit-form-eff-verb-1-0').selectOption('amp_status');
+  await expect(page.getByTestId('edit-form-eff-mult-1-0')).toBeVisible();
+  await expect(page.getByTestId('edit-form-eff-status-1-0')).toBeVisible();
+  await page.getByTestId('edit-form-eff-status-1-0').selectOption('Burn');
+  await page.getByTestId('edit-form-eff-mult-1-0').fill('1.5');
+
+  // every edited param reaches the AST in its right slot
+  const json = await readJson(page);
+  expect(json.effects[0].trigger).toEqual({ t: 'every_secs', s: [3.5, 4.5] });
+  expect(json.effects[0].verb.t).toBe('amp_status');
+  expect(json.effects[0].verb.status).toBe('Burn');
+  expect(json.effects[0].verb.mult).toBe(1.5);
+  // and the passthrough guarantee still holds around them
+  expect(json.shape).toEqual([[0, 0], [1, 0]]);
+  expect(json.icon).toBe('icon-blade');
+  expect(json.part).toEqual({ assembles: 'longsword', role: 'blade' });
+});
+
+test('editor: tags are an ancestry-labelled multi-select that never drops a tag it cannot offer', async ({ page, request }) => {
+  await openEditor(page, request, 'e2e_ed_tags');
+
+  // the fixture's first tag is WeaponPart -- a CHILD of Weapon, not a root. The
+  // root select must still offer it (ancestry-labelled), or merely touching
+  // another field would silently rewrite the variant's type.
+  await expect(page.getByTestId('edit-form-tag-root-1')).toHaveValue('WeaponPart');
+  await expect(page.getByTestId('edit-form-tag-root-1').locator('option[value="WeaponPart"]'))
+    .toHaveText('Weapon > WeaponPart');
+
+  // additional tags: a real multi-select over trees.po, ancestry-labelled,
+  // with the fixture's existing 'Metal' already selected
+  const tags = page.getByTestId('edit-form-tags-1');
+  await expect(tags).toHaveValues(['Metal']);
+  await expect(tags.locator('option[value="WeaponPart"]')).toHaveText('Weapon > WeaponPart');
+  await expect(tags.locator('option[value="Weapon"]')).toHaveText('Weapon');
+
+  // select two -> both land, keeping the first tag in slot 0. 'Rune' precedes
+  // 'Metal' in the option list, so this also pins the order rule: an already
+  // -selected tag keeps its place and only the NEW one is appended -- picking a
+  // tag must not silently reorder the ones the operator did not touch.
+  await tags.selectOption(['Metal', 'Rune']);
+  let json = await readJson(page);
+  expect(json.tags).toEqual(['WeaponPart', 'Metal', 'Rune']);
+
+  // deselecting everything is a valid state (tags = just the type)
+  await page.getByTestId('edit-tab-form-1').click();
+  await page.getByTestId('edit-form-tags-1').selectOption([]);
+  json = await readJson(page);
+  expect(json.tags).toEqual(['WeaponPart']);
+});
+
+test('editor: the preview rail tracks the serialized truth live, on both tabs', async ({ page, request }) => {
+  await openEditor(page, request, 'e2e_ed_prev');
+  const rail = page.getByTestId('entity-preview-edit-1');
+
+  // the rail renders the entity beside the form -- the editing context the
+  // modal had none of (DexAdmin's thumbnails were the old stand-in)
+  await expect(rail).toBeVisible();
+  await expect(rail.locator('.shape-grid')).toBeVisible();
+  await expect(rail).toContainText('E2E Blade v1');
+
+  // it is LIVE: a form edit repaints it without any submit
+  await page.getByTestId('edit-form-name-1').fill('Rail Tracks This');
+  await expect(rail).toContainText('Rail Tracks This');
+  await page.getByTestId('edit-form-rarity-1').selectOption('Relic');
+  await expect(rail).toContainText('Relic');
+
+  // it stays on the JSON tab, still fed by the same serialized truth
+  await page.getByTestId('edit-tab-json-1').click();
+  await expect(rail).toBeVisible();
+  await expect(rail).toContainText('Rail Tracks This');
+
+  // while the JSON is unparseable the rail HOLDS the last valid render rather
+  // than blanking; submit is gated meanwhile (REQ-0173 posture, unchanged)
+  await page.getByTestId('edit-json-1').fill('{ broken');
+  await expect(page.getByTestId('edit-valid-1')).toContainText('invalid JSON');
+  await expect(page.getByTestId('edit-submit-1')).toBeDisabled();
+  await expect(rail).toContainText('Rail Tracks This');
+});
+
+// REQ-0182b: two guards that can only be exercised on a pg backend with a
+// seedable registry -- exactly what the files-backed default fleet lacks (and
+// why the drift these guard against reached live). This harness IS pg-backed
+// with an isolated namespace + dev_mode item_admin, so it can adopt a def and
+// observe both the registry-served refusal and the relocated grant control.
+
+test('REQ-0182b: the legacy admin item PUT 409s (with a #/contentadmin hint) once an item is registry-served', async ({ request }) => {
+  // Adopt a def under a REAL live-item id (a covered kind) so that id now
+  // resolves through the registry. adopt() synchronously refreshes the served
+  // snapshot, so registryServedKindFor sees it immediately; dev_mode makes the
+  // no-token caller an item_admin, clearing the 403 gate so we reach the 409.
+  await request.post('/api/content/dev/clear-all');
+  const SYS = 'blade'; // a real live PO item id (covered kind)
+  await apiCreateDef(request, { system_name: SYS, kind: 'po_def', brief: 'REQ-0182b 409 guard', schema_ref: 'po/2' });
+  await apiIngest(request, SYS, [1].map(variant));
+  const adopt = await request.post('/api/content/defs/' + SYS + '/adopt', { data: { variant_no: 1 } });
+  expect(adopt.status()).toBe(200);
+
+  const put = await request.put('/api/admin/item/' + SYS, { data: { name: 'must not apply -- registry-served' } });
+  expect(put.status()).toBe(409);
+  const body = await put.json();
+  expect(body.registry_kind).toBe('po_def');
+  expect(body.edit_at).toBe('#/contentadmin/' + SYS);
+});
+
+test('REQ-0182b: the relocated grant-to-warehouse button on the adopted variant card grants the system item into the dev warehouse', async ({ page, request }) => {
+  // The dev "grant to warehouse" control moved from the retired Dex Edit form
+  // onto the ADOPTED contentadmin variant card (VariantCard grant-warehouse-<no>,
+  // rendered only when isAdopted && systemName). Coverage relocated here from the
+  // deleted schedule.spec dex-admin flow because the button now requires a
+  // pg-backed adopted variant, which only this harness can produce. dev/role
+  // gating is unchanged: the grant endpoint stays item_admin-gated + dev-only.
+  await request.post('/api/content/dev/clear-all');
+  const SYS = 'blade'; // a real PO item id, so the grant validates + lands
+  await apiCreateDef(request, { system_name: SYS, kind: 'po_def', brief: 'REQ-0182b grant relocation', schema_ref: 'po/2' });
+  await apiIngest(request, SYS, [1].map(variant));
+  const adopt = await request.post('/api/content/defs/' + SYS + '/adopt', { data: { variant_no: 1 } });
+  expect(adopt.status()).toBe(200);
+
+  const beforeCount = (((await (await request.get('/api/warehouse')).json()).items) || []).length;
+
+  await page.goto('/app/#/contentadmin/' + SYS);
+  await expect(page.getByTestId('variant-adopted-1')).toBeVisible();
+
+  // the relocated grant button sits on the adopted card
+  await page.getByTestId('grant-warehouse-1').click();
+  await expect(page.getByTestId('cd-msg')).toContainText('granted ' + SYS + ' to the warehouse');
+
+  // it actually landed in the caller's (dev fallback) warehouse
+  const after = await (await request.get('/api/warehouse')).json();
+  expect(after.items.length).toBe(beforeCount + 1);
+  expect(after.items.some((i: any) => i.itemId === SYS)).toBeTruthy();
+});

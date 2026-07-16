@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 'use strict';
-// tools/verify_content_registry_parity.cjs -- REQ-0178 (Phase 1) parity /
+// tools/verify_content_registry_parity.cjs -- REQ-0178 (Phase 1) + REQ-0176
+// (Phase-1b) parity /
 // drift gate. Order-insensitive deep-compare of the live content FILES vs the
-// ADOPTED registry variants, per covered kind (po_def / si_def / tm_def).
+// ADOPTED registry variants, per covered kind. Coverage follows the serving
+// path: po_def / si_def / tm_def (REQ-0178, the display path) plus unit_def /
+// gacha_pack / monster_def / skill_def (REQ-0176, the authority path).
 // Per entity it reports one of:
 //   MATCH               -- file entry == adopted variant data (key order aside)
 //   DRIFT               -- both exist but differ (field-level diff attached)
@@ -23,9 +26,16 @@ const REPO_ROOT = path.join(__dirname, '..');
 const { contentPath, loadJSON } = require(path.join(REPO_ROOT, 'server', 'lib', 'content_files.cjs'));
 
 // Covered kinds -> the live file(s) whose entries the backfill imported under
-// that kind (mirror of tools/backfill_content_registry.cjs SOURCES, filtered to
-// the Phase-1 covered kinds). po_def has TWO source files (REQ-0160: live +
-// dungeon items share the po/2 schema; unique ids across files).
+// that kind (mirror of tools/backfill_content_registry.cjs SOURCES). po_def has
+// THREE source files (REQ-0160: live + dungeon items share the po/2 schema;
+// REQ-0178 follow-up added the starter kit); ids are unique across files bar the
+// two documented reuse copies.
+//
+// REQ-0176 (Phase-1b): unit_def/gacha_pack/monster_def/skill_def joined the
+// covered set when services/core.cjs became registry-first. This list IS the
+// drift gate -- a kind the serving path resolves but this tool does not check is
+// a kind whose drift reaches the game unseen. Keep it a mirror of the backfill's
+// SOURCES for every kind the serving path covers.
 const COVERED = [
   { kind: 'po_def', file: contentPath('live', 'live_items.json') },
   { kind: 'po_def', file: contentPath('live', 'dungeon', 'items.json') },
@@ -34,6 +44,10 @@ const COVERED = [
   { kind: 'po_def', file: contentPath('live', 'starter_items.json'), exclude: ['lockpick', 'spyglass'] },
   { kind: 'si_def', file: contentPath('live', 'live_sis.json') },
   { kind: 'tm_def', file: contentPath('live', 'live_tms.json') },
+  { kind: 'unit_def', file: contentPath('live', 'live_units.json') }, // REQ-0176
+  { kind: 'gacha_pack', file: contentPath('live', 'live_packs.json') }, // REQ-0176
+  { kind: 'monster_def', file: contentPath('live', 'dungeon', 'enemies.json') }, // REQ-0176
+  { kind: 'skill_def', file: contentPath('live', 'dungeon', 'skills.json') }, // REQ-0176
 ];
 
 // Canonical JSON (recursive key sort) -> order-insensitive equality.
@@ -120,7 +134,10 @@ async function main() {
   if (asJson) {
     console.log(JSON.stringify({ ok: counts.DRIFT === 0, counts, rows }, null, 2));
   } else {
-    console.log('== content registry parity (REQ-0178 Phase 1: po_def / si_def / tm_def) ==');
+    // The banner names the covered kinds off COVERED itself, so it can never
+    // advertise a coverage the tool does not actually check.
+    const kinds = Array.from(new Set(COVERED.map((c) => c.kind)));
+    console.log('== content registry parity (REQ-0178 + REQ-0176: ' + kinds.join(' / ') + ') ==');
     for (const r of rows) {
       if (r.status === 'MATCH') continue; // quiet on match; --json for the full ledger
       let line = '  ' + r.status.padEnd(20) + r.kind.padEnd(10) + r.name;

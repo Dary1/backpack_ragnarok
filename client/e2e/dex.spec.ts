@@ -222,6 +222,10 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
 
   const infoCol = page.locator('.dex-detail-col-info');
   await expect(infoCol).toBeVisible();
+  // REQ-0194: the item NAME moved from the info column into the detail
+  // panel's masthead — name assertions target the whole detail pane;
+  // flavor/effects assertions stay scoped to the info column.
+  const pane = page.locator('[data-testid="dex-detail-pane"]');
 
   const contentResp = await page.request.get('/api/content');
   const content = await contentResp.json();
@@ -239,7 +243,7 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
   // Default locale is EN: EN name/flavor/effects text visible, JA text
   // absent (assuming JA text genuinely differs from EN, which the live
   // dagger fixture's translated copy does).
-  await expect(infoCol).toContainText(enName);
+  await expect(pane).toContainText(enName);
   if (enFlavor !== jaFlavor) {
     await expect(infoCol).toContainText(enFlavor);
     const infoText = await infoCol.textContent();
@@ -256,12 +260,16 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
   await page.locator('.lang-toggle').click();
 
   // Now JA name/flavor/effects text visible, EN text absent.
-  await expect(infoCol).toContainText(jaName);
+  await expect(pane).toContainText(jaName);
   if (enFlavor !== jaFlavor) {
     await expect(infoCol).toContainText(jaFlavor);
     const infoTextJa = await infoCol.textContent();
     expect(infoTextJa).not.toContain(enFlavor);
-    expect(infoTextJa).not.toContain(enName);
+    // REQ-0194: assert the EN name is absent from the WHOLE pane (the
+    // masthead's EN caption is uppercased, so a case-sensitive check
+    // on the mixed-case EN name stays meaningful).
+    const paneTextJa = await pane.textContent();
+    expect(paneTextJa).not.toContain(enName);
   }
   if (enEff && jaEff && enEff !== jaEff) {
     await expect(infoCol).toContainText(jaEff);
@@ -274,7 +282,7 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
 
   // Toggle back to EN -- confirms it is reversible, not a one-way flip.
   await page.locator('.lang-toggle').click();
-  await expect(infoCol).toContainText(enName);
+  await expect(pane).toContainText(enName);
 });
 
 test('dex v2 R2: detail diagram is enlarged (~5x per-cell size vs the old 46px baseline) and still fits its column height', async ({ page }) => {

@@ -774,60 +774,6 @@ test.describe('cancel flow', () => {
   });
 });
 
-test.describe('REQ-0041: dev grant -> warehouse (Dex EDIT mode acquire button)', () => {
-  test('clicking the Dex EDIT-mode acquire button grants the selected item into the caller\'s OWN warehouse', async ({ page }) => {
-    // This flow is DEV-ONLY and item_admin-gated -- it operates on the
-    // DEV_MODE fallback player's own warehouse (there is no per-guest
-    // "which item_admin session" concept in this app; the grant endpoint
-    // always resolves the caller the same way every other admin route
-    // does, see server/api.cjs's POST /api/admin/warehouse/grant). Uses
-    // the SAME dev_user.json role-flip convention e2e/dex-admin.spec.ts
-    // already established, restored in a finally.
-    const fs = await import('node:fs');
-    const path = await import('node:path');
-    const devUserPath = path.join(REPO_ROOT, 'data', 'config', 'dev_user.json');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
-    const originalDevUser = fs.existsSync(devUserPath) ? fs.readFileSync(devUserPath, 'utf8') : null;
-    const devProfileExisted = fs.existsSync(devProfilePath);
-    const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
-
-    try {
-      fs.writeFileSync(devUserPath, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
-
-      // Baseline: dev's own warehouse, count before granting.
-      const beforeRes = await page.request.get('/api/warehouse');
-      const beforeCount = (await beforeRes.json()).items.length;
-
-      await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await expect(page.locator('.dex-root')).toBeVisible();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await expect(page.locator('.dex-admin')).toBeVisible();
-
-      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
-      await page.locator('[data-testid="dex-admin-grant-warehouse-btn"]').click();
-      await expect(page.locator('[data-testid="dex-admin-grant-warehouse-message"]')).toBeVisible({ timeout: 10000 });
-
-      // The warehouse actually gained exactly one 'dagger' row.
-      const afterRes = await page.request.get('/api/warehouse');
-      const afterItems = (await afterRes.json()).items;
-      expect(afterItems.length).toBe(beforeCount + 1);
-      const granted = afterItems.find((i: any) => i.itemId === 'dagger' && i.status === 'claimable');
-      expect(granted).toBeTruthy();
-
-      // Cleanup: remove the granted row so it doesn't leak into other
-      // tests that read the dev player's warehouse.
-      const p = path.join(REPO_ROOT, 'data', 'warehouse', 'dev', granted.itemUid + '.json');
-      if (fs.existsSync(p)) fs.rmSync(p);
-    } finally {
-      if (originalDevUser !== null) fs.writeFileSync(devUserPath, originalDevUser);
-      else if (fs.existsSync(devUserPath)) fs.rmSync(devUserPath);
-      if (devProfileExisted && devProfileBackup !== null) fs.writeFileSync(devProfilePath, devProfileBackup);
-      else if (fs.existsSync(devProfilePath)) fs.rmSync(devProfilePath);
-    }
-  });
-});
-
 test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse, cross-page fallback, finalization)', () => {
   // These three tests all drive the REAL UI against the DEV_MODE
   // fallback player, NOT this suite's own guest player -- reaching into

@@ -29,6 +29,7 @@
 // This runner NEVER opens the DB: it reads/writes renders + render_inspections
 // ONLY through storage.cjs.
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -38,6 +39,7 @@ const kitReg = require('./kit_registry.cjs');
 
 const ART_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'art_job.py');
 const INSPECT_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'inspect_job.py');
+const PACK_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'pack_job.py');  // REQ-0192
 
 // Kit python: kits need numpy/scipy/rembg/skimage, which the generation
 // python3 (mock: PIL only) may lack. Resolve ART_KIT_PYTHON, else the project
@@ -56,6 +58,19 @@ let runningChild = null;       // spawned python child of the in-flight job
 let runningStartedAt = 0;      // Date.now() when the in-flight job started
 const genQueue = [];           // GPU generation jobs (high priority)
 const inspectQueue = [];       // CPU inspection jobs (low priority)
+const packQueue = [];          // REQ-0192 repack jobs (user-initiated: highest waiting priority)
+
+// REQ-0197: deferred-batch mode. While held, newly enqueued GENERATION jobs
+// wait in heldQueue instead of starting immediately; executeBatch() releases
+// everything held at once, grouped so same-prompt jobs run back to back --
+// ComfyUI's node cache then reuses the text-encoder conditioning instead of
+// swapping the 7.5 GB Qwen encoder in per item (art_route.py: a prompt change
+// costs 30-170 s on this box). Hold gates ONLY generation: repacks stay
+// interactive and inspections are cheap CPU work, so both keep flowing.
+// Process-local (a restart falls back to auto-run); ART_QUEUE_HOLD=1 in the
+// service environment starts the server already holding.
+let held = process.env.ART_QUEUE_HOLD === '1';
+const heldQueue = [];          // generation jobs awaiting executeBatch()
 
 /** Run a Python worker (script), feeding jobSpec on stdin and parsing ONE
  * JSON result from stdout. Resolves to {status:'failed',error} rather than
@@ -185,18 +200,25 @@ async function processInspectJob(desc) {
 
 function pump() {
   if (running) return;
-  // GPU generation jobs ALWAYS jump ahead of CPU inspection jobs.
-  let desc = genQueue.shift();
-  let type = 'generate';
+  // Priority: user-initiated repacks first (REQ-0192), then GPU generation,
+  // then CPU inspection. Generation still always jumps ahead of inspections.
+  let desc = packQueue.shift();
+  let type = 'pack';
+  if (!desc) { desc = genQueue.shift(); type = 'generate'; }
   if (!desc) { desc = inspectQueue.shift(); type = 'inspect'; }
   if (!desc) return;
   running = true; runningType = type; runningDesc = desc;
   runningChild = null; runningStartedAt = Date.now();
-  const job = type === 'generate' ? processGenJob(desc) : processInspectJob(desc);
+  const job = type === 'generate' ? processGenJob(desc)
+    : type === 'pack' ? processPackJob(desc) : processInspectJob(desc);
   job
     .catch(async (e) => {
       if (type === 'generate') {
         const error = desc.canceled ? 'canceled by user' : String((e && e.message) || e);
+        try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
+      } else if (desc.__pack) {
+        const error = 'repack: ' + String((e && e.message) || e);
+        console.error('[art_jobs] ' + error);
         try { await storage.updateRenderResult(desc.renderId, { status: 'failed', error }); } catch (_) { /* best effort */ }
       } else {
         console.error('[art_jobs] inspect job threw: ' + String((e && e.message) || e));
@@ -211,15 +233,119 @@ function pump() {
 /** Enqueue a generation job for an already-created (status queued) render.
  * desc: {renderId, artwork, seed, tiling}; enqueued_at is stamped here
  * (REQ-0156 queue panel metadata). */
-function enqueue(desc) { desc.enqueued_at = Date.now(); genQueue.push(desc); pump(); }
+function enqueue(desc) {
+  desc.enqueued_at = Date.now();
+  if (held) { heldQueue.push(desc); return; }
+  genQueue.push(desc);
+  pump();
+}
+
+/** REQ-0197: prompt-affinity group key. The artwork id + the one-shot shape
+ * override are what change the composed prompt/graph; two seeds of the same
+ * artwork differ only in the RandomNoise node, which costs no re-encode. */
+function groupKey(d) {
+  return d.artwork.id + '|' + JSON.stringify(d.shapeOverride === undefined ? null : d.shapeOverride);
+}
+
+/** REQ-0197: move every held job into the live queue, grouped by prompt.
+ * Groups run in first-enqueued order; enqueue order within a group (sort is
+ * stable). Returns how many jobs were released. */
+function releaseHeld() {
+  if (!heldQueue.length) return 0;
+  const first = new Map();
+  heldQueue.forEach((d, i) => { const k = groupKey(d); if (!first.has(k)) first.set(k, i); });
+  const batch = heldQueue.splice(0).sort((a, b) => first.get(groupKey(a)) - first.get(groupKey(b)));
+  genQueue.push(...batch);
+  pump();
+  return batch.length;
+}
+
+/** REQ-0197: toggle deferred-batch mode. Turning hold ON also moves the
+ * not-yet-started live pending jobs behind the gate (the in-flight job always
+ * finishes -- killing it would waste a cold load). Turning it OFF releases
+ * everything held, batch-sorted, and resumes auto-run. */
+function setHold(v) {
+  if (v && !held) {
+    held = true;
+    heldQueue.push(...genQueue.splice(0));
+  } else if (!v && held) {
+    held = false;
+    releaseHeld();
+  }
+  return listJobs();
+}
+
+/** REQ-0197: run everything currently held (batch-sorted) while STAYING
+ * held -- jobs enqueued during the run wait for the next executeBatch. */
+function executeBatch() {
+  return { released: releaseHeld() };
+}
 
 /** Enqueue a lower-priority inspection job {renderId, artworkId, kitId}. */
 function enqueueInspection(desc) { inspectQueue.push(desc); pump(); }
 
-/** GPU generation queue depth (waiting + the one in flight) for the UI. */
-function queueDepth() { return genQueue.length + (running && runningType === 'generate' ? 1 : 0); }
-/** CPU inspection queue depth (waiting + in flight). */
-function inspectDepth() { return inspectQueue.length + (running && runningType === 'inspect' ? 1 : 0); }
+/** REQ-0192: enqueue a repack job {renderId (TARGET row, already created
+ * status 'queued'), artworkId, sourceRenderId}. Repack is a USER-INITIATED
+ * interactive action, so it runs AHEAD of pending generation jobs (a large
+ * fire-and-forget batch must not starve a button press for hours); it still
+ * waits for the in-flight job. Cost is ~10-30 s of CPU + a short matte. */
+function enqueuePack(desc) { desc.__pack = true; packQueue.push(desc); pump(); }
+
+/** REQ-0192: run ONE repack -- matte the SOURCE render, search the best
+ * feasible placement (tools/pack_job.py -> tool_cell_fit), and complete the
+ * pre-created TARGET render row with the packed image. Full provenance goes
+ * into params (derived_from_seed + exact transform + both fit scores), the
+ * REQ-0186 posture: the lightbox must be able to say what made this image.
+ * On any failure the target row goes status 'failed' (deletable in the UI). */
+async function processPackJob(desc) {
+  const { renderId, artworkId, sourceRenderId } = desc;
+  const fail = async (error) => {
+    try { await storage.updateRenderResult(renderId, { status: 'failed', error }); }
+    catch (_) { /* best effort */ }
+  };
+  const artwork = await storage.getArtworkById(artworkId);
+  const srcRender = await storage.getRenderById(sourceRenderId);
+  const src = await storage.getRenderImageById(sourceRenderId);
+  if (!artwork || !srcRender || !src || !src.image) { await fail('repack: source render/image missing'); return; }
+  const res = await runWorker(kitPython(), PACK_JOB_PY, {
+    png_b64: src.image.toString('base64'), shape: artwork.shape,
+  });
+  if (res.status !== 'ok') { await fail('repack: ' + (res.error || 'pack job failed')); return; }
+  const image = Buffer.from(res.png_b64, 'base64');
+  const sha = crypto.createHash('sha256').update(image).digest('hex');
+  await storage.updateRenderResult(renderId, {
+    status: 'ok', image, image_sha256: sha,
+    final_prompt: srcRender.final_prompt || null,
+    params: {
+      derived: 'packed_placement',
+      derived_from_seed: srcRender.seed,
+      tool: 'tools/pack_job.py v1 (REQ-0192)',
+      transform: res.transform,
+      fit_score_identity: res.identity_score,
+      fit_score_packed: res.packed_score,
+    },
+    error: null,
+  });
+  // The packed render is a first-class candidate: same advisory kits.
+  for (const k of kitReg.kitsFor(artwork.kind)) {
+    enqueueInspection({ renderId, artworkId: artwork.id, kitId: k.kit_id });
+  }
+}
+
+/** GPU generation queue depth (waiting -- live or held -- plus the one in
+ * flight) for the UI. Held jobs count: to the badge they are renders that
+ * exist and have not run, wherever they wait (REQ-0197). */
+function queueDepth() {
+  return genQueue.length + heldQueue.length +
+    (running && runningType === 'generate' ? 1 : 0);
+}
+/** CPU inspection queue depth (waiting + in flight); REQ-0192 repacks are
+ * counted here too -- to the UI badge they are the same kind of background
+ * CPU work, just higher priority. */
+function inspectDepth() {
+  return inspectQueue.length + packQueue.length +
+    (running && (runningType === 'inspect' || runningType === 'pack') ? 1 : 0);
+}
 
 /** REQ-0156: queue snapshot for GET /api/art/queue -- the running generation
  * job (with elapsed), every pending generation job in order, and the
@@ -240,6 +366,13 @@ function listJobs() {
       renderId: d.renderId, artwork: d.artwork.system_name,
       seed: d.seed, enqueued_at: d.enqueued_at,
     })),
+    // REQ-0197: the gated set, listed apart from live pending so the panel
+    // can label it; held is the mode flag itself.
+    heldPending: heldQueue.map((d) => ({
+      renderId: d.renderId, artwork: d.artwork.system_name,
+      seed: d.seed, enqueued_at: d.enqueued_at,
+    })),
+    held,
     inspectDepth: inspectDepth(),
   };
 }
@@ -269,6 +402,13 @@ async function cancelJob(renderId) {
     await storage.updateRenderResult(d.renderId, { status: 'failed', error: 'canceled by user' });
     return { canceled: 'pending', renderId };
   }
+  // REQ-0197: a held job cancels exactly like a pending one.
+  const hidx = heldQueue.findIndex((d) => d.renderId === renderId);
+  if (hidx >= 0) {
+    const d = heldQueue.splice(hidx, 1)[0];
+    await storage.updateRenderResult(d.renderId, { status: 'failed', error: 'canceled by user' });
+    return { canceled: 'pending', renderId };
+  }
   if (running && runningType === 'generate' && runningDesc && runningDesc.renderId === renderId) {
     runningDesc.canceled = true;
     killRunningChild();
@@ -279,4 +419,4 @@ async function cancelJob(renderId) {
   throw e;
 }
 
-module.exports = { enqueue, enqueueInspection, queueDepth, inspectDepth, runPython, listJobs, cancelJob };
+module.exports = { enqueue, enqueueInspection, enqueuePack, queueDepth, inspectDepth, runPython, listJobs, cancelJob, setHold, executeBatch };

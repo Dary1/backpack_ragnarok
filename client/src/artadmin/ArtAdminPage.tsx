@@ -18,7 +18,8 @@ import type { Locale } from '../store';
 import { useGameStore, clearArtAdminFocusName } from '../store';
 import {
   listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
-  adoptRenderApi, deleteRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  adoptRenderApi, deleteRenderApi, repackRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  setArtQueueHold, executeArtQueueBatch,
   artRenderUrl,
 } from '../api';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
@@ -123,7 +124,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const pollQueue = useCallback(async () => {
     try {
       const r = await getArtQueue();
-      setQueue({ running: r.running, pending: r.pending, inspectDepth: r.inspectDepth });
+      setQueue({ running: r.running, pending: r.pending, heldPending: r.heldPending, held: r.held, inspectDepth: r.inspectDepth });
       setQueueFetchedAt(Date.now());
     } catch (_e) { /* transient poll errors stay silent; the next tick retries */ }
   }, []);
@@ -257,6 +258,16 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('retry: ' + (e as Error).message, 'err'); }
   }
 
+  // REQ-0192: repack -- queue a best-placement derived render at seed+100000.
+  async function doRepack(seed: number) {
+    if (!selected) return;
+    try {
+      const r = await repackRenderApi(selected, seed);
+      report('repack queued: seed ' + seed + ' -> ' + r.render.seed);
+      await loadDetail(selected);
+    } catch (e) { report('repack: ' + (e as Error).message, 'err'); }
+  }
+
   async function doCancel(artwork: string, seed: number) {
     try {
       const r = await cancelRenderApi(artwork, seed);
@@ -264,6 +275,25 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
       report('canceled ' + artwork + ' seed ' + seed + ' (' + r.canceled + ')');
       if (artwork === selected) await loadDetail(artwork);
     } catch (e) { report('cancel: ' + (e as Error).message, 'err'); }
+  }
+
+  // REQ-0197: deferred-batch controls -- hold gates newly queued generation
+  // jobs; Execute batch releases everything held, grouped so same-prompt
+  // jobs run back to back (no per-item text-encoder swap).
+  async function doHold(next: boolean) {
+    try {
+      const r = await setArtQueueHold(next);
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report(next ? 'queue hold ON: jobs wait for Execute batch' : 'queue hold OFF: queue resumed');
+    } catch (e) { report('hold: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doExecuteBatch() {
+    try {
+      const r = await executeArtQueueBatch();
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report('executing batch: ' + r.released + ' job(s) released');
+    } catch (e) { report('execute: ' + (e as Error).message, 'err'); }
   }
 
   async function doReinspect(seed: number, kitId?: string) {
@@ -313,6 +343,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               onAskAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
               onAskDelete={(seed) => setConfirm({ type: 'delete', seed })}
               onRetry={(seed) => { void doRetry(seed); }}
+              onRepack={(seed) => { void doRepack(seed); }}
               onOpenLightbox={(seed, compareWith) => setLightbox({ seed, compareWith })}
               onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
               expandedKits={expandedKits}
@@ -328,7 +359,9 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
         <QueuePanel selected={selected} selectedKind={detailArt ? detailArt.kind : null}
           queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
           onGenerate={(mode, n, seed, lockOverride) => { void doGenerate(mode, n, seed, lockOverride); }}
-          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }} />
+          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }}
+          onHold={(h) => { void doHold(h); }}
+          onExecute={() => { void doExecuteBatch(); }} />
       </div>
 
       {lightbox && selected && detailArt && (

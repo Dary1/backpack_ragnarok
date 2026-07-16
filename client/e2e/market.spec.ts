@@ -133,6 +133,14 @@ async function readDevLrdst(page: Page): Promise<number> {
   return total;
 }
 
+// REQ-0195a: the furnace wire is per-tm rows now ({totals:[{tm,total,count}]}).
+// Sum every row for the single scalar the footer + these checks compare.
+async function furnaceTotalOf(page: Page): Promise<number> {
+  const body = await (await page.request.get('/api/market/furnace')).json();
+  const totals = (body.furnace?.totals ?? []) as Array<{ total: number }>;
+  return totals.reduce((s, r) => s + r.total, 0);
+}
+
 test.describe('REQ-0064: Market screen on the real backend', () => {
   // Back up + restore the dev profile around each test (pg-aware, same
   // convention as warehouse-mjolnir.spec.ts: a dev.json file restore is a
@@ -333,12 +341,80 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     }
   });
 
+  // REQ-0198 (C): a board-/preset-REFERENCED instance is "in use, not in my
+  // inventory" -- the picker locks it (shown, not hidden) and createListing
+  // 409s in_use. Content-agnostic: keys off data-item-uid / data-locked, not
+  // any specific def name.
+  test('SELL REQ-0198: board-/preset-referenced instances lock (in use); only the stowed one is sellable; createListing 409 in_use', async ({ page }) => {
+    // Three same-def POs, all HOMED in inv page 0 (the reference model keeps
+    // the home): one purely STOWED, one also REFERENCED by the active board
+    // (top-level canvas.pos), one also REFERENCED by a squad PRESET snapshot
+    // (presets.store[1]).
+    const canvas = devBuyerCanvas(50, [
+      { uid: 'e2e_ref_stow', id: 'tower_shield' },
+      { uid: 'e2e_ref_board', id: 'tower_shield' },
+      { uid: 'e2e_ref_preset', id: 'tower_shield' },
+    ]);
+    canvas.pos = [{ uid: 'e2e_ref_board', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }] as never;
+    canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_ref', name: 'BP', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 }], pos: [{ uid: 'e2e_ref_preset', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
+
+    const stow = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_stow"]');
+    const board = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_board"]');
+    const preset = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_preset"]');
+    await expect(stow).toHaveAttribute('data-locked', 'false');
+    await expect(board).toHaveAttribute('data-locked', 'true');
+    await expect(preset).toHaveAttribute('data-locked', 'true');
+    await expect(board.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    await expect(preset.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    // The stowed one selects into the carve panel; the referenced ones cannot.
+    await stow.click();
+    await expect(page.locator('[data-testid="market-carve-name"]')).toBeVisible();
+
+    // Server truth behind the UI: a referenced uid 409s in_use (the dev buyer
+    // is the caller, so createListing reads its own referenced canvas).
+    for (const uid of ['e2e_ref_board', 'e2e_ref_preset']) {
+      const res = await page.request.post('/api/market/listings', { data: { itemUid: uid, price: { tm: 'lrdst', qty: 10 } } });
+      expect(res.status()).toBe(409);
+      expect((await res.json()).reason).toBe('in_use');
+    }
+  });
+
+  // REQ-0198 (A): the SELL picker renders a per-instance RollBar; the card
+  // carries data-roll-pct = round(instance-q * 100).
+  test('SELL REQ-0198: a picker card carries the instance roll % (data-roll-pct)', async ({ page }) => {
+    const canvas = devBuyerCanvas(50, [{ uid: 'e2e_roll_1', id: 'tower_shield' }]);
+    (canvas.inv.pages[0].pos[0] as { q?: number }).q = 0.42; // REQ-0063 instance quality roll
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    const bar = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_roll_1"] [data-testid="market-rollbar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-roll-pct', '42'); // round(0.42 * 100)
+  });
+
+  // REQ-0198 (B): the '#/market?sell=<uid>&kind=' deep link (FloatingItemTip's
+  // "sell this" target) opens the SELL pane with the instance preselected.
+  test('SELL REQ-0198: the #/market?sell= deep link opens the SELL pane preselected', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_dl_1', id: 'tower_shield' }]) });
+    await bootApp(page);
+    await page.evaluate(() => { window.location.hash = '#/market?sell=e2e_dl_1&kind=po'; });
+    await expect(page.locator('[data-testid="market-page"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="market-loading"]')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_dl_1"]')).toHaveClass(/is-selected/);
+    await expect(page.locator('[data-testid="market-carve-name"]')).toBeVisible();
+  });
+
   test('MINE: withdraw pulls a listing off the hearth (free, no burn), and the row leaves the browse', async ({ page }) => {
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'dagger' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_wd_1', price: { tm: 'lrdst', qty: 8 } } });
     const listingId = (await listRes.json()).listing.id;
 
-    const furnaceBefore = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const furnaceBefore = await furnaceTotalOf(page);
 
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-mine"]').click();
@@ -350,7 +426,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await expect(page.locator(`[data-testid="market-mine-row"][data-listing-id="${listingId}"][data-state="withdrawn"]`)).toBeVisible({ timeout: 10000 });
 
     // Withdrawal is free: the furnace total is unchanged.
-    const furnaceAfter = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const furnaceAfter = await furnaceTotalOf(page);
     expect(furnaceAfter).toBe(furnaceBefore);
 
     // And it no longer appears in browse.
@@ -358,13 +434,168 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect(((await browse.json()).listings as Array<{ id: string }>).some((l) => l.id === listingId)).toBeFalsy();
   });
 
+  test('WIRE: dtoVersion 2 envelope carries tms[] (live TM registry) + PO listings carry kind:po (REQ-0195a)', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_kind_1', id: 'dagger' }]) });
+    const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_kind_1', price: { tm: 'lrdst', qty: 9 } } });
+    expect(listRes.status()).toBe(200);
+    const created = await listRes.json();
+    expect(created.dtoVersion).toBe(2);
+    expect(created.listing.kind).toBe('po');
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect(browse.dtoVersion).toBe(2);
+    expect(browse.tms).toEqual(['lrdst']);
+    expect(browse.tm).toBeUndefined();
+  });
+
+  test('BROWSE: an SI listing is visible in the browse with kind:si (REQ-0195c)', async ({ page }) => {
+    // Discover a live SI id from the content payload (content-agnostic).
+    const content = await (await page.request.get('/api/content')).json();
+    const siId = Object.keys((content.sis ?? {}) as Record<string, unknown>)[0];
+    test.skip(!siId, 'no SI content available in this environment');
+    // Seed the dev player with one loose inventory SI, then list it.
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].sis = [{ uid: 'e2e_si_1', id: siId, host: 'inv', q: 0.5 }] as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const listRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_si_1', price: { tm: 'lrdst', qty: 7 } } });
+    expect(listRes.status()).toBe(200);
+    expect((await listRes.json()).listing.kind).toBe('si');
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_si_1' && l.kind === 'si')).toBeTruthy();
+  });
+
+  test('BUY: content-bound KIND chips appear for live kinds and filter by listing kind (REQ-0195a, review fix F1)', async ({ page }) => {
+    // Content-agnostic: discover a live PO + SI id from the content payload.
+    const content = await (await page.request.get('/api/content')).json();
+    const poId = Object.keys((content.items ?? {}) as Record<string, unknown>)[0] as string;
+    const siId = Object.keys((content.sis ?? {}) as Record<string, unknown>)[0] as string;
+    test.skip(!poId || !siId, 'need at least one PO and one SI in content for the kind-chip test');
+    // The dev buyer seeds one inventory PO + one loose SI and lists both,
+    // so its afterEach canvas-restore auto-withdraws them (no cross-test
+    // residue). Both listings are the dev buyer's own; the cards still
+    // render -- chips do not depend on buyability. Assertions scope to
+    // THESE uids only, so leftover listings from earlier tests can't skew
+    // them.
+    const canvas = devBuyerCanvas(0, [{ uid: 'e2e_chip_po', id: poId }]);
+    canvas.inv.pages[0].sis = [{ uid: 'e2e_chip_si', id: siId, host: 'inv', q: 0.5 }] as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const poRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_chip_po', price: { tm: 'lrdst', qty: 8 } } });
+    expect(poRes.status()).toBe(200);
+    const siRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_chip_si', price: { tm: 'lrdst', qty: 7 } } });
+    expect(siRes.status()).toBe(200);
+
+    await gotoMarket(page);
+    // Both KIND chips are shown (content-bound: a live listing of each kind).
+    await expect(page.locator('[data-testid="market-chip-po"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-chip-si"]')).toBeVisible();
+    const poCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_chip_po"]');
+    const siCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_chip_si"]');
+    await expect(poCard).toBeVisible();
+    await expect(siCard).toBeVisible();
+    // The si chip narrows to si-kind cards -> my po card drops, my si stays.
+    await page.locator('[data-testid="market-chip-si"]').click();
+    await expect(poCard).toHaveCount(0);
+    await expect(siCard).toBeVisible();
+    // The po chip narrows to po-kind cards -> my si card drops, my po stays.
+    await page.locator('[data-testid="market-chip-po"]').click();
+    await expect(siCard).toHaveCount(0);
+    await expect(poCard).toBeVisible();
+  });
+
+  test('BROWSE+BUY: a unit (BP) listing is visible with kind:unit and buying delivers a kind:bp warehouse row carrying the verbatim payload (REQ-0195d)', async ({ page }) => {
+    // Discover a live unit id from the content payload (content-agnostic).
+    const content = await (await page.request.get('/api/content')).json();
+    const unitId = Object.keys((content.units ?? {}) as Record<string, unknown>)[0];
+    test.skip(!unitId, 'no unit content available in this environment');
+    // A seller lists an EMPTY inventory BP (nothing homed within its footprint).
+    const seller = mintInvite('unit-seller');
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].bps = [{ id: 'e2e_unit_1', name: 'BP', color: '#888', shape: [[0, 0], [0, 1]], origin: [3, 3], unit: { id: unitId, off: [0, 0] }, hpMax: 42, cellCount: 2, bonuses: [] }] as never;
+    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { headers: { 'X-Auth-Token': seller.token }, data: canvas });
+    expect(put.ok()).toBeTruthy();
+    const listRes = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'unit', itemUid: 'e2e_unit_1', price: { tm: 'lrdst', qty: 11 } } });
+    expect(listRes.status()).toBe(200);
+    const created = await listRes.json();
+    expect(created.listing.kind).toBe('unit');
+    expect(created.listing.itemId).toBe(unitId);
+    // Visible in the browse with kind:unit.
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_unit_1' && l.kind === 'unit')).toBeTruthy();
+    // The dev buyer (funded) buys it -> a kind:bp warehouse row with the verbatim BP payload.
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, []) });
+    const buyRes = await page.request.post(`/api/market/listings/${created.listing.id}/buy`);
+    expect(buyRes.status()).toBe(200);
+    const wh = await (await page.request.get('/api/warehouse')).json();
+    const row = (wh.items as Array<{ kind?: string; bp?: { unit?: { id?: string }; hpMax?: number }; sourceListingId?: string }>).find((it) => it.sourceListingId === created.listing.id);
+    expect(row?.kind).toBe('bp');
+    expect(row?.bp?.unit?.id).toBe(unitId);
+    expect(row?.bp?.hpMax).toBe(42);
+  });
+
+  test('SELL: the tm (currency) tab reflects the single-live-TM reality -- lrdst held, no other currency to price in; same_tm is 400 (REQ-0195b)', async ({ page }) => {
+    // API: pricing a TM in itself -> 400 {reason:'same_tm'} (user ruling).
+    const sameTm = await page.request.post('/api/market/listings', { data: { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } } });
+    expect(sameTm.status()).toBe(400);
+    expect((await sameTm.json()).reason).toBe('same_tm');
+    // UI: the dev player holds lrdst; the currency sell tab lets them pick it
+    // but shows the dormant 'no other currency to price in' state, because
+    // lrdst is the only live TM (a 2nd live TM would enable a real listing).
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    await page.locator('[data-testid="market-sell-kind-tm"]').click();
+    await expect(page.locator('[data-testid="market-pane-sell-tm"]')).toBeVisible();
+    const lrdstItem = page.locator('[data-testid="market-sell-tm-item"][data-tm-id="lrdst"]');
+    await expect(lrdstItem).toBeVisible();
+    await lrdstItem.click();
+    await expect(page.locator('[data-testid="market-sell-tm-noprice"]')).toBeVisible();
+  });
+
+  test('ROLL BAR: a po card shows a % bar equal to the seeded instance q, and a unit card with no roll container shows the unmeasured badge (REQ-0195e)', async ({ page }) => {
+    const content = await (await page.request.get('/api/content')).json();
+    const unitId = Object.keys((content.units ?? {}) as Record<string, unknown>)[0];
+    const seller = mintInvite('roll-seller');
+    // A seller canvas: one PO carrying q=0.5, plus (if units exist) one
+    // EMPTY BP with NO roll container (the REQ-0196 field absent).
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].pos = [{ uid: 'e2e_roll_po', id: 'dagger', loc: 'grid', cell: [1, 1], rot: 0, q: 0.5 }] as never;
+    if (unitId) canvas.inv.pages[0].bps = [{ id: 'e2e_roll_bp', name: 'BP', color: '#888', shape: [[0, 0]], origin: [4, 4], unit: { id: unitId, off: [0, 0] }, hpMax: 30, cellCount: 1 }] as never;
+    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { headers: { 'X-Auth-Token': seller.token }, data: canvas });
+    expect(put.ok()).toBeTruthy();
+    // po rollPct is the instance q; unit rollPct is null (unmeasured).
+    const poList = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'po', itemUid: 'e2e_roll_po', price: { tm: 'lrdst', qty: 6 } } });
+    expect(poList.status()).toBe(200);
+    expect((await poList.json()).listing.rollPct).toBe(0.5);
+    if (unitId) {
+      const uList = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'unit', itemUid: 'e2e_roll_bp', price: { tm: 'lrdst', qty: 6 } } });
+      expect(uList.status()).toBe(200);
+      expect((await uList.json()).listing.rollPct).toBeNull();
+    }
+    // In the BUY grid the po card carries a 50% roll bar; the unit card
+    // shows the unmeasured badge instead (never a 0% bar).
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    const poCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_roll_po"]');
+    await expect(poCard).toBeVisible();
+    const bar = poCard.locator('[data-testid="market-rollbar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-roll-pct', '50');
+    await expect(bar).toContainText('50%');
+    if (unitId) {
+      const unitCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_roll_bp"]');
+      await expect(unitCard).toBeVisible();
+      await expect(unitCard.locator('[data-testid="market-roll-unmeasured"]')).toBeVisible();
+      await expect(unitCard.locator('[data-testid="market-rollbar"]')).toHaveCount(0);
+    }
+  });
+
+
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);
     const furnace = page.locator('[data-testid="market-furnace"]');
     await expect(furnace).toBeVisible();
     // Matches the API's own total (formatted with thousands separators).
-    const total = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const total = await furnaceTotalOf(page);
     await expect(furnace).toContainText(total.toLocaleString());
     await expect(page.locator('.market-foot .lore')).toBeVisible();
   });

@@ -1,36 +1,40 @@
 // Detail diagram (図解) — REQ-0038, enlarged ~5x + icon-fix REQ-0038
-// feedback round 2. Large shape grid with the icon composited across the
-// item's FULL footprint (reuses ShapeGrid + the shared client/src/render/
-// itemCard.ts fit math -- see ShapeGrid.tsx's module comment for the bug
-// this replaces), plus:
+// feedback round 2, presentation overhauled REQ-0194. Large shape grid
+// with the icon composited across the item's FULL footprint (reuses
+// ShapeGrid + the shared client/src/render/itemCard.ts fit math — see
+// ShapeGrid.tsx's module comment for the bug this replaces), plus:
 //   - every Connection Port drawn OUTSIDE the shape footprint (ports'
 //     tiles already commonly sit at negative/out-of-bounds coordinates
-//     relative to the shape, e.g. live_items.json's flame_tablet ports
-//     use tiles like [0,-1] -- ShapeGrid's own bbox-union logic already
-//     expands the grid to cover them, so "outside the footprint" falls
-//     out naturally from the existing cell layout, no separate diagram
-//     math needed for that part) with a tag chip per port;
+//     relative to the shape — ShapeGrid's bbox-union logic already
+//     expands the grid to cover them), with a legend row per port;
 //   - every socket marked at its ax/ay FRACTIONAL anchor (0..1 of the
 //     unrotated shape bbox, per engine.d.ts's SocketDef doc comment) via
-//     a small absolutely-positioned marker dot + an SVG callout line to a
-//     type/tags label, drawn in an overlay layer sized to match the
-//     underlying shape-grid's own pixel box exactly;
+//     a NUMBERED marker dot in an SVG overlay sized to match the
+//     underlying shape-grid's pixel box exactly, paired with a numbered
+//     legend row below the stage;
 //   - every occupied shape cell's [row,col] coordinate labeled directly
 //     on the grid (ShapeGrid's showCoords prop).
-// Respects the global JA/EN locale for every label drawn here (port tag
-// chips are raw content-vocab strings, not translated; only the socket
-// "type"/"tags" prefix labels and coordinate axis hints go through
-// ./i18n.ts's t()).
 //
-// REQ-0038 feedback round 2 sizing: the base per-cell pixel size is 5x
-// REQ-0038's original 46px (so a bare cell wants to be 230px), capped by
-// DIAGRAM_MAX_HEIGHT_PX so a tall/many-row item (or a narrow viewport)
-// never forces the diagram (or its detail-pane parent) to overflow --
-// "scales sanely, capped by available height" per the task spec. The cap
-// is deliberately generous (620px) so it comfortably fits the two-pane
-// detail layout's left pane at the E2E viewport's height (see
-// DexDetail.tsx / index.css's .dex-detail-col-diagram) while still reading
-// as dramatically larger than the old fixed 46px/cell.
+// REQ-0194 (dex detail pane overhaul): the grid used to be left-anchored
+// in a half-viewport panel with the socket labels ABSOLUTELY positioned
+// at gridWidth+14px / hardcoded y-offsets — i.e. floating chips adrift in
+// a large empty region, connected by long dashed callout lines. Now:
+//   - the grid sits centered on a .dex-diagram-stage "specimen plate"
+//     well (subtle radial vignette, hairline border);
+//   - socket dots carry their 1-based index as SVG text; the labels
+//     became a STATIC numbered legend below the stage (same
+//     .dex-diagram-socket-labels class, no more absolute positioning),
+//     so no dead space and no overlap however wide the grid is;
+//   - the callout lines are gone (the numbers carry the dot↔label
+//     mapping now);
+//   - the ports list keeps its per-port mini-grid rows, restyled to the
+//     same legend language.
+// The .dex-diagram-grid-wrap box stays EXACTLY grid-sized (E2E measures
+// per-cell size from its width — dex.spec.ts "enlarged ~5x" test).
+//
+// Sizing (REQ-0038 R2): base per-cell pixel size is 5x the original 46px
+// (so a bare cell wants 230px), capped by DIAGRAM_MAX_HEIGHT/WIDTH so a
+// tall/many-row item never forces the pane to overflow.
 import type { ApiItemEntry, ApiSIEntry } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 import { t } from '../i18n';
@@ -58,7 +62,7 @@ interface DexDiagramProps {
  * lines up with ShapeGrid's rendered cells exactly. Ports are included in
  * the shared bbox (matching ShapeGrid's own `all = [...shape, ...ports]`
  * union) so the overlay's <svg> covers the full rendered grid, not just
- * the shape sub-region -- but ax/ay themselves are always relative to the
+ * the shape sub-region — but ax/ay themselves are always relative to the
  * shape's OWN bbox (SocketDef's doc comment: "fraction of unrotated bbox
  * width/height"), computed separately below as shapeBox. */
 function computeBoxes(shape: Cell[], ports: Array<{ tiles: Cell[] }>) {
@@ -97,8 +101,7 @@ export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, iconA
 
   // REQ-0038 R2: 5x the original per-cell size, then capped so the WHOLE
   // grid (nRows/nCols cells) fits within DIAGRAM_MAX_HEIGHT_PX x
-  // DIAGRAM_MAX_WIDTH_PX -- "about 5x larger... cap by available height"
-  // per the task spec. Uses whichever axis is more constraining so
+  // DIAGRAM_MAX_WIDTH_PX — uses whichever axis is more constraining so
   // multi-row AND multi-col items both stay on-screen.
   const uncappedCellPx = BASE_CELL_PX * DIAGRAM_SCALE;
   const cellPxByHeight = DIAGRAM_MAX_HEIGHT_PX / nRows;
@@ -111,14 +114,12 @@ export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, iconA
   const shapeHeightCells = shapeBox.maxRow - shapeBox.minRow + 1;
 
   // Merge every port's tiles into one combined overlay (ShapeGrid's
-  // portTiles prop only highlights cells -- the tag-chip callouts for
-  // each individual port are rendered as a separate list below the grid,
-  // one row per port, matching the task spec's "diagram the sockets in
-  // detail" while keeping each port's own tag legible).
+  // portTiles prop only highlights cells — the per-port legend rows below
+  // keep each individual port's tag legible).
   const allPortTiles: Cell[] = ports.flatMap((p) => p.tiles);
 
   // Socket marker pixel position: ax/ay are fractions (0..1) of the
-  // shape's OWN unrotated bbox (engine.d.ts's SocketDef doc comment) --
+  // shape's OWN unrotated bbox (engine.d.ts's SocketDef doc comment) —
   // convert to a pixel offset within the overlay <svg>, which is sized to
   // the FULL grid box (may be larger than the shape box alone if ports
   // extend outside it), so the shape sub-region's own pixel origin
@@ -128,59 +129,68 @@ export function DexDiagram({ entry, shape, iconUrl, iconDims, iconStretch, iconA
 
   return (
     <div className="dex-diagram">
-      <div className="dex-diagram-grid-wrap" style={{ width: gridWidthPx, height: gridHeightPx }}>
-        <ShapeGrid
-          shape={shape}
-          portTiles={allPortTiles}
-          cellPx={diagramCellPx}
-          iconUrl={iconUrl}
-          iconAlt={entry.name}
-          iconDims={iconDims}
-          iconStretch={iconStretch}
-          iconAlign={iconAlign}
-          showCoords
-        />
-        {sockets.length > 0 ? (
-          <svg
-            className="dex-diagram-socket-overlay"
-            width={gridWidthPx}
-            height={gridHeightPx}
-            viewBox={`0 0 ${gridWidthPx} ${gridHeightPx}`}
-          >
-            {sockets.map((s, i) => {
-              const ax = s.ax ?? 0.5;
-              const ay = s.ay ?? 0.5;
-              const markerX = shapeOriginXPx + ax * (shapeWidthCells * diagramCellPx);
-              const markerY = shapeOriginYPx + ay * (shapeHeightCells * diagramCellPx);
-              // Callout line target: a label slot to the right of the
-              // grid, stacked one per socket -- offset far enough right
-              // that it clears the grid itself regardless of grid width.
-              const labelX = gridWidthPx + 14;
-              const labelY = 16 + i * 20;
-              return (
-                <g key={i} className="dex-diagram-socket-marker">
-                  <line x1={markerX} y1={markerY} x2={labelX - 4} y2={labelY} className="dex-diagram-callout-line" />
-                  <circle cx={markerX} cy={markerY} r={5} className="dex-diagram-socket-dot" />
-                </g>
-              );
-            })}
-          </svg>
-        ) : null}
-        {sockets.length > 0 ? (
-          <div className="dex-diagram-socket-labels" style={{ left: gridWidthPx + 14 }}>
-            {sockets.map((s, i) => (
-              <div key={i} className="dex-diagram-socket-label" style={{ top: 16 + i * 20 - 8 }}>
-                <span className="dex-tag-chip">{s.t}</span>
-                {(s.tags ?? []).map((tag: string) => (
-                  <span className="dex-tag-chip dex-tag-chip-dim" key={tag}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            ))}
-          </div>
-        ) : null}
+      {/* REQ-0194: centered "specimen plate" stage; the inner grid-wrap
+          stays exactly grid-sized so the overlay math (and the E2E
+          per-cell measurement) is untouched. */}
+      <div className="dex-diagram-stage">
+        <div className="dex-diagram-grid-wrap" style={{ width: gridWidthPx, height: gridHeightPx }}>
+          <ShapeGrid
+            shape={shape}
+            portTiles={allPortTiles}
+            cellPx={diagramCellPx}
+            iconUrl={iconUrl}
+            iconAlt={entry.name}
+            iconDims={iconDims}
+            iconStretch={iconStretch}
+            iconAlign={iconAlign}
+            showCoords
+          />
+          {sockets.length > 0 ? (
+            <svg
+              className="dex-diagram-socket-overlay"
+              width={gridWidthPx}
+              height={gridHeightPx}
+              viewBox={`0 0 ${gridWidthPx} ${gridHeightPx}`}
+            >
+              {sockets.map((s, i) => {
+                const ax = s.ax ?? 0.5;
+                const ay = s.ay ?? 0.5;
+                const markerX = shapeOriginXPx + ax * (shapeWidthCells * diagramCellPx);
+                const markerY = shapeOriginYPx + ay * (shapeHeightCells * diagramCellPx);
+                return (
+                  <g key={i} className="dex-diagram-socket-marker">
+                    <circle cx={markerX} cy={markerY} r={9} className="dex-diagram-socket-dot" />
+                    <text x={markerX} y={markerY} dy="3.5" textAnchor="middle" className="dex-diagram-socket-num-svg">
+                      {i + 1}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          ) : null}
+        </div>
       </div>
+
+      {/* REQ-0194: static numbered socket legend (was: absolutely
+          positioned floating chips at gridWidth+14px). */}
+      {sockets.length > 0 ? (
+        <div className="dex-diagram-socket-labels">
+          <h4>{t(locale, 'dex.detail.sockets')}</h4>
+          {sockets.map((s, i) => (
+            <div key={i} className="dex-diagram-socket-label">
+              <span className="dex-diagram-socket-legend-num tnum" aria-hidden="true">
+                {i + 1}
+              </span>
+              <span className="dex-tag-chip">{s.t}</span>
+              {(s.tags ?? []).map((tag: string) => (
+                <span className="dex-tag-chip dex-tag-chip-dim" key={tag}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {ports.length > 0 ? (
         <div className="dex-diagram-ports">
