@@ -203,7 +203,15 @@ function buyListing(buyerId, listingId, idemKey) {
   // synchronous, so "concurrent" requests are strictly serialized by
   // the event loop -- there is no interleaving window at all).
   listing.state = 'settled';
-  listing.settlement = { buyerId, t: tIso, burn, sellerReceives, idemKey: idemKey || null };
+  // REQ-0195e: FREEZE the roll-fulfillment fraction onto the settlement
+  // record NOW, while the seller instance still lives (it is stripped in
+  // step 3/7 below). po/si -> the instance q; unit -> bp.roll?.pct (the
+  // REQ-0196 container) else null; tm -> null. toListingDto reads this
+  // frozen value for a settled listing so MinePane history stays honest.
+  const rollPctFrozen = kind === 'tm' ? null
+    : kind === 'unit' ? (sellerBp && sellerBp.roll && typeof sellerBp.roll.pct === 'number' ? sellerBp.roll.pct : null)
+    : (sellerInst && typeof sellerInst.q === 'number' ? sellerInst.q : null);
+  listing.settlement = { buyerId, t: tIso, burn, sellerReceives, idemKey: idemKey || null, rollPct: rollPctFrozen };
   storage.writeMarketListing(listing.id, listing);
 
   // (2/7) debit buyer -- value leaves the economy first.

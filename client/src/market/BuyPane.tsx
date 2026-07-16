@@ -9,7 +9,7 @@ import { useMemo } from 'react';
 import type { ApiMarketListing, GameData } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
-import { MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
+import { RollBar, MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
 
 /** The mock's chip vocabulary. `match` values are compared (lowercased)
  * against each listing's tags[]/rarity, EXACTLY as the server's
@@ -165,6 +165,7 @@ export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, act
                       {kind.kind}{kind.dims ? ` ・ ${kind.dims}` : ''}{kind.tags ? ` ・ ${kind.tags}` : ''}
                       {l.rarity ? <span className={`rar-word r-${l.rarity}`}> {l.rarity.toUpperCase()}</span> : null}
                     </div>
+                    <RollBar kind={l.kind} rollPct={l.rollPct} locale={locale} />
                     <span className="sellr">
                       {t(locale, 'market.seller')} <span className={`who${isMine ? ' kw-gold' : ''}`}>{isMine ? t(locale, 'market.you') : l.sellerName}</span>
                       {isSuspended && isMine ? <span className="t-micro"> — {t(locale, 'market.suspendedMineNote')}</span> : null}

@@ -642,6 +642,56 @@ module.exports.run = async function run(h) {
     assert.strictEqual(proceeds.qty, 18);
   });
 
+  await AT('market: rollPct DTO derivation -- po/si carry the live instance q, unit carries bp.roll?.pct else null (unmeasured), tm null; a settled listing freezes the value (REQ-0195e)', async () => {
+    const rSeller = playersFixture.createPlayer('MarketRollSeller', []);
+    const rBuyer = playersFixture.createPlayer('MarketRollBuyer', []);
+    const bpMeasured = { id: 'r_bp_measured', name: 'BPm', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1, roll: { pct: 0.7 } };
+    const bpUnmeasured = { id: 'r_bp_unmeasured', name: 'BPu', color: '#888', shape: [[0, 0]], origin: [3, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1 };
+    const p0 = {
+      bps: [bpMeasured, bpUnmeasured],
+      pos: [{ uid: 'r_po', id: 'blade', cell: [5, 1], rot: 0, q: 0.42 }],
+      sis: [{ uid: 'r_si', id: 'acc_gem', host: 'inv', q: 0.61 }],
+      tms: [{ uid: 'r_tm', id: 'lrdst', qty: 50, cell: [8, 1] }],
+    };
+    scheduleStorage.writeProfile(rSeller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+    scheduleStorage.writeProfile(rBuyer.playerId, mkCanvas(
+      [invPage([], [{ uid: 'r_b_tm', id: 'lrdst', qty: 100, cell: [1, 1] }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    // po/si -> the live instance q (REQ-0063).
+    const poL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'po', itemUid: 'r_po', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(poL.status, 200, JSON.stringify(poL.body));
+    assert.strictEqual(poL.body.listing.rollPct, 0.42, 'po rollPct = the instance q');
+    const siL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'si', itemUid: 'r_si', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(siL.status, 200, JSON.stringify(siL.body));
+    assert.strictEqual(siL.body.listing.rollPct, 0.61, 'si rollPct = the instance q');
+    // unit -> bp.roll?.pct (REQ-0196 container) else null (unmeasured).
+    const uMeas = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'unit', itemUid: 'r_bp_measured', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(uMeas.status, 200, JSON.stringify(uMeas.body));
+    assert.strictEqual(uMeas.body.listing.rollPct, 0.7, 'unit rollPct = bp.roll.pct');
+    const uUnmeas = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'unit', itemUid: 'r_bp_unmeasured', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(uUnmeas.status, 200, JSON.stringify(uUnmeas.body));
+    assert.strictEqual(uUnmeas.body.listing.rollPct, null, 'unit without a roll container -> null (unmeasured, never a 0% bar)');
+    // tm -> always null.
+    const tmL = await marketReq('POST', '/api/market/listings', rSeller.token, { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'gilt', qty: 5 } });
+    assert.strictEqual(tmL.status, 200, JSON.stringify(tmL.body));
+    assert.strictEqual(tmL.body.listing.rollPct, null, 'tm rollPct is always null');
+    // A DIFFERENT caller browsing derives the same live values.
+    const browse = await marketReq('GET', '/api/market/listings', rBuyer.token);
+    assert.strictEqual(browse.body.listings.find((x) => x.itemUid === 'r_po').rollPct, 0.42, 'browse DTO derives po rollPct too');
+    // Settle the po; the seller mine view keeps the FROZEN rollPct even
+    // after the instance has left their canvas (MinePane honesty).
+    const buy = await marketReq('POST', '/api/market/listings/' + poL.body.listing.id + '/buy', rBuyer.token);
+    assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
+    const afterSeller = scheduleStorage.readProfile(rSeller.playerId).canvas;
+    assert.ok(!afterSeller.inv.pages[0].pos.some((p) => p.uid === 'r_po'), 'sold po stripped from the seller');
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', rSeller.token);
+    const settledRow = mine.body.listings.find((x) => x.id === poL.body.listing.id);
+    assert.strictEqual(settledRow.state, 'settled');
+    assert.strictEqual(settledRow.rollPct, 0.42, 'settled listing keeps rollPct FROZEN at settle time');
+  });
+
+
   await AT('market: kind field defaults to po on create + legacy listings normalize to po; envelope carries tms[] (live TM registry); non-registry price.tm 400s', async () => {
     const kSeller = playersFixture.createPlayer('MarketKindSeller', []);
     scheduleStorage.writeProfile(kSeller.playerId, mkCanvas(

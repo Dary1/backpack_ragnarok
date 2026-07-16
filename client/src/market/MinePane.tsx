@@ -11,7 +11,7 @@ import { withdrawMarketListing, type ApiMarketListing, type GameData } from '../
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
-import { MarketThumb, dexNoLabel } from './marketShared';
+import { RollBar, MarketThumb, dexNoLabel } from './marketShared';
 
 /** Whole-days since an ISO timestamp, 1-based for display ("day 1" the
  * moment it is listed) to match the mock's 出品N日目. */
@@ -114,6 +114,7 @@ export function MinePane({ listings, gameData, locale, onWithdrawn }: MinePanePr
                     {isExpired ? t(locale, 'market.mine.expiredSub') : null}
                     {isWithdrawn ? t(locale, 'market.mine.withdrawnSub') : null}
                   </div>
+                  <RollBar kind={l.kind} rollPct={l.rollPct} locale={locale} />
                 </div>
                 <div className="lp">
                   <div className="price"><span className="rune">ᚠ</span><b className="tnum">×{l.price.qty}</b></div>

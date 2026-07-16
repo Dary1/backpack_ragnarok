@@ -444,6 +444,45 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await expect(page.locator('[data-testid="market-sell-tm-noprice"]')).toBeVisible();
   });
 
+  test('ROLL BAR: a po card shows a % bar equal to the seeded instance q, and a unit card with no roll container shows the unmeasured badge (REQ-0195e)', async ({ page }) => {
+    const content = await (await page.request.get('/api/content')).json();
+    const unitId = Object.keys((content.units ?? {}) as Record<string, unknown>)[0];
+    const seller = mintInvite('roll-seller');
+    // A seller canvas: one PO carrying q=0.5, plus (if units exist) one
+    // EMPTY BP with NO roll container (the REQ-0196 field absent).
+    const canvas = devBuyerCanvas(0, []);
+    canvas.inv.pages[0].pos = [{ uid: 'e2e_roll_po', id: 'dagger', loc: 'grid', cell: [1, 1], rot: 0, q: 0.5 }] as never;
+    if (unitId) canvas.inv.pages[0].bps = [{ id: 'e2e_roll_bp', name: 'BP', color: '#888', shape: [[0, 0]], origin: [4, 4], unit: { id: unitId, off: [0, 0] }, hpMax: 30, cellCount: 1 }] as never;
+    const put = await page.request.put(`/api/profile/${seller.playerId}/canvas`, { headers: { 'X-Auth-Token': seller.token }, data: canvas });
+    expect(put.ok()).toBeTruthy();
+    // po rollPct is the instance q; unit rollPct is null (unmeasured).
+    const poList = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'po', itemUid: 'e2e_roll_po', price: { tm: 'lrdst', qty: 6 } } });
+    expect(poList.status()).toBe(200);
+    expect((await poList.json()).listing.rollPct).toBe(0.5);
+    if (unitId) {
+      const uList = await page.request.post('/api/market/listings', { headers: { 'X-Auth-Token': seller.token }, data: { kind: 'unit', itemUid: 'e2e_roll_bp', price: { tm: 'lrdst', qty: 6 } } });
+      expect(uList.status()).toBe(200);
+      expect((await uList.json()).listing.rollPct).toBeNull();
+    }
+    // In the BUY grid the po card carries a 50% roll bar; the unit card
+    // shows the unmeasured badge instead (never a 0% bar).
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    const poCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_roll_po"]');
+    await expect(poCard).toBeVisible();
+    const bar = poCard.locator('[data-testid="market-rollbar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-roll-pct', '50');
+    await expect(bar).toContainText('50%');
+    if (unitId) {
+      const unitCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_roll_bp"]');
+      await expect(unitCard).toBeVisible();
+      await expect(unitCard.locator('[data-testid="market-roll-unmeasured"]')).toBeVisible();
+      await expect(unitCard.locator('[data-testid="market-rollbar"]')).toHaveCount(0);
+    }
+  });
+
+
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);

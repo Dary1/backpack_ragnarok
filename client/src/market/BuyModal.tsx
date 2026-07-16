@@ -12,7 +12,7 @@ import { buyMarketListing, type ApiMarketListing, type GameData } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { buyReasonOf } from './marketErrors';
-import { MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
+import { RollBar, MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
 
 /** The distinct modal bodies, mirroring the mock's mA..mE. 'form' is the
  * initial oath (mA); 'done' is 取引成立 (mB); the rest are the 409
@@ -97,6 +97,7 @@ export function BuyModal({ listing, gameData, locale, balance, onSettled, onClos
                   {listing.rarity ? <span className={`rar-word r-${listing.rarity}`}> {listing.rarity.toUpperCase()}</span> : null}
                 </div>
                 <div className="market-modal-dex"><span className="chip dexno">{t(locale, 'market.dexChip', { no: dexNoLabel(listing.dexNo) })}</span></div>
+                <RollBar kind={listing.kind} rollPct={listing.rollPct} locale={locale} />
               </div>
             </div>
             <table className="bd market-bd">

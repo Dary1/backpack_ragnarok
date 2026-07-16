@@ -8,6 +8,8 @@ import type { ApiMarketListing } from '../api';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
 import { ShapeGrid } from '../dex/ShapeGrid';
 import type { GameData } from '../api';
+import { t } from '../i18n';
+import type { Locale } from '../store';
 
 /** THE burn function (law 2), a byte-identical client mirror of
  * server/services/market.cjs's burnOf (and the mock's own) so the SELL
@@ -115,4 +117,26 @@ export function listingKindLine(listing: ApiMarketListing, gameData: GameData | 
 export function dexNoLabel(dexNo: number | null): string {
   if (dexNo == null) return 'No.—';
   return `No.${String(dexNo).padStart(3, '0')}`;
+}
+
+
+/** REQ-0195e: the roll-fulfillment bar. A drop instance's hack-and-slash
+ * performance sits somewhere between its def's min (0%) and max (100%);
+ * rollPct is that fraction (0..1), DTO-derived (never stored). po/si
+ * always carry it (the instance q, REQ-0063). A unit carries bp.roll?.pct
+ * once the REQ-0196 container fills, else null -> the "unmeasured" badge
+ * (未測定), NEVER a 0% bar (user ruling 2026-07-16). A tm has no roll ->
+ * render nothing. */
+export function RollBar({ kind, rollPct, locale }: { kind: string; rollPct: number | null | undefined; locale: Locale }) {
+  if (kind === 'tm') return null;
+  if (rollPct == null) {
+    return <span className="market-rollbadge" data-testid="market-roll-unmeasured">{t(locale, 'market.roll.unmeasured')}</span>;
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(rollPct * 100)));
+  return (
+    <div className="market-rollbar" data-testid="market-rollbar" data-roll-pct={pct} title={t(locale, 'market.roll.title', { pct })}>
+      <span className="market-rollbar-fill" style={{ width: `${pct}%` }} />
+      <span className="market-rollbar-label">{pct}%</span>
+    </div>
+  );
 }

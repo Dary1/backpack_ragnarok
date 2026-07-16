@@ -694,6 +694,14 @@ export interface ApiMarketListing {
   /** 1-based position in content/live/live_items.json (v1 dex
    * numbering; null = not in the dex, e.g. pilot-only items). */
   dexNo: number | null;
+  /** REQ-0195e: the roll-fulfillment fraction of the listed instance
+   * (min=0, max=1), DTO-derived (never stored on the listing) -- po/si:
+   * the instance q (REQ-0063); unit: bp.roll?.pct (the REQ-0196
+   * container) else null; tm: null. A SETTLED listing carries the value
+   * FROZEN at settle time (the live instance is gone by then), so
+   * MinePane history stays honest. null renders as the "unmeasured"
+   * badge (units) or nothing (tm); a number renders a 0-100% fill bar. */
+  rollPct: number | null;
   price: ApiMarketPrice;
   /** Law 2: burn = max(1, ceil(qty * 0.08)), settlement-only. */
   burn: number;

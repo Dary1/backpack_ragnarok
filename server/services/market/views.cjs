@@ -69,6 +69,33 @@ function sellerNameOf(sellerId, cache) {
   return name;
 }
 
+// rollPctOf (REQ-0195e): the roll-fulfillment fraction rendered as the
+// market roll bar (min=0, max=1). po/si -> the live instance q
+// (REQ-0063); unit -> bp.roll?.pct (the REQ-0196 container) else null
+// (the client shows the "unmeasured" badge, never a 0% bar); tm -> null.
+// A SETTLED listing reads the value FROZEN on its settlement record (its
+// instance no longer lives on the seller canvas by then) -- MinePane
+// history honesty. Live derivation reuses the per-request seller-canvas
+// cache listListings fills; the route callers pass caches=null, so it
+// lazily loads the single seller it needs (a create/withdraw/buy
+// response is one listing).
+function rollPctOf(listing, kind, caches) {
+  if (kind === 'tm') return null;
+  if (listing.state === 'settled' && listing.settlement && typeof listing.settlement.rollPct !== 'undefined') {
+    return listing.settlement.rollPct;
+  }
+  let ctx = caches && caches.sellers ? caches.sellers.get(listing.sellerId) : null;
+  if (!ctx) { ctx = sellerViewContext(listing.sellerId); if (caches && caches.sellers) caches.sellers.set(listing.sellerId, ctx); }
+  const canvas = ctx.canvas;
+  if (!canvas) return null;
+  if (kind === 'unit') {
+    const b = findInventoryBP(canvas, listing.itemUid);
+    return b && b.bp && b.bp.roll && typeof b.bp.roll.pct === 'number' ? b.bp.roll.pct : null;
+  }
+  const inst = kind === 'si' ? findInventorySI(canvas, listing.itemUid) : findInventoryPO(canvas, listing.itemUid);
+  return inst && typeof inst.q === 'number' ? inst.q : null;
+}
+
 function toListingDto(listing, view, caches) {
   const kind = listing.kind || 'po';
   const content = getScheduleContent();
@@ -93,6 +120,7 @@ function toListingDto(listing, view, caches) {
     rarity: def ? (def.rarity || null) : null,
     tags: def ? (def.tags || []) : [],
     dexNo: dexNo != null ? dexNo : null,
+    rollPct: rollPctOf(listing, kind, caches),
     price: { tm: listing.price.tm, qty },
     burn,
     sellerReceives: qty - burn,
