@@ -7,7 +7,7 @@
 const storage = require('../../storage.cjs');
 const players = require('../../players.cjs');
 const { getScheduleContent } = require('../core.cjs');
-const { deployedUidSet } = require('../squads.cjs');
+const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const { burnOf, getDexNoById, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, MARKET_TM_ID } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
@@ -22,7 +22,10 @@ const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 function sellerViewContext(sellerId) {
   const doc = storage.readProfile(sellerId);
   const canvas = doc ? doc.canvas : null;
-  return { canvas, deployed: deployedUidSet(sellerId, canvas) };
+  // REQ-0198 (C): `referenced` = board + preset references (a strict
+  // superset of `deployed`); a listed instance that becomes referenced
+  // derives SUSPENDED, reversibly, the same lazy law as deploy-suspension.
+  return { canvas, deployed: deployedUidSet(sellerId, canvas), referenced: referencedUidSet(canvas) };
 }
 
 // deriveView: classifies one ALREADY-normalized listing against its
@@ -45,6 +48,8 @@ function deriveView(listing, ctx, nowMs) {
     return { state: 'withdrawn', suspended: false };
   }
   if (ctx.deployed.has(listing.itemUid)) return { state: 'suspended', suspended: true };
+  // REQ-0198 (C): referenced (board/preset) -> SUSPENDED too (reversible).
+  if (ctx.referenced && ctx.referenced.has(listing.itemUid)) return { state: 'suspended', suspended: true };
   return { state: 'active', suspended: false };
 }
 

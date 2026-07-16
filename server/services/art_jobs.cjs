@@ -60,6 +60,18 @@ const genQueue = [];           // GPU generation jobs (high priority)
 const inspectQueue = [];       // CPU inspection jobs (low priority)
 const packQueue = [];          // REQ-0192 repack jobs (user-initiated: highest waiting priority)
 
+// REQ-0197: deferred-batch mode. While held, newly enqueued GENERATION jobs
+// wait in heldQueue instead of starting immediately; executeBatch() releases
+// everything held at once, grouped so same-prompt jobs run back to back --
+// ComfyUI's node cache then reuses the text-encoder conditioning instead of
+// swapping the 7.5 GB Qwen encoder in per item (art_route.py: a prompt change
+// costs 30-170 s on this box). Hold gates ONLY generation: repacks stay
+// interactive and inspections are cheap CPU work, so both keep flowing.
+// Process-local (a restart falls back to auto-run); ART_QUEUE_HOLD=1 in the
+// service environment starts the server already holding.
+let held = process.env.ART_QUEUE_HOLD === '1';
+const heldQueue = [];          // generation jobs awaiting executeBatch()
+
 /** Run a Python worker (script), feeding jobSpec on stdin and parsing ONE
  * JSON result from stdout. Resolves to {status:'failed',error} rather than
  * rejecting, so the queue pump always advances. `onChild` (optional) hands
@@ -221,7 +233,53 @@ function pump() {
 /** Enqueue a generation job for an already-created (status queued) render.
  * desc: {renderId, artwork, seed, tiling}; enqueued_at is stamped here
  * (REQ-0156 queue panel metadata). */
-function enqueue(desc) { desc.enqueued_at = Date.now(); genQueue.push(desc); pump(); }
+function enqueue(desc) {
+  desc.enqueued_at = Date.now();
+  if (held) { heldQueue.push(desc); return; }
+  genQueue.push(desc);
+  pump();
+}
+
+/** REQ-0197: prompt-affinity group key. The artwork id + the one-shot shape
+ * override are what change the composed prompt/graph; two seeds of the same
+ * artwork differ only in the RandomNoise node, which costs no re-encode. */
+function groupKey(d) {
+  return d.artwork.id + '|' + JSON.stringify(d.shapeOverride === undefined ? null : d.shapeOverride);
+}
+
+/** REQ-0197: move every held job into the live queue, grouped by prompt.
+ * Groups run in first-enqueued order; enqueue order within a group (sort is
+ * stable). Returns how many jobs were released. */
+function releaseHeld() {
+  if (!heldQueue.length) return 0;
+  const first = new Map();
+  heldQueue.forEach((d, i) => { const k = groupKey(d); if (!first.has(k)) first.set(k, i); });
+  const batch = heldQueue.splice(0).sort((a, b) => first.get(groupKey(a)) - first.get(groupKey(b)));
+  genQueue.push(...batch);
+  pump();
+  return batch.length;
+}
+
+/** REQ-0197: toggle deferred-batch mode. Turning hold ON also moves the
+ * not-yet-started live pending jobs behind the gate (the in-flight job always
+ * finishes -- killing it would waste a cold load). Turning it OFF releases
+ * everything held, batch-sorted, and resumes auto-run. */
+function setHold(v) {
+  if (v && !held) {
+    held = true;
+    heldQueue.push(...genQueue.splice(0));
+  } else if (!v && held) {
+    held = false;
+    releaseHeld();
+  }
+  return listJobs();
+}
+
+/** REQ-0197: run everything currently held (batch-sorted) while STAYING
+ * held -- jobs enqueued during the run wait for the next executeBatch. */
+function executeBatch() {
+  return { released: releaseHeld() };
+}
 
 /** Enqueue a lower-priority inspection job {renderId, artworkId, kitId}. */
 function enqueueInspection(desc) { inspectQueue.push(desc); pump(); }
@@ -274,8 +332,13 @@ async function processPackJob(desc) {
   }
 }
 
-/** GPU generation queue depth (waiting + the one in flight) for the UI. */
-function queueDepth() { return genQueue.length + (running && runningType === 'generate' ? 1 : 0); }
+/** GPU generation queue depth (waiting -- live or held -- plus the one in
+ * flight) for the UI. Held jobs count: to the badge they are renders that
+ * exist and have not run, wherever they wait (REQ-0197). */
+function queueDepth() {
+  return genQueue.length + heldQueue.length +
+    (running && runningType === 'generate' ? 1 : 0);
+}
 /** CPU inspection queue depth (waiting + in flight); REQ-0192 repacks are
  * counted here too -- to the UI badge they are the same kind of background
  * CPU work, just higher priority. */
@@ -303,6 +366,13 @@ function listJobs() {
       renderId: d.renderId, artwork: d.artwork.system_name,
       seed: d.seed, enqueued_at: d.enqueued_at,
     })),
+    // REQ-0197: the gated set, listed apart from live pending so the panel
+    // can label it; held is the mode flag itself.
+    heldPending: heldQueue.map((d) => ({
+      renderId: d.renderId, artwork: d.artwork.system_name,
+      seed: d.seed, enqueued_at: d.enqueued_at,
+    })),
+    held,
     inspectDepth: inspectDepth(),
   };
 }
@@ -332,6 +402,13 @@ async function cancelJob(renderId) {
     await storage.updateRenderResult(d.renderId, { status: 'failed', error: 'canceled by user' });
     return { canceled: 'pending', renderId };
   }
+  // REQ-0197: a held job cancels exactly like a pending one.
+  const hidx = heldQueue.findIndex((d) => d.renderId === renderId);
+  if (hidx >= 0) {
+    const d = heldQueue.splice(hidx, 1)[0];
+    await storage.updateRenderResult(d.renderId, { status: 'failed', error: 'canceled by user' });
+    return { canceled: 'pending', renderId };
+  }
   if (running && runningType === 'generate' && runningDesc && runningDesc.renderId === renderId) {
     runningDesc.canceled = true;
     killRunningChild();
@@ -342,4 +419,4 @@ async function cancelJob(renderId) {
   throw e;
 }
 
-module.exports = { enqueue, enqueueInspection, enqueuePack, queueDepth, inspectDepth, runPython, listJobs, cancelJob };
+module.exports = { enqueue, enqueueInspection, enqueuePack, queueDepth, inspectDepth, runPython, listJobs, cancelJob, setHold, executeBatch };

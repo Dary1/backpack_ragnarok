@@ -39,10 +39,12 @@ module.exports.run = async function run(h) {
   const mktPoor = playersFixture.createPlayer('MarketPoor', []);
 
   // Seller: inventory POs (page 0) + one squad (index 1) that
-  // REFERENCES two of the inventory-homed items (mkt_susp / mkt_susp2 --
-  // the REQ-0030 reference model: placing on a board references the
-  // uid, the home stays in st.inv), used to deploy them for the
-  // suspension / Law-of-Possession tests. bps non-empty so the squad
+  // REFERENCES ONE inventory-homed item (mkt_susp2 -- the REQ-0030
+  // reference model: placing on a board / into a squad references the
+  // uid, the home stays in st.inv). REQ-0198 (C): a preset-referenced
+  // item is now 'in_use' (never freshly listable), so mkt_susp2 is the
+  // in-use/deploy fixture while mkt_susp stays fully STOWED (listable,
+  // then reference-suspended by the test). bps non-empty so the squad
   // passes engine.isSquadDeployable.
   function invPage(pos, tms) { return { bps: [], pos: pos || [], sis: [], tms: tms || [] }; }
   function mkCanvas(pages, squadStore) {
@@ -65,7 +67,6 @@ module.exports.run = async function run(h) {
     linked: true,
     bps: [{ id: 'bp_mkt', name: 'BP mkt', color: '#888888', shape: [[0, 0], [0, 1]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 }],
     pos: [
-      { uid: 'mkt_susp', id: 'blade', cell: [1, 1], rot: 0 },
       { uid: 'mkt_susp2', id: 'blade', cell: [1, 2], rot: 0 },
     ],
     sis: [],
@@ -200,41 +201,63 @@ module.exports.run = async function run(h) {
     assert.strictEqual(byDexNo1.body.listings[0].itemId, 'blade');
   });
 
-  await AT('market: suspension -- deploying the listed item suspends (browsable, unbuyable); undeploy reverts to active; deployed item cannot be newly listed', async () => {
+  await AT('market: suspension + REQ-0198 in-use eligibility -- a REFERENCED item (board/preset) cannot be newly listed (409 in_use) and SUSPENDS an existing listing (reversibly); a room-DEPLOYED item keeps its own 409 deployed', async () => {
+    // mkt_susp is STOWED (home in inv page 0 only, not in any squad) -> listable.
     const created = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_susp', price: { tm: 'lrdst', qty: 20 } });
-    assert.strictEqual(created.status, 200);
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
     const suspListingId = created.body.listing.id;
 
-    // Deploy squad 1 (references mkt_susp + mkt_susp2) to a room slot.
+    // REQ-0198 (C): mkt_susp2 is REFERENCED by squad-1's stored PRESET
+    // snapshot (presets.store[1]) though NO room deploys it -- ineligible
+    // to list with the NEW reason 'in_use' (distinct from room 'deployed').
+    const refCreate = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_susp2', price: { tm: 'lrdst', qty: 6 } });
+    assert.strictEqual(refCreate.status, 409, JSON.stringify(refCreate.body));
+    assert.strictEqual(refCreate.body.reason, 'in_use');
+
+    // REQ-0198 (C): referencing the ALREADY-LISTED mkt_susp onto the ACTIVE
+    // BOARD (top-level canvas.pos -- the reference model's "placed on the
+    // board") derives SUSPENDED (browsable, unbuyable), reversibly.
+    const doc = scheduleStorage.readProfile(mktSeller.playerId);
+    doc.canvas.pos.push({ uid: 'mkt_susp', id: 'blade', cell: [5, 5], rot: 0 });
+    scheduleStorage.writeProfile(mktSeller.playerId, doc.canvas);
+    let browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
+    const suspended = browse.body.listings.find((x) => x.id === suspListingId);
+    assert.ok(suspended, 'referenced listing stays browsable');
+    assert.strictEqual(suspended.state, 'suspended');
+    assert.strictEqual(suspended.suspended, true);
+    const buyAttempt = await marketReq('POST', '/api/market/listings/' + suspListingId + '/buy', mktBuyer.token);
+    assert.strictEqual(buyAttempt.status, 409);
+    assert.strictEqual(buyAttempt.body.reason, 'suspended');
+    // Remove the board reference -> active again (reversible; stored state never flipped).
+    const doc2 = scheduleStorage.readProfile(mktSeller.playerId);
+    doc2.canvas.pos = doc2.canvas.pos.filter((pp) => pp.uid !== 'mkt_susp');
+    scheduleStorage.writeProfile(mktSeller.playerId, doc2.canvas);
+    browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
+    const revived = browse.body.listings.find((x) => x.id === suspListingId);
+    assert.strictEqual(revived.state, 'active');
+    assert.strictEqual(revived.suspended, false);
+
+    // Room-deploy behavior UNCHANGED: deploy squad-1 (references mkt_susp2)
+    // to a room slot; creating a listing for a DEPLOYED item keeps its own
+    // 'deployed' reason (checked BEFORE the broader 'in_use').
     const room = await marketReq('POST', '/api/schedule/rooms', mktSeller.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     assert.strictEqual(room.status, 200, JSON.stringify(room.body));
     const roomId = room.body.room.id;
     const slotRes = await marketReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/0', mktSeller.token, { squadIndex: 1 });
     assert.strictEqual(slotRes.status, 200, JSON.stringify(slotRes.body));
-
-    const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
-    const suspended = browse.body.listings.find((x) => x.id === suspListingId);
-    assert.ok(suspended, 'suspended listing stays browsable');
-    assert.strictEqual(suspended.state, 'suspended');
-    assert.strictEqual(suspended.suspended, true);
-
-    const buyAttempt = await marketReq('POST', '/api/market/listings/' + suspListingId + '/buy', mktBuyer.token);
-    assert.strictEqual(buyAttempt.status, 409);
-    assert.strictEqual(buyAttempt.body.reason, 'suspended');
-
-    // Law of Possession at CREATE time too: mkt_susp2 is now deployed.
     const deployedCreate = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_susp2', price: { tm: 'lrdst', qty: 6 } });
     assert.strictEqual(deployedCreate.status, 409);
     assert.strictEqual(deployedCreate.body.reason, 'deployed');
-
-    // Undeploy (cancel the room) -> active again, buyable again.
+    // Cancel the room -> mkt_susp2 back to a plain preset reference (still
+    // 'in_use', never deployed) -- the room gate released, the reference
+    // gate persists.
     const del = await marketReq('DELETE', '/api/schedule/rooms/' + roomId, mktSeller.token);
     assert.strictEqual(del.status, 200, JSON.stringify(del.body));
-    const browse2 = await marketReq('GET', '/api/market/listings', mktBuyer.token);
-    const revived = browse2.body.listings.find((x) => x.id === suspListingId);
-    assert.strictEqual(revived.state, 'active');
-    assert.strictEqual(revived.suspended, false);
-    // Stored state never flipped -- suspension is derived, not persisted.
+    const stillRef = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_susp2', price: { tm: 'lrdst', qty: 6 } });
+    assert.strictEqual(stillRef.status, 409);
+    assert.strictEqual(stillRef.body.reason, 'in_use', 'undeployed but still preset-referenced -> in_use');
+
+    // The mkt_susp listing must be untouched/active for the downstream tests.
     assert.strictEqual(scheduleStorage.readMarketListing(suspListingId).state, 'active');
   });
 

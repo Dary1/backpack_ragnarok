@@ -151,6 +151,66 @@ async function runCancelRunning() {
   });
 }
 
+async function runDeferred() {
+  await AT('G5 REQ-0197 hold gates generation; executeBatch releases grouped by prompt; held cancel works; unhold drains', async () => {
+    const a = await storage.createArtwork({ system_name: 'q_hold_a', kind: 'si', shape: null, gen_width: 256, gen_height: 256, main_object: 'axe', prompt_template: '{main_object}' });
+    const b = await storage.createArtwork({ system_name: 'q_hold_b', kind: 'si', shape: null, gen_width: 256, gen_height: 256, main_object: 'bow', prompt_template: '{main_object}' });
+    jobs.setHold(true);
+    const ra1 = await storage.createRender(a.id, null, 'queued');
+    const rb1 = await storage.createRender(b.id, null, 'queued');
+    const ra2 = await storage.createRender(a.id, null, 'queued');
+    const rb2 = await storage.createRender(b.id, null, 'queued');
+    // interleaved on purpose: a, b, a, b -- the release must group a,a then b
+    jobs.enqueue({ renderId: ra1.id, artwork: a, seed: ra1.seed, tiling: false });
+    jobs.enqueue({ renderId: rb1.id, artwork: b, seed: rb1.seed, tiling: false });
+    jobs.enqueue({ renderId: ra2.id, artwork: a, seed: ra2.seed, tiling: false });
+    jobs.enqueue({ renderId: rb2.id, artwork: b, seed: rb2.seed, tiling: false });
+    await sleep(300);
+    let snap = jobs.listJobs();
+    assert.strictEqual(snap.held, true, 'held flag on');
+    assert.strictEqual(snap.running, null, 'nothing starts while held');
+    assert.deepStrictEqual(snap.pending, [], 'live queue stays empty while held');
+    assert.deepStrictEqual(snap.heldPending.map((p) => p.renderId), [ra1.id, rb1.id, ra2.id, rb2.id], 'held set in enqueue order');
+    assert.strictEqual(snap.heldPending[0].artwork, 'q_hold_a', 'held metadata carries system_name');
+    assert.strictEqual(jobs.queueDepth(), 4, 'held jobs still count in the queue depth badge');
+    const rsA = await storage.listRenders(a.id);
+    assert.ok(rsA.every((x) => x.status === 'queued'), 'held renders stay status queued');
+    // a held job cancels exactly like a pending one
+    const out = await jobs.cancelJob(rb2.id);
+    assert.strictEqual(out.canceled, 'pending');
+    const c = await waitForRender('q_hold_b', rb2.seed, 5000);
+    assert.strictEqual(c.status, 'failed');
+    assert.strictEqual(c.error, 'canceled by user');
+    // execute batch: held a,b,a releases as a,a,b (groups in first-enqueued order)
+    process.env.ART_MOCK_DELAY_MS = '2000'; // hold job 1 long enough to observe the order
+    const res = jobs.executeBatch();
+    assert.strictEqual(res.released, 3, 'exactly the held jobs released');
+    snap = jobs.listJobs();
+    assert.ok(snap.running && snap.running.renderId === ra1.id, 'first group leader runs first');
+    assert.deepStrictEqual(snap.pending.map((p) => p.renderId), [ra2.id, rb1.id], 'same-prompt job jumped ahead of the earlier-enqueued other group');
+    assert.strictEqual(snap.held, true, 'executeBatch stays in hold mode');
+    delete process.env.ART_MOCK_DELAY_MS;
+    assert.strictEqual((await waitForRender('q_hold_a', ra1.seed, 30000)).status, 'ok');
+    assert.strictEqual((await waitForRender('q_hold_a', ra2.seed, 30000)).status, 'ok');
+    assert.strictEqual((await waitForRender('q_hold_b', rb1.seed, 30000)).status, 'ok');
+    // jobs enqueued after the execute keep waiting for the NEXT execute/unhold
+    const rb3 = await storage.createRender(b.id, null, 'queued');
+    jobs.enqueue({ renderId: rb3.id, artwork: b, seed: rb3.seed, tiling: false });
+    await sleep(300);
+    snap = jobs.listJobs();
+    assert.deepStrictEqual(snap.heldPending.map((p) => p.renderId), [rb3.id], 'post-execute enqueue is held for the next batch');
+    assert.strictEqual(snap.running, null, 'it does not start on its own');
+    // unhold: releases the remainder and resumes auto-run
+    jobs.setHold(false);
+    assert.strictEqual((await waitForRender('q_hold_b', rb3.seed, 30000)).status, 'ok');
+    snap = jobs.listJobs();
+    assert.strictEqual(snap.held, false, 'hold off');
+    const rb4 = await storage.createRender(b.id, null, 'queued');
+    jobs.enqueue({ renderId: rb4.id, artwork: b, seed: rb4.seed, tiling: false });
+    assert.strictEqual((await waitForRender('q_hold_b', rb4.seed, 30000)).status, 'ok', 'auto-run restored');
+  });
+}
+
 async function runAdoptedStillSafe() {
   await AT('G3 adopted render remains undeletable after cancels exist', async () => {
     const a = await storage.createArtwork({ system_name: 'q_adopt', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
@@ -168,6 +228,7 @@ async function runAdoptedStillSafe() {
   await runAggregates();
   await runCancelPending();
   await runCancelRunning();
+  await runDeferred();
   await runAdoptedStillSafe();
   await storage.clearAllArtworks();
   await storage.closeArtPool();

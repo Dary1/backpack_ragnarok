@@ -23,6 +23,7 @@ const REASON_KEY: Record<string, TranslationKey> = {
   insufficient_balance: 'market.err.insufficientBalance',
   warehouse_full: 'market.err.warehouseFull',
   deployed: 'market.err.deployed',
+  in_use: 'market.err.inUse', // REQ-0198 (C): board-/preset-referenced instance
   already_listed: 'market.err.alreadyListed',
 };
 

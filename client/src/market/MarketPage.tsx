@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePolledResource } from '../lib/usePolledResource';
 import { fetchMarketFurnace, fetchMarketListings, type ApiMarketFurnaceResponse, type ApiMarketListing } from '../api';
 import { t } from '../i18n';
-import { loadGame, useGameStore, type Locale } from '../store';
+import { clearMarketSellFocus, loadGame, useGameStore, type Locale } from '../store';
 import type { GameState } from '../engine/engine.d.ts';
 import { BuyModal } from './BuyModal';
 import { BuyPane } from './BuyPane';
@@ -63,6 +63,9 @@ interface MarketPageProps {
 export function MarketPage({ locale }: MarketPageProps) {
   const snapshot = useGameStore();
   const [pane, setPane] = useState<Pane>('buy');
+  // REQ-0198 (B): a deep-link sell target, latched from the store's one-shot
+  // marketSellFocus so a later manual pane switch does not keep re-forcing it.
+  const [sellPreselect, setSellPreselect] = useState<{ uid: string; kind: 'po' | 'si' | 'unit' } | null>(null);
   const [browse, setBrowse] = useState<ApiMarketListing[]>([]);
   const [mine, setMine] = useState<ApiMarketListing[]>([]);
   const [furnace, setFurnace] = useState<ApiMarketFurnaceResponse['furnace'] | null>(null);
@@ -84,6 +87,17 @@ export function MarketPage({ locale }: MarketPageProps) {
   // Guard so an in-flight fetch that resolves after unmount doesn't setState.
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
+
+  // REQ-0198 (B): '#/market?sell=<uid>&kind=' deep link -> switch to the
+  // SELL pane and preselect the instance (FloatingItemTip's "sell this").
+  // Consume the store's one-shot focus immediately (mirrors Dex/ContentAdmin).
+  const marketSellFocus = snapshot.marketSellFocus;
+  useEffect(() => {
+    if (!marketSellFocus) return;
+    setPane('sell');
+    setSellPreselect(marketSellFocus);
+    clearMarketSellFocus();
+  }, [marketSellFocus]);
 
   const loadBrowse = useCallback(async () => {
     const res = await fetchMarketListings();
@@ -210,6 +224,7 @@ export function MarketPage({ locale }: MarketPageProps) {
               tms={marketTms}
               allListings={allListings}
               listedUids={listedUids}
+              preselect={sellPreselect}
               onListed={refreshAfterServerMutation}
             />
           ) : null}

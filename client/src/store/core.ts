@@ -141,6 +141,18 @@ export const CONTENTADMIN_HASH_RE = /^#\/contentadmin\/(.+)$/;
 // contentadmin/dex/invite checks.
 export const ARTADMIN_HASH_RE = /^#\/artadmin\/(.+)$/;
 
+// REQ-0198 (B): '#/market?sell=<uid>&kind=<po|si|unit>' is the market SELL
+// deep link (an inventory instance's "sell this" entry point, FloatingItemTip).
+// A QUERY-carrying hash rather than a path segment, since the target is an
+// instance uid + kind pair; the kind group is optional (defaults to 'po').
+// When the current hash matches, the route resolves to 'market' (a plain
+// Route member) AND marketSellFocus is set so MarketPage switches to the
+// SELL pane + preselects the instance. Checked BEFORE the generic
+// routeFromHash() fallback (which would otherwise see 'market?sell=...' as
+// an unknown segment and drop to 'backpacks'), same specific-before-generic
+// ordering as the dex/contentadmin/artadmin deep links above.
+export const MARKET_SELL_HASH_RE = /^#\/market\?sell=([^&]+)(?:&kind=(po|si|unit))?$/;
+
 // REQ-0069: the EMPTY hash ('', '#' or '#/') is the landing (title)
 // screen -- the app's boot route. Named routes keep their '#/<name>'
 // hashes, and an UNKNOWN hash still falls back to 'backpacks' (NOT the
@@ -218,6 +230,12 @@ export interface StoreSnapshot {
    * consumes this once (selects that artwork) then calls
    * clearArtAdminFocusName() -- null the rest of the time. */
   artAdminFocusName: string | null;
+  /** REQ-0198 (B): pending market SELL deep-link target, set by
+   * initRouting()/onHashChange when the hash matches MARKET_SELL_HASH_RE
+   * ('#/market?sell=<uid>&kind=<po|si|unit>'). MarketPage consumes this
+   * once (switches to the SELL pane + preselects the instance) then calls
+   * clearMarketSellFocus() -- null the rest of the time. */
+  marketSellFocus: { uid: string; kind: 'po' | 'si' | 'unit' } | null;
 }
 
 export let snapshot: StoreSnapshot = {
@@ -238,6 +256,7 @@ export let snapshot: StoreSnapshot = {
   dexFocusId: null,
   contentAdminFocusName: null,
   artAdminFocusName: null,
+  marketSellFocus: null,
 };
 
 const listeners = new Set<() => void>();

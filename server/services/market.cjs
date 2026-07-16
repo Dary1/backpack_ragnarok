@@ -77,7 +77,7 @@ const listings = require('./market/listings.cjs');
 const views = require('./market/views.cjs');
 const trade = require('./market/trade.cjs');
 const furnace = require('./market/furnace.cjs');
-const { deployedUidSet } = require('./squads.cjs');
+const { deployedUidSet, referencedUidSet } = require('./squads.cjs');
 
 module.exports = {
   MARKET_TM_ID: lib.MARKET_TM_ID,
@@ -95,6 +95,7 @@ module.exports = {
   findInventorySI: lib.findInventorySI,
   findInventoryBP: lib.findInventoryBP,
   deployedUidSet,
+  referencedUidSet,
   normalizeListing: listings.normalizeListing,
   listListings: views.listListings,
   createListing: listings.createListing,

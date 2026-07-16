@@ -341,6 +341,74 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     }
   });
 
+  // REQ-0198 (C): a board-/preset-REFERENCED instance is "in use, not in my
+  // inventory" -- the picker locks it (shown, not hidden) and createListing
+  // 409s in_use. Content-agnostic: keys off data-item-uid / data-locked, not
+  // any specific def name.
+  test('SELL REQ-0198: board-/preset-referenced instances lock (in use); only the stowed one is sellable; createListing 409 in_use', async ({ page }) => {
+    // Three same-def POs, all HOMED in inv page 0 (the reference model keeps
+    // the home): one purely STOWED, one also REFERENCED by the active board
+    // (top-level canvas.pos), one also REFERENCED by a squad PRESET snapshot
+    // (presets.store[1]).
+    const canvas = devBuyerCanvas(50, [
+      { uid: 'e2e_ref_stow', id: 'tower_shield' },
+      { uid: 'e2e_ref_board', id: 'tower_shield' },
+      { uid: 'e2e_ref_preset', id: 'tower_shield' },
+    ]);
+    canvas.pos = [{ uid: 'e2e_ref_board', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }] as never;
+    canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_ref', name: 'BP', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 }], pos: [{ uid: 'e2e_ref_preset', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
+
+    const stow = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_stow"]');
+    const board = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_board"]');
+    const preset = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_ref_preset"]');
+    await expect(stow).toHaveAttribute('data-locked', 'false');
+    await expect(board).toHaveAttribute('data-locked', 'true');
+    await expect(preset).toHaveAttribute('data-locked', 'true');
+    await expect(board.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    await expect(preset.locator('[data-testid="market-sell-lockword"]')).toBeVisible();
+    // The stowed one selects into the carve panel; the referenced ones cannot.
+    await stow.click();
+    await expect(page.locator('[data-testid="market-carve-name"]')).toBeVisible();
+
+    // Server truth behind the UI: a referenced uid 409s in_use (the dev buyer
+    // is the caller, so createListing reads its own referenced canvas).
+    for (const uid of ['e2e_ref_board', 'e2e_ref_preset']) {
+      const res = await page.request.post('/api/market/listings', { data: { itemUid: uid, price: { tm: 'lrdst', qty: 10 } } });
+      expect(res.status()).toBe(409);
+      expect((await res.json()).reason).toBe('in_use');
+    }
+  });
+
+  // REQ-0198 (A): the SELL picker renders a per-instance RollBar; the card
+  // carries data-roll-pct = round(instance-q * 100).
+  test('SELL REQ-0198: a picker card carries the instance roll % (data-roll-pct)', async ({ page }) => {
+    const canvas = devBuyerCanvas(50, [{ uid: 'e2e_roll_1', id: 'tower_shield' }]);
+    (canvas.inv.pages[0].pos[0] as { q?: number }).q = 0.42; // REQ-0063 instance quality roll
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    const bar = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_roll_1"] [data-testid="market-rollbar"]');
+    await expect(bar).toBeVisible();
+    await expect(bar).toHaveAttribute('data-roll-pct', '42'); // round(0.42 * 100)
+  });
+
+  // REQ-0198 (B): the '#/market?sell=<uid>&kind=' deep link (FloatingItemTip's
+  // "sell this" target) opens the SELL pane with the instance preselected.
+  test('SELL REQ-0198: the #/market?sell= deep link opens the SELL pane preselected', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_dl_1', id: 'tower_shield' }]) });
+    await bootApp(page);
+    await page.evaluate(() => { window.location.hash = '#/market?sell=e2e_dl_1&kind=po'; });
+    await expect(page.locator('[data-testid="market-page"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="market-loading"]')).toHaveCount(0, { timeout: 10000 });
+    await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_dl_1"]')).toHaveClass(/is-selected/);
+    await expect(page.locator('[data-testid="market-carve-name"]')).toBeVisible();
+  });
+
   test('MINE: withdraw pulls a listing off the hearth (free, no burn), and the row leaves the browse', async ({ page }) => {
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'dagger' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_wd_1', price: { tm: 'lrdst', qty: 8 } } });
