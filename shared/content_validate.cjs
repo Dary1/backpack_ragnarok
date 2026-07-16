@@ -27,7 +27,10 @@ const SI_ALLOWED_KEYS = new Set([
 // to this allowlist without the code that honours it is the failure mode this REQ
 // exists to end.
 const UNIT_ALLOWED_KEYS = new Set([
-  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape',
+  // REQ-0200: `charge` joins the unit allowlist. The v13/v14 comment above warned
+  // that a def field nothing evaluates is fiction -- this REQ ends that: validateCharge()
+  // enforces the AST and sim/lib/unit_charge.cjs is the runtime that honours it.
+  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape', 'charge',
 ]);
 
 function isFiniteNum(v) {
@@ -152,6 +155,96 @@ function validateSocket(sock, vocab, ctx) {
   if (sock.ay !== undefined && !isFiniteNum(sock.ay)) throw new Error(ctx + ': socket.ay must be a finite number');
 }
 
+/** REQ-0200: validates ONE charge-effect object {verb, target} in a unit's charge
+ * block. The verb half mirrors validateEffect's verb rules, but in the UNIT CHARGE
+ * context the ranged params are n / hits / pct / dur_s (a def uses `pct` -- percent
+ * points -- where the item form of the same verb uses `n`; multi_strike.hits is a
+ * range here, not the item form's scalar). Exceptions the FROZEN grammar allows:
+ * bonus_vs_status may carry status "any" (= any afflicted status), and fire_items.tag
+ * is an optional po_tag filter. `target` must be a key of vocab.charge.targets. */
+function validateChargeEffect(ceff, vocab, targets, ctx) {
+  if (!ceff || typeof ceff !== 'object' || Array.isArray(ceff)) {
+    throw new Error(ctx + ': charge effect must be an object');
+  }
+  const verb = ceff.verb;
+  if (!verb || typeof verb !== 'object' || typeof verb.t !== 'string') {
+    throw new Error(ctx + ': effect.verb.t is required');
+  }
+  if (!vocab.verbs.includes(verb.t)) {
+    throw new Error(ctx + ': unknown verb type "' + verb.t + '"');
+  }
+  for (const p of ['n', 'hits', 'pct', 'dur_s']) {
+    if (verb[p] !== undefined && !isValidRange(verb[p])) {
+      throw new Error(ctx + ': verb.' + p + ' must be a [lo,hi] range with 0 < lo <= hi');
+    }
+  }
+  if (verb.status !== undefined) {
+    const anyOk = verb.t === 'bonus_vs_status' && verb.status === 'any';
+    if (!anyOk && !vocab.statuses.includes(verb.status)) {
+      throw new Error(ctx + ': unknown status "' + verb.status + '"');
+    }
+  }
+  if (verb.t === 'fire_items' && verb.tag !== undefined) {
+    if (!(verb.tag in vocab.po_tags)) {
+      throw new Error(ctx + ': fire_items.tag "' + verb.tag + '" is not a po_tag');
+    }
+  }
+  if (typeof ceff.target !== 'string' || !(ceff.target in targets)) {
+    throw new Error(ctx + ': effect.target must be one of ' + Object.keys(targets).join('/') +
+      ' (got ' + JSON.stringify(ceff.target) + ')');
+  }
+}
+
+/** REQ-0200: validates a unit's `charge` block against the FROZEN grammar
+ * (content/vocab.json `charge`) + closed vocabulary + range rules. The legal
+ * trigger union, spend modes and targets are READ FROM vocab (charge.triggers /
+ * charge.spend / charge.targets) so this validator can never drift from the
+ * grammar it is enforcing. Throws a descriptive Error on the first violation;
+ * never coerces. */
+function validateCharge(charge, vocab, ctx) {
+  if (!charge || typeof charge !== 'object' || Array.isArray(charge)) {
+    throw new Error(ctx + ': charge must be an object');
+  }
+  const cv = vocab.charge || {};
+  const legalTriggers = cv.triggers || {};
+  const spendModes = cv.spend || {};
+  const targets = cv.targets || {};
+  const trig = charge.trigger;
+  if (!trig || typeof trig !== 'object' || typeof trig.t !== 'string') {
+    throw new Error(ctx + ': charge.trigger.t is required');
+  }
+  if (!(trig.t in legalTriggers)) {
+    throw new Error(ctx + ': trigger "' + trig.t + '" is not a charge-legal trigger');
+  }
+  if (trig.t === 'every_secs' && !isValidRange(trig.s)) {
+    throw new Error(ctx + ': charge.trigger.s must be a [lo,hi] range with 0 < lo <= hi');
+  }
+  if (charge.gain !== 'count' && charge.gain !== 'damage') {
+    throw new Error(ctx + ': charge.gain must be "count" or "damage"');
+  }
+  if (!isValidRange(charge.capacity)) {
+    throw new Error(ctx + ': charge.capacity must be a [lo,hi] range with 0 < lo <= hi');
+  }
+  if (typeof charge.spend !== 'string' || !(charge.spend in spendModes)) {
+    throw new Error(ctx + ': charge.spend must be one of ' + Object.keys(spendModes).join('/'));
+  }
+  if (charge.spend === 'transform') {
+    if (typeof charge.transform_to !== 'string' || !charge.transform_to) {
+      throw new Error(ctx + ': charge.transform_to (a unit-def id string) is required when spend="transform"');
+    }
+  } else if (charge.transform_to !== undefined) {
+    throw new Error(ctx + ': charge.transform_to is only allowed when spend="transform"');
+  }
+  const needEffects = charge.spend === 'fire_on_full' || charge.spend === 'passive_per_stack';
+  if (needEffects && (!Array.isArray(charge.effects) || charge.effects.length === 0)) {
+    throw new Error(ctx + ': charge.effects (a non-empty array) is required for spend="' + charge.spend + '"');
+  }
+  if (charge.effects !== undefined) {
+    if (!Array.isArray(charge.effects)) throw new Error(ctx + ': charge.effects must be an array');
+    charge.effects.forEach((ceff, i) => validateChargeEffect(ceff, vocab, targets, ctx + '.effects[' + i + ']'));
+  }
+}
+
 /** Validates the full PUT body against the schema allowlist for `kind`
  * ('item' or 'si') plus every closed-vocabulary/range rule. Throws on the
  * first violation found (message becomes the 400 response body's
@@ -214,6 +307,12 @@ function validateBody(body, kind, vocab) {
     if (typeof body.connection_shape !== 'string' || !(body.connection_shape in shapes)) {
       throw new Error('unknown connection_shape "' + body.connection_shape + '" (must be a key of vocab.connection_shapes)');
     }
+  }
+  // REQ-0200: a unit's `charge` block (FROZEN grammar). Only unit/1 carries it -- the
+  // allowlist at the top already rejects `charge` on item/si, so validating whenever it
+  // is present (mirroring effects/sockets above) cannot loosen the item/si contract.
+  if (body.charge !== undefined) {
+    validateCharge(body.charge, vocab, 'charge');
   }
 }
 
@@ -430,5 +529,5 @@ module.exports = {
   // REQ-0184: monster_pack/1 layout -- the ONE definition, shared by the machine check and the sim.
   validateMonsterPackEntry, parseA1, formatA1, cellsFor, PLACEABLE, FIELD_COLS, FIELD_ROWS,
   DUNGEON_LOCALES,
-  isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody,
+  isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody, validateCharge,
 };

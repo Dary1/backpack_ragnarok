@@ -139,6 +139,18 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     };
   }
 
+  // REQ-0200: attach the unit def's `charge` block (if any) so runEncounter can build
+  // a charge manager keyed on this BP. undefined for ALL current content (no live unit
+  // carries a charge block, and callers with no unit registry resolve UNIT_DEFS = {})
+  // -> no new property is set -> byte-identical goldens.
+  const rawBpById = new Map(st.bps.map(b => [b.id, b]));
+  for (const bp of bps) {
+    const bpDef = rawBpById.get(bp.id);
+    const u = bpDef && bpDef.unit;
+    const def = u && u.id ? UNIT_DEFS[u.id] : null;
+    if (def && def.charge) { bp.charge = def.charge; bp.unitId = u.id; }
+  }
+
   // Build PO instances with local + field cells, and figure out which BP
   // each PO physically sits in (needed for buff_self_per_tag "in this BP").
   const posRaw = st.pos.filter(p => p.loc === 'grid').map(p => {
