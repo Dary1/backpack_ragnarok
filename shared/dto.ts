@@ -195,6 +195,32 @@ export interface ApiPackEntry {
   i18n?: { ja?: { name?: string } };
 }
 
+/** REQ-0208: a monster_def (enemy/1 dialect) as served for the Dex -- the
+ * display slice of the SAME registry-first payload the sim fights with
+ * (services/core.cjs getScheduleContent; see server/lib/content.cjs
+ * monstersFromCore). `hp` is the [min,max] roll band; `footprint` is [w,h]
+ * in cells (the REQ-0188 drift guard keeps the def field in agreement with
+ * the linked artwork). `skills` are skill ids; display names resolve through
+ * ApiContentPayload.monster_skills. */
+export interface ApiMonsterEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  /** enemy/1 dialect: lowercase (common/uncommon/rare/relic). */
+  rarity: string;
+  hp?: [number, number];
+  footprint?: [number, number];
+  skills?: string[];
+  pack_role?: string;
+  i18n?: { en?: { name?: string }; ja?: { name?: string } };
+}
+
+/** REQ-0208: display names for one skill id referenced by a served monster. */
+export interface ApiSkillName {
+  name: string;
+  name_ja?: string;
+}
+
 /** REQ-0170 / REQ-0128b: one entry of vocab.json's connection_shapes table. */
 export interface ApiConnShape {
   kind: 'ray' | 'offset' | 'none';
@@ -212,6 +238,8 @@ export interface ApiContentPayload {
   tms: Record<string, ApiTmEntry>; // REQ-0042
   units: Record<string, ApiUnitEntry>; // REQ-0170
   packs: Record<string, ApiPackEntry>; // REQ-0170
+  monsters: Record<string, ApiMonsterEntry>; // REQ-0208
+  monster_skills: Record<string, ApiSkillName>; // REQ-0208
   connection_shapes: Record<string, ApiConnShape>; // REQ-0170
   trees: ApiTrees;
   scenario: ApiScenario;

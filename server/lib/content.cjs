@@ -229,7 +229,15 @@ async function computeArtUrls() {
   const names = [].concat(
     Object.keys(payload.items || {}),
     Object.keys(payload.sis || {}),
-    Object.keys(payload.tms || {})
+    Object.keys(payload.tms || {}),
+    // REQ-0208: monster ids join the resolved map for the Dex's monster
+    // catalog. resolveItemArtNames is kind-generic (def.artwork_ref adopted ->
+    // exact-name adopted -> omitted) and monster artworks follow the exact-name
+    // convention (artwork system_name == enemy id -- REQ-0184/0188), so no new
+    // resolver is needed. Units are deliberately ABSENT: a unit def's `icon` IS
+    // its artwork reference (REQ-0170's free reference), resolved client-side
+    // via board/unitIcon unitArtUrl().
+    Object.keys(monstersFromCore().monsters || {})
   );
   const storage = require('../storage.cjs');
   const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }
@@ -272,8 +280,10 @@ async function refreshArtUrls() {
 // registry while the roll stayed on files would have re-introduced exactly the
 // display-vs-roll drift REQ-0170 existed to kill. REQ-0176 makes that module
 // registry-first in the SAME change, so the two now flip together and the
-// objection is retired. monster/skill are served ONLY through core.cjs (they
-// are not in this payload at all); formations is not a registry kind.
+// objection is retired. monster/skill are still resolved ONLY through
+// core.cjs -- REQ-0208 serves the Dex's monsters/monster_skills sections FROM
+// that same core path (see monstersFromCore below), so neither kind ever joins
+// this module's own overlay; formations is not a registry kind.
 const REGISTRY_KIND_BY_SECTION = { items: 'po_def', sis: 'si_def', tms: 'tm_def', units: 'unit_def', packs: 'gacha_pack' };
 let registryData = { po_def: {}, si_def: {}, tm_def: {}, unit_def: {}, gacha_pack: {} }; // { kind -> { bare -> adopted DATA (raw entry) } }
 let registryAt = 0;
@@ -406,10 +416,49 @@ function logRegistryFallbackOnce() {
   }
 }
 
+// ---- REQ-0208: monsters + skill names for the Dex (display slice) ----
+// monster_def / skill_def are NOT resolved in this module: both sections are
+// derived from services/core.cjs getScheduleContent() -- the authority path
+// the roll and the sim already serve registry-first (REQ-0176). One
+// resolution path means the Dex can never show a monster the sim would not
+// fight (the REQ-0170/0176 anti-drift argument). The derived maps are
+// identity-memoized on core's served payload object, so a /api/content call
+// rebuilds them ONLY when the underlying content/registry actually changed.
+// withBackCompatI18n is applied at this seam (the display convention every
+// other section already gets); skill names are reshaped to {name, name_ja}
+// and LIMITED to skills referenced by served monsters (a Dex lookup, not a
+// full skill dump).
+let monstersCache = null; // { src, monsters, skills } -- identity-keyed on core's payload
+function monstersFromCore() {
+  const core = require('../services/core.cjs'); // lazy: keeps standalone tool imports of this module light
+  const src = core.getScheduleContent();
+  if (monstersCache && monstersCache.src === src) return monstersCache;
+  const monsters = {};
+  for (const id of Object.keys(src.enemyDefsById || {})) {
+    monsters[id] = withBackCompatI18n(Object.assign({}, src.enemyDefsById[id]));
+  }
+  const skills = {};
+  for (const id of Object.keys(monsters)) {
+    for (const sk of (monsters[id].skills || [])) {
+      if (Object.prototype.hasOwnProperty.call(skills, sk)) continue;
+      const nm = (src.skillNamesById || {})[sk];
+      if (nm) skills[sk] = { name: (nm.en && nm.en.name) || sk, name_ja: nm.ja && nm.ja.name };
+    }
+  }
+  monstersCache = { src: src, monsters: monsters, skills: skills };
+  return monstersCache;
+}
+
 function getContent() {
   const filePayload = ensureFilePayload();
   const payload = applyRegistryOverlay(filePayload); // registry-first overlay (no-op under an empty registry)
   payload.art_urls = artUrls; // additive registry-first art map (REQ-0133; see the warm-cache note above)
+  // REQ-0208: additive Dex sections, derived from the authority path (see
+  // monstersFromCore above). Attached per call like art_urls, so core's own
+  // mtime/registry caches remain the single freshness authority for them.
+  const mons = monstersFromCore();
+  payload.monsters = mons.monsters;
+  payload.monster_skills = mons.skills;
   if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
   if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
   return payload;

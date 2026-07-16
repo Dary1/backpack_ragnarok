@@ -54,11 +54,12 @@ function alignOf(entry: ApiItemEntry | ApiSIEntry) {
   return 'align' in entry ? entry.align : undefined;
 }
 
-/** REQ-0194: shared section head for the schema/lore sections. The den
+/** REQ-0194: shared section head for the schema/lore sections (exported
+ * for REQ-0208's Unit/Monster detail panes -- same anatomy, one head). The den
  * caption (EN smallcaps) is HIDDEN when it is just the title uppercased —
  * the EN locale used to render a redundant "Schema / SCHEMA"; the JA
  * locale keeps its 図解 / SCHEMA pairing. */
-function SectionHead({ rune, title, den }: { rune: string; title: string; den: string }) {
+export function SectionHead({ rune, title, den }: { rune: string; title: string; den: string }) {
   const showDen = den.trim().toUpperCase() !== title.trim().toUpperCase();
   return (
     <div className="dex-detail-phead">
