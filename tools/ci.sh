@@ -31,6 +31,10 @@ echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
 node sim/tests/forecast_parity.cjs
 echo "==== [2.7/7] REQ-0203 grave-legion gates (dialect / sim verbs / transpose / packs / additive promote) ===="
 node sim/tests/req0203_grave_legion_test.cjs
+echo "==== [2.8/7] unit charge runtime (REQ-0200) ===="
+node sim/tests/unit_charge_test.cjs
+echo "==== [2.9/7] unit charge encounter fusion (REQ-0200) ===="
+node sim/tests/unit_charge_encounter_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
@@ -45,6 +49,8 @@ echo "==== [3.7/7] vocab self-test (verbs/triggers/render + range validation) ==
 node tools/self_test_vocab.cjs
 echo "==== [3.8/7] unit + gacha-pack content gate (REQ-0170) ===="
 node tools/check_units.cjs
+echo "==== [3.9/7] units003 charge acceptance corpus (REQ-0200) ===="
+node tools/units003_acceptance.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
@@ -59,6 +65,8 @@ echo "==== [4.66/7] content-check schema dialects (DB-free, REQ-0161) ===="
 node server/tests/content_checks_dialect_test.cjs
 echo "==== [4.665/7] art-authoritative cell geometry: drift guard + seed<->derive transpose (DB-free, REQ-0188) ===="
 node server/tests/content_checks_geometry_test.cjs
+echo "==== [4.666/7] content-check unit_def deep validation (DB-free, REQ-0201) ===="
+node server/tests/content_checks_unit_deep_test.cjs
 echo "==== [4.67/7] pack biography aggregation + veteran luck (DB-free, REQ-0060) ===="
 node server/tests/bio_test.cjs
 echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="

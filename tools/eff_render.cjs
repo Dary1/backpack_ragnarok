@@ -111,6 +111,9 @@ function verbPhraseEN(verb) {
       return 'immediately fire ' + (verb.tag ? verb.tag + ' ' : '') + 'items';
     case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
       return 'grant ' + fmtNum(verb.n, 'en') + ' shield';
+    case 'grant_lifesteal': // REQ-0200 (AGENT-DEFINED unit charge effect)
+      return 'grant lifesteal' + (verb.pct !== undefined ? ' ' + fmtNum(verb.pct, 'en') + '%' : '') +
+        (verb.dur_s !== undefined ? ' for ' + fmtNum(verb.dur_s, 'en') + 's' : '');
     case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
       return 'heal a wounded ally ' + fmtNum(verb.n, 'en');
     default: return verb.t;
@@ -234,6 +237,9 @@ function verbPhraseJA(verb) {
       return (verb.tag ? verb.tag + ' ' : '') + 'アイテムを即時発動';
     case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
       return 'シールドを ' + fmtNum(verb.n, 'ja') + ' 付与';
+    case 'grant_lifesteal': // REQ-0200 (AGENT-DEFINED unit charge effect)
+      return 'ライフスティール' + (verb.pct !== undefined ? ' ' + fmtNum(verb.pct, 'ja') + '%' : '') +
+        (verb.dur_s !== undefined ? '（' + fmtNum(verb.dur_s, 'ja') + '秒）' : '') + '付与';
     case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
       return '負傷した味方を ' + fmtNum(verb.n, 'ja') + ' 回復';
     default: return verb.t;
@@ -279,6 +285,162 @@ function renderEffectJA(eff) {
 }
 
 // =========================================================================
+// REQ-0200: unit `charge` block renderer (AST-first tooltip text). A charge
+// block is {trigger, gain, capacity, spend, effects|transform_to}. Rendered as
+// three parts: a trigger line, a capacity/spend line, then one line per effect
+// (verb phrase + target). In UNIT CHARGE context the ranged verb params are
+// n / hits / pct / dur_s (a def carries `pct` where the item form carries `n`),
+// so charge effects get their OWN verb phrasing here rather than reusing the
+// item verbPhrase (which reads verb.n / verb.stat).
+// =========================================================================
+
+// Range formatter that accepts int OR float [lo,hi] (pct like [0.1,0.2] is float).
+function fmtAny(v, locale) {
+  if (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number') {
+    var dash = locale === 'ja' ? '〜' : '–';
+    return v[0] === v[1] ? String(v[0]) : v[0] + dash + v[1];
+  }
+  return String(v);
+}
+function pctOf(verb, locale) {
+  var p = verb.pct !== undefined ? verb.pct : verb.n;
+  return fmtAny(p, locale) + '%';
+}
+
+var CHARGE_TRIG_EN = {
+  every_secs: function (t) { return 'every ' + fmtAny(t.s, 'en') + 's'; },
+  OnHit: function () { return 'on hit'; },
+  OnBPBeenHit: function () { return 'when this BP is damaged'; },
+  on_damage_dealt: function () { return 'when this BP deals damage'; },
+  on_connected_unit_spend: function () { return 'when a linked unit spends charge'; },
+  on_connected_unit_attack: function () { return 'when a linked unit attacks'; },
+  on_connected_unit_bp_been_hit: function () { return "when a linked unit's BP is damaged"; },
+  on_own_passive_fire: function () { return "when this unit's own passive fires"; },
+  on_heal_done: function () { return 'when this BP heals'; },
+  on_status_applied: function () { return 'when this BP applies a status'; },
+  on_kill: function () { return 'on kill'; }
+};
+var CHARGE_TRIG_JA = {
+  every_secs: function (t) { return fmtAny(t.s, 'ja') + '秒ごとに'; },
+  OnHit: function () { return '命中時'; },
+  OnBPBeenHit: function () { return 'このBPが被弾した時'; },
+  on_damage_dealt: function () { return 'このBPがダメージを与えた時'; },
+  on_connected_unit_spend: function () { return 'リンク先ユニットがチャージを使った時'; },
+  on_connected_unit_attack: function () { return 'リンク先ユニットが攻撃した時'; },
+  on_connected_unit_bp_been_hit: function () { return 'リンク先ユニットのBPが被弾した時'; },
+  on_own_passive_fire: function () { return '自身のパッシブが発動した時'; },
+  on_heal_done: function () { return 'このBPが回復した時'; },
+  on_status_applied: function () { return 'このBPが状態を付与した時'; },
+  on_kill: function () { return '撃破時'; }
+};
+
+var CHARGE_TARGET_EN = {
+  self: 'self',
+  units_connected: 'linked units',
+  bp_connected: 'linked BPs',
+  units_connected_distributed: 'linked units (split)',
+  bp_connected_max_cooldown_item: 'the slowest linked item',
+  bp_connected_lowest_hp: 'the most-hurt linked BP'
+};
+var CHARGE_TARGET_JA = {
+  self: '自身',
+  units_connected: 'リンク先ユニット',
+  bp_connected: 'リンク先BP',
+  units_connected_distributed: 'リンク先ユニット（分配）',
+  bp_connected_max_cooldown_item: '最長クールダウンのリンク先アイテム',
+  bp_connected_lowest_hp: '最も傷ついたリンク先BP'
+};
+
+function chargeEffectPhraseEN(v) {
+  switch (v.t) {
+    case 'add_on_hit_status': return 'grant ' + fmtAny(v.n, 'en') + ' ' + v.status + ' on hit';
+    case 'apply_status': return 'apply ' + fmtAny(v.n, 'en') + ' ' + v.status;
+    case 'amp_status': return 'amplify ' + v.status + (v.n !== undefined ? ' by ' + fmtAny(v.n, 'en') : '');
+    case 'haste': return 'haste ' + fmtAny(v.n, 'en');
+    case 'cleanse': return 'cleanse';
+    case 'heal_bp': return 'heal ' + fmtAny(v.n, 'en');
+    case 'block': return 'block ' + fmtAny(v.n, 'en');
+    case 'strike': return 'strike ' + fmtAny(v.n, 'en');
+    case 'multi_strike': return 'strike ' + fmtAny(v.n, 'en') + ' × ' + fmtAny(v.hits, 'en');
+    case 'reflect_damage': return 'reflect ' + pctOf(v, 'en') + ' damage';
+    case 'damage_reduction': return 'reduce incoming damage by ' + pctOf(v, 'en');
+    case 'status_immune': return 'immune to ' + v.status;
+    case 'bonus_vs_status': return '+' + pctOf(v, 'en') + ' damage vs ' + (v.status === 'any' ? 'afflicted foes' : v.status);
+    case 'buff_self': return '+' + pctOf(v, 'en') + ' damage to self';
+    case 'buff_linked': return '+' + pctOf(v, 'en') + ' damage to linked';
+    case 'grant_charge': return 'grant ' + fmtAny(v.n, 'en') + ' charge';
+    case 'grant_shield': return 'grant ' + fmtAny(v.n, 'en') + ' shield';
+    case 'grant_lifesteal': return 'grant ' + pctOf(v, 'en') + ' lifesteal' + (v.dur_s !== undefined ? ' for ' + fmtAny(v.dur_s, 'en') + 's' : '');
+    case 'advance_cooldown': return 'advance cooldown by ' + fmtAny(v.n, 'en');
+    case 'fire_items': return 'fire ' + (v.tag ? v.tag + ' ' : '') + 'items';
+    default: return v.t;
+  }
+}
+function chargeEffectPhraseJA(v) {
+  var st = (typeof STATUS_JA !== 'undefined' && STATUS_JA[v.status]) ? STATUS_JA[v.status] : v.status;
+  switch (v.t) {
+    case 'add_on_hit_status': return '命中時に ' + st + ' ' + fmtAny(v.n, 'ja') + ' 付与';
+    case 'apply_status': return st + ' ' + fmtAny(v.n, 'ja') + ' 付与';
+    case 'amp_status': return st + ' 増幅' + (v.n !== undefined ? ' ' + fmtAny(v.n, 'ja') : '');
+    case 'haste': return '加速 ' + fmtAny(v.n, 'ja');
+    case 'cleanse': return '状態異常を解除';
+    case 'heal_bp': return fmtAny(v.n, 'ja') + ' 回復';
+    case 'block': return 'ブロック ' + fmtAny(v.n, 'ja');
+    case 'strike': return fmtAny(v.n, 'ja') + ' ダメージ';
+    case 'multi_strike': return fmtAny(v.n, 'ja') + ' ダメージ ×' + fmtAny(v.hits, 'ja');
+    case 'reflect_damage': return pctOf(v, 'ja') + ' ダメージ反射';
+    case 'damage_reduction': return '受けるダメージを ' + pctOf(v, 'ja') + ' 軽減';
+    case 'status_immune': return st + 'に免疫';
+    case 'bonus_vs_status': return (v.status === 'any' ? '状態異常の敵' : st + 'の敵') + 'に追加ダメージ +' + pctOf(v, 'ja');
+    case 'buff_self': return '自身に ダメージ +' + pctOf(v, 'ja');
+    case 'buff_linked': return 'リンク先に ダメージ +' + pctOf(v, 'ja');
+    case 'grant_charge': return 'チャージを ' + fmtAny(v.n, 'ja') + ' 付与';
+    case 'grant_shield': return 'シールドを ' + fmtAny(v.n, 'ja') + ' 付与';
+    case 'grant_lifesteal': return 'ライフスティール ' + pctOf(v, 'ja') + (v.dur_s !== undefined ? '（' + fmtAny(v.dur_s, 'ja') + '秒）' : '') + ' 付与';
+    case 'advance_cooldown': return 'クールダウンを ' + fmtAny(v.n, 'ja') + ' 進める';
+    case 'fire_items': return (v.tag ? v.tag + ' ' : '') + 'アイテムを即時発動';
+    default: return v.t;
+  }
+}
+
+function renderChargeEN(charge) {
+  var trig = charge.trigger || {};
+  var tf = CHARGE_TRIG_EN[trig.t];
+  var gain = charge.gain === 'damage' ? 'gain = damage dealt' : '+1 per trigger';
+  var lines = ['Charge — ' + (tf ? tf(trig) : trig.t) + ' (' + gain + ').'];
+  var cap = fmtAny(charge.capacity, 'en');
+  if (charge.spend === 'passive_per_stack') lines.push('Standing effect, per stack (max ' + cap + '):');
+  else if (charge.spend === 'transform') lines.push('At ' + cap + ', transform into ' + (charge.transform_to || '?') + '.');
+  else lines.push('At ' + cap + ', fire:');
+  for (var i = 0; i < (charge.effects || []).length; i++) {
+    var e = charge.effects[i];
+    lines.push('  • ' + chargeEffectPhraseEN(e.verb || {}) + ' → ' + (CHARGE_TARGET_EN[e.target] || e.target));
+  }
+  return lines.join('\n');
+}
+function renderChargeJA(charge) {
+  var trig = charge.trigger || {};
+  var tf = CHARGE_TRIG_JA[trig.t];
+  var gain = charge.gain === 'damage' ? 'ダメージ量を蓄積' : '発動ごとに+1';
+  var lines = ['チャージ — ' + (tf ? tf(trig) : trig.t) + '（' + gain + '）。'];
+  var cap = fmtAny(charge.capacity, 'ja');
+  if (charge.spend === 'passive_per_stack') lines.push('スタックごとの常時効果（最大 ' + cap + '）:');
+  else if (charge.spend === 'transform') lines.push(cap + ' で ' + (charge.transform_to || '?') + ' に変身。');
+  else lines.push(cap + ' で発動:');
+  for (var i = 0; i < (charge.effects || []).length; i++) {
+    var e = charge.effects[i];
+    lines.push('  • ' + chargeEffectPhraseJA(e.verb || {}) + ' → ' + (CHARGE_TARGET_JA[e.target] || e.target));
+  }
+  return lines.join('\n');
+}
+
+// renderCharge(charge, locale) -> multi-line tooltip string. locale in {'en','ja'}.
+function renderCharge(charge, locale) {
+  if (!charge || typeof charge !== 'object') return '';
+  return locale === 'ja' ? renderChargeJA(charge) : renderChargeEN(charge);
+}
+
+// =========================================================================
 // Public API
 // =========================================================================
 
@@ -314,6 +476,7 @@ function renderEntryEff(effects, flavor, opts) {
 module.exports = {
   render: render,
   renderAll: renderAll,
+  renderCharge: renderCharge,
   renderEffect: renderEffect,
   renderEntryEff: renderEntryEff,
   verbPhrase: verbPhraseEN,

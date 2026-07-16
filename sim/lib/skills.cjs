@@ -45,7 +45,17 @@ function makeBPActor(bp) {
     hp() { return bp.hp; },
     hpMax() { return bp.hpMax; },
     applyDamage(amount) {
-      bp.hp = Math.max(0, bp.hp - amount);
+      // REQ-0200: a unit-charge shield pool absorbs incoming damage before HP.
+      // Guarded: bp.shield is undefined on ALL charge-less content, so this is an
+      // exact no-op there (goldens byte-identical); only grant_shield/valkyrie/
+      // paladin charge effects ever set it.
+      let amt = amount;
+      if (bp.shield > 0) {
+        const absorbed = Math.min(bp.shield, amt);
+        bp.shield -= absorbed;
+        amt -= absorbed;
+      }
+      bp.hp = Math.max(0, bp.hp - amt);
       if (bp.hp <= 0) bp.alive = false;
       checkHpBelow(bp); // REQ-0121: on_hp_below fires the instant a threshold is crossed
     },
@@ -76,14 +86,17 @@ function makeEnemyActor(en) {
 // are deliberately NOT reduced (vocab provenance note: a hide blunts
 // blows, not poison).
 function reduceIncoming(amount, actor) {
-  const dr = (actor.ref && actor.ref.damageReduction) || 0;
-  if (!dr) return amount;
-  return Math.max(0, amount - dr);
+  const ref = actor.ref || {};
+  const pct = ref.damageReductionPct || 0; // REQ-0200: percent knob (damage_reduction verb / monk standing)
+  const dr = ref.damageReduction || 0;     // REQ-0121 flat knob (also block verb adds here)
+  if (!pct && !dr) return amount;          // charge-less content: exact no-op (goldens byte-identical)
+  const a = pct ? amount * (1 - pct / 100) : amount;
+  return Math.max(0, a - dr);
 }
 
 // dealHitOnField: applies a skill's verb(s) to a single occupant actor
 // (S3.3). Returns {amount, hpAfter, dstLabel, isDiscovery}.
-function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus, attackerActor) {
+function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus, attackerActor, attackerOutgoingBuffPct) {
   if (mode === 'detection') {
     // "a hit IS the find, damage irrelevant" -- no HP change, just discovery.
     return { amount: 0, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: true };
@@ -92,6 +105,7 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
   let amount = 0;
   if (verb.t === 'strike') {
     let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
+    if (attackerOutgoingBuffPct) hitAmt *= (1 + attackerOutgoingBuffPct / 100); // REQ-0200: buff_self/buff_linked
     hitAmt *= weaknessMultiplier(actor.statusBag);
     hitAmt += bonusVsStatusAmount(actor.statusBag, attackerBonusVsStatus, rng); // REQ-0093
     hitAmt = reduceIncoming(hitAmt, actor); // REQ-0121: defender damage_reduction
@@ -102,6 +116,7 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
     // stacking). Each sub-hit independently rolls n and applies bounceMult.
     for (let i = 0; i < verb.hits; i++) {
       let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
+      if (attackerOutgoingBuffPct) hitAmt *= (1 + attackerOutgoingBuffPct / 100); // REQ-0200
       hitAmt *= weaknessMultiplier(actor.statusBag);
       // REQ-0093: bonus_vs_status re-checked + re-rolled per sub-hit,
       // consistent with multi_strike's existing per-sub-hit independence.
@@ -198,13 +213,13 @@ function fireSkillRay(opts) {
       const hits = [];
       for (const a of targetActors) {
         if (!a.alive) continue;
-        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor);
+        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor, attacker.outgoingBuffPct);
         if (r.amount > 0) landedHits.push({ actor: a, amount: r.amount });
         hits.push({ dst: r.dstLabel, amount: r.amount });
       }
       return hits;
     }
-    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor);
+    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor, attacker.outgoingBuffPct);
     if (r.amount > 0) landedHits.push({ actor: occ, amount: r.amount });
     return r;
   }
@@ -220,12 +235,14 @@ function fireSkillRay(opts) {
       let dmgAmount = 0;
       if (mode !== 'detection' && verbEff.verb.t === 'strike') {
         dmgAmount = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+        if (attacker.outgoingBuffPct) dmgAmount *= (1 + attacker.outgoingBuffPct / 100); // REQ-0200
         dmgAmount += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream); // REQ-0093
         dmgAmount = reduceIncoming(dmgAmount, a); // REQ-0121
         a.applyDamage(dmgAmount);
       } else if (mode !== 'detection' && verbEff.verb.t === 'multi_strike') {
         for (let i = 0; i < verbEff.verb.hits; i++) {
           let hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+          if (attacker.outgoingBuffPct) hitAmt *= (1 + attacker.outgoingBuffPct / 100); // REQ-0200
           hitAmt += bonusVsStatusAmount(a.statusBag, attacker.bonusVsStatus, dmgStream);
           hitAmt = reduceIncoming(hitAmt, a); // REQ-0121
           a.applyDamage(hitAmt);
