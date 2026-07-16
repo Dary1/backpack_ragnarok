@@ -729,7 +729,7 @@ export class BoardRenderer {
       hit.cursor = 'grab';
       const isAssemblyPart = !!(state.linked && asm && (p.uid === asm.blade.uid || p.uid === asm.hilt.uid));
       hit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, p, isAssemblyPart, asm));
-      hit.on('pointerup', () => this.handleItemTap('po', p.id, box));
+      hit.on('pointerup', () => this.handleItemTap('po', p.id, box, p.uid));
       this.gItems.addChild(hit);
       for (const [r, c] of ops.cellsOf(state, p)) {
         const bg = new Graphics();
@@ -803,12 +803,12 @@ export class BoardRenderer {
       asmHit.cursor = 'grab';
       asmHit.on('pointerdown', (e: FederatedPointerEvent) => this.handlePOPointerDown(e, a.blade, true, a));
       asmHit.on('pointerup', () =>
-        this.handleItemTap('po', a.blade.id, {
+        this.handleItemTap('po', a.blade.id, {  // REQ-0198 (B): 4th arg (uid) supplied after the box literal
           x: PAD + (Math.min(...a.cells.map((c) => c[1])) - 1) * CELL,
           y: PAD + (Math.min(...a.cells.map((c) => c[0])) - 1) * CELL,
           w: (Math.max(...a.cells.map((c) => c[1])) - Math.min(...a.cells.map((c) => c[1])) + 1) * CELL,
           h: (Math.max(...a.cells.map((c) => c[0])) - Math.min(...a.cells.map((c) => c[0])) + 1) * CELL,
-        })
+        }, a.blade.uid)
       );
       this.gItems.addChild(asmHit);
       for (const [r, c] of a.cells) {
@@ -1068,7 +1068,7 @@ export class BoardRenderer {
         hitCircle.fill({ color: '#000000', alpha: 0.001 });
         g.addChild(hitCircle);
         g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
-        g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }));
+        g.on('pointerup', () => this.handleItemTap('si', a.id, { x: x - 16, y: y - 16, w: 32, h: 32 }, a.uid));
         this.gSock.addChild(g);
       } else {
         const g = new Graphics();
@@ -1148,7 +1148,7 @@ export class BoardRenderer {
       hitRect.fill({ color: '#000000', alpha: 0.001 });
       g.addChild(hitRect);
       g.on('pointerdown', (e: FederatedPointerEvent) => this.beginDrag(e, 'si', a.uid, undefined));
-      g.on('pointerup', () => this.handleItemTap('si', a.id, { x: PAD + (c - 1) * CELL, y: PAD + (r - 1) * CELL, w: CELL, h: CELL }));
+      g.on('pointerup', () => this.handleItemTap('si', a.id, { x: PAD + (c - 1) * CELL, y: PAD + (r - 1) * CELL, w: CELL, h: CELL }, a.uid));
       this.gItems.addChild(g);
     }
 
@@ -1279,10 +1279,10 @@ export class BoardRenderer {
    * via an outside/empty tap, never a re-tap). `box` is the icon footprint
    * in this board's local pixel space; localBoxToClient maps it to the
    * viewport for the HTML overlay. */
-  handleItemTap(kind: 'po' | 'si', id: string, box: { x: number; y: number; w: number; h: number }): void {
+  handleItemTap(kind: 'po' | 'si', id: string, box: { x: number; y: number; w: number; h: number }, uid?: string): void {
     if (getCarry()?.armed) return;
     const anchor = localBoxToClient(this, box.x, box.y, box.w, box.h);
-    showItemTip({ kind, id, anchor, boardKey: boardIdKey(this.boardId) });
+    showItemTip({ kind, id, uid, anchor, boardKey: boardIdKey(this.boardId) });
   }
 
   /** Dismiss the floating tip when a tap lands on EMPTY board space (the

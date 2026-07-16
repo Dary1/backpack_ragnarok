@@ -4,7 +4,7 @@
 // see core.ts's module comment on DEX_ITEM_HASH_RE/dexFocusId for the design note.
 import { clearStoredToken, fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
-import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
+import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, MARKET_SELL_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
 
 export function setRoute(route: Route): void {
@@ -96,6 +96,15 @@ export function clearArtAdminFocusName(): void {
   setSnapshot({ ...snapshot, artAdminFocusName: null });
 }
 
+/** REQ-0198 (B): clears a consumed market SELL deep-link target (see
+ * core.ts's marketSellFocus doc). MarketPage calls this right after it has
+ * switched to the SELL pane + latched the preselect into its own state --
+ * exact mirror of clearDexFocusId's one-shot consume-then-clear shape. */
+export function clearMarketSellFocus(): void {
+  if (snapshot.marketSellFocus === null) return;
+  setSnapshot({ ...snapshot, marketSellFocus: null });
+}
+
 /** Like setRoute(), but uses history.replaceState-style semantics for the
  * hash (no back-button entry for the one-shot invite hash itself) -- the
  * invite link should not leave "#/invite/<token>" sitting in browser
@@ -141,6 +150,7 @@ export function initRouting(): () => void {
     const dexItemMatch = inviteMatch ? null : DEX_ITEM_HASH_RE.exec(location.hash);
     const caMatch = inviteMatch || dexItemMatch ? null : CONTENTADMIN_HASH_RE.exec(location.hash);
     const artMatch = inviteMatch || dexItemMatch || caMatch ? null : ARTADMIN_HASH_RE.exec(location.hash);
+    const marketSellMatch = inviteMatch || dexItemMatch || caMatch || artMatch ? null : MARKET_SELL_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       setSnapshot({ ...snapshot, route: 'backpacks' });
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
@@ -150,6 +160,8 @@ export function initRouting(): () => void {
       setSnapshot({ ...snapshot, route: 'contentadmin', contentAdminFocusName: decodeURIComponent(caMatch[1]) });
     } else if (artMatch) {
       setSnapshot({ ...snapshot, route: 'artadmin', artAdminFocusName: decodeURIComponent(artMatch[1]) });
+    } else if (marketSellMatch) {
+      setSnapshot({ ...snapshot, route: 'market', marketSellFocus: { uid: decodeURIComponent(marketSellMatch[1]), kind: (marketSellMatch[2] as 'po' | 'si' | 'unit') || 'po' } });
     } else {
       const initial = routeFromHash(location.hash);
       if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
@@ -175,6 +187,11 @@ export function initRouting(): () => void {
     const artMatch = ARTADMIN_HASH_RE.exec(location.hash);
     if (artMatch) {
       setSnapshot({ ...snapshot, route: 'artadmin', artAdminFocusName: decodeURIComponent(artMatch[1]) });
+      return;
+    }
+    const marketSellMatch = MARKET_SELL_HASH_RE.exec(location.hash);
+    if (marketSellMatch) {
+      setSnapshot({ ...snapshot, route: 'market', marketSellFocus: { uid: decodeURIComponent(marketSellMatch[1]), kind: (marketSellMatch[2] as 'po' | 'si' | 'unit') || 'po' } });
       return;
     }
     const next = routeFromHash(location.hash);

@@ -5,6 +5,7 @@
 // component every market card/row reuses (delegates to the shared
 // dex/ShapeGrid + render/itemCard path -- NOT a third item-render path).
 import type { ApiMarketListing } from '../api';
+import type { GameState, PO, BP, SI } from '../engine/engine.d.ts';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
 import { ShapeGrid } from '../dex/ShapeGrid';
 import type { GameData } from '../api';
@@ -152,6 +153,37 @@ export function dexNoLabel(dexNo: number | null): string {
  * once the REQ-0196 container fills, else null -> the "unmeasured" badge
  * (未測定), NEVER a 0% bar (user ruling 2026-07-16). A tm has no roll ->
  * render nothing. */
+/** REQ-0198 (C): the set of instance uids the player has REFERENCED
+ * anywhere in their OWN canvas -- the ACTIVE BOARD (top-level
+ * {pos,bps,sis}) plus every stored squad PRESET snapshot
+ * (presets.store[i].{pos,bps,sis}). The client mirror of
+ * server/services/squads.cjs's referencedUidSet: an instance whose uid is
+ * in here is "in use, not in my inventory" and must NOT be offered as
+ * sellable (SellPane) nor carry a Sell action (FloatingItemTip). A BP keys
+ * on `id`; POs/SIs on `uid`. An inventory-homed SI seated on a REFERENCED
+ * PO (its host.po is in the referenced-PO set) is in use transitively too
+ * -- the same host-PO walk the server does. */
+export function referencedUidSet(state: GameState | null): Set<string> {
+  const out = new Set<string>();
+  if (!state) return out;
+  const refPoUids = new Set<string>();
+  const add = (pos?: PO[], bps?: BP[], sis?: SI[]) => {
+    for (const p of pos || []) { out.add(p.uid); refPoUids.add(p.uid); }
+    for (const b of bps || []) out.add(b.id);
+    for (const a of sis || []) out.add(a.uid);
+  };
+  // The active board lives at the top-level fields (store[active] is null).
+  add(state.pos, state.bps, state.sis);
+  for (const snap of state.presets?.store || []) if (snap) add(snap.pos, snap.bps, snap.sis);
+  for (const pg of state.inv?.pages || []) {
+    for (const a of pg.sis || []) {
+      const h = a.host;
+      if (h && typeof h === 'object' && 'po' in h && refPoUids.has(h.po)) out.add(a.uid);
+    }
+  }
+  return out;
+}
+
 export function RollBar({ kind, rollPct, locale }: { kind: string; rollPct: number | null | undefined; locale: Locale }) {
   if (kind === 'tm') return null;
   if (rollPct == null) {

@@ -25,11 +25,11 @@
 // (dismantle yields a flat Weathervane; the engraved per-item number IS the
 // 分解値 count, not a currency), so this shows the real count, exactly like
 // the Dex / DismantlePanel.
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { clearItemTip, getItemTip, subscribeItemTip } from './board/itemTip';
 import { fetchDismantleLedger } from './api';
-import { dexNoLabel } from './market/marketShared';
-import type { ItemDef, Offset, SIDef } from './engine/engine.d.ts';
+import { dexNoLabel, referencedUidSet } from './market/marketShared';
+import type { GameState, ItemDef, Offset, SIDef } from './engine/engine.d.ts';
 import { t } from './i18n';
 import { useGameStore, type Locale } from './store';
 
@@ -71,6 +71,20 @@ function shapeDims(shape: Offset[] | undefined): string {
   return `${w}×${h}`;
 }
 
+/** REQ-0198 (B): true iff the tapped INSTANCE uid is a stowed inventory
+ * record (a PO/SI living in an inv.pages[] home). The Sell action is
+ * offered ONLY for such instances AND only when they are not referenced
+ * (see referencedUidSet) -- an item tapped on the canvas board, or one
+ * whose home is also referenced by a squad, is "in use, not for sale". */
+function instanceIsStowed(state: GameState | null, kind: 'po' | 'si', uid: string): boolean {
+  if (!state || !state.inv || !Array.isArray(state.inv.pages)) return false;
+  for (const pg of state.inv.pages) {
+    if (kind === 'po') { if ((pg.pos || []).some((p) => p.uid === uid)) return true; }
+    else { if ((pg.sis || []).some((a) => a.uid === uid)) return true; }
+  }
+  return false;
+}
+
 // Module-cached dismantle ledger (itemId -> dismantle count). The panel is
 // read-only; the count only ever grows (via the Workshop dismantle flow, a
 // different surface), so one fetch per app load suffices. A failed/absent
@@ -98,6 +112,10 @@ export function FloatingItemTip() {
   const snapshot = useGameStore();
   const locale = snapshot.locale;
   const gameData = snapshot.gameData;
+  const state = snapshot.state;
+  // REQ-0198 (B): the referenced set (board + squad presets) -- an instance
+  // in here is in use and must NOT show the Sell action.
+  const referencedUids = useMemo(() => referencedUidSet(state), [state]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const [ledger, setLedger] = useState<Map<string, number> | null>(null);
@@ -166,6 +184,14 @@ export function FloatingItemTip() {
 
   if (!tip || !def) return null;
 
+  // REQ-0198 (B): the market SELL entry point. FloatingItemTip is the ONE
+  // per-instance inspection surface a player actually uses to inspect a
+  // specific STOWED inventory instance (ItemPanel.tsx is a read-only DEF
+  // catalog with no instance uid). Show the action only for a po/si
+  // instance that is stowed AND not referenced/deployed (C's eligibility).
+  const sellUid = tip.uid ?? null;
+  const canSell = !!sellUid && !referencedUids.has(sellUid) && instanceIsStowed(state, tip.kind, sellUid);
+
   const name = localized(def, 'name', locale);
   const flavor = localized(def, 'flavor', locale);
   const eff = effText(def, locale);
@@ -230,6 +256,21 @@ export function FloatingItemTip() {
         : null}
       {flavor ? <div className="item-tip-flavor">{flavor}</div> : null}
       <div className="item-tip-sell">{sell}</div>
+      {canSell ? (
+        <button
+          type="button"
+          className="item-tip-sell-btn"
+          data-testid="item-tip-sell"
+          onClick={() => {
+            // Dismiss the tip, then deep-link to the market SELL pane with
+            // this instance preselected (store/routing.ts MARKET_SELL_HASH_RE).
+            clearItemTip();
+            if (typeof location !== 'undefined') location.hash = `#/market?sell=${encodeURIComponent(sellUid as string)}&kind=${tip.kind}`;
+          }}
+        >
+          {t(locale, 'market.sell.sellThis')}
+        </button>
+      ) : null}
     </div>
   );
 }

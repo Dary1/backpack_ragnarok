@@ -84,6 +84,8 @@ export const marketEn = {
   'market.sell.selected': '✓ selected',
   'market.sell.deployedLock': 'Deployed -- cannot list',
   'market.sell.alreadyListedLock': 'Already on the hearth',
+  'market.sell.inUseLock': 'In use -- cannot list', // REQ-0198 (C): board/preset reference
+  'market.sell.sellThis': 'Sell on the market', // REQ-0198 (B): inventory entry point
   'market.sell.carveTitle': 'Carve the price',
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': 'The piece to be listed:',
@@ -158,6 +160,7 @@ export const marketEn = {
   'market.err.insufficientBalance': 'Not enough ᚠ for this trade.',
   'market.err.warehouseFull': 'Your vault is full -- Muninn cannot carry it in. Nothing was paid.',
   'market.err.deployed': 'This piece is deployed -- it cannot go to market (the Law of Possession).',
+  'market.err.inUse': 'This piece is in use -- placed on the board or held by a squad -- and cannot go to market.', // REQ-0198 (C)
   'market.err.alreadyListed': 'This piece is already on the hearth.',
 } as const;
 
@@ -236,6 +239,8 @@ export const marketJa = {
   'market.sell.selected': '✓選択中',
   'market.sell.deployedLock': '配備中 — 出品不可',
   'market.sell.alreadyListedLock': '出品中',
+  'market.sell.inUseLock': '使用中 — 出品不可', // REQ-0198 (C)
+  'market.sell.sellThis': '市場に出す', // REQ-0198 (B)
   'market.sell.carveTitle': '値を刻む',
   'market.sell.carveEn': 'Carve the price',
   'market.sell.pieceLabel': '出品する品:',
@@ -307,5 +312,6 @@ export const marketJa = {
   'market.err.insufficientBalance': 'この取引にはᚠが足りない。',
   'market.err.warehouseFull': '倉庫が満ちている — ムニンが運び込めない。支払いは発生していない。',
   'market.err.deployed': 'この品は配備中 — 市場に出せない(専有の法)。',
+  'market.err.inUse': 'この品は使用中 — 盤上か部隊に組み込み済み — 市場に出せない。', // REQ-0198 (C)
   'market.err.alreadyListed': 'この品は既に火床に並んでいる。',
 } as const;
