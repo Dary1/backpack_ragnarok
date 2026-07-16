@@ -155,7 +155,7 @@ export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, act
                 {isSuspended ? <span className="lockchip" data-testid="market-lock-chip">{t(locale, 'market.suspendedChip')}</span> : null}
                 <span className="gem" />
                 <div className="top">
-                  <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={22} alt={name} />
+                  <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={22} alt={name} kind={l.kind} />
                   <div className="grow">
                     <div className="row market-card-nmrow">
                       <span className="nm dj">{name}</span>
@@ -177,10 +177,10 @@ export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, act
                     <div className="burn">{t(locale, 'market.burnLine', { pay: l.price.qty, burn: l.burn, get: l.sellerReceives })}</div>
                   </div>
                   {buyable ? (
-                    <button type="button" className="btn sm" data-testid={`market-buy-btn-${l.itemUid}`} onClick={() => onBuy(l)}>{t(locale, 'market.buyButton')}</button>
+                    <button type="button" className="btn sm" data-testid={`market-buy-btn-${l.itemUid ?? l.id}`} onClick={() => onBuy(l)}>{t(locale, 'market.buyButton')}</button>
                   ) : (
                     <div className="buycol">
-                      <button type="button" className="btn sm" data-testid={`market-buy-btn-${l.itemUid}`} disabled>{t(locale, 'market.buyButton')}</button>
+                      <button type="button" className="btn sm" data-testid={`market-buy-btn-${l.itemUid ?? l.id}`} disabled>{t(locale, 'market.buyButton')}</button>
                       {!isSuspended && !isMine && !canAfford ? <span className="t-micro shortnote">{t(locale, 'market.shortChip', { n: l.price.qty - bal })}</span> : null}
                     </div>
                   )}

@@ -652,11 +652,16 @@ export interface ApiMarketListing {
   id: string;
   sellerId: string;
   sellerName: string;
-  itemUid: string;
+  /** REQ-0195b: the listed instance uid (po.uid / si.uid / bp.id), or
+   * null for kind:'tm' (currency has no per-instance uid). */
+  itemUid: string | null;
   /** REQ-0195a: the tradeable content kind. 'po' today (legacy listings,
    * which predate the field, normalize to 'po' at read); si/unit/tm land
    * in REQ-0195b-d. */
   kind: 'po' | 'si' | 'unit' | 'tm';
+  /** REQ-0195b: for kind:'tm' only -- the integer amount of `itemId` (a
+   * live TM) being sold, [1,999]. Absent for po/si/unit. */
+  tmQty?: number;
   itemId: string;
   /** Display conveniences resolved server-side; the full item def
    * (icon/shape/effects) still comes from fetchContent()'s items map by
@@ -706,10 +711,15 @@ export interface ApiMarketListingsResponse {
  * market TM id; qty an integer in [1, 999]. Optional Idempotency-Key
  * HEADER dedupes retries (replayed:true on the response). */
 export interface ApiMarketCreateListingRequest {
-  /** REQ-0195a: 'po' (the default when omitted) today; si/unit/tm in
-   * later phases. */
+  /** REQ-0195a: 'po' (the default when omitted); tm in REQ-0195b;
+   * si/unit in REQ-0195c-d. */
   kind?: 'po' | 'si' | 'unit' | 'tm';
-  itemUid: string;
+  /** po/si/unit: the instance uid to list. Absent for kind:'tm'. */
+  itemUid?: string;
+  /** kind:'tm': the live TM content id being sold. */
+  itemId?: string;
+  /** kind:'tm': the integer amount to sell, [1,999]. */
+  tmQty?: number;
   price: ApiMarketPrice;
 }
 

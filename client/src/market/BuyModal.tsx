@@ -89,7 +89,7 @@ export function BuyModal({ listing, gameData, locale, balance, onSettled, onClos
               <span className="en">{t(locale, 'market.buy.oathTitleEn')}</span>
             </div>
             <div className="row market-modal-item">
-              <MarketThumb gameData={gameData} itemId={listing.itemId} cellPx={30} />
+              <MarketThumb gameData={gameData} itemId={listing.itemId} cellPx={30} kind={listing.kind} />
               <div>
                 <div className="dj market-modal-name">{locale === 'ja' ? listing.itemNameJa || listing.itemName : listing.itemName}</div>
                 <div className="t-micro market-modal-sub">

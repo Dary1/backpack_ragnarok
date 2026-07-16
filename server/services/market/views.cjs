@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const players = require('../../players.cjs');
 const { getScheduleContent } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, getDexNoById, findInventoryPO, MARKET_TM_ID } = require('./lib.cjs');
+const { burnOf, getDexNoById, findInventoryPO, readTmBalance, MARKET_TM_ID } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // sellerViewContext: one seller's canvas + deployed-uid set, loaded ONCE
@@ -31,6 +31,14 @@ function sellerViewContext(sellerId) {
 // mutates + persists the listing when the item is simply gone.
 function deriveView(listing, ctx, nowMs) {
   if (listing.state !== 'active') return { state: listing.state, suspended: false };
+  const kind = listing.kind || 'po';
+  if (kind === 'tm') {
+    // REQ-0195b: tm "stock" is the live balance; short -> SUSPENDED
+    // (reversible, never auto-withdrawn -- balances refill).
+    const stock = ctx.canvas ? readTmBalance(ctx.canvas, listing.itemId) : 0;
+    if (stock < listing.tmQty) return { state: 'suspended', suspended: true };
+    return { state: 'active', suspended: false };
+  }
   if (!ctx.canvas || !findInventoryPO(ctx.canvas, listing.itemUid)) {
     autoWithdrawItemGone(listing, nowMs);
     return { state: 'withdrawn', suspended: false };
@@ -61,10 +69,11 @@ function sellerNameOf(sellerId, cache) {
 }
 
 function toListingDto(listing, view, caches) {
-  const { itemDefsById } = getScheduleContent();
-  const def = itemDefsById[listing.itemId] || null;
+  const kind = listing.kind || 'po';
+  const content = getScheduleContent();
+  const def = kind === 'tm' ? (content.tmDefsById[listing.itemId] || null) : (content.itemDefsById[listing.itemId] || null);
   const ja = def && def.i18n && def.i18n.ja;
-  const dexNo = getDexNoById()[listing.itemId];
+  const dexNo = kind === 'tm' ? null : getDexNoById()[listing.itemId];
   const qty = listing.price.qty;
   const burn = burnOf(qty);
   /** @type {any} */
@@ -72,8 +81,8 @@ function toListingDto(listing, view, caches) {
     id: listing.id,
     sellerId: listing.sellerId,
     sellerName: sellerNameOf(listing.sellerId, caches && caches.names),
-    itemUid: listing.itemUid,
-    kind: listing.kind || 'po',
+    itemUid: listing.itemUid != null ? listing.itemUid : null,
+    kind,
     itemId: listing.itemId,
     itemName: def ? def.name : listing.itemId,
     itemNameJa: (ja && ja.name) || (def && def.name_ja) || null,
@@ -89,6 +98,7 @@ function toListingDto(listing, view, caches) {
     suspended: view.suspended,
     priceHistory: priceHistoryFor(listing.itemId, caches && caches.history),
   };
+  if (kind === 'tm') dto.tmQty = listing.tmQty;
   if (listing.settlement) {
     dto.settledAt = listing.settlement.t;
     dto.buyerId = listing.settlement.buyerId;

@@ -77,21 +77,24 @@ function createListing(sellerId, body, canvas, idemKey) {
       }
     }
   }
-  if (!body || typeof body.itemUid !== 'string' || !body.itemUid) {
-    const err = new Error('itemUid is required'); err.code = 'BAD_REQUEST'; throw err;
+  // REQ-0195a/b: `kind` selects the tradeable content kind (absent -> 'po').
+  // tm listings (currency-for-currency) have no itemUid and branch before
+  // the PO-specific inventory checks; si/unit arrive in REQ-0195c-d.
+  const kind = (body && typeof body.kind === 'string' && body.kind) ? body.kind : 'po';
+  if (kind !== 'po' && kind !== 'tm') {
+    const err = new Error('unsupported listing kind: ' + kind); err.code = 'BAD_REQUEST'; throw err;
   }
-  // REQ-0195a: `kind` selects the tradeable content kind. Phase a lists
-  // inventory POs only; si/unit/tm arrive in REQ-0195b-d. Absent -> 'po'.
-  const kind = (typeof body.kind === 'string' && body.kind) ? body.kind : 'po';
-  if (kind !== 'po') {
-    const err = new Error('unsupported listing kind: ' + kind + ' (this phase lists inventory POs only)'); err.code = 'BAD_REQUEST'; throw err;
-  }
-  const price = body.price;
+  const price = body && body.price;
   if (!price || typeof price.tm !== 'string' || !isLiveTm(price.tm)) {
     const err = new Error('price.tm must be a live TM registry id (content/live/live_tms.json)'); err.code = 'BAD_REQUEST'; throw err;
   }
   if (!Number.isInteger(price.qty) || price.qty < MARKET_PRICE_MIN || price.qty > MARKET_PRICE_MAX) {
     const err = new Error('price.qty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
+  }
+  if (kind === 'tm') return createTmListing(sellerId, body, price, idemKey);
+  // ---- kind === 'po' (inventory PO path) ----
+  if (typeof body.itemUid !== 'string' || !body.itemUid) {
+    const err = new Error('itemUid is required'); err.code = 'BAD_REQUEST'; throw err;
   }
   const entry = findInventoryPO(canvas, body.itemUid);
   if (!entry) {
@@ -117,6 +120,43 @@ function createListing(sellerId, body, canvas, idemKey) {
     kind: 'po',
     itemUid: body.itemUid,
     itemId: entry.id,
+    price: { tm: price.tm, qty: price.qty },
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),
+    state: 'active',
+    idemKey: idemKey || null,
+  };
+  storage.writeMarketListing(listing.id, listing);
+  return { listing, replayed: false };
+}
+
+// createTmListing (REQ-0195b): currency-for-currency listing. No uid --
+// the "stock" is the seller's live balance of `itemId` (a live TM), and a
+// short balance derives SUSPENSION (never auto-withdraw; balances refill).
+// price.tm must be a DIFFERENT live TM than the one sold (same_tm 400,
+// user ruling 2026-07-16). Multiple concurrent tm listings by one seller
+// are legal -- each is balance-checked independently, so there is no
+// already_listed dup gate (that is a per-instance-uid rule; tm has no uid).
+function createTmListing(sellerId, body, price, idemKey) {
+  const itemId = body.itemId;
+  if (typeof itemId !== 'string' || !isLiveTm(itemId)) {
+    const err = new Error('itemId must be a live TM registry id for a tm listing'); err.code = 'BAD_REQUEST'; throw err;
+  }
+  if (price.tm === itemId) {
+    const err = new Error('a TM cannot be priced in itself'); err.code = 'BAD_REQUEST'; err.reason = 'same_tm'; throw err;
+  }
+  const tmQty = body.tmQty;
+  if (!Number.isInteger(tmQty) || tmQty < MARKET_PRICE_MIN || tmQty > MARKET_PRICE_MAX) {
+    const err = new Error('tmQty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
+  }
+  const now = Date.now();
+  const listing = {
+    id: genId('mkt'),
+    sellerId,
+    kind: 'tm',
+    itemUid: null,
+    itemId,
+    tmQty,
     price: { tm: price.tm, qty: price.qty },
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),

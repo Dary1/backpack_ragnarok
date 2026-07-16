@@ -96,7 +96,7 @@ export function MinePane({ listings, gameData, locale, onWithdrawn }: MinePanePr
                 data-state={l.state}
               >
                 <span className="gem" />
-                <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={16} alt={name} />
+                <MarketThumb gameData={gameData} itemId={l.itemId} cellPx={16} alt={name} kind={l.kind} />
                 <div>
                   <div className="nmrow">
                     <span className="nm dj">{name}</span>

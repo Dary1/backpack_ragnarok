@@ -379,6 +379,25 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect(browse.tm).toBeUndefined();
   });
 
+  test('SELL: the tm (currency) tab reflects the single-live-TM reality -- lrdst held, no other currency to price in; same_tm is 400 (REQ-0195b)', async ({ page }) => {
+    // API: pricing a TM in itself -> 400 {reason:'same_tm'} (user ruling).
+    const sameTm = await page.request.post('/api/market/listings', { data: { kind: 'tm', itemId: 'lrdst', tmQty: 5, price: { tm: 'lrdst', qty: 5 } } });
+    expect(sameTm.status()).toBe(400);
+    expect((await sameTm.json()).reason).toBe('same_tm');
+    // UI: the dev player holds lrdst; the currency sell tab lets them pick it
+    // but shows the dormant 'no other currency to price in' state, because
+    // lrdst is the only live TM (a 2nd live TM would enable a real listing).
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    await page.locator('[data-testid="market-tab-sell"]').click();
+    await page.locator('[data-testid="market-sell-kind-tm"]').click();
+    await expect(page.locator('[data-testid="market-pane-sell-tm"]')).toBeVisible();
+    const lrdstItem = page.locator('[data-testid="market-sell-tm-item"][data-tm-id="lrdst"]');
+    await expect(lrdstItem).toBeVisible();
+    await lrdstItem.click();
+    await expect(page.locator('[data-testid="market-sell-tm-noprice"]')).toBeVisible();
+  });
+
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
     await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);

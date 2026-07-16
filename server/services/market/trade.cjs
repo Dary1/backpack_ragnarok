@@ -102,15 +102,26 @@ function buyListing(buyerId, listingId, idemKey) {
   }
 
   // Seller-side eligibility, re-derived NOW (lazy, never trusted stale).
+  const kind = listing.kind || 'po';
   const sellerDoc = storage.readProfile(listing.sellerId);
   const sellerCanvas = sellerDoc ? sellerDoc.canvas : null;
-  const sellerPo = sellerCanvas ? findInventoryPO(sellerCanvas, listing.itemUid) : null;
-  if (!sellerCanvas || !sellerPo) {
-    autoWithdrawItemGone(listing, now);
-    const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
-  }
-  if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
-    const err = new Error('listing suspended: the seller currently deploys this item (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+  let sellerPo = null;
+  if (kind === 'tm') {
+    // REQ-0195b: tm stock is the live balance; a shortfall is a
+    // (reversible) SUSPENSION re-check, never an item-gone auto-withdraw.
+    const stock = sellerCanvas ? readTmBalance(sellerCanvas, listing.itemId) : 0;
+    if (stock < listing.tmQty) {
+      const err = new Error('listing suspended: the seller holds ' + stock + ' ' + String(listing.itemId).toUpperCase() + ', needs ' + listing.tmQty); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
+  } else {
+    sellerPo = sellerCanvas ? findInventoryPO(sellerCanvas, listing.itemUid) : null;
+    if (!sellerCanvas || !sellerPo) {
+      autoWithdrawItemGone(listing, now);
+      const err = new Error('the listed item no longer exists; listing withdrawn'); err.code = 'CONFLICT'; err.reason = 'item_gone'; throw err;
+    }
+    if (deployedUidSet(listing.sellerId, sellerCanvas).has(listing.itemUid)) {
+      const err = new Error('listing suspended: the seller currently deploys this item (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'suspended'; throw err;
+    }
   }
 
   // Buyer-side funds + capacity, all BEFORE the commit point.
@@ -142,9 +153,13 @@ function buyListing(buyerId, listingId, idemKey) {
   debitTmFromCanvas(buyerCanvas, listing.price.tm, qty);
   storage.writeProfile(buyerId, buyerCanvas);
 
-  // (3/7) remove the item from the seller (inventory + every
-  // non-deployed squad reference).
-  stripPoFromCanvas(sellerCanvas, listing.itemUid);
+  // (3/7) remove the sold value from the seller (kind-branched: strip the
+  // PO instance everywhere, or debit tmQty off the seller's TM stacks).
+  if (kind === 'tm') {
+    debitTmFromCanvas(sellerCanvas, listing.itemId, listing.tmQty);
+  } else {
+    stripPoFromCanvas(sellerCanvas, listing.itemUid);
+  }
   storage.writeProfile(listing.sellerId, sellerCanvas);
 
   // (4/7) deliver the item to the buyer's WAREHOUSE as a normal
@@ -152,13 +167,23 @@ function buyListing(buyerId, listingId, idemKey) {
   // warehouse claim, exactly like a dungeon reward. Fresh uid
   // (grantWarehouseItem convention); cap was pre-checked synchronously
   // above, so addToWarehouse cannot refuse here.
-  const itemRow = {
-    itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
-    q: sellerPo.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
-    harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
-    sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
-    status: 'claimable',
-  };
+  // A bought TM arrives as a kind:'tm' stack row (grantTmQty shape, merged
+  // on claim via firstFitOrMergeTM); a PO/SI as a plain row carrying its q.
+  const itemRow = kind === 'tm'
+    ? {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId, qty: listing.tmQty,
+        kind: 'tm',
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      }
+    : {
+        itemUid: genId('wh'), playerId: buyerId, itemId: listing.itemId,
+        q: sellerPo.q, // REQ-0063: the SAME instance's quality roll travels with it, not re-rolled
+        harvestedAt: tIso, expiresAt: new Date(now + WAREHOUSE_TTL_MS).toISOString(),
+        sourceRoomId: null, sourceRunId: null, sourceListingId: listing.id,
+        status: 'claimable',
+      };
   const delivered = addToWarehouse(buyerId, itemRow);
   if (!delivered.ok) throw new Error('market settle: buyer warehouse refused delivery after pre-check (' + delivered.reason + ') -- this is a bug');
 

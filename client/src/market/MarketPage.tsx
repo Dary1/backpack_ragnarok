@@ -135,7 +135,7 @@ export function MarketPage({ locale }: MarketPageProps) {
   // the SELL pane grays them out -- can't double-list).
   const listedUids = useMemo(() => {
     const s = new Set<string>();
-    for (const l of mine) if (l.state === 'active' || l.state === 'suspended' || l.suspended) s.add(l.itemUid);
+    for (const l of mine) if ((l.state === 'active' || l.state === 'suspended' || l.suspended) && l.itemUid) s.add(l.itemUid);
     return s;
   }, [mine]);
 

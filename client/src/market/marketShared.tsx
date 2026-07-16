@@ -36,6 +36,8 @@ export function itemDefFor(gameData: GameData | null, itemId: string) {
 interface MarketThumbProps {
   gameData: GameData | null;
   itemId: string;
+  /** REQ-0195b: a tm listing has no PO def -- render the currency rune. */
+  kind?: string;
   /** Icon well pixel budget per cell (mock: 64px wells on cards, 46px on
    * mine rows). ShapeGrid multiplies this by the footprint. */
   cellPx?: number;
@@ -47,7 +49,10 @@ interface MarketThumbProps {
  * (same component the Dex catalog uses), so a 2x2 cleaver reads as a
  * cleaver, not a squished corner. Falls back to an empty well when the
  * def/icon is unknown. */
-export function MarketThumb({ gameData, itemId, cellPx = 22, alt }: MarketThumbProps) {
+export function MarketThumb({ gameData, itemId, cellPx = 22, alt, kind }: MarketThumbProps) {
+  if (kind === 'tm') {
+    return <span className="market-thumb market-thumb-tm" aria-hidden="true"><span className="rune">ᚠ</span></span>;
+  }
   const def = itemDefFor(gameData, itemId);
   if (!def) return <span className="market-thumb market-thumb-empty" aria-hidden="true" />;
   const icon = iconDataUrl(def.icon);
@@ -73,6 +78,9 @@ export function MarketThumb({ gameData, itemId, cellPx = 22, alt }: MarketThumbP
  * `rarityWord` is rendered by the caller as a .rar-word span so the theme
  * colors it -- this helper returns the plain pieces. */
 export function listingKindLine(listing: ApiMarketListing, gameData: GameData | null): { kind: string; dims: string; tags: string } {
+  if (listing.kind === 'tm') {
+    return { kind: 'TM', dims: listing.tmQty != null ? `×${listing.tmQty}` : '', tags: '' };
+  }
   const def = itemDefFor(gameData, listing.itemId);
   let dims = '';
   if (def && Array.isArray(def.shape) && def.shape.length > 0) {
@@ -81,7 +89,7 @@ export function listingKindLine(listing: ApiMarketListing, gameData: GameData | 
     dims = `${cols}×${rows}`;
   }
   const tags = (listing.tags || []).join('/');
-  return { kind: 'PO', dims, tags };
+  return { kind: (listing.kind || 'po').toUpperCase(), dims, tags };
 }
 
 /** The player-facing Dex-No chip text ("No.061" / "No.—" when the item
