@@ -65,7 +65,7 @@ T('dialect is keyed by schema_ref: enemy/1 -> enemy/1 dialect, anything else -> 
 // ---- POSITIVE: the live corpus, data untouched ---------------------------
 
 T('G2 all 7 live enemy/1 monster_defs PASS (lowercase rarity + [lo,hi] hp accepted, data as-shipped)', () => {
-  assert.strictEqual(enemies.entries.length, 7, 'the live pilot batch is still 7 entries');
+  assert.ok(enemies.entries.length >= 7, 'the live pilot batch has at least its original 7 entries (REQ-0207: the live roster GROWS with additive deploys, e.g. batch-005)');
   for (const e of enemies.entries) {
     const r = checks.runChecks('monster_def', ENEMY_SCHEMA, e);
     assert.strictEqual(r.overall, 'PASS', e.id + ' -> ' + r.overall + ' (' + failedNames(r).join(',') + ': '
@@ -174,7 +174,7 @@ T('dialect resolution: skill/1 -> skill/1 dialect (name spelled name_en); po/2 i
 });
 
 T('POSITIVE: all 14 live skill/1 entries PASS with their data untouched', () => {
-  assert.strictEqual(skills.entries.length, 14, 'the live skill corpus is 14 entries');
+  assert.ok(skills.entries.length >= 14, 'the live skill corpus has at least its original 14 entries (REQ-0207: GROWS with additive deploys, e.g. batch-005)');
   for (const s of skills.entries) {
     const r = checks.runChecks('skill_def', SKILL_SCHEMA, clone(s));
     assert.strictEqual(r.dialect, 'skill/1');
@@ -311,7 +311,7 @@ T('REQ-0171 gacha_pack: the THREE LIVE packs pass -- the measured basis for putt
 
 T('REQ-0171 unit_def: the 12 LIVE roster defs pass all applicable checks', () => {
   const units = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_units.json'), 'utf8'));
-  assert.strictEqual(units.entries.length, 12, 'roster 001 is 12 units');
+  assert.ok(units.entries.length >= 12, 'roster 001 has at least its original 12 units (REQ-0207: GROWS with roster deploys, e.g. units003)');
   for (const e of units.entries) {
     const r = checks.runChecks('unit_def', 'unit/1', clone(e));
     assert.strictEqual(r.overall, 'PASS', e.id + ': ' + JSON.stringify(r.checks.filter((c) => !c.ok)));

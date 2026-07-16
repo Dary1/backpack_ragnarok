@@ -113,7 +113,7 @@ T('GUARD: a partial unit_def record with NO id is NOT forced through validateUni
 T('regression: the 12 live roster unit_defs (charge-less) still PASS the deepened schema_vocab', () => {
   const REPO = path.join(__dirname, '..', '..');
   const units = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_units.json'), 'utf8'));
-  assert.strictEqual(units.entries.length, 12, 'roster 001 is 12 units');
+  assert.ok(units.entries.length >= 12, 'roster 001 has at least its original 12 units (REQ-0207: GROWS with roster deploys, e.g. units003)');
   for (const e of units.entries) {
     const r = checks.runChecks('unit_def', 'unit/1', clone(e));
     assert.strictEqual(r.overall, 'PASS', e.id + ': ' + JSON.stringify(r.checks.filter((c) => !c.ok)));
