@@ -133,6 +133,14 @@ async function readDevLrdst(page: Page): Promise<number> {
   return total;
 }
 
+// REQ-0195a: the furnace wire is per-tm rows now ({totals:[{tm,total,count}]}).
+// Sum every row for the single scalar the footer + these checks compare.
+async function furnaceTotalOf(page: Page): Promise<number> {
+  const body = await (await page.request.get('/api/market/furnace')).json();
+  const totals = (body.furnace?.totals ?? []) as Array<{ total: number }>;
+  return totals.reduce((s, r) => s + r.total, 0);
+}
+
 test.describe('REQ-0064: Market screen on the real backend', () => {
   // Back up + restore the dev profile around each test (pg-aware, same
   // convention as warehouse-mjolnir.spec.ts: a dev.json file restore is a
@@ -338,7 +346,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_wd_1', price: { tm: 'lrdst', qty: 8 } } });
     const listingId = (await listRes.json()).listing.id;
 
-    const furnaceBefore = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const furnaceBefore = await furnaceTotalOf(page);
 
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-mine"]').click();
@@ -350,12 +358,25 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await expect(page.locator(`[data-testid="market-mine-row"][data-listing-id="${listingId}"][data-state="withdrawn"]`)).toBeVisible({ timeout: 10000 });
 
     // Withdrawal is free: the furnace total is unchanged.
-    const furnaceAfter = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const furnaceAfter = await furnaceTotalOf(page);
     expect(furnaceAfter).toBe(furnaceBefore);
 
     // And it no longer appears in browse.
     const browse = await page.request.get('/api/market/listings');
     expect(((await browse.json()).listings as Array<{ id: string }>).some((l) => l.id === listingId)).toBeFalsy();
+  });
+
+  test('WIRE: dtoVersion 2 envelope carries tms[] (live TM registry) + PO listings carry kind:po (REQ-0195a)', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_kind_1', id: 'dagger' }]) });
+    const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_kind_1', price: { tm: 'lrdst', qty: 9 } } });
+    expect(listRes.status()).toBe(200);
+    const created = await listRes.json();
+    expect(created.dtoVersion).toBe(2);
+    expect(created.listing.kind).toBe('po');
+    const browse = await (await page.request.get('/api/market/listings')).json();
+    expect(browse.dtoVersion).toBe(2);
+    expect(browse.tms).toEqual(['lrdst']);
+    expect(browse.tm).toBeUndefined();
   });
 
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
@@ -364,7 +385,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const furnace = page.locator('[data-testid="market-furnace"]');
     await expect(furnace).toBeVisible();
     // Matches the API's own total (formatted with thousands separators).
-    const total = (await (await page.request.get('/api/market/furnace')).json()).furnace.total as number;
+    const total = await furnaceTotalOf(page);
     await expect(furnace).toContainText(total.toLocaleString());
     await expect(page.locator('.market-foot .lore')).toBeVisible();
   });

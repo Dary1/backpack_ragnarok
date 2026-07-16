@@ -30,7 +30,7 @@ const MARKET_PRICE_MIN = 1; // mock stepper: integer, min 1
 const MARKET_PRICE_MAX = 999; // mock stepper: cap 999
 const MARKET_LISTING_TTL_MS = 7 * 24 * 60 * 60 * 1000; // [TUNABLE] 7d shelf life, lazy expiry (mock: "counted out its seven days")
 const DEX_PRICE_HISTORY_MAX = 5; // rolling last-5 settled prices per itemId (storage side; full REQ-0052 dex-card integration deferred)
-const MARKET_DTO_VERSION = 1; // wire-shape version stamped on every /api/market response (shared/dto.ts ApiMarket*)
+const MARKET_DTO_VERSION = 2; // REQ-0195a: wire-shape v2 -- listing kind field, tms[] envelope, per-tm furnace, dex-history tm (shared/dto.ts ApiMarket*)
 
 // burnOf: THE burn function (law 2). Byte-identical math to the mock's
 // own burnOf (web/redesign/market.html ~line 930). Settlement-only --
@@ -104,6 +104,24 @@ function readTmBalance(canvas, tmId) {
   return total;
 }
 
+// ---------------------------------------------------------------------
+// Live TM registry (REQ-0195a). The currency set is the content TM
+// registry (content/live/live_tms.json), surfaced via core.cjs's
+// getScheduleContent().tmDefsById -- lazy-required INSIDE the function so
+// lib.cjs (loaded first by the market facade) never forms a load-time
+// cycle with core.cjs. Object key order preserves the registry's own
+// entry order = the DTO envelope's display order.
+// ---------------------------------------------------------------------
+function liveTmIds() {
+  const { getScheduleContent } = require('../core.cjs');
+  return Object.keys(getScheduleContent().tmDefsById || {});
+}
+function isLiveTm(tmId) {
+  if (typeof tmId !== 'string' || !tmId) return false;
+  const { getScheduleContent } = require('../core.cjs');
+  return Object.prototype.hasOwnProperty.call(getScheduleContent().tmDefsById || {}, tmId);
+}
+
 module.exports = {
   MARKET_TM_ID,
   MARKET_BURN_RATE,
@@ -116,4 +134,6 @@ module.exports = {
   getDexNoById,
   findInventoryPO,
   readTmBalance,
+  liveTmIds,
+  isLiveTm,
 };

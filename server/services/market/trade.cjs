@@ -192,7 +192,7 @@ function buyListing(buyerId, listingId, idemKey) {
   // now; the full REQ-0052 dex-card integration consumes this same root
   // later.
   const hist = storage.readMarketDexHistory(listing.itemId) || { itemId: listing.itemId, entries: [] };
-  hist.entries.unshift({ qty, t: tIso, listingId: listing.id });
+  hist.entries.unshift({ qty, tm: listing.price.tm, t: tIso, listingId: listing.id });
   hist.entries = hist.entries.slice(0, DEX_PRICE_HISTORY_MAX);
   storage.writeMarketDexHistory(listing.itemId, hist);
 

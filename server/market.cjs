@@ -18,6 +18,8 @@ module.exports = {
   MARKET_DTO_VERSION: market.MARKET_DTO_VERSION,
   burnOf: market.burnOf,
   readTmBalance: market.readTmBalance,
+  liveTmIds: market.liveTmIds,
+  isLiveTm: market.isLiveTm,
   findInventoryPO: market.findInventoryPO,
   deployedUidSet: market.deployedUidSet,
   normalizeListing: market.normalizeListing,

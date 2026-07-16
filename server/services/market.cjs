@@ -89,6 +89,8 @@ module.exports = {
   MARKET_DTO_VERSION: lib.MARKET_DTO_VERSION,
   burnOf: lib.burnOf,
   readTmBalance: lib.readTmBalance,
+  liveTmIds: lib.liveTmIds,
+  isLiveTm: lib.isLiveTm,
   findInventoryPO: lib.findInventoryPO,
   deployedUidSet,
   normalizeListing: listings.normalizeListing,

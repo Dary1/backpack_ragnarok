@@ -8,7 +8,7 @@ const storage = require('../../storage.cjs');
 const players = require('../../players.cjs');
 const { getScheduleContent } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
-const { burnOf, getDexNoById, findInventoryPO } = require('./lib.cjs');
+const { burnOf, getDexNoById, findInventoryPO, MARKET_TM_ID } = require('./lib.cjs');
 const { normalizeListing, autoWithdrawItemGone } = require('./listings.cjs');
 
 // sellerViewContext: one seller's canvas + deployed-uid set, loaded ONCE
@@ -47,7 +47,7 @@ function deriveView(listing, ctx, nowMs) {
 function priceHistoryFor(itemId, cache) {
   if (cache && cache.has(itemId)) return cache.get(itemId);
   const doc = storage.readMarketDexHistory(itemId);
-  const entries = (doc && Array.isArray(doc.entries) ? doc.entries : []).map((e) => ({ qty: e.qty, t: e.t }));
+  const entries = (doc && Array.isArray(doc.entries) ? doc.entries : []).map((e) => ({ qty: e.qty, tm: (typeof e.tm === 'string' && e.tm) ? e.tm : MARKET_TM_ID, t: e.t }));
   if (cache) cache.set(itemId, entries);
   return entries;
 }
@@ -73,6 +73,7 @@ function toListingDto(listing, view, caches) {
     sellerId: listing.sellerId,
     sellerName: sellerNameOf(listing.sellerId, caches && caches.names),
     itemUid: listing.itemUid,
+    kind: listing.kind || 'po',
     itemId: listing.itemId,
     itemName: def ? def.name : listing.itemId,
     itemNameJa: (ja && ja.name) || (def && def.name_ja) || null,

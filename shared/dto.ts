@@ -623,7 +623,7 @@ export interface ApiWarehouseItem {
 // runtime constant -- shared/dto.ts is types-only by rule). Bump the
 // literal here AND there together whenever a market wire shape changes
 // incompatibly.
-export type MarketDtoVersion = 1;
+export type MarketDtoVersion = 2;
 
 /** Law 1 ("barter in kind"): a price is an integer qty of ONE TM.
  * v1's trade TM is content id 'lrdst' (content/live/live_tms.json). */
@@ -636,6 +636,10 @@ export interface ApiMarketPrice {
  * last-5 per itemId, newest first). */
 export interface ApiMarketPriceHistoryEntry {
   qty: number;
+  /** REQ-0195a: the TM this price was denominated in. Prices in
+   * different TMs never mix; the client anchor shows only entries whose
+   * tm matches the currently-chosen price TM. Legacy entries read lrdst. */
+  tm: string;
   t: string;
 }
 
@@ -649,6 +653,10 @@ export interface ApiMarketListing {
   sellerId: string;
   sellerName: string;
   itemUid: string;
+  /** REQ-0195a: the tradeable content kind. 'po' today (legacy listings,
+   * which predate the field, normalize to 'po' at read); si/unit/tm land
+   * in REQ-0195b-d. */
+  kind: 'po' | 'si' | 'unit' | 'tm';
   itemId: string;
   /** Display conveniences resolved server-side; the full item def
    * (icon/shape/effects) still comes from fetchContent()'s items map by
@@ -687,8 +695,10 @@ export interface ApiMarketListing {
 export interface ApiMarketListingsResponse {
   ok: true;
   dtoVersion: MarketDtoVersion;
-  /** The market's one trade TM id (law 1) -- 'lrdst' today. */
-  tm: string;
+  /** REQ-0195a: the live TM registry ids (content/live/live_tms.json), in
+   * display order -- the currency set every price.tm must draw from (was
+   * the scalar `tm` at dtoVersion 1). 'lrdst' is the sole entry today. */
+  tms: string[];
   listings: ApiMarketListing[];
 }
 
@@ -696,6 +706,9 @@ export interface ApiMarketListingsResponse {
  * market TM id; qty an integer in [1, 999]. Optional Idempotency-Key
  * HEADER dedupes retries (replayed:true on the response). */
 export interface ApiMarketCreateListingRequest {
+  /** REQ-0195a: 'po' (the default when omitted) today; si/unit/tm in
+   * later phases. */
+  kind?: 'po' | 'si' | 'unit' | 'tm';
   itemUid: string;
   price: ApiMarketPrice;
 }
@@ -747,10 +760,12 @@ export interface ApiMarketFurnaceResponse {
   /** REQ-0066: the season the window belongs to (index + ja name), or
    * null on the all-time fallback. */
   season?: { index: number; name: string } | null;
+  /** REQ-0195a: per-TM burn rows (burns in different TMs never mix). One
+   * row per TM that burned in the window; empty when nothing burned.
+   * `since` is the season-window start (REQ-0066), null on the all-time
+   * fallback. */
   furnace: {
-    tm: string;
-    total: number;
-    count: number;
+    totals: { tm: string; total: number; count: number }[];
     since: string | null;
   };
 }

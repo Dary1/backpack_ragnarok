@@ -63,7 +63,9 @@ interface BuyPaneProps {
   listings: ApiMarketListing[];
   gameData: GameData | null;
   locale: Locale;
-  balance: number;
+  /** REQ-0195a: spendable balance for a given TM id -- buy affordability
+   * is checked per listing against its OWN price.tm. */
+  balanceOf: (tm: string) => number;
   myPlayerId: string | null;
   activeChip: string;
   query: string;
@@ -72,7 +74,7 @@ interface BuyPaneProps {
   onBuy: (listing: ApiMarketListing) => void;
 }
 
-export function BuyPane({ listings, gameData, locale, balance, myPlayerId, activeChip, query, onChipChange, onQueryChange, onBuy }: BuyPaneProps) {
+export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, activeChip, query, onChipChange, onQueryChange, onBuy }: BuyPaneProps) {
   // Content-bound chips: keep only those whose value is present in some
   // live listing (plus 'all'), so the row reflects the real hearth.
   const visibleChips = useMemo(() => {
@@ -137,7 +139,8 @@ export function BuyPane({ listings, gameData, locale, balance, myPlayerId, activ
             const kind = listingKindLine(l, gameData);
             const isSuspended = l.state === 'suspended' || l.suspended;
             const isMine = myPlayerId != null && l.sellerId === myPlayerId;
-            const canAfford = balance >= l.price.qty;
+            const bal = balanceOf(l.price.tm);
+            const canAfford = bal >= l.price.qty;
             const buyable = !isSuspended && !isMine && canAfford;
             const name = locale === 'ja' ? l.itemNameJa || l.itemName : l.itemName;
             return (
@@ -178,7 +181,7 @@ export function BuyPane({ listings, gameData, locale, balance, myPlayerId, activ
                   ) : (
                     <div className="buycol">
                       <button type="button" className="btn sm" data-testid={`market-buy-btn-${l.itemUid}`} disabled>{t(locale, 'market.buyButton')}</button>
-                      {!isSuspended && !isMine && !canAfford ? <span className="t-micro shortnote">{t(locale, 'market.shortChip', { n: l.price.qty - balance })}</span> : null}
+                      {!isSuspended && !isMine && !canAfford ? <span className="t-micro shortnote">{t(locale, 'market.shortChip', { n: l.price.qty - bal })}</span> : null}
                     </div>
                   )}
                 </div>

@@ -67,13 +67,18 @@ export function MarketPage({ locale }: MarketPageProps) {
   const [mine, setMine] = useState<ApiMarketListing[]>([]);
   const [furnace, setFurnace] = useState<ApiMarketFurnaceResponse['furnace'] | null>(null);
   const [furnaceSeason, setFurnaceSeason] = useState<ApiMarketFurnaceResponse['season']>(null);
+  // REQ-0195a: the live TM registry ids (envelope `tms`), captured from
+  // the browse response -- the currency set the SELL price-TM draws from.
+  const [marketTms, setMarketTms] = useState<string[]>([MARKET_TM_ID]);
   const [buyTarget, setBuyTarget] = useState<ApiMarketListing | null>(null);
   // BUY search/filter state lifted here so it survives pane switches.
   const [activeChip, setActiveChip] = useState('all');
   const [query, setQuery] = useState('');
 
-  const tmId = furnace?.tm || MARKET_TM_ID;
-  const balance = readMarketBalance(snapshot.state, tmId);
+  // balanceOf(tm) reads the spendable balance for ANY tm, so buy
+  // affordability is checked against each listing's OWN price.tm (not a
+  // single hardcoded currency) -- REQ-0195a multi-TM core.
+  const balanceOf = useCallback((tm: string) => readMarketBalance(snapshot.state, tm), [snapshot.state]);
   const myPlayerId = snapshot.me?.playerId ?? null;
 
   // Guard so an in-flight fetch that resolves after unmount doesn't setState.
@@ -82,7 +87,10 @@ export function MarketPage({ locale }: MarketPageProps) {
 
   const loadBrowse = useCallback(async () => {
     const res = await fetchMarketListings();
-    if (aliveRef.current) setBrowse(res.listings);
+    if (aliveRef.current) {
+      setBrowse(res.listings);
+      setMarketTms(res.tms && res.tms.length ? res.tms : [MARKET_TM_ID]);
+    }
   }, []);
 
   const loadMine = useCallback(async () => {
@@ -184,7 +192,7 @@ export function MarketPage({ locale }: MarketPageProps) {
               listings={browse}
               gameData={snapshot.gameData}
               locale={locale}
-              balance={balance}
+              balanceOf={balanceOf}
               myPlayerId={myPlayerId}
               activeChip={activeChip}
               query={query}
@@ -198,6 +206,7 @@ export function MarketPage({ locale }: MarketPageProps) {
               state={snapshot.state}
               gameData={snapshot.gameData}
               locale={locale}
+              tms={marketTms}
               allListings={allListings}
               listedUids={listedUids}
               onListed={refreshAfterServerMutation}
@@ -220,7 +229,7 @@ export function MarketPage({ locale }: MarketPageProps) {
         <div className="lore">{t(locale, 'market.foot.lore')}</div>
         <div className="t-micro" data-testid="market-furnace">
           {furnace
-            ? t(locale, furnaceSeason ? 'market.foot.furnaceSeason' : 'market.foot.furnace', { n: furnace.total.toLocaleString() })
+            ? t(locale, furnaceSeason ? 'market.foot.furnaceSeason' : 'market.foot.furnace', { n: furnace.totals.reduce((s, r) => s + r.total, 0).toLocaleString() })
             : t(locale, 'market.foot.furnaceLoading')}
         </div>
       </footer>
@@ -230,7 +239,7 @@ export function MarketPage({ locale }: MarketPageProps) {
           listing={buyTarget}
           gameData={snapshot.gameData}
           locale={locale}
-          balance={balance}
+          balance={balanceOf(buyTarget.price.tm)}
           onSettled={refreshAfterServerMutation}
           onClose={() => setBuyTarget(null)}
         />

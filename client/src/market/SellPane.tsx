@@ -48,14 +48,18 @@ interface SellPaneProps {
    * find an item's recent settled-price anchor (priceHistory), and to
    * gray out items the player has ALREADY listed (still active/suspended)
    * so they can't double-list (server would 409 already_listed). */
+  /** REQ-0195a: the live TM registry ids (envelope `tms`); the price is
+   * carved in tms[0] today (a selector appears once a 2nd TM goes live). */
+  tms: string[];
   allListings: ApiMarketListing[];
   /** Uids the player already has an active/suspended listing for. */
   listedUids: Set<string>;
   onListed: () => Promise<void>;
 }
 
-export function SellPane({ state, gameData, locale, allListings, listedUids, onListed }: SellPaneProps) {
+export function SellPane({ state, gameData, locale, tms, allListings, listedUids, onListed }: SellPaneProps) {
   const sellable = useMemo(() => collectSellable(state), [state]);
+  const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const [price, setPrice] = useState<number>(1);
   const [priceText, setPriceText] = useState<string>('1');
@@ -116,7 +120,7 @@ export function SellPane({ state, gameData, locale, allListings, listedUids, onL
     setBusy(true);
     setErrKey(null);
     try {
-      await createMarketListing({ itemUid: selected.itemUid, price: { tm: 'lrdst', qty: price } });
+      await createMarketListing({ itemUid: selected.itemUid, price: { tm: priceTm, qty: price } });
       setToast(t(locale, 'market.sell.listedToast'));
       setSelectedUid(null);
       await onListed(); // refetch mine/browse so the new listing appears + the item grays out here

@@ -8,7 +8,7 @@ const { getScheduleContent, genId } = require('../core.cjs');
 const { deployedUidSet } = require('../squads.cjs');
 const {
   MARKET_TM_ID, MARKET_PRICE_MIN, MARKET_PRICE_MAX, MARKET_LISTING_TTL_MS,
-  findInventoryPO,
+  findInventoryPO, isLiveTm,
 } = require('./lib.cjs');
 
 // ---------------------------------------------------------------------
@@ -25,6 +25,10 @@ const {
 // the (possibly mutated + re-persisted) listing.
 function normalizeListing(listing, nowMs) {
   const now = nowMs != null ? nowMs : Date.now();
+  // REQ-0195a: legacy listings predate the `kind` field; they can only
+  // be POs. Default in-memory so every read path converges (persisted on
+  // the next write the doc takes, e.g. a state transition below).
+  if (!listing.kind) listing.kind = 'po';
   if (listing.state === 'active' && Date.parse(listing.expiresAt) <= now) {
     listing.state = 'expired';
     listing.expiredAt = new Date(now).toISOString();
@@ -76,9 +80,15 @@ function createListing(sellerId, body, canvas, idemKey) {
   if (!body || typeof body.itemUid !== 'string' || !body.itemUid) {
     const err = new Error('itemUid is required'); err.code = 'BAD_REQUEST'; throw err;
   }
+  // REQ-0195a: `kind` selects the tradeable content kind. Phase a lists
+  // inventory POs only; si/unit/tm arrive in REQ-0195b-d. Absent -> 'po'.
+  const kind = (typeof body.kind === 'string' && body.kind) ? body.kind : 'po';
+  if (kind !== 'po') {
+    const err = new Error('unsupported listing kind: ' + kind + ' (this phase lists inventory POs only)'); err.code = 'BAD_REQUEST'; throw err;
+  }
   const price = body.price;
-  if (!price || price.tm !== MARKET_TM_ID) {
-    const err = new Error('price.tm must be "' + MARKET_TM_ID + '" (barter in kind: the market trades in exactly one TM)'); err.code = 'BAD_REQUEST'; throw err;
+  if (!price || typeof price.tm !== 'string' || !isLiveTm(price.tm)) {
+    const err = new Error('price.tm must be a live TM registry id (content/live/live_tms.json)'); err.code = 'BAD_REQUEST'; throw err;
   }
   if (!Number.isInteger(price.qty) || price.qty < MARKET_PRICE_MIN || price.qty > MARKET_PRICE_MAX) {
     const err = new Error('price.qty must be an integer between ' + MARKET_PRICE_MIN + ' and ' + MARKET_PRICE_MAX); err.code = 'BAD_REQUEST'; throw err;
@@ -104,9 +114,10 @@ function createListing(sellerId, body, canvas, idemKey) {
   const listing = {
     id: genId('mkt'),
     sellerId,
+    kind: 'po',
     itemUid: body.itemUid,
     itemId: entry.id,
-    price: { tm: MARKET_TM_ID, qty: price.qty },
+    price: { tm: price.tm, qty: price.qty },
     createdAt: new Date(now).toISOString(),
     expiresAt: new Date(now + MARKET_LISTING_TTL_MS).toISOString(),
     state: 'active',

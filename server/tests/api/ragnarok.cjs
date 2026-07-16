@@ -591,6 +591,8 @@ module.exports.run = async function run(h) {
 
   await AT('market: GET /api/market/furnace windows the burn total by the current season (REQ-0066), all-time fallback without a registry', async () => {
     writeCanonicalSeason(); // re-anchor: season 1 started 10d1h ago
+    // REQ-0195a: furnace totals are per-tm rows now; all burns here are lrdst.
+    const lrdstRow = (r) => (r.body.furnace.totals || []).find((x) => x.tm === 'lrdst') || { total: 0, count: 0 };
     const seasonRes = await marketReq('GET', '/api/ragnarok/season', ragA.token);
     const seasonStartIso = seasonRes.body.season.startAt;
     const before = await marketReq('GET', '/api/market/furnace', ragA.token);
@@ -602,15 +604,15 @@ module.exports.run = async function run(h) {
     scheduleStorage.writeMarketFurnaceEntry({ id: 'furn_win_old', amount: 7, tm: 'lrdst', listingId: 'x_old', t: new Date(Date.now() - 30 * RAG_DAY).toISOString() });
     scheduleStorage.writeMarketFurnaceEntry({ id: 'furn_win_new', amount: 5, tm: 'lrdst', listingId: 'x_new', t: new Date(Date.now() - 1 * RAG_DAY).toISOString() });
     const windowed = await marketReq('GET', '/api/market/furnace', ragA.token);
-    assert.strictEqual(windowed.body.furnace.total, before.body.furnace.total + 5, 'pre-season burn excluded, in-season burn counted');
-    assert.strictEqual(windowed.body.furnace.count, before.body.furnace.count + 1);
+    assert.strictEqual(lrdstRow(windowed).total, lrdstRow(before).total + 5, 'pre-season burn excluded, in-season burn counted');
+    assert.strictEqual(lrdstRow(windowed).count, lrdstRow(before).count + 1);
     // No seasons file -> the documented all-time fallback (pre-REQ-0066
     // behavior byte-for-byte: since null, everything counts).
     writeSeasonsFixture(null);
     const allTime = await marketReq('GET', '/api/market/furnace', ragA.token);
     assert.strictEqual(allTime.body.furnace.since, null);
     assert.strictEqual(allTime.body.season, null);
-    assert.strictEqual(allTime.body.furnace.total, before.body.furnace.total + 5 + 7, 'all-time includes the pre-season entry');
+    assert.strictEqual(lrdstRow(allTime).total, lrdstRow(before).total + 5 + 7, 'all-time includes the pre-season entry');
     writeCanonicalSeason();
   });
 

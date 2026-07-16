@@ -130,7 +130,7 @@ module.exports.run = async function run(h) {
     const res = await marketReq('POST', '/api/market/listings', mktSeller.token, { itemUid: 'mkt_sell_1', price: { tm: 'lrdst', qty: 46 } });
     assert.strictEqual(res.status, 200, JSON.stringify(res.body));
     assert.strictEqual(res.body.ok, true);
-    assert.strictEqual(res.body.dtoVersion, 1);
+    assert.strictEqual(res.body.dtoVersion, 2);
     assert.strictEqual(res.body.replayed, false);
     const l = res.body.listing;
     assert.strictEqual(l.state, 'active');
@@ -179,8 +179,8 @@ module.exports.run = async function run(h) {
 
     const browse = await marketReq('GET', '/api/market/listings', mktBuyer.token);
     assert.strictEqual(browse.status, 200);
-    assert.strictEqual(browse.body.dtoVersion, 1);
-    assert.strictEqual(browse.body.tm, 'lrdst');
+    assert.strictEqual(browse.body.dtoVersion, 2);
+    assert.deepStrictEqual(browse.body.tms, ['lrdst'], 'envelope carries the live TM registry ids (dtoVersion 2)');
     assert.strictEqual(browse.body.listings.length, 2, 'both active listings visible to another player');
     assert.ok(browse.body.listings.every((x) => x.sellerName === 'MarketSeller'));
 
@@ -246,7 +246,7 @@ module.exports.run = async function run(h) {
 
     const buy = await marketReq('POST', '/api/market/listings/' + mktListing1Id + '/buy', mktBuyer.token);
     assert.strictEqual(buy.status, 200, JSON.stringify(buy.body));
-    assert.strictEqual(buy.body.dtoVersion, 1);
+    assert.strictEqual(buy.body.dtoVersion, 2);
     assert.deepStrictEqual(
       { qty: buy.body.receipt.price.qty, burn: buy.body.receipt.burn, sellerReceives: buy.body.receipt.sellerReceives },
       { qty: 46, burn: 4, sellerReceives: 42 },
@@ -284,7 +284,7 @@ module.exports.run = async function run(h) {
     // Furnace + dex history.
     const furnace = await marketReq('GET', '/api/market/furnace', mktBuyer.token);
     assert.strictEqual(furnace.status, 200);
-    assert.deepStrictEqual(furnace.body.furnace, { tm: 'lrdst', total: 4, count: 1, since: null });
+    assert.deepStrictEqual(furnace.body.furnace, { totals: [{ tm: 'lrdst', total: 4, count: 1 }], since: null });
     const hist = scheduleStorage.readMarketDexHistory('blade');
     assert.strictEqual(hist.entries.length, 1);
     assert.strictEqual(hist.entries[0].qty, 46);
@@ -297,7 +297,7 @@ module.exports.run = async function run(h) {
     const settledRow = mine2.body.listings.find((x) => x.id === mktListing1Id);
     assert.strictEqual(settledRow.state, 'settled');
     assert.strictEqual(settledRow.buyerId, mktBuyer.playerId);
-    assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, t: hist.entries[0].t }], 'DTO exposes the engraved history');
+    assert.deepStrictEqual(settledRow.priceHistory, [{ qty: 46, tm: 'lrdst', t: hist.entries[0].t }], 'DTO exposes the engraved history (with its price TM)');
   });
 
   await AT('market: concurrent buys -- first wins, second 409 already_settled; self-buy 409; insufficient balance 409 leaves everything untouched', async () => {
@@ -459,7 +459,7 @@ module.exports.run = async function run(h) {
     const res = await marketReq('GET', '/api/market/furnace', mktPoor.token);
     assert.strictEqual(res.status, 200);
     // Settles so far: 46 (burn 4) + 12 (burn 1) + 13 (burn 2) = 7 over 3 trades.
-    assert.deepStrictEqual(res.body.furnace, { tm: 'lrdst', total: 7, count: 3, since: null });
+    assert.deepStrictEqual(res.body.furnace, { totals: [{ tm: 'lrdst', total: 7, count: 3 }], since: null });
     // The windowing hook already works (REQ-0066 will pass a season start).
     const windowed = market.furnaceTotal(Date.now() + 1000);
     assert.deepStrictEqual({ total: windowed.total, count: windowed.count }, { total: 0, count: 0 }, 'a future window excludes everything');
@@ -487,6 +487,35 @@ module.exports.run = async function run(h) {
     const hist = scheduleStorage.readMarketDexHistory('blade');
     assert.deepStrictEqual(hist.entries.map((e) => e.qty), [6, 5, 4, 3, 2], 'rolling window, newest first');
     assert.strictEqual(mktBalance(mktBuyer.playerId), 69 - 21, 'buyer paid 1+2+..+6');
+  });
+
+  await AT('market: kind field defaults to po on create + legacy listings normalize to po; envelope carries tms[] (live TM registry); non-registry price.tm 400s', async () => {
+    const kSeller = playersFixture.createPlayer('MarketKindSeller', []);
+    scheduleStorage.writeProfile(kSeller.playerId, mkCanvas(
+      [invPage([{ uid: 'mkt_kind_1', id: 'blade', cell: [1, 1], rot: 0 }]), invPage(), invPage(), invPage(), invPage()],
+      [null, null, null, null, null]
+    ));
+    const created = await marketReq('POST', '/api/market/listings', kSeller.token, { itemUid: 'mkt_kind_1', price: { tm: 'lrdst', qty: 10 } });
+    assert.strictEqual(created.status, 200, JSON.stringify(created.body));
+    assert.strictEqual(created.body.dtoVersion, 2);
+    assert.strictEqual(created.body.listing.kind, 'po', 'a created PO listing carries kind:po');
+    const id = created.body.listing.id;
+    // Legacy doc lacking `kind` -> normalizes to po at read (they can only be POs).
+    const raw = scheduleStorage.readMarketListing(id);
+    delete raw.kind;
+    scheduleStorage.writeMarketListing(id, raw);
+    const mine = await marketReq('GET', '/api/market/listings?filter=mine', kSeller.token);
+    assert.strictEqual(mine.body.listings.find((x) => x.id === id).kind, 'po', 'legacy listing (no kind) reads as po');
+    // Envelope: tms[] is the live TM registry; the scalar tm is gone.
+    const browse = await marketReq('GET', '/api/market/listings', kSeller.token);
+    assert.deepStrictEqual(browse.body.tms, ['lrdst'], 'envelope carries the live TM registry ids');
+    assert.strictEqual(browse.body.tm, undefined, 'the scalar tm envelope field is gone at dtoVersion 2');
+    // price.tm must be a live registry id.
+    const badTm = await marketReq('POST', '/api/market/listings', kSeller.token, { itemUid: 'mkt_kind_1', price: { tm: 'not_a_tm', qty: 5 } });
+    assert.strictEqual(badTm.status, 400, 'price.tm must be a live TM registry id: ' + JSON.stringify(badTm.body));
+    // Unsupported kind (phase a lists POs only) 400s.
+    const badKind = await marketReq('POST', '/api/market/listings', kSeller.token, { kind: 'tm', itemUid: 'mkt_kind_1', price: { tm: 'lrdst', qty: 5 } });
+    assert.strictEqual(badKind.status, 400, 'unsupported kind 400s in phase a: ' + JSON.stringify(badKind.body));
   });
 
   await AT('market: every /api/market route is token-gated (401 for a garbage token)', async () => {
