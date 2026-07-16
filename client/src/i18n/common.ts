@@ -10,6 +10,10 @@ export const commonEn = {
   'header.status.offline': 'offline',
   'header.langToggle': '🇯🇵 日本語',
 
+  // Held-TM balance HUD (TmHud.tsx) -- REQ-0205. aria-label for the strip;
+  // per-TM tooltip text is CONTENT i18n (the served TM def), not a chrome key.
+  'hud.tmAria': 'Held currencies',
+
   // Placeholder route (PlaceholderPage.tsx)
   'placeholder.comingSoon': 'This feature is coming soon.',
 
@@ -35,6 +39,8 @@ export const commonJa = {
   'header.status.saving': '保存中…',
   'header.status.offline': 'オフライン',
   'header.langToggle': '🇬🇧 EN',
+
+  'hud.tmAria': '所持通貨',
 
   'placeholder.comingSoon': 'この機能は近日公開予定です。',
 
