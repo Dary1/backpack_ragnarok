@@ -607,4 +607,23 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await expect(furnace).toContainText(total.toLocaleString());
     await expect(page.locator('.market-foot .lore')).toBeVisible();
   });
+
+  // REQ-0205: the global held-TM balance HUD lives in the app-wide header,
+  // so it must surface a held currency on the market page AND persist when the
+  // player routes elsewhere (proving it is global chrome, not a market widget).
+  // Content-agnostic: lrdst is the guaranteed live TM on every content set.
+  test('HUD REQ-0205: the global held-TM strip shows a chip with the held qty, on the market page AND after routing away', async ({ page }) => {
+    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await gotoMarket(page);
+    await expect(page.locator('[data-testid="tm-hud"]')).toBeVisible();
+    const chip = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText('LRDST'); // the def's short label
+    await expect(chip).toContainText('\u00d720');   // the summed held qty (x20)
+    // Route away to Schedule -> the same chip is still in the header.
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const chipAfter = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');
+    await expect(chipAfter).toBeVisible();
+    await expect(chipAfter).toContainText('\u00d720');
+  });
 });

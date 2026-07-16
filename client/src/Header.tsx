@@ -17,6 +17,7 @@
 // page-port REQs (0070+) will grow the HUD (resources/season chips)
 // per the mock once that data exists in the client.
 import { t } from './i18n';
+import { TmHud } from './TmHud'; // REQ-0205: global held-TM balance strip
 import type { DataSource, Locale } from './store';
 
 interface HeaderProps {
@@ -44,6 +45,9 @@ export function Header({ source, locale, onToggleLocale, autoSaveStatus }: Heade
   return (
     <header className="app-header">
       <h1>backpack_ragnarok</h1>
+      {/* REQ-0205: held-TM balance HUD -- renders on every route via this
+          app-wide header; self-renders null when the player holds no TM. */}
+      <TmHud />
       <div className="header-controls">
         <span className={`data-source-badge ${badgeClass}`}>{badgeLabel}</span>
         <span className="auto-save-status" style={{ color: STATUS_COLOR[autoSaveStatus] }} data-status={autoSaveStatus}>

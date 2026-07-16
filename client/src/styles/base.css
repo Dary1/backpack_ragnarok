@@ -1691,3 +1691,45 @@ html, body {
   align-self: flex-start;
 }
 
+
+/* REQ-0205: global held-TM balance HUD (TmHud.tsx). A compact currency strip
+   in the app-wide header bar -- base.css already owns the header chrome
+   (.app-header / .header-controls / .data-source-badge), so it lives here.
+   One rounded pill per HELD TM; the component renders nothing when the player
+   holds no currency, so there is never an empty strip. Later-wins cascade,
+   same convention as the rest of this file. */
+.tm-hud {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.tm-hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 5px;
+  border: 1px solid rgba(201, 169, 89, 0.28);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text);
+  white-space: nowrap;
+}
+.tm-hud-ico {
+  width: 18px;
+  height: 18px;
+  display: block;
+  object-fit: contain;
+}
+.tm-hud-short {
+  font-family: var(--f-den);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+.tm-hud-qty {
+  color: var(--gold);
+  font-weight: 700;
+}
