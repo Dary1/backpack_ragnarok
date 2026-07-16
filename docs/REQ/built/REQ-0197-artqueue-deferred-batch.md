@@ -71,9 +71,18 @@ Built 2026-07-16 on branch req-0197-artqueue-deferred-batch.
   new G5 covering hold gating, grouped release a,b,a,b -> a,a,b, held cancel,
   post-execute enqueue held, unhold auto-run restore). Full tools/ci.sh
   CI GREEN incl. client typecheck+build and the whole e2e suite (178 passed).
-- Not merged, not deployed: backpack-api is a live service (HANDS-OFF --
-  coordinate the merge + restart with the user). Until the restart, the API
-  and UI changes are not live.
+- Merged to master 2e8b523 (user-directed 2026-07-16); dist containing the
+  REQ-0197 UI committed via 5e7bd38 (REQ-0198's rebuild of the post-merge
+  tree; a fresh tools/release.sh rebuild confirmed "dist unchanged" and
+  CI GREEN on master, e2e 181 passed). backpack-api restarted 06:27:17 UTC;
+  live smoke: POST /api/art/queue/hold round-trips, GET /api/art/queue
+  serves {held, heldPending} (toggled back to held:false after the check).
+- Release-gate note: three earlier release.sh runs failed on an artadmin
+  page-load 20 s navigation cliff and one mid-run master commit -- both
+  traced to a CONCURRENT agent session (req-0182b/REQ-0198 work, box load
+  ~28-32). The failing test passes in 1.1 s solo; nothing in this REQ was at
+  fault. Lesson: release.sh runs from the shared main checkout -- coordinate
+  release windows between sessions.
 - Companion doc for SSD day (models off the 41 MB/s USB-2 disk, ComfyUI RAM
   cap via systemd drop-in, flag set, verification numbers):
   docs/llm_managed/2026-07-16-ssd-comfyui-migration-playbook.md
