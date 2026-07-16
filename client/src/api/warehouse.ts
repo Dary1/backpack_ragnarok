@@ -2,7 +2,7 @@
 // list, the REQ-0041 two-phase claim, and the dev grant (extracted
 // VERBATIM from the old flat api.ts).
 import { scheduleJSON } from './http';
-import type { ApiWarehouseItem } from '../../../shared/dto';
+import type { ApiWarehouseBp, ApiWarehouseItem } from '../../../shared/dto';
 
 // ---- REQ-0036 P1-C / REQ-0041: Warehouse client API ----
 
@@ -23,7 +23,7 @@ export function fetchWarehouse(): Promise<{ ok: true; items: ApiWarehouseItem[] 
  * (notifyStateChanged()) persist it -- this function's job ends at
  * "the row is now claiming, here's what it is". Throws ApiError(409)
  * if the row is already claiming/gone, ApiError(404) if unknown/expired. */
-export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; itemUid: string; itemId: string; kind?: 'tm'; qty?: number }> {
+export function claimWarehouseItem(itemUid: string): Promise<{ ok: true; itemUid: string; itemId: string; kind?: 'tm' | 'bp'; qty?: number; bp?: ApiWarehouseBp }> {
   return scheduleJSON('/api/warehouse/claim', { method: 'POST', body: JSON.stringify({ itemUid }) });
 }
 
