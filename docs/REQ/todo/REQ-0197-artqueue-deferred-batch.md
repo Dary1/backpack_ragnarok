@@ -64,4 +64,16 @@ docs/llm_managed/2026-07-16-ssd-comfyui-migration-playbook.md).
 
 ## Outcome
 
-(filled at built)
+Built 2026-07-16 on branch req-0197-artqueue-deferred-batch.
+- Implementation commit 08ef4bb (+ a725476 tsc fix: pollQueue passes
+  held/heldPending through).
+- Gates: artqueue_test.cjs 5/5 (pre-existing G1/G3 suite untouched-green +
+  new G5 covering hold gating, grouped release a,b,a,b -> a,a,b, held cancel,
+  post-execute enqueue held, unhold auto-run restore). Full tools/ci.sh
+  CI GREEN incl. client typecheck+build and the whole e2e suite (178 passed).
+- Not merged, not deployed: backpack-api is a live service (HANDS-OFF --
+  coordinate the merge + restart with the user). Until the restart, the API
+  and UI changes are not live.
+- Companion doc for SSD day (models off the 41 MB/s USB-2 disk, ComfyUI RAM
+  cap via systemd drop-in, flag set, verification numbers):
+  docs/llm_managed/2026-07-16-ssd-comfyui-migration-playbook.md
