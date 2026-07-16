@@ -1,6 +1,6 @@
 # REQ-0200 - Unit Charge Engine
 
-**Status:** Built (built/) -- sim fusion landed (see s10)
+**Status:** Built (built/) -- sim fusion + REAL-actor adapter landed (see s10, s10.5)
 **Slug:** unit-charge-engine
 **Branch:** req-0200-unit-charge-engine
 **Depends on / follows:** REQ-0129 (charge grammar freeze, vocab v13/v14), REQ-0170/0128b (unit link walker), REQ-0081 (vocab coverage gate), REQ-0190 (per-instance rolls -- FUTURE), REQ-0201 (units003 content -- the acceptance corpus).
@@ -160,9 +160,10 @@ test). **This limitation is now RESOLVED -- the fusion landed in this pass; see 
 - `on_own_passive_fire`, `units_connected_distributed`, and `spend=transform` are NOT exercised by
   any of the 30 units003 kits; they are covered by the self_test charge fixtures + the engine test
   (grammar expressibility), not by the acceptance corpus.
-- The verb groundings target a MINIMAL combat-target model (the honest landing surface). The sim's
-  richer actor adapter is provided when the encounter wiring lands; the groundings are the same
-  mutations, so no re-derivation is needed.
+- The verb groundings target a MINIMAL combat-target model (the honest landing surface). **The sim's
+  richer actor adapter has now LANDED (s10.5): the same groundings drive real BP hp/shield pools,
+  status maps, damage-reduction/buff knobs and the item cadence/firing machinery -- no re-derivation
+  was needed, only a real backing behind the identical mutations.**
 - capacity midpoint can be fractional (e.g. [2,3]->2.5): with count gain the counter fires at the
   next integer (3). Documented, deterministic; REQ-0190 rolls replace it per instance.
 
@@ -193,7 +194,10 @@ Ran `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` (client build INCLUDED) -> **CI GREE
 - sim/tests/unit_charge_test.cjs (NEW -- 13 tests)
 - tools/ci.sh (two new steps)
 - sim/lib/unit_charge_encounter.cjs (NEW -- the encounter<->runtime fusion adapter/manager)
-- sim/lib/encounter.cjs (charge manager build + 6 event hooks + tickAndEmit onHeal param + chargeState return)
+- sim/lib/encounter.cjs (charge manager build + 6 event hooks + tickAndEmit onHeal param + chargeState return; s10.5: chargeOps strike/fire_items/advance_cooldown, outgoing-buff on the attacker, onOffensiveLanded/onDefensiveLanded hooks, real-Haste player cadence)
+- sim/lib/skills.cjs (s10.5: shield absorb in makeBPActor.applyDamage; pct knob in reduceIncoming; outgoing-buff-pct in dealHitOnField/splash -- all undefined-guarded, goldens byte-identical)
+- sim/lib/unit_charge.cjs (s10.5: optional real-actor `sink` seam for grounded spend + standing effects)
+- sim/lib/unit_charge_encounter.cjs (s10.5: `applyReal` real-actor sink + onOffensiveLanded/onDefensiveLanded/outgoingBuffPctFor)
 - sim/lib/compile.cjs (attach bp.charge / bp.unitId from the unit def, guarded -- undefined on all live content)
 - sim/tests/unit_charge_encounter_test.cjs (NEW -- 12 fusion integration fixtures)
 - tools/ci.sh (new step [2.8] unit charge encounter fusion)
@@ -226,12 +230,13 @@ without charge -- the ONLY events the fusion adds are the engine's unit_charge_*
 - selector inputs: bp_connected_lowest_hp reads each BP's LIVE hp (real actor); the
   bp_connected_max_cooldown_item proxy = the slowest every_secs interval among a BP's placed POs
   (the sim has no live per-BP item-cooldown scalar yet -- documented honest stand-in).
-- landing surface: effect verbs land on the runtime's own makeChargeTarget model (surfaced via
-  the additive `chargeState` return). Feeding the mutations back onto real actor HP/statuses is
-  the ONE remaining richer-adapter step (unchanged groundings, only the target backing) -- inert
-  today because no live unit carries charge, and out of scope for the determinism-critical goldens.
+- landing surface: **CLOSED in this pass (see s10.5).** Effect verbs now ALSO mutate the REAL sim
+  actors via the engine's `sink` seam -- the internal makeChargeTarget model (surfaced via
+  `chargeState`) is retained for observability + the module-boundary tests, and the sink is the
+  additional real mutation (BP hp/shield, status maps, damage-reduction/buff knobs, item cadence).
+  Groundings are unchanged; only the backing became real. Still guarded -> byte-identical goldens.
 
-### 10.2 Fixtures (sim/tests/unit_charge_encounter_test.cjs -- 12/12 green, deterministic)
+### 10.2 Fixtures (sim/tests/unit_charge_encounter_test.cjs -- 19/19 green, deterministic; F1 rewritten + 7 real-delta fixtures added this pass, see s10.5)
 Each is a small pack battle driven through runEncounter (fixed seed; kits from
 tools/tests/units003_kits.json + 2 synthetic grammar shapes):
 F1 fusion guard + byte-identity (0 charge events / undefined chargeState with no charge; injecting
@@ -253,7 +258,7 @@ Confirmed via git-stash that the fusion source edits leave the goldens computati
 
 ### 10.4 CI + honest caveats
 `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` (client build INCLUDED) -> **CI GREEN**, including the new
-[2.8] fusion step (12/0), goldens [2] OK, [2.7] runtime 13/0, sim 112/0, mock-src 114/0, typecheck
+[2.8] fusion step (19/0), goldens [2] OK, [2.7] runtime 13/0, sim 112/0, mock-src 114/0, typecheck
 + engine type-surface OK, [3.7] self-test / [3.8] check_units (0 live charge units) / [3.9] units003
 30/30 all GREEN, server files-backend 185/0, client build OK.
 - SKIP_PG / SKIP_E2E: per hard rules -- the running services + art queue must not be disturbed;
@@ -265,3 +270,72 @@ Confirmed via git-stash that the fusion source edits leave the goldens computati
   IDENTICALLY on the original branch code (git-stash confirmed) -- it is NOT introduced by the fusion.
   CI GREEN above was obtained by pointing the content root at the branch's OWN (self-consistent) live
   content -- the correct isolation for testing a branch that must not merge master.
+
+## 10.5 Real-actor adapter (THIS pass -- the s10.1 landing-surface gap CLOSED)
+s10.1 left ONE step open: charge effect verbs still landed on the runtime's own
+`makeChargeTarget` model (surfaced via `chargeState`), not on the live sim actors. That gap
+is now closed. The engine gained a single optional `sink` seam (sim/lib/unit_charge.cjs): for
+every GROUNDED effect (spend AND passive_per_stack standing) it hands the resolved `rec` (the
+exact concrete numbers it already logs) to a caller-supplied sink -- the internal target model
+is still mutated (so `chargeState` + the module-boundary tests are unchanged), the sink is the
+ADDITIONAL real mutation. `grant_charge` and `transform` stay STRUCTURAL (engine-internal, never
+reach the sink). The encounter adapter (sim/lib/unit_charge_encounter.cjs `applyReal`) implements
+the sink against the REAL compiled actors, REUSING existing sim mechanisms (statuses, flat
+damage-reduction, Haste cadence, the damage ray) and adding a MINIMAL real backing only where the
+substrate was genuinely absent (a shield pool, a pct damage-reduction knob, an outgoing-damage-buff
+knob, a lifesteal window). No parallel combat model was introduced.
+
+### Mutation table (verb -> REAL sim mechanism)
+| verb(s) | real sim mechanism now driven |
+|---------|-------------------------------|
+| strike / multi_strike | a real damage ray from the BP into the ENEMY field (encounter `chargeOps.strikeFromBp` -> fireSkillRay -> dealHitOnField -> enemyActor.applyDamage), tagged `cause:'charge'` |
+| grant_shield | `bp.shield` pool, ABSORBED before hp in makeBPActor.applyDamage |
+| block | `bp.damageReduction` (REQ-0121 flat per-hit reduction, reduceIncoming) |
+| damage_reduction | `bp.damageReductionPct` (new pct knob in reduceIncoming; monk standing SETs it) |
+| reflect_damage | `bp.reflectPct` -> real damage dealt back onto the ATTACKING enemy (`onDefensiveLanded` -> enemyActor.applyDamage) |
+| heal_bp | `actor.heal()` -- the real hp pool, capped at hpMax |
+| grant_lifesteal | `bp.chargeLifesteal {pct,until}`; `onOffensiveLanded` heals the attacker for pct of its volley's real damage while active |
+| buff_self / buff_linked | `bp.chargeDmgBuffPct` scales the BP's outgoing strike/multi_strike rolls (dealHitOnField, threaded via attacker.outgoingBuffPct); standing SETs, fire_on_full ADDs |
+| bonus_vs_status | appended to `bp.bonusVsStatus` (REQ-0093 per-hit bonus vs afflicted; `"any"` -> all 8 status names) |
+| apply_status | `applyStatus(bp.statusBag, ...)` -- the real status map |
+| add_on_hit_status | `bp.chargeOnHit` rider; `onOffensiveLanded` applies it to struck enemies (amped by amp_status) |
+| amp_status | `bp.chargeAmp` -> `ampMult` on the on-hit rider's applyStatus |
+| cleanse | `cleanse(bp.statusBag)` -- clears the real debuffs |
+| status_immune | `bp.statusBag._immune` Set (applyStatus honors it) |
+| haste | `applyStatus(bp.statusBag,'Haste',n)` -> real `cadenceMultiplier` on the player PO reschedule (clamped to <=5x, i.e. interval floor 0.2x, as a DoS guard against unbounded stacks) |
+| advance_cooldown | reduces the BP's pending `skill_fire` event `t` on the encounter heap (re-heapified) |
+| fire_items | immediately fires the BP's tag-matching weapon POs into enemies (fireSkillRay) |
+| grant_charge / transform | STRUCTURAL -- engine-internal counter/def swap, never reach the sink |
+
+### Fixtures proving REAL outcome deltas (sim/tests/unit_charge_encounter_test.cjs -- 19/19)
+F1 was REWRITTEN: the old "any injected charge leaves the base stream byte-identical" claim is
+intentionally gone (that mutation IS the feature). The honest guard it now asserts: charge-less
+content is inert (0 events / undefined chargeState) AND a charge that is PRESENT but never reaches
+capacity performs ZERO real mutations, so its non-charge stream stays byte-identical to the
+charge-less twin (proves mutations gate on an actual spend). F2-F12 (engine bookkeeping) unchanged
+and still green. SEVEN new fixtures each run a charged battle vs its charge-less twin at the SAME
+seed and assert the REAL outcome changed:
+- RD1 dragonknight breath -> the tank dies STRICTLY sooner (multi_strike into the enemy side): endT 8.44 < 11.80.
+- RD2 paladin grant_shield -> the shielded lowest-hp linked BP keeps more hp under enemy fire: alpha 42.5 > 15.
+- RD3 werewolf snowball (real Haste + buff_self) -> the pack clears sooner: endT ~11.0 < ~12.0.
+- RD4 pure-haste synthetic charge -> real Haste on statusBag + STRICTLY more blade fires vs a survivor (isolates the cadence wiring): 35 > 10.
+- RD5 vampire grant_lifesteal -> a linked attacker heals from its own hits, ending ABOVE its wounded start: alpha 90 > 50 (control stays 50).
+- RD6 samurai -> real flat block on reduceIncoming + real reflected damage onto the attacking enemy (unit_charge_reflect, amount>0).
+- RD7 witch add_on_hit_status -> a real Burn rider on a linked attacker whose hits apply real Burn to struck enemies (unit_charge_onhit).
+
+### Determinism + golden byte-identity (verified this pass)
+Every real hook is guarded so it is an EXACT no-op on charge-less content: the new bp fields
+(shield / damageReductionPct / reflectPct / chargeDmgBuffPct / chargeOnHit / chargeAmp /
+chargeLifesteal) are undefined unless a charge sets them; reduceIncoming / makeBPActor.applyDamage /
+dealHitOnField early-out when they are absent; the player-PO cadence read and every encounter hook
+are gated on `chargeMgr` (null on all live content). `node sim/tests/goldens.cjs` -> **goldens OK
+(12 cases, byte-identical)** with the adapter applied (git-stash confirmed the committed hashes are
+unchanged). Full `SKIP_PG=1 SKIP_E2E=1 bash tools/ci.sh` (client build included; content root
+pointed at the branch's OWN live content per s10.4) -> **CI GREEN**: [1] sim 112/0, [2] goldens OK,
+[2.5] S4 14/0, [2.6] forecast 16/0, [2.7] unit_charge_test 13/0, [2.8] unit_charge_encounter_test
+19/0, [3] mock-src 114/0, typecheck + engine type-surface OK, [3.7]/[3.8]/[3.9] ALL GREEN (units003
+30/30), [4] server files-backend 185/0, all DB-free checks green, client build OK.
+- Cadence DoS note: wiring real Haste onto player POs (never done before -- "v1 scope") let
+  unbounded Haste stacks drive the reschedule interval to zero/negative (a same-tick refire storm).
+  Fixed by clamping the net cadence multiplier to a 0.2 floor (<=5x). Charge-less content never
+  reads this path (guarded), so goldens are unaffected.

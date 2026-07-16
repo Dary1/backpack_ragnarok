@@ -30,9 +30,15 @@ const enemyDefs = {
   biter: { id: 'biter', name: 'Biter', hp: [100000, 100000], footprint: [1, 1], skills: ['cf_bite'] },
   dummy: { id: 'dummy', name: 'Dummy', hp: [100000, 100000], footprint: [1, 1], skills: [] },
   gob: { id: 'gob', name: 'Gob', hp: [6, 6], footprint: [1, 1], skills: [] },
+  // REQ-0200 real-delta helpers: killable soak (clear-time deltas), never-dying soak
+  // (fires-count deltas over a full deadline), and a mild penetrating chipper.
+  tank: { id: 'tank', name: 'Tank', hp: [900, 900], footprint: [1, 1], skills: [] },
+  bigtank: { id: 'bigtank', name: 'BigTank', hp: [1000000, 1000000], footprint: [1, 1], skills: [] },
+  nipper: { id: 'nipper', name: 'Nipper', hp: [100000, 100000], footprint: [1, 1], skills: ['cf_nip'] },
 };
 const skillDefs = {
   cf_bite: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'], penetration: 6, aoe: 1 } },
+  cf_nip: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [3, 3] }, attack_profile: { edge: ['top'], penetration: 6, aoe: 1 } },
 };
 
 function compileFresh() { return combat.compileSquadSnapshot(combat.deepCopy(scenario), itemDefsById, 'formation1', 'unit1'); }
@@ -53,21 +59,33 @@ function run(c, opts) {
 function chargeEvents(r) { return r.events.filter(e => String(e.ev).indexOf('unit_charge') === 0); }
 function spendEvents(r, id) { return r.events.filter(e => e.ev === 'unit_charge_spend' && e.id === id); }
 function stripSeq(events) { return events.map(e => { const c = Object.assign({}, e); delete c.seq; return c; }); }
+function endT(r) { const e = r.events.filter(x => x.ev === 'encounter_end')[0]; return e ? e.t : Infinity; } // REQ-0200
 
-// ---- F1: guard + byte-identity (the no-op-on-charge-less contract) ----
-T('fusion guard: charge-less encounter emits ZERO charge events + undefined chargeState; injecting charge adds ONLY unit_charge_* (base stream byte-identical)', () => {
+// ---- F1: guard + determinism contract (no real effect until a charge actually SPENDS) ----
+// REQ-0200 real-actor pass: a charge that FIRES now mutates real sim actors, so the old
+// "any injected charge leaves the base stream byte-identical" claim is intentionally GONE
+// (that mutation IS the feature). What still holds -- the real determinism guard -- is:
+// (a) charge-less content is fully inert (0 charge events, undefined chargeState);
+// (b) a charge PRESENT but never reaching capacity performs ZERO real mutations, so its
+//     non-charge event stream stays byte-identical to the charge-less twin.
+// Committed goldens (all charge-less) remain byte-identical -- proven by sim/tests/goldens.cjs.
+T('fusion guard: charge-less is inert; an injected-but-never-spending charge mutates nothing (non-charge stream byte-identical) yet the manager IS live', () => {
   const base = run(compileFresh(), { seed: 'f1', enemies: ['biter'] });
   eq(chargeEvents(base).length, 0, 'no charge events on charge-less content');
   ok(base.chargeState === undefined, 'chargeState undefined when no BP carries charge');
 
+  // A fire_on_full charge whose capacity is unreachable here: it accumulates from real
+  // enemy hits but NEVER spends -> the real-actor sink is never invoked.
+  const inertCharge = { trigger: { t: 'OnBPBeenHit' }, gain: 'count', capacity: [100000, 100000], spend: 'fire_on_full', effects: [{ verb: { t: 'strike', n: [5, 5] }, target: 'self' }] };
   const c2 = compileFresh();
-  inject(c2, 'alpha', kitById.darkknight.charge, 'darkknight');
-  const charged = run(c2, { seed: 'f1', enemies: ['biter'] });
-  ok(chargeEvents(charged).length > 0, 'charge events present once a BP carries charge');
-  // the ONLY difference between the two event streams is the added unit_charge_* events
-  const baseStream = stripSeq(base.events);
-  const chargedBase = stripSeq(charged.events.filter(e => String(e.ev).indexOf('unit_charge') !== 0));
-  eq(chargedBase, baseStream, 'fusion adds ONLY unit_charge_* events -- non-charge stream is byte-identical');
+  inject(c2, 'alpha', inertCharge, 'inert_probe');
+  const run2 = run(c2, { seed: 'f1', enemies: ['biter'] });
+  ok(run2.chargeState !== undefined, 'the charge manager IS built (a BP carries charge)');
+  ok(run2.chargeState.instances.alpha.counter > 0, 'it accumulates from real enemy hits');
+  eq(run2.chargeState.instances.alpha.spends, 0, 'but never reaches capacity -> never spends');
+  eq(chargeEvents(run2).length, 0, 'no spend/stack events emitted');
+  // no spend => no sink call => no real mutation => non-charge stream byte-identical.
+  eq(stripSeq(run2.events.filter(e => String(e.ev).indexOf('unit_charge') !== 0)), stripSeq(base.events), 'a non-spending charge mutates NOTHING -- non-charge stream byte-identical');
 });
 
 // ---- F2: passive_per_stack cap (darkknight, OnBPBeenHit) ----
@@ -223,6 +241,109 @@ T('link topology: adjacency comes from the compiled connection_shape graph (bp.l
   const sp = spendEvents(r, fairyBp.id);
   ok(sp.length >= 1, 'fairy fired on a timer over its connection_shape-derived links');
   ok(sp[0].effects.every(e => adj.indexOf(e.to) >= 0), 'heal_bp landed only on connection_shape-linked units');
+});
+
+
+// =====================================================================
+// REAL-ACTOR OUTCOME DELTAS (REQ-0200 richer-adapter pass). Each runs a charged
+// battle vs its charge-less twin at the SAME seed and asserts the REAL sim outcome
+// changed (enemy hp / BP hp / status maps / item cadence) -- not just the runtime's
+// own bookkeeping. Deterministic via the midpoint/rolled-range seam + fixed seeds.
+// Extra non-attacking survivors keep the enemy roster: `tank` (killable soak),
+// `bigtank` (never dies -> battle runs to deadline), `nipper` (mild penetrating chip).
+// =====================================================================
+
+// ---- RD1: dragonknight breath ENDS THE BATTLE SOONER (multi_strike into the enemy) ----
+T('REAL delta -- dragonknight breath: on_damage_dealt banks real player damage, then fires multi_strike into the enemy side -> the tank dies STRICTLY sooner than without the charge', () => {
+  const c = compileFresh();
+  inject(c, 'alpha', kitById.dragonknight.charge, 'dragonknight'); // alpha carries the blade
+  const charged = run(c, { seed: 'rd1', enemies: ['tank'], deadline: 60 });
+  const control = run(compileFresh(), { seed: 'rd1', enemies: ['tank'], deadline: 60 });
+  eq(charged.result, 'clear', 'charged run clears the tank');
+  eq(control.result, 'clear', 'control run clears the tank');
+  ok(charged.chargeState.instances.alpha.spends >= 1, 'the breath fired at least once');
+  ok(endT(charged) < endT(control), 'breath damage into the enemy ends the battle sooner (' + endT(charged).toFixed(2) + ' < ' + endT(control).toFixed(2) + ')');
+});
+
+// ---- RD2: paladin shield REDUCES REAL BP HP LOSS (grant_shield -> real shield pool) ----
+T('REAL delta -- paladin shield: on_heal_done grants a real shield to the lowest-hp linked BP; the shielded BP loses LESS hp to enemy fire', () => {
+  const c = compileFresh();
+  inject(c, 'gamma', kitById.paladin.charge, 'paladin');
+  link(c, 'gamma', 'alpha');
+  bpOf(c, 'gamma').statusBag.Regen = { stacks: 30 };   // drives on_heal_done via real Regen ticks
+  const charged = run(c, { seed: 'rd2', enemies: ['nipper'], deadline: 10 });
+
+  const cc = compileFresh();
+  bpOf(cc, 'gamma').statusBag.Regen = { stacks: 30 };  // same heal source, no charge
+  const control = run(cc, { seed: 'rd2', enemies: ['nipper'], deadline: 10 });
+
+  ok(charged.chargeState.instances.gamma.spends >= 1, 'paladin fired grant_shield');
+  ok(bpOf(c, 'alpha').hp > bpOf(cc, 'alpha').hp, 'shielded alpha keeps more hp (' + bpOf(c, 'alpha').hp + ' > ' + bpOf(cc, 'alpha').hp + ')');
+  ok(bpOf(c, 'alpha').hp > 0 && bpOf(cc, 'alpha').hp > 0, 'both alphas survive (isolated delta = shield absorption)');
+});
+
+// ---- RD3: werewolf snowball (haste + buff_self) CLEARS THE PACK SOONER ----
+T('REAL delta -- werewolf snowball: on_kill applies real Haste (shorter item cadence) + buff_self -> the pack clears sooner than without the charge', () => {
+  const enemies = []; for (let i = 0; i < 9; i++) enemies.push('gob'); enemies.push('tank');
+  const c = compileFresh();
+  for (const id of ['alpha', 'gamma', 'delta']) inject(c, id, kitById.werewolf.charge, 'werewolf');
+  const charged = run(c, { seed: 'rd3', enemies, deadline: 60 });
+  const control = run(compileFresh(), { seed: 'rd3', enemies, deadline: 60 });
+  eq(charged.result, 'clear', 'charged clears'); eq(control.result, 'clear', 'control clears');
+  let spends = 0; for (const id of ['alpha', 'gamma', 'delta']) spends += charged.chargeState.instances[id].spends;
+  ok(spends >= 1, 'werewolf fired at least once (real Haste applied)');
+  ok(endT(charged) < endT(control), 'snowball clears the pack sooner (' + endT(charged).toFixed(2) + ' < ' + endT(control).toFixed(2) + ')');
+});
+
+// ---- RD4: pure haste ISOLATES the real cadence wiring -> STRICTLY more item fires ----
+T('REAL delta -- haste isolates item-cadence: a synthetic haste-only charge applies real Haste to alpha and STRICTLY increases its blade fire count vs a survivor (no damage buff involved)', () => {
+  const hasteOnly = { trigger: { t: 'every_secs', s: [2, 2] }, gain: 'count', capacity: [1, 1], spend: 'fire_on_full', effects: [{ verb: { t: 'haste', n: [5, 5] }, target: 'self' }] };
+  const c = compileFresh();
+  inject(c, 'alpha', hasteOnly, 'haste_only');
+  const charged = run(c, { seed: 'rd4', enemies: ['bigtank'], deadline: 20 });
+  const control = run(compileFresh(), { seed: 'rd4', enemies: ['bigtank'], deadline: 20 });
+  const bladeFires = (r) => r.events.filter(e => e.ev === 'ray_fire' && e.field === 'enemy' && e.cause !== 'charge' && e.src === 'blade').length;
+  ok(bpOf(c, 'alpha').statusBag.Haste && bpOf(c, 'alpha').statusBag.Haste.stacks > 0, 'real Haste stacks on alpha statusBag');
+  ok(bladeFires(charged) > bladeFires(control), 'shorter cadence => strictly more blade fires (' + bladeFires(charged) + ' > ' + bladeFires(control) + ')');
+});
+
+// ---- RD5: vampire lifesteal HEALS A REAL BP above its starting hp ----
+T('REAL delta -- vampire lifesteal: grant_lifesteal on a linked attacker makes that BP heal from its own hits -> alpha ends ABOVE its wounded start hp', () => {
+  const c = compileFresh();
+  inject(c, 'beta', kitById.vampire.charge, 'vampire');
+  link(c, 'beta', 'alpha');                 // alpha (blade) attacks -> vampire fires -> lifesteal to alpha
+  bpOf(c, 'alpha').hp = 50;                  // wounded; dummy never attacks so hp only rises via lifesteal
+  const charged = run(c, { seed: 'rd5', enemies: ['dummy'], deadline: 30 });
+
+  const cc = compileFresh();
+  bpOf(cc, 'alpha').hp = 50;
+  const control = run(cc, { seed: 'rd5', enemies: ['dummy'], deadline: 30 });
+
+  ok(charged.chargeState.instances.beta.spends >= 1, 'vampire fired grant_lifesteal');
+  ok(bpOf(c, 'alpha').hp > 50, 'lifesteal healed alpha above its wounded start (' + bpOf(c, 'alpha').hp + ' > 50)');
+  eq(bpOf(cc, 'alpha').hp, 50, 'without the charge alpha stays at 50 (no heal, no damage)');
+  ok(bpOf(c, 'alpha').hp > bpOf(cc, 'alpha').hp, 'charged alpha ends healthier than the control');
+});
+
+// ---- RD6: samurai block + reflect land on the REAL damage pipeline ----
+T('REAL delta -- samurai counter: OnBPBeenHit adds real flat block (reduceIncoming) and reflects real damage back onto the attacking enemy', () => {
+  const c = compileFresh();
+  inject(c, 'alpha', kitById.samurai.charge, 'samurai');
+  const charged = run(c, { seed: 'rd6', enemies: ['nipper'], deadline: 14 });
+  ok(charged.chargeState.instances.alpha.spends >= 1, 'samurai fired block + reflect_damage');
+  ok(bpOf(c, 'alpha').damageReduction > 0, 'block added a real flat damage-reduction (' + bpOf(c, 'alpha').damageReduction + ')');
+  ok(charged.events.some(e => e.ev === 'unit_charge_reflect' && e.amount > 0), 'reflect dealt real damage to the attacker');
+});
+
+// ---- RD7: witch on-hit rider applies a REAL status to struck enemies ----
+T('REAL delta -- witch on-hit rider: add_on_hit_status attaches a real Burn rider to a linked attacker, whose hits then apply real Burn to enemies', () => {
+  const c = compileFresh();
+  inject(c, 'beta', kitById.witch.charge, 'witch');
+  link(c, 'beta', 'alpha');
+  const charged = run(c, { seed: 'rd7', enemies: ['dummy'], deadline: 14 });
+  ok(charged.chargeState.instances.beta.spends >= 1, 'witch fired add_on_hit_status');
+  ok(bpOf(c, 'alpha').chargeOnHit && bpOf(c, 'alpha').chargeOnHit.Burn > 0, 'a real Burn on-hit rider is attached to alpha');
+  ok(charged.events.some(e => e.ev === 'unit_charge_onhit' && e.status === 'Burn'), 'alpha hits applied real Burn to a struck enemy');
 });
 
 console.log('');

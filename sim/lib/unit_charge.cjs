@@ -99,6 +99,12 @@ function createChargeEngine(opts) {
   const targets = opts.targets || {};           // id -> target model (effects land here)
   const rolls = opts.instanceRolls || null;     // REQ-0190 seam input
   const emit = typeof opts.emit === 'function' ? opts.emit : function () {};
+  // REQ-0200 real-actor adapter seam: a caller-supplied sink fires for every GROUNDED
+  // effect (spend + standing), carrying the resolved concrete numbers (the same `rec`
+  // the internal target model logs). The engine still mutates its own target model
+  // (chargeState / module-boundary tests); the sink is the ADDITIONAL real mutation on
+  // live sim actors. grant_charge + transform are STRUCTURAL and never call the sink.
+  const sink = typeof opts.sink === 'function' ? opts.sink : null;
   const MAX_CASCADE = opts.maxCascade || 256;   // hard safety bound (never hit under the rules)
 
   const inst = {};  // id -> instance state
@@ -183,6 +189,7 @@ function createChargeEngine(opts) {
         for (const tid of ids) {
           if (!targets[tid]) targets[tid] = makeChargeTarget(tid);
           const r = groundVerb(e.verb, targets[tid], rolls, s.id + ':e' + ei, divisor);
+          if (sink) sink({ sourceId: s.id, targetId: tid, standing: false, rec: r });
           applied.push({ verb: e.verb.t, to: tid, kind: r.kind });
         }
       }
@@ -241,6 +248,8 @@ function createChargeEngine(opts) {
       for (const tid of resolveTargetIds(s.id, e.target)) {
         if (!targets[tid]) targets[tid] = makeChargeTarget(tid);
         targets[tid].standing[v.t] = { base, stacks: s.stacks, total: base * s.stacks, target: e.target, kind: baseKey === 'pct' ? 'pct' : 'flat' };
+        // REQ-0200: standing effects are an idempotent SET on the real actor (base x stacks).
+        if (sink) sink({ sourceId: s.id, targetId: tid, standing: true, rec: { verb: v.t, kind: baseKey === 'pct' ? 'buff' : 'flat', total: base * s.stacks, base, stacks: s.stacks, status: v.status } });
       }
     }
   }

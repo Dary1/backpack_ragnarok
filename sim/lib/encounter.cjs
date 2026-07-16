@@ -4,7 +4,7 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 const { TUNABLES, deepCopy } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
-const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus } = require('./status.cjs');
+const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, cadenceMultiplier } = require('./status.cjs'); // REQ-0200: cadenceMultiplier for real haste
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
@@ -33,10 +33,73 @@ function runEncounter(opts) {
   // same encounter without charge -- the only added events are unit_charge_*.
   const chargeBps = troopBps.filter(b => b && b.charge);
   const chargeClock = { now: t0 };
+  // REQ-0200: real-actor ops the charge manager invokes for effects that must run
+  // through the encounter loop itself -- a real strike ray into the enemy side, an
+  // immediate item re-fire, and an item-cooldown advance on the event heap. (The
+  // methods are only ever called from inside the loop, so referencing the
+  // later-declared schedulable/enemyActorList is safe.) All charge-guarded: no live
+  // unit carries charge, so none of this runs on current content.
+  let chargeStrikeSeq = 0;
+  const chargeOps = {
+    strikeFromBp(bpId, perHit, hits, t) {
+      const bp = troopBps.find(b => b.id === bpId);
+      if (!bp) return;
+      const verb = hits > 1 ? { t: 'multi_strike', n: [perHit, perHit], hits } : { t: 'strike', n: [perHit, perHit] };
+      const ap = defaultAttackProfileFor({});
+      const attacker = { fieldCells: bp.fieldCells, ownerId: 'charge#' + bpId, bonusVsStatus: bp.bonusVsStatus || [], outgoingBuffPct: bp.chargeDmgBuffPct || 0 };
+      const rayEvents = [];
+      fireSkillRay({
+        attacker, attackProfile: ap, verbEff: { verb }, mode: encounterDef.mode,
+        targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+        rng, streamPrefix: 'charge-strike/' + bpId + '/' + t + '/' + (chargeStrikeSeq++), events: rayEvents, aoeStatuses: false,
+      });
+      for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq(), cause: 'charge' }, re));
+    },
+    fireItems(bpId, tag, t) {
+      const bp = troopBps.find(b => b.id === bpId);
+      if (!bp) return;
+      for (const s of schedulable) {
+        const po = troopPos.find(p => p.uid === s.ownerUid);
+        if (!po || po.bpId !== bpId) continue;
+        if (tag && !((po.def.tags || []).includes(tag))) continue;
+        if (!s.effect.verb || (s.effect.verb.t !== 'strike' && s.effect.verb.t !== 'multi_strike')) continue;
+        const attacker = { fieldCells: bp.fieldCells, ownerId: po.id + '#charge-fire', bonusVsStatus: bp.bonusVsStatus || [], outgoingBuffPct: bp.chargeDmgBuffPct || 0 };
+        const rayEvents = [];
+        fireSkillRay({
+          attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
+          targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          rng, streamPrefix: 'charge-fire/' + bpId + '/' + po.uid + '/' + t + '/' + (chargeStrikeSeq++), events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
+        });
+        for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq(), cause: 'charge' }, re));
+      }
+    },
+    advanceCooldown(bpId, n, t) {
+      const uids = new Set(troopPos.filter(p => p.bpId === bpId).map(p => p.uid));
+      if (!uids.size) return;
+      let changed = false;
+      for (const e of heap.a) {
+        if (e.kind === 'skill_fire' && uids.has(e.ownerUid)) {
+          const nt = Math.max(t, e.t - n);
+          if (nt !== e.t) { e.t = nt; changed = true; }
+        }
+      }
+      if (changed) { const items = heap.a.splice(0); for (const it of items) heap.push(it); }
+    },
+  };
   const chargeMgr = chargeBps.length
-    ? createEncounterChargeManager({ chargeBps, troopBps, troopPos, playerActors, events, heap, clock: chargeClock })
+    ? createEncounterChargeManager({ chargeBps, troopBps, troopPos, playerActors, events, heap, clock: chargeClock, ops: chargeOps })
     : null;
   function feedCharge(ev, t) { if (chargeMgr) chargeMgr.feed(ev, t); }
+  // REQ-0200: a firing player BP's real Haste/Chill net cadence (only when a charge
+  // manager exists -> charge-less reschedules stay hard-coded 1.0 -> byte-identical).
+  function playerCadenceMult(ownerUid) {
+    const po = troopPos.find(p => p.uid === ownerUid);
+    const bp = po && troopBps.find(b => b.id === po.bpId);
+    // Floor the net multiplier at 0.2 (<=5x cadence): unbounded Haste stacks would
+    // otherwise drive the interval to zero/negative -> same-tick refire storm (a
+    // determinism/DoS hazard the sim never had while POs ignored Haste). Documented guard.
+    return bp ? Math.max(0.2, cadenceMultiplier(bp.statusBag)) : 1.0;
+  }
   // Player-side schedulable effects: every PO's effects with an every_secs
   // trigger (host_on_hit/on_hit/passive/battle_start handled at compile
   // time or as immediate reactive hooks -- for the sim's scope here we
@@ -470,7 +533,7 @@ function runEncounter(opts) {
           if (spo) emitPulse(spo.bpId, ev.t, pOut);
           for (const re of pOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         } else if (s.modes.includes(encounterDef.mode)) {
-          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps) };
+          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps), outgoingBuffPct: chargeMgr ? chargeMgr.outgoingBuffPctFor((troopPos.find(p => p.uid === s.ownerUid) || {}).bpId) : 0 };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
           // telegraph is derived + emitted at fire-time as an informational
           // preview line (S4.5) since this is a server-authoritative batch
@@ -526,6 +589,9 @@ function runEncounter(opts) {
                 if (lh.actor && lh.actor.kind === 'enemy' && !lh.actor.alive) feedCharge({ type: 'enemy_killed', sourceId: fireBp, enemyId: lh.actor.id }, ev.t);
               }
               if (rayEvents.some(re => re.ev === 'apply_status')) feedCharge({ type: 'status_applied', sourceId: fireBp }, ev.t);
+              // REQ-0200 real-actor: this BP's add_on_hit_status riders land on the
+              // struck enemies (amped by amp_status), and grant_lifesteal heals it.
+              chargeMgr.onOffensiveLanded(fireBp, fr.landedHits || [], ev.t);
             }
           }
         } else if (hasAtt && s.modes.includes('detection')) {
@@ -535,7 +601,7 @@ function runEncounter(opts) {
         }
         // reschedule regardless of match (pause = simply not fired above;
         // rescheduling from ev.t keeps cadence continuous while matching)
-        scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
+        scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, chargeMgr ? playerCadenceMult(s.ownerUid) : 1.0);
       } else {
         const s = enemySchedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
         if (s && s.raw.alive) {
@@ -571,6 +637,8 @@ function runEncounter(opts) {
             for (const lh of (fr.landedHits || [])) {
               if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, ev.t);
             }
+            // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
+            chargeMgr.onDefensiveLanded(s.actor, fr.landedHits || [], ev.t);
           }
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
