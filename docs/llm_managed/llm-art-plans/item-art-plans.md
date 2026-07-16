@@ -43,14 +43,13 @@ Genre research (Backpack Hero wiki + similar): swords/bows/staves read as
 boots/scythes/banners as L/J, flails/chains as S/Z, horseshoes as U,
 shuriken/dolls as plus. 20 of the 40 POs below are non-rectangular.
 
-CONSTRAINT: REQ-0153 shape conditioning (ReferenceLatent + noise mask) is
-GREEN but NOT wired into the production route, and this plan does not change
-the pipeline. Generation happens at the BOUNDING-BOX aspect only; the L/T/S/U
-silhouette must come from the PROMPT (objects chosen because their natural
-silhouette IS the shape, + explicit part placement in the subject). Fallback
-if review shows complex shapes not filling their masks: propose a follow-up
-integration REQ to wire the REQ-0153 Arm C recipe (per-item toggle) — that is
-a pipeline improvement decision for the user, out of scope here.
+UPDATE 2026-07-15 (supersedes the stale constraint that stood here): shape
+conditioning IS live — REQ-0183 wired Arm C @ D=8 into the production route
+and REQ-0186 exposed it as `shape_lock` (default `auto` = strict exactly on
+the non-rectangular shapes below). Complex shapes therefore get the strict
+mask automatically; the prompt still owes the TOPOLOGY (part placement /
+attachment anatomy) per item_content_pipeline.md §0.2, and `po.cell_fit`
+(REQ-0187) scores every render's per-cell fit in artadmin automatically.
 
 Shape notation below: active cells as (row,col) in the 5x5 mask, plus the
 bounding box and derived gen size.
@@ -73,7 +72,7 @@ bounding box and derived gen size.
 | 7 | items005_crossbow | Crossbow | T 3x2 | (0,0)(0,1)(0,2)(1,1) | 768x512 | a heavy medieval crossbow, a horizontal steel bow spanning the top and a carved wooden stock pointing straight down |
 | 8 | items005_reaper_scythe | Reaper's Scythe | J 3x3 | (0,0)(0,1)(0,2)(1,2)(2,2) | 768x768 | a reaper's scythe, a long curved steel blade sweeping across the top and a tall dark wooden snath running down the right side |
 | 9 | items005_boomerang | Boomerang | L 2x2 | (0,0)(1,0)(1,1) | 512x512 | a carved wooden hunting boomerang with tribal patterns, a bent V shape with one arm pointing up and one arm pointing right |
-| 10 | items005_iron_flail | Iron Flail | S 2x3 | (0,1)(1,0)(1,1)(2,0) | 512x768 | a medieval flail, a short wooden handle at the top right connected by an iron chain to a spiked iron ball at the bottom left, diagonal composition |
+| 10 | items005_iron_flail | Iron Flail | S 2x3 | (0,1)(1,0)(1,1)(2,0) | 512x768 | a medieval flail: a short wooden handle standing upright at the top right, a heavy iron chain hanging down from it, and a large spiked iron ball resting at the bottom left |
 
 ### Batch 3 — armor & shields (1 complex)
 | # | system_name | item | shape | cells | gen | subject |
@@ -117,7 +116,7 @@ bounding box and derived gen size.
 | 31 | items005_lucky_horseshoe | Horseshoe | U 3x2 | (0,0)(0,2)(1,0)(1,1)(1,2) | 768x512 | an iron lucky horseshoe with seven nail holes, a U shape with both open ends pointing up |
 | 32 | items005_war_horn | War Horn | corner 2x2 | (0,0)(0,1)(1,1) | 512x512 | a curved bronze war horn carved with runes, mouthpiece at the upper left and flared bell at the lower right, crescent shape |
 | 33 | items005_blacksmith_anvil | Anvil | T 3x2 | (0,0)(0,1)(0,2)(1,1) | 768x512 | a heavy blacksmith's iron anvil with a wide flat top, a pointed horn on the left, and a narrow waisted base |
-| 34 | items005_cursed_doll | Cursed Doll | plus 3x3 | (0,1)(1,0)(1,1)(1,2)(2,1) | 768x768 | a creepy stitched voodoo doll with button eyes and pins, round head at the top, cloth arms outstretched to both sides |
+| 34 | items005_cursed_doll | Cursed Doll | plus 3x3 | (0,1)(1,0)(1,1)(1,2)(2,1) | 768x768 | a creepy stitched voodoo doll with button eyes and pins, round head at the top, cloth arms outstretched to both sides, stubby legs at the bottom |
 | 35 | items005_iron_chain | Iron Chain | Z 2x3 | (0,0)(1,0)(1,1)(2,1) | 512x768 | a heavy iron chain of thick interlocked links hanging in a zigzag from the top left down to the bottom right |
 
 ### Batch 8 — big finishers (4 complex)
@@ -194,6 +193,12 @@ flags them at review.
 ## Status log
 
 - 2026-07-15: plan drafted; awaiting user plan review before batch 1.
+- 2026-07-15 (later, user directive in the REQ-0187 session): all 40 PO
+  artworks registered in one pass with first-draft prompts/shapes from this
+  plan (flail wording de-diagonalized, doll given legs, §0.2 applied);
+  **3 seeds per item (101/202/303), user override of the 4-seed line above**;
+  ~120 renders queued fire-and-forget. Iteration/adoption belongs to the next
+  agent session. SI batches 9-10 NOT started.
 - 2026-07-16: +12 SI added (#49-60, user directive: 20 SI total, 5 per
   socket_tag slot); all 20 SI registered via POST /api/art/artworks
   (kind=si, 256x256, default template, no style_override). Seed generation
