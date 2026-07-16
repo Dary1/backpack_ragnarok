@@ -395,6 +395,44 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_si_1' && l.kind === 'si')).toBeTruthy();
   });
 
+  test('BUY: content-bound KIND chips appear for live kinds and filter by listing kind (REQ-0195a, review fix F1)', async ({ page }) => {
+    // Content-agnostic: discover a live PO + SI id from the content payload.
+    const content = await (await page.request.get('/api/content')).json();
+    const poId = Object.keys((content.items ?? {}) as Record<string, unknown>)[0] as string;
+    const siId = Object.keys((content.sis ?? {}) as Record<string, unknown>)[0] as string;
+    test.skip(!poId || !siId, 'need at least one PO and one SI in content for the kind-chip test');
+    // The dev buyer seeds one inventory PO + one loose SI and lists both,
+    // so its afterEach canvas-restore auto-withdraws them (no cross-test
+    // residue). Both listings are the dev buyer's own; the cards still
+    // render -- chips do not depend on buyability. Assertions scope to
+    // THESE uids only, so leftover listings from earlier tests can't skew
+    // them.
+    const canvas = devBuyerCanvas(0, [{ uid: 'e2e_chip_po', id: poId }]);
+    canvas.inv.pages[0].sis = [{ uid: 'e2e_chip_si', id: siId, host: 'inv', q: 0.5 }] as never;
+    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const poRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_chip_po', price: { tm: 'lrdst', qty: 8 } } });
+    expect(poRes.status()).toBe(200);
+    const siRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_chip_si', price: { tm: 'lrdst', qty: 7 } } });
+    expect(siRes.status()).toBe(200);
+
+    await gotoMarket(page);
+    // Both KIND chips are shown (content-bound: a live listing of each kind).
+    await expect(page.locator('[data-testid="market-chip-po"]')).toBeVisible();
+    await expect(page.locator('[data-testid="market-chip-si"]')).toBeVisible();
+    const poCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_chip_po"]');
+    const siCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_chip_si"]');
+    await expect(poCard).toBeVisible();
+    await expect(siCard).toBeVisible();
+    // The si chip narrows to si-kind cards -> my po card drops, my si stays.
+    await page.locator('[data-testid="market-chip-si"]').click();
+    await expect(poCard).toHaveCount(0);
+    await expect(siCard).toBeVisible();
+    // The po chip narrows to po-kind cards -> my si card drops, my po stays.
+    await page.locator('[data-testid="market-chip-po"]').click();
+    await expect(siCard).toHaveCount(0);
+    await expect(poCard).toBeVisible();
+  });
+
   test('BROWSE+BUY: a unit (BP) listing is visible with kind:unit and buying delivers a kind:bp warehouse row carrying the verbatim payload (REQ-0195d)', async ({ page }) => {
     // Discover a live unit id from the content payload (content-agnostic).
     const content = await (await page.request.get('/api/content')).json();
