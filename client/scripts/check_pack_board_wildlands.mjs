@@ -8,10 +8,11 @@
 // over the batch-006 packs + the artwork shapes verified READ-ONLY against the live
 // registry, and asserts every member resolves to exactly the footprint the sim places
 // by (the two rosters meet):
-//   * 10 ids resolve by EXACT NAME (their session-ns-stripped system_name == their id);
-//   * `boar` and `giant_snake` resolve by an explicit artwork_ref (their art is
-//     'monsters-003-flux2:boar' / 'monsters-003-flux2:giant_snake') -- exactly the deploy
-//     PATCH the REQ prescribes, the batch-005 wight precedent.
+//   * 9 ids resolve by EXACT NAME (their session-ns-stripped system_name == their id);
+//   * `boar`, `giant_snake` and `alpha_werewolf` resolve by an explicit artwork_ref: boar/
+//     giant_snake art is namespaced ('monsters-003-flux2:boar' / '...:giant_snake'), and
+//     alpha_werewolf's adopted art keeps the pre-rename system_name 'werewolf' (renamed off the
+//     units003 unit_def collision) -- exactly the deploy PATCH the REQ prescribes, the wight precedent.
 import { createServer } from 'vite';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -33,7 +34,7 @@ const ART_SHAPES = {
   'monsters-003-flux2:giant_snake': { w: 4, h: 4 }, // giant_snake's art carries a namespaced system_name
 };
 // enemy id -> the artwork_ref its content_def carries at deploy (null == resolve by name).
-const REFS = { boar: 'monsters-003-flux2:boar', giant_snake: 'monsters-003-flux2:giant_snake' };
+const REFS = { boar: 'monsters-003-flux2:boar', giant_snake: 'monsters-003-flux2:giant_snake', alpha_werewolf: 'werewolf' };
 
 async function loadShared() {
   const server = await createServer({
@@ -78,7 +79,7 @@ for (const pack of packs.entries) {
   }
 }
 
-// The ones that MUST use a ref (art name != id): boar (in wild_hunt), giant_snake (in venom_nest).
+// The ones that MUST use a ref (art name != id): boar + alpha_werewolf (in wild_hunt), giant_snake (in venom_nest).
 function refProof(enemyId, ref, expectFp, packId) {
   const members = S.packMembers(packs.entries.find(p => p.id === packId));
   const byNameOnly = S.buildMemberFootprints(
@@ -92,6 +93,7 @@ function refProof(enemyId, ref, expectFp, packId) {
     eq(withRef[enemyId], expectFp), JSON.stringify(withRef[enemyId]));
 }
 refProof('boar', 'monsters-003-flux2:boar', [3, 4], 'pack_wild_hunt');
+refProof('alpha_werewolf', 'werewolf', [4, 4], 'pack_wild_hunt');
 refProof('giant_snake', 'monsters-003-flux2:giant_snake', [4, 4], 'pack_venom_nest');
 
 // Non-square + boss pins (a square proves nothing about the axis on its own).

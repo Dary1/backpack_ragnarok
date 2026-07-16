@@ -4,8 +4,8 @@
   "note": "REQ-0207. A wildlands beast/vermin/demon roster DESIGNED FROM adopted artworks. Every footprint is the linked artwork's shape {w,h} TRANSPOSED to [fh,fw]=[h,w] (REQ-0029 transpose canon; verified read-only against artworks.shape 2026-07-17). rarity uses the enemy/1 lowercase dialect (relic for the boss follows REQ-0203's precedent); every pack_role here (line/support/anchor/boss) is already attested, so no role mapping was needed. artwork_ref is a DB-column deploy concern (like batch-005 wight), not an enemies.json field: 10 ids match their artwork by exact name; boar's art is 'monsters-003-flux2:boar' and giant_snake's is 'monsters-003-flux2:giant_snake', so those two content_defs get an explicit artwork_ref set at deploy.",
   "entries": [
     {
-      "id": "werewolf",
-      "name": "Werewolf",
+      "id": "alpha_werewolf",
+      "name": "Alpha Werewolf",
       "hp": [
         95,
         125
@@ -20,10 +20,10 @@
       ],
       "i18n": {
         "en": {
-          "name": "Werewolf"
+          "name": "Alpha Werewolf"
         },
         "ja": {
-          "name": "ワーウルフ"
+          "name": "アルファワーウルフ"
         }
       },
       "rarity": "uncommon",

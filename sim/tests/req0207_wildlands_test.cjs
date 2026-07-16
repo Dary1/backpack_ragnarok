@@ -45,7 +45,7 @@ const skillDefsById = {}; for (const s of skills.entries) skillDefsById[s.id] = 
 // 2026-07-17 (session ns 88d662ca20e5289b stripped per REQ-0174 ref-first canon).
 // footprint MUST equal [h, w] (the REQ-0029 transpose canon).
 const ART_SHAPES = {
-  werewolf: { w: 4, h: 4 }, dire_wolf: { w: 5, h: 4 }, boar: { w: 4, h: 3 },
+  alpha_werewolf: { w: 4, h: 4 }, dire_wolf: { w: 5, h: 4 }, boar: { w: 4, h: 3 },
   giant_bat: { w: 4, h: 3 }, giant_spider: { w: 4, h: 3 }, giant_scorpion: { w: 4, h: 3 },
   giant_snake: { w: 4, h: 4 }, basilisk: { w: 6, h: 4 }, imp: { w: 3, h: 4 },
   gargoyle: { w: 4, h: 4 }, dullahan: { w: 4, h: 4 }, demon_lord: { w: 8, h: 8 },
@@ -115,6 +115,38 @@ T('G1: batch-006 ids are disjoint from batch-005 (the two rosters stack cleanly 
   }
   for (const e of [].concat(enemies.entries, skills.entries, packs.entries)) {
     ok(!b5ids.has(e.id), 'batch-006 id "' + e.id + '" collides with batch-005');
+  }
+});
+
+// ---- G1: cross-KIND global id uniqueness (system_name is UNIQUE ACROSS KINDS) ----
+// The deploy-time backfill (tools/backfill_content_registry.cjs collectAll) FATALs on ANY
+// duplicate system_name across ALL live kinds -- po_def / si_def / tm_def / monster_def /
+// skill_def / unit_def / gacha_pack / monster_pack -- because content_defs.system_name is
+// UNIQUE across kinds. The dungeon-only checks above would MISS a clash against a unit_def /
+// po_def / ... id: this is exactly how batch-006's original `werewolf` monster id collided
+// with the units003 `werewolf` unit_def and FATALed at deploy (-> renamed to alpha_werewolf).
+// So sweep every batch id against every OTHER live kind's source file (the same set the
+// backfill reads); batch-006 never writes these files, so this is deploy-invariant, no
+// self-exclusion needed.
+const CROSS_KIND_FILES = [
+  'live_items.json', 'dungeon/items.json', 'live_sis.json', 'live_tms.json',
+  'live_units.json', 'live_packs.json', 'starter_items.json',
+];
+T('G1: batch-006 ids are disjoint from EVERY other live kind (system_name is UNIQUE across kinds)', () => {
+  const otherIds = new Map(); // id -> source file
+  for (const f of CROSS_KIND_FILES) {
+    const p = path.join(REPO, 'content', 'live', f);
+    if (!fs.existsSync(p)) continue;
+    for (const e of (JSON.parse(fs.readFileSync(p, 'utf8')).entries || [])) {
+      // starter_items lockpick/spyglass are backfill-EXCLUDED (dupes of dungeon/items.json),
+      // so they are not authoritative system_names -- skip to mirror the backfill dedup.
+      if (f === 'starter_items.json' && (e.id === 'lockpick' || e.id === 'spyglass')) continue;
+      otherIds.set(e.id, f);
+    }
+  }
+  for (const e of [].concat(enemies.entries, skills.entries, packs.entries)) {
+    ok(!otherIds.has(e.id), 'id "' + e.id + '" collides with a live ' + otherIds.get(e.id) +
+      ' entry (content_defs.system_name is UNIQUE across kinds -- would FATAL the deploy backfill)');
   }
 });
 
