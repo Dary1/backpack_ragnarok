@@ -124,7 +124,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const pollQueue = useCallback(async () => {
     try {
       const r = await getArtQueue();
-      setQueue({ running: r.running, pending: r.pending, inspectDepth: r.inspectDepth });
+      setQueue({ running: r.running, pending: r.pending, heldPending: r.heldPending, held: r.held, inspectDepth: r.inspectDepth });
       setQueueFetchedAt(Date.now());
     } catch (_e) { /* transient poll errors stay silent; the next tick retries */ }
   }, []);
