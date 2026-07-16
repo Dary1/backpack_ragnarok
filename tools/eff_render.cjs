@@ -111,6 +111,8 @@ function verbPhraseEN(verb) {
       return 'immediately fire ' + (verb.tag ? verb.tag + ' ' : '') + 'items';
     case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
       return 'grant ' + fmtNum(verb.n, 'en') + ' shield';
+    case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
+      return 'heal a wounded ally ' + fmtNum(verb.n, 'en');
     default: return verb.t;
   }
 }
@@ -232,6 +234,8 @@ function verbPhraseJA(verb) {
       return (verb.tag ? verb.tag + ' ' : '') + 'アイテムを即時発動';
     case 'grant_shield': // REQ-0129 (AGENT-DEFINED)
       return 'シールドを ' + fmtNum(verb.n, 'ja') + ' 付与';
+    case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
+      return '負傷した味方を ' + fmtNum(verb.n, 'ja') + ' 回復';
     default: return verb.t;
   }
 }

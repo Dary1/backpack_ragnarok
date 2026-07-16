@@ -69,7 +69,8 @@
     "grant_charge",
     "advance_cooldown",
     "fire_items",
-    "grant_shield"
+    "grant_shield",
+    "heal_ally"
   ],
   "status_kinds": [
     "buff",
@@ -215,6 +216,9 @@
       "n"
     ],
     "grant_shield": [
+      "n"
+    ],
+    "heal_ally": [
       "n"
     ]
   },
