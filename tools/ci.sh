@@ -55,6 +55,8 @@ echo "==== [4.655/7] content registry parity classifier (DB-free, REQ-0178) ====
 DATABASE_URL= node server/tests/verify_content_registry_parity_test.cjs
 echo "==== [4.66/7] content-check schema dialects (DB-free, REQ-0161) ===="
 node server/tests/content_checks_dialect_test.cjs
+echo "==== [4.665/7] content-check unit_def deep validation (DB-free, REQ-0201) ===="
+node server/tests/content_checks_unit_deep_test.cjs
 echo "==== [4.67/7] pack biography aggregation + veteran luck (DB-free, REQ-0060) ===="
 node server/tests/bio_test.cjs
 echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
