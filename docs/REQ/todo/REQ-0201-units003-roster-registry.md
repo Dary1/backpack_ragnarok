@@ -1482,3 +1482,28 @@ This REQ file lands in **`docs/REQ/todo/`**, not `built/`: the SPEC + code delta
 this branch, but the **registry/adoption/data phase (s6) runs POST-MERGE**, orchestrator-driven,
 against the restarted api. The file stays in `todo/` carrying this note until that data phase
 completes; only then does it advance.
+
+
+## Data phase — EXECUTED 2026-07-17 (orchestrator, post-merge)
+
+- 30 content_defs (kind unit_def) created; artwork_ref linked to units003_<id> (all 30
+  artworks adopted from 4-seed galleries; plaguedoctor re-prompted for the beak mask and
+  re-adopted from the second gallery — the prompt-adjust example this REQ predicted).
+- 30 variants ingested (provenance: claude-opus-4-8 S1 design, reviewer-amended);
+  machine checks: 30/30 PASS. Separate-agent advisory reviews (claude-opus-4-8,
+  mandatory rationale) recorded on every variant — shaman via its own follow-up round
+  after a transcription gap; its concern produced an adoption-time amendment.
+- Adoption-time reviewer amendments (recorded in the review rationales):
+  darkknight buff_self pct [0.1,0.2]->[0.5,0.8] (dead-kit fix); werewolf buff_self
+  pct [8,12]->[2,3] (uncapped kill-snowball softened); shaman grant_charge n [1,2]->[1,1]
+  (Uncommon exceeded the Relic king); jester keeps shougi_keima_move as a deliberate
+  narrow-placement gamble (engine implements offset shapes generically — verified).
+- All 30 adopted + exported to content/registry_exports/unit_def/, then live-merged:
+  live_units.json 12->42, data.js regenerated, check_units ALL GREEN
+  (30 charge blocks validated via validateCharge). Deploy commit 68050f4.
+- DEVIATION (honest): ingest ran against the pre-restart API process (old in-memory
+  validators; shallow unit_def checks) because an unrelated art batch from a concurrent
+  session occupies the art_jobs queue and a restart would kill it. Deep validation is
+  nevertheless guaranteed: units003_acceptance 30/30 (validateUnitEntry+validateCharge,
+  v15) and check_units on the merged live file (30/30) both ran green on the merged code.
+  Post-restart, variants can be re-checked via the REQ-0157 recheck endpoint.

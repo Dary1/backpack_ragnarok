@@ -283,3 +283,12 @@ branch.
 Lands in **`docs/REQ/todo/`**: the spec + data are complete, but the register/adopt/deploy phase
 (s6) is orchestrator-driven POST-MERGE (after REQ-0201). The file stays in `todo/` carrying this
 note until the four pack rows are adopted and deployed.
+
+
+## Data phase — EXECUTED 2026-07-17 (orchestrator, post-merge)
+
+- 4 gacha_pack defs (pestilence/sanctuary/warband/royal_court) created, 1 variant each,
+  machine checks 4/4 PASS (validatePackEntry vs the units003-merged live roster;
+  cost_tm lrdst verified live). Advisory reviews recorded (2 recommend / 2 neutral).
+- Adopted + exported, live-merged: live_packs.json 3->7 (50 pool rows total),
+  check_units ALL GREEN. Deploy commit 68050f4. Coverage: 30/30 units003 units in >=1 pool.
