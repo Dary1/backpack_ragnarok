@@ -11,19 +11,25 @@ import { t } from '../i18n';
 import type { Locale } from '../store';
 import { RollBar, MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
 
-/** The mock's chip vocabulary. `match` values are compared (lowercased)
- * against each listing's tags[]/rarity, EXACTLY as the server's
- * matchesFilter does -- so a chip and its server-side filter agree. The
- * server also accepts these raw values as ?filter=, but the BUY grid
- * filters client-side (all active+suspended listings are already loaded)
- * for instant chip response, matching the mock's client-only chip toggle.
- * 'all' is the always-present reset chip. Only chips whose value appears
- * in >=1 current listing are shown (content-bound). */
+/** The chip vocabulary. TAG chips carry a `match` value compared
+ * (lowercased) against each listing's tags[]/rarity, and KIND chips
+ * (REQ-0195a) carry a `kind` matched against the listing's own kind --
+ * both EXACTLY mirroring the server's matchesFilter, so a chip and its
+ * server-side filter agree. The server also accepts these raw values as
+ * ?filter=, but the BUY grid filters client-side (all active+suspended
+ * listings are already loaded) for instant chip response, matching the
+ * mock's client-only chip toggle. 'all' is the always-present reset chip.
+ * Only chips whose value appears in >=1 current listing are shown
+ * (content-bound). */
 interface ChipDef {
   key: string;
   labelKey: Parameters<typeof t>[1];
-  /** null = the "all" reset chip; otherwise the tag/rarity value matched. */
-  match: string | null;
+  /** A TAG chip's tags[]/rarity value (null on the 'all' reset chip). A
+   * KIND chip leaves this undefined and sets `kind` instead. */
+  match?: string | null;
+  /** REQ-0195a KIND chip: matched against the listing's OWN kind (mirrors
+   * the server's matchesFilter kind tokens), not any tag/rarity. */
+  kind?: 'po' | 'si' | 'unit' | 'tm';
   /** Optional keyword class for the ember/frost tinted chips (mock). */
   kw?: 'ember' | 'frost';
 }
@@ -33,8 +39,16 @@ const CHIP_DEFS: ChipDef[] = [
   { key: 'weapon', labelKey: 'market.chip.weapon', match: 'weapon' },
   { key: 'frost', labelKey: 'market.chip.frost', match: 'frost', kw: 'frost' },
   { key: 'ember', labelKey: 'market.chip.ember', match: 'ember', kw: 'ember' },
-  { key: 'unit', labelKey: 'market.chip.unit', match: 'unit' },
   { key: 'relic', labelKey: 'market.chip.relic', match: 'relic' },
+  // REQ-0195a KIND chips: narrow the hearth to a single listing kind (the
+  // market trades po/si/unit/tm now). Content-bound like the tag chips --
+  // each shows only when a listing of that kind is live -- and matched by
+  // l.kind, exactly as the server's matchesFilter kind tokens do. Labels
+  // reuse the SELL tab's kind vocabulary (market.sell.kind*).
+  { key: 'po', labelKey: 'market.sell.kindPo', kind: 'po' },
+  { key: 'si', labelKey: 'market.sell.kindSi', kind: 'si' },
+  { key: 'unit', labelKey: 'market.sell.kindUnit', kind: 'unit' },
+  { key: 'tm', labelKey: 'market.sell.kindTm', kind: 'tm' },
 ];
 
 /** Client mirror of the server's matchesQuery: a No.-prefixed or bare
@@ -52,11 +66,13 @@ function matchesQuery(listing: ApiMarketListing, q: string): boolean {
   return false;
 }
 
-function matchesChip(listing: ApiMarketListing, match: string | null): boolean {
-  if (!match) return true;
-  const m = match.toLowerCase();
-  if ((listing.tags || []).some((tg) => tg.toLowerCase() === m)) return true;
-  return typeof listing.rarity === 'string' && listing.rarity.toLowerCase() === m;
+function matchesChip(listing: ApiMarketListing, chip: ChipDef): boolean {
+  if (chip.kind) return (listing.kind || 'po') === chip.kind;
+  const m = chip.match;
+  if (!m) return true;
+  const ml = m.toLowerCase();
+  if ((listing.tags || []).some((tg) => tg.toLowerCase() === ml)) return true;
+  return typeof listing.rarity === 'string' && listing.rarity.toLowerCase() === ml;
 }
 
 interface BuyPaneProps {
@@ -78,12 +94,12 @@ export function BuyPane({ listings, gameData, locale, balanceOf, myPlayerId, act
   // Content-bound chips: keep only those whose value is present in some
   // live listing (plus 'all'), so the row reflects the real hearth.
   const visibleChips = useMemo(() => {
-    return CHIP_DEFS.filter((c) => c.match === null || listings.some((l) => matchesChip(l, c.match)));
+    return CHIP_DEFS.filter((c) => c.match === null || listings.some((l) => matchesChip(l, c)));
   }, [listings]);
 
   const activeChipDef = CHIP_DEFS.find((c) => c.key === activeChip) || CHIP_DEFS[0];
   const filtered = useMemo(() => {
-    return listings.filter((l) => matchesChip(l, activeChipDef.match) && matchesQuery(l, query));
+    return listings.filter((l) => matchesChip(l, activeChipDef) && matchesQuery(l, query));
   }, [listings, activeChipDef, query]);
 
   return (

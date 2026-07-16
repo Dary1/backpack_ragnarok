@@ -147,15 +147,21 @@ function toListingDto(listing, view, caches) {
 // Queries
 // ---------------------------------------------------------------------
 
-// matchesFilter: tag-driven, per the mock's chip row (all / weapons /
-// frost / ember / unit / relic -- chips map to content vocabulary
-// values client-side). A filter value matches an item def when it
-// equals (case-insensitively) any of the def's tags[] OR its rarity.
-// Empty/absent/'all' = no filter.
-function matchesFilter(def, filter) {
+// matchesFilter: the chip row is two-layered. A KIND filter ('po' | 'si'
+// | 'unit' | 'tm', case-insensitive) matches the LISTING KIND itself --
+// REQ-0195a made the market multi-kind, so browse can be narrowed to one
+// kind. (si/unit/tm cards carry no tag/rarity a chip could hit, so before
+// this they were unreachable by every chip but 'all'.) Any OTHER filter
+// value stays tag-driven, per the mock's chip row (all / weapons / frost /
+// ember / relic -- chips map to content vocabulary values client-side): it
+// matches an item def when it equals (case-insensitively) any of the def's
+// tags[] OR its rarity. Empty/absent/'all' = no filter.
+const KIND_FILTERS = new Set(['po', 'si', 'unit', 'tm']);
+function matchesFilter(def, kind, filter) {
   if (!filter || filter === 'all') return true;
-  if (!def) return false;
   const f = String(filter).toLowerCase();
+  if (KIND_FILTERS.has(f)) return String(kind || 'po').toLowerCase() === f;
+  if (!def) return false;
   if ((def.tags || []).some((t) => String(t).toLowerCase() === f)) return true;
   return typeof def.rarity === 'string' && def.rarity.toLowerCase() === f;
 }
@@ -188,7 +194,7 @@ function listListings(callerId, opts) {
   const filter = opts && opts.filter;
   const q = opts && opts.q;
   const now = Date.now();
-  const { itemDefsById } = getScheduleContent();
+  const { itemDefsById, siDefsById, unitDefsById, tmDefsById } = getScheduleContent();
   const dexNos = getDexNoById();
   const caches = { history: new Map(), names: new Map(), sellers: new Map() };
   const mine = filter === 'mine';
@@ -204,9 +210,20 @@ function listListings(callerId, opts) {
     }
     if (!mine) {
       if (view.state !== 'active' && view.state !== 'suspended') continue;
-      const def = itemDefsById[listing.itemId];
-      if (!matchesFilter(def, filter)) continue;
-      if (!matchesQuery(def, dexNos[listing.itemId] != null ? dexNos[listing.itemId] : null, q)) continue;
+      // Resolve the def by the listing's OWN kind (mirrors toListingDto's
+      // dispatch) so si/unit/tm listings match a name query too -- before
+      // this every non-po listing resolved to a missing po def and could
+      // only ever surface under a no-filter browse (review fix F1).
+      const kind = listing.kind || 'po';
+      const def = kind === 'tm' ? (tmDefsById[listing.itemId] || null)
+        : kind === 'si' ? (siDefsById[listing.itemId] || null)
+        : kind === 'unit' ? (unitDefsById[listing.itemId] || null)
+        : (itemDefsById[listing.itemId] || null);
+      // dexNo stays po-only (si/unit/tm carry none): a bare-digit query
+      // deep-links a po exactly as the DTO's own dexNo does.
+      const dexNo = kind === 'po' && dexNos[listing.itemId] != null ? dexNos[listing.itemId] : null;
+      if (!matchesFilter(def, kind, filter)) continue;
+      if (!matchesQuery(def, dexNo, q)) continue;
     }
     out.push(toListingDto(listing, view, caches));
   }

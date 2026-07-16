@@ -721,6 +721,62 @@ module.exports.run = async function run(h) {
     assert.strictEqual(badKind.status, 400, 'unsupported kind 400s in phase a: ' + JSON.stringify(badKind.body));
   });
 
+  await AT('market: browse resolves defs per kind -- name query matches si/unit listings; filter=unit/tm select by listing KIND (review fix F1)', async () => {
+    const c = schedule.getScheduleContent();
+    const siName = c.siDefsById.acc_gem.name;        // 'Gem'
+    const unitName = c.unitDefsById.test_loner.name;  // 'Test Loner'
+    const f1Seller = playersFixture.createPlayer('MarketF1Seller', []);
+    const f1Bp = { id: 'f1_bp', name: 'F1 BP', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30, cellCount: 1 };
+    const p0 = {
+      bps: [f1Bp],
+      pos: [{ uid: 'f1_po', id: 'blade', cell: [3, 1], rot: 0 }],
+      sis: [{ uid: 'f1_si', id: 'acc_gem', host: 'inv', q: 0.5 }],
+      tms: [{ uid: 'f1_tm', id: 'gilt', qty: 50, cell: [8, 1] }],
+    };
+    scheduleStorage.writeProfile(f1Seller.playerId, mkCanvas([p0, invPage(), invPage(), invPage(), invPage()], [null, null, null, null, null]));
+
+    // One live listing of each kind (all stay active -- the seller holds
+    // enough gilt so the tm listing is not suspended).
+    const poL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'po', itemUid: 'f1_po', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(poL.status, 200, JSON.stringify(poL.body));
+    const siL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'si', itemUid: 'f1_si', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(siL.status, 200, JSON.stringify(siL.body));
+    const uL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'unit', itemUid: 'f1_bp', price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(uL.status, 200, JSON.stringify(uL.body));
+    const tmL = await marketReq('POST', '/api/market/listings', f1Seller.token, { kind: 'tm', itemId: 'gilt', tmQty: 5, price: { tm: 'lrdst', qty: 7 } });
+    assert.strictEqual(tmL.status, 200, JSON.stringify(tmL.body));
+
+    // (F1) a NAME query now resolves the def per kind -> an si listing
+    // matches by its OWN def name (matchesQuery was blind to it before).
+    const bySi = await marketReq('GET', '/api/market/listings?q=' + encodeURIComponent(siName), mktBuyer.token);
+    assert.strictEqual(bySi.status, 200, JSON.stringify(bySi.body));
+    assert.ok(bySi.body.listings.some((x) => x.id === siL.body.listing.id), 'si listing matches by name (was blind pre-fix)');
+    const needleSi = siName.toLowerCase();
+    assert.ok(bySi.body.listings.every((x) => x.itemName.toLowerCase().includes(needleSi) || (x.itemNameJa || '').toLowerCase().includes(needleSi)), 'name query still returns only name-matching listings');
+
+    // (F1) a unit listing matches by its unit def name too.
+    const byUnit = await marketReq('GET', '/api/market/listings?q=' + encodeURIComponent(unitName), mktBuyer.token);
+    assert.ok(byUnit.body.listings.some((x) => x.id === uL.body.listing.id), 'unit listing matches by its unit def name');
+
+    // (F1) filter by listing KIND: unit returns only unit-kind listings.
+    const fUnit = await marketReq('GET', '/api/market/listings?filter=unit', mktBuyer.token);
+    assert.ok(fUnit.body.listings.length >= 1 && fUnit.body.listings.every((x) => x.kind === 'unit'), 'filter=unit -> only unit listings');
+    assert.ok(fUnit.body.listings.some((x) => x.id === uL.body.listing.id), 'the unit listing is among filter=unit results');
+
+    // (F1) filter=tm returns only tm-kind listings (token is case-insensitive).
+    const fTm = await marketReq('GET', '/api/market/listings?filter=TM', mktBuyer.token);
+    assert.ok(fTm.body.listings.length >= 1 && fTm.body.listings.every((x) => x.kind === 'tm'), 'filter=TM (case-insensitive) -> only tm listings');
+    assert.ok(fTm.body.listings.some((x) => x.id === tmL.body.listing.id), 'the tm listing is among filter=tm results');
+
+    // (F1) existing tag behavior intact: the weapon tag chip still hits
+    // POs (and only po defs carry tags), and filter=po selects only POs.
+    const fWeapon = await marketReq('GET', '/api/market/listings?filter=weapon', mktBuyer.token);
+    assert.ok(fWeapon.body.listings.some((x) => x.id === poL.body.listing.id), 'blade (Weapon) still matches the weapon tag chip');
+    assert.ok(fWeapon.body.listings.every((x) => (x.kind || 'po') === 'po'), 'the weapon tag chip only ever hits po defs');
+    const fPo = await marketReq('GET', '/api/market/listings?filter=po', mktBuyer.token);
+    assert.ok(fPo.body.listings.length >= 1 && fPo.body.listings.every((x) => (x.kind || 'po') === 'po'), 'filter=po -> only po listings');
+  });
+
   await AT('market: every /api/market route is token-gated (401 for a garbage token)', async () => {
     for (const [method, p2] of [
       ['GET', '/api/market/listings'],
