@@ -1,4 +1,4 @@
-# REQ-0195 — market-multikind-trading: the Market trades unit / tm / po / si, priced in ANY TM
+# REQ-0195a — market-multitm-core: N-currency price core + listing kind field (phase a of REQ-0195)
 
 **Reserved:** 2026-07-16
 **Ratified:** 2026-07-16 — direct user directive (chat, 2026-07-16); three open rulings
@@ -125,3 +125,14 @@ answered the same day (see §3).
 
 - 2026-07-16 reserved (f919562), spec written, ratified by the user's own directive;
   reserved -> todo same day.
+
+## 7. Phase split (2026-07-16, user directive: fine-grained REQs, interruption-tolerant)
+
+This file is PHASE A **and** the shared design spec (§4) for every phase. Each phase is
+an independent REQ file, free to move alone; each must land gates-green before the next
+starts. a: multi-TM core (this file) — price.tm from the live TM registry (same-TM rule
+N/A until b), listing `kind` field + legacy->po normalization, envelope `tms[]`, dex
+history entries gain `tm`, furnace per-tm totals, dtoVersion 2; PO listings only; minimal
+client (price-TM plumbed, selector appears when >1 TM live). b: REQ-0195b tm listings.
+c: REQ-0195c si listings (+ PO-sale SI re-home). d: REQ-0195d unit listings (+ warehouse
+bp rows). e: REQ-0195e rollPct visualization.
