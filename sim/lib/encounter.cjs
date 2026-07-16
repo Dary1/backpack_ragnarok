@@ -8,7 +8,7 @@ const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus } 
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
-const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget } = require('./skills.cjs');
+const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
 
 function runEncounter(opts) {
@@ -528,31 +528,44 @@ function runEncounter(opts) {
         const s = enemySchedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
         if (s && s.raw.alive) {
           const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-          const attacker = { fieldCells: s.raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: s.raw.bonusVsStatus || [] };
+          const attacker = { fieldCells: s.raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: s.raw.bonusVsStatus || [], selfActor: s.actor };
           const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
-          events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: ev.t });
-          const rayEvents = [];
-          const fr = fireSkillRay({
-            attacker, attackProfile, verbEff: s.effect, mode: 'battle',
-            targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-            rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
-          });
-          for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
-          // skills fire on each player actor its attack just directly hit
-          // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
-          const reactOff = [];
-          for (const sk of (s.raw.skills || [])) {
-            if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
-            (fr.landedHits || []).forEach((lh, li) => {
-              const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + ev.t + '/' + li);
-              applyReactiveVerbToTarget(sk.verb, s.actor, lh.actor, rs, reactOff, sk.trigger.t);
+          if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
+            // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
+            // lowest-HP living pack ally (self only if alone); target is deterministic
+            // (selectHealAllyTarget), the amount rolls from an isolated named stream.
+            const target = selectHealAllyTarget(s.actor, enemyActors.map(e => e.actor));
+            if (target) {
+              const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
+              const hpBefore = target.hp();
+              target.heal(healN);
+              events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
+            }
+          } else {
+            events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: ev.t });
+            const rayEvents = [];
+            const fr = fireSkillRay({
+              attacker, attackProfile, verbEff: s.effect, mode: 'battle',
+              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+              rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
             });
+            for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+            // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
+            // skills fire on each player actor its attack just directly hit
+            // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
+            const reactOff = [];
+            for (const sk of (s.raw.skills || [])) {
+              if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
+              (fr.landedHits || []).forEach((lh, li) => {
+                const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + ev.t + '/' + li);
+                applyReactiveVerbToTarget(sk.verb, s.actor, lh.actor, rs, reactOff, sk.trigger.t);
+              });
+            }
+            for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
+            const playerDef = [];
+            dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), ev.t, playerDef);
+            for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
           }
-          for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          const playerDef = [];
-          dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), ev.t, playerDef);
-          for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
         }
         if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
       }

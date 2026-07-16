@@ -2,7 +2,7 @@
 // sim/lib/skills.cjs -- REQ-0047 (d): actor wrappers, hit dealing, skill firing (fireSkillRay incl. AOE splash) + effect scheduling.
 // Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
 // stay byte-identical (sim/tests/goldens.cjs).
-const { applyStatus, weaknessMultiplier, consumeSpikes } = require('./status.cjs');
+const { applyStatus, weaknessMultiplier, consumeSpikes, resolveVerbStatusSet } = require('./status.cjs');
 const { checkHpBelow } = require('./hpbelow.cjs'); // REQ-0121
 const { selectEntryCell } = require('./entry.cjs');
 const { walkRay, chebyshevDist } = require('./ray.cjs');
@@ -83,7 +83,7 @@ function reduceIncoming(amount, actor) {
 
 // dealHitOnField: applies a skill's verb(s) to a single occupant actor
 // (S3.3). Returns {amount, hpAfter, dstLabel, isDiscovery}.
-function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus) {
+function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerBonusVsStatus, attackerActor) {
   if (mode === 'detection') {
     // "a hit IS the find, damage irrelevant" -- no HP change, just discovery.
     return { amount: 0, hpAfter: actor.hp(), dstLabel: maskLabel(actor.ref), isDiscovery: true };
@@ -113,6 +113,38 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
       actor.applyDamage(hitAmt);
       amount += hitAmt;
     }
+  } else if (verb.t === 'lifesteal') {
+    // REQ-0203: enemy lifesteal -- strike for n, heal SELF (attackerActor) by
+    // frac of the damage actually dealt (post-weakness, post-reduction). frac
+    // is a fixed scalar on the verb, not a ranged param.
+    let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
+    hitAmt *= weaknessMultiplier(actor.statusBag);
+    hitAmt = reduceIncoming(hitAmt, actor);
+    actor.applyDamage(hitAmt);
+    amount += hitAmt;
+    if (attackerActor && attackerActor.alive) {
+      const healAmt = hitAmt * (verb.frac || 0);
+      if (healAmt > 0) {
+        attackerActor.heal(healAmt);
+        events.push({ ev: 'lifesteal_heal', dst: attackerActor.id, heal: healAmt, hp_after: attackerActor.hp() });
+      }
+    }
+  } else if (verb.t === 'bonus_vs_status') {
+    // REQ-0203: enemy bonus_vs_status (ACTIVE per-skill form) -- strike for n;
+    // if the target carries a status in this verb's set (literal `status` or a
+    // `status_kind`), multiply the hit by `mult`. Applied AFTER weaknessMultiplier
+    // (a Weakness target eats both), BEFORE damage_reduction -- same order the
+    // strike pipeline uses. This is distinct from the battle_start-FOLDED additive
+    // bonus_vs_status (packs.cjs) that rides strike via attackerBonusVsStatus.
+    let hitAmt = rng.range(verb.n[0], verb.n[1]) * bounceMult;
+    hitAmt *= weaknessMultiplier(actor.statusBag);
+    const set = resolveVerbStatusSet(verb);
+    let carries = false;
+    for (const st of set) { if (actor.statusBag[st]) { carries = true; break; } }
+    if (carries) hitAmt *= (verb.mult || 1);
+    hitAmt = reduceIncoming(hitAmt, actor);
+    actor.applyDamage(hitAmt);
+    amount += hitAmt;
   }
   if (verb.t === 'apply_status' || verb.t === 'add_on_hit_status') {
     const n = rng.range(verb.n[0], verb.n[1]);
@@ -166,13 +198,13 @@ function fireSkillRay(opts) {
       const hits = [];
       for (const a of targetActors) {
         if (!a.alive) continue;
-        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus);
+        const r = dealHitOnField(a, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor);
         if (r.amount > 0) landedHits.push({ actor: a, amount: r.amount });
         hits.push({ dst: r.dstLabel, amount: r.amount });
       }
       return hits;
     }
-    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus);
+    const r = dealHitOnField(occ, verbEff, bmult, dmgStream, mode, events, attacker.bonusVsStatus, attacker.selfActor);
     if (r.amount > 0) landedHits.push({ actor: occ, amount: r.amount });
     return r;
   }
@@ -198,6 +230,27 @@ function fireSkillRay(opts) {
           hitAmt = reduceIncoming(hitAmt, a); // REQ-0121
           a.applyDamage(hitAmt);
           dmgAmount += hitAmt;
+        }
+      } else if (mode !== 'detection' && verbEff.verb.t === 'bonus_vs_status') {
+        // REQ-0203: AoE splash mirrors the primary bonus_vs_status hit.
+        let hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+        const set = resolveVerbStatusSet(verbEff.verb);
+        let carries = false;
+        for (const st of set) { if (a.statusBag[st]) { carries = true; break; } }
+        if (carries) hitAmt *= (verbEff.verb.mult || 1);
+        hitAmt = reduceIncoming(hitAmt, a);
+        a.applyDamage(hitAmt);
+        dmgAmount += hitAmt;
+      } else if (mode !== 'detection' && verbEff.verb.t === 'lifesteal') {
+        // REQ-0203: AoE splash lifesteal -- each splashed target also feeds the
+        // caster's self-heal (frac of that splash's damage).
+        let hitAmt = dmgStream.range(verbEff.verb.n[0], verbEff.verb.n[1]) * bmult * weaknessMultiplier(a.statusBag);
+        hitAmt = reduceIncoming(hitAmt, a);
+        a.applyDamage(hitAmt);
+        dmgAmount += hitAmt;
+        if (attacker.selfActor && attacker.selfActor.alive) {
+          const healAmt = hitAmt * (verbEff.verb.frac || 0);
+          if (healAmt > 0) attacker.selfActor.heal(healAmt);
         }
       }
       if (doStatuses && (verbEff.verb.t === 'apply_status' || verbEff.verb.t === 'add_on_hit_status')) {
@@ -303,8 +356,26 @@ function applyReactiveVerbToTarget(verb, ownerActor, target, rng, events, trigTa
   return amount;
 }
 
+// REQ-0203: heal_ally target selection -- the LOWEST-HP LIVING pack member,
+// EXCLUDING the caster; the caster is chosen only when it is the sole survivor
+// ("never self unless alone"). Deterministic: ties break by list order (the
+// pack's field order), no RNG. Returns null only if nothing is alive at all.
+// Kept pure and exported so it is unit-testable without a whole encounter --
+// encounter.cjs calls it, rolls the heal n, and applies/emits.
+function selectHealAllyTarget(casterActor, allyActors) {
+  let target = null;
+  for (const a of allyActors) {
+    if (!a.alive) continue;
+    if (a === casterActor) continue;
+    if (target === null || a.hp() < target.hp()) target = a;
+  }
+  if (target) return target;
+  return (casterActor && casterActor.alive) ? casterActor : null;
+}
+
 module.exports = {
   effectStreamName,
+  selectHealAllyTarget, // REQ-0203
   makeBPActor,
   makeEnemyActor,
   bonusVsStatusAmount,
