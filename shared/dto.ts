@@ -640,14 +640,16 @@ export interface ApiWarehouseItem {
 
 // ---- REQ-0064: Market wire shapes (server/routes/market.cjs) ----
 // Every /api/market response envelope carries `dtoVersion:
-// MARKET_DTO_VERSION` (currently 1; server/services/market.cjs owns the
-// runtime constant -- shared/dto.ts is types-only by rule). Bump the
+// MARKET_DTO_VERSION` (currently 2; server/services/market/lib.cjs owns
+// the runtime constant -- shared/dto.ts is types-only by rule). Bump the
 // literal here AND there together whenever a market wire shape changes
 // incompatibly.
 export type MarketDtoVersion = 2;
 
-/** Law 1 ("barter in kind"): a price is an integer qty of ONE TM.
- * v1's trade TM is content id 'lrdst' (content/live/live_tms.json). */
+/** Law 1 ("barter in kind"): a price is an integer qty of ONE TM. That
+ * tm is one of the live TM registry ids the LISTINGS envelope returns as
+ * `tms[]` (content/live/live_tms.json); 'lrdst' is the sole live entry
+ * today. Prices carved in different TMs never mix. */
 export interface ApiMarketPrice {
   tm: string;
   qty: number;

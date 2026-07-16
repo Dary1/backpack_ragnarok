@@ -20,10 +20,12 @@ const ITEMS_PATH = contentPath('live', 'live_items.json');
 // Tunables ([TUNABLE] -- market-policy level, same posture as
 // services/core.cjs's own tunables block).
 // ---------------------------------------------------------------------
-// The ONE trade TM (law 1). Engine/content id `lrdst` -- cited from
-// content/live/live_tms.json (sole entry) and services/gacha.cjs's
-// readLrdstBalance(). If a dedicated trade TM ships later, this constant
-// (and the content) is the only place to touch.
+// The DEFAULT market TM (law 1, "barter in kind"). Engine/content id
+// `lrdst` -- the sole entry in content/live/live_tms.json today, the
+// value legacy price-history rows read, and the balance services/gacha.cjs
+// reads via readLrdstBalance(). Post-REQ-0195a the LIVE tradeable set is
+// the registry (see liveTmIds); a price.tm must be one of those ids, so
+// this is the default/legacy anchor, NOT the only tradeable currency.
 const MARKET_TM_ID = 'lrdst';
 const MARKET_BURN_RATE = 0.08; // law 2 -- the furnace tithe
 const MARKET_PRICE_MIN = 1; // mock stepper: integer, min 1
