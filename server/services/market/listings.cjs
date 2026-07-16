@@ -5,7 +5,7 @@
 'use strict';
 const storage = require('../../storage.cjs');
 const { getScheduleContent, genId } = require('../core.cjs');
-const { deployedUidSet } = require('../squads.cjs');
+const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const {
   MARKET_TM_ID, MARKET_PRICE_MIN, MARKET_PRICE_MAX, MARKET_LISTING_TTL_MS,
   findInventoryPO, findInventorySI, findInventoryBP, bpHasContents, isLiveTm,
@@ -109,6 +109,14 @@ function createListing(sellerId, body, canvas, idemKey) {
   if (deployedUidSet(sellerId, canvas).has(body.itemUid)) {
     const err = new Error('deployed items cannot go to market (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'deployed'; throw err;
   }
+  // REQ-0198 (C): a board-/preset-REFERENCED instance is "in use, not in
+  // my inventory" -- ineligible even when no ROOM deploys it. Checked
+  // AFTER deployed (deployedUidSet is a strict subset), so the room case
+  // keeps its own 'deployed' reason and this narrower-copy 'in_use' reason
+  // covers a plain board placement or a saved squad-preset reference.
+  if (referencedUidSet(canvas).has(body.itemUid)) {
+    const err = new Error('this item is in use (placed on the board or held by a squad) and cannot go to market'); err.code = 'CONFLICT'; err.reason = 'in_use'; throw err;
+  }
   const now = Date.now();
   for (const raw of storage.listMarketListings()) {
     if (raw.sellerId !== sellerId || raw.itemUid !== body.itemUid) continue;
@@ -190,6 +198,11 @@ function createUnitListing(sellerId, body, price, canvas, idemKey) {
   }
   if (deployedUidSet(sellerId, canvas).has(body.itemUid)) {
     const err = new Error('deployed units cannot go to market (the Law of Possession)'); err.code = 'CONFLICT'; err.reason = 'deployed'; throw err;
+  }
+  // REQ-0198 (C): same in_use gate as the po/si path -- a BP referenced by
+  // the active board or any squad preset is in use, not sellable.
+  if (referencedUidSet(canvas).has(body.itemUid)) {
+    const err = new Error('this unit is in use (placed on the board or held by a squad) and cannot go to market'); err.code = 'CONFLICT'; err.reason = 'in_use'; throw err;
   }
   const now = Date.now();
   for (const raw of storage.listMarketListings()) {

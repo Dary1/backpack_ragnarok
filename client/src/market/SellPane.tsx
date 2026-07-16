@@ -11,13 +11,13 @@
 // as deployed comes back 409 -> we lock that specific card with the
 // mock's "配備中 — 出品不可" word rather than silently reimplementing the
 // room scan here.
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createMarketListing, type ApiMarketListing, type GameData } from '../api';
 import { t } from '../i18n';
 import type { GameState } from '../engine/engine.d.ts';
 import type { Locale } from '../store';
 import { marketErrorKey } from './marketErrors';
-import { MarketThumb, PriceTag, burnOf, dexNoLabel, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
+import { MarketThumb, PriceTag, RollBar, burnOf, dexNoLabel, referencedUidSet, MARKET_PRICE_MIN, MARKET_PRICE_MAX } from './marketShared';
 
 /** One sellable inventory instance (PO or SI), with display fields
  * precomputed off the right def map so the picker/carve never touch the
@@ -30,6 +30,11 @@ interface SellableItem {
   rarity: string;
   dims: string;
   tags: string[];
+  /** REQ-0198 (A): the per-instance roll-fulfillment fraction (0..1) for
+   * the SELL-side RollBar -- po/si carry the instance q; a unit carries
+   * bp.roll?.pct else null (unmeasured badge, never a 0% bar). Lets two
+   * instances of the same def be told apart in the picker. */
+  rollPct: number | null;
 }
 
 /** Collects every inventory-homed PO across all inventory pages -- the
@@ -49,18 +54,21 @@ function collectSellable(state: GameState | null, gameData: GameData | null, kin
         // than offer a card that can only fail on list.
         if (!unitId) continue;
         const d = (gameData?.UNITS?.[unitId] ?? null) as { name?: string; rarity?: string } | null;
-        out.push({ itemUid: bb.id, itemId: unitId, name: (d?.name ?? bb.name) ?? bb.id, nameJa: '', rarity: d?.rarity ?? '', dims: '', tags: [] });
+        const uRoll = (bb as { roll?: { pct?: number } }).roll?.pct;
+        out.push({ itemUid: bb.id, itemId: unitId, name: (d?.name ?? bb.name) ?? bb.id, nameJa: '', rarity: d?.rarity ?? '', dims: '', tags: [], rollPct: typeof uRoll === 'number' ? uRoll : null });
       }
     } else if (kind === 'si') {
       for (const a of pg.sis || []) {
         const d = gameData?.SI_DEFS?.[a.id] ?? null;
-        out.push({ itemUid: a.uid, itemId: a.id, name: d?.name ?? a.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims: '', tags: [] });
+        const aq = (a as { q?: number }).q;
+        out.push({ itemUid: a.uid, itemId: a.id, name: d?.name ?? a.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims: '', tags: [], rollPct: typeof aq === 'number' ? aq : null });
       }
     } else {
       for (const po of pg.pos || []) {
         const d = gameData?.ITEMS[po.id] ?? null;
         const dims = d?.shape?.length ? `${Math.max(...d.shape.map((c) => c[1])) + 1}×${Math.max(...d.shape.map((c) => c[0])) + 1}` : '';
-        out.push({ itemUid: po.uid, itemId: po.id, name: d?.name ?? po.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims, tags: d?.tags ?? [] });
+        const pq = (po as { q?: number }).q;
+        out.push({ itemUid: po.uid, itemId: po.id, name: d?.name ?? po.id, nameJa: d?.name_ja ?? '', rarity: d?.rarity ?? '', dims, tags: d?.tags ?? [], rollPct: typeof pq === 'number' ? pq : null });
       }
     }
   }
@@ -81,12 +89,21 @@ interface SellPaneProps {
   allListings: ApiMarketListing[];
   /** Uids the player already has an active/suspended listing for. */
   listedUids: Set<string>;
+  /** REQ-0198 (B): a deep-link preselect (#/market?sell=<uid>&kind=) parsed
+   * by MarketPage. When present the pane switches to this kind tab and
+   * selects the instance (if it is a real, still-sellable stowed item);
+   * an invalid/locked/missing uid is ignored gracefully. */
+  preselect?: { uid: string; kind: 'po' | 'si' | 'unit' } | null;
   onListed: () => Promise<void>;
 }
 
-export function SellPane({ state, gameData, locale, tms, allListings, listedUids, onListed }: SellPaneProps) {
+export function SellPane({ state, gameData, locale, tms, allListings, listedUids, preselect, onListed }: SellPaneProps) {
   const [sellKind, setSellKind] = useState<'po' | 'si' | 'unit' | 'tm'>('po');
   const sellable = useMemo(() => collectSellable(state, gameData, sellKind === 'tm' ? 'po' : sellKind), [state, gameData, sellKind]);
+  // REQ-0198 (C): uids the player has REFERENCED (board / squad presets) --
+  // "in use, not in inventory"; these lock in the picker (shown, not
+  // hidden, mirroring the deployed-lock chip) so they cannot be listed.
+  const referencedUids = useMemo(() => referencedUidSet(state), [state]);
   const priceTm = tms[0] || 'lrdst'; // REQ-0195a: price TM from the live registry (selector arrives with a 2nd live TM).
   const multiTm = tms.length > 1; // REQ-0195a: with >1 live TM, prices carry the TM's short label (a lone rune would be ambiguous).
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
@@ -124,6 +141,38 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
 
   const selected = sellable.find((s) => s.itemUid === selectedUid) || null;
 
+  // REQ-0198 (B): honor a deep-link preselect (#/market?sell=<uid>&kind=).
+  // First switch the kind tab; once `sellable` reflects that kind, select
+  // the instance -- but only if it is a real, still-sellable stowed item
+  // (a locked/referenced/listed/missing uid is ignored gracefully). One
+  // resolution per distinct target, tracked by a ref so a manual pane
+  // return does not re-force the selection.
+  const preselectDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (!preselect) { preselectDone.current = null; return; }
+    const guard = preselect.kind + ':' + preselect.uid;
+    if (preselectDone.current === guard) return;
+    if (sellKind !== preselect.kind) { setSellKind(preselect.kind); return; }
+    preselectDone.current = guard; // kind matches now -> resolve once (found or not)
+    const target = sellable.find((s) => s.itemUid === preselect.uid);
+    if (!target || deployedUids.has(target.itemUid) || listedUids.has(target.itemUid) || referencedUids.has(target.itemUid)) return;
+    setSelectedUid(target.itemUid);
+    setErrKey(null);
+    let seed = MARKET_PRICE_MIN;
+    for (const l of allListings) {
+      if (l.itemId === target.itemId && l.priceHistory && l.priceHistory.length > 0) { seed = l.priceHistory[0].qty; break; }
+    }
+    const clamped = Math.max(MARKET_PRICE_MIN, Math.min(MARKET_PRICE_MAX, Math.round(seed) || MARKET_PRICE_MIN));
+    setPrice(clamped);
+    setPriceText(String(clamped));
+    if (typeof document !== 'undefined') {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-testid="market-sell-item"][data-item-uid="${preselect.uid}"]`);
+        (el as HTMLElement | null)?.scrollIntoView?.({ block: 'nearest' });
+      });
+    }
+  }, [preselect, sellKind, sellable, deployedUids, listedUids, referencedUids, allListings]);
+
   /** The item's most recent settled price, if the DTO exposes one for
    * this itemId anywhere in the known listings (priceHistory[0], newest
    * first). Empty-state when never settled -- per spec, this one sub-
@@ -145,7 +194,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   }
 
   function selectItem(uid: string) {
-    if (deployedUids.has(uid) || listedUids.has(uid)) return;
+    if (deployedUids.has(uid) || listedUids.has(uid) || referencedUids.has(uid)) return;
     setSelectedUid(uid);
     setErrKey(null);
     // Seed the stepper from the anchor when known, else 1 (mock seeds
@@ -187,7 +236,7 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
   const capped = price >= MARKET_PRICE_MAX;
 
   // Eligible = at least one inventory PO not already locked/listed.
-  const anyEligible = sellable.some((s) => !deployedUids.has(s.itemUid) && !listedUids.has(s.itemUid));
+  const anyEligible = sellable.some((s) => !deployedUids.has(s.itemUid) && !listedUids.has(s.itemUid) && !referencedUids.has(s.itemUid));
 
   const priceTmOptions = tms.filter((tt) => tt !== soldTm);
   async function listTm() {
@@ -317,9 +366,12 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
           <div className="col market-hoard-list">
             {sellable.map((s) => {
               const name = locale === 'ja' ? (s.nameJa || s.name) : s.name;
-              const locked = deployedUids.has(s.itemUid) || listedUids.has(s.itemUid);
+              const referenced = referencedUids.has(s.itemUid);
+              const locked = deployedUids.has(s.itemUid) || listedUids.has(s.itemUid) || referenced;
               const lockedReason = deployedUids.has(s.itemUid)
                 ? t(locale, 'market.sell.deployedLock')
+                : referenced
+                ? t(locale, 'market.sell.inUseLock')
                 : listedUids.has(s.itemUid) ? t(locale, 'market.sell.alreadyListedLock') : '';
               const dims = s.dims;
               return (
@@ -339,6 +391,8 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
                   <div>
                     <div className="nm">{name}</div>
                     <div className="sub">{sellKind.toUpperCase()}{dims ? ` ・ ${dims}` : ''}{s.tags.length ? ` ・ ${s.tags.join('/')}` : ''}{s.rarity ? <span className={`rar-word r-${s.rarity}`}> {s.rarity.toUpperCase()}</span> : null}</div>
+                    {/* REQ-0198 (A): per-instance roll bar so two same-def instances read apart. */}
+                    <RollBar kind={sellKind} rollPct={s.rollPct} locale={locale} />
                   </div>
                   {locked
                     ? <span className="lockword" data-testid="market-sell-lockword">{lockedReason}</span>
@@ -366,6 +420,8 @@ export function SellPane({ state, gameData, locale, tms, allListings, listedUids
                 <span className="t-micro" data-testid="market-carve-anchor">
                   {anchor != null ? t(locale, 'market.sell.anchor', { n: anchor }) : t(locale, 'market.sell.anchorNone')}
                 </span>
+                {/* REQ-0198 (A): the selected instance's roll bar in the carve header. */}
+                <RollBar kind={sellKind} rollPct={selected.rollPct} locale={locale} />
               </div>
               <div className="stepper market-stepper">
                 <button type="button" className="sbtn" data-testid="market-price-down" aria-label={t(locale, 'market.sell.priceDown')} onClick={() => applyPrice(price - 1)}>−</button>
