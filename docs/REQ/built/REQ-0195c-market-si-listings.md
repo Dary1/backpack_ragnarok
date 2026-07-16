@@ -12,3 +12,7 @@
 
 ## Status log
 - 2026-07-16 split from REQ-0195 while in todo/.
+- 2026-07-16 implemented + committed. Gates: server api_test 180 passed / 0
+  failed (files backend, incl. the new si + PO-sale re-home suite); client
+  tsc -b + vite build clean. e2e si-browse authored (content-agnostic).
+  todo -> built.
