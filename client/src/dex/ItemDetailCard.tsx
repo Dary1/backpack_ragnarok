@@ -1,48 +1,45 @@
 // Detail FIELDS card — REQ-0035, restructured REQ-0038 for the two-pane
 // detail layout (DexDetail.tsx), locale-only display REQ-0038 R3 (Dex
-// feedback round 3). Shows every non-diagram field the task spec lists:
-// name, id, rarity, tags with full ancestry, effects (rendered text AND
-// collapsible raw AST), flavor text, part/assembly info, stretch flag,
-// provenance (batch-level, see module comment in api.ts's ApiRegistry).
-// Shape/Ports/Sockets moved OUT of this component in REQ-0038 -- they
-// are now the two-pane detail view's diagram column (see DexDiagram.tsx),
-// not a section here.
+// feedback round 3), identity hoisted REQ-0194. Shows every non-diagram
+// LORE field the task spec lists: tags with full ancestry, effects
+// (rendered text AND collapsible raw AST), flavor text, part/assembly
+// info, stretch flag, provenance (batch-level, see module comment in
+// api.ts's ApiRegistry). Shape/Ports/Sockets moved OUT of this component
+// in REQ-0038 — they are the detail view's diagram section (DexDiagram
+// .tsx), not a section here.
 //
-// REQ-0038 R3 (Dex feedback round 3, fix 1): name/flavor/effects text now
-// show ONLY the currently active locale -- the paired "EN … / JA …" rows
+// REQ-0194 (dex detail pane overhaul): the name header + identity chip
+// row (name/EN caption/rarity/id/tag chips) moved UP into DexDetail.tsx's
+// panel masthead — the identity used to be buried in this second panel,
+// BELOW the schema diagram of the very item it names, while the schema
+// panel above never named its subject at all. This component now renders
+// lore sections only. The provenance micro-line becomes "<id> ・ No.NNN"
+// (was No.NNN alone) so the info COLUMN keeps a locale-neutral id
+// occurrence — dex.spec.ts / dex-card.spec.ts assert the id inside
+// .dex-detail-col-info. localizedName is exported for the masthead.
+//
+// REQ-0038 R3 (Dex feedback round 3, fix 1): name/flavor/effects text
+// show ONLY the currently active locale — the paired "EN … / JA …" rows
 // this component used to render unconditionally are gone. This mirrors
 // the edit-mode locale switcher's behavior (DexAdmin.tsx: "Never both
-// languages' inputs at once") for the READ-ONLY view: the global JA/EN
-// toggle (store.ts's `locale`) now governs which single language's
-// content-text is shown here, exactly like the catalog card's name
-// already did (Dex.tsx's dex-card-name). ID/rarity/tags stay locale-
-// NEUTRAL (raw identifiers/closed-vocab strings, not translated content)
-// and are unaffected by this change, per the task spec. The raw AST
-// <details> block is also locale-neutral (opaque JSON) and unaffected.
+// languages' inputs at once") for the READ-ONLY view. ID/rarity/tags stay
+// locale-NEUTRAL (raw identifiers/closed-vocab strings, not translated
+// content). The raw AST <details> block is also locale-neutral.
 //
 // REQ-0075 (MJOLNIR re-skin; mock: web/redesign/dex.html §銘と効果 +
-// §市場の刻銘): presentation-only rewrite of the field layout to the
-// mock's info panel (name + EN caption header, rarity/tag chip row, rune
-// dividers between effect/lore/provenance blocks). The locale-only text
-// resolution below is UNCHANGED. Two additions:
-//   (a) the mock's No.NNN chip in the provenance micro-line, from the
-//       honest dex numbering passed in as `dexNo` (dexNo.ts); and
-//   (b) the mock's 市場の刻銘 (market engravings) block. That block is
-//       rendered as an EMPTY-STATE shell: no Dex-facing price/listing
-//       feed is exposed today (the market wire shapes exist in
-//       shared/dto.ts as ApiMarketPriceHistoryEntry etc., but ONLY on
-//       the /api/market listing endpoints -- REQ-0064; a per-item Dex
-//       card feed is REQ-0052, still queued). Per REQ-0075's own fallback
-//       clause ("fed by whatever the card DTO already offers; empty-state
-//       otherwise"), and since /api/content offers NOTHING market-related,
-//       the block shows the mock's anchor/listing labels with honest "—"
-//       placeholders, NOT invented numbers, and links to the market page.
-//       See docs/REQ-0075-redesign-dex.md.
+// §市場の刻銘): the mock's 市場の刻銘 (market engravings) block is
+// rendered as an EMPTY-STATE shell: no Dex-facing price/listing feed is
+// exposed today (the market wire shapes exist in shared/dto.ts on the
+// /api/market listing endpoints only — REQ-0064; a per-item Dex card feed
+// is REQ-0052, still queued). Per REQ-0075's own fallback clause, and
+// since /api/content offers NOTHING market-related, the block shows the
+// mock's anchor/listing labels with honest "—" placeholders, NOT invented
+// numbers, and links to the market page. See docs/REQ-0075-redesign-dex.md.
 //
 // Locale text resolution prefers the formal i18n map (entry.i18n?.ja)
 // over the legacy top-level name_ja/flavor_ja mirror fields, falling
 // back to name_ja/flavor_ja if i18n.ja is absent (matches DexAdmin.tsx's
-// own `ja?.name ?? entry.name_ja` precedence) -- then falls back to the
+// own `ja?.name ?? entry.name_ja` precedence) — then falls back to the
 // EN text if JA copy doesn't exist at all for that field (an item with
 // no JA translation yet should not show blank/dash in JA mode; showing
 // the EN text is more useful than nothing, same rule the catalog card's
@@ -60,7 +57,7 @@ interface ItemDetailCardProps {
   registry: ApiRegistry | null;
   /** REQ-0075: honest 1-based dex number for this entry (dexNo.ts), or
    * null for SIs (not in the dex numbering). Shown in the provenance
-   * micro-line's No.NNN, mirroring the mock. */
+   * micro-line's record id, mirroring the mock. */
   dexNo: number | null;
 }
 
@@ -72,8 +69,9 @@ function isPO(e: DexEntry): e is DexEntry & { entry: ApiItemEntry } {
  * i18n.ja.name, falling back to the legacy name_ja mirror, falling back
  * to the EN name if no JA copy exists at all. EN mode is always just the
  * base `name` field (the base fields on an entry are always English,
- * per api.ts's ApiI18nMap doc comment). */
-function localizedName(entry: ApiItemEntry | ApiSIEntry, locale: Locale): string {
+ * per api.ts's ApiI18nMap doc comment). Exported for DexDetail.tsx's
+ * masthead (REQ-0194). */
+export function localizedName(entry: ApiItemEntry | ApiSIEntry, locale: Locale): string {
   if (locale === 'ja') {
     return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
   }
@@ -93,7 +91,7 @@ function localizedFlavor(entry: ApiItemEntry | ApiSIEntry, locale: Locale): stri
 
 /** Effects rendered text has no i18n.ja map entry (eff_en/eff_ja are
  * server-rendered strings, not part of the ApiI18nMap content-i18n
- * shape) -- so this just picks whichever of eff_en/eff_ja matches the
+ * shape) — so this just picks whichever of eff_en/eff_ja matches the
  * active locale, falling back to the other language if the active one is
  * empty (an item whose effect text hasn't been translated yet should
  * still show SOMETHING rather than the "(none)" placeholder, matching
@@ -105,7 +103,7 @@ function localizedEff(entry: ApiItemEntry | ApiSIEntry, locale: Locale): string 
   return entry.eff_en || entry.eff_ja || '';
 }
 
-/** Resolves batch-level provenance for `id` -- this repo's registry.json
+/** Resolves batch-level provenance for `id` — this repo's registry.json
  * schema has no per-item id list (see docs/REQ/REQ-0035-item-
  * encyclopedia.md), so today this always returns null (no resolvable
  * per-item mapping) unless/until the registry schema grows one. Written
@@ -126,34 +124,14 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry, dexNo }: I
   const { entry } = dexEntry;
   const po = isPO(dexEntry) ? (entry as ApiItemEntry) : null;
   const provenance = resolveProvenance(registry, dexEntry.id);
-  const displayName = localizedName(entry, locale);
   const displayFlavor = localizedFlavor(entry, locale);
   const displayEff = localizedEff(entry, locale);
   const noStr = dexNo != null ? `${t(locale, 'dex.noPrefix')}${String(dexNo).padStart(3, '0')}` : null;
 
   return (
     <div className="dex-detail">
-      {/* mock header: name + EN caption */}
-      <div className="dex-detail-namehead">
-        <span className="dex-detail-name dj">{displayName}</span>
-        <span className="dex-detail-enname den">{entry.name.toUpperCase()}</span>
-      </div>
-
-      {/* mock chip row: rarity word + type/tag chips */}
-      <div className="dex-detail-chiprow">
-        <span className={`rar-word rarity r-${entry.rarity}`}>{entry.rarity.toUpperCase()}</span>
-        <span className="dex-detail-field-id">
-          <span className="dex-detail-label">id</span> {dexEntry.id}
-        </span>
-        {po
-          ? (po.tags || []).map((tag) => (
-              <span className="chip dex-detail-tagchip" key={tag}>
-                {tag}
-              </span>
-            ))
-          : null}
-      </div>
-
+      {/* REQ-0194: the name header + identity chip row that used to open
+          this card moved up into DexDetail.tsx's masthead. */}
       {po ? (
         <div className="dex-detail-section">
           <h4>{t(locale, 'dex.detail.tags')}</h4>
@@ -167,8 +145,6 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry, dexNo }: I
           </ul>
         </div>
       ) : null}
-
-      <div className="rune-divider" aria-hidden="true">ᛁ</div>
 
       <div className="dex-detail-section">
         <h4>{t(locale, 'dex.detail.effects')}</h4>
@@ -222,7 +198,13 @@ export function ItemDetailCard({ dexEntry, locale, tagTree, registry, dexNo }: I
         ) : (
           <div className="dex-provenance-unresolved">{t(locale, 'dex.detail.provenanceUnresolved')}</div>
         )}
-        {noStr ? <div className="dex-detail-no t-micro tnum">{noStr}</div> : null}
+        {/* REQ-0194: record line = locale-neutral id (+ dex No. when the
+            entry has one) — keeps the id inside .dex-detail-col-info per
+            the E2E contract now that the masthead owns the chip row. */}
+        <div className="dex-detail-no t-micro tnum">
+          {dexEntry.id}
+          {noStr ? ` ・ ${noStr}` : ''}
+        </div>
       </div>
 
       {/* ============ 市場の刻銘 / THE MARKET ENGRAVINGS (mock) ============
