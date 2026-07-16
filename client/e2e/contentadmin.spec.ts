@@ -874,3 +874,57 @@ test('editor: the preview rail tracks the serialized truth live, on both tabs', 
   await expect(page.getByTestId('edit-submit-1')).toBeDisabled();
   await expect(rail).toContainText('Rail Tracks This');
 });
+
+// REQ-0182b: two guards that can only be exercised on a pg backend with a
+// seedable registry -- exactly what the files-backed default fleet lacks (and
+// why the drift these guard against reached live). This harness IS pg-backed
+// with an isolated namespace + dev_mode item_admin, so it can adopt a def and
+// observe both the registry-served refusal and the relocated grant control.
+
+test('REQ-0182b: the legacy admin item PUT 409s (with a #/contentadmin hint) once an item is registry-served', async ({ request }) => {
+  // Adopt a def under a REAL live-item id (a covered kind) so that id now
+  // resolves through the registry. adopt() synchronously refreshes the served
+  // snapshot, so registryServedKindFor sees it immediately; dev_mode makes the
+  // no-token caller an item_admin, clearing the 403 gate so we reach the 409.
+  await request.post('/api/content/dev/clear-all');
+  const SYS = 'blade'; // a real live PO item id (covered kind)
+  await apiCreateDef(request, { system_name: SYS, kind: 'po_def', brief: 'REQ-0182b 409 guard', schema_ref: 'po/2' });
+  await apiIngest(request, SYS, [1].map(variant));
+  const adopt = await request.post('/api/content/defs/' + SYS + '/adopt', { data: { variant_no: 1 } });
+  expect(adopt.status()).toBe(200);
+
+  const put = await request.put('/api/admin/item/' + SYS, { data: { name: 'must not apply -- registry-served' } });
+  expect(put.status()).toBe(409);
+  const body = await put.json();
+  expect(body.registry_kind).toBe('po_def');
+  expect(body.edit_at).toBe('#/contentadmin/' + SYS);
+});
+
+test('REQ-0182b: the relocated grant-to-warehouse button on the adopted variant card grants the system item into the dev warehouse', async ({ page, request }) => {
+  // The dev "grant to warehouse" control moved from the retired Dex Edit form
+  // onto the ADOPTED contentadmin variant card (VariantCard grant-warehouse-<no>,
+  // rendered only when isAdopted && systemName). Coverage relocated here from the
+  // deleted schedule.spec dex-admin flow because the button now requires a
+  // pg-backed adopted variant, which only this harness can produce. dev/role
+  // gating is unchanged: the grant endpoint stays item_admin-gated + dev-only.
+  await request.post('/api/content/dev/clear-all');
+  const SYS = 'blade'; // a real PO item id, so the grant validates + lands
+  await apiCreateDef(request, { system_name: SYS, kind: 'po_def', brief: 'REQ-0182b grant relocation', schema_ref: 'po/2' });
+  await apiIngest(request, SYS, [1].map(variant));
+  const adopt = await request.post('/api/content/defs/' + SYS + '/adopt', { data: { variant_no: 1 } });
+  expect(adopt.status()).toBe(200);
+
+  const beforeCount = (((await (await request.get('/api/warehouse')).json()).items) || []).length;
+
+  await page.goto('/app/#/contentadmin/' + SYS);
+  await expect(page.getByTestId('variant-adopted-1')).toBeVisible();
+
+  // the relocated grant button sits on the adopted card
+  await page.getByTestId('grant-warehouse-1').click();
+  await expect(page.getByTestId('cd-msg')).toContainText('granted ' + SYS + ' to the warehouse');
+
+  // it actually landed in the caller's (dev fallback) warehouse
+  const after = await (await request.get('/api/warehouse')).json();
+  expect(after.items.length).toBe(beforeCount + 1);
+  expect(after.items.some((i: any) => i.itemId === SYS)).toBeTruthy();
+});

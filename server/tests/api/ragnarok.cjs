@@ -658,34 +658,75 @@ module.exports.run = async function run(h) {
       assert.ok(found, 'fixture item "dagger" must exist in the real content/live/live_items.json');
       const originalName = found.doc.entries[found.index].name;
 
-      await new Promise((resolve, reject) => {
-        const req = mockReq(
-          'PUT',
-          '/api/admin/item/dagger',
-          JSON.stringify({ name: originalName + ' (test-edit)' }),
-          authHeaders(realDevPlayer.token)
-        );
-        const res = mockRes((body) => {
-          try {
-            assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
-            resolve();
-          } catch (e) { reject(e); }
-        });
-        realApi.handle(req, res);
-      });
+      // REQ-0182b: the admin PUT now REFUSES (409) any id the registry SERVES
+      // (an adopted po/si of a covered kind), pointing the operator to the
+      // content admin instead of writing content/live/*.json behind the
+      // ledger. Whether 'dagger' is registry-served depends on the backend +
+      // namespace THIS run uses: under the files backend (or an empty pg
+      // namespace) the registry is empty and the legacy file-write path still
+      // applies (200 + persist + self-restore); under pg with an adopted
+      // 'dagger' the route 409s BEFORE touching the file. Warm the snapshot
+      // first so the branch is deterministic, then assert whichever behaviour
+      // matches the current registry state -- either way this exercises the
+      // REQ-0182b contract and stays green on BOTH backends.
+      const contentLib = require('../../lib/content.cjs');
+      await contentLib.refreshRegistryData();
+      const servedKind = contentLib.registryServedKindFor('dagger');
 
-      // Verify the real file actually changed.
-      const changedBytes = fs.readFileSync(realItemsPath);
-      assert.notStrictEqual(changedBytes.toString('utf8'), originalBytes.toString('utf8'), 'file must have changed after the edit');
-      const reread = JSON.parse(changedBytes.toString('utf8'));
-      const changedEntry = reread.entries.find((e) => e.id === 'dagger');
-      assert.strictEqual(changedEntry.name, originalName + ' (test-edit)');
-      // Fidelity check: the rewritten file must preserve the original's
-      // trailing-newline convention (every content/live/*.json in this
-      // repo ends with exactly one trailing newline) -- admin.cjs's write
-      // path explicitly re-adds it since JSON.stringify never does.
-      if (originalBytes.toString('utf8').endsWith('\n')) {
-        assert.ok(changedBytes.toString('utf8').endsWith('\n'), 'rewritten file must keep the trailing newline the original had');
+      if (servedKind) {
+        // Registry-served: the PUT must refuse with 409 + the redirect hint,
+        // and leave the live file byte-identical (no write happened).
+        await new Promise((resolve, reject) => {
+          const req = mockReq(
+            'PUT',
+            '/api/admin/item/dagger',
+            JSON.stringify({ name: originalName + ' (test-edit)' }),
+            authHeaders(realDevPlayer.token)
+          );
+          const res = mockRes((body) => {
+            try {
+              assert.strictEqual(res.statusCode, 409, 'registry-served dagger must 409, got ' + res.statusCode + ': ' + body);
+              const parsed = JSON.parse(body);
+              assert.strictEqual(parsed.registry_kind, servedKind, 'registry_kind must echo the served kind');
+              assert.strictEqual(parsed.edit_at, '#/contentadmin/dagger', 'must redirect to the content admin');
+              resolve();
+            } catch (e) { reject(e); }
+          });
+          realApi.handle(req, res);
+        });
+        const afterBytes = fs.readFileSync(realItemsPath);
+        assert.strictEqual(afterBytes.toString('utf8'), originalBytes.toString('utf8'), 'a refused (409) edit must not change the live file');
+      } else {
+        // Not registry-served: the legacy file-write path still applies.
+        await new Promise((resolve, reject) => {
+          const req = mockReq(
+            'PUT',
+            '/api/admin/item/dagger',
+            JSON.stringify({ name: originalName + ' (test-edit)' }),
+            authHeaders(realDevPlayer.token)
+          );
+          const res = mockRes((body) => {
+            try {
+              assert.strictEqual(res.statusCode, 200, 'expected 200 got ' + res.statusCode + ': ' + body);
+              resolve();
+            } catch (e) { reject(e); }
+          });
+          realApi.handle(req, res);
+        });
+
+        // Verify the real file actually changed.
+        const changedBytes = fs.readFileSync(realItemsPath);
+        assert.notStrictEqual(changedBytes.toString('utf8'), originalBytes.toString('utf8'), 'file must have changed after the edit');
+        const reread = JSON.parse(changedBytes.toString('utf8'));
+        const changedEntry = reread.entries.find((e) => e.id === 'dagger');
+        assert.strictEqual(changedEntry.name, originalName + ' (test-edit)');
+        // Fidelity check: the rewritten file must preserve the original's
+        // trailing-newline convention (every content/live/*.json in this
+        // repo ends with exactly one trailing newline) -- admin.cjs's write
+        // path explicitly re-adds it since JSON.stringify never does.
+        if (originalBytes.toString('utf8').endsWith('\n')) {
+          assert.ok(changedBytes.toString('utf8').endsWith('\n'), 'rewritten file must keep the trailing newline the original had');
+        }
       }
     } finally {
       // ALWAYS restore, even if an assertion above threw -- bytes AND mode

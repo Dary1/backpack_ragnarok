@@ -182,3 +182,63 @@ live in the first place).
 
 **So the replacement budget is: 4 deletions + 1 KEEP-as-is + 1 rewrite in a DIFFERENT spec file
 + 2 new tests — not "three replacements".**
+
+### Session 2 — e2e rewrite + gates (2026-07-16, opus implementer)
+
+**User go-ahead recorded:** merge + deploy + post-deploy suite were GRANTED by the user
+2026-07-16. Recorded here per PROJECT.md (the file is the log).
+
+**Master re-merged before gates.** The branch had forked at 611d34d and already merged
+7d62b68 (REQ-0129 v14) as 340b503. Master then advanced to 2e8b523 (REQ-0197 deferred-batch
+art queue). REQ-0197's changeset (art_jobs/artadmin/market/board/store) has ZERO file overlap
+with this REQ's files, so both master merges were clean (no conflicts).
+
+**CORRECTION 4 — the ci.sh fleet CANNOT be seeded for the 409; the guard is pg-only and the
+default fleet is files-only.** The spec's implementer note said the 409 test must "seed an
+adopted def in its namespace via the contentadmin/registry admin API" under ci.sh's fleet. That
+is impossible: `tools/e2e_fleet.cjs` starts every default-suite worker with
+`STORAGE_BACKEND=files` (line ~101), and `server/lib/content.cjs computeRegistryData()` returns
+an EMPTY registry for any non-pg backend ("the content registry is pg-only"). So under the
+default fleet the registry is always empty, `registryServedKindFor()` always returns null, and
+the 409 branch in admin.cjs is CODE-LEVEL UNREACHABLE — no API call can populate it. The same is
+true of the relocated grant button: it renders only for an ADOPTED variant, and adoption is a
+pg-registry act. The only environment that can seed+adopt (and thus exercise both) is the
+pg-backed contentadmin harness (`tools/content_admin_e2e.sh`: STORAGE_BACKEND=pg, isolated
+namespace, ALLOW_DEV_CLEAR=1, dev-fallback item_admin). Per PROJECT.md (repo + reality trump the
+instructions) the coverage was placed where it actually runs. Reported.
+
+**The e2e work as landed (spec-table disposition):**
+
+| file | test | disposition |
+|---|---|---|
+| dex-admin.spec.ts | `:35` role-less -> no toggle + 403 PUT | KEPT verbatim (403 still precedes the 409 in admin.cjs) |
+| dex-admin.spec.ts | `:69` / `:130` / `:175` / `:286` edit-mode UI | DELETED (the UI is gone) |
+| dex-admin.spec.ts | `:259` chrome language toggle | KEPT verbatim |
+| dex-admin.spec.ts | NEW test (1) | ADDED: an item_admin sees a READ-ONLY Dex (no toggle row / toggle / admin panel) -- the retired-surface regression guard; runs on both backends |
+| dex-admin.spec.ts | NEW test (2) | ADDED: admin PUT 409s for a registry-served id with `edit_at:'#/contentadmin/<id>'`. Probes the PUBLIC `/api/content/dev/sources` for a registry-served id; runs FOR REAL against live (post-deploy), and `test.skip()`s on the empty-registry files fleet with a pointer to the pg coverage. Never mutates (the 409 returns before any write). |
+| contentadmin.spec.ts | NEW (pg harness) | ADDED: seed+adopt a def under a real item id -> PUT /api/admin/item/<id> 409s with the hint (the DETERMINISTIC pre-merge pg exercise of the guard the fleet cannot reach). |
+| contentadmin.spec.ts | NEW (pg harness) | ADDED: the relocated grant-to-warehouse button on the ADOPTED variant card (`grant-warehouse-<no>`) -> `cd-msg` shows "granted <sys> to the warehouse" AND `/api/warehouse` gains the row. This is the grant coverage moved off the deleted Dex-Edit path (dev/item_admin gating unchanged; the endpoint stays item_admin-gated + dev-only). |
+| schedule.spec.ts | `:804` grant via Dex Edit | DELETED (the whole describe block). Relocated to the contentadmin harness above, NOT rewritten in place: the button now needs a pg-backed adopted variant, which the files fleet cannot make and which mutating live would be forbidden to make. |
+| server/tests/api/ragnarok.cjs | `:662` REAL-repo dagger PUT | UPDATED: branch on `registryServedKindFor('dagger')` after an explicit `refreshRegistryData()`. Registry-served (pg, adopted) -> assert 409 + registry_kind + `edit_at` AND the live file is byte-identical (no write); not-served (files / empty pg) -> the original 200 + persist + self-restore path. Deterministic; green on BOTH backends; exercises the 409 under pg for real. |
+
+**The spec's 3rd asserted flow (adoption changes the SERVED payload) is ALREADY covered** by
+`contentadmin.spec.ts:101` (the big flow): it edits variant 1 via the PORTED editor into a new
+`human_edit` variant 6, re-adopts 6, and asserts `GET /api/content/<name>` flips `variant_no`
+1 -> 6. Cited, not duplicated (per the spec's own "if covered, cite it" instruction).
+
+**Gate results (branch, on the server).**
+- G1: server typecheck `tsc -p tsconfig.server.json` GREEN; client `pnpm run build` (tsc -b +
+  vite) GREEN; api_test FILES 183 passed/0 failed (1477 asserts) + PG 183/0 (1477) -- parity
+  gate green both backends.
+- G2: contentadmin harness 28/28 (incl. the two new REQ-0182b tests); artadmin 5/5; artinspect
+  1/1. Default suite (fleet): dex-admin `:43` PASS, new no-toggle test PASS, new 409 test SKIPPED
+  by design on the files fleet, language toggle PASS; schedule.spec PASS (grant block removed
+  cleanly). Full default suite 169 passed + 1 by-design skip + 11 failures -- ALL 11 were PixiJS
+  WebGL board/drag/reference-model/tab tests timing out under SwiftShader (the run used
+  E2E_GPU=0 to avoid contending with the idle art GPU). Rerunning exactly those 11 with
+  E2E_GPU=1 (GPU idle) -> 11 passed. Confirmed SwiftShader-render flakes in the known-flaky
+  family, NOT regressions (none touch this REQ's surface). Global-teardown verified
+  content/live/live_sis.json restored byte-identical (sha match) -- no live mutation leaked.
+- G3: hygiene -- only the intended source files changed; no lockfile churn; web/app dist NOT in
+  the source commit (rebuilt+committed only via tools/release.sh at deploy, per 0182a's build-
+  artifact rule); admin surface EN-only; no CSS touched.
