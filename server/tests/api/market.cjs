@@ -815,6 +815,77 @@ module.exports.run = async function run(h) {
 
 
 
+  // ------------------------------------------------------------------
+  // REQ-0199: a JWT-only caller lists from THEIR OWN canvas (the fix).
+  // A Supabase-JWT-authenticated player (Authorization: Bearer <jwt>, NO
+  // X-Auth-Token) must resolve to their OWN identity -- never the
+  // dev_mode no-token fallback. Before REQ-0199 this route called the
+  // X-Auth-Token-ONLY resolver, so getAuthToken(req) was null -> the dev
+  // fallback -> createListing read the DEV player's canvas -> the real
+  // seller's item was "not found in your inventory" -> 404 (the exact
+  // live defect). We forge a verifiable Supabase JWT exactly the way
+  // server/tests/auth_jwt_test.cjs does (a TEST secret set ONLY for the
+  // duration of this test, restored in finally -- never the real one),
+  // seed the stowed item into ONLY the JWT player's canvas, and prove the
+  // listing is created AS THAT PLAYER. The dev player has no such uid, so
+  // a dev-fallback resolution would reproduce the 404.
+  // ------------------------------------------------------------------
+  await AT('market: REQ-0199 -- a JWT-only caller (Bearer, no X-Auth-Token) lists from THEIR OWN canvas, never the dev fallback', async () => {
+    const supabaseAuth = require('../../lib/supabase_auth.cjs');
+    const savedSecret = process.env.SUPABASE_JWT_SECRET;
+    process.env.SUPABASE_JWT_SECRET = 'req0199-test-jwt-secret-not-the-real-one';
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const jwt = supabaseAuth.signHs256(
+        { sub: 'req0199-jwt-seller', aud: 'authenticated', exp: now + 3600, iat: now,
+          user_metadata: { full_name: 'JwtSeller' } },
+        process.env.SUPABASE_JWT_SECRET);
+      const bearer = { authorization: 'Bearer ' + jwt };
+
+      // Provision the JWT player through the SAME resolver the route uses
+      // (auto-provisioned on first sight) so we know its id BEFORE seeding.
+      const prov = admin.resolveAuthFromRequest({ headers: bearer });
+      assert.strictEqual(prov.ok, true, 'JWT resolves: ' + JSON.stringify(prov));
+      const jwtPlayer = prov.player;
+      assert.notStrictEqual(jwtPlayer.playerId, devPlayer.playerId, 'the JWT player is NOT the dev player');
+
+      // Seed a single STOWED (listable) inventory PO into ONLY this
+      // player's canvas -- the dev player's canvas has no such uid, so a
+      // dev-fallback resolution would 404 (reproducing the live defect).
+      scheduleStorage.writeProfile(jwtPlayer.playerId, mkCanvas(
+        [invPage([{ uid: 'jwt_sell_1', id: 'blade', cell: [1, 1], rot: 0 }]),
+         invPage(), invPage(), invPage(), invPage()],
+        [null, null, null, null, null]));
+
+      // POST with the Bearer JWT and NO X-Auth-Token (token arg = null).
+      const created = await marketReq('POST', '/api/market/listings', null,
+        { itemUid: 'jwt_sell_1', price: { tm: 'lrdst', qty: 10 } }, bearer);
+      assert.strictEqual(created.status, 200, 'JWT-only create succeeds (not a dev-fallback 404): ' + JSON.stringify(created.body));
+      assert.strictEqual(created.body.ok, true);
+      assert.strictEqual(created.body.listing.itemId, 'blade');
+      assert.strictEqual(created.body.listing.sellerName, 'JwtSeller', 'the listing belongs to the JWT player, not dev');
+
+      // White-box: the persisted record's sellerId is the JWT player's id.
+      const rec = scheduleStorage.listMarketListings().find((x) => x.id === created.body.listing.id);
+      assert.ok(rec, 'listing persisted');
+      assert.strictEqual(rec.sellerId, jwtPlayer.playerId, 'seller id is the JWT player');
+      assert.notStrictEqual(rec.sellerId, devPlayer.playerId, 'seller id is NOT the dev fallback');
+      // The item stays in the JWT player's OWN canvas (free listing, not
+      // escrowed) -- proving the route read THAT canvas, not dev's.
+      const jwtDoc = scheduleStorage.readProfile(jwtPlayer.playerId);
+      assert.ok(market.findInventoryPO(jwtDoc.canvas, 'jwt_sell_1'), 'item stays in the JWT player inventory while listed');
+
+      // Withdraw (owner-only, free) with the SAME Bearer to leave the
+      // shared market exactly as this test found it (later suites' browse
+      // assertions count active/suspended listings market-wide).
+      const wd = await marketReq('POST', '/api/market/listings/' + created.body.listing.id + '/withdraw', null, undefined, bearer);
+      assert.strictEqual(wd.status, 200, 'the JWT owner can withdraw its own listing: ' + JSON.stringify(wd.body));
+    } finally {
+      if (savedSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+      else process.env.SUPABASE_JWT_SECRET = savedSecret;
+    }
+  });
+
   // REQ-0145a (sf): publish this group's shared fixtures for the later suites.
   Object.assign(h, { market, invPage, mkCanvas, marketReq });
 };

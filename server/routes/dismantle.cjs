@@ -1,8 +1,9 @@
 'use strict';
 // server/routes/dismantle.cjs -- REQ-0063: the token-gated Dismantle
 // HTTP surface. Same shape as routes/market.cjs: caller identity is
-// resolved from the X-Auth-Token header FIRST (admin.resolveAuth(),
-// incl. the dev_mode no-token fallback); a request body's itemUid is
+// resolved request-first (REQ-0199: admin.resolveAuthFromRequest() --
+// a Supabase Bearer JWT, else the REQ-0037 X-Auth-Token path + the
+// dev_mode no-token fallback); a request body's itemUid is
 // NEVER trusted as identity -- dismantleItem always operates on the
 // RESOLVED caller's own canvas. Returns false when not matched (router
 // then 404s).
@@ -15,7 +16,7 @@
 //                                 card reads the dismantle facade
 //                                 directly server-side rather than
 //                                 round-tripping through this route.
-const { sendJSON, readBody, getAuthToken, MAX_BODY_BYTES } = require('../lib/http_util.cjs');
+const { sendJSON, readBody, MAX_BODY_BYTES } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const dismantle = require('../dismantle.cjs');
@@ -40,8 +41,14 @@ function tryDismantleRoutes(req, res, url, p) {
   const ledgerMatch = p.match(DISMANTLE_LEDGER_RE);
   if (!dismantleMatch && !ledgerMatch) return false;
 
-  const token = getAuthToken(req);
-  const resolved = admin.resolveAuth(token);
+  // REQ-0199: JWT-first caller resolution (a Supabase Bearer JWT, else
+  // the REQ-0037 X-Auth-Token path + dev_mode fallback) -- was
+  // admin.resolveAuth(getAuthToken(req)), the X-Auth-Token-ONLY resolver,
+  // which mis-resolved a Bearer-JWT-only player to the dev_mode fallback
+  // and dismantled from the WRONG (dev) canvas. dismantle has no dev-only
+  // test hook, so there is no callerIsDevFallback flag here and the raw
+  // X-Auth-Token is no longer needed at all.
+  const resolved = admin.resolveAuthFromRequest(req);
   if (!resolved.ok) {
     sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
     return;

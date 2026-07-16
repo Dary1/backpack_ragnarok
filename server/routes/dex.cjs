@@ -34,9 +34,11 @@
 // 分解値 (dismantle count) + current mechanical suppression for this id,
 // for kind:'item'|'si' only (kind:'tm' can never be dismantled, see
 // services/dismantle.cjs's kind:'po'|'si' allowlist). This does NOT turn
-// the route auth-required: admin.resolveAuth() is attempted opportunis-
-// tically (same function every other route uses, including its dev_mode
-// no-token fallback), and the `dismantle` field is simply OMITTED --
+// the route auth-required: admin.resolveAuthFromRequest() is attempted
+// opportunistically (REQ-0199: the same request-first resolver every
+// other authenticated route uses now -- a Supabase Bearer JWT, else the
+// X-Auth-Token path + its dev_mode no-token fallback), and the
+// `dismantle` field is simply OMITTED --
 // never a 401 -- when it fails to resolve (missing/invalid token in a
 // non-dev_mode deployment). This keeps the base card fully public
 // (REQ-0052's own posture, unchanged for anonymous/no-context callers)
@@ -45,7 +47,7 @@
 // the dismantle facade rather than a second HTTP round-trip (the
 // dismantle ledger route, routes/dismantle.cjs, remains the one AUTH-
 // REQUIRED, full-ledger surface for the Workshop panel).
-const { sendJSON, getAuthToken } = require('../lib/http_util.cjs');
+const { sendJSON } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
 const { getContent } = require('../lib/content.cjs');
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
@@ -71,7 +73,12 @@ const DISMANTLABLE_KINDS = new Set(['item', 'si']);
  * must never turn a public card fetch into an error. */
 function tryReadDismantleInfo(req, kind, id) {
   if (!DISMANTLABLE_KINDS.has(kind)) return undefined;
-  const resolved = admin.resolveAuth(getAuthToken(req));
+  // REQ-0199: resolve request-first (a Supabase Bearer JWT, else the
+  // X-Auth-Token path + dev_mode fallback) so a JWT-only caller gets
+  // THEIR OWN dismantle overlay -- previously the X-Auth-Token-ONLY
+  // resolver resolved a JWT caller to the dev fallback (the wrong overlay).
+  // Still opportunistic: an unresolvable caller yields undefined, never a 401.
+  const resolved = admin.resolveAuthFromRequest(req);
   if (!resolved.ok) return undefined;
   const doc = storage.readDismantleLedger(resolved.player.playerId);
   const count = (doc && doc.counts && doc.counts[id]) || 0;
