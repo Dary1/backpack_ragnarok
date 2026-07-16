@@ -331,6 +331,67 @@ module.exports.run = async function run(h) {
       assert.strictEqual(badToken.body.card.dismantle, undefined, 'an invalid token resolves to no caller, so no overlay -- never a 401');
     });
 
+    // ------------------------------------------------------------------
+    // REQ-0199: a JWT-only caller dismantles from THEIR OWN canvas.
+    // Same forge as auth_jwt_test.cjs (a TEST secret set only for the
+    // duration of this test, restored in finally). Proves the caller-
+    // identity fix for a SECOND route family: the dismantle route
+    // resolves the Bearer JWT to the player's own id (never the dev_mode
+    // no-token fallback), consumes the item from THAT player's canvas,
+    // and engraves THAT player's ledger. The seeded uid lives ONLY in the
+    // JWT player's canvas, so a dev-fallback resolution would 404 exactly
+    // like the market live defect.
+    // ------------------------------------------------------------------
+    await AT('dismantle: REQ-0199 -- a JWT-only caller (Bearer, no X-Auth-Token) dismantles from THEIR OWN canvas + ledger, never the dev fallback', async () => {
+      const supabaseAuth = require('../../lib/supabase_auth.cjs');
+      const dzAdmin = require('../../admin.cjs'); // the dz* generation's admin (re-required post-eviction, same instance dzApi routes through)
+      const savedSecret = process.env.SUPABASE_JWT_SECRET;
+      process.env.SUPABASE_JWT_SECRET = 'req0199-test-jwt-secret-not-the-real-one';
+      function dzBearerReq(method, urlPath, jwt, body) {
+        return new Promise((resolve, reject) => {
+          const bodyStr = body !== undefined ? JSON.stringify(body) : undefined;
+          const req2 = mockReq(method, urlPath, bodyStr, { authorization: 'Bearer ' + jwt });
+          const res2 = mockRes((b) => { let parsed = null; try { parsed = JSON.parse(b); } catch (e) { /* leave null */ } resolve({ status: res2.statusCode, body: parsed }); });
+          try { dzApi.handle(req2, res2); } catch (e) { reject(e); }
+        });
+      }
+      try {
+        const now = Math.floor(Date.now() / 1000);
+        const jwt = supabaseAuth.signHs256(
+          { sub: 'req0199-jwt-dismantler', aud: 'authenticated', exp: now + 3600, iat: now,
+            user_metadata: { full_name: 'JwtDismantler' } },
+          process.env.SUPABASE_JWT_SECRET);
+
+        const prov = dzAdmin.resolveAuthFromRequest({ headers: { authorization: 'Bearer ' + jwt } });
+        assert.strictEqual(prov.ok, true, 'JWT resolves: ' + JSON.stringify(prov));
+        const jwtPlayer = prov.player;
+        assert.notStrictEqual(jwtPlayer.playerId, dzAdmin.readDevUser().playerId, 'the JWT player is NOT the dev player');
+
+        // Seed ONE stowed 'blade' PO into ONLY this player's canvas.
+        dzStorage.writeProfile(jwtPlayer.playerId, {
+          pos: [], bps: [], sis: [],
+          presets: { active: 0, store: [null, null] },
+          inv: { pages: [{ pos: [{ uid: 'jwt_dz_1', id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [], bps: [], tms: [] }] },
+        });
+        assert.strictEqual(dzDismantle.dismantleCountFor(jwtPlayer.playerId, 'blade'), 0, 'fresh JWT player has no blade ledger yet');
+
+        // POST /api/dismantle with the Bearer JWT and NO X-Auth-Token.
+        const res = await dzBearerReq('POST', '/api/dismantle', jwt, { itemUid: 'jwt_dz_1', kind: 'po' });
+        assert.strictEqual(res.status, 200, 'JWT-only dismantle succeeds (not a dev-fallback 404): ' + JSON.stringify(res.body));
+        assert.strictEqual(res.body.itemId, 'blade');
+        assert.strictEqual(res.body.dismantleCount, 1);
+
+        // Identity proof: THIS player's OWN ledger was engraved.
+        assert.strictEqual(dzDismantle.dismantleCountFor(jwtPlayer.playerId, 'blade'), 1, 'the JWT player OWN ledger records the dismantle');
+        // The item is gone from the JWT player's OWN canvas (consumed there).
+        const canvasAfter = dzStorage.readProfile(jwtPlayer.playerId).canvas;
+        assert.strictEqual(dzDismantle.findInventoryItem(canvasAfter, 'jwt_dz_1', 'po'), null, 'the item was consumed from the JWT player canvas');
+      } finally {
+        if (savedSecret === undefined) delete process.env.SUPABASE_JWT_SECRET;
+        else process.env.SUPABASE_JWT_SECRET = savedSecret;
+      }
+    });
+
     delete process.env.CONTENT_ROOT; // REQ-0145a (sc): mirror the homedir restore below
     os.homedir = realHomedir; // leave the sandbox exactly as this block found it (real homedir active), matching the outer suite's own posture at this point in the file
   }

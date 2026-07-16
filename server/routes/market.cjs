@@ -1,8 +1,9 @@
 'use strict';
 // server/routes/market.cjs -- REQ-0064: the token-gated Market HTTP
 // surface. One module, same shape as routes/schedule.cjs: every route
-// resolves the CALLER's identity from the X-Auth-Token header FIRST
-// (admin.resolveAuth(), incl. the dev_mode no-token fallback); a
+// resolves the CALLER's identity request-first (REQ-0199:
+// admin.resolveAuthFromRequest() -- a Supabase Bearer JWT, else the
+// REQ-0037 X-Auth-Token path + the dev_mode no-token fallback); a
 // listing id is NEVER trusted as identity. All bodies are pure JSON,
 // auth is header-only (bot-API-shaped, same REQ-0039 posture as the
 // schedule routes). Returns false when not matched (router then 404s).
@@ -41,8 +42,21 @@ function tryMarketRoutes(req, res, url, p) {
     p.match(MARKET_LISTING_BUY_RE) || p.match(MARKET_FURNACE_RE) || p.match(MARKET_LISTINGS_DEV_CLEAR_RE);
   if (!marketMatch) return false;
 
+  // REQ-0199: resolve the caller EXACTLY like schedule/warehouse
+  // (lib/route_auth.cjs's resolveCallerOr401) and profile/me already do
+  // -- admin.resolveAuthFromRequest(req) tries a Supabase Bearer JWT
+  // FIRST (REQ-0118c precedence), then falls back to the REQ-0037
+  // X-Auth-Token path (+ the dev_mode no-token fallback). BEFORE this
+  // REQ this route called admin.resolveAuth(getAuthToken(req)) -- the
+  // X-Auth-Token-ONLY resolver -- so a JWT-authenticated player
+  // (Authorization: Bearer, NO X-Auth-Token) resolved to token=null ->
+  // dev_mode fallback -> the route acted as the WRONG player ('dev') and
+  // read the DEV player's inventory (live symptom: every market sell
+  // 404'd "item not found in your inventory"). `token` (the raw
+  // X-Auth-Token, may be undefined) is still read below SOLELY to
+  // compute callerIsDevFallback -- see that comment below.
   const token = getAuthToken(req);
-  const resolved = admin.resolveAuth(token);
+  const resolved = admin.resolveAuthFromRequest(req);
   if (!resolved.ok) {
     sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason });
     return;
