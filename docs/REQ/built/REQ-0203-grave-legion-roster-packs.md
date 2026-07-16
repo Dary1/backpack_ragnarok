@@ -268,3 +268,6 @@ cd ~/backpack_ragnarok/client && pnpm run build
 Expected after backfill: **monster_def 7->15, skill_def 14->30, monster_pack 4->7**, all PASS,
 all adopted; the contentadmin pack board resolves every batch-005 member footprint from art
 (bone_dragon 10x10, lich 5x4, the rest 4x3), wight included.
+
+## Deploy record (2026-07-17, orchestrator)
+Merged to master; combined CI GREEN. promoteAdditive -> live (enemies 15, skills 30, packs 7; batch-002 + REQ-0184 byte-preserved). Backfill: monster_def 15 adopted PASS (a0407909:frost_gnoll stray is pre-existing, not ours), skill_def 30, monster_pack 7 all PASS/adopted. wight artwork_ref PATCHed to monsters-003-flux2:wight. Client dist unchanged by construction (0203 client change was a check script only). backpack-api restart deferred until the user art queue drains (in-memory queue lesson, this session). Awaiting S7.

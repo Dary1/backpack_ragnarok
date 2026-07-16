@@ -231,3 +231,6 @@ automatically — the corpus reads `enemies.json`, no roster is hardcoded.
    `node tools/derive_def_geometry.cjs --write`  (rewrite footprint/shape; review + commit the diff)
 4. **Verify the guard is clean:** `node server/services/content_checks.cjs` → exit 0 (0 disagreements).
    After this, REQ-0184's board can trust `footprint` again (def == art, provably).
+
+## Deploy record (2026-07-17, orchestrator, partial)
+Merged to master (guard + tools + gates; CI GREEN). Seed run live: created=19, re-run no-op (G2 closed live). derive --check: 2 drifts (frost_gnoll [1,1]->[4,3] from monsters-003-flux2:gnoll -- a REAL gameplay footprint change that would overlap enc_pack_1 neighbors and needs pack re-composition + user sign-off; lockpick [[0,0]]->2 cells from unadopted items005_dungeon_key link). derive --write NOT run; stays todo pending the user ruling on those two.

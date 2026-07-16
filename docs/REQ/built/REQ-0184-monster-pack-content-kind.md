@@ -248,3 +248,6 @@ sim 117 pass · goldens 12 rebaselined · S4 14 pass, GATE PASS (warn-only, no n
 forecast parity 16 pass · dialect 34 pass · backfill 11 pass · server tsc clean.
 **Not run:** the PG pass and the live backfill — they touch the live DB, which is a deploy step
 (`built` = gates green, not deployed). G1/G6 close on deploy.
+
+## Deploy record (2026-07-17, orchestrator, user go-ahead)
+Merged to master (91171da; VariantCard.tsx hand-merged: REQ-0182b grant + REQ-0184 footprints both kept; REQ-0188 doc restored from git dir-rename mis-detection). Migration 019 applied via supabase-db (ALTER TYPE as postgres; pooler role lacks ownership). Backfill: monster_pack=4 PASS/adopted. CI GREEN post-merge. Awaiting S7.
