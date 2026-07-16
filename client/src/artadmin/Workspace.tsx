@@ -5,6 +5,12 @@
 // the manual trigger for the e2e contract), and the render gallery
 // (cards per seed with lightbox thumbnails, confirm-gated Adopt/Delete,
 // failed-render Retry, compare picks, REQ-0152 kit chips).
+//
+// REQ-0191: po thumbnails carry the same cell backdrop as the lightbox, so a
+// gallery scan already shows which seed sits in its cells -- the lightbox is
+// then for confirming the call, not for discovering it. Same component, same
+// default-ON rule; the page owns the toggle so the gallery and the lightbox
+// never disagree about what is being looked at.
 import { KitChips } from './KitChips';
 import { PoMaskEditor, MonsterShapeEditor } from './ShapeEditors';
 import { SHAPE_LOCKS, SHAPE_LOCK_HELP, MAX_DILATION_PX } from './artShared';
@@ -12,6 +18,7 @@ import type { ShapeLock } from './artShared';
 import { deriveSizeClient } from './artShared';
 import type { ArtDraft, Kind } from './artShared';
 import { artRenderUrl } from '../api';
+import { CellStage, maskBbox, cellFitFrom } from './CellBackdrop';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
 
 export function Workspace(props: {
@@ -37,10 +44,17 @@ export function Workspace(props: {
   onToggleKit: (key: string) => void;
   comparePicks: number[];
   onTogglePick: (seed: number) => void;
+  cells: boolean;                     // REQ-0191: cell backdrop on the thumbs
+  onToggleCells: () => void;
+  savedMask: boolean[][] | null;      // REQ-0191: SAVED shape (not the draft)
 }) {
   const { art, renders, kits, inspections, adoptedId, draft, onDraft, dirty, shapeDirty,
-    finalPreview, comparePicks } = props;
+    finalPreview, comparePicks, savedMask } = props;
   const kind = art.kind as Kind;
+  // REQ-0191: the backdrop is drawn from the SAVED mask, never the draft --
+  // an unsaved click in the editor must not repaint the footprint under
+  // renders that were made against the old one.
+  const thumbBb = kind === 'po' && props.cells && savedMask ? maskBbox(savedMask) : null;
   const newSize = deriveSizeClient(kind, draft.mask, draft.mw, draft.mh, draft.cw, draft.ch);
   const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
 
@@ -143,6 +157,12 @@ export function Workspace(props: {
 
       <div className="aa-gallery-head">
         <span className="den t-label">Renders <span className="tnum">({renders.length})</span></span>
+        {kind === 'po' && (
+          <button type="button" data-testid="art-cells"
+            className={'chip aa-chipbtn' + (props.cells ? ' is-on' : '')}
+            title="draw each render over its cell footprint (owned vs unowned cells)"
+            onClick={props.onToggleCells}>cells</button>
+        )}
         {comparePicks.length === 2 && (
           <button type="button" data-testid="art-compare" className="btn aa-btn-sm"
             onClick={() => props.onOpenLightbox(comparePicks[0], comparePicks[1])}>
@@ -166,7 +186,17 @@ export function Workspace(props: {
               {r.status === 'ok' ? (
                 <button type="button" data-testid={'render-thumb-' + r.seed} className="aa-card-thumb"
                   title="open lightbox" onClick={() => props.onOpenLightbox(r.seed, null)}>
-                  <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
+                  {thumbBb ? (
+                    <CellStage bb={thumbBb} mask={savedMask as boolean[][]}
+                      fit={cellFitFrom(inspections[String(r.id)])}
+                      probeUrl={artRenderUrl(art.system_name, r.seed)}
+                      widthPx={thumbBb.cols * 256} className="aa-cb--thumb"
+                      testId={'render-cb-' + r.seed}>
+                      <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
+                    </CellStage>
+                  ) : (
+                    <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
+                  )}
                 </button>
               ) : r.status === 'failed' ? (
                 <div className="aa-card-failed">

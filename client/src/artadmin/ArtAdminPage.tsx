@@ -30,6 +30,8 @@ import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
 import { QueuePanel } from './QueuePanel';
 import { Lightbox } from './Lightbox';
+import { cellFitFrom } from './CellBackdrop';
+import type { CellFit } from './CellBackdrop';
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
 interface ConfirmState { type: 'adopt' | 'delete'; seed: number }
@@ -88,6 +90,10 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+  // REQ-0191: ONE cell-backdrop switch for the whole console -- the gallery
+  // and the lightbox must never disagree about what is on screen. Default ON;
+  // it is inert off po.
+  const [cells, setCells] = useState(true);
   const [comparePicks, setComparePicks] = useState<number[]>([]);
   const [msg, setMsg] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -314,6 +320,15 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const adoptedSeed = adoptedRender ? adoptedRender.seed : null;
   const confirmRender = confirm ? renders.find((r) => r.seed === confirm.seed) : undefined;
 
+  // REQ-0191: the cell backdrop's two inputs, both already on the wire.
+  // The mask is read from the SAVED artwork, never from `draft` -- a dirty
+  // editor click must not repaint the footprint under renders that were made
+  // against the saved one (the same reason art-shape-warn exists).
+  const savedShape = (detailArt && detailArt.kind === 'po' ? detailArt.shape : null) as { mask?: boolean[][] } | null;
+  const savedMask = savedShape && savedShape.mask ? savedShape.mask : null;
+  const fitBySeed: Record<number, CellFit | null> = {};
+  for (const r of renders) fitBySeed[r.seed] = cellFitFrom(inspections[String(r.id)]);
+
   return (
     <div data-testid="artadmin" className="aa-root">
       <header className="aa-head">
@@ -348,7 +363,8 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
               expandedKits={expandedKits}
               onToggleKit={(key) => setExpandedKits((e) => ({ ...e, [key]: !e[key] }))}
-              comparePicks={comparePicks} onTogglePick={togglePick} />
+              comparePicks={comparePicks} onTogglePick={togglePick}
+              cells={cells} onToggleCells={() => setCells((v) => !v)} savedMask={savedMask} />
           ) : (
             <div className="panel panel-pad aa-placeholder">
               <div className="den t-h3">No artwork selected</div>
@@ -366,6 +382,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
 
       {lightbox && selected && detailArt && (
         <Lightbox name={selected} kind={detailArt.kind as Kind}
+          mask={cells ? savedMask : null} fitBySeed={fitBySeed}
           seeds={okSeeds} initialSeed={lightbox.seed} compareWith={lightbox.compareWith}
           adoptedSeed={adoptedSeed} keysDisabled={confirm != null}
           onAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
