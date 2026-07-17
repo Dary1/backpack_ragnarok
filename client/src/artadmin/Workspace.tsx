@@ -21,6 +21,13 @@ import { artRenderUrl } from '../api';
 import { CellStage, maskBbox, cellFitFrom } from './CellBackdrop';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
 
+// REQ-0216: gallery thumbs draw at a CONSTANT px-per-cell, so footprints
+// compare at true relative scale across cards (a 1x1 render is visibly
+// small, a 5x2 visibly wide -- same scale on every card). 42 is the largest
+// integer cell that still fits the widest possible footprint (the po mask
+// is 5x5 max) in the 212px card thumb well: 5 * 42 = 210 <= 212.
+const THUMB_CELL_PX = 42;
+
 export function Workspace(props: {
   art: ArtworkDto;
   renders: RenderDto[];
@@ -191,7 +198,7 @@ export function Workspace(props: {
                     <CellStage bb={thumbBb} mask={savedMask as boolean[][]}
                       fit={cellFitFrom(inspections[String(r.id)])}
                       probeUrl={artRenderUrl(art.system_name, r.seed)}
-                      widthPx={thumbBb.cols * 256} className="aa-cb--thumb"
+                      widthPx={thumbBb.cols * THUMB_CELL_PX} className="aa-cb--thumb"
                       testId={'render-cb-' + r.seed}>
                       <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
                     </CellStage>
