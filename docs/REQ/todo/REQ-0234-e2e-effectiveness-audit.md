@@ -231,3 +231,39 @@ provisioning docs; optionally preflight `require.resolve('pg', …)` in
   req-0234-e2e-effectiveness-audit.
 - 2026-07-17 audit executed (static + measured scoped run, 187/1/0);
   report written; reserved -> draft pending owner ratification of findings.
+
+## Implementation (2026-07-17, this branch -- ratified by user directive: implement report §5, then merge/deploy)
+- F2/F7: e2e_run.sh names the lock holder (and the freeze) immediately; the
+  three admin harnesses drive the post-0217 proxy via
+  E2E_FLEET_BASE_PORT=<api> (F7: their old E2E_STATIC_PORT/E2E_API_PORT
+  wiring silently died with REQ-0217 -- /api fell through to fleet base
+  8810; masked by the F2 freeze deadlock), drop the vestigial
+  single-threaded python static server (REQ-0222 root cause), and take
+  per-REQ locks (e2e.<req>.lock) instead of the frozen box lock. ci.sh
+  [7/7] auto-scopes from a req-NNNN branch (REQ-0225 default-flip).
+- F1: REQ-0221 harness + seeder + registry.config + ci.sh [6.6/8].
+- F3: waitForAutoSave waits for the auto-save PUT response (fallthrough
+  keeps legacy semantics); REQ-0230 (a)+(b) perf gate; REQ-0231 ci lock.
+- F4: guest ledger + fleet log archive scoped by fleet root.
+- F5: fleet pg-preflight + api.log tail on health timeout; 3-dir
+  provisioning documented (e2e_harness.md).
+- F6: E2E_PARALLEL<=6 decade guard in global-setup.
+- F8 (new, found during gates): the additive-promote gates
+  (req0207/req0219) hardcoded absolute before/after counts and went stale
+  the moment the next batch promoted -- req0207 was RED on untouched master,
+  killing every full ci.sh at [2.75/7]. Baselines are floors now; the
+  delta/byte-splice/appended-ids/collision assertions keep every real
+  invariant.
+- Out of scope, unchanged: REQ-0222's release.sh codification (stays todo);
+  lifting the freeze (still correct while pre-0217 worktrees exist).
+
+## Gate results (2026-07-17)
+- REQ-0221 harness 4/4 no-skip + deliberate-regression catch demo.
+- REQ-0230 5/5 under 8-way burn; REQ-0231 serialize + NONBLOCK=75 demos.
+- REQ-0225 fail-fast banner demo (tunnel baseURL from worktree -> abort).
+- Kill-path audit clean (recorded-PID kills only; fuser -k scoped to own
+  fleet range).
+- Full ci.sh: see below (first attempt aborted at [6.5/8] by ANOTHER
+  session's pre-fix artadmin harness parked on the frozen box lock holding
+  the 156x decade -- the port preflight refused in one line, exactly as
+  designed; reran after its 1800s timeout released the ports).
