@@ -440,6 +440,12 @@ const chargeFixtures = [
   { trigger: { t: 'every_secs', s: [4, 6] }, gain: 'count', capacity: [2, 3], spend: 'transform', transform_to: 'selftest_form2' },
   // fire_items.tag filter + advance_cooldown -> max-cooldown target + grant_lifesteal(pct,dur_s)
   { trigger: { t: 'on_damage_dealt' }, gain: 'damage', capacity: [40, 60], spend: 'fire_on_full', effects: [{ verb: { t: 'fire_items', tag: 'Weapon' }, target: 'self' }, { verb: { t: 'advance_cooldown', n: [2, 3] }, target: 'bp_connected_max_cooldown_item' }, { verb: { t: 'grant_lifesteal', pct: [15, 25], dur_s: [4, 6] }, target: 'units_connected' }] },
+  // REQ-0212: the three new charge-effect verbs. charge_strike is fire_on_full-ONLY (validateCharge
+  // rejects other spends -- covered by server/tests/content_checks_unit_deep_test.cjs and the sim
+  // rejection test); all three carry n and aim -> self (the host BP is the SOURCE into the enemy).
+  { trigger: { t: 'OnBPBeenHit' }, gain: 'count', capacity: [10, 15], spend: 'fire_on_full', effects: [{ verb: { t: 'charge_strike', n: [4, 6] }, target: 'self' }] },
+  { trigger: { t: 'on_status_applied' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'transfer_status', n: [1, 2] }, target: 'self' }] },
+  { trigger: { t: 'on_connected_unit_attack' }, gain: 'count', capacity: [3, 4], spend: 'fire_on_full', effects: [{ verb: { t: 'shield_break', n: [10, 15] }, target: 'self' }] },
 ];
 const chargeTriggersCovered = new Set();
 log('');
