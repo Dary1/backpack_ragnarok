@@ -21,10 +21,11 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the ten live files map to eight kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources (REQ-0171); monster_pack is one too (REQ-0184)', () => {
+T('kind mapping: the eleven live files map to nine kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources (REQ-0171); monster_pack (REQ-0184) and gimic (REQ-0211) are too', () => {
   const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
   assert.deepStrictEqual(files, [
     'gacha_pack <- content/live/live_packs.json',     // REQ-0171
+    'gimic <- content/live/dungeon/gimics.json',      // REQ-0211 -- trap / treasure box / hidden door
     'monster_def <- content/live/dungeon/enemies.json',
     'monster_pack <- content/live/dungeon/packs.json', // REQ-0184 -- a pack of MONSTERS + their layout; unrelated to gacha_pack above
     'po_def <- content/live/dungeon/items.json',      // REQ-0160 Q1 = A
@@ -127,12 +128,13 @@ T('collectAll (real committed corpus): PER-FILE counts match each file, names un
   assert.strictEqual(counts.unit_def, fileCounts['content/live/live_units.json'], 'unit_def backfills its live file (REQ-0171)');
   assert.strictEqual(counts.gacha_pack, fileCounts['content/live/live_packs.json'], 'gacha_pack backfills its live file (REQ-0171)');
   assert.strictEqual(counts.monster_pack, fileCounts['content/live/dungeon/packs.json'], 'monster_pack backfills its live file (REQ-0184)');
+  assert.strictEqual(counts.gimic, fileCounts['content/live/dungeon/gimics.json'], 'gimic backfills its live file (REQ-0211)');
   assert.strictEqual(counts.po_def,
     fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json']
       + fileCounts['content/live/starter_items.json'],
     'po_def total is the SUM of its three source files (REQ-0160 + 2026-07-15 starter ruling)');
   assert.strictEqual(entries.length,
-    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack + counts.monster_pack);
+    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack + counts.monster_pack + counts.gimic);
   assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
     'system_names unique across ALL files -- content_defs.system_name is UNIQUE across kinds');
 });
@@ -156,11 +158,12 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   // and may grow, so the gate is that the totals RECONCILE, not that they never move.
   assert.strictEqual(entries.length,
     fc['content/live/live_items.json'] + fc['content/live/dungeon/items.json'] + c.si_def + c.tm_def + c.monster_def + c.skill_def
-      + c.unit_def + c.gacha_pack + c.monster_pack + fc['content/live/starter_items.json'],
+      + c.unit_def + c.gacha_pack + c.monster_pack + c.gimic + fc['content/live/starter_items.json'],
     'the corpus RECONCILES across every source kind (REQ-0207: the ruled base -- monster/skill/tm -- GROWS with deploys, so it is summed dynamically, not frozen at 38)');
   assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
   assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
   assert.ok(c.monster_pack >= 4, 'REQ-0184 ported batch-002 four packs; the pack catalog GROWS with additive deploys (REQ-0207: batch-005 +3)');
+  assert.ok(c.gimic >= 4, 'REQ-0211 migrated the four legacy gimmicks (trap / two door stages / chest) into gimic defs');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {
@@ -189,7 +192,7 @@ T('skip rules: foreign defs/variants are never treated as ours (INSERT-ONLY guar
 
 T('skip list: every non-backfilled live file is documented with a reason; no overlap with sources', () => {
   const skipped = new Map(bf.SKIPPED_FILES.map((s) => [s.file, s.reason]));
-  for (const f of ['content/live/dungeon/entities.json', 'content/live/dungeon/formations.json',
+  for (const f of ['content/live/dungeon/formations.json',
     'content/live/dungeon/dungeon.json', 'content/live/scenario.json', 'content/live/seasons.json']) {
     assert.ok(skipped.has(f), f + ' documented as skipped');
     assert.ok(skipped.get(f).length > 20, f + ' has a real reason');
@@ -204,8 +207,13 @@ T('skip list (REQ-0160): the two ruled-IN files left the skip table for SOURCES 
     assert.ok(!skipped.has(f), f + ' is no longer skipped (ruled in on 2026-07-14)');
     assert.ok(sources.has(f), f + ' is now a backfill source');
   }
+  // REQ-0211: the trap/treasure/hidden-door interactables became the gimic kind;
+  // their file (renamed entities.json -> gimics.json) left the skip table for SOURCES.
+  assert.ok(!skipped.has('content/live/dungeon/gimics.json'), 'gimics.json is not skipped');
+  assert.ok(sources.has('content/live/dungeon/gimics.json'), 'gimics.json is a backfill source (gimic kind)');
+  assert.ok(!skipped.has('content/live/dungeon/entities.json'), 'the legacy entities.json is gone from the skip table');
   // The remaining skips are the ones ruled OUT for good: singletons + compositions.
-  assert.strictEqual(bf.SKIPPED_FILES.length, 5, 'exactly the five not-per-entity live files stay out');
+  assert.strictEqual(bf.SKIPPED_FILES.length, 4, 'exactly the four not-per-entity live files stay out (entities.json left for the gimic kind, REQ-0211)');
 });
 
 console.log('\nbackfill_content_registry_test: ' + pass + ' passed, ' + fail + ' failed');

@@ -5,8 +5,8 @@
 // read-only; this copy only powers the live resolution display).
 import type { ArtworkDto } from '../api';
 
-export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom';
-export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom'];
+export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom' | 'gimic';
+export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic']; // REQ-0211: gimic == monster
 
 // REQ-0179: ComfyUI flux2-latent max (mirror of art_sizing.cjs MAX_RESOLUTION).
 export const MAX_RES = 16384;
@@ -34,7 +34,7 @@ export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: 
   if (kind === 'unit') return { width: 512, height: 512 };
   if (kind === 'bpskin') return { width: 1024, height: 1024 };
   if (kind === 'custom') return { width: clampRes(snap16(cw)), height: clampRes(snap16(ch)) };
-  if (kind === 'monster') return { width: snap16(mw * 128), height: snap16(mh * 128) };
+  if (kind === 'monster' || kind === 'gimic') return { width: snap16(mw * 128), height: snap16(mh * 128) }; // REQ-0211: gimic == monster
   let minR = 5, maxR = -1, minC = 5, maxC = -1;
   for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) if (mask[r][c]) {
     minR = Math.min(minR, r); maxR = Math.max(maxR, r); minC = Math.min(minC, c); maxC = Math.max(maxC, c);
@@ -46,7 +46,7 @@ export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: 
 export function defaultTemplate(kind: Kind): string {
   if (kind === 'po' || kind === 'si') return '{main_object}, white background, bold outline';
   if (kind === 'unit') return '{main_object}, portrait, looking at viewer, white background';
-  if (kind === 'monster') return '{main_object}, white background';
+  if (kind === 'monster' || kind === 'gimic') return '{main_object}, white background'; // REQ-0211
   if (kind === 'custom') return '{main_object}';
   return '';
 }
@@ -116,8 +116,8 @@ export function draftFromArtwork(a: ArtworkDto): ArtDraft {
     shape_lock: (a.shape_lock as ShapeLock) || 'auto',
     shape_dilation_px: a.shape_dilation_px != null ? a.shape_dilation_px : 8,
     mask: a.kind === 'po' && sh.mask ? sh.mask.map((r) => r.slice()) : emptyMask(),
-    mw: a.kind === 'monster' && sh.w ? sh.w : 3,
-    mh: a.kind === 'monster' && sh.h ? sh.h : 4,
+    mw: (a.kind === 'monster' || a.kind === 'gimic') && sh.w ? sh.w : 3,
+    mh: (a.kind === 'monster' || a.kind === 'gimic') && sh.h ? sh.h : 4,
     cw: a.kind === 'custom' && sh.width ? sh.width : (a.gen_width || 1024),
     ch: a.kind === 'custom' && sh.height ? sh.height : (a.gen_height || 1024),
   };

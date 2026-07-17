@@ -108,6 +108,7 @@ const DIALECTS = {
   'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
   'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
   'monster_pack/1': { name: 'monster_pack/1', rarity_case: 'exact', range_fields: [] },
+  'gimic/1': { name: 'gimic/1', rarity_case: 'exact', range_fields: [] }, // REQ-0211
 };
 const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
@@ -275,6 +276,25 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     } catch (e) {
       errs.push(e.message);
     }
+  } else if (kind === 'gimic') {
+    // REQ-0211. A gimic's rules are executable in shared/content_validate.cjs
+    // (validateGimicEntry) -- the SAME definition the dungeon generator relies on;
+    // reused here, not re-implemented (the REQ-0184 lesson). Skills are cross-checked
+    // against the LIVE skill roster so a trap that names a missing volley FAILs by name.
+    const { validateGimicEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let skillDefs = null;
+    try {
+      const skills = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'skills.json'));
+      skillDefs = {};
+      for (const sk of (skills.entries || [])) skillDefs[sk.id] = sk;
+    } catch (e) {
+      skillDefs = null; // shape-only when the live skill roster cannot be read
+    }
+    try {
+      validateGimicEntry(data, skillDefs);
+    } catch (e) {
+      errs.push(e.message);
+    }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
     // pseudo-effect so the record gets the IDENTICAL vocab validation every other
@@ -336,6 +356,18 @@ function engineTypesCheck(kind, data, root, dialect) {
     });
     return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/lib/packs.cjs packMembers() consumes' : errs.join('; ') };
   }
+  // REQ-0211: a gimic IS consumed by runtime code -- sim/dungen.cjs reads a gimic's
+  // footprint / hp / timeout_secs / skills to build the trap/chest/door attachments,
+  // so like monster_pack it has a real type surface and the check APPLIES. A string
+  // where dungen wants a number is a crash inside the generator, not a content nit.
+  if (kind === 'gimic') {
+    const errs = [];
+    if (!Array.isArray(data.footprint) || data.footprint.length !== 2 || !Number.isInteger(data.footprint[0]) || !Number.isInteger(data.footprint[1])) errs.push('footprint must be [fh, fw] integers (dungen reads both)');
+    if (!Number.isFinite(data.hp)) errs.push('hp must be a number (dungen reads it into the attachment hp range)');
+    if (!Number.isFinite(data.timeout_secs)) errs.push('timeout_secs must be a number (dungen reads it as the attachment clock)');
+    if (data.skills !== undefined && (!Array.isArray(data.skills) || !data.skills.every((x) => typeof x === 'string'))) errs.push('skills must be string[] (the volley/keeper skill ids dungen wires onto the attachment)');
+    return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/dungen.cjs builds gimic attachments from' : errs.join('; ') };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
@@ -385,6 +417,11 @@ function genDataCheck(kind, data, root) {
   // pack composition, and a free PASS here would be a lie dressed as a green chip.
   if (kind === 'monster_pack') {
     return { ok: true, applicable: false, detail: 'gen_data not applicable for monster_pack (tool_gen_data does not consume monster_pack/1)' };
+  }
+  // REQ-0211: same honesty for gimic -- tool_gen_data has never consumed a gimic def,
+  // and a free PASS here would be a lie dressed as a green chip.
+  if (kind === 'gimic') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for gimic (tool_gen_data does not consume gimic/1)' };
   }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');

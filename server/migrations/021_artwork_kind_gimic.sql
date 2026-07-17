@@ -1,0 +1,20 @@
+-- backpack_ragnarok -- server/migrations/021_artwork_kind_gimic.sql
+-- REQ-0211: add the 'gimic' artwork kind.
+--
+-- A gimic artwork is configured IDENTICALLY to a monster artwork (user
+-- directive, 2026-07-17): a w x h cell grid (each 1..12) at 128 px/cell,
+-- /16-snapped -- see server/services/art_sizing.cjs. It exists so a gimic
+-- content def (trap / treasure box / hidden door) can carry its own artwork
+-- the same way a monster_def does, resolved via REQ-0174's
+-- content_defs.artwork_ref. No new column is needed: the w,h shape rides in
+-- the existing artworks.shape jsonb, exactly like monster.
+--
+-- Apply as the postgres superuser (same invocation as 001..020):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/021_artwork_kind_gimic.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS (PG 12+). NOTE: ALTER TYPE ... ADD VALUE
+-- cannot run inside a transaction block / DO $$ ... $$, so it is a bare
+-- top-level statement (not guarded by a DO block like 007's CREATE TYPE).
+-- Migration-first is safe on a live deploy: old code never emits 'gimic';
+-- new code does. New enum values inherit nothing to GRANT.
+ALTER TYPE artwork_kind ADD VALUE IF NOT EXISTS 'gimic';
