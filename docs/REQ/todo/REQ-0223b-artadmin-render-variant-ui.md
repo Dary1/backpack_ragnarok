@@ -50,23 +50,45 @@ artinspect, dex-admin, contentadmin, reference-model) address renders through th
 variant 0 is the render they have always meant. This mirrors 0223a's DB/route hinge — absent
 means 0 — so the specs stay green without edits, and the diff stays about twins.
 
-## Gates
-- artadmin e2e green including a NEW same-seed A/B spec: generate a seed, generate the SAME
-  seed at a second lock, both appear as distinct cards, the lightbox opens them as an A/B
-  strip, adopting the twin adopts the twin (not its sibling).
-- The V4 compare loop from REQ-0187 re-runs THROUGH THE UI with a TRUE same-seed pair and is
-  recorded here as the demonstration. (0223a's `artwork_test` already proves the pair at the
-  storage/queue level: 'REQ-0223 TRUE same-seed A/B'. This gate is about the operator loop.)
-- **Correction (2026-07-17): no new harness, so the 0223 decade is NOT claimed.** This REQ was
-  drafted assuming its e2e needed its own bringup and would take 2230/2231/2232. It does not:
-  the spec is an ARTADMIN spec, so it belongs in `tools/artadmin_e2e.sh`, which already declares
-  `source e2e_ports.sh 0156` and owns 1560-1562. Standing up a second harness for the same
-  console would have put two bringups on one screen's worth of routes for no gain, and the
-  0223 decade would name a harness that should not exist. `tools/check_e2e_ports.cjs` agrees:
-  "3 harnesses, all ports derived from their REQ number, no collisions". The port rule binds
-  HARNESSES to REQ numbers, not SPECS — a spec lives in whichever harness boots its console.
+## Gate results — GREEN
 
-## Out of scope
+- **`artadmin` e2e: 8 passed, 0 failed** (1.7 min), including the new
+  **'REQ-0223 same-seed A/B: one seed at two locks -> two cards -> lightbox strip -> adopt the
+  twin'**. The seven pre-existing specs pass UNEDITED, which is the testid-compatibility claim
+  above holding in practice rather than in theory.
+- **V4 compare loop re-run, through the UI** — the demonstration REQ-0187 could not produce.
+  Driven through the real controls (`art-seed` 42, `art-gen-lock` strict -> generate; then the
+  SAME seed at lock `off` -> generate), the spec asserts against the API that the pair is a
+  TRUE A/B: `rows.filter(seed === 42).length === 2`, `params.shape_lock` strict vs off,
+  `a.params.seed === b.params.seed` (the seed is HELD, not burned), and the edit-instruction
+  delta present in A and absent in B. Then: both cards visible, the twin labelled `·v1`, the
+  lightbox strip offering `lightbox-strip-42` + `lightbox-strip-42-v1`, the two-up captioned
+  `same seed`, adoption landing on the twin (`render-42-v1` ADOPTED, `render-42` not), the
+  adopted twin undeletable, its sibling deletable without touching it.
+- **Rebased onto master** (REQ-0236 disposition for an open REQ: rebase onto >= bc6c012 +
+  re-provision pnpm in `.`, `client/`, `server/`). Post-rebase `artwork_test`: **16 passed, 0
+  failed**. No conflicts.
+- **`ART_FAMILY_BARRIER=0` was needed to get a trustworthy run** — NOT a property of this REQ.
+  REQ-0233's family barrier restarts the real `comfyui.service` from a `ART_ROUTE_MOCK=1`
+  harness; caught mid-restart, it dragged this suite past 9 min (killed) vs 1.7 min green with
+  REQ-0233's own documented unit-test seam. Filed as **REQ-0246**; once that lands the seam
+  belongs in the harness and this note can go.
+
+### Two findings worth keeping
+
+1. **`artwork_test` never covered the route-level auto-twin.** Its A/B spec calls
+   `storage.createRender(.., {twin:true})` directly, so REQ-0223a's actual fix — a one-shot
+   lock override INFERRING the twin in `hGenerate` — first executed in this e2e. A green unit
+   suite said nothing about it. That is the gap the e2e closed.
+2. **An unbuilt `web/app` silently tests the WRONG client.** The harness serves the docroot
+   straight from the worktree (`python3 -m http.server --directory "$WT/web"`), so after the
+   rebase discarded the stale dist, the browser ran MASTER's bundle against this branch's
+   server. The twin row was created correctly and the old bundle keyed both cards on the bare
+   seed, so `render-42-v1` never existed — a failure that reads as "my feature is broken" and
+   is actually "you shipped the wrong JS to the test". `deploy: rebuild client dist` is a gate
+   step, not bookkeeping.
+
+## Out of scope## Out of scope
 - Any schema change (0223a is the schema; reopen it, don't fork it here).
 - Bulk regeneration tooling; generation-recipe changes.
 - Retiring the derived-seed convention (`seed + 100000`, REQ-0192 repack / REQ-0193 cutout).
