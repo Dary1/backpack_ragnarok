@@ -413,6 +413,12 @@ test('REQ-0223 same-seed A/B: one seed at two locks -> two cards -> lightbox str
   await expect(page.getByTestId('render-42-v1')).toContainText('ADOPTED');
   await expect(page.getByTestId('render-42')).not.toContainText('ADOPTED');
 
+  // Adopting does not dismiss the lightbox (REQ-0156: judge, adopt, keep looking),
+  // so close it before touching the cards underneath -- it is a full-screen overlay
+  // and would swallow the clicks.
+  await page.getByTestId('lightbox-close').click();
+  await expect(page.getByTestId('lightbox')).toHaveCount(0);
+
   // ... and the adopted twin is undeletable while its sibling deletes freely.
   await expect(page.getByTestId('delete-42-v1')).toBeDisabled();
   await page.getByTestId('delete-42').click();
