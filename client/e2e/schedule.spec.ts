@@ -433,26 +433,18 @@ test.describe('monitor: events & progress', () => {
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
 
-    // Real wall-clock poll (client's own ~2s cadence) -- assert progress
-    // pct increases from its first observed value within a bounded
-    // window. enc_pack_1 clears in ~1s of sim-time per the P1-C duration
-    // probe, well within this window.
-    const firstPctText = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-progress-pct"]').textContent();
-    const firstPct = parseInt(firstPctText || '0', 10);
+    // REQ-0240: progress now reads from the M2 expedition rail (fill + nodes)
+    // and the M4 feed -- the old progress-pct / encounter lines retired. The
+    // run is paced: the server reveals events on the presentation clock and the
+    // client releases them ~2.5s behind, so use generous bounded windows.
     await expect(async () => {
       const view = await apiGetRun(page, player.token, roomId);
       expect(view.body.events.length).toBeGreaterThan(0);
-    }).toPass({ timeout: 8000 });
-
-    await expect(async () => {
-      const pctText = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-progress-pct"]').textContent();
-      const pct = parseInt(pctText || '0', 10);
-      expect(pct).toBeGreaterThanOrEqual(firstPct);
-    }).toPass({ timeout: 8000 });
-
-    // Encounter/telegraph readouts are populated (not the placeholder
-    // em-dash) once at least one event has arrived.
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
+      expect(view.body.pacingVersion).toBe(1); // events carry pt
+    }).toPass({ timeout: 12000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-rail"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-rail-node-0"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-feed-row"]').first()).toBeVisible({ timeout: 25000 });
 
     // Cancel immediately so squad index 2 frees up for any later test.
     await apiCancelRoom(page, player.token, roomId);
@@ -1080,8 +1072,9 @@ test.describe('REQ-0041: monitor freeze regression guard', () => {
       expect(alive).toBe(2);
     }).toPass({ timeout: 5000 });
 
-    await expect(monitor.locator('[data-testid="schedule-monitor-progress-pct"]')).not.toHaveText('', { timeout: 8000 });
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-encounter"]')).not.toHaveText(/—$/, { timeout: 8000 });
+    // REQ-0240: the monitor stays responsive and the M2 rail + M4 feed populate.
+    await expect(monitor.locator('[data-testid="monitor-rail"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-feed-row"]').first()).toBeVisible({ timeout: 25000 });
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1247,7 +1240,7 @@ test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s
         return w.__monitorDebug?.[rid]?.enemyBounds() ?? [];
       }, roomId);
       expect(result.length).toBeGreaterThan(0);
-    }).toPass({ timeout: 10000 });
+    }).toPass({ timeout: 25000 }); // REQ-0240: markers appear at paced RELEASE time (~2.5s client lag), not poll time
 
     // Keep polling for a further bounded window, re-checking the FULL
     // marker set every tick, so markers created slightly later are also
@@ -1294,28 +1287,16 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
 
-    // Field tab is the default; switch to Log.
-    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-tab-log"]').click();
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-panel"]')).toBeVisible();
-    // The Field pane's canvas is now CSS-hidden (still mounted, per the
-    // "mount once, toggle visibility" discipline), not removed.
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeHidden();
+    // REQ-0240: the Field/Log tabs retire -- the M4 feed IS the humanized log,
+    // always visible alongside the stage; the raw JSONL copy relocates to the
+    // header overflow menu. The feed accrues real events over the paced clock.
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-feed"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-feed-row"]').first()).toBeVisible({ timeout: 25000 });
 
-    // Real events must appear as idx-prefixed humanized lines within a
-    // bounded wait (this is a real, un-backdated run -- events accrue
-    // over real wall-clock time, same "monitor: events & progress"
-    // convention as the earlier real-run test in this file).
-    await expect(async () => {
-      const text = await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-text"]').textContent();
-      expect(text).toBeTruthy();
-      expect(text!.length).toBeGreaterThan(0);
-      expect(text).toMatch(/^0: /); // first line always idx 0
-    }).toPass({ timeout: 8000 });
-
-    // Copy raw JSONL -> clipboard content must be MULTIPLE independently
-    // JSON.parse-able lines (never one single JSON document, never the
-    // humanized text) -- proves the copy button captures the RAW event
-    // objects, not the rendered display text.
+    // Copy raw JSONL from the overflow menu -> clipboard is MULTIPLE
+    // independently JSON.parse-able event lines (never one JSON document,
+    // never rendered text) -- proves the copy captures RAW event objects.
+    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="monitor-menu-btn"]').click();
     await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-copy-btn"]').click();
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-copy-status"]')).toBeVisible({ timeout: 3000 });
     const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
@@ -1328,12 +1309,6 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
       expect(typeof parsed.seq).toBe('number');
     }
 
-    // Switch back to Field -- canvas reappears, log panel hides (both
-    // still mounted underneath, never remounted).
-    await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-tab-field"]').click();
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible();
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-log-panel"]')).toBeHidden();
-
     await apiCancelRoom(page, player.token, roomId);
   });
 });
@@ -1344,7 +1319,7 @@ test.describe('REQ-0045 (g): monitor Log tab -- humanized text panel + raw JSONL
 // runs are produced via the dev/backdate hook (dev fallback player,
 // no token) exactly as the warehouse/settle tests do.
 test.describe('REQ-0099: settled-run replay transport', () => {
-  test('a LIVE (unsettled) run shows NO transport (clock-locked, unchanged)', async ({ page }) => {
+  test('a LIVE (unsettled) run shows the LIVE transport variant (clock + LIVE chip), not the settled play/speed controls', async ({ page }) => {
     const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) expect((await apiAssignSlot(page, player.token, roomId, i, i)).status).toBe(200);
@@ -1360,10 +1335,13 @@ test.describe('REQ-0099: settled-run replay transport', () => {
     await expect(card).toBeVisible({ timeout: 10000 });
     await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
-    // Reveal the monitor's expanded ctrl bar (Field view) -- the summary strip alone has no clock/transport.
-    // Field tab is default; the clock (live path) is present, the transport is NOT.
+    // REQ-0240 (03 ss6.5): the M6 transport is ALWAYS present, but its LIVE
+    // variant shows the clock + LIVE chip and NONE of the settled play / speed /
+    // skip controls (those appear only once the run settles).
     await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-clock"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-transport"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-transport"]')).toBeVisible();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-play"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-1"]')).toHaveCount(0);
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1408,6 +1386,10 @@ test.describe('REQ-0099: settled-run replay transport', () => {
       // speed selection is reflected in the UI (deterministic)
       await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-2"]').click();
       await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-2"]')).toHaveClass(/is-on/);
+      // REQ-0240: 0.5x deliberate-study speed added to the transport.
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-0.5"]')).toBeVisible();
+      await page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-0.5"]').click();
+      await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-speed-0.5"]')).toHaveClass(/is-on/);
 
       const clock = page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-clock"]');
       // skip-to-end parks the playhead at duration -> both clock halves equal
@@ -1532,6 +1514,78 @@ test.describe('REQ-0049: monitor renders layered-encounter attachment badges (in
     expect(counts.open).toBeGreaterThanOrEqual(1);
     expect(counts.lost).toBeGreaterThanOrEqual(1);
     expect(counts.fire).toBeGreaterThanOrEqual(1);
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+test.describe('REQ-0240: monitor six zones, feed filters, roster/pacing + screenshots', () => {
+  test('zones render, feed filters toggle, ApiRunView carries roster + pacingVersion, durationSecs is the paced presentation duration; capture desktop + narrow', async ({ page }) => {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, i);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    // M1/M2: the paced run view carries roster + pacingVersion, and durationSecs
+    // is the PRESENTATION duration clamped into [45s, 300s] (the battle-wait
+    // increase -- the sim resolved instantly).
+    await expect(async () => {
+      const view = await apiGetRun(page, player.token, roomId);
+      expect(view.body.pacingVersion).toBe(1);
+      expect(view.body.roster).toBeTruthy();
+      expect(view.body.roster.slots.length).toBe(4);
+      expect(Array.isArray(view.body.roster.enemies)).toBe(true);
+      expect(view.body.durationSecs).toBeGreaterThanOrEqual(45);
+      expect(view.body.durationSecs).toBeLessThanOrEqual(300);
+    }).toPass({ timeout: 12000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    const pane = page.locator('[data-testid="schedule-detail-pane"]');
+    const monitor = pane.locator('[data-testid="schedule-monitor"]');
+    await expect(monitor).toBeVisible({ timeout: 10000 });
+
+    // M1-M6 zones render.
+    await expect(pane.locator('[data-testid="monitor-header"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-rail"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-stage"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="schedule-monitor-canvas"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-feed"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-dock"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-dock-squad-0"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-dock-squad-3"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="schedule-monitor-transport"]')).toBeVisible();
+    // LIVE run: the transport shows the LIVE chip, not the settled speed buttons.
+    await expect(pane.locator('[data-testid="schedule-monitor-live-chip"]')).toBeVisible();
+
+    // Feed accrues rows on the paced clock, then filters toggle (client-only).
+    await expect(pane.locator('[data-testid="monitor-feed-row"]').first()).toBeVisible({ timeout: 25000 });
+    for (const k of ['damage', 'loot', 'gimic', 'all']) {
+      const chip = pane.locator(`[data-testid="monitor-feed-filter-${k}"]`);
+      await chip.click();
+      await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    }
+
+    // Desktop screenshot of the finished monitor mid-run.
+    await page.waitForTimeout(3000);
+    await monitor.screenshot({ path: '/tmp/deliverables_monitor/monitor_desktop.png' });
+
+    // Narrow: the zones restack (fields stack vertically; dock 2x2; feed below).
+    await page.setViewportSize({ width: 768, height: 1300 });
+    await page.waitForTimeout(1500);
+    await expect(pane.locator('[data-testid="monitor-feed"]')).toBeVisible();
+    await expect(pane.locator('[data-testid="monitor-dock"]')).toBeVisible();
+    await monitor.screenshot({ path: '/tmp/deliverables_monitor/monitor_narrow.png' });
+
     await apiCancelRoom(page, player.token, roomId);
   });
 });

@@ -37,21 +37,19 @@ export function MonitorHeader({ locale, dungeonId, dungeonName, level, live, ret
           )}
           <span className="mon-header-grow" aria-hidden="true" />
           {returnAt ? <span className="mon-header-return t-micro tnum">{t(locale, 'schedule.monitor.returnAt', { time: returnAt })}</span> : null}
-          {isAdmin ? (
-            <div className="mon-header-menu-wrap">
-              <button type="button" className="mon-header-menu-btn" aria-label={t(locale, 'schedule.monitor.menu.title')} onClick={() => setMenuOpen((v) => !v)} data-testid="monitor-menu-btn">⋯</button>
-              {menuOpen ? (
-                <div className="mon-header-menu" role="menu">
-                  {seed ? <div className="mon-header-menu-seed t-micro tnum">{t(locale, 'schedule.monitor.seed', { seed })}</div> : null}
-                  <button type="button" className="mon-header-menu-item schedule-monitor-log-copy-btn" data-testid="schedule-monitor-log-copy-btn" onClick={() => { onCopyJsonl(); }}>
-                    {t(locale, 'schedule.monitor.menu.copyJsonl')}
-                  </button>
-                  {copyStatus === 'copied' ? <span className="mon-header-menu-status" data-testid="schedule-monitor-log-copy-status">{t(locale, 'schedule.monitor.copied')}</span> : null}
-                  {copyStatus === 'failed' ? <span className="mon-header-menu-status is-fail">{t(locale, 'schedule.monitor.copyFailed')}</span> : null}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="mon-header-menu-wrap">
+            <button type="button" className="mon-header-menu-btn" aria-label={t(locale, 'schedule.monitor.menu.title')} onClick={() => setMenuOpen((v) => !v)} data-testid="monitor-menu-btn">⋯</button>
+            {menuOpen ? (
+              <div className="mon-header-menu" role="menu">
+                {isAdmin && seed ? <div className="mon-header-menu-seed t-micro tnum">{t(locale, 'schedule.monitor.seed', { seed })}</div> : null}
+                <button type="button" className="mon-header-menu-item schedule-monitor-log-copy-btn" data-testid="schedule-monitor-log-copy-btn" onClick={() => { onCopyJsonl(); }}>
+                  {t(locale, 'schedule.monitor.menu.copyJsonl')}
+                </button>
+                {copyStatus === 'copied' ? <span className="mon-header-menu-status" data-testid="schedule-monitor-log-copy-status">{t(locale, 'schedule.monitor.copied')}</span> : null}
+                {copyStatus === 'failed' ? <span className="mon-header-menu-status is-fail">{t(locale, 'schedule.monitor.copyFailed')}</span> : null}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
