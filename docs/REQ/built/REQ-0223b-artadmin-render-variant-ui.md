@@ -50,6 +50,14 @@ artinspect, dex-admin, contentadmin, reference-model) address renders through th
 variant 0 is the render they have always meant. This mirrors 0223a's DB/route hinge — absent
 means 0 — so the specs stay green without edits, and the diff stays about twins.
 
+## Deploy record (2026-07-17)
+Merged to master **`8e77828`** (`--no-ff`) together with REQ-0223a — they shipped as one
+change on purpose: 0223a alone would have handed twins to a client that keys cards on a bare
+seed. Full `ci.sh` exit 0 `CI GREEN`; `backpack-api` restarted (art queue verified empty per
+REQ-0233), `backpack-web` untouched (static server, the rebuilt dist is live on landing);
+`lightbox-strip` confirmed present in the served bundle; web/api/tunnel all 200. The full
+record — live checks, corpus counts, test-junk cleanup — is in REQ-0223a.
+
 ## Gate results — GREEN
 
 - **`artadmin` e2e: 8 passed, 0 failed** (1.7 min), including the new

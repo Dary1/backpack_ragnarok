@@ -160,9 +160,44 @@ For REQ-0231: the fix this points at is taking the box lock BEFORE bringup rathe
 the Playwright run alone — the ports are the contended resource, so the lock has to cover the
 bind, not just the test.
 
-## Not yet done (why this is `built/`, not `done/`)
-Not merged to master, not deployed, not accepted. Migration 020 IS applied to the shared
-supabase-db — additive and migration-first safe by construction: old code never names
-`variant`, so its inserts default to 0, and the widened UNIQUE is strictly more permissive than
-the one it replaced, so nothing old code did became illegal. The branch is unmerged and the
-live `backpack-api` still runs master's code.
+## Deploy record (2026-07-17)
+
+- Merged to master **`8e77828`** (`--no-ff`, user go-ahead in chat: "marge and deploy"),
+  together with REQ-0223b — 0223a alone would have shipped twins to a client that keys cards
+  on a bare seed (duplicate React key; the operator sees one card and adopts the other), so
+  the split was a bookkeeping boundary, never a shipping one.
+- **Full `ci.sh`: exit 0, `CI GREEN`** — including `artwork_test` 16/16, the admin trio
+  (artadmin 8/8, artinspect 1/1, contentadmin 28/28), and the scoped client e2e **187 passed**
+  on the REQ-0223 decade.
+- **Migration 020 was already applied** and had been live for hours before the merge, by
+  construction safe: master's code never names `variant`, its inserts default to 0, and the
+  widened UNIQUE is strictly more permissive. Independently confirmed — another session's CI
+  ran the whole suite green against the migrated schema while this branch was still unmerged.
+- **`backpack-api` restarted; `backpack-web` NOT restarted** (it is
+  `python3 -m http.server --directory .../web`, so the rebuilt dist is served the moment it
+  lands). The restart was gated on REQ-0233's finding that it kills the in-flight art queue:
+  ComfyUI reported `queue_running: []`, `queue_pending: []` and no `art_job.py` was running,
+  so nothing was in flight to lose.
+- **Live verification.** Schema: `UNIQUE (artwork_id, seed, variant)` present. Dispatch edge:
+  `?variant=-1` -> **400** `variant must be a non-negative integer` (the guard, on live).
+  Compatibility hinge: a bare `/renders/<seed>` resolves as before. Bundle: `lightbox-strip`
+  present in the served dist. Health: web 8801 = 200, api 8802 = 200, tunnel
+  https://backpack-dev.qtie.jp/app/ = 200. Corpus: 963 renders / 339 artworks, **0 twins** —
+  no live render moved.
+- **Test junk removed.** The gate runs left 5 `e2e_ab_sword` twins in dead namespaces in the
+  shared DB — the ONLY variant>0 rows in existence. Harmless to serving, but they would have
+  made this REQ's own rollback path report 5 collisions and invite a future operator to treat
+  test litter as A/B evidence worth protecting. Deleted (5 artworks / 7 renders, adopted refs
+  NULLed first per storage.cjs's order); rollback path back to zero collisions. E2e leftovers
+  are a pre-existing pattern here (125 such artworks, oldest 2026-07-14) and were left alone —
+  only rows this session created were touched.
+
+## Follow-ups filed
+- **REQ-0246** (draft) — REQ-0233's family barrier restarts the real `comfyui.service` from
+  `ART_ROUTE_MOCK=1` harnesses. Found running these gates; `ART_FAMILY_BARRIER=0` was needed
+  for every trustworthy run above (artwork_test 12/4 -> 16/0; artadmin e2e >9 min -> 1.7 min).
+
+## Superseded — this section described the `built/` state, kept for the record
+Was: "not merged, not deployed, not accepted". All three are now done; see the deploy record
+above. What remains is ACCEPTANCE: the same-seed A/B loop has been proved by CI and by a live
+smoke check, but the operator has not yet run a real A/B on real art.
