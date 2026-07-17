@@ -3,6 +3,13 @@
 // (dedicated create panel, never fed by selection), adopt/delete go through
 // confirm dialogs (confirm-ok), and coverage is ADDED for the lightbox,
 // search/filter narrowing, queue-job cancel and failed-render retry.
+// REQ-0252 restructured the ceremony (mask builder, beforeEach clear-all,
+// selectArtwork, genNext) WITHOUT touching a single assertion -- same 7 tests,
+// same order, same results. The per-REQ rationale comments are load-bearing
+// and stay verbatim: they record why each test is shaped the way it is.
+// NOTE: artadmin.config.ts's BASE_URL fallback (8903) is outside REQ-0156's
+// derived decade, but that drift is REQ-0251's (e2e-harness-dedupe), not this
+// file's -- see docs/REQ/todo/REQ-0252-artadmin-spec-restructure.md.
 // Runs against a MOCKED ComfyUI backend (ART_ROUTE_MOCK=1, no GPU) with
 // ART_MOCK_DELAY_MS holding jobs in the queue long enough to cancel one.
 // Requires the isolated instance from tools/artadmin_e2e.sh (HOME-remapped
@@ -24,31 +31,51 @@ async function confirmClick(page: Page, testId: string) {
   await page.getByTestId('confirm-ok').click();
 }
 
-function swordMask(): boolean[][] {
+// 5x5 footprint grid, row-major: mask[row][col], matching CellBackdrop's read
+// (artShared.ts) and the render-cb-<seed>-cell-<row>-<col> testids.
+function mask(...cells: ReadonlyArray<readonly [number, number]>): boolean[][] {
   const m = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
-  m[0][0] = m[1][0] = m[2][0] = true;
+  for (const [row, col] of cells) m[row][col] = true;
   return m;
 }
+
+// A full 1x3 rectangle (1 col x 3 rows -> 256x768).
+const swordMask = (): boolean[][] => mask([0, 0], [1, 0], [2, 0]);
 
 // REQ-0191: an L-tromino -- the sword above is a full 1x3 rectangle, so its
 // bbox has NO unowned cell and cannot show the owned/unowned split at all.
 // The L's bbox is 2x2 with (0,1) unowned, which is exactly the awkward
 // footprint the backdrop exists for (REQ-0153/0187: the shape-conditioning
 // question only bites where the shape does not fill its box).
-function lMask(): boolean[][] {
-  const m = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
-  m[0][0] = m[1][0] = m[1][1] = true;
-  return m;
-}
+const lMask = (): boolean[][] => mask([0, 0], [1, 0], [1, 1]);
+
+// REQ-0216: a single cell -- the 1x1 against the L's 2x2 is the whole point,
+// see the true-scale test below.
+const gemMask = (): boolean[][] => mask([0, 0]);
 
 async function apiCreate(request: APIRequestContext, body: Record<string, unknown>) {
   const r = await request.post('/api/art/artworks', { data: body });
   expect(r.status()).toBe(201);
 }
 
-test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -> serve -> delete rules -> re-adopt via lightbox', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
+// select an artwork from the registry list and wait for its editor to mount
+async function selectArtwork(page: Page, name: string) {
+  await page.getByTestId('art-select-' + name).click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+}
 
+// queue one render at the next free seed and wait for it to land ok
+async function genNext(page: Page, seed: number) {
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, seed);
+}
+
+// every test starts from an empty registry
+test.beforeEach(async ({ request }) => {
+  await request.post('/api/art/dev/clear-all');
+});
+
+test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -> serve -> delete rules -> re-adopt via lightbox', async ({ page, request }) => {
   await page.goto('/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
 
@@ -69,13 +96,10 @@ test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -
   await expect(page.getByTestId('art-final-prompt')).toContainText('anime');
 
   // generate three candidate seeds (1, 2, 3), each waited to completion
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 1);
+  await genNext(page, 1);
   await expect(page.getByTestId('render-1').locator('img')).toBeVisible();
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 2);
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 3);
+  await genNext(page, 2);
+  await genNext(page, 3);
 
   // lightbox (REQ-0156 judging tool): open seed 1 full-size, zoom + bg
   await page.getByTestId('render-thumb-1').click();
@@ -122,15 +146,12 @@ test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -
 });
 
 test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs unowned), toggleable, po-only', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_axe', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
   await apiCreate(request, { system_name: 'e2e_orb', kind: 'si', main_object: 'blue orb' });
 
   await page.goto('/app/#/artadmin');
-  await page.getByTestId('art-select-e2e_axe').click();
-  await expect(page.getByTestId('art-editor')).toBeVisible();
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 1);
+  await selectArtwork(page, 'e2e_axe');
+  await genNext(page, 1);
 
   // the THUMB carries the backdrop, default ON: the L's 2x2 bbox, 3 owned
   // cells + the unowned corner at (0,1).
@@ -181,11 +202,9 @@ test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs uno
   await page.keyboard.press('Escape');
 
   // po-only: an si artwork has no footprint, so no chip and no backdrop
-  await page.getByTestId('art-select-e2e_orb').click();
-  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await selectArtwork(page, 'e2e_orb');
   await expect(page.getByTestId('art-cells')).toHaveCount(0);
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 1);
+  await genNext(page, 1);
   await expect(page.getByTestId('render-cb-1')).toHaveCount(0);
   await page.getByTestId('render-thumb-1').click();
   await expect(page.getByTestId('lightbox')).toBeVisible();
@@ -195,7 +214,6 @@ test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs uno
 });
 
 test('registry browser: search + kind/adoption filters narrow the list', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_sword', kind: 'po', shape: { mask: swordMask() }, main_object: 'iron sword' });
   await apiCreate(request, { system_name: 'e2e_potion', kind: 'si', main_object: 'red potion' });
 
@@ -229,12 +247,10 @@ test('registry browser: search + kind/adoption filters narrow the list', async (
 });
 
 test('queue: cancel a pending job -> failed \'canceled by user\'; rest complete; retry regenerates the seed', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_q', kind: 'si', main_object: 'blue orb' });
 
   await page.goto('/app/#/artadmin');
-  await page.getByTestId('art-select-e2e_q').click();
-  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await selectArtwork(page, 'e2e_q');
 
   // queue 5 jobs (ART_MOCK_DELAY_MS keeps each in flight ~1.5 s)
   await page.getByTestId('art-n').fill('5');
@@ -271,7 +287,6 @@ test('queue: cancel a pending job -> failed \'canceled by user\'; rest complete;
 // the contentadmin deep link). Consuming is minimal + additive; the existing
 // three tests above are untouched.
 test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_deeplink', kind: 'si', main_object: 'ruby amulet' });
 
   await page.goto('/app/#/artadmin/e2e_deeplink');
@@ -283,8 +298,7 @@ test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page,
 // REQ-0179: the `custom` kind -- operator-SET resolution (/16-snapped) and an
 // operator-owned prompt (no per-kind style template appended). This is the
 // texture kind linkable to no-art-kind content (e.g. gacha_pack) via contentadmin.
-test('custom kind: operator sets resolution (snapped) and the prompt is verbatim (no style tail)', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
+test('custom kind: operator sets resolution (snapped) and the prompt is verbatim (no style tail)', async ({ page }) => {
   await page.goto('/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
   await page.getByTestId('art-new').click();
@@ -307,27 +321,20 @@ test('custom kind: operator sets resolution (snapped) and the prompt is verbatim
 });
 
 test('REQ-0216 true-scale thumbs: constant px-per-cell across footprints', async ({ page, request }) => {
-  await request.post('/api/art/dev/clear-all');
   // 1x1 vs the L's 2x2 bbox: constant px-per-cell means the two stages get
   // inline widths of 1*42 and 2*42 -- the size DIFFERENCE is the feature
   // (before REQ-0216 both were normalized into the same 212x150 cap).
-  const gem = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
-  gem[0][0] = true;
-  await apiCreate(request, { system_name: 'e2e_gem', kind: 'po', shape: { mask: gem }, main_object: 'small gem' });
+  await apiCreate(request, { system_name: 'e2e_gem', kind: 'po', shape: { mask: gemMask() }, main_object: 'small gem' });
   await apiCreate(request, { system_name: 'e2e_axe2', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
 
   await page.goto('/app/#/artadmin');
-  await page.getByTestId('art-select-e2e_gem').click();
-  await expect(page.getByTestId('art-editor')).toBeVisible();
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 1);
+  await selectArtwork(page, 'e2e_gem');
+  await genNext(page, 1);
   await expect(page.getByTestId('render-cb-1')).toBeVisible();
   await expect(page.getByTestId('render-cb-1')).toHaveCSS('width', '42px');
 
-  await page.getByTestId('art-select-e2e_axe2').click();
-  await expect(page.getByTestId('art-editor')).toBeVisible();
-  await page.getByTestId('art-gen-next').click();
-  await waitStatusOk(page, 1);
+  await selectArtwork(page, 'e2e_axe2');
+  await genNext(page, 1);
   await expect(page.getByTestId('render-cb-1')).toBeVisible();
   await expect(page.getByTestId('render-cb-1')).toHaveCSS('width', '84px');
 });
