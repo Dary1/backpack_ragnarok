@@ -39,6 +39,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { E2E_DATA_ROOT } from './e2e-env';
+import { assertWorktreeTarget } from './worktree-target';
 
 const REPO_ROOT = E2E_DATA_ROOT;
 
@@ -277,6 +278,11 @@ export default async function globalSetup(): Promise<void> {
   // docs REQ-0083 for the remaining harness work. Serial mode is unaffected.
   // REQ-0117: fail fast if another run holds the box; then self-heal any
   // orphaned drift from a prior crashed run BEFORE snapshotting fresh backups.
+  // REQ-0225: refuse a run whose target is the deployed master rather than
+  // this tree (fail-fast from a linked worktree or E2E_REQUIRE_WORKTREE=1;
+  // warn-only banner from the main checkout). The config-side default-flip
+  // makes this unreachable by ACCIDENT; this catches explicit misdirection.
+  await assertWorktreeTarget('global-setup');
   probeBoxLock();
   recoverOrphanedDrift(PROFILE_PATH, BACKUP_MARKER_PATH, 'profile', false);
   recoverOrphanedDrift(LIVE_ITEMS_PATH, LIVE_ITEMS_BACKUP_MARKER_PATH, 'content/live/live_items.json', true);

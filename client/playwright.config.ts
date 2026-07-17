@@ -21,8 +21,15 @@
 // the live profile around the whole run, since several tests PUT canvas
 // state to the real API (there is no separate test/staging profile).
 import { defineConfig, devices } from '@playwright/test';
+import { resolveWorktreeDefaults } from './e2e/worktree-target';
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://backpack-dev.qtie.jp';
+// REQ-0225 (ratified option (b) default-flip): a LINKED WORKTREE with no
+// explicit PLAYWRIGHT_BASE_URL now targets the LOCAL proxy + its own fleet
+// (E2E_PARALLEL defaults to 4) instead of the deployed-master tunnel; the
+// tunnel target requires an explicit PLAYWRIGHT_BASE_URL there. The MAIN
+// checkout keeps the tunnel default described above (post-deploy
+// verification unchanged). See e2e/worktree-target.ts.
+const BASE_URL = resolveWorktreeDefaults();
 // REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
 // reproduces the tunnel's /api-vs-static ingress split so the app's relative
 // fetches resolve, removing ~40ms/request of public-tunnel latency. The tunnel
