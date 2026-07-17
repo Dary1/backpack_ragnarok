@@ -1,46 +1,81 @@
-# REQ-0221 — e2e-fleet-registry-first-coverage: make ci.sh exercise registry-first serving
+# REQ-0221 — e2e-fleet-registry-first-coverage: close the route-level registry-first gap in ci.sh
 
-**Status:** draft — AGENT-PROPOSED, awaiting owner review. Not cleared to implement.
+**Status:** todo — ratified by the user (2026-07-17, chat) AFTER a rescope; see "Correction" below.
 **Reserved:** 2026-07-16
 **Slug:** e2e-fleet-registry-first-coverage
 **Filed under user directive** (2026-07-16, chat): 「あなたが作業している中で、こうした方良かったと
 思う事はREQにしておいてください」.
 
-## Why (REQ-0182b finding — a structural CI blind spot, not a one-off)
+## Correction (2026-07-17) — the original draft's premise was stale
 
-The ci.sh default fleet runs `STORAGE_BACKEND=files` (`e2e_fleet.cjs:101`) and the registry is
-pg-only (`content.cjs computeRegistryData`), so under CI the registry is ALWAYS EMPTY and every
-registry-first code path is unreachable at the code level:
+This REQ was filed AGENT-PROPOSED off the REQ-0182b finding. On owner review the premise was
+re-checked against the tree and found substantially overstated. Recorded here because the
+correction, not the original claim, is what this REQ implements.
 
-- The REQ-0178 serving drift (Dex Edit writing files that live serving ignored) shipped through
-  a green ci.sh — the suite only failed once pointed at the LIVE api.
-- REQ-0182b's 409 guard on the legacy PUT cannot fire on the fleet; its test had to `test.skip`
-  there and live only in the pg contentadmin harness + post-deploy runs.
-- The relocated grant-to-warehouse button needs a pg-backed adopted variant the fleet cannot
-  create; its coverage also lives outside the default suite.
+The draft asserted "under CI the registry is ALWAYS EMPTY and every registry-first code path is
+unreachable". That is true of the **default e2e fleet only** (`e2e_fleet.cjs` spawns workers with
+`STORAGE_BACKEND: 'files', DATABASE_URL: ''`) — NOT of ci.sh, which already runs these pg-backed
+stages mandatorily (they gate on `SKIP_PG`, which CI does not set):
 
-Pattern: "green ci.sh" currently proves nothing about registry-first behaviour, which is now the
-AUTHORITY path for po/si/tm. Every future registry-first feature inherits the blind spot.
+- `[5.36/7]` `content_serving_test.cjs` (REQ-0178 gate D) — seeds an adopted def in an isolated
+  pg namespace and asserts registry-first serving, fallback, kind filter, cache invalidation,
+  source accounting, the parity classifier, **and REQ-0182b's `registryServedKindFor` predicate**
+  (both directions: adopted → `po_def`, empty registry → `null`).
+- `[5.37/7]` `schedule_serving_test.cjs` — registry-first SCHEDULE serving (REQ-0176).
+- `[5.355/7]` `seed_derive_pg_test.cjs` — art-authoritative seed/derive, isolated pg ns.
+- `[6.5/8]` the pg admin e2e trio, incl. `content_admin_e2e.sh` (`STORAGE_BACKEND=pg`, HOME-remapped
+  namespace, ports derived `0157`).
+
+Consequences for the draft's three "What to do" candidates:
+
+- **(a) "promote the pg contentadmin harness into ci.sh's mandatory chain if it is not already"
+  — already done.** It is step `[6.5/8]`. No-op.
+- **(b) teach the fleet a `STORAGE_BACKEND=pg` variant** and **(c) a dedicated harness on
+  2210-2219** — both would rebuild coverage `[5.36]` + `[6.5]` already provide. Rejected as
+  redundant infrastructure.
+
+Also corrected: the draft cited the REQ-0178 serving drift as proof that "green ci.sh proves
+nothing about registry-first behaviour". That drift is the incident that CAUSED `[5.36]` to be
+written (as REQ-0178's own gate D). Citing it post-fix inverts the evidence.
+
+## Why (the gap that IS real)
+
+`registryServedKindFor` — the predicate — is covered pg-backed at `[5.36]`. What is NOT covered
+anywhere in ci.sh is the **HTTP route wiring on top of it**: that `PUT /api/admin/item/:id`
+actually calls the predicate, returns **409**, and returns the `edit_at: '#/contentadmin/<id>'`
+hint plus `registry_kind`. A refactor could drop the guard from the route and leave `[5.36]`
+green, because `[5.36]` never issues a request.
+
+The route-level test exists (`client/e2e/dex-admin.spec.ts`, REQ-0182b) but `test.skip`s itself
+on the files-backed fleet — correctly, since the guard cannot fire against an empty registry. So
+today it proves the route only against the LIVE api / post-deploy, never in ci.sh.
+
+Narrow, accurate statement of the defect: **one route-level assertion is homeless.** It needs a
+pg-backed harness with a seeded adopted def — and ci.sh already runs exactly one such harness.
 
 ## What to do
 
-- Give ci.sh a stage (or the default fleet a namespace) that runs pg-backed with a seeded
-  adopted def, so registry-first serving, the 409 guard, and adoption-changes-payload are
-  exercised on every CI run. Candidate shapes: (a) promote the existing pg contentadmin harness
-  into ci.sh's mandatory chain if it is not already; (b) teach the fleet a `STORAGE_BACKEND=pg`
-  variant with a seed script; (c) a minimal dedicated harness (ports derived from THIS REQ:
-  `tools/e2e_ports.sh 0221` → 2210-2219) that boots pg, seeds one adopted def, and runs the
-  guard specs.
-- Un-skip / relocate the tests that currently `test.skip` on the fleet, so skip-on-CI stops
-  being the norm for registry behaviour.
-- Document in ci.sh which stages cover which serving mode, so the next REQ knows where its
-  coverage belongs.
+- Relocate the REQ-0182b 409 route test out of the fleet-run `dex-admin.spec.ts` and into the
+  pg-backed contentadmin harness already mandatory at `[6.5/8]`. Seed an adopted def in the
+  harness namespace so the guard genuinely fires; assert `409` + `edit_at` + `registry_kind`
+  unconditionally (no `test.skip`).
+- Ports: the test moves into an EXISTING harness, so it inherits `e2e_ports.sh 0157`. This REQ
+  claims **no** port band; 2210-2219 stay unissued. `check_e2e_ports.cjs` still gates.
+- Document in ci.sh which stages cover which serving mode (files fleet vs pg registry-first), so
+  the next REQ knows where its coverage belongs. This is the draft's one surviving deliverable
+  and is the real fix for the blind spot: the gap was never missing pg coverage, it was that
+  nobody could see where pg coverage lived.
 
 ## Out of scope
-- Changing registry/serving semantics; replacing the files backend in other stages (files-mode
-  coverage is still wanted — the point is BOTH, not a swap).
+- Changing registry/serving semantics. Replacing the files backend anywhere (files-mode coverage
+  is still wanted — the point is BOTH, not a swap).
+- A pg fleet variant / dedicated 0221 harness (rejected above as redundant).
 
 ## Gates
-- A deliberately introduced registry-first regression (e.g. re-enabling the legacy PUT for a
-  covered kind) is caught by ci.sh alone, demonstrated once and recorded; full default suite
-  green; port rule enforced by check_e2e_ports.cjs.
+- Deliberately drop the 409 guard from the legacy PUT for a covered kind → ci.sh alone catches it
+  (it does not today). Demonstrated once and recorded below.
+- The relocated test runs unconditionally — asserted un-skipped in the harness.
+- Full default suite green; `check_e2e_ports.cjs` green; no new port band issued.
+
+## Outcome
+_(to be filled: commit hashes, gate results)_
