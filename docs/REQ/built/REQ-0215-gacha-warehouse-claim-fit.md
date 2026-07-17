@@ -135,19 +135,52 @@ every kind, per spec items 2 + 4. The lazy-revert stays as the crash/tab-close s
 | `server/tests/api_test.cjs` (pg) | **187 passed, 0 failed** — both backends identical (rule 4). NOTE: ran against the LIVE Postgres (the only `DATABASE_URL` on this box). Row-isolated by the harness's tmpHome namespace, so no live row was touched — but it leaked another ~28 orphan rows into the production DB, like every pg CI run before it. See REQ-0218. |
 | `tsc -p tsconfig.server.json` | clean |
 | client typecheck + vite build | clean |
-| e2e | **NOT RUN — see below** |
+| e2e | **RUN, hermetically — and it found a real bug this REQ had shipped. See below.** |
 
-### e2e is NOT run, and must not be, on this branch
+### e2e: run under REQ-0217's hermetic harness, and worth every minute
 
-The suite is not hermetic: `client/playwright.config.ts`'s baseURL is the PUBLIC tunnel
-(`https://backpack-dev.qtie.jp`), served by the LIVE `backpack-web`/`backpack-api`
-services — which run the MAIN checkout, not a worktree. Running it from here exercises
-master's build, not this branch: it can neither pass nor fail on REQ-0215's code, and it
-mutates the shared live dev profile/content while it does so.
+`req-0217-hermetic-e2e` landed the fix for the non-hermetic suite while this REQ was
+in flight (fleet of isolated api workers on 8810-8813, `env -u DATABASE_URL`, local
+proxy — never the live services). That made an honest e2e verdict possible without
+deploying anything.
 
-Getting a real e2e verdict requires deploying this branch to those services first, which
-PROJECT.md marks HANDS-OFF ("live services backpack-api / backpack-web — coordinate
-before any edit, merge, or restart"). That is the owner's call, not this REQ's.
+Method: a throwaway integration branch `tmp-r215-e2e-on-0217` = REQ-0217's harness +
+this REQ's commits, in its own worktree. Neither master, nor this REQ's branch, nor any
+live service is touched. One merge conflict, in `workshop.spec.ts` — 0217 had renamed
+the e2e profile endpoint `dev` -> `default`; resolved by keeping this REQ's assertions
+on 0217's endpoint.
+
+**IT CAUGHT A 500 ON EVERY CLAIM.** `claimSpotOr409` runs the engine over the saved
+canvas, and the engine indexes `container.tms` unconditionally (`tmCanPlace` does
+`container.tms.find`; `invOccupancy` guards `sis` with `|| []` but nothing guards
+`tms`). The TM model arrived in REQ-0042, long after inventory pages existed — so every
+canvas saved before it, **and all nine e2e fixtures**, are shaped `{bps,pos,sis}` with
+no `tms` at all. Those threw a TypeError out of the engine: a 500 on a legitimate claim,
+for real players with older canvases.
+
+**Why api_test went green over it, which is the part worth remembering.** This suite hit
+the very same shape — and I gave the FIXTURE a `tms: []` instead of making the validator
+cope. That turned the suite green and left the bug in the product. A test fixture edited
+until the test passes is not evidence; the guard belongs in the code that reads untrusted
+canvas shapes. Fixed in `9b78a7f`: normalize the four arrays on the deep copy the
+validator already makes (safe there, and only there — it cannot touch the stored profile,
+so the validator does not become a second writer). The new regression test asserts BOTH
+halves: a tms-less page claims 200, and the saved canvas still has no `tms[]` afterward.
+
+Also recorded, since it wasted a run: the first hermetic attempt was launched WITHOUT
+`E2E_GPU=1` (0217's own invocation has it). Software rendering drove load average to 37
+and timed out every drag/pixel test. Those failures were self-inflicted, not regressions.
+
+Re-run after the fix is QUEUED behind another worktree's run on the box lock
+(`req-0212-charge-verb-expansion`) at the time of writing — the lock working as designed.
+The verdict below is therefore **provisional on that re-run**.
+
+#### The earlier attempt, and why it was wrong
+
+Before 0217 landed, the suite was not hermetic: `playwright.config.ts`'s baseURL was the
+PUBLIC tunnel, served by the LIVE services running the MAIN checkout. Running it from a
+worktree exercised master's build — it could neither pass nor fail on this REQ's code —
+while mutating live state.
 
 **This was attempted once, and it DID damage live state. Correcting an earlier false
 claim in this document.** A run was started from this worktree, noticed to be driving
@@ -169,8 +202,8 @@ overwritten earlier the same day by the full-CI incident, and lists restoring it
 separate owner decision — so this write landed on an already-lost profile. No pg backup
 exists to restore from regardless. Full write-up: **REQ-0218 §6**.
 
-`req-0217-hermetic-e2e` is an in-flight worktree addressing exactly this. REQ-0215's e2e
-verdict is best taken after it lands, or by an owner-approved deploy of this branch.
+That is the incident recorded above, and the reason the verdict now comes from 0217's
+harness instead.
 
 ### e2e specs are UPDATED (they just have not been executed)
 
