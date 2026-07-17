@@ -325,6 +325,15 @@ async function hRepack(req, res, name, seed) {
   const taken = new Set(renders.map((r) => Number(r.seed)));
   let target = seed + 100000;
   while (taken.has(target)) target += 100000;
+  // Legacy backfilled adoptions sit AT int32 max (2147483647) and
+  // renders.seed is pg `integer`, so seed+100000 overflows the column.
+  // Fall back to the lowest free slot in the derived band (>= 100000):
+  // provenance lives in params.derived_from_seed, not in the number, so
+  // the derived-seed convention survives the remap.
+  if (target > 2147483647) {
+    target = 100000;
+    while (taken.has(target)) target += 100000;
+  }
   let row;
   try { row = await storage.createRender(art.id, target, 'queued'); }
   catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
@@ -355,6 +364,15 @@ async function hCutout(req, res, name, seed) {
   const taken = new Set(renders.map((r) => Number(r.seed)));
   let target = seed + 100000;
   while (taken.has(target)) target += 100000;
+  // Legacy backfilled adoptions sit AT int32 max (2147483647) and
+  // renders.seed is pg `integer`, so seed+100000 overflows the column.
+  // Fall back to the lowest free slot in the derived band (>= 100000):
+  // provenance lives in params.derived_from_seed, not in the number, so
+  // the derived-seed convention survives the remap.
+  if (target > 2147483647) {
+    target = 100000;
+    while (taken.has(target)) target += 100000;
+  }
   let row;
   try { row = await storage.createRender(art.id, target, 'queued'); }
   catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
