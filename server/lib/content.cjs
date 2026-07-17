@@ -240,7 +240,11 @@ async function computeArtUrls() {
     Object.keys(monstersFromCore().monsters || {}),
     // REQ-0211: gimic ids join the resolved map for the Dex's gimic catalog.
     // gimic artworks follow the same exact-name convention as monster art.
-    Object.keys(gimicsFromCore().gimics || {})
+    Object.keys(gimicsFromCore().gimics || {}),
+    // REQ-0185: dungeon def ids join the resolved map so the sortie UI can show
+    // each dungeon's `custom` key art (1024x576, design D4). Same exact-name / ref-first
+    // convention as monster/gimic art (artwork system_name == def id).
+    Object.keys((require('../services/core.cjs').getScheduleContent().dungeonDefsById) || {})
   );
   const storage = require('../storage.cjs');
   const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }

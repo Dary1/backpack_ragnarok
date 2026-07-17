@@ -17,6 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const combat = require('../../sim/combat.cjs');
 const dungen = require('../../sim/dungen.cjs');
+const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller (also serves the authored encounter summary)
 const Engine = require('../../mock-src/engine.js');
 
 
@@ -43,7 +44,12 @@ const VOCAB_PATH = contentPath('vocab.json'); // REQ-0170: connection_shapes liv
 // (they read the same conceptual "active dungeon domain").
 const LIVE_DUNGEON_DIR = dungen.liveDungeonDir();
 const BATCH_DIR = LIVE_DUNGEON_DIR; // deprecated alias (pre-REQ-0122 name; no live consumer, kept for any stale script)
-const DUNGEON_PATH = path.join(LIVE_DUNGEON_DIR, 'dungeon.json');
+const DUNGEON_PATH = path.join(LIVE_DUNGEON_DIR, 'dungeon.json'); // legacy concrete pilot (sim offline/determinism fixture only, NOT the serving path)
+// REQ-0185: dungeon/1 -- the AUTHORED weighted-pool dungeon defs (identity +
+// probability-weighted references to monster_pack + gimic). This is the CONTENT
+// KIND the serving path rolls a dive from; the legacy singular dungeon.json above
+// is a different (concrete) shape kept only for the sim's offline determinism anchor.
+const DUNGEONS_PATH = path.join(LIVE_DUNGEON_DIR, 'dungeons.json');
 const ENEMIES_PATH = path.join(LIVE_DUNGEON_DIR, 'enemies.json');
 const SKILLS_PATH = path.join(LIVE_DUNGEON_DIR, 'skills.json');
 // REQ-0184: monster_pack/1 defs. dungeon.json's encounters name packs from here.
@@ -100,7 +106,7 @@ function ensureFilePayload() {
     units: statMtimeMs(UNITS_PATH), // REQ-0170
     packs: statMtimeMs(PACKS_PATH), // REQ-0170
     vocab: statMtimeMs(VOCAB_PATH), // REQ-0170 (connection_shapes)
-    dungeon: statMtimeMs(DUNGEON_PATH),
+    dungeons: statMtimeMs(DUNGEONS_PATH), // REQ-0185
     enemies: statMtimeMs(ENEMIES_PATH),
     skills: statMtimeMs(SKILLS_PATH),
     monsterPacks: statMtimeMs(MONSTER_PACKS_PATH), // REQ-0184
@@ -118,7 +124,7 @@ function ensureFilePayload() {
   const livePacks = loadJSON(PACKS_PATH); // REQ-0170
   const vocab = loadJSON(VOCAB_PATH); // REQ-0170 (connection_shapes)
   const pilotItems = loadJSON(ITEMS_PILOT_PATH);
-  const dungeonDef = loadJSON(DUNGEON_PATH);
+  const dungeonsDoc = loadJSON(DUNGEONS_PATH); // REQ-0185: authored dungeon/1 defs
   const enemies = loadJSON(ENEMIES_PATH);
   const skills = loadJSON(SKILLS_PATH);
   const monsterPacks = loadJSON(MONSTER_PACKS_PATH); // REQ-0184: monster_pack/1
@@ -177,6 +183,10 @@ function ensureFilePayload() {
   // treasure box / hidden door). Same id-keyed map convention as every def map above.
   const gimicDefsById = {};
   for (const e of (gimics.entries || [])) gimicDefsById[e.id] = e;
+  // REQ-0185: dungeon defs by id -- the authored weighted-pool defs the dive is
+  // rolled from (sim/dungeon_roll.cjs). Same id-keyed map convention as every def map.
+  const dungeonDefsById = {};
+  for (const e of (dungeonsDoc.entries || [])) dungeonDefsById[e.id] = e;
 
   const skillDefsById = {};
   for (const s of skills.entries) {
@@ -199,7 +209,7 @@ function ensureFilePayload() {
     };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, gimicDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
+  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, gimicDefsById, dungeonDefsById, dungeonDefs: dungeonsDoc.entries || [], connShapes, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0185: dungeonDefsById/dungeonDefs replace the single concrete dungeonDef // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
   contentCache = { mtimes, payload };
   return payload;
 }
@@ -219,7 +229,7 @@ function ensureFilePayload() {
 // byte-identical to the pre-REQ loader. That is what keeps the default e2e
 // fleet a true no-regression baseline.
 // ---------------------------------------------------------------------
-const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic']; // REQ-0211: gimic
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon']; // REQ-0211: gimic; REQ-0185: dungeon
 // kind -> the file-payload map whose key set defines what we ask the registry for.
 const REGISTRY_MAP_BY_KIND = {
   po_def: 'itemDefsById',
@@ -230,6 +240,7 @@ const REGISTRY_MAP_BY_KIND = {
   monster_def: 'enemyDefsById',
   skill_def: 'skillDefsById',
   gimic: 'gimicDefsById', // REQ-0211
+  dungeon: 'dungeonDefsById', // REQ-0185
 };
 const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
 
@@ -311,6 +322,7 @@ function applyRegistryOverlay(fp) {
     packDefsById: overlayMap(fp.packDefsById, reg.gacha_pack, null),
     enemyDefsById: overlayMap(fp.enemyDefsById, reg.monster_def, null),
     gimicDefsById: overlayMap(fp.gimicDefsById, reg.gimic, null), // REQ-0211
+    dungeonDefsById: overlayMap(fp.dungeonDefsById, reg.dungeon, null), // REQ-0185
     skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
     skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
   });
@@ -377,34 +389,39 @@ function getScheduleSources() {
 // `dungeons[0].id === 'niflheim_depths'` -- additive only, nothing
 // removed.
 // ---------------------------------------------------------------------
-const DUNGEON_TYPE_I18N = {
-  default: {
-    en: { name: 'Auto-Generated', note: 'Encounter count/composition scales with the room level you pick.' },
-    ja: { name: '自動生成', note: '選択したレベルに応じてエンカウント数・構成がスケールします。' },
-  },
-  test_fixed: {
-    en: { name: 'Niflheim Depths (fixed)', note: 'The hand-authored batch-002 encounter sequence, unaffected by level or seed.' },
-    ja: { name: 'ニヴルヘイムの深層（固定）', note: 'batch-002の手作りエンカウント順。レベルやシードの影響を受けません。' },
-  },
-};
-
+// REQ-0185: the sortie payload. GET /api/schedule/dungeons now lists the AUTHORED
+// dungeon DEFS (dungeon/1) -- identity + theme + level band + an authored encounter
+// SUMMARY -- not the retired sim/dungen.cjs generator `types`. The UI picks a DEF
+// (design D2); the DungeonDossier renders `encounterSummary` (design D3); dungeon def
+// ids resolve art via the art_urls map (design D4, server/lib/content.cjs).
 function listDungeonsAndFormations() {
-  const { dungeonDef, formationsDoc } = getScheduleContent();
-  const dungeons = [{ id: dungeonDef.id, name: dungeonDef.name, i18n: dungeonDef.i18n || {} }];
-  const types = dungen.DUNGEON_TYPES.map((id) => ({
-    id,
-    name: (DUNGEON_TYPE_I18N[id] && DUNGEON_TYPE_I18N[id].en.name) || id,
-    i18n: DUNGEON_TYPE_I18N[id] || {},
-    // REQ-0049: scouting preview -- expected trap/chest/door counts at sample levels.
-    scout: { 1: dungen.scoutingReport(id, 1), 5: dungen.scoutingReport(id, 5), 10: dungen.scoutingReport(id, 10) },
-  }));
+  const content = getScheduleContent();
+  const { dungeonDefs, formationsDoc, gimicDefsById } = content;
+  const dungeons = (dungeonDefs || []).map((d) => {
+    // encounterSummary (design D3): the authored expected composition -- a
+    // representative fixed-seed "scout" roll of the def (REQ-0049 scout mechanism,
+    // re-keyed to the def). Defensive: a malformed def yields a zeroed summary
+    // rather than 500ing the whole dungeons list.
+    let encounterSummary;
+    try { encounterSummary = dungeonRoll.diveSummary(d, { gimicDefsById, resolveRewardItemId }); }
+    catch (e) { encounterSummary = { packs: 0, gimics: { trap: 0, chest: 0, door: 0 }, bossPackId: null, lootPreview: [] }; }
+    return {
+      id: d.id,
+      name: d.name,
+      i18n: d.i18n || {},
+      theme: d.theme, // design D2: maps to the sortie card glyph/accent
+      levelMin: d.levelMin,
+      levelMax: d.levelMax,
+      encounterSummary,
+    };
+  });
   const formations = (formationsDoc.entries || []).map((f) => ({
     id: f.id,
     name: (f.i18n && f.i18n.en && f.i18n.en.name) || f.id,
     i18n: f.i18n || {},
     canvases: f.canvases,
   }));
-  return { dungeons, types, formations };
+  return { dungeons, formations };
 }
 
 // Reward-roll id -> real content item id resolution table. batch-002's
@@ -518,7 +535,6 @@ module.exports = {
   getScheduleContent,
   refreshRegistryData, // REQ-0176: awaited by routes/content.cjs invalidateServedContent()
   getScheduleSources, // REQ-0176: authority-path source accounting
-  DUNGEON_TYPE_I18N,
   listDungeonsAndFormations,
   REWARD_ROLL_TO_ITEM_ID,
   resolveRewardItemId,

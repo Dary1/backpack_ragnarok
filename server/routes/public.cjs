@@ -42,7 +42,10 @@ function tryPublicRoutes(req, res, url, p) {
       // note) is additive -- `dungeons`/`formations` are unchanged so any
       // existing caller reading only those two fields keeps working
       // byte-for-byte.
-      sendJSON(res, 200, { ok: true, dungeons: payload.dungeons, types: payload.types, formations: payload.formations });
+      // REQ-0185: `types` (the retired sim/dungen.cjs generator list) is gone; the
+      // client now picks an authored dungeon DEF from `dungeons` (each carrying theme,
+      // levelMin/Max and an encounterSummary -- design D2/D3).
+      sendJSON(res, 200, { ok: true, dungeons: payload.dungeons, formations: payload.formations });
     } catch (e) {
       sendJSON(res, 500, { ok: false, error: 'dungeons read failed: ' + e.message });
     }
@@ -68,14 +71,17 @@ function tryPublicRoutes(req, res, url, p) {
   // rare one.
   if (p === '/api/schedule/forecast' && req.method === 'GET') {
     try {
-      const dungeonType = url.searchParams.get('dungeonType') || 'default';
+      // REQ-0185: the forecast is keyed by a dungeon DEF id now; accept `dungeonId`
+      // (new) and fall back to the legacy `dungeonType` param (server resolves either
+      // to a def, defaulting to the first live def -- see lib/forecast.cjs).
+      const dungeonRef = url.searchParams.get('dungeonId') || url.searchParams.get('dungeonType') || '';
       const levelRaw = url.searchParams.get('level');
       const level = levelRaw == null ? 1 : Number(levelRaw);
       if (levelRaw != null && !Number.isFinite(level)) {
         sendJSON(res, 400, { ok: false, error: 'level must be a number' });
         return;
       }
-      const payload = getForecast(dungeonType, level);
+      const payload = getForecast(dungeonRef, level);
       sendJSON(res, 200, Object.assign({ ok: true }, payload));
     } catch (e) {
       if (e.code === 'BAD_REQUEST') {

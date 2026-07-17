@@ -5,21 +5,31 @@
 const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
-const dungen = require('../../sim/dungen.cjs');
 const { SQUAD_SLOTS, DEFAULT_FORMATION_ID, DEFAULT_LEVEL_MIN, getScheduleContent, genId } = require('./core.cjs');
 
-function resolveDungeonType(dungeonType, dungeonId) {
-  if (typeof dungeonType === 'string' && dungeonType) {
-    if (!dungen.DUNGEON_TYPES.includes(dungeonType)) {
-      const err = new Error('unknown dungeonType: ' + dungeonType + ' (known: ' + dungen.DUNGEON_TYPES.join(', ') + ')');
-      err.code = 'BAD_REQUEST';
-      throw err;
-    }
-    return dungeonType;
+// REQ-0185: a room's `dungeonId` now names an AUTHORED dungeon DEF (dungeon/1);
+// the dive is ROLLED from that def's weighted tables at start time. This
+// resolves + validates the id against the live def map. An unknown id is a
+// 400 (a caller mistake worth surfacing, same posture the old unknown-
+// dungeonType did). A legacy `dungeonType` opt is ignored (the def IS the
+// selection now). Absent dungeonId with EXACTLY one def falls back to that def
+// (the single-dungeon dev/fixture convenience the old resolveDungeonType had).
+function resolveDungeonDefId(dungeonId) {
+  const { dungeonDefsById } = getScheduleContent();
+  const ids = Object.keys(dungeonDefsById || {});
+  if (typeof dungeonId === 'string' && dungeonId) {
+    if (dungeonDefsById[dungeonId]) return dungeonId;
+    const err = new Error('unknown dungeonId: ' + dungeonId + ' (known: ' + ids.join(', ') + ')');
+    err.code = 'BAD_REQUEST';
+    throw err;
   }
-  const { dungeonDef } = getScheduleContent();
-  if (dungeonId === dungeonDef.id) return 'test_fixed';
-  return 'default';
+  // REQ-0185: dungeonId is REQUIRED on create (the original contract; the client
+  // always picks a DEF). No single-def fallback -- an absent id is a 400, exactly
+  // as the pre-REQ createRoom required. (runs.cjs/seals.cjs keep their own defensive
+  // first-def fallback for START/SEAL of a legacy room, a separate concern.)
+  const err = new Error('dungeonId is required (known: ' + ids.join(', ') + ')');
+  err.code = 'BAD_REQUEST';
+  throw err;
 }
 
 function validateCancelPolicy(cancelPolicy) {
@@ -36,11 +46,9 @@ function validateCancelPolicy(cancelPolicy) {
 // division of responsibility devBackdateActiveRun() already documents
 // ("Caller gating... NOT here").
 function createRoom(ownerId, opts) {
-  const { dungeonId, dungeonType, level, genSeed, formationId, cancelPolicy } = opts || {};
-  if (typeof dungeonId !== 'string' || !dungeonId) {
-    const err = new Error('dungeonId is required'); err.code = 'BAD_REQUEST'; throw err;
-  }
-  const resolvedType = resolveDungeonType(dungeonType, dungeonId);
+  const { dungeonId, level, genSeed, formationId, cancelPolicy } = opts || {};
+  // REQ-0185: validates dungeonId names a live dungeon def (400 if not).
+  const resolvedDungeonId = resolveDungeonDefId(dungeonId);
   const lvl = Number.isFinite(level) ? Math.max(DEFAULT_LEVEL_MIN, Math.floor(level)) : DEFAULT_LEVEL_MIN;
   const fId = (typeof formationId === 'string' && combat.FORMATIONS[formationId]) ? formationId : DEFAULT_FORMATION_ID;
   // genSeed: string or number accepted, coerced to a string (dungen.generate
@@ -54,8 +62,7 @@ function createRoom(ownerId, opts) {
   const room = {
     id: genId('room'),
     ownerId,
-    dungeonId,
-    dungeonType: resolvedType,
+    dungeonId: resolvedDungeonId,
     level: lvl,
     genSeed: seed,
     visibility: 'self', // golden c: P1-B rooms are always self-only (multi-visibility is P2)
@@ -145,7 +152,7 @@ function devClearRooms(callerId) {
 }
 
 module.exports = {
-  resolveDungeonType,
+  resolveDungeonDefId,
   validateCancelPolicy,
   createRoom,
   getRoomOr404,
