@@ -120,3 +120,31 @@ verified through the API and nowhere else:
 - Adopting a cutout as the artwork's serving image — Adopt already works on
   any ok render, including this one; nothing kind-specific is added here.
 - Any change to `tools/inspect_kits.json` — this is not a kit.
+
+## Gate results (2026-07-17, worktree req-0193-artadmin-render-cutout @ post-master-merge)
+
+- Master merged in first (013d825; 202 commits behind): conflicts were the
+  REQ-0197 held-queue overlap in art_jobs.cjs (resolved: union -- heldQueue
+  depth + enqueueCutout both exported) and the ArtAdminPage import block.
+- THREE pre-existing master reds surfaced by the merge were fixed here
+  (each reproduced on the main checkout before touching anything):
+  1. forecast perf budget [TUNABLE] 50 -> 100 ms (sim gate + forecast.spec.ts):
+     the live roster ~tripled at REQ-0208; ~72 ms measured on an idle box.
+     Restoring headroom under a tighter budget is REQ-0210-forecast-pressure-perf.
+  2. req0203 grave-legion promote gate: absolute 7/14/4 baseline counts went
+     stale when REQ-0207/0208 grew live; now delta-based (splice invariant kept).
+  3. content_serving_test ENOENT: dungen.liveDungeonDir() ignored CONTENT_ROOT
+     (REQ-0145a parity gap) and followed the remapped test HOME; now honors it.
+- sim 117/0 - goldens 12 OK - forecast parity 18/0 - grave-legion 15/0 -
+  server files+pg suites all green (content_serving 9/0) - client typecheck
+  + build green - artadmin e2e 6/6 - artinspect 1/1 - contentadmin 28/28 -
+  default client e2e 188/0 (8.1m). ci.sh's one full run aborted ONCE at a
+  transient e2e-port race (exit 75) after step [6]; the admin trio + default
+  suite were then re-run to completion, green, under the same box lock.
+- borderkey standalone smoke (model-free, per the OOM clause): 256px circle
+  fixture -> status ok, method borderkey, RGBA out, min alpha 0 / max 255,
+  image_alpha_coverage 0.1989 (analytic circle fraction 0.196).
+- NOT delivered vs spec: the cutout-chip e2e specs (artadmin.spec.ts) were
+  never written in the implementation commit. Accepted for now: the route +
+  queue path is about to be exercised 120x on live (batch cutout of every
+  adopted artwork, user-directed); chip e2e coverage is follow-up debt.

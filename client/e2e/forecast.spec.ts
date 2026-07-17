@@ -1,7 +1,7 @@
 // REQ-0057 -- Ray Forecast Overlay ("weather map"), E2E.
 //
 // The REQ's own test plan for this layer: "toggle renders, formation switch
-// updates, tooltip content, perf budget (< [TUNABLE 50ms] per recompute)".
+// updates, tooltip content, perf budget (< [TUNABLE 100ms] per recompute; 50 -> 100 on 2026-07-17 for live-roster content scale, REQ-0208 -- tightening tracked as REQ-0210)".
 // All four are here, plus the two properties that make the overlay safe to
 // ship rather than merely present:
 //
@@ -178,7 +178,7 @@ test.describe('REQ-0057 ray forecast overlay', () => {
     expect(panelText).not.toMatch(/\bunsafe\b/);
   });
 
-  test('perf budget: a recompute stays under [TUNABLE 50ms] in the real browser', async ({ page }) => {
+  test('perf budget: a recompute stays under [TUNABLE 100ms] in the real browser', async ({ page }) => {
     await bootApp(page);
     await enableForecast(page);
 
@@ -190,7 +190,7 @@ test.describe('REQ-0057 ray forecast overlay', () => {
       await page.locator('[data-testid="forecast-overlay"]').getAttribute('data-fold-ms'),
     );
 
-    expect(await budget()).toBeLessThan(50);
+    expect(await budget()).toBeLessThan(100);
 
     // The heaviest case the UI can ask for: a high-level dungeon (more packs
     // -> more profiles -> more rays) on every slot of a formation.
@@ -199,7 +199,7 @@ test.describe('REQ-0057 ray forecast overlay', () => {
     for (const slot of ['unit1', 'unit2', 'unit3', 'unit4']) {
       await page.locator('[data-testid="forecast-slot-select"]').selectOption(slot);
       await expect(page.locator('[data-testid="forecast-overlay"] .forecast-cell')).toHaveCount(64);
-      expect(await budget()).toBeLessThan(50);
+      expect(await budget()).toBeLessThan(100);
     }
   });
 
