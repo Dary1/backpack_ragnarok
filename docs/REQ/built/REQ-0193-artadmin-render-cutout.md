@@ -148,3 +148,52 @@ verified through the API and nowhere else:
   never written in the implementation commit. Accepted for now: the route +
   queue path is about to be exercised 120x on live (batch cutout of every
   adopted artwork, user-directed); chip e2e coverage is follow-up debt.
+
+## Live sweep + acceptance (2026-07-18)
+
+The user-directed live batch named in the gate record above ("exercised 120x on
+live") ran against backpack-dev through the REQ-0193 route
+(`POST /api/art/artworks/:name/renders/:seed/cutout` -> `enqueueCutout()` ->
+the single-flight `pump()`), never a standalone matte. Two passes:
+
+- **2026-07-17** `/tmp/cutout_sweep.py`: `done=111 skipped=43 failed=25`. All 25
+  failures were the client's own 60 s HTTP read timeout under multi-session box
+  load (`urlopen(..., timeout=60)`), not job failures — several of the timed-out
+  cutouts had in fact completed server-side, which the re-run then found and
+  adopted. No cutout job ever returned `failed`.
+- **2026-07-18** same script, re-run for idempotency: `done=26 skipped=154
+  failed=0`. Before starting it, ComfyUI was restarted BY HAND to return its
+  ~10.5 GB host RSS (the REQ-0233 gen->matte barrier, applied manually because
+  REQ-0233 is not deployed yet); the box went 14 GB used -> 3 GB used, and the
+  whole pass ran with zero timeouts and zero failures at ~32 s/cutout.
+
+The script is idempotent by construction: it skips an artwork whose adopted
+render is already a cutout, and re-adopts an existing `ok` cutout of the adopted
+seed rather than queuing a second one.
+
+**Verification (`/tmp/verify_cutouts.py`, 2026-07-18):** every adopted artwork's
+adopted render carries `params.derived == 'background_cutout'` —
+**185/185, 0 exceptions**: po 69/69, monster 62/62, unit 41/41, si 7/7,
+custom 1/1, bpskin 5/5. Per-kind transparency spot-checks all pass: RGBA,
+`min_alpha=0`, `max_alpha=255`, plausible transparent fractions (po blade 0.775,
+monster goblin 0.569, unit elf 0.433, si acc_gem 0.668, custom
+beastreach_wilds 0.882). The route, the queue path, and the RGBA output are
+confirmed on live at a scale no e2e spec would reach.
+
+**Known deviation, accepted by the user (chat, 2026-07-18) — see REQ-0241.**
+The 5 bpskin entries in that 185 should NOT be cutouts: bpskin artworks are
+tiling textures whose fills must stay opaque. The first 7/17 pass
+(`/tmp/cutout_batch.py`) had no kind filter and cut them out before the operator
+instruction landed; the filter added at 12:09 only protected later passes. Shown
+the finding, the user chose to leave live as-is and handle it in a separate REQ.
+REQ-0241-bpskin-adopted-cutout-revert (draft) carries it, including the open
+question of whether the route should refuse `kind === 'bpskin'` outright. It is
+live-data fallout of the sweep, not a defect in the code this REQ delivers.
+
+**Still-open debt (unchanged):** the cutout-chip e2e specs in `artadmin.spec.ts`
+were never written. The live sweep is now the evidence that the route + queue
+path works; chip-level e2e coverage remains follow-up debt.
+
+**Disposition:** merged to master (branch fully contained: 0 ahead / 139 behind
+before the doc merge), deployed (live `backpack-api` serves the route and the
+sweep ran through it), accepted by the user. built -> done.
