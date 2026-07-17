@@ -65,7 +65,12 @@ PIDS+=($!)
 setsid python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0155_e2e_static.log 2>&1 &
 PIDS+=($!)
 
-E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \
+# REQ-0231 x REQ-0217 fallout: the post-0217 local-proxy routes /api by
+# X-E2E-Worker to E2E_FLEET_BASE_PORT+index (headerless -> +0) and no longer
+# honours E2E_API_PORT. Point the "fleet" at THIS harness's single api, and
+# pin it EXPLICITLY so an ambient E2E_FLEET_BASE_PORT from a scoped outer CI
+# run can never leak in and 502 the specs.
+E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
   setsid node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0155_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
