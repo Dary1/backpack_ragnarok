@@ -52,3 +52,22 @@ surfaced it.
 ## Log
 - 2026-07-17 reserved as REQ-0214 (e1abd3b), spec ratified straight to todo
   per user directive.
+
+## Implementation notes (2026-07-17)
+- Design amendment: storage isAllowedProfileId = "any known player id"
+  (REQ-0037), so the redirect lazily provisions the e2e player via
+  players.ensureFixedPlayer (ensureDevPlayer pattern) on first use; the
+  resolved fallback object strips the token (dev or e2e) so a redirected
+  caller can never learn a real token.
+- Residual shared-state risk noted, out of scope: /api/market/listings/dev/
+  clear-all clears the WHOLE shared market shelf (including human-made
+  listings) on every e2e run; the redirect does not change that.
+
+## Gate results
+- e2e_profile_redirect_test: 9/9 (files + pg). auth_jwt_test files+pg,
+  api_test files+pg, tsc server, client build: green.
+- Route smoke (throwaway worktree api, files backend): default alias PUT/GET
+  with header -> profiles/e2e_ci.json, dev untouched; dev hooks work under
+  redirect; bogus token 401.
+- Live verification pending deploy: run full main e2e, assert pg dev row
+  updated_at unchanged and new writes confined to e2e_ci.
