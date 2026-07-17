@@ -8,6 +8,7 @@
 // doctrine). Run ONLY via tools/e2e_run.sh (box lock) with the isolated
 // instance from tools/art_inspect_e2e.sh.
 import { test, expect } from '@playwright/test';
+import { gotoReady } from './helpers'; // REQ-0222: domcontentloaded + readiness probe
 import type { Page } from '@playwright/test';
 
 const NAME = 'e2e_insp_sword';
@@ -21,7 +22,7 @@ async function selectArtwork(page: Page) {
 test('inspection kits: generate -> chips -> persist -> stale -> re-run -> adopt despite WARN', async ({ page, request }) => {
   await request.post('/api/art/dev/clear-all');
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
 
   // create a po sword: 3 vertical cells -> 256x768

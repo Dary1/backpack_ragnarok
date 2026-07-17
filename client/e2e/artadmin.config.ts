@@ -4,12 +4,13 @@
 // isolated pg-namespaced instance of THIS worktree). baseURL = the local
 // proxy. Run via tools/e2e_run.sh --config=e2e/artadmin.config.ts (box lock).
 import { defineConfig, devices } from '@playwright/test';
+import { scaled } from './load-seam'; // REQ-0222: widen timeouts on a loaded box
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8903';
 export default defineConfig({
   testDir: '.',
   testMatch: '**/artadmin.spec.ts',
-  timeout: 150_000,
-  expect: { timeout: 10_000 },
+  timeout: scaled(150_000), // REQ-0222
+  expect: { timeout: scaled(10_000) },
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -18,8 +19,8 @@ export default defineConfig({
     baseURL: BASE_URL,
     headless: true,
     viewport: { width: 1400, height: 1000 },
-    actionTimeout: 15_000,
-    navigationTimeout: 20_000,
+    actionTimeout: scaled(15_000),
+    navigationTimeout: scaled(20_000),
     trace: 'retain-on-failure',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1400, height: 1000 } } }],

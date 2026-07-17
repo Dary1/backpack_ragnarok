@@ -20,6 +20,7 @@
 // rail list-error panel, per-kind schema_ref defaults, the dirty-draft guard,
 // and local-time card timestamps.
 import { test, expect } from '@playwright/test';
+import { gotoReady } from './helpers'; // REQ-0222: domcontentloaded + readiness probe
 import type { APIRequestContext, Page } from '@playwright/test';
 
 const NAME = 'e2e_content';
@@ -84,14 +85,14 @@ test('REQ-0133 wiring: an adopted registry render draws from the registry URL; n
   await apiIngest(request, 'e2e_wire_sprite', [variant(1)]);
 
   // registry tier: 'blade' resolves (exact-name) to its adopted backfilled render
-  await page.goto('/app/#/contentadmin/blade');
+  await gotoReady(page, '/app/#/contentadmin/blade');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await expect(page.getByTestId('entity-art-source-1')).toHaveText('registry art');
   await expect(page.getByTestId('entity-preview-1').locator('.shape-grid-cell-icon'))
     .toHaveAttribute('src', /\/api\/art\/blade/);
 
   // sprite tier: no artwork for this name -> the SVG sprite data-URL
-  await page.goto('/app/#/contentadmin/e2e_wire_sprite');
+  await gotoReady(page, '/app/#/contentadmin/e2e_wire_sprite');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await expect(page.getByTestId('entity-art-source-1')).toHaveText('sprite icon');
   await expect(page.getByTestId('entity-preview-1').locator('.shape-grid-cell-icon'))
@@ -101,7 +102,7 @@ test('REQ-0133 wiring: an adopted registry render draws from the registry URL; n
 test('content admin: create (panel) -> commission+copy -> parse preview gates ingest -> checks -> review -> JSON view -> diff -> adopt (confirm) -> serve -> delete (confirm) -> edit modal -> re-adopt -> recheck', async ({ page, request }) => {
   await request.post('/api/content/dev/clear-all');
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await expect(page.getByTestId('contentadmin')).toBeVisible();
 
   // REQ-0157: the create flow lives behind cd-new (dedicated panel)
@@ -233,7 +234,7 @@ test('FAIL variant: rail warning dot; adopt demands the explicit override toggle
   (broken.data.effects[0].verb as { t: string }).t = 'NOT_A_REAL_VERB';
   await apiIngest(request, 'e2e_faildef', [broken]);
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await expect(page.getByTestId('cd-select-e2e_faildef')).toBeVisible();
   // the def browser flags the FAILed checks
   await expect(page.getByTestId('cd-faildot-e2e_faildef')).toBeVisible();
@@ -266,7 +267,7 @@ test('def browser: search (name + brief) + kind/adoption filters narrow the list
   const adopt = await request.post('/api/content/defs/e2e_blade/adopt', { data: { variant_no: 1 } });
   expect(adopt.status()).toBe(200);
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await expect(page.getByTestId('cd-select-e2e_blade')).toBeVisible();
   await expect(page.getByTestId('cd-select-e2e_potion')).toBeVisible();
 
@@ -304,7 +305,7 @@ test('layout: no page-level horizontal scroll with payload + JSON + diff open', 
   await apiCreateDef(request, { system_name: 'e2e_wide', kind: 'po_def', brief: 'width probe', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_wide', [variant(1), variant(2)]);
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-select-e2e_wide').click();
   await expect(page.getByTestId('cd-detail')).toBeVisible();
   await page.getByTestId('cd-commission').click();
@@ -332,7 +333,7 @@ test('workflow strip: collapsed by default on an adopted def; toggle expands; fr
   expect(adopt.status()).toBe(200);
   await apiCreateDef(request, { system_name: 'e2e_fresh', kind: 'si_def', brief: 'fresh def', schema_ref: 'si/2' });
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-select-e2e_adopted').click();
   await expect(page.getByTestId('cd-detail')).toBeVisible();
   // adopted -> collapsed: one-line summary shows, the commission step is hidden
@@ -353,7 +354,7 @@ test('cd-msg clears on def switch', async ({ page, request }) => {
   await apiCreateDef(request, { system_name: 'e2e_msg_a', kind: 'po_def', brief: 'a', schema_ref: 'po/2' });
   await apiCreateDef(request, { system_name: 'e2e_msg_b', kind: 'po_def', brief: 'b', schema_ref: 'po/2' });
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-select-e2e_msg_a').click();
   await expect(page.getByTestId('cd-detail')).toBeVisible();
   await page.getByTestId('cd-commission').click();
@@ -369,7 +370,7 @@ test('deep link: #/contentadmin/<name> selects on load; selecting rewrites the h
   await apiCreateDef(request, { system_name: 'e2e_link', kind: 'po_def', brief: 'deep link target', schema_ref: 'po/2' });
   await apiCreateDef(request, { system_name: 'e2e_other', kind: 'si_def', brief: 'other def', schema_ref: 'si/2' });
 
-  await page.goto('/app/#/contentadmin/e2e_link');
+  await gotoReady(page, '/app/#/contentadmin/e2e_link');
   await expect(page.getByTestId('cd-detail')).toBeVisible();
   await expect(page.getByTestId('cd-detail')).toContainText('e2e_link');
   await expect(page).toHaveURL(/#\/contentadmin\/e2e_link$/);
@@ -389,7 +390,7 @@ test('rail sort: created / name / activity reorder the list', async ({ page, req
   // only mid_def has ingest activity -> most-recent last_variant_at
   await apiIngest(request, 'mid_def', [variant(1)]);
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await expect(page.getByTestId('cd-select-mid_def')).toBeVisible();
 
   await page.getByTestId('cd-sort-created').click();
@@ -406,7 +407,7 @@ test('rail: list-failure shows the cd-list-error panel with the admin-token hint
   await page.route('**/api/content/defs', (route) =>
     route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'boom-token' }) }));
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await expect(page.getByTestId('contentadmin')).toBeVisible();
   await expect(page.getByTestId('cd-list-error')).toBeVisible();
   await expect(page.getByTestId('cd-list-error')).toContainText('boom-token');
@@ -418,7 +419,7 @@ test('rail: list-failure shows the cd-list-error panel with the admin-token hint
 // while the field is pristine; a user-typed value wins after that.
 test('create panel: per-kind schema_ref default auto-swaps only while pristine', async ({ page, request }) => {
   await request.post('/api/content/dev/clear-all');
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-new').click();
   await expect(page.getByTestId('cd-create-panel')).toBeVisible();
 
@@ -440,7 +441,7 @@ test('dirty-draft guard: switching def with unsaved edits raises the discard con
   await apiCreateDef(request, { system_name: 'e2e_dirty', kind: 'po_def', brief: 'orig brief', schema_ref: 'po/2' });
   await apiCreateDef(request, { system_name: 'e2e_clean', kind: 'po_def', brief: 'clean brief', schema_ref: 'po/2' });
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-select-e2e_dirty').click();
   await expect(page.getByTestId('cd-detail')).toBeVisible();
   await page.getByTestId('cd-edit-brief').fill('edited but unsaved');
@@ -467,7 +468,7 @@ test('variant card: created renders local time with the raw ISO as its title', a
   await apiCreateDef(request, { system_name: 'e2e_time', kind: 'po_def', brief: 't', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_time', [variant(1)]);
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   await page.getByTestId('cd-select-e2e_time').click();
   await expect(page.getByTestId('variant-1')).toBeVisible();
 
@@ -500,7 +501,7 @@ test('entity preview: po variant renders EN name, rarity chip, and a shape grid'
   await apiCreateDef(request, { system_name: 'e2e_ep_po', kind: 'po_def', brief: 'entity preview po', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_ep_po', [variant(1)]);
 
-  await page.goto('/app/#/contentadmin/e2e_ep_po');
+  await gotoReady(page, '/app/#/contentadmin/e2e_ep_po');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   const ep = page.getByTestId('entity-preview-1');
   await expect(ep).toBeVisible();
@@ -521,7 +522,7 @@ test('entity preview: si variant falls back to the [[0,0]] anchor grid', async (
     provenance: { source: 'llm', model: 'm', model_version: '1', prompt: 'p', params: {}, seed_if_any: null },
   }]);
 
-  await page.goto('/app/#/contentadmin/e2e_ep_si');
+  await gotoReady(page, '/app/#/contentadmin/e2e_ep_si');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   const ep = page.getByTestId('entity-preview-1');
   await expect(ep).toContainText('E2E Charm');
@@ -537,7 +538,7 @@ test('entity preview: unconsumed top-level fields appear in the fallback key:val
   v.data.mystery_field = 'do_not_hide_me';
   await apiIngest(request, 'e2e_ep_fb', [v]);
 
-  await page.goto('/app/#/contentadmin/e2e_ep_fb');
+  await gotoReady(page, '/app/#/contentadmin/e2e_ep_fb');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   const fb = page.getByTestId('entity-fallback-1');
   await expect(fb).toBeVisible();
@@ -553,7 +554,7 @@ test('edit form: change rarity + add effect; JSON tab + submitted variant preser
   await apiCreateDef(request, { system_name: 'e2e_form', kind: 'po_def', brief: 'form edit', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_form', [variant(1)]);
 
-  await page.goto('/app/#/contentadmin/e2e_form');
+  await gotoReady(page, '/app/#/contentadmin/e2e_form');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await page.getByTestId('edit-open-1').click();
 
@@ -597,7 +598,7 @@ test('edit form: JSON-only kind (monster_def) disables the Form tab with a note'
     provenance: { source: 'llm', model: 'm', model_version: '1', prompt: 'p', params: {}, seed_if_any: null },
   }]);
 
-  await page.goto('/app/#/contentadmin/e2e_mon');
+  await gotoReady(page, '/app/#/contentadmin/e2e_mon');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   // the entity preview renders monster fields (hp range chip + skills)
   await expect(page.getByTestId('entity-preview-1')).toContainText('hp [10–20]');
@@ -615,7 +616,7 @@ test('diff: entity headers + changed-field chips above the line diff', async ({ 
   await apiCreateDef(request, { system_name: 'e2e_diff', kind: 'po_def', brief: 'diff probe', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_diff', [variant(1), variant(2)]);
 
-  await page.goto('/app/#/contentadmin/e2e_diff');
+  await gotoReady(page, '/app/#/contentadmin/e2e_diff');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await page.getByTestId('diff-pick-1').check();
   await page.getByTestId('diff-pick-2').check();
@@ -635,7 +636,7 @@ test('adopt confirm: the dialog shows the compact entity preview', async ({ page
   await apiCreateDef(request, { system_name: 'e2e_adopt_ep', kind: 'po_def', brief: 'adopt preview', schema_ref: 'po/2' });
   await apiIngest(request, 'e2e_adopt_ep', [variant(1)]);
 
-  await page.goto('/app/#/contentadmin/e2e_adopt_ep');
+  await gotoReady(page, '/app/#/contentadmin/e2e_adopt_ep');
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await page.getByTestId('adopt-1').click();
   await expect(page.getByTestId('confirm-dialog')).toBeVisible();
@@ -654,7 +655,7 @@ test('rail thumb: art-facet def shows the placeholder thumb deep-linking to the 
   expect(ar.status()).toBe(201);
   await apiCreateDef(request, { system_name: 'e2e_faceted', kind: 'si_def', brief: 'has an art facet', schema_ref: 'si/2' });
 
-  await page.goto('/app/#/contentadmin');
+  await gotoReady(page, '/app/#/contentadmin');
   const thumb = page.getByTestId('cd-thumb-e2e_faceted');
   await expect(thumb).toBeVisible({ timeout: 30000 });
   // placeholder branch: no <img>, deep-links to the artwork entity
@@ -678,7 +679,7 @@ test('artwork picker: select links the def-level ref; clear resets; bogus ref ->
   }
   await apiCreateDef(request, { system_name: 'pick_def', kind: 'si_def', brief: 'picker target', schema_ref: 'si/2' });
 
-  await page.goto('/app/#/contentadmin/pick_def');
+  await gotoReady(page, '/app/#/contentadmin/pick_def');
   await expect(page.getByTestId('cd-detail')).toBeVisible({ timeout: 30000 });
   await expect(page.getByTestId('cd-artwork-facet')).toContainText('none');
 
@@ -727,7 +728,7 @@ async function openEditor(page: Page, request: APIRequestContext, name: string) 
   await request.post('/api/content/dev/clear-all');
   await apiCreateDef(request, { system_name: name, kind: 'po_def', brief: 'editor port', schema_ref: 'po/2' });
   await apiIngest(request, name, [variant(1)]);
-  await page.goto('/app/#/contentadmin/' + name);
+  await gotoReady(page, '/app/#/contentadmin/' + name);
   await expect(page.getByTestId('variant-1')).toBeVisible({ timeout: 60000 });
   await page.getByTestId('edit-open-1').click();
   await expect(page.getByTestId('edit-form-rarity-1')).toBeVisible({ timeout: 20000 });
@@ -916,7 +917,7 @@ test('REQ-0182b: the relocated grant-to-warehouse button on the adopted variant 
 
   const beforeCount = (((await (await request.get('/api/warehouse')).json()).items) || []).length;
 
-  await page.goto('/app/#/contentadmin/' + SYS);
+  await gotoReady(page, '/app/#/contentadmin/' + SYS);
   await expect(page.getByTestId('variant-adopted-1')).toBeVisible();
 
   // the relocated grant button sits on the adopted card

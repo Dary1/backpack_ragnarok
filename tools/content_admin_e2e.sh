@@ -51,7 +51,10 @@ HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" 
   node "$WT/server/api.cjs" > /tmp/req0155_e2e_api.log 2>&1 &
 PIDS+=($!)
 
-python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0155_e2e_static.log 2>&1 &
+# REQ-0222: node event-loop static server (keep-alive) replaces python's
+# http.server -- see tools/e2e_known_flaky.tsv (goto-under-load) and the
+# REQ-0222 file for the measured load-scaling evidence.
+E2E_STATIC_PORT="$STATICPORT" E2E_STATIC_ROOT="$WT/web" node "$WT/client/e2e/static-server.cjs" > /tmp/req0155_e2e_static.log 2>&1 &
 PIDS+=($!)
 
 E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \

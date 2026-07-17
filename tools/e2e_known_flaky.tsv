@@ -1,0 +1,17 @@
+# tools/e2e_known_flaky.tsv -- REQ-0222: THE one greppable registry of
+# known-flaky e2e failure FAMILIES (failure modes, not specs). Consumed by
+# tools/e2e_flaky_gate.sh: when EVERY failure in an e2e step matches a family
+# here, the step is rerun ONCE via the box-locked runner; a second red -- or
+# ANY unmatched failure -- aborts exactly as before (real-regression
+# behaviour unchanged).
+#
+# Columns (TAB-separated):
+#   family         short id
+#   spec-pattern   grep -E over the playwright failure block; "-" = any spec
+#   error-pattern  grep -E over the same block (both must match)
+#   provenance     dated evidence. An entry WITHOUT provenance is invalid.
+# Never add a family to make a red green: entries describe ENVIRONMENTAL
+# failure modes proven to pass on rerun, with the mechanism understood.
+goto-under-load	-	page\.goto: Timeout [0-9]+ms exceeded	REQ-0191 deploy 2026-07-16: goto scales with box load (13.0s quiet PASS -> 22.1s load~7 -> 27-29s load~10 FAIL) under the owner's concurrent GPU/art workload; page fully rendered in every failing snapshot. Same family aborted the REQ-0182b release (artadmin:113, reference-model:321; both reran green). Mitigated (not eliminated) by REQ-0222 domcontentloaded+readiness-probe+load-seam.
+cold-start-first-test	-	(browserType\.launch|browserContext\.newPage|browser\.newContext): Timeout	REQ-0182b deploy 2026-07-16: first test after harness bring-up timed out minutes after the identical spec passed 5/5 (chromium first launch + cold bundle compile); reran green via the locked runner.
+webgl-swiftshader	(bp-rotate|bp-transfer|reference-model|tab-switch-stability|tab-reorder-trash|grid-8x8|canvas-chrome|canvas-side-panel|link-trace)\.spec\.ts	Test timeout of [0-9]+ms exceeded	REQ-0182b 2026-07-16: 11 PixiJS WebGL specs timed out in an E2E_GPU=0 run (CPU SwiftShader rendering; REQ-0080 measured the chrome gpu-process at 448% CPU), all 11 green on rerun with E2E_GPU=1. Expected only when E2E_GPU=0 or the GPU is contended.

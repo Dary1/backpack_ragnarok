@@ -21,6 +21,7 @@
 // the live profile around the whole run, since several tests PUT canvas
 // state to the real API (there is no separate test/staging profile).
 import { defineConfig, devices } from '@playwright/test';
+import { scaled } from './e2e/load-seam'; // REQ-0222: widen timeouts on a loaded box
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://backpack-dev.qtie.jp';
 // REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
@@ -66,8 +67,8 @@ export default defineConfig({
   // untouchable. They are NOT skipped coverage: tools/ci.sh runs all three
   // harnesses as its own explicit step (see "[6.5/8] admin e2e harnesses").
   testIgnore: ['**/artadmin.spec.ts', '**/artinspect.spec.ts', '**/contentadmin.spec.ts'],
-  timeout: 30_000,
-  expect: { timeout: 5_000 },
+  timeout: scaled(30_000), // REQ-0222
+  expect: { timeout: scaled(5_000) },
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order
   workers: PARALLEL > 0 ? PARALLEL : 1,
   retries: 0,
@@ -103,8 +104,8 @@ export default defineConfig({
     // for both the side-by-side layout AND enough vertical room that even
     // a stacked fallback keeps every element within the viewport).
     viewport: { width: 2000, height: 1400 },
-    actionTimeout: 10_000,
-    navigationTimeout: 15_000,
+    actionTimeout: scaled(10_000),
+    navigationTimeout: scaled(15_000),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },

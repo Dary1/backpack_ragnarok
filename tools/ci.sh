@@ -21,6 +21,8 @@ cd "$(dirname "$0")/.."
 # it costs milliseconds, so it goes in front of everything.
 echo "==== [0/8] e2e harness port rule (REQ-0172) ===="
 node tools/check_e2e_ports.cjs
+echo "==== [0.5/8] e2e flaky-gate self-test (REQ-0222) ===="
+bash tools/tests/flaky_gate_test.sh
 echo "==== [1/7] sim tests ===="
 node sim/tests/run.cjs
 echo "==== [2/7] sim replay goldens (determinism contract) ===="
@@ -188,9 +190,13 @@ fi
 if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT:-0}" != "1" ]; then
   echo "==== [6.5/8] admin e2e harnesses (artadmin + artinspect + contentadmin, REQ-0156/0152/0157) ===="
   : "${DATABASE_URL:?SKIP_PG=1 or set DATABASE_URL}"
-  bash tools/artadmin_e2e.sh
-  bash tools/art_inspect_e2e.sh
-  bash tools/content_admin_e2e.sh
+  # REQ-0222: each harness runs through the flaky-gate -- if EVERY failure
+  # matches a family in tools/e2e_known_flaky.tsv the harness is rerun ONCE
+  # (still via tools/e2e_run.sh's box lock inside the harness); any unknown
+  # failure aborts immediately, exactly as before.
+  bash tools/e2e_flaky_gate.sh artadmin bash tools/artadmin_e2e.sh
+  bash tools/e2e_flaky_gate.sh artinspect bash tools/art_inspect_e2e.sh
+  bash tools/e2e_flaky_gate.sh contentadmin bash tools/content_admin_e2e.sh
 else
   echo "==== [6.5/8] admin e2e harnesses SKIPPED ===="
 fi
@@ -202,7 +208,9 @@ if [ "${SKIP_E2E:-0}" != "1" ]; then
   # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
   (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
                 E2E_GPU="${E2E_GPU:-1}" \
-                E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
+                E2E_PARALLEL="${E2E_PARALLEL:-4}" \
+                E2E_FLAKY_RERUN="pnpm run e2e -- --last-failed" \
+                bash ../tools/e2e_flaky_gate.sh suite pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial); REQ-0222: flaky-gate, rerun narrows to --last-failed
 else
   echo "==== [7/7] client e2e SKIPPED ===="
 fi

@@ -103,3 +103,15 @@ export async function longPress(page: Page, box: { x: number; y: number; width: 
   await page.mouse.up();
   await page.waitForTimeout(150);
 }
+
+/** REQ-0222: load-resilient navigation for the admin harness specs.
+ * page.goto's default waits for the `load` event (every asset of the 1.4 MB
+ * PixiJS bundle), whose duration scales with box load until it crosses
+ * navigationTimeout (REQ-0191: 13 s quiet -> 27-29 s at load ~10, the page
+ * fully rendered in every failing snapshot). Wait only for domcontentloaded,
+ * then probe the app's real readiness signal -- React mounted into #root --
+ * which is all the specs depend on before their own expects take over. */
+export async function gotoReady(page: Page, url: string): Promise<void> {
+  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  await page.locator('#root > *').first().waitFor({ state: 'attached' });
+}

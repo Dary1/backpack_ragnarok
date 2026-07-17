@@ -9,6 +9,7 @@
 // namespace; never the live services). Run ONLY via tools/e2e_run.sh
 // (box lock) -- tools/artadmin_e2e.sh does exactly that.
 import { test, expect } from '@playwright/test';
+import { gotoReady } from './helpers'; // REQ-0222: domcontentloaded + readiness probe
 import type { Page, APIRequestContext } from '@playwright/test';
 
 const NAME = 'e2e_sword';
@@ -49,7 +50,7 @@ async function apiCreate(request: APIRequestContext, body: Record<string, unknow
 test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -> serve -> delete rules -> re-adopt via lightbox', async ({ page, request }) => {
   await request.post('/api/art/dev/clear-all');
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
 
   // REQ-0156: the create flow lives behind art-new (dedicated panel)
@@ -126,7 +127,7 @@ test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs uno
   await apiCreate(request, { system_name: 'e2e_axe', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
   await apiCreate(request, { system_name: 'e2e_orb', kind: 'si', main_object: 'blue orb' });
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await page.getByTestId('art-select-e2e_axe').click();
   await expect(page.getByTestId('art-editor')).toBeVisible();
   await page.getByTestId('art-gen-next').click();
@@ -199,7 +200,7 @@ test('registry browser: search + kind/adoption filters narrow the list', async (
   await apiCreate(request, { system_name: 'e2e_sword', kind: 'po', shape: { mask: swordMask() }, main_object: 'iron sword' });
   await apiCreate(request, { system_name: 'e2e_potion', kind: 'si', main_object: 'red potion' });
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await expect(page.getByTestId('art-select-e2e_sword')).toBeVisible();
   await expect(page.getByTestId('art-select-e2e_potion')).toBeVisible();
 
@@ -232,7 +233,7 @@ test('queue: cancel a pending job -> failed \'canceled by user\'; rest complete;
   await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_q', kind: 'si', main_object: 'blue orb' });
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await page.getByTestId('art-select-e2e_q').click();
   await expect(page.getByTestId('art-editor')).toBeVisible();
 
@@ -274,7 +275,7 @@ test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page,
   await request.post('/api/art/dev/clear-all');
   await apiCreate(request, { system_name: 'e2e_deeplink', kind: 'si', main_object: 'ruby amulet' });
 
-  await page.goto('/app/#/artadmin/e2e_deeplink');
+  await gotoReady(page, '/app/#/artadmin/e2e_deeplink');
   await expect(page.getByTestId('artadmin')).toBeVisible();
   await expect(page.getByTestId('art-editor')).toBeVisible({ timeout: 30000 });
   await expect(page.getByTestId('art-editor')).toContainText('e2e_deeplink');
@@ -285,7 +286,7 @@ test('deep link: #/artadmin/<name> selects that artwork on load', async ({ page,
 // texture kind linkable to no-art-kind content (e.g. gacha_pack) via contentadmin.
 test('custom kind: operator sets resolution (snapped) and the prompt is verbatim (no style tail)', async ({ page, request }) => {
   await request.post('/api/art/dev/clear-all');
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await expect(page.getByTestId('artadmin')).toBeVisible();
   await page.getByTestId('art-new').click();
   await page.getByTestId('art-kind').selectOption('custom');
@@ -316,7 +317,7 @@ test('REQ-0216 true-scale thumbs: constant px-per-cell across footprints', async
   await apiCreate(request, { system_name: 'e2e_gem', kind: 'po', shape: { mask: gem }, main_object: 'small gem' });
   await apiCreate(request, { system_name: 'e2e_axe2', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
 
-  await page.goto('/app/#/artadmin');
+  await gotoReady(page, '/app/#/artadmin');
   await page.getByTestId('art-select-e2e_gem').click();
   await expect(page.getByTestId('art-editor')).toBeVisible();
   await page.getByTestId('art-gen-next').click();
