@@ -97,3 +97,17 @@ Implementation commit 74d0762 on branch req-0208-dex-unit-monster-kinds.
 Built, NOT merged/deployed -- deploy needs the usual coordination on the
 main checkout + backpack-api/backpack-web restart (HANDS-OFF without user
 go-ahead).
+
+## Deploy record (2026-07-17)
+- Pre-deploy: master (REQ-0207 wildlands) merged INTO the branch; api tests
+  re-run green (186/186; monsters section picked up the batch-006 roster:
+  15 -> 27 served monsters, 28 -> 48 referenced skills).
+- Merged to master (--no-ff) and deployed: backpack-api + backpack-web
+  restarted, both active. User-directed (2026-07-17).
+- Live verification on https://backpack-dev.qtie.jp:
+  /api/content serves monsters=27, monster_skills=48, units=42
+  (ja names verified: frost_gnoll -> フロストノール, gnoll_claw -> ノールの爪);
+  the served bundle contains the new tab keys; art_urls resolves adopted
+  renders for 20/27 monsters (the rest show the rune placeholder by design).
+- Status: LIVE. Stays in built/ pending user acceptance (built -> done on
+  acceptance, per the REQ state policy).
