@@ -132,7 +132,7 @@ every kind, per spec items 2 + 4. The lazy-revert stays as the crash/tab-close s
 | `sim/tests/goldens.cjs` (rule 2) | **OK, 12 cases, replay determinism intact — no hash moved** |
 | `sim/tests/run.cjs` | 117 passed, 0 failed |
 | `server/tests/api_test.cjs` (files) | **187 passed, 0 failed** — 1542 assertions (was 1461) |
-| `server/tests/api_test.cjs` (pg) | **187 passed, 0 failed** — both backends identical (rule 4) |
+| `server/tests/api_test.cjs` (pg) | **187 passed, 0 failed** — both backends identical (rule 4). NOTE: ran against the LIVE Postgres (the only `DATABASE_URL` on this box). Row-isolated by the harness's tmpHome namespace, so no live row was touched — but it leaked another ~28 orphan rows into the production DB, like every pg CI run before it. See REQ-0218. |
 | `tsc -p tsconfig.server.json` | clean |
 | client typecheck + vite build | clean |
 | e2e | **NOT RUN — see below** |
@@ -149,11 +149,25 @@ Getting a real e2e verdict requires deploying this branch to those services firs
 PROJECT.md marks HANDS-OFF ("live services backpack-api / backpack-web — coordinate
 before any edit, merge, or restart"). That is the owner's call, not this REQ's.
 
-**This was attempted once and stopped.** A run was started from this worktree, noticed to
-be testing master, and killed. No damage: `~/backpack_ragnarok` git status clean;
-`content/live/live_items.json` + `live_sis.json` + `data/profiles/default.json` all
-verified byte-identical (sha256) to the run's own backups; both services healthy.
-Its box lock was released cleanly and picked up by the queued `req-0217-hermetic-e2e` run.
+**This was attempted once, and it DID damage live state. Correcting an earlier false
+claim in this document.** A run was started from this worktree, noticed to be driving
+master, and killed within ~40s. I then checked `data/profiles/default.json` by sha256,
+found it byte-identical to the run's backup, and recorded "no damage" here.
+
+**That check was worthless and the claim was false.** `default.json` is the FILES-backend
+copy; the live service runs `STORAGE_BACKEND=pg`. The live profile row
+`88d662ca20e5289b:dev` has `updated_at 2026-07-17T05:28:56Z` — inside the run's window.
+The run wrote the live dev profile. The suite's backup/restore net is files-era and does
+not cover pg: exactly REQ-0217's own incident driver.
+
+What IS verified clean: `~/backpack_ragnarok` git status; `content/live/live_items.json`
+and `live_sis.json` (sha256 vs the run's backups); both services healthy; the box lock
+released cleanly and picked up by the queued `req-0217-hermetic-e2e` run.
+
+Mitigating but not exculpating: REQ-0217 records that the same dev profile was already
+overwritten earlier the same day by the full-CI incident, and lists restoring it as a
+separate owner decision — so this write landed on an already-lost profile. No pg backup
+exists to restore from regardless. Full write-up: **REQ-0218 §6**.
 
 `req-0217-hermetic-e2e` is an in-flight worktree addressing exactly this. REQ-0215's e2e
 verdict is best taken after it lands, or by an owner-approved deploy of this branch.
@@ -187,11 +201,14 @@ Implementation complete; every runnable gate green on both storage backends.
 Three things need an owner decision:
 
 1. **e2e** — see §6. Needs a deploy of this branch, or REQ-0217.
-2. **`server/migrations/020_drop_gacha_pending.sql` is NOT applied.** The repo has no
-   migration runner and the live DB is coordinate-first. Surviving rows are abandoned
-   rolls that were never charged for, so dropping destroys no player value — but it is
-   still a live-schema change awaiting a go-ahead. The server code no longer reads or
-   writes the table either way, so leaving it un-dropped is harmless.
+2. **`server/migrations/020_drop_gacha_pending.sql` is NOT applied, and CANNOT be
+   tested.** The repo has no migration runner and no test database — DDL has no
+   namespace, so there is nowhere to run it but production. The live table currently
+   holds 16 rows, all abandoned e2e rolls that were never charged for, so dropping
+   destroys no player value; but it is a live-schema change and needs a go-ahead. The
+   server code no longer reads or writes the table, so leaving it un-dropped is
+   harmless. **REQ-0218** (raised by the owner off the back of this REQ's gate run)
+   proposes the test database that would make this migration verifiable.
 3. **A rolled Unit inherits the warehouse TTL** (7 days) and its auto-dismantle on expiry.
    A paid roll left unclaimed past the TTL is engraved + yields, exactly like an
    unclaimed market-bought Unit (REQ-0195d) — consistent, but it IS new exposure for
