@@ -1,378 +1,432 @@
 {
- "schema": "gacha_pack/1",
- "entries": [
-  {
-   "id": "common_bp",
-   "name": "Common Backpack",
-   "cost": 10,
-   "cost_tm": "lrdst",
-   "cells": [
-    6,
-    8
-   ],
-   "hp_per_cell": 15,
-   "pool": [
+  "schema": "gacha_pack/1",
+  "entries": [
     {
-     "unit": "elf",
-     "weight": 1
-    },
-    {
-     "unit": "dwarf",
-     "weight": 1
-    },
-    {
-     "unit": "thief",
-     "weight": 1
-    },
-    {
-     "unit": "angel",
-     "weight": 1
-    },
-    {
-     "unit": "shieldmaiden",
-     "weight": 1
-    },
-    {
-     "unit": "priest",
-     "weight": 1
-    },
-    {
-     "unit": "littleprincess",
-     "weight": 1
-    },
-    {
-     "unit": "princess",
-     "weight": 1
-    },
-    {
-     "unit": "lightcavalry",
-     "weight": 1
-    },
-    {
-     "unit": "berserker",
-     "weight": 1
-    },
-    {
-     "unit": "watcher",
-     "weight": 1
-    },
-    {
-     "unit": "squire",
-     "weight": 1
-    }
-   ],
-   "i18n": {
-    "ja": {
-     "name": "コモンバックパック"
-    }
-   }
-  },
-  {
-   "id": "clockwork",
-   "name": "Clockwork Pack",
-   "cost": 15,
-   "cost_tm": "lrdst",
-   "cells": [
-    4,
-    5
-   ],
-   "hp_per_cell": 15,
-   "pool": [
-    {
-     "unit": "watcher",
-     "weight": 2
-    },
-    {
-     "unit": "squire",
-     "weight": 2
-    },
-    {
-     "unit": "thief",
-     "weight": 1
-    }
-   ],
-   "bonus": [
-    {
-     "pool": "po",
-     "table": [
-      {
-       "id": "flame_tablet",
-       "weight": 3
-      },
-      {
-       "id": "oil_flask",
-       "weight": 2
+      "id": "common_bp",
+      "name": "Common Backpack",
+      "cost": 10,
+      "cost_tm": "lrdst",
+      "cells": [
+        6,
+        8
+      ],
+      "hp_per_cell": 15,
+      "pool": [
+        {
+          "unit": "elf",
+          "weight": 1
+        },
+        {
+          "unit": "dwarf",
+          "weight": 1
+        },
+        {
+          "unit": "thief",
+          "weight": 1
+        },
+        {
+          "unit": "angel",
+          "weight": 1
+        },
+        {
+          "unit": "shieldmaiden",
+          "weight": 1
+        },
+        {
+          "unit": "priest",
+          "weight": 1
+        },
+        {
+          "unit": "littleprincess",
+          "weight": 1
+        },
+        {
+          "unit": "princess",
+          "weight": 1
+        },
+        {
+          "unit": "lightcavalry",
+          "weight": 1
+        },
+        {
+          "unit": "berserker",
+          "weight": 1
+        },
+        {
+          "unit": "watcher",
+          "weight": 1
+        },
+        {
+          "unit": "squire",
+          "weight": 1
+        }
+      ],
+      "i18n": {
+        "ja": {
+          "name": "コモンバックパック"
+        }
       }
-     ]
-    }
-   ],
-   "i18n": {
-    "ja": {
-     "name": "クロックワークパック"
-    }
-   }
-  },
-  {
-   "id": "ember",
-   "name": "Ember Pack",
-   "cost": 18,
-   "cost_tm": "lrdst",
-   "cells": [
-    6,
-    8
-   ],
-   "hp_per_cell": 15,
-   "pool": [
-    {
-     "unit": "angel",
-     "weight": 1
     },
     {
-     "unit": "priest",
-     "weight": 1
-    },
-    {
-     "unit": "princess",
-     "weight": 1
-    },
-    {
-     "unit": "littleprincess",
-     "weight": 1
-    }
-   ],
-   "bonus": [
-    {
-     "pool": "po",
-     "table": [
-      {
-       "id": "flame_tablet",
-       "weight": 3
-      },
-      {
-       "id": "blade",
-       "weight": 2
-      },
-      {
-       "id": "oil_flask",
-       "weight": 1
+      "id": "clockwork",
+      "name": "Clockwork Pack",
+      "cost": 15,
+      "cost_tm": "lrdst",
+      "cells": [
+        4,
+        5
+      ],
+      "hp_per_cell": 15,
+      "pool": [
+        {
+          "unit": "watcher",
+          "weight": 2
+        },
+        {
+          "unit": "squire",
+          "weight": 2
+        },
+        {
+          "unit": "thief",
+          "weight": 1
+        }
+      ],
+      "bonus": [
+        {
+          "pool": "po",
+          "table": [
+            {
+              "id": "flame_tablet",
+              "weight": 3
+            },
+            {
+              "id": "oil_flask",
+              "weight": 2
+            }
+          ]
+        }
+      ],
+      "i18n": {
+        "ja": {
+          "name": "クロックワークパック"
+        }
       }
-     ]
     },
     {
-     "pool": "si",
-     "table": [
-      {
-       "id": "acc_whet",
-       "weight": 2
-      },
-      {
-       "id": "acc_frost",
-       "weight": 1
+      "id": "ember",
+      "name": "Ember Pack",
+      "cost": 18,
+      "cost_tm": "lrdst",
+      "cells": [
+        6,
+        8
+      ],
+      "hp_per_cell": 15,
+      "pool": [
+        {
+          "unit": "angel",
+          "weight": 1
+        },
+        {
+          "unit": "priest",
+          "weight": 1
+        },
+        {
+          "unit": "princess",
+          "weight": 1
+        },
+        {
+          "unit": "littleprincess",
+          "weight": 1
+        }
+      ],
+      "bonus": [
+        {
+          "pool": "po",
+          "table": [
+            {
+              "id": "flame_tablet",
+              "weight": 3
+            },
+            {
+              "id": "blade",
+              "weight": 2
+            },
+            {
+              "id": "oil_flask",
+              "weight": 1
+            }
+          ]
+        },
+        {
+          "pool": "si",
+          "table": [
+            {
+              "id": "acc_whet",
+              "weight": 2
+            },
+            {
+              "id": "acc_frost",
+              "weight": 1
+            }
+          ]
+        }
+      ],
+      "i18n": {
+        "ja": {
+          "name": "エンバーパック"
+        }
       }
-     ]
+    },
+    {
+      "id": "pestilence",
+      "cost": 15,
+      "i18n": {
+        "ja": {
+          "name": "疫瘴のパック"
+        }
+      },
+      "name": "Pestilence Pack",
+      "pool": [
+        {
+          "unit": "alchemist",
+          "weight": 6
+        },
+        {
+          "unit": "witch",
+          "weight": 3
+        },
+        {
+          "unit": "darkelf",
+          "weight": 2
+        },
+        {
+          "unit": "plaguedoctor",
+          "weight": 3
+        },
+        {
+          "unit": "ranger",
+          "weight": 3
+        },
+        {
+          "unit": "icequeen",
+          "weight": 2
+        }
+      ],
+      "cells": [
+        6,
+        8
+      ],
+      "cost_tm": "lrdst",
+      "hp_per_cell": 15
+    },
+    {
+      "id": "sanctuary",
+      "cost": 15,
+      "i18n": {
+        "ja": {
+          "name": "聖域のパック"
+        }
+      },
+      "name": "Sanctuary Pack",
+      "pool": [
+        {
+          "unit": "fairy",
+          "weight": 6
+        },
+        {
+          "unit": "cleric",
+          "weight": 6
+        },
+        {
+          "unit": "druid",
+          "weight": 6
+        },
+        {
+          "unit": "miko",
+          "weight": 3
+        },
+        {
+          "unit": "shaman",
+          "weight": 3
+        },
+        {
+          "unit": "paladin",
+          "weight": 2
+        },
+        {
+          "unit": "valkyrie",
+          "weight": 2
+        }
+      ],
+      "cells": [
+        6,
+        8
+      ],
+      "cost_tm": "lrdst",
+      "hp_per_cell": 15
+    },
+    {
+      "id": "warband",
+      "cost": 12,
+      "i18n": {
+        "ja": {
+          "name": "戦団のパック"
+        }
+      },
+      "name": "Warband Pack",
+      "pool": [
+        {
+          "unit": "knight",
+          "weight": 6
+        },
+        {
+          "unit": "gladiator",
+          "weight": 6
+        },
+        {
+          "unit": "orc",
+          "weight": 3
+        },
+        {
+          "unit": "monk",
+          "weight": 6
+        },
+        {
+          "unit": "ninja",
+          "weight": 3
+        },
+        {
+          "unit": "samurai",
+          "weight": 2
+        },
+        {
+          "unit": "werewolf",
+          "weight": 3
+        },
+        {
+          "unit": "darkknight",
+          "weight": 6
+        },
+        {
+          "unit": "hero",
+          "weight": 6
+        }
+      ],
+      "cells": [
+        6,
+        8
+      ],
+      "cost_tm": "lrdst",
+      "hp_per_cell": 15
+    },
+    {
+      "id": "royal_court",
+      "cost": 20,
+      "i18n": {
+        "ja": {
+          "name": "宮廷のパック"
+        }
+      },
+      "name": "Royal Court Pack",
+      "pool": [
+        {
+          "unit": "bard",
+          "weight": 6
+        },
+        {
+          "unit": "jester",
+          "weight": 3
+        },
+        {
+          "unit": "wizard",
+          "weight": 2
+        },
+        {
+          "unit": "sorceress",
+          "weight": 2
+        },
+        {
+          "unit": "king",
+          "weight": 1
+        },
+        {
+          "unit": "vampire",
+          "weight": 1
+        },
+        {
+          "unit": "dragonknight",
+          "weight": 1
+        },
+        {
+          "unit": "hero",
+          "weight": 6
+        },
+        {
+          "unit": "pirate",
+          "weight": 6
+        }
+      ],
+      "cells": [
+        7,
+        9
+      ],
+      "cost_tm": "lrdst",
+      "hp_per_cell": 15
+    },
+    {
+      "id": "arsenal",
+      "cost": 16,
+      "i18n": {
+        "ja": {
+          "name": "兵装のパック"
+        }
+      },
+      "name": "Arsenal Pack",
+      "pool": [
+        {
+          "unit": "enchanted_lantern",
+          "weight": 6
+        },
+        {
+          "unit": "golden_apple",
+          "weight": 5
+        },
+        {
+          "unit": "mana_crystal",
+          "weight": 5
+        },
+        {
+          "unit": "war_horn",
+          "weight": 3
+        },
+        {
+          "unit": "hourglass",
+          "weight": 3
+        },
+        {
+          "unit": "living_anvil",
+          "weight": 3
+        },
+        {
+          "unit": "battle_standard",
+          "weight": 2
+        },
+        {
+          "unit": "ancient_grimoire",
+          "weight": 2
+        },
+        {
+          "unit": "giant_shuriken",
+          "weight": 2
+        }
+      ],
+      "cells": [
+        6,
+        8
+      ],
+      "cost_tm": "lrdst",
+      "hp_per_cell": 15
     }
-   ],
-   "i18n": {
-    "ja": {
-     "name": "エンバーパック"
-    }
-   }
-  },
-  {
-   "id": "pestilence",
-   "cost": 15,
-   "i18n": {
-    "ja": {
-     "name": "疫瘴のパック"
-    }
-   },
-   "name": "Pestilence Pack",
-   "pool": [
-    {
-     "unit": "alchemist",
-     "weight": 6
-    },
-    {
-     "unit": "witch",
-     "weight": 3
-    },
-    {
-     "unit": "darkelf",
-     "weight": 2
-    },
-    {
-     "unit": "plaguedoctor",
-     "weight": 3
-    },
-    {
-     "unit": "ranger",
-     "weight": 3
-    },
-    {
-     "unit": "icequeen",
-     "weight": 2
-    }
-   ],
-   "cells": [
-    6,
-    8
-   ],
-   "cost_tm": "lrdst",
-   "hp_per_cell": 15
-  },
-  {
-   "id": "sanctuary",
-   "cost": 15,
-   "i18n": {
-    "ja": {
-     "name": "聖域のパック"
-    }
-   },
-   "name": "Sanctuary Pack",
-   "pool": [
-    {
-     "unit": "fairy",
-     "weight": 6
-    },
-    {
-     "unit": "cleric",
-     "weight": 6
-    },
-    {
-     "unit": "druid",
-     "weight": 6
-    },
-    {
-     "unit": "miko",
-     "weight": 3
-    },
-    {
-     "unit": "shaman",
-     "weight": 3
-    },
-    {
-     "unit": "paladin",
-     "weight": 2
-    },
-    {
-     "unit": "valkyrie",
-     "weight": 2
-    }
-   ],
-   "cells": [
-    6,
-    8
-   ],
-   "cost_tm": "lrdst",
-   "hp_per_cell": 15
-  },
-  {
-   "id": "warband",
-   "cost": 12,
-   "i18n": {
-    "ja": {
-     "name": "戦団のパック"
-    }
-   },
-   "name": "Warband Pack",
-   "pool": [
-    {
-     "unit": "knight",
-     "weight": 6
-    },
-    {
-     "unit": "gladiator",
-     "weight": 6
-    },
-    {
-     "unit": "orc",
-     "weight": 3
-    },
-    {
-     "unit": "monk",
-     "weight": 6
-    },
-    {
-     "unit": "ninja",
-     "weight": 3
-    },
-    {
-     "unit": "samurai",
-     "weight": 2
-    },
-    {
-     "unit": "werewolf",
-     "weight": 3
-    },
-    {
-     "unit": "darkknight",
-     "weight": 6
-    },
-    {
-     "unit": "hero",
-     "weight": 6
-    }
-   ],
-   "cells": [
-    6,
-    8
-   ],
-   "cost_tm": "lrdst",
-   "hp_per_cell": 15
-  },
-  {
-   "id": "royal_court",
-   "cost": 20,
-   "i18n": {
-    "ja": {
-     "name": "宮廷のパック"
-    }
-   },
-   "name": "Royal Court Pack",
-   "pool": [
-    {
-     "unit": "bard",
-     "weight": 6
-    },
-    {
-     "unit": "jester",
-     "weight": 3
-    },
-    {
-     "unit": "wizard",
-     "weight": 2
-    },
-    {
-     "unit": "sorceress",
-     "weight": 2
-    },
-    {
-     "unit": "king",
-     "weight": 1
-    },
-    {
-     "unit": "vampire",
-     "weight": 1
-    },
-    {
-     "unit": "dragonknight",
-     "weight": 1
-    },
-    {
-     "unit": "hero",
-     "weight": 6
-    },
-    {
-     "unit": "pirate",
-     "weight": 6
-    }
-   ],
-   "cells": [
-    7,
-    9
-   ],
-   "cost_tm": "lrdst",
-   "hp_per_cell": 15
-  }
- ]
+  ]
 }
