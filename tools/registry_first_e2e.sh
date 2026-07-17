@@ -9,85 +9,44 @@
 # shipped through a green ci.sh, and the REQ-0182b 409 guard could only ever
 # SKIP there (it was the REQ-0234 audit run's sole skip).
 #
-# This harness closes that blind spot. Same rig family as
-# tools/content_admin_e2e.sh (isolated pg namespace via HOME remap, this
-# worktree's code), with two differences:
-#   - the temp HOME is shaped like a FLEET WORKER's (w0/home/...) so the
-#     spec-side path construction (client/e2e/e2e-env.ts) resolves into it;
-#   - the registry is SEEDED (tools/seed_registry_e2e.cjs: one adopted
-#     po_def) BEFORE the api boots, and the run FAILS if any test skips, so
-#     "skips on CI" can never again be the norm for registry behaviour.
+# This harness closes that blind spot. Standard rig (tools/e2e_harness_lib.sh),
+# with the two things that make it different spelled out below:
+#   - --fleet: the temp HOME is shaped like a FLEET WORKER's (w0/home/...) so
+#     the spec-side path construction (client/e2e/e2e-env.ts) resolves into
+#     this run's namespace rather than an unseeded /tmp/bp_e2e_workers tree;
+#   - the registry is SEEDED (tools/seed_registry_e2e.cjs: one adopted po_def)
+#     BEFORE the api boots, and --forbid-skip fails the run if any test skips,
+#     so "skips on CI" can never again be the norm for registry behaviour.
 #
 # Requires DATABASE_URL (source server/.env first) and a built client (web/).
 set -euo pipefail
-: "${DATABASE_URL:?source server/.env first (DATABASE_URL required)}"
-
-WT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
 source "$(dirname "$0")/e2e_ports.sh" 0221
+source "$(dirname "$0")/e2e_harness_lib.sh"
 
-TMPROOT="$(mktemp -d)"
-mkdir -p "$TMPROOT/w0/home"
-ln -s "$WT" "$TMPROOT/w0/home/backpack_ragnarok"
-HOMEDIR="$TMPROOT/w0/home"
+e2e_harness_init registry_first_e2e
+e2e_harness_home --fleet
 
-PIDS=()
-cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
-  rm -rf "$TMPROOT"
-}
-trap cleanup EXIT
-
-echo "[registry_first_e2e] api :$APIPORT  proxy :$PROXYPORT"
+e2e_harness_say "api :$APIPORT  proxy :$PROXYPORT"
 
 # Seed FIRST: the api builds its registry view lazily on first request, so a
 # pre-boot seed is always visible without any cache invalidation dance.
-HOME="$HOMEDIR" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
-  node "$WT/tools/seed_registry_e2e.cjs"
+e2e_harness_node "/tmp/req${E2E_REQ4}_e2e_seed.log" -- "$WT/tools/seed_registry_e2e.cjs"
+e2e_harness_say "seeded ($(tail -1 "/tmp/req${E2E_REQ4}_e2e_seed.log"))"
 
-HOME="$HOMEDIR" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
-  node "$WT/server/api.cjs" > /tmp/req0221_e2e_api.log 2>&1 &
-PIDS+=($!)
-
-# REQ-0234 (F7): headerless /api -> E2E_FLEET_BASE_PORT+0 = this api; /app +
-# /preview are served from the worktree by the proxy itself (REQ-0217).
-E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0221_e2e_proxy.log 2>&1 &
-PIDS+=($!)
-
-for i in $(seq 1 80); do
-  if curl -s -o /dev/null "http://127.0.0.1:$APIPORT/api/content" 2>/dev/null; then break; fi
-  sleep 0.5
-done
-for i in $(seq 1 40); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/app/" 2>/dev/null; then break; fi
-  sleep 0.5
-done
+e2e_harness_start_api
+e2e_harness_start_proxy
+e2e_harness_wait
 
 # The whole point of this harness: the api must actually SERVE from the
 # registry before the specs run, or the guard tests would silently skip.
-REG_COUNT="$(curl -s "http://127.0.0.1:$APIPORT/api/content/dev/sources" \
-  | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{const s=JSON.parse(d);console.log((s.items&&s.items.registry)||0)})')"
+REG_COUNT="$(e2e_harness_api_json /api/content/dev/sources '(d.items&&d.items.registry)||0')"
 if [ "${REG_COUNT:-0}" -lt 1 ]; then
-  echo "[registry_first_e2e] FATAL: registry serving count is '$REG_COUNT' after seeding -- the seed did not take (see /tmp/req0221_e2e_api.log)" >&2
-  exit 1
+  e2e_harness_fatal "registry serving count is '$REG_COUNT' after seeding -- the seed did not take (see $E2E_API_LOG)"
 fi
-echo "[registry_first_e2e] registry serves $REG_COUNT item(s) -- running specs"
+e2e_harness_say "registry serves $REG_COUNT item(s) -- running specs"
 
-# REQ-0234 (F2): own serialization lock (nothing box-global is shared; the
-# frozen box lock guards only the legacy shared-port path). Output is
-# captured so a SKIP can be turned into a hard failure.
-set +e
-OUT="$(E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.req0221.lock}" \
-  E2E_FLEET_ROOT="$TMPROOT" \
-  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" \
-  bash "$WT/tools/e2e_run.sh" --config=e2e/registry.config.ts 2>&1)"
-RC=$?
-set -e
-printf '%s\n' "$OUT"
-if [ "$RC" -ne 0 ]; then exit "$RC"; fi
-if printf '%s\n' "$OUT" | grep -qE '[0-9]+ skipped'; then
-  echo "[registry_first_e2e] FATAL: a spec SKIPPED on the seeded pg harness -- registry coverage must never skip here (REQ-0221)" >&2
-  exit 1
-fi
+# REQ-0221: a SKIP here is the failure mode this harness exists to prevent, and
+# playwright reports it as success -- so it is turned into a hard failure.
+e2e_harness_run e2e/registry.config.ts --forbid-skip
