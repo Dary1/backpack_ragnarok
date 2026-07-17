@@ -148,3 +148,15 @@ extend the arsenal pool `powder_keg 2 / cursed_doll 2 / battle_pickaxe 3`), then
   re-verification pending the next quiet box window -- recorded here
   before merge for honesty; the content delta is class-identical to
   REQ-0213's, which passed the full trio + default suite green today.
+
+## Final gate results (2026-07-17, post-REQ-0234 master, ci3)
+
+- Full ci.sh on the post-0234 harness (auto-scoped e2e, per-REQ admin locks,
+  registry stage): sim/pg/server/client ALL GREEN (FAIL count 0 through
+  step [6]); admin trio 7/1/28; registry-first stage 4/4;
+  default suite 186 passed / 1 failed / 1 skipped.
+- The 1 failure = forecast.spec.ts perf budget ([TUNABLE 100ms] wall-clock,
+  the REQ-0234 F3 load-sensitivity class): re-passes 3/3 serial in scoped
+  isolation (8/8 each run, logs /tmp/req0212_fc_iso.log) -- flake per the
+  standing 3/3 convention. The 1 skip is the known F1 files-fleet skip.
+- Earlier interim record (contention aborts) superseded by this run.
