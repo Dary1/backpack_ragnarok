@@ -49,7 +49,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
         prompt_template: promptTemplate, style_override: styleOverride || null,
       };
       if (kind === 'po') body.shape = { mask };
-      if (kind === 'monster') body.shape = { w: mw, h: mh };
+      if (kind === 'monster' || kind === 'gimic') body.shape = { w: mw, h: mh }; // REQ-0211
       if (kind === 'bpskin') body.edge_padding = edgePadding;
       if (kind === 'custom') body.shape = { width: cw, height: ch };
       const r = await createArtwork(body);
@@ -81,7 +81,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
         <div className="aa-field">
           <span className="t-micro">shape</span>
           {kind === 'po' && <PoMaskEditor mask={mask} onToggle={(r, c) => setMask((m) => m.map((row, ri) => row.map((v, ci) => (ri === r && ci === c ? !v : v))))} />}
-          {kind === 'monster' && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
+          {(kind === 'monster' || kind === 'gimic') && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
           {kind === 'si' && <span className="t-micro">locked 256x256 (no shape)</span>}
           {(kind === 'unit' || kind === 'bpskin') && <span className="t-micro">no shape (locked size)</span>}
           {kind === 'custom' && (

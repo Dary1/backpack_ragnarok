@@ -1,58 +1,106 @@
 {
-  "schema": "entity/1",
+  "schema": "gimic/1",
   "batch": "batch-002-dungeon-pilot",
-  "note": "Trap/door/chest entity defs (S6 encounter table). masked:true entities show as \"?\" in the replay log (see sim/combat.cjs maskLabel) until discovered.",
+  "note": "gimic/1 interactable dungeon gimmicks (REQ-0211). Migrated verbatim from the legacy entity/1 entities.json; `behavior` (trap | treasure | hidden_door) is the registry-facing grouping, `type`/`mode` the fine-grained engine interaction the dungeon generator and combat consume. masked:true gimics show as \"?\" until found.",
   "entries": [
     {
       "id": "trap_frost_deadfall",
+      "behavior": "trap",
       "name": "Frost Deadfall",
       "type": "trap",
       "mode": "detection",
       "hp": 1,
-      "footprint": [1, 1],
+      "footprint": [
+        1,
+        1
+      ],
       "masked": true,
       "timeout_secs": 18,
-      "skills": ["trap_deadfall_volley"],
-      "i18n": { "en": { "name": "Frost Deadfall" }, "ja": { "name": "氷の落とし穴" } },
+      "skills": [
+        "trap_deadfall_volley"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Frost Deadfall"
+        },
+        "ja": {
+          "name": "氷の落とし穴"
+        }
+      },
       "note": "Small (1x1) footprint per S6: 'harder to find => SMALLER footprint'. hp:1 is nominal (a trap is discovery-only, not HP-race; a single detection-mode ray hit ends it as a find, not damage, per S2.2/S6.1)."
     },
     {
       "id": "door_rimefast_stage1",
+      "behavior": "hidden_door",
       "name": "Rimefast Door (hidden)",
       "type": "door_stage1",
       "mode": "detection",
       "hp": 1,
-      "footprint": [1, 1],
+      "footprint": [
+        1,
+        1
+      ],
       "masked": true,
       "timeout_secs": 20,
       "skills": [],
-      "i18n": { "en": { "name": "Rimefast Door (hidden)" }, "ja": { "name": "リメファスト扉（隠）" } },
+      "i18n": {
+        "en": {
+          "name": "Rimefast Door (hidden)"
+        },
+        "ja": {
+          "name": "リメファスト扉（隠）"
+        }
+      },
       "note": "Stage 1 of the two-stage hidden-door chain (S6 table): detection stage. On discovery, stage2 (door_rimefast_stage2) becomes the active entity."
     },
     {
       "id": "door_rimefast_stage2",
+      "behavior": "hidden_door",
       "name": "Rimefast Door",
       "type": "door_stage2",
       "mode": "unlock",
       "hp": 60,
-      "footprint": [2, 2],
+      "footprint": [
+        2,
+        2
+      ],
       "masked": false,
       "timeout_secs": 25,
-      "skills": ["door_keeper_strike"],
-      "i18n": { "en": { "name": "Rimefast Door" }, "ja": { "name": "リメファスト扉" } },
+      "skills": [
+        "door_keeper_strike"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Rimefast Door"
+        },
+        "ja": {
+          "name": "リメファスト扉"
+        }
+      },
       "note": "Stage 2 (unlock stage): once revealed, unlock-mode POs must reduce its HP to 0 before its OWN timeout_secs (measured from the moment stage1 was discovered) or the 'keyhole breaks' (forced end, no shortcut, run continues per S6 table)."
     },
     {
       "id": "chest_frostbound_cache",
+      "behavior": "treasure",
       "name": "Frostbound Cache",
       "type": "chest",
       "mode": "unlock",
       "hp": 40,
-      "footprint": [2, 2],
+      "footprint": [
+        2,
+        2
+      ],
       "masked": false,
       "timeout_secs": 22,
       "skills": [],
-      "i18n": { "en": { "name": "Frostbound Cache" }, "ja": { "name": "氷結の隠し箱" } },
+      "i18n": {
+        "en": {
+          "name": "Frostbound Cache"
+        },
+        "ja": {
+          "name": "氷結の隠し箱"
+        }
+      },
       "note": "Placed at enemy-field CENTER per S6.2. No offensive skills (chests don't fight back); unlock-mode POs race its HP to 0 before timeout_secs for a reward roll (S8.4); on timeout, chest is lost with no penalty."
     }
   ]

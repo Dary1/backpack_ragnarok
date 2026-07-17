@@ -94,7 +94,7 @@ export function Workspace(props: {
                 onChange={(e) => onDraft({ edge_padding: Number(e.target.value) || 0 })} />
             </label>
           )}
-          {(kind === 'po' || kind === 'monster') && (
+          {(kind === 'po' || kind === 'monster' || kind === 'gimic') && (
             <div className="aa-field">
               <span className="t-micro">shape (derived size: <b className="tnum">{newSize.width}x{newSize.height}</b>{shapeDirty ? ' after save' : ''})</span>
               {kind === 'po' && <PoMaskEditor idPrefix="edit-" mask={draft.mask}
@@ -117,7 +117,7 @@ export function Workspace(props: {
                   )}
                 </div>
               )}
-              {kind === 'monster' && <MonsterShapeEditor idPrefix="edit-" w={draft.mw} h={draft.mh}
+              {(kind === 'monster' || kind === 'gimic') && <MonsterShapeEditor idPrefix="edit-" w={draft.mw} h={draft.mh}
                 onW={(v) => onDraft({ mw: v })} onH={(v) => onDraft({ mh: v })} />}
               {shapeDirty && renders.length > 0 && (
                 <div data-testid="art-shape-warn" className="aa-warn t-micro">

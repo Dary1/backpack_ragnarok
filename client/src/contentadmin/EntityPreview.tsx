@@ -372,6 +372,42 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
     );
   }
 
+  // ---- gimic (gimic/1): the interactable dungeon gimmicks (trap / treasure box / hidden door)
+  // REQ-0211. behavior is the family; type/mode the engine interaction; footprint/hp/
+  // timeout/skills the parameters the dungeon generator reads. Same "nothing hidden"
+  // invariant as every kind -- the FallbackGrid catches any field not rendered here.
+  if (kind === 'gimic') {
+    const consumed = new Set<string>(['id', 'name', 'name_ja', 'i18n', 'behavior', 'type', 'mode', 'hp', 'footprint', 'masked', 'timeout_secs', 'skills', 'note']);
+    const behavior = typeof data.behavior === 'string' ? data.behavior : '';
+    const mode = typeof data.mode === 'string' ? data.mode : '';
+    const type = typeof data.type === 'string' ? data.type : '';
+    const fp = Array.isArray(data.footprint) ? (data.footprint as unknown[]) : null;
+    const skills = Array.isArray(data.skills) ? (data.skills as unknown[]) : [];
+    return (
+      <div data-testid={testid} className={cls}>
+        <div className="ca-ep-headtext">
+          <Names data={data} />
+          <div className="ca-ep-chips">
+            {behavior ? <span className="ca-ep-chip" data-testid="cd-ep-behavior">{behavior}</span> : null}
+            {type ? <span className="ca-ep-chip ca-ep-muted">{type}</span> : null}
+            {mode ? <span className="ca-ep-chip">{mode}</span> : null}
+            {typeof data.hp === 'number' ? <span className="ca-ep-chip ca-ep-hp">hp {data.hp}</span> : null}
+            {fp ? <span className="ca-ep-chip">footprint {fp.map(String).join('×')}</span> : null}
+            {typeof data.timeout_secs === 'number' ? <span className="ca-ep-chip">{data.timeout_secs}s</span> : null}
+            {data.masked === true ? <span className="ca-ep-chip">masked</span> : null}
+          </div>
+          {skills.length > 0 ? (
+            <div className="ca-ep-skills">
+              <span className="ca-ep-muted">skills:</span>
+              {skills.map((sk, i) => <span key={i} className="ca-ep-skill chip">{String(sk)}</span>)}
+            </div>
+          ) : null}
+        </div>
+        <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
+      </div>
+    );
+  }
+
   // ---- unknown kind: fallback grid only (nothing hidden)
   return (
     <div data-testid={testid} className={cls}>

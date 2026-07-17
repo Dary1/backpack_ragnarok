@@ -66,7 +66,12 @@ function liveDungeonDir() {
 }
 function dungeonFixedPath() { return path.join(liveDungeonDir(), 'dungeon.json'); }
 function enemiesPath() { return path.join(liveDungeonDir(), 'enemies.json'); }
-function entitiesPath() { return path.join(liveDungeonDir(), 'entities.json'); }
+// REQ-0211: the trap/treasure/hidden-door interactables are now the 'gimic'
+// content kind (gimic/1). Their live registry-exported source is gimics.json,
+// which replaced the legacy entity/1 entities.json (deleted). The records are
+// byte-identical in every field this generator reads; only the schema header
+// and the added `behavior` discriminator differ, neither of which is read here.
+function gimicsPath() { return path.join(liveDungeonDir(), 'gimics.json'); }
 
 function deepCopy(x) { return JSON.parse(JSON.stringify(x)); }
 
@@ -96,8 +101,8 @@ function loadEnemyRoster() {
   return loadJsonCached(enemiesPath()).entries;
 }
 
-function loadEntityTemplates() {
-  const raw = loadJsonCached(entitiesPath());
+function loadGimicTemplates() {
+  const raw = loadJsonCached(gimicsPath());
   const byId = {};
   for (const e of raw.entries) byId[e.id] = e;
   return byId;
@@ -272,7 +277,7 @@ function bossIdFor(roster) {
 function generateDefault(level, seed) {
   const rng = combat.makeRng(seed);
   const roster = loadEnemyRoster();
-  const entityTemplates = loadEntityTemplates();
+  const gimicTemplates = loadGimicTemplates();
 
   const nPacks = packsForLevel(level);
   const nTraps = rollCountForLevel(rng, 'dungen/traps/count', DUNGEN_TUNABLES.TRAP_MAX, level);
@@ -289,19 +294,19 @@ function generateDefault(level, seed) {
   // packs (cap <=2 per encounter, spilling onto the boss). A rare pure puzzle
   // room (PURE_ROOM_P) keeps ONE detection objective standalone.
   function trapAttachment() {
-    const t = entityTemplates.trap_frost_deadfall;
+    const t = gimicTemplates.trap_frost_deadfall;
     return { id: nextId('att_trap'), kind: 'trap', mode: 'detection',
       entity: { footprint: t.footprint, skills: t.skills, timeout_secs: t.timeout_secs },
       reward: { roll: DUNGEN_TUNABLES.REWARD_PACK_LOW } };
   }
   function chestAttachment() {
-    const c = entityTemplates.chest_frostbound_cache;
+    const c = gimicTemplates.chest_frostbound_cache;
     return { id: nextId('att_chest'), kind: 'chest', mode: 'unlock',
       entity: { footprint: c.footprint, hp: [c.hp, c.hp], timeout_secs: c.timeout_secs },
       reward: { roll: DUNGEN_TUNABLES.REWARD_CHEST } };
   }
   function doorAttachment() {
-    const s2 = entityTemplates.door_rimefast_stage2;
+    const s2 = gimicTemplates.door_rimefast_stage2;
     return { id: nextId('att_door'), kind: 'door', mode: 'detection',
       entity: { footprint: s2.footprint, hp: [s2.hp, s2.hp], timeout_secs: s2.timeout_secs, skills: s2.skills },
       reward: null };
@@ -333,7 +338,7 @@ function generateDefault(level, seed) {
 
   // A rare pure puzzle room sits just before the boss (its own encounter).
   if (pureRoom) {
-    const t = entityTemplates.trap_frost_deadfall;
+    const t = gimicTemplates.trap_frost_deadfall;
     encounters.push({
       id: nextId('enc_pureroom'), type: 'trap', mode: 'detection',
       entityDef: { id: t.id, name: t.name, hp: t.hp, footprint: t.footprint, masked: t.masked, timeout_secs: t.timeout_secs, skills: t.skills },
@@ -431,6 +436,6 @@ module.exports = {
   rollPackRarity,
   buildPack,
   loadEnemyRoster,
-  loadEntityTemplates,
+  loadGimicTemplates,
   loadFixedDungeon,
 };

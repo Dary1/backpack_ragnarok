@@ -21,7 +21,7 @@
 //   goblin 3x4 -> 384x512               chimera 6x4 -> 768x512
 //   ancient dragon 10x10 -> 1280x1280   any si -> 256x256
 
-const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom'];
+const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic']; // REQ-0211: gimic == monster sizing
 
 // REQ-0179: ComfyUI's flux2 latent (EmptyFlux2LatentImage) bounds -- width/height
 // min 16, max nodes.MAX_RESOLUTION, step 16 (latent = [.., height//16, width//16]).
@@ -81,6 +81,9 @@ function deriveSize(kind, shape) {
     }
     case 'si':
       return { width: 256, height: 256 };
+    // REQ-0211: a gimic artwork is sized IDENTICALLY to a monster (user directive):
+    // a w x h cell grid (each 1..12) at 128 px/cell. Stacked case label, one body.
+    case 'gimic':
     case 'monster': {
       const w = shape && shape.w, h = shape && shape.h;
       if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || w > 12 || h < 1 || h > 12) {

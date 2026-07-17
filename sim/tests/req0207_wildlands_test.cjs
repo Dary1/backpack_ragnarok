@@ -236,7 +236,7 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
     }
     // the four non-additive dungeon files come along verbatim as the untouched reference.
     const other = {};
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       const t = fs.readFileSync(path.join(LIVE, f), 'utf8');
       other[f] = t; fs.writeFileSync(path.join(liveDir, f), t);
     }
@@ -266,7 +266,7 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
         : (f === 'skills.json' ? skills.entries.map(e => e.id) : packs.entries.map(e => e.id)), f + ' appended ids == batch-006');
     }
     // the four non-additive files are NOT touched at all
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       eq(fs.readFileSync(path.join(liveDir, f), 'utf8'), other[f], f + ' must be left untouched');
     }
     // provenance recorded

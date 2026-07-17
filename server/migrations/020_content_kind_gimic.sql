@@ -1,0 +1,22 @@
+-- backpack_ragnarok -- server/migrations/020_content_kind_gimic.sql
+-- REQ-0211: extend the content_kind ENUM with 'gimic' so the interactable
+-- dungeon gimmicks -- trap, treasure box, hidden door -- enter the content
+-- registry as first-class defs, managed from the content admin, and stop
+-- being hardcoded entity/1 records read only by the dungeon generator.
+-- User instruction, 2026-07-17 (spelling "gimic" is the user's chosen
+-- identifier -- do NOT "correct" it to gimmick anywhere).
+--
+-- Registry semantics are UNCHANGED: a gimic is an ordinary content_defs +
+-- content_variants pair (immutability trigger, adopted-variant FK, variant_no
+-- handle -- all inherited from 009). No new table, no new column, no new
+-- constraint. The ENUM is the only thing blocking gimic/1 data from entering
+-- the ledger -- exactly as it was for skill_def (010), gacha_pack (016) and
+-- monster_pack (019).
+--
+-- Apply as the postgres superuser (same invocation as 001..019):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/020_content_kind_gimic.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already
+-- exists. ALTER TYPE ... ADD VALUE cannot run inside a transaction block,
+-- hence the bare top-level statement (the same reason 010/016/019 are bare).
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'gimic';
