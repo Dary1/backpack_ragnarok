@@ -80,15 +80,16 @@ export function fmtElapsed(ms: number): string {
 /** The editable-field draft the center workspace works on (explicit Save;
  * never silently PATCHed). Shape drafts ride along for po/monster. */
 /** REQ-0186: the po shape-conditioning locks, weakest -> strongest. The blurbs
- * are REQ-0153's MEASURED numbers, not adjectives: the operator is choosing
- * between arms that were actually scored. */
+ * are MEASURED numbers, not adjectives: the operator is choosing between arms
+ * that were actually scored -- REQ-0153's matrix, re-verified on the live route
+ * by REQ-0187. REQ-0220 retired auto's old shape-dependent split. */
 export const SHAPE_LOCKS = ['auto', 'off', 'guide', 'strict'] as const;
 export type ShapeLock = typeof SHAPE_LOCKS[number];
 export const SHAPE_LOCK_HELP: Record<ShapeLock, string> = {
-  auto: 'default - strict on a shape that does not fill its box (L, T), off on one that does (1x3, 2x2)',
+  auto: 'default - strict on every shape; pick a lock explicitly to override it',
   off: 'no shape conditioning; the subject composes freely (28% fit)',
   guide: 'scaffold guides composition, no hard edge; may spill past the cells (60% fit)',
-  strict: 'nothing renders outside the cells (100% fit), at some subject legibility',
+  strict: 'nothing renders outside the cells (100% fit); kept subject detail on a 2x2 and out-fit off there (81 vs 72), reads a little abstract on L/T',
 };
 export const MAX_DILATION_PX = 16;
 

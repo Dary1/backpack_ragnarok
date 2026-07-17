@@ -101,7 +101,27 @@ REQ-0153 was a spike; its verdict is **GREEN-with-recipe**. Up-front silhouette
 control for **non-rectangular PO shapes** (L, T, …) works on the fixed Flux.2 Klein
 4B route, but the recipe is a **spec addendum handed to a follow-up integration REQ**
 — **the production route (`art_route.build_txt2img`) is untouched and byte-identical**.
-**Status 2026-07-15: LIVE.** REQ-0183 wired Arm C @ D=8 into the production route; REQ-0186 exposed it as po params **`shape_lock`** (`off|guide|strict|auto`, default `auto` = strict only when the shape underfills its bounding box) and **`shape_dilation_px`** (0-16, default 8), plus a one-shot generate override that never mutates the artwork. The historical spike spec below is preserved as-is; the authoring rules the lock does NOT cover are §0.2.
+**Status 2026-07-17: LIVE.** REQ-0183 wired Arm C @ D=8 into the production route; REQ-0186 exposed it as po params **`shape_lock`** (`off|guide|strict|auto`, default `auto`) and **`shape_dilation_px`** (0-16, default 8), plus a one-shot generate override that never mutates the artwork. **`auto` = strict on every shape (REQ-0220).**
+
+> **Why `auto` no longer splits by shape.** It used to mean “strict on an underfilled
+> bbox (L, T), off on a full rectangle (1x3, 2x2)”, justified by the claim that strict
+> flattens a rectangle’s subject — that a heater shield becomes a plain disc. **That
+> claim is false.** REQ-0187’s S7 verification rendered a 2x2 `round shield` at both locks
+> on this route: strict median fit **81.3** vs off **71.8** (worst-cell 0.21 vs 0.32,
+> 3/3 PASS both), and strict kept the boss, riveted rim and plank texture — it flattened
+> nothing; off merely drew heater silhouettes that leave the square’s corners empty. The
+> awkward half of the rule HELD (L-tromino: strict 68.3 vs off 32.5, one off seed spilling
+> 123 px of deep-overflow), so strict on a notched shape is not in question.
+>
+> Off’s only remaining argument was wall time, and REQ-0220 traced that to REQ-0153’s
+> **spike** route (76-130 s conditioned vs 15-50 s plain). REQ-0187 V5 re-measured **this**
+> route — which runs matting as a separate CPU inspection job rather than co-resident on
+> the GPU — at warm conditioned 512x512 ~60–150 s vs plain off 512 ~90–120 s: no real gap.
+> With neither the pictures nor the cost favouring off, the split was retired (user ruling
+> 2026-07-17). An operator who wants off on a given item sets the lock explicitly or uses
+> the one-shot override. Full write-up: `docs/REQ/*/REQ-0220-*.md`.
+
+The historical spike spec below is preserved as-is; the authoring rules the lock does NOT cover are §0.2.
 
 **Problem it solves.** Unconditioned t2i rarely lands an awkward silhouette inside its
 cells; rerolling seeds until the shape happens to fit is futile. Measured baseline

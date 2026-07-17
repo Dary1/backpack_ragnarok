@@ -193,7 +193,7 @@ async function runG3andFlow() {
     const si = await jobs.runPython({ kind: 'si', main_object: 'flame', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 256, height: 256, seed: 1, mode: 'preview' });
     assert.strictEqual(si.shape_conditioned, false, 'si is not shape-conditioned');
   });
-  await AT('REQ-0186 auto lock: underfilled bbox -> strict; full rectangle -> off', async () => {
+  await AT('REQ-0220 auto lock: strict on EVERY shape (underfilled bbox and full rectangle alike)', async () => {
     // L-tromino: the shape REQ-0153 measured the baseline MISSING on -> condition it.
     const L = await storage.createArtwork({ system_name: 'lock_L', kind: 'po', shape: { mask: maskOf([[0, 0], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'battle axe', prompt_template: '{main_object}, white background, bold outline', shape_lock: 'auto' });
     assert.strictEqual(L.shape_lock, 'auto', 'stored lock round-trips');
@@ -205,19 +205,24 @@ async function runG3andFlow() {
     assert.strictEqual(dL.params.shape_dilation_px, 8, 'default dilation recorded');
     assert.ok(/^Turn the gray shape into /.test(dL.final_prompt), 'L gets the edit instruction');
 
-    // 2x2: REQ-0153 recorded the baseline PASSING here (the aspect law already
-    // fits it), and strict is what turns a heater shield into a plain disc.
+    // 2x2: REQ-0186 used to leave a full rectangle at `off`, on the claim that
+    // strict turns a heater shield into a plain disc. REQ-0187 measured the
+    // opposite on the production route (strict fit 81.3 vs off 71.8, 3/3 PASS
+    // both, character kept), and REQ-0220 retired the split -- auto is strict
+    // here too. This assertion is the regression guard for that ruling.
     const S = await storage.createArtwork({ system_name: 'lock_sq', kind: 'po', shape: { mask: maskOf([[0, 0], [0, 1], [1, 0], [1, 1]]) }, gen_width: 512, gen_height: 512, main_object: 'round shield', prompt_template: '{main_object}, white background, bold outline', shape_lock: 'auto' });
     const rS = await storage.createRender(S.id, null, 'queued');
     jobs.enqueue({ renderId: rS.id, artwork: S, seed: rS.seed, tiling: false });
     const dS = await waitForRender('lock_sq', rS.seed, 30000);
     assert.strictEqual(dS.status, 'ok', 'sq render ok: ' + dS.error);
-    assert.strictEqual(dS.params.shape_lock, 'off', 'auto resolves to off on a full rectangle');
-    assert.ok(!/Turn the gray shape/.test(dS.final_prompt), 'a full rectangle keeps the plain subject');
+    assert.strictEqual(dS.params.shape_lock, 'strict', 'auto resolves to strict on a full rectangle too (REQ-0220)');
+    assert.strictEqual(dS.params.shape_dilation_px, 8, 'default dilation recorded on the rectangle too');
+    assert.ok(/^Turn the gray shape into /.test(dS.final_prompt), 'a full rectangle now gets the edit instruction too (REQ-0220)');
   });
   await AT('REQ-0186 explicit locks + one-shot override + validation', async () => {
     const a = await storage.getArtworkByName('lock_sq');
-    // An explicit lock beats auto, even on a shape auto would leave alone.
+    // An explicit lock beats auto -- including `off`, now the only way to opt a
+    // full rectangle out of conditioning (REQ-0220 made auto strict everywhere).
     for (const [lock, wantPrompt] of [['off', false], ['guide', true], ['strict', true]]) {
       const p = await jobs.runPython({ kind: 'po', main_object: 'round shield', prompt_template: '{main_object}, white background, bold outline', style_override: null, width: 512, height: 512, seed: 1, shape: a.shape, shape_lock: lock, mode: 'preview' });
       assert.strictEqual(p.shape_lock, lock, 'explicit lock ' + lock + ' honoured over auto');
