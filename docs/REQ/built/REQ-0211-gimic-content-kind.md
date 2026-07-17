@@ -180,3 +180,44 @@ shape editor for `gimic`. A gimic content def references a gimic artwork through
   or the sim/dialect tests read the main checkout's still-`entities.json` dungeon and fail.
 - **The main checkout stays untouched** — HANDS-OFF preserved (it still carries `entities.json`;
   the migration lives only on this branch until deploy).
+
+## Rebase onto post-0217 master — 2026-07-17
+
+Rebased `req-0211-gimic-content-kind` onto master (base `cc575e2`, the post
+REQ-0214/0217/0221/0225/0230/0231/0234 tip; master advanced to `6d0e3a0` during the work).
+New tip: **`f44702d`** (was `68a684d`; backup ref `refs/backup/req-0211-pre-rebase-20260717`).
+
+**Conflicts + resolutions**
+- **`tools/e2e_fleet.cjs` overlay obsolete → commit `eef797b` DROPPED.** REQ-0217 rewrote the
+  fleet so a worker home `cpSync`s the WHOLE `content/live` from THIS worktree (the per-file
+  "not yet on master" overlays are retired with it). The branch's dungeon overlay (copying
+  gimics.json) is subsumed; the file is now byte-identical to master. No behavior change — the
+  hermetic fleet already serves the worktree's gimics.
+- **`content/registry.json`** auto-merged: the branch removed `entities.json` / added the
+  `gimics.json` hash in the base `live_dungeon` block; master appended batch-007 deepstone to
+  `live_dungeon_additive` — disjoint regions.
+- `server/routes/content.cjs` KINDS (+gimic), `server/tests/api/harness.cjs` (entities→gimics
+  fixture) and the new `client/e2e/dex.spec.ts` Gimics-tab spec applied cleanly (master did not
+  touch them). dex.spec.ts is read-only on `/api/content` and inherits the REQ-0214
+  `x-bpk-e2e-profile` headers — no porting needed for the hermetic harness.
+
+**New commits the rebase required**
+- `port REQ-0219 additive-promotion gate to gimics.json` — REQ-0219 (deepstone) merged to
+  master AFTER this branch forked, so `sim/tests/req0219_deepstone_test.cjs` still enumerated
+  the pre-migration live/dungeon file set incl. `entities.json`. Applied the SAME
+  entities.json→gimics.json edit this branch already made to the REQ-0203/0207 sibling gates.
+- `isolate per-kind registry read` (`server/services/core.cjs computeRegistryData`) — adding
+  `gimic` (and later `dungeon`) to `REGISTRY_KINDS` makes the pg registry read ask for a
+  `content_kind` enum value not on the db until the 020/022 migration deploys, so
+  `resolveAdoptedContentData` throws `invalid input value for enum content_kind`. The
+  UN-isolated loop let that one throw reject the whole snapshot, silently blanking registry-
+  first serving for EVERY kind (unit/gacha/monster/skill/po). Now guarded per-kind — the
+  module already promises keep-last-snapshot / never-500; applied per-kind. Surfaced by the pg
+  gates, which this branch never ran (it was validated DB-free).
+
+**Gate evidence (measured on the req-0185 tip, which contains this branch)** — DB-free
+`tools/ci.sh` GREEN. The HOME→worktree symlink is STILL required for the sim/dialect content
+gates (os.homedir() content anchoring persists; the e2e overhaul only fixed the fleet's
+per-worker HOME, not the ci gates). pg content/schedule serving GREEN (schedule_serving 13/0,
+was 4/9 before the isolate fix). Hermetic e2e Gimics-tab spec (`dex.spec.ts:428`) PASS.
+Branch stays UNMERGED.
