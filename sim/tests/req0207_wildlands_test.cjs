@@ -219,7 +219,14 @@ T('G5 determinism: two same-seed runs are byte-identical (per pack)', () => {
 });
 
 // ---- additive promotion (deploy-invariant, byte-preserving) ----
-T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 30->50 / 7->10, baseline byte-preserved, non-additive files untouched, collision refused', () => {
+// [GATE FIX 2026-07-17, REQ-0230 ci pass] Counts were hardcoded (15->27 /
+// 30->50 / 7->10) from the moment batch-006 was authored; later batches
+// (REQ-0219 deepstone et al.) have since been promoted into live, so the
+// reconstructed baseline is no longer 15/30/7. Same staleness, same fix as
+// 009582d on the grave-legion gate: the invariant this gate owns is the
+// SPLICE (merged = baseline + batch, originals byte-identical), so the
+// expectation is delta-based and immune to unrelated live growth.
+T('additive promotion: batch-006 merges on top of the current live -- +batch counts, baseline byte-preserved, non-additive files untouched, collision refused', () => {
   const batchIds = new Set([].concat(enemies.entries, skills.entries, packs.entries).map(e => e.id));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'req0207-promo-'));
   try {
@@ -243,7 +250,6 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
     const regPath = path.join(tmp, 'registry.json');
     fs.writeFileSync(regPath, JSON.stringify({ t: 'test' }, null, 1) + '\n');
 
-    const expect = { 'enemies.json': [15, 27], 'skills.json': [30, 50], 'packs.json': [7, 10] };
     const delta = { 'enemies.json': enemies.entries.length, 'skills.json': skills.entries.length, 'packs.json': packs.entries.length };
 
     promoteAdditive(BATCH, { liveDir: liveDir, registryPath: regPath });
@@ -251,8 +257,6 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
     for (const f of ['enemies.json', 'skills.json', 'packs.json']) {
       const merged = fs.readFileSync(path.join(liveDir, f), 'utf8');
       const bDoc = JSON.parse(baseText[f]), mDoc = JSON.parse(merged);
-      eq(bDoc.entries.length, expect[f][0], f + ' baseline count');
-      eq(mDoc.entries.length, expect[f][1], f + ' merged count');
       eq(mDoc.entries.length, bDoc.entries.length + delta[f], f + ' merged == baseline + batch (delta invariant)');
       // byte preservation: the merge is a pure SPLICE -- merged == A + <newblock> + B
       const arrClose = baseText[f].lastIndexOf(']');
