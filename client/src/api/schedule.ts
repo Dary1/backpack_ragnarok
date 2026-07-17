@@ -28,13 +28,14 @@ export function fetchDungeons(): Promise<ApiDungeonsPayload> {
   return scheduleJSON<ApiDungeonsPayload>('/api/schedule/dungeons');
 }
 
-/** GET /api/schedule/forecast -- REQ-0057. The enemy attack profiles the Ray
- * Forecast Overlay walks for a given (dungeonType, level). Public/no-auth,
- * exactly like fetchDungeons above: this is CONTENT (enemy defs folded to ray
- * profiles), not run state, so it is scoped to no caller and reveals no run's
- * hidden placements. */
-export function fetchForecast(dungeonType: string, level: number): Promise<ApiForecastPayload> {
-  const qs = new URLSearchParams({ dungeonType, level: String(level) });
+/** GET /api/schedule/forecast -- REQ-0057/REQ-0185. The enemy attack profiles
+ * the Ray Forecast Overlay walks for a given (dungeonId, level). `dungeonId`
+ * names an authored dungeon DEF; the server rolls the SAME def the dive rolls
+ * (parity by construction) and falls back to the first live def for an empty/
+ * unknown id. Public/no-auth, exactly like fetchDungeons above: this is CONTENT
+ * (enemy defs folded to ray profiles), not run state. */
+export function fetchForecast(dungeonId: string, level: number): Promise<ApiForecastPayload> {
+  const qs = new URLSearchParams({ dungeonId, level: String(level) });
   return scheduleJSON<ApiForecastPayload>('/api/schedule/forecast?' + qs.toString());
 }
 

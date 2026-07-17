@@ -408,6 +408,74 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
     );
   }
 
+  // ---- dungeon (dungeon/1): authored, PROBABILITY-WEIGHTED references to
+  // monster_pack + gimic defs (REQ-0185). The roller turns these weighted pools +
+  // level bands into a concrete dive; the preview shows the probability SPACE the
+  // author curated (weights -> drop %), never a single rolled instance. Same
+  // "nothing hidden" invariant -- FallbackGrid catches any unrendered field.
+  if (kind === 'dungeon') {
+    const consumed = new Set<string>(['id', 'name', 'name_ja', 'i18n', 'theme', 'levelMin', 'levelMax', 'dive', 'packPool', 'bossPool', 'gimicPool', 'rewards', 'note']);
+    const theme = typeof data.theme === 'string' ? data.theme : '';
+    const lvlMin = typeof data.levelMin === 'number' ? data.levelMin : null;
+    const lvlMax = typeof data.levelMax === 'number' ? data.levelMax : null;
+    const readPool = (raw: unknown, idKey: string): Array<{ id: string; weight: number; pct: number }> => {
+      const parsed: Array<{ id: string; weight: number }> = [];
+      for (const r of (Array.isArray(raw) ? raw : [])) {
+        if (!r || typeof r !== 'object') continue;
+        const row = r as Record<string, unknown>;
+        const id = typeof row[idKey] === 'string' ? (row[idKey] as string) : '';
+        if (!id) continue;
+        const w = typeof row.weight === 'number' && Number.isFinite(row.weight) ? row.weight : 0;
+        parsed.push({ id, weight: w });
+      }
+      const total = parsed.reduce((n, r) => n + Math.max(0, r.weight), 0);
+      return parsed.map((r) => ({ ...r, pct: total > 0 ? (Math.max(0, r.weight) / total) * 100 : 0 }));
+    };
+    const packRows = readPool(data.packPool, 'packId');
+    const bossRows = readPool(data.bossPool, 'packId');
+    const gimicRows = readPool(data.gimicPool, 'gimic');
+    const dive = data.dive && typeof data.dive === 'object' ? (data.dive as Record<string, unknown>) : null;
+    const bandStr = (b: unknown): string => {
+      if (!b || typeof b !== 'object') return '';
+      const o = b as Record<string, unknown>;
+      const base = typeof o.base === 'number' ? String(o.base) : '?';
+      const max = typeof o.max === 'number' ? String(o.max) : '?';
+      return base + '–' + max;
+    };
+    return (
+      <div data-testid={testid} className={cls}>
+        <div className="ca-ep-headtext">
+          <Names data={data} />
+          <div className="ca-ep-chips">
+            {theme ? <span className="ca-ep-chip" data-testid="cd-ep-theme">{theme}</span> : null}
+            {lvlMin != null && lvlMax != null ? <span className="ca-ep-chip">Lv {lvlMin}{'–'}{lvlMax}</span> : null}
+            {dive ? <span className="ca-ep-chip">packs {bandStr(dive.packEncounters)}</span> : null}
+            {dive ? <span className="ca-ep-chip">gimics {bandStr(dive.gimicSlots)}</span> : null}
+          </div>
+          {packRows.length > 0 ? (
+            <div className="ca-ep-pool" data-testid="cd-ep-packpool">
+              <span className="ca-ep-muted">packs:</span>
+              {packRows.map((r, i) => <span key={i} className="ca-ep-chip">{r.id} <span className="ca-ep-muted">{r.pct.toFixed(0)}%</span></span>)}
+            </div>
+          ) : null}
+          {bossRows.length > 0 ? (
+            <div className="ca-ep-pool" data-testid="cd-ep-bosspool">
+              <span className="ca-ep-muted">boss:</span>
+              {bossRows.map((r, i) => <span key={i} className="ca-ep-chip">{r.id} <span className="ca-ep-muted">{r.pct.toFixed(0)}%</span></span>)}
+            </div>
+          ) : null}
+          {gimicRows.length > 0 ? (
+            <div className="ca-ep-pool" data-testid="cd-ep-gimicpool">
+              <span className="ca-ep-muted">gimics:</span>
+              {gimicRows.map((r, i) => <span key={i} className="ca-ep-chip">{r.id} <span className="ca-ep-muted">{r.pct.toFixed(0)}%</span></span>)}
+            </div>
+          ) : null}
+        </div>
+        <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
+      </div>
+    );
+  }
+
   // ---- unknown kind: fallback grid only (nothing hidden)
   return (
     <div data-testid={testid} className={cls}>

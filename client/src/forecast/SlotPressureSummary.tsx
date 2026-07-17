@@ -28,13 +28,13 @@ const SLOTS = ['unit1', 'unit2', 'unit3', 'unit4'];
 
 interface SlotPressureSummaryProps {
   locale: Locale;
-  dungeonType: string;
+  dungeonId: string;
   level: number;
   formationId: string;
 }
 
-export function SlotPressureSummary({ locale, dungeonType, level, formationId }: SlotPressureSummaryProps) {
-  const { payload, loading } = useForecastPayload(dungeonType || 'default', level || 1);
+export function SlotPressureSummary({ locale, dungeonId, level, formationId }: SlotPressureSummaryProps) {
+  const { payload, loading } = useForecastPayload(dungeonId || '', level || 1);
 
   if (loading) {
     return <div className="slot-pressure" data-testid="slot-pressure-loading">{t(locale, 'forecast.loading')}</div>;

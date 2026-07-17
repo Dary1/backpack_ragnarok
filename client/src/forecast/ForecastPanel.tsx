@@ -9,6 +9,9 @@
 // forecast shows the DISTRIBUTION (jitter, packs vary); label it 'expected
 // pressure', never 'safe/unsafe' absolutes." So the panel says exactly that,
 // in the player's own language, right where the number is read.
+import { useEffect, useState } from 'react';
+import { fetchDungeons } from '../api';
+import type { ApiDungeonEntry } from '../../../shared/dto';
 import { t } from '../i18n';
 import { useGameStore } from '../store';
 import { setForecastSettings, toggleForecast, useForecast } from './forecastState';
@@ -20,6 +23,21 @@ export function ForecastPanel() {
   const snapshot = useGameStore();
   const fc = useForecast();
   const locale = snapshot.locale;
+
+  // REQ-0185: the forecast is keyed by an authored dungeon DEF id now (the
+  // retired generator `types` are gone). Load the def list so the overlay can
+  // offer the same DEF picker the sortie form does; default the ref to the
+  // first def once loaded. Advisory overlay -- a failed fetch degrades to an
+  // empty picker, never a broken canvas.
+  const [dungeonDefs, setDungeonDefs] = useState<ApiDungeonEntry[]>([]);
+  useEffect(() => {
+    let live = true;
+    void fetchDungeons().then((d) => { if (live) setDungeonDefs(d.dungeons); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+  useEffect(() => {
+    if (fc.dungeonId === '' && dungeonDefs.length > 0) setForecastSettings({ dungeonId: dungeonDefs[0].id });
+  }, [dungeonDefs, fc.dungeonId]);
 
   if (snapshot.status !== 'ready') return null;
 
@@ -58,15 +76,18 @@ export function ForecastPanel() {
         {fc.enabled && fc.payload ? (
           <>
             <label className="forecast-field">
-              <span className="forecast-field-label">{t(locale, 'schedule.dungeonTypeLabel')}</span>
+              <span className="forecast-field-label">{t(locale, 'schedule.dungeonLabel')}</span>
               <select
                 className="forecast-select"
-                data-testid="forecast-type-select"
-                value={fc.dungeonType}
-                onChange={(e) => setForecastSettings({ dungeonType: e.target.value })}
+                data-testid="forecast-dungeon-select"
+                value={fc.dungeonId}
+                onChange={(e) => setForecastSettings({ dungeonId: e.target.value })}
               >
-                <option value="default">{t(locale, 'forecast.typeDefault')}</option>
-                <option value="test_fixed">{t(locale, 'forecast.typeFixed')}</option>
+                {dungeonDefs.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {(locale === 'ja' ? d.i18n?.ja?.name : d.i18n?.en?.name) ?? d.name}
+                  </option>
+                ))}
               </select>
             </label>
 
