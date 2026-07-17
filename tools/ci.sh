@@ -75,6 +75,8 @@ echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
 node server/tests/bpskin_test.cjs
 echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
 node server/tests/bpskin_migration_test.cjs
+echo "==== [4.695/7] e2e profile redirect -- dev-fallback isolation (DB-free, REQ-0214) ===="
+node server/tests/e2e_profile_redirect_test.cjs
 echo "==== [4.71/7] UGC moderation verdict pipeline (DB-free, REQ-0144) ===="
 MODPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$MODPY" ] && "$MODPY" -c 'import numpy,scipy,PIL' 2>/dev/null; then

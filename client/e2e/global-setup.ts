@@ -94,9 +94,15 @@ export const GUEST_AUTH_TRACKED_FILES_PATH = '/tmp/backpack_e2e_guest_auth_track
 // Cloudflare being healthy for cleanup. No auth header is attached,
 // deliberately: the hook only honors the dev_mode NO-token fallback.
 export const API_ORIGIN = 'http://127.0.0.1:8802';
+// REQ-0214: these direct-to-8802 cleanup/seed contexts carry the SAME e2e
+// profile header the browser contexts send (playwright.config.ts), so the
+// dev-gated hooks below act on the e2e_ci profile's rows, never the dev
+// player's own. Still NO auth header, deliberately -- the hooks only honor
+// the dev_mode NO-token fallback.
+export const E2E_PROFILE_HEADERS = { 'x-bpk-e2e-profile': 'ci' } as const;
 
 export async function clearDevWarehouseDebris(phase: string): Promise<void> {
-  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  const ctx = await request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: E2E_PROFILE_HEADERS });
   try {
     const res = await ctx.post('/api/warehouse/dev/clear-debris');
     const bodyText = await res.text();
@@ -136,7 +142,7 @@ export async function clearDevWarehouseDebris(phase: string): Promise<void> {
 // dev_mode NO-token fallback caller, same 404-tolerance (deployed API may lag
 // the repo until backpack-api.service restarts).
 export async function clearDevScheduleRooms(phase: string): Promise<void> {
-  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  const ctx = await request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: E2E_PROFILE_HEADERS });
   try {
     const res = await ctx.post('/api/schedule/rooms/dev/clear');
     const bodyText = await res.text();
@@ -155,7 +161,7 @@ export async function clearDevScheduleRooms(phase: string): Promise<void> {
 }
 
 export async function clearDevEinherjarRecords(phase: string): Promise<void> {
-  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  const ctx = await request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: E2E_PROFILE_HEADERS });
   try {
     const res = await ctx.post('/api/ragnarok/einherjar/dev/clear');
     const bodyText = await res.text();
@@ -185,7 +191,7 @@ export async function clearDevEinherjarRecords(phase: string): Promise<void> {
 // services/market.cjs's devClearAllListings() doc comment. Same call
 // convention as clearDevWarehouseDebris/clearDevEinherjarRecords.
 export async function clearAllMarketListings(phase: string): Promise<void> {
-  const ctx = await request.newContext({ baseURL: API_ORIGIN });
+  const ctx = await request.newContext({ baseURL: API_ORIGIN, extraHTTPHeaders: E2E_PROFILE_HEADERS });
   try {
     const res = await ctx.post('/api/market/listings/dev/clear-all');
     const bodyText = await res.text();

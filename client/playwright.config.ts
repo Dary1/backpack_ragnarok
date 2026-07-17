@@ -48,6 +48,12 @@ const PARALLEL = Number(process.env.E2E_PARALLEL || 0);
 const WORKER_IDX = process.env.TEST_PARALLEL_INDEX; // 0..N-1 stable slot (NOT TEST_WORKER_INDEX, which increments per spawned worker and would exceed the fleet size)
 const WORKER_HEADERS: Record<string, string> =
   PARALLEL > 0 && WORKER_IDX !== undefined ? { "X-E2E-Worker": WORKER_IDX } : {};
+// REQ-0214 e2e profile isolation: EVERY e2e request (page fetches and the
+// request fixture alike -- both inherit use.extraHTTPHeaders) carries
+// x-bpk-e2e-profile, so the live api's dev_mode no-token fallback resolves
+// to the dedicated e2e_ci profile instead of the dev player's own rows
+// (see server/admin.cjs resolveAuthFromRequest).
+const E2E_PROFILE_HEADERS: Record<string, string> = { 'x-bpk-e2e-profile': 'ci' };
 
 export default defineConfig({
   testDir: './e2e',
@@ -83,7 +89,7 @@ export default defineConfig({
   globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: BASE_URL,
-    extraHTTPHeaders: WORKER_HEADERS,
+    extraHTTPHeaders: { ...E2E_PROFILE_HEADERS, ...WORKER_HEADERS },
     headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
     launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to
