@@ -248,7 +248,16 @@ async function computeRegistryData() {
   const out = emptyRegistry();
   for (const kind of REGISTRY_KINDS) {
     const names = Object.keys(fp[REGISTRY_MAP_BY_KIND[kind]] || {});
-    out[kind] = await storage.resolveAdoptedContentData(kind, names);
+    // REQ-0211: isolate per-kind. A content kind whose pg enum value is not yet
+    // migrated onto THIS db (a branch adds `gimic`/`dungeon` to REGISTRY_KINDS
+    // before its 020/022 migration is deployed) makes resolveAdoptedContentData
+    // throw `invalid input value for enum content_kind`; unguarded, that ONE
+    // throw rejected computeRegistryData and blanked EVERY kind`s overlay (the
+    // roll/sim silently degraded ALL content to file-served). Degrade only the
+    // failing kind to file-served -- the module`s documented "keep last
+    // snapshot / never 500" contract, applied per-kind.
+    try { out[kind] = await storage.resolveAdoptedContentData(kind, names); }
+    catch (e) { out[kind] = {}; }
   }
   return out;
 }
