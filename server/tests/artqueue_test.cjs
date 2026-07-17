@@ -17,6 +17,9 @@ const path = require('path');
 if (!process.env.DATABASE_URL) { console.log('SKIP artqueue_test.cjs (no DATABASE_URL)'); process.exit(0); }
 process.env.STORAGE_BACKEND = 'pg';
 process.env.ART_ROUTE_MOCK = '1';
+// REQ-0233: the pump now restarts comfyui.service on a generation->matte
+// family switch; disable that real side effect in this hermetic test.
+process.env.ART_FAMILY_BARRIER = '0';
 
 // Isolated namespace: remap homedir before requiring storage so NAMESPACE is
 // unique to this run and never collides with live/e2e artwork rows.
