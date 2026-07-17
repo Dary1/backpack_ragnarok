@@ -37,25 +37,36 @@ TMPHOME="$(mktemp -d)"
 EXPORTDIR="$(mktemp -d)"
 ln -s "$WT" "$TMPHOME/backpack_ragnarok"
 
-PIDS=()
+# REQ-0231: every background service below is setsid'd into its OWN process
+# group (leader pid == pgid), and cleanup kills exactly those groups -- polite
+# TERM, then KILL for stragglers. NEVER kill by name/pattern: on a shared box
+# another session's harness must be untouchable (a contentadmin Playwright run
+# was SIGKILLed cross-session on 2026-07-17 by exactly that kind of cleanup).
+# The INT/TERM traps convert fatal signals into exits so the EXIT trap still
+# runs and an aborted harness leaves no orphans behind.
+PIDS=()   # setsid group leaders: pid == pgid
 cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do kill -TERM -- "-$p" 2>/dev/null || true; done
+  sleep 0.5
+  for p in "${PIDS[@]:-}"; do kill -KILL -- "-$p" 2>/dev/null || true; done
   rm -rf "$TMPHOME" "$EXPORTDIR"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "[content_admin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
 HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" ALLOW_DEV_CLEAR=1 \
   CONTENT_EXPORT_ROOT="$EXPORTDIR" \
-  node "$WT/server/api.cjs" > /tmp/req0155_e2e_api.log 2>&1 &
+  setsid node "$WT/server/api.cjs" > /tmp/req0155_e2e_api.log 2>&1 &
 PIDS+=($!)
 
-python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0155_e2e_static.log 2>&1 &
+setsid python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0155_e2e_static.log 2>&1 &
 PIDS+=($!)
 
 E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0155_e2e_proxy.log 2>&1 &
+  setsid node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0155_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
 for i in $(seq 1 80); do

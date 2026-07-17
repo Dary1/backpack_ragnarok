@@ -75,7 +75,13 @@ function killManifest() {
   if (!fs.existsSync(MANIFEST)) return;
   try {
     const { workers } = JSON.parse(fs.readFileSync(MANIFEST, 'utf8'));
-    for (const w of workers) { try { process.kill(w.pid, 'SIGTERM'); } catch (e) {} }
+    // REQ-0231: workers are spawned detached, so each is its own process-group
+    // leader (pgid == pid). Kill the GROUP so no child of a worker survives --
+    // and ONLY these recorded groups, never anything matched by name/pattern.
+    for (const w of workers) {
+      try { process.kill(-w.pid, 'SIGTERM'); }
+      catch (e) { try { process.kill(w.pid, 'SIGTERM'); } catch (e2) {} }
+    }
   } catch (e) {}
 }
 

@@ -38,12 +38,23 @@ EXPORTDIR="$(mktemp -d)"
 ln -s "$WT" "$TMPHOME/backpack_ragnarok"
 for f in flux-2-klein-4b-Q8_0.gguf qwen_3_4b.safetensors flux2-vae.safetensors; do echo standin > "$MODELDIR/$f"; done
 
-PIDS=()
+# REQ-0231: every background service below is setsid'd into its OWN process
+# group (leader pid == pgid), and cleanup kills exactly those groups -- polite
+# TERM, then KILL for stragglers. NEVER kill by name/pattern: on a shared box
+# another session's harness must be untouchable (a contentadmin Playwright run
+# was SIGKILLed cross-session on 2026-07-17 by exactly that kind of cleanup).
+# The INT/TERM traps convert fatal signals into exits so the EXIT trap still
+# runs and an aborted harness leaves no orphans behind.
+PIDS=()   # setsid group leaders: pid == pgid
 cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do kill -TERM -- "-$p" 2>/dev/null || true; done
+  sleep 0.5
+  for p in "${PIDS[@]:-}"; do kill -KILL -- "-$p" 2>/dev/null || true; done
   rm -rf "$TMPHOME" "$MODELDIR" "$EXPORTDIR"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "[artadmin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
@@ -51,14 +62,14 @@ HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" 
   ART_ROUTE_MOCK=1 ART_MOCK_DELAY_MS="${ART_MOCK_DELAY_MS:-1500}" \
   ART_MODEL_DIR="$MODELDIR" ART_EXPORT_ROOT="$EXPORTDIR" \
   ART_JOB_PYTHON="$VENV_PY" ART_KIT_PYTHON="$VENV_PY" ART_KIT_MATTE_METHOD=borderkey \
-  node "$WT/server/api.cjs" > /tmp/req0156_e2e_api.log 2>&1 &
+  setsid node "$WT/server/api.cjs" > /tmp/req0156_e2e_api.log 2>&1 &
 PIDS+=($!)
 
-python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0156_e2e_static.log 2>&1 &
+setsid python3 -m http.server "$STATICPORT" --directory "$WT/web" > /tmp/req0156_e2e_static.log 2>&1 &
 PIDS+=($!)
 
 E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0156_e2e_proxy.log 2>&1 &
+  setsid node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0156_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
 # wait for the api + proxy to accept connections

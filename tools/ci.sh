@@ -7,12 +7,51 @@
 #   SKIP_CLIENT=1  skip client typecheck+build
 #   SKIP_E2E=1     skip Playwright e2e (needs installed browsers + running services)
 #
+# Queue seams (REQ-0231):
+#   CI_LOCK_NONBLOCK=1  fail fast (exit 75) if another ci.sh run holds the box
+#   CI_LOCK_WAIT=secs   max queue wait (default 7200)
+#   CI_LOCK_FILE=path   override the lock file (tests only)
+#
 # REQ-0159: "CI GREEN" below means LITERALLY green. There is no accounted/
 # remembered failure set any more -- if this script prints CI GREEN, every gate
 # it ran passed. Do not re-introduce a "these reds are fine" convention: a red
 # is either a real defect or a stale gate, and both must be fixed, not memorized.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# REQ-0231: cross-session CI queue -- ONE ci.sh run per box at a time.
+# The e2e box lock (tools/e2e_run.sh) serialises only the Playwright phase;
+# everything before it (sim, pg, tsc, vite build, chromium warmup) used to run
+# concurrently across agent sessions and saturated the box (load avg 13.7+,
+# sshd unresponsive ~40 min, one mid-CI reboot on 2026-07-17). Sessions had
+# converged on an ad-hoc `flock /tmp/bpk_ci.lock` wrapper -- folklore, copied
+# session-to-session, enforced nowhere. This block machine-enforces the queue:
+# the WHOLE run holds an exclusive advisory lock, taken on fd 8 (fd 9 is the
+# e2e lock inside tools/e2e_run.sh, which still nests fine under this one).
+# The fd is inherited by every child, so the lock releases when the run ends
+# OR the process tree dies (crash-safe -- no stale lock to clean up).
+#   - default:            QUEUE -- wait up to CI_LOCK_WAIT seconds (7200), then run.
+#   - CI_LOCK_NONBLOCK=1: FAIL FAST -- exit 75 immediately if the box is busy.
+# Do NOT wrap ci.sh in an external flock of the same file: flock locks belong
+# to the open file description, so the wrapper's held lock would deadlock the
+# inner acquire. The old /tmp/bpk_ci.lock convention is retired.
+CI_LOCK_FILE="${CI_LOCK_FILE:-$HOME/.cache/backpack/ci.box.lock}"
+mkdir -p "$(dirname "$CI_LOCK_FILE")"
+exec 8>"$CI_LOCK_FILE"
+if [ "${CI_LOCK_NONBLOCK:-0}" = "1" ]; then
+  if ! flock -n 8; then
+    echo "[ci-lock] box busy: another ci.sh run holds $CI_LOCK_FILE. CI_LOCK_NONBLOCK=1 -> abort." >&2
+    exit 75
+  fi
+else
+  CI_WAIT="${CI_LOCK_WAIT:-7200}"
+  echo "[ci-lock] queueing for the CI box lock ($CI_LOCK_FILE, up to ${CI_WAIT}s) ..." >&2
+  if ! flock -w "$CI_WAIT" 8; then
+    echo "[ci-lock] timed out after ${CI_WAIT}s waiting for $CI_LOCK_FILE." >&2
+    exit 75
+  fi
+fi
+echo "[ci-lock] acquired CI box lock ($CI_LOCK_FILE) -- holder pid $$" >&2
 
 # REQ-0172: cheap + first. A harness port collision is invisible until the
 # harnesses actually run (REQ-0159 lost a whole ci cycle to one: two harnesses had
