@@ -1,0 +1,23 @@
+-- backpack_ragnarok -- server/migrations/022_content_kind_dungeon.sql
+-- REQ-0185: extend the content_kind ENUM with 'dungeon' so an authored
+-- dungeon -- identity + PROBABILITY-WEIGHTED references to monster_pack and
+-- gimic defs -- enters the content registry as a first-class def, managed
+-- from the content admin, machine-checked, and registry-first served. At
+-- dive time the server ROLLS a concrete encounter list from the def's
+-- weighted tables (sim/dungeon_roll.cjs); there is no runtime dungeon-graph
+-- generation on the request path. User ruling, 2026-07-17.
+--
+-- Registry semantics are UNCHANGED: a dungeon is an ordinary content_defs +
+-- content_variants pair (immutability trigger, adopted-variant FK, variant_no
+-- handle -- all inherited from 009). No new table, column or constraint. The
+-- ENUM is the only thing blocking dungeon/1 data from entering the ledger --
+-- exactly as it was for skill_def (010), gacha_pack (016), monster_pack (019)
+-- and gimic (020).
+--
+-- Apply as the postgres superuser (same invocation as 001..021):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/022_content_kind_dungeon.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already
+-- exists. ALTER TYPE ... ADD VALUE cannot run inside a transaction block,
+-- hence the bare top-level statement (the same reason 010/016/019/020 are bare).
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'dungeon';

@@ -48,6 +48,7 @@
   "date": "2026-07-15",
   "files": {
    "dungeon.json": "b78b1c5c03640278dad6b1956aa41d25cf821d29e0a5bda2879553733a3f9f00",
+   "dungeons.json": "346d8c590799556fc9129a5f48403bf726ed139187342f5219b8fea93c9240b2",
    "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
    "packs.json": "c1a4e2f8ae51dcd349f639f06bf605a96e3ea9daae366770cef0a9e7c0c002e3",
    "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
