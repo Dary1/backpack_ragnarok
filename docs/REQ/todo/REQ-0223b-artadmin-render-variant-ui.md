@@ -57,9 +57,14 @@ means 0 — so the specs stay green without edits, and the diff stays about twin
 - The V4 compare loop from REQ-0187 re-runs THROUGH THE UI with a TRUE same-seed pair and is
   recorded here as the demonstration. (0223a's `artwork_test` already proves the pair at the
   storage/queue level: 'REQ-0223 TRUE same-seed A/B'. This gate is about the operator loop.)
-- e2e ports derive from `source tools/e2e_ports.sh 0223` → 2230/2231/2232. The 0223 decade is
-  claimed by THIS harness only; 0223a ships no harness, so the a/b split does not put two
-  harnesses in one decade (`tools/check_e2e_ports.cjs` step [0/8] enforces it).
+- **Correction (2026-07-17): no new harness, so the 0223 decade is NOT claimed.** This REQ was
+  drafted assuming its e2e needed its own bringup and would take 2230/2231/2232. It does not:
+  the spec is an ARTADMIN spec, so it belongs in `tools/artadmin_e2e.sh`, which already declares
+  `source e2e_ports.sh 0156` and owns 1560-1562. Standing up a second harness for the same
+  console would have put two bringups on one screen's worth of routes for no gain, and the
+  0223 decade would name a harness that should not exist. `tools/check_e2e_ports.cjs` agrees:
+  "3 harnesses, all ports derived from their REQ number, no collisions". The port rule binds
+  HARNESSES to REQ numbers, not SPECS — a spec lives in whichever harness boots its console.
 
 ## Out of scope
 - Any schema change (0223a is the schema; reopen it, don't fork it here).

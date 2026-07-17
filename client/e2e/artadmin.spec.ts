@@ -331,3 +331,93 @@ test('REQ-0216 true-scale thumbs: constant px-per-cell across footprints', async
   await expect(page.getByTestId('render-cb-1')).toBeVisible();
   await expect(page.getByTestId('render-cb-1')).toHaveCSS('width', '84px');
 });
+
+// ---------------------------------------------------------------------------
+// REQ-0223b gate: the TRUE same-seed A/B, driven the way an operator drives it.
+//
+// This is REQ-0187's V4 compare loop re-run. REQ-0187 could not run it honestly:
+// renders.seed was UNIQUE per artwork, so burning one seed at two locks died on
+// DUPLICATE_SEED and it had to use disjoint seed ranges (501-503 strict vs 511-512
+// off) instead. Every pair of evidence it recorded therefore confounded the LOCK
+// effect with a SEED effect. Here the seed is held fixed and only the lock moves,
+// which is the entire point of the feature.
+test('REQ-0223 same-seed A/B: one seed at two locks -> two cards -> lightbox strip -> adopt the twin', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  const AB = 'e2e_ab_sword';
+
+  await page.goto('/app/#/artadmin');
+  await expect(page.getByTestId('artadmin')).toBeVisible();
+
+  // An L-tromino: its bbox has an unowned cell, so the shape does NOT fill its box
+  // and the lock actually does something (REQ-0153/0187 -- the conditioning question
+  // only bites where the shape leaves slack).
+  await page.getByTestId('art-new').click();
+  await page.getByTestId('art-kind').selectOption('po');
+  await page.getByTestId('po-cell-0-0').click();
+  await page.getByTestId('po-cell-1-0').click();
+  await page.getByTestId('po-cell-1-1').click();
+  await page.getByTestId('art-system-name').fill(AB);
+  await page.getByTestId('art-main-object').fill('iron sword');
+  await page.getByTestId('art-create').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+
+  // A: seed 42 at lock=strict.
+  await page.getByTestId('art-seed').fill('42');
+  await page.getByTestId('art-gen-lock').selectOption('strict');
+  await page.getByTestId('art-gen-seed').click();
+  await expect(page.getByTestId('render-status-42')).toHaveText('[ok]', { timeout: 90000 });
+
+  // B: the SAME seed 42 at lock=off. Before REQ-0223 this press failed with
+  // DUPLICATE_SEED -- the operator's only options were to destroy A or change seed.
+  await page.getByTestId('art-seed').fill('42');
+  await page.getByTestId('art-gen-lock').selectOption('off');
+  await page.getByTestId('art-gen-seed').click();
+  await expect(page.getByTestId('render-status-42-v1')).toHaveText('[ok]', { timeout: 90000 });
+
+  // Two distinct cards, same seed. The bare testid still belongs to variant 0.
+  await expect(page.getByTestId('render-42')).toBeVisible();
+  await expect(page.getByTestId('render-42-v1')).toBeVisible();
+  await expect(page.getByTestId('render-42-v1')).toContainText('·v1');
+
+  // The pair is a TRUE A/B: one seed, two resolved locks, both provenances intact.
+  const detail = await (await request.get('/api/art/artworks/' + AB)).json();
+  const rows = (detail.renders as Array<{ seed: number; variant: number; params: { shape_lock?: string; seed?: number }; final_prompt: string }>)
+    .filter((r) => r.seed === 42);
+  expect(rows.length).toBe(2);
+  const [a, b] = [rows.find((r) => r.variant === 0)!, rows.find((r) => r.variant === 1)!];
+  expect(a.params.shape_lock).toBe('strict');
+  expect(b.params.shape_lock).toBe('off');
+  expect(a.params.seed).toBe(b.params.seed);          // the seed is HELD, not burned
+  // strict renders an edit instruction, off does not -- the delta under test.
+  expect(/Turn the gray shape/.test(a.final_prompt)).toBe(true);
+  expect(/Turn the gray shape/.test(b.final_prompt)).toBe(false);
+
+  // The lightbox groups them: open A, and the strip offers both variants of the seed.
+  await page.getByTestId('render-thumb-42').click();
+  await expect(page.getByTestId('lightbox')).toBeVisible();
+  await expect(page.getByTestId('lightbox-strip')).toBeVisible();
+  await expect(page.getByTestId('lightbox-strip-42')).toBeVisible();
+  await expect(page.getByTestId('lightbox-strip-42-v1')).toBeVisible();
+
+  // A/B opens the two-up at the same-seed pair -- the V4 compare, now honest.
+  await page.getByTestId('lightbox-ab').click();
+  await expect(page.getByTestId('lightbox-compare')).toBeVisible();
+  await expect(page.getByTestId('lightbox-sameseed')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img-b')).toBeVisible();
+
+  // Adopting the winner adopts THAT variant -- not its sibling.
+  await page.getByTestId('lightbox-adopt-b').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await page.getByTestId('confirm-ok').click();
+  await expect(page.getByTestId('render-42-v1')).toContainText('ADOPTED');
+  await expect(page.getByTestId('render-42')).not.toContainText('ADOPTED');
+
+  // ... and the adopted twin is undeletable while its sibling deletes freely.
+  await expect(page.getByTestId('delete-42-v1')).toBeDisabled();
+  await page.getByTestId('delete-42').click();
+  await expect(page.getByTestId('confirm-dialog')).toBeVisible();
+  await page.getByTestId('confirm-ok').click();
+  await expect(page.getByTestId('render-42')).toHaveCount(0);
+  await expect(page.getByTestId('render-42-v1')).toBeVisible();
+});
