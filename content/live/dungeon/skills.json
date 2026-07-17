@@ -1266,6 +1266,989 @@
       "modes": [
         "battle"
       ]
+    },
+    {
+      "id": "crushing_tentacles",
+      "name_en": "Crushing Tentacles",
+      "name_ja": "触手の粉砕",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "multi_strike",
+        "n": [
+          6,
+          10
+        ],
+        "hits": 3
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 2,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "abyssal_grip",
+      "name_en": "Abyssal Grip",
+      "name_ja": "深淵の握撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5,
+          6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 2,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "tidal_fang",
+      "name_en": "Tidal Fang",
+      "name_ja": "潮の牙",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Chill",
+        "n": [
+          12,
+          18
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "coil_crush",
+      "name_en": "Coil Crush",
+      "name_ja": "とぐろ締め",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.6,
+          4.4
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          10,
+          16
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "coral_spear",
+      "name_en": "Coral Spear",
+      "name_ja": "珊瑚の槍",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.4
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          8,
+          13
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "cold_current",
+      "name_en": "Cold Current",
+      "name_ja": "冷たき潮流",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "pincer_slam",
+      "name_en": "Pincer Slam",
+      "name_ja": "鋏の強打",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          9,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "barnacle_grip",
+      "name_en": "Barnacle Grip",
+      "name_ja": "藤壺の握り",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.4,
+          5.2
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          1,
+          3
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "petrifying_glare",
+      "name_en": "Petrifying Glare",
+      "name_ja": "石化の睨み",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.8,
+          5.8
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "serpent_lash",
+      "name_en": "Serpent Lash",
+      "name_ja": "蛇髪の鞭",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          9,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "petri_peck",
+      "name_en": "Petri Peck",
+      "name_ja": "石化の啄み",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5.2,
+          6.2
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "talon_rake",
+      "name_en": "Talon Rake",
+      "name_ja": "蹴爪の引っ掻き",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.2
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          6,
+          10
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "seismic_fist",
+      "name_en": "Seismic Fist",
+      "name_ja": "地震の拳",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Stun",
+        "n": [
+          14,
+          22
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "granite_slam",
+      "name_en": "Granite Slam",
+      "name_ja": "花崗岩の一撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          11,
+          17
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "serpents_kiss",
+      "name_en": "Serpent's Kiss",
+      "name_ja": "蛇の口づけ",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          8,
+          12
+        ],
+        "frac": 0.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "beguiling_song",
+      "name_en": "Beguiling Song",
+      "name_ja": "惑わしの歌",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.4,
+          5.2
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "rusty_shiv",
+      "name_en": "Rusty Shiv",
+      "name_ja": "錆びた小刀",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          1.9,
+          2.5
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          4,
+          7
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "goblin_jeer",
+      "name_en": "Goblin Jeer",
+      "name_ja": "ゴブリンの悪態",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.6,
+          5.4
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "pack_spear",
+      "name_en": "Pack Spear",
+      "name_ja": "群れ槍",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.2,
+          2.8
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          5,
+          8
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "crude_mending",
+      "name_en": "Crude Mending",
+      "name_ja": "荒縫いの癒し",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.8,
+          4.6
+        ]
+      },
+      "verb": {
+        "t": "heal_ally",
+        "n": [
+          7,
+          12
+        ]
+      },
+      "attack_profile": {
+        "edge": [],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ],
+      "note": "REQ-0219: support skill -- NO ray at the player field (the executor intercepts heal_ally before ray firing and heals the lowest-HP living ally). Empty edge honestly declares it projects no ray (batch-005 dark_mending precedent)."
+    },
+    {
+      "id": "hex_bolt",
+      "name_en": "Hex Bolt",
+      "name_ja": "呪いの矢",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.4,
+          4.2
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Weakness",
+        "n": [
+          2,
+          4
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "brutal_cleave",
+      "name_en": "Brutal Cleave",
+      "name_ja": "残忍な斬撃",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.6,
+          3.2
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Weakness",
+        "n": [
+          10,
+          16
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "clubbing_blow",
+      "name_en": "Clubbing Blow",
+      "name_ja": "棍棒の一打",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.4,
+          4.2
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          14,
+          20
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 1,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "cataclysm_horns",
+      "name_en": "Cataclysm Horns",
+      "name_ja": "天変の巨角",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4
+        ]
+      },
+      "verb": {
+        "t": "multi_strike",
+        "n": [
+          7,
+          12
+        ],
+        "hits": 3
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 2,
+        "aoe": 2,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "glacial_axe",
+      "name_en": "Glacial Axe",
+      "name_ja": "氷河の斧",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3,
+          3.8
+        ]
+      },
+      "verb": {
+        "t": "bonus_vs_status",
+        "status": "Chill",
+        "n": [
+          14,
+          20
+        ],
+        "mult": 1.5
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "log_swing",
+      "name_en": "Log Swing",
+      "name_ja": "丸太薙ぎ",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.2,
+          4
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          12,
+          18
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 1,
+        "aoe": 1,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "earthshatter",
+      "name_en": "Earthshatter",
+      "name_ja": "大地砕き",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          5.4,
+          6.4
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Stun",
+        "n": [
+          1,
+          2
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 2,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "winters_call",
+      "name_en": "Winter's Call",
+      "name_ja": "冬の呼び声",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.6,
+          5.4
+        ]
+      },
+      "verb": {
+        "t": "apply_status",
+        "status": "Chill",
+        "n": [
+          3,
+          5
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 1,
+        "aoe_statuses": true
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "hurl_boulder",
+      "name_en": "Hurl Boulder",
+      "name_ja": "岩投げ",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          4.2,
+          5
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          10,
+          15
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "left",
+          "right"
+        ],
+        "direction": "side",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "trollish_vigor",
+      "name_en": "Trollish Vigor",
+      "name_ja": "トロールの活力",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          3.6,
+          4.4
+        ]
+      },
+      "verb": {
+        "t": "lifesteal",
+        "n": [
+          7,
+          11
+        ],
+        "frac": 0.7
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
+    },
+    {
+      "id": "rending_claw",
+      "name_en": "Rending Claw",
+      "name_ja": "裂き爪",
+      "trigger": {
+        "t": "every_secs",
+        "s": [
+          2.8,
+          3.6
+        ]
+      },
+      "verb": {
+        "t": "strike",
+        "n": [
+          9,
+          14
+        ]
+      },
+      "attack_profile": {
+        "edge": [
+          "top"
+        ],
+        "direction": "front",
+        "penetration": 0,
+        "aoe": 0,
+        "aoe_statuses": false
+      },
+      "modes": [
+        "battle"
+      ]
     }
   ]
 }

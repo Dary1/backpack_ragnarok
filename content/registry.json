@@ -152,6 +152,75 @@
     "skills.json": "32f808ad5c96cd0fb886bd614a6b5724616925a8464d62621e49c4310de67ed9",
     "packs.json": "85057ed7338e67739d96904c27655c2282b7aaa48c1ed77153a8ab6baad95921"
    }
+  },
+  {
+   "promoted_from": "batch-007-deepstone-legions",
+   "date": "2026-07-17",
+   "added": {
+    "enemies.json": [
+     "kraken",
+     "sea_serpent",
+     "sahuagin",
+     "giant_crab",
+     "medusa",
+     "cockatrice",
+     "lamia",
+     "stone_golem",
+     "goblin",
+     "goblin_shaman",
+     "kobold",
+     "orc_warrior",
+     "ogre",
+     "behemoth",
+     "frost_giant",
+     "cyclops",
+     "troll"
+    ],
+    "skills.json": [
+     "crushing_tentacles",
+     "abyssal_grip",
+     "tidal_fang",
+     "coil_crush",
+     "coral_spear",
+     "cold_current",
+     "pincer_slam",
+     "barnacle_grip",
+     "petrifying_glare",
+     "serpent_lash",
+     "petri_peck",
+     "talon_rake",
+     "seismic_fist",
+     "granite_slam",
+     "serpents_kiss",
+     "beguiling_song",
+     "rusty_shiv",
+     "goblin_jeer",
+     "pack_spear",
+     "crude_mending",
+     "hex_bolt",
+     "brutal_cleave",
+     "clubbing_blow",
+     "cataclysm_horns",
+     "glacial_axe",
+     "log_swing",
+     "earthshatter",
+     "winters_call",
+     "hurl_boulder",
+     "trollish_vigor",
+     "rending_claw"
+    ],
+    "packs.json": [
+     "pack_deep_tide",
+     "pack_petrifying_court",
+     "pack_greenskin_warband",
+     "pack_titan_ridge"
+    ]
+   },
+   "files": {
+    "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
+    "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
+    "packs.json": "60b4d7b6340ff178a7c47312f3aba0671c5e87bbdfb09f9ebac265553f8dfed0"
+   }
   }
  ]
 }
