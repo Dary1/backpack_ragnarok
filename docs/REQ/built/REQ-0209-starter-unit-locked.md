@@ -80,3 +80,12 @@ has 4 fixed POs and free placeable cells; make EVERY cell fixed uniformly:
   count expected 7 got 19; (3) content_serving_test pg fixture ENOENT
   content/live/dungeon/items.json (6 cases).
 - Commits: c92047a (implementation), + dist rebuild.
+
+## Deploy record (2026-07-17)
+- Merged to master 06a3ccc (--no-ff, user go-ahead in chat), fast history:
+  c92047a impl / 1f52468 dist / b2b399e+19dbf7b docs.
+- backpack-api + backpack-web restarted; live-verified: /api/content serves
+  starterUnits.locked=true with filled boards (guard 10 / arms 12 / mend 12 /
+  scout 13 POs); web serves the merged dist (index-CLqndH6v.js).
+- Note: backpack-mirror.service was already in failed state before this
+  deploy (pre-existing, untouched).
