@@ -243,6 +243,19 @@ function validateCharge(charge, vocab, ctx) {
     if (!Array.isArray(charge.effects)) throw new Error(ctx + ': charge.effects must be an array');
     charge.effects.forEach((ceff, i) => validateChargeEffect(ceff, vocab, targets, ctx + '.effects[' + i + ']'));
   }
+  // REQ-0212: charge_strike is a fire_on_full-ONLY effect verb. It deals
+  // n x stacks_spent damage, and stacks_spent is only well-defined when the
+  // counter is CONSUMED at capacity. Under passive_per_stack (a STANDING
+  // per-stack effect) or transform (effects never fire) it has no honest
+  // meaning, so the grammar rejects it BY NAME rather than let a def lie quietly.
+  if (Array.isArray(charge.effects)) {
+    for (let i = 0; i < charge.effects.length; i++) {
+      const e = charge.effects[i];
+      if (e && e.verb && e.verb.t === 'charge_strike' && charge.spend !== 'fire_on_full') {
+        throw new Error(ctx + '.effects[' + i + ']: charge_strike is only legal under spend="fire_on_full" (got spend="' + charge.spend + '")');
+      }
+    }
+  }
 }
 
 /** Validates the full PUT body against the schema allowlist for `kind`
