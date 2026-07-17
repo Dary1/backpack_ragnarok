@@ -41,3 +41,15 @@ only passes on a quiet box tests the wrong thing.
 - The artadmin goto spec passes on a deliberately loaded box (reproduce with a CPU-burn, not
   the owner's art job); release.sh demonstrates the rerun-then-abort path on an injected flake
   and the abort path on an injected regression; full default suite green on quiet AND loaded box.
+
+## Partial implementation (2026-07-17, via REQ-0234 -- family fix landed)
+- ROOT CAUSE REMOVED for the harness family: the single-threaded
+  `python3 -m http.server` docroots are GONE from all three admin harnesses.
+  Since REQ-0217 the local-proxy serves /app + /preview from the worktree
+  itself (node fs.readFile, no thread bottleneck); the harnesses now drive
+  it via E2E_FLEET_BASE_PORT=<their api> (see REQ-0234 F7 -- the old
+  E2E_STATIC_PORT/E2E_API_PORT knobs had silently died with REQ-0217,
+  leaving /api routed at the default 8810).
+- REMAINING SCOPE (this REQ stays todo): release.sh rerun-then-abort
+  codification with the provenance-carrying known-flaky list, and the
+  loaded-box artadmin goto demo for the gate.

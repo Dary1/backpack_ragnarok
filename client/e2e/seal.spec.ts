@@ -82,7 +82,7 @@ test.describe('sealed seed share', () => {
   test('seal -> share -> second player runs once -> anti-spoiler hold -> comparison unlocks after own settle; duplicate-run rejection', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
@@ -90,7 +90,7 @@ test.describe('sealed seed share', () => {
       // Clean slate for the dev fallback player's schedule rooms so its
       // fixture squads are not already deployed in a leftover active room.
       await page.request.post('/api/schedule/rooms/dev/clear');
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       await page.request.put(`/api/profile/${guestB.playerId}/canvas`, { headers: { 'X-Auth-Token': guestB.token }, data: fixture });
 
       const meRes = await page.request.get('/api/me');

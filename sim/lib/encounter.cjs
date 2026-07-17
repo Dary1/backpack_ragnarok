@@ -4,7 +4,7 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 const { TUNABLES, deepCopy } = require('./core.cjs');
 const { EventHeap } = require('./heap.cjs');
-const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, cadenceMultiplier } = require('./status.cjs'); // REQ-0200: cadenceMultiplier for real haste
+const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, cadenceMultiplier, DEBUFF_STATUSES } = require('./status.cjs'); // REQ-0200: cadenceMultiplier for real haste; REQ-0212: DEBUFF_STATUSES for transfer_status
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
@@ -90,6 +90,51 @@ function runEncounter(opts) {
         }
       }
       if (changed) { const items = heap.a.splice(0); for (const it of items) heap.push(it); }
+    },
+    // REQ-0212: transfer_status -- MOVE up to n negative statuses (Burn/Poison/Chill/Weakness/
+    // Stun) from the host BP's status bag onto the first living enemy, each keeping its remaining
+    // stacks/duration (a MOVE: removed from the host). Respects enemy status immunity.
+    transferStatus(bpId, n, t) {
+      const bp = troopBps.find(b => b.id === bpId);
+      if (!bp || !bp.statusBag) return;
+      const enemies = enemyActorList().filter(a => a && a.alive && a.kind === 'enemy');
+      if (!enemies.length) return;
+      const target = enemies[0]; // first living enemy (deterministic list order)
+      const budget = Math.max(0, Math.floor(n));
+      let moved = 0;
+      for (const st of DEBUFF_STATUSES) { // fixed order: Burn, Poison, Chill, Weakness, Stun
+        if (moved >= budget) break;
+        const cur = bp.statusBag[st];
+        if (!cur) continue;
+        delete bp.statusBag[st]; // leaves the host
+        if (!(target.statusBag._immune && target.statusBag._immune.has(st))) {
+          const d = target.statusBag[st];
+          if (!d) { target.statusBag[st] = Object.assign({}, cur); } // transplant: keeps stacks/remain
+          else {
+            if (cur.stacks != null) d.stacks = (d.stacks || 0) + cur.stacks;
+            if (cur.remain != null) d.remain = Math.max(d.remain || 0, cur.remain);
+          }
+        }
+        moved++;
+        events.push({ t, seq: heap.nextSeq(), cause: 'charge', ev: 'unit_charge_transfer', src: bpId, dst: target.id, status: st, stacks: (cur.stacks != null ? cur.stacks : null), remain: (cur.remain != null ? cur.remain : null) });
+      }
+    },
+    // REQ-0212: shield_break -- strip up to n points of flat block (ref.damageReduction, the
+    // enemy's active block pool the damage pipeline reads) from every living enemy, floored at 0.
+    // No damage.
+    breakShield(bpId, n, t) {
+      const amt = Math.max(0, n);
+      if (!amt) return;
+      for (const a of enemyActorList()) {
+        if (!a || !a.alive || a.kind !== 'enemy') continue;
+        const ref = a.ref || {};
+        const before = ref.damageReduction || 0;
+        if (before <= 0) continue;
+        const after = Math.max(0, before - amt);
+        if (after === before) continue;
+        ref.damageReduction = after;
+        events.push({ t, seq: heap.nextSeq(), cause: 'charge', ev: 'unit_charge_shieldbreak', src: bpId, dst: a.id, before, after });
+      }
     },
   };
   const chargeMgr = chargeBps.length

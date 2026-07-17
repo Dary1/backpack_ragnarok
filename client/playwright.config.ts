@@ -1,32 +1,23 @@
 // Playwright E2E config — REQ-0031 Phase A.
 //
-// baseURL is the PUBLIC Cloudflare tunnel hostname, NOT the local static
-// port (8801). This is deliberate, not an oversight: backpack-web.service
-// (8801) serves /app/ as plain static files with NO local proxy to
-// backpack-api.service (8802) -- hitting http://127.0.0.1:8801/api/content
-// 404s (confirmed via curl during rig setup). The ONLY place `/api/*`
-// resolves to the API service is the tunnel hostname's Cloudflare ingress
-// rule (see server/README.md's "Cloudflare tunnel ingress" section:
-// `backpack-dev.qtie.jp path=/api/* -> :8802`, `backpack-dev.qtie.jp ->
-// :8801` for everything else). client/src/api.ts does relative fetches
-// (`fetch('/api/content')`) that only resolve correctly when the page
-// itself was loaded from a host where that ingress split applies -- so
-// every E2E test that boots the real app MUST navigate to a page under
-// this baseURL, never localhost:8801 directly.
+// baseURL DEFAULTS to the local hermetic proxy (client/e2e/local-proxy.cjs,
+// auto-started below): /app/* is the worktree's built client, /api/* is the
+// per-worker fleet (tools/e2e_fleet.cjs). The public tunnel -- which fronts
+// the LIVE services -- is opt-in via PLAYWRIGHT_BASE_URL for manual smoke
+// runs only (REQ-0214's x-bpk-e2e-profile header still confines those).
 //
-// Tests run ON the same box the app is served from (this is a
-// server-side headless-Chromium rig, not a developer-machine rig) --
-// globalSetup/globalTeardown below touch the live filesystem directly
-// (~/backpack_ragnarok/data/profiles/default.json) to back up and restore
-// the live profile around the whole run, since several tests PUT canvas
-// state to the real API (there is no separate test/staging profile).
+// Tests run ON the same box the app is served from (a server-side
+// headless-Chromium rig) -- but as of REQ-0217 the run is HERMETIC:
+// globalSetup boots a per-worker fleet of throwaway backends (worktree code
+// + committed fixtures) and the proxy never routes to the live services, so
+// no live file, profile, or DB row is ever read or written by a run.
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'https://backpack-dev.qtie.jp';
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
 // REQ-0080: when baseURL is local, a tiny reverse proxy (e2e/local-proxy.cjs)
 // reproduces the tunnel's /api-vs-static ingress split so the app's relative
-// fetches resolve, removing ~40ms/request of public-tunnel latency. The tunnel
-// stays the default -- nothing changes unless PLAYWRIGHT_BASE_URL is set.
+// fetches resolve, removing ~40ms/request of public-tunnel latency. The local
+// proxy IS the default (REQ-0217); a non-local base URL skips it.
 const USE_LOCAL_PROXY = BASE_URL.includes('127.0.0.1') || BASE_URL.includes('localhost');
 // REQ-0080: E2E_GPU=1 renders PixiJS WebGL on the box's real GPU (ANGLE/Vulkan ->
 // NVIDIA) instead of CPU SwiftShader. Verified renderer string on llmlocal:
@@ -42,12 +33,19 @@ const GPU_ARGS = USE_GPU
 // OWN isolated backpack-api instance (tools/e2e_fleet.cjs, started in
 // global-setup). Each worker tags requests with X-E2E-Worker:<index> so the
 // local proxy routes /api to that worker's backend. TEST_WORKER_INDEX is set by
-// Playwright in each worker process (config is re-evaluated per worker). Unset
-// E2E_PARALLEL keeps the safe serial default against the single live API.
-const PARALLEL = Number(process.env.E2E_PARALLEL || 0);
+// Playwright in each worker process (config is re-evaluated per worker).
+// REQ-0217: unset E2E_PARALLEL now means a fleet of ONE -- there is no
+// "single live API" mode anymore.
+const PARALLEL = Math.max(1, Number(process.env.E2E_PARALLEL || 1));
 const WORKER_IDX = process.env.TEST_PARALLEL_INDEX; // 0..N-1 stable slot (NOT TEST_WORKER_INDEX, which increments per spawned worker and would exceed the fleet size)
 const WORKER_HEADERS: Record<string, string> =
-  PARALLEL > 0 && WORKER_IDX !== undefined ? { "X-E2E-Worker": WORKER_IDX } : {};
+  { "X-E2E-Worker": WORKER_IDX !== undefined ? WORKER_IDX : "0" }; // REQ-0217: always tagged; main process -> w0
+// REQ-0214 e2e profile isolation: EVERY e2e request (page fetches and the
+// request fixture alike -- both inherit use.extraHTTPHeaders) carries
+// x-bpk-e2e-profile, so the live api's dev_mode no-token fallback resolves
+// to the dedicated e2e_ci profile instead of the dev player's own rows
+// (see server/admin.cjs resolveAuthFromRequest).
+const E2E_PROFILE_HEADERS: Record<string, string> = { 'x-bpk-e2e-profile': 'ci' };
 
 export default defineConfig({
   testDir: './e2e',
@@ -69,21 +67,21 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false, // REQ-0083: file-level parallelism (each file -> one worker/backend), respects within-file order
-  workers: PARALLEL > 0 ? PARALLEL : 1,
+  workers: PARALLEL,
   retries: 0,
   reporter: [['list']],
   // REQ-0080: auto-start the local ingress proxy, but only for a localhost baseURL.
   webServer: USE_LOCAL_PROXY ? {
     command: 'node e2e/local-proxy.cjs',
     url: BASE_URL + '/app/',
-    reuseExistingServer: true,
+    reuseExistingServer: false, // REQ-0217: NEVER adopt a foreign proxy (another session's stale/old-code instance) -- fail loudly instead
     timeout: 15_000,
   } : undefined,
   globalSetup: './e2e/global-setup.ts',
   globalTeardown: './e2e/global-teardown.ts',
   use: {
     baseURL: BASE_URL,
-    extraHTTPHeaders: WORKER_HEADERS,
+    extraHTTPHeaders: { ...E2E_PROFILE_HEADERS, ...WORKER_HEADERS },
     headless: !USE_GPU, // REQ-0080: GPU path drives --headless=new via GPU_ARGS
     launchOptions: { args: GPU_ARGS },
     // REQ-0031 Phase B: the 8x8 grid widened each board from ~556px to

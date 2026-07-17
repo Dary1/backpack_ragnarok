@@ -419,6 +419,18 @@
         {
           "unit": "giant_shuriken",
           "weight": 2
+        },
+        {
+          "unit": "powder_keg",
+          "weight": 2
+        },
+        {
+          "unit": "cursed_doll",
+          "weight": 2
+        },
+        {
+          "unit": "battle_pickaxe",
+          "weight": 3
         }
       ],
       "cells": [

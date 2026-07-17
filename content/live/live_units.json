@@ -1783,6 +1783,120 @@
       "name_ja": "魔法のランタン",
       "flavor_ja": "その灯りの下では、呪いの棲む影がない。",
       "connection_shape": "adjacency"
+    },
+    {
+      "id": "powder_keg",
+      "name": "Powder Keg",
+      "name_ja": "火薬樽",
+      "i18n": {
+        "ja": {
+          "name": "火薬樽"
+        }
+      },
+      "icon": "items005_powder_keg",
+      "rarity": "Rare",
+      "connection_shape": "rook",
+      "flavor": "It counts every insult, and answers all of them at once.",
+      "flavor_ja": "受けた屈辱を数えて、まとめて返す。",
+      "charge": {
+        "trigger": {
+          "t": "OnBPBeenHit"
+        },
+        "gain": "count",
+        "capacity": [
+          10,
+          15
+        ],
+        "spend": "fire_on_full",
+        "effects": [
+          {
+            "verb": {
+              "t": "charge_strike",
+              "n": [
+                4,
+                6
+              ]
+            },
+            "target": "self"
+          }
+        ]
+      }
+    },
+    {
+      "id": "cursed_doll",
+      "name": "Cursed Doll",
+      "name_ja": "呪いの人形",
+      "i18n": {
+        "ja": {
+          "name": "呪いの人形"
+        }
+      },
+      "icon": "items005_cursed_doll",
+      "rarity": "Rare",
+      "connection_shape": "backward_line",
+      "flavor": "Whatever you pin to it, it mails back.",
+      "flavor_ja": "刺したものは、送り返される。",
+      "charge": {
+        "trigger": {
+          "t": "on_status_applied"
+        },
+        "gain": "count",
+        "capacity": [
+          2,
+          3
+        ],
+        "spend": "fire_on_full",
+        "effects": [
+          {
+            "verb": {
+              "t": "transfer_status",
+              "n": [
+                1,
+                2
+              ]
+            },
+            "target": "self"
+          }
+        ]
+      }
+    },
+    {
+      "id": "battle_pickaxe",
+      "name": "Battle Pickaxe",
+      "name_ja": "戦つるはし",
+      "i18n": {
+        "ja": {
+          "name": "戦つるはし"
+        }
+      },
+      "icon": "items005_battle_pickaxe",
+      "rarity": "Uncommon",
+      "connection_shape": "lance",
+      "flavor": "Walls are just slow doors.",
+      "flavor_ja": "壁とは、開くのが遅い扉のことだ。",
+      "charge": {
+        "trigger": {
+          "t": "on_connected_unit_attack"
+        },
+        "gain": "count",
+        "capacity": [
+          3,
+          4
+        ],
+        "spend": "fire_on_full",
+        "effects": [
+          {
+            "verb": {
+              "t": "shield_break",
+              "n": [
+                10,
+                15
+              ]
+            },
+            "target": "self"
+          }
+        ]
+      }
     }
   ]
 }

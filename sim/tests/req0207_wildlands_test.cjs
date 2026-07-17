@@ -219,7 +219,7 @@ T('G5 determinism: two same-seed runs are byte-identical (per pack)', () => {
 });
 
 // ---- additive promotion (deploy-invariant, byte-preserving) ----
-T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 30->50 / 7->10, baseline byte-preserved, non-additive files untouched, collision refused', () => {
+T('additive promotion: batch-006 re-merges onto the batch-free live baseline -- +12/+20/+3, baseline byte-preserved, non-additive files untouched, collision refused', () => {
   const batchIds = new Set([].concat(enemies.entries, skills.entries, packs.entries).map(e => e.id));
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'req0207-promo-'));
   try {
@@ -243,7 +243,14 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
     const regPath = path.join(tmp, 'registry.json');
     fs.writeFileSync(regPath, JSON.stringify({ t: 'test' }, null, 1) + '\n');
 
-    const expect = { 'enemies.json': [15, 27], 'skills.json': [30, 50], 'packs.json': [7, 10] };
+    // REQ-0234: FLOORS, not absolutes. The absolute before/after counts went
+    // stale the moment the NEXT batch promoted into live -- the gate then
+    // failed on the untouched master while claiming deploy-invariance. The
+    // id-filter above already reconstructs the batch-free baseline whatever
+    // live now contains; the floor pins that reconstruction to at least the
+    // corpus this batch was authored against, and the delta / byte-splice /
+    // appended-ids / collision assertions below carry the real invariants.
+    const floor = { 'enemies.json': 15, 'skills.json': 30, 'packs.json': 7 };
     const delta = { 'enemies.json': enemies.entries.length, 'skills.json': skills.entries.length, 'packs.json': packs.entries.length };
 
     promoteAdditive(BATCH, { liveDir: liveDir, registryPath: regPath });
@@ -251,8 +258,7 @@ T('additive promotion: batch-006 merges on top of the current live -- 15->27 / 3
     for (const f of ['enemies.json', 'skills.json', 'packs.json']) {
       const merged = fs.readFileSync(path.join(liveDir, f), 'utf8');
       const bDoc = JSON.parse(baseText[f]), mDoc = JSON.parse(merged);
-      eq(bDoc.entries.length, expect[f][0], f + ' baseline count');
-      eq(mDoc.entries.length, expect[f][1], f + ' merged count');
+      ok(bDoc.entries.length >= floor[f], f + ' baseline count ' + bDoc.entries.length + ' >= pre-batch floor ' + floor[f]);
       eq(mDoc.entries.length, bDoc.entries.length + delta[f], f + ' merged == baseline + batch (delta invariant)');
       // byte preservation: the merge is a pure SPLICE -- merged == A + <newblock> + B
       const arrClose = baseText[f].lastIndexOf(']');

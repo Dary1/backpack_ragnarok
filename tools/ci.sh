@@ -12,6 +12,29 @@
 # it ran passed. Do not re-introduce a "these reds are fine" convention: a red
 # is either a real defect or a stale gate, and both must be fixed, not memorized.
 set -euo pipefail
+
+# REQ-0231: ONE ci run per box at a time. The e2e box lock only ever
+# serialized the Playwright phase; everything else (sim suites, pg tests,
+# tsc, vite build, chromium warmup) ran concurrently across agent sessions
+# and saturated the box (2026-07-17: load 13.7, sshd unresponsive ~40 min,
+# a mid-CI reboot). Sessions had converged on an ad-hoc `flock
+# /tmp/bpk_ci.lock` convention enforced nowhere; it is machine-enforced
+# HERE instead: the whole run holds one exclusive lock. Seams:
+#   CI_LOCK_NONBLOCK=1  fail fast (exit 75) instead of queueing
+#   CI_LOCK_WAIT=secs   queue timeout (default 7200)
+#   CI_LOCK_FILE=path   override (tests)
+CI_LOCK_FILE="${CI_LOCK_FILE:-$HOME/.cache/backpack/ci.box.lock}"
+if [ "${CI_BOX_LOCK_HELD:-0}" != "1" ]; then
+  mkdir -p "$(dirname "$CI_LOCK_FILE")"
+  if ! flock -n "$CI_LOCK_FILE" true 2>/dev/null; then
+    echo "[ci-lock] $CI_LOCK_FILE is HELD (holder pid(s):$(fuser "$CI_LOCK_FILE" 2>/dev/null || echo ' unknown')) -- queueing (CI_LOCK_NONBLOCK=1 to fail fast)" >&2
+  fi
+  if [ "${CI_LOCK_NONBLOCK:-0}" = "1" ]; then
+    exec env CI_BOX_LOCK_HELD=1 flock -n -E 75 "$CI_LOCK_FILE" bash "$0" "$@"
+  fi
+  exec env CI_BOX_LOCK_HELD=1 flock -w "${CI_LOCK_WAIT:-7200}" -E 75 "$CI_LOCK_FILE" bash "$0" "$@"
+fi
+
 cd "$(dirname "$0")/.."
 
 # REQ-0172: cheap + first. A harness port collision is invisible until the
@@ -77,6 +100,8 @@ echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
 node server/tests/bpskin_test.cjs
 echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
 node server/tests/bpskin_migration_test.cjs
+echo "==== [4.695/7] e2e profile redirect -- dev-fallback isolation (DB-free, REQ-0214) ===="
+node server/tests/e2e_profile_redirect_test.cjs
 echo "==== [4.71/7] UGC moderation verdict pipeline (DB-free, REQ-0144) ===="
 MODPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$MODPY" ] && "$MODPY" -c 'import numpy,scipy,PIL' 2>/dev/null; then
@@ -193,18 +218,44 @@ if [ "${SKIP_E2E:-0}" != "1" ] && [ "${SKIP_PG:-0}" != "1" ] && [ "${SKIP_CLIENT
   bash tools/artadmin_e2e.sh
   bash tools/art_inspect_e2e.sh
   bash tools/content_admin_e2e.sh
+  # REQ-0221: the default fleet is files-backed and the registry is pg-only,
+  # so registry-first serving (the AUTHORITY path for po/si/tm since
+  # REQ-0178) is unreachable in [7/7] -- the REQ-0178 drift shipped through a
+  # green ci.sh, and the REQ-0182b 409 guard could only skip. This stage
+  # boots an isolated pg api SEEDED with one adopted def and runs the
+  # registry-guard specs, failing if any of them skips.
+  echo "==== [6.6/8] registry-first serving e2e (pg, seeded adopted def, REQ-0221) ===="
+  bash tools/registry_first_e2e.sh
 else
   echo "==== [6.5/8] admin e2e harnesses SKIPPED ===="
 fi
 if [ "${SKIP_E2E:-0}" != "1" ]; then
-  echo "==== [7/7] client e2e (default suite -- admin trio excluded, see above) ===="
-  # REQ-0080: default to the local ingress proxy (localhost, ~40x less latency
-  # than the public tunnel) and GPU-accelerated rendering (ANGLE/Vulkan -> the
-  # box's real GPU instead of CPU SwiftShader). Both are overridable: force the
-  # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
-  (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
-                E2E_GPU="${E2E_GPU:-1}" \
-                E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
+  # REQ-0234 (F2, implements REQ-0225's default-flip): from a req-NNNN
+  # worktree the e2e stage runs SCOPED by default -- its own fleet root and
+  # REQ-decade ports, sharing nothing box-global, so it neither queues
+  # against other sessions nor touches the box lock the REQ-0217 freeze
+  # daemon holds. The main checkout (no req- branch) and any run with an
+  # explicit PLAYWRIGHT_BASE_URL keep the legacy path unchanged.
+  E2E_REQ="${E2E_REQ:-$(git rev-parse --abbrev-ref HEAD 2>/dev/null | sed -n 's/^req-\([0-9]\{4\}\).*/\1/p')}"
+  if [ -n "$E2E_REQ" ] && [ -z "${PLAYWRIGHT_BASE_URL:-}" ]; then
+    echo "==== [7/7] client e2e (SCOPED hermetic run, REQ-$E2E_REQ decade -- admin trio excluded, see above) ===="
+    source tools/e2e_ports.sh "$E2E_REQ"
+    (cd client && E2E_FLEET_ROOT="/tmp/bp_e2e_workers_req${E2E_REQ}" \
+                  E2E_PROXY_PORT="$PROXYPORT" \
+                  E2E_FLEET_BASE_PORT="$((E2E_PORT_BASE + 4))" \
+                  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" \
+                  E2E_GPU="${E2E_GPU:-1}" \
+                  E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm exec playwright test)
+  else
+    echo "==== [7/7] client e2e (default suite -- admin trio excluded, see above) ===="
+    # REQ-0080: default to the local ingress proxy (localhost, ~40x less latency
+    # than the public tunnel) and GPU-accelerated rendering (ANGLE/Vulkan -> the
+    # box's real GPU instead of CPU SwiftShader). Both are overridable: force the
+    # old path with PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp E2E_GPU=0.
+    (cd client && PLAYWRIGHT_BASE_URL="${PLAYWRIGHT_BASE_URL:-http://127.0.0.1:8803}" \
+                  E2E_GPU="${E2E_GPU:-1}" \
+                  E2E_PARALLEL="${E2E_PARALLEL:-4}" pnpm run e2e) # REQ-0083: 4 isolated-backend workers (E2E_PARALLEL=0 -> serial)
+  fi
 else
   echo "==== [7/7] client e2e SKIPPED ===="
 fi
