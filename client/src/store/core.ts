@@ -107,9 +107,10 @@ export type Route =
   | 'market'
   | 'ragnarok'
   | 'artadmin'  // REQ-0151 artwork registry admin
-  | 'contentadmin';  // REQ-0155 content-data registry admin
+  | 'contentadmin'  // REQ-0155 content-data registry admin
+  | 'sortie';  // REQ-0239 sortie (expedition setup) route (launched from Schedule; no Nav rail entry)
 
-const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'warehouse', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok', 'artadmin', 'contentadmin'];
+const VALID_ROUTES: Route[] = ['landing', 'backpacks', 'schedule', 'warehouse', 'workshop', 'friends', 'dex', 'settings', 'market', 'ragnarok', 'artadmin', 'contentadmin', 'sortie'];
 
 export const INVITE_HASH_RE = /^#\/invite\/(.+)$/;
 
@@ -140,6 +141,13 @@ export const CONTENTADMIN_HASH_RE = /^#\/contentadmin\/(.+)$/;
 // routeFromHash() fallback (specific-before-generic), same ordering as the
 // contentadmin/dex/invite checks.
 export const ARTADMIN_HASH_RE = /^#\/artadmin\/(.+)$/;
+
+// REQ-0239: '#/sortie/<dungeonId>' is the sortie deep link (dungeon
+// preselected), mirroring DEX_ITEM_HASH_RE's exact pattern. The bare '#/sortie'
+// route is handled by routeFromHash (VALID_ROUTES); this RE only matches the
+// id-carrying form and sets sortieFocusDungeonId. Checked before the generic
+// fallback, same specific-before-generic ordering as the others.
+export const SORTIE_HASH_RE = /^#\/sortie\/([A-Za-z0-9_-]+)$/;
 
 // REQ-0198 (B): '#/market?sell=<uid>&kind=<po|si|unit>' is the market SELL
 // deep link (an inventory instance's "sell this" entry point, FloatingItemTip).
@@ -230,6 +238,9 @@ export interface StoreSnapshot {
    * consumes this once (selects that artwork) then calls
    * clearArtAdminFocusName() -- null the rest of the time. */
   artAdminFocusName: string | null;
+  /** REQ-0239: a pending '#/sortie/<id>' deep-link target; SortiePage consumes
+   * it once (preselects the dungeon) then clears it via clearSortieFocusDungeonId(). */
+  sortieFocusDungeonId: string | null;
   /** REQ-0198 (B): pending market SELL deep-link target, set by
    * initRouting()/onHashChange when the hash matches MARKET_SELL_HASH_RE
    * ('#/market?sell=<uid>&kind=<po|si|unit>'). MarketPage consumes this
@@ -257,6 +268,7 @@ export let snapshot: StoreSnapshot = {
   contentAdminFocusName: null,
   artAdminFocusName: null,
   marketSellFocus: null,
+  sortieFocusDungeonId: null,
 };
 
 const listeners = new Set<() => void>();

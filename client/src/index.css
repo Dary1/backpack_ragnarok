@@ -16,6 +16,7 @@
    from dex.css because it lands AFTER market/ragnarok in the cascade). */
 @import './styles/base.css';
 @import './styles/schedule.css';
+@import './styles/sortie.css'; /* REQ-0239: sortie page + squad board */
 @import './styles/workshop.css';
 @import './styles/warehouse.css';
 @import './styles/canvas.css';

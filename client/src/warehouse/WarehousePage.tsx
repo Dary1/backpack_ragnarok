@@ -98,7 +98,7 @@ import { iconDataUrl } from '../dex/dexIcons';
 import { rarThemeClass } from '../render/uiBits';
 import { contentEntryFor, itemKindOf, localizedItemName } from '../lib/itemContent';
 import { formatWarehouseCountdown } from '../lib/time';
-import { localizedName } from '../schedule/CreateRoomForm';
+import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { TtlRing } from './TtlRing';

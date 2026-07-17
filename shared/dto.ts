@@ -379,6 +379,16 @@ export interface ApiPendingSwap {
 
 /** Room document shape -- mirrors server/schedule.cjs's room document
  * field-for-field (see that file's own header comment / server/README.md). */
+/** REQ-0239 (design B1): a compact wall-clock window for a room's active/last
+ * run, attached to each room in the LIST response so the squad status board can
+ * draw honest run progress + a return time WITHOUT an N+1 GET .../run per room. */
+export interface ApiRoomLastRun {
+  runId: string;
+  startedAt: string;
+  durationSecs: number;
+  settled: boolean;
+}
+
 export interface ApiRoom {
   id: string;
   ownerId: string;
@@ -406,6 +416,9 @@ export interface ApiRoom {
   createdAt: string;
   updatedAt: string;
   lastRunId: string | null;
+  /** REQ-0239 (B1): the active/last run's compact window, present on rooms LIST
+   * and single-room GET responses when lastRunId is set; null/absent otherwise. */
+  lastRun?: ApiRoomLastRun | null;
   /** REQ-0058: when set, this room is a sealed-seed run -- its dungeon
    * tuple was copied verbatim from the shared seal (this sealId) and its
    * run is single-shot (it never auto-restarts). Absent on a normal room. */
@@ -433,6 +446,19 @@ export interface ApiCreateRoomBody {
    * level/genSeed are IGNORED -- the room copies the seal's frozen tuple
    * verbatim. One room per (sealId, caller); a second attempt 409s. */
   sealId?: string;
+}
+
+/** POST /api/schedule/sorties body -- REQ-0239 (D1). One atomic call that
+ * creates a room, fills all four squad slots, and launches. cancelPolicy
+ * defaults to the deferred {immediate:false} (golden g) when omitted. */
+export interface ApiSortieBody {
+  dungeonId: string;
+  level?: number;
+  formationId?: string;
+  cancelPolicy?: ApiCancelPolicy;
+  genSeed?: string;
+  /** the four squad indices, one per troop slot (order = slot 0..3). */
+  squadIndices: number[];
 }
 
 /** GET .../run's run-clock event -- opaque to the client's type system
