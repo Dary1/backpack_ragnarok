@@ -54,11 +54,13 @@ cleanup() {
   rm -rf "$TMPHOME" "$MODELDIR" "$EXPORTDIR"
 }
 trap cleanup EXIT
-# Bash runs no EXIT trap when the shell dies on an uncaught fatal signal, so a
-# SIGTERMed harness -- the exact abort gate 2 names -- used to leak everything.
-# Convert the catchable ones into ordinary exits so the EXIT trap still runs.
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# Do NOT add a `trap ... TERM/INT` here. Measured on this box 2026-07-18:
+#   - bash ALREADY runs the EXIT trap when an untrapped SIGTERM kills the
+#     shell, and it does so promptly -- so a trap buys nothing;
+#   - a TERM trap actively HARMS: bash defers a trap until the current
+#     foreground command returns, so a SIGTERMed harness ran its whole 30s
+#     spec suite to completion, holding this REQ's decade the entire time,
+#     and cleaned up only afterwards. Prompt death is the desired behaviour.
 
 echo "[artadmin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
@@ -101,5 +103,13 @@ done
 # REQ decade), so it takes its OWN serialization lock instead of the box lock
 # -- which the REQ-0217 freeze daemon holds indefinitely and which only
 # guards the legacy shared-port path. Same-harness runs still queue.
+# REQ-0231 (gate 2): setsid the run into its OWN process group and record
+# it, so an aborted harness reaps the whole playwright tree -- the orphan
+# actually observed was a playwright worker, a grandchild no PIDS entry
+# covered. Backgrounded only so the pid is knowable.
 E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.0156.lock}" \
-  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/artadmin.config.ts
+  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" setsid bash "$WT/tools/e2e_run.sh" --config=e2e/artadmin.config.ts &
+RUN=$!
+PIDS+=($RUN)
+# `wait` propagates the real exit status, which ci.sh depends on.
+wait "$RUN"

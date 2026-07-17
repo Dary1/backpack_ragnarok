@@ -48,11 +48,13 @@ cleanup() {
   rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
-# Bash runs no EXIT trap when the shell dies on an uncaught fatal signal, so a
-# SIGTERMed harness -- the exact abort gate 2 names -- used to leak everything.
-# Convert the catchable ones into ordinary exits so the EXIT trap still runs.
-trap 'exit 130' INT
-trap 'exit 143' TERM
+# Do NOT add a `trap ... TERM/INT` here. Measured on this box 2026-07-18:
+#   - bash ALREADY runs the EXIT trap when an untrapped SIGTERM kills the
+#     shell, and it does so promptly -- so a trap buys nothing;
+#   - a TERM trap actively HARMS: bash defers a trap until the current
+#     foreground command returns, so a SIGTERMed harness ran its whole 30s
+#     spec suite to completion, holding this REQ's decade the entire time,
+#     and cleaned up only afterwards. Prompt death is the desired behaviour.
 
 echo "[registry_first_e2e] api :$APIPORT  proxy :$PROXYPORT"
 
@@ -93,13 +95,24 @@ echo "[registry_first_e2e] registry serves $REG_COUNT item(s) -- running specs"
 # REQ-0234 (F2): own serialization lock (nothing box-global is shared; the
 # frozen box lock guards only the legacy shared-port path). Output is
 # captured so a SKIP can be turned into a hard failure.
+# REQ-0231 (gate 2): setsid the run into its OWN process group and record it,
+# so an aborted harness reaps the whole playwright tree (the orphan actually
+# observed was a playwright worker -- a grandchild no PIDS entry covered).
+# The output still has to be captured for the SKIP check below, so it goes to a
+# file inside TMPROOT (cleanup already removes it) rather than through $(...),
+# which would give us no pid to record.
 set +e
-OUT="$(E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.req0221.lock}" \
+RUNLOG="$TMPROOT/registry_run.log"
+E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.req0221.lock}" \
   E2E_FLEET_ROOT="$TMPROOT" \
   PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" \
-  bash "$WT/tools/e2e_run.sh" --config=e2e/registry.config.ts 2>&1)"
+  setsid bash "$WT/tools/e2e_run.sh" --config=e2e/registry.config.ts > "$RUNLOG" 2>&1 &
+RUN=$!
+PIDS+=($RUN)
+wait "$RUN"
 RC=$?
 set -e
+OUT="$(cat "$RUNLOG")"
 printf '%s\n' "$OUT"
 if [ "$RC" -ne 0 ]; then exit "$RC"; fi
 if printf '%s\n' "$OUT" | grep -qE '[0-9]+ skipped'; then
