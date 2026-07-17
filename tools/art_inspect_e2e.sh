@@ -1,86 +1,28 @@
 #!/usr/bin/env bash
-# tools/art_inspect_e2e.sh -- REQ-0152 G4 isolated e2e bringup.
+# tools/art_inspect_e2e.sh -- REQ-0152 G4: the artwork-inspection kits, isolated.
 #
-# Stands up an ISOLATED instance of THIS worktree's api + static web + local
-# proxy, then runs the artinspect Playwright spec through tools/e2e_run.sh
-# (box lock). Never touches the live services or the live artwork rows:
-#   - HOME is remapped to a temp dir whose backpack_ragnarok symlinks back to
-#     the worktree, so storage_art's NAMESPACE (hash of $HOME/backpack_ragnarok)
-#     is UNIQUE to this run while content/code still resolve to the worktree.
-#   - api on a spare port, STORAGE_BACKEND=pg, ART_ROUTE_MOCK=1 (no GPU),
-#     ART_KIT_MATTE_METHOD=borderkey (fast, model-free matte),
-#     ART_KIT_PYTHON=<project venv> (numpy/scipy/rembg for the kits).
-#   - artinspect.config.ts carries NO globalSetup/webServer.
+# Bringup, isolation, readiness and the lock+run tail all live in
+# tools/e2e_harness.sh (REQ-0251). Only what makes THIS harness different is here:
+# the kits are the one rig in the family that needs a real python -- numpy/scipy/
+# rembg out of the project venv -- while the art ROUTE stays mocked (no GPU, no
+# real weights). Matte method is pinned to borderkey: model-free and fast, so a
+# gate run does not wait on rembg's model download.
 #
-# Requires DATABASE_URL in the environment (source server/.env first). Run:
+# Requires DATABASE_URL (source server/.env first). Run:
 #   set -a; source ~/backpack_ragnarok/server/.env; set +a; bash tools/art_inspect_e2e.sh
-set -euo pipefail
-: "${DATABASE_URL:?source server/.env first (DATABASE_URL required)}"
+source "$(dirname "$0")/e2e_harness.sh"
 
-WT="$(cd "$(dirname "$0")/.." && pwd)"
+e2e_harness_req 0152 art_inspect_e2e
+
 VENV_PY="${ART_KIT_PYTHON:-/home/qtie/backpack_ragnarok/.venv/bin/python}"
 
-# REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
-#   PORT = 5000 + REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
-# so REQ-0152 owns 6520..6529 and can never collide with another REQ's harness.
-# The helper also preflights each port and aborts with ONE clear line if it is
-# busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
-# "E2E / harness port allocation".
-source "$(dirname "$0")/e2e_ports.sh" 0152
+e2e_harness_api_env \
+  ALLOW_DEV_CLEAR=1 \
+  ART_ROUTE_MOCK=1 \
+  ART_MODEL_DIR="$MODELDIR" \
+  ART_EXPORT_ROOT="$EXPORTDIR" \
+  ART_JOB_PYTHON="$VENV_PY" \
+  ART_KIT_PYTHON="$VENV_PY" \
+  ART_KIT_MATTE_METHOD=borderkey
 
-
-TMPHOME="$(mktemp -d)"
-MODELDIR="$(mktemp -d)"
-EXPORTDIR="$(mktemp -d)"
-ln -s "$WT" "$TMPHOME/backpack_ragnarok"
-for f in flux-2-klein-4b-Q8_0.gguf qwen_3_4b.safetensors flux2-vae.safetensors; do echo standin > "$MODELDIR/$f"; done
-
-PIDS=()
-cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
-  rm -rf "$TMPHOME" "$MODELDIR" "$EXPORTDIR"
-}
-trap cleanup EXIT
-
-echo "[art_inspect_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
-
-# REQ-0233: the family barrier restarts comfyui.service -- a LIVE, box-global
-# systemd unit this hermetic harness has no business touching (REQ-0217: an e2e
-# run never touches live services). Everything else here is already isolated
-# (TMPHOME namespace, mock art route, temp model/export dirs); the barrier is the
-# one thing that reached out. Off via the seam the REQ ships for exactly this.
-HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" ALLOW_DEV_CLEAR=1 \
-  ART_ROUTE_MOCK=1 ART_MODEL_DIR="$MODELDIR" ART_EXPORT_ROOT="$EXPORTDIR" \
-  ART_JOB_PYTHON="$VENV_PY" ART_KIT_PYTHON="$VENV_PY" ART_KIT_MATTE_METHOD=borderkey \
-  ART_FAMILY_BARRIER=0 \
-  node "$WT/server/api.cjs" > /tmp/req0152_e2e_api.log 2>&1 &
-PIDS+=($!)
-
-# REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
-# worktree ITSELF and routes headerless /api to E2E_FLEET_BASE_PORT+0 -- the
-# old E2E_STATIC_PORT/E2E_API_PORT knobs no longer exist, so point the
-# "fleet" base at this harness's single api (without this, /api fell through
-# to the DEFAULT fleet base 8810 and every spec died on 502). The python
-# static server this harness used to run is dropped with them: nothing
-# routes to it any more, and its single-threaded accept loop was the
-# goto-under-load flake source (REQ-0222).
-E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0152_e2e_proxy.log 2>&1 &
-PIDS+=($!)
-
-# wait for the api + proxy to accept connections
-for i in $(seq 1 80); do
-  if curl -s -o /dev/null "http://127.0.0.1:$APIPORT/api/content" 2>/dev/null; then break; fi
-  sleep 0.5
-done
-for i in $(seq 1 40); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/app/" 2>/dev/null; then break; fi
-  sleep 0.5
-done
-
-# REQ-0234 (F2): this harness shares nothing box-global (own HOME remap, own
-# REQ decade), so it takes its OWN serialization lock instead of the box lock
-# -- which the REQ-0217 freeze daemon holds indefinitely and which only
-# guards the legacy shared-port path. Same-harness runs still queue.
-E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.0152.lock}" \
-  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/artinspect.config.ts
+e2e_harness_run --config=e2e/artinspect.config.ts
