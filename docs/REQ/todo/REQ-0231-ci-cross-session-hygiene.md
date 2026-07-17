@@ -71,3 +71,23 @@ observed on 2026-07-17:
   master). The req-0230 session has an uncommitted fix in flight; per user
   ruling (2026-07-17, hold-and-check) we wait for that to land, then merge
   master and run the concurrent full-CI gate.
+
+
+## Gate-run addendum (2026-07-17, second pass)
+
+- Two stale/load-broken gates on master blocked "both green"; both fixes were
+  already committed on the req-0230 branch and are CHERRY-PICKED here (git
+  will dedupe at merge): 4929e82 (= 8e5da3f, wildlands delta-based counts)
+  and 3da1751 (= 99e3c36, forecast perf budget as CPU-time best-of-3).
+- Concurrent full-CI x2 exercised the REAL lock: B queued while A held it,
+  every time. Two runs died at [6.5/8] with exit 75 -- NOT our defect: the
+  artadmin decade (1560-1562) was held by req-0222's live harness, and the
+  port preflight aborts politely instead of the old ECONNREFUSED spec deaths.
+- RESIDUAL GAP (observed, out of scope, candidate follow-up REQ): derived
+  ports prevent inter-REQ collisions, but two SESSIONS running the SAME
+  harness still contend for one decade, because harnesses bind ports BEFORE
+  e2e_run.sh takes the box lock. Moving bring-up under the box lock (or
+  session-offset ports) would close it; exit-75 + retry is the interim
+  behaviour.
+- A supervisor loop (server /tmp) relaunches A+B concurrently once the
+  decades + e2e lock are free; final result to be recorded below.
