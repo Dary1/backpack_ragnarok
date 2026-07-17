@@ -144,6 +144,33 @@ async function resolveItemArtNames(names) {
   return out;
 }
 
+/** REQ-0226: unit art joins the art_urls map. A unit def's `icon` IS its
+ * artwork reference (REQ-0170's free reference -- two units may share one
+ * artwork), so resolveItemArtNames' system_name/artwork_ref chain does not
+ * cover it. Given { unitId -> icon bare name } (the served units' icons),
+ * returns { unitId -> icon } for every unit whose icon artwork has an
+ * ADOPTED render; a unit whose icon has no adopted render (or no artwork
+ * row at all) is OMITTED -- the client then renders its placeholder WITHOUT
+ * probing (the 404-as-signal convention this REQ retires). One round-trip,
+ * same graceful posture as resolveItemArtNames: never an error. */
+async function resolveUnitArtIcons(iconByUnit) {
+  const units = Object.keys(iconByUnit || {}).filter(
+    (u) => typeof iconByUnit[u] === 'string' && iconByUnit[u].length > 0);
+  if (units.length === 0) return {};
+  const ns = units.map((u) => nsName(iconByUnit[u]));
+  const res = await q(
+    `WITH input(unit, iconns) AS (SELECT * FROM unnest($1::text[], $2::text[]))
+     SELECT i.unit AS unit, (a.adopted_render_id IS NOT NULL) AS ok
+       FROM input i
+       LEFT JOIN artworks a ON a.system_name = i.iconns`,
+    [units, ns]);
+  const out = {};
+  for (const row of res.rows) {
+    if (row.ok) out[row.unit] = iconByUnit[row.unit];
+  }
+  return out;
+}
+
 /** REQ-0178: registry-first CONTENT serving. The data-side sibling of
  * resolveItemArtNames -- given a batch of bare entity ids (the served po/si/tm
  * names) and a target kind, returns { bare -> adopted variant DATA (JSONB) } for
@@ -412,6 +439,7 @@ module.exports = {
   closeContentPool,
   createContentDef, getContentDefByName, listContentDefs, updateContentDef,
   artworkFacetExists, resolveArtworkFacetName, resolveItemArtNames,
+  resolveUnitArtIcons, // REQ-0226
   resolveAdoptedContentData,
   createVariant, updateVariantData, setVariantMachineCheck, setVariantReview,
   getVariantByNo, getVariantById, listVariants,

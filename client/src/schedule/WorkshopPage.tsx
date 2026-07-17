@@ -28,7 +28,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
-import { unitArtUrl } from '../board/unitIcon';
+import { getItemArtUrl } from '../board/itemArt'; // REQ-0226
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
 import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
@@ -40,6 +40,18 @@ import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
 
 interface WorkshopPageProps {
   locale: Locale;
+}
+
+// REQ-0226: a unit's art on the Workshop DOM surfaces (pool list + roll
+// result) comes from /api/content's art_urls map (server-resolved, SPARSE),
+// NOT from probing /api/art/<def.icon>.png and treating the 404 as the
+// fallback signal. An id absent from the map mounts a same-size placeholder
+// disc instead of an <img>, so no request is ever fired (see workshop.css's
+// span.workshop-pool-art rule).
+function UnitArt({ id, className, size }: { id: string; className: string; size: number }) {
+  const url = getItemArtUrl(id);
+  if (!url) return <span className={className} aria-hidden="true" />;
+  return <img className={className} src={url} alt="" width={size} height={size} loading="lazy" />;
 }
 
 // REQ-0170: the casting odds are no longer a mock's fixed figures (the old
@@ -468,7 +480,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 const nm = locale === 'ja' && def.i18n?.ja?.name ? def.i18n.ja.name : def.name;
                 return (
                   <div className="workshop-pool-cell" key={row.unit} data-testid="workshop-pool-unit" data-unit={row.unit}>
-                    <img className="workshop-pool-art" src={unitArtUrl(def.icon)} alt="" width={44} height={44} loading="lazy" />
+                    <UnitArt id={row.unit} className="workshop-pool-art" size={44} />
                     <span className="workshop-pool-name">{nm}</span>
                     <span className="workshop-pool-shape t-micro">{shapeLabel(def.connection_shape, shp, locale)}</span>
                   </div>
@@ -554,7 +566,7 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 {rollResult.unitDef ? (
                   <div className="workshop-result-stat workshop-result-unit" data-testid="workshop-result-unit" data-unit={rollResult.unitDef.id}>
                     <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnitName')}</span>
-                    <img className="workshop-result-unit-art" src={unitArtUrl(rollResult.unitDef.icon)} alt="" width={56} height={56} />
+                    <UnitArt id={rollResult.unitDef.id} className="workshop-result-unit-art" size={56} />
                     <b className="workshop-result-unit-name dj">{unitName(rollResult.unitDef, locale)}</b>
                   </div>
                 ) : null}

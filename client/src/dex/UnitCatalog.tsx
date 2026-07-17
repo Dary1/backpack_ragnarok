@@ -11,16 +11,17 @@
 // invented data. The old reserved "BPs" tab died for exactly this reason;
 // the detail's schema slot is an explicit rolled-at-emission note instead.
 //
-// Art: a unit def's `icon` IS its artwork reference (a free reference --
-// two units may share one artwork; REQ-0170), so the portrait is
-// unitArtUrl(icon): the SAME resolution the Workshop pool list and the
-// board renderer already use, not a parallel one. An artwork with no
-// adopted render 404s; the <img> hides itself onError and the rune
-// placeholder behind it shows through (matches art_urls' "absent id ->
-// client fallback tier" posture).
+// Art (REQ-0226): unit ids ride /api/content's art_urls map (server-
+// resolved unit id -> def.icon -> adopted render; SPARSE), read through the
+// SAME board/itemArt getItemArtUrl() chain every other art consumer uses.
+// An absent id is a NORMAL state (files backend / portrait not yet
+// adopted): the rune placeholder renders and NO request is ever fired --
+// the pre-0226 "probe unitArtUrl(icon) and treat the 404 as the fallback
+// signal" convention is retired on every DOM surface (unitArtUrl remains
+// only as the board raster path's URL builder).
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiConnShape, ApiUnitEntry } from '../../../shared/dto';
-import { unitArtUrl } from '../board/unitIcon';
+import { getItemArtUrl } from '../board/itemArt'; // REQ-0226
 import { t } from '../i18n';
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel';
 import { rarThemeClass } from '../render/uiBits';
@@ -56,15 +57,16 @@ function UnitPortrait({ unit, large }: { unit: ApiUnitEntry; large?: boolean }) 
   useEffect(() => {
     setFailed(false); // the detail pane reuses one mounted node across selections
   }, [unit.id]);
+  const url = getItemArtUrl(unit.id); // REQ-0226: sparse map; absent -> rune, no probe
   return (
     <span className={`dex-portrait-well${large ? ' dex-portrait-well-lg' : ''}`}>
       <span className="dex-art-fallback rune" aria-hidden="true">
         ᚢ
       </span>
-      {unit.icon && !failed ? (
+      {url && !failed ? (
         <img
           className="dex-portrait-img"
-          src={unitArtUrl(unit.icon)}
+          src={url}
           alt={unit.name}
           loading="lazy"
           onError={() => setFailed(true)}

@@ -234,9 +234,7 @@ async function computeArtUrls() {
     // catalog. resolveItemArtNames is kind-generic (def.artwork_ref adopted ->
     // exact-name adopted -> omitted) and monster artworks follow the exact-name
     // convention (artwork system_name == enemy id -- REQ-0184/0188), so no new
-    // resolver is needed. Units are deliberately ABSENT: a unit def's `icon` IS
-    // its artwork reference (REQ-0170's free reference), resolved client-side
-    // via board/unitIcon unitArtUrl().
+    // resolver is needed.
     Object.keys(monstersFromCore().monsters || {})
   );
   const storage = require('../storage.cjs');
@@ -244,6 +242,27 @@ async function computeArtUrls() {
   const map = {};
   for (const id of Object.keys(resolved)) {
     if (resolved[id]) map[id] = '/api/art/' + encodeURIComponent(resolved[id]) + '.png';
+  }
+  // REQ-0226: unit ids join the batch, keyed by UNIT id exactly like
+  // monsters. A unit def's `icon` IS its artwork reference (REQ-0170's free
+  // reference -- two units may share one artwork), so the system_name/
+  // artwork_ref chain above does not cover it: units resolve
+  // unit id -> def.icon -> the icon artwork's adopted render
+  // (storage.resolveUnitArtIcons, one round-trip). Icons are read from the
+  // REGISTRY-FIRST served unit data (the same adopted unit_def entries
+  // applyRegistryOverlay serves), so an adopted variant that re-points
+  // `icon` resolves consistently with what the client displays.
+  const unitsFile = payload.units || {};
+  const unitsReg = (registryData && registryData.unit_def) || {};
+  const iconByUnit = {};
+  for (const id of Object.keys(unitsFile)) {
+    const entry = Object.prototype.hasOwnProperty.call(unitsReg, id) ? unitsReg[id] : unitsFile[id];
+    const icon = entry && entry.icon;
+    if (typeof icon === 'string' && icon.length > 0) iconByUnit[id] = icon;
+  }
+  const unitIcons = await storage.resolveUnitArtIcons(iconByUnit);
+  for (const id of Object.keys(unitIcons)) {
+    map[id] = '/api/art/' + encodeURIComponent(unitIcons[id]) + '.png';
   }
   return map;
 }

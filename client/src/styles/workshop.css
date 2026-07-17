@@ -889,6 +889,14 @@
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid var(--gold-lo, var(--rule));
 }
+/* REQ-0226: no adopted art (id absent from art_urls) renders a same-size
+   placeholder disc -- an <img> is mounted only when a resolved URL exists,
+   so no /api/art probe is ever fired. The explicit display is needed
+   because the width/height above only bind to replaced elements. */
+span.workshop-pool-art,
+span.workshop-result-unit-art {
+  display: inline-block;
+}
 .workshop-result-unit-name {
   font-size: 16px;
   color: var(--gold-hi);

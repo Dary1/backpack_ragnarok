@@ -77,6 +77,30 @@ async function adoptedArt(name, kind, shape) {
     assert.strictEqual(payload.art_urls.acc_gem, undefined, 'unresolved live id omitted');
   });
 
+  await AT('REQ-0226 unit rung: resolveUnitArtIcons keys by UNIT id through the (shared) icon', async () => {
+    // littleprincess + princess SHARE one icon artwork in the live content
+    // (REQ-0170's free reference); adopting that ONE artwork must resolve
+    // BOTH units. elf's icon has no artwork row here -> omitted.
+    await adoptedArt('units-002-roster-flux2:unit-princess', 'unit', null);
+    const r = await storage.resolveUnitArtIcons({
+      littleprincess: 'units-002-roster-flux2:unit-princess',
+      princess: 'units-002-roster-flux2:unit-princess',
+      elf: 'units-002-roster-flux2:unit-elf',
+    });
+    assert.strictEqual(r.littleprincess, 'units-002-roster-flux2:unit-princess', 'shared icon resolves unit 1');
+    assert.strictEqual(r.princess, 'units-002-roster-flux2:unit-princess', 'shared icon resolves unit 2');
+    assert.strictEqual(r.elf, undefined, 'icon with no artwork row -> omitted');
+  });
+
+  await AT('/api/content art_urls: unit ids ride the map (adopted icon present, un-adopted omitted)', async () => {
+    await content.refreshArtUrls();
+    const payload = content.getContent();
+    const expected = '/api/art/' + encodeURIComponent('units-002-roster-flux2:unit-princess') + '.png';
+    assert.strictEqual(payload.art_urls.littleprincess, expected, 'unit id keyed exactly like monsters');
+    assert.strictEqual(payload.art_urls.princess, expected, 'the shared icon serves BOTH unit ids');
+    assert.strictEqual(payload.art_urls.elf, undefined, 'unit whose icon has no adopted render omitted');
+  });
+
   await storage.clearAllArtworks();
   await storage.clearAllContent();
   await storage.closeArtPool();

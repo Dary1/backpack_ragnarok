@@ -421,3 +421,28 @@ test('dex tabs (REQ-0208): Items stays the default and the catalog contract surv
   await expect(page.locator('.dex-card')).toHaveCount(expectedCount);
   await expect(page.locator('.dex-count')).toHaveText(`${expectedCount} / ${expectedCount}`);
 });
+
+// ---- REQ-0226: unit art rides art_urls (404 probing retired) ----
+// Under the files backend art_urls is EMPTY, so NO unit has adopted art and
+// the pre-0226 convention would have fired one /api/art 404 per unit card.
+// The map-first surface must not probe at all: an id absent from the map
+// renders the rune placeholder with no <img> mounted.
+test('dex units tab (REQ-0226): renders with ZERO /api/art 404s when no unit art is adopted', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const expected = Object.keys(content.units ?? {}).length;
+  expect(expected).toBeGreaterThan(0);
+
+  const art404s: string[] = [];
+  page.on('response', (res) => {
+    if (res.url().includes('/api/art/') && res.status() === 404) art404s.push(res.url());
+  });
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Units' }).click();
+  await expect(page.locator('.dex-unit-card')).toHaveCount(expected);
+  // Settle window: portrait <img>s are mounted only for ids PRESENT in
+  // art_urls, so with the empty map there is nothing to fire at all.
+  await page.waitForTimeout(400);
+  expect(art404s).toEqual([]);
+});
