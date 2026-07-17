@@ -271,10 +271,18 @@ confirmed rules 1-4 and refined the lock economics:
   full character (boss, riveted rim, planks, weathering). What the lock changes is the
   SILHOUETTE (a free heater/kite outline -> a bbox-filling round one), not the detail; and
   off's full-rectangle outline is prompt-dependent and can underfill the cell. So `auto`->`off`
-  on a full rectangle trades silhouette shape (and a few points of fill), not character-for-
-  blank -- it is a per-item operator judgement (compare via the one-shot override), not a
-  rule justified by a "plain disc" that does not actually occur. A follow-up REQ should
-  re-word the lock economics in S0.1 / REQ-0186 (REQ-0187 observes only, changes no default).
+  on a full rectangle traded silhouette shape (and a few points of fill), not character-for-
+  blank -- a per-item operator judgement, not a rule justified by a "plain disc" that does
+  not actually occur. (REQ-0187 itself observed only and changed no default.)
+- **RESOLVED by REQ-0220 (2026-07-17).** The follow-up the paragraph above called for did
+  re-word S0.1 -- and then went further, because the rule had nothing left to stand on. Off's
+  last argument was cost, and it quoted REQ-0153's SPIKE route (76-130 s conditioned vs
+  15-50 s plain); REQ-0187's own V5 had already re-measured THIS route (matting runs as a
+  separate CPU job, not co-resident on the GPU) at conditioned 512x512 ~60-150 s vs plain off
+  512 ~90-120 s -- no real gap. Beaten on the pictures and level on cost, `auto`->`off` was
+  retired on the user's ruling: **`auto` is now strict on every shape.** Off on a full
+  rectangle stays available as an explicit per-item choice or a one-shot override; it is
+  simply no longer the default.
 
 ## Prerequisites
 

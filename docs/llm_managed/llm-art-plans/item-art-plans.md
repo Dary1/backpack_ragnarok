@@ -45,9 +45,10 @@ shuriken/dolls as plus. 20 of the 40 POs below are non-rectangular.
 
 UPDATE 2026-07-15 (supersedes the stale constraint that stood here): shape
 conditioning IS live — REQ-0183 wired Arm C @ D=8 into the production route
-and REQ-0186 exposed it as `shape_lock` (default `auto` = strict exactly on
-the non-rectangular shapes below). Complex shapes therefore get the strict
-mask automatically; the prompt still owes the TOPOLOGY (part placement /
+and REQ-0186 exposed it as `shape_lock` (default `auto` = strict on EVERY shape
+since REQ-0220 -- it used to fire only on the non-rectangular shapes below, a
+split REQ-0187 refuted and REQ-0220 retired). Every shape here therefore gets
+the strict mask automatically; the prompt still owes the TOPOLOGY (part placement /
 attachment anatomy) per item_content_pipeline.md §0.2, and `po.cell_fit`
 (REQ-0187) scores every render's per-cell fit in artadmin automatically.
 
