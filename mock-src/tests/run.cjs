@@ -1973,6 +1973,134 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
   });
 })();
 
+
+// ---------------------------------------------------------------------------
+// REQ-0209 -- locked starter units: a locked BP's interior is fully immutable
+// (every cell uniformly fixed; SI seat/unseat refused; only whole-BP ops --
+// move/rotate/transfer/discard -- remain legal).
+(function(){
+  const at=(b,c)=>b.shape.some(([dr,dc])=>b.origin[0]+dr===c[0]&&b.origin[1]+dc===c[1]);
+
+  T('REQ-0209 canvas: PO placement into a locked BP is refused, legal again unlocked',()=>{
+    const {st,E}=fresh();
+    const p5=st.pos.find(x=>x.uid==='p5');
+    const bp=st.bps.find(b=>at(b,p5.cell));
+    const hilt=st.pos.find(x=>x.id==='hilt');
+    let anchor=null;
+    for(const [dr,dc] of bp.shape){
+      const cell=[bp.origin[0]+dr,bp.origin[1]+dc];
+      if(E.canPlacePO(st,hilt.uid,hilt.rot,cell).ok){anchor=cell;break;}
+    }
+    ok(anchor,'fixture: a free cell exists in the target BP');
+    bp.locked=true;
+    const r=E.movePO(st,hilt.uid,anchor);
+    ok(!r.ok&&r.why==='locked unit','refused: '+r.why);
+    bp.locked=false;
+    ok(E.movePO(st,hilt.uid,anchor).ok,'same placement legal once unlocked');
+  });
+
+  T('REQ-0209 canvas: SI seat and unseat refused on a PO inside a locked BP',()=>{
+    const {st,E}=fresh();
+    const p5=st.pos.find(x=>x.uid==='p5');
+    const bp=st.bps.find(b=>at(b,p5.cell));
+    const edge=E.sockets(st).find(s=>s.host==='p5'&&s.t==='edge');
+    bp.locked=true;
+    const r=E.seatSI(st,'a3',edge.skey);
+    ok(!r.ok&&r.why==='locked unit','seat refused: '+r.why);
+    bp.locked=false;
+    ok(E.seatSI(st,'a3',edge.skey).ok,'seat legal once unlocked');
+    bp.locked=true;
+    const r2=E.stowSI(st,'a3');
+    ok(!r2.ok&&r2.why==='locked unit','unseat refused: '+r2.why);
+  });
+
+  T('REQ-0209 canvas: BP rotation legality is UNAFFECTED by the lock (rotation-only rule)',()=>{
+    const {st,E}=fresh();
+    const p5=st.pos.find(x=>x.uid==='p5');
+    const bp=st.bps.find(b=>at(b,p5.cell));
+    const before=E.canRotateBP(st,bp.id).ok;
+    bp.locked=true;
+    eq(E.canRotateBP(st,bp.id).ok,before,'locked changes nothing for rotateBP legality');
+    if(before)ok(E.rotateBP(st,bp.id).ok,'and the rotation itself commits');
+  });
+
+  T('REQ-0209 refs: fixed/locked survive the reference walk; bare fixed-PO ref ops refused',()=>{
+    const {st:raw,E}=fresh();
+    const st=E.migrateState(raw);
+    const p5=st.pos.find(x=>x.uid==='p5');
+    ok(p5,'fixture: p5 on canvas after migration');
+    const bpRef=st.bps.find(b=>at(b,p5.cell));
+    p5.fixed=true;bpRef.locked=true;
+    let homeBp=null,homePo=null,homePg=-1;
+    st.inv.pages.forEach((pg,i)=>{const b=pg.bps.find(x=>x.id===bpRef.id);if(b){homeBp=b;homePg=i;homePo=pg.pos.find(x=>x.uid==='p5');}});
+    ok(homeBp&&homePo,'fixture: home records found');
+    homeBp.locked=true;homePo.fixed=true;
+    const rr=E.removeRef(st,'po','p5');
+    ok(!rr.ok&&rr.why==='fixed','bare fixed-PO ref removal refused');
+    const origin=[bpRef.origin[0],bpRef.origin[1]];
+    ok(E.transferBP(st,{loc:'canvas'},{loc:'inv',page:homePg},bpRef.id,origin).ok,'wholesale BP removal stays legal');
+    ok(!st.pos.find(x=>x.uid==='p5'),'nested fixed PO ref left with its BP');
+    const cr=E.createRef(st,'po','p5',{cell:origin});
+    ok(!cr.ok&&cr.why==='fixed','bare fixed-PO ref creation refused');
+    const back=E.transferBP(st,{loc:'inv',page:homePg},{loc:'canvas'},bpRef.id,origin);
+    ok(back.ok,'re-adding the BP to canvas: '+(back.why||''));
+    const nb=st.bps.find(b=>b.id===bpRef.id),np=st.pos.find(x=>x.uid==='p5');
+    ok(nb&&nb.locked===true,'locked survived the new BP reference');
+    ok(np&&np.fixed===true,'fixed survived the new PO reference');
+  });
+
+  T('REQ-0209 page: PO placement + SI seat/unseat refused inside a locked page-resident BP',()=>{
+    const {st:raw,E}=fresh();
+    const st=E.migrateState(raw);
+    const p5c=st.pos.find(x=>x.uid==='p5');
+    const bpRef=st.bps.find(b=>at(b,p5c.cell));
+    let homeBp=null,homePg=-1;
+    st.inv.pages.forEach((pg,i)=>{const b=pg.bps.find(x=>x.id===bpRef.id);if(b){homeBp=b;homePg=i;}});
+    ok(homeBp,'fixture: home BP found');
+    homeBp.locked=true;
+    const container=st.inv.pages[homePg];
+    // PO placement into the locked BP (page side): find any same-page PO
+    // outside the BP with an anchor that is LEGAL while unlocked, then
+    // assert the lock alone flips it to refusal.
+    homeBp.locked=false;
+    let cand=null;
+    for(const p of container.pos){
+      if(p.loc!=='grid'||E.poInBPIn(p,homeBp))continue;
+      for(const [dr,dc] of homeBp.shape){
+        const cell=[homeBp.origin[0]+dr,homeBp.origin[1]+dc];
+        if(E.invCanPlacePO(st,homePg,p.uid,p.rot,cell).ok){cand={uid:p.uid,rot:p.rot,cell};break;}
+      }
+      if(cand)break;
+    }
+    ok(cand,'fixture: an unlocked-legal in-BP anchor exists for some same-page PO');
+    homeBp.locked=true;
+    const pchk=E.invCanPlacePO(st,homePg,cand.uid,cand.rot,cand.cell);
+    ok(!pchk.ok&&pchk.why==='locked unit','the lock alone refuses it: '+pchk.why);
+    // SI seat/unseat (page side): bring a3's home record onto this page.
+    let siPg=-1;st.inv.pages.forEach((pg,i)=>{if(pg.sis.find(x=>x.uid==='a3'))siPg=i;});
+    ok(siPg>=0,'fixture: a3 homed somewhere');
+    if(siPg!==homePg){
+      const srcPg=st.inv.pages[siPg];
+      const a=srcPg.sis.find(x=>x.uid==='a3');
+      srcPg.sis=srcPg.sis.filter(x=>x.uid!=='a3');
+      container.sis.push(a);
+    }
+    const sock=E.pageSockets(st,homePg).find(s=>s.host==='p5'&&s.t==='edge');
+    ok(sock,'fixture: p5 edge socket visible on its home page');
+    const r=E.invSeatSI(st,homePg,'a3',sock.skey);
+    ok(!r.ok&&r.why==='locked unit','page seat refused: '+r.why);
+    homeBp.locked=false;
+    ok(E.invSeatSI(st,homePg,'a3',sock.skey).ok,'seat legal once unlocked');
+    homeBp.locked=true;
+    const r2=E.invStowSI(st,homePg,'a3');
+    ok(!r2.ok&&r2.why==='locked unit','page unseat refused: '+r2.why);
+    // page-side BP rotation stays available (rotation-only rule, page twin)
+    const before=E.invCanRotateBP(st,homePg,homeBp.id).ok;
+    homeBp.locked=false;
+    eq(E.invCanRotateBP(st,homePg,homeBp.id).ok,before,'locked changes nothing for invRotateBP legality');
+  });
+})();
+
 console.log('----------------------------------');
 console.log(pass+' passed, '+fail+' failed');
 process.exit(fail?1:0);
