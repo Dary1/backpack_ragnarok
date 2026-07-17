@@ -70,7 +70,7 @@ module.exports.run = async function run(h) {
     assert.notStrictEqual(stored.genSeed, 'attacker-chosen-seed', 'the caller-supplied seed must never become the sealed seed');
   });
 
-  await AT('seal: copy fidelity -- both recipients\' rooms copy the frozen tuple (dungeonType/level/genSeed/affixes) byte-equal, and carry the sealId', async () => {
+  await AT('seal: copy fidelity -- both recipients\' rooms copy the frozen tuple (dungeonId/level/genSeed/affixes) byte-equal, and carry the sealId', async () => {
     const m = await mint(sealP1.token, { dungeonId: 'test_dungeon', level: 2 });
     const sealId = m.body.seal.sealId;
     const stored = scheduleStorage.readSeal(sealId);
@@ -81,7 +81,7 @@ module.exports.run = async function run(h) {
     for (const rr of [r1, r2]) {
       assert.strictEqual(rr.body.room.sealId, sealId, 'room carries the sealId');
       assert.strictEqual(rr.body.room.genSeed, stored.genSeed, 'room genSeed is the sealed seed, verbatim');
-      assert.strictEqual(rr.body.room.dungeonType, stored.dungeonType, 'room dungeonType copied verbatim');
+      assert.strictEqual(rr.body.room.dungeonId, stored.dungeonId, 'room dungeonId (the sealed dungeon def) copied verbatim'); // REQ-0185: dungeonId is the frozen selection now
       assert.strictEqual(rr.body.room.level, stored.level, 'room level copied verbatim');
       assert.deepStrictEqual(rr.body.room.affixes, stored.affixes, 'room affixes copied verbatim');
     }

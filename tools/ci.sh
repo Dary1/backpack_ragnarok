@@ -52,6 +52,8 @@ echo "==== [2.5/7] S4 post-processor tests (REQ-0050) ===="
 node sim/tests/s4_test.cjs
 echo "==== [2.6/7] forecast<->sim ray parity (REQ-0057) ===="
 node sim/tests/forecast_parity.cjs
+echo "==== [2.65/7] dungeon roller determinism + structure (REQ-0185) ===="
+node sim/tests/dungeon_roll_test.cjs
 echo "==== [2.7/7] REQ-0203 grave-legion gates (dialect / sim verbs / transpose / packs / additive promote) ===="
 node sim/tests/req0203_grave_legion_test.cjs
 echo "==== [2.75/7] REQ-0207 wildlands gates (dialect / transpose / packs / determinism / additive promote) ===="
