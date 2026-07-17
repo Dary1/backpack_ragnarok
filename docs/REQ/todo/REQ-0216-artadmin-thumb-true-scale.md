@@ -51,4 +51,17 @@ Cell-count badges (option b) were rejected.
 
 ## Log
 
-- (pending)
+- 2026-07-17: implemented as commit 361aa51 (Workspace.tsx THUMB_CELL_PX=42,
+  artadmin.css cap removal, new e2e test pinning 42px/84px stage widths).
+- Gates, run 1 (full ci.sh): green through the artadmin e2e harness (7/7,
+  including the new REQ-0216 true-scale spec) and artinspect (1/1); the
+  contentadmin harness was then SIGKILLed externally (exit 137, no OOM trace;
+  the box was saturated by several concurrent sessions and later rebooted).
+- Gates, run 2 (post-reboot, SKIP_E2E=1 per user directive \"skip e2e\"):
+  CI GREEN on try 3. Tries 1-2 went red ONLY on the pre-existing
+  forecastPressure 100ms perf budget (sim/tests/forecast_parity.cjs), which
+  fails identically on the untouched main checkout under the same load --
+  environmental contention, unrelated to this client-only change.
+- Net gate evidence: every non-e2e gate green in one run; the artadmin +
+  artinspect e2e harnesses green in the earlier run of the same tree.
+  The default e2e suite and contentadmin harness were not re-run (user call).
