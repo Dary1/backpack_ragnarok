@@ -91,3 +91,10 @@ Root causes, each closed here:
 - e2e_profile_redirect_test 9/9; api_test (files) green post-changes.
 - Earlier failures were cross-session contention artifacts (老ハーネス runs
   killing the shared fleet/proxy), eliminated by scoping + the freeze.
+
+## Deploy record (2026-07-17)
+- Merged to master 35a8edc (--no-ff, user go-ahead in chat); backpack-api
+  restarted; live-verified: /api/me headerless -> dev, with
+  x-bpk-e2e-profile -> e2e_ci.
+- Old-harness freeze REMAINS ACTIVE until other worktrees rebase past this
+  merge (~/.cache/backpack/E2E_FREEZE_README.txt).
