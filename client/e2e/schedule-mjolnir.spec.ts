@@ -92,7 +92,7 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
     // REQ-0239: the inline create form is REMOVED -- the rooms toolbar / empty
     // state now offers a gold CTA to the dedicated #/sortie page instead of an
     // inline create panel. Assert the CTA points at #/sortie.
-    await expect(page.locator('[data-testid="schedule-create-toggle"]')).toHaveAttribute('href', '#/sortie');
+    await expect(page.locator('[data-testid="schedule-create-cta"]')).toHaveAttribute('href', '#/sortie');
 
     // Create a room via the API, then reload + watch it, to assert the room
     // card's OWN ornate anatomy (unchanged by the sortie redesign).

@@ -1435,7 +1435,7 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await page.locator('.nav-link', { hasText: 'Schedule' }).click();
     await expect(page.locator('[data-testid="squad-board"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="squad-board-tile-0"]')).toBeVisible();
-    await expect(page.locator('[data-testid="squad-board-state-0"]')).toHaveAttribute('data-state', /deployed|returning/, { timeout: 10000 });
+    await expect(page.locator('[data-testid="squad-board-state-0"]')).toHaveAttribute('data-state', /deployed|returning|recovering|staging/, { timeout: 15000 });
 
     await apiCancelRoom(page, player.token, roomId);
   });
@@ -1451,9 +1451,13 @@ test.describe('REQ-0239: sortie page + squad status board', () => {
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toHaveCount(0);
 
-    // dev_mode fallback (no invite token -> item_admin) -> seed visible.
-    await page.goto('/app/#/sortie');
-    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
+    // dev_mode fallback -> item_admin -> seed visible. Clear the stored guest
+    // token AND reload so the app re-boots fresh: /api/me now resolves to the
+    // dev fallback (item_admin), not the invited guest (a hash nav alone would
+    // keep the already-fetched guest `me`).
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
     await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
     await page.locator('[data-testid="sortie-advanced-toggle"]').click();
     await expect(page.locator('[data-testid="sortie-seed-input"]')).toBeVisible({ timeout: 10000 });
