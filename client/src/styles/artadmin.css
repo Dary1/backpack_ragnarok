@@ -243,6 +243,23 @@
  * scale variance this replaces. */
 .aa-cb--thumb .aa-cb-score { font-size: 9px; padding: 0 3px; }
 
+/* REQ-0232: the gallery-head legend for the backdrop above. The swatches
+ * restate .aa-cb-cell / .aa-cb-line exactly -- same colours, same checker --
+ * shrunk to 12px chips (checker halved to stay visibly a checker). */
+.aa-legend { display: flex; flex-wrap: wrap; gap: 10px; row-gap: 2px; align-items: center; margin-top: 2px; }
+.aa-legend-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.aa-legend-sw { width: 12px; height: 12px; border: 1px solid rgba(58, 46, 20, 0.5); flex: none; }
+.aa-legend-sw--unowned {
+  background-color: #E9E7E1;
+  background-image:
+    linear-gradient(45deg, #D2CFC6 25%, transparent 25%, transparent 75%, #D2CFC6 75%),
+    linear-gradient(45deg, #D2CFC6 25%, transparent 25%, transparent 75%, #D2CFC6 75%);
+  background-size: 8px 8px; background-position: 0 0, 4px 4px;
+}
+.aa-legend-sw--ok { background: #F6E9C0; }
+.aa-legend-sw--ramp { background: linear-gradient(90deg, #F6E9C0, #F1AEA6); }
+.aa-legend-sw--worst { background: #F6E9C0; border: 2px solid var(--blood, #8E2F2A); }
+
 .aa-lb-img { image-rendering: auto; display: block; }
 .aa-lb-img.is-fit { max-width: 96%; max-height: 96%; object-fit: contain; }
 .aa-lb-tile { image-rendering: pixelated; background-repeat: repeat; border: 1px dashed rgba(201, 169, 89, 0.35); }

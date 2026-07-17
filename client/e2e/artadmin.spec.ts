@@ -41,6 +41,14 @@ function lMask(): boolean[][] {
   return m;
 }
 
+// REQ-0232: a single cell -- the smallest footprint. Its thumb stage is 42px
+// (THUMB_CELL_PX), the exact case whose fit badge must vacate the render.
+function dotMask(): boolean[][] {
+  const m = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
+  m[0][0] = true;
+  return m;
+}
+
 async function apiCreate(request: APIRequestContext, body: Record<string, unknown>) {
   const r = await request.post('/api/art/artworks', { data: body });
   expect(r.status()).toBe(201);
@@ -192,6 +200,40 @@ test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs uno
   await expect(page.getByTestId('lightbox-cells')).toHaveCount(0);
   await expect(page.getByTestId('lightbox-img-cb')).toHaveCount(0);
   await expect(page.getByTestId('lightbox-img')).toBeVisible();
+});
+
+test('REQ-0232 backdrop legend + small-thumb badge: legend follows the toggle; a 1x1 thumb sheds the fit badge, its lightbox keeps it', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  await apiCreate(request, { system_name: 'e2e_pebble', kind: 'po', shape: { mask: dotMask() }, main_object: 'river pebble' });
+
+  await page.goto('/app/#/artadmin');
+  await page.getByTestId('art-select-e2e_pebble').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+
+  // the legend rides the backdrop toggle: ON (default) -> visible, OFF ->
+  // gone. It must never label swatches that are not on screen.
+  await expect(page.getByTestId('art-cells-legend')).toBeVisible();
+  await page.getByTestId('art-cells').click();
+  await expect(page.getByTestId('art-cells-legend')).toHaveCount(0);
+  await page.getByTestId('art-cells').click();
+  await expect(page.getByTestId('art-cells-legend')).toBeVisible();
+
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 1);
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+
+  // wait for po.cell_fit to land by watching the LIGHTBOX badge (kits run
+  // async after generation; the lightbox stage is wide, so it shows the
+  // badge as soon as the row exists)
+  await page.getByTestId('render-thumb-1').click();
+  await expect(page.getByTestId('lightbox')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img-cb-fit')).toBeVisible({ timeout: 90000 });
+  await page.keyboard.press('Escape');
+
+  // the 1x1 THUMB (42px stage, under the 64px cutoff) suppresses that same
+  // badge even though its fit row is now present
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+  await expect(page.getByTestId('render-cb-1-fit')).toHaveCount(0);
 });
 
 test('registry browser: search + kind/adoption filters narrow the list', async ({ page, request }) => {

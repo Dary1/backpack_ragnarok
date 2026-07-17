@@ -103,6 +103,14 @@ const V_ALARM = 0.5;
 const TINT_OK: [number, number, number] = [246, 233, 192];   // pale gold  = owned, quiet
 const TINT_HOT: [number, number, number] = [241, 174, 166];  // pale blood = owned, violating
 
+// REQ-0232: the smallest stage that still fits the fit badge. After REQ-0216
+// a 1x1 thumb draws at 42px (THUMB_CELL_PX) while the badge ("fit 100" at
+// 9px) is ~40px wide -- it covered nearly the whole render it annotates. At
+// 64px the cutoff keeps the badge on every >= 2-cell-wide thumb (84px) and
+// on every lightbox stage (basis >= 256px); only the 1x1 thumb defers its
+// badge to the lightbox.
+const SCORE_MIN_STAGE_PX = 64;
+
 /** Owned-cell tint on the violation ramp. No fit row -> flat pale gold. */
 function ownedTint(v: number | undefined): string {
   if (v == null) return 'rgb(' + TINT_OK.join(',') + ')';
@@ -162,7 +170,10 @@ export function CellStage({ bb, mask, fit, widthPx, probeUrl, style, className, 
       <div className="aa-cb-layer" style={grid} aria-hidden="true">{tints}</div>
       <div className="aa-cb-render">{children}</div>
       <div className="aa-cb-layer aa-cb-lines" style={grid} aria-hidden="true">{lines}</div>
-      {fit && fit.score != null && (
+      {/* REQ-0232: a stage narrower than the badge (the 1x1 thumb) sheds it
+          rather than let it cover the render it annotates; the lightbox
+          stage is always wide enough and keeps it. */}
+      {fit && fit.score != null && widthPx >= SCORE_MIN_STAGE_PX && (
         <span data-testid={testId ? testId + '-fit' : undefined}
           className={'aa-cb-score tnum' + ((fit.worst || 0) > V_ALARM ? ' is-hot' : '')}
           title={'po.cell_fit -- advisory only, never gates adoption (art_pipeline.md S7)'
@@ -221,4 +232,24 @@ export function useNeedsWhiteKey(url: string): boolean {
 export function aspectMatches(bb: MaskBbox, nat: { w: number; h: number } | null): boolean {
   if (!nat || !nat.w || !nat.h) return true;
   return Math.abs(nat.w / nat.h - bb.cols / bb.rows) < 0.02;
+}
+
+/** REQ-0232: the backdrop's key, on the page itself. Every encoding above
+ * (checker / pale gold / gold->blood ramp / thick blood border / the fit
+ * badge) was legible only to whoever had read this file -- the user had to
+ * ask for a verbal explanation (2026-07-17). One compact line, rendered by
+ * the gallery head only while the backdrop is ON, so it never labels
+ * swatches that are not on screen. The swatch classes restate the
+ * .aa-cb-cell / .aa-cb-line styles exactly (artadmin.css keeps them
+ * adjacent). */
+export function CellLegend({ testId }: { testId?: string }) {
+  return (
+    <div data-testid={testId} className="aa-legend t-micro">
+      <span className="aa-legend-item"><i className="aa-legend-sw aa-legend-sw--unowned" aria-hidden="true" />in bbox, not owned</span>
+      <span className="aa-legend-item"><i className="aa-legend-sw aa-legend-sw--ok" aria-hidden="true" />owned, no violation</span>
+      <span className="aa-legend-item"><i className="aa-legend-sw aa-legend-sw--ramp" aria-hidden="true" />violation ramp (alarm at {V_ALARM})</span>
+      <span className="aa-legend-item"><i className="aa-legend-sw aa-legend-sw--worst" aria-hidden="true" />worst cell</span>
+      <span className="aa-legend-item">fit N = po.cell_fit score, advisory</span>
+    </div>
+  );
 }

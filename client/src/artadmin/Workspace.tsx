@@ -18,7 +18,7 @@ import type { ShapeLock } from './artShared';
 import { deriveSizeClient } from './artShared';
 import type { ArtDraft, Kind } from './artShared';
 import { artRenderUrl } from '../api';
-import { CellStage, maskBbox, cellFitFrom } from './CellBackdrop';
+import { CellStage, CellLegend, maskBbox, cellFitFrom } from './CellBackdrop';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
 
 // REQ-0216: gallery thumbs draw at a CONSTANT px-per-cell, so footprints
@@ -179,6 +179,8 @@ export function Workspace(props: {
         )}
         {comparePicks.length === 1 && <span className="t-micro">pick one more render to compare</span>}
       </div>
+      {/* REQ-0232: the key to the backdrop's colours, only while it is ON */}
+      {thumbBb && <CellLegend testId="art-cells-legend" />}
       <div data-testid="art-renders" className="aa-gallery">
         {renders.map((r) => {
           const isAdopted = adoptedId != null && r.id === adoptedId;
