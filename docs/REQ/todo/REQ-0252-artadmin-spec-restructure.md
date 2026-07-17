@@ -64,3 +64,64 @@ the remaining drift look intentional.
 `bash tools/artadmin_e2e.sh` green, 7/7 -- the same 7 that pass before the
 change. A refactor whose gate is "the tests still pass" is only honest if the
 tests are unchanged, so the diff must show no assertion added or removed.
+
+## Outcome
+
+Implemented in `ae37e7a`. Footprint is exactly two files: the spec and this
+REQ. `artadmin.config.ts` and `tools/artadmin_e2e.sh` were deliberately left
+alone (REQ-0251), so this branch cannot conflict with the harness work.
+
+Extracted: `mask()` row-major builder (+ named `swordMask`/`lMask`/`gemMask`),
+`test.beforeEach` clear-all, `selectArtwork()`, `genNext()`. Hoisting the
+clear-all left the custom-kind test with no use for its `request` fixture, so
+it drops it.
+
+Line count went 333 -> 340. This is a dedupe that does not shrink the file:
+the removed ceremony (~42 lines) is offset by the helpers and by comments
+recording why the shapes and the REQ-0251 boundary are what they are. The win
+is edit-locality, not brevity -- a change to the clear-all or the select-wait
+is now one site instead of seven or five.
+
+## Gate results
+
+| run | spec | result |
+|-----|------|--------|
+| baseline (`ae37e7a~1`, md5 f8cfe8af) | pre-refactor | **7 passed**, RC=0, 1.6m |
+| refactored (`ae37e7a`, md5 232ad7d0) | post-refactor | **7 passed**, RC=0, 1.6m |
+
+Both run through `tools/artadmin_e2e.sh` in this worktree, same environment,
+baseline run second to rule out ordering. `tsc --noEmit` clean. Static parity
+check: no unique assertion text added or removed; the `expect()` count drops
+87 -> 83 purely because 5 `art-editor` visibility sites collapse into one
+helper (7 -> 3 literal sites, +1 in the helper). The deep-link test's distinct
+`toBeVisible({ timeout: 30000 })` was correctly not collapsed.
+
+## Notes for the harness REQs (0248 / 0251), found while running this
+
+Not acted on -- recorded so they are not rediscovered a fourth time.
+
+1. **The port preflight aborts silently.** With 1560-1562 held, running
+   `tools/artadmin_e2e.sh` exits **75 with zero output** -- no `[e2e-ports]
+   ... is BUSY` line, with or without `set -e`. The success path
+   (`REQ-156 -> static:1560 ...`) prints fine, so it is specific to the busy
+   branch. This defeats the helper's stated purpose ("One clear line beats
+   forty confusing ones"): the operator sees an instant, silent, non-zero
+   exit. Root cause not pinned -- it is the rig's file, not this REQ's.
+2. **Same-harness runs do not queue; the second one dies.** `e2e.0156.lock`
+   is taken inside `e2e_run.sh`, i.e. AFTER the harness has already bound its
+   ports. So two worktrees running artadmin concurrently (0248 and 0251 both
+   did, during this REQ) do not serialise: the first binds 1560-1562 and the
+   second aborts on preflight. The comment claims "Same-harness runs still
+   queue" -- they do not, unless the first is already past bringup. Combined
+   with (1), the second run just vanishes.
+3. **The bringup logs collide across worktrees.** `/tmp/req0156_e2e_api.log`
+   and `/tmp/req0156_e2e_proxy.log` are hardcoded, so every worktree running
+   artadmin overwrites the same two files. During this REQ the log showed
+   another worktree's api on :6561 while debugging a failure in this one --
+   actively misleading. The paths should carry the worktree or the run.
+4. **A fresh worktree needs three installs, not one.** `client/`, `server/`,
+   and the root each have a package.json; provisioning only `client/` yields
+   `Cannot find module 'pg'` and a 502-on-everything run whose Playwright
+   output blames `apiCreate`, not the api that never booted. `server/.env` is
+   gitignored and must be copied in too. PROJECT.md says "repeat in any other
+   dir that has its own package.json"; the harness could just check.
