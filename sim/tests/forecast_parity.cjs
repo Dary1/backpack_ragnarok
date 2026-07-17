@@ -506,6 +506,30 @@ async function main() {
     ok(ms < 50, 'perf budget blown: ' + ms.toFixed(1) + 'ms >= 50ms');
   });
 
+  // REQ-0203: the enemy verb extensions must fold IDENTICALLY in the forced-copy pair
+  // server/lib/forecast.cjs expectedDamagePerFire  <->  shared/forecast.mjs expectedDamagePerFire.
+  const SF0203 = require(path.join(__dirname, '..', '..', 'server', 'lib', 'forecast.cjs'));
+  T('REQ-0203: expectedDamagePerFire byte-agrees across the forecast copies for the new verbs', () => {
+    const cases = [
+      { t: 'strike', n: [6, 11] },
+      { t: 'multi_strike', n: [4, 7], hits: 4 },
+      { t: 'lifesteal', n: [6, 10], frac: 0.5 },
+      { t: 'bonus_vs_status', status: 'Weakness', n: [10, 16], mult: 1.5 },
+      { t: 'heal_ally', n: [8, 14] },
+    ];
+    for (const v of cases) eq(SF0203.expectedDamagePerFire(v), F.expectedDamagePerFire(v), 'copies disagree for ' + v.t);
+    eq(SF0203.expectedDamagePerFire({ t: 'lifesteal', n: [6, 10] }), 8, 'lifesteal folds to n midpoint');
+    eq(SF0203.expectedDamagePerFire({ t: 'bonus_vs_status', n: [10, 16] }), 13, 'bonus_vs_status folds to BASE n midpoint (mult is runtime-conditional, not folded)');
+    eq(SF0203.expectedDamagePerFire({ t: 'heal_ally', n: [8, 14] }), 0, 'heal_ally is enemy-side -- no incoming damage');
+  });
+  T('REQ-0203: the server forecast classifies lifesteal/bonus_vs_status as incoming DAMAGE, never heal_ally', () => {
+    const src = require('fs').readFileSync(path.join(__dirname, '..', '..', 'server', 'lib', 'forecast.cjs'), 'utf8');
+    const m = /const DAMAGE_VERBS = new Set\(\[([^\]]*)\]\)/.exec(src);
+    ok(m, 'DAMAGE_VERBS set must be present');
+    ok(/'lifesteal'/.test(m[1]) && /'bonus_vs_status'/.test(m[1]), 'lifesteal + bonus_vs_status must be damage verbs');
+    ok(!/'heal_ally'/.test(m[1]), 'heal_ally must NOT be a damage verb (enemy-side)');
+  });
+
   console.log('\nforecast parity: ' + pass + ' passed, ' + fail + ' failed');
   if (fail > 0) process.exit(1);
 }

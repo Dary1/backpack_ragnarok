@@ -5,24 +5,68 @@
 const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
 const { deepCopy } = require('./core.cjs'); // REQ-0121
 const { foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
+// REQ-0184: the A1 layout grammar. sim/ and server/ both import this from
+// shared/ so there is exactly ONE definition of where a member stands --
+// the placer and the machine check can never disagree about a cell.
+const { parseA1, cellsFor } = require('../../shared/content_validate.cjs');
 
-function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox) {
-  // enemyFieldBox: {rowMin,colMin,rowMax,colMax} region of the enemy field
-  // this pack occupies (bosses/packs placed within the shared A1:Z18
-  // enemy plane; for simplicity/documented-interpretation this sim places
-  // pack members left-to-right starting at the box's top-left corner,
-  // spaced by footprint width, wrapping rows as needed).
-  const hpStream = rng.stream('pack/hp');
+// REQ-0184: a pack def may now carry an explicit LAYOUT -- members[{enemy, at}]
+// where `at` is an A1 top-left anchor -- which is the whole point of the
+// monster_pack content kind: WHERE a monster stands is authored content, not a
+// side effect of the order it happened to be listed in.
+//
+// Both spellings are accepted, and the choice is per-pack, not global:
+//   * members[]  -> LAYOUT path: each member sits exactly where the def says.
+//   * enemyIds[] -> LEGACY path: the pre-REQ-0184 cursor fill, kept
+//     BYTE-IDENTICAL. sim/dungen.cjs still emits this shape at runtime, and
+//     REQ-0185 (dungeons become pre-generated content) is what retires it. Until
+//     then, deleting this path would break every generated dive.
+// Normalising both to one member list up front keeps the HP/skill/status fold
+// below untouched -- the golden contract is that a pack with no layout compiles
+// exactly as it did before this REQ.
+function packMembers(packDef, enemyDefsById, enemyFieldBox) {
+  if (Array.isArray(packDef.members)) {
+    return packDef.members.map((m) => {
+      const def = enemyDefsById[m.enemy];
+      if (!def) throw new Error('compileEnemyPack: missing enemy def ' + m.enemy);
+      const anchor = parseA1(m.at);
+      // shared/content_validate.cjs is what ADJUDICATES a layout (bounds,
+      // overlap, references) and the machine check runs it before a variant is
+      // ever adoptable. Here we only guard the one thing that would otherwise
+      // throw a TypeError deep in the ray code instead of naming itself.
+      if (!anchor) throw new Error('compileEnemyPack: pack ' + (packDef.id || '?') + ' member "' + m.enemy + '" has a malformed A1 anchor: ' + JSON.stringify(m.at));
+      return { eid: m.enemy, def: def, fieldCells: cellsFor(anchor, def.footprint || [1, 1]) };
+    });
+  }
+  // ---- legacy cursor fill (pre-REQ-0184, verbatim) ----
   let cursorRow = enemyFieldBox.rowMin, cursorCol = enemyFieldBox.colMin;
-  const enemies = packDef.enemyIds.map((eid, idx) => {
+  return packDef.enemyIds.map((eid) => {
     const def = enemyDefsById[eid];
     if (!def) throw new Error('compileEnemyPack: missing enemy def ' + eid);
-    const hpMax = Math.round(hpStream.range(def.hp[0], def.hp[1]));
-    const [fh, fw] = def.footprint || [1, 1];
+    const fp = def.footprint || [1, 1];
+    const fh = fp[0], fw = fp[1];
     if (cursorCol + fw - 1 > enemyFieldBox.colMax) { cursorCol = enemyFieldBox.colMin; cursorRow += fh; }
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([cursorRow + dr, cursorCol + dc]);
     cursorCol += fw;
+    return { eid: eid, def: def, fieldCells: fieldCells };
+  });
+}
+
+function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox) {
+  // enemyFieldBox: {rowMin,colMin,rowMax,colMax} region of the enemy field
+  // this pack occupies. REQ-0184 corrected the caller to hand over the
+  // PLACEABLE area (B2:Y17) rather than the whole A1:Z18 plane -- see
+  // encounter.cjs. Only the legacy cursor path reads the box; a member with an
+  // explicit anchor sits where the def says, and the machine check is what
+  // keeps that anchor inside the placeable area.
+  const hpStream = rng.stream('pack/hp');
+  const members = packMembers(packDef, enemyDefsById, enemyFieldBox);
+  const enemies = members.map((mem, idx) => {
+    const eid = mem.eid, def = mem.def, fieldCells = mem.fieldCells;
+    const hpMax = Math.round(hpStream.range(def.hp[0], def.hp[1]));
+    const fp = def.footprint || [1, 1];
+    const fh = fp[0], fw = fp[1];
     let skills = (def.skills || []).map(sid => {
       const sdef = skillDefsById[sid];
       if (!sdef) throw new Error('compileEnemyPack: missing skill def ' + sid);

@@ -12,7 +12,7 @@ import { buyMarketListing, type ApiMarketListing, type GameData } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 import { buyReasonOf } from './marketErrors';
-import { MarketThumb, dexNoLabel, listingKindLine } from './marketShared';
+import { RollBar, MarketThumb, PriceTag, dexNoLabel, listingKindLine } from './marketShared';
 
 /** The distinct modal bodies, mirroring the mock's mA..mE. 'form' is the
  * initial oath (mA); 'done' is 取引成立 (mB); the rest are the 409
@@ -23,6 +23,9 @@ interface BuyModalProps {
   listing: ApiMarketListing;
   gameData: GameData | null;
   locale: Locale;
+  /** REQ-0195a: live TM registry ids -- the pay/burn/receives rows show
+   * the price TM's short label once more than one TM is live. */
+  tms: string[];
   /** The buyer's current spendable market-TM balance (for the post-pay
    * projection + the pre-emptive can't-afford body). */
   balance: number;
@@ -35,7 +38,8 @@ interface BuyModalProps {
   onClose: () => void;
 }
 
-export function BuyModal({ listing, gameData, locale, balance, onSettled, onClose }: BuyModalProps) {
+export function BuyModal({ listing, gameData, locale, tms, balance, onSettled, onClose }: BuyModalProps) {
+  const multiTm = tms.length > 1;
   const [phase, setPhase] = useState<BuyPhase>('form');
   const [busy, setBusy] = useState(false);
   const [genericMsg, setGenericMsg] = useState<string>('');
@@ -89,7 +93,7 @@ export function BuyModal({ listing, gameData, locale, balance, onSettled, onClos
               <span className="en">{t(locale, 'market.buy.oathTitleEn')}</span>
             </div>
             <div className="row market-modal-item">
-              <MarketThumb gameData={gameData} itemId={listing.itemId} cellPx={30} />
+              <MarketThumb gameData={gameData} itemId={listing.itemId} cellPx={30} kind={listing.kind} />
               <div>
                 <div className="dj market-modal-name">{locale === 'ja' ? listing.itemNameJa || listing.itemName : listing.itemName}</div>
                 <div className="t-micro market-modal-sub">
@@ -97,21 +101,22 @@ export function BuyModal({ listing, gameData, locale, balance, onSettled, onClos
                   {listing.rarity ? <span className={`rar-word r-${listing.rarity}`}> {listing.rarity.toUpperCase()}</span> : null}
                 </div>
                 <div className="market-modal-dex"><span className="chip dexno">{t(locale, 'market.dexChip', { no: dexNoLabel(listing.dexNo) })}</span></div>
+                <RollBar kind={listing.kind} rollPct={listing.rollPct} locale={locale} />
               </div>
             </div>
             <table className="bd market-bd">
               <tbody>
                 <tr>
                   <td>{t(locale, 'market.buy.pay')}</td><td className="t-micro">{t(locale, 'market.buy.payFrom')}</td>
-                  <td className="v"><span className="rune">ᚠ</span> {qty}</td>
+                  <td className="v"><PriceTag gameData={gameData} tm={listing.price.tm} multi={multiTm} /> {qty}</td>
                 </tr>
                 <tr className="burnrw">
                   <td>{t(locale, 'market.buy.burn')}</td><td className="t-micro">{t(locale, 'market.buy.burnShare')}</td>
-                  <td className="v">−<span className="rune">ᚠ</span> {burn}</td>
+                  <td className="v">−<PriceTag gameData={gameData} tm={listing.price.tm} multi={multiTm} /> {burn}</td>
                 </tr>
                 <tr className="getrw">
                   <td>{t(locale, 'market.buy.sellerGets')}</td><td className="t-micro">{t(locale, 'market.buy.sellerGetsTo', { who: listing.sellerName })}</td>
-                  <td className="v"><span className="rune">ᚠ</span> {receives}</td>
+                  <td className="v"><PriceTag gameData={gameData} tm={listing.price.tm} multi={multiTm} /> {receives}</td>
                 </tr>
               </tbody>
             </table>

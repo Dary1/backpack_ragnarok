@@ -22,18 +22,136 @@
    "status": "awaiting_user_review",
    "preview": "/preview/batch-003/",
    "provenance": "AI-raster route (REQ-0073); geometry-scored (tool_icon_score.py, MIN_CONTENT_FRAC gate); winners = argmax(score); re-scored 2026-07-12 after matte/gate fixes"
+  },
+  {
+   "id": "batch-units003-roster",
+   "date": "2026-07-17",
+   "drafted_by": "REQ-0201 S1 kit design (claude-opus-4-8) under user delegations 2026-07-14/16; orchestrator-adopted per 2026-07-16 delegation",
+   "icons_by": "artadmin flux2 route (FLUX.2 klein 4B), 4 seeds/unit via art_jobs queue; plaguedoctor re-prompted (beak mask)",
+   "submitted": 30,
+   "approved": 30,
+   "status": "adopted_live",
+   "provenance": "content-data registry (REQ-0155): 30 unit_def variants machine-check PASS + separate-agent advisory reviews (claude-opus-4-8) recorded; charge kits validated by REQ-0200 validateCharge + units003_acceptance 30/30; reviewer amendments: darkknight pct, werewolf pct, shaman grant_charge n, adjacency->queen_2, rarity canonicalization"
+  },
+  {
+   "id": "batch-units003-packs",
+   "date": "2026-07-17",
+   "drafted_by": "REQ-0202 pack design (orchestrator-ratified from Opus S1 round)",
+   "submitted": 4,
+   "approved": 4,
+   "status": "adopted_live",
+   "provenance": "gacha_pack registry rows (REQ-0171 conventions): pestilence/sanctuary/warband/royal_court; rarity-scaled weights 6/3/2/1; machine-check PASS (validatePackEntry vs live roster); advisory reviews recorded; all 30 units003 units covered by >=1 pack"
   }
  ],
  "live_dungeon": {
   "promoted_from": "batch-002-dungeon-pilot",
-  "date": "2026-07-12",
+  "date": "2026-07-15",
   "files": {
-   "dungeon.json": "c0c8d9a8cae24ee31ae68199ce5f1dc2068201b1231370cab533eb7807d6ab0d",
+   "dungeon.json": "b78b1c5c03640278dad6b1956aa41d25cf821d29e0a5bda2879553733a3f9f00",
    "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
+   "packs.json": "c1a4e2f8ae51dcd349f639f06bf605a96e3ea9daae366770cef0a9e7c0c002e3",
    "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
    "entities.json": "b62682a6df484eac4024bb00b161af0bdf6fb67254c4acaa3386e3aecca2e286",
    "formations.json": "75ae7a099bf13b8d2f0032f5b8cccf72cdd8187df066870b2c4d302b27cc3bb5",
    "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da"
   }
- }
+ },
+ "live_dungeon_additive": [
+  {
+   "promoted_from": "batch-005-grave-legion",
+   "date": "2026-07-16",
+   "added": {
+    "enemies.json": [
+     "zombie",
+     "ghost",
+     "mummy",
+     "skeleton_warrior",
+     "wight",
+     "necromancer",
+     "lich",
+     "bone_dragon"
+    ],
+    "skills.json": [
+     "rotting_claw",
+     "festering_grasp",
+     "spectral_touch",
+     "haunting_chill",
+     "bandage_lash",
+     "mummys_curse",
+     "bone_cleaver",
+     "shield_jab",
+     "grave_blade",
+     "life_drain",
+     "dark_mending",
+     "enfeebling_bolt",
+     "soul_blast",
+     "paralyzing_dread",
+     "bone_breath",
+     "necrotic_roar"
+    ],
+    "packs.json": [
+     "pack_grave_shamble",
+     "pack_grave_legion",
+     "pack_bone_court"
+    ]
+   },
+   "files": {
+    "enemies.json": "6c0388da74c6d3b6f3cb255e7dc85a85465b0964ff10a5038e35a7331eca447f",
+    "skills.json": "d9a40d30cce4dd506561bc4225e1513f427a168f2a91f65f88a96261e8108684",
+    "packs.json": "fd40c893a7d659a486548cac1b4c60882ab891e146a55fe28013d0b6681e83fa"
+   }
+  },
+  {
+   "promoted_from": "batch-006-wildlands",
+   "date": "2026-07-16",
+   "added": {
+    "enemies.json": [
+     "alpha_werewolf",
+     "dire_wolf",
+     "boar",
+     "giant_bat",
+     "giant_spider",
+     "giant_scorpion",
+     "giant_snake",
+     "basilisk",
+     "imp",
+     "gargoyle",
+     "dullahan",
+     "demon_lord"
+    ],
+    "skills.json": [
+     "rending_claws",
+     "feral_bite",
+     "savage_bite",
+     "harrying_snap",
+     "tusk_charge",
+     "blood_drain",
+     "venom_bite",
+     "stinger",
+     "pincer_grip",
+     "constrict",
+     "venom_spit",
+     "petrifying_gaze",
+     "toxic_maw",
+     "fire_dart",
+     "impish_drain",
+     "molten_talons",
+     "headless_charge",
+     "doom_toll",
+     "hellfire_wave",
+     "dominion_of_flame"
+    ],
+    "packs.json": [
+     "pack_wild_hunt",
+     "pack_venom_nest",
+     "pack_demon_gate"
+    ]
+   },
+   "files": {
+    "enemies.json": "8d466de4232857a5c633ef888f1c1d9fe8a674f12aed0308836eb408ba6b003f",
+    "skills.json": "32f808ad5c96cd0fb886bd614a6b5724616925a8464d62621e49c4310de67ed9",
+    "packs.json": "85057ed7338e67739d96904c27655c2282b7aaa48c1ed77153a8ab6baad95921"
+   }
+  }
+ ]
 }

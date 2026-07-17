@@ -71,6 +71,522 @@
       "i18n": { "en": { "name": "Hrimgrimnir, the Frost-Masked" }, "ja": { "name": "フロストマスクのフリムグリムニル" } },
       "rarity": "rare",
       "pack_role": "boss"
+    },
+    {
+      "id": "zombie",
+      "name": "Zombie",
+      "hp": [
+        55,
+        75
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "rotting_claw",
+        "festering_grasp"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Zombie"
+        },
+        "ja": {
+          "name": "ゾンビ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "ghost",
+      "name": "Ghost",
+      "hp": [
+        40,
+        55
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "spectral_touch",
+        "haunting_chill"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Ghost"
+        },
+        "ja": {
+          "name": "ゴースト"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "mummy",
+      "name": "Mummy",
+      "hp": [
+        85,
+        115
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "bandage_lash",
+        "mummys_curse"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Mummy"
+        },
+        "ja": {
+          "name": "マミー"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "skeleton_warrior",
+      "name": "Skeleton Warrior",
+      "hp": [
+        75,
+        100
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "bone_cleaver",
+        "shield_jab"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Skeleton Warrior"
+        },
+        "ja": {
+          "name": "スケルトンウォーリア"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "wight",
+      "name": "Wight",
+      "hp": [
+        110,
+        140
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "grave_blade",
+        "life_drain"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Wight"
+        },
+        "ja": {
+          "name": "ワイト"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "necromancer",
+      "name": "Necromancer",
+      "hp": [
+        50,
+        70
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "dark_mending",
+        "enfeebling_bolt"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Necromancer"
+        },
+        "ja": {
+          "name": "ネクロマンサー"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "support"
+    },
+    {
+      "id": "lich",
+      "name": "Lich",
+      "hp": [
+        150,
+        200
+      ],
+      "footprint": [
+        5,
+        4
+      ],
+      "skills": [
+        "soul_blast",
+        "paralyzing_dread"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Lich"
+        },
+        "ja": {
+          "name": "リッチ"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "bone_dragon",
+      "name": "Bone Dragon",
+      "hp": [
+        550,
+        750
+      ],
+      "footprint": [
+        10,
+        10
+      ],
+      "skills": [
+        "bone_breath",
+        "necrotic_roar"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Bone Dragon"
+        },
+        "ja": {
+          "name": "ボーンドラゴン"
+        }
+      },
+      "rarity": "relic",
+      "pack_role": "boss"
+    },
+    {
+      "id": "alpha_werewolf",
+      "name": "Alpha Werewolf",
+      "hp": [
+        95,
+        125
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "rending_claws",
+        "feral_bite"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Alpha Werewolf"
+        },
+        "ja": {
+          "name": "アルファワーウルフ"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "dire_wolf",
+      "name": "Dire Wolf",
+      "hp": [
+        80,
+        105
+      ],
+      "footprint": [
+        4,
+        5
+      ],
+      "skills": [
+        "savage_bite",
+        "harrying_snap"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Dire Wolf"
+        },
+        "ja": {
+          "name": "ダイアウルフ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "boar",
+      "name": "Wild Boar",
+      "hp": [
+        70,
+        95
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "tusk_charge"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Wild Boar"
+        },
+        "ja": {
+          "name": "ワイルドボア"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_bat",
+      "name": "Giant Bat",
+      "hp": [
+        45,
+        60
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "blood_drain"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Bat"
+        },
+        "ja": {
+          "name": "ジャイアントバット"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "support"
+    },
+    {
+      "id": "giant_spider",
+      "name": "Giant Spider",
+      "hp": [
+        60,
+        80
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "venom_bite"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Spider"
+        },
+        "ja": {
+          "name": "ジャイアントスパイダー"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_scorpion",
+      "name": "Giant Scorpion",
+      "hp": [
+        75,
+        100
+      ],
+      "footprint": [
+        3,
+        4
+      ],
+      "skills": [
+        "stinger",
+        "pincer_grip"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Scorpion"
+        },
+        "ja": {
+          "name": "ジャイアントスコーピオン"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "line"
+    },
+    {
+      "id": "giant_snake",
+      "name": "Giant Snake",
+      "hp": [
+        85,
+        110
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "constrict",
+        "venom_spit"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Giant Snake"
+        },
+        "ja": {
+          "name": "ジャイアントスネーク"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "basilisk",
+      "name": "Basilisk",
+      "hp": [
+        130,
+        170
+      ],
+      "footprint": [
+        4,
+        6
+      ],
+      "skills": [
+        "petrifying_gaze",
+        "toxic_maw"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Basilisk"
+        },
+        "ja": {
+          "name": "バジリスク"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "imp",
+      "name": "Imp",
+      "hp": [
+        40,
+        55
+      ],
+      "footprint": [
+        4,
+        3
+      ],
+      "skills": [
+        "fire_dart",
+        "impish_drain"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Imp"
+        },
+        "ja": {
+          "name": "インプ"
+        }
+      },
+      "rarity": "common",
+      "pack_role": "support"
+    },
+    {
+      "id": "gargoyle",
+      "name": "Gargoyle",
+      "hp": [
+        90,
+        120
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "molten_talons"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Gargoyle"
+        },
+        "ja": {
+          "name": "ガーゴイル"
+        }
+      },
+      "rarity": "uncommon",
+      "pack_role": "line"
+    },
+    {
+      "id": "dullahan",
+      "name": "Dullahan",
+      "hp": [
+        120,
+        155
+      ],
+      "footprint": [
+        4,
+        4
+      ],
+      "skills": [
+        "headless_charge",
+        "doom_toll"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Dullahan"
+        },
+        "ja": {
+          "name": "デュラハン"
+        }
+      },
+      "rarity": "rare",
+      "pack_role": "anchor"
+    },
+    {
+      "id": "demon_lord",
+      "name": "Demon Lord",
+      "hp": [
+        500,
+        700
+      ],
+      "footprint": [
+        8,
+        8
+      ],
+      "skills": [
+        "hellfire_wave",
+        "dominion_of_flame"
+      ],
+      "i18n": {
+        "en": {
+          "name": "Demon Lord"
+        },
+        "ja": {
+          "name": "デーモンロード"
+        }
+      },
+      "rarity": "relic",
+      "pack_role": "boss"
     }
   ]
 }

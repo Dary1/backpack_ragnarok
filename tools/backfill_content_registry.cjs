@@ -86,6 +86,10 @@ const SOURCES = [
   // would leave the pack pools pointing at units the registry has never heard of.
   { kind: 'unit_def', file: 'content/live/live_units.json' },
   { kind: 'gacha_pack', file: 'content/live/live_packs.json' },
+  // REQ-0184: monster_pack/1 -- a pack of monsters AND their layout on the battle
+  // field. Note this is a DIFFERENT kind from gacha_pack above, which is an emission
+  // pool: one fields monsters, the other vends Units. Same word, unrelated tables.
+  { kind: 'monster_pack', file: 'content/live/dungeon/packs.json' },
   // User ruling 2026-07-15 (chat, with the REQ-0178 fallback report): the REQ-0051
   // starter-kit items (14 po/2 entries in their own file, isolated from
   // live_items.json for the REQ-0160 count-gate) enter the ledger as po_def.

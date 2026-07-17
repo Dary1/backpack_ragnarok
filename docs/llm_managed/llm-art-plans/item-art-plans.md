@@ -1,7 +1,8 @@
-# Item Art Plans — items-005 roster (40 PO + 8 SI)
+# Item Art Plans — items-005 roster (40 PO + 20 SI)
 
 > LLM-managed working plan (user directive, 2026-07-15). Goal: +40 NEW PO and
-> +8 NEW SI artworks, generated via the artwork-registry pipeline (artadmin /
+> +20 NEW SI artworks (8 on 2026-07-15, +12 on 2026-07-16, user directive),
+> generated via the artwork-registry pipeline (artadmin /
 > REQ-0151 route: server queue -> art_job.py -> art_route/art_style, flux2,
 > Anime template), each left in ADOPTED state as a candidate. Final in-game
 > adoption is the user's call; this roster is decision support.
@@ -31,7 +32,7 @@
   [A-Za-z0-9_]+). Seeds 101/202/303/404 (4 candidates each); best seed
   adopted right after generation (user directive: end state = adopted);
   the user can switch seed / NG / reroll at every review stop. Losers kept.
-- Cadence: 10 batches x ~5 items (8 PO batches, 2 SI batches); STOP after
+- Cadence: 12 batches x 5 items (8 PO batches, 4 SI batches); STOP after
   each batch for user review in artadmin
   (https://backpack-dev.qtie.jp/app/#/artadmin).
 
@@ -42,14 +43,13 @@ Genre research (Backpack Hero wiki + similar): swords/bows/staves read as
 boots/scythes/banners as L/J, flails/chains as S/Z, horseshoes as U,
 shuriken/dolls as plus. 20 of the 40 POs below are non-rectangular.
 
-CONSTRAINT: REQ-0153 shape conditioning (ReferenceLatent + noise mask) is
-GREEN but NOT wired into the production route, and this plan does not change
-the pipeline. Generation happens at the BOUNDING-BOX aspect only; the L/T/S/U
-silhouette must come from the PROMPT (objects chosen because their natural
-silhouette IS the shape, + explicit part placement in the subject). Fallback
-if review shows complex shapes not filling their masks: propose a follow-up
-integration REQ to wire the REQ-0153 Arm C recipe (per-item toggle) — that is
-a pipeline improvement decision for the user, out of scope here.
+UPDATE 2026-07-15 (supersedes the stale constraint that stood here): shape
+conditioning IS live — REQ-0183 wired Arm C @ D=8 into the production route
+and REQ-0186 exposed it as `shape_lock` (default `auto` = strict exactly on
+the non-rectangular shapes below). Complex shapes therefore get the strict
+mask automatically; the prompt still owes the TOPOLOGY (part placement /
+attachment anatomy) per item_content_pipeline.md §0.2, and `po.cell_fit`
+(REQ-0187) scores every render's per-cell fit in artadmin automatically.
 
 Shape notation below: active cells as (row,col) in the 5x5 mask, plus the
 bounding box and derived gen size.
@@ -72,7 +72,7 @@ bounding box and derived gen size.
 | 7 | items005_crossbow | Crossbow | T 3x2 | (0,0)(0,1)(0,2)(1,1) | 768x512 | a heavy medieval crossbow, a horizontal steel bow spanning the top and a carved wooden stock pointing straight down |
 | 8 | items005_reaper_scythe | Reaper's Scythe | J 3x3 | (0,0)(0,1)(0,2)(1,2)(2,2) | 768x768 | a reaper's scythe, a long curved steel blade sweeping across the top and a tall dark wooden snath running down the right side |
 | 9 | items005_boomerang | Boomerang | L 2x2 | (0,0)(1,0)(1,1) | 512x512 | a carved wooden hunting boomerang with tribal patterns, a bent V shape with one arm pointing up and one arm pointing right |
-| 10 | items005_iron_flail | Iron Flail | S 2x3 | (0,1)(1,0)(1,1)(2,0) | 512x768 | a medieval flail, a short wooden handle at the top right connected by an iron chain to a spiked iron ball at the bottom left, diagonal composition |
+| 10 | items005_iron_flail | Iron Flail | S 2x3 | (0,1)(1,0)(1,1)(2,0) | 512x768 | a medieval flail: a short wooden handle standing upright at the top right, a heavy iron chain hanging down from it, and a large spiked iron ball resting at the bottom left |
 
 ### Batch 3 — armor & shields (1 complex)
 | # | system_name | item | shape | cells | gen | subject |
@@ -116,7 +116,7 @@ bounding box and derived gen size.
 | 31 | items005_lucky_horseshoe | Horseshoe | U 3x2 | (0,0)(0,2)(1,0)(1,1)(1,2) | 768x512 | an iron lucky horseshoe with seven nail holes, a U shape with both open ends pointing up |
 | 32 | items005_war_horn | War Horn | corner 2x2 | (0,0)(0,1)(1,1) | 512x512 | a curved bronze war horn carved with runes, mouthpiece at the upper left and flared bell at the lower right, crescent shape |
 | 33 | items005_blacksmith_anvil | Anvil | T 3x2 | (0,0)(0,1)(0,2)(1,1) | 768x512 | a heavy blacksmith's iron anvil with a wide flat top, a pointed horn on the left, and a narrow waisted base |
-| 34 | items005_cursed_doll | Cursed Doll | plus 3x3 | (0,1)(1,0)(1,1)(1,2)(2,1) | 768x768 | a creepy stitched voodoo doll with button eyes and pins, round head at the top, cloth arms outstretched to both sides |
+| 34 | items005_cursed_doll | Cursed Doll | plus 3x3 | (0,1)(1,0)(1,1)(1,2)(2,1) | 768x768 | a creepy stitched voodoo doll with button eyes and pins, round head at the top, cloth arms outstretched to both sides, stubby legs at the bottom |
 | 35 | items005_iron_chain | Iron Chain | Z 2x3 | (0,0)(1,0)(1,1)(2,1) | 512x768 | a heavy iron chain of thick interlocked links hanging in a zigzag from the top left down to the bottom right |
 
 ### Batch 8 — big finishers (4 complex)
@@ -132,7 +132,7 @@ Complex total: 20/40 (axe, hammer, halberd, crossbow, scythe, boomerang,
 flail, boot, mana crystal, fishing rod, grappling hook, horseshoe, horn,
 anvil, doll, chain, trident, banner, pickaxe, shuriken).
 
-## SI roster (8) — kind=si, 256x256, two per slot
+## SI roster (20) — kind=si, 256x256, five per slot
 
 ### Batch 9 — SI part 1
 | # | system_name | slot | item | subject |
@@ -149,6 +149,26 @@ anvil, doll, chain, trident, banner, pickaxe, shuriken).
 | 46 | sis005_frost_rime | coat | Frost Rime | a small glass jar of pale blue frost salve topped with ice crystals, centered |
 | 47 | sis005_leather_grip | bond | Leather Grip | a coiled roll of brown leather grip strap with a buckle, centered |
 | 48 | sis005_silver_chain | bond | Silver Chain | three interlocked polished silver chain links, centered |
+| 49 | sis005_sapphire_gem | gem | Sapphire | a sparkling cut sapphire gemstone, deep blue, faceted, centered |
+| 50 | sis005_thunder_core | gem | Thunder Core | a round golden gemstone with a small lightning bolt crackling inside, centered |
+
+### Batch 11 — SI part 3 (added 2026-07-16, user directive)
+| # | system_name | slot | item | subject |
+|---|---|---|---|---|
+| 51 | sis005_moon_pearl | gem | Moon Pearl | a large round white pearl glowing with pale silver moonlight, centered |
+| 52 | sis005_dragon_claw | edge | Dragon Claw | a large curved crimson dragon claw with a sharp ivory tip, centered |
+| 53 | sis005_bone_spike | edge | Bone Spike | a sharp white spike carved from beast bone, with a chipped surface, centered |
+| 54 | sis005_iron_caltrop | edge | Iron Caltrop | a small black iron caltrop with four sharp spikes, one spike pointing up, centered |
+| 55 | sis005_venom_flask | coat | Venom Flask | a small round glass flask of bubbling purple poison with a skull emblem, centered |
+
+### Batch 12 — SI part 4 (added 2026-07-16, user directive)
+| # | system_name | slot | item | subject |
+|---|---|---|---|---|
+| 56 | sis005_holy_water | coat | Holy Water | a small round glass flask of glowing golden holy water with a cross-shaped cork stopper, centered |
+| 57 | sis005_tar_pot | coat | Tar Pot | a small clay pot filled with thick black sticky tar dripping over its rim, centered |
+| 58 | sis005_golden_thread | bond | Golden Thread | a wooden spool wound with glowing golden thread, centered |
+| 59 | sis005_hemp_rope | bond | Hemp Rope | a coiled ring of thick brown hemp rope tied with a knot, centered |
+| 60 | sis005_iron_rivet | bond | Iron Rivet | a cluster of three polished iron rivets with round dome heads, centered |
 
 Design notes: no name collisions with live content (blade/hilt/flame_tablet/
 oil_flask/dagger/herb_pouch/tower_shield/beast_jaw, acc_*); SI slots follow
@@ -173,3 +193,13 @@ flags them at review.
 ## Status log
 
 - 2026-07-15: plan drafted; awaiting user plan review before batch 1.
+- 2026-07-15 (later, user directive in the REQ-0187 session): all 40 PO
+  artworks registered in one pass with first-draft prompts/shapes from this
+  plan (flail wording de-diagonalized, doll given legs, §0.2 applied);
+  **3 seeds per item (101/202/303), user override of the 4-seed line above**;
+  ~120 renders queued fire-and-forget. Iteration/adoption belongs to the next
+  agent session. SI batches 9-10 NOT started.
+- 2026-07-16: +12 SI added (#49-60, user directive: 20 SI total, 5 per
+  socket_tag slot); all 20 SI registered via POST /api/art/artworks
+  (kind=si, 256x256, default template, no style_override). Seed generation
+  NOT run (user directive) — renders pending user go-ahead.

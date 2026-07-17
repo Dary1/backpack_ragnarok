@@ -30,6 +30,17 @@ function swordMask(): boolean[][] {
   return m;
 }
 
+// REQ-0191: an L-tromino -- the sword above is a full 1x3 rectangle, so its
+// bbox has NO unowned cell and cannot show the owned/unowned split at all.
+// The L's bbox is 2x2 with (0,1) unowned, which is exactly the awkward
+// footprint the backdrop exists for (REQ-0153/0187: the shape-conditioning
+// question only bites where the shape does not fill its box).
+function lMask(): boolean[][] {
+  const m = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
+  m[0][0] = m[1][0] = m[1][1] = true;
+  return m;
+}
+
 async function apiCreate(request: APIRequestContext, body: Record<string, unknown>) {
   const r = await request.post('/api/art/artworks', { data: body });
   expect(r.status()).toBe(201);
@@ -108,6 +119,79 @@ test('artwork admin: create (panel) -> generate -> lightbox -> adopt (confirm) -
   expect(meta.status()).toBe(200);
   const body = await meta.json();
   expect(body.seed).toBe(3);
+});
+
+test('REQ-0191 cell backdrop: po renders draw over their footprint (owned vs unowned), toggleable, po-only', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  await apiCreate(request, { system_name: 'e2e_axe', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
+  await apiCreate(request, { system_name: 'e2e_orb', kind: 'si', main_object: 'blue orb' });
+
+  await page.goto('/app/#/artadmin');
+  await page.getByTestId('art-select-e2e_axe').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 1);
+
+  // the THUMB carries the backdrop, default ON: the L's 2x2 bbox, 3 owned
+  // cells + the unowned corner at (0,1).
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+  await expect(page.getByTestId('render-cb-1-cell-0-0')).toHaveAttribute('data-owned', '1');
+  await expect(page.getByTestId('render-cb-1-cell-1-0')).toHaveAttribute('data-owned', '1');
+  await expect(page.getByTestId('render-cb-1-cell-1-1')).toHaveAttribute('data-owned', '1');
+  await expect(page.getByTestId('render-cb-1-cell-0-1')).toHaveAttribute('data-owned', '0');
+  // the render itself is still there, unwrapped-or-not
+  await expect(page.getByTestId('render-1').locator('img')).toBeVisible();
+  // keying: the mock render is FULLY OPAQUE (art_job.mock_png paints a solid
+  // RGBA rect), i.e. the "stored on white" case -> the probe must choose
+  // multiply. The alpha case (a batch-backfilled/adopted render, where
+  // multiply would needlessly warm-cast the subject) is the other branch of
+  // CellBackdrop.useNeedsWhiteKey and cannot be produced by the mock.
+  await expect(page.getByTestId('render-cb-1')).toHaveAttribute('data-key', 'white');
+
+  // gallery toggle: off -> plain thumb (the REQ's "the plain view stays
+  // reachable"), and the image survives the unwrap
+  await page.getByTestId('art-cells').click();
+  await expect(page.getByTestId('render-cb-1')).toHaveCount(0);
+  await expect(page.getByTestId('render-1').locator('img')).toBeVisible();
+  await page.getByTestId('art-cells').click();
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+
+  // the LIGHTBOX carries the same backdrop, default ON, and the img keeps
+  // its REQ-0156 testid + src contract inside the wrap
+  await page.getByTestId('render-thumb-1').click();
+  await expect(page.getByTestId('lightbox')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img-cb')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img')).toBeVisible();
+  expect(await page.getByTestId('lightbox-img').getAttribute('src')).toContain('/renders/1');
+  await expect(page.getByTestId('lightbox-img-cb-cell-0-1')).toHaveAttribute('data-owned', '0');
+  await expect(page.getByTestId('lightbox-img-cb-cell-1-1')).toHaveAttribute('data-owned', '1');
+
+  // backdrop survives a zoom change (the grid is aspect-locked to the render,
+  // not measured off it)
+  await page.getByTestId('lightbox-zoom-2').click();
+  await expect(page.getByTestId('lightbox-img-cb')).toBeVisible();
+  await expect(page.getByTestId('lightbox-img')).toBeVisible();
+
+  // lightbox toggle: off -> plain img, on -> back
+  await page.getByTestId('lightbox-cells').click();
+  await expect(page.getByTestId('lightbox-img-cb')).toHaveCount(0);
+  await expect(page.getByTestId('lightbox-img')).toBeVisible();
+  await page.getByTestId('lightbox-cells').click();
+  await expect(page.getByTestId('lightbox-img-cb')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // po-only: an si artwork has no footprint, so no chip and no backdrop
+  await page.getByTestId('art-select-e2e_orb').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await expect(page.getByTestId('art-cells')).toHaveCount(0);
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 1);
+  await expect(page.getByTestId('render-cb-1')).toHaveCount(0);
+  await page.getByTestId('render-thumb-1').click();
+  await expect(page.getByTestId('lightbox')).toBeVisible();
+  await expect(page.getByTestId('lightbox-cells')).toHaveCount(0);
+  await expect(page.getByTestId('lightbox-img-cb')).toHaveCount(0);
+  await expect(page.getByTestId('lightbox-img')).toBeVisible();
 });
 
 test('registry browser: search + kind/adoption filters narrow the list', async ({ page, request }) => {

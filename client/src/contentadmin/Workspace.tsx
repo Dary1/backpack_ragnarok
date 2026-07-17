@@ -20,7 +20,8 @@
 // through the def (variants obtain art ONLY through the parent def).
 import { useState } from 'react';
 import type { ContentDefDto, ContentVariantDto, ContentCommission, ArtworkDto } from '../api';
-import { parseIngest, artworkThumbUrl, resolveDefArtwork, artLinkMode, artPickTestid, defAdoptedArtUrl } from './contentShared';
+import { parseIngest, artworkThumbUrl, resolveDefArtwork, artLinkMode, artPickTestid, defAdoptedArtUrl,
+  buildMemberFootprints, packMembers } from './contentShared'; // REQ-0184
 import { VariantCard } from './VariantCard';
 import { DiffView } from './DiffView';
 
@@ -129,6 +130,9 @@ export function Workspace(props: {
   artworkFacet: boolean;
   artworksByName: Record<string, ArtworkDto>;
   artworks: ArtworkDto[];
+  /** REQ-0184: every def, so a pack member's monster_def (hence its artwork_ref)
+   * can be resolved for the board's footprints. */
+  defs: ContentDefDto[];
   onPickArtwork: (ref: string | null) => void;
   adoptedNo: number | null;
   draft: DefDraft;
@@ -180,6 +184,17 @@ export function Workspace(props: {
   // REQ-0133: the def's adopted registry-render URL (game-mirror) for the entity
   // preview -- registry art wins, else the sprite icon (labelled in-preview).
   const entityArtUrl = defAdoptedArtUrl(def, props.artworksByName);
+  // REQ-0184: for a monster_pack, each member's footprint comes from ITS OWN
+  // monster's linked artwork (artworks.shape {w,h} is the cell grid), resolved
+  // through REQ-0174's ref-first canon. Built once per def from the variants'
+  // members rather than per card, and only for the kind that has members at all.
+  const entityFootprints = def.kind === 'monster_pack'
+    ? buildMemberFootprints(
+        variants.flatMap((v) => packMembers(v.data as Record<string, unknown>)),
+        props.defs,
+        props.artworksByName,
+      )
+    : null;
   const parse = parseIngest(props.ingestText);
   const va = diffPair ? variants.find((v) => v.variant_no === diffPair.a) : undefined;
   const vb = diffPair ? variants.find((v) => v.variant_no === diffPair.b) : undefined;
@@ -313,6 +328,7 @@ export function Workspace(props: {
         {variants.map((v) => (
           <VariantCard key={def.system_name + ':' + v.variant_no} v={v} kind={def.kind} all={variants}
             isAdopted={adoptedNo === v.variant_no} adoptedNo={adoptedNo}
+            systemName={def.system_name}
             isNew={props.newNos.includes(v.variant_no)} shouldScroll={props.scrollToNo === v.variant_no}
             recheckBusy={props.recheckingNos.includes(v.variant_no)}
             expandedChecks={props.expandedChecks} onToggleCheck={props.onToggleCheck}
@@ -322,6 +338,7 @@ export function Workspace(props: {
             onEditOpen={props.onEditOpen} onRecheck={props.onRecheck}
             picked={diffPicks.includes(v.variant_no)} onTogglePick={props.onTogglePick}
             onDiffAdopted={props.onDiffAdopted} hasArt={hasArtLink} artThumb={variantThumb}
+            entityFootprints={entityFootprints}
             entityArtUrl={entityArtUrl}
             report={props.report} />
         ))}

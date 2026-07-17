@@ -69,7 +69,7 @@ const FORECAST_TUNABLES = {
 // the vocab (buff_self, damage_reduction, status_immune, heal...) is an
 // enemy-side effect with no incoming ray, so it has no place in an
 // INCOMING-pressure map.
-const DAMAGE_VERBS = new Set(['strike', 'multi_strike']);
+const DAMAGE_VERBS = new Set(['strike', 'multi_strike', 'lifesteal', 'bonus_vs_status']); // REQ-0203: lifesteal (self-heal rider) and bonus_vs_status (conditional-mult strike) BOTH throw a damaging ray at the player field, so they are incoming pressure; heal_ally is enemy-side (no incoming ray) and stays excluded.
 const STATUS_VERBS = new Set(['apply_status', 'add_on_hit_status']);
 
 /** Midpoint of an authored [lo,hi] range. Mirrors shared/forecast.mjs's rangeMid. */
@@ -84,6 +84,13 @@ function expectedDamagePerFire(verb) {
   if (!verb) return 0;
   if (verb.t === 'strike') return rangeMid(verb.n);
   if (verb.t === 'multi_strike') return rangeMid(verb.n) * (verb.hits || 1);
+  // REQ-0203: lifesteal strikes for n (the self-heal is enemy-side, not incoming).
+  if (verb.t === 'lifesteal') return rangeMid(verb.n);
+  // REQ-0203: bonus_vs_status strikes for n; its conditional `mult` depends on the
+  // PLAYER's live status, which the seed-marginal forecast cannot know -- so the
+  // baseline n is folded (consistent with the forecast already ignoring the runtime
+  // weaknessMultiplier), never the amplified value.
+  if (verb.t === 'bonus_vs_status') return rangeMid(verb.n);
   return 0;
 }
 
@@ -114,7 +121,7 @@ function buildForecast(dungeonType, level) {
       { code: 'BAD_REQUEST' });
   }
   const lvl = clampLevel(level);
-  const { enemyDefsById, skillDefsById, skillNamesById, formationsDoc } = getScheduleContent();
+  const { enemyDefsById, skillDefsById, skillNamesById, formationsDoc, monsterPackDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById
 
   // 'test_fixed' ignores level and seed entirely (it replays batch-002's
   // hand-authored dungeon.json verbatim), so sampling it 24 times would fold
@@ -125,9 +132,15 @@ function buildForecast(dungeonType, level) {
     seeds.push(FORECAST_TUNABLES.SEED_PREFIX + type + '/' + lvl + '/' + i);
   }
 
+  // REQ-0184: the PLACEABLE area is B2:Y17 -- the 26x18 field carries a margin of
+  // 1. This box MUST match sim/lib/encounter.cjs's exactly: the forecast compiles
+  // with the sim's own compileEnemyPack precisely so placement (hence centroid,
+  // hence the entry projection) is identical to a real run. A box that disagreed
+  // here would make the forecast quietly predict a battle the sim never fights --
+  // which is the contract sim/tests/forecast_parity.cjs exists to pin.
   const enemyFieldBox = {
-    rowMin: 1, colMin: 1,
-    rowMax: combat.FIELD_ROWS, colMax: combat.FIELD_COLS,
+    rowMin: 2, colMin: 2,
+    rowMax: combat.FIELD_ROWS - 1, colMax: combat.FIELD_COLS - 1,
   };
 
   const byKey = new Map();
@@ -151,7 +164,15 @@ function buildForecast(dungeonType, level) {
       // REQ-0121 fold streams; neither touches fieldCells, so a throwaway
       // seeded rng here cannot make placement non-deterministic.
       const rng = combat.makeRng('forecast/pack/' + seed + '/' + enc.id);
-      const enemies = combat.compileEnemyPack(enc.enemyPack, enemyDefsById, skillDefsById, rng, enemyFieldBox);
+      // REQ-0184: an encounter may name a monster_pack by id. Resolve it the same
+      // way encounter.cjs does, or the forecast would forecast an empty pack.
+      let fPackDef = enc.enemyPack;
+      if (fPackDef.packId) {
+        const resolved = monsterPackDefsById && monsterPackDefsById[fPackDef.packId];
+        if (!resolved) throw new Error('forecast: encounter ' + enc.id + ' names monster_pack "' + fPackDef.packId + '", which has no def');
+        fPackDef = resolved;
+      }
+      const enemies = combat.compileEnemyPack(fPackDef, enemyDefsById, skillDefsById, rng, enemyFieldBox);
 
       for (const en of enemies) {
         const centroid = combat.centroidRoundHalfUp(en.fieldCells);

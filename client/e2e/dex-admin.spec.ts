@@ -1,19 +1,32 @@
-// REQ-0035 -- Dex admin edit mode E2E coverage, extended REQ-0038 (Dex v2
-// edit mode: effect add/delete round-trip, locale-only field behavior,
-// chrome language toggle).
+// REQ-0035 -- Dex admin edit mode E2E coverage, extended REQ-0038, then
+// RETIRED by REQ-0182b. The Dex Edit UI is gone (the Dex is now read-only):
+// the friendly PO/SI editor was ported to the content admin (#/contentadmin)
+// in REQ-0182a, and PUT /api/admin/item/:id now REFUSES (409) any registry-
+// served id, pointing the operator to the content admin -- where variant
+// adoption, not a live-file write, is what changes the game.
 //
-// This file exercises the REAL /api/me + PUT /api/admin/item/:id
-// endpoints against the REAL data/config/dev_user.json and content/live/
-// *.json files (there is no staging copy of either -- see server/
-// README.md's Admin API section and this repo's E2E convention, already
-// established for data/profiles/default.json by global-setup.ts/
-// global-teardown.ts, now extended to content/live/*.json too). Every
-// test that mutates either file restores it in a finally block so a
-// failure never leaves the fixture mutated -- on top of the suite-level
-// global-teardown.ts safety net that restores content/live/*.json
-// (backed up in global-setup.ts) even if a test's own finally somehow
-// doesn't run.
-import { execFileSync } from 'node:child_process';
+// What remains in this file:
+//   - the role-less security assertion: no edit UI client-side, and the
+//     server independently 403s a raw PUT (still true; the 403 gate still
+//     precedes the new 409 in server/routes/admin.cjs, so a role-less caller
+//     never learns which ids are adopted);
+//   - a positive regression guard that even an item_admin now sees NO edit
+//     toggle and NO admin panel (the retired surface must not creep back);
+//   - the 409 refusal for a registry-served item, with the #/contentadmin
+//     redirect hint. This is a pg-backend behaviour: under the files-backed
+//     DEFAULT fleet the registry is always empty (server/lib/content.cjs
+//     computeRegistryData is pg-only), so the guard cannot fire and the test
+//     SKIPS there -- it runs for real against the LIVE api (bare `pnpm run
+//     e2e`, post-deploy) and is exercised deterministically, seeded, in the
+//     pg contentadmin harness (client/e2e/contentadmin.spec.ts) and the pg
+//     server api_test (server/tests/api/ragnarok.cjs);
+//   - the chrome language toggle (unrelated to edit mode; kept verbatim).
+//
+// The four edit-mode UI tests (edit name via the form, REQ-0038 locale-only
+// fields, the effect add/delete round trip, and the edit-mode list thumbnails)
+// were DELETED with the UI they drove.
+//
+// Every test that mutates data/config/dev_user.json restores it in a finally.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { E2E_DATA_ROOT } from './e2e-env';
@@ -21,14 +34,9 @@ import { test, expect } from '@playwright/test';
 import { bootApp } from './helpers';
 
 const DEV_USER_PATH = join(E2E_DATA_ROOT, 'data', 'config', 'dev_user.json');
-const LIVE_ITEMS_PATH = join(E2E_DATA_ROOT, 'content', 'live', 'live_items.json');
 
 function readDevUser(): string {
   return readFileSync(DEV_USER_PATH, 'utf8');
-}
-
-function sha256(filePath: string): string {
-  return execFileSync('sha256sum', [filePath]).toString().trim().split(/\s+/)[0];
 }
 
 test.describe('edit toggle hidden for a role-less user', () => {
@@ -65,192 +73,73 @@ test.describe('edit toggle hidden for a role-less user', () => {
   });
 });
 
-test.describe('edit toggle visible + functional for the dev (item_admin) user', () => {
-  test('edit an item name via the form, reload, confirm in both dex UI and /api/content, then restore via a second API edit', async ({ page }) => {
-    // Ensure the dev user genuinely has item_admin for this test,
-    // regardless of what a previous test (or a stale manual edit) left in
-    // place -- restore to the ORIGINAL content in finally either way.
+test.describe('REQ-0182b: the Dex has no edit toggle even for an item_admin', () => {
+  test('an item_admin user still sees a READ-ONLY Dex -- no mode toggle, no admin panel (Dex Edit is retired)', async ({ page }) => {
+    // Before REQ-0182b an item_admin saw the mode-toggle row, could flip into
+    // edit mode, and got the .dex-admin panel. All three are gone now; the
+    // content editor lives in #/contentadmin. This is the regression guard: if
+    // any of them reappears for an item_admin, the retired surface has crept
+    // back. (With the toggle deleted the counts are trivially zero today --
+    // that is the point: the assertion pins the surface as removed.)
     const original = existsSync(DEV_USER_PATH) ? readDevUser() : null;
-    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
-
-    // Capture the pre-edit name from the live API so the restore step
-    // puts back the EXACT original value, not a hardcoded guess.
-    const beforeResp = await page.request.get('/api/content');
-    const beforeContent = await beforeResp.json();
-    const originalName = beforeContent.items.dagger.name as string;
-    const newName = originalName + ' (e2e-edit)';
-
     try {
+      writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+
       await bootApp(page);
       await page.locator('.nav-link', { hasText: 'Dex' }).click();
       await expect(page.locator('.dex-root')).toBeVisible();
 
-      // Toggle visible for this admin user.
-      await expect(page.locator('.dex-mode-toggle-row')).toBeVisible();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await expect(page.locator('.dex-admin')).toBeVisible();
-
-      // Select "dagger" from the admin item list and edit its EN name.
-      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
-      const nameInput = page.locator('.dex-admin-field', { hasText: 'Name (EN)' }).locator('input');
-      await nameInput.fill(newName);
-
-      await page.locator('.dex-admin-save-btn').click();
-      await expect(page.locator('.dex-admin-save-ok')).toBeVisible({ timeout: 10000 });
-
-      // Reload the page entirely -- confirm the new name appears both via
-      // a direct /api/content fetch AND in the dex display UI.
-      await page.reload();
-      await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-
-      const afterResp = await page.request.get('/api/content');
-      const afterContent = await afterResp.json();
-      expect(afterContent.items.dagger.name).toBe(newName);
-
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await expect(page.locator('.dex-root')).toBeVisible();
-      await page.locator('.dex-search').fill('dagger');
-      await expect(page.locator('.dex-card', { hasText: newName })).toBeVisible();
+      await expect(page.locator('.dex-mode-toggle-row')).toHaveCount(0);
+      await expect(page.locator('.dex-mode-toggle')).toHaveCount(0);
+      await expect(page.locator('.dex-admin')).toHaveCount(0);
     } finally {
-      // ALWAYS restore the item's original name via a second admin edit
-      // (not a raw file copy -- this exercises the same write path, and
-      // is what the task spec asks for: "issue a second edit via the same
-      // API to RESTORE the original value"). Runs even if an assertion
-      // above threw.
-      await page.request.put('/api/admin/item/dagger', {
+      if (original !== null) writeFileSync(DEV_USER_PATH, original);
+    }
+  });
+});
+
+test.describe('REQ-0182b: admin PUT refuses a registry-served item (409 -> content admin)', () => {
+  test('PUT /api/admin/item/:id returns 409 with a #/contentadmin/<id> hint for a registry-served (adopted) item', async ({ page }) => {
+    // The 409 guard fires ONLY when the item is served from the registry (an
+    // adopted po/si of a covered kind) -- a pg-backend fact. Under the files-
+    // backed default fleet the registry is empty BY DESIGN, so the guard can
+    // never fire and there is nothing to assert; skip with a pointer to where
+    // it IS exercised deterministically. Against the LIVE api the registry is
+    // populated, so this runs for real. It never mutates: the 409 returns
+    // BEFORE the route reads the body or writes any file.
+    //
+    // Registry-served item ids are those present in /api/content but NOT in
+    // the public dev/sources file_only_names list (i.e. not served from file).
+    const sourcesResp = await page.request.get('/api/content/dev/sources');
+    expect(sourcesResp.ok()).toBeTruthy();
+    const sources = await sourcesResp.json();
+    const contentResp = await page.request.get('/api/content');
+    const content = await contentResp.json();
+    const fileOnly = new Set<string>((sources.items && sources.items.file_only_names) || []);
+    const served = Object.keys(content.items || {}).filter((k) => !fileOnly.has(k));
+
+    test.skip(
+      served.length === 0,
+      'registry empty (files backend / empty pg namespace): the 409 guard is pg-only; ' +
+      'exercised in the pg contentadmin harness + server api_test, and live post-deploy'
+    );
+
+    const targetId = served[0];
+    const original = existsSync(DEV_USER_PATH) ? readDevUser() : null;
+    try {
+      // Must be an item_admin to pass the 403 gate and reach the 409.
+      writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
+
+      const resp = await page.request.put('/api/admin/item/' + targetId, {
         headers: { 'X-Player-Id': 'dev', 'Content-Type': 'application/json' },
-        data: { name: originalName },
+        data: { name: 'must not apply -- this id is registry-served' },
       });
-      if (original !== null) writeFileSync(DEV_USER_PATH, original);
-    }
-  });
-});
-
-test.describe('REQ-0038: locale-only edit fields', () => {
-  test('switching the edit-mode locale switcher shows ONLY that locale\'s name/flavor inputs, never both', async ({ page }) => {
-    const original = existsSync(DEV_USER_PATH) ? readDevUser() : null;
-    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
-
-    try {
-      await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await expect(page.locator('.dex-admin')).toBeVisible();
-
-      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
-      await expect(page.locator('.dex-admin-form')).toBeVisible();
-
-      // Default (EN) mode: exactly one Name field and one Flavor field,
-      // both labelled "(EN)" -- no "(JA)" field anywhere in the form.
-      await expect(page.locator('.dex-admin-field', { hasText: '(EN)' })).toHaveCount(2);
-      await expect(page.locator('.dex-admin-field', { hasText: '(JA)' })).toHaveCount(0);
-
-      // Switch to JA -- now exactly the opposite: only "(JA)" fields, no
-      // "(EN)" fields at all (never both simultaneously).
-      await page.locator('.dex-admin-locale-btn', { hasText: 'JA' }).click();
-      await expect(page.locator('.dex-admin-field', { hasText: '(JA)' })).toHaveCount(2);
-      await expect(page.locator('.dex-admin-field', { hasText: '(EN)' })).toHaveCount(0);
-
-      // The JA name field must be pre-populated from the item's real
-      // i18n.ja.name (not blank) -- confirms the switch reads real data,
-      // not just toggling empty inputs.
-      const contentResp = await page.request.get('/api/content');
-      const content = await contentResp.json();
-      const jaName = content.items.dagger.i18n?.ja?.name ?? content.items.dagger.name_ja;
-      expect(jaName).toBeTruthy();
-      const jaNameInput = page.locator('.dex-admin-field', { hasText: '(JA)' }).first().locator('input');
-      await expect(jaNameInput).toHaveValue(jaName);
-
-      // Switch back to EN -- back to EN-only fields.
-      await page.locator('.dex-admin-locale-btn', { hasText: 'EN' }).click();
-      await expect(page.locator('.dex-admin-field', { hasText: '(EN)' })).toHaveCount(2);
-      await expect(page.locator('.dex-admin-field', { hasText: '(JA)' })).toHaveCount(0);
+      expect(resp.status()).toBe(409);
+      const body = await resp.json();
+      expect(body.edit_at).toBe('#/contentadmin/' + targetId);
+      expect(['po_def', 'si_def']).toContain(body.registry_kind);
     } finally {
       if (original !== null) writeFileSync(DEV_USER_PATH, original);
-    }
-  });
-});
-
-test.describe('REQ-0038: effect add -> save -> reload -> delete -> save -> reload round trip', () => {
-  test('adding then deleting an effect via the UI leaves the live content file BYTE-IDENTICAL to its pre-test state', async ({ page }) => {
-    const originalDevUser = existsSync(DEV_USER_PATH) ? readDevUser() : null;
-    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
-
-    // Snapshot the EXACT pre-test bytes of the live file -- the whole
-    // point of this test is proving the round trip restores this exactly,
-    // not just "looks right" in the UI.
-    const beforeBytes = readFileSync(LIVE_ITEMS_PATH, 'utf8');
-    const beforeSha = sha256(LIVE_ITEMS_PATH);
-
-    const beforeResp = await page.request.get('/api/content');
-    const beforeContent = await beforeResp.json();
-    const originalEffectCount = (beforeContent.items.dagger.effects || []).length;
-
-    try {
-      await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await expect(page.locator('.dex-admin')).toBeVisible();
-
-      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
-      await expect(page.locator('.dex-admin-form')).toBeVisible();
-
-      const effectRows = page.locator('.dex-admin-effect-row');
-      await expect(effectRows).toHaveCount(originalEffectCount);
-
-      // ADD: one new effect row appears, using the template-picker
-      // defaults (vocab-driven trigger/verb).
-      await page.locator('.dex-admin-effect-add-btn').click();
-      await expect(effectRows).toHaveCount(originalEffectCount + 1);
-
-      await page.locator('.dex-admin-save-btn').click();
-      await expect(page.locator('.dex-admin-save-ok')).toBeVisible({ timeout: 10000 });
-
-      // Reload -- confirm the added effect shows (row count survives a
-      // full page reload / re-fetch of /api/content).
-      await page.reload();
-      await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-      const afterAddResp = await page.request.get('/api/content');
-      const afterAddContent = await afterAddResp.json();
-      expect(afterAddContent.items.dagger.effects.length).toBe(originalEffectCount + 1);
-
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await page.locator('.dex-admin-list-item', { hasText: '(dagger)' }).click();
-      await expect(page.locator('.dex-admin-effect-row')).toHaveCount(originalEffectCount + 1);
-
-      // DELETE: remove the last row (the one just added) -- back to the
-      // original count.
-      const deleteButtons = page.locator('.dex-admin-effect-delete-btn');
-      await deleteButtons.last().click();
-      await expect(page.locator('.dex-admin-effect-row')).toHaveCount(originalEffectCount);
-
-      await page.locator('.dex-admin-save-btn').click();
-      await expect(page.locator('.dex-admin-save-ok')).toBeVisible({ timeout: 10000 });
-
-      // Reload again -- confirm the deletion survives too.
-      await page.reload();
-      await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-      const afterDeleteResp = await page.request.get('/api/content');
-      const afterDeleteContent = await afterDeleteResp.json();
-      expect(afterDeleteContent.items.dagger.effects.length).toBe(originalEffectCount);
-    } finally {
-      // Restore the live file to its EXACT pre-test bytes (not just "same
-      // effect count" -- byte-for-byte), per the task's explicit
-      // requirement: "the live content file on disk is BYTE-IDENTICAL to
-      // its state before the test ran". The add+delete round trip above
-      // SHOULD already have restored this naturally (same effect array
-      // length/content as before), but this restore is the actual
-      // enforcement mechanism, matching the suite's existing safety-net
-      // convention (global-teardown.ts does the same at the suite level).
-      writeFileSync(LIVE_ITEMS_PATH, beforeBytes);
-      const restoredSha = sha256(LIVE_ITEMS_PATH);
-      if (originalDevUser !== null) writeFileSync(DEV_USER_PATH, originalDevUser);
-      if (restoredSha !== beforeSha) {
-        throw new Error(
-          `live_items.json restore verification FAILED: sha256 before=${beforeSha} after=${restoredSha}`
-        );
-      }
     }
   });
 });
@@ -279,48 +168,5 @@ test.describe('REQ-0038: chrome language toggle', () => {
     await page.locator('.lang-toggle').click();
     await expect(page.locator('.nav-link', { hasText: 'Dex' })).toBeVisible();
     await expect(page.locator('.dex-tab-active', { hasText: 'Items' })).toBeVisible();
-  });
-});
-
-test.describe('REQ-0038 R2: edit-mode list thumbnails render shape-mounted across the FULL footprint', () => {
-  test('blade (2-cell) and tower_shield (4-cell) admin list thumbnails report the real footprint, not a single squeezed cell', async ({ page }) => {
-    const original = existsSync(DEV_USER_PATH) ? readDevUser() : null;
-    writeFileSync(DEV_USER_PATH, JSON.stringify({ playerId: 'dev', name: 'Developer', roles: ['item_admin'] }));
-
-    try {
-      await bootApp(page);
-      await page.locator('.nav-link', { hasText: 'Dex' }).click();
-      await expect(page.locator('.dex-root')).toBeVisible();
-
-      await expect(page.locator('.dex-mode-toggle-row')).toBeVisible();
-      await page.locator('.dex-mode-toggle', { hasText: 'Edit mode' }).or(page.locator('.dex-mode-toggle', { hasText: '編集モード' })).click();
-      await expect(page.locator('.dex-admin')).toBeVisible();
-
-      const contentResp = await page.request.get('/api/content');
-      const content = await contentResp.json();
-
-      for (const itemId of ['blade', 'tower_shield']) {
-        const row = page.locator('.dex-admin-list-item', { hasText: `(${itemId})` }).first();
-        await expect(row).toBeVisible();
-
-        const overlay = row.locator('.dex-admin-list-thumb .shape-grid-icon-overlay');
-        await expect(overlay).toHaveCount(1);
-
-        const shape = content.items[itemId].shape as Array<[number, number]>;
-        const expectedW = Math.max(...shape.map((c) => c[1])) + 1;
-        const expectedH = Math.max(...shape.map((c) => c[0])) + 1;
-        // Same shared client/src/render/itemCard.ts footprint math the
-        // catalog card and diagram use (see dex.spec.ts) -- the edit-mode
-        // list thumbnail is a THIRD independent consumer of the same fix,
-        // per the task spec's "reuse in the edit-mode list thumbnails too".
-        await expect(overlay).toHaveAttribute('data-footprint-w', String(expectedW));
-        await expect(overlay).toHaveAttribute('data-footprint-h', String(expectedH));
-        expect(expectedW * expectedH).toBeGreaterThan(1);
-
-        await expect(overlay.locator('.shape-grid-cell-icon')).toHaveCount(1);
-      }
-    } finally {
-      if (original !== null) writeFileSync(DEV_USER_PATH, original);
-    }
   });
 });

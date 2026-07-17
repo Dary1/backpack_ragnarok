@@ -301,6 +301,57 @@ function deployedUidSet(playerId, canvas) {
   return out;
 }
 
+// REQ-0198 (C): referencedUidSet -- every uid the player has REFERENCED
+// anywhere in their OWN canvas: the ACTIVE BOARD (top-level
+// {pos,bps,sis}) plus every stored PRESET snapshot
+// (presets.store[i].{pos,bps,sis}). This is the WYSIWYG "in use, not in
+// my inventory" set the player actually sees: the reference model
+// (REQ-0030/0031) keeps an item's HOME in inv.pages[] while placing it on
+// the board OR into a squad preset creates a REFERENCE (SAME uid) in
+// these containers. The market's new eligibility gate (REQ-0198 C): an
+// instance is sellable only when its uid is NOT in this set (in ADDITION
+// to the pre-existing room-deploy gate). deployedUidSet is a strict
+// SUBSET of this (deploy reads the same board/preset snapshots via
+// squadCanvasOf/squadUidSet), so the market checks `deployed` FIRST (it
+// keeps its own reason/copy) and only then `referenced` (reason
+// 'in_use'). Reuses squadUidSet -- the exact uid-set scan the deploy gate
+// itself uses -- over the board + every preset snapshot.
+//
+// An SI is ALSO in-use TRANSITIVELY when its HOST PO's uid is referenced.
+// Placing a PO reference on the board does NOT auto-reference its
+// socketed SI (engine.js createRef('po') pushes only the PO); the SI's
+// HOME record in inv.pages keeps host={po:<refUid>,si} pointing at the
+// now-referenced PO. Selling that SI out from under a placed/deployed PO
+// would orphan the seat, so every INVENTORY-homed sis[] entry whose
+// host.po is in the referenced-PO set is added too. (A DIRECTLY-referenced
+// SI -- one seated on a board/preset PO -- already carries its OWN uid in
+// that container's sis[], so squadUidSet catches it; this transitive pass
+// covers only the SIs still living in inventory whose host PO travelled.)
+function referencedUidSet(canvas) {
+  const out = new Set();
+  if (!canvas) return out;
+  const refPoUids = new Set();
+  const addContainer = (c) => {
+    if (!c) return;
+    for (const uid of squadUidSet(c)) out.add(uid);
+    for (const p of c.pos || []) refPoUids.add(p.uid);
+  };
+  // The active board lives at the top-level canvas fields (never in
+  // store[active], which is always null -- see engine.d.ts Squads doc).
+  addContainer({ pos: canvas.pos, bps: canvas.bps, sis: canvas.sis });
+  if (canvas.presets && Array.isArray(canvas.presets.store)) {
+    for (const snap of canvas.presets.store) addContainer(snap);
+  }
+  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
+    for (const pg of canvas.inv.pages) {
+      for (const a of (pg && pg.sis) || []) {
+        if (a && a.host && typeof a.host === 'object' && a.host.po && refPoUids.has(a.host.po)) out.add(a.uid);
+      }
+    }
+  }
+  return out;
+}
+
 module.exports = {
   squadCanvasOf,
   squadUidSet,
@@ -308,6 +359,7 @@ module.exports = {
   isSquadDeployable,
   deployedUidSetsForGate,
   deployedUidSet,
+  referencedUidSet,
   assignSlot,
   swapSquad,
   applyPendingSwapIfAny,

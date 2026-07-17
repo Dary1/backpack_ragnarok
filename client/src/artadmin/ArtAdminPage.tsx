@@ -19,6 +19,7 @@ import { useGameStore, clearArtAdminFocusName } from '../store';
 import {
   listArtworks, getArtwork, patchArtwork, previewArtwork, generateArtwork,
   adoptRenderApi, deleteRenderApi, repackRenderApi, cutoutRenderApi, reinspectRender, getArtQueue, cancelRenderApi,
+  setArtQueueHold, executeArtQueueBatch,
   artRenderUrl,
 } from '../api';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
@@ -29,6 +30,8 @@ import { CreatePanel } from './CreatePanel';
 import { Workspace } from './Workspace';
 import { QueuePanel } from './QueuePanel';
 import { Lightbox } from './Lightbox';
+import { cellFitFrom } from './CellBackdrop';
+import type { CellFit } from './CellBackdrop';
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
 interface ConfirmState { type: 'adopt' | 'delete'; seed: number }
@@ -87,6 +90,10 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
+  // REQ-0191: ONE cell-backdrop switch for the whole console -- the gallery
+  // and the lightbox must never disagree about what is on screen. Default ON;
+  // it is inert off po.
+  const [cells, setCells] = useState(true);
   const [comparePicks, setComparePicks] = useState<number[]>([]);
   const [msg, setMsg] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -123,7 +130,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const pollQueue = useCallback(async () => {
     try {
       const r = await getArtQueue();
-      setQueue({ running: r.running, pending: r.pending, inspectDepth: r.inspectDepth });
+      setQueue({ running: r.running, pending: r.pending, heldPending: r.heldPending, held: r.held, inspectDepth: r.inspectDepth });
       setQueueFetchedAt(Date.now());
     } catch (_e) { /* transient poll errors stay silent; the next tick retries */ }
   }, []);
@@ -287,6 +294,25 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('cancel: ' + (e as Error).message, 'err'); }
   }
 
+  // REQ-0197: deferred-batch controls -- hold gates newly queued generation
+  // jobs; Execute batch releases everything held, grouped so same-prompt
+  // jobs run back to back (no per-item text-encoder swap).
+  async function doHold(next: boolean) {
+    try {
+      const r = await setArtQueueHold(next);
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report(next ? 'queue hold ON: jobs wait for Execute batch' : 'queue hold OFF: queue resumed');
+    } catch (e) { report('hold: ' + (e as Error).message, 'err'); }
+  }
+
+  async function doExecuteBatch() {
+    try {
+      const r = await executeArtQueueBatch();
+      setQueue(r); setQueueFetchedAt(Date.now());
+      report('executing batch: ' + r.released + ' job(s) released');
+    } catch (e) { report('execute: ' + (e as Error).message, 'err'); }
+  }
+
   async function doReinspect(seed: number, kitId?: string) {
     if (!selected) return;
     try {
@@ -304,6 +330,15 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
   const adoptedSeed = adoptedRender ? adoptedRender.seed : null;
   const confirmRender = confirm ? renders.find((r) => r.seed === confirm.seed) : undefined;
+
+  // REQ-0191: the cell backdrop's two inputs, both already on the wire.
+  // The mask is read from the SAVED artwork, never from `draft` -- a dirty
+  // editor click must not repaint the footprint under renders that were made
+  // against the saved one (the same reason art-shape-warn exists).
+  const savedShape = (detailArt && detailArt.kind === 'po' ? detailArt.shape : null) as { mask?: boolean[][] } | null;
+  const savedMask = savedShape && savedShape.mask ? savedShape.mask : null;
+  const fitBySeed: Record<number, CellFit | null> = {};
+  for (const r of renders) fitBySeed[r.seed] = cellFitFrom(inspections[String(r.id)]);
 
   return (
     <div data-testid="artadmin" className="aa-root">
@@ -340,7 +375,8 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
               expandedKits={expandedKits}
               onToggleKit={(key) => setExpandedKits((e) => ({ ...e, [key]: !e[key] }))}
-              comparePicks={comparePicks} onTogglePick={togglePick} />
+              comparePicks={comparePicks} onTogglePick={togglePick}
+              cells={cells} onToggleCells={() => setCells((v) => !v)} savedMask={savedMask} />
           ) : (
             <div className="panel panel-pad aa-placeholder">
               <div className="den t-h3">No artwork selected</div>
@@ -351,11 +387,14 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
         <QueuePanel selected={selected} selectedKind={detailArt ? detailArt.kind : null}
           queue={queue} fetchedAt={queueFetchedAt} nowTick={nowTick}
           onGenerate={(mode, n, seed, lockOverride) => { void doGenerate(mode, n, seed, lockOverride); }}
-          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }} />
+          onCancel={(artwork, seed) => { void doCancel(artwork, seed); }}
+          onHold={(h) => { void doHold(h); }}
+          onExecute={() => { void doExecuteBatch(); }} />
       </div>
 
       {lightbox && selected && detailArt && (
         <Lightbox name={selected} kind={detailArt.kind as Kind}
+          mask={cells ? savedMask : null} fitBySeed={fitBySeed}
           seeds={okSeeds} initialSeed={lightbox.seed} compareWith={lightbox.compareWith}
           adoptedSeed={adoptedSeed} keysDisabled={confirm != null}
           onAdopt={(seed) => setConfirm({ type: 'adopt', seed })}

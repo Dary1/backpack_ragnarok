@@ -31,6 +31,11 @@ export interface ItemTipState {
   kind: 'po' | 'si';
   /** Content item id (PO) or SI id -- the key into ITEMS / SI_DEFS. */
   id: string;
+  /** REQ-0198 (B): the tapped INSTANCE uid (a PO/SI record's uid). Lets
+   * FloatingItemTip offer a per-instance "sell this" action (deep-linking
+   * to #/market?sell=<uid>&kind=) and check that instance's stow/reference
+   * state. Absent on any tip published before this field existed. */
+  uid?: string;
   anchor: ItemTipAnchor;
   /** Board the tap came from (drag.ts's boardIdKey) -- lets a board clear
    * only its own tip on unmount, so a stale anchor can't linger. */

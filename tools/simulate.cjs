@@ -53,6 +53,10 @@ function loadDefs() {
   const dungeonRaw = loadJSON(path.join(BATCH, 'dungeon.json'));
   const enemyDefsById = {};
   for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
+  // REQ-0184: monster_pack/1 -- dungeon.json names its packs from packs.json.
+  const packsRaw = loadJSON(path.join(BATCH, 'packs.json'));
+  const monsterPackDefsById = {};
+  for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
   const skillDefsById = {};
   for (const s of skillsRaw.entries) skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
   let siDefsById;
@@ -63,7 +67,7 @@ function loadDefs() {
   } catch (e) { siDefsById = undefined; }
   const poRarity = {};
   for (const id of Object.keys(itemDefsById)) poRarity[id] = itemDefsById[id].rarity || null;
-  return { itemDefsById, enemyDefsById, skillDefsById, siDefsById, dungeonRaw, liveItemIds, poRarity };
+  return { itemDefsById, enemyDefsById, skillDefsById, siDefsById, monsterPackDefsById, dungeonRaw, liveItemIds, poRarity };
 }
 
 function loadBoard(id) {
@@ -111,6 +115,7 @@ function runOne(defs, board, dungeonSpec, formationId, level, seed, variant, boa
     squadSnapshots: [board, board, board, board],
     itemDefsById: defs.itemDefsById,
     enemyDefsById: defs.enemyDefsById,
+    monsterPackDefsById: defs.monsterPackDefsById, // REQ-0184
     skillDefsById: defs.skillDefsById,
     siDefsById: defs.siDefsById,
     formationId, level,

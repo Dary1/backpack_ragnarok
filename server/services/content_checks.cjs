@@ -99,9 +99,15 @@ function loadVocab(root, schema_ref) {
 // other kind gets (domain EnemySkill). engine_types / gen_data / integrate stay
 // honestly applicable:false -- skill/1 has no engine-consumed record, tool_gen_data
 // does not consume it, and it has no canvas placement.
+// REQ-0184 adds a FOURTH dialect, monster_pack/1 (content/live/dungeon/packs.json):
+// a pack carries no rarity and no stats of its own -- it is a composition of
+// monsters and WHERE each one stands. It spells its display name `name` (the
+// default), so only its own reference/geometry rules are new; those live in
+// shared/content_validate.cjs, not here.
 const DIALECTS = {
   'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
   'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
+  'monster_pack/1': { name: 'monster_pack/1', rarity_case: 'exact', range_fields: [] },
 };
 const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
@@ -191,6 +197,27 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     // Roster/dungeon defs: skills/effects when present are validated against
     // the same verb/trigger vocab (EnemySkill/Unit domains).
     checkEffects(data.effects, vocab, kind === 'unit_def' ? 'Unit' : 'EnemySkill', errs);
+    // REQ-0201: deepen the unit_def dialect. A registry unit VARIANT carries the
+    // FULL unit/1 entry (id + icon + i18n + connection_shape + charge), so run the
+    // SAME executable validator the check_units live gate runs
+    // (shared/content_validate.cjs validateUnitEntry) at INGEST time -- the charge
+    // block is machine-checked HERE, not only at the check_units live gate. Guard on
+    // data.id: only the full variant carries the whole entry; a partial def record
+    // (no id) is left to the base id-required check above, not forced through
+    // validateUnitEntry's icon/connection_shape/i18n rules.
+    // COUPLING RESOLVED (integration-units003: 0200 -> 0201 merged): validateUnitEntry
+    // now KNOWS the `charge` grammar -- REQ-0200 landed it into content_validate.cjs
+    // (UNIT_ALLOWED_KEYS += 'charge' + validateCharge). A charge-bearing variant is no
+    // longer an unknown field: a legal charge block deep-validates, and an illegal one
+    // (unknown trigger / bad capacity / illegal spend) is caught HERE by the charge AST.
+    if (kind === 'unit_def' && data && typeof data.id === 'string' && data.id) {
+      try {
+        const { validateUnitEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+        validateUnitEntry(data, vocab);
+      } catch (e) {
+        errs.push(e.message);
+      }
+    }
   } else if (kind === 'tm_def') {
     if (data.short !== undefined && typeof data.short !== 'string') errs.push('tm_def.short must be a string');
   } else if (kind === 'gacha_pack') {
@@ -223,6 +250,30 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
           errs.push('cost_tm "' + data.cost_tm + '" is not a live tm def');
         }
       } catch (e) { /* live_tms unreadable -- not this check's business to fail on */ }
+    }
+  } else if (kind === 'monster_pack') {
+    // REQ-0184. A pack's closed vocabulary is not vocab.json -- it is THE LIVE
+    // MONSTER ROSTER plus the field's own geometry. Both rules already exist,
+    // executable, in shared/content_validate.cjs (validateMonsterPackEntry), which
+    // is the SAME function sim/lib/packs.cjs places from. It is REUSED here, not
+    // re-implemented: two copies of "what is a legal pack layout" would drift, and
+    // a drift between the checker and the placer is the worst kind -- the admin
+    // would bless a layout the sim then puts somewhere else. (The REQ-0171 lesson,
+    // applied to geometry.)
+    const { validateMonsterPackEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let enemyDefs;
+    try {
+      const enemies = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'enemies.json'));
+      enemyDefs = {};
+      for (const e of (enemies.entries || [])) enemyDefs[e.id] = e;
+    } catch (e) {
+      errs.push('cannot read content/live/dungeon/enemies.json to resolve the members: ' + e.message);
+      enemyDefs = {};
+    }
+    try {
+      validateMonsterPackEntry(data, enemyDefs);
+    } catch (e) {
+      errs.push(e.message);
     }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
@@ -270,6 +321,21 @@ function engineTypesCheck(kind, data, root, dialect) {
     }
     return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what gacha.cjs rollPackBp() consumes' : errs.join('; ') };
   }
+  // REQ-0184: a monster_pack IS consumed by runtime code (sim/lib/packs.cjs
+  // packMembers reads members[].enemy and members[].at), so like gacha_pack -- and
+  // unlike skill_def -- it has a real type surface and the check APPLIES. These are
+  // the exact field types that function dereferences; a member with no `at` is a
+  // crash inside the placer, not a content nit.
+  if (kind === 'monster_pack') {
+    const errs = [];
+    if (!Array.isArray(data.members)) errs.push('members must be an array (packMembers maps over it)');
+    else data.members.forEach((m, i) => {
+      if (!m || typeof m !== 'object') { errs.push('members[' + i + '] must be an object'); return; }
+      if (typeof m.enemy !== 'string') errs.push('members[' + i + '].enemy must be a string (indexes enemyDefsById)');
+      if (typeof m.at !== 'string') errs.push('members[' + i + '].at must be an A1 string like "F5" (parseA1 reads it)');
+    });
+    return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/lib/packs.cjs packMembers() consumes' : errs.join('; ') };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
@@ -314,6 +380,11 @@ function genDataCheck(kind, data, root) {
   // Honest applicable:false (REQ-0160 ruling Q2-sub).
   if (kind === 'skill_def') {
     return { ok: true, applicable: false, detail: 'gen_data not applicable for skill_def (tool_gen_data does not consume skill/1)' };
+  }
+  // REQ-0184: same honesty for monster_pack -- tool_gen_data has never consumed a
+  // pack composition, and a free PASS here would be a lie dressed as a green chip.
+  if (kind === 'monster_pack') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for monster_pack (tool_gen_data does not consume monster_pack/1)' };
   }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');
@@ -425,4 +496,199 @@ function runChecks(kind, schema_ref, data) {
   return { checks, overall, dialect: dialect.name, schema_ref: vpath ? path.relative(root, vpath) : schema_ref, ran_at: new Date().toISOString() };
 }
 
-module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS };
+// ===========================================================================
+// REQ-0188 -- art-authoritative cell-geometry DRIFT GUARD.
+//
+// Doctrine (REQ-0029 continued, REQ-0188 ruling 1): a thing's cell geometry is
+// OWNED by its artwork. A monster_def/po_def whose def-side geometry disagrees
+// with its LINKED artwork's shape is DRIFT -- the guard FAILs it, naming BOTH
+// sides in BOTH spellings so the transposition class of bug (REQ-0029, [row,col]
+// read as [col,row]) cannot hide. The def->artwork link reuses REQ-0174's
+// ref-first canon (artwork_ref -> exact system_name -> none); the resolution
+// itself is done by the caller and the resolved artwork passed IN, so this stays
+// DB-free and unit-testable against fixtures.
+//
+// THREE spellings of ONE fact, and every conversion crosses the transpose:
+//   monster artwork : {w, h}             (width, height)
+//   enemy/1 def     : footprint [fh, fw] (HEIGHT, width)   <- the TRANSPOSE
+//   po artwork      : {mask: 5x5 bool}   ([row][col])
+//   po/2 def        : shape [[r, c]...]  ([row][col])
+// Everything below compares NORMALIZED CELL-SETS (translated to the bounding-box
+// top-left), so a footprint and an art shape agree iff they cover the same cells
+// -- order-, offset- and spelling-independent.
+// ===========================================================================
+
+/** Normalized cell-set "r,c" of a list of [row,col] offsets, translated so the
+ * bounding-box top-left is (0,0). null for an empty/invalid list. */
+function _normCellSet(cells) {
+  if (!Array.isArray(cells) || cells.length === 0) return null;
+  const cs = cells.filter((c) => Array.isArray(c) && c.length >= 2 && Number.isInteger(c[0]) && Number.isInteger(c[1]));
+  if (cs.length === 0) return null;
+  const minR = Math.min.apply(null, cs.map((c) => c[0]));
+  const minC = Math.min.apply(null, cs.map((c) => c[1]));
+  return new Set(cs.map((c) => (c[0] - minR) + ',' + (c[1] - minC)));
+}
+
+function _setEq(a, b) { return !!a && !!b && a.size === b.size && [...a].every((x) => b.has(x)); }
+
+/** Cells of a rows x cols filled rectangle (top-left origin). */
+function _rectCells(rows, cols) {
+  const out = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) out.push([r, c]);
+  return out;
+}
+
+/** Active cells [[r,c]...] of a po artwork 5x5 boolean mask ([row][col]). */
+function _maskCells(mask) {
+  if (!Array.isArray(mask)) return null;
+  const out = [];
+  for (let r = 0; r < mask.length; r++) {
+    const row = mask[r] || [];
+    for (let c = 0; c < row.length; c++) if (row[c]) out.push([r, c]);
+  }
+  return out;
+}
+
+/** The DEF-side geometry of a monster_def/po_def as {cells:Set, spell:string}.
+ * null when the kind carries no cell geometry or the field is missing/malformed. */
+function defGeometry(kind, data) {
+  if (!data || typeof data !== 'object') return null;
+  if (kind === 'monster_def') {
+    const fp = data.footprint;
+    if (!isIntPair(fp) || fp[0] < 1 || fp[1] < 1) return null;
+    return { cells: _normCellSet(_rectCells(fp[0], fp[1])), spell: 'footprint [fh,fw]=' + JSON.stringify(fp) };
+  }
+  if (kind === 'po_def') {
+    const cells = _normCellSet(data.shape);
+    if (!cells) return null;
+    return { cells, spell: 'shape [[r,c]...]=' + JSON.stringify(data.shape) };
+  }
+  return null;
+}
+
+/** The ARTWORK-side geometry (THE AUTHORITY) as {cells:Set, spell:string}.
+ * monster art shape is {w,h}; po art shape is {mask}. null when the artwork has
+ * no usable cell geometry (si/unit/etc.), i.e. nothing to be authoritative WITH. */
+function artworkGeometry(kind, artwork) {
+  if (!artwork || !artwork.shape || typeof artwork.shape !== 'object') return null;
+  const sh = artwork.shape;
+  if (kind === 'monster_def') {
+    const w = sh.w, h = sh.h;
+    if (!Number.isInteger(w) || !Number.isInteger(h) || w < 1 || h < 1) return null;
+    // TRANSPOSE: monster art {w,h} owns the footprint [fh,fw] = [h,w].
+    return { cells: _normCellSet(_rectCells(h, w)), spell: 'artwork {w,h}=' + JSON.stringify({ w, h }) + ' (=> footprint [' + h + ',' + w + '])' };
+  }
+  if (kind === 'po_def') {
+    const cells = _maskCells(sh.mask);
+    const set = _normCellSet(cells);
+    if (!set) return null;
+    return { cells: set, spell: 'artwork mask [row][col], active cells ' + JSON.stringify(cells) };
+  }
+  return null;
+}
+
+/** REQ-0188 DRIFT GUARD (the guard proper). Compare a monster_def/po_def's own
+ * cell geometry with its LINKED artwork's shape (the authority). Returns a
+ * machine-check-shaped result { name:'artwork_geometry', ok, applicable, detail }:
+ *   applicable:false  kind carries no cell geometry, OR there is no linked
+ *                     artwork with a usable shape (nothing to be authoritative
+ *                     WITH -- an HONEST n/a, never a free PASS; REQ-0160 posture);
+ *   ok:true           def geometry == artwork geometry (cell-sets equal);
+ *   ok:false          DRIFT -- detail names BOTH sides in BOTH spellings.
+ * `artwork` is the already-resolved artwork row (ref-first, REQ-0174 canon) or
+ * null. Kept DB-free: the caller resolves and passes the artwork in. */
+function checkArtworkGeometry(kind, data, artwork) {
+  if (kind !== 'monster_def' && kind !== 'po_def') {
+    return { name: 'artwork_geometry', ok: true, applicable: false, detail: 'artwork_geometry n/a for ' + kind + ' (no cell geometry to own)' };
+  }
+  const art = artworkGeometry(kind, artwork);
+  if (!art) {
+    return { name: 'artwork_geometry', ok: true, applicable: false, detail: 'artwork_geometry n/a: no linked artwork with a usable shape (art is authoritative but has no row here yet -- REQ-0188 seed coverage)' };
+  }
+  const def = defGeometry(kind, data);
+  if (!def) {
+    const side = kind === 'monster_def' ? 'footprint' : 'shape';
+    return { name: 'artwork_geometry', ok: false, applicable: true, detail: 'GEOMETRY DRIFT: ' + kind + ' has a linked ' + art.spell + ' but no readable ' + side + ' of its own' };
+  }
+  const ok = _setEq(def.cells, art.cells);
+  const detail = ok
+    ? 'def geometry agrees with the authoritative artwork (' + def.spell + ' == ' + art.spell + ')'
+    : 'GEOMETRY DRIFT: def ' + def.spell + ' disagrees with the authoritative ' + art.spell + ' -- the ART is the authority (REQ-0029/REQ-0188); regenerate the def side (tools/derive_def_geometry.cjs)';
+  return { name: 'artwork_geometry', ok, applicable: true, detail };
+}
+
+// The live content the sim actually serves; every monster_def / po_def in it is
+// swept. NOT hardcoded to the batch-002 roster: batch-005 (REQ-0203) monsters
+// land in enemies.json and are covered automatically once merged.
+const ART_GEOM_CORPUS = [
+  { kind: 'monster_def', file: 'content/live/dungeon/enemies.json' },
+  { kind: 'po_def', file: 'content/live/live_items.json' },
+  { kind: 'po_def', file: 'content/live/dungeon/items.json' },
+  { kind: 'po_def', file: 'content/live/starter_items.json' },
+];
+
+/** REQ-0188 LIVE SWEEP. Walk the served content, resolve each entity's linked
+ * artwork REF-FIRST (REQ-0174 canon via storage.resolveArtworkFacetName ->
+ * exact-name fallback), and run checkArtworkGeometry. READ-ONLY. Not part of the
+ * four per-variant machine checks (those stay DB-free); this is the corpus-wide
+ * guard for the deploy/CI dry-run. deps = { storage, root, log }. Returns
+ * { agree, disagree, notApplicable, results }. */
+async function sweepArtworkGeometry(deps) {
+  deps = deps || {};
+  const root = deps.root || repoRoot();
+  const storage = deps.storage;
+  if (!storage) throw new Error('sweepArtworkGeometry requires deps.storage (STORAGE_BACKEND=pg)');
+  const log = deps.log || function () {};
+  const results = [];
+  const seen = new Set();
+  for (const src of ART_GEOM_CORPUS) {
+    let entries;
+    try { entries = (loadJson(path.join(root, src.file)).entries) || []; } catch (_) { entries = []; }
+    for (const entry of entries) {
+      const key = src.kind + ':' + entry.id;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const def = await storage.getContentDefByName(entry.id);
+      let artName = def ? await storage.resolveArtworkFacetName(def) : null;
+      if (!artName) { const a = await storage.getArtworkByName(entry.id); if (a) artName = entry.id; }
+      const artwork = artName ? await storage.getArtworkByName(artName) : null;
+      const r = checkArtworkGeometry(src.kind, entry, artwork);
+      results.push({ id: entry.id, kind: src.kind, file: src.file, artwork: artName, ok: r.ok, applicable: r.applicable, detail: r.detail });
+      const tag = r.applicable ? (r.ok ? 'AGREE   ' : 'DISAGREE') : 'n/a     ';
+      log(tag + ' ' + src.kind + ' ' + entry.id + (artName ? ' -> ' + artName : '') + '  ' + r.detail);
+    }
+  }
+  const agree = results.filter((r) => r.applicable && r.ok).length;
+  const disagree = results.filter((r) => r.applicable && !r.ok).length;
+  const notApplicable = results.filter((r) => !r.applicable).length;
+  log('--- artwork_geometry sweep: agree=' + agree + ' disagree=' + disagree + ' n/a=' + notApplicable + ' (total ' + results.length + ')');
+  return { agree, disagree, notApplicable, results };
+}
+
+
+// REQ-0188 CLI: run the live artwork_geometry drift sweep READ-ONLY against the
+// artwork registry. Exit 0 when clean, 1 on any disagreement, 2 on missing DB.
+// DATABASE_URL (STORAGE_BACKEND=pg) required; source server/.env first.
+if (require.main === module) {
+  (async () => {
+    const root = repoRoot();
+    process.env.STORAGE_BACKEND = 'pg';
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL required (STORAGE_BACKEND=pg; source server/.env). The REQ-0188 drift guard reads the artwork registry READ-ONLY.');
+      process.exit(2);
+    }
+    const storage = require(path.join(root, 'server', 'storage.cjs'));
+    let res;
+    try {
+      res = await sweepArtworkGeometry({ storage, root, log: (...a) => console.log(...a) });
+    } finally {
+      if (storage.closeArtPool) await storage.closeArtPool();
+      if (storage.closeContentPool) await storage.closeContentPool();
+    }
+    process.exit(res.disagree === 0 ? 0 : 1);
+  })().catch((e) => { console.error('FATAL', (e && e.stack) || e); process.exit(1); });
+}
+
+module.exports = { runChecks, _repoRoot: repoRoot, _contentLiveManifest: contentLiveManifest, _dialectFor: dialectFor, _DIALECTS: DIALECTS,
+  checkArtworkGeometry, defGeometry, artworkGeometry, sweepArtworkGeometry, ART_GEOM_CORPUS,
+  _normCellSet, _maskCells, _rectCells, _setEq };

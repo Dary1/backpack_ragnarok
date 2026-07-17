@@ -146,6 +146,26 @@ async function main() {
     assert.strictEqual(rows[0].status, 'MISSING-IN-REGISTRY', 'no def -> MISSING-IN-REGISTRY');
   });
 
+  // ---- REQ-0182b: the registry-served predicate the admin PUT guard keys on ----
+  // The legacy Dex-Edit route 409s an id the registry SERVES. api_test seeds no
+  // adopted defs (its namespaces are empty by construction), so the guard never
+  // fires there and the predicate would otherwise ship untested at unit level --
+  // the e2e covers the route itself against live, where defs ARE adopted.
+  await AT('REQ-0182b: registryServedKindFor reports an adopted po_def, and null for a file-served id', async () => {
+    await content.refreshRegistryData();
+    assert.strictEqual(content.registryServedKindFor(PO.id), 'po_def', 'the adopted PO is registry-served');
+    assert.strictEqual(content.registryServedKindFor('definitely_not_a_content_id'), null, 'unknown id -> null');
+    assert.strictEqual(content.registryServedKindFor(''), null, 'empty id -> null (no crash)');
+    assert.strictEqual(content.registryServedKindFor(null), null, 'null id -> null (no crash)');
+  });
+
+  await AT('REQ-0182b: the predicate follows the snapshot -- an empty registry means nothing is guarded', async () => {
+    await storage.clearAllContent();
+    await content.refreshRegistryData();
+    assert.strictEqual(content.registryServedKindFor(PO.id), null,
+      'with no adopted defs the PO is file-served, so the admin PUT must NOT 409 (this is why api_test and the ci.sh fleet stay green)');
+  });
+
   await storage.clearAllContent();
   await storage.closeContentPool();
   console.log('\ncontent_serving_test: ' + pass + ' pass, ' + fail + ' fail');

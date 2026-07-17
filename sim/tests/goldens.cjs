@@ -27,6 +27,10 @@ const BATCH_DIR = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-
 const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json'), 'utf8'));
 const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
 const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
+// REQ-0184: monster_pack/1 defs -- dungeon.json's encounters name packs from here.
+const packsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'packs.json'), 'utf8'));
+const monsterPackDefsById = {};
+for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
 const enemyDefsById = {};
 for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
 const skillDefsById = {};
@@ -34,9 +38,29 @@ for (const s of skillsRaw.entries) {
   skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }
 
+// REQ-0207 (found-in-flight): PIN the dungen generators to a FIXED batch-002 roster.
+// dungen.generate('default'/'test_fixed') resolves the live roster via os.homedir()
+// (repoRoot() -> ~/backpack_ragnarok/content/live/dungeon), so these DETERMINISM goldens
+// were silently coupled to whatever is deployed live. The batch-005 additive deploy
+// (dc80295) grew that roster 7 -> 15 and DRIFTED all 8 dungen/default goldens (proven:
+// pinning the roster back to batch-002 reproduces every stored hash byte-for-byte).
+// Determinism goldens must freeze the ENGINE, not track live content, so we redirect
+// dungen's homedir-relative live reads to a batch-002 fixture -- the same os.homedir()
+// fake the sim's other harnesses use. TEST-ONLY: no dungen/engine change; the goldens
+// stay UNMOVED and are now deploy-stable (a later content deploy can no longer drift them).
+const os = require('os');
+const GOLDEN_ROSTER_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'goldens-batch002-'));
+{
+  const fixDungeon = path.join(GOLDEN_ROSTER_HOME, 'backpack_ragnarok', 'content', 'live', 'dungeon');
+  fs.mkdirSync(fixDungeon, { recursive: true });
+  const b002 = path.join(REPO_ROOT, 'content', 'batches', 'batch-002-dungeon-pilot');
+  for (const f of fs.readdirSync(b002)) if (f.endsWith('.json')) fs.copyFileSync(path.join(b002, f), path.join(fixDungeon, f));
+  os.homedir = () => GOLDEN_ROSTER_HOME; // dungen.cjs repoRoot() reads the live roster through this
+}
+
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const squads = () => [scenario, scenario, scenario, scenario];
-const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
+const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
 
 // The golden matrix. Keys are stable identifiers; each entry produces
 // { def_sha256 (dungen cases only), jsonl_sha256, events } .
@@ -77,6 +101,7 @@ function computeAll() {
 
 const mode = process.argv[2] === 'gen' ? 'gen' : 'check';
 const computed = computeAll();
+fs.rmSync(GOLDEN_ROSTER_HOME, { recursive: true, force: true }); // REQ-0207: drop the pinned-roster fixture once the matrix is computed
 if (mode === 'gen') {
   fs.writeFileSync(GOLDEN_FILE, JSON.stringify(computed, null, 2) + '\n');
   console.log('wrote ' + Object.keys(computed).length + ' goldens -> ' + path.relative(REPO_ROOT, GOLDEN_FILE));

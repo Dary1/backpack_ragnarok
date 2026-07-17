@@ -27,7 +27,10 @@ const SI_ALLOWED_KEYS = new Set([
 // to this allowlist without the code that honours it is the failure mode this REQ
 // exists to end.
 const UNIT_ALLOWED_KEYS = new Set([
-  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape',
+  // REQ-0200: `charge` joins the unit allowlist. The v13/v14 comment above warned
+  // that a def field nothing evaluates is fiction -- this REQ ends that: validateCharge()
+  // enforces the AST and sim/lib/unit_charge.cjs is the runtime that honours it.
+  'name', 'name_ja', 'flavor', 'flavor_ja', 'i18n', 'rarity', 'connection_shape', 'charge',
 ]);
 
 function isFiniteNum(v) {
@@ -98,13 +101,22 @@ function validateEffect(eff, vocab, ctx) {
  * itself be a plain object with only name/flavor keys, each a string
  * when present -- same per-field type rule the base name/flavor fields
  * already get. Throws a descriptive Error on any violation. */
-function validateI18n(i18n, ctx) {
+function validateI18n(i18n, ctx, locales) {
+  // REQ-0184: `locales` is OPTIONAL and defaults to SUPPORTED_LOCALES, so every
+  // pre-existing caller (the admin PUT surface for po/si) keeps the exact {ja}
+  // whitelist it had. It exists because the DUNGEON dialect legitimately writes
+  // {en, ja} -- content/live/dungeon/{enemies,formations}.json have always done
+  // so -- and REQ-0161 settled that a validator learns the dialect of the data
+  // the game actually serves rather than the data being bent to the validator.
+  // Widening SUPPORTED_LOCALES itself would silently widen what an admin PUT may
+  // write for items/SIs: a side effect no REQ asked for.
+  const allowed = locales || SUPPORTED_LOCALES;
   if (!i18n || typeof i18n !== 'object' || Array.isArray(i18n)) {
     throw new Error(ctx + ': i18n must be an object');
   }
   for (const locale of Object.keys(i18n)) {
-    if (!SUPPORTED_LOCALES.has(locale)) {
-      throw new Error(ctx + ': unknown i18n locale "' + locale + '" (supported: ' + Array.from(SUPPORTED_LOCALES).join(', ') + ')');
+    if (!allowed.has(locale)) {
+      throw new Error(ctx + ': unknown i18n locale "' + locale + '" (supported: ' + Array.from(allowed).join(', ') + ')');
     }
     const entry = i18n[locale];
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
@@ -141,6 +153,96 @@ function validateSocket(sock, vocab, ctx) {
   }
   if (sock.ax !== undefined && !isFiniteNum(sock.ax)) throw new Error(ctx + ': socket.ax must be a finite number');
   if (sock.ay !== undefined && !isFiniteNum(sock.ay)) throw new Error(ctx + ': socket.ay must be a finite number');
+}
+
+/** REQ-0200: validates ONE charge-effect object {verb, target} in a unit's charge
+ * block. The verb half mirrors validateEffect's verb rules, but in the UNIT CHARGE
+ * context the ranged params are n / hits / pct / dur_s (a def uses `pct` -- percent
+ * points -- where the item form of the same verb uses `n`; multi_strike.hits is a
+ * range here, not the item form's scalar). Exceptions the FROZEN grammar allows:
+ * bonus_vs_status may carry status "any" (= any afflicted status), and fire_items.tag
+ * is an optional po_tag filter. `target` must be a key of vocab.charge.targets. */
+function validateChargeEffect(ceff, vocab, targets, ctx) {
+  if (!ceff || typeof ceff !== 'object' || Array.isArray(ceff)) {
+    throw new Error(ctx + ': charge effect must be an object');
+  }
+  const verb = ceff.verb;
+  if (!verb || typeof verb !== 'object' || typeof verb.t !== 'string') {
+    throw new Error(ctx + ': effect.verb.t is required');
+  }
+  if (!vocab.verbs.includes(verb.t)) {
+    throw new Error(ctx + ': unknown verb type "' + verb.t + '"');
+  }
+  for (const p of ['n', 'hits', 'pct', 'dur_s']) {
+    if (verb[p] !== undefined && !isValidRange(verb[p])) {
+      throw new Error(ctx + ': verb.' + p + ' must be a [lo,hi] range with 0 < lo <= hi');
+    }
+  }
+  if (verb.status !== undefined) {
+    const anyOk = verb.t === 'bonus_vs_status' && verb.status === 'any';
+    if (!anyOk && !vocab.statuses.includes(verb.status)) {
+      throw new Error(ctx + ': unknown status "' + verb.status + '"');
+    }
+  }
+  if (verb.t === 'fire_items' && verb.tag !== undefined) {
+    if (!(verb.tag in vocab.po_tags)) {
+      throw new Error(ctx + ': fire_items.tag "' + verb.tag + '" is not a po_tag');
+    }
+  }
+  if (typeof ceff.target !== 'string' || !(ceff.target in targets)) {
+    throw new Error(ctx + ': effect.target must be one of ' + Object.keys(targets).join('/') +
+      ' (got ' + JSON.stringify(ceff.target) + ')');
+  }
+}
+
+/** REQ-0200: validates a unit's `charge` block against the FROZEN grammar
+ * (content/vocab.json `charge`) + closed vocabulary + range rules. The legal
+ * trigger union, spend modes and targets are READ FROM vocab (charge.triggers /
+ * charge.spend / charge.targets) so this validator can never drift from the
+ * grammar it is enforcing. Throws a descriptive Error on the first violation;
+ * never coerces. */
+function validateCharge(charge, vocab, ctx) {
+  if (!charge || typeof charge !== 'object' || Array.isArray(charge)) {
+    throw new Error(ctx + ': charge must be an object');
+  }
+  const cv = vocab.charge || {};
+  const legalTriggers = cv.triggers || {};
+  const spendModes = cv.spend || {};
+  const targets = cv.targets || {};
+  const trig = charge.trigger;
+  if (!trig || typeof trig !== 'object' || typeof trig.t !== 'string') {
+    throw new Error(ctx + ': charge.trigger.t is required');
+  }
+  if (!(trig.t in legalTriggers)) {
+    throw new Error(ctx + ': trigger "' + trig.t + '" is not a charge-legal trigger');
+  }
+  if (trig.t === 'every_secs' && !isValidRange(trig.s)) {
+    throw new Error(ctx + ': charge.trigger.s must be a [lo,hi] range with 0 < lo <= hi');
+  }
+  if (charge.gain !== 'count' && charge.gain !== 'damage') {
+    throw new Error(ctx + ': charge.gain must be "count" or "damage"');
+  }
+  if (!isValidRange(charge.capacity)) {
+    throw new Error(ctx + ': charge.capacity must be a [lo,hi] range with 0 < lo <= hi');
+  }
+  if (typeof charge.spend !== 'string' || !(charge.spend in spendModes)) {
+    throw new Error(ctx + ': charge.spend must be one of ' + Object.keys(spendModes).join('/'));
+  }
+  if (charge.spend === 'transform') {
+    if (typeof charge.transform_to !== 'string' || !charge.transform_to) {
+      throw new Error(ctx + ': charge.transform_to (a unit-def id string) is required when spend="transform"');
+    }
+  } else if (charge.transform_to !== undefined) {
+    throw new Error(ctx + ': charge.transform_to is only allowed when spend="transform"');
+  }
+  const needEffects = charge.spend === 'fire_on_full' || charge.spend === 'passive_per_stack';
+  if (needEffects && (!Array.isArray(charge.effects) || charge.effects.length === 0)) {
+    throw new Error(ctx + ': charge.effects (a non-empty array) is required for spend="' + charge.spend + '"');
+  }
+  if (charge.effects !== undefined) {
+    if (!Array.isArray(charge.effects)) throw new Error(ctx + ': charge.effects must be an array');
+    charge.effects.forEach((ceff, i) => validateChargeEffect(ceff, vocab, targets, ctx + '.effects[' + i + ']'));
+  }
 }
 
 /** Validates the full PUT body against the schema allowlist for `kind`
@@ -205,6 +307,12 @@ function validateBody(body, kind, vocab) {
     if (typeof body.connection_shape !== 'string' || !(body.connection_shape in shapes)) {
       throw new Error('unknown connection_shape "' + body.connection_shape + '" (must be a key of vocab.connection_shapes)');
     }
+  }
+  // REQ-0200: a unit's `charge` block (FROZEN grammar). Only unit/1 carries it -- the
+  // allowlist at the top already rejects `charge` on item/si, so validating whenever it
+  // is present (mirroring effects/sockets above) cannot loosen the item/si contract.
+  if (body.charge !== undefined) {
+    validateCharge(body.charge, vocab, 'charge');
   }
 }
 
@@ -296,8 +404,130 @@ function validatePackEntry(pack, unitIds, contentIds) {
 }
 
 
+// =====================================================================
+// REQ-0184: monster_pack/1 -- a pack is a LAYOUT of monsters on the
+// battle field. THE single executable definition of "a legal pack
+// layout", imported by BOTH server/services/content_checks.cjs (the
+// machine check) and sim/lib/packs.cjs (the placer). Two copies of this
+// rule would drift, and the drift would be invisible -- the REQ-0171
+// lesson, applied before it can bite.
+//
+// GEOMETRY (user ruling, 2026-07-15). The battle field is 26x18 =
+// A1:Z18 (sim/lib/field.cjs FIELD_COLS=26, FIELD_ROWS=18). It carries a
+// MARGIN of 1 on every side, so the PLACEABLE area is 24x16 = B2:Y17 --
+// exactly the box formations.json already draws player canvases in.
+// These constants are duplicated here rather than require()d from
+// sim/lib/field.cjs on purpose: shared/ may not require() out of shared/
+// (the same rule sim/tests/forecast_parity.cjs documents in its header),
+// so a parity test pins them equal instead of a cross-tree import.
+const FIELD_COLS = 26, FIELD_ROWS = 18;
+const PLACEABLE = { colMin: 2, rowMin: 2, colMax: FIELD_COLS - 1, rowMax: FIELD_ROWS - 1 };
+
+// The DUNGEON dialect's locale set. content/live/dungeon/*.json has always
+// carried both en and ja (enemies.json, formations.json, skills.json), unlike
+// the po/si admin surface whose editable locale set is {ja}. monster_pack/1 is
+// dungeon content, so it speaks the dungeon dialect (REQ-0161 doctrine).
+const DUNGEON_LOCALES = new Set(['en', 'ja']);
+
+/** "F5" -> {row:5, col:6}. Column letters are A..Z (1-based, A=1); the row
+ * is 1-based. Returns null for anything that is not a well-formed token --
+ * callers turn that into their own descriptive error. Multi-letter columns
+ * are deliberately NOT accepted: the field is 26 wide, so a second letter
+ * is always an authoring mistake, and silently parsing "AA1" would place a
+ * monster off the board. */
+function parseA1(tok) {
+  if (typeof tok !== 'string') return null;
+  const m = /^([A-Z])([0-9]{1,2})$/.exec(tok);
+  if (!m) return null;
+  const col = m[1].charCodeAt(0) - 64; // 'A' -> 1
+  const row = parseInt(m[2], 10);
+  if (!Number.isInteger(row) || row < 1) return null;
+  return { row: row, col: col };
+}
+
+/** {row,col} -> "F5". The exact inverse of parseA1 (a round-trip test pins
+ * it), so a layout the admin edits and the sim reads spell the same cell. */
+function formatA1(row, col) {
+  return String.fromCharCode(64 + col) + String(row);
+}
+
+/** The cells a member actually occupies: its anchor is the TOP-LEFT, and
+ * the footprint [fh, fw] grows down/right -- the identical convention
+ * compileEnemyPack() has always used. Derived, never stored: a def that
+ * stored both anchor and cells would start lying the day its footprint
+ * changed. */
+function cellsFor(anchor, footprint) {
+  const fp = Array.isArray(footprint) ? footprint : [1, 1];
+  const fh = Number.isInteger(fp[0]) && fp[0] > 0 ? fp[0] : 1;
+  const fw = Number.isInteger(fp[1]) && fp[1] > 0 ? fp[1] : 1;
+  const cells = [];
+  for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) cells.push([anchor.row + dr, anchor.col + dc]);
+  return cells;
+}
+
+/** Validates one monster_pack/1 entry. Throws a descriptive Error naming the
+ * offending member -- never coerces, never silently drops.
+ *
+ * `enemyDefs` maps enemy id -> def (needs `footprint`); when supplied, every
+ * member `enemy` must resolve, because a pack that names a monster with no
+ * def either crashes the compiler or silently fields a smaller pack -- and
+ * nothing else in the chain would ever say so. Pass null to skip the
+ * reference check (shape-only validation).
+ */
+function validateMonsterPackEntry(pack, enemyDefs) {
+  if (!pack || typeof pack !== 'object' || Array.isArray(pack)) throw new Error('monster_pack entry must be an object');
+  if (typeof pack.id !== 'string' || !pack.id) throw new Error('monster_pack entry: id is required');
+  const ctx = 'monster_pack "' + pack.id + '"';
+  if (typeof pack.name !== 'string' || !pack.name) throw new Error(ctx + ': name is required');
+  if (pack.i18n !== undefined) validateI18n(pack.i18n, ctx, DUNGEON_LOCALES);
+  if (!Array.isArray(pack.members) || pack.members.length === 0) {
+    throw new Error(ctx + ': members must be a non-empty array');
+  }
+  // occupied cell -> the member that claimed it, so an overlap error can name
+  // BOTH sides of the collision instead of just reporting that one exists.
+  const claimed = new Map();
+  pack.members.forEach(function (m, i) {
+    const mctx = ctx + ' members[' + i + ']';
+    if (!m || typeof m !== 'object' || Array.isArray(m)) throw new Error(mctx + ': must be an object');
+    if (typeof m.enemy !== 'string' || !m.enemy) throw new Error(mctx + ': enemy (monster id) is required');
+    const anchor = parseA1(m.at);
+    if (!anchor) throw new Error(mctx + ' ("' + m.enemy + '"): at must be an A1 cell token like "F5", got ' + JSON.stringify(m.at));
+    let footprint = [1, 1];
+    if (enemyDefs) {
+      const def = enemyDefs[m.enemy];
+      if (!def) throw new Error(mctx + ': names monster "' + m.enemy + '", which has no live def');
+      if (def.footprint !== undefined) footprint = def.footprint;
+    } else if (m.footprint !== undefined) {
+      footprint = m.footprint;
+    }
+    const cells = cellsFor(anchor, footprint);
+    for (const cell of cells) {
+      const r = cell[0], c = cell[1];
+      if (r < PLACEABLE.rowMin || r > PLACEABLE.rowMax || c < PLACEABLE.colMin || c > PLACEABLE.colMax) {
+        throw new Error(mctx + ' ("' + m.enemy + '" at ' + m.at + ', footprint '
+          + footprint[0] + 'x' + footprint[1] + '): occupies ' + formatA1(r, c)
+          + ', outside the placeable area '
+          + formatA1(PLACEABLE.rowMin, PLACEABLE.colMin) + ':' + formatA1(PLACEABLE.rowMax, PLACEABLE.colMax)
+          + ' (the field is ' + FIELD_COLS + 'x' + FIELD_ROWS + ' with a margin of 1)');
+      }
+      const key = r + ',' + c;
+      const prev = claimed.get(key);
+      if (prev !== undefined) {
+        throw new Error(mctx + ' ("' + m.enemy + '" at ' + m.at + ') overlaps members[' + prev.i
+          + '] ("' + prev.enemy + '" at ' + prev.at + ') on cell ' + formatA1(r, c));
+      }
+      claimed.set(key, { i: i, enemy: m.enemy, at: m.at });
+    }
+  });
+  if (pack.note !== undefined && typeof pack.note !== 'string') throw new Error(ctx + ': note must be a string');
+}
+
+
 module.exports = {
   SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS, UNIT_ALLOWED_KEYS,
   validateUnitEntry, validatePackEntry,
-  isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody,
+  // REQ-0184: monster_pack/1 layout -- the ONE definition, shared by the machine check and the sim.
+  validateMonsterPackEntry, parseA1, formatA1, cellsFor, PLACEABLE, FIELD_COLS, FIELD_ROWS,
+  DUNGEON_LOCALES,
+  isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody, validateCharge,
 };

@@ -89,6 +89,11 @@ for (const p of (packs.entries || [])) {
 const shapes = Object.keys(vocab.connection_shapes || {});
 const used = new Set((units.entries || []).map((e) => e.connection_shape));
 console.log('units: ' + seen.size + ' defs / ' + used.size + ' distinct shapes used (of ' + shapes.length + ' in the vocabulary)');
+// REQ-0200: `charge` is now part of the unit/1 schema; validateUnitEntry above ran
+// validateCharge on every def that carries one. Report the count so a def growing a
+// charge block is visible in the gate output.
+const withCharge = (units.entries || []).filter((e) => e && e.charge).length;
+console.log('units with charge blocks: ' + withCharge + ' (each validated via validateCharge)');
 console.log('packs: ' + (packs.entries || []).length + ' / pool rows: ' + (packs.entries || []).reduce((n, p) => n + (p.pool || []).length, 0));
 console.log('bonus slots: ' + (packs.entries || []).reduce((n, p) => n + (p.bonus || []).length, 0) + ' (REQ-0062)');
 console.log('failures: ' + failures);

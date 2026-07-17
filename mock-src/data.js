@@ -1,6 +1,6 @@
 // backpack_ragnarok — GENERATED data.js (do not hand-edit; regenerate via tool_gen_data.cjs v7)
 // Source: live_items.json + live_sis.json + scenario.json
-// Generated: 2026-07-14T01:38:53.227Z
+// Generated: 2026-07-16T19:14:27.979Z
 (function(root,factory){
   if(typeof module!=='undefined'&&module.exports)module.exports=factory();
   else root.GameData=factory();
@@ -598,6 +598,1294 @@ const UNITS={
    }
   },
   "name_ja": "スクワイア"
+ },
+ "alchemist": {
+  "id": "alchemist",
+  "i18n": {
+   "ja": {
+    "name": "錬金術師"
+   }
+  },
+  "icon": "units003_alchemist",
+  "name": "Alchemist",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "add_on_hit_status",
+      "status": "Poison"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     5
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "A splash of something that keeps bubbling.",
+  "rarity": "Common",
+  "flavor_ja": "ぐつぐつ、まだ何か煮えている。",
+  "connection_shape": "queen_2",
+  "name_ja": "錬金術師"
+ },
+ "bard": {
+  "id": "bard",
+  "i18n": {
+   "ja": {
+    "name": "吟遊詩人"
+   }
+  },
+  "icon": "units003_bard",
+  "name": "Bard",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "haste"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "Every swing keeps the beat.",
+  "rarity": "Common",
+  "flavor_ja": "その一振り、リズムを刻む。",
+  "connection_shape": "rook_3",
+  "name_ja": "吟遊詩人"
+ },
+ "cleric": {
+  "id": "cleric",
+  "i18n": {
+   "ja": {
+    "name": "聖職者"
+   }
+  },
+  "icon": "units003_cleric",
+  "name": "Cleric",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "cleanse"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_heal_done"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Mercy answers mercy.",
+  "rarity": "Common",
+  "flavor_ja": "慈悲は慈悲を呼ぶ。",
+  "connection_shape": "queen_2",
+  "name_ja": "聖職者"
+ },
+ "darkelf": {
+  "id": "darkelf",
+  "i18n": {
+   "ja": {
+    "name": "ダークエルフ"
+   }
+  },
+  "icon": "units003_darkelf",
+  "name": "Dark Elf",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "add_on_hit_status",
+      "status": "Weakness"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Her gaze saps the strong.",
+  "rarity": "Rare",
+  "flavor_ja": "その眼差しが強者を蝕む。",
+  "connection_shape": "bishop",
+  "name_ja": "ダークエルフ"
+ },
+ "darkknight": {
+  "id": "darkknight",
+  "i18n": {
+   "ja": {
+    "name": "ダークナイト"
+   }
+  },
+  "icon": "units003_darkknight",
+  "name": "Dark Knight",
+  "charge": {
+   "gain": "count",
+   "spend": "passive_per_stack",
+   "effects": [
+    {
+     "verb": {
+      "t": "buff_self",
+      "pct": [
+       0.5,
+       0.8
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnBPBeenHit"
+   },
+   "capacity": [
+    12,
+    18
+   ]
+  },
+  "flavor": "Pain is fuel.",
+  "rarity": "Common",
+  "flavor_ja": "痛みこそ我が糧。",
+  "connection_shape": "none",
+  "name_ja": "ダークナイト"
+ },
+ "dragonknight": {
+  "id": "dragonknight",
+  "i18n": {
+   "ja": {
+    "name": "竜騎士"
+   }
+  },
+  "icon": "units003_dragonknight",
+  "name": "Dragon Knight",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       15,
+       25
+      ],
+      "t": "multi_strike",
+      "hits": [
+       3,
+       4
+      ]
+     },
+     "target": "self"
+    },
+    {
+     "verb": {
+      "n": [
+       3,
+       4
+      ],
+      "t": "add_on_hit_status",
+      "status": "Burn"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    80,
+    120
+   ]
+  },
+  "flavor": "The breath that ends sieges.",
+  "rarity": "Relic",
+  "flavor_ja": "攻城を終わらせる吐息。",
+  "connection_shape": "queen",
+  "name_ja": "竜騎士"
+ },
+ "druid": {
+  "id": "druid",
+  "i18n": {
+   "ja": {
+    "name": "ドルイド"
+   }
+  },
+  "icon": "units003_druid",
+  "name": "Druid",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "apply_status",
+      "status": "Regen"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "The grove tends its own.",
+  "rarity": "Common",
+  "flavor_ja": "森は己の者を癒す。",
+  "connection_shape": "queen_2",
+  "name_ja": "ドルイド"
+ },
+ "fairy": {
+  "id": "fairy",
+  "i18n": {
+   "ja": {
+    "name": "妖精"
+   }
+  },
+  "icon": "units003_fairy",
+  "name": "Fairy",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       3,
+       5
+      ],
+      "t": "heal_bp"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     2,
+     3
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    1,
+    2
+   ]
+  },
+  "flavor": "A flit, a giggle, a little mending.",
+  "rarity": "Common",
+  "flavor_ja": "ひらり、くすくす、ちょっとの手当て。",
+  "connection_shape": "queen_2",
+  "name_ja": "妖精"
+ },
+ "gladiator": {
+  "id": "gladiator",
+  "i18n": {
+   "ja": {
+    "name": "剣闘士"
+   }
+  },
+  "icon": "units003_gladiator",
+  "name": "Gladiator",
+  "charge": {
+   "gain": "count",
+   "spend": "passive_per_stack",
+   "effects": [
+    {
+     "verb": {
+      "t": "buff_self",
+      "pct": [
+       1,
+       2
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    5,
+    8
+   ]
+  },
+  "flavor": "The crowd roars; he answers.",
+  "rarity": "Common",
+  "flavor_ja": "歓声が上がれば、応えるまで。",
+  "connection_shape": "queen_2",
+  "name_ja": "剣闘士"
+ },
+ "hero": {
+  "id": "hero",
+  "i18n": {
+   "ja": {
+    "name": "勇者"
+   }
+  },
+  "icon": "units003_hero",
+  "name": "Hero",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "fire_items",
+      "tag": "Weapon"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    40,
+    60
+   ]
+  },
+  "flavor": "One more push!",
+  "rarity": "Common",
+  "flavor_ja": "もう一押しだ！",
+  "connection_shape": "queen",
+  "name_ja": "勇者"
+ },
+ "icequeen": {
+  "id": "icequeen",
+  "i18n": {
+   "ja": {
+    "name": "氷の女王"
+   }
+  },
+  "icon": "units003_icequeen",
+  "name": "Ice Queen",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       3,
+       4
+      ],
+      "t": "add_on_hit_status",
+      "status": "Chill"
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "t": "status_immune",
+      "status": "Chill"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Winter obeys only her.",
+  "rarity": "Rare",
+  "flavor_ja": "冬は彼女にのみ従う。",
+  "connection_shape": "rook",
+  "name_ja": "氷の女王"
+ },
+ "jester": {
+  "id": "jester",
+  "i18n": {
+   "ja": {
+    "name": "道化師"
+   }
+  },
+  "icon": "units003_jester",
+  "name": "Jester",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_spend"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Round and round the mischief goes.",
+  "rarity": "Uncommon",
+  "flavor_ja": "悪戯はぐるぐる巡る。",
+  "connection_shape": "shougi_keima_move",
+  "name_ja": "道化師"
+ },
+ "king": {
+  "id": "king",
+  "i18n": {
+   "ja": {
+    "name": "王"
+   }
+  },
+  "icon": "units003_king",
+  "name": "King",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "buff_linked",
+      "pct": [
+       8,
+       12
+      ]
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       1,
+       1
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     6
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "The realm rises at his word.",
+  "rarity": "Relic",
+  "flavor_ja": "王の一言に国が立つ。",
+  "connection_shape": "queen",
+  "name_ja": "王"
+ },
+ "knight": {
+  "id": "knight",
+  "i18n": {
+   "ja": {
+    "name": "騎士"
+   }
+  },
+  "icon": "units003_knight",
+  "name": "Knight",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       8,
+       12
+      ],
+      "t": "block"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnBPBeenHit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "None pass the line.",
+  "rarity": "Common",
+  "flavor_ja": "この線は誰も越えさせぬ。",
+  "connection_shape": "rook",
+  "name_ja": "騎士"
+ },
+ "miko": {
+  "id": "miko",
+  "i18n": {
+   "ja": {
+    "name": "巫女"
+   }
+  },
+  "icon": "units003_miko",
+  "name": "Shrine Maiden",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "cleanse"
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       4,
+       6
+      ],
+      "t": "heal_bp"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     5
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Purification along the sacred diagonal.",
+  "rarity": "Uncommon",
+  "flavor_ja": "聖なる対角に祓いを。",
+  "connection_shape": "bishop",
+  "name_ja": "巫女"
+ },
+ "monk": {
+  "id": "monk",
+  "i18n": {
+   "ja": {
+    "name": "武僧"
+   }
+  },
+  "icon": "units003_monk",
+  "name": "Monk",
+  "charge": {
+   "gain": "count",
+   "spend": "passive_per_stack",
+   "effects": [
+    {
+     "verb": {
+      "t": "damage_reduction",
+      "pct": [
+       1,
+       2
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnHit"
+   },
+   "capacity": [
+    6,
+    10
+   ]
+  },
+  "flavor": "Each strike, deeper calm.",
+  "rarity": "Common",
+  "flavor_ja": "一打ごとに深まる静寂。",
+  "connection_shape": "queen_2",
+  "name_ja": "武僧"
+ },
+ "ninja": {
+  "id": "ninja",
+  "i18n": {
+   "ja": {
+    "name": "忍者"
+   }
+  },
+  "icon": "units003_ninja",
+  "name": "Ninja",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       15,
+       25
+      ],
+      "t": "strike"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_bp_been_hit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Harm my ward, meet the shadow.",
+  "rarity": "Uncommon",
+  "flavor_ja": "我が主を害さば、影が応える。",
+  "connection_shape": "lance",
+  "name_ja": "忍者"
+ },
+ "orc": {
+  "id": "orc",
+  "i18n": {
+   "ja": {
+    "name": "オーク"
+   }
+  },
+  "icon": "units003_orc",
+  "name": "Orc",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "haste"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    40,
+    60
+   ]
+  },
+  "flavor": "Blood wakes the war-song.",
+  "rarity": "Uncommon",
+  "flavor_ja": "血が戦の歌を呼び覚ます。",
+  "connection_shape": "rook",
+  "name_ja": "オーク"
+ },
+ "paladin": {
+  "id": "paladin",
+  "i18n": {
+   "ja": {
+    "name": "聖騎士"
+   }
+  },
+  "icon": "units003_paladin",
+  "name": "Paladin",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       8,
+       12
+      ],
+      "t": "grant_shield"
+     },
+     "target": "bp_connected_lowest_hp"
+    }
+   ],
+   "trigger": {
+    "t": "on_heal_done"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Faith made a wall.",
+  "rarity": "Rare",
+  "flavor_ja": "信仰が壁となる。",
+  "connection_shape": "queen_2",
+  "name_ja": "聖騎士"
+ },
+ "pirate": {
+  "id": "pirate",
+  "i18n": {
+   "ja": {
+    "name": "海賊"
+   }
+  },
+  "icon": "units003_pirate",
+  "name": "Pirate",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       6,
+       10
+      ],
+      "t": "heal_bp"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    30,
+    50
+   ]
+  },
+  "flavor": "Every hit fills the coffers... and the wounds.",
+  "rarity": "Common",
+  "flavor_ja": "一撃ごとに財宝と傷が満ちる。",
+  "connection_shape": "queen",
+  "name_ja": "海賊"
+ },
+ "plaguedoctor": {
+  "id": "plaguedoctor",
+  "i18n": {
+   "ja": {
+    "name": "ペスト医師"
+   }
+  },
+  "icon": "units003_plaguedoctor",
+  "name": "Plague Doctor",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "amp_status",
+      "status": "Poison"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_status_applied"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "Let the miasma do its work.",
+  "rarity": "Uncommon",
+  "flavor_ja": "瘴気に仕事をさせよう。",
+  "connection_shape": "queen_2",
+  "name_ja": "ペスト医師"
+ },
+ "ranger": {
+  "id": "ranger",
+  "i18n": {
+   "ja": {
+    "name": "レンジャー"
+   }
+  },
+  "icon": "units003_ranger",
+  "name": "Ranger",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "bonus_vs_status",
+      "pct": [
+       20,
+       30
+      ],
+      "status": "any"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "She calls the weak point.",
+  "rarity": "Uncommon",
+  "flavor_ja": "彼女が弱点を告げる。",
+  "connection_shape": "rook_3",
+  "name_ja": "レンジャー"
+ },
+ "samurai": {
+  "id": "samurai",
+  "i18n": {
+   "ja": {
+    "name": "侍"
+   }
+  },
+  "icon": "units003_samurai",
+  "name": "Samurai",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       6,
+       10
+      ],
+      "t": "block"
+     },
+     "target": "self"
+    },
+    {
+     "verb": {
+      "t": "reflect_damage",
+      "pct": [
+       25,
+       35
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "OnBPBeenHit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Strike him, and the blade answers itself.",
+  "rarity": "Rare",
+  "flavor_ja": "斬れば、刃が自ら返す。",
+  "connection_shape": "rook",
+  "name_ja": "侍"
+ },
+ "shaman": {
+  "id": "shaman",
+  "i18n": {
+   "ja": {
+    "name": "シャーマン"
+   }
+  },
+  "icon": "units003_shaman",
+  "name": "Shaman",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "grant_charge"
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       1,
+       2
+      ],
+      "t": "apply_status",
+      "status": "Regen"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     5
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "The ancestors lend their breath.",
+  "rarity": "Uncommon",
+  "flavor_ja": "祖霊が息吹を貸す。",
+  "connection_shape": "queen_2",
+  "name_ja": "シャーマン"
+ },
+ "sorceress": {
+  "id": "sorceress",
+  "i18n": {
+   "ja": {
+    "name": "炎術師"
+   }
+  },
+  "icon": "units003_sorceress",
+  "name": "Sorceress",
+  "charge": {
+   "gain": "damage",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       18,
+       28
+      ],
+      "t": "multi_strike",
+      "hits": [
+       2,
+       3
+      ]
+     },
+     "target": "self"
+    },
+    {
+     "verb": {
+      "n": [
+       3,
+       4
+      ],
+      "t": "add_on_hit_status",
+      "status": "Burn"
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_damage_dealt"
+   },
+   "capacity": [
+    60,
+    90
+   ]
+  },
+  "flavor": "Embers become an inferno.",
+  "rarity": "Rare",
+  "flavor_ja": "残り火が業火となる。",
+  "connection_shape": "queen",
+  "name_ja": "炎術師"
+ },
+ "valkyrie": {
+  "id": "valkyrie",
+  "i18n": {
+   "ja": {
+    "name": "ヴァルキュリア"
+   }
+  },
+  "icon": "units003_valkyrie",
+  "name": "Valkyrie",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       10,
+       15
+      ],
+      "t": "grant_shield"
+     },
+     "target": "bp_connected"
+    },
+    {
+     "verb": {
+      "n": [
+       5,
+       8
+      ],
+      "t": "heal_bp"
+     },
+     "target": "bp_connected"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_bp_been_hit"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "She lifts the fallen mid-battle.",
+  "rarity": "Rare",
+  "flavor_ja": "戦場のただ中で倒れし者を掬い上げる。",
+  "connection_shape": "chess_knight_move",
+  "name_ja": "ヴァルキュリア"
+ },
+ "vampire": {
+  "id": "vampire",
+  "i18n": {
+   "ja": {
+    "name": "吸血鬼"
+   }
+  },
+  "icon": "units003_vampire",
+  "name": "Vampire Lord",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "t": "grant_lifesteal",
+      "pct": [
+       15,
+       25
+      ],
+      "dur_s": [
+       4,
+       6
+      ]
+     },
+     "target": "units_connected"
+    },
+    {
+     "verb": {
+      "t": "buff_self",
+      "pct": [
+       3,
+       5
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_connected_unit_attack"
+   },
+   "capacity": [
+    3,
+    4
+   ]
+  },
+  "flavor": "The court drinks deep at his command.",
+  "rarity": "Relic",
+  "flavor_ja": "宮廷は主の命で深く飲む。",
+  "connection_shape": "chess_knight_move",
+  "name_ja": "吸血鬼"
+ },
+ "werewolf": {
+  "id": "werewolf",
+  "i18n": {
+   "ja": {
+    "name": "人狼"
+   }
+  },
+  "icon": "units003_werewolf",
+  "name": "Werewolf",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "haste"
+     },
+     "target": "self"
+    },
+    {
+     "verb": {
+      "t": "buff_self",
+      "pct": [
+       2,
+       3
+      ]
+     },
+     "target": "self"
+    }
+   ],
+   "trigger": {
+    "t": "on_kill"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "The kill only sharpens the hunger.",
+  "rarity": "Uncommon",
+  "flavor_ja": "殺しは飢えを研ぎ澄ますだけ。",
+  "connection_shape": "chess_knight_move",
+  "name_ja": "人狼"
+ },
+ "witch": {
+  "id": "witch",
+  "i18n": {
+   "ja": {
+    "name": "魔女"
+   }
+  },
+  "icon": "units003_witch",
+  "name": "Witch",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "add_on_hit_status",
+      "status": "Burn"
+     },
+     "target": "units_connected"
+    }
+   ],
+   "trigger": {
+    "s": [
+     3,
+     4
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "A hex stitched into every strike.",
+  "rarity": "Uncommon",
+  "flavor_ja": "一撃ごとに呪いを縫い込む。",
+  "connection_shape": "bishop",
+  "name_ja": "魔女"
+ },
+ "wizard": {
+  "id": "wizard",
+  "i18n": {
+   "ja": {
+    "name": "魔法使い"
+   }
+  },
+  "icon": "units003_wizard",
+  "name": "Wizard",
+  "charge": {
+   "gain": "count",
+   "spend": "fire_on_full",
+   "effects": [
+    {
+     "verb": {
+      "n": [
+       2,
+       3
+      ],
+      "t": "advance_cooldown"
+     },
+     "target": "bp_connected_max_cooldown_item"
+    }
+   ],
+   "trigger": {
+    "s": [
+     4,
+     5
+    ],
+    "t": "every_secs"
+   },
+   "capacity": [
+    2,
+    3
+   ]
+  },
+  "flavor": "Time bends around the old man's staff.",
+  "rarity": "Rare",
+  "flavor_ja": "老翁の杖の周りで時が歪む。",
+  "connection_shape": "bishop",
+  "name_ja": "魔法使い"
  }
 };
 const CONN_SHAPES={

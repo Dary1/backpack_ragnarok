@@ -222,6 +222,10 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
 
   const infoCol = page.locator('.dex-detail-col-info');
   await expect(infoCol).toBeVisible();
+  // REQ-0194: the item NAME moved from the info column into the detail
+  // panel's masthead — name assertions target the whole detail pane;
+  // flavor/effects assertions stay scoped to the info column.
+  const pane = page.locator('[data-testid="dex-detail-pane"]');
 
   const contentResp = await page.request.get('/api/content');
   const content = await contentResp.json();
@@ -239,7 +243,7 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
   // Default locale is EN: EN name/flavor/effects text visible, JA text
   // absent (assuming JA text genuinely differs from EN, which the live
   // dagger fixture's translated copy does).
-  await expect(infoCol).toContainText(enName);
+  await expect(pane).toContainText(enName);
   if (enFlavor !== jaFlavor) {
     await expect(infoCol).toContainText(enFlavor);
     const infoText = await infoCol.textContent();
@@ -256,12 +260,16 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
   await page.locator('.lang-toggle').click();
 
   // Now JA name/flavor/effects text visible, EN text absent.
-  await expect(infoCol).toContainText(jaName);
+  await expect(pane).toContainText(jaName);
   if (enFlavor !== jaFlavor) {
     await expect(infoCol).toContainText(jaFlavor);
     const infoTextJa = await infoCol.textContent();
     expect(infoTextJa).not.toContain(enFlavor);
-    expect(infoTextJa).not.toContain(enName);
+    // REQ-0194: assert the EN name is absent from the WHOLE pane (the
+    // masthead's EN caption is uppercased, so a case-sensitive check
+    // on the mixed-case EN name stays meaningful).
+    const paneTextJa = await pane.textContent();
+    expect(paneTextJa).not.toContain(enName);
   }
   if (enEff && jaEff && enEff !== jaEff) {
     await expect(infoCol).toContainText(jaEff);
@@ -274,7 +282,7 @@ test('dex v2 R3: view-mode locale switching shows ONLY the active locale text (n
 
   // Toggle back to EN -- confirms it is reversible, not a one-way flip.
   await page.locator('.lang-toggle').click();
-  await expect(infoCol).toContainText(enName);
+  await expect(pane).toContainText(enName);
 });
 
 test('dex v2 R2: detail diagram is enlarged (~5x per-cell size vs the old 46px baseline) and still fits its column height', async ({ page }) => {
@@ -348,4 +356,68 @@ test('dex v2 R2: detail diagram is enlarged (~5x per-cell size vs the old 46px b
   await expect(hiltDiagram.locator('.dex-diagram-socket-overlay')).toBeVisible();
   await expect(hiltDiagram.locator('.dex-diagram-socket-dot')).toHaveCount(1);
   await expect(hiltDiagram.locator('.dex-diagram-socket-labels .dex-tag-chip').first()).toBeVisible();
+});
+
+// ---- REQ-0208: Units / Monsters catalog tabs ----
+// The Dex tab row is real now (Items / Units / Monsters; the three disabled
+// "reserved" tabs are gone). Expected counts are derived from /api/content's
+// own units/monsters sections, so these tests hold on any content set.
+
+test('dex units tab (REQ-0208): every unit def gets a card, and NO shape grid is drawn', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const expected = Object.keys(content.units ?? {}).length;
+  expect(expected).toBeGreaterThan(0);
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Units' }).click();
+  await expect(page.locator('.dex-tab-active', { hasText: 'Units' })).toBeVisible();
+  await expect(page.locator('.dex-unit-card')).toHaveCount(expected);
+
+  // The load-bearing negative: a unit's backpack shape is rolled at
+  // emission, so the units surface must never draw a ShapeGrid.
+  await expect(page.locator('.dex-md .shape-grid')).toHaveCount(0);
+
+  // Master/detail contract kept: index=0 preselected, detail pane populated,
+  // and the schema slot is the explicit rolled-at-emission note.
+  await expect(page.locator('[data-testid=dex-unit-detail]')).toBeVisible();
+  await expect(page.locator('.dex-unit-shape-note')).toBeVisible();
+});
+
+test('dex monsters tab (REQ-0208): authority-path monsters render with hp band + skill chips', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const monsters = content.monsters ?? {};
+  const ids = Object.keys(monsters);
+  expect(ids.length).toBeGreaterThan(0);
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Monsters' }).click();
+  await expect(page.locator('.dex-monster-card')).toHaveCount(ids.length);
+
+  // Select a known monster; the detail pane shows its served hp band and one
+  // localized skill chip per served skill id.
+  const target = ids[0];
+  const card = page.locator('.dex-monster-card', { hasText: target }).first();
+  await card.locator('.dex-card-summary').click();
+  await expect(page.locator('[data-testid=dex-monster-detail]')).toBeVisible();
+  const hp = monsters[target].hp;
+  await expect(page.locator('.dex-monster-stats')).toContainText(`${hp[0]}–${hp[1]}`);
+  await expect(page.locator('.dex-monster-skillchip')).toHaveCount((monsters[target].skills || []).length);
+});
+
+test('dex tabs (REQ-0208): Items stays the default and the catalog contract survives a round trip', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const expectedCount = Object.keys(content.items).length + Object.keys(content.sis).length;
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await expect(page.locator('.dex-tab-active', { hasText: 'Items' })).toBeVisible();
+
+  await page.locator('.dex-tab', { hasText: 'Monsters' }).click();
+  await expect(page.locator('.dex-tab-active', { hasText: 'Monsters' })).toBeVisible();
+
+  await page.locator('.dex-tab', { hasText: 'Items' }).click();
+  await expect(page.locator('.dex-card')).toHaveCount(expectedCount);
+  await expect(page.locator('.dex-count')).toHaveText(`${expectedCount} / ${expectedCount}`);
 });

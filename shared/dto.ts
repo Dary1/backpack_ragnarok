@@ -195,6 +195,32 @@ export interface ApiPackEntry {
   i18n?: { ja?: { name?: string } };
 }
 
+/** REQ-0208: a monster_def (enemy/1 dialect) as served for the Dex -- the
+ * display slice of the SAME registry-first payload the sim fights with
+ * (services/core.cjs getScheduleContent; see server/lib/content.cjs
+ * monstersFromCore). `hp` is the [min,max] roll band; `footprint` is [w,h]
+ * in cells (the REQ-0188 drift guard keeps the def field in agreement with
+ * the linked artwork). `skills` are skill ids; display names resolve through
+ * ApiContentPayload.monster_skills. */
+export interface ApiMonsterEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  /** enemy/1 dialect: lowercase (common/uncommon/rare/relic). */
+  rarity: string;
+  hp?: [number, number];
+  footprint?: [number, number];
+  skills?: string[];
+  pack_role?: string;
+  i18n?: { en?: { name?: string }; ja?: { name?: string } };
+}
+
+/** REQ-0208: display names for one skill id referenced by a served monster. */
+export interface ApiSkillName {
+  name: string;
+  name_ja?: string;
+}
+
 /** REQ-0170 / REQ-0128b: one entry of vocab.json's connection_shapes table. */
 export interface ApiConnShape {
   kind: 'ray' | 'offset' | 'none';
@@ -212,6 +238,8 @@ export interface ApiContentPayload {
   tms: Record<string, ApiTmEntry>; // REQ-0042
   units: Record<string, ApiUnitEntry>; // REQ-0170
   packs: Record<string, ApiPackEntry>; // REQ-0170
+  monsters: Record<string, ApiMonsterEntry>; // REQ-0208
+  monster_skills: Record<string, ApiSkillName>; // REQ-0208
   connection_shapes: Record<string, ApiConnShape>; // REQ-0170
   trees: ApiTrees;
   scenario: ApiScenario;
@@ -595,6 +623,25 @@ export interface ApiDungeonsPayload {
  * fetchContent()'s items map for name/icon (see WarehouseTab.tsx --
  * reuses the SAME item lookup every other content-aware view already
  * uses, no second item-lookup path). */
+/** REQ-0195d: the full BP (unit) instance payload carried on a kind:'bp'
+ * warehouse row (a bought unit). Delivered verbatim from the seller's
+ * canvas BP and placed via lib/placement firstFitPlaceBp on claim; never
+ * re-rolled. Extra verbatim fields (name/color/cellCount/bonuses/roll)
+ * are merged onto the placed BP by the claim path. */
+export interface ApiWarehouseBp {
+  shape: Array<[number, number]>;
+  unit: { id: string; off: [number, number] };
+  hpMax: number;
+  cellCount?: number;
+  bonuses?: unknown[];
+  name?: string;
+  color?: string;
+  origin?: [number, number];
+  /** REQ-0196 roll container, when minted; carried verbatim. */
+  roll?: { pct: number };
+  id?: string;
+}
+
 export interface ApiWarehouseItem {
   itemUid: string;
   playerId: string;
@@ -603,9 +650,11 @@ export interface ApiWarehouseItem {
   expiresAt: string;
   sourceRoomId: string;
   sourceRunId: string;
-  /** REQ-0042: present (and 'tm') for a TM (Transmutator)-kind row, e.g.
-   * an LRDST reward/grant -- absent for a plain PO/SI row. */
-  kind?: 'tm';
+  /** REQ-0042/0195d: 'tm' for a TM-stack row, 'bp' for a bought unit
+   * (BP) row -- absent for a plain PO/SI row. */
+  kind?: 'tm' | 'bp';
+  /** REQ-0195d: for kind:'bp' rows -- the verbatim BP instance payload. */
+  bp?: ApiWarehouseBp;
   /** REQ-0042: TM-kind rows carry a stack quantity. Absent for a plain
    * PO/SI row (those are always singular). */
   qty?: number;
@@ -619,14 +668,16 @@ export interface ApiWarehouseItem {
 
 // ---- REQ-0064: Market wire shapes (server/routes/market.cjs) ----
 // Every /api/market response envelope carries `dtoVersion:
-// MARKET_DTO_VERSION` (currently 1; server/services/market.cjs owns the
-// runtime constant -- shared/dto.ts is types-only by rule). Bump the
+// MARKET_DTO_VERSION` (currently 2; server/services/market/lib.cjs owns
+// the runtime constant -- shared/dto.ts is types-only by rule). Bump the
 // literal here AND there together whenever a market wire shape changes
 // incompatibly.
-export type MarketDtoVersion = 1;
+export type MarketDtoVersion = 2;
 
-/** Law 1 ("barter in kind"): a price is an integer qty of ONE TM.
- * v1's trade TM is content id 'lrdst' (content/live/live_tms.json). */
+/** Law 1 ("barter in kind"): a price is an integer qty of ONE TM. That
+ * tm is one of the live TM registry ids the LISTINGS envelope returns as
+ * `tms[]` (content/live/live_tms.json); 'lrdst' is the sole live entry
+ * today. Prices carved in different TMs never mix. */
 export interface ApiMarketPrice {
   tm: string;
   qty: number;
@@ -636,6 +687,10 @@ export interface ApiMarketPrice {
  * last-5 per itemId, newest first). */
 export interface ApiMarketPriceHistoryEntry {
   qty: number;
+  /** REQ-0195a: the TM this price was denominated in. Prices in
+   * different TMs never mix; the client anchor shows only entries whose
+   * tm matches the currently-chosen price TM. Legacy entries read lrdst. */
+  tm: string;
   t: string;
 }
 
@@ -648,7 +703,16 @@ export interface ApiMarketListing {
   id: string;
   sellerId: string;
   sellerName: string;
-  itemUid: string;
+  /** REQ-0195b: the listed instance uid (po.uid / si.uid / bp.id), or
+   * null for kind:'tm' (currency has no per-instance uid). */
+  itemUid: string | null;
+  /** REQ-0195a: the tradeable content kind. 'po' today (legacy listings,
+   * which predate the field, normalize to 'po' at read); si/unit/tm land
+   * in REQ-0195b-d. */
+  kind: 'po' | 'si' | 'unit' | 'tm';
+  /** REQ-0195b: for kind:'tm' only -- the integer amount of `itemId` (a
+   * live TM) being sold, [1,999]. Absent for po/si/unit. */
+  tmQty?: number;
   itemId: string;
   /** Display conveniences resolved server-side; the full item def
    * (icon/shape/effects) still comes from fetchContent()'s items map by
@@ -660,6 +724,14 @@ export interface ApiMarketListing {
   /** 1-based position in content/live/live_items.json (v1 dex
    * numbering; null = not in the dex, e.g. pilot-only items). */
   dexNo: number | null;
+  /** REQ-0195e: the roll-fulfillment fraction of the listed instance
+   * (min=0, max=1), DTO-derived (never stored on the listing) -- po/si:
+   * the instance q (REQ-0063); unit: bp.roll?.pct (the REQ-0196
+   * container) else null; tm: null. A SETTLED listing carries the value
+   * FROZEN at settle time (the live instance is gone by then), so
+   * MinePane history stays honest. null renders as the "unmeasured"
+   * badge (units) or nothing (tm); a number renders a 0-100% fill bar. */
+  rollPct: number | null;
   price: ApiMarketPrice;
   /** Law 2: burn = max(1, ceil(qty * 0.08)), settlement-only. */
   burn: number;
@@ -687,8 +759,10 @@ export interface ApiMarketListing {
 export interface ApiMarketListingsResponse {
   ok: true;
   dtoVersion: MarketDtoVersion;
-  /** The market's one trade TM id (law 1) -- 'lrdst' today. */
-  tm: string;
+  /** REQ-0195a: the live TM registry ids (content/live/live_tms.json), in
+   * display order -- the currency set every price.tm must draw from (was
+   * the scalar `tm` at dtoVersion 1). 'lrdst' is the sole entry today. */
+  tms: string[];
   listings: ApiMarketListing[];
 }
 
@@ -696,7 +770,15 @@ export interface ApiMarketListingsResponse {
  * market TM id; qty an integer in [1, 999]. Optional Idempotency-Key
  * HEADER dedupes retries (replayed:true on the response). */
 export interface ApiMarketCreateListingRequest {
-  itemUid: string;
+  /** REQ-0195a: 'po' (the default when omitted); tm in REQ-0195b;
+   * si/unit in REQ-0195c-d. */
+  kind?: 'po' | 'si' | 'unit' | 'tm';
+  /** po/si/unit: the instance uid to list. Absent for kind:'tm'. */
+  itemUid?: string;
+  /** kind:'tm': the live TM content id being sold. */
+  itemId?: string;
+  /** kind:'tm': the integer amount to sell, [1,999]. */
+  tmQty?: number;
   price: ApiMarketPrice;
 }
 
@@ -747,10 +829,12 @@ export interface ApiMarketFurnaceResponse {
   /** REQ-0066: the season the window belongs to (index + ja name), or
    * null on the all-time fallback. */
   season?: { index: number; name: string } | null;
+  /** REQ-0195a: per-TM burn rows (burns in different TMs never mix). One
+   * row per TM that burned in the window; empty when nothing burned.
+   * `since` is the season-window start (REQ-0066), null on the all-time
+   * fallback. */
   furnace: {
-    tm: string;
-    total: number;
-    count: number;
+    totals: { tm: string; total: number; count: number }[];
     since: string | null;
   };
 }

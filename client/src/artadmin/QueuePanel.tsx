@@ -4,11 +4,14 @@
 // with a live elapsed timer + the cold-load hint, pending jobs each with a
 // Cancel, and the inspection backlog depth. Visible without a selection.
 // art-queue keeps showing the generation queue DEPTH number (REQ-0151 e2e).
+// REQ-0197: deferred-batch mode -- a hold toggle gates newly queued jobs
+// behind an explicit "Execute batch", which releases them grouped so
+// same-prompt jobs run back to back (text-encoder conditioning reuse).
 import { useState } from 'react';
 import type { ArtQueueDto } from '../api';
 import { fmtElapsed, SHAPE_LOCKS } from './artShared';
 
-export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, onGenerate, onCancel }: {
+export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, onGenerate, onCancel, onHold, onExecute }: {
   selected: string | null;
   selectedKind: string | null;
   queue: ArtQueueDto | null;
@@ -16,6 +19,8 @@ export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, 
   nowTick: number;
   onGenerate: (mode: 'next' | 'n' | 'seed', n: number, seed: number, lockOverride: string) => void;
   onCancel: (artwork: string, seed: number, renderId: number) => void;
+  onHold: (held: boolean) => void;
+  onExecute: () => void;
 }) {
   const [nSeeds, setNSeeds] = useState(3);
   const [explicitSeed, setExplicitSeed] = useState(1);
@@ -28,7 +33,10 @@ export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, 
 
   const running = queue ? queue.running : null;
   const pending = queue ? queue.pending : [];
-  const depth = pending.length + (running ? 1 : 0);
+  // REQ-0197: the deferred-batch gate. `|| []` tolerates a stale server.
+  const heldPending = queue ? (queue.heldPending || []) : [];
+  const held = !!(queue && queue.held);
+  const depth = pending.length + heldPending.length + (running ? 1 : 0);
   // live elapsed: server-reported elapsed + local time since that snapshot
   const elapsed = running ? running.elapsed_ms + Math.max(0, nowTick - fetchedAt) : 0;
 
@@ -64,6 +72,17 @@ export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, 
       </div>
       <div className="panel panel-pad aa-queuebox">
         <div className="den t-label gold-text">Queue <b data-testid="art-queue" className="tnum">{depth}</b></div>
+        <div className="aa-gen-row">
+          <label className="t-micro">
+            <input data-testid="art-queue-hold" type="checkbox" checked={held} disabled={!queue}
+              onChange={(e) => onHold(e.target.checked)} /> hold: run only on execute
+          </label>
+        </div>
+        {held && (
+          <button data-testid="art-queue-execute" type="button" className="btn aa-btn-sm"
+            disabled={heldPending.length === 0} onClick={() => onExecute()}>
+            Execute batch ({heldPending.length})</button>
+        )}
         {running ? (
           <div data-testid="queue-running" className="aa-qjob is-running">
             <span className="chip is-live"><span className="dot" />running</span>
@@ -81,6 +100,18 @@ export function QueuePanel({ selected, selectedKind, queue, fetchedAt, nowTick, 
           <div className="aa-qpending">
             {pending.map((p) => (
               <div key={p.renderId} data-testid={'queue-pending-' + p.renderId} className="aa-qjob">
+                <span className="aa-qjob-name">{p.artwork} <span className="tnum">s{p.seed}</span></span>
+                <button type="button" data-testid={'queue-cancel-' + p.renderId} className="btn btn-ghost aa-btn-xs"
+                  onClick={() => onCancel(p.artwork, p.seed, p.renderId)}>Cancel</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {heldPending.length > 0 && (
+          <div className="aa-qheld">
+            {heldPending.map((p) => (
+              <div key={p.renderId} data-testid={'queue-held-' + p.renderId} className="aa-qjob">
+                <span className="chip">held</span>
                 <span className="aa-qjob-name">{p.artwork} <span className="tnum">s{p.seed}</span></span>
                 <button type="button" data-testid={'queue-cancel-' + p.renderId} className="btn btn-ghost aa-btn-xs"
                   onClick={() => onCancel(p.artwork, p.seed, p.renderId)}>Cancel</button>

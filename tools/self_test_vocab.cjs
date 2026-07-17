@@ -21,7 +21,8 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { render, renderAll } = require('./eff_render.cjs');
+const { render, renderAll, renderCharge } = require('./eff_render.cjs');
+const { validateCharge } = require('../shared/content_validate.cjs');
 
 const DIR = __dirname;
 const vocab = JSON.parse(fs.readFileSync(path.join(DIR, '..', 'content', 'vocab.json'), 'utf8'));
@@ -416,6 +417,60 @@ try { fs.unlinkSync(draftPath.replace(/\.json$/, '.approved.json')); } catch (e)
 try { fs.unlinkSync(negPath); } catch (e) {}
 try { fs.unlinkSync(negPath.replace(/\.json$/, '.approved.json')); } catch (e) {}
 
+// ---- REQ-0200: unit `charge` fixtures ----------------------------------------
+// The charge triggers were moved into vocab.triggers by REQ-0200, so the REQ-0081
+// coverage assertion below now demands a fixture for each. These are HONEST charge
+// fixtures (validated by the real validateCharge, rendered by the real renderCharge),
+// NOT fake PO effects -- they collectively exercise every charge trigger, all three
+// spend modes, all six targets, grant_lifesteal, and the grammar's exception cases
+// (bonus_vs_status status "any", fire_items.tag, multi_strike.hits range).
+const chargeFixtures = [
+  { trigger: { t: 'every_secs', s: [2, 3] }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'strike', n: [2, 4] }, target: 'self' }] },
+  { trigger: { t: 'OnHit' }, gain: 'count', capacity: [6, 10], spend: 'passive_per_stack', effects: [{ verb: { t: 'buff_self', pct: [1, 2] }, target: 'self' }] },
+  { trigger: { t: 'OnBPBeenHit' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'block', n: [8, 12] }, target: 'self' }] },
+  { trigger: { t: 'on_damage_dealt' }, gain: 'damage', capacity: [80, 120], spend: 'fire_on_full', effects: [{ verb: { t: 'multi_strike', n: [15, 25], hits: [3, 4] }, target: 'self' }] },
+  { trigger: { t: 'on_connected_unit_spend' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'grant_charge', n: [1, 2] }, target: 'units_connected' }] },
+  { trigger: { t: 'on_connected_unit_attack' }, gain: 'count', capacity: [3, 4], spend: 'fire_on_full', effects: [{ verb: { t: 'bonus_vs_status', status: 'any', pct: [20, 30] }, target: 'units_connected' }] },
+  { trigger: { t: 'on_connected_unit_bp_been_hit' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'grant_shield', n: [10, 15] }, target: 'bp_connected' }, { verb: { t: 'heal_bp', n: [5, 8] }, target: 'bp_connected' }] },
+  { trigger: { t: 'on_own_passive_fire' }, gain: 'count', capacity: [1, 2], spend: 'fire_on_full', effects: [{ verb: { t: 'heal_bp', n: [3, 5] }, target: 'units_connected_distributed' }] },
+  { trigger: { t: 'on_heal_done' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'grant_shield', n: [8, 12] }, target: 'bp_connected_lowest_hp' }] },
+  { trigger: { t: 'on_status_applied' }, gain: 'count', capacity: [3, 4], spend: 'fire_on_full', effects: [{ verb: { t: 'amp_status', status: 'Poison', n: [1, 2] }, target: 'units_connected' }] },
+  { trigger: { t: 'on_kill' }, gain: 'count', capacity: [2, 3], spend: 'fire_on_full', effects: [{ verb: { t: 'haste', n: [2, 3] }, target: 'self' }, { verb: { t: 'buff_self', pct: [8, 12] }, target: 'self' }] },
+  // spend=transform (no units003 kit uses it; the grammar demands expressibility) + transform_to
+  { trigger: { t: 'every_secs', s: [4, 6] }, gain: 'count', capacity: [2, 3], spend: 'transform', transform_to: 'selftest_form2' },
+  // fire_items.tag filter + advance_cooldown -> max-cooldown target + grant_lifesteal(pct,dur_s)
+  { trigger: { t: 'on_damage_dealt' }, gain: 'damage', capacity: [40, 60], spend: 'fire_on_full', effects: [{ verb: { t: 'fire_items', tag: 'Weapon' }, target: 'self' }, { verb: { t: 'advance_cooldown', n: [2, 3] }, target: 'bp_connected_max_cooldown_item' }, { verb: { t: 'grant_lifesteal', pct: [15, 25], dur_s: [4, 6] }, target: 'units_connected' }] },
+];
+const chargeTriggersCovered = new Set();
+log('');
+log('--- REQ-0200 charge fixtures (validateCharge + renderCharge) ---');
+for (let ci = 0; ci < chargeFixtures.length; ci++) {
+  const cf = chargeFixtures[ci];
+  let vok = true, vmsg = '';
+  try { validateCharge(cf, vocab, 'chargefix[' + ci + ']'); }
+  catch (e) { vok = false; vmsg = e.message; }
+  const en = renderCharge(cf, 'en');
+  const ja = renderCharge(cf, 'ja');
+  const rok = typeof en === 'string' && en.length > 0 && typeof ja === 'string' && ja.length > 0;
+  const ok = vok && rok;
+  log((ok ? 'OK  ' : 'FAIL') + ' chargefix[' + ci + '] ' + cf.trigger.t + '/' + cf.spend +
+    (vok ? '' : '  VALIDATE: ' + vmsg));
+  if (!ok) { failures++; if (!vok) log('  validateCharge threw: ' + vmsg); }
+  chargeTriggersCovered.add(cf.trigger.t);
+}
+// coverage cross-checks: every charge target + spend mode is exercised by a fixture.
+{
+  const tSeen = new Set(), sSeen = new Set();
+  for (const cf of chargeFixtures) { sSeen.add(cf.spend); for (const e of (cf.effects || [])) tSeen.add(e.target); }
+  const allTargets = Object.keys((vocab.charge && vocab.charge.targets) || {});
+  const allSpends = Object.keys((vocab.charge && vocab.charge.spend) || {});
+  const missT = allTargets.filter(t => !tSeen.has(t));
+  const missS = allSpends.filter(x => !sSeen.has(x));
+  if (missT.length) { failures++; log('FAIL: charge fixtures miss targets: ' + JSON.stringify(missT)); }
+  if (missS.length) { failures++; log('FAIL: charge fixtures miss spend modes: ' + JSON.stringify(missS)); }
+  log('charge targets exercised ' + tSeen.size + '/' + allTargets.length + ', spend modes ' + sSeen.size + '/' + allSpends.length);
+}
+
 // ---- REQ-0081: assert FULL trigger coverage (was an informational "N of 10" print) ----
 // Every trigger declared in vocab.triggers must be exercised by at least one fixture that
 // also passed the render + range checks above. This makes coverage a hard gate: if a future
@@ -423,6 +478,7 @@ try { fs.unlinkSync(negPath.replace(/\.json$/, '.approved.json')); } catch (e) {
 // under-reporting.
 const coveredTriggers = new Set(
   poEntries.concat(siEntries).flatMap(e => e.effects.map(f => f.trigger.t)));
+for (const t of chargeTriggersCovered) coveredTriggers.add(t); // REQ-0200 charge fixtures
 const uncoveredTriggers = (vocab.triggers || []).filter(t => !coveredTriggers.has(t));
 log('');
 log('--- trigger coverage (REQ-0081) ---');
@@ -437,8 +493,8 @@ if (uncoveredTriggers.length > 0) {
 console.log(lines.join('\n'));
 console.log('');
 console.log('=== self_test_vocab.cjs summary ===');
-console.log('verbs covered: ' + vocab.verbs.length + ' / triggers covered (incl. extras): ' +
-  new Set(poEntries.concat(siEntries).flatMap(e => e.effects.map(f => f.trigger.t))).size + ' of ' + vocab.triggers.length);
+console.log('verbs covered: ' + vocab.verbs.length + ' / triggers covered (incl. extras + charge): ' +
+  coveredTriggers.size + ' of ' + vocab.triggers.length);
 console.log('failures: ' + failures);
 if (failures === 0) {
   console.log('ALL GREEN');

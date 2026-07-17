@@ -7,10 +7,15 @@
 // written as \uXXXX escapes (pure-ASCII source; JS decodes at runtime).
 //   GET  /api/bio/:bpUid        -> { ok, bio: <DTO> }
 //   POST /api/bio/:bpUid/name   -> append a carried name (rename history)
-const { sendJSON, readBody, getAuthToken } = require('../lib/http_util.cjs');
+const { sendJSON, readBody } = require('../lib/http_util.cjs'); // REQ-0199: getAuthToken dropped (JWT-first resolver reads the req itself)
 const admin = require('../admin.cjs');
 const storage = require('../storage.cjs');
 const bio = require('../services/bio.cjs');
+// REQ-0199: both handlers below resolve the caller through
+// admin.resolveAuthFromRequest(req) -- a Supabase Bearer JWT first, then
+// the REQ-0037 X-Auth-Token path + dev_mode fallback -- for parity with
+// schedule/warehouse/profile. Previously the X-Auth-Token-ONLY resolver
+// mis-resolved a JWT-only caller to the dev_mode fallback (the WRONG player).
 const BIO_RE = /^\/api\/bio\/([^/]+)$/;
 const BIO_NAME_RE = /^\/api\/bio\/([^/]+)\/name$/;
 const I18N = {
@@ -53,7 +58,7 @@ function tryBioRoutes(req, res, url, p) {
   const mName = p.match(BIO_NAME_RE);
   if (mName) {
     if (req.method !== 'POST') { sendJSON(res, 404, { ok: false, error: 'not found' }); return; }
-    const resolved = admin.resolveAuth(getAuthToken(req));
+    const resolved = admin.resolveAuthFromRequest(req);
     if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
     const uid = decodeURIComponent(mName[1]);
     readBody(req, (err, bodyStr) => {
@@ -70,7 +75,7 @@ function tryBioRoutes(req, res, url, p) {
   const m = p.match(BIO_RE);
   if (!m) return false;
   if (req.method !== 'GET') { sendJSON(res, 404, { ok: false, error: 'not found' }); return; }
-  const resolved = admin.resolveAuth(getAuthToken(req));
+  const resolved = admin.resolveAuthFromRequest(req);
   if (!resolved.ok) { sendJSON(res, 401, { ok: false, error: 'unauthorized: ' + resolved.reason }); return; }
   const uid = decodeURIComponent(m[1]);
   const doc = storage.readBio(uid);

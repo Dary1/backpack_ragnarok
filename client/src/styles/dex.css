@@ -628,3 +628,200 @@
     width: 100%;
   }
 }
+
+/* ====================================================================
+   REQ-0194 — Dex detail pane overhaul. The former two disjoint ornate
+   panels (Schema / info) merge into ONE rarity-framed plate: a shared
+   masthead (No. + name + EN caption + rarity/kind/id/type chips), then
+   the schema and lore SECTIONS (same .dex-detail-col-* class names, no
+   longer standalone panels), separated by a rune divider. The schema
+   grid is centered on a "specimen plate" stage; the socket callouts
+   became a static numbered legend (no more absolutely-positioned chips
+   floating at gridWidth+14px). Appended after the REQ-0075 section so
+   later-wins re-skins without disturbing the E2E selector contract.
+   ==================================================================== */
+
+.dex-detail-panel {
+  padding: 0 0 10px;
+  border-radius: 3px;
+}
+
+/* The cols are SECTIONS of the one panel now — neutralize the older
+   standalone-panel flex/scroll sizing wherever they render (specificity
+   0,3,0 so this beats the REQ-0120 .dex-md-detail overrides too). */
+.dex-detail-drawer-panes .dex-detail-panel .dex-detail-col-diagram {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+.dex-detail-drawer-panes .dex-detail-panel .dex-detail-col-info {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding: 0 20px 16px;
+}
+
+/* ---------- masthead (the one identity both sections hang off) ---------- */
+.dex-detail-masthead {
+  padding: 15px 20px 13px;
+  border-bottom: 1px solid rgba(201, 169, 89, 0.16);
+  background: linear-gradient(180deg, rgba(201, 169, 89, 0.055), rgba(201, 169, 89, 0) 82%);
+}
+.dex-detail-masthead-no {
+  font-size: 10.5px;
+  color: var(--gold);
+  letter-spacing: 0.22em;
+  border: 1px solid rgba(201, 169, 89, 0.4);
+  border-radius: 2px;
+  padding: 3px 8px 2px;
+  white-space: nowrap;
+  transform: translateY(-2px);
+}
+.dex-detail-panel .dex-detail-name {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 800;
+  color: var(--bone);
+  line-height: 1.2;
+}
+.dex-detail-kindchip {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- section heads (shared by schema + lore) ---------- */
+.dex-detail-panel .dex-detail-phead {
+  padding: 13px 20px 2px;
+  border-bottom: none;
+}
+.dex-detail-phead-rn {
+  color: var(--gold);
+  font-size: 14px;
+}
+.dex-detail-section-divider {
+  margin: 2px 20px 0;
+  opacity: 0.85;
+}
+
+/* ---------- schema stage (centered specimen plate) ---------- */
+.dex-detail-panel .dex-diagram {
+  margin: 0;
+  padding: 12px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+}
+.dex-diagram-stage {
+  max-width: 100%;
+  padding: 22px;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 40%, rgba(38, 46, 58, 0.85), rgba(16, 20, 27, 0.92) 78%);
+  border: 1px solid var(--border-lo);
+  border-radius: 4px;
+  box-shadow: inset 0 0 34px rgba(0, 0, 0, 0.38);
+}
+.dex-diagram .dex-diagram-grid-wrap {
+  margin: 0;
+}
+/* the raster icons ship on opaque white plates — frame them so they read
+   as mounted specimen plates instead of raw white slabs on the dark bg */
+.dex-diagram .shape-grid-icon-overlay {
+  outline: 1px solid rgba(201, 169, 89, 0.32);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- socket markers + static numbered legend ---------- */
+.dex-diagram .dex-diagram-socket-dot {
+  fill: rgba(184, 233, 245, 0.95);
+  stroke: var(--frost-lo);
+  stroke-width: 1.5;
+}
+.dex-diagram-socket-num-svg {
+  fill: #0e141b;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: var(--f-ui);
+  pointer-events: none;
+}
+.dex-diagram .dex-diagram-socket-labels {
+  position: static;
+  width: 100%;
+}
+.dex-diagram .dex-diagram-socket-label {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  white-space: normal;
+  margin: 5px 0 0;
+}
+.dex-diagram-socket-legend-num {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(184, 233, 245, 0.92);
+  border: 1px solid var(--frost-lo);
+  color: #0e141b;
+  font-size: 10.5px;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+.dex-diagram .dex-diagram-socket-labels h4,
+.dex-diagram .dex-diagram-ports h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+/* ---------- ports legend (matches the socket legend language) ---------- */
+.dex-diagram .dex-diagram-ports {
+  margin: 0;
+  width: 100%;
+}
+.dex-diagram .dex-port-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0 0;
+}
+
+/* ==== REQ-0208: Units / Monsters catalog tabs (later-wins append, same
+   convention as the REQ-0075/0194 sections above). The catalogs reuse the
+   dcard/dex-md anatomy wholesale; only the portrait wells and the two new
+   detail sections need rules of their own. ==== */
+
+/* Portrait well: rune placeholder underneath, adopted render covering it
+   when one loads. Card-size well matches the .dthumb icon well; the -lg
+   variant is the detail pane's plate. */
+.dex-portrait-well{ position:relative; display:flex; align-items:center; justify-content:center; width:88px; height:88px; }
+.dex-portrait-well .dex-art-fallback{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:34px; opacity:.35; }
+.dex-portrait-img{ position:relative; max-width:100%; max-height:100%; object-fit:contain; }
+.dex-portrait-well-lg{ width:200px; height:200px; margin:0 auto; }
+.dex-portrait-well-lg .dex-art-fallback{ font-size:72px; }
+
+/* Unit detail: the schema slot's rolled-at-emission note + connection row. */
+.dex-detail-col-portrait{ padding:6px 0 2px; }
+.dex-unit-shape-note{ margin-top:8px; text-align:center; opacity:.75; }
+.dex-unit-connrow{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0 10px; }
+.dex-unit-flavor{ margin:8px 0 0; font-style:italic; opacity:.9; }
+
+/* Monster detail: stat rows + skill chips. */
+.dex-monster-stats{ margin:6px 0 10px; display:grid; grid-template-columns:auto 1fr; gap:4px 14px; }
+.dex-monster-stats .dex-monster-statrow{ display:contents; }
+.dex-monster-stats dt{ opacity:.75; }
+.dex-monster-stats dd{ margin:0; }
+.dex-monster-skills{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }

@@ -374,6 +374,21 @@ async function hQueue(req, res) {
   sendJSON(res, 200, Object.assign({ ok: true }, jobs.listJobs()));
 }
 
+// REQ-0197: deferred-batch queue controls. POST hold {held:bool} gates newly
+// enqueued generation jobs behind an explicit execute; POST execute releases
+// the held set, sorted so same-prompt jobs run back to back. Admin-gated
+// like the rest of the queue panel.
+async function hQueueHold(req, res) {
+  const b = await readJson(req);
+  if (typeof b.held !== 'boolean') return sendJSON(res, 400, { ok: false, error: 'body must carry held: true|false' });
+  sendJSON(res, 200, Object.assign({ ok: true }, jobs.setHold(b.held)));
+}
+
+async function hQueueExecute(req, res) {
+  const out = jobs.executeBatch();
+  sendJSON(res, 200, Object.assign({ ok: true, released: out.released }, jobs.listJobs()));
+}
+
 // REQ-0156: cancel one generation job (pending: dequeued; running: worker
 // killed). The canceled render becomes status failed / 'canceled by user'
 // (no new enum -- no migration); Retry in the UI is delete + regenerate at
@@ -461,6 +476,8 @@ const RE_REPACK = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/repack$/;   /
 const RE_CUTOUT = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cutout$/;   // REQ-0193
 const RE_CANCEL = /^\/api\/art\/artworks\/([^/]+)\/renders\/(\d+)\/cancel$/;   // REQ-0156
 const RE_QUEUE = /^\/api\/art\/queue$/;                                        // REQ-0156
+const RE_QUEUE_HOLD = /^\/api\/art\/queue\/hold$/;                             // REQ-0197
+const RE_QUEUE_EXECUTE = /^\/api\/art\/queue\/execute$/;                       // REQ-0197
 const RE_DEV_CLEAR = /^\/api\/art\/dev\/clear-all$/;
 const RE_DEV_BUMP = /^\/api\/art\/dev\/bump-kit$/;
 const RE_PUB_META = /^\/api\/art\/([^/]+)\/meta$/;
@@ -491,6 +508,8 @@ function tryArtRoutes(req, res, url, p) {
     run(res, hDevClear(req, res)); return true;
   }
   if (RE_QUEUE.test(p) && req.method === 'GET') { if (!requireAdmin(req, res)) return true; run(res, hQueue(req, res)); return true; }
+  if (RE_QUEUE_HOLD.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueHold(req, res)); return true; }
+  if (RE_QUEUE_EXECUTE.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueExecute(req, res)); return true; }
   if ((m = RE_CANCEL.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCancel(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
   if ((m = RE_PREVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hPreview(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_GENERATE.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hGenerate(req, res, decodeURIComponent(m[1]))); return true; }

@@ -13,7 +13,7 @@
 // button gets a busy state so double-clicks do not double-fire (C); and the
 // created timestamp renders LOCAL time with the raw ISO as its title (F).
 import { useEffect, useRef, useState } from 'react';
-import type { ContentVariantDto, MachineCheck } from '../api';
+import { grantWarehouseItem, type ContentVariantDto, type MachineCheck } from '../api';
 import { copyText, fmtDate, parentLabel, prettyJson, reviewClass } from './contentShared';
 import { EntityPreview } from './EntityPreview';
 
@@ -46,9 +46,36 @@ export function VariantCard(props: {
   /** REQ-0133: the def's adopted registry-render URL (game-mirror) fed to the
    * EntityPreview -- registry art when present, else the sprite icon. */
   entityArtUrl?: string | null;
+  /** REQ-0182b: the def's system_name = the served item id. The grant-to-
+   * warehouse button (relocated here from the retired Dex Edit form) posts it. */
+  systemName?: string;
+  /** REQ-0184 (monster_pack): member footprints resolved from linked art. */
+  entityFootprints?: Record<string, unknown> | null;
   report: (m: string, kind: 'ok' | 'err') => void;
 }) {
   const { v, kind, all, isAdopted, adoptedNo, isNew, shouldScroll, recheckBusy, expandedChecks, reviewDraft } = props;
+  // REQ-0182b: relocated from the retired Dex Edit form (DexAdmin's
+  // "grant to warehouse"). It is a content-TESTING tool -- drop this entity into
+  // the dev player's warehouse and go look at it in the game -- so it belongs
+  // beside the ledger entry the game actually serves, not beside a form that
+  // wrote a file nobody reads. Offered ONLY on the ADOPTED variant, because the
+  // adopted variant IS what a grant would hand you; granting from a draft would
+  // imply the draft is live, which is exactly the confusion this move ends.
+  // Gating is unchanged: the whole contentadmin surface is item_admin-gated, as
+  // the Dex edit mode was, and the server re-checks the token regardless.
+  const [granting, setGranting] = useState(false);
+  const doGrant = async () => {
+    if (!props.systemName) return;
+    setGranting(true);
+    try {
+      await grantWarehouseItem(props.systemName);
+      props.report('granted ' + props.systemName + ' to the warehouse', 'ok');
+    } catch (e) {
+      props.report('grant failed: ' + (e instanceof Error ? e.message : String(e)), 'err');
+    } finally {
+      setGranting(false);
+    }
+  };
   const no = v.variant_no;
   const [jsonOpen, setJsonOpen] = useState(false);
   const [rationaleOpen, setRationaleOpen] = useState(false);
@@ -95,7 +122,7 @@ export function VariantCard(props: {
               : <span className="ca-vcard-art-ph">◇</span>}
           </span>
         )}
-        <EntityPreview kind={kind} data={v.data} idBase={no} artUrl={props.entityArtUrl} />
+        <EntityPreview kind={kind} data={v.data} idBase={no} artUrl={props.entityArtUrl} footprints={props.entityFootprints} />
       </div>
 
       <div data-testid={'checks-' + no} className="ca-checks">
@@ -156,6 +183,12 @@ export function VariantCard(props: {
       <div className="ca-vactions">
         <button data-testid={'adopt-' + no} type="button" className="btn aa-btn-xs" disabled={isAdopted}
           onClick={() => props.onAskAdopt(no)}>Adopt</button>
+        {isAdopted && props.systemName ? (
+          <button data-testid={'grant-warehouse-' + no} type="button" className="btn btn-ghost aa-btn-xs"
+            disabled={granting}
+            title={'grant ' + props.systemName + ' to the dev warehouse (content testing)'}
+            onClick={() => { void doGrant(); }}>{granting ? 'Granting…' : 'Grant to warehouse'}</button>
+        ) : null}
         <button data-testid={'delete-' + no} type="button" className="btn btn-ghost aa-btn-xs" disabled={isAdopted}
           onClick={() => props.onAskDelete(no)}>Delete</button>
         <button data-testid={'edit-open-' + no} type="button" className="btn btn-ghost aa-btn-xs"

@@ -288,6 +288,11 @@ export function expectedDamagePerFire(verb) {
   if (!verb) return 0;
   if (verb.t === 'strike') return rangeMid(verb.n);
   if (verb.t === 'multi_strike') return rangeMid(verb.n) * (verb.hits || 1);
+  // REQ-0203: MUST mirror server/lib/forecast.cjs expectedDamagePerFire -- lifesteal
+  // and bonus_vs_status both deal n baseline damage on the player field. The parity
+  // gate (sim/tests/forecast_parity.cjs) pins these two copies equal.
+  if (verb.t === 'lifesteal') return rangeMid(verb.n);
+  if (verb.t === 'bonus_vs_status') return rangeMid(verb.n);
   return 0;
 }
 

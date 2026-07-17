@@ -36,6 +36,10 @@ const enemiesRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'enemies.json
 const skillsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'skills.json'), 'utf8'));
 const dungeonRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'dungeon.json'), 'utf8'));
 const itemsPilotRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'items.json'), 'utf8'));
+// REQ-0184: monster_pack/1 -- batch-002's dungeon.json names its packs from here.
+const packsRaw = JSON.parse(fs.readFileSync(path.join(BATCH_DIR, 'packs.json'), 'utf8'));
+const monsterPackDefsById = {};
+for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
 
 const enemyDefsById = {};
 for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
@@ -43,6 +47,19 @@ const skillDefsById = {};
 for (const s of skillsRaw.entries) {
   skillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 }
+
+// REQ-0207 (found-in-flight): the dungen generator samples the LIVE roster
+// (dungen.liveDungeonDir() = content/live/dungeon), which SINCE the batch-005 additive
+// deploy (commit dc80295) holds batch-002 + batch-005 (and any later additive batch).
+// Tests that GENERATE a def and then run/inspect it must resolve enemy ids against that
+// SAME live roster, not batch-002 alone -- else compileEnemyPack throws "missing enemy
+// def zombie". Test-only fixture; NO dungen/engine change. (REQ-0203 deploy debt.)
+const liveEnemiesRaw0207 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'dungeon', 'enemies.json'), 'utf8'));
+const liveSkillsRaw0207 = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'live', 'dungeon', 'skills.json'), 'utf8'));
+const liveEnemyDefsById = {};
+for (const e of liveEnemiesRaw0207.entries) liveEnemyDefsById[e.id] = e;
+const liveSkillDefsById = {};
+for (const s of liveSkillsRaw0207.entries) liveSkillDefsById[s.id] = { trigger: s.trigger, verb: s.verb, attack_profile: s.attack_profile, modes: s.modes };
 const pilotItemDefsById = {};
 for (const e of itemsPilotRaw.entries) pilotItemDefsById[e.id] = e;
 
@@ -776,14 +793,36 @@ T('REQ-0122 single source: dungen.liveDungeonDir() is content/live/dungeon and f
   eq(core.LIVE_DUNGEON_DIR, dungen.liveDungeonDir(), 'server core and dungen share ONE path source (no drift)');
 });
 
-T('REQ-0122 lossless promotion invariant: live/dungeon byte-matches the promoted-from batch AND the registry sha256s', () => {
+T('REQ-0122 lossless promotion invariant: live/dungeon is losslessly traceable to its promoted sources (wholesale base + additive layers)', () => {
+  // REQ-0207 (found-in-flight): additive promotion (REQ-0203) splices new entries into the
+  // enemies/skills/packs live files AFTER the wholesale base, so those three no longer
+  // byte-match a single promoted_from batch once an additive layer has been deployed. The
+  // lossless invariant is upgraded to be additive-AWARE (test-only; no promote/engine
+  // change): the 4 wholesale files still byte-match batch-002 + their recorded sha256,
+  // while the 3 additive files must decompose exactly into base ++ each recorded additive
+  // layer's ids, keep the base bytes verbatim at the head, and carry the LAST layer's sha.
   const reg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'content', 'registry.json'), 'utf8'));
   ok(reg.live_dungeon && reg.live_dungeon.promoted_from, 'registry carries live_dungeon provenance');
   const srcDir = path.join(REPO_ROOT, 'content', 'batches', reg.live_dungeon.promoted_from);
+  const layers = Array.isArray(reg.live_dungeon_additive) ? reg.live_dungeon_additive : [];
+  const ADD = promoteTool.ADDITIVE_FILES;
   for (const f of promoteTool.REQUIRED_FILES) {
     const live = fs.readFileSync(path.join(dungen.liveDungeonDir(), f));
-    eq(crypto0122.createHash('sha256').update(live).digest('hex'), reg.live_dungeon.files[f], f + ' sha256 matches registry provenance');
-    ok(live.equals(fs.readFileSync(path.join(srcDir, f))), f + ' is byte-identical to the promoted-from batch (lossless)');
+    const isAdditive = ADD.includes(f) && layers.length > 0;
+    if (!isAdditive) {
+      eq(crypto0122.createHash('sha256').update(live).digest('hex'), reg.live_dungeon.files[f], f + ' sha256 matches registry provenance');
+      ok(live.equals(fs.readFileSync(path.join(srcDir, f))), f + ' is byte-identical to the promoted-from batch (lossless)');
+    } else {
+      const last = layers[layers.length - 1];
+      eq(crypto0122.createHash('sha256').update(live).digest('hex'), last.files[f], f + ' sha256 matches the LAST additive layer provenance');
+      const baseText = fs.readFileSync(path.join(srcDir, f), 'utf8');
+      let expected = JSON.parse(baseText).entries.map((e) => e.id);
+      for (const layer of layers) expected = expected.concat(layer.added[f] || []);
+      eq(JSON.parse(live.toString('utf8')).entries.map((e) => e.id), expected, f + ' entries == wholesale base ++ additive layers (nothing snuck in)');
+      const arrClose = baseText.lastIndexOf(']');
+      let ip = arrClose; while (ip > 0 && /\s/.test(baseText[ip - 1])) ip--;
+      ok(live.toString('utf8').startsWith(baseText.slice(0, ip)), f + ' wholesale base bytes preserved verbatim at the head (byte-preserving splice)');
+    }
   }
 });
 
@@ -812,7 +851,7 @@ T('REQ-0122 promote tool: a full batch promotes byte-identically + records prove
   eq(reg.live_dungeon.promoted_from, 'batch-002-dungeon-pilot', 'provenance records the source batch');
   eq(Object.keys(reg.live_dungeon.files).length, promoteTool.REQUIRED_FILES.length, 'per-file sha256 recorded');
   ok(Array.isArray(reg.batches), 'existing registry content preserved');
-  eq(Object.keys(r.files).length, 6, 'promote() reports the 6 files');
+  eq(Object.keys(r.files).length, promoteTool.REQUIRED_FILES.length, 'promote() reports every required file'); // REQ-0184: derived, not hardcoded -- packs.json made the old literal 6 wrong
 });
 
 T('REQ-0122 test_fixed generator serves the promoted live copy verbatim', () => {
@@ -1061,7 +1100,7 @@ T('full-run smoke: batch-002 Niflheim Depths dungeon runs end-to-end with a fixe
 
   const result = combat.runDungeon({
     masterSeed: 'full-dungeon-smoke-seed-1',
-    dungeonDef: dungeonRaw,
+    dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById: itemDefsWithPilots, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice', 'bob', 'carol', 'dave'],
@@ -1085,7 +1124,7 @@ T('REQ-0042 LRDST reward: a victorious run accrues a positive lrdstReward within
   const scenarioWithPilotItems = combat.deepCopy(scenario);
   const result = combat.runDungeon({
     masterSeed: 'lrdst-reward-victory-seed-1',
-    dungeonDef: dungeonRaw,
+    dungeonDef: dungeonRaw, monsterPackDefsById,
     squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
     itemDefsById, enemyDefsById, skillDefsById,
     formationId: 'formation2', level: 3, participants: ['alice'],
@@ -1216,7 +1255,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-nonboss-seed-' + i,
       dungeonDef: singleNonBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById,
+      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realNonBoss names its pack by id
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result !== 'wipe') {
@@ -1229,7 +1268,7 @@ T('REQ-0042 LRDST reward: a single cleared non-boss encounter rolls within [1,3]
       masterSeed: 'lrdst-iso-boss-seed-' + i,
       dungeonDef: singleBoss,
       squadSnapshots: [scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems, scenarioWithPilotItems],
-      itemDefsById, enemyDefsById, skillDefsById,
+      itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, // REQ-0184: realBoss names its pack by id
       formationId: 'formation2', level: 3, participants: ['alice'],
     });
     if (r.result === 'victory') {
@@ -1449,20 +1488,20 @@ T('dungen: a generated default-type def actually RUNS through combat.runDungeon 
     masterSeed: 'runnable-check-combat-seed',
     dungeonDef: d,
     squadSnapshots: fourSquadSnapshots(),
-    itemDefsById, enemyDefsById, skillDefsById,
+    itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById,
     formationId: 'formation1', level: 6, participants: ['alice'],
   });
   ok(result.result === 'victory' || result.result === 'wipe' || result.result === 'incomplete', 'runDungeon must return a recognized result for a generated def');
   ok(Array.isArray(result.events) && result.events.length > 0, 'runDungeon must produce events for a generated def');
 });
 
-T('dungen: a generated def only ever references enemy ids that exist in the batch-002 roster (compileEnemyPack never throws missing-def)', () => {
+T('dungen: a generated def only ever references enemy ids that exist in the LIVE roster (batch-002 + deployed additive batches; compileEnemyPack never throws missing-def)', () => {
   for (let i = 0; i < 20; i++) {
     const d = dungen.generate('default', (i % 20) + 1, 'roster-check-' + i);
     for (const e of d.encounters) {
       if (e.enemyPack) {
         for (const eid of e.enemyPack.enemyIds) {
-          ok(!!enemyDefsById[eid], 'generated encounter references unknown enemy id ' + eid);
+          ok(!!liveEnemyDefsById[eid], 'generated encounter references unknown enemy id ' + eid);
         }
       }
     }
@@ -1718,7 +1757,7 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     let def = null;
     for (const level of [5, 8]) { for (const seed of ['a', 'b', 'c', 'd', 'e']) { const d = dungen.generate('default', level, 'req49run-' + level + '-' + seed); if (d.encounters.some(e => e.attachments)) { def = d; break; } } if (def) break; }
     ok(def, 'found a generated def carrying attachments');
-    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById, skillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
+    const r = combat.runDungeon({ masterSeed: 'req49-dungen-run', dungeonDef: def, squadSnapshots: [scenario, scenario, scenario, scenario], itemDefsById, enemyDefsById: liveEnemyDefsById, skillDefsById: liveSkillDefsById, formationId: 'formation1', level: def.level, participants: ['pA'] });
     ok(Array.isArray(r.events) && r.events.length > 0, 'generated def with attachments runs end-to-end');
     ok(r.events.some(e => String(e.ev).indexOf('att_') === 0), 'attachments produce att_* events in the replay');
   });
@@ -1772,6 +1811,64 @@ T('dungen: a generated def only ever references enemy ids that exist in the batc
     ok(totalHigh >= totalLow, 'higher level scouts at least as many objectives (monotone-ish)');
   });
 })();
+
+// =====================================================================
+// REQ-0184: the geometry constants exist in THREE places -- sim/lib/field.cjs
+// (the sim's own), shared/content_validate.cjs (the validator's, which may not
+// require() out of shared/), and client/src/contentadmin/contentShared.ts (the
+// preview's mirror, which cannot require a .cjs at all). Duplication is forced
+// by those module boundaries; SILENT duplication is not. These pin them equal,
+// the same way sim/tests/forecast_parity.cjs pins the forecast's copies.
+// =====================================================================
+T('REQ-0184 parity: shared/content_validate.cjs field dims == sim/lib/field.cjs', () => {
+  const v = require('../../shared/content_validate.cjs');
+  const field = require('../lib/field.cjs');
+  eq(v.FIELD_COLS, field.FIELD_COLS, 'FIELD_COLS');
+  eq(v.FIELD_ROWS, field.FIELD_ROWS, 'FIELD_ROWS');
+});
+
+T('REQ-0184 parity: PLACEABLE is exactly the field inset by the 1-cell margin (24x16 in 26x18)', () => {
+  const v = require('../../shared/content_validate.cjs');
+  eq(v.PLACEABLE.colMin, 2, 'colMin');
+  eq(v.PLACEABLE.rowMin, 2, 'rowMin');
+  eq(v.PLACEABLE.colMax, v.FIELD_COLS - 1, 'colMax');
+  eq(v.PLACEABLE.rowMax, v.FIELD_ROWS - 1, 'rowMax');
+  eq(v.PLACEABLE.colMax - v.PLACEABLE.colMin + 1, 24, 'placeable width is 24');
+  eq(v.PLACEABLE.rowMax - v.PLACEABLE.rowMin + 1, 16, 'placeable height is 16');
+});
+
+T('REQ-0184 parity: the client mirror (contentShared.ts) declares the SAME dims', () => {
+  // Read as text: the client is TS/ESM and this is a plain node test. A literal
+  // mismatch is what we are guarding, and that is visible in the source.
+  const fs0184 = require('fs');
+  const src = fs0184.readFileSync(path.join(REPO_ROOT, 'client', 'src', 'contentadmin', 'contentShared.ts'), 'utf8');
+  const v = require('../../shared/content_validate.cjs');
+  const m = /export const FIELD_COLS = (\d+), FIELD_ROWS = (\d+);/.exec(src);
+  ok(m, 'contentShared.ts must declare FIELD_COLS/FIELD_ROWS');
+  eq(Number(m[1]), v.FIELD_COLS, 'client FIELD_COLS matches shared');
+  eq(Number(m[2]), v.FIELD_ROWS, 'client FIELD_ROWS matches shared');
+});
+
+T('REQ-0184 parseA1/formatA1 round-trip across the WHOLE field (A1..Z18)', () => {
+  const v = require('../../shared/content_validate.cjs');
+  for (let r = 1; r <= v.FIELD_ROWS; r++) {
+    for (let c = 1; c <= v.FIELD_COLS; c++) {
+      const tok = v.formatA1(r, c);
+      const back = v.parseA1(tok);
+      ok(back && back.row === r && back.col === c, 'round-trip failed at ' + tok);
+    }
+  }
+});
+
+T('REQ-0184 legacy path is untouched: a pack with no layout still cursor-fills from the box origin', () => {
+  // The contract REQ-0185 will retire -- until then dungen emits this shape on
+  // every generated dive, so it must keep compiling exactly as it always did.
+  const ed = { g: { name: 'G', hp: [5, 5], footprint: [1, 1], skills: [] }, b: { name: 'B', hp: [9, 9], footprint: [2, 2], skills: [] } };
+  const out = combat.compileEnemyPack({ enemyIds: ['g', 'b', 'g'] }, ed, {}, combat.makeRng('legacy'), { rowMin: 2, colMin: 2, rowMax: 17, colMax: 25 });
+  eq(out[0].fieldCells, [[2, 2]], 'first at the box origin');
+  eq(out[1].fieldCells, [[2, 3], [2, 4], [3, 3], [3, 4]], 'second offset by the first footprint width, 2x2');
+  eq(out[2].fieldCells, [[2, 5]], 'third offset by the second footprint width');
+});
 
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');

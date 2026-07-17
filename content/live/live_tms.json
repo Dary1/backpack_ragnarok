@@ -15,6 +15,66 @@
      "flavor": "不安定なユニットエネルギーで唸る多面体のプリズム。それ自体には効果がない -- 今のところは。"
     }
    }
+  },
+  {
+   "id": "ember_coin",
+   "name": "emberdisc",
+   "short": "EMBR",
+   "rarity": "Common",
+   "icon": "icon-ember_coin",
+   "stackable": true,
+   "flavor": "A warm brass token stamped with a dying coal. Purely decorative for now.",
+   "i18n": {
+    "ja": {
+     "name": "残り火のディスク",
+     "flavor": "消えかけた石炭が刻まれた温かい真鍮の代用貨。今はただの飾り。"
+    }
+   }
+  },
+  {
+   "id": "frost_shard",
+   "name": "rimeshard",
+   "short": "FRST",
+   "rarity": "Common",
+   "icon": "icon-frost_shard",
+   "stackable": true,
+   "flavor": "A splinter of everwinter ice that never melts in the hand. No effect yet.",
+   "i18n": {
+    "ja": {
+     "name": "霜のかけら",
+     "flavor": "手の中で決して溶けない永久凍土の氷片。まだ効果はない。"
+    }
+   }
+  },
+  {
+   "id": "verdant_drop",
+   "name": "dewbead",
+   "short": "VRDT",
+   "rarity": "Common",
+   "icon": "icon-verdant_drop",
+   "stackable": true,
+   "flavor": "A bead of green sap that beads but never spills. Decorative placeholder.",
+   "i18n": {
+    "ja": {
+     "name": "露の雫",
+     "flavor": "こぼれそうでこぼれない緑の樹液の雫。仮の飾り。"
+    }
+   }
+  },
+  {
+   "id": "void_star",
+   "name": "voidmote",
+   "short": "VOID",
+   "rarity": "Common",
+   "icon": "icon-void_star",
+   "stackable": true,
+   "flavor": "A cold black star that drinks the light around it. Does nothing -- yet.",
+   "i18n": {
+    "ja": {
+     "name": "虚空の星屑",
+     "flavor": "周囲の光を飲み込む冷たい黒い星。今のところ何もしない。"
+    }
+   }
   }
  ]
 }
