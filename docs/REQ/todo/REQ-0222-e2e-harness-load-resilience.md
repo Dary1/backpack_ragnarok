@@ -1,6 +1,6 @@
 # REQ-0222 — e2e-harness-load-resilience: stop box load from aborting releases
 
-**Status:** draft — AGENT-PROPOSED, awaiting owner review. Not cleared to implement.
+**Status:** see folder — a REQ's status IS its folder (PROJECT.md). This line is retained only as the original 2026-07-16 filing note.
 **Reserved:** 2026-07-16
 **Slug:** e2e-harness-load-resilience
 **Filed under user directive** (2026-07-16, chat): 「あなたが作業している中で、こうした方良かったと
@@ -115,3 +115,76 @@ only passes on a quiet box tests the wrong thing.
   shows "fit 95"). ci.sh [6.5] cannot be literally GREEN (REQ-0159 rule) for ANY
   branch until REQ-0235 is triaged, so this REQ stays in todo with implementation
   complete; rerun the release.sh demos + full ci quiet/loaded once master is green.
+
+---
+
+## Gate record — 2026-07-18 session (ratified todo by user chat directive "do REQ-0222")
+
+Tree: req-0222 @ 8d68dbd = master (REQ-0193/0212/0213/0233 world) merged in, clean merge,
+client rebuilt. The 2026-07-17 record above stands; this supersedes its BLOCKER.
+
+### The 2026-07-17 blocker (REQ-0235) is GONE — not by this REQ
+The artadmin REQ-0216 true-scale spec, deterministically red on pristine master on
+2026-07-17 (5/5 runs), now **PASSES** on the merged tree — 7/7 quiet AND 7/7 under a
+deliberate burn. REQ-0235's own hypothesis is thereby confirmed: it was env-coupled to the
+in-flight art session's untracked `content/art` mirror, which has since landed
+(REQ-0193 cutout sweep + REQ-0233). Filed for owner disposition in
+`docs/REQ/reserved/REQ-0235-artadmin-truescale-master-red.md`.
+
+### Gate 1 — artadmin goto spec on a deliberately loaded box: **PASS**
+`tools/artadmin_e2e.sh` under an artificial 8-way CPU burn (spin loops, per REQ-0230's
+recipe; NOT the owner's art job), loadavg1 12.4 -> 24:
+- `[load-seam] auto: loadavg1=12.4 >= 0.75*8 cores -> 3x e2e timeouts` — auto-engaged, no
+  human flag needed (both historic release aborts happened exactly where a human forgets one).
+- **7/7 passed (2.6m)**. The goto-family spec — the big flow that took 27-29 s and blew the
+  20 s default in the REQ-0191 abort — completed its goto in **30.3 s and PASSED**.
+  This is the original failure mode, reproduced at its own load level, and fixed.
+
+### Gate 2 — release.sh rerun-then-abort: **PASS (both paths, live, through the real pipeline)**
+Both demos run `tools/release.sh` (-> `tools/ci.sh` -> `tools/e2e_flaky_gate.sh`) end to end:
+- **Injected regression** (`E2E_INJECT_REGRESSION=artadmin`): the real artadmin harness ran
+  7/7 green, the synthetic unknown failure was appended, and the gate printed
+  `UNMATCHED failure (real regression) ... -> ABORT (no rerun)`. release.sh **EXIT=1**, dist
+  NOT committed, `git status --porcelain web/app` clean. Real-regression behaviour preserved.
+- **Injected flake** (`E2E_INJECT_FLAKE=artadmin`): classified
+  `known-flaky [goto-under-load]` -> `ALL 1 failure(s) known-flaky -> rerunning ONCE via the
+  box-locked runner` -> `rerun GREEN -- known-flaky recovery succeeded` -> **ci.sh CONTINUED**
+  to [6.5] artinspect and on. The REQ-0182b/0191 hand-run recovery is now executable.
+- Third path observed for free, twice, unsolicited: another session's harness held the
+  REQ-0156 decade -> exit 75 -> `failure has NO parsable playwright block -> ABORT, no rerun`.
+  Port-rule semantics preserved under the gate. (That contention is REQ-0242's subject,
+  already filed as draft; caught live here — REQ-0223's worktree proxy holding :1562.)
+
+### Gate 3 — full default suite green on quiet AND loaded: **DELEGATED to REQ-0253**
+Not met, and not meetable inside this REQ's scope. Measured on this tree:
+- quiet (loadavg1 4.25): **186/187** — `long-press-rename.spec.ts:77` red.
+- loaded (loadavg1 9-12): **185/187**; loaded (loadavg1 -> 36, 8-way burn): **175/187**.
+- Every red is an assertion signature from the F3 wall-clock family (fixed sleeps), green on
+  solo rerun. It reds a QUIET box, so it is not a load-resilience defect at all, and the
+  goto/timeout work in this REQ cannot address it. REQ-0234 fixed F3's headline item
+  (`waitForAutoSave` -> event-based, f6ddcb4 — present in every run above); **83
+  `waitForTimeout` sites across 18 spec files + `longPress`'s 750 ms remain**.
+- Deliberately NOT absorbed into `e2e_known_flaky.tsv`: the signature is a plain assertion
+  failure, indistinguishable from a real regression; a family for it would let the gate rerun
+  and swallow genuine regressions, breaking the registry's own rule and this REQ's purpose.
+- Split out per user directive (2026-07-18 chat) as **REQ-0253-e2e-fixed-sleep-residual**,
+  which carries this gate and the evidence.
+
+### One anomaly, investigated and dismissed (per user directive: mechanism first)
+A single burn run collapsed 72/187 with 97x `ECONNREFUSED` on the proxy :2222. Excluded by
+evidence, not by assumption: accept-backlog saturation (`tcp_abort_on_overflow=0` would
+TIME OUT, not refuse; `TcpExtListenOverflows`/`ListenDrops` = 0 since boot); a proxy crash on
+client abort (repro: the proxy survived 40 aborted-mid-body requests, PROXY ALIVE); OOM
+(19 GB available, no kill at that time); a broad `pkill` by another session (no such code in
+any worktree's tools — only the comment forbidding it); and steady-state load itself — a
+**watched** rerun at HIGHER load (36 vs 30) never dropped the listener once across the whole
+run (175/187). ECONNREFUSED = RST = no listener, so the process was gone that once.
+Leading explanation: MY OWN procedure — run 2 was started 35 s after run 1 with the same
+`E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0222`, so run 1's late teardown could reap PIDs from a
+manifest run 2 had overwritten. Not a harness property; ci.sh serialises per-REQ runs, and the
+cross-session form of it is REQ-0242. No new REQ filed.
+
+### Verdict
+This REQ's own scope — the goto-under-load family fix and the release-abort codification —
+is implemented and demonstrated end to end under real load. Gate 3 belongs to REQ-0253.
+todo -> built (not `done`: unmerged, undeployed).
