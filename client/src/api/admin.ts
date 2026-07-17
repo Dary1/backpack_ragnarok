@@ -21,8 +21,31 @@ export interface ArtworkDto {
   last_render_at?: string | null;
 }
 export interface RenderDto {
-  id: number; seed: number; status: string; image_sha256: string | null;
+  id: number; seed: number; variant: number; status: string; image_sha256: string | null;
   final_prompt: string | null; params: unknown; error: string | null;
+}
+
+// REQ-0223b: a render's identity is (seed, variant), not a bare seed. Variant 0 is
+// the render a bare seed has always named, so `variant` is omitted from URLs and
+// bodies when it is 0 -- the server reads absent as 0 (REQ-0223a). That keeps every
+// pre-twin URL, bookmark and e2e selector meaning exactly what it meant.
+export interface RenderRef { seed: number; variant: number }
+export function refOf(r: { seed: number; variant?: number }): RenderRef {
+  return { seed: r.seed, variant: r.variant || 0 };
+}
+/** Stable map/React key for a ref. Twins share a seed, so a bare seed is NOT a key. */
+export function refKey(r: RenderRef): string { return r.seed + '/' + r.variant; }
+export function sameRef(a: RenderRef | null, b: RenderRef | null): boolean {
+  return !!a && !!b && a.seed === b.seed && a.variant === b.variant;
+}
+/** How a render names itself to a human: 's42' for the plain case, 's42·v1' for a
+ * twin. Variant 0 stays unspoken so the ordinary operator never meets the concept. */
+export function refLabel(r: RenderRef): string {
+  return 's' + r.seed + (r.variant ? '\u00b7v' + r.variant : '');
+}
+/** ?variant=N, but only when N > 0 -- see the note on RenderRef. */
+function vq(variant: number | undefined, sep: string): string {
+  return variant ? sep + 'variant=' + variant : '';
 }
 
 async function artJson<T = Record<string, unknown>>(path: string, opts: RequestInit): Promise<T> {
@@ -55,28 +78,29 @@ export function previewArtwork(name: string, b: Record<string, unknown>): Promis
 export function generateArtwork(name: string, b: Record<string, unknown>): Promise<{ ok: true; renders: RenderDto[]; queueDepth: number }> {
   return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/generate', { method: 'POST', body: JSON.stringify(b) });
 }
-export function adoptRenderApi(name: string, seed: number): Promise<{ ok: true; artwork: ArtworkDto; export: unknown; export_error: string | null }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/adopt', { method: 'POST', body: JSON.stringify({ seed }) });
+export function adoptRenderApi(name: string, seed: number, variant?: number): Promise<{ ok: true; artwork: ArtworkDto; export: unknown; export_error: string | null }> {
+  // adopt takes its coordinates in the BODY, so the variant rides there too.
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/adopt', { method: 'POST', body: JSON.stringify(variant ? { seed, variant } : { seed }) });
 }
 // REQ-0192: manual repack -- derive a best-placement variant of an OK render
 // as a NEW render at source seed + 100000 (bumped by another 100000 while
 // taken). The job runs at inspection priority; poll the artwork detail.
-export function repackRenderApi(name: string, seed: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/repack', { method: 'POST', body: JSON.stringify({}) });
+export function repackRenderApi(name: string, seed: number, variant?: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/repack' + vq(variant, '?'), { method: 'POST', body: JSON.stringify({}) });
 }
 // REQ-0193: manual background cutout -- derive a TRANSPARENT (background
 // removed) copy of an OK render as a NEW render at source seed + 100000
 // (bumped by another 100000 while taken), the same derived-seed convention as
 // repack. Kind-agnostic: any ok render of any artwork kind qualifies. The
 // matte is rembg birefnet-general server-side; poll the artwork detail.
-export function cutoutRenderApi(name: string, seed: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cutout', { method: 'POST', body: JSON.stringify({}) });
+export function cutoutRenderApi(name: string, seed: number, variant?: number): Promise<{ ok: true; render: RenderDto; source_seed: number; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cutout' + vq(variant, '?'), { method: 'POST', body: JSON.stringify({}) });
 }
-export function deleteRenderApi(name: string, seed: number): Promise<{ ok: true; deleted: number }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed, { method: 'DELETE' });
+export function deleteRenderApi(name: string, seed: number, variant?: number): Promise<{ ok: true; deleted: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + vq(variant, '?'), { method: 'DELETE' });
 }
-export function artRenderUrl(name: string, seed: number): string {
-  return '/api/art/' + encodeURIComponent(name) + '/renders/' + seed;
+export function artRenderUrl(name: string, seed: number, variant?: number): string {
+  return '/api/art/' + encodeURIComponent(name) + '/renders/' + seed + vq(variant, '?');
 }
 export function artAdoptedUrl(name: string): string {
   return '/api/art/' + encodeURIComponent(name);
@@ -97,8 +121,8 @@ export function getArtQueue(): Promise<{ ok: true } & ArtQueueDto> {
 }
 /** Cancel one generation job (pending: dequeued; running: worker killed).
  * The canceled render becomes status failed / 'canceled by user'. */
-export function cancelRenderApi(name: string, seed: number): Promise<{ ok: true; canceled: 'pending' | 'running'; renderId: number; seed: number; queue: ArtQueueDto }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cancel', { method: 'POST' });
+export function cancelRenderApi(name: string, seed: number, variant?: number): Promise<{ ok: true; canceled: 'pending' | 'running'; renderId: number; seed: number; queue: ArtQueueDto }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/cancel' + vq(variant, '?'), { method: 'POST' });
 }
 
 // ---- REQ-0197: deferred-batch queue controls ----
@@ -127,8 +151,8 @@ export interface KitDto { kit_id: string; kit_version: string; applies_to: strin
 
 /** Re-run inspection kit(s) for one render. Omit kit_id to run every kit for
  * the kind (also the on-demand path for lazily-inspected backfilled renders). */
-export function reinspectRender(name: string, seed: number, kit_id?: string): Promise<{ ok: true; queued: string[]; inspectDepth: number }> {
-  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/inspect', { method: 'POST', body: JSON.stringify(kit_id ? { kit_id } : {}) });
+export function reinspectRender(name: string, seed: number, kit_id?: string, variant?: number): Promise<{ ok: true; queued: string[]; inspectDepth: number }> {
+  return artJson('/api/art/artworks/' + encodeURIComponent(name) + '/renders/' + seed + '/inspect' + vq(variant, '?'), { method: 'POST', body: JSON.stringify(kit_id ? { kit_id } : {}) });
 }
 
 // ---- REQ-0155: content-data registry admin client ----
