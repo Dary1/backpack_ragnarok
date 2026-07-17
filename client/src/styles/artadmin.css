@@ -236,9 +236,11 @@
   border: 1px solid var(--gold-lo, #6E5A24); pointer-events: none;
 }
 .aa-cb-score.is-hot { border-color: var(--blood, #8E2F2A); color: #F1AEA6; }
-/* thumb variant: the card's img cap becomes the STAGE's cap, so the backdrop
- * and the pixels shrink together (aspect-ratio does the rest). */
-.aa-cb--thumb { max-width: 212px; max-height: 150px; }
+/* thumb variant (REQ-0216): NO size cap. Workspace sizes the stage at a
+ * constant px-per-cell (THUMB_CELL_PX), so footprints compare at true
+ * relative scale across cards -- a 1x1 render is visibly small, a 5x2
+ * visibly wide. A cap here would reintroduce exactly the per-footprint
+ * scale variance this replaces. */
 .aa-cb--thumb .aa-cb-score { font-size: 9px; padding: 0 3px; }
 
 .aa-lb-img { image-rendering: auto; display: block; }
