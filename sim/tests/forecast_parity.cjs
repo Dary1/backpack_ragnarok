@@ -486,7 +486,7 @@ async function main() {
   // this box -- a content-scale effect, not an algorithmic regression (master
   // red predates REQ-0193's merge). Restoring headroom under a tighter budget
   // is REQ-0210-forecast-pressure-perf.
-  T('forecastPressure: perf budget -- a full 4-squad recompute is well under [TUNABLE 100ms]', () => {
+  T('forecastPressure: perf budget -- a full 4-squad recompute is well under [TUNABLE 150ms cpu, best-of-3]', () => {
     const { getForecast } = require(path.join(__dirname, '..', '..', 'server', 'lib', 'forecast.cjs'));
     const payload = getForecast('default', 10);
     const canvases = combat.FORMATIONS.formation1.canvases;
@@ -497,29 +497,38 @@ async function main() {
         profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
       });
     }
-    // REQ-0230 (a): measure CPU time (user+sys), not wall clock. Wall clock
+    // REQ-0230 (a)+(b): measure CPU time (user+sys), not wall clock, and
+    // take the BEST of 3 samples against a once-retuned budget. Wall clock
     // measures the BOX, not the code: with concurrent sessions the same
     // unchanged fold read 101.3/141.4/134.2 ms on 2026-07-17 (and failed on
     // the untouched master at the same moment), and one contention flake
-    // kills a whole fail-fast ci cycle. process.cpuUsage() charges only
-    // what THIS process burned -- load-independent, still catches real
-    // algorithmic regressions. On a quiet box it reads the same as wall for
-    // this pure numeric loop (~72 ms at the 100 ms budget), so the TUNABLE
-    // keeps its calibration.
-    const c0 = process.cpuUsage();
-    for (const slot of Object.keys(canvases)) {
-      F.forecastPressure({
-        bounds: payload.bounds, jitterHalfWidth: payload.jitterHalfWidth,
-        profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
-      });
+    // kills a whole fail-fast ci cycle. process.cpuUsage() removes the
+    // scheduler-wait component entirely, but SMT/cache contention still
+    // inflates cpu-time BOUNDEDLY (~72 ms quiet -> ~112 ms under a full
+    // 8-way burn, measured 2026-07-17 during REQ-0234's gate demo) -- so a
+    // 100 ms cpu budget alone still flaked 3/5 under saturation. Best-of-3
+    // shaves per-sample noise, and the [TUNABLE] 150 ms budget gives the
+    // bounded SMT inflation ~2x quiet headroom while still catching real
+    // regressions (the content-scale step that retired the old 50 ms budget
+    // was itself a ~3x move; an algorithmic regression is bigger).
+    const samples = [];
+    for (let s = 0; s < 3; s++) {
+      const c0 = process.cpuUsage();
+      for (const slot of Object.keys(canvases)) {
+        F.forecastPressure({
+          bounds: payload.bounds, jitterHalfWidth: payload.jitterHalfWidth,
+          profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
+        });
+      }
+      const cu = process.cpuUsage(c0);
+      samples.push((cu.user + cu.system) / 1000);
     }
-    const cu = process.cpuUsage(c0);
-    const ms = (cu.user + cu.system) / 1000;
-    console.log('        (4-squad fold: ' + ms.toFixed(1) + 'ms)');
+    const ms = Math.min(...samples);
+    console.log('        (4-squad fold: best-of-3 cpu ' + ms.toFixed(1) + 'ms; samples ' + samples.map((v) => v.toFixed(1)).join('/') + ')');
     // The REQ's budget is per RECOMPUTE (one board). Holding all FOUR squads
     // to it is the stricter bar, and node is a fair proxy for the browser's
     // JIT on a pure numeric loop like this.
-    ok(ms < 100, 'perf budget blown: ' + ms.toFixed(1) + 'ms >= 100ms');
+    ok(ms < 150, 'perf budget blown: ' + ms.toFixed(1) + 'ms cpu (best-of-3) >= 150ms');
   });
 
   // REQ-0203: the enemy verb extensions must fold IDENTICALLY in the forced-copy pair
