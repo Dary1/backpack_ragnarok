@@ -9,10 +9,10 @@
       "name": "Frost Scouts",
       "i18n": { "en": { "name": "Frost Scouts" }, "ja": { "name": "氷霜の斥候" } },
       "members": [
-        { "enemy": "frost_gnoll", "at": "B2" },
-        { "enemy": "ice_archer", "at": "C2" }
+        { "enemy": "frost_gnoll", "at": "B8" },
+        { "enemy": "ice_archer", "at": "G9" }
       ],
-      "note": "was enc_pack_1 enemyIds [frost_gnoll, ice_archer]; ported A1,B1 -> B2,C2"
+      "note": "REQ-0206 re-composition under art-authoritative sizes (user-ratified 2026-07-17). frost_gnoll footprint became [4,3], derived from its re-linked artwork monsters-003-flux2:gnoll {w:3,h:4}, so the REQ-0184 ported layout (frost_gnoll B2, ice_archer C2) OVERLAPPED on C2 -- the archer stood inside the gnoll. Re-composed to the REQ-0203 idiom: the gnoll (melee, gnoll_claw) anchors forward and vertically centred on the 16-row plane at B8:D11; the ice_archer (ranged, ice_arrow) covers from the second rank at G9, two clear columns behind the gnoll back edge (D) so a single AoE cannot catch both. Was enc_pack_1 enemyIds [frost_gnoll, ice_archer]."
     },
     {
       "id": "pack_rime_choir",

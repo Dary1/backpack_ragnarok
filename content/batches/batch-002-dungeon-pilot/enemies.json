@@ -6,7 +6,7 @@
       "id": "frost_gnoll",
       "name": "Frost Gnoll",
       "hp": [30, 45],
-      "footprint": [1, 1],
+      "footprint": [4, 3],
       "skills": ["gnoll_claw"],
       "i18n": { "en": { "name": "Frost Gnoll" }, "ja": { "name": "フロストノール" } },
       "rarity": "common",

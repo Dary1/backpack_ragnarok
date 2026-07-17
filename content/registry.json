@@ -217,9 +217,9 @@
     ]
    },
    "files": {
-    "enemies.json": "895df7698b2ef5afcfa33f4baa8a9c218e41031e18d3cd43dc26eae62d0f14e4",
+    "enemies.json": "43c50003a2a6eab935a8fc7cb7123d5d3b3927e8fb04a974988b2f3b49e73ee2",
     "skills.json": "2b08ef4abf90268dc52d8e138f2fbf953382d2ed97ea904f6ba58d80060d7018",
-    "packs.json": "60b4d7b6340ff178a7c47312f3aba0671c5e87bbdfb09f9ebac265553f8dfed0"
+    "packs.json": "abff65fa05208e42dcaeb68d89407567de7e07a0b338db17bacb90a8400423f1"
    }
   }
  ]
