@@ -50,13 +50,15 @@ HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" 
   node "$WT/server/api.cjs" > /tmp/req0152_e2e_api.log 2>&1 &
 PIDS+=($!)
 
-# REQ-0222: node event-loop static server (keep-alive) replaces python's
-# http.server -- see tools/e2e_known_flaky.tsv (goto-under-load) and the
-# REQ-0222 file for the measured load-scaling evidence.
-E2E_STATIC_PORT="$STATICPORT" E2E_STATIC_ROOT="$WT/web" node "$WT/client/e2e/static-server.cjs" > /tmp/req0152_e2e_static.log 2>&1 &
-PIDS+=($!)
-
-E2E_STATIC_PORT="$STATICPORT" E2E_API_PORT="$APIPORT" E2E_PROXY_PORT="$PROXYPORT" \
+# REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
+# worktree ITSELF and routes headerless /api to E2E_FLEET_BASE_PORT+0 -- the
+# old E2E_STATIC_PORT/E2E_API_PORT knobs no longer exist, so point the
+# "fleet" base at this harness's single api (without this, /api fell through
+# to the DEFAULT fleet base 8810 and every spec died on 502). The python
+# static server this harness used to run is dropped with them: nothing
+# routes to it any more, and its single-threaded accept loop was the
+# goto-under-load flake source (REQ-0222).
+E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
   node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0152_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
@@ -66,8 +68,13 @@ for i in $(seq 1 80); do
   sleep 0.5
 done
 for i in $(seq 1 40); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$STATICPORT/app/" 2>/dev/null; then break; fi
+  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/app/" 2>/dev/null; then break; fi
   sleep 0.5
 done
 
-PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/artinspect.config.ts
+# REQ-0234 (F2): this harness shares nothing box-global (own HOME remap, own
+# REQ decade), so it takes its OWN serialization lock instead of the box lock
+# -- which the REQ-0217 freeze daemon holds indefinitely and which only
+# guards the legacy shared-port path. Same-harness runs still queue.
+E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.0152.lock}" \
+  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/artinspect.config.ts

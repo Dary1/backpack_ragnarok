@@ -136,7 +136,7 @@ function tryAdminRoutes(req, res, url, p) {
             sendJSON(res, 400, { ok: false, error: 'unknown tm id "' + body.tm + '"' });
             return;
           }
-          const resolved = admin.resolveAuth(token);
+          const resolved = admin.resolveAuthFromRequest(req); // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never grant to the live dev profile from a test run
           const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
           const result = schedule.grantTmQty(targetPlayerId, body.tm, body.qty);
           if (!result.ok) {
@@ -167,7 +167,7 @@ function tryAdminRoutes(req, res, url, p) {
         // The caller's OWN playerId (resolved from the token, same as
         // every other authenticated route -- never trusts a client-
         // supplied id) is who the grant lands in the warehouse for.
-        const resolved = admin.resolveAuth(token);
+        const resolved = admin.resolveAuthFromRequest(req); // REQ-0217: honor the e2e profile redirect (x-bpk-e2e-profile), never grant to the live dev profile from a test run
         const targetPlayerId = resolved.ok ? resolved.player.playerId : admin.readDevUser().playerId;
         const result = schedule.grantWarehouseItem(targetPlayerId, body.itemId);
         if (!result.ok) {

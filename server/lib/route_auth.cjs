@@ -39,8 +39,11 @@ function resolveCallerOr401(req, res) {
   // to gate the dev/backdate route below (a test-control seam, not a
   // gameplay feature) -- see schedule.cjs's devBackdateActiveRun() doc
   // comment and server/README.md's "E2E time-control" section.
-  const devUserForGate = admin.readDevUser();
-  const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
+  // REQ-0214: keyed off the resolver's own resolution-path annotation
+  // (admin.resolveAuthFromRequest sets viaDevFallback), NOT a playerId
+  // comparison -- the e2e profile redirect (x-bpk-e2e-profile) swaps the
+  // playerId while remaining exactly this no-token dev_mode fallback.
+  const callerIsDevFallback = !token && resolved.viaDevFallback === true;
   // REQ-0043: room-create's optional `genSeed` (sim/dungen.cjs's
   // generator seed -- lets a caller reproduce an EXACT dungeon layout)
   // is gated to the SAME two privileged-caller classes the rest of

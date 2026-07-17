@@ -25,8 +25,12 @@ function tryProfileRoutes(req, res, url, p) {
     // docs/REQ/REQ-0037-guest-auth.md's "Compat alias" note). Outside of
     // that window "default" is just an unknown/mismatched id like any
     // other and falls through to the normal ownership check below.
-    const devUser = admin.readDevUser();
-    const isDefaultAlias = urlPlayerId === 'default' && devUser.dev_mode === true && actualPlayer.playerId === devUser.playerId;
+    // REQ-0214: 'default' aliases WHATEVER identity the dev_mode NO-token
+    // fallback resolved to -- the dev player for a human on the box, or
+    // e2e_<suffix> when the request carries x-bpk-e2e-profile (e2e profile
+    // isolation). Keyed off the resolver's own annotation, not a playerId
+    // comparison, so the alias follows the redirect.
+    const isDefaultAlias = urlPlayerId === 'default' && resolved.viaDevFallback === true;
     const effectivePlayerId = isDefaultAlias ? actualPlayer.playerId : urlPlayerId;
 
     if (!isDefaultAlias && effectivePlayerId !== actualPlayer.playerId) {

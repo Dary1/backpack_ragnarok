@@ -66,8 +66,11 @@ function tryMarketRoutes(req, res, url, p) {
   // this request resolved via the dev_mode NO-TOKEN fallback -- same
   // computation as routes/schedule.cjs's and routes/ragnarok.cjs's own
   // callerIsDevFallback; used ONLY to gate /listings/dev/clear-all below.
-  const devUserForGate = admin.readDevUser();
-  const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
+  // REQ-0214: keyed off the resolver's own resolution-path annotation
+  // (admin.resolveAuthFromRequest sets viaDevFallback), NOT a playerId
+  // comparison -- the e2e profile redirect (x-bpk-e2e-profile) swaps the
+  // playerId while remaining exactly this no-token dev_mode fallback.
+  const callerIsDevFallback = !token && resolved.viaDevFallback === true;
   // Optional Idempotency-Key (node:http lowercases header names).
   const rawIdem = req.headers['idempotency-key'];
   const idemKey = typeof rawIdem === 'string' && rawIdem ? rawIdem : undefined;

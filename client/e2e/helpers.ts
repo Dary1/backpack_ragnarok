@@ -41,13 +41,27 @@ export async function drag(
   await page.waitForTimeout(250);
 }
 
-/** REQ-0031 Phase B: waits out the auto-save debounce window (800ms,
- * client/src/store.ts's AUTO_SAVE_DEBOUNCE_MS) plus margin for the PUT
- * itself to complete, then GETs the live profile back. Replaces the old
- * "click Save, then GET" pattern -- no UI interaction triggers the write;
- * it is purely a consequence of whatever mutation already happened. */
+/** REQ-0031 Phase B, rewritten by REQ-0234 (F3): wait for the auto-save
+ * PUT itself (client/src/store.ts debounces ~800ms after every mutation)
+ * instead of sleeping a fixed 800+margin window. Event-based, so box load
+ * cannot lose the race (the fixed wait was the suite's single biggest
+ * wall-clock dependency, called from nearly every mutation spec), and the
+ * common case returns as soon as the write completes (~0.9s) instead of
+ * always burning 1.5s. If NO page-side PUT arrives inside the old budget
+ * plus 2.5s of load headroom (e.g. the save already flushed before this
+ * call), it falls through quietly -- same semantics the fixed wait had.
+ * page.request fixture PUTs (loadFixtureAndBoot) are not page traffic and
+ * cannot false-satisfy the wait. */
 export async function waitForAutoSave(page: Page, marginMs = 700): Promise<void> {
-  await page.waitForTimeout(800 + marginMs);
+  try {
+    await page.waitForResponse(
+      (r) => r.url().includes('/api/profile/') && r.request().method() === 'PUT',
+      { timeout: 800 + marginMs + 2500 },
+    );
+  } catch {
+    /* no auto-save PUT observed inside the budget -- proceed, as the legacy
+       fixed wait would have after its window elapsed */
+  }
 }
 
 /** GETs /api/profile/default/canvas and returns its `canvas` field. */
