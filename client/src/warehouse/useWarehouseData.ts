@@ -23,11 +23,11 @@ import { t } from '../i18n';
 import { cachedFetchContent } from '../lib/contentCache';
 import { itemKindOf } from '../lib/itemContent';
 import type { ApiRolledBp } from '../api';
-import { firstFitOrMergeTM, firstFitPlace, firstFitPlaceBp, type BpPlacementResult, type PlacementResult } from '../lib/placement';
+import { findFitBP, findFitOrMergeTM, findFitPO, findFitSI, placeAt, placeBPAt, placeTMAt, type FitSpot } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { usePolledResource } from '../lib/usePolledResource';
 import { friendlyScheduleError, isApiErrorStatus } from '../schedule/errors';
-import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { flushAutoSave, notifyStateChanged, useGameStore, type Locale } from '../store';
 import { playClaimChime } from './claimSfx';
 
 /** REQ-0072: market-settled rows (buyer delivery / seller TM proceeds --
@@ -142,71 +142,96 @@ export function useWarehouseData(locale: Locale) {
     setClaimFx((prev) => ({ ...prev, [itemUid]: 'flash' }));
     playClaimChime();
     try {
-      // Phase 1: server marks the row 'claiming' and hands back the
-      // content def id -- see server/schedule.cjs's claimWarehouseItem
-      // doc for the full two-phase design/bug-#3 rationale.
-      const claimed = await apiClaimWarehouseItem(itemUid);
-      // REQ-0091: the server's response for THIS claim is back -- begin
-      // the flash's fade-out now, regardless of what phase 2 (engine
-      // placement/auto-save, below) still has to do.
-      beginClaimFadeOut(itemUid);
-
       const engine = snapshot.engine;
       const state = snapshot.state;
       if (!engine || !state || !state.inv) {
-        // Should not happen once boot() has resolved (both are always
-        // set together, see store.ts) -- defensive fallback only.
+        // Should not happen once boot() has resolved (both are always set
+        // together, see store.ts) -- defensive fallback only.
         throw new Error('inventory not ready');
       }
 
-      // Phase 2 (THIS client): engine first-fit placement, reusing the
-      // warehouse row's OWN itemUid as the new PO/SI's uid (see
-      // server/schedule.cjs's claimWarehouseItem doc for why this is
-      // what makes server-side finalization on the next profile save
-      // exact rather than a fuzzy itemId-based heuristic).
-      // REQ-0042: a TM-kind row (claimed.kind==='tm', e.g. an LRDST
-      // reward/grant) takes a DIFFERENT placement path -- merge into an
-      // existing matching-id stack if one exists, otherwise first-fit a
-      // new stack (see firstFitOrMergeTM's own doc above) -- rather than
-      // firstFitPlace's plain po/si first-fit (which has no merge
-      // concept at all).
-      const kind = claimed.kind === 'tm' ? 'tm' : claimed.kind === 'bp' ? 'bp' : itemKindOf(content, claimed.itemId);
-      const openPage = snapshot.activeInvPage;
-      // REQ-0195d: a bought unit (BP) row places via firstFitPlaceBp (the
-      // Workshop's own claim path), reconstructing an ApiRolledBp from the
-      // verbatim payload; the remaining instance fields are merged back below.
-      const bpPayload = claimed.bp;
-      const rolled: ApiRolledBp | null = kind === 'bp' && bpPayload
-        ? { uid: claimed.itemUid, shape: bpPayload.shape, unit: bpPayload.unit, hpMax: bpPayload.hpMax, cellCount: bpPayload.cellCount ?? bpPayload.shape.length, bonuses: bpPayload.bonuses as ApiRolledBp['bonuses'] }
-        : null;
-      const placed: PlacementResult | BpPlacementResult | null = kind === 'tm'
-        ? firstFitOrMergeTM(engine, state, claimed.itemUid, claimed.itemId, claimed.qty ?? 1, openPage, engine.PAGE_COUNT)
-        : kind === 'bp'
-          ? (rolled ? firstFitPlaceBp(engine, state, rolled, openPage, engine.PAGE_COUNT) : null)
-          : firstFitPlace(engine, state, kind, claimed.itemUid, claimed.itemId, openPage, engine.PAGE_COUNT);
+      // REQ-0215 reordered this whole function. It used to POST first and let
+      // the server hand back the row's kind, then first-fit-place whatever came
+      // back. The user's spec makes the CLIENT the one that decides where the
+      // item goes -- and "no gap" an ERROR rather than a silent claiming row --
+      // so the search has to happen BEFORE the round-trip, which means the kind
+      // and the shape must come from the row we ALREADY have in the polled list
+      // rather than from the claim response.
+      const row = (items ?? []).find((i) => i.itemUid === itemUid);
+      if (!row) throw new Error('warehouse row is not in the current list -- it may have expired; reload');
 
-      if (!placed) {
-        // No space anywhere -- per the REQ's own accepted design, leave
-        // the row 'claiming' server-side; it lazily reverts to
-        // 'claimable' after the server's own timeout (no explicit
-        // "abandon claim" round-trip needed -- see this file's module
-        // comment). Surface a toast so the user isn't left guessing.
+      const kind = row.kind === 'tm' ? 'tm' : row.kind === 'bp' ? 'bp' : itemKindOf(content, row.itemId);
+      const openPage = snapshot.activeInvPage;
+      // REQ-0195d/0215: a BP row (a bought OR rolled Unit) carries its verbatim
+      // instance; rebuild the ApiRolledBp the BP placement helpers take. The
+      // remaining instance fields are merged back after placement below.
+      const bpPayload = row.bp;
+      const rolled: ApiRolledBp | null = kind === 'bp' && bpPayload
+        ? { uid: row.itemUid, shape: bpPayload.shape, unit: bpPayload.unit, hpMax: bpPayload.hpMax, cellCount: bpPayload.cellCount ?? bpPayload.shape.length, bonuses: bpPayload.bonuses as ApiRolledBp['bonuses'] }
+        : null;
+
+      // (1) The server can only see the LAST-SAVED canvas (design rule 5: our
+      // auto-save PUT is the one profile writer), and it is about to judge our
+      // spot against it. Flushing first is what makes the board it judges the
+      // same board we are about to search -- without this, an unsaved drag could
+      // have the server reject a legal spot, or pass an illegal one.
+      await flushAutoSave();
+
+      // (2) OUR search -- pure, mutates nothing (see lib/placement.ts's REQ-0215
+      // split note for why searching and placing had to come apart).
+      const spot: FitSpot | null = kind === 'tm'
+        ? findFitOrMergeTM(engine, state, row.itemUid, row.itemId, openPage, engine.PAGE_COUNT)
+        : kind === 'bp'
+          ? (rolled ? findFitBP(engine, state, rolled, openPage, engine.PAGE_COUNT) : null)
+          : kind === 'po'
+            ? findFitPO(engine, state, row.itemUid, row.itemId, openPage, engine.PAGE_COUNT)
+            : findFitSI(engine, state, row.itemUid, row.itemId, openPage, engine.PAGE_COUNT);
+
+      // (3) No gap anywhere -> an ERROR, and we never call the server at all.
+      // REQ-0215 supersedes the old posture here (POST, fail to place, leave the
+      // row 'claiming' server-side and let it lazily revert after 120s): the row
+      // was never touched, so the player can free a cell and immediately retry
+      // instead of waiting out a timeout on a row nothing ever moved.
+      if (!spot) {
+        beginClaimFadeOut(itemUid);
         setToast(t(locale, 'schedule.warehouse.claimNoSpace'));
         setClaimErrors((prev) => ({ ...prev, [itemUid]: t(locale, 'schedule.warehouse.claimNoSpace') }));
         return 'no_space';
       }
 
-      // Placement-cell pulse ("ピコンピコン") on whichever board actually
-      // received it -- reuses BoardRenderer's existing flash-overlay
-      // mechanism (pulseCellsSuccess), via the singleton InventoryBoard
-      // renderer this tab's embedded board IS (see board/
-      // inventoryRenderer.ts's doc for why a module-level accessor is
-      // the seam here, per the REQ-0041 Pixi-instance reuse decision).
-      // REQ-0195d: firstFitPlaceBp sets only id/name/color/shape/origin/
-      // unit/hpMax -- restore the rest of the verbatim BP instance so the
-      // bought unit stays byte-faithful (never re-rolled).
+      // (4) Claim, carrying our spot. The server tests THAT SPOT ONLY and 409s
+      // (reason:'no_space') if the engine refuses it -- it never searches.
+      const claimed = await apiClaimWarehouseItem(itemUid, spot);
+      // REQ-0091: the server's response for THIS claim is back -- begin the
+      // flash's fade-out now, regardless of what the placement below still does.
+      beginClaimFadeOut(itemUid);
+
+      // (5) Place at the spot the server RATIFIED (echoed back verbatim), not at
+      // a freshly re-searched one -- re-searching could silently land the item
+      // somewhere the server never agreed to. Reuses the row's own itemUid as the
+      // new record's uid: that reuse is what makes the server's finalize-on-next-
+      // PUT an exact uid-membership check rather than an itemId heuristic (see
+      // server/services/warehouse.cjs's claimWarehouseItem doc).
+      const at: FitSpot = { page: claimed.page, position: claimed.position };
+      const placedOk = kind === 'tm'
+        ? placeTMAt(engine, state, claimed.itemUid, claimed.itemId, claimed.qty ?? 1, at)
+        : kind === 'bp'
+          ? (rolled ? placeBPAt(engine, state, rolled, at) : false)
+          : placeAt(engine, state, kind, claimed.itemUid, claimed.itemId, at);
+      if (!placedOk) {
+        // The server just validated this exact spot against the canvas we just
+        // flushed, so a refusal here means the two engines disagreed -- a bug,
+        // not a user-facing condition. Surface it rather than silently dropping
+        // the item (the row stays 'claiming' and lazily reverts, so nothing is
+        // lost).
+        throw new Error('the engine refused the spot the server just validated (page ' + at.page + ' ' + JSON.stringify(at.position) + ') -- this is a bug');
+      }
+
+      // REQ-0195d: the BP placement helpers set only id/name/color/shape/origin/
+      // unit/hpMax -- restore the rest of the verbatim instance so a bought or
+      // rolled Unit stays byte-faithful (never re-rolled).
       if (kind === 'bp' && bpPayload) {
-        const placedBp = state.inv.pages[(placed as BpPlacementResult).page].bps.find((b) => b.id === claimed.itemUid) as Record<string, unknown> | undefined;
+        const placedBp = state.inv.pages[at.page].bps.find((b) => b.id === claimed.itemUid) as Record<string, unknown> | undefined;
         if (placedBp) {
           if (bpPayload.name != null) placedBp.name = bpPayload.name;
           if (bpPayload.color != null) placedBp.color = bpPayload.color;
@@ -215,40 +240,39 @@ export function useWarehouseData(locale: Locale) {
           if (bpPayload.roll != null) placedBp.roll = bpPayload.roll;
         }
       }
+
+      // Placement-cell pulse ("ピコンピコン") on whichever board received it --
+      // reuses BoardRenderer's existing flash-overlay mechanism
+      // (pulseCellsSuccess) via the singleton InventoryBoard renderer this tab's
+      // embedded board IS (see board/inventoryRenderer.ts).
       const renderer = getInventoryRenderer();
       const cells = kind === 'po'
-        ? engine.cellsOfIn(state.inv.pages[placed.page].pos.find((p) => p.uid === claimed.itemUid)!)
+        ? engine.cellsOfIn(state.inv.pages[at.page].pos.find((p) => p.uid === claimed.itemUid)!)
         : kind === 'bp'
-          ? engine.bpCells({ shape: (rolled as ApiRolledBp).shape, origin: (placed as BpPlacementResult).origin } as Parameters<typeof engine.bpCells>[0])
-          : [(placed as PlacementResult).cell];
-      // (kind 'si' and 'tm' both fall through to the [placed.cell]
-      // branch above -- both are always exactly 1x1, same as an SI.)
-      // Only pulse if the placement landed on the CURRENTLY-DISPLAYED
-      // page -- pulseCellsSuccess draws into gTarget, which always
-      // reflects whatever page InventoryBoard.tsx's own ops-swap effect
-      // last pointed the renderer at (activeInvPage). If the item landed
-      // on a DIFFERENT page, pulsing cells there would be invisible (and
-      // potentially misleading once the user switches there later) --
-      // the tab-pulse notification below is the correct cue for that
-      // case instead, exactly per the REQ's own spec ("auto-place into
-      // another page and pulse-highlight THAT page's tab").
-      if (placed.page === openPage) {
+          ? engine.bpCells({ shape: (rolled as ApiRolledBp).shape, origin: at.position } as Parameters<typeof engine.bpCells>[0])
+          : [at.position];
+      // ('si' and 'tm' both fall through to the [at.position] branch -- both are
+      // always exactly 1x1.) Only pulse if the placement landed on the
+      // CURRENTLY-DISPLAYED page: pulseCellsSuccess draws into gTarget, which
+      // reflects whatever page InventoryBoard.tsx last pointed the renderer at.
+      // Cells pulsed on another page would be invisible (and misleading later) --
+      // the tab-pulse is the correct cue for that case, per the REQ's own spec.
+      if (at.page === openPage) {
         renderer?.pulseCellsSuccess(cells);
       } else {
-        pulseTab(placed.page);
+        pulseTab(at.page);
       }
 
-      // Let the EXISTING auto-save choke point run naturally -- do NOT
-      // bypass it with a manual save call (the whole point of the
-      // two-phase design is that this auto-save is once again the
-      // single writer; the server finalizes/deletes the warehouse row
-      // on the arrival of the resulting profile PUT).
+      // Let the EXISTING auto-save choke point run naturally -- do NOT bypass it
+      // with a manual save (the whole point of the two-phase design is that this
+      // auto-save is the single writer; the server finalizes/deletes the
+      // warehouse row when the resulting profile PUT arrives).
       notifyStateChanged();
 
       setToast(
-        placed.page === openPage
+        at.page === openPage
           ? t(locale, 'schedule.warehouse.claimedToast')
-          : t(locale, 'schedule.warehouse.claimedOnOtherPage', { page: placed.page + 1 })
+          : t(locale, 'schedule.warehouse.claimedOnOtherPage', { page: at.page + 1 })
       );
       await reload();
       return 'claimed';

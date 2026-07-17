@@ -41,7 +41,10 @@ export const warehouseEn = {
   'schedule.warehouse.claimedToast': 'Moved to your inventory.',
   'schedule.warehouse.claimFailed': 'Could not claim this item: ',
   'schedule.warehouse.loadFailed': 'Failed to load the warehouse: ',
-  'schedule.warehouse.claimNoSpace': 'No space in any inventory page -- the item stays in your warehouse.',
+  // REQ-0215: this is now a real error -- the claim is refused and the row is
+  // never touched (it stays exactly 'claimable'), so retrying after freeing a
+  // cell works immediately rather than waiting out a claim timeout.
+  'schedule.warehouse.claimNoSpace': 'No room in any inventory page for this item -- free up some cells and claim again.',
   'schedule.warehouse.claimedOnOtherPage': 'Placed on page {page}.',
   'schedule.warehouse.capWarning': 'Space is running low. Claim soon or new rewards may be lost.',
   'schedule.warehouse.capFull': 'Warehouse is full. New expedition rewards are being lost until you claim space.',
@@ -88,7 +91,7 @@ export const warehouseJa = {
   'schedule.warehouse.claimedToast': 'インベントリに移動しました。',
   'schedule.warehouse.claimFailed': 'このアイテムを受け取れませんでした: ',
   'schedule.warehouse.loadFailed': '倉庫の読み込みに失敗しました: ',
-  'schedule.warehouse.claimNoSpace': 'どのインベントリページにも空きがありません -- アイテムは倉庫に保管されたままです。',
+  'schedule.warehouse.claimNoSpace': 'このアイテムを置く空きがどのインベントリページにもありません -- 空きを作ってからもう一度受け取ってください。',
   'schedule.warehouse.claimedOnOtherPage': 'ページ {page} に配置しました。',
   'schedule.warehouse.capWarning': '空き容量が少なくなっています。早めに受け取らないと新しい報酬が失われる可能性があります。',
   'schedule.warehouse.capFull': '倉庫が満杯です。空きができるまで、新しい遠征報酬は失われ続けます。',

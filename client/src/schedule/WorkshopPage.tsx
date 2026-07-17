@@ -1,15 +1,28 @@
 // Workshop route (#/workshop) -- REQ-0042 behavior, REQ-0076 MJOLNIR
-// re-skin. Common BP gacha: costs GACHA_COMMON_BP_COST (10, single
-// source shared/constants.json since REQ-0145b (cb))
-// LRDST (a stackable TM currency, see mock-src/engine.js's TM model).
-// Follows the SAME "fetch on mount, loading/error states, t()" shape
-// SchedulePage.tsx/DexRoot.tsx/Settings.tsx already established for a
-// route-level component, and reuses WarehouseTab.tsx's EXACT two-phase
-// claim/first-fit/pulse pattern for the roll flow (server mints a
-// pending roll -> THIS client deducts the cost + first-fit-places the
-// rolled BP + pulses + auto-saves -> the resulting profile PUT is what
-// finalizes the roll server-side, see server/services/runs.cjs +
-// server/services/gacha.cjs's finalize path).
+// re-skin, REWRITTEN by REQ-0215. Common BP gacha: costs
+// GACHA_COMMON_BP_COST (10, single source shared/constants.json since
+// REQ-0145b (cb)) LRDST (a stackable TM currency, see mock-src/engine.js's
+// TM model). Follows the SAME "fetch on mount, loading/error states, t()"
+// shape SchedulePage.tsx/DexRoot.tsx/Settings.tsx established.
+//
+// REQ-0215: THIS PAGE NO LONGER PLACES ANYTHING. The roll used to be a
+// two-phase claim clone -- server mints a pending roll, this client deducts
+// the LRDST via spendTM, first-fit-places the BP, pulses, auto-saves, and
+// THAT PUT finalizes the roll. The user's spec sends the rolled Unit to the
+// WAREHOUSE instead, so all of that is gone: the roll POST is one atomic
+// server-side transaction (debit + warehouse delivery), and this page's job
+// ends at showing the result modal. The player claims the Unit through the
+// ordinary Warehouse UI, exactly like a dungeon reward or a market-bought
+// Unit -- which is also why the local refund path is gone (a roll that
+// cannot be delivered now 409s BEFORE anything is charged, so there is
+// nothing to refund).
+//
+// The two obligations this page DOES own are the canvas-race ones the
+// market's settle already documents (services/market.cjs's rule-5
+// divergence writeup): flushAutoSave() BEFORE the roll so the server reads
+// our real balance, and loadGame() AFTER it so our in-memory canvas learns
+// about the server's debit. Skipping the reload would let a later auto-save
+// resurrect the pre-roll canvas and hand the LRDST back.
 //
 // REQ-0076: markup re-skinned to web/redesign/workshop.html (Forge of
 // Fates) -- casting panel + odds panel + result MODAL wearing the
@@ -27,15 +40,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import type { ApiConnShape } from '../../../shared/dto';
-import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { unitArtUrl } from '../board/unitIcon';
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
-import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
-import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
 import { DismantlePanel } from './DismantlePanel';
 import { t } from '../i18n';
-import { notifyStateChanged, useGameStore, type Locale } from '../store';
+import { flushAutoSave, loadGame, useGameStore, type Locale } from '../store';
 import { GACHA_COMMON_BP_COST } from '../../../shared/constants.json';
 
 interface WorkshopPageProps {
@@ -183,104 +193,33 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
     setError(null);
     setRollResult(null);
     try {
-      // Phase 1: server verifies balance + rolls a fresh BP definition,
-      // records a pending row, returns it WITHOUT deducting anything.
+      // The server reads our LRDST balance off the LAST-SAVED canvas and debits
+      // it there. Flush first, or it validates and charges against a stale
+      // balance (design rule 5 makes the saved canvas the only one it can see).
+      await flushAutoSave();
+
+      // ONE atomic server-side transaction (REQ-0215): validates balance +
+      // warehouse capacity, rolls the Unit, debits the cost, and delivers the
+      // Unit (plus any pack bonuses) to our WAREHOUSE as claimable rows. Nothing
+      // is charged if anything refuses -- there is no half-settled roll and no
+      // pending state to abandon.
       const res = await rollWorkshopGacha(effectivePackId);
-      const { cost, rolled } = res;
-      // REQ-0045 (h): reveal the rolled BP's full diagram (shape + unit
-      // + beam dirs + hpMax + cell count) as soon as the definition is
-      // known -- independent of placement succeeding/failing below (the
-      // roll itself already happened; the diagram is just showing the
-      // player what they got).
-      setRollResult(rolled);
 
-      const engine = snapshot.engine;
-      const state = snapshot.state;
-      if (!engine || !state || !state.inv) {
-        throw new Error('inventory not ready');
-      }
+      // The server just wrote our canvas (the debit). Re-read it before the next
+      // auto-save can fire, or an in-flight PUT of our pre-roll copy resurrects
+      // the spent LRDST -- the exact stale-canvas race REQ-0041 documented and
+      // the market's buyListing still carries. Unlike a market settle we ARE the
+      // initiating client, so this window is ours to close, and we close it.
+      await loadGame();
 
-      // Phase 2 (THIS client): deduct `cost` LRDST via engine.spendTM
-      // (page-scoped, largest-stack-first -- see engine.js's TM model
-      // comment for why spend is page-scoped) from the CURRENTLY OPEN
-      // page first, falling back to any other page that alone holds
-      // enough to cover the cost (spendTM itself never partially spends
-      // across pages -- see its own doc -- so this loop tries whole
-      // pages in order until one page's own balance covers the cost).
-      const openPage = snapshot.activeInvPage;
-      const pageOrder = [openPage, ...Array.from({ length: engine.PAGE_COUNT }, (_, i) => i).filter((i) => i !== openPage)];
-      let spent = false;
-      for (const pg of pageOrder) {
-        const spendRes = engine.spendTM(state, pg, 'lrdst', cost);
-        if (spendRes.ok) {
-          spent = true;
-          break;
-        }
-      }
-      if (!spent) {
-        // Should not happen (server already verified balance >= cost
-        // against the last-saved canvas moments ago) unless the balance
-        // changed in the interim on THIS client without a save, or the
-        // player's LRDST is split across multiple pages with none alone
-        // covering the cost -- surface an error rather than silently
-        // placing a BP the player never paid for.
-        setError(t(locale, 'workshop.spendFailed'));
-        return;
-      }
-
-      // First-fit place the rolled BP, same open-page-first/pulse/
-      // tab-pulse-fallback pattern as WarehouseTab.tsx's claim flow.
-      const placed = firstFitPlaceBp(engine, state, rolled, openPage, engine.PAGE_COUNT);
-      if (!placed) {
-        // No space anywhere -- per the same accepted design as the
-        // warehouse claim's own "no space" case, the pending roll is
-        // simply left unfinalized server-side; it lazily reverts after
-        // the timeout (see the gacha finalize/purge path). The LRDST was
-        // already deducted above, though -- to avoid silently losing
-        // currency for a roll that can never be placed, refund it locally
-        // before surfacing the error (no server round trip needed -- the
-        // pending roll was never finalized, so the server-side balance
-        // was never touched either).
-        for (const pg of pageOrder) {
-          const refund = engine.tmMove(state, pg, 'lrdst_refund_' + Date.now(), [1, 1], 'lrdst', cost);
-          if (refund.ok) break;
-        }
-        setError(t(locale, 'workshop.noSpace'));
-        return;
-      }
-
-      const renderer = getInventoryRenderer();
-      const cells = engine.bpCells({ shape: rolled.shape, origin: placed.origin } as Parameters<typeof engine.bpCells>[0]);
-      if (placed.page === openPage) {
-        renderer?.pulseCellsSuccess(cells);
-      } else {
-        pulseTab(placed.page);
-      }
-
-      // REQ-0062: the pack's bonus slots (POs / SI lenses / TMs) ride the SAME save as
-      // the guaranteed BP -- first-fit them into inventory now, before the auto-save
-      // below finalizes the roll. Best-effort: a bonus that finds no room is simply not
-      // placed (the guaranteed BP remains the sole finalize gate, unchanged).
-      for (const b of rolled.bonuses ?? []) {
-        if (b.pool === 'tm') {
-          firstFitOrMergeTM(engine, state, b.uid, b.id, b.qty ?? 1, openPage, engine.PAGE_COUNT);
-        } else {
-          firstFitPlace(engine, state, b.pool, b.uid, b.id, openPage, engine.PAGE_COUNT);
-        }
-      }
-
-      // Let the existing debounced auto-save run naturally -- this PUT
-      // is what finalizes the pending roll server-side (uid present AND
-      // balance dropped, see the gacha finalize path).
-      notifyStateChanged();
-
-      setToast(
-        placed.page === openPage
-          ? t(locale, 'workshop.rolledToast')
-          : t(locale, 'workshop.rolledOnOtherPage', { page: placed.page + 1 })
-      );
+      // REQ-0045 (h): reveal what was rolled. This is now a RECEIPT of what was
+      // delivered to the warehouse, not something this page has to place.
+      setRollResult(res.rolled);
+      setToast(t(locale, 'workshop.rolledToWarehouse'));
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) {
+      if (e instanceof ApiError && e.reason === 'warehouse_full') {
+        setError(t(locale, 'workshop.warehouseFull'));
+      } else if (e instanceof ApiError && e.status === 409) {
         setError(t(locale, 'workshop.insufficientFunds'));
       } else {
         setError(t(locale, 'workshop.rollFailed') + (e instanceof Error ? e.message : String(e)));

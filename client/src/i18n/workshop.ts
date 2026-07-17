@@ -10,11 +10,14 @@ export const workshopEn = {
   'workshop.balance': 'Balance: {balance} LRDST',
   'workshop.rollButton': 'Roll',
   'workshop.rolling': 'Rolling…',
-  'workshop.rolledToast': 'A new Backpack was placed!',
-  'workshop.rolledOnOtherPage': 'Placed on page {page}.',
+  // REQ-0215: the roll delivers to the WAREHOUSE, so this page no longer places
+  // anything. rolledToast / rolledOnOtherPage / noSpace / spendFailed are gone
+  // with the placement path they described -- there is no page to land on, no
+  // "no space" at roll time (a full warehouse 409s before anything is charged),
+  // and no client-side spend to fail.
+  'workshop.rolledToWarehouse': 'Delivered to your warehouse. Claim it there to place it.',
   'workshop.insufficientFunds': 'Insufficient LRDST balance.',
-  'workshop.noSpace': 'No space in any inventory page for the rolled Backpack.',
-  'workshop.spendFailed': 'Failed to deduct LRDST -- please try again.',
+  'workshop.warehouseFull': 'Your warehouse has no room for this roll -- claim or clear some rows first. Nothing was charged.',
   'workshop.rollFailed': 'Roll failed: ',
   'workshop.rollResultTitle': 'You rolled:',
   'workshop.rollResultDismiss': 'Dismiss',
@@ -112,11 +115,9 @@ export const workshopJa = {
   'workshop.balance': '所持数: LRDST {balance}個',
   'workshop.rollButton': 'ガチャを回す',
   'workshop.rolling': '回しています…',
-  'workshop.rolledToast': '新しいバックパックが配置されました！',
-  'workshop.rolledOnOtherPage': 'ページ {page} に配置しました。',
+  'workshop.rolledToWarehouse': '倉庫に届きました。倉庫から受け取ると配置できます。',
   'workshop.insufficientFunds': 'LRDSTが不足しています。',
-  'workshop.noSpace': 'ロールしたバックパックを置くスペースがどのページにもありません。',
-  'workshop.spendFailed': 'LRDSTの消費に失敗しました -- もう一度お試しください。',
+  'workshop.warehouseFull': '倉庫に空きがないため、このガチャを引けません -- 先に倉庫を整理してください。LRDSTは消費されていません。',
   'workshop.rollFailed': 'ガチャに失敗しました: ',
   'workshop.rollResultTitle': 'ロール結果:',
   'workshop.rollResultDismiss': '閉じる',
