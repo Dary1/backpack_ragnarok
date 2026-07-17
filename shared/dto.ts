@@ -1034,15 +1034,20 @@ export interface ApiRagnarokDevotionResponse {
 // `kind:'bp'` is NOT yet a member here -- rolled Blueprint instances have
 // no static content def to key off of (see dex.cjs's module comment);
 // only item/si/tm are servable through this id-keyed public GET today.
+// REQ-0227: unit/monster joined the servable kinds -- their slices mirror
+// the REQ-0208 catalog detail panes (see dex.cjs's buildCardDto branches).
 export interface ApiDexCardDto {
   v: 1;
-  kind: 'item' | 'si' | 'tm';
+  kind: 'item' | 'si' | 'tm' | 'unit' | 'monster';
   id: string;
   name: string;
   name_ja?: string;
   i18n?: ApiI18nMap;
   rarity: string;
-  icon: string;
+  /** REQ-0227: absent for kind:'monster' (monster art resolves by id via
+   * the art_urls map, not an icon ref); for kind:'unit' this is an
+   * artwork system_name reference (unitArtUrl), never a sprite id. */
+  icon?: string;
   flavor?: string;
   flavor_ja?: string;
   eff_en?: string;
@@ -1061,6 +1066,18 @@ export interface ApiDexCardDto {
   // kind:'tm' only
   short?: string;
   stackable?: boolean;
+  // kind:'unit' only (REQ-0227) -- the referenced connection_shapes vocab
+  // entry rides along so a zero-context consumer can label the connection
+  // the same way the catalog does (lib/connShapeLabel).
+  connection_shape?: string;
+  connection_shape_def?: ApiConnShape;
+  // kind:'monster' only (REQ-0227) -- skill display names ride along,
+  // keyed by skill id, LIMITED to the ids this monster references.
+  hp?: [number, number];
+  footprint?: [number, number];
+  skills?: string[];
+  pack_role?: string;
+  skill_names?: Record<string, ApiSkillName>;
   // REQ-0063: the CALLER's own 分解値 (dismantle count) + current
   // mechanical suppression for this id. kind:'item'|'si' only (kind:'tm'
   // can never be dismantled); also absent when no caller could be

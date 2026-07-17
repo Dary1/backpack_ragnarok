@@ -17,8 +17,8 @@ import type { ApiDexCardDto } from '../../../shared/dto';
  * dex.cjs) for the Dex subwindow (dex/DexCardWindow.tsx) and any other
  * card consumer. Public, no auth required (content is non-secret, same
  * posture as fetchContent()). Throws ApiError(404) for an unknown
- * kind/id (kind must be one of 'item'|'si'|'tm' -- 'bp' is not servable
- * here yet, see dex.cjs's module comment). */
-export function fetchDexCard(kind: 'item' | 'si' | 'tm', id: string): Promise<{ ok: true; card: ApiDexCardDto }> {
+ * kind/id ('unit'/'monster' joined the allowlist in REQ-0227 -- 'bp' is
+ * still not servable here, see dex.cjs's module comment). */
+export function fetchDexCard(kind: 'item' | 'si' | 'tm' | 'unit' | 'monster', id: string): Promise<{ ok: true; card: ApiDexCardDto }> {
   return scheduleJSON(`/api/dex/card/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`);
 }

@@ -120,3 +120,59 @@ test('dex card subwindow: an si-kind entry also opens correctly from the catalog
   await expect(page.locator('[data-testid="dexcard-window"]')).toBeVisible();
   await expect(page.locator('[data-testid="dexcard-name"]')).toBeVisible();
 });
+
+// ---- REQ-0227: unit / monster kinds get the same preview trigger ----
+// Expected entries derive from /api/content's own units/monsters sections
+// (same posture as dex.spec.ts's REQ-0208 tab tests), so these hold on any
+// content set.
+
+test('dex card subwindow (REQ-0227): Units tab preview trigger opens the unit card without navigating', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const ids = Object.keys(content.units ?? {});
+  expect(ids.length).toBeGreaterThan(0);
+  const target = ids[0];
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Units' }).click();
+  await expect(page.locator('.dex-tab-active', { hasText: 'Units' })).toBeVisible();
+
+  const card = page.locator('.dex-unit-card', { hasText: target }).first();
+  await expect(card).toBeVisible();
+  await card.locator('.dex-card-preview-btn').click();
+
+  // Subwindow appears with the right entry, live from the REQ-0227 DTO...
+  await expect(page.locator('[data-testid="dexcard-window"]')).toBeVisible();
+  await expect(page.locator('[data-testid="dexcard-name"]')).toContainText(content.units[target].name);
+  // ...showing the unit slice: the connection row (lib/connShapeLabel
+  // wording) and the portrait well -- and NEVER a ShapeGrid (a unit's
+  // backpack shape is rolled at emission, REQ-0170/0208).
+  await expect(page.locator('[data-testid="dexcard-connection"]')).toBeVisible();
+  await expect(page.locator('[data-testid="dexcard-portrait"]')).toBeVisible();
+  await expect(page.locator('.dexcard-window .shape-grid')).toHaveCount(0);
+  // ...and no navigation happened (still the catalog, not a deep link).
+  await expect(page).not.toHaveURL(/#\/dex\/.+$/);
+});
+
+test('dex card subwindow (REQ-0227): Monsters tab preview trigger opens the monster card with its served hp band', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const monsters = content.monsters ?? {};
+  const ids = Object.keys(monsters);
+  expect(ids.length).toBeGreaterThan(0);
+  const target = ids[0];
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Monsters' }).click();
+
+  const card = page.locator('.dex-monster-card', { hasText: target }).first();
+  await expect(card).toBeVisible();
+  await card.locator('.dex-card-preview-btn').click();
+
+  await expect(page.locator('[data-testid="dexcard-window"]')).toBeVisible();
+  await expect(page.locator('[data-testid="dexcard-name"]')).toContainText(monsters[target].name);
+  const hp = monsters[target].hp;
+  await expect(page.locator('[data-testid="dexcard-hp"]')).toContainText(`${hp[0]}–${hp[1]}`);
+  await expect(page.locator('[data-testid="dexcard-portrait"]')).toBeVisible();
+  await expect(page).not.toHaveURL(/#\/dex\/.+$/);
+});

@@ -59,7 +59,12 @@ const DEX_CARD_RE = /^\/api\/dex\/card\/([^/]+)\/([^/]+)$/;
 // content.cjs's buildContentPayload() return shape: {items, sis, tms,
 // ...}). Absent here => unknown kind => 404 (see below), not a 500 --
 // this doubles as the v1 kind allowlist.
-const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms', pack: 'packs' };
+// REQ-0227: unit/monster join the allowlist -- both sections are already
+// served registry-first by /api/content (units via the REQ-0170/0176
+// overlay, monsters via lib/content.cjs's monstersFromCore authority
+// path), so the card DTO reads the SAME payload the catalogs and the
+// sim consume; no new resolution path exists to drift.
+const KIND_TO_CONTENT_KEY = { item: 'items', si: 'sis', tm: 'tms', pack: 'packs', unit: 'units', monster: 'monsters' };
 
 // REQ-0063: kinds the Dismantle system can ever touch (dismantleItem's
 // own kind:'po'|'si' allowlist, expressed here in dex-card kind terms --
@@ -97,7 +102,10 @@ function tryReadDismantleInfo(req, kind, id) {
 // optional personal overlay (see tryReadDismantleInfo above); omitted
 // from the DTO entirely (not even `dismantle: undefined`) when absent,
 // via JSON.stringify's own undefined-key-drop behavior.
-function buildCardDto(kind, id, entry, dismantleInfo) {
+// REQ-0227: `content` (the SAME getContent() payload the entry was read
+// from) is passed in so the unit/monster branches can ride referenced
+// lookup entries along (connection_shapes / monster_skills; see below).
+function buildCardDto(kind, id, entry, dismantleInfo, content) {
   const dto = {
     v: 1,
     kind: kind,
@@ -136,6 +144,33 @@ function buildCardDto(kind, id, entry, dismantleInfo) {
     dto.hp_per_cell = entry.hp_per_cell;
     dto.pool = entry.pool;
     dto.bonus = entry.bonus;
+  } else if (kind === 'unit') {
+    // REQ-0227: mirrors the REQ-0208 UnitCatalog detail pane slice --
+    // names/rarity/icon (an artwork system_name, resolved client-side via
+    // unitArtUrl, NOT a sprite id) / connection_shape / flavor, all
+    // already on the base DTO except the shape key. The referenced
+    // connection_shapes vocab entry rides along so a zero-context card
+    // consumer labels the connection the same way the catalog does
+    // (client lib/connShapeLabel) without a second /api/content join.
+    dto.connection_shape = entry.connection_shape;
+    const shapes = (content && content.connection_shapes) || {};
+    if (entry.connection_shape && shapes[entry.connection_shape]) {
+      dto.connection_shape_def = shapes[entry.connection_shape];
+    }
+  } else if (kind === 'monster') {
+    // REQ-0227: mirrors the REQ-0208 MonsterCatalog detail pane slice --
+    // hp band / footprint / skills / pack_role, plus the referenced
+    // monster_skills name entries riding along (same zero-context-
+    // consumer argument as the unit branch above). Skill entries are
+    // LIMITED to the ids this monster actually references.
+    dto.hp = entry.hp;
+    dto.footprint = entry.footprint;
+    dto.skills = entry.skills;
+    dto.pack_role = entry.pack_role;
+    const skillNames = (content && content.monster_skills) || {};
+    const riding = {};
+    for (const sk of (entry.skills || [])) { if (skillNames[sk]) riding[sk] = skillNames[sk]; }
+    dto.skill_names = riding;
   }
   if (dismantleInfo) dto.dismantle = dismantleInfo;
   return dto;
@@ -162,7 +197,7 @@ function tryDexRoutes(req, res, url, p) {
     return;
   }
   const dismantleInfo = tryReadDismantleInfo(req, kind, id);
-  sendJSON(res, 200, { ok: true, card: buildCardDto(kind, id, entry, dismantleInfo) });
+  sendJSON(res, 200, { ok: true, card: buildCardDto(kind, id, entry, dismantleInfo, content) });
 }
 
 module.exports = { tryDexRoutes };

@@ -120,4 +120,76 @@ module.exports.run = async function run(h) {
     // literal this shared fixture can no longer guarantee this late in
     // the suite.
   });
+
+  // ---- REQ-0227: unit / monster kinds join the card allowlist ----
+  // Fixtures: test_queen (live_units.json, connection_shape 'queen' -- a
+  // real vocab key, see the harness's connection_shapes table) and
+  // weak_slime (batch enemies.json, skill slime_bite) -- the same
+  // registry-first payload the catalogs and the sim already consume.
+  T('dex card: GET /api/dex/card/unit/test_queen -- 200, connection_shape + riding vocab def, no item/monster fields leak in', () => {
+    const req = mockReq('GET', '/api/dex/card/unit/test_queen');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    const parsed = JSON.parse(res.body);
+    assert.strictEqual(parsed.ok, true);
+    const card = parsed.card;
+    assert.strictEqual(card.v, 1);
+    assert.strictEqual(card.kind, 'unit');
+    assert.strictEqual(card.id, 'test_queen');
+    assert.strictEqual(card.name, 'Test Queen');
+    assert.strictEqual(card.icon, 'art:test_queen');
+    assert.strictEqual(card.connection_shape, 'queen');
+    assert.ok(card.connection_shape_def && card.connection_shape_def.kind === 'ray',
+      'the referenced connection_shapes vocab entry must ride along (zero-context consumers label the connection with it)');
+    assert.strictEqual(card.i18n.ja.name, 'テストクイーン');
+    assert.strictEqual(card.shape, undefined, 'item-only field must not appear on a unit card');
+    assert.strictEqual(card.hp, undefined, 'monster-only field must not appear on a unit card');
+    assert.strictEqual(card.dismantle, undefined, 'units are not dismantlable (dex.cjs DISMANTLABLE_KINDS)');
+  });
+
+  T('dex card: GET /api/dex/card/monster/weak_slime -- 200, hp/footprint/skills/pack_role + riding skill names', () => {
+    const req = mockReq('GET', '/api/dex/card/monster/weak_slime');
+    const res = mockRes();
+    api.handle(req, res);
+    assert.strictEqual(res.statusCode, 200);
+    const card = JSON.parse(res.body).card;
+    assert.strictEqual(card.v, 1);
+    assert.strictEqual(card.kind, 'monster');
+    assert.strictEqual(card.id, 'weak_slime');
+    assert.deepStrictEqual(card.hp, [1, 1]);
+    assert.deepStrictEqual(card.footprint, [1, 1]);
+    assert.deepStrictEqual(card.skills, ['slime_bite']);
+    assert.strictEqual(card.pack_role, 'line');
+    assert.strictEqual(card.rarity, 'common', 'enemy/1 rarity is served verbatim (lowercase dialect)');
+    assert.ok(card.skill_names && card.skill_names.slime_bite && card.skill_names.slime_bite.name,
+      'referenced monster_skills name entries must ride along, keyed by skill id');
+    assert.strictEqual(card.connection_shape, undefined, 'unit-only field must not appear on a monster card');
+    assert.strictEqual(card.shape, undefined, 'item-only field must not appear on a monster card');
+    assert.strictEqual(card.dismantle, undefined, 'monsters are not dismantlable');
+  });
+
+  T('dex card: monster DTO matches /api/content (same getContent() payload, no parallel resolution path)', () => {
+    const contentReq = mockReq('GET', '/api/content');
+    const contentRes = mockRes();
+    api.handle(contentReq, contentRes);
+    const served = JSON.parse(contentRes.body);
+    const cardReq = mockReq('GET', '/api/dex/card/monster/weak_slime');
+    const cardRes = mockRes();
+    api.handle(cardReq, cardRes);
+    const card = JSON.parse(cardRes.body).card;
+    assert.deepStrictEqual(card.hp, served.monsters.weak_slime.hp, 'card hp must be the served authority-path band');
+    assert.deepStrictEqual(card.skill_names.slime_bite, served.monster_skills.slime_bite,
+      'riding skill names must be the SAME entries /api/content serves');
+  });
+
+  T('dex card: unknown unit/monster ids -> 404 (same no-leak posture as the other kinds)', () => {
+    for (const p of ['/api/dex/card/unit/totally_unknown_xyz', '/api/dex/card/monster/totally_unknown_xyz']) {
+      const req = mockReq('GET', p);
+      const res = mockRes();
+      api.handle(req, res);
+      assert.strictEqual(res.statusCode, 404, p);
+      assert.strictEqual(JSON.parse(res.body).ok, false);
+    }
+  });
 };

@@ -25,6 +25,7 @@ import { t } from '../i18n';
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel';
 import { rarThemeClass } from '../render/uiBits';
 import type { Locale } from '../store';
+import { useDexCard } from './DexCardWindow'; // REQ-0227
 import { SectionHead } from './DexDetail';
 import { RegistryBadge } from './RegistryBadge';
 
@@ -143,6 +144,7 @@ function UnitDetail({
 
 export function UnitCatalog({ locale, units, connShapes, focusId, onFocusConsumed }: UnitCatalogProps) {
   const entries = useMemo(() => Object.values(units), [units]);
+  const { openCard } = useDexCard(); // REQ-0227: the shared card subwindow
   const [query, setQuery] = useState('');
   const [rarityFilter, setRarityFilter] = useState('');
   // REQ-0120 contract kept: index=0 preselected so the detail pane is
@@ -240,6 +242,24 @@ export function UnitCatalog({ locale, units, connShapes, focusId, onFocusConsume
                       <span className="dex-card-kind">UNIT</span>
                     </div>
                   </div>
+                </button>
+                {/* REQ-0227: the SAME "i" preview trigger the Items grid
+                    carries (REQ-0052) -- opens this unit's shareable card
+                    subwindow WITHOUT retargeting the detail pane.
+                    stopPropagation so a click here never also fires the
+                    summary button. */}
+                <button
+                  type="button"
+                  className="dex-card-preview-btn"
+                  data-testid="dex-card-preview-btn"
+                  aria-label={t(locale, 'dexcard.previewAria')}
+                  title={t(locale, 'dexcard.previewAria')}
+                  onClick={(ev) => {
+                    ev.stopPropagation();
+                    openCard('unit', u.id);
+                  }}
+                >
+                  <span aria-hidden="true">i</span>
                 </button>
               </div>
             );

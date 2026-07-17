@@ -50,12 +50,20 @@ import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchDexCard } from '../api';
 import type { ApiDexCardDto } from '../api';
+import { getItemArtUrl } from '../board/itemArt';
+import { unitArtUrl } from '../board/unitIcon';
 import { t } from '../i18n';
+import { dirsLabel, shapeLabel } from '../lib/connShapeLabel';
 import type { Locale } from '../store';
 import { iconDims, resolveIconUrl } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 
-export type DexCardKind = 'item' | 'si' | 'tm';
+// REQ-0227: 'unit' and 'monster' joined the servable kinds (server/routes/
+// dex.cjs allowlist). Their cards render the catalogs' portrait well
+// instead of a ShapeGrid -- a unit's backpack shape is rolled at emission
+// (REQ-0170) and a monster's footprint is not a cell shape, so any grid
+// drawing here would be invented data (the REQ-0208 argument, kept).
+export type DexCardKind = 'item' | 'si' | 'tm' | 'unit' | 'monster';
 
 const MAX_STACK_DEPTH = 2; // REQ-0052 spec: nested open cap
 
@@ -228,11 +236,18 @@ function DexCardContent({
   const eff = locale === 'ja' ? card.eff_ja : card.eff_en;
   const icon = resolveIconUrl(card.id, card.icon).url; // REQ-0133 registry-first
   const shape = card.shape && card.shape.length > 0 ? card.shape : ([[0, 0]] as Array<[number, number]>);
+  const isPortraitKind = card.kind === 'unit' || card.kind === 'monster'; // REQ-0227
+  // REQ-0227: the enemy/1 dialect spells rarity lowercase ('common');
+  // the .r-* theme classes key on the capitalized app ramp -- same
+  // one-line seam MonsterCatalog uses for its own theme lookups. The
+  // data itself still displays verbatim (uppercased, like every card).
+  const rarityTheme =
+    card.kind === 'monster' && card.rarity ? card.rarity.charAt(0).toUpperCase() + card.rarity.slice(1) : card.rarity;
 
   return (
     <>
       <div className="dexcard-head">
-        <span className={`rar-word rarity r-${card.rarity}`}>{card.rarity.toUpperCase()}</span>
+        <span className={`rar-word rarity r-${rarityTheme}`}>{card.rarity.toUpperCase()}</span>
         <span className="dexcard-name dname" data-testid="dexcard-name">
           {name}
         </span>
@@ -249,19 +264,26 @@ function DexCardContent({
       </div>
       <div className="dexcard-body">
         <div className="dexcard-fig">
-          {/* REQ-0103: cellPx 28 -> 56. .dexcard-fig only sets min-height:96px
-              and hugs its content, so this just makes the popup card's own
-              icon bigger/more legible -- same doubling as every other Dex
-              icon display, kept on one consistent scale. */}
-          <ShapeGrid
-            shape={shape}
-            cellPx={56}
-            iconUrl={icon}
-            iconAlt={card.icon}
-            iconDims={iconDims(card.icon)}
-            iconStretch={card.stretch}
-            iconAlign={card.align}
-          />
+          {/* REQ-0227: unit/monster cards reuse the catalogs' portrait well
+              (rune placeholder underneath, adopted render covering it when
+              one loads) -- no ShapeGrid, see the DexCardKind note above. */}
+          {isPortraitKind ? (
+            <DexCardPortrait card={card} />
+          ) : (
+            /* REQ-0103: cellPx 28 -> 56. .dexcard-fig only sets min-height:96px
+               and hugs its content, so this just makes the popup card's own
+               icon bigger/more legible -- same doubling as every other Dex
+               icon display, kept on one consistent scale. */
+            <ShapeGrid
+              shape={shape}
+              cellPx={56}
+              iconUrl={icon}
+              iconAlt={card.icon}
+              iconDims={iconDims(card.icon ?? '')}
+              iconStretch={card.stretch}
+              iconAlign={card.align}
+            />
+          )}
         </div>
         <div className="dexcard-stats">
           {card.kind === 'si' && card.slot ? (
@@ -274,6 +296,53 @@ function DexCardContent({
             <div className="dexcard-stat">
               <span className="dexcard-stat-k">{t(locale, 'dexcard.short')}</span>
               <span>{card.short}</span>
+            </div>
+          ) : null}
+          {card.kind === 'unit' && card.connection_shape ? (
+            /* REQ-0227: the same wording the UnitCatalog detail pane and
+               the Workshop use (lib/connShapeLabel -- one formatter, no
+               drift), fed from the DTO's riding vocab entry. */
+            <div className="dexcard-stat" data-testid="dexcard-connection">
+              <span className="dexcard-stat-k">{t(locale, 'dex.connectionTitle')}</span>
+              <span>
+                {shapeLabel(card.connection_shape, card.connection_shape_def, locale)}
+                {card.connection_shape_def?.kind === 'ray' ? ` ・ ${dirsLabel(card.connection_shape_def)}` : ''}
+              </span>
+            </div>
+          ) : null}
+          {card.kind === 'monster' && card.hp ? (
+            <div className="dexcard-stat" data-testid="dexcard-hp">
+              <span className="dexcard-stat-k">{t(locale, 'dex.hpLabel')}</span>
+              <span className="tnum">{`${card.hp[0]}–${card.hp[1]}`}</span>
+            </div>
+          ) : null}
+          {card.kind === 'monster' && card.footprint ? (
+            <div className="dexcard-stat" data-testid="dexcard-footprint">
+              <span className="dexcard-stat-k">{t(locale, 'dex.footprintLabel')}</span>
+              <span className="tnum">{`${card.footprint[0]}×${card.footprint[1]}`}</span>
+            </div>
+          ) : null}
+          {card.kind === 'monster' && card.pack_role ? (
+            <div className="dexcard-stat" data-testid="dexcard-packrole">
+              <span className="dexcard-stat-k">{t(locale, 'dex.packRoleLabel')}</span>
+              <span>{card.pack_role}</span>
+            </div>
+          ) : null}
+          {card.kind === 'monster' && card.skills && card.skills.length > 0 ? (
+            /* REQ-0227: display names resolve through the DTO's riding
+               skill_names entries (an unnamed skill id is still honest
+               data -- same posture as MonsterCatalog's skillLabel). */
+            <div className="dexcard-stat" data-testid="dexcard-skills">
+              <span className="dexcard-stat-k">{t(locale, 'dex.skillsLabel')}</span>
+              <span>
+                {card.skills
+                  .map((sk) => {
+                    const nm = card.skill_names?.[sk];
+                    if (!nm) return sk;
+                    return (locale === 'ja' ? nm.name_ja : undefined) || nm.name || sk;
+                  })
+                  .join(' ・ ')}
+              </span>
             </div>
           ) : null}
           {card.dismantle ? (
@@ -302,5 +371,37 @@ function DexCardContent({
         </a>
       </div>
     </>
+  );
+}
+
+/** REQ-0227: the unit/monster card figure -- the catalogs' portrait-well
+ * posture, verbatim (UnitCatalog.UnitPortrait / MonsterCatalog.
+ * MonsterPortrait): the rune placeholder always renders underneath and
+ * the adopted-render <img> covers it when (and only when) it actually
+ * loads. No adopted art is a NORMAL state, never a broken-image glyph.
+ * Art resolution is the SAME chain each catalog already uses: a unit's
+ * `icon` is an artwork system_name (unitArtUrl); a monster's art rides
+ * the art_urls map keyed by its own id (getItemArtUrl). */
+function DexCardPortrait({ card }: { card: ApiDexCardDto }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    setFailed(false); // one mounted node may be reused across stack entries
+  }, [card.kind, card.id]);
+  const url = card.kind === 'unit' ? (card.icon ? unitArtUrl(card.icon) : null) : getItemArtUrl(card.id);
+  return (
+    <span className="dex-portrait-well dex-portrait-well-lg" data-testid="dexcard-portrait">
+      <span className="dex-art-fallback rune" aria-hidden="true">
+        {card.kind === 'unit' ? 'ᚢ' : 'ᛦ'}
+      </span>
+      {url && !failed ? (
+        <img
+          className="dex-portrait-img"
+          src={url}
+          alt={card.name}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      ) : null}
+    </span>
   );
 }
