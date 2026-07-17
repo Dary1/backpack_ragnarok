@@ -232,6 +232,30 @@ function claimSpotOr409(item, kind, spot, canvas) {
   const container = st.inv.pages[pg];
   const uid = item.itemUid;
 
+  // Normalize the page's four record arrays before handing it to the engine.
+  // NOT paranoia -- a real, saved, current canvas can be missing `tms`: the TM
+  // model arrived in REQ-0042, long after inventory pages existed, and every
+  // canvas written before it (and every e2e fixture, all nine of them) has
+  // pages shaped {bps,pos,sis} with no tms at all. The engine indexes
+  // container.tms unconditionally (tmCanPlace's own `container.tms.find`,
+  // cellBPMapIn, etc. -- invOccupancy guards `sis` with `|| []` but nothing
+  // guards tms), so a legacy page would throw a TypeError straight out of the
+  // engine and surface as a 500 on a perfectly legitimate claim.
+  //
+  // This is safe here and ONLY here: `st` is already a deep copy, so writing to
+  // it cannot touch the caller's saved canvas. We are NOT migrating the stored
+  // profile -- that is the client's auto-save PUT's job (design rule 5), and
+  // doing it here would make this validator a second writer.
+  //
+  // Found by e2e (a 500 on every claim against a fixture profile) AFTER the
+  // api_test suite went green, because that suite's fixture had been given a
+  // tms[] instead -- which fixed the test and left the bug. The guard belongs
+  // here, in the code that reads untrusted canvas shapes, not in the fixture.
+  container.pos = container.pos || [];
+  container.bps = container.bps || [];
+  container.sis = container.sis || [];
+  container.tms = container.tms || [];
+
   let chk;
   if (kind === 'tm') {
     // idIfNew: this uid has no stack of its own yet, so tmCanPlace cannot know
