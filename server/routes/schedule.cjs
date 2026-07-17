@@ -224,9 +224,11 @@ function tryScheduleRoutes(req, res, url, p) {
           runId: run.id,
           roomId: run.roomId,
           startedAt: run.startedAt,
-          durationSecs: run.durationSecs,
+          durationSecs: run.durationSecs, // REQ-0240: PRESENTATION duration (pt-based for paced runs)
+          pacingVersion: run.pacingVersion || 0, // REQ-0240 M2: 0 = legacy run (events carry no pt; client replays on t)
+          roster: run.roster || null, // REQ-0240 M1: per-slot BP hpMax + enemy id/name/hpMax/footprint hints (client reveals enemies on first-seen)
           clock: { elapsedSecs: clock.elapsedSecs, isSettled: clock.isSettled, pct: clock.pct },
-          events: visible,
+          events: visible, // REQ-0240: each event carries `pt` (ms) for paced runs; `t` (sim secs) always present
           // Summary fields are always present (computed instantly at run
           // start) but represent the FINAL outcome even before the
           // clock finishes -- a spectator-safe client should treat

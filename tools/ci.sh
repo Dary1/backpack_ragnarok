@@ -82,6 +82,8 @@ echo "==== [3.9/7] units003 charge acceptance corpus (REQ-0200) ===="
 node tools/units003_acceptance.cjs
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
+echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
+node server/tests/pacing_test.cjs
 echo "==== [4.5/7] pg_sync worker crash-recovery (DB-free) ===="
 node server/tests/pg_sync_test.cjs
 echo "==== [4.6/7] artwork backfill mapping + adoption matcher (DB-free, REQ-0151) ===="
