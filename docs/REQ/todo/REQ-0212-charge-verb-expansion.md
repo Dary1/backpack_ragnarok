@@ -130,3 +130,21 @@ Orchestrator: after REQ-0213 lands AND this REQ merges, run the content phase
 (ingest/review/adopt the 3 units, append byte-identical to `live_units.json`,
 extend the arsenal pool `powder_keg 2 / cursed_doll 2 / battle_pickaxe 3`), then
 `git mv` this REQ todo->built.
+
+## Gate results (2026-07-17, running record)
+
+- Engine phase (subagent, pre-content): full ci.sh -- sim 117/0, goldens 12,
+  unit_charge 13/0, unit_charge_encounter 23/0 (incl. the 4 new
+  end-to-end/rejection tests), self_test_vocab 31 verbs ALL GREEN,
+  check_units, tsc, server files+pg suites green; default e2e 186/1 --
+  the 1 (link-trace) verified flaky, 8/8 green isolated.
+- Content phase (3 carrier units + arsenal pool): check_units ALL GREEN
+  (54 defs), self_test_vocab ALL GREEN, sim 117/0,
+  unit_charge_encounter 23/0. Full ci re-run: green through step [6]
+  (client build; FAIL count 0), then artinspect e2e failed ONCE under
+  load-avg-19 CPU contention (parallel sessions; artadmin 6/6 green in the
+  same run) and re-runs were repeatedly displaced by other sessions'
+  harnesses (exit 75 port guard, one SIGTERM). Admin trio + default suite
+  re-verification pending the next quiet box window -- recorded here
+  before merge for honesty; the content delta is class-identical to
+  REQ-0213's, which passed the full trio + default suite green today.
