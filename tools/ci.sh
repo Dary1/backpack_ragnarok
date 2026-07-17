@@ -11,6 +11,63 @@
 # remembered failure set any more -- if this script prints CI GREEN, every gate
 # it ran passed. Do not re-introduce a "these reds are fine" convention: a red
 # is either a real defect or a stale gate, and both must be fixed, not memorized.
+#
+# ---------------------------------------------------------------------------
+# REQ-0238: SERVING-MODE COVERAGE MAP -- which stage proves which backend.
+#
+# Read this before adding, moving or "fixing" any registry-related gate. The
+# stages below run in TWO serving modes; a test placed in the wrong one proves
+# nothing and fails silently by skipping. Nothing named this split, and the
+# cost of that has now been paid three times: REQ-0221 was filed asserting
+# "green ci.sh proves nothing about registry-first behaviour" when (B) already
+# existed; a second agent re-derived the same false conclusion from the same
+# tree; and a third duplicated work already merged. The coverage was never the
+# defect -- its legibility was.
+#
+# (A) FILES mode -- the registry is EMPTY BY DESIGN. computeRegistryData
+#     (server/lib/content.cjs) is pg-only, so with STORAGE_BACKEND=files there
+#     is no registry at all and every registry-first path is unreachable at the
+#     code level. Deliberate: this is the file-serving contract's own coverage.
+#       [4/7]    server/tests/api_test.cjs   (files backend)
+#       [7/7]    the e2e fleet -- tools/e2e_fleet.cjs spawns every worker
+#                STORAGE_BACKEND=files DATABASE_URL='' .
+#     => A test needing an ADOPTED def CANNOT live here; it will skip or
+#        vacuously pass. A skip in [7/7] is therefore not automatically a hole:
+#        check (B) before "fixing" one. Do not teach the fleet pg -- that
+#        rebuilds (B).
+#
+# (B) PG registry-first -- an adopted def is SEEDED, so the authority path for
+#     po/si/tm/units/packs actually fires. Gated by SKIP_PG only (CI does not
+#     set it): MANDATORY on every real CI run.
+#       [5/7]    api_test.cjs (pg)
+#       [5.355]  seed_derive_pg_test.cjs      art-authoritative seed/derive
+#       [5.36]   content_serving_test.cjs     REQ-0178 gate D: registry-first
+#                serving, file fallback, kind filter, cache invalidation, source
+#                accounting, parity classifier, and REQ-0182b's
+#                registryServedKindFor predicate (adopted -> kind; empty -> null)
+#       [5.37]   schedule_serving_test.cjs    REQ-0176: roll/sim authority
+#       [6.5/8]  content_admin_e2e.sh         ROUTE level, pg + isolated ns:
+#                contentadmin.spec.ts:884 seeds an adopted po_def and asserts
+#                REQ-0182b's 409 + registry_kind + edit_at, UNCONDITIONALLY;
+#                :903 covers the relocated grant-to-warehouse control.
+#       [6.6/8]  registry_first_e2e.sh        REQ-0221: runs the FLEET-SHAPED
+#                spec (dex-admin.spec.ts) against a seeded pg registry so its
+#                409 test runs instead of skipping, and FAILS the run if any
+#                spec skips.
+#
+# NOTE -- [6.5] and [6.6] BOTH assert the REQ-0182b 409. That overlap is
+# intentional but is NOT a licence for a third: [6.5] proves the assertion
+# (and predates [6.6]); [6.6] proves the fleet-shaped spec does not skip.
+# Verified 2026-07-17 by injecting `if (false && servedKind)` into
+# server/routes/admin.cjs: [6.5] alone went 28 passed -> 1 failed at
+# contentadmin.spec.ts:884, and the run wrote content/live/live_items.json
+# behind the ledger -- the exact drift REQ-0182b guards. So a re-enabled legacy
+# PUT is caught even with [6.6] removed.
+#
+# => New registry-first coverage belongs in (B): serving/unit semantics in
+#    [5.x]; route or UI behaviour needing an adopted def in [6.5]. Add a new
+#    harness only if neither fits -- and say here which mode it proves.
+# ---------------------------------------------------------------------------
 set -euo pipefail
 
 # REQ-0231: ONE ci run per box at a time. The e2e box lock only ever
@@ -231,6 +288,9 @@ else
 fi
 if [ "${SKIP_E2E:-0}" != "1" ]; then
   # REQ-0234 (F2, implements REQ-0225's default-flip): from a req-NNNN
+  # REQ-0238: [7/7] is FILES-mode -- registry EMPTY by design, so no
+  # registry-first path fires here. See the SERVING-MODE COVERAGE MAP at
+  # the top of this file before adding registry coverage or "fixing" a skip.
   # worktree the e2e stage runs SCOPED by default -- its own fleet root and
   # REQ-decade ports, sharing nothing box-global, so it neither queues
   # against other sessions nor touches the box lock the REQ-0217 freeze
