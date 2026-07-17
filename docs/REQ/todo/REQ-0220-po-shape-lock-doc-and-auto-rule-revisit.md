@@ -1,11 +1,12 @@
 # REQ-0220 — po-shape-lock-doc-and-auto-rule-revisit: fix misleading lock docs; re-decide auto's rule for full rectangles
 
-**Status:** draft — AGENT-PROPOSED, awaiting owner review. Not cleared to implement.
+**Status:** built — implemented on `req-0220-po-shape-lock-doc-and-auto-rule-revisit`, gates green, NOT merged/deployed.
 **Reserved:** 2026-07-16
+**Ruled:** 2026-07-17 (user)
 **Slug:** po-shape-lock-doc-and-auto-rule-revisit
 **Filed under user directive** (2026-07-16, chat): 「あなたが作業している中で、こうした方良かったと
-思う事はREQにしておいてください」. The proposal below is the agent's; no user ruling exists yet
-on the substance. This is the follow-up REQ that REQ-0187's verdict named.
+思う事はREQにしておいてください」. The proposal below was the agent's; the ruling in "Decision" is
+the user's. This is the follow-up REQ that REQ-0187's verdict named.
 
 ## Why (REQ-0187 S7 verdict, V2 = AMBER)
 
@@ -24,23 +25,126 @@ renders committed there; verdict tables in `docs/REQ/done/REQ-0187-po-shape-cond
 The awkward half of auto's rule HELD (L-tromino: strict 68.3 vs off 32.5 median fit, off spilled
 123 px deep-overflow) — nothing here questions auto→strict for non-rectangles.
 
-## What to do
+## The cost argument also failed (found during implementation, 2026-07-17)
 
-1. **Docs correction (uncontroversial):** re-word the lock descriptions in REQ-0186's shipped
-   surfaces (`item_content_pipeline.md` §0.1 and wherever the lock strings/tooltips live) so
-   operators are not told strict destroys rectangle subjects. State what was measured instead.
-2. **Rule decision (the user's):** for full rectangles, either (a) keep auto→off with an honest
-   rationale (e.g. "off is cheaper: 15-50 s vs 76-130 s per render, and rectangles rarely
-   misfit"), (b) flip auto→strict everywhere, or (c) gather more rectangle-subject evidence
-   first (one shield is one data point). The cost asymmetry (V5: conditioned renders cost
-   2-5x wall time on the shared 8 GB card) is a legitimate reason to keep off that REQ-0186
-   never actually claimed — if the owner keeps off, the docs should say THIS, not the disproven
-   character claim.
+This REQ was drafted proposing that the owner could legitimately keep auto→off on cost grounds:
+"off is cheaper: 15-50 s vs 76-130 s per render", citing V5. **That is wrong, and the draft was
+wrong to offer it.** Those numbers are REQ-0153's — measured on the SPIKE route, which ran
+matting co-resident on the GPU. REQ-0187 line 68 cites them only as the budget it set out to
+confirm; REQ-0187's actual V5 measurement on the PRODUCTION route found the gap has since closed:
+
+| route / lock                      | wall time (warm) | source                |
+|-----------------------------------|------------------|-----------------------|
+| spike, conditioned                | 76-130 s         | REQ-0153              |
+| spike, plain                      | 15-50 s          | REQ-0153              |
+| **production, conditioned 512x512** | **~60-150 s**  | REQ-0187 V5 (19 renders) |
+| **production, plain off 512**       | **~90-120 s**  | REQ-0187 V5           |
+
+The production ranges OVERLAP: there is no measured 2-5x asymmetry to defend. The reason is in
+V5's own text — the production route runs matting as a separate CPU inspection job rather than
+co-resident on the GPU (which is also why VRAM peak fell to ~5.5 GB from the spike's 6.7-6.8 GB).
+
+So on a full rectangle, off lost on pictures (REQ-0187) and has no cost advantage (V5). Both of
+its arguments were gone. Keeping auto→off would have required inventing a third rationale —
+which is the exact failure mode this REQ exists to correct.
+
+## Decision (user ruling, 2026-07-17)
+
+**`auto` = strict on EVERY po shape.** The shape-dependent split is retired.
+
+The user was presented with: keep auto→off as an admitted aesthetic preference; flip auto→strict;
+or gather more rectangle evidence first. Ruling: **flip to strict** — the option the measurements
+support, on both halves of the rule.
+
+`auto` is KEPT as a distinct stored value (rather than migrating every artwork to `strict`), so a
+future shape-dependent rule can re-enter `resolve_lock()` without a data migration or a caller
+change. An operator who wants `off` on a given item sets the lock explicitly, or uses the
+one-shot per-render override — which REQ-0187 V4 verified works and does not mutate the artwork.
+
+## What was done
+
+1. **Rule (`tools/art_shape.py`)** — `resolve_lock()` returns `strict` for `auto` on every shape.
+   `fills_bounding_box()` deleted: it existed solely as the basis of the retired split, and its
+   docstring asserted it. `mask` stays in `resolve_lock`'s signature (unused) to keep the seam
+   and the callers stable. Python resolution is the single chokepoint — no JS duplicate exists
+   (verified: no `resolveLock`/`fillsBoundingBox` in client/ or server/).
+2. **Operator strings (`client/src/artadmin/artShared.ts`)** — `SHAPE_LOCK_HELP.auto` now states
+   the real rule; `strict` no longer claims a generic legibility cost ("at some subject
+   legibility") but reports what was measured: keeps subject detail on a 2x2 and out-fit off
+   there (81 vs 72), reads a little abstract on L/T (REQ-0187's T-hammer note). The `off`/`guide`
+   blurbs were already honest (REQ-0187 V3 = GREEN) and are untouched.
+3. **Docs (`docs/llm_managed/item_content_pipeline.md`)** — §0.1 status line records
+   `auto` = strict everywhere, plus a blockquote recording WHY the split died, with both
+   refutations (pictures + cost) and their sources, so the disproven claim cannot quietly return.
+4. **Regression guard (`server/tests/artwork_test.cjs`)** — the REQ-0186 auto-lock test flipped
+   to assert `auto`→strict on the 2x2 (params + the edit-instruction prompt + default dilation),
+   and is renamed to REQ-0220. The L half is unchanged and still asserts strict.
+
+## Gates
+
+- **`resolve_lock` behaviour (server-side):** auto→strict on L-tromino / 2x2 / 1x3 / T-tetromino;
+  explicit `off`/`guide`/`strict` still honoured over auto; `None`→strict via the default path;
+  bogus lock still raises. PASS.
+- **`artwork_test.cjs` (pg backend, isolated namespace, ART_ROUTE_MOCK=1):** **11 passed, 0
+  failed** — including `REQ-0220 auto lock: strict on EVERY shape` and the untouched
+  `REQ-0186 explicit locks + one-shot override + validation`. PASS.
+  (Pre-existing, unrelated: inspection kits log `No module named 'numpy'` under the default
+  python; ci.sh passes `ART_KIT_PYTHON` pointing at the venv. Not a regression from this REQ.)
+- **Client `tsc -b`:** exit 0. **oxlint** on the touched file: 0 warnings, 0 errors. PASS.
+- **artadmin e2e (`tools/artadmin_e2e.sh`, REQ-0156 G2, post-rebase, per-REQ lock):**
+  **7 passed, rc=0** — including `REQ-0191 cell backdrop (po renders draw over their
+  footprint)` and `REQ-0216 true-scale thumbs`, the two po-rendering specs. PASS.
+  First attempt on the same tree reported 2 failed / 5 passed; both were `page.goto:
+  Timeout 20000ms` on the FIRST navigation (one of them on an `si` artwork, a kind this
+  REQ cannot affect), under load 23 with a concurrent admin harness on the box. Re-run on
+  a quieter box: all 7 green, same commit. Flake, not a regression — and precisely REQ-0234's
+  audit finding F3 (wall-clock synchronisation + `retries:0` turns load into a red run).
+- **A/B on one rectangle:** already satisfied by REQ-0187's 6 renders on the 2x2 `round shield`
+  (3 off / 3 strict, same production route, same params, dilation 8, fit-meter v5): strict 3/3
+  PASS median 81.3 vs off 3/3 PASS median 71.8, deep_overflow 0 on both. The rule now ships the
+  arm that WON that A/B, so "no regression" is the measurement itself, not a prediction. No new
+  GPU time was spent; re-running it would only reproduce `findings.json`.
+
+## The e2e gate + the rebase (2026-07-17)
+
+The artadmin e2e gate could not run on this REQ's original base, and the reason is worth
+recording because it is not specific to REQ-0220.
+
+The worktree was cut from master at `dd031d8`. While this REQ was being implemented, master
+advanced **79 commits**, including `5e0703a` (REQ-0217 hermetic e2e) and `6cebf8a` (REQ-0234:
+admin harnesses take **per-REQ locks**, `~/.cache/backpack/e2e.<req>.lock`, instead of the box
+lock). Since the 2026-07-17 incident, a systemd user unit (`backpack-e2e-freeze`) holds
+`~/.cache/backpack/e2e.box.lock` **indefinitely** on purpose, because the pre-0217 harness
+reads/writes the LIVE dev profile, live content and the live api. See
+`~/.cache/backpack/E2E_FREEZE_README.txt`.
+
+So a pre-0217 worktree's `artadmin_e2e.sh` queues on a lock that is never released. Two
+attempts stalled and died on their own timeouts (rc=124) — not a test failure, and not box
+load (the box did hit load 46-67 from three concurrent sessions, which masked the real cause
+for a while). The freeze was doing exactly its job: it stopped an old-harness run from
+touching live state.
+
+**Fix: rebased the branch onto master** (`6d0e3a0`). Master had touched **none** of this REQ's
+six files, so the rebase was conflict-free, and `auto`->`off` was still present on master, so
+the change still applies. On the rebased tree `artadmin_e2e.sh` takes `e2e.0156.lock` and
+never reaches the frozen box lock. `artwork_test` was re-run on the new base: still 11/11.
+
+Residual friction (NOT fixed here, belongs to REQ-0236 / REQ-0231): `artadmin_e2e.sh` derives
+its ports from REQ-**0156** whatever worktree runs it, and the port preflight happens BEFORE
+the per-REQ lock is taken. So two worktrees running the admin harness collide at bringup and
+the loser exits 75 instead of queuing behind the lock that exists precisely to serialise them.
+Observed live against `req-0232-artadmin-backdrop-legend`. The lock and the ports disagree
+about what they are protecting.
 
 ## Out of scope
 - Any change to strict/guide mechanics; monster/si/unit shapes; re-running the matrix.
+- Retiring the `auto` value itself, or migrating stored `auto` rows to `strict`.
 
-## Gates
-- Docs no longer contain the disproven claim; the auto rule's stated rationale matches a real
-  measurement or a real user ruling; if the rule changes, artwork_test + artadmin e2e green and
-  a small A/B on one rectangle confirms no regression.
+## Follow-ups this surfaced
+- REQ-0186 (`done/`) and REQ-0187 line 68 still carry the spike-vs-production cost confusion in
+  their prose. They are history and are left as written; the live surfaces (§0.1, the lock
+  strings, `resolve_lock`'s docstring) now carry the corrected account. If any future REQ quotes
+  "76-130 s vs 15-50 s" as a live cost, it is quoting the spike route.
+- One shield remains one rectangle-subject data point. The ruling is that strict wins on the
+  evidence available and off stays one explicit click away; a future REQ wanting the split back
+  needs rectangle-subject evidence, not a rationale.
