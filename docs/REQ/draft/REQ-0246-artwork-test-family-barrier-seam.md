@@ -57,9 +57,18 @@ and nothing else — no test, no harness, no ci.sh step opts in.
 - Set `ART_FAMILY_BARRIER=0` in `artwork_test.cjs` beside the existing `ART_ROUTE_MOCK=1`
   (same place, same reason: this test does not use the real stack). Assert `barrierRuns` moved
   where the invariant is under test, per REQ-0233's design.
-- Check the same for the admin harnesses (`artadmin_e2e.sh`, `art_inspect_e2e.sh`,
-  `content_admin_e2e.sh`): they are `ART_ROUTE_MOCK=1` too, and REQ-0223's e2e run showed the
-  same exposure. Their 90 s waits hide it more often, which is worse, not better.
+- Set it in the admin harnesses too (`artadmin_e2e.sh`, `art_inspect_e2e.sh`,
+  `content_admin_e2e.sh`): they are `ART_ROUTE_MOCK=1` as well. **CONFIRMED, not suspected** —
+  REQ-0223's `artadmin` e2e caught the barrier mid-restart (`pgrep -f "systemctl.*restart
+  comfyui"` hit while the run hung), and the cost is not subtle:
+
+  | artadmin e2e, same commit | wall clock | result |
+  |---|---|---|
+  | harness as shipped | **>9 min, still running when killed** | dragged; 3 failed on an earlier loaded run |
+  | `ART_FAMILY_BARRIER=0` | **1.7 min** | **8 passed, 0 failed** |
+
+  Their 90 s per-render waits hide it more often than artwork_test's 20-30 s, which is worse,
+  not better: it degrades to "the admin e2e is just slow and flaky lately".
 - Consider inverting the default: a barrier that restarts a service should be OPT-IN for any
   process that did not start the service. Decide, do not leave it implicit — that judgement is
   REQ-0233's to make, hence this is filed as a finding, not a fix.
