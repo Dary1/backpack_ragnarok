@@ -231,7 +231,7 @@ T('additive promotion: batch-007 re-merges onto the batch-free live baseline -- 
       fs.writeFileSync(path.join(liveDir, f), text);
     }
     const other = {};
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       const t = fs.readFileSync(path.join(LIVE, f), 'utf8');
       other[f] = t; fs.writeFileSync(path.join(liveDir, f), t);
     }
@@ -264,7 +264,7 @@ T('additive promotion: batch-007 re-merges onto the batch-free live baseline -- 
       eq(appended, delta[f] === enemies.entries.length ? enemies.entries.map(e => e.id)
         : (f === 'skills.json' ? skills.entries.map(e => e.id) : packs.entries.map(e => e.id)), f + ' appended ids == batch-007');
     }
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       eq(fs.readFileSync(path.join(liveDir, f), 'utf8'), other[f], f + ' must be left untouched');
     }
     const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
