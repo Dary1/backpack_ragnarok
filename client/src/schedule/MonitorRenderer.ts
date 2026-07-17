@@ -21,7 +21,7 @@
 // a pulse (scale/alpha flash) on the hit cell. This is intentionally a
 // small dev-grade animation, not a full VFX system.
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
-import type { ApiRunEvent } from '../api';
+import type { ApiRunEvent, ApiRunRoster } from '../api';
 import type { ChimeSink } from './chimes/chimeMapping';
 import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
 import { computeFootprintCells } from '../render/itemCard';
@@ -153,6 +153,14 @@ export class MonitorRenderer {
    * gate the transient VFX use) so audio stays perfectly in sync with the
    * animation. null until/unless attached (chimes unavailable). */
   private chimeSink: ChimeSink | null = null;
+  /** REQ-0240: 'row' (fields side-by-side) or 'column' (stacked, narrow). */
+  private layout: 'row' | 'column' = 'row';
+  /** REQ-0240 M1: run roster (enemy hpMax etc.), pushed by Monitor.setRoster. */
+  private roster: ApiRunRoster | null = null;
+  /** REQ-0240: the field the most recent ray_fire targeted -- ray_hit carries
+   * no field, so damage numbers read their side from here. */
+  private currentRayField: 'player' | 'enemy' = 'enemy';
+  private dmgSeq = 0;
 
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
@@ -168,8 +176,8 @@ export class MonitorRenderer {
     this.rayLayer.x = 0;
     this.rayLayer.y = 0;
 
-    this.drawFieldBackdrop(this.playerField);
-    this.drawFieldBackdrop(this.enemyField);
+    this.drawFieldBackdrop(this.playerField, 0x6fc4de);
+    this.drawFieldBackdrop(this.enemyField, 0xe06b5f);
 
     this.app.stage.addChild(this.playerField);
     this.app.stage.addChild(this.enemyField);
@@ -194,9 +202,90 @@ export class MonitorRenderer {
     this.chimeSink = sink;
   }
 
-  private drawFieldBackdrop(field: Container): void {
+  /** REQ-0240 (03 ss3 narrow): relayout the two fields row<->column WITHOUT
+   * recreating the Pixi app -- the enemy field moves and the canvas resizes. */
+  setLayout(layout: 'row' | 'column'): void {
+    if (this.layout === layout) return;
+    this.layout = layout;
+    if (layout === 'column') {
+      this.enemyField.x = 0;
+      this.enemyField.y = FIELD_H + FIELD_GAP_PX;
+      this.app.renderer.resize(FIELD_W, FIELD_H * 2 + FIELD_GAP_PX);
+    } else {
+      this.enemyField.x = FIELD_W + FIELD_GAP_PX;
+      this.enemyField.y = 0;
+      this.app.renderer.resize(FIELD_W * 2 + FIELD_GAP_PX, FIELD_H);
+    }
+  }
+
+  /** REQ-0240 M1: store the run roster (enemy hpMax etc.) for stage readouts. */
+  setRoster(roster: ApiRunRoster | null): void {
+    this.roster = roster;
+  }
+
+  /** REQ-0240 test/inspection seam: enemy count the roster (M1) declared -- a
+   * read of the stored roster so it is a live input, and a hook an e2e can use
+   * to assert the roster reached the renderer. */
+  getRosterEnemyCount(): number {
+    return this.roster ? this.roster.enemies.length : 0;
+  }
+
+  /** REQ-0240 (03 ss5.5): a floating, tier-sized, side-coloured damage number
+   * that rises and fades. Placed in the field the ray targeted; positioned by a
+   * small rotating spread (ray_hit carries a masked label, not a cell). Appears
+   * under reduced motion too (fade only). */
+  private floatDamage(field: 'player' | 'enemy', amount: number): void {
+    if (!(amount > 0)) return;
+    const taking = field === 'player';
+    const ox = field === 'enemy' ? this.enemyField.x : this.playerField.x;
+    const oy = field === 'enemy' ? this.enemyField.y : this.playerField.y;
+    const size = amount < 10 ? 15 : amount < 30 ? 18 : 22;
+    const color = taking ? 0xe06b5f : 0xf3a05a;
+    const label = new Text({ text: String(Math.round(amount)), style: { fill: color, fontSize: size, fontWeight: 'bold' } });
+    label.eventMode = 'none';
+    const spread = (this.dmgSeq++ % 5) - 2;
+    const startX = ox + FIELD_W / 2 + spread * 24;
+    const startY = oy + FIELD_H / 2 + spread * 6;
+    label.x = startX; label.y = startY;
+    this.app.stage.addChild(label);
+    const start = performance.now();
+    this.addTicker((): boolean => {
+      const e = performance.now() - start; const fr = Math.min(1, e / 600);
+      label.y = startY - 18 * fr; label.alpha = 1 - fr;
+      if (e >= 600) { if (label.parent) this.app.stage.removeChild(label); label.destroy(); return true; }
+      return false;
+    });
+  }
+
+  /** REQ-0240 (03 ss5.6): the telegraph as theatre -- a wind-up edge glow on the
+   * targeted edge of the player field for a short hold (the "Telegraph:" text
+   * line dies; the stage IS the telegraph). */
+  private telegraphGlow(edge: string): void {
+    const g = new Graphics();
+    const th = 8;
+    if (edge === 'top') g.rect(0, 0, FIELD_W, th);
+    else if (edge === 'bottom') g.rect(0, FIELD_H - th, FIELD_W, th);
+    else if (edge === 'left') g.rect(0, 0, th, FIELD_H);
+    else g.rect(FIELD_W - th, 0, th, FIELD_H);
+    g.fill({ color: 0xf3a05a, alpha: 0.85 });
+    g.eventMode = 'none';
+    g.x = this.playerField.x; g.y = this.playerField.y;
+    this.app.stage.addChild(g);
+    const start = performance.now();
+    this.addTicker((): boolean => {
+      const e = performance.now() - start; const fr = Math.min(1, e / 700);
+      g.alpha = 0.85 * (1 - fr);
+      if (e >= 700) { if (g.parent) this.app.stage.removeChild(g); g.destroy(); return true; }
+      return false;
+    });
+  }
+
+  private drawFieldBackdrop(field: Container, tint = 0): void {
     const bg = new Graphics();
     bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: 0x0e0d0b, alpha: 0.6 }).stroke({ color: 0x2e2a24, width: 1 });
+    // REQ-0240 ss5.1: a faint per-side tint wash so the fields read PLAYER vs
+    // ENEMY. Drawn into the backdrop (child 0), which mountSquads never clears.
+    if (tint) bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: tint, alpha: 0.06 });
     bg.eventMode = 'none';
     field.addChild(bg);
     // REQ-0169 M3: a faint cell grid so positions read as a BOARD even at
@@ -278,6 +367,13 @@ export class MonitorRenderer {
       label.y = rect.y + 2;
       label.eventMode = 'none';
       this.playerField.addChild(label);
+      // REQ-0240 ss5.2: a name PLATE under the box so the troop reads by NAME,
+      // not "U1-U4" (the #1 legibility critique). HP for the plate lives in the
+      // DOM squad dock (authoritative); cell-labelled hit events do not
+      // attribute per-BP HP to a slot mid-run (documented M1 fallback).
+      const plate = new Text({ text: squad.label, style: { fill: 0xcfe6ec, fontSize: 11 } });
+      plate.x = rect.x; plate.y = rect.y + rect.h + 3; plate.eventMode = 'none';
+      this.playerField.addChild(plate);
 
       // REQ-0045 (d): draw EVERY placed PO's icon (small-scale art, per
       // the task brief), each at its own absolute origin cell -- a 1:1
@@ -607,8 +703,14 @@ export class MonitorRenderer {
     switch (ev.ev) {
       case 'ray_fire': {
         const field = ev.field === 'enemy' ? 'enemy' : 'player';
+        this.currentRayField = field; // REQ-0240: ray_hit reads its side from here
         const entry = isRawCell(ev.entry) ? ev.entry : null;
         if (field === 'enemy' && entry) this.getOrCreateEnemyMarker(entry, String(ev.src ?? '?'), ev.src === '?');
+        break;
+      }
+      case 'telegraph': {
+        // REQ-0240 ss5.6: wind-up edge glow on the targeted (player) edge.
+        if (!silent && typeof ev.edge === 'string') this.telegraphGlow(ev.edge);
         break;
       }
       case 'ray_step': {
@@ -626,11 +728,19 @@ export class MonitorRenderer {
       case 'ray_hit': {
         const dst = typeof ev.dst === 'string' ? ev.dst : null;
         if (dst && dst !== '?') this.markDiscovered(dst);
+        // REQ-0240 ss5.5: floating damage number. A coalesced burst shows its
+        // SUMMED total once (on the representative); hidden members are skipped.
+        if (!silent && !ev.pcoalesceHidden) {
+          const amt = ev.pcoalesce ? ev.pcoalesce.amount : (typeof ev.amount === 'number' ? ev.amount : 0);
+          this.floatDamage(this.currentRayField, amt);
+        }
         break;
       }
       case 'ray_aoe': {
-        const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string }>) : [];
-        for (const h of hits) if (h.dst && h.dst !== '?') this.markDiscovered(h.dst);
+        const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string; amount?: number }>) : [];
+        let total = 0;
+        for (const h of hits) { if (h.dst && h.dst !== '?') this.markDiscovered(h.dst); if (typeof h.amount === 'number') total += h.amount; }
+        if (!silent) this.floatDamage(this.currentRayField, total);
         break;
       }
       case 'ray_hit_all':

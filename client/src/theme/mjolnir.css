@@ -267,3 +267,36 @@ button { font-family: var(--f-ui); }
 }
 .fx-click{ animation: fxClickFlash .45s ease-out; }
 @media (prefers-reduced-motion: reduce){ .fx-click{ animation-duration:.001s !important; } }
+
+/* REQ-0240 (00 design-language ss3): shared token extensions for the
+   expedition surfaces (monitor lifecycle ramp, HP/charge readouts, damage
+   tones, elevation, stage). Additive :root -- all existing MJOLNIR tokens
+   stay. */
+:root {
+  /* lifecycle state ramp (P-C) -- one hue per squad/room state */
+  --state-ready:    #57C77B;
+  --state-deployed: var(--ember-hi);
+  --state-recover:  var(--frost);
+  --state-cancel:   var(--blood);
+  --state-locked:   var(--bone-3);
+
+  /* readouts */
+  --hp-full: #57C77B;
+  --hp-mid:  #D9B968;
+  --hp-low:  #C05248;
+  --charge:  var(--frost-hi);
+  --dmg-deal: var(--ember-hi);
+  --dmg-take: #E06B5F;
+  --heal: #7ED6A2;
+  --loot: var(--gold-hi);
+
+  /* elevation for the new stacked surfaces */
+  --elev-1: 0 2px 8px rgba(0,0,0,.35);
+  --elev-2: 0 8px 24px rgba(0,0,0,.45);
+  --elev-3: 0 16px 48px rgba(0,0,0,.6);
+
+  /* monitor stage */
+  --field-line:   rgba(111,196,222,.14);
+  --field-line-e: rgba(224,107,95,.14);
+  --stage-well:   #0B0F15;
+}
