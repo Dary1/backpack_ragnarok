@@ -20,6 +20,7 @@ const HARNESSES = [
   { file: 'tools/art_inspect_e2e.sh', req: 152 },
   { file: 'tools/artadmin_e2e.sh', req: 156 },
   { file: 'tools/content_admin_e2e.sh', req: 157 },
+  { file: 'tools/registry_first_e2e.sh', req: 221 }, // REQ-0221 registry-first serving harness
 ];
 // Ports that are shared + permanent, NOT REQ-scoped (PROJECT.md says so):
 // backpack-web, backpack-api, the e2e local proxy, and the REQ-0083 fleet.
