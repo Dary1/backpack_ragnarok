@@ -174,12 +174,20 @@ async function updateArtwork(system_name, patch) {
 
 // ---- renders ----
 
+/** REQ-0223: render a variant for HUMAN messages. Variant 0 is the render a
+ * bare seed names, so it stays invisible -- an operator who never opens an A/B
+ * should never learn the word "variant" from an error message. */
+function seedVarSuffix(v) {
+  return v ? ' variant ' + v : '';
+}
+
 function mapRenderMeta(row) {
   if (!row) return null;
   return {
     id: row.id,
     artwork_id: row.artwork_id,
     seed: row.seed,
+    variant: row.variant,
     image_sha256: row.image_sha256,
     final_prompt: row.final_prompt,
     params: row.params,
@@ -193,7 +201,21 @@ function mapRenderMeta(row) {
 /** Insert a fresh render row. If `seed` is null the next per-artwork seed
  * (max+1, starting at 1) is computed atomically in the same INSERT so a
  * serialized queue never has to read-then-write. Returns the render meta.
- * UNIQUE(artwork_id, seed) violations surface as code DUPLICATE_SEED.
+ * UNIQUE(artwork_id, seed, variant) violations surface as code DUPLICATE_SEED.
+ *
+ * REQ-0223 twin slots. `opts.twin` asks for the SAME seed again as a new
+ * variant instead of a DUPLICATE_SEED: variant = MAX(variant)+1 over that
+ * (artwork, seed), computed in this same INSERT for the same read-then-write
+ * reason as the seed above. Without `twin` a render always lands on variant 0,
+ * so the ordinary path's dedupe is exactly the constraint it always was --
+ * re-pressing Generate on a taken seed by accident still errors. Only a caller
+ * that MEANS "same seed, different parameters" (the one-shot lock override, or
+ * an explicit twin request from the revision loop) opts in.
+ *
+ * `twin` is ignored when seed is null: an auto-seed is by construction fresh,
+ * so its only honest slot is 0. Concurrent twins on one seed can still race to
+ * the same MAX+1 and lose to the UNIQUE -- that surfaces as DUPLICATE_SEED,
+ * which is correct and, on the serialized art queue, unreachable.
  *
  * REQ-0177 sentinel guard: the auto-seed MAX(seed)+1 EXCLUDES the sentinel
  * seed 2147483647 (int4 max = "imported from an unknown environment", the
@@ -201,13 +223,19 @@ function mapRenderMeta(row) {
  * auto-seeded render created AFTER a backfill would compute 2147483647+1 and
  * overflow int4. With it, a backfilled artwork's next real render seeds off
  * its highest NON-sentinel seed (or 1 if the sentinel is its only render). */
-async function createRender(artwork_id, seed, status) {
+async function createRender(artwork_id, seed, status, opts) {
+  const twin = !!(opts && opts.twin) && seed != null;
   try {
     const res = await q(
-      `INSERT INTO renders (artwork_id, seed, status)
-       VALUES ($1, COALESCE($2, (SELECT COALESCE(MAX(seed) FILTER (WHERE seed < 2147483647),0)+1 FROM renders WHERE artwork_id = $1)), $3)
-       RETURNING id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at`,
-      [artwork_id, seed == null ? null : seed, status || 'queued']
+      `INSERT INTO renders (artwork_id, seed, variant, status)
+       VALUES ($1,
+               COALESCE($2, (SELECT COALESCE(MAX(seed) FILTER (WHERE seed < 2147483647),0)+1 FROM renders WHERE artwork_id = $1)),
+               CASE WHEN $4::boolean
+                    THEN (SELECT COALESCE(MAX(variant),-1)+1 FROM renders WHERE artwork_id = $1 AND seed = $2::integer)
+                    ELSE 0 END,
+               $3)
+       RETURNING id, artwork_id, seed, variant, image_sha256, final_prompt, params, status, error, created_at`,
+      [artwork_id, seed == null ? null : seed, status || 'queued', twin]
     );
     return mapRenderMeta(res.rows[0]);
   } catch (e) {
@@ -221,7 +249,7 @@ async function updateRenderResult(render_id, r) {
     `UPDATE renders
        SET status = $2, image = $3, image_sha256 = $4, final_prompt = $5, params = $6::jsonb, error = $7
      WHERE id = $1
-     RETURNING id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at`,
+     RETURNING id, artwork_id, seed, variant, image_sha256, final_prompt, params, status, error, created_at`,
     [render_id, r.status, r.image == null ? null : r.image, r.image_sha256 == null ? null : r.image_sha256,
      r.final_prompt == null ? null : r.final_prompt,
      r.params == null ? null : JSON.stringify(r.params), r.error == null ? null : r.error]
@@ -231,7 +259,7 @@ async function updateRenderResult(render_id, r) {
 
 async function getRenderById(render_id) {
   const res = await q(
-    `SELECT id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at,
+    `SELECT id, artwork_id, seed, variant, image_sha256, final_prompt, params, status, error, created_at,
             (image IS NOT NULL) AS has_image
        FROM renders WHERE id = $1`, [render_id]);
   return mapRenderMeta(res.rows[0] || null);
@@ -239,23 +267,31 @@ async function getRenderById(render_id) {
 
 /** All renders for an artwork, metadata only (NO image bytes) -- the seed
  * list + thumbnails are served by sha256 through a separate image endpoint,
- * so the list stays light. */
+ * so the list stays light.
+ *
+ * REQ-0223: ordered (seed, variant) so a seed's twins arrive ADJACENT and in
+ * slot order. The lightbox's A/B strip is exactly this order grouped by seed,
+ * so the grouping is a fold over the list, not a re-sort. */
 async function listRenders(artwork_id) {
   const res = await q(
-    `SELECT id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at,
+    `SELECT id, artwork_id, seed, variant, image_sha256, final_prompt, params, status, error, created_at,
             (image IS NOT NULL) AS has_image
-       FROM renders WHERE artwork_id = $1 ORDER BY seed ASC`, [artwork_id]);
+       FROM renders WHERE artwork_id = $1 ORDER BY seed ASC, variant ASC`, [artwork_id]);
   return res.rows.map(mapRenderMeta);
 }
 
-/** {image: Buffer, image_sha256} for one candidate (system_name, seed), or
- * null. Used by GET /api/art/<name>/renders/<seed> (instant WebUI preview,
- * ruling 6). */
-async function getRenderImageBySeed(system_name, seed) {
+/** {image: Buffer, image_sha256} for one candidate (system_name, seed, variant),
+ * or null. Used by GET /api/art/<name>/renders/<seed> (instant WebUI preview,
+ * ruling 6).
+ *
+ * REQ-0223: `variant` defaults to 0, so a bare seed keeps meaning what it has
+ * always meant and the legacy URL needs no change. */
+async function getRenderImageBySeed(system_name, seed, variant) {
   const res = await q(
     `SELECT r.image, r.image_sha256
        FROM renders r JOIN artworks a ON a.id = r.artwork_id
-      WHERE a.system_name = $1 AND r.seed = $2`, [nsName(system_name), seed]);
+      WHERE a.system_name = $1 AND r.seed = $2 AND r.variant = $3`,
+    [nsName(system_name), seed, variant == null ? 0 : variant]);
   const row = res.rows[0];
   return row && row.image ? { image: row.image, image_sha256: row.image_sha256 } : null;
 }
@@ -270,15 +306,20 @@ async function getAdoptedRender(system_name) {
   return res.rows[0] || null;
 }
 
-/** Mark (system_name, seed) as the single adopted render. The render must
- * exist and be status 'ok'. Switchable any time. Returns the artwork. */
-async function adoptRender(system_name, seed) {
+/** Mark (system_name, seed, variant) as the single adopted render. The render
+ * must exist and be status 'ok'. Switchable any time. Returns the artwork.
+ *
+ * REQ-0223: `variant` defaults to 0 (a bare seed = the render it always named).
+ * Adoption keys on renders.id, so a twin is independently adoptable -- winning
+ * an A/B is exactly "adopt the other variant of this seed". */
+async function adoptRender(system_name, seed, variant) {
+  const v = variant == null ? 0 : variant;
   const rr = await q(
     `SELECT r.id, r.status FROM renders r JOIN artworks a ON a.id = r.artwork_id
-      WHERE a.system_name = $1 AND r.seed = $2`, [nsName(system_name), seed]);
+      WHERE a.system_name = $1 AND r.seed = $2 AND r.variant = $3`, [nsName(system_name), seed, v]);
   const render = rr.rows[0];
-  if (!render) throw dupErr('no such render seed ' + seed + ' for ' + system_name, 'NOT_FOUND');
-  if (render.status !== 'ok') throw dupErr('cannot adopt a render that is not status ok (seed ' + seed + ' is ' + render.status + ')', 'NOT_OK');
+  if (!render) throw dupErr('no such render seed ' + seed + seedVarSuffix(v) + ' for ' + system_name, 'NOT_FOUND');
+  if (render.status !== 'ok') throw dupErr('cannot adopt a render that is not status ok (seed ' + seed + seedVarSuffix(v) + ' is ' + render.status + ')', 'NOT_OK');
   const res = await q(
     'UPDATE artworks SET adopted_render_id = $2, updated_at = now() WHERE system_name = $1 RETURNING *',
     [nsName(system_name), render.id]);
@@ -289,15 +330,16 @@ async function adoptRender(system_name, seed) {
  * the artwork's currently adopted render -- enforced HERE in the storage
  * layer (gate G1); the API layer refuses it a second time. Any other
  * render deletes freely. */
-async function deleteRender(system_name, seed) {
+async function deleteRender(system_name, seed, variant) {
+  const v = variant == null ? 0 : variant;
   const info = await q(
     `SELECT r.id AS render_id, a.adopted_render_id
        FROM renders r JOIN artworks a ON a.id = r.artwork_id
-      WHERE a.system_name = $1 AND r.seed = $2`, [nsName(system_name), seed]);
+      WHERE a.system_name = $1 AND r.seed = $2 AND r.variant = $3`, [nsName(system_name), seed, v]);
   const row = info.rows[0];
-  if (!row) throw dupErr('no such render seed ' + seed + ' for ' + system_name, 'NOT_FOUND');
+  if (!row) throw dupErr('no such render seed ' + seed + seedVarSuffix(v) + ' for ' + system_name, 'NOT_FOUND');
   if (row.adopted_render_id && String(row.adopted_render_id) === String(row.render_id)) {
-    throw dupErr('cannot delete the adopted render (seed ' + seed + '); adopt another seed first', 'ADOPTED_UNDELETABLE');
+    throw dupErr('cannot delete the adopted render (seed ' + seed + seedVarSuffix(v) + '); adopt another render first', 'ADOPTED_UNDELETABLE');
   }
   await q('DELETE FROM renders WHERE id = $1', [row.render_id]);
   return { deleted: true };
@@ -317,7 +359,7 @@ async function clearAllArtworks() {
 }
 
 async function setRenderStatus(render_id, status) {
-  const res = await q('UPDATE renders SET status = $2 WHERE id = $1 RETURNING id, artwork_id, seed, image_sha256, final_prompt, params, status, error, created_at', [render_id, status]);
+  const res = await q('UPDATE renders SET status = $2 WHERE id = $1 RETURNING id, artwork_id, seed, variant, image_sha256, final_prompt, params, status, error, created_at', [render_id, status]);
   return mapRenderMeta(res.rows[0] || null);
 }
 
