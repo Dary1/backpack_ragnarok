@@ -1,5 +1,5 @@
 {
-  "comment": "REQ-0051 S4 baseline == the Starter: Scout tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, 4 fixed POs.",
+  "comment": "REQ-0051 S4 baseline == the Starter tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, fully filled with fixed POs (REQ-0209: locked starter unit, every cell fixed).",
   "linked": false,
   "layout": {
     "ROWS": 8,
@@ -123,7 +123,8 @@
           0,
           0
         ]
-      }
+      },
+      "locked": true
     }
   ],
   "pos": [
@@ -167,6 +168,105 @@
       "cell": [
         3,
         2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_4",
+      "id": "probe_lens",
+      "loc": "grid",
+      "cell": [
+        3,
+        3
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_5",
+      "id": "skeleton_key",
+      "loc": "grid",
+      "cell": [
+        3,
+        4
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_6",
+      "id": "probe_lens",
+      "loc": "grid",
+      "cell": [
+        3,
+        5
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_7",
+      "id": "skeleton_key",
+      "loc": "grid",
+      "cell": [
+        4,
+        6
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_8",
+      "id": "spyglass",
+      "loc": "grid",
+      "cell": [
+        5,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_9",
+      "id": "spyglass",
+      "loc": "grid",
+      "cell": [
+        5,
+        4
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_10",
+      "id": "lockpick",
+      "loc": "grid",
+      "cell": [
+        6,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_11",
+      "id": "spyglass",
+      "loc": "grid",
+      "cell": [
+        6,
+        3
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_scout_12",
+      "id": "spyglass",
+      "loc": "grid",
+      "cell": [
+        6,
+        5
       ],
       "rot": 0,
       "fixed": true

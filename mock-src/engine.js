@@ -128,6 +128,11 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
       if(lk[key(r,c)])return {ok:false,cells,why:'Unit cell'};
       if(occ[key(r,c)])return {ok:false,cells,why:'occupied'};
     }
+    // REQ-0209 locked starter units: a locked BP's interior accepts NO new
+    // placement at all (every cell is uniformly fixed) -- refuse any PO or
+    // assembly landing inside it. BP-level ops (move/rotate/transfer) do
+    // not route through here and stay legal.
+    if(bp){const _lb=bpById(st,bp);if(_lb&&_lb.locked)return {ok:false,cells,why:'locked unit'};}
     return {ok:true,cells,bp};
   }
   const canPlacePO=(st,uid,rot,anchor)=>{
@@ -156,6 +161,16 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     return chk;
   }
   const bpById=(st,id)=>st.bps.find(b=>b.id===id);
+  // REQ-0209: is this canvas PO inside a locked (starter-unit) BP? A PO's
+  // cells are guaranteed same-BP by placement law, so testing one cell is
+  // enough. Used by seatSI/stowSI to refuse socket ops inside a locked BP.
+  const poInLockedBP=(st,p)=>{
+    if(!p||p.loc!=='grid')return false;
+    const cs=cellsOf(st,p);
+    if(!cs.length)return false;
+    const b=bpById(st,cellBPMap(st)[key(cs[0][0],cs[0][1])]);
+    return !!(b&&b.locked);
+  };
   // bpHpMax(st,bpId): read-only accessor for a BP's authored max-HP field
   // (REQ-0036 P1-A). Returns bp.hpMax if present, else undefined. Pure read,
   // NO mutation, NO combat/HP-mutation logic here -- this is only a read
@@ -396,13 +411,19 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   function seatSI(st,siUid,skey){
     const sock=sockets(st).find(s=>s.skey===skey);
     if(!sock)return {ok:false,why:'no such socket'};
+    if(sock.host!=='bond'&&poInLockedBP(st,poByUid(st,sock.host)))return {ok:false,why:'locked unit'}; // REQ-0209
     const v=hostOk(st,siUid,sock);
     if(!v.ok)return v;
     const a=st.sis.find(x=>x.uid===siUid);
     a.host=sock.host==='bond'?'bond':{po:sock.host,si:sock.si};
     return {ok:true};
   }
-  function stowSI(st,siUid){st.sis.find(x=>x.uid===siUid).host='inv';return {ok:true};}
+  function stowSI(st,siUid){
+    const a=st.sis.find(x=>x.uid===siUid);
+    // REQ-0209: an SI seated inside a locked starter unit cannot be unseated.
+    if(a.host&&a.host.po&&poInLockedBP(st,poByUid(st,a.host.po)))return {ok:false,why:'locked unit'};
+    a.host='inv';return {ok:true};
+  }
   function unseatOrphans(st){
     const asm=assembly(st);
     for(const a of st.sis){
@@ -903,9 +924,20 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
       // the BP, others free-floating outside it).
       for(const [r,c] of cells)if(cbp[key(r,c)]!==bp)return {ok:false,cells,why:'straddles BP edge'};
     }
+    // REQ-0209: page twin of canPlaceCells' locked-BP refusal.
+    if(bp){const _lb=container.bps.find(b=>b.id===bp);if(_lb&&_lb.locked)return {ok:false,cells,why:'locked unit'};}
     return {ok:true,cells,bp};
   }
   const poByUidIn=(container,u)=>container.pos.find(p=>p.uid===u);
+  // REQ-0209: page twin of poInLockedBP.
+  const poInLockedBPIn=(container,p)=>{
+    if(!p||p.loc!=='grid')return false;
+    const cs=cellsOfIn(p);
+    if(!cs.length)return false;
+    const id=cellBPMapIn(container)[key(cs[0][0],cs[0][1])];
+    const b=container.bps.find(ob=>ob.id===id);
+    return !!(b&&b.locked);
+  };
 
   // invCanPlacePO(st,page,uid,rot,anchor): pure legality check for placing/
   // moving PO `uid` (already present in page `page`'s pos[]) at rotation
@@ -1173,6 +1205,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     const container=page(st,pg);
     const sock=pageSockets(st,pg).find(s=>s.skey===skey);
     if(!sock)return {ok:false,why:'no such socket'};
+    if(poInLockedBPIn(container,poByUidIn(container,sock.host)))return {ok:false,why:'locked unit'}; // REQ-0209
     const a=container.sis.find(x=>x.uid===siUid);
     if(!a)return {ok:false,why:'no such SI in this page'};
     const d=SI_DEFS[a.id];
@@ -1186,6 +1219,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   function invStowSI(st,pg,siUid){
     const a=page(st,pg).sis.find(x=>x.uid===siUid);
     if(!a)return {ok:false,why:'no such SI in this page'};
+    if(a.host&&a.host.po&&poInLockedBPIn(page(st,pg),poByUidIn(page(st,pg),a.host.po)))return {ok:false,why:'locked unit'}; // REQ-0209
     a.host='inv'; // stowed-within-page sentinel; distinct from a free-placed {page,cell} host
     return {ok:true};
   }
@@ -1493,13 +1527,17 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   //     immediately).
   // Returns {ok:false,why:'already referenced by current squad'} (the red
   // rule) or {ok:false,why:'no home'} if uid has no home record at all.
-  function createRef(st,kind,uid,placement){
+  function createRef(st,kind,uid,placement,opts){
     if(usedByCurrent(st,uid))return {ok:false,why:'already referenced by current squad'};
     const home=homeLocationOf(st,uid);
     if(!home||home.kind!==kind)return {ok:false,why:'no home'};
     if(kind==='po'){
       const src=home.record;
-      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot),q:src.q};
+      // REQ-0209: a pinned (fixed) PO only ever travels WITH its BP's own
+      // reference walk (transferBPCreateRef passes opts.nested) -- a bare
+      // fixed-PO reference is refused like every other fixed-PO move.
+      if(src.fixed&&!(opts&&opts.nested))return {ok:false,why:'fixed'};
+      const ref={uid:src.uid,id:src.id,loc:'grid',cell:placement.cell,rot:(placement.rot!=null?placement.rot:src.rot),q:src.q,fixed:src.fixed};
       // Validate canvas placement legality (bounds/BP-containment/overlap)
       // the SAME way movePO always has -- push first (canPlacePO needs the
       // uid present in st.pos to compute its own-uid exclusion correctly,
@@ -1508,13 +1546,18 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
       // reference creation leaves st untouched, matching transferBP's
       // "fails cleanly" contract.
       st.pos.push(ref);
-      const chk=canPlacePO(st,uid,ref.rot,ref.cell);
-      if(!chk.ok){st.pos.pop();return chk;}
+      // REQ-0209: nested fixed content arrives pre-validated at the BP
+      // level (canTransferBP) and would be refused by its own BP's lock in
+      // canPlaceCells -- skip the per-PO gate for exactly that case.
+      if(!(opts&&opts.nested&&src.fixed)){
+        const chk=canPlacePO(st,uid,ref.rot,ref.cell);
+        if(!chk.ok){st.pos.pop();return chk;}
+      }
       return {ok:true,ref};
     }
     if(kind==='bp'){
       const src=home.record;
-      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit,hpMax:src.hpMax};
+      const ref={id:src.id,name:src.name,color:src.color,shape:src.shape,origin:placement.origin,unit:src.unit,hpMax:src.hpMax,locked:src.locked}; // REQ-0209: locked travels with the reference
       st.bps.push(ref);
       return {ok:true,ref};
     }
@@ -1538,10 +1581,14 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   // under the reference model: "drop cell irrelevant", spec + engine
   // design section). A no-op {ok:true,removed:false} if the current
   // squad holds no such reference (nothing to remove is not an error).
-  function removeRef(st,kind,uid){
+  function removeRef(st,kind,uid,opts){
     if(kind==='po'){
       const idx=st.pos.findIndex(p=>p.uid===uid);
       if(idx===-1)return {ok:true,removed:false};
+      // REQ-0209: a fixed PO reference leaves the canvas only as part of
+      // its BP's own wholesale removal (transferBPRemoveRef passes
+      // opts.nested), never individually.
+      if(st.pos[idx].fixed&&!(opts&&opts.nested))return {ok:false,why:'fixed'};
       st.pos.splice(idx,1);
       st.sis=st.sis.filter(a=>!(a.host&&typeof a.host==='object'&&a.host.po===uid));
       unseatOrphans(st);
@@ -1689,7 +1736,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     const bpRef=createRef(st,'bp',bpId,{origin});
     for(const uid of nested.pos){
       const poHome=homeLocationOf(st,uid).record;
-      createRef(st,'po',uid,{cell:[poHome.cell[0]+dr,poHome.cell[1]+dc],rot:poHome.rot});
+      createRef(st,'po',uid,{cell:[poHome.cell[0]+dr,poHome.cell[1]+dc],rot:poHome.rot},{nested:true});
     }
     for(const uid of nested.sis){
       const siHome=homeLocationOf(st,uid).record;
@@ -1706,7 +1753,7 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     // one) is nested content that arrived with it -- remove those
     // references too (their homes are untouched).
     const nestedUids=st.pos.filter(p=>poInBPIn(p,bpRef)).map(p=>p.uid);
-    for(const uid of nestedUids)removeRef(st,'po',uid);
+    for(const uid of nestedUids)removeRef(st,'po',uid,{nested:true});
     removeRef(st,'bp',bpId);
     return {ok:true};
   }
