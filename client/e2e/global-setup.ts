@@ -21,7 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { E2E_DATA_ROOT } from './e2e-env';
+import { E2E_DATA_ROOT, E2E_FLEET_ROOT } from './e2e-env';
 
 // Guest-auth ledger: guest-creating specs mint fresh players via
 // server/cli_invite.cjs INTO THEIR WORKER'S HOME (e2e-env.ts) and register
@@ -35,7 +35,12 @@ export const PROFILES_DIR = join(E2E_DATA_ROOT, 'data', 'profiles');
 // A JSON array of {path, markerPath} pairs the guest-auth spec appends to
 // as it creates test players, so THIS module (global-teardown) can loop
 // over an a-priori-unknown set of files without hardcoding playerIds.
-export const GUEST_AUTH_TRACKED_FILES_PATH = '/tmp/backpack_e2e_guest_auth_tracked_files.json';
+// REQ-0234 (F4): scoped BY the fleet root -- two concurrent scoped runs
+// used to share (and reset/sweep) one global /tmp ledger, falsifying the
+// "scoped runs share nothing box-global" claim. The fleet root exists by
+// the time this is written (fleet start mkdirs it, and the write below
+// happens after the fleet boot).
+export const GUEST_AUTH_TRACKED_FILES_PATH = join(E2E_FLEET_ROOT, 'guest_auth_tracked_files.json');
 
 
 
@@ -62,6 +67,20 @@ function probeBoxLock(): void {
 
 
 export default async function globalSetup(): Promise<void> {
+  // REQ-0225 (ratified via REQ-0234): a NON-local baseURL from a linked
+  // worktree tests the DEPLOYED code, not this branch -- the mistake is
+  // otherwise silent (REQ-0208 burned a full box-locked run on it). Warn
+  // loudly; E2E_REQUIRE_WORKTREE=1 turns the warning into an abort.
+  const base = process.env.PLAYWRIGHT_BASE_URL || 'http://127.0.0.1:8803';
+  const isLocalBase = base.includes('127.0.0.1') || base.includes('localhost');
+  if (!isLocalBase && process.cwd().includes('backpack_ragnarok_worktrees')) {
+    const msg = '[global-setup] REQ-0225: baseURL ' + base + ' is NOT this worktree -- ' +
+      'you are about to test the DEPLOYED master, not your branch. Canonical worktree run: ' +
+      'tools/ci.sh (its [7/7] auto-scopes to this REQ\'s decade) or the scoped env block in ' +
+      'docs/llm_managed/e2e_harness.md.';
+    if (process.env.E2E_REQUIRE_WORKTREE === '1') throw new Error(msg + ' (E2E_REQUIRE_WORKTREE=1 -> abort)');
+    console.warn('\n' + '='.repeat(78) + '\n' + msg + '\n' + '='.repeat(78) + '\n');
+  }
   // REQ-0117: fail fast if another run holds the box -- the proxy/fleet
   // PORTS are the only box-global resource a hermetic run still shares.
   probeBoxLock();
@@ -69,6 +88,12 @@ export default async function globalSetup(): Promise<void> {
   // Every worker backend is built fresh from the worktree + committed
   // fixtures (tools/e2e_fleet.cjs buildHome) and torn down after the run.
   const parallelWorkers = Math.max(1, Number(process.env.E2E_PARALLEL || 1));
+  // REQ-0234 (F6): a scoped run's fleet lives at decade indexes 4..9, so
+  // more than 6 workers would silently claim the NEXT REQ's decade.
+  const fleetBase = Number(process.env.E2E_FLEET_BASE_PORT || 0);
+  if (process.env.E2E_FLEET_ROOT && fleetBase % 10 === 4 && parallelWorkers > 6) {
+    throw new Error('[global-setup] E2E_PARALLEL=' + parallelWorkers + ' exceeds the 6 fleet slots a REQ decade holds (indexes 4-9, PROJECT.md port rule) -- lower it.');
+  }
   execFileSync('node', [join(process.cwd(), '..', 'tools', 'e2e_fleet.cjs'), 'start', String(parallelWorkers)], { stdio: 'inherit' });
   // REQ-0037: reset the tracked-files ledger for guest-creating specs at
   // the START of every run (each spec appends the worker-HOME files it

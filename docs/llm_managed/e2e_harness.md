@@ -30,6 +30,16 @@ Legacy — `pnpm run e2e` (tools/e2e_run.sh): shared proxy 8803 + fleet
 8810+, serialized by the box lock. Works, but queues against every other
 session; prefer scoped runs.
 
+From a `req-NNNN-*` worktree, `tools/ci.sh` runs its [7/7] e2e stage SCOPED
+AUTOMATICALLY (decade derived from the branch name; REQ-0234). An explicit
+PLAYWRIGHT_BASE_URL, or the main checkout, keeps the legacy path.
+
+Provisioning (REQ-0234): a fresh worktree needs `pnpm install
+--frozen-lockfile` in THREE dirs — the repo root, client/, AND server/ (the
+fleet workers are this worktree's own api; without server/node_modules the
+fleet now fails fast naming the missing module instead of a bare health
+timeout).
+
 ## What a run does
 1. global-setup boots N isolated backpack-api workers (tools/e2e_fleet.cjs):
    HOME=<fleet root>/w<i>/home, STORAGE_BACKEND=files, DATABASE_URL unset;
@@ -39,8 +49,11 @@ session; prefer scoped runs.
    worktree's web/ and routes /api by X-E2E-Worker to the worker's own api
    (headerless -> worker 0; NEVER the live api). Anything else is 404.
    reuseExistingServer=false: a run refuses to adopt a foreign proxy.
-3. Teardown sweeps the guest-auth ledger and stops the fleet (worker api
-   logs are archived to /tmp/bp_e2e_logs_last for crash forensics).
+3. Teardown sweeps the guest-auth ledger (kept INSIDE the fleet root since
+   REQ-0234, so concurrent scoped runs cannot clobber each other's) and
+   stops the fleet (worker api logs are archived to <fleet root>_logs_last
+   for crash forensics — the default root archives to
+   /tmp/bp_e2e_workers_logs_last).
 
 ## The freeze (temporary)
 The pre-REQ-0217 harness backed up/cleared/restored LIVE state and wrote
@@ -50,9 +63,22 @@ runs cannot start: see ~/.cache/backpack/E2E_FREEZE_README.txt. Scoped
 hermetic runs are unaffected. Lift the freeze by killing the flock/sleep
 pair once old worktrees are gone.
 
+Since REQ-0234 the freeze pins ONLY the legacy shared-port path: ci.sh's
+[7/7] auto-scopes from a req- worktree, and the admin + registry harnesses
+take per-REQ locks (~/.cache/backpack/e2e.<req>.lock) instead of the box
+lock — rebased trees run the full gate chain without ever touching the
+frozen lock. tools/e2e_run.sh also names the lock holder (and points at the
+freeze README) IMMEDIATELY instead of stalling silently for E2E_LOCK_WAIT.
+
 ## Rules that stay
 - Box lock (REQ-0117) still guards the LEGACY shared-port path.
 - Port decades (REQ-0172) unchanged; scoped runs live inside their REQ's
   own decade.
 - Admin harnesses (artadmin/artinspect/contentadmin) keep their own
-  isolated HOME-remap rigs (REQ-0159) — unchanged by REQ-0217.
+  isolated HOME-remap rigs (REQ-0159); since REQ-0234 they drive the
+  post-0217 proxy via E2E_FLEET_BASE_PORT=<their api port> (the proxy's old
+  E2E_STATIC_PORT/E2E_API_PORT knobs died with REQ-0217) and hold per-REQ
+  locks rather than the frozen box lock.
+- Registry-first (pg-only) serving is covered by tools/registry_first_e2e.sh
+  (ci.sh stage [6.6/8], REQ-0221): an isolated pg api seeded with one
+  adopted def runs the registry-guard specs and FAILS if any of them skips.

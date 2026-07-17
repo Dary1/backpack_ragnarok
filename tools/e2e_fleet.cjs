@@ -80,6 +80,14 @@ function killManifest() {
 }
 
 async function start(N) {
+  // REQ-0234 (F5): fail with the CAUSE, not a 20s health timeout, when the
+  // worktree is under-provisioned. A fresh worktree needs pnpm install in
+  // root, client/ AND server/ -- the workers ARE this worktree's api.
+  try { require.resolve('pg', { paths: [path.join(WT, 'server')] }); }
+  catch (e) {
+    console.error('[fleet] server/node_modules is missing (cannot resolve "pg") -- run: cd server && pnpm install --frozen-lockfile');
+    process.exit(1);
+  }
   killManifest(); // clean any stale fleet from a crashed prior run
   // REQ-0083 G: also reclaim stale fleet PORTS (a crashed run can leave apis bound
   // with no manifest). Fleet range ONLY (BASE_PORT..BASE_PORT+N-1) -- NEVER live :8802.
@@ -98,7 +106,20 @@ async function start(N) {
     child.unref();
     workers.push({ i, port, pid: child.pid, home });
   }
-  for (const w of workers) await waitHealth(w.port, 20000);
+  for (const w of workers) {
+    try { await waitHealth(w.port, 20000); }
+    catch (e) {
+      // REQ-0234 (F5): a worker that never answered health almost always
+      // crashed at require/boot time -- surface its own last words here
+      // instead of leaving them in the archived log.
+      try {
+        const tail = fs.readFileSync(path.join(ROOT, 'w' + w.i, 'api.log'), 'utf8').trimEnd().split('\n').slice(-15);
+        console.error('[fleet] worker ' + w.i + ' (:' + w.port + ') failed health -- last api.log lines:');
+        for (const line of tail) console.error('  | ' + line);
+      } catch (e2) { /* log unreadable -- the timeout error still names the port */ }
+      throw e;
+    }
+  }
   fs.writeFileSync(MANIFEST, JSON.stringify({ workers }, null, 2));
   console.log('[fleet] started ' + N + ' isolated api workers: ' + workers.map((w) => w.i + '->:' + w.port).join(' '));
 }
@@ -107,7 +128,10 @@ function stop() {
   killManifest();
   // REQ-0217: archive per-worker api logs before wiping the tree, so a
   // worker crash mid-run stays diagnosable after teardown.
-  const logDir = '/tmp/bp_e2e_logs_last';
+  // REQ-0234 (F4): scoped by the fleet root -- every run used to clobber one
+  // global /tmp/bp_e2e_logs_last, so run B's teardown ate run A's crash
+  // forensics (the default root now archives to /tmp/bp_e2e_workers_logs_last).
+  const logDir = ROOT + '_logs_last';
   try {
     fs.rmSync(logDir, { recursive: true, force: true });
     fs.mkdirSync(logDir, { recursive: true });

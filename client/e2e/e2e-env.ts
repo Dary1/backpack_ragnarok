@@ -12,6 +12,11 @@ const IDX = process.env.TEST_PARALLEL_INDEX ?? '0';
 const FLEET_ROOT = process.env.E2E_FLEET_ROOT ?? '/tmp/bp_e2e_workers';
 const workerHome = (): string => join(FLEET_ROOT, 'w' + IDX, 'home');
 
+/** Fleet root for THIS run -- also scopes run-global side files (the
+ *  guest-auth ledger, REQ-0234 F4), so concurrent scoped runs stay fully
+ *  disjoint on disk. */
+export const E2E_FLEET_ROOT = FLEET_ROOT;
+
 /** Worktree root -- where server/cli_invite.cjs and the rest of the CODE
  *  UNDER TEST live. Playwright always runs from client/ (tools/e2e_run.sh
  *  cd's there; config testDir is relative to it), so cwd/.. IS this
