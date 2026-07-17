@@ -240,3 +240,58 @@ not a code defect. A serial re-run of the failed subset is queued behind the sha
 - Client: also updated `SchedulePage.tsx` (dropped the `types`-based dungeonType name join) and
   `ForecastPanel.tsx` (the overlay's dungeon dropdown now lists authored defs) and
   `client/e2e/schedule.spec.ts` — consumers of the retired `types` the checklist did not enumerate.
+
+## Rebase onto post-0217 master — 2026-07-17
+
+Rebased `req-0185-dungeon-content-kind` onto the NEW `req-0211-gimic-content-kind` tip
+(`e4c4666`), which itself sits on master `cc575e2` (post REQ-0214/0217/0221/0225/0230/0231/0234;
+master advanced to `6d0e3a0` during the work). New tip: **`b8182b3`** (was `99b05cb`; backup ref
+`refs/backup/req-0185-pre-rebase-20260717`). Branch stays UNMERGED, still stacked on req-0211.
+
+**Conflicts + resolutions**
+- **`tools/e2e_fleet.cjs`** (commit `6bf9ed1`) conflicted: the branch modified the pre-0217
+  per-file overlay block (live_packs / live_tms / dungeon) that REQ-0217 deleted wholesale.
+  Resolved to master's fleet (`git checkout master -- tools/e2e_fleet.cjs`) — the hermetic
+  fleet `cpSync`s the whole `content/live` (incl. dungeons.json + gimics.json) from the
+  worktree, so the overlay is obsolete.
+- **`tools/ci.sh`** — the branch's `[2.65] dungeon roller` gate line auto-merged into master's
+  rewritten ci.sh (stable anchor after the forecast-parity line).
+- **`client/e2e/schedule.spec.ts`** 3-way auto-merged cleanly: master's REQ-0214 profile
+  identity edits (`/api/profile/dev` → `/api/profile/default`, `dev.json` → `e2e_ci.json`,
+  lines 523–1375) and this branch's dungeon-DEF selector edits (`schedule-dungeon-type-select`
+  → `schedule-dungeon-select`, dungeonType → dungeonId, lines 140–391) touch disjoint regions.
+- **Committed web/app bundle (`99131c2`) was STALE → dropped and rebuilt.** Stripped the
+  bundle delta from the client-wiring commit, then rebuilt (`client && pnpm run build`, tsc+vite
+  green) from the fully-merged source and committed the fresh dist as a separate
+  `rebuild web/app from merged source` commit (master's bundle-commit convention).
+
+**Latent regression the pg gates surfaced (fixed on req-0211)**
+- This branch was originally validated DB-free only, so its pg registry gates never ran.
+  Post-rebase, `schedule_serving_test` (pg) was **4 pass / 9 fail**: registry-first roll/sim
+  serving was blanked for EVERY kind because adding `dungeon` (and REQ-0211's `gimic`) to
+  `REGISTRY_KINDS` made `core.cjs computeRegistryData` ask pg for a `content_kind` enum value
+  not on the db until the 022/020 migration deploys — `resolveAdoptedContentData` threw and the
+  un-isolated loop poisoned the whole snapshot. Proven a real regression (master `13/0`, same
+  byte-identical test) and NOT rebase-introduced (the pre-rebase tip `99b05cb` also `4/9`).
+  Fixed by isolating the per-kind loop (commit on req-0211). schedule_serving_test → **13/0**.
+
+**Gate evidence (req-0185 tip)**
+- DB-free `tools/ci.sh` **CI GREEN** (HOME→worktree symlink still required — os.homedir()
+  content anchoring persists post-overhaul; `CI_LOCK_FILE` pinned to the real
+  `~/.cache/backpack/ci.box.lock` so REQ-0231 stays honored under the symlinked HOME).
+- pg (isolated namespace): api_test GREEN; content_test 18/0, contentagg 5/0, seed_derive 5/0,
+  content_serving 9/0, **schedule_serving 13/0**.
+- Scoped HERMETIC e2e (decade 0185, `E2E_GPU=1`): **187 passed / 1 failed / 1 skipped**. The
+  REQ-0185 authored-dungeon-DEF selector spec (`schedule.spec.ts:292`) and REQ-0211 Gimics-tab
+  (`dex.spec.ts:428`) both PASS. The 1 failure is `bp-transfer.spec.ts:76` — a drag-timing DnD
+  flake that failed only under box saturation (load ~22→65 from concurrent runs); it passes in
+  3.1s in isolation under lighter load, and the stack touches ZERO transfer/board/canvas code
+  (`git diff master..HEAD -- client/src/board client/e2e/bp-transfer.spec.ts` is empty), so the
+  path is byte-identical to master. Waived as a pre-existing/environmental flake.
+
+**Downstream-task scoped e2e invocation** (from `client/` of a req-0185-based worktree):
+
+    E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0185 E2E_PROXY_PORT=1852 E2E_FLEET_BASE_PORT=1854 \
+    PLAYWRIGHT_BASE_URL=http://127.0.0.1:1852 E2E_PARALLEL=4 E2E_GPU=1 pnpm exec playwright test
+
+(Use `E2E_GPU=1` only when the GPU is idle; the box's GPU is shared with the art session.)
