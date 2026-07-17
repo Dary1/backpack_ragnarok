@@ -156,6 +156,10 @@ export interface BP {
    * surface (bpHpMax() defaults when absent). REQ-0042's gacha roll is
    * the first CLIENT code path to always set it on a freshly-minted BP. */
   hpMax?: number;
+  /** REQ-0209: a locked (starter-unit) BP's interior is fully immutable --
+   * no PO placement/move/rotate/removal inside it, no SI seat/unseat on its
+   * POs. Only whole-BP operations (move/rotate/transfer/discard) apply. */
+  locked?: boolean;
 }
 
 export type POLoc = 'grid' | 'inv';
@@ -799,7 +803,7 @@ export interface EngineInstance {
    *     additionally seats it onto that socket immediately (fails cleanly
    *     -- reference not created -- if the seat attempt itself is
    *     illegal). */
-  createRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string, placement: { cell?: Cell; rot?: number; origin?: Cell; host?: 'inv' | 'bond' | { po: string; si: number } }) => { ok: boolean; why?: string; ref?: PO | BP | SI };
+  createRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string, placement: { cell?: Cell; rot?: number; origin?: Cell; host?: 'inv' | 'bond' | { po: string; si: number } }, opts?: { nested?: boolean }) => { ok: boolean; why?: string; ref?: PO | BP | SI };
   /** Removes the CURRENT squad's reference to `uid` (if any) from
    * st.pos/bps/sis -- the home record in st.inv.pages is NEVER touched
    * (canvas -> inventory drag under the reference model: "drop cell
@@ -810,7 +814,7 @@ export interface EngineInstance {
    * reference (their own homes likewise untouched) and runs
    * unseatOrphans() afterward (mirrors every other PO-removal path's
    * post-mutation cleanup). */
-  removeRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string) => { ok: boolean; removed?: boolean; why?: string };
+  removeRef: (st: GameState, kind: 'po' | 'bp' | 'si', uid: string, opts?: { nested?: boolean }) => { ok: boolean; removed?: boolean; why?: string };
 }
 
 export interface EngineModule {

@@ -95,6 +95,7 @@ function buildStarterUnitsState(gameData: GameData, locale: Locale): GameState |
       origin: su.origin,
       unit: { id: su.unit.id, off: su.unit.off },
       hpMax: su.hpMax,
+      locked: true, // REQ-0209: starter-unit interiors are fully immutable (rotation-only)
     };
     const pos: PO[] = unit.pos.map((pp, i) => ({
       uid: "po_" + unit.id + "_" + i,

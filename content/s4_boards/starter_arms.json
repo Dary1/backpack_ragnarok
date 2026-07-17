@@ -1,5 +1,5 @@
 {
-  "comment": "REQ-0051 S4 baseline == the Starter: Arms tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, 4 fixed POs.",
+  "comment": "REQ-0051 S4 baseline == the Starter tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, fully filled with fixed POs (REQ-0209: locked starter unit, every cell fixed).",
   "linked": false,
   "layout": {
     "ROWS": 8,
@@ -123,7 +123,8 @@
           0,
           0
         ]
-      }
+      },
+      "locked": true
     }
   ],
   "pos": [
@@ -169,6 +170,94 @@
         6
       ],
       "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_4",
+      "id": "training_blade",
+      "loc": "grid",
+      "cell": [
+        3,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_5",
+      "id": "hand_axe",
+      "loc": "grid",
+      "cell": [
+        4,
+        3
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_6",
+      "id": "war_pick",
+      "loc": "grid",
+      "cell": [
+        4,
+        4
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_7",
+      "id": "sling_stone",
+      "loc": "grid",
+      "cell": [
+        4,
+        5
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_8",
+      "id": "training_blade",
+      "loc": "grid",
+      "cell": [
+        4,
+        6
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_9",
+      "id": "hand_axe",
+      "loc": "grid",
+      "cell": [
+        5,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_10",
+      "id": "war_pick",
+      "loc": "grid",
+      "cell": [
+        6,
+        3
+      ],
+      "rot": 1,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_arms_11",
+      "id": "sling_stone",
+      "loc": "grid",
+      "cell": [
+        6,
+        5
+      ],
+      "rot": 1,
       "fixed": true
     }
   ],

@@ -1,6 +1,6 @@
 {
  "schema": "starter_units/1",
- "note": "REQ-0051 four starter units. Each is a 5x5 BP (its Unit forms no links -- connection_shape none) (authored hpMax override, no sockets/ports on its POs) pre-filled with 4 fixed (immovable) POs. Granted once at fresh-profile creation (client boot seed, REQ-0042 freshness gate) and re-grantable once per starter unit via POST /api/starter/claim. Also the S4 baseline (content/s4_boards/starter_*.json).",
+ "note": "REQ-0051 four starter units; REQ-0209 fully locked. Each is a 5x5 BP (its Unit forms no links -- connection_shape none; authored hpMax override; no sockets/ports on its POs) pre-filled COMPLETELY with fixed (immovable) POs -- every cell of a starter unit is uniformly fixed: no PO may be placed/moved/rotated/removed inside it and no SI may be seated/unseated on its POs (engine bp.locked, REQ-0209); the only interior-affecting operation is rotating the Unit (BP) itself. Granted once at fresh-profile creation (client boot seed, REQ-0042 freshness gate) and re-grantable once per starter unit via POST /api/starter/claim. Also the S4 baseline (content/s4_boards/starter_*.json).",
  "hpMax": 120,
  "bpShape": [
   [
@@ -157,6 +157,54 @@
       3
      ],
      "rot": 0
+    },
+    {
+     "id": "iron_thorns",
+     "cell": [
+      4,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hide_wrap",
+     "cell": [
+      4,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "iron_thorns",
+     "cell": [
+      4,
+      6
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hide_wrap",
+     "cell": [
+      5,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "iron_thorns",
+     "cell": [
+      6,
+      3
+     ],
+     "rot": 1
+    },
+    {
+     "id": "hide_wrap",
+     "cell": [
+      6,
+      5
+     ],
+     "rot": 1
     }
    ]
   },
@@ -201,6 +249,70 @@
       6
      ],
      "rot": 0
+    },
+    {
+     "id": "training_blade",
+     "cell": [
+      3,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hand_axe",
+     "cell": [
+      4,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "war_pick",
+     "cell": [
+      4,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "sling_stone",
+     "cell": [
+      4,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "training_blade",
+     "cell": [
+      4,
+      6
+     ],
+     "rot": 0
+    },
+    {
+     "id": "hand_axe",
+     "cell": [
+      5,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "war_pick",
+     "cell": [
+      6,
+      3
+     ],
+     "rot": 1
+    },
+    {
+     "id": "sling_stone",
+     "cell": [
+      6,
+      5
+     ],
+     "rot": 1
     }
    ]
   },
@@ -245,6 +357,70 @@
       6
      ],
      "rot": 0
+    },
+    {
+     "id": "poultice",
+     "cell": [
+      3,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "regen_salve",
+     "cell": [
+      4,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "cleansing_tonic",
+     "cell": [
+      4,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "herb_pouch",
+     "cell": [
+      4,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "poultice",
+     "cell": [
+      4,
+      6
+     ],
+     "rot": 0
+    },
+    {
+     "id": "regen_salve",
+     "cell": [
+      5,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "cleansing_tonic",
+     "cell": [
+      6,
+      3
+     ],
+     "rot": 1
+    },
+    {
+     "id": "herb_pouch",
+     "cell": [
+      6,
+      5
+     ],
+     "rot": 1
     }
    ]
   },
@@ -289,8 +465,81 @@
       2
      ],
      "rot": 0
+    },
+    {
+     "id": "probe_lens",
+     "cell": [
+      3,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "skeleton_key",
+     "cell": [
+      3,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "probe_lens",
+     "cell": [
+      3,
+      5
+     ],
+     "rot": 0
+    },
+    {
+     "id": "skeleton_key",
+     "cell": [
+      4,
+      6
+     ],
+     "rot": 0
+    },
+    {
+     "id": "spyglass",
+     "cell": [
+      5,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "spyglass",
+     "cell": [
+      5,
+      4
+     ],
+     "rot": 0
+    },
+    {
+     "id": "lockpick",
+     "cell": [
+      6,
+      2
+     ],
+     "rot": 0
+    },
+    {
+     "id": "spyglass",
+     "cell": [
+      6,
+      3
+     ],
+     "rot": 0
+    },
+    {
+     "id": "spyglass",
+     "cell": [
+      6,
+      5
+     ],
+     "rot": 0
     }
    ]
   }
- ]
+ ],
+ "locked": true
 }

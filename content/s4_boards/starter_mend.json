@@ -1,5 +1,5 @@
 {
-  "comment": "REQ-0051 S4 baseline == the Starter: Mend tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, 4 fixed POs.",
+  "comment": "REQ-0051 S4 baseline == the Starter tutorial loadout (same artifact as content/live/starter_units.json). 5x5 BP (Unit forms no links -- connection_shape none), authored hpMax 120, fully filled with fixed POs (REQ-0209: locked starter unit, every cell fixed).",
   "linked": false,
   "layout": {
     "ROWS": 8,
@@ -123,7 +123,8 @@
           0,
           0
         ]
-      }
+      },
+      "locked": true
     }
   ],
   "pos": [
@@ -169,6 +170,94 @@
         6
       ],
       "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_4",
+      "id": "poultice",
+      "loc": "grid",
+      "cell": [
+        3,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_5",
+      "id": "regen_salve",
+      "loc": "grid",
+      "cell": [
+        4,
+        3
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_6",
+      "id": "cleansing_tonic",
+      "loc": "grid",
+      "cell": [
+        4,
+        4
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_7",
+      "id": "herb_pouch",
+      "loc": "grid",
+      "cell": [
+        4,
+        5
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_8",
+      "id": "poultice",
+      "loc": "grid",
+      "cell": [
+        4,
+        6
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_9",
+      "id": "regen_salve",
+      "loc": "grid",
+      "cell": [
+        5,
+        2
+      ],
+      "rot": 0,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_10",
+      "id": "cleansing_tonic",
+      "loc": "grid",
+      "cell": [
+        6,
+        3
+      ],
+      "rot": 1,
+      "fixed": true
+    },
+    {
+      "uid": "po_starter_mend_11",
+      "id": "herb_pouch",
+      "loc": "grid",
+      "cell": [
+        6,
+        5
+      ],
+      "rot": 1,
       "fixed": true
     }
   ],
