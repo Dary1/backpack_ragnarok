@@ -78,4 +78,52 @@ pg-backed harness with a seeded adopted def — and ci.sh already runs exactly o
 - Full default suite green; `check_e2e_ports.cjs` green; no new port band issued.
 
 ## Outcome
-_(to be filled: commit hashes, gate results)_
+
+**Result: the REQ was already satisfied. Only the documentation deliverable was real.**
+
+Implementation found that the rescope in `f0ea1c9` was ALSO wrong -- less wrong than the original
+draft, but wrong. It claimed the 409 ROUTE wiring was homeless. It is not:
+`client/e2e/contentadmin.spec.ts:884` already seeds an adopted `po_def` (`blade`), issues the PUT
+and asserts `409` + `registry_kind` + `edit_at`, **unconditionally**, inside `content_admin_e2e.sh`
+= ci.sh step `[6.5]`. REQ-0182b performed that relocation itself. `contentadmin.spec.ts:903`
+likewise already covers the relocated grant-to-warehouse control. The `test.skip` in
+`dex-admin.spec.ts` is a live-api duplicate of an assertion covered in `[6.5]`, not a hole -- and
+its comment saying so was accurate all along.
+
+So all three of the draft's "what to do" bullets were already done, by REQ-0178 and REQ-0182b.
+Nothing was implemented for them. Writing a second copy would have been redundant.
+
+### Gate: "a deliberately introduced registry-first regression is caught by ci.sh alone"
+**PASSES today, on unmodified master, with no new harness.** Demonstrated on the pg contentadmin
+harness (= ci.sh `[6.5]`), which is the whole of the gate's "ci.sh alone":
+
+| state of `server/routes/admin.cjs` | harness result |
+|---|---|
+| guard intact | **28 passed** (incl. `:884` 409 test, `:903` grant control) |
+| `if (false && servedKind)` -- the REQ's own example regression | **1 failed** at `contentadmin.spec.ts:884`, 27 passed |
+
+The broken run also wrote `content/live/live_items.json` behind the ledger
+(`"Longsword Blade"` -> `"must not apply -- registry-served"`) -- the exact drift REQ-0182b's guard
+exists to prevent, reproduced on demand. Regression reverted; `admin.cjs` restored byte-identical
+(`git diff` empty); `live_items.json` restored.
+
+### What actually shipped
+- `c2099b1` -- `tools/ci.sh`: the SERVING-MODE COVERAGE MAP comment block (+ a pointer at the
+  `[7/7]` fleet step). No behaviour change. This is the REQ's one surviving deliverable and, it
+  turns out, the only real defect: **the gap was never coverage, it was legibility.**
+- `f0ea1c9` -- rescope + premise correction. `77c25df` -- draft -> todo.
+
+### Lesson (the reason this REQ was worth doing at all)
+Two independent agents -- the one who filed this REQ and the one who implemented it -- read the
+same tree and reached the same false conclusion: "ci.sh never exercises registry-first serving",
+each proposing to build infrastructure that already existed (a pg fleet variant; a dedicated
+0221 harness on 2210-2219). The coverage is spread across `e2e_fleet.cjs` (files),
+`content_serving_test.cjs` (pg), and `content_admin_e2e.sh` (pg), and nothing named the split.
+An expensive, repeatable misread of a correct system is a documentation defect. Fixed in `c2099b1`.
+
+### Gate results
+- `check_e2e_ports.cjs`: green -- 3 harnesses, all derived, no collisions.
+- No new port band issued; **2210-2219 remain unissued** (this REQ claims none).
+- `content_serving_test.cjs` (pg): 9 pass, 0 fail. `schedule_serving_test.cjs` (pg): 13 pass, 0 fail.
+- `content_admin_e2e.sh` (pg, ci.sh `[6.5]`): 28 passed with the guard intact.
+- `bash -n tools/ci.sh`: clean.
