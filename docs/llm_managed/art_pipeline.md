@@ -331,7 +331,9 @@ REQ-0153's spike verdict was **GREEN-with-recipe**: up-front silhouette control 
 non-rectangular PO shapes via **ReferenceLatent (scaffold) + SetLatentNoiseMask
 (dilated shape, D=8)**. REQ-0183 wired it into the production route; REQ-0186
 exposed it as po params **`shape_lock`** (`off|guide|strict|auto`, default `auto` =
-strict only when the shape underfills its bounding box) and **`shape_dilation_px`**
+strict on every shape since REQ-0220; it used to mean "strict only when the shape
+underfills its bounding box", a split REQ-0187 refuted and REQ-0220 retired) and
+**`shape_dilation_px`**
 (0-16, default 8), with a one-shot generate override that never mutates the
 artwork. Full status + recipe: `item_content_pipeline.md` §0.1. **REQ-0187's S7
 eyeball found the lock necessary but NOT sufficient** — containment passes while

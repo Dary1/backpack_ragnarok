@@ -96,30 +96,35 @@ SHAPE_LOCKS = ('auto', 'off', 'guide', 'strict')
 DEFAULT_SHAPE_LOCK = 'auto'
 
 
-def fills_bounding_box(mask):
-    """True when every cell of the mask's bounding box is owned (a full
-    rectangle: 1x3, 2x2, 3x2 ...), False when the shape is 'awkward' -- an
-    L, a T, anything with a notch.
-
-    This is the whole basis of the `auto` lock, and it is REQ-0153's own
-    finding rather than a guess. That spike measured the UNCONDITIONED route
-    passing on 1x3 and 2x2 -- "only because the ratified aspect-sizing law
-    already gives the subject a natural fit there (a vertical spear fills a
-    tall 1x3; a shield fills a square)" -- and missing on L-tromino and
-    T-tetromino, which is exactly where it recorded shape control "actually
-    earns its cost". A rectangle IS the bounding box the aspect law sizes to;
-    an underfilled bbox is not.
-    """
-    rows, cols, cells = bbox_cells(mask_to_cells(mask))
-    return len(cells) == rows * cols
-
-
 def resolve_lock(lock, mask):
     """The effective mechanism for a (lock, shape) pair: 'off' | 'guide' | 'strict'.
 
-    `auto` (the default) spends the legibility cost only where REQ-0153 showed
-    it buys containment: strict on an underfilled bbox, off on a full rectangle
-    whose subject the aspect law already fits.
+    `auto` (the default) resolves to strict for EVERY po shape.
+
+    REQ-0186 used to split here -- strict on an underfilled bbox (L, T), off on
+    a full rectangle -- on the claim that strict flattens a rectangle's subject
+    ("a heater shield becomes a plain disc"). REQ-0187's S7 verification tested
+    exactly that on the production route and refuted it: on a 2x2 `round shield`
+    strict OUT-FIT off (median fit 81.3 vs 71.8, worst-cell 0.21 vs 0.32, 3/3
+    PASS both) while KEEPING subject character (boss, riveted rim, plank
+    texture); off merely drew heater silhouettes that underfill the square. The
+    awkward half of the rule HELD (L-tromino: strict 68.3 vs off 32.5, one off
+    seed spilling 123 px of deep-overflow), so nothing here questions strict on
+    a notched shape.
+
+    That left wall time as off's only remaining argument, and REQ-0220 found it
+    rests on REQ-0153's SPIKE numbers (76-130 s conditioned vs 15-50 s plain).
+    REQ-0187 V5 re-measured on THIS route -- which runs matting as a separate
+    CPU inspection job instead of co-resident on the GPU -- and the gap is gone:
+    warm conditioned 512x512 ~60-150 s vs plain off 512 ~90-120 s. With neither
+    the pictures nor the cost favouring off, the split had no basis left.
+    User ruling 2026-07-17; full write-up in docs/REQ/*/REQ-0220-*.md.
+
+    `mask` is now unused but stays in the signature: `auto` remains a distinct
+    STORED value rather than a migration of every artwork to 'strict', so a
+    future shape-dependent rule can re-enter here without touching data or
+    callers. An operator who wants off on a given item sets it explicitly or
+    uses the one-shot per-render override.
     """
     lock = lock or DEFAULT_SHAPE_LOCK
     if lock not in SHAPE_LOCKS:
@@ -127,7 +132,7 @@ def resolve_lock(lock, mask):
                          % (lock, ', '.join(SHAPE_LOCKS)))
     if lock != 'auto':
         return lock
-    return 'off' if fills_bounding_box(mask) else 'strict'
+    return 'strict'
 
 
 def gen_size_for_mask(mask, px_per_cell=PX_PER_CELL):

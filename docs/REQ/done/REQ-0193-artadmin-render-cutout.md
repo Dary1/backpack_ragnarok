@@ -180,15 +180,38 @@ monster goblin 0.569, unit elf 0.433, si acc_gem 0.668, custom
 beastreach_wilds 0.882). The route, the queue path, and the RGBA output are
 confirmed on live at a scale no e2e spec would reach.
 
-**Known deviation, accepted by the user (chat, 2026-07-18) — see REQ-0241.**
-The 5 bpskin entries in that 185 should NOT be cutouts: bpskin artworks are
-tiling textures whose fills must stay opaque. The first 7/17 pass
+**bpskin exclusion, and the 5 that slipped through — RESOLVED 2026-07-18.**
+5 of that 185 were bpskin, and should never have been cut out: bpskin (bppack)
+artworks are tiling textures whose fills must stay opaque. The first 7/17 pass
 (`/tmp/cutout_batch.py`) had no kind filter and cut them out before the operator
-instruction landed; the filter added at 12:09 only protected later passes. Shown
-the finding, the user chose to leave live as-is and handle it in a separate REQ.
-REQ-0241-bpskin-adopted-cutout-revert (draft) carries it, including the open
-question of whether the route should refuse `kind === 'bpskin'` outright. It is
-live-data fallout of the sweep, not a defect in the code this REQ delivers.
+instruction landed; the filter added at 12:09 only ever protected later passes,
+so the 7/18 re-run correctly touched no bpskin but could not clear them either.
+
+The user then retracted the "あらゆるart" (every art) premise for this kind
+outright — "bppackの背景抜きの指示が間違いでした" (chat, 2026-07-18) — and
+directed the revert. Done the same day via the live API, reading each cutout's
+`params.derived_from_seed` rather than any hardcoded table:
+
+| artwork | was serving | re-adopted (opaque) | cutout render |
+|---|---|---|---|
+| `bpskin-frames-0150:leather`   | 100202 | 202 | deleted |
+| `bpskin-frames-0150:iron`      | 100001 | 1   | deleted |
+| `bpskin-frames-0150:wood`      | 100001 | 1   | deleted |
+| `bpskin-flux2-0150:elven`      | 100101 | 101 | deleted |
+| `bpskin-flux2-0150:barbarian`  | 100101 | 101 | deleted |
+
+`reverted=5 skipped=0 failed=0`. Verified: all five now serve **mode=RGB — no
+alpha channel at all**, not merely opaque alpha; **no `background_cutout` render
+remains on any bpskin artwork**; live adopted total unchanged at 185. The final
+adopted-cutout picture is therefore po 69/69, monster 62/62, unit 41/41, si 7/7,
+custom 1/1, **bpskin 0/5 (correct)**.
+
+This was live-data fallout of the sweep, not a defect in the code this REQ
+delivers. **Still open, deliberately uncoded:** nothing stops a future caller
+from cutting out a bpskin again — the route is kind-agnostic and the rule lives
+only in a caller-side filter. A `400` guard on `kind === 'bpskin'` in
+`POST .../renders/:seed/cutout` is the durable fix; it is NOT done here and has
+no REQ (the user declined one).
 
 **Still-open debt (unchanged):** the cutout-chip e2e specs in `artadmin.spec.ts`
 were never written. The live sweep is now the evidence that the route + queue
