@@ -227,7 +227,12 @@ T('G2 determinism: two same-seed runs are byte-identical', () => {
 });
 
 // ---- additive promotion: batch-002 survives byte-for-byte; counts; collision ----
-T('additive promotion: merges batch-005 into a live COPY -- 7->15 / 14->30 / 4->7, batch-002 byte-identical, collision refused', () => {
+// [GATE FIX 2026-07-17] Counts were hardcoded (7->15 / 14->30 / 4->7) from the
+// moment batch-005 was authored; REQ-0207/0208 have since promoted OTHER batches
+// into live, so the reconstructed baseline is no longer 7/14/4. The invariant this
+// gate owns is the SPLICE (merged = baseline + batch, originals byte-identical),
+// so the expectation is now delta-based and immune to unrelated live growth.
+T('additive promotion: merges batch-005 into a live COPY -- +batch counts, batch-002 byte-identical, collision refused', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'req0203-promo-'));
   try {
     const liveDir = path.join(tmp, 'dungeon'); fs.mkdirSync(liveDir, { recursive: true });
@@ -253,12 +258,11 @@ T('additive promotion: merges batch-005 into a live COPY -- 7->15 / 14->30 / 4->
     const regPath = path.join(tmp, 'registry.json'); fs.writeFileSync(regPath, JSON.stringify({ t: 'test' }, null, 1) + '\n');
 
     const r = promoteAdditive(BATCH, { liveDir: liveDir, registryPath: regPath });
-    const expect = { 'enemies.json': [7, 15], 'skills.json': [14, 30], 'packs.json': [4, 7] };
+    const delta = { 'enemies.json': enemies.entries.length, 'skills.json': skills.entries.length, 'packs.json': packs.entries.length };
     for (const f of ['enemies.json', 'skills.json', 'packs.json']) {
       const merged = fs.readFileSync(path.join(liveDir, f), 'utf8');
       const bDoc = JSON.parse(before[f]), mDoc = JSON.parse(merged);
-      eq(bDoc.entries.length, expect[f][0], f + ' baseline count');
-      eq(mDoc.entries.length, expect[f][1], f + ' merged count');
+      eq(mDoc.entries.length, bDoc.entries.length + delta[f], f + ' merged count = baseline + batch');
       // byte preservation: the merge is a pure SPLICE -- merged == A + <newblock> + B
       // where A|B are the original file text either side of the last existing entry.
       const arrClose = before[f].lastIndexOf(']');
