@@ -4,6 +4,7 @@
 - 2026-07-17 reserved (stub).
 - 2026-07-17 reserved -> draft: retrospective proposal from REQ-0208; needs
   user ratification (warn-only vs default-flip -- see Decision).
+- 2026-07-17 draft -> todo: user ratified option (b) default-flip in chat.
 
 ## Origin (REQ-0208 retrospective)
 During REQ-0208 a bare `pnpm run e2e dex.spec.ts ...` in the worktree ran
@@ -32,7 +33,8 @@ In e2e global-setup, detect the mismatch and make it loud:
    (or when the git dir is a linked worktree, if the default-flip option is
    ratified), FAIL FAST instead of running 20+ minutes against master.
 
-## Decision needed (why draft)
+## Decision -- RATIFIED 2026-07-17: option (b) default-flip (user, in chat)
+Chosen from:
 - (a) warn-only banner (zero behavior change), or
 - (b) default-flip: linked worktrees default to the local proxy + fleet, and
   the tunnel target requires an explicit PLAYWRIGHT_BASE_URL (post-deploy
