@@ -60,3 +60,23 @@ has 4 fixed POs and free placeable cells; make EVERY cell fixed uniformly:
 ## Log
 - 2026-07-17 reserved (7f4529c), spec written, ratified straight to todo per
   user directive.
+
+## Gate results (2026-07-17, worktree req-0209-starter-unit-locked)
+- mock-src engine tests: 119 passed, 0 failed (5 new REQ-0209 suites).
+- tsc (tsconfig.server.json), check_engine_types, self_test_vocab, check_units,
+  units003_acceptance: green.
+- sim tests / goldens / s4 / forecast-parity(minus perf) / wildlands / charge: green.
+- server tests: files + pg api, content, schedule/content serving deps, bio,
+  bpskin(+migration), pg_sync, backfills, parity classifier, content_checks
+  (dialect/geometry/unit-deep), artwork, artqueue, inspection, contentagg,
+  seed_derive, moderation: green.
+- client script gates (unit-icon, link-trace, pack boards x3, chimes, auth,
+  bpskin x2, a11y) + typecheck/build: green.
+- e2e: main suite 187 passed / 1 skipped / 0 failed; artadmin (6), art_inspect,
+  content_admin harnesses: green.
+- PRE-EXISTING master failures (verified identical on the untouched main
+  checkout; NOT caused by this REQ): (1) forecast_parity perf budget 75-80ms
+  vs [TUNABLE 50ms]; (2) req0203 grave-legion additive-promotion baseline
+  count expected 7 got 19; (3) content_serving_test pg fixture ENOENT
+  content/live/dungeon/items.json (6 cases).
+- Commits: c92047a (implementation), + dist rebuild.
