@@ -115,3 +115,81 @@ queue). At deploy: merge to master, restart backpack-api, then live-verify the
 barrier (2 small generations + 2 cutouts; `journalctl --user -u comfyui.service`
 shows the restart landing between the families; RSS < 2 GB before the first
 matte), then delete the test renders and move built -> done.
+
+## Deploy + live verification (2026-07-18)
+
+Ordering held: the REQ-0193 cutout sweep finished first (deploy restarts
+backpack-api, which would have killed the in-flight art queue), then this.
+
+**Full ci.sh, one uninterrupted run — CI GREEN.** The run the gate record above
+deferred to "a quiet box, post-sweep" happened here: load 0.32, 19 GB free, no
+other session's e2e in flight. Every gate green, including the two the earlier
+record could only pass in isolation:
+- `sim/tests/forecast_parity.cjs` perf budget: **18/0 inside the full run** — the
+  REQ-0222/REQ-0230 load-flake did not fire on a quiet box, exactly as predicted.
+- `artqueue_test.cjs` 5/5, `artfamily_test.cjs` 2/2, `inspection_test.cjs` 5/0.
+- client e2e **187 passed, 1 skipped**; admin trio green; `CI GREEN` printed.
+There is now no accepted non-green for this REQ.
+
+Merged to master, `backpack-api` restarted (queue confirmed idle first), barrier
+left at its default (`ART_FAMILY_BARRIER` unset = ON).
+
+**Live barrier check — PASS.** 2 generations + 2 cutouts enqueued back-to-back on
+`batch-004-item-icons-flux2:blade` (gens first, then both cutouts, so both
+families had work waiting at once):
+
+| time (UTC) | event | comfyui RSS |
+|---|---|---|
+| 18:16:41 | 2 gens + 2 cutouts enqueued | — |
+| 18:16:42 | gen 100405 -> comfyui `got prompt` | 0.9 -> 11.4 -> **14.3 GB** |
+| 18:23:57 | gen 100405 `Prompt executed in 435.17s` | |
+| 18:28:19 | gen 100406 -> `got prompt` (warm: 10.25 s) | |
+| **18:28:31** | **BARRIER: `systemctl --user restart comfyui.service`** | |
+| 18:28:32 | comfyui back, health OK, new pid | **0.84 GB** |
+| ~18:29:30 | first matte (`cutout_job.py`, birefnet) starts | **0.97 GB** |
+| 18:33 | queue drained, all 4 renders `ok` | 0.97 GB (flat) |
+
+Every claim in the Verification section checks out:
+- **Family grouping**: both cutouts sat at `inspectDepth` 2 for the entire
+  ~12 min generation family and never started — even though REQ-0193 cutouts are
+  the highest-priority waiting matte work. The old alternating pump would have
+  run one between the two gens, with birefnet loading on top of a warm ComfyUI.
+- **Barrier fires once**: exactly ONE comfyui restart in the whole run, landing
+  between the last generation (18:28:29) and the first matte. Zero further
+  restarts through the rest of the matte family (matte->matte needs none).
+- **RSS returns**: 14.3 GB -> **0.84 GB**, under the < 2 GB bar, BEFORE the first
+  birefnet loaded, and flat at 0.97 GB for the whole matte family. The invariant
+  ("at most ONE model stack resident") held: peak box use stayed ~9 GB of 23,
+  against the ~23 GB steady state that froze the box on 2026-07-17.
+
+The 4 test renders (100405, 100406, 100202, 100303) were deleted afterwards;
+`blade` is back to its original 5 renders with 100404 adopted, and the live
+adopted count is unchanged at 185.
+
+## Defect found BY the live check, fixed here (2026-07-18)
+
+`familyBarrier()` restarts `comfyui.service` — a **live, box-global** systemd
+unit. The three admin e2e harnesses launch a real `api.cjs`, and none of them set
+`ART_FAMILY_BARRIER=0`, so every gen->matte switch in a spec fired a REAL restart
+of the live unit: **15 restarts** during this REQ's own ci.sh run
+(`journalctl --user -u comfyui.service`, 18:06:37-18:10:06). REQ-0217 is explicit
+that an e2e run never touches live services, and PROJECT.md keeps art sessions
+hands-off — a ci.sh from any session would have killed a user's in-flight render,
+repeatedly. The unit tests (`artqueue_test.cjs`, `inspection_test.cjs`,
+`artfamily_test.cjs`) already opt out through this exact seam; the harnesses were
+simply missed when the seam was added.
+
+Fix (b8e6243): `ART_FAMILY_BARRIER=0` in `tools/artadmin_e2e.sh`,
+`tools/art_inspect_e2e.sh`, `tools/content_admin_e2e.sh`, next to the isolation
+env each already carries (TMPHOME, `ART_ROUTE_MOCK=1`, temp model/export dirs,
+`ART_KIT_MATTE_METHOD=borderkey`), with a comment naming why.
+
+Re-gated after the fix — admin trio green and the live unit untouched:
+- `artadmin_e2e` **7/7**, `art_inspect_e2e` **1/1**, `content_admin_e2e` **28/28**.
+- comfyui restarts during the trio: **0** (was 15); comfyui pid unchanged
+  throughout. This is the assertion the fix exists for.
+A second full ci.sh was not re-run for it: the change is three env assignments in
+test harnesses, touches no shipped code path, and the gates it can affect (the
+trio) were re-run in full.
+
+**Disposition:** merged, deployed, live-verified, no known defect. built -> done.
