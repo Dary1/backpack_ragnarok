@@ -515,38 +515,40 @@ module.exports.run = async function run(h) {
   // pattern as dev/backdate), and fixed-seed run reproducibility.
   // =====================================================================
 
-  await AT('REQ-0043: POST /api/schedule/rooms accepts an explicit dungeonType and stores it on the room', async () => {
+  await AT('REQ-0185: POST /api/schedule/rooms stores the dungeon DEF id + level + a genSeed on the room (an ignored legacy dungeonType is harmless)', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', dungeonType: 'default', level: 4, formationId: 'formation1' });
     assert.strictEqual(created.status, 200, JSON.stringify(created.body));
-    assert.strictEqual(created.body.room.dungeonType, 'default');
+    assert.strictEqual(created.body.room.dungeonId, 'test_dungeon'); // REQ-0185: the def id is the room's dungeon selection now
     assert.strictEqual(created.body.room.level, 4);
     assert.ok(typeof created.body.room.genSeed === 'string' && created.body.room.genSeed.length > 0, 'a room always carries SOME genSeed, random by default');
     await scheduleReq('DELETE', '/api/schedule/rooms/' + created.body.room.id, scheduleP1.token);
   });
 
-  await AT('REQ-0043: an unknown dungeonType is a 400, not a silent fallback', async () => {
-    const res = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', dungeonType: 'not_a_real_type', level: 1 });
+  await AT('REQ-0185: an unknown dungeonId is a 400, not a silent fallback', async () => {
+    // REQ-0185: a room names an authored dungeon DEF; an unknown id is a caller
+    // mistake worth surfacing (the old unknown-dungeonType 400, moved to the def id).
+    const res = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'not_a_real_dungeon', level: 1 });
     assert.strictEqual(res.status, 400, JSON.stringify(res.body));
   });
 
-  await AT('REQ-0043: dungeonType defaults via back-compat -- a dungeonId equal to the static pilot dungeon\'s own id resolves to test_fixed; any other dungeonId resolves to default', async () => {
+  await AT('REQ-0185: a room stores its authored dungeon DEF id verbatim (the def IS the selection now)', async () => {
     const asPilot = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1 });
-    assert.strictEqual(asPilot.body.room.dungeonType, 'test_fixed', 'dungeonId matching the fixture\'s own pilot dungeon id must back-compat-resolve to test_fixed');
+    assert.strictEqual(asPilot.body.room.dungeonId, 'test_dungeon', 'the dungeonId (a live dungeon def) is stored on the room verbatim');
     await scheduleReq('DELETE', '/api/schedule/rooms/' + asPilot.body.room.id, scheduleP1.token);
-
-    const asOther = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'some_other_string', level: 1 });
-    assert.strictEqual(asOther.body.room.dungeonType, 'default', 'any other dungeonId defaults to the generator');
-    await scheduleReq('DELETE', '/api/schedule/rooms/' + asOther.body.room.id, scheduleP1.token);
   });
 
-  await AT('REQ-0043: GET /api/schedule/dungeons lists the generator types (default, test_fixed) alongside the legacy dungeons array', async () => {
+  await AT('REQ-0185: GET /api/schedule/dungeons lists authored dungeon DEFS with theme, level band + encounterSummary (design D2/D3); no `types`', async () => {
     const res = await scheduleReq('GET', '/api/schedule/dungeons', undefined);
     assert.strictEqual(res.status, 200);
-    assert.ok(Array.isArray(res.body.types), 'response must carry a types array');
-    const ids = res.body.types.map((t) => t.id).sort();
-    assert.deepStrictEqual(ids, ['default', 'test_fixed'], 'exactly the two known generator types');
-    // Backward compat: the original dungeons array is untouched.
-    assert.ok(res.body.dungeons.some((d) => d.id === 'test_dungeon'), 'legacy dungeons array must still be present (back-compat)');
+    assert.strictEqual(res.body.types, undefined, 'the retired generator `types` list is gone');
+    const d = res.body.dungeons.find((x) => x.id === 'test_dungeon');
+    assert.ok(d, 'the authored dungeon def is listed');
+    assert.strictEqual(d.theme, 'test', 'design D2: theme present');
+    assert.strictEqual(typeof d.levelMin, 'number', 'design D2: levelMin present');
+    assert.strictEqual(typeof d.levelMax, 'number', 'design D2: levelMax present');
+    assert.ok(d.encounterSummary && typeof d.encounterSummary.packs === 'number', 'design D3: encounterSummary.packs present');
+    assert.ok(d.encounterSummary.gimics && typeof d.encounterSummary.gimics.trap === 'number', 'design D3: encounterSummary.gimics present');
+    assert.ok(Array.isArray(d.encounterSummary.lootPreview), 'design D3: lootPreview present');
   });
 
   await AT('REQ-0043: genSeed is refused (403) for a plain guest token, even a perfectly valid one', async () => {
@@ -575,11 +577,19 @@ module.exports.run = async function run(h) {
     await scheduleReq('DELETE', '/api/schedule/rooms/' + res.body.room.id, undefined);
   });
 
-  await AT('REQ-0043: a room with an explicit genSeed produces a BYTE-IDENTICAL generated dungeon def to a direct dungen.generate() call with the same inputs', async () => {
-    const dungen = require('../../../sim/dungen.cjs');
-    const expected = dungen.generate('default', 3, 'reproducibility-check-seed');
+  await AT('REQ-0185: a room run rolls an encounter sequence identical to a direct rollDungeon() of the same def (serving path and direct roll share ONE roller)', async () => {
+    // REQ-0185: the serving path no longer calls sim/dungen.cjs's generator; a
+    // dive is ROLLED from the authored dungeon DEF via sim/dungeon_roll.cjs. Prove
+    // the SERVER rolls the SAME encounter sequence a direct rollDungeon() of the
+    // served def would, for the SAME (def, level, genSeed) triple.
+    const dungeonRoll = require('../../../sim/dungeon_roll.cjs');
+    const core = require('../../services/core.cjs');
+    const { dungeonDefsById, gimicDefsById } = core.getScheduleContent();
+    const def = dungeonDefsById['test_dungeon'];
+    assert.ok(def, 'the fixture dungeon def must be served');
+    const expected = dungeonRoll.rollDungeon(def, 3, 'reproducibility-check-seed', { gimicDefsById });
 
-    const created = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', dungeonType: 'default', level: 3, genSeed: 'reproducibility-check-seed', formationId: 'formation1' });
+    const created = await scheduleReq('POST', '/api/schedule/rooms', undefined, { dungeonId: 'test_dungeon', level: 3, genSeed: 'reproducibility-check-seed', formationId: 'formation1' });
     assert.strictEqual(created.status, 200, JSON.stringify(created.body));
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) {
@@ -589,15 +599,13 @@ module.exports.run = async function run(h) {
     const after = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, undefined);
     assert.ok(after.body.room.lastRunId, 'troop complete -- a run must have auto-started');
     const runDoc = scheduleStorage.readRun(after.body.room.lastRunId);
-    // encounter_start events (one per encounter actually reached) carry
-    // `kind` -- reconstruct the encounter TYPE sequence actually run and
-    // compare against the independently-generated def's own type
-    // sequence, proving the SAME genSeed drove the SAME generated layout
-    // server-side as calling dungen.generate() directly would.
+    // encounter_start events (one per encounter reached) carry `kind`; the run's
+    // encounter-type sequence must match the def rolled directly with the SAME
+    // (def, level, genSeed) -- proving the server rolls via sim/dungeon_roll.cjs.
     const startEvents = runDoc.events.filter((e) => e.ev === 'encounter_start');
     const actualTypeSeq = startEvents.map((e) => e.kind);
     const expectedTypeSeq = expected.encounters.map((e) => e.type);
-    assert.deepStrictEqual(actualTypeSeq, expectedTypeSeq.slice(0, actualTypeSeq.length), 'the run\'s own encounter-type sequence must match dungen.generate()\'s def for the SAME genSeed');
+    assert.deepStrictEqual(actualTypeSeq, expectedTypeSeq.slice(0, actualTypeSeq.length), 'the run\'s own encounter-type sequence must match rollDungeon()\'s def for the SAME genSeed');
 
     await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, undefined);
   });

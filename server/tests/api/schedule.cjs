@@ -401,7 +401,13 @@ module.exports.run = async function run(h) {
     // (sim/combat.cjs's own documented determinism guarantee, exercised
     // here through the schedule service's actual persisted seed).
     const combat = require('../../../sim/combat.cjs');
-    const { itemDefsById, dungeonDef, enemyDefsById, skillDefsById, monsterPackDefsById } = schedule.getScheduleContent(); // REQ-0184
+    // REQ-0185: the dive is now ROLLED from the room's authored dungeon def
+    // (sim/dungeon_roll.cjs) with the room's OWN genSeed -- re-derive it the same
+    // way startRun does, then re-run with the persisted combat seed.
+    const dungeonRoll = require('../../../sim/dungeon_roll.cjs');
+    const { itemDefsById, dungeonDefsById, gimicDefsById, enemyDefsById, skillDefsById, monsterPackDefsById } = schedule.getScheduleContent(); // REQ-0184/0185
+    const rmForReplay = roomAfter.body.room;
+    const dungeonDef = dungeonRoll.rollDungeon(dungeonDefsById[rmForReplay.dungeonId], rmForReplay.level, rmForReplay.genSeed, { gimicDefsById });
     const doc = scheduleStorage.readProfile(scheduleP1.playerId);
     const squadSnapshots = fillAllSlotsSnapshotsFrom(doc.canvas);
     const replay = combat.runDungeon({
