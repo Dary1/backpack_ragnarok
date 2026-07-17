@@ -1,6 +1,6 @@
 # REQ-0220 — po-shape-lock-doc-and-auto-rule-revisit: fix misleading lock docs; re-decide auto's rule for full rectangles
 
-**Status:** built — implemented on `req-0220-po-shape-lock-doc-and-auto-rule-revisit`, gates green, NOT merged/deployed.
+**Status:** done — merged to master, deployed, live-verified (2026-07-17).
 **Reserved:** 2026-07-16
 **Ruled:** 2026-07-17 (user)
 **Slug:** po-shape-lock-doc-and-auto-rule-revisit
@@ -148,3 +148,36 @@ about what they are protecting.
 - One shield remains one rectangle-subject data point. The ruling is that strict wins on the
   evidence available and off stays one explicit click away; a future REQ wanting the split back
   needs rectangle-subject evidence, not a rationale.
+
+## Deploy (2026-07-17, user go-ahead "merge and deploy")
+
+Rebased onto master twice during this REQ — master moved 79 commits, then a further 15 while
+the ruling was being discussed. Both rebases were conflict-free (master never touched any of
+this REQ's six files), and `artwork_test` was re-run green on each new base. Merged
+**fast-forward** (no merge commit): `14215df` -> `9274da6`.
+
+**No service restart was needed, and none was performed.** Established rather than assumed:
+- `backpack-web` is `python3 -m http.server --directory ~/backpack_ragnarok/web` — it serves
+  the docroot from disk, so a rebuilt bundle is live as soon as it lands.
+- `backpack-api` **spawns** `tools/art_job.py` per job (`spawn`, art_jobs.cjs), so the next
+  generation reads the new `art_shape.py`. Nothing about the rule is held in api memory.
+This matters: REQ-0233 records that a `backpack-api` restart kills the in-flight art queue.
+Not restarting avoided that hazard entirely. (ComfyUI's queue was empty at deploy time anyway.)
+
+Deploy commit `9dfd9cf` — rebuild client dist. Only `web/app` was staged; unrelated untracked
+leftovers in the main checkout (`content/art/`, `content/registry_exports/`, older stray
+assets) were left alone.
+
+**Live verification**
+- `backpack-web` :8801 serves `assets/index-BteqOqyq.js`, which contains the new `auto` blurb
+  ("strict on every shape") and **zero** occurrences of the retired rule string or the
+  disproven "at some subject legibility" claim.
+- api :8802 -> HTTP 200; public tunnel https://backpack-dev.qtie.jp/app/ -> HTTP 200;
+  `backpack-api` / `backpack-web` / `backpack-tunnel` all active.
+- `resolve_lock` in the DEPLOYED main checkout: auto -> strict on 2x2, 1x3, L and T;
+  explicit `off` on a 2x2 still returns `off` (the operator's opt-out survives).
+
+Not re-proved with a live GPU render: that would only re-exercise `resolve_lock` at the cost
+of 60-150 s on the shared card plus a live artwork row. The full job path (queue ->
+art_job.py -> art_shape.py -> recorded params + final_prompt) is covered by artwork_test's
+REQ-0220 case, and the rectangle A/B is REQ-0187's six committed renders.
