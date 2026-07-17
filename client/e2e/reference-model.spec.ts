@@ -35,17 +35,11 @@
 // rather than reverse-engineering PixiJS canvas pixel colors -- exact,
 // zero-pixel-math, robust against any rendering/z-order/theme change.
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
-import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, cx, cy, drag, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/reference-model-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: Page): Promise<void> {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await bootApp(page);
-}
 
 async function tintSets(page: Page): Promise<{ red: string[]; yellow: string[]; canvasYellow: string[] }> {
   return page.evaluate(() => {
@@ -71,7 +65,7 @@ async function isSquadIndependent(page: Page, n: number): Promise<boolean> {
 
 test.describe('reference model (REQ-0033 Phase 2)', () => {
   test('1. inv -> canvas creates a reference (blade stays in inventory, red tint)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -100,7 +94,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('2. switching squad re-tints inventory yellow (used by an OTHER squad)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -123,7 +117,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('3. same blade placed into squad2 -> canvas shows canvasYellow (shared)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -164,7 +158,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('4. drag from squad2 canvas back to inventory removes only squad2s reference', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -211,7 +205,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('5. red-rule rejection: a second inv -> canvas reference attempt for the same uid is a no-op', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -237,7 +231,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('6. BP transfer inv -> canvas excludes a PO already referenced by the current squad', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -284,7 +278,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('7. BP canvas -> inventory removes the BP + nested non-excluded PO references; home untouched', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -319,7 +313,7 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
   });
 
   test('8. isSquadIndependent: a squad with zero yellow-tinted items reports true', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     // Freshly booted, untouched fixture: squad1 (current, index 0) has
     // only its own canvas_bp1 -- no SHARED uid with any other squad yet
     // -- vacuously/actually independent.

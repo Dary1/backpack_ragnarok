@@ -54,27 +54,16 @@
 // -- a rejected transfer still leaves both sides exactly as they were,
 // which is equally true under either model.
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, bootApp, cx, cy, drag, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/bp-transfer-fixture.json', import.meta.url);
 
-// REQ-0031 Phase B: Save/Load buttons are retired -- loadFixtureAndBoot no
-// longer clicks anything to persist; saveAndFetch is now autoSaveAndFetch
-// (waits out the auto-save debounce, then reads the profile back), since
-// every mutation in this spec (drags) already auto-saves in the
-// background with no button click required.
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await bootApp(page);
-}
 
 const saveAndFetch = autoSaveAndFetch;
 
 test.describe('BP inventory <-> canvas transfer', () => {
   test('1. empty BP: inventory -> canvas (originally-reported case)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -101,7 +90,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
   });
 
   test('2. BP with 1 PO + seated SI: inventory -> canvas (contents travel with it)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -170,7 +159,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
     // means: the home stays at its ORIGINAL origin [1,1] throughout every
     // step (it is never relocated by ANY of these drags), while the
     // CANVAS reference is created, then removed, then created again.
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -238,7 +227,7 @@ test.describe('BP inventory <-> canvas transfer', () => {
   });
 
   test('4. illegal overlap: BP dropped onto an occupied canvas region is rejected', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 

@@ -24,7 +24,7 @@
 // input really is set in this rig.
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
+import { assertBaselineBoardsInteractive, assertPageResponsive, bootApp } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/baseline-smoke-fixture.json', import.meta.url);
 
@@ -33,21 +33,6 @@ async function putFixture(page: import('@playwright/test').Page) {
   await page.request.put('/api/profile/default/canvas', { data: fixture });
 }
 
-/** Drags p200 (inv page0 cell (4,4) in the baseline fixture) onto canvas
- * BP gamma's free cell (6,3) and asserts the move persisted -- the exact
- * interactivity bar nav-routing.spec.ts's round-trip guard uses. */
-async function assertBoardsInteractive(page: import('@playwright/test').Page) {
-  const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
-  const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
-  await drag(page, { x: invBox.x + cx(4), y: invBox.y + cy(4) }, { x: canvasBox.x + cx(3), y: canvasBox.y + cy(6) });
-  await waitForAutoSave(page);
-  const resp = await page.request.get('/api/profile/default/canvas');
-  const canvas = (await resp.json()).canvas;
-  const po = canvas.pos.find((p: { uid: string }) => p.uid === 'p200');
-  expect(po).toBeTruthy();
-  expect(po.loc).toBe('grid');
-  expect(po.cell).toEqual([6, 3]);
-}
 
 test('empty hash renders the landing; menu deep-links; boards stay mounted (hidden)', async ({ page }) => {
   await page.goto('/app/');
@@ -127,13 +112,9 @@ test('boards survive landing round-trips (canvas still interactive after return)
   // Still exactly 2 canvases (no leaked/duplicate boards; the landing's
   // own particle canvas unmounted with it), and the page didn't wedge.
   await expect(page.locator('canvas')).toHaveCount(2);
-  const result = await Promise.race([
-    page.evaluate(() => 1 + 1),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('page hung after landing round trips')), 2000)),
-  ]);
-  expect(result).toBe(2);
+  await assertPageResponsive(page, '3 landing round trips');
 
-  await assertBoardsInteractive(page);
+  await assertBaselineBoardsInteractive(page);
 });
 
 test('cold boot ON the landing: boards initialized while hidden are interactive after Continue', async ({ page }) => {
@@ -149,5 +130,5 @@ test('cold boot ON the landing: boards initialized while hidden are interactive 
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10_000 });
   await page.waitForTimeout(400);
 
-  await assertBoardsInteractive(page);
+  await assertBaselineBoardsInteractive(page);
 });

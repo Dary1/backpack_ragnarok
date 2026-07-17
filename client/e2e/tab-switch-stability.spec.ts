@@ -31,6 +31,7 @@
 //    this network assertion is the live-evidence backstop for that
 //    reading).
 import { test, expect } from '@playwright/test';
+import { assertPageResponsive } from './helpers';
 
 test('tab switching (15 clicks, 3 rounds) never hangs the page and never refetches', async ({ page }) => {
   let contentReqs = 0;
@@ -63,11 +64,7 @@ test('tab switching (15 clicks, 3 rounds) never hangs the page and never refetch
       // this call would never resolve within any bounded window we tried
       // (16+ seconds observed with no recovery) -- 2s is generous slack
       // for a healthy page (typical observed time: well under 200ms).
-      const result = await Promise.race([
-        page.evaluate(() => 1 + 1),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('page hung: evaluate did not resolve within 2s')), 2000)),
-      ]);
-      expect(result).toBe(2);
+          await assertPageResponsive(page, '15 tab clicks, 3 rounds');
     }
   }
 

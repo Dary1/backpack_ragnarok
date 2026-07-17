@@ -34,16 +34,11 @@
 import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
-import { autoSaveAndFetch, bootApp, longPress } from './helpers';
+import { autoSaveAndFetch, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/tab-reorder-fixture.json', import.meta.url);
 const NEUTRAL_FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: Page): Promise<void> {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await bootApp(page);
-}
 
 /** Drags a tab element from its own center to another tab's center (or an
  * arbitrary point, e.g. the trash zone), with enough intermediate moves
@@ -88,9 +83,19 @@ async function usageOf(page: Page, uid: string): Promise<number[]> {
   }, uid);
 }
 
+// REQ-0247: test 4 ('long-press still triggers rename after DnD wiring')
+// was deleted as a strict subset of long-press-rename.spec.ts's 'squad
+// tab: long-press renames inline, persists after reload via auto-save':
+// same locator (.squad-tab nth(0)), same longPress -> rename-input ->
+// fill -> Enter -> autoSaveAndFetch -> presets.names[0] flow, and that
+// one additionally proves the rename survives a reload. The 'after DnD
+// wiring' framing named no separate condition: the reorder wiring is
+// unconditional in the shipped app, so long-press-rename.spec.ts has
+// always exercised long-press WITH it present. Tests 1/2/5/6/7/8 keep
+// the reorder + trash-delete coverage this file exists for.
 test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
   test('1. drag squad tab to reorder: order + contents change, persists after reload', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     await expect(page.locator('.squad-tab')).toHaveCount(3);
     await expect(page.locator('.squad-tab').nth(0)).toHaveText('Alpha');
     await expect(page.locator('.squad-tab').nth(1)).toHaveText('Bravo');
@@ -129,7 +134,7 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
   });
 
   test('2. drag inventory tab to reorder: the page and its item contents follow the tab', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     await expect(page.locator('.inv-tab')).toHaveCount(5);
     await expect(page.locator('.inv-tab').nth(0)).toHaveText('Loot');
     await expect(page.locator('.inv-tab').nth(1)).toHaveText('Gear');
@@ -151,7 +156,7 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
   });
 
   test('3. a plain click still switches tabs after DnD wiring (no regression)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     // Short click (well under the 600ms long-press / never crosses the
     // 8px move tolerance) on squad tab "Bravo" (index 1) must switch to it.
     const box = (await page.locator('.squad-tab').nth(1).boundingBox())!;
@@ -166,25 +171,9 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
     expect(canvas.presets.active).toBe(1);
   });
 
-  test('4. long-press (~600ms, no movement) still triggers rename after DnD wiring (no regression)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
-    const tab = page.locator('.squad-tab').nth(0);
-    const box = (await tab.boundingBox())!;
-    await longPress(page, box);
-
-    const input = page.locator('.squad-tab-rename-input');
-    await expect(input).toHaveCount(1);
-    await input.fill('Renamed Alpha');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(200);
-
-    await expect(page.locator('.squad-tab').nth(0)).toHaveText('Renamed Alpha');
-    const canvas = await autoSaveAndFetch(page);
-    expect(canvas.presets.names[0]).toBe('Renamed Alpha');
-  });
 
   test('5. trash-drop-zone appears ONLY while dragging a SQUAD tab, never for an inventory tab', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     // Start dragging a SQUAD tab -- trash zone must appear.
     const squadBox = (await page.locator('.squad-tab').nth(1).boundingBox())!;
@@ -217,7 +206,7 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
   });
 
   test('6. delete a squad via trash-drop: its references vanish, inventory homes/positions are completely untouched', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     // Sanity before delete: p900 (blade) is used by Bravo (index 1) --
     // NOT by Alpha (active, index 0) -- so it is yellow (shared with an
@@ -278,7 +267,7 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
   });
 
   test('7. deleting the ACTIVE squad switches to the nearest remaining tab', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     // Switch active to Bravo (index 1) first.
     await page.locator('.squad-tab').nth(1).click();
     await page.waitForTimeout(200);
@@ -315,7 +304,7 @@ test.describe('REQ-0032 tab reorder + squad trash-delete', () => {
     // Collapse to exactly 1 squad first (delete Bravo then Charlie via
     // successive trash-drops), then attempt to delete Alpha -- must be
     // refused.
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     async function trashDrop(tabIndex: number) {
       const box = (await page.locator('.squad-tab').nth(tabIndex).boundingBox())!;

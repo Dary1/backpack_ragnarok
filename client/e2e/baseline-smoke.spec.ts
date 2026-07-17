@@ -1,31 +1,24 @@
 // REQ-0031 Phase A -- Step 4: baseline E2E smoke tests beyond the two
 // bugs. Cheap, high-value coverage for the core interactions the bug
 // fixes must not have broken.
+//
+// REQ-0247: this file's own boot test ('app boots and shows the live
+// data-source indicator') was deleted as a strict subset of
+// smoke.spec.ts's 'app boots and shows the live data-source badge' --
+// same goto, same three assertions (badge text, badge class, h1), and
+// smoke's additionally asserts both board canvases are mounted. Boot
+// coverage lives there; this file keeps the drag/rotate flows, each of
+// which boots via loadFixtureFileAndBoot() anyway.
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, bootApp, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, cx, cy, drag, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/baseline-smoke-fixture.json', import.meta.url);
 
-// REQ-0031 Phase B: Save/Load buttons retired -- see helpers.ts.
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await bootApp(page);
-}
 
 const saveAndFetch = autoSaveAndFetch;
 
-test('app boots and shows the live data-source indicator', async ({ page }) => {
-  await page.goto('/app/#/backpacks');
-  const badge = page.locator('.data-source-badge');
-  await expect(badge).toHaveText('live', { timeout: 10000 });
-  await expect(badge).toHaveClass(/badge-live/);
-  await expect(page.locator('h1')).toHaveText('backpack_ragnarok');
-});
-
 test('free PO drags from inventory grid to a legal canvas BP slot, and back', async ({ page }) => {
-  await loadFixtureAndBoot(page);
+  await loadFixtureFileAndBoot(page, FIXTURE_PATH);
   const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
   const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
@@ -73,7 +66,7 @@ test('free PO drags from inventory grid to a legal canvas BP slot, and back', as
 });
 
 test('double-click a canvas PO rotates it (verified via Save + profile fetch)', async ({ page }) => {
-  await loadFixtureAndBoot(page);
+  await loadFixtureFileAndBoot(page, FIXTURE_PATH);
   const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
   // p4 (tower_shield, a 2x2 PO whose footprint is rotation-symmetric) sits

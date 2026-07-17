@@ -8,22 +8,14 @@
 // -> auto-save (same debounced-PUT path as every other mutation), so a
 // rename must survive a full page reload with NO manual save action.
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, longPress } from './helpers';
+import { autoSaveAndFetch, loadFixtureFileAndBoot, longPress } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await page.goto('/app/#/backpacks');
-  await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-  await page.waitForTimeout(400);
-}
 
 test.describe('long-press rename', () => {
   test('inventory tab: long-press renames inline, persists after reload via auto-save', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     const tab = page.locator('.inv-tab').nth(2); // page index 2 (0-based) -- "3"
     const box = (await tab.boundingBox())!;
@@ -50,7 +42,7 @@ test.describe('long-press rename', () => {
   });
 
   test('squad tab: long-press renames inline, persists after reload via auto-save', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     const tab = page.locator('.squad-tab').nth(0);
     const box = (await tab.boundingBox())!;
@@ -75,7 +67,7 @@ test.describe('long-press rename', () => {
   });
 
   test('a normal (short) click on a tab still switches, and does NOT arm rename', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     const tab1 = page.locator('.inv-tab').nth(1);
     const box1 = (await tab1.boundingBox())!;
@@ -90,7 +82,7 @@ test.describe('long-press rename', () => {
   });
 
   test('Escape cancels a rename with no persisted change', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     const tab = page.locator('.inv-tab').nth(3);
     const box = (await tab.boundingBox())!;

@@ -10,22 +10,14 @@
 // (the debounce only ever starts at commit, never mid-drag -- see
 // store.ts's notifyStateChanged()/scheduleAutoSave() module comment).
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { cx, cy } from './helpers';
+import { cx, cy, drag, loadFixtureFileAndBoot, reloadApp } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await page.goto('/app/#/backpacks');
-  await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-  await page.waitForTimeout(400);
-}
 
 test.describe('auto-save', () => {
   test('mutate -> wait -> reload: state persists with zero clicks on any save/load control', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     // Confirm there is truly nothing to click for this to work.
     await expect(page.locator('button:has-text("Save")')).toHaveCount(0);
@@ -35,33 +27,35 @@ test.describe('auto-save', () => {
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     // Drag p900 (blade) from inventory onto the canvas BP -- the ONLY
-    // action in this test; no save/load button exists to click.
-    await page.mouse.move(invBox.x + cx(5), invBox.y + cy(5));
-    await page.mouse.down();
-    for (let i = 1; i <= 8; i++) {
-      const t = i / 8;
-      const sx = invBox.x + cx(5) + (canvasBox.x + cx(2) - (invBox.x + cx(5))) * t;
-      const sy = invBox.y + cy(5) + (canvasBox.y + cy(1) - (invBox.y + cy(5))) * t;
-      await page.mouse.move(sx, sy, { steps: 1 });
-      await page.waitForTimeout(25);
-    }
-    await page.waitForTimeout(150);
-    await page.mouse.up();
+    // action in this test; no save/load button exists to click. REQ-0247:
+    // uses the shared drag() (identical 8-step/25ms trusted-CDP gesture this
+    // spec used to hand-roll), so a change to the drag technique lands here
+    // too instead of silently skipping the one spec that copied it.
+    const savePut = page.waitForResponse(
+      (r) => r.url().includes('/api/profile/') && r.request().method() === 'PUT',
+      { timeout: 15_000 },
+    );
+    await drag(
+      page,
+      { x: invBox.x + cx(5), y: invBox.y + cy(5) },
+      { x: canvasBox.x + cx(2), y: canvasBox.y + cy(1) }
+    );
 
     // Status indicator should show "saving" shortly after commit, then
-    // "saved" once the debounced PUT completes.
-    await page.waitForTimeout(100);
+    // "saved" once the debounced PUT completes. REQ-0247: the settle is the
+    // PUT landing, not a 1600ms sleep -- the response is armed BEFORE the
+    // gesture so the wait cannot miss a save that flushed early, and a
+    // loaded box can no longer overrun the budget (this spec's fixed sleep
+    // was a live flake in REQ-0247's own baseline).
     const statusDuringSave = await page.locator('.auto-save-status').getAttribute('data-status');
     expect(['saving', 'saved']).toContain(statusDuringSave); // timing-tolerant: may already have flushed on a fast box
 
-    await page.waitForTimeout(1600); // 800ms debounce + margin for the PUT itself
+    await savePut;
     await expect(page.locator('.auto-save-status')).toHaveAttribute('data-status', 'saved');
 
     // Reload WITHOUT clicking anything -- boot() re-fetches the saved
     // profile automatically (unchanged since REQ-0027/T0.2).
-    await page.reload();
-    await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-    await page.waitForTimeout(400);
+    await reloadApp(page);
 
     const resp = await page.request.get('/api/profile/default/canvas');
     const canvas = (await resp.json()).canvas;
@@ -87,9 +81,11 @@ test.describe('auto-save', () => {
   });
 
   test('a drag NOT yet released does not itself trigger a save (debounce starts at commit only)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
-    await page.waitForTimeout(900); // let any boot-time settling finish; status should be idle/'saved'
-    await expect(page.locator('.auto-save-status')).toHaveAttribute('data-status', 'saved');
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
+    // REQ-0247: assert the settled state directly instead of sleeping 900ms
+    // for it -- toHaveAttribute retries until the boot-time save settles, so
+    // this is the same gate without the fixed budget.
+    await expect(page.locator('.auto-save-status')).toHaveAttribute('data-status', 'saved', { timeout: 10_000 });
 
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     // Start a drag but do NOT release it yet.

@@ -19,22 +19,14 @@
 // still exactly where it was placed (both configurations preserved by the
 // atomic swap).
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { autoSaveAndFetch, cx, cy, drag } from './helpers';
+import { autoSaveAndFetch, cx, cy, drag, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/squad-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await page.goto('/app/#/backpacks');
-  await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
-  await page.waitForTimeout(400);
-}
 
 test.describe('squad switch', () => {
   test('place PO on squad 1 canvas -> switch to squad 2 (empty) -> switch back (still there)', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
     // Sanity: 5 squad tabs, squad 1 active.
     await expect(page.locator('.squad-tab')).toHaveCount(5);
@@ -91,7 +83,7 @@ test.describe('squad switch', () => {
   });
 
   test('Squad+ appends a new tab and switches to it', async ({ page }) => {
-    await loadFixtureAndBoot(page);
+    await loadFixtureFileAndBoot(page, FIXTURE_PATH);
     await expect(page.locator('.squad-tab')).toHaveCount(5);
 
     await page.locator('.squad-add-btn').click();

@@ -13,7 +13,9 @@
 // window with margin, then reads the profile back directly -- no UI
 // interaction is needed to trigger the write at all, which is itself part
 // of what Phase B's auto-save E2E coverage is verifying.
+import { expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 export const CELL = 80;
 export const PAD = 38;
@@ -116,4 +118,75 @@ export async function longPress(page: Page, box: { x: number; y: number; width: 
   await page.waitForTimeout(holdMs);
   await page.mouse.up();
   await page.waitForTimeout(150);
+}
+
+/** Reads a JSON fixture file from e2e/fixtures/. REQ-0247: eight specs each
+ * carried their own JSON.parse(readFileSync(FIXTURE_PATH,'utf8')) line. */
+export function readFixture(fixtureUrl: URL): unknown {
+  return JSON.parse(readFileSync(fixtureUrl, 'utf8'));
+}
+
+/** The file-path twin of loadFixtureAndBoot(). REQ-0247: eight specs
+ * (auto-save, baseline-smoke, bp-transfer, long-press-rename, nav-routing,
+ * reference-model, squad-switch, tab-reorder-trash) each defined a private
+ * loadFixtureAndBoot(page) that was byte-identical apart from which
+ * FIXTURE_PATH it closed over -- four called bootApp(), the other four
+ * inlined bootApp()'s own goto/badge/settle sequence by hand, so the two
+ * halves could drift apart silently. One definition now, and bootApp() is
+ * the only boot path. */
+export async function loadFixtureFileAndBoot(page: Page, fixtureUrl: URL): Promise<void> {
+  await loadFixtureAndBoot(page, readFixture(fixtureUrl));
+}
+
+/** Reloads and waits for the app to come back live -- the reload twin of
+ * bootApp(), which several specs open-coded as
+ * reload + expect(badge).toHaveText('live') + waitForTimeout(400). */
+export async function reloadApp(page: Page): Promise<void> {
+  await page.reload();
+  await page.locator('.data-source-badge').waitFor({ state: 'visible', timeout: 10000 });
+  await page.waitForFunction(
+    () => document.querySelector('.data-source-badge')?.textContent?.trim() === 'live',
+    { timeout: 10000 },
+  );
+  await page.waitForTimeout(400);
+}
+
+/** Fails if the page's JS main thread is wedged. REQ-0247: this exact
+ * Promise.race was copy-pasted into tab-switch-stability, nav-routing and
+ * landing -- it is the shared evidence gate for the REQ-0031 Phase A
+ * infinite-busy-loop class of bug (a WebGL context race sent PixiJS's
+ * checkMaxIfStatementsInShader() into a genuine while(true) loop), so a
+ * healthy page answers in well under 200ms and a wedged one never answers
+ * at all. label names the round trip that preceded the check. */
+export async function assertPageResponsive(page: Page, label: string, timeoutMs = 2000): Promise<void> {
+  const result = await Promise.race([
+    page.evaluate(() => 1 + 1),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error('page hung (' + label + '): evaluate did not resolve within ' + timeoutMs + 'ms')),
+        timeoutMs,
+      ),
+    ),
+  ]);
+  expect(result).toBe(2);
+}
+
+/** Proves the boards are genuinely INTERACTIVE, not merely mounted: drags
+ * p200 (the hilt that baseline-smoke-fixture.json free-places at inv page0
+ * cell (4,4)) onto canvas BP "gamma"'s free cell (6,3) and reads the move
+ * back through the API. REQ-0247: landing.spec.ts and nav-routing.spec.ts
+ * each carried this same drag+assert as their round-trip evidence gate
+ * (landing's copy already named nav-routing's as its source of truth).
+ * Fixture-coupled BY DESIGN -- callers must have booted
+ * baseline-smoke-fixture.json. */
+export async function assertBaselineBoardsInteractive(page: Page): Promise<void> {
+  const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
+  const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
+  await drag(page, { x: invBox.x + cx(4), y: invBox.y + cy(4) }, { x: canvasBox.x + cx(3), y: canvasBox.y + cy(6) });
+  await waitForAutoSave(page);
+  const canvas = await fetchSavedCanvas(page);
+  const po = canvas.pos.find((p: { uid: string }) => p.uid === 'p200');
+  expect(po).toBeTruthy();
+  expect(po.loc).toBe('grid');
+  expect(po.cell).toEqual([6, 3]);
 }

@@ -12,16 +12,10 @@
 //     drag/drop still works, matching the existing baseline-smoke drag
 //     assertions' own success criteria).
 import { test, expect } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
+import { assertBaselineBoardsInteractive, assertPageResponsive, bootApp, loadFixtureFileAndBoot } from './helpers';
 
 const FIXTURE_PATH = new URL('./fixtures/baseline-smoke-fixture.json', import.meta.url);
 
-async function loadFixtureAndBoot(page: import('@playwright/test').Page) {
-  const fixture = JSON.parse(readFileSync(FIXTURE_PATH, 'utf8'));
-  await page.request.put('/api/profile/default/canvas', { data: fixture });
-  await bootApp(page);
-}
 
 test('clicking through all 5 nav routes updates hash + active highlight + content', async ({ page }) => {
   await bootApp(page);
@@ -122,7 +116,7 @@ test('reload on a deep-linked hash (#/dex) loads directly into that route', asyn
 });
 
 test('backpacks board round-trip: navigate away and back 5 times, boards stay interactive (WebGL-churn guard)', async ({ page }) => {
-  await loadFixtureAndBoot(page);
+  await loadFixtureFileAndBoot(page, FIXTURE_PATH);
 
   // Sanity: exactly 2 canvases at boot (canvas board + inventory board).
   await expect(page.locator('canvas')).toHaveCount(2);
@@ -140,24 +134,9 @@ test('backpacks board round-trip: navigate away and back 5 times, boards stay in
 
   // The page must not have hung (the exact same "did the renderer wedge"
   // check tab-switch-stability.spec.ts uses for the analogous Phase A bug).
-  const result = await Promise.race([
-    page.evaluate(() => 1 + 1),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('page hung after nav round trips')), 2000)),
-  ]);
-  expect(result).toBe(2);
+  await assertPageResponsive(page, '5 nav round trips');
 
-  // Prove real interactivity, not just DOM presence: drag p200 (hilt, at
-  // inv page0 cell (4,4) per the baseline fixture) onto canvas BP
-  // "gamma"'s free cell (6,3), then verify the move actually committed.
-  const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
-  const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
-  await drag(page, { x: invBox.x + cx(4), y: invBox.y + cy(4) }, { x: canvasBox.x + cx(3), y: canvasBox.y + cy(6) });
-
-  await waitForAutoSave(page);
-  const resp = await page.request.get('/api/profile/default/canvas');
-  const canvas = (await resp.json()).canvas;
-  const po = canvas.pos.find((p: any) => p.uid === 'p200');
-  expect(po).toBeTruthy();
-  expect(po.loc).toBe('grid');
-  expect(po.cell).toEqual([6, 3]);
+  // Prove real interactivity, not just DOM presence (REQ-0247: the shared
+  // gate landing.spec.ts already pointed at this file for).
+  await assertBaselineBoardsInteractive(page);
 });

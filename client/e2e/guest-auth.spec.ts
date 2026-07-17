@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { E2E_CODE_ROOT, E2E_DATA_ROOT, E2E_CLI_ENV } from './e2e-env';
 import { test, expect } from '@playwright/test';
 import { GUEST_AUTH_TRACKED_FILES_PATH, PLAYERS_DIR, PROFILES_DIR } from './global-setup';
-import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
+import { cx, cy, drag, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
