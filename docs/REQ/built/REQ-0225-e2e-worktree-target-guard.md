@@ -56,3 +56,7 @@ In e2e global-setup, detect the mismatch and make it loud:
   any fleet/page work (verified live).
 - Scoped worktree runs (ci.sh [7/7] and the REQ-0234 audit run) show no
   banner -- local baseURL from a worktree is the sanctioned path.
+
+## Deploy record (2026-07-17)
+- Merged to master bc6c012 (--no-ff, user go-ahead in chat). No runtime paths touched (tools/, sim/tests, client/e2e, docs only): no service restart, no dist rebuild needed.
+- Live verification: full ci.sh GREEN on the identical tree pre-merge (FULLCI2 09:52:59-10:00:40, incl. admin trio 7/1/28, registry stage 4/4 no-skip, scoped e2e 187/1/0); backpack-web/api healthy post-merge (200/200). Main-checkout quick gates green EXCEPT the PRE-EXISTING [3.8] art-export red: the in-flight art session's untracked content/art mirror lacks the items005 renders (gate self-skips in any tree without that mirror; this merge touches no content paths) -- flagged to the user, not caused here.
