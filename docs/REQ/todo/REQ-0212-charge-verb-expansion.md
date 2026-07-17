@@ -63,3 +63,70 @@ already adopted; no art work in this REQ.
   REQ-0161 territory.
 - Forecast changes: these are player-side unit verbs; the enemy-facing
   pressure model does not read them.
+
+
+## Implementation log (2026-07-17, sub-agent Opus 4.8)
+
+### Engine + vocab (DONE, gates green)
+
+Vocab v16 (content/vocab.json): `charge_strike` / `transfer_status` /
+`shield_break` added to `verbs` + `ranged_verb_params` (each carries `n`) +
+`charge.effect_verbs` + `provenance`, all labelled **AGENT-DEFINED 2026-07-17**.
+`deprecated` untouched.
+
+Grounding (verb-for-verb, REQ-0200 pattern):
+- `shared/content_validate.cjs` validateCharge(): rejects `charge_strike` BY NAME
+  unless `spend=fire_on_full`.
+- `sim/lib/unit_charge.cjs` groundVerb: `charge_strike` = n × stacks_spent (the
+  consumed counter, fed via ctx); `transfer_status` / `shield_break` record the count.
+- `sim/lib/unit_charge_encounter.cjs` + `sim/lib/encounter.cjs` (chargeOps):
+  `charge_strike` -> a REAL strike ray into the enemy (strikeFromBp) + a
+  `unit_charge_strike` event; `transfer_status` MOVES negative statuses
+  (status.cjs DEBUFF_STATUSES) off the host BP onto the first living enemy, keeping
+  each status's stacks/duration; `shield_break` strips flat block
+  (`ref.damageReduction` -- the pool `reduceIncoming` reads) off every living enemy,
+  floor 0, no damage. All charge-guarded -> goldens byte-identical.
+- `tools/eff_render.cjs`: renderCharge + PO verb phrases (en+ja) for all three.
+- `tools/self_test_vocab.cjs`: one charge fixture per verb (coverage now 31 verbs).
+- `sim/tests/unit_charge_encounter_test.cjs`: end-to-end combat proofs
+  (charge_strike lands + scales with capacity; transfer_status moves host->enemy;
+  shield_break reduces enemy block) + the validation-rejection test. 23 passed / 0.
+
+Commits (branch req-0212-charge-verb-expansion):
+- `4006083` vocab v16
+- `1460297` validateCharge charge_strike fire_on_full-only
+- `e4a27e5` ground the three verbs in the real combat model
+- `4043ef3` render (en+ja) + self-test fixtures
+- `acc4048` end-to-end combat + validation-rejection tests
+
+Gate results (flock `tools/ci.sh`, 2026-07-17):
+- self_test_vocab: ALL GREEN (31 verbs, 20/20 triggers)
+- sim/tests/run.cjs: **117 passed / 0 failed**
+- unit_charge_test: **13/0**; unit_charge_encounter_test: **23/0**
+- goldens: OK (12 cases); s4_test: **14/0**; forecast_parity: green
+- check_units: ALL GREEN (42 defs, 30 charge blocks); check_engine_types: OK
+- `tsc -p tsconfig.server.json`: exit 0 (after provisioning `server/node_modules`
+  -- the fresh worktree lacked the server package's own `pg` install; main has it,
+  so tsc was green there. Diff-independent env gap.)
+- content_checks_unit_deep_test: **6/0**; units003_acceptance: ALL GREEN
+- Full ci.sh: **186 e2e passed, 1 skipped, 1 FAILED** =
+  `e2e/link-trace.spec.ts` (REQ-0142 beam-trace diagnostics UI). Unrelated to this
+  diff (no client link-trace code touched); FLAKY -- passes **8/8** on isolated
+  re-run. NOT caused by REQ-0212.
+
+### Content phase (NOT DONE -- blocked, left for orchestrator)
+
+Blocked on REQ-0213: the `arsenal` pack is NOT in master (no "arsenal" anywhere in
+the tree; REQ-0213 is an unmerged parallel worktree). The spec's own gate ("only
+after ... master contains REQ-0213's arsenal pack") is unmet, so:
+- the carrier unit defs (powder_keg / cursed_doll / battle_pickaxe) were NOT
+  ingested/adopted and NOT appended to `content/live/live_units.json`;
+- the `arsenal` pack pool was NOT extended.
+
+Also, adopt would fail regardless until this REQ merges: the live server runs OLD
+code and its machine check rejects the v16 verbs (the spec's "SKIP adopt" case).
+
+Orchestrator: after REQ-0213 lands AND this REQ merges, run the content phase
+(ingest/review/adopt the 3 units, append byte-identical to `live_units.json`,
+extend the arsenal pool `powder_keg 2 / cursed_doll 2 / battle_pickaxe 3`), then
+`git mv` this REQ todo->built.
