@@ -19,6 +19,26 @@ const { deriveSize, KINDS } = require('../services/art_sizing.cjs');
 const RESERVED = new Set(['artworks', 'dev', 'meta', 'renders', 'queue']);
 function isValidName(n) { return typeof n === 'string' && /^[A-Za-z0-9_]+$/.test(n) && !RESERVED.has(n); }
 
+// REQ-0223: a render is addressed (name, seed, variant), and `variant` rides in
+// the QUERY STRING rather than the path. Two reasons. The path slot after the
+// seed is already spoken for by /inspect, /repack, /cutout, /cancel, so a
+// /renders/<seed>/<variant> scheme would have to disambiguate a number from a
+// verb. And a bare /renders/<seed> must keep resolving to the render it has
+// always named -- every existing client URL, e2e spec, and exported reference
+// stays correct, because absent means 0. Variant is opt-in addressing for the
+// A/B case, not a new coordinate everyone must now spell out.
+function variantOf(url) {
+  const raw = url && url.searchParams ? url.searchParams.get('variant') : null;
+  if (raw == null || raw === '') return 0;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 0) return null;   // caller 400s
+  return n;
+}
+
+// Mirrors storage_art.cjs's seedVarSuffix: variant 0 stays unspoken, so the
+// ordinary operator never meets the word in a 404.
+function varSuffix(v) { return v ? ' variant ' + v : ''; }
+
 function readJson(req) {
   return new Promise((resolve, reject) => {
     readBody(req, (err, str) => {
@@ -273,10 +293,27 @@ async function hGenerate(req, res, name) {
     shape_lock: ov.shape_lock !== undefined ? ov.shape_lock : undefined,
     shape_dilation_px: ov.shape_dilation_px !== undefined ? ov.shape_dilation_px : undefined,
   };
+  // REQ-0223: THE fix. The one-shot override's whole purpose (see the comment
+  // above) is "burn the SAME seed at two locks and compare" -- but the second
+  // press hit UNIQUE(artwork_id, seed) and died on DUPLICATE_SEED, so REQ-0187
+  // had to burn disjoint seed ranges instead and confounded lock effect with
+  // seed effect in every pair of evidence it produced. Carrying a one-shot
+  // override IS the operator saying "same seed, different parameters", so it
+  // auto-picks the colliding seed's twin slot rather than refusing.
+  //
+  // `twin: true` in the body says the same thing explicitly, for the revision
+  // loop (instruction -> 3 seeds -> findings -> revised instruction), which
+  // needs the same seed across ROUNDS to isolate a PROMPT delta and carries no
+  // lock override to infer it from.
+  //
+  // Neither present = the old behaviour exactly: a re-pressed seed is a mistake
+  // and still errors. Twins are only ever created deliberately.
+  const oneShot = ov.shape_lock !== undefined || ov.shape_dilation_px !== undefined;
+  const twin = oneShot || b.twin === true;
   const created = [];
   try {
     if (b.seed != null) {
-      const r = await storage.createRender(art.id, b.seed, 'queued');
+      const r = await storage.createRender(art.id, b.seed, 'queued', { twin });
       jobs.enqueue({ renderId: r.id, artwork: art, seed: r.seed, tiling, shapeOverride });
       created.push(r);
     } else {
@@ -294,8 +331,14 @@ async function hGenerate(req, res, name) {
 async function hAdopt(req, res, name) {
   const b = await readJson(req);
   if (!Number.isInteger(b.seed)) return sendJSON(res, 400, { ok: false, error: 'seed (integer) is required' });
+  // REQ-0223: adopt takes its coordinates in the BODY (not the path), so the
+  // variant rides along there too -- omitted means 0, the render a bare seed
+  // has always named. Picking the winner of an A/B is exactly this field.
+  if (b.variant !== undefined && !(Number.isInteger(b.variant) && b.variant >= 0)) {
+    return sendJSON(res, 400, { ok: false, error: 'variant must be a non-negative integer' });
+  }
   let art;
-  try { art = await storage.adoptRender(name, b.seed); }
+  try { art = await storage.adoptRender(name, b.seed, b.variant); }
   catch (e) { return sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
   let exportRec = null, exportError = null;
   try { exportRec = await exportAdopted(name); } catch (e) { exportError = e.message; }
@@ -314,13 +357,16 @@ async function hAdopt(req, res, name) {
 // packing needs a cell footprint. The job runs at inspection priority; the
 // target row is created up front (status 'queued') so the UI shows it
 // immediately, and carries full provenance in params on completion.
-async function hRepack(req, res, name, seed) {
+async function hRepack(req, res, name, seed, variant) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   if (art.kind !== 'po') return sendJSON(res, 400, { ok: false, error: 'repack applies to po artworks only' });
   const renders = await storage.listRenders(art.id);
-  const src = renders.find((r) => Number(r.seed) === seed);
-  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  // REQ-0223: pin the variant. Before twins existed, seed alone hit one row; now
+  // a bare .find() on seed would silently repack an arbitrary member of an A/B
+  // pair -- the wrong image, with no error to notice.
+  const src = renders.find((r) => Number(r.seed) === seed && Number(r.variant) === variant);
+  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + varSuffix(variant) + ' for ' + name });
   if (src.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'repack needs an ok render (status: ' + src.status + ')' });
   const taken = new Set(renders.map((r) => Number(r.seed)));
   let target = seed + 100000;
@@ -351,12 +397,12 @@ async function hRepack(req, res, name, seed) {
 // would be pixel-identical anyway. Job runs at the repack priority; the
 // target row is created up front (status 'queued') so the UI shows it
 // immediately, and carries full provenance in params on completion.
-async function hCutout(req, res, name, seed) {
+async function hCutout(req, res, name, seed, variant) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const renders = await storage.listRenders(art.id);
-  const src = renders.find((r) => Number(r.seed) === seed);
-  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  const src = renders.find((r) => Number(r.seed) === seed && Number(r.variant) === variant);
+  if (!src) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + varSuffix(variant) + ' for ' + name });
   if (src.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'cutout needs an ok render (status: ' + src.status + ')' });
   if (src.params && src.params.derived === 'background_cutout') {
     return sendJSON(res, 400, { ok: false, error: 'render ' + seed + ' is already a background cutout' });
@@ -380,8 +426,8 @@ async function hCutout(req, res, name, seed) {
   return sendJSON(res, 202, { ok: true, render: row, source_seed: seed, inspectDepth: jobs.inspectDepth() });
 }
 
-async function hDelete(req, res, name, seed) {
-  try { await storage.deleteRender(name, seed); sendJSON(res, 200, { ok: true, deleted: seed }); }
+async function hDelete(req, res, name, seed, variant) {
+  try { await storage.deleteRender(name, seed, variant); sendJSON(res, 200, { ok: true, deleted: seed, variant }); }
   catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
@@ -412,15 +458,15 @@ async function hQueueExecute(req, res) {
 // (no new enum -- no migration); Retry in the UI is delete + regenerate at
 // the same seed. 404s when that seed's job is neither pending nor running
 // (it already finished -- the poll will show its real status).
-async function hCancel(req, res, name, seed) {
+async function hCancel(req, res, name, seed, variant) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const renders = await storage.listRenders(art.id);
-  const r = renders.find((x) => x.seed === seed);
-  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  const r = renders.find((x) => x.seed === seed && Number(x.variant) === variant);
+  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + varSuffix(variant) + ' for ' + name });
   try {
     const out = await jobs.cancelJob(r.id);
-    sendJSON(res, 200, Object.assign({ ok: true, canceled: out.canceled, renderId: r.id, seed }, { queue: jobs.listJobs() }));
+    sendJSON(res, 200, Object.assign({ ok: true, canceled: out.canceled, renderId: r.id, seed, variant }, { queue: jobs.listJobs() }));
   } catch (e) { sendJSON(res, httpForCode(e.code), { ok: false, error: e.message }); }
 }
 
@@ -439,12 +485,15 @@ async function hDevClear(req, res) {
 // re-run inspection kits for one render. body {kit_id?} -- one kit, or all
 // kits for the kind when omitted. Advisory: enqueues, never blocks. (Also the
 // on-demand path for lazily-inspected backfilled renders, Q3.)
-async function hInspect(req, res, name, seed) {
+async function hInspect(req, res, name, seed, variant) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const renders = await storage.listRenders(art.id);
-  const r = renders.find((x) => x.seed === seed);
-  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+  // REQ-0223: po.cell_fit and every other kit row keys on render_id, so pinning
+  // the variant HERE is what makes an inspection attach to the render the
+  // operator actually asked about instead of its twin.
+  const r = renders.find((x) => x.seed === seed && Number(x.variant) === variant);
+  if (!r) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + varSuffix(variant) + ' for ' + name });
   if (r.status !== 'ok') return sendJSON(res, 400, { ok: false, error: 'cannot inspect a render that is not status ok' });
   const b = await readJson(req);
   let toRun;
@@ -473,9 +522,9 @@ async function hServeMeta(req, res, name) {
   sendJSON(res, 200, { ok: true, kind: a.kind, seed: a.seed, image_sha256: a.image_sha256, params: a.params, adopted_at: a.adopted_at });
 }
 
-async function hServeRender(req, res, name, seed) {
-  const r = await storage.getRenderImageBySeed(name, seed);
-  if (!r || !r.image) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + ' for ' + name });
+async function hServeRender(req, res, name, seed, variant) {
+  const r = await storage.getRenderImageBySeed(name, seed, variant);
+  if (!r || !r.image) return sendJSON(res, 404, { ok: false, error: 'no render seed ' + seed + varSuffix(variant) + ' for ' + name });
   sendPNG(req, res, r.image, r.image_sha256);
 }
 
@@ -528,14 +577,25 @@ function tryArtRoutes(req, res, url, p) {
   if (RE_QUEUE.test(p) && req.method === 'GET') { if (!requireAdmin(req, res)) return true; run(res, hQueue(req, res)); return true; }
   if (RE_QUEUE_HOLD.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueHold(req, res)); return true; }
   if (RE_QUEUE_EXECUTE.test(p) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hQueueExecute(req, res)); return true; }
-  if ((m = RE_CANCEL.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCancel(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  // REQ-0223: every seed-addressed route resolves ?variant= once, HERE, and a
+  // malformed one 400s at the edge rather than reaching a handler as NaN and
+  // quietly matching no render (which would read as a 404 "no such seed" and
+  // send the operator hunting for the wrong bug).
+  if (RE_CANCEL.test(p) || RE_INSPECT.test(p) || RE_REPACK.test(p) || RE_CUTOUT.test(p) ||
+      RE_ADMIN_RENDER.test(p) || RE_PUB_RENDER.test(p)) {
+    if (variantOf(url) === null) {
+      sendJSON(res, 400, { ok: false, error: 'variant must be a non-negative integer' });
+      return true;
+    }
+  }
+  if ((m = RE_CANCEL.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCancel(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
   if ((m = RE_PREVIEW.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hPreview(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_GENERATE.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hGenerate(req, res, decodeURIComponent(m[1]))); return true; }
   if ((m = RE_ADOPT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hAdopt(req, res, decodeURIComponent(m[1]))); return true; }
-  if ((m = RE_INSPECT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hInspect(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
-  if ((m = RE_REPACK.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hRepack(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
-  if ((m = RE_CUTOUT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCutout(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
-  if ((m = RE_ADMIN_RENDER.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDelete(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  if ((m = RE_INSPECT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hInspect(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
+  if ((m = RE_REPACK.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hRepack(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
+  if ((m = RE_CUTOUT.exec(p)) && req.method === 'POST') { if (!requireAdmin(req, res)) return true; run(res, hCutout(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
+  if ((m = RE_ADMIN_RENDER.exec(p)) && req.method === 'DELETE') { if (!requireAdmin(req, res)) return true; run(res, hDelete(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
   if ((m = RE_ARTWORK.exec(p))) {
     if (!requireAdmin(req, res)) return true;
     if (req.method === 'GET') { run(res, hGet(req, res, decodeURIComponent(m[1]))); return true; }
@@ -544,7 +604,7 @@ function tryArtRoutes(req, res, url, p) {
   }
   // public serving (no auth)
   if ((m = RE_PUB_META.exec(p)) && req.method === 'GET') { run(res, hServeMeta(req, res, decodeURIComponent(m[1]))); return true; }
-  if ((m = RE_PUB_RENDER.exec(p)) && req.method === 'GET') { run(res, hServeRender(req, res, decodeURIComponent(m[1]), Number(m[2]))); return true; }
+  if ((m = RE_PUB_RENDER.exec(p)) && req.method === 'GET') { run(res, hServeRender(req, res, decodeURIComponent(m[1]), Number(m[2]), variantOf(url))); return true; }
   if ((m = RE_PUB_ADOPTED.exec(p)) && req.method === 'GET') { run(res, hServeAdopted(req, res, decodeURIComponent(m[1]))); return true; }
   return false;
 }

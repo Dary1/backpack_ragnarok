@@ -14,7 +14,8 @@
 // chip turns it off; every other control (zoom, bg, compare, adopt) is
 // untouched and works the same with it on or off.
 import { useEffect, useState } from 'react';
-import { artRenderUrl } from '../api';
+import { artRenderUrl, refKey, sameRef, refLabel } from '../api';
+import type { RenderRef } from '../api';
 import { CellStage, maskBbox, aspectMatches } from './CellBackdrop';
 import type { CellFit } from './CellBackdrop';
 
@@ -24,16 +25,16 @@ type BgMode = 'dark' | 'white' | 'checker';
 const ZOOMS: ZoomMode[] = ['fit', '1', '2', '4'];
 const BGS: BgMode[] = ['dark', 'white', 'checker'];
 
-function Pane({ name, seed, zoom, bg, tile, halfshift, cells, mask, fit, testId }: {
-  name: string; seed: number; zoom: ZoomMode; bg: BgMode;
+function Pane({ name, rref, zoom, bg, tile, halfshift, cells, mask, fit, testId }: {
+  name: string; rref: RenderRef; zoom: ZoomMode; bg: BgMode;
   tile: boolean; halfshift: boolean;
   cells: boolean;                     // REQ-0191: draw the cell backdrop
   mask: boolean[][] | null;           // the artwork's saved po shape mask
-  fit: CellFit | null;                // po.cell_fit row for THIS seed
+  fit: CellFit | null;                // po.cell_fit row for THIS render
   testId?: string;
 }) {
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null);
-  const url = artRenderUrl(name, seed);
+  const url = artRenderUrl(name, rref.seed, rref.variant);
   if (tile) {
     // 2x2 repeat of the texture; half-shift offsets the pattern by half a
     // tile so the tile SEAM runs through the middle of the view -- any
@@ -60,7 +61,7 @@ function Pane({ name, seed, zoom, bg, tile, halfshift, cells, mask, fit, testId 
     : { width: ((nat ? nat.w : 0) || 256) * Number(zoom) + 'px', maxWidth: 'none', maxHeight: 'none' };
   const img = (
     <img data-testid={testId} className={'aa-lb-img' + (zoom === 'fit' ? ' is-fit' : '')}
-      src={url} alt={'seed ' + seed} style={style}
+      src={url} alt={refLabel(rref)} style={style}
       onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
   );
   // REQ-0191: the backdrop needs a footprint AND a render that actually has
@@ -83,21 +84,24 @@ function Pane({ name, seed, zoom, bg, tile, halfshift, cells, mask, fit, testId 
   );
 }
 
-export function Lightbox({ name, kind, mask, fitBySeed, seeds, initialSeed, compareWith, adoptedSeed, keysDisabled, onAdopt, onClose }: {
+export function Lightbox({ name, kind, mask, fitByRef, refs, initialRef, compareWith, adoptedRef, keysDisabled, onAdopt, onClose }: {
   name: string;
   kind: string;
   mask: boolean[][] | null;           // REQ-0191: saved po shape mask (null off-po)
-  fitBySeed: Record<number, CellFit | null>;  // REQ-0191: po.cell_fit per seed
-  seeds: number[];                    // ok seeds, gallery order (nav ring)
-  initialSeed: number;
-  compareWith: number | null;         // non-null -> open in 2-up compare
-  adoptedSeed: number | null;
+  fitByRef: Record<string, CellFit | null>;   // REQ-0191: po.cell_fit per render, refKey'd
+  refs: RenderRef[];                  // ok renders, gallery order (nav ring)
+  initialRef: RenderRef;
+  compareWith: RenderRef | null;      // non-null -> open in 2-up compare
+  adoptedRef: RenderRef | null;
   keysDisabled: boolean;              // true while the confirm dialog is up
-  onAdopt: (seed: number) => void;
+  onAdopt: (ref: RenderRef) => void;
   onClose: () => void;
 }) {
-  const [idx, setIdx] = useState(Math.max(0, seeds.indexOf(initialSeed)));
-  const [compare, setCompare] = useState<number | null>(compareWith);
+  // REQ-0223b: the nav ring is over RENDERS, not seeds -- twins share a seed, so
+  // indexOf on a number would land on whichever twin came first and the ring would
+  // silently skip the other.
+  const [idx, setIdx] = useState(Math.max(0, refs.findIndex((r) => sameRef(r, initialRef))));
+  const [compare, setCompare] = useState<RenderRef | null>(compareWith);
   const [zoom, setZoom] = useState<ZoomMode>('fit');
   const [bg, setBg] = useState<BgMode>('dark');
   const [tile, setTile] = useState(false);
@@ -106,19 +110,25 @@ export function Lightbox({ name, kind, mask, fitBySeed, seeds, initialSeed, comp
   // the plain render one click away.
   const [cells, setCells] = useState(kind === 'po');
 
-  const seed = seeds[idx] != null ? seeds[idx] : initialSeed;
+  const rref = refs[idx] != null ? refs[idx] : initialRef;
+  // REQ-0223b: THE A/B strip. Renders arrive (seed, variant)-ordered from the server
+  // (REQ-0223a's listRenders), so a seed's twins are already adjacent -- the strip is
+  // a filter over the ring, not a re-sort. Present only when this seed HAS twins;
+  // a lone render must not sprout an A/B affordance it cannot honour.
+  const strip = refs.filter((r) => r.seed === rref.seed);
+  const hasTwins = strip.length > 1;
 
   useEffect(() => {
     if (keysDisabled) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') { onClose(); return; }
       if (compare != null) return;                 // nav is single-mode only
-      if (e.key === 'ArrowLeft') setIdx((i) => (i - 1 + seeds.length) % seeds.length);
-      if (e.key === 'ArrowRight') setIdx((i) => (i + 1) % seeds.length);
+      if (e.key === 'ArrowLeft') setIdx((i) => (i - 1 + refs.length) % refs.length);
+      if (e.key === 'ArrowRight') setIdx((i) => (i + 1) % refs.length);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [keysDisabled, compare, seeds.length, onClose]);
+  }, [keysDisabled, compare, refs.length, onClose]);
 
   const isBpskin = kind === 'bpskin';
   const isPo = kind === 'po';
@@ -126,7 +136,7 @@ export function Lightbox({ name, kind, mask, fitBySeed, seeds, initialSeed, comp
   return (
     <div data-testid="lightbox" className="aa-lb" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="aa-lb-bar">
-        <span className="den t-label gold-text">{name} <span className="tnum">s{seed}</span>{compare != null ? <span className="tnum"> vs s{compare}</span> : null}</span>
+        <span className="den t-label gold-text">{name} <span className="tnum">{refLabel(rref)}</span>{compare != null ? <span className="tnum"> vs {refLabel(compare)}</span> : null}</span>
         <span className="aa-lb-group">
           {ZOOMS.map((z) => (
             <button key={z} type="button" data-testid={'lightbox-zoom-' + z}
@@ -159,13 +169,33 @@ export function Lightbox({ name, kind, mask, fitBySeed, seeds, initialSeed, comp
               onClick={() => setHalfshift((h) => !h)}>half-shift</button>
           </span>
         )}
+        {/* REQ-0223b: the A/B strip -- every variant of the seed on screen, one
+            click apart, and 'A/B' opens the two-up at a TRUE same-seed pair. This is
+            the affordance REQ-0187 lacked: it had to burn disjoint seed ranges, so its
+            2-up always confounded the lock delta with a seed delta. */}
+        {compare == null && hasTwins && (
+          <span className="aa-lb-group" data-testid="lightbox-strip">
+            {strip.map((r) => (
+              <button key={refKey(r)} type="button" data-testid={'lightbox-strip-' + (r.variant ? r.seed + '-v' + r.variant : r.seed)}
+                className={'chip aa-chipbtn' + (sameRef(r, rref) ? ' is-on' : '')}
+                title={'seed ' + r.seed + ', variant ' + r.variant + ' -- same seed, different generation parameters'}
+                onClick={() => setIdx(refs.findIndex((x) => sameRef(x, r)))}>
+                {r.variant ? 'v' + r.variant : 'v0'}
+              </button>
+            ))}
+            <button type="button" data-testid="lightbox-ab"
+              className="chip aa-chipbtn"
+              title="compare this seed's two variants side by side"
+              onClick={() => setCompare(strip.find((r) => !sameRef(r, rref)) || null)}>A/B</button>
+          </span>
+        )}
         <span className="aa-lb-group aa-lb-actions">
-          {compare == null && seeds.length > 1 && (
+          {compare == null && refs.length > 1 && (
             <>
               <button type="button" data-testid="lightbox-prev" className="btn btn-ghost aa-btn-xs"
-                onClick={() => setIdx((i) => (i - 1 + seeds.length) % seeds.length)}>&larr;</button>
+                onClick={() => setIdx((i) => (i - 1 + refs.length) % refs.length)}>&larr;</button>
               <button type="button" data-testid="lightbox-next" className="btn btn-ghost aa-btn-xs"
-                onClick={() => setIdx((i) => (i + 1) % seeds.length)}>&rarr;</button>
+                onClick={() => setIdx((i) => (i + 1) % refs.length)}>&rarr;</button>
             </>
           )}
           {compare != null && (
@@ -173,30 +203,34 @@ export function Lightbox({ name, kind, mask, fitBySeed, seeds, initialSeed, comp
               onClick={() => setCompare(null)}>single</button>
           )}
           <button type="button" data-testid="lightbox-adopt" className="btn aa-btn-sm"
-            disabled={adoptedSeed === seed}
-            onClick={() => onAdopt(seed)}>{adoptedSeed === seed ? 'Adopted' : 'Adopt s' + seed}</button>
+            disabled={sameRef(adoptedRef, rref)}
+            onClick={() => onAdopt(rref)}>{sameRef(adoptedRef, rref) ? 'Adopted' : 'Adopt ' + refLabel(rref)}</button>
           <button type="button" data-testid="lightbox-close" className="btn btn-ghost aa-btn-sm" onClick={onClose}>✕</button>
         </span>
       </div>
       {compare == null ? (
         <div className="aa-lb-body">
-          <Pane name={name} seed={seed} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
-            cells={cells && isPo} mask={mask} fit={fitBySeed[seed] || null} testId="lightbox-img" />
+          <Pane name={name} rref={rref} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
+            cells={cells && isPo} mask={mask} fit={fitByRef[refKey(rref)] || null} testId="lightbox-img" />
         </div>
       ) : (
         <div data-testid="lightbox-compare" className="aa-lb-body aa-lb-body--compare">
           <div className="aa-lb-half">
-            <div className="t-micro aa-lb-caption tnum">s{seed}{adoptedSeed === seed ? ' (adopted)' : ''}</div>
-            <Pane name={name} seed={seed} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
-              cells={cells && isPo} mask={mask} fit={fitBySeed[seed] || null} testId="lightbox-img" />
+            <div className="t-micro aa-lb-caption tnum">{refLabel(rref)}{sameRef(adoptedRef, rref) ? ' (adopted)' : ''}</div>
+            <Pane name={name} rref={rref} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
+              cells={cells && isPo} mask={mask} fit={fitByRef[refKey(rref)] || null} testId="lightbox-img" />
           </div>
           <div className="aa-lb-half">
-            <div className="t-micro aa-lb-caption tnum">s{compare}{adoptedSeed === compare ? ' (adopted)' : ''}
+            {/* REQ-0223b: when the two halves share a seed this caption is the whole
+                point -- it is what tells the operator the ONLY difference between these
+                two images is the parameter under test. */}
+            <div className="t-micro aa-lb-caption tnum">{refLabel(compare)}{sameRef(adoptedRef, compare) ? ' (adopted)' : ''}
+              {compare.seed === rref.seed ? <span data-testid="lightbox-sameseed" className="aa-lb-sameseed"> same seed</span> : null}
               {' '}<button type="button" data-testid="lightbox-adopt-b" className="aa-linkbtn"
-                disabled={adoptedSeed === compare} onClick={() => onAdopt(compare)}>adopt this</button>
+                disabled={sameRef(adoptedRef, compare)} onClick={() => onAdopt(compare)}>adopt this</button>
             </div>
-            <Pane name={name} seed={compare} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
-              cells={cells && isPo} mask={mask} fit={fitBySeed[compare] || null} testId="lightbox-img-b" />
+            <Pane name={name} rref={compare} zoom={zoom} bg={bg} tile={tile && isBpskin} halfshift={halfshift}
+              cells={cells && isPo} mask={mask} fit={fitByRef[refKey(compare)] || null} testId="lightbox-img-b" />
           </div>
         </div>
       )}

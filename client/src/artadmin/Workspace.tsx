@@ -17,7 +17,20 @@ import { SHAPE_LOCKS, SHAPE_LOCK_HELP, MAX_DILATION_PX } from './artShared';
 import type { ShapeLock } from './artShared';
 import { deriveSizeClient } from './artShared';
 import type { ArtDraft, Kind } from './artShared';
-import { artRenderUrl } from '../api';
+import { artRenderUrl, refOf, refKey, sameRef, refLabel } from '../api';
+import type { RenderRef } from '../api';
+
+// REQ-0223b: a twin shares its sibling's seed, so a bare seed is no longer a
+// unique DOM id -- two same-seed cards would collide on React's key and on the
+// testid, and React would reconcile them into each other (the classic duplicate-key
+// bug: state and images swap between cards).
+//
+// Variant 0 keeps the BARE id ('render-42') and only twins are suffixed
+// ('render-42-v1'). That is not cosmetic: five e2e specs (artadmin, artinspect,
+// dex-admin, contentadmin, reference-model) address renders through these ids, and
+// variant 0 is the render they have always meant. Same hinge as REQ-0223a's
+// "absent means 0" -- the diff stays about twins.
+function tid(r: RenderRef): string { return r.variant ? r.seed + '-v' + r.variant : String(r.seed); }
 import { CellStage, maskBbox, cellFitFrom } from './CellBackdrop';
 import type { ArtworkDto, RenderDto, InspectionDto, KitDto } from '../api';
 
@@ -41,17 +54,17 @@ export function Workspace(props: {
   finalPreview: string;
   onPreviewNow: () => void;
   onSave: () => void;
-  onAskAdopt: (seed: number) => void;
-  onAskDelete: (seed: number) => void;
-  onRetry: (seed: number) => void;
-  onRepack: (seed: number) => void;
-  onCutout: (seed: number) => void;  // REQ-0193
-  onOpenLightbox: (seed: number, compareWith: number | null) => void;
-  onRerunKit: (seed: number, kitId?: string) => void;
+  onAskAdopt: (ref: RenderRef) => void;
+  onAskDelete: (ref: RenderRef) => void;
+  onRetry: (ref: RenderRef) => void;
+  onRepack: (ref: RenderRef) => void;
+  onCutout: (ref: RenderRef) => void;  // REQ-0193
+  onOpenLightbox: (ref: RenderRef, compareWith: RenderRef | null) => void;
+  onRerunKit: (ref: RenderRef, kitId?: string) => void;
   expandedKits: Record<string, boolean>;
   onToggleKit: (key: string) => void;
-  comparePicks: number[];
-  onTogglePick: (seed: number) => void;
+  comparePicks: RenderRef[];
+  onTogglePick: (ref: RenderRef) => void;
   cells: boolean;                     // REQ-0191: cell backdrop on the thumbs
   onToggleCells: () => void;
   savedMask: boolean[][] | null;      // REQ-0191: SAVED shape (not the draft)
@@ -174,7 +187,7 @@ export function Workspace(props: {
         {comparePicks.length === 2 && (
           <button type="button" data-testid="art-compare" className="btn aa-btn-sm"
             onClick={() => props.onOpenLightbox(comparePicks[0], comparePicks[1])}>
-            Compare s{comparePicks[0]} vs s{comparePicks[1]}
+            Compare {refLabel(comparePicks[0])} vs {refLabel(comparePicks[1])}
           </button>
         )}
         {comparePicks.length === 1 && <span className="t-micro">pick one more render to compare</span>}
@@ -182,55 +195,61 @@ export function Workspace(props: {
       <div data-testid="art-renders" className="aa-gallery">
         {renders.map((r) => {
           const isAdopted = adoptedId != null && r.id === adoptedId;
-          const picked = comparePicks.includes(r.seed);
+          const ref = refOf(r);
+          const t = tid(ref);
+          const picked = comparePicks.some((p) => sameRef(p, ref));
+          // REQ-0223b: renders arrive (seed, variant)-ordered from the server, so a
+          // twin sits next to its sibling; `twin` marks the ones that need to say why
+          // two cards share a seed number.
+          const twin = r.variant > 0;
           return (
-            <div key={r.seed} data-testid={'render-' + r.seed}
-              className={'aa-card' + (isAdopted ? ' is-adopted' : '') + (r.status === 'failed' ? ' is-failed' : '')}>
+            <div key={refKey(ref)} data-testid={'render-' + t}
+              className={'aa-card' + (isAdopted ? ' is-adopted' : '') + (r.status === 'failed' ? ' is-failed' : '') + (twin ? ' is-twin' : '')}>
               <div className="aa-card-top">
-                <span className="tnum">seed {r.seed}</span>
-                <span data-testid={'render-status-' + r.seed} className={'aa-status aa-status--' + r.status}>[{r.status}]</span>
+                <span className="tnum">seed {r.seed}{twin ? <span className="aa-variant-tag" title="same seed, different generation parameters (REQ-0223)"> ·v{r.variant}</span> : null}</span>
+                <span data-testid={'render-status-' + t} className={'aa-status aa-status--' + r.status}>[{r.status}]</span>
                 {isAdopted && <span className="aa-adopt-badge">ADOPTED</span>}
               </div>
               {r.status === 'ok' ? (
-                <button type="button" data-testid={'render-thumb-' + r.seed} className="aa-card-thumb"
-                  title="open lightbox" onClick={() => props.onOpenLightbox(r.seed, null)}>
+                <button type="button" data-testid={'render-thumb-' + t} className="aa-card-thumb"
+                  title="open lightbox" onClick={() => props.onOpenLightbox(ref, null)}>
                   {thumbBb ? (
                     <CellStage bb={thumbBb} mask={savedMask as boolean[][]}
                       fit={cellFitFrom(inspections[String(r.id)])}
-                      probeUrl={artRenderUrl(art.system_name, r.seed)}
+                      probeUrl={artRenderUrl(art.system_name, r.seed, r.variant)}
                       widthPx={thumbBb.cols * THUMB_CELL_PX} className="aa-cb--thumb"
-                      testId={'render-cb-' + r.seed}>
-                      <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
+                      testId={'render-cb-' + t}>
+                      <img src={artRenderUrl(art.system_name, r.seed, r.variant)} alt={refLabel(ref)} loading="lazy" />
                     </CellStage>
                   ) : (
-                    <img src={artRenderUrl(art.system_name, r.seed)} alt={'seed ' + r.seed} loading="lazy" />
+                    <img src={artRenderUrl(art.system_name, r.seed, r.variant)} alt={refLabel(ref)} loading="lazy" />
                   )}
                 </button>
               ) : r.status === 'failed' ? (
                 <div className="aa-card-failed">
                   <div className="aa-card-error t-micro">{r.error || 'failed'}</div>
-                  <button type="button" data-testid={'retry-' + r.seed} className="btn aa-btn-xs"
-                    onClick={() => props.onRetry(r.seed)}>Retry seed {r.seed}</button>
+                  <button type="button" data-testid={'retry-' + t} className="btn aa-btn-xs"
+                    onClick={() => props.onRetry(ref)}>Retry {refLabel(ref)}</button>
                 </div>
               ) : (
                 <div className="aa-card-pending t-micro">{r.status === 'running' ? 'rendering…' : 'queued…'}</div>
               )}
               <div className="aa-card-actions">
-                <button data-testid={'adopt-' + r.seed} type="button" className="btn aa-btn-xs"
+                <button data-testid={'adopt-' + t} type="button" className="btn aa-btn-xs"
                   disabled={r.status !== 'ok' || isAdopted}
-                  onClick={() => props.onAskAdopt(r.seed)}>Adopt</button>
-                <button data-testid={'delete-' + r.seed} type="button" className="btn btn-ghost aa-btn-xs"
+                  onClick={() => props.onAskAdopt(ref)}>Adopt</button>
+                <button data-testid={'delete-' + t} type="button" className="btn btn-ghost aa-btn-xs"
                   disabled={isAdopted}
-                  onClick={() => props.onAskDelete(r.seed)}>Delete</button>
+                  onClick={() => props.onAskDelete(ref)}>Delete</button>
                 {kind === 'po' && r.status === 'ok' && (
-                  <button data-testid={'repack-' + r.seed} type="button" className="btn btn-ghost aa-btn-xs"
+                  <button data-testid={'repack-' + t} type="button" className="btn btn-ghost aa-btn-xs"
                     title="derive a best-placement variant at seed+100000 (REQ-0192)"
-                    onClick={() => props.onRepack(r.seed)}>Repack</button>
+                    onClick={() => props.onRepack(ref)}>Repack</button>
                 )}
                 {r.status === 'ok' && (
                   <label className="aa-pick t-micro">
-                    <input type="checkbox" data-testid={'pick-' + r.seed} checked={picked}
-                      onChange={() => props.onTogglePick(r.seed)} /> A/B
+                    <input type="checkbox" data-testid={'pick-' + t} checked={picked}
+                      onChange={() => props.onTogglePick(ref)} /> A/B
                   </label>
                 )}
               </div>
@@ -238,11 +257,11 @@ export function Workspace(props: {
                   chip, so it renders for an ok render even when the kind has
                   no kits at all (kits.length === 0). */}
               {r.status === 'ok' && (
-                <KitChips seed={r.seed} kits={kits} rows={inspections[String(r.id)] || []}
+                <KitChips seed={r.seed} variant={r.variant} kits={kits} rows={inspections[String(r.id)] || []}
                   renders={renders}
                   expanded={props.expandedKits} onToggle={props.onToggleKit}
-                  onRerun={(seed, kitId) => props.onRerunKit(seed, kitId)}
-                  onCutout={(seed) => props.onCutout(seed)} />
+                  onRerun={(_seed, kitId) => props.onRerunKit(ref, kitId)}
+                  onCutout={() => props.onCutout(ref)} />
               )}
             </div>
           );

@@ -20,30 +20,36 @@ function isCutout(r: RenderDto): boolean {
  * the derived seed. A render that IS a cutout gets no run affordance (no
  * cutout of a cutout -- the route refuses it too). Rendered for EVERY kind:
  * a matte needs no cell footprint, so any ok render can be cut out. */
-function CutoutChip({ seed, renders, onCutout }: {
-  seed: number; renders: RenderDto[]; onCutout: (seed: number) => void;
+function CutoutChip({ seed, variant, tid, renders, onCutout }: {
+  seed: number; variant: number; tid: string; renders: RenderDto[]; onCutout: (seed: number) => void;
 }) {
-  const self = renders.find((r) => r.seed === seed);
+  // REQ-0223b: pin the variant. A bare seed match would read a TWIN's params here
+  // and label this chip "is a cutout" because its sibling was one.
+  const self = renders.find((r) => r.seed === seed && r.variant === variant);
+  // A cutout is a NEW seed (seed+100000, REQ-0193) and always lands on variant 0, so
+  // derived_from_seed alone cannot say WHICH variant it was cut from. Twins of one
+  // seed therefore share a cutout link; that is the derived-seed convention's own
+  // limit, noted in REQ-0223b's out-of-scope, not something to paper over here.
   const derived = renders.find((r) => isCutout(r) && paramsOf(r).derived_from_seed === seed);
   if (self && isCutout(self)) {
     return (
-      <span data-testid={'cutout-' + seed} className="chip aa-kit-none">
+      <span data-testid={'cutout-' + tid} className="chip aa-kit-none">
         nobackgroundcutout: is a cutout of seed {paramsOf(self).derived_from_seed}
       </span>
     );
   }
   if (derived) {
     return (
-      <span data-testid={'cutout-' + seed} className="chip aa-kit-none">
+      <span data-testid={'cutout-' + tid} className="chip aa-kit-none">
         nobackgroundcutout: cut
-        <span data-testid={'cutout-link-' + seed} className="aa-cutout-seed"> -&gt; seed {derived.seed}</span>
+        <span data-testid={'cutout-link-' + tid} className="aa-cutout-seed"> -&gt; seed {derived.seed}</span>
       </span>
     );
   }
   return (
-    <span data-testid={'cutout-' + seed} className="chip aa-kit-none">
+    <span data-testid={'cutout-' + tid} className="chip aa-kit-none">
       nobackgroundcutout: not cut
-      <button data-testid={'run-cutout-' + seed} type="button" className="aa-linkbtn"
+      <button data-testid={'run-cutout-' + tid} type="button" className="aa-linkbtn"
         title="derive a background-removed copy at seed+100000 (REQ-0193)"
         onClick={() => onCutout(seed)}>run</button>
     </span>
@@ -54,9 +60,9 @@ function verdictClass(v: string): string {
   return v === 'PASS' ? 'aa-verdict--pass' : v === 'WARN' ? 'aa-verdict--warn' : 'aa-verdict--fail';
 }
 
-function InspectDetails({ row, seed }: { row: InspectionDto; seed: number }) {
+function InspectDetails({ row, tid }: { row: InspectionDto; tid: string }) {
   return (
-    <div data-testid={'kit-details-' + seed + '-' + row.kit_id} className="aa-kit-details">
+    <div data-testid={'kit-details-' + tid + '-' + row.kit_id} className="aa-kit-details">
       <div>v{row.kit_version}{row.stale ? ' (STALE)' : ''}</div>
       <div className="aa-kit-details-h">metrics</div>
       {Object.entries(row.metrics).map(([k, v]) => <div key={k}>{k}={String(v)}</div>)}
@@ -68,40 +74,46 @@ function InspectDetails({ row, seed }: { row: InspectionDto; seed: number }) {
   );
 }
 
-export function KitChips({ seed, kits, rows, renders, expanded, onToggle, onRerun, onCutout }: {
-  seed: number; kits: KitDto[]; rows: InspectionDto[]; renders: RenderDto[];
+export function KitChips({ seed, variant, kits, rows, renders, expanded, onToggle, onRerun, onCutout }: {
+  seed: number; variant?: number; kits: KitDto[]; rows: InspectionDto[]; renders: RenderDto[];
   expanded: Record<string, boolean>; onToggle: (key: string) => void;
   onRerun: (seed: number, kitId?: string) => void;
   onCutout: (seed: number) => void;
 }) {
   const byKit = new Map(rows.map((r) => [r.kit_id, r]));
+  // REQ-0223b: variant 0 keeps the bare testid so artinspect.spec.ts et al are
+  // untouched; only a twin's chips are suffixed. `rows` is already this render's
+  // own (keyed by render_id upstream), so the chips themselves are never confused
+  // between twins -- only their DOM ids needed widening.
+  const v = variant || 0;
+  const tid = v ? seed + '-v' + v : String(seed);
   return (
-    <div data-testid={'kits-' + seed} className="aa-kits">
-      <CutoutChip seed={seed} renders={renders} onCutout={onCutout} />
+    <div data-testid={'kits-' + tid} className="aa-kits">
+      <CutoutChip seed={seed} variant={v} tid={tid} renders={renders} onCutout={onCutout} />
       {kits.map((k) => {
         const row = byKit.get(k.kit_id);
         if (!row) {
           return (
-            <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id} className="chip aa-kit-none">
+            <span key={k.kit_id} data-testid={'kit-' + tid + '-' + k.kit_id} className="chip aa-kit-none">
               {k.kit_id}: not inspected
-              <button data-testid={'run-' + seed + '-' + k.kit_id} type="button" className="aa-linkbtn"
+              <button data-testid={'run-' + tid + '-' + k.kit_id} type="button" className="aa-linkbtn"
                 onClick={() => onRerun(seed, k.kit_id)}>run</button>
             </span>
           );
         }
-        const key = seed + '|' + k.kit_id;
+        const key = tid + '|' + k.kit_id;
         return (
-          <span key={k.kit_id} data-testid={'kit-' + seed + '-' + k.kit_id} className="aa-kit">
-            <button data-testid={'chip-' + seed + '-' + k.kit_id} type="button"
+          <span key={k.kit_id} data-testid={'kit-' + tid + '-' + k.kit_id} className="aa-kit">
+            <button data-testid={'chip-' + tid + '-' + k.kit_id} type="button"
               className={'aa-verdict ' + verdictClass(row.verdict)}
               title={k.kit_id + ' v' + row.kit_version}
               onClick={() => onToggle(key)}>
-              {k.kit_id} <b data-testid={'verdict-' + seed + '-' + k.kit_id}>{row.verdict}</b>
+              {k.kit_id} <b data-testid={'verdict-' + tid + '-' + k.kit_id}>{row.verdict}</b>
             </button>
-            {row.stale && <span data-testid={'stale-' + seed + '-' + k.kit_id} className="aa-stale">stale</span>}
-            {row.stale && <button data-testid={'rerun-' + seed + '-' + k.kit_id} type="button" className="aa-linkbtn"
+            {row.stale && <span data-testid={'stale-' + tid + '-' + k.kit_id} className="aa-stale">stale</span>}
+            {row.stale && <button data-testid={'rerun-' + tid + '-' + k.kit_id} type="button" className="aa-linkbtn"
               onClick={() => onRerun(seed, k.kit_id)}>re-run</button>}
-            {expanded[key] && <InspectDetails row={row} seed={seed} />}
+            {expanded[key] && <InspectDetails row={row} tid={tid} />}
           </span>
         );
       })}

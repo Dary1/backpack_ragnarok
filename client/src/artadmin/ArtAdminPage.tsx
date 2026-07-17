@@ -22,7 +22,8 @@ import {
   setArtQueueHold, executeArtQueueBatch,
   artRenderUrl,
 } from '../api';
-import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto } from '../api';
+import type { ArtworkDto, RenderDto, InspectionDto, KitDto, ArtQueueDto, RenderRef } from '../api';
+import { refOf, refKey, sameRef, refLabel } from '../api';
 import { draftFromArtwork } from './artShared';
 import type { ArtDraft, Kind } from './artShared';
 import { RegistryRail } from './RegistryRail';
@@ -34,8 +35,12 @@ import { cellFitFrom } from './CellBackdrop';
 import type { CellFit } from './CellBackdrop';
 
 interface Toast { id: number; text: string; kind: 'ok' | 'err' }
-interface ConfirmState { type: 'adopt' | 'delete'; seed: number }
-interface LightboxState { seed: number; compareWith: number | null }
+// REQ-0223b: every one of these carried a bare seed, because until REQ-0223a a seed
+// WAS a render's identity. Twins share a seed, so each widens to a RenderRef --
+// otherwise "adopt seed 42" is ambiguous the moment an A/B exists, and the confirm
+// dialog would show one twin's image while adopting the other.
+interface ConfirmState { type: 'adopt' | 'delete'; rref: RenderRef }
+interface LightboxState { rref: RenderRef; compareWith: RenderRef | null }
 
 function ConfirmDialog({ title, confirmLabel, onOk, onCancel, children }: {
   title: string; confirmLabel: string; onOk: () => void; onCancel: () => void; children?: ReactNode;
@@ -94,7 +99,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   // and the lightbox must never disagree about what is on screen. Default ON;
   // it is inert off po.
   const [cells, setCells] = useState(true);
-  const [comparePicks, setComparePicks] = useState<number[]>([]);
+  const [comparePicks, setComparePicks] = useState<RenderRef[]>([]);
   const [msg, setMsg] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(1);
@@ -231,56 +236,63 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('generate: ' + (e as Error).message, 'err'); }
   }
 
-  async function doAdopt(seed: number) {
+  async function doAdopt(ref: RenderRef) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      const r = await adoptRenderApi(selected, seed);
-      report('adopted seed ' + seed + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported'),
+      const r = await adoptRenderApi(selected, seed, ref.variant);
+      report('adopted ' + refLabel(ref) + (r.export_error ? (' (export warning: ' + r.export_error + ')') : ' + exported'),
         r.export_error ? 'err' : 'ok');
       await loadDetail(selected); await refreshList();
     } catch (e) { report('adopt: ' + (e as Error).message, 'err'); }
   }
 
-  async function doDelete(seed: number) {
+  async function doDelete(ref: RenderRef) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      await deleteRenderApi(selected, seed);
-      report('deleted seed ' + seed);
-      setComparePicks((p) => p.filter((s) => s !== seed));
-      setLightbox((lb) => (lb && (lb.seed === seed || lb.compareWith === seed) ? null : lb));
+      await deleteRenderApi(selected, seed, ref.variant);
+      report('deleted ' + refLabel(ref));
+      setComparePicks((p) => p.filter((x) => !sameRef(x, ref)));
+      setLightbox((lb) => (lb && (sameRef(lb.rref, ref) || sameRef(lb.compareWith, ref)) ? null : lb));
       await loadDetail(selected); await refreshList();
     } catch (e) { report('delete: ' + (e as Error).message, 'err'); }
   }
 
   // Retry a failed render: delete the failed row, regenerate at that exact
   // seed (client-side composition of the two existing endpoints, per spec).
-  async function doRetry(seed: number) {
+  async function doRetry(ref: RenderRef) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      await deleteRenderApi(selected, seed);
-      await generateArtwork(selected, { seed });
-      report('retrying seed ' + seed);
+      await deleteRenderApi(selected, seed, ref.variant);
+      // The slot is now free, so this re-lands on the SAME (seed, variant) without a
+      // twin: retry means "make this render again", not "make me another one".
+      await generateArtwork(selected, ref.variant ? { seed, twin: true } : { seed });
+      report('retrying ' + refLabel(ref));
       await loadDetail(selected); await pollQueue();
     } catch (e) { report('retry: ' + (e as Error).message, 'err'); }
   }
 
   // REQ-0192: repack -- queue a best-placement derived render at seed+100000.
-  async function doRepack(seed: number) {
+  async function doRepack(ref: RenderRef) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      const r = await repackRenderApi(selected, seed);
-      report('repack queued: seed ' + seed + ' -> ' + r.render.seed);
+      const r = await repackRenderApi(selected, seed, ref.variant);
+      report('repack queued: ' + refLabel(ref) + ' -> seed ' + r.render.seed);
       await loadDetail(selected);
     } catch (e) { report('repack: ' + (e as Error).message, 'err'); }
   }
 
   // REQ-0193: cutout -- queue a background-removed derived render at
   // seed+100000. Available for every kind, unlike repack.
-  async function doCutout(seed: number) {
+  async function doCutout(ref: RenderRef) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      const r = await cutoutRenderApi(selected, seed);
-      report('cutout queued: seed ' + seed + ' -> ' + r.render.seed);
+      const r = await cutoutRenderApi(selected, seed, ref.variant);
+      report('cutout queued: ' + refLabel(ref) + ' -> seed ' + r.render.seed);
       await loadDetail(selected);
     } catch (e) { report('cutout: ' + (e as Error).message, 'err'); }
   }
@@ -313,23 +325,26 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     } catch (e) { report('execute: ' + (e as Error).message, 'err'); }
   }
 
-  async function doReinspect(seed: number, kitId?: string) {
+  async function doReinspect(ref: RenderRef, kitId?: string) {
+    const seed = ref.seed;
     if (!selected) return;
     try {
-      const r = await reinspectRender(selected, seed, kitId);
-      report('queued ' + r.queued.length + ' kit(s) for seed ' + seed);
+      const r = await reinspectRender(selected, seed, kitId, ref.variant);
+      report('queued ' + r.queued.length + ' kit(s) for ' + refLabel(ref));
       await loadDetail(selected);
     } catch (e) { report('inspect: ' + (e as Error).message, 'err'); }
   }
 
-  function togglePick(seed: number) {
-    setComparePicks((p) => p.includes(seed) ? p.filter((s) => s !== seed) : (p.length >= 2 ? [p[1], seed] : [...p, seed]));
+  function togglePick(ref: RenderRef) {
+    setComparePicks((p) => p.some((x) => sameRef(x, ref)) ? p.filter((x) => !sameRef(x, ref)) : (p.length >= 2 ? [p[1], ref] : [...p, ref]));
   }
 
-  const okSeeds = renders.filter((r) => r.status === 'ok').map((r) => r.seed);
+  const okRefs = renders.filter((r) => r.status === 'ok').map(refOf);
   const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
-  const adoptedSeed = adoptedRender ? adoptedRender.seed : null;
-  const confirmRender = confirm ? renders.find((r) => r.seed === confirm.seed) : undefined;
+  const adoptedRef = adoptedRender ? refOf(adoptedRender) : null;
+  // REQ-0223b: pin the variant -- a bare seed match would put a TWIN's image in the
+  // confirm dialog while the action adopted/deleted the other one.
+  const confirmRender = confirm ? renders.find((r) => sameRef(refOf(r), confirm.rref)) : undefined;
 
   // REQ-0191: the cell backdrop's two inputs, both already on the wire.
   // The mask is read from the SAVED artwork, never from `draft` -- a dirty
@@ -337,8 +352,8 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   // against the saved one (the same reason art-shape-warn exists).
   const savedShape = (detailArt && detailArt.kind === 'po' ? detailArt.shape : null) as { mask?: boolean[][] } | null;
   const savedMask = savedShape && savedShape.mask ? savedShape.mask : null;
-  const fitBySeed: Record<number, CellFit | null> = {};
-  for (const r of renders) fitBySeed[r.seed] = cellFitFrom(inspections[String(r.id)]);
+  const fitByRef: Record<string, CellFit | null> = {};
+  for (const r of renders) fitByRef[refKey(refOf(r))] = cellFitFrom(inspections[String(r.id)]);
 
   return (
     <div data-testid="artadmin" className="aa-root">
@@ -366,12 +381,12 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
               dirty={dirty} shapeDirty={shapeDirty}
               finalPreview={finalPreview} onPreviewNow={() => { void doPreview(); }}
               onSave={() => { void doSave(); }}
-              onAskAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
-              onAskDelete={(seed) => setConfirm({ type: 'delete', seed })}
+              onAskAdopt={(rref) => setConfirm({ type: 'adopt', rref })}
+              onAskDelete={(rref) => setConfirm({ type: 'delete', rref })}
               onRetry={(seed) => { void doRetry(seed); }}
               onRepack={(seed) => { void doRepack(seed); }}
               onCutout={(seed) => { void doCutout(seed); }}
-              onOpenLightbox={(seed, compareWith) => setLightbox({ seed, compareWith })}
+              onOpenLightbox={(rref, compareWith) => setLightbox({ rref, compareWith })}
               onRerunKit={(seed, kitId) => { void doReinspect(seed, kitId); }}
               expandedKits={expandedKits}
               onToggleKit={(key) => setExpandedKits((e) => ({ ...e, [key]: !e[key] }))}
@@ -394,28 +409,28 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
 
       {lightbox && selected && detailArt && (
         <Lightbox name={selected} kind={detailArt.kind as Kind}
-          mask={cells ? savedMask : null} fitBySeed={fitBySeed}
-          seeds={okSeeds} initialSeed={lightbox.seed} compareWith={lightbox.compareWith}
-          adoptedSeed={adoptedSeed} keysDisabled={confirm != null}
-          onAdopt={(seed) => setConfirm({ type: 'adopt', seed })}
+          mask={cells ? savedMask : null} fitByRef={fitByRef}
+          refs={okRefs} initialRef={lightbox.rref} compareWith={lightbox.compareWith}
+          adoptedRef={adoptedRef} keysDisabled={confirm != null}
+          onAdopt={(rref) => setConfirm({ type: 'adopt', rref })}
           onClose={() => setLightbox(null)} />
       )}
 
       {confirm && selected && (
         confirm.type === 'adopt' ? (
-          <ConfirmDialog title={'Adopt seed ' + confirm.seed + '?'} confirmLabel="Adopt + export"
-            onOk={() => { const s = confirm.seed; setConfirm(null); void doAdopt(s); }}
+          <ConfirmDialog title={'Adopt ' + refLabel(confirm.rref) + '?'} confirmLabel="Adopt + export"
+            onOk={() => { const s = confirm.rref; setConfirm(null); void doAdopt(s); }}
             onCancel={() => setConfirm(null)}>
-            <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.seed)} alt={'seed ' + confirm.seed} />
+            <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.rref.seed, confirm.rref.variant)} alt={refLabel(confirm.rref)} />
             <div className="t-micro">This becomes the ONE live render of <b>{selected}</b> and is exported to
               content/ (the git-integrate path). Switchable any time; history stays.</div>
           </ConfirmDialog>
         ) : (
-          <ConfirmDialog title={'Delete seed ' + confirm.seed + '?'} confirmLabel="Delete"
-            onOk={() => { const s = confirm.seed; setConfirm(null); void doDelete(s); }}
+          <ConfirmDialog title={'Delete ' + refLabel(confirm.rref) + '?'} confirmLabel="Delete"
+            onOk={() => { const s = confirm.rref; setConfirm(null); void doDelete(s); }}
             onCancel={() => setConfirm(null)}>
             {confirmRender && confirmRender.status === 'ok' && (
-              <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.seed)} alt={'seed ' + confirm.seed} />
+              <img className="aa-confirm-img" src={artRenderUrl(selected, confirm.rref.seed, confirm.rref.variant)} alt={refLabel(confirm.rref)} />
             )}
             <div className="t-micro">Candidates live ONLY in the registry DB (no backup) -- a deleted render
               is gone; its recipe (seed + params) can regenerate a parameter-identical image.</div>
