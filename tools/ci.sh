@@ -11,6 +11,56 @@
 # remembered failure set any more -- if this script prints CI GREEN, every gate
 # it ran passed. Do not re-introduce a "these reds are fine" convention: a red
 # is either a real defect or a stale gate, and both must be fixed, not memorized.
+#
+# ---------------------------------------------------------------------------
+# REQ-0221: SERVING-MODE COVERAGE MAP -- which stage proves which backend.
+#
+# Read this before adding a gate for anything registry-related. The stages
+# below run in TWO serving modes, and a test placed in the wrong one silently
+# proves nothing. This map exists because that misreading has now happened
+# twice: REQ-0221 was filed asserting "ci.sh never exercises registry-first
+# serving" and proposed building a whole pg fleet variant to fix it -- but the
+# coverage was already here, in the stages listed under (B). The gap was never
+# coverage; it was that nobody could SEE where the coverage lived.
+#
+# (A) FILES mode -- the registry is EMPTY BY DESIGN. computeRegistryData
+#     (server/lib/content.cjs) is pg-only, so with STORAGE_BACKEND=files there
+#     is no registry at all and EVERY registry-first path is unreachable at the
+#     code level. This is deliberate: it is the file-serving contract's own
+#     coverage, and it is still wanted.
+#       [4/7]    server/tests/api_test.cjs        (files backend)
+#       [7/7]    the default e2e fleet            -- tools/e2e_fleet.cjs spawns
+#                every worker STORAGE_BACKEND=files DATABASE_URL='' .
+#     => A test needing an ADOPTED def CANNOT live here. It will not fail; it
+#        will skip or vacuously pass. Do not put registry-first coverage in the
+#        fleet, and do not "fix" a fleet skip by teaching the fleet pg -- that
+#        rebuilds (B).
+#
+# (B) PG registry-first mode -- an adopted def is SEEDED, so the authority path
+#     for po/si/tm/units/packs actually fires. Gated by SKIP_PG only (CI does
+#     not set it), i.e. MANDATORY on every real CI run:
+#       [5/7]    api_test.cjs                     (pg backend)
+#       [5.355]  seed_derive_pg_test.cjs          art-authoritative seed/derive
+#       [5.36]   content_serving_test.cjs         REQ-0178 gate D: registry-first
+#                serving, file fallback, kind filter, cache invalidation, source
+#                accounting, the parity classifier, and REQ-0182b's
+#                registryServedKindFor predicate (adopted -> kind; empty -> null)
+#       [5.37]   schedule_serving_test.cjs        REQ-0176: the roll/sim authority
+#       [6.5/8]  the admin e2e trio               -- content_admin_e2e.sh is
+#                pg-backed with a HOME-remapped isolated namespace; it seeds an
+#                adopted def and covers the ROUTE level: REQ-0182b's 409 refusal
+#                on the legacy PUT (+ its #/contentadmin hint) and the relocated
+#                grant-to-warehouse control.
+#     => New registry-first coverage belongs HERE. Unit/serving semantics go in
+#        [5.x]; route/UI behaviour that needs an adopted def goes in the
+#        contentadmin harness at [6.5].
+#
+# Why a fleet spec may legitimately test.skip: client/e2e/dex-admin.spec.ts's
+# 409 test skips under (A) because the guard cannot fire against an empty
+# registry. That is NOT an uncovered assertion -- it is the same assertion as
+# the one in (B)'s contentadmin harness, kept in the fleet file so it also runs
+# for real against the LIVE api. Verify against (B) before "fixing" such a skip.
+# ---------------------------------------------------------------------------
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -196,6 +246,9 @@ else
 fi
 if [ "${SKIP_E2E:-0}" != "1" ]; then
   echo "==== [7/7] client e2e (default suite -- admin trio excluded, see above) ===="
+  # REQ-0221: this fleet is FILES-mode -- registry EMPTY by design, so no
+  # registry-first path can fire here. See the SERVING-MODE COVERAGE MAP at
+  # the top of this file before adding registry coverage or "fixing" a skip.
   # REQ-0080: default to the local ingress proxy (localhost, ~40x less latency
   # than the public tunnel) and GPU-accelerated rendering (ANGLE/Vulkan -> the
   # box's real GPU instead of CPU SwiftShader). Both are overridable: force the
