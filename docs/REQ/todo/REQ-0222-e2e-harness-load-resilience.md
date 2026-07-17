@@ -53,3 +53,25 @@ only passes on a quiet box tests the wrong thing.
 - REMAINING SCOPE (this REQ stays todo): release.sh rerun-then-abort
   codification with the provenance-carrying known-flaky list, and the
   loaded-box artadmin goto demo for the gate.
+
+
+## Measured evidence from the REQ-0231 session (2026-07-18)
+
+Recorded here because it was measured while gating another REQ and would
+otherwise be lost; no work on REQ-0222 was done.
+
+`client/e2e/artinspect.spec.ts:56` (`await page.reload()`) fails with
+`TimeoutError: page.reload: Timeout 20000ms exceeded` at a **~2-in-3 rate on a
+loaded box** (load 6-17, concurrent sessions + ComfyUI on the GPU). It took
+full `ci.sh` RED at [6.5/8] on 2026-07-18 19:18.
+
+Interleaved A/B, alternating ONLY the harness file between master's version
+and a modified one, three pairs each: control FAIL/FAIL/pass, modified
+FAIL/FAIL/pass -- same failure string, same rate, pair for pair. So it is the
+spec/proxy under load, not any harness change.
+
+Relevant: REQ-0234 F7 dropped the python static server as "the goto-under-load
+flake source (REQ-0222)" and moved /app onto the REQ-0217 local-proxy. This
+reload timeout persists AFTER that change, so either F7 did not close the
+class or the local-proxy has its own limit under load. Worth checking before
+assuming F7 settled it.

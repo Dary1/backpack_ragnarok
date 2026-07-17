@@ -194,11 +194,43 @@ Exit-status propagation verified in BOTH directions -- the real risk of the
 **Gate 1** ("two ci.sh runs serialise") is untouched: this branch does not
 modify `tools/ci.sh`. It was met by the merged implementation and remains so.
 
+## Full ci.sh run (2026-07-18) -- RED, on a PRE-EXISTING master flake
+
+Run from this worktree, 19:08:34 -> 19:18:54. It queued behind another
+session's ci.sh first ("[ci-lock] ... is HELD -- queueing"), which is gate 1
+working live: three ci.sh runs were waiting and only one ran at a time.
+
+Result: **RED at [6.5/8]** (admin e2e harnesses). ci.sh is `set -e`, so [7/8]
+and [8/8] never ran. Everything before [6.5/8] passed -- sim 117, replay 14,
+forecast 18, engine 119/186, typecheck, vocab, api files+pg, registry,
+client typecheck+build, artadmin 7/7.
+
+The failure is `artinspect.spec.ts:56 page.reload: Timeout 20000ms exceeded`.
+
+**It is not this branch's.** Interleaved A/B on the same box, alternating the
+harness file between master's version and this branch's, three pairs:
+
+| arm | #1 | #2 | #3 | rate |
+|---|---|---|---|---|
+| control = master's harness | FAIL | FAIL | pass | 1/3 |
+| this branch's harness | FAIL | FAIL | pass | 1/3 |
+
+Identical failure in all four reds (`page.reload: Timeout 20000ms exceeded`),
+identical rate, pair for pair. The flake reproduces on UNTOUCHED master code,
+so it neither was caused nor can be fixed here. Note the rate: under a loaded
+box this spec fails ~2 of 3 runs -- this is not a rare flake, it is a red CI
+for anyone running full ci.sh right now. Filed as evidence on REQ-0222
+(todo/, e2e-harness-load-resilience), which owns this class.
+
+Precedent for proceeding: this REQ's own first pass was blocked the same way
+("PENDING both-green full-CI x2: blocked by a PRE-EXISTING stale gate on
+master ... fails identically on untouched master").
+
 ## Not done here
 
-- Full `ci.sh` x2 has NOT been re-run on this branch. The four harnesses it
-  chains are each green above and ci.sh itself is unmodified, but the whole-CI
-  run is the honest remaining check before merge.
+- Full ci.sh has NOT gone green end-to-end, and cannot until the REQ-0222
+  artinspect flake is fixed -- it is red on master with or without this branch
+  (evidence above). Steps [7/8] and [8/8] are therefore unexercised here.
 - SIGKILL is uncatchable: neither the merged code nor this branch can clean up
   after `kill -9` (the 2026-07-17 incident was exit 137). Group-scoping shrinks
   the blast radius but does not close that; a reaper would be a separate REQ.
