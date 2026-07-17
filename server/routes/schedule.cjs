@@ -21,6 +21,7 @@ const SCHEDULE_ROOM_SWAP_RE = /^\/api\/schedule\/rooms\/([^/]+)\/swap$/;
 const SCHEDULE_ROOM_RUN_RE = /^\/api\/schedule\/rooms\/([^/]+)\/run$/;
 const SCHEDULE_ROOM_DEV_BACKDATE_RE = /^\/api\/schedule\/rooms\/([^/]+)\/dev\/backdate$/; // REQ-0036 P1-C: dev-only E2E time-control hook
 const SCHEDULE_ROOMS_DEV_CLEAR_RE = /^\/api\/schedule\/rooms\/dev\/clear$/; // REQ-0082: dev-only E2E room-cleanup hook
+const SCHEDULE_SORTIES_RE = /^\/api\/schedule\/sorties$/; // REQ-0239 (D1): atomic create-room + assign-4-slots
 // REQ-0058: Sealed Seed Share routes. /seal (mint) is distinct from
 // /seals/<id> (metadata); the deeper /comparison + /runs/<playerId>
 // paths are anchored so they never collide with the generic seals/<id>.
@@ -33,7 +34,7 @@ function tryScheduleRoutes(req, res, url, p) {
   const scheduleMatch = p.match(SCHEDULE_ROOMS_RE) || p.match(SCHEDULE_ROOM_RE) ||
     p.match(SCHEDULE_ROOM_SLOT_RE) || p.match(SCHEDULE_ROOM_SWAP_RE) || p.match(SCHEDULE_ROOM_RUN_RE) ||
     p.match(SCHEDULE_ROOM_DEV_BACKDATE_RE) ||
-    p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) ||
+    p.match(SCHEDULE_ROOMS_DEV_CLEAR_RE) || p.match(SCHEDULE_SORTIES_RE) ||
     p.match(SCHEDULE_SEAL_MINT_RE) || p.match(SCHEDULE_SEAL_GET_RE) ||
     p.match(SCHEDULE_SEAL_COMPARE_RE) || p.match(SCHEDULE_SEAL_REPLAY_RE);
   if (scheduleMatch) {
@@ -49,6 +50,13 @@ function tryScheduleRoutes(req, res, url, p) {
       const room = schedule.getOwnRoomOr404(roomId, callerId);
       const { itemDefsById } = schedule.getScheduleContent();
       return schedule.settleRoomIfDue(room, loadOwnCanvas(callerId), itemDefsById);
+    }
+    // REQ-0239 (design B1): attach a compact `lastRun` window to a room in
+    // its response so the squad status board can render honest run progress +
+    // a return time without an N+1 GET .../run per room. Response-only (the
+    // stored room doc is never mutated); a room with no run yields lastRun:null.
+    function withLastRun(room) {
+      return Object.assign({}, room, { lastRun: schedule.lastRunSummary(room) });
     }
 
     // ---- POST/GET /api/schedule/rooms ----
@@ -91,7 +99,7 @@ function tryScheduleRoutes(req, res, url, p) {
               return room;
             }
           });
-          sendJSON(res, 200, { ok: true, rooms });
+          sendJSON(res, 200, { ok: true, rooms: rooms.map(withLastRun) });
         } catch (e) { sendScheduleError(res, e); }
         return;
       }
@@ -130,6 +138,34 @@ function tryScheduleRoutes(req, res, url, p) {
       return;
     }
 
+    // ---- POST /api/schedule/sorties (REQ-0239 D1: atomic create + assign) ----
+    if (p.match(SCHEDULE_SORTIES_RE)) {
+      if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
+      readBody(req, (err, bodyStr) => {
+        if (err) { sendJSON(res, err.code === 'TOO_LARGE' ? 413 : 400, { ok: false, error: err.message }); return; }
+        let body;
+        try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
+        // REQ-0043 parity: genSeed is privileged-only, gated BEFORE any room is
+        // created (same check the POST /rooms path applies).
+        if (body && body.genSeed !== undefined && body.genSeed !== null && !callerCanSetGenSeed) {
+          sendJSON(res, 403, { ok: false, error: 'forbidden: genSeed may only be specified by a dev/item_admin caller (test-control seam, not a real player action)' });
+          return;
+        }
+        try {
+          const { itemDefsById } = schedule.getScheduleContent();
+          const canvas = requireOwnCanvas(callerId);
+          // Atomic create-room + assign 4 slots under the deploy gate; a 409
+          // (shared-unit collision) rolls the room back and propagates the reason.
+          const room = schedule.createSortie(callerId, body, canvas, itemDefsById);
+          // The sortie IS the launch: settle now so a fully-filled room auto-starts
+          // its run immediately, landing the client on a live expedition.
+          const launched = schedule.settleRoomIfDue(room, canvas, itemDefsById);
+          sendJSON(res, 200, { ok: true, room: withLastRun(launched) });
+        } catch (e) { sendScheduleError(res, e); }
+      });
+      return;
+    }
+
     // ---- GET/DELETE /api/schedule/rooms/:id ----
     const roomMatch = p.match(SCHEDULE_ROOM_RE);
     if (roomMatch) {
@@ -137,7 +173,7 @@ function tryScheduleRoutes(req, res, url, p) {
       if (req.method === 'GET') {
         try {
           const room = loadAndSettleRoom(roomId);
-          sendJSON(res, 200, { ok: true, room });
+          sendJSON(res, 200, { ok: true, room: withLastRun(room) });
         } catch (e) { sendScheduleError(res, e); }
         return;
       }

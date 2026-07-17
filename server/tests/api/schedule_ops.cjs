@@ -189,6 +189,68 @@ module.exports.run = async function run(h) {
     assert.strictEqual(cancelC.body.room.status, 'canceled', 'immediate:false with no run active must cancel immediately (nothing to wait for)');
   });
 
+  // ---- REQ-0239: sortie page + squad board server surface ------------------
+
+  await AT('REQ-0239 (D1+B1+bug #6): POST /api/schedule/sorties atomically creates+fills+launches a room, DEFAULTS cancel to deferred (golden g), carries lastRun, and a cancel of the LIVE run does NOT disband immediately', async () => {
+    // No cancelPolicy in the body -> the sortie flow default must be deferred.
+    const res = await scheduleReq('POST', '/api/schedule/sorties', scheduleP1.token, {
+      dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndices: [0, 1, 2, 3],
+    });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    const room = res.body.room;
+    assert.strictEqual(room.status, 'active', 'a launched sortie must be an active expedition');
+    assert.deepStrictEqual(room.slots.map((sl) => sl.squadIndex), [0, 1, 2, 3], 'all four slots filled in order, atomically');
+    assert.deepStrictEqual(room.cancelPolicy, { immediate: false }, 'REQ-0239 golden g: the sortie default cancel policy is DEFERRED');
+    // B1: a compact lastRun window rides on the room AND on the rooms LIST (no N+1).
+    assert.ok(room.lastRun, 'B1: lastRun must be present once a run is active');
+    assert.strictEqual(room.lastRun.runId, room.lastRunId);
+    assert.strictEqual(typeof room.lastRun.startedAt, 'string');
+    assert.strictEqual(typeof room.lastRun.durationSecs, 'number');
+    assert.strictEqual(room.lastRun.settled, false);
+    const list = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    const listed = list.body.rooms.find((r) => r.id === room.id);
+    assert.ok(listed && listed.lastRun && listed.lastRun.runId === room.lastRunId, 'B1: the rooms LIST must carry lastRun for the squad board');
+    // bug #6: canceling the LIVE run must NOT end the expedition immediately.
+    const cancel = await scheduleReq('DELETE', '/api/schedule/rooms/' + room.id, scheduleP1.token);
+    assert.strictEqual(cancel.body.room.status, 'active', 'bug #6: a cancel of a live sortie must NOT disband it immediately');
+    assert.strictEqual(cancel.body.room.cancelRequested, true, 'cancelRequested stays truthful on the room doc (B2: the board renders it as-is)');
+    // golden g: the deferred cancel is honored only when the run ends.
+    forceRunElapsed(room.lastRunId);
+    const settled = await scheduleReq('GET', '/api/schedule/rooms/' + room.id, scheduleP1.token);
+    assert.strictEqual(settled.body.room.status, 'canceled', 'golden g: the deferred cancel disbands the room at run end, not before');
+  });
+
+  await AT('REQ-0239 (D1): the sortie AdvancedFold immediate opt-in threads through -- cancelPolicy:{immediate:true} cancels a live sortie right away', async () => {
+    const res = await scheduleReq('POST', '/api/schedule/sorties', scheduleP1.token, {
+      dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', cancelPolicy: { immediate: true }, squadIndices: [0, 1, 2, 3],
+    });
+    assert.strictEqual(res.status, 200, JSON.stringify(res.body));
+    assert.deepStrictEqual(res.body.room.cancelPolicy, { immediate: true }, 'an explicit immediate policy is honored (destructive opt-in)');
+    const cancel = await scheduleReq('DELETE', '/api/schedule/rooms/' + res.body.room.id, scheduleP1.token);
+    assert.strictEqual(cancel.body.room.status, 'canceled', 'immediate opt-in cancels the live run at once');
+  });
+
+  await AT('REQ-0239 (D1): a sortie with a duplicated squad in the troop is a 409 and rolls back -- no orphan room is created (atomic; 409 shared-unit backstop)', async () => {
+    const before = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    const beforeCount = before.body.rooms.length;
+    const res = await scheduleReq('POST', '/api/schedule/sorties', scheduleP1.token, {
+      dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndices: [0, 1, 2, 0],
+    });
+    assert.strictEqual(res.status, 409, JSON.stringify(res.body));
+    const after = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    assert.strictEqual(after.body.rooms.length, beforeCount, 'a rejected sortie must not orphan a room (atomic rollback)');
+  });
+
+  await AT('REQ-0239 (D1): a sortie with fewer than 4 squadIndices is a 400 and creates no room', async () => {
+    const before = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    const res = await scheduleReq('POST', '/api/schedule/sorties', scheduleP1.token, {
+      dungeonId: 'test_dungeon', level: 1, formationId: 'formation1', squadIndices: [0, 1, 2],
+    });
+    assert.strictEqual(res.status, 400, JSON.stringify(res.body));
+    const after = await scheduleReq('GET', '/api/schedule/rooms', scheduleP1.token);
+    assert.strictEqual(after.body.rooms.length, before.body.rooms.length, 'a 400 sortie must not create a room');
+  });
+
   await AT('schedule: room CRUD -- level defaults/clamps to LEVEL_MIN, unknown formationId falls back to the default formation', async () => {
     const combat = require('../../../sim/combat.cjs');
     const noLevel = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon' });
