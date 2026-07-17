@@ -60,6 +60,21 @@ function buildHome(i) {
       if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bp, "content", "live", f));
     }
   }
+  // REQ-0211: overlay THIS worktree's dungeon domain (content/live/dungeon) so the
+  // isolated e2e backend serves gimics.json -- the trap / treasure box / hidden door
+  // interactables (the gimic content kind) that REPLACED entities.json and are not yet
+  // on master. The bulk cpSync above copied REPO's dungeon dir (still entities.json), so
+  // WITHOUT this the worktree's api.cjs (whose dungen/core now read gimics.json) would
+  // ENOENT on the missing file and 500 /api/content. Same "worktree overlay, not yet on
+  // master" idiom as the live_packs.json copy above; replaces the whole dir so the stale
+  // entities.json does not linger beside the new gimics.json.
+  {
+    const _wtDungeon = path.join(__dirname, "..", "content", "live", "dungeon");
+    if (fs.existsSync(_wtDungeon)) {
+      fs.rmSync(path.join(bp, "content", "live", "dungeon"), { recursive: true, force: true });
+      fs.cpSync(_wtDungeon, path.join(bp, "content", "live", "dungeon"), { recursive: true });
+    }
+  }
   const cfg = path.join(REPO, 'data', 'config');
   if (fs.existsSync(cfg)) fs.cpSync(cfg, path.join(bp, 'data', 'config'), { recursive: true });
   // REQ-0083 F: seed the WHOLE profiles dir -- the dev player uses data/profiles/dev.json
