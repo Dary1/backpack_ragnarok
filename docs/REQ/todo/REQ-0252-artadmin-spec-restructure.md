@@ -1,6 +1,6 @@
 # REQ-0252 - artadmin spec restructure
 
-**Status:** Todo
+**Status:** Built
 **Reserved:** 2026-07-18
 **Slug:** artadmin-spec-restructure
 
