@@ -1,10 +1,13 @@
 # REQ-0185 — dungeon-content-kind: a dungeon is authored, PROBABILITY-WEIGHTED references to packs + gimics, rolled at dive time
 
-**Status:** todo — ratified per the user ruling 2026-07-17 (below); cleared to implement.
+**Status:** built — implemented 2026-07-17; ratified per the user ruling 2026-07-17 (below).
+DB-free `tools/ci.sh` GREEN + pg gates GREEN + scoped hermetic e2e 187/1-waived; client lint/build
+green. NOT merged, NOT deployed (migration 022 + live backfill pending the batch deploy).
 **Reserved:** 2026-07-15
 **Slug:** dungeon-content-kind (supersedes the reserved slug `dungen-registry-packs`)
 **Branch / worktree:** `req-0185-dungeon-content-kind` (server, UNMERGED), stacked on
-`req-0211-gimic-content-kind` (created from its tip; REQ-0211 not rebased).
+`req-0211-gimic-content-kind` (rebased 2026-07-17 onto its post-0217 tip `e4c4666`; see the
+rebase section below).
 **Requested by:** user, 2026-07-15: dungeons should be authored content, not a runtime graph
 build. Refined by the ruling below.
 **Depends on:** REQ-0184 (monster_pack kind — the `packId` seam), REQ-0211 (gimic kind — stable
@@ -173,11 +176,22 @@ levelMin)/perLevels), floor, max)`), enemy strength unchanged; (5) `test_fixed` 
 the 12 replay goldens kept UNTOUCHED as the offline determinism anchor — frost gameplay reproduced
 as the authored `niflheim_depths` on the serving path.
 
-**Commit hashes (stacked on req-0211 tip 68a684d):**
+**Commit hashes.** The four below are the ORIGINAL, PRE-REBASE commits (stacked on the old
+req-0211 tip `68a684d`). They are NO LONGER on the branch — they survive only under
+`refs/backup/req-0185-pre-rebase-20260717` (tip `99b05cb`). Kept for provenance:
 - `a2b5615` — dungeon/1 content kind: roller + validator + authored defs + registry integration
 - `278e890` — serving repoint (core/rooms/runs/seals/forecast/lib-content/public)
 - `6bf9ed1` — tests + gates (roller test wired into ci.sh; api/dialect/backfill updates)
-- `99131c2` — client wiring + contentadmin + DTO + web build
+- `99131c2` — client wiring + contentadmin + DTO + web build (bundle later found STALE)
+
+**Live commit hashes (post-rebase, on the branch — stacked on req-0211 tip `e4c4666`):**
+- `e567fbc` — dungeon/1 content kind: roller + validator + authored defs + registry integration
+- `0c91827` — serving repoint: schedule rolls authored dungeon defs
+- `5c245e7` — tests + gates for the dungeon kind
+- `08b248a` — client wiring: dungeon DEF picker, forecast by dungeonId, contentadmin
+- `b8182b3` — rebuild web/app from merged source (the stale bundle stripped from `08b248a`)
+- `f8e667f` — todo -> built
+- `ce78af5` — rebase note (branch tip)
 
 **DB-free gates GREEN** — `SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh`, HOME->worktree (the
 REQ-0184 os.homedir() convention): sim 117 · goldens 12 (UNMOVED — `replay_hashes.json` byte-
@@ -206,6 +220,37 @@ renders `.schedule-page` + the authored DEF `<select>` + the level-band note wit
 AND drives the full flow: select `niflheim_depths` -> submit -> room persisted with
 `dungeonId=niflheim_depths` level 3. This proves the failures are environmental (box contention),
 not a code defect. A serial re-run of the failed subset is queued behind the shared box lock.
+
+## Post-reboot re-verification — 2026-07-17 UTC (2026-07-18 JST)
+
+The box went down mid-session (SSH unreachable >2h) AFTER the tip commit `ce78af5`; a hand-off
+note recorded this REQ as "~80% done, gates / commit / client-wiring outstanding". That note was
+STALE — all of it had in fact landed before the crash. Re-verified from a cold session on the
+rebooted box (uptime 10:53, load 0.29, no CI lock held):
+
+- Worktree CLEAN (`git status` empty), tip `ce78af5`, 18 commits ahead of master, REQ file already
+  in `built/`. Nothing was lost to the crash; no work needed redoing.
+- DB-free `tools/ci.sh` RE-RUN from scratch -> **CI GREEN**, 0 FAIL. Every count matches the
+  claims above exactly: sim **117** · goldens **OK (12 cases, replay determinism intact)** ·
+  dungeon roller **5** · forecast parity **18** · api (files) **187 passed, 0 failed** ·
+  dialect **51** · backfill **11**. Goldens byte-identical (no churn under `sim/tests/`).
+- Invocation note (cost a false start). A non-interactive `ssh` shell does NOT load nvm, so `node`
+  is absent from PATH and ci.sh dies at `[0/8]` with `node: command not found`. The HOME->worktree
+  remap is not itself the cause. Pin PATH to the same node the live units run
+  (`/home/qtie/.nvm/versions/node/v24.18.0/bin`), plus `~/.local/bin` for pnpm:
+
+      HOME=/tmp/ci_home_0185 \
+      PATH=/home/qtie/.nvm/versions/node/v24.18.0/bin:/home/qtie/.local/bin:/usr/local/bin:/usr/bin:/bin \
+      CI_LOCK_FILE=/home/qtie/.cache/backpack/ci.box.lock \
+      ART_KIT_PYTHON=/home/qtie/backpack_ragnarok/.venv/bin/python \
+      SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 bash tools/ci.sh
+
+  `ART_KIT_PYTHON` must point at the REAL checkout's venv — under the remapped HOME it would
+  otherwise resolve to a `.venv` the worktree does not have. Also: never `pkill -f "tools/ci.sh"`
+  over ssh; the pattern matches the ssh command line itself and kills your own session (use
+  `ci[.]sh`).
+- Branch is 28 commits BEHIND master (`3b01434`), a docs-only delta; deliberately NOT rebased
+  again, as docs-only commits cannot affect these gates.
 
 ## Downstream notes (sortie-UI #4/#5, monitor #7)
 
