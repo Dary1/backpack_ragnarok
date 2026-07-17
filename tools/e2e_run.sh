@@ -28,6 +28,17 @@ mkdir -p "$(dirname "$LOCK_FILE")"
 # fd 9 -> the lock file; survives exec, held for the whole run.
 exec 9>"$LOCK_FILE"
 
+# REQ-0234 (F2): if the lock is already held, say so IMMEDIATELY -- who holds
+# it, and whether it is the REQ-0217 freeze -- instead of stalling silently
+# for up to E2E_LOCK_WAIT seconds and dying with a bare exit 75.
+if ! flock -n 9; then
+  echo "[e2e-lock] $LOCK_FILE is HELD (holder pid(s):$(fuser "$LOCK_FILE" 2>/dev/null || echo ' unknown'))" >&2
+  if [ "$LOCK_FILE" = "$HOME/.cache/backpack/e2e.box.lock" ] && [ -f "$HOME/.cache/backpack/E2E_FREEZE_README.txt" ]; then
+    echo "[e2e-lock] the e2e BOX FREEZE is likely active (REQ-0217): see ~/.cache/backpack/E2E_FREEZE_README.txt" >&2
+    echo "[e2e-lock] a rebased tree should run SCOPED instead -- tools/ci.sh [7/7] does this automatically from a req-NNNN worktree (REQ-0234)" >&2
+  fi
+fi
+
 if [ "${E2E_LOCK_NONBLOCK:-0}" = "1" ]; then
   if ! flock -n 9; then
     echo "[e2e-lock] box busy: another e2e run holds $LOCK_FILE. E2E_LOCK_NONBLOCK=1 -> abort." >&2

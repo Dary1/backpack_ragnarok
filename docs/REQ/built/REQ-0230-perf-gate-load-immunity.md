@@ -30,3 +30,16 @@ Recommendation: (a), optionally + (c) later; (b) is the minimal patch.
 - The perf assertion passes 5/5 under an artificial CPU-load harness while
   correctness assertions stay untouched.
 - ci.sh green.
+
+## Decision + implementation (2026-07-17, ratified via REQ-0234 report §5)
+- Landed (a)+(b) combined: the forecastPressure budget measures
+  process.cpuUsage (user+sys) over BEST-OF-3 samples against a once-retuned
+  [TUNABLE 150ms] budget. Measured basis: 71.8ms quiet best-of-3; cpu-time
+  alone at the old 100ms budget still flaked 3/5 under a full 8-way CPU burn
+  (SMT/cache inflation 72 -> ~112ms) -- bounded, unlike wall-clock queueing,
+  hence floor(2x quiet) headroom rather than a wall-clock rescue.
+
+## Gate results (2026-07-17)
+- 5/5 PASS under an artificial 8-way CPU burn (spin loops, load ~3.5+ on 8
+  threads); correctness assertions untouched (18/18 forecast_parity).
+- Quiet: best-of-3 cpu 71.8ms (samples 78.6/71.8/78.1).

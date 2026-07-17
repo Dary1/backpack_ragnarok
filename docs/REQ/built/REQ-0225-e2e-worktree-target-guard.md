@@ -41,3 +41,18 @@ In e2e global-setup, detect the mismatch and make it loud:
 ## Gates (when implemented)
 - shellcheck/lint as applicable; one e2e run per mode proving the banner /
   fail-fast fires from a worktree and does NOT fire from the main checkout.
+
+## Decision + implementation (2026-07-17, ratified via REQ-0234 report §5)
+- BOTH options landed: (a) the banner -- e2e global-setup warns loudly when
+  baseURL is non-local and cwd is a linked worktree, and aborts under
+  E2E_REQUIRE_WORKTREE=1; and the default-flip, delivered through ci.sh:
+  [7/7] auto-scopes (fleet root + REQ-decade ports from the branch name) for
+  any req-NNNN worktree, so the canonical invocation now tests THIS worktree
+  by construction. Bare `pnpm run e2e` keeps legacy behavior + the banner.
+
+## Gate results (2026-07-17)
+- From the REQ-0234 worktree: PLAYWRIGHT_BASE_URL=https://backpack-dev.qtie.jp
+  E2E_REQUIRE_WORKTREE=1 -> global-setup throws the REQ-0225 banner BEFORE
+  any fleet/page work (verified live).
+- Scoped worktree runs (ci.sh [7/7] and the REQ-0234 audit run) show no
+  banner -- local baseURL from a worktree is the sanctioned path.
