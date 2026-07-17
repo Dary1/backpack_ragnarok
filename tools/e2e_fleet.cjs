@@ -20,8 +20,14 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 
-const REPO = path.join(os.homedir(), 'backpack_ragnarok');
-const ROOT = '/tmp/bp_e2e_workers';
+// REQ-0217 hermetic e2e: everything a worker home is built from comes from
+// THIS WORKTREE (the code under test) plus committed fixtures -- never from
+// the live checkout (~/backpack_ragnarok) and never from live data/.
+const WT = path.join(__dirname, '..');
+const FIXTURES = path.join(WT, 'client', 'e2e', 'fixtures');
+// REQ-0217: overridable so concurrent sessions/worktrees can run fully
+// disjoint fleets (dir + ports + proxy all scoped together via env).
+const ROOT = process.env.E2E_FLEET_ROOT || '/tmp/bp_e2e_workers';
 const MANIFEST = path.join(ROOT, 'manifest.json');
 const BASE_PORT = Number(process.env.E2E_FLEET_BASE_PORT || 8810);
 const API_ENTRY = path.join(__dirname, '..', 'server', 'api.cjs'); // this worktree's api (PORT env-aware); content/data still sourced from REPO
@@ -32,40 +38,21 @@ function buildHome(i) {
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.join(bp, 'content'), { recursive: true });
   fs.mkdirSync(path.join(bp, 'data', 'profiles'), { recursive: true });
-  for (const e of fs.readdirSync(path.join(REPO, 'content'))) {
-    if (e === 'live') continue; // live/* is mutated -> per-worker copy below
-    fs.symlinkSync(path.join(REPO, 'content', e), path.join(bp, 'content', e));
+  // Read-only content -> symlinks to the worktree; mutable content/live ->
+  // a per-worker COPY of the worktree's own tree (admin-edit specs PUT real
+  // edits, and the worktree IS the code+content under test -- the old
+  // main-checkout sourcing plus per-file "not yet on master" overlays is
+  // retired with it).
+  for (const e of fs.readdirSync(path.join(WT, 'content'))) {
+    if (e === 'live') continue;
+    fs.symlinkSync(path.join(WT, 'content', e), path.join(bp, 'content', e));
   }
-  fs.cpSync(path.join(REPO, 'content', 'live'), path.join(bp, 'content', 'live'), { recursive: true });
-  // REQ-0062: overlay THIS worktree's live_packs.json (themed pack catalog --
-  // clockwork/ember -- not yet on master) so the isolated e2e backend serves it,
-  // exactly like the REQ-0051 starter-content overlay just below. __dirname is the
-  // worktree's tools/, so this reads the worktree copy (with the new packs), not REPO.
-  { const _wtPacks = path.join(__dirname, '..', 'content', 'live', 'live_packs.json');
-    if (fs.existsSync(_wtPacks)) fs.copyFileSync(_wtPacks, path.join(bp, 'content', 'live', 'live_packs.json')); }
-  // REQ-0204: overlay THIS worktree's live_tms.json (the 4 placeholder TM
-  // currencies -- ember/frost/verdant/void -- not yet on master) onto the isolated
-  // e2e backend's content/live, so the market regression exercises the real 5-TM
-  // registry instead of master's lrdst-only fixture. Same overlay idiom + guard as
-  // the REQ-0062 live_packs.json copy just above.
-  { const _wtTms = path.join(__dirname, '..', 'content', 'live', 'live_tms.json');
-    if (fs.existsSync(_wtTms)) fs.copyFileSync(_wtTms, path.join(bp, 'content', 'live', 'live_tms.json')); }
-  // REQ-0051: overlay this worktree's starter content (not yet on master)
-  // so the e2e backend serves it. Additive + guarded -- only files present in
-  // the worktree are copied; nothing about the REPO copy above changes.
-  {
-    const wtLive = path.join(__dirname, "..", "content", "live");
-    for (const f of ["starter_items.json", "starter_units.json"]) {
-      const src = path.join(wtLive, f);
-      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(bp, "content", "live", f));
-    }
-  }
-  const cfg = path.join(REPO, 'data', 'config');
-  if (fs.existsSync(cfg)) fs.cpSync(cfg, path.join(bp, 'data', 'config'), { recursive: true });
-  // REQ-0083 F: seed the WHOLE profiles dir -- the dev player uses data/profiles/dev.json
-  // (default.json is only a legacy migration seed); copying just default.json under-seeds it.
-  const profs = path.join(REPO, 'data', 'profiles');
-  if (fs.existsSync(profs)) fs.cpSync(profs, path.join(bp, 'data', 'profiles'), { recursive: true });
+  fs.cpSync(path.join(WT, 'content', 'live'), path.join(bp, 'content', 'live'), { recursive: true });
+  // Seeds come from COMMITTED fixtures only (client/e2e/fixtures/): a frozen
+  // snapshot of the legacy files-backend dev state this suite has always
+  // asserted against. Never sourced from the live checkout's data/.
+  fs.cpSync(path.join(FIXTURES, 'config'), path.join(bp, 'data', 'config'), { recursive: true });
+  fs.cpSync(path.join(FIXTURES, 'profiles'), path.join(bp, 'data', 'profiles'), { recursive: true });
   return path.join(dir, 'home');
 }
 
@@ -118,8 +105,21 @@ async function start(N) {
 
 function stop() {
   killManifest();
+  // REQ-0217: archive per-worker api logs before wiping the tree, so a
+  // worker crash mid-run stays diagnosable after teardown.
+  const logDir = '/tmp/bp_e2e_logs_last';
+  try {
+    fs.rmSync(logDir, { recursive: true, force: true });
+    fs.mkdirSync(logDir, { recursive: true });
+    if (fs.existsSync(ROOT)) {
+      for (const w of fs.readdirSync(ROOT)) {
+        const lp = path.join(ROOT, w, 'api.log');
+        if (fs.existsSync(lp)) fs.copyFileSync(lp, path.join(logDir, w + '-api.log'));
+      }
+    }
+  } catch (e) { /* best-effort */ }
   fs.rmSync(ROOT, { recursive: true, force: true });
-  console.log('[fleet] stopped + cleaned');
+  console.log('[fleet] stopped + cleaned (logs archived to ' + logDir + ')');
 }
 
 const cmd = process.argv[2];

@@ -523,12 +523,12 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
     // convention that only fits files CREATED by a test.
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
 
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
@@ -602,10 +602,10 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       const reClaimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid } });
       expect(reClaimRes.status()).toBe(409);
 
-      const canvasBeforeResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasBeforeResp = await page.request.get('/api/profile/default/canvas');
       const canvasBefore = (await canvasBeforeResp.json()).canvas;
       canvasBefore.inv.pages[0].pos.push({ uid: claimBody.itemUid, id: claimBody.itemId, loc: 'grid', cell: [1, 1], rot: 0 });
-      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvasBefore });
+      const putRes = await page.request.put('/api/profile/default/canvas', { data: canvasBefore });
       expect(putRes.status()).toBe(200);
 
       // The profile PUT (this run's "auto-save") must have finalized
@@ -615,7 +615,7 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       const whAfter = await whAfterRes.json();
       expect(whAfter.items.some((i: any) => i.itemUid === itemUid)).toBe(false);
 
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const placedPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === claimBody.itemUid);
       expect(placedPo).toBeTruthy();
@@ -834,12 +834,12 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
   test('claim finds a fitting cell on the OPEN inventory page, pulses it, and auto-saves without a manual save click', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       const grantUid = await grantHiltToDev(page);
 
       await bootApp(page);
@@ -861,7 +861,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       // verify the placement landed via the profile canvas API (page 0,
       // since activeInvPage defaults to 0 and this is a fresh boot).
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const placed = canvas.inv.pages[0].pos.find((p: any) => p.uid === grantUid);
       expect(placed).toBeTruthy();
@@ -883,12 +883,12 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
   test('when the active page has no space, claim auto-places on ANOTHER page and pulse-highlights that page\'s tab', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
 
       // Fill inventory page 0 completely (8x8 = 64 cells) with 64 unique
       // 1x1 'hilt' POs -- guarantees invCanPlacePO finds no free cell on
@@ -897,7 +897,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       // order" spec). Written directly via the same profile PUT surface
       // every other test in this file already uses to seed state, rather
       // than via 64 real drag gestures.
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       canvas.inv.pages[0].pos = [];
       for (let r = 1; r <= 8; r++) {
@@ -905,7 +905,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
           canvas.inv.pages[0].pos.push({ uid: `fill_${r}_${c}`, id: 'hilt', loc: 'grid', cell: [r, c], rot: 0 });
         }
       }
-      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+      const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
       expect(putRes.status()).toBe(200);
 
       const grantUid = await grantHiltToDev(page);
@@ -927,7 +927,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       await expect(tab1).toHaveClass(/tab-claim-pulse/, { timeout: 2000 });
 
       await waitForAutoSave(page);
-      const finalCanvasResp = await page.request.get('/api/profile/dev/canvas');
+      const finalCanvasResp = await page.request.get('/api/profile/default/canvas');
       const finalCanvas = (await finalCanvasResp.json()).canvas;
       expect(finalCanvas.inv.pages[0].pos.find((p: any) => p.uid === grantUid)).toBeFalsy();
       const placedOnPage1 = finalCanvas.inv.pages[1].pos.find((p: any) => p.uid === grantUid);
@@ -943,15 +943,15 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
   test('when NO page has space anywhere, claim shows a toast + inline error and the warehouse row REMAINS (claiming, revertible)', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
 
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
 
       // Fill ALL 5 pages completely.
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       for (let pg = 0; pg < canvas.inv.pages.length; pg++) {
         const pos = [];
@@ -962,7 +962,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
         }
         canvas.inv.pages[pg].pos = pos;
       }
-      await page.request.put('/api/profile/dev/canvas', { data: canvas });
+      await page.request.put('/api/profile/default/canvas', { data: canvas });
 
       const grantUid = await grantHiltToDev(page);
 
@@ -1375,11 +1375,11 @@ test.describe('REQ-0099: settled-run replay transport', () => {
   test('a SETTLED run shows the transport; skip-to-end parks at duration; scrub seeks to start', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+    const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
     const devProfileExisted = fs.existsSync(devProfilePath);
     const devProfileBackup = devProfileExisted ? fs.readFileSync(devProfilePath, 'utf8') : null;
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       const created = await apiCreateRoom(page, '', { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
       const roomId = created.body.room.id;
       for (let i = 0; i < 4; i++) {

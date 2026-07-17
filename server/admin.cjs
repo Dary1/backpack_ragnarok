@@ -307,7 +307,40 @@ function resolveAuthFromRequest(req) {
     if (v.reason !== 'not_configured') return { ok: false, reason: 'invalid_jwt' };
     // secret not configured -> JWT path disabled; fall through to X-Auth-Token.
   }
-  return resolveAuth(xAuthTokenFromRequest(req));
+  const xToken = xAuthTokenFromRequest(req);
+  const resolved = resolveAuth(xToken);
+  // REQ-0214: annotate the dev_mode NO-token fallback on the result itself
+  // (viaDevFallback) so route gates (callerIsDevFallback, profile's
+  // 'default' alias) key off the RESOLUTION PATH instead of comparing
+  // playerIds -- required because the e2e redirect below swaps the id.
+  if (resolved.ok && !xToken) {
+    const devUser = readDevUser();
+    if (devUser.dev_mode === true && resolved.player.playerId === devUser.playerId) {
+      resolved.viaDevFallback = true;
+      // REQ-0214 e2e profile isolation: an unauthenticated request that
+      // resolved via the dev fallback AND carries x-bpk-e2e-profile is
+      // redirected to a DEDICATED test profile (e2e_<suffix>) so test
+      // suites never read or write the dev player's own rows (incident
+      // 2026-07-17: the full-CI e2e run overwrote the dev profile with
+      // fixtures). Roles are kept (the admin harness specs need
+      // item_admin); the dev player's REAL token is stripped so a
+      // redirected caller can never learn it and act as dev. Real-token
+      // callers never reach this branch; with dev_mode=false the header
+      // is inert (no fallback happens at all).
+      const h = req.headers['x-bpk-e2e-profile'];
+      if (typeof h === 'string' && h.length) {
+        const suffix = h.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || 'default';
+        // Lazily provision the e2e player in the registry (idempotent --
+        // ensureDevPlayer's own ensureFixedPlayer pattern) so storage's
+        // isAllowedProfileId ("any known player id", REQ-0037) accepts it
+        // at every chokepoint (profiles, warehouse, market, ...).
+        const prov = players.ensureFixedPlayer('e2e_' + suffix, 'E2E (' + suffix + ')', resolved.player.roles);
+        resolved.player = Object.assign({}, prov.player);
+        delete resolved.player.token;
+      }
+    }
+  }
+  return resolved;
 }
 
 module.exports = {

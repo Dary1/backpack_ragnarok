@@ -31,7 +31,7 @@ import { bootApp, waitForAutoSave } from './helpers';
 const REPO_ROOT = E2E_DATA_ROOT;
 const SCHEDULE_FIXTURE_PATH = new URL('./fixtures/schedule-fixture.json', import.meta.url);
 const DEV_USER_PATH = join(REPO_ROOT, 'data', 'config', 'dev_user.json');
-const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
 
 const fixture = JSON.parse(readFileSync(SCHEDULE_FIXTURE_PATH, 'utf8'));
 
@@ -99,10 +99,10 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
     // client repairs into inventory pages on its first auto-save, which
     // poisons workshop.spec's own before/after BP-diff assertions
     // (observed: the roll test counting 10 phantom new BPs).
-    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvasResp = await page.request.get('/api/profile/default/canvas');
     const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null;
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       const grantUid = await grantHiltToDev(page);
 
       await gotoWarehouseTab(page);
@@ -140,7 +140,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       // in the dev canvas and the warehouse row is gone -- from the API
       // and (via the poll reload) from the shelf.
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const placed = canvas.inv.pages.flatMap((p: any) => p.pos).find((p: any) => p.uid === grantUid);
       expect(placed).toBeTruthy();
@@ -149,7 +149,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       expect((await whRes.json()).items.some((i: any) => i.itemUid === grantUid)).toBe(false);
       await expect(row).toHaveCount(0, { timeout: 10000 });
     } finally {
-      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+      if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
       if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
@@ -158,10 +158,10 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
   test('claim-all (forge CTA) walks every row and empties the shelf into the inventory', async ({ page }) => {
     const devProfileExisted = existsSync(DEV_PROFILE_PATH);
     const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
-    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvasResp = await page.request.get('/api/profile/default/canvas');
     const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null; // pg-aware restore, see test 1
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       const uidA = await grantHiltToDev(page);
       const uidB = await grantHiltToDev(page);
 
@@ -183,7 +183,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       // Both rows placed (sequential two-phase claims through the same
       // handleClaim path) + finalized off the warehouse by the auto-save.
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const allPos = canvas.inv.pages.flatMap((p: any) => p.pos);
       expect(allPos.find((p: any) => p.uid === uidA)).toBeTruthy();
@@ -194,7 +194,7 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidA}"]`)).toHaveCount(0, { timeout: 10000 });
       await expect(page.locator(`[data-testid="schedule-warehouse-row"][data-item-uid="${uidB}"]`)).toHaveCount(0, { timeout: 10000 });
     } finally {
-      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+      if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
       if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
@@ -203,10 +203,10 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
   test('REQ-0091: claim press flashes the row + chime, blocks a rapid second press, and fades the flash out once the (real, delayed) response returns', async ({ page }) => {
     const devProfileExisted = existsSync(DEV_PROFILE_PATH);
     const devProfileBackup = devProfileExisted ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
-    const origCanvasResp = await page.request.get('/api/profile/dev/canvas');
+    const origCanvasResp = await page.request.get('/api/profile/default/canvas');
     const origCanvas = origCanvasResp.ok() ? (await origCanvasResp.json()).canvas : null; // pg-aware restore, see test 1
     try {
-      await page.request.put('/api/profile/dev/canvas', { data: fixture });
+      await page.request.put('/api/profile/default/canvas', { data: fixture });
       const grantUid = await grantHiltToDev(page);
 
       // Delay (never fabricate) the REAL claim response so this test has
@@ -311,12 +311,12 @@ test.describe('REQ-0072: warehouse claim + claim-all on the MJOLNIR chrome (real
       // normally (same finalization path the test above verifies).
       await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toBeVisible({ timeout: 10000 });
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const placed = canvas.inv.pages.flatMap((p: any) => p.pos).find((p: any) => p.uid === grantUid);
       expect(placed).toBeTruthy();
     } finally {
-      if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+      if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
       if (devProfileExisted && devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
       else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     }
@@ -334,8 +334,8 @@ test.describe('REQ-0072: staged capacity + decay presentation states (mocked war
   // behind for the NEXT spec to trip over (see the grant describe's
   // pg-aware-restore comment). Only a profile-less box gets the fixture.
   test.beforeEach(async ({ page }) => {
-    const existing = await page.request.get('/api/profile/dev/canvas');
-    if (!existing.ok()) await page.request.put('/api/profile/dev/canvas', { data: fixture });
+    const existing = await page.request.get('/api/profile/default/canvas');
+    if (!existing.ok()) await page.request.put('/api/profile/default/canvas', { data: fixture });
   });
 
   // Fabricated ApiWarehouseItem rows with REAL content ids so the
