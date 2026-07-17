@@ -241,3 +241,6 @@ PASS/adopted; the contentadmin pack board resolves every batch-007 member footpr
 
 ### Out of scope (unchanged)
 Dungeon wiring, engine changes, art generation/adoption, batch-002 re-composition (REQ-0206).
+
+## Deploy record (2026-07-18, orchestrator)
+Merged to master clean. promoteAdditive -> live (enemies 44, skills 81, packs 14; prior batches byte-preserved). First backfill run was cut by an ssh timeout mid-insert (monster_def done, skills/packs partial); the idempotent re-run completed the missing rows, then FATALed on one dup create (harmless -- final counts verified complete: 44/44, 81/81, 14/14, all PASS/adopted). artwork_ref PATCHed post-backfill x4: cockatrice, goblin, goblin_shaman, ogre -> monsters-003-flux2:*. Worktree CI GREEN was the gate record; master CI deferred (parallel session holds an in-flight client rebuild in the main checkout working tree). Awaiting S7.
