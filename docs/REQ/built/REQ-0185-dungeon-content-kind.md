@@ -155,6 +155,88 @@ the DungeonDossier renders (D3).
 - Loot theming per dungeon (initial defs reuse the frost reward vocabulary so every roll resolves;
   per-theme loot tables are a content follow-up).
 
-## Gates / Decisions / Hashes
+## Gates / Decisions / Hashes (results, 2026-07-17)
 
-(filled in at built time — see below)
+**Schema shape (final).** `dungeon/1` = `{id, name, i18n{en,ja}, theme, levelMin, levelMax,
+dive:{packEncounters:{base,perLevels,max}, gimicSlots:{base,perLevels,max}}, packPool[{packId,
+weight}], bossPool[{packId,weight}], gimicPool[{gimic,weight}], rewards?, note}`. The def inlines
+NOTHING; every pool row is a reference resolved against the live monster_pack + gimic rosters.
+
+**Authored def ids.** `niflheim_depths` (frost, Lv1-8), `grave_hollows` (grave, Lv4-14),
+`beastreach_wilds` (wild, Lv8-20). Fixture def `test_dungeon` for the api harness.
+
+**Five open questions — ratified as committed above (unchanged at build):** (1) weighted, WITH
+replacement, per pool (`pickWeighted`, no not-the-last-N memory); (2) forecast rolls the SAME
+`rollDungeon` over a seed ladder -> parity by construction; (3) sealed seeds pin `dungeonId` (def)
++ `genSeed` (roll seed); (4) level scales only the COUNTS, monotone (`clamp(base+floor((lvl-
+levelMin)/perLevels), floor, max)`), enemy strength unchanged; (5) `test_fixed` / `dungeon.json` /
+the 12 replay goldens kept UNTOUCHED as the offline determinism anchor — frost gameplay reproduced
+as the authored `niflheim_depths` on the serving path.
+
+**Commit hashes (stacked on req-0211 tip 68a684d):**
+- `a2b5615` — dungeon/1 content kind: roller + validator + authored defs + registry integration
+- `278e890` — serving repoint (core/rooms/runs/seals/forecast/lib-content/public)
+- `6bf9ed1` — tests + gates (roller test wired into ci.sh; api/dialect/backfill updates)
+- `99131c2` — client wiring + contentadmin + DTO + web build
+
+**DB-free gates GREEN** — `SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh`, HOME->worktree (the
+REQ-0184 os.homedir() convention): sim 117 · goldens 12 (UNMOVED — `replay_hashes.json` byte-
+identical) · **dungeon roller 5 (NEW)** · S4 14 · forecast parity 18 · req0203 15 · req0207 13 ·
+unit-charge 13+19 · mock 119 · **server tsc clean** · api (files) **187** (incl. 4 new REQ-0185
+schedule tests + the two REQ-0043 reproducibility tests re-keyed from `dungen.generate` to
+`rollDungeon`, + the restored absent-dungeonId 400) · dialect **51** (incl. 8 new dungeon/1) ·
+backfill_content_registry **11** (corpus reconciles with the +dungeon source) · every other DB-free
+gate green.
+
+**Client GREEN** — `pnpm lint` 0 errors (46 pre-existing warnings, none in REQ-0185 files);
+`pnpm build` (tsc -b + vite) OK; web/app bundle committed.
+
+**NOT run (deploy steps, per REQ-0184/0208/0211 precedent):** the PG-backend api pass, the live
+migration 022 (`content_kind += dungeon`, applied via supabase-db as postgres) and live backfill
+(`dungeon` = 3, adopted). These close on the batch deploy.
+
+**e2e — touched surface (schedule / forecast / schedule-mjolnir).** The dungeon-domain overlay in
+`tools/e2e_fleet.cjs` already replaces the whole worktree `content/live/dungeon`, so `dungeons.json`
+is served (documented). First run (E2E_PARALLEL=4): forecast overlay ALL green; 27 passed / 10
+failed. Every failure is a `.schedule-page` / create-panel VISIBILITY TIMEOUT (element-not-found at
+the default 5s), clustered on tests that render the create form, on a box saturated by ~8
+concurrent worktree e2e runs (multi-agent load). NOT value-assertion failures. A LOCK-FREE
+standalone reproduction (worktree `server/api.cjs` + `client/e2e/local-proxy.cjs` on private ports)
+renders `.schedule-page` + the authored DEF `<select>` + the level-band note with ZERO page errors,
+AND drives the full flow: select `niflheim_depths` -> submit -> room persisted with
+`dungeonId=niflheim_depths` level 3. This proves the failures are environmental (box contention),
+not a code defect. A serial re-run of the failed subset is queued behind the shared box lock.
+
+## Downstream notes (sortie-UI #4/#5, monitor #7)
+
+- **API (`GET /api/schedule/dungeons`).** `dungeons[]` entries now carry `theme`, `levelMin`,
+  `levelMax`, and `encounterSummary:{packs, gimics:{trap,chest,door}, bossPackId, lootPreview[<=5]}`.
+  The retired generator `types` list is GONE. Dungeon def ids join the `art_urls` name set
+  (custom art kind @1024x576) — resolve key art by def id, same exact-name convention as monster/gimic.
+- **Room / forecast keys.** A room stores `dungeonId` (an authored def id); `dungeonType` is
+  vestigial (copied on seals for the old ApiSeal* shape, never read on the serving path).
+  `GET /api/schedule/forecast?dungeonId=&level=` — accepts `dungeonId` (legacy `dungeonType` still
+  honored), payload carries both `dungeonId` and (back-compat) `dungeonType`=def id.
+- **Roller / pacing seams.** `sim/dungeon_roll.cjs :: rollDungeon(def, level, seed, {gimicDefsById})`
+  is the ONE roller shared by `runs.startRun` and `lib/forecast` — the monitor/pacing task must roll
+  through it (never re-derive a composition) to keep the parity contract. `diveSummary(def, {...})`
+  is the authored "scout" preview the dossier renders. Encounter shape is unchanged from
+  `sim/dungen.cjs` (`enemyPack:{packId}` + REQ-0049 attachments), so `combat.runDungeon` /
+  `sim/lib/{dungeon,encounter}.cjs` consume it verbatim; per-encounter `deadline_secs` (pack 90 /
+  boss 180) are the roller-emitted pacing knobs.
+
+## Deviations from the saved-state description
+
+- The predecessor's claim "roller determinism goldens added" was NOT actually present; added as a
+  dedicated `sim/tests/dungeon_roll_test.cjs` (wired into ci.sh [2.65]) — additive, the 12 replay
+  goldens stayed byte-identical.
+- Three pre-existing tests the predecessor left broken were fixed: `schedule_ops.cjs` two REQ-0043
+  reproducibility tests still compared against `dungen.generate` (re-keyed to `rollDungeon`); the
+  "absent dungeonId is 400" contract was being defeated by a single-def fallback in
+  `rooms.resolveDungeonDefId` (fallback removed — dungeonId is required on create, matching the
+  original contract and the existing test).
+- `server/tests/backfill_content_registry_test.cjs` expectations were not updated for the new
+  dungeon source; updated (kind map, per-file + reconciliation counts).
+- Client: also updated `SchedulePage.tsx` (dropped the `types`-based dungeonType name join) and
+  `ForecastPanel.tsx` (the overlay's dungeon dropdown now lists authored defs) and
+  `client/e2e/schedule.spec.ts` — consumers of the retired `types` the checklist did not enumerate.
