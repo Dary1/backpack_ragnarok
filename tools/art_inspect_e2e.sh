@@ -44,9 +44,15 @@ trap cleanup EXIT
 
 echo "[art_inspect_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
+# REQ-0233: the family barrier restarts comfyui.service -- a LIVE, box-global
+# systemd unit this hermetic harness has no business touching (REQ-0217: an e2e
+# run never touches live services). Everything else here is already isolated
+# (TMPHOME namespace, mock art route, temp model/export dirs); the barrier is the
+# one thing that reached out. Off via the seam the REQ ships for exactly this.
 HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" ALLOW_DEV_CLEAR=1 \
   ART_ROUTE_MOCK=1 ART_MODEL_DIR="$MODELDIR" ART_EXPORT_ROOT="$EXPORTDIR" \
   ART_JOB_PYTHON="$VENV_PY" ART_KIT_PYTHON="$VENV_PY" ART_KIT_MATTE_METHOD=borderkey \
+  ART_FAMILY_BARRIER=0 \
   node "$WT/server/api.cjs" > /tmp/req0152_e2e_api.log 2>&1 &
 PIDS+=($!)
 
