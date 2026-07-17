@@ -75,9 +75,12 @@ merged code cannot deliver it:
   start their services WITHOUT `setsid`, so a service is not a process-group
   leader, and cleanup runs `kill "$p"` -- the recorded pid ONLY. Any child a
   service spawned is orphaned, survives, and keeps holding the decade.
-- The same harnesses trap EXIT only. Bash does not run an EXIT trap when the
-  shell dies on an uncaught fatal signal, so a SIGTERMed harness -- the exact
-  abort the gate names -- runs no cleanup at all and leaks everything.
+- (Written at reopen time, and WRONG -- corrected below by measurement: "the
+  harnesses trap EXIT only, and bash runs no EXIT trap when the shell dies on
+  an uncaught fatal signal, so a SIGTERMed harness runs no cleanup at all."
+  Bash DOES run the EXIT trap on an untrapped SIGTERM, promptly. Kept here,
+  struck through rather than deleted, because it is the premise the archived
+  branch was built on and it drove a wrong first patch.)
 - `tools/e2e_fleet.cjs:78` `killManifest()` calls `process.kill(w.pid, ...)`
   even though workers are spawned `detached: true` (line 104). The group
   exists; the code just does not use it. Same orphan class.
@@ -87,8 +90,10 @@ concrete harm REQ-0236 documents: a dead session's leftover run held the 156x
 decade ~30 min per attempt and blocked the REQ-0234 gate run until a human
 killed it by hand.
 
-**Where the fix is.** The retired branch `req-0231-ci-cross-session-hygiene`
-(archived, tip 90ce737) implemented all three, with the abort gate measured:
+**Where the fix is.** The archived branch `req-0231-ci-cross-session-hygiene`
+(tip 90ce737) implemented the setsid/group-kill half correctly, and added
+signal traps that measurement later showed to be harmful (see below). Its
+abort gate was measured as:
 SIGTERM to an in-flight art_inspect harness freed all three ports and left no
 api/static/proxy orphans, while other sessions' listeners were untouched. That
 branch was a parallel implementation of this REQ that never merged; the
@@ -104,3 +109,99 @@ INT/TERM traps that let the EXIT trap run.
 
 **Scope of the reopen.** Gate 2's orphan half, nothing else. The CI queue lock
 is merged, live, and untouched here.
+
+
+---
+
+## Implementation (2026-07-18, branch req-0231-abort-orphan-hygiene)
+
+Ported onto master's CURRENT harness shape (not cherry-picked: the archived
+branch predates REQ-0234 F7 and would have regressed it).
+
+- `a6da977` -- setsid + group-scoped kill in all FOUR harnesses (artadmin,
+  art_inspect, content_admin, registry_first) and group kill in
+  `e2e_fleet.cjs` killManifest. registry_first_e2e.sh is included even though
+  the archived branch never touched it: REQ-0234 added that harness later, so
+  it carried the same defect and nothing had fixed it. This commit ALSO
+  carried the archived branch's INT/TERM traps -- a mistake, corrected next.
+- `889f025` -- removes those traps and reaps the playwright group instead.
+
+### The traps were wrong, and the gate is what caught it
+
+The archived branch's stated rationale ("bash runs no EXIT trap on a fatal
+signal") is false on this box. Measured directly, 2026-07-18:
+
+| shape | cleanup on SIGTERM during a foreground command |
+|---|---|
+| `trap cleanup EXIT` only (master today) | RUNS, shell dies promptly |
+| + `trap 'exit 143' TERM` (archived branch, a6da977) | DEFERRED until the foreground command returns |
+| + backgrounded child and `wait` | RUNS promptly (`wait` is interruptible) |
+
+A TERM trap is not merely redundant, it is HARMFUL: bash will not run a trap
+while a foreground command is executing, so the SIGTERMed harness ran its
+whole spec suite to completion -- holding the decade the entire time -- and
+cleaned up only afterwards. The traps are removed, and a comment in each
+harness records why, so the next reader does not re-add them.
+
+### What actually leaked
+
+Not the services: api/proxy are recorded in PIDS and always died. The orphan
+was a **playwright worker** -- a grandchild that no PIDS entry covered. So the
+run is now setsid'd into its own group, recorded, and waited on; the group
+kill reaps the whole tree. `wait` propagates the real exit status (ci.sh
+depends on it), and registry_first keeps its REQ-0221 SKIP check by
+redirecting to a file in TMPROOT instead of `$(...)`, which yielded no pid.
+
+## Gate evidence (2026-07-18)
+
+**Gate 2 -- "a harness abort leaves no orphans and kills nothing outside its
+group."** Controlled A/B, same probe, same art_inspect harness, same
+1520-1522 decade, SIGTERM in flight:
+
+| harness code | decade ports left | orphans left | stopped promptly |
+|---|---|---|---|
+| control = master as merged (bc6c012) | 0 | **1** (playwright worker) | yes |
+| a6da977 (with traps) | **2** | **4** | **no** -- ran all 30s of specs first |
+| 889f025 (this branch) | **0** | **0** | yes -- killed mid-test |
+
+`setsid` confirmed live: control api `pid=2590298 pgid=2590036` (pid != pgid,
+no group of its own); patched api `pid=2611191 pgid=2611191`. Foreign
+listeners (8188 ComfyUI, 8801 backpack-web, 8802 backpack-api) INTACT across
+all three runs -- nothing outside a recorded group was ever signalled.
+
+**No regression from foreground -> background+wait.** All four harnesses run
+green and leave nothing behind; counts match REQ-0234's recorded baseline:
+
+| harness | result | leftovers |
+|---|---|---|
+| registry_first_e2e | RC=0, 4 passed, no skip (REQ-0221 check holds) | ports 0, procs 0 |
+| artadmin_e2e | RC=0, 7 passed | ports 0, procs 0 |
+| content_admin_e2e | RC=0, 28 passed | ports 0, procs 0 |
+| art_inspect_e2e | RC=0, 1 passed (x2) | ports 0, procs 0 |
+
+Exit-status propagation verified in BOTH directions -- the real risk of the
+`wait` change: a failing run returned RC=1, passing runs RC=0.
+
+- `tools/check_e2e_ports.cjs` [0/8]: green (4 harnesses, all derived, no
+  collisions). The decade rule is untouched by this REQ; only kill scope and
+  signal handling changed.
+- One flake seen: an art_inspect run failed on `page.reload: Timeout 20000ms`
+  immediately after the abort probes, then passed 2/2 on reruns; the control
+  passed under HIGHER load (4.75). Navigation timeout is unrelated to process
+  groups and matches the known load-flake class (REQ-0222/0230). Recorded, not
+  hidden.
+
+**Gate 1** ("two ci.sh runs serialise") is untouched: this branch does not
+modify `tools/ci.sh`. It was met by the merged implementation and remains so.
+
+## Not done here
+
+- Full `ci.sh` x2 has NOT been re-run on this branch. The four harnesses it
+  chains are each green above and ci.sh itself is unmodified, but the whole-CI
+  run is the honest remaining check before merge.
+- SIGKILL is uncatchable: neither the merged code nor this branch can clean up
+  after `kill -9` (the 2026-07-17 incident was exit 137). Group-scoping shrinks
+  the blast radius but does not close that; a reaper would be a separate REQ.
+- The decade-contention gap this REQ's addendum recorded is now REQ-0242
+  (draft): harnesses still bind their ports BEFORE taking their lock, so two
+  sessions on one harness collide instead of queueing.
