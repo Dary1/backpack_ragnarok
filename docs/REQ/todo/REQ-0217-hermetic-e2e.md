@@ -64,3 +64,30 @@ Root causes, each closed here:
 ## Log
 - 2026-07-17 reserved as REQ-0217 (baace00) on branch req-0217-hermetic-e2e
   (stacked on req-0214-e2e-profile-isolation), ratified straight to todo.
+
+## Implementation notes (2026-07-17)
+- Additional live couplings found and closed during verification:
+  (1) routes/admin.cjs grant endpoints used the token-only resolveAuth ->
+  grants ignored the e2e redirect (fixed: resolveAuthFromRequest);
+  (2) /preview/* static (schedule spec) now served from the worktree;
+  (3) specs hardcoded /api/profile/dev/ (80x, 6 files) -> default alias,
+  dev.json file refs -> e2e_ci.json; fixtures seed an e2e_ci profile.
+- Cross-session hygiene (multiple agents run e2e concurrently on this box):
+  SCOPED runs -- E2E_FLEET_ROOT + REQ-decade proxy/fleet ports make a run
+  share nothing box-global; such runs skip the box-lock probe;
+  reuseExistingServer=false so a run never adopts a foreign proxy.
+- OLD-HARNESS FREEZE (user directive): a daemon holds the e2e box lock
+  indefinitely (~/.cache/backpack/E2E_FREEZE_README.txt), so pre-0217 runs
+  (wrapper or direct) cannot start and cannot touch live state. Lift after
+  sessions rebase onto the merged harness.
+
+## Gate results (2026-07-17)
+- Full main suite, scoped hermetic run (fleet root /tmp/bp_e2e_workers_0217,
+  ports 2172/2174-2177, NO DATABASE_URL): 187 passed / 1 skipped / 0 failed.
+- Live invariants: zero pg writes in the run window (main-ns max updated_at
+  07:07, dev row 07:06 -- both PREDATE the 07:59-08:03 run; the 626-row
+  count unchanged); the only post-freeze live-file mtime bump was a
+  byte-identical straggler restore from a killed old run (git diff empty).
+- e2e_profile_redirect_test 9/9; api_test (files) green post-changes.
+- Earlier failures were cross-session contention artifacts (老ハーネス runs
+  killing the shared fleet/proxy), eliminated by scoping + the freeze.
