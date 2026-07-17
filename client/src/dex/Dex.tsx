@@ -56,6 +56,8 @@ import { useDexCard } from './DexCardWindow'; // REQ-0052
 import { dexNoOf } from './dexNo';
 import { iconDims, resolveIconUrl } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
+import { MonsterCatalog } from './MonsterCatalog'; // REQ-0208
+import { UnitCatalog } from './UnitCatalog'; // REQ-0208
 
 export interface DexEntry {
   id: string;
@@ -141,7 +143,20 @@ interface DexProps {
   dexFocusId?: string | null;
 }
 
-const RESERVED_TABS: TranslationKey[] = ['dex.tabSocketItems', 'dex.tabBps', 'dex.tabSearchSquads'];
+// REQ-0208: the Dex tab row is REAL now -- Items / Units / Monsters. The
+// former RESERVED_TABS (Socket Items / BPs / Search Squads) are gone: SIs
+// merged into the Items grid long ago (REQ-0038), a BP catalog cannot exist
+// (a BP's shape is per-instance, rolled at Workshop emission -- REQ-0170 --
+// so the "BPs" tab concept is obsolete), and Search Squads never grew a
+// design. The Items tab keeps its exact REQ-0120 master/detail behavior and
+// every E2E-load-bearing selector; Units/Monsters render self-contained
+// catalogs (UnitCatalog.tsx / MonsterCatalog.tsx).
+type DexTab = 'items' | 'units' | 'monsters';
+const DEX_TABS: Array<{ id: DexTab; label: TranslationKey }> = [
+  { id: 'items', label: 'dex.tabItems' },
+  { id: 'units', label: 'dex.tabUnits' },
+  { id: 'monsters', label: 'dex.tabMonsters' },
+];
 
 export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const [query, setQuery] = useState('');
@@ -155,6 +170,12 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   // with the active filter.
   const [selectedId, setSelectedId] = useState<string | null>(() => combineEntries(payload)[0]?.id ?? null);
   const { openCard } = useDexCard(); // REQ-0052
+  // REQ-0208: active catalog tab + one-shot deep-link focus for the
+  // non-item tabs (consumed by the catalog, then cleared -- the same
+  // "consume once" convention dexFocusId itself follows).
+  const [tab, setTab] = useState<DexTab>('items');
+  const [unitFocusId, setUnitFocusId] = useState<string | null>(null);
+  const [monsterFocusId, setMonsterFocusId] = useState<string | null>(null);
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
 
@@ -169,10 +190,18 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   useEffect(() => {
     if (!dexFocusId) return;
     if (entries.some((en) => en.id === dexFocusId)) {
+      setTab('items');
       setSelectedId(dexFocusId);
+    } else if ((payload.units ?? {})[dexFocusId]) {
+      // REQ-0208: deep links resolve across all three kinds (tab auto-switch).
+      setTab('units');
+      setUnitFocusId(dexFocusId);
+    } else if ((payload.monsters ?? {})[dexFocusId]) {
+      setTab('monsters');
+      setMonsterFocusId(dexFocusId);
     }
     clearDexFocusId();
-  }, [dexFocusId, entries]);
+  }, [dexFocusId, entries, payload]);
   const tms = useMemo(() => tmEntries(payload), [payload]); // REQ-0042
 
   // REQ-0075: honest 1-based dex numbering for the mock's No. chips,
@@ -235,7 +264,10 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   // "collected" honestly means the catalog's own size (every real entry
   // is a page). Total = PO+SI+TM; count = same, i.e. 100% -- the bar is a
   // truthful "the codex is complete" strip, not a fabricated 57%.
-  const totalPages = entries.length + tms.length;
+  // REQ-0208: units + monsters joined the codex, so the strip counts their
+  // pages too (same "every real entry is a page" honesty as above).
+  const totalPages =
+    entries.length + tms.length + Object.keys(payload.units ?? {}).length + Object.keys(payload.monsters ?? {}).length;
   const collectedPages = totalPages; // no discovery gating exists (documented)
   const progressPct = totalPages > 0 ? (collectedPages / totalPages) * 100 : 0;
 
@@ -284,30 +316,49 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
         <div className="dex-strip-note t-micro">{t(locale, 'dex.stripNote')}</div>
       </section>
 
-      {/* Tab row kept (its text is E2E-load-bearing: dex-admin.spec asserts
-          the active "Items"/"アイテム" tab flips with the locale). Now
-          styled as theme chips to match the mock's chip row. */}
+      {/* REQ-0208: REAL tab row (see DEX_TABS' doc). The active tab keeps the
+          E2E-load-bearing .dex-tab-active class, and Items stays the default
+          (dex-admin.spec asserts the active "Items"/"アイテム" text flips
+          with the locale). */}
       <div className="dex-tab-row" role="tablist">
-        <button type="button" className="chip is-on dex-tab dex-tab-active" role="tab" aria-selected="true">
-          {t(locale, 'dex.tabItems')}
-        </button>
-        {RESERVED_TABS.map((key) => (
+        {DEX_TABS.map((tb) => (
           <button
-            key={key}
+            key={tb.id}
             type="button"
-            className="chip dex-tab is-locked"
+            className={`chip dex-tab${tab === tb.id ? ' is-on dex-tab-active' : ''}`}
             role="tab"
-            aria-selected="false"
-            disabled
-            title={t(locale, 'dex.reservedTitle')}
+            aria-selected={tab === tb.id}
+            onClick={() => setTab(tb.id)}
           >
-            {t(locale, key)}
+            {t(locale, tb.label)}
           </button>
         ))}
       </div>
 
+      {/* REQ-0208: Units / Monsters tabs -- self-contained catalogs sharing
+          the same master/detail anatomy (see their module comments). */}
+      {tab === 'units' ? (
+        <UnitCatalog
+          locale={locale}
+          units={payload.units ?? {}}
+          connShapes={payload.connection_shapes ?? {}}
+          focusId={unitFocusId}
+          onFocusConsumed={() => setUnitFocusId(null)}
+        />
+      ) : null}
+      {tab === 'monsters' ? (
+        <MonsterCatalog
+          locale={locale}
+          monsters={payload.monsters ?? {}}
+          skillNames={payload.monster_skills ?? {}}
+          focusId={monsterFocusId}
+          onFocusConsumed={() => setMonsterFocusId(null)}
+        />
+      ) : null}
       {/* REQ-0120: master/detail split container. Orientation-driven in
-          index.css: landscape = [list | detail], portrait = [detail / list]. */}
+          index.css: landscape = [list | detail], portrait = [detail / list].
+          REQ-0208: mounted only on the (default) Items tab. */}
+      {tab === 'items' ? (
       <div className="dex-md">
         <div className="dex-md-list">
           {/* Catalog section head (mock .colhead). */}
@@ -500,6 +551,7 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
           )}
         </div>
       </div>
+      ) : null}
     </div>
   );
 }

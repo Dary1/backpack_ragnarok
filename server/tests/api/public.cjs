@@ -37,6 +37,25 @@ T('api: GET /api/content shape has items/sis/trees/scenario, item count matches 
   assert.deepStrictEqual(parsed.trees.po, { Weapon: null, WeaponPart: 'Weapon', Metal: null });
 });
 
+T('api: GET /api/content serves monsters + monster_skills from the authority path (REQ-0208)', () => {
+  const req = mockReq('GET', '/api/content');
+  const res = mockRes();
+  api.handle(req, res);
+  assert.strictEqual(res.statusCode, 200);
+  const parsed = JSON.parse(res.body);
+  assert.ok(parsed.monsters, 'monsters section present');
+  const slime = parsed.monsters.weak_slime;
+  assert.ok(slime, 'fixture monster weak_slime served');
+  assert.deepStrictEqual(slime.hp, [1, 1], 'hp band served verbatim');
+  assert.deepStrictEqual(slime.footprint, [1, 1], 'footprint served verbatim');
+  assert.deepStrictEqual(slime.skills, ['slime_bite'], 'skill ids served verbatim');
+  // monster_skills: LIMITED to skills referenced by served monsters, reshaped
+  // {name, name_ja} off core's skillNamesById display-name sibling map.
+  assert.ok(parsed.monster_skills, 'monster_skills section present');
+  assert.ok(parsed.monster_skills.slime_bite, 'referenced skill has a name entry');
+  assert.strictEqual(parsed.monster_skills.slime_bite.name, 'Slime Bite');
+});
+
 T('api: GET /api/content renders eff_en/eff_ja server-side, matching tools/eff_render.cjs output (REQ-0024 gap closure)', () => {
   const { render } = require('../../../tools/eff_render.cjs');
   const req = mockReq('GET', '/api/content');

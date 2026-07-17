@@ -798,3 +798,30 @@
   gap: 10px;
   margin: 6px 0 0;
 }
+
+/* ==== REQ-0208: Units / Monsters catalog tabs (later-wins append, same
+   convention as the REQ-0075/0194 sections above). The catalogs reuse the
+   dcard/dex-md anatomy wholesale; only the portrait wells and the two new
+   detail sections need rules of their own. ==== */
+
+/* Portrait well: rune placeholder underneath, adopted render covering it
+   when one loads. Card-size well matches the .dthumb icon well; the -lg
+   variant is the detail pane's plate. */
+.dex-portrait-well{ position:relative; display:flex; align-items:center; justify-content:center; width:88px; height:88px; }
+.dex-portrait-well .dex-art-fallback{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:34px; opacity:.35; }
+.dex-portrait-img{ position:relative; max-width:100%; max-height:100%; object-fit:contain; }
+.dex-portrait-well-lg{ width:200px; height:200px; margin:0 auto; }
+.dex-portrait-well-lg .dex-art-fallback{ font-size:72px; }
+
+/* Unit detail: the schema slot's rolled-at-emission note + connection row. */
+.dex-detail-col-portrait{ padding:6px 0 2px; }
+.dex-unit-shape-note{ margin-top:8px; text-align:center; opacity:.75; }
+.dex-unit-connrow{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:6px 0 10px; }
+.dex-unit-flavor{ margin:8px 0 0; font-style:italic; opacity:.9; }
+
+/* Monster detail: stat rows + skill chips. */
+.dex-monster-stats{ margin:6px 0 10px; display:grid; grid-template-columns:auto 1fr; gap:4px 14px; }
+.dex-monster-stats .dex-monster-statrow{ display:contents; }
+.dex-monster-stats dt{ opacity:.75; }
+.dex-monster-stats dd{ margin:0; }
+.dex-monster-skills{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }

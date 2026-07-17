@@ -29,6 +29,7 @@ import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
 import { unitArtUrl } from '../board/unitIcon';
+import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
 import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
 import { BpDiagram } from '../dex/BpDiagram';
@@ -78,8 +79,6 @@ function packName(pack: { name?: string; i18n?: { ja?: { name?: string } } } | u
   return pack.name ?? fallback;
 }
 
-const COMPASS_LABELS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'] as const;
-
 /** Sums qty across every same-id 'lrdst' TM stack, across EVERY
  * inventory page (a display-only balance -- the actual spend at roll
  * time is page-scoped, per engine.js's spendTM design; showing a
@@ -110,28 +109,10 @@ function unitCoordLabel(off: [number, number]): string {
   return col + row;
 }
 
-/** Turns a connection shape's ray dirs (0=N..7=NW, the project compass) into a
- * human-facing string. An offset shape has no dirs and reads '—' -- it jumps, it
- * does not fire along a compass line. */
-function dirsLabel(shape: ApiConnShape | undefined): string {
-  if (!shape || shape.kind !== 'ray' || !shape.dirs || !shape.dirs.length) return '—';
-  return shape.dirs.map((d) => COMPASS_LABELS[d] ?? '?').join(' ・ ');
-}
-
-/** The connection shape, named the way the vocabulary names it (ja label when the
- * player is reading Japanese -- 飛車 / 角 / 香 are the terms the design uses), with
- * the range/pierce facts that actually govern the walk appended. Invents nothing:
- * every part is read off vocab.json's connection_shapes entry. */
-function shapeLabel(key: string | undefined, shape: ApiConnShape | undefined, locale: Locale): string {
-  if (!key || !shape) return '—';
-  const base = locale === 'ja' && shape.ja ? shape.ja : key;
-  if (shape.kind === 'none') return base + ' (' + t(locale, 'workshop.shapeNone') + ')';
-  if (shape.kind === 'offset') return base + ' (' + t(locale, 'workshop.shapeOffset', { n: (shape.offsets ?? []).length }) + ')';
-  const range = (shape.range === 0 || shape.range == null)
-    ? t(locale, 'workshop.shapeRangeUnlimited')
-    : t(locale, 'workshop.shapeRange', { n: shape.range });
-  return base + ' (' + range + ')';
-}
+// REQ-0208: dirsLabel/shapeLabel (and their COMPASS_LABELS table) moved to
+// lib/connShapeLabel.ts VERBATIM -- the Dex unit catalog now labels
+// connections too, so the formatter lives in one shared module instead of
+// growing a drift-prone copy.
 
 /** The unit's display name in the player's locale -- i18n.ja.name when reading
  * Japanese, the def's `name` otherwise. Same localized() convention the item panel
