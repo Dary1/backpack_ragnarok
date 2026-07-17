@@ -102,6 +102,16 @@ function createEncounterChargeManager(opts) {
       // item cooldown / firing machinery (needs the encounter heap + schedulable).
       case 'advance_cooldown': if (realOps.advanceCooldown) realOps.advanceCooldown(targetId, rec.amount, t); break;
       case 'fire_items': if (realOps.fireItems) realOps.fireItems(targetId, rec.tag, t); break;
+      // REQ-0212: charge_strike -- a REAL single strike ray from the host BP into the enemy side,
+      // for the pre-resolved n x stacks_spent total; plus a dedicated event carrying the amount.
+      case 'charge_strike':
+        if (realOps.strikeFromBp) realOps.strikeFromBp(targetId, rec.amount, 1, t);
+        events.push({ t, seq: heap.nextSeq(), ev: 'unit_charge_strike', src: targetId, amount: rec.amount, stacks_spent: rec.stacksSpent });
+        break;
+      // REQ-0212: transfer_status -- move up to n negative statuses from this BP onto the enemy squad.
+      case 'transfer_status': if (realOps.transferStatus) realOps.transferStatus(targetId, rec.n, t); break;
+      // REQ-0212: shield_break -- strip up to n flat block from the enemy squad's active block pool.
+      case 'shield_break': if (realOps.breakShield) realOps.breakShield(targetId, rec.n, t); break;
       default: break;
     }
   }

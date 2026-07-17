@@ -128,6 +128,8 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/artwork_test.cjs
   echo "==== [5.15/7] artwork queue/cancel + list aggregates (pg backend, REQ-0156) ===="
   STORAGE_BACKEND=pg node server/tests/artqueue_test.cjs
+  echo "==== [5.16/7] art queue family scheduling: gen/matte grouping + barrier (pg backend, REQ-0233) ===="
+  ART_KIT_PYTHON="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}" STORAGE_BACKEND=pg node server/tests/artfamily_test.cjs
   echo "==== [5.2/7] inspection kits (pg backend, REQ-0152 G1/G2 + auto-run) ===="
   ART_KIT_PYTHON="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}" STORAGE_BACKEND=pg node server/tests/inspection_test.cjs
   echo "==== [5.3/7] content-data registry tests (pg backend, REQ-0155 G1/G2/G3 + flow) ===="

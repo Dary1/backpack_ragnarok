@@ -116,6 +116,12 @@ function verbPhraseEN(verb) {
         (verb.dur_s !== undefined ? ' for ' + fmtNum(verb.dur_s, 'en') + 's' : '');
     case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
       return 'heal a wounded ally ' + fmtNum(verb.n, 'en');
+    case 'charge_strike': // REQ-0212 (AGENT-DEFINED unit charge effect)
+      return 'strike for ' + fmtNum(verb.n, 'en') + ' x stacks spent';
+    case 'transfer_status': // REQ-0212 (AGENT-DEFINED)
+      return 'transfer up to ' + fmtNum(verb.n, 'en') + ' negative statuses to the enemy';
+    case 'shield_break': // REQ-0212 (AGENT-DEFINED)
+      return 'break ' + fmtNum(verb.n, 'en') + ' enemy block';
     default: return verb.t;
   }
 }
@@ -242,6 +248,12 @@ function verbPhraseJA(verb) {
         (verb.dur_s !== undefined ? '（' + fmtNum(verb.dur_s, 'ja') + '秒）' : '') + '付与';
     case 'heal_ally': // REQ-0203: enemy support -- heal a wounded pack ally
       return '負傷した味方を ' + fmtNum(verb.n, 'ja') + ' 回復';
+    case 'charge_strike': // REQ-0212 (AGENT-DEFINED unit charge effect)
+      return fmtNum(verb.n, 'ja') + ' × 消費スタック ダメージ';
+    case 'transfer_status': // REQ-0212 (AGENT-DEFINED)
+      return '負の状態異常を最大 ' + fmtNum(verb.n, 'ja') + ' 個 敵に移送';
+    case 'shield_break': // REQ-0212 (AGENT-DEFINED)
+      return '敵のブロックを ' + fmtNum(verb.n, 'ja') + ' 破壊';
     default: return verb.t;
   }
 }
@@ -373,6 +385,9 @@ function chargeEffectPhraseEN(v) {
     case 'grant_lifesteal': return 'grant ' + pctOf(v, 'en') + ' lifesteal' + (v.dur_s !== undefined ? ' for ' + fmtAny(v.dur_s, 'en') + 's' : '');
     case 'advance_cooldown': return 'advance cooldown by ' + fmtAny(v.n, 'en');
     case 'fire_items': return 'fire ' + (v.tag ? v.tag + ' ' : '') + 'items';
+    case 'charge_strike': return 'strike for ' + fmtAny(v.n, 'en') + ' × stacks spent';
+    case 'transfer_status': return 'transfer up to ' + fmtAny(v.n, 'en') + ' negative statuses to the enemy';
+    case 'shield_break': return 'break ' + fmtAny(v.n, 'en') + ' enemy block';
     default: return v.t;
   }
 }
@@ -399,6 +414,9 @@ function chargeEffectPhraseJA(v) {
     case 'grant_lifesteal': return 'ライフスティール ' + pctOf(v, 'ja') + (v.dur_s !== undefined ? '（' + fmtAny(v.dur_s, 'ja') + '秒）' : '') + ' 付与';
     case 'advance_cooldown': return 'クールダウンを ' + fmtAny(v.n, 'ja') + ' 進める';
     case 'fire_items': return (v.tag ? v.tag + ' ' : '') + 'アイテムを即時発動';
+    case 'charge_strike': return fmtAny(v.n, 'ja') + ' × 消費スタック ダメージ';
+    case 'transfer_status': return '負の状態異常を最大 ' + fmtAny(v.n, 'ja') + ' 個 敵に移送';
+    case 'shield_break': return '敵のブロックを ' + fmtAny(v.n, 'ja') + ' 破壊';
     default: return v.t;
   }
 }

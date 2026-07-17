@@ -70,9 +70,22 @@ for (const e of (units.entries || [])) {
   if (seen.has(e.id)) fail('duplicate unit id "' + e.id + '"');
   seen.add(e.id);
   if (artDirExists) {
-    const art = path.join(ART_DIR, e.icon + '.png');
-    if (!fs.existsSync(art)) {
-      fail('unit "' + e.id + '": icon "' + e.icon + '" has no exported artwork at content/art/unit/' + e.icon + '.png ' +
+    // REQ-0213 gate fix: a unit icon may reference an artwork of ANY kind
+    // (art-first units use po illustrations; serving is /api/art/<icon>,
+    // kind-agnostic), and the adoption export routes by ARTWORK kind --
+    // content/art/<kind>/<name>.png. So look across every kind dir, not
+    // only unit/.
+    const artRoot = path.dirname(ART_DIR);
+    let found = fs.existsSync(path.join(ART_DIR, e.icon + '.png'));
+    if (!found) {
+      try {
+        for (const k of fs.readdirSync(artRoot)) {
+          if (fs.existsSync(path.join(artRoot, k, e.icon + '.png'))) { found = true; break; }
+        }
+      } catch (err) { /* mirror layout unreadable -> fall through to fail */ }
+    }
+    if (!found) {
+      fail('unit "' + e.id + '": icon "' + e.icon + '" has no exported artwork under content/art/*/' + e.icon + '.png ' +
            '(illustration-first: adopt the render -- adoption is what exports the asset)');
     }
   }

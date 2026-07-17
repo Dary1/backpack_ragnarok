@@ -36,6 +36,7 @@ const fs = require('fs');
 const storage = require('../storage.cjs');
 const { hashModelFiles } = require('./model_hash.cjs');
 const kitReg = require('./kit_registry.cjs');
+const http = require('http');
 
 const ART_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'art_job.py');
 const INSPECT_JOB_PY = path.join(__dirname, '..', '..', 'tools', 'inspect_job.py');
@@ -63,6 +64,18 @@ const inspectQueue = [];       // CPU inspection jobs (low priority)
 // One band -- both are a button press waiting on a short CPU matte, so both
 // take the same highest-waiting priority; processing splits on desc.__cutout.
 const packQueue = [];
+
+// REQ-0233: FAMILY SCHEDULING. The box may keep at most ONE model stack
+// resident in RAM at a time (a warm ComfyUI holds ~11 GB host RSS that
+// REQ-0158's /free does NOT reclaim; a birefnet matte holds ~12 GB). The pump
+// therefore drains the in-flight FAMILY -- generation (genQueue) vs matte
+// (packQueue + inspectQueue) -- before switching, and on a generation->matte
+// switch restarts comfyui.service (the only lever that returns its RSS) before
+// the first matte loads. currentFamily persists across an idle gap so a matte
+// job arriving after a generation batch still triggers the barrier.
+let currentFamily = null;   // 'gen' | 'matte' -- family of the last/in-flight job
+let barrierRuns = 0;        // gen->matte barriers fired (test observability)
+const dispatchLog = [];     // dispatch order, only recorded when ART_DISPATCH_LOG=1
 
 // REQ-0197: deferred-batch mode. While held, newly enqueued GENERATION jobs
 // wait in heldQueue instead of starting immediately; executeBatch() releases
@@ -202,18 +215,77 @@ async function processInspectJob(desc) {
   });
 }
 
+// REQ-0233: ComfyUI health poll -- the unit's HTTP server answers again once
+// its process is back up and RSS has returned. Never throws: a barrier that
+// restarted the unit already freed RSS even if health cannot be confirmed.
+function comfyHealthUrl() { return process.env.COMFY_HEALTH_URL || 'http://127.0.0.1:8188/system_stats'; }
+function awaitComfyHealth(timeoutMs) {
+  const url = comfyHealthUrl();
+  const deadline = Date.now() + (timeoutMs || 60000);
+  return new Promise((resolve) => {
+    const attempt = () => {
+      const req = http.get(url, (res) => { res.resume(); if (res.statusCode < 500) resolve(true); else retry(); });
+      req.on('error', retry);
+      req.setTimeout(3000, () => { req.destroy(); retry(); });
+    };
+    const retry = () => { if (Date.now() >= deadline) return resolve(false); setTimeout(attempt, 1000); };
+    attempt();
+  });
+}
+
+// REQ-0233: generation -> matte family-switch barrier. Restart comfyui.service
+// to return its host RSS, then wait for it to answer again, so a single model
+// stack is resident before the first birefnet matte loads. Best-effort (a
+// spawn/health failure never wedges the pump). ART_FAMILY_BARRIER=0 disables
+// the real restart (unit-test seam + emergency lever); the logical fire is
+// still counted so the invariant stays observable.
+async function familyBarrier() {
+  barrierRuns += 1;
+  if (process.env.ART_FAMILY_BARRIER === '0') return;
+  await new Promise((resolve) => {
+    const env = Object.assign({}, process.env);
+    if (!env.XDG_RUNTIME_DIR && process.getuid) env.XDG_RUNTIME_DIR = '/run/user/' + process.getuid();
+    const p = spawn('systemctl', ['--user', 'restart', 'comfyui.service'], { env });
+    p.on('error', () => resolve());
+    p.on('close', () => resolve());
+  });
+  await awaitComfyHealth();
+}
+
 function pump() {
   if (running) return;
-  // Priority: user-initiated derived-render jobs first (REQ-0192 repack,
-  // REQ-0193 cutout), then GPU generation, then CPU inspection. Generation
-  // still always jumps ahead of inspections.
-  let desc = packQueue.shift();
-  let type = 'pack';
-  if (!desc) { desc = genQueue.shift(); type = 'generate'; }
-  if (!desc) { desc = inspectQueue.shift(); type = 'inspect'; }
-  if (!desc) return;
+  const genWaiting = genQueue.length > 0;
+  const matteWaiting = packQueue.length > 0 || inspectQueue.length > 0;
+  if (!genWaiting && !matteWaiting) return;
+  // REQ-0233 FAMILY GROUPING: never alternate model stacks. Keep draining the
+  // in-flight family; on a cold/settled box generation keeps its priority
+  // (REQ-0151/0152 ordering). A job of the OTHER family must not START while
+  // this family still has work waiting.
+  let family;
+  if (currentFamily === 'gen' && genWaiting) family = 'gen';
+  else if (currentFamily === 'matte' && matteWaiting) family = 'matte';
+  else family = genWaiting ? 'gen' : 'matte';
+  // REQ-0233 BARRIER: a generation batch just ended and matte work is next --
+  // return ComfyUI's RSS before any birefnet loads. Hold `running` across the
+  // async restart to block re-entry; runningType 'barrier' is invisible to
+  // listJobs/queueDepth/cancel (they key on 'generate').
+  if (family === 'matte' && currentFamily === 'gen') {
+    running = true; runningType = 'barrier'; runningDesc = null; runningChild = null;
+    familyBarrier()
+      .catch((e) => console.error('[art_jobs] family barrier error: ' + String((e && e.message) || e)))
+      .finally(() => { running = false; runningType = null; currentFamily = 'matte'; setImmediate(pump); });
+    return;
+  }
+  // Dispatch one job from the chosen family. Within the matte family, user
+  // packs/cutouts (REQ-0192/0193) still run before advisory inspections.
+  let desc, type;
+  if (family === 'gen') { desc = genQueue.shift(); type = 'generate'; }
+  else if (packQueue.length) { desc = packQueue.shift(); type = 'pack'; }
+  else { desc = inspectQueue.shift(); type = 'inspect'; }
+  currentFamily = family;
   running = true; runningType = type; runningDesc = desc;
   runningChild = null; runningStartedAt = Date.now();
+  if (process.env.ART_DISPATCH_LOG === '1') dispatchLog.push({ family, type, renderId: desc.renderId });
   const job = type === 'generate' ? processGenJob(desc)
     : type === 'pack' ? (desc.__cutout ? processCutoutJob(desc) : processPackJob(desc))
       : processInspectJob(desc);
@@ -473,4 +545,11 @@ async function cancelJob(renderId) {
   throw e;
 }
 
-module.exports = { enqueue, enqueueInspection, enqueuePack, enqueueCutout, queueDepth, inspectDepth, runPython, listJobs, cancelJob, setHold, executeBatch };
+module.exports = { enqueue, enqueueInspection, enqueuePack, enqueueCutout, queueDepth, inspectDepth, runPython, listJobs, cancelJob, setHold, executeBatch,
+  // REQ-0233 test observability (no effect on production scheduling):
+  __test: {
+    barrierRuns: () => barrierRuns,
+    dispatchLog: () => dispatchLog.slice(),
+    currentFamily: () => currentFamily,
+    reset: () => { barrierRuns = 0; dispatchLog.length = 0; currentFamily = null; },
+  } };

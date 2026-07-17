@@ -35,10 +35,14 @@ const enemyDefs = {
   tank: { id: 'tank', name: 'Tank', hp: [900, 900], footprint: [1, 1], skills: [] },
   bigtank: { id: 'bigtank', name: 'BigTank', hp: [1000000, 1000000], footprint: [1, 1], skills: [] },
   nipper: { id: 'nipper', name: 'Nipper', hp: [100000, 100000], footprint: [1, 1], skills: ['cf_nip'] },
+  // REQ-0212: an enemy carrying a flat block pool (battle_start damage_reduction fold ->
+  // ref.damageReduction) -- the shield_break landing surface + a soak that survives to deadline.
+  blocker: { id: 'blocker', name: 'Blocker', hp: [400, 400], footprint: [1, 1], skills: ['cf_armor'] },
 };
 const skillDefs = {
   cf_bite: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [1, 1] }, attack_profile: { edge: ['top'], penetration: 6, aoe: 1 } },
   cf_nip: { trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [3, 3] }, attack_profile: { edge: ['top'], penetration: 6, aoe: 1 } },
+  cf_armor: { trigger: { t: 'battle_start' }, verb: { t: 'damage_reduction', n: [30, 30] } }, // REQ-0212: folds to ref.damageReduction = 30 (enemy block pool)
 };
 
 function compileFresh() { return combat.compileSquadSnapshot(combat.deepCopy(scenario), itemDefsById, 'formation1', 'unit1'); }
@@ -344,6 +348,89 @@ T('REAL delta -- witch on-hit rider: add_on_hit_status attaches a real Burn ride
   ok(charged.chargeState.instances.beta.spends >= 1, 'witch fired add_on_hit_status');
   ok(bpOf(c, 'alpha').chargeOnHit && bpOf(c, 'alpha').chargeOnHit.Burn > 0, 'a real Burn on-hit rider is attached to alpha');
   ok(charged.events.some(e => e.ev === 'unit_charge_onhit' && e.status === 'Burn'), 'alpha hits applied real Burn to a struck enemy');
+});
+
+
+// =====================================================================
+// REQ-0212: charge_strike / transfer_status / shield_break -- end-to-end in the
+// REAL encounter loop (combat.runEncounter), plus a validation-rejection test.
+// =====================================================================
+
+// ---- RD-CS: charge_strike damage LANDS (a) and SCALES with capacity (b) ----
+T('REQ-0212 charge_strike: OnHit banks alpha blade hits; at capacity it strikes the enemy for n x stacks_spent -> a killable tank dies sooner, and (vs an undying soak) the per-strike amount SCALES with capacity', () => {
+  const mkCharge = (cap) => ({ trigger: { t: 'OnHit' }, gain: 'count', capacity: [cap, cap], spend: 'fire_on_full', effects: [{ verb: { t: 'charge_strike', n: [10, 10] }, target: 'self' }] });
+  const strikesOf = (r) => r.events.filter(e => e.ev === 'unit_charge_strike' && e.src === 'alpha');
+
+  // (a) LANDS: vs a killable tank, the banked strike makes it die STRICTLY sooner than the charge-less twin.
+  const cCharged = compileFresh(); inject(cCharged, 'alpha', mkCharge(4), 'powderkeg_probe');
+  const charged = run(cCharged, { seed: 'cs1', enemies: ['tank'], deadline: 60 });
+  const control = run(compileFresh(), { seed: 'cs1', enemies: ['tank'], deadline: 60 });
+  eq(charged.result, 'clear', 'charged clears the tank');
+  eq(control.result, 'clear', 'control clears the tank');
+  const s4 = strikesOf(charged);
+  ok(s4.length >= 1, 'charge_strike fired at least once (got ' + s4.length + ')');
+  eq(s4[0].amount, 40, 'first strike = n_mid(10) x stacks_spent(4) = 40');
+  eq(s4[0].stacks_spent, 4, 'stacks_spent == rolled capacity (4)');
+  ok(endT(charged) < endT(control), 'charge_strike damage lands -> tank dies sooner (' + endT(charged).toFixed(2) + ' < ' + endT(control).toFixed(2) + ')');
+
+  // (b) SCALES: vs an UNDYING bigtank (battle runs to deadline so both capacities reach a fire),
+  // the per-strike amount == n_mid x capacity, so cap 8 strikes for twice cap 4.
+  const b4 = compileFresh(); inject(b4, 'alpha', mkCharge(4), 'pk4');
+  const b8 = compileFresh(); inject(b8, 'alpha', mkCharge(8), 'pk8');
+  const r4 = run(b4, { seed: 'cs2', enemies: ['bigtank'], deadline: 40 });
+  const r8 = run(b8, { seed: 'cs2', enemies: ['bigtank'], deadline: 40 });
+  const f4 = strikesOf(r4), f8 = strikesOf(r8);
+  ok(f4.length >= 1, 'cap-4 charge_strike fired vs the undying soak (got ' + f4.length + ')');
+  ok(f8.length >= 1, 'cap-8 charge_strike fired vs the undying soak (got ' + f8.length + ')');
+  eq(f4[0].amount, 40, 'cap 4 -> 10 x 4 = 40');
+  eq(f8[0].amount, 80, 'cap 8 -> 10 x 8 = 80');
+  ok(f8[0].amount > f4[0].amount, 'per-strike damage SCALES with capacity (' + f8[0].amount + ' > ' + f4[0].amount + ')');
+});
+
+// ---- RD-TS: transfer_status MOVES negative statuses host -> enemy ----
+T('REQ-0212 transfer_status: a fire_on_full charge moves up to n negative statuses OFF the host BP onto the enemy, keeping their stacks (a MOVE, not a copy)', () => {
+  const c = compileFresh();
+  inject(c, 'alpha', { trigger: { t: 'every_secs', s: [1, 1] }, gain: 'count', capacity: [1, 1], spend: 'fire_on_full', effects: [{ verb: { t: 'transfer_status', n: [2, 2] }, target: 'self' }] }, 'curseddoll_probe');
+  bpOf(c, 'alpha').statusBag.Burn = { stacks: 40 };
+  bpOf(c, 'alpha').statusBag.Poison = { stacks: 30 };
+  const r = run(c, { seed: 'ts1', enemies: ['dummy'], deadline: 6 }); // dummy never attacks -> nothing re-applies debuffs to alpha
+  const moves = r.events.filter(e => e.ev === 'unit_charge_transfer' && e.src === 'alpha');
+  ok(moves.length >= 2, 'at least two statuses moved off the host (got ' + moves.length + ')');
+  const kinds = new Set(moves.map(m => m.status));
+  ok(kinds.has('Burn') && kinds.has('Poison'), 'both Burn and Poison were transferred (kinds=' + JSON.stringify([...kinds]) + ')');
+  ok(moves.every(m => m.dst && m.dst.indexOf('dummy') === 0), 'each transfer landed on the enemy (dst=dummy)');
+  ok(moves.some(m => m.status === 'Burn' && m.stacks > 0), 'the moved Burn kept its stacks (' + (moves.find(m => m.status === 'Burn') || {}).stacks + ')');
+  ok(!bpOf(c, 'alpha').statusBag.Burn && !bpOf(c, 'alpha').statusBag.Poison, 'the host BP no longer carries the transferred statuses');
+});
+
+// ---- RD-SB: shield_break REDUCES the enemy block pool ----
+T('REQ-0212 shield_break: an every_secs charge strips flat block off the enemy (ref.damageReduction 30 -> ... -> 0) -> the blocked enemy dies sooner than with its block intact', () => {
+  const c = compileFresh();
+  inject(c, 'alpha', { trigger: { t: 'every_secs', s: [1, 1] }, gain: 'count', capacity: [1, 1], spend: 'fire_on_full', effects: [{ verb: { t: 'shield_break', n: [10, 15] }, target: 'self' }] }, 'pickaxe_probe');
+  const charged = run(c, { seed: 'sb1', enemies: ['blocker'], deadline: 60 });
+  const control = run(compileFresh(), { seed: 'sb1', enemies: ['blocker'], deadline: 60 });
+  const breaks = charged.events.filter(e => e.ev === 'unit_charge_shieldbreak' && e.dst.indexOf('blocker') === 0);
+  ok(breaks.length >= 1, 'shield_break fired at least once (got ' + breaks.length + ')');
+  eq(breaks[0].before, 30, 'first break sees the enemy block pool at 30');
+  eq(breaks[0].after, 17.5, 'first break removes n_mid(12.5) -> 30 - 12.5 = 17.5');
+  ok(breaks.some(b => b.after === 0), 'the block pool is driven to 0 (floored, never negative)');
+  ok(breaks.every(b => b.after >= 0), 'block never goes below 0');
+  eq(charged.result, 'clear', 'with the block stripped the squad clears the blocker');
+  ok(endT(charged) < endT(control), 'stripping the enemy block lets damage land -> blocker dies sooner (' + endT(charged).toFixed(2) + ' < ' + endT(control).toFixed(2) + ')');
+});
+
+// ---- RD-REJ: charge_strike under a non-fire_on_full spend is REJECTED by name ----
+T('REQ-0212 validation: charge_strike is REJECTED by name under passive_per_stack (legal only under fire_on_full)', () => {
+  const { validateCharge } = require(path.join(REPO, 'shared', 'content_validate.cjs'));
+  const vocab = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'vocab.json'), 'utf8'));
+  // legal under fire_on_full -- must NOT throw
+  validateCharge({ trigger: { t: 'OnBPBeenHit' }, gain: 'count', capacity: [10, 15], spend: 'fire_on_full', effects: [{ verb: { t: 'charge_strike', n: [4, 6] }, target: 'self' }] }, vocab, 'ok');
+  // illegal under passive_per_stack -- must throw, naming charge_strike + fire_on_full
+  let threw = false, msg = '';
+  try { validateCharge({ trigger: { t: 'OnBPBeenHit' }, gain: 'count', capacity: [6, 10], spend: 'passive_per_stack', effects: [{ verb: { t: 'charge_strike', n: [4, 6] }, target: 'self' }] }, vocab, 'bad'); }
+  catch (e) { threw = true; msg = e.message; }
+  ok(threw, 'charge_strike under passive_per_stack must be rejected');
+  ok(/charge_strike/.test(msg) && /fire_on_full/.test(msg), 'the reject names charge_strike + fire_on_full: ' + msg);
 });
 
 console.log('');

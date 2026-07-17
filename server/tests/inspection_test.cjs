@@ -17,6 +17,9 @@ if (!process.env.DATABASE_URL) { console.log('SKIP inspection_test.cjs (no DATAB
 const realHome = os.homedir();
 process.env.STORAGE_BACKEND = 'pg';
 process.env.ART_ROUTE_MOCK = '1';
+// REQ-0233: the pump now restarts comfyui.service on a generation->matte
+// family switch; disable that real side effect in this hermetic test.
+process.env.ART_FAMILY_BARRIER = '0';
 process.env.ART_KIT_MATTE_METHOD = process.env.ART_KIT_MATTE_METHOD || 'borderkey';
 process.env.ART_KIT_PYTHON = process.env.ART_KIT_PYTHON
   || path.join(realHome, 'backpack_ragnarok', '.venv', 'bin', 'python');
