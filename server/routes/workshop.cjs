@@ -18,18 +18,22 @@ function tryWorkshopRoutes(req, res, url, p) {
     if (!ctx) return;
     const { callerId } = ctx;
 
-    // ---- POST /api/workshop/gacha {kind:'common_bp'} (REQ-0042) ----
-    // Two-phase, mirrors POST /api/warehouse/claim immediately above:
-    // this route NEVER writes the caller's profile -- it only reads the
-    // LAST-SAVED canvas (loadOwnCanvas(callerId)) to check the LRDST balance,
-    // rolls a fresh UNIT server-side -- a character drawn from the pack's
-    // pool, plus the BP that is its inventory (seeded RNG, see
-    // schedule.cjs's rollPackBp; REQ-0170) -- records a pending row, and
-    // returns the rolled definition. The CLIENT deducts the cost from its own
-    // LRDST stack, first-fit-places the BP, and auto-saves -- THAT PUT
-    // is what finalizes the roll (see finalizeGachaForCanvas, wired into
-    // the profile PUT handler above alongside
-    // finalizeClaimingItemsForCanvas).
+    // ---- POST /api/workshop/gacha {kind:'common_bp'} (REQ-0042, REWRITTEN
+    // by REQ-0215) ----
+    // No longer two-phase. schedule.startGachaRoll() now runs the WHOLE roll as
+    // one synchronous transaction -- validate the LRDST balance + warehouse cap
+    // off the last-saved canvas, roll the Unit, debit the cost server-side, and
+    // deliver the Unit (+ any pack bonuses) to the caller's WAREHOUSE as normal
+    // claimable rows. The player then claims it through the ordinary warehouse
+    // UI, exactly like a dungeon reward or a market-bought Unit.
+    //
+    // This route therefore DOES cause a profile write (inside startGachaRoll),
+    // which the pre-REQ-0215 version deliberately never did. That is the
+    // market's sanctioned rule-5 divergence, reused: see services/gacha.cjs's
+    // module header for why the old client-places-it-then-the-PUT-finalizes-it
+    // design cannot survive the user's "the roll goes to the warehouse" spec.
+    // The response shape is UNCHANGED ({ok, cost, rolled}); `rolled` is now a
+    // receipt of what was delivered, not something the client must place.
     if (p.match(WORKSHOP_GACHA_RE)) {
       if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
       readBody(req, (err, bodyStr) => {

@@ -4,7 +4,7 @@
 // the dev-only backdate-claim seam, moved VERBATIM from
 // server/schedule.cjs.
 const storage = require('../storage.cjs');
-const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, WAREHOUSE_CLAIM_TIMEOUT_MS, genId } = require('./core.cjs');
+const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, WAREHOUSE_CLAIM_TIMEOUT_MS, genId, getScheduleContent, makeEngine } = require('./core.cjs');
 
 function isExpired(item, nowMs) {
   return Date.parse(item.expiresAt) <= (nowMs != null ? nowMs : Date.now());
@@ -180,6 +180,87 @@ function listWarehouse(playerId) {
   return purgeExpiredWarehouseItems(playerId);
 }
 
+
+// ---------------------------------------------------------------------
+// REQ-0215: claimSpotOr409 -- the server-side SINGLE-SPOT fit test.
+//
+// The user's spec: "the fit check is the CLIENT's job -- it receives the shape,
+// returns the inventory index + position the shape fits at; the server tests
+// ONLY that spot, and if OK the item moves warehouse -> inventory."
+//
+// So this is a VALIDATOR, not a search. It never scans for a free cell and never
+// picks a spot: it takes the client's proposed {page, position} and asks the
+// engine one question -- "is THIS legal?" -- because a client-computed placement
+// is a client-supplied claim about the player's own canvas, and an unvalidated
+// one would let a crafted request drop an item into an occupied/out-of-bounds
+// cell. Cost is O(1) per claim rather than the O(64 x pages) the old server-side
+// first-fit paid before REQ-0041 deleted it.
+//
+// WHAT IT TESTS AGAINST: the LAST-SAVED canvas -- the only canvas the server can
+// legitimately see (design rule 5: the client's auto-save PUT is the one profile
+// writer; nothing here writes). That makes the client's flushAutoSave() BEFORE
+// claiming load-bearing, not cosmetic: an unsaved live state means the server is
+// judging a spot on a stale board and can both false-reject a legal claim and
+// pass an illegal one. The client owns that flush (see useWarehouseData.ts).
+//
+// It works on a DEEP COPY and throws instead of mutating: the placeholder record
+// each engine canPlace* needs (invCanPlacePO/BP look their record up by uid for
+// its shape/rot) must never touch the real saved canvas.
+//
+// `position` is the anchor in each engine call's OWN convention -- PO/SI/TM take
+// an anchor cell, a BP takes its origin -- so one [row, col] pair covers all four
+// kinds on the wire.
+function claimSpotOr409(item, kind, spot, canvas) {
+  if (!canvas || !canvas.inv || !Array.isArray(canvas.inv.pages)) {
+    const err = new Error('no saved canvas to place into -- save your inventory once before claiming');
+    err.code = 'CONFLICT'; err.reason = 'no_canvas'; throw err;
+  }
+  const pg = spot.page;
+  if (!Number.isInteger(pg) || pg < 0 || pg >= canvas.inv.pages.length) {
+    const err = new Error('page must be an inventory page index in 0..' + (canvas.inv.pages.length - 1) + ' (got ' + JSON.stringify(spot.page) + ')');
+    err.code = 'BAD_REQUEST'; throw err;
+  }
+  const at = spot.position;
+  if (!Array.isArray(at) || at.length !== 2 || !Number.isInteger(at[0]) || !Number.isInteger(at[1])) {
+    const err = new Error('position must be an integer [row, col] pair (got ' + JSON.stringify(spot.position) + ')');
+    err.code = 'BAD_REQUEST'; throw err;
+  }
+
+  const { itemDefsById, unitDefsById, connShapes } = getScheduleContent();
+  const engine = makeEngine(itemDefsById, unitDefsById, connShapes);
+  const st = JSON.parse(JSON.stringify(canvas));
+  const container = st.inv.pages[pg];
+  const uid = item.itemUid;
+
+  let chk;
+  if (kind === 'tm') {
+    // idIfNew: this uid has no stack of its own yet, so tmCanPlace cannot know
+    // what id it would merge AS -- the grant/claim-merge shape its own doc
+    // describes. Passing it is what lets a same-id stack read as a legal merge
+    // target rather than an 'occupied' rejection, matching the client's
+    // firstFitOrMergeTM merge path exactly.
+    chk = engine.tmCanPlace(st, pg, uid, at, [uid], item.itemId);
+  } else if (kind === 'bp') {
+    container.bps.push({
+      id: uid, name: (item.bp && item.bp.name) || 'BP', color: (item.bp && item.bp.color) || '#8a8a8a',
+      shape: item.bp.shape, origin: at, unit: item.bp.unit, hpMax: item.bp.hpMax,
+    });
+    chk = engine.invCanPlaceBP(st, pg, uid, at);
+  } else if (kind === 'si') {
+    container.sis.push({ uid, id: item.itemId, host: 'inv' });
+    chk = engine.invCanPlaceSI(st, pg, uid, at, [uid]);
+  } else {
+    container.pos.push({ uid, id: item.itemId, loc: 'grid', cell: [1, 1], rot: 0 });
+    chk = engine.invCanPlacePO(st, pg, uid, 0, at);
+  }
+
+  if (!chk || !chk.ok) {
+    const why = (chk && chk.why) || 'no room';
+    const err = new Error('no room for this item at page ' + pg + ' ' + JSON.stringify(at) + ': ' + why);
+    err.code = 'CONFLICT'; err.reason = 'no_space'; throw err;
+  }
+}
+
 // claimWarehouseItem (golden f, REWRITTEN by REQ-0041 -- two-phase
 // claim). BUG #3 ROOT CAUSE (CONFIRMED by live reproduction against the
 // running dev server -- see the REQ-0041 outcome doc for the exact
@@ -223,7 +304,16 @@ function listWarehouse(playerId) {
 // reverse-direction ban, generalized here even ahead of P3 trade -- there
 // is simply no function that moves an item from a home back into a
 // warehouse row).
-function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsById, unitDefsById) {
+//
+// REQ-0215 amends the two-phase design above in ONE place: the claim now carries
+// the client's chosen {page, position} and is REJECTED (409 no_space) unless the
+// engine agrees that exact spot is legal on the last-saved canvas -- see
+// claimSpotOr409 directly above. Everything else here is untouched: the server
+// still never writes a profile, the client still places and auto-saves, and that
+// PUT still finalizes via finalizeClaimingItemsForCanvas's uid-membership check.
+// The rule-5 posture and the BUG #3 fix are fully intact; only the "silently
+// leave it claiming when nothing fits" behaviour is gone.
+function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsById, unitDefsById, spot, canvas) {
   purgeExpiredWarehouseItems(playerId); // also normalizes/reverts stale 'claiming' rows (see normalizeWarehouseStatus above)
   const item = storage.readWarehouseItem(playerId, itemUid);
   if (!item) { const err = new Error('warehouse item not found (or expired)'); err.code = 'NOT_FOUND'; throw err; }
@@ -257,11 +347,25 @@ function claimWarehouseItem(playerId, itemUid, itemDefsById, tmDefsById, siDefsB
     if (!itemDef) { const err = new Error('claimed item references an unknown content item id: ' + item.itemId); err.code = 'BAD_REQUEST'; throw err; }
   }
 
+  // REQ-0215: validate the client's proposed spot BEFORE flipping the row.
+  // Order matters -- a rejected claim must leave the row exactly 'claimable', so
+  // a player whose inventory is full can simply free a cell and claim again
+  // rather than waiting out a 120s lazy-revert on a row nothing ever moved.
+  // Every kind goes through this (the user's spec item 4), which supersedes the
+  // old "no space -> leave it 'claiming' and let it revert" posture: no space is
+  // now an ERROR the caller sees, per spec item 2.
+  const kind = item.kind === 'tm' ? 'tm'
+    : item.kind === 'bp' ? 'bp'
+    : (itemDefsById[item.itemId] ? 'po' : 'si');
+  claimSpotOr409(item, kind, spot, canvas);
+
   item.status = 'claiming';
   item.claimedAt = new Date().toISOString();
   storage.writeWarehouseItem(playerId, itemUid, item);
 
-  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty, q: item.q, bp: item.bp };
+  // The spot is echoed back so the client places at EXACTLY what was validated
+  // rather than re-running its own search against a board that may have moved.
+  return { itemUid, itemId: item.itemId, kind: item.kind, qty: item.qty, q: item.q, bp: item.bp, page: spot.page, position: spot.position };
 }
 
 // finalizeClaimingItemsForCanvas (REQ-0041): called by server/api.cjs's
@@ -399,6 +503,7 @@ function devClearWarehouse(playerId) {
 
 module.exports = {
   isExpired,
+  claimSpotOr409, // REQ-0215
   normalizeWarehouseStatus,
   purgeExpiredWarehouseItems,
   addToWarehouse,

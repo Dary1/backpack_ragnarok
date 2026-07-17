@@ -1,0 +1,18 @@
+-- backpack_ragnarok -- server/migrations/020_drop_gacha_pending.sql
+-- REQ-0215: retire the gacha_pending store (created by 003_gacha.sql).
+--
+-- The Workshop gacha is no longer two-phase. A roll used to record a pending
+-- doc that a later profile PUT finalized once the rolled BP's uid appeared in
+-- the saved canvas AND the LRDST balance had dropped. REQ-0215's spec sends the
+-- rolled Unit to the WAREHOUSE instead, so the BP never enters the canvas and
+-- that gate cannot exist; the roll became one synchronous purchase (debit the
+-- cost, deliver a kind:'bp' warehouse row) with no pending state at all.
+--
+-- Any surviving row is an ABANDONED roll: nothing was ever charged for it and it
+-- would have lazily self-deleted after its own 120s timeout. Dropping the table
+-- therefore destroys no player value.
+--
+-- NOT APPLIED AUTOMATICALLY: this repo has no migration runner (migrations are
+-- applied by hand), and the live database is coordinate-before-touching per
+-- PROJECT.md. Run against the live DB only with the owner's explicit go-ahead.
+DROP TABLE IF EXISTS gacha_pending;

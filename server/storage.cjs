@@ -53,7 +53,8 @@ const profiles = require('./storage/profiles.cjs');
 const rooms = require('./storage/rooms.cjs');
 const runs = require('./storage/runs.cjs');
 const warehouse = require('./storage/warehouse.cjs');
-const gacha = require('./storage/gacha.cjs');
+// REQ-0215: storage/gacha.cjs (the gacha_pending store) DELETED -- a roll is
+// one atomic purchase now, so no pending roll is ever persisted.
 const dismantle = require('./storage/dismantle.cjs');
 const starter = require('./storage/starter.cjs'); // REQ-0051
 const market = require('./storage/market.cjs');
@@ -138,14 +139,6 @@ module.exports = {
   starterClaimsPath: starter.starterClaimsPath,
   readStarterClaims: starter.readStarterClaims,
   writeStarterClaims: starter.writeStarterClaims,
-  // REQ-0042: gacha pending-roll persistence
-  GACHA_PENDING_DIR: lib.GACHA_PENDING_DIR,
-  gachaPendingPlayerDir: gacha.gachaPendingPlayerDir,
-  gachaPendingItemPath: gacha.gachaPendingItemPath,
-  readGachaPending: gacha.readGachaPending,
-  writeGachaPending: gacha.writeGachaPending,
-  deleteGachaPending: gacha.deleteGachaPending,
-  listGachaPending: gacha.listGachaPending,
   // REQ-0064: market persistence (listings / furnace ledger / dex history)
   MARKET_LISTINGS_DIR: market.MARKET_LISTINGS_DIR,
   MARKET_FURNACE_DIR: market.MARKET_FURNACE_DIR,
