@@ -104,8 +104,13 @@ is REQ-0223b's subject.
   address and adopt independently; `listRenders` keeps twins adjacent; and **'REQ-0223 TRUE
   same-seed A/B'** — one seed, two locks, both provenances intact, the pair REQ-0187 could not
   produce.
-- **`artadmin` e2e** — regression check for the route changes (this phase ships no new spec;
-  the same-seed A/B spec and the V4 UI re-run are 0223b's gate, since both need the client).
+- **`artadmin` e2e** — **NOT RUN.** Attempted as a regression check for the route changes and
+  abandoned; see "Box contention" below. Not a listed gate for THIS phase (the same-seed A/B
+  spec and the V4 UI re-run are 0223b's, since both need the client), so it does not hold
+  0223a out of `built/` — but the route changes are consequently covered by `artwork_test`
+  and unit-level reasoning only, NOT by a browser run. Whoever picks up 0223b runs it first,
+  before touching the client: if the `?variant=` dispatch broke an existing spec, that is
+  0223a's bug arriving late, not 0223b's.
 - **V4 compare loop re-run** — deferred to REQ-0223b: it is an OPERATOR loop and needs the
   lightbox A/B strip. The storage/queue-level pair is proved here by `artwork_test`.
 
@@ -124,6 +129,36 @@ is REQ-0223b's subject.
 - The artadmin client and its e2e — REQ-0223b.
 - Retiring the derived-seed convention (`seed + 100000`, REQ-0192/0193). It overlaps
   conceptually with twins; it works; collapsing them is its own REQ. Noted, not acted on.
+
+## Box contention — the artadmin e2e could not be run, and I disrupted another session
+
+Recorded because it cost another session a CI run and is live evidence for REQ-0231
+(ci-cross-session-hygiene), which was mid-flight on this box while this REQ was worked.
+
+I started `tools/artadmin_e2e.sh` while another session's `ci.sh` was running. Its step
+`[6.5/8] admin e2e harnesses` then aborted `rc=75` — `e2e_ports.sh`'s port-busy exit — because
+my harness's bringup was holding 1560-1562 at the moment its preflight looked. My run was the
+most likely cause on timing. It then waited ~15 min for the box lock, never got it, and I
+killed it and released the ports.
+
+**The hole is structural, and the port-derivation rule does not close it.** `artadmin_e2e.sh`
+binds its three ports (L50-62) BEFORE it reaches `e2e_run.sh` (L75), which is where the box
+lock is taken. So the lock serialises the Playwright run but NOT the bringup, and two overlapping
+harnesses collide in that gap. Worse, the harness hardcodes `source e2e_ports.sh 0156`, so this
+is not two REQs colliding — the SAME harness run from two sessions collides with itself by
+construction. The REQ-decade rule ("a port names its owner on sight") prevents collisions
+BETWEEN harnesses and is silent about one harness running twice. And the loser aborts hard
+(75) instead of queueing, so a port race one second wide kills a whole CI run.
+
+Why it could not be retried: the box lock is held by a deliberate freeze fixture
+(`flock … -c echo FREEZE_ACQUIRED; exec sleep infinity`, orphaned to systemd --user) belonging
+to another session, so `e2e_run.sh` queues forever; and ports 1560-1562 were immediately taken
+by a THIRD session (`req-0220-…`) once I released them. At least three sessions (0231, 0232,
+0220) were contending for one box. Nothing of theirs was touched.
+
+For REQ-0231: the fix this points at is taking the box lock BEFORE bringup rather than around
+the Playwright run alone — the ports are the contended resource, so the lock has to cover the
+bind, not just the test.
 
 ## Not yet done (why this is `built/`, not `done/`)
 Not merged to master, not deployed, not accepted. Migration 020 IS applied to the shared
