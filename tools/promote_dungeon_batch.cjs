@@ -31,6 +31,7 @@ const crypto = require('crypto');
 
 const REQUIRED_FILES = [
   'dungeon.json',
+  'dungeons.json', // REQ-0185: the authored dungeon/1 defs (weighted refs to packs+gimics) -- the serving path rolls a dive from these
   'enemies.json',
   'packs.json', // REQ-0184: monster_pack/1 -- dungeon.json names packs from it, so a promotion without it ships a dungeon whose encounters cannot resolve
   'skills.json',

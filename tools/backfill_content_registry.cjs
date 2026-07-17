@@ -93,6 +93,11 @@ const SOURCES = [
   // REQ-0211: gimic/1 -- the trap / treasure box / hidden door interactables.
   // Migrated out of the old non-registry entity/1 entities.json (now gimics.json).
   { kind: 'gimic', file: 'content/live/dungeon/gimics.json' },
+  // REQ-0185: dungeon/1 -- an authored dungeon (identity + PROBABILITY-WEIGHTED
+  // references to monster_pack + gimic defs). The concrete singular dungeon.json
+  // stays SKIPPED below (it is the sim's offline determinism fixture, not per-entity
+  // content); the authored defs live in dungeons.json.
+  { kind: 'dungeon', file: 'content/live/dungeon/dungeons.json' },
   // User ruling 2026-07-15 (chat, with the REQ-0178 fallback report): the REQ-0051
   // starter-kit items (14 po/2 entries in their own file, isolated from
   // live_items.json for the REQ-0160 count-gate) enter the ledger as po_def.
@@ -177,7 +182,7 @@ function collectAll(repoRoot, importedAt) {
 }
 
 function perKindCounts(entries) {
-  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0, skill_def: 0, gimic: 0 };
+  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0, skill_def: 0, gimic: 0, dungeon: 0 };
   for (const e of entries) counts[e.kind] = (counts[e.kind] || 0) + 1;
   return counts;
 }

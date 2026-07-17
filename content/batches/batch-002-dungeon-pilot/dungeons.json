@@ -1,0 +1,88 @@
+{
+  "schema": "dungeon/1",
+  "batch": "batch-002-dungeon-pilot",
+  "note": "REQ-0185. A dungeon def is authored, PROBABILITY-WEIGHTED references to monster_pack defs (packs.json) and gimic defs (gimics.json) -- the user ruling 2026-07-17: dungeonは、gimicとmonster_packを確率参照して、設定してください. At dive time the server ROLLS a concrete encounter list from these weighted tables (sim/dungeon_roll.cjs), deterministically given a seed; there is NO runtime dungeon-graph generation. The def inlines NOTHING: packs live in packs.json, gimics in gimics.json, referenced by id. Level scales only the COUNTS (packEncounters/gimicSlots), monotonically; enemy strength is the authored pack (unchanged from the pilot). The only gimics authored today are the four frost interactables (gimics.json), so every dungeon references them for now -- per-theme gimic content is a follow-up (see REQ-0185).",
+  "entries": [
+    {
+      "id": "niflheim_depths",
+      "name": "Niflheim Depths",
+      "i18n": { "en": { "name": "Niflheim Depths" }, "ja": { "name": "ニヴルヘイムの深層" } },
+      "theme": "frost",
+      "levelMin": 1,
+      "levelMax": 8,
+      "dive": {
+        "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
+        "gimicSlots": { "base": 1, "perLevels": 3, "max": 3 }
+      },
+      "packPool": [
+        { "packId": "pack_frost_scouts", "weight": 3 },
+        { "packId": "pack_rime_choir", "weight": 2 },
+        { "packId": "pack_bear_and_stalker", "weight": 2 }
+      ],
+      "bossPool": [
+        { "packId": "pack_hrimgrimnir", "weight": 1 }
+      ],
+      "gimicPool": [
+        { "gimic": "trap_frost_deadfall", "weight": 3 },
+        { "gimic": "chest_frostbound_cache", "weight": 1 },
+        { "gimic": "door_rimefast_stage1", "weight": 1 }
+      ],
+      "rewards": {
+        "pack": "reward_frost_shard_common",
+        "packHigh": "reward_frost_shard_uncommon",
+        "chest": "reward_frostbound_cache_roll",
+        "boss": "reward_boss_relic_roll"
+      },
+      "note": "The frost pilot, ported to authored weighted content: the same four frost packs + the frost interactables that batch-002's hand-authored dungeon.json fielded, now composed as a probability space instead of a fixed sequence. Preserves the current gameplay through a registry def (the concrete dungeon.json stays only as the sim's offline determinism fixture)."
+    },
+    {
+      "id": "grave_hollows",
+      "name": "Grave Hollows",
+      "i18n": { "en": { "name": "Grave Hollows" }, "ja": { "name": "墓所の窪み" } },
+      "theme": "grave",
+      "levelMin": 4,
+      "levelMax": 14,
+      "dive": {
+        "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
+        "gimicSlots": { "base": 1, "perLevels": 4, "max": 3 }
+      },
+      "packPool": [
+        { "packId": "pack_grave_shamble", "weight": 3 },
+        { "packId": "pack_grave_legion", "weight": 2 }
+      ],
+      "bossPool": [
+        { "packId": "pack_bone_court", "weight": 1 }
+      ],
+      "gimicPool": [
+        { "gimic": "trap_frost_deadfall", "weight": 2 },
+        { "gimic": "chest_frostbound_cache", "weight": 1 }
+      ],
+      "note": "The Weakness engine (REQ-0203 grave packs): shamble softens, legion converts, the bone court holds the throne. Interactables reuse the frost gimic set for now (per-theme gimics are a follow-up)."
+    },
+    {
+      "id": "beastreach_wilds",
+      "name": "Beastreach Wilds",
+      "i18n": { "en": { "name": "Beastreach Wilds" }, "ja": { "name": "獣境の荒野" } },
+      "theme": "wild",
+      "levelMin": 8,
+      "levelMax": 20,
+      "dive": {
+        "packEncounters": { "base": 4, "perLevels": 4, "max": 6 },
+        "gimicSlots": { "base": 1, "perLevels": 3, "max": 3 }
+      },
+      "packPool": [
+        { "packId": "pack_wild_hunt", "weight": 3 },
+        { "packId": "pack_venom_nest", "weight": 2 }
+      ],
+      "bossPool": [
+        { "packId": "pack_demon_gate", "weight": 1 }
+      ],
+      "gimicPool": [
+        { "gimic": "trap_frost_deadfall", "weight": 3 },
+        { "gimic": "chest_frostbound_cache", "weight": 1 },
+        { "gimic": "door_rimefast_stage1", "weight": 1 }
+      ],
+      "note": "A high-level wilds run (REQ-0207 wildlands + venom packs, a demon-gate capstone) proving the multi-def / multi-theme sortie payload. Pack/theme selection is pilot content the author will curate; interactables reuse the frost gimic set."
+    }
+  ]
+}
