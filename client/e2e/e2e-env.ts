@@ -9,7 +9,8 @@
 import { join } from 'node:path';
 
 const IDX = process.env.TEST_PARALLEL_INDEX ?? '0';
-const workerHome = (): string => join('/tmp', 'bp_e2e_workers', 'w' + IDX, 'home');
+const FLEET_ROOT = process.env.E2E_FLEET_ROOT ?? '/tmp/bp_e2e_workers';
+const workerHome = (): string => join(FLEET_ROOT, 'w' + IDX, 'home');
 
 /** Worktree root -- where server/cli_invite.cjs and the rest of the CODE
  *  UNDER TEST live. Playwright always runs from client/ (tools/e2e_run.sh

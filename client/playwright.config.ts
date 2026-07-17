@@ -74,7 +74,7 @@ export default defineConfig({
   webServer: USE_LOCAL_PROXY ? {
     command: 'node e2e/local-proxy.cjs',
     url: BASE_URL + '/app/',
-    reuseExistingServer: true,
+    reuseExistingServer: false, // REQ-0217: NEVER adopt a foreign proxy (another session's stale/old-code instance) -- fail loudly instead
     timeout: 15_000,
   } : undefined,
   globalSetup: './e2e/global-setup.ts',

@@ -46,6 +46,9 @@ export const GUEST_AUTH_TRACKED_FILES_PATH = '/tmp/backpack_e2e_guest_auth_track
 const BOX_LOCK_FILE = process.env.E2E_LOCK_FILE || join(homedir(), '.cache', 'backpack', 'e2e.box.lock');
 
 function probeBoxLock(): void {
+  // REQ-0217: a SCOPED run (custom E2E_FLEET_ROOT + proxy/fleet ports) shares
+  // nothing box-global -- the box lock does not apply to it.
+  if (process.env.E2E_FLEET_ROOT) { console.log('[global-setup] scoped run (E2E_FLEET_ROOT set) -- box lock not required'); return; }
   if (process.env.E2E_BOX_LOCK_HELD === '1') return; // our own wrapper holds it
   mkdirSync(dirname(BOX_LOCK_FILE), { recursive: true });
   try {

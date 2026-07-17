@@ -21,7 +21,23 @@ const path = require("node:path");
 // service otherwise serves the DEPLOYED master bundle, which lacks any
 // worktree client change -- e.g. the starter-unit fresh-profile seed).
 const WEB_APP = path.join(__dirname, "..", "..", "web", "app");
+// REQ-0217: /preview/* (static dungeon previews, web/preview) is also served
+// from THIS worktree -- schedule.spec.ts asserts the batch-002 preview page.
+const WEB_PREVIEW = path.join(__dirname, "..", "..", "web", "preview");
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".map": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".ico": "image/x-icon", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".mp3": "audio/mpeg", ".wav": "audio/wav" };
+function servePreviewStatic(creq, cres) {
+  let rel = creq.url.replace(/^\/preview/, "").split("?")[0];
+  if (rel === "" || rel === "/") rel = "/index.html";
+  if (rel.endsWith("/")) rel += "index.html";
+  const filePath = path.join(WEB_PREVIEW, decodeURIComponent(rel));
+  if (!filePath.startsWith(WEB_PREVIEW)) { cres.writeHead(403); cres.end("forbidden"); return; }
+  fs.readFile(filePath, (err, buf) => {
+    if (err) { cres.writeHead(404); cres.end("not found"); return; }
+    const ct = MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream";
+    cres.writeHead(200, { "content-type": ct }); cres.end(buf);
+  });
+}
+
 function serveAppStatic(creq, cres) {
   let rel = creq.url.replace(/^\/app/, "").split("?")[0];
   if (rel === "" || rel === "/") rel = "/index.html";
@@ -63,6 +79,7 @@ function apiPortFor(headers) {
 const server = http.createServer((creq, cres) => {
   const isApi = creq.url.startsWith('/api/') || creq.url === '/api';
   if (!isApi && (creq.url === "/app" || creq.url.startsWith("/app/"))) { serveAppStatic(creq, cres); return; } // REQ-0051
+  if (!isApi && (creq.url === "/preview" || creq.url.startsWith("/preview/"))) { servePreviewStatic(creq, cres); return; } // REQ-0217
   // REQ-0217 hermetic e2e: nothing may fall through to the live services.
   if (!isApi) { cres.writeHead(404, { "content-type": "text/plain" }); cres.end("[e2e local-proxy] hermetic run: only /app/* (worktree static) and /api/* (fleet) exist"); return; }
   const port = apiPortFor(creq.headers);

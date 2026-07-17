@@ -25,7 +25,9 @@ const http = require('node:http');
 // the live checkout (~/backpack_ragnarok) and never from live data/.
 const WT = path.join(__dirname, '..');
 const FIXTURES = path.join(WT, 'client', 'e2e', 'fixtures');
-const ROOT = '/tmp/bp_e2e_workers';
+// REQ-0217: overridable so concurrent sessions/worktrees can run fully
+// disjoint fleets (dir + ports + proxy all scoped together via env).
+const ROOT = process.env.E2E_FLEET_ROOT || '/tmp/bp_e2e_workers';
 const MANIFEST = path.join(ROOT, 'manifest.json');
 const BASE_PORT = Number(process.env.E2E_FLEET_BASE_PORT || 8810);
 const API_ENTRY = path.join(__dirname, '..', 'server', 'api.cjs'); // this worktree's api (PORT env-aware); content/data still sourced from REPO
