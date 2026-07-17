@@ -47,14 +47,38 @@ function loadDefs() {
   // S4 fixture items (synthetic; pulse content debuts later -- circuit boards need them NOW)
   const fixRaw = loadJSON(path.join(REPO, 'content', 's4_boards', 's4_fixture_items.json'));
   for (const e of fixRaw.entries) itemDefsById[e.id] = e;
-  const BATCH = path.join(REPO, 'content', 'batches', 'batch-002-dungeon-pilot');
-  const enemiesRaw = loadJSON(path.join(BATCH, 'enemies.json'));
-  const skillsRaw = loadJSON(path.join(BATCH, 'skills.json'));
-  const dungeonRaw = loadJSON(path.join(BATCH, 'dungeon.json'));
+  // REQ-0206: resolve the roster from THE SAME PLACE dungen does.
+  //
+  // This gate was DEAD, and silently. It loaded the enemy/skill/pack defs from
+  // the batch-002 pilot (7 monsters) while dungen.generate() -- which it calls
+  // to build the very dungeons it measures -- resolves its roster from the LIVE
+  // dir via os.homedir(). The moment batch-005 was promoted additively into live
+  // (2026-07-16, REQ-0203) the generator started emitting monsters this loader
+  // had never heard of, and every matrix run died on `compileEnemyPack: missing
+  // enemy def troll`. Nothing caught it: ci.sh [2.5] runs the S4 UNIT tests
+  // (s4_test.cjs), never the matrix, and the golden sha256 has not moved since
+  // 2026-07-12 -- it has been pinned to a gate that cannot run.
+  //
+  // Two loaders for one roster is the bug. Reading through dungen.liveDungeonDir()
+  // makes a mismatch structurally impossible rather than a thing to remember:
+  // whatever roster dungen fields, S4 measures. Same one-source doctrine as
+  // REQ-0184's shared validator (checker and placer) and REQ-0188's derived
+  // mirror.
+  //
+  // NOTE (pre-existing convention, REQ-0184): liveDungeonDir() is homedir-relative,
+  // so verifying a CONTENT branch requires HOME pointed at the worktree -- otherwise
+  // this measures the main checkout's live content, not the tree under test.
+  const LIVE_DUNGEON = dungen.liveDungeonDir();
+  const enemiesRaw = loadJSON(path.join(LIVE_DUNGEON, 'enemies.json'));
+  const skillsRaw = loadJSON(path.join(LIVE_DUNGEON, 'skills.json'));
+  // dungeon.json is a WHOLESALE promoted file: the REQ-0122 lossless invariant
+  // pins it byte-identical to batch-002, so this is the same bytes either way --
+  // read it from live too, so every def on this path has ONE origin.
+  const dungeonRaw = loadJSON(path.join(LIVE_DUNGEON, 'dungeon.json'));
   const enemyDefsById = {};
   for (const e of enemiesRaw.entries) enemyDefsById[e.id] = e;
   // REQ-0184: monster_pack/1 -- dungeon.json names its packs from packs.json.
-  const packsRaw = loadJSON(path.join(BATCH, 'packs.json'));
+  const packsRaw = loadJSON(path.join(LIVE_DUNGEON, 'packs.json'));
   const monsterPackDefsById = {};
   for (const e of packsRaw.entries) monsterPackDefsById[e.id] = e;
   const skillDefsById = {};
