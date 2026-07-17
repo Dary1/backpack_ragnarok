@@ -38,12 +38,27 @@ EXPORTDIR="$(mktemp -d)"
 ln -s "$WT" "$TMPHOME/backpack_ragnarok"
 for f in flux-2-klein-4b-Q8_0.gguf qwen_3_4b.safetensors flux2-vae.safetensors; do echo standin > "$MODELDIR/$f"; done
 
-PIDS=()
+# REQ-0231 (gate 2, orphan half): every background service below is setsid'd
+# into its OWN process group (leader pid == pgid), and cleanup kills exactly
+# those GROUPS -- polite TERM, brief grace, then KILL for stragglers. Killing
+# the recorded pid alone (the pre-2026-07-18 code) orphaned every child a
+# service had spawned; the orphan survived and kept holding this REQ's decade.
+# NEVER kill by name/pattern: on a shared box another session's harness must be
+# untouchable (a contentadmin Playwright run was SIGKILLed cross-session on
+# 2026-07-17 by exactly that kind of cleanup).
+PIDS=()   # setsid group leaders: pid == pgid
 cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do kill -TERM -- "-$p" 2>/dev/null || true; done
+  sleep 0.5
+  for p in "${PIDS[@]:-}"; do kill -KILL -- "-$p" 2>/dev/null || true; done
   rm -rf "$TMPHOME" "$MODELDIR" "$EXPORTDIR"
 }
 trap cleanup EXIT
+# Bash runs no EXIT trap when the shell dies on an uncaught fatal signal, so a
+# SIGTERMed harness -- the exact abort gate 2 names -- used to leak everything.
+# Convert the catchable ones into ordinary exits so the EXIT trap still runs.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "[artadmin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
 
@@ -57,7 +72,7 @@ HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" 
   ART_MODEL_DIR="$MODELDIR" ART_EXPORT_ROOT="$EXPORTDIR" \
   ART_JOB_PYTHON="$VENV_PY" ART_KIT_PYTHON="$VENV_PY" ART_KIT_MATTE_METHOD=borderkey \
   ART_FAMILY_BARRIER=0 \
-  node "$WT/server/api.cjs" > /tmp/req0156_e2e_api.log 2>&1 &
+  setsid node "$WT/server/api.cjs" > /tmp/req0156_e2e_api.log 2>&1 &
 PIDS+=($!)
 
 # REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
@@ -69,7 +84,7 @@ PIDS+=($!)
 # routes to it any more, and its single-threaded accept loop was the
 # goto-under-load flake source (REQ-0222).
 E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0156_e2e_proxy.log 2>&1 &
+  setsid node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0156_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
 # wait for the api + proxy to accept connections

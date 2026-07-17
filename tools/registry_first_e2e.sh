@@ -32,12 +32,27 @@ mkdir -p "$TMPROOT/w0/home"
 ln -s "$WT" "$TMPROOT/w0/home/backpack_ragnarok"
 HOMEDIR="$TMPROOT/w0/home"
 
-PIDS=()
+# REQ-0231 (gate 2, orphan half): every background service below is setsid'd
+# into its OWN process group (leader pid == pgid), and cleanup kills exactly
+# those GROUPS -- polite TERM, brief grace, then KILL for stragglers. Killing
+# the recorded pid alone (the pre-2026-07-18 code) orphaned every child a
+# service had spawned; the orphan survived and kept holding this REQ's decade.
+# NEVER kill by name/pattern: on a shared box another session's harness must be
+# untouchable (a contentadmin Playwright run was SIGKILLed cross-session on
+# 2026-07-17 by exactly that kind of cleanup).
+PIDS=()   # setsid group leaders: pid == pgid
 cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
+  for p in "${PIDS[@]:-}"; do kill -TERM -- "-$p" 2>/dev/null || true; done
+  sleep 0.5
+  for p in "${PIDS[@]:-}"; do kill -KILL -- "-$p" 2>/dev/null || true; done
   rm -rf "$TMPROOT"
 }
 trap cleanup EXIT
+# Bash runs no EXIT trap when the shell dies on an uncaught fatal signal, so a
+# SIGTERMed harness -- the exact abort gate 2 names -- used to leak everything.
+# Convert the catchable ones into ordinary exits so the EXIT trap still runs.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "[registry_first_e2e] api :$APIPORT  proxy :$PROXYPORT"
 
@@ -47,13 +62,13 @@ HOME="$HOMEDIR" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
   node "$WT/tools/seed_registry_e2e.cjs"
 
 HOME="$HOMEDIR" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" \
-  node "$WT/server/api.cjs" > /tmp/req0221_e2e_api.log 2>&1 &
+  setsid node "$WT/server/api.cjs" > /tmp/req0221_e2e_api.log 2>&1 &
 PIDS+=($!)
 
 # REQ-0234 (F7): headerless /api -> E2E_FLEET_BASE_PORT+0 = this api; /app +
 # /preview are served from the worktree by the proxy itself (REQ-0217).
 E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0221_e2e_proxy.log 2>&1 &
+  setsid node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0221_e2e_proxy.log 2>&1 &
 PIDS+=($!)
 
 for i in $(seq 1 80); do
