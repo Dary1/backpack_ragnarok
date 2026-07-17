@@ -30,3 +30,9 @@ Recommendation: (a), optionally + (c) later; (b) is the minimal patch.
 - The perf assertion passes 5/5 under an artificial CPU-load harness while
   correctness assertions stay untouched.
 - ci.sh green.
+
+## Ratification (2026-07-17)
+
+User picked **(a)**: measure `process.cpuUsage()` (user+sys) instead of wall
+clock in the forecastPressure perf-budget assertion. Budget re-tuned once at
+implementation. (c) split-perf-gate deferred; (b) rejected.
