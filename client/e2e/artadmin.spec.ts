@@ -305,3 +305,29 @@ test('custom kind: operator sets resolution (snapped) and the prompt is verbatim
   await expect(page.getByTestId('art-final-prompt')).not.toContainText('anime');
   await expect(page.getByTestId('art-final-prompt')).not.toContainText('bold outline');
 });
+
+test('REQ-0216 true-scale thumbs: constant px-per-cell across footprints', async ({ page, request }) => {
+  await request.post('/api/art/dev/clear-all');
+  // 1x1 vs the L's 2x2 bbox: constant px-per-cell means the two stages get
+  // inline widths of 1*42 and 2*42 -- the size DIFFERENCE is the feature
+  // (before REQ-0216 both were normalized into the same 212x150 cap).
+  const gem = Array.from({ length: 5 }, () => Array(5).fill(false) as boolean[]);
+  gem[0][0] = true;
+  await apiCreate(request, { system_name: 'e2e_gem', kind: 'po', shape: { mask: gem }, main_object: 'small gem' });
+  await apiCreate(request, { system_name: 'e2e_axe2', kind: 'po', shape: { mask: lMask() }, main_object: 'iron axe' });
+
+  await page.goto('/app/#/artadmin');
+  await page.getByTestId('art-select-e2e_gem').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 1);
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+  await expect(page.getByTestId('render-cb-1')).toHaveCSS('width', '42px');
+
+  await page.getByTestId('art-select-e2e_axe2').click();
+  await expect(page.getByTestId('art-editor')).toBeVisible();
+  await page.getByTestId('art-gen-next').click();
+  await waitStatusOk(page, 1);
+  await expect(page.getByTestId('render-cb-1')).toBeVisible();
+  await expect(page.getByTestId('render-cb-1')).toHaveCSS('width', '84px');
+});

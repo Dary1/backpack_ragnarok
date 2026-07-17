@@ -18,7 +18,7 @@ import { bootApp, cx, cy, drag, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
-const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
 const DEV_USER_PATH = join(REPO_ROOT, 'data', 'config', 'dev_user.json');
 
 interface CreatedPlayer {
@@ -90,7 +90,7 @@ async function withDevProfileBackup(fn: () => Promise<void>): Promise<void> {
  * black-box, real network). Starts from a minimal empty-canvas shape
  * (8x8 layout, 5 empty pages) if no profile exists yet. */
 async function seedDevLrdstBalance(page: Page, qty: number): Promise<any> {
-  const existingResp = await page.request.get('/api/profile/dev/canvas');
+  const existingResp = await page.request.get('/api/profile/default/canvas');
   const canvas = existingResp.ok()
     ? (await existingResp.json()).canvas
     : {
@@ -110,7 +110,7 @@ async function seedDevLrdstBalance(page: Page, qty: number): Promise<any> {
   if (!canvas.inv.pages[0].tms) canvas.inv.pages[0].tms = [];
   canvas.inv.pages[0].tms = canvas.inv.pages[0].tms.filter((t: any) => t.id !== 'lrdst');
   canvas.inv.pages[0].tms.push({ uid: 'e2e_lrdst_seed', id: 'lrdst', qty, cell: [8, 8] });
-  const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+  const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
   expect(putRes.status()).toBe(200);
   return canvas;
 }
@@ -140,7 +140,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // followed the roll must show BOTH the balance deduction AND a
       // freshly-minted BP present somewhere in the canvas.
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       let totalLrdst = 0;
       for (const pg of canvas.inv.pages) for (const tm of pg.tms || []) if (tm.id === 'lrdst') totalLrdst += tm.qty;
@@ -199,7 +199,7 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // what the diagram displayed.
       await expect(page.locator('[data-testid="workshop-toast"]')).toBeVisible({ timeout: 10000 });
       await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
+      const canvasResp = await page.request.get('/api/profile/default/canvas');
       const canvas = (await canvasResp.json()).canvas;
       const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
       const newBp = allBps.find((b: any) => !preRollBpIds.has(b.id));
@@ -346,7 +346,7 @@ test.describe('TM stack merge via repeated claims', () => {
         await waitForAutoSave(page);
       }
 
-      const finalResp = await page.request.get('/api/profile/dev/canvas');
+      const finalResp = await page.request.get('/api/profile/default/canvas');
       const finalCanvas = (await finalResp.json()).canvas;
       const lrdstStacks = finalCanvas.inv.pages.flatMap((pg: any) => pg.tms || []).filter((t: any) => t.id === 'lrdst');
       expect(lrdstStacks.length).toBe(1); // never forked a second stack across two claims
@@ -400,7 +400,7 @@ test.describe('Reward LRDST reaching warehouse', () => {
         inv: { pages: [{ bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }], names: ['1', '2', '3', '4', '5'] },
         presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, squadCanvas('p1'), squadCanvas('p2'), squadCanvas('p3'), null] },
       };
-      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+      const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
       expect(putRes.status()).toBe(200);
 
       // Create a room, fill all 4 slots with 4 DIFFERENT, mutually-
@@ -469,7 +469,7 @@ test.describe('Claim of a TM warehouse row merges into an existing stack', () =>
       await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toBeVisible({ timeout: 10000 });
 
       await waitForAutoSave(page);
-      const finalResp = await page.request.get('/api/profile/dev/canvas');
+      const finalResp = await page.request.get('/api/profile/default/canvas');
       const finalCanvas = (await finalResp.json()).canvas;
       const lrdstStacks = finalCanvas.inv.pages.flatMap((pg: any) => pg.tms || []).filter((t: any) => t.id === 'lrdst');
       expect(lrdstStacks.length).toBe(1); // merged into ONE stack, not two
@@ -527,7 +527,7 @@ test.describe('BP move handle', () => {
           names: ['1', '2', '3', '4', '5'],
         },
       };
-      const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+      const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
       expect(putRes.status()).toBe(200);
 
       await bootApp(page);
@@ -542,7 +542,7 @@ test.describe('BP move handle', () => {
       );
 
       await waitForAutoSave(page);
-      let saved = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      let saved = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
       const movedCanvasBp = saved.bps.find((b: any) => b.id === canvasBpId);
       expect(movedCanvasBp).toBeTruthy();
       expect(movedCanvasBp.origin).toEqual([6, 6]);
@@ -561,7 +561,7 @@ test.describe('BP move handle', () => {
       );
 
       await waitForAutoSave(page);
-      saved = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      saved = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
       const movedInvBp = saved.inv.pages[0].bps.find((b: any) => b.id === invBpId);
       expect(movedInvBp).toBeTruthy();
       expect(movedInvBp.origin).toEqual([6, 6]);
@@ -639,7 +639,7 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
         names: ['1', '2', '3', '4', '5'],
       },
     };
-    const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;
   }
@@ -701,7 +701,7 @@ test.describe('REQ-0063: Dismantle panel (dev player)', () => {
 
       // Server-side: item gone from the canvas entirely (home record, not
       // just visually hidden).
-      const canvasAfter = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const canvasAfter = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
       const stillThere = canvasAfter.inv.pages.some((pg: any) => (pg.pos || []).some((p: any) => p.uid === uid));
       expect(stillThere).toBe(false);
 
@@ -750,7 +750,7 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
    * fixture happened to leave them. Restored by withDevProfileBackup
    * like every other test in this file. */
   async function seedDevBladePos(page: Page, uids: string[]): Promise<any> {
-    const existingResp = await page.request.get('/api/profile/dev/canvas');
+    const existingResp = await page.request.get('/api/profile/default/canvas');
     const canvas = existingResp.ok()
       ? (await existingResp.json()).canvas
       : {
@@ -801,7 +801,7 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
     // (2 cells tall) and the page grid is 1-indexed 8x8, so rows 1-2 x cols 1..5
     // are all in-bounds and mutually non-overlapping.
     canvas.inv.pages[0].pos = uids.map((uid, i) => ({ uid, id: 'blade', loc: 'grid', cell: [1, 1 + i], rot: 0 }));
-    const putRes = await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    const putRes = await page.request.put('/api/profile/default/canvas', { data: canvas });
     expect(putRes.status()).toBe(200);
     return canvas;
   }
@@ -897,7 +897,7 @@ test.describe('REQ-0090: Dismantle panel multi-select (dev player)', () => {
       await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toBeVisible({ timeout: 15000 });
       await expect(page.locator('[data-testid="workshop-dismantle-toast"]')).toContainText('4');
 
-      const canvasAfter = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const canvasAfter = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
       const remainingUids = (canvasAfter.inv.pages[0].pos || []).map((p: any) => p.uid);
       expect(remainingUids).toEqual([uids[0]]);
 
@@ -947,7 +947,7 @@ test.describe('REQ-0062: themed BP pack (clockwork) -- open end-to-end', () => {
 
       // Server-side: balance dropped by the clockwork cost (15); a fresh BP (4-5 cells)
       // plus a fresh bonus PO (flame_tablet|oil_flask) landed in inventory.
-      const canvas = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const canvas = (await (await page.request.get('/api/profile/default/canvas')).json()).canvas;
       let totalLrdst = 0;
       for (const pg of canvas.inv.pages) for (const tm of pg.tms || []) if (tm.id === 'lrdst') totalLrdst += tm.qty;
       expect(totalLrdst).toBe(999 - 15);

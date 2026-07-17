@@ -80,8 +80,11 @@ function tryRagnarokRoutes(req, res, url, p) {
   // dev_mode NO-TOKEN fallback -- exact same computation and rationale
   // as routes/schedule.cjs's callerIsDevFallback (see that file's
   // comment); used ONLY to gate /order/dev/force-rebuild below.
-  const devUserForGate = admin.readDevUser();
-  const callerIsDevFallback = !token && devUserForGate.dev_mode === true && callerId === devUserForGate.playerId;
+  // REQ-0214: keyed off the resolver's own resolution-path annotation
+  // (admin.resolveAuthFromRequest sets viaDevFallback), NOT a playerId
+  // comparison -- the e2e profile redirect (x-bpk-e2e-profile) swaps the
+  // playerId while remaining exactly this no-token dev_mode fallback.
+  const callerIsDevFallback = !token && resolved.viaDevFallback === true;
   // Optional Idempotency-Key (node:http lowercases header names) --
   // same minimal pattern routes/market.cjs introduced.
   const rawIdem = req.headers['idempotency-key'];

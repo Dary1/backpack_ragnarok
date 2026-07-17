@@ -17,7 +17,7 @@
 //
 // The CRITICAL post-buy assertion (balance debits server-side AND the
 // item lands in the buyer's warehouse) is checked via the API the same
-// way schedule.spec.ts checks settlement -- reading /api/profile/dev/
+// way schedule.spec.ts checks settlement -- reading /api/profile/default/
 // canvas + /api/warehouse back after the UI buy, proving the client's
 // loadGame() race-guard left the server's debit intact (no stale auto-
 // save resurrected the spent balance).
@@ -34,7 +34,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { bootApp, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
-const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 
 interface MintedPlayer { playerId: string; token: string; name: string; }
@@ -126,7 +126,7 @@ async function gotoMarket(page: Page): Promise<void> {
 }
 
 async function readDevLrdst(page: Page): Promise<number> {
-  const resp = await page.request.get('/api/profile/dev/canvas');
+  const resp = await page.request.get('/api/profile/default/canvas');
   const canvas = (await resp.json()).canvas;
   let total = 0;
   for (const pg of canvas.inv?.pages ?? []) for (const tm of pg.tms ?? []) if (tm.id === 'lrdst') total += tm.qty;
@@ -151,12 +151,12 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
 
   test.beforeEach(async ({ page }) => {
     devProfileBackup = existsSync(DEV_PROFILE_PATH) ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
-    const resp = await page.request.get('/api/profile/dev/canvas');
+    const resp = await page.request.get('/api/profile/default/canvas');
     origCanvas = resp.ok() ? (await resp.json()).canvas : null;
   });
 
   test.afterEach(async ({ page }) => {
-    if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+    if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
     if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
     else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
     // sweep any market debris the dev buyer accrued (warehouse deliveries)
@@ -170,7 +170,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     await seedSellerListing(page, seller, 'e2e_browse_2', 'dagger', 12);
 
     // dev buyer boots with a fat balance (so nothing is short-gated here).
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(500, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(500, []) });
     await gotoMarket(page);
 
     // Cards present, price + burn breakdown line rendered.
@@ -199,7 +199,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   test('BUY happy path: the oath modal settles, the balance debits server-side, and the item lands in the buyer warehouse', async ({ page }) => {
     const seller = mintInvite('MarketSellerBuy');
     await seedSellerListing(page, seller, 'e2e_buy_1', 'tower_shield', 46);
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(100, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(100, []) });
     await gotoMarket(page);
 
     const before = await readDevLrdst(page);
@@ -230,7 +230,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
 
   test('BUY 409 self_buy: a card the buyer listed themselves is not buyable (button disabled), and a forced buy 409s', async ({ page }) => {
     // dev buyer both owns the item AND lists it -> self purchase blocked.
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(200, [{ uid: 'e2e_self_1', id: 'dagger' }]) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(200, [{ uid: 'e2e_self_1', id: 'dagger' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_self_1', price: { tm: 'lrdst', qty: 12 } } });
     expect(listRes.status()).toBe(200);
     const listingId = (await listRes.json()).listing.id;
@@ -251,7 +251,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const seller = mintInvite('MarketSellerPoor');
     await seedSellerListing(page, seller, 'e2e_poor_1', 'beast_jaw', 120);
     // dev buyer has only 10 lrdst -> cannot afford the 120 listing.
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);
 
     const row = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_poor_1"]');
@@ -267,7 +267,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('SELL: an eligible inventory PO can be listed (live receipt estimate + stepper), and it then appears under Mine', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_sell_1', id: 'tower_shield' }]) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_sell_1', id: 'tower_shield' }]) });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
     await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
@@ -304,7 +304,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     // Put a copy of the item into squad store index 1's board so the
     // deploy gate sees it as deployed when that squad is assigned.
     canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_dep', name: 'BP', color: '#888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { id: 'berserker', off: [0, 0] }, hpMax: 500 }], pos: [{ uid: 'e2e_dep_1', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     // Create a room + assign squad 1 to a slot -> the item is deployed.
     const room = await page.request.post('/api/schedule/rooms', { data: { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' } });
     let roomId: string | null = null;
@@ -357,7 +357,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     ]);
     canvas.pos = [{ uid: 'e2e_ref_board', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }] as never;
     canvas.presets.store[1] = { linked: true, bps: [{ id: 'bp_ref', name: 'BP', color: '#888', shape: [[0, 0]], origin: [1, 1], unit: { id: 'test_loner', off: [0, 0] }, hpMax: 30 }], pos: [{ uid: 'e2e_ref_preset', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] } as never;
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
     await expect(page.locator('[data-testid="market-pane-sell"]')).toBeVisible();
@@ -388,7 +388,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   test('SELL REQ-0198: a picker card carries the instance roll % (data-roll-pct)', async ({ page }) => {
     const canvas = devBuyerCanvas(50, [{ uid: 'e2e_roll_1', id: 'tower_shield' }]);
     (canvas.inv.pages[0].pos[0] as { q?: number }).q = 0.42; // REQ-0063 instance quality roll
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
     const bar = page.locator('[data-testid="market-sell-item"][data-item-uid="e2e_roll_1"] [data-testid="market-rollbar"]');
@@ -399,7 +399,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   // REQ-0198 (B): the '#/market?sell=<uid>&kind=' deep link (FloatingItemTip's
   // "sell this" target) opens the SELL pane with the instance preselected.
   test('SELL REQ-0198: the #/market?sell= deep link opens the SELL pane preselected', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_dl_1', id: 'tower_shield' }]) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(50, [{ uid: 'e2e_dl_1', id: 'tower_shield' }]) });
     await bootApp(page);
     await page.evaluate(() => { window.location.hash = '#/market?sell=e2e_dl_1&kind=po'; });
     await expect(page.locator('[data-testid="market-page"]')).toBeVisible({ timeout: 10000 });
@@ -410,7 +410,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('MINE: withdraw pulls a listing off the hearth (free, no burn), and the row leaves the browse', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'dagger' }]) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_wd_1', id: 'dagger' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_wd_1', price: { tm: 'lrdst', qty: 8 } } });
     const listingId = (await listRes.json()).listing.id;
 
@@ -435,7 +435,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   });
 
   test('WIRE: dtoVersion 2 envelope carries tms[] (live TM registry) + PO listings carry kind:po (REQ-0195a)', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_kind_1', id: 'dagger' }]) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(0, [{ uid: 'e2e_kind_1', id: 'dagger' }]) });
     const listRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_kind_1', price: { tm: 'lrdst', qty: 9 } } });
     expect(listRes.status()).toBe(200);
     const created = await listRes.json();
@@ -457,7 +457,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     // Seed the dev player with one loose inventory SI, then list it.
     const canvas = devBuyerCanvas(0, []);
     canvas.inv.pages[0].sis = [{ uid: 'e2e_si_1', id: siId, host: 'inv', q: 0.5 }] as never;
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     const listRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_si_1', price: { tm: 'lrdst', qty: 7 } } });
     expect(listRes.status()).toBe(200);
     expect((await listRes.json()).listing.kind).toBe('si');
@@ -479,7 +479,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     // them.
     const canvas = devBuyerCanvas(0, [{ uid: 'e2e_chip_po', id: poId }]);
     canvas.inv.pages[0].sis = [{ uid: 'e2e_chip_si', id: siId, host: 'inv', q: 0.5 }] as never;
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     const poRes = await page.request.post('/api/market/listings', { data: { itemUid: 'e2e_chip_po', price: { tm: 'lrdst', qty: 8 } } });
     expect(poRes.status()).toBe(200);
     const siRes = await page.request.post('/api/market/listings', { data: { kind: 'si', itemUid: 'e2e_chip_si', price: { tm: 'lrdst', qty: 7 } } });
@@ -523,7 +523,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     const browse = await (await page.request.get('/api/market/listings')).json();
     expect((browse.listings as Array<{ itemUid: string; kind: string }>).some((l) => l.itemUid === 'e2e_unit_1' && l.kind === 'unit')).toBeTruthy();
     // The dev buyer (funded) buys it -> a kind:bp warehouse row with the verbatim BP payload.
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(50, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(50, []) });
     const buyRes = await page.request.post(`/api/market/listings/${created.listing.id}/buy`);
     expect(buyRes.status()).toBe(200);
     const wh = await (await page.request.get('/api/warehouse')).json();
@@ -542,7 +542,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     // now pick lrdst to sell AND price it in another live currency -- the
     // previously-dormant 'no other currency to price in' state is gone; the real
     // price-TM selector + list button take its place.
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(20, []) });
     await gotoMarket(page);
     await page.locator('[data-testid="market-tab-sell"]').click();
     await page.locator('[data-testid="market-sell-kind-tm"]').click();
@@ -580,7 +580,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
     }
     // In the BUY grid the po card carries a 50% roll bar; the unit card
     // shows the unmeasured badge instead (never a 0% bar).
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(20, []) });
     await gotoMarket(page);
     const poCard = page.locator('[data-testid="market-listing-row"][data-item-uid="e2e_roll_po"]');
     await expect(poCard).toBeVisible();
@@ -598,7 +598,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
 
 
   test('FOOTER: the seasonal furnace total renders with the lore copy', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(10, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(10, []) });
     await gotoMarket(page);
     const furnace = page.locator('[data-testid="market-furnace"]');
     await expect(furnace).toBeVisible();
@@ -613,7 +613,7 @@ test.describe('REQ-0064: Market screen on the real backend', () => {
   // player routes elsewhere (proving it is global chrome, not a market widget).
   // Content-agnostic: lrdst is the guaranteed live TM on every content set.
   test('HUD REQ-0205: the global held-TM strip shows a chip with the held qty, on the market page AND after routing away', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devBuyerCanvas(20, []) });
+    await page.request.put('/api/profile/default/canvas', { data: devBuyerCanvas(20, []) });
     await gotoMarket(page);
     await expect(page.locator('[data-testid="tm-hud"]')).toBeVisible();
     const chip = page.locator('[data-testid="tm-hud-chip"][data-tm-id="lrdst"]');

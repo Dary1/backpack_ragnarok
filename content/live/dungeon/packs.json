@@ -237,6 +237,134 @@
         }
       ],
       "note": "Burn engine: the imps (fire_dart) and demon_lord (dominion_of_flame) set the squad alight, then gargoyle (molten_talons) converts Burn x1.5 while dullahan anchors the gate."
+    },
+    {
+      "id": "pack_deep_tide",
+      "name": "Deep Tide",
+      "i18n": {
+        "en": {
+          "name": "Deep Tide"
+        },
+        "ja": {
+          "name": "深潮"
+        }
+      },
+      "members": [
+        {
+          "enemy": "kraken",
+          "at": "B4"
+        },
+        {
+          "enemy": "sea_serpent",
+          "at": "N3"
+        },
+        {
+          "enemy": "sahuagin",
+          "at": "N11"
+        },
+        {
+          "enemy": "giant_crab",
+          "at": "R11"
+        }
+      ],
+      "note": "Chill engine at sea: sahuagin (cold_current), giant_crab (barnacle_grip) and the kraken boss (abyssal_grip) freeze the squad, then sea_serpent (tidal_fang) cashes Chill in via bonus_vs_status x1.5 while the kraken crushes with multi_strike."
+    },
+    {
+      "id": "pack_petrifying_court",
+      "name": "Petrifying Court",
+      "i18n": {
+        "en": {
+          "name": "Petrifying Court"
+        },
+        "ja": {
+          "name": "石化の宮廷"
+        }
+      },
+      "members": [
+        {
+          "enemy": "stone_golem",
+          "at": "B5"
+        },
+        {
+          "enemy": "medusa",
+          "at": "H4"
+        },
+        {
+          "enemy": "cockatrice",
+          "at": "H10"
+        },
+        {
+          "enemy": "lamia",
+          "at": "M7"
+        }
+      ],
+      "note": "Stun engine: medusa (petrifying_glare) and cockatrice (petri_peck) petrify the squad, then stone_golem (seismic_fist) converts Stun via bonus_vs_status x1.5 while lamia sustains with serpents_kiss lifesteal and softens with beguiling_song Weakness."
+    },
+    {
+      "id": "pack_greenskin_warband",
+      "name": "Greenskin Warband",
+      "i18n": {
+        "en": {
+          "name": "Greenskin Warband"
+        },
+        "ja": {
+          "name": "緑肌の戦団"
+        }
+      },
+      "members": [
+        {
+          "enemy": "ogre",
+          "at": "B6"
+        },
+        {
+          "enemy": "orc_warrior",
+          "at": "G3"
+        },
+        {
+          "enemy": "goblin",
+          "at": "G9"
+        },
+        {
+          "enemy": "kobold",
+          "at": "G14"
+        },
+        {
+          "enemy": "goblin_shaman",
+          "at": "L7"
+        }
+      ],
+      "note": "Swarm tempo + sustain + Weakness convert: fast goblin/kobold spears and the ogre anchor pressure the line, goblin/goblin_shaman apply Weakness (goblin_jeer, hex_bolt) which orc_warrior (brutal_cleave) cashes in via bonus_vs_status x1.5, while goblin_shaman heals the lowest ally with crude_mending (heal_ally)."
+    },
+    {
+      "id": "pack_titan_ridge",
+      "name": "Titan Ridge",
+      "i18n": {
+        "en": {
+          "name": "Titan Ridge"
+        },
+        "ja": {
+          "name": "巨人の尾根"
+        }
+      },
+      "members": [
+        {
+          "enemy": "behemoth",
+          "at": "B5"
+        },
+        {
+          "enemy": "frost_giant",
+          "at": "L3"
+        },
+        {
+          "enemy": "cyclops",
+          "at": "L10"
+        },
+        {
+          "enemy": "troll",
+          "at": "S6"
+        }
+      ],
+      "note": "Big hits + a Chill engine: the behemoth boss (cataclysm_horns multi_strike, earthshatter Stun) and cyclops (log_swing) land heavy blows, frost_giant applies Chill (winters_call) then converts it (glacial_axe) via bonus_vs_status x1.5, and troll sustains with trollish_vigor lifesteal."
     }
   ]
 }

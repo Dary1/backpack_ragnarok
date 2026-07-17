@@ -33,6 +33,8 @@ echo "==== [2.7/7] REQ-0203 grave-legion gates (dialect / sim verbs / transpose 
 node sim/tests/req0203_grave_legion_test.cjs
 echo "==== [2.75/7] REQ-0207 wildlands gates (dialect / transpose / packs / determinism / additive promote) ===="
 node sim/tests/req0207_wildlands_test.cjs
+echo "==== [2.76/7] REQ-0219 deepstone-legions gates (dialect / transpose / packs / determinism / additive promote) ===="
+node sim/tests/req0219_deepstone_test.cjs
 echo "==== [2.8/7] unit charge runtime (REQ-0200) ===="
 node sim/tests/unit_charge_test.cjs
 echo "==== [2.9/7] unit charge encounter fusion (REQ-0200) ===="
@@ -75,6 +77,8 @@ echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
 node server/tests/bpskin_test.cjs
 echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
 node server/tests/bpskin_migration_test.cjs
+echo "==== [4.695/7] e2e profile redirect -- dev-fallback isolation (DB-free, REQ-0214) ===="
+node server/tests/e2e_profile_redirect_test.cjs
 echo "==== [4.71/7] UGC moderation verdict pipeline (DB-free, REQ-0144) ===="
 MODPY="${ART_KIT_PYTHON:-$HOME/backpack_ragnarok/.venv/bin/python}"
 if [ -x "$MODPY" ] && "$MODPY" -c 'import numpy,scipy,PIL' 2>/dev/null; then
@@ -147,6 +151,8 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_pack_board_grave_legion.mjs)
   echo "==== [5.77/7] client monster_pack board -- batch-006 wildlands resolves footprints from art (REQ-0207) ===="
   (cd client && node scripts/check_pack_board_wildlands.mjs)
+  echo "==== [5.78/7] client monster_pack board -- batch-007 deepstone-legions resolves footprints from art (REQ-0219) ===="
+  (cd client && node scripts/check_pack_board_deepstone.mjs)
   # REQ-0059: circuit-chimes deterministic event->note mapping (+ prefs).
   # Pure functions, no browser/Pixi/AudioContext -- same vite-ssrLoadModule
   # rig as the two gates above, so it sits beside them in front of the build.
