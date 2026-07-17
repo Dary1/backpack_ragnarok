@@ -35,3 +35,20 @@ before the registry copy can take over.
 - The 3 verb-blocked units (powder_keg, cursed_doll, battle_pickaxe) — they
   ship WITH their verbs in REQ-0212-charge-verb-expansion.
 - Any vocab change (this REQ uses attested verbs/targets/triggers only).
+
+## Gate results (2026-07-17)
+
+- check_units: ALL GREEN (51 defs) - self_test_vocab: ALL GREEN - full ci.sh:
+  every suite green through the admin trio (artadmin 6/6, artinspect 1/1,
+  contentadmin 28/28); default client e2e **186 passed / 1 failed**
+  (long-press-rename). The failure is NOT this REQ's: it re-passes **3/3 in
+  isolation** post-reboot, and the ci run coincided with the box-wide memory
+  thrash that froze llmlocal minutes later (see the incident record below).
+- Incident (2026-07-17 ~05:45 UTC): llmlocal froze mid-multi-session load;
+  NO oom-kill in kernel/oomd logs -- swap-thrash starvation. Root cause is
+  structural: warm ComfyUI holds ~11 GB host RSS that /free cannot return
+  (REQ-0158's own scope note), and the art queue alternates generation and
+  birefnet mattes (12 GB), so the steady state was ~23 GB = the whole box;
+  any other session's normal work tipped it. Mitigations applied same day:
+  comfyui.service MemoryMax=14G + MemorySwapMax=1G, watchdog
+  RSS_RESTART_MB=6000. Family-grouped queue scheduling is the follow-up REQ.
