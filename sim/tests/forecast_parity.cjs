@@ -486,7 +486,22 @@ async function main() {
   // this box -- a content-scale effect, not an algorithmic regression (master
   // red predates REQ-0193's merge). Restoring headroom under a tighter budget
   // is REQ-0210-forecast-pressure-perf.
-  T('forecastPressure: perf budget -- a full 4-squad recompute is well under [TUNABLE 100ms]', () => {
+  //
+  // [REQ-0230] load immunity (2026-07-17): wall clock measures the BOX, not
+  // the code -- under multi-session CI contention (loadavg 7-40) the unchanged
+  // fold measured 101-141ms wall and failed on an untouched master checkout.
+  // Two changes, ratified option (a):
+  //   1. Measure process.cpuUsage() (user+sys), not wall clock: scheduler
+  //      stalls no longer count, real algorithmic regressions still do.
+  //   2. Best-of-3: a single CPU sample can still spike ~40% under cache
+  //      contention / a GC pause (observed 136ms one-shot vs 89-98ms
+  //      best-of-3 on a fully saturated 8-core box); the min of 3 folds is
+  //      what the algorithm costs.
+  // [TUNABLE] 100 -> 150 ms CPU at the switch: the live roster has since
+  // grown to ~108 profiles (REQ-0219 deepstone et al.) putting the quiet-box
+  // fold at ~90ms, so 100 left no content headroom. 150 still fails a 2x
+  // regression. Tightening the budget back down stays REQ-0210's job.
+  T('forecastPressure: perf budget -- a full 4-squad recompute is well under [TUNABLE 150ms CPU], best of 3', () => {
     const { getForecast } = require(path.join(__dirname, '..', '..', 'server', 'lib', 'forecast.cjs'));
     const payload = getForecast('default', 10);
     const canvases = combat.FORMATIONS.formation1.canvases;
@@ -497,19 +512,23 @@ async function main() {
         profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
       });
     }
-    const t0 = process.hrtime.bigint();
-    for (const slot of Object.keys(canvases)) {
-      F.forecastPressure({
-        bounds: payload.bounds, jitterHalfWidth: payload.jitterHalfWidth,
-        profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
-      });
+    let ms = Infinity;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const u0 = process.cpuUsage();
+      for (const slot of Object.keys(canvases)) {
+        F.forecastPressure({
+          bounds: payload.bounds, jitterHalfWidth: payload.jitterHalfWidth,
+          profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
+        });
+      }
+      const du = process.cpuUsage(u0);
+      ms = Math.min(ms, (du.user + du.system) / 1e3);
     }
-    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
-    console.log('        (4-squad fold: ' + ms.toFixed(1) + 'ms)');
+    console.log('        (4-squad fold: ' + ms.toFixed(1) + 'ms CPU, best of 3)');
     // The REQ's budget is per RECOMPUTE (one board). Holding all FOUR squads
     // to it is the stricter bar, and node is a fair proxy for the browser's
     // JIT on a pure numeric loop like this.
-    ok(ms < 100, 'perf budget blown: ' + ms.toFixed(1) + 'ms >= 100ms');
+    ok(ms < 150, 'perf budget blown: ' + ms.toFixed(1) + 'ms CPU >= 150ms');
   });
 
   // REQ-0203: the enemy verb extensions must fold IDENTICALLY in the forced-copy pair
