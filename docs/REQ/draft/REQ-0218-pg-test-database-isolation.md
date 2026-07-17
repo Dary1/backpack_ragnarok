@@ -87,8 +87,9 @@ mistake still lands there. Rejected for the same reason a namespace is not enoug
 1. **Create `backpack_test` on the live Postgres instance?** Same server, separate
    database. Cheap, but it IS a change to live infrastructure (PROJECT.md:
    coordinate-first), so it is the owner's call, not an LLM's.
-2. **Sweep the 277 orphan namespaces (~11 500 rows)?** Reclaims the bulk of 544 MB. The
-   live namespace is untouched by construction. Yes / no / dry-run-first.
+2. ~~**Sweep the 277 orphan namespaces?**~~ **DONE** — owner go-ahead 2026-07-17. See §7.
+   The estimate in §1 was low: it counted only `profiles` + `warehouse_items`. The real
+   figure was **46 984 rows across 16 tables** (`schedule_rooms` alone held 12 970).
 3. **Priority vs REQ-0217.** They do not conflict (different files, complementary
    scopes), but both touch the test estate; sequencing is worth a word.
 
@@ -115,3 +116,64 @@ backups are all files-backend).
 REQ-0215 §6 has been corrected to say this. Lesson, and the reason this REQ exists: on
 this box "a test" and "production" are the same Postgres, so there is no safe way to be
 casually wrong.
+
+
+## 7. The sweep (done, 2026-07-17, on the owner's go-ahead)
+
+**Result: 46 984 orphan rows deleted across 16 tables. The live namespace is provably
+untouched. Profile namespaces went 278 -> 1.**
+
+### Method
+
+Columns were found by SCANNING the database (every text column whose values match
+`^[0-9a-f]{16}:`), not by reading the storage code — code-reading misses a table, a scan
+cannot. That found **21 namespaced columns across 16 tables**, several of which
+(`schedule_rooms` at 14 471 rows, `market_furnace`, `sealed_seeds`, `bp_bio`) the §1
+estimate had never counted.
+
+Backup first: `pg_dump --schema=public -Fc` -> 310 MB at
+`~/backpack_ragnarok_state/pg_backups/pre_ns_sweep_20260717_073815.dump`, verified
+readable with `pg_restore -l` before a single row was touched. (`--schema=public` because
+the `backpack` role cannot read supabase's `auth` schema — a full-cluster dump just errors.)
+
+Three guards, all of which had to pass:
+1. **Live-namespace sanity.** Refuse to run unless `88d662ca20e5289b` is still the LARGEST
+   namespace in `profiles`. The constant is derived from a hardcoded path
+   (`sha256(os.homedir() + '/backpack_ragnarok')[:16]`); if this box is ever re-pathed it
+   goes stale and a sweep keyed on it would delete real data. Don't trust the constant —
+   check it.
+2. **In-flight protection.** Skip any namespace written in the last 15 minutes, so a
+   concurrent pg api_test run cannot have its rows deleted mid-assertion.
+3. **The one that matters: delete inside a TRANSACTION, re-count the live namespace in all
+   16 tables, and ROLLBACK on a single row of drift.** Guard 3 passed; the commit followed.
+
+Cross-column check first: for the five tables with two namespaced columns
+(`market_listings.listing_id`/`seller_id`, `warehouse_items.item_uid`/`player_id`, …),
+**0 rows disagreed** on their namespace — so keying deletion on one column cannot orphan
+the other.
+
+Was any non-live namespace real data? No. `profiles` split as 626 rows x 1 namespace
+(live) then 28 x 32, 26 x 25, 16 x 83, 1 x 148 — uniform small epochs, the signature of
+test runs. Nothing else looked operational.
+
+### Verified after
+
+Every live count identical to the pre-sweep figures (artworks 233, profiles 626,
+schedule_rooms 1501, schedule_runs 1266, warehouse_items 32, … total **4 403**);
+**remaining orphan rows: 0**; distinct profile namespaces **1**; `/api/content`,
+`/api/profile/dev/canvas` 200; `backpack-web`/`backpack-api` healthy.
+
+### What did NOT get reclaimed, and why it matters here
+
+`VACUUM FULL` was **denied**: the tables are owned by `postgres`, not `backpack`. So the
+files did not shrink — `schedule_runs` still occupies 301 MB for 1 286 live rows. Plain
+`VACUUM` did run, so that space is now free for reuse and the debris cannot keep growing
+the database; but reclaiming the physical ~300 MB needs the table owner (superuser) and an
+ACCESS EXCLUSIVE lock on a live table. **Left for the owner to decide** — it is not
+urgent (24% disk used, space is reusable).
+
+This is itself an argument for §4: with a dedicated `backpack_test` database you `DROP
+DATABASE` and the space is simply gone — no sweep script, no guards, no superuser, no
+lock on a live table. **The sweep is a mitigation, not the fix.** It buys back what has
+accumulated once; the leak keeps running until the pg test pass stops pointing at
+production.
