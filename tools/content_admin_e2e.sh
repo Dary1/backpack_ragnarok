@@ -1,93 +1,35 @@
 #!/usr/bin/env bash
-# tools/content_admin_e2e.sh -- REQ-0155 G4 isolated e2e bringup.
+# tools/content_admin_e2e.sh -- REQ-0157 G4: the contentadmin UI, isolated.
 #
-# Stands up an ISOLATED instance of THIS worktree's api + static web + local
-# proxy, then runs the contentadmin Playwright spec through tools/e2e_run.sh
-# (box lock). Never touches the live services or the live content rows:
-#   - HOME is remapped to a temp dir whose backpack_ragnarok symlinks back to
-#     the worktree, so storage_content's NAMESPACE (hash of $HOME/
-#     backpack_ragnarok) is UNIQUE to this run while content/code still
-#     resolve to the worktree.
-#   - api on a spare port, STORAGE_BACKEND=pg, CONTENT_EXPORT_ROOT=<temp>
-#     (adoption export lands in a temp dir, never in content/), no
-#     CONTENT_EXPORT_GIT (no git during e2e). No GPU, no python: the machine
-#     checks are pure Node subprocesses spawned via the api's own node.
-#   - contentadmin.config.ts carries NO globalSetup/webServer.
+# Bringup, isolation, readiness and the lock+run tail live in
+# tools/e2e_harness.sh (REQ-0251). What is specific to THIS harness:
+#   - CONTENT_EXPORT_ROOT to a temp dir so adoption export lands there and never
+#     in content/; CONTENT_EXPORT_GIT stays unset (no git during e2e).
+#   - No GPU and no python: the machine checks are pure Node subprocesses
+#     spawned via the api's own node.
+#   - The sprite backfill (below) is seeded AFTER the api is up.
 #
-# Requires DATABASE_URL in the environment (source server/.env first). Run:
+# NOTE (REQ-0251): this file used to say "REQ-0155" in its header while sourcing
+# ports for 0157 and logging to req0155_*. 0157 is the number the port gate
+# declares and the lock used, so 0157 is now the single answer throughout.
+#
+# Requires DATABASE_URL (source server/.env first). Run:
 #   set -a; source ~/backpack_ragnarok/server/.env; set +a; bash tools/content_admin_e2e.sh
-set -euo pipefail
-: "${DATABASE_URL:?source server/.env first (DATABASE_URL required)}"
+source "$(dirname "$0")/e2e_harness.sh"
 
-WT="$(cd "$(dirname "$0")/.." && pwd)"
+e2e_harness_req 0157 content_admin_e2e
 
-# REQ-0133: Playwright chromium lives in the REAL home cache; the per-run HOME
-# remap below would hide it, so capture the real path now (before any remap).
-PW_CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
-
-# REQ-0172: ports are DERIVED from this harness's REQ number, never hand-picked.
-#   PORT = REQ * 10 + index   (0 = static, 1 = api, 2 = proxy)
-# so REQ-0157 owns 1570..1579 and can never collide with another REQ's harness.
-# The helper also preflights each port and aborts with ONE clear line if it is
-# busy, instead of letting the specs die later on ECONNREFUSED. See PROJECT.md,
-# "E2E / harness port allocation".
-source "$(dirname "$0")/e2e_ports.sh" 0157
-
-TMPHOME="$(mktemp -d)"
-EXPORTDIR="$(mktemp -d)"
-ln -s "$WT" "$TMPHOME/backpack_ragnarok"
-
-PIDS=()
-cleanup() {
-  for p in "${PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
-  rm -rf "$TMPHOME" "$EXPORTDIR"
-}
-trap cleanup EXIT
-
-echo "[content_admin_e2e] api :$APIPORT  static :$STATICPORT  proxy :$PROXYPORT"
-
-# REQ-0233: the family barrier restarts comfyui.service -- a LIVE, box-global
-# systemd unit this hermetic harness has no business touching (REQ-0217: an e2e
-# run never touches live services). Everything else here is already isolated
-# (TMPHOME namespace, mock art route, temp model/export dirs); the barrier is the
-# one thing that reached out. Off via the seam the REQ ships for exactly this.
-HOME="$TMPHOME" PORT="$APIPORT" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" ALLOW_DEV_CLEAR=1 \
-  CONTENT_EXPORT_ROOT="$EXPORTDIR" \
-  ART_FAMILY_BARRIER=0 \
-  node "$WT/server/api.cjs" > /tmp/req0155_e2e_api.log 2>&1 &
-PIDS+=($!)
-
-# REQ-0234 (F7): the REQ-0217 local-proxy serves /app + /preview from the
-# worktree ITSELF and routes headerless /api to E2E_FLEET_BASE_PORT+0 -- the
-# old E2E_STATIC_PORT/E2E_API_PORT knobs no longer exist, so point the
-# "fleet" base at this harness's single api (without this, /api fell through
-# to the DEFAULT fleet base 8810 and every spec died on 502). The python
-# static server this harness used to run is dropped with them: nothing
-# routes to it any more, and its single-threaded accept loop was the
-# goto-under-load flake source (REQ-0222).
-E2E_PROXY_PORT="$PROXYPORT" E2E_FLEET_BASE_PORT="$APIPORT" \
-  node "$WT/client/e2e/local-proxy.cjs" > /tmp/req0155_e2e_proxy.log 2>&1 &
-PIDS+=($!)
-
-for i in $(seq 1 80); do
-  if curl -s -o /dev/null "http://127.0.0.1:$APIPORT/api/content" 2>/dev/null; then break; fi
-  sleep 0.5
-done
-for i in $(seq 1 40); do
-  if curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/api/content" 2>/dev/null && curl -s -o /dev/null "http://127.0.0.1:$PROXYPORT/app/" 2>/dev/null; then break; fi
-  sleep 0.5
-done
+e2e_harness_api_env \
+  ALLOW_DEV_CLEAR=1 \
+  CONTENT_EXPORT_ROOT="$EXPORTDIR"
 
 # REQ-0133: seed THIS isolated registry with the sprite-backfill (INSERT-only,
 # adopted renders; no GPU/python -- Playwright rasterizes the SVG symbols) so the
 # contentadmin wiring test can prove registry-first art vs the sprite fallback.
-HOME="$TMPHOME" STORAGE_BACKEND=pg DATABASE_URL="$DATABASE_URL" PLAYWRIGHT_BROWSERS_PATH="$PW_CACHE" \
-  node "$WT/tools/backfill_sprite_art.cjs" > /tmp/req0155_e2e_backfill.log 2>&1
-echo "[content_admin_e2e] sprite backfill seeded ($(tail -1 /tmp/req0155_e2e_backfill.log))"
+e2e_h_after_ready() {
+  local log=/tmp/req0157_e2e_backfill.log
+  e2e_harness_node node "$WT/tools/backfill_sprite_art.cjs" > "$log" 2>&1
+  echo "[content_admin_e2e] sprite backfill seeded ($(tail -1 "$log"))"
+}
 
-# REQ-0234 (F2): this harness shares nothing box-global (own HOME remap, own
-# REQ decade), so it takes its OWN serialization lock instead of the box lock
-# -- which the REQ-0217 freeze daemon holds indefinitely and which only
-# guards the legacy shared-port path. Same-harness runs still queue.
-E2E_LOCK_FILE="${E2E_LOCK_FILE:-$HOME/.cache/backpack/e2e.0157.lock}" \
-  PLAYWRIGHT_BASE_URL="http://127.0.0.1:$PROXYPORT" bash "$WT/tools/e2e_run.sh" --config=e2e/contentadmin.config.ts
+e2e_harness_run --config=e2e/contentadmin.config.ts
