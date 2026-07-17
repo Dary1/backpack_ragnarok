@@ -6,10 +6,9 @@
 const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
-const dungen = require('../../sim/dungen.cjs');
+const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller
 const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, genId } = require('./core.cjs');
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
-const { resolveDungeonType } = require('./rooms.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 const bioService = require('./bio.cjs'); // REQ-0060
 
@@ -63,7 +62,7 @@ function startRun(room, profileCanvas) {
     const err = new Error('room is canceled'); err.code = 'CONFLICT'; throw err;
   }
   const squadSnapshots = buildSquadSnapshots(room, profileCanvas);
-  const { itemDefsById, enemyDefsById, skillDefsById, unitDefsById, connShapes, monsterPackDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById
+  const { itemDefsById, enemyDefsById, skillDefsById, unitDefsById, connShapes, monsterPackDefsById, gimicDefsById, dungeonDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById; REQ-0185: gimicDefsById + dungeonDefsById (the roller reads these)
   // REQ-0043: the dungeon def now comes from sim/dungen.cjs's generator,
   // keyed off the room's OWN dungeonType/level/genSeed (stored at
   // create-room time, see createRoom()/resolveDungeonType()) -- no
@@ -74,9 +73,16 @@ function startRun(room, profileCanvas) {
   // fresh random seed is rolled here (once) for a legacy room that never
   // had a genSeed persisted, exactly mirroring how the run's OWN combat
   // seed below is freshly rolled per-run rather than reused.
-  const dungeonType = room.dungeonType || resolveDungeonType(undefined, room.dungeonId);
+  // REQ-0185: the dungeon def comes from the registry; the dive is ROLLED from
+  // its weighted tables (sim/dungeon_roll.cjs) deterministically from the room's
+  // OWN genSeed (stored at create time). A legacy room's dungeonId still names
+  // the (now authored) def; an unknown id falls back to the first available def
+  // (defensive -- a room must never fail to start on a stale/renamed id).
+  let dungeonDefRef = dungeonDefsById[room.dungeonId];
+  if (!dungeonDefRef) { const ids = Object.keys(dungeonDefsById); dungeonDefRef = ids.length ? dungeonDefsById[ids[0]] : null; }
+  if (!dungeonDefRef) { const e = new Error('no dungeon def available to roll for room ' + room.id); e.code = 'BAD_REQUEST'; throw e; }
   const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
-  const dungeonDef = dungen.generate(dungeonType, room.level, genSeed);
+  const dungeonDef = dungeonRoll.rollDungeon(dungeonDefRef, room.level, genSeed, { gimicDefsById });
   const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
