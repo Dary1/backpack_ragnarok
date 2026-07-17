@@ -84,3 +84,28 @@ its own ratification.
 Three agents, one tree, one false conclusion, in sequence — the third duplicating work that had
 already merged and gone live (`bc6c012`). None of them were careless; the tree simply gave no way
 to see what was already proven. That is a documentation defect, and this is its fix.
+
+## Deploy record (2026-07-17)
+- Merged to master **`56ccc51`** (`--no-ff`, user go-ahead in chat: "marge and deploy").
+- **No runtime paths touched** (`docs/` + `tools/` only) -> no service restart, no dist rebuild
+  (same category as REQ-0221's deploy). Post-merge health: backpack-web 8801 = 200,
+  backpack-api 8802 = 200, tunnel https://backpack-dev.qtie.jp/app/ = 200.
+- Post-merge on master: `bash -n tools/ci.sh` clean; `check_e2e_ports` green (4 harnesses).
+- **Full ci.sh deliberately NOT re-run, and this is the gate, not a shortcut:** the change is
+  comments-only and the non-comment content of `tools/ci.sh` is md5-identical to master
+  (`84cda97cf08d463f2203dee4bdb66acb`) before and after the merge, so ci.sh cannot observe it.
+  A run would have re-validated master's own logic, not this change -- while the box was
+  saturated by other sessions' ci runs (load peaked **18.42**, above the 13.7 that forced today's
+  reboot, per REQ-0231). A `test:quick` was queued for ~45min and never got the lock; it was
+  abandoned as redundant against the md5 proof.
+- Rebased onto master pre-merge; G2/G3 re-verified against the NEW base afterwards (master's
+  ci.sh had changed under the branch), so the map's claims match the tree as merged.
+
+### Reserved-number note — REQ-0237 burned by this session
+The first `touch_next_req_reserved.py` call appeared to fail (ssh timeout) but had in fact
+succeeded server-side, allocating **0237** and committing its stub; the retry took **0238**.
+Per PROJECT.md burned numbers are normal and never reused: `~/backpack_ragnarok_state/req/issued/0237`
+remains, so 0237 can never be re-handed-out. The orphan stub -- a duplicate carrying this REQ's
+exact slug -- was dropped from the branch rather than merged, leaving a clean gap instead of a
+confusing second file. Cause worth noting for the next session: a timed-out ssh call is NOT
+evidence the remote command failed.
