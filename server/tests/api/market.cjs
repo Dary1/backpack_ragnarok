@@ -19,7 +19,7 @@ module.exports.run = async function run(h) {
     evictServerModuleTree, evictStorageAndPlayers, tmpHome, realHomedir,
     fakeRepoHome, repoRoot, contentDir, liveDir, batchDir, fixtureLiveDungeonDir,
     schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed,
-    scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom } = h;
+    scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom, findClaimSpot } = h; // REQ-0215: findClaimSpot
 
   // =====================================================================
   // REQ-0064: Market test group. Same synthetic fixture tree as the
@@ -549,7 +549,13 @@ module.exports.run = async function run(h) {
     assert.strictEqual(row.bp.unit.id, 'test_loner', 'payload unit verbatim');
     assert.strictEqual(row.bp.hpMax, 30, 'payload hpMax verbatim');
     // Claim validates unit.id against unitDefsById and returns the payload.
-    const claim = await marketReq('POST', '/api/warehouse/claim', uBuyer.token, { itemUid: row.itemUid });
+    // REQ-0215: the claim carries the buyer's OWN fit result and the server tests
+    // that one spot. Search for it the way the real client does rather than
+    // hard-coding a cell -- this buyer's canvas is not empty (the suite placed a
+    // PO to prove the EMPTY-only listing gate above), so [1,1] is taken.
+    const buySpot = findClaimSpot(uBuyer.playerId, row.itemUid);
+    assert.ok(buySpot, 'the bought Unit must fit somewhere in the buyer inventory');
+    const claim = await marketReq('POST', '/api/warehouse/claim', uBuyer.token, { itemUid: row.itemUid, page: buySpot.page, position: buySpot.position });
     assert.strictEqual(claim.status, 200, JSON.stringify(claim.body));
     assert.strictEqual(claim.body.kind, 'bp');
     assert.ok(claim.body.bp, 'claim returns the payload');

@@ -227,11 +227,19 @@ module.exports.run = async function run(h) {
       assert.strictEqual(granted.ok, true);
       assert.ok(typeof granted.item.q === 'number' && granted.item.q >= floor && granted.item.q < 1, 'q=' + granted.item.q);
 
-      // claimWarehouseItem surfaces q in its return value (consumed by
-      // the client's WarehouseTab.tsx to attach it to the new PO record).
+      // claimWarehouseItem surfaces q in its return value (consumed by the
+      // client's warehouse claim path to attach it to the new PO record).
+      // REQ-0215: the claim now also takes the CLIENT's chosen {page, position}
+      // and the canvas to validate it against -- it tests that one spot and
+      // refuses if the engine does. This player has no saved profile of its own,
+      // so hand it a minimal empty canvas: the q echo is what this test is about,
+      // but the spot must be real or the claim is (correctly) refused.
       const { itemDefsById } = dzSchedule.getScheduleContent();
-      const claimed = dzWarehouseSvc.claimWarehouseItem(qp2.playerId, granted.item.itemUid, itemDefsById, {});
+      const emptyPage = () => ({ bps: [], pos: [], sis: [], tms: [] });
+      const qCanvas = { layout: { ROWS: 8, COLS: 8 }, bps: [], pos: [], sis: [], inv: { pages: [emptyPage(), emptyPage()], names: ['1', '2'] } };
+      const claimed = dzWarehouseSvc.claimWarehouseItem(qp2.playerId, granted.item.itemUid, itemDefsById, {}, {}, {}, { page: 0, position: [1, 1] }, qCanvas);
       assert.strictEqual(claimed.q, granted.item.q, 'claim response carries the SAME q the row was minted with');
+      assert.strictEqual(claimed.page, 0, 'REQ-0215: the validated spot is echoed back so the client places where the server agreed');
     });
 
     await AT('dismantle: TTL auto-dismantle -- expiry engraves the ledger always, yields probabilistically (50%), never for kind:tm currency rows', async () => {

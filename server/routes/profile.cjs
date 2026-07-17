@@ -83,11 +83,13 @@ function tryProfileRoutes(req, res, url, p) {
           // sits until its own lazy timeout reverts it, never a lost
           // profile write.
           try { schedule.finalizeClaimingItemsForCanvas(effectivePlayerId, canvas); } catch (e2) { /* best-effort, see comment above */ }
-          // REQ-0042: same best-effort finalize pass for pending gacha
-          // rolls -- see schedule.cjs's finalizeGachaForCanvas doc for
-          // why its finalize condition (uid-presence AND balance-delta)
-          // is stricter than the claim finalize above.
-          try { schedule.finalizeGachaForCanvas(effectivePlayerId, canvas); } catch (e3) { /* best-effort, see comment above */ }
+          // REQ-0215: the second finalize pass (pending GACHA rolls) is GONE.
+          // A roll no longer places anything on the canvas -- it debits the
+          // cost and delivers the Unit to the warehouse in one synchronous
+          // transaction -- so there is no pending roll for a profile PUT to
+          // finalize. The claim finalize above is unaffected and still runs:
+          // a CLAIMED warehouse row (including a rolled Unit's) does land on
+          // the canvas, which is exactly what it gates on.
           sendJSON(res, 200, doc);
         } catch (e) {
           if (e.code === 'TOO_LARGE') {

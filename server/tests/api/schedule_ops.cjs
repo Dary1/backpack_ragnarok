@@ -22,7 +22,7 @@ module.exports.run = async function run(h) {
     evictServerModuleTree, evictStorageAndPlayers, tmpHome, realHomedir,
     fakeRepoHome, repoRoot, contentDir, liveDir, batchDir, fixtureLiveDungeonDir,
     schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed,
-    scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom } = h;
+    scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom, claimReq, findClaimSpot } = h; // REQ-0215: claimReq/findClaimSpot
 
   await AT('schedule: pre-REQ-0041 warehouse rows with no `status` field at all are treated as claimable (migration on read)', async () => {
     const legacyId = 'claim_legacy_' + Date.now();
@@ -35,7 +35,7 @@ module.exports.run = async function run(h) {
     const found = listed.find((i) => i.itemUid === legacyId);
     assert.ok(found, 'legacy row must be listed');
     assert.strictEqual(found.status, 'claimable', 'a legacy row missing `status` must be treated/migrated as claimable');
-    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: legacyId });
+    const claimRes = await claimReq(scheduleP1, legacyId);
     assert.strictEqual(claimRes.status, 200, 'a legacy row must be claimable: ' + JSON.stringify(claimRes.body));
     scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, legacyId); // cleanup
   });
@@ -234,13 +234,68 @@ module.exports.run = async function run(h) {
   });
 
   await AT('schedule: claiming an unknown/nonexistent warehouse itemUid is a 404', async () => {
-    const res = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: 'no_such_item_uid_at_all' });
+    // REQ-0215: still 404, not 409 -- the row lookup runs BEFORE the spot
+    // validation, so a well-formed spot for a nonexistent row cannot turn this
+    // into a "no room" answer.
+    const res = await claimReq(scheduleP1, 'no_such_item_uid_at_all');
     assert.strictEqual(res.status, 404);
   });
 
   await AT('schedule: claim requires an itemUid in the body (400 when missing)', async () => {
     const res = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, {});
     assert.strictEqual(res.status, 400);
+  });
+
+  // REQ-0215: page/position are REQUIRED and are the CLIENT's own fit result --
+  // the server validates that one spot and never searches, so there is no
+  // fallback to degrade to. A stale client that omits them must be told plainly.
+  await AT('REQ-0215 claim: page/position are required (400 when missing or malformed)', async () => {
+    const whId = 'claim_spot_required_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+    const noSpot = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId });
+    assert.strictEqual(noSpot.status, 400, 'a claim with no spot at all is a 400: ' + JSON.stringify(noSpot.body));
+    const noPos = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId, page: 0 });
+    assert.strictEqual(noPos.status, 400, 'page without position is a 400');
+    const badPos = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId, page: 0, position: ['1', '1'] });
+    assert.strictEqual(badPos.status, 400, 'a non-integer position is a 400');
+    const badPage = await scheduleReq('POST', '/api/warehouse/claim', scheduleP1.token, { itemUid: whId, page: 99, position: [1, 1] });
+    assert.strictEqual(badPage.status, 400, 'a page index past the last inventory page is a 400');
+    assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId).status, 'claimable', 'a rejected claim must leave the row untouched -- still claimable, nothing to wait out');
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
+  });
+
+  // REQ-0215, the user's spec item 2/4: "no gap in the inventory => ERROR", for
+  // EVERY kind. This is the anti-cheat backstop -- the real client refuses before
+  // it ever calls -- so it is tested by proposing a spot the engine must refuse.
+  await AT('REQ-0215 claim: a spot the engine refuses is a 409 no_space, and the row stays claimable', async () => {
+    const whId = 'claim_nospace_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+
+    // Occupy the target cell in the SAVED canvas, then claim onto it anyway.
+    const doc = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc.canvas.inv.pages[0].pos.push({ uid: 'squatter_' + Date.now(), id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 });
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc.canvas);
+
+    const res = await claimReq(scheduleP1, whId, { page: 0, position: [1, 1] });
+    assert.strictEqual(res.status, 409, 'a claim onto an occupied cell must 409: ' + JSON.stringify(res.body));
+    assert.strictEqual(res.body.reason, 'no_space', 'the 409 carries a machine-readable reason the client maps to its own copy');
+    assert.strictEqual(scheduleStorage.readWarehouseItem(scheduleP1.playerId, whId).status, 'claimable',
+      'REQ-0215: a refused claim must NOT flip the row to claiming -- the player frees a cell and retries immediately, with no 120s lazy-revert to wait out');
+
+    // Out of bounds is refused by the same one-spot test.
+    const oob = await claimReq(scheduleP1, whId, { page: 0, position: [99, 99] });
+    assert.strictEqual(oob.status, 409, 'an out-of-bounds spot must 409: ' + JSON.stringify(oob.body));
+
+    // ...and the SAME row claims fine at a spot that really is free.
+    const ok = await claimReq(scheduleP1, whId, { page: 1, position: [1, 1] });
+    assert.strictEqual(ok.status, 200, 'a legal spot on another page still claims: ' + JSON.stringify(ok.body));
+    assert.strictEqual(ok.body.page, 1, 'the validated page is echoed back verbatim');
+    assert.deepStrictEqual(ok.body.position, [1, 1], 'the validated position is echoed back verbatim');
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
+
+    const doc2 = scheduleStorage.readProfile(scheduleP1.playerId);
+    doc2.canvas.inv.pages[0].pos = doc2.canvas.inv.pages[0].pos.filter((p) => !String(p.uid).startsWith('squatter_'));
+    scheduleStorage.writeProfile(scheduleP1.playerId, doc2.canvas);
   });
 
   await AT('schedule: swap on an out-of-range slot index is a 400', async () => {
@@ -395,7 +450,7 @@ module.exports.run = async function run(h) {
     // token), then force-backdate its claimedAt -- must read as abandoned
     // (claimable again) on the very next GET /api/warehouse, with zero
     // real wall-clock wait.
-    const claimRes = await scheduleReq('POST', '/api/warehouse/claim', undefined, { itemUid: grantId });
+    const claimRes = await claimReq({ playerId: devPlayer.playerId, token: undefined }, grantId);
     assert.strictEqual(claimRes.status, 200, JSON.stringify(claimRes.body));
 
     const backdateRes = await scheduleReq('POST', '/api/warehouse/dev/backdate-claim', undefined, { itemUid: grantId });

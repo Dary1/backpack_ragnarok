@@ -78,7 +78,7 @@ module.exports = {
   devBackdateActiveRun: runs.devBackdateActiveRun,
   WAREHOUSE_CLAIM_TIMEOUT_MS: core.WAREHOUSE_CLAIM_TIMEOUT_MS,
   GACHA_COMMON_BP_COST: gacha.GACHA_COMMON_BP_COST,
-  GACHA_PENDING_TIMEOUT_MS: gacha.GACHA_PENDING_TIMEOUT_MS,
+  GACHA_TM_ID: gacha.GACHA_TM_ID, // REQ-0215
   readLrdstBalance: gacha.readLrdstBalance,
   rollPolyomino: gacha.rollPolyomino,
   rollPackBp: gacha.rollPackBp,
@@ -86,8 +86,10 @@ module.exports = {
   resolvePack: gacha.resolvePack,      // REQ-0170
   pickWeighted: gacha.pickWeighted,    // REQ-0170
   startGachaRoll: gacha.startGachaRoll,
-  purgeExpiredGachaPending: gacha.purgeExpiredGachaPending,
-  finalizeGachaForCanvas: gacha.finalizeGachaForCanvas,
+  // REQ-0215: purgeExpiredGachaPending / finalizeGachaForCanvas REMOVED from the
+  // facade with their implementations -- the roll is one atomic purchase now
+  // (pay LRDST, the Unit is delivered to the warehouse), so there is no pending
+  // roll to finalize or revert. See services/gacha.cjs's module header.
   // REQ-0058: sealed seed share
   mintSeal: seals.mintSeal,
   getSeal: seals.getSeal,

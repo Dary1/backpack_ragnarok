@@ -8,7 +8,7 @@
 // the exact slot the combined module occupied. Returns false when not
 // matched.
 const { sendJSON, readBody } = require('../lib/http_util.cjs');
-const { resolveCallerOr401, sendScheduleError } = require('../lib/route_auth.cjs');
+const { resolveCallerOr401, loadOwnCanvas, sendScheduleError } = require('../lib/route_auth.cjs'); // REQ-0215: loadOwnCanvas -- the claim now validates the client's spot against the last-saved canvas
 const schedule = require('../schedule.cjs');
 
 const WAREHOUSE_RE = /^\/api\/warehouse$/;
@@ -97,7 +97,8 @@ function tryWarehouseRoutes(req, res, url, p) {
       return;
     }
 
-    // ---- POST /api/warehouse/claim {itemUid} (golden f) ----
+    // ---- POST /api/warehouse/claim {itemUid, page, position} (golden f;
+    // page/position added by REQ-0215) ----
     if (p.match(WAREHOUSE_CLAIM_RE)) {
       if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'method not allowed' }); return; }
       readBody(req, (err, bodyStr) => {
@@ -106,6 +107,18 @@ function tryWarehouseRoutes(req, res, url, p) {
         try { body = JSON.parse(bodyStr); } catch (e) { sendJSON(res, 400, { ok: false, error: 'invalid JSON body' }); return; }
         if (typeof body.itemUid !== 'string' || !body.itemUid) {
           sendJSON(res, 400, { ok: false, error: 'itemUid is required' }); return;
+        }
+        // REQ-0215: the client did the fit SEARCH and tells us where it landed.
+        // Both fields are REQUIRED -- there is no server-side fallback search to
+        // degrade to, and silently guessing a spot is exactly the server-side
+        // first-fit REQ-0041 deleted. A caller that omits them is a stale client;
+        // 400 says so plainly rather than failing later inside the engine.
+        if (!Number.isInteger(body.page) || body.page < 0) {
+          sendJSON(res, 400, { ok: false, error: 'page is required: the inventory page index (0-based) the client fit this item into' }); return;
+        }
+        if (!Array.isArray(body.position) || body.position.length !== 2 ||
+            !Number.isInteger(body.position[0]) || !Number.isInteger(body.position[1])) {
+          sendJSON(res, 400, { ok: false, error: 'position is required: the [row, col] the client fit this item at (a BP\'s origin, otherwise the anchor cell)' }); return;
         }
         try {
           // REQ-0041 two-phase claim: this route no longer touches
@@ -117,12 +130,19 @@ function tryWarehouseRoutes(req, res, url, p) {
           // PO/SI's own uid) so the CLIENT can place it via the engine
           // itself, through the app's one auto-save choke point.
           const { itemDefsById, tmDefsById, siDefsById, unitDefsById } = schedule.getScheduleContent();
-          const result = schedule.claimWarehouseItem(callerId, body.itemUid, itemDefsById, tmDefsById, siDefsById, unitDefsById);
+          // REQ-0215: the LAST-SAVED canvas is what the spot is judged against
+          // (this route still writes nothing -- design rule 5). The client is
+          // required to flushAutoSave() before claiming so the board the server
+          // judges IS the board the client searched.
+          const result = schedule.claimWarehouseItem(
+            callerId, body.itemUid, itemDefsById, tmDefsById, siDefsById, unitDefsById,
+            { page: body.page, position: body.position }, loadOwnCanvas(callerId)
+          );
           // REQ-0042: echo kind/qty too (undefined for a plain PO/SI row,
           // 'tm'/a number for a TM-kind row) so the client can dispatch
           // to the correct placement path (engine PO/SI first-fit vs.
           // TM place-or-merge).
-          sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId, kind: result.kind, qty: result.qty, bp: result.bp });
+          sendJSON(res, 200, { ok: true, itemUid: result.itemUid, itemId: result.itemId, kind: result.kind, qty: result.qty, bp: result.bp, page: result.page, position: result.position });
         } catch (e) { sendScheduleError(res, e); }
       });
       return;

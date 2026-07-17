@@ -5,7 +5,7 @@
 // services/market.cjs facade header for the rule-5 divergence writeup.
 'use strict';
 const storage = require('../../storage.cjs');
-const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId } = require('../core.cjs');
+const { WAREHOUSE_CAP, WAREHOUSE_TTL_MS, genId, debitTmFromCanvas } = require('../core.cjs');
 const { purgeExpiredWarehouseItems, addToWarehouse } = require('../warehouse.cjs');
 const { deployedUidSet, referencedUidSet } = require('../squads.cjs');
 const { burnOf, findInventoryPO, findInventorySI, findInventoryBP, readTmBalance, DEX_PRICE_HISTORY_MAX } = require('./lib.cjs');
@@ -78,25 +78,10 @@ function stripBpFromCanvas(canvas, uid) {
   }
 }
 
-// debitTmFromCanvas: drains `qty` off the canvas's same-id TM stacks
-// (inventory pages, in page order), deleting emptied stacks. Caller has
-// already verified the total balance covers qty; throws (settle bug,
-// never a user error) if it somehow cannot drain fully.
-function debitTmFromCanvas(canvas, tmId, qty) {
-  let remaining = qty;
-  for (const pg of canvas.inv.pages) {
-    if (!pg || !Array.isArray(pg.tms)) continue;
-    for (const tm of pg.tms) {
-      if (remaining <= 0) break;
-      if (tm.id !== tmId) continue;
-      const take = Math.min(Number(tm.qty) || 0, remaining);
-      tm.qty = (Number(tm.qty) || 0) - take;
-      remaining -= take;
-    }
-    pg.tms = pg.tms.filter((t) => t.id !== tmId || (Number(t.qty) || 0) > 0);
-  }
-  if (remaining > 0) throw new Error('debitTmFromCanvas: balance changed mid-settle (short by ' + remaining + ')');
-}
+// debitTmFromCanvas MOVED to services/core.cjs by REQ-0215 (imported
+// above). The gacha roll became a purchase -- pay LRDST, the Unit is
+// delivered to the warehouse -- so it needs the SAME server-side TM debit
+// this settle does. Body unchanged; see core.cjs for the writeup.
 
 // buyListing(buyerId, listingId, idemKey): POST .../buy -- THE atomic
 // settlement (the only moment the furnace burns). Validation order:

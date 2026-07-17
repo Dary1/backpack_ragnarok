@@ -53,7 +53,11 @@ module.exports.run = async function run(h) {
     const p0 = squadCanvas('t0'), p1 = squadCanvas('t1'), p2 = squadCanvas('t2'), p3 = squadCanvas('t3');
     return Object.assign({}, p0, {
       layout: { ROWS: 8, COLS: 8 },
-      inv: { pages: [{ bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }, { bps: [], pos: [], sis: [] }], names: ['1', '2', '3', '4', '5'] },
+      // REQ-0215: pages now carry tms[] -- the claim is validated through the
+      // ENGINE server-side, and engine.tmCanPlace indexes container.tms
+      // unconditionally. A real client canvas has always had it; this fixture
+      // predated the TM model (REQ-0042) and never caught up.
+      inv: { pages: [{ bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }, { bps: [], pos: [], sis: [], tms: [] }], names: ['1', '2', '3', '4', '5'] },
       presets: { active: 0, names: ['P1', 'P2', 'P3', 'P4', 'P5'], store: [null, p1, p2, p3, null] },
     });
   }
@@ -496,5 +500,67 @@ module.exports.run = async function run(h) {
 
 
   // REQ-0145a (sf): publish this group's shared fixtures for the later suites.
-  Object.assign(h, { schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed, scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom });
+
+  // REQ-0215: POST /api/warehouse/claim now REQUIRES the caller's OWN fit result
+  // ({page, position}) and the server validates that ONE spot against the saved
+  // canvas -- it never searches. These helpers mirror exactly what the real
+  // client does (client/src/lib/placement.ts's findFit* + useWarehouseData's
+  // claim), so a test that only cares about the claim CONTRACT (status flips,
+  // 404s, finalize) does not have to hand-pick a cell and stay lucky.
+  //
+  // findClaimSpot returns null when nothing fits -- which is now a legitimate,
+  // testable outcome (the user's spec: no gap => error), not an internal failure.
+  function findClaimSpot(playerId, itemUid) {
+    const doc = scheduleStorage.readProfile(playerId);
+    const canvas = doc ? doc.canvas : null;
+    if (!canvas || !canvas.inv) return null;
+    const row = scheduleStorage.readWarehouseItem(playerId, itemUid);
+    if (!row) return { page: 0, position: [1, 1] }; // unknown row: the 404 is the point; any well-formed spot will do
+    const core = require('../../services/core.cjs');
+    const { itemDefsById, siDefsById, unitDefsById, connShapes } = core.getScheduleContent();
+    const engine = core.makeEngine(itemDefsById, unitDefsById, connShapes);
+    const kind = row.kind === 'tm' ? 'tm' : row.kind === 'bp' ? 'bp' : (itemDefsById[row.itemId] ? 'po' : (siDefsById && siDefsById[row.itemId] ? 'si' : 'po'));
+    for (let pg = 0; pg < canvas.inv.pages.length; pg++) {
+      const st = JSON.parse(JSON.stringify(canvas));
+      const container = st.inv.pages[pg];
+      // The fixture canvases predate the TM model and some omit tms[]/bps[]
+      // entirely; the engine indexes them unconditionally. Normalize the COPY
+      // only -- never the saved canvas.
+      container.tms = container.tms || [];
+      container.bps = container.bps || [];
+      container.pos = container.pos || [];
+      container.sis = container.sis || [];
+      if (kind === 'tm') {
+        const stack = container.tms.find((t) => t.id === row.itemId);
+        if (stack && engine.tmCanPlace(st, pg, itemUid, stack.cell, [itemUid], row.itemId).ok) return { page: pg, position: stack.cell };
+      } else if (kind === 'bp') {
+        container.bps.push({ id: itemUid, name: 'BP', color: '#8a8a8a', shape: row.bp.shape, origin: [1, 1], unit: row.bp.unit, hpMax: row.bp.hpMax });
+      } else if (kind === 'si') {
+        container.sis.push({ uid: itemUid, id: row.itemId, host: 'inv' });
+      } else {
+        container.pos.push({ uid: itemUid, id: row.itemId, loc: 'grid', cell: [1, 1], rot: 0 });
+      }
+      for (let r = 1; r <= 8; r++) {
+        for (let c = 1; c <= 8; c++) {
+          const ok = kind === 'tm' ? engine.tmCanPlace(st, pg, itemUid, [r, c]).ok
+            : kind === 'bp' ? engine.invCanPlaceBP(st, pg, itemUid, [r, c]).ok
+            : kind === 'si' ? engine.invCanPlaceSI(st, pg, itemUid, [r, c], [itemUid]).ok
+            : engine.invCanPlacePO(st, pg, itemUid, 0, [r, c]).ok;
+          if (ok) return { page: pg, position: [r, c] };
+        }
+      }
+    }
+    return null;
+  }
+
+  // claimReq: the claim as the client issues it -- search, then send the spot.
+  // `spotOverride` forces a specific (possibly illegal, possibly malformed) spot
+  // for the tests that are ABOUT the validation itself.
+  function claimReq(who, itemUid, spotOverride) {
+    const spot = spotOverride !== undefined ? spotOverride : (findClaimSpot(who.playerId, itemUid) || { page: 0, position: [1, 1] });
+    const body = spot === null ? { itemUid } : { itemUid, page: spot.page, position: spot.position };
+    return scheduleReq('POST', '/api/warehouse/claim', who.token, body);
+  }
+
+  Object.assign(h, { schedule, scheduleStorage, makeTestCanvas, fillAllSlots, forceRunElapsed, scheduleP1, scheduleP2, scheduleReq, fillAllSlotsSnapshotsFrom, findClaimSpot, claimReq }); // REQ-0215: findClaimSpot/claimReq
 };

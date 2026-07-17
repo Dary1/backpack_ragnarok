@@ -5,21 +5,43 @@
 const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const combat = require('../../sim/combat.cjs');
-const { genId, getScheduleContent } = require('./core.cjs');
+const { genId, getScheduleContent, debitTmFromCanvas, WAREHOUSE_CAP, WAREHOUSE_TTL_MS } = require('./core.cjs');
+const { purgeExpiredWarehouseItems, addToWarehouse } = require('./warehouse.cjs'); // REQ-0215: delivery goes through the ONE warehouse insert chokepoint
 
 // ---------------------------------------------------------------------
-// REQ-0042: Workshop gacha (Common BP roll). Two-phase, MIRRORS the
-// warehouse claim pattern (see claimWarehouseItem/finalizeClaimingItems
-// ForCanvas/normalizeWarehouseStatus above) but against its OWN store
-// (storage.cjs's gacha_pending, server/migrations/003_gacha.sql) since
-// the finalize condition is STRICTER than a claim's: a claim finalizes
-// on uid-presence alone (no currency changes hands), whereas a gacha
-// roll must finalize on BOTH the minted BP uid being present in the
-// saved canvas AND the player's LRDST balance having actually dropped by
-// the roll's cost -- see finalizeGachaForCanvas() below.
+// REQ-0215: the Workshop gacha is a PURCHASE, not a two-phase placement.
+//
+// WHAT CHANGED AND WHY (REQ-0042/0170 -> REQ-0215). The roll used to hand the
+// rolled BP back to the client, which deducted the LRDST, first-fit-placed the
+// BP onto its own canvas and auto-saved; that PUT finalized a `gacha_pending`
+// row iff BOTH (a) the minted BP uid appeared in the saved canvas AND (b) the
+// balance had dropped by the cost. The user's REQ-0215 spec moved delivery to
+// the WAREHOUSE -- so the BP never enters the canvas on roll, and gate (a) is
+// structurally impossible. Gate (b) ALONE is not a substitute: spending >= cost
+// LRDST on anything else inside the pending window (a market buy debits the
+// canvas server-side, so it qualifies) would finalize the roll for free. That
+// hole is why the pending machinery is GONE rather than re-gated.
+//
+// After the spec change a roll and a market buy are the same transaction: pay a
+// TM, the goods land in the buyer's warehouse as a claimable row. So this
+// module now follows services/market/trade.cjs's buyListing step-order exactly
+// -- validate balance + warehouse cap BEFORE the commit point (no partial
+// settle), then debit the canvas server-side and deliver -- and inherits its
+// SANCTIONED rule-5 divergence (docs/llm_managed/architecture.md rule 5; the
+// writeup lives at the head of services/market.cjs). A roll can no longer be
+// abandoned: it either fully happened or it did not, so there is nothing left
+// for a lazy-revert timeout to revert.
+//
+// CLIENT GOTCHA (same as buyListing's, tightened): the server writes the
+// player's canvas here, so a stale in-flight auto-save can resurrect the
+// pre-roll canvas -- handing the LRDST back while the Unit sits in the
+// warehouse. Unlike a market settle (where the seller may be offline), a roll
+// is ALWAYS initiated by the client that owns the canvas, so both windows are
+// closable and the client is required to close them: flushAutoSave() before the
+// roll POST, re-GET the profile after it (see client/src/schedule/WorkshopPage.tsx).
 // ---------------------------------------------------------------------
 const { GACHA_COMMON_BP_COST } = require('../../shared/constants.json'); // LRDST cost of one common_bp roll -- the DEFAULT for a pack that omits `cost`; the pack def is authoritative (REQ-0170)
-const GACHA_PENDING_TIMEOUT_MS = 120 * 1000; // same 120s lazy-revert window as warehouse claim
+const GACHA_TM_ID = 'lrdst'; // REQ-0215: the currency a roll is priced in -- the same id readLrdstBalance sums and market's MARKET_TM_ID
 const GACHA_MIN_CELLS = 6;   // default when a pack omits `cells`
 const GACHA_MAX_CELLS = 8;   // default when a pack omits `cells`
 const GACHA_HP_PER_CELL = 15; // default when a pack omits `hp_per_cell`; hpMax = hp_per_cell x cellCount
@@ -222,127 +244,138 @@ function rollPackBp(pack, masterSeed) {
   };
 }
 
-// startGachaRoll(playerId, kind, profileCanvas): verifies balance >=
-// GACHA_COMMON_BP_COST against the LAST-SAVED profile (read-only -- see
-// readLrdstBalance above), rolls a fresh BP instance with a
-// crypto-random master seed (stored verbatim on the pending doc, same
-// "store the seed, never re-roll" convention startRun() already uses),
-// records a PENDING roll in the gacha_pending store keyed by the
-// MINTED BP UID (reusing that uid as the pending row's own key --
-// exactly the same "reuse the content uid as the row key" interpretation
-// claimWarehouseItem made for warehouse claims, so finalization is an
-// unambiguous uid-membership check here too), and returns the rolled BP
-// definition to the caller WITHOUT deducting anything server-side yet.
+// startGachaRoll(playerId, kind, profileCanvas) -- REQ-0215. ONE synchronous
+// transaction, built on buyListing's step order (see the module header for why
+// the two-phase pending roll is gone):
+//
+//   1-2. validate: pack, LRDST balance, warehouse capacity -- all BEFORE the
+//        commit point, so a refusal costs the player nothing (no debit, no row).
+//   3.   roll: rollPackBp() with a crypto-random master seed. Deliberately runs
+//        BEFORE the cap check reads its result, and that is safe because the
+//        roll is PURE -- it mints uids and computes a shape, but persists
+//        nothing. We need its bonus count to know how many rows to reserve.
+//   4.   COMMIT: debit the cost server-side, write the profile.
+//   5.   deliver: the Unit as a kind:'bp' row (the REQ-0195d market-bought-unit
+//        row shape, byte-for-byte -- the warehouse list, the claim validator and
+//        the client's firstFitPlaceBp path all already handle it; this REQ adds
+//        no new row kind), each pack bonus as its own ordinary row.
+//   6.   ensureBio(origin:'gacha') -- the Unit is born the moment it is rolled
+//        and delivered, which is now a single atomic instant. Strictly better
+//        than the old finalize-time stamp, which never fired at all for a roll
+//        the client could not place.
+//
+// Returns {cost, rolled} -- the SAME shape the route and the client's result
+// modal already consume. `rolled` is now a receipt of what was delivered to the
+// warehouse, not a thing the client is expected to place.
 function startGachaRoll(playerId, kind, profileCanvas) {
   const pack = resolvePack(kind);
   const cost = Number.isFinite(Number(pack.cost)) ? Number(pack.cost) : GACHA_COMMON_BP_COST;
   const balance = readLrdstBalance(profileCanvas);
   if (balance < cost) {
-    const err = new Error('insufficient LRDST balance: have ' + balance + ', need ' + cost); err.code = 'CONFLICT'; throw err;
+    const err = new Error('insufficient LRDST balance: have ' + balance + ', need ' + cost);
+    err.code = 'CONFLICT'; err.reason = 'insufficient_balance'; throw err;
   }
+
   const seed = crypto.randomBytes(16).toString('hex');
   const rolled = rollPackBp(pack, seed);
-  const now = new Date().toISOString();
-  const doc = {
-    rollUid: rolled.uid,
-    playerId,
-    kind,
-    cost,
-    seed,
-    rolled,
-    balanceBeforeRoll: balance,
-    status: 'pending',
-    rolledAt: now,
-  };
-  storage.writeGachaPending(playerId, rolled.uid, doc);
-  return { cost, rolled };
-}
+  const bonuses = rolled.bonuses || [];
 
-// normalizeGachaPendingStatus / purgeExpiredGachaPending: lazy-revert
-// mechanism for abandoned rolls, BYTE-FOR-BYTE mirroring
-// normalizeWarehouseStatus/purgeExpiredWarehouseItems's own lazy-check-
-// on-every-read pattern (no setInterval/cron -- reverting an abandoned
-// roll just means DELETING the pending doc, since a gacha roll -- unlike
-// a warehouse row -- has no "goes back to being claimable" state; an
-// abandoned roll's BP definition is simply discarded, the player can
-// roll again).
-function normalizeGachaPendingStatus(playerId, item, nowMs) {
-  const rolledAtMs = item.rolledAt ? Date.parse(item.rolledAt) : 0;
-  if (!rolledAtMs || (nowMs - rolledAtMs) >= GACHA_PENDING_TIMEOUT_MS) {
-    storage.deleteGachaPending(playerId, item.rollUid);
-    return null; // reverted/expired -- caller must drop it from any in-progress list
+  // Capacity for EVERY row this roll will insert (the Unit + one per bonus),
+  // checked as a whole: a roll that could deliver the Unit but not its bonuses
+  // must not half-settle. buyListing's "no partial settle" posture.
+  // NOTE this DIVERGES from addToWarehouse's documented drop-on-overflow
+  // posture, deliberately and for the same reason buyListing diverged: a
+  // silently-dropped dungeon reward is re-earnable, a silently-dropped roll was
+  // PAID FOR.
+  const rowsNeeded = 1 + bonuses.length;
+  const survivors = purgeExpiredWarehouseItems(playerId);
+  if (survivors.length + rowsNeeded > WAREHOUSE_CAP) {
+    const err = new Error('your warehouse has no room for this roll (' + survivors.length + '/' + WAREHOUSE_CAP +
+      ' used, this roll needs ' + rowsNeeded + '); claim or clear some rows first -- nothing was charged');
+    err.code = 'CONFLICT'; err.reason = 'warehouse_full'; throw err;
   }
-  return item;
-}
-function purgeExpiredGachaPending(playerId) {
+
+  // ---- COMMIT POINT (1/3): value leaves the economy first, exactly like
+  // buyListing's debit-before-deliver order. Everything above this line can
+  // throw for free; nothing below it may.
+  debitTmFromCanvas(profileCanvas, GACHA_TM_ID, cost);
+  storage.writeProfile(playerId, profileCanvas);
+
   const now = Date.now();
-  const items = storage.listGachaPending(playerId);
-  const survivors = [];
-  for (const item of items) {
-    const kept = normalizeGachaPendingStatus(playerId, item, now);
-    if (kept) survivors.push(kept);
-  }
-  return survivors;
-}
+  const tIso = new Date(now).toISOString();
+  const expiresAt = new Date(now + WAREHOUSE_TTL_MS).toISOString();
 
-// finalizeGachaForCanvas (REQ-0042): called by server/api.cjs's profile
-// PUT handler, alongside (not instead of) finalizeClaimingItemsForCanvas
-// -- AFTER a successful storage.writeProfile(). A pending roll finalizes
-// (its gacha_pending doc is deleted) iff BOTH:
-//   (1) the minted BP uid (rollUid) now appears in the just-saved canvas
-//       (bps[].id, scanned the SAME way finalizeClaimingItemsForCanvas
-//       scans -- active squad + every inactive squad snapshot + every
-//       inventory page), AND
-//   (2) the player's LRDST balance in the just-saved canvas is <= the
-//       pre-roll balance MINUS the roll's cost (strictly, the client is
-//       expected to deduct EXACTLY `cost`, but "<=" tolerates the client
-//       having ALSO spent LRDST on something else in the same save
-//       without falsely blocking finalization -- the important
-//       invariant is "at least `cost` left this player's balance since
-//       the roll", not "balance decreased by EXACTLY cost and nothing
-//       else happened in the interim").
-// This is deliberately STRICTER than claimWarehouseItem's uid-only check
-// (see the module comment above) because a gacha roll, unlike a
-// warehouse claim, involves a real currency deduction that must not be
-// forgeable by placing the BP without ever paying for it.
-function finalizeGachaForCanvas(playerId, canvas) {
-  if (!canvas) return;
-  const pending = purgeExpiredGachaPending(playerId).filter((i) => i.status === 'pending');
-  if (!pending.length) return;
-
-  const presentBpUids = new Set();
-  const collectBps = (container) => {
-    if (!container) return;
-    for (const b of container.bps || []) presentBpUids.add(b.id);
+  // (2/3) the Unit. The row's itemUid IS the minted BP uid -- the house "reuse
+  // the row uid as the on-canvas uid" convention (see claimWarehouseItem's doc)
+  // that makes the claim's finalize an exact uid-membership check. `bp` is a
+  // canvas BP INSTANCE (ApiWarehouseBp, shared/dto.ts), so the claim path can
+  // place it verbatim without re-rolling anything; name/color match what
+  // WorkshopPage's own firstFitPlaceBp used to stamp, so a claimed roll lands
+  // byte-identical to a pre-REQ-0215 placed roll.
+  const bpRow = {
+    itemUid: rolled.uid, playerId, itemId: rolled.unit.id,
+    kind: 'bp',
+    bp: {
+      id: rolled.uid,
+      name: (rolled.unitDef && rolled.unitDef.name) || 'BP',
+      color: '#8a8a8a',
+      shape: rolled.shape,
+      unit: rolled.unit,
+      hpMax: rolled.hpMax,
+      cellCount: rolled.cellCount,
+    },
+    harvestedAt: tIso, expiresAt,
+    sourceRoomId: null, sourceRunId: null,
+    sourcePackId: pack.id, // provenance: which pack minted it (the gacha's analogue of sourceListingId)
+    status: 'claimable',
   };
-  collectBps(canvas);
-  if (canvas.presets && Array.isArray(canvas.presets.store)) {
-    for (const snap of canvas.presets.store) collectBps(snap);
-  }
-  if (canvas.inv && Array.isArray(canvas.inv.pages)) {
-    for (const pg of canvas.inv.pages) collectBps(pg);
-  }
-  const balanceNow = readLrdstBalance(canvas);
+  const deliveredBp = addToWarehouse(playerId, bpRow);
+  if (!deliveredBp.ok) throw new Error('gacha: warehouse refused the Unit after the pre-check (' + deliveredBp.reason + ') -- this is a bug');
 
-  for (const item of pending) {
-    const uidPresent = presentBpUids.has(item.rollUid);
-    const balanceDropped = balanceNow <= (item.balanceBeforeRoll - item.cost);
-    if (uidPresent && balanceDropped) {
-      storage.deleteGachaPending(playerId, item.rollUid);
-      // REQ-0060: the rolled BP is now real in the player's canvas -- stamp
-      // its birth (origin: gacha) so the biography ledger has a born date.
-      try {
-        const nm = item.rolled && item.rolled.unitDef ? item.rolled.unitDef.name : undefined;
-        require('./bio.cjs').ensureBio(item.rollUid, 'gacha', nm);
-      } catch (e) { /* bio is non-critical */ }
-    }
+  // (3/3) the pack's bonus slots. Each becomes an ORDINARY warehouse row of its
+  // own -- a TM bonus in grantTmQty's shape (merged into a matching stack on
+  // claim), a PO/SI bonus in grantWarehouseItem's shape. Reusing each bonus's
+  // already-minted uid as its row uid, same convention as the Unit above.
+  //
+  // INTERPRETATION (REQ-0215): a PO/SI bonus now carries a rollQuality() `q`,
+  // which the old client-side placement never gave it. Every OTHER warehouse
+  // PO/SI row has one (grantWarehouseItem, market delivery) and the Dex/
+  // dismantle paths read it -- a q-less bonus was the odd one out, not a
+  // feature.
+  const { rollQuality } = require('./dismantle.cjs');
+  for (const b of bonuses) {
+    const row = b.pool === 'tm'
+      ? {
+          itemUid: b.uid, playerId, itemId: b.id, qty: b.qty,
+          kind: 'tm',
+          harvestedAt: tIso, expiresAt,
+          sourceRoomId: null, sourceRunId: null, sourcePackId: pack.id,
+          status: 'claimable',
+        }
+      : {
+          itemUid: b.uid, playerId, itemId: b.id,
+          q: rollQuality(playerId, b.id),
+          harvestedAt: tIso, expiresAt,
+          sourceRoomId: null, sourceRunId: null, sourcePackId: pack.id,
+          status: 'claimable',
+        };
+    const deliveredBonus = addToWarehouse(playerId, row);
+    if (!deliveredBonus.ok) throw new Error('gacha: warehouse refused a bonus after the pre-check (' + deliveredBonus.reason + ') -- this is a bug');
   }
+
+  // The Unit exists now -- stamp its birth. Non-critical, same as the old
+  // finalize-time call site.
+  try {
+    require('./bio.cjs').ensureBio(rolled.uid, 'gacha', rolled.unitDef ? rolled.unitDef.name : undefined);
+  } catch (e) { /* bio is non-critical */ }
+
+  return { cost, rolled };
 }
 
 
 module.exports = {
   GACHA_COMMON_BP_COST,
-  GACHA_PENDING_TIMEOUT_MS,
+  GACHA_TM_ID, // REQ-0215
   GACHA_MIN_CELLS,
   GACHA_MAX_CELLS,
   GACHA_HP_PER_CELL,
@@ -354,7 +387,8 @@ module.exports = {
   rollPackBp,
   rollPackBonuses,
   startGachaRoll,
-  normalizeGachaPendingStatus,
-  purgeExpiredGachaPending,
-  finalizeGachaForCanvas,
+  // REQ-0215: GACHA_PENDING_TIMEOUT_MS / normalizeGachaPendingStatus /
+  // purgeExpiredGachaPending / finalizeGachaForCanvas are GONE -- the roll is a
+  // single atomic purchase now, so there is no pending state to revert or
+  // finalize. See the module header.
 };

@@ -476,6 +476,36 @@ function genId(prefix) {
 // preserves every existing caller's observed behavior byte-for-byte);
 // any other/absent dungeonId defaults to 'default' (the generator).
 
+// debitTmFromCanvas (REQ-0215): drains `qty` off the canvas's same-id TM
+// stacks (inventory pages, in page order), deleting emptied stacks. Caller
+// has already verified the total balance covers qty; throws (a settle bug,
+// never a user error) if it somehow cannot drain fully.
+//
+// MOVED VERBATIM from services/market/trade.cjs by REQ-0215, which needed
+// the SAME server-side TM debit for the Workshop gacha (the roll is now a
+// purchase: pay LRDST, the Unit is delivered to the warehouse -- see the
+// REQ-0215 doc). It lives HERE, in the shared services core both callers
+// already require, rather than being reached for across services/market/
+// internals: design rule 3 says consumers require a facade, never another
+// service's lib/. Body is byte-identical to trade.cjs's original; only the
+// error string's "mid-settle" wording is kept as-is so the market's own
+// failure mode reads the same in logs.
+function debitTmFromCanvas(canvas, tmId, qty) {
+  let remaining = qty;
+  for (const pg of canvas.inv.pages) {
+    if (!pg || !Array.isArray(pg.tms)) continue;
+    for (const tm of pg.tms) {
+      if (remaining <= 0) break;
+      if (tm.id !== tmId) continue;
+      const take = Math.min(Number(tm.qty) || 0, remaining);
+      tm.qty = (Number(tm.qty) || 0) - take;
+      remaining -= take;
+    }
+    pg.tms = pg.tms.filter((t) => t.id !== tmId || (Number(t.qty) || 0) > 0);
+  }
+  if (remaining > 0) throw new Error('debitTmFromCanvas: balance changed mid-settle (short by ' + remaining + ')');
+}
+
 module.exports = {
   REPO_ROOT,
   CONTENT_DIR,
@@ -495,6 +525,7 @@ module.exports = {
   WAREHOUSE_CAP,
   WAREHOUSE_TTL_MS,
   WAREHOUSE_CLAIM_TIMEOUT_MS,
+  debitTmFromCanvas, // REQ-0215: shared by market settle + the gacha purchase
   SQUAD_SLOTS,
   DEFAULT_FORMATION_ID,
   DEFAULT_FAILURE_STEP,

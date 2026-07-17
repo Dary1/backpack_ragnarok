@@ -129,8 +129,13 @@ async function apiWarehouse(page: Page, token: string): Promise<any> {
   const res = await page.request.get('/api/warehouse', { headers: { 'X-Auth-Token': token } });
   return { status: res.status(), body: await res.json() };
 }
-async function apiClaim(page: Page, token: string, itemUid: string): Promise<any> {
-  const res = await page.request.post('/api/warehouse/claim', { headers: { 'X-Auth-Token': token }, data: { itemUid } });
+/** REQ-0215: POST /api/warehouse/claim now REQUIRES the caller's own fit result
+ * ({page, position}) -- the server tests THAT ONE SPOT against the last-saved
+ * canvas and never searches. `spot` defaults to page 0 [1,1], which is what these
+ * raw-API tests want (they assert the claim CONTRACT against a fixture canvas
+ * whose first page is empty); pass an explicit spot to target elsewhere. */
+async function apiClaim(page: Page, token: string, itemUid: string, spot: { page: number; position: [number, number] } = { page: 0, position: [1, 1] }): Promise<any> {
+  const res = await page.request.post('/api/warehouse/claim', { headers: { 'X-Auth-Token': token }, data: { itemUid, page: spot.page, position: spot.position } });
   return { status: res.status(), body: await res.json() };
 }
 
@@ -591,15 +596,19 @@ test.describe('warehouse receives rewards + claim moves item to inventory', () =
       // test's exact simulation pattern -- the REAL client-side flow
       // (WarehouseTab.tsx) is covered end-to-end by its own dedicated
       // UI-level tests elsewhere in this file.
-      const claimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid } });
+      // REQ-0215: the claim carries the client's own {page, position}; the server
+      // validates that one spot and echoes it back.
+      const claimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid, page: 0, position: [1, 1] } });
       expect(claimRes.status()).toBe(200);
       const claimBody = await claimRes.json();
       expect(claimBody.itemUid).toBe(itemUid);
       expect(typeof claimBody.itemId).toBe('string');
+      expect(claimBody.page).toBe(0);
+      expect(claimBody.position).toEqual([1, 1]);
 
       // Row must now be 'claiming' -- verify via a second claim attempt
       // being refused 409 (cannot claim an already-claiming row).
-      const reClaimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid } });
+      const reClaimRes = await page.request.post('/api/warehouse/claim', { data: { itemUid, page: 0, position: [1, 2] } });
       expect(reClaimRes.status()).toBe(409);
 
       const canvasBeforeResp = await page.request.get('/api/profile/default/canvas');
@@ -940,7 +949,7 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
     }
   });
 
-  test('when NO page has space anywhere, claim shows a toast + inline error and the warehouse row REMAINS (claiming, revertible)', async ({ page }) => {
+  test('REQ-0215: when NO page has space anywhere, claim errors WITHOUT calling the server and the row stays CLAIMABLE (retry-able at once, nothing to wait out)', async ({ page }) => {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const devProfilePath = path.join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
@@ -976,22 +985,20 @@ test.describe('REQ-0041: Warehouse tab claim UX (embedded InventoryBoard, pulse,
       await expect(page.locator('[data-testid="schedule-warehouse-toast"]')).toContainText(/no space|空き/i, { timeout: 10000 });
       await expect(row.locator('.schedule-slot-error')).toContainText(/no space|空き/i, { timeout: 10000 });
 
-      // Row REMAINS present (no item loss) and still 'claiming'
-      // immediately after the failed claim -- this is the client-
-      // observable half of the "reverts after timeout if never saved"
-      // guarantee. The server-side lazy timeout-revert mechanism itself
-      // (WAREHOUSE_CLAIM_TIMEOUT_MS) is exercised directly, without
-      // waiting the real 120s, by server/tests/api_test.cjs's own
-      // dedicated tests (both files+pg mode: the "two-phase claim
-      // finalization" test's abandoned-claim assertion, and the
-      // dev/backdate-claim hook's own test) -- this UI-level test
-      // confirms the CLIENT correctly leaves the row alone on a failed
-      // placement rather than double-checking the server's own timeout
-      // arithmetic a third time.
+      // REQ-0215 CHANGED THIS ASSERTION, deliberately. The row used to come back
+      // 'claiming': the old client POSTed first, THEN discovered it had nowhere to
+      // put the item, and left the row parked mid-claim for the server's 120s
+      // lazy-revert to rescue. The user's spec makes "no gap" an ERROR, and the
+      // client now runs its fit search BEFORE the round-trip -- so on a full
+      // inventory it never calls the server at all and the row is never touched.
+      //
+      // That is the whole point: 'claimable' means the player can free one cell and
+      // claim again IMMEDIATELY, instead of hitting a 409 "already being claimed" on
+      // their own abandoned attempt and waiting out a timeout they cannot see.
       const whRes = await page.request.get('/api/warehouse');
       const whItem = (await whRes.json()).items.find((i: any) => i.itemUid === grantUid);
-      expect(whItem).toBeTruthy();
-      expect(whItem.status).toBe('claiming');
+      expect(whItem, 'the row must survive a refused claim -- no item loss').toBeTruthy();
+      expect(whItem.status, 'REQ-0215: a refused claim leaves the row untouched, NOT parked in claiming').toBe('claimable');
 
       await clearDevWarehouseRow(page, grantUid);
     } finally {

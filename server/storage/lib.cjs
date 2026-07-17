@@ -76,12 +76,8 @@ const SCHEDULE_DIR = path.join(REPO_ROOT, 'data', 'schedule');
 const ROOMS_DIR = path.join(SCHEDULE_DIR, 'rooms');
 const RUNS_DIR = path.join(SCHEDULE_DIR, 'runs');
 const WAREHOUSE_DIR = path.join(REPO_ROOT, 'data', 'warehouse');
-// REQ-0042: gacha pending-roll store. Kept as its OWN root (separate from
-// WAREHOUSE_DIR) since a pending gacha roll's shape genuinely differs
-// from a warehouse row (cost + full rolled BP def, no TTL/harvestedAt
-// semantics) -- see server/schedule.cjs's grantGachaPending() module
-// comment and server/migrations/003_gacha.sql.
-const GACHA_PENDING_DIR = path.join(REPO_ROOT, 'data', 'gacha_pending');
+// REQ-0215: GACHA_PENDING_DIR removed with the gacha_pending store -- the roll
+// is a single atomic purchase (debit + warehouse delivery), never a pending doc.
 // REQ-0063: dismantle ledger. One doc per player (same shape as
 // profiles/einherjar records -- a single JSON blob keyed by playerId,
 // not a per-item file the way warehouse rows are), so it rides the same
@@ -101,7 +97,6 @@ function ensureScheduleDirs() {
   fs.mkdirSync(ROOMS_DIR, { recursive: true });
   fs.mkdirSync(RUNS_DIR, { recursive: true });
   fs.mkdirSync(WAREHOUSE_DIR, { recursive: true });
-  fs.mkdirSync(GACHA_PENDING_DIR, { recursive: true });
   fs.mkdirSync(DISMANTLE_DIR, { recursive: true });
   fs.mkdirSync(STARTER_CLAIMS_DIR, { recursive: true }); // REQ-0051
   fs.mkdirSync(SEALED_SEEDS_DIR, { recursive: true }); // REQ-0058
@@ -129,7 +124,6 @@ module.exports = {
   ROOMS_DIR,
   RUNS_DIR,
   WAREHOUSE_DIR,
-  GACHA_PENDING_DIR,
   DISMANTLE_DIR,
   STARTER_CLAIMS_DIR,
   SEALED_SEEDS_DIR,
