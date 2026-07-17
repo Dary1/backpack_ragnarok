@@ -52,7 +52,7 @@ function makeChargeTarget(id) {
     hp: 100, hpMax: 100, itemCooldown: 0, // selector inputs (lowest-hp / max-cooldown)
     damageTaken: 0, healed: 0, shield: 0, block: 0,
     buffPct: 0, dmgReductionPct: 0, reflectPct: 0, bonusVsStatusPct: 0,
-    hasteStacks: 0, cooldownAdvanced: 0,
+    hasteStacks: 0, cooldownAdvanced: 0, transferredStatuses: 0, shieldBroken: 0,
     statuses: {}, onHitStatus: {}, statusAmp: {}, immune: {},
     lifesteal: [], firedItems: [], cleansed: 0,
     standing: {}, // passive_per_stack standing effects: verbKey -> {pct|n, stacks}
@@ -63,7 +63,7 @@ function makeChargeTarget(id) {
 // groundVerb: the honest, documented grounding of one charge-effect verb onto a
 // target. `divisor` (>=1) implements units_connected_distributed (amount split).
 // grant_charge and transform are STRUCTURAL (handled by the engine, not here).
-function groundVerb(verb, target, rolls, key, divisor) {
+function groundVerb(verb, target, rolls, key, divisor, ctx) {
   const d = divisor && divisor > 0 ? divisor : 1;
   const num = (p) => resolveRolledRange(verb[p], rolls, key + ':' + p) / d;
   const pctOf = () => resolveRolledRange(verb.pct !== undefined ? verb.pct : verb.n, rolls, key + ':pct') / d;
@@ -88,6 +88,17 @@ function groundVerb(verb, target, rolls, key, divisor) {
     case 'grant_lifesteal': { const p = pctOf(); const dur = resolveRolledRange(verb.dur_s, rolls, key + ':dur_s'); target.lifesteal.push({ pct: p, dur_s: dur }); return rec('lifesteal', { pct: p, dur_s: dur }); }
     case 'advance_cooldown': { const n = num('n'); target.cooldownAdvanced += n; target.itemCooldown = Math.max(0, target.itemCooldown - n); return rec('advance_cooldown', { amount: n }); }
     case 'fire_items': { target.firedItems.push(verb.tag || '*'); return rec('fire_items', { tag: verb.tag || null }); }
+    // REQ-0212: charge_strike -- ONE hit of n x stacks_spent from the host BP into the enemy
+    // (fire_on_full-only; stacks_spent is the counter consumed this spend, fed via ctx). The
+    // internal model books it as damage output; the REAL enemy hit lands via the encounter
+    // adapter's strikeFromBp (unit_charge_encounter.cjs).
+    case 'charge_strike': { const stacks = (ctx && ctx.stacksSpent != null) ? ctx.stacksSpent : 1; const n = num('n'); const total = n * stacks; target.damageTaken += total; return rec('damage', { amount: total, stacksSpent: stacks, verb: 'charge_strike' }); }
+    // REQ-0212: transfer_status -- move up to n negative statuses host->enemy. The status
+    // movement itself needs the enemy squad, so it lands in the encounter adapter; here we
+    // only record the requested count.
+    case 'transfer_status': { const n = num('n'); target.transferredStatuses += n; return rec('transfer_status', { n }); }
+    // REQ-0212: shield_break -- strip up to n flat block from the enemy (adapter lands it).
+    case 'shield_break': { const n = num('n'); target.shieldBroken += n; return rec('shield_break', { n }); }
     default: return rec('unhandled', {}); // never reached: verbs are validateCharge-gated
   }
 }
@@ -167,6 +178,7 @@ function createChargeEngine(opts) {
     }
     // fire_on_full
     s.spentThisTick = true;
+    const stacksSpent = s.counter; // REQ-0212: counter consumed this spend (>= capacity); feeds charge_strike
     spendCount[s.id] = (spendCount[s.id] || 0) + 1;
     const applied = [];
     for (let ei = 0; ei < (ch.effects || []).length; ei++) {
@@ -188,7 +200,7 @@ function createChargeEngine(opts) {
         const divisor = e.target === 'units_connected_distributed' ? Math.max(1, ids.length) : 1;
         for (const tid of ids) {
           if (!targets[tid]) targets[tid] = makeChargeTarget(tid);
-          const r = groundVerb(e.verb, targets[tid], rolls, s.id + ':e' + ei, divisor);
+          const r = groundVerb(e.verb, targets[tid], rolls, s.id + ':e' + ei, divisor, { stacksSpent });
           if (sink) sink({ sourceId: s.id, targetId: tid, standing: false, rec: r });
           applied.push({ verb: e.verb.t, to: tid, kind: r.kind });
         }
