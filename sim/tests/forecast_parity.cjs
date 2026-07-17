@@ -497,14 +497,24 @@ async function main() {
         profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
       });
     }
-    const t0 = process.hrtime.bigint();
+    // REQ-0230 (a): measure CPU time (user+sys), not wall clock. Wall clock
+    // measures the BOX, not the code: with concurrent sessions the same
+    // unchanged fold read 101.3/141.4/134.2 ms on 2026-07-17 (and failed on
+    // the untouched master at the same moment), and one contention flake
+    // kills a whole fail-fast ci cycle. process.cpuUsage() charges only
+    // what THIS process burned -- load-independent, still catches real
+    // algorithmic regressions. On a quiet box it reads the same as wall for
+    // this pure numeric loop (~72 ms at the 100 ms budget), so the TUNABLE
+    // keeps its calibration.
+    const c0 = process.cpuUsage();
     for (const slot of Object.keys(canvases)) {
       F.forecastPressure({
         bounds: payload.bounds, jitterHalfWidth: payload.jitterHalfWidth,
         profiles: payload.profiles, cells: F.boxCells(F.parseBox(canvases[slot])),
       });
     }
-    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    const cu = process.cpuUsage(c0);
+    const ms = (cu.user + cu.system) / 1000;
     console.log('        (4-squad fold: ' + ms.toFixed(1) + 'ms)');
     // The REQ's budget is per RECOMPUTE (one board). Holding all FOUR squads
     // to it is the stricter bar, and node is a fair proxy for the browser's
