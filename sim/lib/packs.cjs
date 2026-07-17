@@ -46,6 +46,32 @@ function packMembers(packDef, enemyDefsById, enemyFieldBox) {
     const fp = def.footprint || [1, 1];
     const fh = fp[0], fw = fp[1];
     if (cursorCol + fw - 1 > enemyFieldBox.colMax) { cursorCol = enemyFieldBox.colMin; cursorRow += fh; }
+    // REQ-0206: BOUND THE ROW. The cursor wrapped columns but never checked
+    // rowMax, so it marched off the bottom of the plane unconditionally -- a
+    // member simply landed on cells that do not exist. Latent since forever:
+    // with batch-002's old 1x1..3x3 roster the cursor never reached row 19, so
+    // the REQ-0045 guard (pinned to that roster) could not falsify its own
+    // claim. It went live-capable with batch-005/006/007's tall monsters
+    // (bone_dragon [10,10]: THREE of them overflow B2:Y17) and REQ-0206's
+    // frost_gnoll [1,1] -> [4,3] is what finally tripped the guard (24 cells,
+    // packSize 57). Measured, not assumed: the real generator never reaches it
+    // (dungen packs are <= 2 members; 0 of 600 overflow), so no shipped pack
+    // moves -- which is exactly why this is a safe no-op fix and the goldens
+    // must stay byte-identical.
+    //
+    // An over-capacity pack CANNOT be placed legally (18 rows / 4-tall = 4
+    // bands x 8 per band = 32 members, so 69 will not fit however it is
+    // arranged): the choice is overlap, drop members, or throw. Clamping to the
+    // last legal band keeps every member ON THE FIELD -- the property the
+    // REQ-0045 guard actually asserts, and the one the ray math and the
+    // renderer depend on -- and degrades by stacking at the bottom edge rather
+    // than writing cells into the void. It fires ONLY when the member would
+    // otherwise overflow, so every pack that fits is untouched. The legacy
+    // cursor path is REQ-0185's to retire; this bounds it, it does not redesign
+    // it.
+    if (cursorRow + fh - 1 > enemyFieldBox.rowMax) {
+      cursorRow = Math.max(enemyFieldBox.rowMin, enemyFieldBox.rowMax - fh + 1);
+    }
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([cursorRow + dr, cursorCol + dc]);
     cursorCol += fw;
