@@ -1,5 +1,5 @@
 {
-  "version": 15,
+  "version": 16,
   "modes": [
     "battle",
     "detection",
@@ -79,7 +79,10 @@
     "fire_items",
     "grant_shield",
     "grant_lifesteal",
-    "heal_ally"
+    "heal_ally",
+    "charge_strike",
+    "transfer_status",
+    "shield_break"
   ],
   "status_kinds": [
     "buff",
@@ -254,6 +257,15 @@
     ],
     "heal_ally": [
       "n"
+    ],
+    "charge_strike": [
+      "n"
+    ],
+    "transfer_status": [
+      "n"
+    ],
+    "shield_break": [
+      "n"
     ]
   },
   "excluded_attested": {
@@ -294,7 +306,10 @@
     "advance_cooldown": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the user delegation 「適当に決めておいてください。数値は全て範囲で。(ハスクラ)」 (2026-07-16). Reduces the remaining cooldown of the target's cooldown-bearing item(s) by `n`, a [lo,hi] range that rolls per instance (ハスクラ), so they become ready sooner. Freezes the effect verb the cooldown kits need: Elf & Dwarf (G5, advance a connected BP's item cooldowns -> bp_connected), Watcher (G12, advance the single longest-cooldown item -> bp_connected_max_cooldown_item), Thief (G3a, advance/clear its own items -> self). NOT YET ENGINE-IMPLEMENTED and no unit-context fixture (no `unit` validator kind / no charge AST) -- same status as grant_charge; it renders via eff_render in the generic verb self-test only. THIS IS NOT A USER RULING.",
     "fire_items": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Immediately fires (triggers the effect of) the target's items carrying tag `tag`. Freezes the effect verb Shieldmaiden (fire Armor items -> self) and Light Cavalry (fire Weapon items -> self + bp_connected) need. This goes beyond the clarifying question's named gaps (G5/G12/G13) to the two remaining kits whose charge effect was otherwise inexpressible; flagged in the impl-log and overturnable. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING.",
     "grant_shield": "AGENT-DEFINED 2026-07-16 (REQ-0129 impl-log) under the 2026-07-16 delegation. Grants a shield of amount `n`, a [lo,hi] range that rolls per instance; a def may instead scale it as a fraction of the granter's own block (Princess: 'half its own'). ONE verb SHARED by Squire (G13, self a small block -> self) and Princess (connected BP a shield = a fraction of its own -> bp_connected; and the passive damage->self-shield -> self). Decision: Squire and Princess share grant_shield. NOT YET ENGINE-IMPLEMENTED, no unit-context fixture; renders via eff_render. THIS IS NOT A USER RULING.",
-    "grant_lifesteal": "AGENT-DEFINED 2026-07-16 (REQ-0201 kit sheet). Attach lifesteal to the target Unit's items for dur_s seconds: pct of damage their items deal returns as healing to that Unit's BP. Params: pct [lo,hi], dur_s [lo,hi]. Added to the top-level verbs list + engine-grounded by REQ-0200 (vocab v15) under the user verb delegation 2026-07-16 (「必要な動詞はじゃんじゃんあなたの意思で追加して」). THIS IS NOT A USER RULING."
+    "grant_lifesteal": "AGENT-DEFINED 2026-07-16 (REQ-0201 kit sheet). Attach lifesteal to the target Unit's items for dur_s seconds: pct of damage their items deal returns as healing to that Unit's BP. Params: pct [lo,hi], dur_s [lo,hi]. Added to the top-level verbs list + engine-grounded by REQ-0200 (vocab v15) under the user verb delegation 2026-07-16 (「必要な動詞はじゃんじゃんあなたの意思で追加して」). THIS IS NOT A USER RULING.",
+    "charge_strike": "AGENT-DEFINED 2026-07-17 (REQ-0212). Charge-effect verb: on spend, deal n × stacks_spent damage (one hit) from the host BP into the enemy. fire_on_full-only (validateCharge rejects other spends). Added to the top-level verbs list + engine-grounded by REQ-0212 (vocab v16) under the user verb delegation 2026-07-14 (「必要な動詞はじゃんじゃんあなたの意思で追加して」). THIS IS NOT A USER RULING.",
+    "transfer_status": "AGENT-DEFINED 2026-07-17 (REQ-0212). Charge-effect verb: move up to n negative statuses (Burn/Poison/Chill/Stun/Weakness) from the host BP hierarchy onto the enemy squad, each keeping its remaining stacks/duration. Added to the top-level verbs list + engine-grounded by REQ-0212 (vocab v16) under the same verb delegation. THIS IS NOT A USER RULING.",
+    "shield_break": "AGENT-DEFINED 2026-07-17 (REQ-0212). Charge-effect verb: remove up to n points of the enemy's active block pool (floor 0, no damage). Added to the top-level verbs list + engine-grounded by REQ-0212 (vocab v16) under the same verb delegation. THIS IS NOT A USER RULING."
   },
   "connection_shapes": {
     "queen": {
@@ -532,9 +547,13 @@
       "advance_cooldown": "Elf (G5), Dwarf (G5), Thief (G3a), Watcher (G12).",
       "fire_items": "Shieldmaiden, Light Cavalry.",
       "grant_shield": "Squire (G13), Princess.",
-      "reused_from_v13": "cleanse (Angel), heal_bp (Priest -> units_connected_distributed), buff_self (Berserker, passive_per_stack), transform-spend (Little Princess)."
+      "reused_from_v13": "cleanse (Angel), heal_bp (Priest -> units_connected_distributed), buff_self (Berserker, passive_per_stack), transform-spend (Little Princess).",
+      "charge_strike": "AGENT-DEFINED 2026-07-17 (REQ-0212) under the verb delegation (user 2026-07-14 「必要な動詞はじゃんじゃんあなたの意思で追加して」). On spend, deals n × stacks_spent damage as ONE hit from the host BP into the enemy side. LEGAL ONLY under spend=fire_on_full (stacks_spent == rolled capacity); validateCharge REJECTS it under any other spend. ENGINE-GROUNDED (sim/lib/unit_charge.cjs groundVerb + unit_charge_encounter.cjs -> encounter.cjs strikeFromBp). Carrier: powder_keg. THIS IS NOT A USER RULING.",
+      "transfer_status": "AGENT-DEFINED 2026-07-17 (REQ-0212). Moves up to n NEGATIVE statuses (Burn/Poison/Chill/Stun/Weakness — sim/lib/status.cjs DEBUFF_STATUSES) from the host BP's status bag onto the enemy squad; each moved status keeps its remaining stacks/duration. ENGINE-GROUNDED via the REAL status maps (applyStatus). Carrier: cursed_doll. THIS IS NOT A USER RULING.",
+      "shield_break": "AGENT-DEFINED 2026-07-17 (REQ-0212). Removes up to n points of the enemy's active block pool (ref.damageReduction — the flat block the damage pipeline's reduceIncoming reads); no damage, floored at 0. Carrier: battle_pickaxe. THIS IS NOT A USER RULING."
     },
-    "_status_v15": "v15 (2026-07-16, REQ-0200 impl-log): (a) the 8 charge triggers move into the top-level `triggers` registry (on_damage_dealt / on_connected_unit_spend / on_connected_unit_attack / on_connected_unit_bp_been_hit / on_own_passive_fire were charge-only in v14; OnHit / OnBPBeenHit / every_secs were already there) and gain trigger_domains ['Unit'] entries; (b) three NEW charge triggers are AGENT-DEFINED under the triggers delegation (2026-07-14): on_heal_done, on_status_applied, on_kill; (c) grant_lifesteal joins the top-level `verbs` list (AGENT-DEFINED under the user verb delegation 2026-07-16 「必要な動詞はじゃんじゃんあなたの意思で追加して」); (d) charge.targets gains bp_connected_lowest_hp (AGENT-DEFINED under the targets delegation). All new entries are AGENT-DEFINED, never a user ruling. In UNIT CHARGE context these verbs carry `pct` (percent-point [lo,hi]) where their PO form carries `n`, and multi_strike.hits is a [lo,hi] range; bonus_vs_status may carry status \"any\"; fire_items.tag is an optional po_tag filter -- see validateCharge()."
+    "_status_v15": "v15 (2026-07-16, REQ-0200 impl-log): (a) the 8 charge triggers move into the top-level `triggers` registry (on_damage_dealt / on_connected_unit_spend / on_connected_unit_attack / on_connected_unit_bp_been_hit / on_own_passive_fire were charge-only in v14; OnHit / OnBPBeenHit / every_secs were already there) and gain trigger_domains ['Unit'] entries; (b) three NEW charge triggers are AGENT-DEFINED under the triggers delegation (2026-07-14): on_heal_done, on_status_applied, on_kill; (c) grant_lifesteal joins the top-level `verbs` list (AGENT-DEFINED under the user verb delegation 2026-07-16 「必要な動詞はじゃんじゃんあなたの意思で追加して」); (d) charge.targets gains bp_connected_lowest_hp (AGENT-DEFINED under the targets delegation). All new entries are AGENT-DEFINED, never a user ruling. In UNIT CHARGE context these verbs carry `pct` (percent-point [lo,hi]) where their PO form carries `n`, and multi_strike.hits is a [lo,hi] range; bonus_vs_status may carry status \"any\"; fire_items.tag is an optional po_tag filter -- see validateCharge().",
+    "_status_v16": "v16 (2026-07-17, REQ-0212 impl-log): three AGENT-DEFINED charge-EFFECT verbs join the top-level `verbs` list and are ENGINE-GROUNDED (unlike the v14 renderable-only additions): charge_strike (n × stacks_spent damage from the host BP; fire_on_full-only, validateCharge rejects other spends), transfer_status (move up to n negative statuses host->enemy, keeping stacks/duration), shield_break (strip up to n flat block from the enemy, floor 0). Each carries `n` [lo,hi]; ranged_verb_params gains the three. All AGENT-DEFINED under the verb delegation (user 2026-07-14), never a user ruling. Carriers: powder_keg / cursed_doll / battle_pickaxe."
   },
   "deprecated": {
     "_doc": "Vocabulary that is still SHIPPED and still exercised by tests, but that the design has moved past. Removal is a CODE REQ, not a docs edit -- each entry names what else must die with it.",
