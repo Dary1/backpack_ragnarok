@@ -53,7 +53,17 @@ function repoRoot() { return path.join(os.homedir(), 'backpack_ragnarok'); }
 // same posture item content has: live/ is real, batches/ is history).
 // server/services/core.cjs consumes THIS function for its own paths, so
 // the two readers can never drift apart (REQ-0122 scope item 2).
-function liveDungeonDir() { return path.join(repoRoot(), 'content', 'live', 'dungeon'); }
+// REQ-0145a parity (gate fix 2026-07-17): honor the CONTENT_ROOT env override
+// exactly like server/lib/content_files.cjs does. Without this, a test that
+// remaps os.homedir() for registry-namespace isolation while pointing
+// CONTENT_ROOT at the real corpus (content_serving_test.cjs) sends THIS one
+// reader into the empty fixture HOME. Read per call, matching the repoint
+// seam documented below.
+function liveDungeonDir() {
+  return process.env.CONTENT_ROOT
+    ? path.join(process.env.CONTENT_ROOT, 'live', 'dungeon')
+    : path.join(repoRoot(), 'content', 'live', 'dungeon');
+}
 function dungeonFixedPath() { return path.join(liveDungeonDir(), 'dungeon.json'); }
 function enemiesPath() { return path.join(liveDungeonDir(), 'enemies.json'); }
 function entitiesPath() { return path.join(liveDungeonDir(), 'entities.json'); }
