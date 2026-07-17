@@ -160,3 +160,14 @@ extend the arsenal pool `powder_keg 2 / cursed_doll 2 / battle_pickaxe 3`), then
   isolation (8/8 each run, logs /tmp/req0212_fc_iso.log) -- flake per the
   standing 3/3 convention. The 1 skip is the known F1 files-fleet skip.
 - Earlier interim record (contention aborts) superseded by this run.
+
+## Deploy record (2026-07-17)
+- Merged to master and deployed (backpack-api restart). Live /api/content
+  serves 54 units incl. powder_keg / cursed_doll / battle_pickaxe; the three
+  registry defs ingested against the LIVE api post-deploy: machine_check
+  PASS each (the new charge AST validating its own verbs), advisory review
+  recorded, adopted v1 -- registry copy now overlays the byte-equal file
+  entry (parity equal).
+- Verb runtimes proven by the sim suites in ci3 (unit_charge 13/0,
+  unit_charge_encounter 23/0 incl. end-to-end damage/status-move/block-strip
+  and the fire_on_full-only rejection).
