@@ -123,10 +123,78 @@ every kind, per spec items 2 + 4. The lazy-revert stays as the crash/tab-close s
 
 ## 6. Gates
 
-(to be filled: ci.sh [0/8] port check, engine types, mock-src suite, api_test files+pg,
-client unit, e2e; commit hashes; outcome)
+`SKIP_E2E=1 bash tools/ci.sh` -> **CI GREEN**. Run in the worktree, on the server.
+
+| Gate | Result |
+|---|---|
+| `tools/check_engine_types.cjs` | OK — 49 declared members verified against runtime |
+| `mock-src/tests/run.cjs` (engine, rule 1) | 119 passed, 0 failed |
+| `sim/tests/goldens.cjs` (rule 2) | **OK, 12 cases, replay determinism intact — no hash moved** |
+| `sim/tests/run.cjs` | 117 passed, 0 failed |
+| `server/tests/api_test.cjs` (files) | **187 passed, 0 failed** — 1542 assertions (was 1461) |
+| `server/tests/api_test.cjs` (pg) | **187 passed, 0 failed** — both backends identical (rule 4) |
+| `tsc -p tsconfig.server.json` | clean |
+| client typecheck + vite build | clean |
+| e2e | **NOT RUN — see below** |
+
+### e2e is NOT run, and must not be, on this branch
+
+The suite is not hermetic: `client/playwright.config.ts`'s baseURL is the PUBLIC tunnel
+(`https://backpack-dev.qtie.jp`), served by the LIVE `backpack-web`/`backpack-api`
+services — which run the MAIN checkout, not a worktree. Running it from here exercises
+master's build, not this branch: it can neither pass nor fail on REQ-0215's code, and it
+mutates the shared live dev profile/content while it does so.
+
+Getting a real e2e verdict requires deploying this branch to those services first, which
+PROJECT.md marks HANDS-OFF ("live services backpack-api / backpack-web — coordinate
+before any edit, merge, or restart"). That is the owner's call, not this REQ's.
+
+**This was attempted once and stopped.** A run was started from this worktree, noticed to
+be testing master, and killed. No damage: `~/backpack_ragnarok` git status clean;
+`content/live/live_items.json` + `live_sis.json` + `data/profiles/default.json` all
+verified byte-identical (sha256) to the run's own backups; both services healthy.
+Its box lock was released cleanly and picked up by the queued `req-0217-hermetic-e2e` run.
+
+`req-0217-hermetic-e2e` is an in-flight worktree addressing exactly this. REQ-0215's e2e
+verdict is best taken after it lands, or by an owner-approved deploy of this branch.
+
+### e2e specs are UPDATED (they just have not been executed)
+
+`client/e2e/workshop.spec.ts` is rewritten for the new behaviour: the roll debits
+immediately and delivers to the warehouse (asserting the Unit is NOT on the canvas), then
+claims it from the Warehouse screen end-to-end and checks the row finalizes. Its
+`data/gacha_pending` cleanup hook is gone with the store.
 
 ## 7. E2E ports
 
-Derived, per PROJECT.md: REQ-0215 → STATICPORT=2150 APIPORT=2151 PROXYPORT=2152
-(`source tools/e2e_ports.sh 0215`).
+Derived, per PROJECT.md: REQ-0215 -> STATICPORT=2150 APIPORT=2151 PROXYPORT=2152
+(`source tools/e2e_ports.sh 0215`). Not consumed — this REQ adds no new harness.
+
+## 8. Commits (branch `req-0215-gacha-warehouse-claim-fit`, off master @ f7acaea)
+
+| Hash | What |
+|---|---|
+| `7364bbd` | spec (this file) |
+| `74d668c` | reserved -> todo |
+| `5d75fb4` | server: gacha -> warehouse; claim single-spot validator; gacha_pending deleted |
+| `9381d32` | client: placement find/place split; claim protocol; WorkshopPage places nothing |
+| `a419114` | tests: the purchase + the fit contract |
+
+## 9. Outcome / open items for the owner
+
+Implementation complete; every runnable gate green on both storage backends.
+
+Three things need an owner decision:
+
+1. **e2e** — see §6. Needs a deploy of this branch, or REQ-0217.
+2. **`server/migrations/020_drop_gacha_pending.sql` is NOT applied.** The repo has no
+   migration runner and the live DB is coordinate-first. Surviving rows are abandoned
+   rolls that were never charged for, so dropping destroys no player value — but it is
+   still a live-schema change awaiting a go-ahead. The server code no longer reads or
+   writes the table either way, so leaving it un-dropped is harmless.
+3. **A rolled Unit inherits the warehouse TTL** (7 days) and its auto-dismantle on expiry.
+   A paid roll left unclaimed past the TTL is engraved + yields, exactly like an
+   unclaimed market-bought Unit (REQ-0195d) — consistent, but it IS new exposure for
+   gacha specifically, which previously placed straight onto the canvas and could never
+   expire. Flagged rather than decided: if paid rolls should be TTL-exempt, that is a
+   follow-up REQ (it would be the warehouse's first exemption).
