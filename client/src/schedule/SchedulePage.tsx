@@ -190,15 +190,6 @@ export function SchedulePage({ locale }: SchedulePageProps) {
     return entry ? localizedName(locale, entry) : t(locale, 'schedule.dungeonUnknown');
   }
 
-  // REQ-0071: same join for the room's dungeonType (the payload's `types`
-  // list) -- undefined (RoomCard skips the line) for a legacy room
-  // without the field or while dungeons haven't loaded.
-  function dungeonTypeNameFor(dungeonType?: string): string | undefined {
-    if (!dungeonType) return undefined;
-    const entry = dungeons?.types.find((ty) => ty.id === dungeonType);
-    return entry ? localizedName(locale, entry) : undefined;
-  }
-
   const hasRooms = rooms !== null && rooms.length > 0;
   const canceledCount = rooms ? rooms.filter((r) => r.status === 'canceled').length : 0;
   // REQ-0168 U5: pure display sort -- non-canceled first (createdAt DESC),
@@ -317,7 +308,6 @@ export function SchedulePage({ locale }: SchedulePageProps) {
                   room={room}
                   locale={locale}
                   dungeonName={dungeonNameFor(room.dungeonId)}
-                  dungeonTypeName={dungeonTypeNameFor(room.dungeonType)}
                   expanded={expandedRoomId === room.id}
                   onToggleExpand={() => setExpandedRoomId((cur) => (cur === room.id ? null : room.id))}
                   onChanged={reloadRooms}

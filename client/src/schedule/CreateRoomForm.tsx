@@ -34,14 +34,8 @@ export function localizedName(locale: Locale, entry: { id: string; name: string;
   return entry.name;
 }
 
-function localizedNote(locale: Locale, entry: { i18n?: Record<string, { note?: string }> }): string | undefined {
-  if (locale === 'ja') return entry.i18n?.ja?.note ?? entry.i18n?.en?.note;
-  return entry.i18n?.en?.note;
-}
-
 export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }: CreateRoomFormProps) {
   const [dungeonId, setDungeonId] = useState('');
-  const [dungeonType, setDungeonType] = useState('');
   const [level, setLevel] = useState(1);
   const [genSeed, setGenSeed] = useState('');
   const [formationId, setFormationId] = useState('');
@@ -52,7 +46,6 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
   // away" flow).
   useEffect(() => {
     if (dungeons && dungeons.dungeons.length > 0 && !dungeonId) setDungeonId(dungeons.dungeons[0].id);
-    if (dungeons && dungeons.types.length > 0 && !dungeonType) setDungeonType(dungeons.types[0].id);
     if (dungeons && dungeons.formations.length > 0 && !formationId) setFormationId(dungeons.formations[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dungeons]);
@@ -61,8 +54,13 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
     return <div className="schedule-loading">{t(locale, 'schedule.loading')}</div>;
   }
 
-  const selectedType = dungeons.types.find((ty) => ty.id === dungeonType);
-  const typeNote = selectedType ? localizedNote(locale, selectedType) : undefined;
+  // REQ-0185: a room selects an authored dungeon DEF (not a generator type).
+  // The selected def's recommended level band + theme is an advisory note under
+  // the picker (design D2; the server does NOT gate on the band).
+  const selectedDungeon = dungeons.dungeons.find((d) => d.id === dungeonId);
+  const bandNote = selectedDungeon && selectedDungeon.levelMin != null && selectedDungeon.levelMax != null
+    ? t(locale, 'schedule.levelBandNote', { min: selectedDungeon.levelMin, max: selectedDungeon.levelMax, theme: selectedDungeon.theme ?? '' })
+    : undefined;
 
   const handleSubmit = (evt: React.FormEvent) => {
     evt.preventDefault();
@@ -70,7 +68,6 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
     const trimmedSeed = genSeed.trim();
     void onCreate({
       dungeonId,
-      dungeonType: (dungeonType as 'default' | 'test_fixed') || undefined,
       level,
       genSeed: isAdmin && trimmedSeed ? trimmedSeed : undefined,
       formationId: formationId || undefined,
@@ -94,25 +91,9 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
             </option>
           ))}
         </select>
-      </label>
-
-      <label className="schedule-field">
-        <span className="schedule-field-label">{t(locale, 'schedule.dungeonTypeLabel')}</span>
-        <select
-          className="schedule-select"
-          value={dungeonType}
-          onChange={(e) => setDungeonType(e.target.value)}
-          data-testid="schedule-dungeon-type-select"
-        >
-          {dungeons.types.map((ty) => (
-            <option key={ty.id} value={ty.id}>
-              {localizedName(locale, ty)}
-            </option>
-          ))}
-        </select>
-        {typeNote ? (
-          <span className="schedule-field-note" data-testid="schedule-dungeon-type-note">
-            {typeNote}
+        {bandNote ? (
+          <span className="schedule-field-note" data-testid="schedule-dungeon-band-note">
+            {bandNote}
           </span>
         ) : null}
       </label>
@@ -168,7 +149,7 @@ export function CreateRoomForm({ locale, dungeons, creating, isAdmin, onCreate }
       {formationId ? (
         <SlotPressureSummary
           locale={locale}
-          dungeonType={dungeonType || 'default'}
+          dungeonId={dungeonId}
           level={level}
           formationId={formationId}
         />

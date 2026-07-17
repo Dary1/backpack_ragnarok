@@ -23,7 +23,7 @@ import type { ApiForecastPayload } from '../api';
 /** The four inputs REQ-0057 forecasts against: (dungeon type, level, formation, slot). */
 export interface ForecastSettings {
   enabled: boolean;
-  dungeonType: string;
+  dungeonId: string;
   level: number;
   formationId: string;
   /** Which formation box THIS squad is assumed to occupy: 'unit1'..'unit4'. */
@@ -39,7 +39,7 @@ export interface ForecastState extends ForecastSettings {
 // ---------------------------------------------------------------------
 // The payload cache.
 //
-// A payload depends ONLY on (dungeonType, level) -- formation and slot are
+// A payload depends ONLY on (dungeonId, level) -- formation and slot are
 // pure client-side geometry -- so it is cached per that pair and never
 // re-fetched when the player is merely sliding the formation/slot selectors.
 // In-flight requests are deduped by the same key, so mashing the level
@@ -49,16 +49,16 @@ export interface ForecastState extends ForecastSettings {
 const cache = new Map<string, ApiForecastPayload>();
 const inFlight = new Map<string, Promise<ApiForecastPayload>>();
 
-function key(dungeonType: string, level: number): string { return dungeonType + '/' + level; }
+function key(dungeonId: string, level: number): string { return dungeonId + '/' + level; }
 
 /** Cached, deduped GET /api/schedule/forecast. */
-export function loadForecast(dungeonType: string, level: number): Promise<ApiForecastPayload> {
-  const k = key(dungeonType, level);
+export function loadForecast(dungeonId: string, level: number): Promise<ApiForecastPayload> {
+  const k = key(dungeonId, level);
   const hit = cache.get(k);
   if (hit) return Promise.resolve(hit);
   const pending = inFlight.get(k);
   if (pending) return pending;
-  const p = fetchForecast(dungeonType, level)
+  const p = fetchForecast(dungeonId, level)
     .then((payload) => { cache.set(k, payload); return payload; })
     .finally(() => { inFlight.delete(k); });
   inFlight.set(k, p);
@@ -66,8 +66,8 @@ export function loadForecast(dungeonType: string, level: number): Promise<ApiFor
 }
 
 /** Synchronous cache peek -- lets a consumer render instantly on a re-visit. */
-export function peekForecast(dungeonType: string, level: number): ApiForecastPayload | null {
-  return cache.get(key(dungeonType, level)) ?? null;
+export function peekForecast(dungeonId: string, level: number): ApiForecastPayload | null {
+  return cache.get(key(dungeonId, level)) ?? null;
 }
 
 // ---------------------------------------------------------------------
@@ -81,7 +81,7 @@ export function peekForecast(dungeonType: string, level: number): ApiForecastPay
 // anything.
 let state: ForecastState = {
   enabled: false,
-  dungeonType: 'default',
+  dungeonId: '',
   level: 1,
   formationId: 'formation1',
   slot: 'unit1',
@@ -109,30 +109,30 @@ function set(patch: Partial<ForecastState>): void {
   notify();
 }
 
-function ensurePayload(dungeonType: string, level: number): void {
-  const k = key(dungeonType, level);
+function ensurePayload(dungeonId: string, level: number): void {
+  const k = key(dungeonId, level);
   const hit = cache.get(k);
   if (hit) {
     set({ payload: hit, status: 'ready', error: null });
     return;
   }
   set({ status: 'loading', error: null, payload: null });
-  void loadForecast(dungeonType, level)
+  void loadForecast(dungeonId, level)
     .then((payload) => {
       // Guard against a stale response landing after the player has already
       // moved on to a different (type, level).
-      if (key(state.dungeonType, state.level) !== k) return;
+      if (key(state.dungeonId, state.level) !== k) return;
       set({ payload, status: 'ready', error: null });
     })
     .catch((e: unknown) => {
-      if (key(state.dungeonType, state.level) !== k) return;
+      if (key(state.dungeonId, state.level) !== k) return;
       set({ status: 'error', error: e instanceof Error ? e.message : String(e), payload: null });
     });
 }
 
 export function setForecastEnabled(enabled: boolean): void {
   set({ enabled });
-  if (enabled) ensurePayload(state.dungeonType, state.level);
+  if (enabled) ensurePayload(state.dungeonId, state.level);
 }
 
 export function toggleForecast(): void {
@@ -140,12 +140,12 @@ export function toggleForecast(): void {
 }
 
 export function setForecastSettings(patch: Partial<ForecastSettings>): void {
-  const nextType = patch.dungeonType ?? state.dungeonType;
+  const nextType = patch.dungeonId ?? state.dungeonId;
   // Clamp to the band the server accepts (server/lib/forecast.cjs's
   // FORECAST_TUNABLES) rather than letting a stray input fire a request the
   // server will just clamp anyway -- that would poison the cache key.
   const nextLevel = Math.max(1, Math.min(99, Math.floor(patch.level ?? state.level) || 1));
-  set({ ...patch, dungeonType: nextType, level: nextLevel });
+  set({ ...patch, dungeonId: nextType, level: nextLevel });
   if (state.enabled) ensurePayload(nextType, nextLevel);
 }
 
@@ -154,26 +154,26 @@ export function setForecastSettings(patch: Partial<ForecastSettings>): void {
 // schedule page's formation picker), so they can read a forecast without
 // touching -- or being coupled to -- the overlay's own on/off state.
 // ---------------------------------------------------------------------
-export function useForecastPayload(dungeonType: string, level: number): {
+export function useForecastPayload(dungeonId: string, level: number): {
   payload: ApiForecastPayload | null;
   loading: boolean;
 } {
-  const [payload, setPayload] = useState<ApiForecastPayload | null>(() => peekForecast(dungeonType, level));
+  const [payload, setPayload] = useState<ApiForecastPayload | null>(() => peekForecast(dungeonId, level));
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const hit = peekForecast(dungeonType, level);
+    const hit = peekForecast(dungeonId, level);
     if (hit) { setPayload(hit); setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    void loadForecast(dungeonType, level)
+    void loadForecast(dungeonId, level)
       .then((p) => { if (!cancelled) { setPayload(p); setLoading(false); } })
       // A forecast is an ADVISORY overlay: if it cannot be fetched, the page
       // it decorates must keep working. Degrade to "no summary", never to a
       // broken create-room form.
       .catch(() => { if (!cancelled) { setPayload(null); setLoading(false); } });
     return () => { cancelled = true; };
-  }, [dungeonType, level]);
+  }, [dungeonId, level]);
 
   return { payload, loading };
 }

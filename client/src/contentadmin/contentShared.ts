@@ -10,8 +10,8 @@ import type { ContentDefDto, ContentVariantDto, ArtworkDto } from '../api';
 import { artAdoptedUrl, artRenderUrl } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 
-export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack' | 'monster_pack' | 'gimic';
-export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic'];
+export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack' | 'monster_pack' | 'gimic' | 'dungeon';
+export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon'];
 
 // Mirror of routes/content.cjs RESERVED (path segments the public serving
 // GET owns) -- checked client-side for instant feedback; the server
@@ -36,6 +36,9 @@ export const SCHEMA_REF_DEFAULTS: Record<Kind, string> = {
   monster_pack: 'monster_pack/1',
   // REQ-0211: the interactable dungeon gimmicks -- trap / treasure box / hidden door.
   gimic: 'gimic/1',
+  // REQ-0185: an authored dungeon -- probability-weighted references to
+  // monster_pack + gimic defs, rolled into a dive at run time.
+  dungeon: 'dungeon/1',
 };
 
 /** REQ-0171: one row of a gacha pack's emission pool. */

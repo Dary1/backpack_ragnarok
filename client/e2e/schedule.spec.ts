@@ -140,14 +140,14 @@ async function apiClaim(page: Page, token: string, itemUid: string): Promise<any
 // "Forge a new expedition +" toggle. Open it explicitly before touching the form
 // so the REQ-0043 specs are robust to accumulated rooms / run order (drift fix).
 async function openCreatePanel(page: Page): Promise<void> {
-  const typeSelect = page.locator('[data-testid="schedule-dungeon-type-select"]');
+  const dungeonSelect = page.locator('[data-testid="schedule-dungeon-select"]');
   const toggle = page.locator('[data-testid="schedule-create-toggle"]');
   // Wait for rooms to load and the page to settle into ONE of two states before
   // deciding: the panel auto-opened (zero rooms) OR the toggle is present (has
   // rooms). Without this wait we could sample while rooms is still null (neither
   // present) and no-op, then time out because the panel never opens on its own.
-  await expect(typeSelect.or(toggle).first()).toBeVisible({ timeout: 10000 });
-  if (await typeSelect.isVisible().catch(() => false)) return;
+  await expect(dungeonSelect.or(toggle).first()).toBeVisible({ timeout: 10000 });
+  if (await dungeonSelect.isVisible().catch(() => false)) return;
   await toggle.click();
 }
 
@@ -289,7 +289,7 @@ test.describe('create room + slots UI', () => {
 });
 
 test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only seed field', () => {
-  test('create-room form offers a dungeon TYPE selector (default/test_fixed) and creating a default-type room via the UI works end to end', async ({ page }) => {
+  test('create-room form offers an authored dungeon DEF selector and creating a room via the UI works end to end (REQ-0185)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
     // This spec's own `player` guest may already own rooms created by
     // OTHER tests in this file (canceled rooms stay listed, just
@@ -307,15 +307,12 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     await expect(page.locator('.schedule-page')).toBeVisible();
 
     await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
-    const typeOptions = await page.locator('[data-testid="schedule-dungeon-type-select"] option').allTextContents();
-    expect(typeOptions.length).toBe(2); // default + test_fixed
+    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
 
-    // Explicitly select the 'default' (generated) type -- option VALUES
-    // are the raw type ids ('default'/'test_fixed'), independent of
-    // locale-specific display text.
-    await page.locator('[data-testid="schedule-dungeon-type-select"]').selectOption('default');
-    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toHaveValue('default');
+    // REQ-0185: the picker lists authored dungeon DEFS; option VALUES are the
+    // def ids. Select the frost pilot def explicitly (locale-independent).
+    await page.locator('[data-testid="schedule-dungeon-select"]').selectOption('niflheim_depths');
+    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toHaveValue('niflheim_depths');
 
     await page.locator('[data-testid="schedule-level-input"]').fill('3');
     await page.locator('[data-testid="schedule-create-submit"]').click();
@@ -331,11 +328,10 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     const roomId = newRoom!.id;
     createdRoomIds.push(roomId);
 
-    // Confirm the SERVER actually recorded dungeonType:'default' and
-    // level:3 on this room (not just that the form submitted without
-    // error) -- this is the real end-to-end assertion.
+    // REQ-0185: confirm the SERVER recorded the authored dungeon DEF id +
+    // level:3 on this room (the def IS the selection now).
     const roomView = await apiGetRoom(page, player.token, roomId);
-    expect(roomView.body.room.dungeonType).toBe('default');
+    expect(roomView.body.room.dungeonId).toBe('niflheim_depths');
     expect(roomView.body.room.level).toBe(3);
 
     await apiCancelRoom(page, player.token, roomId);
@@ -346,7 +342,7 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
     await page.locator('.nav-link', { hasText: 'Schedule' }).click();
     await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toHaveCount(0);
   });
 
@@ -366,10 +362,10 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     await page.goto('/app/#/schedule');
     await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
     await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-type-select"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toBeVisible({ timeout: 10000 });
 
-    await page.locator('[data-testid="schedule-dungeon-type-select"]').selectOption('default');
+    await page.locator('[data-testid="schedule-dungeon-select"]').selectOption('niflheim_depths');
     await page.locator('[data-testid="schedule-level-input"]').fill('2');
     await page.locator('[data-testid="schedule-gen-seed-input"]').fill('e2e-dev-seed-req0043');
     await page.locator('[data-testid="schedule-create-submit"]').click();
@@ -391,7 +387,7 @@ test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only see
     const roomRes = await page.request.get(`/api/schedule/rooms/${roomId}`);
     const roomBody = await roomRes.json();
     expect(roomBody.room.genSeed).toBe('e2e-dev-seed-req0043');
-    expect(roomBody.room.dungeonType).toBe('default');
+    expect(roomBody.room.dungeonId).toBe('niflheim_depths');
     expect(roomBody.room.level).toBe(2);
 
     await page.request.delete(`/api/schedule/rooms/${roomId}`);
