@@ -52,3 +52,13 @@ before the registry copy can take over.
   any other session's normal work tipped it. Mitigations applied same day:
   comfyui.service MemoryMax=14G + MemorySwapMax=1G, watchdog
   RSS_RESTART_MB=6000. Family-grouped queue scheduling is the follow-up REQ.
+
+## Deploy record (2026-07-17)
+- Merged to master and deployed (backpack-api restart); live /api/content
+  serves the 9 units (registry copies overlay the file entries -- parity
+  equal) and the arsenal pack. Post-REQ-0212 the same live payload carries
+  54 units / arsenal pool 12.
+- Follow-up on this branch, also merged: check_units art-existence gate now
+  looks across content/art/<kind>/ (art-first unit icons reference po
+  artworks; the unit/-only path was a stale assumption surfaced by
+  REQ-0234's deploy record). Main-checkout check_units: ALL GREEN.
