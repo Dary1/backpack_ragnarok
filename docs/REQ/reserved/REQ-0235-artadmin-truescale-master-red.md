@@ -52,3 +52,30 @@ snapshot shows the render present and INSPECTED (`img "seed 1"` + `text: fit 95`
    sub-100 fit) or the reference pipeline is the defect.
 2. Root-cause the 212px layout path (trace.zip has the full DOM/CSS).
 3. Add the FK-race guard in art_jobs inspect insert (small, independent).
+
+---
+
+## UPDATE 2026-07-18 — the symptom is GONE; hypothesis confirmed (REQ-0222 session)
+
+The spec now **PASSES** on req-0222 @ 8d68dbd (= master with REQ-0193/0212/0213/0233 merged):
+- 7/7 on a quiet box; the true-scale spec itself 10.0 s.
+- 7/7 again under a deliberate 8-way CPU burn (loadavg1 12->24); true-scale 20.9 s.
+- Re-checked across the whole session — never reproduced once, where 2026-07-17 was 5/5 red.
+
+This **confirms this file's own leading hypothesis**: the failure was coupled to the state of
+the in-flight art session's untracked `content/art` mirror (the `fit 95` path), not to any
+branch's code. That work has since landed on master (REQ-0193's live cutout sweep, 185/185
+adopted renders -> cutouts, + REQ-0233), and the red went with it. Nothing was fixed by hand.
+
+Consequences:
+- The claim in "Impact" — "ci.sh [6.5/8] is RED on master for every session -> no branch can
+  produce a literal CI GREEN" — **no longer holds**. [6.5] is green.
+- REQ-0222's remaining gates were unblocked and run; REQ-0222 is now `built/`.
+- Next steps 1 and 2 (art-mirror/fit-check coupling; the 212px layout path) are **moot as a
+  live defect** — but the underlying question stands and is worth an owner call: a spec that
+  goes red purely because an untracked content mirror moved is an env-coupling the suite
+  should not have. Keep or close as the owner sees fit.
+- Next step 3 (**the FK-race guard**: `[art_jobs] inspect job threw:
+  render_inspections_render_id_fkey`, a test's clear-all cascading a render away while its
+  inspect job is still in the python worker) is **independent and still open** — it was still
+  logging 3x per harness run today. That is the only actionable remnant here.
