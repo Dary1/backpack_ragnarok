@@ -5,8 +5,9 @@
 // instead of the public tunnel (~42ms -> ~1ms per request; see REQ-0080 §1).
 //
 // Ingress rule mirrored (server/README.md "Cloudflare tunnel ingress"):
-//   /api/*  -> backpack-api.service  (127.0.0.1:8802)
-//   *       -> backpack-web.service  (127.0.0.1:8801, static /app)
+//   /api/*  -> per-worker fleet api (X-E2E-Worker header; no header -> w0)
+//   /app/*  -> THIS worktree's built client (web/app)
+//   others  -> 404 (REQ-0217 hermetic: nothing falls through to live services)
 //
 // The app's client/src/api.ts does RELATIVE fetches (fetch('/api/content')),
 // which only resolve when the page's own origin applies that same split --
@@ -43,28 +44,28 @@ function serveAppStatic(creq, cres) {
 }
 
 const PORT   = Number(process.env.E2E_PROXY_PORT  || 8803);
-const STATIC = Number(process.env.E2E_STATIC_PORT || 8801);
-const API    = Number(process.env.E2E_API_PORT    || 8802);
 const FLEET_BASE = Number(process.env.E2E_FLEET_BASE_PORT || 8810);
 const HOST   = '127.0.0.1';
 
 // REQ-0083: in parallel mode each Playwright worker tags its requests with
 // X-E2E-Worker:<index>; route that /api traffic to the worker's own isolated
-// API instance (FLEET_BASE+index). No header -> the default single API (:8802),
-// preserving REQ-0080 single-worker behavior.
+// API instance (FLEET_BASE+index). No header -> fleet worker 0 (REQ-0217
+// hermetic: the live api on :8802 is NEVER a route).
 function apiPortFor(headers) {
   const w = headers['x-e2e-worker'];
   if (w !== undefined && w !== '') {
     const i = Number(w);
     if (Number.isInteger(i) && i >= 0) return FLEET_BASE + i;
   }
-  return API;
+  return FLEET_BASE; // REQ-0217: headerless /api -> worker 0, never :8802
 }
 
 const server = http.createServer((creq, cres) => {
   const isApi = creq.url.startsWith('/api/') || creq.url === '/api';
   if (!isApi && (creq.url === "/app" || creq.url.startsWith("/app/"))) { serveAppStatic(creq, cres); return; } // REQ-0051
-  const port = isApi ? apiPortFor(creq.headers) : STATIC;
+  // REQ-0217 hermetic e2e: nothing may fall through to the live services.
+  if (!isApi) { cres.writeHead(404, { "content-type": "text/plain" }); cres.end("[e2e local-proxy] hermetic run: only /app/* (worktree static) and /api/* (fleet) exist"); return; }
+  const port = apiPortFor(creq.headers);
   const preq = http.request(
     { host: HOST, port, method: creq.method, path: creq.url,
       headers: { ...creq.headers, host: `${HOST}:${port}` } },
@@ -79,4 +80,4 @@ const server = http.createServer((creq, cres) => {
 
 server.on('clientError', (_e, sock) => { try { sock.destroy(); } catch {} });
 server.listen(PORT, HOST, () =>
-  console.log(`[e2e local-proxy] http://${HOST}:${PORT}  (/api -> :${API}, * -> :${STATIC})`));
+  console.log(`[e2e local-proxy] http://${HOST}:${PORT}  (/api -> fleet :${FLEET_BASE}+w, /app -> worktree static, else 404)`));

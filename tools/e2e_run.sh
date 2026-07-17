@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # REQ-0117 — serialize e2e runs on the shared box.
 #
-# The e2e suite is whole-box exclusive: global-setup backs up / clears the
-# LIVE profile, content files and dev DB rows, and global-teardown restores
-# them. Two concurrent runs corrupt each other (one setup-clear wipes state
-# the other is mid-assertion on; both race the same files). This wrapper
+# The e2e suite is whole-box exclusive: all DATA is per-run throwaway
+# (REQ-0217 hermetic harness), but runs still share the fixed proxy/fleet
+# PORTS (8803, 8810+) and the /tmp/bp_e2e_workers tree, so two concurrent
+# runs would fight over those. This wrapper
 # takes an exclusive advisory lock held for the WHOLE run, so at most one
 # run touches the box at a time.
 #

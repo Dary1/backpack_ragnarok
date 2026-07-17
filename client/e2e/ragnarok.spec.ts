@@ -19,7 +19,7 @@
 //    with >=1 einherjar record.)
 //
 // THE CRITICAL post-rite assertion (the race guard): after the UI rite we
-// read /api/profile/dev/canvas back and assert the destroyed uids are
+// read /api/profile/default/canvas back and assert the destroyed uids are
 // GONE from inventory AND from the sharing squad -- proving the client's
 // loadGame() re-GET left the server's destruction intact (no stale auto-
 // save resurrected them). We also assert a new einherjar record exists.
@@ -36,7 +36,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { bootApp, waitForAutoSave } from './helpers';
 
 const REPO_ROOT = E2E_DATA_ROOT;
-const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'dev.json');
+const DEV_PROFILE_PATH = join(REPO_ROOT, 'data', 'profiles', 'e2e_ci.json');
 const CLI_INVITE_PATH = join(E2E_CODE_ROOT, 'server', 'cli_invite.cjs');
 
 interface MintedPlayer { playerId: string; token: string; name: string; }
@@ -118,7 +118,7 @@ async function gotoRagnarok(page: Page): Promise<void> {
 
 /** Reads the dev player's saved canvas back (post-mutation truth). */
 async function readDevCanvas(page: Page): Promise<any> {
-  const resp = await page.request.get('/api/profile/dev/canvas');
+  const resp = await page.request.get('/api/profile/default/canvas');
   return (await resp.json()).canvas;
 }
 
@@ -131,12 +131,12 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
 
   test.beforeEach(async ({ page }) => {
     devProfileBackup = existsSync(DEV_PROFILE_PATH) ? readFileSync(DEV_PROFILE_PATH, 'utf8') : null;
-    const resp = await page.request.get('/api/profile/dev/canvas');
+    const resp = await page.request.get('/api/profile/default/canvas');
     origCanvas = resp.ok() ? (await resp.json()).canvas : null;
   });
 
   test.afterEach(async ({ page }) => {
-    if (origCanvas) await page.request.put('/api/profile/dev/canvas', { data: origCanvas });
+    if (origCanvas) await page.request.put('/api/profile/default/canvas', { data: origCanvas });
     if (devProfileBackup !== null) writeFileSync(DEV_PROFILE_PATH, devProfileBackup);
     else if (existsSync(DEV_PROFILE_PATH)) rmSync(DEV_PROFILE_PATH);
   });
@@ -177,7 +177,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   test('ETERNAL ORDER: tier chip row (from API thresholds), top rows, gap + me-row, and VALHALLA chip present', async ({ page }) => {
     // Seed the dev player unranked (fresh) so the me-row is the unranked
     // state, and mint a couple of ranked players so the top has rows.
-    await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: emptyDevoteeCanvas() });
 
     await gotoRagnarok(page);
 
@@ -242,7 +242,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   test('DEVOTION PICKER: an ineligible candidate is shown LOCKED with its reason (deployed), not hidden', async ({ page }) => {
     // Seed the devotion fixture, then open a room slotting squad 1 so it
     // (and squad 2, which shares shared_po) become `deployed`.
-    await page.request.put('/api/profile/dev/canvas', { data: devotionFixtureCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: devotionFixtureCanvas() });
     // Create a room + assign squad 1 via the real schedule API (dev token
     // implied). A dungeon id is needed; read one from /api/schedule/dungeons.
     const dungeons = await (await page.request.get('/api/schedule/dungeons')).json();
@@ -276,7 +276,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   });
 
   test('BLAST MANIFEST: an eligible candidate itemizes the exact blast radius (1 BP / 2 items / 1 form, squad P3 affected)', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devotionFixtureCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: devotionFixtureCanvas() });
     await gotoRagnarok(page);
 
     // Select squad 1 (the eligible candidate). The manifest itemizes the
@@ -298,7 +298,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   });
 
   test('FULL RITE: engrave squad 1 -> destroyed uids gone from inventory AND the sharing squad; a new einherjar record exists', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: devotionFixtureCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: devotionFixtureCanvas() });
     await gotoRagnarok(page);
 
     // Baseline: no einherjar yet for the dev player.
@@ -357,7 +357,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
       // store.length so no index is nameless.
       presets: { active: 0, names: ['Active', 'Full', 'EmptyBP'], store: [null, { linked: true, bps: [bpDef('bp_b1')], pos: [{ uid: 'b1_po', id: 'blade', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] }, { linked: true, bps: [], pos: [], sis: [] }] },
     };
-    await page.request.put('/api/profile/dev/canvas', { data: canvas });
+    await page.request.put('/api/profile/default/canvas', { data: canvas });
     await gotoRagnarok(page);
 
     // Selecting the empty squad (index 2) shows it locked with the
@@ -376,7 +376,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
   });
 
   test('409 last_squad: a lone squad cannot be devoted (locked reason + API 409)', async ({ page }) => {
-    await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: emptyDevoteeCanvas() });
     await gotoRagnarok(page);
 
     // The single 'Lone' squad (index 0) is BOTH last_squad AND empty --
@@ -400,13 +400,13 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
     // devoted dev, so explicitly clear the hall too, not just the canvas.
     const clear = await page.request.post('/api/ragnarok/einherjar/dev/clear');
     expect(clear.ok()).toBeTruthy();
-    await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: emptyDevoteeCanvas() });
     await gotoRagnarok(page);
     await expect(page.locator('[data-testid="ragnarok-hall-empty"]')).toBeVisible();
 
     // Now seed a devotion for the dev player directly via the fixture +
     // API, reload, and see the hall card.
-    await page.request.put('/api/profile/dev/canvas', { data: devotionFixtureCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: devotionFixtureCanvas() });
     const devote = await page.request.post('/api/ragnarok/devotion/1');
     expect(devote.status()).toBe(200);
     await page.reload();
@@ -424,7 +424,7 @@ test.describe('REQ-0066: Hall of Ragnarok on the real backend', () => {
     // a canvas reset, so clear the hall explicitly too.
     const clear = await page.request.post('/api/ragnarok/einherjar/dev/clear');
     expect(clear.ok()).toBeTruthy();
-    await page.request.put('/api/profile/dev/canvas', { data: emptyDevoteeCanvas() });
+    await page.request.put('/api/profile/default/canvas', { data: emptyDevoteeCanvas() });
     await gotoRagnarok(page);
 
     // Unranked me-row.
