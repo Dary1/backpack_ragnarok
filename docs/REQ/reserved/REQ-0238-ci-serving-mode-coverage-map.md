@@ -52,4 +52,35 @@ a third copy would add nothing.
 - G3 The map matches the tree: every stage it names exists, with the mode it claims.
 
 ## Outcome
-_(to be filled)_
+
+Shipped `b69de2b` -- the SERVING-MODE COVERAGE MAP comment block in `tools/ci.sh`, plus a pointer
+at the `[7/7]` fleet stage. Spec: `5a07547`.
+
+### Gate results
+- **G1** `bash -n tools/ci.sh` clean. `check_e2e_ports.cjs`: 4 harnesses, all derived, no collisions.
+- **G2** Comments only, proven mechanically: every added line matches `^\s*#`; nothing removed
+  (pure insertion); and the non-comment content of ci.sh is **md5-identical to master**
+  (`6cf691c958f8069f7589bd426084ff53`). Zero behaviour change.
+- **G3** Every stage the map names verified present in the mode claimed: `[4/7] [5/7] [5.355]
+  [5.36] [5.37] [6.5/8] [6.6/8] [7/7]` all exist; `e2e_fleet.cjs` confirmed
+  `STORAGE_BACKEND:'files'` + `DATABASE_URL:''`; `content_admin_e2e.sh` and `registry_first_e2e.sh`
+  confirmed `STORAGE_BACKEND=pg`; `contentadmin.spec.ts:884` present and unconditional (0
+  `test.skip`); `registry.config.ts` confirmed to run `dex-admin.spec.ts`; `registry_first_e2e.sh`
+  confirmed to fail on skip.
+
+### The [6.5]/[6.6] overlap — measured, not asserted
+Recorded in the block itself. Injecting `if (false && servedKind)` into `server/routes/admin.cjs`
+(the regression REQ-0221 named) took the `[6.5]` contentadmin harness from **28 passed** to
+**1 failed at contentadmin.spec.ts:884**, and the broken run wrote `content/live/live_items.json`
+behind the ledger (`"Longsword Blade"` -> `"must not apply -- registry-served"`) — the exact drift
+REQ-0182b guards. Measured on 2026-07-17 before `[6.6]` existed on this tree. So a re-enabled
+legacy PUT is caught by ci.sh **even with `[6.6]` removed**.
+
+This is evidence, not a recommendation: `[6.6]` also proves the fleet-shaped spec does not skip,
+which `[6.5]` does not. Consolidating the overlap is deliberately **out of scope** here and needs
+its own ratification.
+
+### Why this REQ exists at all
+Three agents, one tree, one false conclusion, in sequence — the third duplicating work that had
+already merged and gone live (`bc6c012`). None of them were careless; the tree simply gave no way
+to see what was already proven. That is a documentation defect, and this is its fix.
