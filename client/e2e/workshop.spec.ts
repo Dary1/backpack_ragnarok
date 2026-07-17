@@ -47,7 +47,6 @@ function createGuestPlayer(name: string): CreatedPlayer {
   trackFileForCleanup(join(PLAYERS_DIR, playerId + '.json'), `workshop E2E guest player registry (${name})`);
   trackFileForCleanup(join(PROFILES_DIR, playerId + '.json'), `workshop E2E guest player profile (${name})`);
   trackFileForCleanup(join(REPO_ROOT, 'data', 'warehouse', playerId), `workshop E2E guest player warehouse dir (${name})`);
-  trackFileForCleanup(join(REPO_ROOT, 'data', 'gacha_pending', playerId), `workshop E2E guest player gacha_pending dir (${name})`);
   return { playerId, token, name };
 }
 
@@ -118,7 +117,7 @@ async function seedDevLrdstBalance(page: Page, qty: number): Promise<any> {
 test.describe('Workshop gacha roll (dev player)', () => {
   withDevUserFixture();
 
-  test('roll happy path: balance 999->989 after one roll, BP appears placed with the receive pulse, and server-side state reflects the deduction+uid after finalize', async ({ page }) => {
+  test('REQ-0215 roll happy path: balance 999->989 immediately, the Unit lands in the WAREHOUSE (not the canvas), and claims onto the board from there', async ({ page }) => {
     await withDevProfileBackup(async () => {
       const seededCanvas = await seedDevLrdstBalance(page, 999);
       const preRollBpIds = new Set<string>();
@@ -134,32 +133,52 @@ test.describe('Workshop gacha roll (dev player)', () => {
       await rollBtn.click();
 
       await expect(page.locator('[data-testid="workshop-toast"]')).toBeVisible({ timeout: 10000 });
+      // REQ-0215: the debit is the SERVER's, and it has already happened by the
+      // time the response lands -- the page re-reads the profile (loadGame) right
+      // after the roll rather than deducting locally and waiting on an auto-save.
       await expect(page.locator('[data-testid="workshop-gacha-balance"]')).toContainText('989', { timeout: 10000 });
 
-      // Server-side finalization: the profile PUT (auto-save) that
-      // followed the roll must show BOTH the balance deduction AND a
-      // freshly-minted BP present somewhere in the canvas.
-      await waitForAutoSave(page);
       const canvasResp = await page.request.get('/api/profile/dev/canvas');
       const canvas = (await canvasResp.json()).canvas;
       let totalLrdst = 0;
       for (const pg of canvas.inv.pages) for (const tm of pg.tms || []) if (tm.id === 'lrdst') totalLrdst += tm.qty;
-      expect(totalLrdst).toBe(989);
-      // The dev player's REAL profile may already carry unrelated
-      // pre-existing BPs (this is the live dev fallback profile, backed
-      // up/restored around this test but not otherwise emptied) -- diff
-      // against the id set captured BEFORE the roll rather than
-      // assuming canvas.bps[0]/pages[0].bps[0] is the freshly-minted one.
+      expect(totalLrdst, 'the roll debited the cost server-side, with no client-authored PUT involved').toBe(989);
+
+      // THE REQ-0215 SPEC, end to end: the Unit is NOT on the canvas.
       const newBpIds = new Set<string>();
       for (const pg of canvas.inv.pages) for (const b of pg.bps) if (!preRollBpIds.has(b.id)) newBpIds.add(b.id);
       for (const b of canvas.bps) if (!preRollBpIds.has(b.id)) newBpIds.add(b.id);
-      expect(newBpIds.size).toBe(1); // exactly one freshly-minted BP from this one roll
-      const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
-      const newBp = allBps.find((b: any) => newBpIds.has(b.id));
-      expect(newBp).toBeTruthy();
-      expect(newBp.shape.length).toBeGreaterThanOrEqual(6);
-      expect(newBp.shape.length).toBeLessThanOrEqual(8);
-      expect(newBp.hpMax).toBe(15 * newBp.shape.length);
+      expect(newBpIds.size, 'a roll places NOTHING on the canvas -- it delivers to the warehouse').toBe(0);
+
+      // ...it is a claimable warehouse row.
+      const whRows = (await (await page.request.get('/api/warehouse')).json()).items;
+      const rolledRow = whRows.find((r: any) => r.kind === 'bp');
+      expect(rolledRow, 'the rolled Unit is a kind:bp warehouse row').toBeTruthy();
+      expect(rolledRow.status).toBe('claimable');
+      expect(rolledRow.sourcePackId).toBe('common_bp');
+      expect(rolledRow.bp.shape.length).toBeGreaterThanOrEqual(6);
+      expect(rolledRow.bp.shape.length).toBeLessThanOrEqual(8);
+      expect(rolledRow.bp.hpMax).toBe(15 * rolledRow.bp.shape.length);
+
+      // ...and claiming it from the Warehouse screen is what puts it on the board.
+      await page.locator('.nav-link', { hasText: 'Warehouse' }).click();
+      const claimBtn = page.locator(`[data-testid="schedule-claim-btn-${rolledRow.itemUid}"]`);
+      await expect(claimBtn).toBeVisible({ timeout: 10000 });
+      await claimBtn.click();
+      await waitForAutoSave(page);
+
+      const afterClaim = (await (await page.request.get('/api/profile/dev/canvas')).json()).canvas;
+      const claimedBps = new Set<string>();
+      for (const pg of afterClaim.inv.pages) for (const b of pg.bps) if (!preRollBpIds.has(b.id)) claimedBps.add(b.id);
+      expect(claimedBps.size, 'exactly the one rolled Unit is on the canvas after the claim').toBe(1);
+      expect(claimedBps.has(rolledRow.itemUid), 'the claimed BP reuses the warehouse row uid -- that reuse is what finalizes the row').toBe(true);
+      const claimedBp = afterClaim.inv.pages.flatMap((pg: any) => pg.bps).find((b: any) => b.id === rolledRow.itemUid);
+      expect(claimedBp.shape, 'the claimed Unit is the rolled one, verbatim -- never re-rolled').toEqual(rolledRow.bp.shape);
+      expect(claimedBp.hpMax).toBe(rolledRow.bp.hpMax);
+
+      // The warehouse row finalized (deleted) on the claim's auto-save PUT.
+      const rowsAfter = (await (await page.request.get('/api/warehouse')).json()).items;
+      expect(rowsAfter.find((r: any) => r.itemUid === rolledRow.itemUid), 'the claimed row is finalized/deleted by the profile PUT').toBeFalsy();
     });
   });
 
@@ -194,15 +213,15 @@ test.describe('Workshop gacha roll (dev player)', () => {
       // (ShapeGrid's new unitTile prop, REQ-0045 h).
       await expect(resultPanel.locator('[data-testid="shape-grid-cell-unit"]')).toHaveCount(1);
 
-      // Wait for the roll to fully finalize (toast + auto-save) so the
-      // freshly-saved canvas can be read back and cross-checked against
-      // what the diagram displayed.
+      // Wait for the roll to land, then cross-check the diagram against the
+      // DELIVERED instance. REQ-0215: that instance is a warehouse row now, not a
+      // canvas BP -- the roll finalizes nothing and places nothing, so there is no
+      // auto-save to wait on here.
       await expect(page.locator('[data-testid="workshop-toast"]')).toBeVisible({ timeout: 10000 });
-      await waitForAutoSave(page);
-      const canvasResp = await page.request.get('/api/profile/dev/canvas');
-      const canvas = (await canvasResp.json()).canvas;
-      const allBps = [...canvas.inv.pages.flatMap((pg: any) => pg.bps), ...canvas.bps];
-      const newBp = allBps.find((b: any) => !preRollBpIds.has(b.id));
+      const whRows = (await (await page.request.get('/api/warehouse')).json()).items;
+      const rolledRow = whRows.find((r: any) => r.kind === 'bp');
+      expect(rolledRow, 'the rolled Unit is delivered to the warehouse').toBeTruthy();
+      const newBp = rolledRow.bp;
       expect(newBp).toBeTruthy();
 
       // REQ-0170: the arrows are the UNIT's connection shape, not a rolled dirs
