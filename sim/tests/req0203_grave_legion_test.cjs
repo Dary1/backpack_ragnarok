@@ -72,15 +72,20 @@ T('G1: an OUT-OF-VOCAB status still FAILs by name', () => {
 });
 
 // ---- G1: global id uniqueness vs the live corpus ----
-T('G1: batch-005 ids are disjoint from the live dungeon corpus and unique within the batch', () => {
+// DEPLOY-INVARIANT (REQ-0207 found-in-flight): batch-005 has since been promoted into
+// git-tracked content/live/dungeon (commit dc80295), so its ids now ARE live. Reconstruct
+// the PRE-batch-005 corpus by removing batch-005's OWN ids, so this gate asserts "no
+// collision with OTHER live content" both before and after batch-005's own deploy.
+T('G1: batch-005 ids are disjoint from the (pre-005) live corpus and unique within the batch', () => {
+  const batchIds = new Set([].concat(enemies.entries, skills.entries, packs.entries).map((e) => e.id));
   const liveIds = new Set();
   for (const f of ['enemies.json', 'skills.json', 'packs.json']) {
     const doc = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', f), 'utf8'));
-    for (const e of (doc.entries || [])) liveIds.add(e.id);
+    for (const e of (doc.entries || [])) if (!batchIds.has(e.id)) liveIds.add(e.id);
   }
   const seen = new Set();
   for (const e of [].concat(enemies.entries, skills.entries, packs.entries)) {
-    ok(!liveIds.has(e.id), 'id "' + e.id + '" already exists live (would collide)');
+    ok(!liveIds.has(e.id), 'id "' + e.id + '" collides with other live content');
     ok(!seen.has(e.id), 'id "' + e.id + '" duplicated within batch-005');
     seen.add(e.id);
   }
@@ -227,12 +232,25 @@ T('additive promotion: merges batch-005 into a live COPY -- 7->15 / 14->30 / 4->
   try {
     const liveDir = path.join(tmp, 'dungeon'); fs.mkdirSync(liveDir, { recursive: true });
     const realLive = path.join(REPO, 'content', 'live', 'dungeon');
-    for (const f of fs.readdirSync(realLive)) fs.copyFileSync(path.join(realLive, f), path.join(liveDir, f));
-    const regPath = path.join(tmp, 'registry.json'); fs.writeFileSync(regPath, JSON.stringify({ t: 'test' }, null, 1) + '\n');
+    // DEPLOY-INVARIANT (REQ-0207 found-in-flight): batch-005 has since been promoted into
+    // git-tracked live (dc80295), so the real live already contains it. Reconstruct the
+    // PRE-batch-005 baseline by filtering batch-005's OWN ids out of the live copy -- the
+    // 7->15 / 14->30 / 4->7 splice is then exercised identically whether or not batch-005
+    // is live (removing nothing pre-deploy; removing batch-005 post-deploy).
+    const batchIds = new Set([].concat(enemies.entries, skills.entries, packs.entries).map((e) => e.id));
     const before = {};
-    for (const f of ['enemies.json', 'skills.json', 'packs.json']) before[f] = fs.readFileSync(path.join(liveDir, f), 'utf8');
+    for (const f of ['enemies.json', 'skills.json', 'packs.json']) {
+      const doc = JSON.parse(fs.readFileSync(path.join(realLive, f), 'utf8'));
+      doc.entries = (doc.entries || []).filter((e) => !batchIds.has(e.id));
+      const text = JSON.stringify(doc, null, 2) + '\n';
+      before[f] = text; fs.writeFileSync(path.join(liveDir, f), text);
+    }
     const other = {};
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) other[f] = fs.readFileSync(path.join(liveDir, f), 'utf8');
+    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+      const t = fs.readFileSync(path.join(realLive, f), 'utf8');
+      other[f] = t; fs.writeFileSync(path.join(liveDir, f), t);
+    }
+    const regPath = path.join(tmp, 'registry.json'); fs.writeFileSync(regPath, JSON.stringify({ t: 'test' }, null, 1) + '\n');
 
     const r = promoteAdditive(BATCH, { liveDir: liveDir, registryPath: regPath });
     const expect = { 'enemies.json': [7, 15], 'skills.json': [14, 30], 'packs.json': [4, 7] };

@@ -100,6 +100,58 @@
     "skills.json": "d9a40d30cce4dd506561bc4225e1513f427a168f2a91f65f88a96261e8108684",
     "packs.json": "fd40c893a7d659a486548cac1b4c60882ab891e146a55fe28013d0b6681e83fa"
    }
+  },
+  {
+   "promoted_from": "batch-006-wildlands",
+   "date": "2026-07-16",
+   "added": {
+    "enemies.json": [
+     "alpha_werewolf",
+     "dire_wolf",
+     "boar",
+     "giant_bat",
+     "giant_spider",
+     "giant_scorpion",
+     "giant_snake",
+     "basilisk",
+     "imp",
+     "gargoyle",
+     "dullahan",
+     "demon_lord"
+    ],
+    "skills.json": [
+     "rending_claws",
+     "feral_bite",
+     "savage_bite",
+     "harrying_snap",
+     "tusk_charge",
+     "blood_drain",
+     "venom_bite",
+     "stinger",
+     "pincer_grip",
+     "constrict",
+     "venom_spit",
+     "petrifying_gaze",
+     "toxic_maw",
+     "fire_dart",
+     "impish_drain",
+     "molten_talons",
+     "headless_charge",
+     "doom_toll",
+     "hellfire_wave",
+     "dominion_of_flame"
+    ],
+    "packs.json": [
+     "pack_wild_hunt",
+     "pack_venom_nest",
+     "pack_demon_gate"
+    ]
+   },
+   "files": {
+    "enemies.json": "8d466de4232857a5c633ef888f1c1d9fe8a674f12aed0308836eb408ba6b003f",
+    "skills.json": "32f808ad5c96cd0fb886bd614a6b5724616925a8464d62621e49c4310de67ed9",
+    "packs.json": "85057ed7338e67739d96904c27655c2282b7aaa48c1ed77153a8ab6baad95921"
+   }
   }
  ]
 }
