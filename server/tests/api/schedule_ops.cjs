@@ -264,6 +264,41 @@ module.exports.run = async function run(h) {
     scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
   });
 
+  // REQ-0215 regression: the claim validator runs the ENGINE over the saved
+  // canvas, and the engine indexes container.tms unconditionally. A canvas saved
+  // before the TM model (REQ-0042) -- or any e2e fixture, all of which are still
+  // shaped {bps,pos,sis} -- has no tms[] at all, and threw a TypeError out of the
+  // engine as a 500 on an otherwise perfectly good claim. Caught by e2e only,
+  // because this suite's own fixture had been handed a tms[] rather than the
+  // validator being made to cope. This test uses the LEGACY shape on purpose.
+  await AT('REQ-0215 claim: a legacy canvas page with no tms[] claims fine (must not 500 out of the engine)', async () => {
+    const whId = 'claim_legacy_page_' + Date.now();
+    schedule.addToWarehouse(scheduleP1.playerId, { itemUid: whId, playerId: scheduleP1.playerId, itemId: 'blade', harvestedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 999999).toISOString() });
+
+    const saved = scheduleStorage.readProfile(scheduleP1.playerId);
+    const before = JSON.parse(JSON.stringify(saved.canvas));
+    for (const pg of saved.canvas.inv.pages) delete pg.tms; // the pre-REQ-0042 page shape, verbatim
+    scheduleStorage.writeProfile(scheduleP1.playerId, saved.canvas);
+
+    // Search for a genuinely free spot rather than hard-coding one: earlier tests
+    // in this suite leave POs on scheduleP1's pages, and this test is about the
+    // tms-less page SHAPE, not about which cell is open.
+    const spot = findClaimSpot(scheduleP1.playerId, whId);
+    assert.ok(spot, 'the fixture must have room somewhere for this test to mean anything');
+    const res = await claimReq(scheduleP1, whId, spot);
+    assert.strictEqual(res.status, 200, 'a tms-less page must claim, not 500: ' + JSON.stringify(res.body));
+
+    // ...and the validator must NOT have migrated the stored profile as a side
+    // effect: it works on a deep copy, because the client's auto-save PUT is the
+    // one profile writer (design rule 5).
+    const after = scheduleStorage.readProfile(scheduleP1.playerId);
+    assert.ok(after.canvas.inv.pages.every((pg) => pg.tms === undefined),
+      'REQ-0215: the claim validator must not write tms[] back into the saved canvas -- it is not a profile writer');
+
+    scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, whId);
+    scheduleStorage.writeProfile(scheduleP1.playerId, before);
+  });
+
   // REQ-0215, the user's spec item 2/4: "no gap in the inventory => ERROR", for
   // EVERY kind. This is the anti-cheat backstop -- the real client refuses before
   // it ever calls -- so it is tested by proposing a spot the engine must refuse.
