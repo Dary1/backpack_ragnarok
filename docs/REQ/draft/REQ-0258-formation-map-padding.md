@@ -148,7 +148,7 @@ Two things to know about this mirror:
 
 - **It is not machine-checked.** Nothing in `sim/tests/` compares `formations.json` to
   `FORMATIONS`. The mirror holds today by hand. Since this REQ edits both sides of an unpinned
-  mirror, it must ALSO pin it — see §6.3. (Same lesson as the 8x8 half-check: an unwatched
+  mirror, it must ALSO pin it — see §6.1. (Same lesson as the 8x8 half-check: an unwatched
   invariant is an invariant that eventually is not true.)
 - **The two are read by DIFFERENT consumers**, which is why the mirror exists at all:
   `sim/lib/compile.cjs:56` reads the `FORMATIONS` table (`const formation = FORMATIONS[formationId];`)
@@ -222,7 +222,7 @@ every run and reported the geometry as validated.
 It must stay a LOAD-TIME assert (an IIFE at module load), not a test: it is what makes an illegal
 formation unrepresentable rather than merely reported.
 
-### 6.3 Pin the mirror
+### 6.1 Pin the mirror
 
 Add to `sim/tests/run.cjs`, next to the existing REQ-0184 parity block: a test that
 `content/live/dungeon/formations.json` and `FORMATIONS` agree on all 16 boxes, and that every
@@ -313,7 +313,12 @@ IBattleInstancesFormationMap                 // 26x18, padding ring 1, placeable
   instances : IBattleInstance[]
   rays      : IBattleRay[]                   // rays in flight ON THIS map (a ray is fired ONTO
                                              //   the opposing map, so it lives there)
-  tick()                                     // forwards tick to instances, then advances rays
+  tickInstances()                            // the FIRE phase: forwards tick to instances,
+                                             //   in stable instance index order (REQ-0256 s10.1)
+  tickRays()                                 // the ADVANCE phase: advances rays (REQ-0257 s12.1)
+  tick()                                     // === tickInstances(); tickRays()
+                                             //   brief s4's single-map entry point. See below:
+                                             //   `Battle` does NOT call this one.
 ```
 
 It is a NEW file rather than an addition to `sim/lib/field.cjs` because `field.cjs` is
@@ -325,8 +330,31 @@ geometry primitives separate from the mutable per-battle state; `formation_map.c
 
 What this REQ delivers of the interface: the MAP itself — construction from a formation (player
 plane) or a monster_pack (enemy plane), the `instances` list, the placeable/ring predicate, and
-the both-planes enforcement. `rays[]` and `tick()` are DECLARED here and IMPLEMENTED by REQ-0256
-(tick core) and REQ-0257 (ray flight). This REQ must not grow a tick loop.
+the both-planes enforcement. **This REQ must not grow a tick loop.**
+
+**The tick half is DECLARED here and implemented elsewhere. Three REQs share this one file, and the
+split is disjoint — this table is the seam:**
+
+| member | declared | implemented |
+|---|---|---|
+| `instances`, construction, ring predicate | **THIS REQ** | **THIS REQ** |
+| `rays[]` | **THIS REQ** | REQ-0257 (§12.1) — empty list until then |
+| `tickInstances()` | **THIS REQ** | **REQ-0256** (§7.1a) |
+| `tickRays()` | **THIS REQ** | REQ-0257 (§12.1). **REQ-0256 stubs it to a no-op** — `rays[]` is always empty until 0257 (REQ-0256 §11). |
+| `tick()` (= both phases) | **THIS REQ** | **REQ-0256** (§7.1a) |
+
+**Why the map has TWO phase methods and not just brief §4's one `tick()` — flagged, because it is a
+deliberate refinement of the normative interface.** Brief §4 says *"`tick()` // spec c: forwards tick
+to instances, then advances rays"*, written for ONE map. There are two, and `Battle` must run **all**
+fires before **any** advance (REQ-0257 §12.1). Composing the single `tick()` over two maps gives
+`playerInstances, playerRays, enemyInstances, enemyRays` instead — and since a ray lives on the map
+it was fired ONTO, that order would advance player-fired rays on their birth tick while enemy-fired
+rays wait, i.e. **player rays would arrive a tick sooner for no reason but map order**. So `tick()`
+survives as brief §4's single-map entry point and `Battle` calls the two phases instead.
+
+**REQ-0256 §7.1a owns this decision and its full rationale; REQ-0257 §12.1 states the phase order.
+All three REQs say the same thing, and a user veto changes all three.** This REQ names it here only
+so that `formation_map.cjs`'s own interface is not a fourth, quieter version of the story.
 
 **Both planes, one abstraction — the point of the REQ.** Today the player plane's geometry lives
 in `formation.cjs` (8x8-checked) and the enemy plane's in `validateMonsterPackEntry`
@@ -386,7 +414,7 @@ dims are untouched), but REQ-0261 will need the ring for rendering — it reads 
 1. `sim/lib/formation.cjs` — `formation4.unit4` -> `J10:Q17`; note rewritten; `validateFormationBoxes` strengthened to 8x8 AND PLACEABLE.
 2. `content/live/dungeon/formations.json` — same box; entry note + file note corrected (incl. the stale `sim/combat.cjs` path).
 3. `sim/lib/formation_map.cjs` — NEW. `IBattleInstancesFormationMap` for both planes (§9).
-4. `sim/tests/run.cjs` — retarget the `J11:Q18` pin (1292) + its test name (1283); add the §6.3 mirror-parity test; add a test that the strengthened assert REJECTS an out-of-ring 8x8 box (the regression guard for this exact bug).
+4. `sim/tests/run.cjs` — retarget the `J11:Q18` pin (1292) + its test name (1283); add the §6.1 mirror-parity test; add a test that the strengthened assert REJECTS an out-of-ring 8x8 box (the regression guard for this exact bug).
 5. `sim/README.md:89` — corrected.
 6. `docs/llm_managed/combat_spec_draft.md` §5.2 lines 379/384 + the §5.1 anchor note; `docs/llm_managed/user_managed_rename_suggestions.md:133,140,149`.
 7. `web/preview/batch-002` + `batch-004` — regenerated via `tools/build_preview`.
@@ -407,7 +435,7 @@ dims are untouched), but REQ-0261 will need the ring for rendering — it reads 
 
 ## 11. Acceptance criteria
 
-1. `FORMATIONS.formation4.canvases.unit4 === 'J10:Q17'`, and `formations.json` agrees — the §5.3 mirror still holds, now machine-checked (§6.3).
+1. `FORMATIONS.formation4.canvases.unit4 === 'J10:Q17'`, and `formations.json` agrees — the §5.3 mirror still holds, now machine-checked (§6.1).
 2. All 16 boxes pass 8x8 AND inside-B2:Y17. Re-running the §3.1 sweep prints **violators=0**.
 3. `validateFormationBoxes` THROWS on an 8x8 box placed outside the ring — proven by a test, not by inspection. Given the same table today it would have thrown on `J11:Q18`.
 4. `sim/tests/run.cjs` green (the 1292 pin now reads `J10:Q17`); `sim/tests/goldens.cjs` still `12 cases OK` and byte-identical (§8); `sim/tests/forecast_parity.cjs` still 18/0.
