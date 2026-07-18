@@ -250,3 +250,127 @@ Not fixed here: (a) needs the user's GPU stack, which this REQ must not touch,
 and (b) is a one-line ci.sh change that belongs to whoever owns [5.1]. Both are
 worth their own REQ. **G1-G3 -- every gate that is actually about this branch --
 are green.**
+
+---
+
+# Consolidation audit — 2026-07-18
+
+Appended by the e2e structure-review session, at the user's direction ("全体を見て
+整理してほしい"). This section is written by an auditor, NOT by the session that
+implemented this REQ; every claim below was re-run independently rather than read
+off the sections above.
+
+## Finding: REQ-0248 is the SAME refactor, built independently and in parallel
+
+`req-0248-e2e-harness-rig-dedupe` extracted `tools/e2e_harness_lib.sh` (215 lines)
+from the same four harnesses, with the same motivating evidence (the REQ-0233
+`ART_FAMILY_BARRIER` and REQ-0234 F7 proxy paragraphs pasted 4x), reaching
+`built/` with its own green gates on the same day. Neither session knew of the
+other; the REQ board cannot show it, because a REQ's status is its folder and each
+worktree only sees its own branch. Two sessions therefore paid for one refactor
+twice.
+
+Measured, not assumed:
+
+| test | result |
+|---|---|
+| `git merge` 0250 -> 0247 -> 0252 -> **0251** onto master | **all clean** |
+| `git merge` **0248** onto that stack | **CONFLICT** in all 4 harness `.sh` files |
+| scope | 0251 ⊃ 0248: 0251 touches the same 4 harnesses **plus** `check_e2e_ports.cjs`, `e2e_ports.sh` and 4 configs |
+
+## Decision: REQ-0251 owns the harness dedupe; REQ-0248's number is BURNED
+
+Rationale — 0251 is a strict superset and the stronger body of work. It fixes the
+port gate (config scanning + the fleet-exemption hole), it proved its gate RED
+before green, and it composes cleanly with every other in-flight e2e REQ. Keeping
+0248 instead would mean re-deriving the gate work and re-testing it.
+
+This is not a quality judgement against REQ-0248, which is a good REQ. It is a
+duplicate, and duplicates are resolved by scope, not by merit.
+
+Per PROJECT.md numbering policy an abandoned reservation permanently burns its
+number: **0248 is a gap by design, never to be reused.** Its branch is NOT deleted
+here — retiring a branch needs fresh user go-ahead (the REQ-0231 precedent), and
+its 215-line library is worth reading before it goes.
+
+## Carried over from REQ-0248 — findings that must not die with its branch
+
+**1. Folding ci.sh `[6.6]` into `[6.5]` was investigated and REJECTED on evidence.**
+The two stages cannot share a namespace. `contentadmin.spec.ts` opens EVERY test
+with `POST /api/content/dev/clear-all` -> `clearAllContent()` ->
+`DELETE FROM content_defs WHERE system_name LIKE ns:%`
+(`server/storage_content.cjs:401`). `registry.config.ts` requires the single
+adopted def seeded by `tools/seed_registry_e2e.cjs` to stay alive for the whole
+run and fails hard if the registry serves 0. Run in one namespace, the first
+contentadmin test destroys the registry seed. Folding them would mean two HOME
+remaps and two sequential playwright runs inside one file — the same two harnesses
+concatenated, no dedupe won, and two independent gates newly coupled into one
+pass/fail. **ci.sh's [6.5]/[6.6] split stands, and this is the evidence for it.**
+
+**2. The library is where REQ-0242's fix now lands.** REQ-0242
+(`e2e-harness-decade-contention`, `draft/`) is that a harness binds its decade
+BEFORE it takes its lock, so a second session on the same harness dies at the
+preflight (exit 75) instead of queueing. With the rig extracted, moving the lock
+acquisition ahead of the namespace/api bringup is a change to ONE function instead
+of four copies. That leverage is this REQ's real payoff for REQ-0242, and REQ-0242
+should be re-read with this in mind before it is scheduled.
+
+## Independent verification of this REQ's own claims
+
+Re-run by the auditor on a clean merge of master + 0250 + 0247 + 0252 + 0251:
+
+| check | result |
+|---|---|
+| `bash -n` on `e2e_harness.sh` + `e2e_ports.sh` + all 4 harnesses | clean |
+| `node tools/check_e2e_ports.cjs` | `4 harnesses + 4 configs ... no collisions`, exit 0 |
+| negative: plant `8903` into `artadmin.config.ts` | **caught** (exit 1, names REQ-0156 owns 6560-6569) |
+| negative: undeclared `sneaky.config.ts` pinning `:9999` | **caught** (exit 1, "checked by nothing") |
+| negative: `8902` (the old `8810..8909` exemption hole) | **caught** (exit 1) |
+| `e2e_ports.sh` boundaries: 0380 / 0381 / 2776 / 3000 | all **exit 64**, as specified |
+| `e2e_ports.sh` 2775 | OK, 32750/32751/32752 — below the 32768 ephemeral floor |
+
+The gate has teeth. The G2 negative-test discipline in this REQ is the reason the
+fleet-exemption hole was found at all, and it held up under re-test.
+
+## OPEN — the 5000 base is challenged by its own arithmetic
+
+The **ephemeral-range finding is correct and valuable**: `/proc/sys/net/ipv4/
+ip_local_port_range` is `32768 60999`, and the old cap of REQ-6552 did schedule a
+rare EADDRINUSE flake for any REQ from 3277 up. That defect is real and must be
+fixed.
+
+But the **remedy** — moving the base to 5000 — is a net loss on every axis this
+project can measure. Computed independently:
+
+| | old rule `REQ*10+i` | this REQ `5000+REQ*10+i` |
+|---|---|---|
+| highest ephemeral-safe REQ | **3275** | 2775 |
+| usable span | **3173 REQs** (0103..3275) | 2775 REQs (0001..2775) |
+| distance from counter (0253) to the poisoned 8800-8809 decade | **627 REQs** | **127 REQs** |
+
+The 5000 base buys exactly two things. (i) REQ-0001..0102 become derivable — worth
+**nothing**: the allocator is monotonic and sits at 0253, so those numbers can
+never be issued again. (ii) It dodges 1521/Oracle-TNS — real, but nothing on
+llmlocal binds 1521, and 6520 is no less "registered" than 1520.
+
+Against that it costs ~400 REQs of span and pulls the shared-services collision
+**5x closer** — from 627 REQs out to 127, which this REQ itself concedes is "live,
+not theoretical". At the observed burn rate (11 REQs on 2026-07-18 alone) the
+counter reaches 0380 in weeks, not years.
+
+**The minimal fix for the actual defect is one number:** keep `PORT = REQ*10 + i`
+and change the cap from `6552` to `3275`. Zero migration, zero port churn, no
+`8800` proximity change, and PROJECT.md needs a two-character edit ("0103-6552" ->
+"0103-3275") instead of a rule rewrite.
+
+This is NOT actioned here. The 5000 base was an explicit user decision (recorded
+above), it is correctly implemented, and it is loudly guarded (exit 64 at both
+boundaries) — it is suboptimal, not broken. And the rule's canonical text lives in
+PROJECT.md, which is user-owned and which no agent may edit, so this returns to the
+user either way. Recorded so the choice is made on the numbers.
+
+## Status note
+
+This REQ is `built/`, not merged. Nothing above changes that. The audit's
+recommended merge order and the decisions that remain with the user are reported
+in the session that appended this section.
