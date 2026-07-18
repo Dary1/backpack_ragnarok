@@ -180,3 +180,38 @@ declare only their differences (369 -> 384 total lines, but the rig went 4x ->
 [6.6]-into-[6.5] fold was investigated and rejected on evidence -- see above.
 
 Not merged; awaiting user acceptance.
+
+---
+
+# SUPERSEDED — do not merge (2026-07-18)
+
+Recorded by the e2e consolidation audit, at the user's direction.
+
+**This REQ is a duplicate of REQ-0251 (`req-0251-e2e-harness-dedupe`), which was
+built independently and in parallel on the same day, from the same evidence, on
+the same four files. Neither session knew of the other.**
+
+REQ-0251 is a strict superset: it extracts the same rig (as
+`tools/e2e_harness.sh`) AND fixes `tools/check_e2e_ports.cjs` (which had never
+read `client/e2e/*.config.ts`, so the pre-REQ-0172 defaults 8903/8913/8923 had
+survived) AND closes a hole in the gate's own fleet exemption. Merging both is
+impossible: `git merge` conflicts in all four harness `.sh` files.
+
+Resolution: **REQ-0251 owns the harness dedupe. REQ-0248's number is burned** —
+per PROJECT.md, an abandoned reservation permanently burns its number, and 0248 is
+a gap by design, never to be reused.
+
+Nothing here reflects on the quality of this REQ. It is a good REQ; it is simply
+the second one. Duplicates are resolved by scope, not by merit.
+
+**Two findings unique to this REQ were carried into REQ-0251 before it was
+retired, and are preserved there:**
+
+1. The evidence REJECTING the fold of ci.sh `[6.6]` into `[6.5]` — the namespace
+   conflict between `contentadmin.spec.ts`'s per-test `dev/clear-all` and
+   `registry_first`'s seeded adopted def.
+2. The observation that the extracted library is now the single place REQ-0242's
+   lock-ordering fix would land.
+
+This branch is retained, not deleted: retiring a branch needs fresh user
+go-ahead, and `tools/e2e_harness_lib.sh` is worth reading before it goes.
