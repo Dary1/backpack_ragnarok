@@ -1,7 +1,11 @@
 # REQ-0264 — art-ray-hit-vfx-kind: ray and hit VFX become first-class registry art, on a still-image pipeline that cannot animate
 
-**Status:** draft — spec written, BLOCKED on user review. Three things need the user before work
-may start: (1) §6 — whether ray/hit VFX get a **new art kind `vfx`** (recommended) or reuse
+**Status:** draft — spec written, BLOCKED on user review. Four things need the user before work
+may start: (0) **§9.2's one-line sim change moves all 12 replay goldens** — §9.4 is the procedure
+(REQ-0256 §13.1's, unchanged). This is the FOURTH move of those hashes in this program (0256, 0257,
+0263, this) and a determinism-contract move, which ruling Q1 covers but which this REQ must spend
+knowingly rather than inherit silently. Called out first because an *art* REQ moving the determinism
+contract is the least expected thing in this file. (1) §6 — whether ray/hit VFX get a **new art kind `vfx`** (recommended) or reuse
 **`custom`**; the two live precedents contradict each other (REQ-0175 ruled "add the kind, required
 not optional" for `gacha_pack`; REQ-0179 shipped `custom` one day later *for gacha_pack*), and an
 LLM may not pick between two user rulings. (2) §7.3 — **the hit effect cannot be animated.** The
@@ -414,6 +418,49 @@ silently mislabels 1 ray in 36 is worse than no key. Put the field on the event 
 already-accepted **3.75×** log growth, this is unmeasurable — the same posture REQ-0263 §4.4 takes
 for `hp_after`.
 
+**Unmeasurable is not the same as invisible, and this REQ said neither.** One field on 36 events
+**changes the replay JSONL**, which changes **all 12 goldens' `jsonl_sha256`**. This REQ's first
+draft used the word "rebaseline" **zero times** — and §14 gate 11 requires `tools/ci.sh` GREEN while
+`ci.sh:107` runs `sim/tests/goldens.cjs` at step **[2/7]**. **Gate 11 was therefore unsatisfiable
+from the moment §9.2 added the field.** It is an art REQ with a sim change in it, and the sim change
+has the same consequences it would have anywhere else.
+
+### 9.4 Golden rebaseline — REQUIRED
+
+**The procedure is REQ-0256 §13.1's and REQ-0257 §14.1's. Do not invent a second convention** — this
+is the fourth REQ in the program to move these hashes (0256, 0257, 0263, this), and four conventions
+for one file is how a rebaseline stops being reviewable.
+
+```
+node sim/tests/goldens.cjs          # CONFIRM RED first -- 12 DRIFT lines. If green, `skill` did not land.
+node sim/tests/goldens.cjs gen      # writes sim/tests/goldens/replay_hashes.json
+git diff sim/tests/goldens/replay_hashes.json
+```
+
+1. **Expect all 12 `jsonl_sha256` to move.**
+2. **`def_sha256` MUST NOT move on the 9 dungen cases** — this REQ does not touch `dungen.cjs`. If one
+   moves, **STOP** (REQ-0256 §13.1's rule, same reason).
+3. **`events` counts MUST NOT MOVE AT ALL.** One field on existing events; zero new events. **A moved
+   count means something other than §9.2 landed.** Same check, and same sharpness, as REQ-0263 §10.1
+   step 3.
+4. **Prove the diff is one field.** Dump `combat.toJSONL(r.events)` for `batch002/golden-A` before and
+   after; diff as TEXT. **Every differing line must be a `ray_fire`, and must differ only by the added
+   `skill` key.** No `t` moves, no `amount` moves, no line is added, removed or reordered. **`skill` is
+   read from `s.effect`, which is already in scope at the emission site — it draws no RNG.** If an
+   `amount` moved, a stream was disturbed and §9.2 was implemented wrong.
+5. **The 36/36 check (§14 gate 6) is run on the REBASELINED log**, not the old one.
+
+**Ordering.** This REQ rebaselines **after** 0256, 0257 and 0263. Its diff is the most trivially
+reviewable of the four — one key, on one event kind, with no count change — which is exactly why it
+must not be folded into anyone else's. **Not rebaselined:** `forecast_parity.cjs` (no geometry
+change — 18/18 expected unchanged), `sim/s4_thresholds.json` (hand-authored — REQ-0256 §13.3),
+`docs/user_managed/*` (forbidden).
+
+**`sim/s4/metrics.cjs:117` reads `case 'ray_fire'` and will now see a `skill` field it ignores.**
+Verified harmless — it selects named fields (`:121`: `src`, `field`, `cause`, `mode`) rather than
+spreading the event, so an added key cannot reach the S4 corpus. **S4 baselines do not move for this
+REQ** (they move for 0256/0257's *outcome* changes, not for this field).
+
 ## 10. AUTHORING RULES — the VFX goldens. **USER RULING REQUIRED on V2.**
 
 These bind the ART, not the code. They are stated as goldens because
@@ -651,7 +698,12 @@ and carries no forced outline). **The user rules; §15 gates on it.**
 8. `client/src/expedition/ExpeditionRayLayer.ts` — **REQ-0262's file.** Draws a `TilingSprite`
    when `rayTexture` is set (§7.2) and a ramped `Sprite` when `hitTexture` is set (§7.3); the
    procedural draw stays as the `null` branch.
-9. **Sim (additive):** `skill` on `ray_fire` (§9.2). **One field, zero new events.**
+9. **Sim (additive):** `skill` on `ray_fire` (§9.2). **One field, zero new events — but it MOVES ALL
+   12 REPLAY GOLDENS** (§9.4). This is an art REQ carrying a determinism-contract change; it is
+   listed in the scope as a sim change, not as a footnote to one.
+9b. **Rebaseline per §9.4** — `sim/tests/goldens/replay_hashes.json`. The fourth move of these hashes
+   in this program (after 0256, 0257, 0263) and the most reviewable: one key, one event kind, zero
+   count change.
 10. **Art request (for the user's pipeline, NOT run here): 2 assets** — `vfx_ray_default` (256×64,
     `tiling:true`), `vfx_hit_default` (256×256). §15.
 
@@ -709,7 +761,16 @@ Gates that DO apply:
    PASS. Without this, §10's rule is prose.
 10. **Migration is additive and idempotent.** Apply twice; `artwork_kind` = {po,si,unit,monster,
     bpskin,custom,gimic,vfx}. Old code never emits `vfx` (REQ-0179's migration-first argument).
-11. `pnpm exec tsc --noEmit` + lint + `tools/ci.sh` GREEN.
+11. `pnpm exec tsc --noEmit` + lint + **`tools/ci.sh` GREEN — which REQUIRES §9.4's rebaseline first.**
+    `ci.sh:107` runs `sim/tests/goldens.cjs` at step **[2/7]**, and §9.2's `skill` field moves all 12
+    `jsonl_sha256`. **Without §9.4 this gate cannot pass** — it was unsatisfiable as originally
+    written, and the REQ did not say the word "rebaseline" once. Order: rebaseline per §9.4, review
+    the diff against §9.4's four checks, **then** run `ci.sh`.
+12. **`node sim/tests/goldens.cjs` green at 12, rebaselined per §9.4**, with `def_sha256` unmoved on
+    all 9 dungen cases and **every `events` count unmoved** (§9.4 step 3).
+13. **`node server/tests/api_test.cjs` (determinism) green.** Nothing to regenerate — it re-simulates
+    and deep-equals (REQ-0256 §13.2). **Red here is a real determinism break, not a baseline
+    artifact.** Do not rebaseline it.
 
 ## 15. Acceptance criteria
 
