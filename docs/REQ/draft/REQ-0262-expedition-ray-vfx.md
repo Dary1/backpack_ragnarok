@@ -57,12 +57,15 @@ reason §5.2 locks the head to `t` and never to a tween timer.
 
 | fact | source | evidence |
 |---|---|---|
-| `ray_fire` carries **no skill id, no element, no cause** | measured, golden-A | field set: `seq,t,ev,src,field,entry,dir,pen,aoe` — §9 depends on this |
+| `ray_fire` carries **no skill id and no element** | measured, golden-A | golden-A field set: `seq,t,ev,src,field,entry,dir,pen,aoe` — §9 depends on this. **`cause` is a different story — see the three rows below: it IS on `ray_fire`, just not on any path golden-A takes.** |
 | **`telegraph` DOES carry `skill`** | measured, golden-A | field set: `seq,t,ev,src,skill,edge,fires_at` — §9.3: the sim already has the skill id in scope at fire time |
 | `ray_hit` carries **no cell** | measured, golden-A | `{"seq":23,"t":18,"ev":"ray_hit","dst":"beta","amount":11.36,"bounce_mult":1,"hp_after":78.64}` — §7.1: only the ray knows where it hit |
 | `ray_hit_all` carries **no cell** | measured, golden-A | `{"seq":33,"t":1.09,"ev":"ray_hit_all","bounce_mult":2.5,"hits":[…]}` |
 | the small monitor pulses a **hardcoded** cell for the nova | `MonitorRenderer.ts:746-755` (0240) | `case 'ray_hit_all': … this.pulseCell('N9')` — its own comment: *"No specific cell carried on these two event kinds today"* |
-| `cause` exists but is **not on any ray event** in a real run | measured, golden-A | `cause` appears on ZERO events of golden-A; `MonitorRenderer.ts:718` reads `ev.cause === 'pulse'`, `encounter.cjs:119/136` emit `cause:'charge'` — both on paths golden-A never takes |
+| `cause` **IS stamped on ray events — by the CHARGE path** | `sim/lib/encounter.cjs:62,79` | `for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq(), cause: 'charge' }, re));` — `rayEvents` comes straight from `fireSkillRay`, so **`ray_fire`/`ray_hit`/… all carry `cause:'charge'`** on the `chargeStrike` (`:62`) and `fireItems` (`:79`) paths. This row previously cited only `:119`/`:136`, which are **`unit_charge_transfer`/`unit_charge_shieldbreak` — NOT ray events.** The ray sites were missed. |
+| `cause:'pulse'` is stamped on **exactly two events, NEITHER a ray event** | `sim/lib/encounter.cjs:447,452` | `pulse_payload` (`:447`) and `apply_status` (`:452`). **No ray event is ever stamped `cause:'pulse'`** — grep `cause:` over `sim/` returns 6 sites: `:62`, `:79` (ray, `'charge'`), `:119`, `:136` (charge bookkeeping, not rays), `:447`, `:452` (pulse, not rays). |
+| **`MonitorRenderer`'s gold pulse-ray branch is DEAD CODE** | `MonitorRenderer.ts:616` (0240) | `case 'ray_step': { … const pulseRay = ev.cause === 'pulse'; … animateStep(path, pulseRay ? 0xffd166 : 0x59d6d6) }` — `pulseRay` **can never be true**, because no `ray_step` is ever stamped `cause:'pulse'` (row above). The gold tint has never rendered. **NOTE: this REQ previously cited `:718`; the correct line is `:616`** (`:718` is inside `reset()`). §9.2. |
+| `cause` appears on **ZERO events of golden-A** — and §8.5 of REQ-0256 says why | measured, golden-A | golden-A takes no charge path **because the goldens build no charge manager at all**: `sim/tests/goldens.cjs:63` omits `unitDefsById`, so `UNIT_DEFS = {}` and `chargeBps` is empty. **In PRODUCTION it is live** — `server/services/runs.cjs:83-91` passes it and **42 of 54 live units carry a `charge` block** (REQ-0263 §5.5). **Golden-A's field set is therefore NOT the wire's field set**; do not author against it alone. |
 | ray cells are raw `[row,col]` NUMBER TUPLES | `fieldGeometry.ts:23-34` + BUG#4 postmortem | `RawCell = [number, number]`; a `"M9"` string is only ever an entity LABEL |
 | `STEP_ANIM_MS = 200` is the decoration REQ-0257 deletes | `MonitorRenderer.ts:34` | `const STEP_ANIM_MS = 200; // per ray_step segment` |
 | the expedition clock is rAF-driven and reads `t` | REQ-0260 §9.3 | `simElapsedSecs = (Date.now() - Date.parse(run.startedAt)) / 1000`; *"reads `t`. never `pt`."* |
@@ -503,9 +506,16 @@ REQ-0261 §4.4's own list of things a spectator plane does not draw.
 
 The user's (i): one ray line + one hit effect **now**, swappable **per-skill** later.
 
-**Measured blocker: `ray_fire` carries no skill id.** Its field set is
-`seq,t,ev,src,field,entry,dir,pen,aoe`. There is no `skill`, no `element`, no `cause`. **So the seam
-cannot key on skill id today**, and (i)'s "later" is gated on a sim change, not on art.
+**Measured blocker: `ray_fire` carries no skill id.** Its golden-A field set is
+`seq,t,ev,src,field,entry,dir,pen,aoe`. There is no `skill` and no `element`. **So the seam cannot
+key on skill id today**, and (i)'s "later" is gated on a sim change, not on art.
+
+**`cause` is the exception, and §9.2 spends it.** It is absent from golden-A but **present on the
+wire**: `encounter.cjs:62,79` stamp `cause:'charge'` onto every event `fireSkillRay` emits on the
+charge paths, and those paths are live in production for **42 of 54 units** (§3, REQ-0263 §5.5).
+Golden-A cannot show it because the goldens build no charge manager (`goldens.cjs:63` omits
+`unitDefsById`). **Reading the wire's shape off golden-A is what produced this REQ's one fictional
+claim** (§9.2); the lesson is in §3's rows, not only in the correction.
 
 **The three candidate keys, judged:**
 
@@ -525,7 +535,9 @@ both art REQs, or two vocabularies for one concept.
 // client/src/expedition/rayVfx.ts -- NEW
 export interface RayVfxKey {
   skill: string | null;      // ray_fire.skill -- NOT on the wire yet (s9.3). null until REQ-0264.
-  cause: string | null;      // ray_fire.cause -- NOT on the wire yet (REQ-0263 s7 adds it).
+  cause: string | null;      // ray_fire.cause -- ON THE WIRE TODAY as 'charge' (encounter.cjs:62,79),
+                             //   null otherwise. Live in production, absent from golden-A (s3).
+                             //   REQ-0263 s7 adds further values; it does not introduce the field.
   pen: number;               // ray_fire.pen  -- on the wire today
   aoe: number;               // ray_fire.aoe  -- on the wire today
   field: 'player' | 'enemy'; // ray_fire.field -- on the wire today
@@ -543,10 +555,43 @@ export interface RayVfxProvider {
 ```
 
 **Ships now: `DefaultRayVfx`** — one implementation, which **ignores every field of the key** and
-returns one constant style, except for the one variant that already exists in production and must not
-regress: `MonitorRenderer.ts:718`'s gold-tinted pulse rays (`ev.cause === 'pulse'` -> `0xffd166`).
-That is preserved as the seam's only branch, which is also its proof-of-shape: the seam demonstrably
-*can* vary a ray by a wire field, using the one wire field that varies today.
+returns one constant style, except for **one branch on `cause === 'charge'`**, which is the seam's
+proof-of-shape: it demonstrates that the seam *can* vary a ray by a wire field, using a field that
+really does vary.
+
+**This branch was re-based, and the correction matters more than the branch does.** The first draft
+claimed `DefaultRayVfx` *"preserves the `cause === 'pulse'` gold branch … using the one wire field
+that varies today"*, i.e. that it was carrying a live production behaviour across to the expedition.
+**That was fiction, in both halves:**
+
+- **`cause:'pulse'` is never stamped on a ray event.** It exists on exactly two events —
+  `pulse_payload` (`encounter.cjs:447`) and `apply_status` (`:452`) — and neither is a ray. So
+  `MonitorRenderer.ts:616`'s `case 'ray_step': const pulseRay = ev.cause === 'pulse'` **is dead code
+  and always has been.** The gold tint has never once rendered. **Nobody preserves a live behaviour
+  by copying it, because there is no live behaviour there to preserve** — porting it would have
+  carried dead code into a new file and dressed it up as a requirement.
+- **The wire field that DOES vary on rays is `cause:'charge'`** (`encounter.cjs:62,79`, §3), stamped
+  onto every event `fireSkillRay` produces on the charge-strike and charge-fire paths. It is **live
+  in production** — 42 of 54 live units carry a `charge` block and `runs.cjs:83-91` passes the defs
+  (REQ-0263 §5.5) — and **invisible to golden-A**, which builds no charge manager (`goldens.cjs:63`).
+  That combination is exactly why the first draft got it wrong: it read golden-A's field set, saw no
+  `cause`, and reasoned about the wire from a log that cannot show it.
+
+```ts
+// DefaultRayVfx -- the ONE branch, on a field that is real
+styleFor(key: RayVfxKey): RayVfxStyle {
+  return key.cause === 'charge' ? EXP_RAY_STYLE_CHARGE : EXP_RAY_STYLE_DEFAULT;
+}
+```
+
+**Do not port `MonitorRenderer.ts:616`'s `pulseRay` branch.** It is dead on the small monitor too;
+deleting it there is a separate, trivial cleanup and **is not in this REQ's scope** (§13) — this REQ
+only declines to inherit it. Recorded so the next reader does not "restore" it as a lost feature.
+
+**A `cause`-keyed branch is a stopgap, not the design.** §9.1 adopts `skill` id as the real key; it
+is not on the wire yet (§9.3) and REQ-0264 is what supplies it. `cause` is what lets the seam prove
+its shape **today**, on a live field, instead of shipping a provider whose interface has never once
+been exercised by a value that varies.
 
 **This is deliberately the `chargeRing.ts` pattern** (REQ-0125a): finish the drawing, ship it inert,
 and let the follow-up REQ change *arguments*, not *structure*. `chargeRing.ts:28-30` states the
@@ -745,7 +790,9 @@ postmortem, verbatim in the part that matters:
 **In:**
 
 1. `client/src/expedition/rayVfx.ts` — **NEW.** §9's `RayVfxKey` / `RayVfxStyle` / `RayVfxProvider`
-   + `DefaultRayVfx` (one style; preserves the `cause === 'pulse'` gold branch).
+   + `DefaultRayVfx` (one style, plus §9.2's single `cause === 'charge'` branch — a REAL wire field
+   (`encounter.cjs:62,79`), unlike the `cause === 'pulse'` branch this REQ's first draft proposed to
+   "preserve", which is dead code at `MonitorRenderer.ts:616` and never rendered).
 2. `client/src/expedition/ExpeditionRayLayer.ts` — **NEW.** The `Map<rayId, RayVisual>` (§6), the
    pure-function head (§5.2), the bounded trail (§5.3), the impact/nova effects (§7, §11.2), the
    glow budget + priority cull (§8 R2), the reaper (§6.3). Draws into REQ-0261's `ExpeditionRenderer`
@@ -858,7 +905,8 @@ Gates that DO apply:
 | task: *"a sibling agent measured 47% of rays (17/36) reach it"* | **CONFIRMED by independent replay.** Also confirmed: 330 events, 36 `ray_fire`, 109 `ray_step`/1017 cells, 17 `ray_hit_all`, 21 `ray_hit`. REQ-0257 §4.1 is sound. | §4 |
 | task: *"what the nova looks like when it happens twice a second"* | **Understates the burst and overstates the average.** Mean 0.72 novas/s over the ray span; **median inter-arrival 0.08s**; up to **14** inside one 1.1s window. Novas arrive in volleys, not at a steady 2Hz — which is why §11.2 coalesces rather than merely shortens. | §4, §11.2 |
 | brief §6 (silent) | **`ray_hit` carries no cell.** (h) is therefore impossible without REQ-0257's `ray` id — the struck cell exists only on the ray's own `ray_advance` trail. The current renderer hardcodes `pulseCell('N9')`. | §3, §7.1 |
-| brief §6 (silent) | **`ray_fire` carries no `skill`/`element`/`cause`.** (i)'s "swappable per-skill" is blocked on a sim change, not on art. **`telegraph` already carries `skill`** — the field exists, on the wrong event. | §3, §9.1, §9.3 |
+| brief §6 (silent) | **`ray_fire` carries no `skill` and no `element`.** (i)'s "swappable per-skill" is blocked on a sim change, not on art. **`telegraph` already carries `skill`** — the field exists, on the wrong event. **`cause` IS on `ray_fire`** (`encounter.cjs:62,79`, `'charge'`) and is what §9.2's seam branches on. | §3, §9.1, §9.3 |
+| task/this REQ's own first draft: *"`DefaultRayVfx` preserves the `cause === 'pulse'` gold branch, the one wire field that varies today"* | **FALSE, both halves.** `cause:'pulse'` is stamped on exactly two events (`encounter.cjs:447,452`) and **neither is a ray event**, so `MonitorRenderer.ts:616`'s `pulseRay` branch is **dead code that has never rendered** — there is no live behaviour there to preserve. The ray-bearing `cause` is `'charge'` (`:62,79`). Seam re-based onto it. | §3, §9.2 |
 | brief §6 (silent) | **§6.0's ≤3 glow budget and the combat model are irreconcilable** at a measured 19 concurrent rays. Neither the brief nor the styleguide anticipates this. | §4, §8 |
 | brief §6 (silent) | **§6.6 names 戦闘再生 explicitly** in tier ②. A full-screen battle monitor cannot obey it literally, and the brief does not notice that its own §6 quotes the rule while specifying the screen that breaks it. | §10.1 |
 | REQ-0261 §4.4 | Defers **link beams** to REQ-0262 — but beams are in none of (g)/(h)/(i). A deferral to a REQ whose scope excludes it. Declared OUT here, with a recommendation. | §8.4 |
