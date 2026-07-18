@@ -1,10 +1,21 @@
 # REQ-0257 — ray-flight-entity: IBattleRay becomes a live entity that takes time to arrive
 
-**Status:** draft — spec written, BLOCKED on user review. Three things need the user before work may
+**Status:** draft — spec written, BLOCKED on user review. Four things need the user before work may
 start: (1) this REQ makes combat RESULTS change in ways no gate can call right or wrong — §8 spells
 out kill-stealing, over-kill waste and nova re-aiming, and the user must want them; (2) it moves all
 12 replay goldens a SECOND time, after REQ-0256 already moved them; (3) §10 retires the `ray_step`
-event, which is a WIRE format change with six measured consumers (§11).
+event, which is a WIRE format change with six measured consumers (§11); (4) **§12.1 splits brief §4's
+`IBattleInstancesFormationMap.tick()` into `tickInstances()` / `tickRays()`**, because brief §4 wrote
+`tick()` for one map and there are two — see REQ-0256 §7.1a, which owns the decision. The same flag
+appears in REQ-0256 and REQ-0258; **a veto changes all three**, and costs §12.2's guarantee that
+every ray takes the same 4 ticks from fire to first diagonal regardless of which side fired it.
+
+**Two hand-offs this REQ ACCEPTS, recorded so they are not silently dropped:**
+(a) **REQ-0263 §4.4** — `hp_after` on `ray_hit_all.hits[]` / `ray_aoe.hits[]`, which carry **72.2% of
+all ray damage** (§10.1b). Accepted; folded into §14.1's rebaseline. 0263 §4.4 is updated to match.
+(b) **`ray_fire`'s three non-uniform emission sites** (§10.1a) — the `ray` id is stamped at all three
+and the schema's optional fields are written down for 0262/0263/0264, which must not be authored
+against golden-A's shape alone.
 **Reserved:** 2026-07-18
 **Slug:** ray-flight-entity
 **Branch:** req-expedition-spec (spec only; implementation branches from REQ-0256)
@@ -397,12 +408,12 @@ already knew the whole trajectory at `t`. It cannot survive a ray that does not 
 
 | event | today | after |
 |---|---|---|
-| `ray_fire` | `{t, seq, ev, src, field, entry, dir, pen, aoe}` | **+`ray`** (the `IBattleRay.id`). All consumers correlate on it. |
+| `ray_fire` | **NOT UNIFORM — see §10.1a.** Golden-A's shape is `{t, seq, ev, src, field, entry, dir, pen, aoe}`; the two synthesised sites emit `{t, seq, ev, src, field, mode, entry}` | **+`ray`** (the `IBattleRay.id`) **at ALL THREE emission sites**. All consumers correlate on it. |
 | `ray_step` | `{ev:'ray_step', path:[[r,c],...]}` — batched | **DELETED** |
 | — | — | **NEW `ray_advance`**: `{t, seq, ev:'ray_advance', ray, cell:[r,c], bounces}` — ONE per diagonal, at the tick the ray arrives on that cell |
 | `ray_bounce` | `{ev, at, new_dir, bounce}` | **+`ray`**. `t` is now the bounce's real tick. |
 | `ray_hit` | `{ev, dst, amount, bounce_mult, hp_after}` | **+`ray`**. `t` is the arrival tick, NOT the fire tick. |
-| `ray_aoe` / `ray_hit_all` | `{ev, center, radius, hits}` / `{ev, bounce_mult, hits}` | **+`ray`**. `t` = arrival tick. |
+| `ray_aoe` / `ray_hit_all` | `{ev, center, radius, hits}` / `{ev, bounce_mult, hits}`, where `hits[] = [{dst, amount}]` — **no `hp_after`** | **+`ray`**. `t` = arrival tick. **+`hp_after` on every member of `hits[]`** — REQ-0263 §4.4's hand-off, ACCEPTED (§10.1b). |
 | `ray_abort` / `ray_end` | `{ev, reason, steps}` | **+`ray`**. |
 
 **Why one event per DIAGONAL and not per TICK.** The task frames this as "the client needs per-tick
@@ -420,6 +431,79 @@ server emits truth at 25Hz; the client draws at 60+Hz. That is the correct split
 from here"*. **That works only because rays are instantaneous and therefore never interleave.**
 With flight, N rays are in the air at once and their events interleave; "the most recent ray_fire"
 becomes meaningless and the renderer would attribute hits to the wrong side. §11.1.
+
+### 10.1a `ray_fire` has THREE emission sites, and its schema is NOT uniform
+
+This REQ's first draft treated `ray_fire` as one emission with one shape — golden-A's. **Measured,
+there are three, and they do not agree:**
+
+| # | site | emits | `mode`? | `dir`/`pen`/`aoe`? |
+|---|---|---|---|---|
+| 1 | `sim/lib/skills.cjs:195` — `fireSkillRay`, the real ray | `{ev, src, field, entry, dir, pen, aoe}` (`t`/`seq` stamped by the caller at `encounter.cjs:616`) | **no** | **yes** |
+| 2 | `sim/lib/encounter.cjs:359` — `resolveDetection`, **SYNTHESISED** | `{t, seq, ev, src, field:'enemy', mode:'detection', entry}` | **yes** | **no** |
+| 3 | `sim/lib/encounter.cjs:378` — `resolveUnlock`, **SYNTHESISED** | `{t, seq, ev, src, field:'enemy', mode:'unlock', entry}` | **yes** | **no** |
+
+Sites 2 and 3 are not rays in any physical sense. **No `walkRay` runs, no geometry is computed, no
+trajectory exists** — the attachment is resolved directly (`resolveUnlock` even rolls its damage
+inline off its own `unlock/...` stream and emits a paired `ray_hit`, `:377-379`) and a `ray_fire` is
+*synthesised afterwards* so the monitor has something to draw. They are a PRESENTATION artifact
+wearing a sim event's name.
+
+**Consequences this REQ must honour, none of them optional:**
+
+1. **The `ray` id is stamped at ALL THREE sites** (§10.1). A consumer that correlates on `ray` must
+   never meet a `ray_fire` without one, or the `Map<rayId, field>` that replaces `currentRayField`
+   (§11.1) silently drops a key and mis-attributes a side — the exact bug the id exists to kill.
+2. **Sites 2/3 mint a ray id and CLOSE it in the same tick.** They have no flight: there is no
+   `IBattleRay`, so there are no `ray_advance` events, no bounces, and no arrival. The id is a
+   correlation handle, not a promise of a trajectory. **A consumer must not assume `ray_fire`
+   implies a later `ray_advance`.**
+3. **`dir`/`pen`/`aoe` are ABSENT, not zero, on sites 2/3** — and `mode` is absent on site 1.
+   Downstream REQs (0262 ray VFX, 0263 HUD, 0264 hit VFX) **must not be written against golden-A's
+   shape alone**: golden-A is a `batch002` combat run and contains no attachments, so **it exercises
+   site 1 only**. Every `ray_fire` field except `{t, seq, ev, src, field, entry}` is OPTIONAL on the
+   wire. A renderer that reads `ev.dir` unguarded crashes the first time a player opens a chest.
+4. **This REQ does NOT unify the schema.** Making sites 2/3 emit real rays is a combat change
+   (attachments would become physically reachable and missable); making them stop emitting `ray_fire`
+   is a wire change with its own consumers. Both are out (§15). **What this REQ owes is the truth
+   written down**, and it is now written down.
+
+### 10.1b REQ-0263 §4.4's hand-off: **ACCEPTED**
+
+REQ-0263 §4.4 measured that `ray_hit_all.hits[]` and `ray_aoe.hits[]` carry `{dst, amount}` and **no
+`hp_after`**, while those two events deliver **72.2% of all ray damage in golden-A** (740.2 of
+1024.9). An HP bar driven by `hp_after` would therefore sit still through the nova — the main gun —
+and jump on the next direct hit. 0263 recommended this REQ add the field while it is already
+rewriting these emissions, rather than open a fourth REQ on `skills.cjs` for one field.
+
+**Accepted, and this REQ owns it.** The reasons are 0263's and they hold:
+
+- **The server already has the number.** `dealHitFn` computes `hp_after` for the direct path (it is
+  why `ray_hit` carries it), and the nova enumerates and damages its victims through the same path
+  (`skills.cjs:212-220`). The value exists at the moment of the strike; it is simply not written
+  down. **It is the same field, on the sibling event.**
+- **The alternative is forbidden.** 0263's rejected option (a) — accumulate `amount` client-side —
+  requires re-deriving HP through block, shield, `reduceIncoming` (`skills.cjs:240`), heals and
+  lifesteal, in TypeScript, against a server that owns all of them. `combat_spec §1.2 [LOCKED OQ1]`
+  forbids it by name: *"clients replay the log, never re-simulate."*
+- **The cost is noise against what this REQ already spends.** ~34 extra numbers per run (17 novas x
+  ~2 victims, golden-A). It adds **no events** — only a field on existing array members — against
+  the 3.75x growth §10.2 already accepts.
+- **Declining would be the expensive choice.** 0263 would inherit `sim/lib/skills.cjs` and the
+  goldens as blast radius, i.e. a THIRD REQ would move the 12 goldens after 0256 and this one — for
+  one field, in a file this REQ has open anyway. That trades a one-line diff for a third rebaseline.
+
+**Consequence, stated because it is the whole reason to say this out loud: the goldens move for this
+too.** It is folded into §14.1's single rebaseline rather than deferred into a later one, and §14.1's
+diff review must expect `hp_after` inside `hits[]`. **This is a WIRE change**: `hits[]` members go
+from 2 fields to 3. Its consumers are `client/src/schedule/monitor/runRoster.ts:56` and
+`client/src/forecast/pressure.ts` (§11.7, §11.8) — both **read** `hits[]` and neither validates its
+member shape, so both tolerate an added field. Verified, not assumed.
+
+**Symmetry note.** `ray_hit` (direct) carries `hp_after`; after this change `ray_hit_all` and
+`ray_aoe` do too, on every member. **All ray damage is then HP-attributable from the log alone**,
+which is the property REQ-0263 needs and the property `combat_spec §1.2` implies the log should
+already have had.
 
 ### 10.2 The log grows ~3.7x — MEASURED, not estimated
 
@@ -565,9 +649,38 @@ within one tick:
   5. termination check
 ```
 
-**This is `IBattleInstancesFormationMap.tick()`'s contract, and brief §4 already states it:**
-*"`tick()` // spec c: forwards tick to instances, then advances rays"*. Instances first, then rays.
-Implement exactly that.
+**WHO CALLS WHAT — reconciled with REQ-0256 §7.0/§7.1a, which owns the chain.** This REQ's first
+draft called the five steps above *"`IBattleInstancesFormationMap.tick()`'s contract"*. **That was
+wrong**: no single map's `tick()` can own steps 1, 4 and 5 (they are encounter-level), and no single
+map's `tick()` can express steps 2 and 3 (they each span BOTH maps). The five steps are the
+**tick-level contract**, and it is split across three owners:
+
+| step | owned by | called from |
+|---|---|---|
+| 1. status cadence | `runEncounter`'s loop body | REQ-0256 §7.1 |
+| **2. all instance fires** | **`Battle.tick()` phase A** -> `playerMap.tickInstances()`, then `enemyMap.tickInstances()` -> `instance.tick()` | REQ-0256 §7.1a |
+| **3. all ray advances** | **`Battle.tick()` phase B** -> `playerMap.tickRays()`, then `enemyMap.tickRays()` | **THIS REQ** implements `tickRays()`; 0256 stubs it to a no-op |
+| 4. pulse arrivals | `runEncounter`'s loop body | REQ-0256 §7.1 |
+| 5. termination | `runEncounter`'s loop body | REQ-0256 §7.1 |
+
+So `battle.tick()` covers steps 2-3 and nothing else, and the cascade spec (c) asks for —
+Battle -> map -> instance — is intact.
+
+**Brief §4's `tick() // forwards tick to instances, then advances rays` is honoured as the
+composition `tickInstances(); tickRays()`, but `Battle` calls the two phases separately, and it must.**
+Brief §4 wrote `tick()` for ONE map; there are two. Composed per-map it would run
+`playerInstances, playerRays, enemyInstances, enemyRays` — **not** the order above. Because a ray
+lives on the map it was fired ONTO (§6), that per-map order would advance a player-fired ray on its
+birth tick (`enemyMap` has not ticked yet) but not an enemy-fired one (`playerMap` already has:
+**player rays would arrive a tick sooner than enemy rays, decided by nothing but map order** — the
+birth-order coupling §12.2 rejects, stacked on the player-first bias REQ-0256 §10.2 already accepts.
+The phase split removes it: **every ray, both sides, takes exactly `RAY_TICKS_PER_DIAGONAL` ticks
+from fire to first diagonal.**
+
+This is a deliberate, user-visible refinement of brief §4. **It is flagged identically in REQ-0256
+(§7.1a, and its Status block), REQ-0258 (§9) and here — all three say the same thing, and if the user
+vetoes it, all three change together** and §12.2's uniform fire-to-first-diagonal guarantee is what
+gets spent.
 
 ### 12.2 Why fires precede advances — justified
 
@@ -660,6 +773,11 @@ git diff sim/tests/goldens/replay_hashes.json
 **Expect all 12 `jsonl_sha256` to move. `def_sha256` MUST NOT move on the 9 dungen cases** — the
 generator is untouched. If one moves, STOP.
 
+**`hp_after` inside `hits[]` moves the hashes too, and adds ZERO events** (§10.1b). Expect it in the
+diff: every `ray_hit_all.hits[]` / `ray_aoe.hits[]` member gains a third field. It does **not**
+perturb the `events` arithmetic below — if an `events` count moves for a reason the formula does not
+explain, `hp_after` is not the culprit and something else did it.
+
 **`events` counts will jump ~3.7x** (§10.2: golden-A 330 → ~1238). **This is the single best
 sanity check available** — it is the one number in the golden file that is human-readable. Verify
 it against §10.2's arithmetic per case:
@@ -713,8 +831,9 @@ follows.
 **In:**
 1. `sim/lib/core.cjs` — `RAY_TICKS_PER_DIAGONAL: 4` TUNABLE (§5); `RAY_STEP_BUDGET` unit note (§5.1).
 2. `sim/lib/ray.cjs` — split into `walkRayPath()` (pure geometry, snapshot) + `IBattleRay` (live entity, `advance()`) (§6). `pathBatch`/`flushSteps` deleted. Dead `isDestroyedPassable` param removed (§3).
-3. `sim/lib/skills.cjs` — `fireSkillRay` CREATES an `IBattleRay` and returns instead of walking; `dealHitFn`/`splashFn`/`liveOccupantFn` become ray-bound callbacks (§6.1).
-4. `sim/lib/formation_map.cjs` — `rays[]` + the ray half of `tick()` (§12.1). REQ-0258 declares, REQ-0256 does instances, this does rays.
+3. `sim/lib/skills.cjs` — `fireSkillRay` CREATES an `IBattleRay` and returns instead of walking; `dealHitFn`/`splashFn`/`liveOccupantFn` become ray-bound callbacks (§6.1). **+`hp_after` on every member of `ray_hit_all.hits[]` and `ray_aoe.hits[]`** (§10.1b — REQ-0263 §4.4's hand-off, accepted). **+the `ray` id at `:195`** (§10.1a site 1).
+4. `sim/lib/formation_map.cjs` — `rays[]` + **`tickRays()`** (§12.1), replacing REQ-0256's no-op stub. REQ-0258 declares the file, REQ-0256 implements `tickInstances()`/`tick()`, this implements `tickRays()`. Three REQs, one file, three disjoint parts — and §12.1's table is the seam.
+4b. `sim/lib/encounter.cjs:359` + `:378` — **the `ray` id stamped on the two SYNTHESISED `ray_fire`s** (§10.1a). Minted and closed in the same tick: no `IBattleRay`, no flight, no `ray_advance`.
 5. `sim/lib/encounter.cjs` — fires no longer inline-resolve; `landedHits` (`:625, :643, :653, :703, :715`) is delivered on ARRIVAL, so the REQ-0078/0095/0200 reactive dispatch moves to the ray's hit callback. **This is the largest non-obvious edit in the REQ** — every `fr.landedHits` consumer assumed the ray had already resolved when `fireSkillRay` returned. It has not.
 6. `shared/pacing.json` — `ray_advance` entries at 0/0; `rayStep` block + `ray_step` entries retired (§11.2).
 7. `server/services/pacing.cjs` — `:44-51` `ray_step` special-case deleted (§11.2).
@@ -733,6 +852,7 @@ follows.
 - **Re-balancing the 47% nova rate** (§4.1, §14.3). A finding, not a fix.
 - **Touching the telegraph** (§8.5). Flight partially duplicates `TELEGRAPH_LEAD_SECS`; note it, do not act.
 - **Optimizing the 3.7x log** (§10.2). Surface the number; do not re-batch.
+- **Unifying `ray_fire`'s three schemas** (§10.1a). Making the synthesised detection/unlock sites emit REAL rays is a combat change (attachments become physically reachable and missable); making them stop emitting `ray_fire` is a wire change with its own consumers. This REQ stamps the `ray` id at all three and WRITES THE SHAPE DOWN. A follow-up may unify it.
 - **`sim/s4_thresholds.json`** (§14.3).
 - **Editing `docs/user_managed/*`.** Forbidden. Nothing here needs it: `backpack_battle_spec.md`'s `attack_line` section describes GEOMETRY, and §9 confirms every geometry rule survives verbatim. **Verify this claim before shipping** — if any §9 verdict slips from SURVIVES, the golden doc is implicated and the REQ must stop and ask.
 - **An e2e harness.** Not a gate for this program (Q2). Decade **7570 / 7571 / 7572** (`5000 + 257*10 + {0,1,2}`) is reserved-by-numbering and left unused.
@@ -753,3 +873,6 @@ follows.
 12. `sim/tests/run.cjs` green; its 9 geometry tests retargeted to `walkRayPath` and **testing the same rules** (§13.1).
 13. Every §9 verdict re-verified against the implementation. Any rule that did NOT survive verbatim stops the REQ and goes to the user — `docs/user_managed/backpack_battle_spec.md` describes this geometry and an LLM may not amend it.
 14. `shared/pacing.json` carries `ray_advance: 0/0`; the 3.7x log growth (§10.2) is stated to the user before merge, with the measured before/after `events` counts per golden.
+15. **The `ray` id is stamped at ALL THREE `ray_fire` sites** (§10.1a): `skills.cjs:195`, `encounter.cjs:359`, `encounter.cjs:378`. Asserted by a run **with attachments** — golden-A is a `batch002` combat run with none, so it exercises site 1 only and **cannot** prove this. Use a dungen case with a chest/trap (`dungen/default/L{1,3,5,8}`) and assert every `ray_fire` in the log has a `ray`.
+16. **The non-uniform schema is honoured, not crashed into** (§10.1a): a consumer test feeds a synthesised `ray_fire` (`mode` present, `dir`/`pen`/`aoe` ABSENT) through `MonitorRenderer` and it does not throw. A `ray_fire` with no following `ray_advance` must be legal — sites 2/3 mint an id and close it in the same tick.
+17. **`hp_after` is on every member of `ray_hit_all.hits[]` and `ray_aoe.hits[]`** (§10.1b), and it equals the victim's post-strike HP — asserted by a nova fixture with 2+ victims, cross-checked against a direct `ray_hit` on the same victim. **All ray damage is HP-attributable from the log alone**; this is what REQ-0263 §4.4 needs and it is now this REQ's to deliver.
