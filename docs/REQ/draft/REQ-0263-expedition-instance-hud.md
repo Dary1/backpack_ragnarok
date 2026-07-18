@@ -1,7 +1,13 @@
 # REQ-0263 — expedition-instance-hud: HP, cooldown, charge and skill badges on every `IBattleInstance`
 
-**Status:** draft — spec written, BLOCKED on user review. Four things need the user before work may
-start: (1) §5.2 — the user's 「Unitの**背景**をClockwiseに増加させる」 and ratified golden **G7** ("the
+**Status:** draft — spec written, BLOCKED on user review. Five things need the user before work may
+start: (0) **this REQ moves all 12 replay goldens — a THIRD time, after REQ-0256's and REQ-0257's.**
+§6.4/§7.1 add three fields to `ray_fire` and §5.4 adds two events, which moves the replay JSONL and
+therefore every `jsonl_sha256`. The first draft never said so, which left §11's gates unsatisfiable
+(`tools/ci.sh:107` runs `sim/tests/goldens.cjs` at step [2/7]). **§10.1 is the procedure** — the same
+one REQ-0256 §13.1 / REQ-0257 §14.1 specify, with one sharper check: this REQ's `events` count must
+**not move at all**. It is listed first because it is a determinism-contract move and the user has
+ruled (Q1) on those specifically. (1) §5.2 — the user's 「Unitの**背景**をClockwiseに増加させる」 and ratified golden **G7** ("the
 Unit charge-state overlay is a **ring fill**") are **not the same control**; §5.2 shows the daylight
 and recommends amending G7, which an LLM may not do. (2) §4.4 — enemy `hpMax` on the wire is the
 def's *upper bound*, so on a formation map where every enemy is visible from t=0, **every enemy's HP
@@ -16,8 +22,16 @@ REQ ships is a new visual vocabulary.
 **Depends on:** **REQ-0261** (expedition-formation-render) — HARD, and specifically on its **server
 change** (§8.2's `instanceId`/`at`/`fieldCells`/`masked`), which is the only join that lets an enemy
 HP bar exist at all (§4.3). **REQ-0256** (battle-tick-core) — HARD; its per-instance
-`cooldownSkills: Map<int,{skill, remainingTicks}>` is this REQ's data source (§6). **REQ-0260** (§9.3)
-owns the clock every ramp in this REQ is evaluated against.
+`cooldownSkills: Map<int,{skill, remainingTicks}>` is this REQ's data source (§6). **REQ-0257**
+(ray-flight-entity) — **HARD, and it MUST LAND FIRST.** This REQ adds three fields to `ray_fire`
+(§6.4's `slot`/`cooldownTicks`, §7.1's `cause`) and REQ-0257 **rewrites `ray_fire` wholesale** (its
+§10.1/§10.1a: the `ray` id at all three emission sites, the retired `ray_step`, the non-uniform
+schema). **If this REQ lands first, 0257's rewrite silently drops these three fields** — no gate
+would catch it, because a missing wire field on an additive event fails as a blank HUD, not as a red
+test. REQ-0257 §10.1b also ACCEPTS this REQ's §4.4 hand-off (`hp_after` on `ray_hit_all.hits[]` /
+`ray_aoe.hits[]`), so §4.4 is now 0257's to deliver and this REQ merely consumes it. **Ordering
+constraint: 0256 -> 0257 -> 0263.** **REQ-0260** (§9.3) owns the clock every ramp in this REQ is
+evaluated against.
 **Blocks:** REQ-0265 (art-monster-skill-icons) — §8.3's placeholder is its landing surface.
 **Source brief:** `docs/llm_managed/2026-07-18-expedition-redefinition-brief.md` §1, §4, §6.
 
@@ -258,11 +272,27 @@ this. It only surfaces once you try to draw the bar.
   Against REQ-0257 §10.2's already-accepted **3.75× log growth** (330 -> ~1238 events), this is
   **noise** — it adds no events at all, only a field to existing array members.
 
-**Whose REQ is this?** The field lives on a sim event, so it is a sim change — but REQ-0257 owns the
-ray events and is already rewriting exactly these emissions. **Recommendation: REQ-0257 adds it while
-it is in there**, rather than a fourth REQ re-opening `skills.cjs` for one field. Flagged to the
-orchestrator as a **cross-REQ hand-off**, not silently assumed: if 0257 declines, this REQ must own
-it and its blast radius grows to `sim/lib/skills.cjs` + the goldens.
+**Whose REQ is this? — SETTLED: REQ-0257's. It ACCEPTED.**
+
+This was raised as a cross-REQ hand-off rather than silently assumed, and **REQ-0257 §10.1b has now
+accepted it in writing**: `hp_after` is added to `ray_hit_all.hits[]` and `ray_aoe.hits[]` in 0257,
+which is already rewriting exactly these emissions, and the golden movement is folded into **0257
+§14.1's** rebaseline rather than deferred into a third one. 0257's acceptance criterion 17 is the
+gate.
+
+**What that means for THIS REQ, precisely:**
+
+- **This REQ does NOT touch `sim/lib/skills.cjs`.** The field arrives with 0257. §10's scope says so.
+- **It becomes an ORDERING dependency, and a hard one.** REQ-0257 must land first (see **Depends**).
+  If this REQ shipped first, its HP bars would be blind to 72.2% of ray damage until 0257 landed —
+  and blind *silently*, since a bar that does not move looks like a bar, not like a bug.
+- **The blast radius this REQ avoided:** had 0257 declined, this REQ would have inherited
+  `sim/lib/skills.cjs` **and a third rebaseline of all 12 goldens**, after 0256's and 0257's. That is
+  the cost the hand-off bought off, and it is why it was worth asking rather than assuming.
+
+**If 0257's acceptance is ever reversed, this REQ STOPS and returns to the user** — it must not
+quietly re-adopt the field, and it must not fall back to 0263 §4.4 option (a), which
+`combat_spec §1.2 [LOCKED OQ1]` forbids by name.
 
 ### 4.5 Enemy `hpMax` is a HINT, and on a formation map that becomes visible — **USER RULING**
 
@@ -574,7 +604,7 @@ re-arms in the same step (*"on reaching 0 -> fire, then RESET"*), so the two mom
 and one event should carry it. A parallel `skill_arm` would duplicate `ray_fire`'s `t` and `src` on
 every fire and then need a join key to reconnect them.
 
-**Two caveats, stated because they are the ones that would break this:**
+**Four caveats, stated because they are the ones that would break this:**
 
 1. **A non-ray fire has no `ray_fire`.** A skill whose verb is `heal_ally` (measured: 2 of 81 live
    skills) or `apply_status` (27 of 81) may resolve without a ray. Those fires need the same two
@@ -589,6 +619,47 @@ every fire and then need a join key to reconnect them.
    drift from the sim, invisibly). **Gate it** (§11.4): assert that an armed `remainingTicks` is a
    pure function of `(t_arm, cooldownTicks, t)` across a Chill application. This is a **dependency
    assumption on REQ-0256, recorded as one** rather than discovered later.
+3. **`ray_fire` has THREE emission sites, and the inverse of caveat 1 — a `ray_fire` with no
+   cooldown — DOES NOT arise. Here is why, because the answer is not obvious and the opposite was
+   assumed.** REQ-0257 §10.1a measures the sites: `skills.cjs:195` (the real ray), and
+   `encounter.cjs:359` / `:378` — detection and unlock rays, **synthesised**, carrying `mode` and
+   omitting `dir`/`pen`/`aoe`. It would be natural to conclude those two have no slot and no rolled
+   cooldown, and that `slot`/`cooldownTicks` must therefore be nullable. **Read the dispatch and that
+   conclusion collapses** (`encounter.cjs:663-670`, verbatim structure):
+
+   ```js
+   } else if (s.modes.includes(encounterDef.mode)) { …fireSkillRay… }      // site 1
+   } else if (hasAtt && s.modes.includes('detection')) { resolveDetection(s, ev.t); }  // site 2
+   } else if (hasAtt && s.modes.includes('unlock'))    { resolveUnlock(s, ev.t); }     // site 3
+   // reschedule regardless of match
+   scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, …);                 // :670
+   ```
+
+   **All three sites are driven by the SAME schedulable `s`, and `:670` re-arms it identically for
+   all three.** Under REQ-0256 §8.5 that `scheduleEffect` **becomes `rollCooldownTicks` on the same
+   `cooldownSkills` slot**. So a detection/unlock ray has exactly the slot and the freshly rolled
+   cooldown that a combat ray has. **RULING: `slot` and `cooldownTicks` are NON-NULL at all three
+   sites, and are not special-cased.** What REQ-0256/0257 owe is **threading the slot into
+   `resolveDetection`/`resolveUnlock`**, which today receive `s` but do not know their slot index —
+   recorded here as an interface requirement on them, alongside caveat 1's.
+
+   **The HUD consequence is real, not academic:** an unlock skill on a player BP *does* get a
+   cooldown overlay on its item, and it should — the item genuinely re-arms. Had `null` been
+   specified, that overlay would have silently vanished the moment a player opened a chest.
+
+   **What the client must still guard (REQ-0257 §10.1a):** `dir`/`pen`/`aoe` are **absent, not zero**
+   on sites 2/3, and `mode` is absent on site 1. golden-A is a `batch002` run with **no attachments**,
+   so it exercises **site 1 only** and cannot show this. **Do not author the HUD against golden-A's
+   `ray_fire` shape.** Read `slot`/`cooldownTicks`/`cause`; guard everything else.
+4. **`cooldownTicks` is rolled AFTER the fire, so the field must be BACK-PATCHED — it cannot be
+   stamped at emit time, and the roll must not move.** REQ-0256 §8.5 is explicit that the fire
+   precedes the roll (*"on reaching 0 -> fire, then RESET"*) and that *"the stream name, the draw
+   order, and the multiply are IDENTICAL"* to today's `scheduleEffect`. **Rolling earlier to have the
+   number in hand would reorder an RNG draw and move every golden for a reason that has nothing to do
+   with this REQ.** So: emit `ray_fire` during the fire, then write `cooldownTicks` onto the
+   already-emitted event once `rollCooldownTicks` returns, before it is serialised. This applies to
+   **all three** sites. It is an implementation constraint, but it is a *determinism* constraint
+   wearing implementation clothes, which is why it is specified here rather than left to taste.
 
 ## 7. (k)/(l) The passive flash — and distinguishing it from a cooldown fire
 
@@ -840,8 +911,65 @@ it at 4Hz removes the motion while preserving the information. **The flash is ge
    - **NEW** `unit_charge_arm {t, seq, ev, id, capacity, trigger, period?}` and
      `unit_charge_gain {t, seq, ev, id, counter}` (§5.4) — the only new events in this REQ, and both
      are O(spends)/O(combat events), not O(ticks).
-   - `ray_hit_all.hits[]` / `ray_aoe.hits[]` + `hp_after` (§4.4) — **recommended to land in REQ-0257**,
-     which is already rewriting these emissions.
+   - `ray_hit_all.hits[]` / `ray_aoe.hits[]` + `hp_after` — **NOT THIS REQ'S. REQ-0257 §10.1b
+     ACCEPTED the hand-off** and delivers it (§4.4). Listed here only so the reader knows the HUD
+     depends on it; **this REQ does not touch `sim/lib/skills.cjs`.**
+   - **These sim additions MOVE ALL 12 REPLAY GOLDENS. §10.1 is the rebaseline procedure, and it is
+     not optional.**
+
+### 10.1 Golden rebaseline — REQUIRED, and previously missing
+
+**This REQ moves the replay JSONL, therefore it moves all 12 goldens' `jsonl_sha256`.** The first
+draft did not say so anywhere, which made §11's gate list unsatisfiable as written: `tools/ci.sh`
+runs `sim/tests/goldens.cjs` at step **[2/7]** (`ci.sh:107`), so a green CI was impossible the moment
+`ray_fire` gained a field. **What moves the log:**
+
+| change | § | effect on the log |
+|---|---|---|
+| `ray_fire` + `slot`, `cooldownTicks` | §6.4 | 3 fields on 36 existing events (golden-A). **No new events.** |
+| `ray_fire` + `cause` | §7.1 | same event, one more field |
+| **NEW** `unit_charge_arm`, `unit_charge_gain` | §5.4 | **new events — but ZERO in all 12 goldens.** See below. |
+
+**The `unit_charge_*` events add nothing to the goldens, and that fact is itself the §5.5 finding.**
+`sim/tests/goldens.cjs:63`'s `baseOpts` omits `unitDefsById`, so every golden compiles with
+`UNIT_DEFS = {}`, builds no charge manager, and **can emit no charge event at all**. The two new
+events are therefore invisible to the determinism contract — exactly the blindness §5.5 measured, now
+biting this REQ's own gate. **Consequence, stated plainly: the goldens will confirm the `ray_fire`
+fields and say NOTHING about the charge events.** Gate 8 and gate 9 are what cover those; do not
+mistake a green rebaseline for coverage of §5.4.
+
+**The procedure — the SAME one REQ-0256 §13.1 and REQ-0257 §14.1 specify. Do not invent a second
+convention:**
+
+```
+node sim/tests/goldens.cjs          # CONFIRM RED first -- 12 DRIFT lines. If green, the fields did not land.
+node sim/tests/goldens.cjs gen      # writes sim/tests/goldens/replay_hashes.json
+git diff sim/tests/goldens/replay_hashes.json
+```
+
+1. **Expect all 12 `jsonl_sha256` to move.**
+2. **`def_sha256` MUST NOT move on the 9 dungen cases** — the generator is untouched by this REQ. **If
+   one moves, STOP:** something reached into `dungen.cjs` that should not have. (REQ-0256 §13.1's rule,
+   unchanged and for the same reason.)
+3. **`events` counts MUST NOT MOVE AT ALL.** This REQ adds only FIELDS to existing events, and its two
+   new event kinds cannot fire in any golden (above). **This is the sharpest check available to this
+   REQ** — sharper than 0256's or 0257's, because both of those legitimately move the count and must
+   argue about the delta, while this REQ's correct delta is exactly **zero**. **A moved `events` count
+   means this REQ emitted a stream it does not know about — stop and find it.**
+4. **Prove the diff is fields-only.** Dump `combat.toJSONL(r.events)` for `batch002/golden-A` before
+   and after and diff as TEXT: every line must differ **only** by the added keys, with no line added,
+   removed or reordered, and every `t` unchanged. §6.4 caveat 4's back-patch is what makes this true —
+   **if a `t` or an `amount` moved, the `cooldownTicks` roll was hoisted before its fire and the RNG
+   draw order changed.** That is the specific regression this step catches.
+
+**Ordering.** 0256 and 0257 each rebaseline before this REQ exists (0256 §13.1, 0257 §14.1). **This is
+the THIRD move of the same 12 hashes, and the only one whose `events` count must not change** — which
+is precisely why it is bisectable after the other two and why the Depends ordering (0256 -> 0257 ->
+0263) is hard rather than tidy.
+
+**Not rebaselined:** `sim/tests/forecast_parity.cjs` (this REQ adds no geometry — expect 18/18
+unchanged, per REQ-0256 §12.2's reasoning), `sim/s4_thresholds.json` (hand-authored design intent —
+REQ-0256 §13.3), and `docs/user_managed/*` (forbidden).
 
 **Out:**
 
@@ -903,6 +1031,13 @@ Gates that DO apply:
     flash/transition object is created; bars and overlays still render.
 12. `BoardRenderer` output is **byte-identical** after §10.4's comment-only edit.
 13. `pnpm exec tsc --noEmit` + lint.
+14. **`node sim/tests/goldens.cjs` green at 12 cases, REBASELINED per §10.1**, with `def_sha256`
+    unmoved on all 9 dungen cases and **every `events` count unmoved** (§10.1 step 3). Without the
+    rebaseline this gate — and `tools/ci.sh` step [2/7] (`ci.sh:107`), which runs it — **cannot pass**,
+    because this REQ adds fields to `ray_fire`.
+15. **`node server/tests/api_test.cjs` (the determinism gate) green**, per REQ-0256 §13.2: nothing to
+    regenerate — it re-simulates and deep-equals, so both sides move together. **If it goes red, that
+    is a REAL determinism break, not a baseline artifact.** Do not "fix" it by rebaselining.
 
 ## 12. Acceptance criteria
 
