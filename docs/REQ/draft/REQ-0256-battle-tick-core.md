@@ -1,10 +1,22 @@
 # REQ-0256 — battle-tick-core: the sim becomes a 0.01s tick loop, and a BP compiles to ONE IBattleInstance
 
-**Status:** draft — spec written, BLOCKED on user review. Two things need the user before work may
+**Status:** draft — spec written, BLOCKED on user review. Four things need the user before work may
 start: (1) this REQ SUPERSEDES the ratified core of `combat_spec_draft.md` (§3 below quotes the
 exact lines that die) — that is sanctioned by ruling Q1, but Q1 is one sentence and this is the
 REQ that spends it; (2) §12 measures a rebaseline of all 12 replay goldens + the S4 baselines,
-which is a deliberate, irreversible move of the determinism contract.
+which is a deliberate, irreversible move of the determinism contract; (3) **§7.1a splits brief §4's
+`IBattleInstancesFormationMap.tick()` into two phase methods** (`tickInstances()` / `tickRays()`)
+because brief §4 wrote `tick()` for one map and there are two — composing the single method over two
+maps would make player-fired rays arrive a tick sooner than enemy-fired ones, for no reason but map
+order. The Battle -> map -> instance cascade of spec (c) is intact; only the map's internal
+one-method-ness is split. **This is an interpretation and is vetoable** — the veto's price is that
+birth-tick asymmetry, which would then have to be accepted and written into REQ-0257 §12.2; (4) **the
+12 replay goldens are blind to the charge engine** (§8.5) — `goldens.cjs:63` omits `unitDefsById`,
+so no golden constructs a `chargeMgr`, while production does (`runs.cjs:83-91`) for the **42 of 54
+live units** that carry a `charge` block. §4.1b's `advance_cooldown` respec is therefore a live
+change on most of the roster that no golden can see. This REQ **declines to fix that** (§14 Out) and
+adds a live-def test instead (§15.15); **the user should say whether curing the goldens' blindness
+is a REQ of its own, and whether it blocks this one.**
 **Reserved:** 2026-07-18
 **Slug:** battle-tick-core
 **Branch:** req-expedition-spec (spec only; implementation branches from REQ-0255's merged baseline)
@@ -152,8 +164,20 @@ advanceCooldown(bpId, n, t) {
 This is REQ-0212's `advance_cooldown` charge verb. It mutates scheduled `skill_fire` events in
 place and re-heapifies. **When the heap dies, this has no substrate.** Its tick-model equivalent is
 a direct, and much simpler, `remainingTicks` decrement — §8.4. This is the single largest
-behavioural risk in the REQ and it is guarded by an existing gate
-(`sim/tests/unit_charge_encounter_test.cjs`, 23/23 — measured §12).
+behavioural risk in the REQ, and the two facts that make it so are both MEASURED:
+
+- **It is LIVE, on 42 of 54 units.** Production passes `unitDefsById` (`server/services/runs.cjs:83-91`),
+  so `bp.charge` is set for the **42 live units that carry a `charge` block** and the charge manager
+  IS constructed (`encounter.cjs:40,140`). This is a real gameplay change on most of the roster, not
+  a fixture-only concern. (`compile.cjs:142-144`'s comment claims the opposite; it is STALE. The
+  measurement and the full correction are REQ-0263 §5.5, restated in §8.5.)
+- **The 12 replay goldens CANNOT see it.** `sim/tests/goldens.cjs:63` omits `unitDefsById`, so every
+  golden compiles with `UNIT_DEFS = {}` and never builds a `chargeMgr` at all. §13.1's diff is silent
+  here by construction.
+
+So the guard is **not** the goldens. It is `sim/tests/unit_charge_encounter_test.cjs` (23/23 —
+measured §12), which is the ONLY gate that exercises this path, plus the live-def case §8.5 requires
+this REQ to add. §8.5 spells out the respec and what must cover it.
 
 **(c) `encounter_end`'s TIMESTAMP is read off the heap's next event.** `sim/lib/encounter.cjs:788`,
 verbatim:
@@ -271,6 +295,50 @@ subsystem is worse than no comment.
 actor-building, attachment, pulse, hp-below and charge scaffolding at lines 15-573 is untouched.
 **Only the driver at lines 575-756 is rewritten.** That is roughly 180 of 832 lines.
 
+### 7.0 The `Battle` object — `sim/lib/battle.cjs` (NEW)
+
+Brief §4 makes `Battle` normative and spec item (b) assumes it: 「Battle」というクラスがその二つの
+参照を持っていると仮定して続けます — *"I continue on the assumption that a class called `Battle`
+holds those two references."* Nothing in the tree creates one today. **This REQ creates it.**
+
+```js
+// sim/lib/battle.cjs
+createBattle({ playerMap, enemyMap, modeConfig, fire, rollCooldownTicks }) -> Battle
+
+Battle
+  playerMap  : IBattleInstancesFormationMap   // spec b -- REQ-0258's formation_map.cjs
+  enemyMap   : IBattleInstancesFormationMap   // spec b
+  modeConfig : BattleModeConfig | null        // RESERVED HERE, POPULATED BY REQ-0259 -- see below
+  tickIndex  : int                            // the clock. THE integer tick counter (s10.3)
+  t()        : float                          // === tickIndex * TICK_SECS. COMPUTED, never accumulated
+  tick()                                      // spec c: the chain. See s7.1.
+```
+
+**`modeConfig` is reserved, not implemented.** 0256 declares the field and initialises it to `null`.
+**Nothing in 0256 reads it**, exactly as `IBattleInstance.mode` is declared-but-inert here (§8.3).
+REQ-0259 populates it and is the only REQ that gives it meaning. It is named here solely so that
+0259 has a field to fill and does not have to re-open `battle.cjs`'s shape to get one.
+
+**`Battle` is a VALUE that `runEncounter` DRIVES — it is NOT the new home of the loop.** This is a
+decision, so here is the justification rather than a default:
+
+- **`runEncounter` is 832 lines and only ~180 of them are the driver.** The other ~650 are compile,
+  actor-building, attachment, pulse, hp-below and charge scaffolding (§7 preamble). Moving the loop
+  into `Battle` would drag that scaffolding — or a callback for every piece of it — across a new
+  module boundary, in the same REQ that already rebaselines all 12 goldens. **Two large, unrelated
+  diffs in one rebaseline is precisely what §11 argues against** for 0256/0257, and the argument
+  does not stop applying because the second diff is a refactor.
+- **The fire bodies stay where they are.** `Battle`/map/instance are handed `fire` and
+  `rollCooldownTicks` as closures over `runEncounter`'s existing scope. The chain decides WHEN and
+  in WHAT ORDER; `runEncounter` still owns WHAT a fire does. Not one existing fire body moves.
+- **`runEncounter` keeps the entry point, the termination check, and the result.** Those read
+  encounter-level state (deadline, attachments, `encIndex`, the events array) that is not the
+  Battle's business. `Battle` owns the clock and the tick chain; that is all it owns.
+
+So the relationship is: **`runEncounter` constructs one `Battle` after compile, then calls
+`battle.tick()` once per tick and asks its own termination question.** A follow-up REQ may move the
+scaffolding in behind `Battle` later; this REQ does not, and §14 records that as OUT.
+
 ### 7.1 The loop
 
 ```js
@@ -279,34 +347,101 @@ const TICK = TUNABLES.TICK_SECS;
 const deadlineTicks = secsToTicks(deadlineSecs);
 const STATUS_TICK_TICKS = secsToTicks(TUNABLES.STATUS_TICK_PERIOD_SECS); // 100 today
 
-let tick = 0;
-for (; tick <= deadlineTicks; tick++) {
-  const t = tick * TICK;          // NEVER `t += TICK` -- see s10.3
+// s7.0: runEncounter builds the Battle from what compile() produced, then DRIVES it.
+const battle = createBattle({
+  playerMap : createFormationMap({ instances: playerInstances }),  // REQ-0258's formation_map.cjs
+  enemyMap  : createFormationMap({ instances: enemyInstances }),
+  modeConfig: null,               // s7.0: RESERVED. REQ-0259 populates it; nothing here reads it.
+  fire,                           // the existing fire closures, unchanged -- s7.0
+  rollCooldownTicks,              // s8.5
+});
+
+for (; battle.tickIndex <= deadlineTicks; battle.tickIndex++) {
+  const t = battle.t();           // === tickIndex * TICK. NEVER `t += TICK` -- see s10.3
   simNow = t;
   if (hasAtt) checkAttachmentTimeouts(t);
 
   // 1. status cadence -- fires on the 100-tick boundary, NOT every tick (s7.2)
-  if (tick > 0 && tick % STATUS_TICK_TICKS === 0) { …existing status_tick body verbatim… }
+  if (battle.tickIndex > 0 && battle.tickIndex % STATUS_TICK_TICKS === 0) { …existing status_tick body verbatim… }
 
-  // 2. instance fires, in the s10 total order
-  for (const inst of orderedInstances()) {
-    if (!inst.alive) continue;
-    for (const [slot, cd] of inst.cooldownSkills) {   // insertion order = slot order
-      cd.remainingTicks -= 1;
-      if (cd.remainingTicks > 0) continue;
-      fire(inst, slot, cd.skill, t);                  // existing fire bodies, unchanged
-      cd.remainingTicks = rollCooldownTicks(inst, slot, cd.skill, t); // s8.5 RESET
-    }
-  }
+  // 2. THE CHAIN (spec c, brief s4). This is the whole of the fire step: battle ticks ->
+  //    maps tick -> instances tick. The s10 total order is the chain's own shape (s7.1a).
+  battle.tick();
 
   // 3. REQ-0048 pulse arrivals scheduled for THIS tick
-  drainPulseArrivals(tick, t);
+  drainPulseArrivals(battle.tickIndex, t);
 
   // 4. termination -- the existing s743-755 block, verbatim
   if (…allEnemiesDead()… ) { result = 'clear'; break; }
   …
 }
 ```
+
+#### 7.1a The chain — who calls what
+
+Spec item (c) requires the tick to CASCADE: **Battle ticks -> the maps tick -> the instances tick.**
+Brief §4 states the middle link verbatim: *"`tick()` // spec c: forwards tick to instances, then
+advances rays"*. The loop above therefore does not inline the fire walk; it delegates it. The three
+levels of the chain **are** the three levels of §10.1's total order — map, then instance, then slot —
+which is why the chain is not merely spec-compliance here: it is the total order made structural,
+and a flat loop would restate that order in a second place where it could drift.
+
+```js
+// sim/lib/battle.cjs
+tick() {
+  // Phase A -- FIRES. Map order per s10.1: player, then enemy.
+  this.playerMap.tickInstances();
+  this.enemyMap.tickInstances();
+  // Phase B -- RAY ADVANCES. Map order per REQ-0257 s12.3.
+  this.playerMap.tickRays();      // NO-OP in 0256: rays[] is always empty (s11). REQ-0257 fills it.
+  this.enemyMap.tickRays();
+}
+
+// sim/lib/formation_map.cjs (REQ-0258 declares the file; this REQ implements these two)
+tickInstances() {
+  for (const inst of this.instances) {      // stable instance index order (s10.1)
+    if (inst.alive) inst.tick();
+  }
+}
+tickRays() { /* REQ-0257 s12.1. Empty list in 0256 -> no-op. */ }
+tick() { this.tickInstances(); this.tickRays(); }   // brief s4's single-map entry point; see below
+
+// IBattleInstance
+tick() {
+  for (const [slot, cd] of this.cooldownSkills) {   // insertion order = slot order (s8.4)
+    cd.remainingTicks -= 1;
+    if (cd.remainingTicks > 0) continue;
+    this.fire(slot, cd.skill);                      // existing fire bodies, unchanged
+    cd.remainingTicks = this.rollCooldownTicks(slot, cd.skill);   // s8.5 RESET
+  }
+}
+```
+
+**`map.tick()` is SPLIT into two phase methods, and `Battle` calls the phases, not `tick()`. This is
+a deliberate, user-visible refinement of brief §4 — flagged, not smuggled.** The reason is that
+brief §4 wrote `tick()` for ONE map and there are TWO:
+
+- Brief §4's single `tick()` = instances, **then** rays, per map. With two maps that composes to
+  `playerInstances, playerRays, enemyInstances, enemyRays`.
+- REQ-0257 §12.1 requires `playerInstances, enemyInstances, playerRays, enemyRays` — **all** fires,
+  then **all** advances.
+
+These are **not the same order**, and the difference is not cosmetic. Rays live on the map they were
+fired ONTO (REQ-0257 §6), so a player instance's fire creates a ray in `enemyMap.rays`. Under the
+per-map composition, `enemyMap` has not ticked yet when that ray is born, so the ray is advanced on
+its birth tick; but an enemy instance's fire creates a ray in `playerMap.rays`, which has ALREADY
+ticked, so that ray is NOT advanced on its birth tick. **The player's rays would arrive one tick
+sooner than the enemy's, for no reason but the order the two maps happen to be composed in** — the
+exact birth-order coupling REQ-0257 §12.2 rejects, and a systematic player advantage on top of the
+one §10.2 already accepts. Phase-splitting removes it: every ray, both sides, takes exactly
+`RAY_TICKS_PER_DIAGONAL` ticks from fire to first diagonal.
+
+`tick()` is retained on the map as brief §4's normative single-map entry point (and is exactly
+`tickInstances(); tickRays()`), but **`Battle` does not call it** — with two maps it cannot express
+§12.1's order. The cascade spec (c) asks for is fully intact: Battle -> map -> instance, one call
+per level. Only the map's internal one-method-ness is split, and only because two maps exist.
+**This is an interpretation and the user may veto it** (see the Status block); the veto's cost is
+the birth-tick asymmetry above, which would then have to be accepted and documented in 0257 §12.2.
 
 ### 7.2 Status ticking: every 100 ticks, NOT every tick — and why
 
@@ -515,12 +650,39 @@ advanceCooldown(bpId, n, t) {
 
 The old version could only pull an event to `Math.max(t, e.t - n)` — never before NOW. The new one
 floors at 1 tick — never fire THIS tick from an advance. **These are not the same rule**, and the
-difference is a real behaviour change on charge-bearing content. It is currently unobservable
-(no live unit carries a `charge` block — `compile.cjs:142-152` says so verbatim, and
-`encounter.cjs:40` `chargeBps` is empty on all current content), but
-`sim/tests/unit_charge_encounter_test.cjs` (23 tests) exercises it with fixtures. **Expect
-movement there and treat it as the gate doing its job, not as breakage.** Justify the floor-at-1
-in the same terms as §9.
+difference is a real behaviour change on charge-bearing content.
+
+**This is a LIVE gameplay change affecting 42 of 54 live units, and no golden will catch it.**
+Both halves of that sentence are measured; neither was in this REQ's first draft, which claimed the
+respec was unobservable. It is not:
+
+| fact | source |
+|---|---|
+| **42 of 54 live units carry a top-level `charge` block** — `alchemist`, `darkknight`, `dragonknight`, `hero`, `jester`, `bard`, `cleric`, … | `content/live/live_units.json`, measured; **REQ-0263 §5.5** |
+| production **does** pass `unitDefsById`, so `bp.charge` is set and `chargeBps` is non-empty -> the charge manager **is constructed** | `server/services/runs.cjs:83-91`; `sim/lib/encounter.cjs:40,140` |
+| the goldens **do not** pass `unitDefsById` (`baseOpts` omits it) -> they compile with `UNIT_DEFS = {}` -> **no `chargeMgr` is ever built in any of the 12** | `sim/tests/goldens.cjs:63` |
+| `compile.cjs:142-144`'s comment *"no live unit carries a charge block"* is **STALE** — REQ-0129 shipped `vocab.json` v13's charge block and the roster was authored against it. Its *second* clause ("callers with no unit registry resolve `UNIT_DEFS = {}`") is still true and is the one doing the work. | `sim/lib/compile.cjs:142-144`; REQ-0263 §5.5 |
+
+**Consequence for this REQ, stated plainly: the 12 replay goldens are BLIND to `advance_cooldown`.**
+§13.1's golden diff will be silent about the single largest behavioural risk in this REQ. A green
+rebaseline is therefore **not** evidence that the respec is safe, and must not be read as any.
+
+**What actually covers it — name it, because the goldens do not:**
+
+1. `sim/tests/unit_charge_encounter_test.cjs` (23 tests, fixture-driven) — **the only gate that
+   constructs a charge manager at all.** Expect movement here; every moved assertion must be traced
+   to the floor-at-1 rule and recorded in the REQ (§15.10). This suite is now load-bearing far
+   beyond its size: it is not a unit test of a corner, it is the whole net.
+2. `sim/tests/unit_charge_test.cjs` (13 tests) — the charge runtime, no encounter.
+3. **NEW, required by this REQ:** an `advance_cooldown` case built on a **live** unit def — pass
+   `unitDefsById` for one of the 42 (`alchemist`'s `{every_secs, fire_on_full, [2,3]}` is the
+   simplest) and assert the pulled cooldown. The existing 23 use synthetic fixtures; nothing today
+   proves the verb works on content a player can actually field. §15.15.
+
+**Fixing the goldens' charge-blindness is OUT of scope** (§14) — passing `unitDefsById` into
+`baseOpts` would change what the goldens simulate, which is a contract change dressed as a test fix,
+and it belongs to a REQ that can look at it alone rather than underneath a tick rewrite. It is
+raised to the user in the Status block. Justify the floor-at-1 in the same terms as §9.
 
 ## 9. The quantization seam — the ONE place seconds become ticks
 
@@ -868,13 +1030,14 @@ so, that is a FINDING for the user, not a file to overwrite.
 **In:**
 1. `sim/lib/core.cjs` — `TICK_SECS: 0.01` TUNABLE + `secsToTicks()` (§5, §9).
 2. `sim/lib/seq.cjs` — NEW. `SeqCounter` (§6.2).
+2b. `sim/lib/battle.cjs` — **NEW.** The `Battle` object (§7.0): `playerMap`/`enemyMap` (both `IBattleInstancesFormationMap`), `modeConfig` (reserved `null`; REQ-0259 populates), `tickIndex` + `t()` (the clock), and `tick()` (the §7.1a chain). Constructed and driven by `runEncounter`; it is not the home of the loop (§7.0).
 3. `sim/lib/heap.cjs` — **DELETED**. Orphan comments rehomed (§6.3).
 4. `sim/combat.cjs` — drop the `heap` require (`:50`) + the `EventHeap` export (`:68`).
 5. `sim/lib/encounter.cjs` — the driver (`:575-756`) rewritten to the tick loop (§7); `advanceCooldown` (`:82-93`) respecified (§8.5); `encounter_end.t` (`:788`) respecified (§4.1c); `status.cjs:143`'s false comment fixed (§7.2).
 6. `sim/lib/compile.cjs` — `+instances` on the return (`:373`); `buildInstances()` (§8.2-8.4).
 7. `sim/lib/skills.cjs` — `scheduleEffect` (`:301-307`) **deleted**; its roll moves to `rollCooldownTicks` (§8.5).
 8. `sim/lib/unit_charge_encounter.cjs` — `heap` param renamed `seq` (6 sites, §6.1).
-9. `sim/lib/formation_map.cjs` — `tick()` implemented (REQ-0258 declares it; §Depends).
+9. `sim/lib/formation_map.cjs` — the tick half implemented (REQ-0258 declares the file; §Depends): **`tickInstances()`** (the fire phase, stable-index order) and **`tick()`** (= `tickInstances(); tickRays()`, brief §4's single-map entry point). **`tickRays()` is stubbed to a no-op here** — `rays[]` is always empty in 0256 (§11) — and is implemented by REQ-0257. `Battle` calls the two phase methods, not `tick()`; §7.1a says why and flags it as an interpretation.
 10. `sim/tests/run.cjs` — the §5 tunable gate; retargeted `t` assertions (§12.1).
 11. Rebaselines per §13.
 12. `docs/llm_managed/combat_spec_draft.md` — §1.1 rewritten, §1.2's tie-break bullet replaced, §1.4's "event by event" → "tick by tick" (§3).
@@ -883,6 +1046,9 @@ so, that is a FINDING for the user, not a file to overwrite.
 - **Ray flight.** `walkRay`/`ray.cjs`/`geometry.cjs`/`entry.cjs`/`shared/forecast.mjs` untouched (§11). REQ-0257.
 - **Making `mode` mean anything.** Declared (§8.3), used by REQ-0259.
 - **Deleting `bps`/`pos`/`sis`** from the compile return (§8.2). Follow-up REQ.
+- **Moving `runEncounter`'s ~650 lines of scaffolding into `Battle`** (§7.0). `Battle` owns the clock and the chain; `runEncounter` still owns compile, attachments, pulses, fires and the result. A follow-up REQ may move more in behind it.
+- **Populating `modeConfig`** (§7.0). The field is reserved and initialised to `null`; nothing in this REQ reads it. REQ-0259 gives it meaning.
+- **Curing the goldens' blindness to the charge engine** (§8.5). `sim/tests/goldens.cjs:63` omits `unitDefsById`, so no golden builds a `chargeMgr`. Passing it would change what the 12 goldens SIMULATE — a contract change disguised as a test fix, and it must not ride in underneath a tick rewrite. Raised to the user in the Status block; the correction is REQ-0263 §5.5.
 - **Fixing `status_tick`'s missing `seq`** (§4.1c). Follow-up; it is a golden byte.
 - **Changing Stun/Weakness/Haste to real-time decay** (§7.2). It looks like a bug-fix and is a balance change.
 - **`sim/s4_thresholds.json` regeneration** (§13.3).
@@ -903,3 +1069,6 @@ so, that is a FINDING for the user, not a file to overwrite.
 10. `sim/tests/unit_charge_encounter_test.cjs` green at 23, with any movement traced to §8.5's `advance_cooldown` respec and recorded in the REQ.
 11. `combat_spec_draft.md` §1.1/§1.2 carry the tick model; no line in the file still says "not ticked" or "no ticks".
 12. The §12.3 split invocation is written into the REQ's gate table, and `goldens.cjs` is documented as `CONTENT_ROOT`-FORBIDDEN.
+13. **The chain exists and is the only fire path.** `sim/lib/battle.cjs` exports `createBattle`; `runEncounter` calls **`battle.tick()`** exactly once per tick and contains **no instance-fire walk of its own** (`grep -n 'cooldownSkills' sim/lib/encounter.cjs` returns zero — the walk lives in `IBattleInstance.tick()`). A test asserts the cascade mechanically: stub a map whose `tickInstances()` records its call, assert `battle.tick()` calls player-then-enemy exactly once each, and assert an instance's `tick()` is reached from `battle.tick()` without `runEncounter` in the stack.
+14. **`battle.modeConfig === null` and nothing reads it.** `grep -rn 'modeConfig' sim/` returns only its declaration and initialisation (§7.0). REQ-0259 is what makes this criterion obsolete.
+15. **The `advance_cooldown` respec is proven on LIVE content, not only fixtures** (§8.5). A new case in `sim/tests/unit_charge_encounter_test.cjs` passes `unitDefsById` for one of the 42 charge-bearing live units (e.g. `alchemist`) and asserts the floor-at-1 pull. **This is required precisely because acceptance criterion 7 (the goldens) cannot see this path at all** — `goldens.cjs:63` omits `unitDefsById`. A green golden rebaseline is not evidence about charge; do not read it as any.
