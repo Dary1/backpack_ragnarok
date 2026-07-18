@@ -1,22 +1,6 @@
 # REQ-0256 — battle-tick-core: the sim becomes a 0.01s tick loop, and a BP compiles to ONE IBattleInstance
 
-**Status:** draft — spec written, BLOCKED on user review. Four things need the user before work may
-start: (1) this REQ SUPERSEDES the ratified core of `combat_spec_draft.md` (§3 below quotes the
-exact lines that die) — that is sanctioned by ruling Q1, but Q1 is one sentence and this is the
-REQ that spends it; (2) §12 measures a rebaseline of all 12 replay goldens + the S4 baselines,
-which is a deliberate, irreversible move of the determinism contract; (3) **§7.1a splits brief §4's
-`IBattleInstancesFormationMap.tick()` into two phase methods** (`tickInstances()` / `tickRays()`)
-because brief §4 wrote `tick()` for one map and there are two — composing the single method over two
-maps would make player-fired rays arrive a tick sooner than enemy-fired ones, for no reason but map
-order. The Battle -> map -> instance cascade of spec (c) is intact; only the map's internal
-one-method-ness is split. **This is an interpretation and is vetoable** — the veto's price is that
-birth-tick asymmetry, which would then have to be accepted and written into REQ-0257 §12.2; (4) **the
-12 replay goldens are blind to the charge engine** (§8.5) — `goldens.cjs:63` omits `unitDefsById`,
-so no golden constructs a `chargeMgr`, while production does (`runs.cjs:83-91`) for the **42 of 54
-live units** that carry a `charge` block. §4.1b's `advance_cooldown` respec is therefore a live
-change on most of the roster that no golden can see. This REQ **declines to fix that** (§14 Out) and
-adds a live-def test instead (§15.15); **the user should say whether curing the goldens' blindness
-is a REQ of its own, and whether it blocks this one.**
+**Status:** draft — spec RATIFIED (user, 2026-07-19); blocked only on the REQ-0255 baseline. The four review questions that blocked this REQ are resolved: (1) SUPERSEDING the ratified core of `combat_spec_draft.md` per ruling Q1 — **APPROVED**; (2) the irreversible rebaseline of all 12 replay goldens + S4 baselines (§12) — **APPROVED**; (3) §7.1a's split of the single-map `tick()` into `tickInstances()` / `tickRays()` — **APPROVED, not vetoed** (the birth-tick symmetry it buys stands); (4) the goldens' blindness to the charge engine (§8.5) — **proceed as specced; NO precursor REQ**. This REQ keeps the fix Out (§14) and relies on the §15.15 live-def test for charge coverage; widening the goldens to seat a charge unit is an OPTIONAL follow-up, not a blocker. NOTE (measured 2026-07-19): passing `unitDefsById` to `goldens.cjs` alone would be INERT — the golden squad's four BPs (`dwarf`/`elf`/`angel`/`lightcavalry`) are among the 12 units carrying NO `charge` block, so any future golden charge-coverage must seat a charge unit (e.g. `alchemist`), not merely pass the registry. Content authoring (adding units) is unrelated to the goldens, which are PINNED to a fixed batch-002 roster (REQ-0207). Remaining blocker before implementation: REQ-0255 ratified + merged (HANDS-OFF; needs user go-ahead) — 0256 branches from that baseline.
 **Reserved:** 2026-07-18
 **Slug:** battle-tick-core
 **Branch:** req-expedition-spec (spec only; implementation branches from REQ-0255's merged baseline)
