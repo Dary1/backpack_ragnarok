@@ -21,7 +21,15 @@ REQ-0255 (expedition-merge-baseline) — **hard**, because gimic (REQ-0211) is b
 
 Move mode-gating OFF the PO and ONTO the Battle, and make it gate **verbs**:
 
-1. `Battle.modeConfig = { activeModes: Mode[], verbGate: (mode, verb) -> bool }`.
+1. `Battle.modeConfig = { activeModes: Mode[], verbGate: (rayMode, verb, targetMode) -> bool }`.
+   **THREE arguments.** Brief §3 C6 writes `verbGate: (mode, verb) -> bool` — **the brief is wrong
+   here, and this REQ deviates from it deliberately.** A two-argument gate cannot see the touched
+   instance's mode, so it can only express **Reading B** (the battle has one mode) or **Reading C**
+   (only the target's mode matters) — and **§3.5 REJECTS both**: B kills REQ-0049's parallel
+   layering (a shipped feature), and C cannot express "a battle ray and a detection ray behave
+   differently against the same instance". The adopted design is **Reading A**, which needs both the
+   ray's mode and the target's mode, hence three arguments. §3.5's table is the argument; §5.3 is the
+   signature; this line is the summary of them and must not drift from them again.
 2. Each `IBattleInstance` carries its own `mode`.
 3. A verb is effective on a touched instance **IFF** the Battle's `modeConfig` permits
    `(ray.mode, verb.t)` against that instance's `mode`.
@@ -179,6 +187,11 @@ function makeModeConfig(activeModes) {
 ```
 
 `Battle` (per brief §4) carries `modeConfig: BattleModeConfig` alongside `playerMap` / `enemyMap`.
+**`Battle` is created by REQ-0256 §7.0 (`sim/lib/battle.cjs`), which RESERVES the `modeConfig`
+field and initialises it to `null` without reading it. THIS REQ is what populates it** — the object,
+the field and the only reader all exist by the time §5.4's `battle.modeConfig.verbGate(...)` runs.
+That chain is worth stating because it was broken: before REQ-0256 §7.0, no REQ in this program
+created a `Battle` at all, and this REQ's central call was made against an object nothing built.
 
 ### 5.2 `activeModes` — and what it does NOT do
 
@@ -593,7 +606,8 @@ code is already this way, so the REQ can ship against a stale doc. It should not
 **In:**
 1. `sim/lib/mode_gate.cjs` — NEW. `makeModeConfig`, `activeModes`, `verbGate` (§5). `MODES` pinned against `content/vocab.json`.
 2. `sim/lib/encounter.cjs` — the 8 scattered `modes.includes(...)` sites (§4) collapse to `activeModes` (scheduling) + `verbGate` (effectiveness). `:520`'s inline `attActive` becomes §5.2's derivation.
-3. `sim/lib/skills.cjs` — `verbGate` called at the `dealHitOnField` hit boundary (§5.4); `splashFn`'s four `mode !== 'detection'` guards (`:236, :242, :251, :261`) replaced by it; the unused `effectModesOf` (`:309-311`) **deleted**.
+3. `sim/lib/skills.cjs` — `verbGate` called at the `dealHitOnField` hit boundary (§5.4); `splashFn`'s four `mode !== 'detection'` guards (`:236, :242, :251, :261`) replaced by it; the unused `effectModesOf` **deleted at BOTH of its sites: the definition (`:309-311`) AND the export (`:404`)**. Deleting only the definition breaks the module at load.
+3b. `sim/README.md:312` — **the `effectModesOf` documentation goes with it.** Verbatim today: *"An effect's own `modes` (if present) overrides its owning PO's `modes` (see `effectModesOf` in combat.cjs) — this lets a single PO carry multiple effects gated to different modes if ever needed, though today's content gates at the PO level."* Two things are wrong with leaving it: the function will not exist, and the paragraph documents **PO-level mode gating**, which is the exact policy this REQ moves onto the Battle (§1). It is re-pointed at `mode_gate.cjs`'s `verbGate`, not merely deleted — the reader still needs to know where mode gating lives. (Note the doc already misplaced it: it says *"in combat.cjs"*; it is in `sim/lib/skills.cjs`.)
 4. `sim/lib/compile.cjs` / `sim/lib/packs.cjs` — `IBattleInstance.mode` populated per §7.1.
 5. `shared/content_validate.cjs` — `validateMonsterPackEntry` widened (§7.3).
 6. `content/live/dungeon/packs.json` — **NO data change.** Schema widens; data is untouched (§7.2, §8.1).
@@ -612,7 +626,7 @@ code is already this way, so the REQ can ship against a stale doc. It should not
 
 ## 11. Acceptance criteria
 
-1. **`grep -rn "modes.includes" sim/` returns ZERO hits.** All 8 sites (§4) route through `mode_gate.cjs`. `effectModesOf` is deleted.
+1. **`grep -rn "modes.includes" sim/` returns ZERO hits.** All 8 sites (§4) route through `mode_gate.cjs`. **`grep -rn "effectModesOf" .` returns ZERO hits outside `docs/REQ/`** — all three references are gone: the definition (`skills.cjs:309-311`), the export (`skills.cjs:404`), and the documentation (`sim/README.md:312`, re-pointed at `verbGate` per §10.3b). Grepping only the definition is how the other two survived the first draft.
 2. `sim/lib/mode_gate.cjs` `MODES` is pinned equal to `content/vocab.json` `modes` by a test — the closed vocabulary has one source.
 3. **OQ12, as a test:** a battle-mode `strike` on an unlock-mode chest is INERT — no damage, no status, **no penetration cost, no stop** (all four, §5.4). The chest's HP is unchanged and the ray continues (§6.3).
 4. **REQ-0049 transparency, as a test:** a detection-mode ray passes through a live battle-mode enemy with no damage/pen/stop, and still discovers the "?" behind it. This is the case §6.2 says stops being structural and starts being a rule.
