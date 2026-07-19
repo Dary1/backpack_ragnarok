@@ -244,7 +244,15 @@ async function computeArtUrls() {
     // REQ-0185: dungeon def ids join the resolved map so the sortie UI can show
     // each dungeon's `custom` key art (1024x576, design D4). Same exact-name / ref-first
     // convention as monster/gimic art (artwork system_name == def id).
-    Object.keys((require('../services/core.cjs').getScheduleContent().dungeonDefsById) || {})
+    Object.keys((require('../services/core.cjs').getScheduleContent().dungeonDefsById) || {}),
+    // REQ-0266 (D-A): unit_skin ids join the batch, keyed by the SKIN's own id --
+    // never by unit id and never by <unit>@<skin>. /api/content is public,
+    // unauthenticated and warm-cached, so it CANNOT carry per-player state; a skin
+    // def is GLOBAL content and its art resolves exactly like every other kind
+    // (def.artwork_ref adopted -> exact-name adopted -> omitted). The per-player part
+    // is only WHICH skin id is active, and that is served on an authenticated route.
+    // Units themselves stay ABSENT from the map -- REQ-0226 is a different change.
+    Object.keys(unitSkinsFromCore().unit_skins || {})
   );
   const storage = require('../storage.cjs');
   const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }
@@ -484,6 +492,26 @@ function gimicsFromCore() {
   return gimicsCache;
 }
 
+// ---- REQ-0266: unit skins for the display path (display slice) ----
+// Same doctrine as monstersFromCore/gimicsFromCore above: the skin catalog is
+// derived from services/core.cjs getScheduleContent() -- the registry-first
+// authority path -- so /api/content can never advertise a skin the resolution
+// chains would not resolve. withBackCompatI18n at the seam (the display
+// convention every other section already gets), identity-memoized on core's
+// served payload so a call rebuilds only when content/registry actually changed.
+let unitSkinsCache = null; // { src, unit_skins } -- identity-keyed on core's payload
+function unitSkinsFromCore() {
+  const core = require('../services/core.cjs'); // lazy: keeps standalone tool imports light
+  const src = core.getScheduleContent();
+  if (unitSkinsCache && unitSkinsCache.src === src) return unitSkinsCache;
+  const unit_skins = {};
+  for (const id of Object.keys(src.unitSkinDefsById || {})) {
+    unit_skins[id] = withBackCompatI18n(Object.assign({}, src.unitSkinDefsById[id]));
+  }
+  unitSkinsCache = { src: src, unit_skins: unit_skins };
+  return unitSkinsCache;
+}
+
 function getContent() {
   const filePayload = ensureFilePayload();
   const payload = applyRegistryOverlay(filePayload); // registry-first overlay (no-op under an empty registry)
@@ -498,6 +526,11 @@ function getContent() {
   const gims = gimicsFromCore();
   payload.gimics = gims.gimics;
   payload.gimic_skills = gims.skills;
+  // REQ-0266: additive unit_skin section, same authority-derived posture. The
+  // client's three resolution chains (unit portrait / BP / the DOM adapter) read
+  // this section plus art_urls, and NOTHING per-player: the pick itself arrives
+  // separately from GET /api/profile/:id/skins.
+  payload.unit_skins = unitSkinsFromCore().unit_skins;
   if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
   if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
   return payload;
@@ -517,6 +550,7 @@ module.exports = {
   REPO_ROOT, CONTENT_DIR, LIVE_DIR, VOCAB_PATH, ITEMS_PATH, SIS_PATH, TMS_PATH, UNITS_PATH, PACKS_PATH, SCENARIO_PATH, REGISTRY_PATH,
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
   buildContentPayload, getContent, invalidateContentCache, refreshArtUrls,
+  unitSkinsFromCore, // REQ-0266: the /api/content display slice (derived from the authority path)
   refreshRegistryData, getContentSources,
   registryServedKindFor, // REQ-0182b
 };

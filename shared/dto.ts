@@ -246,6 +246,67 @@ export interface ApiGimicEntry {
   i18n?: { en?: { name?: string }; ja?: { name?: string } };
 }
 
+/** REQ-0266: a unit_skin/1 def as served -- a COSMETIC skin. ONE content kind
+ * carries both meanings (ruling D1): `slot` is the discriminator, and it must
+ * agree with the KIND of the artwork `art_ref` names -- "unit" dresses a unit
+ * PORTRAIT, "bpskin" dresses a BACKPACK. Display slice of the SAME
+ * registry-first payload the resolution chains consume (services/core.cjs
+ * getScheduleContent; see server/lib/content.cjs unitSkinsFromCore).
+ *
+ * The resolved artwork URL is NOT on the entry: it arrives through
+ * ApiContentPayload.art_urls keyed by this def's own `id` (D-A), which is what
+ * keeps /api/content free of per-player state. The player's PICK is a separate,
+ * authenticated fetch (GET /api/profile/:id/skins). */
+export interface ApiUnitSkinEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  /** unit | bpskin -- the D1 discriminator; equals the referenced artwork's kind. */
+  slot: string;
+  /** Artwork system_name -- a FREE reference (two skins may share one artwork). */
+  art_ref: string;
+  /** The unit def ids this skin may dress. Non-empty; no wildcard (D3). */
+  units: string[];
+  /** When true, the fall-back skin for every unit in `units[]` FOR ITS SLOT.
+   * At most one default per (unit, slot). */
+  default?: boolean;
+  /** Optional grouping key -- how a unit skin and a BP skin are paired as a SET
+   * (golden G6). The field ships here; the pairing logic does not (REQ-0266 s9). */
+  set?: string;
+  i18n?: { ja?: { name?: string } };
+}
+
+/** REQ-0126: one `bpskin/1` def as served in ApiContentPayload.bpskins. This
+ * mirrors client/src/board/skin/skinRegistry.ts's BpSkinDef -- shared/ may not
+ * import out of shared/, so the wire shape is DECLARED here and the client's
+ * loadSkinDefs() re-validates it structurally at the seam (a UGC-ready gate,
+ * which is why the two are deliberately not one type). Palette-procedural by
+ * default; `art.fill_texture` names the raster a skin paints with when it has one. */
+export interface ApiBpSkinEntry {
+  kind: string;
+  id: string;
+  name: string;
+  i18n?: { ja?: { name?: string } };
+  set?: string | null;
+  palette: { canvas?: string; fill: string; fill2?: string; welt?: string };
+  corner_radius: number;
+  border_band: number;
+  art?: {
+    fill_texture?: string | null;
+    tile_fill_override?: string | null;
+    edge_tiles?: { straight?: string; outer_corner?: string; inner_corner?: string };
+    clip_masks?: { straight?: string; outer_corner?: string; inner_corner?: string };
+  };
+  neutral?: boolean;
+}
+
+/** REQ-0126: the served bpskin registry, in the SAME {entries:[...]} envelope
+ * content/live/live_bpskins.json has on disk (an absent/unreadable file degrades
+ * to {entries: []} server-side, never a 500). */
+export interface ApiBpSkinRegistry {
+  entries: ApiBpSkinEntry[];
+}
+
 /** REQ-0170 / REQ-0128b: one entry of vocab.json's connection_shapes table. */
 export interface ApiConnShape {
   kind: 'ray' | 'offset' | 'none';
@@ -267,6 +328,12 @@ export interface ApiContentPayload {
   monster_skills: Record<string, ApiSkillName>; // REQ-0208
   gimics: Record<string, ApiGimicEntry>; // REQ-0211
   gimic_skills: Record<string, ApiSkillName>; // REQ-0211
+  unit_skins: Record<string, ApiUnitSkinEntry>; // REQ-0266: cosmetic skin defs, keyed by SKIN id
+  /** REQ-0126: the bpskin/1 registry, keyed by nothing -- it is served as the raw
+   * {entries:[...]} document the client's loadSkinDefs() consumes. SERVED SINCE
+   * REQ-0126 (server/lib/content.cjs) but never DECLARED until REQ-0266, so
+   * gameDataFromApiContent dropped it on the floor; the BP skin binding needs it. */
+  bpskins: ApiBpSkinRegistry; // REQ-0126, declared by REQ-0266
   connection_shapes: Record<string, ApiConnShape>; // REQ-0170
   trees: ApiTrees;
   scenario: ApiScenario;

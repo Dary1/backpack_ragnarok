@@ -21,7 +21,7 @@ const storage = require('../storage.cjs');
 const { runChecks } = require('../services/content_checks.cjs');
 const { exportAdopted } = require('../services/content_export.cjs');
 
-const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon']; // REQ-0171: gacha_pack; REQ-0184: monster_pack; REQ-0211: gimic; REQ-0185: dungeon
+const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon', 'unit_skin']; // REQ-0171: gacha_pack; REQ-0184: monster_pack; REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin (ALSO in services/core.cjs REGISTRY_KINDS -- a kind in one list and not the other never reaches serving, the monster_pack bug)
 const RESERVED = new Set(['defs', 'dev', 'meta']);
 // Per-kind default variant count (Q4: N default 5, per-kind configurable via
 // the def's gen_config.generate_n).
