@@ -696,6 +696,121 @@ function validateDungeonEntry(dungeon, refs) {
 }
 
 
+// =====================================================================
+// REQ-0266: unit_skin/1 -- the COSMETIC skin defs. ONE content kind (ruling
+// D1): the `slot` field is the discriminator -- "unit" makes the def a unit
+// PORTRAIT skin, "bpskin" makes it a BACKPACK skin -- and it must agree with
+// the KIND of the artwork `art_ref` names. There is no separate unit_bpskin
+// kind.
+//
+// `slot` is stored EXPLICITLY and is never derived from a registry lookup.
+// That is load-bearing: it keeps this validator -- and therefore
+// content_checks.runChecks() -- PURE and DB-FREE, which is what makes
+// server/tests/content_checks_dialect_test.cjs a cheap gate. The FILE tier
+// validates `slot` structurally; the DB tier (server/routes/content.cjs
+// ingest) additionally asserts slot === artwork.kind when the artwork
+// registry is reachable.
+//
+// THE single executable definition of "a legal unit_skin def", shared by the
+// content machine check (server/services/content_checks.cjs) and the live
+// content gate -- reused, never re-implemented (the REQ-0171/0184 lesson).
+// =====================================================================
+
+/** The two slots a cosmetic skin can occupy. Each name is ALSO an artwork
+ * kind (`unit` portraits / `bpskin` fills) -- which is exactly how one content
+ * kind carries both meanings (D1). */
+const UNIT_SKIN_SLOTS = ['unit', 'bpskin'];
+// Closed key set, same allowlist discipline validateBody() applies to item/si/
+// unit: a field nothing reads is fiction, and a typo'd field name that is
+// silently accepted is worse than one that fails loudly.
+const UNIT_SKIN_ALLOWED_KEYS = new Set(['id', 'name', 'slot', 'art_ref', 'units', 'default', 'set', 'i18n']);
+
+/** The sibling corpus, tolerated in any of the three shapes a caller naturally
+ * has it in (Map id->entry, plain object id->entry, or a plain array of
+ * entries). Anything else -- notably a bare Set of ids -- yields non-objects,
+ * which the default-collision loop skips, so a caller that has only ids
+ * degrades to shape-only validation instead of throwing. */
+function unitSkinCorpusEntries(skinIds) {
+  if (!skinIds) return null;
+  if (Array.isArray(skinIds)) return skinIds;
+  if (typeof skinIds.get === 'function' && typeof skinIds.values === 'function') return Array.from(skinIds.values()); // Map
+  if (typeof skinIds === 'object') return Object.keys(skinIds).map(function (k) { return skinIds[k]; });
+  return null;
+}
+
+/** Validates one unit_skin/1 entry (content/live/live_unit_skins.json). Throws
+ * a descriptive Error on the first violation -- never coerces, never silently
+ * drops.
+ *
+ * `refs.unitIds` is the Set of ids that actually exist in live_units.json: a
+ * skin that names a unit with no def can never be resolved by any of the three
+ * chains (portrait / BP / DOM), and nothing else in the chain would ever say
+ * so. `refs.skinIds` is the SIBLING CORPUS keyed by skin id (id -> entry) --
+ * needed because the at-most-ONE-default-per-(unit, slot) rule is a property of
+ * the whole corpus, not of one entry, exactly as validatePackEntry() takes the
+ * unit roster for the same reason. Pass neither for shape-only validation. */
+function validateUnitSkinEntry(entry, refs) {
+  const unitIds = refs && refs.unitIds;
+  const skinIds = refs && refs.skinIds;
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('unit_skin entry must be an object');
+  if (typeof entry.id !== 'string' || !entry.id) throw new Error('unit_skin entry: id is required');
+  const ctx = 'unit_skin "' + entry.id + '"';
+  for (const key of Object.keys(entry)) {
+    if (!UNIT_SKIN_ALLOWED_KEYS.has(key)) throw new Error(ctx + ': unknown field "' + key + '" is not part of unit_skin/1');
+  }
+  if (typeof entry.name !== 'string' || !entry.name) throw new Error(ctx + ': name is required');
+  if (typeof entry.slot !== 'string' || UNIT_SKIN_SLOTS.indexOf(entry.slot) < 0) {
+    throw new Error(ctx + ': slot must be one of ' + UNIT_SKIN_SLOTS.join(' | ') + ', got ' + JSON.stringify(entry.slot));
+  }
+  // A FREE reference to an artwork system_name -- NOT derived from the id, and
+  // two skins may legitimately share one artwork (the same law unit_def.icon
+  // has, REQ-0170 / REQ-0149 G14: littleprincess and princess share theirs).
+  if (typeof entry.art_ref !== 'string' || !entry.art_ref) {
+    throw new Error(ctx + ': art_ref is required (an artwork system_name; a FREE reference -- two skins may share one artwork)');
+  }
+  if (!Array.isArray(entry.units) || entry.units.length === 0) {
+    throw new Error(ctx + ': units must be a non-empty array of live unit_def ids');
+  }
+  const seenUnits = new Set();
+  entry.units.forEach(function (u, i) {
+    if (typeof u !== 'string' || !u) throw new Error(ctx + ': units[' + i + '] must be a non-empty unit id');
+    if (seenUnits.has(u)) throw new Error(ctx + ': units lists "' + u + '" twice');
+    seenUnits.add(u);
+    if (unitIds && !unitIds.has(u)) throw new Error(ctx + ': units names "' + u + '", which has no live unit def');
+  });
+  if (entry.default !== undefined && typeof entry.default !== 'boolean') throw new Error(ctx + ': default must be a boolean');
+  if (entry.set !== undefined && (typeof entry.set !== 'string' || !entry.set)) {
+    throw new Error(ctx + ': set must be a non-empty string (the grouping key that pairs a unit skin with a BP skin)');
+  }
+  // i18n.ja.name is MANDATORY, exactly as unit/1 requires it (pipeline rule),
+  // and `ja` is the ONLY legal locale here: validateI18n runs with the default
+  // SUPPORTED_LOCALES set, deliberately NOT the widened DUNGEON_LOCALES -- a
+  // unit skin is roster content, not dungeon content.
+  if (!entry.i18n || !entry.i18n.ja || typeof entry.i18n.ja.name !== 'string' || !entry.i18n.ja.name) {
+    throw new Error(ctx + ': i18n.ja.name is MANDATORY on every entry (pipeline rule)');
+  }
+  validateI18n(entry.i18n, ctx);
+  // At most ONE default per (unit, slot). A second default is not a preference
+  // question -- the resolver would have to pick one arbitrarily, so the two
+  // skins would render differently depending on file order. FAIL, naming BOTH.
+  const corpus = unitSkinCorpusEntries(skinIds);
+  if (corpus && entry.default === true) {
+    for (const other of corpus) {
+      if (!other || typeof other !== 'object' || Array.isArray(other)) continue;
+      if (other.id === entry.id) continue; // the entry itself, when the caller sweeps the whole corpus
+      if (other.default !== true || other.slot !== entry.slot) continue;
+      const otherUnits = Array.isArray(other.units) ? other.units : [];
+      for (const u of entry.units) {
+        if (otherUnits.indexOf(u) >= 0) {
+          throw new Error(ctx + ': is a SECOND default for unit "' + u + '" in slot "' + entry.slot
+            + '" -- unit_skin "' + other.id + '" already claims it (at most one default per (unit, slot))');
+        }
+      }
+    }
+  }
+}
+
+
 module.exports = {
   SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS, UNIT_ALLOWED_KEYS,
   validateUnitEntry, validatePackEntry,
@@ -705,6 +820,8 @@ module.exports = {
   validateGimicEntry, GIMIC_BEHAVIOR_MODES, GIMIC_MODES,
   // REQ-0185: dungeon/1 -- authored weighted refs to monster_pack + gimic.
   validateDungeonEntry, dungeonDoorStage2,
+  // REQ-0266: unit_skin/1 -- the cosmetic skin defs (unit portrait + BP skin, D1: ONE kind).
+  validateUnitSkinEntry, UNIT_SKIN_SLOTS, UNIT_SKIN_ALLOWED_KEYS,
   DUNGEON_LOCALES,
   isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody, validateCharge,
 };
