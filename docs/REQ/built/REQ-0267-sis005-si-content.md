@@ -69,11 +69,29 @@ iron_caltrop/silver_chain/iron_rivet; all others unrestricted.
 
 ## Status
 
-BUILT — content authored, gates green, art adopted and serving. **Not merged and
-not deployed.** The live API serves from the main checkout, so these entries do
-not reach the game until this branch is merged to master and `backpack-api`
-picks the content up. Merge/deploy is deliberately left to the user (PROJECT.md:
-main checkout + live services are coordinate-first).
+DONE — merged to master (fast-forward), deployed, and live-verified.
 
-Follow-up available if wanted: gacha/pack pool wiring — nothing drafts these 20
-yet, so they are reachable only once a pack table references them.
+**Deploy record.** No restart was required: `server/lib/content.cjs`
+`ensureFilePayload()` is **mtime-cached** over the live content files, so the
+merge itself hot-reloaded `live_sis.json` in the running `backpack-api`
+(pid unchanged; `backpack-api`/`backpack-web`/`backpack-tunnel` all stayed
+active throughout).
+
+One ordering wrinkle worth recording: the artworks were adopted BEFORE the
+content entries existed, so the `art_urls` warm map computed at adopt time had
+no `sis005_*` ids to resolve and came back empty for all 20. `getContent()`
+refreshes that map **fire-and-forget on a 15 s TTL** (REQ-0133), which means the
+request that trips the TTL still serves the STALE map and the NEXT one serves the
+fresh map. Nothing was broken; it just needed a second fetch. If a future batch
+wants art bound at the instant of merge, adopt AFTER the content lands (adopt
+awaits `refreshArtUrls`) rather than before.
+
+**Live verification (post-merge):**
+- `/api/content` -> sis 26 entries, 20 new, `art_urls` bound **20/20**.
+- `/api/art/<id>.png` -> 200 image/png, RGBA 256x256, corner alpha 0 (spot-checked
+  dragon_claw / venom_flask / golden_thread).
+- `backpack-api` 8802 healthy, `backpack-web` 8801 -> 200, tunnel active.
+
+**Known gap (not a regression):** no gacha/pack pool references these 20 yet, so
+they exist and render but are not yet obtainable in-game. Wiring them into a pack
+table is separate follow-up work.
