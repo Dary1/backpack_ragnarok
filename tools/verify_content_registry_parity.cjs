@@ -48,6 +48,11 @@ const COVERED = [
   { kind: 'gacha_pack', file: contentPath('live', 'live_packs.json') }, // REQ-0176
   { kind: 'monster_def', file: contentPath('live', 'dungeon', 'enemies.json') }, // REQ-0176
   { kind: 'skill_def', file: contentPath('live', 'dungeon', 'skills.json') }, // REQ-0176
+  // REQ-0266: unit_skin joins the covered set the day the serving path resolves it
+  // (server/services/core.cjs REGISTRY_KINDS + server/lib/content.cjs's display
+  // slice). This file's own header states the rule: a kind the serving path resolves
+  // but this tool does not check is a kind whose drift reaches the game unseen.
+  { kind: 'unit_skin', file: contentPath('live', 'live_unit_skins.json') }, // REQ-0266
 ];
 
 // Canonical JSON (recursive key sort) -> order-insensitive equality.

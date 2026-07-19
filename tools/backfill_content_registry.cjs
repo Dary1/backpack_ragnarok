@@ -98,6 +98,13 @@ const SOURCES = [
   // stays SKIPPED below (it is the sim's offline determinism fixture, not per-entity
   // content); the authored defs live in dungeons.json.
   { kind: 'dungeon', file: 'content/live/dungeon/dungeons.json' },
+  // REQ-0266: unit_skin/1 -- the COSMETIC skin defs (54 units x 2 slots). ONE kind
+  // for both meanings (ruling D1): the entry's own `slot` field, and the KIND of the
+  // artwork it references, say whether it dresses a unit PORTRAIT or a BACKPACK.
+  // The `uskin_` / `uskin_bp_` prefixes keep the ids clear of the 54 unit ids and of
+  // everything else live -- content_defs.system_name is UNIQUE ACROSS KINDS and
+  // collectAll() below FATALs on a clash.
+  { kind: 'unit_skin', file: 'content/live/live_unit_skins.json' },
   // User ruling 2026-07-15 (chat, with the REQ-0178 fallback report): the REQ-0051
   // starter-kit items (14 po/2 entries in their own file, isolated from
   // live_items.json for the REQ-0160 count-gate) enter the ledger as po_def.

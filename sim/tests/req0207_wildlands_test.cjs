@@ -131,6 +131,7 @@ T('G1: batch-006 ids are disjoint from batch-005 (the two rosters stack cleanly 
 const CROSS_KIND_FILES = [
   'live_items.json', 'dungeon/items.json', 'live_sis.json', 'live_tms.json',
   'live_units.json', 'live_packs.json', 'starter_items.json',
+  'live_unit_skins.json', // REQ-0266: unit_skin/1 is a backfill SOURCE, so its ids are system_names too
 ];
 T('G1: batch-006 ids are disjoint from EVERY other live kind (system_name is UNIQUE across kinds)', () => {
   const otherIds = new Map(); // id -> source file
