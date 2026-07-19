@@ -46,6 +46,17 @@
    ============================================================ */
 
 :root {
+  /* REQ-0239 (design 00 sec 3): lifecycle state ramp + elevation + stage well. */
+  --state-ready: #57C77B;
+  --state-deployed: var(--ember-hi);
+  --state-recover: var(--frost);
+  --state-cancel: var(--blood);
+  --state-locked: var(--bone-3);
+  --elev-1: 0 2px 8px rgba(0,0,0,.35);
+  --elev-2: 0 8px 24px rgba(0,0,0,.45);
+  --elev-3: 0 16px 48px rgba(0,0,0,.6);
+  --stage-well: #0B0F15;
+  --sortie-card-title: 20px;
   /* 60% night-iron neutrals */
   --void:      #0A0D12;
   --panel:     #131820;

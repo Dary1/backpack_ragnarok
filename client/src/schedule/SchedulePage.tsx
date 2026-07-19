@@ -56,19 +56,17 @@
 // comment for the full rationale.
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ApiError,
-  createRoom as apiCreateRoom,
   fetchDungeons,
   fetchMe,
   fetchRooms,
-  type ApiCreateRoomBody,
   type ApiDungeonsPayload,
   type ApiMe,
   type ApiRoom,
 } from '../api';
 import { t } from '../i18n';
+import { localizedName } from '../lib/contentName';
 import type { Locale } from '../store';
-import { CreateRoomForm, localizedName } from './CreateRoomForm';
+import { SquadStatusBoard } from './SquadStatusBoard'; // REQ-0239
 import { Monitor } from './Monitor';
 import { RoomCard } from './RoomCard';
 import { SealPanel } from './SealPanel'; // REQ-0058
@@ -90,12 +88,7 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   const [dungeons, setDungeons] = useState<ApiDungeonsPayload | null>(null);
   const [me, setMe] = useState<ApiMe | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [expandedRoomId, setExpandedRoomId] = useState<string | null>(null);
-  // UX pass: create panel is a manual toggle (see showCreatePanel below,
-  // which also force-opens it once the caller genuinely has zero rooms).
-  const [createOpen, setCreateOpen] = useState(false);
   // UX pass: canceled rooms are hidden by default -- the count badge
   // next to the toggle keeps this discoverable/reversible rather than a
   // silent filter.
@@ -143,6 +136,20 @@ export function SchedulePage({ locale }: SchedulePageProps) {
 
   const isAdmin = !!me && Array.isArray(me.roles) && me.roles.includes('item_admin');
 
+  // REQ-0239: the sortie page hands the freshly-launched room off via
+  // sessionStorage('bp.watchRoom') -- read it ONCE on mount and watch that room
+  // (mirrors the former create path's select-new-room behavior).
+  useEffect(() => {
+    let watch: string | null = null;
+    try { watch = sessionStorage.getItem('bp.watchRoom'); sessionStorage.removeItem('bp.watchRoom'); } catch { watch = null; }
+    if (watch) {
+      setExpandedRoomId(watch);
+      window.setTimeout(() => {
+        document.querySelector(`[data-room-id="${watch}"]`)?.scrollIntoView({ block: 'nearest' });
+      }, 200);
+    }
+  }, []);
+
   // Rooms list poll -- keeps status/cooldown/lastRunId reasonably fresh
   // even while nothing is expanded (Monitor.tsx polls the RUN endpoint
   // separately, at its own faster cadence, only for the expanded room).
@@ -151,33 +158,6 @@ export function SchedulePage({ locale }: SchedulePageProps) {
     return () => clearInterval(id);
   }, [reloadRooms]);
 
-  const handleCreate = useCallback(
-    async (body: ApiCreateRoomBody) => {
-      setCreating(true);
-      setCreateError(null);
-      try {
-        // REQ-0168 U1: a successful create now gives immediate feedback --
-        // collapse the create panel, select (watch) the brand-new room so
-        // the detail pane shows its slots, and scroll its card into view.
-        // Uses apiCreateRoom's own {ok, room} return so the new id is known
-        // without guessing at list order.
-        const { room } = await apiCreateRoom(body);
-        setCreateOpen(false);
-        setExpandedRoomId(room.id);
-        await reloadRooms();
-        // Best-effort: bring the new (now top-of-list, see U5 sort) card
-        // into view once it has rendered.
-        window.setTimeout(() => {
-          document.querySelector(`[data-room-id="${room.id}"]`)?.scrollIntoView({ block: 'nearest' });
-        }, 0);
-      } catch (e) {
-        setCreateError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e));
-      } finally {
-        setCreating(false);
-      }
-    },
-    [reloadRooms]
-  );
 
   // UX pass: resolves a room's dungeonId against the already-fetched
   // dungeons list (same lookup+locale convention CreateRoomForm.tsx's
@@ -208,11 +188,6 @@ export function SchedulePage({ locale }: SchedulePageProps) {
   // (running = status 'active'; total = every non-canceled room).
   const runningCount = rooms ? rooms.filter((r) => r.status === 'active').length : 0;
   const liveRoomCount = rooms ? rooms.filter((r) => r.status !== 'canceled').length : 0;
-  // Force the create panel open whenever the caller has zero rooms --
-  // nothing else useful to show, and a brand-new/fully-cleared account
-  // shouldn't have to know a toggle exists just to find the only action
-  // available.
-  const showCreatePanel = createOpen || (rooms !== null && rooms.length === 0);
   // REQ-0097: the room whose detail (slots + shared monitor) fills the center pane.
   const selectedRoom = expandedRoomId ? rooms?.find((r) => r.id === expandedRoomId) ?? null : null;
 
@@ -244,6 +219,8 @@ export function SchedulePage({ locale }: SchedulePageProps) {
         ᚱ
       </div>
 
+      <SquadStatusBoard locale={locale} rooms={rooms} dungeonNameFor={dungeonNameFor} onWatch={(roomId) => setExpandedRoomId(roomId)} />
+
       <div className="schedule-master-detail">
         <div className="schedule-rooms-col" data-testid="schedule-rooms-col">
           {loadError ? <div className="schedule-error">{t(locale, 'schedule.loadFailed')}{loadError}</div> : null}
@@ -260,14 +237,13 @@ export function SchedulePage({ locale }: SchedulePageProps) {
 
           {hasRooms ? (
             <div className="schedule-rooms-toolbar">
-              <button
-                type="button"
-                className="btn schedule-create-toggle-btn"
-                onClick={() => setCreateOpen((o) => !o)}
+              <a
+                className="btn btn-forge schedule-sortie-cta"
+                href="#/sortie"
                 data-testid="schedule-create-toggle"
               >
-                {showCreatePanel ? t(locale, 'schedule.collapse') : t(locale, 'schedule.createToggle')}
-              </button>
+                {t(locale, 'schedule.createToggle')}
+              </a>
               {canceledCount > 0 ? (
                 <label className="chip schedule-hide-canceled-toggle">
                   <input
@@ -282,23 +258,14 @@ export function SchedulePage({ locale }: SchedulePageProps) {
             </div>
           ) : null}
 
-          {showCreatePanel ? (
-            <div className="panel ornate schedule-create-panel">
-              <i className="k tl" />
-              <i className="k tr" />
-              <i className="k br" />
-              <i className="k bl" />
-              <h3 className="dj">{t(locale, 'schedule.createTitle')}</h3>
-              {createError ? <div className="schedule-error">{createError}</div> : null}
-              <CreateRoomForm locale={locale} dungeons={dungeons} creating={creating} isAdmin={isAdmin} onCreate={handleCreate} />
-            </div>
-          ) : null}
-
           <div className="schedule-rooms-list">
             {rooms === null ? (
               <div className="schedule-loading">{t(locale, 'schedule.loading')}</div>
             ) : rooms.length === 0 ? (
-              <div className="schedule-empty">{t(locale, 'schedule.noRooms')}</div>
+              <div className="schedule-empty">
+                {t(locale, 'schedule.noRooms')}
+                <a className="btn btn-forge schedule-sortie-cta" href="#/sortie" data-testid="schedule-create-cta">{t(locale, 'schedule.createToggle')}</a>
+              </div>
             ) : visibleRooms.length === 0 ? (
               <div className="schedule-empty" data-testid="schedule-all-hidden">{t(locale, 'schedule.allHidden')}</div>
             ) : (

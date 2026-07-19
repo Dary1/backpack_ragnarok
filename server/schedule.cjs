@@ -33,6 +33,7 @@ const warehouse = require('./services/warehouse.cjs');
 const runs = require('./services/runs.cjs');
 const gacha = require('./services/gacha.cjs');
 const seals = require('./services/seals.cjs'); // REQ-0058
+const sorties = require('./services/sorties.cjs'); // REQ-0239: atomic sortie (D1)
 
 module.exports = {
   WAREHOUSE_CAP: core.WAREHOUSE_CAP,
@@ -74,6 +75,8 @@ module.exports = {
   finalizeClaimingItemsForCanvas: warehouse.finalizeClaimingItemsForCanvas,
   cancelRoom: rooms.cancelRoom,
   devClearRooms: rooms.devClearRooms,
+  createSortie: sorties.createSortie, // REQ-0239 (D1): atomic create-room + assign 4 slots
+  lastRunSummary: runs.lastRunSummary, // REQ-0239 (B1): compact run window for the board
   listDungeonsAndFormations: core.listDungeonsAndFormations,
   devBackdateActiveRun: runs.devBackdateActiveRun,
   WAREHOUSE_CLAIM_TIMEOUT_MS: core.WAREHOUSE_CLAIM_TIMEOUT_MS,

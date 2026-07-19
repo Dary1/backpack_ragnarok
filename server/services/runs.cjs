@@ -307,6 +307,28 @@ function devBackdateActiveRun(room, extraSecsIntoPast) {
 // feature). Throws NOT_FOUND if the row doesn't exist, BAD_REQUEST if it
 // isn't currently 'claiming' (nothing to backdate).
 
+// lastRunSummary (REQ-0239, design B1): a compact wall-clock window for a
+// room's active/last run, attached to each room in the LIST response so the
+// squad status board can draw honest run progress + a return (帰還) time
+// WITHOUT an N+1 GET .../run per room (each of which ships the ENTIRE event
+// array -- far too heavy for a dashboard poll). One storage.readRun field-pick
+// per room that carries a lastRunId; rooms lists are short, so this stays cheap
+// on the 4s poll. `durationSecs` is the run's presentation duration (today =
+// the sim's computeDurationSecs; the monitor/pacing track may later re-key it
+// -- the board reads whatever the run doc reports). settled lets the board hold
+// a `returning` transient across the lazy settle gap (design 02 sec 3).
+function lastRunSummary(room) {
+  if (!room || !room.lastRunId) return null;
+  const run = storage.readRun(room.lastRunId);
+  if (!run) return null;
+  return {
+    runId: run.id,
+    startedAt: run.startedAt,
+    durationSecs: run.durationSecs,
+    settled: !!run.settled,
+  };
+}
+
 module.exports = {
   computeDurationSecs,
   runClock,
@@ -316,5 +338,6 @@ module.exports = {
   settleRun,
   settleRoomIfDue,
   maybeAutoStartNextRun,
+  lastRunSummary,
   devBackdateActiveRun,
 };

@@ -1,0 +1,218 @@
+/* client/src/styles/sortie.css -- REQ-0239. The SORTIE page (#/sortie) + the
+   SQUAD STATUS BOARD (#/schedule). Imported from index.css after schedule.css.
+   Design 00/01/02. Board styles live here (not schedule.css) to keep this REQ's
+   surface conflict-free against the parallel monitor branch's schedule.css work
+   -- documented deviation from 02 sec "extend schedule.css". */
+
+/* ---- canonical state chips (design 00 sec 3 triple) --------------------- */
+.chip.st-ready { color: var(--state-ready); border-color: var(--state-ready); }
+.chip.st-ready .dot { background: var(--state-ready); }
+.chip.st-deployed { color: var(--state-deployed); border-color: var(--state-deployed); }
+.chip.st-deployed .dot { background: var(--state-deployed); }
+.chip.st-recovering { color: var(--state-recover); border-color: var(--state-recover); }
+.chip.st-recovering .dot { background: var(--state-recover); }
+.chip.st-cancelReserved { color: var(--state-cancel); border-color: var(--state-cancel); }
+.chip.st-cancelReserved .dot { background: var(--state-cancel); }
+.chip.st-undeployable { color: var(--state-locked); border-color: var(--state-locked); }
+.chip.st-undeployable .dot { background: var(--state-locked); }
+.chip.st-staging { color: var(--gold-hi); border-color: var(--gold-lo); }
+.chip.st-staging .dot { background: var(--gold-hi); }
+.chip.st-returning { color: var(--state-recover); border-color: var(--state-recover); }
+.chip.st-returning .dot { background: var(--state-recover); animation: sortie-pulse 1s ease-in-out infinite; }
+.chip .chip-icon { margin: 0 2px 0 1px; }
+@keyframes sortie-pulse { 0%,100% { opacity: .4 } 50% { opacity: 1 } }
+
+/* ---- microgrid (design 01 sec 6.1) ------------------------------------- */
+.sortie-microgrid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 1px;
+  flex: 0 0 auto;
+  background: var(--stage-well, #0b0f15);
+  border: 1px solid var(--border-lo);
+  border-radius: 3px;
+  padding: 2px;
+  box-sizing: border-box;
+}
+.sortie-microgrid-dot { border-radius: 1px; background: transparent; }
+.sortie-microgrid-dot.is-filled { opacity: .85; }
+.sortie-microgrid-dot.is-po { box-shadow: inset 0 0 0 1px rgba(255,255,255,.55); filter: brightness(1.35); }
+
+/* ---- sortie page shell -------------------------------------------------- */
+.sortie-page { position: relative; min-height: 100%; padding: 0 20px 120px; max-width: 1560px; margin: 0 auto; }
+.sortie-pagehead { position: relative; text-align: center; padding: 20px 0 12px; }
+.sortie-back {
+  position: absolute; left: 0; top: 20px; color: var(--bone-2); text-decoration: none;
+  font-size: 12px; padding: 4px 8px; border-radius: 2px;
+}
+.sortie-back:hover { color: var(--gold-hi); }
+.sortie-pagehead-kicker { font-size: 10.5px; color: var(--gold-hi); letter-spacing: .28em; }
+.sortie-pagehead-title { font-size: 27px; margin: 2px 0; letter-spacing: .12em; }
+.sortie-pagehead-lede { font-size: 12px; color: var(--bone-2); }
+
+.sortie-zone { margin-top: 32px; }
+.sortie-zone-head { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.sortie-zone-head .den { font-size: 11px; color: var(--gold-hi); letter-spacing: .22em; }
+.sortie-zone-head .rune-divider { flex: 1; opacity: .5; }
+.sortie-notice { margin-bottom: 12px; }
+
+/* ---- dungeon gallery + card -------------------------------------------- */
+.sortie-gallery {
+  display: flex; gap: 16px; overflow-x: auto; padding: 4px 2px 14px;
+  scroll-snap-type: x mandatory; outline: none;
+}
+.sortie-gallery:focus-visible { box-shadow: var(--focus-ring); border-radius: 4px; }
+.sortie-gallery-loading { align-self: center; }
+.sortie-dungeon-card {
+  position: relative; flex: 0 0 320px; width: 320px; scroll-snap-align: start;
+  border-radius: 3px; overflow: hidden; cursor: pointer; padding: 0;
+  transition: transform .14s ease-out, border-color .14s ease-out;
+}
+.sortie-dungeon-card.is-selected { box-shadow: var(--focus-ring); }
+.sortie-dungeon-card:hover:not(.is-locked) { transform: translateY(-2px); border-color: var(--gold-lo); box-shadow: var(--elev-2); }
+.sortie-dungeon-art { position: relative; width: 100%; aspect-ratio: 16 / 9; background: var(--raised); overflow: hidden; }
+.sortie-dungeon-art-img { width: 100%; height: 100%; object-fit: cover; object-position: center; filter: saturate(.8) brightness(.85); }
+.sortie-dungeon-card.is-selected .sortie-dungeon-art-img { filter: saturate(1.05); }
+.sortie-dungeon-art-fallback { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 48px; color: var(--bone-3); }
+.sortie-dungeon-card.is-locked .sortie-dungeon-art-img { filter: grayscale(.9) brightness(.5); }
+.sortie-dungeon-lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 32px; }
+.sortie-dungeon-body { padding: 12px; }
+.sortie-dungeon-name { font-size: var(--sortie-card-title, 20px); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sortie-dungeon-sub { display: flex; align-items: center; gap: 8px; margin-top: 6px; color: var(--bone-2); }
+.sortie-dungeon-glyph { font-size: 14px; }
+.sortie-dungeon-lockchip { font-size: 10px; }
+
+/* ---- dossier ------------------------------------------------------------ */
+.sortie-dossier { margin-top: 20px; box-shadow: var(--elev-3); overflow: hidden; padding: 0; }
+.sortie-dossier-hero { position: relative; width: 100%; aspect-ratio: 21 / 9; max-height: 370px; background: var(--raised); overflow: hidden; }
+.sortie-dossier-hero-img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.sortie-dossier-hero-fallback { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; font-size: 72px; color: var(--bone-3); }
+.sortie-dossier-hero-scrim { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 20px; background: linear-gradient(transparent, rgba(10,13,18,.92)); }
+.sortie-dossier-name { margin: 0; }
+.sortie-dossier-hero-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.sortie-band-chip { color: var(--gold-hi); border-color: var(--gold-lo); }
+.sortie-dossier-body { padding: 16px 20px 20px; display: flex; flex-direction: column; gap: 16px; }
+.sortie-dossier-den { display: block; margin-bottom: 6px; font-size: 10px; color: var(--gold-hi); letter-spacing: .2em; }
+.sortie-encounter-chips, .sortie-loot-icons { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sortie-enc-chip { font-size: 12px; }
+.sortie-loot-icon { width: 28px; height: 28px; border-radius: 3px; object-fit: cover; background: var(--raised); border: 1px solid var(--border-lo); }
+.sortie-loot-dot { display: inline-block; }
+.sortie-dossier-controls { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+.sortie-level { display: flex; align-items: center; gap: 6px; }
+.sortie-level-label { margin-right: 4px; }
+.sortie-level-btn { min-width: 32px; padding: 4px 8px; }
+.sortie-level-input { width: 64px; text-align: center; padding: 4px 6px; }
+.sortie-level.is-below-band .sortie-level-input { color: var(--state-cancel); border-color: var(--state-cancel); }
+.sortie-formation { display: flex; flex-direction: column; gap: 4px; }
+.sortie-formation-select { padding: 5px 8px; }
+
+/* ---- advanced fold ------------------------------------------------------ */
+.sortie-advanced { margin-top: 4px; border-top: 1px solid var(--border-lo); padding-top: 12px; }
+.sortie-advanced-toggle { background: none; border: none; color: var(--bone-2); cursor: pointer; font-size: 11px; letter-spacing: .2em; padding: 0; }
+.sortie-advanced-toggle:hover { color: var(--gold-hi); }
+.sortie-advanced-caret { margin-right: 6px; }
+.sortie-advanced-body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+.sortie-advanced-field { display: flex; flex-direction: column; gap: 6px; border: none; padding: 0; margin: 0; }
+.sortie-advanced-radio { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--bone-2); }
+.sortie-advanced-radio.is-destructive { color: var(--state-cancel); }
+.sortie-advanced-seed { padding: 5px 8px; max-width: 280px; }
+.sortie-advanced-visibility { font-size: 11px; }
+
+/* ---- muster: troop slots + shelf --------------------------------------- */
+.sortie-muster-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; }
+.sortie-troop { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.sortie-slot { position: relative; min-height: 120px; border-radius: 3px; padding: 10px; }
+.sortie-slot.is-empty { border: 1px dashed var(--border-lo); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--bone-3); }
+.sortie-slot.is-filled { border: 1px solid var(--border-lo); }
+.sortie-slot:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.sortie-slot-ord { position: absolute; top: 6px; left: 10px; font-size: 14px; color: var(--gold-lo); opacity: .8; }
+.sortie-slot.is-filled .sortie-slot-ord { display: none; }
+.sortie-slot-unassign { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border-radius: 999px; border: 1px solid var(--border-lo); background: var(--raised); color: var(--bone-2); cursor: pointer; }
+.sortie-slot-unassign:hover { color: var(--state-cancel); border-color: var(--state-cancel); }
+.sortie-shelf-title { margin-bottom: 12px; font-size: 11px; color: var(--gold-hi); letter-spacing: .2em; }
+.sortie-shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 16px; align-content: start; }
+
+/* ---- squad mini card ---------------------------------------------------- */
+.sortie-squad-card { position: relative; padding: 12px; border-radius: 3px; display: flex; flex-direction: column; gap: 8px; }
+.sortie-squad-card.is-clickable { cursor: pointer; transition: transform .14s ease-out, border-color .14s ease-out; }
+.sortie-squad-card.is-clickable:hover { transform: translateY(-2px); border-color: var(--gold-lo); box-shadow: var(--elev-2); }
+.sortie-squad-card.is-assigned { box-shadow: var(--focus-ring); }
+.sortie-squad-card.is-conflict { filter: saturate(.4) opacity(.85); }
+.sortie-squad-card.is-disabled { opacity: .55; cursor: default; }
+.sortie-squad-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.sortie-squad-card-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.sortie-squad-name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sortie-slot-ordinal-badge { flex: 0 0 auto; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--gold-lo); color: var(--ink, #10141b); font-size: 12px; }
+.sortie-shared-badge { flex: 0 0 auto; font-size: 11px; color: var(--gold-hi); display: inline-flex; gap: 2px; align-items: center; }
+.sortie-squad-card-units { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sortie-unit-strip { display: flex; gap: 4px; }
+.sortie-unit-icon { width: 20px; height: 20px; border-radius: 6px; object-fit: cover; background: var(--raised); }
+.sortie-unit-dot { display: inline-block; }
+.sortie-unit-more, .sortie-squad-meta { color: var(--bone-2); }
+.sortie-conflict-strip { font-size: 11px; color: var(--state-cancel); border-top: 1px solid rgba(192,82,72,.3); padding-top: 6px; }
+.sortie-conflict-strip.is-blocks { color: var(--gold-hi); border-color: var(--gold-lo); }
+.sortie-squad-substatus { display: flex; justify-content: space-between; gap: 8px; color: var(--bone-2); }
+
+/* ---- launch bar --------------------------------------------------------- */
+.sortie-launchbar {
+  position: sticky; bottom: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  margin: 24px -20px 0; padding: 14px 20px; background: var(--raised);
+  border-top: 1px solid transparent; border-image: linear-gradient(90deg, transparent, var(--gold-lo), transparent) 1;
+}
+.sortie-launch-status { font-size: 13px; color: var(--state-cancel); }
+.sortie-launch-status.is-ready { color: var(--state-ready); }
+.sortie-launch-error { color: var(--state-cancel); }
+.sortie-launch-actions { display: flex; gap: 12px; }
+.sortie-launch-btn { font-size: 15px; }
+
+/* ---- empty / skeleton --------------------------------------------------- */
+.sortie-empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 32px; color: var(--bone-2); text-align: center; }
+.sortie-empty-rune { font-size: 24px; color: var(--bone-3); }
+.sortie-skeleton { height: 230px; background: var(--raised); animation: sortie-shimmer 1.6s ease-in-out infinite; }
+@keyframes sortie-shimmer { 0%,100% { opacity: .5 } 50% { opacity: .85 } }
+
+/* ---- narrow ------------------------------------------------------------- */
+@media (max-width: 900px) {
+  .sortie-muster-grid { grid-template-columns: 1fr; }
+  .sortie-shelf { grid-template-columns: 1fr; }
+  .sortie-dungeon-card { flex-basis: 260px; width: 260px; }
+}
+
+/* ==== SQUAD STATUS BOARD (#/schedule, design 02) ========================= */
+.squad-board { margin: 0 0 20px; }
+.squad-board-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.squad-board-den { font-size: 10px; color: var(--gold-hi); letter-spacing: .22em; }
+.squad-board-summary { color: var(--bone-2); }
+.squad-board-tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+.squad-board-tile {
+  position: relative; width: 232px; min-height: 96px; padding: 10px 12px 10px 15px;
+  border-radius: 3px; border-left: 3px solid var(--state-locked);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.squad-board-tile.is-clickable { cursor: pointer; transition: transform .14s ease-out, border-color .14s ease-out; }
+.squad-board-tile.is-clickable:hover { transform: translateY(-2px); box-shadow: var(--elev-2); }
+.squad-board-tile:focus-visible { box-shadow: var(--focus-ring); outline: none; }
+.st-edge-deployed { border-left-color: var(--state-deployed); }
+.st-edge-recovering, .st-edge-returning { border-left-color: var(--state-recover); }
+.st-edge-staging { border-left-color: var(--gold-hi); }
+.st-edge-ready { border-left-color: var(--state-ready); }
+.st-edge-undeployable { border-left-color: var(--state-locked); }
+.squad-board-row1 { display: flex; align-items: center; gap: 8px; }
+.squad-board-name { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 9ch; flex: 1; }
+.squad-board-lead-icon { width: 20px; height: 20px; border-radius: 6px; object-fit: cover; }
+.squad-board-row2 { display: flex; gap: 6px; flex-wrap: wrap; }
+.squad-board-row3 { display: flex; justify-content: space-between; gap: 8px; color: var(--bone-2); }
+.squad-board-row4 { margin-top: auto; }
+.squad-board-progress { display: flex; align-items: center; gap: 8px; }
+.squad-board-progress .bar { flex: 1; height: 6px; }
+.squad-board-eta, .squad-board-release, .squad-board-recover, .squad-board-returning, .squad-board-staging { font-size: 11px; color: var(--bone-2); }
+.squad-board-release { color: var(--state-cancel); }
+.squad-board-recover { display: flex; justify-content: space-between; gap: 8px; color: var(--state-recover); }
+.squad-board-returning { color: var(--state-recover); }
+.squad-board-cta { font-size: 11px; padding: 3px 8px; }
+
+@media (max-width: 900px) {
+  .squad-board-tiles { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+  .squad-board-tile { flex: 0 0 200px; scroll-snap-align: start; }
+}

@@ -26,7 +26,7 @@ import {
 } from '../api';
 import { t } from '../i18n';
 import type { Locale } from '../store';
-import { localizedName } from './CreateRoomForm';
+import { localizedName } from '../lib/contentName'; // REQ-0239: relocated
 
 interface SealPanelProps {
   locale: Locale;

@@ -32,6 +32,7 @@ import { commonEn, commonJa } from './i18n/common';
 import { canvasEn, canvasJa } from './i18n/canvas';
 import { dexEn, dexJa } from './i18n/dex';
 import { scheduleEn, scheduleJa } from './i18n/schedule';
+import { sortieEn, sortieJa } from './i18n/sortie'; // REQ-0239
 import { warehouseEn, warehouseJa } from './i18n/warehouse';
 import { workshopEn, workshopJa } from './i18n/workshop';
 import { marketEn, marketJa } from './i18n/market';
@@ -44,8 +45,8 @@ import { guideEn, guideJa } from './i18n/guide';
  * Spreads are key-disjoint by construction (buckets partition the key
  * prefixes), so merge order cannot change the result. */
 export const DICT = {
-  en: { ...navEn, ...commonEn, ...canvasEn, ...dexEn, ...scheduleEn, ...warehouseEn, ...workshopEn, ...marketEn, ...ragnarokEn, ...settingsEn, ...guideEn },
-  ja: { ...navJa, ...commonJa, ...canvasJa, ...dexJa, ...scheduleJa, ...warehouseJa, ...workshopJa, ...marketJa, ...ragnarokJa, ...settingsJa, ...guideJa },
+  en: { ...navEn, ...commonEn, ...canvasEn, ...dexEn, ...scheduleEn, ...sortieEn, ...warehouseEn, ...workshopEn, ...marketEn, ...ragnarokEn, ...settingsEn, ...guideEn },
+  ja: { ...navJa, ...commonJa, ...canvasJa, ...dexJa, ...scheduleJa, ...sortieJa, ...warehouseJa, ...workshopJa, ...marketJa, ...ragnarokJa, ...settingsJa, ...guideJa },
 } as const;
 
 export type TranslationKey = keyof typeof DICT.en;

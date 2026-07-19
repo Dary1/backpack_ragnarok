@@ -4,7 +4,7 @@
 // see core.ts's module comment on DEX_ITEM_HASH_RE/dexFocusId for the design note.
 import { clearStoredToken, fetchMe, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
-import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, MARKET_SELL_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
+import { ARTADMIN_HASH_RE, CONTENTADMIN_HASH_RE, DEX_ITEM_HASH_RE, INVITE_HASH_RE, MARKET_SELL_HASH_RE, SORTIE_HASH_RE, routeFromHash, snapshot, setSnapshot } from './core';
 import type { Route } from './core';
 
 export function setRoute(route: Route): void {
@@ -105,6 +105,12 @@ export function clearMarketSellFocus(): void {
   setSnapshot({ ...snapshot, marketSellFocus: null });
 }
 
+/** REQ-0239: clears a consumed sortie deep-link target (sortieFocusDungeonId). */
+export function clearSortieFocusDungeonId(): void {
+  if (snapshot.sortieFocusDungeonId === null) return;
+  setSnapshot({ ...snapshot, sortieFocusDungeonId: null });
+}
+
 /** Like setRoute(), but uses history.replaceState-style semantics for the
  * hash (no back-button entry for the one-shot invite hash itself) -- the
  * invite link should not leave "#/invite/<token>" sitting in browser
@@ -151,6 +157,7 @@ export function initRouting(): () => void {
     const caMatch = inviteMatch || dexItemMatch ? null : CONTENTADMIN_HASH_RE.exec(location.hash);
     const artMatch = inviteMatch || dexItemMatch || caMatch ? null : ARTADMIN_HASH_RE.exec(location.hash);
     const marketSellMatch = inviteMatch || dexItemMatch || caMatch || artMatch ? null : MARKET_SELL_HASH_RE.exec(location.hash);
+    const sortieMatch = inviteMatch || dexItemMatch || caMatch || artMatch || marketSellMatch ? null : SORTIE_HASH_RE.exec(location.hash);
     if (inviteMatch) {
       setSnapshot({ ...snapshot, route: 'backpacks' });
       void handleInviteRoute(decodeURIComponent(inviteMatch[1]));
@@ -162,6 +169,8 @@ export function initRouting(): () => void {
       setSnapshot({ ...snapshot, route: 'artadmin', artAdminFocusName: decodeURIComponent(artMatch[1]) });
     } else if (marketSellMatch) {
       setSnapshot({ ...snapshot, route: 'market', marketSellFocus: { uid: decodeURIComponent(marketSellMatch[1]), kind: (marketSellMatch[2] as 'po' | 'si' | 'unit') || 'po' } });
+    } else if (sortieMatch) {
+      setSnapshot({ ...snapshot, route: 'sortie', sortieFocusDungeonId: decodeURIComponent(sortieMatch[1]) });
     } else {
       const initial = routeFromHash(location.hash);
       if (initial !== snapshot.route) setSnapshot({ ...snapshot, route: initial });
@@ -192,6 +201,11 @@ export function initRouting(): () => void {
     const marketSellMatch = MARKET_SELL_HASH_RE.exec(location.hash);
     if (marketSellMatch) {
       setSnapshot({ ...snapshot, route: 'market', marketSellFocus: { uid: decodeURIComponent(marketSellMatch[1]), kind: (marketSellMatch[2] as 'po' | 'si' | 'unit') || 'po' } });
+      return;
+    }
+    const sortieMatch = SORTIE_HASH_RE.exec(location.hash);
+    if (sortieMatch) {
+      setSnapshot({ ...snapshot, route: 'sortie', sortieFocusDungeonId: decodeURIComponent(sortieMatch[1]) });
       return;
     }
     const next = routeFromHash(location.hash);

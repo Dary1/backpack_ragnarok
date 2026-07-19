@@ -139,17 +139,6 @@ async function apiClaim(page: Page, token: string, itemUid: string): Promise<any
 // A caller that already owns rooms (incl. canceled) sees it collapsed behind the
 // "Forge a new expedition +" toggle. Open it explicitly before touching the form
 // so the REQ-0043 specs are robust to accumulated rooms / run order (drift fix).
-async function openCreatePanel(page: Page): Promise<void> {
-  const dungeonSelect = page.locator('[data-testid="schedule-dungeon-select"]');
-  const toggle = page.locator('[data-testid="schedule-create-toggle"]');
-  // Wait for rooms to load and the page to settle into ONE of two states before
-  // deciding: the panel auto-opened (zero rooms) OR the toggle is present (has
-  // rooms). Without this wait we could sample while rooms is still null (neither
-  // present) and no-op, then time out because the panel never opens on its own.
-  await expect(dungeonSelect.or(toggle).first()).toBeVisible({ timeout: 10000 });
-  if (await dungeonSelect.isVisible().catch(() => false)) return;
-  await toggle.click();
-}
 
 let player: CreatedPlayer;
 let fixture: unknown;
@@ -181,59 +170,6 @@ test.describe('dungeons list (no auth)', () => {
 });
 
 test.describe('create room + slots UI', () => {
-  test('create-room form creates a room; assigning all 4 slots with 4 DIFFERENT, mutually-unique squads auto-starts a run (REQ-0045 c: unique-4 must start)', async ({ page }) => {
-    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
-    await page.goto(`/app/#/invite/${player.token}`);
-    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
-    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-    await expect(page.locator('.schedule-page')).toBeVisible();
-
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
-    await page.locator('[data-testid="schedule-level-input"]').fill('1');
-    await expect(page.locator('[data-testid="schedule-visibility-fixed"]')).toHaveText('Self only');
-    await page.locator('[data-testid="schedule-create-submit"]').click();
-
-    await expect(page.locator('[data-testid="schedule-room-card"]').first()).toBeVisible({ timeout: 10000 });
-    const roomId = await page.locator('[data-testid="schedule-room-card"]').first().getAttribute('data-room-id');
-    expect(roomId).toBeTruthy();
-    createdRoomIds.push(roomId!);
-
-    // REQ-0168 U1: a successful create now auto-selects (watches) the new
-    // room, so the detail pane already shows its slots panel -- no expand
-    // click needed.
-    await expect(page.locator('[data-testid="schedule-slot-0"]')).toBeVisible({ timeout: 10000 });
-
-    // REQ-0045 (b)+(c) deploy gate v2: fill each slot with a DIFFERENT
-    // squad (0,1,2,3 -- the fixture's 4 mutually-unique, globally-
-    // distinct-uid squads, see schedule-fixture.json's own header
-    // comment) -- this is the "4 squads with fully unique squads" case
-    // the OLD gate (isSquadIndependent-as-gate) used to incorrectly
-    // REFUSE (a squad sharing an item with some OTHER unrelated squad
-    // elsewhere in the warehouse blocked deployment even though nothing
-    // here overlaps anything actually deployed) -- the NEW deploy-
-    // overlap gate correctly allows this, since none of these 4 squads'
-    // uid sets intersect each other OR anything deployed elsewhere.
-    for (let i = 0; i < 4; i++) {
-      await page.locator(`[data-testid="schedule-slot-select-${i}"]`).selectOption(String(i));
-      await expect(page.locator(`[data-testid="schedule-slot-select-${i}"]`)).toHaveValue(String(i), { timeout: 10000 });
-    }
-
-    // A full troop auto-starts the first run (server-side
-    // maybeAutoStartNextRun, fired the next time anything reads the
-    // room) -- poll until status flips to 'active'.
-    await expect(async () => {
-      const view = await apiGetRoom(page, player.token, roomId!);
-      expect(view.body.room.status).toBe('active');
-    }).toPass({ timeout: 10000 });
-
-    await expect(page.locator('[data-testid="schedule-room-status-badge"]').first()).toHaveText('Running', { timeout: 10000 });
-
-    // Cancel immediately (default cancelPolicy) so this room's deployed
-    // squads (0,1,2,3) do not stay "active" and block later tests' OWN
-    // use of those squads via the cross-room deploy gate -- this test's
-    // own assertions are already complete at this point.
-    await apiCancelRoom(page, player.token, roomId!);
-  });
 
   test('assigning the SAME squadIndex to a SECOND slot of the SAME room is refused 409 (REQ-0045 c: duplicate squads must be REFUSED)', async ({ page }) => {
     await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
@@ -289,109 +225,8 @@ test.describe('create room + slots UI', () => {
 });
 
 test.describe('REQ-0043: dungeon auto-generation -- type selector + dev-only seed field', () => {
-  test('create-room form offers an authored dungeon DEF selector and creating a room via the UI works end to end (REQ-0185)', async ({ page }) => {
-    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
-    // This spec's own `player` guest may already own rooms created by
-    // OTHER tests in this file (canceled rooms stay listed, just
-    // status:'canceled') -- capture the id set BEFORE creating, and diff
-    // afterward, rather than trusting the room-card list's `.first()`
-    // position to be "the room this test just created" (test order
-    // within the full suite run is not this test's own to control).
-    const beforeIds = new Set(
-      (await apiListRooms(page, player.token)).body.rooms.map((r: { id: string }) => r.id)
-    );
 
-    await page.goto(`/app/#/invite/${player.token}`);
-    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
-    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-    await expect(page.locator('.schedule-page')).toBeVisible();
 
-    await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
-
-    // REQ-0185: the picker lists authored dungeon DEFS; option VALUES are the
-    // def ids. Select the frost pilot def explicitly (locale-independent).
-    await page.locator('[data-testid="schedule-dungeon-select"]').selectOption('niflheim_depths');
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toHaveValue('niflheim_depths');
-
-    await page.locator('[data-testid="schedule-level-input"]').fill('3');
-    await page.locator('[data-testid="schedule-create-submit"]').click();
-
-    await expect(async () => {
-      const rooms = (await apiListRooms(page, player.token)).body.rooms as Array<{ id: string }>;
-      expect(rooms.some((r) => !beforeIds.has(r.id))).toBe(true);
-    }).toPass({ timeout: 10000 });
-
-    const afterRooms = (await apiListRooms(page, player.token)).body.rooms as Array<{ id: string }>;
-    const newRoom = afterRooms.find((r) => !beforeIds.has(r.id));
-    expect(newRoom).toBeTruthy();
-    const roomId = newRoom!.id;
-    createdRoomIds.push(roomId);
-
-    // REQ-0185: confirm the SERVER recorded the authored dungeon DEF id +
-    // level:3 on this room (the def IS the selection now).
-    const roomView = await apiGetRoom(page, player.token, roomId);
-    expect(roomView.body.room.dungeonId).toBe('niflheim_depths');
-    expect(roomView.body.room.level).toBe(3);
-
-    await apiCancelRoom(page, player.token, roomId);
-  });
-
-  test('the generator-seed field is HIDDEN for a plain guest (no item_admin role)', async ({ page }) => {
-    await page.goto(`/app/#/invite/${player.token}`);
-    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
-    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
-    await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toHaveCount(0);
-  });
-
-  test('the generator-seed field IS visible for the dev_mode fallback caller (item_admin), and a seeded room persists the exact seed', async ({ page }) => {
-    // Plain bootApp (no #/invite/<token> in the URL) resolves to the
-    // dev_mode fallback player via /api/me, same convention
-    // schedule.spec.ts's own REQ-0041 dev-grant tests already use. The
-    // dev fallback player accumulates rooms across THIS WHOLE spec
-    // file's run (other describe blocks create dev-owned rooms too), so
-    // `.first()` in the rooms list is NOT reliably "the room this test
-    // just created" -- capture the set of room ids BEFORE submitting and
-    // diff against the set AFTER to find the genuinely new one, rather
-    // than trusting list order/position.
-    const beforeRes = await page.request.get('/api/schedule/rooms');
-    const idsBefore = new Set(((await beforeRes.json()).rooms as Array<{ id: string }>).map((r) => r.id));
-
-    await page.goto('/app/#/schedule');
-    await expect(page.locator('.schedule-page')).toBeVisible({ timeout: 10000 });
-    await openCreatePanel(page);
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('[data-testid="schedule-gen-seed-input"]')).toBeVisible({ timeout: 10000 });
-
-    await page.locator('[data-testid="schedule-dungeon-select"]').selectOption('niflheim_depths');
-    await page.locator('[data-testid="schedule-level-input"]').fill('2');
-    await page.locator('[data-testid="schedule-gen-seed-input"]').fill('e2e-dev-seed-req0043');
-    await page.locator('[data-testid="schedule-create-submit"]').click();
-
-    await expect(async () => {
-      const afterRes = await page.request.get('/api/schedule/rooms');
-      const afterRooms = (await afterRes.json()).rooms as Array<{ id: string }>;
-      expect(afterRooms.some((r) => !idsBefore.has(r.id))).toBe(true);
-    }).toPass({ timeout: 10000 });
-
-    const afterRes = await page.request.get('/api/schedule/rooms');
-    const afterRooms = (await afterRes.json()).rooms as Array<{ id: string }>;
-    const newRoom = afterRooms.find((r) => !idsBefore.has(r.id));
-    expect(newRoom).toBeTruthy();
-    const roomId = newRoom!.id;
-
-    // No X-Auth-Token -- resolves via the dev_mode fallback, same as
-    // apiBackdate()'s own convention in this file.
-    const roomRes = await page.request.get(`/api/schedule/rooms/${roomId}`);
-    const roomBody = await roomRes.json();
-    expect(roomBody.room.genSeed).toBe('e2e-dev-seed-req0043');
-    expect(roomBody.room.dungeonId).toBe('niflheim_depths');
-    expect(roomBody.room.level).toBe(2);
-
-    await page.request.delete(`/api/schedule/rooms/${roomId}`);
-  });
 
   test('a plain guest token is refused (403) if it tries to POST a genSeed directly via the API (server-side gate, independent of the UI hiding the field)', async ({ page }) => {
     const res = await page.request.post('/api/schedule/rooms', {
@@ -1533,5 +1368,98 @@ test.describe('REQ-0049: monitor renders layered-encounter attachment badges (in
     expect(counts.lost).toBeGreaterThanOrEqual(1);
     expect(counts.fire).toBeGreaterThanOrEqual(1);
     await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
+
+// ---- REQ-0239: sortie page (#/sortie) + squad status board ----------------
+test.describe('REQ-0239: sortie page + squad status board', () => {
+  // Drive the sortie page UI to launch a room (select dungeon, assign 4 squads,
+  // launch). Lands on #/schedule (the sortie IS the launch).
+  async function sortieLaunch(page: Page, opts: { dungeonId: string; level?: number; seed?: string }): Promise<void> {
+    await page.goto('/app/#/sortie');
+    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
+    await page.locator(`[data-testid="sortie-dungeon-card-${opts.dungeonId}"]`).click();
+    await expect(page.locator('[data-testid="sortie-dossier"]')).toBeVisible({ timeout: 10000 });
+    if (opts.level != null) await page.locator('[data-testid="sortie-level-input"]').fill(String(opts.level));
+    if (opts.seed) {
+      await page.locator('[data-testid="sortie-advanced-toggle"]').click();
+      await page.locator('[data-testid="sortie-seed-input"]').fill(opts.seed);
+    }
+    for (let i = 0; i < 4; i++) await page.locator(`[data-testid="sortie-squad-card-${i}"]`).click();
+    await expect(page.locator('[data-testid="sortie-launch-btn"]')).toBeEnabled({ timeout: 10000 });
+    await page.locator('[data-testid="sortie-launch-btn"]').click();
+    await expect(page).toHaveURL(/#\/schedule$/, { timeout: 10000 });
+  }
+
+  test('the sortie page launches a room atomically (dungeon + 4 squads), records the def id + level, DEFAULTS cancel to deferred (bug #6), and carries lastRun (D1/B1)', async ({ page }) => {
+    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+    const beforeIds = new Set((await apiListRooms(page, player.token)).body.rooms.map((r: { id: string }) => r.id));
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await sortieLaunch(page, { dungeonId: 'niflheim_depths', level: 3 });
+
+    let roomId = '';
+    await expect(async () => {
+      const rooms = (await apiListRooms(page, player.token)).body.rooms as Array<{ id: string }>;
+      const nu = rooms.find((r) => !beforeIds.has(r.id));
+      expect(nu).toBeTruthy();
+      roomId = nu!.id;
+    }).toPass({ timeout: 10000 });
+    createdRoomIds.push(roomId);
+
+    const view = await apiGetRoom(page, player.token, roomId);
+    expect(view.body.room.dungeonId).toBe('niflheim_depths');
+    expect(view.body.room.level).toBe(3);
+    expect(view.body.room.status).toBe('active');
+    // bug #6 / golden g: the sortie default cancel policy is DEFERRED.
+    expect(view.body.room.cancelPolicy).toEqual({ immediate: false });
+    // B1: the rooms list carries the compact lastRun window.
+    const listed = (await apiListRooms(page, player.token)).body.rooms.find((r: { id: string }) => r.id === roomId);
+    expect(listed.lastRun && listed.lastRun.runId).toBeTruthy();
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('the squad status board renders a tile per squad and a deployed squad reads 出撃中 / On expedition', async ({ page }) => {
+    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1', cancelPolicy: { immediate: true } });
+    expect(created.status).toBe(200);
+    const roomId = created.body.room.id as string;
+    createdRoomIds.push(roomId);
+    for (let i = 0; i < 4; i++) await apiAssignSlot(page, player.token, roomId, i, i);
+    await apiGetRoom(page, player.token, roomId); // settle -> active
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    await expect(page.locator('[data-testid="squad-board"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="squad-board-tile-0"]')).toBeVisible();
+    await expect(page.locator('[data-testid="squad-board-state-0"]')).toHaveAttribute('data-state', /deployed|returning|recovering|staging/, { timeout: 15000 });
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('the sortie AdvancedFold generator-seed field is HIDDEN for a plain guest and VISIBLE for the dev/item_admin fallback (REQ-0043 gate)', async ({ page }) => {
+    // plain guest -> seed hidden.
+    await page.request.put(`/api/profile/${player.playerId}/canvas`, { headers: { 'X-Auth-Token': player.token }, data: fixture });
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.goto('/app/#/sortie');
+    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 10000 });
+    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
+    await page.locator('[data-testid="sortie-advanced-toggle"]').click();
+    await expect(page.locator('[data-testid="sortie-seed-input"]')).toHaveCount(0);
+
+    // dev_mode fallback -> item_admin -> seed visible. Clear the stored guest
+    // token AND reload so the app re-boots fresh: /api/me now resolves to the
+    // dev fallback (item_admin), not the invited guest (a hash nav alone would
+    // keep the already-fetched guest `me`).
+    await page.evaluate(() => window.localStorage.clear());
+    await page.reload();
+    await expect(page.locator('[data-testid="sortie-page"]')).toBeVisible({ timeout: 15000 });
+    await page.locator('[data-testid="sortie-dungeon-card-niflheim_depths"]').click();
+    await page.locator('[data-testid="sortie-advanced-toggle"]').click();
+    await expect(page.locator('[data-testid="sortie-seed-input"]')).toBeVisible({ timeout: 10000 });
   });
 });

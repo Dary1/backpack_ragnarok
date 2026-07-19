@@ -4,6 +4,7 @@
 import { scheduleJSON } from './http';
 import type {
   ApiCreateRoomBody,
+  ApiSortieBody,
   ApiDungeonsPayload,
   ApiForecastPayload,
   ApiRoom,
@@ -42,6 +43,13 @@ export function fetchForecast(dungeonId: string, level: number): Promise<ApiFore
 /** POST /api/schedule/rooms -- creates a room owned by the caller. */
 export function createRoom(body: ApiCreateRoomBody): Promise<{ ok: true; room: ApiRoom }> {
   return scheduleJSON('/api/schedule/rooms', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** POST /api/schedule/sorties -- REQ-0239 (D1). Atomically creates a room, fills
+ * all four squad slots under the deploy gate, and launches. A 409 (shared-unit
+ * collision) rolls the room back server-side. */
+export function createSortie(body: ApiSortieBody): Promise<{ ok: true; room: ApiRoom }> {
+  return scheduleJSON('/api/schedule/sorties', { method: 'POST', body: JSON.stringify(body) });
 }
 
 /** GET /api/schedule/rooms -- lists the CALLER's own rooms only. */

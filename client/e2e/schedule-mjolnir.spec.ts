@@ -89,25 +89,22 @@ test.describe('REQ-0071: MJOLNIR chrome on the rooms view', () => {
     // list to have loaded, which the create-panel wait below implies).
     await expect(page.locator('.schedule-colhead-den')).toHaveText('ROOMS');
 
-    // Fresh player, zero rooms -> the create panel auto-opens (existing
-    // behavior) and now wears .panel.ornate + 4 gold knots.
-    const createPanel = page.locator('.schedule-create-panel');
-    await expect(createPanel).toBeVisible({ timeout: 10000 });
-    await expect(createPanel).toHaveClass(/panel/);
-    await expect(createPanel).toHaveClass(/ornate/);
-    await expect(createPanel.locator('> .k')).toHaveCount(4);
+    // REQ-0239: the inline create form is REMOVED -- the rooms toolbar / empty
+    // state now offers a gold CTA to the dedicated #/sortie page instead of an
+    // inline create panel. Assert the CTA points at #/sortie.
+    await expect(page.locator('[data-testid="schedule-create-cta"]')).toHaveAttribute('href', '#/sortie');
 
-    // Create a room through the real form (same selectors as
-    // schedule.spec.ts's own create-room test).
-    await expect(page.locator('[data-testid="schedule-dungeon-select"]')).toBeVisible({ timeout: 10000 });
-    await page.locator('[data-testid="schedule-level-input"]').fill('1');
-    await page.locator('[data-testid="schedule-create-submit"]').click();
-
-    const card = page.locator('[data-testid="schedule-room-card"]').first();
+    // Create a room via the API, then reload + watch it, to assert the room
+    // card's OWN ornate anatomy (unchanged by the sortie redesign).
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    expect(created.status).toBe(200);
+    const roomId = created.body.room.id as string;
+    createdRoomIds.push(roomId);
+    await page.reload();
+    await expect(page.locator('.schedule-page')).toBeVisible();
+    const card = page.locator(`[data-testid="schedule-room-card"][data-room-id="${roomId}"]`).first();
     await expect(card).toBeVisible({ timeout: 10000 });
-    const roomId = await card.getAttribute('data-room-id');
-    expect(roomId).toBeTruthy();
-    createdRoomIds.push(roomId!);
+    await card.click();
 
     // Room card anatomy: ornate panel + knots + emblem disc + status
     // CHIP + the 2x2 slot-preview grid, all four slots empty (dashed).
