@@ -1,389 +1,152 @@
-// Run monitor (golden k) -- REQ-0036 P1-C. Small panel (progress %,
-// encounter type/mode, one-line telegraph readout) always shown for a
-// room that has ever had a run; an expand toggle reveals the full
-// two-grid PixiJS view (MonitorRenderer.ts).
+// Run monitor (golden k) -- REQ-0036 P1-C, rebuilt REQ-0240 into the six-zone
+// spectator surface (03 spec): M1 header banner, M2 expedition rail, M3 Pixi
+// stage, M4 localized event feed, M5 squad dock, M6 transport. Presentation
+// pacing (user directive #7): events are RELEASED to the renderer/feed/dock at
+// presentation cadence by useRunPlayhead (2.5s deliberate live lag, 6s catch-up),
+// NOT the instant the poll returns them. The sim still resolves instantly; the
+// presentation TIME is what stretches.
 //
-// Polling: GET .../run roughly every ~2s while this room has a run
-// (active OR recently settled, so the summary/rewards panel has a
-// chance to render before polling stops). Each poll returns the FULL
-// events array up to the current elapsedSecs (not a delta) -- this
-// component tracks `lastEventIndex` (the count of events already
-// rendered) and slices `events.slice(lastEventIndex)` before handing the
-// NEW tail to MonitorRenderer.applyEvents(), per the run-clock polling
-// contract described in server/README.md / the task brief. Progress
-// prefers the latest `progress` event's `pct` field when present, else
-// falls back to `clock.pct`.
-//
-// Pixi lifecycle: the MonitorRenderer (a real PIXI.Application) is
-// created ONCE, the first time this room's monitor is expanded, and kept
-// mounted (a permanently-rendered <canvas>, toggled only via CSS
-// display:none on collapse) for the lifetime of this component -- NOT
-// recreated on every expand/collapse or every poll tick, mirroring the
-// Board/InventoryBoard "one Pixi Application forever" discipline this
-// task brief calls out explicitly.
-//
-// REQ-0071 (MJOLNIR re-skin; mock: web/redesign/expedition.html's
-// .mon-panel): chrome/framing ONLY -- the Pixi lifecycle above, the
-// poll-and-diff loop, the settled gate, and every data-testid/class the
-// E2E suite selects are untouched. New chrome, all fed by REAL run data:
-//   - m-head strip: 戦況監視 title + the room's resolved dungeon name, a
-//     LIVE chip while the run is still unsettled, and the room's genSeed
-//     (ApiRoom.genSeed -- the mock's "seed 0x..." readout, real here).
-//   - iron control bar under the Field canvas: decorative rivets, a
-//     wall-clock readout (clock.elapsedSecs / durationSecs -- the run
-//     replay is SERVER-paced, so the mock's pause/speed/skip controls
-//     have no honest backing and are omitted, see the REQ-0071 notes
-//     doc), and the mock timeline whose fill is the same progress pct
-//     the summary bar shows, with one diamond pip per encounter_start
-//     event at its own t/durationSecs position.
-//   - Log tab gains the mock's logbar caption (event count).
-//   - Reward rows render as small item cards (icon via the SAME
-//     iconDataUrl the WarehouseTab already uses + the rarity word tint).
-import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+// Kept invariants: ONE Pixi Application per Monitor, mounted once, CSS-toggled,
+// destroyed only on real unmount; poll GET .../run ~2s (FULL server-visible
+// array, gated on pt); every kept data-testid still works; the __monitorDebug
+// e2e seam is preserved. The old Field/Log tabs retire (the feed IS the log,
+// humanized; raw JSONL moves to the admin ⋯ menu).
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
-  fetchContent,
-  fetchDungeons,
-  fetchRun,
-  fetchWarehouse,
-  type ApiContentPayload,
-  type ApiRoom,
-  type ApiRunEvent,
-  type ApiRunView,
-  type ApiWarehouseItem,
+  fetchContent, fetchDungeons, fetchRun, fetchWarehouse,
+  type ApiContentPayload, type ApiRoom, type ApiRunEvent, type ApiWarehouseItem,
 } from '../api';
 import { loadBoardTextures } from '../board/sprites';
 import { iconDataUrl } from '../dex/dexIcons';
-import { t, type TranslationKey } from '../i18n';
+import { t } from '../i18n';
 import type { Locale } from '../store';
 import { useGameStore } from '../store';
 import { formatCountdown } from './RoomCard';
 import { MonitorRenderer, type MonitorSquadVisual } from './MonitorRenderer';
 import { ChimeEngine, type ChimeStats } from './chimes/ChimeEngine';
 import { loadChimePrefs, CHIME_PREFS_EVENT } from './chimes/chimePrefs';
+import { MonitorHeader } from './monitor/MonitorHeader';
+import { ExpeditionRail } from './monitor/ExpeditionRail';
+import { railNodesFrom, type RailNode } from './monitor/railNodes';
+import { EventFeed } from './monitor/EventFeed';
+import { SquadDock } from './monitor/SquadDock';
+import { useRunPlayhead, type Speed } from './monitor/useRunPlayhead';
+import { feedRow, type FeedRow } from './monitor/feedCopy';
+import { reduceRunRoster } from './monitor/runRoster';
 
-/** Same item-name resolution WarehouseTab.tsx already uses (itemId ->
- * localized display name, falling back to the raw id if content hasn't
- * loaded yet or the id is unrecognized) -- kept as a small local copy
- * rather than exporting/importing across the two modules, since it is a
- * single three-line lookup and the two components' content-fetch
- * lifecycles are independent (this component fetches content lazily,
- * only once a run actually settles, not on every mount). */
 function localizedItemName(locale: Locale, content: ApiContentPayload | null, itemId: string): string {
-  // REQ-0168 U10: TM stacks (e.g. 'lrdst') live in content.tms, NOT
-  // content.items/sis -- resolve there too, else known TM rewards render
-  // as raw ids. rewardVisual() already checks content.tms; this mirrors it.
   const entry = content?.items[itemId] ?? content?.sis[itemId] ?? content?.tms[itemId];
   if (!entry) return itemId;
   if (locale === 'ja') return entry.i18n?.ja?.name ?? entry.name_ja ?? entry.name;
   return entry.name;
 }
-
-/** REQ-0045 (g): one humanized, one-line-per-event sentence per the
- * task brief's exact field list (t, type, actor, cells, dmg, status) --
- * covers every ev.ev value sim/combat.cjs actually emits (see
- * MonitorRenderer.ts's own applyOneEvent switch for the same
- * vocabulary, mirrored here for TEXT instead of a Pixi visual). Falls
- * back to a generic "t=Xs <ev> {raw JSON}" line for any event shape not
- * explicitly covered, so a future/unknown event type never disappears
- * from the log silently -- it just renders less prettily until this
- * function is extended for it. */
-function humanizeEvent(ev: ApiRunEvent): string {
-  const t = typeof ev.t === 'number' ? ev.t.toFixed(2) : '?';
-  const cellStr = (c: unknown): string => (Array.isArray(c) ? `[${c[0]},${c[1]}]` : String(c));
-  switch (ev.ev) {
-    case 'encounter_start':
-      return `t=${t}s  encounter #${ev.enc} starts (${ev.kind}, formation ${ev.formation})`;
-    case 'telegraph':
-      return `t=${t}s  telegraph: ${ev.src} winds up ${ev.skill} from the ${ev.edge} edge (fires at t=${typeof ev.fires_at === 'number' ? ev.fires_at.toFixed(2) : '?'}s)`;
-    case 'ray_fire':
-      return `t=${t}s  ray fired by ${ev.src} into the ${ev.field} field, entering at ${cellStr(ev.entry)}`;
-    case 'ray_step':
-      return `t=${t}s  ray travels through ${Array.isArray(ev.path) ? ev.path.length : '?'} cell(s)`;
-    case 'ray_bounce':
-      return `t=${t}s  ray bounces at ${cellStr(ev.at)} (new dir ${ev.new_dir}, bounce #${ev.bounce})`;
-    case 'ray_hit':
-      return `t=${t}s  HIT: ${ev.dst} takes ${ev.amount} dmg (hp after: ${ev.hp_after})`;
-    case 'ray_aoe': {
-      const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string; amount?: number }>) : [];
-      const hitList = hits.map((h) => `${h.dst}:${h.amount}`).join(', ');
-      return `t=${t}s  AOE at ${cellStr(ev.center)} (radius ${ev.radius}): ${hitList || 'no targets'}`;
-    }
-    case 'ray_hit_all': {
-      const hits = Array.isArray(ev.hits) ? (ev.hits as Array<{ dst?: string; amount?: number }>) : [];
-      const hitList = hits.map((h) => `${h.dst}:${h.amount}`).join(', ');
-      return `t=${t}s  HIT ALL (whole field): ${hitList || 'no targets'}`;
-    }
-    case 'reflect_damage':
-      return `t=${t}s  reflect: ${ev.dst} takes ${ev.amount} reflected dmg`;
-    case 'link_pulse':
-      return `t=${t}s  link pulse: ${ev.from}→${ev.to} (hop ${ev.hop})`;
-    case 'pulse_payload':
-      return `t=${t}s  pulse payload: ${ev.dst} ${ev.verb}${typeof ev.amount === 'number' ? ' ' + ev.amount : ''}`;
-    case 'pulse_fizzle':
-      return `t=${t}s  pulse fizzle (${ev.reason})`;
-    case 'att_reveal':
-      return `t=${t}s  ${ev.kind} found at ${cellStr(ev.at)}`;
-    case 'att_disarm':
-      return `t=${t}s  trap disarmed${ev.reward ? ` (reward: ${ev.reward})` : ''}`;
-    case 'att_open':
-      return `t=${t}s  ${ev.kind} opened${ev.shortcut ? ' -> shortcut!' : (ev.reward ? ` (reward: ${ev.reward})` : '')}`;
-    case 'att_lost':
-      return `t=${t}s  ${ev.kind} lost -- no ${ev.kind === 'trap' ? 'detection' : 'unlock'} POs deployed`;
-    case 'att_fire':
-      return `t=${t}s  trap fired (${ev.reason}) -- the price of skipping detection`;
-    case 'progress':
-      return `t=${t}s  progress: encounter #${ev.enc} -> ${ev.pct}%`;
-    case 'shortcut':
-      return `t=${t}s  shortcut: encounter #${ev.enc} grants +${typeof ev.jump_pct === 'number' ? ev.jump_pct.toFixed(1) : ev.jump_pct}% (now ${ev.pct_after}%)`;
-    case 'run_end':
-      return `t=${t}s  RUN END: ${String(ev.result).toUpperCase()} at ${ev.final_pct}% progress`;
-    default:
-      return `t=${t}s  ${ev.ev}  ${JSON.stringify(ev)}`;
-  }
-}
-
-/** REQ-0071: the mock ctrl bar's wall-clock readout -- mm:ss, tabular
- * digits via the theme's .tnum. Distinct from formatCountdown (kept
- * as-is for countdown TEXT lines): this one is a fixed-width clock face,
- * not a sentence fragment. */
-function formatClock(totalSecs: number): string {
-  const s = Math.max(0, Math.floor(totalSecs));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
-}
-
-/** REQ-0071: icon + rarity for a reward row -- the SAME content-map
- * resolution WarehouseTab.tsx's contentEntryFor already uses (TM stacks
- * live in content.tms; plain PO/SI items in content.items/content.sis),
- * degrading to "no icon, no tint" while content is still loading or for
- * an unrecognized id. */
 function rewardVisual(content: ApiContentPayload | null, item: ApiWarehouseItem): { icon: string | null; rarity: string | null } {
   if (!content) return { icon: null, rarity: null };
   const entry = item.kind === 'tm' ? content.tms[item.itemId] : content.items[item.itemId] ?? content.sis[item.itemId];
   if (!entry) return { icon: null, rarity: null };
   return { icon: iconDataUrl(entry.icon), rarity: entry.rarity ?? null };
 }
+function formatClock(totalSecs: number): string {
+  const s = Math.max(0, Math.floor(totalSecs));
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
 
 interface MonitorProps {
   room: ApiRoom;
   locale: Locale;
-  /** REQ-0071: resolved display name for room.dungeonId (RoomCard already
-   * receives it from SchedulePage's join) -- shown in the mock m-head's
-   * 「戦況監視 — <dungeon>」strip. Pure display. */
   dungeonName: string;
-  /** REQ-0168 U12: same item_admin gate SchedulePage already applies to
-   * the create-form seed field -- the monitor head's raw genSeed readout
-   * is a dev detail, shown only to item_admin, never to a plain guest. */
   isAdmin: boolean;
-  /** REQ-0100: fired once when this room's run settles, so SchedulePage's
-   * spoils rail can immediately refresh its warehouse preview (fresh loot
-   * just landed) instead of waiting its slow poll. Optional (no-op if the
-   * monitor is rendered without a rail). */
   onRunSettled?: () => void;
 }
 
 const POLL_MS = 2000;
+const SPEEDS: Speed[] = [0.5, 1, 2, 4];
 
 function latestOfType(events: ApiRunEvent[], evName: string): ApiRunEvent | null {
-  for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].ev === evName) return events[i];
-  }
+  for (let i = events.length - 1; i >= 0; i--) if (events[i].ev === evName) return events[i];
   return null;
-}
-
-// REQ-0168 U13(d): the sim emits raw tokens for encounter kinds
-// (pack/boss/trap...) and telegraph skill/edge words. Map the known
-// vocabulary to localized display text, falling back to the raw token for
-// anything not yet in the map (a future kind never disappears -- it just
-// renders untranslated until added here).
-const KIND_KEYS: Record<string, TranslationKey> = {
-  pack: 'schedule.monitor.kind.pack',
-  boss: 'schedule.monitor.kind.boss',
-  trap: 'schedule.monitor.kind.trap',
-  chest: 'schedule.monitor.kind.chest',
-  door: 'schedule.monitor.kind.door',
-};
-const SKILL_KEYS: Record<string, TranslationKey> = {
-  strike: 'schedule.monitor.skill.strike',
-  multi_strike: 'schedule.monitor.skill.multi_strike',
-};
-const EDGE_KEYS: Record<string, TranslationKey> = {
-  top: 'schedule.monitor.edge.top',
-  bottom: 'schedule.monitor.edge.bottom',
-  left: 'schedule.monitor.edge.left',
-  right: 'schedule.monitor.edge.right',
-};
-function localizedToken(locale: Locale, map: Record<string, TranslationKey>, token: string): string {
-  const key = map[token];
-  return key ? t(locale, key) : token;
-}
-
-function telegraphSentence(locale: Locale, ev: ApiRunEvent | null): string {
-  if (!ev) return t(locale, 'schedule.monitor.noTelegraphYet');
-  // REQ-0168 U13(d): localize the sim's raw skill/edge tokens (unknown
-  // tokens fall back to the raw string).
-  const skill = typeof ev.skill === 'string' ? localizedToken(locale, SKILL_KEYS, ev.skill) : '?';
-  const edge = typeof ev.edge === 'string'
-    ? localizedToken(locale, EDGE_KEYS, ev.edge)
-    : Array.isArray(ev.edge)
-      ? ev.edge.map((e) => localizedToken(locale, EDGE_KEYS, String(e))).join('/')
-      : '?';
-  const dir = typeof ev.dir === 'string' || typeof ev.dir === 'number' ? String(ev.dir) : '?';
-  return `${skill} (${edge}, ${dir})`;
 }
 
 export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: MonitorProps) {
   const snapshot = useGameStore();
-  // REQ-0168 U9: a local 1s clock so the cooldown readout counts DOWN in
-  // lockstep with RoomCard's own -- both now derive from room.cooldownUntil
-  // (refreshed by the rooms poll), instead of the monitor rendering the
-  // run's fixed cooldownSecs TOTAL once and never updating it.
   const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNowMs(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  const [run, setRun] = useState<ApiRunView | null>(null);
-  const [expanded, setExpanded] = useState(true); // REQ-0097: center detail pane opens the selected room's monitor expanded
+  useEffect(() => { const id = setInterval(() => setNowMs(Date.now()), 1000); return () => clearInterval(id); }, []);
+
+  const [run, setRun] = useState<import('../api').ApiRunView | null>(null);
   const [mountedOnce, setMountedOnce] = useState(false);
-  // REQ-0169 M1: a callback ref stored in state (NOT a plain useRef) so the
-  // Pixi mount effect can react to the canvas ACTUALLY entering the DOM --
-  // see the mount effect below for the mount-race root cause + fix.
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<MonitorRenderer | null>(null);
-  // REQ-0059: the client-only Circuit Chimes engine -- created alongside
-  // the Pixi renderer, fed the SAME event stream via renderer.setChimeSink.
   const chimeEngineRef = useRef<ChimeEngine | null>(null);
-  const lastEventIndexRef = useRef(0);
+  const cursorRef = useRef(0);
+  const lastSilentEpochRef = useRef(0);
+  const runIdRef = useRef<string | null>(null);
   const squadsMountedRef = useRef(false);
+  const rosterSetRef = useRef<string | null>(null);
   const [rewards, setRewards] = useState<ApiWarehouseItem[] | null>(null);
   const [content, setContent] = useState<ApiContentPayload | null>(null);
-  /** REQ-0045 (g): expanded-view tab -- 'field' (the existing Pixi
-   * canvas) or 'log' (a new humanized text panel + raw JSONL copy
-   * button). Local, not persisted -- purely a display toggle within the
-   * already-expanded monitor section. */
-  const [activeTab, setActiveTab] = useState<'field' | 'log'>('field');
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
-  // REQ-0099: settled-run replay transport -- a LOCAL playhead over the
-  // full (already-complete) event list, active ONLY once the run is
-  // settled. Live/unsettled runs keep the clock-locked bar unchanged.
-  const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState<1 | 2 | 4>(1);
-  const [playheadT, setPlayheadT] = useState(0);
-  const playheadRef = useRef(0);
-  const localCursorRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
+  const [narrow, setNarrow] = useState(false);
+  const shellRef = useRef<HTMLDivElement>(null);
 
-  // Poll GET .../run every ~2s while this room has (or recently had) a
-  // run. Stops implicitly if the room has no lastRunId at all (no run
-  // yet) -- there is nothing to poll for.
+  const playhead = useRunPlayhead(run);
+  const { playheadMs, durationMs, releasedIdx, isLive, needsCatchup, catchUp, speed, setSpeed, playing, setPlaying, seekMs, restart, progressPct, silentEpoch } = playhead;
+
+  // Poll GET .../run ~2s while this room has (or recently had) a run.
   useEffect(() => {
-    if (!room.lastRunId) {
-      setRun(null);
-      return;
-    }
+    if (!room.lastRunId) { setRun(null); return; }
     let cancelled = false;
-    const poll = async () => {
-      try {
-        const view = await fetchRun(room.id);
-        if (!cancelled) setRun(view);
-      } catch (e) {
-        // Non-fatal -- a transient fetch failure just skips this tick;
-        // the next interval tick retries.
-      }
+    const poll = async (): Promise<void> => {
+      try { const view = await fetchRun(room.id); if (!cancelled) setRun(view); } catch { /* transient */ }
     };
     void poll();
     const id = setInterval(poll, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
+    return () => { cancelled = true; clearInterval(id); };
   }, [room.id, room.lastRunId]);
 
-  // Mount the Pixi renderer ONCE, the first time this monitor is expanded --
-  // never recreated on later expand/collapse toggles.
-  //
-  // REQ-0169 M1 root cause (mount race): when a room is expanded BEFORE its
-  // first run exists, Monitor early-returns the awaitingRun stub -- there is
-  // NO <canvas> in the tree yet. Once the run auto-starts and the full JSX
-  // (with the canvas) finally renders, an effect keyed only on
-  // [expanded, mountedOnce] never re-fires (neither dep changed), so
-  // MonitorRenderer.mount()/app.init() never runs -- the canvas stays the
-  // browser-default 300x150 and replay renders nothing without a full page
-  // reload. Fix: key on `canvasEl` (a callback-ref value stored in state),
-  // so this effect runs the exact moment the canvas node enters the DOM,
-  // whatever conditional render gated it.
+  // Reset per-run cursors when the run identity changes.
   useEffect(() => {
-    if (!expanded || mountedOnce || !canvasEl) return;
+    if (run && run.runId !== runIdRef.current) {
+      runIdRef.current = run.runId;
+      cursorRef.current = 0;
+      lastSilentEpochRef.current = silentEpoch;
+      rendererRef.current?.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.runId]);
+
+  // Mount the Pixi renderer ONCE the canvas enters the DOM.
+  useEffect(() => {
+    if (mountedOnce || !canvasEl) return;
     let cancelled = false;
-    (async () => {
+    void (async () => {
       const textures = await loadBoardTextures();
       if (cancelled || !canvasEl) return;
       const renderer = await MonitorRenderer.mount(canvasEl, textures);
-      if (cancelled) {
-        renderer.destroy();
-        return;
-      }
+      if (cancelled) { renderer.destroy(); return; }
       rendererRef.current = renderer;
-      // REQ-0059: attach the chime engine to this renderer so every
-      // NON-silent event also drives audio + haptics, in perfect sync.
       const engine = new ChimeEngine(loadChimePrefs());
       chimeEngineRef.current = engine;
       renderer.setChimeSink(engine);
+      renderer.setLayout(narrow ? 'column' : 'row');
       setMountedOnce(true);
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [expanded, mountedOnce, canvasEl]);
+    return () => { cancelled = true; };
+  }, [mountedOnce, canvasEl, narrow]);
 
-  // REQ-0169 M4: opt-in dev probe. Set `window.__bpMonitorProbe = true` in
-  // the console BEFORE interacting to log every main-thread long task
-  // (>=50ms) with its duration + start time, so create-room / first-expand /
-  // first-mount freezes can be attributed. INERT unless the flag is set, so
-  // it is safe to ship (M4 step 3: gate the probe behind a dev flag).
+  // Breakpoint: relayout the Pixi fields (row <-> column) without recreating
+  // the app; the DOM zones restack via CSS.
   useEffect(() => {
-    if (typeof PerformanceObserver === 'undefined') return;
-    if (!(window as unknown as { __bpMonitorProbe?: boolean }).__bpMonitorProbe) return;
-    let obs: PerformanceObserver | null = null;
-    try {
-      obs = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.duration >= 50) {
-            // eslint-disable-next-line no-console
-            console.warn(`[bp monitor probe] longtask ${Math.round(entry.duration)}ms @ ${Math.round(entry.startTime)}ms`);
-          }
-        }
-      });
-      obs.observe({ entryTypes: ['longtask'] });
-    } catch {
-      // 'longtask' unsupported in this browser -- probe no-ops.
-    }
-    return () => obs?.disconnect();
+    const el = shellRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? el.clientWidth;
+      setNarrow(w < 900);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
+  useEffect(() => { rendererRef.current?.setLayout(narrow ? 'column' : 'row'); }, [narrow]);
 
-  // Mount player-side squad visuals once (formation box + full BP/PO
-  // canvas copy) -- these never change mid-run, so this only needs to
-  // run once after both the renderer AND the room's own squad/
-  // formation data are available.
-  //
-  // REQ-0045 (d) root cause: this used to take only `squadCanvas.bps[0]`
-  // (the FIRST bp) and hand MonitorRenderer a single {bpColor,bpShape}
-  // pair, which mountSquads() then drew as if that one shape alone
-  // occupied the WHOLE formation box starting at its own local (0,0) --
-  // "only the first BP is copied, auto-placed top-left". The squad's
-  // OTHER BPs (and every placed PO) were silently dropped from the
-  // visual entirely. sim/combat.cjs's compileSquadSnapshot was ALWAYS
-  // correct here (its own bps.map(...) already iterates every BP, each
-  // offset by its own origin -- see localBpCells) -- this was purely a
-  // client-side DISPLAY bug, the actual combat simulation never had it.
-  // Fixed by copying the squad's bps/pos arrays 1:1 (same "canvas is
-  // already 8x8, no auto-repositioning" contract compileSquadSnapshot
-  // already follows): every BP's cells are its own shape offsets PLUS
-  // its own origin (mirroring sim/combat.cjs's localBpCells formula
-  // exactly), and every placed (loc==='grid') PO becomes its own icon
-  // entry at its own origin cell.
+  // Mount player squads once + push the enemy/player roster to the renderer.
   useEffect(() => {
     if (!mountedOnce || !rendererRef.current || squadsMountedRef.current) return;
     const squadStore = snapshot.state?.presets;
@@ -391,68 +154,32 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
     const itemDefs = snapshot.gameData?.ITEMS;
     if (!activeCanvas) return;
     const squads: MonitorSquadVisual[] = room.slots.map((slot, idx) => {
-      const box = `squad${idx + 1}`;
-      let label = `U${idx + 1}`;
       const bps: MonitorSquadVisual['bps'] = [];
       const icons: MonitorSquadVisual['icons'] = [];
+      let label = `U${idx + 1}`;
       if (slot.squadIndex != null) {
-        const squadCanvas =
-          squadStore && slot.squadIndex === squadStore.active
-            ? activeCanvas
-            : squadStore?.store[slot.squadIndex] ?? null;
+        const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
-          for (const bp of squadCanvas.bps) {
-            // Mirrors sim/combat.cjs's localBpCells: shape offsets PLUS
-            // this BP's own origin -- NOT re-normalized to (0,0).
-            const cells: [number, number][] = bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]);
-            bps.push({ color: bp.color, cells });
-          }
+          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]) });
         }
         if (squadCanvas?.pos?.length && itemDefs) {
           for (const po of squadCanvas.pos) {
             if (po.loc !== 'grid' || !po.cell) continue;
-            const def = itemDefs[po.id];
-            if (!def) continue; // unknown/stale item id -- skip this one icon defensively, other squads unaffected
+            const def = itemDefs[po.id]; if (!def) continue;
             icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell });
           }
         }
       }
-      return { slotIndex: idx, box, bps, label, icons };
+      return { slotIndex: idx, box: `squad${idx + 1}`, bps, label, icons };
     });
-    // NOTE: `box` above is a placeholder key ("unit1".."unit4"), NOT yet
-    // the real "F2:M9"-style box string -- the real box strings live in
-    // the dungeons-list formation payload (ApiFormationEntry.canvases),
-    // which this component does not fetch on its own (SchedulePage/
-    // CreateRoomForm already fetch it for the create form). Rather than
-    // re-fetch it again here per-room, MonitorRenderer.mountSquads()
-    // degrades gracefully: parseBoxToPixelRect on a plain "unit1" string
-    // (no colon) yields a zero-size rect at the origin, which would draw
-    // nothing useful. To keep this real (not a silent no-op), fetch the
-    // formation's actual canvases map once, matched by the room's own
-    // formationId.
     void (async () => {
       try {
         const payload = await fetchDungeons();
         const formation = payload.formations.find((f) => f.id === room.formationId);
-        // REQ-0169 M3: surface a silent join failure (formation id no longer
-        // in content, or a squad slot with no canvas box) -- MonitorRenderer
-        // draws a dim fallback outline for the degenerate box, and this warn
-        // makes the cause visible in dev instead of a blank player field.
-        if (!formation) {
-          // eslint-disable-next-line no-console
-          console.warn('[backpack_ragnarok] Monitor: formation', room.formationId, 'not found in dungeons payload -- squads will use fallback outlines');
-        }
         const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`squad${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountSquads(withRealBoxes);
         squadsMountedRef.current = true;
-        // REQ-0045 (d)/(f) regression-test seam: expose this room's
-        // mounted squads + enemy marker bounds keyed by roomId, same
-        // "assert on real data instead of reverse-engineering canvas
-        // pixels" rationale as store.ts's own __backpackDebug hook --
-        // multiple room cards can each have their own Monitor instance
-        // mounted simultaneously, so this is a roomId-keyed map, not a
-        // single flat object. Never read by any production UI code path.
         interface MonitorDebugEntry {
           squads: () => MonitorSquadVisual[];
           enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }>;
@@ -466,38 +193,40 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         debugWin.__monitorDebug[room.id] = {
           squads: () => rendererRef.current?.getLastMountedSquads() ?? [],
           enemyBounds: () => rendererRef.current?.getEnemyMarkerBounds() ?? [],
-          // REQ-0048 test seam: pulse-visual counters + a direct applyEvents
-          // hook so an e2e can drive synthetic pulse events (pulse CONTENT
-          // -- spark/payload POs -- debuts later in the Ember Pack, so the
-          // client render path is verified with injected events here).
           pulseCounts: () => rendererRef.current?.getPulseVisualCounts() ?? { linkPulses: 0, payloads: 0, fizzles: 0, rays: 0 },
           attachmentCounts: () => rendererRef.current?.getAttachmentVisualCounts() ?? { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 },
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
-          // REQ-0059 test seam: the chime engine's honest processed/played/
-          // vibrated counters, so an e2e can assert events reached the audio
-          // layer without faking an audio assertion.
           chimeStats: () => chimeEngineRef.current?.getStats() ?? null,
         };
       } catch (e) {
-        // Non-fatal -- the expanded view simply shows no squad footprints if
-        // the formation lookup fails; ray animation and the enemy side are
-        // unaffected. REQ-0169 M3: warn rather than swallow silently.
         // eslint-disable-next-line no-console
         console.warn('[backpack_ragnarok] Monitor: squad/formation mount failed', e);
       }
     })();
-  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.state?.presets, snapshot.gameData, room.id]);
+  }, [mountedOnce, room.slots, room.formationId, snapshot.state, snapshot.gameData, room.id]);
 
-  // REQ-0045 (e): once a run has genuinely settled (NOT merely
-  // `run.result !== 'incomplete'` -- see the summary-gate fix below for
-  // why that distinction matters) with a non-wipe result, fetch the
-  // reward list. The warehouse is the actual reward ledger (golden e/f);
-  // GET .../run itself carries no `rewards` field at all. Filtered down
-  // to rows whose sourceRunId matches THIS run, so a monitor showing an
-  // OLDER run's summary (or a different room's) never bleeds another
-  // run's rewards into view. Runs once per runId (guarded by the
-  // `rewards === null` check combined with the runId-keyed effect deps),
-  // not on every ~2s poll tick.
+  // Push roster (M1) to the renderer once available (drives stage plates/HP ticks).
+  useEffect(() => {
+    if (!mountedOnce || !rendererRef.current || !run?.roster) return;
+    if (rosterSetRef.current === run.runId) return;
+    rendererRef.current.setRoster(run.roster);
+    rosterSetRef.current = run.runId;
+  }, [mountedOnce, run?.roster, run?.runId]);
+
+  // Release events to the renderer at PRESENTATION cadence (playhead), not poll
+  // time -- animated for normal live release, silent for catch-up/seek/settle.
+  useEffect(() => {
+    const r = rendererRef.current; if (!r || !run) return;
+    const idx = releasedIdx;
+    const silentBatch = silentEpoch !== lastSilentEpochRef.current;
+    lastSilentEpochRef.current = silentEpoch;
+    if (idx === cursorRef.current && !silentBatch) return;
+    if (idx < cursorRef.current) { r.reset(); r.applyEvents(run.events.slice(0, idx), { silent: true }); }
+    else if (idx > cursorRef.current) r.applyEvents(run.events.slice(cursorRef.current, idx), { silent: silentBatch });
+    cursorRef.current = idx;
+  }, [releasedIdx, silentEpoch, run]);
+
+  // Rewards fetch once settled + non-wipe.
   useEffect(() => {
     if (!run || !run.settled || run.result === 'wipe' || rewards !== null) return;
     let cancelled = false;
@@ -507,434 +236,136 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         if (cancelled) return;
         setContent(contentPayload);
         setRewards(whRes.items.filter((it) => it.sourceRunId === run.runId));
-      } catch (e) {
-        // Non-fatal -- the rewards list simply stays empty/unloaded if
-        // this fetch fails; the rest of the summary panel (result,
-        // level, cooldown) is unaffected.
-        if (!cancelled) setRewards([]);
-      }
+      } catch { if (!cancelled) setRewards([]); }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [run, rewards]);
 
-  // Feed only the NEW tail of events to the renderer on every poll
-  // update -- track lastEventIndex across polls (per the run-clock
-  // polling contract: each poll returns the FULL array, not a delta).
+  const settled = run?.settled ?? false;
+  useEffect(() => { if (settled && run) onRunSettled?.(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [settled, run?.runId]);
+
+  useEffect(() => () => {
+    rendererRef.current?.destroy(); rendererRef.current = null;
+    chimeEngineRef.current?.dispose(); chimeEngineRef.current = null;
+  }, []);
   useEffect(() => {
-    if (!run || !rendererRef.current || run.settled) return;
-    const newTail = run.events.slice(lastEventIndexRef.current);
-    if (newTail.length > 0) {
-      // BUG #4 defensive fix (REQ-0041): lastEventIndexRef MUST advance
-      // unconditionally, even if applyEvents somehow throws (it no longer
-      // should -- see MonitorRenderer.ts's own per-event try/catch -- but
-      // this call site is the SPECIFIC reason the original freeze became
-      // a PERMANENT crash-loop rather than a one-off dropped frame: this
-      // ref used to only advance AFTER a successful (non-throwing) call,
-      // so a throw here left the same stuck event range re-processed,
-      // and re-thrown, on every subsequent ~2s poll forever. Advancing in
-      // a finally block makes "skip the bad tail, keep polling forward"
-      // the guaranteed behavior regardless of what MonitorRenderer does
-      // internally -- belt-and-suspenders on top of the renderer's own
-      // fix, not a substitute for it.
-      try {
-        rendererRef.current.applyEvents(newTail);
-      } finally {
-        lastEventIndexRef.current = run.events.length;
-      }
-    }
+    const onPrefs = (): void => chimeEngineRef.current?.setPrefs(loadChimePrefs());
+    window.addEventListener(CHIME_PREFS_EVENT, onPrefs); window.addEventListener('storage', onPrefs);
+    return () => { window.removeEventListener(CHIME_PREFS_EVENT, onPrefs); window.removeEventListener('storage', onPrefs); };
+  }, []);
+
+  const onCopyJsonl = useCallback(() => {
+    const jsonl = (run?.events ?? []).map((ev) => JSON.stringify(ev)).join('\n');
+    void navigator.clipboard.writeText(jsonl).then(() => setCopyStatus('copied')).catch(() => setCopyStatus('failed'));
+    setTimeout(() => setCopyStatus('idle'), 2000);
   }, [run]);
 
-  // Destroy the Pixi Application only on a REAL unmount of this Monitor
-  // instance (room card removed from the rooms list entirely), never on
-  // a mere collapse.
-  useEffect(() => {
-    return () => {
-      rendererRef.current?.destroy();
-      rendererRef.current = null;
-      chimeEngineRef.current?.dispose();
-      chimeEngineRef.current = null;
-    };
-  }, []);
-
-  // REQ-0059: keep the chime engine's prefs in sync with a live Settings
-  // change (chimes/haptics/volume) -- saveChimePrefs dispatches
-  // CHIME_PREFS_EVENT in-tab; the browser fires 'storage' cross-tab.
-  useEffect(() => {
-    const onPrefs = () => chimeEngineRef.current?.setPrefs(loadChimePrefs());
-    window.addEventListener(CHIME_PREFS_EVENT, onPrefs);
-    window.addEventListener('storage', onPrefs);
-    return () => {
-      window.removeEventListener(CHIME_PREFS_EVENT, onPrefs);
-      window.removeEventListener('storage', onPrefs);
-    };
-  }, []);
-
-  // REQ-0099: transport is honest ONLY for a settled run (its full
-  // deterministic event list already exists; a live run stays clock-
-  // locked, no transport rendered).
-  const settledNow = run?.settled ?? false;
-
-  // On settle, make sure the renderer holds the FULL final state (feed
-  // any tail the live loop had not reached, silently), then park the
-  // playhead at the end (playing=false) -- pressing play restarts from 0.
-  useEffect(() => {
-    if (!settledNow || !run || !rendererRef.current) return;
-    const r = rendererRef.current;
-    const remaining = run.events.slice(lastEventIndexRef.current);
-    if (remaining.length) {
-      r.applyEvents(remaining, { silent: true });
-      lastEventIndexRef.current = run.events.length;
-    }
-    localCursorRef.current = run.events.length;
-    playheadRef.current = run.durationSecs;
-    setPlayheadT(run.durationSecs);
-    setPlaying(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledNow, run?.runId]);
-
-  // REQ-0100: notify the spoils rail once this room's run settles, so it can
-  // refresh the warehouse preview immediately (loot lands at settle time) --
-  // fires once per runId (independent of the Pixi renderer, so it works even
-  // when the Field pane was never mounted).
-  useEffect(() => {
-    if (settledNow && run) onRunSettled?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settledNow, run?.runId]);
-
-  // Seek the playhead to an absolute time. A backward move (or a forward
-  // jump) rebuilds state via reset()+silent re-apply so no transient VFX
-  // sprays; used by the scrubber and skip-to-end. Guard determinism:
-  // seek(t) then play == play straight to t (same event set applied).
-  const seekTo = useCallback(
-    (targetT: number) => {
-      const r = rendererRef.current;
-      if (!r || !run) return;
-      const dur = run.durationSecs;
-      const clamped = Math.max(0, Math.min(dur, targetT));
-      const events = run.events;
-      let idx = 0;
-      while (idx < events.length && (events[idx].t as number) <= clamped) idx++;
-      if (clamped < playheadRef.current) {
-        r.reset();
-        r.applyEvents(events.slice(0, idx), { silent: true });
-      } else if (idx > localCursorRef.current) {
-        r.applyEvents(events.slice(localCursorRef.current, idx), { silent: true });
-      }
-      localCursorRef.current = idx;
-      playheadRef.current = clamped;
-      setPlayheadT(clamped);
-    },
-    [run]
-  );
-
-  // rAF playback loop -- advance the playhead by dt*speed while playing a
-  // settled run, feeding newly-crossed events WITH their transient
-  // animations; stop at the end.
-  useEffect(() => {
-    if (!settledNow || !playing || !run) return;
-    let last = performance.now();
-    const stepFrame = (now: number): void => {
-      const dur = run.durationSecs;
-      const dt = ((now - last) / 1000) * speed;
-      last = now;
-      let tNext = playheadRef.current + dt;
-      if (tNext >= dur) tNext = dur;
-      const events = run.events;
-      let idx = localCursorRef.current;
-      while (idx < events.length && (events[idx].t as number) <= tNext) idx++;
-      if (idx > localCursorRef.current) {
-        rendererRef.current?.applyEvents(events.slice(localCursorRef.current, idx));
-        localCursorRef.current = idx;
-      }
-      playheadRef.current = tNext;
-      setPlayheadT(tNext);
-      if (tNext >= dur) {
-        setPlaying(false);
-        return;
-      }
-      rafRef.current = requestAnimationFrame(stepFrame);
-    };
-    rafRef.current = requestAnimationFrame(stepFrame);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    };
-  }, [settledNow, playing, speed, run]);
-
   const onPlayPause = useCallback(() => {
-    if (!settledNow || !run) return;
-    if (!playing) {
-      // REQ-0059: a click is the user gesture browsers require to start
-      // audio -- resume the (lazily-created) AudioContext here.
-      chimeEngineRef.current?.resume();
-      if (playheadRef.current >= run.durationSecs) {
-        rendererRef.current?.reset();
-        localCursorRef.current = 0;
-        playheadRef.current = 0;
-        setPlayheadT(0);
-      }
-      setPlaying(true);
-    } else {
-      setPlaying(false);
+    if (!settled || !run) return;
+    chimeEngineRef.current?.resume();
+    if (!playing) { if (playheadMs >= durationMs) restart(); else setPlaying(true); }
+    else setPlaying(false);
+  }, [settled, run, playing, playheadMs, durationMs, restart, setPlaying]);
+  const onSkipEnd = useCallback(() => { if (settled && run) seekMs(durationMs); }, [settled, run, durationMs, seekMs]);
+  const onScrubClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (!settled || !run) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const frac = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+    seekMs(Math.max(0, Math.min(1, frac)) * durationMs);
+  }, [settled, run, durationMs, seekMs]);
+
+  // ---- derived view data (released slice drives feed/dock/rail passed-state) ----
+  const released = useMemo(() => (run ? run.events.slice(0, releasedIdx) : []), [run, releasedIdx]);
+  const enemyNameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const en of run?.roster?.enemies ?? []) m.set(en.id, locale === 'ja' ? en.nameJa : en.name);
+    return m;
+  }, [run?.roster, locale]);
+  const feedRows = useMemo<FeedRow[]>(() => {
+    const rows: FeedRow[] = [];
+    for (let i = 0; i < released.length; i++) {
+      const fr = feedRow(locale, released[i], i, { dungeonName, enemyName: (id) => enemyNameById.get(id) ?? id });
+      if (fr) rows.push(fr);
     }
-  }, [settledNow, playing, run]);
+    return rows;
+  }, [released, locale, dungeonName, enemyNameById]);
+  const rosterState = useMemo(() => reduceRunRoster(run?.roster ?? null, released, locale === 'ja' ? 'ja' : 'en'), [run?.roster, released, locale]);
+  const squadNames = useMemo(() => room.slots.map((slot) => (slot.squadIndex != null ? snapshot.state?.presets?.names[slot.squadIndex] ?? null : null)), [room.slots, snapshot.state]);
+  const railNodes = useMemo<RailNode[]>(() => {
+    if (!run) return [];
+    return railNodesFrom(run.events, locale).map((n) => ({ ...n, passed: n.ptMs <= playheadMs }));
+  }, [run, locale, playheadMs]);
 
-  const onSkipEnd = useCallback(() => {
-    if (!settledNow || !run) return;
-    setPlaying(false);
-    seekTo(run.durationSecs);
-  }, [settledNow, run, seekTo]);
-
-  const onScrub = useCallback(
-    (e: ReactMouseEvent<HTMLDivElement>) => {
-      if (!settledNow || !run) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const frac = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
-      setPlaying(false);
-      seekTo(Math.max(0, Math.min(1, frac)) * run.durationSecs);
-    },
-    [settledNow, run, seekTo]
-  );
+  const latestProgress = run ? (latestOfType(released, 'progress')?.pct as number | undefined) : undefined;
+  const railPct = typeof latestProgress === 'number' ? latestProgress : progressPct;
+  const returnAt = run && isLive ? new Date(Date.parse(run.startedAt) + run.durationSecs * 1000).toLocaleTimeString(locale === 'ja' ? 'ja-JP' : 'en-US', { hour: '2-digit', minute: '2-digit' }) : null;
 
   if (!room.lastRunId) {
     return <div className="schedule-monitor schedule-monitor-empty">{t(locale, 'schedule.monitor.awaitingRun')}</div>;
   }
 
-  const pct = run ? (latestOfType(run.events, 'progress')?.pct as number | undefined) ?? run.clock.pct : 0;
-  const encStart = run ? latestOfType(run.events, 'encounter_start') : null;
-  const telegraph = run ? latestOfType(run.events, 'telegraph') : null;
-  const settled = run?.settled ?? false;
-
   return (
-    <div className="panel ornate schedule-monitor" data-testid="schedule-monitor" data-run-id={run?.runId}>
-      <i className="k tl" />
-      <i className="k tr" />
-      <i className="k br" />
-      <i className="k bl" />
+    <div ref={shellRef} className={`panel ornate schedule-monitor mon-shell${narrow ? ' is-narrow' : ''}`} data-testid="schedule-monitor" data-run-id={run?.runId}>
+      <i className="k tl" /><i className="k tr" /><i className="k br" /><i className="k bl" />
 
-      {/* REQ-0071: the mock's m-head strip -- title, dungeon name, LIVE
-          chip while the run's own clock says it is still going, and the
-          room's real generator seed. */}
-      <div className="schedule-monitor-head">
-        <span className="schedule-monitor-head-title dj">{t(locale, 'schedule.monitor.title')}</span>
-        <span className="schedule-monitor-head-sep" aria-hidden="true">
-          —
-        </span>
-        <span className="schedule-monitor-head-room">{dungeonName}</span>
-        {run && !settled ? (
-          <span className="chip is-live schedule-monitor-live-chip den" data-testid="schedule-monitor-live-chip">
-            <span className="dot" aria-hidden="true" />
-            {t(locale, 'schedule.monitor.live')}
-          </span>
-        ) : null}
-        <span className="schedule-monitor-grow" aria-hidden="true" />
-        {isAdmin && room.genSeed ? (
-          <span className="schedule-monitor-seed t-micro tnum">{t(locale, 'schedule.monitor.seed', { seed: room.genSeed })}</span>
-        ) : null}
+      <MonitorHeader
+        locale={locale} dungeonId={room.dungeonId} dungeonName={dungeonName} level={room.level}
+        live={isLive} returnAt={returnAt} seed={isAdmin ? room.genSeed ?? null : null}
+        isAdmin={isAdmin} onCopyJsonl={onCopyJsonl} copyStatus={copyStatus}
+      />
+
+      <ExpeditionRail locale={locale} nodes={railNodes} pct={railPct} durationMs={durationMs} settled={settled} onScrub={(frac) => seekMs(frac * durationMs)} />
+
+      <div className="mon-body">
+        <div className="mon-stage" data-testid="monitor-stage">
+          <canvas ref={setCanvasEl} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
+        </div>
+        <EventFeed locale={locale} rows={feedRows} live={isLive} />
       </div>
 
-      <div className="schedule-monitor-small">
-        <div className="schedule-monitor-progress-row">
-          <span className="schedule-monitor-progress-label">{t(locale, 'schedule.monitor.progress')}</span>
-          <div className="schedule-monitor-progress-bar">
-            <div className="schedule-monitor-progress-fill" style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-          </div>
-          <span className="schedule-monitor-progress-pct" data-testid="schedule-monitor-progress-pct">
-            {Math.round(pct)}%
-          </span>
-        </div>
-        <div className="schedule-monitor-encounter" data-testid="schedule-monitor-encounter">
-          {t(locale, 'schedule.monitor.encounter')}: {encStart ? (encStart.kind != null ? localizedToken(locale, KIND_KEYS, String(encStart.kind)) : String(encStart.enc ?? '?')) : '—'}
-        </div>
-        <div className="schedule-monitor-telegraph" data-testid="schedule-monitor-telegraph">
-          {t(locale, 'schedule.monitor.telegraph')}: {telegraphSentence(locale, telegraph)}
-        </div>
-        <button type="button" className="schedule-monitor-expand-btn" onClick={() => setExpanded((v) => !v)}>
-          {expanded ? t(locale, 'schedule.monitor.hideField') : t(locale, 'schedule.monitor.showField')}
-        </button>
-      </div>
+      <SquadDock locale={locale} squads={rosterState.squads} names={squadNames} />
 
-      {/* The canvas stays in the DOM once created (mounted lazily on
-          first expand, per the module comment) -- only CSS visibility
-          toggles afterward, never a remount. REQ-0045 (g): the expanded
-          section now also carries a "Log" tab (humanized one-line-per-
-          event text + a raw JSONL copy button) alongside the existing
-          "Field" (Pixi canvas) tab -- both panes stay mounted, only
-          their own CSS visibility toggles on tab switch, same
-          "mount once, toggle visibility" discipline as expand/collapse
-          itself. */}
-      <div className={`schedule-monitor-expanded${expanded ? '' : ' schedule-monitor-hidden'}`}>
-        <div className="schedule-monitor-tabs">
-          <button
-            type="button"
-            className={`schedule-monitor-tab-btn${activeTab === 'field' ? ' schedule-monitor-tab-btn-active' : ''}`}
-            data-testid="schedule-monitor-tab-field"
-            onClick={() => setActiveTab('field')}
-          >
-            {t(locale, 'schedule.monitor.tabField')}
-          </button>
-          <button
-            type="button"
-            className={`schedule-monitor-tab-btn${activeTab === 'log' ? ' schedule-monitor-tab-btn-active' : ''}`}
-            data-testid="schedule-monitor-tab-log"
-            onClick={() => setActiveTab('log')}
-          >
-            {t(locale, 'schedule.monitor.tabLog')}
-          </button>
-        </div>
-        <div className={activeTab === 'field' ? 'schedule-monitor-field-pane' : 'schedule-monitor-hidden'}>
-          <div className="schedule-monitor-stage">
-            <canvas ref={setCanvasEl} className="schedule-monitor-canvas" data-testid="schedule-monitor-canvas" />
-          </div>
-          {/* REQ-0071: the mock's iron control bar. Replay pacing is the
-              SERVER's wall clock (REQ-0045), so the mock's pause/speed/
-              skip controls have no honest backing and are omitted -- the
-              bar carries the real clock readout + the timeline (same pct
-              source as the summary bar) with one pip per encounter_start
-              at its own t/durationSecs position. */}
-          <div className="schedule-monitor-ctrl">
-            <span className="schedule-monitor-rivet" aria-hidden="true" />
-            {settled ? (
-              <div className="schedule-monitor-transport" data-testid="schedule-monitor-transport">
-                <button
-                  type="button"
-                  className="schedule-monitor-play"
-                  data-testid="schedule-monitor-play"
-                  aria-label={t(locale, playing ? 'schedule.monitor.replay.pause' : 'schedule.monitor.replay.play')}
-                  onClick={onPlayPause}
-                >
-                  {playing ? '⏸' : '▶'}
-                </button>
-                {([1, 2, 4] as const).map((s) => (
-                  <button
-                    type="button"
-                    key={s}
-                    className={`chip schedule-monitor-speed${speed === s ? ' is-on' : ''}`}
-                    data-testid={`schedule-monitor-speed-${s}`}
-                    onClick={() => setSpeed(s)}
-                  >
-                    {s}×
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  className="btn btn-ghost schedule-monitor-skip-end"
-                  data-testid="schedule-monitor-skip-end"
-                  onClick={onSkipEnd}
-                >
-                  {t(locale, 'schedule.monitor.replay.skipEnd')}
-                </button>
-              </div>
-            ) : null}
-            <span className="schedule-monitor-clock tnum" data-testid="schedule-monitor-clock">
-              {settled && run
-                ? `${formatClock(playheadT)} / ${formatClock(run.durationSecs)}`
-                : run
-                  ? `${formatClock(run.clock.elapsedSecs)} / ${formatClock(run.durationSecs)}`
-                  : '--:-- / --:--'}
-            </span>
-            <div
-              className={`schedule-monitor-timeline${settled ? ' schedule-monitor-timeline-scrub' : ''}`}
-              data-testid="schedule-monitor-scrub"
-              onClick={settled ? onScrub : undefined}
-            >
-              <div
-                className="schedule-monitor-timeline-fill"
-                style={{ width: `${settled && run && run.durationSecs > 0 ? Math.max(0, Math.min(100, (playheadT / run.durationSecs) * 100)) : Math.max(0, Math.min(100, pct))}%` }}
-              />
-              {run && run.durationSecs > 0
-                ? run.events
-                    .filter((ev) => ev.ev === 'encounter_start' && typeof ev.t === 'number')
-                    .map((ev, i) => (
-                      <i
-                        key={i}
-                        className="schedule-monitor-pip"
-                        style={{ left: `${Math.max(0, Math.min(100, ((ev.t as number) / run.durationSecs) * 100))}%` }}
-                      />
-                    ))
-                : null}
-            </div>
-            <span className="schedule-monitor-rivet" aria-hidden="true" />
-          </div>
-        </div>
-        <div className={activeTab === 'log' ? 'schedule-monitor-log-panel' : 'schedule-monitor-hidden'} data-testid="schedule-monitor-log-panel">
-          <div className="schedule-monitor-log-actions">
-            <button
-              type="button"
-              className="schedule-monitor-log-copy-btn"
-              data-testid="schedule-monitor-log-copy-btn"
-              onClick={async () => {
-                // Raw JSONL -- one event per line, same wire shape
-                // GET .../run's own `events` array already carries (no
-                // server-side toJSONL() call needed here; this is
-                // exactly combat.cjs's own toJSONL format: one
-                // JSON.stringify'd event per line).
-                const jsonl = (run?.events ?? []).map((ev) => JSON.stringify(ev)).join('\n');
-                try {
-                  await navigator.clipboard.writeText(jsonl);
-                  setCopyStatus('copied');
-                } catch (e) {
-                  setCopyStatus('failed');
-                }
-                setTimeout(() => setCopyStatus('idle'), 2000);
-              }}
-            >
-              {t(locale, 'schedule.monitor.copyJsonl')}
+      {/* M6 transport */}
+      <div className="mon-transport" data-testid="schedule-monitor-transport">
+        {settled ? (
+          <>
+            <button type="button" className="schedule-monitor-play mon-play" data-testid="schedule-monitor-play"
+              aria-label={t(locale, playing ? 'schedule.monitor.replay.pause' : 'schedule.monitor.replay.play')} onClick={onPlayPause}>
+              {playing ? '⏸' : '▶'}
             </button>
-            {copyStatus === 'copied' ? <span className="schedule-monitor-log-copy-status" data-testid="schedule-monitor-log-copy-status">{t(locale, 'schedule.monitor.copied')}</span> : null}
-            {copyStatus === 'failed' ? <span className="schedule-monitor-log-copy-status schedule-monitor-log-copy-failed">{t(locale, 'schedule.monitor.copyFailed')}</span> : null}
-          </div>
-          <pre className="schedule-monitor-log-text" data-testid="schedule-monitor-log-text">
-            {run && run.events.length > 0
-              ? run.events.map((ev, idx) => `${idx}: ${humanizeEvent(ev)}`).join('\n')
-              : t(locale, 'schedule.monitor.logEmpty')}
-          </pre>
-          {/* REQ-0071: mock logbar caption -- real event count. */}
-          <div className="schedule-monitor-logbar t-micro">{t(locale, 'schedule.monitor.logCaption', { count: run?.events.length ?? 0 })}</div>
+            {SPEEDS.map((s) => (
+              <button key={s} type="button" className={`chip schedule-monitor-speed${speed === s ? ' is-on' : ''}`} data-testid={`schedule-monitor-speed-${s}`} onClick={() => setSpeed(s)}>{s}×</button>
+            ))}
+            <button type="button" className="btn btn-ghost schedule-monitor-skip-end" data-testid="schedule-monitor-skip-end" onClick={onSkipEnd}>{t(locale, 'schedule.monitor.replay.skipEnd')}</button>
+          </>
+        ) : (
+          <>
+            <span className="chip is-live den mon-transport-live"><span className="dot" aria-hidden="true" />{t(locale, 'schedule.monitor.live')}</span>
+            {needsCatchup ? <button type="button" className="chip mon-catchup" data-testid="monitor-catchup" onClick={catchUp}>{t(locale, 'schedule.monitor.catchUp')}</button> : null}
+          </>
+        )}
+        <span className="mon-transport-clock tnum" data-testid="schedule-monitor-clock">
+          {run ? `${formatClock(playheadMs / 1000)} / ${formatClock(durationMs / 1000)}` : '--:-- / --:--'}
+        </span>
+        <div className={`mon-scrub${settled ? ' is-scrub' : ''}`} data-testid="schedule-monitor-scrub" onClick={settled ? onScrubClick : undefined}>
+          <div className="mon-scrub-fill" style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }} />
         </div>
       </div>
 
-      {/* REQ-0045 (e) root cause #1: this panel used to reveal itself
-          whenever `run.result !== 'incomplete'`, but result/rewards-
-          adjacent fields are computed INSTANTLY at run start and always
-          reflect the EVENTUAL final outcome (see ApiRunView's own doc
-          comment in api.ts and server/api.cjs's matching comment on the
-          GET .../run handler) -- so "Victory" could render the moment a
-          run started, long before anything had actually happened,
-          whenever the run's eventual (correctly-computed) outcome
-          happened to be a win. The gate now strictly requires `settled`
-          (== run.clock.isSettled, mirrored server-side into the
-          `settled` field), matching visibleEvents()'s own
-          not-yet-reached-events withholding discipline -- a spectator
-          never sees the outcome before the run's own clock says it's
-          over. */}
+      {/* Settled summary (restyled; testids kept) */}
       {run && settled ? (
-        <div className="schedule-monitor-summary" data-testid="schedule-monitor-summary">
+        <div className="schedule-monitor-summary mon-summary" data-testid="schedule-monitor-summary">
           <div className={`schedule-monitor-result schedule-monitor-result-${run.result} dj`}>
-            {t(
-              locale,
-              run.result === 'victory' ? 'schedule.monitor.resultVictory' : run.result === 'wipe' ? 'schedule.monitor.resultWipe' : 'schedule.monitor.resultIncomplete'
-            )}
+            {t(locale, run.result === 'victory' ? 'schedule.monitor.resultVictory' : run.result === 'wipe' ? 'schedule.monitor.resultWipe' : 'schedule.monitor.resultIncomplete')}
           </div>
           {run.result === 'wipe' ? (
             <>
               <div className="schedule-monitor-rewards-none">{t(locale, 'schedule.monitor.rewardsWipeNote')}</div>
-              <div className="schedule-monitor-level-dropped">{t(locale, 'schedule.monitor.levelDropped', { level: run.levelAfter })}</div>
+              <div className="schedule-monitor-level-dropped">{t(locale, 'schedule.monitor.levelDropped', { level: String(run.levelAfter) })}</div>
             </>
           ) : (
             <>
               <div className="schedule-monitor-rewards-title">{t(locale, 'schedule.monitor.rewardsTitle')}</div>
-              {/* REQ-0045 (e) root cause #2: `run.rewards` was never a
-                  real field at all (GET .../run carries no such key) --
-                  the warehouse IS the reward ledger; this list is
-                  fetched (see the effect above) and rendered here for
-                  the first time. `rewards === null` means "not fetched
-                  yet" (still loading); `[]` means "fetched, genuinely
-                  zero rows" (e.g. a victory whose reward roll produced
-                  nothing this time, or the run's rows were already
-                  claimed+consumed elsewhere before this panel loaded). */}
               {rewards === null ? (
                 <div className="schedule-monitor-rewards-loading" data-testid="schedule-monitor-rewards-loading">{t(locale, 'schedule.loading')}</div>
               ) : rewards.length === 0 ? (
@@ -942,41 +373,27 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
               ) : (
                 <ul className="schedule-monitor-rewards-list" data-testid="schedule-monitor-rewards-list">
                   {rewards.map((item) => {
-                    // REQ-0071: mock spoils rows -- icon thumb + rarity-
-                    // tinted name (same content-map lookup + iconDataUrl
-                    // the WarehouseTab rows already use).
                     const visual = rewardVisual(content, item);
                     return (
                       <li className="schedule-monitor-reward-row" key={item.itemUid} data-testid="schedule-monitor-reward-row" data-item-uid={item.itemUid}>
-                        <span className="schedule-monitor-reward-thumb" aria-hidden="true">
-                          {visual.icon ? <img src={visual.icon} alt="" /> : null}
-                        </span>
+                        <span className="schedule-monitor-reward-thumb" aria-hidden="true">{visual.icon ? <img src={visual.icon} alt="" /> : null}</span>
                         <span className={`schedule-monitor-reward-name${visual.rarity ? ` rarity r-${visual.rarity}` : ''}`}>
-                          {localizedItemName(locale, content, item.itemId)}
-                          {item.kind === 'tm' && typeof item.qty === 'number' ? ` x${item.qty}` : ''}
+                          {localizedItemName(locale, content, item.itemId)}{item.kind === 'tm' && typeof item.qty === 'number' ? ` x${item.qty}` : ''}
                         </span>
                       </li>
                     );
                   })}
                 </ul>
               )}
-              {/* REQ-0168 U11: tell the player where the loot went + a
-                  direct link to claim it before the 7-day TTL. */}
               {rewards && rewards.length > 0 ? (
                 <div className="schedule-monitor-rewards-hint" data-testid="schedule-monitor-rewards-hint">
                   <span>{t(locale, 'schedule.monitor.rewardsHint')}</span>
-                  <a className="schedule-monitor-rewards-hint-link" href="#/warehouse">
-                    {t(locale, 'schedule.monitor.rewardsHintLink')}
-                  </a>
+                  <a className="schedule-monitor-rewards-hint-link" href="#/warehouse">{t(locale, 'schedule.monitor.rewardsHintLink')}</a>
                 </div>
               ) : null}
             </>
           )}
-          {settled ? <div className="schedule-monitor-settled-badge">{t(locale, 'schedule.monitor.settled')}</div> : null}
-          {/* REQ-0168 U9 follow-up: mirror RoomCard.deriveStatus -- a
-              canceled room (status:'canceled') or one already flagged
-              cancelRequested will not start another run, so suppress the
-              cooldown / next-run readout for it. */}
+          <div className="schedule-monitor-settled-badge">{t(locale, 'schedule.monitor.settled')}</div>
           {room.status !== 'canceled' && !room.cancelRequested && room.cooldownUntil && Date.parse(room.cooldownUntil) > nowMs ? (
             <div className="schedule-monitor-cooldown" data-testid="schedule-monitor-cooldown">
               {t(locale, 'schedule.monitor.cooldownUntil', { time: formatCountdown(Date.parse(room.cooldownUntil) - nowMs, locale) })}

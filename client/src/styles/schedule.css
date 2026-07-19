@@ -711,3 +711,121 @@
 @media (max-width: 1000px) {
   .schedule-spoils-rail { margin-top: 0; }
 }
+
+/* ===================================================================
+   REQ-0240 -- DUNGEON MONITOR redesign (03 spec). Six zones: M1 header
+   banner, M2 rail, M3 stage + M4 feed (side by side), M5 dock, M6
+   transport. Extends schedule.css; reuses MJOLNIR + REQ-0240 tokens.
+   =================================================================== */
+.mon-shell { display: flex; flex-direction: column; gap: 8px; }
+
+/* M1 header ------------------------------------------------------- */
+.mon-header { border-radius: 3px; overflow: hidden; }
+.mon-header-banner {
+  position: relative; height: 64px; background-size: cover; background-position: center;
+  background-color: var(--stage-well, #0B0F15); display: flex; align-items: flex-end;
+  border-bottom: 1px solid var(--border-lo);
+}
+.mon-header-banner-fallback {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 34px; color: var(--bone-3); opacity: .5;
+}
+.mon-header-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8,10,14,.15), rgba(8,10,14,.72)); }
+.mon-header-row { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 12px; }
+.mon-header-title { font-size: 18px; color: var(--bone); text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+.mon-header-grow { flex: 1; }
+.mon-header-return { color: var(--bone-2); }
+.mon-replay-chip { border-color: var(--bone-3); color: var(--bone-2); }
+.mon-header-menu-wrap { position: relative; }
+.mon-header-menu-btn { background: none; border: 1px solid var(--border-lo); color: var(--bone-2); border-radius: 2px; padding: 0 6px; cursor: pointer; line-height: 1.4; }
+.mon-header-menu { position: absolute; right: 0; top: 26px; z-index: 5; background: var(--raised); border: 1px solid var(--border-lo); box-shadow: var(--elev-2); padding: 6px; border-radius: 3px; min-width: 180px; }
+.mon-header-menu-seed { color: var(--bone-3); padding: 2px 4px; word-break: break-all; }
+.mon-header-menu-item { display: block; width: 100%; text-align: left; background: none; border: none; color: var(--bone); padding: 4px; cursor: pointer; }
+.mon-header-menu-item:hover { color: var(--gold-hi); }
+.mon-header-menu-status { color: var(--frost-hi); font-size: 12px; }
+.mon-header-menu-status.is-fail { color: var(--blood); }
+
+/* M2 rail --------------------------------------------------------- */
+.mon-rail { padding: 4px 6px; }
+.mon-rail.is-scrub { cursor: pointer; }
+.mon-rail-track { position: relative; height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border-lo); }
+.mon-rail-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--frost-hi), var(--gold-hi)); transition: width .3s ease; }
+.mon-rail-node {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  display: grid; place-items: center; width: 20px; height: 20px; border-radius: 999px;
+  background: var(--raised); border: 1px solid var(--border-lo); font-size: 11px; color: var(--bone);
+}
+.mon-rail-node.is-ahead { opacity: .35; }
+.mon-rail-node.is-passed { opacity: 1; border-color: var(--gold-lo); }
+.mon-rail-node.kind-boss { width: 24px; height: 24px; border-color: var(--gold-hi); box-shadow: 0 0 0 2px rgba(214,176,90,.25); }
+.mon-rail-node.kind-trap { color: var(--blood); }
+.mon-rail-node.kind-chest { color: var(--gold-hi); }
+.mon-rail-node.kind-door { color: var(--frost-hi); }
+.mon-rail-node-x { position: absolute; color: var(--blood); font-weight: bold; }
+
+/* M3 stage + M4 feed --------------------------------------------- */
+.mon-body { display: grid; grid-template-columns: 68% 32%; gap: 8px; align-items: stretch; }
+.mon-shell.is-narrow .mon-body { grid-template-columns: 1fr; }
+.mon-stage { background: var(--stage-well, #0B0F15); border: 1px solid var(--border-lo); border-radius: 3px; padding: 6px; display: grid; place-items: center; overflow: hidden; }
+.mon-stage .schedule-monitor-canvas { max-width: 100%; height: auto; }
+
+.mon-feed { display: flex; flex-direction: column; border: 1px solid var(--border-lo); border-radius: 3px; background: var(--raised); min-height: 260px; }
+.mon-shell.is-narrow .mon-feed { max-height: 240px; }
+.mon-feed-filters { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--border-lo); flex-wrap: wrap; }
+.mon-feed-filter { cursor: pointer; }
+.mon-feed-filter.is-on { border-color: var(--gold-hi); color: var(--gold-hi); }
+.mon-feed-scroll { flex: 1; overflow-y: auto; padding: 4px 6px; max-height: 340px; }
+.mon-feed-empty { color: var(--bone-3); font-size: 13px; padding: 12px 4px; text-align: center; }
+.mon-feed-row { display: grid; grid-template-columns: 44px 20px 1fr; align-items: baseline; gap: 6px; padding: 3px 4px; border-left: 2px solid transparent; font-size: 13px; }
+.mon-feed-row + .mon-feed-row { border-top: 1px solid rgba(255,255,255,.03); }
+.mon-feed-time { color: var(--bone-3); }
+.mon-feed-icon { text-align: center; }
+.mon-feed-text { color: var(--bone); }
+.mon-feed-row.tone-dmgDeal { border-left-color: var(--dmg-deal, var(--ember-hi)); }
+.mon-feed-row.tone-dmgTake { border-left-color: var(--dmg-take, #E06B5F); }
+.mon-feed-row.tone-loot { border-left-color: var(--loot, var(--gold-hi)); }
+.mon-feed-row.tone-gimic { border-left-color: var(--frost, var(--frost-hi)); }
+.mon-feed-row.tone-system { border-left-color: var(--bone-3); }
+.mon-feed-jump { align-self: center; margin: 4px; cursor: pointer; border-color: var(--gold-lo); color: var(--gold-hi); }
+
+/* M5 dock --------------------------------------------------------- */
+.mon-dock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.mon-shell.is-narrow .mon-dock { grid-template-columns: repeat(2, 1fr); }
+.mon-dock-card { border: 1px solid var(--border-lo); border-radius: 3px; background: var(--raised); padding: 6px 8px; min-width: 0; }
+.mon-dock-card.is-ko { opacity: .55; border-color: var(--blood); }
+.mon-dock-head { display: flex; align-items: baseline; gap: 6px; }
+.mon-dock-ord { color: var(--gold-lo); font-size: 13px; }
+.mon-dock-name { color: var(--bone); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mon-dock-grow { flex: 1; }
+.mon-dock-pct { color: var(--bone-2); }
+.mon-dock-bar { height: 10px; border-radius: 999px; background: rgba(0,0,0,.35); border: 1px solid var(--border-lo); overflow: hidden; margin: 5px 0; }
+.mon-dock-fill { height: 100%; transition: width .3s ease; }
+.mon-dock-fill.hp-full { background: var(--hp-full, #57C77B); }
+.mon-dock-fill.hp-mid { background: var(--hp-mid, #D9B968); }
+.mon-dock-fill.hp-low { background: var(--hp-low, #C05248); }
+.mon-dock-foot { display: flex; align-items: center; gap: 6px; min-height: 14px; }
+.mon-dock-pips { display: inline-flex; gap: 3px; }
+.mon-dock-pip { width: 7px; height: 7px; border-radius: 999px; background: rgba(255,255,255,.12); }
+.mon-dock-pip.is-on { background: var(--charge, var(--frost-hi)); }
+.mon-dock-stamp { font-size: 11px; margin-left: auto; }
+.mon-dock-stamp.st-ko { color: var(--blood); }
+.mon-dock-stamp.st-ok { color: var(--frost-hi); }
+
+/* M6 transport ---------------------------------------------------- */
+.mon-transport { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-top: 1px solid var(--border-lo); flex-wrap: wrap; }
+.mon-play { background: none; border: 1px solid var(--gold-lo); color: var(--gold-hi); border-radius: 2px; cursor: pointer; padding: 0 8px; line-height: 1.6; }
+.schedule-monitor-speed { cursor: pointer; }
+.schedule-monitor-speed.is-on { border-color: var(--gold-hi); color: var(--gold-hi); }
+.mon-catchup { cursor: pointer; border-color: var(--ember-hi); color: var(--ember-hi); }
+.mon-transport-live { color: var(--ember-hi); }
+.mon-transport-clock { color: var(--bone-2); }
+.mon-scrub { flex: 1; min-width: 120px; height: 8px; border-radius: 999px; background: var(--raised); border: 1px solid var(--border-lo); position: relative; }
+.mon-scrub.is-scrub { cursor: pointer; }
+.mon-scrub-fill { height: 100%; border-radius: 999px; background: var(--gold-lo); }
+
+/* M6 settled summary (restyled) ---------------------------------- */
+.mon-summary { padding-top: 6px; border-top: 1px solid var(--border-lo); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mon-rail-fill, .mon-dock-fill { transition: none; }
+}

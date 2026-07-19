@@ -190,7 +190,13 @@ function buildTimeline(run) {
 
   return {
     result: run.result,
-    clearTimeSecs: typeof run.durationSecs === 'number' ? run.durationSecs : endT,
+    // REQ-0240: a seal is a FAIR benchmark of the SAME layout, so clear time
+    // must stay COMBAT TRUTH (sim seconds), not the paced presentation time
+    // durationSecs now carries. simDurationSecs is the legacy max-`t` a
+    // paced run stores; a legacy run (no simDurationSecs) keeps its old
+    // durationSecs (which WAS max-`t`), so seal numbers are unchanged.
+    clearTimeSecs: typeof run.simDurationSecs === 'number' ? run.simDurationSecs
+      : (typeof run.durationSecs === 'number' ? run.durationSecs : endT),
     finishingH: typeof run.H === 'number' ? run.H : (runEnd && typeof runEnd.H === 'number' ? runEnd.H : null),
     levelAfter: typeof run.levelAfter === 'number' ? run.levelAfter : null,
     finalProgressPct: typeof run.finalProgressPct === 'number' ? run.finalProgressPct : null,

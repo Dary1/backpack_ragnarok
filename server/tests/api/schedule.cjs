@@ -447,12 +447,85 @@ module.exports.run = async function run(h) {
     return [active, canvas.presets.store[1], canvas.presets.store[2], canvas.presets.store[3]];
   }
 
+  // REQ-0240: presentation-pacing serving layer -- ApiRunView carries the
+  // paced timeline (events gain `pt`), the roster (M1), pacingVersion (M2),
+  // and durationSecs is now the PRESENTATION duration the player watches (the
+  // "battle wait increase"); settle/cooldown ride that same paced clock.
+  await AT('schedule: REQ-0240 run view carries roster + pacingVersion + paced pt; durationSecs is the presentation duration; settle rides pt', async () => {
+    const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
+    const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.strictEqual(roomAfter.body.room.status, 'active');
+    const runId = roomAfter.body.room.lastRunId;
+
+    const pacing = require('../../services/pacing.cjs');
+    const runRaw = scheduleStorage.readRun(runId);
+    // Stored log stays byte-clean (pt lives OFF the events, in run.presentation).
+    assert.strictEqual(runRaw.pacingVersion, 1, 'a fresh run is paced (pacingVersion 1)');
+    assert.ok(runRaw.presentation && Array.isArray(runRaw.presentation.pt), 'run.presentation.pt array is stored');
+    assert.strictEqual(runRaw.presentation.pt.length, runRaw.events.length, 'one pt per event');
+    assert.ok(runRaw.events.every((e) => e.pt === undefined), 'stored events must NOT carry pt (determinism/goldens stay intact)');
+
+    // durationSecs is the PRESENTATION duration, clamped into [45,300]. The
+    // tiny fixture stretches UP to the 45s floor -- this IS the battle-wait
+    // increase (sim resolves instantly; presentation time is what grows).
+    assert.ok(runRaw.durationSecs >= pacing.PACING.minPresentSecs - 1e-6, 'presentation duration must hit the >=45s floor: ' + runRaw.durationSecs);
+    assert.ok(runRaw.durationSecs <= pacing.PACING.maxPresentSecs + 1e-6);
+    assert.strictEqual(typeof runRaw.simDurationSecs, 'number', 'the legacy combat-time duration is preserved for seals');
+
+    // Roster (M1): 4 slots with per-BP hpMax + enemy hints with numeric hpMax.
+    const view0 = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', scheduleP1.token);
+    assert.strictEqual(view0.body.pacingVersion, 1);
+    assert.ok(view0.body.roster && Array.isArray(view0.body.roster.slots), 'roster.slots present');
+    assert.strictEqual(view0.body.roster.slots.length, 4);
+    assert.ok(view0.body.roster.slots.every((sl) => Array.isArray(sl.bps)), 'each slot exposes a bps array');
+    assert.ok(view0.body.roster.slots.some((sl) => sl.bps.some((b) => typeof b.hpMax === 'number' && b.hpMax > 0)), 'at least one BP hpMax is exposed');
+    assert.ok(Array.isArray(view0.body.roster.enemies) && view0.body.roster.enemies.length > 0, 'enemy hints present');
+    for (const en of view0.body.roster.enemies) {
+      assert.ok(typeof en.hpMax === 'number' && en.hpMax > 0, 'enemy hpMax numeric');
+      assert.ok(typeof en.name === 'string' && typeof en.nameJa === 'string', 'enemy names present (client reveals on first-seen)');
+      assert.ok(Array.isArray(en.footprint), 'enemy footprint present');
+    }
+
+    // Paced visibility: the intro withholds events at elapsed~=0; advancing the
+    // clock a few paced seconds airs more, gated on `pt` (each carries pt).
+    const nEarly = view0.body.events.length;
+    { const _r = scheduleStorage.readRun(runId); _r.startedAt = new Date(Date.now() - 20 * 1000).toISOString(); scheduleStorage.writeRun(_r.id, _r); }
+    const view1 = await scheduleReq('GET', '/api/schedule/rooms/' + roomId + '/run', scheduleP1.token);
+    assert.ok(view1.body.events.length >= nEarly, 'more presentation time reveals >= as many events');
+    assert.ok(view1.body.events.every((e) => typeof e.pt === 'number'), 'every aired event carries its pt on the wire');
+    for (let i = 1; i < view1.body.events.length; i++) assert.ok(view1.body.events[i].pt >= view1.body.events[i - 1].pt, 'served pt is monotonic');
+    assert.ok(!view1.body.clock.isSettled, '20s < 45s presentation -> still live');
+
+    // Settle rides the paced clock: only once elapsed >= presentation duration
+    // does the run settle and the room leave active (cooldown from THAT moment).
+    forceRunElapsed(runId); // backdates by durationSecs (presentation) + margin
+    const settledRoom = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+    assert.notStrictEqual(settledRoom.body.room.status, 'active', 'run settles at the presentation duration');
+    assert.ok(settledRoom.body.room.cooldownUntil, 'cooldown starts from the (paced) settle moment');
+
+    for (const item of schedule.listWarehouse(scheduleP1.playerId)) scheduleStorage.deleteWarehouseItem(scheduleP1.playerId, item.itemUid);
+    await scheduleReq('DELETE', '/api/schedule/rooms/' + roomId, scheduleP1.token);
+  });
+
   await AT('schedule: GET .../run?format=text (REQ-0045 g) returns a plain-text, one-humanized-line-per-event mirror of the same visibleEvents() the JSON route sends -- any OTHER/absent format value still returns JSON unchanged', async () => {
     const created = await scheduleReq('POST', '/api/schedule/rooms', scheduleP1.token, { dungeonId: 'test_dungeon', level: 1, formationId: 'formation1' });
     const roomId = created.body.room.id;
     for (let i = 0; i < 4; i++) await scheduleReq('PUT', '/api/schedule/rooms/' + roomId + '/slots/' + i, scheduleP1.token, { squadIndex: i });
     const roomAfter = await scheduleReq('GET', '/api/schedule/rooms/' + roomId, scheduleP1.token);
     assert.strictEqual(roomAfter.body.room.status, 'active');
+
+    // REQ-0240: presentation pacing holds an intro beat (~1.8s) before the
+    // first event airs, and spaces the rest across the paced timeline -- a run
+    // read at elapsed~=0 therefore shows "(no events yet)". Advance this LIVE
+    // run's clock a few paced seconds (still << durationSecs, so it stays
+    // unsettled) so real events have aired for this humanized-mirror check.
+    {
+      const _r = scheduleStorage.readRun(roomAfter.body.room.lastRunId);
+      _r.startedAt = new Date(Date.now() - 15 * 1000).toISOString();
+      scheduleStorage.writeRun(_r.id, _r);
+    }
 
     // Plain-text request -- driven DIRECTLY via mockReq/api.handle (not
     // the scheduleReq() helper above, which always JSON.parse's the

@@ -11,6 +11,7 @@ const { WAREHOUSE_TTL_MS, SQUAD_SLOTS, getScheduleContent, resolveRewardItemId, 
 const { squadCanvasOf, applyPendingSwapIfAny } = require('./squads.cjs');
 const { addToWarehouse } = require('./warehouse.cjs');
 const bioService = require('./bio.cjs'); // REQ-0060
+const pacing = require('./pacing.cjs'); // REQ-0240: presentation-pacing serving-layer decoration
 
 function computeDurationSecs(events) {
   let maxT = 0;
@@ -27,7 +28,12 @@ function runClock(run) {
 
 function visibleEvents(run) {
   const clock = runClock(run);
-  return run.events.filter((ev) => typeof ev.t === 'number' && ev.t <= clock.elapsedSecs);
+  // REQ-0240: gate on PRESENTATION time `pt` for a paced run (pacingVersion
+  // >= 1) and return each visible event as a COPY carrying its `pt` (+ any
+  // coalesce annotation) so the client obeys the timeline -- the stored
+  // run.events stays BYTE-IDENTICAL to the sim log. A legacy run (pacingVersion
+  // 0) gates on sim `t` and returns raw events, exactly as before.
+  return pacing.decorateVisible(run, clock.elapsedSecs);
 }
 
 // Builds the squadSnapshots[4] array runDungeon expects, one per slot, by
@@ -95,6 +101,20 @@ function startRun(room, profileCanvas) {
     unitDefsById, connShapes,
   });
 
+  // REQ-0240: the presentation-pacing pass. A SERVING-LAYER decoration run
+  // AFTER combat.runDungeon (whose event log is combat truth): it assigns
+  // every event a monotonic presentation time `pt` (ms), coalesces same-
+  // target bursts, and clamps the whole presentation into [45s,300s]. It
+  // MUTATES result.events in place (adding `pt` + additive feed annotations)
+  // -- safe because sim/tests/goldens.cjs hashes a SEPARATE
+  // combat.runDungeon() call and never goes through here, so `pt` can never
+  // leak into sim-hashed content. This is user directive #7 ("slow playback,
+  // visualization first"): the sim stays instant; presentation TIME stretches.
+  const paced = pacing.paceEvents(result.events);
+  // REQ-0240 M1: the per-slot player BP pools (exact hpMax) + enemy hints the
+  // dock/plates read; enemy side derived from the ROLLED def + content defs.
+  const roster = pacing.buildRoster(result, dungeonDef, { monsterPackDefsById, enemyDefsById });
+
   const runId = genId('run');
   const startedAt = new Date().toISOString();
   const runDoc = {
@@ -102,8 +122,26 @@ function startRun(room, profileCanvas) {
     roomId: room.id,
     seed,
     startedAt,
-    durationSecs: computeDurationSecs(result.events),
-    events: result.events,
+    // REQ-0240: durationSecs is now the PRESENTATION duration the player
+    // watches (pt-based) -- this IS the "battle wait increase"; the room is
+    // occupied for as long as the paced replay lasts. The sim itself still
+    // resolves instantly. Legacy runs (pacingVersion 0) keep durationSecs =
+    // max sim `t` via computeDurationSecs (see runClock/visibleEvents).
+    durationSecs: paced.durationSecs,
+    pacingVersion: paced.pacingVersion, // REQ-0240 M2
+    // REQ-0240: the SEPARATELY STORED presentation timeline (pt array +
+    // coalesce annotations, parallel to `events` by index). Kept OFF the
+    // event objects so run.events stays byte-identical to the sim log (the
+    // determinism gate + replay goldens); the serving layer (visibleEvents /
+    // decorateVisible) merges pt onto event COPIES at read time.
+    presentation: paced.presentation,
+    // REQ-0240: the LEGACY combat-time duration (max sim `t`) kept for
+    // consumers that must stay on COMBAT TRUTH rather than presentation time
+    // (seals' fair-benchmark clearTimeSecs). Presentation `durationSecs`
+    // above drives room occupancy / settle; this drives seal comparison.
+    simDurationSecs: computeDurationSecs(result.events),
+    roster, // REQ-0240 M1: ApiRunView.roster source
+    events: result.events, // BYTE-IDENTICAL sim log (pt lives in `presentation`)
     result: result.result, // 'victory' | 'wipe' | 'incomplete'
     finalProgressPct: result.finalProgressPct,
     rewards: result.rewards, // [{item, participant}] per distributeRewardsUniform

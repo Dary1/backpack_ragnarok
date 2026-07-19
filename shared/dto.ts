@@ -472,7 +472,43 @@ export interface ApiRunEvent {
   t: number;
   seq: number;
   ev: string;
+  /** REQ-0240: presentation time (ms) assigned by the server pacing pass.
+   * Present on paced runs (ApiRunView.pacingVersion >= 1); absent on legacy
+   * runs (the client then replays on sim `t`). */
+  pt?: number;
+  /** REQ-0240: on the representative of a coalesced same-target burst -- the
+   * feed prints one "xN" line / the stage one summed damage number. */
+  pcoalesce?: { hits: number; amount: number };
+  /** REQ-0240: a non-representative member of a coalesced burst -- feed/stage
+   * skip it (its damage is folded into the representative's pcoalesce). */
+  pcoalesceHidden?: boolean;
   [key: string]: unknown;
+}
+
+/** REQ-0240 M1: one squad slot's BP pool (exact hpMax) the monitor dock +
+ * stage plates read. */
+export interface ApiRunRosterSlot {
+  slot: string; // 'unit1'..'unit4'
+  index: number; // 0..3
+  bps: { id: string; hpMax: number }[];
+}
+
+/** REQ-0240 M1: one enemy the run will field -- a leak-safe HINT (the client
+ * reveals name/HP only on first-seen). hpMax is the def's upper bound, so an
+ * hp_after/hpMax tick is honest and never exceeds 100%. */
+export interface ApiRunRosterEnemy {
+  id: string;
+  name: string;
+  nameJa: string;
+  hpMax: number;
+  footprint: number[];
+  packId: string | null;
+}
+
+/** REQ-0240 M1: ApiRunView.roster -- per-slot player BP pools + enemy hints. */
+export interface ApiRunRoster {
+  slots: ApiRunRosterSlot[];
+  enemies: ApiRunRosterEnemy[];
 }
 
 /** GET /api/schedule/rooms/:id/run response shape (server/api.cjs's
@@ -486,6 +522,11 @@ export interface ApiRunView {
   roomId: string;
   startedAt: string;
   durationSecs: number;
+  /** REQ-0240 M2: 1 = server pacing applied (events carry `pt`; durationSecs
+   * is the PRESENTATION duration); 0 = legacy run (replay on sim `t`). */
+  pacingVersion: number;
+  /** REQ-0240 M1: per-slot BP hpMax + enemy hints; null for a legacy run. */
+  roster: ApiRunRoster | null;
   clock: { elapsedSecs: number; isSettled: boolean; pct: number };
   events: ApiRunEvent[];
   result: 'victory' | 'wipe' | 'incomplete';
