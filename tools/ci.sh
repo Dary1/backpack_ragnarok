@@ -159,6 +159,8 @@ echo "==== [4.67/7] pack biography aggregation + veteran luck (DB-free, REQ-0060
 node server/tests/bio_test.cjs
 echo "==== [4.68/7] bp-skin cosmetic-slot store (files backend, REQ-0126) ===="
 node server/tests/bpskin_test.cjs
+echo "==== [4.685/7] per-profile skin selection store (files backend, REQ-0266) ===="
+node server/tests/skin_prefs_test.cjs
 echo "==== [4.69/7] bp-skin seed migration on a copied profile fixture (DB-free, REQ-0126) ===="
 node server/tests/bpskin_migration_test.cjs
 echo "==== [4.695/7] e2e profile redirect -- dev-fallback isolation (DB-free, REQ-0214) ===="
@@ -205,6 +207,14 @@ if [ "${SKIP_PG:-0}" != "1" ]; then
   STORAGE_BACKEND=pg node server/tests/bio_test.cjs
   echo "==== [5.45/7] bp-skin cosmetic-slot store parity (pg backend, REQ-0126) ===="
   STORAGE_BACKEND=pg node server/tests/bpskin_test.cjs
+  # REQ-0266: files+pg parity for the skin selection, same posture as [4.685]/[5.45].
+  # DEPLOY ORDER: this step needs server/migrations/024_skin_prefs.sql applied (it is
+  # HAND-applied, like every migration since 001) -- until then it fails with
+  # "relation skin_prefs does not exist", which is a pending migration, not a defect.
+  # It is deliberately NOT wrapped in a skip: a gate that quietly passes on a table
+  # that does not exist proves nothing, and REQ-0159 forbids a remembered-red convention.
+  echo "==== [5.455/7] per-profile skin selection store parity (pg backend, REQ-0266) ===="
+  STORAGE_BACKEND=pg node server/tests/skin_prefs_test.cjs
   echo "==== [5.46/7] UGC moderation storage + appeal path (pg backend, REQ-0144) ===="
   STORAGE_BACKEND=pg node server/tests/moderation_test.cjs
 else

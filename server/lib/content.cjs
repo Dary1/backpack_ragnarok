@@ -223,8 +223,12 @@ let artUrls = {};
 let artUrlsAt = 0;
 const ART_URLS_TTL_MS = 15000;
 
-async function computeArtUrls() {
-  if (process.env.STORAGE_BACKEND !== 'pg') return {}; // the artwork registry is pg-only
+/** The exact id batch computeArtUrls() resolves, as a PURE function of the
+ * served payload. Split out so the wiring is inspectable without a database:
+ * WHICH ids join the map is the whole of REQ-0266 D-A (and of REQ-0208/0211/0185
+ * before it), while WHETHER a given id resolves is the pg resolver's business
+ * and is gated separately. A test can therefore prove the join in files mode. */
+function artUrlNameBatch() {
   const payload = ensureFilePayload();
   const names = [].concat(
     Object.keys(payload.items || {}),
@@ -254,6 +258,12 @@ async function computeArtUrls() {
     // Units themselves stay ABSENT from the map -- REQ-0226 is a different change.
     Object.keys(unitSkinsFromCore().unit_skins || {})
   );
+  return names;
+}
+
+async function computeArtUrls() {
+  if (process.env.STORAGE_BACKEND !== 'pg') return {}; // the artwork registry is pg-only
+  const names = artUrlNameBatch();
   const storage = require('../storage.cjs');
   const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }
   const map = {};
@@ -551,6 +561,7 @@ module.exports = {
   statMtimeMs, loadJSON, renderEffJoined, withBackCompatI18n,
   buildContentPayload, getContent, invalidateContentCache, refreshArtUrls,
   unitSkinsFromCore, // REQ-0266: the /api/content display slice (derived from the authority path)
+  artUrlNameBatch, // REQ-0266: the pure id batch behind art_urls (D-A wiring, inspectable DB-free)
   refreshRegistryData, getContentSources,
   registryServedKindFor, // REQ-0182b
 };
