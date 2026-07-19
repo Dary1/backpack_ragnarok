@@ -1,7 +1,9 @@
 // client/src/store/boot.ts -- REQ-0047 (f2): boot + identity: resolveProfileId, boot(), setLocale, setActiveInvPage.
 // Moved VERBATIM from client/src/store.ts (see that file for the barrel).
 import { Engine } from '../engine/adapter';
-import { setUnitDefs } from '../board/unitIcon';
+import { setUnitDefs, setUnitSkins } from '../board/unitIcon';
+import { loadSkinDefs, setBpSkinDefs } from '../board/skin/skinRegistry'; // REQ-0266
+import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
@@ -161,6 +163,12 @@ export async function boot(): Promise<void> {
   const me: ApiMe | null = await fetchMeWithRetry();
   if (me) setSnapshot({ ...snapshot, me });
 
+  // REQ-0266 (item 24): the player's skin PICKS, fetched ALONGSIDE the canvas
+  // rather than after it. fetchSkinPrefs never rejects -- a 404, a 401, an older
+  // server with no such route, a network failure and a malformed body all
+  // resolve to empty prefs -- so firing it here costs nothing on the error path
+  // and can never block boot. Ruling D5: absence IS the default.
+  const skinPrefsPromise = fetchSkinPrefs(resolveProfileId());
   const resolved = await resolveGameData(resolveProfileId());
   if (resolved.source === 'error' || !resolved.gameData) {
     setSnapshot({ ...snapshot, status: 'error', source: 'error', error: resolved.error ?? 'unknown error' });
@@ -179,6 +187,11 @@ export async function boot(): Promise<void> {
   // manifest BEFORE any board mounts, so loadBoardTextures()'s first (cached) call
   // already carries the item rasters (art arrives as DATA; the renderer is untouched).
   setItemArtUrls(gameData.ART_URLS);
+  // REQ-0266: cosmetic skins arrive as DATA; the renderer is untouched. Both
+  // registries are keyed by SKIN id (ruling D-A) and both degrade to empty. The
+  // awaited promise was started before the canvas fetch above.
+  setUnitSkins(gameData.UNIT_SKINS, gameData.ART_URLS, await skinPrefsPromise);
+  setBpSkinDefs(loadSkinDefs(gameData.BPSKINS, { unitSkins: gameData.UNIT_SKINS, artUrls: gameData.ART_URLS }));
   let state = engine.migrateState(gameData.makeState()); // REQ-0051: reassigned by fresh-profile starter seed
 
   // REQ-0042: guest/fresh-profile starter LRDST grant -- ONLY when
