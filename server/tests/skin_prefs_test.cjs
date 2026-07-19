@@ -136,7 +136,111 @@ check('deleteSkinPrefs removes the row, and absence reads as empty again', () =>
   assert.deepStrictEqual(storage.getSkinPrefs(pid), { unit: {}, bpskin: {} });
 });
 
-try { storage.deleteSkinPrefs(pid); } catch (e) { /* ignore */ }
-try { storage.deleteSkinPrefs(other); } catch (e) { /* ignore */ }
-console.log(`\nskin_prefs_test (${backend} backend): ${failed ? failed + ' FAILED' : 'ALL GREEN'}`);
-process.exit(failed ? 1 : 0);
+// =====================================================================
+// The ROUTE half: /api/profile/:id/skins, driven through server/router.cjs so the
+// REGISTRATION is proved and not just the handler. A 401 rather than a 404 is the
+// load-bearing assertion in the unauthenticated case -- a 404 would mean the path
+// fell through the whole chain and this module was never reached at all.
+//
+// admin.resolveAuthFromRequest is the route's ONLY auth dependency, so it is
+// stubbed HERE (this is a standalone process; nothing else observes the stub).
+// That keeps the auth matrix -- 401 / 403 / the REQ-0037 "default" alias under the
+// REQ-0214 dev-fallback annotation -- testable without a player registry.
+// =====================================================================
+const admin = require('../admin.cjs');
+const rpid = 'test-req0266-route-' + process.pid + '-' + Date.now();
+let AUTH = { ok: true, player: { playerId: rpid }, viaDefault: false, viaDevFallback: false };
+admin.resolveAuthFromRequest = () => AUTH;
+const router = require('../router.cjs');
+
+function mockReq(method, url, body) {
+  const handlers = {};
+  const req = { method, url, headers: {}, on: (ev, cb) => { handlers[ev] = cb; return req; }, destroy() {} };
+  setImmediate(() => {
+    if (body !== undefined && handlers.data) handlers.data(Buffer.from(body));
+    if (handlers.end) handlers.end();
+  });
+  return req;
+}
+function call(method, url, body) {
+  return new Promise((resolve) => {
+    const res = { statusCode: 0, body: '', writeHead(c) { this.statusCode = c; }, end(b) { this.body = b || ''; resolve(this); } };
+    router.handle(mockReq(method, url, body), res);
+  });
+}
+async function routeChecks() {
+  const acheck = async (name, fn) => { try { await fn(); console.log('ok  :', name); } catch (e) { failed++; console.error('FAIL:', name, '-', e.message); } };
+  const url = '/api/profile/' + rpid + '/skins';
+  // The corpus the ROUTE validates against is the live one, so these use real ids.
+  const skins = require('../lib/content.cjs').unitSkinsFromCore().unit_skins;
+  const anyUnitSkin = Object.keys(skins).map((k) => skins[k]).find((s) => s.slot === 'unit');
+  const anyBpSkin = Object.keys(skins).map((k) => skins[k]).find((s) => s.slot === 'bpskin');
+
+  await acheck('route: the router REACHES this module -- unauthenticated is 401, never a 404 fallthrough', async () => {
+    AUTH = { ok: false, reason: 'no_token' };
+    const r = await call('GET', url);
+    assert.strictEqual(r.statusCode, 401, r.body);
+    AUTH = { ok: true, player: { playerId: rpid }, viaDevFallback: false };
+  });
+  await acheck('route: GET on a player who has never picked is 200 with an EMPTY selection', async () => {
+    const r = await call('GET', url);
+    assert.strictEqual(r.statusCode, 200, r.body);
+    assert.deepStrictEqual(JSON.parse(r.body).skins, { unit: {}, bpskin: {} });
+  });
+  await acheck('route: PUT sets, MERGES and null-CLEARS, and answers with the resolved selection', async () => {
+    if (!anyUnitSkin || !anyBpSkin) throw new Error('the live corpus has no unit/bpskin pair to drive the route with');
+    const u = anyUnitSkin.units[0];
+    let r = await call('PUT', url, JSON.stringify({ unit: { [u]: anyUnitSkin.id } }));
+    assert.strictEqual(r.statusCode, 200, r.body);
+    assert.strictEqual(JSON.parse(r.body).skins.unit[u], anyUnitSkin.id);
+    const bu = anyBpSkin.units[0];
+    r = await call('PUT', url, JSON.stringify({ bpskin: { [bu]: anyBpSkin.id } }));
+    assert.strictEqual(JSON.parse(r.body).skins.unit[u], anyUnitSkin.id, 'the unit map survives a bpskin-only PUT (MERGE)');
+    assert.strictEqual(JSON.parse(r.body).skins.bpskin[bu], anyBpSkin.id);
+    r = await call('PUT', url, JSON.stringify({ unit: { [u]: null } }));
+    assert.strictEqual(JSON.parse(r.body).skins.unit[u], undefined, 'null clears back to the default');
+    assert.strictEqual(JSON.parse(r.body).skins.bpskin[bu], anyBpSkin.id, 'and nothing else moved');
+  });
+  await acheck('route: an unknown skin id and a slot mismatch are both 400, naming the offender', async () => {
+    let r = await call('PUT', url, JSON.stringify({ unit: { elf: 'uskin_no_such_skin' } }));
+    assert.strictEqual(r.statusCode, 400, r.body);
+    assert.ok(/uskin_no_such_skin/.test(r.body), r.body);
+    r = await call('PUT', url, JSON.stringify({ unit: { [anyBpSkin.units[0]]: anyBpSkin.id } }));
+    assert.strictEqual(r.statusCode, 400, 'a bpskin written into the portrait map is refused');
+    assert.ok(/cannot be written to the/.test(r.body), r.body);
+  });
+  await acheck('route: a body over the 64 KB cap is 413, and malformed JSON is 400', async () => {
+    let r = await call('PUT', url, 'x'.repeat(70 * 1024));
+    assert.strictEqual(r.statusCode, 413, r.body.slice(0, 200));
+    r = await call('PUT', url, '{not json');
+    assert.strictEqual(r.statusCode, 400, r.body);
+  });
+  await acheck('route: another player\'s selection is 403, and a bad method is 405', async () => {
+    const r = await call('GET', '/api/profile/someone_else/skins');
+    assert.strictEqual(r.statusCode, 403, r.body);
+    const d = await call('DELETE', url);
+    assert.strictEqual(d.statusCode, 405, d.body);
+  });
+  await acheck('route: the "default" alias follows the dev/e2e fallback identity (REQ-0037 alias + REQ-0214 isolation)', async () => {
+    AUTH = { ok: true, player: { playerId: rpid }, viaDevFallback: true };
+    const r = await call('GET', '/api/profile/default/skins');
+    assert.strictEqual(r.statusCode, 200, 'under the dev_mode NO-token fallback, "default" means the resolved identity');
+    assert.ok(JSON.parse(r.body).skins, r.body);
+    AUTH = { ok: true, player: { playerId: rpid }, viaDevFallback: false };
+    const r2 = await call('GET', '/api/profile/default/skins');
+    assert.strictEqual(r2.statusCode, 403, 'WITHOUT that annotation "default" is just a mismatched id -- the alias is keyed off the resolution PATH, not a playerId comparison');
+  });
+  await acheck('route: /api/profile/:id/canvas is NOT hijacked (profile.cjs still owns it)', async () => {
+    const r = await call('GET', '/api/profile/' + rpid + '/canvas');
+    assert.notStrictEqual(r.statusCode, 200, 'no canvas exists for this synthetic id');
+    assert.ok(!/"skins"/.test(r.body), 'and the answer is certainly not a skins payload');
+  });
+  try { storage.deleteSkinPrefs(rpid); } catch (e) { /* ignore */ }
+}
+
+routeChecks().then(() => {
+  try { storage.deleteSkinPrefs(pid); } catch (e) { /* ignore */ }
+  try { storage.deleteSkinPrefs(other); } catch (e) { /* ignore */ }
+  console.log(`\nskin_prefs_test (${backend} backend): ${failed ? failed + ' FAILED' : 'ALL GREEN'}`);
+  process.exit(failed ? 1 : 0);
+});
