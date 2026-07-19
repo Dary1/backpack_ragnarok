@@ -1518,4 +1518,3 @@ test.describe('REQ-0240: monitor six zones, feed filters, roster/pacing + screen
     await apiCancelRoom(page, player.token, roomId);
   });
 });
-});
