@@ -53,9 +53,19 @@ export interface FillRaster { width: number; height: number; rgba: Uint8ClampedA
  * raster was actually supplied. Either one missing = today's palette-procedural
  * path, byte for byte -- which is what `neutral` and `devornate` render through
  * and what the bpskin harness golden pins. Missing art never blocks a draw. */
+/** Does this def declare REAL ART? THE predicate, exported because the board's
+ * paint guard (skin/bpSkinTexture.ts's bpSkinSprite) and this compositor's own
+ * raster path must never disagree about what "has a texture" means. It lives
+ * here, in the pure Node-loadable module the renderer, the gates and the offline
+ * harnesses can all reach. Note the two different right answers it drives: a def
+ * that declares no texture renders palette-procedural HERE (an offline PNG wants
+ * a solid body) and renders NOTHING AT ALL on the board (where an opaque body
+ * would cover the per-BP colour tint). */
+export function declaresFillTexture(def: BpSkinDef): boolean {
+  return !!def.art && typeof def.art.fill_texture === "string" && def.art.fill_texture.length > 0;
+}
 function fillTile(def: BpSkinDef, raster?: FillRaster | null): FillRaster | null {
-  const declared = !!def.art && typeof def.art.fill_texture === "string" && def.art.fill_texture.length > 0;
-  if (!declared || !raster) return null;
+  if (!declaresFillTexture(def) || !raster) return null;
   if (!(raster.width > 0) || !(raster.height > 0)) return null;
   if (!raster.rgba || raster.rgba.length < raster.width * raster.height * 4) return null;
   return raster;

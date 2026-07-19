@@ -145,12 +145,17 @@ export class BoardRenderer {
   app: Application;
   root = new Container();
   gBase = new Container();
-  // REQ-0266 (item 23): BP skin composites. ABOVE gBase (the grid tint the skin
-  // is meant to dress) and BELOW gBeams -- so beams, PO art, move-handle badges,
-  // sockets and unit cores every one of them still draw ON TOP of the bag, and a
-  // skin can never come between the player and the BP drag handle. Purely
-  // decorative: the layer is eventMode 'none' (constructor, below) and so is
-  // every sprite added to it.
+  // REQ-0266 (item 23): BP skin composites, plus the BP's own usage tint that
+  // must read OVER them. ABOVE gBase (the grid the skin dresses) and BELOW
+  // gBeams -- so beams, PO art, move-handle badges, sockets and unit cores every
+  // one of them still draw ON TOP of the bag, and a skin can never come between
+  // the player and the BP drag handle (those handles live in gBase and stay
+  // hit-testable precisely because this whole layer is pruned from hit-testing).
+  // Purely decorative: the layer is eventMode 'none' (constructor, below) and so
+  // is every child added to it.
+  // A composite lands here ONLY for a skin with real, decoded art -- see the
+  // draw site's guard note; an art-less def would paint an opaque body over the
+  // per-BP colour tint in gBase and is not drawn at all.
   gSkins = new Container();
   gBeams = new Container();
   gItems = new Container();
@@ -448,11 +453,22 @@ export class BoardRenderer {
       // `instanceSkinId` is null because a BP instance carries no bp_skin slot
       // yet; a BP with no unit has nothing to key on, so it passes neither the
       // profile nor the set id and lands on neutral -- exactly as D-C requires.
-      // Building/caching the composite is skin/bpSkinTexture.ts's job. Decoding
-      // a fill raster is ASYNC and render() is not, so a skinned BP first paints
-      // palette-procedural and notifyStateChanged() brings the pixels in on the
-      // next frame; a raster that 404s is cached there as a permanent miss and
-      // the palette body stays. Missing art never blocks a draw.
+      // Building/caching the composite is skin/bpSkinTexture.ts's job, and so
+      // is THE GUARD that keeps this binding a NO-DIFF for an unskinned BP: it
+      // paints only when the resolved def declares real art (art.fill_texture)
+      // AND that raster is decoded and in hand, and returns null otherwise. That
+      // guard is not an optimisation. `neutral` is always registered, so this
+      // chain lands on a def for EVERY BP on both boards; a composite body is
+      // opaque and gSkins is above gBase; so an art-less def painted flat
+      // #2b3240 over the per-BP colour tint -- the one cue that tells one BP
+      // from another -- and over the inner half of its 3px coloured outline.
+      // resolveBpSkin still REPORTS the rung it really took (`neutral`, or
+      // `set` for a skin whose artwork is not adopted); it just no longer causes
+      // a paint. Decoding is ASYNC and render() is not, so a skinned BP renders
+      // unskinned on the frame that starts the decode and notifyStateChanged()
+      // brings the pixels in on the next one; a raster that 404s is cached there
+      // as a permanent miss and the BP stays unskinned. Missing art never blocks
+      // a draw, and never degrades one either.
       // Golden G2 is untouched: nothing data-driven is baked into the composite
       // -- the connection-shape markers, the charge ring and the link/beam lines
       // are all still drawn per frame from engine state, further below.
@@ -489,7 +505,14 @@ export class BoardRenderer {
       // independent of whatever POs sitting on/inside it also get tinted
       // individually below (a BP used by the current squad = red on its
       // OWN cells too, per spec's "applies to POs, SIs, AND BPs alike").
-      drawTintOverlay(this.gBase, cells, bp.id, tintRedSet, tintYellowSet);
+      // REQ-0266: drawn into gSkins, NOT gBase. This wash is a STATE signal
+      // ("this BP is committed to a squad"), not decoration, and a textured
+      // skin -- which is opaque and sits in gSkins -- would otherwise hide it.
+      // Zero visual difference when no skin paints: gSkins is the very next
+      // layer above gBase and the only other thing in it is this BP's own
+      // composite. (The PO/SI tints need no such move: they already draw into
+      // gItems, which is above gSkins.)
+      drawTintOverlay(this.gSkins, cells, bp.id, tintRedSet, tintYellowSet);
 
       const r0 = Math.min(...cells.map((cell) => cell[0]));
       const c0 = Math.min(...cells.filter((cell) => cell[0] === r0).map((cell) => cell[1]));

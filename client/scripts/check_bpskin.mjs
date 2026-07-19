@@ -94,6 +94,27 @@ async function main() {
     const a = comp.compositeSkin([[2, 2], [2, 3]], defs['devornate'], '#14181f');
     const b = comp.compositeSkin([[2, 2], [2, 3]], defs['devornate'], '#14181f');
     ok(Buffer.compare(Buffer.from(a.rgba), Buffer.from(b.rgba)) === 0, 'compositor deterministic (byte-identical)');
+    // REQ-0266 -- THE BOARD PAINT GUARD. board/skin/bpSkinTexture.ts's
+    // bpSkinSprite() needs a DOM and cannot be driven from here, but the
+    // predicate it is gated on is pure and lives in composite.ts, so THAT is
+    // pinned here. The rule: only a skin with REAL ART paints on the board.
+    // `neutral` is always registered so resolveBpSkin lands on a def for every
+    // BP, every derived unit_skin def inherits neutral's palette, and a
+    // composite body is opaque above gBase -- so a guard keyed on anything else
+    // repaints every BP on both boards in flat #2b3240 and buries the per-BP
+    // colour tint. That happened; this is the assertion that would have caught
+    // it. Regression fixed 2026-07-19.
+    ok(!comp.declaresFillTexture(defs['neutral']), 'neutral declares NO fill texture -> never paints on the board');
+    ok(!comp.declaresFillTexture(defs['devornate']), 'an authored palette-only skin declares no fill texture either');
+    const demoUnitSkins = { uskin_bp_demo: { id: 'uskin_bp_demo', name: 'Demo', slot: 'bpskin', art_ref: 'bpskin_unit_demo', units: ['demo'], default: true } };
+    const derivedNoArt = reg.loadSkinDefs(defsDoc, { unitSkins: demoUnitSkins, artUrls: {} })['uskin_bp_demo'];
+    const derivedArt = reg.loadSkinDefs(defsDoc, { unitSkins: demoUnitSkins, artUrls: { uskin_bp_demo: '/api/art/bpskin_unit_demo.png' } })['uskin_bp_demo'];
+    ok(derivedNoArt && !comp.declaresFillTexture(derivedNoArt), 'a derived skin whose artwork is NOT adopted declares no fill texture -> never paints (D5: absence is the normal case)');
+    ok(derivedArt && comp.declaresFillTexture(derivedArt), 'a derived skin WITH an adopted artwork declares its fill texture -> paints');
+    // ...and the OFFLINE path is unaffected: a PNG wants a solid body, so an
+    // art-less def still composites here. Only the BOARD suppresses it.
+    ok(comp.compositeSkin([[2, 2]], derivedNoArt, '#14181f').rgba.length === 3 * 3 * 48 * 48 * 4, // DEFAULT_PARAMS: cellPx 48, margin 1
+      'an art-less derived def still composites OFFLINE at full size -- only the board suppresses it');
   } finally { await server.close(); }
   if (fails) { console.error(`\n${fails} assertion(s) FAILED`); process.exit(1); }
   console.log('\ncheck_bpskin: ALL GREEN');

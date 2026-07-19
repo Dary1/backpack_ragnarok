@@ -5,13 +5,25 @@
 // interaction invariants are pinned by e2e specs -- and none of this is renderer
 // logic. composite.ts stays pure and Node-callable for the three offline
 // harnesses, so DECODING is this module's job; the compositor sees only pixels.
-// Decode is ASYNC and render() is not, so a skinned BP first paints
-// palette-procedural and the raster swaps in on the next render (onReady). A
-// raster that 404s or fails to decode is cached as a permanent miss and the BP
-// keeps its palette body -- missing art never blocks a draw.
+// ONLY A SKIN WITH REAL ART PAINTS -- bpSkinSprite() returns null for any def
+// that does not declare art.fill_texture. This is load-bearing, not an
+// optimisation: `neutral` is ALWAYS registered (skinRegistry) so resolveBpSkin
+// lands on a def for EVERY BP on both boards, every derived unit_skin def whose
+// artwork is not adopted inherits neutral's palette, and a composite body is
+// OPAQUE and parented above gBase. Without this guard every BP was painted flat
+// #2b3240, hiding the per-BP colour grid tint -- the one cue that tells one BP
+// from another -- and all but the outer half of its 3px coloured outline. The
+// resolver is deliberately untouched: it still REPORTS `neutral` (or `set`)
+// honestly, it just no longer causes a paint. See composite.ts's
+// declaresFillTexture(), which is the single executable definition of "has art".
+// Decode is ASYNC and render() is not, so a skinned BP paints NOTHING on the
+// frame that starts the decode -- it is pixel-identical to an unskinned BP --
+// and onReady() re-renders once the pixels are in. A raster that 404s or fails
+// to decode is cached as a permanent miss and the BP simply stays unskinned:
+// missing art never blocks a draw, and never degrades one either.
 import { Sprite, Texture } from 'pixi.js';
 import { CELL, PAD } from '../geom';
-import { compositeSkin, LAYER, type FillRaster } from './composite';
+import { compositeSkin, declaresFillTexture, LAYER, type FillRaster } from './composite';
 import type { BpSkinDef } from './skinRegistry';
 import type { Cell } from './autotile';
 
@@ -73,10 +85,9 @@ export function fillRasterFor(def: BpSkinDef, onReady?: () => void): FillRaster 
 /** Texture for one (cell-set, skin). Pixels outside the silhouette are made
  * fully TRANSPARENT: the compositor paints a solid background there, which is
  * right for an offline PNG and wrong for a board, where the grid must show. */
-function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, onReady?: () => void): { tex: Texture; r0: number; c0: number } | null {
+function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, raster: FillRaster): { tex: Texture; r0: number; c0: number } | null {
   if (typeof document === 'undefined' || cells.length === 0) return null;
-  const raster = fillRasterFor(def, onReady);
-  const key = def.id + '|' + (raster ? 'r' : 'p') + '|' + cells.map((c) => c[0] + ',' + c[1]).sort().join(';');
+  const key = def.id + '|r|' + cells.map((c) => c[0] + ',' + c[1]).sort().join(';');
   const comp = compositeSkin(cells, def, def.palette.canvas || '#000000', { cellPx: CELL, margin: MARGIN }, raster);
   const hit = textures.get(key);
   if (hit) return { tex: hit, r0: comp.r0, c0: comp.c0 };
@@ -99,7 +110,19 @@ function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, onReady?: () => 
  * nothing to draw. The CALLER marks it eventMode 'none' and parents it. */
 export function bpSkinSprite(cells: ReadonlyArray<Cell>, def: BpSkinDef | null | undefined, onReady?: () => void): Sprite | null {
   if (!def) return null;
-  const built = textureFor(cells, def, onReady);
+  // THE GUARD (module header). Two separate reasons to draw nothing, and both
+  // must render EXACTLY as the board did before this REQ -- bare grid tint, bare
+  // outline, no child in gSkins at all:
+  //   1. the def declares no art (`neutral`, and every derived skin whose
+  //      artwork is not adopted -- the normal case under ruling D5), and
+  //   2. it declares art that is not decoded yet, or never will be.
+  // fillRasterFor() covers both and starts the decode for case 2 only, but the
+  // first is asked explicitly so this reads as the rule it is rather than as a
+  // side effect of a cache lookup.
+  if (!declaresFillTexture(def)) return null;
+  const raster = fillRasterFor(def, onReady);
+  if (!raster) return null;
+  const built = textureFor(cells, def, raster);
   if (!built) return null;
   const sprite = new Sprite(built.tex);
   sprite.x = PAD + (built.c0 - MARGIN - 1) * CELL;
