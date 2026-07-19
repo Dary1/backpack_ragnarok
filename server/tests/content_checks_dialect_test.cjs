@@ -495,5 +495,69 @@ T('REQ-0211 the gimic dialect does NOT leak: a good po/2 still PASSes', () => {
   assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the gimic dialect landed');
 });
 
+// =====================================================================
+// REQ-0185 gate: the dungeon/1 machine checks. A dungeon def is authored,
+// PROBABILITY-WEIGHTED references to monster_pack + gimic defs; its rules live
+// in shared/content_validate.cjs (validateDungeonEntry), reused by the dialect.
+// schema_vocab cross-checks pool references against the LIVE pack + gimic
+// rosters; engine_types APPLIES (sim/dungeon_roll.cjs dereferences the pools
+// and level bands); gen_data is honestly applicable:false.
+// =====================================================================
+const dungeons = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'dungeons.json'), 'utf8'));
+const DUNGEON_SCHEMA = dungeons.schema; // 'dungeon/1'
+const GOOD_DUNGEON = dungeons.entries[0]; // niflheim_depths
+const dungeonClone = () => JSON.parse(JSON.stringify(GOOD_DUNGEON));
+
+T('REQ-0185 positive: every live dungeon/1 entry PASSes with its data untouched', () => {
+  for (const d of dungeons.entries) {
+    const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, clone(d));
+    assert.strictEqual(r.overall, 'PASS', d.id + ' -> ' + r.overall + ' (' + failedNames(r).join(',') + ')');
+  }
+});
+
+T('REQ-0185 schema_vocab: a packPool that names a non-existent monster_pack FAILs by name', () => {
+  const d = dungeonClone(); d.packPool = [{ packId: 'pack_does_not_exist', weight: 1 }];
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, d);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/pack_does_not_exist/.test(checkOf(r, 'schema_vocab').detail), 'names the missing pack');
+});
+
+T('REQ-0185 schema_vocab: a gimicPool that names a non-existent gimic FAILs by name', () => {
+  const d = dungeonClone(); d.gimicPool = [{ gimic: 'gimic_does_not_exist', weight: 1 }];
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, d);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/gimic_does_not_exist/.test(checkOf(r, 'schema_vocab').detail), 'names the missing gimic');
+});
+
+T('REQ-0185 schema_vocab: an empty/absent bossPool FAILs (a dive must have a final boss)', () => {
+  const d = dungeonClone(); delete d.bossPool;
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, d);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.deepStrictEqual(failedNames(r).includes('schema_vocab'), true, 'schema_vocab flags the missing bossPool');
+});
+
+T('REQ-0185 engine_types APPLIES to dungeon (the roller dereferences pools + level bands)', () => {
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, dungeonClone());
+  const et = checkOf(r, 'engine_types');
+  assert.notStrictEqual(et.applicable, false, 'engine_types must APPLY to dungeon, unlike skill_def');
+  assert.strictEqual(et.ok, true);
+});
+
+T('REQ-0185 negative: engine_types catches a non-number weight (pickWeighted would read NaN)', () => {
+  const d = dungeonClone(); d.packPool = [{ packId: d.packPool[0].packId, weight: 'lots' }];
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, d);
+  assert.strictEqual(r.overall, 'FAIL', 'a string weight is a crash inside the roller, not a nit');
+});
+
+T('REQ-0185 honesty: gen_data is applicable:false for dungeon, not a free PASS', () => {
+  const r = checks.runChecks('dungeon', DUNGEON_SCHEMA, dungeonClone());
+  assert.strictEqual(checkOf(r, 'gen_data').applicable, false, 'tool_gen_data does not consume dungeon/1');
+});
+
+T('REQ-0185 the dungeon dialect does NOT leak: a good po/2 still PASSes', () => {
+  const r = checks.runChecks('po_def', PO_SCHEMA, GOOD_PO);
+  assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the dungeon dialect landed');
+});
+
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);

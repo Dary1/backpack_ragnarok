@@ -109,6 +109,7 @@ const DIALECTS = {
   'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
   'monster_pack/1': { name: 'monster_pack/1', rarity_case: 'exact', range_fields: [] },
   'gimic/1': { name: 'gimic/1', rarity_case: 'exact', range_fields: [] }, // REQ-0211
+  'dungeon/1': { name: 'dungeon/1', rarity_case: 'exact', range_fields: [] }, // REQ-0185
 };
 const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
@@ -295,6 +296,31 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     } catch (e) {
       errs.push(e.message);
     }
+  } else if (kind === 'dungeon') {
+    // REQ-0185. A dungeon def's rules are executable in shared/content_validate.cjs
+    // (validateDungeonEntry) -- the SAME definition sim/dungeon_roll.cjs rolls a dive
+    // from; reused here, not re-implemented (the REQ-0184/0211 lesson). Pool references
+    // are cross-checked against the LIVE monster_pack + gimic rosters, so a def that
+    // names a missing pack or gimic FAILs by name (an unresolved ref would roll an empty
+    // pack / crash the attachment builder, and nothing else in the chain would say so).
+    const { validateDungeonEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let monsterPackDefs = null;
+    let gimicDefs = null;
+    try {
+      const packs = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'packs.json'));
+      monsterPackDefs = {};
+      for (const e of (packs.entries || [])) monsterPackDefs[e.id] = e;
+    } catch (e) { monsterPackDefs = null; } // shape-only when the live pack roster cannot be read
+    try {
+      const gimics = loadJson(path.join(repoRoot(), 'content', 'live', 'dungeon', 'gimics.json'));
+      gimicDefs = {};
+      for (const g of (gimics.entries || [])) gimicDefs[g.id] = g;
+    } catch (e) { gimicDefs = null; }
+    try {
+      validateDungeonEntry(data, { monsterPackDefs, gimicDefs });
+    } catch (e) {
+      errs.push(e.message);
+    }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
     // pseudo-effect so the record gets the IDENTICAL vocab validation every other
@@ -368,6 +394,34 @@ function engineTypesCheck(kind, data, root, dialect) {
     if (data.skills !== undefined && (!Array.isArray(data.skills) || !data.skills.every((x) => typeof x === 'string'))) errs.push('skills must be string[] (the volley/keeper skill ids dungen wires onto the attachment)');
     return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/dungen.cjs builds gimic attachments from' : errs.join('; ') };
   }
+  // REQ-0185: a dungeon IS consumed by runtime code -- sim/dungeon_roll.cjs reads
+  // packPool/bossPool[].packId, gimicPool[].gimic and the dive.{packEncounters,gimicSlots}
+  // bands to roll a concrete encounter list. So like monster_pack it has a real type
+  // surface and the check APPLIES. A non-string ref or a non-number weight/band is a crash
+  // in the roller (pickWeighted / bandCount), not a content nit.
+  if (kind === 'dungeon') {
+    const errs = [];
+    const chkPool = (pool, name, key, required) => {
+      if (pool === undefined && !required) return;
+      if (!Array.isArray(pool)) { errs.push(name + ' must be an array (the roller pickWeighted maps over it)'); return; }
+      pool.forEach((r, i) => {
+        if (!r || typeof r !== 'object') { errs.push(name + '[' + i + '] must be an object'); return; }
+        if (typeof r[key] !== 'string') errs.push(name + '[' + i + '].' + key + ' must be a string (indexes the def map)');
+        if (!Number.isFinite(r.weight)) errs.push(name + '[' + i + '].weight must be a number (pickWeighted reads it)');
+      });
+    };
+    chkPool(data.packPool, 'packPool', 'packId', true);
+    chkPool(data.bossPool, 'bossPool', 'packId', true);
+    chkPool(data.gimicPool, 'gimicPool', 'gimic', false);
+    const chkBand = (b, name) => {
+      if (!b || typeof b !== 'object') { errs.push(name + ' must be an object {base, max}'); return; }
+      if (!Number.isInteger(b.base)) errs.push(name + '.base must be an integer (bandCount reads it)');
+      if (!Number.isInteger(b.max)) errs.push(name + '.max must be an integer (bandCount reads it)');
+    };
+    if (data.dive && typeof data.dive === 'object') { chkBand(data.dive.packEncounters, 'dive.packEncounters'); chkBand(data.dive.gimicSlots, 'dive.gimicSlots'); }
+    else errs.push('dive must be an object {packEncounters, gimicSlots} (the roller reads the level-scaling bands)');
+    return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/dungeon_roll.cjs rolls a dive from' : errs.join('; ') };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
@@ -422,6 +476,11 @@ function genDataCheck(kind, data, root) {
   // and a free PASS here would be a lie dressed as a green chip.
   if (kind === 'gimic') {
     return { ok: true, applicable: false, detail: 'gen_data not applicable for gimic (tool_gen_data does not consume gimic/1)' };
+  }
+  // REQ-0185: same honesty for dungeon -- tool_gen_data has never consumed a dungeon
+  // def, and a free PASS here would be a lie dressed as a green chip.
+  if (kind === 'dungeon') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for dungeon (tool_gen_data does not consume dungeon/1)' };
   }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');

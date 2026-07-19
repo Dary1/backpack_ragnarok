@@ -566,11 +566,36 @@ export interface ApiSealReplay {
   timeline: ApiSealTimeline;
 }
 
-/** GET /api/schedule/dungeons's per-dungeon/-formation entries. */
+/** REQ-0185: the authored expected composition of a dungeon def -- what the
+ * sortie dossier (design D3) renders. Derived by rolling a representative
+ * "scout" dive of the def server-side (sim/dungeon_roll.cjs diveSummary). */
+export interface ApiDungeonEncounterSummary {
+  /** Expected number of BATTLE (pack) encounters at the def's top level. */
+  packs: number;
+  /** Expected gimic attachments by class. */
+  gimics: { trap: number; chest: number; door: number };
+  /** The representative (top-weight) boss pack id. */
+  bossPackId: string | null;
+  /** Up to 5 resolved reward item ids the dive can drop. */
+  lootPreview: string[];
+}
+
+/** GET /api/schedule/dungeons's per-dungeon/-formation entries. REQ-0185: a
+ * dungeon is now an AUTHORED def (dungeon/1), so the entry carries the sortie
+ * payload -- theme (design D2 glyph/accent), the recommended level band, and
+ * the authored encounter summary (design D3). The fields beyond id/name/i18n
+ * are optional so a legacy/minimal payload still typechecks. */
 export interface ApiDungeonEntry {
   id: string;
   name: string;
   i18n?: ApiI18nMap;
+  /** REQ-0185: short theme key -- 'frost'/'grave'/'wild'/... (design D2). */
+  theme?: string;
+  /** REQ-0185: recommended level band (advisory display; the server does NOT gate). */
+  levelMin?: number;
+  levelMax?: number;
+  /** REQ-0185: the authored expected composition (design D3 dossier). */
+  encounterSummary?: ApiDungeonEncounterSummary;
 }
 /** REQ-0043: one entry per sim/dungen.cjs generator type ('default' /
  * 'test_fixed'). `i18n[locale].note` is a short level-scaling/fixed-spawn
@@ -623,6 +648,10 @@ export interface ApiForecastProfile {
 /** REQ-0057: GET /api/schedule/forecast?dungeonType=&level=. */
 export interface ApiForecastPayload {
   ok: true;
+  /** REQ-0185: the authored dungeon DEF id this forecast folds. */
+  dungeonId: string;
+  /** Back-compat: retained field name, now carrying the def id (was the
+   * retired sim/dungen.cjs generator type). */
   dungeonType: string;
   level: number;
   /** How many dungen seeds the profiles were marginalised over. */
@@ -639,10 +668,10 @@ export interface ApiForecastPayload {
 
 export interface ApiDungeonsPayload {
   ok: true;
+  /** REQ-0185: authored dungeon DEFS (each carrying theme, level band + an
+   * encounterSummary). The retired sim/dungen.cjs `types` list is gone -- the
+   * client picks a DEF, not a generator type. */
   dungeons: ApiDungeonEntry[];
-  /** REQ-0043: the generator type list (kept alongside `dungeons` for
-   * back-compat -- `dungeons` is untouched). */
-  types: ApiDungeonTypeEntry[];
   formations: ApiFormationEntry[];
 }
 

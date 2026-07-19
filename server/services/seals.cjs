@@ -11,7 +11,7 @@
 const crypto = require('crypto');
 const storage = require('../storage.cjs');
 const { getScheduleContent } = require('./core.cjs');
-const { createRoom, resolveDungeonType } = require('./rooms.cjs');
+const { createRoom } = require('./rooms.cjs');
 
 const SEAL_SCHEMA_VERSION = 1;
 
@@ -29,12 +29,19 @@ function err(msg, code, reason) {
 // unguessable share token a minter passes to friends.
 function mintSeal(creatorId, opts) {
   const o = opts || {};
+  // REQ-0185: a seal pins a dungeon DEF id + the roll seed (genSeed) -- a replay
+  // re-rolls the same def with the same seed to reproduce the dive byte-for-byte
+  // (Open Q3). Default to (or fall back to) the first live def when the caller
+  // names none / an unknown one.
+  const { dungeonDefsById } = getScheduleContent();
   let dungeonId = o.dungeonId;
-  if (typeof dungeonId !== 'string' || !dungeonId) {
-    const { dungeonDef } = getScheduleContent();
-    dungeonId = dungeonDef.id;
+  if (typeof dungeonId !== 'string' || !dungeonId || !dungeonDefsById[dungeonId]) {
+    const ids = Object.keys(dungeonDefsById || {});
+    dungeonId = ids[0] || (typeof dungeonId === 'string' ? dungeonId : '');
   }
-  const dungeonType = resolveDungeonType(o.dungeonType, dungeonId);
+  // dungeonType is vestigial post-REQ-0185 (the dungeonId names the def now); kept
+  // on the seal doc / public meta only for the already-shipped ApiSeal* shape.
+  const dungeonType = 'default';
   const level = Number.isFinite(o.level) ? Math.max(1, Math.floor(o.level)) : 1;
   // affixes (REQ-0055): frozen passthrough array. REQ-0055 (dungeon
   // weather) is still draft/unimplemented, so nothing derives gameplay

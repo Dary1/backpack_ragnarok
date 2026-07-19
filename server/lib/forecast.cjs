@@ -41,7 +41,7 @@
 //
 // 'test_fixed' is seed-independent by construction, so it samples ONE seed.
 const combat = require('../../sim/combat.cjs');
-const dungen = require('../../sim/dungen.cjs');
+const dungeonRoll = require('../../sim/dungeon_roll.cjs'); // REQ-0185: the dive roller (shared with the serving path = parity by construction)
 const { getScheduleContent } = require('../services/core.cjs');
 
 // ---------------------------------------------------------------------
@@ -109,27 +109,34 @@ function clampLevel(level) {
 // ---------------------------------------------------------------------
 // buildForecast(dungeonType, level) -> the wire payload.
 // ---------------------------------------------------------------------
-function buildForecast(dungeonType, level) {
-  const type = dungeonType || 'default';
-  if (!dungen.DUNGEON_TYPES.includes(type)) {
-    // House error convention (types/coded-error.d.ts): services throw a plain
-    // Error tagged with a machine-readable `code`; the ROUTE maps code -> HTTP
-    // status. Never an HTTP status on the error itself.
-    throw Object.assign(
-      new Error('unknown dungeonType ' + JSON.stringify(type) +
-        ' (known: ' + dungen.DUNGEON_TYPES.join(', ') + ')'),
-      { code: 'BAD_REQUEST' });
-  }
-  const lvl = clampLevel(level);
-  const { enemyDefsById, skillDefsById, skillNamesById, formationsDoc, monsterPackDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById
+// REQ-0185: resolve a forecast reference (a dungeon DEF id, or a legacy generator
+// type string like 'default'/'test_fixed') to a live dungeon def. Unknown/legacy
+// refs fall back to the first def, so the pre-REQ parity harness call
+// getForecast('default', 5) keeps working (advisory overlay -- a bad ref folds a
+// real dungeon rather than 400ing the overlay off the page).
+function resolveForecastDef(ref, dungeonDefsById) {
+  if (ref && dungeonDefsById && dungeonDefsById[ref]) return dungeonDefsById[ref];
+  const ids = Object.keys(dungeonDefsById || {});
+  return ids.length ? dungeonDefsById[ids[0]] : null;
+}
 
-  // 'test_fixed' ignores level and seed entirely (it replays batch-002's
-  // hand-authored dungeon.json verbatim), so sampling it 24 times would fold
-  // 24 byte-identical dungeons -- correct, but pointless work.
-  const seedCount = (type === 'test_fixed') ? 1 : FORECAST_TUNABLES.SAMPLE_SEEDS;
+function buildForecast(dungeonRef, level) {
+  const lvl = clampLevel(level);
+  const { enemyDefsById, skillDefsById, skillNamesById, formationsDoc, monsterPackDefsById, gimicDefsById, dungeonDefsById } = getScheduleContent(); // REQ-0184: monsterPackDefsById; REQ-0185: gimicDefsById + dungeonDefsById
+  const def = resolveForecastDef(dungeonRef, dungeonDefsById);
+  if (!def) {
+    // House error convention (types/coded-error.d.ts): services throw a plain
+    // Error tagged with a machine-readable `code`; the ROUTE maps code -> HTTP status.
+    throw Object.assign(new Error('no dungeon def available to forecast'), { code: 'BAD_REQUEST' });
+  }
+
+  // REQ-0185: the forecast marginalises over a seed ladder of the SAME roller the
+  // dive runs (sim/dungeon_roll.cjs), so it can never forecast a composition the
+  // sim would not roll. The seed ladder is keyed on the DEF id (stable per def).
+  const seedCount = FORECAST_TUNABLES.SAMPLE_SEEDS;
   const seeds = [];
   for (let i = 0; i < seedCount; i++) {
-    seeds.push(FORECAST_TUNABLES.SEED_PREFIX + type + '/' + lvl + '/' + i);
+    seeds.push(FORECAST_TUNABLES.SEED_PREFIX + def.id + '/' + lvl + '/' + i);
   }
 
   // REQ-0184: the PLACEABLE area is B2:Y17 -- the 26x18 field carries a margin of
@@ -147,8 +154,8 @@ function buildForecast(dungeonType, level) {
   let battles = 0;
 
   for (const seed of seeds) {
-    const def = dungen.generate(type, lvl, seed);
-    for (const enc of (def.encounters || [])) {
+    const rolled = dungeonRoll.rollDungeon(def, lvl, seed, { gimicDefsById });
+    for (const enc of (rolled.encounters || [])) {
       // Only BATTLE encounters throw damaging rays at the player field.
       // Traps/doors/chests fire in 'detection'/'unlock' mode, where "a hit IS
       // the find, damage irrelevant" (sim/lib/skills.cjs dealHitOnField), and
@@ -243,7 +250,8 @@ function buildForecast(dungeonType, level) {
   }));
 
   return {
-    dungeonType: type,
+    dungeonId: def.id, // REQ-0185: the authored dungeon def this forecast folds
+    dungeonType: def.id, // back-compat field name (now carries the def id)
     level: lvl,
     sampleSeeds: seeds.length,
     battlesSampled: battles,
@@ -266,14 +274,13 @@ function buildForecast(dungeonType, level) {
 // ---------------------------------------------------------------------
 let memo = { contentRef: null, byArgs: new Map() };
 
-function getForecast(dungeonType, level) {
+function getForecast(dungeonRef, level) {
   const content = getScheduleContent();
   if (memo.contentRef !== content) memo = { contentRef: content, byArgs: new Map() };
-  const type = dungeonType || 'default';
-  const k = type + '/' + clampLevel(level);
+  const k = (dungeonRef || '') + '/' + clampLevel(level);
   const hit = memo.byArgs.get(k);
   if (hit) return hit;
-  const built = buildForecast(type, level);
+  const built = buildForecast(dungeonRef, level);
   memo.byArgs.set(k, built);
   return built;
 }

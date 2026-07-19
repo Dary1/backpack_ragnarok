@@ -598,6 +598,104 @@ function validateGimicEntry(gimic, skillDefs) {
 }
 
 
+
+// =====================================================================
+// REQ-0185: dungeon/1 -- an authored dungeon is identity + PROBABILITY-
+// WEIGHTED references to monster_pack defs and gimic defs, rolled at dive
+// time (sim/dungeon_roll.cjs). ONE executable definition of "a legal dungeon
+// def", shared by the content machine check (server/services/
+// content_checks.cjs) so the admin blesses exactly the shape the roller reads.
+// =====================================================================
+
+/** The stage-2 (unlock) partner of a hidden-door stage-1 gimic id, by the
+ * REQ-0211 convention (shared "door_<name>_" prefix + behavior:hidden_door;
+ * "_stage1" -> "_stage2"). Returns the stage-2 def, or null. Shared by the
+ * roller and this validator so "how a door pair is resolved" has one home. */
+function dungeonDoorStage2(stage1Id, gimicDefs) {
+  if (!gimicDefs) return null;
+  const direct = typeof stage1Id === 'string' ? stage1Id.replace(/_stage1$/, '_stage2') : null;
+  if (direct && direct !== stage1Id && gimicDefs[direct]) return gimicDefs[direct];
+  const g1 = gimicDefs[stage1Id];
+  if (!g1) return null;
+  if (g1.type === 'door_stage2' || g1.mode === 'unlock') return g1; // the referenced id already IS the unlock stage
+  const prefix = stage1Id.replace(/stage1$/, '');
+  for (const id of Object.keys(gimicDefs)) {
+    const g = gimicDefs[id];
+    if (g && g.behavior === 'hidden_door' && (g.type === 'door_stage2' || g.mode === 'unlock') && id.indexOf(prefix) === 0) return g;
+  }
+  return null;
+}
+
+function validateDungeonBand(band, ctx, floor) {
+  if (!band || typeof band !== 'object' || Array.isArray(band)) throw new Error(ctx + ' must be an object {base, max, perLevels?}');
+  if (!Number.isInteger(band.base) || band.base < floor) throw new Error(ctx + '.base must be an integer >= ' + floor);
+  if (!Number.isInteger(band.max) || band.max < band.base) throw new Error(ctx + '.max must be an integer >= base');
+  if (band.perLevels !== undefined && (!Number.isInteger(band.perLevels) || band.perLevels < 1)) throw new Error(ctx + '.perLevels must be an integer >= 1');
+}
+
+function validateDungeonPool(pool, ctx, packDefs, opts) {
+  const required = !opts || opts.required !== false;
+  if (pool === undefined && !required) return;
+  if (!Array.isArray(pool) || pool.length === 0) throw new Error(ctx + ' must be a non-empty array of {packId, weight}');
+  pool.forEach(function (row, i) {
+    const rctx = ctx + '[' + i + ']';
+    if (!row || typeof row !== 'object') throw new Error(rctx + ' must be an object');
+    if (typeof row.packId !== 'string' || !row.packId) throw new Error(rctx + ': packId (a monster_pack id) is required');
+    if (!isFiniteNum(row.weight) || row.weight <= 0) throw new Error(rctx + ' ("' + row.packId + '"): weight must be a number > 0');
+    if (packDefs && !packDefs[row.packId]) throw new Error(rctx + ': names monster_pack "' + row.packId + '", which has no live def');
+  });
+}
+
+function validateDungeonGimicPool(pool, ctx, gimicDefs) {
+  if (pool === undefined) return; // gimicPool is optional -- a dungeon may have no interactables
+  if (!Array.isArray(pool)) throw new Error(ctx + ' must be an array of {gimic, weight}');
+  pool.forEach(function (row, i) {
+    const rctx = ctx + '[' + i + ']';
+    if (!row || typeof row !== 'object') throw new Error(rctx + ' must be an object');
+    if (typeof row.gimic !== 'string' || !row.gimic) throw new Error(rctx + ': gimic (a gimic id) is required');
+    if (!isFiniteNum(row.weight) || row.weight <= 0) throw new Error(rctx + ' ("' + row.gimic + '"): weight must be a number > 0');
+    if (gimicDefs) {
+      const g = gimicDefs[row.gimic];
+      if (!g) throw new Error(rctx + ': names gimic "' + row.gimic + '", which has no live def');
+      if (g.behavior === 'hidden_door' && !dungeonDoorStage2(row.gimic, gimicDefs)) {
+        throw new Error(rctx + ': hidden-door gimic "' + row.gimic + '" has no stage-2 (unlock) partner (expected a "' + String(row.gimic).replace(/_stage1$/, '_stage2') + '"-style def)');
+      }
+    }
+  });
+}
+
+/** Validates one dungeon/1 entry. Throws a descriptive Error -- never coerces.
+ * refs.monsterPackDefs (id->def) and refs.gimicDefs (id->def), when supplied,
+ * make every pool reference resolve to a live def (an unresolved ref rolls an
+ * empty pack / crashes the attachment builder, and nothing else in the chain
+ * would say so). Pass {} / null to skip the reference checks (shape-only). */
+function validateDungeonEntry(dungeon, refs) {
+  const monsterPackDefs = refs && refs.monsterPackDefs;
+  const gimicDefs = refs && refs.gimicDefs;
+  if (!dungeon || typeof dungeon !== 'object' || Array.isArray(dungeon)) throw new Error('dungeon entry must be an object');
+  if (typeof dungeon.id !== 'string' || !dungeon.id) throw new Error('dungeon entry: id is required');
+  const ctx = 'dungeon "' + dungeon.id + '"';
+  if (typeof dungeon.name !== 'string' || !dungeon.name) throw new Error(ctx + ': name is required');
+  if (dungeon.i18n !== undefined) validateI18n(dungeon.i18n, ctx, DUNGEON_LOCALES);
+  if (typeof dungeon.theme !== 'string' || !dungeon.theme) throw new Error(ctx + ': theme is required (a short theme key)');
+  if (!Number.isInteger(dungeon.levelMin) || dungeon.levelMin < 1) throw new Error(ctx + ': levelMin must be an integer >= 1');
+  if (!Number.isInteger(dungeon.levelMax) || dungeon.levelMax < dungeon.levelMin) throw new Error(ctx + ': levelMax must be an integer >= levelMin');
+  if (!dungeon.dive || typeof dungeon.dive !== 'object' || Array.isArray(dungeon.dive)) throw new Error(ctx + ': dive must be an object {packEncounters, gimicSlots}');
+  validateDungeonBand(dungeon.dive.packEncounters, ctx + ': dive.packEncounters', 1);
+  validateDungeonBand(dungeon.dive.gimicSlots, ctx + ': dive.gimicSlots', 0);
+  validateDungeonPool(dungeon.packPool, ctx + ': packPool', monsterPackDefs, { required: true });
+  validateDungeonPool(dungeon.bossPool, ctx + ': bossPool', monsterPackDefs, { required: true });
+  validateDungeonGimicPool(dungeon.gimicPool, ctx + ': gimicPool', gimicDefs);
+  if (dungeon.rewards !== undefined) {
+    if (typeof dungeon.rewards !== 'object' || Array.isArray(dungeon.rewards)) throw new Error(ctx + ': rewards must be an object of roll-id strings');
+    for (const k of Object.keys(dungeon.rewards)) {
+      if (typeof dungeon.rewards[k] !== 'string' || !dungeon.rewards[k]) throw new Error(ctx + ': rewards.' + k + ' must be a non-empty roll-id string');
+    }
+  }
+  if (dungeon.note !== undefined && typeof dungeon.note !== 'string') throw new Error(ctx + ': note must be a string');
+}
+
+
 module.exports = {
   SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS, UNIT_ALLOWED_KEYS,
   validateUnitEntry, validatePackEntry,
@@ -605,6 +703,8 @@ module.exports = {
   validateMonsterPackEntry, parseA1, formatA1, cellsFor, PLACEABLE, FIELD_COLS, FIELD_ROWS,
   // REQ-0211: gimic/1 -- the interactable dungeon gimmicks.
   validateGimicEntry, GIMIC_BEHAVIOR_MODES, GIMIC_MODES,
+  // REQ-0185: dungeon/1 -- authored weighted refs to monster_pack + gimic.
+  validateDungeonEntry, dungeonDoorStage2,
   DUNGEON_LOCALES,
   isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody, validateCharge,
 };

@@ -249,9 +249,31 @@ fs.writeFileSync(path.join(batchDir, 'gimics.json'), JSON.stringify({
 // REQ-0122: the runtime reads the dungeon domain from content/live/dungeon
 // (the promoted copy), not the batch dir -- mirror the fixture batch there,
 // exactly what tools/promote_dungeon_batch.cjs does to the real repo.
+// REQ-0185: dungeons.json -- the AUTHORED dungeon/1 defs (identity + probability-
+// weighted references to monster_pack + gimic). The serving path (listDungeonsAnd
+// formations / startRun / forecast) rolls a dive from these. The def id matches the
+// legacy concrete dungeon.json id ('test_dungeon') so every existing assertion on
+// dungeons[0].id === 'test_dungeon' keeps holding. References the fixture's own two
+// packs + trap/chest/door gimics.
+fs.writeFileSync(path.join(batchDir, 'dungeons.json'), JSON.stringify({
+  schema: 'dungeon/1',
+  entries: [
+    {
+      id: 'test_dungeon', name: 'Test Dungeon',
+      i18n: { en: { name: 'Test Dungeon' }, ja: { name: 'テストダンジョン' } },
+      theme: 'test', levelMin: 1, levelMax: 5,
+      dive: { packEncounters: { base: 1, perLevels: 3, max: 3 }, gimicSlots: { base: 1, perLevels: 3, max: 2 } },
+      packPool: [{ packId: 'pack_test_slime', weight: 1 }],
+      bossPool: [{ packId: 'pack_test_boss', weight: 1 }],
+      gimicPool: [{ gimic: 'trap_frost_deadfall', weight: 2 }, { gimic: 'chest_frostbound_cache', weight: 1 }, { gimic: 'door_rimefast_stage1', weight: 1 }],
+      rewards: { pack: 'blade', chest: 'blade', boss: 'fx_dagger' },
+    },
+  ],
+}));
+
 const fixtureLiveDungeonDir = path.join(contentDir, 'live', 'dungeon');
 fs.mkdirSync(fixtureLiveDungeonDir, { recursive: true });
-for (const f of ['dungeon.json', 'enemies.json', 'packs.json', 'skills.json', 'gimics.json', 'formations.json', 'items.json']) { // REQ-0184: packs.json
+for (const f of ['dungeon.json', 'dungeons.json', 'enemies.json', 'packs.json', 'skills.json', 'gimics.json', 'formations.json', 'items.json']) { // REQ-0184: packs.json; REQ-0185: dungeons.json
   fs.copyFileSync(path.join(batchDir, f), path.join(fixtureLiveDungeonDir, f));
 }
 
