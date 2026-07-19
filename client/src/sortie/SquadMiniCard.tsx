@@ -1,9 +1,10 @@
 // client/src/sortie/SquadMiniCard.tsx -- REQ-0239 (design 01 sec 6.1): the
 // ONLY squad representation on the sortie page -- a compact summary (microgrid +
 // unit strip + state chip + conflict strip). NO full inventory grid anywhere.
-import { getItemArtUrl } from '../board/itemArt';
+import { useEffect, useState } from 'react';
+import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { t } from '../i18n';
-import type { Locale } from '../store';
+import { useGameStore, type Locale } from '../store';
 import { SquadMicrogrid } from './SquadMicrogrid';
 import { StateChip, stateLabel, type SquadStateKey } from './stateChip';
 import type { SquadInfo } from './useSquadConflicts';
@@ -34,6 +35,31 @@ interface SquadMiniCardProps {
 
 const MAX_ICONS = 4;
 
+/** REQ-0266: one BP's unit portrait in the strip.
+ *
+ * This used to be `getItemArtUrl(bp.unit?.id)` -- a PERMANENTLY DEAD branch. That
+ * map is keyed by ITEM id and unit ids have verified zero overlap with it, so it
+ * returned null for every BP that has ever existed and this strip has only ever
+ * drawn colour dots. It now walks the one unit art chain (active skin -> the
+ * def's own icon), so these start rendering for real.
+ *
+ * The colour dot is KEPT, for two cases: a unit with no art at all, and an art
+ * URL that fails to load. The second is why this is a component with its own
+ * `failed` state rather than an inline ternary -- letting a 404 paint the
+ * browser's broken-image glyph inside a 20px well would be a regression on a
+ * surface that today always looks deliberate. Same onError-hides posture as the
+ * Dex portrait well. Layout is unchanged either way: `.sortie-unit-icon` fixes
+ * both the <img> and the dot at 20x20 with object-fit: cover. */
+function UnitStripIcon({ unitId, icon, color }: { unitId: string | null | undefined; icon: string | null; color?: string }) {
+  const [failed, setFailed] = useState(false);
+  const art = resolveUnitArtUrl(unitId, icon);
+  useEffect(() => { setFailed(false); }, [art.url]);
+  if (!art.url || failed) {
+    return <span className="sortie-unit-icon sortie-unit-dot" style={{ backgroundColor: color || 'var(--bone-3)' }} aria-hidden="true" />;
+  }
+  return <img className="sortie-unit-icon" data-art-source={art.source} src={art.url} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
+
 export function SquadMiniCard(props: SquadMiniCardProps) {
   const {
     locale, info, stateKey, assignedOrdinal, conflicted, conflictStrip, conflictTooltip,
@@ -43,6 +69,13 @@ export function SquadMiniCard(props: SquadMiniCardProps) {
   const bps = info.canvas?.bps ?? [];
   const iconBps = bps.slice(0, MAX_ICONS);
   const overflow = bps.length - iconBps.length;
+  // REQ-0266: the unit defs carry the `icon` rung of the art chain. Read ONCE per
+  // card rather than once per icon, so a four-BP strip costs one subscription.
+  const unitDefs = useGameStore().gameData?.UNITS;
+  const iconOf = (id: string | null | undefined): string | null => {
+    const def = id ? unitDefs?.[id] : null;
+    return def && typeof def.icon === 'string' && def.icon ? def.icon : null;
+  };
 
   const classes = [
     'sortie-squad-card',
@@ -81,12 +114,9 @@ export function SquadMiniCard(props: SquadMiniCardProps) {
 
       <div className="sortie-squad-card-units">
         <div className="sortie-unit-strip">
-          {iconBps.map((bp, i) => {
-            const url = getItemArtUrl(bp.unit?.id);
-            return url
-              ? <img key={i} className="sortie-unit-icon" src={url} alt="" loading="lazy" />
-              : <span key={i} className="sortie-unit-icon sortie-unit-dot" style={{ backgroundColor: bp.color || 'var(--bone-3)' }} aria-hidden="true" />;
-          })}
+          {iconBps.map((bp, i) => (
+            <UnitStripIcon key={i} unitId={bp.unit?.id} icon={iconOf(bp.unit?.id)} color={bp.color} />
+          ))}
           {overflow > 0 ? <span className="sortie-unit-more t-micro tnum">+{overflow}</span> : null}
         </div>
         <span className="sortie-squad-meta t-micro tnum">{t(locale, 'sortie.squad.bp', { n: info.bpCount })}</span>

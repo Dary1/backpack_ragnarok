@@ -7,6 +7,7 @@
 import type { ApiMarketListing } from '../api';
 import type { GameState, PO, BP, SI } from '../engine/engine.d.ts';
 import { iconDataUrl, iconDims } from '../dex/dexIcons';
+import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { ShapeGrid } from '../dex/ShapeGrid';
 import type { GameData } from '../api';
 import { t } from '../i18n';
@@ -91,11 +92,25 @@ export function MarketThumb({ gameData, itemId, cellPx = 22, alt, kind }: Market
     );
   }
   if (kind === 'unit') {
+    // REQ-0266, LIVE BUG: this branch has never drawn anything. A unit def's
+    // `icon` is an ARTWORK system_name, and it was being handed to iconDataUrl(),
+    // which only resolves SVG sprite SYMBOL ids ('icon-*') out of
+    // content/sprite_all_v12.svg. It therefore returned null for every unit that
+    // has ever existed, ShapeGrid drew no overlay, and every unit listing showed
+    // an empty cell -- on the Buy grid, the Mine rows, the Buy modal and the Sell
+    // picker alike. iconDims() failed the same way and for the same reason.
+    //
+    // Fixed through the SAME adapter every other unit surface now uses, so a
+    // market listing shows the portrait the board and the Dex show. iconDims is
+    // null on purpose: there is no sprite symbol to take a native aspect from, so
+    // ShapeGrid contain-fits the raster into the 1x1 square, which is what a unit
+    // portrait render already is. The empty well stays as the honest no-art tier.
     const udef = (gameData?.UNITS?.[itemId] ?? null) as { icon?: string } | null;
-    if (!udef?.icon) return <span className="market-thumb market-thumb-empty" aria-hidden="true" />;
+    const art = resolveUnitArtUrl(itemId, udef?.icon ?? null);
+    if (!art.url) return <span className="market-thumb market-thumb-empty" aria-hidden="true" />;
     return (
-      <span className="market-thumb">
-        <ShapeGrid shape={[[0, 0]]} cellPx={cellPx} iconUrl={iconDataUrl(udef.icon)} iconAlt={alt ?? udef.icon} iconDims={iconDims(udef.icon)} />
+      <span className="market-thumb" data-art-source={art.source}>
+        <ShapeGrid shape={[[0, 0]]} cellPx={cellPx} iconUrl={art.url} iconAlt={alt ?? udef?.icon ?? itemId} iconDims={null} />
       </span>
     );
   }
