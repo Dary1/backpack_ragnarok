@@ -221,6 +221,31 @@ export interface ApiSkillName {
   name_ja?: string;
 }
 
+/** REQ-0211: a gimic/1 def as served for the Dex -- the interactable dungeon
+ * gimmicks (trap / treasure box / hidden door). Display slice of the SAME
+ * registry-first payload the dungeon generator consumes (services/core.cjs
+ * getScheduleContent; see server/lib/content.cjs gimicsFromCore). `behavior`
+ * is the coarse family; `type`/`mode` are the fine-grained engine interaction
+ * subtype; `footprint` is [fh,fw] in cells; `skills` are ids resolved through
+ * ApiContentPayload.gimic_skills. */
+export interface ApiGimicEntry {
+  id: string;
+  name: string;
+  name_ja?: string;
+  /** trap | treasure | hidden_door -- the registry-facing family discriminator. */
+  behavior: string;
+  /** engine subtype: trap | door_stage1 | door_stage2 | chest. */
+  type?: string;
+  /** detection (found) | unlock (opened). */
+  mode?: string;
+  hp?: number;
+  footprint?: [number, number];
+  masked?: boolean;
+  timeout_secs?: number;
+  skills?: string[];
+  i18n?: { en?: { name?: string }; ja?: { name?: string } };
+}
+
 /** REQ-0170 / REQ-0128b: one entry of vocab.json's connection_shapes table. */
 export interface ApiConnShape {
   kind: 'ray' | 'offset' | 'none';
@@ -240,6 +265,8 @@ export interface ApiContentPayload {
   packs: Record<string, ApiPackEntry>; // REQ-0170
   monsters: Record<string, ApiMonsterEntry>; // REQ-0208
   monster_skills: Record<string, ApiSkillName>; // REQ-0208
+  gimics: Record<string, ApiGimicEntry>; // REQ-0211
+  gimic_skills: Record<string, ApiSkillName>; // REQ-0211
   connection_shapes: Record<string, ApiConnShape>; // REQ-0170
   trees: ApiTrees;
   scenario: ApiScenario;

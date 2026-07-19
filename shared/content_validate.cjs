@@ -536,11 +536,75 @@ function validateMonsterPackEntry(pack, enemyDefs) {
 }
 
 
+// =====================================================================
+// REQ-0211: gimic/1 -- the interactable dungeon gimmicks (trap / treasure
+// box / hidden door). ONE executable definition of "a legal gimic def",
+// shared by the content machine check (server/services/content_checks.cjs)
+// so the admin blesses exactly the shape the dungeon generator consumes.
+// =====================================================================
+
+// The gimic families and the interaction modes each one may use. `behavior`
+// is the coarse, registry-facing discriminator; `mode` is the PO interaction
+// (detection = a trap/hidden thing is FOUND; unlock = a chest/door is OPENED).
+// A trap is found (detection); a treasure box is opened (unlock); a hidden
+// door has BOTH a detection stage (stage1) and an unlock stage (stage2).
+// To add a future gimic family, add it here (and teach the generator/combat
+// what it does) -- the map is the single place the vocabulary is declared.
+const GIMIC_BEHAVIOR_MODES = {
+  trap: ['detection'],
+  treasure: ['unlock'],
+  hidden_door: ['detection', 'unlock'],
+};
+const GIMIC_MODES = ['detection', 'unlock'];
+
+/** Validates one gimic/1 entry. Throws a descriptive Error -- never coerces,
+ * never silently drops. When `skillDefs` (id -> def) is supplied, every skill
+ * a gimic fires must resolve to a live skill def, because a trap that names a
+ * missing volley either crashes at fire time or fizzles silently, and nothing
+ * else in the chain would ever say so. Pass null to skip the reference check
+ * (shape-only validation). */
+function validateGimicEntry(gimic, skillDefs) {
+  if (!gimic || typeof gimic !== 'object' || Array.isArray(gimic)) throw new Error('gimic entry must be an object');
+  if (typeof gimic.id !== 'string' || !gimic.id) throw new Error('gimic entry: id is required');
+  const ctx = 'gimic "' + gimic.id + '"';
+  if (typeof gimic.name !== 'string' || !gimic.name) throw new Error(ctx + ': name is required');
+  if (typeof gimic.behavior !== 'string' || !Object.prototype.hasOwnProperty.call(GIMIC_BEHAVIOR_MODES, gimic.behavior)) {
+    throw new Error(ctx + ': behavior must be one of ' + Object.keys(GIMIC_BEHAVIOR_MODES).join(' | ') + ', got ' + JSON.stringify(gimic.behavior));
+  }
+  if (typeof gimic.type !== 'string' || !gimic.type) throw new Error(ctx + ': type (engine interaction subtype) is required');
+  if (typeof gimic.mode !== 'string' || GIMIC_MODES.indexOf(gimic.mode) < 0) {
+    throw new Error(ctx + ': mode must be one of ' + GIMIC_MODES.join(' | ') + ', got ' + JSON.stringify(gimic.mode));
+  }
+  const allowedModes = GIMIC_BEHAVIOR_MODES[gimic.behavior];
+  if (allowedModes.indexOf(gimic.mode) < 0) {
+    throw new Error(ctx + ': behavior "' + gimic.behavior + '" cannot use mode "' + gimic.mode
+      + '" (allowed: ' + allowedModes.join(', ') + ')');
+  }
+  if (!Array.isArray(gimic.footprint) || gimic.footprint.length !== 2
+      || !Number.isInteger(gimic.footprint[0]) || !Number.isInteger(gimic.footprint[1])
+      || gimic.footprint[0] < 1 || gimic.footprint[1] < 1) {
+    throw new Error(ctx + ': footprint must be [fh, fw] positive integers (height, width), got ' + JSON.stringify(gimic.footprint));
+  }
+  if (!isFiniteNum(gimic.hp) || gimic.hp < 1) throw new Error(ctx + ': hp must be a number >= 1');
+  if (gimic.masked !== undefined && typeof gimic.masked !== 'boolean') throw new Error(ctx + ': masked must be a boolean');
+  if (!isFiniteNum(gimic.timeout_secs) || gimic.timeout_secs <= 0) throw new Error(ctx + ': timeout_secs must be a positive number');
+  if (!Array.isArray(gimic.skills)) throw new Error(ctx + ': skills must be an array (empty is fine)');
+  gimic.skills.forEach(function (sk, i) {
+    if (typeof sk !== 'string' || !sk) throw new Error(ctx + ': skills[' + i + '] must be a non-empty skill id');
+    if (skillDefs && !skillDefs[sk]) throw new Error(ctx + ': skills[' + i + '] names skill "' + sk + '", which has no live def');
+  });
+  if (gimic.i18n !== undefined) validateI18n(gimic.i18n, ctx, DUNGEON_LOCALES);
+  if (gimic.note !== undefined && typeof gimic.note !== 'string') throw new Error(ctx + ': note must be a string');
+}
+
+
 module.exports = {
   SUPPORTED_LOCALES, ITEM_ALLOWED_KEYS, SI_ALLOWED_KEYS, UNIT_ALLOWED_KEYS,
   validateUnitEntry, validatePackEntry,
   // REQ-0184: monster_pack/1 layout -- the ONE definition, shared by the machine check and the sim.
   validateMonsterPackEntry, parseA1, formatA1, cellsFor, PLACEABLE, FIELD_COLS, FIELD_ROWS,
+  // REQ-0211: gimic/1 -- the interactable dungeon gimmicks.
+  validateGimicEntry, GIMIC_BEHAVIOR_MODES, GIMIC_MODES,
   DUNGEON_LOCALES,
   isFiniteNum, isValidRange, validateEffect, validateI18n, validateSocket, validateBody, validateCharge,
 };

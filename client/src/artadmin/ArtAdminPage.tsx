@@ -198,7 +198,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const dirty = !!(draft && baseline && JSON.stringify(draft) !== JSON.stringify(baseline));
   const shapeDirty = !!(draft && baseline && detailArt && (
     (detailArt.kind === 'po' && JSON.stringify(draft.mask) !== JSON.stringify(baseline.mask))
-    || (detailArt.kind === 'monster' && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))
+    || ((detailArt.kind === 'monster' || detailArt.kind === 'gimic') && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))
     || (detailArt.kind === 'custom' && (draft.cw !== baseline.cw || draft.ch !== baseline.ch))));
 
   async function doSave() {

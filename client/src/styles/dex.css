@@ -825,3 +825,12 @@
 .dex-monster-stats dt{ opacity:.75; }
 .dex-monster-stats dd{ margin:0; }
 .dex-monster-skills{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+
+/* ==== REQ-0211: Gimics catalog tab (trap / treasure box / hidden door).
+   Reuses the REQ-0208 monster stat/skill/portrait rules verbatim; only the
+   behavior chip accents are new here (later-wins append, REQ-0075). ==== */
+.dex-gimic-behavior{ border:1px solid rgba(255,255,255,.18); font-weight:600; letter-spacing:.02em; }
+.dex-gimic-behavior.gimic-b-trap{ color:#e2795b; border-color:rgba(226,121,91,.45); }
+.dex-gimic-behavior.gimic-b-treasure{ color:#d9b45a; border-color:rgba(217,180,90,.45); }
+.dex-gimic-behavior.gimic-b-hidden_door{ color:#8ea9e8; border-color:rgba(142,169,232,.45); }
+.dex-gimic-stats dd{ text-transform:none; }

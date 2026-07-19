@@ -230,24 +230,19 @@ fs.writeFileSync(path.join(batchDir, 'formations.json'), JSON.stringify({
     { id: 'formation2', i18n: { en: { name: 'Tank Vanguard' }, ja: { name: 'タンク先鋒' } }, canvases: { unit1: 'J2:Q9', unit2: 'B6:I13', unit3: 'R6:Y13', unit4: 'J10:Q17' } },
   ],
 }));
-// REQ-0043: sim/dungen.cjs's generator reads entities.json (trap/door/
-// chest templates) from this SAME batch dir -- mirrors the real
-// content/batches/batch-002-dungeon-pilot/entities.json shape exactly
-// (schema/fields), trimmed to just the trap (no door/chest needed for
-// this fixture's own tests, which only exercise the 'default' generator
-// at low levels where a trap is the most likely extra encounter to
-// roll; dungen.cjs itself defensively no-ops any entity type whose
-// count rolls 0, so the door/chest templates being ABSENT here is only
-// exercised if a low-probability roll needs them -- documented risk,
-// acceptable for this fixture's narrow scope; a KeyError from a missing
-// template would surface as an obvious test failure, not a silent bug).
-fs.writeFileSync(path.join(batchDir, 'entities.json'), JSON.stringify({
-  schema: 'entity/1',
+// REQ-0211: sim/dungen.cjs's generator reads gimics.json (the trap / treasure
+// box / hidden-door interactables -- the gimic/1 content kind) from this SAME
+// batch dir. Mirrors content/batches/batch-002-dungeon-pilot/gimics.json exactly
+// (schema/fields incl. the `behavior` discriminator). All four gimics are present;
+// dungen defensively no-ops any type whose rolled count is 0, and a KeyError from a
+// missing template would surface as an obvious test failure, not a silent bug.
+fs.writeFileSync(path.join(batchDir, 'gimics.json'), JSON.stringify({
+  schema: 'gimic/1',
   entries: [
-    { id: 'trap_frost_deadfall', name: 'Frost Deadfall', type: 'trap', mode: 'detection', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 18, skills: [] },
-    { id: 'door_rimefast_stage1', name: 'Rimefast Door (hidden)', type: 'door_stage1', mode: 'detection', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 20, skills: [] },
-    { id: 'door_rimefast_stage2', name: 'Rimefast Door', type: 'door_stage2', mode: 'unlock', hp: 60, footprint: [2, 2], masked: false, timeout_secs: 25, skills: [] },
-    { id: 'chest_frostbound_cache', name: 'Frostbound Cache', type: 'chest', mode: 'unlock', hp: 40, footprint: [2, 2], masked: false, timeout_secs: 22, skills: [] },
+    { id: 'trap_frost_deadfall', behavior: 'trap', name: 'Frost Deadfall', type: 'trap', mode: 'detection', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 18, skills: [] },
+    { id: 'door_rimefast_stage1', behavior: 'hidden_door', name: 'Rimefast Door (hidden)', type: 'door_stage1', mode: 'detection', hp: 1, footprint: [1, 1], masked: true, timeout_secs: 20, skills: [] },
+    { id: 'door_rimefast_stage2', behavior: 'hidden_door', name: 'Rimefast Door', type: 'door_stage2', mode: 'unlock', hp: 60, footprint: [2, 2], masked: false, timeout_secs: 25, skills: [] },
+    { id: 'chest_frostbound_cache', behavior: 'treasure', name: 'Frostbound Cache', type: 'chest', mode: 'unlock', hp: 40, footprint: [2, 2], masked: false, timeout_secs: 22, skills: [] },
   ],
 }));
 
@@ -256,7 +251,7 @@ fs.writeFileSync(path.join(batchDir, 'entities.json'), JSON.stringify({
 // exactly what tools/promote_dungeon_batch.cjs does to the real repo.
 const fixtureLiveDungeonDir = path.join(contentDir, 'live', 'dungeon');
 fs.mkdirSync(fixtureLiveDungeonDir, { recursive: true });
-for (const f of ['dungeon.json', 'enemies.json', 'packs.json', 'skills.json', 'entities.json', 'formations.json', 'items.json']) { // REQ-0184: packs.json
+for (const f of ['dungeon.json', 'enemies.json', 'packs.json', 'skills.json', 'gimics.json', 'formations.json', 'items.json']) { // REQ-0184: packs.json
   fs.copyFileSync(path.join(batchDir, f), path.join(fixtureLiveDungeonDir, f));
 }
 

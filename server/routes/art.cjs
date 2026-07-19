@@ -146,9 +146,9 @@ function shapeAndSize(kind, shape) {
     const size = deriveSize('po', shape);
     return { shape: { mask: shape.mask.map((r) => r.map(Boolean)) }, size };
   }
-  if (kind === 'monster') {
-    if (!shape || !Number.isInteger(shape.w) || !Number.isInteger(shape.h)) throw Object.assign(new Error('monster requires shape {w,h}'), { code: 'BAD_SHAPE' });
-    const size = deriveSize('monster', shape);
+  if (kind === 'monster' || kind === 'gimic') { // REQ-0211: gimic shape == monster {w,h}
+    if (!shape || !Number.isInteger(shape.w) || !Number.isInteger(shape.h)) throw Object.assign(new Error(kind + ' requires shape {w,h}'), { code: 'BAD_SHAPE' });
+    const size = deriveSize(kind, shape);
     return { shape: { w: shape.w, h: shape.h }, size };
   }
   if (kind === 'custom') {
@@ -189,7 +189,7 @@ async function hCreate(req, res) {
 function defaultsForKind(kind) {
   if (kind === 'po' || kind === 'si') return { prompt_template: '{main_object}, white background, bold outline' };
   if (kind === 'unit') return { prompt_template: '{main_object}, portrait, looking at viewer, white background' };
-  if (kind === 'monster') return { prompt_template: '{main_object}, white background' };
+  if (kind === 'monster' || kind === 'gimic') return { prompt_template: '{main_object}, white background' }; // REQ-0211: gimic == monster
   // REQ-0179: custom is operator-owned -- a passthrough template so the final
   // subject is just main_object until the operator writes their own.
   if (kind === 'custom') return { prompt_template: '{main_object}' };

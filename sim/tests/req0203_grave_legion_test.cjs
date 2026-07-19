@@ -251,7 +251,7 @@ T('additive promotion: merges batch-005 into a live COPY -- +batch counts, batch
       before[f] = text; fs.writeFileSync(path.join(liveDir, f), text);
     }
     const other = {};
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       const t = fs.readFileSync(path.join(realLive, f), 'utf8');
       other[f] = t; fs.writeFileSync(path.join(liveDir, f), t);
     }
@@ -272,7 +272,7 @@ T('additive promotion: merges batch-005 into a live COPY -- +batch counts, batch
       for (let i = 0; i < bDoc.entries.length; i++) eq(mDoc.entries[i], bDoc.entries[i], f + ' entry ' + i + ' unchanged');
     }
     // the four non-additive files are NOT touched at all
-    for (const f of ['dungeon.json', 'entities.json', 'formations.json', 'items.json']) {
+    for (const f of ['dungeon.json', 'gimics.json', 'formations.json', 'items.json']) {
       eq(fs.readFileSync(path.join(liveDir, f), 'utf8'), other[f], f + ' must be left untouched');
     }
     // provenance recorded

@@ -90,6 +90,9 @@ const SOURCES = [
   // field. Note this is a DIFFERENT kind from gacha_pack above, which is an emission
   // pool: one fields monsters, the other vends Units. Same word, unrelated tables.
   { kind: 'monster_pack', file: 'content/live/dungeon/packs.json' },
+  // REQ-0211: gimic/1 -- the trap / treasure box / hidden door interactables.
+  // Migrated out of the old non-registry entity/1 entities.json (now gimics.json).
+  { kind: 'gimic', file: 'content/live/dungeon/gimics.json' },
   // User ruling 2026-07-15 (chat, with the REQ-0178 fallback report): the REQ-0051
   // starter-kit items (14 po/2 entries in their own file, isolated from
   // live_items.json for the REQ-0160 count-gate) enter the ledger as po_def.
@@ -113,7 +116,6 @@ const UNIT_DEF_NOTE = 'REQ-0171: unit_def is now a REAL source (content/live/liv
 // two OPEN findings of the 2026-07-14c run. Both were ruled IN by the user on
 // 2026-07-14 (REQ-0160 Q1=A, Q2=yes) and now live in SOURCES above.
 const SKIPPED_FILES = [
-  { file: 'content/live/dungeon/entities.json', reason: 'entity/1 board-entity records (interactables) -- not per-entity content of a registry content_kind' },
   { file: 'content/live/dungeon/formations.json', reason: 'formation/1 encounter layouts -- composition data, not per-entity defs of a registry kind' },
   { file: 'content/live/dungeon/dungeon.json', reason: 'dungeon graph/config singleton -- not per-entity content' },
   { file: 'content/live/scenario.json', reason: 'scenario/progression singleton (no schema header) -- not per-entity content' },
@@ -175,7 +177,7 @@ function collectAll(repoRoot, importedAt) {
 }
 
 function perKindCounts(entries) {
-  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0, skill_def: 0 };
+  const counts = { po_def: 0, si_def: 0, tm_def: 0, monster_def: 0, unit_def: 0, skill_def: 0, gimic: 0 };
   for (const e of entries) counts[e.kind] = (counts[e.kind] || 0) + 1;
   return counts;
 }

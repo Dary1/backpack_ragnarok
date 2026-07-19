@@ -237,7 +237,10 @@ async function computeArtUrls() {
     // resolver is needed. Units are deliberately ABSENT: a unit def's `icon` IS
     // its artwork reference (REQ-0170's free reference), resolved client-side
     // via board/unitIcon unitArtUrl().
-    Object.keys(monstersFromCore().monsters || {})
+    Object.keys(monstersFromCore().monsters || {}),
+    // REQ-0211: gimic ids join the resolved map for the Dex's gimic catalog.
+    // gimic artworks follow the same exact-name convention as monster art.
+    Object.keys(gimicsFromCore().gimics || {})
   );
   const storage = require('../storage.cjs');
   const resolved = await storage.resolveItemArtNames(names); // { id -> resolved artwork bare name }
@@ -449,6 +452,34 @@ function monstersFromCore() {
   return monstersCache;
 }
 
+// ---- REQ-0211: gimics + their skill names for the Dex (display slice) ----
+// Same doctrine as monstersFromCore above: the gimic catalog is derived from
+// services/core.cjs getScheduleContent() (the registry-first authority path),
+// so the Dex can never show a gimic the dungeon generator would not place.
+// withBackCompatI18n at the seam; gimic skill names (trap volley / door keeper)
+// are reshaped to {name, name_ja} and LIMITED to skills referenced by served
+// gimics (a Dex lookup, not a full skill dump).
+let gimicsCache = null; // { src, gimics, skills } -- identity-keyed on core's payload
+function gimicsFromCore() {
+  const core = require('../services/core.cjs'); // lazy: keeps standalone tool imports light
+  const src = core.getScheduleContent();
+  if (gimicsCache && gimicsCache.src === src) return gimicsCache;
+  const gimics = {};
+  for (const id of Object.keys(src.gimicDefsById || {})) {
+    gimics[id] = withBackCompatI18n(Object.assign({}, src.gimicDefsById[id]));
+  }
+  const skills = {};
+  for (const id of Object.keys(gimics)) {
+    for (const sk of (gimics[id].skills || [])) {
+      if (Object.prototype.hasOwnProperty.call(skills, sk)) continue;
+      const nm = (src.skillNamesById || {})[sk];
+      if (nm) skills[sk] = { name: (nm.en && nm.en.name) || sk, name_ja: nm.ja && nm.ja.name };
+    }
+  }
+  gimicsCache = { src: src, gimics: gimics, skills: skills };
+  return gimicsCache;
+}
+
 function getContent() {
   const filePayload = ensureFilePayload();
   const payload = applyRegistryOverlay(filePayload); // registry-first overlay (no-op under an empty registry)
@@ -459,6 +490,10 @@ function getContent() {
   const mons = monstersFromCore();
   payload.monsters = mons.monsters;
   payload.monster_skills = mons.skills;
+  // REQ-0211: additive Dex gimic section, same authority-derived posture.
+  const gims = gimicsFromCore();
+  payload.gimics = gims.gimics;
+  payload.gimic_skills = gims.skills;
   if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
   if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
   return payload;

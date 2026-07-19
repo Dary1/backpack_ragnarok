@@ -56,6 +56,26 @@ T('api: GET /api/content serves monsters + monster_skills from the authority pat
   assert.strictEqual(parsed.monster_skills.slime_bite.name, 'Slime Bite');
 });
 
+T('api: GET /api/content serves gimics + gimic_skills from the authority path (REQ-0211)', () => {
+  const req = mockReq('GET', '/api/content');
+  const res = mockRes();
+  api.handle(req, res);
+  assert.strictEqual(res.statusCode, 200);
+  const parsed = JSON.parse(res.body);
+  assert.ok(parsed.gimics, 'gimics section present');
+  const trap = parsed.gimics.trap_frost_deadfall;
+  assert.ok(trap, 'fixture gimic trap_frost_deadfall served');
+  assert.strictEqual(trap.behavior, 'trap', 'behavior discriminator served verbatim');
+  assert.deepStrictEqual(trap.footprint, [1, 1], 'footprint served verbatim');
+  assert.ok(parsed.gimics.chest_frostbound_cache, 'the treasure-box gimic is served');
+  assert.strictEqual(parsed.gimics.chest_frostbound_cache.behavior, 'treasure');
+  assert.ok(parsed.gimics.door_rimefast_stage1.behavior === 'hidden_door', 'hidden-door stage served');
+  // gimic_skills: LIMITED to skills referenced by served gimics (a Dex lookup),
+  // same posture as monster_skills. The fixture gimics carry no skills, so it is
+  // present but empty -- the section shape is what matters here.
+  assert.ok(parsed.gimic_skills && typeof parsed.gimic_skills === 'object', 'gimic_skills section present');
+});
+
 T('api: GET /api/content renders eff_en/eff_ja server-side, matching tools/eff_render.cjs output (REQ-0024 gap closure)', () => {
   const { render } = require('../../../tools/eff_render.cjs');
   const req = mockReq('GET', '/api/content');

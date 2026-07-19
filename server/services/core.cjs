@@ -48,6 +48,10 @@ const ENEMIES_PATH = path.join(LIVE_DUNGEON_DIR, 'enemies.json');
 const SKILLS_PATH = path.join(LIVE_DUNGEON_DIR, 'skills.json');
 // REQ-0184: monster_pack/1 defs. dungeon.json's encounters name packs from here.
 const MONSTER_PACKS_PATH = path.join(LIVE_DUNGEON_DIR, 'packs.json');
+// REQ-0211: gimic/1 defs (trap / treasure box / hidden door interactables).
+// Replaced the legacy non-registry entity/1 entities.json; sim/dungen.cjs reads
+// the same file, so this reader and the generator can never drift onto different sources.
+const GIMICS_PATH = path.join(LIVE_DUNGEON_DIR, 'gimics.json');
 const ITEMS_PILOT_PATH = path.join(LIVE_DUNGEON_DIR, 'items.json');
 const FORMATIONS_PATH = path.join(LIVE_DUNGEON_DIR, 'formations.json'); // REQ-0036 P1-C: GET /api/schedule/dungeons
 
@@ -100,6 +104,7 @@ function ensureFilePayload() {
     enemies: statMtimeMs(ENEMIES_PATH),
     skills: statMtimeMs(SKILLS_PATH),
     monsterPacks: statMtimeMs(MONSTER_PACKS_PATH), // REQ-0184
+    gimics: statMtimeMs(GIMICS_PATH), // REQ-0211
     pilotItems: statMtimeMs(ITEMS_PILOT_PATH),
     formations: statMtimeMs(FORMATIONS_PATH), // REQ-0036 P1-C
   };
@@ -117,6 +122,7 @@ function ensureFilePayload() {
   const enemies = loadJSON(ENEMIES_PATH);
   const skills = loadJSON(SKILLS_PATH);
   const monsterPacks = loadJSON(MONSTER_PACKS_PATH); // REQ-0184: monster_pack/1
+  const gimics = loadJSON(GIMICS_PATH); // REQ-0211: gimic/1
   const formationsDoc = loadJSON(FORMATIONS_PATH); // REQ-0036 P1-C
 
   const itemDefsById = {};
@@ -167,6 +173,10 @@ function ensureFilePayload() {
   // that name belongs to REQ-0170's gacha emission pools, already in this payload.
   const monsterPackDefsById = {};
   for (const e of (monsterPacks.entries || [])) monsterPackDefsById[e.id] = e;
+  // REQ-0211: gimic defs by id -- the interactable dungeon gimmicks (trap /
+  // treasure box / hidden door). Same id-keyed map convention as every def map above.
+  const gimicDefsById = {};
+  for (const e of (gimics.entries || [])) gimicDefsById[e.id] = e;
 
   const skillDefsById = {};
   for (const s of skills.entries) {
@@ -189,7 +199,7 @@ function ensureFilePayload() {
     };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
+  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, gimicDefsById, connShapes, dungeonDef, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
   contentCache = { mtimes, payload };
   return payload;
 }
@@ -209,7 +219,7 @@ function ensureFilePayload() {
 // byte-identical to the pre-REQ loader. That is what keeps the default e2e
 // fleet a true no-regression baseline.
 // ---------------------------------------------------------------------
-const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def'];
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic']; // REQ-0211: gimic
 // kind -> the file-payload map whose key set defines what we ask the registry for.
 const REGISTRY_MAP_BY_KIND = {
   po_def: 'itemDefsById',
@@ -219,6 +229,7 @@ const REGISTRY_MAP_BY_KIND = {
   gacha_pack: 'packDefsById',
   monster_def: 'enemyDefsById',
   skill_def: 'skillDefsById',
+  gimic: 'gimicDefsById', // REQ-0211
 };
 const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
 
@@ -237,7 +248,16 @@ async function computeRegistryData() {
   const out = emptyRegistry();
   for (const kind of REGISTRY_KINDS) {
     const names = Object.keys(fp[REGISTRY_MAP_BY_KIND[kind]] || {});
-    out[kind] = await storage.resolveAdoptedContentData(kind, names);
+    // REQ-0211: isolate per-kind. A content kind whose pg enum value is not yet
+    // migrated onto THIS db (a branch adds `gimic`/`dungeon` to REGISTRY_KINDS
+    // before its 020/022 migration is deployed) makes resolveAdoptedContentData
+    // throw `invalid input value for enum content_kind`; unguarded, that ONE
+    // throw rejected computeRegistryData and blanked EVERY kind`s overlay (the
+    // roll/sim silently degraded ALL content to file-served). Degrade only the
+    // failing kind to file-served -- the module`s documented "keep last
+    // snapshot / never 500" contract, applied per-kind.
+    try { out[kind] = await storage.resolveAdoptedContentData(kind, names); }
+    catch (e) { out[kind] = {}; }
   }
   return out;
 }
@@ -299,6 +319,7 @@ function applyRegistryOverlay(fp) {
     unitDefsById: overlayMap(fp.unitDefsById, reg.unit_def, null),
     packDefsById: overlayMap(fp.packDefsById, reg.gacha_pack, null),
     enemyDefsById: overlayMap(fp.enemyDefsById, reg.monster_def, null),
+    gimicDefsById: overlayMap(fp.gimicDefsById, reg.gimic, null), // REQ-0211
     skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
     skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
   });
@@ -486,6 +507,7 @@ module.exports = {
   BATCH_DIR,
   DUNGEON_PATH,
   ENEMIES_PATH,
+  GIMICS_PATH, // REQ-0211
   SKILLS_PATH,
   ITEMS_PILOT_PATH,
   FORMATIONS_PATH,

@@ -57,6 +57,7 @@ import { dexNoOf } from './dexNo';
 import { iconDims, resolveIconUrl } from './dexIcons';
 import { ShapeGrid } from './ShapeGrid';
 import { MonsterCatalog } from './MonsterCatalog'; // REQ-0208
+import { GimicCatalog } from './GimicCatalog'; // REQ-0211
 import { UnitCatalog } from './UnitCatalog'; // REQ-0208
 
 export interface DexEntry {
@@ -151,11 +152,12 @@ interface DexProps {
 // design. The Items tab keeps its exact REQ-0120 master/detail behavior and
 // every E2E-load-bearing selector; Units/Monsters render self-contained
 // catalogs (UnitCatalog.tsx / MonsterCatalog.tsx).
-type DexTab = 'items' | 'units' | 'monsters';
+type DexTab = 'items' | 'units' | 'monsters' | 'gimics'; // REQ-0211: gimics
 const DEX_TABS: Array<{ id: DexTab; label: TranslationKey }> = [
   { id: 'items', label: 'dex.tabItems' },
   { id: 'units', label: 'dex.tabUnits' },
   { id: 'monsters', label: 'dex.tabMonsters' },
+  { id: 'gimics', label: 'dex.tabGimics' }, // REQ-0211
 ];
 
 export function Dex({ locale, payload, dexFocusId }: DexProps) {
@@ -176,6 +178,7 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   const [tab, setTab] = useState<DexTab>('items');
   const [unitFocusId, setUnitFocusId] = useState<string | null>(null);
   const [monsterFocusId, setMonsterFocusId] = useState<string | null>(null);
+  const [gimicFocusId, setGimicFocusId] = useState<string | null>(null); // REQ-0211
 
   const entries = useMemo(() => combineEntries(payload), [payload]);
 
@@ -199,6 +202,10 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
     } else if ((payload.monsters ?? {})[dexFocusId]) {
       setTab('monsters');
       setMonsterFocusId(dexFocusId);
+    } else if ((payload.gimics ?? {})[dexFocusId]) {
+      // REQ-0211: gimic deep links auto-switch to the Gimics tab.
+      setTab('gimics');
+      setGimicFocusId(dexFocusId);
     }
     clearDexFocusId();
   }, [dexFocusId, entries, payload]);
@@ -267,7 +274,8 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
   // REQ-0208: units + monsters joined the codex, so the strip counts their
   // pages too (same "every real entry is a page" honesty as above).
   const totalPages =
-    entries.length + tms.length + Object.keys(payload.units ?? {}).length + Object.keys(payload.monsters ?? {}).length;
+    entries.length + tms.length + Object.keys(payload.units ?? {}).length + Object.keys(payload.monsters ?? {}).length
+    + Object.keys(payload.gimics ?? {}).length; // REQ-0211: gimic pages join the codex
   const collectedPages = totalPages; // no discovery gating exists (documented)
   const progressPct = totalPages > 0 ? (collectedPages / totalPages) * 100 : 0;
 
@@ -353,6 +361,16 @@ export function Dex({ locale, payload, dexFocusId }: DexProps) {
           skillNames={payload.monster_skills ?? {}}
           focusId={monsterFocusId}
           onFocusConsumed={() => setMonsterFocusId(null)}
+        />
+      ) : null}
+      {/* REQ-0211: Gimics tab -- trap / treasure box / hidden door interactables. */}
+      {tab === 'gimics' ? (
+        <GimicCatalog
+          locale={locale}
+          gimics={payload.gimics ?? {}}
+          skillNames={payload.gimic_skills ?? {}}
+          focusId={gimicFocusId}
+          onFocusConsumed={() => setGimicFocusId(null)}
         />
       ) : null}
       {/* REQ-0120: master/detail split container. Orientation-driven in

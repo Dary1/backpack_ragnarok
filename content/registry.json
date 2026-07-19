@@ -51,9 +51,9 @@
    "enemies.json": "7384eee5b1f21edadc170634ee91012770aa082b9b8001f988bea6555f722c6b",
    "packs.json": "c1a4e2f8ae51dcd349f639f06bf605a96e3ea9daae366770cef0a9e7c0c002e3",
    "skills.json": "622ae17e12ed43f2819ffc3d41818e5e3530f356bfdd7ad0f51a895d1d8f1bb3",
-   "entities.json": "b62682a6df484eac4024bb00b161af0bdf6fb67254c4acaa3386e3aecca2e286",
    "formations.json": "75ae7a099bf13b8d2f0032f5b8cccf72cdd8187df066870b2c4d302b27cc3bb5",
-   "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da"
+   "items.json": "1494a1400f7bf09dd086f17ed2f426f30aaa826ba4ddc4c36ac8e83ed68c40da",
+   "gimics.json": "fa17981d66617acb10297d56fcfc552fd19cb505ee24d0b44575778a6cc7319d"
   }
  },
  "live_dungeon_additive": [

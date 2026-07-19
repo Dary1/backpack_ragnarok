@@ -427,5 +427,73 @@ T('REQ-0184 the monster_pack dialect does NOT leak: po/si keep their own rules',
   assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the monster_pack dialect landed');
 });
 
+// ============================================================
+// REQ-0211 gate: the gimic/1 machine checks (trap / treasure box / hidden door).
+// The dialect is keyed by schema_ref 'gimic/1'; its rules live in
+// shared/content_validate.cjs validateGimicEntry (the SAME definition the
+// dungeon generator relies on). Skills are cross-checked against the LIVE roster.
+// ============================================================
+const gimics = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'dungeon', 'gimics.json'), 'utf8'));
+const GIMIC_SCHEMA = gimics.schema; // 'gimic/1'
+const GOOD_GIMIC = gimics.entries.find((g) => g.behavior === 'trap'); // the trap: has a skill volley
+const gimicClone = () => JSON.parse(JSON.stringify(GOOD_GIMIC));
+
+T('REQ-0211 positive: every live gimic/1 entry PASSes with its data untouched', () => {
+  for (const g of gimics.entries) {
+    const r = checks.runChecks('gimic', GIMIC_SCHEMA, clone(g));
+    assert.strictEqual(r.overall, 'PASS', g.id + ' should PASS: ' + failedNames(r).join(','));
+  }
+});
+
+T('REQ-0211 negative: an unknown behavior FAILs schema_vocab BY NAME', () => {
+  const g = gimicClone(); g.behavior = 'teleporter';
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, g);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/behavior must be one of/.test(checkOf(r, 'schema_vocab').detail), 'names the illegal behavior');
+});
+
+T('REQ-0211 negative: a behavior/mode mismatch FAILs (a trap cannot be an unlock)', () => {
+  const g = gimicClone(); g.mode = 'unlock';
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, g);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/cannot use mode/.test(checkOf(r, 'schema_vocab').detail), 'rejects the incompatible mode');
+});
+
+T('REQ-0211 negative: a malformed footprint FAILs (schema_vocab + engine_types)', () => {
+  const g = gimicClone(); g.footprint = [0, 2];
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, g);
+  assert.strictEqual(r.overall, 'FAIL', 'a non-positive footprint dimension is refused');
+});
+
+T('REQ-0211 negative: a skill the live roster does not know FAILs schema_vocab BY NAME', () => {
+  const g = gimicClone(); g.skills = ['ghost_volley_that_does_not_exist'];
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, g);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/no live def/.test(checkOf(r, 'schema_vocab').detail), 'names the missing skill');
+});
+
+T('REQ-0211 engine_types APPLIES to gimic (dungen dereferences footprint/hp/timeout/skills)', () => {
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, gimicClone());
+  const et = checkOf(r, 'engine_types');
+  assert.notStrictEqual(et.applicable, false, 'engine_types must APPLY to gimic, unlike skill_def');
+  assert.strictEqual(et.ok, true);
+});
+
+T('REQ-0211 honesty: gen_data is applicable:false for gimic, not a free PASS', () => {
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, gimicClone());
+  assert.strictEqual(checkOf(r, 'gen_data').applicable, false, 'tool_gen_data does not consume gimic/1');
+});
+
+T('REQ-0211 negative: engine_types catches a string where dungen wants a number (hp)', () => {
+  const g = gimicClone(); g.hp = '1';
+  const r = checks.runChecks('gimic', GIMIC_SCHEMA, g);
+  assert.strictEqual(r.overall, 'FAIL', 'a string hp is a crash inside the generator, not a nit');
+});
+
+T('REQ-0211 the gimic dialect does NOT leak: a good po/2 still PASSes', () => {
+  const r = checks.runChecks('po_def', PO_SCHEMA, GOOD_PO);
+  assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the gimic dialect landed');
+});
+
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);

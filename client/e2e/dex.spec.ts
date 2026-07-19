@@ -421,3 +421,31 @@ test('dex tabs (REQ-0208): Items stays the default and the catalog contract surv
   await expect(page.locator('.dex-card')).toHaveCount(expectedCount);
   await expect(page.locator('.dex-count')).toHaveText(`${expectedCount} / ${expectedCount}`);
 });
+
+// ---- REQ-0211: Gimics catalog tab (trap / treasure box / hidden door) ----
+// The tab is real (Items / Units / Monsters / Gimics); counts are derived from
+// /api/content's own gimics section, so this holds on any content set.
+test('dex gimics tab (REQ-0211): authority-path gimics render with behavior + footprint', async ({ page }) => {
+  await bootApp(page);
+  const content = await (await page.request.get('/api/content')).json();
+  const gimics = content.gimics ?? {};
+  const ids = Object.keys(gimics);
+  expect(ids.length).toBeGreaterThan(0);
+
+  await page.locator('.nav-link', { hasText: 'Dex' }).click();
+  await page.locator('.dex-tab', { hasText: 'Gimics' }).click();
+  await expect(page.locator('.dex-tab-active', { hasText: 'Gimics' })).toBeVisible();
+  await expect(page.locator('.dex-gimic-card')).toHaveCount(ids.length);
+
+  // Select a known gimic; the detail pane shows its behavior family.
+  const target = ids[0];
+  const card = page.locator('.dex-gimic-card', { hasText: target }).first();
+  await card.locator('.dex-card-summary').click();
+  await expect(page.locator('[data-testid=dex-gimic-detail]')).toBeVisible();
+  await expect(page.locator('[data-testid=dex-gimic-detail] .dex-gimic-behavior').first()).toBeVisible();
+
+  // Behavior filter narrows the grid (every served gimic has a behavior).
+  await page.locator('.dex-filter').selectOption(gimics[target].behavior);
+  const sameBehavior = ids.filter((id) => gimics[id].behavior === gimics[target].behavior).length;
+  await expect(page.locator('.dex-gimic-card')).toHaveCount(sameBehavior);
+});

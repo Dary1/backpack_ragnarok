@@ -34,7 +34,7 @@ const REQUIRED_FILES = [
   'enemies.json',
   'packs.json', // REQ-0184: monster_pack/1 -- dungeon.json names packs from it, so a promotion without it ships a dungeon whose encounters cannot resolve
   'skills.json',
-  'entities.json',
+  'gimics.json', // REQ-0211: trap/treasure/hidden-door interactables, now the gimic content kind (renamed from entities.json)
   'formations.json',
   'items.json',
 ];
@@ -104,7 +104,7 @@ function promote(srcDir, opts) {
 // So it ships only these three files and MERGES them into live by APPENDING entries.
 // Every pre-existing entry survives BYTE-FOR-BYTE: the merge splices the new entries
 // into the file TEXT after the last existing entry and never re-serialises the old
-// ones. The other four dungeon files (dungeon.json, entities.json, formations.json,
+// ones. The other four dungeon files (dungeon.json, gimics.json, formations.json,
 // items.json) are left untouched. An id that already exists live is REFUSED --
 // content_defs.system_name is UNIQUE across kinds and overwriting live content is
 // exactly what this must never do.
