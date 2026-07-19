@@ -476,6 +476,63 @@ export function EntityPreview({ kind, data, idBase, compact, artUrl, footprints 
     );
   }
 
+  // ---- unit_skin (unit_skin/1): a COSMETIC skin -- REQ-0266.
+  // ONE kind covers both slots (ruling D1): the referenced ARTWORK's kind is what
+  // discriminates a unit portrait skin from a backpack skin, and the entry carries
+  // that answer explicitly as `slot`. So `slot` is the first thing the desk must
+  // see -- a def whose slot disagrees with its artwork's kind is precisely the
+  // authoring mistake the DB-tier ingest check rejects, and it has to be legible
+  // here BEFORE it is rejected there.
+  //
+  // The thumb is the def's ADOPTED registry render -- the very URL /api/content
+  // publishes as art_urls[<skin id>] and the game resolves through -- so this
+  // preview shows exactly what the game will draw. No adopted artwork is a NORMAL
+  // state (ruling D5), and it previews as the same empty well the game falls back
+  // from, never a broken image.
+  //
+  // `units[]` is an ARRAY (ruling D3): one skin may serve several units, and which
+  // units it claims is the other half of what makes the def correct, so it is
+  // rendered as chips rather than swept into the fallback grid.
+  if (kind === 'unit_skin') {
+    const consumed = new Set<string>(['id', 'name', 'name_ja', 'i18n', 'slot', 'art_ref', 'units', 'default', 'set']);
+    const slot = typeof data.slot === 'string' ? data.slot : '';
+    const artRef = typeof data.art_ref === 'string' ? data.art_ref : '';
+    const setKey = typeof data.set === 'string' ? data.set : '';
+    const units = Array.isArray(data.units) ? (data.units as unknown[]).filter((u) => typeof u === 'string') : [];
+    return (
+      <div data-testid={testid} className={cls}>
+        <div className="ca-ep-head">
+          <IconGrid data={data} compact={compact} artUrl={artUrl} />
+          <div className="ca-ep-headtext">
+            <Names data={data} />
+            <div className="ca-ep-chips">
+              {slot
+                ? <span className="ca-ep-chip ca-ep-slot" data-testid="cd-ep-skin-slot" data-slot={slot}>slot: {slot}</span>
+                : <span className="ca-ep-chip ca-ep-chip--warn" data-testid="cd-ep-skin-slot">(no slot)</span>}
+              {data.default === true ? <span className="ca-ep-chip" data-testid="cd-ep-skin-default">default</span> : null}
+              {setKey ? <span className="ca-ep-chip ca-ep-muted" data-testid="cd-ep-skin-set">set: {setKey}</span> : null}
+              <span className={'ca-ep-chip' + (registryArt ? '' : ' ca-ep-chip--warn')}
+                data-testid="cd-ep-skin-art" data-art-ref={artRef || undefined}
+                title={artRef ? 'art_ref: ' + artRef : 'this skin references no artwork'}>
+                {artRef || '(no art_ref)'}{registryArt ? '' : ' — no adopted render'}
+              </span>
+            </div>
+          </div>
+        </div>
+        {units.length > 0 ? (
+          <div className="ca-ep-tags" data-testid="cd-ep-skin-units">
+            {units.map((u, i) => (
+              <span key={i} className="ca-ep-tag chip" data-testid="cd-ep-skin-unit" data-unit={String(u)}>{String(u)}</span>
+            ))}
+          </div>
+        ) : (
+          <div className="ca-ep-muted" data-testid="cd-ep-skin-units-empty">(no units — this skin can never apply)</div>
+        )}
+        <FallbackGrid data={data} consumed={consumed} testid={fbTestid} />
+      </div>
+    );
+  }
+
   // ---- unknown kind: fallback grid only (nothing hidden)
   return (
     <div data-testid={testid} className={cls}>

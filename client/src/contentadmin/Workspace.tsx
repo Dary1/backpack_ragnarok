@@ -30,6 +30,12 @@ export interface DefDraft { brief: string; schema_ref: string }
 // REQ-0174: kind -> the artwork kind the picker treats as "matching". The
 // entity kinds map 1:1 (po_def->po ...); tm_def/skill_def have no single art
 // kind, so their picker defaults to ALL types (a type-filter chip row).
+// REQ-0266: unit_skin deliberately gets NO entry either. Its art kind is
+// PER ENTRY, not per kind -- the same schema covers a portrait skin (an artwork
+// of kind `unit`) and a backpack skin (kind `bpskin`), and which one a given def
+// wants is what its own `slot` field says. A single MATCH_TYPE here would pin
+// half the corpus to the wrong type, so the picker falls to the all-types chip
+// row instead, which is exactly the honest answer.
 const MATCH_TYPE: Record<string, string> = { po_def: 'po', si_def: 'si', monster_def: 'monster', unit_def: 'unit' };
 
 /** REQ-0174 ARTWORK PICKER overlay: the 選択式 art linkage. Lists artworks of
@@ -53,7 +59,10 @@ function ArtworkPicker({ def, artworks, currentRef, onPick, onClear, onClose }: 
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const exactName = def.system_name;
 
-  const typeChips = matchType ? [matchType, 'custom', 'all'] : ['all', 'po', 'si', 'monster', 'unit', 'custom'];
+  // REQ-0266: 'bpskin' joins the chip row. It was the one live artwork kind the
+  // picker could not filter to, which made a unit_skin def with slot:'bpskin'
+  // unable to select its own artwork through the UI at all.
+  const typeChips = matchType ? [matchType, 'custom', 'all'] : ['all', 'po', 'si', 'monster', 'unit', 'bpskin', 'custom'];
   const q = query.trim().toLowerCase();
   const filtered = artworks.filter((a) =>
     (typeFilter === 'all' || a.kind === typeFilter)

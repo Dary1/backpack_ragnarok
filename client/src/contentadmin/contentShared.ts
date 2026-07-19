@@ -10,8 +10,12 @@ import type { ContentDefDto, ContentVariantDto, ArtworkDto } from '../api';
 import { artAdoptedUrl, artRenderUrl } from '../api';
 import type { Cell } from '../engine/engine.d.ts';
 
-export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack' | 'monster_pack' | 'gimic' | 'dungeon';
-export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon'];
+// REQ-0266: unit_skin is APPENDED, never inserted. CreatePanel's kind select and
+// DefRail's filter chips both render KINDS in order, and the create form's
+// pristine schema_ref default follows the SELECTED kind (which starts at
+// 'po_def'); appending keeps every existing ordering assumption intact.
+export type Kind = 'po_def' | 'si_def' | 'monster_def' | 'unit_def' | 'tm_def' | 'skill_def' | 'gacha_pack' | 'monster_pack' | 'gimic' | 'dungeon' | 'unit_skin';
+export const KINDS: Kind[] = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon', 'unit_skin'];
 
 // Mirror of routes/content.cjs RESERVED (path segments the public serving
 // GET owns) -- checked client-side for instant feedback; the server
@@ -39,6 +43,11 @@ export const SCHEMA_REF_DEFAULTS: Record<Kind, string> = {
   // REQ-0185: an authored dungeon -- probability-weighted references to
   // monster_pack + gimic defs, rolled into a dive at run time.
   dungeon: 'dungeon/1',
+  // REQ-0266: a COSMETIC skin. One kind for both slots -- the referenced
+  // artwork's kind is the discriminator (ruling D1), carried explicitly on the
+  // entry as `slot`, so a unit portrait skin and a backpack skin share this
+  // schema. Record<Kind,string> is exhaustive, so this entry is not optional.
+  unit_skin: 'unit_skin/1',
 };
 
 /** REQ-0171: one row of a gacha pack's emission pool. */
