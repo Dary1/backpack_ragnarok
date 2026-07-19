@@ -8,9 +8,16 @@
 // transpiled the TS. Same discipline, and the same vite-ssrLoadModule trick, as
 // check_sprites.mjs — see its header.
 //
-// This is the fall-through proof REQ-0125a exists to produce: with no unit art
-// and no unit identity in the tree, EVERY BP must land on the legacy glyph and
-// the board must be unchanged. If that stops being true, this gate goes red.
+// REQ-0266 (item 32) updated this gate DELIBERATELY, exactly as the comment at
+// the `unitIconRasters().length === 0` assertion instructed. REQ-0125a's proof
+// was a NO-DIFF one: no unit art and no unit identity in the tree, so every BP
+// had to land on the legacy glyph and the board had to be unchanged. REQ-0170
+// landed identity + default art and REQ-0266 lands cosmetic skins, so the proof
+// is now a BEHAVIOURAL one, and strictly stronger: the raster manifest is a pure
+// function of the data handed to setUnitDefs/setUnitSkins, the skinned key form
+// `unit:<id>@<skinId>` is emitted exactly when a skin resolves AND its artwork is
+// adopted, and all four rungs still fire for the right reasons. Missing art still
+// never blocks a draw -- that half was never negotiable and is pinned harder now.
 //
 // Usage: node client/scripts/check_unit_icon.mjs   (or: pnpm check:unit-icon)
 // Exit 0 = all assertions pass.
@@ -98,16 +105,107 @@ check('never throws on a hostile query',
   (() => { try { resolveUnitIcon({}, has()); resolveUnitIcon({ skinKey: undefined }, () => false); return true; }
     catch { return false; } })());
 
-// THE fall-through proof: this is the state of the tree as of REQ-0125a.
-// No unit art (REQ-0127 on hold), no unit identity (REQ-0128 owns it), so the
-// resolver's inputs are empty and every BP MUST land on the legacy glyph --
-// i.e. the board renders exactly as it did before this REQ. When REQ-0125b/0127
-// land, this assertion is the one that should be updated, deliberately.
-console.log('production state today (the no-diff contract)');
-check('raster manifest is empty (no unit art exists yet)', unitIconRasters().length === 0);
-check('a real BP (no skin, no default) resolves to the LEGACY glyph -- board unchanged',
-  (() => { const r = resolveUnitIcon({ skinKey: null, defaultKey: null }, has(LEGACY_UNIT_GLYPH));
-    return r.rung === 'legacy' && r.key === LEGACY_UNIT_GLYPH; })());
+// REQ-0266 (item 32). The assertion that used to sit here -- `unitIconRasters()
+// .length === 0` -- was REQ-0125a's no-diff proof and its own comment named this
+// REQ's predecessors as the ones that should retire it. Retired, deliberately.
+// The load-bearing half of it survives and is asserted first below: the manifest
+// is a pure function of the DATA, so with nothing set it is still empty and
+// nothing is ever invented. Everything after that drives the REAL module-global
+// registries the client fills at boot (store/boot.ts:193) and pins what
+// BoardRenderer.ts now actually asks for at its single draw site.
+console.log('raster manifest (REQ-0266: art arrives as DATA)');
+
+const { setUnitDefs, setUnitSkins, activeUnitSkinKey, activeSkinId, pickedSkinId, defaultSkinId, skinArtUrl } = unitIcon;
+
+// unit_skin/1 fixture. `slot` discriminates (ruling D1): a `bpskin` entry is a
+// BACKPACK skin and must never reach the unit-portrait manifest.
+const SKIN_DEFS = {
+  elf_royal: { id: 'elf_royal', name: 'Royal', slot: 'unit', art_ref: 'aw-royal', units: ['elf'], default: true },
+  elf_shadow: { id: 'elf_shadow', name: 'Shadow', slot: 'unit', art_ref: 'aw-shadow', units: ['elf'] },
+  orc_unadopted: { id: 'orc_unadopted', name: 'Unadopted', slot: 'unit', art_ref: 'aw-none', units: ['orc'], default: true },
+  elf_bag: { id: 'elf_bag', name: 'Bag', slot: 'bpskin', art_ref: 'aw-bag', units: ['elf'], default: true },
+};
+// art_urls is keyed by SKIN id, never by unit id (ruling D-A). `orc_unadopted`
+// is deliberately ABSENT: its artwork was never adopted, which is the documented
+// degrade -- no raster, no 404, fall through.
+const SKIN_URLS = {
+  elf_royal: '/api/art/skin-elf-royal.png',
+  elf_shadow: '/api/art/skin-elf-shadow.png',
+  elf_bag: '/api/art/skin-elf-bag.png',
+};
+const UNITS = { elf: { icon: 'units-002:unit-elf' }, orc: { icon: 'units-002:unit-orc' }, ghost: {} };
+const keysOf = () => unitIconRasters().map((e) => e.key).sort();
+
+setUnitDefs(null); setUnitSkins(null, null, null);
+check('nothing set -> manifest is EMPTY (the surviving half of the old assertion: nothing is invented)',
+  unitIconRasters().length === 0);
+
+setUnitDefs(UNITS); setUnitSkins(null, null, null);
+check('a unit def with an icon emits its DEFAULT raster key',
+  JSON.stringify(keysOf()) === JSON.stringify(['unit:elf', 'unit:orc']));
+check('a unit def with NO icon emits nothing (ghost)', !keysOf().includes('unit:ghost'));
+
+setUnitSkins(SKIN_DEFS, SKIN_URLS, null);
+check('the SKINNED key form unit:<id>@<skinId> IS emitted for a def-default skin whose art is adopted',
+  keysOf().includes('unit:elf@elf_royal'));
+check('a skin id absent from art_urls emits NO raster (unadopted artwork degrades, never 404s)',
+  !keysOf().some((k) => k.includes('orc_unadopted')));
+check('the unit whose only skin is unadopted still emits its own default raster',
+  keysOf().includes('unit:orc'));
+check('a slot:"bpskin" entry never reaches the UNIT manifest (slot discriminates -- ruling D1)',
+  !keysOf().some((k) => k.includes('elf_bag')));
+check('exactly ONE skinned key per unit -- the RESOLVED-ACTIVE skin, never the whole corpus',
+  keysOf().filter((k) => k.startsWith('unit:elf@')).length === 1);
+
+setUnitSkins(SKIN_DEFS, SKIN_URLS, { unit: { elf: 'elf_shadow' } });
+check('a PROFILE pick beats the def default in the emitted manifest',
+  keysOf().includes('unit:elf@elf_shadow') && !keysOf().includes('unit:elf@elf_royal'));
+check('a pick is re-validated against the defs (a pick for a unit the def never listed reads as ABSENT)',
+  (() => { setUnitSkins(SKIN_DEFS, SKIN_URLS, { unit: { orc: 'elf_shadow' } });
+    return pickedSkinId('orc', 'unit') === null && activeSkinId('orc', 'unit') === 'orc_unadopted'; })());
+check('a pick in the WRONG slot is refused (a bpskin entry picked for the unit slot)',
+  (() => { setUnitSkins(SKIN_DEFS, SKIN_URLS, { unit: { elf: 'elf_bag' } });
+    return pickedSkinId('elf', 'unit') === null; })());
+check('defaultSkinId reads the def-declared default per (unit, SLOT)',
+  defaultSkinId('elf', 'unit') === 'elf_royal' && defaultSkinId('elf', 'bpskin') === 'elf_bag');
+check('skinArtUrl is sparse -- an unadopted skin simply has no URL',
+  skinArtUrl('elf_royal') === SKIN_URLS.elf_royal && skinArtUrl('orc_unadopted') === null);
+
+// activeUnitSkinKey is what BoardRenderer.ts now feeds resolveUnitIcon's `skin`
+// rung. It MUST return null -- NOT the default key -- when the unit has no skin,
+// or the chain would report rung 'skin' for a unit that has none, and the whole
+// point of reporting a rung is that the report is true.
+check('activeUnitSkinKey returns NULL (not the default key) when the unit has no skin at all',
+  activeUnitSkinKey('ghost') === null && activeUnitSkinKey(null) === null);
+check('activeUnitSkinKey returns NULL when the resolved skin has no adopted artwork',
+  activeUnitSkinKey('orc') === null);
+
+// --- all four rungs, end to end through the PRODUCTION inputs ---------------
+// `has` is built from the manifest the client would ACTUALLY load, so these are
+// the rungs a real board takes, not hand-fed keys.
+console.log('four rungs, driven end-to-end by the emitted manifest');
+setUnitSkins(SKIN_DEFS, SKIN_URLS, { unit: { elf: 'elf_shadow' } });
+const loaded = new Set(keysOf().concat([LEGACY_UNIT_GLYPH]));
+const draw = (unitId) => resolveUnitIcon(
+  { skinKey: activeUnitSkinKey(unitId), defaultKey: unitId ? unitIconKey(unitId) : null },
+  (k) => loaded.has(k)
+);
+check('rung SKIN: a unit with a picked, adopted skin',
+  (() => { const r = draw('elf'); return r.rung === 'skin' && r.key === 'unit:elf@elf_shadow'; })());
+check('rung DEFAULT: a unit whose only skin is unadopted falls to its own icon',
+  (() => { const r = draw('orc'); return r.rung === 'default' && r.key === 'unit:orc'; })());
+check('rung LEGACY: a unit with no skin and no icon -- board unchanged, as it always was',
+  (() => { const r = draw('ghost'); return r.rung === 'legacy' && r.key === LEGACY_UNIT_GLYPH; })());
+check('rung PLACEHOLDER: no sprite sheet at all -- the board still renders',
+  (() => { const r = resolveUnitIcon({ skinKey: activeUnitSkinKey('elf'), defaultKey: unitIconKey('elf') }, () => false);
+    return r.rung === 'placeholder' && r.key === null; })());
+check('every emitted raster URL ends in .png (Pixi picks its parser from the extension)',
+  unitIconRasters().every((e) => e.url.endsWith('.png')));
+
+// Leave the module globals as a client with no content would leave them.
+setUnitDefs(null); setUnitSkins(null, null, null);
+check('registries reset cleanly -> manifest empty again (both setters total + idempotent)',
+  unitIconRasters().length === 0);
 
 console.log('key namespacing (must never collide with the SVG route\'s icon-* ids)');
 check('unitIconKey(id) is namespaced', unitIconKey('elf') === 'unit:elf');

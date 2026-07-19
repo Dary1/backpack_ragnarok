@@ -39,12 +39,47 @@ async function main() {
     ok(!reg.validateSkinDef({ kind: 'bpskin/1', id: 'x' }).ok, 'malformed def rejected');
     ok(!reg.validateSkinDef({ kind: 'wrong/1', id: 'x', name: 'x', palette: { fill: '#112233' }, corner_radius: 0, border_band: 0 }).ok, 'wrong kind rejected');
     const has = (id) => id in defs;
+    // REQ-0266 (item 33): this block pinned the OLD 4-rung chain and is updated
+    // DELIBERATELY -- the REQ that inserts the rung is the one that moves the
+    // gate. The chain is now FIVE rungs:
+    //   instance -> profile -> set -> neutral -> plain
+    // `profile` (the player's own pick, GET /api/profile/:id/skins) and `set`
+    // (the def-declared default) are genuinely different questions: the server's
+    // resolveSkinPrefs carries EXPLICIT picks only and never injects defaults, so
+    // collapsing them would make the reported rung a lie -- and reporting WHICH
+    // rung fired is the entire reason this resolver exists. One case per rung,
+    // plus the fall-throughs that prove a rung is taken only when its id is both
+    // DECLARED and AVAILABLE.
     eq(res.resolveBpSkin({ instanceSkinId: 'devornate' }, has).rung, 'instance', 'instance slot wins');
-    eq(res.resolveBpSkin({ unitSetSkinId: 'devornate' }, has).rung, 'set', 'set skin next');
+    eq(res.resolveBpSkin({ instanceSkinId: 'devornate', profileSkinId: 'neutral', unitSetSkinId: 'neutral' }, has).rung, 'instance', 'instance still wins with profile AND set present');
+    eq(res.resolveBpSkin({ profileSkinId: 'devornate', unitSetSkinId: 'neutral' }, has).rung, 'profile', 'profile pick beats the def default');
+    eq(res.resolveBpSkin({ profileSkinId: 'devornate', unitSetSkinId: 'neutral' }, has).skinId, 'devornate', 'profile rung yields the PICKED id');
+    eq(res.resolveBpSkin({ unitSetSkinId: 'devornate' }, has).rung, 'set', 'set skin when the player never picked');
+    eq(res.resolveBpSkin({ profileSkinId: null, unitSetSkinId: 'devornate' }, has).rung, 'set', 'a null pick (never chose) falls through to the def default');
+    eq(res.resolveBpSkin({ profileSkinId: 'ghost', unitSetSkinId: 'devornate' }, has).rung, 'set', 'a pick for a skin that no longer exists falls through to the def default');
+    eq(res.resolveBpSkin({ profileSkinId: '' }, has).rung, 'neutral', 'an empty-string pick is not a skin');
     eq(res.resolveBpSkin({}, has).rung, 'neutral', 'neutral default when nothing set');
     eq(res.resolveBpSkin({ instanceSkinId: 'ghost' }, has).rung, 'neutral', 'missing instance skin -> neutral (never blocks)');
+    eq(res.resolveBpSkin({ profileSkinId: 'ghost', unitSetSkinId: 'ghost' }, has).rung, 'neutral', 'pick AND default both unresolvable -> neutral');
+    // A BP with no `unit` has nothing to key on, so BoardRenderer.ts passes
+    // neither a profile nor a set id. This IS that call, and it must land on
+    // neutral -- exactly as it did before the profile rung existed.
+    eq(res.resolveBpSkin({ instanceSkinId: null, profileSkinId: null, unitSetSkinId: null }, has).rung, 'neutral', 'a BP with NO UNIT (no profile id, no set id) lands on neutral');
     eq(res.resolveBpSkin({}, () => false).rung, 'plain', 'plain when even neutral absent');
+    eq(res.resolveBpSkin({}, () => false).skinId, null, 'plain rung yields a null skin id');
     eq(res.resolveBpSkin({}, has).skinId, 'neutral', 'neutral rung yields neutral id');
+    const RUNGS = [
+      ['instance', { instanceSkinId: 'devornate' }],
+      ['profile', { profileSkinId: 'devornate' }],
+      ['set', { unitSetSkinId: 'devornate' }],
+      ['neutral', {}],
+    ];
+    ok(RUNGS.every(([want, q]) => res.resolveBpSkin(q, has).rung === want) && res.resolveBpSkin({}, () => false).rung === 'plain',
+      'all FIVE rungs reachable, in order: instance -> profile -> set -> neutral -> plain');
+    const FIVE = new Set(['instance', 'profile', 'set', 'neutral', 'plain']);
+    ok([{}, { instanceSkinId: undefined }, { profileSkinId: 0 }, { unitSetSkinId: [] }, { profileSkinId: 'ghost' }, { profileSkinId: 'devornate' }]
+      .every((q) => { const r = res.resolveBpSkin(q, has); return FIVE.has(r.rung) && (r.skinId === null || typeof r.skinId === 'string'); }),
+      'resolver is TOTAL: every query (hostile included) yields one of the five rungs, never throws');
     const shapes = [
       { n: '1x1', cells: [[2, 2]] },
       { n: 'L-tromino', cells: [[2, 2], [2, 3], [3, 2]] },

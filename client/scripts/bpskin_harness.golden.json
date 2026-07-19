@@ -1,4 +1,4 @@
 {
-  "gridHash": "6b024c0722319cc900b7ef59dc97a2521957bd992299ba99ab8604d5b8d3e048",
-  "note": "REQ-0126 bpskin harness golden -- regenerate with --update"
+  "gridHash": "0944dbd9cefc866f7ebec1cd3f8710a8c26a95bf65de9c4d64517ecd888855a0",
+  "note": "REQ-0126 bpskin harness golden -- regenerate with --update. REQ-0266 (item 34) added the synthetic textured skin `devraster`, taking the grid from 48 to 72 composites and giving composite.ts's raster path its first coverage here; the pre-REQ-0266 palette-only hash was 6b024c0722319cc900b7ef59dc97a2521957bd992299ba99ab8604d5b8d3e048."
 }

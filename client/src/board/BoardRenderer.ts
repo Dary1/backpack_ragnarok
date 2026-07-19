@@ -67,7 +67,15 @@ import {
 import type { BoardOps } from './boardOps';
 import { BEAM_DIM_ALPHA, BEAM_HOVER_SLOP, CELL, DBLCLICK_WINDOW_MS, DIR_ANGLES, DRAG_ARM_THRESHOLD, INV_UNIT_ALPHA, PAD, SOCKET_SEARCH_RADIUS, SOCK_GLYPH, UNIT_CORE_RADIUS, arrowHead, cellAt, clientToLocal, cx, cy, fitSpriteToBox, localBoxToClient, pointSegDistance, socketScreenPos } from './geom';
 import { makeCommitApi, previewCrossBoardPO, previewCrossBoardSIFreeCell, previewCrossBoardSocket } from './commits';
-import { resolveUnitIcon, unitIconKey } from './unitIcon';
+import { activeUnitSkinKey, defaultSkinId, pickedSkinId, resolveUnitIcon, unitIconKey } from './unitIcon';
+// REQ-0266 (item 23): the bag's OWN skin. The 5-rung chain and the def registry
+// are pure and Node-testable (client/scripts/check_bpskin.mjs drives them); the
+// PixiJS bridge -- raster decode, composite cache, positioned Sprite -- lives in
+// skin/bpSkinTexture.ts, because none of that is renderer logic and this file is
+// hot. See that module's header for the async-decode contract.
+import { resolveBpSkin } from './skin/bpSkinResolve';
+import { bpSkinDefs, hasBpSkin } from './skin/skinRegistry';
+import { bpSkinSprite } from './skin/bpSkinTexture';
 import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve registry-first
 import { drawChargeRing } from './chargeRing';
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
@@ -137,6 +145,13 @@ export class BoardRenderer {
   app: Application;
   root = new Container();
   gBase = new Container();
+  // REQ-0266 (item 23): BP skin composites. ABOVE gBase (the grid tint the skin
+  // is meant to dress) and BELOW gBeams -- so beams, PO art, move-handle badges,
+  // sockets and unit cores every one of them still draw ON TOP of the bag, and a
+  // skin can never come between the player and the BP drag handle. Purely
+  // decorative: the layer is eventMode 'none' (constructor, below) and so is
+  // every sprite added to it.
+  gSkins = new Container();
   gBeams = new Container();
   gItems = new Container();
   gSock = new Container();
@@ -182,6 +197,7 @@ export class BoardRenderer {
     this.deps = deps;
     this.root.addChild(
       this.gBase,
+      this.gSkins, // REQ-0266: above the grid, below items -- see field comment
       this.gBeams,
       this.gItems,
       this.gBadges, // REQ-0042: above gItems (PO art), see field comment
@@ -210,13 +226,15 @@ export class BoardRenderer {
     // eventMode='none' (NOT the default 'passive') so
     // EventBoundary._interactivePrune() excludes it -- and its subtree --
     // from hit-testing entirely, regardless of add-order. gBeams (beam
-    // lines/arrowheads/dud marks), gTarget (drop-target tint/rings,
-    // reject-flash), and gCarry (drag ghost sprites) never host a
-    // listener anywhere in this file, so the whole group is marked here;
+    // lines/arrowheads/dud marks), gSkins (REQ-0266 BP skin composites),
+    // gTarget (drop-target tint/rings, reject-flash), and gCarry (drag
+    // ghost sprites) never host a listener anywhere in this file, so the
+    // whole group is marked here;
     // gBase/gItems/gSock/gUnits mix interactive hit objects with
     // decorative art and are annotated per-node at each creation site
     // below instead.
     this.gBeams.eventMode = 'none';
+    this.gSkins.eventMode = 'none'; // REQ-0266
     this.gTarget.eventMode = 'none';
     this.gCarry.eventMode = 'none';
     this.app.stage.addChild(this.root);
@@ -324,6 +342,7 @@ export class BoardRenderer {
     this.lastState = state;
     const { engine, items, textures, layout, ops } = this.deps;
     this.gBase.removeChildren();
+    this.gSkins.removeChildren(); // REQ-0266
     this.gBeams.removeChildren();
     this.gItems.removeChildren();
     this.gBadges.removeChildren(); // REQ-0042
@@ -424,6 +443,34 @@ export class BoardRenderer {
     // spec item 1: "BPs drawn as on canvas").
     for (const bp of container.bps) {
       const cells = engine.bpCells(bp);
+      // REQ-0266 (item 23): the bag wears its skin. The 5-rung chain lives in
+      // skin/bpSkinResolve.ts (instance -> profile -> set -> neutral -> plain).
+      // `instanceSkinId` is null because a BP instance carries no bp_skin slot
+      // yet; a BP with no unit has nothing to key on, so it passes neither the
+      // profile nor the set id and lands on neutral -- exactly as D-C requires.
+      // Building/caching the composite is skin/bpSkinTexture.ts's job. Decoding
+      // a fill raster is ASYNC and render() is not, so a skinned BP first paints
+      // palette-procedural and notifyStateChanged() brings the pixels in on the
+      // next frame; a raster that 404s is cached there as a permanent miss and
+      // the palette body stays. Missing art never blocks a draw.
+      // Golden G2 is untouched: nothing data-driven is baked into the composite
+      // -- the connection-shape markers, the charge ring and the link/beam lines
+      // are all still drawn per frame from engine state, further below.
+      const bpSkin = resolveBpSkin(
+        {
+          instanceSkinId: null,
+          profileSkinId: bp.unit ? pickedSkinId(bp.unit.id, 'bpskin') : null,
+          unitSetSkinId: bp.unit ? defaultSkinId(bp.unit.id, 'bpskin') : null,
+        },
+        hasBpSkin
+      );
+      const skinSprite = bpSkin.skinId
+        ? bpSkinSprite(cells, bpSkinDefs()[bpSkin.skinId], () => notifyStateChanged())
+        : null;
+      if (skinSprite) {
+        skinSprite.eventMode = 'none'; // decorative, see constructor note
+        this.gSkins.addChild(skinSprite);
+      }
       const outline = new Graphics();
       const cellSet = new Set(cells.map(([r, c]) => `${r},${c}`));
       for (const [r, c] of cells) {
@@ -946,12 +993,16 @@ export class BoardRenderer {
       // and REQ-0133 reuses this same chain for item rasters.
       const icon = resolveUnitIcon(
         {
-          // Skins are still REQ-0126's; identity + default art landed in REQ-0170,
-          // so `defaultKey` is now a real key: the BP's Unit id, namespaced by
-          // unitIconKey(). A BP whose unit art failed to load (or whose unit id is
-          // unknown) simply falls through the chain to the legacy glyph -- the seam
-          // does its job without a single change at this draw site.
-          skinKey: null,
+          // REQ-0266: the `skin` rung is fed for real at last. activeUnitSkinKey()
+          // runs the profile-pick -> def-default chain over the unit_skin/1 defs and
+          // returns NULL -- never the default key -- when the unit has no skin, or
+          // when that skin's artwork is not adopted. So a BP with no skin still
+          // reports rung 'default' and the chain's own report stays honest.
+          // Identity + default art landed in REQ-0170, so `defaultKey` is a real key:
+          // the BP's Unit id, namespaced by unitIconKey(). A BP whose art failed to
+          // load (or whose unit id is unknown) simply falls through the chain to the
+          // legacy glyph -- the seam does its job without a change at this draw site.
+          skinKey: bp.unit ? activeUnitSkinKey(bp.unit.id) : null,
           defaultKey: bp.unit ? unitIconKey(bp.unit.id) : null,
         },
         (k) => textures.has(k)
