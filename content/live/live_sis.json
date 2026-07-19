@@ -181,6 +181,607 @@
      "flavor": "分解されれば、外れ落ちる。"
     }
    }
+  },
+  {
+   "id": "sis005_emerald_gem",
+   "name": "Emerald Gem",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-acc_gem",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "lifesteal",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Green fire that drinks what it cuts.",
+   "i18n": {
+    "ja": {
+     "name": "エメラルドの宝石",
+     "flavor": "斬ったものを飲み干す、緑の焔。"
+    }
+   }
+  },
+  {
+   "id": "sis005_sapphire_gem",
+   "name": "Sapphire Gem",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-acc_gem",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "damage_reduction",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Cold clarity turns the blow aside.",
+   "i18n": {
+    "ja": {
+     "name": "サファイアの宝石",
+     "flavor": "冷たい澄明が、一撃を逸らす。"
+    }
+   }
+  },
+  {
+   "id": "sis005_ember_core",
+   "name": "Ember Core",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-flame_tablet",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Burn",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "A coal that never finished burning.",
+   "i18n": {
+    "ja": {
+     "name": "燠火のコア",
+     "flavor": "燃え尽きそこねた、熾。"
+    }
+   }
+  },
+  {
+   "id": "sis005_thunder_core",
+   "name": "Thunder Core",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-acc_gem",
+   "rarity": "Rare",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "haste",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "The strike arrives before the sound.",
+   "i18n": {
+    "ja": {
+     "name": "雷鳴のコア",
+     "flavor": "音より先に、一撃が届く。"
+    }
+   }
+  },
+  {
+   "id": "sis005_moon_pearl",
+   "name": "Moon Pearl",
+   "slot": "gem",
+   "reqTags": [],
+   "icon": "icon-acc_gem",
+   "rarity": "Rare",
+   "effects": [
+    {
+     "trigger": {
+      "t": "battle_start"
+     },
+     "verb": {
+      "t": "grant_shield",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Borrowed light, worn as armor.",
+   "i18n": {
+    "ja": {
+     "name": "月の真珠",
+     "flavor": "借り物の光を、鎧として纏う。"
+    }
+   }
+  },
+  {
+   "id": "sis005_serrated_fang",
+   "name": "Serrated Fang",
+   "slot": "edge",
+   "reqTags": [
+    "Bone"
+   ],
+   "icon": "icon-beast_jaw",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "bonus_vs_blocked",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "It finds the seam in any guard.",
+   "i18n": {
+    "ja": {
+     "name": "鋸歯の牙",
+     "flavor": "どんな守りにも、継ぎ目を見つける。"
+    }
+   }
+  },
+  {
+   "id": "sis005_dragon_claw",
+   "name": "Dragon Claw",
+   "slot": "edge",
+   "reqTags": [
+    "Bone"
+   ],
+   "icon": "icon-beast_jaw",
+   "rarity": "Rare",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_host",
+      "stat": "damage",
+      "n": [
+       6,
+       12
+      ]
+     }
+    }
+   ],
+   "flavor": "Taken from something that did not give it.",
+   "i18n": {
+    "ja": {
+     "name": "竜の爪",
+     "flavor": "差し出されたものでは、ない。"
+    }
+   }
+  },
+  {
+   "id": "sis005_bone_spike",
+   "name": "Bone Spike",
+   "slot": "edge",
+   "reqTags": [
+    "Bone"
+   ],
+   "icon": "icon-acc_arrowhead",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Spikes",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Sharpened from what was left.",
+   "i18n": {
+    "ja": {
+     "name": "骨の棘",
+     "flavor": "残されたものを、研いだ。"
+    }
+   }
+  },
+  {
+   "id": "sis005_obsidian_shard",
+   "name": "Obsidian Shard",
+   "slot": "edge",
+   "reqTags": [],
+   "icon": "icon-rime_shard",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "buff_host",
+      "stat": "damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Glass born of fire, honed thinner than steel.",
+   "i18n": {
+    "ja": {
+     "name": "黒曜石の破片",
+     "flavor": "火が生んだ硝子、鋼より薄く研がれる。"
+    }
+   }
+  },
+  {
+   "id": "sis005_iron_caltrop",
+   "name": "Iron Caltrop",
+   "slot": "edge",
+   "reqTags": [
+    "Metal"
+   ],
+   "icon": "icon-acc_arrowhead",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnBPBeenHit"
+     },
+     "verb": {
+      "t": "reflect_damage",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "However it lands, a point stands up.",
+   "i18n": {
+    "ja": {
+     "name": "鉄の撒菱",
+     "flavor": "どう転んでも、棘が上を向く。"
+    }
+   }
+  },
+  {
+   "id": "sis005_flame_oil",
+   "name": "Flame Oil",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-oil_flask2",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Burn",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Thin, eager, and hard to put out.",
+   "i18n": {
+    "ja": {
+     "name": "火炎油",
+     "flavor": "薄く、急いて、消えにくい。"
+    }
+   }
+  },
+  {
+   "id": "sis005_frost_rime",
+   "name": "Frost Rime",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-frost_orb",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Chill",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "It steals the warmth first, the speed after.",
+   "i18n": {
+    "ja": {
+     "name": "霜の軟膏",
+     "flavor": "まず熱を、次に速さを奪う。"
+    }
+   }
+  },
+  {
+   "id": "sis005_venom_flask",
+   "name": "Venom Flask",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-poison_vial",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Poison",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Patient work, once the skin is open.",
+   "i18n": {
+    "ja": {
+     "name": "毒のフラスコ",
+     "flavor": "皮膚が開いてからが、本番。"
+    }
+   }
+  },
+  {
+   "id": "sis005_holy_water",
+   "name": "Holy Water",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-oil_flask2",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Weakness",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "Blessed, bottled, and unkind to the unclean.",
+   "i18n": {
+    "ja": {
+     "name": "聖水",
+     "flavor": "祝福され、瓶に詰められ、穢れには容赦がない。"
+    }
+   }
+  },
+  {
+   "id": "sis005_tar_pot",
+   "name": "Tar Pot",
+   "slot": "coat",
+   "reqTags": [],
+   "icon": "icon-oil_flask2",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "slow_enemy",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Every step costs more than the last.",
+   "i18n": {
+    "ja": {
+     "name": "タールの壺",
+     "flavor": "一歩ごとに、代償が増える。"
+    }
+   }
+  },
+  {
+   "id": "sis005_leather_grip",
+   "name": "Leather Grip",
+   "slot": "bond",
+   "reqTags": [],
+   "icon": "icon-hilt",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "haste",
+      "n": [
+       1,
+       2
+      ]
+     }
+    }
+   ],
+   "flavor": "A hand that does not slip swings sooner.",
+   "i18n": {
+    "ja": {
+     "name": "革の握り",
+     "flavor": "滑らない手は、早く振れる。"
+    }
+   }
+  },
+  {
+   "id": "sis005_silver_chain",
+   "name": "Silver Chain",
+   "slot": "bond",
+   "reqTags": [
+    "Metal"
+   ],
+   "icon": "icon-acc_guard",
+   "rarity": "Uncommon",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnBPBeenHit"
+     },
+     "verb": {
+      "t": "reflect_damage",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "It answers on the backswing.",
+   "i18n": {
+    "ja": {
+     "name": "銀の鎖",
+     "flavor": "返す刃で、応える。"
+    }
+   }
+  },
+  {
+   "id": "sis005_golden_thread",
+   "name": "Golden Thread",
+   "slot": "bond",
+   "reqTags": [],
+   "icon": "icon-herb_satchel",
+   "rarity": "Rare",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "apply_status",
+      "status": "Regen",
+      "n": [
+       4,
+       8
+      ]
+     }
+    }
+   ],
+   "flavor": "It mends the binding faster than battle frays it.",
+   "i18n": {
+    "ja": {
+     "name": "金の糸",
+     "flavor": "戦がほつれさせるより早く、綴じ直す。"
+    }
+   }
+  },
+  {
+   "id": "sis005_hemp_rope",
+   "name": "Hemp Rope",
+   "slot": "bond",
+   "reqTags": [],
+   "icon": "icon-acc_guard",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "OnPOHit"
+     },
+     "verb": {
+      "t": "block",
+      "n": [
+       2,
+       4
+      ]
+     }
+    }
+   ],
+   "flavor": "Cheap, coarse, and it holds.",
+   "i18n": {
+    "ja": {
+     "name": "麻縄",
+     "flavor": "安く、粗く、そして保つ。"
+    }
+   }
+  },
+  {
+   "id": "sis005_iron_rivet",
+   "name": "Iron Rivet",
+   "slot": "bond",
+   "reqTags": [
+    "Metal"
+   ],
+   "icon": "icon-acc_guard",
+   "rarity": "Common",
+   "effects": [
+    {
+     "trigger": {
+      "t": "passive"
+     },
+     "verb": {
+      "t": "damage_reduction",
+      "n": [
+       1,
+       2
+      ]
+     }
+    }
+   ],
+   "flavor": "Nothing rattles loose.",
+   "i18n": {
+    "ja": {
+     "name": "鉄の鋲",
+     "flavor": "何ひとつ、緩まない。"
+    }
+   }
   }
  ]
 }
