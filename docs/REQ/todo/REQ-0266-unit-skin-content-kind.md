@@ -397,3 +397,264 @@ confusingly, or worse, writes to it.
   the backfill for any kind; until an operator PATCHes it (or the exact-name artwork
   is adopted), `art_urls` simply OMITS each skin id and the client falls back --
   never an error. That is the D-A chain behaving as specified, not a gap.
+
+---
+
+## 11. Outcome — verification pass, 2026-07-19
+
+### 11.1 Commits (oldest first)
+
+| hash | subject |
+|---|---|
+| `e10aee8` | REQ-0266: reserve unit-skin-content-kind |
+| `3fe7ec6` | REQ-0266: reserved -> todo |
+| `268fbf7` | REQ-0266: spec -- unit_skin content kind, per-profile skin prefs, BP raster binding |
+| `83db3db` | REQ-0266 (A): migrations 023 unit_skin content_kind + 024 skin_prefs table |
+| `34dd920` | REQ-0266 (B): shared validateUnitSkinEntry + UNIT_SKIN_SLOTS |
+| `c65ae3c` | REQ-0266 (C): unit_skin/1 dialect + schema_vocab branch in content_checks |
+| `48e290c` | REQ-0266 (F): live_unit_skins.json (108 defs) + backfill/parity/cross-kind wiring |
+| `06354fa` | REQ-0266 (D): unit_skin joins KINDS, REGISTRY_KINDS, the overlay and /api/content |
+| `a8cdb07` | REQ-0266 (E): per-PLAYER skin_prefs store + /api/profile/:id/skins route |
+| `930d293` | REQ-0266 (J, server half): gates for the new kind + the new store |
+| `f42333e` | REQ-0266: DB-tier art_slot check on ingest/recheck + REQ state log |
+| `3ab0b1a` | REQ-0266: route-level coverage for /api/profile/:id/skins in skin_prefs_test |
+| `818830a` | REQ-0266 (H, items 18-21+24): raster fill path, the 5-rung BP chain, unit_skin-derived skin defs, setUnitSkins, and the boot fetch |
+| `92058f6` | REQ-0266 (H, item 23b, PARTIAL): the compositor-to-PixiJS bridge (not yet wired) |
+| `4e5a399` | REQ-0266 (G, items 15-17): unit_skin joins the contentadmin |
+| `a8b3d85` | REQ-0266 (H, item 25): the DOM unit-art adapter + its six surfaces |
+| `814d2bf` | REQ-0266 (H, items 23 + 32-34): BoardRenderer wears the skins, and the harnesses that prove it |
+| `99b3bf7` | REQ-0266 (H): rebuild web/app -- the committed bundle carries items 23 + 25 |
+| `fe679ac` | **REQ-0266 (fix): only a skin with REAL ART paints -- neutral must never cover the per-BP colour tint** |
+| `a77d471` | REQ-0266 (item 35): e2e proof of the four skin fallback states |
+| `195f9ad` | REQ-0266: rebuild web/app -- the committed bundle carries the neutral paint guard |
+| `8501117` | REQ-0266: tab-switch-stability counts the boot profile fetches SEPARATELY |
+
+### 11.2 The `bpskin_harness` golden moved, deliberately (item 34)
+
+```
+6b024c0722319cc900b7ef59dc97a2521957bd992299ba99ab8604d5b8d3e048   (48 composites, palette only)
+0944dbd9cefc866f7ebec1cd3f8710a8c26a95bf65de9c4d64517ecd888855a0   (72 composites, palette + raster)
+```
+
+The suite gained a third skin, `devraster` — `devornate` with a `fill_texture`, composited
+against a raster the harness builds procedurally — so `composite.ts`'s raster path gets the
+same 8 shapes x 3 backgrounds the palette path gets. Both hashes are recorded in
+`client/scripts/bpskin_harness.mjs`'s header and in `bpskin_harness.golden.json`'s note.
+The verification pass's own change to `composite.ts` (extracting `declaresFillTexture()`)
+is a pure refactor and did **not** move it again — `[5.9c/7]` prints
+`golden match: 0944dbd9…`.
+
+### 11.3 The neutral regression, and the fix (`fe679ac`)
+
+**What shipped broken.** `814d2bf` wired the 5-rung chain into `BoardRenderer.render()` and
+painted `bpSkinSprite()` for whatever the chain returned. `neutral` is always registered, so
+the chain resolves to a def for **every** BP on both boards; every `unit_skin`-derived def
+inherits neutral's palette; and a composite body is opaque and parented in `gSkins`, which is
+above `gBase`. Result: a flat `#2b3240` slab over every BP's colour grid tint and over the
+inner two thirds of its 3px coloured outline. Every BP looked identical. That contradicts
+`content/live/live_bpskins.json` ("renders identical to plain") and
+`server/storage/bpskin_slot.cjs` ("absence never blocks rendering"), and no gate covered it
+because nothing in the suite looked at the board's appearance.
+
+**The rule now.** Only a skin with REAL ART paints: `bpSkinSprite()` returns `null` unless the
+def declares `art.fill_texture` **and** that raster is decoded and in hand.
+
+**Where the guard is, and why there.** In `client/src/board/skin/bpSkinTexture.ts`'s
+`bpSkinSprite()` — the single PixiJS paint entry point, which already owned the
+"nothing to draw -> null" contract. NOT in `resolveBpSkin()`: the resolver's whole purpose is
+to report WHICH rung fired, and a resolver that lied about landing on `neutral` would make
+`check_bpskin.mjs`'s rung assertions meaningless. It still reports `neutral` (or `set`); it
+just no longer causes a paint. NOT at the BoardRenderer call site either, so the invariant
+holds for every future caller of the bridge, not just this one. The predicate itself,
+`declaresFillTexture()`, is exported from the pure `composite.ts` so the compositor's raster
+path, the renderer's guard, the gates and the offline preview cannot disagree about what
+"has art" means.
+
+**Scope of the guard, stated plainly.** It is broader than `neutral`. Under ruling D5 no
+skin artwork is adopted yet, so `art_urls` carries no skin ids at all and EVERY
+`uskin_bp_<unit>` derived def has `fill_texture: null` — those BPs were landing on rung `set`,
+not `neutral`, and were painted just as flatly. A guard keyed only on `isNeutral()` would have
+fixed one BP in fifty. The cost of the broader rule: an authored palette-only skin
+(`devornate`) no longer paints procedurally on the board. Nothing reaches that state today
+(the `instance` rung is always `null` and authored ids are unreachable from the two unit-keyed
+rungs), the offline compositor is untouched, and if a future REQ wants procedural authored
+skins on the board it is one predicate in one place.
+
+**Decode timing.** Previously a skinned BP painted palette-procedural first and swapped the
+raster in on the next frame. It now paints NOTHING on the frame that starts the decode — it is
+pixel-identical to an unskinned BP — and `onReady()` re-renders once the pixels are in. That
+removes an opaque one-frame flash of exactly the colour this fix exists to eliminate. A 404 or
+a decode failure is cached as a permanent miss and the BP simply stays unskinned.
+
+**Sibling question — does a REAL textured skin occlude the per-BP colour tint?**
+Yes, and that is INTENDED and recorded here as a decision: the skin IS the bag's surface, so
+it replaces the grid tint inside the footprint. Identity survives outside the composite —
+the 3px `bp.color` outline is centred on the footprint boundary so its outer half always
+reads, and the `bp.color` label sits above the BP. Verified visually (see 11.4).
+
+**One thing that must NOT be occluded, and was.** REQ-0033's usage wash on the BP's own
+footprint is a STATE signal ("this bag is committed to a squad"), not decoration, and it was
+drawn into `gBase` — under the skin. It now draws into `gSkins`, immediately after that BP's
+own composite. Zero visual difference while nothing paints. The PO/SI usage tints needed no
+move: they already draw into `gItems`, which is above `gSkins`.
+
+**Anti-regression coverage.** `client/scripts/check_bpskin.mjs` (ci.sh `[5.9b/7]`) gained five
+assertions pinning the predicate: `neutral` and an authored palette-only skin declare no fill
+texture; a derived skin whose artwork is NOT adopted declares none either; one whose artwork
+IS adopted declares it; and an art-less def still composites at full size OFFLINE, because a
+PNG wants a solid body and only the board suppresses it. `client/e2e/unit-skin-fallback.spec.ts`
+test 4 is a PIXEL test on both boards — the first gate in this repo that looks at board
+appearance at all.
+
+**New tool.** `client/scripts/board_skin_preview.mjs` (a preview tool, NOT a gate; not wired
+into `ci.sh`) renders the `gBase` -> `gSkins` stack offline to PNG in the renderer's own draw
+order, with the guard on and off, using the real modules via vite `ssrLoadModule`. Output is
+committed at `web/preview/req0266-board/`.
+
+### 11.4 Gate results
+
+**A. DB-free sweep** — `HOME=/tmp/h0266 SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh`
+
+```
+CI GREEN
+```
+exit 0. 38 steps, every one green.
+
+**B. Full `tools/ci.sh`** — `HOME=/tmp/h0266 DATABASE_URL=… tools/ci.sh`
+
+Stops at the one EXPECTED red and therefore never prints `CI GREEN`:
+
+```
+==== [5.455/7] per-profile skin selection store parity (pg backend, REQ-0266) ====
+FAIL: absence reads as {unit:{},bpskin:{}} -- a player who never picked has no row (D5) - relation "skin_prefs" does not exist
+…
+skin_prefs_test (pg backend): 12 FAILED
+```
+
+All 12 failures are the same cause: `relation "skin_prefs" does not exist`. `024_skin_prefs.sql`
+is a PENDING MIGRATION (see DEPLOY STEPS), not a defect. The 9 assertions in that file that do
+not touch the table still pass. The files-backend twin is green:
+
+```
+==== [4.685/7] per-profile skin selection store (files backend, REQ-0266) ====
+skin_prefs_test (files backend): ALL GREEN
+```
+
+**C. Everything after `[5.455/7]`** — the same script with only that one command elided
+(a `/tmp` copy; `tools/ci.sh` itself is unmodified beyond `818830a`'s two step additions).
+Every step `[0/8]` through `[6.6/8]` GREEN, including:
+
+```
+==== [0/8] e2e harness port rule (REQ-0172) ====
+check_e2e_ports: 4 harnesses, all ports derived from their REQ number, no collisions
+==== [5.9b/7] client bp-skin resolver/registry/composite chain (REQ-0126) ====
+check_bpskin: ALL GREEN
+==== [5.9c/7] bp-skin S3 validation harness … ====
+golden match: 0944dbd9cefc866f7ebec1cd3f8710a8c26a95bf65de9c4d64517ecd888855a0
+harness: 8 shapes x 3 skins x 3 bgs = 72 composites; grid 2220x1974
+bpskin_harness: ALL GREEN
+==== [6/7] client typecheck + build ====   (and `git status` clean afterwards: the committed
+                                            web/app bundle is byte-identical to a fresh build)
+==== [6.5/8] admin e2e harnesses (artadmin + artinspect + contentadmin) ====   all green
+==== [6.6/8] registry-first serving e2e (pg, seeded adopted def, REQ-0221) ====  green
+```
+
+**D. `[7/7]` scoped hermetic e2e**, REQ-0266 decade (proxy 7662, fleet 7664+), 4 workers:
+
+```
+3 failed
+  forecast.spec.ts:206      REQ-0057 formation picker ranks the four slots by expected pressure
+  reference-model.spec.ts:125  3. same blade placed into squad2 -> canvas shows canvasYellow
+  schedule.spec.ts:1451     REQ-0240 monitor six zones, feed filters, roster/pacing
+1 skipped
+189 passed (3.5m)
+```
+
+None is REQ-0266's, each checked individually rather than assumed:
+- `forecast.spec.ts:206` — reproduces on a clean `git archive master` export, same fleet, same
+  env. PRE-EXISTING.
+- `schedule.spec.ts:1451` — passes alone on this branch; fails on MASTER when the whole
+  `schedule.spec.ts` runs in order. PRE-EXISTING intra-file state dependency.
+- `reference-model.spec.ts:125` — green in the previous full run and green for the whole file
+  in isolation (8/8); fails at a saved-state assertion (line 159), never reaching its tint
+  assertion. Intermittent, load-dependent.
+
+The four REQ-0266 fallback tests pass:
+```
+✓ unit-skin-fallback.spec.ts:88   1. a unit with NO skin still renders -- the legacy glyph …
+✓ unit-skin-fallback.spec.ts:107  2. a unit with a DEFAULT skin renders the default
+✓ unit-skin-fallback.spec.ts:120  3. a profile that PICKED a different skin renders the pick …
+✓ unit-skin-fallback.spec.ts:143  4. a BP with NO skin still renders -- neutral paints nothing …
+```
+The specs the survey flagged as highest risk are all green: `bp-rotate.spec.ts` (5/5),
+`bp-transfer.spec.ts` (6/6), `dex.spec.ts:366` (which carries the `:379`
+`.dex-md .shape-grid === 0` assertion), `workshop.spec.ts:166` (which carries the `:195`
+`shape-grid-cell-unit === 1` assertion), `schedule.spec.ts:1378`/`:1426`, and
+`contentadmin.spec.ts:419` + `:438` (via the `[6.5/8]` harness).
+
+**E. Renderer note.** `ci.sh`'s `[7/7]` sets `E2E_GPU=1` by default. Running the same scoped
+command with `E2E_GPU` unset (CPU/SwiftShader) is NOT a viable configuration on this box at
+`E2E_PARALLEL=4`: the run takes 9.2m instead of 3.5m and 16 tests fail, nearly all at
+32.5-32.8s against the 30s per-test timeout, spread across the drag-heavy specs
+(`reference-model` entirely, `bp-transfer:164`, `baseline-smoke:27`, `nav-routing:124`,
+`tab-switch-stability`, `warehouse-mjolnir:91`, …). Box load average was ~29 during that run.
+All four REQ-0266 fallback tests — including the pixel probe — pass on BOTH renderers, so the
+pixel assertions are not renderer-dependent. Re-running the drag-heavy risk set on the CPU
+renderer at `E2E_PARALLEL=1` (`bp-transfer` + `bp-rotate` + `reference-model`) gives
+`18 passed (2.9m)`, exit 0 — i.e. the CPU-run reds are contention timeouts, not behaviour.
+
+**F. Visual proof of the fix** — `web/preview/req0266-board/`, regenerated by
+`node client/scripts/board_skin_preview.mjs`:
+- `req0266_board_noskin.png` — three BPs (orange / yellow / purple) with no skin.
+  BEFORE: all three are the same flat `#2b3240` slab, only a hairline of each outline left.
+  AFTER: each BP shows its own colour wash and its full 3px outline; they are distinguishable
+  at a glance, exactly as on master.
+- `req0266_board_skinned.png` — BPs wearing a real fill texture. BOTH panels show the texture
+  tiled continuously across the footprint and across internal cell borders, so the guard does
+  not break real art. The right-hand BP carries a usage wash: BEFORE it is invisible under the
+  composite, AFTER it reads over the texture.
+
+### 11.5 DEPLOY STEPS
+
+**1. Apply the two hand-applied migrations, in this order.** Both are written and committed;
+NEITHER has been applied to any database.
+
+```bash
+cd ~/backpack_ragnarok
+docker exec -i supabase-db psql -U postgres < server/migrations/023_content_kind_unit_skin.sql
+docker exec -i supabase-db psql -U postgres < server/migrations/024_skin_prefs.sql
+```
+
+`023` is a bare top-level `ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'unit_skin'`
+(`ADD VALUE` cannot run inside a transaction or a `DO` block). `024` creates
+`skin_prefs(player_id text PK, doc jsonb, updated_at timestamptz)` plus its
+`GRANT … TO backpack`, copied from `012_starter_claims.sql`.
+
+**Do NOT apply `020_content_kind_gimic`, `021_artwork_kind_gimic` or `022_content_kind_dungeon`
+as a side effect.** They are not applied on this box and are not this REQ's to apply.
+
+**2. `ci.sh` step `[5.455/7]` is RED until `024` is applied.** That is a pending migration, not
+a defect, and the step is deliberately NOT skip-guarded: a gate that quietly passes against a
+missing table proves nothing (REQ-0159). Once `024` lands it must go green, and it is the
+check that the migration actually took. Until `023` lands,
+`storage.resolveAdoptedContentData('unit_skin', …)` throws
+`invalid input value for enum content_kind`, which is CONTAINED — `services/core.cjs` isolates
+that per kind (the REQ-0211 guard) and `unit_skin` degrades to file-served.
+
+**3. Run the content backfill AFTER `023`.**
+
+```bash
+node tools/backfill_content_registry.cjs
+```
+
+It now carries the `unit_skin` SOURCES row: 108 new defs, verified collision-free against all
+10 other kinds at 349 total. `content_defs.artwork_ref` is NOT set by the backfill for any
+kind; until an operator PATCHes it (or the exact-name artwork is adopted), `art_urls` simply
+OMITS each skin id, the client falls through, and — with the verification pass's guard — the
+board renders exactly as it does today. That is the D-A chain behaving as specified.
+
+**4. `web/app` is a committed build artifact** and is current as of `195f9ad`; a fresh
+`pnpm run build` reproduces it byte for byte. No rebuild is needed at deploy.
+
+**5. Nothing else.** No service restart is required by this REQ; the skin data is file-served
+until an operator adopts artwork.
