@@ -12,7 +12,9 @@
 //   the identical reason -- /api/ragnarok/* collides with nothing.
 //   REQ-0052: dex appended after ragnarok for the identical reason --
 //   /api/dex/* collides with nothing. REQ-0063: dismantle appended last,
-//   identical reason -- /api/dismantle* collides with nothing.)
+//   identical reason -- /api/dismantle* collides with nothing. REQ-0266:
+//   skins appended at the very tail -- routes/profile.cjs matches ONLY
+//   /api/profile/:id/canvas, so /api/profile/:id/skins falls through to it.)
 const { sendJSON } = require('./lib/http_util.cjs');
 const { tryPublicRoutes } = require('./routes/public.cjs');
 const { tryMeRoute } = require('./routes/me.cjs');
@@ -29,6 +31,7 @@ const { tryArtRoutes } = require('./routes/art.cjs'); // REQ-0151
 const { tryContentRoutes } = require('./routes/content.cjs'); // REQ-0155
 const { tryStarterRoutes } = require('./routes/starter.cjs'); // REQ-0051
 const { tryBioRoutes } = require('./routes/bio.cjs'); // REQ-0060
+const { trySkinsRoutes } = require('./routes/skins.cjs'); // REQ-0266
 
 function handle(req, res) {
   const url = new URL(req.url, 'http://localhost');
@@ -48,6 +51,7 @@ function handle(req, res) {
   if (tryContentRoutes(req, res, url, p) !== false) return; // REQ-0155: /api/content/defs/* + /api/content/<name>[/meta] collide with nothing (public.cjs owns the exact /api/content payload), appended at the tail
   if (tryStarterRoutes(req, res, url, p) !== false) return; // REQ-0051: /api/starter/* collides with nothing, appended at the tail
   if (tryBioRoutes(req, res, url, p) !== false) return; // REQ-0060: /api/bio/* appended at the tail, collides with nothing
+  if (trySkinsRoutes(req, res, url, p) !== false) return; // REQ-0266: /api/profile/:id/skins appended at the tail -- routes/profile.cjs matches ONLY .../canvas, so this collides with nothing
   sendJSON(res, 404, { ok: false, error: 'not found' });
 }
 module.exports = { handle };

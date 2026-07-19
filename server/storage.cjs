@@ -63,6 +63,7 @@ const seals = require('./storage/seals.cjs');
 // REQ-0060: pack biography (per-BP-instance ledger).
 const bioStore = require('./storage/bio.cjs');
 const bpskinStore = require('./storage/bpskin_slot.cjs'); // REQ-0126: per-BP-instance cosmetic skin slot
+const skinPrefsStore = require('./storage/skin_prefs.cjs'); // REQ-0266: per-PLAYER unit_skin selection
 // REQ-0151: artwork registry lives in a sibling storage-subsystem file
 // (owns its own async pg pool for BYTEA image blobs). Re-exported below so
 // storage.cjs stays THE single persistence chokepoint every caller imports.
@@ -118,6 +119,21 @@ module.exports = {
   listSkinSlots: bpskinStore.listSkinSlots,
   setBpSkin: bpskinStore.setBpSkin,
   getBpSkinId: bpskinStore.getBpSkinId,
+  // REQ-0266: per-PLAYER skin selection (storage.cjs stays THE sole persistence
+  // chokepoint -- from storage/skin_prefs.cjs; no consumer requires that module
+  // directly). validateSkinPrefsPatch/resolveSkinPrefs are PURE (the skin corpus
+  // is passed in) and ride along here so the route has one import, not two.
+  SKIN_PREFS_DIR: skinPrefsStore.SKIN_PREFS_DIR,
+  skinPrefsPath: skinPrefsStore.skinPrefsPath,
+  readSkinPrefs: skinPrefsStore.readSkinPrefs,
+  writeSkinPrefs: skinPrefsStore.writeSkinPrefs,
+  deleteSkinPrefs: skinPrefsStore.deleteSkinPrefs,
+  getSkinPrefs: skinPrefsStore.getSkinPrefs,
+  mergeSkinPrefs: skinPrefsStore.mergeSkinPrefs,
+  emptySkinPrefs: skinPrefsStore.emptySkinPrefs,
+  prefsFromDoc: skinPrefsStore.prefsFromDoc,
+  validateSkinPrefsPatch: skinPrefsStore.validateSkinPrefsPatch,
+  resolveSkinPrefs: skinPrefsStore.resolveSkinPrefs,
   sealPath: seals.sealPath,
   sealRunPath: seals.sealRunPath,
   readSeal: seals.readSeal,
