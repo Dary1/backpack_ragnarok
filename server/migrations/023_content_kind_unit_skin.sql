@@ -1,0 +1,25 @@
+-- backpack_ragnarok -- server/migrations/023_content_kind_unit_skin.sql
+-- REQ-0266: extend the content_kind ENUM with 'unit_skin' so a cosmetic skin
+-- def -- a unit portrait skin or a Backpack skin, discriminated by its own
+-- `slot` field and by the KIND of the artwork it references (D1: ONE content
+-- kind, not two) -- enters the content registry as a first-class def, managed
+-- from the content admin, machine-checked, and registry-first served. User
+-- ruling, 2026-07-19.
+--
+-- Registry semantics are UNCHANGED: a unit_skin is an ordinary content_defs +
+-- content_variants pair (immutability trigger, adopted-variant FK, variant_no
+-- handle -- all inherited from 009). No new table, column or constraint. The
+-- ENUM is the only thing blocking unit_skin/1 data from entering the ledger --
+-- exactly as it was for skill_def (010), gacha_pack (016), monster_pack (019),
+-- gimic (020) and dungeon (022).
+--
+-- No new artwork_kind value is needed: 'unit' and 'bpskin' both already exist
+-- (007_artwork.sql / REQ-0126), and a unit_skin only ever REFERENCES artwork.
+--
+-- Apply as the postgres superuser (same invocation as 001..022):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/023_content_kind_unit_skin.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS is a no-op when the label already
+-- exists. ALTER TYPE ... ADD VALUE cannot run inside a transaction block,
+-- hence the bare top-level statement (the same reason 010/016/019/020/022 are bare).
+ALTER TYPE content_kind ADD VALUE IF NOT EXISTS 'unit_skin';
