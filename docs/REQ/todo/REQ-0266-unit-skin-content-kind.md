@@ -373,3 +373,27 @@ confusingly, or worse, writes to it.
 ## 10. State log
 - 2026-07-19 reserved (stub).
 - 2026-07-19 reserved → todo: spec written; D1-D5 ratified by the user in the same session.
+- 2026-07-19 SERVER half implemented (Ships A-F + the server half of J), on branch
+  `req-0266-unit-skin-content-kind`. Client half (G, H, item 25) and art (I) are not
+  in this pass.
+- **MIGRATIONS 023 + 024 ARE PENDING.** Both files are written and committed; NEITHER
+  has been applied to any database. They are hand-applied at deploy, as the spec
+  requires, in this order:
+  ```
+  docker exec -i supabase-db psql -U postgres < server/migrations/023_content_kind_unit_skin.sql
+  docker exec -i supabase-db psql -U postgres < server/migrations/024_skin_prefs.sql
+  ```
+  Until 023 is applied, `storage.resolveAdoptedContentData('unit_skin', ...)` throws
+  `invalid input value for enum content_kind` -- which is CONTAINED: services/core.cjs
+  isolates that per kind (the REQ-0211 guard) and unit_skin simply degrades to
+  file-served. Until 024 is applied, ci.sh's `[5.455/7]` pg step fails with
+  `relation "skin_prefs" does not exist`. That step is deliberately NOT skip-guarded:
+  it is a pending migration, not a defect, and a gate that quietly passes against a
+  missing table proves nothing (REQ-0159). The files-backend twin `[4.685/7]` is green.
+  020/021/022 stay unapplied on the dev DB, exactly as section 8 says.
+- Deploy note: the backfill must run AFTER 023 (`tools/backfill_content_registry.cjs`
+  now carries the `unit_skin` SOURCES row -- 108 new defs, verified collision-free
+  against all 10 other kinds at 349 total). `content_defs.artwork_ref` is NOT set by
+  the backfill for any kind; until an operator PATCHes it (or the exact-name artwork
+  is adopted), `art_urls` simply OMITS each skin id and the client falls back --
+  never an error. That is the D-A chain behaving as specified, not a gap.
