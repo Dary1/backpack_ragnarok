@@ -5,6 +5,9 @@
 - 2026-07-20 reserved -> draft: spec written from the content-pipeline consultation
   (user, 2026-07-21 JST); blocked on user ratification of scope decisions
   (source list, storage location).
+- 2026-07-20 draft -> todo: user ratified (chat, 2026-07-21 JST): sources = Backpack
+  Hero + Backpack Battles; storage = data/corpus/ gitignored with the tracked
+  stats file under content/.
 
 ## Origin (content-pipeline consultation)
 Balance-tuning phase begins; monster skills and item effects are the focus.
@@ -24,7 +27,7 @@ Generated candidates cannot be linted against anything measurable.
 
 ## Proposal
 - tools/corpus_fetch.py: download wiki data for an agreed source list
-  (candidates: Backpack Hero, Backpack Battles; user to ratify). Cache raw
+  (ratified: Backpack Hero + Backpack Battles). Cache raw
   pages with source URL and license attribution (Fandom wikis are typically
   CC-BY-SA; the game data itself belongs to each developer — see Posture).
 - tools/corpus_normalize.py: parse raw pages into one normalized schema
@@ -44,9 +47,9 @@ Generated candidates cannot be linted against anything measurable.
   statistics inform OUR curves; our vocab stays the closed authority.
 - Licensing: keep per-source attribution; the corpus is internal tooling
   data, never shipped.
-- Storage decision needed: raw+normalized corpus is bulky and third-party —
-  proposed home is data/corpus/ (gitignored, like profiles/), with only the
-  small derived stats file tracked (location TBD: content/ vs docs/).
+- Storage (ratified): raw+normalized corpus lives in data/corpus/ (gitignored,
+  like profiles/); only the small derived stats file is tracked, under
+  content/ (consumed by the generation pipeline).
 
 ## Gates (when implemented)
 - Normalizer unit tests run on committed fixture pages (no network in tests).
