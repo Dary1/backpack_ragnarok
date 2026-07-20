@@ -121,6 +121,8 @@ echo "==== [2.8/7] unit charge runtime (REQ-0200) ===="
 node sim/tests/unit_charge_test.cjs
 echo "==== [2.9/7] unit charge encounter fusion (REQ-0200) ===="
 node sim/tests/unit_charge_encounter_test.cjs
+echo "==== [2.95/7] REQ-0269 balance sim harness (determinism / fixture matchup / OP-item + injection flags) ===="
+node sim/tests/balance_sim_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
