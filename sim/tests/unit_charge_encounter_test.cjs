@@ -275,11 +275,16 @@ T('REAL delta -- paladin shield: on_heal_done grants a real shield to the lowest
   inject(c, 'gamma', kitById.paladin.charge, 'paladin');
   link(c, 'gamma', 'alpha');
   bpOf(c, 'gamma').statusBag.Regen = { stacks: 30 };   // drives on_heal_done via real Regen ticks
-  const charged = run(c, { seed: 'rd2', enemies: ['nipper'], deadline: 10 });
+  // REQ-0256 retarget: deadline 10 -> 8. The tick rewrite requantized every
+  // damage-roll stream (stream names embed t -- REQ-0256 s10.4), and at this
+  // seed the re-rolled nipper chip now kills the CONTROL alpha by t=10
+  // (probed: control hp 0 at 10s, 18 at 8s, charged 38 at 8s). 8s keeps the
+  // test's isolation clause (both alphas alive) with the same shield delta.
+  const charged = run(c, { seed: 'rd2', enemies: ['nipper'], deadline: 8 });
 
   const cc = compileFresh();
   bpOf(cc, 'gamma').statusBag.Regen = { stacks: 30 };  // same heal source, no charge
-  const control = run(cc, { seed: 'rd2', enemies: ['nipper'], deadline: 10 });
+  const control = run(cc, { seed: 'rd2', enemies: ['nipper'], deadline: 8 });
 
   ok(charged.chargeState.instances.gamma.spends >= 1, 'paladin fired grant_shield');
   ok(bpOf(c, 'alpha').hp > bpOf(cc, 'alpha').hp, 'shielded alpha keeps more hp (' + bpOf(c, 'alpha').hp + ' > ' + bpOf(cc, 'alpha').hp + ')');
@@ -434,5 +439,33 @@ T('REQ-0212 validation: charge_strike is REJECTED by name under passive_per_stac
 });
 
 console.log('');
+
+// ---- REQ-0256 s15.15: advance_cooldown proven on LIVE content, not only fixtures ----
+// Required precisely because the 12 replay goldens CANNOT see this path at all:
+// goldens.cjs omits unitDefsById, so no golden ever builds a chargeMgr (s8.5). A
+// green golden rebaseline is NOT evidence about charge. This case rides the REAL
+// live path end to end: live_units.json's `wizard` (one of the 42 charge-bearing
+// live units; every_secs [4,5], capacity [2,3], advance_cooldown [2,3] onto
+// bp_connected_max_cooldown_item) attached through compileSquadSnapshot's
+// unitDefsById seam -- NOT through the test's inject() shim.
+T('REQ-0256 s15.15: LIVE wizard def -- advance_cooldown pulls a connected BP\'s item cooldowns through the real compile path (strictly more item fires than the charge-less twin)', () => {
+  const st = combat.deepCopy(scenario);
+  st.bps.find(b => b.id === 'alpha').unit.id = 'wizard';
+  const liveUnits = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_units.json'), 'utf8'));
+  const unitDefsById = {}; for (const e of liveUnits.entries) unitDefsById[e.id] = e;
+  const c = combat.compileSquadSnapshot(st, itemDefsById, 'formation1', 'unit1', undefined, unitDefsById);
+  ok(bpOf(c, 'alpha').charge && bpOf(c, 'alpha').charge.effects[0].verb.t === 'advance_cooldown', 'the LIVE wizard charge block attached via unitDefsById (no inject())');
+  link(c, 'alpha', 'gamma'); // gamma hosts the every_secs items (dagger + herb_pouch) the pull lands on
+  const charged = run(c, { seed: 'w15', enemies: ['bigtank'], deadline: 30 });
+  const cc = compileFresh();
+  link(cc, 'alpha', 'gamma');
+  const control = run(cc, { seed: 'w15', enemies: ['bigtank'], deadline: 30 });
+  const sp = spendEvents(charged, 'alpha');
+  ok(sp.length >= 2, 'the wizard timer charged and SPENT (' + sp.length + ' spends over 30s)');
+  ok(sp.every(e => e.effects.length && e.effects[0].kind === 'advance_cooldown' && e.effects[0].to === 'gamma'), 'every spend recorded an advance_cooldown pull onto the connected BP');
+  const gfires = (r) => r.events.filter(e => e.ev === 'ray_fire' && (e.src === 'dagger' || e.src === 'herb_pouch')).length;
+  ok(gfires(charged) > gfires(control), 'the pull is REAL: gamma\'s items fire strictly more often than the charge-less twin at the same seed (' + gfires(charged) + ' > ' + gfires(control) + ')');
+});
+
 console.log('unit_charge_encounter_test: ' + pass + ' passed, ' + fail + ' failed');
 if (fail) process.exit(1);

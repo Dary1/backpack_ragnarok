@@ -140,7 +140,10 @@ function tickStatuses(bag, dtSecs) {
   const P = TUNABLES.STATUS_TICK_PERIOD_SECS;
   const results = [];
   bag._acc = (bag._acc || 0) + dtSecs;
-  // Stun/Weakness/Haste duration countdown (real time, not period-quantized)
+  // Stun/Weakness/Haste duration countdown -- advances by dtSecs per call. The
+  // sole caller passes P (= STATUS_TICK_PERIOD_SECS) once per status tick, so
+  // these durations decay in 1.0s quanta, NOT real time (false comment fixed by
+  // REQ-0256 s7.2; moving to per-tick decay would be an unasked balance change).
   // Stun pauses ACTION timers only; DoTs (Burn/Poison) keep ticking through
   // Stun (S7 rule 4) -- so this function still runs during Stun.
   if (bag.Stun) { bag.Stun.remain -= dtSecs; if (bag.Stun.remain <= 0) delete bag.Stun; }

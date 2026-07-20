@@ -59,6 +59,18 @@ const GOLDEN_ROSTER_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'goldens-batch0
 }
 
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
+// REQ-0256 s13.1 step 2 / AC3: every emitted t must be an EXACT multiple of
+// TICK_SECS -- the single best one-line proof that the tick loop is the clock.
+// (Exact float equality is correct here: every t is produced as k * TICK_SECS,
+// and k * TICK_SECS reconstructs bit-for-bit from Math.round(t / TICK_SECS).)
+const TICK = combat.TUNABLES.TICK_SECS;
+function assertTickMultiples(events, label) {
+  for (const e of events) {
+    if (typeof e.t !== 'number' || e.t !== Math.round(e.t / TICK) * TICK) {
+      throw new Error('REQ-0256 AC3: non-tick-multiple t=' + e.t + ' (ev ' + (e.ev || e.kind) + ') in ' + label);
+    }
+  }
+}
 const squads = () => [scenario, scenario, scenario, scenario];
 const baseOpts = { squadSnapshots: squads(), itemDefsById, enemyDefsById, skillDefsById, monsterPackDefsById, formationId: 'formation1', participants: ['pA', 'pB'] };
 
@@ -70,6 +82,7 @@ const cases = {};
 for (const seed of ['golden-A', 'golden-B', 'golden-C']) {
   cases['batch002/' + seed] = () => {
     const r = combat.runDungeon(Object.assign({}, baseOpts, { masterSeed: seed, dungeonDef: dungeonRaw, level: 3 }));
+    assertTickMultiples(r.events, 'batch002/' + seed);
     const jsonl = combat.toJSONL(r.events);
     return { jsonl_sha256: sha(jsonl), events: r.events.length };
   };
@@ -80,6 +93,7 @@ for (const level of [1, 3, 5, 8]) {
     cases['dungen/default/L' + level + '/' + gseed] = () => {
       const def = dungen.generate('default', level, gseed);
       const r = combat.runDungeon(Object.assign({}, baseOpts, { masterSeed: 'run-' + gseed, dungeonDef: def, level }));
+      assertTickMultiples(r.events, 'dungen/default/L' + level + '/' + gseed);
       const jsonl = combat.toJSONL(r.events);
       return { def_sha256: sha(JSON.stringify(def)), jsonl_sha256: sha(jsonl), events: r.events.length };
     };
@@ -89,6 +103,7 @@ for (const level of [1, 3, 5, 8]) {
 cases['dungen/test_fixed'] = () => {
   const def = dungen.generate('test_fixed', 1, 'whatever');
   const r = combat.runDungeon(Object.assign({}, baseOpts, { masterSeed: 'run-fixed', dungeonDef: def, level: 1 }));
+  assertTickMultiples(r.events, 'dungen/test_fixed');
   const jsonl = combat.toJSONL(r.events);
   return { def_sha256: sha(JSON.stringify(def)), jsonl_sha256: sha(jsonl), events: r.events.length };
 };

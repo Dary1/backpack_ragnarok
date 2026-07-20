@@ -298,14 +298,6 @@ function fireSkillRay(opts) {
 // Enemy pack compilation -- footprints on enemy field, HP rolled from
 // [lo,hi] def range, skills attached (S4.4).
 // =====================================================================
-function scheduleEffect(heap, rng, ownerUid, effIdx, effect, encounterStart, cadenceMult, pushEvFn) {
-  const s = effect.trigger.s; // [lo,hi] seconds
-  const stream = rng.stream(effectStreamName(ownerUid, effIdx) + '/timing');
-  const interval = stream.range(s[0], s[1]) * cadenceMult;
-  const fireAt = encounterStart + interval;
-  heap.push({ t: fireAt, seq: heap.nextSeq(), kind: 'skill_fire', ownerUid, effIdx, effect, interval0: s });
-}
-
 function effectModesOf(effect, ownerModes) {
   return effect.modes || ownerModes || ['battle'];
 }
@@ -400,7 +392,6 @@ module.exports = {
   dealHitOnField,
   fireSkillRay,
   applyReactiveVerbToTarget,
-  scheduleEffect,
   effectModesOf,
   defaultAttackProfileFor,
 };

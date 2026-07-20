@@ -96,7 +96,23 @@ const TUNABLES = {
   PULSE_HOP_LATENCY_SECS: 0.15,  // deterministic per-hop travel delay
   PULSE_CAP_PER_SEC: 2,          // per-origin-linker emission rate cap
   MUTUAL_RESONANCE_MULT: 1.5,    // mutual-pair resonance contribution multiplier
+
+  // REQ-0256 (spec c, ruling Q1): the sim's tick period. The user's directive says
+  // "仮に0.01秒tickだとして" -- PROVISIONALLY 0.01s. It is a TUNABLE for that reason:
+  // the number is a design choice the user may move, not a law. NOTHING may hardcode
+  // 100 (= 1/TICK_SECS) or 0.01. Every seconds->ticks conversion goes through
+  // secsToTicks() so there is ONE place the quantization happens.
+  TICK_SECS: 0.01,
 };
+
+// sim/lib/core.cjs -- REQ-0256. THE quantization seam. Every seconds->ticks
+// conversion in the sim goes through this function and no other. `round` is the
+// unbiased choice (s9.1); `max(1, ...)` keeps the tick model total (s9.2) -- a
+// 0-tick cooldown is a same-tick refire storm and a negative interval is
+// representable via net Haste. NOTHING else may divide by TICK_SECS.
+function secsToTicks(secs) {
+  return Math.max(1, Math.round(secs / TUNABLES.TICK_SECS));
+}
 
 // =====================================================================
 // Seeded RNG -- named sub-streams (S1.2).
@@ -112,4 +128,5 @@ const TUNABLES = {
 module.exports = {
   deepCopy,
   TUNABLES,
+  secsToTicks,
 };

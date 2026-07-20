@@ -6,6 +6,8 @@ const { deepCopy, TUNABLES } = require('./core.cjs');
 const { makeRng } = require('./rng.cjs');
 const { parseBox, FORMATIONS } = require('./formation.cjs');
 const { freshStatusBag, foldBattleStartStatusVerbs } = require('./status.cjs');
+const { IBattleInstance } = require('./battle.cjs'); // REQ-0256 s8
+const { defaultAttackProfileFor } = require('./skills.cjs'); // REQ-0256 s8.4: PO attack-profile precedence
 
 function cellsChebyshevAdjacent(cellsA, cellsB) {
   for (const [ra, ca] of cellsA) {
@@ -149,6 +151,11 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     const u = bpDef && bpDef.unit;
     const def = u && u.id ? UNIT_DEFS[u.id] : null;
     if (def && def.charge) { bp.charge = def.charge; bp.unitId = u.id; }
+    // REQ-0256 s8.4 slot category 3: the Unit's OWN effects (UNIT_DEFS[bp.unitId]).
+    // No live unit def carries an `effects` array today (charge blocks are the
+    // charge manager's, not cooldownSkills'), so this is structurally supported
+    // but empty on all current content -- same guarded-attach pattern as charge.
+    if (def && Array.isArray(def.effects) && def.effects.length) { bp.unitEffects = deepCopy(def.effects); bp.unitId = u.id; }
   }
 
   // Build PO instances with local + field cells, and figure out which BP
@@ -370,16 +377,130 @@ function compileSquadSnapshot(squadState, itemDefsById, formationId, squadSlot, 
     const def = siDefsById && siDefsById[si.id];
     return { uid: si.uid, id: si.id, hostPoUid, effects: (def && def.effects) ? deepCopy(def.effects) : [] };
   }).filter(x => x.hostPoUid && x.effects.length);
-  return { bps, pos, sis, formationId, squadSlot, box, linkEdges };
+  // REQ-0256 s8.2: +instances, one IBattleInstance per BP, built AFTER all
+  // folding so slots see final, buff-folded effects. ADDITIVE, not a
+  // replacement: bps/pos/sis stay as the compatibility surface (~40 readers);
+  // a follow-up REQ deletes them once every consumer reads instances.
+  return { bps, pos, sis, formationId, squadSlot, box, linkEdges, instances: buildInstances(bps, pos, sis, squadSlot) };
 }
 
 // =====================================================================
 // Entry-cell selection (S4.3, ruling 4) -- deterministic + bounded jitter.
 // =====================================================================
 
+// =====================================================================
+// REQ-0256 s8.2-8.4: the flattening. One IBattleInstance per BP whose
+// cooldownSkills is the FLAT TIMED-FIRE map fusing PO + SI + Unit
+// every_secs effects. Slot order (THE determinism contract, s10.1 level 3):
+//   1. the BP's POs by ASCENDING po.uid (string compare), each PO's effects
+//      in def array order;
+//   2. the SIs seated in those POs by ASCENDING si.uid, effects in def order;
+//   3. the Unit's OWN effects in def order (bp.unitEffects; none live today).
+// Ascending uid, NOT posRaw array order: array order is scenario.json
+// authoring incident; uid is minted per instance and save-stable, so the
+// slot map reproduces from DATA, not file layout (s8.4 -- a deliberate,
+// small behaviour choice). Only trigger.t === 'every_secs' effects get a
+// slot -- cooldownSkills is the TIMED-FIRE map, not "all effects"; reactive
+// triggers keep their existing dispatch paths (s8.4).
+// =====================================================================
+function buildInstances(bps, pos, sis, defaultSquadSlot) {
+  // s10.1 level 2: player instances in (squadSlot asc, then BP id asc) order.
+  const sorted = bps.slice().sort((a, b) => {
+    const sa = a.squadSlot != null ? String(a.squadSlot) : (defaultSquadSlot != null ? String(defaultSquadSlot) : '');
+    const sb = b.squadSlot != null ? String(b.squadSlot) : (defaultSquadSlot != null ? String(defaultSquadSlot) : '');
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return sorted.map(bp => buildBpInstance(bp, pos, sis, defaultSquadSlot));
+}
+
+function buildBpInstance(bp, pos, sis, defaultSquadSlot) {
+  // bp ids can repeat across squads (runDungeon flatMaps 4 squads), so a PO
+  // belongs to this BP by (bpId AND squadSlot); plain bpId is the fallback for
+  // direct runEncounter callers that never tagged squadSlot (same rule as the
+  // REQ-0121 hp-below owner resolution).
+  const myPos = pos
+    .filter(p => p.bpId === bp.id && (p.squadSlot == null || bp.squadSlot == null || p.squadSlot === bp.squadSlot))
+    .slice().sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+  const cooldownSkills = new Map();
+  let slot = 0;
+  const addSlot = (ownerUid, ownerId, effIdx, eff, attackProfile, modes) => {
+    cooldownSkills.set(slot++, {
+      // IBattleInstanceSkill: the same 4 fields goldens.cjs builds for monster
+      // skills (s8.4). remainingTicks is rolled at battle start (s8.5);
+      // Infinity marks not-yet-scheduled.
+      skill: { trigger: eff.trigger, verb: eff.verb, attack_profile: attackProfile, modes },
+      remainingTicks: Infinity,
+      ownerUid, ownerId, effIdx, effect: eff, attackProfile, modes,
+    });
+  };
+  for (const po of myPos) {
+    (po.effects || []).forEach((eff, idx) => {
+      if (eff.trigger && eff.trigger.t === 'every_secs') {
+        // attack-profile precedence preserved EXACTLY (load-bearing for every
+        // live item): eff > po.def > default (s8.4).
+        addSlot(po.uid, po.id, idx, eff, eff.attack_profile || po.def.attack_profile || defaultAttackProfileFor(po), po.def.modes || ['battle']);
+      }
+    });
+  }
+  const myPoUids = new Set(myPos.map(p => p.uid));
+  const mySis = (sis || [])
+    .filter(x => myPoUids.has(x.hostPoUid))
+    .slice().sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+  for (const si of mySis) {
+    (si.effects || []).forEach((eff, idx) => {
+      if (eff.trigger && eff.trigger.t === 'every_secs') {
+        addSlot(si.uid, si.id, idx, eff, eff.attack_profile || defaultAttackProfileFor({}), eff.modes || ['battle']);
+      }
+    });
+  }
+  (bp.unitEffects || []).forEach((eff, idx) => {
+    if (eff.trigger && eff.trigger.t === 'every_secs') {
+      addSlot(bp.id + '#unit', bp.id, idx, eff, eff.attack_profile || defaultAttackProfileFor({}), eff.modes || ['battle']);
+    }
+  });
+  return new IBattleInstance({
+    id: bp.id, kind: 'bp',
+    squadSlot: bp.squadSlot != null ? bp.squadSlot : (defaultSquadSlot != null ? defaultSquadSlot : null),
+    fieldCells: bp.fieldCells, hp: bp.hp, hpMax: bp.hpMax, statusBag: bp.statusBag,
+    cooldownSkills,
+    // Heap-model parity: player skill fires never checked BP aliveness -- a BP's
+    // POs keep firing until the whole troop wipes (the loop's termination check).
+    aliveFn: () => true,
+  });
+}
+
+// REQ-0256 s8.4: a monster (or "?" entity) instance, built the same way from
+// e.raw.skills in def array order (sIdx = the effIdx encounter.cjs:531 used).
+// Player and enemy differ only in provenance -- "same interface, different
+// provenance". That is the flattening.
+function buildEnemyInstance(raw, actor) {
+  const cooldownSkills = new Map();
+  let slot = 0;
+  (raw.skills || []).forEach((skill, sIdx) => {
+    if (skill.trigger && skill.trigger.t === 'every_secs') {
+      cooldownSkills.set(slot++, {
+        skill: { trigger: skill.trigger, verb: skill.verb, attack_profile: skill.attack_profile, modes: skill.modes },
+        remainingTicks: Infinity,
+        ownerUid: raw.ownerId, ownerId: raw.defId || raw.id, effIdx: sIdx, effect: skill,
+        modes: skill.modes || ['battle'],
+      });
+    }
+  });
+  const inst = new IBattleInstance({
+    id: raw.ownerId, kind: 'enemy', fieldCells: raw.fieldCells, hp: raw.hp, hpMax: raw.hpMax,
+    statusBag: raw.statusBag, cooldownSkills,
+    aliveFn: () => !!raw.alive, // enemies stop ticking the tick they die (heap parity: dead enemies never rescheduled)
+    raw, actor,
+  });
+  return inst;
+}
+
 module.exports = {
   cellsChebyshevAdjacent,
   localCellsOfPO,
   localBpCells,
   compileSquadSnapshot,
+  buildInstances, // REQ-0256
+  buildEnemyInstance, // REQ-0256
 };

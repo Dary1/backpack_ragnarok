@@ -47,7 +47,6 @@ const path = require('path');
 const engine = require(path.join(__dirname, '..', 'mock-src', 'engine.js'));
 const core = require('./lib/core.cjs');
 const rng = require('./lib/rng.cjs');
-const heap = require('./lib/heap.cjs');
 const geometry = require('./lib/geometry.cjs');
 const formation = require('./lib/formation.cjs');
 const status = require('./lib/status.cjs');
@@ -65,7 +64,6 @@ const hpbelow = require('./lib/hpbelow.cjs'); // REQ-0121
 module.exports = {
   TUNABLES: core.TUNABLES,
   makeRng: rng.makeRng,
-  EventHeap: heap.EventHeap,
   DIR_VEC: geometry.DIR_VEC,
   EDGE_DIRS: geometry.EDGE_DIRS,
   reflectDir: geometry.reflectDir,

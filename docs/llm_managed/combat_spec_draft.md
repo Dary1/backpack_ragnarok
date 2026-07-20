@@ -25,11 +25,13 @@
 > vocabulary, same pattern" philosophy as PO Tags vs Socket Types). With this, **every open
 > item is resolved**: the spec is design-complete pending a final user pass.
 >
-> Retained from v0.1 (still valid): event-driven seconds sim, determinism/replay log,
-> status semantics, run integration, S4 tuning surface.
+> Retained from v0.1 (still valid): determinism/replay log, status semantics, run
+> integration, S4 tuning surface. (The event-driven seconds sim was SUPERSEDED by the
+> REQ-0256 tick loop -- §1.1.)
 >
 > Binding inputs honored: auto-battle (no mid-run input); seconds with decimal `[lo,hi]`
-> ranges, no ticks; BPs have HP (squads have none); troop = 4 Squads; run 0→100% with traps /
+> ranges (the SCHEDULER quantizes them to `TICK_SECS` ticks -- REQ-0256; authoring stays
+> seconds); BPs have HP (squads have none); troop = 4 Squads; run 0→100% with traps /
 > hidden doors / chests / boss resolved as combat with mode-gating; wipe = level-down +
 > cooldown, nothing lost/gained; runs on COPIES; deterministic server sim + spectate log.
 > Reference games (owner-endorsed): Loop Hero (auto-run), Slay the Spire (intent
@@ -54,20 +56,29 @@
 
 ## 1. Resolution model — event-driven continuous time (RETAINED from v0.1)
 
-### 1.1 Core loop
-Combat is **not ticked**. It is a single **priority event queue** keyed on an absolute
-`t` in **seconds (float64)**. The simulator pops the earliest event, applies it, and
-pushes any follow-ups. This matches `every_secs`, whose live payload is `{s:[lo,hi]}`
-(a per-occurrence range; live on `blade`, `dagger`, `herb_pouch`, `beast_jaw`, `oil`).
+### 1.1 Core loop (REQ-0256: the tick loop -- supersedes the v0.2 event queue)
+Combat is **ticked**: a fixed-period loop at `TUNABLES.TICK_SECS` (provisionally 0.01s
+-- a TUNABLE, per ruling Q1's 「仮に0.01秒tickだとして」). Time is an integer `tickIndex`;
+`t = tickIndex * TICK_SECS` is COMPUTED, never accumulated. Authoring stays in seconds
+(`every_secs.s = [lo,hi]`, live on `blade`, `dagger`, `herb_pouch`, `beast_jaw`, `oil`);
+the SCHEDULER quantizes every rolled interval through the single `secsToTicks()` seam
+(round, floored at 1 tick).
 
 ```
-loop:
-  ev = queue.popMin()                 # earliest (t, seq) wins
-  if ev.t > encounter.deadline: break # timeout / forced end (§6)
-  apply(ev)                           # mutates BP HP, status stacks, enemy HP, fires rays
-  schedule(ev.followups)              # e.g. next every_secs occurrence
-  if allEnemiesDead or partyWiped: break
+per tick (REQ-0256 §7):
+  status cadence            # every STATUS_TICK_TICKS boundary, P passed verbatim
+  battle.tick()             # THE CHAIN: Battle -> maps -> instances (spec item c)
+    playerMap.tickInstances()   #   phase A: fires, player then enemy (§10 total order)
+    enemyMap.tickInstances()
+    playerMap.tickRays()        #   phase B: ray advances (no-op until REQ-0257)
+    enemyMap.tickRays()
+  pulse arrivals for this tick
+  if allEnemiesDead or partyWiped or tickIndex > deadlineTicks: break
 ```
+
+Each backpack compiles to one `IBattleInstance` whose flat `cooldownSkills` map
+(PO + SI + Unit `every_secs` effects, REQ-0256 §8) decrements per tick, fires at 0,
+and re-rolls its cooldown -- structurally identical to a monster's flat skill list.
 
 ### 1.2 Seeded RNG & determinism
 - One run carries **one master seed** (server-issued, on the run record).
@@ -81,8 +92,12 @@ loop:
   replay requirement, so we do NOT pay for fixed-point. Rationale: the spectate log is
   produced by the one authoritative server and *replayed* by clients, never *re-simulated*
   on them — float64 determinism on a single implementation suffices.
-- **Tie-break (critical):** events at equal `t` order by stable `(t, seq)`, `seq` a
-  monotone integer assigned at schedule time. Same seed ⇒ same `seq` order ⇒ identical run.
+- **Ordering (critical, REQ-0256 §10):** within one tick the total order over fires is
+  lexicographic **(map: player then enemy, instance: stable compile-time index, slot:
+  cooldownSkills slot index)** -- a total order over a finite set with no ties to break.
+  `seq` SURVIVES as a wire field (`ApiRunEvent.seq`): a monotone integer stamped at
+  EMISSION time on every event. It no longer orders anything; it records emission order.
+  Same seed ⇒ same tick walk ⇒ identical run.
 
 ### 1.3 Determinism guarantee
 Given `(snapshot of all 4 Squads' canvases + chosen formation, encounter/enemy defs +
@@ -106,7 +121,7 @@ the spectate/replay contract.
   at compile (none exist in live data today). Rationale: keeps the sim a near-static fold,
   matches all current live defs, avoids a recompute engine.
 
-**Simulated live (event by event):**
+**Simulated live (tick by tick):**
 - Timed occurrences (`every_secs`) → skill firings → **ray resolution** (§3);
   reactive triggers (`on_hit`, `host_on_hit`, `on_bp_damaged`); status ticking
   (Burn/Poison/Regen/Chill); BP HP; block pools; enemy HP; enemy skill schedule;

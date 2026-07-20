@@ -1,6 +1,6 @@
 # REQ-0256 — battle-tick-core: the sim becomes a 0.01s tick loop, and a BP compiles to ONE IBattleInstance
 
-**Status:** draft — spec RATIFIED (user, 2026-07-19); blocked only on the REQ-0255 baseline. The four review questions that blocked this REQ are resolved: (1) SUPERSEDING the ratified core of `combat_spec_draft.md` per ruling Q1 — **APPROVED**; (2) the irreversible rebaseline of all 12 replay goldens + S4 baselines (§12) — **APPROVED**; (3) §7.1a's split of the single-map `tick()` into `tickInstances()` / `tickRays()` — **APPROVED, not vetoed** (the birth-tick symmetry it buys stands); (4) the goldens' blindness to the charge engine (§8.5) — **proceed as specced; NO precursor REQ**. This REQ keeps the fix Out (§14) and relies on the §15.15 live-def test for charge coverage; widening the goldens to seat a charge unit is an OPTIONAL follow-up, not a blocker. NOTE (measured 2026-07-19): passing `unitDefsById` to `goldens.cjs` alone would be INERT — the golden squad's four BPs (`dwarf`/`elf`/`angel`/`lightcavalry`) are among the 12 units carrying NO `charge` block, so any future golden charge-coverage must seat a charge unit (e.g. `alchemist`), not merely pass the registry. Content authoring (adding units) is unrelated to the goldens, which are PINNED to a fixed batch-002 roster (REQ-0207). Remaining blocker before implementation: REQ-0255 ratified + merged (HANDS-OFF; needs user go-ahead) — 0256 branches from that baseline.
+**Status:** built — implemented on branch `req-0256-battle-tick-core` from the REQ-0255 merged baseline (2088c34), all gates green, goldens rebaselined; see §16 (implementation record). Spec history: draft — spec RATIFIED (user, 2026-07-19); blocked only on the REQ-0255 baseline. The four review questions that blocked this REQ are resolved: (1) SUPERSEDING the ratified core of `combat_spec_draft.md` per ruling Q1 — **APPROVED**; (2) the irreversible rebaseline of all 12 replay goldens + S4 baselines (§12) — **APPROVED**; (3) §7.1a's split of the single-map `tick()` into `tickInstances()` / `tickRays()` — **APPROVED, not vetoed** (the birth-tick symmetry it buys stands); (4) the goldens' blindness to the charge engine (§8.5) — **proceed as specced; NO precursor REQ**. This REQ keeps the fix Out (§14) and relies on the §15.15 live-def test for charge coverage; widening the goldens to seat a charge unit is an OPTIONAL follow-up, not a blocker. NOTE (measured 2026-07-19): passing `unitDefsById` to `goldens.cjs` alone would be INERT — the golden squad's four BPs (`dwarf`/`elf`/`angel`/`lightcavalry`) are among the 12 units carrying NO `charge` block, so any future golden charge-coverage must seat a charge unit (e.g. `alchemist`), not merely pass the registry. Content authoring (adding units) is unrelated to the goldens, which are PINNED to a fixed batch-002 roster (REQ-0207). Remaining blocker before implementation: REQ-0255 ratified + merged (HANDS-OFF; needs user go-ahead) — 0256 branches from that baseline.
 **Reserved:** 2026-07-18
 **Slug:** battle-tick-core
 **Branch:** req-expedition-spec (spec only; implementation branches from REQ-0255's merged baseline)
@@ -1056,3 +1056,121 @@ so, that is a FINDING for the user, not a file to overwrite.
 13. **The chain exists and is the only fire path.** `sim/lib/battle.cjs` exports `createBattle`; `runEncounter` calls **`battle.tick()`** exactly once per tick and contains **no instance-fire walk of its own** (`grep -n 'cooldownSkills' sim/lib/encounter.cjs` returns zero — the walk lives in `IBattleInstance.tick()`). A test asserts the cascade mechanically: stub a map whose `tickInstances()` records its call, assert `battle.tick()` calls player-then-enemy exactly once each, and assert an instance's `tick()` is reached from `battle.tick()` without `runEncounter` in the stack.
 14. **`battle.modeConfig === null` and nothing reads it.** `grep -rn 'modeConfig' sim/` returns only its declaration and initialisation (§7.0). REQ-0259 is what makes this criterion obsolete.
 15. **The `advance_cooldown` respec is proven on LIVE content, not only fixtures** (§8.5). A new case in `sim/tests/unit_charge_encounter_test.cjs` passes `unitDefsById` for one of the 42 charge-bearing live units (e.g. `alchemist`) and asserts the floor-at-1 pull. **This is required precisely because acceptance criterion 7 (the goldens) cannot see this path at all** — `goldens.cjs:63` omits `unitDefsById`. A green golden rebaseline is not evidence about charge; do not read it as any.
+
+## 16. Implementation record — 2026-07-21
+
+Implemented in worktree `req-0256-battle-tick-core` (branched from the REQ-0255 merged
+baseline `2088c34`). Everything in §14 In landed; everything in §14 Out stayed out.
+
+### 16.1 Gate results (the §12 table, re-measured after the rewrite)
+
+Split invocation per §12.3 — MANDATORY on this branch (AC12):
+
+    CONTENT_ROOT=$PWD/content node sim/tests/<suite>.cjs   # run.cjs, forecast_parity, s4_test, roster tests, charge tests, api_test
+    node sim/tests/goldens.cjs                              # CONTENT_ROOT-FORBIDDEN: it pins its own batch-002 roster (REQ-0207)
+
+| gate | before | after |
+|---|---|---|
+| `sim/tests/run.cjs` | 117/117 | **121/121** (117 carried + 4 new REQ-0256 gates; ZERO existing assertions needed retargeting — none pinned an absolute `t`) |
+| `sim/tests/goldens.cjs` | 12 OK (old contract) | **RED first (12/12 DRIFT — the rewrite did something), then `gen`, then 12 OK.** `def_sha256` UNMOVED on all 9 dungen cases (0 changed lines in the diff — AC7) |
+| `sim/tests/forecast_parity.cjs` | 18/18 | **18/18 UNCHANGED** (AC8 — §11 held: ray.cjs/geometry.cjs/entry.cjs/forecast.mjs untouched) |
+| `sim/tests/s4_test.cjs` | 14/14 | **14/14** (post-processor; tests the math, not the data) |
+| `sim/tests/dungeon_roll_test.cjs` | green | green |
+| roster gates (0203/0207/0219) | 15/13/13 | **15/13/13 — all green, untouched** |
+| `sim/tests/unit_charge_test.cjs` | 13/13 | **13/13** (pure runtime, no heap) |
+| `sim/tests/unit_charge_encounter_test.cjs` | 23/23 | **24/24** (23 carried — ONE retargeted, §16.4 — + the §15.15 live-def case + nothing else; the suite is the whole net for `advance_cooldown`, §8.5) |
+| `mock-src/tests/run.cjs` | green | green |
+| typecheck (`tsc -p tsconfig.server.json`) | green | green (required declaring `raw`/`actor` on `IBattleInstance` — checkJs sees the enemy-provenance handles) |
+| api determinism gate (`server/tests/api_test.cjs`) | not runnable (deps) | **192/192, exit 0** after `pnpm install --frozen-lockfile` in root AND `server/` (both needed; root alone lacks `pg`) |
+| S4 corpus / matrices | — | **NOT REBASELINED — §16.5, pre-existing breakage finding** |
+
+### 16.2 The §13.1 quantization proof (batch002/golden-A, before = 2088c34 vs after)
+
+Dumped `combat.toJSONL(r.events)` from a detached worktree at `2088c34` and from this
+branch, diffed as TEXT:
+
+- events 330 → 366. **Event-token SET identical**; `telegraph` 35 = 35 and `ray_fire`
+  36 = 36 — **the number of FIRES did not move.** The whole count delta is ray
+  internals: `ray_step` +16, `ray_bounce` +20, `ray_hit_all` +4, `ray_hit` −4 —
+  re-rolled entry/bounce paths from the §10.4 stream renames, exactly the predicted
+  shape (every `amount` moved; the SET of `dst` labels is identical).
+- **Every `t` in the AFTER log is an exact multiple of `TICK_SECS` — 0 violations**,
+  now asserted MECHANICALLY on every golden run (`assertTickMultiples` in goldens.cjs,
+  AC3) with exact float equality (`t === Math.round(t/TICK)*TICK`; sound because every
+  t is produced as `k * TICK_SECS`).
+- Per-encounter `result`s identical (clear/timeout/timeout_break/timeout_lost ×8) and
+  `run_end` result `victory` in both. Only HP numbers moved (re-rolled damage).
+- `encounter_end.t` moved per §4.1c and the new values are HONEST: golden-A enc 1
+  read `t=999` under the heap (the phantom next-event artifact); it now reads `18.5`
+  (the quantized deadline of that encounter).
+
+Per-golden event counts (before → after): batch002 A 330→366, B 350→376, C 358→359;
+dungen L1 238→238, 226→205; L3 238→238, 227→206; L5 282→313, 321→307; L8 330→359,
+329→334; test_fixed 358→371.
+
+### 16.3 Interpretations taken (flagged, all within the spec's own seams)
+
+1. **Telegraph lead is applied in TICKS** (`t = (fireTick − secsToTicks(TELEGRAPH_LEAD_SECS)) * TICK_SECS`,
+   floored at 0), not as a float `t − 0.6` subtraction. Reason: AC3 demands every
+   emitted `t` be an exact tick multiple, and float subtraction breaks bit-exact
+   reconstruction. Display-only field; covered by the rebaseline.
+2. **The §4.1c deadline fallback is applied in its QUANTIZED form**
+   (`deadlineTicks * TICK_SECS`, and the trap-timeout volley stamps
+   `secsToTicks(timeout_secs) * TICK_SECS`) — same AC3 reason. A 30.001s deadline
+   therefore stamps 30.0.
+3. **First-fire epoch:** §7.1's walk (decrement → fire at 0) runs from tick 0, so a
+   slot rolled k ticks at battle start first fires at tick k−1; every subsequent
+   period is exactly k ticks. A uniform sub-tick phase shift against the heap model,
+   absorbed by the rebaseline; flagged here so nobody reads it as drift.
+4. **`advanceCooldown` no-ops on `n <= 0`** — `secsToTicks`'s floor-at-1 would turn a
+   zero-advance into a 1-tick pull, which the heap version (`e.t − 0`) never did.
+5. **Player instances are re-derived inside `runEncounter`** via the same exported
+   `buildInstances(troopBps, troopPos, troopSis)` the compile pass uses (same folded
+   inputs ⇒ same deterministic result). This keeps every existing caller signature
+   working (dungeon.cjs concatenates 4 squads' flat lists); `compileSquadSnapshot`
+   ALSO returns `instances` (AC4). A follow-up may thread `instances` through
+   `runDungeon` and delete the re-derivation together with the §8.2 compat surface.
+6. **AC1 note:** `grep EventHeap` over code returns exactly ONE hit — the §6.2-mandated
+   comment in `sim/lib/seq.cjs` ("This is EventHeap's _seq, extracted"). Functional
+   references: zero. The spec's own required comment text is the only survivor.
+
+### 16.4 The one retargeted assertion (§12 "expect movement here")
+
+`unit_charge_encounter_test.cjs` RD2 (paladin shield): deadline 10 → 8. At seed `rd2`
+the requantized nipper chip (renamed damage streams, §10.4) kills the CONTROL alpha by
+t=10 (probed: control hp 0 @10s / 7.5 @9s / 18 @8s; charged 38 @8s), breaking the
+test's isolation clause ("both alphas survive"), not its point. At 8s both survive and
+the shield delta (38 > 18) is intact. Traced to requantization, NOT to the §8.5
+`advance_cooldown` respec — no charge in that fixture pulls cooldowns.
+
+### 16.5 FINDING for the user — S4 corpus rebaseline is BLOCKED by pre-existing breakage
+
+`node tools/simulate.cjs run sim/s4_matrices/default.json` dies with
+`compileEnemyPack: missing enemy def troll` — **identically at the pre-rewrite baseline
+`2088c34`** (verified in a detached worktree). Cause: simulate.cjs resolves enemy defs
+from batch-002 while dungen generates against the LIVE roster (batch-005 grew it 7→15)
+— the exact drift class the goldens fixed by pinning (REQ-0207), never applied to the
+S4 runner. So `sim/s4_baselines/default/` + `sim/s4_matrices/default.golden.sha256`
+are STALE against any current sim and CANNOT be regenerated by this REQ without also
+repairing the runner — an unrelated fix that must not ride under a rebaseline (§13.3
+doctrine). `ci.sh` never invokes simulate.cjs (only `s4_test.cjs`, 14/14 green), so
+the gate is dormant, not red. `sim/s4_thresholds.json` untouched per §13.3.
+**Recommend a follow-up REQ: pin simulate.cjs's roster the way REQ-0207 pinned the
+goldens, then rebaseline the S4 corpus against the tick sim.**
+
+### 16.6 Acceptance criteria — verdicts
+
+1 ✓ (heap.cjs gone; see 16.3-6 for the one comment) · 2 ✓ (§5 gate + text gate in
+run.cjs, mutation-detected) · 3 ✓ (mechanical, every golden run) · 4 ✓ (AC4 test, slot
+sequence asserted by NAME incl. reactive filtering + ASC-uid ordering) · 5 ✓ (AC5 test:
+one shared fire closure, identical `IBattleInstanceSkill` shape both sides) · 6 ✓
+(goldens byte-stable across gen/check processes; api gate 192/192) · 7 ✓ · 8 ✓ · 9 ✓
+(9 walkRay tests green and untouched) · 10 ✓ (24/24; movement traced §16.4) · 11 ✓
+("not ticked" / "no ticks" grep-clean in combat_spec_draft.md) · 12 ✓ (§16.1) · 13 ✓
+(chain test + `grep cooldownSkills sim/lib/encounter.cjs` = 0) · 14 ✓ (grep = declaration,
+init, and the AC14 test only) · 15 ✓ (LIVE `wizard` def through the real `unitDefsById`
+compile seam; strictly-more-fires delta + per-spend `advance_cooldown` records).
+
+### 16.7 Commits
+
+(recorded at commit time; the todo→built move is its own commit per policy)

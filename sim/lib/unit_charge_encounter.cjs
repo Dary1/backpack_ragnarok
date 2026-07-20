@@ -34,7 +34,7 @@ const ALL_STATUS_NAMES = ['Burn', 'Poison', 'Chill', 'Regen', 'Spikes', 'Stun', 
 function bonusStatusSet(name) { return name === 'any' ? new Set(ALL_STATUS_NAMES) : new Set([name]); }
 
 function createEncounterChargeManager(opts) {
-  const { chargeBps, troopBps, troopPos, playerActors, events, heap, clock, ops } = opts;
+  const { chargeBps, troopBps, troopPos, playerActors, events, seq, clock, ops } = opts; // REQ-0256: param renamed (was the event heap) -- this module only ever allocated seq numbers, never pushed
   const realOps = ops || {}; // REQ-0200: encounter-provided callbacks needing the sim loop (strike/fire_items/advance_cooldown)
 
   // Symmetric adjacency (undirected connectivity) from the compiled link edges.
@@ -99,14 +99,14 @@ function createEncounterChargeManager(opts) {
       case 'bonus_vs_status': bp.bonusVsStatus = (bp.bonusVsStatus || []).concat([{ set: bonusStatusSet(rec.status), n: [rec.pct, rec.pct] }]); break;
       // lifesteal: heal the attacker for pct of damage it deals, until dur_s expires.
       case 'grant_lifesteal': bp.chargeLifesteal = { pct: rec.pct, until: t + (rec.dur_s || 0) }; break;
-      // item cooldown / firing machinery (needs the encounter heap + schedulable).
+      // item cooldown / firing machinery (needs the encounter's instances + schedulable).
       case 'advance_cooldown': if (realOps.advanceCooldown) realOps.advanceCooldown(targetId, rec.amount, t); break;
       case 'fire_items': if (realOps.fireItems) realOps.fireItems(targetId, rec.tag, t); break;
       // REQ-0212: charge_strike -- a REAL single strike ray from the host BP into the enemy side,
       // for the pre-resolved n x stacks_spent total; plus a dedicated event carrying the amount.
       case 'charge_strike':
         if (realOps.strikeFromBp) realOps.strikeFromBp(targetId, rec.amount, 1, t);
-        events.push({ t, seq: heap.nextSeq(), ev: 'unit_charge_strike', src: targetId, amount: rec.amount, stacks_spent: rec.stacksSpent });
+        events.push({ t, seq: seq.nextSeq(), ev: 'unit_charge_strike', src: targetId, amount: rec.amount, stacks_spent: rec.stacksSpent });
         break;
       // REQ-0212: transfer_status -- move up to n negative statuses from this BP onto the enemy squad.
       case 'transfer_status': if (realOps.transferStatus) realOps.transferStatus(targetId, rec.n, t); break;
@@ -131,7 +131,7 @@ function createEncounterChargeManager(opts) {
           const tgt = lh.actor;
           if (!tgt || tgt.kind !== 'enemy' || !tgt.alive) continue;
           applyStatus(tgt.statusBag, st, n, ampMult);
-          events.push({ t, seq: heap.nextSeq(), ev: 'unit_charge_onhit', src: fireBp, status: st, n: n * ampMult });
+          events.push({ t, seq: seq.nextSeq(), ev: 'unit_charge_onhit', src: fireBp, status: st, n: n * ampMult });
         }
       }
     }
@@ -141,7 +141,7 @@ function createEncounterChargeManager(opts) {
       if (heal > 0) {
         const actor = actorById[fireBp];
         if (actor) actor.heal(heal); else bp.hp = Math.min(bp.hpMax, bp.hp + heal);
-        events.push({ t, seq: heap.nextSeq(), ev: 'unit_charge_lifesteal', src: fireBp, heal, hp_after: actor ? actor.hp() : bp.hp });
+        events.push({ t, seq: seq.nextSeq(), ev: 'unit_charge_lifesteal', src: fireBp, heal, hp_after: actor ? actor.hp() : bp.hp });
       }
     }
   }
@@ -158,7 +158,7 @@ function createEncounterChargeManager(opts) {
       const reflect = (lh.amount || 0) * bp.reflectPct / 100;
       if (reflect > 0 && enemyActor.alive) {
         enemyActor.applyDamage(reflect);
-        events.push({ t, seq: heap.nextSeq(), ev: 'unit_charge_reflect', src: pbp.id, amount: reflect, hp_after: enemyActor.hp() });
+        events.push({ t, seq: seq.nextSeq(), ev: 'unit_charge_reflect', src: pbp.id, amount: reflect, hp_after: enemyActor.hp() });
       }
     }
   }
@@ -169,7 +169,7 @@ function createEncounterChargeManager(opts) {
   const instances = chargeBps.map(bp => ({ id: bp.id, unitId: bp.unitId, charge: bp.charge }));
   const engine = createChargeEngine({
     instances, adjacency, targets,
-    emit: (cev) => { events.push(Object.assign({ t: clock.now, seq: heap.nextSeq() }, cev)); },
+    emit: (cev) => { events.push(Object.assign({ t: clock.now, seq: seq.nextSeq() }, cev)); },
     sink: applyReal, // REQ-0200: the REAL-actor mutation seam
   });
 
