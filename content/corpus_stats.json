@@ -1,0 +1,620 @@
+{
+  "bands": {
+    "Common": {
+      "basis": "corpus_ratio",
+      "ratio": 1.0,
+      "warn_hi": 12.0
+    },
+    "Rare": {
+      "basis": "corpus_ratio",
+      "ratio": 1.515,
+      "warn_hi": 18.2
+    },
+    "Relic": {
+      "basis": "corpus_ratio",
+      "ratio": 2.099,
+      "warn_hi": 25.2
+    },
+    "Uncommon": {
+      "basis": "corpus_ratio",
+      "ratio": 1.968,
+      "warn_hi": 23.6
+    }
+  },
+  "bands_formula": "warn_hi[r] = round(vocab_anchor['Common'] * pooled.rarity_ratio_dps[r], 1) where the ratio is the corpus median dps-proxy of tier r divided by that of Common; a tier with no corpus dps data falls back to vocab dps_ceiling_warn[r] (basis='vocab_fallback'). dps-proxy = damage_mid / cadence_mid.",
+  "licenses": {
+    "backpack-battles": "CC-BY-SA",
+    "backpack-hero": "CC-BY-SA"
+  },
+  "notes": "REQ-0268 reference corpus. Numbers are derived statistics used to ground OUR balance curves; no source value is copied verbatim into live content. dps-proxy is only defined for entries carrying both a damage and a cadence (cooldown/every-secs) number.",
+  "per_source": {
+    "backpack-battles": {
+      "metrics": {
+        "cadence_mid": {
+          "Common": {
+            "mean": 2.871,
+            "median": 2.2,
+            "n": 7,
+            "p25": 1.75,
+            "p75": 4.0,
+            "p95": 4.7
+          },
+          "Rare": {
+            "mean": 2.608,
+            "median": 1.9,
+            "n": 12,
+            "p25": 1.6,
+            "p75": 3.5,
+            "p95": 5.225
+          },
+          "Relic": {
+            "mean": 2.506,
+            "median": 2.2,
+            "n": 36,
+            "p25": 1.6,
+            "p75": 3.125,
+            "p95": 4.25
+          },
+          "Uncommon": {
+            "mean": 3.129,
+            "median": 3.5,
+            "n": 7,
+            "p25": 2.2,
+            "p75": 3.75,
+            "p95": 4.7
+          },
+          "all": {
+            "mean": 2.637,
+            "median": 2.2,
+            "n": 62,
+            "p25": 1.6,
+            "p75": 3.5,
+            "p95": 5.0
+          }
+        },
+        "damage_mid": {
+          "Common": {
+            "mean": 2.5,
+            "median": 2.75,
+            "n": 8,
+            "p25": 1.75,
+            "p75": 3.125,
+            "p95": 3.825
+          },
+          "Rare": {
+            "mean": 4.5,
+            "median": 3.75,
+            "n": 10,
+            "p25": 3.125,
+            "p75": 5.75,
+            "p95": 7.05
+          },
+          "Relic": {
+            "mean": 7.832,
+            "median": 6.25,
+            "n": 34,
+            "p25": 4.0,
+            "p75": 8.0,
+            "p95": 17.9
+          },
+          "Uncommon": {
+            "mean": 5.2,
+            "median": 5.0,
+            "n": 5,
+            "p25": 4.0,
+            "p75": 5.5,
+            "p95": 7.5
+          },
+          "all": {
+            "mean": 6.268,
+            "median": 5.0,
+            "n": 57,
+            "p25": 3.5,
+            "p75": 7.5,
+            "p95": 10.6
+          }
+        },
+        "dps_proxy": {
+          "Common": {
+            "mean": 1.385,
+            "median": 1.429,
+            "n": 5,
+            "p25": 1.389,
+            "p75": 1.591,
+            "p95": 1.73
+          },
+          "Rare": {
+            "mean": 2.253,
+            "median": 2.165,
+            "n": 10,
+            "p25": 2.143,
+            "p75": 2.5,
+            "p95": 3.052
+          },
+          "Relic": {
+            "mean": 3.796,
+            "median": 3.0,
+            "n": 28,
+            "p25": 2.034,
+            "p75": 4.688,
+            "p95": 8.526
+          },
+          "Uncommon": {
+            "mean": 2.656,
+            "median": 2.812,
+            "n": 4,
+            "p25": 1.969,
+            "p75": 3.5,
+            "p95": 3.9
+          },
+          "all": {
+            "mean": 3.114,
+            "median": 2.5,
+            "n": 47,
+            "p25": 1.682,
+            "p75": 3.75,
+            "p95": 7.067
+          }
+        },
+        "hp_mid": {
+          "Common": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Rare": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Relic": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Uncommon": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "all": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          }
+        }
+      },
+      "n_entries": 165,
+      "rarity_distribution": {
+        "Common": 21,
+        "Rare": 24,
+        "Relic": 61,
+        "Uncommon": 20,
+        "unmapped": 39
+      },
+      "verb_frequency": {
+        "apply_status": 10,
+        "cleanse": 8,
+        "heal_ally": 28,
+        "multi_strike": 1,
+        "reflect_damage": 2,
+        "strike": 41
+      }
+    },
+    "backpack-hero": {
+      "metrics": {
+        "cadence_mid": {
+          "Common": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Rare": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Relic": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Uncommon": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "all": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          }
+        },
+        "damage_mid": {
+          "Common": {
+            "mean": 5.905,
+            "median": 6.0,
+            "n": 21,
+            "p25": 4.0,
+            "p75": 8.0,
+            "p95": 10.0
+          },
+          "Rare": {
+            "mean": 4.31,
+            "median": 3.0,
+            "n": 29,
+            "p25": 2.0,
+            "p75": 7.0,
+            "p95": 11.2
+          },
+          "Relic": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Uncommon": {
+            "mean": 6.476,
+            "median": 6.0,
+            "n": 21,
+            "p25": 1.0,
+            "p75": 8.0,
+            "p95": 15.0
+          },
+          "all": {
+            "mean": 5.615,
+            "median": 4.5,
+            "n": 96,
+            "p25": 2.0,
+            "p75": 7.25,
+            "p95": 14.25
+          }
+        },
+        "dps_proxy": {
+          "Common": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Rare": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Relic": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Uncommon": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "all": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          }
+        },
+        "hp_mid": {
+          "Common": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Rare": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Relic": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "Uncommon": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          },
+          "all": {
+            "mean": null,
+            "median": null,
+            "n": 0,
+            "p25": null,
+            "p75": null,
+            "p95": null
+          }
+        }
+      },
+      "n_entries": 302,
+      "rarity_distribution": {
+        "Common": 77,
+        "Rare": 66,
+        "Relic": 0,
+        "Uncommon": 58,
+        "unmapped": 101
+      },
+      "verb_frequency": {
+        "apply_status": 15,
+        "block": 46,
+        "grant_shield": 4,
+        "haste": 6,
+        "heal_ally": 7,
+        "lifesteal": 3,
+        "slow_enemy": 6,
+        "strike": 105
+      }
+    }
+  },
+  "pooled": {
+    "metrics": {
+      "cadence_mid": {
+        "Common": {
+          "mean": 2.871,
+          "median": 2.2,
+          "n": 7,
+          "p25": 1.75,
+          "p75": 4.0,
+          "p95": 4.7
+        },
+        "Rare": {
+          "mean": 2.608,
+          "median": 1.9,
+          "n": 12,
+          "p25": 1.6,
+          "p75": 3.5,
+          "p95": 5.225
+        },
+        "Relic": {
+          "mean": 2.506,
+          "median": 2.2,
+          "n": 36,
+          "p25": 1.6,
+          "p75": 3.125,
+          "p95": 4.25
+        },
+        "Uncommon": {
+          "mean": 3.129,
+          "median": 3.5,
+          "n": 7,
+          "p25": 2.2,
+          "p75": 3.75,
+          "p95": 4.7
+        },
+        "all": {
+          "mean": 2.637,
+          "median": 2.2,
+          "n": 62,
+          "p25": 1.6,
+          "p75": 3.5,
+          "p95": 5.0
+        }
+      },
+      "damage_mid": {
+        "Common": {
+          "mean": 4.966,
+          "median": 4.0,
+          "n": 29,
+          "p25": 3.0,
+          "p75": 7.0,
+          "p95": 10.0
+        },
+        "Rare": {
+          "mean": 4.359,
+          "median": 3.5,
+          "n": 39,
+          "p25": 2.0,
+          "p75": 6.25,
+          "p95": 10.2
+        },
+        "Relic": {
+          "mean": 7.832,
+          "median": 6.25,
+          "n": 34,
+          "p25": 4.0,
+          "p75": 8.0,
+          "p95": 17.9
+        },
+        "Uncommon": {
+          "mean": 6.231,
+          "median": 5.25,
+          "n": 26,
+          "p25": 3.0,
+          "p75": 8.0,
+          "p95": 14.0
+        },
+        "all": {
+          "mean": 5.858,
+          "median": 5.0,
+          "n": 153,
+          "p25": 3.0,
+          "p75": 7.5,
+          "p95": 13.4
+        }
+      },
+      "dps_proxy": {
+        "Common": {
+          "mean": 1.385,
+          "median": 1.429,
+          "n": 5,
+          "p25": 1.389,
+          "p75": 1.591,
+          "p95": 1.73
+        },
+        "Rare": {
+          "mean": 2.253,
+          "median": 2.165,
+          "n": 10,
+          "p25": 2.143,
+          "p75": 2.5,
+          "p95": 3.052
+        },
+        "Relic": {
+          "mean": 3.796,
+          "median": 3.0,
+          "n": 28,
+          "p25": 2.034,
+          "p75": 4.688,
+          "p95": 8.526
+        },
+        "Uncommon": {
+          "mean": 2.656,
+          "median": 2.812,
+          "n": 4,
+          "p25": 1.969,
+          "p75": 3.5,
+          "p95": 3.9
+        },
+        "all": {
+          "mean": 3.114,
+          "median": 2.5,
+          "n": 47,
+          "p25": 1.682,
+          "p75": 3.75,
+          "p95": 7.067
+        }
+      },
+      "hp_mid": {
+        "Common": {
+          "mean": null,
+          "median": null,
+          "n": 0,
+          "p25": null,
+          "p75": null,
+          "p95": null
+        },
+        "Rare": {
+          "mean": null,
+          "median": null,
+          "n": 0,
+          "p25": null,
+          "p75": null,
+          "p95": null
+        },
+        "Relic": {
+          "mean": null,
+          "median": null,
+          "n": 0,
+          "p25": null,
+          "p75": null,
+          "p95": null
+        },
+        "Uncommon": {
+          "mean": null,
+          "median": null,
+          "n": 0,
+          "p25": null,
+          "p75": null,
+          "p95": null
+        },
+        "all": {
+          "mean": null,
+          "median": null,
+          "n": 0,
+          "p25": null,
+          "p75": null,
+          "p95": null
+        }
+      }
+    },
+    "n_entries": 467,
+    "rarity_distribution": {
+      "Common": 98,
+      "Rare": 90,
+      "Relic": 61,
+      "Uncommon": 78,
+      "unmapped": 140
+    },
+    "rarity_ratio_dps": {
+      "Common": 1.0,
+      "Rare": 1.515,
+      "Relic": 2.099,
+      "Uncommon": 1.968
+    },
+    "verb_frequency": {
+      "apply_status": 25,
+      "block": 46,
+      "cleanse": 8,
+      "grant_shield": 4,
+      "haste": 6,
+      "heal_ally": 35,
+      "lifesteal": 3,
+      "multi_strike": 1,
+      "reflect_damage": 2,
+      "slow_enemy": 6,
+      "strike": 146
+    }
+  },
+  "schema": "corpus_stats/1",
+  "sources": [
+    "backpack-battles",
+    "backpack-hero"
+  ],
+  "vocab_anchor": {
+    "Common": 12,
+    "Rare": 18,
+    "Relic": 24,
+    "Uncommon": 15
+  }
+}
