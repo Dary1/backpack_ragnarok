@@ -658,3 +658,179 @@ board renders exactly as it does today. That is the D-A chain behaving as specif
 
 **5. Nothing else.** No service restart is required by this REQ; the skin data is file-served
 until an operator adopts artwork.
+
+### 11.6 DEPLOY-PREP PASS — 2026-07-20 (migrations applied, backfill BLOCKED, CI green)
+
+Run on the box, in the worktree `req-0266-unit-skin-content-kind`, while the 196-render
+`bpskin` GPU batch was still draining. Nothing was restarted by this pass.
+
+#### 11.6.1 Migrations 023 + 024 are APPLIED
+
+`content_kind` **before** (8 labels — note `gimic` and `dungeon` are absent too, because
+`020`/`021`/`022` are unapplied on this box and belong to other REQs):
+
+```
+po_def, si_def, monster_def, unit_def, tm_def, skill_def, gacha_pack, monster_pack
+```
+
+`unit_skin` was confirmed genuinely ABSENT before the add — `ALTER TYPE … ADD VALUE` is not
+reversible in Postgres, so this was checked against `pg_enum` first rather than trusted to
+`IF NOT EXISTS`.
+
+| migration | applied at (UTC) | psql output |
+|---|---|---|
+| `023_content_kind_unit_skin.sql` | `2026-07-20T20:09:07Z` | `ALTER TYPE` |
+| `024_skin_prefs.sql` | `2026-07-20T20:09:11Z` | `CREATE TABLE` + `GRANT` |
+
+`content_kind` **after** (9 labels; `unit_skin` at `enumsortorder` 9):
+
+```
+po_def, si_def, monster_def, unit_def, tm_def, skill_def, gacha_pack, monster_pack, unit_skin
+```
+
+`skin_prefs` exists with exactly the declared shape — `player_id text NOT NULL` (PK,
+`skin_prefs_pkey` btree), `doc jsonb NOT NULL`, `updated_at timestamptz NOT NULL DEFAULT now()`
+— and the `backpack` role holds `SELECT, INSERT, UPDATE, DELETE`. (`anon`/`authenticated`/
+`service_role` also appear in `role_table_grants`; that is Supabase's default-privilege
+posture for `public`, not something this migration granted.)
+
+`020`/`021`/`022` were deliberately NOT applied. Verified after the fact: `gimic` and
+`dungeon` are still absent from the enum.
+
+#### 11.6.2 The namespace question, resolved: run the backfill WITHOUT the HOME remap
+
+The remap `HOME=/tmp/h0266` (with `/tmp/h0266/backpack_ragnarok -> <worktree>`) was carried
+over from the verification pass, where its stated purpose was to stop the tool reading the
+MAIN checkout's `content/live`.
+
+**That purpose is void for this tool.** `tools/backfill_content_registry.cjs:65` sets
+`REPO_ROOT = path.join(__dirname, '..')` and `collectAll(REPO_ROOT, …)` reads every source
+file from there. The tool therefore reads the WORKTREE's `content/live` under any `HOME`;
+`os.homedir()` plays no part in which files it opens. The remap's ONLY effect on this tool is
+`server/storage_content.cjs:28`, which derives the pg namespace from `os.homedir()`:
+
+| HOME | `REPO_ROOT` hashed | namespace |
+|---|---|---|
+| `/home/qtie` (live) | `/home/qtie/backpack_ragnarok` | `88d662ca20e5289b` |
+| `/tmp/h0266` (remap) | `/tmp/h0266/backpack_ragnarok` | `baf134688a90b54d` |
+
+Writing 108 `unit_skin` defs into `baf134688a90b54d` would be a sandbox artifact that nothing
+serves. **Decision: the backfill must run WITHOUT the remap**, so it writes into the live
+namespace `88d662ca20e5289b` — the one holding the real registry. There is no trade-off to
+weigh, because the remap never protected the file reads in the first place.
+
+CI (§11.6.4) still runs WITH the remap: there the isolated namespace is the point.
+
+#### 11.6.3 The backfill is BLOCKED by the unapplied `gimic`/`dungeon` migrations
+
+`--dry-run` (which provably opens no DB — the `require` of `storage.cjs` sits past the
+dry-run gate) reports the expected plan:
+
+```
+  unit_skin   108 entries  <- content/live/live_unit_skins.json
+  per-kind totals: po_def=22 si_def=6 tm_def=5 monster_def=44 unit_def=54 skill_def=81
+                   gimic=4 dungeon=3 gacha_pack=8 monster_pack=14 unit_skin=108
+  TOTAL: 349 defs / 349 variants (one adopted variant_no 1 per def)
+```
+
+108 `unit_skin`, 349 total, collision-free (`collectAll` FATALs on a clash and did not).
+
+Diffed against the live namespace: of the 349 planned defs, **234 already exist** (from an
+earlier run made before `gimic`/`dungeon` were added to `SOURCES`) and **115 are missing —
+3 `dungeon`, 4 `gimic`, 108 `unit_skin`**.
+
+**The apply run cannot reach the `unit_skin` rows.** `SOURCES` is processed in order:
+`gimic` starts at entry index 222, `dungeon` at 226, `unit_skin` at 229. The main loop has NO
+per-entry try/catch around `storage.createContentDef`, so the first `gimic` insert aborts the
+whole tool. Confirmed by running it (insert-only and idempotent, so entries 0–221 were
+pre-existing no-ops and nothing was written):
+
+```
+FATAL error: invalid input value for enum content_kind: "gimic"
+    at async Object.createContentDef (server/storage_content.cjs:179:17)
+    at async main (tools/backfill_content_registry.cjs:270:15)
+```
+
+Verified afterwards: the live namespace still holds **238 defs / 241 variants**, unchanged —
+the failed run wrote nothing.
+
+**This was NOT worked around.** Applying `020`/`021`/`022` is forbidden (other REQs); editing
+the live `content/live/*.json` sources, patching the shipped tool to swallow enum errors, or
+hand-rolling a duplicate write path into the live registry were all rejected as either
+out-of-scope or unsafe against a live DB. The `unit_skin` backfill therefore REMAINS TO BE
+RUN, and is blocked on a decision that is above this pass (see §11.6.6).
+
+This is a different symptom from the `core.cjs` `REGISTRY_KINDS` degradation already noted at
+the end of §11.5: that one is contained per-kind and degrades to file-served; this one is an
+uncaught abort in a one-shot tool.
+
+#### 11.6.4 CI is GREEN
+
+```
+HOME=/tmp/h0266 SKIP_E2E=1 tools/ci.sh     (with DATABASE_URL exported from server/.env)
+```
+
+Final line, verbatim: `CI GREEN` (exit 0). 63 steps ran.
+
+`[5.455/7] per-profile skin selection store parity (pg backend, REQ-0266)` — the previously
+documented red, failing on `relation "skin_prefs" does not exist` — is now **GREEN**, all 12
+checks ok, including absence-as-default (D5), merge semantics, slot-mismatch rejection and
+per-player isolation. `024` fixed it; nothing was skipped to get there.
+
+Steps not green, in full:
+
+| step | status | diagnosis |
+|---|---|---|
+| `[6.5/8]` admin e2e harnesses | SKIPPED | `SKIP_E2E=1`, as instructed — concurrent GPU batch |
+| `[7/7]` client e2e | SKIPPED | same |
+| `[3.8/7]` art-existence check | internal SKIP | no `content/art/unit` in a worktree; adopted art lives in the artwork registry. Documented behaviour, prints its own reason |
+| `[4.71/7]` real-model smoke | internal SKIP | model/`onnxruntime` absent on this box. Pre-existing |
+| `[4.72/7]` pg moderation tests | internal SKIP | ci.sh runs this step with `DATABASE_URL=` deliberately (DB-free half). The pg half runs at `[5.46/7]`, which passed |
+
+Nothing else was skipped and no step failed. One first attempt aborted at `[5/7]` with
+`DATABASE_URL: SKIP_PG=1 or set DATABASE_URL` — `ci.sh` does not source `server/.env`, and the
+worktree has none; re-run with the env exported from the main checkout. Not a defect.
+
+Non-fatal noise inside PASSING steps: `[5.1/7]`/`[5.15/7]` log
+`[art_jobs] inspection … failed: No module named 'numpy'` for mock renders. Not attributable
+to the remap — `numpy 2.4.6` imports fine through the exact remapped interpreter path
+(`/tmp/h0266/backpack_ragnarok/.venv/bin/python`, `sys.prefix` resolving into the venv). Those
+steps report `16 passed, 0 failed` / `5 passed, 0 failed`. Left alone.
+
+Environment bridges from the verification pass all still existed and were reused unchanged:
+`/tmp/h0266/{.local,.nvm,.config,.ssh,.gitconfig}` symlinks, `.cache/ms-playwright`, and the
+gitignored `.venv/` symlink farm in the worktree.
+
+#### 11.6.5 The GPU batch was not disturbed
+
+RAM/swap, taken before and throughout the CI run:
+
+| moment | available | swap used |
+|---|---|---|
+| before CI | 8929 MB | 2442 MB |
+| during CI (8 samples) | 19379–20482 MB | 2195–2214 MB |
+
+Never near the abort thresholds. The large mid-run improvement was ComfyUI's ~11 GB RSS being
+returned: `comfyui.service` restarted at `20:15:26Z`, fired by the LIVE api's own REQ-0233
+generation→matte family barrier (the queue carries `inspectDepth: 14`). **Not caused by CI** —
+`server/tests/artfamily_test.cjs:22` sets `ART_FAMILY_BARRIER='0'` precisely so the test counts
+barrier fires without ever restarting comfyui.
+
+After CI, `GET /api/art/queue` reports **1 running (`8669`, `bpskin_unit_ancient_grimoire`) and
+188 pending**, still draining. `backpack-api`, `backpack-web` and `backpack-tunnel` all still
+show their `Sat 2026-07-18 08:44` start times — the in-memory generation queue was never at
+risk. e2e was deferred for this reason and MUST be re-run once the batch drains.
+
+#### 11.6.6 What still remains before `done/`
+
+1. **Run the `unit_skin` backfill** into namespace `88d662ca20e5289b`, without the HOME remap.
+   Blocked on how to get past `gimic`/`dungeon` — either apply `020`/`021`/`022` (a decision
+   for those REQs, not this one) or give the tool a kind/skip filter. 108 defs still missing.
+2. **Re-run the e2e fleet** (`[6.5/8]` + `[7/7]`) once the GPU batch drains. Two reds,
+   `forecast.spec.ts:206` and `schedule.spec.ts:1451`, are pre-existing and reproduce on
+   master; they are out of scope here.
+3. **Merge to master** (not done by this pass).
+4. **`live_unit_skins.json` must reach the main checkout** — the file exists only in the
+   worktree today, and the live api serves from `~/backpack_ragnarok`.
+5. **Restart `backpack-api`** — required for the api to pick up the new content, and it MUST
+   NOT happen before the batch finishes (~04:30 UTC); a restart destroys the in-memory queue.
