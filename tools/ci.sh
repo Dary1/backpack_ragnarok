@@ -137,6 +137,10 @@ echo "==== [3.8/7] unit + gacha-pack content gate (REQ-0170) ===="
 node tools/check_units.cjs
 echo "==== [3.9/7] units003 charge acceptance corpus (REQ-0200) ===="
 node tools/units003_acceptance.cjs
+echo "==== [3.95/7] REQ-0268 corpus normalizer + stats tests (stdlib python3) ===="
+python3 tools/tests/corpus_test.py
+echo "==== [3.96/7] REQ-0268 stat-band lint self-test (corpus dps bands; ci runs self-test only) ===="
+node tools/check_stat_bands.cjs --self-test
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
