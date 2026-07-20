@@ -14,6 +14,49 @@
   loadout-layer builders (combat has no in-battle decisions). Coordinate
   with in-flight REQ-0256 (built, unmerged): no committed byte-goldens.
 
+- 2026-07-20 todo (implemented): built tools/balance_sim.cjs (CLI + programmatic
+  runMatrix), sim/balance/{builders,inject}.cjs, sim/balance_bands.json, and
+  sim/tests/balance_sim_test.cjs; registered [2.95/7] in tools/ci.sh. Content
+  pinned via __dirname to content/live/live_items.json + content/live/dungeon/*
+  + content/vocab.json (never os.homedir, never batch dirs); content/s4_boards/*
+  reused as loadout templates. Two arms per matrix cell (boards x levels x seeds)
+  SHARE the cell master seed, so a metric delta is attributable to the candidate
+  alone. Decisions:
+    * Item builders (greedy/random) place the candidate into a legal free BP cell
+      (add mode); the authored s4_boards are near-full, so when no free cell
+      exists the builder swaps out one removable (non-`fixed`) PO (replace mode)
+      and baseline = the untouched template. Legality + rotation reuse
+      sim/lib/compile.cjs localCellsOfPO -- no grid math reimplemented. greedy
+      maximizes a static Chebyshev-adjacency coverage heuristic; both builders
+      draw every stochastic choice from makeRng streams (no Math.random).
+    * Enemy/skill candidates are injected into a live pack (default
+      pack_frost_scouts, slot 0): skill -> swap the member enemy for a clone
+      whose skills list is replaced by the candidate; enemy -> append at a fixed
+      slot. Both arms run a boss-less "arena" of N=4 pack encounters so the
+      candidate combat effect is isolated from trap/door/chest/boss noise.
+    * Metrics reuse sim/s4/metrics.cjs processRun; per-arm win/wipe rate, TTK
+      mean/p50/p95, damage dealt/taken, candidate DPS/usage, then
+      candidate-vs-baseline deltas. Bands: content/corpus_stats.json (REQ-0268)
+      overlays sim/balance_bands.json when present, else the hand-set defaults
+      (item DPS ceilings anchored on vocab dps_ceiling_warn with a x3 flag
+      multiple; |d win|/|d wipe| 0.10 warn / 0.20 flag; TTK & dmg-dealt ratio
+      bands). Exit 0 clean / 1 flagged / 2 usage. The comparison payload carries
+      no timestamps/paths (metadata does).
+  Gates: sim/tests/{run,goldens,s4_test}.cjs unchanged & green; balance_sim_test
+  (6) green. End-to-end: live item `dagger` runs and reports a summary; the OP
+  fixture item (strike [500,600]/0.5s Common) trips the item_dps_ceiling FLAG;
+  an OP injected skill flips 100% victory -> 100% wipe (wipe-rate delta +1).
+- 2026-07-20 REQ-0256 seam check: `git diff master...HEAD --stat -- sim/lib/
+  dungeon.cjs sim/combat.cjs` on req-0256-battle-tick-core shows dungeon.cjs
+  UNCHANGED and combat.cjs only removing the EventHeap re-export (2 lines).
+  runDungeon opts + result shape ({events, finalProgressPct, result, rewards,
+  lrdstReward, cooldownSecs, level, H, bps}) are byte-identical on 0256 HEAD.
+  The 0.01s tick-loop rewrite lives in sim/lib/encounter.cjs (replay event
+  shapes) which the harness never depends on -- it builds only against
+  combat.runDungeon + s4 metrics. Determinism gate is double-run equality
+  in-tree (no committed byte-goldens), which survives the 0256 merge. No
+  sim/lib internals were modified.
+
 ## Origin (content-pipeline consultation)
 Balance-tuning phase: monster skills and item effects. Consultation outcome:
 balance is an evaluation problem, not a generation problem — the pipeline
