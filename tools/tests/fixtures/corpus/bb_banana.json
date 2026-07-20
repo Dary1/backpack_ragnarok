@@ -1,0 +1,17 @@
+{
+ "source": "backpack-battles",
+ "endpoint": "https://backpack-battles.fandom.com/api.php",
+ "license": "CC-BY-SA",
+ "tool_version": "1",
+ "fetched": "2026-07-21",
+ "pageid": 10002,
+ "title": "Banana",
+ "categories": [
+  "Category:Items",
+  "Category:Common",
+  "Category:Shop_Common",
+  "Category:Food",
+  "Category:Nature"
+ ],
+ "wikitext": "Back: [[Food]]\n\n{{Item_Template|Item_name=Banana|image1=Banana_item.png|Item_effect1='''Every 5s:''' Heal for 4 and regenerate 1 stamina.|Rarity=Common|Type=Food|Cost=3|Used_in_recipe1=[[Strong Heroic Potion]]|Extra Type=Nature}}\n\nBananas are a Type of Food used for Health and Stamina regeneration.\n"
+}

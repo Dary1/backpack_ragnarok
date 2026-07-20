@@ -1,0 +1,20 @@
+{
+ "source": "backpack-battles",
+ "endpoint": "https://backpack-battles.fandom.com/api.php",
+ "license": "CC-BY-SA",
+ "tool_version": "1",
+ "fetched": "2026-07-21",
+ "pageid": 10001,
+ "title": "Bloodthorne",
+ "categories": [
+  "Category:Items",
+  "Category:Combinations",
+  "Category:Godly",
+  "Category:Melee Weapon",
+  "Category:Vampiric",
+  "Category:Nature",
+  "Category:Recipe item",
+  "Category:On hit"
+ ],
+ "wikitext": "{{Item_Template|Item_name=Bloodthorne|image1=Bloodthorne_item.png|Accuracy=90%|Damage=4-8|Cooldown=1.6s|Stamina_cost=1.5|Item_effect1='''On hit''': Convert 1 [[File:Icon Regeneration.png|alt=Regeneration|15x15px|link=Game Mechanics#Buffs]] into 1 [[File:Icon Vampirism.png|alt=Vampirism|15x15px|link=Game Mechanics#Buffs]] and 1 [[File:Icon Spikes.png|alt=Spikes|15x15px|link=Game Mechanics#Buffs]].\nDeals +1 damage per [[File:Icon Spikes.png|alt=Spikes|15x15px|link=Game Mechanics#Buffs]]and [[File:Icon Vampirism.png|alt=Vampirism|15x15px|link=Game Mechanics#Buffs]].|Rarity=Godly|Type=Melee Weapon|Cost of components=15|Sell price=8|Recipe_image=Bloodthorne_recipe.png|caption-Recipe_image=[[Hungry Blade]] + [[Thorn Whip]]|Extra Type=Vampiric, Nature}}\nBack: [[Melee Weapon]]\n\nBloodthorne is made by combining [[Hungry Blade]] with [[Thorn Whip]].\n"
+}

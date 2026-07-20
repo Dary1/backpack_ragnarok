@@ -1,0 +1,13 @@
+{
+ "source": "backpack-battles",
+ "endpoint": "https://backpack-battles.fandom.com/api.php",
+ "license": "CC-BY-SA",
+ "tool_version": "1",
+ "fetched": "2026-07-21",
+ "pageid": 10003,
+ "title": "Accessory",
+ "categories": [
+  "Category:Items"
+ ],
+ "wikitext": "Back: [[Items]]\n\nAccessories are various items that do not share any common properties. Most accessories either improve adjacent items, like the [[Acorn Collar]] or give various buffs.\n\n{| class=\"wikitable\" style=\"border-style: solid\"\n|+ <big>Accessory</big>\n|-\n|{{Pic|AcornCollar|30}} [[Acorn Collar]]\n|{{Pic|BagofStones|40}} [[Bag of Stones]]\n|}\n\n[[Category:Items]]\n"
+}

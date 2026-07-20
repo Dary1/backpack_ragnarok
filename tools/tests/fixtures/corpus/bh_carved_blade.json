@@ -1,0 +1,14 @@
+{
+ "source": "backpack-hero",
+ "endpoint": "https://backpack-hero.fandom.com/api.php",
+ "license": "CC-BY-SA",
+ "tool_version": "1",
+ "fetched": "2026-07-21",
+ "pageid": 20001,
+ "title": "Carved Blade",
+ "categories": [
+  "Category:Carvings",
+  "Category:Weapons"
+ ],
+ "wikitext": "{{infobox carving\n| title = Carved Blade\n| type = Carving, Weapon\n| rarity = Uncommon\n| useCost = 1 energy\n| summonCost = 1 energy\n| additionalfx = \n| onSummon = Deals 15 Damage\n| onUse = Deal 12 Damage\n| buy = ?\n| sell = ?\n| size = \n| lastUpdate = v0.25.1\n}}\n\n'''Carved Blade''' is a [[Carvings|carving]]. It can only be found by [[Tote]].\n\n{{stub}}\n\n[[Category:Carvings]]\n[[Category:Weapons]]\n"
+}

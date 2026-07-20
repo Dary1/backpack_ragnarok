@@ -1,0 +1,14 @@
+{
+ "source": "backpack-hero",
+ "endpoint": "https://backpack-hero.fandom.com/api.php",
+ "license": "CC-BY-SA",
+ "tool_version": "1",
+ "fetched": "2026-07-21",
+ "pageid": 20002,
+ "title": "Daisy Blade",
+ "categories": [
+  "Category:Carvings",
+  "Category:Weapons"
+ ],
+ "wikitext": "{{infobox carving\n| title = Daisy Blade\n| type = Carving, Weapon\n| rarity = Common\n| useCost = 1 energy\n| summonCost = 1 energy\n| additionalfx = \n| onSummon = Deals 10 Damage\n| onUse = Deal 6 Damage\n| buy = ?\n| sell = ?\n| size = 1x2\n| lastUpdate = v0.25.1\n}}\n\n'''Daisy Blade''' is a [[Carvings|carving]]. It can only be found by Tote.\n\n{{stub}}\n\n[[Category:Carvings]]\n[[Category:Weapons]]\n"
+}
