@@ -8,6 +8,22 @@
 - 2026-07-20 draft -> todo: user ratified (chat, 2026-07-21 JST): sources = Backpack
   Hero + Backpack Battles; storage = data/corpus/ gitignored with the tracked
   stats file under content/.
+- 2026-07-21 todo: isotonic (PAVA) clamp added for the rarity dps `bands`
+  (tools/corpus_stats.py `_pava_isotonic` / `_derive_bands`). The pooled dps-
+  proxy ratio curve was non-monotonic (Uncommon 1.968 > Rare 1.515, a small-n
+  sampling artifact -- see Gaps/notes below); now weighted (by each tier's
+  dps-proxy n) pool-adjacent-violators regression pools Uncommon+Rare into
+  their n-weighted mean (n=4,10 -> ratio 1.644), with Common pinned fixed at
+  ratio 1.0 (anchor, never pooled down). New bands: Common warn_hi=12.0 (ratio
+  1.0, unchanged), Uncommon=19.7 (was 23.6), Rare=19.7 (was 18.2), Relic=25.2
+  (ratio 2.099, unchanged) -- now non-decreasing. Pre-clamp values kept per
+  tier in a new `ratio_raw` field; `basis` is 'corpus_ratio_isotonic' for a
+  pooled tier, 'corpus_ratio' for an untouched one, 'vocab_fallback' unchanged
+  (also clamped into the sequence if needed). content/corpus_stats.json
+  regenerated from the existing normalized corpus (no re-fetch), verified
+  byte-identical across reruns. tools/tests/corpus_test.py extended with a
+  hand-computed PAVA pooling case, a Common-anchor-pin case, and an end-to-end
+  non-monotonic synthetic corpus (50/50 assertions green).
 
 ## Origin (content-pipeline consultation)
 Balance-tuning phase begins; monster skills and item effects are the focus.

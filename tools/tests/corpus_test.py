@@ -12,6 +12,9 @@ Covered:
      effect phrases land in `unmapped`
   4. stats determinism: compute_stats twice on the fixtures -> byte-identical
   5. band derivation matches hand-computed values
+  6. PAVA isotonic clamp: hand-computed weighted pooling (both the low-level
+     _pava_isotonic primitive and an end-to-end non-monotonic synthetic
+     corpus through compute_stats), plus the Common-anchor pin
 """
 import json
 import os
@@ -168,10 +171,91 @@ check("band Rare basis corpus_ratio", bands["Rare"]["basis"] == "corpus_ratio",
 check("band Uncommon falls back to vocab (no data)",
       bands["Uncommon"]["basis"] == "vocab_fallback"
       and bands["Uncommon"]["warn_hi"] == 15.0, bands["Uncommon"])
+# already-monotonic sequence (Common 1.0 <= Rare 2.0): PAVA is a no-op here,
+# ratio_raw is preserved and equals the (unpooled) ratio.
+check("band Common ratio_raw == ratio_raw == 1.0",
+      bands["Common"]["ratio_raw"] == 1.0, bands["Common"])
+check("band Rare ratio_raw == 2.0 (unpooled, equals ratio)",
+      bands["Rare"]["ratio_raw"] == 2.0 and bands["Rare"]["ratio"] == 2.0,
+      bands["Rare"])
 # median/percentile sanity on the controlled corpus
 com = st["pooled"]["metrics"]["dps_proxy"]["Common"]
 check("Common dps median == 10", com["median"] == 10.0, com)
 check("Common dps n == 3", com["n"] == 3, com)
+
+# --- 6. PAVA isotonic clamp (hand-computed) ---------------------------------
+# 6a. low-level _pava_isotonic: two adjacent tiers violate monotonicity and
+# must pool into their weighted mean; the rest of the sequence is untouched.
+# values (tier order) = [1.0, 3.0, 2.0, 5.0], weights = [10, 3, 5, 1].
+# index 1 (3.0) > index 2 (2.0) violates -> pool: weighted mean =
+# (3.0*3 + 2.0*5) / (3+5) = (9 + 10) / 8 = 19/8 = 2.375 (exact in binary fp).
+# Common (index 0, anchor) does not violate against the pooled block
+# (1.0 <= 2.375) so it is untouched; index 3 (5.0) does not violate either.
+fitted, groups = CS._pava_isotonic([1.0, 3.0, 2.0, 5.0], [10, 3, 5, 1],
+                                    anchor_idx=0)
+check("PAVA hand-computed pooled mean == 19/8 == 2.375",
+      fitted[1] == 2.375 and fitted[2] == 2.375, fitted)
+check("PAVA leaves the anchor tier at its own value (no violation)",
+      fitted[0] == 1.0, fitted)
+check("PAVA leaves an unviolated trailing tier untouched",
+      fitted[3] == 5.0, fitted)
+check("PAVA final sequence is non-decreasing",
+      all(fitted[i] <= fitted[i + 1] for i in range(len(fitted) - 1)), fitted)
+check("PAVA pooled indices 1 and 2 share a group, 0 and 3 do not",
+      groups[1] == groups[2] and groups[0] != groups[1]
+      and groups[3] != groups[2], groups)
+
+# 6b. low-level _pava_isotonic: Common-anchor pin. Without pinning, Common
+# (1.0, w=10) pooling with index 1 (0.5, w=4) would weighted-average to
+# (1.0*10 + 0.5*4) / 14 = 12/14 = 0.857142... -- but Common is pinned, so the
+# pooled block is forced to exactly 1.0 (others clamped UP to the anchor, the
+# anchor is never dragged down), then index 2 (0.8) also violates against
+# that pinned 1.0 and joins the same pinned block.
+fitted2, groups2 = CS._pava_isotonic([1.0, 0.5, 0.8, 2.0], [10, 4, 4, 1],
+                                     anchor_idx=0)
+check("PAVA anchor pin clamps violators to exactly 1.0 (not averaged down)",
+      fitted2 == [1.0, 1.0, 1.0, 2.0], fitted2)
+check("PAVA anchor-pinned block groups 0,1,2 together",
+      groups2[0] == groups2[1] == groups2[2] != groups2[3], groups2)
+
+# 6c. end-to-end: a synthetic corpus reproducing a non-monotonic corpus ratio
+# curve (Uncommon median dps-proxy > Rare's -- a small-n sampling artifact,
+# same shape as the real REQ-0268 corpus) must come out of compute_stats
+# fully monotonic, with the pre-clamp values preserved in ratio_raw.
+# Common dps=10 (n=5) -> ratio_raw 1.0 (anchor).
+# Uncommon dps=30 (n=3) -> ratio_raw 3.0.
+# Rare dps=20 (n=5) -> ratio_raw 2.0 (violates: 3.0 > 2.0).
+# Relic dps=50 (n=2) -> ratio_raw 5.0 (no violation once Uncommon/Rare pool).
+# Pooled Uncommon/Rare weighted mean = (3.0*3 + 2.0*5) / 8 = 19/8 = 2.375,
+# same hand-computed pool as 6a (deliberately -- same weights/ratios).
+pava_corpora = {"s": {"license": "CC-BY-SA", "entries": (
+    [synth("Common", 10)] * 5 + [synth("Uncommon", 30)] * 3 +
+    [synth("Rare", 20)] * 5 + [synth("Relic", 50)] * 2
+)}}
+pst = CS.compute_stats(pava_corpora, anchor2)
+pbands = pst["bands"]
+check("e2e ratio_raw Common/Uncommon/Rare/Relic == 1.0/3.0/2.0/5.0",
+      pbands["Common"]["ratio_raw"] == 1.0
+      and pbands["Uncommon"]["ratio_raw"] == 3.0
+      and pbands["Rare"]["ratio_raw"] == 2.0
+      and pbands["Relic"]["ratio_raw"] == 5.0, pbands)
+check("e2e pooled ratio Uncommon == Rare == 2.375",
+      pbands["Uncommon"]["ratio"] == 2.375
+      and pbands["Rare"]["ratio"] == 2.375, pbands)
+check("e2e pooled tiers get basis corpus_ratio_isotonic",
+      pbands["Uncommon"]["basis"] == "corpus_ratio_isotonic"
+      and pbands["Rare"]["basis"] == "corpus_ratio_isotonic", pbands)
+check("e2e untouched tiers keep basis corpus_ratio",
+      pbands["Common"]["basis"] == "corpus_ratio"
+      and pbands["Relic"]["basis"] == "corpus_ratio", pbands)
+check("e2e warn_hi Common=12.0, Uncommon=Rare=28.5, Relic=60.0",
+      pbands["Common"]["warn_hi"] == 12.0
+      and pbands["Uncommon"]["warn_hi"] == 28.5
+      and pbands["Rare"]["warn_hi"] == 28.5
+      and pbands["Relic"]["warn_hi"] == 60.0, pbands)
+check("e2e final band sequence is non-decreasing across all four tiers",
+      pbands["Common"]["warn_hi"] <= pbands["Uncommon"]["warn_hi"]
+      <= pbands["Rare"]["warn_hi"] <= pbands["Relic"]["warn_hi"], pbands)
 
 # ----------------------------------------------------------------------------
 print("\n%d passed, %d failed" % (_pass, _fail))

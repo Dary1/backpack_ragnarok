@@ -14,7 +14,10 @@ Content: per-source and pooled rarity distributions; per-rarity stats
 (damage_mid/cadence_mid) and hp; verb frequency; a rarity-ratio curve (each
 rarity's median dps-proxy relative to Common); and derived `bands` -- OUR
 per-rarity dps warn ceilings = the corpus ratio curve anchored to our vocab
-`dps_ceiling_warn` values.
+`dps_ceiling_warn` values, ISOTONIC (PAVA) CLAMPED so the ceilings are
+non-decreasing Common -> Uncommon -> Rare -> Relic (small per-tier sample
+sizes can otherwise produce a non-monotonic ratio curve by sampling noise;
+see `_pava_isotonic` / `_derive_bands`).
 
 Reference-only (REQ-0268): these are OUR curves, informed by the corpus. No
 corpus number is copied verbatim into live content.
@@ -145,22 +148,124 @@ def _ratio_curve(metrics):
     return out
 
 
-def _derive_bands(ratio, anchor):
-    """OUR per-rarity dps warn ceilings: anchor Common to vocab dps_ceiling_warn
-    Common, then scale by the corpus ratio curve. Missing ratio -> the vocab
-    dps_ceiling_warn value for that tier (flagged vocab_fallback)."""
+def _pava_isotonic(values, weights, anchor_idx=None):
+    """Weighted pool-adjacent-violators isotonic regression (non-decreasing).
+
+    `values` / `weights` are same-length lists, in the order that must come
+    out non-decreasing. Adjacent values that violate monotonicity are pooled
+    into their weighted mean, repeated until the whole sequence is
+    non-decreasing (the standard PAVA "stack of blocks" algorithm -- this is
+    the exact weighted-least-squares isotonic fit, not a heuristic).
+
+    `anchor_idx`, if given, pins values[anchor_idx] as a FIXED point: any
+    pooled block that ends up containing it takes exactly that pinned value
+    instead of a weighted mean. This is how a designated anchor tier (Common,
+    ratio 1.0 by definition) is kept fixed rather than dragged by pooling --
+    the tier(s) merged into its block are effectively clamped to the anchor
+    value rather than averaged with it.
+
+    Returns (fitted, groups): fitted[i] is the isotonic value for values[i];
+    groups[i] is an int id shared by every index pooled together with i (so
+    a group appearing more than once in `groups` was actually pooled).
+    """
+    anchor_value = values[anchor_idx] if anchor_idx is not None else None
+    blocks = []  # each entry: [value, weight, [orig_indices]]
+    for i, (v, w) in enumerate(zip(values, weights)):
+        blocks.append([v, w, [i]])
+        while len(blocks) >= 2 and blocks[-2][0] > blocks[-1][0]:
+            b2 = blocks.pop()
+            b1 = blocks.pop()
+            idxs = b1[2] + b2[2]
+            tw = b1[1] + b2[1]
+            if anchor_idx is not None and anchor_idx in idxs:
+                mv = anchor_value
+            else:
+                mv = (b1[0] * b1[1] + b2[0] * b2[1]) / tw if tw else 0.0
+            blocks.append([mv, tw, idxs])
+    fitted = [None] * len(values)
+    groups = [None] * len(values)
+    for gid, (mv, _w, idxs) in enumerate(blocks):
+        for idx in idxs:
+            fitted[idx] = mv
+            groups[idx] = gid
+    return fitted, groups
+
+
+def _derive_bands(ratio, anchor, weights):
+    """OUR per-rarity dps warn ceilings, isotonic (PAVA) clamped so bands are
+    non-decreasing Common -> Uncommon -> Rare -> Relic.
+
+    ratio[t]   : corpus median dps_proxy[t] / median dps_proxy[Common], or
+                 None if tier t has no corpus dps data. This PRE-clamp value
+                 is recorded verbatim per tier as `ratio_raw` -- no
+                 information is discarded by the clamp.
+    weights[t] : the dps-proxy sample size n for tier t (the PAVA pooling
+                 weight -- larger samples resist being pulled by noisier
+                 small-n neighbors).
+
+    Tiers with a real corpus ratio are fit with weighted pool-adjacent-
+    violators isotonic regression (tier order Common -> Relic), with Common
+    pinned as the fixed anchor at ratio 1.0 (see `_pava_isotonic`): Common
+    itself never moves; a tier pooled into Common's block is clamped to 1.0
+    rather than averaged with it. Tiers with no corpus ratio ("vocab_fallback")
+    are not part of that weighted fit (no sample to weight them by) but are
+    still clamped, left to right, so the full four-tier sequence shown to
+    consumers is non-decreasing.
+
+    basis becomes 'corpus_ratio_isotonic' for a corpus tier whose final ratio
+    differs from ratio_raw (pooled with a neighbor, directly or via a
+    fallback-tier clamp); an untouched corpus tier keeps 'corpus_ratio'.
+    vocab_fallback tiers keep that basis regardless of whether clamping
+    changed their effective ratio.
+    """
     base = float(anchor.get("Common", 0)) or 0.0
+    ratio_raw = {t: ratio.get(t) for t in TIERS}
+
+    if base <= 0:
+        # No Common corpus data at all -- nothing to anchor a ratio to.
+        # Every tier falls back to the vocab ceiling directly, as before.
+        return {t: {"warn_hi": _round(float(anchor.get(t, 0)), 1),
+                     "ratio": None, "ratio_raw": ratio_raw[t],
+                     "basis": "vocab_fallback"} for t in TIERS}
+
+    corpus_idx = [i for i, t in enumerate(TIERS) if ratio_raw[t] is not None]
+    common_idx = TIERS.index("Common")
+    values = [ratio_raw[TIERS[i]] for i in corpus_idx]
+    wts = [float(weights.get(TIERS[i], 0) or 0) for i in corpus_idx]
+    anchor_pos = corpus_idx.index(common_idx) if common_idx in corpus_idx \
+        else None
+    if values:
+        fitted, groups = _pava_isotonic(values, wts, anchor_idx=anchor_pos)
+    else:
+        fitted, groups = [], []
+
+    fit_ratio = {}
+    pooled_tier = {}
+    for pos, i in enumerate(corpus_idx):
+        t = TIERS[i]
+        fit_ratio[t] = _round(fitted[pos])
+        pooled_tier[t] = groups.count(groups[pos]) > 1
+
     bands = {}
+    running = None  # running max of the final ratio sequence, left to right
     for t in TIERS:
-        r = ratio.get(t)
-        if r is not None and base > 0:
-            bands[t] = {"warn_hi": _round(base * r, 1),
-                        "ratio": _round(r),
-                        "basis": "corpus_ratio"}
+        if t in fit_ratio:
+            r = fit_ratio[t]
+            if running is not None and r < running:
+                r = running  # clamped up by a preceding vocab_fallback tier
+                pooled_tier[t] = True
+            running = r
+            basis = "corpus_ratio_isotonic" if pooled_tier[t] else \
+                "corpus_ratio"
+            bands[t] = {"warn_hi": _round(base * r, 1), "ratio": r,
+                        "ratio_raw": ratio_raw[t], "basis": basis}
         else:
-            bands[t] = {"warn_hi": _round(float(anchor.get(t, base)), 1),
-                        "ratio": None,
-                        "basis": "vocab_fallback"}
+            implied = float(anchor.get(t, base)) / base
+            r = implied if (running is None or implied >= running) else \
+                running
+            running = r
+            bands[t] = {"warn_hi": _round(base * r, 1), "ratio": None,
+                        "ratio_raw": None, "basis": "vocab_fallback"}
     return bands
 
 
@@ -178,7 +283,8 @@ def compute_stats(corpora, anchor):
         licenses[source] = doc.get("license", "CC-BY-SA")
     pooled = _stats_for_entries(pooled_entries)
     ratio = _ratio_curve(pooled["metrics"])
-    bands = _derive_bands(ratio, anchor)
+    weights = {t: pooled["metrics"]["dps_proxy"][t]["n"] for t in TIERS}
+    bands = _derive_bands(ratio, anchor, weights)
     pooled["rarity_ratio_dps"] = ratio
     return {
         "schema": SCHEMA,
@@ -189,11 +295,21 @@ def compute_stats(corpora, anchor):
         "pooled": pooled,
         "bands": bands,
         "bands_formula": (
-            "warn_hi[r] = round(vocab_anchor['Common'] * "
-            "pooled.rarity_ratio_dps[r], 1) where the ratio is the corpus "
-            "median dps-proxy of tier r divided by that of Common; a tier "
-            "with no corpus dps data falls back to vocab dps_ceiling_warn[r] "
-            "(basis='vocab_fallback'). dps-proxy = damage_mid / cadence_mid."
+            "ratio_raw[r] = corpus median dps-proxy of tier r divided by "
+            "that of Common (None if tier r has no corpus dps data). ratio[r] "
+            "= ratio_raw[r] isotonic (PAVA) clamped -- weighted by each "
+            "tier's dps-proxy sample size n, pooling adjacent tiers into "
+            "their weighted mean until the Common->Uncommon->Rare->Relic "
+            "sequence is non-decreasing, with Common pinned fixed at 1.0 (a "
+            "tier that would pool into Common's block is clamped to 1.0 "
+            "instead of averaged with it); a tier with no corpus dps data "
+            "falls back to vocab dps_ceiling_warn[r] (basis='vocab_fallback') "
+            "but is still clamped into the same non-decreasing sequence. "
+            "warn_hi[r] = round(vocab_anchor['Common'] * ratio[r], 1). basis "
+            "is 'corpus_ratio_isotonic' for a corpus tier whose ratio changed "
+            "from ratio_raw by clamping, 'corpus_ratio' for an untouched "
+            "corpus tier, 'vocab_fallback' otherwise. dps-proxy = "
+            "damage_mid / cadence_mid."
         ),
         "notes": (
             "REQ-0268 reference corpus. Numbers are derived statistics used to "
@@ -261,12 +377,13 @@ def render_report(stats):
     # bands
     lines.append("## Derived dps warn bands (anchored to vocab dps_ceiling_warn)")
     lines.append("")
-    lines.append("| rarity | ratio | warn_hi | basis |")
-    lines.append("|---|---|---|---|")
+    lines.append("| rarity | ratio_raw | ratio | warn_hi | basis |")
+    lines.append("|---|---|---|---|---|")
     for t in TIERS:
         b = stats["bands"][t]
-        lines.append("| %s | %s | %s | %s |" % (
-            t, _fmt(b["ratio"]), _fmt(b["warn_hi"]), b["basis"]))
+        lines.append("| %s | %s | %s | %s | %s |" % (
+            t, _fmt(b.get("ratio_raw")), _fmt(b["ratio"]), _fmt(b["warn_hi"]),
+            b["basis"]))
     lines.append("")
     lines.append("Formula: " + stats["bands_formula"])
     lines.append("")
