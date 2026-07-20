@@ -1173,4 +1173,7 @@ compile seam; strictly-more-fires delta + per-spend `advance_cooldown` records).
 
 ### 16.7 Commits
 
-(recorded at commit time; the todo→built move is its own commit per policy)
+-  — the implementation (everything in §16.1-16.6), on branch
+   from baseline .
+- (next) — this hash record.
+- (next) —  todo → built, one move per commit per policy.
