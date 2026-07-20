@@ -1173,7 +1173,8 @@ compile seam; strictly-more-fires delta + per-spend `advance_cooldown` records).
 
 ### 16.7 Commits
 
--  — the implementation (everything in §16.1-16.6), on branch
-   from baseline .
-- (next) — this hash record.
-- (next) —  todo → built, one move per commit per policy.
+- `2a7c229` — the implementation (everything in §16.1-16.6), on branch
+  `req-0256-battle-tick-core` from baseline `2088c34`.
+- `a285b47` — hash record (its first write was mangled by shell expansion; this
+  list is the corrected record).
+- `1894641` — `git mv` todo → built, one move per commit per policy.
