@@ -5,6 +5,9 @@
 - 2026-07-20 reserved -> draft: spec written from the content-pipeline consultation
   (user, 2026-07-21 JST); blocked on user ratification (bot policy depth,
   metric bands, encounter matrix).
+- 2026-07-20 draft -> todo: user ratified (chat, 2026-07-21 JST): bots = scripted
+  greedy + random baseline; metric bands and the encounter matrix are
+  finalized during implementation (bands seed from REQ-0268 where applicable).
 
 ## Origin (content-pipeline consultation)
 Balance-tuning phase: monster skills and item effects. Consultation outcome:
@@ -23,8 +26,8 @@ candidate can fail for balance reasons.
 ## Proposal
 - tools/balance_sim.cjs (headless, node): drive the shared engine directly —
   no client, no server. Input: a content candidate set (live/ or a batch), an
-  encounter/loadout matrix, N seeds. Bots play scripted/greedy policies; the
-  policy interface stays pluggable, but learned policies are explicitly out
+  encounter/loadout matrix, N seeds. Bots play a scripted greedy policy
+  plus a random baseline (ratified); the policy interface stays pluggable, but learned policies are explicitly out
   of scope for this REQ.
 - Metrics per candidate: win rate, TTK distribution, damage dealt/taken,
   usage/pick rate within loadouts; aggregated against baseline runs without
