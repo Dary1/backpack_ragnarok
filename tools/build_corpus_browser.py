@@ -1,30 +1,43 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""REQ-0270 -- Corpus browser: dev-only static HTML view of the normalized
-wiki corpus.
+"""REQ-0270/0277 -- Corpus browser: dev-only static HTML view of the normalized
+wiki corpus, split by kind into THREE self-contained pages (REQ-0277).
 
 Stdlib only. Reads the normalized corpus (data/corpus/normalized/<source>.json),
-the derived stats (content/corpus_stats.json) and OUR live content
-(content/live/live_items.json + dungeon skills) and emits ONE self-contained
-web/preview/corpus/index.html: inline CSS + JS, zero external asset requests,
-works from file:// and the dev docroot. The dataset is embedded as a JSON blob.
+the derived item stats (content/corpus_stats.json, bands_scope=item), the
+enemy-side bands (content/enemy_bands.json, basis live_self) and OUR live
+content (content/live/live_items.json + dungeon skills/enemies) and emits three
+self-contained pages into web/preview/corpus/ (inline CSS + JS, zero external
+asset requests; cross-page links are relative only):
 
-The page tells one connected story across four views:
-  1. ENTRIES            -- every normalized entry, searchable / sortable / filterable
-  2. NORMALIZATION QUALITY -- per-source mapping quality + top unmapped phrases
-  3. CURVES & BANDS     -- rarity distribution, dps-proxy box plots, verb freq, bands
-  4. LIVE COMPARISON    -- OUR items/skills' dps-proxy vs the corpus bands
+  index.html    -- normalization-quality summary (per-source cards, unmapped /
+                   excluded stats) + attribution + prominent nav links to both
+                   kind pages.
+  items.html    -- every corpus ENTRY (kind=item plus item-page derivatives
+                   labelled "other"; the genre wikis carry no enemy pages) +
+                   item CURVES & BANDS (bands_scope=item, corpus-derived) +
+                   LIVE ITEM comparison ONLY. Zero enemy/skill live content.
+  monsters.html -- enemy-side bands (enemy_hp / enemy_total_dps / skill_dps;
+                   basis live_self) + live ENEMY/SKILL comparison + a prominent
+                   notice that the corpus contains ZERO enemy entries (BB is
+                   PvP; BH wiki has no enemy pages) so every monster statistic
+                   derives from OUR OWN live data. Zero item live content.
+
+Each page embeds ONLY the data slice it needs, so content isolation holds at
+the data layer (items.html carries no enemy/skill live rows nor enemy-band
+tables; monsters.html carries no item-band table nor item live rows).
 
 Determinism: no timestamps, stable ordering, sorted JSON keys -> two runs on
-the same inputs are byte-identical.
+the same inputs are byte-identical per page.
 
 The dps-proxy used for LIVE content is a faithful port of
 tools/check_stat_bands.cjs (single source of meaning); parity is pinned by
 tools/tests/corpus_browser_test.py. The corpus-side proxy (damage_mid /
-cadence_mid) mirrors tools/corpus_stats.py.
+cadence_mid) mirrors tools/corpus_stats.py; the enemy total-dps proxy (sum of
+an enemy's skills' dps-proxies) mirrors tools/enemy_bands.py.
 
 Output is dev-only and UNTRACKED (web/preview/corpus/ is gitignored). Corpus
-text is CC-BY-SA third-party reference data; the footer carries per-source
+text is CC-BY-SA third-party reference data; each page footer carries per-source
 attribution.
 """
 import argparse
@@ -36,6 +49,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 
 TIERS = ("Common", "Uncommon", "Rare", "Relic")
+# enemy/1 rarity is LOWERCASE; keep the vocab ladder order (Common..Relic).
+RARITIES_LC = ("common", "uncommon", "rare", "relic")
 # Damage-dealing verbs whose n is a hit magnitude -- parity with
 # check_stat_bands.cjs DAMAGE_VERBS.
 DAMAGE_VERBS = frozenset(("strike", "multi_strike", "charge_strike"))
@@ -164,7 +179,9 @@ def wiki_url_from_endpoint(endpoint):
 
 def build_entries(corpora):
     """Flatten every normalized entry into a display row, sorted (source, name,
-    page) for stable output."""
+    page) for stable output. ALL corpus entries (item + item-page derivatives
+    tagged kind='other') live on items.html; the genre wikis have no enemy
+    pages."""
     rows = []
     for src, doc in corpora:
         for e in doc.get("entries", []):
@@ -254,9 +271,6 @@ def build_quality(corpora):
     return {"per_source": per_source, "top_unmapped": top_unmapped}
 
 
-RARITIES_LC = ("common", "uncommon", "rare", "relic")
-
-
 def _eb_group_row(key, grp):
     """One flat row for an enemy_bands group (hp / total_dps / skill_dps)."""
     grp = grp or {}
@@ -277,9 +291,9 @@ def _eb_group_row(key, grp):
     return row
 
 
-def _enemy_bands_view(eb):
+def enemy_bands_view(eb):
     """Render content/enemy_bands.json (basis live_self) into browser tables.
-    Absent file -> {present: False} (the section hides itself)."""
+    Absent file -> {present: False} (the monsters page hides the section)."""
     if not eb:
         return {"present": False}
     hp = eb.get("enemy_hp", {})
@@ -296,12 +310,11 @@ def _enemy_bands_view(eb):
     }
 
 
-def build_curves(corpora, stats, enemy_bands):
+def build_item_curves(corpora, stats):
     """Rarity distribution, per-rarity dps-proxy box plots (min/p25/median/
     p75/p95/max) computed from raw entries with the corpus_stats method, verb
-    frequency, and the bands table."""
-    # Per-rarity dps-proxy values pooled across sources (same selection as
-    # corpus_stats: entries with both damage and cadence).
+    frequency, and the ITEM-scope bands table (content/corpus_stats.json,
+    bands_scope=item). No enemy content."""
     by_tier = {t: [] for t in TIERS}
     for _src, doc in corpora:
         for e in doc.get("entries", []):
@@ -355,59 +368,41 @@ def build_curves(corpora, stats, enemy_bands):
         "bands_scope": stats.get("bands_scope", "item"),
         "bands_formula": stats.get("bands_formula", ""),
         "vocab_anchor": stats.get("vocab_anchor", {}),
-        "enemy_bands": _enemy_bands_view(enemy_bands),
     }
 
 
-def build_live(live_docs, item_bands, enemy_bands):
-    """Every live item/skill with a computable dps-proxy vs the band that
-    applies to it, WITH scope labels (REQ-0275): items -> their rarity's
-    ITEM-scope corpus band (content/corpus_stats.json, bands_scope=item);
-    skills -> the pooled live_self skill-dps band (content/enemy_bands.json).
-    Faithful port of check_stat_bands.cjs dps-proxy (counted==0 skipped)."""
-    rows = []
-    skill_band = ((enemy_bands or {}).get("skill_dps") or {}).get("band") or None
-    for kind, doc in live_docs:
-        entries = doc.get("entries") or doc.get("skills") or []
-        for d in entries:
-            dps, counted = live_def_dps(d)
-            if counted == 0:
-                continue  # no damage-tick effect: nothing to say (parity)
-            rarity = live_rarity_of(d)
-            if kind == "skill":
-                band = skill_band
-                scope = "skill"
-                basis = "live_self"
-                flag_mult = (band or {}).get("flag_multiple", 2)
-            else:
-                band = item_bands.get(rarity) if rarity else None
-                scope = "item"
-                basis = band.get("basis") if band else None
-                flag_mult = 3  # item bands have no flag_multiple: keep >3x rule
-            warn_hi = band.get("warn_hi") if band else None
-            status = "na"
-            ratio = None
-            severe = False
-            if isinstance(warn_hi, (int, float)) and warn_hi > 0:
-                ratio = dps / warn_hi
-                status = "OVER" if dps > warn_hi else "OK"
-                severe = dps > flag_mult * warn_hi
-            rows.append({
-                "kind": kind,
-                "id": d.get("id") or d.get("name") or "(anon)",
-                "name": d.get("name") or d.get("name_en") or d.get("id") or "",
-                "rarity": rarity,
-                "scope": scope,
-                "basis": basis,
-                "dps": _round(dps),
-                "counted": counted,
-                "warn_hi": warn_hi,
-                "ratio": _round(ratio) if ratio is not None else None,
-                "status": status,
-                "severe": severe,
-            })
-    # Deterministic: banded items first (by descending ratio), then na (skills)
-    # by descending dps.
+# ---- live comparison (shared row builder + per-kind builders) ------------
+def _live_row(kind, ident, name, rarity, scope, basis, dps, counted,
+              warn_hi, flag_mult):
+    """One live row with band status. warn_hi/flag_mult come from the band
+    that applies to this kind; status is OVER/OK/na (na = no applicable
+    band)."""
+    status = "na"
+    ratio = None
+    severe = False
+    if isinstance(warn_hi, (int, float)) and warn_hi > 0:
+        ratio = dps / warn_hi
+        status = "OVER" if dps > warn_hi else "OK"
+        severe = dps > flag_mult * warn_hi
+    return {
+        "kind": kind,
+        "id": ident,
+        "name": name,
+        "rarity": rarity,
+        "scope": scope,
+        "basis": basis,
+        "dps": _round(dps),
+        "counted": counted,
+        "warn_hi": warn_hi,
+        "ratio": _round(ratio) if ratio is not None else None,
+        "status": status,
+        "severe": severe,
+    }
+
+
+def _finalize_live(rows):
+    """Deterministic order (banded first by descending ratio, then na by
+    descending dps) + a summary block."""
     def sort_key(r):
         has_band = 0 if r["status"] != "na" else 1
         primary = -(r["ratio"] if r["ratio"] is not None else -1)
@@ -423,7 +418,75 @@ def build_live(live_docs, item_bands, enemy_bands):
     return {"rows": rows, "summary": summary}
 
 
-def build_dataset(data_dir, stats_path, live_specs, enemy_bands_path=None):
+def build_item_live(items_doc, item_bands):
+    """Every live item with a computable dps-proxy vs its rarity's ITEM-scope
+    corpus band (content/corpus_stats.json, bands_scope=item). Items with no
+    damage-tick effect are omitted (counted==0), parity with
+    check_stat_bands.cjs. ITEM live rows only -- no skill/enemy content."""
+    rows = []
+    for d in (items_doc or {}).get("entries") or []:
+        dps, counted = live_def_dps(d)
+        if counted == 0:
+            continue
+        rarity = live_rarity_of(d)
+        band = item_bands.get(rarity) if rarity else None
+        basis = band.get("basis") if band else None
+        warn_hi = band.get("warn_hi") if band else None
+        rows.append(_live_row(
+            "item", d.get("id") or d.get("name") or "(anon)",
+            d.get("name") or d.get("name_en") or d.get("id") or "",
+            rarity, "item", basis, dps, counted, warn_hi, 3))
+    return _finalize_live(rows)
+
+
+def build_monster_live(skills_doc, enemies_doc, enemy_bands):
+    """Live SKILL and ENEMY comparison (basis live_self). Skills (skill/1
+    carries no rarity) compare against the pooled skill_dps band; each enemy's
+    TOTAL dps (sum of its skills' dps-proxies, parity with tools/enemy_bands.py)
+    compares against its rarity's enemy_total_dps band
+    (content/enemy_bands.json). Defs with no damage-tick effect are omitted.
+    SKILL/ENEMY live rows only -- no item content."""
+    eb = enemy_bands or {}
+    skill_band = (eb.get("skill_dps") or {}).get("band") or None
+    total_dps_groups = eb.get("enemy_total_dps") or {}
+    skills = (skills_doc or {}).get("entries") or []
+    skills_by_id = {s.get("id"): s for s in skills}
+    rows = []
+    for s in skills:
+        dps, counted = live_def_dps(s)
+        if counted == 0:
+            continue
+        warn_hi = (skill_band or {}).get("warn_hi")
+        flag_mult = (skill_band or {}).get("flag_multiple", 2)
+        rows.append(_live_row(
+            "skill", s.get("id") or s.get("name") or "(anon)",
+            s.get("name") or s.get("name_en") or s.get("id") or "",
+            None, "skill", "live_self", dps, counted, warn_hi, flag_mult))
+    for e in (enemies_doc or {}).get("entries") or []:
+        total = 0.0
+        counted = 0
+        for sid in e.get("skills", []) or []:
+            s = skills_by_id.get(sid)
+            if s is None:
+                continue
+            d, c = live_def_dps(s)
+            total += d
+            counted += c
+        if counted == 0:
+            continue
+        rarity = e.get("rarity")
+        band = (total_dps_groups.get(rarity) or {}).get("band") or None
+        warn_hi = (band or {}).get("warn_hi")
+        flag_mult = (band or {}).get("flag_multiple", 2)
+        rows.append(_live_row(
+            "enemy", e.get("id") or e.get("name") or "(anon)",
+            e.get("name") or e.get("name_en") or e.get("id") or "",
+            rarity, "enemy", "live_self", total, counted, warn_hi, flag_mult))
+    return _finalize_live(rows)
+
+
+# ---- input loading + per-page dataset builders --------------------------
+def _load_corpora(data_dir):
     norm_dir = os.path.join(data_dir, "normalized")
     corpora = []
     for fn in sorted(os.listdir(norm_dir)):
@@ -432,23 +495,10 @@ def build_dataset(data_dir, stats_path, live_specs, enemy_bands_path=None):
         doc = load_json(os.path.join(norm_dir, fn))
         corpora.append((doc.get("source") or fn[:-5], doc))
     corpora.sort(key=lambda sd: sd[0])
+    return corpora
 
-    stats = load_json(stats_path)
-    bands = stats.get("bands", {})
-    enemy_bands = None
-    if enemy_bands_path and os.path.exists(enemy_bands_path):
-        enemy_bands = load_json(enemy_bands_path)
 
-    live_docs = []
-    for kind, path in live_specs:
-        if path and os.path.exists(path):
-            live_docs.append((kind, load_json(path)))
-
-    entries = build_entries(corpora)
-    quality = build_quality(corpora)
-    curves = build_curves(corpora, stats, enemy_bands)
-    live = build_live(live_docs, bands, enemy_bands)
-
+def _attribution(corpora, stats):
     attribution = []
     for src, doc in corpora:
         attribution.append({
@@ -458,26 +508,63 @@ def build_dataset(data_dir, stats_path, live_specs, enemy_bands_path=None):
             "fetch_date": doc.get("fetch_date"),
         })
     attribution.sort(key=lambda a: a["source"])
+    return attribution
 
+
+def _meta(page, corpora, extra=None):
+    m = {
+        "tool": "tools/build_corpus_browser.py",
+        "req": "REQ-0277",
+        "page": page,
+        "note": "dev-only, untracked",
+        "sources": [s for s, _ in corpora],
+    }
+    if extra:
+        m.update(extra)
+    return m
+
+
+def build_index_dataset(corpora, stats):
+    total = sum(len(doc.get("entries", [])) for _s, doc in corpora)
     return {
-        "meta": {
-            "tool": "tools/build_corpus_browser.py",
-            "req": "REQ-0270",
-            "note": "dev-only, untracked",
-            "total_entries": len(entries),
-            "sources": [s for s, _ in corpora],
-        },
-        "entries": entries,
-        "quality": quality,
-        "curves": curves,
-        "live": live,
-        "attribution": attribution,
+        "meta": _meta("index", corpora, {"total_entries": total}),
+        "quality": build_quality(corpora),
+        "attribution": _attribution(corpora, stats),
         "notes": stats.get("notes", ""),
     }
 
 
+def build_items_dataset(corpora, stats, item_bands, items_doc):
+    entries = build_entries(corpora)
+    return {
+        "meta": _meta("items", corpora, {"total_entries": len(entries)}),
+        "entries": entries,
+        "curves": build_item_curves(corpora, stats),
+        "live": build_item_live(items_doc, item_bands),
+        "attribution": _attribution(corpora, stats),
+    }
+
+
+def build_monsters_dataset(corpora, stats, skills_doc, enemies_doc,
+                           enemy_bands):
+    live = build_monster_live(skills_doc, enemies_doc, enemy_bands)
+    return {
+        "meta": _meta("monsters", corpora, {
+            "corpus_enemy_entries": 0,
+            "live_enemy_rows": sum(1 for r in live["rows"]
+                                   if r["kind"] == "enemy"),
+            "live_skill_rows": sum(1 for r in live["rows"]
+                                   if r["kind"] == "skill"),
+        }),
+        "enemy_bands": enemy_bands_view(enemy_bands),
+        "live": live,
+        "attribution": _attribution(corpora, stats),
+    }
+
+
 # --------------------------------------------------------------------------
-# Static assets (inline; no external requests)
+# Static assets (inline; no external requests). Shared verbatim across the
+# three self-contained pages.
 # --------------------------------------------------------------------------
 CSS = """
 :root{--bg:#12161c;--panel:#1a2029;--panel2:#212936;--edge:#2c3542;
@@ -493,12 +580,18 @@ a{color:var(--acc)}
 header{padding:12px 16px;border-bottom:1px solid var(--edge);
 display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
 header .sub{color:var(--mut);font-size:12px}
-nav{display:flex;gap:2px;padding:8px 16px 0;border-bottom:1px solid var(--edge);
+.pagenav{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid var(--edge);
+background:var(--panel);flex-wrap:wrap}
+.pagenav a{padding:6px 15px;border-radius:6px;border:1px solid var(--edge);
+text-decoration:none;color:var(--mut);font-weight:600}
+.pagenav a:hover{color:var(--fg)}
+.pagenav a.active{background:var(--acc);color:#0b1017;border-color:var(--acc)}
+nav.tabs{display:flex;gap:2px;padding:8px 16px 0;border-bottom:1px solid var(--edge);
 flex-wrap:wrap}
-nav button{background:var(--panel);color:var(--mut);border:1px solid var(--edge);
+nav.tabs button{background:var(--panel);color:var(--mut);border:1px solid var(--edge);
 border-bottom:none;padding:7px 14px;cursor:pointer;font-size:13px;
 border-radius:6px 6px 0 0}
-nav button.active{background:var(--panel2);color:var(--fg);font-weight:600}
+nav.tabs button.active{background:var(--panel2);color:var(--fg);font-weight:600}
 main{padding:14px 16px 40px}
 .view{display:none}
 .view.active{display:block}
@@ -538,6 +631,7 @@ border:1px solid var(--edge)}
 .badge.unmapped{background:#3a2a15;color:#e6bf85}
 .badge.item{background:#22303c;color:#9fd0e8}
 .badge.skill{background:#2c2740;color:#c3aef0}
+.badge.enemy{background:#3a2a1c;color:#e8c19f}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
 .card{background:var(--panel);border:1px solid var(--edge);border-radius:8px;
 padding:12px 14px}
@@ -556,6 +650,7 @@ margin:2px 0}
 .mut{color:var(--mut)}
 .section{background:var(--panel);border:1px solid var(--edge);border-radius:8px;
 padding:14px;margin-bottom:14px}
+.section.notice{border-left:4px solid var(--warn)}
 .formula{background:#0e1319;border:1px solid var(--edge);border-radius:6px;
 padding:10px;color:var(--mut);font-size:12px;white-space:pre-wrap}
 .link{color:var(--acc);cursor:pointer;text-decoration:underline}
@@ -582,7 +677,9 @@ font-size:11.5px}
 .box-plot{margin:3px 0}
 """
 
-JS = """
+
+# ---- JS: shared helpers (present on every page) --------------------------
+JS_HELPERS = """
 'use strict';
 var D = JSON.parse(document.getElementById('corpus-data').textContent);
 var $ = function(s,r){return (r||document).querySelector(s);};
@@ -590,16 +687,86 @@ var el = function(tag,cls,txt){var e=document.createElement(tag);
 if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;};
 function num(x,d){if(x===null||x===undefined)return '\\u2014';
 var v=Number(x); return (d===undefined)? String(v): v.toFixed(d);}
-
-/* ---- tab switching ---- */
 function showView(id){
   var vs=document.querySelectorAll('.view');
   for(var i=0;i<vs.length;i++)vs[i].classList.toggle('active',vs[i].id===id);
-  var bs=document.querySelectorAll('nav button');
+  var bs=document.querySelectorAll('.tabs button');
   for(var j=0;j<bs.length;j++)bs[j].classList.toggle('active',bs[j].dataset.view===id);
 }
+function wireTabs(){
+  var bs=document.querySelectorAll('.tabs button');
+  for(var i=0;i<bs.length;i++){(function(b){
+    b.addEventListener('click',function(){showView(b.dataset.view);});
+  })(bs[i]);}
+}
+function barRow(lab,val,mx){
+  var r=el('div','barrow'); r.appendChild(el('div','lab',lab));
+  var track=el('div'); var bar=el('div','bar');
+  bar.style.width=(mx>0?Math.max(2,100*val/mx):0)+'%'; track.appendChild(bar);
+  r.appendChild(track); r.appendChild(el('div','val',String(val))); return r;
+}
+function qstat(v,l){var d=el('div','q-stat');d.appendChild(el('div','v',String(v)));
+  d.appendChild(el('div','l',l));return d;}
+function qrow(l,v){var r=el('div','q-row');r.appendChild(el('span',null,l));
+  r.appendChild(el('span','mut',v));return r;}
+function renderFooter(){
+  var f=$('#foot-attrib'); if(!f)return; f.textContent='';
+  D.attribution.forEach(function(a){
+    var span=el('span');
+    span.appendChild(document.createTextNode(a.source+' ('+(a.license||'?')+') '));
+    if(a.url){var link=el('a',null,a.url); link.href=a.url; link.target='_blank';
+      link.rel='noopener'; span.appendChild(link);}
+    span.appendChild(document.createTextNode('  \\u00b7  '));
+    f.appendChild(span);
+  });
+}
+"""
 
-/* ============================ ENTRIES ============================ */
+# ---- JS: normalization quality (index.html) ------------------------------
+JS_QUALITY = """
+function renderQuality(){
+  var wrap=$('#q-cards'); if(!wrap)return; wrap.textContent='';
+  D.quality.per_source.forEach(function(s){
+    var c=el('div','card');
+    c.appendChild(el('h3',null,s.source));
+    var lic=el('div','lic',(s.license||'')+'  \\u00b7  '+s.pages+' pages  \\u00b7  fetched '+(s.fetch_date||'?'));
+    c.appendChild(lic);
+    var big=el('div','q-big');
+    big.appendChild(qstat(s.mapped_tokens,'mapped verb tokens'));
+    big.appendChild(qstat(s.unmapped_phrases,'unmapped phrases'));
+    big.appendChild(qstat(s.excluded_count,'excluded features'));
+    c.appendChild(big);
+    c.appendChild(el('div','kv','kinds')).style.marginTop='4px';
+    s.kinds.forEach(function(k){c.appendChild(qrow(k.kind+'','\\u00d7'+k.count));});
+    var rh=el('div','kv','rarity mapping (raw \\u2192 norm)'); rh.style.marginTop='6px';
+    c.appendChild(rh);
+    s.rarity_map.forEach(function(r){
+      c.appendChild(qrow((r.raw==null?'(none)':r.raw)+' \\u2192 '+(r.norm==null?'(unmapped)':r.norm),'\\u00d7'+r.count));
+    });
+    if(s.verb_frequency.length){
+      var vh=el('div','kv','mapped verb frequency'); vh.style.marginTop='6px';
+      c.appendChild(vh);
+      var mx=Math.max.apply(null,s.verb_frequency.map(function(v){return v.count;}));
+      s.verb_frequency.forEach(function(v){c.appendChild(barRow(v.verb,v.count,mx));});
+    }
+    wrap.appendChild(c);
+  });
+  var tu=$('#q-unmapped'); if(!tu)return; tu.textContent='';
+  if(!D.quality.top_unmapped.length){
+    tu.appendChild(el('div','mut','(none \\u2014 every recognised phrase mapped)'));
+    return;
+  }
+  D.quality.top_unmapped.forEach(function(u){
+    var row=el('div','q-row');
+    row.appendChild(el('span',null,u.phrase));
+    row.appendChild(el('span','mut','\\u00d7'+u.count));
+    tu.appendChild(row);
+  });
+}
+"""
+
+# ---- JS: corpus entries table (items.html) -------------------------------
+JS_ENTRIES = """
 var ES={q:'',source:'',kind:'',rarity:'',un:false,ex:false,sort:'name',dir:1};
 var RANK={Common:0,Uncommon:1,Rare:2,Relic:3};
 function rarityRank(r){return (r in RANK)?RANK[r]:99;}
@@ -695,6 +862,10 @@ function renderEntries(){
     tb.appendChild(tr);
   }
 }
+function fillSelect(sel,opts,allLabel){
+  var s=$(sel); s.appendChild(new Option(allLabel,''));
+  opts.forEach(function(o){s.appendChild(new Option(o,o));});
+}
 function buildEntriesControls(){
   var srcs={},kinds={};
   D.entries.forEach(function(e){srcs[e.source]=1;if(e.kind)kinds[e.kind]=1;});
@@ -722,63 +893,63 @@ function buildEntriesControls(){
     thead.appendChild(th);
   });
 }
-function fillSelect(sel,opts,allLabel){
-  var s=$(sel); s.appendChild(new Option(allLabel,''));
-  opts.forEach(function(o){s.appendChild(new Option(o,o));});
-}
-function filterByPhrase(p){
-  ES.q=p; $('#f-search').value=p; showView('view-entries'); renderEntries();
-}
+"""
 
-/* ==================== NORMALIZATION QUALITY ==================== */
-function renderQuality(){
-  var wrap=$('#q-cards'); wrap.textContent='';
-  D.quality.per_source.forEach(function(s){
-    var c=el('div','card');
-    c.appendChild(el('h3',null,s.source));
-    var lic=el('div','lic',(s.license||'')+'  \\u00b7  '+s.pages+' pages  \\u00b7  fetched '+(s.fetch_date||'?'));
-    c.appendChild(lic);
-    var big=el('div','q-big');
-    big.appendChild(qstat(s.mapped_tokens,'mapped verb tokens'));
-    big.appendChild(qstat(s.unmapped_phrases,'unmapped phrases'));
-    big.appendChild(qstat(s.excluded_count,'excluded features'));
-    c.appendChild(big);
-    c.appendChild(el('div','kv','kinds')).style.marginTop='4px';
-    s.kinds.forEach(function(k){c.appendChild(qrow(k.kind+'','\\u00d7'+k.count));});
-    var rh=el('div','kv','rarity mapping (raw \\u2192 norm)'); rh.style.marginTop='6px';
-    c.appendChild(rh);
-    s.rarity_map.forEach(function(r){
-      c.appendChild(qrow((r.raw==null?'(none)':r.raw)+' \\u2192 '+(r.norm==null?'(unmapped)':r.norm),'\\u00d7'+r.count));
-    });
-    if(s.verb_frequency.length){
-      var vh=el('div','kv','mapped verb frequency'); vh.style.marginTop='6px';
-      c.appendChild(vh);
-      var mx=Math.max.apply(null,s.verb_frequency.map(function(v){return v.count;}));
-      s.verb_frequency.forEach(function(v){c.appendChild(barRow(v.verb,v.count,mx));});
-    }
-    wrap.appendChild(c);
-  });
-  var tu=$('#q-unmapped'); tu.textContent='';
-  D.quality.top_unmapped.forEach(function(u){
-    var row=el('div','q-row');
-    var a=el('span','link',u.phrase);
-    a.addEventListener('click',function(){filterByPhrase(u.phrase);});
-    row.appendChild(a); row.appendChild(el('span','mut','\\u00d7'+u.count));
-    tu.appendChild(row);
-  });
+# ---- JS: item curves & bands (items.html) --------------------------------
+JS_CURVES_ITEM = """
+function boxSVG(b,scaleMax){
+  var W=100,H=18,pad=1; /* percent-based via viewBox */
+  function x(v){return pad+(W-2*pad)*(v/scaleMax);}
+  var y=H/2;
+  var wl=x(b.min),wr=x(b.max),q1=x(b.p25),q3=x(b.p75),md=x(b.median);
+  var s='<svg class="box-plot" viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" preserveAspectRatio="none">';
+  s+='<line x1="'+wl+'" y1="'+y+'" x2="'+wr+'" y2="'+y+'" stroke="#8b98a8" stroke-width="0.6"/>';
+  s+='<line x1="'+wl+'" y1="'+(y-4)+'" x2="'+wl+'" y2="'+(y+4)+'" stroke="#8b98a8" stroke-width="0.6"/>';
+  s+='<line x1="'+wr+'" y1="'+(y-4)+'" x2="'+wr+'" y2="'+(y+4)+'" stroke="#8b98a8" stroke-width="0.6"/>';
+  s+='<rect x="'+q1+'" y="'+(y-5)+'" width="'+(q3-q1)+'" height="10" fill="#1e2f47" stroke="#6ab7ff" stroke-width="0.6"/>';
+  s+='<line x1="'+md+'" y1="'+(y-5)+'" x2="'+md+'" y2="'+(y+5)+'" stroke="#e8a13a" stroke-width="1"/>';
+  s+='</svg>';
+  return s;
 }
-function qstat(v,l){var d=el('div','q-stat');d.appendChild(el('div','v',String(v)));
-  d.appendChild(el('div','l',l));return d;}
-function qrow(l,v){var r=el('div','q-row');r.appendChild(el('span',null,l));
-  r.appendChild(el('span','mut',v));return r;}
-function barRow(lab,val,mx){
-  var r=el('div','barrow'); r.appendChild(el('div','lab',lab));
-  var track=el('div'); var bar=el('div','bar');
-  bar.style.width=(mx>0?Math.max(2,100*val/mx):0)+'%'; track.appendChild(bar);
-  r.appendChild(track); r.appendChild(el('div','val',String(val))); return r;
+function renderItemCurves(){
+  var C=D.curves;
+  var rd=$('#c-dist'); rd.textContent='';
+  var mx=Math.max.apply(null,C.rarity_distribution.map(function(d){return d.count;}));
+  C.rarity_distribution.forEach(function(d){rd.appendChild(barRow(d.rarity,d.count,mx));});
+  var bp=$('#c-box'); bp.textContent='';
+  var scaleMax=0;
+  C.dps_box.forEach(function(b){if(b.n>0)scaleMax=Math.max(scaleMax,b.max);});
+  scaleMax=scaleMax||1;
+  C.dps_box.forEach(function(b){
+    var row=el('div','barrow'); row.style.gridTemplateColumns='120px 1fr 150px';
+    row.appendChild(el('div','lab',b.rarity+' (n='+(b.n||0)+')'));
+    var cell=el('div');
+    if(b.n>0)cell.innerHTML=boxSVG(b,scaleMax); else cell.appendChild(el('span','mut','no dps data'));
+    row.appendChild(cell);
+    var lab= (b.n>0)?('med '+num(b.median,2)+'  p95 '+num(b.p95,2)):'';
+    row.appendChild(el('div','val',lab));
+    bp.appendChild(row);
+  });
+  var vf=$('#c-verbs'); vf.textContent='';
+  var vmx=Math.max.apply(null,C.verb_frequency.map(function(v){return v.count;})||[1]);
+  C.verb_frequency.forEach(function(v){vf.appendChild(barRow(v.verb,v.count,vmx));});
+  var bt=$('#c-bands tbody'); bt.textContent='';
+  C.bands.forEach(function(b){
+    var tr=el('tr');
+    tr.appendChild(el('td',null,b.rarity));
+    tr.appendChild(el('td','num',num(b.ratio_raw,3)));
+    tr.appendChild(el('td','num',num(b.ratio,3)));
+    tr.appendChild(el('td','num',num(b.warn_hi,1)));
+    tr.appendChild(el('td',null,b.basis));
+    bt.appendChild(tr);
+  });
+  $('#c-formula').textContent=C.bands_formula;
+  var cs=$('#c-bands-scope'); if(cs) cs.textContent='(scope: '+(C.bands_scope||'item')+' \\u2014 corpus-derived)';
 }
+"""
 
-/* ==================== CURVES & BANDS ==================== */
+# ---- JS: enemy-side bands tables (monsters.html) -------------------------
+JS_ENEMY_BANDS = """
 function fillEbTable(tb, rows, isSkill){
   if(!tb) return; tb.textContent='';
   (rows||[]).forEach(function(r){
@@ -796,78 +967,24 @@ function fillEbTable(tb, rows, isSkill){
     tb.appendChild(tr);
   });
 }
-function renderCurves(){
-  var C=D.curves;
-  var rd=$('#c-dist'); rd.textContent='';
-  var mx=Math.max.apply(null,C.rarity_distribution.map(function(d){return d.count;}));
-  C.rarity_distribution.forEach(function(d){rd.appendChild(barRow(d.rarity,d.count,mx));});
-  /* box plots */
-  var bp=$('#c-box'); bp.textContent='';
-  var scaleMax=0;
-  C.dps_box.forEach(function(b){if(b.n>0)scaleMax=Math.max(scaleMax,b.max);});
-  scaleMax=scaleMax||1;
-  C.dps_box.forEach(function(b){
-    var row=el('div','barrow'); row.style.gridTemplateColumns='120px 1fr 150px';
-    row.appendChild(el('div','lab',b.rarity+' (n='+(b.n||0)+')'));
-    var cell=el('div');
-    if(b.n>0)cell.innerHTML=boxSVG(b,scaleMax); else cell.appendChild(el('span','mut','no dps data'));
-    row.appendChild(cell);
-    var lab= (b.n>0)?('med '+num(b.median,2)+'  p95 '+num(b.p95,2)):'';
-    row.appendChild(el('div','val',lab));
-    bp.appendChild(row);
-  });
-  /* verb frequency pooled */
-  var vf=$('#c-verbs'); vf.textContent='';
-  var vmx=Math.max.apply(null,C.verb_frequency.map(function(v){return v.count;})||[1]);
-  C.verb_frequency.forEach(function(v){vf.appendChild(barRow(v.verb,v.count,vmx));});
-  /* bands table */
-  var bt=$('#c-bands tbody'); bt.textContent='';
-  C.bands.forEach(function(b){
-    var tr=el('tr');
-    tr.appendChild(el('td',null,b.rarity));
-    tr.appendChild(el('td','num',num(b.ratio_raw,3)));
-    tr.appendChild(el('td','num',num(b.ratio,3)));
-    tr.appendChild(el('td','num',num(b.warn_hi,1)));
-    tr.appendChild(el('td',null,b.basis));
-    bt.appendChild(tr);
-  });
-  $('#c-formula').textContent=C.bands_formula;
-  /* scope label on the corpus (item-scope) bands */
-  var cs=$('#c-bands-scope'); if(cs) cs.textContent='(scope: '+(C.bands_scope||'item')+' \u2014 corpus-derived)';
-  /* enemy-side bands (basis live_self, from content/enemy_bands.json) */
-  var EB=C.enemy_bands||{present:false};
+function renderEnemyBands(){
+  var EB=D.enemy_bands||{present:false};
   var ebsec=$('#c-enemy-bands');
-  if(ebsec){
-    if(!EB.present){ ebsec.style.display='none'; }
-    else{
-      ebsec.style.display='';
-      $('#eb-note').textContent=EB.note||'';
-      $('#eb-formula').textContent=EB.band_formula||'';
-      fillEbTable($('#c-eb-hp tbody'), EB.hp_rows, false);
-      fillEbTable($('#c-eb-dps tbody'), EB.dps_rows, false);
-      fillEbTable($('#c-eb-skill tbody'), [EB.skill_row], true);
-    }
-  }
+  if(!ebsec)return;
+  if(!EB.present){ ebsec.style.display='none'; return; }
+  $('#eb-note').textContent=EB.note||'';
+  $('#eb-formula').textContent=EB.band_formula||'';
+  fillEbTable($('#c-eb-hp tbody'), EB.hp_rows, false);
+  fillEbTable($('#c-eb-dps tbody'), EB.dps_rows, false);
+  fillEbTable($('#c-eb-skill tbody'), [EB.skill_row], true);
 }
-function boxSVG(b,scaleMax){
-  var W=100,H=18,pad=1; /* percent-based via viewBox */
-  function x(v){return pad+(W-2*pad)*(v/scaleMax);}
-  var y=H/2;
-  var wl=x(b.min),wr=x(b.max),q1=x(b.p25),q3=x(b.p75),md=x(b.median);
-  var s='<svg class="box-plot" viewBox="0 0 '+W+' '+H+'" width="100%" height="'+H+'" preserveAspectRatio="none">';
-  s+='<line x1="'+wl+'" y1="'+y+'" x2="'+wr+'" y2="'+y+'" stroke="#8b98a8" stroke-width="0.6"/>';
-  s+='<line x1="'+wl+'" y1="'+(y-4)+'" x2="'+wl+'" y2="'+(y+4)+'" stroke="#8b98a8" stroke-width="0.6"/>';
-  s+='<line x1="'+wr+'" y1="'+(y-4)+'" x2="'+wr+'" y2="'+(y+4)+'" stroke="#8b98a8" stroke-width="0.6"/>';
-  s+='<rect x="'+q1+'" y="'+(y-5)+'" width="'+(q3-q1)+'" height="10" fill="#1e2f47" stroke="#6ab7ff" stroke-width="0.6"/>';
-  s+='<line x1="'+md+'" y1="'+(y-5)+'" x2="'+md+'" y2="'+(y+5)+'" stroke="#e8a13a" stroke-width="1"/>';
-  s+='</svg>';
-  return s;
-}
+"""
 
-/* ==================== LIVE COMPARISON ==================== */
+# ---- JS: live comparison (items.html + monsters.html; data differs) ------
+JS_LIVE = """
 function renderLive(){
   var L=D.live;
-  var sm=$('#l-summary'); sm.textContent='';
+  var sm=$('#l-summary'); if(!sm)return; sm.textContent='';
   [['evaluated','evaluated'],['over','over band'],['severe','\\u22653\\u00d7 band'],
    ['ok','in band'],['na','no rarity band']].forEach(function(p){
     var d=el('div','s'); d.appendChild(el('div','v',String(L.summary[p[0]])));
@@ -901,31 +1018,28 @@ function renderLive(){
     body.appendChild(row);
   });
 }
+"""
 
-/* ==================== FOOTER ==================== */
-function renderFooter(){
-  var f=$('#foot-attrib'); f.textContent='';
-  D.attribution.forEach(function(a){
-    var span=el('span');
-    span.appendChild(document.createTextNode(a.source+' ('+(a.license||'?')+') '));
-    if(a.url){var link=el('a',null,a.url); link.href=a.url; link.target='_blank';
-      link.rel='noopener'; span.appendChild(link);}
-    span.appendChild(document.createTextNode('  \\u00b7  '));
-    f.appendChild(span);
-  });
-}
-
-/* ==================== boot ==================== */
-document.querySelectorAll('nav button').forEach(function(b){
-  b.addEventListener('click',function(){showView(b.dataset.view);});
-});
+# ---- Per-page boot code (composed after the module functions) ------------
+BOOT_INDEX = """
+renderQuality();
+renderFooter();
+"""
+BOOT_ITEMS = """
+wireTabs();
 buildEntriesControls();
 renderEntries();
-renderQuality();
-renderCurves();
+renderItemCurves();
 renderLive();
 renderFooter();
 showView('view-entries');
+"""
+BOOT_MONSTERS = """
+wireTabs();
+renderEnemyBands();
+renderLive();
+renderFooter();
+showView('view-bands');
 """
 
 
@@ -937,27 +1051,99 @@ def _esc(s):
             .replace(">", "&gt;"))
 
 
-def build_html(dataset):
+_PAGES = (("index.html", "Overview", "index"),
+          ("items.html", "Items", "items"),
+          ("monsters.html", "Monsters", "monsters"))
+
+
+def _pagenav_html(active):
+    """Prominent cross-page nav header (relative hrefs only) on every page."""
+    out = ['<div class="pagenav">']
+    for href, label, key in _PAGES:
+        cls = ' class="active"' if key == active else ''
+        out.append('<a href="%s"%s>%s</a>' % (href, cls, label))
+    out.append("</div>")
+    return "\n".join(out)
+
+
+FOOTER_HTML = """
+<footer>
+  <div><b>Attribution</b> &mdash; corpus text is CC-BY-SA third-party reference data (never shipped, never copied verbatim into live content):</div>
+  <div id="foot-attrib"></div>
+  <div style="margin-top:6px">Generated by tools/build_corpus_browser.py (REQ-0270/0277). Dev-only preview, untracked (web/preview/corpus/). No network at view time.</div>
+</footer>
+"""
+
+
+def _shell(title, h1, sub, active, main_html, dataset, js):
+    """Assemble one self-contained page: inline CSS + the page's data slice +
+    the JS modules it needs. No external asset requests."""
     data_json = json.dumps(dataset, sort_keys=True, ensure_ascii=True,
                            separators=(",", ":"))
     # Prevent the JSON blob from prematurely closing the <script> element.
     data_json = data_json.replace("</", "<\\/")
+    header = ('<header><h1>' + _esc(h1) + '</h1>'
+              '<span class="sub">' + sub + '</span></header>')
+    parts = [
+        "<!DOCTYPE html>",
+        '<html lang="en"><head><meta charset="utf-8"/>',
+        '<meta name="viewport" content="width=device-width, initial-scale=1"/>',
+        "<title>" + _esc(title) + "</title>",
+        "<style>", CSS, "</style></head><body>",
+        header,
+        _pagenav_html(active),
+        main_html,
+        FOOTER_HTML,
+        '<script id="corpus-data" type="application/json">', data_json,
+        "</script>",
+        "<script>", JS_HELPERS + js, "</script>",
+        "</body></html>", "",
+    ]
+    return "\n".join(parts)
+
+
+# ---- index.html ----------------------------------------------------------
+INDEX_MAIN = """
+<main>
+  <section class="view active">
+    <p class="mut">The corpus browser is split by kind. This overview covers normalization quality and attribution; follow the header links (or the links below) to inspect <b>items</b> or <b>monsters</b>.</p>
+    <h2>Can we trust the corpus?</h2>
+    <p class="mut">Per-source classification, rarity mapping and verb-mapping coverage.</p>
+    <div class="cards" id="q-cards"></div>
+    <div class="section" style="margin-top:14px">
+      <h3>Top 20 unmapped phrases (pooled)</h3>
+      <div id="q-unmapped"></div>
+    </div>
+    <div class="section">
+      <h2>Browse by kind</h2>
+      <p><a href="items.html"><b>Items &rarr;</b></a> &mdash; every corpus entry (item pages plus their category / index / mechanic derivatives), item curves &amp; bands (scope: item, corpus-derived), and OUR live items vs those bands.</p>
+      <p><a href="monsters.html"><b>Monsters &rarr;</b></a> &mdash; enemy-side bands (basis: live_self) and OUR live enemies / skills vs those bands. The corpus carries ZERO enemy entries.</p>
+    </div>
+  </section>
+</main>
+"""
+
+
+def build_index_html(dataset):
     meta = dataset["meta"]
-    total = meta["total_entries"]
-    srcs = ", ".join(meta["sources"])
-    body = """
-<header>
-  <h1>Corpus Browser</h1>
-  <span class="sub">REQ-0270 &middot; __TOTAL__ normalized entries &middot; sources: __SRCS__ &middot; dev-only, untracked</span>
-</header>
-<nav>
+    sub = ("REQ-0277 &middot; normalization quality &amp; attribution &middot; "
+           "%d normalized entries &middot; sources: %s &middot; dev-only, "
+           "untracked" % (meta["total_entries"],
+                          _esc(", ".join(meta["sources"]))))
+    return _shell("Corpus Browser · Overview", "Corpus Browser — Overview",
+                  sub, "index", INDEX_MAIN, dataset, JS_QUALITY + BOOT_INDEX)
+
+
+# ---- items.html ----------------------------------------------------------
+ITEMS_MAIN = """
+<nav class="tabs">
   <button data-view="view-entries" class="active">Entries</button>
-  <button data-view="view-quality">Normalization Quality</button>
-  <button data-view="view-curves">Curves &amp; Bands</button>
-  <button data-view="view-live">Live Comparison</button>
+  <button data-view="view-curves">Item Curves &amp; Bands</button>
+  <button data-view="view-live">Live Items</button>
 </nav>
 <main>
   <section id="view-entries" class="view active">
+    <p class="mut">All __TOTAL__ corpus entries. Both <b>item</b> pages and other item-page derivatives (kind <b>other</b>: category / index / mechanic pages from the item wikis) live here &mdash; the genre wikis carry no monster pages, so every corpus entry is item-side.</p>
     <div class="controls">
       <input type="text" id="f-search" placeholder="search name / effect / verbs / phrases..."/>
       <select id="f-source"></select>
@@ -970,28 +1156,54 @@ def build_html(dataset):
     <table><thead><tr id="e-head"></tr></thead><tbody id="e-body"></tbody></table>
   </section>
 
-  <section id="view-quality" class="view">
-    <h2>Can we trust the corpus?</h2>
-    <p class="mut">Per-source classification, rarity mapping and verb-mapping coverage; the top unmapped phrases (click one to filter Entries).</p>
-    <div class="cards" id="q-cards"></div>
-    <div class="section" style="margin-top:14px">
-      <h3>Top 20 unmapped phrases (pooled)</h3>
-      <div id="q-unmapped"></div>
-    </div>
-  </section>
-
   <section id="view-curves" class="view">
     <div class="section"><h2>Rarity distribution (pooled)</h2><div id="c-dist"></div></div>
     <div class="section"><h2>dps-proxy spread by rarity</h2>
       <p class="mut">Corpus dps-proxy = damage_mid / cadence_mid. Box = p25..p75, orange line = median, whiskers = min..max.</p>
       <div id="c-box"></div></div>
     <div class="section"><h2>Verb frequency (pooled)</h2><div id="c-verbs"></div></div>
-    <div class="section"><h2>Derived bands <span class="mut" id="c-bands-scope"></span></h2>
+    <div class="section"><h2>Derived item bands <span class="mut" id="c-bands-scope"></span></h2>
       <table id="c-bands"><thead><tr><th>rarity</th><th class="num">ratio_raw</th>
         <th class="num">ratio (isotonic)</th><th class="num">warn_hi</th><th>basis</th></tr></thead>
         <tbody></tbody></table>
       <h3 style="margin-top:10px">bands_formula</h3>
       <div class="formula" id="c-formula"></div></div>
+  </section>
+
+  <section id="view-live" class="view">
+    <h2>Where OUR items sit on the genre curve</h2>
+    <p class="mut">dps-proxy of each live item (faithful port of tools/check_stat_bands.cjs; items with no damage-tick effect are omitted). Each item compares against its rarity's ITEM-scope corpus warn_hi band (content/corpus_stats.json, bands_scope=item). White marker = warn_hi; red = over band; dark red = beyond the flag bound.</p>
+    <div class="summary" id="l-summary"></div>
+    <div id="l-body"></div>
+  </section>
+</main>
+"""
+
+
+def build_items_html(dataset):
+    meta = dataset["meta"]
+    total = meta["total_entries"]
+    sub = ("REQ-0277 &middot; corpus items &middot; %d entries &middot; item "
+           "curves &amp; bands (scope: item) &middot; live items vs corpus "
+           "bands &middot; dev-only, untracked" % total)
+    main_html = ITEMS_MAIN.replace("__TOTAL__", str(total))
+    js = JS_ENTRIES + JS_CURVES_ITEM + JS_LIVE + BOOT_ITEMS
+    return _shell("Corpus Browser · Items", "Corpus Browser — Items",
+                  sub, "items", main_html, dataset, js)
+
+
+# ---- monsters.html -------------------------------------------------------
+MONSTERS_MAIN = """
+<nav class="tabs">
+  <button data-view="view-bands" class="active">Enemy Bands</button>
+  <button data-view="view-live">Live Enemies &amp; Skills</button>
+</nav>
+<main>
+  <section id="view-bands" class="view active">
+    <div class="section notice">
+      <h2>The corpus contains ZERO enemy entries</h2>
+      <p class="mut">Backpack Battles is PvP (no monster pages) and the Backpack Hero wiki has no enemy pages. Every number on this page derives from OUR OWN live dungeon data (basis: <b>live_self</b>) &mdash; it flags outliers against TODAY's game, not genre truth. Contrast the item bands (items page), which are corpus-derived.</p>
+    </div>
     <div class="section" id="c-enemy-bands"><h2>Enemy-side bands <span class="mut">(scope: live_self &mdash; our current live meta, not genre truth)</span></h2>
       <p class="mut" id="eb-note"></p>
       <h3 style="margin-top:8px">Enemy HP by rarity (over hp midpoints)</h3>
@@ -1005,75 +1217,95 @@ def build_html(dataset):
   </section>
 
   <section id="view-live" class="view">
-    <h2>Where OUR content sits on the genre curve</h2>
-    <p class="mut">dps-proxy of each live item / skill (faithful port of tools/check_stat_bands.cjs). Items compare against their rarity's ITEM-scope corpus warn_hi band (content/corpus_stats.json, bands_scope=item); skills compare against the pooled live_self skill-dps band (content/enemy_bands.json) &mdash; the scope/basis is tagged in each row. White marker = warn_hi; red = over band; dark red = beyond the flag bound.</p>
+    <h2>Where OUR enemies &amp; skills sit vs the live_self bands</h2>
+    <p class="mut">dps-proxy of each live skill and each live enemy (enemy = SUM of its skills' dps-proxies; faithful port of tools/check_stat_bands.cjs, mirroring tools/enemy_bands.py). Skills compare against the pooled live_self skill-dps band; enemies against their rarity's live_self total-dps band (content/enemy_bands.json) &mdash; the scope/basis is tagged in each row. White marker = warn_hi; red = over band; dark red = beyond the flag bound.</p>
     <div class="summary" id="l-summary"></div>
     <div id="l-body"></div>
   </section>
 </main>
-<footer>
-  <div><b>Attribution</b> &mdash; corpus text is CC-BY-SA third-party reference data (never shipped, never copied verbatim into live content):</div>
-  <div id="foot-attrib"></div>
-  <div style="margin-top:6px">Generated by tools/build_corpus_browser.py (REQ-0270). Dev-only preview, untracked (web/preview/corpus/). No network at view time.</div>
-</footer>
 """
-    body = body.replace("__TOTAL__", str(total)).replace("__SRCS__", _esc(srcs))
-    parts = [
-        "<!DOCTYPE html>",
-        '<html lang="en"><head><meta charset="utf-8"/>',
-        '<meta name="viewport" content="width=device-width, initial-scale=1"/>',
-        "<title>Corpus Browser &middot; REQ-0270</title>",
-        "<style>", CSS, "</style></head><body>",
-        body,
-        '<script id="corpus-data" type="application/json">', data_json,
-        "</script>",
-        "<script>", JS, "</script>",
-        "</body></html>", "",
-    ]
-    return "\n".join(parts)
+
+
+def build_monsters_html(dataset):
+    meta = dataset["meta"]
+    sub = ("REQ-0277 &middot; monsters (basis: live_self) &middot; corpus "
+           "enemy entries: 0 &middot; %d live enemies + %d skills vs live_self "
+           "bands &middot; dev-only, untracked"
+           % (meta.get("live_enemy_rows", 0), meta.get("live_skill_rows", 0)))
+    js = JS_ENEMY_BANDS + JS_LIVE + BOOT_MONSTERS
+    return _shell("Corpus Browser · Monsters", "Corpus Browser — Monsters",
+                  sub, "monsters", MONSTERS_MAIN, dataset, js)
 
 
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 def run(data_dir, out_dir, stats_path, items_path=None, skills_path=None,
-        enemy_bands_path=None):
+        enemy_bands_path=None, enemies_path=None):
     if items_path is None:
         items_path = os.path.join(REPO, "content", "live", "live_items.json")
     if skills_path is None:
         skills_path = os.path.join(REPO, "content", "live", "dungeon",
                                    "skills.json")
+    if enemies_path is None:
+        enemies_path = os.path.join(REPO, "content", "live", "dungeon",
+                                    "enemies.json")
     if enemy_bands_path is None:
         enemy_bands_path = os.path.join(REPO, "content", "enemy_bands.json")
-    live_specs = [("item", items_path), ("skill", skills_path)]
-    dataset = build_dataset(data_dir, stats_path, live_specs, enemy_bands_path)
-    html = build_html(dataset)
+
+    corpora = _load_corpora(data_dir)
+    stats = load_json(stats_path)
+    item_bands = stats.get("bands", {})
+    enemy_bands = (load_json(enemy_bands_path)
+                   if enemy_bands_path and os.path.exists(enemy_bands_path)
+                   else None)
+    items_doc = load_json(items_path) if os.path.exists(items_path) else {}
+    skills_doc = load_json(skills_path) if os.path.exists(skills_path) else {}
+    enemies_doc = load_json(enemies_path) if os.path.exists(enemies_path) else {}
+
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, "index.html")
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(html)
-    return out_path
+    pages = {
+        "index": (build_index_html,
+                  build_index_dataset(corpora, stats)),
+        "items": (build_items_html,
+                  build_items_dataset(corpora, stats, item_bands, items_doc)),
+        "monsters": (build_monsters_html,
+                     build_monsters_dataset(corpora, stats, skills_doc,
+                                            enemies_doc, enemy_bands)),
+    }
+    out_paths = {}
+    for name, (builder, dataset) in pages.items():
+        html = builder(dataset)
+        out_path = os.path.join(out_dir, name + ".html")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        out_paths[name] = out_path
+    return out_paths
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Build the dev-only static HTML "
-                                 "corpus browser (REQ-0270).")
+                                 "corpus browser: index / items / monsters "
+                                 "(REQ-0270/0277).")
     ap.add_argument("--data-dir", default="data/corpus",
                     help="normalized corpus dir (contains normalized/*.json)")
     ap.add_argument("--out", default="web/preview/corpus",
-                    help="output dir for index.html")
+                    help="output dir for index.html / items.html / monsters.html")
     ap.add_argument("--stats", default="content/corpus_stats.json",
-                    help="corpus_stats.json path")
+                    help="corpus_stats.json path (bands_scope=item)")
     ap.add_argument("--items", default=None,
                     help="live po/2 items file (default content/live/live_items.json)")
     ap.add_argument("--skills", default=None,
                     help="live skill/1 file (default content/live/dungeon/skills.json)")
+    ap.add_argument("--enemies", default=None,
+                    help="live enemy/1 file (default content/live/dungeon/enemies.json)")
     ap.add_argument("--enemy-bands", default=None,
                     help="enemy_bands.json (default content/enemy_bands.json)")
     args = ap.parse_args(argv)
-    out_path = run(args.data_dir, args.out, args.stats, args.items,
-                   args.skills, args.enemy_bands)
-    print("wrote " + out_path)
+    out_paths = run(args.data_dir, args.out, args.stats, args.items,
+                    args.skills, args.enemy_bands, args.enemies)
+    for name in ("index", "items", "monsters"):
+        print("wrote " + out_paths[name])
     return 0
 
 
