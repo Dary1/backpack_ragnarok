@@ -559,5 +559,142 @@ T('REQ-0185 the dungeon dialect does NOT leak: a good po/2 still PASSes', () => 
   assert.strictEqual(r.overall, 'PASS', 'a good po/2 must still PASS after the dungeon dialect landed');
 });
 
+// =====================================================================
+// REQ-0266 gate: the unit_skin/1 machine checks. A unit_skin def is COSMETIC
+// identity: a `slot` (the D1 discriminator -- "unit" dresses a portrait,
+// "bpskin" dresses a Backpack), a FREE artwork reference, and the live units it
+// may dress. Its rules live in shared/content_validate.cjs
+// (validateUnitSkinEntry) and are REUSED by the dialect, never re-implemented.
+// schema_vocab cross-checks units[] against the LIVE unit roster; engine_types
+// and gen_data are honestly applicable:false WITH a reason (a unit_skin has no
+// engine-consumed record at all, and tool_gen_data has never seen one).
+// =====================================================================
+const unitSkins = JSON.parse(fs.readFileSync(path.join(REPO, 'content', 'live', 'live_unit_skins.json'), 'utf8'));
+const USKIN_SCHEMA = unitSkins.schema; // 'unit_skin/1'
+const GOOD_USKIN = unitSkins.entries.find((s) => s.slot === 'unit');
+const GOOD_BPSKIN = unitSkins.entries.find((s) => s.slot === 'bpskin');
+const uskinClone = () => JSON.parse(JSON.stringify(GOOD_USKIN));
+
+T('REQ-0266 dialect resolution: unit_skin/1 is its own dialect, and it does not disturb the others', () => {
+  assert.strictEqual(checks._dialectFor('unit_skin/1').name, 'unit_skin/1');
+  assert.deepStrictEqual(checks._dialectFor('unit_skin/1').range_fields, [], 'a skin has no roll ranges');
+  assert.strictEqual(checks._dialectFor('enemy/1').name, 'enemy/1', 'the enemy dialect is untouched');
+  assert.strictEqual(checks._dialectFor('po/2').name, 'default');
+});
+
+T('REQ-0266 positive: EVERY live unit_skin/1 entry PASSes with its data untouched (both slots)', () => {
+  assert.ok(unitSkins.entries.length >= 108, 'REQ-0266 shipped 54 units x 2 slots; the catalog GROWS with later cosmetics');
+  for (const s of unitSkins.entries) {
+    const r = checks.runChecks('unit_skin', USKIN_SCHEMA, clone(s));
+    assert.strictEqual(r.overall, 'PASS', s.id + ' -> ' + r.overall + ' (' + failedNames(r).join(',') + ': '
+      + r.checks.filter((c) => !c.ok && c.applicable !== false).map((c) => c.detail).join(' | ') + ')');
+    assert.strictEqual(r.dialect, 'unit_skin/1', s.id + ' checked under the unit_skin/1 dialect');
+  }
+});
+
+T('REQ-0266 the live corpus really exercises BOTH slots -- the positive case is not vacuous', () => {
+  const slots = new Set(unitSkins.entries.map((s) => s.slot));
+  assert.deepStrictEqual([...slots].sort(), ['bpskin', 'unit'], 'both D1 meanings are live data, in ONE kind');
+  assert.ok(GOOD_USKIN && GOOD_BPSKIN, 'a fixture of each slot exists');
+  // The free-reference law: two defs may legitimately share one artwork. Pin it,
+  // because a gate that re-derived art_ref from the id would forbid the ruling.
+  const byArt = {};
+  for (const s of unitSkins.entries) byArt[s.art_ref] = (byArt[s.art_ref] || 0) + 1;
+  assert.ok(Object.keys(byArt).some((a) => byArt[a] > 1), 'at least one artwork is shared by two skins (littleprincess/princess)');
+});
+
+T('REQ-0266 negative: an unknown slot FAILs schema_vocab BY NAME', () => {
+  const s = uskinClone(); s.slot = 'hat';
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.deepStrictEqual(failedNames(r), ['schema_vocab'], 'only schema_vocab flags it');
+  assert.ok(/slot must be one of unit \| bpskin/.test(checkOf(r, 'schema_vocab').detail), 'names the legal slots');
+});
+
+T('REQ-0266 negative: a unit the LIVE roster does not know FAILs schema_vocab BY NAME', () => {
+  const s = uskinClone(); s.units = ['unit_that_does_not_exist'];
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/unit_that_does_not_exist/.test(checkOf(r, 'schema_vocab').detail), 'names the missing unit');
+  assert.ok(/no live unit def/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: an EMPTY units[] FAILs (a skin that dresses nothing is fiction)', () => {
+  const s = uskinClone(); s.units = [];
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/units must be a non-empty array/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: a DUPLICATE unit inside units[] FAILs', () => {
+  const s = uskinClone(); s.units = [s.units[0], s.units[0]];
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/twice/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: a missing art_ref FAILs (a skin with no artwork resolves to nothing)', () => {
+  const s = uskinClone(); delete s.art_ref;
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/art_ref is required/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: a missing i18n.ja.name FAILs (MANDATORY, exactly as unit/1 requires it)', () => {
+  const s = uskinClone(); delete s.i18n;
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/i18n\.ja\.name is MANDATORY/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: a NON-ja locale FAILs -- SUPPORTED_LOCALES is NOT widened for skins', () => {
+  const s = uskinClone(); s.i18n = { ja: s.i18n.ja, en: { name: 'Elf Portrait' } };
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL', 'a unit skin is roster content, not dungeon content: {ja} only');
+  assert.ok(/unknown i18n locale "en"/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: an unknown field FAILs (closed key set, the validateBody discipline)', () => {
+  const s = uskinClone(); s.palette = { fill: '#123456' };
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL', 'a bpskin/1 palette is not part of unit_skin/1');
+  assert.ok(/unknown field "palette"/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 negative: a missing name FAILs schema_vocab (the default name field, no dialect spelling)', () => {
+  const s = uskinClone(); delete s.name;
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, s);
+  assert.strictEqual(r.overall, 'FAIL');
+  assert.ok(/name \(non-empty string\) required/.test(checkOf(r, 'schema_vocab').detail));
+});
+
+T('REQ-0266 honesty: engine_types and gen_data are applicable:false WITH A REASON, not a free PASS', () => {
+  const r = checks.runChecks('unit_skin', USKIN_SCHEMA, uskinClone());
+  for (const name of ['engine_types', 'gen_data', 'integrate']) {
+    const c = checkOf(r, name);
+    assert.strictEqual(c.applicable, false, name + ' must be recorded as not-applicable for a cosmetic def');
+    assert.ok(typeof c.detail === 'string' && c.detail.length > 20, name + ' must SAY WHY it does not apply (a green chip with no reason is the lie this convention exists to prevent)');
+    assert.ok(/unit_skin/.test(c.detail), name + ' reason names the kind it is talking about');
+  }
+  // ...and the ONE check that does apply carries the whole verdict.
+  assert.strictEqual(checkOf(r, 'schema_vocab').applicable, true);
+  assert.strictEqual(failedNames(r).length, 0);
+});
+
+T('REQ-0266 the unit_skin dialect does NOT leak: po/2, enemy/1 and unit/1 keep their own rules', () => {
+  assert.strictEqual(checks.runChecks('po_def', PO_SCHEMA, GOOD_PO).overall, 'PASS', 'a good po/2 must still PASS after the unit_skin dialect landed');
+  assert.strictEqual(checks.runChecks('monster_def', ENEMY_SCHEMA, GOOD_ENEMY).overall, 'PASS', 'enemy/1 is untouched');
+  // The sharpest non-leakage case: a unit_skin's OWN fields must not be blessed
+  // for a unit_def. `slot`/`art_ref`/`units` are not unit/1 keys, and unit/1's
+  // allowlist is what has to say so.
+  const bogusUnit = { id: 'test_leak_unit', name: 'Leak', slot: 'unit', art_ref: 'x', units: ['elf'], connection_shape: 'bishop', icon: 'x', i18n: { ja: { name: 'x' } } };
+  const r = checks.runChecks('unit_def', 'unit/1', bogusUnit);
+  assert.strictEqual(r.overall, 'FAIL', 'unit_skin fields are not editable on a unit_def');
+  assert.ok(/unknown field/.test(checkOf(r, 'schema_vocab').detail));
+  // ...and the mirror: a unit_def is not a legal unit_skin either.
+  const bogusSkin = { id: 'test_leak_skin', name: 'Leak', rarity: 'Common', icon: 'x', connection_shape: 'bishop', i18n: { ja: { name: 'x' } } };
+  assert.strictEqual(checks.runChecks('unit_skin', USKIN_SCHEMA, bogusSkin).overall, 'FAIL', 'a unit/1 entry is not a legal unit_skin/1 entry');
+});
+
 console.log('\n== REQ-0161/0160 dialect: ' + pass + ' passed, ' + fail + ' failed ==');
 process.exit(fail === 0 ? 0 : 1);

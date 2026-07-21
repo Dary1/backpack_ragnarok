@@ -4,7 +4,7 @@
 // now the barrel, for the module history).
 import { getJSON } from './http';
 import type { ConnShapeMap, GameState, ItemDefMap, Layout, SIDefMap, Trees, UnitDefMap } from '../engine/engine.d.ts';
-import type { ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterUnits, ApiTmEntry } from '../../../shared/dto';
+import type { ApiBpSkinRegistry, ApiContentPayload, ApiPackEntry, ApiScenario, ApiStarterUnits, ApiTmEntry, ApiUnitSkinEntry } from '../../../shared/dto';
 import { fetchCanvas } from './profile';
 
 // ---- engine-ready shape (what Engine.create(...) + makeState() consume) ----
@@ -29,6 +29,15 @@ export interface GameData {
    * (`/api/art/<artwork>.png`). Sparse; an absent id falls back to its SVG
    * sprite icon. Handed to board/itemArt.setItemArtUrls() at boot. */
   ART_URLS: Record<string, string>;
+  /** REQ-0266: the unit_skin/1 cosmetic defs, keyed by SKIN id -- the same key
+   * ART_URLS uses for them (ruling D-A), which is what keeps /api/content public
+   * and cacheable while the per-player PICK rides a separate authenticated
+   * fetch. Handed to board/unitIcon.setUnitSkins() at boot. */
+  UNIT_SKINS: Record<string, ApiUnitSkinEntry>;
+  /** REQ-0126's bpskin/1 registry, in the raw {entries:[...]} envelope
+   * board/skin/skinRegistry.loadSkinDefs() consumes. SERVED since REQ-0126 and
+   * dropped on the floor here until REQ-0266 declared it in shared/dto. */
+  BPSKINS: ApiBpSkinRegistry;
   makeState: () => GameState;
   starterUnits: ApiStarterUnits | null; // REQ-0051: fresh-profile starter-unit seed source
 }
@@ -105,6 +114,9 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
   const PACKS: Record<string, ApiPackEntry> = payload.packs ?? {};
   // REQ-0133: the server-resolved registry-first art URLs (additive, sparse).
   const ART_URLS: Record<string, string> = payload.art_urls ?? {};
+  // REQ-0266: cosmetic skin defs + the bpskin registry (both degrade to empty).
+  const UNIT_SKINS: Record<string, ApiUnitSkinEntry> = payload.unit_skins ?? {};
+  const BPSKINS: ApiBpSkinRegistry = payload.bpskins ?? { entries: [] };
 
   const scenarioForState: Partial<ApiScenario> = JSON.parse(JSON.stringify(payload.scenario ?? {}));
   delete scenarioForState.layout;
@@ -114,7 +126,7 @@ export function gameDataFromApiContent(payload: ApiContentPayload): GameData {
     return JSON.parse(JSON.stringify(scenarioClone));
   }
 
-  return { LAYOUT, ITEMS, SI_DEFS, TMS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, makeState, starterUnits: payload.starterUnits ?? null };
+  return { LAYOUT, ITEMS, SI_DEFS, TMS, TREES, UNITS, CONN_SHAPES, PACKS, ART_URLS, UNIT_SKINS, BPSKINS, makeState, starterUnits: payload.starterUnits ?? null };
 }
 
 export type DataSource = 'live' | 'error';

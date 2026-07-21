@@ -232,6 +232,23 @@ let boardLoadPromise: Promise<Map<string, Texture>> | null = null;
  * nonetheless live, typed and exercised: the moment art lands, it is a
  * manifest edit, not a renderer change.
  */
+/**
+ * REQ-0266: drop the cached board texture map so the NEXT loadBoardTextures()
+ * call rebuilds it from a freshly-resolved raster manifest.
+ *
+ * `boardLoadPromise` is cached for the whole session -- that is the point (one
+ * decode per asset; Board.tsx, InventoryBoard.tsx and Monitor.tsx each call
+ * loadBoardTextures() exactly once) -- which meant a runtime skin swap had NO
+ * way to reach the texture map: unitIconRasters() would return the new skinned
+ * keys and nobody would ever ask it again. This is that hook, and it is the
+ * whole of it: callers re-await loadBoardTextures() and re-render. Cheap,
+ * because Pixi's Assets cache is keyed by URL -- unchanged rasters are not
+ * re-fetched, only re-keyed.
+ */
+export function invalidateBoardTextures(): void {
+  boardLoadPromise = null;
+}
+
 export function loadBoardTextures(): Promise<Map<string, Texture>> {
   if (!boardLoadPromise) {
     boardLoadPromise = (async () => {

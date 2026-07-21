@@ -28,7 +28,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { ApiError, rollWorkshopGacha, type ApiRolledBp } from '../api';
 import type { ApiConnShape } from '../../../shared/dto';
 import { getInventoryRenderer } from '../board/inventoryRenderer';
-import { unitArtUrl } from '../board/unitIcon';
+import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel'; // REQ-0208: lifted from this file
 import { firstFitPlace, firstFitOrMergeTM, firstFitPlaceBp } from '../lib/placement';
 import { pulseTab } from '../lib/tabPulse';
@@ -177,6 +177,12 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
   const canAfford = balance >= cost;
   const rolledShapeKey = rollResult?.unitDef?.connection_shape;
   const rolledShape = rolledShapeKey ? connShapes[rolledShapeKey] : undefined;
+  // REQ-0266: the rolled Unit's portrait, through the ONE unit art chain (active
+  // skin -> the def's own icon). Hoisted out of the JSX because the result panel
+  // is a nested conditional with nowhere to put a statement.
+  const rolledUnitArt = rollResult?.unitDef
+    ? resolveUnitArtUrl(rollResult.unitDef.id, rollResult.unitDef.icon)
+    : null;
 
   const handleRoll = useCallback(async () => {
     setRolling(true);
@@ -466,9 +472,14 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 if (!def) return null; // a pool entry with no live def cannot drop -- do not advertise it
                 const shp = connShapes[def.connection_shape];
                 const nm = locale === 'ja' && def.i18n?.ja?.name ? def.i18n.ja.name : def.name;
+                // REQ-0266: same chain the board and the Dex walk, so the pool
+                // advertises the portrait the player will actually receive.
+                const art = resolveUnitArtUrl(row.unit, def.icon);
                 return (
                   <div className="workshop-pool-cell" key={row.unit} data-testid="workshop-pool-unit" data-unit={row.unit}>
-                    <img className="workshop-pool-art" src={unitArtUrl(def.icon)} alt="" width={44} height={44} loading="lazy" />
+                    {art.url
+                      ? <img className="workshop-pool-art" data-art-source={art.source} src={art.url} alt="" width={44} height={44} loading="lazy" />
+                      : null}
                     <span className="workshop-pool-name">{nm}</span>
                     <span className="workshop-pool-shape t-micro">{shapeLabel(def.connection_shape, shp, locale)}</span>
                   </div>
@@ -554,7 +565,9 @@ export function WorkshopPage({ locale }: WorkshopPageProps) {
                 {rollResult.unitDef ? (
                   <div className="workshop-result-stat workshop-result-unit" data-testid="workshop-result-unit" data-unit={rollResult.unitDef.id}>
                     <span className="workshop-result-stat-lbl">{t(locale, 'workshop.statUnitName')}</span>
-                    <img className="workshop-result-unit-art" src={unitArtUrl(rollResult.unitDef.icon)} alt="" width={56} height={56} />
+                    {rolledUnitArt?.url
+                      ? <img className="workshop-result-unit-art" data-art-source={rolledUnitArt.source} src={rolledUnitArt.url} alt="" width={56} height={56} />
+                      : null}
                     <b className="workshop-result-unit-name dj">{unitName(rollResult.unitDef, locale)}</b>
                   </div>
                 ) : null}

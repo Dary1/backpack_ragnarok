@@ -25,6 +25,7 @@
 // discipline as sprites.ts's parseSymbols(), which check_sprites.mjs drives
 // with @xmldom/xmldom instead of browser globals).
 import type { UnitDefMap } from '../engine/engine.d.ts';
+import { defaultUnitSkinId, unitSkinApplies, type UnitSkinEntryLike, type UnitSkinSlot } from './skin/skinRegistry';
 
 /** The pre-REQ-0125 glyph: one SVG <symbol> in content/sprite_all_v12.svg,
  * drawn identically for every BP. Bottom-but-one rung of the chain, and --
@@ -146,6 +147,80 @@ export function unitArtUrl(icon: string): string {
  * "every unit def that declares an icon", exactly as REQ-0125a promised: art
  * arrives as DATA, and the renderer was never touched to receive it.
  */
+// REQ-0266 (item 21): cosmetic skins arrive as DATA -- the same module-global
+// idiom, for the same reason, as UNIT_DEFS above (three board components mount
+// their own renderer and none should thread a content payload down to a texture
+// loader). Three registries land here at boot: the unit_skin/1 defs and the
+// resolved art URLs, BOTH keyed by SKIN id (ruling D-A -- /api/content is public
+// and mtime-cached, so it can never carry per-player state), and the player's
+// own PICKS from the authenticated GET /api/profile/:id/skins. Absence at every
+// level is the NORMAL case (ruling D5: no migration ever wrote a skin row), so
+// every getter here is total and returns null rather than inventing a default.
+
+/** The picks half of /api/profile/:id/skins. EXPLICIT picks only -- the server's
+ * resolveSkinPrefs filters unresolvable ones out and never injects defaults, so
+ * an absent key genuinely means "this player never chose". */
+export interface UnitSkinPrefs { unit?: Record<string, string | null> | null; bpskin?: Record<string, string | null> | null; }
+
+let UNIT_SKINS: Record<string, UnitSkinEntryLike> = {};
+let SKIN_ART_URLS: Record<string, string> = {};
+let SKIN_PICKS: { unit: Record<string, string | null>; bpskin: Record<string, string | null> } = { unit: {}, bpskin: {} };
+
+/** REQ-0266. Idempotent; safe to call again on a content hot-reload or after a
+ * skin swap (pair it with sprites.ts's invalidateBoardTextures()). */
+export function setUnitSkins(
+  skins: Record<string, UnitSkinEntryLike> | null | undefined,
+  artUrls?: Record<string, string> | null,
+  prefs?: UnitSkinPrefs | null
+): void {
+  UNIT_SKINS = skins || {};
+  SKIN_ART_URLS = artUrls || {};
+  SKIN_PICKS = { unit: (prefs && prefs.unit) || {}, bpskin: (prefs && prefs.bpskin) || {} };
+}
+
+export function unitSkins(): Record<string, UnitSkinEntryLike> { return UNIT_SKINS; }
+
+/** Adopted-render URL for one SKIN id, or null. Sparse by design: an unadopted
+ * artwork has no entry, so the chain falls through instead of 404ing. */
+export function skinArtUrl(skinId: string | null | undefined): string | null {
+  if (!skinId) return null;
+  const url = SKIN_ART_URLS[skinId];
+  return typeof url === 'string' && url.length > 0 ? url : null;
+}
+
+/** The `profile` rung: this player's pick for (unit, slot), re-validated against
+ * the defs so a pick for a deleted/re-slotted skin -- or one whose def never
+ * listed this unit -- reads as ABSENT rather than blanking the unit. */
+export function pickedSkinId(unitId: string | null | undefined, slot: UnitSkinSlot): string | null {
+  if (!unitId) return null;
+  const id = SKIN_PICKS[slot] ? SKIN_PICKS[slot][unitId] : null;
+  if (typeof id !== 'string' || !id) return null;
+  return unitSkinApplies(UNIT_SKINS[id], unitId, slot) ? id : null;
+}
+
+/** The `set` rung: the def-declared default for (unit, slot). */
+export function defaultSkinId(unitId: string | null | undefined, slot: UnitSkinSlot): string | null {
+  return defaultUnitSkinId(UNIT_SKINS, unitId, slot);
+}
+
+/** pick -> def default -> nothing. The ONE value the unit-portrait chain needs
+ * (resolveUnitIcon keeps its 4 rungs and wants a single skin key); the BP chain
+ * asks for the two rungs SEPARATELY, because bpSkinResolve reports WHICH rung
+ * fired and collapsing them would make that report a lie. */
+export function activeSkinId(unitId: string | null | undefined, slot: UnitSkinSlot): string | null {
+  return pickedSkinId(unitId, slot) ?? defaultSkinId(unitId, slot);
+}
+
+/** Texture-map key for a unit's ACTIVE portrait skin, or null when it has none
+ * or its artwork is not adopted. Feeds resolveUnitIcon's `skinKey` rung -- null,
+ * NOT the default key, so a unit with no skin still reports rung 'default'. */
+export function activeUnitSkinKey(unitId: string | null | undefined): string | null {
+  if (!unitId) return null;
+  const skinId = activeSkinId(unitId, 'unit');
+  if (!skinId || !skinArtUrl(skinId)) return null;
+  return unitIconKey(unitId, skinId);
+}
+
 export function unitIconRasters(): RasterEntry[] {
   const out: RasterEntry[] = [];
   for (const id of Object.keys(UNIT_DEFS)) {
@@ -153,6 +228,14 @@ export function unitIconRasters(): RasterEntry[] {
     if (typeof icon === 'string' && icon.length > 0) {
       out.push({ key: unitIconKey(id), url: unitArtUrl(icon) });
     }
+    // REQ-0266: the SKINNED key form `unit:<id>@<skinId>`. unitIconKey has
+    // supported it since REQ-0125a and is unit-tested on it; nothing had ever
+    // EMITTED one. Only the RESOLVED-ACTIVE skin is emitted, never the whole
+    // 108-def corpus -- eagerly loading every variant trades a blank board for
+    // a slow one, and the resolver only ever asks for this one key.
+    const skinId = activeSkinId(id, 'unit');
+    const skinUrl = skinArtUrl(skinId);
+    if (skinId && skinUrl) out.push({ key: unitIconKey(id, skinId), url: skinUrl });
   }
   return out;
 }

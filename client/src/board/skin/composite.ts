@@ -7,6 +7,13 @@
 // corners sharp (BS-G4 rounded-corner blend), total over holes. corner_radius=0
 // reproduces the plain square fill (neutral default = no visual change). No
 // Pixi/DOM/IO; deterministic.
+// REQ-0266 (D2): a RASTER fill path joins the palette-procedural one. When the
+// def declares art.fill_texture AND the caller supplies the decoded pixels, the
+// interior is tiled from that raster; the welt/edge treatment, the silhouette
+// rounding and the LAYER assignment are untouched, so checks.ts reads a
+// textured composite exactly as it reads a palette one. Absent either input the
+// palette path runs UNCHANGED -- that is the byte-identity the harness golden
+// pins for neutral/devornate.
 import { resolveAutotile, type Cell } from "./autotile";
 import type { BpSkinDef } from "./skinRegistry";
 export interface CompositeParams { cellPx: number; margin: number; }
@@ -37,7 +44,50 @@ function edtToTrue(mask: Uint8Array, W: number, H: number): Float64Array {
   for (let i = 0; i < W * H; i++) out[i] = Math.sqrt(g[i]);
   return out;
 }
-export function compositeSkin(cells: ReadonlyArray<Cell>, def: BpSkinDef, bg: string, params: CompositeParams = DEFAULT_PARAMS): RenderedComposite {
+/** REQ-0266 (D2): a decoded fill raster, handed IN by the caller. Deliberately
+ * NOT an HTMLImageElement: compositeSkin() must stay callable from plain Node --
+ * three offline harnesses ssr-load this module and there is no DOM there -- so
+ * DECODING is the caller's job and this module only ever sees pixels. */
+export interface FillRaster { width: number; height: number; rgba: Uint8ClampedArray; }
+/** The raster path is taken only when the def DECLARES a texture AND a usable
+ * raster was actually supplied. Either one missing = today's palette-procedural
+ * path, byte for byte -- which is what `neutral` and `devornate` render through
+ * and what the bpskin harness golden pins. Missing art never blocks a draw. */
+/** Does this def declare REAL ART? THE predicate, exported because the board's
+ * paint guard (skin/bpSkinTexture.ts's bpSkinSprite) and this compositor's own
+ * raster path must never disagree about what "has a texture" means. It lives
+ * here, in the pure Node-loadable module the renderer, the gates and the offline
+ * harnesses can all reach. Note the two different right answers it drives: a def
+ * that declares no texture renders palette-procedural HERE (an offline PNG wants
+ * a solid body) and renders NOTHING AT ALL on the board (where an opaque body
+ * would cover the per-BP colour tint). */
+export function declaresFillTexture(def: BpSkinDef): boolean {
+  return !!def.art && typeof def.art.fill_texture === "string" && def.art.fill_texture.length > 0;
+}
+function fillTile(def: BpSkinDef, raster?: FillRaster | null): FillRaster | null {
+  if (!declaresFillTexture(def) || !raster) return null;
+  if (!(raster.width > 0) || !(raster.height > 0)) return null;
+  if (!raster.rgba || raster.rgba.length < raster.width * raster.height * 4) return null;
+  return raster;
+}
+/** Tiles the raster in COMPOSITE space (not per cell), so a multi-cell BP wears
+ * ONE continuous texture and a run of cells has no seam at its internal cell
+ * borders (REQ-0131's seamless-along-any-run law, now for real pixels). Alpha is
+ * composited over the palette fill, so a texture with holes reads as the skin's
+ * own colour instead of punching through to the board. */
+function sampleTile(t: FillRaster, x: number, y: number, base: [number, number, number]): [number, number, number] {
+  const sx = ((x % t.width) + t.width) % t.width;
+  const sy = ((y % t.height) + t.height) % t.height;
+  const o = (sy * t.width + sx) * 4;
+  const a = t.rgba[o + 3] / 255;
+  if (a >= 1) return [t.rgba[o], t.rgba[o + 1], t.rgba[o + 2]];
+  return [
+    Math.round(t.rgba[o] * a + base[0] * (1 - a)),
+    Math.round(t.rgba[o + 1] * a + base[1] * (1 - a)),
+    Math.round(t.rgba[o + 2] * a + base[2] * (1 - a)),
+  ];
+}
+export function compositeSkin(cells: ReadonlyArray<Cell>, def: BpSkinDef, bg: string, params: CompositeParams = DEFAULT_PARAMS, raster?: FillRaster | null): RenderedComposite {
   const cellPx = params.cellPx;
   const rows = cells.map((c) => c[0]); const colsA = cells.map((c) => c[1]);
   const r0 = Math.min(...rows), c0 = Math.min(...colsA), r1 = Math.max(...rows), c1 = Math.max(...colsA);
@@ -61,12 +111,14 @@ export function compositeSkin(cells: ReadonlyArray<Cell>, def: BpSkinDef, bg: st
   const dRs = edtToTrue(notRs, W, H);
   const bgc = hexToRgb(bg), fillC = hexToRgb(def.palette.fill), fill2C = hexToRgb(def.palette.fill2 || def.palette.fill), weltC = hexToRgb(def.palette.welt || def.palette.fill);
   const weltDark: [number, number, number] = [Math.max(0, weltC[0] - 40), Math.max(0, weltC[1] - 40), Math.max(0, weltC[2] - 40)];
+  const tile = fillTile(def, raster);
   const rgba = new Uint8Array(N * 4); const layer = new Uint8Array(N);
   const hasOverride = !!def.palette.fill2 && def.palette.fill2 !== def.palette.fill;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x; let col: [number, number, number] = bgc as [number, number, number]; let lay: number = LAYER.bg;
     if (rs[i]) {
       if (B > 0 && dRs[i] <= B) { const notch = ((x + y) % 12) < 5; col = notch ? weltDark : (weltC as [number, number, number]); lay = LAYER.welt; }
+      else if (tile) { col = sampleTile(tile, x, y, fillC as [number, number, number]); lay = LAYER.fill; }
       else { const key = cellIdx[i]; const cr = Math.floor(key / 1000); const cc = key - cr * 1000; if (hasOverride && ((cr + cc) & 1)) { col = fill2C as [number, number, number]; lay = LAYER.override; } else { col = fillC as [number, number, number]; lay = LAYER.fill; } }
     }
     rgba[i * 4] = col[0]; rgba[i * 4 + 1] = col[1]; rgba[i * 4 + 2] = col[2]; rgba[i * 4 + 3] = 255; layer[i] = lay;

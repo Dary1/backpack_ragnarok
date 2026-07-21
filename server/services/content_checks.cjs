@@ -104,12 +104,19 @@ function loadVocab(root, schema_ref) {
 // monsters and WHERE each one stands. It spells its display name `name` (the
 // default), so only its own reference/geometry rules are new; those live in
 // shared/content_validate.cjs, not here.
+// REQ-0266 adds unit_skin/1 (content/live/live_unit_skins.json): a COSMETIC def
+// that carries no rarity, no stats and no effects -- it is identity + a `slot`
+// + a FREE artwork reference + the units it may dress. It spells its display
+// name `name` (the default), so nothing about the dialect table itself is new;
+// its own rules (slot vocabulary, live-unit references, at-most-one-default per
+// (unit, slot)) live in shared/content_validate.cjs and are REUSED below.
 const DIALECTS = {
   'enemy/1': { name: 'enemy/1', rarity_case: 'lower', range_fields: ['hp'] },
   'skill/1': { name: 'skill/1', rarity_case: 'exact', range_fields: [], name_field: 'name_en' },
   'monster_pack/1': { name: 'monster_pack/1', rarity_case: 'exact', range_fields: [] },
   'gimic/1': { name: 'gimic/1', rarity_case: 'exact', range_fields: [] }, // REQ-0211
   'dungeon/1': { name: 'dungeon/1', rarity_case: 'exact', range_fields: [] }, // REQ-0185
+  'unit_skin/1': { name: 'unit_skin/1', rarity_case: 'exact', range_fields: [] }, // REQ-0266
 };
 const DEFAULT_DIALECT = { name: 'default', rarity_case: 'exact', range_fields: [], name_field: 'name' };
 
@@ -321,6 +328,34 @@ function schemaVocabCheck(kind, data, vocab, dialect) {
     } catch (e) {
       errs.push(e.message);
     }
+  } else if (kind === 'unit_skin') {
+    // REQ-0266. A unit_skin's closed vocabulary is not vocab.json -- it is THE
+    // LIVE UNIT ROSTER (every id in `units[]` must have a unit def, or the skin
+    // can never be resolved by any of the three chains and nothing else would
+    // say so) plus its own slot/i18n rules. All of that already exists,
+    // executable, in shared/content_validate.cjs (validateUnitSkinEntry) -- the
+    // SAME function the live content gate runs. REUSED here, never
+    // re-implemented: two copies of "what is a legal skin" would drift, and the
+    // drift would be invisible (the REQ-0171/0184 lesson).
+    //
+    // NOTE the corpus rule (at most ONE default per (unit, slot)) is NOT checked
+    // here: runChecks() validates ONE variant in isolation, and a variant is
+    // routinely a NOT-YET-adopted candidate, so the live file is not the corpus
+    // it belongs to. The corpus sweep is the live gate's job (tools/check_units.cjs).
+    const { validateUnitSkinEntry } = require(path.join(repoRoot(), 'shared', 'content_validate.cjs'));
+    let unitIds = null;
+    try {
+      const units = loadJson(path.join(repoRoot(), 'content', 'live', 'live_units.json'));
+      unitIds = new Set((units.entries || []).map((e) => e.id));
+    } catch (e) {
+      errs.push('cannot read content/live/live_units.json to resolve units[]: ' + e.message);
+      unitIds = null; // shape-only when the live roster cannot be read
+    }
+    try {
+      validateUnitSkinEntry(data, { unitIds: unitIds });
+    } catch (e) {
+      errs.push(e.message);
+    }
   } else if (kind === 'skill_def') {
     // skill/1 carries its ONE trigger+verb at the top level. Wrap it as a single
     // pseudo-effect so the record gets the IDENTICAL vocab validation every other
@@ -422,6 +457,15 @@ function engineTypesCheck(kind, data, root, dialect) {
     else errs.push('dive must be an object {packEncounters, gimicSlots} (the roller reads the level-scaling bands)');
     return { ok: errs.length === 0, detail: errs.length === 0 ? 'runtime field types conform to what sim/dungeon_roll.cjs rolls a dive from' : errs.join('; ') };
   }
+  // REQ-0266: a unit_skin declares no ENGINE-consumed record at all -- it is
+  // pure cosmetics (identity + slot + an artwork reference + the units it may
+  // dress). mock-src/engine.js never sees one: the def is consumed by the
+  // CLIENT's resolution chains (unitIcon / bpSkinResolve) and by the art_urls
+  // join, neither of which is an engine type surface. Recorded honestly as
+  // not-applicable WITH a reason, never as a free PASS (REQ-0160 ruling Q2-sub).
+  if (kind === 'unit_skin') {
+    return { ok: true, applicable: false, detail: 'engine_types not applicable for unit_skin (unit_skin/1 declares no engine-consumed record: no shape, no stats, no effects -- it is cosmetic identity + an artwork reference)' };
+  }
   // skill/1 declares no engine-consumed record (no shape, no slot, no stats): there
   // is no runtime type surface for it to conform to. Recorded honestly as
   // not-applicable rather than as a free PASS (REQ-0160 ruling Q2-sub).
@@ -481,6 +525,12 @@ function genDataCheck(kind, data, root) {
   // def, and a free PASS here would be a lie dressed as a green chip.
   if (kind === 'dungeon') {
     return { ok: true, applicable: false, detail: 'gen_data not applicable for dungeon (tool_gen_data does not consume dungeon/1)' };
+  }
+  // REQ-0266: same honesty for unit_skin -- tool_gen_data consumes items/sis
+  // only and has never seen a cosmetic def, and a free PASS here would be a lie
+  // dressed as a green chip.
+  if (kind === 'unit_skin') {
+    return { ok: true, applicable: false, detail: 'gen_data not applicable for unit_skin (tool_gen_data does not consume unit_skin/1)' };
   }
   const vocabPath = path.join(root, 'content', 'vocab.json');
   const scenarioPath = path.join(root, 'content', 'live', 'scenario.json');

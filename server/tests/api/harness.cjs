@@ -164,6 +164,21 @@ fs.writeFileSync(path.join(liveDir, 'live_packs.json'), JSON.stringify({
       ] },
   ],
 }));
+// REQ-0266: unit_skin/1 defs. Unlike live_units/live_packs this file is
+// OPTIONAL server-side (an absent one degrades to no skins, never a 500), but the
+// fixture ships one so /api/content's unit_skins section and the art_urls join
+// are exercised against real data rather than an empty map. One def per SLOT, both
+// dressing test_queen -- which is what makes the D1 "one kind, two meanings"
+// discriminator observable.
+fs.writeFileSync(path.join(liveDir, 'live_unit_skins.json'), JSON.stringify({
+  schema: 'unit_skin/1',
+  entries: [
+    { id: 'uskin_test_queen', name: 'Test Queen \u2014 Portrait', slot: 'unit', art_ref: 'art:test_queen',
+      units: ['test_queen'], default: true, set: 'test_queen', i18n: { ja: { name: '\u30c6\u30b9\u30c8\u30af\u30a4\u30fc\u30f3 \u2014 \u8096\u50cf' } } },
+    { id: 'uskin_bp_test_queen', name: 'Test Queen \u2014 Pack Skin', slot: 'bpskin', art_ref: 'bpskin_unit_test_queen',
+      units: ['test_queen'], default: true, set: 'test_queen', i18n: { ja: { name: '\u30c6\u30b9\u30c8\u30af\u30a4\u30fc\u30f3 \u2014 \u30d1\u30c3\u30af\u30b9\u30ad\u30f3' } } },
+  ],
+}));
 fs.writeFileSync(path.join(liveDir, 'scenario.json'), JSON.stringify({
   layout: { ROWS: 6, COLS: 6 }, linked: true, bps: [], pos: [], sis: [],
 }));

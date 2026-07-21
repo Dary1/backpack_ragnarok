@@ -21,7 +21,7 @@ function T(name, fn) { try { fn(); console.log('PASS  ' + name); pass++; } catch
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const IMPORTED_AT = '2026-07-14T00:00:00.000Z';
 
-T('kind mapping: the twelve live files map to ten kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources (REQ-0171); monster_pack (REQ-0184), gimic (REQ-0211) and dungeon (REQ-0185) are too', () => {
+T('kind mapping: the thirteen live files map to eleven kinds (po_def has THREE sources); unit_def and gacha_pack are REAL sources (REQ-0171); monster_pack (REQ-0184), gimic (REQ-0211), dungeon (REQ-0185) and unit_skin (REQ-0266) are too', () => {
   const files = bf.SOURCES.map((s) => s.kind + ' <- ' + s.file).sort();
   assert.deepStrictEqual(files, [
     'dungeon <- content/live/dungeon/dungeons.json',  // REQ-0185 -- authored weighted refs to monster_pack + gimic
@@ -36,6 +36,7 @@ T('kind mapping: the twelve live files map to ten kinds (po_def has THREE source
     'skill_def <- content/live/dungeon/skills.json',  // REQ-0160 Q2 = yes
     'tm_def <- content/live/live_tms.json',
     'unit_def <- content/live/live_units.json',       // REQ-0171 (defs shipped by REQ-0170)
+    'unit_skin <- content/live/live_unit_skins.json', // REQ-0266 -- the cosmetic skins (unit portrait + BP skin, ONE kind)
   ]);
   assert.strictEqual(bf.SOURCES.filter((s) => s.kind === 'po_def').length, 3, '2026-07-15: starter POs join live_items + dungeon items under po_def');
   const starterSrc = bf.SOURCES.find((s) => s.file === 'content/live/starter_items.json');
@@ -53,6 +54,7 @@ T('kind mapping: the twelve live files map to ten kinds (po_def has THREE source
   // a ledger that cannot check its own references.
   assert.ok(bf.SOURCES.some((s) => s.kind === 'unit_def'), 'unit_def now HAS a source (REQ-0171)');
   assert.ok(bf.SOURCES.some((s) => s.kind === 'gacha_pack'), 'gacha_pack is a registry kind (REQ-0171)');
+  assert.ok(bf.SOURCES.some((s) => s.kind === 'unit_skin'), 'unit_skin is a registry kind (REQ-0266)');
   assert.ok(/REQ-0171/.test(bf.UNIT_DEF_NOTE), 'the retired "zero by design" note says who retired it');
 });
 
@@ -131,12 +133,13 @@ T('collectAll (real committed corpus): PER-FILE counts match each file, names un
   assert.strictEqual(counts.monster_pack, fileCounts['content/live/dungeon/packs.json'], 'monster_pack backfills its live file (REQ-0184)');
   assert.strictEqual(counts.gimic, fileCounts['content/live/dungeon/gimics.json'], 'gimic backfills its live file (REQ-0211)');
   assert.strictEqual(counts.dungeon, fileCounts['content/live/dungeon/dungeons.json'], 'dungeon backfills its live file (REQ-0185)');
+  assert.strictEqual(counts.unit_skin, fileCounts['content/live/live_unit_skins.json'], 'unit_skin backfills its live file (REQ-0266)');
   assert.strictEqual(counts.po_def,
     fileCounts['content/live/live_items.json'] + fileCounts['content/live/dungeon/items.json']
       + fileCounts['content/live/starter_items.json'],
     'po_def total is the SUM of its three source files (REQ-0160 + 2026-07-15 starter ruling)');
   assert.strictEqual(entries.length,
-    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack + counts.monster_pack + counts.gimic + counts.dungeon);
+    counts.po_def + counts.si_def + counts.tm_def + counts.monster_def + counts.skill_def + counts.unit_def + counts.gacha_pack + counts.monster_pack + counts.gimic + counts.dungeon + counts.unit_skin);
   assert.strictEqual(new Set(entries.map((e) => e.system_name)).size, entries.length,
     'system_names unique across ALL files -- content_defs.system_name is UNIQUE across kinds');
 });
@@ -160,13 +163,17 @@ T('collectAll (count gate): 22 pre-existing + 16 (REQ-0160) + the REQ-0171 units
   // and may grow, so the gate is that the totals RECONCILE, not that they never move.
   assert.strictEqual(entries.length,
     fc['content/live/live_items.json'] + fc['content/live/dungeon/items.json'] + c.si_def + c.tm_def + c.monster_def + c.skill_def
-      + c.unit_def + c.gacha_pack + c.monster_pack + c.gimic + c.dungeon + fc['content/live/starter_items.json'],
+      + c.unit_def + c.gacha_pack + c.monster_pack + c.gimic + c.dungeon + c.unit_skin + fc['content/live/starter_items.json'],
     'the corpus RECONCILES across every source kind (REQ-0207: the ruled base -- monster/skill/tm -- GROWS with deploys, so it is summed dynamically, not frozen at 38)');
   assert.ok(c.unit_def >= 12, 'roster 001 is 12 units (REQ-0170)');
   assert.ok(c.gacha_pack >= 1, 'at least the common_bp pack exists');
   assert.ok(c.monster_pack >= 4, 'REQ-0184 ported batch-002 four packs; the pack catalog GROWS with additive deploys (REQ-0207: batch-005 +3)');
   assert.ok(c.gimic >= 4, 'REQ-0211 migrated the four legacy gimmicks (trap / two door stages / chest) into gimic defs');
   assert.ok(c.dungeon >= 3, 'REQ-0185 authored the frost/grave/wild dungeon defs; the catalog GROWS with additive deploys');
+  // REQ-0266 shipped 54 units x 2 slots. Same doctrine as every kind above: the
+  // cosmetic catalog is CONTENT and may grow, so the gate is that the totals
+  // RECONCILE (asserted just above) and never SHRINK below what shipped.
+  assert.ok(c.unit_skin >= 108, 'REQ-0266 shipped a default portrait + BP skin for each of the 54 units; the skin catalog GROWS with later cosmetics');
 });
 
 T('collectAll: cross-file duplicate system_name REFUSED (content_defs.system_name is UNIQUE across kinds)', () => {
@@ -215,6 +222,10 @@ T('skip list (REQ-0160): the two ruled-IN files left the skip table for SOURCES 
   assert.ok(!skipped.has('content/live/dungeon/gimics.json'), 'gimics.json is not skipped');
   assert.ok(sources.has('content/live/dungeon/gimics.json'), 'gimics.json is a backfill source (gimic kind)');
   assert.ok(!skipped.has('content/live/dungeon/entities.json'), 'the legacy entities.json is gone from the skip table');
+  // REQ-0266: live_unit_skins.json is a brand-new SOURCE, not a new skip -- which is
+  // exactly why the SKIPPED_FILES.length assertion below must stay at four.
+  assert.ok(!skipped.has('content/live/live_unit_skins.json'), 'live_unit_skins.json is not skipped');
+  assert.ok(sources.has('content/live/live_unit_skins.json'), 'live_unit_skins.json is a backfill source (unit_skin kind)');
   // The remaining skips are the ones ruled OUT for good: singletons + compositions.
   assert.strictEqual(bf.SKIPPED_FILES.length, 4, 'exactly the four not-per-entity live files stay out (entities.json left for the gimic kind, REQ-0211)');
 });

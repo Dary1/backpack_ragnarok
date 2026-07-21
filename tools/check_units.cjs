@@ -24,9 +24,15 @@
 //   4. `icon` is NOT asserted to be 'icon-' + id. That convention is DEAD (REQ-0149
 //      G14: Princess and Little Princess are two defs sharing one artwork), and a
 //      gate that re-imposed it would forbid the ruling.
+//   5. REQ-0266: every unit_skin/1 def validates, AND the corpus rule holds -- at most
+//      ONE default per (unit, slot). That rule is a property of the whole corpus, so
+//      no per-variant machine check can see it (content_checks validates one variant
+//      in isolation, and a variant is routinely a not-yet-adopted candidate). THIS is
+//      where it is enforced. A second default would make the resolver pick one
+//      arbitrarily -- the same class of quiet lie as (1).
 const fs = require('fs');
 const path = require('path');
-const { validateUnitEntry, validatePackEntry } = require('../shared/content_validate.cjs');
+const { validateUnitEntry, validatePackEntry, validateUnitSkinEntry } = require('../shared/content_validate.cjs');
 
 const ROOT = path.join(__dirname, '..');
 const CONTENT = process.env.CONTENT_ROOT || path.join(ROOT, 'content');
@@ -97,6 +103,39 @@ for (const p of (packs.entries || [])) {
   } catch (err) {
     fail(err.message);
   }
+}
+
+// REQ-0266: the unit_skin/1 corpus. Optional-with-a-loud-SKIP, the same posture as
+// the art-existence check above: a synthetic CONTENT_ROOT (the api_test fixture tree)
+// ships no skins, and a gate that failed a tree for not carrying content it was never
+// meant to carry would be a gate nobody could run.
+const SKINS_PATH = path.join(CONTENT, 'live', 'live_unit_skins.json');
+if (!fs.existsSync(SKINS_PATH)) {
+  console.log('SKIP  unit_skin check -- no ' + SKINS_PATH + ' in this content root.');
+} else {
+  const skins = load(SKINS_PATH);
+  if (skins.schema !== 'unit_skin/1') fail('live_unit_skins.json: schema must be "unit_skin/1", got ' + JSON.stringify(skins.schema));
+  const skinEntries = skins.entries || [];
+  const skinSeen = new Set();
+  for (const s of skinEntries) {
+    try {
+      // The WHOLE corpus is handed in, which is what makes the at-most-one-default
+      // -per-(unit, slot) rule checkable; the validator skips the entry itself.
+      validateUnitSkinEntry(s, { unitIds: seen, skinIds: skinEntries });
+    } catch (err) {
+      fail(err.message);
+      continue;
+    }
+    if (skinSeen.has(s.id)) fail('duplicate unit_skin id "' + s.id + '"');
+    skinSeen.add(s.id);
+    // content_defs.system_name is UNIQUE ACROSS KINDS -- a skin id that collides with
+    // a unit id would FATAL the deploy backfill (tools/backfill_content_registry.cjs
+    // collectAll). Cheap to check here, where both rosters are already in hand.
+    if (seen.has(s.id)) fail('unit_skin id "' + s.id + '" collides with a unit def id (system_name is UNIQUE across kinds)');
+  }
+  const bySlot = {};
+  for (const s of skinEntries) bySlot[s.slot] = (bySlot[s.slot] || 0) + 1;
+  console.log('unit skins: ' + skinSeen.size + ' defs (' + Object.keys(bySlot).sort().map((k) => k + '=' + bySlot[k]).join(' ') + ')');
 }
 
 const shapes = Object.keys(vocab.connection_shapes || {});

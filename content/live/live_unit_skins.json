@@ -1,0 +1,1733 @@
+{
+  "schema": "unit_skin/1",
+  "entries": [
+    {
+      "id": "uskin_elf",
+      "name": "Elf — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-elf",
+      "units": [
+        "elf"
+      ],
+      "default": true,
+      "set": "elf",
+      "i18n": {
+        "ja": {
+          "name": "エルフ — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_elf",
+      "name": "Elf — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_elf",
+      "units": [
+        "elf"
+      ],
+      "default": true,
+      "set": "elf",
+      "i18n": {
+        "ja": {
+          "name": "エルフ — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_dwarf",
+      "name": "Dwarf — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-dwarf",
+      "units": [
+        "dwarf"
+      ],
+      "default": true,
+      "set": "dwarf",
+      "i18n": {
+        "ja": {
+          "name": "ドワーフ — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_dwarf",
+      "name": "Dwarf — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_dwarf",
+      "units": [
+        "dwarf"
+      ],
+      "default": true,
+      "set": "dwarf",
+      "i18n": {
+        "ja": {
+          "name": "ドワーフ — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_thief",
+      "name": "Thief — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-thief",
+      "units": [
+        "thief"
+      ],
+      "default": true,
+      "set": "thief",
+      "i18n": {
+        "ja": {
+          "name": "シーフ — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_thief",
+      "name": "Thief — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_thief",
+      "units": [
+        "thief"
+      ],
+      "default": true,
+      "set": "thief",
+      "i18n": {
+        "ja": {
+          "name": "シーフ — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_angel",
+      "name": "Angel — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-angel",
+      "units": [
+        "angel"
+      ],
+      "default": true,
+      "set": "angel",
+      "i18n": {
+        "ja": {
+          "name": "エンジェル — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_angel",
+      "name": "Angel — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_angel",
+      "units": [
+        "angel"
+      ],
+      "default": true,
+      "set": "angel",
+      "i18n": {
+        "ja": {
+          "name": "エンジェル — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_shieldmaiden",
+      "name": "Shieldmaiden — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-shieldmaiden",
+      "units": [
+        "shieldmaiden"
+      ],
+      "default": true,
+      "set": "shieldmaiden",
+      "i18n": {
+        "ja": {
+          "name": "シールドメイデン — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_shieldmaiden",
+      "name": "Shieldmaiden — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_shieldmaiden",
+      "units": [
+        "shieldmaiden"
+      ],
+      "default": true,
+      "set": "shieldmaiden",
+      "i18n": {
+        "ja": {
+          "name": "シールドメイデン — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_priest",
+      "name": "Priest — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-priest",
+      "units": [
+        "priest"
+      ],
+      "default": true,
+      "set": "priest",
+      "i18n": {
+        "ja": {
+          "name": "プリースト — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_priest",
+      "name": "Priest — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_priest",
+      "units": [
+        "priest"
+      ],
+      "default": true,
+      "set": "priest",
+      "i18n": {
+        "ja": {
+          "name": "プリースト — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_littleprincess",
+      "name": "Little Princess — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-princess",
+      "units": [
+        "littleprincess"
+      ],
+      "default": true,
+      "set": "littleprincess",
+      "i18n": {
+        "ja": {
+          "name": "リトルプリンセス — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_littleprincess",
+      "name": "Little Princess — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_littleprincess",
+      "units": [
+        "littleprincess"
+      ],
+      "default": true,
+      "set": "littleprincess",
+      "i18n": {
+        "ja": {
+          "name": "リトルプリンセス — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_princess",
+      "name": "Princess — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-princess",
+      "units": [
+        "princess"
+      ],
+      "default": true,
+      "set": "princess",
+      "i18n": {
+        "ja": {
+          "name": "プリンセス — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_princess",
+      "name": "Princess — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_princess",
+      "units": [
+        "princess"
+      ],
+      "default": true,
+      "set": "princess",
+      "i18n": {
+        "ja": {
+          "name": "プリンセス — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_lightcavalry",
+      "name": "Light Cavalry — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-lightcavalry",
+      "units": [
+        "lightcavalry"
+      ],
+      "default": true,
+      "set": "lightcavalry",
+      "i18n": {
+        "ja": {
+          "name": "軽騎兵 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_lightcavalry",
+      "name": "Light Cavalry — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_lightcavalry",
+      "units": [
+        "lightcavalry"
+      ],
+      "default": true,
+      "set": "lightcavalry",
+      "i18n": {
+        "ja": {
+          "name": "軽騎兵 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_berserker",
+      "name": "Berserker — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-berserker",
+      "units": [
+        "berserker"
+      ],
+      "default": true,
+      "set": "berserker",
+      "i18n": {
+        "ja": {
+          "name": "バーサーカー — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_berserker",
+      "name": "Berserker — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_berserker",
+      "units": [
+        "berserker"
+      ],
+      "default": true,
+      "set": "berserker",
+      "i18n": {
+        "ja": {
+          "name": "バーサーカー — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_watcher",
+      "name": "Watcher — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-watcher",
+      "units": [
+        "watcher"
+      ],
+      "default": true,
+      "set": "watcher",
+      "i18n": {
+        "ja": {
+          "name": "ウォッチャー — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_watcher",
+      "name": "Watcher — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_watcher",
+      "units": [
+        "watcher"
+      ],
+      "default": true,
+      "set": "watcher",
+      "i18n": {
+        "ja": {
+          "name": "ウォッチャー — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_squire",
+      "name": "Squire — Portrait",
+      "slot": "unit",
+      "art_ref": "units-002-roster-flux2:unit-squire",
+      "units": [
+        "squire"
+      ],
+      "default": true,
+      "set": "squire",
+      "i18n": {
+        "ja": {
+          "name": "スクワイア — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_squire",
+      "name": "Squire — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_squire",
+      "units": [
+        "squire"
+      ],
+      "default": true,
+      "set": "squire",
+      "i18n": {
+        "ja": {
+          "name": "スクワイア — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_alchemist",
+      "name": "Alchemist — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_alchemist",
+      "units": [
+        "alchemist"
+      ],
+      "default": true,
+      "set": "alchemist",
+      "i18n": {
+        "ja": {
+          "name": "錬金術師 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_alchemist",
+      "name": "Alchemist — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_alchemist",
+      "units": [
+        "alchemist"
+      ],
+      "default": true,
+      "set": "alchemist",
+      "i18n": {
+        "ja": {
+          "name": "錬金術師 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_bard",
+      "name": "Bard — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_bard",
+      "units": [
+        "bard"
+      ],
+      "default": true,
+      "set": "bard",
+      "i18n": {
+        "ja": {
+          "name": "吟遊詩人 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_bard",
+      "name": "Bard — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_bard",
+      "units": [
+        "bard"
+      ],
+      "default": true,
+      "set": "bard",
+      "i18n": {
+        "ja": {
+          "name": "吟遊詩人 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_cleric",
+      "name": "Cleric — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_cleric",
+      "units": [
+        "cleric"
+      ],
+      "default": true,
+      "set": "cleric",
+      "i18n": {
+        "ja": {
+          "name": "聖職者 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_cleric",
+      "name": "Cleric — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_cleric",
+      "units": [
+        "cleric"
+      ],
+      "default": true,
+      "set": "cleric",
+      "i18n": {
+        "ja": {
+          "name": "聖職者 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_darkelf",
+      "name": "Dark Elf — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_darkelf",
+      "units": [
+        "darkelf"
+      ],
+      "default": true,
+      "set": "darkelf",
+      "i18n": {
+        "ja": {
+          "name": "ダークエルフ — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_darkelf",
+      "name": "Dark Elf — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_darkelf",
+      "units": [
+        "darkelf"
+      ],
+      "default": true,
+      "set": "darkelf",
+      "i18n": {
+        "ja": {
+          "name": "ダークエルフ — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_darkknight",
+      "name": "Dark Knight — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_darkknight",
+      "units": [
+        "darkknight"
+      ],
+      "default": true,
+      "set": "darkknight",
+      "i18n": {
+        "ja": {
+          "name": "ダークナイト — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_darkknight",
+      "name": "Dark Knight — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_darkknight",
+      "units": [
+        "darkknight"
+      ],
+      "default": true,
+      "set": "darkknight",
+      "i18n": {
+        "ja": {
+          "name": "ダークナイト — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_dragonknight",
+      "name": "Dragon Knight — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_dragonknight",
+      "units": [
+        "dragonknight"
+      ],
+      "default": true,
+      "set": "dragonknight",
+      "i18n": {
+        "ja": {
+          "name": "竜騎士 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_dragonknight",
+      "name": "Dragon Knight — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_dragonknight",
+      "units": [
+        "dragonknight"
+      ],
+      "default": true,
+      "set": "dragonknight",
+      "i18n": {
+        "ja": {
+          "name": "竜騎士 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_druid",
+      "name": "Druid — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_druid",
+      "units": [
+        "druid"
+      ],
+      "default": true,
+      "set": "druid",
+      "i18n": {
+        "ja": {
+          "name": "ドルイド — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_druid",
+      "name": "Druid — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_druid",
+      "units": [
+        "druid"
+      ],
+      "default": true,
+      "set": "druid",
+      "i18n": {
+        "ja": {
+          "name": "ドルイド — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_fairy",
+      "name": "Fairy — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_fairy",
+      "units": [
+        "fairy"
+      ],
+      "default": true,
+      "set": "fairy",
+      "i18n": {
+        "ja": {
+          "name": "妖精 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_fairy",
+      "name": "Fairy — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_fairy",
+      "units": [
+        "fairy"
+      ],
+      "default": true,
+      "set": "fairy",
+      "i18n": {
+        "ja": {
+          "name": "妖精 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_gladiator",
+      "name": "Gladiator — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_gladiator",
+      "units": [
+        "gladiator"
+      ],
+      "default": true,
+      "set": "gladiator",
+      "i18n": {
+        "ja": {
+          "name": "剣闘士 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_gladiator",
+      "name": "Gladiator — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_gladiator",
+      "units": [
+        "gladiator"
+      ],
+      "default": true,
+      "set": "gladiator",
+      "i18n": {
+        "ja": {
+          "name": "剣闘士 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_hero",
+      "name": "Hero — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_hero",
+      "units": [
+        "hero"
+      ],
+      "default": true,
+      "set": "hero",
+      "i18n": {
+        "ja": {
+          "name": "勇者 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_hero",
+      "name": "Hero — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_hero",
+      "units": [
+        "hero"
+      ],
+      "default": true,
+      "set": "hero",
+      "i18n": {
+        "ja": {
+          "name": "勇者 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_icequeen",
+      "name": "Ice Queen — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_icequeen",
+      "units": [
+        "icequeen"
+      ],
+      "default": true,
+      "set": "icequeen",
+      "i18n": {
+        "ja": {
+          "name": "氷の女王 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_icequeen",
+      "name": "Ice Queen — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_icequeen",
+      "units": [
+        "icequeen"
+      ],
+      "default": true,
+      "set": "icequeen",
+      "i18n": {
+        "ja": {
+          "name": "氷の女王 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_jester",
+      "name": "Jester — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_jester",
+      "units": [
+        "jester"
+      ],
+      "default": true,
+      "set": "jester",
+      "i18n": {
+        "ja": {
+          "name": "道化師 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_jester",
+      "name": "Jester — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_jester",
+      "units": [
+        "jester"
+      ],
+      "default": true,
+      "set": "jester",
+      "i18n": {
+        "ja": {
+          "name": "道化師 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_king",
+      "name": "King — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_king",
+      "units": [
+        "king"
+      ],
+      "default": true,
+      "set": "king",
+      "i18n": {
+        "ja": {
+          "name": "王 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_king",
+      "name": "King — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_king",
+      "units": [
+        "king"
+      ],
+      "default": true,
+      "set": "king",
+      "i18n": {
+        "ja": {
+          "name": "王 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_knight",
+      "name": "Knight — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_knight",
+      "units": [
+        "knight"
+      ],
+      "default": true,
+      "set": "knight",
+      "i18n": {
+        "ja": {
+          "name": "騎士 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_knight",
+      "name": "Knight — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_knight",
+      "units": [
+        "knight"
+      ],
+      "default": true,
+      "set": "knight",
+      "i18n": {
+        "ja": {
+          "name": "騎士 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_miko",
+      "name": "Shrine Maiden — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_miko",
+      "units": [
+        "miko"
+      ],
+      "default": true,
+      "set": "miko",
+      "i18n": {
+        "ja": {
+          "name": "巫女 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_miko",
+      "name": "Shrine Maiden — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_miko",
+      "units": [
+        "miko"
+      ],
+      "default": true,
+      "set": "miko",
+      "i18n": {
+        "ja": {
+          "name": "巫女 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_monk",
+      "name": "Monk — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_monk",
+      "units": [
+        "monk"
+      ],
+      "default": true,
+      "set": "monk",
+      "i18n": {
+        "ja": {
+          "name": "武僧 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_monk",
+      "name": "Monk — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_monk",
+      "units": [
+        "monk"
+      ],
+      "default": true,
+      "set": "monk",
+      "i18n": {
+        "ja": {
+          "name": "武僧 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_ninja",
+      "name": "Ninja — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_ninja",
+      "units": [
+        "ninja"
+      ],
+      "default": true,
+      "set": "ninja",
+      "i18n": {
+        "ja": {
+          "name": "忍者 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_ninja",
+      "name": "Ninja — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_ninja",
+      "units": [
+        "ninja"
+      ],
+      "default": true,
+      "set": "ninja",
+      "i18n": {
+        "ja": {
+          "name": "忍者 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_orc",
+      "name": "Orc — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_orc",
+      "units": [
+        "orc"
+      ],
+      "default": true,
+      "set": "orc",
+      "i18n": {
+        "ja": {
+          "name": "オーク — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_orc",
+      "name": "Orc — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_orc",
+      "units": [
+        "orc"
+      ],
+      "default": true,
+      "set": "orc",
+      "i18n": {
+        "ja": {
+          "name": "オーク — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_paladin",
+      "name": "Paladin — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_paladin",
+      "units": [
+        "paladin"
+      ],
+      "default": true,
+      "set": "paladin",
+      "i18n": {
+        "ja": {
+          "name": "聖騎士 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_paladin",
+      "name": "Paladin — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_paladin",
+      "units": [
+        "paladin"
+      ],
+      "default": true,
+      "set": "paladin",
+      "i18n": {
+        "ja": {
+          "name": "聖騎士 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_pirate",
+      "name": "Pirate — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_pirate",
+      "units": [
+        "pirate"
+      ],
+      "default": true,
+      "set": "pirate",
+      "i18n": {
+        "ja": {
+          "name": "海賊 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_pirate",
+      "name": "Pirate — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_pirate",
+      "units": [
+        "pirate"
+      ],
+      "default": true,
+      "set": "pirate",
+      "i18n": {
+        "ja": {
+          "name": "海賊 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_plaguedoctor",
+      "name": "Plague Doctor — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_plaguedoctor",
+      "units": [
+        "plaguedoctor"
+      ],
+      "default": true,
+      "set": "plaguedoctor",
+      "i18n": {
+        "ja": {
+          "name": "ペスト医師 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_plaguedoctor",
+      "name": "Plague Doctor — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_plaguedoctor",
+      "units": [
+        "plaguedoctor"
+      ],
+      "default": true,
+      "set": "plaguedoctor",
+      "i18n": {
+        "ja": {
+          "name": "ペスト医師 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_ranger",
+      "name": "Ranger — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_ranger",
+      "units": [
+        "ranger"
+      ],
+      "default": true,
+      "set": "ranger",
+      "i18n": {
+        "ja": {
+          "name": "レンジャー — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_ranger",
+      "name": "Ranger — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_ranger",
+      "units": [
+        "ranger"
+      ],
+      "default": true,
+      "set": "ranger",
+      "i18n": {
+        "ja": {
+          "name": "レンジャー — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_samurai",
+      "name": "Samurai — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_samurai",
+      "units": [
+        "samurai"
+      ],
+      "default": true,
+      "set": "samurai",
+      "i18n": {
+        "ja": {
+          "name": "侍 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_samurai",
+      "name": "Samurai — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_samurai",
+      "units": [
+        "samurai"
+      ],
+      "default": true,
+      "set": "samurai",
+      "i18n": {
+        "ja": {
+          "name": "侍 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_shaman",
+      "name": "Shaman — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_shaman",
+      "units": [
+        "shaman"
+      ],
+      "default": true,
+      "set": "shaman",
+      "i18n": {
+        "ja": {
+          "name": "シャーマン — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_shaman",
+      "name": "Shaman — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_shaman",
+      "units": [
+        "shaman"
+      ],
+      "default": true,
+      "set": "shaman",
+      "i18n": {
+        "ja": {
+          "name": "シャーマン — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_sorceress",
+      "name": "Sorceress — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_sorceress",
+      "units": [
+        "sorceress"
+      ],
+      "default": true,
+      "set": "sorceress",
+      "i18n": {
+        "ja": {
+          "name": "炎術師 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_sorceress",
+      "name": "Sorceress — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_sorceress",
+      "units": [
+        "sorceress"
+      ],
+      "default": true,
+      "set": "sorceress",
+      "i18n": {
+        "ja": {
+          "name": "炎術師 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_valkyrie",
+      "name": "Valkyrie — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_valkyrie",
+      "units": [
+        "valkyrie"
+      ],
+      "default": true,
+      "set": "valkyrie",
+      "i18n": {
+        "ja": {
+          "name": "ヴァルキュリア — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_valkyrie",
+      "name": "Valkyrie — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_valkyrie",
+      "units": [
+        "valkyrie"
+      ],
+      "default": true,
+      "set": "valkyrie",
+      "i18n": {
+        "ja": {
+          "name": "ヴァルキュリア — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_vampire",
+      "name": "Vampire Lord — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_vampire",
+      "units": [
+        "vampire"
+      ],
+      "default": true,
+      "set": "vampire",
+      "i18n": {
+        "ja": {
+          "name": "吸血鬼 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_vampire",
+      "name": "Vampire Lord — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_vampire",
+      "units": [
+        "vampire"
+      ],
+      "default": true,
+      "set": "vampire",
+      "i18n": {
+        "ja": {
+          "name": "吸血鬼 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_werewolf",
+      "name": "Werewolf — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_werewolf",
+      "units": [
+        "werewolf"
+      ],
+      "default": true,
+      "set": "werewolf",
+      "i18n": {
+        "ja": {
+          "name": "人狼 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_werewolf",
+      "name": "Werewolf — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_werewolf",
+      "units": [
+        "werewolf"
+      ],
+      "default": true,
+      "set": "werewolf",
+      "i18n": {
+        "ja": {
+          "name": "人狼 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_witch",
+      "name": "Witch — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_witch",
+      "units": [
+        "witch"
+      ],
+      "default": true,
+      "set": "witch",
+      "i18n": {
+        "ja": {
+          "name": "魔女 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_witch",
+      "name": "Witch — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_witch",
+      "units": [
+        "witch"
+      ],
+      "default": true,
+      "set": "witch",
+      "i18n": {
+        "ja": {
+          "name": "魔女 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_wizard",
+      "name": "Wizard — Portrait",
+      "slot": "unit",
+      "art_ref": "units003_wizard",
+      "units": [
+        "wizard"
+      ],
+      "default": true,
+      "set": "wizard",
+      "i18n": {
+        "ja": {
+          "name": "魔法使い — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_wizard",
+      "name": "Wizard — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_wizard",
+      "units": [
+        "wizard"
+      ],
+      "default": true,
+      "set": "wizard",
+      "i18n": {
+        "ja": {
+          "name": "魔法使い — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_war_horn",
+      "name": "War Horn — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_war_horn",
+      "units": [
+        "war_horn"
+      ],
+      "default": true,
+      "set": "war_horn",
+      "i18n": {
+        "ja": {
+          "name": "軍角笛 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_war_horn",
+      "name": "War Horn — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_war_horn",
+      "units": [
+        "war_horn"
+      ],
+      "default": true,
+      "set": "war_horn",
+      "i18n": {
+        "ja": {
+          "name": "軍角笛 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_golden_apple",
+      "name": "Golden Apple — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_golden_apple",
+      "units": [
+        "golden_apple"
+      ],
+      "default": true,
+      "set": "golden_apple",
+      "i18n": {
+        "ja": {
+          "name": "黄金の林檎 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_golden_apple",
+      "name": "Golden Apple — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_golden_apple",
+      "units": [
+        "golden_apple"
+      ],
+      "default": true,
+      "set": "golden_apple",
+      "i18n": {
+        "ja": {
+          "name": "黄金の林檎 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_hourglass",
+      "name": "Hourglass — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_hourglass",
+      "units": [
+        "hourglass"
+      ],
+      "default": true,
+      "set": "hourglass",
+      "i18n": {
+        "ja": {
+          "name": "刻の砂時計 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_hourglass",
+      "name": "Hourglass — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_hourglass",
+      "units": [
+        "hourglass"
+      ],
+      "default": true,
+      "set": "hourglass",
+      "i18n": {
+        "ja": {
+          "name": "刻の砂時計 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_living_anvil",
+      "name": "Living Anvil — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_blacksmith_anvil",
+      "units": [
+        "living_anvil"
+      ],
+      "default": true,
+      "set": "living_anvil",
+      "i18n": {
+        "ja": {
+          "name": "生ける金床 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_living_anvil",
+      "name": "Living Anvil — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_living_anvil",
+      "units": [
+        "living_anvil"
+      ],
+      "default": true,
+      "set": "living_anvil",
+      "i18n": {
+        "ja": {
+          "name": "生ける金床 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_battle_standard",
+      "name": "Battle Standard — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_battle_standard",
+      "units": [
+        "battle_standard"
+      ],
+      "default": true,
+      "set": "battle_standard",
+      "i18n": {
+        "ja": {
+          "name": "戦旗 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_battle_standard",
+      "name": "Battle Standard — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_battle_standard",
+      "units": [
+        "battle_standard"
+      ],
+      "default": true,
+      "set": "battle_standard",
+      "i18n": {
+        "ja": {
+          "name": "戦旗 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_ancient_grimoire",
+      "name": "Ancient Grimoire — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_ancient_grimoire",
+      "units": [
+        "ancient_grimoire"
+      ],
+      "default": true,
+      "set": "ancient_grimoire",
+      "i18n": {
+        "ja": {
+          "name": "古代の魔導書 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_ancient_grimoire",
+      "name": "Ancient Grimoire — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_ancient_grimoire",
+      "units": [
+        "ancient_grimoire"
+      ],
+      "default": true,
+      "set": "ancient_grimoire",
+      "i18n": {
+        "ja": {
+          "name": "古代の魔導書 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_mana_crystal",
+      "name": "Mana Crystal — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_mana_crystal",
+      "units": [
+        "mana_crystal"
+      ],
+      "default": true,
+      "set": "mana_crystal",
+      "i18n": {
+        "ja": {
+          "name": "マナ水晶 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_mana_crystal",
+      "name": "Mana Crystal — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_mana_crystal",
+      "units": [
+        "mana_crystal"
+      ],
+      "default": true,
+      "set": "mana_crystal",
+      "i18n": {
+        "ja": {
+          "name": "マナ水晶 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_giant_shuriken",
+      "name": "Giant Shuriken — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_giant_shuriken",
+      "units": [
+        "giant_shuriken"
+      ],
+      "default": true,
+      "set": "giant_shuriken",
+      "i18n": {
+        "ja": {
+          "name": "大手裏剣 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_giant_shuriken",
+      "name": "Giant Shuriken — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_giant_shuriken",
+      "units": [
+        "giant_shuriken"
+      ],
+      "default": true,
+      "set": "giant_shuriken",
+      "i18n": {
+        "ja": {
+          "name": "大手裏剣 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_enchanted_lantern",
+      "name": "Enchanted Lantern — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_enchanted_lantern",
+      "units": [
+        "enchanted_lantern"
+      ],
+      "default": true,
+      "set": "enchanted_lantern",
+      "i18n": {
+        "ja": {
+          "name": "魔法のランタン — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_enchanted_lantern",
+      "name": "Enchanted Lantern — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_enchanted_lantern",
+      "units": [
+        "enchanted_lantern"
+      ],
+      "default": true,
+      "set": "enchanted_lantern",
+      "i18n": {
+        "ja": {
+          "name": "魔法のランタン — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_powder_keg",
+      "name": "Powder Keg — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_powder_keg",
+      "units": [
+        "powder_keg"
+      ],
+      "default": true,
+      "set": "powder_keg",
+      "i18n": {
+        "ja": {
+          "name": "火薬樽 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_powder_keg",
+      "name": "Powder Keg — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_powder_keg",
+      "units": [
+        "powder_keg"
+      ],
+      "default": true,
+      "set": "powder_keg",
+      "i18n": {
+        "ja": {
+          "name": "火薬樽 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_cursed_doll",
+      "name": "Cursed Doll — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_cursed_doll",
+      "units": [
+        "cursed_doll"
+      ],
+      "default": true,
+      "set": "cursed_doll",
+      "i18n": {
+        "ja": {
+          "name": "呪いの人形 — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_cursed_doll",
+      "name": "Cursed Doll — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_cursed_doll",
+      "units": [
+        "cursed_doll"
+      ],
+      "default": true,
+      "set": "cursed_doll",
+      "i18n": {
+        "ja": {
+          "name": "呪いの人形 — パックスキン"
+        }
+      }
+    },
+    {
+      "id": "uskin_battle_pickaxe",
+      "name": "Battle Pickaxe — Portrait",
+      "slot": "unit",
+      "art_ref": "items005_battle_pickaxe",
+      "units": [
+        "battle_pickaxe"
+      ],
+      "default": true,
+      "set": "battle_pickaxe",
+      "i18n": {
+        "ja": {
+          "name": "戦つるはし — 肖像"
+        }
+      }
+    },
+    {
+      "id": "uskin_bp_battle_pickaxe",
+      "name": "Battle Pickaxe — Pack Skin",
+      "slot": "bpskin",
+      "art_ref": "bpskin_unit_battle_pickaxe",
+      "units": [
+        "battle_pickaxe"
+      ],
+      "default": true,
+      "set": "battle_pickaxe",
+      "i18n": {
+        "ja": {
+          "name": "戦つるはし — パックスキン"
+        }
+      }
+    }
+  ]
+}

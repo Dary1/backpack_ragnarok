@@ -21,7 +21,7 @@ const storage = require('../storage.cjs');
 const { runChecks } = require('../services/content_checks.cjs');
 const { exportAdopted } = require('../services/content_export.cjs');
 
-const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon']; // REQ-0171: gacha_pack; REQ-0184: monster_pack; REQ-0211: gimic; REQ-0185: dungeon
+const KINDS = ['po_def', 'si_def', 'monster_def', 'unit_def', 'tm_def', 'skill_def', 'gacha_pack', 'monster_pack', 'gimic', 'dungeon', 'unit_skin']; // REQ-0171: gacha_pack; REQ-0184: monster_pack; REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin (ALSO in services/core.cjs REGISTRY_KINDS -- a kind in one list and not the other never reaches serving, the monster_pack bug)
 const RESERVED = new Set(['defs', 'dev', 'meta']);
 // Per-kind default variant count (Q4: N default 5, per-kind configurable via
 // the def's gen_config.generate_n).
@@ -115,14 +115,65 @@ function normalizeProvenance(p, forcedSource, forcedParent) {
   return out;
 }
 
-// Ingest ONE variant: insert (immutable), auto-run the four machine checks,
-// persist the result. Returns the variant with its machine_check attached.
+// REQ-0266 (spec section 3.1): the DB TIER of the unit_skin slot rule. `slot` is
+// the D1 discriminator and it MUST equal the KIND of the artwork `art_ref` names
+// -- but runChecks() is deliberately pure and DB-free (that is what makes the
+// dialect test a cheap gate), so the file tier can only validate `slot`
+// STRUCTURALLY. The cross-registry half is checked HERE, where the artwork
+// registry is reachable, and appended as a fifth check row.
+//
+// It is HONEST about what it could not do, per the same doctrine the other four
+// follow: an unreachable registry (files backend / no DATABASE_URL) and a not-yet
+// -created artwork are BOTH applicable:false WITH A REASON, never a free PASS and
+// never a FAIL. The second case is not hypothetical -- REQ-0266 D4 fans the 54
+// bpskin artworks out in two waves, so a def legitimately exists before its art.
+async function artSlotCheck(kind, data) {
+  if (kind !== 'unit_skin') return null;
+  const ref = data && data.art_ref;
+  const slot = data && data.slot;
+  if (typeof ref !== 'string' || !ref) {
+    return { name: 'art_slot', ok: false, applicable: true, detail: 'unit_skin has no art_ref, so its slot cannot be checked against an artwork kind' };
+  }
+  let art = null;
+  try { art = await storage.getArtworkByName(ref); }
+  catch (e) {
+    return { name: 'art_slot', ok: true, applicable: false,
+      detail: 'art_slot not applicable: the artwork registry is not reachable from here (' + ((e && e.message) || e) + ')' };
+  }
+  if (!art) {
+    return { name: 'art_slot', ok: true, applicable: false,
+      detail: 'art_slot not applicable: no artwork named "' + ref + '" in the registry yet (a def may legitimately precede its art)' };
+  }
+  if (art.kind !== slot) {
+    return { name: 'art_slot', ok: false, applicable: true,
+      detail: 'slot "' + slot + '" disagrees with artwork "' + ref + '", whose kind is "' + art.kind +
+        '" -- a unit_skin means what its artwork IS (D1), so the two must agree' };
+  }
+  return { name: 'art_slot', ok: true, applicable: true,
+    detail: 'slot "' + slot + '" agrees with the kind of artwork "' + ref + '"' };
+}
+
+/** Appends the DB-tier row (when there is one) to a pure runChecks() result and
+ * recomputes `overall` with the SAME rule runChecks uses -- applicable:false
+ * never sways the verdict. Used by BOTH ingest and recheck: a recheck that
+ * dropped the row would quietly turn a real art/slot disagreement into a PASS. */
+async function withDbTierChecks(kind, data, mc) {
+  const extra = await artSlotCheck(kind, data);
+  if (!extra) return mc;
+  mc.checks = (mc.checks || []).concat([extra]);
+  mc.overall = mc.checks.every((c) => c.applicable === false || c.ok) ? 'PASS' : 'FAIL';
+  return mc;
+}
+
+// Ingest ONE variant: insert (immutable), auto-run the four machine checks (plus
+// the REQ-0266 cross-registry art_slot row for unit_skin), persist the result.
+// Returns the variant with its machine_check attached.
 async function ingestOne(def, data, provenance) {
   const variant = await storage.createVariant(def.id, { data, provenance, status: 'ok' });
   let mc;
   try { mc = runChecks(def.kind, def.schema_ref, data); }
   catch (e) { mc = { overall: 'FAIL', checks: [{ name: 'runner', ok: false, applicable: true, detail: 'checks crashed: ' + e.message }], ran_at: new Date().toISOString() }; }
-  const withCheck = await storage.setVariantMachineCheck(variant.id, mc);
+  const withCheck = await storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, data, mc));
   return withCheck;
 }
 
@@ -277,7 +328,10 @@ async function recheckVariant(name, variant_no) {
   let mc;
   try { mc = runChecks(def.kind, def.schema_ref, variant.data); }
   catch (e) { mc = { overall: 'FAIL', checks: [{ name: 'runner', ok: false, applicable: true, detail: 'checks crashed: ' + e.message }], ran_at: new Date().toISOString() }; }
-  return storage.setVariantMachineCheck(variant.id, mc);
+  // REQ-0266: the DB-tier art_slot row rides along here too. Recheck is exactly
+  // where it earns its keep: the artwork may have been created (or re-kinded)
+  // AFTER the def was ingested, which is the two-wave art flow (D4) by design.
+  return storage.setVariantMachineCheck(variant.id, await withDbTierChecks(def.kind, variant.data, mc));
 }
 async function hRecheck(req, res, name, variant_no) {
   try { const updated = await recheckVariant(name, variant_no); sendJSON(res, 200, { ok: true, variant: updated }); }

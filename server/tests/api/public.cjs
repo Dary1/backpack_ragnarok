@@ -76,6 +76,55 @@ T('api: GET /api/content serves gimics + gimic_skills from the authority path (R
   assert.ok(parsed.gimic_skills && typeof parsed.gimic_skills === 'object', 'gimic_skills section present');
 });
 
+T('api: GET /api/content serves unit_skins from the authority path, keyed by SKIN id (REQ-0266)', () => {
+  const req = mockReq('GET', '/api/content');
+  const res = mockRes();
+  api.handle(req, res);
+  assert.strictEqual(res.statusCode, 200);
+  const parsed = JSON.parse(res.body);
+  assert.ok(parsed.unit_skins, 'unit_skins section present');
+  const portrait = parsed.unit_skins.uskin_test_queen;
+  const bp = parsed.unit_skins.uskin_bp_test_queen;
+  assert.ok(portrait && bp, 'both fixture skins served');
+  // D1: ONE kind, and `slot` is what makes it mean two things. Both live in the
+  // same section, keyed by their own id -- never by unit id, and never by
+  // <unit>@<skin> (D-A: /api/content is public and warm-cached, so it can carry
+  // no per-player state at all).
+  assert.strictEqual(portrait.slot, 'unit', 'the portrait skin declares slot=unit');
+  assert.strictEqual(bp.slot, 'bpskin', 'the BP skin declares slot=bpskin');
+  assert.deepStrictEqual(portrait.units, ['test_queen'], 'units[] served verbatim (an ARRAY, D3)');
+  assert.strictEqual(portrait.art_ref, 'art:test_queen', 'art_ref served verbatim (a FREE artwork reference)');
+  assert.strictEqual(portrait.default, true, 'the default flag is what the fall-back rung reads');
+  assert.strictEqual(portrait.name_ja, '\u30c6\u30b9\u30c8\u30af\u30a4\u30fc\u30f3 \u2014 \u8096\u50cf',
+    'withBackCompatI18n applied at the display seam, exactly as for every other section');
+  assert.strictEqual(parsed.units.test_queen && parsed.units.test_queen.id, 'test_queen',
+    'the unit defs section is untouched -- a skin REFERENCES a unit, it does not replace one');
+});
+
+T('api: /api/content art_urls -- unit_skin ids join the batch, unit ids do NOT (REQ-0266 D-A / REQ-0226 stays closed)', () => {
+  const content = require('../../lib/content.cjs');
+  // artUrlNameBatch() is the PURE half of computeArtUrls: which ids are offered
+  // to the resolver. That is the whole of the D-A wiring, and it is observable
+  // without a database -- unlike WHETHER an id resolves, which is pg-only (see
+  // tools/ci.sh's SERVING-MODE COVERAGE MAP: in files mode the registry is empty
+  // BY DESIGN, so art_urls is {} and a "resolves" assertion here would be vacuous).
+  const batch = content.artUrlNameBatch();
+  assert.ok(batch.includes('uskin_test_queen'), 'the portrait skin id is offered to the art resolver');
+  assert.ok(batch.includes('uskin_bp_test_queen'), 'the BP skin id is offered to the art resolver');
+  assert.ok(!batch.includes('test_queen'), 'UNIT ids stay absent from art_urls -- REQ-0226 is a separate, still-open change');
+  assert.ok(batch.includes('blade'), 'the pre-existing po/si/tm batch is unchanged');
+  // The omission half of the contract, which files mode CAN prove: a skin whose
+  // artwork has no adopted render is simply not in the map. The client then falls
+  // back -- an unresolved skin never blanks anything.
+  const req = mockReq('GET', '/api/content');
+  const res = mockRes();
+  api.handle(req, res);
+  const parsed = JSON.parse(res.body);
+  const urls = parsed.art_urls || {};
+  assert.strictEqual(urls.uskin_test_queen, undefined, 'no adopted artwork -> the skin id is OMITTED from art_urls');
+  assert.strictEqual(urls.uskin_bp_test_queen, undefined, 'same for the BP skin');
+});
+
 T('api: GET /api/content renders eff_en/eff_ja server-side, matching tools/eff_render.cjs output (REQ-0024 gap closure)', () => {
   const { render } = require('../../../tools/eff_render.cjs');
   const req = mockReq('GET', '/api/content');

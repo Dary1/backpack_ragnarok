@@ -36,6 +36,13 @@ const STARTER_ITEMS_PATH = contentPath("live", "starter_items.json"); // REQ-005
 
 const UNITS_PATH = contentPath('live', 'live_units.json'); // REQ-0170: unit/1 defs (the Unit a BP carries)
 const PACKS_PATH = contentPath('live', 'live_packs.json'); // REQ-0170: gacha_pack/1 defs (what the Workshop emits)
+// REQ-0266: unit_skin/1 defs -- the COSMETIC skins (unit portrait + BP skin, ONE
+// kind discriminated by the entry's own `slot`). Loaded HERE, in the authority
+// path, for the same reason units/packs are: services/core.cjs is where a kind
+// becomes registry-first (REGISTRY_MAP_BY_KIND reads the key set of a map in THIS
+// payload), and server/lib/content.cjs derives its /api/content display slice from
+// this one resolved source rather than re-reading the file (see unitSkinsFromCore).
+const UNIT_SKINS_PATH = contentPath('live', 'live_unit_skins.json');
 const VOCAB_PATH = contentPath('vocab.json'); // REQ-0170: connection_shapes lives here
 // REQ-0122: the dungeon domain reads from content/live/dungeon/ -- the
 // promoted live copy (tools/promote_dungeon_batch.cjs), NOT a hardcoded
@@ -105,6 +112,7 @@ function ensureFilePayload() {
     tms: statMtimeMs(TMS_PATH), // REQ-0042
     units: statMtimeMs(UNITS_PATH), // REQ-0170
     packs: statMtimeMs(PACKS_PATH), // REQ-0170
+    unitSkins: statMtimeMs(UNIT_SKINS_PATH), // REQ-0266
     vocab: statMtimeMs(VOCAB_PATH), // REQ-0170 (connection_shapes)
     dungeons: statMtimeMs(DUNGEONS_PATH), // REQ-0185
     enemies: statMtimeMs(ENEMIES_PATH),
@@ -122,6 +130,11 @@ function ensureFilePayload() {
   const liveTms = loadJSON(TMS_PATH); // REQ-0042
   const liveUnits = loadJSON(UNITS_PATH); // REQ-0170
   const livePacks = loadJSON(PACKS_PATH); // REQ-0170
+  // REQ-0266: an ABSENT file degrades to no skins, never a 500 -- the same posture
+  // starter_items.json gets below. Synthetic test content trees ship no skins, and a
+  // loader that ENOENT'd on cosmetics would take the whole authority path down with it.
+  let liveUnitSkins = { entries: [] };
+  try { liveUnitSkins = loadJSON(UNIT_SKINS_PATH); } catch (e) { liveUnitSkins = { entries: [] }; }
   const vocab = loadJSON(VOCAB_PATH); // REQ-0170 (connection_shapes)
   const pilotItems = loadJSON(ITEMS_PILOT_PATH);
   const dungeonsDoc = loadJSON(DUNGEONS_PATH); // REQ-0185: authored dungeon/1 defs
@@ -173,6 +186,14 @@ function ensureFilePayload() {
   const packDefsById = {};
   for (const e of (livePacks.entries || [])) packDefsById[e.id] = e;
 
+  // REQ-0266: unit_skin defs by id -- the cosmetic skins. Same id-keyed map
+  // convention as every def map above. Keyed by the SKIN's own id (not by unit):
+  // one skin may serve several units (D3) and a unit has one skin per SLOT, so the
+  // skin id is the only key that is unique. /api/content's art_urls is keyed the
+  // same way (D-A), which is what keeps that public payload free of per-player state.
+  const unitSkinDefsById = {};
+  for (const e of (liveUnitSkins.entries || [])) unitSkinDefsById[e.id] = e;
+
   const enemyDefsById = {};
   for (const e of enemies.entries) enemyDefsById[e.id] = e;
   // REQ-0184: monster_pack defs by id. Named monsterPackDefsById, NOT packDefsById --
@@ -209,7 +230,7 @@ function ensureFilePayload() {
     };
   }
 
-  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, monsterPackDefsById, gimicDefsById, dungeonDefsById, dungeonDefs: dungeonsDoc.entries || [], connShapes, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0185: dungeonDefsById/dungeonDefs replace the single concrete dungeonDef // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
+  const payload = { itemDefsById, siDefsById, tmDefsById, unitDefsById, packDefsById, unitSkinDefsById, monsterPackDefsById, gimicDefsById, dungeonDefsById, dungeonDefs: dungeonsDoc.entries || [], connShapes, enemyDefsById, skillDefsById, skillNamesById, formationsDoc }; // REQ-0185: dungeonDefsById/dungeonDefs replace the single concrete dungeonDef // REQ-0184: monsterPackDefsById (gacha packDefsById is a DIFFERENT thing)
   contentCache = { mtimes, payload };
   return payload;
 }
@@ -229,7 +250,7 @@ function ensureFilePayload() {
 // byte-identical to the pre-REQ loader. That is what keeps the default e2e
 // fleet a true no-regression baseline.
 // ---------------------------------------------------------------------
-const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon']; // REQ-0211: gimic; REQ-0185: dungeon
+const REGISTRY_KINDS = ['po_def', 'si_def', 'tm_def', 'unit_def', 'gacha_pack', 'monster_def', 'skill_def', 'gimic', 'dungeon', 'unit_skin']; // REQ-0211: gimic; REQ-0185: dungeon; REQ-0266: unit_skin -- it is in routes/content.cjs KINDS TOO (monster_pack is in that list and not this one, so its adoptions never reach serving; do not repeat that)
 // kind -> the file-payload map whose key set defines what we ask the registry for.
 const REGISTRY_MAP_BY_KIND = {
   po_def: 'itemDefsById',
@@ -241,6 +262,7 @@ const REGISTRY_MAP_BY_KIND = {
   skill_def: 'skillDefsById',
   gimic: 'gimicDefsById', // REQ-0211
   dungeon: 'dungeonDefsById', // REQ-0185
+  unit_skin: 'unitSkinDefsById', // REQ-0266
 };
 const REGISTRY_TTL_MS = 15000; // mirror lib/content.cjs REGISTRY_TTL_MS / ART_URLS_TTL_MS
 
@@ -332,6 +354,7 @@ function applyRegistryOverlay(fp) {
     enemyDefsById: overlayMap(fp.enemyDefsById, reg.monster_def, null),
     gimicDefsById: overlayMap(fp.gimicDefsById, reg.gimic, null), // REQ-0211
     dungeonDefsById: overlayMap(fp.dungeonDefsById, reg.dungeon, null), // REQ-0185
+    unitSkinDefsById: overlayMap(fp.unitSkinDefsById, reg.unit_skin, null), // REQ-0266
     skillDefsById: overlayMap(fp.skillDefsById, reg.skill_def, skillMechanicsFrom),
     skillNamesById: overlayMap(fp.skillNamesById, reg.skill_def, skillNamesFrom),
   });

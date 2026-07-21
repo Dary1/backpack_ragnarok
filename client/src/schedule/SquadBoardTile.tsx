@@ -4,9 +4,10 @@
 // absolute clock (design 00 P-D). A reserved cancel renders alongside the live
 // state, its release time honest (run end / cooldownUntil) -- never "canceled"
 // until the room actually reports it (B2).
-import { getItemArtUrl } from '../board/itemArt';
+import { useEffect, useState } from 'react';
+import { resolveUnitArtUrl } from '../dex/unitArt'; // REQ-0266
 import { t } from '../i18n';
-import { setRoute, type Locale } from '../store';
+import { setRoute, useGameStore, type Locale } from '../store';
 import { SquadMicrogrid } from '../sortie/SquadMicrogrid';
 import { StateChip, stateLabel, type SquadStateKey } from '../sortie/stateChip';
 import { formatCountdown } from './RoomCard';
@@ -24,8 +25,30 @@ function clockTime(ms: number, locale: Locale): string {
   return new Date(ms).toLocaleTimeString(locale === 'ja' ? 'ja-JP' : 'en-US', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** REQ-0266: the lead BP's unit portrait. Was `getItemArtUrl(unit.id)` -- the same
+ * PERMANENTLY DEAD branch SquadMiniCard carried (that map is keyed by ITEM id;
+ * unit ids never appear in it), so this icon has never rendered once. It now
+ * walks the one unit art chain (active skin -> the def's own icon).
+ *
+ * The fallback stays exactly what it was: NOTHING. Rendering null keeps row1 a
+ * two-item flex, which is the layout every tile has today -- and it is also where
+ * a failed load lands, so a 404 cannot paint a broken-image glyph next to the
+ * squad name. `.squad-board-lead-icon` fixes the <img> at 20x20 (object-fit:
+ * cover), and row1's budget is 205px against ~136px used, so the icon fits
+ * without squeezing `.squad-board-name`. */
+function LeadUnitIcon({ unitId, icon }: { unitId: string | null; icon: string | null }) {
+  const [failed, setFailed] = useState(false);
+  const art = resolveUnitArtUrl(unitId, icon);
+  useEffect(() => { setFailed(false); }, [art.url]);
+  if (!art.url || failed) return null;
+  return <img className="squad-board-lead-icon" data-art-source={art.source} src={art.url} alt="" loading="lazy" onError={() => setFailed(true)} />;
+}
+
 export function SquadBoardTile({ locale, squad, now, dungeonNameFor, onWatch }: SquadBoardTileProps) {
   const { index } = squad;
+  // REQ-0266: the `icon` rung of the unit art chain. Hook call kept at the very
+  // top -- everything below it is a conditional context/state cascade.
+  const unitDefs = useGameStore().gameData?.UNITS;
   const runEndsMs = squad.runStartedAtMs != null && squad.runDurationSecs != null
     ? squad.runStartedAtMs + squad.runDurationSecs * 1000 : null;
   const returning = squad.state === 'deployed' && runEndsMs != null && now >= runEndsMs;
@@ -91,7 +114,9 @@ export function SquadBoardTile({ locale, squad, now, dungeonNameFor, onWatch }: 
   }
 
   const showDungeonRow = squad.state === 'deployed' || squad.state === 'recovering' || squad.state === 'staging';
-  const iconUrl = squad.canvas?.bps?.[0]?.unit?.id ? getItemArtUrl(squad.canvas.bps[0].unit?.id) : null;
+  const leadUnitId = squad.canvas?.bps?.[0]?.unit?.id ?? null;
+  const leadDef = leadUnitId ? unitDefs?.[leadUnitId] : null;
+  const leadIcon = leadDef && typeof leadDef.icon === 'string' && leadDef.icon ? leadDef.icon : null;
 
   return (
     <div
@@ -106,7 +131,7 @@ export function SquadBoardTile({ locale, squad, now, dungeonNameFor, onWatch }: 
       <div className="squad-board-row1">
         <SquadMicrogrid canvas={squad.canvas} size={28} className="squad-board-microgrid" />
         <span className="dj squad-board-name" title={squad.name}>{squad.name}</span>
-        {iconUrl ? <img className="squad-board-lead-icon" src={iconUrl} alt="" loading="lazy" /> : null}
+        <LeadUnitIcon unitId={leadUnitId} icon={leadIcon} />
       </div>
       <div className="squad-board-row2" data-testid={`squad-board-state-${index}`} data-state={visualState}>
         <StateChip stateKey={visualState} label={stateLabel(locale, visualState)} live={visualState === 'deployed'} />

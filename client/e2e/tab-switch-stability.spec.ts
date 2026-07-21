@@ -30,26 +30,45 @@
 //    setActiveInvPage() never fetches, confirmed by reading store.ts, and
 //    this network assertion is the live-evidence backstop for that
 //    reading).
+//
+// REQ-0266 -- DELIBERATE UPDATE. boot() now fetches the player's skin
+// selection (GET /api/profile/:id/skins) alongside the canvas, so a boot makes
+// TWO /api/profile requests, and a single `profileReqs <= 1` cap could only be
+// satisfied by not shipping that fetch. Rather than raise the cap to 2 -- which
+// would stop pinning anything -- the two endpoints are counted SEPARATELY and
+// each capped at 1. That is strictly stronger than what this test asserted
+// before: a second canvas GET at boot would now fail where it used to hide
+// inside the same budget. The invariant this file actually exists for -- no tab
+// click ever refetches ANYTHING -- is the delta assertion at the bottom, and it
+// is unchanged and now covers both endpoints.
 import { test, expect } from '@playwright/test';
 
 test('tab switching (15 clicks, 3 rounds) never hangs the page and never refetches', async ({ page }) => {
   let contentReqs = 0;
-  let profileReqs = 0;
+  let canvasReqs = 0;
+  let skinReqs = 0;
+  let otherProfileReqs = 0;
   page.on('request', (req) => {
     const url = req.url();
     if (url.includes('/api/content')) contentReqs++;
-    if (url.includes('/api/profile')) profileReqs++;
+    if (/\/api\/profile\/[^/]+\/canvas/.test(url)) canvasReqs++;
+    else if (/\/api\/profile\/[^/]+\/skins/.test(url)) skinReqs++;
+    else if (url.includes('/api/profile')) otherProfileReqs++;
   });
 
   await page.goto('/app/#/backpacks');
   await expect(page.locator('.data-source-badge')).toHaveText('live', { timeout: 10000 });
   await page.waitForTimeout(300);
 
-  // Boot-time fetches only, before any tab click.
+  // Boot-time fetches only, before any tab click. One content GET, one canvas
+  // GET, one skins GET (REQ-0266), and nothing else on /api/profile.
   expect(contentReqs).toBeLessThanOrEqual(1);
-  expect(profileReqs).toBeLessThanOrEqual(1);
+  expect(canvasReqs).toBeLessThanOrEqual(1);
+  expect(skinReqs).toBeLessThanOrEqual(1);
+  expect(otherProfileReqs).toBe(0);
   const bootContentReqs = contentReqs;
-  const bootProfileReqs = profileReqs;
+  const bootCanvasReqs = canvasReqs;
+  const bootSkinReqs = skinReqs;
 
   for (let round = 0; round < 3; round++) {
     for (let tabIdx = 0; tabIdx < 5; tabIdx++) {
@@ -75,7 +94,9 @@ test('tab switching (15 clicks, 3 rounds) never hangs the page and never refetch
   // no leaked/duplicate <canvas> elements from a remount pattern.
   await expect(page.locator('canvas')).toHaveCount(2);
 
-  // No tab click ever triggers a content/profile refetch.
+  // No tab click ever triggers a content/canvas/skins refetch.
   expect(contentReqs).toBe(bootContentReqs);
-  expect(profileReqs).toBe(bootProfileReqs);
+  expect(canvasReqs).toBe(bootCanvasReqs);
+  expect(skinReqs).toBe(bootSkinReqs);
+  expect(otherProfileReqs).toBe(0);
 });

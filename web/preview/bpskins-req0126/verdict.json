@@ -17,9 +17,10 @@
   ],
   "skins": [
     "neutral",
-    "devornate"
+    "devornate",
+    "devraster"
   ],
-  "gridHash": "6b024c0722319cc900b7ef59dc97a2521957bd992299ba99ab8604d5b8d3e048",
+  "gridHash": "0944dbd9cefc866f7ebec1cd3f8710a8c26a95bf65de9c4d64517ecd888855a0",
   "pass": true,
   "failures": []
 }

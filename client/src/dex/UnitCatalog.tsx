@@ -18,9 +18,14 @@
 // adopted render 404s; the <img> hides itself onError and the rune
 // placeholder behind it shows through (matches art_urls' "absent id ->
 // client fallback tier" posture).
+// REQ-0266: "not a parallel one" is now enforced rather than asserted -- the
+// portrait resolves through dex/unitArt.ts's resolveUnitArtUrl(), the DOM
+// adapter over board/unitIcon.ts's own chain, so a cosmetic skin the board
+// paints is the skin the Dex shows. With no skin active the resolved URL is
+// byte-identical to what this drew before.
 import { useEffect, useMemo, useState } from 'react';
 import type { ApiConnShape, ApiUnitEntry } from '../../../shared/dto';
-import { unitArtUrl } from '../board/unitIcon';
+import { resolveUnitArtUrl } from './unitArt'; // REQ-0266
 import { t } from '../i18n';
 import { dirsLabel, shapeLabel } from '../lib/connShapeLabel';
 import { rarThemeClass } from '../render/uiBits';
@@ -53,18 +58,23 @@ function unitFlavor(u: ApiUnitEntry, locale: Locale): string {
  * portraits), never an error/broken-image glyph. */
 function UnitPortrait({ unit, large }: { unit: ApiUnitEntry; large?: boolean }) {
   const [failed, setFailed] = useState(false);
+  // REQ-0266: active skin (the player's pick, else the def's default) -> the
+  // def's own icon -> the rune below. Never a probed skin URL: an unadopted
+  // skin is simply absent from art_urls and the chain drops to the icon rung.
+  const art = resolveUnitArtUrl(unit.id, unit.icon);
   useEffect(() => {
     setFailed(false); // the detail pane reuses one mounted node across selections
-  }, [unit.id]);
+  }, [unit.id, art.url]); // ...and across a skin swap, which moves only the URL
   return (
     <span className={`dex-portrait-well${large ? ' dex-portrait-well-lg' : ''}`}>
       <span className="dex-art-fallback rune" aria-hidden="true">
         ᚢ
       </span>
-      {unit.icon && !failed ? (
+      {art.url && !failed ? (
         <img
           className="dex-portrait-img"
-          src={unitArtUrl(unit.icon)}
+          data-art-source={art.source}
+          src={art.url}
           alt={unit.name}
           loading="lazy"
           onError={() => setFailed(true)}
