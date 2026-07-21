@@ -1,0 +1,37 @@
+{
+  "schema": "corpus_normalized/1",
+  "source": "fixture-genre",
+  "license": "CC-BY-SA (synthetic test fixture, not real wiki data)",
+  "entries": [
+    {
+      "page": "Fixture Blade", "kind": "item", "name": "Fixture Blade",
+      "rarity_raw": "Common", "rarity_norm": "Common",
+      "numbers": {"damage": [8.0, 8.0], "cadence_secs": [2.0, 2.0], "hp": null, "price": [5.0, 5.0]},
+      "effect_text": "On cooldown, Deals 8 damage.", "verbs_mapped": ["strike"], "unmapped": [], "excluded": [], "tags": ["Weapon"]
+    },
+    {
+      "page": "Fixture Fang", "kind": "item", "name": "Fixture Fang",
+      "rarity_raw": "Common", "rarity_norm": "Common",
+      "numbers": {"damage": [6.0, 6.0], "cadence_secs": [1.5, 1.5], "hp": null, "price": null},
+      "effect_text": "On hit, Deals 6 damage and adds 2 Poison.", "verbs_mapped": ["strike", "apply_status"], "unmapped": [], "excluded": [], "tags": ["Weapon"]
+    },
+    {
+      "page": "Fixture Club", "kind": "item", "name": "Fixture Club",
+      "rarity_raw": "Common", "rarity_norm": "Common",
+      "numbers": {"damage": [4.0, 4.0], "cadence_secs": null, "hp": null, "price": null},
+      "effect_text": "A heavy club dealing 4 damage.", "verbs_mapped": [], "unmapped": ["A heavy club."], "excluded": [], "tags": []
+    },
+    {
+      "page": "Fixture Unc Only", "kind": "item", "name": "Fixture Unc Only",
+      "rarity_raw": "Uncommon", "rarity_norm": "Uncommon",
+      "numbers": {"damage": [7.0, 7.0], "cadence_secs": null, "hp": null, "price": null},
+      "effect_text": "Deals 7 damage on use.", "verbs_mapped": [], "unmapped": ["Deals 7 damage on use."], "excluded": [], "tags": []
+    },
+    {
+      "page": "Fixture Rare Mapped", "kind": "item", "name": "Fixture Rare Mapped",
+      "rarity_raw": "Rare", "rarity_norm": "Rare",
+      "numbers": {"damage": [12.0, 12.0], "cadence_secs": [3.0, 3.0], "hp": null, "price": null},
+      "effect_text": "Strikes twice for 12 damage each.", "verbs_mapped": ["multi_strike"], "unmapped": [], "excluded": [], "tags": ["Weapon"]
+    }
+  ]
+}

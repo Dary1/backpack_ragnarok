@@ -116,15 +116,26 @@ Art comes BEFORE data, for ALL content (monsters, items, entities, currencies):
 - **S0 Brief** (orchestrator): theme/family, count, shape & rarity
   distribution, tag/socket budget, new-vocab allowance (usually none).
 - **S1 Draft** (Content Designer subagent): schema-shaped candidates + design
-  notes; closed vocab stated explicitly.
+  notes; closed vocab stated explicitly. Ground the draft with a
+  `tools/gen_context.py` pack (REQ-0272): for the requested slot it emits
+  the schema fields (with dialect casing), the closed verb/trigger vocab, the
+  DO-NOT tokens (excluded_attested + deprecated), the rarity dps-band limit, and
+  5-10 genre exemplars + 3-5 live neighbors -- so candidates land in-vocab and
+  in-band on the first try.
 - **S2 Static validation** (script): as built via
   `shared/content_validate.cjs` (`validateBody`) driven by a scratch harness
   (see `item_content_pipeline.md` Step 3) + id/name collision check vs live.
   (v1.0's `tools/validate.cjs` was never built under that name.)
 - **S3 Engine integration** (script `tools/tool_integrate.cjs`): placement,
   4-rotation legality, socket seat/reject against the real engine.
-- **S4 Balance sim — RESERVED**; REQ-0050 builds it. Until then: static
-  heuristic bounds at S2.
+- **S4 Balance sim — now FULFILLED** by the REQ-0269 balance sim, driven per-candidate
+  through the ONE-DOOR gate `tools/candidate_gate.cjs` (REQ-0272):
+  VALIDATE (schema/vocab/dialect, reusing `shared/content_validate.cjs` +
+  the content_checks dialect table) -> STATIC (`tools/check_stat_bands.cjs`
+  corpus dps-bands) -> DYNAMIC (`tools/balance_sim.cjs` Monte-Carlo vs a
+  baseline), one verdict, exit 0/1/2. The candidate is grounded upstream by the
+  S1 `tools/gen_context.py` pack. The REQ-0050 S4 post-processor remains the
+  sim's metrics layer; static heuristic bounds still apply at S2.
 - **S5 Art.** See **`art_pipeline.md`** — ONE doc for ALL image generation
   (items, units, monsters, backpack skins). Route: **flux2** (FLUX.2 klein 4B);
   SDXL is retired and deleted. Style: the user's ratified InvokeAI-derived

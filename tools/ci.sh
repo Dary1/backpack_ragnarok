@@ -123,6 +123,8 @@ echo "==== [2.9/7] unit charge encounter fusion (REQ-0200) ===="
 node sim/tests/unit_charge_encounter_test.cjs
 echo "==== [2.95/7] REQ-0269 balance sim harness (determinism / fixture matchup / OP-item + injection flags) ===="
 node sim/tests/balance_sim_test.cjs
+echo "==== [2.96/7] REQ-0272 candidate one-door gate (validate/static/dynamic; known-good pass, over-band static flag, in-band sim flag, junk validate) ===="
+node sim/tests/candidate_gate_test.cjs
 echo "==== [3/7] mock-src engine tests ===="
 node mock-src/tests/run.cjs
 echo "==== [3.5/7] typecheck (server modules + shared, checkJs) ===="
@@ -145,6 +147,8 @@ echo "==== [3.96/7] REQ-0268 stat-band lint self-test (corpus dps bands; ci runs
 node tools/check_stat_bands.cjs --self-test
 echo "==== [3.97/7] REQ-0270 corpus browser generator test (stdlib python3) ===="
 python3 tools/tests/corpus_browser_test.py
+echo "==== [3.98/7] REQ-0272 gen_context context-pack builder test (stdlib python3) ===="
+python3 tools/tests/gen_context_test.py
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
