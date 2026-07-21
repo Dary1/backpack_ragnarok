@@ -1,8 +1,11 @@
 # REQ-0255 — expedition-merge-baseline: one baseline for the expedition program
 
-**Status:** draft — spec written, BLOCKED on user review. Nothing in this REQ may be executed
-until the user clears it. The merge itself is user-authorized (see §2), but the review gate on
-this REQ is not the same thing as the go-ahead to run the runbook.
+**Status:** done — EXECUTED 2026-07-19, verified and closed 2026-07-21 on the user's direction.
+The runbook ran in full on `master` (§12); the baseline is merged, rebuilt, deployed and live.
+Was: draft — spec written, blocked on user review, 2026-07-18. The intermediate `todo/` and
+`built/` states never actually held: the runbook was executed straight off the spec on 2026-07-19
+and the file was simply never moved. Recording those states retroactively would be fiction, so
+this REQ moves draft -> done in one step; §12 is the honest log.
 **Reserved:** 2026-07-18
 **Slug:** expedition-merge-baseline
 **Branch:** req-expedition-spec (spec only; the merge runbook executes on `master`)
@@ -367,3 +370,60 @@ Per PROJECT.md a folder move is its own commit — never bundled with code.
   REQ in this program derives its own decade from its own number; it may not borrow 0255's.
 - **Any behaviour change.** This REQ merges; it does not fix. The formation4 bug is REQ-0258; the tick rewrite is REQ-0256/0257.
 - **Rebasing the four branches onto master.** They stay as they are; `--no-ff` merges preserve their history verbatim.
+
+## 12. Outcome — EXECUTED 2026-07-19, verified 2026-07-21
+
+Written 2026-07-21, after the fact. The runbook was executed on `master` on 2026-07-19 without
+this file ever leaving `draft/`, so the board said "blocked on review" for two days while the
+baseline it describes was already live underneath every branch. This section closes that gap.
+
+### 12.1 What ran
+
+Pre-merge `master` tip was **`f918a65`** — exactly what §3 measured three days earlier, so the
+ancestry the plan was built on did not drift before it executed.
+
+| # | commit | time (2026-07-19) | what |
+|---|---|---|---|
+| 1 | `198a859` | 02:36 | `Merge branch 'req-0211-gimic-content-kind'` |
+| 2 | `e409aac` | 02:37 | `Merge branch 'req-0185-dungeon-content-kind'` |
+| 3 | `e9076e7` | 02:37 | `Merge branch 'req-0239-sortie-squad-board'` |
+| 4 | `b1d2572` | 02:40 | `Merge branch 'req-0240-monitor-redesign-pacing'` |
+| 5 | `fb6cff6` | 02:42 | `expedition baseline: rebuild web/app from merged source` (criterion 5) |
+| 6 | `2088c34` | 02:46 | `expedition baseline: fix schedule.spec.ts EOF` — the stray describe-close left by the 0239/0240 union; syntax only, e2e is not a gate (§7, §11) |
+
+Merge order is exactly the §6 runbook order: 0211, 0185, 0239, 0240. **`2088c34` is THE baseline
+commit** — REQ-0256 branches from it by name, so it is the anchor for the whole expedition
+program, not just this REQ.
+
+### 12.2 Acceptance criteria — all seven, re-verified 2026-07-21
+
+| # | criterion | result |
+|---|---|---|
+| 1 | all 31 commits on master | PASS — `git rev-list master..<branch>` empty for all four (ahead=0) |
+| 2 | four named merges, in order | PASS — 0211, 0185, 0239, 0240 (§12.1) |
+| 3 | `built/` holds 0185/0211/0239/0240; no duplicate | PASS — all four in `built/`; `ls docs/REQ/*/ \| grep -oE 'REQ-[0-9]{4}[a-z]?' \| sort \| uniq -d` prints nothing |
+| 4 | gates green ON master | PASS — re-run 2026-07-21: sim **117 passed / 0 failed**, goldens **OK (12 cases, replay determinism intact)**, forecast parity **18 passed / 0 failed**, `pnpm lint` **0 errors** (43 warnings, pre-existing). All three match §7's measured values exactly. `pnpm build` deliberately NOT re-run — it would dirty the HANDS-OFF main checkout; buildability is evidenced instead by `fb6cff6` (rebuild from merged source) and `42238f8` (fresh rebuild + deploy, 2026-07-21) |
+| 5 | `web/app` rebuilt in its own commit | PASS — `fb6cff6` |
+| 6 | no migration / backfill / restart | PASS **at execution time**. See §12.3 — they happened later, under a different REQ |
+| 7 | four source branches intact | PASS — all four still exist, ahead=0/behind, untouched; the rollback path survives |
+
+### 12.3 The deploy this REQ deliberately did not do — and who did it
+
+§8/§11 kept deploy out of scope, and criterion 6 held on 2026-07-19: nothing was migrated,
+backfilled or restarted by this REQ. That work landed independently on **2026-07-21 under
+REQ-0266** — commit `5066b2a` records "020-022 + backfill applied", and `42238f8` / `a3aaf66`
+record the fresh `web/app` rebuild, the api restart and live verification.
+
+The consequence matters for this REQ's own state: the baseline is not merely merged, it is
+DEPLOYED AND LIVE. That is why this file goes to `done/` and not `built/`. It got there by
+riding another REQ's deploy rather than by its own, which is worth knowing when reading the
+history — the three ENUM migrations (§8) are applied, so a future reader must not re-apply them
+believing this REQ left them pending.
+
+### 12.4 Consequence still outstanding
+
+REQ-0185, REQ-0211, REQ-0239 and REQ-0240 remain in `docs/REQ/built/` on master. §9 was right
+that `built/` was correct the moment the merge landed — but they are now merged AND deployed AND
+live (§12.3), which is `done/` by PROJECT.md's definition. Four folder moves are owed, one commit
+each, gated on user acceptance. This REQ does not make them: it merges, it does not curate other
+REQs' states.
