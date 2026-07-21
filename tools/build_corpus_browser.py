@@ -254,7 +254,49 @@ def build_quality(corpora):
     return {"per_source": per_source, "top_unmapped": top_unmapped}
 
 
-def build_curves(corpora, stats):
+RARITIES_LC = ("common", "uncommon", "rare", "relic")
+
+
+def _eb_group_row(key, grp):
+    """One flat row for an enemy_bands group (hp / total_dps / skill_dps)."""
+    grp = grp or {}
+    band = grp.get("band") or {}
+    row = {
+        "key": key,
+        "n": grp.get("n", 0),
+        "provisional": grp.get("provisional"),
+        "min": grp.get("min"),
+        "median": grp.get("median"),
+        "max": grp.get("max"),
+        "warn_lo": band.get("warn_lo"),
+        "warn_hi": band.get("warn_hi"),
+        "flag_multiple": band.get("flag_multiple"),
+    }
+    if "n_na" in grp:
+        row["n_na"] = grp["n_na"]
+    return row
+
+
+def _enemy_bands_view(eb):
+    """Render content/enemy_bands.json (basis live_self) into browser tables.
+    Absent file -> {present: False} (the section hides itself)."""
+    if not eb:
+        return {"present": False}
+    hp = eb.get("enemy_hp", {})
+    dps = eb.get("enemy_total_dps", {})
+    skill = eb.get("skill_dps", {})
+    return {
+        "present": True,
+        "basis": eb.get("basis"),
+        "note": eb.get("note", ""),
+        "band_formula": (eb.get("band_formula") or {}).get("description", ""),
+        "hp_rows": [_eb_group_row(r, hp.get(r)) for r in RARITIES_LC],
+        "dps_rows": [_eb_group_row(r, dps.get(r)) for r in RARITIES_LC],
+        "skill_row": _eb_group_row("pooled", skill),
+    }
+
+
+def build_curves(corpora, stats, enemy_bands):
     """Rarity distribution, per-rarity dps-proxy box plots (min/p25/median/
     p75/p95/max) computed from raw entries with the corpus_stats method, verb
     frequency, and the bands table."""
@@ -310,15 +352,21 @@ def build_curves(corpora, stats):
         "dps_box": box,
         "verb_frequency": verb_rows,
         "bands": band_rows,
+        "bands_scope": stats.get("bands_scope", "item"),
         "bands_formula": stats.get("bands_formula", ""),
         "vocab_anchor": stats.get("vocab_anchor", {}),
+        "enemy_bands": _enemy_bands_view(enemy_bands),
     }
 
 
-def build_live(live_docs, bands):
-    """Every live item/skill with a computable dps-proxy vs its rarity band.
-    Mirrors check_stat_bands.cjs evaluate()/runReport() (counted==0 skipped)."""
+def build_live(live_docs, item_bands, enemy_bands):
+    """Every live item/skill with a computable dps-proxy vs the band that
+    applies to it, WITH scope labels (REQ-0275): items -> their rarity's
+    ITEM-scope corpus band (content/corpus_stats.json, bands_scope=item);
+    skills -> the pooled live_self skill-dps band (content/enemy_bands.json).
+    Faithful port of check_stat_bands.cjs dps-proxy (counted==0 skipped)."""
     rows = []
+    skill_band = ((enemy_bands or {}).get("skill_dps") or {}).get("band") or None
     for kind, doc in live_docs:
         entries = doc.get("entries") or doc.get("skills") or []
         for d in entries:
@@ -326,7 +374,16 @@ def build_live(live_docs, bands):
             if counted == 0:
                 continue  # no damage-tick effect: nothing to say (parity)
             rarity = live_rarity_of(d)
-            band = bands.get(rarity) if rarity else None
+            if kind == "skill":
+                band = skill_band
+                scope = "skill"
+                basis = "live_self"
+                flag_mult = (band or {}).get("flag_multiple", 2)
+            else:
+                band = item_bands.get(rarity) if rarity else None
+                scope = "item"
+                basis = band.get("basis") if band else None
+                flag_mult = 3  # item bands have no flag_multiple: keep >3x rule
             warn_hi = band.get("warn_hi") if band else None
             status = "na"
             ratio = None
@@ -334,12 +391,14 @@ def build_live(live_docs, bands):
             if isinstance(warn_hi, (int, float)) and warn_hi > 0:
                 ratio = dps / warn_hi
                 status = "OVER" if dps > warn_hi else "OK"
-                severe = dps > 3 * warn_hi  # egregious: >3x band
+                severe = dps > flag_mult * warn_hi
             rows.append({
                 "kind": kind,
                 "id": d.get("id") or d.get("name") or "(anon)",
                 "name": d.get("name") or d.get("name_en") or d.get("id") or "",
                 "rarity": rarity,
+                "scope": scope,
+                "basis": basis,
                 "dps": _round(dps),
                 "counted": counted,
                 "warn_hi": warn_hi,
@@ -364,7 +423,7 @@ def build_live(live_docs, bands):
     return {"rows": rows, "summary": summary}
 
 
-def build_dataset(data_dir, stats_path, live_specs):
+def build_dataset(data_dir, stats_path, live_specs, enemy_bands_path=None):
     norm_dir = os.path.join(data_dir, "normalized")
     corpora = []
     for fn in sorted(os.listdir(norm_dir)):
@@ -376,6 +435,9 @@ def build_dataset(data_dir, stats_path, live_specs):
 
     stats = load_json(stats_path)
     bands = stats.get("bands", {})
+    enemy_bands = None
+    if enemy_bands_path and os.path.exists(enemy_bands_path):
+        enemy_bands = load_json(enemy_bands_path)
 
     live_docs = []
     for kind, path in live_specs:
@@ -384,8 +446,8 @@ def build_dataset(data_dir, stats_path, live_specs):
 
     entries = build_entries(corpora)
     quality = build_quality(corpora)
-    curves = build_curves(corpora, stats)
-    live = build_live(live_docs, bands)
+    curves = build_curves(corpora, stats, enemy_bands)
+    live = build_live(live_docs, bands, enemy_bands)
 
     attribution = []
     for src, doc in corpora:
@@ -717,6 +779,23 @@ function barRow(lab,val,mx){
 }
 
 /* ==================== CURVES & BANDS ==================== */
+function fillEbTable(tb, rows, isSkill){
+  if(!tb) return; tb.textContent='';
+  (rows||[]).forEach(function(r){
+    var tr=el('tr');
+    tr.appendChild(el('td',null,r.key));
+    var nlab=String(r.n)+((isSkill&&r.n_na!=null)?(' (+'+r.n_na+' na)'):'');
+    tr.appendChild(el('td','num',nlab));
+    tr.appendChild(el('td',null,r.provisional?'yes':'no'));
+    tr.appendChild(el('td','num',num(r.min,2)));
+    tr.appendChild(el('td','num',num(r.median,2)));
+    tr.appendChild(el('td','num',num(r.max,2)));
+    tr.appendChild(el('td','num',num(r.warn_lo,2)));
+    tr.appendChild(el('td','num',num(r.warn_hi,2)));
+    tr.appendChild(el('td','num',num(r.flag_multiple,1)));
+    tb.appendChild(tr);
+  });
+}
 function renderCurves(){
   var C=D.curves;
   var rd=$('#c-dist'); rd.textContent='';
@@ -753,6 +832,22 @@ function renderCurves(){
     bt.appendChild(tr);
   });
   $('#c-formula').textContent=C.bands_formula;
+  /* scope label on the corpus (item-scope) bands */
+  var cs=$('#c-bands-scope'); if(cs) cs.textContent='(scope: '+(C.bands_scope||'item')+' \u2014 corpus-derived)';
+  /* enemy-side bands (basis live_self, from content/enemy_bands.json) */
+  var EB=C.enemy_bands||{present:false};
+  var ebsec=$('#c-enemy-bands');
+  if(ebsec){
+    if(!EB.present){ ebsec.style.display='none'; }
+    else{
+      ebsec.style.display='';
+      $('#eb-note').textContent=EB.note||'';
+      $('#eb-formula').textContent=EB.band_formula||'';
+      fillEbTable($('#c-eb-hp tbody'), EB.hp_rows, false);
+      fillEbTable($('#c-eb-dps tbody'), EB.dps_rows, false);
+      fillEbTable($('#c-eb-skill tbody'), [EB.skill_row], true);
+    }
+  }
 }
 function boxSVG(b,scaleMax){
   var W=100,H=18,pad=1; /* percent-based via viewBox */
@@ -788,7 +883,9 @@ function renderLive(){
   L.rows.forEach(function(r){
     var row=el('div','live-row');
     var nm=el('div','name'); nm.appendChild(el('span','badge '+r.kind,r.kind));
-    nm.appendChild(document.createTextNode(' '+r.name)); row.appendChild(nm);
+    nm.appendChild(document.createTextNode(' '+r.name));
+    nm.appendChild(el('span','mut',' ['+r.scope+(r.basis?('/'+r.basis):'')+']'));
+    row.appendChild(nm);
     row.appendChild(el('div',null,r.rarity||'\\u2014'));
     row.appendChild(el('div','num','dps '+num(r.dps,2)));
     var tk=el('div','track '+(r.severe?'severe ':'')+(r.status==='na'?'na':r.status));
@@ -889,17 +986,27 @@ def build_html(dataset):
       <p class="mut">Corpus dps-proxy = damage_mid / cadence_mid. Box = p25..p75, orange line = median, whiskers = min..max.</p>
       <div id="c-box"></div></div>
     <div class="section"><h2>Verb frequency (pooled)</h2><div id="c-verbs"></div></div>
-    <div class="section"><h2>Derived bands</h2>
+    <div class="section"><h2>Derived bands <span class="mut" id="c-bands-scope"></span></h2>
       <table id="c-bands"><thead><tr><th>rarity</th><th class="num">ratio_raw</th>
         <th class="num">ratio (isotonic)</th><th class="num">warn_hi</th><th>basis</th></tr></thead>
         <tbody></tbody></table>
       <h3 style="margin-top:10px">bands_formula</h3>
       <div class="formula" id="c-formula"></div></div>
+    <div class="section" id="c-enemy-bands"><h2>Enemy-side bands <span class="mut">(scope: live_self &mdash; our current live meta, not genre truth)</span></h2>
+      <p class="mut" id="eb-note"></p>
+      <h3 style="margin-top:8px">Enemy HP by rarity (over hp midpoints)</h3>
+      <table id="c-eb-hp"><thead><tr><th>rarity</th><th class="num">n</th><th>prov</th><th class="num">min</th><th class="num">median</th><th class="num">max</th><th class="num">warn_lo</th><th class="num">warn_hi</th><th class="num">flag&times;</th></tr></thead><tbody></tbody></table>
+      <h3 style="margin-top:12px">Enemy total-dps by rarity (sum of the enemy's skill dps-proxies)</h3>
+      <table id="c-eb-dps"><thead><tr><th>rarity</th><th class="num">n</th><th>prov</th><th class="num">min</th><th class="num">median</th><th class="num">max</th><th class="num">warn_lo</th><th class="num">warn_hi</th><th class="num">flag&times;</th></tr></thead><tbody></tbody></table>
+      <h3 style="margin-top:12px">Skill dps (pooled &mdash; skill/1 carries no rarity)</h3>
+      <table id="c-eb-skill"><thead><tr><th>group</th><th class="num">n</th><th>prov</th><th class="num">min</th><th class="num">median</th><th class="num">max</th><th class="num">warn_lo</th><th class="num">warn_hi</th><th class="num">flag&times;</th></tr></thead><tbody></tbody></table>
+      <h3 style="margin-top:12px">band_formula</h3>
+      <div class="formula" id="eb-formula"></div></div>
   </section>
 
   <section id="view-live" class="view">
     <h2>Where OUR content sits on the genre curve</h2>
-    <p class="mut">dps-proxy of each live item / skill (faithful port of tools/check_stat_bands.cjs) against its rarity's corpus warn_hi band. White marker = warn_hi; red = over band; dark red = &ge;3&times; band. Skills carry no rarity, so they have no band (advisory).</p>
+    <p class="mut">dps-proxy of each live item / skill (faithful port of tools/check_stat_bands.cjs). Items compare against their rarity's ITEM-scope corpus warn_hi band (content/corpus_stats.json, bands_scope=item); skills compare against the pooled live_self skill-dps band (content/enemy_bands.json) &mdash; the scope/basis is tagged in each row. White marker = warn_hi; red = over band; dark red = beyond the flag bound.</p>
     <div class="summary" id="l-summary"></div>
     <div id="l-body"></div>
   </section>
@@ -929,14 +1036,17 @@ def build_html(dataset):
 # --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
-def run(data_dir, out_dir, stats_path, items_path=None, skills_path=None):
+def run(data_dir, out_dir, stats_path, items_path=None, skills_path=None,
+        enemy_bands_path=None):
     if items_path is None:
         items_path = os.path.join(REPO, "content", "live", "live_items.json")
     if skills_path is None:
         skills_path = os.path.join(REPO, "content", "live", "dungeon",
                                    "skills.json")
+    if enemy_bands_path is None:
+        enemy_bands_path = os.path.join(REPO, "content", "enemy_bands.json")
     live_specs = [("item", items_path), ("skill", skills_path)]
-    dataset = build_dataset(data_dir, stats_path, live_specs)
+    dataset = build_dataset(data_dir, stats_path, live_specs, enemy_bands_path)
     html = build_html(dataset)
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "index.html")
@@ -958,8 +1068,11 @@ def main(argv=None):
                     help="live po/2 items file (default content/live/live_items.json)")
     ap.add_argument("--skills", default=None,
                     help="live skill/1 file (default content/live/dungeon/skills.json)")
+    ap.add_argument("--enemy-bands", default=None,
+                    help="enemy_bands.json (default content/enemy_bands.json)")
     args = ap.parse_args(argv)
-    out_path = run(args.data_dir, args.out, args.stats, args.items, args.skills)
+    out_path = run(args.data_dir, args.out, args.stats, args.items,
+                   args.skills, args.enemy_bands)
     print("wrote " + out_path)
     return 0
 
