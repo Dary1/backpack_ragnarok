@@ -398,6 +398,39 @@ confusingly, or worse, writes to it.
   is adopted), `art_urls` simply OMITS each skin id and the client falls back --
   never an error. That is the D-A chain behaving as specified, not a gap.
 
+- 2026-07-21 ART (I) fan-out adoption COMPLETE -- 48/49 bpskin_unit_* seeds adopted,
+  1 flagged. DEVIATION from D4/§6 ("user picks"): the user delegated seed selection to
+  agent visual review, authorized via the orchestrator session 2026-07-21. Review split
+  per user direction: Opus judged the first 10, a Fable-class agent the remaining 39
+  (contact sheets + seam metric + 2x2 wrap checks; sheets retained in the session
+  outputs for spot-check). Seam = inspect_seam ratio_x/ratio_y, band 0.83-1.10 advisory.
+  Adoptions (unit seed rx/ry):
+  alchemist 1 0.80/0.69 | ancient_grimoire 1 0.67/0.66 | angel 1 1.10/1.04 |
+  bard 1 0.98/1.04 | battle_pickaxe 1 1.18/1.16 | battle_standard 4 0.83/1.10 |
+  berserker 2 1.00/0.99 | cleric 3 0.93/1.01 | cursed_doll 1 1.02/1.08 |
+  darkelf 2 0.94/1.14 | darkknight 2 0.92/0.99 | dragonknight 2 0.44/1.39 |
+  druid 2 0.86/0.97 | enchanted_lantern 8 0.90/0.96 | fairy 3 0.80/0.92 |
+  giant_shuriken 6 1.69/0.89 | gladiator 1 0.90/1.06 | golden_apple 2 0.86/1.03 |
+  hero 3 1.15/1.49 | hourglass 1 0.59/0.71 | jester 2 0.95/1.19 | king 1 1.01/1.01 |
+  lightcavalry 1 0.90/1.07 | littleprincess 1 0.74/0.80 | living_anvil 1 0.77/0.80 |
+  mana_crystal 1 0.89/0.97 | miko 5 1.07/1.18 | monk 2 0.93/0.99 | ninja 1 0.92/1.02 |
+  orc 4 0.92/0.97 | paladin 5 1.94/0.52 | plaguedoctor 2 0.89/1.03 |
+  powder_keg 5 1.26/0.82 | priest 2 1.24/0.97 | princess 2 0.83/1.05 |
+  ranger 1 1.04/1.15 | samurai 1 0.83/1.14 | shaman 1 0.94/1.02 |
+  shieldmaiden 3 0.79/1.31 | sorceress 1 0.57/0.82 | squire 1 0.99/1.05 |
+  thief 1 0.83/1.04 | valkyrie 1 0.91/0.87 | war_horn 4 2.66/1.60 |
+  watcher 4 0.80/1.24 | werewolf 1 0.80/1.02 | witch 1 0.95/1.15 | wizard 3 0.87/1.02.
+  Regenerated ONCE (all 4 first-pass seeds failed; count:4, prompt untouched):
+  enchanted_lantern, giant_shuriken, miko, paladin, pirate, powder_keg -- five of six
+  yielded an adoptable seed (5-8 range above).
+  FLAGGED unadopted: pirate -- both passes (8/8 renders) produced stitched patch/frame
+  motifs or corner-blotch fields; the "patched stitching" clause keeps composing framed
+  patches. Needs prompt surgery under a follow-up; falls back per the D-A chain.
+  Incident: ComfyUI crashed once mid-batch (early, during ancient_grimoire seed 4) and
+  self-recovered; that render was lost and the unit was judged on its remaining seeds.
+  No service was restarted. Queue drained clean: 54/54 artworks terminal, 53 adopted
+  (5 pilots + 48 fan-out), 1 flagged.
+
 ---
 
 ## 11. Outcome — verification pass, 2026-07-19
