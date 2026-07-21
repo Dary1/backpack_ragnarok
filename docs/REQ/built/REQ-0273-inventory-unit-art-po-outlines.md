@@ -324,3 +324,15 @@ the BP's own 3px colour boundary; centres stay clean — no wireframe).
     starter dungeon's L1, is that intended difficulty?; (3) REQ-0222's remaining
     scope (rerun-then-abort + provenance-carrying flake list) would have absorbed
     both this artadmin abort and the flake bookkeeping.
+
+- 2026-07-22 DEPLOYED. User accepted (screenshot review) and directed merge+deploy.
+  Merge \`1388e1a\` (zero conflicts), env-carrying bundle \`2c948a8\` (the 42238f8
+  convention), deploy-prep record \`4f3f509\`. Master CI: green modulo the two
+  documented flakes PLUS \`workshop.spec.ts:361\` -- a real deterministic red owned
+  by REQ-0256 s already-live combat rebaseline (the fixture squad now wipes 6/6;
+  rewards-zero-on-wipe is by design), NOT this REQ. User ruling 2026-07-22:
+  balance is deliberately untuned and out of scope for now; a fixture re-tune REQ
+  is filed to restore an honest master gate. \`backpack-api\` restarted
+  2026-07-21T22:01:59Z after art-queue-empty check; health: /api/content 200
+  local + tunnel, unit_skins 108, art_urls 194 (REQ-0266 tripwires hold).
+  web/tunnel/comfyui untouched.
