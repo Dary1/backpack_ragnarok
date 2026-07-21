@@ -64,6 +64,25 @@ T('structure: gimic attachments are capped at 2 per encounter and every attachme
   }
 });
 
+T('REQ-0276 A2(iii): every rolled attachment keeps a gimicId that resolves to a real gimic def', () => {
+  let sawAtt = false;
+  for (const def of dungeons.entries) {
+    for (const level of [def.levelMin, Math.round((def.levelMin + def.levelMax) / 2), def.levelMax]) {
+      for (const seed of ['ga', 'gb', 'gc', 'gd', 'ge']) {
+        const rolled = roller.rollDungeon(def, level, 'gimicid-' + seed + '-' + level, { gimicDefsById });
+        for (const e of rolled.encounters) {
+          for (const at of (e.attachments || [])) {
+            sawAtt = true;
+            assert.ok(typeof at.gimicId === 'string' && at.gimicId, def.id + ' attachment ' + at.id + ' must carry a gimicId');
+            assert.ok(gimicDefsById[at.gimicId], def.id + ' gimicId resolves to a real gimic def: ' + at.gimicId);
+          }
+        }
+      }
+    }
+  }
+  assert.ok(sawAtt, 'the ladder rolled at least one attachment to check');
+});
+
 T('monotone: packEncountersForLevel / gimicCountForLevel never decrease as level rises, and clamp to the band max', () => {
   for (const def of dungeons.entries) {
     let prevP = -1, prevG = -1;
