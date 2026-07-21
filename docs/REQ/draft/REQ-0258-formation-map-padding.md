@@ -1,9 +1,11 @@
 # REQ-0258 — formation-map-padding: one 26x18 abstraction, a padding ring on BOTH planes, and formation4 fixed
 
-**Status:** draft — spec written, BLOCKED on user review. Two things need the user before work
-may start: (1) the `docs/user_managed/backpack_battle_spec.md` amendment in §7, which an LLM may
-NOT make itself; (2) confirmation that formation4's box may move (it is sanctioned by ruling Q1,
-but it is a live gameplay change and §8 shows it is NOT covered by any existing golden).
+**Status:** todo — CLEARED 2026-07-21. Both review blockers are discharged. (1) The
+`docs/user_managed/backpack_battle_spec.md` amendment in §7 has LANDED on master as `7914a0f`:
+the user read the file, ruled `J11:Q18` a mistake, directed the fix, and authorized the
+`docs/user_managed` edit as an explicit exception (REQ-0165 precedent). (2) The same ruling IS
+the sign-off §8 asked for on moving a live formation box — the user did not merely permit the
+move, they requested it. Was: draft (spec written, blocked on user review), 2026-07-18.
 **Reserved:** 2026-07-18
 **Slug:** formation-map-padding
 **Branch:** req-expedition-spec (spec only)
@@ -254,11 +256,29 @@ merely stale — they state the opposite of canon.
 Also `docs/llm_managed/user_managed_rename_suggestions.md:133,140,149` repeats `J11:Q18` as the
 fixed value. LLM-owned; correct it in the same commit or it becomes a third stale assertion.
 
-### 7.2 `docs/user_managed/backpack_battle_spec.md` — USER-OWNED. **ASK; DO NOT EDIT.**
+> **ALREADY DONE 2026-07-21 (`7914a0f`) — with one deliberate deviation the implementer must
+> finish.** Both LLM-owned docs were amended in the same commit as the golden doc, i.e. AHEAD of
+> the code rather than alongside it, because the golden doc could not be left standing alone in
+> saying `J10:Q17`. The deviation: `user_managed_rename_suggestions.md:133` DESCRIBES what
+> `sim/lib/formation.cjs` holds today, so it still reads `J11:Q18` — a TRUE statement — and
+> carries a SUPERSEDED note beneath it instead of a rewrite. **When the code moves, that line
+> must flip to `J10:Q17` and the note must go**, or acceptance criterion 5 fails.
+> `combat_spec_draft.md` §5.2 likewise carries a "data has NOT moved yet" caveat that must be
+> deleted in the same commit as the code.
 
-PROJECT.md: "`docs/user_managed` = golden, user-verified (do NOT edit)". This REQ therefore may
-NOT touch this file. It must instead ASK the user to amend it. **Exact lines, so the user can
-make the change in one pass:**
+### 7.2 `docs/user_managed/backpack_battle_spec.md` — USER-OWNED. **DONE 2026-07-21 (`7914a0f`).**
+
+> **RESOLVED — do not re-do this, and do not re-ask.** The user was shown the file on
+> 2026-07-21, called `J11:Q18` a mistake, and directed the fix. All five amendments in the table
+> below landed on **master** as `7914a0f`, ahead of any code change. Verified after the edit:
+> the fenced YAML still parses, and all 16 boxes across the 4 formations are 8x8, wholly inside
+> B2:Y17, and non-overlapping within their formation. The golden doc and the DATA therefore
+> disagree until this REQ ships — that divergence is recorded in both llm_managed docs (§7.1),
+> deliberately, so it cannot rot silently.
+
+PROJECT.md: "`docs/user_managed` = golden, user-verified (do NOT edit)". This REQ may NOT touch
+this file on its own initiative; the edit above happened only because the user directed it. The
+table records what was requested and what landed:
 
 | line | today | requested amendment |
 |---|---|---|
@@ -439,6 +459,6 @@ dims are untouched), but REQ-0261 will need the ring for rendering — it reads 
 2. All 16 boxes pass 8x8 AND inside-B2:Y17. Re-running the §3.1 sweep prints **violators=0**.
 3. `validateFormationBoxes` THROWS on an 8x8 box placed outside the ring — proven by a test, not by inspection. Given the same table today it would have thrown on `J11:Q18`.
 4. `sim/tests/run.cjs` green (the 1292 pin now reads `J10:Q17`); `sim/tests/goldens.cjs` still `12 cases OK` and byte-identical (§8); `sim/tests/forecast_parity.cjs` still 18/0.
-5. No `J11:Q18` remains anywhere as a CURRENT assertion. It survives only as history (the retired-xlsx narrative, `docs/REQ/done/REQ-0165-*` which is terminal history and is NOT edited).
+5. No `J11:Q18` remains anywhere as a CURRENT assertion. It survives only as history (the retired-xlsx narrative, `docs/REQ/done/REQ-0165-*` which is terminal history and is NOT edited). **Recount after the 2026-07-21 doc pass (`7914a0f`):** the three doc sites already read `J10:Q17`, so exactly four CURRENT assertions are left for this REQ to move — `content/live/dungeon/formations.json`, `sim/lib/formation.cjs`, the code-state line `user_managed_rename_suggestions.md:133` together with its SUPERSEDED note, and the "data has NOT moved yet" caveat in `combat_spec_draft.md` §5.2 (both per §7.1).
 6. `shared/content_validate.cjs` has no new `require()` out of `shared/` (§9.1); the three existing parity tests still pass; no unpinned fourth copy of the geometry exists.
-7. The user has amended `backpack_battle_spec.md` per §7.2, or has explicitly deferred it.
+7. **SATISFIED 2026-07-21.** The user amended `backpack_battle_spec.md` per §7.2 — landed on master as `7914a0f`, ahead of this REQ's code work. Nothing further is owed here; re-verify only that the file still reads `J10:Q17` at merge time.
