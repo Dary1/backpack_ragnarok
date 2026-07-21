@@ -1014,14 +1014,20 @@ T('REQ-0033 BP exclusion set: a BP with 2 contained POs, 1 already used by curre
   const SI_DEFS={gem_si:{name:'Gem SI',slot:'gem',reqTags:[]}};
   const LAYOUT={ROWS:8,COLS:8};
   const TREES={po:{},socket:{}};
-  const bp={id:'box',name:'Box',color:'#fff',shape:[[0,0],[0,1]],origin:[1,1],unit:{id:'berserker',off:[0,0]}};
+  // REQ-0273 deliberate fixture update: the original 2-cell box put pA ON the
+  // box's own unit cell [1,1] -- an ILLEGAL placement the canvas law has
+  // always refused ('Unit cell') and one migrateState v4 now repairs at read
+  // time (relocating pA and thereby dissolving the exclusion this test
+  // exists to prove). A 3-cell box holds the unit AND both POs legally; every
+  // assertion below is unchanged, including pA's would-be nested slot [3,4].
+  const bp={id:'box',name:'Box',color:'#fff',shape:[[0,0],[0,1],[0,2]],origin:[1,1],unit:{id:'berserker',off:[0,0]}};
   const parking={id:'parking',name:'Parking',color:'#fff',shape:[[0,0],[0,1]],origin:[5,5],unit:{id:'berserker',off:[0,1]}};
   const st={
     linked:true,
     bps:[bp,parking],
     pos:[
-      {uid:'pA',id:'box_po',loc:'grid',cell:[1,1],rot:0},
-      {uid:'pB',id:'box_po',loc:'grid',cell:[1,2],rot:0},
+      {uid:'pA',id:'box_po',loc:'grid',cell:[1,2],rot:0},
+      {uid:'pB',id:'box_po',loc:'grid',cell:[1,3],rot:0},
     ],
     sis:[
       {uid:'sA',id:'gem_si',host:{po:'pA',si:0}},
@@ -2098,6 +2104,74 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
     const before=E.invCanRotateBP(st,homePg,homeBp.id).ok;
     homeBp.locked=false;
     eq(E.invCanRotateBP(st,homePg,homeBp.id).ok,before,'locked changes nothing for invRotateBP legality');
+  });
+})();
+
+
+// ---------------------------------------------------------------------------
+// REQ-0273: migrateState v4 -- READ-time normalization of the PO-on-unit-cell
+// poison (see normalizeUnitCellOverlapsV4's own comment for the producers).
+// ---------------------------------------------------------------------------
+(function(){
+  const BP={id:'tbp',name:'T',color:'#8a8a8a',shape:[[0,0],[0,1],[1,0],[1,1],[2,0],[2,1]],origin:[1,1],unit:{id:'dwarf',off:[2,1]}}; // unit cell [3,2]
+  function base(){
+    const {st,E}=(function(){const st=Data.makeState();return {st,E:Engine.create(Data.ITEMS,Data.SI_DEFS,Data.LAYOUT,Data.TREES,Data.UNITS,Data.CONN_SHAPES)};})();
+    const m=E.migrateState(st);
+    m.inv.pages[0].bps.push(JSON.parse(JSON.stringify(BP)));
+    return {m,E};
+  }
+  T('REQ-0273 v4: poisoned PO on a page unit cell relocates at read time, idempotently',()=>{
+    const {m,E}=base();
+    m.inv.pages[0].pos.push({uid:'px',id:'hilt',loc:'grid',cell:[3,2],rot:0}); // ON the unit cell
+    const st2=E.migrateState(m);
+    const px=st2.inv.pages[0].pos.find(p=>p.uid==='px');
+    ok(px,'px stays on page 0 (room exists)');
+    ok(!(px.cell[0]===3&&px.cell[1]===2),'moved off the unit cell');
+    ok(E.invCanPlacePO(st2,0,'px',0,px.cell).ok,'relocated placement is engine-legal');
+    const st3=E.migrateState(st2);
+    eq(st3.inv.pages[0].pos.find(p=>p.uid==='px').cell,px.cell,'second migrate is a no-op for px');
+  });
+  T('REQ-0273 v4: overflow to the next page carries the seated SI along',()=>{
+    const {m,E}=base();
+    const pg0=m.inv.pages[0];
+    pg0.pos.push({uid:'pd',id:'dagger',loc:'grid',cell:[2,2],rot:0}); // cells [2,2]+[3,2] -- unit cell hit
+    const siId=Object.keys(Data.SI_DEFS)[0];
+    pg0.sis.push({uid:'sa',id:siId,host:{po:'pd',si:0}});
+    for(let r=1;r<=8;r++)for(let c=1;c<=8;c++){
+      if((r===3&&c===2)||(r===2&&c===2))continue;
+      pg0.pos.push({uid:'f'+r+'_'+c,id:'hilt',loc:'grid',cell:[r,c],rot:0});
+    }
+    const st2=E.migrateState(m);
+    ok(!st2.inv.pages[0].pos.find(p=>p.uid==='pd'),'pd left page 0 (no legal spot there)');
+    const pd=st2.inv.pages[1].pos.find(p=>p.uid==='pd');
+    ok(pd,'pd landed on page 1');
+    eq(pd.cell,[1,1],'first-fit top-left on the empty page');
+    ok(st2.inv.pages[1].sis.find(a=>a.uid==='sa'),'seated SI travelled with its PO');
+    ok(!st2.inv.pages[0].sis.find(a=>a.uid==='sa'),'...and left page 0');
+  });
+  T('REQ-0273 v4: nowhere fits -> the PO stays put (degraded render beats data loss)',()=>{
+    const {m,E}=base();
+    const pg0=m.inv.pages[0];
+    pg0.pos.push({uid:'pd',id:'dagger',loc:'grid',cell:[2,2],rot:0});
+    for(let r=1;r<=8;r++)for(let c=1;c<=8;c++){
+      if((r===3&&c===2)||(r===2&&c===2))continue;
+      pg0.pos.push({uid:'f0_'+r+'_'+c,id:'hilt',loc:'grid',cell:[r,c],rot:0});
+    }
+    for(let pi=1;pi<m.inv.pages.length;pi++)
+      for(let r=1;r<=8;r++)for(let c=1;c<=8;c++)
+        m.inv.pages[pi].pos.push({uid:'f'+pi+'_'+r+'_'+c,id:'hilt',loc:'grid',cell:[r,c],rot:0});
+    const st2=E.migrateState(m);
+    const pd=st2.inv.pages[0].pos.find(p=>p.uid==='pd');
+    ok(pd,'pd never deleted');
+    eq(pd.cell,[2,2],'pd untouched when no page can host it');
+  });
+  T('REQ-0273 v4: clean states are untouched (pass is a no-op)',()=>{
+    const {m,E}=base();
+    m.inv.pages[0].pos.push({uid:'pl',id:'hilt',loc:'grid',cell:[5,5],rot:0}); // legal free spot
+    const st2=E.migrateState(m);
+    const st3=E.migrateState(st2);
+    eq(JSON.stringify(st3),JSON.stringify(E.migrateState(st3)),'fixpoint after one pass');
+    eq(st2.inv.pages[0].pos.find(p=>p.uid==='pl').cell,[5,5],'legal PO never moved');
   });
 })();
 

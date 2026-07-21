@@ -82,7 +82,17 @@ export function commitPODrop(self: BoardRenderer, uid: string, originBoard: Boar
       } else {
         // inv -> inv: still a physical home move.
         splicePOAcrossBoardsPhysical(self, state, uid, originBoard, self.boardId);
-        if (drop.type === 'grid') ops.movePO(state, uid, drop.anchor);
+        // REQ-0273 (bug 2 hardening): the splice carries the record with its
+        // STALE source-page coordinates; only the movePO call validates them
+        // against the destination. If the destination refuses at commit time
+        // (reachable only when state mutated between hover preview and
+        // pointerup -- e.g. a background claim landed on the target cells),
+        // the PO must not be stranded on the new page unvalidated at those
+        // stale coordinates (that is the same illegal-overlap class as the
+        // firstFitPlaceBp capture). Splice it straight back home, where its
+        // old coordinates are ones the engine already accepted.
+        const mv = drop.type === 'grid' ? ops.movePO(state, uid, drop.anchor) : { ok: false };
+        if (!mv.ok) splicePOAcrossBoardsPhysical(self, state, uid, self.boardId, originBoard);
       }
       self.gCarry.removeChildren();
       self.gTarget.removeChildren();
