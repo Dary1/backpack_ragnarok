@@ -25,6 +25,10 @@
 
 const path = require('path');
 const PACING = require(path.join(__dirname, '..', '..', 'shared', 'pacing.json'));
+// REQ-0276 A2(i): the SAME layout authority the sim placer imports
+// (sim/lib/packs.cjs), so roster fieldCells can never drift from the cells
+// the rays actually hit -- REQ-0261 §8.2/§8.5.
+const { cellsFor, parseA1 } = require(path.join(__dirname, '..', '..', 'shared', 'content_validate.cjs'));
 
 // class(e): map an event's `ev` token to a pacing class. Most map 1:1;
 // reflect_damage folds onto the `reflect` pair; any unknown/future token
@@ -180,9 +184,68 @@ function eventPtSecs(run, index) {
 // its `pt` (+ coalesce annotations) so the client obeys the timeline. The
 // stored `run.events` is never mutated. Legacy runs (pacingVersion 0) gate
 // on sim `t` and return the raw events, exactly as before.
+// REQ-0276 A2: the event tokens whose serve-time attribution we merge onto
+// COPIES below. Kept as sets so a future event token is a one-line add.
+const UNIT_CHARGE_EVS = new Set([
+  'unit_charge_spend', 'unit_charge_stack', 'unit_charge_transform',
+  'unit_charge_strike', 'unit_charge_onhit', 'unit_charge_lifesteal',
+  'unit_charge_reflect', 'unit_charge_transfer', 'unit_charge_shieldbreak',
+]);
+const ATT_EVS = new Set(['att_fire', 'att_reveal', 'att_disarm', 'att_open', 'att_lost']);
+
+// enrichDecoration(dec, ...): REQ-0276 A2(ii..iv) serve-time attribution,
+// applied ONLY to the event COPY decorateVisible already builds -- the stored
+// run.events stays byte-identical (goldens + the api determinism gate green).
+// Every join is derived from data that already exists outside the sim at serve
+// time: the roster (instanceId / slot) and the rolled-def gimic map.
+function enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt) {
+  const ev = dec.ev;
+  // (ii) direct ray_hit -> enemy roster index. Only an UNMASKED dst (a real
+  // `frost_gnoll#0` instance id) resolves; a masked strike carries dst '?',
+  // matches nothing, and stays anonymous -- the reveal semantics are preserved.
+  if (ev === 'ray_hit' && typeof dec.dst === 'string' && enemyIdxByInstance.has(dec.dst)) {
+    dec.enemyIdx = enemyIdxByInstance.get(dec.dst);
+  } else if ((ev === 'ray_aoe' || ev === 'ray_hit_all') && Array.isArray(dec.hits)) {
+    // (ii) area strikes carry hits[] = [{dst, amount, hp_after?}]; attribute
+    // each, rebuilding with COPIES so the stored nested array is never mutated.
+    let touched = false;
+    const hits = dec.hits.map((h) => {
+      if (h && typeof h.dst === 'string' && enemyIdxByInstance.has(h.dst)) {
+        touched = true;
+        return Object.assign({}, h, { enemyIdx: enemyIdxByInstance.get(h.dst) });
+      }
+      return h;
+    });
+    if (touched) dec.hits = hits;
+  }
+  // (iii) att_* -> source gimic content id, so the client can bind gimic
+  // art/badges (glyph fallback by `kind` otherwise).
+  if (gimicByAtt && ATT_EVS.has(ev) && typeof dec.att === 'string' && gimicByAtt[dec.att]) {
+    dec.gimicId = gimicByAtt[dec.att];
+  }
+  // (iv) unit_charge_* -> squad slot (0..3) so dock/stage pips can light. The
+  // firing BP id rides `id` (spend/stack/transform) or `src` (strike/onhit/
+  // lifesteal/reflect/transfer/shieldbreak) -- REQ-0263 §5.3.
+  if (UNIT_CHARGE_EVS.has(ev)) {
+    const bpId = (typeof dec.id === 'string' ? dec.id : null) || (typeof dec.src === 'string' ? dec.src : null);
+    if (bpId != null && slotByBp.has(bpId)) dec.slot = slotByBp.get(bpId);
+  }
+}
+
 function decorateVisible(run, elapsedSecs) {
   const events = (run && run.events) || [];
   const paced = run && run.pacingVersion >= 1 && run.presentation ? run.presentation : null;
+  // REQ-0276 A2: lookup tables built ONCE per serve, all from the run doc.
+  const roster = (run && run.roster) || null;
+  const enemyIdxByInstance = new Map();
+  if (roster && Array.isArray(roster.enemies)) {
+    roster.enemies.forEach((e, idx) => { if (e && e.instanceId) enemyIdxByInstance.set(e.instanceId, idx); });
+  }
+  const slotByBp = new Map();
+  if (roster && Array.isArray(roster.slots)) {
+    roster.slots.forEach((sl) => { for (const bp of (sl && sl.bps) || []) if (bp && bp.id != null && !slotByBp.has(bp.id)) slotByBp.set(bp.id, sl.index); });
+  }
+  const gimicByAtt = (run && run.gimics) || null;
   const out = [];
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
@@ -193,6 +256,7 @@ function decorateVisible(run, elapsedSecs) {
       const dec = Object.assign({}, ev, { pt: ptv });
       if (paced.coalesce && paced.coalesce[i]) dec.pcoalesce = paced.coalesce[i];
       if (paced.hidden && paced.hidden[i]) dec.pcoalesceHidden = true;
+      enrichDecoration(dec, enemyIdxByInstance, slotByBp, gimicByAtt);
       out.push(dec);
     } else {
       const visSecs = typeof ev.t === 'number' ? ev.t : Infinity;
@@ -220,20 +284,33 @@ function buildRoster(result, dungeonDef, defs) {
   for (const enc of (dungeonDef && dungeonDef.encounters) || []) {
     const packId = enc.enemyPack && enc.enemyPack.packId;
     const pack = packId ? monsterPackDefsById[packId] : null;
-    for (const m of (pack && pack.members) || []) {
+    const members = (pack && pack.members) || [];
+    for (let mi = 0; mi < members.length; mi++) {
+      const m = members[mi];
       const def = m && m.enemy ? enemyDefsById[m.enemy] : null;
       if (!def) continue;
       const key = packId + '/' + m.enemy + '/' + (m.at || '');
       if (seen.has(key)) continue;
       seen.add(key);
       const hp = Array.isArray(def.hp) ? def.hp : [def.hp, def.hp];
+      // REQ-0276 A2(i): the enemy's SIM instance id + placed field cells so the
+      // client can draw the whole enemy formation at encounter_start instead of
+      // lazily at first ray. instanceId mirrors compileEnemyPack's
+      // `eid + '#' + <index-in-pack-members>` (sim/lib/packs.cjs); fieldCells is
+      // DERIVED through cellsFor -- the same authority the sim placer uses -- so
+      // the [fh,fw] transpose can never drift (REQ-0261 §8.2/§8.4/§8.5).
+      const anchor = m.at ? parseA1(m.at) : null;
       enemies.push({
         id: def.id,
+        instanceId: m.enemy + '#' + mi,
+        at: m.at || null,
+        fieldCells: anchor ? cellsFor(anchor, def.footprint || [1, 1]) : [],
         name: def.name,
         nameJa: (def.i18n && def.i18n.ja && def.i18n.ja.name) || def.name,
         hpMax: Number.isFinite(hp[1]) ? hp[1] : (Number.isFinite(hp[0]) ? hp[0] : 0),
         footprint: def.footprint || [1, 1],
         packId: packId || null,
+        masked: !!def.masked,
       });
     }
   }
