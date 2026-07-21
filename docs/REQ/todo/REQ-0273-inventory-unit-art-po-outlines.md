@@ -182,9 +182,88 @@ Decisions (documented as built):
 - placement.ts sentinel relies on invCanPlaceBP never reading placeholder origin -
   check_placement.mjs pins the whole behaviour, not the implementation detail.
 
-## 6. State log
 
+---
+
+## 7. Outcome — verification pass, 2026-07-21
+
+### 7.1 Commits (oldest first, branch `req-0273-inventory-unit-art-po-outlines`)
+
+| commit | what |
+|---|---|
+| `3a28ffe` | reserve stub (allocator) |
+| `f922dfd` | this spec |
+| `7125aba` | reserved -> todo (user commissioned all three items this session) |
+| `76cfad3` | the implementation: BoardRenderer alpha rule + outlines, poOutline.ts, placement.ts sentinel, commits.ts rollback, engine v4 + run.cjs tests, check_placement/check_po_outline, e2e spec |
+| `b2ff252` | e2e fixture hardening (pick-rung skin injection) + web/app rebuild |
+| `9ec6b3c` | ci.sh wiring: [5.9e/7] check_placement, [5.9f/7] check_po_outline |
+| `ac896de` | deliberate legalization of two e2e fixtures that DEPENDED on the forbidden overlap (bp-rotate, workshop covered-BP) |
+| `95c8a2c` | pixel probes poll for board steady state (async raster decode vs fleet load) |
+
+### 7.2 Investigation addenda (found while building; all verified)
+
+- **The engine-test fixture was poisoned too.** `mock-src/tests/run.cjs`'s REQ-0033
+  exclusion-set test used a 2-cell box BP holding two POs — one necessarily ON the
+  unit cell. v4 relocates it at read time and the exclusion dissolved. Fixture
+  legalized to a 3-cell box (assertions unchanged, including the [3,4] nested-slot
+  negative). Same treatment for `bp-rotate.spec.ts` (contained PO (4,3) -> (4,2),
+  rigid-rotation assertions remapped) and `workshop.spec.ts`'s covered-BP (4 POs ->
+  3; "fully covered" is redefined by law — the unit cell is not coverable).
+- **e2e skin injection must use the PICK rung.** The live corpus already ships a
+  default `slot:"unit"` skin per unit (`uskin_<unit>`); an injected rival default
+  loses `defaultUnitSkinId`'s first-match and resolves to UNADOPTED art — the chain
+  then answers null, correctly. `inventory-art-integrity.spec.ts` injects a
+  non-default def and picks it via the stubbed prefs route.
+- **PixiJS v8 loads board textures in a dedicated worker** (`WorkerManager.
+  loadImageBitmap`); its fetch bypasses Playwright `page.route()`. Route-fulfilled
+  `/api/art/*.png` art can never reach the board in e2e — inject `data:image/png`
+  URLs instead (sprites.ts names its parser explicitly, so no extension sniffing).
+- **Scoped e2e runs need `E2E_GPU=1` on this box.** ci.sh's [7/7] sets it by
+  default; a scoped run without it renders on SwiftShader, runs ~3x slower and
+  drowns in interaction-window flakes. (One 12-red run mid-investigation was a
+  self-inflicted double-launch port collision; discarded as evidence.)
+
+### 7.3 Gate results
+
+- `HOME=/tmp/h0273 SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh` -> **CI GREEN**.
+- Full `HOME=/tmp/h0273 DATABASE_URL=… tools/ci.sh` (run 3, final code): every step
+  through [6.5/8] green (`[art_jobs] numpy` noise inside passing steps, documented
+  benign); [7/7] fleet (GPU, 4 workers): **194 passed / 1 skipped / 2 failed — both
+  the documented load flakes, signatures verified: `forecast.spec.ts:206`
+  (slot-pressure toBeVisible timeout) and `schedule.spec.ts:1451`.**
+  `inventory-art-integrity.spec.ts` 4/4 green inside the fleet; `bp-rotate`,
+  `bp-transfer`, `workshop` green.
+- mock-src/tests/run.cjs: **123 passed, 0 failed** (4 new v4 tests).
+- check_placement.mjs / check_po_outline.mjs: all green (now ci steps 5.9e/5.9f).
+- Stability: bp-transfer + baseline-smoke 9/9 x3 consecutive GPU rounds (one
+  earlier bp-transfer:103 red at P4 mid-thermal did not reproduce; drag-commit
+  timeout signature, not an assertion diff).
+- Pre-fix baseline (master bundle, final spec): tests 1/3/4 fail exactly on the
+  three defects (fullGreen 0; unit-cell itemBackdrop 0.98; rim 0), test 2 passes
+  (the engine law predates this REQ). That asymmetry IS the regression pin.
+
+### 7.4 Visual evidence (before = master bundle, after = this branch)
+
+`req0273_screens/`: `before/after_inventory_unit_alpha.png` (dim 0.44 green art vs
+full opacity), `before/after_po_unit_overlap.png` (hilt stacked on the unit cell vs
+the same poisoned save booting with the hilt relocated to (1,1), unit cell clean),
+`before_busy_no_outlines.png` / `after_busy_outlines.png` (adjacent blade|dagger
+fuse vs two rims + seam; beast-jaw L traces its true concave footprint; shield
+outline reads over the usage wash; flask outlined inside the BP without touching
+the BP's own 3px colour boundary; centres stay clean — no wireframe).
+
+### 7.5 Landmines confirmed/added
+
+- BoardRenderer invariants held: unit core disc = BP drag handle (bp-rotate/
+  bp-transfer green), gUnits after gItems, outline + all decorations
+  `eventMode='none'`, skin guard untouched, usage wash in gSkins.
+- migrateState v4 is the ONLY read-time rewrite and only for the unit-cell
+  overlap class; leaves data in place when no page can host; idempotent.
+- Any FUTURE fixture that parks a PO on a unit cell will drift at boot BY DESIGN —
+  legalize the fixture, do not weaken v4.
+
+## 8. State log
 - 2026-07-21 reserved (stub, 3a28ffe).
-- 2026-07-21 reserved -> todo: spec written; all three items explicitly commissioned
-  by the user this session (post-REQ-0266-deploy review) - that report IS the
-  ratification; no separate draft gate needed.
+- 2026-07-21 reserved -> todo (7125aba; ratified by the user's same-day report).
+- 2026-07-21 implemented + gates green (76cfad3..95c8a2c, see 7.1/7.3).
+- 2026-07-21 todo -> built. NOT merged, NOT deployed; user acceptance pending.
