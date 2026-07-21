@@ -431,6 +431,44 @@ confusingly, or worse, writes to it.
   No service was restarted. Queue drained clean: 54/54 artworks terminal, 53 adopted
   (5 pilots + 48 fan-out), 1 flagged.
 
+- 2026-07-21 DEPLOY-PREP 2 -- deferred gates run, cross-REQ migrations applied (user
+  decision), backfill landed, pirate resolved. (1) FULL `tools/ci.sh` (HOME=/tmp/h0266
+  remap, DATABASE_URL exported; GPU queue verified drained first): 63 steps, everything
+  through `[6.6/8]` GREEN -- `[5.455/7]` pg skin_prefs parity GREEN now that 023/024
+  are in. `[7/7]` scoped e2e, final lines verbatim: `2 failed` / `1 skipped` /
+  `190 passed (3.5m)`. Both reds are the documented pre-existing pair, tolerated per
+  §11.4-D: forecast.spec.ts:206 (same first assertion, slot-pressure locator timeout;
+  reproduces on master) and schedule.spec.ts:1451 (409 at apiAssignSlot :1456;
+  re-verified THIS pass: passes alone on this branch, 29.4s). REQ-0266 specs all green:
+  unit-skin-fallback 4/4, bp-rotate, bp-transfer, dex.spec.ts:366, workshop.spec.ts:166,
+  contentadmin (via `[6.5/8]`). Nothing else red; the `[3.8/7]`/`[4.71/7]` internal
+  SKIPs and the art_jobs numpy noise are the documented behaviours.
+  (2) MIGRATIONS 020/021/022 APPLIED -- REQ-0211/REQ-0185 migrations, applied here
+  under EXPLICIT user authorization (2026-07-21) to clear the §11.6.3 block; recorded
+  as a user decision. All three read first: each is a single bare
+  `ALTER TYPE ... ADD VALUE IF NOT EXISTS`, additive-only. psql printed `ALTER TYPE`
+  rc=0 for each (020 at 06:14:41Z, 021/022 at 06:14:46Z). content_kind 9 -> 11 labels
+  (gimic@10, dungeon@11); artwork_kind 6 -> 7 (gimic@7).
+  (3) BACKFILL COMPLETE into live namespace 88d662ca20e5289b, WITHOUT the remap
+  (§11.6.2). Dry-run reproduced §11.6.3 exactly (349/349, unit_skin=108). Apply rc=0:
+  115 defs created (188 ours pre-existing no-ops, 46 foreign skipped), 115 variants,
+  115 adopted on creation; machine checks unit_skin PASS 108/0, gimic 4/0, dungeon 3/0.
+  Live ns 238 defs / 241 variants before (re-verified) -> 353 / 356 after; per-kind now
+  carries unit_skin=108, gimic=4, dungeon=3. Spot-check: uskin_* artwork_ref NULL --
+  the D-A chain's designed degradation until artwork adoption resolves it.
+  (4) ART pirate RESOLVED -- 54/54 bpskin_unit_* adopted. User-approved main_object
+  replacement: OLD "weathered sailcloth canvas texture, salt-faded continuous weave,
+  patched stitching allover, oat white and dusty navy" -> NEW "weathered dark navy
+  sailcloth texture, salt-faded canvas weave, tarred rope fiber accents" (PATCH via
+  artadmin; prompt_template stays empty; preview carried the clause verbatim).
+  count:4 -> seeds 9-12, all ok. s9 seam 0.98/1.06 IN BAND, 2x2 wrap-tile clean (no
+  frame, no seam rule, repeat unobtrusive), reads as weathered navy sailcloth at
+  thumbnail, calm enough for the 3px outline, matte register matching the other 53.
+  s10 floral stamp motifs (off-brief), s11 blotch clusters w/ visible repeat cadence,
+  s12 gold rope squiggles in columns (1.43/1.96). ADOPTED seed 9 (render 9029).
+  Deploy remainder is §11.6.6 items 3-5 only: merge to master, live_unit_skins.json
+  reaching the main checkout via that merge, backpack-api restart after it.
+
 ---
 
 ## 11. Outcome — verification pass, 2026-07-19
