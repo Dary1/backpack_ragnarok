@@ -16,6 +16,18 @@ pnpm install --frozen-lockfile
 pnpm run dev       # local dev server (Vite)
 ```
 
+## Worktree env (REQ-0278)
+`client/.env.local` (VITE_SUPABASE_URL + anon key — PUBLIC client values, but
+gitignored by the secret policy) lives ONLY in the main checkout, so a fresh
+worktree otherwise builds an env-LESS bundle and sign-in degrades to "not
+configured" (REQ-0118c). After `pnpm install`, provision it:
+```
+tools/provision_worktree_env.sh          # this worktree (idempotent)
+tools/provision_worktree_env.sh --all    # every worktree under ~/backpack_ragnarok_worktrees
+```
+`ci.sh [6.1/7]` then asserts a build with `.env.local` present carries the Supabase
+host; with it absent the step reports not-applicable with a reason (never a free pass).
+
 ## Build + deploy
 ```
 cd client
