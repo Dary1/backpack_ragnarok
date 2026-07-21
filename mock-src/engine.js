@@ -2207,7 +2207,55 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   function migrateState(oldState){
     const st=migrateStateV2(oldState);
     migrateCanvasToReferencesV3(st);
+    normalizeUnitCellOverlapsV4(st);
     return st;
+  }
+  // normalizeUnitCellOverlapsV4 (REQ-0273): READ-time repair of ONE specific
+  // persisted poison: a page-resident grid PO whose footprint intersects a
+  // unit's own cell -- a placement invCanPlaceCells has refused ('Unit cell')
+  // since REQ-0092, so it can only exist in a save written by a buggy
+  // producer. Two are known: pre-REQ-0092 direct placement (fixed
+  // block-new-only, no read-time rule), and the client rolled-BP first-fit's
+  // placeholder-at-[1,1] contents capture (fixed client-side in REQ-0273,
+  // see client/src/lib/placement.ts). Following the house precedent that
+  // saved-state gaps are resolved at READ time (REQ-0141 state.guide,
+  // REQ-0042 tms backfill, this function's own V2/V3 neighbours) -- and
+  // never by silently rewriting data at any other seam -- the rule is:
+  //   relocate the PO first-fit through invCanPlaceCells, SAME page first,
+  //   then FOLLOWING pages (the exact forward-only overflow discipline
+  //   migrateStateV2 uses), preserving uid/id/rot; seated SIs travel with
+  //   their PO on a cross-page relocation, exactly as in a BP transfer.
+  //   If NO page from its own onward can host it, it STAYS where it is: a
+  //   visibly-overlapped-but-still-draggable item beats silent data loss.
+  // Idempotent (a clean state has no overlaps; the pass is then a no-op).
+  // Canvas containers are deliberately NOT swept: the canvas placement law
+  // has refused 'Unit cell' from the start and no canvas producer exists.
+  function normalizeUnitCellOverlapsV4(st){
+    for(let pi=0;pi<st.inv.pages.length;pi++){
+      const pg=st.inv.pages[pi];
+      const lk=unitMapIn(pg);
+      if(Object.keys(lk).length===0)continue;
+      for(const p of pg.pos.slice()){
+        if(p.loc!=='grid'||!p.cell)continue;
+        const off=shapeInfo(p.id,p.rot).off;
+        if(!off.some(([dr,dc])=>lk[key(p.cell[0]+dr,p.cell[1]+dc)]))continue;
+        let placed=false;
+        for(let ti=pi;ti<st.inv.pages.length&&!placed;ti++){
+          const target=st.inv.pages[ti];
+          for(let r=1;r<=ROWS&&!placed;r++)for(let c=1;c<=COLS&&!placed;c++){
+            const cells=off.map(([dr,dc])=>[r+dr,c+dc]);
+            if(!invCanPlaceCells(target,cells,[p.uid]).ok)continue;
+            if(ti!==pi){
+              pg.pos.splice(pg.pos.indexOf(p),1);target.pos.push(p);
+              for(const a of pg.sis.slice()){
+                if(a.host&&typeof a.host==='object'&&a.host.po===p.uid){pg.sis.splice(pg.sis.indexOf(a),1);target.sis.push(a);}
+              }
+            }
+            p.cell=[r,c];placed=true;
+          }
+        }
+      }
+    }
   }
   // migrateStateV2: the REQ-0030/0031 legacy-shape migration, extracted
   // unchanged (byte-identical logic) so v3 can chain through it via a

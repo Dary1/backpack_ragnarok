@@ -182,7 +182,18 @@ export function firstFitPlaceBp(
       name: rolled.unitDef?.name ?? 'BP',
       color: '#8a8a8a',
       shape: rolled.shape,
-      origin: [1, 1],
+      // REQ-0273 (bug 2): OFF-GRID sentinel, was [1,1]. invCanPlaceBP never
+      // reads the placeholder's own origin (it tests candidate cells built
+      // from shape + the candidate origin), but invMoveBP infers the BP's
+      // travelling contents GEOMETRICALLY from its CURRENT footprint -- and a
+      // placeholder parked at [1,1] captured any unrelated free PO that
+      // happened to sit inside that fake footprint, excluded it from the
+      // legality check as "contents", and teleported it into the newly
+      // placed BP -- landing it exactly on the unit cell whenever its offset
+      // from [1,1] equalled unit.off (the one cell invOccupancy does not
+      // cover). Off-grid, the inference can capture nothing. Pinned by
+      // client/scripts/check_placement.mjs against the real engine.
+      origin: [-100, -100],
       unit: rolled.unit,
       hpMax: rolled.hpMax,
     });

@@ -78,6 +78,7 @@ import { bpSkinDefs, hasBpSkin } from './skin/skinRegistry';
 import { bpSkinSprite } from './skin/bpSkinTexture';
 import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve registry-first
 import { drawChargeRing } from './chargeRing';
+import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outlines
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
@@ -845,6 +846,19 @@ export class BoardRenderer {
         }
         this.gItems.addChild(inner);
       }
+      // REQ-0273 (feature): per-PO footprint outline -- ink+rim, inset 3px
+      // inside the boundary (see poOutline.ts for the full design note).
+      // Drawn ABOVE the sprite deliberately: contain-fit art fills the
+      // footprint's BOUNDING BOX, so an L/T-shaped PO's art can overhang
+      // cells outside its true footprint, and the outline's whole job is to
+      // state true cell ownership. Also drawn when no texture resolved (the
+      // no-art case is where the footprint is hardest to read). Decorative:
+      // never a hit target (see constructor note). gUnits stays above gItems,
+      // so unit cores/art still paint over this (REQ-0266 invariant).
+      const poOutline = new Graphics();
+      drawPOOutline(poOutline, ops.cellsOf(state, p));
+      poOutline.eventMode = 'none';
+      this.gItems.addChild(poOutline);
     }
     // merged Longsword visual (mock-src/ui.js's mergeSword block, ~L250-262)
     // — CANVAS ONLY (mergeSword is always false on an inventory board,
@@ -1042,7 +1056,15 @@ export class BoardRenderer {
         // section 0), so this changes nothing today; it is the path REQ-0133's
         // non-square item rasters will come through.
         fitSpriteToBox(sprite, x - 22, y - 22, 44, 44);
-        sprite.alpha = ops.isCanvas ? 1 : INV_UNIT_ALPHA * 2;
+        // REQ-0273 (bug 1): real art (resolver rungs 'skin'/'default') is the
+        // character's identity and draws at FULL opacity on every board. The
+        // REQ-0030 dormancy dim (INV_UNIT_ALPHA * 2) now applies only to the
+        // legacy placeholder glyph -- a UI symbol, not art -- so boards with no
+        // unit art stay pixel-identical to before. Before REQ-0266 fed the skin
+        // rung, the glyph was the only thing that ever reached this line, which
+        // is why the dim read as intentional for years and as a defect the day
+        // real art arrived.
+        sprite.alpha = ops.isCanvas || icon.rung !== 'legacy' ? 1 : INV_UNIT_ALPHA * 2;
         sprite.eventMode = 'none'; // decorative art, see constructor note
         this.gUnits.addChild(sprite);
       }
