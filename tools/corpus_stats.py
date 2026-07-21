@@ -313,6 +313,7 @@ def compute_stats(corpora, anchor):
         "per_source": per_source,
         "pooled": pooled,
         "bands": bands,
+        "bands_scope": "item",
         "bands_formula": (
             "ratio_raw[r] = corpus median dps-proxy of tier r divided by "
             "that of Common (None if tier r has no corpus dps data). ratio[r] "
@@ -328,7 +329,11 @@ def compute_stats(corpora, anchor):
             "is 'corpus_ratio_isotonic' for a corpus tier whose ratio changed "
             "from ratio_raw by clamping, 'corpus_ratio' for an untouched "
             "corpus tier, 'vocab_fallback' otherwise. dps-proxy = "
-            "damage_mid / cadence_mid."
+            "damage_mid / cadence_mid. bands_scope='item': these bands are "
+            "derived from item-like corpus entries only -- the genre "
+            "wikis carry no enemy pages -- so they are an ITEM-scope "
+            "reference. Enemy/skill sanity uses content/enemy_bands.json "
+            "(basis live_self) instead."
         ),
         "notes": (
             "REQ-0268 reference corpus. Numbers are derived statistics used to "
