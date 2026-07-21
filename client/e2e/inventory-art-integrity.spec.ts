@@ -28,10 +28,15 @@ import { bootApp, drag, PAD, CELL, cx, cy } from './helpers';
 import fs from 'node:fs';
 import path from 'node:path';
 
-// A 32x32 saturated pure-green PNG, generated once (zlib-free fixed PNG would
-// be bulky here; a data-URL SVG cannot be used -- Pixi's Assets loader picks
-// its parser from the URL extension, see unitIcon.ts's unitArtUrl note). The
-// route below serves it as image/png from /api/art/e2e_g.png.
+// A 32x32 saturated pure-green PNG, generated once and injected as a
+// data:image/png URL. A data URL -- not a route-fulfilled /api/art/*.png --
+// because PixiJS v8 loads board textures inside a DEDICATED WORKER
+// (WorkerManager.loadImageBitmap), whose fetch page.route() cannot intercept:
+// a fulfilled route works for the page but the worker sees a failed fetch and
+// the chain silently falls to the legacy glyph (observed in this spec's own
+// bring-up trace). The extension-sniffing concern in unitIcon.ts's unitArtUrl
+// note does not bite here: sprites.ts's loadRaster names the parser
+// explicitly, so an extensionless data URL decodes fine.
 import zlib from 'node:zlib';
 function greenPng(): Buffer {
   const W = 32, H = 32;
@@ -67,19 +72,24 @@ function greenPng(): Buffer {
  * routes its artwork to the in-test green PNG. The fleet is files-backed (no
  * adopted art), so this is the only way the board's `skin` rung can fire. */
 async function routeUnitSkinArt(page: Page, unitId: string): Promise<void> {
-  await page.route((url) => url.pathname === '/api/art/e2e_g.png', (route) =>
-    route.fulfill({ status: 200, contentType: 'image/png', body: greenPng() }));
+  const artUrl = 'data:image/png;base64,' + greenPng().toString('base64');
+  // NON-default entry selected through the PICK rung. It cannot be injected as
+  // a second default: the live corpus already ships a real default skin per
+  // (unit,'unit') -- e.g. uskin_dwarf -- and defaultUnitSkinId takes the first
+  // default it finds, so an injected rival default loses, resolves to the real
+  // skin's UNADOPTED art, and activeUnitSkinKey correctly answers null (found
+  // the hard way in this spec's bring-up).
   await page.route((url) => url.pathname === '/api/content', async (route) => {
     const res = await route.fetch();
     const j = await res.json();
     const skins = (j.unit_skins ?? {}) as Record<string, unknown>;
-    skins['uskin_e2e_g'] = { id: 'uskin_e2e_g', name: 'E2E Green', slot: 'unit', art_ref: 'e2e_g', units: [unitId], default: true };
+    skins['uskin_e2e_g'] = { id: 'uskin_e2e_g', name: 'E2E Green', slot: 'unit', art_ref: 'e2e_g', units: [unitId], default: false };
     j.unit_skins = skins;
-    j.art_urls = { ...(j.art_urls ?? {}), uskin_e2e_g: '/api/art/e2e_g.png' };
+    j.art_urls = { ...(j.art_urls ?? {}), uskin_e2e_g: artUrl };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(j) });
   });
   await page.route('**/api/profile/*/skins', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, skins: { unit: {}, bpskin: {} } }) }));
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, skins: { unit: { [unitId]: 'uskin_e2e_g' }, bpskin: {} } }) }));
 }
 
 /** 3x2 BP whose unit sits bottom-right -- the live "alpha" geometry. Unit
@@ -142,8 +152,10 @@ async function probe(page: Page, selector: string, box: { x: number; y: number; 
         // the SAME art at the old 0.44 dormancy dim over the dark grid:
         // 0.44*255 + 0.56*(~25) ~= 126 -- a clearly separated band
         if (g > 95 && g < 160 && r < 70 && b < 70) dimGreen++;
-        // the outline rim #d7dfe6 (alpha .8 over near-black ink band)
-        if (near(r, 0xb2, 28) && near(g, 0xba, 28) && near(b, 0xc0, 28) && b >= r) rim++;
+        // the outline rim: #d7dfe6 @0.8 over the ink band, AA-attenuated --
+        // measured 135..180/channel with a slight b>g>r steel tilt, a ramp
+        // nothing else in these probe bands produces
+        if (r >= 100 && r <= 215 && g - r >= 0 && g - r <= 16 && b - g >= 0 && b - g <= 16 && b - r >= 2 && b - r <= 26) rim++;
         // a placed PO's own per-cell backdrop (#000 at 0.22 over #191919
         // grid: ~#131313) -- distinguishable from bare grid (#191919) only
         // in aggregate, so tests use it only as a NEGATIVE (absence) probe
