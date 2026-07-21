@@ -1233,3 +1233,15 @@ no service was restarted, so master and the running system now differ by this RE
 There is no migration and no backfill to run — this REQ adds no DB surface. A deploy is therefore
 just: restart the api on the merged tree, then accept. That is a separate user-gated step, and
 until it happens this REQ is `built/`, not `done/`.
+
+### 17.4 Deploy record — 2026-07-21/22 (user directive: "merge and deploy")
+
+- backpack-api restarted on the merged master tree (invocation e20f3f0a, PID
+  fresh boot 20:58:41 UTC): clean start, registry-first content serving loaded
+  (95 registry / 20 fallback), /api/health ok locally AND through the
+  backpack-dev tunnel. backpack-web / backpack-tunnel untouched (no client or
+  static change in this REQ).
+- No migration, no backfill (no DB surface). Live combat now runs the tick
+  loop: every new run resolves on the 0.01s clock and every damage roll moved
+  with the t-carrying stream names -- the change the user approved as review
+  question 2 and ordered live with this directive.
