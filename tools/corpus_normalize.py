@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""REQ-0268 -- corpus_normalize: parse cached wikitext into one schema.
+"""REQ-0268 / REQ-0271 -- corpus_normalize: parse cached wikitext into one schema.
 
 Stdlib only. Reads data/corpus/raw/<source>/pages/*.json (as written by
 corpus_fetch.py) and emits data/corpus/normalized/<source>.json:
@@ -17,6 +17,25 @@ template extraction plus regex -- no external parser libs.
 Reference-only corpus (REQ-0268): the mapping tables below collapse each wiki's
 own rarity ladder and effect phrasing onto OUR closed vocab. The vocab
 (content/vocab.json) stays the sole authority and is NEVER modified from here.
+
+REQ-0271 -- effect semantics. Four audited normalizer defects fixed:
+  (a) Backpack Hero rarity map: the wiki's top tier is 'Legendary' (there is no
+      'Relic' rarity on BH); map legendary -> Relic (the old dead 'relic' key
+      left 66 Legendary items normalizing to rarity_norm=None).
+  (b) Icon markup carries meaning: [[File:Icon X.png|...|alt=NAME|...]] and
+      {{Pic|NAME|...}} are SUBSTITUTED by their alt/first-arg text, not deleted
+      (was leaving dangling "Gain 1 ." fragments).
+  (c) Clause integrity: a trigger header ('''On hit:''', 'Start of battle:',
+      'Every Ns:' ...) stays attached to the clause it introduces -- effect
+      text is split on sentence terminators (. ;) only, never on ':'.
+  (d) Verb mapping is clause-scoped and TARGET-aware (precision over recall):
+      `strike` only when the item/skill itself attacks (own Damage stat or
+      "deals N damage"); adjacency/aura buffs -> buff_adjacent; damage
+      reduction/prevention -> damage_reduction; reflect -> reflect_damage;
+      self-directed status ("to self") is never mapped as an enemy debuff.
+      When in doubt the clause is LEFT unmapped -- the curated table
+      tools/corpus_verb_map.json is the recall layer, applied deterministically
+      AFTER this automatic layer (table wins on conflict).
 """
 import argparse
 import glob
@@ -30,17 +49,20 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 RAW_ROOT = os.path.join(REPO, "data", "corpus", "raw")
 NORM_ROOT = os.path.join(REPO, "data", "corpus", "normalized")
+VERB_MAP_PATH = os.path.join(HERE, "corpus_verb_map.json")
 
 # --- rarity ladders (source tier -> our 4 tiers) ----------------------------
 # Our tiers: Common < Uncommon < Rare < Relic (content/vocab.json `rarities`).
-# Backpack Hero uses exactly those four. Backpack Battles has a FIVE-rung ladder
-# (Common < Rare < Epic < Legendary < Godly); we map it rank-preservingly onto
-# our four, collapsing the top two (Legendary, Godly) into Relic. Documented as
-# a corpus design decision -- our vocab is never widened to match a source.
+# Backpack Hero uses Common < Uncommon < Rare < Legendary (its top tier is
+# 'Legendary', NOT 'Relic'); we map its Legendary onto our Relic. Backpack
+# Battles has a longer ladder (Common < Rare < Epic < Legendary < Godly, plus
+# Unique); we map it rank-preservingly onto our four, collapsing the top rungs
+# into Relic. Documented as a corpus design decision -- our vocab is never
+# widened to match a source.
 RARITY_MAPS = {
     "backpack-hero": {
         "common": "Common", "uncommon": "Uncommon",
-        "rare": "Rare", "relic": "Relic",
+        "rare": "Rare", "legendary": "Relic",
     },
     "backpack-battles": {
         "common": "Common", "rare": "Uncommon", "epic": "Rare",
@@ -58,40 +80,47 @@ EXCLUDED_KEYS = {"gold_pickup", "mana_conductivity", "energy_cost",
                  "stamina_cost", "shop_reroll", "recipe_craft", "refinery_mod",
                  "accuracy_crit", "charm_status"}
 
-# --- effect phrase -> our closed verb (confident keyword mappings only) ------
-# Only high-confidence keyword hits map. Everything else stays in `unmapped`
-# with its raw phrase text. multi_strike is tested before strike.
-VERB_KEYWORDS = [
-    (re.compile(r"\bvampiris|\blifesteal|\bleech"), "lifesteal"),
-    (re.compile(r"\bthorns?\b|\breflect"), "reflect_damage"),
-    (re.compile(r"\bmulti[- ]?strike|\b\d+\s+times"), "multi_strike"),
-    (re.compile(r"\bdamage\b"), "strike"),
-    (re.compile(r"\bheal"), "heal_ally"),
-    (re.compile(r"\bblock\b"), "block"),
-    (re.compile(r"\bshield\b"), "grant_shield"),
-    (re.compile(r"\bcleanse\b"), "cleanse"),
-    (re.compile(r"\bhaste|\battack speed|\bspeed up"), "haste"),
-    (re.compile(r"\bweaken?\b|\bslow\b"), "slow_enemy"),
-    (re.compile(r"\bpoison|\bburn|\bblind|\bstun|\bfreeze"), "apply_status"),
-]
-
 # infobox fields whose value carries effect prose
 EFFECT_FIELD_KEYS = {"onuse", "onsummon", "additionalfx", "onhit", "effect",
                      "effects", "onequip", "onopen", "onpickup"}
 
 
 def strip_wikitext(s):
-    """Best-effort wikitext -> plain text (drops file links/templates/markup)."""
+    """Best-effort wikitext -> plain text.
+
+    Icon markup carries meaning and is SUBSTITUTED, not dropped (REQ-0271):
+      [[File:Icon Poison.png|alt=Poison|15x15px]]  -> " Poison "
+      {{Pic|BloodAmulet|30}}                       -> " BloodAmulet "
+    Non-icon File/Image links (recipe/item art) are still dropped.
+    """
     if not s:
         return ""
     t = s
     t = re.sub(r"<!--.*?-->", " ", t, flags=re.S)
-    # drop File/Image links entirely (decorative status icons etc.)
-    t = re.sub(r"\[\[(?:File|Image):[^\]]*\]\]", " ", t, flags=re.I)
+
+    def _file_sub(m):
+        body = m.group(0)
+        am = re.search(r"alt=([^|\]]+)", body)
+        if am:
+            return " " + am.group(1).strip() + " "
+        # icon file with no alt: recover the name between "Icon " and ".png"
+        im = re.search(r":\s*Icon\s+([^.|\]]+)\.png", body, re.I)
+        if im:
+            return " " + im.group(1).strip() + " "
+        return " "  # decorative art (recipe/item image) -> drop
+    t = re.sub(r"\[\[(?:File|Image):[^\]]*\]\]", _file_sub, t, flags=re.I)
+
+    # {{Pic|NAME|size}} -> NAME (first positional arg)
+    def _pic_sub(m):
+        inner = m.group(1)
+        first = inner.split("|", 1)[0].strip()
+        return " " + first + " " if first else " "
+    t = re.sub(r"\{\{Pic\|([^{}]*)\}\}", _pic_sub, t, flags=re.I)
+
     # [[a|b]] -> b ; [[a]] -> a
     t = re.sub(r"\[\[[^\]|]*\|([^\]]*)\]\]", r"\1", t)
     t = re.sub(r"\[\[([^\]]*)\]\]", r"\1", t)
-    # drop templates {{...}} (two passes to catch one level of nesting)
+    # drop remaining templates {{...}} (a few passes to catch nesting)
     for _ in range(3):
         new = re.sub(r"\{\{[^{}]*\}\}", " ", t)
         if new == t:
@@ -235,6 +264,14 @@ def map_rarity(rarity_raw, source):
     return None
 
 
+def _has_damage_field(fields):
+    for k in ("Damage", "damage"):
+        v = fields.get(k)
+        if v and parse_range(v) is not None:
+            return True
+    return False
+
+
 def extract_numbers(fields, effect_text, source):
     nums = {"damage": None, "cadence_secs": None, "hp": None,
             "armor": None, "heal": None, "price": None}
@@ -274,28 +311,176 @@ def extract_numbers(fields, effect_text, source):
     return nums
 
 
-def map_verbs(effect_text):
+# --- clause-scoped, target-aware verb mapper (REQ-0271 defect d) ------------
+def split_clauses(effect_text):
+    """Split effect text into clauses on sentence terminators (. ;) only.
+
+    Never split on ':' -- a trigger header ('On hit:', 'Start of battle:',
+    'Every 3s:') must stay attached to the clause it introduces so an unmapped
+    phrase is a complete `trigger: clause` unit or a complete sentence."""
+    parts = re.split(r"(?<=[.;])\s+", effect_text)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _clause_verbs(clause):
+    """Closed-vocab verbs for ONE clause, target-aware. Precision over recall:
+    a clause we are not confident about contributes NO verb (it stays unmapped
+    for the curated table to classify)."""
+    low = clause.lower()
+    verbs = []
+
+    def add(v):
+        if v not in verbs:
+            verbs.append(v)
+
+    self_dir = bool(re.search(r"\bto self\b|\bto yourself\b|\bto your\b", low))
+    enemy_dir = bool(re.search(r"\benem(?:y|ies)\b|\bopponent\b", low))
+    adj_dir = bool(re.search(
+        r"\badjacent\b|\bdiagonal\b|\bin this row\b|\bin this column\b"
+        r"|\bin front\b|\bitems? inside\b|\ball weapons?\b|\ball armou?r\b"
+        r"|\ball consumables?\b|\bweapons? in\b|\bconnected\b|\bitems? in this\b",
+        low))
+
+    # damage reduction / prevention -- checked before strike so a "damage"
+    # mention here is never read as the item attacking.
+    if re.search(r"reduce\s+damage|damage\s+taken|damage\s+reduction"
+                 r"|prevent\s+\d+(?:\.\d+)?\s+damage|prevent\s+a\s+hit"
+                 r"|reduced\s+by\s+\d+\s*%", low):
+        add("damage_reduction")
+
+    # reflect / thorns
+    if re.search(r"\breflect|\bthorns?\b", low):
+        add("reflect_damage")
+
+    # adjacency / aura buff to OTHER items (Citrine "adjacent item gets +N
+    # Damage" is buff_adjacent, not the crystal attacking).
+    if adj_dir and re.search(
+            r"\bgets?\s*[+\-]|\bget\s+this\s+effect|\+\d|\bbonus\s+damage\b"
+            r"|trigger[s]?\s+\d+%\s+faster|\bfaster\b", low):
+        add("buff_adjacent")
+
+    # strike: the item/skill ITSELF deals damage ("deals N damage").
+    if re.search(r"\bdeals?\s+[+]?\d+(?:\.\d+)?\s+damage\b", low):
+        add("strike")
+
+    # multi-strike
+    if re.search(r"\bmulti[- ]?strike\b|\battacks?\s+twice\b|\bhits?\s+twice\b"
+                 r"|\b\d+\s+times\b", low):
+        add("multi_strike")
+
+    # block (Adds/gain N block)
+    if re.search(r"\bblock\b", low):
+        add("block")
+
+    # heal
+    if re.search(r"\bheals?\b", low):
+        add("heal_ally")
+
+    # cleanse
+    if re.search(r"\bcleanse\b", low):
+        add("cleanse")
+
+    # lifesteal / steal life
+    if re.search(r"\bvampiris|\blifesteal|\bleech|\bsteal\s+\d+\s+life"
+                 r"|steals?\s+.*\blife\b|life\s+through", low):
+        add("lifesteal")
+
+    # haste (self attack-speed / Haste status)
+    if re.search(r"\bhaste\b|attack\s+speed|attacks?\s+\d+%\s+faster"
+                 r"|\bspeed\s+up\b", low):
+        add("haste")
+
+    # slow the enemy -- NEVER a self-directed Slow ("Adds 1 Slow to self").
+    if re.search(r"\bslow\b", low) and not self_dir:
+        add("slow_enemy")
+
+    # inflict a status on the OPPONENT
+    debuff = re.search(r"\bpoison|\bburn|\bweak(?:ness)?\b|\bchill|\bfreeze"
+                       r"|\bblind|\bstun", low)
+    if re.search(r"\binflict\b", low) or (debuff and enemy_dir):
+        add("apply_status")
+
+    return verbs
+
+
+def map_verbs(effect_text, has_damage_field=False):
+    """Automatic (precision-first) layer. Returns (verbs, unmapped)."""
     verbs = []
     unmapped = []
+    if has_damage_field:
+        verbs.append("strike")  # a weapon with its own Damage stat attacks
     if not effect_text:
         return verbs, unmapped
-    phrases = re.split(r"(?<=[.;:])\s+|\n+", effect_text)
-    for ph in phrases:
-        p = ph.strip()
-        if not p:
-            continue
-        low = p.lower()
-        matched = []
-        for rx, verb in VERB_KEYWORDS:
-            if rx.search(low) and verb not in matched:
-                matched.append(verb)
-        if matched:
-            for v in matched:
+    for clause in split_clauses(effect_text):
+        cv = _clause_verbs(clause)
+        if cv:
+            for v in cv:
                 if v not in verbs:
                     verbs.append(v)
-        elif re.search(r"[a-z]", low):
-            unmapped.append(p)
+        elif re.search(r"[a-z]", clause.lower()):
+            unmapped.append(clause)
     return verbs, unmapped
+
+
+# --- curated mapping table (REQ-0271 Proposal item 3) -----------------------
+def load_verb_map(path=VERB_MAP_PATH):
+    """Load tools/corpus_verb_map.json entries (recall layer). Empty if absent
+    so the pipeline still runs before the table is authored."""
+    if not path or not os.path.exists(path):
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    except Exception:  # noqa: BLE001
+        return []
+    return doc.get("entries", []) or []
+
+
+_VERB_MAP = load_verb_map()
+
+
+def _norm_phrase(s):
+    return re.sub(r"\s+", " ", str(s)).strip().lower()
+
+
+def match_table_entry(clause, table):
+    """First matching table entry for `clause` (deterministic: table order)."""
+    c = _norm_phrase(clause)
+    if not c:
+        return None
+    for entry in table:
+        pat = _norm_phrase(entry.get("phrase", ""))
+        if not pat:
+            continue
+        mode = entry.get("match", "exact")
+        if mode == "exact" and c == pat:
+            return entry
+        if mode == "prefix" and c.startswith(pat):
+            return entry
+        if mode == "contains" and pat in c:
+            return entry
+    return None
+
+
+def apply_verb_map(verbs, unmapped, table):
+    """Apply the curated table to the auto-layer residual. class=verb adds its
+    (closed-vocab) verbs; excluded/no_model/noise are ACCOUNTED-FOR and removed
+    from `unmapped`. Table wins on conflict; deterministic in table order."""
+    if not table:
+        return list(verbs), list(unmapped)
+    out_verbs = list(verbs)
+    still = []
+    for clause in unmapped:
+        entry = match_table_entry(clause, table)
+        if entry is None:
+            still.append(clause)
+            continue
+        if entry.get("class") == "verb":
+            for v in entry.get("verbs", []) or []:
+                if v not in out_verbs:
+                    out_verbs.append(v)
+        # excluded / no_model / noise: recognised, dropped from unmapped
+    return out_verbs, still
 
 
 def detect_excluded(fields, effect_text, categories):
@@ -364,7 +549,7 @@ def classify_kind(template_name, fields, categories):
     return "other"
 
 
-def normalize_page(page, source):
+def normalize_page(page, source, verb_map=None):
     wikitext = page.get("wikitext", "") or ""
     categories = page.get("categories", []) or []
     title = page.get("title", "") or ""
@@ -386,7 +571,9 @@ def normalize_page(page, source):
     rarity_norm = map_rarity(rarity_raw, source)
 
     numbers = extract_numbers(fields, effect_text, source)
-    verbs_mapped, unmapped = map_verbs(effect_text)
+    verbs_mapped, unmapped = map_verbs(effect_text, _has_damage_field(fields))
+    table = _VERB_MAP if verb_map is None else verb_map
+    verbs_mapped, unmapped = apply_verb_map(verbs_mapped, unmapped, table)
     excluded = detect_excluded(fields, effect_text, categories)
     kind = classify_kind(tname, fields, categories)
     tags = derive_tags(fields, categories)
@@ -461,12 +648,17 @@ def normalize_source(source, raw_root, out_root):
         json.dump(doc, f, ensure_ascii=False, indent=1)
     kinds = {}
     mapped = unmapped = 0
+    with_unmapped = 0
     for e in entries:
         kinds[e["kind"]] = kinds.get(e["kind"], 0) + 1
         mapped += len(e["verbs_mapped"])
         unmapped += len(e["unmapped"])
-    print("[%s] entries=%d kinds=%s verbs_mapped=%d unmapped_phrases=%d -> %s"
-          % (source, len(entries), kinds, mapped, unmapped, out_path))
+        if e["unmapped"]:
+            with_unmapped += 1
+    print("[%s] entries=%d kinds=%s verbs_mapped=%d unmapped_phrases=%d "
+          "entries_with_unmapped=%d -> %s"
+          % (source, len(entries), kinds, mapped, unmapped, with_unmapped,
+             out_path))
     return doc
 
 

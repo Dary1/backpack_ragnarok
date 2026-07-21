@@ -29,6 +29,45 @@
   x22, 'On hit:' x20, 'Gain 1 .' x9). Verify artifacts under data/corpus/verify/
   (gitignored).
 
+- 2026-07-21 REQ-0271 implementation (Proposal items 3-5 + the four audited
+  normalizer defects; subagent over SSH, worktree
+  req-0271-corpus-effect-semantics). NORMALIZER (tools/corpus_normalize.py):
+  (a) BH rarity map now legendary->Relic (dead 'relic' key removed) -- the 66
+  Legendary items normalize to Relic (BH rarity_norm=None 101->35, pooled
+  140->74). (b) icon markup substituted by its alt / {{Pic}} arg (no more
+  dangling "Gain 1 ." fragments). (c) clauses split on sentence terminators
+  (. ;) only, never ':', so trigger headers stay attached to their clause.
+  (d) verb mapper rewritten clause-scoped + target-aware, precision-first:
+  strike only for own Damage stat / "deals N damage"; adjacency aura ->
+  buff_adjacent; reduce/prevent damage -> damage_reduction; reflect ->
+  reflect_damage; self-directed Slow never slow_enemy; opponent debuff ->
+  apply_status. CURATED TABLE (tools/corpus_verb_map.json, TRACKED, 59 entries,
+  closed vocab only) applied deterministically AFTER the auto layer (table wins);
+  classifies 100% of the auto-layer residual (189 unique / 204 occ): 18 phrases
+  verb-recovered, 4 noise, the rest no_model across 15 reason categories
+  (resource_economy 39, mana_conductivity 28, star_synergy 24, item_lifecycle
+  20, chance_percent 12, shop_economy 12, bp_geometry 11, card_mechanic 9,
+  buff_status_unmodeled 5, enemy_buff_strip 5, max_hp_scaling 5, cadence_manip
+  2, crit_accuracy 2, conditional_bonus 1, heal_amp 1). RESULT (honest): entries
+  with residual `unmapped` 205/467 (43.9%) -> 0/467 (0.0%) -- GATE <15% met (the
+  table classifies EVERY residual phrase; of 384 effect-bearing items 281 (~73%)
+  map to >=1 closed verb, the other 104 are effect-bearing-but-no-verb, i.e.
+  wholly no_model/noise genre mechanics). Pooled verb tokens 282 -> 381; strike
+  146 -> 113 (adjacency false positives removed), NEW buff_adjacent 81 /
+  damage_reduction 4, lifesteal 3 -> 18, reflect_damage 2 -> 9. STATS
+  (content/corpus_stats.json): every band tier now carries n + provisional (n<30);
+  all four tiers provisional (dps-proxy n Common 5 / Uncommon 4 / Rare 10 /
+  Relic 28); top-level generated_from content hash; two runs byte-identical;
+  bands unchanged (warn_hi 12.0/19.7/19.7/25.2). Browser regenerated into the
+  untracked data/corpus/browser -- renders the enriched verbs_mapped, 0 unmapped.
+  DESIGN-GAP report docs/llm_managed/genre_mechanics_gap.md (ADVISORY, no auto
+  action; user-gated vocab design input). TESTS tools/tests/corpus_test.py
+  49 -> 88 passed / 0 failed (four defect fixtures incl. Citrine buff_adjacent
+  and Plate self-slow; table exact/prefix/contains + class routing; provenance;
+  one expectation intentionally CHANGED: Bloodthorne now fully maps). GATES:
+  corpus_test.py green; check_stat_bands --self-test + --report green; quick CI
+  (SKIP_PG=1 SKIP_CLIENT=1 SKIP_E2E=1) GREEN. REQ NOT moved (stays in todo).
+
 ## Origin
 User audit of the REQ-0270 browser: "the crucial part — effects — is mostly
 unmapped". Trust review also surfaced never-verified claims: fetch coverage

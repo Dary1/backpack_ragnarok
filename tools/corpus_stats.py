@@ -23,6 +23,7 @@ Reference-only (REQ-0268): these are OUR curves, informed by the corpus. No
 corpus number is copied verbatim into live content.
 """
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -224,9 +225,14 @@ def _derive_bands(ratio, anchor, weights):
     if base <= 0:
         # No Common corpus data at all -- nothing to anchor a ratio to.
         # Every tier falls back to the vocab ceiling directly, as before.
-        return {t: {"warn_hi": _round(float(anchor.get(t, 0)), 1),
-                     "ratio": None, "ratio_raw": ratio_raw[t],
-                     "basis": "vocab_fallback"} for t in TIERS}
+        out = {}
+        for t in TIERS:
+            n = int(weights.get(t, 0) or 0)
+            out[t] = {"warn_hi": _round(float(anchor.get(t, 0)), 1),
+                      "ratio": None, "ratio_raw": ratio_raw[t],
+                      "basis": "vocab_fallback",
+                      "n": n, "provisional": n < 30}
+        return out
 
     corpus_idx = [i for i, t in enumerate(TIERS) if ratio_raw[t] is not None]
     common_idx = TIERS.index("Common")
@@ -257,16 +263,28 @@ def _derive_bands(ratio, anchor, weights):
             running = r
             basis = "corpus_ratio_isotonic" if pooled_tier[t] else \
                 "corpus_ratio"
+            nt = int(weights.get(t, 0) or 0)
             bands[t] = {"warn_hi": _round(base * r, 1), "ratio": r,
-                        "ratio_raw": ratio_raw[t], "basis": basis}
+                        "ratio_raw": ratio_raw[t], "basis": basis,
+                        "n": nt, "provisional": nt < 30}
         else:
             implied = float(anchor.get(t, base)) / base
             r = implied if (running is None or implied >= running) else \
                 running
             running = r
+            nt = int(weights.get(t, 0) or 0)
             bands[t] = {"warn_hi": _round(base * r, 1), "ratio": None,
-                        "ratio_raw": None, "basis": "vocab_fallback"}
+                        "ratio_raw": None, "basis": "vocab_fallback",
+                        "n": nt, "provisional": nt < 30}
     return bands
+
+
+def _corpus_hash(corpora):
+    """Deterministic content hash over the normalized entries (provenance)."""
+    payload = {src: corpora[src].get("entries", []) for src in sorted(corpora)}
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=True,
+                      separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def compute_stats(corpora, anchor):
@@ -288,6 +306,7 @@ def compute_stats(corpora, anchor):
     pooled["rarity_ratio_dps"] = ratio
     return {
         "schema": SCHEMA,
+        "generated_from": _corpus_hash(corpora),
         "sources": sorted(corpora),
         "licenses": dict(sorted(licenses.items())),
         "vocab_anchor": {k: anchor[k] for k in sorted(anchor)},
@@ -377,12 +396,14 @@ def render_report(stats):
     # bands
     lines.append("## Derived dps warn bands (anchored to vocab dps_ceiling_warn)")
     lines.append("")
-    lines.append("| rarity | ratio_raw | ratio | warn_hi | basis |")
-    lines.append("|---|---|---|---|---|")
+    lines.append("| rarity | n | provisional | ratio_raw | ratio | warn_hi "
+                 "| basis |")
+    lines.append("|---|---|---|---|---|---|---|")
     for t in TIERS:
         b = stats["bands"][t]
-        lines.append("| %s | %s | %s | %s | %s |" % (
-            t, _fmt(b.get("ratio_raw")), _fmt(b["ratio"]), _fmt(b["warn_hi"]),
+        lines.append("| %s | %s | %s | %s | %s | %s | %s |" % (
+            t, b.get("n", 0), "yes" if b.get("provisional") else "no",
+            _fmt(b.get("ratio_raw")), _fmt(b["ratio"]), _fmt(b["warn_hi"]),
             b["basis"]))
     lines.append("")
     lines.append("Formula: " + stats["bands_formula"])

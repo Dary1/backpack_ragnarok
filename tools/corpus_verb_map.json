@@ -1,0 +1,506 @@
+{
+ "schema": "corpus_verb_map/1",
+ "note": "REQ-0271 curated recall layer for corpus_normalize.py. Applied AFTER the automatic clause-scoped mapper (table wins). Closed vocab only: class=verb uses vocab.json verbs; a genre mechanic we do not model is no_model+reason, never a new verb. Deterministic: first matching entry wins, in array order.",
+ "entries": [
+  {
+   "phrase": "can only be thrown once per battle",
+   "match": "contains",
+   "class": "noise",
+   "confidence": "high",
+   "note": "wiki clarification / usage-constraint prose, not an effect"
+  },
+  {
+   "phrase": "for clarity",
+   "match": "contains",
+   "class": "noise",
+   "confidence": "high",
+   "note": "wiki clarification / usage-constraint prose, not an effect"
+  },
+  {
+   "phrase": "it doesn't matter where you put",
+   "match": "contains",
+   "class": "noise",
+   "confidence": "high",
+   "note": "wiki clarification / usage-constraint prose, not an effect"
+  },
+  {
+   "phrase": "hatches after",
+   "match": "contains",
+   "class": "noise",
+   "confidence": "high",
+   "note": "wiki clarification / usage-constraint prose, not an effect"
+  },
+  {
+   "phrase": "triggers extra attack",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "multi_strike"
+   ],
+   "confidence": "med",
+   "note": "'extra attack' = an additional strike"
+  },
+  {
+   "phrase": "spikes to self",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "reflect_damage"
+   ],
+   "confidence": "med",
+   "note": "Spikes is the thorns/reflect status; gaining it on self = reflect_damage"
+  },
+  {
+   "phrase": "on hit: gain 1 spikes",
+   "match": "prefix",
+   "class": "verb",
+   "verbs": [
+    "reflect_damage"
+   ],
+   "trigger": "OnHit",
+   "confidence": "med",
+   "note": "gain reflect (Spikes) on hit"
+  },
+  {
+   "phrase": "start of battle: gain 1 spikes",
+   "match": "prefix",
+   "class": "verb",
+   "verbs": [
+    "reflect_damage"
+   ],
+   "trigger": "battle_start",
+   "confidence": "med",
+   "note": "gain reflect (Spikes) at start of battle"
+  },
+  {
+   "phrase": "start of battle: gain 2 spikes",
+   "match": "prefix",
+   "class": "verb",
+   "verbs": [
+    "reflect_damage"
+   ],
+   "trigger": "battle_start",
+   "confidence": "med",
+   "note": "gain reflect (Spikes) at start of battle"
+  },
+  {
+   "phrase": "start of battle: gain 2 regeneration",
+   "match": "prefix",
+   "class": "verb",
+   "verbs": [
+    "buff_self"
+   ],
+   "trigger": "battle_start",
+   "confidence": "med",
+   "note": "Regeneration is a self HoT buff; nearest closed verb buff_self"
+  },
+  {
+   "phrase": "status effects on self",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "cleanse"
+   ],
+   "confidence": "med",
+   "note": "removing a debuff/status from self = cleanse"
+  },
+  {
+   "phrase": "poison from self",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "cleanse"
+   ],
+   "confidence": "med",
+   "note": "removing a debuff/status from self = cleanse"
+  },
+  {
+   "phrase": "spaces away get",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "buff_adjacent"
+   ],
+   "confidence": "low",
+   "note": "positional +damage aura to non-adjacent weapons; nearest verb buff_adjacent"
+  },
+  {
+   "phrase": "shields get used",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "fire_items"
+   ],
+   "confidence": "low",
+   "note": "triggers adjacent shields; nearest closed verb fire_items"
+  },
+  {
+   "phrase": "resist 1 debuff",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "status_immune"
+   ],
+   "confidence": "low",
+   "note": "resist one incoming debuff; nearest closed verb status_immune"
+  },
+  {
+   "phrase": "when combat ends, adds 3 hp",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "heal_bp"
+   ],
+   "confidence": "low",
+   "note": "end-of-combat self heal; on_combat_end trigger unmodeled"
+  },
+  {
+   "phrase": "chance to",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "chance_percent",
+   "confidence": "high",
+   "note": "effect gated on a percent chance roll (no RNG-gated verb modelled)"
+  },
+  {
+   "phrase": "conductive",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "mana_conductivity",
+   "confidence": "high",
+   "note": "Mana Stone conductive-path powering (excluded_attested mana_conductivity)"
+  },
+  {
+   "phrase": "manastone",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "mana_conductivity",
+   "confidence": "high",
+   "note": "Mana Stone conductive-path powering (excluded_attested mana_conductivity)"
+  },
+  {
+   "phrase": "form a path",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "mana_conductivity",
+   "confidence": "high",
+   "note": "Mana Stone conductive-path powering (excluded_attested mana_conductivity)"
+  },
+  {
+   "phrase": "resource in magical items",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "mana_conductivity",
+   "confidence": "high",
+   "note": "Mana Stone conductive-path powering (excluded_attested mana_conductivity)"
+  },
+  {
+   "phrase": "mana capacity",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "mana_conductivity",
+   "confidence": "high",
+   "note": "Mana Stone conductive-path powering (excluded_attested mana_conductivity)"
+  },
+  {
+   "phrase": "⭐",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "star_synergy",
+   "confidence": "high",
+   "note": "star-tier (⭐/Diamond) activation-count triggers & star-item synergy auras"
+  },
+  {
+   "phrase": "diamond",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "star_synergy",
+   "confidence": "high",
+   "note": "star-tier (⭐/Diamond) activation-count triggers & star-item synergy auras"
+  },
+  {
+   "phrase": "gain +1 damage",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "buff_self"
+   ],
+   "confidence": "low",
+   "note": "self weapon damage buff (star-weapon variants already routed to star_synergy)"
+  },
+  {
+   "phrase": "gain +2 damage",
+   "match": "contains",
+   "class": "verb",
+   "verbs": [
+    "buff_self"
+   ],
+   "confidence": "low",
+   "note": "self weapon damage buff (star-weapon variants already routed to star_synergy)"
+  },
+  {
+   "phrase": "shop",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "shop_economy",
+   "confidence": "high",
+   "note": "shop / gold / gemstone meta-economy (excluded_attested shop_reroll/gold_pickup)"
+  },
+  {
+   "phrase": "gold",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "shop_economy",
+   "confidence": "high",
+   "note": "shop / gold / gemstone meta-economy (excluded_attested shop_reroll/gold_pickup)"
+  },
+  {
+   "phrase": "merchant",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "shop_economy",
+   "confidence": "high",
+   "note": "shop / gold / gemstone meta-economy (excluded_attested shop_reroll/gold_pickup)"
+  },
+  {
+   "phrase": "combat rewards",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "shop_economy",
+   "confidence": "high",
+   "note": "shop / gold / gemstone meta-economy (excluded_attested shop_reroll/gold_pickup)"
+  },
+  {
+   "phrase": "duplicated on end of combat",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "shop_economy",
+   "confidence": "high",
+   "note": "shop / gold / gemstone meta-economy (excluded_attested shop_reroll/gold_pickup)"
+  },
+  {
+   "phrase": "card",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "card_mechanic",
+   "confidence": "high",
+   "note": "playing-card subsystem (On reveal / cards-before scaling) -- unmodelled"
+  },
+  {
+   "phrase": "reveal",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "card_mechanic",
+   "confidence": "high",
+   "note": "playing-card subsystem (On reveal / cards-before scaling) -- unmodelled"
+  },
+  {
+   "phrase": "from your opponent",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "enemy_buff_strip",
+   "confidence": "high",
+   "note": "remove/steal buffs from the opponent -- no closed verb for enemy-buff strip"
+  },
+  {
+   "phrase": "in a space",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "bp_geometry",
+   "confidence": "high",
+   "note": "backpack placement geometry (rows/columns/spaces/arrows/heavy/floats)"
+  },
+  {
+   "phrase": "in each row",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "bp_geometry",
+   "confidence": "high",
+   "note": "backpack placement geometry (rows/columns/spaces/arrows/heavy/floats)"
+  },
+  {
+   "phrase": "open spaces",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "bp_geometry",
+   "confidence": "high",
+   "note": "backpack placement geometry (rows/columns/spaces/arrows/heavy/floats)"
+  },
+  {
+   "phrase": "arrows get used",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "bp_geometry",
+   "confidence": "high",
+   "note": "backpack placement geometry (rows/columns/spaces/arrows/heavy/floats)"
+  },
+  {
+   "phrase": "in this row",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "bp_geometry",
+   "confidence": "high",
+   "note": "backpack placement geometry (rows/columns/spaces/arrows/heavy/floats)"
+  },
+  {
+   "phrase": "crit",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "crit_accuracy",
+   "confidence": "high",
+   "note": "crit / accuracy chance (excluded_attested accuracy_crit)"
+  },
+  {
+   "phrase": "cooldown",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "cadence_manip",
+   "confidence": "high",
+   "note": "item trigger-speed / cooldown manipulation of OTHER items (not self haste)"
+  },
+  {
+   "phrase": "max hp",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "max_hp_scaling",
+   "confidence": "high",
+   "note": "permanent max-HP / max-resource scaling -- not a combat-tick verb"
+  },
+  {
+   "phrase": "maximum health",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "max_hp_scaling",
+   "confidence": "high",
+   "note": "permanent max-HP / max-resource scaling -- not a combat-tick verb"
+  },
+  {
+   "phrase": "maximum stamina",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "max_hp_scaling",
+   "confidence": "high",
+   "note": "permanent max-HP / max-resource scaling -- not a combat-tick verb"
+  },
+  {
+   "phrase": "energy",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "resource_economy",
+   "confidence": "high",
+   "note": "Mana/Energy/Heat/Luck/Stamina resource gain/spend (excluded_attested energy/stamina)"
+  },
+  {
+   "phrase": "mana",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "resource_economy",
+   "confidence": "high",
+   "note": "Mana/Energy/Heat/Luck/Stamina resource gain/spend (excluded_attested energy/stamina)"
+  },
+  {
+   "phrase": "luck",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "resource_economy",
+   "confidence": "high",
+   "note": "Mana/Energy/Heat/Luck/Stamina resource gain/spend (excluded_attested energy/stamina)"
+  },
+  {
+   "phrase": "heat",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "resource_economy",
+   "confidence": "high",
+   "note": "Mana/Energy/Heat/Luck/Stamina resource gain/spend (excluded_attested energy/stamina)"
+  },
+  {
+   "phrase": "stamina",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "resource_economy",
+   "confidence": "high",
+   "note": "Mana/Energy/Heat/Luck/Stamina resource gain/spend (excluded_attested energy/stamina)"
+  },
+  {
+   "phrase": "empower",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "buff_status_unmodeled",
+   "confidence": "high",
+   "note": "buff statuses outside our closed set (Empower/Rage/Dodge)"
+  },
+  {
+   "phrase": "rage",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "buff_status_unmodeled",
+   "confidence": "high",
+   "note": "buff statuses outside our closed set (Empower/Rage/Dodge)"
+  },
+  {
+   "phrase": "dodge",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "buff_status_unmodeled",
+   "confidence": "high",
+   "note": "buff statuses outside our closed set (Empower/Rage/Dodge)"
+  },
+  {
+   "phrase": "weapon sockets:",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "conditional_bonus",
+   "confidence": "med",
+   "note": "HP-threshold / socket-context conditional damage bonus -- unmodelled"
+  },
+  {
+   "phrase": "amplified",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "heal_amp",
+   "confidence": "med",
+   "note": "healing-amplification multiplier -- no closed verb"
+  },
+  {
+   "phrase": "gets destroyed",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "item_lifecycle",
+   "confidence": "high",
+   "note": "consumable/curse/carving create-destroy-replace lifecycle -- partial model only"
+  },
+  {
+   "phrase": "is destroyed",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "item_lifecycle",
+   "confidence": "high",
+   "note": "consumable/curse/carving create-destroy-replace lifecycle -- partial model only"
+  },
+  {
+   "phrase": "is banished",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "item_lifecycle",
+   "confidence": "high",
+   "note": "consumable/curse/carving create-destroy-replace lifecycle -- partial model only"
+  },
+  {
+   "phrase": "creates",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "item_lifecycle",
+   "confidence": "high",
+   "note": "consumable/curse/carving create-destroy-replace lifecycle -- partial model only"
+  },
+  {
+   "phrase": "created",
+   "match": "contains",
+   "class": "no_model",
+   "no_model_reason": "item_lifecycle",
+   "confidence": "high",
+   "note": "consumable/curse/carving create-destroy-replace lifecycle -- partial model only"
+  }
+ ]
+}

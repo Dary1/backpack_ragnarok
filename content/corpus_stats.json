@@ -2,30 +2,39 @@
   "bands": {
     "Common": {
       "basis": "corpus_ratio",
+      "n": 5,
+      "provisional": true,
       "ratio": 1.0,
       "ratio_raw": 1.0,
       "warn_hi": 12.0
     },
     "Rare": {
       "basis": "corpus_ratio_isotonic",
+      "n": 10,
+      "provisional": true,
       "ratio": 1.644,
       "ratio_raw": 1.515,
       "warn_hi": 19.7
     },
     "Relic": {
       "basis": "corpus_ratio",
+      "n": 28,
+      "provisional": true,
       "ratio": 2.099,
       "ratio_raw": 2.099,
       "warn_hi": 25.2
     },
     "Uncommon": {
       "basis": "corpus_ratio_isotonic",
+      "n": 4,
+      "provisional": true,
       "ratio": 1.644,
       "ratio_raw": 1.968,
       "warn_hi": 19.7
     }
   },
   "bands_formula": "ratio_raw[r] = corpus median dps-proxy of tier r divided by that of Common (None if tier r has no corpus dps data). ratio[r] = ratio_raw[r] isotonic (PAVA) clamped -- weighted by each tier's dps-proxy sample size n, pooling adjacent tiers into their weighted mean until the Common->Uncommon->Rare->Relic sequence is non-decreasing, with Common pinned fixed at 1.0 (a tier that would pool into Common's block is clamped to 1.0 instead of averaged with it); a tier with no corpus dps data falls back to vocab dps_ceiling_warn[r] (basis='vocab_fallback') but is still clamped into the same non-decreasing sequence. warn_hi[r] = round(vocab_anchor['Common'] * ratio[r], 1). basis is 'corpus_ratio_isotonic' for a corpus tier whose ratio changed from ratio_raw by clamping, 'corpus_ratio' for an untouched corpus tier, 'vocab_fallback' otherwise. dps-proxy = damage_mid / cadence_mid.",
+  "generated_from": "sha256:8e9cfbdac46fed22d13fbb7df29947707258d6354cd818b754415425eb6d9e41",
   "licenses": {
     "backpack-battles": "CC-BY-SA",
     "backpack-hero": "CC-BY-SA"
@@ -212,12 +221,19 @@
         "unmapped": 39
       },
       "verb_frequency": {
-        "apply_status": 10,
+        "apply_status": 25,
+        "block": 20,
+        "buff_adjacent": 1,
+        "buff_self": 3,
         "cleanse": 8,
-        "heal_ally": 28,
-        "multi_strike": 1,
-        "reflect_damage": 2,
-        "strike": 41
+        "damage_reduction": 4,
+        "haste": 2,
+        "heal_ally": 14,
+        "lifesteal": 15,
+        "multi_strike": 8,
+        "reflect_damage": 6,
+        "status_immune": 1,
+        "strike": 48
       }
     },
     "backpack-hero": {
@@ -282,12 +298,12 @@
             "p95": 11.2
           },
           "Relic": {
-            "mean": null,
-            "median": null,
-            "n": 0,
-            "p25": null,
-            "p75": null,
-            "p95": null
+            "mean": 6.375,
+            "median": 4.5,
+            "n": 24,
+            "p25": 1.75,
+            "p75": 9.0,
+            "p95": 22.5
           },
           "Uncommon": {
             "mean": 6.476,
@@ -395,19 +411,23 @@
       "rarity_distribution": {
         "Common": 77,
         "Rare": 66,
-        "Relic": 0,
+        "Relic": 66,
         "Uncommon": 58,
-        "unmapped": 101
+        "unmapped": 35
       },
       "verb_frequency": {
-        "apply_status": 15,
+        "apply_status": 12,
         "block": 46,
-        "grant_shield": 4,
+        "buff_adjacent": 80,
+        "cleanse": 3,
+        "fire_items": 1,
         "haste": 6,
-        "heal_ally": 7,
+        "heal_ally": 2,
+        "heal_bp": 1,
         "lifesteal": 3,
-        "slow_enemy": 6,
-        "strike": 105
+        "reflect_damage": 3,
+        "slow_enemy": 4,
+        "strike": 65
       }
     }
   },
@@ -473,12 +493,12 @@
           "p95": 10.2
         },
         "Relic": {
-          "mean": 7.832,
-          "median": 6.25,
-          "n": 34,
-          "p25": 4.0,
+          "mean": 7.229,
+          "median": 6.0,
+          "n": 58,
+          "p25": 3.5,
           "p75": 8.0,
-          "p95": 17.9
+          "p95": 24.15
         },
         "Uncommon": {
           "mean": 6.231,
@@ -586,9 +606,9 @@
     "rarity_distribution": {
       "Common": 98,
       "Rare": 90,
-      "Relic": 61,
+      "Relic": 127,
       "Uncommon": 78,
-      "unmapped": 140
+      "unmapped": 74
     },
     "rarity_ratio_dps": {
       "Common": 1.0,
@@ -597,17 +617,22 @@
       "Uncommon": 1.968
     },
     "verb_frequency": {
-      "apply_status": 25,
-      "block": 46,
-      "cleanse": 8,
-      "grant_shield": 4,
-      "haste": 6,
-      "heal_ally": 35,
-      "lifesteal": 3,
-      "multi_strike": 1,
-      "reflect_damage": 2,
-      "slow_enemy": 6,
-      "strike": 146
+      "apply_status": 37,
+      "block": 66,
+      "buff_adjacent": 81,
+      "buff_self": 3,
+      "cleanse": 11,
+      "damage_reduction": 4,
+      "fire_items": 1,
+      "haste": 8,
+      "heal_ally": 16,
+      "heal_bp": 1,
+      "lifesteal": 18,
+      "multi_strike": 8,
+      "reflect_damage": 9,
+      "slow_enemy": 4,
+      "status_immune": 1,
+      "strike": 113
     }
   },
   "schema": "corpus_stats/1",
