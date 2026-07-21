@@ -174,18 +174,27 @@ test.describe('REQ-0273 inventory art integrity + PO outlines', () => {
       data: profileWith({ bps: [bpFixture('home', [1, 1])] }),
     });
     await bootApp(page);
-    await shot(page, 'canvas.inventory-board-canvas', 'inventory_unit_alpha.png');
     // Unit cell of the page-0 BP: origin [1,1] + off [2,1] = cell (3,2). The
-    // art box is 44x44 centred in the cell; probe its inner 28x28.
+    // art box is 44x44 centred in the cell; probe its inner 28x28. POLLED:
+    // raster decode is async BY DESIGN (missing art never blocks a draw), so
+    // the first frames legitimately show the glyph -- under fleet load the
+    // decode can lose a fixed-instant race (seen at E2E_PARALLEL=4). The
+    // assertion is about the steady state, so it waits for it.
     const region = { x: cx(2) - 14, y: cy(3) - 14, w: 28, h: 28 };
+    await expect
+      .poll(async () => { const s = await probe(page, 'canvas.inventory-board-canvas', region); return s.fullGreen / s.total; },
+        { timeout: 15000 })
+      .toBeGreaterThan(0.5); // art present, opaque
+    await shot(page, 'canvas.inventory-board-canvas', 'inventory_unit_alpha.png');
     const inv = await probe(page, 'canvas.inventory-board-canvas', region);
-    expect(inv.fullGreen / inv.total).toBeGreaterThan(0.5); // art present, opaque
-    expect(inv.dimGreen / inv.total).toBeLessThan(0.05); // and NOT the 0.44 blend
+    expect(inv.dimGreen / inv.total).toBeLessThan(0.05); // NOT the 0.44 blend
     // control: the canvas board (always alpha 1) shows the same population,
     // proving the probe bands actually discriminate.
     const cvRegion = { x: cx(4) - 14, y: cy(6) - 14, w: 28, h: 28 }; // canvas BP at [4,3], unit cell (6,4)
-    const cv = await probe(page, 'canvas.board-canvas', cvRegion);
-    expect(cv.fullGreen / cv.total).toBeGreaterThan(0.5);
+    await expect
+      .poll(async () => { const s = await probe(page, 'canvas.board-canvas', cvRegion); return s.fullGreen / s.total; },
+        { timeout: 15000 })
+      .toBeGreaterThan(0.5);
   });
 
   test('2. a PO cannot be dropped onto an inventory unit cell (bug 2 law, through the UI)', async ({ page }) => {
@@ -217,6 +226,17 @@ test.describe('REQ-0273 inventory art integrity + PO outlines', () => {
       }),
     });
     await bootApp(page);
+    // The PO was relocated at read time to the first legal cell in row-major
+    // order: (1,1), INSIDE the BP (full containment is legal; only the unit
+    // cell is not). The render is the authoritative assertion (no user
+    // mutation has happened, so the save need not have flushed): the
+    // relocated cell's top boundary band carries the outline rim. POLLED for
+    // the same board-settle reason as test 1. x starts +30 to stay clear of
+    // the BP move-handle badge at (+14,+14) r12.
+    const band = { x: PAD + 30, y: PAD + 1, w: CELL - 34, h: 9 };
+    await expect
+      .poll(async () => (await probe(page, 'canvas.inventory-board-canvas', band)).rim, { timeout: 15000 })
+      .toBeGreaterThan(0);
     await shot(page, 'canvas.inventory-board-canvas', 'inventory_poisoned_save.png');
     // The unit cell must carry NO PO furniture: no item backdrop, no outline
     // rim -- only grid + unit core/glyph. 12x12 corner probe, chosen OUTSIDE
@@ -225,15 +245,6 @@ test.describe('REQ-0273 inventory art integrity + PO outlines', () => {
     const u = await probe(page, 'canvas.inventory-board-canvas', unitRegion);
     expect(u.rim / u.total).toBeLessThan(0.02);
     expect(u.itemBackdrop / u.total).toBeLessThan(0.1);
-    // ...and the PO was relocated to the first legal cell in row-major order:
-    // (1,1), INSIDE the BP (full containment is legal; only the unit cell is
-    // not). The render is the authoritative assertion (no user mutation has
-    // happened, so the save need not have flushed): the relocated cell's top
-    // boundary band now carries the outline rim. x starts +30 to stay clear
-    // of the BP move-handle badge at (+14,+14) r12.
-    const band = { x: PAD + 30, y: PAD + 1, w: CELL - 34, h: 9 };
-    const b = await probe(page, 'canvas.inventory-board-canvas', band);
-    expect(b.rim).toBeGreaterThan(0);
   });
 
   test('4. per-PO footprint outlines on a busy board (feature)', async ({ page }) => {
@@ -256,12 +267,14 @@ test.describe('REQ-0273 inventory art integrity + PO outlines', () => {
     fixture.presets = { active: 0, names: ['P1', 'P2'], store: [null, { linked: true, bps: [], pos: [{ uid: 'w3', id: 'tower_shield', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] }] } as never;
     await page.request.put('/api/profile/default/canvas', { data: fixture });
     await bootApp(page);
-    await shot(page, 'canvas.inventory-board-canvas', 'busy_board_outlines.png');
     // Rim present in the inset boundary band of the 2x2 tower_shield
-    // (top edge band of cell (3,4), inset 3px +- ink width).
+    // (top edge band of cell (3,4), inset 3px +- ink width). POLLED for the
+    // same board-settle reason as test 1.
     const topBand = { x: PAD + 3 * CELL + 8, y: PAD + 2 * CELL + 1, w: 2 * CELL - 16, h: 9 };
-    const t = await probe(page, 'canvas.inventory-board-canvas', topBand);
-    expect(t.rim).toBeGreaterThan(20);
+    await expect
+      .poll(async () => (await probe(page, 'canvas.inventory-board-canvas', topBand)).rim, { timeout: 15000 })
+      .toBeGreaterThan(20);
+    await shot(page, 'canvas.inventory-board-canvas', 'busy_board_outlines.png');
     // Adjacent blade|dagger: the shared boundary column shows TWO rims with a
     // dark seam -- i.e. rim population in a 14px-wide band straddling the
     // border between (1,4) and (1,5).
