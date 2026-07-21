@@ -17,7 +17,8 @@ import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunRoster, ApiRunRosterEnemy } from '../api';
 import { getCachedMonsterTexture, loadMonsterTexture } from './monitorArt';
 import { MJ, hpColor, packTint } from './monitorTheme';
-import { ENEMY_RUNE, statusGlyph } from './monitorGlyphs';
+import { ENEMY_RUNE, statusGlyph, statusKind } from './monitorGlyphs';
+import type { MonitorFx } from './monitorFx';
 
 const NAME_STYLE = { fill: MJ.bone, fontSize: 9 } as const;
 const LANE_H = 11;
@@ -54,6 +55,9 @@ interface EnemyActor {
   rune: Text;
   silhouette: Graphics;
   nameplate: Text;
+  /** REQ-0276 C6: small panel plate behind the nameplate (bone on panel,
+   * 1px border-lo) so labels stay legible over the grid. */
+  nameBg: Graphics;
   rawName: string;
   hpBar: Graphics;
   statusRow: Container;
@@ -85,6 +89,15 @@ function truncateToFit(label: string, maxWidth: number): string {
   return out.length > 1 ? out + '…' : out;
 }
 
+/** REQ-0276 C5: status-chip alpha from remaining ttl -- full at 3+, receding
+ * to a 0.35 floor at 0 (the state stays visible; only its urgency fades). */
+function ttlAlpha(ttl: number): number {
+  if (ttl >= 3) return 1;
+  if (ttl === 2) return 0.75;
+  if (ttl === 1) return 0.5;
+  return 0.35;
+}
+
 export class EnemyPlane {
   private field: Container;
   private layer: Container;
@@ -97,11 +110,15 @@ export class EnemyPlane {
   private packEncountersSeen = 0;
   private activeWave = 0;
   private gen = 0;
+  /** REQ-0276 C: the shared VFX toolkit (glow budget + reduced-motion gate
+   * live there); null when the plane is built bare (tests). */
+  private fx: MonitorFx | null;
 
-  constructor(field: Container, cellPx: number, fieldW: number) {
+  constructor(field: Container, cellPx: number, fieldW: number, fx: MonitorFx | null = null) {
     this.field = field;
     this.cellPx = cellPx;
     this.fieldW = fieldW;
+    this.fx = fx;
     this.layer = new Container();
     this.layer.eventMode = 'none';
     this.field.addChild(this.layer);
@@ -192,13 +209,16 @@ export class EnemyPlane {
     statusRow.y = -HP_BAR_H - 9;
     container.addChild(statusRow);
 
+    const nameBg = new Graphics();
+    nameBg.eventMode = 'none';
+    container.addChild(nameBg);
     const nameplate = new Text({ text: '', style: { ...NAME_STYLE } });
     nameplate.eventMode = 'none';
     container.addChild(nameplate);
 
     const actor: EnemyActor = {
       enemy, rosterIdx, wave, box, container, bg, art: null, rune, silhouette,
-      nameplate, rawName: this.nameOf(enemy), hpBar, statusRow, statuses: new Map(),
+      nameplate, nameBg, rawName: this.nameOf(enemy), hpBar, statusRow, statuses: new Map(),
       hp: enemy.hpMax, hpMax: enemy.hpMax, revealed: !enemy.masked, dead: false,
       artLoaded: false, lane: 0, hidden: false,
     };
@@ -250,6 +270,13 @@ export class EnemyPlane {
     actor.art = sprite;
     actor.artLoaded = true;
     actor.rune.visible = false;
+    // REQ-0276 C5: art arrives with a 150ms alpha settle + one bone rim (the
+    // manifestation moment) instead of a hard pop-in -- only when the actor
+    // is actually showing it right now.
+    if (this.fx && this.fx.animated && actor.revealed && !actor.dead && actor.container.visible) {
+      this.fx.spriteIntro(sprite);
+      this.fx.revealRim(this.field.x + actor.box.x, this.field.y + actor.box.y, actor.box.w, actor.box.h);
+    }
     if (actor.dead) this.applyDeathVisual(actor);
     else this.applyRevealState(actor);
   }
@@ -289,19 +316,41 @@ export class EnemyPlane {
     actor.nameplate.text = truncateToFit(shown, Math.max(0, this.fieldW - actor.box.x));
     actor.nameplate.x = 0;
     actor.nameplate.y = actor.box.h + HP_BAR_H + 3;
+    this.redrawNameBg(actor);
+  }
+
+  /** REQ-0276 C6: the nameplate's panel plate -- redrawn to the label's
+   * current bounds; cleared while the label is hidden/empty. */
+  private redrawNameBg(actor: EnemyActor): void {
+    const g = actor.nameBg;
+    g.clear();
+    if (!actor.nameplate.visible || !actor.nameplate.text) return;
+    const w = actor.nameplate.width + 4;
+    const h = actor.nameplate.height + 2;
+    g.roundRect(actor.nameplate.x - 2, actor.nameplate.y - 1, w, h, 2)
+      .fill({ color: MJ.panel, alpha: 0.85 })
+      .stroke({ color: MJ.borderLo, width: 1, alpha: 0.9 });
   }
 
   // ---- run-driven mutations -------------------------------------------------
 
   /** REQ-0276 B1: a hit attributed to a roster enemy (ray_hit/ray_aoe enemyIdx).
    * Reveals (first hit), depletes HP, and flips to the defeat state at <=0. */
-  hit(rosterIdx: number, hpAfter?: number, amount?: number): void {
+  hit(rosterIdx: number, hpAfter?: number, amount?: number, silent = false): void {
     const actor = this.actors[rosterIdx];
     if (!actor) return;
-    if (!actor.revealed) { actor.revealed = true; this.applyRevealState(actor); this.relayoutLabels(); }
+    if (!actor.revealed) {
+      actor.revealed = true;
+      this.applyRevealState(actor);
+      this.relayoutLabels();
+      // REQ-0276 C5: reveal = one brief bone-white rim wipe, then settle.
+      if (!silent && this.fx) {
+        this.fx.revealRim(this.field.x + actor.box.x, this.field.y + actor.box.y, actor.box.w, actor.box.h);
+      }
+    }
     if (typeof hpAfter === 'number') actor.hp = Math.max(0, hpAfter);
     else if (typeof amount === 'number') actor.hp = Math.max(0, actor.hp - amount);
-    if (actor.hp <= 0 && !actor.dead) this.kill(actor);
+    if (actor.hp <= 0 && !actor.dead) this.kill(actor, silent);
     else this.redrawHp(actor);
   }
 
@@ -315,11 +364,23 @@ export class EnemyPlane {
     this.relayoutLabels();
   }
 
-  private kill(actor: EnemyActor): void {
+  private kill(actor: EnemyActor, silent = false): void {
     actor.dead = true;
-    this.applyDeathVisual(actor);
     this.redrawHp(actor);
     actor.nameplate.alpha = 0.4;
+    actor.nameBg.alpha = 0.4;
+    // REQ-0276 C5: a LIVE kill = short blood flash, then a ~400ms fade to
+    // the corpse ghost. Corpse STATE (tint / hidden chips) applies up front,
+    // so a fade cancelled by reset() can only leave an alpha -- which
+    // reset() and any silent re-apply both settle.
+    if (!silent && this.fx && this.fx.animated) {
+      if (actor.art) actor.art.tint = MJ.bone3;
+      actor.silhouette.visible = false;
+      for (const chip of actor.statuses.values()) chip.text.visible = false;
+      this.fx.deathFade(actor.container, this.field.x + actor.box.x, this.field.y + actor.box.y, actor.box.w, actor.box.h, 0.28);
+    } else {
+      this.applyDeathVisual(actor);
+    }
   }
 
   /** PHASE-C HOOK: defeat styling (desaturate/fade + corpse ghost). Structural
@@ -340,7 +401,11 @@ export class EnemyPlane {
     if (!actor || actor.dead) return;
     let chip = actor.statuses.get(status);
     if (!chip) {
-      const text = new Text({ text: statusGlyph(status), style: { fill: MJ.frost, fontSize: 9 } });
+      // REQ-0276 C5: chip tinted by status class -- ember for burns, frost
+      // for chills, bone-2 for the rest (the world's two voices; never gold).
+      const kind = statusKind(status);
+      const tint = kind === 'fire' ? MJ.ember : kind === 'frost' ? MJ.frost : MJ.bone2;
+      const text = new Text({ text: statusGlyph(status), style: { fill: tint, fontSize: 9 } });
       text.eventMode = 'none';
       text.x = actor.statuses.size * 11;
       actor.statusRow.addChild(text);
@@ -348,20 +413,25 @@ export class EnemyPlane {
       actor.statuses.set(status, chip);
     }
     chip.ttl = Math.max(1, n | 0);
-    chip.text.alpha = 1;
+    chip.text.alpha = ttlAlpha(chip.ttl);
     chip.text.visible = true;
   }
 
   /** status_tick: refresh the chip and, when the tick carries hp_after for a
    * resolved enemy, keep the actor's HP bar honest. */
-  statusTickByInstance(instanceId: string, status: string, hpAfter?: number): void {
+  statusTickByInstance(instanceId: string, status: string, hpAfter?: number, silent = false): void {
     const actor = this.byInstance.get(instanceId);
     if (!actor) return;
     const chip = actor.statuses.get(status);
-    if (chip) chip.text.alpha = 1;
+    // REQ-0276 C5: each tick burns one unit of the chip's remaining ttl and
+    // the chip fades with it (0.35 floor -- it recedes, never guess-vanishes).
+    if (chip) {
+      chip.ttl = Math.max(0, chip.ttl - 1);
+      chip.text.alpha = ttlAlpha(chip.ttl);
+    }
     if (typeof hpAfter === 'number') {
       actor.hp = Math.max(0, hpAfter);
-      if (actor.hp <= 0 && !actor.dead) this.kill(actor); else this.redrawHp(actor);
+      if (actor.hp <= 0 && !actor.dead) this.kill(actor, silent); else this.redrawHp(actor);
     }
   }
 
@@ -453,6 +523,8 @@ export class EnemyPlane {
       }
       if (!ok) { actor.nameplate.visible = false; actor.hidden = true; actor.lane = -1; }
     }
+    // REQ-0276 C6: settle each nameplate's panel plate after the lane pass.
+    for (const a of visible) this.redrawNameBg(a);
   }
 
   // ---- lifecycle / seams ----------------------------------------------------
@@ -471,7 +543,8 @@ export class EnemyPlane {
       a.revealed = !a.enemy.masked;
       a.container.alpha = 1;
       a.nameplate.alpha = 1;
-      if (a.art) a.art.tint = 0xffffff;
+      a.nameBg.alpha = 1;
+      if (a.art) { a.art.tint = 0xffffff; a.art.alpha = 1; }
       for (const chip of a.statuses.values()) chip.text.destroy();
       a.statuses.clear();
       a.statusRow.removeChildren();
