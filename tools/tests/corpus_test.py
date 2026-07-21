@@ -166,6 +166,11 @@ synth_corpora = {"s": {"license": "CC-BY-SA", "entries": [
 ]}}
 anchor2 = {"Common": 12, "Uncommon": 15, "Rare": 18, "Relic": 24}
 st = CS.compute_stats(synth_corpora, anchor2)
+check("REQ-0275 bands_scope == item (item-scope marker)",
+      st.get("bands_scope") == "item", st.get("bands_scope"))
+check("REQ-0275 bands_formula documents bands_scope=item",
+      "bands_scope='item'" in st.get("bands_formula", ""),
+      st.get("bands_formula", "")[-80:])
 ratio = st["pooled"]["rarity_ratio_dps"]
 bands = st["bands"]
 check("ratio Common == 1.0", ratio["Common"] == 1.0, ratio)

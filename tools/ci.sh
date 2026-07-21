@@ -149,6 +149,8 @@ echo "==== [3.97/7] REQ-0270 corpus browser generator test (stdlib python3) ====
 python3 tools/tests/corpus_browser_test.py
 echo "==== [3.98/7] REQ-0272 gen_context context-pack builder test (stdlib python3) ===="
 python3 tools/tests/gen_context_test.py
+echo "==== [3.99/7] REQ-0275 enemy-side stat bands test (stdlib python3) ===="
+python3 tools/tests/enemy_bands_test.py
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
