@@ -1,0 +1,31 @@
+{
+  "_note": "REQ-0269 hand-set balance bands -- the FALLBACK used when content/corpus_stats.json (REQ-0268) is absent or lacks a band. Absolute item-DPS ceilings are anchored on content/vocab.json dps_ceiling_warn (the S4 gate's A1 warn line); delta bands are hand-set for candidate-vs-baseline swings. corpus_stats bands, when present, overlay these. Any 'flag'-level band trips exit code 1.",
+  "item_dps_ceiling": {
+    "_note": "Per-rarity EFFECTIVE per-instance DPS (candidate damage over battle seconds, per instance -- same measure as metrics A1). > ceiling warns; > ceiling*flag_multiple flags. Values copied from vocab.json dps_ceiling_warn; flag_multiple gives head-room so a merely-strong item warns while a runaway (e.g. a Common at 90x) flags.",
+    "Common": 12,
+    "Uncommon": 15,
+    "Rare": 18,
+    "Relic": 24,
+    "flag_multiple": 3.0
+  },
+  "delta_win_rate": {
+    "_note": "abs(candidate winRate - baseline winRate). A 0.10 swing is a notable balance shift (warn); 0.20 means the candidate decisively changes clear outcomes (flag).",
+    "warn": 0.10,
+    "flag": 0.20
+  },
+  "delta_wipe_rate": {
+    "_note": "abs(candidate wipeRate - baseline wipeRate). Primary enemy/skill over-power detector: an injected skill/enemy that raises squad wipes trips this. Same 0.10 warn / 0.20 flag anchoring as win-rate.",
+    "warn": 0.10,
+    "flag": 0.20
+  },
+  "delta_ttk_ratio": {
+    "_note": "candidate meanTTK / baseline meanTTK (time-to-clear or time-to-wipe). abs(ratio-1) outside 0.25 warns, outside 0.50 flags -- a candidate that changes clear time by >half is out of band even if win rate is saturated.",
+    "warn": 0.25,
+    "flag": 0.50
+  },
+  "delta_dmg_dealt_ratio": {
+    "_note": "candidate meanPlayerDamageDealt / baseline. abs(ratio-1) outside 0.30 warns, outside 0.60 flags -- catches raw output swings when win rate is pinned at 0 or 1. Wider than TTK because total damage is noisier than outcome.",
+    "warn": 0.30,
+    "flag": 0.60
+  }
+}
