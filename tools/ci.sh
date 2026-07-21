@@ -143,6 +143,8 @@ echo "==== [3.95/7] REQ-0268 corpus normalizer + stats tests (stdlib python3) ==
 python3 tools/tests/corpus_test.py
 echo "==== [3.96/7] REQ-0268 stat-band lint self-test (corpus dps bands; ci runs self-test only) ===="
 node tools/check_stat_bands.cjs --self-test
+echo "==== [3.97/7] REQ-0270 corpus browser generator test (stdlib python3) ===="
+python3 tools/tests/corpus_browser_test.py
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="
