@@ -100,6 +100,11 @@ The spine §6.1 flow applies. For monsters concretely:
    (Fantasy) style; illustration-first.
 3. **Data** — author `monster_def` variants (enemy/1 + skills/formation/dungeon);
    machine checks + advisory agent review in the content-data registry.
+   Balance (REQ-0272): draft with the `python3 tools/gen_context.py
+   --kind skill|enemy --rarity <tier>` pack, then pass each candidate through
+   `node tools/candidate_gate.cjs <def.json>` (closed-vocab validate ->
+   dps band -> Monte-Carlo sim vs baseline; exit 1 = flagged, fix before
+   the S7 stop).
 4. **Preview** — `tools/build_dungeon_preview.py` builds the encounter preview to
    `web/preview/…` on backpack-dev.
 5. **STOP (S7)** — user review; nothing enters `content/live/dungeon/` before green.

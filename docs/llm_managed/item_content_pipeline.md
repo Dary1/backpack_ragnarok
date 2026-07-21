@@ -299,6 +299,18 @@ Theme / count (8–16) / shape distribution / rarity distribution
 (`vocab.rarities`) / tag & socket budget / new-vocab allowance (default:
 none). Write the intent at the top of `notes.md`.
 
+Before drafting, pull a generation context pack per slot (REQ-0272):
+
+```
+python3 tools/gen_context.py --kind item --rarity <Tier> [--verb V] [--theme S] --format md
+```
+
+It bundles the schema dialect, allowed verbs/triggers for POs, DO-NOT tokens
+(excluded_attested + deprecated), the rarity dps band (advisory,
+provisional), genre exemplars from the reference corpus, and live neighbors.
+Draft WITH the pack in context: it prevents closed-vocab violations and
+off-curve numbers at the source.
+
 ## Step 2 — Write `draft.json`
 
 Location: `content/batches/batch-NNN-slug/draft.json`, shape
@@ -344,6 +356,22 @@ console.log(bad?`FAIL ${bad}`:'S2 OK'); process.exit(bad?1:0);
 `node tools/scratch_validate_batch.cjs content/batches/batch-NNN-slug/draft.json`.
 Structural fields (shape/ports/part/icon/align/id) are covered by Steps 4–5.
 Additionally hand-check id/name collisions (including vs live).
+
+## Step 3.5 — Balance gate (one door; REQ-0272)
+
+For each candidate def (single JSON file), run the one-door gate before
+engine integration:
+
+```
+node tools/candidate_gate.cjs <candidate.json>
+```
+
+VALIDATE (closed vocab + dialect) -> STATIC (`check_stat_bands` dps band,
+advisory/provisional) -> DYNAMIC (`balance_sim` Monte-Carlo vs baseline).
+Exit 0 pass / 1 flagged / 2 usage; the report lands next to the candidate
+as `<name>.gate.json`. A flag is a STOP for that candidate: fix the numbers
+and rerun. For a batch `draft.json`, gate each entry (extract to a temp
+file per def).
 
 ## Step 4 — Engine integration check
 
