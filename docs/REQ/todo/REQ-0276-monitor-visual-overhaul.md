@@ -128,3 +128,113 @@ rolled-DEF-only additive field the sim never reads. `run.events` stays byte-for-
 - `unit_charge_*.slot` (0..3) lights dock/stage charge pips.
 - Only `rollDungeon` (live procedural) content emits `att_*`. The pre-generated `dungeon.json` `entityDef` path emits NO `att_*`; there the gimic identity flows via `ray_hit.dst` (= entity id once unmasked).
 - `frost_gnoll` footprint drift ([1,1] def vs 3×4 art) is still open (REQ-0188 unrun `derive --write`): contain-fit art into the DEF footprint box; do not prefer the art's shape.
+
+## Phase B evidence (2026-07-22)
+
+**Commits (branch `req-0276-monitor-visual-overhaul`):**
+- `fb39aae` B1: new client modules — `monitorTheme.ts` (MJÖLNIR palette numbers +
+  `hpColor`/`packTint`), `monitorArt.ts` (async Pixi monster-texture cache),
+  `monitorGlyphs.ts` (gimic/status glyphs), `monitorActors.ts` (`EnemyPlane`).
+- `06400f6` B2/B3: wire `EnemyPlane` + player-plane overlays + all new event
+  handling into `MonitorRenderer.ts` + `Monitor.tsx`.
+
+### What renders now vs before
+
+**Enemy plane (was: one lazy red blob at the first-seen ray cell, id/`?` label).**
+Now: at `setRoster`, one ACTOR per roster enemy placed at its absolute
+`fieldCells` (bounding-box footprint; geometry never derived from the DISPLAY
+`footprint`, per REQ-0261 §8). Monster art resolves through the SAME chain the
+Dex uses — `board/itemArt.getItemArtUrl(id)` (the payload `art_urls` map) — loaded
+as a Pixi texture (`Assets.load({loadParser:'loadTextures'})`) with an in-module
+id→Texture|null cache; contain-fit into the footprint box (uniform scale, never
+stretched; REQ-0188). While loading / when absent: a bone rune (`ᛦ`) on a
+panel-dark rounded cell block — never a broken image, never a bare red blob when
+roster data exists. Masked instances render as a dark silhouette + `?` and flip to
+art+name on first `ray_hit.enemyIdx` (monsters are `masked:false`, visible from
+spawn). Per-enemy thin HP bar under each actor (fraction fill + frost→ember→blood
+state colour + 25% notches), depleting on `ray_hit`/`ray_aoe`/`ray_hit_all`
+`enemyIdx` (`hp_after` when present, else `amount`), clamped ≥0. Defeat (`hp≤0`):
+actor dims to a low-alpha corpse ghost, art desaturates (bone-3 tint), HP bar
+drops. Subtle pack-grouping edge (thin left border tinted by `packId`). Nameplates
+(locale `nameJa` under `ja`) reuse the de-overlap lane + truncation machinery.
+Wave grouping by `packId` (roster order == pack/boss encounter order): only the
+active wave is visible; `encounter_start(pack|boss)` advances it so later packs
+never overlap the current fight.
+
+**Player plane (was: BP colour fills + PO icons only; no unit art, no
+use-effects, no charge/KO).** Now: PO icons still render (post-A1 JOIN), each now
+carrying its `itemId`; unit-art hook draws `unit:<id>` raster contain-fit over the
+BP colour fill at reduced alpha (no-op today — `unitIconRasters()` is still `[]` —
+renders with no renderer change once art lands). `ray_fire` (player-origin;
+`src`=item def id) flashes the SOURCE item's cell(s) in every squad box that
+placed it. `unit_charge_*` `slot` lights 4 charge pips on the squad plate.
+`encounter_end`/`run_end` `troop_bp_hp` stamp per-slot KO (dim + label, same
+per-slot reduction the DOM dock uses). Damage numbers moved from a field-centre
+spread to the ACTUAL hit location (enemyIdx footprint centroid; entry/field-centre
+fallback). Formation frame + labels moved onto the MJÖLNIR palette (gold frame,
+bone text) and the player grid is now preserved (was cleared by `mountSquads`).
+
+### Events now handled that were previously IGNORED
+`heal_ally`, `lifesteal_heal` → green `(+n)` at the healed target (enemy-actor
+centroid when `dst` resolves to an instanceId, else field centre). `apply_status`
+/ `status_tick` → status-glyph chips on the resolved enemy actor (`status_tick`
+`hp_after` also keeps the actor HP honest). `encounter_start` / `encounter_end`
+→ wave advance + KO settle. `run_end` → KO settle.
+
+### Texture-resolution chains used (exact functions)
+- Monster art: `board/itemArt.getItemArtUrl(enemyId)` → URL, then
+  `monitorArt.loadMonsterTexture(id)` (`pixi Assets.load`, cache) — same
+  `art_urls` source as `dex/MonsterCatalog.MonsterPortrait`.
+- Unit art (hook): `this.textures.get('unit:'+bp.unitId)` from the shared
+  `board/sprites.loadBoardTextures()` map (`board/unitIcon.unitIconKey`).
+- PO icons: `this.textures.get(def.icon)` via `render/itemCard.computeFootprintCells`.
+
+### Seams added / changed (exact names)
+- ADDED `MonitorRenderer.getEnemyActors()` → `EnemyPlane.getActors()`
+  (`{id,instanceId,hp,hpMax,revealed,dead,artLoaded,wave,cells}[]`); exposed on
+  `window.__monitorDebug[roomId].enemyActors()`.
+- ADDED `MonitorRenderer.setLocale(locale)` (nameJa + KO copy); called from a new
+  `Monitor.tsx` locale-sync effect.
+- CHANGED `MonitorRenderer.getEnemyMarkerBounds()` — delegates to
+  `EnemyPlane.getMarkerBounds()` (actor nameplates, honest `x+width≤FIELD_W`) when
+  a roster is present; legacy `enemyMarkers` path otherwise. Return shape
+  unchanged (`{x,labelWidth,labelText,hidden,lane}`).
+- UNCHANGED (verified): `getLastMountedSquads()` shape; `getPulseVisualCounts()` /
+  `getAttachmentVisualCounts()` counters (all `link_pulse`/`pulse_*`/`att_*`
+  increments preserved); `applyTestEvents` seam.
+- `MonitorSquadBP` gained optional `unitId`; `MonitorSquadIcon` gained optional
+  `itemId` (both populated in `Monitor.tsx` from `bp.unit.id` / `po.id`).
+
+### Gates
+- `corepack pnpm exec tsc -b --force` (client) → **EXITCODE=0** (clean).
+- `corepack pnpm exec oxlint` on all six touched files → **0 warnings, 0 errors**.
+- e2e: NOT run here (Phase D owns the fleet gate). No e2e spec required editing —
+  the three renderer seams the specs read (`squads()`, `enemyBounds()`,
+  `pulseCounts()`/`attachmentCounts()`) keep their contracts; `enemyBounds()` still
+  yields `x+labelWidth≤468` for the actor nameplates.
+
+### PHASE-C restyle hooks (function names + file areas — structural-ugly ON PURPOSE)
+- `client/src/schedule/monitorTheme.ts` — `hpColor()` stops, `packTint()` cycle:
+  the ONE place to re-tune palette state colours.
+- `monitorActors.ts` `EnemyPlane`: `resolveArt`/`placeArt` (art intro/fade),
+  `applyDeathVisual` (desaturate/corpse-ghost styling), `redrawHp` (HP-bar notch
+  emphasis / segmentation), `applyStatusByInstance` (chip styling + real duration
+  fade — currently a fixed `ttl` placeholder), `paintBg` (cell-block frame),
+  `relayoutLabels` (nameplate treatment).
+- `MonitorRenderer.ts`: `floatNumberAt` (damage/heal number styling),
+  `flashSourceItem` (muzzle flash), `refreshChargePips` (pip light/spend anim),
+  `refreshKoStamp` (Yuji-Shūku KO stamp), `updateGimicBadge` (badge art + state
+  transitions), plus the still-placeholder ray VFX `flashCell`/`pulseCell`/
+  `animateStep`/`telegraphGlow` (already on MJÖLNIR tokens, ready to restyle).
+
+### Honest limitations left for Phase C / later
+- Player-side status chips: `apply_status` `dst` that does NOT resolve to an enemy
+  instanceId (player targets) draws no chip yet — needs a `dst`→slot map (Phase C
+  squad-box chips).
+- Gimic badges: only `att_reveal` carries a cell, so a badge whose first event is
+  `att_fire/open/lost/disarm` tracks state without drawing (no position). Class
+  glyph derives from `gimicId` prefix → event kind (art_urls does not yet cover
+  gimic ids).
+- Multi-encounter waves are joined by `packId` order (roster order == pack/boss
+  encounter order); there is no per-enemy `enc` field on the wire, so a dungeon
+  that reuses one `packId` across two encounters would share a wave.
