@@ -30,10 +30,12 @@ const REPO = path.join(__dirname, '..');
 const B = require(path.join(REPO, 'tools', 'balance_sim.cjs'));
 const CV = require(path.join(REPO, 'shared', 'content_validate.cjs'));
 const CHECKS = require(path.join(REPO, 'server', 'services', 'content_checks.cjs'));
+const CSB = require(path.join(REPO, 'tools', 'check_stat_bands.cjs'));
 
 const STATS_PATH = path.join(REPO, 'content', 'corpus_stats.json');
 const CHECK_BANDS = path.join(REPO, 'tools', 'check_stat_bands.cjs');
 const VOCAB_PATH = path.join(REPO, 'content', 'vocab.json');
+const ENEMY_BANDS_PATH = path.join(REPO, 'content', 'enemy_bands.json');
 
 // kind -> the schema_ref its live file declares, so content_checks._dialectFor
 // hands back the SAME dialect row the machine-check and the live gates use.
@@ -113,11 +115,48 @@ function validateStage(kind, def, defs, vocab) {
   return { status: reasons.length ? 'FLAG' : 'PASS', reasons };
 }
 
-// ---------------- Stage 2: STATIC (spawn check_stat_bands --gate) -----------
-function staticStage(kind, def) {
+// ---------------- Stage 2: STATIC (dps/hp bands; scope-aware) ---------------
+// item  -> corpus dps warn bands (content/corpus_stats.json, bands_scope=item),
+//          via the same spawned check_stat_bands.cjs --gate as before.
+// skill -> per-skill dps-proxy vs the pooled skill_dps band (live_self).
+// enemy -> hp midpoint vs its rarity enemy_hp band AND total dps (its skills'
+//          dps proxies) vs its rarity enemy_total_dps band (live_self).
+// Missing content/enemy_bands.json -> na fallback (advisory PASS), unchanged.
+function loadEnemyBands() {
+  try { return JSON.parse(fs.readFileSync(ENEMY_BANDS_PATH, 'utf8')); }
+  catch (_e) { return null; }
+}
+function round3(x) { return Math.round(x * 1000) / 1000; }
+
+// A value vs a {warn_lo, warn_hi, flag_multiple} band: FLAG outside the
+// flag bounds (warn_lo/fm .. warn_hi*fm), WARN outside the warn bounds, else OK.
+function evalBand(value, band) {
+  const fm = (typeof band.flag_multiple === 'number' && band.flag_multiple > 0)
+    ? band.flag_multiple : 2;
+  const wl = Number(band.warn_lo);
+  const wh = Number(band.warn_hi);
+  const fl = wl / fm;
+  const fh = wh * fm;
+  let status = 'OK';
+  if (value > fh || value < fl) status = 'FLAG';
+  else if (value > wh || value < wl) status = 'WARN';
+  return { status, warn_lo: round3(wl), warn_hi: round3(wh),
+    flag_lo: round3(fl), flag_hi: round3(fh) };
+}
+
+// live skill defs, with any embedded skill_defs supplied on the candidate
+// merged over the live table (array of skill/1 objects, or an id->def object).
+function resolveSkillDefs(def, defs) {
+  const byId = Object.assign({}, (defs && defs.skillDefsById) || {});
+  const emb = def.skill_defs;
+  if (Array.isArray(emb)) { for (const sd of emb) if (sd && sd.id) byId[sd.id] = sd; }
+  else if (emb && typeof emb === 'object') { for (const k of Object.keys(emb)) byId[k] = emb[k]; }
+  return byId;
+}
+
+function staticItem(def) {
   const tmp = path.join(os.tmpdir(), 'cand_gate_' + process.pid + '_' + Date.now() + '.json');
-  const schema = { item: 'po/2', skill: 'skill/1', enemy: 'enemy/1' }[kind] || 'po/2';
-  fs.writeFileSync(tmp, JSON.stringify({ schema, entries: [def] }));
+  fs.writeFileSync(tmp, JSON.stringify({ schema: 'po/2', entries: [def] }));
   let r;
   try {
     r = spawnSync(process.execPath, [CHECK_BANDS, '--gate', '--stats', STATS_PATH, '--defs', tmp], { encoding: 'utf8' });
@@ -125,7 +164,6 @@ function staticStage(kind, def) {
     try { fs.unlinkSync(tmp); } catch (_e) { /* best-effort */ }
   }
   if (r.error) return { status: 'WARN', reasons: ['static lint failed to run: ' + r.error.message], evaluated: 0 };
-
   const out = (r.stdout || '') + '';
   const reasons = [];
   let evaluated = 0, dps = null, warn_hi = null;
@@ -135,15 +173,86 @@ function staticStage(kind, def) {
   let m;
   while ((m = re.exec(out)) !== null) {
     dps = parseFloat(m[4]); warn_hi = m[5] === '-' ? null : parseFloat(m[5]);
-    if (m[1] === 'OVER') reasons.push('dps-proxy ' + dps + ' > ' + m[3] + ' warn_hi ' + warn_hi);
+    if (m[1] === 'OVER') reasons.push('dps-proxy ' + dps + ' > ' + m[3] + ' item-scope warn_hi ' + warn_hi + ' (item-scope bands, content/corpus_stats.json)');
   }
   if (r.status === 1) return { status: 'FLAG', reasons, evaluated, dps, warn_hi };
   if (r.status === 0) {
     if (evaluated === 0) return { status: 'PASS', reasons: ['no rarity-banded damage-tick effect -> not gated (advisory)'], evaluated, dps, warn_hi };
-    if (warn_hi === null) return { status: 'PASS', reasons: ['dps-proxy ' + dps + ' computed; no rarity band for this def -> not gated (advisory)'], evaluated, dps, warn_hi };
-    return { status: 'PASS', reasons: ['dps-proxy ' + dps + ' <= warn_hi ' + warn_hi], evaluated, dps, warn_hi };
+    if (warn_hi === null) return { status: 'PASS', reasons: ['dps-proxy ' + dps + ' computed; no item-scope rarity band for this def -> not gated (advisory)'], evaluated, dps, warn_hi };
+    return { status: 'PASS', reasons: ['dps-proxy ' + dps + ' <= item-scope warn_hi ' + warn_hi + ' (item-scope bands, content/corpus_stats.json)'], evaluated, dps, warn_hi };
   }
   return { status: 'WARN', reasons: ['static lint exited ' + r.status + ': ' + (r.stderr || '').trim()], evaluated, dps, warn_hi };
+}
+
+function staticSkill(def, eb) {
+  const { dps, counted } = CSB.defDps(def);
+  const dps3 = round3(dps);
+  if (!eb) return { status: 'PASS', reasons: ['live_self skill bands unavailable (content/enemy_bands.json missing) -> not gated (advisory)'], evaluated: 0, dps: dps3, warn_hi: null };
+  if (counted === 0) return { status: 'PASS', reasons: ['no damage-tick effect -> not gated (advisory)'], evaluated: 0, dps: dps3, warn_hi: null };
+  const grp = eb.skill_dps;
+  const band = grp && grp.band;
+  if (!band) return { status: 'PASS', reasons: ['no live_self skill_dps band available -> not gated (advisory)'], evaluated: 1, dps: dps3, warn_hi: null };
+  const e = evalBand(dps, band);
+  const prov = grp.provisional ? ' [provisional n=' + grp.n + ']' : ' [n=' + grp.n + ']';
+  const scope = 'live_self skill-dps bands';
+  if (e.status === 'FLAG') return { status: 'FLAG', reasons: ['skill dps-proxy ' + dps3 + ' outside flag bounds [' + e.flag_lo + ', ' + e.flag_hi + '] of ' + scope + ' (warn_hi ' + e.warn_hi + ')' + prov], evaluated: 1, dps: dps3, warn_hi: e.warn_hi };
+  if (e.status === 'WARN') return { status: 'WARN', reasons: ['skill dps-proxy ' + dps3 + ' outside warn bounds [' + e.warn_lo + ', ' + e.warn_hi + '] of ' + scope + prov], evaluated: 1, dps: dps3, warn_hi: e.warn_hi };
+  return { status: 'PASS', reasons: ['skill dps-proxy ' + dps3 + ' within ' + scope + ' warn [' + e.warn_lo + ', ' + e.warn_hi + ']' + prov], evaluated: 1, dps: dps3, warn_hi: e.warn_hi };
+}
+
+function staticEnemy(def, defs, eb) {
+  if (!eb) return { status: 'PASS', reasons: ['live_self enemy bands unavailable (content/enemy_bands.json missing) -> not gated (advisory)'], evaluated: 0, hp_mid: null, dps: null, warn_hi: null };
+  const rarity = typeof def.rarity === 'string' ? def.rarity.toLowerCase() : null;
+  const reasons = [];
+  const sub = [];
+  const skillById = resolveSkillDefs(def, defs);
+
+  // (a) hp midpoint vs enemy_hp[rarity]
+  const hpMid = CSB.mid(def.hp);
+  const hp_mid3 = hpMid === null ? null : round3(hpMid);
+  const hpGrp = rarity ? (eb.enemy_hp || {})[rarity] : null;
+  const hpBand = hpGrp && hpGrp.band;
+  if (hpMid === null) reasons.push('enemy hp has no computable midpoint -> hp not gated (advisory)');
+  else if (!hpBand) reasons.push('no live_self enemy_hp band for rarity "' + rarity + '" -> hp not gated (advisory)');
+  else {
+    const e = evalBand(hpMid, hpBand);
+    const prov = hpGrp.provisional ? ' [provisional n=' + hpGrp.n + ']' : ' [n=' + hpGrp.n + ']';
+    if (e.status === 'FLAG') { sub.push('FLAG'); reasons.push('enemy hp midpoint ' + hp_mid3 + ' outside flag bounds [' + e.flag_lo + ', ' + e.flag_hi + '] of live_self enemy-hp band for ' + rarity + ' (warn [' + e.warn_lo + ', ' + e.warn_hi + '])' + prov); }
+    else if (e.status === 'WARN') { sub.push('WARN'); reasons.push('enemy hp midpoint ' + hp_mid3 + ' outside warn bounds [' + e.warn_lo + ', ' + e.warn_hi + '] of live_self enemy-hp band for ' + rarity + prov); }
+    else reasons.push('enemy hp midpoint ' + hp_mid3 + ' within live_self enemy-hp band for ' + rarity + ' warn [' + e.warn_lo + ', ' + e.warn_hi + ']' + prov);
+  }
+
+  // (b) total dps (sum of resolved skills' dps proxies) vs enemy_total_dps[rarity]
+  let total = 0;
+  const unresolved = [];
+  for (const sid of (Array.isArray(def.skills) ? def.skills : [])) {
+    const sd = skillById[sid];
+    if (!sd) { unresolved.push(sid); continue; }
+    total += CSB.defDps(sd).dps;
+  }
+  const total3 = round3(total);
+  if (unresolved.length) reasons.push('unresolved skills (no live/embedded def): ' + unresolved.join(', ') + ' -> excluded from total dps');
+  const dpsGrp = rarity ? (eb.enemy_total_dps || {})[rarity] : null;
+  const dpsBand = dpsGrp && dpsGrp.band;
+  if (!dpsBand) reasons.push('no live_self enemy_total_dps band for rarity "' + rarity + '" -> total dps not gated (advisory)');
+  else {
+    const e = evalBand(total, dpsBand);
+    const prov = dpsGrp.provisional ? ' [provisional n=' + dpsGrp.n + ']' : ' [n=' + dpsGrp.n + ']';
+    if (e.status === 'FLAG') { sub.push('FLAG'); reasons.push('enemy total dps-proxy ' + total3 + ' outside flag bounds [' + e.flag_lo + ', ' + e.flag_hi + '] of live_self enemy total-dps band for ' + rarity + ' (warn [' + e.warn_lo + ', ' + e.warn_hi + '])' + prov); }
+    else if (e.status === 'WARN') { sub.push('WARN'); reasons.push('enemy total dps-proxy ' + total3 + ' outside warn bounds [' + e.warn_lo + ', ' + e.warn_hi + '] of live_self enemy total-dps band for ' + rarity + prov); }
+    else reasons.push('enemy total dps-proxy ' + total3 + ' within live_self enemy total-dps band for ' + rarity + ' warn [' + e.warn_lo + ', ' + e.warn_hi + ']' + prov);
+  }
+
+  let status = 'PASS';
+  if (sub.indexOf('FLAG') !== -1) status = 'FLAG';
+  else if (sub.indexOf('WARN') !== -1) status = 'WARN';
+  return { status, reasons, evaluated: 1, hp_mid: hp_mid3, dps: total3, warn_hi: dpsBand ? round3(Number(dpsBand.warn_hi)) : null };
+}
+
+function staticStage(kind, def, defs) {
+  if (kind === 'skill') return staticSkill(def, loadEnemyBands());
+  if (kind === 'enemy') return staticEnemy(def, defs, loadEnemyBands());
+  return staticItem(def);
 }
 
 // ---------------- Stage 3: DYNAMIC (balance sim runMatrix) ------------------
@@ -232,7 +341,7 @@ function main() {
     stages.static = { status: 'SKIP', reasons: ['skipped: validation failed'], evaluated: 0 };
     stages.dynamic = { status: 'SKIP', reasons: ['skipped: validation failed'], payload: null };
   } else {
-    stages.static = staticStage(kind, def);
+    stages.static = staticStage(kind, def, defs);
     if (o.skipSim) stages.dynamic = { status: 'SKIP', reasons: ['skipped: --skip-sim'], payload: null };
     else stages.dynamic = dynamicStage(kind, def, cand.source, defs, o.seeds || 3);
   }

@@ -208,4 +208,7 @@ function main() {
   process.exit(0);
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { defDps, mid, effectsOf, rarityOf, evaluate, loadBands, DAMAGE_VERBS,
+  DEFAULT_STATS, FALLBACK_BANDS };
