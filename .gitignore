@@ -10,3 +10,6 @@ __pycache__/
 # REQ-0106: pnpm is the only package manager -- block npm/yarn lockfiles
 package-lock.json
 yarn.lock
+
+# REQ-0270: dev-only static corpus browser output (untracked)
+web/preview/corpus/
