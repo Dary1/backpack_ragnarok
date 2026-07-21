@@ -1,6 +1,7 @@
 # REQ-0240 — dungeon-monitor redesign + presentation-pacing contract (user directive #7)
 
-**Status:** built — implemented, all local gates green, branch UNMERGED.
+**Status:** done — merged `b1d2572` (2026-07-19), deployed and live 2026-07-21, user accepted
+2026-07-21. Was: built — implemented, all local gates green, branch UNMERGED.
 **Reserved:** 2026-07-17
 **Slug:** monitor-redesign-pacing
 **Branch / worktree:** `req-0240-monitor-redesign-pacing` (server, UNMERGED).
@@ -156,3 +157,34 @@ YOURS-only (no overlap expected): `server/services/{pacing,runs,seals}.cjs`, `se
 - `e9d3aa7` client six-zone monitor rebuild + client pacing engine.
 - `bd35561` e2e updates + rebuilt web/app bundle.
 - this commit reserved → built.
+
+## Outcome — merged 2026-07-19, deployed 2026-07-21, accepted 2026-07-21
+
+Merged on **2026-07-19** as part of the REQ-0255 expedition baseline (see
+`docs/REQ/done/REQ-0255-expedition-merge-baseline.md` §12), and DEPLOYED on **2026-07-21**,
+riding REQ-0266's deploy rather than its own: `5066b2a` applied migrations 020-022 and the
+backfills, `42238f8` rebuilt `web/app` fresh in the main checkout, `a3aaf66` restarted the api
+and recorded live verification. User accepted **2026-07-21**.
+
+Gates re-run on `master` 2026-07-21, matching the values this REQ recorded on its branch:
+sim **117 passed / 0 failed**, replay goldens **OK (12 cases)**, forecast parity **18 passed /
+0 failed**, `pnpm lint` **0 errors**.
+
+**Merge commit:** `b1d2572` `Merge branch 'req-0240-monitor-redesign-pacing'` — LAST of the four,
+so this branch absorbed the sortie/board conflicts flagged in "Merge notes (conflict-prone vs the
+sortie/board sibling branch)" rather than causing them.
+
+**Live verification, 2026-07-21:**
+- Client half — the SERVED bundle (built 2026-07-21 08:08 by `42238f8`) carries the six-zone
+  monitor's `schedule-monitor-rewards-hint-link`.
+- Server half — the presentation-pacing layer ships in `backpack-api`, which was restarted as
+  part of the 2026-07-21 deploy (`a3aaf66`), so `run.presentation` is being served live.
+- The pacing mechanism's promise held: replay goldens are **still 12/12 UNMOVED** and forecast
+  parity **18/0** on master today, which is the whole point of merging presentation onto event
+  COPIES at serve time.
+
+The CI caveat in Gate evidence (the full DB-free run was QUEUED behind a sibling agent's box-lock
+and not run to completion on the branch) is retired: the gates have since run to completion on
+master, green.
+
+**Branch still exists**, 0 commits ahead of master. Rollback path.

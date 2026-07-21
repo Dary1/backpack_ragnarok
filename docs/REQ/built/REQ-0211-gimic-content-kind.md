@@ -1,8 +1,9 @@
 # REQ-0211 — gimic-content-kind: trap / treasure box / hidden door become first-class content
 
-**Status:** built — implemented 2026-07-17, `tools/ci.sh` GREEN (DB-free) + client lint/build +
-targeted e2e. NOT merged/deployed: the two ENUM migrations and the live backfill are deploy
-steps awaiting the user's go-ahead (same posture as REQ-0184/0208).
+**Status:** done — merged `198a859` (2026-07-19), deployed and live-verified 2026-07-21, user
+accepted 2026-07-21. The two ENUM migrations and the backfill that this REQ left pending HAVE
+been applied; see Outcome. Was: built — implemented 2026-07-17, `tools/ci.sh` GREEN (DB-free) +
+client lint/build + targeted e2e, migrations/backfill awaiting the user's go-ahead.
 **Reserved:** 2026-07-17
 **Slug:** gimic-content-kind
 **Branch / worktree:** `req-0211-gimic-content-kind` (server, UNMERGED)
@@ -221,3 +222,29 @@ gates (os.homedir() content anchoring persists; the e2e overhaul only fixed the 
 per-worker HOME, not the ci gates). pg content/schedule serving GREEN (schedule_serving 13/0,
 was 4/9 before the isolate fix). Hermetic e2e Gimics-tab spec (`dex.spec.ts:428`) PASS.
 Branch stays UNMERGED.
+
+## Outcome — merged 2026-07-19, deployed 2026-07-21, accepted 2026-07-21
+
+Merged on **2026-07-19** as part of the REQ-0255 expedition baseline (see
+`docs/REQ/done/REQ-0255-expedition-merge-baseline.md` §12), and DEPLOYED on **2026-07-21**,
+riding REQ-0266's deploy rather than its own: `5066b2a` applied migrations 020-022 and the
+backfills, `42238f8` rebuilt `web/app` fresh in the main checkout, `a3aaf66` restarted the api
+and recorded live verification. User accepted **2026-07-21**.
+
+Gates re-run on `master` 2026-07-21, matching the values this REQ recorded on its branch:
+sim **117 passed / 0 failed**, replay goldens **OK (12 cases)**, forecast parity **18 passed /
+0 failed**, `pnpm lint` **0 errors**.
+
+**Merge commit:** `198a859` `Merge branch 'req-0211-gimic-content-kind'` — first of the four,
+per the REQ-0255 runbook order.
+
+**Live verification, 2026-07-21 (read directly off the running DB, not off a commit message):**
+
+| claim | verified |
+|---|---|
+| migration 020 (`content_kind` += `gimic`) | `enum_range(null::content_kind)` contains `gimic` |
+| migration 021 (`artwork_kind` += `gimic`) | `enum_range(null::artwork_kind)` contains `gimic` |
+| backfill: 4 gimic records, all adopted | `select count(*) from content_defs where kind='gimic'` = **4** — exactly the count this REQ recorded |
+
+**Branch `req-0211-gimic-content-kind` still exists**, 0 commits ahead of master. Kept as the
+rollback path; do not delete it as tidy-up.

@@ -1,6 +1,7 @@
 # REQ-0239 — sortie-squad-board: dedicated SORTIE page (#/sortie) + SQUAD STATUS BOARD (#/schedule) + non-immediate-cancel fix
 
-**Status:** built (this folder). Branch `req-0239-sortie-squad-board`, UNMERGED. Tip `c6539c3`.
+**Status:** done — merged `e9076e7` (2026-07-19), deployed and live 2026-07-21, user accepted
+2026-07-21. Was: built, branch `req-0239-sortie-squad-board` UNMERGED, tip `c6539c3`.
 **Base:** branched from `ce78af5` (tip of `req-0185-dungeon-content-kind`; stacked master `cc575e2` ← req-0211 gimic ← req-0185 dungeon).
 **Requested by:** user directives #5 (sortie page) + #6 (squad board + non-immediate-cancel bug).
 **Design contract:** design/01_sortie_page.md + 02_squad_status_board.md (00 = shared tokens). Implements specs 01 + 02.
@@ -223,3 +224,29 @@ time rows) at 1600w desktop and 768w narrow. Dungeon key art shows the rune-well
 - Dungeon render adoption (see Artwork) — a dedicated art pass on the SSD-migrated box.
 - Full-suite e2e green — re-run in isolation at PARALLEL=2 (box-saturation flakes only).
 - Merge to master + deploy — HANDS-OFF; the branch is UNMERGED per policy.
+
+## Outcome — merged 2026-07-19, deployed 2026-07-21, accepted 2026-07-21
+
+Merged on **2026-07-19** as part of the REQ-0255 expedition baseline (see
+`docs/REQ/done/REQ-0255-expedition-merge-baseline.md` §12), and DEPLOYED on **2026-07-21**,
+riding REQ-0266's deploy rather than its own: `5066b2a` applied migrations 020-022 and the
+backfills, `42238f8` rebuilt `web/app` fresh in the main checkout, `a3aaf66` restarted the api
+and recorded live verification. User accepted **2026-07-21**.
+
+Gates re-run on `master` 2026-07-21, matching the values this REQ recorded on its branch:
+sim **117 passed / 0 failed**, replay goldens **OK (12 cases)**, forecast parity **18 passed /
+0 failed**, `pnpm lint` **0 errors**.
+
+**Merge commit:** `e9076e7` `Merge branch 'req-0239-sortie-squad-board'` — third of the four, so
+the monitor sibling (REQ-0240) merged AFTER it and absorbed the conflicts the "Merge notes for
+the final integrator" section anticipated. The `schedule.spec.ts` union those two branches
+produced left a stray `describe`-close, fixed syntactically in `2088c34` (e2e was explicitly not
+a gate for the baseline — REQ-0255 §7/§11).
+
+**Live verification, 2026-07-21** — the SERVED bundle (`web/app/assets/`, built 2026-07-21 08:08
+by `42238f8`) carries this REQ's own test ids: `sortie-back`, `squad-board-cta`,
+`schedule-create-cta`. The page is reachable at `#/sortie`, with the squad board on `#/schedule`.
+
+"Merge to master + deploy — HANDS-OFF; the branch is UNMERGED per policy" (Not-done-here section)
+is now discharged: the user authorized the merge via REQ-0255 ruling Q2 and the deploy via
+REQ-0266. **Branch still exists**, 0 commits ahead of master. Rollback path.

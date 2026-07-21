@@ -1,8 +1,10 @@
 # REQ-0185 — dungeon-content-kind: a dungeon is authored, PROBABILITY-WEIGHTED references to packs + gimics, rolled at dive time
 
-**Status:** built — implemented 2026-07-17; ratified per the user ruling 2026-07-17 (below).
-DB-free `tools/ci.sh` GREEN + pg gates GREEN + scoped hermetic e2e 187/1-waived; client lint/build
-green. NOT merged, NOT deployed (migration 022 + live backfill pending the batch deploy).
+**Status:** done — merged `e409aac` (2026-07-19), deployed and live-verified 2026-07-21, user
+accepted 2026-07-21. Migration 022 and the live backfill that this REQ left pending HAVE been
+applied; see Outcome. Was: built — implemented 2026-07-17, ratified per the user ruling
+2026-07-17 (below); DB-free `tools/ci.sh` GREEN + pg gates GREEN + scoped hermetic e2e
+187/1-waived; client lint/build green.
 **Reserved:** 2026-07-15
 **Slug:** dungeon-content-kind (supersedes the reserved slug `dungen-registry-packs`)
 **Branch / worktree:** `req-0185-dungeon-content-kind` (server, UNMERGED), stacked on
@@ -340,3 +342,32 @@ master advanced to `6d0e3a0` during the work). New tip: **`b8182b3`** (was `99b0
     PLAYWRIGHT_BASE_URL=http://127.0.0.1:1852 E2E_PARALLEL=4 E2E_GPU=1 pnpm exec playwright test
 
 (Use `E2E_GPU=1` only when the GPU is idle; the box's GPU is shared with the art session.)
+
+## Outcome — merged 2026-07-19, deployed 2026-07-21, accepted 2026-07-21
+
+Merged on **2026-07-19** as part of the REQ-0255 expedition baseline (see
+`docs/REQ/done/REQ-0255-expedition-merge-baseline.md` §12), and DEPLOYED on **2026-07-21**,
+riding REQ-0266's deploy rather than its own: `5066b2a` applied migrations 020-022 and the
+backfills, `42238f8` rebuilt `web/app` fresh in the main checkout, `a3aaf66` restarted the api
+and recorded live verification. User accepted **2026-07-21**.
+
+Gates re-run on `master` 2026-07-21, matching the values this REQ recorded on its branch:
+sim **117 passed / 0 failed**, replay goldens **OK (12 cases)**, forecast parity **18 passed /
+0 failed**, `pnpm lint` **0 errors**.
+
+**Merge commit:** `e409aac` `Merge branch 'req-0185-dungeon-content-kind'` — second of the four.
+Its `draft/` -> `built/` rename merged cleanly, exactly as REQ-0255 §9 predicted and checked:
+`ls docs/REQ/*/ | grep -oE 'REQ-[0-9]{4}[a-z]?' | sort | uniq -d` prints nothing, so no REQ ended
+up in two folders.
+
+**Live verification, 2026-07-21 (read directly off the running DB):**
+
+| claim | verified |
+|---|---|
+| migration 022 (`content_kind` += `dungeon`) | `enum_range(null::content_kind)` contains `dungeon` |
+| backfill: 3 dungeon records, adopted | `select count(*) from content_defs where kind='dungeon'` = **3** — exactly the count this REQ recorded |
+
+The `resolveAdoptedContentData` throw noted in flight (the enum value not being on the db until
+the migration deployed) is resolved by definition: the enum is now on the db.
+
+**Branch `req-0185-dungeon-content-kind` still exists**, 0 commits ahead of master. Rollback path.
