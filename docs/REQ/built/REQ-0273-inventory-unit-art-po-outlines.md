@@ -185,9 +185,9 @@ Decisions (documented as built):
 
 ---
 
-## 7. Outcome — verification pass, 2026-07-21
+## 6. Outcome — verification pass, 2026-07-21
 
-### 7.1 Commits (oldest first, branch `req-0273-inventory-unit-art-po-outlines`)
+### 6.1 Commits (oldest first, branch `req-0273-inventory-unit-art-po-outlines`)
 
 | commit | what |
 |---|---|
@@ -200,7 +200,7 @@ Decisions (documented as built):
 | `ac896de` | deliberate legalization of two e2e fixtures that DEPENDED on the forbidden overlap (bp-rotate, workshop covered-BP) |
 | `95c8a2c` | pixel probes poll for board steady state (async raster decode vs fleet load) |
 
-### 7.2 Investigation addenda (found while building; all verified)
+### 6.2 Investigation addenda (found while building; all verified)
 
 - **The engine-test fixture was poisoned too.** `mock-src/tests/run.cjs`'s REQ-0033
   exclusion-set test used a 2-cell box BP holding two POs — one necessarily ON the
@@ -223,7 +223,7 @@ Decisions (documented as built):
   drowns in interaction-window flakes. (One 12-red run mid-investigation was a
   self-inflicted double-launch port collision; discarded as evidence.)
 
-### 7.3 Gate results
+### 6.3 Gate results
 
 - `HOME=/tmp/h0273 SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh` -> **CI GREEN**.
 - Full `HOME=/tmp/h0273 DATABASE_URL=… tools/ci.sh` (run 3, final code): every step
@@ -242,7 +242,7 @@ Decisions (documented as built):
   three defects (fullGreen 0; unit-cell itemBackdrop 0.98; rim 0), test 2 passes
   (the engine law predates this REQ). That asymmetry IS the regression pin.
 
-### 7.4 Visual evidence (before = master bundle, after = this branch)
+### 6.4 Visual evidence (before = master bundle, after = this branch)
 
 `req0273_screens/`: `before/after_inventory_unit_alpha.png` (dim 0.44 green art vs
 full opacity), `before/after_po_unit_overlap.png` (hilt stacked on the unit cell vs
@@ -252,7 +252,7 @@ fuse vs two rims + seam; beast-jaw L traces its true concave footprint; shield
 outline reads over the usage wash; flask outlined inside the BP without touching
 the BP's own 3px colour boundary; centres stay clean — no wireframe).
 
-### 7.5 Landmines confirmed/added
+### 6.5 Landmines confirmed/added
 
 - BoardRenderer invariants held: unit core disc = BP drag handle (bp-rotate/
   bp-transfer green), gUnits after gItems, outline + all decorations
@@ -262,8 +262,8 @@ the BP's own 3px colour boundary; centres stay clean — no wireframe).
 - Any FUTURE fixture that parks a PO on a unit cell will drift at boot BY DESIGN —
   legalize the fixture, do not weaken v4.
 
-## 8. State log
+## 7. State log
 - 2026-07-21 reserved (stub, 3a28ffe).
 - 2026-07-21 reserved -> todo (7125aba; ratified by the user's same-day report).
-- 2026-07-21 implemented + gates green (76cfad3..95c8a2c, see 7.1/7.3).
+- 2026-07-21 implemented + gates green (76cfad3..95c8a2c, see 6.1/6.3).
 - 2026-07-21 todo -> built. NOT merged, NOT deployed; user acceptance pending.
