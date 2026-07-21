@@ -128,3 +128,5 @@ Four normalizer defects identified:
    mapped slow_enemy). Mapping must be clause-scoped and target-aware.
 Direction: fix the normalizer first, re-extract phrases, then classify the
 residual list via the curated table; regen with band provenance.
+- 2026-07-21 orchestrator review: 5 low-confidence table entries accepted
+  (nearest-closed-verb principle applied consistently); no changes required.
