@@ -278,6 +278,16 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/bpskin_harness.mjs)
   echo "==== [5.9d/7] overlay accessibility harness -- CVD sim + contrast, emits BS-G2 numbers (REQ-0143) ===="
   (cd client && node scripts/overlay_a11y_harness.mjs)
+  # REQ-0273: rolled-BP first-fit vs the real engine -- pins the bug-2 producer
+  # fix (a claim must never MOVE an unrelated free PO; post-claim state must be
+  # engine-legal on every page, unit cells clear). Same vite rig as above.
+  echo "==== [5.9e/7] client claim placement legality (REQ-0273) ===="
+  (cd client && node scripts/check_placement.mjs)
+  # REQ-0273: per-PO footprint outline geometry -- boundary loops (interior on
+  # the left), collinear merge, touching-corner and hole handling, exact 3px
+  # rectilinear inset. Pure module, no Pixi import by construction.
+  echo "==== [5.9f/7] client PO outline geometry (REQ-0273) ===="
+  (cd client && node scripts/check_po_outline.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
 else
