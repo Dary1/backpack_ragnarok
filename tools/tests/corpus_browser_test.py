@@ -14,6 +14,8 @@ content/corpus_stats.json, and asserts:
      check_stat_bands self-test fixture n:[8,12] s:[1.8,2.2] -> 10/2.0 = 5)
   5. two builds on the same inputs are byte-identical
   6. output lands under the given --out (as <out>/index.html)
+  7. REQ-0275: bands_scope=item label; enemy-side bands (basis live_self);
+     live skills compare against the pooled skill_dps band, with scope tags
 
 No network, no third-party deps -- runnable under bare `python3`.
 """
@@ -205,6 +207,45 @@ def main():
         check("warn_hi 19.7 (Rare) present in HTML", '"warn_hi":19.7' in html)
         check("bands_formula present in HTML",
               stats["bands_formula"][:40] in html)
+
+        # 3b. REQ-0275: scope labels + enemy-side bands (basis live_self)
+        check("curves.bands_scope == item",
+              data["curves"].get("bands_scope") == "item",
+              data["curves"].get("bands_scope"))
+        eb = data["curves"].get("enemy_bands", {})
+        check("enemy_bands present, basis live_self",
+              eb.get("present") is True and eb.get("basis") == "live_self",
+              eb.get("basis"))
+        ebj = json.load(open(os.path.join(REPO, "content", "enemy_bands.json"),
+                             encoding="utf-8"))
+        hp_common = next((r for r in eb.get("hp_rows", [])
+                          if r["key"] == "common"), None)
+        check("enemy hp common band matches enemy_bands.json",
+              hp_common
+              and hp_common["warn_hi"] == ebj["enemy_hp"]["common"]["band"]["warn_hi"]
+              and hp_common["warn_lo"] == ebj["enemy_hp"]["common"]["band"]["warn_lo"],
+              hp_common)
+        check("enemy_bands skill_row warn_hi matches file",
+              eb.get("skill_row", {}).get("warn_hi")
+              == ebj["skill_dps"]["band"]["warn_hi"], eb.get("skill_row"))
+        check("enemy-side bands section + live_self label in HTML",
+              'id="c-enemy-bands"' in html and "live_self" in html)
+
+        # live rows carry scope/basis; skills now use the live_self skill band
+        live_rows = data["live"]["rows"]
+        skill_rows = [r for r in live_rows if r["kind"] == "skill"]
+        item_rows = [r for r in live_rows if r["kind"] == "item"]
+        want_sw = ebj["skill_dps"]["band"]["warn_hi"]
+        check("live skill rows scope=skill basis=live_self vs skill_dps band",
+              len(skill_rows) > 0 and all(
+                  r["scope"] == "skill" and r["basis"] == "live_self"
+                  and r["warn_hi"] == want_sw for r in skill_rows),
+              skill_rows[:1])
+        check("live item rows scope=item",
+              (all(r["scope"] == "item" for r in item_rows)
+               if item_rows else True), item_rows[:1])
+        check("no na rows now that skills are banded",
+              data["live"]["summary"]["na"] == 0, data["live"]["summary"])
 
         # 4. dps-proxy parity with check_stat_bands hand values
         blade_def = {"rarity": "Common", "effects": [

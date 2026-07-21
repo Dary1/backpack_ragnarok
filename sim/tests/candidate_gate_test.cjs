@@ -10,6 +10,9 @@
 //   (b) an over-band candidate exits 1 with the STATIC reason
 //   (c) an in-band-but-sim-flagged candidate exits 1 with the DYNAMIC reason
 //   (d) a junk-vocab candidate exits 1 at VALIDATE
+//   (g) an hp-outlier common enemy exits 1 with a STATIC enemy-hp-band flag
+//   (h) a sane common enemy passes STATIC (hp + total-dps live_self bands)
+//   (i) an OP damage skill exits 1 with a STATIC skill_dps-band flag
 // plus: usage errors exit 2, and the report core is deterministic (double run).
 
 const path = require('path');
@@ -45,6 +48,14 @@ const OVERBAND_ITEM = { id: 'cg_ob_maul', schema: 'po/2', name: 'Overband Maul',
 // brutal enemy-side DoT the balance sim catches as OP (raises squad wipes).
 const DYN_SKILL = { id: 'cg_dyn_poison', schema: 'skill/1', name_en: 'Creeping Rot', name_ja: 'クリープ', trigger: { t: 'every_secs', s: [0.5, 0.5] }, verb: { t: 'apply_status', n: [120, 150], status: 'Poison' }, attack_profile: { edge: ['top'], direction: 'front', penetration: 2, aoe: 6, aoe_statuses: true }, modes: ['battle'] };
 const JUNK_ITEM = { id: 'cg_junk', schema: 'po/2', name: 'Junk', rarity: 'Common', tags: ['Weapon'], shape: [[0, 0]], effects: [{ trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'megablast', n: [1, 2] } }] };
+// REQ-0275 enemy/skill STATIC fixtures (bands from content/enemy_bands.json,
+// basis live_self). gnoll_claw is a live skill (dps ~4.05).
+const HP_OUTLIER_ENEMY = { id: 'cg_hp_outlier', schema: 'enemy/1', name: 'Colossal Gnoll', rarity: 'common', hp: [300, 400], footprint: [1, 1], skills: ['gnoll_claw'] };
+const SANE_ENEMY = { id: 'cg_sane', schema: 'enemy/1', name: 'Little Gnoll', rarity: 'common', hp: [35, 50], footprint: [1, 1], skills: ['gnoll_claw'] };
+// OP DAMAGE skill: strike 100/1.0 = 100 dps, far above the skill_dps flag_hi.
+// Distinct from DYN_SKILL (apply_status -> static na, sim flag): this one
+// flags STATICALLY, so both the static and dynamic skill paths stay covered.
+const OP_STRIKE_SKILL = { id: 'cg_op_strike', schema: 'skill/1', name_en: 'Obliterate', name_ja: 'x', trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [80, 120] }, attack_profile: { edge: ['top'], direction: 'front', penetration: 0, aoe: 0, aoe_statuses: false }, modes: ['battle'] };
 
 // (a) known-good passes end-to-end
 T('(a) known-good candidate passes end-to-end (exit 0, verdict PASS)', () => {
@@ -84,6 +95,38 @@ T('(d) junk-vocab candidate exits 1 at VALIDATE (static/dynamic skipped)', () =>
   ok(r.report.stages.validate.status === 'FLAG', 'validate not FLAG');
   ok(r.report.stages.validate.reasons.some((s) => /unknown verb/.test(s)), 'validate reason lacks unknown verb: ' + JSON.stringify(r.report.stages.validate.reasons));
   ok(r.report.stages.static.status === 'SKIP', 'static should be SKIP after validation failure');
+});
+
+// (g) hp-outlier common enemy flags STATICALLY on the live_self enemy-hp band
+T('(g) hp-outlier common enemy exits 1 with a STATIC enemy-hp-band flag', () => {
+  const p = writeFixture('hp_outlier_enemy.json', HP_OUTLIER_ENEMY);
+  const r = runGate(p, ['--skip-sim']);
+  ok(r.status === 1, 'expected exit 1, got ' + r.status + '\n' + r.stdout);
+  ok(r.report.stages.validate.status === 'PASS', 'validate should pass (legal enemy/1)');
+  ok(r.report.stages.static.status === 'FLAG', 'static not FLAG: ' + r.report.stages.static.status);
+  ok(r.report.stages.static.reasons.some((s) => /enemy hp midpoint .* outside flag bounds/.test(s)), 'no hp flag reason: ' + JSON.stringify(r.report.stages.static.reasons));
+  ok(r.report.stages.static.reasons.some((s) => /live_self/.test(s)), 'wording lacks live_self scope: ' + JSON.stringify(r.report.stages.static.reasons));
+});
+
+// (h) a sane common enemy passes STATIC (inside both hp and total-dps bands)
+T('(h) sane common enemy passes STATIC (in hp + total-dps live_self bands)', () => {
+  const p = writeFixture('sane_enemy.json', SANE_ENEMY);
+  const r = runGate(p, ['--skip-sim']);
+  ok(r.status === 0, 'expected exit 0, got ' + r.status + '\n' + r.stdout);
+  ok(r.report.stages.static.status === 'PASS', 'static not PASS: ' + r.report.stages.static.status);
+  ok(r.report.stages.static.reasons.some((s) => /enemy hp midpoint .* within/.test(s)), 'no hp pass reason: ' + JSON.stringify(r.report.stages.static.reasons));
+  ok(r.report.verdict === 'PASS', 'verdict not PASS: ' + r.report.verdict);
+});
+
+// (i) OP damage skill now flags STATICALLY on the skill_dps band (distinct from
+//     DYN_SKILL, which stays a static-PASS / dynamic-FLAG in test (c))
+T('(i) OP damage skill flags STATICALLY on the skill_dps band', () => {
+  const p = writeFixture('op_skill.json', OP_STRIKE_SKILL);
+  const r = runGate(p, ['--skip-sim']);
+  ok(r.status === 1, 'expected exit 1, got ' + r.status + '\n' + r.stdout);
+  ok(r.report.stages.validate.status === 'PASS', 'validate should pass');
+  ok(r.report.stages.static.status === 'FLAG', 'static not FLAG: ' + r.report.stages.static.status);
+  ok(r.report.stages.static.reasons.some((s) => /skill dps-proxy .* outside flag bounds .* live_self skill-dps/.test(s)), 'no skill-dps flag reason: ' + JSON.stringify(r.report.stages.static.reasons));
 });
 
 // (e) usage errors exit 2

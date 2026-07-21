@@ -1,0 +1,144 @@
+{
+  "band_formula": {
+    "description": "For each group over its observed values: warn_lo = round(min * warn_lo_mult, 3), warn_hi = round(max * warn_hi_mult, 3), where min/max are the observed extremes. A value < warn_lo or > warn_hi is a WARN (outside the observed spread by the warn margin). flag_lo = warn_lo / flag_mult, flag_hi = warn_hi * flag_mult; a value < flag_lo or > flag_hi is a FLAG (a magnitude error vs the CURRENT live meta). Multipliers are data here, not code constants, so the tolerance can be retuned without a code change. band is null for an empty group. dps proxy = SUM over effects of (verb.n mid / trigger.s mid) for a damage verb (strike|multi_strike|charge_strike) + every_secs trigger, identical to tools/check_stat_bands.cjs.",
+    "flag_mult": 2.0,
+    "provisional_below_n": 30,
+    "warn_hi_mult": 1.25,
+    "warn_lo_mult": 0.75
+  },
+  "basis": "live_self",
+  "enemy_hp": {
+    "common": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 115.625,
+        "warn_lo": 14.625
+      },
+      "max": 92.5,
+      "median": 55.0,
+      "min": 19.5,
+      "n": 20,
+      "p25": 47.5,
+      "p75": 82.5,
+      "provisional": true
+    },
+    "rare": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 500.0,
+        "warn_lo": 93.75
+      },
+      "max": 400.0,
+      "median": 175.0,
+      "min": 125.0,
+      "n": 11,
+      "p25": 143.75,
+      "p75": 215.0,
+      "provisional": true
+    },
+    "relic": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 875.0,
+        "warn_lo": 450.0
+      },
+      "max": 700.0,
+      "median": 635.0,
+      "min": 600.0,
+      "n": 4,
+      "p25": 615.0,
+      "p75": 662.5,
+      "provisional": true
+    },
+    "uncommon": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 175.0,
+        "warn_lo": 45.0
+      },
+      "max": 140.0,
+      "median": 100.0,
+      "min": 60.0,
+      "n": 9,
+      "p25": 97.5,
+      "p75": 105.0,
+      "provisional": true
+    }
+  },
+  "enemy_total_dps": {
+    "common": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 8.152,
+        "warn_lo": 0.0
+      },
+      "max": 6.522,
+      "median": 2.546,
+      "min": 0.0,
+      "n": 20,
+      "p25": 0.675,
+      "p75": 4.077,
+      "provisional": true
+    },
+    "rare": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 19.325,
+        "warn_lo": 0.0
+      },
+      "max": 15.46,
+      "median": 3.594,
+      "min": 0.0,
+      "n": 11,
+      "p25": 1.625,
+      "p75": 5.312,
+      "provisional": true
+    },
+    "relic": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 6.944,
+        "warn_lo": 1.765
+      },
+      "max": 5.556,
+      "median": 2.767,
+      "min": 2.353,
+      "n": 4,
+      "p25": 2.567,
+      "p75": 3.56,
+      "provisional": true
+    },
+    "uncommon": {
+      "band": {
+        "flag_multiple": 2.0,
+        "warn_hi": 5.0,
+        "warn_lo": 0.0
+      },
+      "max": 4.0,
+      "median": 2.037,
+      "min": 0.0,
+      "n": 9,
+      "p25": 0.0,
+      "p75": 3.594,
+      "provisional": true
+    }
+  },
+  "generated_from": "sha256:e0c49b82066f6232b6c8ba2311c25cc4ee64670680a89b31ff8afd3e2423a438",
+  "note": "basis=live_self: these bands describe our CURRENT live dungeon meta and flag outliers against TODAY's game, not genre truth -- the genre wikis carry no enemy pages. Each group carries provisional=true when n<30 (every per-rarity enemy group here is provisional; skill_dps pools all skills because skill/1 carries no rarity). Regenerate with tools/enemy_bands.py after any live enemies.json / skills.json change.",
+  "schema": "enemy_bands/1",
+  "skill_dps": {
+    "band": {
+      "flag_multiple": 2.0,
+      "warn_hi": 17.361,
+      "warn_lo": 0.01
+    },
+    "max": 13.889,
+    "median": 3.441,
+    "min": 0.013,
+    "n": 36,
+    "n_na": 45,
+    "p25": 2.569,
+    "p75": 4.411,
+    "provisional": false
+  }
+}
