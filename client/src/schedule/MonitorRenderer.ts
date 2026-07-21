@@ -15,11 +15,14 @@
 // lesson from the task brief: decorative sprites should not eat pointer
 // events).
 //
-// Ray animation: ray_fire+ray_step animates a small moving marker along
-// the path cell list (150-300ms per step via PIXI.Ticker), ray_bounce is
-// a brief flash at the bounce cell, ray_hit/ray_hit_all/reflect_damage is
-// a pulse (scale/alpha flash) on the hit cell. This is intentionally a
-// small dev-grade animation, not a full VFX system.
+// Ray animation (REQ-0276 Phase C): ray_fire+ray_step drive a luminous
+// projectile head with a fading trail along the path cells
+// (monitorFx.rayProjectile), ray_bounce is a gold spark burst at the bounce
+// cell, ray_hit/ray_aoe are element-coloured impact bursts + tiered damage
+// numbers, ray_hit_all a full-field radial wash, reflect_damage a blood
+// pulse converging on the player field. ALL transient FX live in
+// monitorFx.ts (glow budget + reduced-motion/webdriver gating); the `silent`
+// apply path spawns none of them.
 import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunEvent, ApiRunRoster } from '../api';
 import type { ChimeSink } from './chimes/chimeMapping';
@@ -29,6 +32,7 @@ import type { Offset } from '../engine/engine.d.ts';
 import { EnemyPlane } from './monitorActors';
 import { MJ } from './monitorTheme';
 import { gimicGlyph } from './monitorGlyphs';
+import { MonitorFx } from './monitorFx';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 
@@ -37,7 +41,6 @@ const FIELD_GAP_PX = 24;
 export const FIELD_W = FIELD_COLS * FIELD_CELL_PX;
 const FIELD_H = FIELD_ROWS * FIELD_CELL_PX;
 const STEP_ANIM_MS = 200; // per ray_step segment, within the 150-300ms band the task brief calls for
-const FLASH_MS = 300;
 const HEAL_GREEN = 0x76c48a; // REQ-0276 B2: heal / lifesteal-heal green (+n); Phase C may re-tune.
 
 // REQ-0169 M2: enemy label style + lane geometry (dots stay at their true
@@ -127,7 +130,11 @@ interface SquadSlotHandle {
   container: Container;
   icons: Array<{ itemId: string; x: number; y: number; w: number; h: number }>;
   pips: Graphics;
-  koStamp: Text;
+  /** REQ-0276 C5: seal-style KO stamp -- blood plate + bone Yuji-Syuku label,
+   * pre-rotated; slammed in by refreshKoStamp on a live KO. */
+  koStamp: Container;
+  koLabel: Text;
+  koPlate: Graphics;
   charge: number;
   ko: boolean;
   label: string;
@@ -167,7 +174,7 @@ export class MonitorRenderer {
   private enemyPlane!: EnemyPlane;
   /** REQ-0276 B2: overlay for gimic-attachment badges, keyed by att id. */
   private enemyOverlay!: Container;
-  private gimicBadges = new Map<string, { container: Container; glyph: Text; state: string }>();
+  private gimicBadges = new Map<string, { container: Container; glyph: Text; bg?: Graphics; strike?: Graphics; state: string }>();
   /** REQ-0276 B2: mounted player squad-slot handles (pips / KO / item-fire). */
   private squadSlots = new Map<number, SquadSlotHandle>();
   /** REQ-0276 B3: locale for enemy nameJa + KO stamp copy. */
@@ -199,6 +206,13 @@ export class MonitorRenderer {
    * no field, so damage numbers read their side from here. */
   private currentRayField: 'player' | 'enemy' = 'enemy';
   private dmgSeq = 0;
+  /** REQ-0276 C: the shared VFX toolkit (glow budget, reduced-motion gate). */
+  private fx: MonitorFx;
+  /** REQ-0276 C1: the in-flight ray's element colour (fx.js semantics --
+   * frost = player-origin, ember = enemy-origin, gold = pulse payload). Set
+   * at ray_fire/ray_step; ray_hit/ray_aoe read it for impact colours. */
+  private currentRayColor: number = MJ.frost;
+  private currentRayBright: number = MJ.frostHi;
 
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
@@ -221,9 +235,13 @@ export class MonitorRenderer {
     this.app.stage.addChild(this.enemyField);
     this.app.stage.addChild(this.rayLayer);
 
+    // REQ-0276 C: ONE FX toolkit drives every transient effect; it draws into
+    // rayLayer (purged by reset()) and registers through addTicker (cancelled
+    // by reset()), so no effect can outlive a retarget or a replay seek.
+    this.fx = new MonitorFx(this.rayLayer, (step) => this.addTicker(step), FIELD_CELL_PX);
     // REQ-0276 B1: roster-driven enemy actors live in their own sublayer of the
     // enemy field; the gimic-badge overlay sits above them.
-    this.enemyPlane = new EnemyPlane(this.enemyField, FIELD_CELL_PX, FIELD_W);
+    this.enemyPlane = new EnemyPlane(this.enemyField, FIELD_CELL_PX, FIELD_W, this.fx);
     this.enemyOverlay = new Container();
     this.enemyOverlay.eventMode = 'none';
     this.enemyField.addChild(this.enemyOverlay);
@@ -298,58 +316,62 @@ export class MonitorRenderer {
     const spread = (this.dmgSeq++ % 5) - 2;
     const x = ox + FIELD_W / 2 + spread * 24;
     const y = oy + FIELD_H / 2 + spread * 6;
-    // player field = WE take the hit (blood); enemy field = we dealt it (ember).
-    this.floatNumberAt(x, y, amount, field === 'player' ? MJ.blood : MJ.ember);
+    // REQ-0276 C2/C4: even an unlocated hit gets its impact burst at the
+    // spread position -- blood when WE take it, the ray's element otherwise.
+    if (field === 'player') this.fx.impactBurst(x, y, MJ.blood, MJ.emberHi);
+    else this.fx.impactBurst(x, y, this.currentRayColor, this.currentRayBright);
+    // player field = WE take the hit (blood); enemy field = we dealt it (ember-hi).
+    this.floatNumberAt(x, y, amount, field === 'player' ? MJ.blood : MJ.emberHi);
   }
 
   /** REQ-0276 B2: a floating tier-sized number that rises + fades at an ABSOLUTE
    * stage position, so damage lands on the ACTUAL hit cell/actor (not a field-
-   * centre spread). `prefix` carries the heal '+'. PHASE-C HOOK: restyle here. */
-  private floatNumberAt(x: number, y: number, amount: number, color: number, prefix = ''): void {
+   * centre spread). `prefix` carries the heal '+'; opts pick the C4 treatment. */
+  private floatNumberAt(x: number, y: number, amount: number, color: number, prefix = '', opts?: { heal?: boolean; kill?: boolean }): void {
     if (!(amount > 0)) return;
-    const size = amount < 10 ? 15 : amount < 30 ? 18 : 22;
-    const label = new Text({ text: prefix + String(Math.round(amount)), style: { fill: color, fontSize: size, fontWeight: 'bold' } });
-    label.eventMode = 'none';
-    label.x = x; label.y = y;
-    this.app.stage.addChild(label);
-    const start = performance.now();
-    this.addTicker((): boolean => {
-      const e = performance.now() - start; const fr = Math.min(1, e / 600);
-      label.y = y - 18 * fr; label.alpha = 1 - fr;
-      if (e >= 600) { if (label.parent) this.app.stage.removeChild(label); label.destroy(); return true; }
-      return false;
-    });
+    const n = Math.round(amount);
+    // REQ-0276 C4: tier by amount (small <10 / mid <30 / large); pop-in, rise
+    // and fade live in monitorFx. Heals drift gently with no pop; a killing
+    // blow gets the single gold flourish. Legibility comes from a thin void
+    // outline on the glyphs -- never glow.
+    const kind: 'small' | 'mid' | 'large' | 'heal' = opts?.heal ? 'heal' : n < 10 ? 'small' : n < 30 ? 'mid' : 'large';
+    this.fx.floatNumber(x, y, prefix + String(n), color, kind, !!opts?.kill);
   }
 
   /** REQ-0240 (03 ss5.6): the telegraph as theatre -- a wind-up edge glow on the
    * targeted edge of the player field for a short hold (the "Telegraph:" text
    * line dies; the stage IS the telegraph). */
   private telegraphGlow(edge: string): void {
-    const g = new Graphics();
-    const th = 8;
-    if (edge === 'top') g.rect(0, 0, FIELD_W, th);
-    else if (edge === 'bottom') g.rect(0, FIELD_H - th, FIELD_W, th);
-    else if (edge === 'left') g.rect(0, 0, th, FIELD_H);
-    else g.rect(FIELD_W - th, 0, th, FIELD_H);
-    g.fill({ color: MJ.ember, alpha: 0.85 });
-    g.eventMode = 'none';
-    g.x = this.playerField.x; g.y = this.playerField.y;
-    this.app.stage.addChild(g);
-    const start = performance.now();
-    this.addTicker((): boolean => {
-      const e = performance.now() - start; const fr = Math.min(1, e / 700);
-      g.alpha = 0.85 * (1 - fr);
-      if (e >= 700) { if (g.parent) this.app.stage.removeChild(g); g.destroy(); return true; }
-      return false;
-    });
+    // REQ-0276 C3: the wind-up is a thin GOLD hairline on the threatened edge
+    // (structure warns; the ember arrives with the ray itself). It breathes
+    // in over ~500ms, then releases.
+    const th = 2;
+    const o = this.fieldOrigin('player');
+    let x = o.x;
+    let y = o.y;
+    let w = FIELD_W;
+    let h = th;
+    if (edge === 'bottom') { y = o.y + FIELD_H - th; }
+    else if (edge === 'left') { w = th; h = FIELD_H; }
+    else if (edge === 'right') { x = o.x + FIELD_W - th; w = th; h = FIELD_H; }
+    this.fx.telegraph(x, y, w, h);
+  }
+
+  /** REQ-0276 C: stage-space origin of a field -- transient FX draw into the
+   * stage-level rayLayer, so cell positions must be offset by the field the
+   * effect belongs to (the enemy field moves under setLayout('column')). */
+  private fieldOrigin(field: 'player' | 'enemy'): { x: number; y: number } {
+    const f = field === 'enemy' ? this.enemyField : this.playerField;
+    return { x: f.x, y: f.y };
   }
 
   private drawFieldBackdrop(field: Container, tint = 0): void {
     const bg = new Graphics();
-    bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: MJ.void, alpha: 0.6 }).stroke({ color: MJ.borderLo, width: 1 });
+    // REQ-0276 C6: deepen to the void -- the idle stage is calm, dark, matte.
+    bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: MJ.void, alpha: 0.9 }).stroke({ color: MJ.borderLo, width: 1 });
     // REQ-0240 ss5.1: a faint per-side tint wash so the fields read PLAYER vs
     // ENEMY. Drawn into the backdrop (child 0), which mountSquads never clears.
-    if (tint) bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: tint, alpha: 0.06 });
+    if (tint) bg.rect(0, 0, FIELD_W, FIELD_H).fill({ color: tint, alpha: 0.05 }); // REQ-0276 C6: washes stay <=6%
     bg.eventMode = 'none';
     field.addChild(bg);
     // REQ-0169 M3: a faint cell grid so positions read as a BOARD even at
@@ -359,7 +381,7 @@ export class MonitorRenderer {
     const grid = new Graphics();
     for (let c = 1; c < FIELD_COLS; c++) grid.moveTo(c * FIELD_CELL_PX, 0).lineTo(c * FIELD_CELL_PX, FIELD_H);
     for (let r = 1; r < FIELD_ROWS; r++) grid.moveTo(0, r * FIELD_CELL_PX).lineTo(FIELD_W, r * FIELD_CELL_PX);
-    grid.stroke({ color: MJ.borderLo, width: 1, alpha: 0.18 });
+    grid.stroke({ color: MJ.borderLo, width: 1, alpha: 0.14 }); // REQ-0276 C6: fainter -- a whisper, not a lattice
     grid.eventMode = 'none';
     field.addChild(grid);
   }
@@ -380,7 +402,7 @@ export class MonitorRenderer {
         console.warn('[backpack_ragnarok] MonitorRenderer: squad', squad.slotIndex, 'has no real formation box (got', JSON.stringify(squad.box) + ') -- drawing a dim fallback outline');
         const fb = new Graphics();
         const fx = 4 + squad.slotIndex * (8 * FIELD_CELL_PX + 6);
-        fb.rect(fx, 4, 8 * FIELD_CELL_PX, 8 * FIELD_CELL_PX).stroke({ color: MJ.frost, width: 1, alpha: 0.35 });
+        fb.rect(fx, 4, 8 * FIELD_CELL_PX, 8 * FIELD_CELL_PX).stroke({ color: MJ.goldLo, width: 1, alpha: 0.5 });
         fb.eventMode = 'none';
         this.playerField.addChild(fb);
         const fbLabel = new Text({ text: squad.label, style: { fill: MJ.bone, fontSize: 10 } });
@@ -395,9 +417,10 @@ export class MonitorRenderer {
       slotBox.eventMode = 'none';
       this.playerField.addChild(slotBox);
 
-      // REQ-0276 B: formation-box outline -- gold = STRUCTURAL frame only.
+      // REQ-0276 B/C6: formation-box outline -- a gold-lo hairline, the
+      // STRUCTURE's quiet frame (idle never glows, never shouts).
       const outline = new Graphics();
-      outline.rect(rect.x, rect.y, rect.w, rect.h).stroke({ color: MJ.gold, width: 1.5, alpha: 0.7 });
+      outline.rect(rect.x, rect.y, rect.w, rect.h).stroke({ color: MJ.goldLo, width: 1, alpha: 0.9 });
       outline.eventMode = 'none';
       slotBox.addChild(outline);
 
@@ -430,9 +453,20 @@ export class MonitorRenderer {
       pips.eventMode = 'none';
       slotBox.addChild(pips);
 
-      // REQ-0276 B2: KO stamp (structural: dim + label). Hidden until KO.
-      const koStamp = new Text({ text: t(this.locale, 'schedule.monitor.dock.ko'), style: { fill: MJ.blood, fontSize: 12, fontWeight: 'bold' } });
-      koStamp.x = rect.x + rect.w / 2 - 12; koStamp.y = rect.y + rect.h / 2 - 6; koStamp.eventMode = 'none'; koStamp.visible = false;
+      // REQ-0276 C5: seal-style KO stamp -- bone lettering (Yuji Syuku, the
+      // styleguide's seal face, loaded by index.html) on a blood plate,
+      // tilted like a hanko; refreshKoStamp slams it in when KO lands live.
+      const koLabel = new Text({ text: t(this.locale, 'schedule.monitor.dock.ko'), style: { fill: MJ.bone, fontSize: 13, fontWeight: 'bold', fontFamily: 'Yuji Syuku, serif' } });
+      koLabel.anchor.set(0.5);
+      koLabel.eventMode = 'none';
+      const koPlate = new Graphics();
+      koPlate.eventMode = 'none';
+      const koStamp = new Container();
+      koStamp.addChild(koPlate);
+      koStamp.addChild(koLabel);
+      koStamp.x = rect.x + rect.w / 2; koStamp.y = rect.y + rect.h / 2;
+      koStamp.rotation = -0.14; // ~-8deg, the styleguide's stamp tilt
+      koStamp.eventMode = 'none'; koStamp.visible = false;
       slotBox.addChild(koStamp);
 
       const iconCells: Array<{ itemId: string; x: number; y: number; w: number; h: number }> = [];
@@ -458,7 +492,7 @@ export class MonitorRenderer {
 
       this.squadSlots.set(squad.slotIndex, {
         slotIndex: squad.slotIndex, rect, cellW, cellH, container: slotBox,
-        icons: iconCells, pips, koStamp, charge: 0, ko: false, label: squad.label,
+        icons: iconCells, pips, koStamp, koLabel, koPlate, charge: 0, ko: false, label: squad.label,
       });
     }
   }
@@ -497,32 +531,32 @@ export class MonitorRenderer {
     }
   }
 
-  /** REQ-0276 B2: KO stamp toggle (structural dim + label). PHASE-C HOOK: the
-   * Yuji-Syuku stamp styling. */
-  private refreshKoStamp(h: SquadSlotHandle): void {
-    h.koStamp.text = t(this.locale, 'schedule.monitor.dock.ko');
+  /** REQ-0276 C5: seal-style KO stamp -- redraw the blood plate to fit the
+   * (locale-dependent) label, dim the slot, and, when the KO lands LIVE
+   * (animate), slam it in with the styleguide's stampin overshoot. */
+  private refreshKoStamp(h: SquadSlotHandle, animate = false): void {
+    h.koLabel.text = t(this.locale, 'schedule.monitor.dock.ko');
+    const w = h.koLabel.width + 14;
+    const hh = h.koLabel.height + 6;
+    h.koPlate.clear();
+    h.koPlate.roundRect(-w / 2, -hh / 2, w, hh, 4).fill({ color: MJ.blood, alpha: 0.92 }).stroke({ color: MJ.bone, width: 1, alpha: 0.5 });
+    const wasVisible = h.koStamp.visible;
     h.koStamp.visible = h.ko;
     h.container.alpha = h.ko ? 0.55 : 1;
+    if (h.ko && !wasVisible && animate) this.fx.stampSlam(h.koStamp);
+    else if (!h.ko || !wasVisible) { h.koStamp.scale.set(1); h.koStamp.alpha = 1; }
   }
 
-  /** REQ-0276 B2: bright flash on a fired item's cell(s) in its squad box. Maps
-   * ev.src item id -> every placed PO with that id (ambiguous -> all fire).
-   * PHASE-C HOOK: restyle the muzzle flash. */
+  /** REQ-0276 C1: muzzle flash on a fired item's cell(s) -- a frost rim +
+   * soft fill (the player's attack element, continuous with the outgoing
+   * ray), 200ms ease-out, no glow. Maps ev.src item id -> every placed PO
+   * with that id (ambiguous -> all fire). */
   private flashSourceItem(itemId: string): void {
+    const o = this.fieldOrigin('player');
     for (const h of this.squadSlots.values()) {
       for (const ic of h.icons) {
         if (ic.itemId !== itemId) continue;
-        const flash = new Graphics();
-        flash.rect(ic.x, ic.y, ic.w, ic.h).fill({ color: MJ.ember, alpha: 0.8 });
-        flash.eventMode = 'none';
-        this.playerField.addChild(flash);
-        const start = performance.now();
-        this.addTicker((): boolean => {
-          const e = performance.now() - start;
-          flash.alpha = Math.max(0, 0.8 * (1 - e / FLASH_MS));
-          if (e >= FLASH_MS) { if (flash.parent) this.playerField.removeChild(flash); flash.destroy(); return true; }
-          return false;
-        });
+        this.fx.muzzle(o.x + ic.x, o.y + ic.y, ic.w, ic.h, MJ.frost, MJ.frostHi);
       }
     }
   }
@@ -530,7 +564,7 @@ export class MonitorRenderer {
   /** REQ-0276 B2: settle per-slot KO from a troop_bp_hp array (encounter_end /
    * run_end) -- summed per slot via the roster's slot BP counts, the same
    * reduction the DOM dock uses. */
-  private settleKoFromHp(hps: number[]): void {
+  private settleKoFromHp(hps: number[], silent = false): void {
     if (!this.roster) return;
     let off = 0;
     for (const sl of this.roster.slots) {
@@ -539,7 +573,7 @@ export class MonitorRenderer {
       off += n;
       const hpMax = sl.bps.reduce((acc, b) => acc + (b.hpMax || 0), 0);
       const h = this.squadSlots.get(sl.index);
-      if (h) { h.ko = hpMax > 0 && hp <= 0; this.refreshKoStamp(h); }
+      if (h) { h.ko = hpMax > 0 && hp <= 0; this.refreshKoStamp(h, !silent); }
     }
   }
 
@@ -722,81 +756,34 @@ export class MonitorRenderer {
     this.app.ticker.add(tick);
   }
 
-  private flashCell(cellId: string | RawCell): void {
+  /** REQ-0276 C1: boundary bounce / reveal moment -- a brief GOLD spark
+   * burst (structure's voice) at the cell, in the given field's space. */
+  private flashCell(cellId: string | RawCell, field: 'player' | 'enemy' = 'enemy'): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
-    const flash = new Graphics();
-    flash.rect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX).fill({ color: MJ.gold, alpha: 0.85 });
-    flash.eventMode = 'none';
-    flash.x = pos.x;
-    flash.y = pos.y;
-    this.rayLayer.addChild(flash);
-    const start = performance.now();
-    this.addTicker((): boolean => {
-      const elapsed = performance.now() - start;
-      flash.alpha = Math.max(0, 1 - elapsed / FLASH_MS);
-      if (elapsed >= FLASH_MS) {
-        if (flash.parent) this.rayLayer.removeChild(flash);
-        flash.destroy();
-        return true;
-      }
-      return false;
-    });
+    const o = this.fieldOrigin(field);
+    this.fx.bounceSpark(o.x + pos.x + FIELD_CELL_PX / 2, o.y + pos.y + FIELD_CELL_PX / 2);
   }
 
-  private pulseCell(cellId: string | RawCell, color = MJ.blood): void {
+  /** REQ-0276 C2: a small impact burst at a cell (link pulses land here) --
+   * fx.js's expand+fade with a 1-frame bright core, the sanctioned hit-glow
+   * moment. */
+  private pulseCell(cellId: string | RawCell, color = MJ.blood, bright = MJ.goldHi, field: 'player' | 'enemy' = 'player'): void {
     const pos = cellIdToXY(cellId, FIELD_CELL_PX);
-    const pulse = new Graphics();
-    pulse.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 2).fill({ color, alpha: 0.9 });
-    pulse.eventMode = 'none';
-    pulse.x = pos.x;
-    pulse.y = pos.y;
-    pulse.scale.set(0.4);
-    this.rayLayer.addChild(pulse);
-    const start = performance.now();
-    this.addTicker((): boolean => {
-      const elapsed = performance.now() - start;
-      const frac = Math.min(1, elapsed / FLASH_MS);
-      pulse.scale.set(0.4 + 0.9 * frac);
-      pulse.alpha = 1 - frac;
-      if (elapsed >= FLASH_MS) {
-        if (pulse.parent) this.rayLayer.removeChild(pulse);
-        pulse.destroy();
-        return true;
-      }
-      return false;
-    });
+    const o = this.fieldOrigin(field);
+    this.fx.impactBurst(o.x + pos.x + FIELD_CELL_PX / 2, o.y + pos.y + FIELD_CELL_PX / 2, color, bright);
   }
 
-  private animateStep(path: RawCell[], color = MJ.frost): void {
+  /** REQ-0276 C1: ray as a projectile -- a luminous elongated head walking
+   * the path with a short fading trail (trail cost capped in monitorFx), in
+   * the CURRENT ray's field space. */
+  private animateStep(path: RawCell[], color = MJ.frost, bright = MJ.frostHi): void {
     if (path.length === 0) return;
-    const marker = new Graphics();
-    marker.circle(FIELD_CELL_PX / 2, FIELD_CELL_PX / 2, FIELD_CELL_PX / 3).fill({ color, alpha: 0.9 });
-    marker.eventMode = 'none';
-    this.rayLayer.addChild(marker);
-    const totalMs = STEP_ANIM_MS * Math.max(1, path.length - 1);
-    const start = performance.now();
-    const positions = path.map((id) => cellIdToXY(id, FIELD_CELL_PX));
-    if (positions.length === 1) {
-      marker.x = positions[0].x;
-      marker.y = positions[0].y;
-    }
-    this.addTicker((): boolean => {
-      const elapsed = performance.now() - start;
-      const frac = Math.min(1, elapsed / totalMs);
-      const idxFloat = frac * (positions.length - 1);
-      const idx = Math.min(positions.length - 2, Math.floor(idxFloat));
-      const localFrac = positions.length > 1 ? idxFloat - idx : 0;
-      const a = positions[idx] ?? positions[0];
-      const b = positions[idx + 1] ?? a;
-      marker.x = a.x + (b.x - a.x) * localFrac;
-      marker.y = a.y + (b.y - a.y) * localFrac;
-      if (elapsed >= totalMs) {
-        if (marker.parent) this.rayLayer.removeChild(marker);
-        marker.destroy();
-        return true;
-      }
-      return false;
+    const o = this.fieldOrigin(this.currentRayField);
+    const centers = path.map((id) => {
+      const p = cellIdToXY(id, FIELD_CELL_PX);
+      return { x: o.x + p.x + FIELD_CELL_PX / 2, y: o.y + p.y + FIELD_CELL_PX / 2 };
     });
+    this.fx.rayProjectile(centers, color, bright, STEP_ANIM_MS);
   }
 
   /** Applies ONLY new (not-yet-rendered) events -- Monitor.tsx tracks
@@ -859,16 +846,21 @@ export class MonitorRenderer {
       }
       case 'encounter_end': {
         this.enemyPlane.onEncounterEnd();
-        if (Array.isArray(ev.troop_bp_hp)) this.settleKoFromHp(ev.troop_bp_hp as number[]);
+        if (Array.isArray(ev.troop_bp_hp)) this.settleKoFromHp(ev.troop_bp_hp as number[], silent);
         break;
       }
       case 'run_end': {
-        if (Array.isArray(ev.troop_bp_hp)) this.settleKoFromHp(ev.troop_bp_hp as number[]);
+        if (Array.isArray(ev.troop_bp_hp)) this.settleKoFromHp(ev.troop_bp_hp as number[], silent);
         break;
       }
       case 'ray_fire': {
         const field = ev.field === 'enemy' ? 'enemy' : 'player';
         this.currentRayField = field; // REQ-0240: ray_hit reads its side from here
+        // REQ-0276 C1: element colour by origin (the wire carries none) --
+        // frost = our volley crossing to the enemy field, ember = theirs
+        // arriving on ours; a pulse payload overrides to gold at ray_step.
+        this.currentRayColor = field === 'enemy' ? MJ.frost : MJ.ember;
+        this.currentRayBright = field === 'enemy' ? MJ.frostHi : MJ.emberHi;
         // REQ-0276 B2: player-origin fire (ray on the enemy field) -> flash the
         // SOURCE item's cell(s). src is the item def id (skills.cjs ownerId=po.id),
         // possibly '#'-suffixed on charge/react firings.
@@ -889,13 +881,18 @@ export class MonitorRenderer {
       case 'ray_step': {
         const path = Array.isArray(ev.path) ? (ev.path as unknown[]).filter(isRawCell) : [];
         const pulseRay = ev.cause === 'pulse';
-        if (pulseRay) this.pulseCounts.rays++;
-        if (!silent) this.animateStep(path, pulseRay ? MJ.gold : MJ.frost);
+        if (pulseRay) {
+          this.pulseCounts.rays++;
+          // gold payload: the LIVE-link voice -- and what its hits flash in.
+          this.currentRayColor = MJ.gold;
+          this.currentRayBright = MJ.goldHi;
+        }
+        if (!silent) this.animateStep(path, this.currentRayColor, this.currentRayBright);
         break;
       }
       case 'ray_bounce': {
         const at = isRawCell(ev.at) ? ev.at : null;
-        if (at && !silent) this.flashCell(at);
+        if (at && !silent) this.flashCell(at, this.currentRayField);
         break;
       }
       case 'ray_hit': {
@@ -904,9 +901,10 @@ export class MonitorRenderer {
         const amt = ev.pcoalesce ? ev.pcoalesce.amount : (typeof ev.amount === 'number' ? ev.amount : 0);
         // REQ-0276 B1: attribute to the roster enemy + deplete its HP.
         const idx = typeof ev.enemyIdx === 'number' ? ev.enemyIdx : null;
-        if (idx != null) this.enemyPlane.hit(idx, typeof ev.hp_after === 'number' ? ev.hp_after : undefined, amt);
-        // REQ-0276 B2: damage number at the ACTUAL hit location.
-        if (!silent && !ev.pcoalesceHidden) this.floatDamageLocated(idx, amt);
+        const kill = typeof ev.hp_after === 'number' && ev.hp_after <= 0 && amt > 0;
+        if (idx != null) this.enemyPlane.hit(idx, typeof ev.hp_after === 'number' ? ev.hp_after : undefined, amt, silent);
+        // REQ-0276 C2/C4: impact burst + tiered damage number at the hit.
+        if (!silent && !ev.pcoalesceHidden) this.floatDamageLocated(idx, amt, kill);
         break;
       }
       case 'ray_aoe':
@@ -919,18 +917,30 @@ export class MonitorRenderer {
           if (typeof h.amount === 'number') total += h.amount;
           if (typeof h.enemyIdx === 'number') {
             located = true;
-            this.enemyPlane.hit(h.enemyIdx, typeof h.hp_after === 'number' ? h.hp_after : undefined, typeof h.amount === 'number' ? h.amount : undefined);
-            if (!silent && typeof h.amount === 'number') this.floatDamageLocated(h.enemyIdx, h.amount);
+            this.enemyPlane.hit(h.enemyIdx, typeof h.hp_after === 'number' ? h.hp_after : undefined, typeof h.amount === 'number' ? h.amount : undefined, silent);
+            // REQ-0276 C2: AoE = simultaneous SMALL bursts over each hit cell.
+            if (!silent && typeof h.amount === 'number') {
+              this.floatDamageLocated(h.enemyIdx, h.amount, typeof h.hp_after === 'number' && h.hp_after <= 0, 0.7);
+            }
           }
         }
-        if (!silent && !located) {
-          if (total > 0) this.floatDamage(this.currentRayField, total);
-          else if (ev.ev === 'ray_hit_all') this.pulseCell('N9');
+        // REQ-0276 C2: ray_hit_all (nova) = a fast element-coloured radial
+        // wash from the field centre -- masked to the field, low alpha,
+        // deliberately NOT a screen-white flashbang.
+        if (!silent && ev.ev === 'ray_hit_all') {
+          const o = this.fieldOrigin(this.currentRayField);
+          this.fx.fieldWash({ x: o.x, y: o.y, w: FIELD_W, h: FIELD_H }, this.currentRayColor, this.currentRayBright);
         }
+        if (!silent && !located && total > 0) this.floatDamage(this.currentRayField, total);
         break;
       }
       case 'reflect_damage': {
-        if (!silent) this.pulseCell('N9', MJ.blood);
+        // REQ-0276 C2: reflected harm returns to US -- a blood-tinted pulse
+        // converging on the player field.
+        if (!silent) {
+          const o = this.fieldOrigin('player');
+          this.fx.returnPulse({ x: o.x, y: o.y, w: FIELD_W, h: FIELD_H });
+        }
         break;
       }
       case 'heal_ally':
@@ -941,8 +951,8 @@ export class MonitorRenderer {
         if (!silent && amount > 0) {
           const dst = typeof ev.dst === 'string' ? ev.dst : null;
           const pos = dst ? this.enemyPlane.centroidOfInstance(dst) : null;
-          if (pos) this.floatNumberAt(pos.x, pos.y, amount, HEAL_GREEN, '+');
-          else this.floatNumberAt(this.enemyField.x + FIELD_W / 2, this.enemyField.y + FIELD_H / 2, amount, HEAL_GREEN, '+');
+          if (pos) this.floatNumberAt(pos.x, pos.y, amount, HEAL_GREEN, '+', { heal: true });
+          else this.floatNumberAt(this.enemyField.x + FIELD_W / 2, this.enemyField.y + FIELD_H / 2, amount, HEAL_GREEN, '+', { heal: true });
         }
         break;
       }
@@ -956,7 +966,7 @@ export class MonitorRenderer {
       case 'status_tick': {
         const dst = typeof ev.dst === 'string' ? ev.dst : null;
         const status = typeof ev.status === 'string' ? ev.status : '';
-        if (dst) this.enemyPlane.statusTickByInstance(dst, status, typeof ev.hp_after === 'number' ? ev.hp_after : undefined);
+        if (dst) this.enemyPlane.statusTickByInstance(dst, status, typeof ev.hp_after === 'number' ? ev.hp_after : undefined, silent);
         break;
       }
       // REQ-0048: linker pulse visuals.
@@ -977,7 +987,7 @@ export class MonitorRenderer {
       case 'unit_charge_reflect':
       case 'unit_charge_transfer':
       case 'unit_charge_shieldbreak': {
-        if (typeof ev.slot === 'number') this.lightChargePips(ev.slot, ev.ev, ev);
+        if (typeof ev.slot === 'number') this.lightChargePips(ev.slot, ev.ev, ev, silent);
         break;
       }
       // REQ-0049 / REQ-0276 B1: gimic-attachment badges on the enemy field.
@@ -988,33 +998,60 @@ export class MonitorRenderer {
         break;
       }
       case 'att_disarm': { this.attCounts.disarm++; this.updateGimicBadge(ev, 'disarmed'); break; }
-      case 'att_open': { this.attCounts.open++; this.updateGimicBadge(ev, 'opened'); if (!silent) this.pulseCell('N9', MJ.frost); break; }
+      case 'att_open': { this.attCounts.open++; this.updateGimicBadge(ev, 'opened'); if (!silent) this.gimicBurst(ev, MJ.gold, MJ.goldHi); break; }
       case 'att_lost': { this.attCounts.lost++; this.updateGimicBadge(ev, 'lost'); break; }
-      case 'att_fire': { this.attCounts.fire++; this.updateGimicBadge(ev, 'fired'); if (!silent) this.pulseCell('N9', MJ.blood); break; }
+      case 'att_fire': { this.attCounts.fire++; this.updateGimicBadge(ev, 'fired'); if (!silent) this.gimicBurst(ev, MJ.blood, MJ.emberHi); break; }
       default:
         break;
     }
   }
 
-  /** REQ-0276 B2: damage number placed at a roster enemy's footprint centroid,
-   * falling back to the field centre when the hit is unattributed (masked / no
-   * enemyIdx). */
-  private floatDamageLocated(enemyIdx: number | null, amount: number): void {
+  /** REQ-0276 C2/C4: impact burst (ray-element colour, 1-frame bright core --
+   * the sanctioned hit glow) + tiered damage number at a roster enemy's
+   * centroid; a killing blow adds the single gold flourish. Falls back to
+   * the field-centre spread when the hit is unattributed (masked / no
+   * enemyIdx). AoE passes burstScale < 1 for its simultaneous small bursts. */
+  private floatDamageLocated(enemyIdx: number | null, amount: number, kill = false, burstScale = 1): void {
     if (!(amount > 0)) return;
     const pos = enemyIdx != null ? this.enemyPlane.centroidOf(enemyIdx) : null;
-    if (pos) this.floatNumberAt(pos.x, pos.y, amount, MJ.ember);
-    else this.floatDamage(this.currentRayField, amount);
+    if (pos) {
+      this.fx.impactBurst(pos.x, pos.y, this.currentRayColor, this.currentRayBright, burstScale);
+      this.floatNumberAt(pos.x, pos.y, amount, MJ.emberHi, '', { kill });
+    } else {
+      this.floatDamage(this.currentRayField, amount);
+    }
   }
 
-  /** REQ-0276 B2: light the pips on a charging squad slot. stack sets the count;
-   * spend clears; the rest give a minimal single-pip cue. PHASE-C HOOK. */
-  private lightChargePips(slot: number, ev: string, payload: ApiRunEvent): void {
+  /** REQ-0276 C5: light the pips on a charging squad slot. stack sets the
+   * count; spend clears them behind a quick gold drain sweep; the rest give
+   * a minimal single-pip cue. */
+  private lightChargePips(slot: number, ev: string, payload: ApiRunEvent, silent = false): void {
     const h = this.squadSlots.get(slot);
     if (!h) return;
     if (ev === 'unit_charge_stack' && typeof payload.stacks === 'number') h.charge = Math.max(0, Math.min(4, payload.stacks));
-    else if (ev === 'unit_charge_spend') h.charge = 0;
-    else h.charge = Math.max(h.charge, 1);
+    else if (ev === 'unit_charge_spend') {
+      if (!silent && h.charge > 0) {
+        const pts: Array<{ x: number; y: number }> = [];
+        const py = h.rect.y + h.rect.h + 16;
+        for (let i = 0; i < h.charge; i++) pts.push({ x: h.rect.x + 4 + i * 8, y: py });
+        this.fx.pipDrain(pts, 2.4);
+      }
+      h.charge = 0;
+    } else h.charge = Math.max(h.charge, 1);
     this.refreshChargePips(h);
+  }
+
+  /** REQ-0276 C5: burst at a gimic badge's cell (chest opened = structure's
+   * gold, trap fired = blood with an ember core) -- falls back to the enemy
+   * field centre when the badge never got a position (no att_reveal cell). */
+  private gimicBurst(ev: ApiRunEvent, color: number, bright: number): void {
+    const attId = typeof ev.att === 'string' ? ev.att : null;
+    const b = attId ? this.gimicBadges.get(attId) : null;
+    const o = this.fieldOrigin('enemy');
+    const placed = b && b.container.parent ? b.container : null;
+    const x = placed ? o.x + placed.x + FIELD_CELL_PX / 2 : o.x + FIELD_W / 2;
+    const y = placed ? o.y + placed.y + FIELD_CELL_PX / 2 : o.y + FIELD_H / 2;
+    this.fx.impactBurst(x, y, color, bright, 0.8);
   }
 
   /** REQ-0276 B1/B2: create / transition a gimic badge on the enemy field. Keyed
@@ -1037,22 +1074,37 @@ export class MonitorRenderer {
       const container = new Container();
       container.eventMode = 'none';
       const bg = new Graphics();
-      bg.roundRect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX, 3).fill({ color: MJ.raised, alpha: 0.9 }).stroke({ color: MJ.gold, width: 1, alpha: 0.8 });
       bg.eventMode = 'none';
       const glyph = new Text({ text: glyphCh, style: { fill: MJ.bone, fontSize: 11 } });
       glyph.eventMode = 'none'; glyph.x = 3; glyph.y = 2;
-      container.addChild(bg); container.addChild(glyph);
+      // REQ-0276 C5: the "lost" strikethrough bar, hidden until that state.
+      const strike = new Graphics();
+      strike.moveTo(2, FIELD_CELL_PX / 2).lineTo(FIELD_CELL_PX - 2, FIELD_CELL_PX / 2).stroke({ color: MJ.bone3, width: 1, alpha: 0.9 });
+      strike.eventMode = 'none'; strike.visible = false;
+      container.addChild(bg); container.addChild(glyph); container.addChild(strike);
       const p = cellIdToXY(ev.at, FIELD_CELL_PX);
       container.x = p.x; container.y = p.y;
       this.enemyOverlay.addChild(container);
-      badge = { container, glyph, state };
+      badge = { container, glyph, bg, strike, state };
       this.gimicBadges.set(attId, badge);
     }
     badge.state = state;
     badge.glyph.text = glyphCh;
-    // Minimal state tint (structural). PHASE-C HOOK.
-    badge.glyph.style.fill = state === 'fired' ? MJ.blood : (state === 'opened' || state === 'disarmed') ? MJ.frost : state === 'lost' ? MJ.bone3 : MJ.gold;
-    if (state === 'lost' || state === 'disarmed') badge.container.alpha = 0.5;
+    // REQ-0276 C5 state tints: armed lurks in ember-lo, disarmed/lost recede
+    // to bone-3 (lost also struck through), opened is structure's gold-lo,
+    // fired is blood. The frame follows the state; the armed glyph keeps a
+    // readable ember so the threat doesn't sink into the panel.
+    const tint = state === 'fired' ? MJ.blood
+      : state === 'opened' ? MJ.goldLo
+      : state === 'disarmed' || state === 'lost' ? MJ.bone3
+      : MJ.emberLo;
+    badge.glyph.style.fill = state === 'revealed' ? MJ.ember : tint;
+    if (badge.bg) {
+      badge.bg.clear();
+      badge.bg.roundRect(0, 0, FIELD_CELL_PX, FIELD_CELL_PX, 3).fill({ color: MJ.raised, alpha: 0.9 }).stroke({ color: tint, width: 1, alpha: 0.75 });
+    }
+    if (badge.strike) badge.strike.visible = state === 'lost';
+    badge.container.alpha = state === 'lost' || state === 'disarmed' ? 0.5 : 1;
   }
 
   private clearGimicBadges(): void {
@@ -1111,7 +1163,7 @@ export class MonitorRenderer {
     while (this.rayLayer.children.length > 0) {
       const child = this.rayLayer.getChildAt(0);
       this.rayLayer.removeChild(child);
-      child.destroy();
+      child.destroy({ children: true }); // REQ-0276 C: fx washes carry children (mask)
     }
     for (const marker of this.enemyMarkers.values()) {
       if (marker.container.parent) this.enemyField.removeChild(marker.container);
@@ -1124,6 +1176,9 @@ export class MonitorRenderer {
     this.enemyPlane.reset();
     this.clearGimicBadges();
     this.resetSlotOverlays();
+    // REQ-0276 C: cancelled tickers can never release their glow holds --
+    // zero the budget alongside them.
+    this.fx.resetBudget();
   }
 
   /** REQ-0097: point this ONE shared monitor at a DIFFERENT room's run -- reset all
