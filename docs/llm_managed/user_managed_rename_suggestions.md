@@ -135,9 +135,16 @@ implied, not explicit". **Both were fixed and are live.** Sources agree byte-for
   exactly 8×8 (it throws otherwise).
 - `content/live/dungeon/formations.json` — identical, and says so in its `note`.
 
+> **SUPERSEDED 2026-07-21.** `J11:Q18` is no longer the ratified value. It cures the row-19
+> field overrun but sits ON the row-18 margin, which the 2026-07-15 24x16 / B2:Y17 ruling
+> forbids. The ratified box is now **`J10:Q17`**. The two sources quoted above still carry
+> `J11:Q18` — that remains a TRUE statement about the code today, and is now a pending
+> defect; REQ-0258 moves them.
+
 Suggested: replace `flagged_data_issue` with the corrected box + the explicit
 assignment, and delete the "likely a sheet error" wording. `formation.xlsx` should be
-corrected to `J11:Q18` too, or the sheet retired as non-authoritative.
+corrected to `J10:Q17` too, or the sheet retired as non-authoritative. (It was in fact
+retired and deleted on 2026-07-14, REQ-0166.)
 
 ### 2.2 FACTUAL — `open_items_still_unresolved` (L88–92): **all four are resolved**
 
@@ -146,7 +153,7 @@ corrected to `J11:Q18` too, or the sheet retired as non-authoritative.
 | penetration exhausted mid-flight | the ray **stops** on the hit that exhausts the budget; a **bounce never consumes penetration** | `sim/lib/ray.cjs` (`if (passed < penetration) { passed++; continue; } landing = cell; break;` and `// reflection does NOT consume pen`) |
 | AOE measured in shared-field or canvas-local cells | **shared-field cells**, Chebyshev radius around the landing cell | `sim/lib/skills.cjs` `splashFn()` + `sim/lib/ray.cjs` `chebyshevDist()` |
 | formation4: which unit occupies which box | explicit (§2.1) | `sim/lib/formation.cjs` |
-| formation4: row-18 overrun | fixed to `J11:Q18` (§2.1) | `sim/lib/formation.cjs`, `formations.json` |
+| formation4: row-18 overrun | field overrun fixed to `J11:Q18`; SUPERSEDED — ratified box is now `J10:Q17` (§2.1), code move pending REQ-0258 | `sim/lib/formation.cjs`, `formations.json` |
 
 Suggested: delete the block, or keep it as a "resolved" changelog.
 

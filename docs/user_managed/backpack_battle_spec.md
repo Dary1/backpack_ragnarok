@@ -82,18 +82,25 @@ formations:
       unit1: "B2:I9"    # left_wing
       unit2: "J2:Q9"    # center_top
       unit3: "R2:Y9"    # right_wing
-      unit4: "J11:Q18"  # backline_center
+      unit4: "J10:Q17"  # backline_center
     resolved_data_issue: >
-      RESOLVED. The old sheet's backline_center box (J11:Q19) extended to row 19,
-      OUTSIDE the field boundary (row 18), and was 9 rows tall instead of 8x8.
-      The ratified fix is J11:Q18. The four boxes now carry an explicit
+      RESOLVED IN TWO STEPS. FIRST correction: the old sheet's backline_center box
+      (J11:Q19) extended to row 19, OUTSIDE the field boundary (row 18), and was 9 rows
+      tall instead of 8x8; it was corrected to J11:Q18. SECOND correction: that first fix
+      was itself incomplete -- it cured the field overrun but left the box sitting ON the
+      row-18 margin, which the 2026-07-15 24x16 / B2:Y17 placeable-area ruling forbids.
+      The ratified fix is J10:Q17, which seats backline_center directly below center_top
+      (J2:Q9) in the same 10-17 row band every other formation's backline occupies, and
+      restores the stated intent (wings absorb; backline hides under center_top).
+      The four boxes now carry an explicit
       squad-to-box assignment (they were previously implied by position only).
-      The sim asserts at load time that EVERY formation box is exactly 8x8.
+      The sim asserts at load time that EVERY formation box is exactly 8x8 AND lies
+      entirely inside the placeable area B2:Y17.
       The source sheet (formation.xlsx) carried the old J11:Q19 and has been deleted.
 
 resolved_items:
   - "penetration exhausted mid-flight: the ray STOPS on the hit that exhausts the budget. it does not keep bouncing. a bounce never consumes penetration."
   - "AOE/explosion radius: measured in SHARED-FIELD cells (Chebyshev radius around the landing cell), not canvas-local cells."
   - "formation4: squad-to-box assignment is now explicit (left_wing / center_top / right_wing / backline_center)."
-  - "formation4: the row-18 boundary overrun is fixed (J11:Q18)."
+  - "formation4: the row-18 MARGIN overrun is fixed (J10:Q17); the earlier J11:Q18 fix addressed only the row-19 field overrun."
 ```

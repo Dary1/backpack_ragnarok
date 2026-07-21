@@ -374,14 +374,25 @@ The four ratified defs (boxes/labels from formation.xlsx):
 | formation3 | B2:I9 | R2:Y9 | F10:M17 | N10:U17 | corner squads tank top diagonals |
 | formation4 | E5 (left wing) | M5 (center-top) | U5 (right wing) | M14 (backline) | **corrected** — see §5.2 |
 
+> `E5` / `M5` / `U5` / `M14` in the formation4 row above are historical ANCHOR MARKER cells
+> from the deleted `formation.xlsx` (provenance, not geometry). Do NOT "fix" them to track a
+> box move; the authoritative boxes are in S5.2.
+
 ### 5.2 formation4 corrections (ratified fixes to the sheet errors)
 The xlsx had (a) a backline box `J11:Q19` overrunning row 18, and (b) no squad labels.
-**Ratified v0.2:** backline_center box **corrected to `J11:Q18`** (8 rows, in-bounds); squad
+**Ratified v0.3 (2026-07-21):** backline_center box **corrected to `J10:Q17`**. The v0.2
+correction to `J11:Q18` was itself INCOMPLETE: it cured the row-19 field overrun but predates
+the 2026-07-15 24x16 / B2:Y17 margin ruling, and `J11:Q18` still sits ON the row-18 margin.
+`J10:Q17` seats backline_center directly below center_top and wholly inside B2:Y17. Squad
 labels taken from the xlsx marker cells: **unit1 = left wing (E5)**, **unit2 = center-top
 (M5)**, **unit3 = right wing (U5)**, **unit4 = backline (M14)**. (The `E5/M5/U5/M14` cells
 are the box anchor labels; each box is the 8×8 region positioned from that anchor per the
 sheet.) formation4's four boxes: left_wing `B2:I9`, center_top `J2:Q9`, right_wing
-`R2:Y9`, backline_center `J11:Q18`.
+`R2:Y9`, backline_center `J10:Q17`.
+
+> **Data has NOT moved yet.** `content/live/dungeon/formations.json` and
+> `sim/lib/formation.cjs` still carry `J11:Q18` as of 2026-07-21. REQ-0258 owns that change.
+> Until it lands the data and this spec disagree, and THIS SPEC is the ratified value.
 
 > Note (retained from proposal, informational): formation1's side-entry rays at rows 10–17
 > hit the backline squads first (inter-canvas gaps don't bounce). This is **intended
