@@ -487,21 +487,21 @@ test.describe('BP move handle', () => {
 
   test('dragging the top-left move-handle badge moves a BP that is FULLY COVERED by POs, on BOTH the canvas and inventory boards', async ({ page }) => {
     await withDevProfileBackup(async () => {
-      // A 2x2 BP on the canvas, fully covered by 4x 1x1 POs (one per
-      // cell) -- this is exactly the scenario the badge exists for
-      // (grabbing by an empty cell is impossible; the unit cell itself
-      // is also covered here, by placing the unit off-cell such that
-      // ALL 4 shape cells are covered including wherever the unit sits
-      // -- shape [[0,0],[0,1],[1,0],[1,1]], unit off [0,0] -- so the PO
-      // at [0,0] covers the unit cell too, and the empty-cell handle
-      // loop finds zero free cells to hand out).
+      // A 2x2 BP fully covered on every LEGALLY coverable cell: 3x 1x1
+      // POs on the three non-unit cells. (The old fixture also covered
+      // the unit cell itself -- an ILLEGAL placement the engine refuses
+      // ('Unit cell', REQ-0092) and migrateState v4 now REPAIRS at read
+      // time, REQ-0273 -- so "fully covered" is redefined by law.) The
+      // empty-cell handle loop hands out NO free-cell handles here: the
+      // three covered cells are occupied and the unit cell is skipped by
+      // its unitMap check -- the badge is exactly the affordance this
+      // scenario needs.
       const canvasBpId = 'canvas_covered_bp';
       const invBpId = 'inv_covered_bp';
       const canvas = {
         linked: true,
         bps: [{ id: canvasBpId, name: 'Canvas Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] }, hpMax: 40 }],
         pos: [
-          { uid: 'c_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
           { uid: 'c_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
           { uid: 'c_po_3', id: 'hilt', loc: 'grid', cell: [4, 3], rot: 0 },
           { uid: 'c_po_4', id: 'hilt', loc: 'grid', cell: [4, 4], rot: 0 },
@@ -512,7 +512,6 @@ test.describe('BP move handle', () => {
             {
               bps: [{ id: invBpId, name: 'Inv Covered BP', color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [3, 3], unit: { id: 'berserker', off: [0, 0] }, hpMax: 40 }],
               pos: [
-                { uid: 'i_po_1', id: 'hilt', loc: 'grid', cell: [3, 3], rot: 0 },
                 { uid: 'i_po_2', id: 'hilt', loc: 'grid', cell: [3, 4], rot: 0 },
                 { uid: 'i_po_3', id: 'hilt', loc: 'grid', cell: [4, 3], rot: 0 },
                 { uid: 'i_po_4', id: 'hilt', loc: 'grid', cell: [4, 4], rot: 0 },
@@ -548,8 +547,8 @@ test.describe('BP move handle', () => {
       expect(movedCanvasBp.origin).toEqual([6, 6]);
       // Contents traveled WITH the BP (badge-initiated drag uses the
       // SAME beginDrag('bp',...) whole-BP-move path as unit-grab).
-      const movedPo = saved.pos.find((p: any) => p.uid === 'c_po_1');
-      expect(movedPo.cell).toEqual([6, 6]);
+      const movedPo = saved.pos.find((p: any) => p.uid === 'c_po_2');
+      expect(movedPo.cell).toEqual([6, 7]); // (3,4) + the (+3,+3) badge-drag delta
 
       // INVENTORY board: same scenario, grab the badge at (3,3) on the
       // inventory board this time, drop at (6,6).
@@ -565,8 +564,8 @@ test.describe('BP move handle', () => {
       const movedInvBp = saved.inv.pages[0].bps.find((b: any) => b.id === invBpId);
       expect(movedInvBp).toBeTruthy();
       expect(movedInvBp.origin).toEqual([6, 6]);
-      const movedInvPo = saved.inv.pages[0].pos.find((p: any) => p.uid === 'i_po_1');
-      expect(movedInvPo.cell).toEqual([6, 6]);
+      const movedInvPo = saved.inv.pages[0].pos.find((p: any) => p.uid === 'i_po_2');
+      expect(movedInvPo.cell).toEqual([6, 7]); // (3,4) + the (+3,+3) badge-drag delta
     });
   });
 });

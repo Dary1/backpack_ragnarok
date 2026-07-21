@@ -39,10 +39,16 @@ function makeCanvas() {
   // REQ-0170: the BP carries a Unit (dwarf = `rook`). Rotation moves the SEAT; the
   // Unit's rays are its own and are board-absolute, so they do not rotate with the bag.
   const lShape = { shape: [[0, 0], [1, 0], [2, 0], [2, 1]], unit: { id: 'dwarf', off: [2, 1] } };
+  // REQ-0273 deliberate fixture update: the contained PO used to sit AT the
+  // unit cell (4,3) -- an ILLEGAL placement the engine has refused since
+  // REQ-0092 ('Unit cell') and one migrateState v4 now REPAIRS at read time
+  // (the PO would be relocated at boot and every rigid-rotation assertion
+  // below would drift). It now sits on the legal contained cell (4,2); the
+  // rotation math being pinned is identical.
   return {
     linked: true,
     bps: [{ id: 'canvas_l', name: 'Canvas L', color: '#4a90d9', origin: [2, 2], ...lShape }],
-    pos: [{ uid: 'canvas_po', id: 'hilt', loc: 'grid', cell: [4, 3], rot: 0 }],
+    pos: [{ uid: 'canvas_po', id: 'hilt', loc: 'grid', cell: [4, 2], rot: 0 }],
     sis: [],
     layout: { ROWS: 8, COLS: 8 },
     presets: { active: 0, names: ['P1'], store: [null] },
@@ -50,7 +56,7 @@ function makeCanvas() {
       pages: [
         {
           bps: [{ id: 'inv_l', name: 'Inv L', color: '#d9904a', origin: [2, 2], ...lShape }],
-          pos: [{ uid: 'inv_po', id: 'hilt', loc: 'grid', cell: [4, 3], rot: 0 }],
+          pos: [{ uid: 'inv_po', id: 'hilt', loc: 'grid', cell: [4, 2], rot: 0 }],
           sis: [], tms: [],
         },
         // canvas_l's OWN inventory home, on a SEPARATE page (page 1) --
@@ -66,7 +72,7 @@ function makeCanvas() {
         // already homed, so migration is a true no-op for it).
         {
           bps: [{ id: 'canvas_l', name: 'Canvas L', color: '#4a90d9', origin: [2, 2], ...lShape }],
-          pos: [{ uid: 'canvas_po', id: 'hilt', loc: 'grid', cell: [4, 3], rot: 0 }],
+          pos: [{ uid: 'canvas_po', id: 'hilt', loc: 'grid', cell: [4, 2], rot: 0 }],
           sis: [], tms: [],
         },
         { bps: [], pos: [], sis: [], tms: [] },
@@ -85,10 +91,11 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
     // Unit core sits at local offset [2,1] from origin [2,2] -> absolute
-    // (4,3) -- which also happens to be where canvas_po sits. Double-
-    // clicking there must rotate the BP, not the PO underneath it (the
-    // unit core is drawn ABOVE the PO layer -- gUnits is added after
-    // gItems in the constructor's z-order -- so its hit area wins).
+    // (4,3). (A PO can no longer sit UNDER the core -- REQ-0273 made the
+    // unit cell unoccupiable at the data level -- so this dblclick now
+    // exercises the core's own hit area with the contained PO on the
+    // adjacent cell; gUnits stays above gItems regardless, pinned by
+    // bp-transfer.spec.ts's through-the-unit-cell grabs.)
     const x = canvasBox.x + cx(3);
     const y = canvasBox.y + cy(4);
     await page.mouse.dblclick(x, y);
@@ -103,7 +110,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     expect(bp.unit).toEqual({ id: 'dwarf', off: [1, 0] });
     expect(bp.origin).toEqual([2, 2]); // origin never moves during in-place rotation
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
-    expect(po.cell).toEqual([3, 2]);
+    expect(po.cell).toEqual([2, 2]); // local [2,0] -> rotated [0,0] on the new shape
     expect(po.rot).toBe(1);
   });
 
@@ -125,7 +132,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     expect(invBp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
     expect(invBp.unit).toEqual({ id: 'dwarf', off: [1, 0] });
     const invPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'inv_po');
-    expect(invPo.cell).toEqual([3, 2]);
+    expect(invPo.cell).toEqual([2, 2]); // same rigid remap as the canvas twin
     expect(invPo.rot).toBe(1);
 
     // Independence check (REQ-0033 reference-model decision, see this
@@ -165,7 +172,7 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     expect(bp.shape).toEqual([[0, 0], [1, 0], [2, 0], [2, 1]]);
     expect(bp.unit).toEqual({ id: 'dwarf', off: [2, 1] });
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
-    expect(po.cell).toEqual([4, 3]);
+    expect(po.cell).toEqual([4, 2]);
     expect(po.rot).toBe(0);
   });
 
