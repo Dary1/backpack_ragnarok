@@ -1870,6 +1870,117 @@ T('REQ-0184 legacy path is untouched: a pack with no layout still cursor-fills f
   eq(out[2].fieldCells, [[2, 5]], 'third offset by the second footprint width');
 });
 
+
+// =====================================================================
+// REQ-0256 -- battle-tick-core gates: the s5 tunable gate, the s8.4 slot
+// order, the s7.1a chain, and the s8.5 flattening's structural identity.
+// =====================================================================
+
+T('REQ-0256 s5: TICK_SECS is a LIVE tunable -- secsToTicks derives from it (mutation-detected) and floors at 1', () => {
+  const core = require(path.join(__dirname, '..', 'lib', 'core.cjs'));
+  eq(core.TUNABLES.TICK_SECS, 0.01, 'the ratified provisional value ("仮に0.01秒tickだとして")');
+  eq(core.secsToTicks(1.0), 100, 'STATUS_TICK cadence derives to 100 ticks BECAUSE TICK_SECS === 0.01');
+  eq(core.secsToTicks(0.15), 15, 'PULSE_HOP_LATENCY_SECS quantizes to 15 ticks through the same seam');
+  eq(core.secsToTicks(0.001), 1, 'sub-tick authoring floors at 1 tick, never 0 (s9.2: a 0-tick cooldown is a same-tick refire storm)');
+  eq(core.secsToTicks(-5), 1, 'negative (25+ net Haste) intervals floor at 1 (s9.2: the seam is the last line of defence)');
+  const orig = core.TUNABLES.TICK_SECS;
+  try {
+    core.TUNABLES.TICK_SECS = 0.02;
+    eq(core.secsToTicks(1.0), 50, 'moving TICK_SECS MOVES the derivation -- nothing pins 100 (an unchecked tunable is just a constant with overhead)');
+  } finally { core.TUNABLES.TICK_SECS = orig; }
+});
+
+T('REQ-0256 s5: no sim/lib file hardcodes the tick quantity (no bare 0.01 outside core.cjs; no bare 100 on tick-context code lines)', () => {
+  const libDir = path.join(__dirname, '..', 'lib');
+  for (const f of fs.readdirSync(libDir)) {
+    if (!f.endsWith('.cjs')) continue;
+    const text = fs.readFileSync(path.join(libDir, f), 'utf8');
+    text.split('\n').forEach((line, i) => {
+      const code = line.split('//')[0]; // comments may cite the current values
+      if (f !== 'core.cjs' && /\b0\.01\b/.test(code)) throw new Error(f + ':' + (i + 1) + ' carries a bare 0.01 -- derive via TUNABLES.TICK_SECS/secsToTicks');
+      if (/[Tt]ick/.test(code) && /\b100\b/.test(code)) throw new Error(f + ':' + (i + 1) + ' carries a bare 100 in a tick context -- derive via secsToTicks');
+    });
+  }
+});
+
+T('REQ-0256 s8.4 (AC4): compileSquadSnapshot returns instances; cooldownSkills slot order is POs by ASC uid (def order within), then seated SIs by ASC uid, then Unit effects -- asserted by NAME', () => {
+  const snap = {
+    bps: [{ id: 'bpX', name: 'X', origin: [1, 1], shape: [[0, 0], [0, 1]], hpMax: 50, unit: { id: 'u1', off: [0, 0] } }],
+    // pos ARRAY order deliberately zz-first: the slot map must sort by uid, not file layout (s8.4)
+    pos: [
+      { uid: 'po_zz', id: 'itemZ', loc: 'grid', cell: [1, 1], rot: 0 },
+      { uid: 'po_aa', id: 'itemA', loc: 'grid', cell: [1, 2], rot: 0 },
+    ],
+    sis: [{ uid: 'si_1', id: 'siGem', host: { po: 'po_zz' } }],
+  };
+  const defs = {
+    itemZ: { id: 'itemZ', shape: [[0, 0]], effects: [{ trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [1, 1] } }] },
+    itemA: { id: 'itemA', shape: [[0, 0]], effects: [
+      { trigger: { t: 'on_hit' }, verb: { t: 'strike', n: [1, 1] } },          // reactive: NO slot (timed-fire map only)
+      { trigger: { t: 'every_secs', s: [1, 2] }, verb: { t: 'strike', n: [1, 2] } },
+      { trigger: { t: 'every_secs', s: [2, 3] }, verb: { t: 'strike', n: [1, 1] } },
+    ] },
+  };
+  const siDefs = { siGem: { id: 'siGem', effects: [{ trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [1, 1] } }] } };
+  const unitDefs = { u1: { id: 'u1', effects: [{ trigger: { t: 'every_secs', s: [2, 2] }, verb: { t: 'strike', n: [1, 1] } }] } };
+  const c = combat.compileSquadSnapshot(snap, defs, 'formation1', 'unit1', siDefs, unitDefs);
+  ok(Array.isArray(c.instances) && c.instances.length === 1, 'one IBattleInstance per BP');
+  const inst = c.instances[0];
+  eq(inst.id, 'bpX', 'instance id is the BP id'); eq(inst.kind, 'bp', 'kind bp');
+  const seq = [];
+  for (const cd of inst.cooldownSkills.values()) seq.push(cd.ownerUid + '/' + cd.effIdx);
+  eq(seq, ['po_aa/1', 'po_aa/2', 'po_zz/0', 'si_1/0', 'bpX#unit/0'],
+    'ASC-uid PO slots (aa before zz despite array order), def-order within a PO, reactive filtered out, then SI, then Unit');
+  for (const cd of inst.cooldownSkills.values()) {
+    eq(Object.keys(cd.skill).sort(), ['attack_profile', 'modes', 'trigger', 'verb'], 'IBattleInstanceSkill carries exactly the goldens\' 4 monster-skill fields');
+  }
+});
+
+T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray phases; BP and monster instances are STRUCTURALLY IDENTICAL at the cooldownSkills boundary (one shared fire path); encounter.cjs has no walk of its own', () => {
+  const { createBattle, IBattleInstance } = require(path.join(__dirname, '..', 'lib', 'battle.cjs'));
+  const { createFormationMap } = require(path.join(__dirname, '..', 'lib', 'formation_map.cjs'));
+  const { buildEnemyInstance } = require(path.join(__dirname, '..', 'lib', 'compile.cjs'));
+  // BP-side instance: through the REAL compile pass (same fixture as AC4).
+  const snap = { bps: [{ id: 'bpX', name: 'X', origin: [1, 1], shape: [[0, 0]], hpMax: 50 }], pos: [{ uid: 'po_a', id: 'itemZ', loc: 'grid', cell: [1, 1], rot: 0 }], sis: [] };
+  const defs = { itemZ: { id: 'itemZ', shape: [[0, 0]], effects: [{ trigger: { t: 'every_secs', s: [1, 1] }, verb: { t: 'strike', n: [1, 1] } }] } };
+  const bpInst = combat.compileSquadSnapshot(snap, defs, 'formation1', 'unit1').instances[0];
+  // Monster-side instance: same builder family, provenance = raw skills (s8.4).
+  const enemyRaw = { ownerId: 'mob#1', defId: 'mob', fieldCells: [[2, 2]], hp: 9, hpMax: 9, statusBag: {}, alive: true,
+    skills: [{ trigger: { t: 'every_secs', s: [1, 2] }, verb: { t: 'strike', n: [1, 1] } }] };
+  const monInst = buildEnemyInstance(enemyRaw, null);
+  eq(Object.keys(monInst.cooldownSkills.get(0).skill).sort(), Object.keys(bpInst.cooldownSkills.get(0).skill).sort(),
+    'same IBattleInstanceSkill shape on both sides -- the flattening (s8.1)');
+  const calls = []; let bpStack = '';
+  const pMap = createFormationMap({ instances: [bpInst] });
+  const eMap = createFormationMap({ instances: [monInst] });
+  const pTR = pMap.tickRays.bind(pMap), eTR = eMap.tickRays.bind(eMap);
+  pMap.tickRays = () => { calls.push('pRays'); pTR(); };
+  eMap.tickRays = () => { calls.push('eRays'); eTR(); };
+  const battle = createBattle({
+    playerMap: pMap, enemyMap: eMap, modeConfig: null,
+    fire: (inst, cd) => { calls.push('fire:' + inst.kind); if (inst.kind === 'bp') bpStack = String(new Error().stack); },
+    rollCooldownTicks: () => 7,
+  });
+  eq(battle.modeConfig, null, 'modeConfig RESERVED null; REQ-0259 populates it (AC14)');
+  battle.initCooldowns(() => 1);
+  eq(battle.t(), 0, 't() computed from tickIndex, origin 0');
+  battle.tick();
+  eq(calls, ['fire:bp', 'fire:enemy', 'pRays', 'eRays'], 'phase A: player fires then enemy fires; phase B: ray phases -- the s7.1a split (all fires before all advances)');
+  ok(bpStack.indexOf('runEncounter') === -1, 'the instance fire is reached WITHOUT runEncounter in the stack (AC13)');
+  ok(bpStack.indexOf('tickInstances') !== -1, 'reached through the map walk (Battle -> map -> instance cascade)');
+  eq(bpInst.cooldownSkills.get(0).remainingTicks, 7, 'a fired slot RESETS via rollCooldownTicks (s8.5)');
+  // s8.5 advance_cooldown substrate: floor at 1, Infinity slots stay Infinity.
+  bpInst.cooldownSkills.get(0).remainingTicks = 5;
+  bpInst.cooldownSkills.set(1, { skill: {}, remainingTicks: Infinity });
+  bpInst.advanceCooldownTicks(250);
+  eq(bpInst.cooldownSkills.get(0).remainingTicks, 1, 'advance floors at 1: never fire THIS tick from an advance (s8.5/s9.2)');
+  eq(bpInst.cooldownSkills.get(1).remainingTicks, Infinity, 'never-scheduled (mode-filtered) slots stay unscheduled');
+  bpInst.cooldownSkills.delete(1);
+  const encText = fs.readFileSync(path.join(__dirname, '..', 'lib', 'encounter.cjs'), 'utf8');
+  ok(encText.indexOf('cooldownSkills') === -1, 'encounter.cjs contains NO instance-fire walk of its own (AC13 grep)');
+  ok(fs.existsSync(path.join(__dirname, '..', 'lib', 'heap.cjs')) === false, 'heap.cjs does not exist (AC1)');
+});
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

@@ -4,6 +4,10 @@
 // stay byte-identical (sim/tests/goldens.cjs).
 
 
+// Diagonal direction vectors (S2.2/S3): (drow,dcol) terms.
+// down-right=(+1,+1)  down-left=(+1,-1)  up-right=(-1,+1)  up-left=(-1,-1)
+// (rehomed from heap.cjs by REQ-0256 -- REQ-0047's file split left this header
+// behind in the heap module; the heap retired, the vectors live here.)
 const DIR_VEC = {
   'DR': [1, 1], 'DL': [1, -1], 'UR': [-1, 1], 'UL': [-1, -1],
 };

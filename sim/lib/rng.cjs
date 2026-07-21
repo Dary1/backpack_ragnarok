@@ -39,11 +39,6 @@ function makeRng(masterSeed) {
   return { masterSeed, stream };
 }
 
-// =====================================================================
-// Event queue -- binary min-heap keyed on (t, seq). ~40 lines per task
-// brief; correctness over micro-perf but avoids O(n^2) blowups.
-// =====================================================================
-
 module.exports = {
   djb2Hash,
   mulberry32,

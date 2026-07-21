@@ -1,14 +1,20 @@
 'use strict';
-// sim/lib/encounter.cjs -- REQ-0047 (d): runEncounter -- the event-driven encounter loop.
-// Moved VERBATIM from sim/combat.cjs. Determinism contract: goldens must
-// stay byte-identical (sim/tests/goldens.cjs).
-const { TUNABLES, deepCopy } = require('./core.cjs');
-const { EventHeap } = require('./heap.cjs');
+// sim/lib/encounter.cjs -- REQ-0047 (d) / REQ-0256: runEncounter -- drives ONE
+// encounter on the 0.01s tick loop (REQ-0256; the (t,seq) event heap retired).
+// The Battle -> map -> instance chain (battle.cjs / formation_map.cjs) owns
+// WHEN and IN WHAT ORDER fires happen (s10.1); the fire bodies here own WHAT
+// a fire does -- they are carried over verbatim from the heap-era driver.
+// Determinism contract: sim/tests/goldens.cjs (rebaselined by REQ-0256).
+const { TUNABLES, deepCopy, secsToTicks } = require('./core.cjs');
+const { SeqCounter } = require('./seq.cjs'); // REQ-0256 s6.2: the heap's counter, extracted
+const { createBattle } = require('./battle.cjs'); // REQ-0256 s7.0
+const { createFormationMap } = require('./formation_map.cjs'); // REQ-0256 s7.1a
+const { buildInstances, buildEnemyInstance } = require('./compile.cjs'); // REQ-0256 s8
 const { freshStatusBag, tickStatuses, foldBattleStartStatusVerbs, applyStatus, cadenceMultiplier, DEBUFF_STATUSES } = require('./status.cjs'); // REQ-0200: cadenceMultiplier for real haste; REQ-0212: DEBUFF_STATUSES for transfer_status
 const { registerHpBelowWatchers, foldFlatBonusInPlace } = require('./hpbelow.cjs'); // REQ-0121
 const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
-const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, scheduleEffect, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
+const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
 const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
 
@@ -24,9 +30,10 @@ function runEncounter(opts) {
     monsterPackDefsById,
   } = opts;
   const events = [];
-  const heap = new EventHeap();
+  const seq = new SeqCounter(); // REQ-0256: seq is now an emission-order OUTPUT, not an ordering input (s3.3)
+  const TICK = TUNABLES.TICK_SECS;
   const t0 = 0; // encounter-local time origin
-  events.push({ t: t0, seq: heap.nextSeq(), ev: 'encounter_start', enc: encIndex, kind: encounterDef.type, seed: seedLabel, formation: formationBox.formationId });
+  events.push({ t: t0, seq: seq.nextSeq(), ev: 'encounter_start', enc: encIndex, kind: encounterDef.type, seed: seedLabel, formation: formationBox.formationId });
 
   // ---- Build player-side actors (BPs already compiled + persistent HP) ----
   const playerActors = troopBps.map(makeBPActor);
@@ -41,7 +48,7 @@ function runEncounter(opts) {
   const chargeClock = { now: t0 };
   // REQ-0200: real-actor ops the charge manager invokes for effects that must run
   // through the encounter loop itself -- a real strike ray into the enemy side, an
-  // immediate item re-fire, and an item-cooldown advance on the event heap. (The
+  // immediate item re-fire, and an item-cooldown advance on the instances. (The
   // methods are only ever called from inside the loop, so referencing the
   // later-declared schedulable/enemyActorList is safe.) All charge-guarded: no live
   // unit carries charge, so none of this runs on current content.
@@ -59,7 +66,7 @@ function runEncounter(opts) {
         targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
         rng, streamPrefix: 'charge-strike/' + bpId + '/' + t + '/' + (chargeStrikeSeq++), events: rayEvents, aoeStatuses: false,
       });
-      for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq(), cause: 'charge' }, re));
+      for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq(), cause: 'charge' }, re));
     },
     fireItems(bpId, tag, t) {
       const bp = troopBps.find(b => b.id === bpId);
@@ -76,20 +83,24 @@ function runEncounter(opts) {
           targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
           rng, streamPrefix: 'charge-fire/' + bpId + '/' + po.uid + '/' + t + '/' + (chargeStrikeSeq++), events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
         });
-        for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq(), cause: 'charge' }, re));
+        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq(), cause: 'charge' }, re));
       }
     },
+    // REQ-0256 s8.5 (s4.1b): advance_cooldown respecified for the tick model.
+    // The heap version mutated scheduled skill_fire events (could pull an event
+    // to NOW but never before it); the tick version pulls every slot's
+    // remainingTicks down, FLOORED AT 1 (never fire THIS tick from an advance,
+    // s9.2). These are NOT the same rule -- a real behaviour change, live on
+    // 42/54 units, covered by unit_charge_encounter_test.cjs (the goldens build
+    // no chargeMgr and cannot see it -- s8.5). bp ids can repeat across squads,
+    // so every matching instance advances (heap parity: the uid set matched
+    // across squads too).
     advanceCooldown(bpId, n, t) {
-      const uids = new Set(troopPos.filter(p => p.bpId === bpId).map(p => p.uid));
-      if (!uids.size) return;
-      let changed = false;
-      for (const e of heap.a) {
-        if (e.kind === 'skill_fire' && uids.has(e.ownerUid)) {
-          const nt = Math.max(t, e.t - n);
-          if (nt !== e.t) { e.t = nt; changed = true; }
-        }
+      if (!(n > 0)) return;
+      const dTicks = secsToTicks(n);
+      for (const inst of playerInstances) {
+        if (inst.id === bpId) inst.advanceCooldownTicks(dTicks);
       }
-      if (changed) { const items = heap.a.splice(0); for (const it of items) heap.push(it); }
     },
     // REQ-0212: transfer_status -- MOVE up to n negative statuses (Burn/Poison/Chill/Weakness/
     // Stun) from the host BP's status bag onto the first living enemy, each keeping its remaining
@@ -116,7 +127,7 @@ function runEncounter(opts) {
           }
         }
         moved++;
-        events.push({ t, seq: heap.nextSeq(), cause: 'charge', ev: 'unit_charge_transfer', src: bpId, dst: target.id, status: st, stacks: (cur.stacks != null ? cur.stacks : null), remain: (cur.remain != null ? cur.remain : null) });
+        events.push({ t, seq: seq.nextSeq(), cause: 'charge', ev: 'unit_charge_transfer', src: bpId, dst: target.id, status: st, stacks: (cur.stacks != null ? cur.stacks : null), remain: (cur.remain != null ? cur.remain : null) });
       }
     },
     // REQ-0212: shield_break -- strip up to n points of flat block (ref.damageReduction, the
@@ -133,12 +144,12 @@ function runEncounter(opts) {
         const after = Math.max(0, before - amt);
         if (after === before) continue;
         ref.damageReduction = after;
-        events.push({ t, seq: heap.nextSeq(), cause: 'charge', ev: 'unit_charge_shieldbreak', src: bpId, dst: a.id, before, after });
+        events.push({ t, seq: seq.nextSeq(), cause: 'charge', ev: 'unit_charge_shieldbreak', src: bpId, dst: a.id, before, after });
       }
     },
   };
   const chargeMgr = chargeBps.length
-    ? createEncounterChargeManager({ chargeBps, troopBps, troopPos, playerActors, events, heap, clock: chargeClock, ops: chargeOps })
+    ? createEncounterChargeManager({ chargeBps, troopBps, troopPos, playerActors, events, seq, clock: chargeClock, ops: chargeOps })
     : null;
   function feedCharge(ev, t) { if (chargeMgr) chargeMgr.feed(ev, t); }
   // REQ-0200: a firing player BP's real Haste/Chill net cadence (only when a charge
@@ -226,7 +237,7 @@ function runEncounter(opts) {
         if (verb && verb.t === 'buff_self' && verb.stat === 'damage' && Array.isArray(verb.n)) {
           const amount = rng.stream(streamName).range(verb.n[0], verb.n[1]);
           foldFlatBonusInPlace(foldTargetList(), amount);
-          events.push({ t: simNow, seq: heap.nextSeq(), ev: 'passive_proc', trigger: 'on_hp_below', verb: verb.t, src: srcLabel, frac, amount });
+          events.push({ t: simNow, seq: seq.nextSeq(), ev: 'passive_proc', trigger: 'on_hp_below', verb: verb.t, src: srcLabel, frac, amount });
         }
       },
     };
@@ -337,7 +348,7 @@ function runEncounter(opts) {
   let doorShortcut = false;
   function attFireVolley(att, t, reason) {
     if (att.firedVolley) return; att.firedVolley = true;
-    events.push({ t, seq: heap.nextSeq(), ev: 'att_fire', att: att.id, kind: att.kind, reason });
+    events.push({ t, seq: seq.nextSeq(), ev: 'att_fire', att: att.id, kind: att.kind, reason });
     const skill = att.skills[0];
     if (skill) {
       const ap = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
@@ -348,7 +359,7 @@ function runEncounter(opts) {
         targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
         rng, streamPrefix: 'att-fire/' + encIndex + '/' + att.id + '/' + t, events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
       });
-      for (const re of rayEvents) events.push(Object.assign({ t, seq: heap.nextSeq() }, re));
+      for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
     }
   }
   function resolveDetection(s, t) {
@@ -356,12 +367,12 @@ function runEncounter(opts) {
     if (!targets.length) return;
     targets.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     const att = targets[0];
-    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'detection', entry: att.fieldCells[0].slice() });
+    events.push({ t, seq: seq.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'detection', entry: att.fieldCells[0].slice() });
     att.discovered = true; att.masked = false;
-    events.push({ t, seq: heap.nextSeq(), ev: 'att_reveal', att: att.id, kind: att.kind, at: att.fieldCells[0].slice() });
+    events.push({ t, seq: seq.nextSeq(), ev: 'att_reveal', att: att.id, kind: att.kind, at: att.fieldCells[0].slice() });
     if (att.kind === 'trap') {
       att.settled = true; att.alive = false;
-      events.push({ t, seq: heap.nextSeq(), ev: 'att_disarm', att: att.id, reward: att.reward ? att.reward.roll : null });
+      events.push({ t, seq: seq.nextSeq(), ev: 'att_disarm', att: att.id, reward: att.reward ? att.reward.roll : null });
       if (att.reward) attachmentRewards.push(att.reward);
     } else { att.stage = 2; }
   }
@@ -375,26 +386,26 @@ function runEncounter(opts) {
     if (v.t === 'strike') amt = ds.range(v.n[0], v.n[1]);
     else if (v.t === 'multi_strike') { for (let i = 0; i < v.hits; i++) amt += ds.range(v.n[0], v.n[1]); }
     att.hp = Math.max(0, att.hp - amt);
-    events.push({ t, seq: heap.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'unlock', entry: att.fieldCells[0].slice() });
-    events.push({ t, seq: heap.nextSeq(), ev: 'ray_hit', dst: att.id, amount: amt, hp_after: att.hp, mode: 'unlock' });
+    events.push({ t, seq: seq.nextSeq(), ev: 'ray_fire', src: s.ownerId, field: 'enemy', mode: 'unlock', entry: att.fieldCells[0].slice() });
+    events.push({ t, seq: seq.nextSeq(), ev: 'ray_hit', dst: att.id, amount: amt, hp_after: att.hp, mode: 'unlock' });
     if (att.hp <= 0) {
       att.settled = true; att.alive = false;
-      if (att.kind === 'chest') { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'chest', reward: att.reward ? att.reward.roll : null }); if (att.reward) attachmentRewards.push(att.reward); }
-      else { events.push({ t, seq: heap.nextSeq(), ev: 'att_open', att: att.id, kind: 'door', shortcut: true }); doorShortcut = true; }
+      if (att.kind === 'chest') { events.push({ t, seq: seq.nextSeq(), ev: 'att_open', att: att.id, kind: 'chest', reward: att.reward ? att.reward.roll : null }); if (att.reward) attachmentRewards.push(att.reward); }
+      else { events.push({ t, seq: seq.nextSeq(), ev: 'att_open', att: att.id, kind: 'door', shortcut: true }); doorShortcut = true; }
     }
   }
   function checkAttachmentTimeouts(t) {
     for (const att of attachments) {
       if (att.settled || !att.alive || t <= att.timeout_secs) continue;
       if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'timeout'); att.settled = true; att.alive = false; }
-      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: seq.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
     }
   }
   function settleAttachmentsAtEnd(t) {
     for (const att of attachments) {
       if (att.settled || !att.alive) continue;
       if (att.kind === 'trap' && !att.discovered) { attFireVolley(att, t, 'end'); att.settled = true; att.alive = false; }
-      else { att.settled = true; att.alive = false; events.push({ t, seq: heap.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
+      else { att.settled = true; att.alive = false; events.push({ t, seq: seq.nextSeq(), ev: 'att_lost', att: att.id, kind: att.kind }); }
     }
   }
 
@@ -404,8 +415,42 @@ function runEncounter(opts) {
   const PULSE_CAP = TUNABLES.PULSE_CAP_PER_SEC;
   const pulseEmitTimes = new Map(); // originBpId -> [t,...] within trailing 1s
   function playerBpActorById(id) { return playerActors.find(a => a.id === id) || null; }
+  // REQ-0256 s7.3: pulse_arrive was the only scheduled non-skill event. It
+  // becomes a Map<arrivalTickIndex, arrival[]>, drained by the loop's step 3.
+  // PULSE_HOP_LATENCY_SECS quantizes through the same secsToTicks seam (15
+  // ticks today). atT is always tick-aligned, so the divide is exact.
+  const PULSE_LATENCY_TICKS = secsToTicks(PULSE_LATENCY);
+  const pulseArrivals = new Map();
   function schedulePulseArrive(pst, atT) {
-    heap.push({ t: atT + PULSE_LATENCY, seq: heap.nextSeq(), kind: 'pulse_arrive', origin: pst.origin, from: pst.from, to: pst.to, hop: pst.hop, visited: pst.visited });
+    const arriveTick = Math.round(atT / TICK) + PULSE_LATENCY_TICKS;
+    const list = pulseArrivals.get(arriveTick) || [];
+    list.push({ origin: pst.origin, from: pst.from, to: pst.to, hop: pst.hop, visited: pst.visited });
+    pulseArrivals.set(arriveTick, list);
+  }
+  // Drains THIS tick's arrivals (s7.1 step 3); the body is the heap driver's
+  // pulse_arrive branch, verbatim, with ev.t -> t.
+  function drainPulseArrivals(tickIndex, t) {
+    const list = pulseArrivals.get(tickIndex);
+    if (!list) return;
+    pulseArrivals.delete(tickIndex);
+    for (const pv of list) {
+      const ev = Object.assign({}, pv, { t }); // firePulsePayloads reads ev.t for its stream names
+      const toActor = playerBpActorById(ev.to);
+      if (!toActor || !toActor.alive) {
+        events.push({ t, seq: seq.nextSeq(), ev: 'pulse_fizzle', reason: 'dead_target', origin: ev.origin, to: ev.to });
+      } else {
+        events.push({ t, seq: seq.nextSeq(), ev: 'link_pulse', from: ev.from, to: ev.to, hop: ev.hop, origin: ev.origin });
+        const payloadOut = [];
+        firePulsePayloads(ev.to, ev, payloadOut);
+        for (const re of payloadOut) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        if (ev.hop < PULSE_HOP_BUDGET) {
+          for (const e of (toActor.ref.linkOut || [])) {
+            if (ev.visited.includes(e.to)) continue;
+            schedulePulseArrive({ origin: ev.origin, from: ev.to, to: e.to, hop: ev.hop + 1, visited: ev.visited.concat([ev.to]) }, t);
+          }
+        }
+      }
+    }
   }
   // Emit one pulse from originBpId along ALL its outgoing links (fan-out).
   // Rate-guarded per origin (PULSE_CAP/sec); excess drops with pulse_fizzle.
@@ -514,38 +559,198 @@ function runEncounter(opts) {
     }
   }
 
-  // ---- Schedule initial firings (player side, filtered by encounter mode) ----
-  const cadenceMultFor = () => 1.0; // cadence buffs folded at compile-time (OQ2); no per-actor Haste/Chill on POs in v1 scope.
-  for (const s of schedulable) {
-    const attActive = hasAtt && s.modes.some(m => (m === 'detection' && attachments.some(a => a.kind === 'trap' || a.kind === 'door')) || (m === 'unlock' && attachments.some(a => a.kind === 'chest' || a.kind === 'door')));
-    if (s.modes.includes(encounterDef.mode) || attActive) {
-      scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, t0, 1.0);
-    }
-    // non-matching effects: simply never scheduled while this encounter is
-    // active (no timer exists to backlog) -- satisfies S6.2 pause semantics.
-  }
-  // Enemy-side schedule (packs/boss/trap/door skills, always scheduled --
-  // enemies are typed to their own encounter and always match its mode).
-  const enemySchedulable = [];
-  for (const e of enemyActors) {
-    e.raw.skills.forEach((skill, sIdx) => {
-      if (skill.trigger && skill.trigger.t === 'every_secs') {
-        enemySchedulable.push({ ownerUid: e.raw.ownerId, ownerId: e.raw.defId, effIdx: sIdx, effect: skill, actor: e.actor, raw: e.raw });
-      }
-    });
-  }
-  if (entity) {
-    entity.skills.forEach((skill, sIdx) => {
-      if (skill.trigger && skill.trigger.t === 'every_secs') {
-        enemySchedulable.push({ ownerUid: entity.ownerId, ownerId: entity.id, effIdx: sIdx, effect: skill, actor: makeEnemyActor(entity), raw: entity });
-      }
-    });
-  }
-  for (const s of enemySchedulable) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, t0, 1.0);
+  // ---- REQ-0256: compile the FLAT instances + the Battle (s7.0, s8) --------
+  // Player instances are the s8.2 transform over the same folded lists compile
+  // produced (compileSquadSnapshot also returns them; deriving here from
+  // troopBps/troopPos/troopSis keeps every existing caller working unchanged --
+  // same inputs, same deterministic result). Enemy instances wrap the compiled
+  // pack actors + the "?" entity. Same interface, different provenance -- that
+  // is the flattening (s8.1).
+  const playerInstances = buildInstances(troopBps, troopPos, troopSis || []);
+  const enemyInstances = enemyActors.map(e => buildEnemyInstance(e.raw, e.actor));
+  if (entity) enemyInstances.push(buildEnemyInstance(entity, makeEnemyActor(entity)));
 
-  // ---- Status tick scheduling: a lightweight periodic tick event drives
-  // Burn/Poison/Regen/Chill/Stun/Weakness/Haste countdown for ALL actors
-  // (S7). Scheduled at STATUS_TICK_PERIOD_SECS cadence.
+  const LEAD_TICKS = secsToTicks(TUNABLES.TELEGRAPH_LEAD_SECS);
+  const tickT = (k) => k * TICK; // t is COMPUTED from a tick index, never accumulated (s10.3)
+  let simTick = 0; // the tick being processed; simNow === tickT(simTick)
+
+  // s8.5: rollCooldownTicks -- the RESET roll. Stream name, draw order and the
+  // multiply are IDENTICAL to the retired scheduleEffect (skills.cjs); only the
+  // last line changed: secsToTicks(interval) instead of encounterStart+interval.
+  // Charge-less player slots and all enemy slots keep the hard-coded 1.0 the
+  // heap driver passed; a chargeMgr switches the player mult to the real
+  // Haste/Chill net cadence (REQ-0200), exactly as before.
+  function rollCooldownTicksFor(inst, cd) {
+    const sRange = cd.effect.trigger.s; // [lo,hi] SECONDS -- authoring stays seconds (s3.2)
+    const stream = rng.stream(effectStreamName(cd.ownerUid, cd.effIdx) + '/timing');
+    const mult = (inst.kind === 'bp' && chargeMgr) ? playerCadenceMult(cd.ownerUid) : 1.0;
+    return secsToTicks(stream.range(sRange[0], sRange[1]) * mult);
+  }
+
+  // s7.1a: the fire step a slot reaching 0 runs -- the heap driver's skill_fire
+  // branch, verbatim, with ev.t -> simNow. WHAT a fire does is owned here; WHEN
+  // and in what order is the chain's (battle.cjs). A mode-mismatched player
+  // slot no-ops but still RESETS afterwards ("reschedule regardless": cadence
+  // stays continuous while not matching -- S6.2 pause semantics).
+  function fireInstanceSlot(inst, cd) {
+    const t = simNow;
+    if (inst.kind === 'bp') {
+      const s = cd;
+      if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
+        // REQ-0048: a "spark" (every_secs pulse) emits along the BP's links.
+        const spo = troopPos.find(p => p.uid === s.ownerUid);
+        const pOut = [];
+        if (spo) emitPulse(spo.bpId, t, pOut);
+        for (const re of pOut) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+      } else if (s.modes.includes(encounterDef.mode)) {
+        const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps), outgoingBuffPct: chargeMgr ? chargeMgr.outgoingBuffPctFor((troopPos.find(p => p.uid === s.ownerUid) || {}).bpId) : 0 };
+        // telegraph is derived + emitted at fire-time as an informational
+        // preview line (S4.5); REQ-0256 applies the lead in TICKS so every
+        // emitted t stays an exact tick multiple (s13.1 step 2).
+        events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (s.attackProfile.edge || ['top'])[0], fires_at: t });
+        const rayEvents = [];
+        const fr = fireSkillRay({
+          attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
+          targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
+        });
+        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        if (encounterDef.mode === 'detection' && rayEvents.some(r => r.ev === 'ray_hit' && r.dst !== '?')) {
+          discoveredEntity = true;
+        }
+        // REQ-0078 reactive (defensive): enemies that took a DIRECT hit fire
+        // their OnSquadBeenHit skills as a retaliation ray at the player field.
+        // Depth-1 (retaliation hits are not re-dispatched); isolated RNG keeps
+        // existing golden streams byte-identical.
+        const reactDef = [];
+        for (const lh of (fr.landedHits || [])) {
+          const ent = enemyActors.find(e => e.actor === lh.actor);
+          if (!ent || !ent.actor.alive) continue;
+          for (const sk of (ent.raw.skills || [])) {
+            if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') continue;
+            const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+            reactDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
+            fireSkillRay({
+              attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
+              attackProfile: ap, verbEff: sk, mode: 'battle',
+              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+              rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + t,
+              events: reactDef, aoeStatuses: !!ap.aoe_statuses,
+            });
+          }
+        }
+        for (const re of reactDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        const playerOff = [];
+        dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), t, playerOff);
+        for (const re of playerOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        if (chargeMgr) {
+          // REQ-0200: this player PO's landed hits feed the charge runtime -- OnHit +
+          // on_damage_dealt on the firing BP, on_connected_unit_attack on its linked
+          // BPs; enemy deaths feed on_kill (deduped by enemyId); a landed status
+          // application feeds on_status_applied.
+          const firePo = troopPos.find(p => p.uid === s.ownerUid);
+          const fireBp = firePo && firePo.bpId;
+          if (fireBp) {
+            for (const lh of (fr.landedHits || [])) {
+              feedCharge({ type: 'bp_attack', sourceId: fireBp, amount: lh.amount }, t);
+              if (lh.actor && lh.actor.kind === 'enemy' && !lh.actor.alive) feedCharge({ type: 'enemy_killed', sourceId: fireBp, enemyId: lh.actor.id }, t);
+            }
+            if (rayEvents.some(re => re.ev === 'apply_status')) feedCharge({ type: 'status_applied', sourceId: fireBp }, t);
+            // REQ-0200 real-actor: this BP's add_on_hit_status riders land on the
+            // struck enemies (amped by amp_status), and grant_lifesteal heals it.
+            chargeMgr.onOffensiveLanded(fireBp, fr.landedHits || [], t);
+          }
+        }
+      } else if (hasAtt && s.modes.includes('detection')) {
+        resolveDetection(s, t);
+      } else if (hasAtt && s.modes.includes('unlock')) {
+        resolveUnlock(s, t);
+      }
+      // NOTE: no reschedule call here -- the RESET is the instance walk's
+      // (battle.cjs IBattleInstance.tick(), s8.5), and it happens regardless of
+      // the mode match above, preserving the heap driver's "reschedule
+      // regardless" cadence.
+    } else {
+      // ---- enemy / entity side (the heap driver's enemy skill_fire branch) ----
+      const s = cd;
+      const raw = inst.raw;
+      const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+      const attacker = { fieldCells: raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: raw.bonusVsStatus || [], selfActor: inst.actor };
+      if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
+        // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
+        // lowest-HP living pack ally (self only if alone); target is deterministic
+        // (selectHealAllyTarget), the amount rolls from an isolated named stream.
+        const target = selectHealAllyTarget(inst.actor, enemyActors.map(e => e.actor));
+        if (target) {
+          const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
+          const hpBefore = target.hp();
+          target.heal(healN);
+          events.push({ t, seq: seq.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
+        }
+      } else {
+        events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
+        const rayEvents = [];
+        const fr = fireSkillRay({
+          attacker, attackProfile, verbEff: s.effect, mode: 'battle',
+          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+          rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
+        });
+        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
+        // skills fire on each player actor its attack just directly hit
+        // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
+        const reactOff = [];
+        for (const sk of (raw.skills || [])) {
+          if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
+          (fr.landedHits || []).forEach((lh, li) => {
+            const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + t + '/' + li);
+            applyReactiveVerbToTarget(sk.verb, inst.actor, lh.actor, rs, reactOff, sk.trigger.t);
+          });
+        }
+        for (const re of reactOff) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        const playerDef = [];
+        dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
+        for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        if (chargeMgr) {
+          // REQ-0200: a player BP taking a direct enemy hit feeds OnBPBeenHit on that
+          // BP + on_connected_unit_bp_been_hit on its linked BPs.
+          for (const lh of (fr.landedHits || [])) {
+            if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, t);
+          }
+          // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
+          chargeMgr.onDefensiveLanded(inst.actor, fr.landedHits || [], t);
+        }
+      }
+    }
+  }
+
+  // s7.0: runEncounter builds the Battle from what compile produced, then
+  // DRIVES it. Battle owns the clock and the chain -- nothing more; compile,
+  // attachments, pulses, the fire bodies and the result stay here (s14 Out
+  // records the not-moved scaffolding).
+  const battle = createBattle({
+    playerMap: createFormationMap({ instances: playerInstances }),
+    enemyMap: createFormationMap({ instances: enemyInstances }),
+    modeConfig: null, // s7.0: RESERVED. REQ-0259 populates it; nothing here reads it.
+    fire: fireInstanceSlot,
+    rollCooldownTicks: rollCooldownTicksFor,
+  });
+
+  // ---- Initial cooldown rolls (s8.5) -- replaces the initial scheduleEffect
+  // walk at the retired driver's start. Same per-effect streams, same first
+  // draw, same mode filter (incl. the attachment-mode activation); the initial
+  // mult is 1.0 exactly as the heap driver passed. A slot the filter rejects
+  // gets Infinity: the heap model simply never scheduled it.
+  battle.initCooldowns((inst, cd) => {
+    if (inst.kind === 'bp') {
+      const attActive = hasAtt && cd.modes.some(m => (m === 'detection' && attachments.some(a => a.kind === 'trap' || a.kind === 'door')) || (m === 'unlock' && attachments.some(a => a.kind === 'chest' || a.kind === 'door')));
+      if (!(cd.modes.includes(encounterDef.mode) || attActive)) return Infinity;
+    }
+    const sRange = cd.effect.trigger.s;
+    const stream = rng.stream(effectStreamName(cd.ownerUid, cd.effIdx) + '/timing');
+    return secsToTicks(stream.range(sRange[0], sRange[1]) * 1.0);
+  });
+
   // REQ-0048: battle_start pulse openers -- emit once at t0 (mode-gated).
   for (const po of troopPos) {
     for (const eff of (po.effects || [])) {
@@ -554,14 +759,15 @@ function runEncounter(opts) {
         if (!modes.includes(encounterDef.mode)) continue;
         const pOut = [];
         emitPulse(po.bpId, t0, pOut);
-        for (const re of pOut) events.push(Object.assign({ t: t0, seq: heap.nextSeq() }, re));
+        for (const re of pOut) events.push(Object.assign({ t: t0, seq: seq.nextSeq() }, re));
       }
     }
   }
-  heap.push({ t: t0 + TUNABLES.STATUS_TICK_PERIOD_SECS, seq: heap.nextSeq(), kind: 'status_tick' });
 
   const timeoutSecs = encounterDef.timeout_secs;
   const deadlineSecs = encounterDef.deadline_secs || (timeoutSecs != null ? timeoutSecs + 0.001 : 600);
+  const deadlineTicks = secsToTicks(deadlineSecs);
+  const STATUS_TICK_TICKS = secsToTicks(TUNABLES.STATUS_TICK_PERIOD_SECS); // 100 today -- DERIVED, never a literal (s5)
   let result = null;
   let discoveredEntity = false;
 
@@ -572,176 +778,33 @@ function runEncounter(opts) {
     return playerActors.every(a => !a.alive);
   }
 
-  let guardIters = 0;
-  while (heap.size() > 0 && guardIters < 200000) {
-    guardIters++;
-    const ev = heap.popMin();
-    if (ev.t > deadlineSecs) break;
-    simNow = ev.t; // REQ-0121: honest timestamps for on_hp_below fires
-    if (hasAtt) checkAttachmentTimeouts(ev.t);
+  // ---- THE TICK LOOP (s7.1) -- replaces the event-heap driver. Per tick:
+  // attachment timeouts -> status cadence (every STATUS_TICK_TICKS boundary,
+  // passing P verbatim, NOT dt=TICK -- s7.2's two silent breakages) -> THE
+  // CHAIN (battle -> maps -> instances; s10.1's total order IS the chain's
+  // shape, s7.1a) -> pulse arrivals -> termination (the retired driver's
+  // checks, verbatim). No guardIters: the loop is bounded by deadlineTicks and
+  // secsToTicks' floor-at-1 forbids same-tick refire (s9.2).
+  for (; battle.tickIndex <= deadlineTicks; battle.tickIndex++) {
+    const t = battle.t();
+    simNow = t; simTick = battle.tickIndex; // REQ-0121: honest timestamps for on_hp_below fires
+    if (hasAtt) checkAttachmentTimeouts(t);
 
-    if (ev.kind === 'status_tick') {
-      if (chargeMgr) chargeMgr.settle(ev.t); // REQ-0200: drain one deferred grant_charge hop (cascade rule: <=1/tick)
-      const healHook = chargeMgr ? (id => feedCharge({ type: 'bp_healed', bpId: id }, ev.t)) : null; // REQ-0200: on_heal_done
-      for (const a of playerActors) if (a.alive) tickAndEmit(a, ev.t, events, healHook);
-      for (const e of enemyActors) if (e.actor.alive) tickAndEmit(e.actor, ev.t, events);
-      if (entity && entity.alive) tickAndEmit(makeEnemyActor(entity), ev.t, events);
-      if (chargeMgr) feedCharge({ type: 'timer', now: ev.t }, ev.t); // REQ-0200: every_secs charge triggers
-      heap.push({ t: ev.t + TUNABLES.STATUS_TICK_PERIOD_SECS, seq: heap.nextSeq(), kind: 'status_tick' });
-    } else if (ev.kind === 'skill_fire') {
-      const isPlayerSide = schedulable.some(s => s.ownerUid === ev.ownerUid && s.effIdx === ev.effIdx);
-      if (isPlayerSide) {
-        const s = schedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
-        if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
-          // REQ-0048: a "spark" (every_secs pulse) emits along the BP's links.
-          const spo = troopPos.find(p => p.uid === s.ownerUid);
-          const pOut = [];
-          if (spo) emitPulse(spo.bpId, ev.t, pOut);
-          for (const re of pOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-        } else if (s.modes.includes(encounterDef.mode)) {
-          const attacker = { fieldCells: unionCells(playerActorsInSameBpAs(s.ownerUid, troopPos, playerActors)), ownerId: s.ownerId, bonusVsStatus: bonusVsStatusForOwnerUid(s.ownerUid, troopPos, troopBps), outgoingBuffPct: chargeMgr ? chargeMgr.outgoingBuffPctFor((troopPos.find(p => p.uid === s.ownerUid) || {}).bpId) : 0 };
-          const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
-          // telegraph is derived + emitted at fire-time as an informational
-          // preview line (S4.5) since this is a server-authoritative batch
-          // sim, not a live monitor stream; we emit it immediately before
-          // ray_fire with fires_at = ev.t (lead is a DISPLAY concern for a
-          // live monitor UI, not a sim-timing concern -- documented interp).
-          events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (s.attackProfile.edge || ['top'])[0], fires_at: ev.t });
-          const rayEvents = [];
-          const fr = fireSkillRay({
-            attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
-            targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
-            rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
-          });
-          for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          if (encounterDef.mode === 'detection' && rayEvents.some(r => r.ev === 'ray_hit' && r.dst !== '?')) {
-            discoveredEntity = true;
-          }
-          // REQ-0078 reactive (defensive): enemies that took a DIRECT hit fire
-          // their OnSquadBeenHit skills as a retaliation ray at the player field.
-          // Depth-1 (retaliation hits are not re-dispatched); isolated RNG keeps
-          // existing golden streams byte-identical.
-          const reactDef = [];
-          for (const lh of (fr.landedHits || [])) {
-            const ent = enemyActors.find(e => e.actor === lh.actor);
-            if (!ent || !ent.actor.alive) continue;
-            for (const sk of (ent.raw.skills || [])) {
-              if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') continue;
-              const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-              reactDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
-              fireSkillRay({
-                attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
-                attackProfile: ap, verbEff: sk, mode: 'battle',
-                targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-                rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + ev.t,
-                events: reactDef, aoeStatuses: !!ap.aoe_statuses,
-              });
-            }
-          }
-          for (const re of reactDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          const playerOff = [];
-          dispatchPlayerOffensive(s.ownerUid, (fr.landedHits || []).map(lh => lh.actor), ev.t, playerOff);
-          for (const re of playerOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-          if (chargeMgr) {
-            // REQ-0200: this player PO's landed hits feed the charge runtime -- OnHit +
-            // on_damage_dealt on the firing BP, on_connected_unit_attack on its linked
-            // BPs; enemy deaths feed on_kill (deduped by enemyId); a landed status
-            // application feeds on_status_applied.
-            const firePo = troopPos.find(p => p.uid === s.ownerUid);
-            const fireBp = firePo && firePo.bpId;
-            if (fireBp) {
-              for (const lh of (fr.landedHits || [])) {
-                feedCharge({ type: 'bp_attack', sourceId: fireBp, amount: lh.amount }, ev.t);
-                if (lh.actor && lh.actor.kind === 'enemy' && !lh.actor.alive) feedCharge({ type: 'enemy_killed', sourceId: fireBp, enemyId: lh.actor.id }, ev.t);
-              }
-              if (rayEvents.some(re => re.ev === 'apply_status')) feedCharge({ type: 'status_applied', sourceId: fireBp }, ev.t);
-              // REQ-0200 real-actor: this BP's add_on_hit_status riders land on the
-              // struck enemies (amped by amp_status), and grant_lifesteal heals it.
-              chargeMgr.onOffensiveLanded(fireBp, fr.landedHits || [], ev.t);
-            }
-          }
-        } else if (hasAtt && s.modes.includes('detection')) {
-          resolveDetection(s, ev.t);
-        } else if (hasAtt && s.modes.includes('unlock')) {
-          resolveUnlock(s, ev.t);
-        }
-        // reschedule regardless of match (pause = simply not fired above;
-        // rescheduling from ev.t keeps cadence continuous while matching)
-        scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, chargeMgr ? playerCadenceMult(s.ownerUid) : 1.0);
-      } else {
-        const s = enemySchedulable.find(x => x.ownerUid === ev.ownerUid && x.effIdx === ev.effIdx);
-        if (s && s.raw.alive) {
-          const attackProfile = s.effect.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
-          const attacker = { fieldCells: s.raw.fieldCells, ownerId: s.ownerId, bonusVsStatus: s.raw.bonusVsStatus || [], selfActor: s.actor };
-          const lead = TUNABLES.TELEGRAPH_LEAD_SECS;
-          if (s.effect.verb && s.effect.verb.t === 'heal_ally') {
-            // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
-            // lowest-HP living pack ally (self only if alone); target is deterministic
-            // (selectHealAllyTarget), the amount rolls from an isolated named stream.
-            const target = selectHealAllyTarget(s.actor, enemyActors.map(e => e.actor));
-            if (target) {
-              const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
-              const hpBefore = target.hp();
-              target.heal(healN);
-              events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'heal_ally', src: s.ownerId, dst: target.id, amount: healN, hp_before: hpBefore, hp_after: target.hp() });
-            }
-          } else {
-            events.push({ t: Math.max(0, ev.t - lead), seq: heap.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: ev.t });
-            const rayEvents = [];
-            const fr = fireSkillRay({
-              attacker, attackProfile, verbEff: s.effect, mode: 'battle',
-              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
-              rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + ev.t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
-            });
-            for (const re of rayEvents) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-            // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
-            // skills fire on each player actor its attack just directly hit
-            // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
-            const reactOff = [];
-            for (const sk of (s.raw.skills || [])) {
-              if (!sk.trigger || (sk.trigger.t !== 'OnHit' && sk.trigger.t !== 'OnSquadHit')) continue;
-              (fr.landedHits || []).forEach((lh, li) => {
-                const rs = rng.stream('reactive/' + sk.trigger.t + '/' + s.ownerUid + '/' + ev.t + '/' + li);
-                applyReactiveVerbToTarget(sk.verb, s.actor, lh.actor, rs, reactOff, sk.trigger.t);
-              });
-            }
-            for (const re of reactOff) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-            const playerDef = [];
-            dispatchPlayerDefensive((fr.landedHits || []).map(lh => lh.actor), ev.t, playerDef);
-            for (const re of playerDef) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-            if (chargeMgr) {
-              // REQ-0200: a player BP taking a direct enemy hit feeds OnBPBeenHit on that
-              // BP + on_connected_unit_bp_been_hit on its linked BPs.
-              for (const lh of (fr.landedHits || [])) {
-                if (lh.actor && lh.actor.kind === 'bp') feedCharge({ type: 'bp_damaged', bpId: lh.actor.id, amount: lh.amount }, ev.t);
-              }
-              // REQ-0200 real-actor: reflect_damage pct of each hit onto the attacker.
-              chargeMgr.onDefensiveLanded(s.actor, fr.landedHits || [], ev.t);
-            }
-          }
-        }
-        if (s && s.raw.alive) scheduleEffect(heap, rng, s.ownerUid, s.effIdx, s.effect, ev.t, 1.0);
-      }
-    } else if (ev.kind === 'pulse_arrive') {
-      const toActor = playerBpActorById(ev.to);
-      if (!toActor || !toActor.alive) {
-        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'pulse_fizzle', reason: 'dead_target', origin: ev.origin, to: ev.to });
-      } else {
-        events.push({ t: ev.t, seq: heap.nextSeq(), ev: 'link_pulse', from: ev.from, to: ev.to, hop: ev.hop, origin: ev.origin });
-        const payloadOut = [];
-        firePulsePayloads(ev.to, ev, payloadOut);
-        for (const re of payloadOut) events.push(Object.assign({ t: ev.t, seq: heap.nextSeq() }, re));
-        if (ev.hop < PULSE_HOP_BUDGET) {
-          for (const e of (toActor.ref.linkOut || [])) {
-            if (ev.visited.includes(e.to)) continue;
-            schedulePulseArrive({ origin: ev.origin, from: ev.to, to: e.to, hop: ev.hop + 1, visited: ev.visited.concat([ev.to]) }, ev.t);
-          }
-        }
-      }
+    if (battle.tickIndex > 0 && battle.tickIndex % STATUS_TICK_TICKS === 0) {
+      if (chargeMgr) chargeMgr.settle(t); // REQ-0200: drain one deferred grant_charge hop (cascade rule: <=1/tick)
+      const healHook = chargeMgr ? (id => feedCharge({ type: 'bp_healed', bpId: id }, t)) : null; // REQ-0200: on_heal_done
+      for (const a of playerActors) if (a.alive) tickAndEmit(a, t, events, healHook);
+      for (const e of enemyActors) if (e.actor.alive) tickAndEmit(e.actor, t, events);
+      if (entity && entity.alive) tickAndEmit(makeEnemyActor(entity), t, events);
+      if (chargeMgr) feedCharge({ type: 'timer', now: t }, t); // REQ-0200: every_secs charge triggers
     }
 
+    battle.tick(); // spec c: THE CHAIN -- the whole of the fire step (s7.1a)
+
+    drainPulseArrivals(battle.tickIndex, t); // REQ-0048 pulse arrivals scheduled for THIS tick
+
     if (encounterDef.type === 'pack' || encounterDef.type === 'boss') {
-      if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(ev.t); result = 'clear'; break; }
+      if (allEnemiesDead()) { if (hasAtt) settleAttachmentsAtEnd(t); result = 'clear'; break; }
       if (troopWiped()) { result = 'wipe'; break; }
     } else if (encounterDef.type === 'trap') {
       if (discoveredEntity) { result = 'clear'; break; }
@@ -761,7 +824,9 @@ function runEncounter(opts) {
       // "trap fires its skill payload ONCE (a battle-style volley on the
       // player field, rolled), then encounter ends. No disarm step."
       if (entity && entity.skills.length > 0) {
-        if (timeoutSecs != null) simNow = timeoutSecs; // REQ-0121
+        // REQ-0256: the volley's timestamp is tick-quantized (s13.1 step 2).
+        const tOut = timeoutSecs != null ? tickT(secsToTicks(timeoutSecs)) : simNow;
+        if (timeoutSecs != null) simNow = tOut; // REQ-0121
         const skill = entity.skills[0];
         const attackProfile = skill.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
         const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id, bonusVsStatus: entity.bonusVsStatus || [] };
@@ -771,7 +836,7 @@ function runEncounter(opts) {
           targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
           rng, streamPrefix: 'trap-timeout/' + encounterDef.id, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
         });
-        for (const re of rayEvents) events.push(Object.assign({ t: timeoutSecs, seq: heap.nextSeq() }, re));
+        for (const re of rayEvents) events.push(Object.assign({ t: tOut, seq: seq.nextSeq() }, re));
       }
       result = troopWiped() ? 'wipe' : 'timeout';
     } else if (encounterDef.type === 'door') {
@@ -785,7 +850,14 @@ function runEncounter(opts) {
     }
   }
 
-  events.push({ t: heap.size() ? heap.a[0].t : deadlineSecs, seq: heap.nextSeq(), ev: 'encounter_end', enc: encIndex, result, troop_bp_hp: troopBps.map(b => b.hp) });
+  // REQ-0256 s4.1c respec: encounter_end.t is the tick the loop BROKE (or the
+  // deadline tick when the loop exhausted) -- the honest "when did this
+  // encounter end". The heap formula read the phantom next-event time out of
+  // the queue, a fact about the queue, not the encounter. The deadline is
+  // tick-quantized so every emitted t stays an exact TICK_SECS multiple
+  // (s13.1 step 2; the fallback-to-deadlineSecs ruling is applied in its
+  // quantized form, recorded in the REQ).
+  events.push({ t: tickT(Math.min(battle.tickIndex, deadlineTicks)), seq: seq.nextSeq(), ev: 'encounter_end', enc: encIndex, result, troop_bp_hp: troopBps.map(b => b.hp) });
   return { events, result, discoveredEntity, entity, attachments: attachments.map(a => ({ id: a.id, kind: a.kind, discovered: a.discovered, opened: (a.settled && a.kind !== 'trap' && a.hp <= 0), settled: a.settled })), attachmentRewards, doorShortcut, chargeState: chargeMgr ? chargeMgr.summary() : undefined };
 }
 
