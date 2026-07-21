@@ -238,3 +238,59 @@ centroid when `dst` resolves to an instanceId, else field centre). `apply_status
 - Multi-encounter waves are joined by `packId` order (roster order == pack/boss
   encounter order); there is no per-enemy `enc` field on the wire, so a dungeon
   that reuses one `packId` across two encounters would share a wave.
+
+## Phase C evidence (VFX/aesthetic pass — commits c0ab7ee, 9bab433, 13eefc5)
+
+### What each effect looks like now (before → after, one line each)
+- **Ray** — cyan dot marching cells → elongated luminous head (white-hot tip, additive while budget allows) dragging a ≤6-segment fading trail in the ray's element colour, drawn in the TARGET field's space (enemy-field rays no longer paint over the player pane in column layout); ~240ms afterglow.
+- **Bounce** — yellow cell rectangle → brief GOLD 5-sliver spark burst + gold-hi core flash at the bounce cell (structure's voice, fx.js's ring feel).
+- **Hit** — nothing but a number → fx.js-timed 0.7s expand+fade burst in the attack's colour with a 1-frame bright additive core at the enemy's centroid.
+- **AoE** — single fallback pulse → simultaneous small (0.7×) bursts over each hit cell, each with its own tiered number.
+- **ray_hit_all (nova)** — mid-field circle → fast radial wash sweeping from field centre to corner, masked to the field, ≤0.32 alpha ring + ≤0.1 body — deliberately not a flashbang.
+- **reflect_damage** — red circle at N9 → blood ring CONVERGING on the player field (harm returning to us).
+- **Telegraph** — 8px flat ember slab → 2px gold hairline on the threatened edge that breathes in over ~520ms (smoothstep) and releases in 200ms.
+- **Muzzle** — solid ember cell fill → frost rim + soft frost fill on the firing item, 200ms ease-out, continuous with the outgoing frost ray.
+- **Damage numbers** — uniform bold text sliding up → tiered 13/17/22px, scale-pop at birth (bigger pops harder: 1.45/1.8/2.2×→1 in 140ms), 20px ease-out rise, late fade, thin void outline for legibility (never glow); blood when we take it, ember-hi when they do; killing blow adds one tiny gold 4-point star.
+- **Heals** — same as damage but green → soft green, 12px gentle drift over 800ms, no pop, no spark.
+- **Reveal** — instant label swap → bone-white rim swells ~2px and dies in 180ms around the actor box, then settles.
+- **Death** — instant alpha 0.28 → short blood flash over the box, then ~400ms fade to the bone-3-tinted corpse ghost (state applies up front; only alpha animates).
+- **Art arrival** — hard pop-in → 150ms alpha settle + one bone rim (manifestation moment), only when the actor is currently visible.
+- **KO stamp** — plain red "KO" text → blood plate + bone Yuji-Syuku label rotated ~-8°, slammed in with the styleguide stampin overshoot (2.4→0.94→1) on a LIVE ko; silent scrubs place it without theatrics.
+- **Charge pips** — appear/disappear → gold when lit (unchanged), spend now drains the previously-lit pips in a 240ms gold-hi sweep.
+- **Status chips** — frost-only, never fading → class-tinted (ember burns / frost chills / bone-2 other), fade with remaining ttl to a 0.35 floor (recede, never guess-vanish).
+- **Gimic badges** — gold-framed always → state-tinted frame+glyph: armed ember-lo frame with readable ember glyph, disarmed bone-3, opened gold-lo, lost bone-3 + strikethrough bar, fired blood; open/fire burst at the badge cell instead of mid-field.
+- **Field dressing** — washed-out grid → void-deep backdrop (0.9), side tints at 5% (≤6% rule), grid at 0.14, formation outlines gold-lo 1px hairlines, enemy nameplates bone on a small panel plate with a 1px border-lo edge. Nothing idle glows or loops.
+
+### Glow-budget audit (styleguide §6.0: ≤3 concurrent, ≤8px, one colour each)
+Glow = additive-blend bright core only (no blur filters anywhere). Ledger enforced in `MonitorFx.tryGlow()` with `GLOW_BUDGET = 3`; over-budget effects render normal-blend automatically. Holders:
+1. **Ray head** (LIVE beam moment) — held while the head flies, released the frame it lands.
+2. **Impact burst core** (instant-of-a-hit moment; link pulses ride the same path) — held only for the first 25% (~175ms) of the 0.7s burst.
+3. **(same pool)** any concurrent second/third ray or burst.
+Bounce sparks, kill spark, telegraph, muzzle, washes, numbers: normal blend, alpha-only — they spend no glow. `reset()` calls `fx.resetBudget()` because cancelled tickers cannot release holds.
+
+### Colour semantics implemented (fx.js canon)
+| colour | voice | used for |
+|---|---|---|
+| frost / frost-hi | player attack | player-origin rays, muzzle, their hit bursts |
+| ember / ember-hi | enemy attack | enemy-origin rays, their bursts; ember-hi = damage numbers we deal |
+| gold / gold-hi / gold-lo | structure | pulse-payload rays, bounce sparks, kill flourish, telegraph hairline, pips, formation hairlines, opened chests |
+| blood | player harmed | our damage numbers, reflect pulse, death flash, KO plate, fired traps |
+| bone / bone-2 / bone-3 | matter | reveal rim, nameplates, corpse tint, lost/disarmed states |
+| green 0x76C48A | heal (app convention) | heal numbers only, kept soft |
+
+### Reduced-motion / webdriver / silent (C7)
+- `monitorFx.computeFxMode()` at module scope (landing/particles.ts pattern): `navigator.webdriver` → **off** (zero transient VFX in E2E), `prefers-reduced-motion` → **reduced** (damage/heal numbers appear STATIC for 600ms — information, not decoration — everything decorative skipped), else **full**. State changes (KO, corpse, badges, pips, chips) always apply instantly in non-full modes.
+- The `silent` apply path never reaches monitorFx at all (callers gate first), and now also suppresses the KO slam, pip drain, reveal rim and death fade via threaded `silent` params.
+- Seams untouched: `pulseCounts()`/`attachmentCounts()` increment before/independent of any VFX branch; `squads()`, `enemyBounds()` (x+labelWidth≤468 invariant), `enemyActors()` unchanged. Bonus: numbers now live in rayLayer, so `reset()` purges them (fixes an orphaned-Text leak on backward seek).
+
+### Gates
+- `corepack pnpm exec tsc -b --force` (client) → EXITCODE=0.
+- `oxlint` on monitorFx/MonitorRenderer/monitorActors/monitorTheme/monitorGlyphs → 0 warnings, 0 errors.
+
+### Deliberately NOT done (taste + scope)
+- No telegraph→first-ray-step timing handshake (telegraph and ray are separate wire events; syncing would need a pending-ray queue for one subtle beat — Phase D can judge from screenshots whether it is missed).
+- No ambient/idle motion of any kind (shimmer, breathing frames): this is a monitoring panel; the styleguide's ambient loops belong to landing/ritual screens.
+- No 5th-bounce nova detection client-side: the wire has no bounce-count on hits; `ray_hit_all` already carries the "everything got struck" semantics and takes the wash.
+- HP-bar notches left as-is (B-phase geometry is honest; extra emphasis would add idle noise).
+- Player-side status chips still unaddressed (needs a dst→slot map; documented Phase B limitation stands).
+- Armed-badge glyph kept ember (not ember-lo) over the ember-lo frame — pure ember-lo at 11px sank into the raised panel; the frame carries the canonical token instead.
