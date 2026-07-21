@@ -1,6 +1,6 @@
 # REQ-0256 — battle-tick-core: the sim becomes a 0.01s tick loop, and a BP compiles to ONE IBattleInstance
 
-**Status:** built — implemented on branch `req-0256-battle-tick-core` from the REQ-0255 merged baseline (2088c34), all gates green, goldens rebaselined; see §16 (implementation record). Spec history: draft — spec RATIFIED (user, 2026-07-19); blocked only on the REQ-0255 baseline. The four review questions that blocked this REQ are resolved: (1) SUPERSEDING the ratified core of `combat_spec_draft.md` per ruling Q1 — **APPROVED**; (2) the irreversible rebaseline of all 12 replay goldens + S4 baselines (§12) — **APPROVED**; (3) §7.1a's split of the single-map `tick()` into `tickInstances()` / `tickRays()` — **APPROVED, not vetoed** (the birth-tick symmetry it buys stands); (4) the goldens' blindness to the charge engine (§8.5) — **proceed as specced; NO precursor REQ**. This REQ keeps the fix Out (§14) and relies on the §15.15 live-def test for charge coverage; widening the goldens to seat a charge unit is an OPTIONAL follow-up, not a blocker. NOTE (measured 2026-07-19): passing `unitDefsById` to `goldens.cjs` alone would be INERT — the golden squad's four BPs (`dwarf`/`elf`/`angel`/`lightcavalry`) are among the 12 units carrying NO `charge` block, so any future golden charge-coverage must seat a charge unit (e.g. `alchemist`), not merely pass the registry. Content authoring (adding units) is unrelated to the goldens, which are PINNED to a fixed batch-002 roster (REQ-0207). Remaining blocker before implementation: REQ-0255 ratified + merged (HANDS-OFF; needs user go-ahead) — 0256 branches from that baseline.
+**Status:** built — MERGED to master `cd15aa3` on 2026-07-21 (user-directed), gates green ON master; NOT deployed, so this stays in `built/` per PROJECT.md and REQ-0255 §9. Implemented on branch `req-0256-battle-tick-core` from the REQ-0255 merged baseline (2088c34), all gates green, goldens rebaselined; see §16 (implementation record) and §17 (merge record). Spec history: draft — spec RATIFIED (user, 2026-07-19); blocked only on the REQ-0255 baseline. The four review questions that blocked this REQ are resolved: (1) SUPERSEDING the ratified core of `combat_spec_draft.md` per ruling Q1 — **APPROVED**; (2) the irreversible rebaseline of all 12 replay goldens + S4 baselines (§12) — **APPROVED**; (3) §7.1a's split of the single-map `tick()` into `tickInstances()` / `tickRays()` — **APPROVED, not vetoed** (the birth-tick symmetry it buys stands); (4) the goldens' blindness to the charge engine (§8.5) — **proceed as specced; NO precursor REQ**. This REQ keeps the fix Out (§14) and relies on the §15.15 live-def test for charge coverage; widening the goldens to seat a charge unit is an OPTIONAL follow-up, not a blocker. NOTE (measured 2026-07-19): passing `unitDefsById` to `goldens.cjs` alone would be INERT — the golden squad's four BPs (`dwarf`/`elf`/`angel`/`lightcavalry`) are among the 12 units carrying NO `charge` block, so any future golden charge-coverage must seat a charge unit (e.g. `alchemist`), not merely pass the registry. Content authoring (adding units) is unrelated to the goldens, which are PINNED to a fixed batch-002 roster (REQ-0207). Remaining blocker before implementation: REQ-0255 ratified + merged (HANDS-OFF; needs user go-ahead) — 0256 branches from that baseline.
 **Reserved:** 2026-07-18
 **Slug:** battle-tick-core
 **Branch:** req-expedition-spec (spec only; implementation branches from REQ-0255's merged baseline)
@@ -1178,3 +1178,58 @@ compile seam; strictly-more-fires delta + per-spend `advance_cooldown` records).
 - `a285b47` — hash record (its first write was mangled by shell expansion; this
   list is the corrected record).
 - `1894641` — `git mv` todo → built, one move per commit per policy.
+
+## 17. Merge record — 2026-07-21
+
+**Merge commit `cd15aa3`** (`--no-ff`, master tip was `9bae36c`). The user directed the merge on
+2026-07-21; the spec had been ratified 2026-07-19 and its only remaining blocker — REQ-0255's
+baseline — closed the same day (that REQ is now in `done/`).
+
+### 17.1 Measured before master was touched
+
+The branch sat **96 commits behind master** (it branched at `2088c34`; master had since taken
+REQ-0266, REQ-0267..0272 and the REQ-0258 doc prerequisite). Per REQ-0255 §5's method the merge
+was rehearsed in a throwaway worktree checked out at master, never on master itself:
+
+- Files touched by BOTH sides since the merge-base: exactly one —
+  `docs/llm_managed/combat_spec_draft.md`. It **auto-merged cleanly**: this REQ's §1.1 tick-loop
+  rewrite and `7914a0f`'s §5.1/§5.2 formation4 `J10:Q17` amendment occupy different sections and
+  both survive verbatim in the result. Verified by reading the merged file, not by trusting the
+  exit code.
+- **Zero conflicts** overall.
+- The merge carries `docs/` and `sim/` only. No `client/`, `server/`, `content/` or `web/` path is
+  touched, so **no bundle rebuild is owed** — unlike the REQ-0255 baseline, which needed one.
+
+### 17.2 Gates — trial tree, then re-run ON master after the merge
+
+Identical results in both places, and identical to §16.1's recorded values:
+
+| gate | result |
+|---|---|
+| `sim/tests/run.cjs` | **121 passed / 0 failed** (117 carried + 4 new) |
+| `sim/tests/goldens.cjs` | **OK (12 cases, replay determinism intact)** |
+| `sim/tests/forecast_parity.cjs` | **18 passed / 0 failed** — UNMOVED, as §11 promised |
+| `sim/tests/dungeon_roll_test.cjs` | **5 passed / 0 failed** |
+| `sim/tests/unit_charge_encounter_test.cjs` | **24 passed / 0 failed** |
+| `mock-src/tests/run.cjs` | **119 passed / 0 failed** |
+| `server/tests/api_test.cjs` | **194 passed / 0 failed** (hermetic — synthetic temp HOME) |
+
+`api_test` was run deliberately: this REQ changes no `server/` file, but `backpack-api` consumes
+`sim/`, and the branch had 96 commits of server drift to meet. It needed `pnpm install
+--frozen-lockfile` in the scratch worktree first (`pg` was missing) — a provisioning gap, not a
+merge failure.
+
+**AC7 re-confirmed on the merged tree:** `replay_hashes.json` moves 22 lines, every one a
+`jsonl_sha256` or an `events` count. **ZERO `def_sha256` lines changed** — no content definition
+moved. This is the irreversible rebaseline the user APPROVED as review question 2.
+
+### 17.3 Deploy — NOT done, and what it will mean
+
+`backpack-api` serves runs out of `sim/`, so **shipping this changes live combat**: the tick loop
+replaces the event queue and every damage value moves (the RNG stream names now carry `t`). The
+merge does not ship it. `backpack-api` / `backpack-web` / `backpack-tunnel` were not touched and
+no service was restarted, so master and the running system now differ by this REQ.
+
+There is no migration and no backfill to run — this REQ adds no DB surface. A deploy is therefore
+just: restart the api on the merged tree, then accept. That is a separate user-gated step, and
+until it happens this REQ is `built/`, not `done/`.
