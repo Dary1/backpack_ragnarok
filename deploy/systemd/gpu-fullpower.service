@@ -1,0 +1,24 @@
+[Unit]
+# Restores full-power GPU conditions at boot on this Alienware Area-51m.
+#  1. Alienware/AWCC thermal profile -> performance (unlocks the aggressive fan
+#     curve; on 'balanced' the RTX 2080 Mobile hits its thermal target and the
+#     driver applies SW Thermal Slowdown, so 180 W cannot be sustained).
+#  2. NVIDIA legacy persistence mode -> keeps the driver resident so GPU state is
+#     not torn down and re-initialised between clients.
+# NOTE: 'nvidia-smi -pl' is NOT used and cannot be used here: this is a mobile
+# GeForce part and NVML reports 'Changing power management limit is not
+# supported'. It is also unnecessary - default = max = enforced = 180 W already.
+Description=GPU full-power setup (Alienware performance profile + NVIDIA persistence mode)
+After=multi-user.target
+ConditionPathExists=/sys/firmware/acpi/platform_profile
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Wait (bounded) for the NVIDIA device nodes; never fail the unit on timeout.
+ExecStartPre=/bin/sh -c 'i=0; while [ $i -lt 30 ]; do /usr/bin/nvidia-smi -L >/dev/null 2>&1 && break; i=$((i+1)); sleep 1; done; exit 0'
+ExecStart=/bin/sh -c 'echo performance > /sys/firmware/acpi/platform_profile'
+ExecStart=-/usr/bin/nvidia-smi -pm 1
+
+[Install]
+WantedBy=multi-user.target

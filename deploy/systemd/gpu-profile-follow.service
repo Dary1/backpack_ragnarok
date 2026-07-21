@@ -1,0 +1,36 @@
+# REQ-0274. GPU thermal-profile follower: drive the Alienware ACPI
+# platform_profile from GPU demand so the aggressive "performance" fan curve is
+# engaged ONLY while the GPU is working (ComfyUI queue non-empty OR GPU util
+# above threshold), and the box drops to the quiet "balanced" curve when idle.
+# Replaces the old static performance pin in gpu-fullpower.service, whose only
+# symptom on an idle box was fans howling for no heat.
+#
+# System service (root): writing /sys/firmware/acpi/platform_profile needs root.
+# Persistence mode stays with gpu-fullpower.service; this unit only governs the
+# profile.
+#
+# Canonical source: backpack_ragnarok/tools/gpu_profile_follow.py
+# Deploy: install that script to /usr/local/sbin/backpack_gpu_profile_follow.py
+# (root-owned, outside the qtie git checkout) and this unit to
+# /etc/systemd/system/. See deploy/systemd/README.md.
+[Unit]
+Description=GPU thermal-profile follower (performance fan curve only while GPU busy)
+After=gpu-fullpower.service
+Wants=gpu-fullpower.service
+ConditionPathExists=/sys/firmware/acpi/platform_profile
+
+[Service]
+Type=simple
+Environment=COOLDOWN_SECONDS=120
+Environment=UTIL_THRESHOLD=20
+Environment=IDLE_PROFILE=balanced
+Environment=PERF_PROFILE=performance
+Environment=POLL_SECONDS=15
+ExecStart=/usr/bin/python3 /usr/local/sbin/backpack_gpu_profile_follow.py
+Restart=on-failure
+RestartSec=10
+# Failsafe: if the governor stops, do not leave the fans pinned at performance.
+ExecStopPost=/bin/sh -c 'echo balanced > /sys/firmware/acpi/platform_profile || true'
+
+[Install]
+WantedBy=multi-user.target
