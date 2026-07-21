@@ -469,6 +469,38 @@ confusingly, or worse, writes to it.
   Deploy remainder is §11.6.6 items 3-5 only: merge to master, live_unit_skins.json
   reaching the main checkout via that merge, backpack-api restart after it.
 
+- 2026-07-21 DEPLOYED (user directive "merge and deploy", 2026-07-21 chat). §11.6.6 items 3-5
+  completed:
+  - Merged to master `5da7883` (--no-ff; sole auto-merge tools/ci.sh, no conflicts; REQ-0270/
+    0271/0272 had landed since divergence). Pre-merge master `18ba8dd` kept as branch
+    `backup-pre-req0266`.
+  - `42238f8` rebuilt web/app in the MAIN checkout: the worktree-built bundle lacked the
+    untracked `client/.env.local` VITE_SUPABASE_* injection (worktrees have no .env.local, so
+    a worktree-committed bundle ships without auth env). Fresh main-checkout build is the
+    serving artifact; the second CI pass reproduced it byte-stable.
+  - Master CI: [0]-[5.46] green (twice), including [5.455/7] skin_prefs pg parity GREEN
+    (migration 024 proven live). [6/7] build green. [6.5/8] artinspect 1/1, contentadmin
+    28/28, [6.6/8] registry-first 4/4 green. artadmin 6/8: `:124`/`:273` page.goto
+    load-timeouts = the documented REQ-0222 goto-under-load harness family (snapshots show
+    the page fully rendered; trace shows every docroot resource < 250 ms; A/B same hour:
+    byte-identical client code in the worktree 8/8 — the delta is the env-carrying bundle's
+    extra boot latency under the harness's own render-job load, pre-existing on main-checkout
+    trees per REQ-0222's Jul-16 measurements). [7/7] full fleet, quiet serial confirmation
+    run: 190 passed / 1 skipped / 2 failed — exactly the two documented pre-existing reds
+    `forecast.spec.ts:206` + `schedule.spec.ts:1451`, failure signatures identical to the
+    branch-CI run (logs /tmp/req0266_fleet.log, /tmp/req0266_flake_rerun.log).
+  - backpack-api restarted 2026-07-21 08:46:16 UTC (art queue verified EMPTY immediately
+    before). Post-restart: /api/content 200, `unit_skins` section = 108.
+  - artwork_ref backfill per D-A/§11.5 via the sanctioned REQ-0174 route
+    (`PATCH /api/content/defs/<id>` with the dev item_admin token), art_ref taken from
+    live_unit_skins.json: 108/108 ok. art_urls 86 -> 194 = +108 uskin_* exactly (54
+    uskin_bp_* -> bpskin_unit_*, 54 unit-slot uskin_* -> adopted unit artworks); zero keys
+    removed, zero non-uskin changes. (Unrelated: `beastreach_wilds` joined art_urls at
+    restart from pre-merge registry state the old process's warm cache never picked up.)
+  - Live verification, local AND https://backpack-dev.qtie.jp: art_urls 194 with 108 uskin_*,
+    unit_skins 108; end-to-end art fetches 200 (bpskin_unit_elf.png 2 534 816 B via tunnel,
+    bpskin_unit_alchemist.png, units003_alchemist.png). Art queue still empty after restart.
+
 ---
 
 ## 11. Outcome — verification pass, 2026-07-19
