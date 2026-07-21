@@ -4,6 +4,30 @@
 - 2026-07-21 reserved (stub).
 - 2026-07-21 reserved -> todo: user directive "proceed to completion" (chat, 2026-07-21
   JST) after auditing the corpus browser and finding effects 44% unmapped.
+- 2026-07-21 coverage verification + audit sample (tasks 1-2 + phrase extraction;
+  subagent over SSH). COVERAGE: interrogated both wikis' MediaWiki API directly
+  (siteinfo statistics + full allpages ns0 nonredirect with continuation).
+  Backpack Hero: articles=302, allpages ns0 nonredirect=302 (307 incl 5
+  redirects), cached=302 -> missing=0, extra=0; Items category=246 pages.
+  Backpack Battles: articles=165, allpages ns0 nonredirect=165 (166 incl 1
+  redirect), cached=165 -> missing=0, extra=0. NO fetch bug: corpus_fetch
+  enumerate_pages continuation is correct (params.update(cont) propagates
+  apcontinue) and both wikis sit under the 500 aplimit, so fetched >= wiki-side
+  content pages for both sources -> Gate 1 SATISFIED. Refetch=0; no re-normalize
+  (raw unchanged). Normalized counts unchanged: BH 302 (item 271/other 31), BB
+  165 (item 122/other 43). ACCURACY AUDIT (task 2): seeded-random sample,
+  random.seed(271), 10 per source, source order [backpack-battles,
+  backpack-hero]; 20 audit cards emitted to orchestrator. Systematic finding:
+  the BH rarity map is mis-specified -- it maps a nonexistent 'relic' rarity and
+  omits the wiki's real 'Legendary' tier, so 66 BH items (rarity_raw=Legendary)
+  normalize to rarity_norm=None (BH rarity_norm=None total 101/302 = 66
+  Legendary + 34 no-rarity + 1 'N/A'). Flagged for orchestrator; fix deferred
+  (out of this subtask's regen scope). PHRASE EXTRACTION (task 3):
+  data/corpus/unmapped_phrases.json = 255 unique unmapped phrases, 363 total
+  occurrences (BH 109, BB 254); entries with >=1 unmapped phrase BH 97/302
+  (32%), BB 108/165 (65%); top phrases are trigger clauses ('Start of battle:'
+  x22, 'On hit:' x20, 'Gain 1 .' x9). Verify artifacts under data/corpus/verify/
+  (gitignored).
 
 ## Origin
 User audit of the REQ-0270 browser: "the crucial part — effects — is mostly
