@@ -96,3 +96,71 @@ env. Deploy note recorded here and in `docs/llm_managed/architecture.md`; NOT PR
 - `[6/7b]` tripwire proven BOTH ways: PASS with `.env.local` present (marker in web/app),
   NOT-APPLICABLE-with-reason with it absent.
 - Existing worktrees retro-provisioned (`--all`), `*-artsession` skipped.
+
+---
+
+## 6. Outcome -- built 2026-07-22
+
+### 6.1 Commits (branch `req-0278-worktree-env-provisioning`, off master `00befdf`)
+
+| commit | what |
+|---|---|
+| `a4c5b71` | reserve stub (allocator) |
+| `9cbb5aa` | this spec |
+| `ce10e17` | reserved -> todo (user commissioned 2026-07-22) |
+| `1be0550` | implementation: provision_worktree_env.sh + check_bundle_env.sh + ci.sh [6.1/7] + client/README.md + architecture.md |
+
+### 6.2 Ships delivered
+
+- `tools/provision_worktree_env.sh` -- idempotent; `--all` retro-provisioned the live
+  worktrees: **77 provisioned + 1 already-identical (this tree) = 78, 0 warnings, 0
+  *-artsession** (none present). The copied `client/.env.local` is gitignored, so no live
+  worktree`s git status is dirtied (spot-checked req-0266 / req-0256 / req-0073: identical
+  to main, mode 600).
+- `tools/check_bundle_env.sh` + `ci.sh [6.1/7]` -- proven ALL THREE branches:
+  OK (env present -> host in web/app), NOT-APPLICABLE-with-reason (env absent),
+  FAIL (env present but bundle built without it -- the REQ-0266 trap). No secret printed.
+- `client/README.md` (Worktree env section) + `docs/llm_managed/architecture.md` (deploy
+  note retiring the 42238f8 rebuild-on-main-for-env step). PROJECT.md untouched.
+- Item-3: no e2e/unit spec asserts the UNCONFIGURED sign-in state; provisioning makes worktree
+  bundles env-carrying = byte-identical to a main rebuild (verified: post-build `git status
+  web/app` clean -> the rebuild matched master`s committed env-carrying dist). No new red.
+
+### 6.3 Gate results (HOME-remap bridge /tmp/h0278; DATABASE_URL from main server/.env)
+
+- **DB-free sweep** `SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh` -> **CI GREEN**.
+- **Full `tools/ci.sh`**: every step GREEN through [6.6/8] --
+  sim / goldens / mock / typecheck / drift / DB-free; [5/7] pg api + registry + the full art
+  suite ([5.1] artwork 16/0, [5.15] artqueue **incl. G5** 5/0, [5.16] artfamily 2/0, [5.2]
+  inspection 5/0, [4.7] golden 36/0); **[6/7] client build**; **[6.1/7] bundle-env tripwire ->
+  `OK -- freshly built web/app carries the configured Supabase host`**; [6.5/8] admin trio +
+  [6.6/8] registry-first e2e.
+- **[7/7] scoped fleet** (REQ-0278 decade: proxy 2782, fleet 2784+, GPU, 4 workers):
+  **191 passed / 5 failed**. The 5:
+  - `forecast.spec.ts:206`, `schedule.spec.ts:1451` -- the documented tolerable load flakes.
+  - `workshop.spec.ts:361` -- **REQ-0256-owned (the sibling fixture-re-tune REQ`s subject),
+    NOT this REQ**; deterministically red on this tree because that REQ has not landed here.
+    Expected-and-not-mine.
+  - `bp-transfer.spec.ts:164`, `long-press-rename.spec.ts:25` -- interaction-timing load
+    flakes (drag-commit / long-press windows under 4-worker GPU load). **Signature-verified**:
+    an isolated scoped re-run of both files was **10 passed / 0 failed**. REQ-0278 has ZERO
+    server/sim/engine/client-src/e2e delta (git diff master...HEAD = ci.sh +8, 2 new tool
+    scripts, 2 docs), so none of the fleet reds can originate here.
+
+### 6.4 Bridge-provisioning note (reproducibility; NOT a code change)
+
+A fresh worktree lacks the gitignored `.venv`, and the bridge`s system python3 has no PIL, so
+the art pg tests need, from the MAIN checkout: `ART_JOB_PYTHON=<main .venv>` (the ART_ROUTE_MOCK
+generation worker needs PIL) and `ART_KIT_MATTE_METHOD=borderkey` (pure-numpy matte; the default
+"auto" loads the 972 MB birefnet per kit spawn and REQ-0233 family-grouping then blocks the next
+generation past its 30 s test budget). `ART_KIT_PYTHON` must be left to ci.sh`s per-step default
+(worktree `.venv` symlinked to the main `.venv` for the run, removed after) -- a GLOBAL export
+leaks it to artwork/artqueue, whose auto-enqueued kits then occupy the worker and break artqueue
+G5 "first group leader runs first". This is pre-existing bridge friction, orthogonal to REQ-0278.
+
+### 6.5 Deploy note
+
+Deliverable: `built`, worktree clean, NOT merged (user acceptance later). On merge, a worktree`s
+committed `web/app` already carries Supabase env (provisioned), so the ad-hoc `42238f8`
+rebuild-web/app-on-main step is retired; `tools/release.sh` rebuild stays the serving invariant
+(now env-confirming, not env-injecting), with `ci.sh [6.1/7]` as the machine check.
