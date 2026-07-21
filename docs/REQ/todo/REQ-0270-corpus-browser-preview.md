@@ -8,6 +8,43 @@
   normalization quality -> derived bands -> live-content comparison), not a
   raw table dump.
 
+- 2026-07-21 implemented (branch req-0270-corpus-browser-preview):
+  tools/build_corpus_browser.py (stdlib only) emits ONE self-contained
+  web/preview/corpus/index.html (inline CSS+JS, dataset embedded as a JSON
+  blob, zero external asset requests, works from file:// and the dev
+  docroot). Four connected views: ENTRIES (467 rows; search + source/kind/
+  rarity/has-unmapped/has-excluded filters; sortable cols name..dps-proxy..
+  price; row expansion -> effect_text, raw numbers, verb/unmapped/excluded
+  chips), NORMALIZATION QUALITY (per-source cards: pages, kinds, raw->norm
+  rarity map, mapped/unmapped/excluded counts, verb-freq bars; pooled top-20
+  unmapped phrases, each clickable -> filters ENTRIES), CURVES & BANDS
+  (pooled rarity distribution bars; per-rarity dps-proxy box plots as
+  hand-rolled inline SVG min/p25/median/p75/p95/max; verb-freq bars; bands
+  table ratio_raw->ratio->warn_hi + basis + bands_formula), LIVE COMPARISON
+  (each live item/skill dps-proxy vs its rarity's warn_hi band, white band
+  marker, OVER highlighted, severe >=3x band, summary counts).
+- 2026-07-21 decisions/notes:
+  * dps-proxy for LIVE content is a faithful port of check_stat_bands.cjs
+    (DAMAGE_VERBS strike/multi_strike/charge_strike, sum verb.n-mid /
+    trigger.s-mid over every_secs damage effects; counted==0 skipped;
+    rarityOf capitalization); corpus-side proxy = damage_mid / cadence_mid
+    mirrors corpus_stats.py; box-plot percentiles reuse corpus_stats'
+    linear-interpolation method so numbers match corpus_stats.json.
+  * Added a 'severe' flag at dps > 3x warn_hi (the 'flag multiple x3'
+    requirement) beyond the plain OVER/OK from check_stat_bands.
+  * skill/1 defs carry no rarity -> no band -> advisory 'na' (parity with
+    check_stat_bands rarityOf==null); shown greyed, dps still plotted.
+  * Real run on full corpus: 467 entries (backpack-battles 165 +
+    backpack-hero 302), 2 sources; index.html ~291 KB; grep http = only the
+    2 CC-BY-SA attribution hrefs + source api endpoints in the data blob
+    (no asset loads). LIVE finding: 39 damage defs evaluated (3 items + 36
+    skills), 1 OVER band -- 'Longsword Blade' (Common) dps-proxy 15.0 >
+    warn_hi 12.0 when assembled; matches check_stat_bands (advisory).
+  * web/preview/corpus/ added to root .gitignore (git check-ignore verified);
+    ci.sh step [3.97/7] runs tools/tests/corpus_browser_test.py (29 asserts,
+    incl. dps parity 30/2.0=15 & 10/2.0=5, bands==corpus_stats.json, two
+    builds byte-identical). Quick CI (SKIP_PG/CLIENT/E2E) GREEN.
+
 ## Origin
 REQ-0268 landed fetch/normalize/stats; the only human surfaces are
 data/corpus/report.md and content/corpus_stats.json. The user wants to eyeball
