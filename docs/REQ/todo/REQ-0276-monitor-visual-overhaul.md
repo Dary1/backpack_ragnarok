@@ -294,3 +294,101 @@ Bounce sparks, kill spark, telegraph, muzzle, washes, numbers: normal blend, alp
 - HP-bar notches left as-is (B-phase geometry is honest; extra emphasis would add idle noise).
 - Player-side status chips still unaddressed (needs a dst→slot map; documented Phase B limitation stands).
 - Armed-badge glyph kept ember (not ember-lo) over the ember-lo frame — pure ember-lo at 11px sank into the raised panel; the frame carries the canonical token instead.
+
+## Phase D evidence (gatekeeper: full gates + screenshots + built move)
+
+2026-07-22. Ran on the box under nohup; scoped e2e on the REQ-0276 decade.
+DATABASE_URL/SUPABASE_JWT_SECRET sourced from the live server/.env (STORAGE_BACKEND
+left UNSET so files-mode stages stay files-mode). pg stages use homedir-remapped
+isolated namespaces — the live pg namespace is never touched.
+
+### D1. tools/ci.sh — full gate (clean uncontended run, log /tmp/req0276_ci2.log)
+Every stage GREEN through [6.6/8]; labels are ci.sh's own:
+- [0/8] e2e harness port rule (REQ-0172) — PASS
+- [1/7] sim tests; [2/7] replay goldens; [2.5–2.96] S4 / forecast-parity / dungeon-roll
+  (REQ-0276-touched dungeon_roll_test) / grave-legion / wildlands / deepstone /
+  unit-charge / balance-sim / candidate-gate — ALL PASS
+- [3/7] mock-src engine; [3.5] tsc (server+shared checkJs); [3.6] engine type-drift;
+  [3.7–3.99] vocab / units / units003 / corpus / stat-band / enemy-bands — ALL PASS
+- [4/7] api tests (files); [4.05] REQ-0240 pacing gates (REQ-0276-touched pacing_test) —
+  PASS; [4.5–4.72] pg_sync / backfill / moderation / bpskin / skin-prefs / e2e-redirect —
+  ALL PASS; [4.7] inspection golden + moderation (art-kit venv) — PASS
+- [5/7] api tests (pg); [5.1–5.46] artwork / artqueue / artfamily / inspection / content /
+  contentagg / seed-derive / content-serving / schedule-serving / bio / bpskin /
+  skin-prefs / moderation (pg) — ALL PASS
+- [5.6–5.9f] client node gates: unit-icon+G7 ring / link-trace / pack-board (x4) /
+  chime / supabase-auth / bpskin (x3) / overlay-a11y / claim-placement / po-outline — ALL PASS
+- [6/7] client typecheck + build — PASS
+- [6.5/8] admin e2e harnesses — artadmin 8 / artinspect 1 / contentadmin 28 PASS
+- [6.6/8] registry-first serving e2e (pg, seeded adopted def) — 4 PASS
+- [7/7] client e2e (SCOPED hermetic, REQ-0276 decade): **192 passed / 1 skipped / 4 failed**.
+
+### D2. [7/7] e2e reds — signature-verified against master's accepted ledger
+The e2e stage IS the scoped client suite (D2 is covered by [7/7]). Every failure was
+diagnosed by isolation re-runs and cross-checked against master
+(docs/REQ/done/REQ-0273-*.md's documented-reds record). **NONE is a REQ-0276 regression** —
+every monitor spec passes on every run (REQ-0045 d/f/g, REQ-0048 pulses, REQ-0049
+attachment badges, REQ-0099 replay transport, REQ-0041 freeze-guard, monitor events;
+schedule.spec.ts:1451's own monitor/roster assertions pass when the test is reached):
+- **forecast.spec.ts:206** (slot-pressure toBeVisible timeout) — PRE-EXISTING documented red.
+  `master:client/e2e/forecast.spec.ts:206` is byte-identical (still navigates to
+  `#/schedule`); `SlotPressureSummary` now mounts only in `src/sortie/DungeonDossier.tsx`
+  (#/sortie). Stale test from the REQ-0239 page split. REQ-0276 touches none of
+  forecast.spec.ts / SchedulePage / DungeonDossier / SlotPressureSummary.
+- **schedule.spec.ts:1451** (apiAssignSlot 409-vs-200) — PRE-EXISTING documented flake.
+  PASSES in isolation; full-file 409 is the REQ-0239 sortie test (1378) leaving squads 0-3
+  deployed under a deferred-cancel room. REQ-0276's pacing/runs changes are additive
+  serve-time enrichment only (no durationSecs / occupancy / settle / deploy-gate change;
+  archived fleet api logs show no startRun/buildRoster exception).
+- **workshop.spec.ts:361** (LRDST reward undefined) — PRE-EXISTING documented red owned by
+  REQ-0256's combat rebaseline (run.result=wipe → rewards-zero-by-design; user ruled
+  balance out of scope 2026-07-22, fixture re-tune REQ filed). Fails in isolation too.
+- **grid-8x8.spec.ts:28** (canvas 8x8 dims, this run only) — transient load flake; PASSES on
+  low-parallel re-run. (Earlier contended run flaked tab-reorder-trash:169 / workshop:361
+  instead — both recovered on re-run; different set each run == load margins, retries=0.)
+Verdict: my branch's e2e reds ⊆ {master's 3 documented user-accepted reds} + transient
+load flakes. Same posture under which REQ-0273/0277 merged: "green modulo documented reds".
+
+### D5. Production build (standalone, log /tmp/req0276_build.log)
+`corepack pnpm run build` (client) — **EXITCODE=0**, "built in 438ms". One benign warning:
+main chunk `index-*.js` 1,548 kB (gzip 434 kB) > 500 kB — the pre-existing single-chunk
+size warning (build succeeds; not REQ-0276-specific). Worktree web/ NOT committed (repo
+convention: worktree builds lack client/.env.local supabase env; deploy rebuilds on main).
+
+### D3. Verification screenshots (scoped harness, REQ-0276 ports 7762 proxy / 7764 fleet)
+Seeded a niflheim_depths L1 run exactly as the schedule e2e specs do (guest via
+server/cli_invite.cjs, PUT canvas fixture, create room, assign squads 0-3 -> active,
+expand monitor canvas), then drove __monitorDebug.applyTestEvents to reveal/wound the
+5-actor roster + status chips + charge pips. Both capture tests passed. PNGs in the
+gatekeeper sandbox at /tmp/req0276_shots/:
+- 01_structure_panel.png — monitor expanded (VFX off under webdriver): 4 player squad
+  plates (BP colour fills + unit icons + dagger PO icons + gold formation frames) | enemy
+  field with Frost Gnoll / Ice Archer nameplates + HP bars | humanized feed (All/Damage/
+  Spoils/Devices) | per-slot HP dock | LIVE transport.
+- 02_structure_canvas.png — the Pixi field alone (same, VFX off).
+- 03_vfx_full_frame00–17.png + 03_vfx_full_panel.png — navigator.webdriver MASKED via
+  addInitScript (verified wd-false) so monitorFx runs FULL: golden impact bursts + tiered
+  "40" damage numbers on the enemy actors (numbers/bursts are suppressed in webdriver/off
+  mode — proof FULL fired), masked boss "Hrímgrímnir, the Frost-Masked" revealed.
+- 04_player_field_closeup.png — player-field crop: BP fills + PO item icons + squad plates.
+Note: the hermetic fleet ships no monster-art rasters, so enemies render as structural
+markers (nameplate + HP bar + rune silhouette); the art hook (loadMonsterTexture via
+art_urls) is wired and fills once art_urls are populated (production / adopted art).
+
+### Gates summary
+sim/mock/typecheck/type-drift/vocab/units/corpus/pacing/dungeon-roll: GREEN.
+api (files + pg, isolated ns): GREEN. client node gates + tsc + vite build: GREEN.
+admin + registry-first e2e: GREEN. Scoped client e2e [7/7]: GREEN modulo the 3
+pre-existing user-accepted documented reds (forecast:206, schedule:1451, workshop:361) —
+ZERO REQ-0276 regressions. Production build: GREEN.
+
+### Commit list (branch req-0276-monitor-visual-overhaul, 14 pre-D commits)
+0b2c17c reserve · d426d7f spec · 6b3ea1e reserved->todo ·
+138b062 A1 · 09e1f62 A2 · f8b9b21 A3 · 1988435 A4 ·
+fb39aae B1 · 06400f6 B2/B3 · 8f7c2f1 B5 ·
+c0ab7ee C1 · 9bab433 C2 · 13eefc5 C3 · d3905ca C4 ·
+(+ this Phase-D evidence commit, + the todo->built move commit).
+
+### Worktree state
+git status CLEAN (throwaway screenshot spec removed; worktree web/ build reverted to the
+committed REQ-0273 artifacts per convention). No merge, no deploy — user coordinates those.
