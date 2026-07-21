@@ -267,3 +267,60 @@ the BP's own 3px colour boundary; centres stay clean — no wireframe).
 - 2026-07-21 reserved -> todo (7125aba; ratified by the user's same-day report).
 - 2026-07-21 implemented + gates green (76cfad3..95c8a2c, see 6.1/6.3).
 - 2026-07-21 todo -> built. NOT merged, NOT deployed; user acceptance pending.
+- 2026-07-22 MERGED to master; DEPLOY HELD at the restart gate (this session; user
+  accepted 2026-07-21/22 review, directive "merge and deploy").
+  - Pre-merge master a11a8b5 kept as branch `backup-pre-req0273`. Merge-base 6f7df0d;
+    master drift since = REQ-0256 merge cd15aa3 (sim/ + docs) only; file overlap ZERO
+    (merge-tree clean), so migrateState v4 stays v4. Merged --no-ff `1388e1a`;
+    `2c948a8` rebuilt web/app in the MAIN checkout (env-carrying bundle, 42238f8
+    convention) -- backpack-web serves the REQ-0273 client from that commit on.
+  - REQ-0256 pre-restart blocker check: MOOT -- its server half was already deployed
+    2026-07-21 20:58:41 UTC by its own user-directed restart (3316b87 / a11a8b5 /
+    its §17.4); no migration, no config, no data step pending. No note appended
+    there (the planned "goes live with this restart" wording would be false).
+  - Master CI, /tmp/hmaster bridge: [0]..[6/7] green incl. [5.9e]/[5.9f] first run
+    on master; mock-src run.cjs 123/0. [6.5/8] artadmin 6/8: `:124`/`:273` page.goto
+    load-timeouts -- the documented REQ-0222 goto-under-load family, same two tests
+    and signature the ACCEPTED REQ-0266 deploy record carries (snapshot fully
+    rendered; A/B: worktree trees 8/8 x3 at da5834c; quiet-box rerun reproduces, so
+    the load is the harness's own render-job load + env-bundle boot latency, not
+    ambient). One quiet rerun also tipped `:344` once (same boot-latency class, was
+    green in the counted deploy run). artinspect 1/1, contentadmin 28/28, [6.6/8]
+    registry-first 4/4. [7/7] quiet serial confirmation fleet, run TWICE on the
+    merged tree: 193 passed / 1 skipped / 3 failed, both runs, identical reds.
+  - Two of the three fleet reds are the documented flakes, signatures verified
+    identical to yesterday's accepted run: forecast.spec.ts:206 (slot-pressure
+    toBeVisible timeout) and schedule.spec.ts:1451 (apiAssignSlot 409-vs-200).
+  - The third red is REAL and NEW TO MASTER'S LINEAGE, and is the HOLD reason:
+    workshop.spec.ts:361 (dungeon-run reward deposits LRDST) -- deterministic 2/2
+    fleets. Root-caused via a hermetic probe api (scratch HOME, files backend, the
+    fleet's own fixture seeding, port 18913, since killed): the room settles 200,
+    `run.result: "wipe"`, rewards null -- settleRun's rewards-zero-on-wipe gate
+    working AS DESIGNED. The spec's fixture squad (assembled longsword + berserker,
+    hpMax 800; its own comment: "WINS 200/200 crypto-random seeds" pre-tick-loop)
+    now WIPES niflheim_depths L1 (6/6 probe trials + 2/2 fleets) under REQ-0256's
+    user-approved combat rebaseline, live since 2026-07-21 20:58. Green x5 on every
+    pre-REQ-0256 tree (REQ-0266 deploy serial fleet + flake rerun; this branch x3).
+    REQ-0256's own merge gates ran sim/mock/server tests only -- no fleet ever saw
+    a REQ-0256 tree before this session. NOT a REQ-0273 defect; not changed by
+    whether this REQ's restart happens (the behaviour is live either way).
+  - Mid-session drift: REQ-0275 (enemy-stat-bands-scope; tools/ + content bands +
+    sim/tests only) merged onto master at 21:21:42Z as 2591cff and moved to done at
+    21:22:25Z citing "master CI green"; its /tmp/req0275_ci.log ends "[7/7] client
+    e2e SKIPPED". Both serial fleets above ran on the post-2591cff tree, so the
+    workshop:361 finding applies to CURRENT master. The REQ-0273 bundle survived
+    that merge byte-identical (diff 2c948a8..2591cff -- web/app is empty). The
+    "reset --hard backup-pre-req0273" rollback precondition (nothing on top) is
+    void.
+  - Per the deploy directive's gate (tolerate only the documented flakes; any other
+    red: stop, do not restart), backpack-api was NOT restarted and built->done is
+    NOT taken. Master left merged and bundle-serving; live api still the 2026-07-21
+    20:58 boot. Owed on user go: art-queue empty check, `systemctl --user restart
+    backpack-api`, /api/content 200 + unit_skins 108 + art_urls 194 tripwire,
+    tunnel spot-check, dated deploy entry, built->done move. Follow-ups for triage:
+    (1) legalize/re-tune workshop.spec.ts:361's squad for tick-loop combat (the
+    ac896de discipline: fix the fixture, do not weaken the law); (2) the balance
+    question behind it -- if this deliberately-beefed squad is now 0-for-6 at the
+    starter dungeon's L1, is that intended difficulty?; (3) REQ-0222's remaining
+    scope (rerun-then-abort + provenance-carrying flake list) would have absorbed
+    both this artadmin abort and the flake bookkeeping.
