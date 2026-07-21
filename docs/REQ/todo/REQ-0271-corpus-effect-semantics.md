@@ -69,3 +69,23 @@ provisional status) is not carried in the data.
   fields; ci green.
 - Unmapped share drops materially (target: <15% of entries with unmapped
   phrases; report the achieved figure honestly).
+
+## Orchestrator audit findings (2026-07-21, 20-card sample, seed=271)
+Numeric fields (damage/cadence/price) correct in all 20 cards. BB rarity
+collapse (Epic->Rare, Godly/Legendary/Unique->Relic) correct as designed.
+Four normalizer defects identified:
+1. BH rarity map: 'Legendary' missing (nonexistent 'relic' key instead) ->
+   66 BH items get rarity_norm=None. Fix: BH Legendary -> Relic.
+2. Icon markup stripped WITH its meaning: [[File:Icon Mana.png|alt=Mana|..]]
+   and {{Pic|Luck}} must be substituted by their alt/arg text, not deleted.
+   Current output leaves dangling fragments ("Gain 1 .").
+3. Trigger headers split from their clauses ("On hit:" / "Start of battle:"
+   land as standalone unmapped phrases). Sentence splitting must keep a
+   trigger header attached to its following clause.
+4. Verb-mapping false positives: any damage mention maps to 'strike'
+   (Citrine adjacency aura should be buff_adjacent; Cap of Resilience
+   damage-reduction is not an attack; Spiked Shield reflect is not strike);
+   target-direction confusion (Plate Armor "Adds 1 Slow to self" wrongly
+   mapped slow_enemy). Mapping must be clause-scoped and target-aware.
+Direction: fix the normalizer first, re-extract phrases, then classify the
+residual list via the curated table; regen with band provenance.
