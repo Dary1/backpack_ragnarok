@@ -72,3 +72,59 @@ D. **Gates & verification**: `./ci.sh` green in this worktree; e2e via
 ## Status log
 - 2026-07-22 reserved -> todo: scope ratified by user directive (fix all,
   no consultation); implementation starting on this branch.
+
+## Phase A evidence (2026-07-22)
+
+**Commits (branch `req-0276-monitor-visual-overhaul`):**
+- `138b062` A1: formation-box JOIN fix + `parseBoxToPixelRect` hardening.
+- `09e1f62` A2: serve-time data enrichment (roster positions/instanceId/masked; ray_hit→enemyIdx; att_*→gimicId; unit_charge_*→slot).
+- `f8b9b21` A3: focused tests for all four gaps.
+- (this) A4: evidence.
+
+**A1 root cause (verified empirically).** Formation `canvases` keys are `unit1..unit4`
+(`content/live/dungeon/formations.json` + `server/services/core.cjs` pass-through);
+`Monitor.tsx` looked up `canvases['squad'+n]` → always `undefined`, so every squad fell to
+the placeholder `` `squad${idx+1}` ``, parsed to a negative-width rect, and hit the REQ-0169 M3
+degenerate-box fallback (no BP fills, no PO icons). Fix: both sites now use `` `unit${n}` ``
+(`Monitor.tsx:174` placeholder + `:180` lookup). `parseBoxToPixelRect` now returns an explicit
+`{w:0,h:0}` for any non-`"TL:BR"` string (renderer still takes its fallback for genuinely
+missing data).
+
+**A2 — new wire fields (all ADDITIVE + OPTIONAL in `shared/dto.ts`).**
+
+*Roster (`ApiRunRoster.enemies[]`, built in `server/services/pacing.cjs buildRoster`):*
+- `instanceId: string` — the SIM entity id, `` `${enemyId}#${index-in-pack-members}` `` (e.g. `glacier_wisp#2`); mirrors `sim/lib/packs.cjs compileEnemyPack`.
+- `at: string | null` — the A1 top-left anchor verbatim from the pack member (e.g. `"B2"`).
+- `fieldCells: [number,number][]` — absolute `[row,col]` cells, DERIVED via `shared/content_validate.cjs cellsFor` (same authority the sim placer uses → transpose-safe, `[fh,fw]`).
+- `masked: boolean` — `false` for monsters (future-proof for masked instances).
+
+*Events (`ApiRunEvent`, merged onto event COPIES at SERVE time in `pacing.cjs decorateVisible`; the stored `run.events` is byte-identical):*
+- `ray_hit`: `+ enemyIdx?: number` — index into `roster.enemies`, resolved from the UNMASKED `dst`. A masked strike (`dst:'?'`) matches nothing → stays anonymous (reveal semantics preserved).
+- `ray_aoe` / `ray_hit_all`: each `hits[]` member gains `+ enemyIdx?: number` (nested array rebuilt as copies; stored event untouched).
+- `att_fire` / `att_reveal` / `att_disarm` / `att_open` / `att_lost`: `+ gimicId?: string` — source gimic content id (e.g. `trap_frost_deadfall`); glyph fallback by `kind` otherwise.
+- `unit_charge_*` (`spend/stack/transform/strike/onhit/lifesteal/reflect/transfer/shieldbreak`): `+ slot?: number` — squad slot 0..3 of the charging BP (bpId rides `id` on spend/stack/transform, `src` on the rest — REQ-0263 §5.3).
+
+*Supporting plumbing:*
+- `sim/dungeon_roll.cjs buildAttachment` now keeps the source `gimicId` on each rolled attachment DEF (trap/chest/door). The sim IGNORES this field (no event change); two same-seed rolls stay byte-identical (`dungeon_roll_test`).
+- `server/services/runs.cjs startRun` builds a `gimics` map `{ attInstanceId → gimicId }` from the rolled def and stores it on the run doc; `decorateVisible` reads `run.gimics`.
+
+**Sim log changed? NO. Goldens NOT rebaselined.** All enrichment is serve-time onto COPIES, plus a
+rolled-DEF-only additive field the sim never reads. `run.events` stays byte-for-byte the sim output.
+
+**Gates run (worktree, node v24.18.0):**
+- `sim/tests/goldens.cjs` → **goldens OK (12 cases) — UNMOVED** (proves `run.events` byte-identical).
+- `sim/tests/forecast_parity.cjs` → **18 passed, 0 failed.**
+- `sim/tests/dungeon_roll_test.cjs` → **6 passed** (incl. new gimicId-resolves test; determinism byte-identical).
+- `sim/tests/unit_charge_test.cjs` → **13 passed**; `unit_charge_encounter_test.cjs` → **24 passed.**
+- `server/tests/pacing_test.cjs` → **15 passed** (incl. 3 new: buildRoster placement/instanceId/transpose, decorateVisible attribution-on-copies, no-roster legacy-safe).
+- `server/tests/api_test.cjs` (files backend) → **194 passed, 0 failed** — includes the determinism gate (`deepStrictEqual(replay.events, runRaw.events)`) and the REQ-0240 roster/pacing test, both green.
+- `schedule_serving_test.cjs` → SKIP (pg-only, no `DATABASE_URL`).
+- Did NOT run full `ci.sh` (Phase D owns it).
+
+**Notes for Phase B (client rendering):**
+- `ray_hit.enemyIdx` / `hits[].enemyIdx` index `roster.enemies` — use for per-enemy HP depletion + defeat greying. Absent ⇒ masked or a non-enemy (gimic) target.
+- Draw the WHOLE enemy formation at `encounter_start` from `roster.enemies[].fieldCells`; masked ones (none today) as footprint silhouette until discovery. `footprint` stays DISPLAY-only — never derive geometry from it (use `fieldCells`).
+- `att_*.gimicId` is present for art binding, BUT gimic ids do NOT yet join `art_urls` (REQ-0259/0211's job) — use the ratified class-glyph fallback (ᚦ trap / ᚷ chest / ᛞ door) until then.
+- `unit_charge_*.slot` (0..3) lights dock/stage charge pips.
+- Only `rollDungeon` (live procedural) content emits `att_*`. The pre-generated `dungeon.json` `entityDef` path emits NO `att_*`; there the gimic identity flows via `ray_hit.dst` (= entity id once unmasked).
+- `frost_gnoll` footprint drift ([1,1] def vs 3×4 art) is still open (REQ-0188 unrun `derive --write`): contain-fit art into the DEF footprint box; do not prefer the art's shape.
