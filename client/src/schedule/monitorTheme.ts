@@ -13,8 +13,15 @@ export const MJ = {
   bone2: 0xa8a193,
   bone3: 0x6b675c,
   gold: 0xc9a959,
+  // REQ-0276 C: hi/lo companions straight from the styleguide swatches --
+  // -hi for the bright instant of an effect, -lo for quiet structural frames.
+  goldHi: 0xebd9a4,
+  goldLo: 0x857038,
   ember: 0xe25822,
+  emberHi: 0xff8a3d,
+  emberLo: 0x7e2a10,
   frost: 0x6fc4de,
+  frostHi: 0xb8e9f5,
   blood: 0xb0413e,
 };
 

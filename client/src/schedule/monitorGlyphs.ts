@@ -34,3 +34,13 @@ export function statusGlyph(status: string): string {
   if (/(bleed|wound)/.test(s)) return 'ᛋ';
   return '•';
 }
+
+/** REQ-0276 C5: status class for chip tinting -- 'fire' burns ember, 'frost'
+ * chills frost, 'other' stays bone (the world's two voices; never gold).
+ * Mirrors statusGlyph's own match set. */
+export function statusKind(status: string): 'fire' | 'frost' | 'other' {
+  const s = (status || '').toLowerCase();
+  if (/(burn|fire|scorch|ember)/.test(s)) return 'fire';
+  if (/(freeze|frost|chill|rime|ice)/.test(s)) return 'frost';
+  return 'other';
+}
