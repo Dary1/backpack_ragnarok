@@ -171,13 +171,13 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           }
         }
       }
-      return { slotIndex: idx, box: `squad${idx + 1}`, bps, label, icons };
+      return { slotIndex: idx, box: `unit${idx + 1}`, bps, label, icons };
     });
     void (async () => {
       try {
         const payload = await fetchDungeons();
         const formation = payload.formations.find((f) => f.id === room.formationId);
-        const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`squad${u.slotIndex + 1}`] ?? u.box }));
+        const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`unit${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountSquads(withRealBoxes);
         squadsMountedRef.current = true;
         interface MonitorDebugEntry {
