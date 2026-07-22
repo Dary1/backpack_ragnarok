@@ -559,7 +559,10 @@ export interface ApiRunEvent {
    * art/badge binding; the class glyph (from `kind`) is the fallback. */
   gimicId?: string;
   /** REQ-0276 A2(iv): on unit_charge_* events, the squad slot index (0..3) of
-   * the charging BP, so dock/stage charge pips can light. */
+   * the charging BP, so dock/stage charge pips can light. REQ-0292: ALSO present
+   * on a player CADENCE `ray_fire` (the firing BP's 0..3 squad index) so the HUD
+   * places the item-cooldown overlay on the right squad board, paired with the
+   * item id already in `src`. Absent on enemy ray_fire (which use `srcInst`). */
   slot?: number;
   /** REQ-0280 / REQ-0264 s9.2: on a `ray_fire`, the skills.json skill-def id of
    * the firing skill. Present ONLY where one honestly exists -- enemy / trap /
@@ -569,6 +572,34 @@ export interface ApiRunEvent {
    * falls back to vfx_ray_<src> / vfx_ray_default. Additive: no consumer
    * requires it, and it draws no RNG. */
   skill?: string;
+  /** REQ-0292 (cooldown ramp wire): on a CADENCE `ray_fire` (a fire that starts a
+   * cooldown), the freshly rolled reset cooldown in TICKS. The client evaluates the
+   * item-cooldown overlay / skill-badge sweep as a pure function of the pt clock:
+   * frac_remaining(pt) = clamp01(1 - (pt - pt_fire)/(cooldownTicks*TICK_SECS)),
+   * pt_fire = THIS event's pt (the fire IS the arm; REQ-0263 s6.4). Sent ONCE per
+   * fire -- NO per-tick stream (~300k events avoided). ABSENT on reactive/pulse/
+   * charge fires and one-shot trap volleys (they never re-arm); its PRESENCE is the
+   * cadence discriminator (draw the cooldown overlay iff cooldownTicks is present). */
+  cooldownTicks?: number;
+  /** REQ-0292: on an ENEMY/GIMIC cadence `ray_fire`, the firing IBattleInstance id
+   * (e.g. "hrimgrimnir#0"). `src` is the DEF id, ambiguous when a pack holds
+   * duplicate defs, so a skill badge keys by srcInst+skill. Absent on player fires
+   * (they key by slot+src) and on one-shot trap volleys. */
+  srcInst?: string;
+  /** REQ-0292 (charge ramp wire): on a unit_charge_spend/stack/transform event, the
+   * instance charge counter at emit (0 right after a fire_on_full/transform spend;
+   * the live counter on a passive_per_stack tick). */
+  value?: number;
+  /** REQ-0292: on a unit_charge_* event, the per-instance ROLLED capacity (full
+   * mark). The client CANNOT derive it from content (per-instance roll -- midpoint
+   * today, a true roll under REQ-0190), so it rides the wire; wedge frac = value/capacity. */
+  capacity?: number;
+  /** REQ-0292: on a unit_charge_* event for an every_secs charge, the fill rate in
+   * counts/sec (1/period) the client interpolates the charge wedge against the pt
+   * clock (value(pt) = value0 + rate*(pt - pt_emit); frac = value/capacity). OMITTED
+   * for event-driven triggers (the counter jumps on combat events, not time -- and
+   * no mid-ramp rate modifier exists in the runtime, so no rate-change event is sent). */
+  rate?: number;
   [key: string]: unknown;
 }
 

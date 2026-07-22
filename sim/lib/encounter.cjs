@@ -582,11 +582,43 @@ function runEncounter(opts) {
   // Charge-less player slots and all enemy slots keep the hard-coded 1.0 the
   // heap driver passed; a chargeMgr switches the player mult to the real
   // Haste/Chill net cadence (REQ-0200), exactly as before.
+  // REQ-0292 (cooldown ramp wire): the just-fired slot's CADENCE ray_fire refs,
+  // captured by fireInstanceSlot so rollCooldownTicksFor can BACK-PATCH the freshly
+  // rolled `cooldownTicks` onto them AFTER the roll -- never hoisting the roll before
+  // the fire (that would reorder the RNG and move every golden; REQ-0263 s6.4
+  // caveat 4). Cleared after each stamp.
+  let pendingCadenceFire = [];
+  const SQUAD_SLOT_INDEX = { unit1: 0, unit2: 1, unit3: 2, unit4: 3 };
   function rollCooldownTicksFor(inst, cd) {
     const sRange = cd.effect.trigger.s; // [lo,hi] SECONDS -- authoring stays seconds (s3.2)
     const stream = rng.stream(effectStreamName(cd.ownerUid, cd.effIdx) + '/timing');
     const mult = (inst.kind === 'bp' && chargeMgr) ? playerCadenceMult(cd.ownerUid) : 1.0;
-    return secsToTicks(stream.range(sRange[0], sRange[1]) * mult);
+    const ticks = secsToTicks(stream.range(sRange[0], sRange[1]) * mult);
+    // Back-patch the ramp param onto the fire that just re-armed to it: a pure
+    // post-facto write on an already-emitted event -- no RNG draw, no reorder.
+    for (const e of pendingCadenceFire) e.cooldownTicks = ticks;
+    pendingCadenceFire = [];
+    return ticks;
+  }
+  // REQ-0292: push a fire's ray events, capturing the ray_fire(s) as THIS tick's
+  // cadence fire so cooldownTicks back-patches at the RESET roll. Player fires gain
+  // `slot` (the 0..3 squad index the client draws the cooldown overlay on, paired
+  // with the item id already in `src`); enemy/gimic fires gain `srcInst` (the firing
+  // IBattleInstance id, e.g. "hrimgrimnir#0") so a skill badge keys unambiguously by
+  // instanceId+skill even with duplicate defs (`skill` is already on it -- REQ-0280).
+  function pushCadenceFire(inst, rayEvents, t) {
+    const fires = [];
+    for (const re of rayEvents) {
+      const ev = Object.assign({ t, seq: seq.nextSeq() }, re);
+      events.push(ev);
+      if (ev.ev === 'ray_fire') fires.push(ev);
+    }
+    for (const ev of fires) {
+      if (inst.kind === 'bp') { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
+      else ev.srcInst = inst.id;
+    }
+    pendingCadenceFire = fires;
+    return fires;
   }
 
   // s7.1a: the fire step a slot reaching 0 runs -- the heap driver's skill_fire
@@ -596,6 +628,7 @@ function runEncounter(opts) {
   // stays continuous while not matching -- S6.2 pause semantics).
   function fireInstanceSlot(inst, cd) {
     const t = simNow;
+    pendingCadenceFire = []; // REQ-0292: cleared each fire; the cadence-fire paths below set it
     if (inst.kind === 'bp') {
       const s = cd;
       if (s.modes.includes(encounterDef.mode) && s.effect.verb && s.effect.verb.t === 'pulse') {
@@ -616,7 +649,7 @@ function runEncounter(opts) {
           targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
         });
-        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        pushCadenceFire(inst, rayEvents, t); // REQ-0292: +slot (player squad) + back-patched cooldownTicks
         if (encounterDef.mode === 'detection' && rayEvents.some(r => r.ev === 'ray_hit' && r.dst !== '?')) {
           discoveredEntity = true;
         }
@@ -664,9 +697,17 @@ function runEncounter(opts) {
           }
         }
       } else if (hasAtt && s.modes.includes('detection')) {
+        // REQ-0292: detection/unlock rays re-arm too (REQ-0263 s6.4 caveat 3) --
+        // capture their ray_fire so slot + cooldownTicks land like any cadence fire.
+        const preLen = events.length;
         resolveDetection(s, t);
+        pendingCadenceFire = events.slice(preLen).filter((e) => e.ev === 'ray_fire');
+        for (const ev of pendingCadenceFire) { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
       } else if (hasAtt && s.modes.includes('unlock')) {
+        const preLen = events.length;
         resolveUnlock(s, t);
+        pendingCadenceFire = events.slice(preLen).filter((e) => e.ev === 'ray_fire');
+        for (const ev of pendingCadenceFire) { const si = SQUAD_SLOT_INDEX[inst.squadSlot]; if (si != null) ev.slot = si; }
       }
       // NOTE: no reschedule call here -- the RESET is the instance walk's
       // (battle.cjs IBattleInstance.tick(), s8.5), and it happens regardless of
@@ -697,7 +738,7 @@ function runEncounter(opts) {
           targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
         });
-        for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+        pushCadenceFire(inst, rayEvents, t); // REQ-0292: +srcInst (instanceId) + back-patched cooldownTicks
         // REQ-0078 reactive (offensive rider): this monster's OnHit/OnSquadHit
         // skills fire on each player actor its attack just directly hit
         // (OnHit == OnSquadHit for a flat monster squad); isolated RNG.
