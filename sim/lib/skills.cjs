@@ -186,15 +186,25 @@ function dealHitOnField(actor, verbEff, bounceMult, rng, mode, events, attackerB
 function fireSkillRay(opts) {
   const {
     attacker, attackProfile, verbEff, mode, targetActors, targetBounds,
-    rng, streamPrefix, events, aoeStatuses,
-  } = opts;
+    rng, streamPrefix, events, aoeStatuses, skill,
+  } = opts; // REQ-0280: `skill` (skills.json def id) is optional -- see below.
   const rayStream = rng.stream(streamPrefix + '/ray');
   const dmgStream = rng.stream(streamPrefix + '/dmg');
   const { edge, entryCell, dir } = selectEntryCell(attacker.fieldCells, attackProfile.edge, rayStream, targetBounds);
-  events.push({
+  // REQ-0280 / REQ-0264 s9.2: label the ray with its skills.json def id WHERE
+  // one honestly exists (enemy / trap / door skills, threaded through
+  // compilation). A PLAYER-item ray carries no skills.json id -- its identity is
+  // `src` (the item id) -- and charge / synthesized rays carry none; both leave
+  // `skill` ABSENT and the client falls back (vfx_ray_<src> / vfx_ray_default).
+  // ADDITIVE + RNG-neutral: `skill` is appended LAST and only when present, so
+  // the replay-JSONL diff is exactly one key on the labelled ray_fires -- no `t`,
+  // amount, count or order moves. `skill` draws no RNG (it is read, not rolled).
+  const rayFireEv = {
     ev: 'ray_fire', src: attacker.ownerId, field: targetBounds.label, entry: entryCell.slice(),
     dir, pen: attackProfile.penetration || 0, aoe: attackProfile.aoe || 0,
-  });
+  };
+  if (typeof skill === 'string' && skill) rayFireEv.skill = skill;
+  events.push(rayFireEv);
 
   // REQ-0078: collect DIRECT (strike/multi_strike, amount>0) hits so the
   // encounter loop can drive reactive OnHit/OnBeenHit procs after the ray

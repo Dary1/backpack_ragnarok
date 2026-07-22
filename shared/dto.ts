@@ -561,6 +561,14 @@ export interface ApiRunEvent {
   /** REQ-0276 A2(iv): on unit_charge_* events, the squad slot index (0..3) of
    * the charging BP, so dock/stage charge pips can light. */
   slot?: number;
+  /** REQ-0280 / REQ-0264 s9.2: on a `ray_fire`, the skills.json skill-def id of
+   * the firing skill. Present ONLY where one honestly exists -- enemy / trap /
+   * door skills (threaded through sim compilation). ABSENT on player-item rays
+   * (their identity is `src`, the item id) and on charge / synthesized rays.
+   * Purely a per-skill VFX ART key (vfx_ray_<skill>); when absent the client
+   * falls back to vfx_ray_<src> / vfx_ray_default. Additive: no consumer
+   * requires it, and it draws no RNG. */
+  skill?: string;
   [key: string]: unknown;
 }
 

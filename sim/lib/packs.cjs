@@ -72,6 +72,10 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
       if (!sdef) throw new Error('compileEnemyPack: missing skill def ' + sid);
       return sdef;
     });
+    // REQ-0280: a PARALLEL id list (skills[i] <-> skillIds[i]) so ray_fire can
+    // label the ray with its skills.json def id WITHOUT copying the shared skill
+    // objects (REQ-0121's shared-ref invariant, asserted in sim/tests/run.cjs).
+    const skillIds = (def.skills || []).slice();
     // REQ-0121: any buff_self on this enemy (battle_start fold now, or
     // on_hp_below fold at crossing time) mutates strike/multi_strike
     // n-ranges of THIS INSTANCE's skills -- deep-copy the whole skills
@@ -100,7 +104,7 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     if (buffSelfFlat) foldFlatBonusInPlace(skills, buffSelfFlat);
     return {
       id: eid + '#' + idx, defId: eid, name: def.name, hp: hpMax, hpMax,
-      footprint: [fh, fw], fieldCells, skills, statusBag,
+      footprint: [fh, fw], fieldCells, skills, skillIds, statusBag, // REQ-0280: skillIds parallels skills
       alive: true, ownerId: eid + '#' + idx, bonusVsStatus,
       damageReduction, // REQ-0121 (0 when absent -- reduceIncoming no-ops)
     };
