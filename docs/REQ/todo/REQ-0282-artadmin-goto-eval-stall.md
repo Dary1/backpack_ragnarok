@@ -88,3 +88,61 @@ Nothing else in the graph performs module-scope canvas work (bundle audit).
 - **REQ-0281 dependency note:** REQ-0281's done-stamp was gated on the artadmin
   gate being green on the real master bundle; that gate goes green only once THIS
   REQ reaches master. Stamp REQ-0281 done together with/after this merge.
+
+## Gates (2026-07-22, worktree @ feaf8b3/7d0cfd5, bundle `index-BWwBC1E6.js`, auth.qtie.jp x1)
+
+### HEADLINE — tools/artadmin_e2e.sh, 3 consecutive runs on THIS tree's bundle
+- RUN 1: **8 passed (1.7m)** (start loadavg 3.59)
+- RUN 2: **8 passed (1.7m)** (start loadavg 8.89)
+- RUN 3: **8 passed (1.8m)** (start loadavg 10.77)
+Runs 2-3 under far heavier load than any historical failure. Pre-fix control:
+the deployed master bundle failed `:124`/`:273` 4/4 (3 prior A/B runs + one
+fresh run this session at start loadavg 0.11). Probe delta on the identical
+rig: `:124` goto 6.5–7.2 s pre-fix → **322 ms** post-fix.
+
+### Full tools/ci.sh under the /tmp/h0282b bridge (DATABASE_URL from server/.env; never printed)
+Env: `ART_FAMILY_BARRIER=0`, `ART_KIT_MATTE_METHOD=borderkey`. Log `/tmp/h0282b/ci_final5.log`.
+- [0/8]..[4.x]: PASS — sim **121/0**, replay goldens **12/12 UNMOVED**, S4 14/0,
+  forecast parity 18/0, roller/rosters/charge suites all 0-fail, mock-src,
+  tsc, vocab/units/corpus py gates, api files **194/0**, pacing 15/0,
+  DB-free sweep gates, inspect-kit goldens **36/0**.
+- [5.x] pg: api **194/0**, artwork **18/0** (incl. both REQ-0280 vfx tests),
+  artqueue **5/0**, artfamily, inspection, content 18/0, contentagg,
+  serving/schedule/bio/bpskin/moderation: ALL PASS (zero `FAIL` lines in the log).
+- [5.6..6.1]: client node gates, typecheck + vite build, REQ-0278 env tripwire: PASS.
+- [6.5/8]: artadmin **8/8** + artinspect **1/1** + contentadmin **28/28** (inside the bridge).
+- [6.6/8]: registry-first serving e2e **4/4**.
+- [7/7] scoped client e2e (REQ-0282 decade, 197 tests, 4 workers):
+  **194 passed / 1 skipped / 2 failed (3.0m)** — the 2 are EXACTLY the
+  documented master-owned reds `forecast.spec.ts:206` and `schedule.spec.ts:1451`
+  (`workshop.spec.ts:361` now PASSES post-REQ-0279). ZERO new reds; monitor
+  specs (REQ-0045/48/49/99/240 zones, pulses, attachment badges, replay
+  transport) all green. ci exits non-zero solely on the two documented reds —
+  the same "green modulo documented reds" posture REQ-0273/0276/0280 merged under.
+
+### VFX no-regression (pixi patch touches ONLY the canvas-renderer tinter; app renders WebGL)
+- [7/7] monitor/schedule specs green (above).
+- REQ-0280 screenshot rig re-run against THIS bundle (files-backend fleet api
+  + vfx proxy serving committed `content/art/vfx/*.png`, `navigator.webdriver`
+  masked): textured SILVER ray strips in flight with the procedural white-hot
+  head and fading textured tail, tiered damage numbers (22/26), Glacier Wisp
+  nameplate + bone reveal ring, boss reveal "Hrimgrimnir, the Frost-Masked"
+  with segmented HP bar. Frames archived at `/tmp/req0282_shots/` (harness
+  torn down; fleet stopped; decade ports free).
+
+### Bridge-env findings (recorded for future /tmp/hNNNN ci bridges)
+- `$HOME/.cache/ms-playwright` must be symlinked (else [6.5] browsers fail at 1 ms).
+- `$HOME/backpack_ragnarok/.venv` must resolve (worktree got a temporary
+  untracked `.venv` symlink to the main checkout's venv; removed after the run).
+- `ART_KIT_MATTE_METHOD=borderkey` (the code's own e2e-sanctioned model-free
+  path): without it the inspect kits DOWNLOAD the 972 MB birefnet-general.onnx
+  into the bridge home mid-gate and CPU-onnx clogs the serialized art queue →
+  [5.1] render timeouts.
+- Do NOT export `ART_KIT_PYTHON` globally: `artqueue_test` G5 expects the queue
+  without an injected kit python (bisected: export alone flips G5 red on master
+  and this tree alike; ci.sh wires ART_KIT_PYTHON only to the stages that want it).
+
+## Status log (cont.)
+- 2026-07-22 fix landed (pnpm patch `feaf8b3`, bundle `7d0cfd5`); artadmin 8/8 x3
+  + full ci green mod the 2 documented reds -> todo -> built. Merge + deploy are
+  owner-coordinated; REQ-0281's done-stamp rides this merge (dependency noted above).
