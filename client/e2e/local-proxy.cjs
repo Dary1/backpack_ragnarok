@@ -38,6 +38,22 @@ function servePreviewStatic(creq, cres) {
   });
 }
 
+// REQ-0281: e2e is HERMETIC and must never depend on an external subresource.
+// The SPA index.html <head> pulls Google Fonts from fonts.googleapis.com /
+// fonts.gstatic.com via a <link rel="stylesheet"> whose fetch the page LOAD
+// event waits on. On the hermetic box that fetch is outside the harness control:
+// when it is slow or unreachable, `load` stalls past navigationTimeout while the
+// page itself is fully rendered (the font stacks degrade to system fonts) -- the
+// goto-under-load flake that red-flagged REQ-0266/0273/0278/0279 (artadmin.spec
+// :124/:273, "page.goto: Timeout ... waiting until load"). This static server is
+// the single chokepoint serving /app for EVERY e2e path (fleet + admin
+// harnesses), so it strips the external font <link>s from index.html here: no
+// external request is ever made, `load` fires on same-origin resources only, and
+// production (served through the real ingress, not this proxy) is untouched.
+const EXTERNAL_FONT_LINK_RE = /[ \t]*<link\b[^>]*fonts\.g(?:oogleapis|static)\.com[^>]*>\s*/gi;
+function neutralizeExternalFonts(buf) {
+  return Buffer.from(String(buf).replace(EXTERNAL_FONT_LINK_RE, ""), "utf8");
+}
 function serveAppStatic(creq, cres) {
   let rel = creq.url.replace(/^\/app/, "").split("?")[0];
   if (rel === "" || rel === "/") rel = "/index.html";
@@ -48,14 +64,15 @@ function serveAppStatic(creq, cres) {
       if (!path.extname(rel)) {
         fs.readFile(path.join(WEB_APP, "index.html"), (e2, html) => {
           if (e2) { cres.writeHead(404); cres.end("not found"); return; }
-          cres.writeHead(200, { "content-type": "text/html; charset=utf-8" }); cres.end(html);
+          cres.writeHead(200, { "content-type": "text/html; charset=utf-8" }); cres.end(neutralizeExternalFonts(html));
         });
         return;
       }
       cres.writeHead(404); cres.end("not found"); return;
     }
     const ct = MIME[path.extname(filePath).toLowerCase()] || "application/octet-stream";
-    cres.writeHead(200, { "content-type": ct }); cres.end(buf);
+    const body = ct.startsWith("text/html") ? neutralizeExternalFonts(buf) : buf;
+    cres.writeHead(200, { "content-type": ct }); cres.end(body);
   });
 }
 
