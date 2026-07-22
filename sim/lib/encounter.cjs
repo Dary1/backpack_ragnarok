@@ -204,7 +204,7 @@ function runEncounter(opts) {
     const centerRow = Math.floor((1 + FIELD_ROWS) / 2), centerCol = Math.floor((1 + FIELD_COLS) / 2);
     const fieldCells = [];
     for (let dr = 0; dr < fh; dr++) for (let dc = 0; dc < fw; dc++) fieldCells.push([centerRow + dr, centerCol + dc]);
-    let entitySkills = (ed.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+    let entitySkills = (ed.skills || []).map(sid => { const d = skillDefsById[sid]; return d ? Object.assign({}, d, { id: sid }) : null; }).filter(Boolean); // REQ-0280: carry def id
     // REQ-0121: same instance-copy rule as packs.cjs -- buff_self mutates
     // this instance's skill ranges, so never share content defs.
     if (entitySkills.some(s => s && s.verb && s.verb.t === 'buff_self')) entitySkills = deepCopy(entitySkills);
@@ -330,7 +330,7 @@ function runEncounter(opts) {
       const isTrap = adef.kind === 'trap';
       const cells = takeCluster(fp[0], fp[1], !isTrap);
       if (!cells) continue;
-      const skills = (ent.skills || []).map(sid => skillDefsById[sid]).filter(Boolean);
+      const skills = (ent.skills || []).map(sid => { const d = skillDefsById[sid]; return d ? Object.assign({}, d, { id: sid }) : null; }).filter(Boolean); // REQ-0280: carry def id
       const hpR = Array.isArray(ent.hp) ? ent.hp : (typeof ent.hp === 'number' ? [ent.hp, ent.hp] : null);
       const hpVal = hpR ? Math.round(rng.stream('attach/' + encIndex + '/' + adef.id + '/hp').range(hpR[0], hpR[1])) : 0;
       attachments.push({
@@ -355,7 +355,7 @@ function runEncounter(opts) {
       const rayEvents = [];
       fireSkillRay({
         attacker: { fieldCells: att.fieldCells, ownerId: att.id + '#trap', bonusVsStatus: [] },
-        attackProfile: ap, verbEff: skill, mode: 'battle',
+        attackProfile: ap, verbEff: skill, mode: 'battle', skill: skill && skill.id, // REQ-0280
         targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
         rng, streamPrefix: 'att-fire/' + encIndex + '/' + att.id + '/' + t, events: rayEvents, aoeStatuses: !!ap.aoe_statuses,
       });
@@ -632,7 +632,7 @@ function runEncounter(opts) {
             reactDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: ent.raw.ownerId });
             fireSkillRay({
               attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
-              attackProfile: ap, verbEff: sk, mode: 'battle',
+              attackProfile: ap, verbEff: sk, mode: 'battle', skill: sk && sk.id, // REQ-0280
               targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
               rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + t,
               events: reactDef, aoeStatuses: !!ap.aoe_statuses,
@@ -691,7 +691,7 @@ function runEncounter(opts) {
         events.push({ t: tickT(Math.max(0, simTick - LEAD_TICKS)), seq: seq.nextSeq(), ev: 'telegraph', src: s.ownerId, skill: s.effect.verb.t, edge: (attackProfile.edge || ['top'])[0], fires_at: t });
         const rayEvents = [];
         const fr = fireSkillRay({
-          attacker, attackProfile, verbEff: s.effect, mode: 'battle',
+          attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: s.effect && s.effect.id, // REQ-0280
           targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
         });
@@ -832,7 +832,7 @@ function runEncounter(opts) {
         const attacker = { fieldCells: entity.fieldCells, ownerId: entity.id, bonusVsStatus: entity.bonusVsStatus || [] };
         const rayEvents = [];
         fireSkillRay({
-          attacker, attackProfile, verbEff: skill, mode: 'battle',
+          attacker, attackProfile, verbEff: skill, mode: 'battle', skill: skill && skill.id, // REQ-0280
           targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
           rng, streamPrefix: 'trap-timeout/' + encounterDef.id, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
         });

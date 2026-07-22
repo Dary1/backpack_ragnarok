@@ -70,7 +70,10 @@ function compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyField
     let skills = (def.skills || []).map(sid => {
       const sdef = skillDefsById[sid];
       if (!sdef) throw new Error('compileEnemyPack: missing skill def ' + sid);
-      return sdef;
+      // REQ-0280: carry the skills.json def id through compilation (a SHALLOW
+      // copy, so the shared content def is never mutated) so ray_fire can label
+      // the ray. Inert to mechanics (verb/trigger/profile/modes read by value).
+      return Object.assign({}, sdef, { id: sid });
     });
     // REQ-0121: any buff_self on this enemy (battle_start fold now, or
     // on_hp_below fold at crossing time) mutates strike/multi_strike
