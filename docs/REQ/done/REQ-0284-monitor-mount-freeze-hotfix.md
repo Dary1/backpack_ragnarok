@@ -57,3 +57,16 @@ squads() never populates), passes after the fix.
 ## Gates
 tsc -b, oxlint, check_po_outline.mjs, scoped schedule e2e (decade 284) incl. the
 new regression — all green.
+
+
+## Deploy (2026-07-22)
+- Merge 1d853b5 (--no-ff) into master; client bundle rebuilt in the main checkout.
+- Bundle hash: index-C6UPg4kD.js -> index-CUfhEA_S.js (build commit 5aa2db2).
+- Verified: /api/health {ok:true} on :8802 (NO api restart -- server/ unchanged);
+  web :8801 and public https://backpack-dev.qtie.jp/app/ both serve
+  index-CUfhEA_S.js; live boot smoke (playwright, read-only) -- React root mounts,
+  no pageerror.
+- Fix proof: scoped schedule e2e REQ-0284 regression (fixture preset 10: berserker
+  fighter + unit-less wall BP) is GREEN post-fix; the pre-fix live bundle threw
+  "Cannot read properties of undefined (reading 'id')" at monitor mount and blanked
+  the whole Watch view (trace-captured).
