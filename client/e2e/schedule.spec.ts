@@ -1650,3 +1650,104 @@ test.describe('REQ-0285: a malformed run roster never tears down the Watch view 
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+test.describe('REQ-0292: instance-HUD ramps (cooldown overlay / charge wedge / skill-badge sweeps)', () => {
+  // The ramp STORE is STATE (not transient VFX), so it is tracked even under
+  // webdriver='off' (no drawing at all) and read back through the __monitorDebug
+  // ramps() seam -- the sanctioned STRUCTURAL assertion (never pixels, per the P2
+  // contract). setPlayhead drives the SAME pt clock the live release cursor uses;
+  // cooldown/charge fractions must MOVE with it, and the overlay objects (badge
+  // keys) must EXIST once their arming event lands.
+  async function openMonitor(page: Page): Promise<string> {
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) { const r = await apiAssignSlot(page, player.token, roomId, i, i); expect(r.status).toBe(200); }
+    await expect(async () => { const view = await apiGetRoom(page, player.token, roomId); expect(view.body.room.status).toBe('active'); }).toPass({ timeout: 10000 });
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+    await expect(async () => {
+      const ready = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { ramps?: unknown; setPlayhead?: unknown; applyTestEvents?: unknown }> };
+        const d = w.__monitorDebug?.[rid];
+        return typeof d?.ramps === 'function' && typeof d?.setPlayhead === 'function' && typeof d?.applyTestEvents === 'function';
+      }, roomId);
+      expect(ready).toBe(true);
+    }).toPass({ timeout: 10000 });
+    return roomId;
+  }
+
+  type Snap = { pt: number; cooldowns: Array<{ key: string; frac: number }>; charges: Array<{ key: string; value: number; capacity: number; frac: number }>; badges: string[] };
+
+  test('cooldown + charge fractions track the pt playhead; skill-badge object exists', async ({ page }) => {
+    const roomId = await openMonitor(page);
+    const snaps = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { applyTestEvents: (e: unknown[]) => void; setPlayhead: (ms: number) => void; ramps: () => unknown }> };
+      const d = w.__monitorDebug[rid];
+      d.setPlayhead(1000);
+      d.applyTestEvents([
+        // player CADENCE fire: (slot, src) + cooldownTicks -> item overlay ramp. 300 ticks * TICK_SECS(0.01) * 1000 = 3000ms span.
+        { t: 1, pt: 1000, seq: 1, ev: 'ray_fire', field: 'enemy', src: 'frost_blade', slot: 0, cooldownTicks: 300, entry: [1, 1] },
+        // enemy CADENCE fire: (srcInst, skill) + cooldownTicks -> skill-badge ramp. 400 ticks -> 4000ms span.
+        { t: 1, pt: 1000, seq: 2, ev: 'ray_fire', field: 'player', srcInst: 'hrimgrimnir#0', skill: 'hrim_cleave', cooldownTicks: 400 },
+        // event-driven charge (no rate): STATIC frac value/capacity = 2/4 = 0.5.
+        { t: 1, pt: 1000, seq: 3, ev: 'unit_charge_stack', slot: 1, stacks: 2, value: 2, capacity: 4 },
+        // every_secs charge: value(pt) = 0 + rate(2)*(pt-1000)/1000, capacity 10 -> fills with the clock.
+        { t: 1, pt: 1000, seq: 4, ev: 'unit_charge_spend', slot: 2, value: 0, capacity: 10, rate: 2 },
+      ]);
+      const at = (ms: number): unknown => { d.setPlayhead(ms); return d.ramps(); };
+      return { r0: at(1000), r1: at(2500), r2: at(5000), r6: at(7000) };
+    }, roomId) as { r0: Snap; r1: Snap; r2: Snap; r6: Snap };
+
+    const cd = (r: Snap, key: string): number => r.cooldowns.find((c) => c.key === key)?.frac ?? -1;
+    const ch = (r: Snap, key: string): number => r.charges.find((c) => c.key === key)?.frac ?? -1;
+
+    // item cooldown: FULL at the fire, HALF at +1500ms, READY (0) past the span.
+    expect(cd(snaps.r0, 'item|0|frost_blade')).toBeCloseTo(1, 2);
+    expect(cd(snaps.r1, 'item|0|frost_blade')).toBeCloseTo(0.5, 1);
+    expect(cd(snaps.r2, 'item|0|frost_blade')).toBeCloseTo(0, 2);
+    expect(cd(snaps.r1, 'item|0|frost_blade')).toBeLessThan(cd(snaps.r0, 'item|0|frost_blade'));
+    // skill-badge cooldown (4000ms span): full -> 0.625 @ +1500 -> ready.
+    expect(cd(snaps.r0, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(1, 2);
+    expect(cd(snaps.r1, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(0.625, 2);
+    expect(cd(snaps.r2, 'skill|hrimgrimnir#0|hrim_cleave')).toBeCloseTo(0, 2);
+    // the badge OBJECT exists (structural: seam-asserted, no pixels needed under off).
+    expect(snaps.r0.badges).toContain('skill|hrimgrimnir#0|hrim_cleave');
+    // event-driven charge stays STATIC; the every_secs charge FILLS with the playhead.
+    expect(ch(snaps.r0, '1')).toBeCloseTo(0.5, 2);
+    expect(ch(snaps.r6, '1')).toBeCloseTo(0.5, 2);
+    expect(ch(snaps.r0, '2')).toBeCloseTo(0, 2);
+    expect(ch(snaps.r1, '2')).toBeCloseTo(0.3, 1);
+    expect(ch(snaps.r6, '2')).toBeCloseTo(1, 2); // clamped to capacity
+    expect(ch(snaps.r1, '2')).toBeGreaterThan(ch(snaps.r0, '2'));
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+
+  test('enemy HP bar starts full until the first attributed hp_after, then tracks hp_after/hpMax', async ({ page }) => {
+    const roomId = await openMonitor(page);
+    type Actor = { instanceId: string; hp: number; hpMax: number };
+    const res = await page.evaluate((rid) => {
+      const w = window as unknown as { __monitorDebug: Record<string, { setTestRoster: (r: unknown) => number; applyTestEvents: (e: unknown[]) => void; enemyActors: () => unknown[] }> };
+      const d = w.__monitorDebug[rid];
+      const built = d.setTestRoster({ slots: [], enemies: [ { id: 'ogre', name: 'Ogre', nameJa: 'O', hpMax: 100, masked: false, footprint: [1, 1], fieldCells: [[2, 2]], instanceId: 'ogre#0' } ] });
+      const before = d.enemyActors();
+      d.applyTestEvents([ { t: 1, pt: 1000, seq: 1, ev: 'ray_hit', dst: 'ogre#0', enemyIdx: 0, amount: 40, hp_after: 60 } ]);
+      const after = d.enemyActors();
+      return { built, before, after };
+    }, roomId) as { built: number; before: Actor[]; after: Actor[] };
+
+    expect(res.built).toBe(1);
+    const beforeOgre = res.before.find((a) => a.instanceId === 'ogre#0');
+    const afterOgre = res.after.find((a) => a.instanceId === 'ogre#0');
+    expect(beforeOgre?.hp).toBe(100); // full (100%) until the first hp_after names it
+    expect(beforeOgre?.hpMax).toBe(100); // hp[1] wire max (P1 ruling, no fabricated per-instance roll)
+    expect(afterOgre?.hp).toBe(60); // then tracks hp_after
+    expect(afterOgre?.hpMax).toBe(100);
+  });
+});

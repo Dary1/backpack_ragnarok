@@ -208,6 +208,8 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           chimeStats: () => ChimeStats | null;
           enemyActors: () => unknown[];
           setTestRoster: (roster: import('../api').ApiRunRoster) => number;
+          ramps: () => { pt: number; cooldowns: Array<{ key: string; frac: number }>; charges: Array<{ key: string; value: number; capacity: number; frac: number }>; badges: string[] };
+          setPlayhead: (ms: number) => void;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
@@ -227,6 +229,10 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
             rendererRef.current?.setRoster(roster);
             return rendererRef.current?.getBuiltEnemyCount() ?? -1;
           },
+          // REQ-0292 P2: pt-clock ramp seam -- setPlayhead drives the clock, ramps()
+          // reports cooldown/charge fractions + tracked skill-badge keys at that pt.
+          ramps: () => rendererRef.current?.getRampsSnapshot() ?? { pt: 0, cooldowns: [], charges: [], badges: [] },
+          setPlayhead: (ms: number) => rendererRef.current?.setPlayhead(ms),
         };
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -264,6 +270,13 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
     else if (idx > cursorRef.current) r.applyEvents(run.events.slice(cursorRef.current, idx), { silent: silentBatch });
     cursorRef.current = idx;
   }, [releasedIdx, silentEpoch, run]);
+
+  // REQ-0292 P2: push the presentation-time playhead + pacingVersion into the
+  // renderer so its persistent ramp ticker evaluates the cooldown/charge sweeps
+  // against the SAME pt clock the release cursor uses. playheadMs updates every
+  // rAF; setPlayhead is a cheap field set (the Pixi ticker does the drawing).
+  useEffect(() => { rendererRef.current?.setPlayhead(playheadMs); }, [playheadMs]);
+  useEffect(() => { rendererRef.current?.setPacingVersion(run?.pacingVersion ?? 1); }, [run?.pacingVersion, mountedOnce]);
 
   // Rewards fetch once settled + non-wipe.
   useEffect(() => {

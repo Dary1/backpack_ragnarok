@@ -179,3 +179,124 @@ defaultTemplate), `CreatePanel.tsx` (locked-256 note, grouped with si, no role s
    branch, **P2 normalises the enemy bar to start FULL** -- render the bar at 100% until the
    first `hp_after` names the instance, then track hp_after/hp[1] thereafter (a bar the client
    knows is honest; it never sends a fabricated per-instance max).
+
+## P2 evidence (Opus, 2026-07-23)
+
+Client instance-HUD: pt-clock ramp evaluator + item-cooldown overlays, unit-charge
+wedges, monster/gimic skill badges (icon + sweep), passive-flash tie-in, HP
+normalization. On `req-0292-instance-hud-cooldown-skill-icons`, source-only (the
+web/app bundle is P4's canonical rebuild).
+
+### A. Modules / files
+- **NEW `client/src/schedule/monitorRamps.ts`** — pure `RampStore` (no Pixi). Cooldown
+  `{pt0, durationMs}` and charge `{pt0, value0, capacity, rate}` maps; `TICK_SECS = 0.01`
+  mirrored from `sim/lib/core.cjs:105` (same "mirrored constant" discipline as
+  `pacingClient`). `cooldownFrac = clamp01(1-(pt-pt0)/durationMs)`,
+  `chargeValue = clamp(value0 + rate*(pt-pt0)/1000, 0, capacity)`, `chargeFrac = value/capacity`.
+- **NEW `client/src/schedule/monitorSkillArt.ts`** — `skill_icon` texture cache, exact-name
+  direct `/api/art/<skill_id>.png` (P1 ruling E: NOT art_urls), null-miss cached, single
+  in-flight promise; `peekSkillTexture` synchronous cached-only read (glyph fallback until
+  it lands). Mirrors `monitorVfxArt` verbatim.
+- **NEW `client/src/schedule/monitorHud.ts`** — stateless draw primitives `sweepPie` (circular
+  clockwise sweep from 12 o'clock) + `sweepRectMasked` (rect sweep clipped to a PO box via a
+  rect mask). Winding note: Pixi y-down => arc counterclockwise=false advances CLOCKWISE.
+- **EDIT `board/squadCompositor.ts`** — added an OPTIONAL `onSeatAnnotation` hook to `ComposeOpts`.
+  `drawUnitSeat` inserts an empty Container in board z-order BETWEEN the core disc and the unit
+  icon sprite and hands back the seat geometry; compositor stays draw-only (reserves the slot,
+  never draws/stores the annotation). No behaviour change when the hook is absent.
+- **EDIT `schedule/monitorActors.ts`** — `instanceBox(instanceId)` (FIELD-LOCAL footprint box, the
+  skill-badge anchor space) beside the stage-space `centroidOfInstance`.
+- **EDIT `schedule/monitorGlyphs.ts`** — `skillGlyph(skillId)` element-hint runic fallback.
+- **EDIT `schedule/MonitorRenderer.ts`** — ramp store + per-frame ticker + three draw passes +
+  captures + reset cleanup + seam (details below).
+- **EDIT `schedule/Monitor.tsx`** — pushes `setPlayhead(playheadMs)` (every rAF) + `setPacingVersion`,
+  and exposes the `ramps()`/`setPlayhead` debug seams.
+
+### B. Ramp store design + silent-rebuild
+- **Key shapes.** Cooldowns: player item overlay `item|<slot>|<src-stripped>`, enemy/gimic skill
+  badge `skill|<srcInst>|<skill>`. Charges: `<slot>` (0..3). `pt0 = ptOfEvent(ev, pacingVersion)`
+  — the SAME ms clock the release cursor uses, so ramp time and the playhead never disagree.
+- **cooldownTicks presence = cadence discriminator.** A re-arming fire carries it => overlay/badge
+  ramp; reactive/pulse/charge fires and one-shot trap volleys omit it => NO overlay (they still flash).
+- **STATE not VFX.** Captures run in `applyOneEvent` REGARDLESS of `silent` (mirroring how enemy
+  markers/discovered-ids rebuild on a silent catch-up). `reset()` clears the store + destroys every
+  drawn overlay. So a backward seek (`reset()` + silent replay) rebuilds every cooldown/wedge/badge
+  from scratch — no stale or missing HUD. Charge every_secs interpolates between snapshots; the next
+  snapshot re-locks ground truth (no arm event by design; pre-first-snapshot shows no wedge — honest,
+  never fabricated).
+
+### C. Where each overlay draws (z-order + anchor)
+- **Item cooldown** — `cooldownLayer` (own Container, ABOVE all squad visuals on the player field,
+  re-attached each `mountSquads`). One masked pie per matching PO footprint box (from
+  `SquadSlotHandle.icons`, the same board-canon boxes the muzzle flash uses); drawn EXACTLY over the
+  item's footprint, clipped by a rect mask so nothing spills into adjacent cells. Translucent black
+  (`MJ.void`, α 0.55), vanishes at ready.
+- **Unit charge wedge** — drawn into the compositor-reserved seat-annotation Container (z: ABOVE the
+  core disc, BEHIND the unit icon sprite — REQ-0263 (l), never occludes the icon). Slot-keyed;
+  translucent GOLD fill (`MJ.gold`, α 0.32) growing clockwise. First seated BP per slot hosts it.
+  Existing dock pips (Pixi + DOM SquadDock) stay event-driven off the same `unit_charge_*` events, so
+  wedge and pips never disagree.
+- **Skill badge** — `skillBadgeLayer` (enemy field, above the gimic overlay). Circle
+  (`MJ.panel`/`MJ.borderLo`) + skill_icon Sprite (or `skillGlyph` fallback) + clockwise translucent-
+  black cooldown sweep (`MJ.void`, α 0.55). Anchored at the owning instance's footprint TOP-INSIDE
+  (fixed offset, never displaced; clear of the status/HP rows).
+
+### D. Passive-flash verification — PASS, no code change needed
+`flashSourceItem` is called for EVERY player-origin ray_fire: the existing gate is
+`field === 'enemy' && !silent && ev.src && ev.src !== '?'` — keyed on `src` PRESENCE, NOT on
+`cooldownTicks`. So passive/reactive fires (cooldownTicks ABSENT) already flash their source cell(s)
+(`'#'`-suffix stripped to the base item), satisfying REQ-0263 "パッシブ的な発動条件のアイテムもちゃんと発動したら、光る".
+Cadence fires flash AND get the cooldown overlay; passives flash only. Verified by reading the
+ray_fire branch — the flash predates and is orthogonal to the P2 cooldown capture inserted beside it.
+
+### E. Badge stacking rule
+Per owning instance, badges sort by skill id (deterministic) and lay out horizontally from the
+footprint's top-left: `d = clamp(min(FIELD_CELL_PX*0.95, min(box.w,box.h)*0.85), 9, ..)`, gap 2px,
+cap `maxN = floor((box.w+gap)/(d+gap))` and additionally break if `bx + d > FIELD_W`. Skills beyond
+the cap are TRUNCATED (state still tracked/seam-readable, just not drawn) — never overflow the field,
+never move the actor. Instances with no roster actor (gimic/legacy) track state but draw nothing.
+
+### F. Modes
+`off` (webdriver): the per-frame ticker is NOT registered at all — zero drawing, but the store +
+badge defs are still captured, so every seam asserts. `reduced`: ticker redraws only when
+`rampsDirty` (a capture/reset) — static fractions, no per-frame churn. `full`: redraws every frame
+(smooth sweep). Sweeps are translucent BLACK / a low-α gold fill — no additive glow, glow budget
+untouched.
+
+### G. Seams
+`__monitorDebug[room]` gained `ramps()` (read-only `{pt, cooldowns:[{key,frac}], charges:
+[{key,value,capacity,frac}], badges:[key]}` at the current pt) and `setPlayhead(ms)` (drives that
+pt). Every prior seam (squads/enemyBounds/pulseCounts/attachmentCounts/applyTestEvents/chimeStats/
+enemyActors/setTestRoster) is intact. Renderer surface: `setPlayhead`, `setPacingVersion`,
+`getRampsSnapshot`.
+
+### H. HP normalization — ALREADY honest, verified + asserted
+Per P1's hpMax ruling (`ApiRunRosterEnemy.hpMax = hp[1]`, no fabricated per-instance roll):
+`buildActor` seats `hp = enemy.hpMax` (100%) and `hit()` sets `hp = hp_after`. Non-masked enemies show
+100% from encounter until the first attributed `hp_after` names them, then track `hp_after/hp[1]`;
+masked reveal on first hit. Asserted via `setTestRoster` + `enemyActors` (hp 100 -> 60 on a
+ray_hit hp_after=60, hpMax stays 100).
+
+### I. Tests + gates
+- **NEW e2e** (`schedule.spec.ts`, "REQ-0292: instance-HUD ramps"): drives `applyTestEvents` with
+  cooldownTicks/charge fields + `setPlayhead`, asserts item cooldown 1.0->0.5->0 across the span,
+  skill-badge cooldown 1.0->0.625->0, badge key EXISTS, event-driven charge STATIC 0.5, every_secs
+  charge fills 0->0.3->1 (clamped) — fractions MOVE with the playhead (structural, via `ramps()`, not
+  pixels, since webdriver=off). Plus the HP-normalization test above.
+- `tsc -b` EXIT=0; `oxlint` 0 errors (pre-existing warnings only; none of the P2 files flagged).
+- **Scoped schedule e2e (REQ-0292 decade, ports 2920/2921/2922, GPU)**: the 2 REQ-0292 tests PASS
+  (isolated 6.7s AND within the full serial run). Full `schedule.spec.ts`: **30 passed, 1 failed** —
+  the single failure is `REQ-0240 ...capture desktop+narrow` on a slot-assign `409` (a pre-existing
+  cross-test squad deploy-gate isolation flake in the server run-lifecycle, which P2's client-only
+  changes never touch); it PASSES in isolation (12.4s). No regression attributable to P2.
+
+### J. For P3 (Fable art/aesthetics) to polish — exact names
+- `monitorHud.ts`: `sweepPie` / `sweepRectMasked` — sweep fill colour/alpha, easing, inner-radius
+  ring, tick notches.
+- `MonitorRenderer.drawItemCooldowns` (α/colour of the item overlay), `drawChargeWedges` (wedge
+  colour — currently `MJ.gold` α 0.32 — and a possible full-charge "ready" pulse),
+  `drawSkillBadges` (badge ring styling, icon inset `ib = d*0.82`, size `d`, gap, stacking cap).
+- `monitorGlyphs.skillGlyph` — the runic fallback set once real `skill_icon` art (P3 batch) lands.
+- `monitorSkillArt.resolveSkillTexture` — no logic change expected; P3 just supplies the art the
+  cache serves. `composeSquad`'s `onSeatAnnotation` z-slot is the sanctioned place for any richer
+  seat-background treatment.

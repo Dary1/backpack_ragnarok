@@ -480,6 +480,15 @@ export class EnemyPlane {
     return { x: this.field.x + actor.box.x + actor.box.w / 2, y: this.field.y + actor.box.y + actor.box.h / 2 };
   }
 
+  /** REQ-0292 P2: FIELD-LOCAL footprint box of an instance (skill-badge anchor).
+   * enemyField-local (the skill-badge layer's coordinate space), unlike
+   * centroidOfInstance which is stage-space. null when the instance has no actor. */
+  instanceBox(instanceId: string): { x: number; y: number; w: number; h: number } | null {
+    const actor = this.byInstance.get(instanceId);
+    if (!actor) return null;
+    return { x: actor.box.x, y: actor.box.y, w: actor.box.w, h: actor.box.h };
+  }
+
   /** Absolute (stage-space) centroid of a roster enemy's footprint, for placing
    * damage numbers at the ACTUAL hit location (REQ-0276 B2). */
   centroidOf(rosterIdx: number): { x: number; y: number } | null {

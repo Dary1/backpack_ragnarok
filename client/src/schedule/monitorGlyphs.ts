@@ -44,3 +44,17 @@ export function statusKind(status: string): 'fire' | 'frost' | 'other' {
   if (/(freeze|frost|chill|rime|ice)/.test(s)) return 'frost';
   return 'other';
 }
+
+/** REQ-0292: skill-badge glyph fallback (used until /api/art/<skill_id>.png loads
+ * or when it is absent -- never a broken image). Keys off the skill id's element
+ * hint (matching statusGlyph's rune set), else a generic skill sigil. */
+export function skillGlyph(skillId: string | null | undefined): string {
+  const s = (skillId || '').toLowerCase();
+  if (/(freeze|frost|chill|rime|ice|glacier|hrim)/.test(s)) return 'ᛁ';
+  if (/(burn|fire|scorch|ember|flame|pyro)/.test(s)) return 'ᚨ';
+  if (/(poison|venom|toxic|blight)/.test(s)) return 'ᛈ';
+  if (/(shock|stun|storm|thunder|volt|bolt)/.test(s)) return 'ᛉ';
+  if (/(bleed|wound|cleave|slash|rend)/.test(s)) return 'ᛋ';
+  if (/(heal|mend|bless|ward|guard)/.test(s)) return 'ᛃ';
+  return 'ᛥ'; // generic skill sigil
+}
