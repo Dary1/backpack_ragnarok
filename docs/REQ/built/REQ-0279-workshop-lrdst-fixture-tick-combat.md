@@ -124,3 +124,17 @@ left to ci.sh`s per-step default via a worktree .venv symlinked to main, removed
   confirmed live). Followed the repo authority (ci.sh auto-derives from the branch name).
 
 Deliverable: `built`, worktree clean, NOT merged (user acceptance later).
+
+## 5. State log
+
+- 2026-07-22 built -> MERGED to master (merge `fc2e42c`, --no-ff off `00befdf`; pre-merge
+  master kept as branch `backup-pre-req0278-0279`), user accepted 2026-07-22. **master CI
+  green modulo the documented artadmin goto-under-load family ([6.5/8] artadmin:124/273,
+  REQ-0222 lineage, tolerated with evidence by the REQ-0266 and REQ-0273 deploy records; all
+  other steps green individually).** **`workshop.spec.ts:361` GREEN on master -- the red this
+  REQ existed to fix** (spec 192 in the [7/7] quiet serial confirmation fleet, E2E_PARALLEL=0,
+  GPU on, art queue verified empty: **194 passed / 2 failed / 1 skipped**). The 2 reds are the
+  documented tolerable load flakes `forecast.spec.ts:206` (slot-pressure toBeVisible timeout)
+  and `schedule.spec.ts:1451` (apiAssignSlot 409-vs-200), signatures verified identical to the
+  REQ-0266/REQ-0273 blocks. Other [6.5/8] members individually green (artinspect 1/1,
+  contentadmin 28/28), [6.6/8] registry-first 4/4. No push (mirror timer handles it).
