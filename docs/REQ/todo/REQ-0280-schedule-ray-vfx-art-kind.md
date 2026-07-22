@@ -134,3 +134,53 @@ Consumers checked (additive-safe): `s4/metrics.cjs`, `humanize.cjs`, `seals.cjs`
 
 ## Status log
 - 2026-07-22 P1+P2 implemented + goldens rebaselined; all P1/P2 gates green (see evidence).
+
+## P3 evidence (2026-07-22, implementer)
+
+### Commit
+- (this commit) P3 client seam: `monitorVfxArt.ts` resolver + TilingSprite ray trail + hit-still blit + ray_fire latch/prefetch.
+
+### New module: `client/src/schedule/monitorVfxArt.ts` (API)
+- `resolveVfxTexture(role: 'ray'|'hit', skill: string|null, src: string|null): Promise<Texture|null>` — walks the chain, awaits each name in order, resolves to the FIRST hit (a skill override short-circuits the default fetch), else null. Doubles as the ray_fire fire-and-forget PREFETCH.
+- `peekVfxTexture(role, skill, src): Texture|null` — SYNCHRONOUS cached-only read; returns a Texture only when the chain outcome is already known (every earlier candidate a known miss, this one a known hit). If the head of the chain is still in flight it returns null (indeterminate → the current effect falls back procedurally). Never triggers a fetch, never waits.
+- `__resetVfxCache()` — test/debug seam.
+
+### Resolution / caching semantics (verbatim)
+- Candidate order per role: `vfx_<role>_<skill>` (only if skill present) → `vfx_<role>_<src-stripped>` (src's `#idx` suffix stripped; `?`/empty dropped) → `vfx_<role>_default`. Names failing `/^[A-Za-z0-9_]+$/` are dropped (can't name an adopted asset).
+- Cache is per-NAME (NOT per-chain): `Map<name, Texture|null>` + `Map<name, Promise>` in-flight dedupe. Each system_name is fetched at most once per session; `undefined`=unattempted, `null`=known miss (404/empty-decode → procedural, logged-once by pixi, never per-frame retried), `Texture`=ready. Mirrors `monitorArt.loadMonsterTexture` policy exactly.
+- URL: `/api/art/<name>.png` via `Assets.load({loadParser:'loadTextures'})` — direct fetch, NOT art_urls/getItemArtUrl (vfx names are not content-def ids; REQ-0264 s11.5).
+- Ray strips get `tex.source.style.addressMode='repeat'` on load so a TilingSprite tiles seamlessly in X; hit stills are plain Sprites (no wrap).
+
+### Latch + prefetch mechanics (`MonitorRenderer.ts`)
+- New field `currentRayVfxKey: {skill,src}`, latched at `ray_fire` from `ev.skill`/`ev.src` (mirrors how `currentRayField`/`currentRayColor` are latched). Reset to `{null,null}` in `reset()`.
+- At `ray_fire` (full mode, non-silent only): fire-and-forget `resolveVfxTexture('ray',…)` + `resolveVfxTexture('hit',…)` — warms cache so the impending ray_step trail and ray_hit impact usually resolve synchronously.
+- `animateStep` (ray_step) peeks `vfx_ray_*` → passes `Texture|null` as the new optional `rayProjectile(…, tex?)` arg.
+- `currentHitTexture()` peeks `vfx_hit_*`; passed into `impactBurst(…, tex?)` from the ONLY two ray-hit impact sites (`floatDamageLocated`, `floatDamage`). Gimic bursts / link pulses / player-damage bursts pass nothing → procedural (unchanged).
+
+### Draw geometry (`monitorFx.ts`)
+- `rayProjectile`: textured trail = one `TilingSprite` per polyline segment, anchor (0,0.5), rotated to the segment direction, `tileScale=(cell·√2/256, bandH/64)`, `tilePosition.x = -(cumulative path distance to segment start)` so the strip flows continuously and NEVER stretches. **Tile-advance law: 1 tile = one diagonal cell run = cell·√2 = 25.456px of path** (256 source px → 25.456 screen px; REQ-0264 s7.2's 56.57px/EXP-diagonal adapted to the 18px monitor cell). Band height = `0.55·cell` (≈9.9px). Per-frame the head walks the polyline; each segment shows only the traversed sub-length (`width = min(segEnd,headDist)-segStart`) at a head→tail alpha (`TRAIL_TEX_ALPHA=0.85`, fading to 0 across the `RAY_TRAIL_CELLS·cell` window, × the afterglow fade) — the SAME per-segment fade law as the procedural trail. The luminous procedural HEAD (elongated stroke + white disc, additive while glow-budgeted) stays on top unchanged. Textured trail spends NO extra glow (glow ledger semantics unchanged).
+- `impactBurst`: hit still = a `Sprite(tex)` anchored 0.5 at the cell, added BENEATH the spawn() core flash, driven over the existing 700ms burst by the renderer ramp: `scale 0.35→1.0` (easeOut, peak = `2.8·cell·burstScale` to match the procedural circle) and `alpha 1→0`. Untinted (art carries its own colour; renderer supplies only the ramp). AoE's `burstScale<1` scales the still too. Procedural core flash unchanged on top.
+
+### First-ever ray vs cached
+- First ray of a key: peek returns null (cache still `undefined`, prefetch in flight) → this ray/impact draws PURELY procedural (no wait, no jitter). The ray_fire prefetch then resolves; every subsequent ray/impact of that key (same run or later) peeks the cached Texture and draws textured. On a 404 (no asset adopted — the normal dev/e2e/files-backend path) the name caches `null` forever → always procedural, byte-identical to today's visuals.
+
+### Mode handling
+- `off` (webdriver/e2e): `rayProjectile`/`impactBurst` early-return; prefetch gated on `fx.animated` (=full) so ZERO new `/api/art` requests fire under automation — every e2e seam/counter untouched.
+- `reduced` (prefers-reduced-motion): unchanged — floating numbers only, no ray animation and no textured decoration. DECISION: no static textured stamp, upholding the existing reduced-motion doctrine ("information, not decoration"); documented as the minimal choice.
+- `silent` (replay scrub/catch-up): never calls into fx and skips prefetch — no VFX, no fetch, by construction.
+
+### Gate status (this worktree)
+- `tsc -b --force` (client) → EXIT 0.
+- `oxlint` on the 3 touched files (monitorVfxArt.ts, monitorFx.ts, MonitorRenderer.ts) → 0 warnings, 0 errors.
+- No new harness added (P5 owns gates); `rayProjectile`/`impactBurst` new params are optional → signature-compatible (only callers are these two files).
+
+### P4 (art) handoff — measured system_names the client will request
+Tallied ray_fire across ALL 12 replay goldens (batch-002 pilot + dungen/default L1/3/5/8 × dg-11/dg-22 + test_fixed): 331 ray_fires, 62 skill-labeled, 269 player-item (keyed by src).
+- **Signature skill art (enemy/trap/door — 3 ids cover 100% of labeled rays):** `door_keeper_strike` (×45), `hrim_cleave` (×12), `trap_deadfall_volley` (×5). → make `vfx_ray_<id>` + `vfx_hit_<id>` for these.
+- **Signature player-item art (keyed by src — these are the MOST VISIBLE rays in any run):** `dagger` (×156 — ~47% of ALL ray_fires; the single highest-impact asset after defaults), `beast_jaw` (×51), `blade` (×33), `herb_pouch` (×29). → `vfx_ray_<item>` + `vfx_hit_<item>`.
+- **Always make first:** `vfx_ray_default`, `vfx_hit_default` — they alone make every ray/impact in a normal run textured (the fallback tier).
+- Priority order for demo visibility: defaults → dagger (dominant) → door_keeper_strike (dominant labeled) → beast_jaw/blade/herb_pouch → hrim_cleave/trap_deadfall_volley.
+- Ray strip = 256×64 forced-tiling (P1 `forcedTiling`); hit still = 256×256. No baked glow (renderer owns the ramp/head glow). Client keys player-item rays by the bare item id (strips `#idx`), so an item's `src` id IS its vfx name suffix.
+
+## Status log (cont.)
+- 2026-07-22 P3 implemented: client /schedule VFX-art seam (monitorVfxArt resolver + TilingSprite ray trail + hit-still ramp + ray_fire latch/prefetch). tsc -b --force EXIT 0; oxlint clean on touched files. Fallback = current procedural visuals when no asset adopted.

@@ -31,7 +31,7 @@
 // through the renderer's addTicker, so MonitorRenderer.reset() cancels and
 // purges everything here in one sweep; resetBudget() re-zeroes the glow
 // ledger for the holds those cancelled tickers could not release.
-import { Container, Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Sprite, Text, TilingSprite, type Texture } from 'pixi.js';
 import { MJ } from './monitorTheme';
 
 export type FxMode = 'full' | 'reduced' | 'off';
@@ -59,6 +59,13 @@ const smoothstep = (k: number): number => k * k * (3 - 2 * k);
 const RAY_TRAIL_CELLS = 6;
 /** Styleguide §6.0: at most 3 concurrent glow sources on screen. */
 const GLOW_BUDGET = 3;
+/** REQ-0280 P3: textured-trail band height as a fraction of a cell (the 256x64
+ * ray strip is drawn this tall along the path -- modest so it reads as a trail,
+ * not a slab). */
+const TRAIL_TEX_H_FRAC = 0.55;
+/** REQ-0280 P3: head-of-trail alpha for the textured strip; fades to 0 across
+ * the RAY_TRAIL_CELLS window (same head->tail law as the procedural trail). */
+const TRAIL_TEX_ALPHA = 0.85;
 
 export class MonitorFx {
   private layer: Container;
@@ -123,7 +130,7 @@ export class MonitorFx {
    * path's cell centres, dragging a short fading trail. `centers` are stage
    * coords; total flight time is msPerStep per path segment, then a ~240ms
    * afterglow fade of whatever trail remains. */
-  rayProjectile(centers: FxPoint[], color: number, bright: number, msPerStep: number): void {
+  rayProjectile(centers: FxPoint[], color: number, bright: number, msPerStep: number, tex?: Texture | null): void {
     if (FX_MODE !== 'full' || centers.length === 0) return;
     const n = centers.length;
     const total = msPerStep * Math.max(1, n - 1);
@@ -138,14 +145,50 @@ export class MonitorFx {
       const b = centers[i + 1];
       return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
     };
+    // REQ-0280 P3: when a ray strip texture is already cached (peeked in time by
+    // the renderer) the TRAIL is drawn as per-segment TilingSprites laid along
+    // the polyline; otherwise the procedural stroke trail below. The luminous
+    // procedural HEAD and the head->tail per-segment alpha fade stay
+    // renderer-owned either way; a textured trail spends no extra glow.
+    const textured = !!tex && n >= 2;
     const glow = this.tryGlow();
-    const trail = new Graphics();
-    trail.eventMode = 'none';
     const head = new Graphics();
     head.eventMode = 'none';
     if (glow) head.blendMode = 'add';
-    this.layer.addChild(trail);
-    this.layer.addChild(head);
+    const trailG = textured ? null : new Graphics();
+    if (trailG) { trailG.eventMode = 'none'; this.layer.addChild(trailG); }
+    // Textured trail: one TilingSprite per polyline segment + the cumulative
+    // path distances so tilePosition.x flows continuously from the ray's origin
+    // (texture NEVER stretches: 1 tile spans one diagonal cell run -- REQ-0264
+    // s7.2 adapted from the expedition's 56.57px to the monitor's 18px cells).
+    const segs: (TilingSprite | null)[] = [];
+    const cum: number[] = [0];
+    if (textured) {
+      for (let i = 1; i < n; i++) {
+        cum[i] = cum[i - 1] + Math.hypot(centers[i].x - centers[i - 1].x, centers[i].y - centers[i - 1].y);
+      }
+      const bandH = cell * TRAIL_TEX_H_FRAC;
+      const tilePx = cell * Math.SQRT2; // one tile = one diagonal cell run
+      const t0 = tex as Texture;
+      for (let s = 0; s < n - 1; s++) {
+        const a = centers[s];
+        const b = centers[s + 1];
+        const segLen = cum[s + 1] - cum[s];
+        if (!(segLen > 0)) { segs.push(null); continue; }
+        const sp = new TilingSprite(t0, segLen, bandH);
+        sp.eventMode = 'none';
+        sp.anchor.set(0, 0.5); // left-centre: start at the segment start, band on the line
+        sp.tileScale.set(tilePx / t0.width, bandH / t0.height);
+        sp.tilePosition.set(-cum[s], 0); // continue the tiling from the ray origin
+        sp.x = a.x;
+        sp.y = a.y;
+        sp.rotation = Math.atan2(b.y - a.y, b.x - a.x);
+        sp.visible = false;
+        this.layer.addChild(sp);
+        segs.push(sp);
+      }
+    }
+    this.layer.addChild(head); // head always on top of the trail
     const start = performance.now();
     let released = !glow;
     const release = (): void => {
@@ -154,8 +197,9 @@ export class MonitorFx {
         released = true;
       }
     };
+    const trailLen = RAY_TRAIL_CELLS * cell;
     this.addTicker((): boolean => {
-      if (trail.destroyed || head.destroyed) {
+      if (head.destroyed || (trailG != null && trailG.destroyed)) {
         release();
         return true;
       }
@@ -163,18 +207,39 @@ export class MonitorFx {
       const k = Math.min(1, e / total);
       const fade = e > total ? Math.max(0, 1 - (e - total) / fadeMs) : 1;
       const t = k * (n - 1);
-      trail.clear();
-      for (let j = 0; j < RAY_TRAIL_CELLS; j++) {
-        const t1 = t - j;
-        if (t1 <= 0) break;
-        const p1 = at(t1);
-        const p0 = at(Math.max(0, t1 - 1));
-        trail.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).stroke({
-          color,
-          width: Math.max(1.5, cell * 0.16),
-          alpha: 0.5 * (1 - j / RAY_TRAIL_CELLS) * fade,
-          cap: 'round',
-        });
+      if (textured) {
+        const ti = Math.min(n - 2, Math.floor(t));
+        const tf = Math.max(0, Math.min(1, t - ti));
+        const headDist = n === 1 ? 0 : cum[ti] + (cum[ti + 1] - cum[ti]) * tf;
+        for (let s = 0; s < segs.length; s++) {
+          const sp = segs[s];
+          if (!sp) continue;
+          const segStart = cum[s];
+          if (segStart >= headDist) { sp.visible = false; continue; }
+          const visEnd = Math.min(cum[s + 1], headDist);
+          const w = visEnd - segStart;
+          if (!(w > 0)) { sp.visible = false; continue; }
+          const behind = headDist - (segStart + visEnd) / 2;
+          const a = behind >= trailLen ? 0 : TRAIL_TEX_ALPHA * (1 - behind / trailLen) * fade;
+          if (!(a > 0)) { sp.visible = false; continue; }
+          sp.width = w;
+          sp.alpha = a;
+          sp.visible = true;
+        }
+      } else if (trailG != null) {
+        trailG.clear();
+        for (let j = 0; j < RAY_TRAIL_CELLS; j++) {
+          const t1 = t - j;
+          if (t1 <= 0) break;
+          const p1 = at(t1);
+          const p0 = at(Math.max(0, t1 - 1));
+          trailG.moveTo(p0.x, p0.y).lineTo(p1.x, p1.y).stroke({
+            color,
+            width: Math.max(1.5, cell * 0.16),
+            alpha: 0.5 * (1 - j / RAY_TRAIL_CELLS) * fade,
+            cap: 'round',
+          });
+        }
       }
       head.clear();
       if (k < 1) {
@@ -192,9 +257,9 @@ export class MonitorFx {
       }
       if (e >= total + fadeMs) {
         release();
-        if (trail.parent) trail.parent.removeChild(trail);
+        if (trailG != null) { if (trailG.parent) trailG.parent.removeChild(trailG); trailG.destroy(); }
+        for (const sp of segs) { if (sp && !sp.destroyed) { if (sp.parent) sp.parent.removeChild(sp); sp.destroy(); } }
         if (head.parent) head.parent.removeChild(head);
-        trail.destroy();
         head.destroy();
         return true;
       }
@@ -227,9 +292,24 @@ export class MonitorFx {
    * attack's colour, with a bright additive core for the opening instant
    * (one of the four sanctioned glow moments; falls back to normal blend
    * when the budget is spent). */
-  impactBurst(x: number, y: number, color: number, bright: number, scale = 1): void {
+  impactBurst(x: number, y: number, color: number, bright: number, scale = 1, tex?: Texture | null): void {
     if (FX_MODE !== 'full') return;
     const cell = this.cell;
+    // REQ-0280 P3: when a hit still is already cached, blit it centred at the
+    // cell BENEATH the procedural core flash, under the renderer ramp
+    // (scale .35 -> 1.0, alpha 1 -> 0 over the burst) -- the art supplies the
+    // still, the renderer supplies the ramp (REQ-0264 s7.3). Absent -> the
+    // procedural burst only; the sprite spends no extra glow.
+    let sprite: Sprite | null = null;
+    if (tex) {
+      sprite = new Sprite(tex);
+      sprite.eventMode = 'none';
+      sprite.anchor.set(0.5);
+      sprite.x = x;
+      sprite.y = y;
+      this.layer.addChild(sprite); // below the spawn() Graphics -> under the core
+    }
+    const peakPx = cell * 2.8 * scale; // matches the procedural circle peak diameter
     const glow = this.tryGlow();
     let released = !glow;
     const release = (): void => {
@@ -239,6 +319,12 @@ export class MonitorFx {
       }
     };
     this.spawn(700, (k, g) => {
+      if (sprite && !sprite.destroyed) {
+        const rs = 0.35 + easeOut(k) * 0.65; // .35 -> 1.0
+        sprite.width = peakPx * rs;
+        sprite.height = peakPx * rs;
+        sprite.alpha = 1 - easeOut(k); // 1 -> 0
+      }
       // additive only while the bright core lives; back to normal after.
       if (glow) g.blendMode = k <= 0.25 ? 'add' : 'normal';
       if (k > 0.25) release();
@@ -247,7 +333,13 @@ export class MonitorFx {
       g.circle(x, y, r).fill({ color, alpha: 0.5 * (1 - k) });
       g.circle(x, y, r).stroke({ color, width: 1.5, alpha: 0.85 * (1 - k) });
       if (k < 0.16) g.circle(x, y, cell * 0.45 * scale).fill({ color: bright, alpha: 0.95 * (1 - k / 0.16) });
-    }, release);
+    }, () => {
+      release();
+      if (sprite && !sprite.destroyed) {
+        if (sprite.parent) sprite.parent.removeChild(sprite);
+        sprite.destroy();
+      }
+    });
   }
 
   /** Radial sweep across a field rect, masked to the field so it never
