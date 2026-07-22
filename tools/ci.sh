@@ -290,6 +290,12 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   # rectilinear inset. Pure module, no Pixi import by construction.
   echo "==== [5.9f/7] client PO outline geometry (REQ-0273) ===="
   (cd client && node scripts/check_po_outline.mjs)
+  # REQ-0286: squad compositor cell->px convention (client/src/board/squadCellGeom.ts).
+  # Pins the board-canon 1-indexed (c-1)*cellPx mapping so the /schedule monitor's
+  # squad boxes stay flush + PO-on-cell (guards the REQ-0283 +1-cell skew). Pure
+  # arithmetic, no browser/Pixi -- same vite-ssrLoadModule rig as check_po_outline.
+  echo "==== [5.9g/7] client squad-cell geometry convention (REQ-0286) ===="
+  (cd client && node scripts/check_squad_cell_geom.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
   # REQ-0278: the committed-bundle path had no machine check that a worktree's

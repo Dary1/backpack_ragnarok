@@ -25,12 +25,14 @@
 //
 // COORDINATE CONVENTION. Cells are 1-indexed engine cells (A1 == [1,1]). The
 // caller supplies an origin pixel (originX/originY) and a cellPx; a cell (r,c)
-// is drawn with its top-left at (originX + c*cellPx, originY + r*cellPx). NOTE
-// this is the monitor's own convention (offset by its formation-box origin,
-// NOT the board's PAD + (c-1)*CELL) -- so the compositor takes the same cells
-// the caller already positions its fills with, and the seat disc / PO outline
-// land pixel-consistent with those fills (the whole point: nothing is
-// displaced relative to anything else).
+// is drawn with its top-left at (originX + (c-1)*cellPx, originY + (r-1)*cellPx)
+// -- IDENTICAL to the board canon (BoardRenderer PAD + (c-1)*CELL), so the
+// top-left cell (1,1) is FLUSH with the box origin and an 8x8 formation fills
+// exactly [origin, origin+8*cellPx] with no padding and no overflow. This
+// mapping is owned by ./squadCellGeom (cellTopLeftPx / cellCenterPx / vertexPx
+// / poBoxPx), the ONE source of truth shared with MonitorRenderer's muzzle
+// handle, so a consumer cannot re-introduce the REQ-0283 +1-cell skew (owner
+// report REQ-0286: padded down-right, POs a cell off, box overflow).
 //
 // REUSE, NEVER FORK. The math comes from the ratified pure modules:
 //   * render/itemCard.ts  -- computeFootprintCells, insetBoxFor, fitBoxInBounds
@@ -49,6 +51,7 @@ import { resolveItemIcon } from './itemArt';
 import { resolveBpSkin } from './skin/bpSkinResolve';
 import { bpSkinDefs, hasBpSkin } from './skin/skinRegistry';
 import { bpSkinSprite } from './skin/bpSkinTexture';
+import { cellTopLeftPx, cellCenterPx, vertexPx, poBoxPx } from './squadCellGeom';
 
 /** Board reference geometry (px at CELL=80), taken verbatim from
  * BoardRenderer.ts:1008-1074 so the seat marker reads identically to the
@@ -111,9 +114,9 @@ export interface ComposeOpts {
   onSkinReady?: () => void;
 }
 
-/** Absolute px of a cell's top-left corner in the caller's convention. */
+/** Absolute px of a cell's top-left corner (board canon: origin + (c-1)*cellPx). */
 function cellTopLeft(r: number, c: number, o: ComposeOpts): { x: number; y: number } {
-  return { x: o.originX + c * o.cellPx, y: o.originY + r * o.cellPx };
+  return cellTopLeftPx(r, c, o);
 }
 
 /** BP fill: one tinted, dark-stroked rect per cell -- the base layer (board
@@ -157,12 +160,13 @@ function drawBpSkin(container: Container, bp: CompositorBP, o: ComposeOpts): voi
   // bpSkinSprite returns a CELL=80-scale sprite anchored in board space. Scale
   // it to the caller's cellPx and re-anchor: the composite's pixel (0,0) is the
   // top-left of cell (r0-MARGIN, c0-MARGIN) (bpSkinTexture bakes MARGIN cells of
-  // padding), which in the caller's convention sits at originX + (c0-1)*cellPx.
+  // padding), which in the caller's convention is that cell's top-left px.
   const r0 = Math.min(...bp.cells.map((cc) => cc[0]));
   const c0 = Math.min(...bp.cells.map((cc) => cc[1]));
   sprite.scale.set(o.cellPx / BOARD_CELL);
-  sprite.x = o.originX + (c0 - SKIN_MARGIN) * o.cellPx;
-  sprite.y = o.originY + (r0 - SKIN_MARGIN) * o.cellPx;
+  const skinTl = cellTopLeftPx(r0 - SKIN_MARGIN, c0 - SKIN_MARGIN, o);
+  sprite.x = skinTl.x;
+  sprite.y = skinTl.y;
   sprite.eventMode = 'none';
   container.addChild(sprite);
 }
@@ -170,8 +174,9 @@ function drawBpSkin(container: Container, bp: CompositorBP, o: ComposeOpts): voi
 /** Trace + stroke a PO footprint outline (board's two-tone ink+rim) at the
  * caller's scale. Reuses boundaryLoops + insetLoop; the ONLY new arithmetic is
  * the cell-vertex -> px map. boundaryLoops emits vertices where cell (r,c) owns
- * column vertices {c-1, c}; the caller draws that cell's left edge at
- * originX + c*cellPx, so a vertex value X maps to originX + (X+1)*cellPx. */
+ * column vertices {c-1, c} in 0-based grid-vertex units, so a vertex value X
+ * maps to originX + X*cellPx -- IDENTICAL to the board (poOutline.ts:64,
+ * PAD + x*CELL). See ./squadCellGeom.vertexPx. */
 function drawPOOutlineScaled(g: Graphics, absCells: Offset[], o: ComposeOpts): void {
   const scale = o.cellPx / BOARD_CELL;
   const inset = Math.max(0.75, PO_OUTLINE_INSET * scale);
@@ -179,7 +184,7 @@ function drawPOOutlineScaled(g: Graphics, absCells: Offset[], o: ComposeOpts): v
   const rimW = Math.max(0.5, PO_OUTLINE_RIM.width * scale);
   const loops = boundaryLoops(absCells as Cell[]).map((loop) =>
     insetLoop(
-      loop.map(([x, y]) => [o.originX + (x + 1) * o.cellPx, o.originY + (y + 1) * o.cellPx] as Pt),
+      loop.map(([x, y]) => { const p = vertexPx(x, y, o); return [p.x, p.y] as Pt; }),
       inset
     )
   );
@@ -203,10 +208,11 @@ function drawPOOutlineScaled(g: Graphics, absCells: Offset[], o: ComposeOpts): v
 function drawPO(container: Container, po: CompositorPO, o: ComposeOpts): void {
   const footprint = computeFootprintCells(po.shape, po.rot);
   const [originR, originC] = po.origin;
-  const boxW = footprint.w * o.cellPx;
-  const boxH = footprint.h * o.cellPx;
-  const bx = o.originX + originC * o.cellPx;
-  const by = o.originY + originR * o.cellPx;
+  const box = poBoxPx(originR, originC, footprint.w, footprint.h, o);
+  const boxW = box.w;
+  const boxH = box.h;
+  const bx = box.x;
+  const by = box.y;
 
   const res = resolveItemIcon(po.itemId, po.spriteKey, (k) => o.textures.has(k));
   const tex = res.key ? o.textures.get(res.key) : undefined;
@@ -243,8 +249,9 @@ function drawUnitSeat(container: Container, bp: CompositorBP, o: ComposeOpts): v
   // REQ-0284 (hotfix hardening): never let a non-finite seat (NaN/Infinity from
   // a malformed unit.off) reach Pixi geometry -- skip the seat marker instead.
   if (!Number.isFinite(sr) || !Number.isFinite(sc)) return;
-  const cx = o.originX + (sc + 0.5) * o.cellPx;
-  const cy = o.originY + (sr + 0.5) * o.cellPx;
+  const seatC = cellCenterPx(sr, sc, o);
+  const cx = seatC.x;
+  const cy = seatC.y;
   const r = (BOARD_UNIT_CORE_R / BOARD_CELL) * o.cellPx;
 
   const core = new Graphics();
