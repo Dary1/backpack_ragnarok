@@ -7,13 +7,15 @@
 // PIXI.Application.
 //
 // Two side-by-side A1:Z18 grids (player field, enemy field). Player side
-// reuses render/itemCard.ts's composition helpers to draw small-scale
-// icons in each formation box's footprint; enemy side is a simple
-// footprint-colored blob + name label (no real enemy art exists yet, per
-// the task brief -- "simple footprint blobs" is the explicit spec, not a
-// placeholder shortcut). Decorative sprites are eventMode='none' (Pixi
-// lesson from the task brief: decorative sprites should not eat pointer
-// events).
+// composes each squad through the SHARED squadCompositor (REQ-0283): BP cell
+// fill (+ bp-skin tiling), placed POs contain-fit with the board's footprint
+// outline, and the unit core disc + icon at the Unit's SEAT CELL -- the same
+// mechanism Canvas/Inventory use, NOT a footprint-bbox wash. Enemy side draws
+// roster-driven actors with real monster art (monitorActors.ts, art via the Dex
+// art_urls chain); a footprint-colored blob + name label survives only as the
+// LEGACY FALLBACK for runs that carry no placed roster actors. Decorative
+// sprites are eventMode='none' (Pixi lesson from the task brief: decorative
+// sprites should not eat pointer events).
 //
 // Ray animation (REQ-0276 Phase C): ray_fire+ray_step drive a luminous
 // projectile head with a fading trail along the path cells
@@ -23,11 +25,12 @@
 // pulse converging on the player field. ALL transient FX live in
 // monitorFx.ts (glow budget + reduced-motion/webdriver gating); the `silent`
 // apply path spawns none of them.
-import { Application, Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
+import { Application, Container, Graphics, Text, type Texture } from 'pixi.js';
 import type { ApiRunEvent, ApiRunRoster } from '../api';
 import type { ChimeSink } from './chimes/chimeMapping';
 import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
 import { computeFootprintCells } from '../render/itemCard';
+import { composeSquad } from '../board/squadCompositor';
 import type { Offset } from '../engine/engine.d.ts';
 import { EnemyPlane } from './monitorActors';
 import { MJ } from './monitorTheme';
@@ -46,12 +49,12 @@ const FIELD_H = FIELD_ROWS * FIELD_CELL_PX;
 const STEP_ANIM_MS = 200; // per ray_step segment, within the 150-300ms band the task brief calls for
 const HEAL_GREEN = 0x76c48a; // REQ-0276 B2: heal / lifesteal-heal green (+n); Phase C may re-tune.
 
-// REQ-0169 M2: enemy label style + lane geometry (dots stay at their true
-// cells; colliding labels bump DOWN a lane, up to MAX_LABEL_LANES, then
-// hide).
+// REQ-0283 (cell fidelity): the legacy enemy fallback markers anchor their
+// label at a FIXED offset from their own cell and NEVER move. Colliding labels
+// are resolved non-spatially only -- the topmost-leftmost keeps its full label,
+// the rest hide (no lane bumping; the REQ-0169 M2 lane machinery is removed).
 const ENEMY_LABEL_STYLE = { fill: 0xe8e0d0, fontSize: 9 };
-const LABEL_LANE_H = 11;
-const MAX_LABEL_LANES = 3;
+const LABEL_LANE_H = 11; // label row height -- used only as the collision-test box height now
 
 /** Type guard for the RawCell ([row,col] number tuple) wire shape -- see
  * fieldGeometry.ts's RawCell/cellIdToColRow doc for why this is the
@@ -83,6 +86,11 @@ export interface MonitorSquadBP {
   /** REQ-0276 B2: the seated Unit's def id (bp.unit.id) -- resolves `unit:<id>`
    * raster art for the unit-art hook. Optional (absent on synthetic literals). */
   unitId?: string;
+  /** REQ-0283: the Unit's SEAT CELL (engine.unitCell(bp) = origin + unit.off),
+   * in the SAME absolute local-grid space as `cells`. Drives the board-style
+   * unit core disc + icon placement in squadCompositor. Optional (absent on
+   * synthetic literals / legacy squads without a unit seat). */
+  seatCell?: Offset;
 }
 
 /** One placed PO's icon, positioned at its own absolute local-grid
@@ -150,11 +158,13 @@ interface FieldMarker {
   /** REQ-0169 M2: the un-suffixed, un-truncated label text -- the key the
    * de-overlap pass groups duplicates by, and re-fits/suffixes from. */
   rawText: string;
-  /** REQ-0169 M2: vertical lane the de-overlap pass placed this label in
-   * (-1 = hidden, no free lane). */
+  /** REQ-0283: 0 = label shown at its FIXED anchor, -1 = hidden by the
+   * non-spatial collision-priority pass. Never a lane index -- labels no longer
+   * move; the REQ-0169 M2 lane field is retained only as a shown/hidden flag
+   * for the getEnemyMarkerBounds e2e seam. */
   lane?: number;
-  /** REQ-0169 M2: true when this label is hidden (a masked/duplicate
-   * collapse, or no free lane) -- the dot is still drawn. */
+  /** REQ-0283: true when this label is hidden (a masked/duplicate collapse, or
+   * lost the collision-priority tie) -- the dot is still drawn at its cell. */
   hidden?: boolean;
 }
 
@@ -440,20 +450,22 @@ export class MonitorRenderer {
       outline.eventMode = 'none';
       slotBox.addChild(outline);
 
-      // REQ-0045 (d): every BP footprint at its own absolute cells; (REQ-0276 B2)
-      // unit art contain-fit over the colour fill when it resolves.
-      for (const bp of squad.bps) {
-        const g = new Graphics();
-        const colorNum = parseInt(bp.color.replace('#', ''), 16) || 0x888888;
-        for (const [r, c] of bp.cells) {
-          g.rect(rect.x + c * cellW, rect.y + r * cellH, cellW, cellH)
-            .fill({ color: colorNum, alpha: 0.72 })
-            .stroke({ color: MJ.void, width: 1, alpha: 0.55 });
-        }
-        g.eventMode = 'none';
-        slotBox.addChild(g);
-        this.drawUnitArt(slotBox, bp, rect, cellW, cellH);
-      }
+      // REQ-0283: the shared squad compositor draws every BP faithfully at its
+      // own cells -- BP fill (+ bp-skin tiling), placed POs contain-fit with the
+      // board's footprint outline, then the unit core disc + icon AT THE SEAT
+      // CELL (origin+unit.off), full alpha, on top. This replaces REQ-0276's
+      // drawUnitArt footprint-bbox wash (deleted) per the user's cell-fidelity
+      // ruling: unit art is not the BP background. cellW === cellH here
+      // (formation boxes are square 8x8), so one cellPx drives the board-ratio
+      // disc/icon/outline sizing.
+      composeSquad(
+        slotBox,
+        {
+          bps: squad.bps.map((bp) => ({ cells: bp.cells, seatCell: bp.seatCell ?? null, color: bp.color, unitId: bp.unitId })),
+          pos: squad.icons.map((icon) => ({ shape: icon.shape, rot: icon.rot, origin: icon.origin, spriteKey: icon.textureKey, itemId: icon.itemId })),
+        },
+        { cellPx: cellW, originX: rect.x, originY: rect.y, textures: this.textures, fillAlpha: 0.72, cellStrokeColor: MJ.void, cellStrokeAlpha: 0.55, cellStrokeWidth: 1 }
+      );
 
       const label = new Text({ text: squad.label, style: { fill: MJ.bone, fontSize: 10 } });
       label.x = rect.x + 2; label.y = rect.y + 2; label.eventMode = 'none';
@@ -485,25 +497,15 @@ export class MonitorRenderer {
       koStamp.eventMode = 'none'; koStamp.visible = false;
       slotBox.addChild(koStamp);
 
+      // REQ-0283: PO art is now drawn by composeSquad above; this loop only
+      // collects each placed PO's px box for the item-fire muzzle-flash handle
+      // (SquadSlotHandle.icons), the geometry ray_fire FX anchors to.
       const iconCells: Array<{ itemId: string; x: number; y: number; w: number; h: number }> = [];
       for (const icon of squad.icons) {
+        if (!icon.itemId) continue;
         const footprint = computeFootprintCells(icon.shape, icon.rot);
         const [originR, originC] = icon.origin;
-        const boxW = footprint.w * cellW;
-        const boxH = footprint.h * cellH;
-        const ix = rect.x + originC * cellW;
-        const iy = rect.y + originR * cellH;
-        if (icon.itemId) iconCells.push({ itemId: icon.itemId, x: ix, y: iy, w: boxW, h: boxH });
-        const texture = this.textures.get(icon.textureKey);
-        if (!texture) continue;
-        const sprite = new Sprite(texture);
-        sprite.eventMode = 'none';
-        const scale = Math.min(boxW / texture.width, boxH / texture.height);
-        sprite.width = texture.width * scale;
-        sprite.height = texture.height * scale;
-        sprite.x = ix + (boxW - sprite.width) / 2;
-        sprite.y = iy + (boxH - sprite.height) / 2;
-        slotBox.addChild(sprite);
+        iconCells.push({ itemId: icon.itemId, x: rect.x + originC * cellW, y: rect.y + originR * cellH, w: footprint.w * cellW, h: footprint.h * cellH });
       }
 
       this.squadSlots.set(squad.slotIndex, {
@@ -511,28 +513,6 @@ export class MonitorRenderer {
         icons: iconCells, pips, koStamp, koLabel, koPlate, charge: 0, ko: false, label: squad.label,
       });
     }
-  }
-
-  /** REQ-0276 B2: draw a BP's unit art (`unit:<id>` raster) contain-fit over its
-   * colour fill at reduced alpha. No unit rasters exist yet (unitIconRasters()
-   * returns []), so this is a no-op hook today -- when art lands it renders with
-   * NO renderer change. PHASE-C HOOK: unit-art treatment. */
-  private drawUnitArt(slotBox: Container, bp: MonitorSquadBP, rect: { x: number; y: number }, cellW: number, cellH: number): void {
-    if (!bp.unitId) return;
-    const tex = this.textures.get('unit:' + bp.unitId);
-    if (!tex) return;
-    let minR = Infinity, minC = Infinity, maxR = -Infinity, maxC = -Infinity;
-    for (const [r, c] of bp.cells) { if (r < minR) minR = r; if (c < minC) minC = c; if (r > maxR) maxR = r; if (c > maxC) maxC = c; }
-    if (!Number.isFinite(minR)) return;
-    const bx = rect.x + minC * cellW, by = rect.y + minR * cellH;
-    const bw = (maxC - minC + 1) * cellW, bh = (maxR - minR + 1) * cellH;
-    const scale = Math.min(bw / tex.width, bh / tex.height);
-    const sprite = new Sprite(tex);
-    sprite.eventMode = 'none';
-    sprite.alpha = 0.85;
-    sprite.width = tex.width * scale; sprite.height = tex.height * scale;
-    sprite.x = bx + (bw - sprite.width) / 2; sprite.y = by + (bh - sprite.height) / 2;
-    slotBox.addChild(sprite);
   }
 
   /** REQ-0276 B2: light N charge pips (0..4) on a squad plate; cleared (hidden)
@@ -674,20 +654,19 @@ export class MonitorRenderer {
     return marker;
   }
 
-  // REQ-0169 M2: dots stay at their true cells; only the LABELS are de-
-  // conflicted. (1) Same-text markers (many masked '?' or repeated
-  // 'dagger') collapse to ONE representative label suffixed " x{count}";
-  // the rest keep their dot but hide their label. (2) The surviving labels
-  // are placed into vertical lanes: each starts at its dot's own cell row
-  // and is bumped DOWN one LABEL_LANE_H at a time until it clears every
-  // already-placed label (a simple per-frame bounds check), up to
-  // MAX_LABEL_LANES; a label with no free lane hides (dot kept). Every
-  // label is still truncated to the field's own right edge, so REQ-0045
+  // REQ-0283 (cell fidelity): dots stay at their true cells and every label
+  // sits at a FIXED offset from its own dot -- labels NEVER move to make room.
+  // (1) Same-text markers (many masked '?' or repeated 'dagger') collapse to
+  // ONE representative label suffixed " x{count}"; the rest keep their dot but
+  // hide their label (non-spatial). (2) The surviving labels are resolved
+  // against each other NON-SPATIALLY only: in topmost-leftmost priority order, a
+  // label that would overlap an already-kept one HIDES (it never bumps to a
+  // lane). Every label is still truncated to the field's right edge, so REQ-0045
   // (f)'s "x + labelWidth <= FIELD_W" invariant continues to hold.
   private relayoutEnemyLabels(): void {
     const markers = Array.from(this.enemyMarkers.values());
     for (const m of markers) { m.lane = 0; m.hidden = false; }
-    // (1) collapse duplicates by rawText (leftmost marker is the rep).
+    // (1) collapse duplicates by rawText (topmost-leftmost marker is the rep).
     const byText = new Map<string, FieldMarker[]>();
     for (const m of markers) {
       const g = byText.get(m.rawText);
@@ -696,7 +675,7 @@ export class MonitorRenderer {
     }
     const reps: Array<{ marker: FieldMarker; shown: string }> = [];
     for (const [txt, group] of byText) {
-      group.sort((a, b) => a.container.x - b.container.x);
+      group.sort((a, b) => (a.container.y - b.container.y) || (a.container.x - b.container.x));
       for (let i = 1; i < group.length; i++) {
         group[i].label.visible = false;
         group[i].hidden = true;
@@ -705,36 +684,34 @@ export class MonitorRenderer {
       rep.label.visible = true;
       reps.push({ marker: rep, shown: group.length > 1 ? `${txt} x${group.length}` : txt });
     }
-    // (2) 2D lane placement: sort by row then column; bump each label down
-    //     until it clears already-placed labels, else hide it.
-    reps.sort((a, b) => (a.marker.container.y - b.marker.container.y) || (a.marker.container.x - b.marker.container.x));
-    const placed: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    // (2) FIXED anchor: every rep's label sits at label.y = 0 (its own cell),
+    // truncated to the field's right edge. NO lane offset is ever applied.
+    for (const { marker, shown } of reps) {
+      marker.label.text = this.truncateLabelToFit(shown, ENEMY_LABEL_STYLE, Math.max(0, FIELD_W - marker.container.x));
+      marker.label.x = 0;
+      marker.label.y = 0;
+    }
+    // (3) non-spatial collision resolution: topmost-leftmost priority keeps its
+    // full label; any later rep whose fixed-anchor box overlaps a kept one is
+    // hidden (never moved). Deterministic -- ties break by (y, x).
+    const shownReps = reps.filter((r) => r.marker.label.visible);
+    shownReps.sort((a, b) => (a.marker.container.y - b.marker.container.y) || (a.marker.container.x - b.marker.container.x));
+    const kept: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
     const overlaps = (a: { x1: number; y1: number; x2: number; y2: number }, b: { x1: number; y1: number; x2: number; y2: number }): boolean =>
       a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
-    for (const { marker, shown } of reps) {
+    for (const { marker } of shownReps) {
       const x = marker.container.x;
-      marker.label.text = this.truncateLabelToFit(shown, ENEMY_LABEL_STYLE, Math.max(0, FIELD_W - x));
-      const w = marker.label.width;
-      const baseY = marker.container.y;
-      let placedOk = false;
-      for (let lane = 0; lane < MAX_LABEL_LANES; lane++) {
-        const y = baseY + lane * LABEL_LANE_H;
-        const box = { x1: x, y1: y, x2: x + w, y2: y + LABEL_LANE_H };
-        if (!placed.some((pl) => overlaps(pl, box))) {
-          placed.push(box);
-          marker.label.visible = true;
-          marker.label.x = 0;
-          marker.label.y = lane * LABEL_LANE_H;
-          marker.lane = lane;
-          marker.hidden = false;
-          placedOk = true;
-          break;
-        }
-      }
-      if (!placedOk) {
+      const y = marker.container.y;
+      const box = { x1: x, y1: y, x2: x + marker.label.width, y2: y + LABEL_LANE_H };
+      if (kept.some((k) => overlaps(k, box))) {
         marker.label.visible = false;
         marker.hidden = true;
         marker.lane = -1;
+      } else {
+        kept.push(box);
+        marker.label.visible = true;
+        marker.hidden = false;
+        marker.lane = 0;
       }
     }
   }
@@ -1169,10 +1146,11 @@ export class MonitorRenderer {
 
   /** REQ-0045 (f) regression-test seam: each enemy marker's local x + rendered label width. */
   getEnemyMarkerBounds(): Array<{ x: number; labelWidth: number; labelText: string; hidden: boolean; lane: number }> {
-    // REQ-0169 M2: hidden/lane are ADDITIVE (x/labelWidth/labelText keep
-    // their exact prior shape, so REQ-0045 (f)'s e2e assertion is
-    // unchanged) -- a de-overlap check asserts every VISIBLE pair is
-    // pairwise disjoint OR one is hidden.
+    // REQ-0283: x/labelWidth/labelText keep their exact prior shape (REQ-0045
+    // (f)'s FIELD_W assertion is unchanged); hidden/lane are ADDITIVE and now
+    // report the HONEST fixed-anchor contract -- lane is only ever 0 (shown at
+    // the fixed anchor) or -1 (hidden by collision priority), never a bumped
+    // lane index. The enemyPlane path reports the same via getMarkerBounds().
     if (this.enemyPlane.hasRoster()) return this.enemyPlane.getMarkerBounds();
     return Array.from(this.enemyMarkers.values()).map((m) => ({
       x: m.container.x,
