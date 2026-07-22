@@ -70,3 +70,21 @@ new regression — all green.
   fighter + unit-less wall BP) is GREEN post-fix; the pre-fix live bundle threw
   "Cannot read properties of undefined (reading 'id')" at monitor mount and blanked
   the whole Watch view (trace-captured).
+
+## Addendum (REQ-0285, 2026-07-22) — the freeze CLASS was only half-closed here
+Owner reported the Watch freeze STILL happening after this deploy. Re-running the
+LIVE app AS THE OWNER'S OWN PLAYER (the most-recently-active pg profile
+p_2867d894921c, a Supabase guest -- NOT data/profiles/dev.json, which is the stale
+FILES backend this REQ reproduced against; live state is pg, STORAGE_BACKEND=pg)
+showed this bundle (index-CUfhEA_S.js) actually renders ALL of the owner's real
+data cleanly (modern + legacy + settled + Play + unit-less-BP). The unit-less-BP
+throw this REQ fixed was real but was NOT the owner's trigger.
+
+The true root cause of the "whole Watch view freezes/blanks" SYMPTOM is the one
+this REQ's own root-cause note named but did not close: **no error boundary
+anywhere in the client**, plus one still-UNGUARDED synchronous mount throw path
+(Monitor.tsx setRoster -> EnemyPlane.setRoster over raw roster fieldCells). Any
+not-yet-enumerated malformed run/roster still tore down the React root exactly as
+described here. REQ-0285 closes the class: a MonitorErrorBoundary around the Watch
+view + per-enemy roster sanitisation/guard + a guarded setRoster call. Deployed as
+index-Da45OMSh.js.

@@ -1,6 +1,6 @@
 # REQ-0285 — Monitor Watch error-boundary + roster mount hardening (freeze-class close-out)
 
-**Status:** Built
+**Status:** Done
 **Reserved / built:** 2026-07-22
 **Slug:** monitor-watch-errorboundary-hardening
 **Follow-up of:** REQ-0284 (monitor-mount-freeze-hotfix), which itself repaired a REQ-0283 regression.
@@ -79,3 +79,16 @@ driver hang, or an infinite loop inside a single event handler — none found: e
 `applyEvents` handler is try/caught and the ray-VFX trail self-destroys per
 animation), the error boundary would not catch it; no such cause was found in code
 or in the exhaustive same-player replay.
+
+## Deploy (2026-07-22)
+- Merge ef6faad (--no-ff) into master; client rebuilt in the MAIN checkout (0e4fe94).
+- Bundle hash: index-CUfhEA_S.js -> **index-Da45OMSh.js**.
+- Verified: /api/health {ok:true} on :8802 (NO api restart -- server/ unchanged);
+  web :8801 and public https://backpack-dev.qtie.jp/app/ both serve index-Da45OMSh.js.
+- LIVE same-player proof (read-only scoped replica of the owner p_2867d894921c: exact
+  canvas + room + lastRun, driven via the tunnel /api split as e2e_ownerrepro):
+  - A) owner's real (clean) run -> Watch mounts, feed replays live, no pageerror, no hang.
+  - B) same run with a deliberately MALFORMED stored roster (enemies[0].fieldCells=[5])
+    -> new bundle keeps the monitor mounted, feed progresses, the bad enemy is skipped,
+    no pageerror. On the PREVIOUS bundle this exact stored roster threw at the unguarded
+    setRoster and blanked the whole Watch view (the regression e2e captures that throw).
