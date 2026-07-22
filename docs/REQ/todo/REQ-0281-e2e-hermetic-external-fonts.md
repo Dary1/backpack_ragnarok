@@ -82,5 +82,57 @@ cause (the external fetch) is removed, so no second-line mitigation is needed.
 - Self-hosting the fonts in the PRODUCT bundle (would also fix it everywhere but
   means committing multi-MB CJK woff2 sets; not warranted for an e2e-only stall).
 
-## Gates
-(filled at built)
+## Gates (2026-07-22)
+
+Conditions: worktree `req-0281-e2e-hermetic-external-fonts` cut from master
+`a5f83bd`; HOME bridge `/tmp/h0281` (mirrors `/tmp/hmaster`, backpack_ragnarok ->
+this worktree, shared `.cache/ms-playwright`); node v24.18.0; DATABASE_URL from
+`server/.env`. The box was under concurrent multi-session load throughout (other
+sessions' `ci.sh` / art work; 1-min loadavg 0.9-5 during the artadmin runs).
+
+### Reproduction of the failure (pre-fix, on master via /tmp/hmaster)
+- `tools/artadmin_e2e.sh`: `:124` (goto 26.5 s) + `:273` RED, 6 passed -- the exact
+  deploy signature.
+- Retained trace + instrumented probe: fonts held open -> `page.goto ...
+  waitUntil:load` TIMEOUT 20007 ms, pending = `fonts.googleapis.com/css2` (the exact
+  deploy error); fonts route-aborted -> load fires ~110 ms x8.
+
+### THE PROOF THAT MATTERS -- artadmin 8/8, 3 consecutive runs (post-fix)
+`tools/artadmin_e2e.sh` from this worktree, same conditions that red it today:
+- Run 1: 8 passed (1.9m)  -- :124 19.4s, :273 8.7s, :344 22.2s
+- Run 2: 8 passed (1.8m)  -- :124 19.2s, :273 9.4s, :344 20.9s
+- Run 3: 8 passed (1.8m)  -- :124 18.4s, :273 9.2s, :344 23.5s
+Post-fix, no `/app` goto ever waits on an external host.
+
+### No regression (family)
+- `tools/art_inspect_e2e.sh`:  1 passed.
+- `tools/content_admin_e2e.sh`: 28 passed.
+- `tools/ci.sh` (SKIP_PG, HOME=/tmp/h0281): all stages green through client
+  typecheck+build [6/7] and the Supabase-env tripwire [6.1/7]; the scoped fleet
+  e2e [7/7] -- which serves every `/app` through the patched local-proxy --
+  ran 194 passed, 1 skipped, 2 failed, the two failures being the KNOWN-TOLERABLE
+  documented flakes `forecast.spec.ts:206` and `schedule.spec.ts:1451` (signature
+  match). `[6.5/8]` admin harnesses are skipped by ci.sh and were run directly
+  (above). The fix is proven non-regressive across the whole e2e family.
+
+### Not run to green (out of blast radius)
+- `tools/ci.sh` pg-backend api render stages `[5.1]/[5.15]/[5.16]/[5.17]`
+  (artwork/artqueue/artfamily/inspection) FLAKE on "render seed N did not finish in
+  time" under the sustained concurrent multi-session box load (1/5-min loadavg
+  7-12 for most of the window). These are SERVER-SIDE api render-timeout tests; the
+  sole code change in this REQ is `client/e2e/local-proxy.cjs` (e2e `/app` static
+  serving), which cannot affect them. They pass on a quiet box (master is green);
+  the flake is the render-under-load class REQ-0222 catalogs, not introduced here.
+
+**Files changed:** `client/e2e/local-proxy.cjs` (+19/-2) -- plus this REQ doc.
+**Commits (branch req-0281-e2e-hermetic-external-fonts, off a5f83bd):**
+- `030f737` reserve REQ-0281
+- `d77d86b` local-proxy strips external Google Fonts <link> from served index.html
+- `d04d99a` spec
+- `544b503` reserved -> todo
+- (this) todo -> built
+
+**REQ-0222 remaining scope UNTOUCHED:** release.sh rerun-then-abort + the
+provenance-carrying known-flaky list were not commissioned today and are not
+altered here.
+
