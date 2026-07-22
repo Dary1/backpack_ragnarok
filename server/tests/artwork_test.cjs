@@ -92,6 +92,11 @@ async function runG2andG1() {
     assert.strictEqual(art.forcedTiling({ kind: 'vfx', shape: { role: 'hit' } }, true), true, 'a hit still honours an operator tiling opt-in');
     assert.strictEqual(art.forcedTiling({ kind: 'bpskin' }, undefined), true, 'bpskin unchanged (forced)');
     assert.strictEqual(art.forcedTiling({ kind: 'si' }, undefined), false, 'si unchanged (operator choice)');
+    // REQ-0292: skill_icon is a LOCKED 256x256 still (no shape/role), never force-tiled.
+    assert.deepStrictEqual(deriveSize('skill_icon', null), { width: 256, height: 256 });
+    assert.deepStrictEqual(art.shapeAndSize('skill_icon', null), { shape: null, size: { width: 256, height: 256 } });
+    assert.strictEqual(art.forcedTiling({ kind: 'skill_icon' }, undefined), false, 'skill_icon never force-tiled');
+    assert.strictEqual(art.forcedTiling({ kind: 'skill_icon' }, true), true, 'skill_icon honours an operator tiling opt-in');
   });
   await AT('G1 system_name is UNIQUE (duplicate refused at storage)', async () => {
     await storage.createArtwork({ system_name: 'g1_uniq', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
@@ -401,12 +406,36 @@ async function runVfx() {
   });
 }
 
+// REQ-0292: skill_icon end-to-end -- a 256x256 still, mock render + adopt + DIRECT
+// serving by system_name (== a skill id; no content def, no art_urls join), and the
+// kind-derived content/art/skill_icon/ export. Mirrors runVfx but role-less.
+async function runSkillIcon() {
+  await AT('REQ-0292 skill_icon: 256x256 still, NOT force-tiled; adopt + direct serve + content/art/skill_icon/ export', async () => {
+    const ss = deriveSize('skill_icon', null);
+    const a = await storage.createArtwork({ system_name: 'hrim_cleave', kind: 'skill_icon', shape: null, gen_width: ss.width, gen_height: ss.height, main_object: 'a frost cleave ability icon' });
+    assert.deepStrictEqual({ w: a.gen_width, h: a.gen_height }, { w: 256, h: 256 }, 'skill_icon stored at 256x256');
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: art.forcedTiling(a, undefined) });
+    const d = await waitForRender('hrim_cleave', r.seed, 30000);
+    assert.strictEqual(d.status, 'ok', 'skill_icon render ok: ' + d.error);
+    assert.strictEqual(d.params.tiling, false, 'a skill_icon is a still, not tiled');
+    await storage.adoptRender('hrim_cleave', r.seed);
+    const served = await storage.getAdoptedRender('hrim_cleave');
+    assert.ok(served && served.image && served.image.length > 0, 'adopted skill_icon served DIRECTLY by system_name == skill id (no content def, no art_urls)');
+    assert.strictEqual(served.kind, 'skill_icon', 'served kind is skill_icon');
+    const prov = await require('../services/art_export.cjs').exportAdopted('hrim_cleave');
+    assert.ok(/[\\/]skill_icon[\\/]hrim_cleave\.png$/.test(prov.path), 'exported under content/art/skill_icon/: ' + prov.path);
+    assert.ok(fs.existsSync(prov.path), 'export file written');
+  });
+}
+
 (async () => {
   await storage.clearAllArtworks();
   await runG2andG1();
   await runG0223();
   await runG3andFlow();
   await runVfx();
+  await runSkillIcon();
   await storage.clearAllArtworks();
   await storage.closeArtPool();
   os.homedir = realHome;

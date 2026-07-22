@@ -131,6 +131,15 @@ async function main() {
     }
   });
 
+  await AT('REQ-0292 skill_icon: routes to the icon kit set (matte.coverage_band + si.subject_frame); no mass-stale', async () => {
+    const ids = kitReg.kitsFor('skill_icon').map((k) => k.kit_id);
+    assert.deepStrictEqual(ids, ['matte.coverage_band', 'si.subject_frame'], 'skill_icon mirrors the closest icon kind (si): matte + subject_frame');
+    // Adding skill_icon to matte/si.subject_frame applies_to must NOT bump kit_version.
+    for (const [kid, ver] of [['matte.coverage_band', '1'], ['si.subject_frame', '1'], ['bpskin.frame_gate', '1'], ['vfx.flatness', '1']]) {
+      assert.strictEqual(kitReg.kitVersion(kid), ver, kid + ' kit_version unchanged by the applies_to edit');
+    }
+  });
+
   // ---- G1+G2 integration: generate (mock) -> kits auto-run -> persisted,
   //      kit_input_sha256 verified against a fresh Node recompute ----
   await AT('integration: mock generate -> po kits auto-run + persist + hash verified', async () => {

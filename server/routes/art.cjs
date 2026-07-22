@@ -216,6 +216,9 @@ function defaultsForKind(kind) {
   // the role-specific style (ray = fill grammar, hit = burst) is applied by
   // tools/art_job.py compose_prompt, and the wording is a Fable-pass decision.
   if (kind === 'vfx') return { prompt_template: '{main_object}' };
+  // REQ-0292: skill_icon prompt is a passthrough at the template level; the final
+  // icon prompt-template ruling is P3's (Fable). The operator/P3 writes the wording.
+  if (kind === 'skill_icon') return { prompt_template: '{main_object}' };
   return { prompt_template: '' };
 }
 

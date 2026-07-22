@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_route as ROUTE
 import art_style as STYLE
 import art_shape as SHAPE
-KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx"}  # REQ-0280/0264
+KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx", "skill_icon": "item"}  # REQ-0280/0264; REQ-0292: skill_icon renders through the item/icon grammar (P3 owns the final template)
 
 
 def po_shape_mask(job):

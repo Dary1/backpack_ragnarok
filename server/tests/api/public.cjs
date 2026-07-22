@@ -125,6 +125,14 @@ T('api: /api/content art_urls -- unit_skin ids join the batch, unit ids do NOT (
   api.handle(req, res);
   const parsed = JSON.parse(res.body);
   const urls = parsed.art_urls || {};
+  // REQ-0292: a skill_icon's system_name IS a skill id (skills.json / monster_skills /
+  // gimic_skills). Skill ids are NEVER offered to the art resolver -- per-skill art
+  // direct-serves at /api/art/<skill_id>.png (the vfx precedent; artUrlNameBatch lists
+  // items/sis/tms/monsters/gimics/dungeons/unit_skins, NOT skills). So an adopted
+  // skill_icon can never leak into art_urls, and a skill id can never collide the batch.
+  const skillIds = Object.keys(parsed.monster_skills || {}).concat(Object.keys(parsed.gimic_skills || {}));
+  assert.ok(skillIds.length > 0, 'the served content exposes monster/gimic skill ids (the skill_icon keyspace)');
+  for (const sid of skillIds) assert.ok(!batch.includes(sid), 'skill id "' + sid + '" is NOT in the art_urls batch (skill_icon direct-serves, never joins)');
   assert.strictEqual(urls.uskin_test_queen, undefined, 'no adopted artwork -> the skin id is OMITTED from art_urls');
   assert.strictEqual(urls.uskin_bp_test_queen, undefined, 'same for the BP skin');
 });
