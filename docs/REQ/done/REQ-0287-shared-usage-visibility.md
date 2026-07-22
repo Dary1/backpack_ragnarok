@@ -1,9 +1,11 @@
 # REQ-0287 — shared-usage visibility: ownership ribbons on Canvas & Inventory
 
 ## Status
-built (implemented + gates green 2026-07-23 on branch
-`req-0287-shared-usage-visibility`; not yet merged/accepted). Spec ratified by
-the user 2026-07-22. See "## Implementation" and "## Gate results" below.
+done (merged + deployed live 2026-07-23; user-accepted). Master merge
+`38b0c54`, web bundle rebuilt `f002b19` (served by backpack-web static host, no
+restart needed; live bundle carries the tooltip i18n + `usageRibbonProbe` hook).
+Spec ratified by the user 2026-07-22. See "## Implementation" and "## Gate
+results" below.
 
 ## Origin (user directive, 2026-07-22, chat — verbatim)
 「Canvasの中のPO・Unit・SIが、他のPreset(Squad)と共有されている場合の可視化が
