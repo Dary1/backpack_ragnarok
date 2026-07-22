@@ -132,3 +132,83 @@ Blocked by REQ-0288. Independent of REQ-0287/0290/0291.
   whichever lands second removes the core wiring / keeps it removed.
 - Rotation AXIS is unaffected by trigger location: §B pivots on the Unit's
   absolute seat cell regardless of where the rotation is invoked.
+
+
+## Log
+
+Implemented by the Opus session 2026-07-22/23 (branch
+`req-0289-bp-grab-handle-unit-pivot-rotation`, off REQ-0288's `built/` base).
+
+### Summary
+- **Engine (mock-src/engine.js).** `computeRotatedBP` is now pivot-agnostic:
+  it returns the rotated LOCAL layout `{shape, unitOff, pos:[{uid,id,local,rot,q}]}`
+  (renamed `cell`->`local`; `unitOff:null` for unit-less BPs). `rotateLocalOnce`
+  is the single-step primitive; `rotatedLayoutK` applies it k times; `pivotOrigin`
+  gives `unitAbs - rotatedUnitOff`. `canRotateBP`/`rotateBP` (+ inv twins) re-anchor
+  the rotated shape at the pivot origin, so the Unit's ABSOLUTE seat cell is
+  invariant across a successful rotation; a unit-less BP keeps the old bbox
+  behavior (origin fixed). New pure `canPlaceBPRotated(st,bpId,origin,steps)` +
+  `moveBPRotated` (+ `invCanPlaceBPRotated`/`invMoveBPRotated`), with steps=0
+  delegating to `canMoveBP`/`moveBP` (byte-identical). `rotatedBPLayout` exported
+  as a pure view helper for the client ghost. DIRS never rotate (REQ-0170).
+  Surface declared in shared/engine.d.ts (client shim re-exports it).
+- **Client.** §A: the move-handle badge anchors at `engine.unitCell(bp)`'s
+  top-left corner (r0,c0 fallback for unit-less BPs), inside the REQ-0288
+  `if (!lifted)` wrapper. §C: a refused in-place rotation enters a STICKY FLOAT
+  (`CarryState.pendingRot`/`sticky`): armed immediately, follows the pointer
+  button-free, ignored by `ensurePointerUpWired`, placed by the next stage
+  pointerdown (`commitStickyCarry` -> `commitBP(pendingRot)` -> `moveBPRotated`);
+  illegal click / Esc / window blur revert with REQ-0288 `revertFeedback` (state
+  untouched). `onGlobalPointerMove` previews the ROTATED footprint via
+  `canPlaceBPRotated` and feeds `renderGhostBP` a rotated VIEW built from
+  `rotatedBPLayout` (renderGhostBP stays dumb). Cross-board drop with pendingRot>0
+  is refused (drop stays null). The unit-core pointerdown wiring is deliberately
+  KEPT (REQ-0290's removal).
+
+### Gate table
+| Gate | Result |
+| --- | --- |
+| mock-src/tests/run.cjs | **129 passed, 0 failed** (123 baseline + 6 new REQ-0289 cases) |
+| engine type-surface drift (tools/check_engine_types.cjs) | **OK** (rotatedBPLayout + canPlaceBPRotated/moveBPRotated/inv twins declared + present) |
+| sim/tests + goldens | **untouched** (git-clean); `node sim/tests/goldens.cjs` -> goldens OK (12 cases); the 9 `def_sha256` lines in sim/tests/goldens/replay_hashes.json unchanged |
+| server typecheck (tsconfig.server.json, checkJs) | pass (ci.sh [3.5]) |
+| client `tsc -b` | pass |
+| client build (`pnpm run build`) | pass |
+| `node scripts/check_ghost_chain.mjs` | **OK** |
+| `tools/ci.sh` (SKIP_PG=1 SKIP_E2E=1) | **CI GREEN** (incl. [0/8] e2e-port rule, all sim/mock/content/vocab gates, client typecheck+build) |
+| e2e bp-rotate.spec.ts + bp-rotate-float.spec.ts (scoped, decade 7890-7899, --workers=1) | **10 passed** (E2E_PROXY_PORT=7892 E2E_FLEET_BASE_PORT=7894) |
+| Screenshots | web/preview/req-0289/badge-at-seat.png, float-rotated-ghost.png |
+
+### Commits
+- `2e7c459` REQ-0289: engine -- Unit-pivot BP rotation + arbitrary-origin placement queries
+- `251dd01` REQ-0289: engine tests -- pivot-law recalcs + new gate cases
+- `2e19085` REQ-0289: client -- badge at the Unit seat + sticky float on blocked rotation
+- `842e5fb` REQ-0289: e2e -- bp-rotate pivot-law update + float spec + screenshots
+- `0d2e74f` REQ-0289: rebuild client bundle
+- (this file) REQ-0289: log + todo -> built
+
+### Deviations / notes
+- **Overlap-rejection fixtures repositioned.** run.cjs's two "rotation blocked by
+  overlap" fixtures (canvas + inventory) had the blocker placed for the OLD
+  bbox-anchored footprint. Under the pivot law the rotated footprint lands
+  elsewhere, so the fixtures were moved (lshape/inv_l origin [2,2]->[2,3], blocker
+  / foreign PO -> [2,1]) to keep exercising the same `overlaps another BP` /
+  `overlaps free-placed item` rejection; each change is annotated in-file with the
+  recalculation.
+- **Gate wording "lands rotated bag with unit cell unchanged."** For a FLOAT
+  placement the bag physically moves, so the Unit cell lands at the CLICKED drop
+  origin (not literally "unchanged"). Read as: the placement is coherent (Unit
+  seat = drop origin + rotated off) and the committed footprint matches the ghost
+  preview; the e2e asserts exactly that. The literal "Unit cell invariant" claim
+  is the IN-PLACE rotation law (§B) and is pinned by bp-rotate.spec.ts and
+  run.cjs. No redesign was needed.
+- **ci.sh scope.** Run with SKIP_PG=1 SKIP_E2E=1: the pg backend tests need a
+  DATABASE_URL and are unaffected by this editor-only, engine/client change; the
+  e2e was run SCOPED per the REQ (decade 7890-7899). The cheap [0/8] port rule
+  still ran green.
+- **rotatedBPLayout typing.** Declared via a named `RotatedBPLayout` interface in
+  engine.d.ts because the drift checker's member scanner mis-splits an inline
+  object return type containing `Array<{...}>`; the named type sidesteps it with
+  identical runtime coverage.
+- No merge to master; base left untouched. Known pre-existing flake
+  bp-transfer.spec.ts:164 not encountered (targeted --workers=1 run).
