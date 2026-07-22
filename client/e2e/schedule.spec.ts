@@ -1591,3 +1591,62 @@ test.describe('REQ-0240: monitor six zones, feed filters, roster/pacing + screen
     await apiCancelRoom(page, player.token, roomId);
   });
 });
+
+
+test.describe('REQ-0285: a malformed run roster never tears down the Watch view (regression)', () => {
+  test('setRoster with a mixed valid+malformed roster builds only the valid enemies and keeps the monitor mounted (pre-fix: an uncaught throw at mount blanked the whole view)', async ({ page }) => {
+    // REGRESSION (follow-up to REQ-0284). REQ-0284 fixed ONE mount-time throw
+    // (the unit-less BP seatCell deref) but left the CLASS open: an uncaught
+    // exception anywhere in the Monitor subtree tears down the React root (there
+    // was still no error boundary), blanking the whole Watch view -- the owner's
+    // reported "forming up then freeze". The one remaining UNGUARDED synchronous
+    // mount path is Monitor.tsx's setRoster(run.roster) -> EnemyPlane.setRoster,
+    // which pre-fix did `for (const [r,c] of cells)` over raw fieldCells: a
+    // malformed cell (a bare number, not a [row,col] pair) threw "number is not
+    // iterable" and killed the view. Post-fix EnemyPlane sanitises + per-enemy
+    // try/catches, Monitor guards the call, and MonitorErrorBoundary contains any
+    // residual throw. e2e fixtures only ever produced valid rosters, so this shape
+    // was never exercised.
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    for (let i = 0; i < 4; i++) { const r = await apiAssignSlot(page, player.token, roomId, i, i); expect(r.status).toBe(200); }
+    await expect(async () => { const view = await apiGetRoom(page, player.token, roomId); expect(view.body.room.status).toBe('active'); }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+
+    // The debug seam is installed only AFTER mountSquads() runs (a healthy mount).
+    await expect(async () => {
+      const has = await page.evaluate((rid) => !!(window as unknown as { __monitorDebug?: Record<string, { setTestRoster?: unknown }> }).__monitorDebug?.[rid]?.setTestRoster, roomId);
+      expect(has).toBe(true);
+    }).toPass({ timeout: 10000 });
+
+    // Drive the exact (previously) unguarded mount path with 2 well-formed
+    // enemies + 1 malformed (fieldCells carries a bare number). Pre-fix this
+    // evaluate would REJECT (the setRoster throw propagates); post-fix it returns
+    // the built-actor count with the malformed enemy skipped.
+    const built = await page.evaluate((rid) => {
+      const roster = {
+        slots: [],
+        enemies: [
+          { id: 'valid_a', name: 'Valid A', nameJa: 'A', hpMax: 30, masked: false, footprint: [1, 1], fieldCells: [[2, 2]], instanceId: 'valid_a#0' },
+          { id: 'broken', name: 'Broken', nameJa: 'B', hpMax: 30, masked: false, footprint: [1, 1], fieldCells: [5], instanceId: 'broken#0' },
+          { id: 'valid_b', name: 'Valid B', nameJa: 'C', hpMax: 30, masked: false, footprint: [1, 1], fieldCells: [[3, 3]], instanceId: 'valid_b#0' },
+        ],
+      };
+      return (window as unknown as { __monitorDebug: Record<string, { setTestRoster: (r: unknown) => number }> }).__monitorDebug[rid].setTestRoster(roster);
+    }, roomId);
+    expect(built).toBe(2);
+
+    // The Watch view survived: the monitor is still mounted and NO error card showed.
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible();
+    await expect(page.locator('[data-testid="schedule-monitor-error"]')).toHaveCount(0);
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
