@@ -392,3 +392,16 @@ c0ab7ee C1 · 9bab433 C2 · 13eefc5 C3 · d3905ca C4 ·
 ### Worktree state
 git status CLEAN (throwaway screenshot spec removed; worktree web/ build reverted to the
 committed REQ-0273 artifacts per convention). No merge, no deploy — user coordinates those.
+
+## Deploy log
+- 2026-07-22 built -> MERGED to master + DEPLOYED (deploy agent, owner-authorized 2026-07-22).
+  Merge `3852fa4` (--no-ff, base master@a5f83bd, 16 commits, ZERO conflicts). web/app rebuilt in
+  the main checkout (env-carrying bundle) `5160a91` -> live bundle `index-D0--QoC6.js` (old
+  `index-Bk5vjz_m.js` gone). backpack-api restarted 06:19Z (active, NRestarts=0, ExecMainStatus=0,
+  clean journal). Master gate (ci.sh, DATABASE_URL from server/.env, ART_FAMILY_BARRIER=0): all
+  deterministic + pg gates GREEN (sim, tsc, client build, [5.x] pg incl. content_serving 9/0,
+  schedule_serving 13/0), [6.6] registry-first 4/4; [6.5] aborted ci.sh under `set -e` on ONLY the
+  documented artadmin goto-under-load family (artadmin.spec :124/:273, REQ-0222 lineage, tolerated
+  per REQ-0266/0273/0278/0279) -- no NEW reds. The 3 documented client reds
+  (forecast:206/workshop:361/schedule:1451) are pre-existing/unchanged. Live verify: /app/ serves
+  the new bundle, /api/health ok, /api/schedule/dungeons formations carry unit1..unit4 (A1 join fix).
