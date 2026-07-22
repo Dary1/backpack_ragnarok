@@ -59,3 +59,68 @@ flake bookkeeping. NOT implemented here.
   scoped decade is 2790/2792/2794 -- NOT the `5000 + REQ*10` that REQ-0256`s doc/legacy note
   used; ci.sh`s [7/7] auto-derives it from the branch name.)
 - No engine/enemy/dungeon-content change (git diff = the one spec file only).
+
+---
+
+## 4. Outcome -- built 2026-07-22
+
+### 4.1 Commits (branch `req-0279-workshop-lrdst-fixture-tick-combat`, off master `00befdf`)
+
+| commit | what |
+|---|---|
+| `d7c614b` | reserve stub (allocator) |
+| `331c67d` | this spec |
+| `734e204` | reserved -> todo (user commissioned 2026-07-22) |
+| `ad0b8b2` | implementation: re-tune `client/e2e/workshop.spec.ts` squadCanvas |
+
+### 4.2 What changed
+
+`client/e2e/workshop.spec.ts` ONLY (git diff master...HEAD = one file: +49/-21; zero
+engine/enemy/dungeon-content delta). The `squadCanvas(tag)` fixture is swapped from the old
+berserker + assembled blade+hilt `longsword` (UNLINKED under tick-loop -> 0 damage -> 0/200)
+to the sanctioned REQ-0051 "Starter: Arms" loadout (berserker + 12 complete weapons). The
+stale "WINS 200/200" comment is replaced with the new measured claim + a spec-level GUARD
+naming the dependency (re-tune the fixture if combat drifts; never weaken settleRun).
+
+### 4.3 Measurement (tools-side, real `sim/combat.cjs` runDungeon over rolled `niflheim_depths` L1)
+
+Method: for each trial, `dungeon_roll.rollDungeon(niflheim_depths, 1, randomGenSeed)` then
+`combat.runDungeon({ ..., squadSnapshots: 4x this squad, formationId: 'formation1', level: 1 })`
+-- the EXACT call `server/services/runs.cjs` startRun makes. Content via the server`s own
+`getScheduleContent()` (files backend), so the maps match production.
+
+| squad | victories |
+|---|---|
+| old (berserker + blade+hilt longsword), hp800 | **0 / 200** (unlinked, 0 player damage) |
+| old + hp5000 / +4 longswords | still 0 / 40 (hp/weapon-count irrelevant) |
+| 2x2 + 2 complete weapons | 0 / 100 |
+| 3x3 + 8 complete weapons | 97 / 100 |
+| **starter_arms (5x5 + 12), the shipped fixture** | **500 / 500** (730/730 cumulative, 0 wipes) |
+
+### 4.4 Gates (HOME-remap bridge /tmp/h0279; DATABASE_URL from main server/.env; art-worker
+recipe per REQ-0278: ART_JOB_PYTHON=main .venv, ART_KIT_MATTE_METHOD=borderkey, ART_KIT_PYTHON
+left to ci.sh`s per-step default via a worktree .venv symlinked to main, removed after)
+
+- **DB-free sweep** `SKIP_PG=1 SKIP_E2E=1 SKIP_CLIENT=1 tools/ci.sh` -> **CI GREEN**.
+- **Scoped hermetic fleet x2** (REQ-0279 decade: proxy 2792, fleet 2794+; the roller/combat use
+  fresh random seeds each run, so this is a real repeat): `workshop.spec.ts` **11 passed / 0
+  failed BOTH runs**, `:361` green (215 ms, then 226 ms).
+- **Full `tools/ci.sh`**: green through [6.6/8] -- sim / goldens / mock / typecheck / DB-free;
+  [5/7] pg api + the full art suite ([5.1] artwork 16/0, [5.15] artqueue incl. G5 5/0, [5.16]
+  artfamily 2/0, [5.2] inspection 5/0); [6/7] client build; [6.5/8] admin trio + [6.6/8]
+  registry-first. **[7/7] scoped fleet: 194 passed / 2 failed** -- the 2 are
+  `forecast.spec.ts:206` and `schedule.spec.ts:1451`, the documented tolerable load flakes
+  (signature-verified by name). **`workshop.spec.ts:361` is GREEN (spec 189, 458 ms)** -- the
+  RED this REQ fixes. (This tree carries no REQ-0278 change, so ci.sh has no [6.1/7] step.)
+
+### 4.5 Notes
+
+- Origin of the red: REQ-0256 (tick-loop combat) shipped sim-only and its doc records "E2E is
+  not a gate for this program"; the fleet never exercised `:361`, so the fixture-vs-combat
+  regression only surfaced at REQ-0273`s deploy. The durable fix for that class (combat drift
+  silently reddening an e2e fixture) is REQ-0222`s remaining scope -- NOT implemented here.
+- Port-formula anomaly: REQ-0256`s doc and the commissioning brief use `5000 + REQ*10 + idx`,
+  but current master`s `tools/e2e_ports.sh` derives `base = REQ*10` (proxy 2792 for REQ-0279,
+  confirmed live). Followed the repo authority (ci.sh auto-derives from the branch name).
+
+Deliverable: `built`, worktree clean, NOT merged (user acceptance later).
