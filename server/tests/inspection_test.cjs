@@ -116,6 +116,21 @@ async function main() {
     assert.notStrictEqual(h1, kitReg.kitInputSha256('IMG_A', 'po.cell_packing', '1', art2), 'shape change -> new hash');
   });
 
+  await AT('REQ-0280 vfx: kits route (matte+tiling.seam+vfx.flatness); role is part of the inspection identity; no mass-stale', async () => {
+    const ids = kitReg.kitsFor('vfx').map((k) => k.kit_id);
+    assert.deepStrictEqual(ids, ['matte.coverage_band', 'tiling.seam', 'vfx.flatness'], 'vfx routes to exactly these three kits');
+    // shape carries role (kit_registry.kitParams), so flipping role invalidates inspections.
+    const ray = { kind: 'vfx', shape: { role: 'ray' }, gen_width: 256, gen_height: 64 };
+    const hit = { kind: 'vfx', shape: { role: 'hit' }, gen_width: 256, gen_height: 256 };
+    const hRay = kitReg.kitInputSha256('IMG', 'tiling.seam', '1', ray);
+    assert.strictEqual(hRay, kitReg.kitInputSha256('IMG', 'tiling.seam', '1', ray), 'stable for the same role');
+    assert.notStrictEqual(hRay, kitReg.kitInputSha256('IMG', 'tiling.seam', '1', hit), 'flipping role -> new kit_input_sha256 (role is part of the inspection identity)');
+    // Adding vfx to bpskin/po/si/unit applies_to must NOT bump their kit_version (no mass-stale).
+    for (const [kid, ver] of [['tiling.seam', '1'], ['matte.coverage_band', '1'], ['bpskin.frame_gate', '1'], ['si.subject_frame', '1']]) {
+      assert.strictEqual(kitReg.kitVersion(kid), ver, kid + ' kit_version unchanged by the applies_to edit');
+    }
+  });
+
   // ---- G1+G2 integration: generate (mock) -> kits auto-run -> persisted,
   //      kit_input_sha256 verified against a fresh Node recompute ----
   await AT('integration: mock generate -> po kits auto-run + persist + hash verified', async () => {

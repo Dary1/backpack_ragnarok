@@ -158,7 +158,26 @@ function shapeAndSize(kind, shape) {
     const size = deriveSize('custom', shape);
     return { shape: { width: size.width, height: size.height }, size };
   }
+  if (kind === 'vfx') {
+    // REQ-0280 / REQ-0264 s8.1: closed-vocabulary role. A missing/unknown role
+    // is BAD_SHAPE -- "a closed vocabulary that accepts an unknown value is not
+    // closed" (s14 gate 1). Validating here returns a precise 400 on create/patch.
+    const role = shape && shape.role;
+    if (role !== 'ray' && role !== 'hit') throw Object.assign(new Error("vfx requires shape {role:'ray'|'hit'}"), { code: 'BAD_SHAPE' });
+    const size = deriveSize('vfx', { role });
+    return { shape: { role }, size };
+  }
   return { shape: null, size: deriveSize(kind, null) };
+}
+
+// REQ-0280 / REQ-0264 s12.1 C: a render is FORCE-tiled when the kind's law
+// requires a seamless raster -- a bpskin fill, and a vfx RAY strip (its 4:1
+// aspect IS a tiling contract). Everything else honours the operator's b.tiling.
+// Single source for the decision so the route and its gate agree.
+function forcedTiling(art, bodyTiling) {
+  if (art && art.kind === 'bpskin') return true;
+  if (art && art.kind === 'vfx' && art.shape && art.shape.role === 'ray') return true;
+  return !!bodyTiling;
 }
 
 // ---- admin handlers ----
@@ -193,6 +212,10 @@ function defaultsForKind(kind) {
   // REQ-0179: custom is operator-owned -- a passthrough template so the final
   // subject is just main_object until the operator writes their own.
   if (kind === 'custom') return { prompt_template: '{main_object}' };
+  // REQ-0280 / REQ-0264 s12.3: vfx prompt is a passthrough at the template level;
+  // the role-specific style (ray = fill grammar, hit = burst) is applied by
+  // tools/art_job.py compose_prompt, and the wording is a Fable-pass decision.
+  if (kind === 'vfx') return { prompt_template: '{main_object}' };
   return { prompt_template: '' };
 }
 
@@ -279,7 +302,7 @@ async function hGenerate(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
-  const tiling = art.kind === 'bpskin' ? true : !!b.tiling;
+  const tiling = forcedTiling(art, b.tiling); // REQ-0280/0264: bpskin + vfx-ray forced
   // REQ-0186: a ONE-SHOT lock override, same posture as `tiling` -- it steers
   // this render only and is NOT written back to the artwork. This is the point
   // of the feature: a conditioned render costs 76-130 s, and the trade-off is
@@ -609,4 +632,4 @@ function tryArtRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryArtRoutes };
+module.exports = { tryArtRoutes, forcedTiling, shapeAndSize }; // REQ-0280: last two for the sizing/forced-tiling gates

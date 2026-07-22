@@ -15,7 +15,8 @@
       "applies_to": [
         "po",
         "si",
-        "unit"
+        "unit",
+        "vfx"
       ],
       "blocking": false
     },
@@ -39,7 +40,8 @@
       "kit_id": "tiling.seam",
       "kit_version": "1",
       "applies_to": [
-        "bpskin"
+        "bpskin",
+        "vfx"
       ],
       "blocking": false
     },
@@ -56,6 +58,14 @@
       "kit_version": "1",
       "applies_to": [
         "si"
+      ],
+      "blocking": false
+    },
+    {
+      "kit_id": "vfx.flatness",
+      "kit_version": "1",
+      "applies_to": [
+        "vfx"
       ],
       "blocking": false
     }

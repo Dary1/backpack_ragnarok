@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_route as ROUTE
 import art_style as STYLE
 import art_shape as SHAPE
-KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster"}
+KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx"}  # REQ-0280/0264
 
 
 def po_shape_mask(job):
@@ -94,6 +94,19 @@ def compose_prompt(job):
     style_override = job.get("style_override")
     if style_override:
         return subject, STYLE.render(style_override, prompt_subject)
+    if kind == "vfx":
+        # REQ-0280 P4 (FINAL -- supersedes the P1 provisional fill/concept-art
+        # routing): both roles route to art_style.vfx_prompt -- ray = tileable
+        # horizontal-streak grammar, hit = centred radial-burst grammar. The
+        # black-ground / no-outline / inner-luminance-only / no-runes rulings
+        # live with the styles in art_style.py. The clause is the COMPOSED
+        # subject (prompt_template applied), same contract as bpskin's fill.
+        role = (job.get("shape") or {}).get("role")
+        clause = subject.strip()
+        if clause and not clause.endswith(","):
+            clause += ","
+        return subject, STYLE.vfx_prompt("ray" if role == "ray" else "hit",
+                                         (clause + " ") if clause else "")
     if kind == "custom":
         # REQ-0179: operator-owned prompt. NO per-kind style template is appended
         # (custom has no KIND_TO_STYLE entry, and a texture wants none of the

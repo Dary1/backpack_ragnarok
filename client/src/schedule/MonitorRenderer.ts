@@ -33,6 +33,9 @@ import { EnemyPlane } from './monitorActors';
 import { MJ } from './monitorTheme';
 import { gimicGlyph } from './monitorGlyphs';
 import { MonitorFx } from './monitorFx';
+// REQ-0280 P3: per-skill ray/hit VFX-art resolver (composed-name chain, direct
+// /api/art fetch, per-NAME cache incl. null misses -- see monitorVfxArt.ts).
+import { resolveVfxTexture, peekVfxTexture } from './monitorVfxArt';
 import { t } from '../i18n';
 import type { Locale } from '../store';
 
@@ -213,6 +216,10 @@ export class MonitorRenderer {
    * at ray_fire/ray_step; ray_hit/ray_aoe read it for impact colours. */
   private currentRayColor: number = MJ.frost;
   private currentRayBright: number = MJ.frostHi;
+  /** REQ-0280 P3: the in-flight ray's VFX-art key -- skill = skills.json def id
+   * on enemy/trap/door rays, src = the firing item id otherwise. Latched at
+   * ray_fire so ray_step (trail) and ray_hit (impact) resolve the SAME art. */
+  private currentRayVfxKey: { skill: string | null; src: string | null } = { skill: null, src: null };
 
   private constructor(app: Application, textures: Map<string, Texture>) {
     this.app = app;
@@ -309,6 +316,14 @@ export class MonitorRenderer {
    * that rises and fades. Placed in the field the ray targeted; positioned by a
    * small rotating spread (ray_hit carries a masked label, not a cell). Appears
    * under reduced motion too (fade only). */
+  /** REQ-0280 P3: the CURRENT ray's cached hit-still texture (peek only -- never
+   * waits; null until the ray_fire prefetch warms the cache, so the first hit of
+   * a key falls back procedurally and the next lands the art). */
+  private currentHitTexture(): Texture | null {
+    if (!this.fx.animated) return null;
+    return peekVfxTexture('hit', this.currentRayVfxKey.skill, this.currentRayVfxKey.src);
+  }
+
   private floatDamage(field: 'player' | 'enemy', amount: number): void {
     if (!(amount > 0)) return;
     const ox = field === 'enemy' ? this.enemyField.x : this.playerField.x;
@@ -318,8 +333,9 @@ export class MonitorRenderer {
     const y = oy + FIELD_H / 2 + spread * 6;
     // REQ-0276 C2/C4: even an unlocated hit gets its impact burst at the
     // spread position -- blood when WE take it, the ray's element otherwise.
-    if (field === 'player') this.fx.impactBurst(x, y, MJ.blood, MJ.emberHi);
-    else this.fx.impactBurst(x, y, this.currentRayColor, this.currentRayBright);
+    const hitTex = this.currentHitTexture();
+    if (field === 'player') this.fx.impactBurst(x, y, MJ.blood, MJ.emberHi, 1, hitTex);
+    else this.fx.impactBurst(x, y, this.currentRayColor, this.currentRayBright, 1, hitTex);
     // player field = WE take the hit (blood); enemy field = we dealt it (ember-hi).
     this.floatNumberAt(x, y, amount, field === 'player' ? MJ.blood : MJ.emberHi);
   }
@@ -783,7 +799,12 @@ export class MonitorRenderer {
       const p = cellIdToXY(id, FIELD_CELL_PX);
       return { x: o.x + p.x + FIELD_CELL_PX / 2, y: o.y + p.y + FIELD_CELL_PX / 2 };
     });
-    this.fx.rayProjectile(centers, color, bright, STEP_ANIM_MS);
+    // REQ-0280 P3: use the ray strip art ONLY if it is already cached (peek --
+    // never waits); an unwarmed key falls back procedurally for this ray.
+    const rayTex = this.fx.animated
+      ? peekVfxTexture('ray', this.currentRayVfxKey.skill, this.currentRayVfxKey.src)
+      : null;
+    this.fx.rayProjectile(centers, color, bright, STEP_ANIM_MS, rayTex);
   }
 
   /** Applies ONLY new (not-yet-rendered) events -- Monitor.tsx tracks
@@ -856,6 +877,18 @@ export class MonitorRenderer {
       case 'ray_fire': {
         const field = ev.field === 'enemy' ? 'enemy' : 'player';
         this.currentRayField = field; // REQ-0240: ray_hit reads its side from here
+        // REQ-0280 P3: latch this ray's VFX-art key + prefetch BOTH roles
+        // (fire-and-forget) so the impending impact usually hits cache. Gated to
+        // full mode -- off/reduced draw no VFX, so no art fetch (e2e stays inert).
+        {
+          const vfxSkill = typeof ev.skill === 'string' ? ev.skill : null;
+          const vfxSrc = typeof ev.src === 'string' ? ev.src : null;
+          this.currentRayVfxKey = { skill: vfxSkill, src: vfxSrc };
+          if (!silent && this.fx.animated) {
+            void resolveVfxTexture('ray', vfxSkill, vfxSrc);
+            void resolveVfxTexture('hit', vfxSkill, vfxSrc);
+          }
+        }
         // REQ-0276 C1: element colour by origin (the wire carries none) --
         // frost = our volley crossing to the enemy field, ember = theirs
         // arriving on ours; a pulse payload overrides to gold at ray_step.
@@ -1015,7 +1048,7 @@ export class MonitorRenderer {
     if (!(amount > 0)) return;
     const pos = enemyIdx != null ? this.enemyPlane.centroidOf(enemyIdx) : null;
     if (pos) {
-      this.fx.impactBurst(pos.x, pos.y, this.currentRayColor, this.currentRayBright, burstScale);
+      this.fx.impactBurst(pos.x, pos.y, this.currentRayColor, this.currentRayBright, burstScale, this.currentHitTexture());
       this.floatNumberAt(pos.x, pos.y, amount, MJ.emberHi, '', { kill });
     } else {
       this.floatDamage(this.currentRayField, amount);
@@ -1179,6 +1212,7 @@ export class MonitorRenderer {
     // REQ-0276 C: cancelled tickers can never release their glow holds --
     // zero the budget alongside them.
     this.fx.resetBudget();
+    this.currentRayVfxKey = { skill: null, src: null }; // REQ-0280 P3
   }
 
   /** REQ-0097: point this ONE shared monitor at a DIFFERENT room's run -- reset all

@@ -5,8 +5,8 @@
 // read-only; this copy only powers the live resolution display).
 import type { ArtworkDto } from '../api';
 
-export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom' | 'gimic';
-export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic']; // REQ-0211: gimic == monster
+export type Kind = 'po' | 'si' | 'unit' | 'monster' | 'bpskin' | 'custom' | 'gimic' | 'vfx';
+export const KINDS: Kind[] = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx
 
 // REQ-0179: ComfyUI flux2-latent max (mirror of art_sizing.cjs MAX_RESOLUTION).
 export const MAX_RES = 16384;
@@ -29,10 +29,11 @@ export function maskCellCount(mask: boolean[][]): number {
  * 256/cell, monster w*h at 128/cell, /16 snap; si 256, unit 512, bpskin
  * 1024 locked. Must reproduce the ratified examples (sword 3 vertical
  * cells -> 256x768 etc.). */
-export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number, cw = 1024, ch = 1024): { width: number; height: number } {
+export function deriveSizeClient(kind: Kind, mask: boolean[][], mw: number, mh: number, cw = 1024, ch = 1024, role: 'ray' | 'hit' = 'ray'): { width: number; height: number } {
   if (kind === 'si') return { width: 256, height: 256 };
   if (kind === 'unit') return { width: 512, height: 512 };
   if (kind === 'bpskin') return { width: 1024, height: 1024 };
+  if (kind === 'vfx') return role === 'hit' ? { width: 256, height: 256 } : { width: 256, height: 64 }; // REQ-0280/0264: ray 4:1 strip / hit 1:1 burst
   if (kind === 'custom') return { width: clampRes(snap16(cw)), height: clampRes(snap16(ch)) };
   if (kind === 'monster' || kind === 'gimic') return { width: snap16(mw * 128), height: snap16(mh * 128) }; // REQ-0211: gimic == monster
   let minR = 5, maxR = -1, minC = 5, maxC = -1;
@@ -48,6 +49,7 @@ export function defaultTemplate(kind: Kind): string {
   if (kind === 'unit') return '{main_object}, portrait, looking at viewer, white background';
   if (kind === 'monster' || kind === 'gimic') return '{main_object}, white background'; // REQ-0211
   if (kind === 'custom') return '{main_object}';
+  if (kind === 'vfx') return '{main_object}'; // REQ-0280/0264: role-specific style applied server-side
   return '';
 }
 
@@ -105,10 +107,11 @@ export interface ArtDraft {
   mh: number;
   cw: number;
   ch: number;
+  role: 'ray' | 'hit'; // REQ-0280/0264: vfx role discriminator (shape.role)
 }
 
 export function draftFromArtwork(a: ArtworkDto): ArtDraft {
-  const sh = (a.shape || {}) as { mask?: boolean[][]; w?: number; h?: number; width?: number; height?: number };
+  const sh = (a.shape || {}) as { mask?: boolean[][]; w?: number; h?: number; width?: number; height?: number; role?: 'ray' | 'hit' };
   return {
     main_object: a.main_object || '',
     prompt_template: a.prompt_template || '',
@@ -121,5 +124,6 @@ export function draftFromArtwork(a: ArtworkDto): ArtDraft {
     mh: (a.kind === 'monster' || a.kind === 'gimic') && sh.h ? sh.h : 4,
     cw: a.kind === 'custom' && sh.width ? sh.width : (a.gen_width || 1024),
     ch: a.kind === 'custom' && sh.height ? sh.height : (a.gen_height || 1024),
+    role: a.kind === 'vfx' && sh.role ? sh.role : 'ray', // REQ-0280/0264
   };
 }

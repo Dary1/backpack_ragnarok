@@ -29,9 +29,10 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
   const [mh, setMh] = useState(4);
   const [cw, setCw] = useState(1024);
   const [ch, setCh] = useState(1024);
+  const [role, setRole] = useState<'ray' | 'hit'>('ray'); // REQ-0280/0264: vfx role
   const [busy, setBusy] = useState(false);
 
-  const size = deriveSizeClient(kind, mask, mw, mh, cw, ch);
+  const size = deriveSizeClient(kind, mask, mw, mh, cw, ch, role);
   const nameError = validateNewName(systemName, existing);
   const shapeError = kind === 'po' && maskCellCount(mask) === 0
     ? 'click at least one cell in the 5x5 mask'
@@ -52,6 +53,7 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
       if (kind === 'monster' || kind === 'gimic') body.shape = { w: mw, h: mh }; // REQ-0211
       if (kind === 'bpskin') body.edge_padding = edgePadding;
       if (kind === 'custom') body.shape = { width: cw, height: ch };
+      if (kind === 'vfx') body.shape = { role }; // REQ-0280/0264
       const r = await createArtwork(body);
       report('created ' + r.artwork.system_name + ' (' + r.artwork.gen_width + 'x' + r.artwork.gen_height + ')', 'ok');
       onCreated(r.artwork);
@@ -83,6 +85,12 @@ export function CreatePanel({ existing, onCreated, onClose, report }: {
           {kind === 'po' && <PoMaskEditor mask={mask} onToggle={(r, c) => setMask((m) => m.map((row, ri) => row.map((v, ci) => (ri === r && ci === c ? !v : v))))} />}
           {(kind === 'monster' || kind === 'gimic') && <MonsterShapeEditor w={mw} h={mh} onW={setMw} onH={setMh} />}
           {kind === 'si' && <span className="t-micro">locked 256x256 (no shape)</span>}
+          {kind === 'vfx' && (
+            <select data-testid="art-vfx-role" className="aa-input" value={role} onChange={(e) => setRole(e.target.value as 'ray' | 'hit')}>
+              <option value="ray">ray (256x64 strip, tiled along the path)</option>
+              <option value="hit">hit (256x256 burst)</option>
+            </select>
+          )}
           {(kind === 'unit' || kind === 'bpskin') && <span className="t-micro">no shape (locked size)</span>}
           {kind === 'custom' && (
             <div className="aa-res-inputs">

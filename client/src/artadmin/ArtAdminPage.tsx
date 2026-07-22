@@ -199,7 +199,8 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
   const shapeDirty = !!(draft && baseline && detailArt && (
     (detailArt.kind === 'po' && JSON.stringify(draft.mask) !== JSON.stringify(baseline.mask))
     || ((detailArt.kind === 'monster' || detailArt.kind === 'gimic') && (draft.mw !== baseline.mw || draft.mh !== baseline.mh))
-    || (detailArt.kind === 'custom' && (draft.cw !== baseline.cw || draft.ch !== baseline.ch))));
+    || (detailArt.kind === 'custom' && (draft.cw !== baseline.cw || draft.ch !== baseline.ch))
+    || (detailArt.kind === 'vfx' && draft.role !== baseline.role)));
 
   async function doSave() {
     if (!selected || !draft || !baseline || !detailArt) return;
@@ -212,7 +213,7 @@ export function ArtAdminPage({ locale }: { locale: Locale }) {
     // never a silent PATCH.
     if (detailArt.kind === 'po' && draft.shape_lock !== baseline.shape_lock) body.shape_lock = draft.shape_lock;
     if (detailArt.kind === 'po' && draft.shape_dilation_px !== baseline.shape_dilation_px) body.shape_dilation_px = draft.shape_dilation_px;
-    if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : detailArt.kind === 'custom' ? { width: draft.cw, height: draft.ch } : { w: draft.mw, h: draft.mh };
+    if (shapeDirty) body.shape = detailArt.kind === 'po' ? { mask: draft.mask } : detailArt.kind === 'custom' ? { width: draft.cw, height: draft.ch } : detailArt.kind === 'vfx' ? { role: draft.role } : { w: draft.mw, h: draft.mh };
     try {
       const r = await patchArtwork(selected, body);
       setDetailArt(r.artwork);
