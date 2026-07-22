@@ -20,6 +20,7 @@
 // ONCE at boot (store/boot.ts) before any board mounts, so loadBoardTextures()
 // has the item raster list on its first (cached) call — art arrives as DATA.
 import { type RasterEntry } from './unitIcon';
+import type { Texture } from 'pixi.js'; // type-only: keeps this module runtime-pixi-free for Node loaders (REQ-0288)
 
 /** id -> resolved adopted-render URL (`/api/art/<artwork>.png`). Sparse: an id
  * absent here has no registry art and falls back to its sprite symbol. */
@@ -83,4 +84,14 @@ export function resolveItemIcon(
   if (registryKey && has(registryKey)) return { rung: 'registry', key: registryKey };
   if (typeof spriteKey === 'string' && spriteKey.length > 0 && has(spriteKey)) return { rung: 'sprite', key: spriteKey };
   return { rung: 'placeholder', key: null };
+}
+
+/** REQ-0288: THE texture accessor over the chain above, shared by the
+ * placed-PO draw path (BoardRenderer) and the drag ghosts (ghosts.ts).
+ * Moved here from BoardRenderer.ts, where it was module-local -- which is
+ * exactly how the ghost path drifted onto the legacy sprite key and lost
+ * every registry-art ghost. */
+export function itemTex(textures: Map<string, Texture>, id: string, spriteKey: string): Texture | undefined {
+  const res = resolveItemIcon(id, spriteKey, (k) => textures.has(k));
+  return res.key ? textures.get(res.key) : undefined;
 }
