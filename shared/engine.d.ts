@@ -331,6 +331,17 @@ export interface Combo {
 export type LocRef = { loc: 'canvas' } | { loc: 'inv'; page: number };
 
 /** Return type of Engine.create(...) — the per-content engine instance. */
+/** REQ-0289: the pure k-step-rotated LOCAL layout returned by
+ * rotatedBPLayout -- shape offsets + Unit seat offset (null when unit-less)
+ * + each contained PO as {id, local offset from the new shape origin, rotated
+ * rot}. A pure VIEW object; the client anchors it at a candidate origin to
+ * draw the floating bag's rotated ghost. */
+export interface RotatedBPLayout {
+  shape: Offset[];
+  unitOff: Offset | null;
+  pos: Array<{ uid: string; id: string; local: Cell; rot: number; q?: number }>;
+}
+
 export interface EngineInstance {
   key: (r: number, c: number) => string;
   DIRS: Record<number, Offset>;
@@ -360,6 +371,22 @@ export interface EngineInstance {
    * unit off+dirs, every contained PO's cell+rot) -- all-or-nothing,
    * same discipline as moveBP. */
   rotateBP: (st: GameState, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** REQ-0289: PURE legality for the k-step-rotated (steps 0..3) bag anchored
+   * at an ARBITRARY origin -- powers the blocked-rotation float (client
+   * sticky carry). steps=0 is byte-identical to canMoveBP; steps 1..3 rotate
+   * shape/Unit-seat/contained POs about the pivot then run the same bounds +
+   * other-BP overlap + contained-PO-fit checks canRotateBP uses. */
+  canPlaceBPRotated: (st: GameState, bpId: string, origin: Cell, steps: number) => PlacementCheck;
+  /** REQ-0289: Mutates. Commits rotation + translation in ONE mutation
+   * (all-or-nothing; validated via canPlaceBPRotated). steps=0 delegates to
+   * moveBP. Unit's absolute seat is preserved only when the caller supplies
+   * the pivot origin (rotateBP does); here `origin` is taken as given. */
+  moveBPRotated: (st: GameState, bpId: string, origin: Cell, steps: number) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** REQ-0289: PURE k-step-rotated LOCAL layout of a BP + its contained POs
+   * (no legality, no anchoring) -- the client feeds this to renderGhostBP as
+   * the rotated VIEW of a floating bag. `pos` cells are LOCAL offsets from the
+   * (implied) new shape origin; unitOff is null for a unit-less BP. */
+  rotatedBPLayout: (bp: BP, containedPOs: PO[], steps: number) => RotatedBPLayout;
   poInBP: (st: GameState, p: PO, bp: BP) => boolean;
 
   assembly: (st: GameState) => Assembly | null;
@@ -454,6 +481,14 @@ export interface EngineInstance {
   /** Mutates: commits invCanRotateBP's candidate rotation atomically,
    * same all-or-nothing discipline as invMoveBP/rotateBP. */
   invRotateBP: (st: GameState, pg: number, bpId: string) => { ok: boolean; why?: string; cells?: Cell[] };
+  /** REQ-0289: page-scoped twin of canPlaceBPRotated -- k-step-rotated bag
+   * anchored at an arbitrary origin within page `pg`, plus the page's free-
+   * placed-PO/SI occupancy check (excluding the BP's own contents). steps=0
+   * equals invCanPlaceBP with the own-contents exclusion. */
+  invCanPlaceBPRotated: (st: GameState, pg: number, bpId: string, origin: Cell, steps: number) => PlacementCheck;
+  /** REQ-0289: Mutates. Page-scoped twin of moveBPRotated (all-or-nothing;
+   * steps=0 delegates to invMoveBP). */
+  invMoveBPRotated: (st: GameState, pg: number, bpId: string, origin: Cell, steps: number) => { ok: boolean; why?: string; cells?: Cell[] };
   /** True if PO `p` (already page-local) is fully contained within BP
    * `bp`'s footprint (both from the SAME page's arrays). Container-
    * independent shape math, callable with any {bps,pos,sis}-shaped page. */

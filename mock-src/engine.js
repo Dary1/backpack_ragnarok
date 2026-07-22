@@ -211,142 +211,130 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
   // keep their own existing dblclick-rotate behavior, see client-side
   // rotate.ts wiring -- this is engine-level geometry only).
   //
-  // computeRotatedBP(bp, containedPOs): PURE function, no state mutation,
-  // no legality check -- returns the CANDIDATE new shape/unit/PO layout
-  // as if the rotation were applied, for the caller (canRotateBP/
-  // invCanPlaceBP-style legality wrapper) to test before committing. Both
-  // the canvas (rotateBP) and inventory (invRotateBP) paths below share
-  // this one function, exactly like moveBP/invMoveBP already share the
-  // same dr/dc-shift arithmetic pattern -- only the container/legality
-  // plumbing differs between canvas and inventory, never the geometry.
-  //
-  // Rotation math, precisely:
-  //   - bp.shape is a set of [dr,dc] OFFSETS from bp.origin (same
-  //     convention rotOffsets() uses for PO shapes). Rotating the BP 90
-  //     degrees CW about its own bounding box uses the EXACT SAME
-  //     transform rotOffsets applies per step: [r,c] -> [c,-r] (this is
-  //     the standard 2D rotate-90-CW-about-origin matrix [[0,1],[-1,0]]
-  //     applied to a [row,col] pair, matching engine.js's own [row,col]
-  //     axis convention: row increases downward, col increases
-  //     rightward, so a CW rotation swaps roles with a sign flip on the
-  //     row half). After transforming every offset, the result is
-  //     renormalized (subtract the new min row/col from every offset)
-  //     so the smallest offset is back at [0,0] -- IDENTICAL to
-  //     rotOffsets' own renormalization step -- which keeps bp.origin
-  //     meaningful as "the shape's own top-left" after rotation, exactly
-  //     as it was before.
-  //   - The unit's own off:[dr,dc] cell lives in the SAME local
-  //     coordinate space as the shape offsets (it's relative to
-  //     bp.origin too, per unitCell()'s own `[bp.origin[0]+off[0],
-  //     bp.origin[1]+off[1]]`), so it goes through the IDENTICAL
-  //     transform+renormalization -- using the SAME renormalization
-  //     delta the shape computed (not a separately-computed one), since
-  //     the unit's off must stay expressed against the SAME new
-  //     origin the rotated shape now uses.
-  //   - Each contained PO's own rot field increments by 1 (mod 4) --
-  //     REUSING rotatePO's own "+1 mod 4" convention exactly (a PO's rot
-  //     is a 4-valued 90-degree-step field; physically rotating the BP
-  //     it sits in rotates the PO the same 90 degrees, so its own
-  //     orientation field advances by exactly one step too, the same
-  //     amount the BP itself just turned).
-  //   - Each contained PO's own cell is remapped: first expressed as a
-  //     LOCAL offset from the OLD bp.origin (cell-origin), then run
-  //     through the SAME [r,c]->[c,-r] transform + the SAME
-  //     renormalization delta the shape used, then re-anchored to the
-  //     (unchanged) bp.origin -- since the BP's origin point itself does
-  //     not move during a rotation (only the shape/contents rotate
-  //     AROUND it), contained POs end up at
-  //     origin + rotatedLocalOffset, exactly mirroring how bpCells()
-  //     itself derives absolute cells from bp.origin + bp.shape offsets.
-  //   - Unit DIRS rotate by +2 (mod 8): DIRS is an 8-point compass
-  //     (0=N,1=NE,2=E,3=SE,4=S,5=SW,6=W,7=NW, see traceBeams' own DIRS
-  //     table), each step = 45 degrees. A 90-degree rotation is exactly
-  //     2 such 45-degree steps, so a beam direction shifts by exactly
-  //     +2 (mod 8) under a 90-degree CW turn -- verified consistent with
-  //     the SAME [r,c]->[c,-r] transform above: DIRS[0]=[-1,0] (N)
-  //     transforms to [0,1], which is DIRS[2] (E) -- exactly dir 0+2,
-  //     confirming +2 mod 8 is not an independent convention invented
-  //     for this REQ but the same rotation matrix already governing
-  //     shape/PO rotation, applied to the compass table.
+  // computeRotatedBP / rotateLocalOnce (REQ-0045 a2, pivot-generalized
+  // REQ-0289): PURE 90-degree-CW rotation geometry -- no state, no legality.
+  // rotateLocalOnce is the single-step primitive over a LOCAL layout
+  // ({shape offsets, the Unit's seat offset, each contained PO's LOCAL offset
+  // from the shape origin}); computeRotatedBP wraps it for one step from a
+  // BP, and rotatedLayoutK applies it k times (0..3). The transform is
+  // [r,c]->[c,-r] plus ONE renormalization, exactly as REQ-0045; the REQ-0289
+  // change is that the result stays LOCAL (POs as offsets, not baked onto
+  // bp.origin) so a caller can anchor it at ANY origin -- the Unit-pivot
+  // origin for an in-place rotation (pivotOrigin below), or an arbitrary drop
+  // origin for the float-mode placement queries (canPlaceBPRotated /
+  // invCanPlaceBPRotated).
+  //   - Unit SEAT (off) turns with the shape (same renormalization delta); a
+  //     unit-less BP yields unitOff:null and the caller keeps the origin fixed
+  //     (pre-REQ-0289 bbox behavior -- REQ-0284 walls / stale saves).
+  //   - REQ-0170: rays do NOT rotate. A Unit's connection dirs are the
+  //     CHARACTER's, board-absolute (vocab.orientation); only the seat moves.
+  //   - Each contained PO's rot advances +1 mod 4 (rotatePO's own step).
   function rotateOffsetCW(off){
     return off.map(([r,c])=>[c,-r]);
   }
-  function computeRotatedBP(bp,containedPOs){
-    const rotatedShape=rotateOffsetCW(bp.shape);
+  function rotateLocalOnce(shape,unitOff,posLocal){
+    const rotatedShape=rotateOffsetCW(shape);
     const mr=Math.min(...rotatedShape.map(o=>o[0])),mc=Math.min(...rotatedShape.map(o=>o[1]));
     const newShape=rotatedShape.map(([r,c])=>[r-mr,c-mc]);
-    const [lr,lc]=rotateOffsetCW([bp.unit.off])[0];
-    const newUnitOff=[lr-mr,lc-mc];
-    // REQ-0170: the rays do NOT rotate with the bag. A Unit's connection shape is
-    // a property of the CHARACTER, and its directions are board-absolute
-    // (vocab.orientation: forward = N = DIRS[0], a fact about the battlefield).
-    // The retired `linker` model rotated its rolled dirs by (d+2)%8 here because
-    // they belonged to the BP; a `lance` Unit now keeps pointing at the enemy no
-    // matter how its owner packs the bag.
-    const newPOs=containedPOs.map(p=>{
-      const localOld=[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]];
-      const [rr,rc]=rotateOffsetCW([localOld])[0];
-      const newLocal=[rr-mr,rc-mc];
-      return {uid:p.uid,id:p.id,cell:[bp.origin[0]+newLocal[0],bp.origin[1]+newLocal[1]],rot:(p.rot+1)%4,q:p.q};
+    let newUnitOff=null;
+    if(unitOff){const [lr,lc]=rotateOffsetCW([unitOff])[0];newUnitOff=[lr-mr,lc-mc];}
+    const newPos=posLocal.map(p=>{
+      const [rr,rc]=rotateOffsetCW([p.local])[0];
+      return {uid:p.uid,id:p.id,local:[rr-mr,rc-mc],rot:(p.rot+1)%4,q:p.q};
     });
-    return {shape:newShape,unitOff:newUnitOff,pos:newPOs};
+    return {shape:newShape,unitOff:newUnitOff,pos:newPos};
   }
-  // canRotateBP(st,bpId): legality for rotating bpId 90 degrees CW IN
-  // PLACE on the canvas (origin unchanged, only shape/unit/contents
-  // rotate). Uses the SAME canPlaceCells() occupancy/bounds/Dead-Space
-  // check every other canvas placement query uses, fed the ROTATED
-  // absolute cells instead of a translated set -- exclUids covers the BP
-  // itself's own contained POs (they are moving/rotating WITH the BP,
-  // never a collision against themselves), matching moveBP's own
-  // poInBP-derived exclusion. A BP with no contents rotates freely as
-  // long as its own rotated footprint still fits (bounds + no overlap
-  // with another BP's cells, since Dead-Space is DEFINED as "outside
-  // every BP's footprint" and the rotating BP's own footprint still
-  // covers its own unit-check the same way placement does).
-  function canRotateBP(st,bpId){
+  function computeRotatedBP(bp,containedPOs){
+    const posLocal=containedPOs.map(p=>({uid:p.uid,id:p.id,local:[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]],rot:p.rot,q:p.q}));
+    return rotateLocalOnce(bp.shape,bp.unit?bp.unit.off:null,posLocal);
+  }
+  function rotatedLayoutK(bp,containedPOs,steps){
+    let shape=bp.shape.map(o=>[o[0],o[1]]);
+    let unitOff=bp.unit?[bp.unit.off[0],bp.unit.off[1]]:null;
+    let pos=containedPOs.map(p=>({uid:p.uid,id:p.id,local:[p.cell[0]-bp.origin[0],p.cell[1]-bp.origin[1]],rot:p.rot,q:p.q}));
+    const k=((steps%4)+4)%4;
+    for(let i=0;i<k;i++){
+      const rl=rotateLocalOnce(shape,unitOff,pos);
+      shape=rl.shape;unitOff=rl.unitOff;pos=rl.pos;
+    }
+    return {shape,unitOff,pos};
+  }
+  // REQ-0289: pivotOrigin -- an in-place rotation keeps the Unit's ABSOLUTE
+  // seat cell invariant, so the rotated shape's origin becomes
+  // unitAbs - rotatedUnitOff. Unit-less BP: origin unchanged (bbox law).
+  function pivotOrigin(bp,rot){
+    if(!bp.unit)return bp.origin;
+    return [bp.origin[0]+bp.unit.off[0]-rot.unitOff[0],bp.origin[1]+bp.unit.off[1]-rot.unitOff[1]];
+  }
+  // REQ-0289: canPlaceBPRotated(st,bpId,origin,steps) -- PURE legality for
+  // the k-step-rotated (0..3) bag anchored at an ARBITRARY origin, powering
+  // the blocked-rotation float (client sticky carry). steps=0 is BYTE-
+  // IDENTICAL to canMoveBP (delegated) so the float's straight-drop case and
+  // the plain BP move stay one rule; steps 1..3 rotate shape/seat/contained
+  // POs (rotatedLayoutK) then run the SAME bounds + other-BP overlap +
+  // contained-PO-fit checks canRotateBP has always used, at `origin`.
+  function canPlaceBPRotated(st,bpId,origin,steps){
+    const k=((steps%4)+4)%4;
+    if(k===0)return canMoveBP(st,bpId,origin);
     const bp=bpById(st,bpId);
     if(!bp)return {ok:false,cells:[],why:'no such BP'};
     const inside=st.pos.filter(p=>poInBP(st,p,bp));
-    const rotated=computeRotatedBP(bp,inside);
-    const newCells=rotated.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
+    const rot=rotatedLayoutK(bp,inside,k);
+    const newCells=rot.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
     const others=new Set();
     for(const ob of st.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCells(ob))others.add(key(r,c));}
     for(const [r,c] of newCells){
       if(r<1||r>ROWS||c<1||c>COLS)return {ok:false,cells:newCells,why:'outside canvas'};
       if(others.has(key(r,c)))return {ok:false,cells:newCells,why:'overlaps another BP'};
     }
-    // Contained POs must ALSO still fit within the rotated shape's own
-    // cells (their own shape/rot may no longer fit the rotated BP's new
-    // footprint at their remapped cell -- e.g. a PO near the rotated
-    // shape's new edge could fall outside it). Reuses canPlaceCells'
-    // Dead-Space semantics against a TEMPORARY view of the BP with its
-    // rotated shape, so a PO landing outside the rotated footprint is
-    // correctly refused exactly like any other out-of-BP placement.
     const tmpCellBP={};
     for(const [r,c] of newCells)tmpCellBP[key(r,c)]=bp.id;
-    for(const rp of rotated.pos){
-      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[rp.cell[0]+r,rp.cell[1]+c]);
+    for(const rp of rot.pos){
+      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[origin[0]+rp.local[0]+r,origin[1]+rp.local[1]+c]);
       for(const [r,c] of poCells){
         if(!tmpCellBP[key(r,c)])return {ok:false,cells:newCells,why:'contained PO would fall outside the rotated shape'};
       }
     }
-    return {ok:true,cells:newCells,rotated,inside};
+    return {ok:true,cells:newCells,rotated:rot};
   }
-  // rotateBP(st,bpId): commits canRotateBP's candidate rotation -- shape,
-  // unit off+dirs, and every contained PO's cell+rot all update
-  // atomically (either the whole rotation applies, or -- on illegality --
-  // nothing changes at all, same all-or-nothing discipline moveBP uses).
+  // REQ-0289: moveBPRotated -- commit rotation + translation in ONE mutation
+  // (all-or-nothing; canPlaceBPRotated gates it). steps=0 delegates to moveBP.
+  function moveBPRotated(st,bpId,origin,steps){
+    const k=((steps%4)+4)%4;
+    if(k===0)return moveBP(st,bpId,origin);
+    const chk=canPlaceBPRotated(st,bpId,origin,steps);
+    if(!chk.ok)return chk;
+    const bp=bpById(st,bpId);
+    const inside=st.pos.filter(p=>poInBP(st,p,bp));
+    const rot=rotatedLayoutK(bp,inside,k);
+    bp.shape=rot.shape;
+    if(rot.unitOff)bp.unit.off=rot.unitOff;
+    bp.origin=origin;
+    for(const rp of rot.pos){
+      const p=poByUid(st,rp.uid);
+      p.cell=[origin[0]+rp.local[0],origin[1]+rp.local[1]];p.rot=rp.rot;
+    }
+    return {ok:true};
+  }
+  // canRotateBP(st,bpId): legality for an in-place 90-degree-CW rotation.
+  // REQ-0289 pivot law -- the Unit's absolute seat stays fixed, so the rotated
+  // shape re-anchors at pivotOrigin(); legality is canPlaceBPRotated there
+  // (ONE rule for in-place rotation and float placement alike).
+  function canRotateBP(st,bpId){
+    const bp=bpById(st,bpId);
+    if(!bp)return {ok:false,cells:[],why:'no such BP'};
+    const inside=st.pos.filter(p=>poInBP(st,p,bp));
+    const rot=computeRotatedBP(bp,inside);
+    const newOrigin=pivotOrigin(bp,rot);
+    const chk=canPlaceBPRotated(st,bpId,newOrigin,1);
+    return chk.ok?Object.assign({},chk,{newOrigin,rotated:rot,inside}):chk;
+  }
+  // rotateBP(st,bpId): commit the in-place pivot rotation via moveBPRotated
+  // at the pivot origin (all-or-nothing, same discipline as moveBP).
   function rotateBP(st,bpId){
     const chk=canRotateBP(st,bpId);
     if(!chk.ok)return chk;
-    const bp=bpById(st,bpId);
-    bp.shape=chk.rotated.shape;
-    bp.unit.off=chk.rotated.unitOff;
-    for(const rp of chk.rotated.pos){
-      const p=poByUid(st,rp.uid);
-      p.cell=rp.cell;p.rot=rp.rot;
-    }
-    return {ok:true};
+    return moveBPRotated(st,bpId,chk.newOrigin,1);
   }
 
   function assembly(st){
@@ -1269,24 +1257,22 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     return {ok:true};
   }
 
-  // invCanRotateBP/invRotateBP (REQ-0045 a2): the inventory-page twin of
-  // canRotateBP/rotateBP, mirroring invCanPlaceBP/invMoveBP's own
-  // "same math, container/legality wired for a page instead of the
-  // canvas" pattern. Legality here also needs invOccupancy's free-
-  // placed-PO/SI check (a page can hold items that never sit inside any
-  // BP at all, unlike canvas) -- exactly the same free-item concern
-  // invCanPlaceBP already accounts for. The rotating BP's OWN contained
-  // POs are excluded from that occupancy test (they travel/rotate WITH
-  // it), same exclUids discipline invMoveBP uses (and the SAME one bug
-  // (a)'s fix taught: never omit this exclusion at any BP-rotation/move
-  // call site, canvas or inventory).
-  function invCanRotateBP(st,pg,bpId){
+  // invCanRotateBP/invRotateBP (REQ-0045 a2, pivot-generalized REQ-0289): the
+  // inventory-page twin of canRotateBP/rotateBP, plus the page's own free-
+  // placed-PO/SI occupancy check (invCanPlaceBP's concern), excluding the
+  // rotating BP's OWN contents (bug (a)'s rule: never omit that exclusion at
+  // any BP move/rotate call site). REQ-0289 adds the arbitrary-origin twins
+  // invCanPlaceBPRotated / invMoveBPRotated (page-scoped counterparts of
+  // canPlaceBPRotated / moveBPRotated) that power the float on either board.
+  function invCanPlaceBPRotated(st,pg,bpId,origin,steps){
+    const k=((steps%4)+4)%4;
     const container=page(st,pg);
     const bp=container.bps.find(b=>b.id===bpId);
     if(!bp)return {ok:false,cells:[],why:'no such BP'};
     const inside=container.pos.filter(p=>poInBPIn(p,bp));
-    const rotated=computeRotatedBP(bp,inside);
-    const newCells=rotated.shape.map(([dr,dc])=>[bp.origin[0]+dr,bp.origin[1]+dc]);
+    if(k===0)return invCanPlaceBP(st,pg,bpId,origin,inside.map(p=>p.uid));
+    const rot=rotatedLayoutK(bp,inside,k);
+    const newCells=rot.shape.map(([dr,dc])=>[origin[0]+dr,origin[1]+dc]);
     const others=new Set();
     for(const ob of container.bps){if(ob.id===bpId)continue;for(const [r,c] of bpCellsIn(ob))others.add(key(r,c));}
     const occ=invOccupancy(container,inside.map(p=>p.uid));
@@ -1297,26 +1283,46 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     }
     const tmpCellBP={};
     for(const [r,c] of newCells)tmpCellBP[key(r,c)]=bp.id;
-    for(const rp of rotated.pos){
-      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[rp.cell[0]+r,rp.cell[1]+c]);
+    for(const rp of rot.pos){
+      const poCells=shapeInfo(rp.id,rp.rot).off.map(([r,c])=>[origin[0]+rp.local[0]+r,origin[1]+rp.local[1]+c]);
       for(const [r,c] of poCells){
         if(!tmpCellBP[key(r,c)])return {ok:false,cells:newCells,why:'contained PO would fall outside the rotated shape'};
       }
     }
-    return {ok:true,cells:newCells,rotated,inside};
+    return {ok:true,cells:newCells,rotated:rot};
+  }
+  function invMoveBPRotated(st,pg,bpId,origin,steps){
+    const k=((steps%4)+4)%4;
+    if(k===0)return invMoveBP(st,pg,bpId,origin);
+    const chk=invCanPlaceBPRotated(st,pg,bpId,origin,steps);
+    if(!chk.ok)return chk;
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    const inside=container.pos.filter(p=>poInBPIn(p,bp));
+    const rot=rotatedLayoutK(bp,inside,k);
+    bp.shape=rot.shape;
+    if(rot.unitOff)bp.unit.off=rot.unitOff;
+    bp.origin=origin;
+    for(const rp of rot.pos){
+      const p=container.pos.find(z=>z.uid===rp.uid);
+      p.cell=[origin[0]+rp.local[0],origin[1]+rp.local[1]];p.rot=rp.rot;
+    }
+    return {ok:true};
+  }
+  function invCanRotateBP(st,pg,bpId){
+    const container=page(st,pg);
+    const bp=container.bps.find(b=>b.id===bpId);
+    if(!bp)return {ok:false,cells:[],why:'no such BP'};
+    const inside=container.pos.filter(p=>poInBPIn(p,bp));
+    const rot=computeRotatedBP(bp,inside);
+    const newOrigin=pivotOrigin(bp,rot);
+    const chk=invCanPlaceBPRotated(st,pg,bpId,newOrigin,1);
+    return chk.ok?Object.assign({},chk,{newOrigin,rotated:rot,inside}):chk;
   }
   function invRotateBP(st,pg,bpId){
     const chk=invCanRotateBP(st,pg,bpId);
     if(!chk.ok)return chk;
-    const container=page(st,pg);
-    const bp=container.bps.find(b=>b.id===bpId);
-    bp.shape=chk.rotated.shape;
-    bp.unit.off=chk.rotated.unitOff;
-    for(const rp of chk.rotated.pos){
-      const p=container.pos.find(z=>z.uid===rp.uid);
-      p.cell=rp.cell;p.rot=rp.rot;
-    }
-    return {ok:true};
+    return invMoveBPRotated(st,pg,bpId,chk.newOrigin,1);
   }
 
   // ---------------------------------------------------------------------
@@ -2425,11 +2431,11 @@ function create(ITEMS,SI_DEFS,layout,trees,UNITS,SHAPES){
     }
   }
   return {connTargets,portTargets,connectionsFrom,allConnections,contactPairs,rotOffsets,shapeInfo,bpCells,bpHpMax,unitCell,cellBPMap,unitMap,cellsOf,occupancy,
-          canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,poInBP,assembly,canPlaceAssembly,moveAssembly,
+          canPlacePO,movePO,rotatePO,canMoveBP,moveBP,canRotateBP,rotateBP,canPlaceBPRotated,moveBPRotated,rotatedBPLayout:rotatedLayoutK,poInBP,assembly,canPlaceAssembly,moveAssembly,
           sockets,hostOk,seatSI,stowSI,unseatOrphans,combos,traceBeams,connShapeOf,DIRS,key,
           // Inventory model (REQ-0030 Phase 1) -- additive exports only.
           PAGE_COUNT,emptyInventory,invCanPlacePO,invMovePO,invRotatePO,invCanPlaceSI,invMoveSI,
-          pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,poInBPIn,cellsOfIn,cellBPMapIn,
+          pageSockets,invSeatSI,invStowSI,invCanPlaceBP,invMoveBP,invCanRotateBP,invRotateBP,invCanPlaceBPRotated,invMoveBPRotated,poInBPIn,cellsOfIn,cellBPMapIn,
           invOccupancy,canTransferBP,transferBP,migrateState,
           // Squad model (REQ-0031 Phase B) -- additive exports only.
           SQUAD_COUNT,makeSquadsMeta,emptySquadSlot,switchSquad,addSquad,renameSquad,
