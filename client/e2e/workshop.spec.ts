@@ -369,28 +369,56 @@ test.describe('Reward LRDST reaching warehouse', () => {
       // every slot, which resolved to the SAME top-level canvas fields
       // 4 times over -- a same-room duplicate deployment, now a 409).
       function squadCanvas(tag: string) {
+        // REQ-0279 fixture re-tune. This spec's intent is the DEPOSIT PIPELINE
+        // (a WON run -> LRDST lands in the warehouse), NOT combat prowess.
+        // settleRun zeroes ALL rewards on a wipe BY DESIGN (server/services/
+        // runs.cjs `if (run.result !== 'wipe')`), so this squad MUST WIN or the
+        // lrdstRow assertion below has nothing to find.
+        //
+        // The old fixture (workshop:348 era) was berserker + an ASSEMBLED
+        // blade+hilt `longsword`. Under REQ-0256's tick-loop combat that squad
+        // is UNLINKED (linkOut empty), fires NO offensive rays and deals 0
+        // damage -> wiped niflheim_depths L1 on every seed (measured 0/200; hp
+        // and weapon-count do not help -- hp5000 + 4 longswords still wiped).
+        // REQ-0256 shipped sim-only ("E2E is not a gate for this program"), so
+        // the fleet never exercised this spec and the red first surfaced at a
+        // deploy.
+        //
+        // FIX (fixture-side ONLY -- combat is deliberately untuned and out of
+        // scope, USER RULING 2026-07-22): use the sanctioned REQ-0051 "Starter:
+        // Arms" loadout (content/s4_boards/starter_arms.json, == the real
+        // starter kit) -- berserker + 12 COMPLETE weapons (training_blade /
+        // hand_axe / war_pick / sling_stone) that fire real rays and clear L1's
+        // low-HP frost packs + the hrimgrimnir boss.
+        //
+        // MEASURED (real sim/combat.cjs runDungeon over rolled niflheim_depths
+        // L1 / formation1, 4 of this squad): WINS 500/500 random (genSeed,
+        // masterSeed) pairs under CURRENT tick-loop combat (was 0/200 with the
+        // old blade+hilt squad). Sizing was measured, not eyeballed: 2x2 + 2
+        // complete weapons = 0/100, 3x3 + 8 = 97/100, this 5x5 + 12 = 500/500.
+        //
+        // GUARD: this fixture MUST beat niflheim_depths L1 (dungeons[0]) under
+        // WHATEVER combat is live. If a future rebalance reddens :361, RE-TUNE
+        // HERE (a stronger loadout, or a clearable target) -- do NOT weaken
+        // settleRun's wipe->zero-rewards rule, the law this gate exists to prove
+        // (ac896de: legalize the fixture, never the law). A durable fix to the
+        // "combat drift silently reddens an e2e fixture" class is REQ-0222's
+        // remaining scope (e2e-harness-load-resilience), not this REQ. Uids stay
+        // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
+        const arms: Array<{ id: string; cell: number[]; rot: number }> = [
+          { id: 'training_blade', cell: [2, 3], rot: 0 }, { id: 'hand_axe', cell: [2, 4], rot: 0 },
+          { id: 'war_pick', cell: [2, 5], rot: 0 }, { id: 'sling_stone', cell: [2, 6], rot: 0 },
+          { id: 'training_blade', cell: [3, 2], rot: 0 }, { id: 'hand_axe', cell: [4, 3], rot: 0 },
+          { id: 'war_pick', cell: [4, 4], rot: 0 }, { id: 'sling_stone', cell: [4, 5], rot: 0 },
+          { id: 'training_blade', cell: [4, 6], rot: 0 }, { id: 'hand_axe', cell: [5, 2], rot: 0 },
+          { id: 'war_pick', cell: [6, 3], rot: 1 }, { id: 'sling_stone', cell: [6, 5], rot: 1 },
+        ];
+        const shape: number[][] = [];
+        for (let r = 0; r < 5; r++) for (let c = 0; c < 5; c++) shape.push([r, c]);
         return {
-          linked: true,
-          // Phase 0 (workshop:348) FIX: this squad must be able to WIN the
-          // run, not just survive it -- the assertion below needs a non-wipe
-          // (rewards, incl. LRDST, are intentionally zero on a wipe; see
-          // server/services/runs.cjs settleRun's `if (run.result !== 'wipe')`
-          // gate + sim/lib/dungeon.cjs). The old fixture's ONLY PO was a bare
-          // `hilt` (content id `hilt` has effects:[] -- a weapon PART, inert
-          // alone), so the troop could deal ZERO damage and ALWAYS wiped
-          // regardless of hpMax; hpMax:40 merely delayed the guaranteed loss.
-          // Fix = give each squad a real, assembled weapon (blade+hilt =>
-          // `longsword`, whose blade strike effect is gated `cond:'assembled'`)
-          // plus enough hpMax to clear the fixed niflheim gauntlet (which ends
-          // in the 400-HP hrimgrimnir boss). Verified: 4x this squad vs
-          // dungeons[0] (niflheim_depths -> test_fixed) / formation1 / level 1
-          // WINS 200/200 crypto-random combat seeds (was 0/N before). Uids stay
-          // per-tag-unique so the REQ-0045 same-room deploy gate still passes.
-          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#888888', shape: [[0, 0], [0, 1], [1, 0], [1, 1]], origin: [1, 1], unit: { id: 'berserker', off: [0, 0] }, hpMax: 800 }],
-          pos: [
-            { uid: `e2e_blade_${tag}`, id: 'blade', loc: 'grid', cell: [0, 1], rot: 0 },
-            { uid: `e2e_hilt_${tag}`, id: 'hilt', loc: 'grid', cell: [1, 1], rot: 0 },
-          ],
+          linked: false,
+          bps: [{ id: `e2e_bp_${tag}`, name: `E2E BP ${tag}`, color: '#7a5b5b', shape, origin: [2, 2], unit: { id: 'berserker', off: [0, 0] }, hpMax: 120 }],
+          pos: arms.map((a, i) => ({ uid: `e2e_arms_${tag}_${i}`, id: a.id, loc: 'grid', cell: a.cell, rot: a.rot })),
           sis: [],
         };
       }
