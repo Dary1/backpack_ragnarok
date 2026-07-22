@@ -95,19 +95,18 @@ def compose_prompt(job):
     if style_override:
         return subject, STYLE.render(style_override, prompt_subject)
     if kind == "vfx":
-        # REQ-0280 / REQ-0264 s12.3: role-specific style. The ray strip wants
-        # FILL_STYLE's no-border/no-focal/tileable grammar (an energy beam is not
-        # a bordered object); the hit burst wants a centred radial subject. These
-        # are the spec's PROPOSED starting templates so the render path is
-        # functional -- final art direction (wording + V2 no-baked-glow) is the
-        # Fable pass (REQ-0280 P4).
+        # REQ-0280 P4 (FINAL -- supersedes the P1 provisional fill/concept-art
+        # routing): both roles route to art_style.vfx_prompt -- ray = tileable
+        # horizontal-streak grammar, hit = centred radial-burst grammar. The
+        # black-ground / no-outline / inner-luminance-only / no-runes rulings
+        # live with the styles in art_style.py. The clause is the COMPOSED
+        # subject (prompt_template applied), same contract as bpskin's fill.
         role = (job.get("shape") or {}).get("role")
-        if role == "ray":
-            clause = main_object.strip()
-            if clause and not clause.endswith(","):
-                clause += ","
-            return subject, STYLE.fill_prompt((clause + " ") if clause else "")
-        return subject, STYLE.render(STYLE.KIND_TEMPLATE["vfx"], prompt_subject)
+        clause = subject.strip()
+        if clause and not clause.endswith(","):
+            clause += ","
+        return subject, STYLE.vfx_prompt("ray" if role == "ray" else "hit",
+                                         (clause + " ") if clause else "")
     if kind == "custom":
         # REQ-0179: operator-owned prompt. NO per-kind style template is appended
         # (custom has no KIND_TO_STYLE entry, and a texture wants none of the

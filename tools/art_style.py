@@ -48,7 +48,10 @@ TEMPLATE_NEGATIVES_UNUSED = {
     "concept_art_fantasy": "photo. distorted, blurry, out of focus. sketch. (cgi, 3d.)++",
 }
 
-KIND_TEMPLATE = {"item": "anime", "unit": "anime", "monster": "concept_art_fantasy", "vfx": "concept_art_fantasy"}  # REQ-0280/0264: hit-role fallback; ray uses FILL_STYLE (art_job). Fable refines.
+KIND_TEMPLATE = {"item": "anime", "unit": "anime", "monster": "concept_art_fantasy"}
+# vfx is NOT in KIND_TEMPLATE: both roles use the dedicated VFX_*_STYLE grammars
+# below (REQ-0280 P4 final ruling -- the P1 provisional fill/concept-art routing
+# is superseded; see the VFX block after FILL_STYLE).
 
 # =============================================================================
 # HOW TO WRITE A SUBJECT. Measured on the full REQ-0150 regeneration, where 5 of
@@ -163,6 +166,59 @@ def edit_instruction(subject):
 def fill_prompt(material_clause):
     """`material_clause` must end in ', ' -- e.g. "brown leather texture, worn grain, "."""
     return material_clause + FILL_STYLE
+
+
+
+# =============================================================================
+# VFX (REQ-0280 P4 -- FINAL art direction; rules the P1 PROVISIONAL wiring and
+# REQ-0264 s12.3's open template question). Ray strips (256x64, forced-tiling
+# in X) and hit bursts (256x256) are ENERGY assets consumed at game scale --
+# a ray band draws ~10 px tall on the /schedule monitor -- composited over the
+# night-iron field. Four rulings, each measured or argued in REQ-0280 P4
+# evidence:
+#   1. PURE BLACK ground, never white. The vfx matte is the border-key
+#      (alpha from distance-to-black), so black IS the alpha channel; a white
+#      ground fringes bright energy and reads as a sticker over the dark board.
+#   2. NO bold cartoon outline. The Anime template is banned for vfx -- its
+#      "bold outline" turns a beam into a bordered OBJECT (the measured
+#      leather-patch failure, art_pipeline.md s3, same mechanism). Silhouette
+#      must come from luminance falloff, not a stroke.
+#   3. V2-as-amended (no-baked-glow, REQ-0264 s10): soft INNER luminance
+#      gradients are the asset's essence -- a streak IS light -- and are
+#      PERMITTED inside the silhouette. Wide OUTER halos/bloom fields are
+#      FORBIDDEN: the client already spends the styleguide's glow budget
+#      (additive head + impact ramp, <=3 sources) and a baked halo cannot be
+#      culled. vfx.flatness polices the alpha skirt on the cutout.
+#   4. NO text, runes, glyphs, sigils, lens flares. At 10 px they are noise;
+#      at full size they are kitsch. MJOLNIR: energy without lettering.
+# Element semantics ride in the SUBJECT clause (one dominant hue per asset,
+# styleguide s2 "1yousou 1shoku"): defaults are element-NEUTRAL pale gold /
+# bone-white so renderer tinting stays coherent; frost skills use the frost
+# family, fire uses ember, traps ember-lo/blood.
+# =============================================================================
+
+VFX_RAY_STYLE = (
+    "horizontal energy streak++, one single straight beam running edge to edge "
+    "across the frame, centered vertically, thin bright core with soft luminance "
+    "fading inside the streak, wisps and sparks stretched horizontally along the "
+    "beam, (pure black background)++, seamless horizontal repeat, painterly "
+    "concept art game vfx, strong simple silhouette, high detail, sharp focus, "
+    "no outline, no border, no frame, no text, no runes, no glyphs, no lens flare")
+
+VFX_HIT_STYLE = (
+    "radial energy burst++, one single centered impact flash, jagged spikes and "
+    "sparks radiating from a small bright core, soft luminance fading inside the "
+    "burst, (pure black background)++, painterly concept art game vfx, strong "
+    "simple silhouette readable when tiny, high detail, sharp focus, no outline, "
+    "no border, no frame, no text, no runes, no glyphs, no lens flare")
+
+
+def vfx_prompt(role, subject_clause):
+    """REQ-0280 P4: the vfx prompt. `subject_clause` follows fill_prompt's
+    contract -- '' or a clause ending in ', ' (e.g. "pale gold energy, ").
+    The styles carry InvokeAI emphasis, so convert here (render() does the
+    same for the template kinds)."""
+    return subject_clause + to_comfy(VFX_RAY_STYLE if role == "ray" else VFX_HIT_STYLE)
 
 
 def gen_size(cells_w, cells_h, px_per_cell=256):
