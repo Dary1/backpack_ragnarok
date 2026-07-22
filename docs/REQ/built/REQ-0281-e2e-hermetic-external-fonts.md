@@ -136,3 +136,15 @@ Post-fix, no `/app` goto ever waits on an external host.
 provenance-carrying known-flaky list were not commissioned today and are not
 altered here.
 
+### Incident + correction (2026-07-22)
+Integration caught that docs commit `c44026d` had accidentally swept in a rebuilt
+`web/app` bundle: this worktree was created WITHOUT `client/.env.local` (the
+REQ-0278 provisioning gap), so the CI build regenerated an env-LESS bundle
+(`index-6THOT9M7.js`, no `VITE_SUPABASE_URL`/`ANON_KEY` baked) and the REQ-0278
+tripwire prints N/A on absent env, so nothing failed. Correction (append-only, no
+history rewrite): worktree provisioned via `tools/provision_worktree_env.sh`, then
+commit `6fcf8b6` restored `web/app` to masters env-carrying dist (`a5f83bd`,
+`index-Bk5vjz_m.js`, Supabase host baked) and dropped the env-less orphan assets.
+Post-correction `git diff a5f83bd..HEAD` = `client/e2e/local-proxy.cjs` + this doc
+ONLY; `web/app` is byte-identical to master. (The tripwire N/A-on-absent-env hole
+itself is flagged for a separate user decision, not fixed here.)
