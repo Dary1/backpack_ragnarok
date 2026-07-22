@@ -31,6 +31,7 @@ import type { ChimeSink } from './chimes/chimeMapping';
 import { cellIdToXY, FIELD_COLS, FIELD_ROWS, parseBoxToPixelRect, type RawCell } from './fieldGeometry';
 import { computeFootprintCells } from '../render/itemCard';
 import { composeSquad } from '../board/squadCompositor';
+import { poBoxPx } from '../board/squadCellGeom'; // REQ-0286: shared cell->px convention (muzzle-flash handle == where the PO is drawn)
 import type { Offset } from '../engine/engine.d.ts';
 import { EnemyPlane } from './monitorActors';
 import { MJ } from './monitorTheme';
@@ -511,7 +512,11 @@ export class MonitorRenderer {
         if (!icon.itemId) continue;
         const footprint = computeFootprintCells(icon.shape, icon.rot);
         const [originR, originC] = icon.origin;
-        iconCells.push({ itemId: icon.itemId, x: rect.x + originC * cellW, y: rect.y + originR * cellH, w: footprint.w * cellW, h: footprint.h * cellH });
+        // REQ-0286: anchor via the SAME convention the compositor draws the PO
+        // with (board canon origin+(c-1)*cellPx), so the muzzle flash sits on
+        // the sprite. cellW === cellH here (square 8x8 formation boxes).
+        const fb = poBoxPx(originR, originC, footprint.w, footprint.h, { originX: rect.x, originY: rect.y, cellPx: cellW });
+        iconCells.push({ itemId: icon.itemId, x: fb.x, y: fb.y, w: fb.w, h: fb.h });
       }
 
       this.squadSlots.set(squad.slotIndex, {
