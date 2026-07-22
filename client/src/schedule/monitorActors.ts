@@ -10,9 +10,11 @@
 // red blob when roster data exists.
 //
 // Structural only: HP-bar geometry + fill fraction + state colour, reveal/
-// silhouette, defeat fade, subtle pack edge, status chips, and the de-overlap
-// nameplate lanes are all placed here; the Phase C VFX pass restyles the hooks
-// (see the "PHASE-C HOOK" comments) without restructuring.
+// silhouette, defeat fade, subtle pack edge, status chips, and the fixed-anchor
+// nameplates (REQ-0283: a label anchors at a FIXED offset from its actor's
+// cells and NEVER moves; overlaps resolve by non-spatial priority-hide only,
+// the REQ-0169 M2 lane system is gone) are all placed here; the Phase C VFX
+// pass restyles the hooks (see the "PHASE-C HOOK" comments) without restructuring.
 import { Container, Graphics, Sprite, Text, type Texture } from 'pixi.js';
 import type { ApiRunRoster, ApiRunRosterEnemy } from '../api';
 import { getCachedMonsterTexture, loadMonsterTexture } from './monitorArt';
@@ -21,8 +23,7 @@ import { ENEMY_RUNE, statusGlyph, statusKind } from './monitorGlyphs';
 import type { MonitorFx } from './monitorFx';
 
 const NAME_STYLE = { fill: MJ.bone, fontSize: 9 } as const;
-const LANE_H = 11;
-const MAX_LANES = 3;
+const LANE_H = 11; // label row height -- used only as the collision-test box height now
 const HP_BAR_H = 3;
 const PACK_KINDS = new Set(['pack', 'boss', 'combat', 'elite', 'miniboss']);
 
@@ -483,11 +484,13 @@ export class EnemyPlane {
     this.relayoutLabels();
   }
 
-  // ---- label de-overlap (ported from MonitorRenderer.relayoutEnemyLabels) ---
+  // ---- label placement (REQ-0283: fixed anchors, non-spatial resolution) ----
 
   private relayoutLabels(): void {
     const visible = this.actors.filter((a) => a && a.container.visible);
-    for (const a of visible) { a.lane = 0; a.hidden = false; }
+    for (const a of visible) { a.lane = 0; a.hidden = false; a.nameplate.visible = true; }
+    // (1) collapse duplicate texts: topmost-leftmost actor is the rep; the rest
+    // keep their cell block + HP bar but hide their nameplate (non-spatial).
     const byText = new Map<string, EnemyActor[]>();
     for (const a of visible) {
       const t = a.revealed ? a.rawName : '?';
@@ -495,35 +498,38 @@ export class EnemyPlane {
     }
     const reps: Array<{ actor: EnemyActor; shown: string }> = [];
     for (const [txt, group] of byText) {
-      group.sort((x, y) => x.box.x - y.box.x);
+      group.sort((x, y) => (x.box.y - y.box.y) || (x.box.x - y.box.x));
       for (let i = 1; i < group.length; i++) { group[i].nameplate.visible = false; group[i].hidden = true; }
       const rep = group[0]; rep.nameplate.visible = true;
       reps.push({ actor: rep, shown: group.length > 1 ? `${txt} x${group.length}` : txt });
     }
-    reps.sort((a, b) => (a.actor.box.y - b.actor.box.y) || (a.actor.box.x - b.actor.box.x));
-    const placed: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
+    // (2) FIXED anchor: each rep's nameplate sits directly under its footprint
+    // bbox (box.h + HP bar + gap), truncated to the field's right edge. NEVER
+    // moved -- no lane offset is ever applied (REQ-0283 cell fidelity).
+    for (const { actor, shown } of reps) {
+      actor.nameplate.text = truncateToFit(shown, Math.max(0, this.fieldW - actor.box.x));
+      actor.nameplate.x = 0;
+      actor.nameplate.y = actor.box.h + HP_BAR_H + 3;
+    }
+    // (3) non-spatial collision resolution: topmost-leftmost priority keeps its
+    // full label; a later rep whose fixed-anchor box overlaps a kept one HIDES
+    // (never moves). Deterministic -- ties break by (y, x).
+    const shownReps = reps.filter((r) => r.actor.nameplate.visible);
+    shownReps.sort((a, b) => (a.actor.box.y - b.actor.box.y) || (a.actor.box.x - b.actor.box.x));
+    const kept: Array<{ x1: number; y1: number; x2: number; y2: number }> = [];
     const overlaps = (a: { x1: number; y1: number; x2: number; y2: number }, b: { x1: number; y1: number; x2: number; y2: number }): boolean =>
       a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
-    for (const { actor, shown } of reps) {
+    for (const { actor } of shownReps) {
       const x = actor.box.x;
-      actor.nameplate.text = truncateToFit(shown, Math.max(0, this.fieldW - x));
-      const w = actor.nameplate.width;
-      const baseY = actor.box.y + actor.box.h + HP_BAR_H + 3;
-      let ok = false;
-      for (let lane = 0; lane < MAX_LANES; lane++) {
-        const y = baseY + lane * LANE_H;
-        const b = { x1: x, y1: y, x2: x + w, y2: y + LANE_H };
-        if (!placed.some((pl) => overlaps(pl, b))) {
-          placed.push(b);
-          actor.nameplate.visible = true;
-          actor.nameplate.x = 0;
-          actor.nameplate.y = actor.box.h + HP_BAR_H + 3 + lane * LANE_H;
-          actor.lane = lane; actor.hidden = false; ok = true; break;
-        }
+      const y = actor.box.y + actor.box.h + HP_BAR_H + 3;
+      const b = { x1: x, y1: y, x2: x + actor.nameplate.width, y2: y + LANE_H };
+      if (kept.some((pl) => overlaps(pl, b))) {
+        actor.nameplate.visible = false; actor.hidden = true; actor.lane = -1;
+      } else {
+        kept.push(b); actor.nameplate.visible = true; actor.hidden = false; actor.lane = 0;
       }
-      if (!ok) { actor.nameplate.visible = false; actor.hidden = true; actor.lane = -1; }
     }
-    // REQ-0276 C6: settle each nameplate's panel plate after the lane pass.
+    // REQ-0276 C6: settle each nameplate's panel plate after resolution.
     for (const a of visible) this.redrawNameBg(a);
   }
 

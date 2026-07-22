@@ -164,7 +164,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
-          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: bp.unit.id });
+          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: bp.unit.id, seatCell: [bp.origin[0] + bp.unit.off[0], bp.origin[1] + bp.unit.off[1]] });
         }
         if (squadCanvas?.pos?.length && itemDefs) {
           for (const po of squadCanvas.pos) {

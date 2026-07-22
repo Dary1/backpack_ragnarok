@@ -1083,12 +1083,18 @@ test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const bounds = await page.evaluate((rid) => {
-        const w = window as unknown as { __monitorDebug?: Record<string, { enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string }> }> };
+        const w = window as unknown as { __monitorDebug?: Record<string, { enemyBounds: () => Array<{ x: number; labelWidth: number; labelText: string; lane: number }> }> };
         return w.__monitorDebug?.[rid]?.enemyBounds() ?? [];
       }, roomId);
       for (const marker of bounds) {
         checkedAtLeastOne = true;
         expect(marker.x + marker.labelWidth).toBeLessThanOrEqual(468); // FIELD_W = FIELD_COLS(26) * FIELD_CELL_PX(18)
+        // REQ-0283 (cell-fidelity honest contract): nameplates anchor at a FIXED
+        // offset from their cells and NEVER move to de-overlap. `lane` is only
+        // ever 0 (shown at the fixed anchor) or -1 (hidden by non-spatial
+        // collision priority) -- never a bumped-down lane index (>0). This is
+        // the positive assertion of the lane-system removal.
+        expect(marker.lane).toBeLessThanOrEqual(0);
       }
       await page.waitForTimeout(300);
     }
