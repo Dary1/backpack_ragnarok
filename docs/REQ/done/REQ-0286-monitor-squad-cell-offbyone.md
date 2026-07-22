@@ -114,3 +114,4 @@ overflow) — the owner symptom is gone.
   both serve index-C3MSg8Uk.js; new asset returns 200 over the tunnel.
 - No api restart (client-only change; server/ untouched). comfyui/tunnel/art
   sessions untouched.
+- 2026-07-22 reconciliation: the web/app rebuild claimed by deploy note 5695555 was never committed (git add missed); committed post-hoc during REQ-0282 integration so HEAD matches the live dist. No serving change.
