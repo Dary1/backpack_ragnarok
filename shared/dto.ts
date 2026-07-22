@@ -273,6 +273,11 @@ export interface ApiUnitSkinEntry {
   /** Optional grouping key -- how a unit skin and a BP skin are paired as a SET
    * (golden G6). The field ships here; the pairing logic does not (REQ-0266 s9). */
   set?: string;
+  /** REQ-0291: the bpskin frame band thickness in px at 1024 scale, read from
+   * the referenced artwork's edge_padding. Additive; only present on bpskin-slot
+   * entries whose art resolves, and only when the artwork sets it. Older clients
+   * ignore it. The client carries it as def.art.frame_band_px. */
+  edge_padding?: number | null;
   i18n?: { ja?: { name?: string } };
 }
 

@@ -144,6 +144,37 @@ async function resolveItemArtNames(names) {
   return out;
 }
 
+async function resolveSkinEdgePaddings(names) {
+  // REQ-0291: the edge_padding (compose band thickness, px) of the artwork each
+  // bpskin unit_skin id resolves to -- the SAME chain resolveItemArtNames walks
+  // (def.artwork_ref adopted -> exact-name adopted), reading edge_padding from
+  // whichever artwork won. Only ids whose art resolves AND whose artwork sets a
+  // non-null edge_padding appear; the rest are omitted (client keeps the palette
+  // welt). Read alongside art_urls so the served band never advertises a frame
+  // the fill_texture would not paint.
+  const uniq = Array.from(new Set((names || []).filter((n) => typeof n === 'string' && n.length > 0)));
+  if (uniq.length === 0) return {};
+  const ns = uniq.map(nsName);
+  const res = await q(
+    `WITH input(bare, nsname) AS (SELECT * FROM unnest($1::text[], $2::text[]))
+     SELECT i.bare AS bare,
+            (d.artwork_ref IS NOT NULL AND aref.adopted_render_id IS NOT NULL) AS ref_ok,
+            (aexact.adopted_render_id IS NOT NULL) AS exact_ok,
+            aref.edge_padding   AS ref_padding,
+            aexact.edge_padding AS exact_padding
+       FROM input i
+       LEFT JOIN content_defs d ON d.system_name = i.nsname
+       LEFT JOIN artworks aref   ON aref.system_name  = $3 || d.artwork_ref
+       LEFT JOIN artworks aexact ON aexact.system_name = i.nsname`,
+    [uniq, ns, NS_PREFIX]);
+  const out = {};
+  for (const row of res.rows) {
+    const pad = row.ref_ok ? row.ref_padding : (row.exact_ok ? row.exact_padding : null);
+    if (pad != null) out[row.bare] = pad;
+  }
+  return out;
+}
+
 /** REQ-0178: registry-first CONTENT serving. The data-side sibling of
  * resolveItemArtNames -- given a batch of bare entity ids (the served po/si/tm
  * names) and a target kind, returns { bare -> adopted variant DATA (JSONB) } for
@@ -411,7 +442,7 @@ async function clearAllContent() {
 module.exports = {
   closeContentPool,
   createContentDef, getContentDefByName, listContentDefs, updateContentDef,
-  artworkFacetExists, resolveArtworkFacetName, resolveItemArtNames,
+  artworkFacetExists, resolveArtworkFacetName, resolveItemArtNames, resolveSkinEdgePaddings,
   resolveAdoptedContentData,
   createVariant, updateVariantData, setVariantMachineCheck, setVariantReview,
   getVariantByNo, getVariantById, listVariants,

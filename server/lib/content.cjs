@@ -221,6 +221,7 @@ function ensureFilePayload() {
 // same pixel anyway).
 let artUrls = {};
 let artUrlsAt = 0;
+let skinEdgePaddings = {}; // REQ-0291: bpskin frame band, resolved alongside art_urls
 const ART_URLS_TTL_MS = 15000;
 
 /** The exact id batch computeArtUrls() resolves, as a PURE function of the
@@ -273,14 +274,31 @@ async function computeArtUrls() {
   return map;
 }
 
+/** REQ-0291: the edge_padding for each bpskin-slot unit_skin, resolved through
+ * the same chain art_urls uses (storage.resolveSkinEdgePaddings). pg-only, like
+ * art_urls; under the files backend the map is empty and no unit_skins entry
+ * carries a band (the client keeps the palette welt). */
+async function computeSkinEdgePaddings() {
+  if (process.env.STORAGE_BACKEND !== 'pg') return {};
+  const unitSkins = unitSkinsFromCore().unit_skins || {};
+  const ids = Object.keys(unitSkins).filter((id) => unitSkins[id] && unitSkins[id].slot === 'bpskin');
+  if (ids.length === 0) return {};
+  const storage = require('../storage.cjs');
+  return await storage.resolveSkinEdgePaddings(ids);
+}
+
 /** Recompute the art_urls map now. AWAITED by adopt / artwork_ref-change so the
  * next /api/content is fresh (this is what makes the wiring e2e deterministic);
  * also fired opportunistically (fire-and-forget) by getContent on a TTL. Never
  * throws: a registry read failure keeps the last map (empty at worst) so
  * /api/content never 500s on a transient DB hiccup. */
 async function refreshArtUrls() {
-  try { artUrls = await computeArtUrls(); artUrlsAt = Date.now(); }
-  catch (e) { /* keep last map; /api/content must not fail on a registry read */ }
+  try {
+    artUrls = await computeArtUrls();
+    skinEdgePaddings = await computeSkinEdgePaddings(); // REQ-0291: same triggers as art_urls
+    artUrlsAt = Date.now();
+  }
+  catch (e) { /* keep last maps; /api/content must not fail on a registry read */ }
   return artUrls;
 }
 
@@ -540,7 +558,22 @@ function getContent() {
   // client's three resolution chains (unit portrait / BP / the DOM adapter) read
   // this section plus art_urls, and NOTHING per-player: the pick itself arrives
   // separately from GET /api/profile/:id/skins.
-  payload.unit_skins = unitSkinsFromCore().unit_skins;
+  // REQ-0291: overlay the warm-cached edge_padding onto each bpskin-slot entry
+  // (additive; the client carries it as def.art.frame_band_px). A shallow copy
+  // per call so the identity-memoized unitSkinsFromCore cache is never mutated;
+  // absent a value (files backend, unadopted art, or no authored padding) the
+  // entry is byte-identical to pre-REQ-0291.
+  const baseSkins = unitSkinsFromCore().unit_skins;
+  const skins = {};
+  for (const sid of Object.keys(baseSkins)) {
+    const e = baseSkins[sid];
+    if (e && e.slot === 'bpskin' && Object.prototype.hasOwnProperty.call(skinEdgePaddings, sid)) {
+      skins[sid] = Object.assign({}, e, { edge_padding: skinEdgePaddings[sid] });
+    } else {
+      skins[sid] = e;
+    }
+  }
+  payload.unit_skins = skins;
   if (Date.now() - artUrlsAt > ART_URLS_TTL_MS) { refreshArtUrls().catch(() => {}); }
   if (Date.now() - registryAt > REGISTRY_TTL_MS) { refreshRegistryData().catch(() => {}); }
   return payload;
