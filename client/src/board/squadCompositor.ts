@@ -240,6 +240,9 @@ function drawPO(container: Container, po: CompositorPO, o: ComposeOpts): void {
 function drawUnitSeat(container: Container, bp: CompositorBP, o: ComposeOpts): void {
   if (!bp.seatCell) return;
   const [sr, sc] = bp.seatCell;
+  // REQ-0284 (hotfix hardening): never let a non-finite seat (NaN/Infinity from
+  // a malformed unit.off) reach Pixi geometry -- skip the seat marker instead.
+  if (!Number.isFinite(sr) || !Number.isFinite(sc)) return;
   const cx = o.originX + (sc + 0.5) * o.cellPx;
   const cy = o.originY + (sr + 0.5) * o.cellPx;
   const r = (BOARD_UNIT_CORE_R / BOARD_CELL) * o.cellPx;

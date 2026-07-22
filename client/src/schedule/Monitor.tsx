@@ -164,7 +164,23 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
-          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: bp.unit.id, seatCell: [bp.origin[0] + bp.unit.off[0], bp.origin[1] + bp.unit.off[1]] });
+          for (const bp of squadCanvas.bps) {
+            // REQ-0284 (regression hotfix): a BP need NOT carry a seated Unit --
+            // the owner's live squad fields a bare "wall" BP (footprint, no
+            // unit). REQ-0283 read bp.unit.id / bp.unit.off[0] unconditionally
+            // (the BP.unit TYPE is non-optional, but real stored canvases can
+            // omit it), throwing a TypeError HERE at monitor mount; with no error
+            // boundary in the app that aborted the whole Watch view. Draw a
+            // unit-less BP faithfully as its bare cells -- unitId + seatCell
+            // absent are both already honoured by squadCompositor (fill + POs,
+            // no seat disc / icon / skin), so nothing is displaced.
+            const u = bp.unit as { id?: string; off?: [number, number] } | undefined;
+            const seatCell: [number, number] | undefined =
+              u && Array.isArray(u.off) && Number.isFinite(bp.origin[0] + u.off[0]) && Number.isFinite(bp.origin[1] + u.off[1])
+                ? [bp.origin[0] + u.off[0], bp.origin[1] + u.off[1]]
+                : undefined;
+            bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: u ? u.id : undefined, seatCell });
+          }
         }
         if (squadCanvas?.pos?.length && itemDefs) {
           for (const po of squadCanvas.pos) {

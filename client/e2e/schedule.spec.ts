@@ -1032,6 +1032,73 @@ test.describe('REQ-0045 (d): monitor copies the FULL squad canvas (all BPs at re
   });
 });
 
+test.describe('REQ-0284: monitor mount never throws on a squad whose BP has NO seated unit (regression)', () => {
+  test('a deployed squad with a bare "wall" BP (no unit) mounts the monitor without a TypeError/hang -- squads() returns and the unit-less BP has no seat', async ({ page }) => {
+    // REGRESSION (REQ-0283 -> REQ-0284). The owner's live squad fields a bare
+    // 3x6 "wall" BP with NO seated unit (data/profiles/dev.json). REQ-0283's
+    // Monitor.tsx seatCell transform read bp.unit.id / bp.unit.off[0]
+    // UNCONDITIONALLY, throwing "Cannot read properties of undefined (reading
+    // 'id')" at monitor mount; with no error boundary anywhere in the client
+    // that froze/aborted the whole Watch view. Every e2e fixture seated a unit
+    // on every BP, so the suite missed it -- this test crafts that exact shape.
+    // The unit-less "wall" squad is fixture preset index 10
+    // (client/e2e/fixtures/schedule-fixture.json): a berserker FIGHTER BP (so the
+    // run fights normally and the monitor mounts against a LIVE run) PLUS a bare
+    // "wall" BP that carries NO `unit` field -- the exact REQ-0283 regression
+    // trigger (the unguarded bp.unit deref in the seatCell transform fires on
+    // THAT bp during mount). Deployed to slot 0 below.
+
+    const created = await apiCreateRoom(page, player.token, { dungeonId: 'niflheim_depths', level: 1, formationId: 'formation1' });
+    const roomId = created.body.room.id;
+    const squadsForThisTest = [10, 0, 1, 2];
+    for (let i = 0; i < 4; i++) {
+      const r = await apiAssignSlot(page, player.token, roomId, i, squadsForThisTest[i]);
+      expect(r.status).toBe(200);
+    }
+    await expect(async () => {
+      const view = await apiGetRoom(page, player.token, roomId);
+      expect(view.body.room.status).toBe('active');
+    }).toPass({ timeout: 10000 });
+
+    await page.goto(`/app/#/invite/${player.token}`);
+    await expect(page).toHaveURL(/#\/backpacks$/, { timeout: 10000 });
+    await page.locator('.nav-link', { hasText: 'Schedule' }).click();
+    const card = page.locator(`[data-room-id="${roomId}"]`);
+    await expect(card).toBeVisible({ timeout: 10000 });
+    await card.locator('[data-testid="schedule-room-expand-toggle"]').click();
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="schedule-detail-pane"] [data-testid="schedule-monitor-canvas"]')).toBeVisible({ timeout: 10000 });
+
+    // The regression assertion. getLastMountedSquads() is only populated AFTER
+    // mountSquads() runs; pre-fix the seatCell transform threw BEFORE that, so
+    // __monitorDebug[roomId] was never set and squads() stayed [] forever (the
+    // mount -- and the whole Watch view -- was dead). Post-fix the unit-less BP
+    // mounts as bare cells: present, with NO seat (unitId + seatCell absent).
+    await expect(async () => {
+      const squads = await page.evaluate((rid) => {
+        const w = window as unknown as { __monitorDebug?: Record<string, { squads: () => Array<{ slotIndex: number; bps: Array<{ color: string; cells: [number, number][]; unitId?: string; seatCell?: [number, number] }> }> }> };
+        return w.__monitorDebug?.[rid]?.squads() ?? [];
+      }, roomId);
+      expect(squads.length).toBe(4);
+      const squad0 = squads.find((u) => u.slotIndex === 0);
+      expect(squad0).toBeTruthy();
+      expect(squad0!.bps.length).toBe(2);
+      const wall = squad0!.bps.find((b) => b.unitId == null || b.unitId === '');
+      const fighter = squad0!.bps.find((b) => b.unitId === 'berserker');
+      expect(wall).toBeTruthy();
+      expect(fighter).toBeTruthy();
+      // The wall BP's 18 cells are present at absolute positions (origin [4,1] -> rows 4-6, cols 1-6)...
+      expect(wall!.cells).toEqual(expect.arrayContaining([[4, 1], [4, 6], [6, 1], [6, 6]]));
+      // ...but with NO seat: a unit-less BP draws no core disc / icon (the crash path, now safe).
+      expect(wall!.seatCell == null).toBe(true);
+      // ...while the fighter BP DOES carry its seat cell (origin [1,1] + unit.off [0,0]).
+      expect(Array.isArray(fighter!.seatCell)).toBe(true);
+    }).toPass({ timeout: 15000 });
+
+    await apiCancelRoom(page, player.token, roomId);
+  });
+});
+
 test.describe('REQ-0045 (f): enemy labels never overflow past the enemy field\'s right edge', () => {
   test('every enemy marker created during a REAL, unbackdated run stays within the field\'s own pixel width (x + rendered label width <= FIELD_W)', async ({ page }) => {
     // Mirrors the "monitor: events & progress" test's own approach (a
