@@ -76,7 +76,7 @@ export function Workspace(props: {
   // an unsaved click in the editor must not repaint the footprint under
   // renders that were made against the old one.
   const thumbBb = kind === 'po' && props.cells && savedMask ? maskBbox(savedMask) : null;
-  const newSize = deriveSizeClient(kind, draft.mask, draft.mw, draft.mh, draft.cw, draft.ch);
+  const newSize = deriveSizeClient(kind, draft.mask, draft.mw, draft.mh, draft.cw, draft.ch, draft.role);
   const adoptedRender = adoptedId != null ? renders.find((r) => r.id === adoptedId) : undefined;
 
   return (
@@ -113,6 +113,21 @@ export function Workspace(props: {
               <input data-testid="art-edit-edge" className="aa-input aa-input--num" type="number" value={draft.edge_padding}
                 onChange={(e) => onDraft({ edge_padding: Number(e.target.value) || 0 })} />
             </label>
+          )}
+          {kind === 'vfx' && (
+            <div className="aa-field">
+              <span className="t-micro">role (derived size: <b className="tnum">{newSize.width}x{newSize.height}</b>{shapeDirty ? ' after save' : ''})</span>
+              <select data-testid="art-edit-vfx-role" className="aa-input" value={draft.role}
+                onChange={(e) => onDraft({ role: e.target.value as 'ray' | 'hit' })}>
+                <option value="ray">ray (256x64 strip, tiled along the path)</option>
+                <option value="hit">hit (256x256 burst)</option>
+              </select>
+              {shapeDirty && renders.length > 0 && (
+                <div data-testid="art-shape-warn" className="aa-warn t-micro">
+                  role change: the {renders.length} existing render(s) keep their OLD size + inspections; only new renders use the new one
+                </div>
+              )}
+            </div>
           )}
           {(kind === 'po' || kind === 'monster' || kind === 'gimic') && (
             <div className="aa-field">
