@@ -55,6 +55,7 @@ import {
   boardIdKey,
   cancelCarry,
   cancelCarryWithFeedback,
+  commitStickyCarry,
   ensurePointerUpWired,
   getCarry,
   registerBoard,
@@ -84,7 +85,7 @@ import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outli
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
 import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
 import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
-import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
+import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO, type BPGhostView } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
 // REQ-0142 (link-trace diagnostics): beam hover is ephemeral INTERACTION
@@ -572,8 +573,13 @@ export class BoardRenderer {
       // other decorative node in this file follows (see the constructor's
       // own doc comment on why this is load-bearing, not cosmetic).
       if (!lifted) { // REQ-0288: the handle rides with the ghost, not the origin
-      const badgeX = PAD + (c0 - 1) * CELL + 14;
-      const badgeY = PAD + (r0 - 1) * CELL + 14;
+      // REQ-0289: anchor the ✥ badge to the Unit's SEAT cell top-left corner
+      // (engine.unitCell) -- keeping rotation discoverable AT the Unit and
+      // matching the pivot the rotation now turns about. A unit-less BP (stale
+      // saves / REQ-0284 walls) keeps the pre-REQ-0289 r0,c0 top-left anchor.
+      const seat: Cell = bp.unit ? engine.unitCell(bp) : [r0, c0];
+      const badgeX = PAD + (seat[1] - 1) * CELL + 14;
+      const badgeY = PAD + (seat[0] - 1) * CELL + 14;
       const badgeBg = new Graphics();
       badgeBg.circle(badgeX, badgeY, 12);
       badgeBg.fill({ color: '#0e0d0b', alpha: 0.85 });
@@ -1354,12 +1360,51 @@ export class BoardRenderer {
       const { ops } = this.deps;
       const r = ops.rotateBP(this.lastState!, bpId);
       if (r.ok) notifyStateChanged();
-      else flash(this, r.cells);
+      // REQ-0289: a REFUSED in-place rotation no longer flash-and-stops -- it
+      // FLOATS the bag as a sticky carry (directive 4), carrying the one
+      // refused 90-degree step, to be click-placed at a legal spot (or
+      // reverted home on Esc / illegal click / window blur).
+      else this.startStickyRotFloat(e, bpId);
       return;
     }
     this.lastBPPointerDown.set(bpId, now);
     this.beginDrag(e, 'bp', bpId, bpId);
   }
+
+  /** REQ-0289: enter the sticky "float" for a bag whose in-place rotation was
+   * refused. The bag lifts (armed immediately) carrying exactly one 90-CW
+   * step, follows the pointer button-free, and is placed by the NEXT
+   * pointerdown (onStagePointerDownSticky -> commitStickyCarry). grabOff is
+   * measured against the CURRENT origin so the ghost tracks under the pointer
+   * like a normal BP drag. e.stopPropagation() keeps the very pointerdown that
+   * STARTED the float from also committing it via the stage handler. */
+  startStickyRotFloat(e: FederatedPointerEvent, bpId: string): void {
+    const state = this.lastState;
+    if (!state) return;
+    const bp = this.deps.ops.container(state).bps.find((b) => b.id === bpId);
+    if (!bp) return;
+    const cell = cellAt(this, e.global.x, e.global.y);
+    const grabOff: [number, number] = [cell[0] - bp.origin[0], cell[1] - bp.origin[1]];
+    startCarry({ kind: 'bp', uid: bpId, bpId, originBoard: this.boardId, sx: e.clientX, sy: e.clientY, grabOff, pendingRot: 1, sticky: true });
+    armCarry(); // armed immediately -- it is already "in the air"
+    e.stopPropagation();
+    // Re-render so the origin bag reads as lifted (shadow) and its badge rides
+    // with the ghost, exactly like a normal armed BP drag.
+    this.render(state);
+  }
+
+  /** REQ-0289: a pointerdown while a sticky float is active is the click-to-
+   * place (or click-to-cancel) gesture. A stage pointerdown is scoped to its
+   * own canvas, so this only fires on the board the pointer is over;
+   * commitStickyCarry routes a legal same-board drop through
+   * commitBP(pendingRot) and reverts everything else (illegal cell /
+   * cross-board with a pending rotation). */
+  onStagePointerDownSticky = (): void => {
+    const carry = getCarry();
+    if (!carry || !carry.sticky) return;
+    commitStickyCarry();
+    if (!this.disposed && this.lastState) this.render(this.lastState);
+  };
 
   handlePOPointerDown(
     e: FederatedPointerEvent,
@@ -1564,6 +1609,7 @@ export class BoardRenderer {
   wireGlobalInteraction(): void {
     this.app.stage.on('globalpointermove', this.onGlobalPointerMove);
     this.app.stage.on('pointerup', this.onStagePointerUp);
+    this.app.stage.on('pointerdown', this.onStagePointerDownSticky); // REQ-0289: click-to-place a sticky rotation float
     window.addEventListener('keydown', this.onWindowKeyDown);
     // REQ-0142: hover interrogation (see onCanvasPointerMove for why this is
     // a DOM listener on the canvas rather than a Pixi stage event), plus the
@@ -1741,18 +1787,34 @@ export class BoardRenderer {
       const bp = originContainer.bps.find((b) => b.id === carry.bpId);
       if (bp) {
         const origin: Cell = [cell[0] - carry.grabOff[0], cell[1] - carry.grabOff[1]];
-        const chk = sameBoard
-          ? ops.canMoveBP(state, carry.bpId, origin)
-          : engine.canTransferBP(state, carry.originBoard, this.boardId, carry.bpId, origin);
+        const steps = carry.pendingRot ?? 0;
+        // REQ-0289: a sticky FLOAT carries a pending rotation -- preview the
+        // ROTATED footprint (canPlaceBPRotated + a rotated ghost VIEW). A
+        // cross-board drop WITH a pending rotation is out of scope: refused,
+        // drop stays null. A plain (pendingRot 0) drag keeps the REQ-0288
+        // canMoveBP / canTransferBP paths byte-identical.
+        let chk: { ok: boolean; cells?: Cell[] };
+        let view: BPGhostView | undefined;
+        if (steps) {
+          chk = sameBoard ? ops.canPlaceBPRotated(state, carry.bpId, origin, steps) : { ok: false, cells: [] };
+          const bpCellSet = new Set(engine.bpCells(bp).map(([r, c]) => `${r},${c}`));
+          const contained = originContainer.pos.filter((p) => p.loc === 'grid' && !!p.cell && bpCellSet.has(`${p.cell[0]},${p.cell[1]}`));
+          const rl = engine.rotatedBPLayout(bp, contained, steps);
+          view = { shape: rl.shape, unitOff: rl.unitOff, pos: rl.pos.map((p) => ({ id: p.id, local: p.local, rot: p.rot })) };
+        } else {
+          chk = sameBoard
+            ? ops.canMoveBP(state, carry.bpId, origin)
+            : engine.canTransferBP(state, carry.originBoard, this.boardId, carry.bpId, origin);
+        }
         drop = chk.ok ? { type: 'bp', origin, board: this.boardId } : null;
         paint(chk.cells, chk.ok);
-        // REQ-0288: the WHOLE bag ghosts at the snapped origin, legal or not
-        // (illegal reads dimmer, under the red target paint above) -- with
-        // its unit disc and contained-PO art riding along.
-        const hasArt = renderGhostBP(this, originContainer, bp, origin, chk.ok);
+        // REQ-0288/0289: the WHOLE bag ghosts at the snapped origin, legal or
+        // not; with a pending rotation it ghosts the ROTATED view.
+        const hasArt = renderGhostBP(this, originContainer, bp, origin, chk.ok, view);
+        const ghostShape = view ? view.shape : bp.shape;
         this.ghostProbe = {
           kind: 'bp',
-          cells: bp.shape.map(([dr, dc]) => [origin[0] + dr, origin[1] + dc] as Cell),
+          cells: ghostShape.map(([dr, dc]) => [origin[0] + dr, origin[1] + dc] as Cell),
           hasArt,
           legal: chk.ok,
         };

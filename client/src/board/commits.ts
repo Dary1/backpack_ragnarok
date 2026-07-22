@@ -11,7 +11,7 @@ export function makeCommitApi(self: BoardRenderer, ): BoardCommitApi {
     return {
       commitPO: (uid, originBoard, drop) => commitPODrop(self, uid, originBoard, drop),
       commitAsm: (originBoard, drop) => commitAsmDrop(self, originBoard, drop),
-      commitBP: (bpId, originBoard, drop) => commitBPDrop(self, bpId, originBoard, drop),
+      commitBP: (bpId, originBoard, drop, pendingRot) => commitBPDrop(self, bpId, originBoard, drop, pendingRot),
       commitSI: (uid, originBoard, drop) => commitSIDrop(self, uid, originBoard, drop),
       // REQ-0288: "snapped home" cue for an armed carry that ended with NO
       // commit. Neutral grey -- NOT the red reject flash: this is "returned",
@@ -147,13 +147,19 @@ export function commitAsmDrop(self: BoardRenderer, _originBoard: BoardId, drop: 
    * headline addition), addressed via LocRef built from each board's
    * BoardId (identical shape by construction, see boardOps.ts's BoardId/
    * LocRef parity note). */
-export function commitBPDrop(self: BoardRenderer, bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>): void {
+export function commitBPDrop(self: BoardRenderer, bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>, pendingRot = 0): void {
     const state = self.lastState;
     if (!state) return;
     const { engine, ops } = self.deps;
     if (boardIdEquals(originBoard, self.boardId)) {
-      ops.moveBP(state, bpId, drop.origin);
+      // REQ-0289: a sticky-float commit carries a pending rotation; a plain
+      // move has pendingRot 0 and stays byte-identical to the old moveBP path.
+      if (pendingRot) ops.moveBPRotated(state, bpId, drop.origin, pendingRot);
+      else ops.moveBP(state, bpId, drop.origin);
     } else {
+      // REQ-0289: cross-board transfer WITH rotation is out of scope -- a
+      // pendingRot>0 cross-board drop never reaches here (onGlobalPointerMove
+      // refuses it, drop stays null), so this only runs with pendingRot===0.
       engine.transferBP(state, originBoard, self.boardId, bpId, drop.origin);
     }
     self.gCarry.removeChildren();
