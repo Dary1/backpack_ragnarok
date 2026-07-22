@@ -80,6 +80,8 @@ import { resolveItemIcon } from './itemArt'; // REQ-0133: item cells resolve reg
 import { drawChargeRing } from './chargeRing';
 import { drawPOOutline } from './poOutline'; // REQ-0273: per-PO footprint outlines
 import { OVERLAY } from './overlayPalette'; // REQ-0143: colourblind-safe overlay palette (single source, BS-G1)
+import { paintUsageRibbons, cellsBBoxPx, topRightCellBBoxPx, topLeftCellBBoxPx } from './usageRibbons'; // REQ-0287
+import { publishRibbonProbe, type UsageRibbonProbeEntry } from './usageRibbonProbe'; // REQ-0287
 import { flash, paintNeutralReturn, pulseCellsSuccess, renderGhostAssembly, renderGhostBP, renderGhostPO } from './ghosts';
 import { notifyStateChanged } from '../store';
 import { clearItemTip, clearItemTipForBoard, showItemTip } from './itemTip';
@@ -197,6 +199,9 @@ export class BoardRenderer {
   // the hover/highlight path needs no change -- it simply never matches a null dir
   // against a traced direction, which is correct: there is no direction to trace.
   beamSegs: { from: string; dir: number | null; x0: number; y0: number; x1: number; y1: number }[] = [];
+  /** REQ-0287: every ownership ribbon drawn by the last render(), for the
+   * e2e probe seam (published to usageRibbonProbe.ts / __backpackDebug). */
+  usageRibbonProbe: UsageRibbonProbeEntry[] = [];
 
   private constructor(app: Application, deps: BoardDeps) {
     this.app = app;
@@ -385,6 +390,7 @@ export class BoardRenderer {
     // fighting the BP-color grid tint (alpha 0.26) or an item's own dark
     // backdrop (alpha 0.22) already drawn at similar alpha levels nearby.
     const tint = engine.tintSets(state);
+    this.usageRibbonProbe = []; // REQ-0287: rebuilt fresh per render (probe seam)
     // REQ-0143: colourblind-safe usage wash from the central overlay palette
     // (was red 0xff3b3b / yellow 0xffd23b -- two warm hues that collapse under
     // deuteranopia). selfSquad=vermillion, otherSquad=blue: a blue/warm split
@@ -546,7 +552,9 @@ export class BoardRenderer {
       const badgeBg = new Graphics();
       badgeBg.circle(badgeX, badgeY, 12);
       badgeBg.fill({ color: '#0e0d0b', alpha: 0.85 });
-      badgeBg.stroke({ color: bp.color, width: 1.5 });
+      // REQ-0287: a shared-elsewhere BP tints its handle ring otherSquad so a
+      // fully PO-covered BP still shows its shared status at the move handle.
+      badgeBg.stroke({ color: tintYellowSet.has(bp.id) ? OVERLAY.usage.otherSquad.color : bp.color, width: 1.5 });
       badgeBg.eventMode = 'none'; // decorative backing, see constructor note
       this.gBadges.addChild(badgeBg);
       const badgeGlyph = new Text({
@@ -563,6 +571,12 @@ export class BoardRenderer {
       // verbatim, not a new drag code path.
       badgeGlyph.on('pointerdown', (e: FederatedPointerEvent) => this.handleBPPointerDown(e, bp.id));
       this.gBadges.addChild(badgeGlyph);
+      // REQ-0287: ownership ribbons for this BP, drawn AFTER the badge so the
+      // corner wedge never occludes the centred handle glyph. tr anchors on
+      // the top-right-most cell, tl on the top-left-most (the BP:Unit law
+      // welds Unit to BP -- the BP ribbon speaks for its Unit, no separate
+      // Unit marker).
+      paintUsageRibbons(this, bp.id, topRightCellBBoxPx(cells), topLeftCellBBoxPx(cells), tintRedSet, tintYellowSet);
 
       // Empty-cell BP grab handles (REQ-0027 T0.2, generalized REQ-0030
       // Phase 2): every BP cell that is neither occupied by a placed PO
@@ -814,6 +828,9 @@ export class BoardRenderer {
       // BP-color tint but stays below the PO's own sprite art, which is
       // added to gItems next).
       drawTintOverlay(this.gItems, ops.cellsOf(state, p), p.uid, tintRedSet, tintYellowSet);
+      // REQ-0287: ownership ribbon over the PO footprint bbox (into gBadges).
+      const poRibbonBbox = cellsBBoxPx(ops.cellsOf(state, p));
+      paintUsageRibbons(this, p.uid, poRibbonBbox, poRibbonBbox, tintRedSet, tintYellowSet);
       const texture = itemTex(textures, p.id, def.icon);
       if (texture) {
         const sprite = new Sprite(texture);
@@ -1227,6 +1244,9 @@ export class BoardRenderer {
       // as every other tint call site -- see the drawTintOverlay doc
       // comment near `container`/`cbp` above for the color/alpha choice).
       drawTintOverlay(g, [[r, c]], a.uid, tintRedSet, tintYellowSet);
+      // REQ-0287: ownership ribbon over the SI single-cell footprint.
+      const siRibbonBbox = cellsBBoxPx([[r, c]]);
+      paintUsageRibbons(this, a.uid, siRibbonBbox, siRibbonBbox, tintRedSet, tintYellowSet);
       if (siDef) {
         const tex = itemTex(textures, a.id, siDef.icon);
         if (tex) {
@@ -1267,6 +1287,8 @@ export class BoardRenderer {
     // loop for event-routing correctness. Rendering synchronously here
     // makes hit-testing correct immediately after every state change,
     // independent of tab visibility/ticker timing.
+    // REQ-0287: publish this board's ribbon probe snapshot (e2e read seam).
+    publishRibbonProbe(boardIdKey(this.boardId), this.usageRibbonProbe);
     this.app.renderer.render({ container: this.app.stage });
   }
   /**

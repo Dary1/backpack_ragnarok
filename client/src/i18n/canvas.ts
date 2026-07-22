@@ -3,6 +3,8 @@
 // is gated at the barrel (see the split-commit gate record in the REQ).
 
 export const canvasEn = {
+  'usage.usedBy': 'Used by',
+  'usage.currentSquadMark': ' (current)',
   // REQ-0051 starter units: solo 4-squad play is a RELIEF measure, not best
   // practice -- nudge toward troop play + single-squad mastery (BINDING).
   "squad.starterNudge": "Fielding four squads solo is a relief for playing alone. The strongest path is to pour your assets into ONE squad and march in a troop of players.",
@@ -87,6 +89,8 @@ export const canvasEn = {
 } as const;
 
 export const canvasJa = {
+  'usage.usedBy': '使用中スクアド',
+  'usage.currentSquadMark': '（現在）',
   "squad.starterNudge": "4スカッドの単独運用はソロ救済策です。最強の道は、資産を1つのスカッドに集中し、仲間のトループで進むことです。",
   "squad.fixedLocked": "スターターユニットの装備は固定されています。追い越したら、スターターユニット全体を破棄してください。",
 

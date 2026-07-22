@@ -351,3 +351,79 @@ test.describe('reference model (REQ-0033 Phase 2)', () => {
     expect(await isSquadIndependent(page, 2)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------
+// REQ-0287 -- ownership ribbons (shared-usage visibility). Asserts the
+// per-render probe seam (BoardRenderer.usageRibbonProbe, published per
+// board via usageRibbonProbe.ts and read through __backpackDebug) rather
+// than reverse-engineering PixiJS pixels -- same hook doctrine as the
+// tint-set assertions above. Fixture: a PO (p900) referenced by THREE
+// squads and a BP (sharedbp) referenced by two, so the >=2 share-count,
+// the both-boards tr ribbon, the inventory-only tl ribbon, and the
+// tooltip listing are all provable at boot with no drag choreography.
+// ---------------------------------------------------------------------
+interface RibbonEntry { uid: string; corner: 'tr' | 'tl'; count: number | null }
+
+async function ribbonProbe(page: Page, boardKey: string): Promise<RibbonEntry[]> {
+  return page.evaluate((k) => {
+    const w = window as unknown as { __backpackDebug: { usageRibbonProbe: (bk: string) => RibbonEntry[] } };
+    return w.__backpackDebug.usageRibbonProbe(k);
+  }, boardKey);
+}
+
+async function loadReq0287AndBoot(page: Page): Promise<void> {
+  const fx = JSON.parse(readFileSync(new URL('./fixtures/req0287-shared-fixture.json', import.meta.url), 'utf8'));
+  await page.request.put('/api/profile/default/canvas', { data: fx });
+  await bootApp(page);
+  await page.waitForTimeout(300);
+}
+
+test.describe('REQ-0287 ownership ribbons', () => {
+  test('a. shared PO: tr ribbon (count>=2) on BOTH boards; tl only on inventory', async ({ page }) => {
+    await loadReq0287AndBoot(page);
+    const canvasR = (await ribbonProbe(page, 'canvas')).filter((e) => e.uid === 'p900');
+    const invR = (await ribbonProbe(page, 'inv:0')).filter((e) => e.uid === 'p900');
+    // p900 is used by squads 0,1,2 -> from the current squad (0) view, 2 OTHER
+    // squads hold it -> tr ribbon carries the count 2, on BOTH boards.
+    expect(canvasR).toContainEqual({ uid: 'p900', corner: 'tr', count: 2 });
+    expect(invR).toContainEqual({ uid: 'p900', corner: 'tr', count: 2 });
+    // Canvas NEVER shows the self/red (tl) ribbon; the inventory board does.
+    expect(canvasR.some((e) => e.corner === 'tl')).toBe(false);
+    expect(invR).toContainEqual({ uid: 'p900', corner: 'tl', count: null });
+  });
+
+  test('b. shared BP: tr ribbon on the canvas, count null (one other squad)', async ({ page }) => {
+    await loadReq0287AndBoot(page);
+    const canvasR = await ribbonProbe(page, 'canvas');
+    // sharedbp is on squads 0 and 1 -> exactly ONE other squad -> tr, no count.
+    expect(canvasR).toContainEqual({ uid: 'sharedbp', corner: 'tr', count: null });
+  });
+
+  test('c. tooltip "Used by" lists the sharing squads, current first + marked', async ({ page }) => {
+    await loadReq0287AndBoot(page);
+    // Tap p900 on the CANVAS board (whitelisted by FloatingItemTip's own
+    // outside-tap dismissal), where squad 1 references it at cell [1,2].
+    const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
+    await page.mouse.click(canvasBox.x + cx(2), canvasBox.y + cy(1));
+    const usage = page.locator('[data-testid="item-tip-usage"]');
+    await expect(usage).toBeVisible();
+    const txt = (await usage.textContent()) ?? '';
+    expect(txt).toContain('Used by');
+    expect(txt).toContain('Squad 1');
+    expect(txt).toContain('Squad 2');
+    expect(txt).toContain('Squad 3');
+    expect(txt).toContain('(current)'); // the active squad (Squad 1) is marked
+  });
+
+  test('d. no-regression: an unshared, unreferenced profile draws zero ribbons', async ({ page }) => {
+    await loadFixtureAndBoot(page); // standard reference-model fixture, untouched
+    await page.waitForTimeout(300);
+    const canvasR = await ribbonProbe(page, 'canvas');
+    const invR = await ribbonProbe(page, 'inv:0');
+    // Core no-regression: nothing is shared, so NO shared (tr) ribbon appears
+    // on either board. Self/tl ribbons legitimately mark current-squad usage,
+    // so the guard is on the shared channel the feature actually adds.
+    expect(canvasR.filter((e) => e.corner === 'tr'), `canvas probe: ${JSON.stringify(canvasR)}`).toHaveLength(0);
+    expect(invR.filter((e) => e.corner === 'tr'), `inv probe: ${JSON.stringify(invR)}`).toHaveLength(0);
+  });
+});
