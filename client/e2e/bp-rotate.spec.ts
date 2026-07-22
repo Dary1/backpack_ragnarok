@@ -108,9 +108,14 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     // -- and therefore its rays -- is untouched. The old law (dirs rotate +2 mod 8)
     // is GONE: a lance keeps pointing at the enemy however the bag is packed.
     expect(bp.unit).toEqual({ id: 'dwarf', off: [1, 0] });
-    expect(bp.origin).toEqual([2, 2]); // origin never moves during in-place rotation
+    // REQ-0289 pivot law: the Unit's ABSOLUTE seat cell stays fixed at (4,3)
+    // (origin[2,2]+off[2,1]); the rotated seat is local [1,0], so the origin
+    // shifts to unitAbs - rotatedUnitOff = [4,3]-[1,0] = [3,3] (was [2,2]).
+    expect(bp.origin).toEqual([3, 3]);
+    expect([bp.origin[0] + bp.unit.off[0], bp.origin[1] + bp.unit.off[1]]).toEqual([4, 3]); // Unit cell invariant
     const po = canvas.pos.find((p: any) => p.uid === 'canvas_po');
-    expect(po.cell).toEqual([2, 2]); // local [2,0] -> rotated [0,0] on the new shape
+    // PO local [2,0] -> rotated [0,0]; re-anchored at the pivot origin [3,3] -> (3,3) (was (2,2)).
+    expect(po.cell).toEqual([3, 3]);
     expect(po.rot).toBe(1);
   });
 
@@ -120,10 +125,11 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const invBox = (await page.locator('canvas.inventory-board-canvas').boundingBox())!;
     const PAD = 38, CELL = 80;
 
-    // Move-handle badge sits near the BP's top-left cell (origin [2,2]) --
-    // (PAD+(2-1)*CELL+14, PAD+(2-1)*CELL+14).
-    const badgeX = invBox.x + PAD + 1 * CELL + 14;
-    const badgeY = invBox.y + PAD + 1 * CELL + 14;
+    // REQ-0289: the move-handle badge now anchors at the Unit's SEAT cell
+    // top-left corner (engine.unitCell). seat = origin[2,2] + off[2,1] = (4,3),
+    // so the badge center is (PAD+(3-1)*CELL+14, PAD+(4-1)*CELL+14).
+    const badgeX = invBox.x + PAD + 2 * CELL + 14;
+    const badgeY = invBox.y + PAD + 3 * CELL + 14;
     await page.mouse.dblclick(badgeX, badgeY);
     await page.waitForTimeout(200);
 
@@ -131,8 +137,9 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     const invBp = canvas.inv.pages[0].bps.find((b: any) => b.id === 'inv_l');
     expect(invBp.shape).toEqual([[0, 2], [0, 1], [0, 0], [1, 0]]);
     expect(invBp.unit).toEqual({ id: 'dwarf', off: [1, 0] });
+    expect(invBp.origin).toEqual([3, 3]); // REQ-0289 pivot law (identical to the canvas twin)
     const invPo = canvas.inv.pages[0].pos.find((p: any) => p.uid === 'inv_po');
-    expect(invPo.cell).toEqual([2, 2]); // same rigid remap as the canvas twin
+    expect(invPo.cell).toEqual([3, 3]); // same rigid remap as the canvas twin
     expect(invPo.rot).toBe(1);
 
     // Independence check (REQ-0033 reference-model decision, see this
@@ -148,14 +155,14 @@ test.describe('BP dblclick rotate -- REQ-0045 (a2)', () => {
     await bootApp(page);
     const canvasBox = (await page.locator('canvas.board-canvas').first().boundingBox())!;
 
-    // The unit cell (always a live grab/rotate hit area, see
-    // BoardRenderer's `core` circle) physically relocates on every single
-    // rotation, so the correct screen coordinate to double-click must be
-    // RECOMPUTED from the BP's own CURRENT unit.off + origin before each
-    // of the 4 attempts, rather than assumed fixed -- re-fetching the
-    // saved canvas between clicks (auto-save has already committed the
-    // PREVIOUS rotation by the time each next click is issued, thanks to
-    // the waitForTimeout below covering the debounce window).
+    // REQ-0289 pivot law: the unit cell is now INVARIANT across a rotation
+    // (that is the whole point), so the dblclick target is stable -- but we
+    // still recompute it from the saved state each iteration (defensive, and
+    // it keeps this test honest against any future geometry change). The unit
+    // cell (core) stays a live rotate hit area (REQ-0290 has not yet made it
+    // inert); re-fetching the saved canvas between clicks lets auto-save
+    // commit the PREVIOUS rotation first (the waitForTimeout covers the
+    // debounce window).
     for (let i = 0; i < 4; i++) {
       const canvas = await saveAndFetch(page);
       const bp = canvas.bps.find((b: any) => b.id === 'canvas_l');
