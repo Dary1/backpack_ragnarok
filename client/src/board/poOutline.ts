@@ -77,6 +77,13 @@ export function boundaryLoops(cells: Cell[]): Pt[][] {
     if (!set.has(keyOf(r, c + 1))) addEdge(c, r, c, r - 1); // right: walk north
   }
   const loops: Pt[][] = [];
+  // REQ-0284 (hotfix hardening): each takeFrom() consumes exactly one directed
+  // boundary edge, so a well-formed walk is bounded by the initial edge count. A
+  // generous HARD budget makes a malformed / degenerate cell set (the walk's
+  // "never happens for a real footprint" assumption) bail with a warning + a
+  // partial result rather than ever spinning the main thread.
+  let stepBudget = 16;
+  for (const list of edges.values()) stepBudget += 2 * list.length;
   const takeFrom = (k: string, prefer: Pt | null): Pt[] | null => {
     const list = edges.get(k);
     if (!list || list.length === 0) return null;
@@ -99,12 +106,20 @@ export function boundaryLoops(cells: Cell[]): Pt[][] {
     return e;
   };
   for (;;) {
+    if (stepBudget-- <= 0) {
+      console.warn('poOutline.boundaryLoops: step budget exhausted; returning partial outline');
+      return loops;
+    }
     const firstKey = edges.keys().next();
     if (firstKey.done) break;
     const first = takeFrom(firstKey.value, null)!;
     const pts: Pt[] = [first[0], first[1]];
     let dir: Pt = [first[1][0] - first[0][0], first[1][1] - first[0][1]];
     for (;;) {
+      if (stepBudget-- <= 0) {
+        console.warn('poOutline.boundaryLoops: step budget exhausted; returning partial outline');
+        return loops;
+      }
       const cur = pts[pts.length - 1];
       if (cur[0] === pts[0][0] && cur[1] === pts[0][1]) break; // closed
       const next = takeFrom(cur[0] + ',' + cur[1], dir);
