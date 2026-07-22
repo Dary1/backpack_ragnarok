@@ -115,6 +115,109 @@ async function main() {
     // art-less def still composites here. Only the BOARD suppresses it.
     ok(comp.compositeSkin([[2, 2]], derivedNoArt, '#14181f').rgba.length === 3 * 3 * 48 * 48 * 4, // DEFAULT_PARAMS: cellPx 48, margin 1
       'an art-less derived def still composites OFFLINE at full size -- only the board suppresses it');
+    // -----------------------------------------------------------------------
+    // REQ-0291 gate A -- the nearest-feature EDT (composite.ts nearestFeatureEDT,
+    // the scipy distance_transform_edt(return_indices=True) port) property-checked
+    // against a brute-force nearest-feature scan. Distances are exact, so we assert
+    // the returned feature IS a feature and sits at the minimum squared distance
+    // (a tie may pick a different equal-distance feature -- that is allowed).
+    const bruteMinD2 = (mask, W, H, x, y) => {
+      let best = Infinity;
+      for (let fy = 0; fy < H; fy++) for (let fx = 0; fx < W; fx++) if (mask[fy * W + fx]) { const d2 = (fx - x) * (fx - x) + (fy - y) * (fy - y); if (d2 < best) best = d2; }
+      return best;
+    };
+    const edtMasks = [
+      { W: 5, H: 5, feats: [[2, 2]] },
+      { W: 6, H: 4, feats: [[0, 0], [5, 3]] },
+      { W: 7, H: 7, feats: [[3, 0], [0, 3], [6, 6]] },
+      { W: 8, H: 5, feats: [[1, 1], [6, 1], [3, 4]] },
+      { W: 9, H: 9, feats: [[4, 4], [0, 8], [8, 0]] },
+    ];
+    let edtOk = true, edtChecked = 0;
+    for (const m of edtMasks) {
+      const mask = new Uint8Array(m.W * m.H);
+      for (const [fx, fy] of m.feats) mask[fy * m.W + fx] = 1;
+      const r = comp.nearestFeatureEDT(mask, m.W, m.H);
+      for (let y = 0; y < m.H; y++) for (let x = 0; x < m.W; x++) {
+        const i = y * m.W + x; edtChecked++;
+        const iy = r.iy[i], ix = r.ix[i];
+        const isFeat = mask[iy * m.W + ix] === 1;
+        const d2 = (ix - x) * (ix - x) + (iy - y) * (iy - y);
+        const want = bruteMinD2(mask, m.W, m.H, x, y);
+        const distOk = Math.abs(r.dist[i] * r.dist[i] - want) < 1e-6;
+        if (!isFeat || d2 !== want || !distOk) { edtOk = false; }
+      }
+    }
+    ok(edtOk, `nearestFeatureEDT: ${edtChecked} cells return a true nearest feature at the exact min distance (brute-force parity)`);
+    // -----------------------------------------------------------------------
+    // REQ-0291 gate B -- the synthetic-band golden. A frame band whose strips
+    // encode depth analytically (top/bottom = "H family", R ramps outer->inner;
+    // left/right = "V family", B ramps outer->inner) over a green interior. Every
+    // ring pixel must sample a band colour, every interior pixel the interior
+    // colour, and the depth ramp must be monotone on all four straight edges.
+    const BAND = 60, TILEW = 160;
+    const RAMP = (d) => 40 + d * 3;                 // 40..217 over depth 0..59
+    const fillRaster = { width: TILEW, height: TILEW, rgba: new Uint8ClampedArray(TILEW * TILEW * 4) };
+    for (let i = 0; i < TILEW * TILEW; i++) { fillRaster.rgba[i * 4] = 0; fillRaster.rgba[i * 4 + 1] = 200; fillRaster.rgba[i * 4 + 2] = 0; fillRaster.rgba[i * 4 + 3] = 255; }
+    const LH = 64, LV = 64;
+    const stripH = { width: LH, height: BAND, rgba: new Uint8ClampedArray(LH * BAND * 4) };
+    for (let d = 0; d < BAND; d++) for (let a = 0; a < LH; a++) { const o = (d * LH + a) * 4; stripH.rgba[o] = RAMP(d); stripH.rgba[o + 1] = 10; stripH.rgba[o + 2] = 0; stripH.rgba[o + 3] = 255; }
+    const stripV = { width: BAND, height: LV, rgba: new Uint8ClampedArray(BAND * LV * 4) };
+    for (let a = 0; a < LV; a++) for (let d = 0; d < BAND; d++) { const o = (a * BAND + d) * 4; stripV.rgba[o] = 0; stripV.rgba[o + 1] = 10; stripV.rgba[o + 2] = RAMP(d); stripV.rgba[o + 3] = 255; }
+    const frame = { stripH, stripV, frameBandPx: BAND };
+    const bandDef = { kind: 'bpskin/1', id: 'synthband', name: 'Synth Band', palette: { canvas: '#000000', fill: '#00c800', welt: '#00c800' }, corner_radius: 0, border_band: 3, art: { fill_texture: 'synthetic://band', frame_band_px: BAND } };
+    ok(reg.validateSkinDef(bandDef).ok, 'synthetic band def passes validateSkinDef');
+    const isH = (r, g, b) => g === 10 && b === 0 && r >= 40 && r <= 217;   // stripH family
+    const isV = (r, g, b) => r === 0 && g === 10 && b >= 40 && b <= 217;   // stripV family
+    const isInterior = (r, g, b) => r === 0 && g === 200 && b === 0;
+    const bandShapes = [
+      { n: 'square3x3', cells: [[2, 2], [2, 3], [2, 4], [3, 2], [3, 3], [3, 4], [4, 2], [4, 3], [4, 4]] },
+      { n: 'L', cells: [[2, 2], [2, 3], [3, 2]] },
+      { n: 'holed', cells: [[2, 2], [2, 3], [2, 4], [3, 2], [3, 4], [4, 2], [4, 3], [4, 4]] },
+    ];
+    for (const sh of bandShapes) {
+      const c = comp.compositeSkin(sh.cells, bandDef, '#000000', { cellPx: 48, margin: 1 }, fillRaster, frame);
+      const W = c.width, H = c.height;
+      let ringN = 0, fillN = 0, ringBad = 0, fillBad = 0;
+      for (let i = 0; i < W * H; i++) {
+        const r = c.rgba[i * 4], g = c.rgba[i * 4 + 1], b = c.rgba[i * 4 + 2];
+        if (c.layer[i] === comp.LAYER.welt) { ringN++; if (!(isH(r, g, b) || isV(r, g, b))) ringBad++; }
+        else if (c.layer[i] === comp.LAYER.fill || c.layer[i] === comp.LAYER.override) { fillN++; if (!isInterior(r, g, b)) fillBad++; }
+      }
+      ok(ringN > 0 && ringBad === 0, `${sh.n}: every ring pixel samples a band strip colour (${ringN} ring, ${ringBad} bad)`);
+      ok(fillN > 0 && fillBad === 0, `${sh.n}: every interior pixel samples the interior colour (${fillN} fill, ${fillBad} bad)`);
+    }
+    // Depth ordering outer->inner on all four straight edges of the square.
+    {
+      const c = comp.compositeSkin(bandShapes[0].cells, bandDef, '#000000', { cellPx: 48, margin: 1 }, fillRaster, frame);
+      const W = c.width, H = c.height;
+      let minX = W, maxX = 0, minY = H, maxY = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (c.rs[y * W + x]) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+      const midX = (minX + maxX) >> 1, midY = (minY + maxY) >> 1;
+      const at = (x, y, ch) => c.rgba[(y * W + x) * 4 + ch];
+      const isWelt = (x, y) => c.layer[y * W + x] === comp.LAYER.welt;
+      // collect a monotone-checked ramp along a scan; ch: 0 = R (H family), 2 = B (V family)
+      const scan = (name, seq, ch, family) => {
+        const vals = [];
+        for (const [x, y] of seq) { if (!isWelt(x, y)) break; const r = at(x, y, 0), g = at(x, y, 1), b = at(x, y, 2); if (!family(r, g, b)) { vals.push(-1); break; } vals.push(at(x, y, ch)); }
+        let mono = vals.length >= 2; for (let i = 1; i < vals.length; i++) if (vals[i] < vals[i - 1]) mono = false;
+        ok(mono, `depth ramp monotone outer->inner on ${name} (${vals.length} samples: ${vals.slice(0, 6).join(',')}...)`);
+      };
+      const topSeq = []; for (let y = minY; y <= minY + BAND; y++) topSeq.push([midX, y]);
+      const botSeq = []; for (let y = maxY; y >= maxY - BAND; y--) botSeq.push([midX, y]);
+      const leftSeq = []; for (let x = minX; x <= minX + BAND; x++) leftSeq.push([x, midY]);
+      const rightSeq = []; for (let x = maxX; x >= maxX - BAND; x--) rightSeq.push([x, midY]);
+      scan('top edge', topSeq, 0, isH);
+      scan('bottom edge', botSeq, 0, isH);
+      scan('left edge', leftSeq, 2, isV);
+      scan('right edge', rightSeq, 2, isV);
+    }
+    // Determinism of the strip path.
+    {
+      const a = comp.compositeSkin(bandShapes[0].cells, bandDef, '#000000', { cellPx: 48, margin: 1 }, fillRaster, frame);
+      const b = comp.compositeSkin(bandShapes[0].cells, bandDef, '#000000', { cellPx: 48, margin: 1 }, fillRaster, frame);
+      ok(Buffer.compare(Buffer.from(a.rgba), Buffer.from(b.rgba)) === 0, 'strip welt path is deterministic (byte-identical)');
+    }
   } finally { await server.close(); }
   if (fails) { console.error(`\n${fails} assertion(s) FAILED`); process.exit(1); }
   console.log('\ncheck_bpskin: ALL GREEN');
