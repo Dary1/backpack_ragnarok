@@ -184,3 +184,84 @@ Tallied ray_fire across ALL 12 replay goldens (batch-002 pilot + dungen/default 
 
 ## Status log (cont.)
 - 2026-07-22 P3 implemented: client /schedule VFX-art seam (monitorVfxArt resolver + TilingSprite ray trail + hit-still ramp + ray_fire latch/prefetch). tsc -b --force EXIT 0; oxlint clean on touched files. Fallback = current procedural visuals when no asset adopted.
+
+## P4 evidence (2026-07-22, Fable art pass)
+
+### Style ruling (FINAL -- replaces the P1 PROVISIONAL templates; commit `9bacf49`)
+- `tools/art_style.py` gains `VFX_RAY_STYLE` / `VFX_HIT_STYLE` + `vfx_prompt(role, clause)`;
+  `tools/art_job.py`'s vfx branch routes BOTH roles there. `vfx` is removed from
+  `KIND_TEMPLATE` (the Anime template stays banned for vfx: "bold outline" turns a beam
+  into a bordered object -- the measured leather-patch failure class).
+- Grammar (both roles): PURE BLACK ground; strong simple silhouette; luminance does the
+  drawing (no stroke outline); no text/runes/glyphs/sigils; no lens flare. Ray = one
+  single straight edge-to-edge beam, centered vertically, wisps stretched along the
+  travel axis, seamless horizontal repeat. Hit = one single centered radial burst,
+  spikes + sparks from a small bright core.
+- **V2 no-baked-glow, RULED (REQ-0264 s10 open question):** V2-as-amended. Soft INNER
+  luminance gradients are the asset's essence -- a streak IS light -- and are PERMITTED
+  inside/around the core silhouette. The WIDE OUTER HALO is FORBIDDEN: a broad low-alpha
+  bloom lobe extending well beyond the energy silhouette duplicates the client's additive
+  budget (procedural head + impact ramp, <=3 glow sources, blur <=8) and is uncullable at
+  19 rays in flight -- REQ-0264 s10.1's argument stands; this ruling narrows its remedy
+  from "flat art" to "self-contained light". Enforcement: the border-key matte turns any
+  halo into exactly the soft alpha skirt `vfx.flatness` measures (soft_alpha_band <=0.12
+  on the CUTOUT), plus the adoption eye: candidates with halo lobes wider than ~2x the
+  core band height are rejected (two such candidates rejected below, both otherwise
+  beautiful).
+- **Matte convention for vfx (documented decision):** cutouts run with
+  `ART_KIT_MATTE_METHOD=borderkey`. On a pure-black ground the border-key IS a luminance
+  key (alpha = smoothstepped distance from the sampled black median) -- deterministic,
+  tiling-safe, and model-free (birefnet is a saliency matte + ~12 GB RSS beside a warm
+  ComfyUI; wrong tool for light). Adopted asset = the border-key CUTOUT of the winning
+  seed (RGBA over transparent), per REQ-0264 s8 "alpha-matted, composited over the field".
+- Element semantics (subject clause carries them; V4 one dominant hue per asset):
+  defaults are element-NEUTRAL pale gold / bone-white; dagger silver-white steel;
+  planned-but-not-rendered: door_keeper_strike molten gold iron, hrim_cleave frost
+  (#6FC4DE family), trap_deadfall_volley dark ember-red, beast_jaw blood-tinged bone,
+  blade broad silver-steel, herb_pouch dusty bone-white motes.
+
+### Adoption table (registry = live namespace via scoped api :7801; exports committed here)
+| system_name | subject | candidates | adopted | kits (cutout) | note |
+|---|---|---|---|---|---|
+| vfx_ray_default | pale gold and bone-white energy | seeds 1-3 + cutouts | **cutout 100002** (of seed 2) | flatness PASS 0.020, coverage PASS 0.264, seam WARN-low 0.118 | seed 1 REJECTED: wide baked halo lobes (V2) |
+| vfx_hit_default | pale gold and bone-white energy | seeds 1-3 + cutouts | **cutout 100003** (of seed 3) | flatness PASS 0.038, coverage PASS 0.480, seam SKIP (hit) | densest symmetric burst; halo self-contained |
+| vfx_ray_dagger | needle-thin swift silver-white energy | seeds 1-3 + cutouts | **cutout 100003** (of seed 3) | flatness PASS 0.014, coverage PASS 0.152, seam WARN-low 0.791 | seed 1 REJECTED: wide halo (V2); thinnest/fastest read at 10 px |
+| vfx_hit_dagger | (same) | seed 1 only (2-3 canceled) | **SKIPPED** | flatness PASS 0.033 on cutout 100001 | sole candidate badly off-center (core ~30% left); no re-roll possible after GPU loss; falls back to vfx_hit_default by the client chain |
+| vfx_ray/hit_door_keeper_strike | heavy molten gold iron energy | none (canceled) | -- | -- | artworks created as owner head-start; renders canceled at GPU loss |
+| beast_jaw / blade / herb_pouch / hrim_cleave / trap_deadfall_volley | -- | not created | -- | -- | not reached |
+
+### tiling.seam calibration note [S7]
+Every vfx ray cutout scores seam_ratio_x BELOW the bpskin band [0.83, 1.10]
+(0.109-0.791 across 6 strips) -> WARN-low. Cause: the ratio divides wrap-contrast by
+interior-contrast, and an energy strip's interior contrast (bright core on black) is
+extreme, so a genuinely seamless wrap reads <<1. All six strips eyeballed at 3x
+horizontal tiling on the night-iron ground: no visible seam. Advisory kit, verdict
+unchanged; recommend a vfx-specific band (~[0.0, 1.10]) when the kit is next versioned.
+
+### GPU + abort record
+- ~8 min GPU total (02:10:56-02:18:30 UTC): 12 ok renders (256x64 x6, 256x256 x6) +
+  1 killed mid-flight. Renders ~20-30 s each at 30 steps.
+- 02:18:30: `comfyui.service` began being restarted every ~6 s by an EXTERNAL ssh
+  session (verified: restarter `systemctl --user restart comfyui.service` ppid =
+  `sshd-session`, NOT this harness -- /proc env of the :7801 api shows
+  `ART_FAMILY_BARRIER=0` -- and not backpack-api). Loop still active at 02:25. Per the
+  ComfyUI-availability rule this pass STOPPED all GPU work at 02:20 (canceled 8 queued/
+  running renders), finished CPU-side matte/inspect/adopt for what had rendered, and
+  ships 3 adopted assets. NO comfyui restart was ever issued by this pass.
+- Harness: scoped api on :7801 (worktree code, live DATABASE_URL, ART_EXPORT_ROOT ->
+  this worktree, ART_FAMILY_BARRIER=0, ART_KIT_MATTE_METHOD=borderkey), torn down after
+  the pass; ports 7800-7809 free.
+
+### P5 notes
+- Adopted + exported: `content/art/vfx/{vfx_ray_default,vfx_hit_default,vfx_ray_dagger}.png`
+  (adoptions live in the shared pg registry, so /api/art/<name>.png serves them on any
+  pg-backed api). A /schedule screenshot run will show: textured trails on ALL rays
+  (default tier), dagger-specific silver strips on dagger rays (47% of ray_fires),
+  textured gold impact on every ray hit. e2e/files-backend unaffected (404 -> procedural).
+- Remaining signature set (door_keeper_strike, hrim_cleave, trap_deadfall_volley,
+  beast_jaw, blade, herb_pouch) is deliberately left to the owner's art sessions per the
+  origin ruling; subjects above are the ready-to-use briefs.
+
+## Status log (P4)
+- 2026-07-22 P4: style ruled (V2-as-amended), 3 assets adopted (defaults + dagger ray),
+  GPU work aborted cleanly on external comfyui restart loop; evidence above.
