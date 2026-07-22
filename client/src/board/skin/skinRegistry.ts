@@ -8,7 +8,7 @@
 // art never blocks. Pure.
 export const BPSKIN_KIND = "bpskin/1";
 export const NEUTRAL_ID = "neutral";
-export interface BpSkinArt { fill_texture?: string | null; tile_fill_override?: string | null; edge_tiles?: { straight?: string; outer_corner?: string; inner_corner?: string }; clip_masks?: { straight?: string; outer_corner?: string; inner_corner?: string }; }
+export interface BpSkinArt { fill_texture?: string | null; frame_band_px?: number | null; tile_fill_override?: string | null; edge_tiles?: { straight?: string; outer_corner?: string; inner_corner?: string }; clip_masks?: { straight?: string; outer_corner?: string; inner_corner?: string }; }
 export interface BpSkinPalette { canvas?: string; fill: string; fill2?: string; welt?: string; }
 export interface BpSkinDef {
   kind: typeof BPSKIN_KIND; id: string; name: string; i18n?: { ja?: { name?: string } };
@@ -58,6 +58,10 @@ export function isNeutral(def: BpSkinDef): boolean { return def.neutral === true
 export interface UnitSkinEntryLike {
   id: string; name: string; slot: string; art_ref: string; units: string[];
   default?: boolean; set?: string | null; i18n?: { ja?: { name?: string } };
+  /** REQ-0291: the bpskin frame band thickness in SOURCE px (= the artwork's
+   * edge_padding). Projected onto def.art.frame_band_px; null/0/absent => legacy
+   * palette welt, zero behaviour change. */
+  edge_padding?: number | null;
 }
 export type UnitSkinSlot = "unit" | "bpskin";
 export const UNIT_SKIN_SLOTS: ReadonlyArray<UnitSkinSlot> = ["unit", "bpskin"];
@@ -98,7 +102,8 @@ export function bpSkinDefFromUnitSkin(entry: UnitSkinEntryLike, artUrl: string |
     i18n: entry.i18n, set: entry.set ?? null,
     palette: { ...src.palette },
     corner_radius: src.corner_radius, border_band: src.border_band,
-    art: { fill_texture: typeof artUrl === "string" && artUrl.length > 0 ? artUrl : null },
+    art: { fill_texture: typeof artUrl === "string" && artUrl.length > 0 ? artUrl : null,
+           frame_band_px: typeof entry.edge_padding === "number" && entry.edge_padding > 0 ? entry.edge_padding : null },
   };
 }
 

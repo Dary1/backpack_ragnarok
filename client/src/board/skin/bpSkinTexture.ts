@@ -21,9 +21,17 @@
 // and onReady() re-renders once the pixels are in. A raster that 404s or fails
 // to decode is cached as a permanent miss and the BP simply stays unskinned:
 // missing art never blocks a draw, and never degrades one either.
+// REQ-0291: when the def carries a frame band (def.art.frame_band_px > 0, fed
+// from the artwork's edge_padding), decode() slices the SOURCE image ONCE into
+// three pieces -- an INTERIOR-only fill (inset by the band, so the authored
+// frame no longer pollutes the tile) and two directional welt strips cut from
+// the top and left padding runs -- then discards the 4MB source. The strips
+// travel to compositeSkin, which cuts the welt ring from them (see composite.ts
+// FrameStrips). Absent a band, decode() behaves exactly as before (full-tile
+// downsample, no strips) and the composite is byte-identical to pre-REQ-0291.
 import { Sprite, Texture } from 'pixi.js';
 import { CELL, PAD } from '../geom';
-import { compositeSkin, declaresFillTexture, LAYER, type FillRaster } from './composite';
+import { compositeSkin, declaresFillTexture, LAYER, type FillRaster, type FrameStrips } from './composite';
 import type { BpSkinDef } from './skinRegistry';
 import type { Cell } from './autotile';
 
@@ -31,15 +39,20 @@ import type { Cell } from './autotile';
  * real background rather than the array edge. */
 const MARGIN = 1;
 /** Tiles are downsampled to two cells square: a bpskin artwork is authored at
- * 1024x1024 (art.cjs locks that), and tiled 1:1 at CELL=48 a BP would show a
- * twentieth of the image and read as noise rather than as a material. */
+ * 1024x1024 (art.cjs locks that), and tiled 1:1 at CELL a BP would show a
+ * fraction of the image and read as noise rather than as a material. */
 const TILE_PX = CELL * 2;
 /** A composite costs a distance transform and a BP rotation changes its cell
  * set, so the cache needs a cap. Wholesale eviction is fine -- the next render
  * rebuilds whatever is actually on screen. */
 const MAX_TEXTURES = 64;
 
-const rasters = new Map<string, FillRaster | null>();
+/** REQ-0291: the fill raster plus (when a frame band is authored) the two welt
+ * strips sliced from the same source. */
+interface DecodedSkin { fill: FillRaster; strips: FrameStrips | null; }
+// Keyed by url + frame band, so a def that toggles its band never reuses a stale
+// decode (a full-tile fill vs an interior-only one are different pixels).
+const decoded = new Map<string, DecodedSkin | null>();
 const pending = new Set<string>();
 const textures = new Map<string, Texture>();
 
@@ -50,45 +63,98 @@ function surface(w: number, h: number): CanvasRenderingContext2D | null {
   return cv.getContext('2d', { willReadFrequently: true });
 }
 
-function decode(url: string, onReady?: () => void): void {
-  if (rasters.has(url) || pending.has(url) || typeof document === 'undefined') return;
-  pending.add(url);
+/** The frame band in SOURCE px, rounded; 0 when the def declares none. */
+function bandPxOf(def: BpSkinDef): number {
+  const b = def.art && typeof def.art.frame_band_px === 'number' ? def.art.frame_band_px : 0;
+  return b > 0 ? Math.round(b) : 0;
+}
+/** Clamp the band so the interior inset and the strip slices stay inside the
+ * source (a pathological edge_padding must never produce a negative rect). */
+function safeBand(bandPx: number, iw: number, ih: number): number {
+  return Math.max(0, Math.min(Math.round(bandPx), Math.floor(Math.min(iw, ih) / 2) - 1));
+}
+
+/** The INTERIOR fill, downsampled to TILE_PX^2. With a band, the source is inset
+ * by the band on all four sides first, so the authored frame is excluded from
+ * the tile; without one, the whole source is used (pre-REQ-0291 behaviour). */
+function sliceFill(img: HTMLImageElement, bandPx: number): FillRaster | null {
+  const ctx = surface(TILE_PX, TILE_PX);
+  if (!ctx) return null;
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const b = bandPx > 0 ? safeBand(bandPx, iw, ih) : 0;
+  if (b > 0 && iw > 2 * b && ih > 2 * b) ctx.drawImage(img, b, b, iw - 2 * b, ih - 2 * b, 0, 0, TILE_PX, TILE_PX);
+  else ctx.drawImage(img, 0, 0, TILE_PX, TILE_PX);
+  const px = ctx.getImageData(0, 0, TILE_PX, TILE_PX);
+  return { width: TILE_PX, height: TILE_PX, rgba: px.data };
+}
+
+/** Two directional welt strips at NATIVE resolution: stripH from the top-edge
+ * run (rows 0..band x the middle 30%..70% of columns), stripV from the left-edge
+ * run (cols 0..band x the middle 30%..70% of rows) -- exactly welt_strips() in
+ * tools/bpskin_compose.py with the full square as silhouette (top=0, left=0). */
+function sliceStrips(img: HTMLImageElement, bandPx: number): FrameStrips | null {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const b = safeBand(bandPx, iw, ih);
+  if (!(b > 0)) return null;
+  const cx0 = Math.floor(iw * 0.30), cx1 = Math.floor(iw * 0.70), hw = cx1 - cx0;
+  const ry0 = Math.floor(ih * 0.30), ry1 = Math.floor(ih * 0.70), vh = ry1 - ry0;
+  if (!(hw > 0) || !(vh > 0)) return null;
+  const hctx = surface(hw, b); const vctx = surface(b, vh);
+  if (!hctx || !vctx) return null;
+  hctx.drawImage(img, cx0, 0, hw, b, 0, 0, hw, b);
+  vctx.drawImage(img, 0, ry0, b, vh, 0, 0, b, vh);
+  const hp = hctx.getImageData(0, 0, hw, b);
+  const vp = vctx.getImageData(0, 0, b, vh);
+  return { stripH: { width: hw, height: b, rgba: hp.data }, stripV: { width: b, height: vh, rgba: vp.data }, frameBandPx: b };
+}
+
+function decode(url: string, bandPx: number, key: string, onReady?: () => void): void {
+  if (decoded.has(key) || pending.has(key) || typeof document === 'undefined') return;
+  pending.add(key);
   const img = new Image();
   img.onload = () => {
-    pending.delete(url);
+    pending.delete(key);
     try {
-      const ctx = surface(TILE_PX, TILE_PX);
-      if (!ctx) { rasters.set(url, null); return; }
-      ctx.drawImage(img, 0, 0, TILE_PX, TILE_PX);
-      const px = ctx.getImageData(0, 0, TILE_PX, TILE_PX);
-      rasters.set(url, { width: TILE_PX, height: TILE_PX, rgba: px.data });
+      const fill = sliceFill(img, bandPx);
+      if (!fill) { decoded.set(key, null); return; }
+      const strips = bandPx > 0 ? sliceStrips(img, bandPx) : null;
+      decoded.set(key, { fill, strips });
       if (onReady) onReady();
     } catch (err) {
       // Reading pixels back can throw. Not an error path: cache the miss and
       // keep the palette-procedural body.
       console.warn('bpSkinTexture: could not read ' + url, err);
-      rasters.set(url, null);
+      decoded.set(key, null);
     }
   };
-  img.onerror = () => { pending.delete(url); rasters.set(url, null); }; // permanent miss
+  img.onerror = () => { pending.delete(key); decoded.set(key, null); }; // permanent miss
   img.src = url;
 }
 
-/** The decoded tile for a def, or null while it loads / if it never will. */
-export function fillRasterFor(def: BpSkinDef, onReady?: () => void): FillRaster | null {
+/** The decoded (fill + strips) for a def, or null while it loads / if it never
+ * will. Cache key folds in the frame band (REQ-0291). */
+function decodedFor(def: BpSkinDef, onReady?: () => void): DecodedSkin | null {
   const url = def.art ? def.art.fill_texture : null;
   if (typeof url !== 'string' || !url) return null;
-  if (!rasters.has(url)) { decode(url, onReady); return null; }
-  return rasters.get(url) || null;
+  const bandPx = bandPxOf(def);
+  const key = url + '|b' + bandPx;
+  if (!decoded.has(key)) { decode(url, bandPx, key, onReady); return null; }
+  return decoded.get(key) || null;
+}
+
+/** The decoded fill tile for a def (compat shim; the guard reads this). */
+export function fillRasterFor(def: BpSkinDef, onReady?: () => void): FillRaster | null {
+  const d = decodedFor(def, onReady);
+  return d ? d.fill : null;
 }
 
 /** Texture for one (cell-set, skin). Pixels outside the silhouette are made
  * fully TRANSPARENT: the compositor paints a solid background there, which is
  * right for an offline PNG and wrong for a board, where the grid must show. */
-function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, raster: FillRaster): { tex: Texture; r0: number; c0: number } | null {
+function textureFor(cells: ReadonlyArray<Cell>, def: BpSkinDef, raster: FillRaster, strips: FrameStrips | null): { tex: Texture; r0: number; c0: number } | null {
   if (typeof document === 'undefined' || cells.length === 0) return null;
-  const key = def.id + '|r|' + cells.map((c) => c[0] + ',' + c[1]).sort().join(';');
-  const comp = compositeSkin(cells, def, def.palette.canvas || '#000000', { cellPx: CELL, margin: MARGIN }, raster);
+  const key = def.id + '|b' + bandPxOf(def) + '|r|' + cells.map((c) => c[0] + ',' + c[1]).sort().join(';');
+  const comp = compositeSkin(cells, def, def.palette.canvas || '#000000', { cellPx: CELL, margin: MARGIN }, raster, strips);
   const hit = textures.get(key);
   if (hit) return { tex: hit, r0: comp.r0, c0: comp.c0 };
   const ctx = surface(comp.width, comp.height);
@@ -116,13 +182,13 @@ export function bpSkinSprite(cells: ReadonlyArray<Cell>, def: BpSkinDef | null |
   //   1. the def declares no art (`neutral`, and every derived skin whose
   //      artwork is not adopted -- the normal case under ruling D5), and
   //   2. it declares art that is not decoded yet, or never will be.
-  // fillRasterFor() covers both and starts the decode for case 2 only, but the
+  // decodedFor() covers both and starts the decode for case 2 only, but the
   // first is asked explicitly so this reads as the rule it is rather than as a
   // side effect of a cache lookup.
   if (!declaresFillTexture(def)) return null;
-  const raster = fillRasterFor(def, onReady);
-  if (!raster) return null;
-  const built = textureFor(cells, def, raster);
+  const dec = decodedFor(def, onReady);
+  if (!dec) return null;
+  const built = textureFor(cells, def, dec.fill, dec.strips);
   if (!built) return null;
   const sprite = new Sprite(built.tex);
   sprite.x = PAD + (built.c0 - MARGIN - 1) * CELL;
@@ -134,5 +200,5 @@ export function bpSkinSprite(cells: ReadonlyArray<Cell>, def: BpSkinDef | null |
  * invalidateBoardTextures() for a runtime skin swap. */
 export function invalidateBpSkinTextures(): void {
   for (const t of textures.values()) t.destroy(true);
-  textures.clear(); rasters.clear(); pending.clear();
+  textures.clear(); decoded.clear(); pending.clear();
 }
