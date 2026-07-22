@@ -166,12 +166,16 @@ defaultTemplate), `CreatePanel.tsx` (locked-256 note, grouped with si, no role s
    design.)
 3. **skill_icon texture resolution.** Fetch `/api/art/<skill_id>.png` (256x256), exact-name,
    NOT via art_urls; class-glyph fallback when 404/absent.
-4. **hpMax decision (REQ-0263 s4.5 closed-decision).** P1 did NOT change enemy hpMax: the
-   roster still serves `hp[1]` (the def upper bound) as `ApiRunRosterEnemy.hpMax`
-   (`pacing.buildRoster`). The instance's REAL rolled HP is NOT reachable at serve time --
-   `buildRoster` reconstructs enemies from the ROLLED DEF + content (packs/enemies), which
-   carry the hp RANGE, not the per-instance roll; the per-instance rolled HP lives only
-   inside the sim actor and is never persisted on the run doc. Honest choice per the closed
-   decision: **P2 normalises the enemy bar to start FULL** (display hp_after/hpMax where
-   hp_after<=hpMax always holds since hpMax=hp[1]); do not read a "real rolled hpMax" -- it
-   is not on the wire.
+4. **hpMax decision (REQ-0263 s4.5 closed-decision) -- STATED.** Enemy full HP IS a
+   per-instance roll: `packs.cjs:67` `hpMax = Math.round(hpStream.range(def.hp[0], def.hp[1]))`,
+   and the enemy starts at `hp: hpMax`. That rolled value is **NOT reachable at serve time**:
+   `pacing.buildRoster` reconstructs enemies from the ROLLED DEF + content (dungeonDef +
+   enemyDefsById), which carry the hp RANGE only, and serves `ApiRunRosterEnemy.hpMax = hp[1]`
+   (the def UPPER bound). The per-instance roll lives solely in the transient sim actor
+   (`packs.cjs`), is never persisted on the run doc/roster, and buildRoster cannot obtain it
+   without re-rolling the sim's private `hpStream` (= re-simulating -- rejected). **Decision:
+   P1 does NOT send an actual rolled hpMax and did NOT touch buildRoster.** hp[1] stays the
+   wire hpMax (leak-safe: hp_after/hp[1] never exceeds 100%). Per the closed decision's "else"
+   branch, **P2 normalises the enemy bar to start FULL** -- render the bar at 100% until the
+   first `hp_after` names the instance, then track hp_after/hp[1] thereafter (a bar the client
+   knows is honest; it never sends a fabricated per-instance max).
