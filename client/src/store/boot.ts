@@ -5,6 +5,7 @@ import { setUnitDefs, setUnitSkins } from '../board/unitIcon';
 import { loadSkinDefs, setBpSkinDefs } from '../board/skin/skinRegistry'; // REQ-0266
 import { fetchSkinPrefs } from '../api/skins'; // REQ-0266
 import { setItemArtUrls } from '../board/itemArt'; // REQ-0133
+import { ribbonProbeFor } from '../board/usageRibbonProbe'; // REQ-0287
 import { fetchMe, getStoredToken, resolveGameData, setStoredToken } from '../api';
 import type { ApiMe } from '../api';
 import { INVITE_HASH_RE, snapshot, setSnapshot } from './core';
@@ -300,6 +301,8 @@ export async function boot(): Promise<void> {
     // REQ-0041 feedback 5: exposed for the same reason/parity as
     // isSquadIndependent just above (client/e2e/*.spec.ts assertions).
     isSquadDeployable: (n: number) => engine.isSquadDeployable(state, n),
+    // REQ-0287: per-board ownership-ribbon probe (canvas | inv:<page>).
+    usageRibbonProbe: (boardKey: string) => ribbonProbeFor(boardKey),
   };
 }
 

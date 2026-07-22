@@ -198,6 +198,28 @@ export function FloatingItemTip() {
   const rarity = def.rarity;
   const nameColor = RARITY_COLOR[rarity] ?? 'var(--bone)';
 
+  // REQ-0287: "Used by" -- which squads reference this instance. Shown only
+  // when the uid is actually used (i.e. in the red/yellow usage sets); the
+  // current squad, when present, is listed first and marked. Squad names come
+  // from the same state.presets.names accessor SquadTabs uses for tab labels.
+  const usageEngine = snapshot.engine;
+  let usageRow: string | null = null;
+  if (usageEngine && state && state.presets && tip.uid) {
+    const usage = usageEngine.usageOf(state, tip.uid);
+    if (usage.length) {
+      const squadNames = state.presets.names;
+      const activeSquad = state.presets.active;
+      const ordered = usage.includes(activeSquad)
+        ? [activeSquad, ...usage.filter((i) => i !== activeSquad).sort((a, b) => a - b)]
+        : [...usage].sort((a, b) => a - b);
+      const labels = ordered.map((i) => {
+        const nm = squadNames[i] ?? `#${i + 1}`;
+        return i === activeSquad ? `${nm}${t(locale, 'usage.currentSquadMark')}` : nm;
+      });
+      usageRow = `${t(locale, 'usage.usedBy')}: ${labels.join(' ・ ')}`;
+    }
+  }
+
   // Tags line, fixed order per the styleguide anatomy:
   //   PO: RARITY ・ type ・ WxH ・ elements
   //   SI: RARITY ・ SI ・ slot ・ required-tags
@@ -243,6 +265,11 @@ export function FloatingItemTip() {
         {name}
       </div>
       <div className="item-tip-tags">{tags}</div>
+      {usageRow ? (
+        <div className="item-tip-stat" data-testid="item-tip-usage">
+          {usageRow}
+        </div>
+      ) : null}
       {eff
         ? eff
             .split('\n')
