@@ -105,3 +105,12 @@ Harness screenshots (REQ-0240 capture, post-fix): outputs/REQ0286_monitor_deskto
 outputs/REQ0286_monitor_narrow_after.png. All four squad BP cells sit FLUSH at
 the top-left corner of their formation boxes (no one-cell padding, no bottom-right
 overflow) — the owner symptom is gone.
+
+## Deploy (done — REQ-0286)
+- Merge: e550fd9 `merge REQ-0286 ... (board-canon (c-1)*cellPx; flush top-left, PO-on-cell, no box overflow)` (--no-ff into master).
+- Web rebuild in MAIN checkout (~/backpack_ragnarok/client, vite build) -> web/app.
+- Bundle hash: index-Da45OMSh.js (old, owner-reported live) -> index-C3MSg8Uk.js (new).
+- Verified: backpack-web :8801 and public tunnel https://backpack-dev.qtie.jp/app/
+  both serve index-C3MSg8Uk.js; new asset returns 200 over the tunnel.
+- No api restart (client-only change; server/ untouched). comfyui/tunnel/art
+  sessions untouched.
