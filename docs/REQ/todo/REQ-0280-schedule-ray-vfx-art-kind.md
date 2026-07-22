@@ -265,3 +265,66 @@ unchanged; recommend a vfx-specific band (~[0.0, 1.10]) when the kit is next ver
 ## Status log (P4)
 - 2026-07-22 P4: style ruled (V2-as-amended), 3 assets adopted (defaults + dagger ray),
   GPU work aborted cleanly on external comfyui restart loop; evidence above.
+
+## P5 evidence (2026-07-22, gatekeeper)
+
+### ci.sh (full run, this worktree; DATABASE_URL from server/.env, ART_FAMILY_BARRIER=0)
+Log: `/tmp/req0280_ci.log`. All stages GREEN through `[6.6/8]`; `[7/7]` scoped
+e2e ends with exactly the 3 pre-existing master reds (see below), so the run
+exits non-zero without printing `CI GREEN` -- the expected "green modulo the
+documented master reds" state (REQ-0276 Phase D precedent).
+- `[0/8]` e2e port rule: PASS.
+- `[1/7]` sim tests: **121 passed / 0 failed** (incl. REQ-0121 shared-ref).
+- `[2/7]` replay goldens (determinism contract): **goldens OK -- 12 cases, replay determinism intact** (the 4th-rebaseline hashes hold on the final tree).
+- `[2.5/7]` S4 post-processor: PASS. `[2.6/7]` forecast<->sim ray parity: **18 passed / 0 failed**. `[2.65..2.96]` roller/pack/balance/candidate gates: PASS.
+- `[3.x]` mock-src + server/shared typecheck + vocab/units/corpus (py) gates: PASS.
+- `[4/7]` api_test (files backend) + `[4.05]` pacing **15/0** + `[4.5..4.72]` DB-free gates: PASS. `[4.7]` inspect_kits golden vectors **36/0**.
+- `[5/7]` api_test (pg) + `[5.1]` artwork_test **18/0** (vfx sizing/BAD_SHAPE/forcedTiling/adopt+serve/export) + `[5.2]` inspection_test **6/0** (kit routing, role-in-identity, no mass-stale) + `[5.3..5.46]` content/serving/schedule pg gates: PASS.
+- `[5.6..6/7]` client unit-icon/link-trace/board/chime/auth/bpskin/placement/outline checks + **client typecheck + vite build**: PASS.
+- `[6.5/8]` admin e2e: artadmin **8/8**, artinspect **1/1**, contentadmin **28/28**. `[6.6/8]` registry-first e2e (REQ-0221): PASS.
+  - NOTE (flake, not a defect): on the FIRST ci pass, `artinspect.spec.ts:21` failed once with `page.reload: Timeout 20000ms exceeded (waiting for load)` while the box 5/15-min load was 6.6/6.8. Root cause = load-induced navigation timeout, NOT REQ-0280: the spec's artwork is `si` kind and every REQ-0280 client/server diff is gated on `kind==='vfx'` (behaviourally inert for `po`/`si`). Re-run on a quiet box (load ~1.0) PASSED in 19.8s; the clean full ci re-run then passed `[6.5]` outright (artinspect green in-line). Evidence retained.
+
+### `[7/7]` scoped client e2e -- REQ-0280 decade (7800..7809)
+ci.sh derives the scoped run from the `req-0280-` branch and runs it with exactly
+the task env (`E2E_FLEET_ROOT=/tmp/bp_e2e_workers_req0280`, `E2E_PROXY_PORT=7802`,
+`E2E_FLEET_BASE_PORT=7804`, `PLAYWRIGHT_BASE_URL=http://127.0.0.1:7802`,
+`E2E_PARALLEL=4`). Result: **193 passed, 3 failed, 1 skipped (3.6m)**.
+The 3 failures are EXACTLY the documented master-owned reds, zero NEW reds:
+- `forecast.spec.ts:206:3` (REQ-0057 ray-forecast overlay -- slot ranking)
+- `workshop.spec.ts:361:3` (Reward LRDST reaching warehouse)
+- `schedule.spec.ts:1451:3` (REQ-0240 monitor zones + screenshots -- full-file-only)
+
+### Production build (task 4)
+`cd client && corepack pnpm run build` -> `tsc -b && vite build` -> **EXIT 0**
+(chunk-size advisory only). web/ rebuild reverted per repo convention
+(`git checkout -- web/` + `git clean -fd web/`; worktree builds lack `.env.local`);
+tree pristine before this commit.
+
+### Screenshots (per-skill textured rays -- the user must SEE the art)
+Captured against a hermetic decade harness (files-backend app api on :7804 via
+`tools/e2e_fleet.cjs start 1`; a read-only proxy on :7802 serving the committed
+adopted PNGs `content/art/vfx/{vfx_ray_default,vfx_ray_dagger,vfx_hit_default}.png`
+at `/api/art/<name>.png`, else 404->procedural -- NO pg/live-data api, NO renders,
+NO comfyui). `navigator.webdriver` masked to `false` via `addInitScript` +
+`reducedMotion:'no-preference'` so `monitorFx` runs FULL (page reported
+`fx env {"wd":false,"rm":false}`). A niflheim_depths L1 run was seeded exactly as
+schedule.spec (mint guest -> PUT 4-squad dagger fixture -> create room -> assign 4
+slots -> active), monitor expanded, frames captured during ray flight. curl-verified
+the proxy serves `/api/art/vfx_ray_default.png`==200 (+dagger/hit_default 200).
+Full frame series kept in sandbox `/tmp/req0280_shots/` (+`/tmp/req0280_shots2/`).
+Chosen PNGs in the outputs dir:
+- `req0280_ray_dagger_silver_inflight.png` -- a **dagger SILVER-white textured strip** in flight into the enemy field (Niflheim Stalker / Frostback Bear), dagger POs seated above. Silver strip trail + procedural white head + fading textured tail: VISIBLE.
+- `req0280_ray_dagger_silver_pair.png` -- two silver dagger strips mid-field (near Hrimgrimnir).
+- `req0280_ray_default_gold_inflight.png` -- two **DEFAULT-tier GOLD/amber textured strips** (pale-gold `vfx_ray_default`, incl. the enemy niflheim_stalker ray falling back to default) -- clearly a DIFFERENT colour from the dagger silver, proving per-skill/tier trajectory art.
+- `req0280_ray_gold_multi_inflight.png` -- three gold default-tier textured rays crossing the player field.
+- `req0280_monitor_wide_midbattle.png` -- WIDE six-zone monitor mid-battle: LIVE "Niflheim Depths - Lv1" header, a silver textured ray in flight, the event feed ("dagger winds up Strike", "Area blast - 2 hit, 42 total"), and the squad dock with HP bars.
+Honest note on the impact burst: the gold HIT texture (`vfx_hit_default`) is served
+(200) and the client fires `Assets.load` for `vfx_hit_*` (verified), so the textured-
+impact path is live; but the 700 ms radial burst was not frozen at peak alpha in the
+sampled frames -- the clearly-captured warm artefacts are the default-tier gold RAY
+strips. The dagger silver strip and the silver-vs-gold per-skill differentiation ARE
+unambiguously visible. (Contact sheets `req0280_contact*.png` retained as evidence.)
+
+### Teardown
+Screenshot harness down (fleet stopped+cleaned, proxy killed); ports 7800-7809 free;
+no strays; ci.box/e2e locks free; live api :8802 and comfyui untouched (zero renders).
