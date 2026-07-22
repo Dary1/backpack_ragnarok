@@ -113,6 +113,10 @@ T('api: /api/content art_urls -- unit_skin ids join the batch, unit ids do NOT (
   assert.ok(batch.includes('uskin_bp_test_queen'), 'the BP skin id is offered to the art resolver');
   assert.ok(!batch.includes('test_queen'), 'UNIT ids stay absent from art_urls -- REQ-0226 is a separate, still-open change');
   assert.ok(batch.includes('blade'), 'the pre-existing po/si/tm batch is unchanged');
+  // REQ-0280 / REQ-0264 s11.5: a vfx asset has NO content def and NO id namespace,
+  // so it is NEVER offered to the art resolver -- it is served DIRECTLY at
+  // /api/art/<system_name>.png. Adopting vfx_* can therefore never leak into art_urls.
+  assert.ok(!batch.some((n) => String(n).startsWith('vfx_')), 'vfx names never enter the art_urls batch (direct-serve only)');
   // The omission half of the contract, which files mode CAN prove: a skin whose
   // artwork has no adopted render is simply not in the map. The client then falls
   // back -- an unresolved skin never blanks anything.

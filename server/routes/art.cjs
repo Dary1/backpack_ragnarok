@@ -170,6 +170,16 @@ function shapeAndSize(kind, shape) {
   return { shape: null, size: deriveSize(kind, null) };
 }
 
+// REQ-0280 / REQ-0264 s12.1 C: a render is FORCE-tiled when the kind's law
+// requires a seamless raster -- a bpskin fill, and a vfx RAY strip (its 4:1
+// aspect IS a tiling contract). Everything else honours the operator's b.tiling.
+// Single source for the decision so the route and its gate agree.
+function forcedTiling(art, bodyTiling) {
+  if (art && art.kind === 'bpskin') return true;
+  if (art && art.kind === 'vfx' && art.shape && art.shape.role === 'ray') return true;
+  return !!bodyTiling;
+}
+
 // ---- admin handlers ----
 
 async function hCreate(req, res) {
@@ -292,9 +302,7 @@ async function hGenerate(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
-  // REQ-0280 / REQ-0264 s12.1 C: a vfx RAY is ALWAYS tiled (its 4:1 strip is a
-  // seam contract, not an operator choice), exactly as a bpskin fill always is.
-  const tiling = (art.kind === 'bpskin' || (art.kind === 'vfx' && art.shape && art.shape.role === 'ray')) ? true : !!b.tiling;
+  const tiling = forcedTiling(art, b.tiling); // REQ-0280/0264: bpskin + vfx-ray forced
   // REQ-0186: a ONE-SHOT lock override, same posture as `tiling` -- it steers
   // this render only and is NOT written back to the artwork. This is the point
   // of the feature: a conditioned render costs 76-130 s, and the trade-off is
@@ -624,4 +632,4 @@ function tryArtRoutes(req, res, url, p) {
   return false;
 }
 
-module.exports = { tryArtRoutes };
+module.exports = { tryArtRoutes, forcedTiling, shapeAndSize }; // REQ-0280: last two for the sizing/forced-tiling gates

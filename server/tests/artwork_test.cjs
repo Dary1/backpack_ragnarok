@@ -32,6 +32,7 @@ process.env.ART_MODEL_DIR = modelDir;
 const storage = require('../storage.cjs');
 const jobs = require('../services/art_jobs.cjs');
 const { deriveSize } = require('../services/art_sizing.cjs');
+const art = require('../routes/art.cjs'); // REQ-0280: shapeAndSize + forcedTiling gates
 const REPO = path.join(__dirname, '..', '..');
 const ROUTE_CONSTS = JSON.parse(execFileSync('python3', ['-c',
   "import sys,json;sys.path.insert(0,'tools');import art_route as R;print(json.dumps({'steps':R.STEPS,'cfg':R.CFG,'sampler':R.SAMPLER,'unet':R.FLUX['unet'],'clip':R.FLUX['clip'],'vae':R.FLUX['vae']}))"],
@@ -76,6 +77,21 @@ async function runG2andG1() {
     assert.deepStrictEqual(deriveSize('custom', { width: 20000, height: 16 }), { width: 16384, height: 16 });
     assert.throws(() => deriveSize('custom', { width: 0, height: 10 }), /positive integers/);
     assert.throws(() => deriveSize('custom', null), /positive integers/);
+    // REQ-0280 / REQ-0264 s8.1: vfx role-derived LOCKED sizes + BAD_SHAPE on a bad role.
+    assert.deepStrictEqual(deriveSize('vfx', { role: 'ray' }), { width: 256, height: 64 });
+    assert.deepStrictEqual(deriveSize('vfx', { role: 'hit' }), { width: 256, height: 256 });
+    for (const bad of [{ role: 'beam' }, {}, null]) {
+      let e = null; try { deriveSize('vfx', bad); } catch (x) { e = x; }
+      assert.ok(e && e.code === 'BAD_SHAPE', 'vfx bad role -> BAD_SHAPE: ' + JSON.stringify(bad));
+    }
+    // route validation (shapeAndSize) + the always-tiled ray law (forcedTiling).
+    assert.deepStrictEqual(art.shapeAndSize('vfx', { role: 'ray' }), { shape: { role: 'ray' }, size: { width: 256, height: 64 } });
+    { let e = null; try { art.shapeAndSize('vfx', {}); } catch (x) { e = x; } assert.ok(e && e.code === 'BAD_SHAPE', 'shapeAndSize vfx {} -> BAD_SHAPE'); }
+    assert.strictEqual(art.forcedTiling({ kind: 'vfx', shape: { role: 'ray' } }, undefined), true, 'a ray is forced-tiled');
+    assert.strictEqual(art.forcedTiling({ kind: 'vfx', shape: { role: 'hit' } }, undefined), false, 'a hit is not forced-tiled');
+    assert.strictEqual(art.forcedTiling({ kind: 'vfx', shape: { role: 'hit' } }, true), true, 'a hit still honours an operator tiling opt-in');
+    assert.strictEqual(art.forcedTiling({ kind: 'bpskin' }, undefined), true, 'bpskin unchanged (forced)');
+    assert.strictEqual(art.forcedTiling({ kind: 'si' }, undefined), false, 'si unchanged (operator choice)');
   });
   await AT('G1 system_name is UNIQUE (duplicate refused at storage)', async () => {
     await storage.createArtwork({ system_name: 'g1_uniq', kind: 'si', shape: null, gen_width: 256, gen_height: 256 });
@@ -352,11 +368,45 @@ async function runG3andFlow() {
   });
 }
 
+// REQ-0280 / REQ-0264: the vfx kind end-to-end -- forced-tiling ray render,
+// non-forced hit render, adoption + DIRECT serving (getAdoptedRender, the
+// public /api/art/<name>.png path), and the kind-derived content/art/vfx/ export.
+async function runVfx() {
+  await AT('REQ-0280 vfx RAY render is FORCE-tiled with no b.tiling; params.tiling===true', async () => {
+    const ss = deriveSize('vfx', { role: 'ray' });
+    const a = await storage.createArtwork({ system_name: 'vfx_ray_default', kind: 'vfx', shape: { role: 'ray' }, gen_width: ss.width, gen_height: ss.height, main_object: 'pale energy beam' });
+    assert.deepStrictEqual({ w: a.gen_width, h: a.gen_height }, { w: 256, h: 64 }, 'ray stored at 256x64');
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: art.forcedTiling(a, undefined) });
+    const d = await waitForRender('vfx_ray_default', r.seed, 30000);
+    assert.strictEqual(d.status, 'ok', 'ray render ok: ' + d.error);
+    assert.strictEqual(d.params.tiling, true, 'a ray is ALWAYS tiled -- the seam contract cannot be forgotten');
+  });
+  await AT('REQ-0280 vfx HIT render NOT force-tiled; adopt + direct serving + content/art/vfx/ export', async () => {
+    const ss = deriveSize('vfx', { role: 'hit' });
+    const a = await storage.createArtwork({ system_name: 'vfx_hit_default', kind: 'vfx', shape: { role: 'hit' }, gen_width: ss.width, gen_height: ss.height, main_object: 'radial frost burst' });
+    assert.deepStrictEqual({ w: a.gen_width, h: a.gen_height }, { w: 256, h: 256 }, 'hit stored at 256x256');
+    const r = await storage.createRender(a.id, null, 'queued');
+    jobs.enqueue({ renderId: r.id, artwork: a, seed: r.seed, tiling: art.forcedTiling(a, undefined) });
+    const d = await waitForRender('vfx_hit_default', r.seed, 30000);
+    assert.strictEqual(d.status, 'ok', 'hit render ok: ' + d.error);
+    assert.strictEqual(d.params.tiling, false, 'a hit is a still, not tiled');
+    await storage.adoptRender('vfx_hit_default', r.seed);
+    const served = await storage.getAdoptedRender('vfx_hit_default');
+    assert.ok(served && served.image && served.image.length > 0, 'adopted vfx served DIRECTLY by system_name (no content def, no art_urls)');
+    assert.strictEqual(served.kind, 'vfx', 'served kind is vfx');
+    const prov = await require('../services/art_export.cjs').exportAdopted('vfx_hit_default');
+    assert.ok(/[\\/]vfx[\\/]vfx_hit_default\.png$/.test(prov.path), 'exported under content/art/vfx/: ' + prov.path);
+    assert.ok(fs.existsSync(prov.path), 'export file written');
+  });
+}
+
 (async () => {
   await storage.clearAllArtworks();
   await runG2andG1();
   await runG0223();
   await runG3andFlow();
+  await runVfx();
   await storage.clearAllArtworks();
   await storage.closeArtPool();
   os.homedir = realHome;
