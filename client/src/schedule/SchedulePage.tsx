@@ -68,6 +68,7 @@ import { localizedName } from '../lib/contentName';
 import type { Locale } from '../store';
 import { SquadStatusBoard } from './SquadStatusBoard'; // REQ-0239
 import { Monitor } from './Monitor';
+import { MonitorErrorBoundary } from './MonitorErrorBoundary'; // REQ-0285
 import { RoomCard } from './RoomCard';
 import { SealPanel } from './SealPanel'; // REQ-0058
 import { SlotsPanel } from './SlotsPanel';
@@ -287,7 +288,15 @@ export function SchedulePage({ locale }: SchedulePageProps) {
           {selectedRoom ? (
             <>
               <SlotsPanel room={selectedRoom} locale={locale} rooms={rooms ?? []} onChanged={reloadRooms} />
-              <Monitor key={selectedRoom.id} room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
+              {/* REQ-0285: wrap the Watch view so ANY uncaught throw in the Monitor
+                  subtree (a not-yet-enumerated run/roster shape) degrades to a
+                  localized card instead of tearing down the whole React root --
+                  the systemic gap REQ-0284 diagnosed ("no error boundary anywhere
+                  in the client") but did not close. Keyed on the room id so
+                  switching rooms both remounts the Monitor and clears a prior error. */}
+              <MonitorErrorBoundary key={selectedRoom.id} locale={locale}>
+                <Monitor room={selectedRoom} locale={locale} dungeonName={dungeonNameFor(selectedRoom.dungeonId)} isAdmin={isAdmin} onRunSettled={() => setSpoilsRefresh((n) => n + 1)} />
+              </MonitorErrorBoundary>
             </>
           ) : (
             <div className="schedule-detail-empty" data-testid="schedule-detail-empty">{t(locale, 'schedule.detail.empty')}</div>

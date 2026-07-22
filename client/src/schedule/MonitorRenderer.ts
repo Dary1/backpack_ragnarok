@@ -322,6 +322,12 @@ export class MonitorRenderer {
     return this.roster ? this.roster.enemies.length : 0;
   }
 
+  /** REQ-0285 test seam: number of enemy actors actually built (malformed
+   * roster entries are skipped by EnemyPlane.setRoster instead of throwing). */
+  getBuiltEnemyCount(): number {
+    return this.enemyPlane.builtActorCount();
+  }
+
   /** REQ-0240 (03 ss5.5): a floating, tier-sized, side-coloured damage number
    * that rises and fades. Placed in the field the ray targeted; positioned by a
    * small rotating spread (ray_hit carries a masked label, not a cell). Appears

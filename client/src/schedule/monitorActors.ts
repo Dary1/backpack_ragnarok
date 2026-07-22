@@ -99,6 +99,21 @@ function ttlAlpha(ttl: number): number {
   return 0.35;
 }
 
+/** REQ-0285: keep only well-formed [row,col] cells -- finite numeric pairs. A
+ * malformed fieldCells entry (a non-array, a wrong-arity tuple, a NaN) is
+ * dropped so the roster-mount actor build can never produce NaN geometry or a
+ * non-iterable destructuring throw (`for (const [r,c] of cells)`). */
+function sanitizeFieldCells(raw: unknown): [number, number][] {
+  if (!Array.isArray(raw)) return [];
+  const out: [number, number][] = [];
+  for (const c of raw) {
+    if (Array.isArray(c) && c.length >= 2 && Number.isFinite(c[0]) && Number.isFinite(c[1])) {
+      out.push([c[0] as number, c[1] as number]);
+    }
+  }
+  return out;
+}
+
 export class EnemyPlane {
   private field: Container;
   private layer: Container;
@@ -141,6 +156,13 @@ export class EnemyPlane {
     return this.actors.length > 0;
   }
 
+  /** REQ-0285 test/inspection seam: count of actors actually BUILT from the last
+   * roster. Malformed entries are skipped, so this can be < the roster's declared
+   * enemy count (the assertion the regression e2e keys on). */
+  builtActorCount(): number {
+    let n = 0; for (const a of this.actors) if (a) n++; return n;
+  }
+
   private nameOf(e: ApiRunRosterEnemy): string {
     return this.locale === 'ja' ? (e.nameJa || e.name) : e.name;
   }
@@ -156,13 +178,28 @@ export class EnemyPlane {
     // grouping key. Enemies with a null packId collapse into one leading wave.
     const waveIndex = new Map<string, number>();
     for (let idx = 0; idx < roster.enemies.length; idx++) {
-      const e = roster.enemies[idx];
-      const cells = Array.isArray(e.fieldCells) ? e.fieldCells : [];
-      if (cells.length === 0) continue; // legacy: no placement -> lazy fallback
-      const key = e.packId || '';
-      let wv = waveIndex.get(key);
-      if (wv === undefined) { wv = this.waveOrder.length; waveIndex.set(key, wv); this.waveOrder.push(key); }
-      this.buildActor(e, idx, wv, cells);
+      // REQ-0285: each enemy is built inside its OWN try/catch and its cells are
+      // sanitised to finite [row,col] pairs FIRST. A single malformed roster
+      // entry (a non-array fieldCells, a non-pair/NaN cell, a non-finite hpMax --
+      // shapes neither e2e's fresh runs nor REQ-0284 enumerated) degrades to
+      // "skip this ONE enemy" (its lazy first-seen fallback still fires on
+      // ray_fire), NEVER a throw: setRoster() runs UNGUARDED at monitor mount
+      // (Monitor.tsx) and, absent an error boundary, an uncaught throw here tore
+      // down the whole React root -- the exact "forming up then the Watch view
+      // freezes/blanks" class REQ-0284 diagnosed but only partially closed.
+      try {
+        const e = roster.enemies[idx];
+        const cells = sanitizeFieldCells(e.fieldCells);
+        if (cells.length === 0) continue; // legacy / malformed placement -> lazy fallback
+        if (!Number.isFinite(e.hpMax)) continue; // malformed hp -> skip (no NaN bars)
+        const key = e.packId || '';
+        let wv = waveIndex.get(key);
+        if (wv === undefined) { wv = this.waveOrder.length; waveIndex.set(key, wv); this.waveOrder.push(key); }
+        this.buildActor(e, idx, wv, cells);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[backpack_ragnarok] EnemyPlane: skipping malformed roster enemy', roster.enemies[idx], err);
+      }
     }
     this.packEncountersSeen = 0;
     this.activeWave = 0;

@@ -207,6 +207,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           applyTestEvents: (evs: ApiRunEvent[]) => void;
           chimeStats: () => ChimeStats | null;
           enemyActors: () => unknown[];
+          setTestRoster: (roster: import('../api').ApiRunRoster) => number;
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
@@ -218,6 +219,14 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
           chimeStats: () => chimeEngineRef.current?.getStats() ?? null,
           enemyActors: () => rendererRef.current?.getEnemyActors() ?? [],
+          // REQ-0285 regression seam: drive the UNGUARDED mount path directly
+          // (renderer.setRoster) with an arbitrary roster and report how many
+          // actors were built. A malformed enemy must be SKIPPED (not throw), so
+          // a 2-valid + 1-malformed roster returns 2 and the view stays alive.
+          setTestRoster: (roster: import('../api').ApiRunRoster) => {
+            rendererRef.current?.setRoster(roster);
+            return rendererRef.current?.getBuiltEnemyCount() ?? -1;
+          },
         };
       } catch (e) {
         // eslint-disable-next-line no-console
@@ -230,7 +239,16 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   useEffect(() => {
     if (!mountedOnce || !rendererRef.current || !run?.roster) return;
     if (rosterSetRef.current === run.runId) return;
-    rendererRef.current.setRoster(run.roster);
+    // REQ-0285: setRoster runs at monitor mount and is the one UNGUARDED
+    // synchronous throw path in this component -- a malformed roster (guarded
+    // per-enemy inside EnemyPlane.setRoster) must never tear down the Watch
+    // view. Belt-and-suspenders with the MonitorErrorBoundary wrapping this tree.
+    try {
+      rendererRef.current.setRoster(run.roster);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[backpack_ragnarok] Monitor: setRoster failed (run rendered without the enemy plane)', e);
+    }
     rosterSetRef.current = run.runId;
   }, [mountedOnce, run?.roster, run?.runId]);
 
