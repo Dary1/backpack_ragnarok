@@ -119,3 +119,98 @@ skins; per-BP-color tint rules.
 None (independent of 0287-0290). Touches server/lib/content.cjs — if it
 lands alongside REQs that also touch the content payload, merge order is
 free but rebuild/api-restart is required on deploy (client+server change).
+
+## Log
+
+### Implemented (2026-07-22, session req-0291, branch `req-0291-bpskin-padding-frame-compose`, base `req-canvas-inventory-ux-spec`)
+
+Built to §1-§5. The authored `edge_padding` band now renders as the welt; when a
+skin declares no band EVERYTHING is byte-identical to before (pinned goldens hold).
+
+- **§1 Serve the band (additive).** `server/storage_content.cjs` gains
+  `resolveSkinEdgePaddings(names)` — the SAME ref-first/exact-name chain
+  `resolveItemArtNames` walks, reading `edge_padding` from whichever artwork won;
+  omitted unless the art resolves (adopted) AND `edge_padding` is non-null (so the
+  served band never advertises a frame the `fill_texture` would not paint).
+  `server/lib/content.cjs` carries a warm map `skinEdgePaddings`, recomputed inside
+  `refreshArtUrls` (the adopt / artwork_ref-change trigger art_urls already uses),
+  and `getContent()` overlays `edge_padding` onto each `slot:"bpskin"` unit_skins
+  entry via a per-call shallow copy (the identity-memoized cache is never mutated).
+  pg-only; under files backend the map is empty and payload is byte-identical.
+  `shared/dto.ts` `ApiUnitSkinEntry` gains additive `edge_padding?: number|null`.
+- **§2 Carry to the def.** `skinRegistry.ts`: `UnitSkinEntryLike` +
+  `ApiUnitSkinEntry` gain `edge_padding`; `BpSkinArt` gains `frame_band_px`;
+  `bpSkinDefFromUnitSkin` projects `edge_padding -> def.art.frame_band_px` (null/0
+  => legacy def). Flows through `content.ts` -> `boot.ts loadSkinDefs` unchanged.
+- **§3 Slice at decode.** `bpSkinTexture.ts decode()` slices the source ONCE (then
+  discards it): interior-only fill (inset by band, downsampled to TILE_PX=CELL*2)
+  + `stripH` (top rows 0..band x cols 30%-70%) + `stripV` (left cols 0..band x
+  rows 30%-70%) — `welt_strips` with the full square as silhouette. Decode/texture
+  cache keys fold in the frame band.
+- **§4 Compose the frame.** `composite.ts` gains `nearestFeatureEDT` (the TS port
+  of scipy `distance_transform_edt(return_indices=True)` — `edt1dIdx` propagates
+  the winning vertex through both passes). Ring path: `dy,dx` = offset to nearest
+  outside pixel; `depth = clip(round(dRs/B*(band-1)),0,band-1)`; `|dy|>=|dx|` picks
+  stripH else stripV; along-coord mirror-tiled (`_mirror` port); alpha over
+  `palette.fill` like `sampleTile`. `B = clamp(round(band*tileW/1024), 3, cellPx)`.
+  Procedural notch/weltDark is NOT painted on the strip path; `LAYER.welt` still
+  labels the ring (checks.ts reads layers). No feather in v1.
+- **§5 Consumers.** Untouched: BoardRenderer / squadCompositor(monitor) / inventory
+  all flow through `bpSkinSprite` (signature unchanged). REQ-0266 paint guard kept.
+
+### Accepted deviations (within spec latitude)
+1. **No feather in v1** — as the spec pre-authorizes; the tool's 2px Gaussian is
+   dropped for deterministic goldens. Crisp ring/fill boundary.
+2. **TILE_PX sourced from the fill raster width**, not a `geom` import — keeps
+   `composite.ts` pure/DOM-free. `B = clamp(round(band * tile.width / 1024), 3,
+   cellPx)`; `tile.width` IS TILE_PX (CELL*2), so this is a faithful realization of
+   the spec formula.
+3. **B and the depth resample both use the CLAMPED native band** (`frame.frameBandPx`
+   from decode), not the raw `def.art.frame_band_px`, so B and depth stay consistent
+   if a pathological `edge_padding` is clamped at slice time. `def.art.frame_band_px`
+   only gates the strip path (>0) and drives decode's slice extent.
+4. **edge_padding served only when the art resolves (adopted).** Consistent with
+   "resolve alongside the art_urls machinery"; a band with no fill_texture would
+   paint nothing anyway.
+
+### Gate table
+| Gate | Result |
+| --- | --- |
+| client typecheck (`tsc -b`) | PASS |
+| client build (`pnpm run build`) | PASS |
+| `check_bpskin.mjs` — resolver/compositor/checks | PASS (ALL GREEN) |
+| `check_bpskin.mjs` — NEW EDT-index property vs brute force (219 cells) | PASS |
+| `check_bpskin.mjs` — NEW synthetic-band golden (ring=band, interior=fill, monotone depth on 4 edges, square/L/holed) | PASS |
+| `bpskin_harness.mjs` — neutral/devornate/devraster golden BYTE-IDENTICAL (`0944dbd9…`) | PASS (unchanged) |
+| `mock-src/tests/run.cjs` | PASS (123/123) |
+| `sim/tests/run.cjs` | PASS (121/121) |
+| server `unit_skin_edge_padding_test.cjs` (pg; additive field) | PASS (5/5) |
+| e2e `inventory-art-integrity.spec.ts` (decade 7910-7919) | PASS (4/4) |
+| e2e `unit-skin-fallback.spec.ts` | PASS (4/4) |
+| e2e `canvas-chrome.spec.ts` (board surface) | PASS (3/3) |
+| e2e `squad-switch.spec.ts` (monitor/squad surface) | PASS (2/2) |
+| Full `ci.sh` | NOT RUN — deliberately (see note) |
+
+**ci.sh note (honest).** During the gate window box load spiked to ~7 (another
+session running heavy work), so per the task's instruction the FULL `ci.sh` was
+not run; instead every ci.sh stage relevant to this change was run individually
+and scoped (typecheck, build, both bpskin node harnesses, mock-src, sim, the
+pg-backed additive-payload test, and the skin-touching e2e on this REQ's own
+decade). Load later fell back to ~0.3. The pg server test and e2e fleet are
+namespace-isolated (TMPHOME remap / STORAGE_BACKEND=files fleet) — no live row,
+profile, or service was touched.
+
+### Visual evidence
+`web/preview/req-0291/` — `before_*` (procedural palette welt) vs `after_*` (authored
+frame band: keyline -> stitch -> leather welt), for square + L (both corner types),
+plus `before_after_grid.png`. Rendered offline through the real `compositeSkin`
+(`req0291_frame_preview.mjs`).
+
+### Commits (branch `req-0291-bpskin-padding-frame-compose`)
+- `97271ac` REQ-0291: serve edge_padding on bpskin unit_skins (additive payload field)
+- `cff38e5` REQ-0291: render the authored frame band as the welt (compose from strips)
+- `1386f91` REQ-0291: check_bpskin gates — EDT index property + synthetic-band golden
+- `15bc259` REQ-0291: pg server test — unit_skins carries edge_padding (additive)
+- `11f2946` REQ-0291: before/after visual evidence (offline preview script + PNGs)
+
+Not merged; branch left for review (built, not deployed).
