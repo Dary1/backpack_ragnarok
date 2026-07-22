@@ -136,3 +136,9 @@ is ready for a later adoption via composeSquadBP); no frost-monster art / schema
   capture flake, workshop:361) pre-existing/unchanged. Live verify: /app/ serves the new bundle
   `index-C6UPg4kD.js` on local :8801 AND the public tunnel (backpack-dev.qtie.jp); /api/health
   `{ok:true,version:0.1.0}` on local :8802 AND the tunnel. Worktree left in place.
+
+## Regression addendum (2026-07-22, REQ-0284)
+The seatCell transform added here assumed every BP seats a Unit; a BP with no
+unit (a bare wall BP) made bp.unit undefined -> TypeError at /schedule monitor
+mount -> uncaught (no error boundary) -> Watch view blanked/hard-locked. Fixed
+in REQ-0284 (guard unit-less BPs; compositor draws them as bare cells).
