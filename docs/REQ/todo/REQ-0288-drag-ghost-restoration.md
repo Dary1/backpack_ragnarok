@@ -99,3 +99,51 @@ cross-board transfer semantics; monitor.
 
 ## Dependencies
 None. REQ-0289 depends on THIS.
+
+---
+
+## Log (implementation, 2026-07-23, Fable orchestrator session)
+
+Implemented on branch `req-0288-drag-ghost-restoration` (base: spec branch @ 375409b).
+
+**What landed** (commits `942b299` code, `8a34886` tests, screenshots commit follows):
+- `itemTex` moved to `board/itemArt.ts` (type-only pixi import; Node-loadable) — ONE
+  chain for placed art AND ghosts. `renderGhostPO`/`renderGhostAssembly` resolve
+  through it; PO ghost degrades to a neutral footprint + `drawPOOutline` when no art
+  resolves (never-invisible law). Returns hasArt for the probe.
+- BP lift: `render()` resolves the airborne bag up front; origin cells fade to a lift
+  shadow (fill α0.12/strokes α0.4), skin composite, ✥ badge, empty-cell handles, unit
+  core/art and its beams all lift; contained POs hide via geometric anchor-cell
+  membership (container-agnostic).
+- `renderGhostBP` overhaul: whole bag at the snapped origin on EVERY hover (legal α0.4 /
+  illegal α0.18 under the red target paint), unit-core mini disc at the seat cell,
+  contained-PO art riding at α0.6 with the placed path's contain-fit + k-quadrant math.
+- Revert cue: `BoardCommitApi.revertFeedback?` + drag.ts dispatch-tracking pointerup;
+  neutral-grey `flash(...,'#8a8a8a')` on the origin cells for every armed carry that
+  ends without a commit; Esc routes through `cancelCarryWithFeedback()`. Dispose-path
+  `cancelCarry()` stays silent by design (board unmount is not a user revert).
+- Probes: `BoardRenderer.ghostProbe` + `revertCount`, exposed via
+  `window.__backpackBoardProbes[boardKey]` (boot.ts `__backpackDebug` precedent).
+
+**Gates**
+
+| gate | result |
+|---|---|
+| `client/scripts/check_ghost_chain.mjs` (new tripwire) | OK |
+| `tsc -b` / `pnpm run build` | OK / OK |
+| `drag-ghost.spec.ts` T1-T5 (decade 7880, solo) | **5/5 green** |
+| targeted suite (drag-ghost, bp-transfer, bp-rotate, reference-model, inventory-art-integrity, baseline-smoke; 2 workers) | 29 passed / 1 failed |
+| baseline control: SAME suite at base 375409b (no REQ-0288 code) | 24 passed / **same 1 failed** |
+
+The one red — `bp-transfer.spec.ts:164` "3. round trip" — is a PRE-EXISTING
+parallel-budget flake (2 reloads + 3 drags + 3 saves ≈ 22s solo vs 30s budget; green
+solo on BOTH trees, red under 2-worker load on BOTH trees). Not a REQ-0288 regression;
+candidate for the REQ-0222 load-resilience family.
+An earlier accidental FULL-suite 4-worker run produced a broader load-cascade (16 reds
+incl. apiRequestContext timeouts); the targeted+baseline comparison above supersedes it.
+First spec version also grabbed board cells without the canvas element offset (own bug,
+fixed: coordinates are `boundingBox() + cx/cy`, the convention every drag spec uses).
+
+**Evidence**: `web/preview/req-0288/` — bp-ghost-legal.png (lifted origin as shadow;
+whole-bag ghost with unit disc + PO art + green paint at rows 6-8 × G-H),
+bp-ghost-illegal.png (same ghost, dimmed, under red paint over beta).
