@@ -121,3 +121,14 @@ engine state, needs no change).
 
 ## Dependencies
 Blocked by REQ-0288. Independent of REQ-0287/0290/0291.
+
+## Amendments (2026-07-22 rulings, chat — binding)
+- Float UX ratified: **sticky float** (release-free follow; click-to-place;
+  Esc / illegal click reverts) — as specced in §C.
+- REQ-0290 ruling makes the seat-cell core INERT (X cursor, no pointerdown):
+  the dblclick-rotate trigger paths for this REQ are the ✥ badge and empty
+  BP cells only. §A's badge relocation to the seat's top-left corner is
+  what keeps rotation discoverable at the Unit. Order-free with REQ-0290;
+  whichever lands second removes the core wiring / keeps it removed.
+- Rotation AXIS is unaffected by trigger location: §B pivots on the Unit's
+  absolute seat cell regardless of where the rotation is invoked.
