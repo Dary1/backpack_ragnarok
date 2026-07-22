@@ -328,3 +328,17 @@ unambiguously visible. (Contact sheets `req0280_contact*.png` retained as eviden
 ### Teardown
 Screenshot harness down (fleet stopped+cleaned, proxy killed); ports 7800-7809 free;
 no strays; ci.box/e2e locks free; live api :8802 and comfyui untouched (zero renders).
+
+## Deploy log
+- 2026-07-22 built -> MERGED to master + DEPLOYED (deploy agent, owner-authorized 2026-07-22).
+  Merge `d879e11` (--no-ff, on top of REQ-0276 merge `3852fa4`; includes 0276 base; ZERO
+  conflicts). Migration 025 (`artwork_kind` enum value `vfx`) already applied to supabase-db
+  during the build (idempotent). web/app rebuilt in the main checkout `5160a91` -> live bundle
+  `index-D0--QoC6.js`. backpack-api restarted 06:19Z (clean, NRestarts=0). Master gate (ci.sh,
+  DATABASE_URL from server/.env, ART_FAMILY_BARRIER=0): pg VFX gates GREEN -- artwork_test 18/0
+  (vfx RAY force-tiled / HIT still burst / adopt + direct-serve + content/art/vfx export),
+  inspection_test 6/0 (vfx kits route, role-in-identity, no mass-stale), content_serving 9/0,
+  schedule_serving 13/0; [6.6] registry-first 4/4. [6.5] aborted ci.sh under `set -e` on ONLY
+  the documented artadmin :124/:273 family (tolerated, REQ-0222 lineage) -- no NEW reds. Live
+  verify: /api/art/vfx_ray_default.png, vfx_ray_dagger.png, vfx_hit_default.png all 200 on both
+  local :8802 AND the public tunnel; /app/ serves the new bundle; /api/health ok.
