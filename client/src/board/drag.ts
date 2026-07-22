@@ -81,6 +81,15 @@ export interface CarryState {
   // whichever board is currently under the pointer (see module note).
   px: number;
   py: number;
+  /** REQ-0289: a blocked in-place rotation FLOATS the bag as a sticky carry
+   * carrying exactly this many 90-degree-CW steps (always 1 in the current UX
+   * -- the one refused step); 0/undefined for a plain drag. Click-to-place
+   * commits it via moveBPRotated(pendingRot). */
+  pendingRot?: 0 | 1 | 2 | 3;
+  /** REQ-0289: a "float" carry that follows the pointer button-free and
+   * resolves on the NEXT pointerdown (click-to-place), NOT on pointerup -- so
+   * ensurePointerUpWired ignores it and commitStickyCarry() owns it. */
+  sticky?: boolean;
 }
 
 /** What a mounted board (canvas OR one inventory page) exposes so the
@@ -98,7 +107,7 @@ export interface BoardCommitApi {
    * argument avoids that footgun entirely. */
   commitPO(uid: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void;
   commitAsm(originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void;
-  commitBP(bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>): void;
+  commitBP(bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>, pendingRot?: number): void;
   commitSI(uid: string, originBoard: BoardId, drop: DropTarget): void;
   /** REQ-0288 (optional): the ORIGIN board's "snapped home" cue for an armed
    * carry that ended WITHOUT a commit (unresolved/illegal drop, Esc-cancel).
@@ -201,6 +210,10 @@ export function ensurePointerUpWired(): void {
   if (pointerUpWired) return;
   pointerUpWired = true;
   window.addEventListener('pointerup', () => {
+    // REQ-0289: a sticky float never resolves on pointerup -- the trailing
+    // pointerup of the double-click that STARTED it must not place it; it
+    // stays airborne until the next pointerdown (commitStickyCarry).
+    if (getCarry()?.sticky) return;
     const c = takeCarry();
     if (!c || !c.armed) return; // plain click: no engine call (dblclick-rotate owns that path)
     const drop = c.drop;
@@ -227,7 +240,7 @@ export function ensurePointerUpWired(): void {
           }
         } else if (c.kind === 'bp' && c.bpId) {
           if (drop.type === 'bp') {
-            api.commitBP(c.bpId, c.originBoard, drop);
+            api.commitBP(c.bpId, c.originBoard, drop, c.pendingRot ?? 0);
             committed = true;
           }
         } else if (c.kind === 'si') {
@@ -238,4 +251,28 @@ export function ensurePointerUpWired(): void {
     }
     if (!committed) boardRegistry.get(boardIdKey(c.originBoard))?.revertFeedback?.(c);
   });
+  // REQ-0289: leaving the window abandons a sticky float -> snap it home.
+  window.addEventListener('blur', () => {
+    if (getCarry()?.sticky) cancelCarryWithFeedback();
+  });
+}
+
+/** REQ-0289: resolve a sticky float on a click-to-place pointerdown. Commits a
+ * BP carry at its current drop (via commitBP with the pending rotation) when
+ * that drop is legal and lands on a board that can accept it; otherwise snaps
+ * home with the origin board's revertFeedback (state untouched -- directive
+ * 4). Esc / window blur route through cancelCarryWithFeedback instead. */
+export function commitStickyCarry(): void {
+  const c = takeCarry();
+  if (!c) return;
+  let committed = false;
+  const drop = c.drop;
+  if (drop && c.kind === 'bp' && c.bpId && drop.type === 'bp') {
+    const api = boardRegistry.get(boardIdKey(drop.board));
+    if (api) {
+      api.commitBP(c.bpId, c.originBoard, drop, c.pendingRot ?? 0);
+      committed = true;
+    }
+  }
+  if (!committed) boardRegistry.get(boardIdKey(c.originBoard))?.revertFeedback?.(c);
 }

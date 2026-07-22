@@ -82,6 +82,13 @@ export interface BoardOps {
   canRotateBP(state: GameState, bpId: string): PlacementCheck;
   rotateBP(state: GameState, bpId: string): MoveResult;
 
+  /** REQ-0289: legality + commit for placing the k-step-rotated bag at an
+   * ARBITRARY origin (blocked-rotation float, client sticky carry). steps=0
+   * equals canMoveBP/moveBP; canvas -> engine.canPlaceBPRotated/moveBPRotated,
+   * inventory -> engine.invCanPlaceBPRotated/invMoveBPRotated (page-scoped). */
+  canPlaceBPRotated(state: GameState, bpId: string, origin: Cell, steps: number): PlacementCheck;
+  moveBPRotated(state: GameState, bpId: string, origin: Cell, steps: number): MoveResult;
+
   /** Free-cell SI placement -- inventory-only. Canvas implementation
    * always returns {ok:false}: SIs cannot be free-placed on canvas. */
   canPlaceSI(state: GameState, uid: string, anchor: Cell): PlacementCheck;
@@ -133,6 +140,12 @@ export function makeCanvasOps(engine: EngineInstance): BoardOps {
     },
     rotateBP(state, bpId) {
       return engine.rotateBP(state, bpId);
+    },
+    canPlaceBPRotated(state, bpId, origin, steps) {
+      return engine.canPlaceBPRotated(state, bpId, origin, steps);
+    },
+    moveBPRotated(state, bpId, origin, steps) {
+      return engine.moveBPRotated(state, bpId, origin, steps);
     },
     canPlaceSI() {
       return NOT_SUPPORTED;
@@ -218,6 +231,12 @@ export function makeInvOps(engine: EngineInstance, page: number): BoardOps {
     },
     rotateBP(state, bpId) {
       return engine.invRotateBP(state, page, bpId);
+    },
+    canPlaceBPRotated(state, bpId, origin, steps) {
+      return engine.invCanPlaceBPRotated(state, page, bpId, origin, steps);
+    },
+    moveBPRotated(state, bpId, origin, steps) {
+      return engine.invMoveBPRotated(state, page, bpId, origin, steps);
     },
     canPlaceSI(state, uid, anchor) {
       return engine.invCanPlaceSI(state, page, uid, anchor);

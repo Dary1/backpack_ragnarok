@@ -98,26 +98,40 @@ export function renderGhostAssembly(self: BoardRenderer, asm: Assembly, px: numb
     }
   }
 
-  /** REQ-0288: ghost for a dragged BP -- the WHOLE bag at the snapped drop
-   * origin, drawn on every hover (legal at the familiar 0.4 wash, illegal
-   * dimmer -- the red target paint carries the verdict; the ghost carries
-   * the SHAPE), with a mini unit-core disc at the seat cell and each
-   * contained PO's art riding along (same contain-fit + k-quadrant math as
-   * the placed path / renderGhostPO, at 0.6 alpha). Containment is
-   * geometric: anchor-cell membership -- a PO fits entirely inside ONE BP
-   * (canvas_spec law) -- so one implementation serves canvas and inventory
-   * containers alike. Returns whether any contained-PO art was drawn (e2e
-   * probe seam). Cells outside this board's bounds clip, as before. */
+/** REQ-0289: a rotated VIEW of a floating bag -- the candidate the client
+ * feeds renderGhostBP so the ghost previews the ROTATED footprint (shape),
+ * Unit disc (unitOff, null for a unit-less BP) and each contained PO
+ * (id + LOCAL offset from the new shape origin + rotated rot). Keeping the
+ * view external keeps renderGhostBP itself dumb: it draws either the real bag
+ * (no view) or this candidate, one code path. */
+export interface BPGhostView {
+  shape: [number, number][];
+  unitOff: [number, number] | null;
+  pos: { id: string; local: [number, number]; rot: number }[];
+}
+
+/** REQ-0288: ghost for a dragged BP -- the WHOLE bag at the snapped drop
+ * origin, drawn on every hover (legal at the familiar 0.4 wash, illegal
+ * dimmer -- the red target paint carries the verdict; the ghost carries the
+ * SHAPE), with a mini unit-core disc at the seat cell and each contained PO's
+ * art riding along (same contain-fit + k-quadrant math as the placed path, at
+ * 0.6 alpha). REQ-0289: when `view` is supplied (a floating bag carrying a
+ * pending rotation), the ghost draws the ROTATED shape/unit/PO layout the view
+ * describes instead of the bag's current one -- geometry only, still dumb.
+ * Returns whether any contained-PO art was drawn (e2e probe seam). Cells
+ * outside this board's bounds clip, as before. */
 export function renderGhostBP(
   self: BoardRenderer,
   originContainer: { pos: PO[] },
   bp: BP,
   origin: Cell,
-  legal: boolean
+  legal: boolean,
+  view?: BPGhostView
 ): boolean {
     const { engine, textures, items, layout } = self.deps;
     const inBounds = ([r, c]: Cell): boolean => r >= 1 && r <= layout.ROWS && c >= 1 && c <= layout.COLS;
-    for (const [dr, dc] of bp.shape) {
+    const shape = view ? view.shape : bp.shape;
+    for (const [dr, dc] of shape) {
       const cell: Cell = [origin[0] + dr, origin[1] + dc];
       if (!inBounds(cell)) continue;
       const rect = new Graphics();
@@ -125,8 +139,9 @@ export function renderGhostBP(
       rect.fill({ color: bp.color, alpha: legal ? 0.4 : 0.18 });
       self.gCarry.addChild(rect);
     }
-    if (bp.unit) {
-      const seat: Cell = [origin[0] + bp.unit.off[0], origin[1] + bp.unit.off[1]];
+    const unitOff = view ? view.unitOff : bp.unit ? bp.unit.off : null;
+    if (unitOff) {
+      const seat: Cell = [origin[0] + unitOff[0], origin[1] + unitOff[1]];
       if (inBounds(seat)) {
         const disc = new Graphics();
         disc.circle(PAD + (seat[1] - 0.5) * CELL, PAD + (seat[0] - 0.5) * CELL, CELL * 0.27);
@@ -136,24 +151,19 @@ export function renderGhostBP(
       }
     }
     let drewArt = false;
-    const bpCellSet = new Set(engine.bpCells(bp).map(([r, c]) => `${r},${c}`));
-    for (const p of originContainer.pos) {
-      if (p.loc !== 'grid' || !p.cell) continue;
-      if (!bpCellSet.has(`${p.cell[0]},${p.cell[1]}`)) continue;
-      const def = items[p.id];
-      if (!def) continue;
-      const texture = itemTex(textures, p.id, def.icon);
-      if (!texture) continue;
-      const local: Cell = [p.cell[0] - bp.origin[0], p.cell[1] - bp.origin[1]];
-      const at: Cell = [origin[0] + local[0], origin[1] + local[1]];
-      if (!inBounds(at)) continue;
+    const drawPOArt = (id: string, at: Cell, rot: number): void => {
+      const def = items[id];
+      if (!def) return;
+      const texture = itemTex(textures, id, def.icon);
+      if (!texture) return;
+      if (!inBounds(at)) return;
       const bx = PAD + (at[1] - 1) * CELL;
       const by = PAD + (at[0] - 1) * CELL;
-      const { w, h } = engine.shapeInfo(p.id, p.rot);
-      const { w: cw, h: ch } = engine.shapeInfo(p.id, 0);
+      const { w, h } = engine.shapeInfo(id, rot);
+      const { w: cw, h: ch } = engine.shapeInfo(id, 0);
       const W0 = cw * CELL;
       const H0 = ch * CELL;
-      const k = ((p.rot % 4) + 4) % 4;
+      const k = ((rot % 4) + 4) % 4;
       const sprite = new Sprite(texture);
       if (def.stretch) {
         fitSpriteToBox(sprite, W0 * 0.1, H0 * 0.1, W0 * 0.8, H0 * 0.8, def.align, { x: 0, y: 0, w: W0, h: H0 });
@@ -177,6 +187,17 @@ export function renderGhostBP(
       }
       self.gCarry.addChild(inner);
       drewArt = true;
+    };
+    if (view) {
+      for (const p of view.pos) drawPOArt(p.id, [origin[0] + p.local[0], origin[1] + p.local[1]], p.rot);
+    } else {
+      const bpCellSet = new Set(engine.bpCells(bp).map(([r, c]) => `${r},${c}`));
+      for (const p of originContainer.pos) {
+        if (p.loc !== 'grid' || !p.cell) continue;
+        if (!bpCellSet.has(`${p.cell[0]},${p.cell[1]}`)) continue;
+        const local: Cell = [p.cell[0] - bp.origin[0], p.cell[1] - bp.origin[1]];
+        drawPOArt(p.id, [origin[0] + local[0], origin[1] + local[1]], p.rot);
+      }
     }
     return drewArt;
   }
