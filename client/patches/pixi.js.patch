@@ -1,0 +1,82 @@
+diff --git a/lib/rendering/renderers/canvas/utils/canvasUtils.js b/lib/rendering/renderers/canvas/utils/canvasUtils.js
+index c2c7481bfff87de324a5521333e45ccc9b07b8db..740eec4e86bab8e8a47086eb4a0d7fa9f98f4180 100644
+--- a/lib/rendering/renderers/canvas/utils/canvasUtils.js
++++ b/lib/rendering/renderers/canvas/utils/canvasUtils.js
+@@ -10,8 +10,24 @@ const canvasUtils = {
+   canvas: null,
+   convertTintToImage: false,
+   cacheStepsPerColorChannel: 8,
+-  canUseMultiply: canUseNewCanvasBlendModes.canUseNewCanvasBlendModes(),
+-  tintMethod: null,
++  // REQ-0282: LAZY probes (see canvasUtils.mjs note): defer the synchronous
++  // canvas raster + getImageData readback from module-eval time to first use.
++  _canUseMultiply: null,
++  get canUseMultiply() {
++    if (this._canUseMultiply === null) this._canUseMultiply = canUseNewCanvasBlendModes.canUseNewCanvasBlendModes();
++    return this._canUseMultiply;
++  },
++  set canUseMultiply(v) {
++    this._canUseMultiply = v;
++  },
++  _tintMethod: null,
++  get tintMethod() {
++    if (this._tintMethod === null) this._tintMethod = this.canUseMultiply ? this.tintWithMultiply : this.tintWithPerPixel;
++    return this._tintMethod;
++  },
++  set tintMethod(fn) {
++    this._tintMethod = fn;
++  },
+   _canvasSourceCache: /* @__PURE__ */ new WeakMap(),
+   _unpremultipliedCache: /* @__PURE__ */ new WeakMap(),
+   getCanvasSource: (texture) => {
+@@ -314,7 +330,6 @@ const canvasUtils = {
+     context.transform(a, b, c, d, tx, ty);
+   }
+ };
+-canvasUtils.tintMethod = canvasUtils.canUseMultiply ? canvasUtils.tintWithMultiply : canvasUtils.tintWithPerPixel;
+ 
+ exports.canvasUtils = canvasUtils;
+ //# sourceMappingURL=canvasUtils.js.map
+diff --git a/lib/rendering/renderers/canvas/utils/canvasUtils.mjs b/lib/rendering/renderers/canvas/utils/canvasUtils.mjs
+index 8441dec5b0228a7c672ee9225cc24b226a51deab..ded245f30df9ac02b8cee87ef602505b170715ad 100644
+--- a/lib/rendering/renderers/canvas/utils/canvasUtils.mjs
++++ b/lib/rendering/renderers/canvas/utils/canvasUtils.mjs
+@@ -8,8 +8,28 @@ const canvasUtils = {
+   canvas: null,
+   convertTintToImage: false,
+   cacheStepsPerColorChannel: 8,
+-  canUseMultiply: canUseNewCanvasBlendModes(),
+-  tintMethod: null,
++  // REQ-0282: LAZY probes. The eager canUseNewCanvasBlendModes() call rasterised
++  // two canvases and ran a synchronous getImageData() readback at MODULE-EVAL time,
++  // inside the load-blocking static import graph of any app that imports pixi.js --
++  // under contended/software raster (e2e headless SwiftShader, loaded boxes) that
++  // single call can stall DCL/load for seconds to tens of seconds. Defer both
++  // probes to first canvas-tint use; behaviour is otherwise identical.
++  _canUseMultiply: null,
++  get canUseMultiply() {
++    if (this._canUseMultiply === null) this._canUseMultiply = canUseNewCanvasBlendModes();
++    return this._canUseMultiply;
++  },
++  set canUseMultiply(v) {
++    this._canUseMultiply = v;
++  },
++  _tintMethod: null,
++  get tintMethod() {
++    if (this._tintMethod === null) this._tintMethod = this.canUseMultiply ? this.tintWithMultiply : this.tintWithPerPixel;
++    return this._tintMethod;
++  },
++  set tintMethod(fn) {
++    this._tintMethod = fn;
++  },
+   _canvasSourceCache: /* @__PURE__ */ new WeakMap(),
+   _unpremultipliedCache: /* @__PURE__ */ new WeakMap(),
+   getCanvasSource: (texture) => {
+@@ -312,7 +332,6 @@ const canvasUtils = {
+     context.transform(a, b, c, d, tx, ty);
+   }
+ };
+-canvasUtils.tintMethod = canvasUtils.canUseMultiply ? canvasUtils.tintWithMultiply : canvasUtils.tintWithPerPixel;
+ 
+ export { canvasUtils };
+ //# sourceMappingURL=canvasUtils.mjs.map
