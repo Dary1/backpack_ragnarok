@@ -100,6 +100,10 @@ export interface BoardCommitApi {
   commitAsm(originBoard: BoardId, drop: Extract<DropTarget, { type: 'grid' }> | Extract<DropTarget, { type: 'inv' }>): void;
   commitBP(bpId: string, originBoard: BoardId, drop: Extract<DropTarget, { type: 'bp' }>): void;
   commitSI(uid: string, originBoard: BoardId, drop: DropTarget): void;
+  /** REQ-0288 (optional): the ORIGIN board's "snapped home" cue for an armed
+   * carry that ended WITHOUT a commit (unresolved/illegal drop, Esc-cancel).
+   * Purely visual -- state was never touched on those paths. */
+  revertFeedback?(carry: CarryState): void;
 }
 
 let carry: CarryState | null = null;
@@ -151,6 +155,15 @@ export function cancelCarry(): void {
   notify();
 }
 
+/** REQ-0288: Esc-cancel WITH the origin board's "snapped home" feedback.
+ * Reads the carry BEFORE clearing so the origin lookup still has it; an
+ * un-armed carry (plain click) cancels silently as always. */
+export function cancelCarryWithFeedback(): void {
+  const c = carry;
+  if (c && c.armed) boardRegistry.get(boardIdKey(c.originBoard))?.revertFeedback?.(c);
+  cancelCarry();
+}
+
 /** Reads-and-clears the carry (used by pointerup to commit, so the caller
  * gets the final drop target before the module forgets it). */
 export function takeCarry(): CarryState | null {
@@ -191,17 +204,38 @@ export function ensurePointerUpWired(): void {
     const c = takeCarry();
     if (!c || !c.armed) return; // plain click: no engine call (dblclick-rotate owns that path)
     const drop = c.drop;
-    if (!drop) return; // unresolved drop (outside both boards, or on a tab button): no-op, matches spec
-    const api = boardRegistry.get(boardIdKey(drop.board));
-    if (!api) return;
-    if (c.kind === 'po') {
-      if (drop.type === 'grid' || drop.type === 'inv') api.commitPO(c.uid, c.originBoard, drop);
-    } else if (c.kind === 'asm') {
-      if (drop.type === 'grid' || drop.type === 'inv') api.commitAsm(c.originBoard, drop);
-    } else if (c.kind === 'bp' && c.bpId) {
-      if (drop.type === 'bp') api.commitBP(c.bpId, c.originBoard, drop);
-    } else if (c.kind === 'si') {
-      api.commitSI(c.uid, c.originBoard, drop);
+    // REQ-0288: track whether a commit was actually DISPATCHED -- an armed
+    // carry that ends any other way (unresolved drop outside both boards /
+    // on a tab button, a drop the legality pass refused, no api registered,
+    // or a kind/drop-type mismatch) reverts silently state-wise, so the
+    // ORIGIN board owes the user a "snapped home" cue (revertFeedback).
+    // A commit method that itself hits an engine refusal is that method's
+    // own concern (they roll back internally) -- not re-detected here.
+    let committed = false;
+    if (drop) {
+      const api = boardRegistry.get(boardIdKey(drop.board));
+      if (api) {
+        if (c.kind === 'po') {
+          if (drop.type === 'grid' || drop.type === 'inv') {
+            api.commitPO(c.uid, c.originBoard, drop);
+            committed = true;
+          }
+        } else if (c.kind === 'asm') {
+          if (drop.type === 'grid' || drop.type === 'inv') {
+            api.commitAsm(c.originBoard, drop);
+            committed = true;
+          }
+        } else if (c.kind === 'bp' && c.bpId) {
+          if (drop.type === 'bp') {
+            api.commitBP(c.bpId, c.originBoard, drop);
+            committed = true;
+          }
+        } else if (c.kind === 'si') {
+          api.commitSI(c.uid, c.originBoard, drop);
+          committed = true;
+        }
+      }
     }
+    if (!committed) boardRegistry.get(boardIdKey(c.originBoard))?.revertFeedback?.(c);
   });
 }
