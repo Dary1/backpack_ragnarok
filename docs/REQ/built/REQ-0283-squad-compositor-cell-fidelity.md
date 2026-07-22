@@ -116,3 +116,23 @@ mnt/outputs/.
 
 Non-goals untouched: BoardRenderer keeps its own canonical draw path (the compositor
 is ready for a later adoption via composeSquadBP); no frost-monster art / schema work.
+
+## Deploy log
+- 2026-07-22 built -> MERGED to master + DEPLOYED (deploy agent, owner-authorized 2026-07-22).
+  Merge `eaf7610` (--no-ff, base master@1ea0167 -- master had NOT moved from base, ZERO conflicts;
+  the flagged overlap files client/src/schedule/* + client/e2e/schedule.spec.ts merged cleanly).
+  Client-only change (touches ONLY client/ + docs/, no server/ or shared/) -> backpack-api restart
+  SKIPPED as unnecessary; backpack-web (python http.server :8801) serves web/app from disk, no
+  restart. web/app rebuilt in the main checkout `7a1fa67` (`cd client && pnpm run build`, vite
+  outDir ../web/app) -> live bundle `index-C6UPg4kD.js` (old `index-D0--QoC6.js` gone); fresh build
+  reproduced the identical hash (deterministic). Master gate (tools/ci.sh, DATABASE_URL from
+  server/.env, ART_FAMILY_BARRIER=0): all deterministic + pg gates GREEN -- sim/server, [5.x] pg
+  backend (api/artwork/artqueue/artfamily/inspection/content/content_serving/schedule_serving/
+  bio/bpskin), every client unit suite, [6/7] client typecheck + build of the merged code, [6.1]
+  bundle Supabase-env tripwire. [6.5] aborted ci.sh under `set -e` on ONLY the documented artadmin
+  goto-under-load family (artadmin.spec :124/:273, REQ-0222 lineage, tolerated per the REQ-0276/0280
+  deploys) -- reproduced on a standalone retry (2 failed / 6 passed, exactly :124 + :273), NOT
+  touched by REQ-0283, no NEW reds. Documented client reds (forecast:206, schedule:1457 monitor-
+  capture flake, workshop:361) pre-existing/unchanged. Live verify: /app/ serves the new bundle
+  `index-C6UPg4kD.js` on local :8801 AND the public tunnel (backpack-dev.qtie.jp); /api/health
+  `{ok:true,version:0.1.0}` on local :8802 AND the tunnel. Worktree left in place.
