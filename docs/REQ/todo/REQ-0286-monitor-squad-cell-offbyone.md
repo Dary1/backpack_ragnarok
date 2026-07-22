@@ -66,3 +66,42 @@ footprint, seat centre = cell midpoint, outline vertex 0 == origin.
 tsc + oxlint + scoped schedule e2e (ports 7862) green; visual harness screenshot
 (flush + PO-on-cell) vs the same squad on the board. Merge --no-ff to master,
 rebuild web in MAIN checkout, verify bundle hash change local + tunnel.
+
+## Results (built — REQ-0286)
+
+### Off-by-one sites fixed (all uniform +1 -> board canon (c-1)*cellPx)
+- client/src/board/squadCellGeom.ts (NEW): single documented source of truth
+  (cellTopLeftPx / cellCenterPx / vertexPx / poBoxPx), pixi-free, node-testable.
+- squadCompositor.ts: BP fill (cellTopLeft), bp-skin sprite anchor, PO sprite
+  box (poBoxPx), PO outline vertex (vertexPx, dropped the compensating +1),
+  unit seat centre (cellCenterPx); convention note rewritten.
+- MonitorRenderer.ts:~514: ray_fire muzzle-flash handle -> poBoxPx (same source,
+  so the flash tracks the drawn PO).
+- Enemy fieldCells untouched (cellIdToXY already (col-1)*cellPx — enemies looked right).
+
+### Regression test
+client/scripts/check_squad_cell_geom.mjs (ci.sh [5.9g], vite ssrLoadModule):
+cell (1,1) FLUSH with box origin; cell (8,8) far corner == origin+8*cell (no
+overflow); PO at (1,1) box == cell (1,1) rect and INSIDE it; PO at (1,1) inside
+BP (1,1)-(2,2) footprint; seat centre == cell midpoint; outline vertex 0 ==
+origin; explicit anti-regression that cell (1,1) is NOT origin+c*cellPx. All green.
+
+### Gates
+- tsc (client typecheck): PASS (0).
+- oxlint: 0 errors (44 pre-existing warnings in untouched files; 0 in changed files).
+- check_squad_cell_geom.mjs: all green.
+- client build (tsc -b && vite build): PASS.
+- scoped schedule e2e (REQ-0286 decade, proxy :2862, fleet :2864, E2E_GPU=0):
+  28/29 passed. The one red (schedule.spec.ts:1524 REQ-0240 six-zones) fails on
+  apiAssignSlot -> 409 (squads 0-3 left deployed by an earlier same-file test —
+  a documented cross-test ordering dependency, spec comment ~:303) surfaced only
+  under E2E_PARALLEL sharding; it PASSES in isolation (`playwright test
+  schedule.spec.ts:1524` E2E_PARALLEL=1 -> 1 passed). Not a geometry regression;
+  every monitor/squad-geometry spec (:961 full-canvas 2-BP/2-PO, :1036 unit-less
+  BP, :864 freeze-guard, :1103 enemy-label-in-bounds) passed.
+
+### Visual proof
+Harness screenshots (REQ-0240 capture, post-fix): outputs/REQ0286_monitor_desktop_after.png,
+outputs/REQ0286_monitor_narrow_after.png. All four squad BP cells sit FLUSH at
+the top-left corner of their formation boxes (no one-cell padding, no bottom-right
+overflow) — the owner symptom is gone.
