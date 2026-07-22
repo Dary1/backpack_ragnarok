@@ -164,3 +164,21 @@ Deliverable: `built`, worktree clean, NOT merged (user acceptance later). On mer
 committed `web/app` already carries Supabase env (provisioned), so the ad-hoc `42238f8`
 rebuild-web/app-on-main step is retired; `tools/release.sh` rebuild stays the serving invariant
 (now env-confirming, not env-injecting), with `ci.sh [6.1/7]` as the machine check.
+
+## 7. State log
+
+- 2026-07-22 built -> MERGED to master (merge `9e8cb5e`, --no-ff off `00befdf`; pre-merge
+  master kept as branch `backup-pre-req0278-0279`), user accepted 2026-07-22. **master CI
+  green modulo the documented artadmin goto-under-load family ([6.5/8] artadmin:124/273,
+  REQ-0222 lineage, tolerated with evidence by the REQ-0266 and REQ-0273 deploy records; all
+  other steps green individually).** Verified this session on the merged tree (/tmp/hmaster
+  bridge): the artadmin red re-confirmed to family signature ONCE from the existing logs +
+  error-context (rendered SPA snapshot present -- full nav + banner + live/saved -- with
+  `page.goto` load-event timeout on the same two tests :124/:273; reproduced identically on an
+  isolated re-run, 6/8). Other [6.5/8] members run individually: artinspect 1/1, contentadmin
+  28/28. [6.6/8] registry-first 4/4. [7/7] quiet serial confirmation fleet (E2E_PARALLEL=0,
+  GPU on, art queue verified empty): **194 passed / 2 failed / 1 skipped** -- the 2 are the
+  documented tolerable load flakes `forecast.spec.ts:206` (slot-pressure toBeVisible timeout)
+  and `schedule.spec.ts:1451` (apiAssignSlot 409-vs-200), signatures verified identical to the
+  REQ-0266/REQ-0273 blocks; interaction flakes bp-transfer:164 + long-press-rename:25 both
+  GREEN this run. No push (mirror timer handles it).
