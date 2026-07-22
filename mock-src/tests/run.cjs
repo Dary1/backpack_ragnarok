@@ -1761,6 +1761,7 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one c
     sis:[],
   };
   const before=JSON.parse(JSON.stringify(st));
+  const before_unit=E.unitCell(st.bps[0]);
   const r=E.rotateBP(st,'lshape');
   ok(r.ok,'rotation of an unobstructed BP must succeed: '+JSON.stringify(r));
   const bp=st.bps[0];
@@ -1772,13 +1773,16 @@ T('REQ-0045 rotateBP: canvas -- an L-shaped BP with an off-center unit and one c
   eq(bp.unit.off,[1,0],'unit cell rotates WITH the shape (same renormalization delta)');
   // Dirs [0,2] (N,E) -> +2 mod 8 -> [2,4] (E,S).
   eq(E.connShapeOf(bp).dirs,[0,1,2,3,4,5,6,7],'REQ-0170: the rays do NOT rotate with the bag -- a connection shape is the UNIT\'s, and its dirs are board-absolute (vocab.orientation). Rotating the BP moves the seat, not the compass.');
-  eq(bp.origin,[2,2],'BP origin itself does not move during an in-place rotation');
+  // REQ-0289 pivot law: unitAbs = origin[2,2]+off[2,1] = [4,3]; rotated
+  // unitOff = [1,0]; newOrigin = unitAbs - unitOff = [3,3] (was [2,2]).
+  eq(bp.origin,[3,3],'REQ-0289: BP origin shifts so the Unit seat stays fixed');
+  eq(E.unitCell(bp),before_unit,'REQ-0289: Unit ABSOLUTE cell invariant across rotation');
   // The contained PO sat on the foot cell (local [2,1], absolute [4,3]);
-  // after rotation the foot is now at local [1,0] -> absolute [3,2]; the
-  // PO travels there, and its own rot advances 0->1 (matching rotatePO's
-  // own +1 mod 4 convention).
+  // after rotation the foot is at local [1,0], re-anchored at the pivot
+  // origin [3,3] -> absolute [4,3] (was [3,2] under the old bbox anchor);
+  // its own rot advances 0->1 (matching rotatePO's +1 mod 4 convention).
   const po=st.pos.find(p=>p.uid==='p1');
-  eq(po.cell,[3,2],'contained PO cell remapped through the same rotation transform');
+  eq(po.cell,[4,3],'REQ-0289: contained PO re-anchored at the pivot origin');
   eq(po.rot,1,'contained PO rot advances by 1 (mod 4), same amount the BP itself turned');
   ok(JSON.stringify(st)!==JSON.stringify(before),'sanity: state actually changed');
 });
@@ -1808,11 +1812,13 @@ T('REQ-0045 canRotateBP: canvas -- blocked when the rotated footprint would over
   const st={
     linked:true,
     bps:[
-      {id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'berserker',off:[0,0]}},
-      // Sits exactly on a cell the rotated footprint will need (see the
-      // shape-rotation test above: rotated absolute cells are origin+
-      // [[0,2],[0,1],[0,0],[1,0]] = (2,4),(2,3),(2,2),(3,2)).
-      {id:'blocker',name:'B',color:'#000',shape:[[0,0]],origin:[2,4],unit:{id:'berserker',off:[0,0]}},
+      // REQ-0289 pivot law: origin[2,3]+off[0,0] pins the seat at [2,3]; the
+      // rotated shape's seat is local [0,2], so newOrigin = [2,3]-[0,2] = [2,1]
+      // and the rotated footprint is (2,3),(2,2),(2,1),(3,1). The blocker sits
+      // on (2,1) -- a rotated cell that is NOT one of lshape's own original
+      // cells ((2,3),(3,3),(4,3),(4,4)).
+      {id:'lshape',name:'L',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,3],unit:{id:'berserker',off:[0,0]}},
+      {id:'blocker',name:'B',color:'#000',shape:[[0,0]],origin:[2,1],unit:{id:'berserker',off:[0,0]}},
     ],
     pos:[],sis:[],
   };
@@ -1854,9 +1860,11 @@ T('REQ-0045 invRotateBP: inventory page -- same math as canvas, contained PO tra
   ok(r.ok,'inventory rotation commit succeeds');
   const bp=st.inv.pages[0].bps[0];
   eq(bp.shape,[[0,2],[0,1],[0,0],[1,0]],'inventory BP shape rotates identically to the canvas math');
+  eq(bp.origin,[3,3],'REQ-0289: inventory BP origin shifts to keep the Unit seat fixed');
+  eq(E.unitCell(bp),[4,3],'REQ-0289: inventory Unit absolute cell invariant');
   eq(bp.unit.off,[1,0],'inventory unit SEAT rotates identically to the canvas path (and, per REQ-0170, its rays do not rotate at all)');
   const po=st.inv.pages[0].pos.find(p=>p.uid==='ip1');
-  eq(po.cell,[3,2],'inventory contained PO cell remapped identically');
+  eq(po.cell,[4,3],'REQ-0289: inventory contained PO re-anchored at the pivot origin (identical to canvas)');
   eq(po.rot,1,'inventory contained PO rot advances identically');
 });
 
@@ -1865,9 +1873,10 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
   const st={
     linked:true,bps:[],pos:[],sis:[],
     inv:{pages:[
-      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'berserker',off:[0,0]}}],
-       // Foreign free PO sitting exactly on a cell the rotated footprint needs (absolute (2,4), per the shape-rotation math above).
-       pos:[{uid:'foreign',id:'test_po',loc:'grid',cell:[2,4],rot:0}],sis:[],tms:[]},
+      {bps:[{id:'inv_l',name:'IL',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,3],unit:{id:'berserker',off:[0,0]}}],
+       // REQ-0289 pivot law: rotated footprint is (2,3),(2,2),(2,1),(3,1) (see
+       // the canvas overlap test); the foreign free PO sits on (2,1).
+       pos:[{uid:'foreign',id:'test_po',loc:'grid',cell:[2,1],rot:0}],sis:[],tms:[]},
       {bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},{bps:[],pos:[],sis:[],tms:[]},
     ],names:['1','2','3','4','5']},
   };
@@ -1879,6 +1888,104 @@ T('REQ-0045 invCanRotateBP: inventory page -- blocked by an UNRELATED free-place
   eq(st,before,'state completely unchanged after a refused inventory rotation');
 });
 
+
+// =====================================================================
+// REQ-0289: Unit-pivot rotation + arbitrary-origin placement queries.
+// The pivot law: a successful in-place rotation keeps the Unit's ABSOLUTE
+// seat cell fixed (origin shifts to compensate). New pure queries
+// canPlaceBPRotated/invCanPlaceBPRotated + mutators moveBPRotated/
+// invMoveBPRotated place the k-step-rotated bag at an arbitrary origin
+// (steps=0 == canMoveBP/invMoveBP exactly), powering the client float.
+// =====================================================================
+T('REQ-0289 rotateBP: the Unit ABSOLUTE seat cell is invariant across every ok rotation (canvas + inventory)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  const fixtures=[
+    {shape:[[0,0],[1,0],[2,0],[2,1]],off:[2,1],origin:[2,2]},
+    {shape:[[0,0],[0,1],[0,2]],off:[0,1],origin:[3,3]},
+    {shape:[[0,0],[1,0]],off:[1,0],origin:[4,4]},
+    {shape:[[0,0]],off:[0,0],origin:[5,5]},
+  ];
+  for(const f of fixtures){
+    const st={linked:true,bps:[{id:'b',name:'B',color:'#fff',shape:f.shape,origin:f.origin,unit:{id:'angel',off:f.off}}],pos:[],sis:[]};
+    const before=E.unitCell(st.bps[0]);
+    const r=E.rotateBP(st,'b');
+    ok(r.ok,'fixture must have room to rotate: '+JSON.stringify(f)+' -> '+JSON.stringify(r));
+    eq(E.unitCell(st.bps[0]),before,'Unit absolute cell invariant for '+JSON.stringify(f));
+  }
+  const sti={linked:true,bps:[],pos:[],sis:[],inv:{pages:[
+    {bps:[{id:'ib',name:'IB',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],pos:[],sis:[],tms:[]},
+    {bps:[],pos:[],sis:[],tms:[]},
+  ],names:['1','2']}};
+  const ib=()=>sti.inv.pages[0].bps[0];
+  const beforeI=E.unitCell(ib());
+  ok(E.invRotateBP(sti,0,'ib').ok,'inventory rotation must succeed');
+  eq(E.unitCell(ib()),beforeI,'inventory Unit absolute cell invariant');
+});
+T('REQ-0289 rotateBP: 4x CW is the identity under the pivot law (shape, origin, unit.off, PO cell/rot)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  const st={linked:true,bps:[{id:'b',name:'B',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],pos:[{uid:'p',id:'test_po',loc:'grid',cell:[4,2],rot:0}],sis:[]};
+  const o=JSON.parse(JSON.stringify(st));
+  for(let i=0;i<4;i++)ok(E.rotateBP(st,'b').ok,'rotation '+(i+1)+' must succeed');
+  eq(st.bps[0].shape,o.bps[0].shape,'shape identical after 4x');
+  eq(st.bps[0].origin,o.bps[0].origin,'origin identical after 4x (pivot law returns it home)');
+  eq(st.bps[0].unit.off,o.bps[0].unit.off,'unit.off identical after 4x');
+  eq(st.pos[0].cell,o.pos[0].cell,'PO cell identical after 4x');
+  eq(st.pos[0].rot,o.pos[0].rot,'PO rot identical after 4x (mod 4)');
+});
+T('REQ-0289 canPlaceBPRotated/invCanPlaceBPRotated: steps=0 is EXACTLY canMoveBP across an origin sweep (property)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  const st={linked:true,bps:[
+    {id:'a',name:'A',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}},
+    {id:'z',name:'Z',color:'#000',shape:[[0,0]],origin:[7,7],unit:{id:'berserker',off:[0,0]}},
+  ],pos:[],sis:[]};
+  for(let r=0;r<=9;r++)for(let c=0;c<=9;c++){
+    const oo=[r,c];
+    eq(JSON.stringify(E.canPlaceBPRotated(st,'a',oo,0)),JSON.stringify(E.canMoveBP(st,'a',oo)),'canvas steps=0 == canMoveBP at '+JSON.stringify(oo));
+  }
+  // inventory twin: steps=0 == invCanPlaceBP (own-contents exclusion).
+  const sti={linked:true,bps:[],pos:[],sis:[],inv:{pages:[
+    {bps:[{id:'ia',name:'IA',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],pos:[],sis:[],tms:[]},
+    {bps:[],pos:[],sis:[],tms:[]},
+  ],names:['1','2']}};
+  for(let r=0;r<=9;r++)for(let c=0;c<=9;c++){
+    const oo=[r,c];
+    eq(JSON.stringify(E.invCanPlaceBPRotated(sti,0,'ia',oo,0)),JSON.stringify(E.invCanPlaceBP(sti,0,'ia',oo,[])),'inv steps=0 == invCanPlaceBP at '+JSON.stringify(oo));
+  }
+});
+T('REQ-0289 moveBPRotated: commits atomically or not at all (illegal leaves state byte-identical)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  const st={linked:true,bps:[
+    {id:'a',name:'A',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,3],unit:{id:'berserker',off:[0,0]}},
+    {id:'blk',name:'B',color:'#000',shape:[[0,0]],origin:[2,1],unit:{id:'berserker',off:[0,0]}},
+  ],pos:[{uid:'p',id:'test_po',loc:'grid',cell:[4,3],rot:0}],sis:[]};
+  const before=JSON.parse(JSON.stringify(st));
+  const r=E.moveBPRotated(st,'a',[2,1],1); // rotated footprint (2,3),(2,2),(2,1),(3,1) hits blk@(2,1)
+  ok(!r.ok&&r.why==='overlaps another BP','illegal rotated placement refused: '+JSON.stringify(r));
+  eq(st,before,'state byte-identical after a refused moveBPRotated (all-or-nothing)');
+  const r2=E.moveBPRotated(st,'a',[5,4],1);
+  ok(r2.ok,'legal rotated placement commits: '+JSON.stringify(r2));
+  eq(st.bps[0].origin,[5,4],'origin committed');
+  eq(st.bps[0].shape,[[0,2],[0,1],[0,0],[1,0]],'shape committed');
+  eq(st.pos[0].rot,1,'contained PO rot advanced on commit');
+});
+T('REQ-0289 rotateBP: unit-less BP falls back to the old bbox rotation (origin fixed)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  // A wall-style BP with NO unit (REQ-0284: live 3x6 walls / stale saves)
+  // rotates about its own bbox with origin unchanged and stays unit-less.
+  const st={linked:true,bps:[{id:'wall',name:'W',color:'#888',shape:[[0,0],[0,1],[0,2]],origin:[3,3]}],pos:[],sis:[]};
+  const r=E.rotateBP(st,'wall');
+  ok(r.ok,'unit-less rotation must succeed: '+JSON.stringify(r));
+  eq(st.bps[0].origin,[3,3],'unit-less BP origin unchanged (bbox law)');
+  eq(st.bps[0].shape,[[0,0],[1,0],[2,0]],'unit-less BP shape rotated about its bbox');
+  ok(!st.bps[0].unit,'still unit-less after rotation');
+});
+T('REQ-0289 canRotateBP: DIRS stay board-absolute across the pivot rotation (REQ-0170 preserved)',()=>{
+  const E=Engine.create(rotateFixtureItems(),{},{ROWS:8,COLS:8},{po:{},socket:{}},Data.UNITS,Data.CONN_SHAPES);
+  const st={linked:true,bps:[{id:'b',name:'B',color:'#fff',shape:[[0,0],[1,0],[2,0],[2,1]],origin:[2,2],unit:{id:'angel',off:[2,1]}}],pos:[],sis:[]};
+  const before=JSON.stringify(E.connShapeOf(st.bps[0]).dirs);
+  ok(E.rotateBP(st,'b').ok,'rotation must succeed');
+  eq(JSON.stringify(E.connShapeOf(st.bps[0]).dirs),before,'dirs unchanged by the bag rotation (REQ-0170)');
+});
 
 // =====================================================================
 // REQ-0170 / REQ-0128b: the connection-shape walker.
