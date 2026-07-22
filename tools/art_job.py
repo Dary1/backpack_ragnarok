@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import art_route as ROUTE
 import art_style as STYLE
 import art_shape as SHAPE
-KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster"}
+KIND_TO_STYLE = {"po": "item", "si": "item", "unit": "unit", "monster": "monster", "vfx": "vfx"}  # REQ-0280/0264
 
 
 def po_shape_mask(job):
@@ -94,6 +94,20 @@ def compose_prompt(job):
     style_override = job.get("style_override")
     if style_override:
         return subject, STYLE.render(style_override, prompt_subject)
+    if kind == "vfx":
+        # REQ-0280 / REQ-0264 s12.3: role-specific style. The ray strip wants
+        # FILL_STYLE's no-border/no-focal/tileable grammar (an energy beam is not
+        # a bordered object); the hit burst wants a centred radial subject. These
+        # are the spec's PROPOSED starting templates so the render path is
+        # functional -- final art direction (wording + V2 no-baked-glow) is the
+        # Fable pass (REQ-0280 P4).
+        role = (job.get("shape") or {}).get("role")
+        if role == "ray":
+            clause = main_object.strip()
+            if clause and not clause.endswith(","):
+                clause += ","
+            return subject, STYLE.fill_prompt((clause + " ") if clause else "")
+        return subject, STYLE.render(STYLE.KIND_TEMPLATE["vfx"], prompt_subject)
     if kind == "custom":
         # REQ-0179: operator-owned prompt. NO per-kind style template is appended
         # (custom has no KIND_TO_STYLE entry, and a texture wants none of the

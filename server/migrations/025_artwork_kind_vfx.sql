@@ -1,0 +1,23 @@
+-- backpack_ragnarok -- server/migrations/025_artwork_kind_vfx.sql
+-- REQ-0280 (absorbing REQ-0264 registry half): add the 'vfx' artwork kind.
+--
+-- A `vfx` artwork is ONE kind carrying a closed-vocabulary role in its shape
+-- jsonb: shape = {role: 'ray' | 'hit'} (REQ-0211's `behavior` pattern reused).
+-- Its size is LOCKED and role-derived -- ray 256x64 (a 4:1 strip tiled
+-- 1-tile-per-diagonal along the ray path), hit 256x256 (a still burst, ==
+-- si's locked size) -- see server/services/art_sizing.cjs. It has no content
+-- def and no art_urls entry (REQ-0264 s11.5): a vfx asset is served DIRECTLY
+-- at /api/art/<system_name>.png by the exact-name convention
+-- (vfx_<role>_<skill_id> / vfx_<role>_default), never joined into
+-- computeArtUrls(). No new column is needed: {role} rides in the existing
+-- artworks.shape jsonb, exactly like po (mask) / monster (w,h) / custom (w,h).
+--
+-- Apply as the postgres superuser (same invocation as 001..024):
+--   docker exec -i supabase-db psql -U postgres < server/migrations/025_artwork_kind_vfx.sql
+--
+-- Idempotent: ADD VALUE IF NOT EXISTS (PG 12+). NOTE: ALTER TYPE ... ADD VALUE
+-- cannot run inside a transaction block / DO $$ ... $$, so it is a bare
+-- top-level statement (not guarded by a DO block like 007's CREATE TYPE).
+-- Migration-first is safe on a live deploy: old code never emits 'vfx';
+-- new code does. New enum values inherit nothing to GRANT.
+ALTER TYPE artwork_kind ADD VALUE IF NOT EXISTS 'vfx';

@@ -229,6 +229,16 @@ def kit_po_cell_packing(ctx):
 # REQ-0138. advisory: PASS in-band else WARN + MANDATORY half-shift eyeball.
 # =====================================================================
 def kit_tiling_seam(ctx):
+    # REQ-0280 / REQ-0264 s12.2.1: routing is KIND-granular, so tiling.seam is
+    # registered for the whole `vfx` kind -- but a `hit` role is NOT tiled.
+    # kitParams already passes shape (kit_registry.cjs), so read role and no-op
+    # on a non-ray vfx (verdict SKIP, applicable false) rather than WARN spuriously.
+    _shape = ctx.get("shape") or {}
+    _role = _shape.get("role") if isinstance(_shape, dict) else None
+    if ctx.get("kind") == "vfx" and _role != "ray":
+        return {"verdict": "SKIP", "applicable": False, "metrics": {}, "checks": [],
+                "notes": ["tiling.seam: not applicable to a non-ray vfx asset (role=%s); "
+                          "only the 4:1 ray strip is tiled." % _role]}
     import inspect_seam as SEAM
     m = SEAM.seam_metric(Image.open(ctx["png_path"]))
     rx, ry = m["ratio_x"], m["ratio_y"]
@@ -406,6 +416,30 @@ def kit_po_cell_fit(ctx):
             "checks": checks, "notes": notes}
 
 
+# =====================================================================
+# vfx.flatness -- REQ-0280 / REQ-0264 s12.2.2: the machine check for V2
+# ("NO BAKED GLOW"). A baked outer glow is a WIDE band of intermediate alpha
+# around the subject; a flat asset has only a thin antialiasing band. [S7]
+# thresholds are NOT ratified -- advisory, never blocks (only bpskin.frame_gate
+# blocks, and only inside the recipe). WARN also demands a gallery eyeball.
+# =====================================================================
+def kit_vfx_flatness(ctx):
+    arr = np.array(_load_rgba(ctx["png_path"]))
+    alpha = arr[:, :, 3].astype(np.float64)
+    total = int(alpha.size)
+    soft = int(np.count_nonzero((alpha > 8) & (alpha < 200)))
+    frac = (soft / total) if total else 0.0
+    ok = frac <= 0.12
+    metrics = _round_metrics({"soft_alpha_band": frac})
+    checks = [{"name": "soft_alpha_band", "ok": bool(ok), "value": round(float(frac), 6),
+               "threshold": "<= 0.12 [S7]"}]
+    notes = ["REQ-0264 V2 (no baked glow): fraction of pixels with 8 < alpha < 200. "
+             "[S7] not ratified -- advisory, never blocks; a WARN also requires the "
+             "mandatory gallery eyeball. A fully opaque asset scores ~0 (PASS)."]
+    return {"verdict": "PASS" if ok else "WARN", "metrics": metrics,
+            "checks": checks, "notes": notes}
+
+
 KITS = {
     "bpskin.frame_gate": kit_bpskin_frame_gate,
     "matte.coverage_band": kit_matte_coverage_band,
@@ -414,6 +448,7 @@ KITS = {
     "tiling.seam": kit_tiling_seam,
     "monster.render_sanity": kit_monster_render_sanity,
     "si.subject_frame": kit_si_subject_frame,
+    "vfx.flatness": kit_vfx_flatness,
 }
 
 

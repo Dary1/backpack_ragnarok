@@ -21,7 +21,7 @@
 //   goblin 3x4 -> 384x512               chimera 6x4 -> 768x512
 //   ancient dragon 10x10 -> 1280x1280   any si -> 256x256
 
-const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic']; // REQ-0211: gimic == monster sizing
+const KINDS = ['po', 'si', 'unit', 'monster', 'bpskin', 'custom', 'gimic', 'vfx']; // REQ-0211: gimic == monster; REQ-0280/0264: vfx (ray/hit VFX)
 
 // REQ-0179: ComfyUI's flux2 latent (EmptyFlux2LatentImage) bounds -- width/height
 // min 16, max nodes.MAX_RESOLUTION, step 16 (latent = [.., height//16, width//16]).
@@ -104,6 +104,16 @@ function deriveSize(kind, shape) {
         throw sizingError('custom shape must be {width,height} positive integers');
       }
       return { width: clampRes(snap16(w)), height: clampRes(snap16(h)) };
+    }
+    case 'vfx': {
+      // REQ-0280 / REQ-0264 s8.1: ONE kind, role-discriminated (shape.role).
+      // LOCKED sizes -- like si/unit/bpskin; both /16-legal (256/16, 64/16) so
+      // snap16 is a no-op and the law is exact. ray is a 4:1 strip tiled
+      // 1-tile-per-diagonal along the path; hit is si's 256x256 verbatim.
+      const role = shape && shape.role;
+      if (role === 'ray') return { width: 256, height: 64 };
+      if (role === 'hit') return { width: 256, height: 256 };
+      throw sizingError("vfx shape must be {role:'ray'|'hit'}");
     }
     default:
       throw sizingError('unknown kind: ' + kind);

@@ -158,6 +158,15 @@ function shapeAndSize(kind, shape) {
     const size = deriveSize('custom', shape);
     return { shape: { width: size.width, height: size.height }, size };
   }
+  if (kind === 'vfx') {
+    // REQ-0280 / REQ-0264 s8.1: closed-vocabulary role. A missing/unknown role
+    // is BAD_SHAPE -- "a closed vocabulary that accepts an unknown value is not
+    // closed" (s14 gate 1). Validating here returns a precise 400 on create/patch.
+    const role = shape && shape.role;
+    if (role !== 'ray' && role !== 'hit') throw Object.assign(new Error("vfx requires shape {role:'ray'|'hit'}"), { code: 'BAD_SHAPE' });
+    const size = deriveSize('vfx', { role });
+    return { shape: { role }, size };
+  }
   return { shape: null, size: deriveSize(kind, null) };
 }
 
@@ -193,6 +202,10 @@ function defaultsForKind(kind) {
   // REQ-0179: custom is operator-owned -- a passthrough template so the final
   // subject is just main_object until the operator writes their own.
   if (kind === 'custom') return { prompt_template: '{main_object}' };
+  // REQ-0280 / REQ-0264 s12.3: vfx prompt is a passthrough at the template level;
+  // the role-specific style (ray = fill grammar, hit = burst) is applied by
+  // tools/art_job.py compose_prompt, and the wording is a Fable-pass decision.
+  if (kind === 'vfx') return { prompt_template: '{main_object}' };
   return { prompt_template: '' };
 }
 
@@ -279,7 +292,9 @@ async function hGenerate(req, res, name) {
   const art = await storage.getArtworkByName(name);
   if (!art) return sendJSON(res, 404, { ok: false, error: 'no such artwork: ' + name });
   const b = await readJson(req);
-  const tiling = art.kind === 'bpskin' ? true : !!b.tiling;
+  // REQ-0280 / REQ-0264 s12.1 C: a vfx RAY is ALWAYS tiled (its 4:1 strip is a
+  // seam contract, not an operator choice), exactly as a bpskin fill always is.
+  const tiling = (art.kind === 'bpskin' || (art.kind === 'vfx' && art.shape && art.shape.role === 'ray')) ? true : !!b.tiling;
   // REQ-0186: a ONE-SHOT lock override, same posture as `tiling` -- it steers
   // this render only and is NOT written back to the artwork. This is the point
   // of the feature: a conditioned render costs 76-130 s, and the trade-off is

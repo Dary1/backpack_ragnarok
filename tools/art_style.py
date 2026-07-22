@@ -48,7 +48,7 @@ TEMPLATE_NEGATIVES_UNUSED = {
     "concept_art_fantasy": "photo. distorted, blurry, out of focus. sketch. (cgi, 3d.)++",
 }
 
-KIND_TEMPLATE = {"item": "anime", "unit": "anime", "monster": "concept_art_fantasy"}
+KIND_TEMPLATE = {"item": "anime", "unit": "anime", "monster": "concept_art_fantasy", "vfx": "concept_art_fantasy"}  # REQ-0280/0264: hit-role fallback; ray uses FILL_STYLE (art_job). Fable refines.
 
 # =============================================================================
 # HOW TO WRITE A SUBJECT. Measured on the full REQ-0150 regeneration, where 5 of
