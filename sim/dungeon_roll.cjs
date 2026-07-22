@@ -95,14 +95,14 @@ function buildAttachment(gimicId, gimicDefsById, nextId, rewards) {
   if (!g) throw new Error('rollDungeon: gimicPool references gimic "' + gimicId + '", which has no def');
   if (g.behavior === 'trap') {
     return {
-      id: nextId('att_trap'), kind: 'trap', mode: 'detection',
+      id: nextId('att_trap'), gimicId, kind: 'trap', mode: 'detection',
       entity: { footprint: g.footprint, skills: g.skills || [], timeout_secs: g.timeout_secs },
       reward: { roll: rewards.trapDisarm },
     };
   }
   if (g.behavior === 'treasure') {
     return {
-      id: nextId('att_chest'), kind: 'chest', mode: 'unlock',
+      id: nextId('att_chest'), gimicId, kind: 'chest', mode: 'unlock',
       entity: { footprint: g.footprint, hp: [g.hp, g.hp], timeout_secs: g.timeout_secs },
       reward: { roll: rewards.chest },
     };
@@ -113,7 +113,7 @@ function buildAttachment(gimicId, gimicDefsById, nextId, rewards) {
     // exactly as dungen.doorAttachment did. The sim drives stage1->stage2.
     const s2 = dungeonDoorStage2(gimicId, gimicDefsById) || g;
     return {
-      id: nextId('att_door'), kind: 'door', mode: 'detection',
+      id: nextId('att_door'), gimicId, kind: 'door', mode: 'detection',
       entity: { footprint: s2.footprint, hp: [s2.hp, s2.hp], timeout_secs: s2.timeout_secs, skills: s2.skills || [] },
       reward: null,
     };

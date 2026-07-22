@@ -114,6 +114,21 @@ function startRun(room, profileCanvas) {
   // REQ-0240 M1: the per-slot player BP pools (exact hpMax) + enemy hints the
   // dock/plates read; enemy side derived from the ROLLED def + content defs.
   const roster = pacing.buildRoster(result, dungeonDef, { monsterPackDefsById, enemyDefsById });
+  // REQ-0276 A2(iii): attachment instance id -> source gimic content id, so
+  // the serving layer (pacing.decorateVisible) can bind att_* events to a
+  // gimic for art/badges. Derived from the ROLLED def (rollDungeon now keeps
+  // `gimicId` on each attachment); it never touches run.events, so the log
+  // stays byte-identical to the sim output (determinism gate + goldens green).
+  const gimics = {};
+  for (const enc of (dungeonDef && dungeonDef.encounters) || []) {
+    for (const att of (enc && enc.attachments) || []) {
+      if (att && att.id && att.gimicId) gimics[att.id] = att.gimicId;
+    }
+    // The standalone entityDef path emits no att_* events (its gimic is
+    // discovered via a ray_hit whose dst IS the entity id), but map its
+    // identity too for symmetry / any future att_* emission on that path.
+    if (enc && enc.entityDef && enc.entityDef.id) gimics[enc.entityDef.id] = enc.entityDef.id;
+  }
 
   const runId = genId('run');
   const startedAt = new Date().toISOString();
@@ -141,6 +156,7 @@ function startRun(room, profileCanvas) {
     // above drives room occupancy / settle; this drives seal comparison.
     simDurationSecs: computeDurationSecs(result.events),
     roster, // REQ-0240 M1: ApiRunView.roster source
+    gimics, // REQ-0276 A2(iii): att instance id -> gimic content id (serve-time att_* enrichment)
     events: result.events, // BYTE-IDENTICAL sim log (pt lives in `presentation`)
     result: result.result, // 'victory' | 'wipe' | 'incomplete'
     finalProgressPct: result.finalProgressPct,

@@ -137,7 +137,79 @@ T('buildRoster: per-slot player BPs (exact hpMax) + enemy hints', () => {
   assert.strictEqual(roster.slots.length, 4);
   assert.deepStrictEqual(roster.slots[0].bps, [{ id: 'bp_a', hpMax: 100 }, { id: 'bp_b', hpMax: 120 }]);
   assert.strictEqual(roster.slots[1].bps.length, 0);
-  assert.deepStrictEqual(roster.enemies[0], { id: 'gob', name: 'Goblin', nameJa: 'ゴブリン', hpMax: 45, footprint: [1, 1], packId: 'pk1' });
+  assert.deepStrictEqual(roster.enemies[0], { id: 'gob', instanceId: 'gob#0', at: 'B2', fieldCells: [[2, 2]], name: 'Goblin', nameJa: 'ゴブリン', hpMax: 45, footprint: [1, 1], packId: 'pk1', masked: false });
+});
+
+T('REQ-0276 A2(i) buildRoster: enemy instanceId / at / fieldCells / masked (transpose-safe)', () => {
+  const dungeonDef = { encounters: [{ enemyPack: { packId: 'pk1' } }] };
+  const defs = {
+    monsterPackDefsById: { pk1: { members: [
+      { enemy: 'gnoll', at: 'B2' },
+      { enemy: 'archer', at: 'C2' },
+      { enemy: 'archer', at: 'E2' },
+    ] } },
+    enemyDefsById: {
+      gnoll: { id: 'gnoll', name: 'Gnoll', hp: [10, 10], footprint: [1, 1] },
+      // footprint [fh,fw]=[1,2]: ONE row, TWO cols -- proves fieldCells honours
+      // the [height,width] transpose (a wrong w=fp[0] would give one cell).
+      archer: { id: 'archer', name: 'Archer', hp: [8, 8], footprint: [1, 2] },
+    },
+  };
+  const roster = P.buildRoster({ bps: [] }, dungeonDef, defs);
+  assert.strictEqual(roster.enemies.length, 3, 'three placed instances');
+  // instanceId mirrors compileEnemyPack's eid + '#' + <index-in-pack-members>.
+  assert.deepStrictEqual(roster.enemies.map((e) => e.instanceId), ['gnoll#0', 'archer#1', 'archer#2']);
+  assert.deepStrictEqual(roster.enemies.map((e) => e.at), ['B2', 'C2', 'E2']);
+  assert.strictEqual(roster.enemies[0].fieldCells.length, 1, 'gnoll [1,1] occupies 1 cell');
+  assert.deepStrictEqual(roster.enemies[1].fieldCells, [[2, 3], [2, 4]], 'C2 + width 2 -> [2,3],[2,4] (transpose-safe)');
+  assert.ok(roster.enemies.every((e) => e.masked === false), 'monsters are unmasked');
+});
+
+T('REQ-0276 A2(ii..iv) decorateVisible: serve-time attribution on COPIES only', () => {
+  const events = [
+    ev({ ev: 'ray_hit', dst: 'gnoll#0', amount: 5, hp_after: 5 }),
+    ev({ ev: 'ray_hit', dst: '?', amount: 3 }),
+    ev({ ev: 'ray_hit_all', hits: [{ dst: 'archer#1', amount: 2 }, { dst: '?', amount: 1 }] }),
+    ev({ ev: 'att_reveal', att: 'att_trap0', kind: 'trap', at: [9, 13] }),
+    ev({ ev: 'unit_charge_spend', id: 'bp_a', spend: 'fire_on_full' }),
+    ev({ ev: 'unit_charge_strike', src: 'bp_c', amount: 4 }),
+  ];
+  const roster = {
+    slots: [
+      { slot: 'unit1', index: 0, bps: [{ id: 'bp_a', hpMax: 100 }] },
+      { slot: 'unit2', index: 1, bps: [] },
+      { slot: 'unit3', index: 2, bps: [{ id: 'bp_c', hpMax: 90 }] },
+      { slot: 'unit4', index: 3, bps: [] },
+    ],
+    enemies: [
+      { id: 'gnoll', instanceId: 'gnoll#0' },
+      { id: 'archer', instanceId: 'archer#1' },
+      { id: 'archer', instanceId: 'archer#2' },
+    ],
+  };
+  const run = {
+    pacingVersion: 1, roster, gimics: { att_trap0: 'trap_frost_deadfall' },
+    presentation: { pt: events.map((_, i) => 2000 + i), durationSecs: 60 },
+    events,
+  };
+  const before = JSON.stringify(events);
+  const out = P.decorateVisible(run, 1e9);
+  assert.strictEqual(out.length, events.length, 'all revealed');
+  assert.strictEqual(out[0].enemyIdx, 0, 'gnoll#0 -> roster index 0');
+  assert.strictEqual(out[1].enemyIdx, undefined, 'masked dst carries no enemyIdx (reveal semantics preserved)');
+  assert.strictEqual(out[2].hits[0].enemyIdx, 1, 'archer#1 -> index 1');
+  assert.strictEqual(out[2].hits[1].enemyIdx, undefined, 'masked area hit stays anonymous');
+  assert.strictEqual(out[3].gimicId, 'trap_frost_deadfall', 'att_* -> source gimic content id');
+  assert.strictEqual(out[4].slot, 0, 'unit_charge via id: bp_a in unit1 -> slot 0');
+  assert.strictEqual(out[5].slot, 2, 'unit_charge via src: bp_c in unit3 -> slot 2');
+  assert.strictEqual(JSON.stringify(events), before, 'stored run.events (incl nested hits) byte-identical');
+  assert.ok(events.every((e) => e.enemyIdx === undefined && e.gimicId === undefined && e.slot === undefined), 'no attribution leaked onto stored events');
+});
+
+T('REQ-0276 A2: no roster -> no attribution (legacy-safe, masked stays masked)', () => {
+  const events = [ev({ ev: 'ray_hit', dst: 'gnoll#0', amount: 5 })];
+  const run = { pacingVersion: 1, roster: null, presentation: { pt: [2000] }, events };
+  assert.strictEqual(P.decorateVisible(run, 1e9)[0].enemyIdx, undefined, 'no roster -> no enemyIdx');
 });
 
 console.log('\npacing: ' + pass + ' passed, ' + fail + ' failed');

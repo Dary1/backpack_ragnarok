@@ -85,7 +85,17 @@ export function cellIdToXY(cell: string | RawCell | null | undefined, cellPx: nu
  * grid. Inclusive of both corners (F2:M9 is 8 cols x 8 rows, matching
  * every ratified formation def's 8x8 squad-canvas invariant). */
 export function parseBoxToPixelRect(box: string, cellPx: number): { x: number; y: number; w: number; h: number } {
-  const [tl, br] = box.split(':');
+  const [tl, br] = (box || '').split(':');
+  // REQ-0276 A1 hardening: a placeholder / non-"TL:BR" string (e.g. the
+  // "unit1" slot placeholder used before the formation JOIN resolves, or a
+  // genuinely missing box) yields an EXPLICIT zero-size rect so the renderer
+  // takes its degenerate-box fallback deterministically, instead of relying on
+  // the negative-width arithmetic a single-cell parse of "unit1" happens to
+  // produce. Real "F2:M9" boxes are unaffected.
+  const CELL_RE = /^[A-Za-z]+[0-9]+$/;
+  if (!tl || !br || !CELL_RE.test(tl.trim()) || !CELL_RE.test(br.trim())) {
+    return { x: 0, y: 0, w: 0, h: 0 };
+  }
   const a = cellIdToColRow(tl);
   const b = cellIdToColRow(br);
   return {

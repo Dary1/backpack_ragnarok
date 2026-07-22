@@ -146,6 +146,9 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
   }, []);
   useEffect(() => { rendererRef.current?.setLayout(narrow ? 'column' : 'row'); }, [narrow]);
 
+  // REQ-0276 B3: keep the renderer's locale in sync (enemy nameJa + KO copy).
+  useEffect(() => { if (mountedOnce) rendererRef.current?.setLocale(locale); }, [mountedOnce, locale]);
+
   // Mount player squads once + push the enemy/player roster to the renderer.
   useEffect(() => {
     if (!mountedOnce || !rendererRef.current || squadsMountedRef.current) return;
@@ -161,23 +164,23 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
         const squadCanvas = squadStore && slot.squadIndex === squadStore.active ? activeCanvas : squadStore?.store[slot.squadIndex] ?? null;
         if (squadCanvas?.bps?.length) {
           label = squadStore?.names[slot.squadIndex] ?? label;
-          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]) });
+          for (const bp of squadCanvas.bps) bps.push({ color: bp.color, cells: bp.shape.map(([dr, dc]) => [bp.origin[0] + dr, bp.origin[1] + dc]), unitId: bp.unit.id });
         }
         if (squadCanvas?.pos?.length && itemDefs) {
           for (const po of squadCanvas.pos) {
             if (po.loc !== 'grid' || !po.cell) continue;
             const def = itemDefs[po.id]; if (!def) continue;
-            icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell });
+            icons.push({ textureKey: def.icon, shape: def.shape, rot: po.rot, origin: po.cell, itemId: po.id });
           }
         }
       }
-      return { slotIndex: idx, box: `squad${idx + 1}`, bps, label, icons };
+      return { slotIndex: idx, box: `unit${idx + 1}`, bps, label, icons };
     });
     void (async () => {
       try {
         const payload = await fetchDungeons();
         const formation = payload.formations.find((f) => f.id === room.formationId);
-        const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`squad${u.slotIndex + 1}`] ?? u.box }));
+        const withRealBoxes = squads.map((u) => ({ ...u, box: formation?.canvases[`unit${u.slotIndex + 1}`] ?? u.box }));
         rendererRef.current?.mountSquads(withRealBoxes);
         squadsMountedRef.current = true;
         interface MonitorDebugEntry {
@@ -187,6 +190,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           attachmentCounts: () => { reveal: number; disarm: number; open: number; lost: number; fire: number };
           applyTestEvents: (evs: ApiRunEvent[]) => void;
           chimeStats: () => ChimeStats | null;
+          enemyActors: () => unknown[];
         }
         const debugWin = window as unknown as { __monitorDebug?: Record<string, MonitorDebugEntry> };
         if (!debugWin.__monitorDebug) debugWin.__monitorDebug = {};
@@ -197,6 +201,7 @@ export function Monitor({ room, locale, dungeonName, isAdmin, onRunSettled }: Mo
           attachmentCounts: () => rendererRef.current?.getAttachmentVisualCounts() ?? { reveal: 0, disarm: 0, open: 0, lost: 0, fire: 0 },
           applyTestEvents: (evs: ApiRunEvent[]) => rendererRef.current?.applyEvents(evs),
           chimeStats: () => chimeEngineRef.current?.getStats() ?? null,
+          enemyActors: () => rendererRef.current?.getEnemyActors() ?? [],
         };
       } catch (e) {
         // eslint-disable-next-line no-console

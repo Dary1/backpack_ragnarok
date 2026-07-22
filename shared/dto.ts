@@ -549,6 +549,18 @@ export interface ApiRunEvent {
   /** REQ-0240: a non-representative member of a coalesced burst -- feed/stage
    * skip it (its damage is folded into the representative's pcoalesce). */
   pcoalesceHidden?: boolean;
+  /** REQ-0276 A2(ii): on a ray_hit (and on each ray_aoe / ray_hit_all hits[]
+   * member), the index into ApiRunRoster.enemies of the struck enemy --
+   * resolved server-side from the UNMASKED `dst`. Absent when dst is masked
+   * ('?') or is not a roster enemy (e.g. a gimic att id). */
+  enemyIdx?: number;
+  /** REQ-0276 A2(iii): on att_* events (att_fire/att_reveal/att_disarm/att_open/
+   * att_lost), the source gimic content id (e.g. "trap_frost_deadfall") for
+   * art/badge binding; the class glyph (from `kind`) is the fallback. */
+  gimicId?: string;
+  /** REQ-0276 A2(iv): on unit_charge_* events, the squad slot index (0..3) of
+   * the charging BP, so dock/stage charge pips can light. */
+  slot?: number;
   [key: string]: unknown;
 }
 
@@ -570,6 +582,23 @@ export interface ApiRunRosterEnemy {
   hpMax: number;
   footprint: number[];
   packId: string | null;
+  /** REQ-0276 A2(i): the SIM instance id (`<enemyId>#<index-in-pack-members>`,
+   * e.g. "glacier_wisp#2") -- the join key ray_hit/ray_aoe hits carry as their
+   * UNMASKED `dst`, and what ApiRunEvent.enemyIdx indexes back to. Optional:
+   * absent on runs stored before REQ-0276, and on legacy cursor-fill packs. */
+  instanceId?: string;
+  /** REQ-0276 A2(i): the A1 top-left anchor this enemy stands on (e.g. "B2"),
+   * verbatim from the pack member. null for a legacy cursor-fill layout. */
+  at?: string | null;
+  /** REQ-0276 A2(i): the absolute [row,col] cells this enemy occupies, DERIVED
+   * server-side via the same authority the sim placer uses (content_validate
+   * cellsFor) -- so the client draws the enemy formation at encounter_start
+   * without re-deriving and without the [fh,fw] transpose hazard (REQ-0261
+   * §8.2/§8.5). Empty for a legacy cursor-fill pack. */
+  fieldCells?: [number, number][];
+  /** REQ-0276 A2(i): true for a masked (trap/hidden) instance -- the client
+   * shows a footprint silhouette until discovery. false for monsters. */
+  masked?: boolean;
 }
 
 /** REQ-0240 M1: ApiRunView.roster -- per-slot player BP pools + enemy hints. */
