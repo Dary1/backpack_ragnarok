@@ -1,8 +1,9 @@
 # REQ-0287 — shared-usage visibility: ownership ribbons on Canvas & Inventory
 
 ## Status
-draft (spec by orchestrator session 2026-07-22; awaiting user ratification).
-Reserved 2026-07-22 on branch `req-canvas-inventory-ux-spec`.
+built (implemented + gates green 2026-07-23 on branch
+`req-0287-shared-usage-visibility`; not yet merged/accepted). Spec ratified by
+the user 2026-07-22. See "## Implementation" and "## Gate results" below.
 
 ## Origin (user directive, 2026-07-22, chat — verbatim)
 「Canvasの中のPO・Unit・SIが、他のPreset(Squad)と共有されている場合の可視化が
@@ -90,3 +91,65 @@ DTO change.
 
 ## Dependencies
 None. Coexists with REQ-0288/0289/0290/0291.
+
+
+## Implementation (2026-07-23)
+Built on branch `req-0287-shared-usage-visibility` (base
+`req-canvas-inventory-ux-spec`).
+
+Files:
+- NEW `client/src/board/usageRibbons.ts` — pure draw helpers (ghosts.ts
+  pattern): `drawSharedRibbon` (top-right, `OVERLAY.usage.otherSquad`, 16px
+  legs, `#0e0d0b` 1.5 keyline, 9px `#f2fbff` count Text when >=2 other squads),
+  `drawSelfRibbon` (top-left, `OVERLAY.usage.selfSquad`), bbox helpers
+  (`cellsBBoxPx`, `topRightCellBBoxPx`, `topLeftCellBBoxPx`), and the
+  `paintUsageRibbons` orchestrator. Wash untouched; `tintSets`/`usageOf` remain
+  the only truth (no engine/DTO change).
+- NEW `client/src/board/usageRibbonProbe.ts` — pure per-board probe registry
+  (no Pixi import) so `store/boot.ts` can expose it on `__backpackDebug`.
+- `BoardRenderer.ts` — ribbons drawn into `gBadges` at the three existing tint
+  sites (BP/PO/SI); the BP ribbon is emitted AFTER the move-handle badge
+  (top-right-most cell for tr, top-left-most for tl) so the 16px corner wedge
+  never occludes the centred handle glyph; the REQ-0042 handle ring is tinted
+  otherSquad when the BP is shared. `usageRibbonProbe` field rebuilt fresh per
+  render and published via `publishRibbonProbe(boardIdKey(this.boardId), …)`.
+- `FloatingItemTip.tsx` (+ `i18n/canvas.ts`, en/ja) — the REQ-0119 tip gains a
+  "Used by: <squad names>" row from `engine.usageOf` mapped through
+  `state.presets.names` (the accessor SquadTabs uses); the current squad is
+  listed first and marked (`usage.currentSquadMark`). Shown only when the uid is
+  in the red/yellow usage sets.
+- `store/boot.ts` — `__backpackDebug.usageRibbonProbe(boardKey)` read hook.
+
+Decisions for the record:
+- A BP's tl (self) ribbon anchors on the top-left-most cell (same as the ✥
+  handle); the 16px wedge stops short of the cell-centre glyph, so the handle is
+  never hidden (verified in the evidence shots).
+- The BP:Unit law is honoured — a shared Unit is spoken for by its BP ribbon; no
+  separate Unit marker.
+- "Canvas never shows red" falls out for free: on the canvas board `tintRedSet`
+  is empty, so no tl ribbon is emitted there.
+
+## Gate results (2026-07-23)
+- [0/8] `check_e2e_ports.cjs`: green (all ports derived, no collisions). This REQ
+  adds no new harness/config — it extends the default-suite
+  `reference-model.spec.ts`, run SCOPED on decade 7870-7879 (proxy 7872, fleet
+  7874) per the "rebased tree runs scoped" rule.
+- Client `tsc -b`: green. `pnpm build`: green. `oxlint` (6 touched files): 0/0.
+- e2e (scoped): the 4 REQ-0287 specs pass in isolation AND in the full default
+  suite. Full default suite: 200 passed / 2 failed. Both failures are
+  PRE-EXISTING and unrelated to this client-only change:
+  - `forecast.spec.ts:206` (REQ-0057 formation picker) — PROVEN pre-existing:
+    fails identically on the base tree (feature stashed + rebuilt) with the same
+    `toBeVisible()` error.
+  - `schedule.spec.ts:1524` (REQ-0240 monitor zones) — parallel/ordering flake:
+    passes in isolation.
+- Evidence: before/after pair under `web/preview/req-0287/`
+  (`{before,after}-canvas.png`, `{before,after}-inventory.png`,
+  `after-tooltip.png`). Before = ribbons disabled; after = ribbons on the same
+  shared fixture (blue tr + count, vermillion tl, BP handle-ring tint).
+
+## Commits
+- `88ad75c` — implementation (usageRibbons + probe modules, BoardRenderer wiring,
+  tooltip Used-by row + i18n, boot hook, e2e spec + fixture).
+- <this log commit>, then the `todo -> built` move commit (the move IS the
+  status transition).
