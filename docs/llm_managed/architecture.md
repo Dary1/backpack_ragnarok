@@ -146,6 +146,13 @@ them pass. Full rationale: server/README.md, "Suite membership".
 - Deployed artifact = the repo itself on the server box. Client ships as
   committed `web/app/` (rebuild via release.sh); server code is picked up
   by `systemctl --user restart backpack-api` (no build step).
+- REQ-0278: worktree client builds now CARRY the Supabase env. `client/.env.local`
+  (gitignored, main-only) is copied into a worktree by `tools/provision_worktree_env.sh`,
+  so a worktree's `web/app` is byte-identical to a main rebuild. This RETIRES the ad-hoc
+  `42238f8` "rebuild web/app on main at deploy" step (which existed only to re-inject env):
+  a merged worktree's committed `web/app` already carries it. `release.sh`'s rebuild stays
+  the serving invariant but is now env-CONFIRMING, not env-INJECTING; `ci.sh [6.1/7]`
+  (`tools/check_bundle_env.sh`) is the machine check that a deploy-bound bundle carries env.
 - The repo accepts direct pushes (`receive.denyCurrentBranch=
   updateInstead`) BUT refuses while any collaborator has uncommitted
   edits in the worktree (e.g. the designer working in `web/redesign/`).

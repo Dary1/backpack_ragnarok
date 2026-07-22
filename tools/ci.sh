@@ -292,6 +292,14 @@ if [ "${SKIP_CLIENT:-0}" != "1" ]; then
   (cd client && node scripts/check_po_outline.mjs)
   echo "==== [6/7] client typecheck + build ===="
   (cd client && pnpm run build)
+  # REQ-0278: the committed-bundle path had no machine check that a worktree's
+  # freshly built web/app actually carries the Supabase env. A worktree missing the
+  # gitignored, main-only client/.env.local builds a degraded bundle (sign-in "not
+  # configured", REQ-0118c) that this same-tree build + the e2e proxy cannot see --
+  # the trap that bit the REQ-0266 deploy (42238f8). Present env-file -> assert the
+  # marker is in the built bundle; absent -> report not-applicable WITH a reason.
+  echo "==== [6.1/7] client bundle Supabase-env tripwire (REQ-0278) ===="
+  bash tools/check_bundle_env.sh
 else
   echo "==== [6/7] client typecheck + build SKIPPED ===="
 fi
