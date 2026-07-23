@@ -2100,6 +2100,11 @@ T("REQ-0294 activation: shipped profile scales hp + damage magnitude by 1.1^effL
 // T() cases against THIS harness so they roll into run.cjs's pass/fail totals.
 require('./req0297_verb_firing_test.cjs').register({ T, eq, ok, approx });
 
+// REQ-0297 Phase 2: per-pack powerLevel runtime + scaling round-to-0 care + the
+// +/-25 guard. Sibling module (also runs standalone); register() rolls its T()
+// cases into run.cjs's pass/fail totals.
+require('./req0297_phase2_test.cjs').register({ T, eq, ok, approx });
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
