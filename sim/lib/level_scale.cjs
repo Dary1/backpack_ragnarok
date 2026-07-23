@@ -63,7 +63,7 @@ function factorFor(rule, effLevel) {
 // field: g^BOSS_LV_BONUS = 1.15 at the reference ladder g=1.1, i.e.
 // log_1.1(1.15). A named tunable, frozen against g=1.1 -- the design intent is
 // "+15% boss strength", not "whatever the live profile's g happens to be".
-const BOSS_LV_BONUS = Math.log(1.15) / Math.log(1.1); // ~= 1.4739311883324124
+const BOSS_LV_BONUS = Math.log(1.15) / Math.log(1.1); // ~= 1.4663831 (g^BOSS_LV_BONUS === 1.15 exactly)
 
 // EXTREME_EFFLEVEL: |effLevel| beyond this is a CONTENT signal (a pack drifted
 // far from the field at this attackLv), NOT a runtime error and NOT a cap -- a

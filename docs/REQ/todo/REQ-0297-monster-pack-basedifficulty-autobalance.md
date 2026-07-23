@@ -21,7 +21,8 @@ NOT yet merged to master.
   dungeons/packs content deploy is SURGICAL (edit batch-002 source + byte-identical live copy +
   registry sha256, then copy into the main checkout ~/backpack_ragnarok + commit to master) so the
   REQ-0122 lossless test stays green; api reload is mtime-cached (no restart for content).
-- **PHASE STATUS:** Phase 1 = BUILT + audited (committed). Phase 2 = BUILT (runtime + tests green; live powerLevel deploy DEFERRED to the Phase-3 surgical path). Phase 3 = NOT STARTED.
+- **PHASE STATUS:** Phase 1 = BUILT+audited. Phase 2 = BUILT+AUDITED (goldens byte-identical, sim 171/0, coverage green; live powerLevel deploy DEFERRED to Phase 3). Phase 3 = NOT STARTED (next).
+- **DEPLOY WARNING:** do NOT deploy Phase 2 alone -- retiring dungeon-level scaling leaves live enemies UNSCALED until Phase 3 generates pack.powerLevel. Phase 2 + Phase 3 deploy TOGETHER.
 - Orchestration: implement via Opus subagent, orchestrator audits (independent goldens re-run + diff).
 =============================================================================
 
@@ -138,4 +139,5 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
 ## Gate results / commit hashes
 - Phase 1: 8d8b175, 04a233b (audited; goldens byte-identical, sim 158/0).
 - Phase 2: 5007e16 (per-pack runtime + scaling round-to-0 care), c3ca8be (13 tests + wire). goldens 12/12 byte-identical, run.cjs 171/0, coverage --gate OK. Live powerLevel DEFERRED (Phase-3 surgical path); main checkout untouched.
+  ORCHESTRATOR-AUDITED (independent): goldens re-run byte-identical + fixtures untouched; diffs reviewed (effLevelForPack absent->0, factor-1 hp-floor gated on scaledHp!==def.hp, warn-not-cap); sanity g^BOSS_LV_BONUS=1.1500, effLevelForPack(5,2,boss)=4.4664, hp[30,45]@eff-25=[2.77,4.15] (>0).
 - Phase 3: _(on build)_
