@@ -57,3 +57,13 @@ CURRENT 1/4/8 -- grave/beast collapse 7 levels early:
 - goldens 12/12 byte-identical; sim suite 130/0; coverage 14/14; dungeon_roll 6/6; api_test 194/0 (pg).
 - Surgical content deploy to main checkout (dungeons.json + registry sha256 deec388->df1da3f); REQ-0122 lossless PASS after deploy. mtime-cache reload, no api restart (runs.cjs already live from REQ-0294).
 - Branch req-0295; deploy commit on master; merge commit recorded on done-move.
+
+
+## Merged + deployed + live-verified (2026-07-23)
+- Merged to master: merge commit f164f85.
+- Live engine serves calibrated baseDifficulty: niflheim_depths=1, grave_hollows=15,
+  beastreach_wilds=16 (getScheduleContent on the deployed tree). Content-only change ->
+  mtime-cache reload, no api restart.
+- Effect: the same reference troop now wipes at ~attackLv 27 in ALL three dungeons
+  (was ~20 for grave/beast, ~27 for niflheim). Win/loss self-normalised across draws.
+- Re-run the tool if the canonical reference troop changes: node tools/calibrate_base_difficulty.cjs
