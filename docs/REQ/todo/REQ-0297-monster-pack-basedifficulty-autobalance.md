@@ -21,7 +21,7 @@ NOT yet merged to master.
   dungeons/packs content deploy is SURGICAL (edit batch-002 source + byte-identical live copy +
   registry sha256, then copy into the main checkout ~/backpack_ragnarok + commit to master) so the
   REQ-0122 lossless test stays green; api reload is mtime-cached (no restart for content).
-- **PHASE STATUS:** Phase 1 = BUILT + audited (committed). Phase 2 = NOT STARTED. Phase 3 = NOT STARTED.
+- **PHASE STATUS:** Phase 1 = BUILT + audited (committed). Phase 2 = BUILT (runtime + tests green; live powerLevel deploy DEFERRED to the Phase-3 surgical path). Phase 3 = NOT STARTED.
 - Orchestration: implement via Opus subagent, orchestrator audits (independent goldens re-run + diff).
 =============================================================================
 
@@ -56,7 +56,7 @@ new events => goldens byte-identical. Commits 8d8b175, 04a233b. Audited independ
 coverage guards + negative control). No current live/batch pack carries a reactive skill (all
 every_secs) so this is inert on today's content -- correctness + future-proofing + guard test.
 
-## Phase 2 - Per-pack powerLevel runtime  [NOT STARTED]
+## Phase 2 - Per-pack powerLevel runtime  [BUILT -- tests green; live-content deploy DEFERRED]
 - Schema: `powerLevel` (number, fractional) on each monster_pack in packs.json. Boss signal =
   membership in a dungeon def's bossPool (no per-pack flag).
 - Runtime: compute effLevel PER PACK at dive time: `effLevel_P = attackLv - pack.powerLevel
@@ -76,6 +76,38 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
   field, emit a WARNING (content signal), do not silently cap; keep runtime effLevel moderate via
   sane pack<->dungeon assignment. (c) GUARD TEST: across effLevel +-25, assert every scaled skill
   value is >0 (no dead skill) and finite/sane.
+
+### Phase 2 BUILD RECORD (2026-07-24)  -- commits 5007e16 (runtime+care), c3ca8be (tests)
+- **Threading (per-pack):** runs.cjs RETIRED the single dungeon-wide effLevel
+  (baseDifficulty no longer read at runtime; dungeon.Lv/baseDifficulty stay
+  authoring anchors). It now passes only `scaling: SCALING_PROFILE` + `level`
+  (= attackLv = room.level). dungeon.cjs threads `attackLv` (defaults to `level`)
+  to each runEncounter; encounter.cjs computes the PER-PACK effLevel WHERE the
+  pack def is resolved: `const effLevel = scaling ? effLevelForPack(attackLv,
+  packDef.powerLevel, encounterDef.type === 'boss') : 0;` then hands `{scaling,
+  effLevel}` to the existing compileEnemyPack. `encounterDef.type === 'boss'` is
+  the runtime boss-slot signal (dungeon_roll builds the bossPool pick as the
+  type:'boss' encounter). New named tunables live in level_scale.cjs:
+  `BOSS_LV_BONUS = log_1.1(1.15) ~= 1.4739`, `EXTREME_EFFLEVEL = 25`, and the pure
+  `effLevelForPack(attackLv, powerLevel, isBoss)`.
+- **Byte-identical fallback:** effLevelForPack returns 0 when powerLevel is
+  non-finite (undefined/null/NaN) -- BEFORE adding the boss bonus, so a boss with
+  no powerLevel gets neither bonus nor scaling. And runEncounter only calls it
+  when a `scaling` profile is present, so goldens (no profile) never scale. Result:
+  goldens 12/12 BYTE-IDENTICAL; api_test test_dungeon (level 1, no powerLevel,
+  schedule.cjs determinism replay passes no scaling) stays effLevel 0 = unchanged.
+- **Scaling-care:** hp is the ONLY integer-rounded stat (per-hit damage is applied
+  fractionally, so it never rounds to 0). packs.cjs floors a scaled-DOWN hp at 1
+  ONLY when scaleEnemyHpRange returned a NEW array (factor != 1) and the round hit
+  0 -- the factor-1/no-scaling path keeps `scaledHp === def.hp` and is untouched.
+  effLevelForPack WARNS (never caps) on |effLevel| > 25.
+- **DEFERRED:** no powerLevel values were added to any packs.json (batch-002
+  source / live copy / registry sha256) and the main checkout was NOT touched --
+  per the task, the live-content deploy is the Phase-3 surgical path. Per-pack
+  scaling is proven with SYNTHETIC powerLevel + SYNTHETIC profiles in
+  sim/tests/req0297_phase2_test.cjs (13 cases), the REQ-0293 discipline.
+- **Gates:** goldens 12/12 byte-identical; run.cjs 171/0 (158 + 13 new);
+  check_scaling_coverage --gate OK.
 
 ## Phase 3 - All-pairs round-robin auto-adjuster + content-edit trigger  [NOT STARTED]
 - Tool (evolve REQ-0295's calibrator; arena-based, troop-FREE): **iterative all-pairs round-robin.**
@@ -105,5 +137,5 @@ every_secs) so this is inert on today's content -- correctness + future-proofing
 
 ## Gate results / commit hashes
 - Phase 1: 8d8b175, 04a233b (audited; goldens byte-identical, sim 158/0).
-- Phase 2: _(on build)_
+- Phase 2: 5007e16 (per-pack runtime + scaling round-to-0 care), c3ca8be (13 tests + wire). goldens 12/12 byte-identical, run.cjs 171/0, coverage --gate OK. Live powerLevel DEFERRED (Phase-3 surgical path); main checkout untouched.
 - Phase 3: _(on build)_
