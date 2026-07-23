@@ -65,4 +65,49 @@ combat only (note it); generalising reactive dispatch symmetrically is a clean p
 - (phase b) tie-search reproduces sane per-dungeon ladder gaps.
 
 ## Gate results / commit hashes
-_(filled on build)_
+Built 2026-07-23 on branch `req-0296-battlegroup-side-agnostic-fire` (base `20ee8a2`).
+
+Commits:
+- `3454590` feat: add side-agnostic opponents()/allies() binding to map + instance (inert plumbing)
+- `28ddfdb` feat: fireInstanceSlot targets via inst.opponents()/allies(); wire standard encounter maps (byte-identical)
+- `9fc821e` refactor: extract enemy timed-fire body to shared fireEnemyInstanceSlot (byte-identical)
+- `cbd6591` feat: sim/balance/monster_arena.cjs -- headless monster-vs-monster via shared battle tick
+
+HOW the standard player-vs-enemy path stayed BYTE-IDENTICAL (the opponents()/allies() wiring):
+- formation_map.cjs gained `opponents()`/`allies()` accessors (default null). battle.cjs
+  propagates each map's accessors onto that map's instances, LATE-BOUND (so a map wired
+  after construction -- the arena -- still resolves at fire time).
+- encounter.cjs wires the STANDARD maps: a player-map instance's `opponents()` ==
+  `enemyActorList()` (entity included, exactly what the bp body read) and `allies()` ==
+  `playerActors`; an enemy-map instance's `opponents()` == `playerActors` and `allies()` ==
+  `enemyActors`' actors -- the SAME lists in the SAME ORDER as the hardcoded args they
+  replaced.
+- fireInstanceSlot now reads `inst.opponents()`/`inst.allies()` for the 4 target LISTS only
+  (bp main fire, bp-body OnSquadBeenHit retaliation -> allies, enemy heal_ally -> allies,
+  enemy main fire). All BP-only MACHINERY (charge ops, pulse/links, dispatchPlayerOffensive,
+  dispatchPlayerDefensive, PO lookups, attachment/trap volleys, trap timeout) stays gated on
+  provenance and keeps its literal player/enemy lists. Result: identical event log, stream
+  order and hashes.
+
+Gates (all green):
+- `node sim/tests/goldens.cjs` -> goldens OK (12 cases, replay determinism intact). The
+  sim/tests/goldens/ fixtures are UNTOUCHED (`git diff 20ee8a2 -- sim/tests/goldens` empty).
+- `node sim/tests/run.cjs` -> 130 passed, 0 failed (incl. AC13: encounter.cjs still owns no
+  instance-fire walk; extraction did not reintroduce one).
+- `node tools/check_scaling_coverage.cjs --gate` -> OK (14/14 live numeric leaves covered).
+- `node sim/balance/monster_arena.cjs pack_frost_scouts pack_rime_choir` -> winner=A in 4.07s,
+  deterministic=true (double-run equal). effLevel handicap verified: pack_bone_court
+  eff0-vs-eff4 -> the eff4 side wins in BOTH orientations, by a wider margin than the neutral
+  mirror -- the tie-search payoff (design step 4) is reachable.
+
+## Implementation note -- the known limitation (phase-2, NOT silently dropped)
+The enemy timed-fire body was extracted VERBATIM into the module-level
+`fireEnemyInstanceSlot` (sim/lib/encounter.cjs, exported) so the standard encounter AND the
+arena drive the SAME fire logic -- no forked combat. The reactive OnSquadBeenHit RETALIATION
+dispatch still lives ONLY in the BP fire body (it runs when a BP hits enemies), so pure
+monster-vs-monster does NOT retaliate; the arena therefore measures TIMED-SKILL combat
+(+ offensive OnHit/OnSquadHit riders + status DoTs + heal_ally). This is documented in a
+comment at both the retaliation site (fireInstanceSlot) and on `fireEnemyInstanceSlot`.
+Generalising the retaliation dispatch symmetrically -- so a struck group fires its
+OnSquadBeenHit back at its own `inst.allies()` from the enemy body too -- is the clean
+phase-2 (its target LIST is already `inst.allies()`, so only the DISPATCH needs moving).
