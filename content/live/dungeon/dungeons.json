@@ -1,7 +1,7 @@
 {
   "schema": "dungeon/1",
   "batch": "batch-002-dungeon-pilot",
-  "note": "REQ-0185. A dungeon def is authored, PROBABILITY-WEIGHTED references to monster_pack defs (packs.json) and gimic defs (gimics.json) -- the user ruling 2026-07-17: dungeonは、gimicとmonster_packを確率参照して、設定してください. At dive time the server ROLLS a concrete encounter list from these weighted tables (sim/dungeon_roll.cjs), deterministically given a seed; there is NO runtime dungeon-graph generation. The def inlines NOTHING: packs live in packs.json, gimics in gimics.json, referenced by id. Level scales only the COUNTS (packEncounters/gimicSlots), monotonically; enemy strength is the authored pack (unchanged from the pilot). The only gimics authored today are the four frost interactables (gimics.json), so every dungeon references them for now -- per-theme gimic content is a follow-up (see REQ-0185).",
+  "note": "REQ-0185. A dungeon def is authored, PROBABILITY-WEIGHTED references to monster_pack defs (packs.json) and gimic defs (gimics.json) -- the user ruling 2026-07-17: dungeonは、gimicとmonster_packを確率参照して、設定してください. At dive time the server ROLLS a concrete encounter list from these weighted tables (sim/dungeon_roll.cjs), deterministically given a seed; there is NO runtime dungeon-graph generation. The def inlines NOTHING: packs live in packs.json, gimics in gimics.json, referenced by id. Level scales only the COUNTS (packEncounters/gimicSlots), monotonically; enemy strength is the authored pack (unchanged from the pilot). The only gimics authored today are the four frost interactables (gimics.json), so every dungeon references them for now -- per-theme gimic content is a follow-up (see REQ-0185). REQ-0293: each entry also carries baseDifficulty (a TUNABLE anchor, initialised to that entry levelMin) -- the level at which the authored enemy stats are taken as-is; effLevel = attackLv - baseDifficulty drives per-field enemy stat scaling (content/scaling_profile.json). It is distinct from levelMin (the draw gate) and levelMax (the effLevel cap).",
   "entries": [
     {
       "id": "niflheim_depths",
@@ -10,6 +10,7 @@
       "theme": "frost",
       "levelMin": 1,
       "levelMax": 8,
+      "baseDifficulty": 1,
       "dive": {
         "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
         "gimicSlots": { "base": 1, "perLevels": 3, "max": 3 }
@@ -42,6 +43,7 @@
       "theme": "grave",
       "levelMin": 4,
       "levelMax": 14,
+      "baseDifficulty": 4,
       "dive": {
         "packEncounters": { "base": 3, "perLevels": 3, "max": 6 },
         "gimicSlots": { "base": 1, "perLevels": 4, "max": 3 }
@@ -66,6 +68,7 @@
       "theme": "wild",
       "levelMin": 8,
       "levelMax": 20,
+      "baseDifficulty": 8,
       "dive": {
         "packEncounters": { "base": 4, "perLevels": 4, "max": 6 },
         "gimicSlots": { "base": 1, "perLevels": 3, "max": 3 }
