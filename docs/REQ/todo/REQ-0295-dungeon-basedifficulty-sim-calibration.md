@@ -53,4 +53,7 @@ CURRENT 1/4/8 -- grave/beast collapse 7 levels early:
 - REQ-0122 lossless green after the dungeons.json content is deployed to the main checkout.
 
 ## Gate results / commit hashes
-_(filled on build)_
+**Built + deployed 2026-07-23.**
+- goldens 12/12 byte-identical; sim suite 130/0; coverage 14/14; dungeon_roll 6/6; api_test 194/0 (pg).
+- Surgical content deploy to main checkout (dungeons.json + registry sha256 deec388->df1da3f); REQ-0122 lossless PASS after deploy. mtime-cache reload, no api restart (runs.cjs already live from REQ-0294).
+- Branch req-0295; deploy commit on master; merge commit recorded on done-move.
