@@ -73,6 +73,10 @@ function runDungeon(opts) {
     // works), which is exactly the pre-REQ-0184 behaviour. Deliberately NOT named
     // `packDefsById`: that is REQ-0170's GACHA pack registry, a different thing.
     monsterPackDefsById,
+    // REQ-0293: the enemy level-scaling profile + effLevel (= attackLv -
+    // baseDifficulty). Both optional -- absent (the goldens, every unit test)
+    // means no scaling, so every encounter compiles byte-identically to today.
+    scaling, effLevel,
   } = opts;
   const rng = makeRng(masterSeed);
   const allEvents = [];
@@ -108,6 +112,7 @@ function runDungeon(opts) {
     const encResult = runEncounter({
       rng, encIndex: i, troopBps: allBps, troopPos: allPos, troopSis: allSis, formationBox: { formationId },
       enemyDefsById, skillDefsById, monsterPackDefsById, encounterDef: encDef, seedLabel: masterSeed,
+      scaling, effLevel, // REQ-0293: threaded down to compileEnemyPack (undefined => no scaling)
     });
     for (const e of encResult.events) allEvents.push(Object.assign({ seq: seq++ }, e));
     // REQ-0049: attachment rewards (trap disarm / chest open) accrue like

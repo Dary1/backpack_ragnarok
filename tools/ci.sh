@@ -151,6 +151,9 @@ echo "==== [3.98/7] REQ-0272 gen_context context-pack builder test (stdlib pytho
 python3 tools/tests/gen_context_test.py
 echo "==== [3.99/7] REQ-0275 enemy-side stat bands test (stdlib python3) ===="
 python3 tools/tests/enemy_bands_test.py
+echo "==== [3.995/7] REQ-0293 enemy level-scaling coverage gate (self-test + live total-coverage) ===="
+node tools/check_scaling_coverage.cjs --self-test
+node tools/check_scaling_coverage.cjs --gate
 echo "==== [4/7] server api tests (files backend) ===="
 node server/tests/api_test.cjs
 echo "==== [4.05/7] REQ-0240 presentation-pacing unit gates (paceEvents floors/coalesce/clamp/legacy passthrough/roster) ===="

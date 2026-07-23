@@ -28,6 +28,9 @@ function runEncounter(opts) {
     // called `packDefsById` in one opts bag is a bug waiting for a careless
     // destructure to feed emission pools to the monster placer.
     monsterPackDefsById,
+    // REQ-0293: enemy level scaling. Optional -- absent (every current sim/test
+    // caller) means no scaling, so compileEnemyPack stays byte-identical.
+    scaling, effLevel,
   } = opts;
   const events = [];
   const seq = new SeqCounter(); // REQ-0256: seq is now an emission-order OUTPUT, not an ordering input (s3.3)
@@ -195,7 +198,7 @@ function runEncounter(opts) {
       if (!resolved) throw new Error('runEncounter: encounter ' + encounterDef.id + ' names monster_pack "' + packDef.packId + '", which has no def');
       packDef = resolved;
     }
-    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox).map(en => ({ raw: en, actor: makeEnemyActor(en) }));
+    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, { scaling, effLevel }).map(en => ({ raw: en, actor: makeEnemyActor(en) })); // REQ-0293: opts
   }
   let entity = null; // trap/door/chest "?" entity
   if (encounterDef.entityDef) {
