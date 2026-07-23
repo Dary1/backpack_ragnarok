@@ -888,6 +888,35 @@ function fireEnemyInstanceSlot(inst, cd, ctx) {
     const playerDef = [];
     dispatchDefensive((fr.landedHits || []).map(lh => lh.actor), t, playerDef);
     for (const re of playerDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
+    // REQ-0297: faction-neutral struck-group defensive dispatch. dispatchDefensive
+    // (above) fires the struck PLAYER side's OnBPBeenHit/OnSquadBeenHit; it is inert
+    // for a struck MONSTER group (no troopPos / no-op in the arena). So when this
+    // enemy fire lands on OTHER ENEMIES (pure monster-vs-monster), fire each struck
+    // monster's OWN OnSquadBeenHit retaliation at the FIRING instance's allies (the
+    // attacker's group -- inst.allies(), driven by map membership, never a hardcoded
+    // side). MIRRORS the bp fire body's struck-enemy retaliation exactly (same event
+    // shape, same 'reactive/OnSquadBeenHit/<ownerId>/<t>' stream). GATED on
+    // kind==='enemy': in the standard enemy->player path every struck actor is a BP,
+    // so this loop body never runs and emits ZERO events -> goldens byte-identical.
+    const structDef = [];
+    for (const lh of (fr.landedHits || [])) {
+      const struck = lh.actor;
+      if (!struck || struck.kind !== 'enemy' || !struck.alive) continue;
+      const draw = struck.ref || {};
+      (draw.skills || []).forEach((sk, ski) => {
+        if (!sk.trigger || sk.trigger.t !== 'OnSquadBeenHit') return;
+        const ap = sk.attack_profile || { edge: ['top'], penetration: 0, aoe: 0 };
+        structDef.push({ ev: 'reactive_proc', trigger: 'OnSquadBeenHit', verb: sk.verb.t, src: draw.ownerId });
+        fireSkillRay({
+          attacker: { fieldCells: draw.fieldCells, ownerId: draw.ownerId + '#react', bonusVsStatus: draw.bonusVsStatus || [] },
+          attackProfile: ap, verbEff: sk, mode: 'battle', skill: draw.skillIds && draw.skillIds[ski],
+          targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          rng, streamPrefix: 'reactive/OnSquadBeenHit/' + draw.ownerId + '/' + t,
+          events: structDef, aoeStatuses: !!ap.aoe_statuses,
+        });
+      });
+    }
+    for (const re of structDef) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
     if (chargeMgr) {
       // REQ-0200: an opposing BP taking a direct enemy hit feeds OnBPBeenHit on that
       // BP + on_connected_unit_bp_been_hit on its linked BPs.
