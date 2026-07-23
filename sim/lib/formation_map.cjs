@@ -7,9 +7,17 @@
 // calls the two PHASE methods, not tick() -- with two maps tick() cannot express the
 // s12.1 all-fires-then-all-advances order (s7.1a).
 class IBattleInstancesFormationMap {
-  constructor(instances) {
+  constructor(instances, binding) {
     this.instances = instances || [];
     this.rays = []; // REQ-0257 fills this; ALWAYS empty in 0256 (s11)
+    // REQ-0296: side-agnostic target binding. opponents() returns the live
+    // OPPOSING actor list and allies() the OWN-side actor list for THIS map's
+    // instances -- the last thing fireInstanceSlot still keyed to provenance.
+    // Wired by the encounter (player<->enemy) or the monster arena (enemy<->enemy).
+    // Default null: an unbound map whose slot fired at a target list would throw
+    // LOUD (missing wiring) rather than silently mis-target.
+    this.opponents = (binding && binding.opponents) || null;
+    this.allies = (binding && binding.allies) || null;
   }
   tickInstances() {
     for (const inst of this.instances) { // stable instance index order (s10.1)
@@ -20,8 +28,8 @@ class IBattleInstancesFormationMap {
   tick() { this.tickInstances(); this.tickRays(); } // brief s4's single-map entry point
 }
 
-function createFormationMap({ instances }) {
-  return new IBattleInstancesFormationMap(instances || []);
+function createFormationMap({ instances, opponents, allies }) {
+  return new IBattleInstancesFormationMap(instances || [], { opponents, allies });
 }
 
 module.exports = { createFormationMap, IBattleInstancesFormationMap };
