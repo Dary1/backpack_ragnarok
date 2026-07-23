@@ -53,10 +53,13 @@ dependent packs are undervalued by the arena.
   each pack's baseDifficulty; ITERATE ~5 loops (relative system: one edit ripples; fights are
   handicapped by current estimates for measurement precision near the tie). Deterministic
   (fixed seeds). Emits fractional baseDifficulty into packs.json. `--report`/`--emit`/`--check`.
-- Content-edit trigger: auto-run when skill/monster/monster_pack content changes (deploy/dirty
-  time -- a make/pre-deploy hook keyed off the content hashes in registry.json). The output
-  (pack baseDifficulty) is regenerated content, deployed via the surgical dungeons/packs path
-  (REQ-0122 lossless kept green).
+- Trigger (user-refined 2026-07-23): do NOT run per single edit. Editing LEVEL-AFFECTING
+  content (skill/monster/monster_pack) marks the pack domain DIRTY -- detected by comparing
+  the live content sha256 (registry.json) against a stored `basediff_calibrated_from` hash.
+  The round-robin runs ONCE, BATCHED, at MERGE/DEPLOY time when dirty (a pre-deploy step),
+  regenerates every pack.baseDifficulty, records the new calibrated-from hash, and ships the
+  regenerated packs.json via the surgical path (REQ-0122 lossless kept green). A clean (non-
+  dirty) deploy skips it.
 
 ## Acceptance (whole feature)
 - Phase 1: goldens byte-identical; verb-firing auto-test green (every verb/trigger fires as a
@@ -66,5 +69,14 @@ dependent packs are undervalued by the arena.
   (arena win rates across packs within tolerance at a common attackLv); trigger runs on content edit.
 - End-to-end: same attackLv -> constant monster strength across draws (empirical arena check).
 
+## Phase 1 - BUILT + ORCHESTRATOR-AUDITED (2026-07-23)
+Additive faction-neutral defensive dispatch in fireEnemyInstanceSlot: a struck MONSTER (kind==='enemy')
+fires its OWN OnSquadBeenHit at inst.allies() (map membership), mirroring the bp-body retaliation;
+GATED so the standard enemy->player path (struck actors are BPs) emits zero new events. Commits 8d8b175,
+04a233b. Audited independently: goldens 12/12 BYTE-IDENTICAL (fixtures untouched), sim/tests/run.cjs
+158/0 (28 new verb-firing cases + coverage guards + negative control: reverting the dispatch fails
+exactly the 7 OnSquadBeenHit-defender cases). Note: no current live/batch pack carries a reactive skill
+(all every_secs), so this is inert on today's content -- correctness + future-proofing + a guard test.
+
 ## Gate results / commit hashes
-_(filled per phase on build)_
+_(phases 2, 3 filled on build)_
