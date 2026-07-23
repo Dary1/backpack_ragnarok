@@ -32,4 +32,15 @@ Turn REQ-0293's neutral scaling ON: a gentle ~10%/Lv geometric curve, factor unb
   locks g=1.1 scaling + unbounded effLevel.
 
 ## Gate results / commit hashes
-_(filled on build)_
+**Built 2026-07-23** on branch req-0294-enemy-scaling-g-activation (base master ce0d173).
+
+Commits: feat (profile g=1.1 + runs.cjs unbounded effLevel), docs (reserved->todo), test (synthetic identity fixture + activation lock).
+
+Gate results (verified by orchestrator):
+- content/scaling_profile.json: geometric g=1.1 on enemy.hp, verb.strike/multi_strike/charge_strike.n, verb.heal_ally.n; apply_status.n + trigger.s + lifesteal/bonus_vs_status + hits/mult/frac + attack_profile integers FLAT. No clampMaxFactor.
+- runs.cjs: effLevel = max(0, attackLv - baseDifficulty) -- levelMax upper clamp removed (unbounded).
+- sim suite (sim/tests/run.cjs): 130 passed, 0 failed (3 former identity tests re-based onto a SYNTHETIC all-flat fixture; new REQ-0294 lock: hp/strike 1.1^effLevel, unbounded, status/cadence flat).
+- goldens (sim/tests/goldens.cjs): 12/12 byte-identical (goldens pass no profile).
+- coverage gate: 14/14 covered (rule presence unchanged).
+- api_test.cjs: 194 passed / 0 failed (1641 assertions, pg) -- every dive runs at level 1 == test_dungeon levelMin, so effLevel 0 -> factor 1 -> unchanged.
+- scale sanity: effLevel 3 -> 1.331x, 7 -> 1.949x, 20 -> 6.727x (1.1^effLevel, unbounded).
