@@ -176,3 +176,15 @@ gameplay is byte-identical; getScheduleContent() mtime-cache reloads the live ap
 
 Re-verified after injection + deploy: REQ-0122 lossless PASS, sim suite 129/0, goldens 12/12
 byte-identical, coverage gate 14/14, full SKIP_PG/CLIENT/E2E bash tools/ci.sh => CI GREEN, EXIT 0.
+
+
+## Merged + deployed + live-verified (2026-07-23)
+
+- Merged to master: merge commit a28152c (git merge --no-ff req-0293-enemy-level-scaling-profile).
+- Deployed: main checkout on master; backpack-api restarted (systemctl --user), listening
+  127.0.0.1:8802, /api/health => {ok:true,version:0.1.0}, registry-first content served with no errors.
+- Full verification on the merged tree: sim 129/0, goldens 12/12 byte-identical, coverage gate 14/14,
+  server typecheck 0 errors, mock-src green, all DB-free server tests green, and api_test.cjs
+  194 passed / 0 failed (1639 assertions, pg backend). ci [3.995/7] scaling coverage gate green.
+- Behavior byte-identical (neutral g=1.0). Remaining follow-ups: real g values (REQ-0269 balance-sim)
+  and on-ladder hard gate (REQ-0275).
