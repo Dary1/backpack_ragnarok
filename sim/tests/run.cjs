@@ -1981,6 +1981,90 @@ T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray 
   ok(fs.existsSync(path.join(__dirname, '..', 'lib', 'heap.cjs')) === false, 'heap.cjs does not exist (AC1)');
 });
 
+
+// =====================================================================
+// REQ-0293: enemy level scaling (sim/lib/level_scale.cjs)
+// =====================================================================
+const levelScale = require(path.join(__dirname, "..", "lib", "level_scale.cjs"));
+const scalingIdentity = levelScale.loadProfile(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "content", "scaling_profile.json"), "utf8")));
+// A synthetic NON-identity profile: hp geometric g=2, strike.n geometric g=3,
+// everything else flat. Proves the math without shipping non-neutral data.
+const scalingSynth = levelScale.loadProfile({
+  schema: "scaling/1",
+  enemy: { hp: { kind: "geometric", g: 2 }, footprint: { kind: "flat" } },
+  skill: {
+    trigger: { every_secs: { s: { kind: "flat" } } },
+    verb: {
+      _default: { n: { kind: "flat" }, hits: { kind: "flat" }, mult: { kind: "flat" }, frac: { kind: "flat" } },
+      strike: { n: { kind: "geometric", g: 3 } },
+    },
+    attack_profile: { penetration: { kind: "flat" }, aoe: { kind: "flat" } },
+  },
+});
+
+T("REQ-0293 factorFor: baseline identity at effLevel 0 for geometric and flat", () => {
+  eq(levelScale.factorFor({ kind: "geometric", g: 2 }, 0), 1, "geometric at effLevel 0 is exactly 1");
+  eq(levelScale.factorFor({ kind: "flat" }, 0), 1, "flat at effLevel 0 is 1");
+  eq(levelScale.factorFor({ kind: "flat" }, 5), 1, "flat is always 1");
+  eq(levelScale.factorFor({ kind: "geometric", g: 1 }, 5), 1, "geometric g=1 is always 1");
+  eq(levelScale.factorFor(undefined, 5), 1, "a missing rule is identity");
+});
+
+T("REQ-0293 factorFor: geometric is g^effLevel, deterministic (no RNG)", () => {
+  eq(levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), Math.pow(1.2, 3), "g^effLevel");
+  eq(levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), levelScale.factorFor({ kind: "geometric", g: 1.2 }, 3), "same inputs -> same output");
+});
+
+T("REQ-0293 factorFor: monotone non-decreasing over effLevel 0..10 for g>=1", () => {
+  const rule = { kind: "geometric", g: 1.15 };
+  let prev = -Infinity;
+  for (let x = 0; x <= 10; x++) {
+    const f = levelScale.factorFor(rule, x);
+    ok(f >= prev, "factor must not decrease at effLevel " + x + " (" + f + " < " + prev + ")");
+    prev = f;
+  }
+});
+
+T("REQ-0293 scaleEnemyHpRange: identity profile returns the range unchanged (same ref)", () => {
+  const hp = [10, 20];
+  ok(levelScale.scaleEnemyHpRange(hp, scalingIdentity, 5) === hp, "neutral profile returns the SAME array reference");
+});
+
+T("REQ-0293 scaleEnemyHpRange: synthetic geometric g=2 at effLevel 1 doubles both ends, spread ratio preserved", () => {
+  const hp = [10, 30];
+  const out = levelScale.scaleEnemyHpRange(hp, scalingSynth, 1);
+  eq(out, [20, 60], "both ends scaled by 2^1");
+  ok(out[1] / out[0] === hp[1] / hp[0], "spread ratio preserved");
+  eq(hp, [10, 30], "input range not mutated");
+});
+
+T("REQ-0293 scaleSkillsForLevel: neutral returns the SAME array reference (REQ-0121 shared-ref invariant)", () => {
+  const skills = [{ trigger: { t: "every_secs", s: [2, 2] }, verb: { t: "strike", n: [5, 7] }, attack_profile: { penetration: 0, aoe: 0 } }];
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], scalingIdentity, 5) === skills, "identity profile -> same ref");
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], scalingSynth, 0) === skills, "effLevel 0 -> same ref");
+  ok(levelScale.scaleSkillsForLevel(skills, ["s"], null, 5) === skills, "no profile -> same ref");
+});
+
+T("REQ-0293 scaleSkillsForLevel: synthetic non-identity at effLevel 1 deep-copies, scales verb.n, leaves flats untouched, never mutates input", () => {
+  const skills = [{ trigger: { t: "every_secs", s: [2, 4] }, verb: { t: "strike", n: [5, 7] }, attack_profile: { penetration: 3, aoe: 0 } }];
+  const out = levelScale.scaleSkillsForLevel(skills, ["s"], scalingSynth, 1);
+  ok(out !== skills, "non-identity -> a fresh array");
+  ok(out[0] !== skills[0], "elements are deep-copied, not shared");
+  eq(out[0].verb.n, [15, 21], "strike.n scaled by 3^1");
+  eq(out[0].trigger.s, [2, 4], "trigger.s is flat -> untouched");
+  eq(out[0].attack_profile.penetration, 3, "penetration is flat -> untouched");
+  eq(skills[0].verb.n, [5, 7], "input skills NOT mutated");
+});
+
+T("REQ-0293 compileEnemyPack: no-opts vs identity-profile opts give identical hp AND identical shared skill refs (neutral wiring)", () => {
+  const box = { rowMin: 1, colMin: 1, rowMax: 18, colMax: 26 };
+  const a = combat.compileEnemyPack({ enemyIds: ["tiny_goblin"] }, tinyEnemyDefs, tinySkillDefs, combat.makeRng("req0293-neutral"), box);
+  const b = combat.compileEnemyPack({ enemyIds: ["tiny_goblin"] }, tinyEnemyDefs, tinySkillDefs, combat.makeRng("req0293-neutral"), box, { scaling: scalingIdentity, effLevel: 7 });
+  eq(a[0].hp, b[0].hp, "identity profile draws the identical HP roll");
+  ok(b[0].skills[0] === tinySkillDefs.tiny_bite, "identity profile keeps the SHARED skill def ref");
+  ok(a[0].skills[0] === b[0].skills[0], "same shared ref with and without the neutral opts");
+});
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
