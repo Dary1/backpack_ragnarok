@@ -1,0 +1,19 @@
+{
+  "schema": "scaling/1",
+  "note": "REQ-0293. Per-field enemy stat scaling by effLevel = attackLv - dungeon.baseDifficulty. v1 SHIPS NEUTRAL: every rule is identity (geometric g=1.0 or flat) so output is byte-identical. Real g values are a follow-up DATA edit gated by balance-sim (REQ-0269) + the on-ladder check; TUNABLE-PLACEHOLDER until then. A geometric rule multiplies the field (and both ends of an [lo,hi] range) by g^effLevel; flat = *1. verb rules key on verb.t with a _default fallback.",
+  "enemy":  { "hp": {"kind":"geometric","g":1.0}, "footprint": {"kind":"flat"} },
+  "skill": {
+    "trigger": { "every_secs": { "s": {"kind":"flat"} } },
+    "verb": {
+      "_default":       { "n":{"kind":"flat"}, "hits":{"kind":"flat"}, "mult":{"kind":"flat"}, "frac":{"kind":"flat"} },
+      "strike":         { "n":{"kind":"geometric","g":1.0} },
+      "multi_strike":   { "n":{"kind":"geometric","g":1.0} },
+      "charge_strike":  { "n":{"kind":"geometric","g":1.0} },
+      "apply_status":   { "n":{"kind":"geometric","g":1.0} },
+      "heal_ally":      { "n":{"kind":"geometric","g":1.0} },
+      "lifesteal":      { "n":{"kind":"flat"} },
+      "bonus_vs_status":{ "n":{"kind":"flat"} }
+    },
+    "attack_profile": { "penetration": {"kind":"flat"}, "aoe": {"kind":"flat"} }
+  }
+}
