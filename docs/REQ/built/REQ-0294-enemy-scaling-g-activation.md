@@ -44,3 +44,17 @@ Gate results (verified by orchestrator):
 - coverage gate: 14/14 covered (rule presence unchanged).
 - api_test.cjs: 194 passed / 0 failed (1641 assertions, pg) -- every dive runs at level 1 == test_dungeon levelMin, so effLevel 0 -> factor 1 -> unchanged.
 - scale sanity: effLevel 3 -> 1.331x, 7 -> 1.949x, 20 -> 6.727x (1.1^effLevel, unbounded).
+
+
+## Merged + deployed + live-verified (2026-07-23)
+
+- Merged to master: merge commit 171d7aa (git merge --no-ff req-0294-enemy-scaling-g-activation).
+- Deployed: backpack-api restarted (code change: runs.cjs + g=1.1 profile), active, /api/health {ok:true}.
+- Live end-to-end proof (getScheduleContent + compileEnemyPack on the deployed tree):
+  pack_frost_scouts medHP effLevel 0=35, 3=45, 7=65 (~1.1^effLevel); baseDifficulty live
+  niflheim_depths=1, grave_hollows=4, beastreach_wilds=8.
+- Enemy strength now scales ~10%/Lv, unbounded, on live dives where attackLv > baseDifficulty.
+  At effLevel 0 (attackLv==baseDifficulty) unchanged; goldens byte-identical; api_test 194/0.
+
+Remaining follow-up: author rosters on the 1.1 ladder by baseDifficulty for exact cross-draw
+self-normalisation + promote the on-ladder check to a hard gate (REQ-0275).
