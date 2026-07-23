@@ -1,82 +1,109 @@
-# REQ-0297 - Monster-pack baseDifficulty: arena-derived, auto-balanced, per-pack runtime
+# REQ-0297 - Monster-pack powerLevel: arena-derived, auto-balanced, per-pack runtime
 
-**Status:** todo (user-ratified 2026-07-23, in chat). Multi-phase, one file (all phases ship
-together as one feature/deploy).
-**Builds on:** REQ-0296 (side-agnostic BattleGroup + monster_arena). Supersedes the
-DUNGEON-level baseDifficulty of REQ-0295 with a PACK-level, arena-derived model.
+**Status:** todo (user-ratified 2026-07-23 in chat). Multi-phase, one file (ships together).
+NOTE: the slug says "basedifficulty" but the ratified attribute name is **`powerLevel`**
+(see Naming). This supersedes REQ-0295's DUNGEON-level baseDifficulty with a PACK-level model.
+**Depends on:** REQ-0296 (side-agnostic BattleGroup + sim/balance/monster_arena.cjs). This
+branch is BRANCHED FROM the req-0296 branch (contains its commits); REQ-0296 is built+audited,
+NOT yet merged to master.
 
-## The model (ratified)
-- **baseDifficulty is a monster_pack property**, not a dungeon property. It is the pack's
-  intrinsic combat power in ladder-Lv (g=1.1), measured troop-FREE by monster-vs-monster.
-- **Runtime (confirmed by user):** a pack P appears at `effLevel_P = attackLv - pack.baseDifficulty`;
-  a BOSS pack gets an extra ~+15%-equivalent Lv buff on appearance. dungeon.Lv is the
-  AUTHORING anchor (which packs to assign) and algebraically cancels at runtime
-  ((attackLv-dungeon.Lv)+(dungeon.Lv-pack.baseDifficulty) = attackLv-pack.baseDifficulty).
-- **Self-normalising:** every pack is presented at the player's attackLv, so monster strength
-  is constant across draws at a given attackLv, regardless of which dungeon/pack is rolled.
-- **Auto-balanced:** editing any skill/monster/monster_pack re-runs an all-pairs round-robin
-  that RE-DERIVES every pack's baseDifficulty (win-rate-driven, iterative). It is a GENERATOR,
-  not a pass/fail gate.
+## ================= HANDOFF / RECOVERY (read first if resuming) =================
+- Server: `ssh -i ~/.ssh/backpack_ed25519 -o StrictHostKeyChecking=no qtie@192.168.0.6`
+  (key install if missing: `install -d -m700 ~/.ssh && install -m600 /sessions/*/mnt/backpack_ragnarok/.keys/id_ed25519 ~/.ssh/backpack_ed25519`).
+- Worktree: `~/backpack_ragnarok_worktrees/req-0297-monster-pack-basedifficulty-autobalance`
+  branch `req-0297-monster-pack-basedifficulty-autobalance` (base commit 7d5d8aa; based on REQ-0296).
+- Node: `export NVM_DIR=~/.nvm; . "$NVM_DIR/nvm.sh"` before `node`. sim/ is dependency-free.
+- Gates (run in the worktree): `node sim/tests/goldens.cjs` (MUST be byte-identical, 12 cases),
+  `node sim/tests/run.cjs`, `node tools/check_scaling_coverage.cjs --gate`,
+  `node sim/balance/monster_arena.cjs <packA> <packB>`. api_test: `cd server && corepack pnpm install
+  --frozen-lockfile` then `set -a; . ~/backpack_ragnarok/server/.env; set +a; STORAGE_BACKEND=pg node server/tests/api_test.cjs`.
+- Deploy discipline (PROJECT.md): edits stay on the server worktree (NEVER the Cowork mount).
+  dungeons/packs content deploy is SURGICAL (edit batch-002 source + byte-identical live copy +
+  registry sha256, then copy into the main checkout ~/backpack_ragnarok + commit to master) so the
+  REQ-0122 lossless test stays green; api reload is mtime-cached (no restart for content).
+- **PHASE STATUS:** Phase 1 = BUILT + audited (committed). Phase 2 = NOT STARTED. Phase 3 = NOT STARTED.
+- Orchestration: implement via Opus subagent, orchestrator audits (independent goldens re-run + diff).
+=============================================================================
 
-## Phase 1 - Faction-neutral reactive dispatch + verb-firing auto-test
-The verb EXECUTION layer is already faction-neutral (skills.cjs applyReactiveVerbToTarget takes
-generic ownerActor/target). The remaining gap: the DEFENSIVE-retaliation DISPATCH is organised
-per-side (each side's defensive reactions are dispatched from the OPPOSITE side's attack body),
-so pure monster-vs-monster misses a struck monster's OnSquadBeenHit/OnBPBeenHit -> reactive-
-dependent packs are undervalued by the arena.
-- Generalise the defensive dispatch so the STRUCK group fires ITS OWN defensive reactions
-  (OnSquadBeenHit/OnBPBeenHit and equivalents) at the attacker, driven by map membership
-  (inst.allies()/opponents()), regardless of provenance.
-- Add an auto-test (sim/tests): for every trigger kind x every supported reactive/timed verb,
-  run it as a MONSTER skill both as ATTACKER and as DEFENDER; assert it fires / has effect.
-  This catches any faction-locked verb/trigger by construction.
-- HARD: goldens 12/12 BYTE-IDENTICAL (the standard player-vs-enemy path must reproduce today's
-  dispatch exactly). Do NOT rebaseline.
+## The model (RATIFIED - final)
+- **`powerLevel`** is a per-monster_pack attribute (fractional; can be negative or extreme e.g.
+  -13.5 -- that is FINE and meaningful, it is an internal relative measure). STRONG pack = HIGH
+  powerLevel. It is the pack's intrinsic combat level, measured troop-FREE by monster-vs-monster.
+- **Runtime (user-confirmed):** a pack P appears at `effLevel_P = attackLv - pack.powerLevel`;
+  a BOSS pack (referenced from a dungeon's bossPool) gets `+ BOSS_LV_BONUS`. Enemy stats scale
+  by `g^effLevel_P`, g=1.1. `BOSS_LV_BONUS = log_1.1(1.15) ~= 1.474` (a ~+15% strength buff), a
+  named tunable. dungeon.Lv is the AUTHORING anchor (which packs to assign); it cancels at runtime
+  ((attackLv-dungeon.Lv)+(dungeon.Lv-powerLevel) = attackLv-powerLevel).
+- **Self-normalising:** every pack presents at the player's attackLv, so monster strength is
+  constant across draws at a given attackLv.
+- **Sign (CRITICAL - do not invert):** a pack that WINS the round-robin gets powerLevel RAISED
+  (=> lower effLevel => scaled down at runtime => normalised). In the user's "appearance-Lv"
+  words a 100%-winner is "-5 Lv" (weaker); stored powerLevel moves the OPPOSITE way (+). Confirmed.
+- **User-facing "Lv"** is a SEPARATE derived display metric (to be designed later); internal
+  powerLevel may be negative/odd and that is acceptable.
 
-## Phase 2 - Per-pack baseDifficulty runtime
-- Schema: `baseDifficulty` (number, fractional) on each monster_pack in packs.json. A boss
-  marker: bossPool membership in the dungeon def is the boss signal (a pack referenced from
-  bossPool appears with the boss buff); no per-pack boss flag needed.
-- Runtime: compute effLevel PER PACK at dive time -- `effLevel_P = attackLv - pack.baseDifficulty
-  (+ BOSS_LV_BONUS if the pack is the dungeon's boss slot)`. Thread it per-pack through
-  runDungeon -> runEncounter -> compileEnemyPack (which already takes effLevel; now the value is
-  per-encounter's pack, not one dungeon-wide number). BOSS_LV_BONUS = log_1.1(1.15) ~= 1.474
-  (a ~15% strength buff), a named tunable.
-- Retire the dungeon-level scaling of REQ-0293/0295 (dungeon.baseDifficulty no longer drives
-  runtime). dungeon.Lv stays as an authoring field (pack-assignment anchor). Keep the effLevel-0
-  case byte-identical (goldens pass no profile; api_test test_dungeon packs get baseDifficulty
-  such that effLevel stays 0 -> unchanged). Coverage/dungeon_roll unaffected.
+## Naming decision
+The attribute is **`powerLevel`** (not baseDifficulty / difficultyOffset): strong pack = high,
+runtime reads `effLevel = attackLv - powerLevel`. "difficulty"-named options invert intuition
+(high value != harder; after normalisation all packs are equal). Reject baseDifficulty/difficultyOffset.
 
-## Phase 3 - All-pairs round-robin auto-adjuster + content-edit trigger
-- Tool `tools/autobalance_pack_basedifficulty.cjs` (evolves REQ-0295's calibrator to the arena):
-  ALL-PAIRS round-robin via sim/balance/monster_arena.cjs, N seeds; win-rate-driven update of
-  each pack's baseDifficulty; ITERATE ~5 loops (relative system: one edit ripples; fights are
-  handicapped by current estimates for measurement precision near the tie). Deterministic
-  (fixed seeds). Emits fractional baseDifficulty into packs.json. `--report`/`--emit`/`--check`.
-- Trigger (user-refined 2026-07-23): do NOT run per single edit. Editing LEVEL-AFFECTING
-  content (skill/monster/monster_pack) marks the pack domain DIRTY -- detected by comparing
-  the live content sha256 (registry.json) against a stored `basediff_calibrated_from` hash.
-  The round-robin runs ONCE, BATCHED, at MERGE/DEPLOY time when dirty (a pre-deploy step),
-  regenerates every pack.baseDifficulty, records the new calibrated-from hash, and ships the
-  regenerated packs.json via the surgical path (REQ-0122 lossless kept green). A clean (non-
-  dirty) deploy skips it.
+## Phase 1 - Faction-neutral reactive dispatch + verb-firing auto-test  [BUILT + AUDITED]
+Additive faction-neutral defensive dispatch in fireEnemyInstanceSlot: a struck MONSTER
+(kind==='enemy') fires its OWN OnSquadBeenHit at inst.allies() (map membership), mirroring the
+bp-body retaliation; GATED so the standard enemy->player path (struck actors are BPs) emits zero
+new events => goldens byte-identical. Commits 8d8b175, 04a233b. Audited independently: goldens
+12/12 BYTE-IDENTICAL (fixtures untouched), sim/tests/run.cjs 158/0 (28 new verb-firing cases +
+coverage guards + negative control). No current live/batch pack carries a reactive skill (all
+every_secs) so this is inert on today's content -- correctness + future-proofing + guard test.
+
+## Phase 2 - Per-pack powerLevel runtime  [NOT STARTED]
+- Schema: `powerLevel` (number, fractional) on each monster_pack in packs.json. Boss signal =
+  membership in a dungeon def's bossPool (no per-pack flag).
+- Runtime: compute effLevel PER PACK at dive time: `effLevel_P = attackLv - pack.powerLevel
+  (+ BOSS_LV_BONUS if boss slot)`. Thread per-pack through runDungeon -> runEncounter ->
+  compileEnemyPack (already takes effLevel; now per-encounter's pack). Retire the dungeon-level
+  scaling of REQ-0293/0295 (dungeon.baseDifficulty no longer drives runtime; dungeon.Lv stays an
+  authoring field). Keep effLevel-0 BYTE-IDENTICAL (goldens pass no profile; api_test test_dungeon
+  packs get powerLevel s.t. effLevel stays 0). Coverage/dungeon_roll unaffected.
+- **Scaling-formula CARE (ratified):** the correction is EXPONENTIAL (level_scale.cjs geometric
+  g^effLevel) so a scaled value is mathematically always >0, never negative, never infinite for
+  finite effLevel -- the ONLY way it hits literal 0 is integer ROUNDING of a small value. So:
+  (a) keep scaled skill/hp values FRACTIONAL through the scaling; do NOT Math.round small values
+  to 0; floor hp/per-hit-damage at a tiny positive minimum only as a last resort so nothing
+  literally vanishes (smooth gradient -> better calibration convergence + no dead skills).
+  (b) do NOT hard-cap the high side (a cap breaks the g^effLevel self-normalisation); at realistic
+  powerLevels (+-10 -> factor ~0.4..2.6x) it is tame; if a pack's powerLevel drifts extreme vs the
+  field, emit a WARNING (content signal), do not silently cap; keep runtime effLevel moderate via
+  sane pack<->dungeon assignment. (c) GUARD TEST: across effLevel +-25, assert every scaled skill
+  value is >0 (no dead skill) and finite/sane.
+
+## Phase 3 - All-pairs round-robin auto-adjuster + content-edit trigger  [NOT STARTED]
+- Tool (evolve REQ-0295's calibrator; arena-based, troop-FREE): **iterative all-pairs round-robin.**
+  Each loop: present every pack at effLevel = T - powerLevel (T = field mean, effectively 0), fight
+  ALL pairs N seeds via sim/balance/monster_arena.cjs; compute each pack's aggregate win-rate vs the
+  field; update ALL packs simultaneously by `ΔpowerLevel = α * (winRate% - 50) / 10` (α~=0.5 tunable,
+  FRACTIONAL, naturally within +-5α); iterate ~5 loops. Deterministic (fixed seeds). `--report/--emit/--check`.
+- **NO external anchor (theory):** in a full round-robin mean win-rate is EXACTLY 50% (Σ wins = total
+  games; equal game counts => Σ winRate = N/2 => mean 50%), so mean ΔpowerLevel = 0 every loop =>
+  mean(powerLevel) is EXACTLY conserved => the set self-centres on the field average (powerLevel=0 =
+  average pack). Do NOT add a reference pack / re-anchor. Global drift is allowed and meaningful.
+- **Smoothing:** the user's 10%->1Lv bucket table is the SHAPE only; use the damped fractional linear
+  rule above; VALIDATE convergence empirically (residual win-rates settle near 50% within ~5 loops;
+  if not, lower α / add loops / Gauss-Seidel). Round-robin aggregate is smoother than single duels.
+- **Trigger (user-refined):** editing level-affecting content (skill/monster/monster_pack) marks the
+  pack domain DIRTY (compare live content sha256 in registry.json vs a stored calibrated-from hash);
+  the round-robin runs ONCE, BATCHED, at MERGE/DEPLOY time when dirty (a pre-deploy step), regenerates
+  every pack.powerLevel, records the new hash, ships regenerated packs.json via the surgical path. A
+  clean deploy skips it. Do NOT run per single edit.
 
 ## Acceptance (whole feature)
-- Phase 1: goldens byte-identical; verb-firing auto-test green (every verb/trigger fires as a
-  monster attacker & defender); reactive-dependent packs now register in the arena.
-- Phase 2: per-pack effLevel live; effLevel-0 byte-identical; goldens/sim/api green.
-- Phase 3: round-robin deterministic + reproducible; generated baseDifficulty self-normalises
-  (arena win rates across packs within tolerance at a common attackLv); trigger runs on content edit.
+- Phase 1: goldens byte-identical; verb-firing auto-test green. [DONE]
+- Phase 2: per-pack effLevel live; effLevel-0 byte-identical; ±25 guard test green; goldens/sim/api green.
+- Phase 3: round-robin deterministic + reproducible; generated powerLevel self-normalises (arena
+  win rates across packs settle near 50% at a common presentation); dirty-trigger runs at deploy.
 - End-to-end: same attackLv -> constant monster strength across draws (empirical arena check).
 
-## Phase 1 - BUILT + ORCHESTRATOR-AUDITED (2026-07-23)
-Additive faction-neutral defensive dispatch in fireEnemyInstanceSlot: a struck MONSTER (kind==='enemy')
-fires its OWN OnSquadBeenHit at inst.allies() (map membership), mirroring the bp-body retaliation;
-GATED so the standard enemy->player path (struck actors are BPs) emits zero new events. Commits 8d8b175,
-04a233b. Audited independently: goldens 12/12 BYTE-IDENTICAL (fixtures untouched), sim/tests/run.cjs
-158/0 (28 new verb-firing cases + coverage guards + negative control: reverting the dispatch fails
-exactly the 7 OnSquadBeenHit-defender cases). Note: no current live/batch pack carries a reactive skill
-(all every_secs), so this is inert on today's content -- correctness + future-proofing + a guard test.
-
 ## Gate results / commit hashes
-_(phases 2, 3 filled on build)_
+- Phase 1: 8d8b175, 04a233b (audited; goldens byte-identical, sim 158/0).
+- Phase 2: _(on build)_
+- Phase 3: _(on build)_
