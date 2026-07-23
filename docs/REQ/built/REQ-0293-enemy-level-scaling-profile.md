@@ -155,4 +155,24 @@ Gate results (all green, verified independently by the orchestrator after provis
 - server typecheck (tsc -p tsconfig.server.json): 0 errors (pg/root deps were merely unprovisioned in the fresh worktree; not a code issue).
 - pnpm test:quick (SKIP_PG/CLIENT/E2E ci.sh): EXIT 0 -- green through every non-skipped step.
 
-Deferred (see Out of scope): real g values + per-dungeon curve tuning (REQ-0269); dungeons.json baseDifficulty DATA + on-ladder hard gate via re-promotion (REQ-0275).
+Deferred (see Out of scope): real g values + per-dungeon curve tuning (REQ-0269); on-ladder hard gate (REQ-0275). baseDifficulty DATA is now INJECTED + DEPLOYED -- see the section below.
+
+## baseDifficulty DATA injected + deployed (2026-07-23, post-build, per user directive)
+
+The user directed that baseDifficulty NOT be deferred. Done:
+- content/batches/batch-002-dungeon-pilot/dungeons.json (promoted_from source) gains an
+  integer baseDifficulty per entry = that entry levelMin (niflheim_depths 1, grave_hollows
+  4, deepstone 8); byte-copied to content/live/dungeon/dungeons.json; content/registry.json
+  live_dungeon.files dungeons.json sha256 updated 346d8c.. -> deec38.. . Branch commit 9e4d4a4.
+
+The REQ-0122 lossless invariant compares the DEPLOYED main-checkout live copy
+(dungen.liveDungeonDir() = os.homedir()/backpack_ragnarok) against the branch registry+batch,
+so it greens only once the content is deployed. A surgical content deploy was run
+(user-approved) on the main checkout: master commit eeabe37 updates ONLY
+content/live/dungeon/dungeons.json + its registry sha256 -- a wholesale promote was
+deliberately NOT used because it would clobber batch-005 additive enemies/skills/packs.
+Inert at neutral g=1.0 (runs.cjs anchors baseDifficulty ?? levelMin; scaling identity), so
+gameplay is byte-identical; getScheduleContent() mtime-cache reloads the live api with NO restart.
+
+Re-verified after injection + deploy: REQ-0122 lossless PASS, sim suite 129/0, goldens 12/12
+byte-identical, coverage gate 14/14, full SKIP_PG/CLIENT/E2E bash tools/ci.sh => CI GREEN, EXIT 0.
