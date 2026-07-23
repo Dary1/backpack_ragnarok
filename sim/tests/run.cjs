@@ -1986,7 +1986,19 @@ T('REQ-0256 s15.5/s15.13 (AC5/AC13): the chain fires player-then-enemy then ray 
 // REQ-0293: enemy level scaling (sim/lib/level_scale.cjs)
 // =====================================================================
 const levelScale = require(path.join(__dirname, "..", "lib", "level_scale.cjs"));
-const scalingIdentity = levelScale.loadProfile(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "content", "scaling_profile.json"), "utf8")));
+// A synthetic ALL-IDENTITY profile (every rule flat) -- proves the neutral path
+// independently of the SHIPPED profile, which REQ-0294 activated to g=1.1.
+const scalingIdentity = levelScale.loadProfile({
+  schema: "scaling/1",
+  enemy: { hp: { kind: "flat" }, footprint: { kind: "flat" } },
+  skill: {
+    trigger: { every_secs: { s: { kind: "flat" } } },
+    verb: { _default: { n: { kind: "flat" }, hits: { kind: "flat" }, mult: { kind: "flat" }, frac: { kind: "flat" } } },
+    attack_profile: { penetration: { kind: "flat" }, aoe: { kind: "flat" } },
+  },
+});
+// The SHIPPED profile (REQ-0294 activation: g=1.1 on hp + damage magnitudes + heal).
+const scalingShipped = levelScale.loadProfile(JSON.parse(fs.readFileSync(path.join(REPO_ROOT, "content", "scaling_profile.json"), "utf8")));
 // A synthetic NON-identity profile: hp geometric g=2, strike.n geometric g=3,
 // everything else flat. Proves the math without shipping non-neutral data.
 const scalingSynth = levelScale.loadProfile({
@@ -2063,6 +2075,24 @@ T("REQ-0293 compileEnemyPack: no-opts vs identity-profile opts give identical hp
   eq(a[0].hp, b[0].hp, "identity profile draws the identical HP roll");
   ok(b[0].skills[0] === tinySkillDefs.tiny_bite, "identity profile keeps the SHARED skill def ref");
   ok(a[0].skills[0] === b[0].skills[0], "same shared ref with and without the neutral opts");
+});
+
+T("REQ-0294 activation: shipped profile scales hp + damage magnitude by 1.1^effLevel (unbounded), status/cadence flat", () => {
+  const near = (a, b, msg) => ok(Math.abs(a - b) < 1e-6, msg + " (" + a + " vs " + b + ")");
+  // hp: 1.1 per Lv, unbounded
+  near(levelScale.scaleEnemyHpRange([100, 100], scalingShipped, 1)[0], 110, "hp *1.1 at effLevel 1");
+  near(levelScale.scaleEnemyHpRange([100, 100], scalingShipped, 10)[0], 100 * Math.pow(1.1, 10), "hp 1.1^10 unbounded at effLevel 10");
+  // damage magnitude scales; cadence + status stay flat
+  const skills = [
+    { trigger: { t: "every_secs", s: [2, 2] }, verb: { t: "strike", n: [10, 10] }, attack_profile: { penetration: 0, aoe: 0 } },
+    { trigger: { t: "every_secs", s: [3, 3] }, verb: { t: "apply_status", status: "Chill", n: [4, 4] } },
+  ];
+  const out = levelScale.scaleSkillsForLevel(skills, ["a", "b"], scalingShipped, 2);
+  ok(out !== skills, "non-identity shipped profile deep-copies at effLevel 2");
+  near(out[0].verb.n[0], 10 * Math.pow(1.1, 2), "strike.n *1.1^2");
+  eq(out[0].trigger.s, [2, 2], "cadence (trigger.s) stays flat");
+  eq(out[1].verb.n, [4, 4], "apply_status.n stays flat");
+  eq(skills[0].verb.n, [10, 10], "input not mutated");
 });
 
 console.log('----------------------------------');
