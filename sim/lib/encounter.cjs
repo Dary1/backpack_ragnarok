@@ -616,7 +616,10 @@ function runEncounter(opts) {
         const rayEvents = [];
         const fr = fireSkillRay({
           attacker, attackProfile: s.attackProfile, verbEff: s.effect, mode: encounterDef.mode,
-          targetActors: enemyActorList(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
+          // REQ-0296: was enemyActorList() -- now the firing instance's opponents
+          // (bp-map instance -> enemyActorList(), same list/order). The machinery
+          // below (charge feeds, PO offensive dispatch) stays bp-gated; only the LIST moved.
+          targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'enemy' },
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!s.attackProfile.aoe_statuses,
         });
         for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
@@ -638,7 +641,11 @@ function runEncounter(opts) {
             fireSkillRay({
               attacker: { fieldCells: ent.raw.fieldCells, ownerId: ent.raw.ownerId + '#react', bonusVsStatus: ent.raw.bonusVsStatus || [] },
               attackProfile: ap, verbEff: sk, mode: 'battle', skill: ent.raw.skillIds && ent.raw.skillIds[ent.raw.skills.indexOf(sk)], // REQ-0280
-              targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+              // REQ-0296: the struck opponent's retaliation aims at the FIRING
+              // instance's allies (bp-map -> playerActors, same ref). LIMITATION: this
+              // OnSquadBeenHit dispatch still lives ONLY in the bp body, so pure enemy-
+              // vs-enemy won't retaliate until phase-2 generalises the dispatch itself.
+              targetActors: inst.allies(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
               rng, streamPrefix: 'reactive/OnSquadBeenHit/' + ent.raw.ownerId + '/' + t,
               events: reactDef, aoeStatuses: !!ap.aoe_statuses,
             });
@@ -685,7 +692,7 @@ function runEncounter(opts) {
         // REQ-0203: enemy SUPPORT skill -- NO ray at the player field. Heal the
         // lowest-HP living pack ally (self only if alone); target is deterministic
         // (selectHealAllyTarget), the amount rolls from an isolated named stream.
-        const target = selectHealAllyTarget(inst.actor, enemyActors.map(e => e.actor));
+        const target = selectHealAllyTarget(inst.actor, inst.allies()); // REQ-0296: own-side list (enemy-map -> enemyActors' actors, same order)
         if (target) {
           const healN = rng.stream(effectStreamName(s.ownerUid, s.effIdx) + '/' + t + '/heal_ally').range(s.effect.verb.n[0], s.effect.verb.n[1]);
           const hpBefore = target.hp();
@@ -697,7 +704,7 @@ function runEncounter(opts) {
         const rayEvents = [];
         const fr = fireSkillRay({
           attacker, attackProfile, verbEff: s.effect, mode: 'battle', skill: raw && raw.skillIds && raw.skillIds[s.effIdx], // REQ-0280
-          targetActors: playerActors, targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' },
+          targetActors: inst.opponents(), targetBounds: { ROWS: FIELD_ROWS, COLS: FIELD_COLS, label: 'player' }, // REQ-0296: enemy-map instance's opponents (standard -> playerActors; label kept 'player' for golden parity)
           rng, streamPrefix: effectStreamName(s.ownerUid, s.effIdx) + '/' + t, events: rayEvents, aoeStatuses: !!attackProfile.aoe_statuses,
         });
         for (const re of rayEvents) events.push(Object.assign({ t, seq: seq.nextSeq() }, re));
@@ -734,8 +741,13 @@ function runEncounter(opts) {
   // attachments, pulses, the fire bodies and the result stay here (s14 Out
   // records the not-moved scaffolding).
   const battle = createBattle({
-    playerMap: createFormationMap({ instances: playerInstances }),
-    enemyMap: createFormationMap({ instances: enemyInstances }),
+    // REQ-0296: side-agnostic target binding. The standard encounter is
+    // player-vs-enemy: a player-map instance's opponents ARE the enemy actor list
+    // (entity included, exactly what the bp fire body read) and its allies are the
+    // player actors; an enemy-map instance mirrors that. SAME lists, SAME order as
+    // the hardcoded args they replace below -> byte-identical goldens.
+    playerMap: createFormationMap({ instances: playerInstances, opponents: () => enemyActorList(), allies: () => playerActors }),
+    enemyMap: createFormationMap({ instances: enemyInstances, opponents: () => playerActors, allies: () => enemyActors.map(e => e.actor) }),
     modeConfig: null, // s7.0: RESERVED. REQ-0259 populates it; nothing here reads it.
     fire: fireInstanceSlot,
     rollCooldownTicks: rollCooldownTicksFor,
