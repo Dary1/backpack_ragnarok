@@ -16,6 +16,7 @@ const { FIELD_ROWS, FIELD_COLS } = require('./field.cjs');
 const { maskLabel } = require('./replay.cjs');
 const { effectStreamName, makeBPActor, makeEnemyActor, fireSkillRay, defaultAttackProfileFor, applyReactiveVerbToTarget, selectHealAllyTarget } = require('./skills.cjs');
 const { compileEnemyPack } = require('./packs.cjs');
+const { effLevelForPack } = require('./level_scale.cjs'); // REQ-0297: per-pack effLevel = attackLv - pack.powerLevel (+ boss bonus)
 const { createEncounterChargeManager } = require('./unit_charge_encounter.cjs'); // REQ-0200
 
 function runEncounter(opts) {
@@ -28,9 +29,12 @@ function runEncounter(opts) {
     // called `packDefsById` in one opts bag is a bug waiting for a careless
     // destructure to feed emission pools to the monster placer.
     monsterPackDefsById,
-    // REQ-0293: enemy level scaling. Optional -- absent (every current sim/test
-    // caller) means no scaling, so compileEnemyPack stays byte-identical.
-    scaling, effLevel,
+    // REQ-0293/0297: enemy level scaling. `scaling` is the profile; `attackLv`
+    // (= room.level) drives the PER-PACK effLevel derived below, where the pack
+    // def (its powerLevel) and the boss-slot signal are both known. Both optional
+    // -- absent (every current sim/test caller) means no scaling, so
+    // compileEnemyPack stays byte-identical.
+    scaling, attackLv,
   } = opts;
   const events = [];
   const seq = new SeqCounter(); // REQ-0256: seq is now an emission-order OUTPUT, not an ordering input (s3.3)
@@ -198,7 +202,15 @@ function runEncounter(opts) {
       if (!resolved) throw new Error('runEncounter: encounter ' + encounterDef.id + ' names monster_pack "' + packDef.packId + '", which has no def');
       packDef = resolved;
     }
-    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, { scaling, effLevel }).map(en => ({ raw: en, actor: makeEnemyActor(en) })); // REQ-0293: opts
+    // REQ-0297: PER-PACK effLevel. The resolved pack def (hence its powerLevel)
+    // and the boss-slot signal (encounterDef.type === 'boss' -- the encounter
+    // dungeon_roll.cjs built from the dungeon's bossPool) are both known HERE, so
+    // each pack scales by its OWN g^effLevel. Only computed when a scaling profile
+    // is present; absent (goldens, every direct test caller) => effLevel 0 => no
+    // scaling => byte-identical. A pack with no powerLevel also yields 0 (see
+    // effLevelForPack), so today's live/fixture packs are unchanged either way.
+    const effLevel = scaling ? effLevelForPack(attackLv, packDef.powerLevel, encounterDef.type === 'boss') : 0;
+    enemyActors = compileEnemyPack(packDef, enemyDefsById, skillDefsById, rng, enemyFieldBox, { scaling, effLevel }).map(en => ({ raw: en, actor: makeEnemyActor(en) })); // REQ-0297: per-pack effLevel
   }
   let entity = null; // trap/door/chest "?" entity
   if (encounterDef.entityDef) {

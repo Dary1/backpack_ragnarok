@@ -103,13 +103,16 @@ function startRun(room, profileCanvas) {
   if (!dungeonDefRef) { const e = new Error('no dungeon def available to roll for room ' + room.id); e.code = 'BAD_REQUEST'; throw e; }
   const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
   const dungeonDef = dungeonRoll.rollDungeon(dungeonDefRef, room.level, genSeed, { gimicDefsById });
-  // REQ-0293/0294: effLevel = attackLv - baseDifficulty, UNBOUNDED (no levelMax cap,
-  // no factor clamp). attackLv IS room.level. COUNTS stay keyed off room.level via
-  // the rollDungeon call above (unchanged); only enemy STRENGTH keys off effLevel,
-  // so the cancelled draw-variance never returns as total-volume variance. With
-  // the neutral profile this changes NOTHING, but wires the path end to end.
-  const baseDifficulty = Number.isFinite(dungeonDefRef.baseDifficulty) ? dungeonDefRef.baseDifficulty : (dungeonDefRef.levelMin || 1);
-  const effLevel = Math.max(0, room.level - baseDifficulty); // REQ-0294: UNBOUNDED -- no levelMax cap, no factor clamp (user: max, no upper limit)
+  // REQ-0297: enemy STRENGTH now scales PER PACK. Each encounter derives its own
+  // effLevel = attackLv - pack.powerLevel (+ boss bonus) inside the sim, where the
+  // pack def is resolved -- so runs.cjs no longer computes one dungeon-wide
+  // effLevel. REQ-0293/0295's dungeon.baseDifficulty is RETIRED as a runtime input
+  // (dungeon.Lv / baseDifficulty remain AUTHORING anchors only). attackLv IS
+  // room.level, passed to runDungeon below as `level`; COUNTS still key off
+  // room.level via the rollDungeon call above. A pack with no powerLevel scales at
+  // effLevel 0 (factor 1) => byte-identical, so today's live packs (none carry a
+  // powerLevel yet -- the calibrated values ship via the Phase-3 surgical path)
+  // are unchanged.
   const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
@@ -117,7 +120,7 @@ function startRun(room, profileCanvas) {
     masterSeed: seed, dungeonDef, squadSnapshots, itemDefsById, enemyDefsById, skillDefsById,
     monsterPackDefsById, // REQ-0184: resolves an encounter's packId -> its monster_pack def
     formationId: room.formationId, level: room.level, participants,
-    scaling: SCALING_PROFILE, effLevel, // REQ-0293: enemy strength scales by effLevel (neutral in v1); counts stay keyed off level
+    scaling: SCALING_PROFILE, // REQ-0297: profile only; per-pack effLevel derived in the sim from room.level (= attackLv) + each pack's powerLevel (+ boss bonus)
     // REQ-0170: without these the sim would see every BP as unlinked -- the board
     // would draw rays the battle did not honour.
     unitDefsById, connShapes,

@@ -56,6 +56,44 @@ function factorFor(rule, effLevel) {
   return 1;
 }
 
+// ---- REQ-0297: per-pack effLevel derivation --------------------------------
+// BOSS_LV_BONUS: a boss pack (the encounter rolled from a dungeon's bossPool)
+// presents ~15% stronger than its powerLevel alone would place it. Expressed in
+// effLevel UNITS so it rides the SAME g^effLevel curve as every other scaled
+// field: g^BOSS_LV_BONUS = 1.15 at the reference ladder g=1.1, i.e.
+// log_1.1(1.15). A named tunable, frozen against g=1.1 -- the design intent is
+// "+15% boss strength", not "whatever the live profile's g happens to be".
+const BOSS_LV_BONUS = Math.log(1.15) / Math.log(1.1); // ~= 1.4739311883324124
+
+// EXTREME_EFFLEVEL: |effLevel| beyond this is a CONTENT signal (a pack drifted
+// far from the field at this attackLv), NOT a runtime error and NOT a cap -- a
+// cap would break the g^effLevel self-normalisation (REQ-0297 scaling-care b).
+// We WARN and carry on. +/-25 is the band the guard test proves stays >0 / finite.
+const EXTREME_EFFLEVEL = 25;
+
+// effLevelForPack: the PER-PACK presentation offset, computed at dive time.
+//   effLevel_P = attackLv - powerLevel (+ BOSS_LV_BONUS when the pack is the
+//   dungeon's boss slot). attackLv is room.level.
+// A pack with NO powerLevel (undefined / non-finite) falls back to effLevel 0 =>
+// factorFor === 1 => BYTE-IDENTICAL to today's no-scaling behaviour for that
+// pack. This absent-fallback is what keeps the goldens (batch-002 packs carry no
+// powerLevel) and the api_test fixtures unchanged; it deliberately returns BEFORE
+// the boss bonus, so a boss pack with no powerLevel gets NO bonus and NO scaling
+// either. Returns a FRACTIONAL number; the caller feeds it to factorFor.
+function effLevelForPack(attackLv, powerLevel, isBoss) {
+  if (!Number.isFinite(powerLevel)) return 0; // absent => no scaling (byte-identical)
+  const eff = attackLv - powerLevel + (isBoss ? BOSS_LV_BONUS : 0);
+  if (Math.abs(eff) > EXTREME_EFFLEVEL) {
+    // Content signal, not a cap (scaling-care b): log to stderr only (never the
+    // event log, so determinism/goldens are untouched) and return the TRUE value
+    // -- clamping here would break the round-robin self-normalisation.
+    console.warn('[REQ-0297] extreme per-pack effLevel ' + eff.toFixed(3) +
+      ' (attackLv=' + attackLv + ', powerLevel=' + powerLevel + (isBoss ? ', boss+' + BOSS_LV_BONUS.toFixed(3) : '') +
+      ') -- pack likely mis-assigned vs the field; NOT capped (g^effLevel self-normalises)');
+  }
+  return eff;
+}
+
 // resolveVerbRule: a verb leaf's rule is its verb.t-specific rule if present,
 // else the _default rule for that key (first match wins). undefined when
 // neither exists -> factorFor treats it as identity, and the coverage gate
@@ -159,6 +197,9 @@ function scaleSkillsForLevel(skills, skillIds, profile, effLevel) {
 module.exports = {
   loadProfile,
   factorFor,
+  BOSS_LV_BONUS,       // REQ-0297
+  EXTREME_EFFLEVEL,    // REQ-0297
+  effLevelForPack,     // REQ-0297: per-pack effLevel = attackLv - powerLevel (+ boss bonus)
   resolveVerbRule,
   hpFactor,
   scaleEnemyHpRange,
