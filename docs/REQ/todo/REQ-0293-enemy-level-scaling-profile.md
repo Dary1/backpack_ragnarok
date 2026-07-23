@@ -137,4 +137,22 @@ skill.verb[*].{hits,mult,frac}, skill.attack_profile.{penetration,aoe}).
 - Reward scaling by net difficulty.
 
 ## Gate results / commit hashes
-_(filled on build)_
+**Built 2026-07-23** on branch `req-0293-enemy-level-scaling-profile` (base 71e6a34).
+
+Commits:
+- 8c82f62 scaling engine (level_scale.cjs) + neutral scaling_profile.json manifest
+- a645cf1 thread scaling opts through compileEnemyPack/encounter/dungeon
+- 0be4a2c baseDifficulty anchor on dungeon defs  (DATA reverted by 1387f79)
+- a9efee1 wire scaling profile + effLevel into runs.startRun
+- 11bf0a6 scaling coverage gate + ci wiring
+- 1387f79 defer dungeons.json baseDifficulty DATA (promoted/registry-pinned file; anchor falls back to levelMin, byte-identical at v1-neutral). NET diff does not touch dungeons.json.
+- e7d85f5 unit tests on synthetic non-identity profiles
+
+Gate results (all green, verified independently by the orchestrator after provisioning worktree deps):
+- sim goldens (sim/tests/goldens.cjs): 12 cases byte-identical -- replay determinism intact at neutral.
+- sim suite (sim/tests/run.cjs): 129 passed, 0 failed (incl. 8 new REQ-0293 tests + the REQ-0121 shared-skill-ref invariant).
+- coverage gate (tools/check_scaling_coverage.cjs --gate): 14/14 live numeric leaves covered; --self-test OK; wired into ci.sh as [3.995/7].
+- server typecheck (tsc -p tsconfig.server.json): 0 errors (pg/root deps were merely unprovisioned in the fresh worktree; not a code issue).
+- pnpm test:quick (SKIP_PG/CLIENT/E2E ci.sh): EXIT 0 -- green through every non-skipped step.
+
+Deferred (see Out of scope): real g values + per-dungeon curve tuning (REQ-0269); dungeons.json baseDifficulty DATA + on-ladder hard gate via re-promotion (REQ-0275).
