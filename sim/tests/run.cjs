@@ -2095,6 +2095,11 @@ T("REQ-0294 activation: shipped profile scales hp + damage magnitude by 1.1^effL
   eq(skills[0].verb.n, [10, 10], "input not mutated");
 });
 
+// REQ-0297 Phase 1: faction-neutral verb-firing matrix (monster as attacker &
+// defender). A sibling module so it also runs standalone; register() defines its
+// T() cases against THIS harness so they roll into run.cjs's pass/fail totals.
+require('./req0297_verb_firing_test.cjs').register({ T, eq, ok, approx });
+
 console.log('----------------------------------');
 console.log(pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);
