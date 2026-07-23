@@ -103,13 +103,13 @@ function startRun(room, profileCanvas) {
   if (!dungeonDefRef) { const e = new Error('no dungeon def available to roll for room ' + room.id); e.code = 'BAD_REQUEST'; throw e; }
   const genSeed = room.genSeed || crypto.randomBytes(16).toString('hex');
   const dungeonDef = dungeonRoll.rollDungeon(dungeonDefRef, room.level, genSeed, { gimicDefsById });
-  // REQ-0293: effLevel = attackLv - baseDifficulty, clamped to [0, levelMax -
-  // baseDifficulty]. attackLv IS room.level. COUNTS stay keyed off room.level via
+  // REQ-0293/0294: effLevel = attackLv - baseDifficulty, UNBOUNDED (no levelMax cap,
+  // no factor clamp). attackLv IS room.level. COUNTS stay keyed off room.level via
   // the rollDungeon call above (unchanged); only enemy STRENGTH keys off effLevel,
   // so the cancelled draw-variance never returns as total-volume variance. With
   // the neutral profile this changes NOTHING, but wires the path end to end.
   const baseDifficulty = Number.isFinite(dungeonDefRef.baseDifficulty) ? dungeonDefRef.baseDifficulty : (dungeonDefRef.levelMin || 1);
-  const effLevel = Math.max(0, Math.min(room.level - baseDifficulty, (dungeonDefRef.levelMax || room.level) - baseDifficulty));
+  const effLevel = Math.max(0, room.level - baseDifficulty); // REQ-0294: UNBOUNDED -- no levelMax cap, no factor clamp (user: max, no upper limit)
   const seed = crypto.randomBytes(16).toString('hex'); // crypto random, stored (per task brief) -- combat RNG, INDEPENDENT of genSeed (layout vs combat outcome stay separate seeds, see sim/dungen.cjs's own header comment)
   const participants = [room.ownerId]; // solo scope: the room owner is the sole participant/reward recipient
 
