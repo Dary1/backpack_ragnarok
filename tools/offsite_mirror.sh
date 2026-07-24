@@ -26,8 +26,15 @@ exec 9>"$LOCK"
 flock -n 9 || { echo "another mirror run holds the lock; exiting"; exit 0; }
 
 cd "$REPO"
-git push --quiet offsite --all
-git push --quiet offsite --tags
+# REQ-0302: tolerate non-ff branches so ONE diverged branch cannot abort the whole
+# backup (master + tags + every ff branch + the state tarball). `git push --all` still
+# pushes master and every fast-forwardable branch in ONE connection; it returns non-zero
+# only for diverged branches, which we log and leave alone. Still NO --force
+# (deletion-safe, REQ-0132): a local rebase/rewind never deletes commits from the mirror;
+# diverged branches are reconciled by hand.
+git push --quiet offsite master || echo "mirror WARN: master push failed"
+git push --quiet offsite --all  || echo "mirror: some branches are non-ff (diverged; NOT force-pushed) -- master/tags/ff-branches ARE backed up; reconcile diverged branches by hand"
+git push --quiet offsite --tags || echo "mirror WARN: tag push failed"
 
 # Daily state-dir tarball (on-box convenience; survives repo damage, not box loss)
 today="$(date +%Y%m%d)"
