@@ -111,3 +111,7 @@ comment at both the retaliation site (fireInstanceSlot) and on `fireEnemyInstanc
 Generalising the retaliation dispatch symmetrically -- so a struck group fires its
 OnSquadBeenHit back at its own `inst.allies()` from the enemy body too -- is the clean
 phase-2 (its target LIST is already `inst.allies()`, so only the DISPATCH needs moving).
+
+
+## Merged + deployed (2026-07-23)
+- Merged to master in the REQ-0296+0297 merge commit c374176 (--no-ff). Byte-identical refactor; monster_arena.cjs live. Gates on merged master: goldens 12/12 byte-identical, sim 177/0, coverage green. Enabled REQ-0297.

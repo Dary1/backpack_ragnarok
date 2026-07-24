@@ -230,3 +230,17 @@ attackLv - pack.powerLevel (+ boss g^1.4664=x1.15). Steps (do NOT half-do; keep 
 BALANCE NOTE: at a fixed attackLv the ~30-wide spread means some packs hit near-±25 effLevel if drawn far
 from their level; dungeon pack-assignment should keep drawn packs near attackLv (or re-author the extreme
 packs closer). The ±25 guard keeps values >0; warnings surface extremes.
+
+
+## Merged + deployed + LIVE-VERIFIED (2026-07-23)
+- Merge commit c374176 (REQ-0296+0297 --no-ff into master). Surgical content deploy of calibrated
+  powerLevel: main-checkout live packs.json + batch-002 base + registry (sha/marker) synced; REQ-0122
+  lossless GREEN. backpack-api RESTARTED (Phase-2 runtime code); /api/health ok.
+- LIVE proof (getScheduleContent + compileEnemyPack on the deployed tree): 14/14 packs carry powerLevel;
+  at attackLv 5, pack_frost_scouts (pL -17.32) -> effLevel +22.3 (scaled UP, medHP 360), pack_titan_ridge
+  (pL +12.83) -> effLevel -7.83 (scaled DOWN, medHP 112) -- both normalise to attackLv 5's combat power.
+- Retired REQ-0294/0295 dungeon-level scaling; monster strength now self-normalises per attackLv across draws.
+- Gates on merged master: goldens 12/12 byte-identical, sim 177/0, coverage green, REQ-0122 lossless green.
+- DEFERRED (self-healing): additive SOURCE batches 005/006/007 packs.json were NOT given powerLevel; a
+  future additive re-promotion of those marks the content dirty -> the Phase-3 auto-adjuster regenerates
+  powerLevel, so no data is permanently lost. The current lossless test does not read those sources.
