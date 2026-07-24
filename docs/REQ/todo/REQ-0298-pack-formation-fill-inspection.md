@@ -54,4 +54,51 @@ is EXEMPT (the rule applies to monster_pack content only). 30% is a DATA-tunable
 - Unit tests green; goldens byte-identical; sim/tests/run.cjs green.
 
 ## Gate results / commit hashes
-_(on build)_
+**Built 2026-07-24.** Output MECHANISM only (pure module + tool + unit test); NO
+runtime touched -- goldens byte-identical. Status stays `todo` (folder not moved).
+
+**Commits** (since 75cca14):
+- `47b27c7` feat(REQ-0298): pure pack_formation inspector + tool + unit test
+- `7151d57` feat(REQ-0298): wire formation-fill test into run.cjs + advisory step into ci.sh
+- (this) docs(REQ-0298): record gate results
+
+**Files:**
+- NEW `sim/lib/pack_formation.cjs` -- pure module: `FILL_MIN` (0.30), `placeableCellsFor(rows,cols)`, `packFill(packDef, enemyDefsById, placeableCells)`, `inspectPacks(packs, enemyDefsById, {placeableCells, fillMin})`.
+- NEW `tools/inspect_pack_formation.cjs` -- `--report` / `--json` / `--gate` / `--advisory` (default) / `--self-test`.
+- NEW `sim/tests/req0298_pack_formation_test.cjs` -- 6 unit cases (packFill math, 30% boundary, placeableCells derivation, --json summary shape).
+- MOD `sim/tests/run.cjs` -- register the sibling test (rolls into suite totals).
+- MOD `tools/ci.sh` -- new `[3.996/7]` step: `--self-test` then `--advisory` (report-only, exit 0).
+
+**`node tools/inspect_pack_formation.cjs --report`** (reproduces the ratified snapshot, incl. banker-rounded demon_gate 31.25% -> 31.2%):
+```
+pack               members    cells  fill%  result
+frost_scouts             2    2/384   0.5%  FAIL
+rime_choir               3    3/384   0.8%  FAIL
+bear_and_stalker         2    5/384   1.3%  FAIL
+hrimgrimnir              1    9/384   2.3%  FAIL
+grave_shamble            4   48/384  12.5%  FAIL
+grave_legion             5   60/384  15.6%  FAIL
+wild_hunt                4   60/384  15.6%  FAIL
+venom_nest               4   64/384  16.7%  FAIL
+petrifying_court         4   64/384  16.7%  FAIL
+greenskin_warband        5   64/384  16.7%  FAIL
+demon_gate               5  120/384  31.2%  PASS
+bone_court               4  144/384  37.5%  PASS
+titan_ridge              4  144/384  37.5%  PASS
+deep_tide                4  160/384  41.7%  PASS
+
+summary: 14 packs, 4 pass, 10 fail  (FILL_MIN 30.0%, placeable 384 cells)
+```
+
+**Gates:**
+- `--gate` exit **1** (`GATE FAIL: 10 monster_pack(s) below FILL_MIN (30.0%)`); `--advisory`/default exit **0**; `--json` exit 0; `--self-test` exit 0 (10 checks PASS).
+- `--json` stable contract: `{ fillMin: 0.3, placeableCells: 384, packs:[{id,memberCount,occupiedCells,placeableCells,fillFrac,pass}...14], summary:{ total: 14, failing: 10, failingIds:[pack_frost_scouts..pack_greenskin_warband] } }` (input/file order; no timestamps).
+- `node sim/tests/goldens.cjs` -> `goldens OK (12 cases, replay determinism intact)` -- **BYTE-IDENTICAL** (golden hash file untouched).
+- `node sim/tests/run.cjs` -> `183 passed, 0 failed` (incl. the 6 REQ-0298 cases).
+
+**Deviation (fail count):** the prose above says "11/14 FAIL", but the actual
+computed result is **10 FAIL / 4 PASS**. This matches the per-pack snapshot itself,
+which lists 10 failing packs (frost_scouts..greenskin_warband) and 4 passing
+(demon_gate / bone_court / titan_ridge / deep_tide) -- 14 - 4 = 10. The tool
+reports 10 failing; "11" in the prose is an off-by-one. All 14 per-pack
+percentages match the snapshot exactly.
