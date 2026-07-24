@@ -78,3 +78,7 @@ rime_choir 0.8%, bear_and_stalker 1.3%, hrimgrimnir 2.3%, grave_shamble 12.5%, g
 31.2%, bone_court 37.5%, titan_ridge 37.5%, deep_tide 41.7%. No client change (contentadmin already renders
 runChecks rows). The pack-FIX (adding monsters to reach >=30%) remains OUT OF SCOPE (separate REQ).
 
+
+
+## Merged + deployed (2026-07-24)
+- Merge commit 74c96c5 into master (REQ-0298+0300 --no-ff). Byte-identical goldens; content_checks is server CODE so backpack-api RESTARTED -> the formation_fill 30% rule is now a LIVE admincontent warning. Gates on merged master: goldens 12/12 byte-identical, sim 183/0, content_checks 69/0, coverage green; /api/health ok.

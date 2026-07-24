@@ -102,3 +102,7 @@ which lists 10 failing packs (frost_scouts..greenskin_warband) and 4 passing
 (demon_gate / bone_court / titan_ridge / deep_tide) -- 14 - 4 = 10. The tool
 reports 10 failing; "11" in the prose is an off-by-one. All 14 per-pack
 percentages match the snapshot exactly.
+
+
+## Merged + deployed (2026-07-24)
+- Merge commit 74c96c5 into master (REQ-0298+0300 --no-ff). Byte-identical goldens; content_checks is server CODE so backpack-api RESTARTED -> the formation_fill 30% rule is now a LIVE admincontent warning. Gates on merged master: goldens 12/12 byte-identical, sim 183/0, content_checks 69/0, coverage green; /api/health ok.
