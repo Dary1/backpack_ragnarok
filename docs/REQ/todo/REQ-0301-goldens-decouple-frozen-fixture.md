@@ -42,5 +42,45 @@ monsters to a pack) drifts the hashes and forces a rebaseline. A determinism gol
 ## Out of scope
 - The pack-fix (adding monsters to the 10 <30% packs) -- separate REQ, now golden-safe once this lands.
 
-## Gate results
-_(on build)_
+## Gate results (built 2026-07-24 -- branch req-0301-goldens-decouple-frozen-fixture, base 1161be7)
+
+Commit `bc71419` (fixture + goldens.cjs redirect); this gate-results note is a follow-up doc commit.
+
+- **Fixture** `sim/tests/goldens/fixture/` -- verbatim byte-copy of EXACTLY the content the goldens
+  consumed. `cmp` confirms byte-identity on all 10 files: `content/live/scenario.json`,
+  `content/live/live_items.json`, and `content/live/dungeon/{dungeon,dungeons,enemies,formations,
+  gimics,items,packs,skills}.json` (the 8 batch-002 dungeon-domain `*.json` the os.homedir()-fake
+  copies; `notes.md` is not `.json`, so it was never copied and is not in the fixture). Added a
+  `README` with the FROZEN / never-track-live-content warning.
+- **goldens.cjs redirected** -- direct reads (scenario/live_items + enemies/skills/dungeon/packs) now
+  resolve under `FIXTURE_LIVE`/`FIXTURE_DUNGEON`; the os.homedir()-fake seeds
+  `.../content/live/dungeon` from `FIXTURE_DUNGEON` instead of `content/batches/batch-002`. Header +
+  REQ-0207 comment reframed: the golden is a content-INDEPENDENT engine-determinism contract that
+  supersedes the batch-002 pin. `REPO_ROOT` retained (still used by gen-mode `path.relative`);
+  `BATCH_DIR`/`batch-002-dungeon-pilot`/old mkdtemp prefix fully removed.
+- **BYTE-IDENTICAL** -- `node sim/tests/goldens.cjs` -> `goldens OK (12 cases, replay determinism intact)`.
+  A non-destructive `gen` dry-run (write intercepted) reproduces the committed `replay_hashes.json`
+  byte-for-byte. `replay_hashes.json` sha256 `da69d0fc45a1e8448de9b780019061c7690afb2c4b0e5eb15db8d3ff2b59a426`
+  UNCHANGED; `git diff` clean; never regenerated.
+- **Suite** -- `node sim/tests/run.cjs`: 183 passed, **1 failed**, and the single failure is
+  PRE-EXISTING / environmental, NOT caused by REQ-0301. The failing case is `REQ-0122 lossless promotion
+  invariant ... enemies.json sha256 matches the LAST additive layer provenance` (expected `895df769...`
+  got `d80e9e65...`). Proof it is independent of this change: (a) it fails byte-for-byte identically at the
+  branch base `1161be7`, before any REQ-0301 edit (also 183/1); (b) this branch touches only
+  `sim/tests/goldens*` + this doc -- no `content/live`, `content/registry.json`, `dungen.cjs`, `combat.cjs`,
+  or `run.cjs`. Root cause: that test reads live content via `dungen.liveDungeonDir()` =
+  `~/backpack_ragnarok/content/live/dungeon` (os.homedir(), the MAIN checkout) and compares it to THIS
+  worktree's `content/registry.json`. The main checkout was advanced by external deploys (`acfa2a2` REQ-0299,
+  batch-006/007 additive promotes) so its `enemies.json` is now `d80e9e65...`, while this worktree (off an
+  earlier master) still holds the internally-consistent snapshot `895df769...` (worktree live file ==
+  worktree registry). So the test cross-reads a newer repo against an older registry -- a worktree-staleness
+  artifact that reconciles on rebase/merge to master. Fixing it is OUT OF SCOPE for REQ-0301 (it would mean
+  rebaselining live content/registry, which this REQ must not touch). All 12 determinism goldens are now
+  hermetic (fixture-sourced) and fully green regardless.
+- **Decoupling PROVEN** -- added a dummy member to `content/batches/batch-002-dungeon-pilot/packs.json`
+  (`pack_frost_scouts` 2 -> 3 members; file materially changed on disk), re-ran goldens ->
+  `goldens OK (12 cases, replay determinism intact)`, `replay_hashes.json` still `da69d0fc...` UNCHANGED.
+  Reverted (`git checkout`); `packs.json` sha256 restored to `96b44fec...`; tree clean. The goldens no
+  longer read batch-002 (nor live content).
+
+Status stays **todo** (folder not moved). Unblocks the pack-fix: adding monsters to the `<30%` packs is now golden-safe.
