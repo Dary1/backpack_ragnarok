@@ -363,3 +363,38 @@ Node v22.23.1, worktree branch. ART_ROUTE_MOCK=1 for the pg logic suites
 
 Remaining: deploy (merge to master, client/web rebuild, api restart since
 server/ changed) then live monitor screenshot.
+
+## Deploy evidence (2026-07-24)
+Integrated onto current master (was 64+ behind; REQ-0293..0300 balance/scaling
+already live) via a merge of master into the branch, NOT a naive replay:
+- CONFLICT sim/lib/encounter.cjs: master (REQ-0296) extracted the enemy timed-
+  fire body to module-level fireEnemyInstanceSlot (shared with the monster
+  arena). Kept master's extraction; re-applied REQ-0292's enemy cadence tagging
+  (srcInst + cooldownTicks back-patch registration) at the CALL SITE, mirroring
+  the player side, leaving the shared fn + arena untouched.
+- CONFLICT sim/tests/run.cjs: both-added tests, kept BOTH (REQ-0292 cadence +
+  REQ-0293/0294/0297/0298).
+- sim/tests/goldens/replay_hashes.json: REGENERATED on the merged tree.
+- Merged-tree gates GREEN: run.cjs 184/0 (incl "REQ-0292: cadence ray_fire
+  carries slot/cooldownTicks (player) + srcInst/cooldownTicks (enemy)"),
+  goldens determinism OK, forecast 18/0, unit_charge 13/24.
+
+Client bundle REBUILT on the merged tree (pnpm build -> web/app, index-Sz7_yWii.js).
+Merged into master: 9844f83 (Merge REQ-0292 into master, --no-ff).
+Services restarted (systemctl --user): backpack-api + backpack-web, both active.
+
+LIVE verification:
+- 81 skill_icon artworks registered + adopted in the live registry (75 new, 6
+  interrupted-Fable stubs reused), image bytes injected (no GPU re-render).
+- Serving: local api AND public tunnel https://backpack-dev.qtie.jp/api/art/
+  <skill_id>.png -> 200 image/png (hrim_cleave/venom_spit/trollish_vigor/
+  petrifying_glare/dominion_of_flame verified; sizes match). Unknown id -> 404
+  (class-glyph fallback path intact).
+- Web serves the new bundle (assets/index-Sz7_yWii.js).
+Client in-situ badge display renders on the next live battle run (P2 e2e already
+covers the HUD logic structurally; serving + bundle are live-verified here).
+
+## Status log (append)
+- 2026-07-24 built -> done (merged 9844f83, deployed, api+web restarted, serving
+  live-verified local + tunnel). Outer-glow relaxation of SKILL_ICON_STYLE #5
+  per user ruling. Backup ref: req-0292-backup-predeploy.
