@@ -1,10 +1,10 @@
-# REQ-0299 - Formation-fill 30% rule in the admincontent warning system
+# REQ-0300 - Formation-fill 30% rule in the admincontent warning system
 
 **Status:** todo (user 2026-07-24: "put this 30% constraint into the admincontent WARNING system").
 **Builds on:** REQ-0298 (sim/lib/pack_formation.cjs -- FILL_MIN, packFill, inspectPacks; branched from it).
 
 ## HANDOFF
-- SSH `ssh -i ~/.ssh/backpack_ed25519 qtie@192.168.0.6`; worktree `~/backpack_ragnarok_worktrees/req-0299-packfill-admincontent-warning` (branch same; base off REQ-0298 branch, has pack_formation.cjs). Node via nvm. STATUS: NOT STARTED.
+- SSH `ssh -i ~/.ssh/backpack_ed25519 qtie@192.168.0.6`; worktree `~/backpack_ragnarok_worktrees/req-0300-packfill-admincontent-warning` (branch same; base off REQ-0298 branch, has pack_formation.cjs). Node via nvm. STATUS: NOT STARTED.
 - Gates: goldens byte-identical, sim run.cjs, server api_test (pg; needs server/.env + pnpm install in server/), content_checks tests.
 
 ## The warning system (recon)
