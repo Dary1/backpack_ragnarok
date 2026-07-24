@@ -40,3 +40,26 @@ implemented, and the UI still selects a dungeon.
 
 ## Gate results
 _(on build)_
+
+## Audit remediation (2026-07-25, orchestrated audit)
+Grounded audit (see docs/llm_managed/2026-07-25-req-0304-0306-orchestrator-audit.md). Verdict:
+READY-WITH-FIXES. The gap and the REQ-0185/0297 anchors were code-verified. Decisions added to de-risk
+implementation:
+- DRAW LOCATION: execute the draw in `createRoom` (server/services/rooms.cjs). Given attackLv, select
+  uniformly from `{ d in dungeonDefsById : d.levelMin <= attackLv }` using a stored `drawSeed` (crypto-random
+  default; privileged `drawSeed` override gated exactly like `genSeed`). Persist the drawn `dungeonId` +
+  `drawSeed` on the room; `startRun` is UNCHANGED (it keeps reading `room.dungeonId`).
+- dungeonId BACK-COMPAT: `dungeonId` becomes OPTIONAL on create. Absent -> server draws. Present -> a
+  privileged/test override only (not a player action); legacy rooms already carrying a dungeonId start unchanged.
+  Existing server/tests schedule api tests + client/e2e/schedule.spec.ts must be updated to the attackLv entry
+  shape (or exercise the override).
+- WEIGHTING: uniform among eligible dungeons for v1; a per-dungeon `drawWeight` field is a follow-up (default 1).
+- levelMax does NOT gate eligibility (authoring/recommendation band only); only `levelMin <= attackLv` gates.
+- Deliverable 3 is ALREADY satisfied: attackLv IS the existing `room.level`/`level` field (sim/lib/dungeon.cjs);
+  no new persisted field -- just remove the picker-derived `setLevel(levelMin)` coupling in SortiePage.tsx.
+- TESTABILITY: the api harness (server/tests/api/harness.cjs) currently authors ONE dungeon (levelMin 1); add
+  >= 2 dungeons at differing levelMin so the draw gating and the "no eligible dungeon" error branch are exercised,
+  and pin selection with the privileged `drawSeed`.
+- Gap wording: `levelMin` IS used today (count-scaling floor, schema, serving payload, UI lock chip) -- just never
+  as a random-draw gate. No new e2e harness is added -> the 5000+3040+idx port rule is N/A.
+Status unchanged (`todo`): still ready to implement, now with the above decisions pinned.
