@@ -1,6 +1,6 @@
 # REQ-0305 - Fix <30% monster_packs (add monsters to >=30%) + flip formation-fill gate to hard
 
-**Status:** todo (RATIFIED 2026-07-24; params user-confirmed). Follow-up to REQ-0298 (fill inspection) +
+**Status:** SUPERSEDED by REQ-0303 (merged 5a680e3, deployed 2026-07-24) -- retro-captured without noticing REQ-0303 already did this work; NO independent implementation, closed for provenance. (Originally: todo, RATIFIED 2026-07-24.) Follow-up to REQ-0298 (fill inspection) +
 REQ-0300 (30% admincontent warning). GOLDEN-SAFE now that REQ-0301 decoupled the determinism goldens.
 
 ## The decision
@@ -36,3 +36,22 @@ Do this AFTER req-0299 lands, on CURRENT master, to avoid content conflicts. REQ
 
 ## Gate results
 _(on build)_
+
+## Audit outcome (2026-07-25, orchestrated audit) -- SUPERSEDED
+Grounded audit (see docs/llm_managed/2026-07-25-req-0304-0306-orchestrator-audit.md) found this REQ was already
+fully delivered by REQ-0303 (monster-pack underfill fix), merged 5a680e3, powerLevel recalibrated 635d55a, done
+538510a, deployed + live-verified 2026-07-24 -- the same day this REQ was retro-captured, without referencing 0303.
+
+Independently re-verified on master:
+- inspect_pack_formation.cjs --report: 14 packs, 14 PASS, 0 FAIL (lowest rime_choir 30.7%). All 10 packs listed
+  here as failing now PASS; no other pack fails.
+- ci.sh --gate already HARD (REQ-0303 flipped it) and exit 0.
+- autobalance_pack_powerlevel.cjs --check: CLEAN (powerLevel already regenerated).
+
+No independent implementation remains; implementing as written would double-fill compliant packs. Moved todo -> done.
+
+Secondary defects (provenance): the deliverable ">= 115 cells" is off by one -- pass predicate is fillFrac >= 0.30
+and 0.30*384 = 115.2, so the true minimum is >= 116 cells. Monster packs live in content/live/dungeon/packs.json
+(schema monster_pack/1) + content/batches/batch-002-dungeon-pilot/packs.json, NOT content/live/live_packs.json
+(that is gacha_pack/1). Non-overlap/in-bounds is enforced by shared/content_validate.cjs validateMonsterPack, not
+by the inspector.
